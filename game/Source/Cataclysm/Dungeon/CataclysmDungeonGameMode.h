@@ -2941,6 +2941,15 @@ public:
 	static ACataclysmDungeonGameMode* InWorld(UWorld* World);
 
 	/**
+	 * A creature has been taken, by `UCataclysmCommand::Subjugate`, so it is no longer one of the floor's enemies: it
+	 * leaves `FloorEnemies`, and its section with it, as `ClearFloorEnemies` takes a thrall off at the next floor and as
+	 * a load never puts one back. Issue #2797: between the take and the next clear, every reader of the list that did
+	 * not ask who commands a creature counted a thrall as an enemy -- Blood Gates' kill target among them. Nothing is
+	 * done to a creature that is not on the list, such as a Warzone ally, which is never put on it.
+	 */
+	void ForgetACreatureTaken(ACataclysmEnemyCharacter* Taken);
+
+	/**
 	 * The Nihil's Embrace as the last beat applied it, for the list of what is affecting the player (issue #1591):
 	 * the resistance its walking has taken off, the resistance its cleanse's reward adds, both in per cent, and the
 	 * seconds that reward has left, nought while none runs. Read from the fields `StepNihilsEmbrace` writes, so the
