@@ -1031,8 +1031,13 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// the creature. Letting it through would either spend the mana and the
 	// cooldown on a skill that then stood still, or turn Vesselstep into a blink,
 	// which is a different skill.
+	//
+	// AND ONLY A CREATURE THE CHARACTER CAN SEE, ruled by the coordinating session on 2026-11-20 (issue #2792): a
+	// trade is an exchange of places, and with a creature behind a wall it would carry the character through the
+	// wall. `ThingsCommandedInSightOf` says what blocks the sight. With nothing in sight, the press is refused here,
+	// before anything is spent.
 	if (Params.MovementMode == ECataclysmMovementMode::Swap
-		&& UCataclysmCommand::ThingsCommandedBy(
+		&& UCataclysmCommand::ThingsCommandedInSightOf(
 			   ActorInfo ? ActorInfo->AvatarActor.Get() : Avatar(),
 			   ScaledRangeCm()).IsEmpty())
 	{

@@ -25,6 +25,7 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmTerrain.h"
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
@@ -64314,6 +64315,458 @@ bool FCataclysmBlinkOnAFloorTest::RunTest(const FString& Parameters)
 	const float Now = static_cast<float>(Player.Character->GetActorLocation().X);
 	TestTrue(FString::Printf(TEXT("CONTROL: moved toward the wall (%.1f cm)"), Now - From.X), Now > From.X + 1.0);
 	TestTrue(FString::Printf(TEXT("CONTROL: and not past its face (%.1f, the face at %.1f)"), Now, FaceX), Now < FaceX);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Vesselstep on a floor, issue #2792, 2026-11-20. "Trade places with a creature you command up to 14 meters away."
+// THE REAL PLAYER, ON A REAL FLOOR. `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature` trades a bare
+// actor whose sphere blocks nothing, so it could not see what the owner saw: each body was moved by a swept move, the
+// imp's capsule stopped against the player's, and the player then moved about 0 cm. The player's capsule here blocks,
+// as it does in play.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** The Staff's Vesselstep in the player's Movement slot, with the row's own parameters. Issue #2792. */
+	UCataclysmMovementSkill* GrantVesselstep(const FPossessedPlayer& Player)
+	{
+		const FGameplayAbilitySpecHandle Handle = Player.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmMovementSkill::StaticClass(), ECataclysmAbilitySlot::Movement, /*Level=*/100, Player.Character);
+		FGameplayAbilitySpec* Spec = Player.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmMovementSkill* Skill = Spec ? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Vesselstep");
+			// `Demonic_Staff_Movement`'s parameters, as `game/Data/WeaponSkills.csv` states them.
+			Skill->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Mode=Swap; Range=14; Radius=3; Burn=1; GroundRadius=3; GroundDuration=4; GroundPercent=25.0"));
+			Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Slot.Movement"));
+		}
+		return Skill;
+	}
+
+	/** An imp the player summoned, stood at `At` as the game stands a creature: its capsule touching the floor. */
+	ACataclysmMinion* AnImpThePlayerSummoned(const FPossessedPlayer& Player, ACataclysmDungeonGameMode* Mode,
+											 const FVector& At)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, At + FVector(0.0f, 0.0f, 500.0f),
+														/*Lifetime=*/60.0f, /*bBurns=*/false);
+		if (!Imp)
+		{
+			return nullptr;
+		}
+		Imp->SetActorLocation(
+			FVector(At.X, At.Y, FloorHeightUnder(Mode, At) + Imp->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+		return Imp;
+	}
+
+	/**
+	 * A floor cell `OutHere` and one of the four ways `OutWay` such that the two cells along that way are floor, all
+	 * three more than three cells from the entrance and more than one cell from the exit. Two cells are 8 metres,
+	 * inside Vesselstep's 14.
+	 *
+	 * CLEAR OF THE EXIT, where the stairs stand: three 20 cm tiers, the widest a whole cell across
+	 * (`ACataclysmDungeonStairs`). The diagnostic press of 2026-11-20 found that the first cell the search returned,
+	 * kept away from the entrance only, was the exit: the player stood at floor level inside the steps, and the imp
+	 * traded there was rightly put clear of them, 120 cm up. Issue #2792.
+	 *
+	 * NO SEARCH FOR A ROCK CELL BETWEEN TWO FLOOR CELLS. Window vesselstep-w1 (2026-11-20) found none on floor 2: the
+	 * generator insets each room one cell inside its leaf "so that two rooms never share a wall", so two rooms stand
+	 * at least two rock cells apart. The wall test builds its wall instead; see `AVesselstepScene`.
+	 */
+	bool ThreeCellsInARow(const FCataclysmFloorPlan& Plan, FIntPoint& OutHere, FIntPoint& OutWay)
+	{
+		const auto ClearOfTheStairs = [&Plan](const FIntPoint& Cell)
+		{
+			return FMath::Abs(Cell.X - Plan.Exit.X) > 1 || FMath::Abs(Cell.Y - Plan.Exit.Y) > 1;
+		};
+		const auto AwayFromTheEntrance = [&Plan](const FIntPoint& Cell)
+		{
+			return FMath::Abs(Cell.X - Plan.Entrance.X) > 3 || FMath::Abs(Cell.Y - Plan.Entrance.Y) > 3;
+		};
+		for (const FIntPoint Way : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+		{
+			for (int32 Y = 0; Y < Plan.Height; ++Y)
+			{
+				for (int32 X = 0; X < Plan.Width; ++X)
+				{
+					bool bFits = true;
+					for (const FIntPoint Cell : {FIntPoint(X, Y), FIntPoint(X, Y) + Way, FIntPoint(X, Y) + Way * 2})
+					{
+						bFits = bFits && Plan.IsFloor(Cell) && ClearOfTheStairs(Cell) && AwayFromTheEntrance(Cell);
+					}
+					if (bFits)
+					{
+						OutHere = FIntPoint(X, Y);
+						OutWay = Way;
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/** The ground zones whose middle is within `WithinCm` of `At`, along the ground. */
+	int32 ZonesNear(UWorld* World, const FVector& At, float WithinCm)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			Count += FVector::Dist2D(It->GetActorLocation(), At) <= WithinCm ? 1 : 0;
+		}
+		return Count;
+	}
+
+	/**
+	 * The player and an imp the player summoned, each on a floor cell two cells apart along `Way`, with Vesselstep in
+	 * the Movement slot. Null `Mode` when any of it could not be set up; the reason is a failed test line.
+	 */
+	struct FVesselstepScene
+	{
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		UCataclysmMovementSkill* Vesselstep = nullptr;
+		ACataclysmMinion* Imp = nullptr;
+		ACataclysmTerrain* Wall = nullptr;
+		FIntPoint Here = FIntPoint(-1, -1);
+		FIntPoint Way = FIntPoint(0, 0);
+	};
+
+	FVesselstepScene AVesselstepScene(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+									  bool bWallBetween)
+	{
+		FVesselstepScene Scene;
+		ACataclysmDungeonGameMode* Mode = APlainFloor(Test, World, Player);
+		if (!Mode)
+		{
+			return Scene;
+		}
+		Scene.Vesselstep = GrantVesselstep(Player);
+		if (!Test.TestNotNull(TEXT("set-up: the player holds Vesselstep"), Scene.Vesselstep)
+			|| !Test.TestTrue(TEXT("set-up: three floor cells in a row"),
+							  ThreeCellsInARow(Mode->CurrentFloor->GetPlan(), Scene.Here, Scene.Way)))
+		{
+			return Scene;
+		}
+		if (bWallBetween)
+		{
+			// A WALL ACROSS THE MIDDLE CELL, raised by the game's own terrain: 400 cm tall, 100 cm thick, 300 cm long
+			// across the line, collision profile `BlockAll`, which is the profile the floor's own walls have
+			// (`ACataclysmDungeonFloor`'s `Walls`). Owned by the floor, so no side's skill left it. Built rather than
+			// searched for: see `ThreeCellsInARow`. Ruled by the coordinating session, 2026-11-20.
+			const FVector Middle = Mode->CurrentFloor->WorldOfCell(Scene.Here + Scene.Way);
+			const FVector Across(static_cast<float>(-Scene.Way.Y), static_cast<float>(Scene.Way.X), 0.0f);
+			Scene.Wall = ACataclysmTerrain::Spawn(Mode->CurrentFloor, ECataclysmTerrainKind::Wall,
+												  Middle - Across * 150.0f, Middle + Across * 150.0f,
+												  /*SizeCm=*/100.0f, /*Duration=*/60.0f, /*HoldSeconds=*/1.0f);
+			if (!Test.TestNotNull(TEXT("set-up: a wall raised across the middle cell"), Scene.Wall))
+			{
+				return Scene;
+			}
+		}
+		StandThePlayerAt(Player, Mode->CurrentFloor->WorldOfCell(Scene.Here));
+		Scene.Imp = AnImpThePlayerSummoned(Player, Mode, Mode->CurrentFloor->WorldOfCell(Scene.Here + Scene.Way * 2));
+		if (!Test.TestNotNull(TEXT("set-up: an imp the player summoned"), Scene.Imp))
+		{
+			return Scene;
+		}
+		Test.TestEqual(TEXT("set-up: the player stands touching the floor"), GapUnder(Mode, Player.Character), 0.0f,
+					   0.1f);
+		Test.TestEqual(TEXT("set-up: the imp stands touching the floor"), GapUnder(Mode, Scene.Imp), 0.0f, 0.1f);
+		Test.TestTrue(TEXT("set-up: the player commands the imp, within the skill's 14 metres"),
+					  UCataclysmCommand::ThingsCommandedBy(Player.Character, 1400.0f).Contains(Scene.Imp));
+		Scene.Mode = Mode;
+		return Scene;
+	}
+
+	/** Where each ended against where the other began, and each one's gap to the floor, said and tested. */
+	void TestTheyTradedPlaces(FAutomationTestBase& Test, const FVesselstepScene& Scene, const FPossessedPlayer& Player,
+							  const FVector& PlayerWas, const FVector& ImpWas)
+	{
+		const float PlayerOff = static_cast<float>(FVector::Dist2D(Player.Character->GetActorLocation(), ImpWas));
+		const float ImpOff = static_cast<float>(FVector::Dist2D(Scene.Imp->GetActorLocation(), PlayerWas));
+		const float PlayerGap = GapUnder(Scene.Mode, Player.Character);
+		const float ImpGap = GapUnder(Scene.Mode, Scene.Imp);
+		Test.AddInfo(FString::Printf(
+			TEXT("VESSELSTEP ON A FLOOR: the player ended %.1f cm from where the imp stood and %.1f cm above the floor; "
+				 "the imp ended %.1f cm from where the player stood and %.1f cm above the floor"),
+			PlayerOff, PlayerGap, ImpOff, ImpGap));
+		Test.TestTrue(TEXT("it traded with the imp"), Scene.Vesselstep->SwappedWith == Scene.Imp);
+		Test.TestTrue(FString::Printf(TEXT("the player is where the imp stood, within 1 cm: %.1f cm"), PlayerOff),
+					  PlayerOff <= 1.0f);
+		Test.TestTrue(FString::Printf(TEXT("and the imp is where the player stood, within 1 cm: %.1f cm"), ImpOff),
+					  ImpOff <= 1.0f);
+		Test.TestTrue(FString::Printf(TEXT("the player stands on the floor, 0 to 5 cm above it: %.1f cm"), PlayerGap),
+					  PlayerGap >= -0.5f && PlayerGap <= 5.0f);
+		Test.TestTrue(FString::Printf(TEXT("and so does the imp: %.1f cm"), ImpGap), ImpGap >= -0.5f && ImpGap <= 5.0f);
+	}
+}
+
+// THE PLAYER AND THE IMP EACH END WHERE THE OTHER STOOD.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepTradesOnAFloorTest,
+	"Cataclysm.Command.VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepTradesOnAFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVesselstepScene Scene = AVesselstepScene(*this, World, Player, /*bWallBetween=*/false);
+	if (!Scene.Mode)
+	{
+		return false;
+	}
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Scene.Imp->GetActorLocation();
+	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	TestTheyTradedPlaces(*this, Scene, Player, PlayerWas, ImpWas);
+	return true;
+}
+
+// AND WITH A CREATURE STANDING BETWEEN THEM, which stopped either swept move before the exchange.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepPastACreatureTest,
+	"Cataclysm.Command.VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepPastACreatureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVesselstepScene Scene = AVesselstepScene(*this, World, Player, /*bWallBetween=*/false);
+	if (!Scene.Mode)
+	{
+		return false;
+	}
+	// ON THE STRAIGHT LINE BETWEEN THEM, in the middle cell, four metres from each.
+	ACataclysmEnemyCharacter* Between =
+		AnImpStoodOnTheFloor(World, Scene.Mode, Scene.Mode->CurrentFloor->WorldOfCell(Scene.Here + Scene.Way));
+	if (!TestNotNull(TEXT("set-up: a creature between them"), Between))
+	{
+		return false;
+	}
+	const FVector BetweenWas = Between->GetActorLocation();
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Scene.Imp->GetActorLocation();
+	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	TestTheyTradedPlaces(*this, Scene, Player, PlayerWas, ImpWas);
+	TestTrue(TEXT("and the creature between them was not moved"),
+			 FVector::Dist2D(Between->GetActorLocation(), BetweenWas) <= 1.0);
+	return true;
+}
+
+// HELLFIRE IS LEFT BURNING AT BOTH ENDS OF THE TRADE: "leaving both burning for 4 seconds".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepBurnsBothEndsTest,
+	"Cataclysm.Command.VesselstepLeavesBothEndsOfTheTradeBurning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepBurnsBothEndsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVesselstepScene Scene = AVesselstepScene(*this, World, Player, /*bWallBetween=*/false);
+	if (!Scene.Mode)
+	{
+		return false;
+	}
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Scene.Imp->GetActorLocation();
+	TestEqual(TEXT("set-up: no burning ground near where the player stands"), ZonesNear(World, PlayerWas, 100.0f), 0);
+	TestEqual(TEXT("set-up: and none near where the imp stands"), ZonesNear(World, ImpWas, 100.0f), 0);
+	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff))
+	{
+		return false;
+	}
+	const int32 AtThePlayersEnd = ZonesNear(World, PlayerWas, 100.0f);
+	const int32 AtTheImpsEnd = ZonesNear(World, ImpWas, 100.0f);
+	AddInfo(FString::Printf(TEXT("VESSELSTEP ON A FLOOR: %d burning ground within 1 m of where the player stood, %d of "
+								 "where the imp stood, %d on the floor"),
+							AtThePlayersEnd, AtTheImpsEnd, ZonesOnTheFloor(World)));
+	TestEqual(TEXT("one burning ground where the player stood"), AtThePlayersEnd, 1);
+	TestEqual(TEXT("and one where the imp stood, which is where the player arrived"), AtTheImpsEnd, 1);
+	return true;
+}
+
+// AN IMP BEHIND A WALL IS NOT TRADED WITH, though it is within the 14 metres: ruled by the coordinating session,
+// 2026-11-20. With no other creature in sight the press is refused and nobody moves.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepNotThroughAWallTest,
+	"Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepNotThroughAWallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	const FVesselstepScene Scene = AVesselstepScene(*this, World, Player, /*bWallBetween=*/true);
+	if (!Scene.Mode)
+	{
+		return false;
+	}
+	FHitResult Sight;
+	FCollisionQueryParams SightQuery(SCENE_QUERY_STAT(VesselstepWallTest), /*bInTraceComplex=*/false, Player.Character);
+	SightQuery.AddIgnoredActor(Scene.Imp);
+	const bool bSightMet = World->LineTraceSingleByChannel(Sight, Player.Character->GetActorLocation(),
+															Scene.Imp->GetActorLocation(), ECC_Visibility, SightQuery);
+	TestTrue(TEXT("set-up: a line from the player's middle to the imp's meets the wall"),
+			 bSightMet && Sight.GetActor() == Scene.Wall);
+	TestFalse(TEXT("set-up: the player cannot see the imp behind the wall"),
+			  UCataclysmCommand::ThingsCommandedInSightOf(Player.Character, 1400.0f).Contains(Scene.Imp));
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Scene.Imp->GetActorLocation();
+	TestFalse(TEXT("with only an imp behind a wall, the press is refused"),
+			  RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff);
+	TestTrue(TEXT("and the player did not move"), FVector::Dist2D(Player.Character->GetActorLocation(), PlayerWas) <= 1.0);
+	TestTrue(TEXT("nor did the imp"), FVector::Dist2D(Scene.Imp->GetActorLocation(), ImpWas) <= 1.0);
+
+	// CONTROL: AN IMP THE PLAYER CAN SEE IS TRADED WITH, so the refusal above was the wall and not the skill. A metre
+	// and a half from the player, on the player's side of the wall, in the player's own cell.
+	const FVector Near = Scene.Mode->CurrentFloor->WorldOfCell(Scene.Here)
+		- FVector(static_cast<float>(Scene.Way.X), static_cast<float>(Scene.Way.Y), 0.0f) * 150.0f;
+	ACataclysmMinion* Seen = AnImpThePlayerSummoned(Player, Scene.Mode, Near);
+	if (!TestNotNull(TEXT("CONTROL: set-up: an imp in sight"), Seen))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: with an imp in sight, Vesselstep goes off"),
+			 RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff);
+	TestTrue(TEXT("CONTROL: and it traded with that imp, not the one behind the wall"),
+			 Scene.Vesselstep->SwappedWith == Seen);
+	TestTrue(TEXT("CONTROL: the imp behind the wall is where it was"),
+			 FVector::Dist2D(Scene.Imp->GetActorLocation(), ImpWas) <= 1.0);
+	return true;
+}
+
+// EACH STANDS ON THE GROUND THE OTHER STOOD ON: the player on top of the exit stairs, the imp on the open floor. Each
+// body's feet go where the other's were, ruled by the coordinating session 2026-11-20 (issue #2792): keeping each
+// body's own centre height asked the imp's bottom 60 cm inside the steps, and the fit lifted it 120 cm.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepOntoTheStairsTest,
+	"Cataclysm.Command.VesselstepPutsEachOnTheGroundTheOtherStoodOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepOntoTheStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Vesselstep = GrantVesselstep(Player);
+	if (!TestNotNull(TEXT("set-up: the player holds Vesselstep"), Vesselstep))
+	{
+		return false;
+	}
+
+	// THE STAIRS, ON THE EXIT CELL: three tiers, each `TierRiseCm` above the one outside it, the top one 200 cm wide.
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FVector ExitAt = Mode->CurrentFloor->ExitWorld();
+	int32 StairsOnTheExit = 0;
+	for (TActorIterator<ACataclysmDungeonStairs> It(World); It; ++It)
+	{
+		StairsOnTheExit += FVector::Dist2D(It->GetActorLocation(), ExitAt) <= 1.0 ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("set-up: the stairs stand on the exit cell"), StairsOnTheExit, 1))
+	{
+		return false;
+	}
+	FIntPoint Way(0, 0);
+	for (const FIntPoint Each : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+	{
+		if (Plan.IsFloor(Plan.Exit + Each) && Plan.IsFloor(Plan.Exit + Each * 2))
+		{
+			Way = Each;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: two floor cells in a line from the stairs"), Way != FIntPoint(0, 0)))
+	{
+		return false;
+	}
+
+	// THE PLAYER ON TOP OF THE STAIRS, the imp two cells away on the open floor, 8 metres, inside the 14.
+	const float StairsTop = ACataclysmDungeonStairs::TierCount * ACataclysmDungeonStairs::TierRiseCm;
+	Player.Character->SetActorLocation(FVector(
+		ExitAt.X, ExitAt.Y,
+		FloorHeightUnder(Mode, ExitAt) + StairsTop + Player.Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+	ACataclysmMinion* Imp = AnImpThePlayerSummoned(Player, Mode, Mode->CurrentFloor->WorldOfCell(Plan.Exit + Way * 2));
+	if (!TestNotNull(TEXT("set-up: an imp the player summoned"), Imp))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the player stands on top of the stairs"), GapUnder(Mode, Player.Character), StairsTop, 0.1f);
+	TestEqual(TEXT("set-up: the imp stands touching the floor"), GapUnder(Mode, Imp), 0.0f, 0.1f);
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Imp->GetActorLocation();
+	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Vesselstep, 1.0f).bWentOff))
+	{
+		return false;
+	}
+
+	const float PlayerOff = static_cast<float>(FVector::Dist2D(Player.Character->GetActorLocation(), ImpWas));
+	const float ImpOff = static_cast<float>(FVector::Dist2D(Imp->GetActorLocation(), PlayerWas));
+	const float PlayerGap = GapUnder(Mode, Player.Character);
+	const float ImpGap = GapUnder(Mode, Imp);
+	AddInfo(FString::Printf(
+		TEXT("VESSELSTEP ON THE STAIRS: the player ended %.1f cm from where the imp stood and %.1f cm above the floor; "
+			 "the imp ended %.1f cm from where the player stood and %.1f cm above the floor, on stairs %.1f cm high"),
+		PlayerOff, PlayerGap, ImpOff, ImpGap, StairsTop));
+	TestTrue(TEXT("it traded with the imp"), Vesselstep->SwappedWith == Imp);
+	TestTrue(FString::Printf(TEXT("the player is where the imp stood, within 1 cm: %.1f cm"), PlayerOff),
+			 PlayerOff <= 1.0f);
+	TestTrue(FString::Printf(TEXT("and the imp is where the player stood, within 1 cm: %.1f cm"), ImpOff),
+			 ImpOff <= 1.0f);
+	TestTrue(FString::Printf(TEXT("the imp stands on top of the stairs, 0 to 5 cm above them: %.1f cm above the floor"),
+							 ImpGap),
+			 ImpGap >= StairsTop - 0.5f && ImpGap <= StairsTop + 5.0f);
+	TestTrue(FString::Printf(TEXT("and the player stands on the open floor, 0 to 5 cm above it: %.1f cm"), PlayerGap),
+			 PlayerGap >= -0.5f && PlayerGap <= 5.0f);
 	return true;
 }
 

@@ -33,7 +33,11 @@ def swept_moves(path):
 
 def test_the_check_reads_the_game_and_finds_the_helper():
     """Its scope, so an empty read cannot pass: the game's sources are found, the helper makes its one plain sweep for
-    an actor that is not a character, and at least the eight call sites that replaced the old moves call it."""
+    an actor that is not a character, and at least seven call sites call it.
+
+    SEVEN, NOT THE EIGHT THAT REPLACED THE OLD MOVES, since issue #2792 (2026-11-20): Vesselstep's trade was one
+    of the eight, and it is now an exchange that puts both bodies in place unswept, because the creature's swept
+    move stopped against the player."""
     sources = game_sources()
     assert len(sources) >= 100, len(sources)
     assert len(swept_moves(HELPER)) == 1
@@ -41,7 +45,7 @@ def test_the_check_reads_the_game_and_finds_the_helper():
     assert "SafeMoveUpdatedComponent(" in helper
     callers = sum(len(re.findall(r"UCataclysmMovement::MoveWithoutSticking\s*\(", strip_comments(p.read_text(
         encoding="utf-8")))) for p in sources if p != HELPER)
-    assert callers >= 8, callers
+    assert callers >= 7, callers
 
 
 def test_no_plain_swept_move_outside_the_helper():

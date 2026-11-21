@@ -310,6 +310,195 @@ The lock was released when the window ended.
 
 ---
 
+## 2026-11-20 — Vesselstep trades places by an exchange: the player and a commanded creature they can see each end where the other stood, and a creature behind a wall is not traded with (#2792)
+
+**Affects:** `UCataclysmCommand::ThingsCommandedInSightOf`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`); `UCataclysmSkillTemplate::CanActivateAbility`
+(`CataclysmSkillTemplate.cpp`), whose refusal of a trade with nobody now asks it;
+`UCataclysmMovementSkill::ChooseTradePartner`, new, and `UCataclysmMovementSkill::ActivateAbility`'s `Swap` branch and
+its move of the caster (`CataclysmSkillTemplates.h` and `.cpp`). Tests: five, new, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue #2792, from the owner's playtest of
+2026-11-20: "Vesselstep doesn't actually trade places." The plan was accepted by the coordinating session on 2026-11-20.
+
+### SAID FIRST
+
+- **WINDOW VESSELSTEP-W2 PASSED AT `bff2772d4`, WITH ALL FIVE PROOFS PROVED; THE FIRST WINDOW FAILED.** Window
+  vesselstep-w1 failed three of the four tests then written, and no other test. The exchange worked in it. The two trade
+  tests failed only because the test stood the player inside the floor's exit stairs, which a diagnostic press found;
+  the wall test failed because floor 2 has no single rock cell between two floor cells. Both are now changed in the
+  tests, and each body's feet now go where the other's were. See the sections after "Python, measured".
+- **THE CAUSE, BY READING.** Each body was moved by `UCataclysmMovement::MoveWithoutSticking`, a SWEPT move, the
+  creature first. The player's capsule (radius 42 cm) and a summoned imp's (`ACataclysmMinion`, radius 30 cm) are both
+  pawns, and pawns block pawns. So the imp's move toward the player's spot stopped when the two capsules touched, 72 cm
+  from where the player stood, on the line between them; and the player's move toward the imp's old spot then began with
+  the imp in the way and went about 0 cm. The imp landed beside the player and the player stayed where they were. A
+  creature standing between the two stopped either move as well.
+- **WHY NO TEST SAW IT.** `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature` trades a bare actor whose
+  sphere is set to overlap every channel, so it blocks nothing and neither sweep was ever stopped. The new tests use
+  the real player on a real dungeon floor, beside the tests of issues #2203 and #2505.
+- **THE OWNER'S LOG.** 18 casts of Vesselstep on 2026-11-20, each with its cost line. A cost line is written only after
+  `CanActivateAbility` passed, so a commanded creature was within 14 m each time. The log said nothing about where
+  anyone ended, which is why each trade now logs one Display line: "Vesselstep traded places with <creature>: <player>
+  from (x, y, z) to (x, y, z), <creature> from (x, y, z) to (x, y, z)." The heights were added for the diagnostic press
+  and kept.
+
+### What changed
+
+- **A TRADE IS AN EXCHANGE.** Before the cast is paid for, `ChooseTradePartner` takes the nearest creature the player
+  commands and can see within the skill's range for which both fit: the player in the creature's spot and the creature
+  in the player's, each with its feet where the other's feet were, each fitted by `UWorld::FindTeleportSpot` while
+  ignoring the other body
+  (`IgnoreActorWhenMoving`, which the fit reads, and which is put back as it was). Both are then put in place with
+  `TeleportTo(..., bNoCheck=true)`, unswept, as `UCataclysmAbilitySystemComponent`'s random teleport puts a character.
+  A creature that does not fit is passed over for the next nearest; with none, the cast ends before anything is spent.
+- **EACH STANDS WHERE THE OTHER STOOD, MEASURED AT THE FEET. Ruled by the coordinating session, 2026-11-20:** "trades
+  places" means each stands where the other stood, and standing is measured at the feet. Each body's bottom goes
+  where the other's bottom was; half a body is the vertical half-extent of its root's collision shape (a capsule's
+  half-height, a sphere's radius). Until then each kept its own centre height, which on a flat floor gives the same
+  place; the diagnostic press showed what it does on different ground: with the player on the 60 cm exit stairs, the
+  imp's bottom was asked 60 cm inside the steps and the fit's summed adjustment lifted it 120 cm, from where it
+  dropped onto them. A taller or shorter creature, such as a thrall Brute, has only its feet matched; the fit still
+  checks the room its height needs, and refuses it if there is none.
+- **ONLY A CREATURE THE PLAYER CAN SEE. A JUDGEMENT, the coordinating session's, 2026-11-20:** an exchange crosses
+  whatever stands between the two, so with a creature behind a wall it would carry the player through the wall, and a
+  closed gate could be passed by leaving an imp on its far side; "up to 14 meters away" does not say through walls.
+  `ThingsCommandedInSightOf` traces the visibility channel from the player's middle to the creature's. By the engine's
+  collision profiles, the floor's walls and pillars (`BlockAll`) block it; characters (`Pawn`, `CharacterMesh`) and a
+  pit's blocker (`InvisibleWall`) do not. A partner out of sight is skipped and the next nearest tried.
+- **WITH NO COMMANDED CREATURE IN SIGHT AND RANGE, THE PRESS IS REFUSED**, in `CanActivateAbility`, before any mana or
+  cooldown: kept as it was, ruled by the coordinating session. The row says the destination is the creature; moving
+  anywhere else would be another skill.
+- **UNCHANGED:** Hellfire at both ends (the enemies within 3 m of the point left and of the point reached), the burning
+  ground left at the point left and at the point reached, and both bodies' notes that they were relocated at once
+  (issue #2388).
+- **NO GENRE RESEARCH.** The row states the mechanic; the line-of-sight rule is a judgement and is labelled as one.
+
+### Seen in passing, not changed
+
+The blink (`Mode=Blink`, Emberstep) and the return (`Mode=Recall`) also move the player by the same swept move, so a
+creature in the path stops them, not only a wall. The coordinating session's decision of 2026-11-20: no issue now. The
+ruling on issues #2203 and #2505 made those moves swept so that a wall stops them; whether a creature should is not
+reported as a problem, and becomes an issue if the owner reports it.
+
+Other floor tests choose their cells with `AFloorCellWith(Plan, Plan.Entrance, ...)`, which keeps away from the
+entrance only, so they too can be given the exit cell, where the stairs stand; they pass today, and no issue is
+opened, by the coordinating session's decision of 2026-11-20.
+
+### Registered before window vesselstep-w1
+
+The base is window tree-2790-w2, for #2790 (the Demonic Guide), run at `b4e3f1c0`, whose `game/` tree is development
+`63d4cbd4c`'s, this branch's base (`git diff --stat b4e3f1c0 63d4cbd4c -- game/` prints nothing). Its output,
+`.claude/windows/t2790_run.out` and `t2790_suite_engine_b4e3f1c0.log` in the worktree `laughing-curran-69e4bb`, reads
+"suite: Tests: 5056 tests performed, 5056 succeeded, 0 failed. 47 skipped part of what they check" and "Test saves: 854
+written and deleted, 0 left behind"; its engine log has 22 "Test Completed" lines in `Cataclysm.Command.`, each
+`Result={Success}`, and none in the whole log that is not. Its save and completion lines are copied to
+`.claude/windows/t2790_base_saves_and_completed_b4e3f1c0.log` in this session's worktree, for the run to compare each
+test's saves against.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
+  index read from the base (`CataclysmCommand.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
+  `CataclysmDungeonModifierEffectsTests.cpp`); the unity files again -- each succeed with no warning or error line.
+- **The four new tests, each alone by its own name, and the old one:** 1 performed, 1 succeeded, for each of
+  `Cataclysm.Command.VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`,
+  `Cataclysm.Command.VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem`,
+  `Cataclysm.Command.VesselstepLeavesBothEndsOfTheTradeBurning`,
+  `Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall` and the bare-actor
+  `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature`, unchanged.
+- **The group `Cataclysm.Command.`:** 26 performed, 26 succeeded: the base's 22 plus 4.
+- **The whole suite:** 5060 performed, 5060 succeeded, 47 skipped halves: the base's 5056 plus 4. "Test saves: 858
+  written and deleted, 0 left behind": the base's 854 plus 4. EACH NEW TEST WRITES ONE SAVE, as each test that stands
+  the player on a plain floor does in the base log:
+  `ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem`,
+  `AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance` and `ATetherDragsBothEndsBackOnAFloor` each write 1. No
+  other test's share differs from the base log's.
+- **Each new test's "VESSELSTEP ON A FLOOR" line** says where each body ended and how far above the floor, and how many
+  burning grounds lie near each end. Those figures are reported, not registered.
+- **Four guard proofs**, through `tools/unreal_build.py`'s `prove_cpp_guard`, each with the prefix
+  `Cataclysm.Command.Vesselstep`, which selects the four new tests and not the bare-actor one, whose name begins
+  "AVesselstep":
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The creature is moved by the swept move again: its `TeleportTo` becomes `UCataclysmMovement::MoveWithoutSticking` toward its spot | 4 performed, 2 succeeded, 2 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` and `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem`, each on "and the imp is where the player stood". The creature's sweep stops against the player, who has not moved yet, or against the creature between them | 4 of 4 |
+| P2 | The player is moved by the swept move again: its `TeleportTo` becomes `MoveWithoutSticking` toward its spot | `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` fails on "the player is where the imp stood": the creature between stops the player. THE OTHER THREE ARE NOT PREDICTED: the player's sweep then starts inside the imp's capsule, which the movement component pushes it out of by a distance not known by reading. Their results are reported | 4 of 4 |
+| P3 | Each body's fit counts the other: the two `IgnoreActorWhenMoving(..., true)` lines become `(void)0;` | `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` fails: the fit moves each spot off the other body, or refuses it. The other three are reported | 4 of 4 |
+| P4 | The line of sight is traced from the player to the player (`From` in place of the creature's location), so it never meets a wall | 4 performed, 3 succeeded, 1 failed: `VesselstepDoesNotTradeWithAnImpBehindAWall` (the press goes off and both bodies move) | 4 of 4 |
+
+**The window scripts** are in `.claude/windows/` in this session's worktree: `compile_vesselstep.py`,
+`run_vesselstep.py` (lock `vesselstep-w1`), `prove_vesselstep.py` and `prechecks_vesselstep.py`.
+
+### Python, measured
+
+At `8905d301b`, the code, its tests and this entry committed: "7799 passed, 9 skipped in 337.09s (0:05:37)"; the
+JUnit file: tests 7808, failures 0, errors 0, skipped 9. ruff: "All checks passed!". This branch adds no Python test.
+
+After rebasing onto `3b37878bf`, at `42c9dbf13`, the commit that registers against #2790's window: "7812 passed, 9
+skipped in 340.34s (0:05:40)"; the JUnit file: tests 7821, failures 0, errors 0, skipped 9. ruff: "All checks
+passed!". The 13 more tests than at `8905d301b` came with development's #2787 branch A and #2791.
+
+After rebasing onto `63d4cbd4c`, at `17172cc41`, the commit that registers tree-2790-w2's figures: "7817 passed, 9
+skipped in 345.85s (0:05:45)"; the JUnit file: tests 7826, failures 0, errors 0, skipped 9. ruff: "All checks
+passed!". The 5 more than at `42c9dbf13` came with #2790's `tools/tests/test_demonic_guide_keeps_pace.py`.
+
+### Window vesselstep-w1, 2026-11-20, 20:32 to 20:58, at `8a0805616` on `63d4cbd4c`: FAILED, THREE OF THE FOUR NEW TESTS
+
+**WHAT DID NOT WORK, FIRST.** Three of the four new tests failed, for two separate reasons, so no proof was run: a
+fix moves the head. Output: `.claude/windows/vesselstep_w1_run.out` in this session's worktree, with each run's
+engine log beside it.
+
+| Step | Read | Registered |
+|---|---|---|
+| Build | "Succeeded - target already up to date, 0 actions, nothing compiled" | succeeds |
+| `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `VesselstepLeavesBothEndsOfTheTradeBurning` alone | 1 of 1 | 1 of 1 |
+| `VesselstepDoesNotTradeWithAnImpBehindAWall` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `AVesselstepTradesPlacesWithACommandedCreature` alone | 1 of 1 | 1 of 1 |
+| `Cataclysm.Command.` | 26 performed, 23 succeeded, 3 failed: the same three | 26 of 26 |
+| Whole suite | 5060 performed, 5057 succeeded, 3 failed: the same three; 47 skipped halves; every declared test reported | 5060 of 5060, 47 |
+| Test saves | "858 written and deleted, 0 left behind" | 858, 0 |
+| Python | "7817 passed, 9 skipped in 390.44s"; JUnit tests 7826, failures 0, errors 0, skipped 9 | passes |
+| ruff | "All checks passed!" | passes |
+| Proofs | not run | P1 to P4 |
+
+**NO OTHER TEST FAILED.** The whole suite's only failures are the three new tests, so the exchange broke none of
+the 5056 tests the base passed.
+
+**THE EXCHANGE ITSELF WORKED.** Both trade tests read, in their own line: "the player ended 0.0 cm from where the
+imp stood and 0.0 cm above the floor; the imp ended 0.0 cm from where the player stood and 120.0 cm above the floor",
+and the game's line: "Vesselstep traded places with CataclysmMinion_0: CataclysmPlayerCharacter_0 from (-5800, -7000)
+to (-5000, -7000), CataclysmMinion_0 from (-5000, -7000) to (-5800, -7000)." Each failed on one assertion only,
+"and so does the imp: 120.0 cm": the imp is put 120 cm above the floor. The creature standing between them in the
+second test was not moved and did not stop the trade.
+
+**THE CAUSE OF THE 120 CM IS NOT KNOWN YET.** Read and ruled out: the fit not ignoring the player
+(`ComponentEncroachesBlockingGeometry_WithAdjustment` calls `InitSweepCollisionParams`, which adds the ignore list);
+cells at different heights (`ACataclysmDungeonFloor::WorldOfCell` gives every cell the floor actor's height); an
+actor attached to the player (no game code attaches one); the imp's placeholder mesh (`NoCollision`); and
+`TeleportTo` with no check (it runs no fit). The leading candidate, not proven: the test's imp is still falling when
+moved (spawned 500 cm up, never ticked), so `UCharacterMovementComponent::OnTeleported` lands it
+(`bRestoreFloorWhenMissingBaseComponent` is true by default), entering walking runs `AdjustFloorHeight`, a swept move,
+and that pushes the imp out of the player's capsule, which still stands there and is no longer ignored. One fact
+does not fit it: the player, possessed the same way, ended at 0.0 cm rather than the about 2 cm a landing gives. The
+coordinating session ruled one diagnostic press to settle it before any fix is written.
+
+**THE WALL TEST FAILED IN ITS SET-UP**: "Expected 'set-up: two floor cells with a wall between them' to be true".
+`AFloorCellWith` scans every cell of floor 2's plan and none has a floor cell, one rock cell and a floor cell in a
+line. The generator insets each room one cell inside its leaf "so that two rooms never share a wall", so two rooms
+stand at least two rock cells apart. Ruled 2026-11-20: the test builds its wall, a raised `ACataclysmTerrain` wall
+with the floor walls' own `BlockAll` profile, rather than searching for one.
+
+The lock was released when the window ended.
+
+**ONE PYTHON CHECK HAD TO MOVE, AND MOVED.** The first run, at `e0b08060c`, read "1 failed, 7798 passed, 9 skipped":
+`test_the_check_reads_the_game_and_finds_the_helper` in
+`tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py` asserts that at least eight call sites call
+`UCataclysmMovement::MoveWithoutSticking`, as a check that it read the game's source, and it read 7. Vesselstep's
+trade was one of the eight and no longer sweeps. Its floor is now seven, with that reason in its docstring
+(`fb6d1b5c6`).
+
+---
+
 ## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
 
 **Affects:** `FCataclysmCity::bTookSurgeDamage`, new, set in `UCataclysmEmpireMap::Damage`
@@ -505,6 +694,120 @@ The share is the float 0.10f, stored as 0.100000001490116, so with the floor at 
 one assertion were as registered; only the value read was not.
 
 No proof's log and no suite log holds a "server/discover" line (#2745). The lock was released when the window ended.
+
+### The diagnostic press, 2026-11-20, 21:10 to 21:11, at `afc217491`: THE TEST STOOD THE PLAYER INSIDE THE EXIT STAIRS
+
+Ruled by the coordinating session: one press, not a window, with AddInfo lines in the two trade tests and nothing
+new asserted. `python tools/unreal_build.py tests --prefix Cataclysm.Command.Vesselstep` read "4 tests performed, 2
+succeeded, 2 failed" (the two trade tests; the wall test, now on a raised wall, passed) and "Test saves: 4 written and
+deleted, 0 left behind". Engine log: `.claude/windows/vesselstep_diagnostic_engine_afc21749.log`. A first start at
+20:59 was stopped by this session before its engine run, by its own process numbers, because the coordinating
+session's order had changed; nothing came of it.
+
+Its lines, the same in both trade tests:
+
+- "half-heights: player 96.0 cm, imp 45.0 cm; radii: player 42.0 cm, imp 30.0 cm; movement before the cast: player
+  Falling, imp Falling"
+- "the imp's fit at the player's spot, each ignoring the other: fits; its bottom asked at 0.0 cm above the floor,
+  returned at 120.0 cm; 4 overlaps there": three of `CataclysmDungeonStairs_0.Steps`, top 60.0 cm, and
+  `CataclysmDungeonFloor_0.Ground`, top 0.0 cm, each blocking the imp's channel.
+- the game's line: "CataclysmPlayerCharacter_0 from (-5800, -7000, 96) to (-5000, -7000, 96), CataclysmMinion_0 from
+  (-5000, -7000, 45) to (-5800, -7000, 165)."
+- "after the imp's own movement ticked 30 times at 1/60 s (nothing else ticked): imp Walking, 62.2 cm above the floor"
+
+**WHAT IT SETTLES.** The test's cell search kept away from the entrance only, and its first cell was the exit, where
+`ACataclysmDungeonStairs` stands: three tiers of 20 cm, the widest a whole cell. The player was stood at floor level
+inside the steps (a test moves nobody, so "0.0 cm above the floor" was true). The imp's fit found the steps and
+lifted it clear by the three overlaps' summed adjustment, 120 cm; given half a second it walked onto the 60 cm steps,
+at 62.2. The trade's code was not at fault. The leading candidate recorded with window vesselstep-w1, the imp's
+landing pushing it out of the player's capsule, was wrong. In play the owner would see this only with the player on
+the stairs, as a drop of about 58 cm onto them; that case is what the feet rule above changes.
+
+### Registered before window vesselstep-w2
+
+The base is window tree-2790-w2, for #2790, run at `b4e3f1c0`, whose `game/` tree is development `63d4cbd4c`'s, this
+branch's base, unchanged since window vesselstep-w1 (the coordinating session moved this window ahead of #2793's,
+whose window follow-w1 failed). Its output, `t2790_run.out` and `t2790_suite_engine_b4e3f1c0.log` in the worktree
+`laughing-curran-69e4bb`, reads "5056 tests performed, 5056 succeeded, 0 failed. 47 skipped part of what they check"
+and "Test saves: 854 written and deleted, 0 left behind", with 22 "Test Completed" lines in `Cataclysm.Command.`; its
+save and completion lines are in `.claude/windows/t2790_base_saves_and_completed_b4e3f1c0.log` in this session's
+worktree. Window vesselstep-w1 measured 5060, 858 and 26 on it, which is that base plus the four tests then written.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
+  index read from the base (`CataclysmCommand.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
+  `CataclysmDungeonModifierEffectsTests.cpp`); the unity files again -- each succeed with no warning or error line.
+- **The five new tests, each alone by its own name, and the old one:** 1 performed, 1 succeeded, for each of
+  `Cataclysm.Command.VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`,
+  `Cataclysm.Command.VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem`,
+  `Cataclysm.Command.VesselstepLeavesBothEndsOfTheTradeBurning`,
+  `Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall`,
+  `Cataclysm.Command.VesselstepPutsEachOnTheGroundTheOtherStoodOn` and the bare-actor
+  `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature`, unchanged.
+- **The group `Cataclysm.Command.`:** 27 performed, 27 succeeded: the base's 22 plus 5.
+- **The whole suite:** 5061 performed, 5061 succeeded, 47 skipped halves: the base's 5056 plus 5. "Test saves: 859
+  written and deleted, 0 left behind": the base's 854 plus 5. EACH NEW TEST WRITES ONE SAVE, as each did in window
+  vesselstep-w1 (858 there, 854 plus 4), the stairs test included, because each builds a floor.
+- **The "VESSELSTEP ON A FLOOR" and "VESSELSTEP ON THE STAIRS" lines** say where each body ended and how far above
+  the floor; reported, not registered.
+- **Five guard proofs**, through `prove_cpp_guard`, each with the prefix `Cataclysm.Command.Vesselstep`, which
+  selects the five new tests and not the bare-actor one. Each anchor was checked to match exactly once at the commit
+  that registers them:
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The creature is moved by the swept move again: its `TeleportTo` becomes `UCataclysmMovement::MoveWithoutSticking` toward its spot | 5 performed, 2 succeeded, 3 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`, `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` and `VesselstepPutsEachOnTheGroundTheOtherStoodOn`, each on "and the imp is where the player stood": the creature's sweep stops against the player, who has not moved yet, or against the creature between them | 5 of 5 |
+| P2 | The player is moved by the swept move again: its `TeleportTo` becomes `MoveWithoutSticking` toward its spot | `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` fails on "the player is where the imp stood": the creature between stops the player. THE OTHER FOUR ARE NOT PREDICTED: the player's sweep starts inside the imp's capsule, which the movement component pushes it out of by a distance not known by reading | 5 of 5 |
+| P3 | Each body's fit counts the other: the two `IgnoreActorWhenMoving(..., true)` lines become `(void)0;` | `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` fails: the fit moves each spot off the other body, or refuses it. The other four are reported | 5 of 5 |
+| P4 | The line of sight is traced from the player to the player (`From` in place of the creature's location), so it never meets a wall | 5 performed, 4 succeeded, 1 failed: `VesselstepDoesNotTradeWithAnImpBehindAWall` (the press goes off and both bodies move) | 5 of 5 |
+| P5 | Each body keeps its own centre height again: `SelfTo` and `PartnerTo` take `Here.Z` and `There.Z` | 5 performed, 4 succeeded, 1 failed: `VesselstepPutsEachOnTheGroundTheOtherStoodOn`; the heights it reads are not predicted. The other four stand on a flat floor, where both rules give the same place | 5 of 5 |
+
+**The window scripts** are in `.claude/windows/` in this session's worktree: `compile_vesselstep.py`,
+`run_vesselstep.py` (lock `vesselstep-w2`), `prove_vesselstep.py` and `prechecks_vesselstep.py`.
+
+### Window vesselstep-w2, 2026-11-20, 21:45 to 22:16, at `bff2772d4` on `63d4cbd4c`: PASSED, AND P1 TO P5 PROVED
+
+Output: `.claude/windows/vesselstep_w2_run.out` in this session's worktree, with each run's engine log and both halves
+of each proof's log beside it. The three compiles before it, 21:38 to 21:44, each succeeded with no warning or error
+line; the second compiled `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
+`CataclysmDungeonModifierEffectsTests.cpp` alone, and named `CataclysmCommand.cpp` excluded from the unity file
+without recompiling it: that file is unchanged since `8a0805616`, whose second compile built it alone with no warning.
+
+| Step | Read | Registered |
+|---|---|---|
+| Build | "Succeeded - target already up to date, 0 actions, nothing compiled" | succeeds |
+| `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` alone | 1 of 1 | 1 of 1 |
+| `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` alone | 1 of 1 | 1 of 1 |
+| `VesselstepLeavesBothEndsOfTheTradeBurning` alone | 1 of 1 | 1 of 1 |
+| `VesselstepDoesNotTradeWithAnImpBehindAWall` alone | 1 of 1 | 1 of 1 |
+| `VesselstepPutsEachOnTheGroundTheOtherStoodOn` alone | 1 of 1 | 1 of 1 |
+| `AVesselstepTradesPlacesWithACommandedCreature` alone | 1 of 1 | 1 of 1 |
+| `Cataclysm.Command.` | 27 performed, 27 succeeded | 27 of 27 |
+| Whole suite | 5061 performed, 5061 succeeded, 0 failed; 47 skipped halves; "Declared: 5061 tests in the tree at bff2772d4; 5061 performed, gap 0" | 5061 of 5061, 47 |
+| Test saves | "859 written and deleted, 0 left behind"; each of the five new tests wrote 1, accounting for the whole rise of 5 from 854 | 859, 0 |
+| Python | "7817 passed, 9 skipped in 323.45s"; JUnit tests 7826, failures 0, errors 0, skipped 9 | passes |
+| ruff | "All checks passed!" | passes |
+
+The tests' own lines, from the whole suite:
+
+- "VESSELSTEP ON A FLOOR: the player ended 0.0 cm from where the imp stood and 0.0 cm above the floor; the imp ended
+  0.0 cm from where the player stood and 0.0 cm above the floor" (each trade test).
+- "VESSELSTEP ON THE STAIRS: the player ended 0.0 cm from where the imp stood and 0.0 cm above the floor; the imp
+  ended 0.0 cm from where the player stood and 60.0 cm above the floor, on stairs 60.0 cm high".
+- "VESSELSTEP ON A FLOOR: 1 burning ground within 1 m of where the player stood, 1 of where the imp stood, 2 on the
+  floor".
+
+**The proofs**, each with the prefix `Cataclysm.Command.Vesselstep`, every anchor matching once, the source hash the
+same after each:
+
+| Proof | Broken half | Registered | Restored |
+|---|---|---|---|
+| P1 | 5 performed, 2 succeeded, 3 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` ("and the imp is where the player stood, within 1 cm: 461.8 cm"), `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` (73.8 cm) and `VesselstepPutsEachOnTheGroundTheOtherStoodOn` (123.1 cm, and 51.0 cm above the floor on the 60 cm stairs) | 5, 2, 3, the same three | 5 of 5 |
+| P2 | 5 performed, 1 succeeded, 4 failed: `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` ("the player is where the imp stood, within 1 cm: 800.0 cm"); and, not predicted, `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` (800.0 cm), `VesselstepPutsEachOnTheGroundTheOtherStoodOn` (801.7 cm) and `VesselstepLeavesBothEndsOfTheTradeBurning` ("one burning ground where the player stood ... it was 2" and "and one where the imp stood ... it was 0"): the player's sweep began inside the imp's capsule, which had just been put where the player stood, and the player did not move, so the second burning ground was left at its start | the named test fails; the other four reported | 5 of 5 |
+| P3 | 5 performed, 2 succeeded, 3 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`, and, reported, `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` and `VesselstepPutsEachOnTheGroundTheOtherStoodOn`, each with both bodies 72.0 cm from the other's spot: 42 plus 30, the two capsules' radii, so each fit moved its spot off the other body | the named test fails; the other four reported | 5 of 5 |
+| P4 | 5 performed, 4 succeeded, 1 failed: `VesselstepDoesNotTradeWithAnImpBehindAWall` | 5, 4, 1, the same | 5 of 5 |
+| P5 | 5 performed, 4 succeeded, 1 failed: `VesselstepPutsEachOnTheGroundTheOtherStoodOn` ("the imp stands on top of the stairs, 0 to 5 cm above them: 120.0 cm above the floor" and "and the player stands on the open floor, 0 to 5 cm above it: 60.0 cm") | 5, 4, 1, the same; heights not predicted | 5 of 5 |
+
+The lock was released when the window ended.
 
 ---
 
