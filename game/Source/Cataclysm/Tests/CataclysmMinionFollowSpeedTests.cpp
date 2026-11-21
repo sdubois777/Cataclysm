@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "Animation/AnimSequence.h"
@@ -19,7 +20,9 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -38,6 +41,11 @@
  *
  * THE PLAYER IS A SPAWNED `ACataclysmPlayerCharacter` NOBODY POSSESSES, walking at its designed 400 cm/s, so its
  * commanded minions walk at 500. `ApplyMovementSpeed` changes it the way the movement speed stat does.
+ *
+ * EXCEPT T10, WHICH IS THE PATH THE OWNER PLAYS. Its player is possessed, so it holds an ability system and walks at
+ * its class's own speed through the stat pipeline (a Ravager's 4.6 m/s, 460 cm/s, when nothing chooses another class),
+ * and its speed is changed through the stat inputs, as #2790's guide test changes it. Asked for by the coordinating
+ * session on 2026-11-20, after window tree-2790-w1 found a possessed test player walking at 460 and not 400.
  */
 namespace CataclysmMinionFollowSpeedTest
 {
@@ -551,6 +559,110 @@ bool FCataclysmFollowSpeedSentinelJogsTest::RunTest(const FString&)
 	Taken->UpdateLoopingAnimation();
 	TestTrue(TEXT("stopped, it stands rooted again"), Taken->CurrentLoopingAnimation == Taken->IdleAnimation);
 	TestEqual(TEXT("at a rate of 1"), MeshComponent->GetPlayRate(), 1.0f);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// T10. THE PATH THE OWNER PLAYS: a possessed player walks at its class's own speed through the stat pipeline, and a
+// summoned imp and a taken imp walk at 1.25 times it, and follow it as the movement speed stat changes.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFollowSpeedPossessedPlayerTest,
+	"Cataclysm.MinionFollowSpeed.APossessedPlayersMinionsWalkAtOneAndAQuarterOfItsClassSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFollowSpeedPossessedPlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionFollowSpeedTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// A PLAYER STATE HOLDING THE ABILITY SYSTEM, A CONTROLLER, AND A PAWN THE CONTROLLER POSSESSES, built as
+	// `FPossessedPlayer` in CataclysmDungeonModifierEffectsTests.cpp builds one, with no floor. `AController::Possess`
+	// runs `PossessedBy`, which applies the chosen class's stat line, so the pawn walks at the class's speed as asked of
+	// `StatForSkill("movement_speed")`, not at the constructor's 400.
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player = SpawnFollowSpeedPlayer(World);
+	if (!TestNotNull(TEXT("set-up: a player state"), State) || !TestNotNull(TEXT("set-up: a controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: a player"), Player))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("set-up: the possessed player has an ability system"), AbilitySystem))
+	{
+		return false;
+	}
+
+	// THE PLAYER'S WALK, SET AS THE CLASS AND GEAR SET IT: the movement speed stat's inputs, with this base and no
+	// modifier, read by the pawn's own refresh. As #2790's 3f7ef5b6c sets it; setting the attribute's base does not move
+	// it, because the stat inputs carry the class's own base. `SetStatInputs` replaces the character's stat lines, which
+	// is harmless here because this test reads nothing but walking speeds.
+	auto PlayerWalksAt = [AbilitySystem, Player](float MetresPerSecond)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(TEXT("movement_speed"))).Base = MetresPerSecond;
+		AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Player->RefreshMovementSpeed();
+	};
+
+	const float AtClass = FollowSpeedWalkOf(Player);
+	TestTrue(TEXT("set-up: the possessed player walks at a speed above nought"), AtClass > 0.0f);
+	TestFalse(TEXT("set-up: the possessed player's walk is not the constructor's 400, so its class's speed reached it"),
+			  FMath::IsNearlyEqual(AtClass, ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond, 0.5f));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player, FVector(10 * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+													/*bBurns=*/false, TEXT("Imp"));
+	ACataclysmImpCharacter* Thrall = SpawnFollowSpeedCreature<ACataclysmImpCharacter>(World, FVector(20 * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a summoned imp"), Imp) || !TestNotNull(TEXT("set-up: an imp creature"), Thrall)
+		|| !TestTrue(TEXT("set-up: the possessed player takes it"), TakeForFollowSpeed(Player, Thrall)))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// AT THE CLASS'S SPEED. The 1.25 is written out here, not read off the code's own share.
+	Imp->RefreshWalkSpeed();
+	Thrall->RefreshWalkSpeed();
+	const float ImpAtClass = FollowSpeedWalkOf(Imp);
+	const float ThrallAtClass = FollowSpeedWalkOf(Thrall);
+	TestEqual(TEXT("the summoned imp walks at 1.25 times the player's class walk"), ImpAtClass, 1.25f * AtClass, 0.5f);
+	TestEqual(TEXT("and the thrall too"), ThrallAtClass, 1.25f * AtClass, 0.5f);
+
+	// FASTER: 5 metres a second through the stat, so the minions walk at 625.
+	PlayerWalksAt(5.0f);
+	Imp->RefreshWalkSpeed();
+	Thrall->RefreshWalkSpeed();
+	const float PlayerAtFive = FollowSpeedWalkOf(Player);
+	const float ImpAtFive = FollowSpeedWalkOf(Imp);
+	const float ThrallAtFive = FollowSpeedWalkOf(Thrall);
+	TestEqual(TEXT("set-up: at 5 m/s through the stat the player walks at 500"), PlayerAtFive, 500.0f, 0.5f);
+	TestEqual(TEXT("the summoned imp follows to 625"), ImpAtFive, 625.0f, 0.5f);
+	TestEqual(TEXT("and the thrall too"), ThrallAtFive, 625.0f, 0.5f);
+
+	// SLOWER: 2 metres a second through the stat, so the minions walk at 250.
+	PlayerWalksAt(2.0f);
+	Imp->RefreshWalkSpeed();
+	Thrall->RefreshWalkSpeed();
+	const float PlayerAtTwo = FollowSpeedWalkOf(Player);
+	const float ImpAtTwo = FollowSpeedWalkOf(Imp);
+	const float ThrallAtTwo = FollowSpeedWalkOf(Thrall);
+	TestEqual(TEXT("set-up: at 2 m/s through the stat the player walks at 200"), PlayerAtTwo, 200.0f, 0.5f);
+	TestEqual(TEXT("the summoned imp follows down to 250"), ImpAtTwo, 250.0f, 0.5f);
+	TestEqual(TEXT("and the thrall too"), ThrallAtTwo, 250.0f, 0.5f);
+
+	AddInfo(FString::Printf(TEXT("POSSESSED PACE: the player's class walk %.0f gives the imp %.0f and the thrall %.0f; "
+								 "at %.0f, %.0f and %.0f; at %.0f, %.0f and %.0f"),
+							AtClass, ImpAtClass, ThrallAtClass, PlayerAtFive, ImpAtFive, ThrallAtFive, PlayerAtTwo,
+							ImpAtTwo, ThrallAtTwo));
 	return true;
 }
 
