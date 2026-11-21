@@ -455,6 +455,36 @@ from the tests as written:
 
 In every broken half the controls (nobody's creatures, the deployables) pass.
 
+### Window follow-w1, 2026-11-20: one test failed, so no proof ran
+
+At `c5d538d4b`, under the lock follow-w1, from 21:12 to 21:35, after the three compiles: the branch (67 actions, 60
+files compiled), each changed `.cpp` alone (20 actions, 17 files compiled, all ten changed files named as excluded
+from the unity file) and the unity files (10 actions, 7 files compiled), each succeeding with no compiler warning or
+error line. The lock was released when the window ended.
+
+| Step | Measured |
+| :-- | :-- |
+| Pre-checks | "PRECHECKS: ALL PASS", measured at 21:12:13 |
+| The build | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.MinionFollowSpeed.` alone | "10 tests performed, 9 succeeded, 1 failed: EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed. 1 skipped part of what they check: Cataclysm.MinionFollowSpeed.ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops". Registered: 10 performed, 10 succeeded, the same skipped half |
+| The whole suite | "5066 tests performed, 5065 succeeded, 1 failed", the same test; 48 skipped part of what they check, as registered; "Test saves: 854 written and deleted, 0 left behind", as predicted; "Declared: 5066 tests in the tree at c5d538d4b; 5066 performed, gap 0" |
+| Python | 7817 passed, 9 skipped; the JUnit file: tests 7826, failures 0, errors 0, skipped 9 |
+| Ruff | All checks passed |
+| P1 to P5 | NOT RUN: the window runs its proofs only when the group and the whole suite match their registration |
+
+**The failure**, the only error line of the run: "Expected 'the Hellhound thrall walks at 1.25 times its commander's
+speed' to be 500.000000, but it was 600.000000 and outside tolerance 0.010000", at
+`CataclysmMinionFollowSpeedTests.cpp` line 271. Every other row of that test passed.
+
+**The cause, read from the code and not measured: the test's layout, not the game.** The test stood its six thralls 5
+metres apart, and put the Hellhound 5 metres from the Succubus. A Succubus's Dominion grants `Status.Buff.Commander`
+to every ally within `ACataclysmSuccubusCharacter::DominionRadiusCm`, 8 metres, from the moment it spawns, and
+`ACataclysmEnemyCharacter::CommanderMultiplier` makes that 1.2, which `SpeedMultiplier` multiplies onto the commanded
+pace, as the ruling that a thrall's own hastes still apply says it should: 500 x 1.2 = 600. The Imp, 10 metres from
+the Succubus, was outside it; the Abyssal Warden, 5 metres from it, was spawned after the Succubus's sweep, and no
+automation test ticks a world, so no later sweep reached it. The correction to the test's layout, and a second window,
+follow in their own commits.
+
 ---
 
 ## 2026-11-20 — Vesselstep trades places by an exchange: the player and a commanded creature they can see each end where the other stood, and a creature behind a wall is not traded with (#2792)
