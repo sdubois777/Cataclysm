@@ -143,6 +143,15 @@ public:
 	float ManaCostOverride = -1.0f;
 
 	/**
+	 * Fervour one use costs. Negative means take the slot's, which is what every skill but Subjugate does. Issue #2801:
+	 * the owner's ruling of 2026-11-21, "I think we should actually change it to cost 30 fervor", for Subjugate alone,
+	 * every other Ultimate staying at its slot's 50. Read through `FervourCostFor`, the one place a Fervour cost is
+	 * worked out, so a later change scaling it by the skill's level (#2802) scales it there.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Ability")
+	float FervourCostOverride = -1.0f;
+
+	/**
 	 * Percent of weapon damage one use deals. Negative takes the slot's.
 	 *
 	 * THE THIRD OF THE THREE, AND IT ARRIVED LAST FOR A REASON. The other

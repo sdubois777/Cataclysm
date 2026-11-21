@@ -83,6 +83,9 @@ struct CATACLYSM_API FCataclysmWeaponSkill
 	/** Mana one use costs at level 100, or -1 to take its slot's. */
 	float ManaCost = -1.0f;
 
+	/** Fervour one use costs, or -1 to take its slot's. Issue #2801: 30 on Subjugate's row alone. */
+	float FervourCost = -1.0f;
+
 	/**
 	 * The slot this skill was MADE for: its row's Slot column, or Basic for the basic attack. Issue #837 layer 3.
 	 *
