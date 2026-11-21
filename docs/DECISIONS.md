@@ -410,13 +410,17 @@ which copies Reclaimer's Resolve in this tree.
 | J7 | the income not raised | the same test, 1 ("raised by Untouchable Wealth's 0.40: 861", 615) |
 | J8 | the day's hook never called | `TheRunCallsTheDaysHookOnceForEveryDay`, 2 (called 0 times; the three days) |
 
-- **Python before the window**: the full suite waits until the owner's editor is closed. At `19a5f8899` the slice's
+- **Python before the window**: the full suite at `8954f200b`, rebased onto `c89fa5911`: "1 failed, 7842 passed, 9
+  skipped in 335.84s", JUnit tests 7852, failures 1, errors 0, skipped 9. The one failure is
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  naming `EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`, which the asset step clears. The six Python guards below
+  proved again at that head. Before the rebase, at `19a5f8899`, the slice's
   test files and their neighbours (`tools/tests/test_empire_tree*.py`, `test_city_upgrade*.py`, `test_datatable*.py`):
   261 tests, 260 passed, 1 failed, JUnit tests 261, failures 1, errors 0, skipped 0. The one failure is the asset
   step's to clear, `tools/tests/test_datatable_assets_are_current.py`. Ruff "All checks passed!";
   `python tools/generate_datatables.py --check` "All 33 DataTable CSVs are up to date."
 
-### The six Python guards, proved in phase 1 and again after the rebase
+### The six Python guards, proved in phase 1 and again after each rebase
 
 Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_gold_held.py` and
 `tools/tests/test_empire_tree_gold_nodes.py` (10 tests), `proved` True at the rebased head:
