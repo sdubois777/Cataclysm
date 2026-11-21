@@ -164,7 +164,15 @@ the table.
 
 `tools/tests/test_subjugate_costs_thirty_fervour.py`, five: Subjugate's row states 30 and no other row states any; the
 Ultimate slot still costs 50 (a control); the generator reads the column, blank as -1; a negative figure is refused;
-and the C++ carries the row's field to the skill and the skill's to the template.
+and the C++ carries the row's field to the skill and the skill's to the template. Proved with `tools/prove_guard.py` in
+a copy of `8eaab6a83` extracted by `git archive`, each restored half 5 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| P1 | the generator reads no Fervour Cost cell | "2 failed, 3 passed": the column test and the negative-figure test | PROVED |
+| P2 | Subjugate's CSV row states -1 | "1 failed, 4 passed": the 30-on-Subjugate test | PROVED |
+| P3 | the row's figure is not copied onto the skill | "1 failed, 4 passed": the C++ test | PROVED |
+| P4 | the Ultimate slot's Fervour cost moved to 30 | "1 failed, 4 passed": the control | PROVED |
 
 **TESTS.** `CataclysmSkillCostTests.cpp`, three:
 
