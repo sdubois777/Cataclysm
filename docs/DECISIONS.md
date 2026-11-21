@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A charging creature reports its charge's velocity, so it runs through a charge instead of sliding in its idle, and the Abyssal Warden plays Stampede through the run (#2809)
+
+**Affects:** `ACataclysmEnemyCharacter::GetVelocity`, new, overriding the engine's, and `ChargeDirection`, new, set by
+`BeginCharge` and each step; `JogPlayRateAtItsWalkingSpeed`, which scales by a running charge's speed
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`); the clip-already-playing rate update in the
+Imp's, the Hellhound's, the Succubus's and the Abyssal Warden's `UpdateLoopingAnimation`; the Gatekeeper's jog rate
+while charging (`CataclysmGatekeeperCharacter.cpp`); `ACataclysmAbyssalWardenCharacter::HoldFirstFrame`, new, its
+`BeginEnemyAbilityWindUp` and `UseEnemyAbility` for Stampede; `game/docs/enemy-source-assets.md`, the Warden's Stampede
+paragraph and table row. Tests: the new group `Cataclysm.ChargeGait.`, nine: eight in
+`game/Source/Cataclysm/Tests/CataclysmChargeGaitTests.cpp` and one in `CataclysmBruteTests.cpp`. Issue
+[#2809](https://github.com/sdubois777/Cataclysm/issues/2809).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
+  session's turn.
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Enemies using any charge attack aren't sprinting like they're
+  charging, they're just sliding into position."
+- **THE JOG IS CAPPED AT 2.5 DURING A CHARGE, so feet still cover less ground than the body (ruling J1).** No creature's
+  pack has a clip that matches a charge's speed under the project's 2.5 play-rate ceiling: the Hellhound's Hellrush asks
+  4.72, an Imp's or a Succubus's Inferno Charge about 4.7 and 5.6. At the ceiling the feet cover about half the ground
+  the body does, for the 0.4 to 0.7 seconds a charge lasts. That is a run rather than the idle pose the owner saw slid
+  along; **the owner judges in play whether it still reads as sliding.** The ceiling stays because past it a creature
+  "will read as a sped-up film" (`game/docs/enemy-source-assets.md`).
+- **THE RATE HALVES CAN BE SHOWN ONLY IN THE MAIN CHECKOUT.** Which clip a creature plays and at what rate needs the
+  Paragon art, which git does not carry, so in a worktree each creature test reports a skipped half and a proof that
+  breaks only the rate cannot fail there.
+
+### Every charge, and why it slid
+
+Every charge runs through `ACataclysmEnemyCharacter::BeginCharge` and its per-frame `AdvanceCharge`:
+
+| Charge | Who | Speed | Clip before this change |
+| :-- | :-- | :-- | :-- |
+| Hellrush | the Hellhound | 1428.57 cm/s, 10 m, about 0.7 s | `R_Ability_FireBreath_Start` through the wind-up, then the idle |
+| Stampede | the Abyssal Warden | 1142.86 cm/s, 8 m, 0.70 s | `Stampede` through the wind-up, then the idle |
+| Inferno Charge, the creature modifier `Demonic_Inferno_Charge` | any creature carrying it | 1800 cm/s | the idle, or `ABP_Brute`'s idle |
+
+**Why: a charge's steps move the body with `SetActorLocation`, so the movement component's velocity stays nought, and
+`GetVelocity()` reported nought through the whole run.** Six creatures choose their loop in C++ from
+`GetVelocity().Size2D()` -- the Imp, the Hellhound, the Succubus, the Abyssal Warden, the Corrupted Sentinel and the
+Gatekeeper -- and `ABP_Brute` computes its `GroundSpeed` from a `GetVelocity` call (the call is named in the asset). So
+every one chose its idle while the body moved eight to ten metres. There is no Brute or Gatekeeper charge of their own;
+the player's Movement skills, which the Corrupted Stalker uses, teleport, and are not charges.
+
+### What changed
+
+- **`GetVelocity` reports a running charge**: the lane's direction times the charge's speed, flat; otherwise the
+  engine's own answer. A charging creature really is moving at that speed, so every reader is told the truth. The
+  movement component's own velocity is not touched.
+- **The jog's rate follows the charge's speed, capped (J1)**, through `JogPlayRateAtItsWalkingSpeed`, which the Imp,
+  Hellhound, Succubus and Warden already use; each also updates the rate on a jog already playing while charging, as
+  #2793 made it do for a commanded creature. The Gatekeeper's placeholder rate of 1.0 (issue #778) is scaled only while
+  it charges, so its walk is unchanged. The Sentinel's designed walking speed is nought, so its jog keeps its unmeasured
+  1.0 and is now chosen because it reports moving.
+- **THE WARDEN PLAYS STAMPEDE THROUGH THE RUN AND HOLDS ITS FIRST FRAME THROUGH THE WIND-UP, ruled J2.** It is the
+  pack's authored charge, and its 0.70 seconds is the run: the charge's speed was derived so it covers its range in this
+  clip's length. Until this it played through the wind-up, as every ability here plays its clip across the telegraph,
+  and the comment saying so in `BeginEnemyAbilityWindUp` is rewritten. **A run stopped early by a wall** leaves Stampede
+  playing out its 0.7 seconds where the Warden stopped.
+- **THE SUCCUBUS JOGS AT ITS CEILING, ruled J3.** Its pack's `Sprint_Fwd`, authored at 399.4 cm/s and never played, is
+  the unused candidate for a faster gait, left for later.
+
+### Every reader of a velocity, and what it sees during a charge now
+
+The coordinating session asked for the whole game module and the engine plugins it enables to be searched, since
+`GetVelocity` is an engine-wide virtual. Searched 2026-11-21: `game/Source` (the project has no plugins of its own) for
+`GetVelocity`, `ComponentVelocity` and a movement component's `Velocity`; the engine's `GameplayAbilities` plugin,
+`AIModule` and `NavigationSystem` for `GetVelocity` on an actor.
+
+| Reader | Before, during a charge | Now | Changes play? |
+| :-- | :-- | :-- | :-- |
+| The six creatures' `UpdateLoopingAnimation` | nought, so the idle | the charge's speed, so the jog at the capped rate | yes, the purpose |
+| `ABP_Brute`'s `GroundSpeed`, from its `GetVelocity` call | nought, so the idle | the charge's speed | yes, the purpose |
+| `UCataclysmSkillTemplate::RequirementsAreMet`, `Requires=Stationary`, when a skill is cast | standing | moving, so refused | **no**: while a charge runs the brain starts nothing (`ACataclysmEnemyController::Think` returns `Charging` and stops there) |
+| The held `Requires=Stationary` tally in `UCataclysmSkillTemplates.cpp`, the Greatsword's Unbroken | standing, so the tally kept climbing through a run of metres | moving, so the whole bonus is lost, as its sentence says | **yes**, for a Corrupted Stalker or Worn Residue double with a Greatsword that carries Inferno Charge. Test: `AHeldSkillThatAsksToStandStillLosesItsTallyWhenItsCreatureCharges` |
+| The `WhileMoving` and `WhileStationary` stat conditions | already moving | unchanged | no: they read sampled positions (`UCataclysmAbilitySystemComponent::IsMoving`), not a velocity |
+| The engine's `AISense_Prediction`, which calls `GetVelocity` | -- | -- | no: the game uses no perception component |
+| The movement component, path following and avoidance | -- | -- | no: they read the component's own velocity, which is not touched |
+| `ABP_Unarmed`, which the player and its copies wear | -- | -- | no: it reads the movement component. A copy charges only if it carries Inferno Charge, and would still slide; not addressed here |
+
+Nothing in `GameplayAbilities` or `NavigationSystem` calls an actor's `GetVelocity`.
+
+### Tests
+
+The new group `Cataclysm.ChargeGait.`, nine, written before the change:
+
+| Test | What it checks | Art |
+| :-- | :-- | :-- |
+| `AChargingCreatureReportsItsLaneTimesItsSpeedAndAStandingOneNothing` | a plain creature: nought standing (the control), the lane times the speed while charging and a tenth of a second on, nought at the lane's end | none needed |
+| `AnImpCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | idle standing (the control); charging, the charge's speed, the jog, at 2.5; stopped, nought | the clip half is skipped without the pack |
+| `AHellhoundJogsAtItsCeilingThroughHellrush` | the same at Hellrush's speed | the same |
+| `ASuccubusCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | the same, its jog and not `Sprint_Fwd` (J3) | the same |
+| `AGatekeeperCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | the same, from its placeholder 1.0 | the same |
+| `ASentinelCarryingInfernoChargeJogsAtItsUnmeasuredRateWhileItCharges` | the same, at its unmeasured 1.0 | the same |
+| `AWardenPlaysStampedeThroughTheRunAndHoldsItsFirstFrameThroughTheWindUp` | the run lasts 0.70 s; the wind-up shows Stampede at rate nought on its first frame; the run reports Stampede's speed and plays Stampede at rate 1 until the run ends (J2) | the clip half is skipped without the pack |
+| `AChargingBrutesGraphReadsTheChargeSpeed` | the Brute reports the charge's speed; its graph's `GroundSpeed` reads it and `bMoving` is set, and reads nought stopped (the control) | the graph half is skipped without the pack |
+| `AHeldSkillThatAsksToStandStillLosesItsTallyWhenItsCreatureCharges` | a creature holding Unbroken counts two seconds standing, then loses them in a second charging; one standing beside it counts three (the control) | none needed |
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 9 = 5079; skipped halves 48 + 7 = 55** in a worktree, the five creature tests', the Warden's and the Brute's
+clip halves; test saves 859, none left behind. To be recounted at the window from the newest measured log, since #2806
+is queued ahead of this and adds four tests and two skipped halves of its own. Groups alone: `Cataclysm.ChargeGait.` 9,
+and those holding the creatures' and the charge's own tests, `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6,
+`Succubus.` 10, `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51 and `EnemyModifiers.` 57.
+
+Proofs:
+
+| Proof | Break | Predicted to fail | Where it can be shown |
+| :-- | :-- | :-- | :-- |
+| CG1 | `GetVelocity` returns the engine's answer during a charge | all nine `ChargeGait` tests, on their art-free assertions | any checkout |
+| CG2 | `JogPlayRateAtItsWalkingSpeed` loses its charge branch | the Imp's, Hellhound's, Succubus's and Gatekeeper's clip halves | **only the main checkout**, which has the Paragon art |
+| CG3 | the Warden's wind-up plays Stampede again and the run plays nothing | the Warden's clip half | **only the main checkout** |
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion

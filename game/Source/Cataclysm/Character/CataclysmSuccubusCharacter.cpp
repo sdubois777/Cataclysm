@@ -620,8 +620,8 @@ void ACataclysmSuccubusCharacter::UpdateLoopingAnimation()
 	{
 		// A COMMANDED CREATURE'S SPEED FOLLOWS ITS COMMANDER'S WHILE IT JOGS, so the rate is put right on the clip
 		// already playing; `SetPlayRate` does not restart it. A creature nobody commands is left alone, as before.
-		// Issue #2793.
-		if (bWalking && bWalkSpeedFollowsACommander)
+		// Issue #2793. AND A CHARGE'S SPEED WHILE ONE RUNS, issue #2809.
+		if (bWalking && (bWalkSpeedFollowsACommander || IsCharging()))
 		{
 			MeshComponent->SetPlayRate(JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
 																	MinimumPlayRate, MaximumPlayRate));

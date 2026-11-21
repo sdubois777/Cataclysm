@@ -1343,6 +1343,15 @@ float ACataclysmEnemyCharacter::WalkSpeedBaseCmPerSecond(float UncommandedCmPerS
 float ACataclysmEnemyCharacter::JogPlayRateAtItsWalkingSpeed(float DesignedPlayRate, float DesignedSpeedCmPerSecond,
 															 float MinimumPlayRate, float MaximumPlayRate) const
 {
+	// WHILE A CHARGE RUNS, AT THE CHARGE'S SPEED, capped as every rate is. Issue #2809, the coordinating session's
+	// ruling J1 of 2026-11-21: no creature has a clip that matches a charge under its 2.5 ceiling, so a charge plays its
+	// jog at the ceiling, and the owner judges in play whether that still reads as sliding.
+	if (bCharging && DesignedSpeedCmPerSecond > 0.0f)
+	{
+		return FMath::Clamp(DesignedPlayRate * ChargeSpeedCmPerSecond / DesignedSpeedCmPerSecond,
+							MinimumPlayRate, MaximumPlayRate);
+	}
+
 	const UCharacterMovementComponent* Movement = GetCharacterMovement();
 	if (!bWalkSpeedFollowsACommander || !Movement || DesignedSpeedCmPerSecond <= 0.0f)
 	{
@@ -1399,6 +1408,22 @@ void ACataclysmEnemyCharacter::BeginCharge(const FVector& ToPoint,
 	ChargeHitCount = 0;
 	ChargeAlreadyHit.Reset();
 	bCharging = true;
+
+	// WHICH WAY IT GOES, for `GetVelocity` from the first frame, before any step has run. Issue #2809.
+	FVector Along = ChargeEndPoint - GetActorLocation();
+	Along.Z = 0.0f;
+	ChargeDirection = Along.GetSafeNormal();
+}
+
+FVector ACataclysmEnemyCharacter::GetVelocity() const
+{
+	// THE CHARGE'S OWN VELOCITY WHILE IT RUNS, since its steps move the body with `SetActorLocation` and leave the
+	// movement component's velocity at nought. See the header. Issue #2809.
+	if (bCharging)
+	{
+		return ChargeDirection * ChargeSpeedCmPerSecond;
+	}
+	return Super::GetVelocity();
 }
 
 void ACataclysmEnemyCharacter::CancelCharge()
@@ -1485,6 +1510,7 @@ bool ACataclysmEnemyCharacter::StepCharge(float StepCm)
 	FVector Direction = ChargeEndPoint - From;
 	Direction.Z = 0.0f;
 	Direction = Direction.GetSafeNormal();
+	ChargeDirection = Direction;
 
 	// NEVER PAST THE END OF ITS OWN LANE. The marker was drawn to exactly this
 	// point, so a step that overshot would take the creature onto ground it
