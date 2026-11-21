@@ -326,9 +326,10 @@ tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
 ### SAID FIRST
 
 - **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, on development `789bfd400`,
-  and rebased onto development `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. Its turn in the Unreal queue
-  comes after #2792, onto which it is rebased once more; then it is compiled three ways and run in the window
-  registered below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
+  and rebased onto development `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. The coordinating session
+  moved it ahead of #2792's second window on 2026-11-20, after #2792's first window failed, so it is compiled three
+  ways and run in the window registered below on `63d4cbd4c`, with no further rebase unless something merges before
+  it. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
   it, as the coordinating session accepted. A guide is never commanded: the floor rule makes it unable to be hurt, and
   `UCataclysmCommand::Subjugate` refuses a creature that cannot be hurt.
 - **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
@@ -438,7 +439,7 @@ At the slice's turn, after its rebase and its three compiles, on the coordinatin
 | Pre-checks | those of the earlier windows |
 | The build | succeeds; no asset step, because this slice changes no data table |
 | `Cataclysm.MinionFollowSpeed.` alone | 10 performed, 10 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
-| The whole suite | #2792's measured total plus these 10, every one succeeding; skipped halves #2792's count plus 1; test saves #2792's count plus 0, none left behind. The plus 0 is predicted, not measured: no test here builds a floor, and that possessing a player writes no save has not been measured. The base under #2792: window tree-2790-w2 measured 5056 performed, 5056 succeeded, 47 skipped part of what they check, and 854 test saves written and deleted with 0 left behind, at `b4e3f1c05`, whose `game/` is the same as development `63d4cbd4c`'s. #2792 registers 4 tests and 4 saves, so if its window measures what it registered, this window's figures are 5070 performed, 48 skipped halves and 858 saves |
+| The whole suite | 5066 performed, 5066 succeeded: the base's 5056 plus these 10. 48 skipped part of what they check: the base's 47 plus 1. "Test saves: 854 written and deleted, 0 left behind": the base's 854 plus 0, which is predicted, not measured, because no test here builds a floor and that possessing a player writes no save has not been measured. The base is window tree-2790-w2, which measured 5056 performed, 5056 succeeded, 47 skipped halves and 854 saves with 0 left behind at `b4e3f1c05`, whose `game/` is the same as development `63d4cbd4c`'s |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 
 Five C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted
