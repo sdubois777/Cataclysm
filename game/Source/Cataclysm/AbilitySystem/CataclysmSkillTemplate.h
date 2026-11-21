@@ -671,6 +671,35 @@ public:
 		FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 
 	/**
+	 * One line naming every figure a press of this skill is judged on, for the log when a press is refused. Issue #2801:
+	 * the project owner reported "subjugate constantly says I can't use it even when I have enough resources and it's
+	 * off cd", and no check that refuses a press wrote anything at any level, so the play log could not say which one
+	 * did. `UCataclysmAbilitySystemComponent::ProcessAbilityInput` logs it at `Log` when a fresh press is refused.
+	 *
+	 * EVERY CHECK `CanActivateAbility` AND `CheckCost` AND `CheckCooldown` MAKE, each as its figures rather than as a
+	 * verdict, so one line answers whichever refused: the Fervour against its cost, with the spendable ceiling and what
+	 * holds the rest back (`FervourFiguresFor`); the pool the cost is paid from against the cost; the charges held; the
+	 * lock; whether it cannot act, is feared, or has a weapon planted.
+	 */
+	FString PressRefusalLine(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * "Fervour 40.0 of 50 (ceiling 40 of 100; reserved 60: 2 thralls 60, 0 Imp 0)": the class resource held against
+	 * `Cost`, the most it can be filled to now (`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`), the
+	 * pool's maximum, and `ReservedFervourByKindText`. Issue #2801. Static and given the commander, so a test reads it
+	 * without granting a skill.
+	 */
+	static FString FervourFiguresFor(const UAbilitySystemComponent* AbilitySystem, const AActor* Commander, float Cost);
+
+	/**
+	 * What everything `Commander` commands holds back of its class resource, by kind: "reserved 60: 2 thralls 60, 0 Imp
+	 * 0". A thrall is anything commanded that is not a minion; a minion is counted under its type's name, and an Imp is
+	 * always named, with its count even at nought. The total is `UCataclysmCommand::ReservedFervourOf`'s, and a part of
+	 * it no single holder carries -- the chosen thrall's second share -- is named last. Issue #2801.
+	 */
+	static FString ReservedFervourByKindText(const AActor* Commander);
+
+	/**
 	 * Tell this character's running skills that it killed something.
 	 *
 	 * ONE SKILL LISTENS TODAY: the Axe's Butcher's Heat, "every enemy you kill

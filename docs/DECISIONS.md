@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A refused skill press and every Subjugate cast say why in the play log, naming the numbers, so one press by the owner settles why Subjugate is refused (#2801)
+
+**Affects:** `UCataclysmSkillTemplate::PressRefusalLine`, `FervourFiguresFor` and `ReservedFervourByKindText`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h`, `.cpp`);
+`UCataclysmAbilitySystemComponent::ProcessAbilityInput` (`CataclysmAbilitySystemComponent.cpp`);
+`UCataclysmSummonSkill::Possess`, its seven outcomes at `Log` (`CataclysmSkillTemplates.cpp`). Tests: `game/Source/Cataclysm/Tests/CataclysmPressRefusalTests.cpp`, new, one test
+in the group `Cataclysm.PressRefusal.`; `tools/tests/test_a_refused_press_and_a_take_say_why.py`, new. Issue
+[#2801](https://github.com/sdubois777/Cataclysm/issues/2801).
+
+### SAID FIRST
+
+- **THE CAUSE IS NOT SETTLED, AND THIS IS NOT A FIX.** Nothing that refuses a press wrote anything at any level, so the
+  play log of 2026-11-21 could not say which check refused. This change adds the lines that will; the owner's next
+  press settles it, and the fix is its own change after that.
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `156f2b9e8` without a compile, as ruled. Its turn on
+  the machine is after #2787's branch B, ahead of the empire tree's slice 6c.
+
+### The owner's words, and what the log showed
+
+The owner, from the play-test of 2026-11-21: "subjugate constantly says I can't use it even when I have enough
+resources and it's off cd, not sure what's going on there." Character `testminion`, level 7 to 10, a Staff build:
+Subjugate in the Ultimate slot, Summon Imp, Compel, Quarry, Conflagration and Vesselstep.
+
+The log (a copy kept at `nice-carson-77a188/.claude/windows/playtest_2026-11-21_Cataclysm.log`): 16 Subjugate casts
+went off between 16:25 and 17:18, each on a Herald, a Legendary or, once, a Boss; no line says any was taken or why
+not. 517 Summon Imp casts. The Conflagration aura switched off 13 times on mana it could not pay, with 1.0 to 3.1 left.
+No Fervour figure and no refused press anywhere.
+
+### What refuses a press, and what the screen shows
+
+| Where | Refuses when | What the skill bar shows |
+| :-- | :-- | :-- |
+| `UCataclysmSkillTemplate::CanActivateAbility` | the lock stat above 0; cannot act or feared; a planted weapon | the lock notice; nothing for the others |
+| `CheckCooldown` | no charge held | the sweep |
+| `CheckCost`, Fervour first | current Fervour below the Ultimate's 50 (`game/Data/SkillSlots.csv`) | grey, "Ultimate needs 50 Fervour" |
+| `CheckCost`, then its pool | mana below the Ultimate's cost, 150 before reductions | grey, no words |
+
+The only words on screen that refuse an Ultimate are "Ultimate needs 50 Fervour", so that is most likely what the owner
+read as "says I can't use it"; a grey box read the same way is not ruled out.
+
+### Hypotheses, none confirmed
+
+- **H1, Fervour short.** It starts at 0 and rises only through a generator rate; 16 casts show this character has one,
+  and it may fill slowly.
+- **H2, mana short.** The aura's upkeep and 517 summons ran mana to nothing 13 times.
+- **H3, a lock, a hard stop or a planted weapon**, none of which the bar names but the lock.
+- **H4, the coordinating session's, which it thinks leads: thralls price out the Ultimate.** Each thrall reserves 30,
+  and every Fervour gain is clamped to `MaximumClassResourceAsked()`, the pool's maximum less
+  `UCataclysmCommand::ReservedFervourOf`. On a pool of 100, two thralls leave a ceiling of 40; on a Ritualist's 150
+  (`game/Data/ClassStats.csv`), three thralls and three imps leave 30. Below 50 the Ultimate cannot be paid while they
+  live. No take is logged, so the log cannot rule it out.
+
+**THE FERVOUR BAR DOES SHOW THE RESERVED PART** (`ACataclysmHUD::DrawPlayerPool`): the fill is the current Fervour out of
+the full maximum, the reserved share is a darker band at the right end labelled "N reserved", and "current / maximum"
+is printed in the middle. Two things make it read FULL under H4: the band is the fill's own hue, darker (`5E1C43`
+against `C7398D`), and a pool at its ceiling has no empty section at all, the fill meeting the band. No reserved
+section needs building; whether the bar should say the Ultimate is priced out is for a ruling after the press.
+
+**A CONSEQUENCE TO CHECK, NOT A FAULT.** Branch B of #2787 removes every count cap, so the reserve is the only limit,
+by the owner's ruling ("we shouldn't be putting arbitrary limits ... since that's limiting on its own"). A character
+who keeps summoning can reserve more than its pool less 50, and then its Ultimate cannot be paid until something it
+commands dies. The coordinating session will not change that, and will not raise it with the owner until the press
+shows whether it is what they hit.
+
+### What changed
+
+- **A refused press is logged.** `ProcessAbilityInput` asks `TryActivateAbility`'s answer, and when a fresh press of
+  anything but the basic attack is refused it logs, at `Log`, "PRESS REFUSED: " and `PressRefusalLine`, read from the
+  granted instance, which holds the skill's name and row: the Fervour against its cost with the ceiling and what holds
+  the rest by kind; the pool the cost is paid from against the cost, or that it is paid in health; the charges held; the
+  lock; cannot act; feared; a planted weapon. For example: "PRESS REFUSED: Subjugate in Slot.Ultimate: Fervour 40.0 of
+  50 (ceiling 40 of 100; reserved 60: 2 thralls 60, 0 Imp 0); Mana 80.0 of 150; charges 1; locked no; cannot act no;
+  feared no; weapon planted no".
+- **Every Subjugate cast is logged.** `Possess`'s seven outcomes are at `Log`, six beginning "TAKE REFUSED:" -- no
+  avatar, no enemy in range, no ability system, too healthy (its health, the maximum and the threshold), no room (the
+  reserve each, what is held by kind and the maximum), the command's refusal (boss, cannot be hurt, already on its
+  side) -- and "TAKE: '...' took '...', reserving N." Until now all were `Verbose` and a take logged nothing.
+
+### Tests
+
+`CataclysmPressRefusalTests.cpp`, one, `TheFervourFiguresNameTheCeilingAndEachKindHoldingTheRest`: a possessed player,
+two thralls at 30 and a summoned Imp at 10; nothing commanded reads "reserved 0: 0 thralls 0, 0 Imp 0"; then "reserved
+70: 2 thralls 60, 1 Imp 10", and the pool asked to fill stops at the maximum less 70, named in the figures; CONTROL, the
+two thralls freed, "reserved 10: 0 thralls 0, 1 Imp 10" and the ceiling the maximum less 10. Prints "PRESS FIGURES".
+
+`tools/tests/test_a_refused_press_and_a_take_say_why.py`, four: the refused press logged at `Log` from the granted
+instance; the line reading every check; the figures naming the ceiling and who holds the rest; every take outcome at
+`Log`. Proved with `tools/prove_guard.py`, each break failing exactly its own test, each restored half 4 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| G1 | the "PRESS REFUSED" line at `Verbose` | "1 failed, 3 passed": the refused-press test | PROVED |
+| G2 | the line's "cannot act" figure always `no` | "1 failed, 3 passed": the every-check test | PROVED |
+| G3 | the figures print the maximum as the ceiling | "1 failed, 3 passed": the ceiling test | PROVED |
+| G4 | the too-healthy refusal at `Verbose` | "1 failed, 3 passed": the take test | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its three compiles, under a lock of its own:
+
+| Step | Registered |
+| :-- | :-- |
+| The build | succeeds; no asset step, because this slice changes no data table |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded |
+| The whole suite | the newest measured total at the slice's turn plus 1, every one succeeding; skipped halves and test saves as that base's, the saves predicted, not measured. On follow-w2's measured base (5072, 48 and 859 at `d4d0773ac`, whose `game/` is development `156f2b9e8`'s) that is 5073, 48 and 859 |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+One C++ guard proof, Q1, through `prove_cpp_guard` with `test_prefix="Cataclysm.PressRefusal."`: in `FervourFiguresFor`,
+`Resource->MaximumClassResourceAsked()` printed as `Maximum`. Broken half: 1 performed, 0 succeeded, 1 failed, the
+figures test (its figures and its control's ceiling). Restored: 1 of 1.
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
