@@ -5899,6 +5899,42 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `skill_experience_gain`, read by `ACataclysmPlayerState::SkillExperienceGainFactor`, which
+	 * `GrantSkillExperience` multiplies the kill by before sharing it. Issue #2803: 50 increased raises a kill of 1000
+	 * shared whole to one skill from 1000 to 1500.
+	 */
+	void ProbeSkillExperienceGain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerState* Plain = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerState* Raised = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* RaisedSystem = Raised
+			? Cast<UCataclysmAbilitySystemComponent>(Raised->GetAbilitySystemComponent())
+			: nullptr;
+		if (!Test.TestNotNull(TEXT("a player state"), Plain)
+			|| !Test.TestNotNull(TEXT("a second one with an ability system"), RaisedSystem))
+		{
+			return;
+		}
+		RaisedSystem->InitAbilityActorInfo(Raised, Raised);
+		GrantOne(RaisedSystem, ACataclysmPlayerState::SkillExperienceGainStat, ECataclysmStatBucket::Increased, 50.0f);
+
+		const FName Row(TEXT("Row_Probe"));
+		Plain->GrantSkillExperience(1000, TMap<FName, float>{{Row, 100.0f}}, 100.0f);
+		Raised->GrantSkillExperience(1000, TMap<FName, float>{{Row, 100.0f}}, 100.0f);
+		Test.TestEqual(TEXT("a kill of 1000 shared whole gives 1000 to a character without the row"),
+					   Plain->GetSkillExperience(Row), 1000.0, 1.0e-9);
+		Test.TestEqual(TEXT("skill_experience_gain is read: 50 increased gives 1500"),
+					   Raised->GetSkillExperience(Row), 1500.0, 1.0e-6);
+	}
+
+	/**
 	 * `mana_cost_as_maximum_mana_percent`, read in
 	 * `UCataclysmGameplayAbility::ManaCostFor` with the skill's tags. Issue #1833,
 	 * "Movement abilities cost 20%-50% of your maximum mana". 20 flat on a
@@ -10644,6 +10680,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("max_crit_chance"), &ProbeMaxCritChance},
 			{TEXT("energy_shield_recharge_ceiling_reduction"), &ProbeEnergyShieldRechargeCeiling},
 			{TEXT("experience_gain"), &ProbeExperienceGain},
+			{TEXT("skill_experience_gain"), &ProbeSkillExperienceGain},
 			{TEXT("mana_cost_as_maximum_mana_percent"), &ProbeManaCostAsMaximumManaPercent},
 			{TEXT("class_resource_generation"), &ProbeClassResourceGeneration},
 			{TEXT("overheal_absorb_percent_of_maximum_health"), &ProbeOverhealAbsorb},

@@ -34,3 +34,11 @@ def test_a_kill_is_shared_by_the_health_each_skill_removed_and_never_more_than_t
     healed = sl.split_a_kill(1000, {"Heavy": 150.0, "Special": 50.0}, 100.0)
     assert healed == {"Heavy": 750.0, "Special": 250.0}
     assert sl.split_a_kill(0, {"Heavy": 10.0}, 100.0) == {}
+
+
+def test_increased_skill_experience_gain_raises_every_share_alike_before_the_split():
+    """Issue #2803: the gem Of The Scholar's stat, as the game's `SkillExperienceGainFactor` reads it."""
+    raised = sl.split_a_kill(1000, {"Heavy": 60.0, "Special": 30.0}, 100.0, skill_experience_gain=0.5)
+    assert raised == {"Heavy": 900.0, "Special": 450.0}
+    assert sl.split_a_kill(1000, {"Heavy": 60.0}, 100.0, skill_experience_gain=0.0) == {"Heavy": 600.0}
+    assert sl.split_a_kill(1000, {"Heavy": 60.0}, 100.0, skill_experience_gain=-2.0) == {"Heavy": 0.0}

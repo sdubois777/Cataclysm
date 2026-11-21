@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
@@ -35,8 +36,9 @@
  *
  * WHAT IS CHECKED HERE: the price of a level against the character's curve and Path of Exile's paired levels; the cap
  * by the character's level, with the experience kept; the damage factor, 2.85 times at level 20; the bar's words; the
- * split of a kill by the health each skill removed; a real skill's blow through `UCataclysmSkillEffects::ApplyHit`,
- * scaled by its level and credited to it, and the basic attack's and a blow on the user's own self neither; a real
+ * split of a kill by the health each skill removed, and `skill_experience_gain` raising it (issue #2803); a real
+ * skill's blow through `UCataclysmSkillEffects::ApplyHit`, scaled by its level and credited to it, and the basic
+ * attack's and a blow on the user's own self neither; a real
  * creature's death paying its skills; the character record's version 10 step and the save of each skill's experience;
  * and the skill bar's boxes. The PLAY LOOP line's words are `Cataclysm.PlayLoop.TheSkillLevelLineSaysTheSkillAndBothLevels`.
  *
@@ -277,6 +279,71 @@ bool FCataclysmSkillLevelsSplitTest::RunTest(const FString&)
 	TestEqual(TEXT("and 25%"), Healed->GetSkillExperience(Special), 250.0, 1.0e-9);
 	TestEqual(TEXT("a kill worth nothing pays nothing"), State->GetSkillExperience(Heavy), HeavyBefore);
 	TestEqual(TEXT("and the character's own experience is not this function's"), State->GetExperienceIntoLevel(),
+			  static_cast<int64>(0));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelsGainTest,
+	"Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `skill_experience_gain` multiplies a kill's experience before it is shared, so every skill's share rises alike, and
+ * the character's own experience does not read it. Issue #2803, ruled 2026-11-21. The gem Of The Scholar will write it
+ * once gems can be socketed (#46); here it is set directly. 50 increased: 60 and 30 of a 100-health creature's 1000
+ * give 900 and 450 where they gave 600 and 300. Prints "SKILL EXPERIENCE GAIN".
+ */
+bool FCataclysmSkillLevelsGainTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillLevelsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmPlayerState* Plain = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerState* Raised = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* RaisedSystem =
+		Raised ? Cast<UCataclysmAbilitySystemComponent>(Raised->GetAbilitySystemComponent()) : nullptr;
+	if (!TestTrue(TEXT("set-up: two player states, the second with an ability system"), Plain && RaisedSystem))
+	{
+		return false;
+	}
+	RaisedSystem->InitAbilityActorInfo(Raised, Raised);
+	{
+		FCataclysmStatModifier Increase;
+		Increase.Bucket = ECataclysmStatBucket::Increased;
+		Increase.Source = ECataclysmModifierSource::Gem;
+		Increase.Value = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(ACataclysmPlayerState::SkillExperienceGainStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Increase};
+		RaisedSystem->SetStatInputs(MoveTemp(Inputs));
+	}
+	const FName Heavy(TEXT("Row_Heavy"));
+	const FName Special(TEXT("Row_Special"));
+
+	Plain->GrantSkillExperience(1000, TMap<FName, float>{{Heavy, 60.0f}, {Special, 30.0f}}, 100.0f);
+	Raised->GrantSkillExperience(1000, TMap<FName, float>{{Heavy, 60.0f}, {Special, 30.0f}}, 100.0f);
+
+	AddInfo(FString::Printf(TEXT("SKILL EXPERIENCE GAIN: without %.1f and %.1f; with 50 increased %.1f and %.1f; factor "
+								 "%.2f and %.2f; the character's own kill of 100 -> %lld"),
+							Plain->GetSkillExperience(Heavy), Plain->GetSkillExperience(Special),
+							Raised->GetSkillExperience(Heavy), Raised->GetSkillExperience(Special),
+							Plain->SkillExperienceGainFactor(), Raised->SkillExperienceGainFactor(),
+							Raised->ExperienceAfterGain(100)));
+	TestEqual(TEXT("CONTROL: without the stat, 60% of the kill"), Plain->GetSkillExperience(Heavy), 600.0, 1.0e-9);
+	TestEqual(TEXT("and 30%"), Plain->GetSkillExperience(Special), 300.0, 1.0e-9);
+	TestEqual(TEXT("WITH 50 INCREASED, the Heavy's share is half as much again: 900"), Raised->GetSkillExperience(Heavy),
+			  900.0, 1.0e-6);
+	TestEqual(TEXT("and the Special's alike: 450"), Raised->GetSkillExperience(Special), 450.0, 1.0e-6);
+	TestEqual(TEXT("the factor is 1.5"), Raised->SkillExperienceGainFactor(), 1.5, 1.0e-6);
+	TestEqual(TEXT("CONTROL: the character's own kill is not raised: 100 stays 100"), Raised->ExperienceAfterGain(100),
+			  static_cast<int64>(100));
+	TestEqual(TEXT("and the character gained no experience of its own here"), Raised->GetExperienceIntoLevel(),
 			  static_cast<int64>(0));
 	return true;
 }
