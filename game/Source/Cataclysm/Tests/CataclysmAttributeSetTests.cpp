@@ -388,7 +388,14 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// nothing scales it, no class differs on it, and the drawback "When you die
 	// all your buffs are removed" is its only source. A FLAG again, raised here
 	// before the change's first build rather than after its whole suite.
-	constexpr int32 OffSheetCombatStats = 46;
+	// AND FORTY-FIVE AGAIN SINCE THE MINION CAP BONUS WENT WITH THE CAPS, issue
+	// #2787 branch B: the owner's ruling of 2026-11-20 removed every count cap on
+	// what reserves the class resource, and `MinionCapBonus`, one of the stats
+	// off the sheet, with them. The reserve percentage that replaced it is a
+	// stat with no attribute. Missed at registration: window nocaps-b-w1's whole
+	// suite read 73 against 74, and the sheet's own count 45 against 46, which
+	// is the knock-on the resource count's comment below describes.
+	constexpr int32 OffSheetCombatStats = 45;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

@@ -717,7 +717,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordSixWhatRollsTest,
  *
  * THE ROLL IS PINNED AT 0, SO EVERY BLOW THAT ROLLS SUMMONS. `NoteHitTaken` is called as the vital set calls it: a
  * tick summons none, and an evaded blow none. THE CONTROL is a landed blow, which summons one. A fifth of a second
- * later a landed blow does not refresh it, inside the quarter second; a tenth after that, one does.
+ * later a landed blow summons nothing, inside the quarter second; a tenth after that, one summons a second Warhound.
+ *
+ * A SECOND WARHOUND, NOT A RESTARTED FIRST, SINCE ISSUE #2787 BRANCH B: the owner's ruling of 2026-11-20 removed every
+ * count cap on what reserves the class resource, the Warhound's one at most and its refresh with them (Q3 of
+ * 2026-10-18). Until then this test's last step read the first Warhound's time restarted to ten seconds. Missed when
+ * branch B rewrote its sibling `ASecondSummonMakesASecondWarhoundAndLeavesTheFirstsTimeAndHealth`: window nocaps-b-w1
+ * read 9.75 against 10.
  */
 bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 {
@@ -733,7 +739,19 @@ bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 
 	FWarlordCreature Wearer(World, FVector::ZeroVector, ECataclysmTeam::Players);
 	Wearer.AbilitySystem->SetStatInputs(WarhoundFlats(WarlordSixBonus()));
-	ON_SCOPE_EXIT { Clear({ACataclysmMinion::WarhoundOf(Wearer.Actor)}); };
+	ON_SCOPE_EXIT
+	{
+		TArray<ACataclysmMinion*> Made;
+		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Wearer.Actor))
+		{
+			ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+			if (IsValid(Minion) && Minion->bIsWarhound)
+			{
+				Made.Add(Minion);
+			}
+		}
+		Clear(Made);
+	};
 
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/true);
 	TestEqual(TEXT("a tick of damage over time summons no Warhound"), WarhoundsStanding(Wearer.Actor), 0);
@@ -747,16 +765,22 @@ bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const double SummonedAt = World->GetTimeSeconds();
 
 	CataclysmTestWorld::RunClock(World, 0.2f);
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
-	TestEqual(TEXT("a landed blow 0.2 s later, inside the quarter second, does not restart its time"),
-			  Warhound->GetLifeSpan(), WarhoundSeconds - 0.2f, ClockAllowanceSeconds);
+	TestEqual(TEXT("a landed blow 0.2 s later, inside the quarter second, summons no second Warhound"),
+			  WarhoundsStanding(Wearer.Actor), 1);
+	TestEqual(TEXT("and the first's time runs on"), Warhound->GetLifeSpan(), WarhoundSeconds - 0.2f,
+			  ClockAllowanceSeconds);
 
 	CataclysmTestWorld::RunClock(World, 0.1f);
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
-	TestEqual(TEXT("and one 0.3 s after the summon does"), Warhound->GetLifeSpan(), WarhoundSeconds,
-			  ClockAllowanceSeconds);
+	TestEqual(TEXT("and one 0.3 s after the summon summons a second"), WarhoundsStanding(Wearer.Actor), 2);
+	// THE ELAPSED TIME IS THE WORLD'S, NOT THE 0.3 ASKED FOR: window nocaps-b-w1 read the first's life span at 9.75,
+	// a quarter second gone by the world's clock, and 10 - 0.3 would pass only by the allowance's last hundredth.
+	TestEqual(TEXT("leaving the first's time running, not restarted"), Warhound->GetLifeSpan(),
+			  WarhoundSeconds - static_cast<float>(World->GetTimeSeconds() - SummonedAt), ClockAllowanceSeconds);
 	return true;
 }
 
