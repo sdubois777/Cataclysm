@@ -2,61 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-21 — No line that lists a standing dungeon names it a Quest dungeon: phase 1, the test that shows it, with the words of the fix put to the coordinating session (#2800)
+## 2026-11-21 — The empire map's top line counts Quest dungeons cleared rather than "quest objectives", and says how many of the dungeons standing are Quest dungeons (#2800)
 
-**Affects:** tests only, so far. One new test, `Cataclysm.CityScreen.EachQuestDungeonStandingIsNamedAQuestDungeon`, in
-`game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp`. Issue
+**Affects:** `UCataclysmEmpireMapLayout::ProgressLine`, whose objective count now reads "N Quest dungeons cleared";
+`UCataclysmEmpireMapLayout::StandingPart`, new, "2 dungeons standing (2 Quest)"
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp`); `UCataclysmEmpireMapWidget`'s status line,
+which now takes its dungeons-standing words from `StandingPart` (`CataclysmEmpireMapWidget.cpp`). Tests: one new,
+`Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared`, and the old words updated in
+`Cataclysm.EmpireScreen.TheScreenSaysWhatThePlayerHasClearedAndEarned` (`CataclysmEmpireScreenTests.cpp`) and
+`Cataclysm.BossOnTheMap.TheProgressLineCountsTheCataclysmsFinishedAndSaysWhenTheBossOpens`
+(`CataclysmBossOnTheMapTests.cpp`); `docs/Play_Loop_Checklist.md`'s description of the map's status line. Issue
 [#2800](https://github.com/sdubois777/Cataclysm/issues/2800), from the owner's playtest of 2026-11-21.
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN, AND NO FIX IS WRITTEN.** The words a screen should use are a ruling for the coordinating
-  session, put to it with this phase. The test is written to fail today; what it must show is under "Registered before
-  the reproduction press".
-- **WHAT THE OWNER SAW, AND WHAT THE RUN HELD.** The owner, on day 78 of the character 'testminion': "it's saying
-  there's 2 dungeons active, one quest, but they're both over 20 floors on outposts", and "it only labelled one as a
-  quest dungeon". The game's log at that moment names both standing dungeons "the Elite Quest dungeon": dungeon 3 on
-  Outpost (2,-1), 22 floors, and dungeon 8 on Outpost (1,-2), 23 floors. Dungeon 7, an Elite Quest dungeon beside
-  dungeon 8 on Outpost (1,-2), had just been cleared. The run's data was right; what was on the screens was not enough.
+- **NOT YET COMPILED OR RUN IN THE ENGINE.** The owner is playtesting with the editor open. What the run must show is
+  under "Registered before window quest-words-w1".
+- **WHAT THE OWNER SAW.** On day 78 of the character 'testminion', "in the overview at the top": "it's saying there's 2
+  dungeons active, one quest, but they're both over 20 floors on outposts", and "it only labelled one as a quest
+  dungeon". The game's log at that moment names both standing dungeons "the Elite Quest dungeon": dungeon 3 on Outpost
+  (2,-1), 22 floors, and dungeon 8 on Outpost (1,-2), 23 floors. Dungeon 7, a 24-floor Elite Quest dungeon, had just
+  been cleared. The empire map's top line read "2 dungeons standing   1 dungeon cleared, 1 quest objective, ...".
+- **THE CAUSE IS THE WORDING, NOT THE DATA.** "1 quest objective" is `UCataclysmEmpireRun::QuestObjectives`, which only a
+  Quest dungeon's clear raises (`UCataclysmEmpireRun::ClearDungeon`), so it counts Quest dungeons cleared. Beside "2
+  dungeons standing" it read as one of the two standing being a Quest dungeon. Found by the coordinating session.
 
-### The cause, by reading
+### What changed
 
-No screen names a standing dungeon's kind. Each place the interface writes a dungeon's kind or the word "quest", read
-at development `156f2b9e8`:
+- **RULED BY THE COORDINATING SESSION, 2026-11-21, THE WORDS ONLY, NO RULE CHANGES:** "N quest objective(s)" becomes
+  "N Quest dungeon(s) cleared", and "no quest objectives" becomes "no Quest dungeons cleared"; and "N dungeon(s)
+  standing" gains, when any standing dungeon is a Quest dungeon, how many are, in brackets: "2 dungeons standing (2
+  Quest)". Nothing is in brackets when none is.
+- **COUNTED FROM THE RUN'S OWN LIST, AND NO NEW STATE**, as ruled: `StandingPart` counts the dungeons in
+  `UCataclysmEmpireRun::Dungeons` whose `Type` is `Quest`. The total standing is `DungeonCount`, as the line always
+  read it, so the Cataclysm boss dungeon is counted among those standing and not as a Quest dungeon.
+- **THE DUNGEONS-STANDING WORDS MOVED FROM THE WIDGET TO THE LAYOUT CLASS**, as `ProgressLine` was for the same reason: a
+  headless test cannot read a label, so a phrase built inside the widget's status line could not be tested.
 
-| Where | What it writes | About |
-|---|---|---|
-| City screen, `UCataclysmCityScreenLayout::DungeonLinesFor` | "Elite, 22 floors, 7 days until it bites" | each standing dungeon: its sub-type only |
-| Empire map, a city's detail, `UCataclysmEmpireMapWidget` | "dungeon of 22 floors, 7 days left" | each standing dungeon: neither kind nor sub-type |
-| Empire map, top line, `UCataclysmEmpireMapLayout::ProgressLine` | "... dungeons standing ... N quest objectives ..." | objectives earned; a Quest clear adds one |
-| Empire map, second line, `UCataclysmEmpireMapLayout::LastClearLine` | "Day 78: you cleared the Elite Quest dungeon on Outpost (1,-2). ..." | the dungeon just cleared |
-| Empire map, `LatestEventLine` | "a Quest dungeon moved ..." or "a Quest dungeon's timer hit ..." | past events |
+### Seen, not changed
 
-`UCataclysmEmpireRun::Describe` names each dungeon's kind, but only a console command prints it. THE LEADING
-HYPOTHESIS: the empire map's top line read "2 dungeons standing" beside a quest objective count, and its second line
-named "the Elite Quest dungeon on Outpost (1,-2)", the dungeon just cleared, beside dungeon 8 on that city. Read
-together, the two lines say two dungeons stand and one of them is a Quest dungeon. NOT SETTLED: which screen the owner
-read, and whether the objective count read 1; the log does not show the clears before this session.
+- **No line that lists a standing dungeon names its kind.** The city screen's lines (`DungeonLinesFor`) name the
+  sub-type only, "Elite, 22 floors, 7 days until it bites", and the empire map's city detail names neither, "dungeon of
+  22 floors, 7 days left". Not ruled. A first version of this branch held a test asking the city screen to name a Quest
+  dungeon; it was taken out when the coordinating session found the overview's wording was what the owner read.
+- **The in-game status bar** (`UCataclysmEmpireStatusBar`) also says "N dungeons standing" and gives no Quest count. Not
+  ruled.
 
-### Proposed, not built
-
-- Name the kind on each line that lists a standing dungeon: the city screen's, as "Elite Quest, 22 floors, 7 days until
-  it bites", and the empire map city detail's, as "Elite Quest dungeon of 22 floors, 7 days left", with that detail's
-  text moved into `UCataclysmEmpireMapLayout` so a test can read it. The existing tests that pin a Quest dungeon's
-  city screen line change with it, such as `AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore`.
-- Possibly, "quest objectives earned" on the progress line, so it cannot be read as a count of Quest dungeons.
-
-### Registered before the reproduction press
+### Registered before window quest-words-w1
 
 The base is window follow-w2, for #2793, at `d4d0773ac`, whose `game/` tree is development `156f2b9e8`'s, this branch's
-base. It measured 16 tests in `Cataclysm.CityScreen.`, all succeeding, each writing no test save.
+base. Its output, `f2793_suite_d4d0773a.log` and `f2793_suite_engine_d4d0773a.log` in `.claude/windows/` in the
+worktree `interesting-snyder-dca273`, reads "5072 tests performed, 5072 succeeded, 0 failed. 48 skipped part of what
+they check" and "Test saves: 859 written and deleted, 0 left behind", with 14 "Test Completed" lines whose path begins
+`Cataclysm.EmpireScreen.` and 5 beginning `Cataclysm.BossOnTheMap.`, all `Result={Success}`, and no test save written
+by any of the 14.
 
-- **The new test alone, at this commit, with no fix:** 1 performed, 0 succeeded, 1 failed, on exactly two assertions,
-  "the Quest dungeon on the first city is named a Quest dungeon" and "and so is the one on the second". Its two
-  controls pass: the Basic dungeon's line does not say "Quest" and begins "Elite". Its info line reads the three lines
-  as `DungeonLinesFor` writes them today: "Elite, 22 floors, 7 days until it bites", "Elite, 23 floors, 15 days until
-  it bites" and "Elite, 9 floors, 30 days until it bites". It writes no test save.
-- **The group and the whole suite** are registered with the fix, once its words are ruled.
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone,
+  `CataclysmEmpireMapLayout.cpp`, `CataclysmEmpireMapWidget.cpp`, `CataclysmEmpireScreenTests.cpp` and
+  `CataclysmBossOnTheMapTests.cpp`; the unity files again -- each succeed with no warning or error line.
+- **The new test alone:** 1 performed, 1 succeeded, its info line reading "THE OVERVIEW AT DAY 78: "2 dungeons standing
+  (2 Quest)   1 dungeon cleared, 1 Quest dungeon cleared, 0 of 1 Cataclysm finished; the boss dungeon opens when 1 is
+  finished"".
+- **The group `Cataclysm.EmpireScreen.`:** 15 performed, 15 succeeded: the base's 14 plus 1. **The group
+  `Cataclysm.BossOnTheMap.`:** 5 of 5, as at the base.
+- **The whole suite:** 5073 performed, 5073 succeeded, 48 skipped halves: the base's 5072 plus 1. "Test saves: 859
+  written and deleted, 0 left behind": the new test builds no world and writes none.
+- **Two guard proofs**, through `prove_cpp_guard`, each with the prefix
+  `Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared`, which selects the new test alone. Each
+  anchor was checked to match exactly once at the commit that registers it:
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | No bracket: `Quest > 0 ? FString::Printf(TEXT(" (%d Quest)"), Quest) : FString()` in `StandingPart` becomes `false ? FString::Printf(TEXT(" (%d Quest)"), Quest) : FString()` | 1 performed, 0 succeeded, 1 failed, on two assertions: "both standing are counted as Quest dungeons" and "four standing, one of them a Quest dungeon". The two with no Quest dungeon standing pass | 1 of 1 |
+| P2 | The old words: `TEXT("%d Quest dungeon%s cleared")` becomes `TEXT("%d quest objective%s")` in `ProgressLine` | 1 performed, 0 succeeded, 1 failed, on three assertions: "and the one cleared is a Quest dungeon cleared", "two Quest dungeons cleared, plural" and "the old words are gone" | 1 of 1 |
+
+**The window scripts** will be in `.claude/windows/` in this session's worktree.
 
 ---
 

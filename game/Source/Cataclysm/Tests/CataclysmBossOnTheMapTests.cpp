@@ -111,14 +111,14 @@ bool FCataclysmBossOnTheMapProgressTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("a fresh tier 5 run has finished none of five, and three open the boss"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("No dungeons cleared yet, no quest objectives, 0 of 5 Cataclysms finished; the boss "
+			  FString(TEXT("No dungeons cleared yet, no Quest dungeons cleared, 0 of 5 Cataclysms finished; the boss "
 						   "dungeon opens when 3 are finished")));
 
 	// ONE FINISHED. Every Cataclysm asks for five quest dungeons or more, so both counts before it are plural.
 	const int32 FirstNeeds = UCataclysmRoster::QuestObjectivesFor(Run->ActiveCataclysms[0]);
 	FinishOne(*Run, Run->ActiveCataclysms[0]);
 	TestEqual(TEXT("one of five finished"), UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString::Printf(TEXT("%d dungeons cleared, %d quest objectives, 1 of 5 Cataclysms finished; the boss "
+			  FString::Printf(TEXT("%d dungeons cleared, %d Quest dungeons cleared, 1 of 5 Cataclysms finished; the boss "
 								   "dungeon opens when 3 are finished"), FirstNeeds, FirstNeeds));
 
 	FinishOne(*Run, Run->ActiveCataclysms[1]);
@@ -165,7 +165,7 @@ bool FCataclysmBossOnTheMapProgressTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Single = MakeTierRun(/* Seed */ 7, /* DifficultyTier */ 1);
 	TestEqual(TEXT("a tier 1 run faces one Cataclysm, singular, and one opens the boss"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Single),
-			  FString(TEXT("No dungeons cleared yet, no quest objectives, 0 of 1 Cataclysm finished; the boss "
+			  FString(TEXT("No dungeons cleared yet, no Quest dungeons cleared, 0 of 1 Cataclysm finished; the boss "
 						   "dungeon opens when 1 is finished")));
 
 	// TIER 3, ITS TWO MET BY HAND AND NOT BY A CLEAR: the state a version 3 run record migrates into, since
