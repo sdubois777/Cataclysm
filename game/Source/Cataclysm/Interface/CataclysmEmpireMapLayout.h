@@ -199,9 +199,9 @@ public:
 	static FString CityLabel(const UCataclysmEmpireMap* Map, int32 CityId);
 
 	/**
-	 * What the PLAYER has done to the map: dungeons beaten and objectives earned.
+	 * What the PLAYER has done to the map: dungeons beaten, and Quest dungeons among them.
 	 *
-	 * "4 dungeons cleared, 1 quest objective". Everything else the empire screen
+	 * "4 dungeons cleared, 1 Quest dungeon cleared". Everything else the empire screen
 	 * says is what is being done TO the empire -- the day, the cities lost, the
 	 * dungeons standing, the next surge -- and until this there was nowhere on
 	 * the screen a player could see what they had achieved. Issue #1324 slice 5.
@@ -213,7 +213,7 @@ public:
 	 * takes a run and answers a string, so every case below is covered.
 	 *
 	 * **AND HOW FAR THE PLAYER IS FROM THE CATACLYSM BOSS DUNGEON**, since issue
-	 * #1324 slice 6c (2026-11-03): "4 dungeons cleared, 7 quest objectives, 1 of
+	 * #1324 slice 6c (2026-11-03): "4 dungeons cleared, 7 Quest dungeons cleared, 1 of
 	 * 5 Cataclysms finished; the boss dungeon opens when 3 are finished". The
 	 * fraction is Cataclysms finished (`UCataclysmEmpireRun::CataclysmsComplete`)
 	 * of the Cataclysms the run faces, and the number it opens at is
@@ -234,12 +234,54 @@ public:
 	 * since it began keeping objectives per Cataclysm; the line said "until
 	 * #1357" and #1357 had landed.
 	 *
+	 * **"QUEST DUNGEONS CLEARED", NOT "QUEST OBJECTIVES", since issue #2800.** The
+	 * count is `QuestObjectives`, which only a Quest dungeon's clear raises
+	 * (`UCataclysmEmpireRun::ClearDungeon`), so the two say the same number.
+	 * The owner read "2 dungeons standing   1 dungeon cleared, 1 quest objective"
+	 * on day 78 of a playtest as "one of the two standing is a Quest dungeon",
+	 * while both were. Ruled by the coordinating session, 2026-11-21: the words
+	 * only, no rule changes.
+	 *
 	 * @param Run the run to describe. Null, or one that has not begun, answers
 	 *            an empty string rather than a line of zeroes, so a screen with
 	 *            no run shows nothing instead of a false achievement.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString ProgressLine(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * How many dungeons stand on the map, and how many of them are Quest dungeons when any is: "2 dungeons standing
+	 * (2 Quest)", "1 dungeon standing", "3 dungeons standing (1 Quest)". Issue #2800, ruled by the coordinating
+	 * session 2026-11-21: nothing in brackets when no Quest dungeon stands. Counted from the run's own list, each
+	 * dungeon's `Type`, and no new state. The Cataclysm boss dungeon is counted among those standing, as the status
+	 * line always counted it, and is not a Quest dungeon. On this class rather than in the widget's status line, for
+	 * the reason `ProgressLine` gives: a headless test cannot read a label.
+	 *
+	 * @param Run the run to describe. Null, or one that has not begun, answers an empty string.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString StandingPart(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * The words for a count of dungeons standing and how many of them are Quest dungeons: "2 dungeons standing (2
+	 * Quest)", "1 dungeon standing" with no Quest dungeon. `StandingPart` says it for a run, and the in-game status bar
+	 * (`UCataclysmEmpireStatusBar::LineFor`) says it from its figures, so the two lines cannot word it differently.
+	 * Issue #2800, ruled by the coordinating session 2026-11-21.
+	 */
+	static FString StandingWords(int32 Standing, int32 QuestStanding);
+
+	/** How many of the run's dungeons standing are Quest dungeons, by each one's `Type`; 0 with no run. Issue #2800. */
+	static int32 QuestDungeonsStanding(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * One dungeon's words in a city's detail on the empire map: "Elite Quest dungeon of 22 floors, 7 days left", "Elite
+	 * dungeon of 9 floors, 30 days left", or "dungeon of 12 floors, 9 days left" for a dungeon with no sub-type. Empty
+	 * when the run, its clock or the dungeon cannot be found. Issue #2800, ruled by the coordinating session 2026-11-21:
+	 * the sub-type for every dungeon, in `SubTypeName`'s words, none for `None`; and the kind after it for a Quest
+	 * dungeon only. Moved here from `UCataclysmEmpireMapWidget`'s city detail, for the reason `ProgressLine` gives: a
+	 * headless test cannot read a label.
+	 */
+	static FString CityDetailDungeonLine(const UCataclysmEmpireRun* Run, int32 DungeonId);
 
 	// ----------------------------------------------------------------------
 	// The empire upgrade point bank -- issue #52, the first slice

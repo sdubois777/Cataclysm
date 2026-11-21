@@ -19076,10 +19076,19 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 			// EVERY LIVING CREATURE, MARKED ONES INCLUDED: the row says "all enemies".
 			// The creature is its own instigator, as Hallowed Groundfall's grant has it:
 			// nothing on the floor is doing the hasting.
+			//
+			// AND NOT A PLAYER'S THRALL, which is no longer an enemy. Since issue #2797
+			// the take takes a creature off `FloorEnemies` (`ForgetACreatureTaken`), and
+			// this loop skips a player's follower as well, as the floor's other rules
+			// that walk that list do (issue #1202, ruled 2026-09-30). Plague
+			// Harbinger's trail, Hallowed Groundfall's craters and Commander's Aura grant
+			// this buff only to creatures hostile to the player, to the same end.
+			// Issue #2797.
 			int32 Hasted = 0;
 			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 			{
-				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+					&& !DungeonGameModeIsAPlayersFollower(Enemy))
 				{
 					UCataclysmSkillEffects::ApplyTagForDuration(
 						Enemy, Enemy, Haste, Effects::DirgeResonanceHasteSeconds);
@@ -23053,6 +23062,21 @@ ACataclysmDungeonGameMode* ACataclysmDungeonGameMode::InWorld(UWorld* World)
 		return *It;
 	}
 	return nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetACreatureTaken(ACataclysmEnemyCharacter* Taken)
+{
+	if (!IsValid(Taken) || FloorEnemies.Remove(Taken) == 0)
+	{
+		return;
+	}
+
+	// ITS SECTION GOES WITH IT, as `ClearFloorEnemies` resets a thrall's: the number is this floor's, and with the
+	// creature off the list nothing would reset it before the next floor.
+	Taken->FloorSection = INDEX_NONE;
+	UE_LOG(LogCataclysm, Log, TEXT("%s was taken and is no longer one of floor %d's enemies"), *Taken->GetName(),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::NihilsEmbraceShownNow(float& OutResistanceLessPercent,

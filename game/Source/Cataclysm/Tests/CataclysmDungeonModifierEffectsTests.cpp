@@ -22075,6 +22075,71 @@ bool FCataclysmBloodGatesOtherKillerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CREATURE THE PLAYER TOOK DOES NOT HOLD THE GATE SHUT. Issue #2797: "placed" is the player's kills plus the
+// unmarked still standing, read off the floor's list of enemies, and a creature taken with Subjugate used to stay on
+// that list until the next floor. Two of three taken and the third slain by the player: with the two counted, one of
+// three is short of the two that open the gate, and the player would wait on creatures fighting for them. The panel
+// before the takes is the control: all three are counted while they are the floor's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesThrallTest,
+	"Cataclysm.DungeonModifierEffects.ATakenCreatureDoesNotHoldTheBloodGatesShut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesThrallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+
+	// THE CONTROL: three of the floor's, and two open the stairs.
+	if (!TestEqual(TEXT("set-up: three placed, and two open the stairs"), GatesPanelLine(Mode),
+				   FString(TEXT("blood gates: 0 of 3 slain, open at 2"))))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player takes the first"), UCataclysmCommand::Subjugate(Player.Character, Placed[0]))
+		|| !TestTrue(TEXT("and the second"), UCataclysmCommand::Subjugate(Player.Character, Placed[1])))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the two taken are no longer counted"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 1 slain, open at 1")));
+
+	if (!ThePlayerKills(*this, Player, Placed[2]))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the first thrall still stands"), UCataclysmSkillEffects::IsDead(Placed[0]));
+	TestFalse(TEXT("and so does the second"), UCataclysmSkillEffects::IsDead(Placed[1]));
+	TestEqual(TEXT("and with the last of the floor's slain the gate is open"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("so the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
 // ONCE NO UNMARKED CREATURE STANDS, THE GATE IS OPEN, however the floor was emptied: the
 // property that keeps a player from being left on a floor with no way down.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesEmptiedTest,
@@ -22543,6 +22608,73 @@ bool FCataclysmDirgeArrivalTest::RunTest(const FString& Parameters)
 	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds) + 4);
 	TestEqual(TEXT("a floor without the row hastes nothing"), SpeedsOf(Elsewhere).Interval,
 			  ElsewhereBefore.Interval, 0.0001f);
+	return true;
+}
+
+// NOT A PLAYER'S THRALL. Issue #2797: the row hastes "all enemies", and a creature the player has
+// taken with Subjugate is no longer one. The take takes it off the floor's list of enemies, which
+// is the list the crescendo walks; the crescendo also skips a player's follower, as the floor's
+// other rules do (issue #1202, ruled 2026-09-30). An untaken creature on the same floor is the
+// control.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeThrallTest,
+	"Cataclysm.DungeonModifierEffects.ATakenCreatureIsNotHastedByTheDirgeCrescendo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDirgeThrallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDirgeRow(*this, World, Player);
+	ACataclysmEnemyCharacter* Taken =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Stranger =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0) : nullptr;
+	const FGameplayTag Haste = EmpoweredTag();
+	if (!TestNotNull(TEXT("a creature to take"), Taken)
+		|| !TestNotNull(TEXT("and one nobody takes"), Stranger)
+		|| !TestTrue(TEXT("set-up: the game has the haste tag"), Haste.IsValid())
+		|| !TestTrue(TEXT("the player takes the first"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+
+	// OFF THE LIST THE CRESCENDO WALKS, from the moment it is taken.
+	if (!TestFalse(TEXT("the thrall is no longer on the floor's list of enemies"),
+				   Mode->FloorEnemies.Contains(Taken))
+		|| !TestTrue(TEXT("set-up: the creature nobody took still is"), Mode->FloorEnemies.Contains(Stranger)))
+	{
+		return false;
+	}
+
+	// ITS SPEEDS ARE READ AFTER THE TAKE, because a commanded creature's walk is its commander's.
+	const FCreatureSpeeds TakenBefore = SpeedsOf(Taken);
+	const FCreatureSpeeds StrangerBefore = SpeedsOf(Stranger);
+
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds));
+
+	// THE CONTROL: the crescendo came, and the creature nobody took is hasted and fearless.
+	if (!IsHastedFrom(*this, TEXT("the creature nobody took"), SpeedsOf(Stranger), StrangerBefore)
+		|| !TestTrue(TEXT("and immune to fear"),
+					 UCataclysmSkillEffects::HasTag(Stranger, UCataclysmFear::FearImmuneTag())))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the thrall is not given the haste"), UCataclysmSkillEffects::HasTag(Taken, Haste));
+	TestFalse(TEXT("nor the fear immunity"),
+			  UCataclysmSkillEffects::HasTag(Taken, UCataclysmFear::FearImmuneTag()));
+	const FCreatureSpeeds TakenAfter = SpeedsOf(Taken);
+	TestEqual(TEXT("so the thrall attacks at its own pace"), TakenAfter.Interval, TakenBefore.Interval, 0.0001f);
+	TestEqual(TEXT("and walks at its own speed"), TakenAfter.Walk, TakenBefore.Walk, 0.01f);
 	return true;
 }
 

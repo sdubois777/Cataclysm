@@ -29,7 +29,7 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 
 | What | On screen | In the log |
 | :-- | :-- | :-- |
-| Its floors | The city screen: "12 floors" in the dungeon's line. Hovering a city on the map: "dungeon of 12 floors, 9 days left" | The `standing:` lines |
+| Its floors | The city screen: "12 floors" in the dungeon's line. Hovering a city on the map: "Horde dungeon of 12 floors, 9 days left", with "Quest" after the sub-type for a Quest dungeon (issue #2800) | The `standing:` lines |
 | Its timer | The city screen: "9 days until it bites". The map's hover line: "9 days left" | The `standing:` lines |
 | Its sub-type (Horde, Timed, Cow Level, and the rest) | The city screen: the first word of the dungeon's line, when it has one | The `standing:` lines, in its name: "the Horde dungeon" |
 | **Its kind** (ordinary, Quest, Fallen City, Cataclysm) | **Not shown on any screen** | The `standing:` lines, in its name: "the Quest dungeon"; an ordinary one has no kind word |
@@ -52,7 +52,8 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 ### 3. The capital opens, with the empire map
 
 - **On screen:** a nearly empty level, and the empire map open over it. The map's status line begins "Day 0", says
-  "12 dungeons standing", and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
+  "12 dungeons standing", with how many of them are Quest dungeons in brackets when any is, such as "(2 Quest)"
+  (issue #2800), and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
   **M** closes the map and opens it again.
 - **The new character is level 1, with no experience.** Close the map with **M** and look at the bottom-left corner:
   the lowest bar, under health, is the level and experience bar. It reads "Level 1: 0.0%" and is empty. Health, mana

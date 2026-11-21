@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmEmpireMapLayout.h"
 
+#include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
@@ -134,6 +135,63 @@ FString UCataclysmEmpireMapLayout::CityLabel(const UCataclysmEmpireMap* Map,
 	return FString::Printf(TEXT("%s %d%%"), *Tier, FMath::Clamp(Percent, 0, 100));
 }
 
+FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
+{
+	if (Run == nullptr || Run->Map == nullptr)
+	{
+		return FString();
+	}
+
+	return StandingWords(Run->DungeonCount(), QuestDungeonsStanding(Run));
+}
+
+FString UCataclysmEmpireMapLayout::StandingWords(int32 Standing, int32 QuestStanding)
+{
+	// NOTHING IN BRACKETS WHEN NO QUEST DUNGEON STANDS. Issue #2800, ruled 2026-11-21.
+	const FString Kinds = QuestStanding > 0 ? FString::Printf(TEXT(" (%d Quest)"), QuestStanding) : FString();
+	return FString::Printf(TEXT("%d dungeon%s standing%s"), Standing, Standing == 1 ? TEXT("") : TEXT("s"), *Kinds);
+}
+
+int32 UCataclysmEmpireMapLayout::QuestDungeonsStanding(const UCataclysmEmpireRun* Run)
+{
+	// THE RUN'S OWN LIST, BY EACH DUNGEON'S KIND, and no new state. Issue #2800, ruled 2026-11-21.
+	int32 Quest = 0;
+	if (Run != nullptr)
+	{
+		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			Quest += Dungeon.Type == ECataclysmDungeonType::Quest ? 1 : 0;
+		}
+	}
+	return Quest;
+}
+
+FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireRun* Run, int32 DungeonId)
+{
+	const FCataclysmDungeon* Dungeon = Run != nullptr ? Run->FindDungeon(DungeonId) : nullptr;
+	if (Dungeon == nullptr || Run->Clock == nullptr)
+	{
+		return FString();
+	}
+
+	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.
+	// `SubTypeName` answers nothing for `None`, so a dungeon without one reads as the line always did.
+	TArray<FString> Words;
+	const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon->SubType);
+	if (!SubType.IsEmpty())
+	{
+		Words.Add(SubType);
+	}
+	if (Dungeon->Type == ECataclysmDungeonType::Quest)
+	{
+		Words.Add(UCataclysmSurgeScheduler::KindName(Dungeon->Type));
+	}
+	Words.Add(TEXT("dungeon"));
+
+	return FString::Printf(TEXT("%s of %d floors, %.0f days left"), *FString::Join(Words, TEXT(" ")), Dungeon->Floors,
+						   Run->Clock->DaysUntilResolveFor(DungeonId));
+}
+
 FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 {
 	// A RUN THAT HAS NOT BEGUN SAYS NOTHING, rather than "no dungeons cleared".
@@ -148,16 +206,18 @@ FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)
 	const int32 Objectives = Run->QuestObjectives;
 
 	// THE PLURALS ARE WRITTEN OUT because this line is read by a person and
-	// "1 quest objectives" is the kind of thing that makes a screen look
-	// unfinished. The rest of this screen has no number that can be one.
+	// "1 Quest dungeons cleared" is the kind of thing that makes a screen look
+	// unfinished.
 	const FString ClearedPart = Cleared == 0
 		? FString(TEXT("No dungeons cleared yet"))
 		: FString::Printf(TEXT("%d dungeon%s cleared"), Cleared,
 						  Cleared == 1 ? TEXT("") : TEXT("s"));
 
+	// QUEST DUNGEONS CLEARED, NOT "QUEST OBJECTIVES". Issue #2800, ruled 2026-11-21: only a Quest dungeon's clear raises
+	// `QuestObjectives`, and "1 quest objective" beside "2 dungeons standing" was read as one Quest dungeon standing.
 	const FString ObjectivePart = Objectives == 0
-		? FString(TEXT("no quest objectives"))
-		: FString::Printf(TEXT("%d quest objective%s"), Objectives,
+		? FString(TEXT("no Quest dungeons cleared"))
+		: FString::Printf(TEXT("%d Quest dungeon%s cleared"), Objectives,
 						  Objectives == 1 ? TEXT("") : TEXT("s"));
 
 	// HOW FAR THE PLAYER IS FROM THE CATACLYSM BOSS DUNGEON, since issue #1324

@@ -847,8 +847,9 @@ bool FCataclysmEmpireWidgetRunTest::RunTest(const FString& Parameters)
  * WHY IT IS WORTH A TEST OF ITS OWN. Everything else the empire screen says
  * describes the empire's decline: the day, the cities lost, the dungeons
  * standing, the next surge. `ProgressLine` is the only part of it that describes
- * progress, and a quest objective is the only number on the screen that will
- * ever be one, so the plural is a real case rather than pedantry.
+ * progress, and a count of Quest dungeons cleared is often one, so the plural is
+ * a real case rather than pedantry. Its words are "Quest dungeons cleared" and
+ * not "quest objectives" since issue #2800.
  *
  * IT IS ON THE LAYOUT CLASS SO THAT IT CAN BE READ BACK. The widget's
  * `StatusLabel` is a `BindWidget` and is null in a headless test, so a string
@@ -885,7 +886,7 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("a fresh run has cleared nothing and earned nothing"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("No dungeons cleared yet, no quest objectives")) + Tail);
+			  FString(TEXT("No dungeons cleared yet, no Quest dungeons cleared")) + Tail);
 
 	// THE COUNTERS ARE SET DIRECTLY HERE, AND THAT IS THE POINT OF THIS TEST.
 	// Whether they are RAISED correctly is
@@ -897,21 +898,21 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("one dungeon, singular, and still no objectives"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("1 dungeon cleared, no quest objectives")) + Tail);
+			  FString(TEXT("1 dungeon cleared, no Quest dungeons cleared")) + Tail);
 
 	Run->DungeonsCleared = 4;
 	Run->QuestObjectives = 1;
 
 	TestEqual(TEXT("four dungeons and one objective, each with its own plural"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("4 dungeons cleared, 1 quest objective")) + Tail);
+			  FString(TEXT("4 dungeons cleared, 1 Quest dungeon cleared")) + Tail);
 
 	Run->DungeonsCleared = 12;
 	Run->QuestObjectives = 3;
 
 	TestEqual(TEXT("and both plural"),
 			  UCataclysmEmpireMapLayout::ProgressLine(Run),
-			  FString(TEXT("12 dungeons cleared, 3 quest objectives")) + Tail);
+			  FString(TEXT("12 dungeons cleared, 3 Quest dungeons cleared")) + Tail);
 
 	// **NO DENOMINATOR FOR THE OBJECTIVES.** The design states a different
 	// objective count for each of the eight Cataclysms, so "3 of 8 quest
@@ -924,6 +925,140 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and its only fraction is the Cataclysms'"),
 			  Twelve.Len() - Twelve.Replace(TEXT(" of "), TEXT("")).Len(), 4);
 
+	return true;
+}
+
+/**
+ * The overview's words at the owner's day 78, issue #2800. Ruled by the coordinating session, 2026-11-21: "2 dungeons
+ * standing   1 dungeon cleared, 1 quest objective" was read as "one of the two standing is a Quest dungeon" while both
+ * were. The top line now says how many of those standing are Quest dungeons, in brackets, and counts Quest dungeons
+ * cleared rather than "quest objectives". The scene is the owner's: two Quest dungeons standing and one cleared.
+ * The controls: an ordinary dungeon standing alone has no bracket, and the singular and plural forms of both phrases.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireQuestWordsTest,
+	"Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireQuestWordsTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::StandingPart(nullptr), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get()))
+	{
+		return false;
+	}
+
+	// THE BOARD IS SET BY HAND, as `ProgressLine`'s test sets its counters: the words are what is tested.
+	auto Board = [Run](const TArray<ECataclysmDungeonType>& Kinds)
+	{
+		Run->Dungeons.Reset();
+		for (int32 Index = 0; Index < Kinds.Num(); ++Index)
+		{
+			FCataclysmDungeon Dungeon;
+			Dungeon.DungeonId = 900 + Index;
+			Dungeon.CityId = Run->Map->Cities[0].CityId;
+			Dungeon.Floors = 22;
+			Dungeon.Type = Kinds[Index];
+			Run->Dungeons.Add(Dungeon);
+		}
+	};
+	const FString Tail = TEXT(", 0 of 1 Cataclysm finished; the boss dungeon opens when 1 is finished");
+
+	// THE OWNER'S DAY 78: two Quest dungeons standing, one Quest dungeon cleared.
+	Board({ECataclysmDungeonType::Quest, ECataclysmDungeonType::Quest});
+	Run->DungeonsCleared = 1;
+	Run->QuestObjectives = 1;
+	const FString Standing = UCataclysmEmpireMapLayout::StandingPart(Run);
+	const FString Progress = UCataclysmEmpireMapLayout::ProgressLine(Run);
+	AddInfo(FString::Printf(TEXT("THE OVERVIEW AT DAY 78: \"%s   %s\""), *Standing, *Progress));
+	TestEqual(TEXT("both standing are counted as Quest dungeons"), Standing, FString(TEXT("2 dungeons standing (2 Quest)")));
+	TestEqual(TEXT("and the one cleared is a Quest dungeon cleared"), Progress,
+			  FString(TEXT("1 dungeon cleared, 1 Quest dungeon cleared")) + Tail);
+
+	// THE CONTROL: an ordinary dungeon standing alone has no bracket, and the singular is kept.
+	Board({ECataclysmDungeonType::Basic});
+	TestEqual(TEXT("CONTROL: one ordinary dungeon standing, no bracket"), UCataclysmEmpireMapLayout::StandingPart(Run),
+			  FString(TEXT("1 dungeon standing")));
+
+	// A MIXED BOARD COUNTS ONLY THE QUEST DUNGEONS, the boss dungeon and a Fallen City among those that are not.
+	Board({ECataclysmDungeonType::Basic, ECataclysmDungeonType::Quest, ECataclysmDungeonType::FallenCity,
+		   ECataclysmDungeonType::Cataclysm});
+	TestEqual(TEXT("four standing, one of them a Quest dungeon"), UCataclysmEmpireMapLayout::StandingPart(Run),
+			  FString(TEXT("4 dungeons standing (1 Quest)")));
+
+	// AND NONE AT ALL.
+	Board({});
+	TestEqual(TEXT("an empty board"), UCataclysmEmpireMapLayout::StandingPart(Run), FString(TEXT("0 dungeons standing")));
+
+	// THE PLURAL OF QUEST DUNGEONS CLEARED.
+	Run->DungeonsCleared = 5;
+	Run->QuestObjectives = 2;
+	TestEqual(TEXT("two Quest dungeons cleared, plural"), UCataclysmEmpireMapLayout::ProgressLine(Run),
+			  FString(TEXT("5 dungeons cleared, 2 Quest dungeons cleared")) + Tail);
+
+	// AND NO LINE SAYS "QUEST OBJECTIVE" ANY MORE.
+	TestFalse(TEXT("the old words are gone"), UCataclysmEmpireMapLayout::ProgressLine(Run).Contains(TEXT("objective")));
+	return true;
+}
+
+/**
+ * A city's detail on the empire map names each dungeon's sub-type, and a Quest dungeon as one. Issue #2800, ruled by
+ * the coordinating session 2026-11-21: "Elite Quest dungeon of 22 floors, 7 days left" for a Quest dungeon, "Elite
+ * dungeon of 9 floors, 30 days left" for any other, and no word for a sub-type of `None`. The words moved from the
+ * widget to `UCataclysmEmpireMapLayout::CityDetailDungeonLine` so this test can read them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireCityDetailKindTest,
+	"Cataclysm.EmpireScreen.ACitysDetailNamesEachDungeonsSubTypeAndAQuestDungeonsKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireCityDetailKindTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::CityDetailDungeonLine(nullptr, 1), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get())
+		|| !TestNotNull(TEXT("set-up: and a clock"), Run->Clock.Get()))
+	{
+		return false;
+	}
+
+	// FOUR DUNGEONS, EACH WITH ITS OWN TIMER, SET BY HAND: the words are what is tested.
+	auto Place = [Run](int32 DungeonId, int32 Floors, float ResolveDays, ECataclysmDungeonType Type,
+					   ECataclysmDungeonSubType SubType)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.CityId = Run->Map->Cities[0].CityId;
+		Dungeon.Floors = Floors;
+		Dungeon.ResolveDays = ResolveDays;
+		Dungeon.Type = Type;
+		Dungeon.SubType = SubType;
+		Run->Dungeons.Add(Dungeon);
+		Run->Clock->AddDungeon(DungeonId, Floors);
+		Run->Clock->SetResolveDays(DungeonId, ResolveDays);
+	};
+	Place(950, 22, 7.0f, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Elite);
+	Place(951, 9, 30.0f, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::Elite);
+	Place(952, 12, 9.0f, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None);
+	Place(953, 25, 20.0f, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::None);
+
+	const FString QuestElite = UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 950);
+	AddInfo(FString::Printf(TEXT("CITY DETAIL: \"%s\""), *QuestElite));
+	TestEqual(TEXT("an Elite Quest dungeon"), QuestElite, FString(TEXT("Elite Quest dungeon of 22 floors, 7 days left")));
+	TestEqual(TEXT("CONTROL: an Elite Basic dungeon names its sub-type and no kind"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 951),
+			  FString(TEXT("Elite dungeon of 9 floors, 30 days left")));
+	TestEqual(TEXT("a dungeon with no sub-type and no named kind reads as the line always did"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 952),
+			  FString(TEXT("dungeon of 12 floors, 9 days left")));
+	TestEqual(TEXT("a Quest dungeon with no sub-type is still named a Quest dungeon"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 953),
+			  FString(TEXT("Quest dungeon of 25 floors, 20 days left")));
+	TestEqual(TEXT("a dungeon the run does not hold says nothing"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 999), FString());
 	return true;
 }
 
