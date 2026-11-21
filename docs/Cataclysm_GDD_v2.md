@@ -2277,7 +2277,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Fist / Ultimate | Living Pyre | Burn for 6s, immune to stun, slow and knockback. Enemies within 4m set alight. Each hit taken raises pyre damage 8% and returns 25% of it as health. |
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Up to 3 active; a fourth destroys the oldest, which explodes in 3m. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
-| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Each thrall reserves 30 Fervour. Bosses cannot be taken. |
+| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). Each thrall reserves 30 Fervour. Bosses cannot be taken. |
 | All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
 
   
