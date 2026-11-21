@@ -137,14 +137,16 @@ pass with the row. No test pins the number of stats with no attribute.
 
 ### Registered before the run
 
-Counted on the "Test Completed. Result={" lines of window tree-6c-w1's whole-suite log at `abb9a7fc0`, whose `game/` is
-development `89fdc50a6`'s (`git diff --quiet abb9a7fc0 89fdc50a6 -- game/` exits 0), with a literal match on
-`Path={Cataclysm.<Group>.`: "5079 tests performed, 5079 succeeded, 0 failed. 48 skipped part of what they check" and
-"859 written and deleted, 0 left behind". Phase 1 registered against follow-w2 at `d4d0773ac` (5072); the ten groups
-below have the same counts in both logs. **The gold session's #2797 and #2800 merge before this window, so the
-coordinating session re-confirms the base then.**
+Counted on the "Test Completed. Result={" lines of window dirge-quest-w1's whole-suite log at `2826b9622` (#2797 and
+#2800), whose `game/` is development `b8df7e1fe`'s (`git diff --quiet 2826b9622 b8df7e1fe -- game/` exits 0), with a
+literal match on `Path={Cataclysm.<Group>.`: "5085 tests performed, 5085 succeeded, 0 failed. 48 skipped part of what
+they check" and "860 written and deleted, 0 left behind". Phase 1 registered against follow-w2 at `d4d0773ac` (5072),
+and the preparation for this turn against tree-6c-w1 at `abb9a7fc0` (5079); the ten groups below have the same counts
+in all three logs. The branch was rebased onto `b8df7e1fe` as `feat/skill-experience-gem-3`, where only this log
+conflicted, and its code commit's patch is unchanged (`git patch-id --stable` f8e4539dceb7). #2797 and #2800 changed
+none of the files this change reads or pins, and the sweep below finds the same three pins at 28.
 
-- **The whole suite: the base + 1** (5079 + 1 = 5080 against tree-6c-w1), 0 failed; 48 skipped halves and 859 test saves,
+- **The whole suite: the base + 1** (5085 + 1 = 5086 against dirge-quest-w1), 0 failed; 48 skipped halves and 860 test saves,
   the base's, because the new test builds no floor.
 - **Each group alone**: `Cataclysm.SkillLevels.` 12 to 13; `SkillLevelSources.` 19, `StatExemption.` 37,
   `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4, `Equipment.` 30
@@ -164,7 +166,8 @@ coordinating session re-confirms the base then.**
 |---|---|---|---|
 | C1 | the skills share the kill before it is raised | `Cataclysm.SkillLevels.` (13) | `IncreasedSkillExperienceGain...`, 2 (900 and 450 read 600 and 300) |
 
-- **Python before the window**: the full suite at `9a20a43ee`, on development `89fdc50a6`: "1 failed, 7847 passed, 9
+- **Python before the window**: the full suite at `9a20a43ee`, on development `89fdc50a6`, before the rebase onto
+  `b8df7e1fe`; the window runs it again beside the whole Unreal suite: "1 failed, 7847 passed, 9
   skipped in 326.06s", JUnit tests 7857, failures 1, errors 0, skipped 9. The one failure is
   `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
   naming `Gems.csv` alone, which the asset step clears. Ruff "All checks passed!". In phase 1, every Python test file
