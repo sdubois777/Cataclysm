@@ -17,7 +17,7 @@ new. Issue [#2790](https://github.com/sdubois777/Cataclysm/issues/2790).
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Its window comes after #2791's merges.
+- **NOT COMPILED OR RUN IN UNREAL YET.** Its window comes after the coordinating session's rebuild of the main checkout.
 - **THE OWNER'S REPORT**, from the play-test of 2026-11-20, verbatim: "the demonic guide dungeon mechanic is wonky,
   that dude is SPRINTING. It's impossible to keep up with him." The owner's log (`game/Saved/Logs/Cataclysm.log` in the
   main checkout) shows the rule on two dungeons, with the line "Demonic Guide: CataclysmImpCharacter_130 at floor 1's
@@ -101,18 +101,23 @@ the share.
 
 ### Registered before the run
 
-Sent to and accepted by the coordinating session on 2026-11-20. The branch was rebased onto development `50954626c`
-(#2787 branch A) as `fix/demonic-guide-keeps-pace-2`; the rebase was clean and left the patch identical (`git patch-id
---stable` 884b1c08 before and after).
+Sent to and accepted by the coordinating session on 2026-11-20. The branch was rebased twice: onto development
+`50954626c` (#2787 branch A) as `fix/demonic-guide-keeps-pace-2`, and onto `3b37878bf` (#2791) as
+`fix/demonic-guide-keeps-pace-3`. The code commit applied cleanly both times and its patch is unchanged (`git patch-id
+--stable` 884b1c08 throughout); the second rebase met a conflict only at the top of this log.
 
-- **The whole suite: #2791's measured total + 2**, 0 failed; skipped halves and test saves unchanged. The figures are
-  taken from window reserves-a-w2 at `e104ab9dc` (5053 performed, 47 skipped halves, "852 written and deleted, 0 left
-  behind") and are confirmed again from #2791's window log before the compile.
-- **Each group alone**, counted on "Test Completed. Result={" lines in reserves-a-w2's log:
-  `Cataclysm.DungeonModifierEffects.` 773 -> 775; `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23, `Cataclysm.Enemy.` 133 and
-  `Cataclysm.GroundDown.` 3, unchanged. #2791 adds its test to `Cataclysm.Gatekeeper.`, none of these.
+- **Base: 5054**, measured by window thrall-imps-w1 at `b0aba0a84`, whose `game/` is development `3b37878bf`'s (`git
+  diff b0aba0a84 3b37878bf -- game/` prints nothing): 5054 performed, 5054 succeeded, 47 skipped halves, "852 written
+  and deleted, 0 left behind". The first registration was made from window reserves-a-w2 at `e104ab9dc` (5053) as
+  "#2791's measured total + 2".
+- **The whole suite: 5056 performed, 5056 succeeded, 0 failed**: the base's 5054 and the 2 new tests; 47 skipped
+  halves and 852 test saves, the base's; none left behind.
+- **Each group alone**, counted in thrall-imps-w1's log on "Test Completed. Result={" lines and by distinct path, which
+  agree: `Cataclysm.DungeonModifierEffects.` 773 -> 775; `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23,
+  `Cataclysm.Enemy.` 133 and `Cataclysm.GroundDown.` 3, unchanged. #2791 added its test to `Cataclysm.Gatekeeper.`,
+  none of these.
 - **Four C++ guard proofs**, prefix `Cataclysm.DungeonModifierEffects.TheGuideKeepsPace` (no test matched it in
-  reserves-a-w2, so it selects exactly the two new tests), each predicted 2 performed, 1 succeeded, 1 failed:
+  thrall-imps-w1, so it selects exactly the two new tests), each predicted 2 performed, 1 succeeded, 1 failed:
 
   | Proof | Break | Test that fails | Assertions |
   |---|---|---|---|
