@@ -998,6 +998,18 @@ public:
 	bool bGuideWaits = false;
 
 	/**
+	 * THE GUIDE'S WALK SPEED, in cm/s, which `RefreshWalkSpeed` gives a guide IN PLACE OF its designed speed and every
+	 * multiplier on it: `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer` of the player's own walk
+	 * speed, written at every step by `ACataclysmDungeonGameMode::StepDemonicGuide` through `SetGuideWalkSpeed`. A guide
+	 * is not a combatant, so no floor rule, Elite modifier or ailment moves it. 0, the default, for every creature that
+	 * is not a guide, which `RefreshWalkSpeed` then walks as before. Issue #2790. NOT SAVED, as the three above are not.
+	 */
+	float GuideWalkSpeedCmPerSecond = 0.0f;
+
+	/** Sets `GuideWalkSpeedCmPerSecond` and writes the walk at once, through `RefreshWalkSpeed`. Issue #2790. */
+	void SetGuideWalkSpeed(float CmPerSecond);
+
+	/**
 	 * Whether Echoes of the Past raised this creature as an echo of the last floor's dead, whom it moves in on, and how
 	 * close it comes. Issue #2740, the owner's ruling of 2026-11-18.
 	 *

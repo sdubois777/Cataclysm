@@ -2,6 +2,242 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
+
+**Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
+holding it above 0 and below 1, and the `DemonicGuideKey` description
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`); `ACataclysmEnemyCharacter::GuideWalkSpeedCmPerSecond`
+and `SetGuideWalkSpeed`, new (`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`), and
+`ACataclysmEnemyCharacter::RefreshWalkSpeed`, which now opens with a branch for a floor rule's guide
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`); `ACataclysmDungeonGameMode::PlaceTheGuide` and
+`StepDemonicGuide` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`). Tests: two new in the group
+`Cataclysm.DungeonModifierEffects.`, and the group's figures test pins 0.8, all in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; `tools/tests/test_demonic_guide_keeps_pace.py`,
+new. Issue [#2790](https://github.com/sdubois777/Cataclysm/issues/2790).
+
+### SAID FIRST
+
+- **ITS FIRST WINDOW FAILED ONE OF ITS OWN TWO NEW TESTS, AND THE FAULT WAS IN THE TEST.** Window tree-2790-w1 at
+  `fad5d7427`: `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` failed five assertions, every other test passed, and no
+  proof ran. The guide did what the change says -- it walked at 368, which is 0.8 of the 460 the test's player walked
+  at -- but the test's player is a Ravager, whose class walk is 4.6 m/s, and the test moved the player's speed by setting
+  the movement speed attribute's base, which the player's walk does not read. The test is corrected; the section on the
+  windows has the lines.
+- **COMPILED, RUN AND PROVED IN THE SECOND WINDOW, tree-2790-w2**, at `b4e3f1c05` on development `3b37878bf`: its build
+  compiled the corrected test file; the five groups each passed alone at their registered counts; the whole Unreal suite
+  performed the registered 5056, all succeeding, with 47 skipped halves and "854 written and deleted, 0 left behind";
+  Python passed, 7817 with 9 skipped, and ruff passed; the four C++ guard proofs each proved, failing exactly the
+  registered test with exactly the registered number of assertions, 3, 3, 4 and 2. The five Python guard proofs were
+  proved in phase 1.
+- **THE OWNER'S REPORT**, from the play-test of 2026-11-20, verbatim: "the demonic guide dungeon mechanic is wonky,
+  that dude is SPRINTING. It's impossible to keep up with him." The owner's log (`game/Saved/Logs/Cataclysm.log` in the
+  main checkout) shows the rule on two dungeons, with the line "Demonic Guide: CataclysmImpCharacter_130 at floor 1's
+  entrance".
+- **THE ROW STATES NO SPEED AND SAYS NOTHING OF WAITING.** `Demonic_Demonic_Guide` in `game/Data/DungeonModifiers.csv`:
+  "Player's are chained to a demonic guide. Straying too far from their guide will cause the player to take increased
+  damage." So both figures below are judgements, not readings of the row. No figure in the row is changed, and the
+  chain of 12 m, the wait beyond 15 m and the 25% more damage taken (the coordinating session's play-test values of
+  2026-09-25 and 2026-09-26) are unchanged.
+- **FOR THE SESSION THAT REBALANCES MINION SPEED (#2793):** this change meets that work in one place.
+  `ACataclysmEnemyCharacter::RefreshWalkSpeed` now opens with a branch that, for a creature whose
+  `bGuidesThePlayerForTheFloorRule` is set and whose `GuideWalkSpeedCmPerSecond` is above 0, writes
+  `GuideWalkSpeedCmPerSecond` to the movement component's `MaxWalkSpeed` and returns, before the designed speed and its
+  multipliers are read. `SetGuideWalkSpeed` is the only writer of the field. Every other creature's field is 0, and its
+  walk is worked out as before.
+
+### The cause
+
+- **THE GUIDE WAS AN ORDINARY IMP WALKING AT THE IMP'S OWN SPEED.** `ACataclysmDungeonGameMode::PlaceTheGuide` raises
+  an Imp at the common rung, and the brain walks it with `MoveTo`, so it moved at the Imp's
+  `DesignedWalkSpeedCmPerSecond`, 650 cm/s (`CataclysmImpCharacter.h`). The player walks at
+  `ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond`, 400 cm/s, the movement speed attribute's default of 4 m/s.
+  A player walking after it fell behind by 250 cm every second.
+- **AND ITS WAIT ENDED OUTSIDE ITS CHAIN.** `StepDemonicGuide` set `bWaits = Apart > DemonicGuideWaitsBeyondCm` at
+  every step, so the guide waited beyond 15 m and walked on as soon as the player was closer than 15 m. A player
+  catching up met it walking at 15 m, outside the 12 m chain, and could close in only by being faster than it, which no
+  player was. They stayed between 12 m and 15 m and took the 25% more damage for as long as they followed it.
+
+### The rulings
+
+From the coordinating session, 2026-11-20, accepting this session's plan, verbatim:
+
+- "THE CAUSE: as you found. The guide is an Imp walking at its designed 650 cm/s against the player's 400, and its wait
+  ends at 15 m, outside the 12 m chain."
+- "G1, the guide walks at 0.8 of the player's current walk speed, read each step: ACCEPTED. The research settles that
+  it follows the player; 0.8 is a judgement, labelled so. Floor and Elite multipliers do not touch it: ACCEPTED."
+- "G2, once it waits, it waits until the player is back inside the chain (12 m): ACCEPTED as a judgement. The row says
+  nothing of waiting."
+
+**THE 0.8 FIGURE WAS PROPOSED BY THIS SESSION AND ACCEPTED BY THE COORDINATING SESSION**, as a judgement; the owner
+stated no figure. Any share below 1 lets a player walking with the guide close a gap; 0.8 closes 80 cm a second at the
+default speed. Leaving floor and Elite speed multipliers off the guide is a judgement too: the guide is not a combatant.
+
+### What the genre does
+
+The research settles that a companion walking with the player takes its speed from the player's. It does not settle
+the share.
+
+- Ghost of Tsushima's companions adjust to the player's speed, where Red Dead Redemption 2 makes the player match the
+  companion (Game*Spark, https://www.gamespark.jp/article/2024/10/01/145604.html).
+- Older Assassin's Creed games match the companion's speed to the player's when the player is close
+  (https://inkl.com/news/kingdom-come-deliverance-2-s-follow-npc-toggle-should-be-mandatory-in-all-videogames-with-a-jail-sentence-for-developers-not-using-it).
+- A fixed speed between the player's walk and run is the recognised failure, because it makes the player stop and start
+  (https://lemmy.world/comment/20175456;
+  https://gamedev.net/forums/topic/681753-the-dreaded-34escort34-quest/5308661/).
+- No Diablo or Path of Exile example was found.
+
+### The change
+
+- **G1.** `DemonicGuideWalkShareOfPlayer = 0.8f` sits beside the guide's other figures. `PlaceTheGuide` gives the new
+  guide its share of the player's default walk, 320 cm/s, through `SetGuideWalkSpeed`, after it is made the floor's
+  guide. Each `StepDemonicGuide` then reads the player's movement component's `MaxWalkSpeed` and gives the guide 0.8 of
+  it. That speed already carries the movement speed attribute, gear, passives and the slowing ailments, so a slowed
+  player has a slower guide and a faster player a faster one.
+- **G2.** `bWaits = Apart > DemonicGuideWaitsBeyondCm || (Guide->bGuideWaits && bBeyond)`, where `bBeyond` is
+  `Apart > DemonicGuideChainCm`. The guide still starts waiting beyond 15 m; once waiting, it waits until the player is
+  inside 12 m.
+- `GuideWalkSpeedCmPerSecond` is not saved, as the guide's other three fields are not.
+
+### Tests
+
+- **`Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk`**, new: the guide is raised at
+  320, 0.8 of the player's default 400. After the first step it walks at 0.8 of the test player's class walk, which is
+  not 400 (a Ravager's 460). With the player's walk then set through the movement speed stat's inputs, as the class and
+  gear set it, at 5 and 2 m/s, the player reads 500 and 200 after the step and the guide 400 and 160. Control: the same
+  Imp, no longer the guide, walks at its own 650. Prints "GUIDE PACE". Rewritten after window tree-2790-w1; see the
+  section on the windows.
+- **`Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain`**, new: it waits at
+  15.1 m, still waits at 14.9 m and at 12.1 m, walks on at 11.9 m, and the brain then returns `Guiding`. Control:
+  having walked on, it does not wait at 14.9 m. Prints "GUIDE WAIT".
+- The group's figures test pins 0.8. The existing `TheGuideHeadsForTheExitAndWaitsBeyondFifteenMetres` is unchanged: it
+  asks "not waiting at 14.9 m" of a guide that has not waited yet.
+- `tools/tests/test_demonic_guide_keeps_pace.py`, five checks, because continuous integration compiles no C++.
+
+### Registered before the run
+
+Sent to and accepted by the coordinating session on 2026-11-20. The branch was rebased twice: onto development
+`50954626c` (#2787 branch A) as `fix/demonic-guide-keeps-pace-2`, and onto `3b37878bf` (#2791) as
+`fix/demonic-guide-keeps-pace-3`. The code commit applied cleanly both times and its patch is unchanged (`git patch-id
+--stable` 884b1c08 throughout); the second rebase met a conflict only at the top of this log.
+
+- **Base: 5054**, measured by window thrall-imps-w1 at `b0aba0a84`, whose `game/` is development `3b37878bf`'s (`git
+  diff b0aba0a84 3b37878bf -- game/` prints nothing): 5054 performed, 5054 succeeded, 47 skipped halves, "852 written
+  and deleted, 0 left behind". The first registration was made from window reserves-a-w2 at `e104ab9dc` (5053) as
+  "#2791's measured total + 2".
+- **The whole suite: 5056 performed, 5056 succeeded, 0 failed**: the base's 5054 and the 2 new tests; 47 skipped
+  halves, the base's; **854 test saves written and deleted, none left behind**. This was first registered as 852, the
+  base's, which was wrong: each of the two new tests builds a dungeon floor, and the floor writes one save. Window
+  tree-2790-w1 printed "Test saves: 854 written and deleted, 0 left behind".
+- **Each group alone**, counted in thrall-imps-w1's log on "Test Completed. Result={" lines and by distinct path, which
+  agree: `Cataclysm.DungeonModifierEffects.` 773 -> 775; `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23,
+  `Cataclysm.Enemy.` 19 and `Cataclysm.GroundDown.` 3, unchanged. #2791 added its test to `Cataclysm.Gatekeeper.`,
+  none of these.
+- **`Cataclysm.Enemy.` WAS FIRST REGISTERED AS 133, WHICH WAS WRONG.** This session counted it with `grep -c
+  "Path={Cataclysm\.Enemy."`, whose last dot is unescaped and matches any character, so the count also took in the 114
+  tests of nine other groups whose names begin `Cataclysm.Enemy`: `EnemyModifiers.` 57, `EnemyHitTiming.` 14,
+  `EnemyScore.` 12, `EnemyStrength.` 8, `EnemyTags.` 8, `EnemyRarity.` 6, `EnemyBurn.` 4, `EnemyDeath.` 4 and
+  `EnemyCloth.` 1. The window's own recount, which matches the prefix as literal text, stopped the first start of
+  window tree-2790-w1 at 18:26 on 2026-11-20 with "Cataclysm.Enemy. base 19 lines, 19 distinct paths; registered 133
+  less 0 this slice adds: MISMATCH", before it took the lock. The other four groups matched. Recounted with a literal
+  match (`grep -cF`): 773, 51, 23, 19 and 3. The figure is re-registered with the coordinating session before the
+  window starts again.
+- **Four C++ guard proofs**, prefix `Cataclysm.DungeonModifierEffects.TheGuideKeepsPace` (no test matched it in
+  thrall-imps-w1, so it selects exactly the two new tests), each predicted 2 performed, 1 succeeded, 1 failed:
+
+  | Proof | Break | Test that fails | Assertions |
+  |---|---|---|---|
+  | F1 | the step sets no walk | `...AtFourFifthsOfThePlayersWalk` | 3 |
+  | F2 | the step gives the guide 1.0 of the player's walk | `...AtFourFifthsOfThePlayersWalk` | 3 |
+  | F3 | `RefreshWalkSpeed`'s guide branch is never taken | `...AtFourFifthsOfThePlayersWalk` | 4 |
+  | F4 | the "until back inside its chain" term is dropped | `...WaitingUntilThePlayerIsBackInsideItsChain` | 2 |
+
+  F1 was registered at 2 assertions and moved to 3 when the pace test was rewritten after window tree-2790-w1: the test
+  now also checks the guide after the first step, at 0.8 of the class walk, which a guide left at 320 fails as well.
+
+### The five Python guards, proved in phase 1
+
+Each through `tools/prove_guard.break_and_run`, failing exactly the named test with the break in and passing with it
+out (235 tests: the new file and its two neighbours):
+
+| Proof | Break | Test that failed |
+|---|---|---|
+| L1 | the share becomes 1.0 | `test_the_share_is_below_one_and_named_in_the_rules_description` |
+| L2 | a step no longer sets the guide's walk | `test_each_step_sets_the_guides_walk_from_the_players_own` |
+| L3 | the guide is raised without its share of the default | `test_the_guide_is_raised_at_its_share_of_the_players_default_walk` |
+| L4 | a guide's walk speed is never applied | `test_a_guides_walk_comes_before_and_in_place_of_the_designed_speed` |
+| L5 | the guide walks on again at 15 m | `test_once_it_waits_it_waits_while_the_player_is_beyond_its_chain` |
+
+The full Python suite at the phase 1 commit `8667afc62`: "7804 passed, 9 skipped", JUnit 7813 tests, 0 failures, 0
+errors, 9 skipped; ruff "All checks passed!".
+
+### The windows
+
+**tree-2790-w1, at `fad5d7427` on 2026-11-20, 18:31 to 19:02. FAILED, on the test.**
+
+- Pre-checks "ALL PASS"; the five groups' recount MATCH; the version sweep "28 lines stating a version; NO MISMATCH";
+  the build "target already up to date, 0 actions, nothing compiled" (the three builds of 2fb21d397 had compiled the
+  same `game/`).
+- `Cataclysm.DungeonModifierEffects.` alone: "775 tests performed, 774 succeeded, 1 failed:
+  TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk". `AI.` 51, `Brute.` 23, `Enemy.` 19 and `GroundDown.` 3 passed.
+- The whole suite: "5056 tests performed, 5055 succeeded, 1 failed: TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk", 47
+  skipped halves, "Test saves: 854 written and deleted, 0 left behind", "Declared: 5056 tests in the tree at fad5d7427;
+  5056 performed, gap 0".
+- Python "7817 passed, 9 skipped in 321.77s", JUnit 7826 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks
+  passed!".
+- "STOPPED before the proofs", as registered; the lock released.
+- The test printed "GUIDE PACE: raised at 320; the player at 460 gives 368, at 460 gives 368, at 2 m/s gives 368; not a
+  guide 650". The failed lines included "Expected 'set-up: the player walks at 400' to be 400.000000, but it was
+  460.000000" and "Expected 'a faster player has a faster guide: 400' to be 400.000000, but it was 368.000000".
+  `TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain` passed: "GUIDE WAIT: 15.1 m waits, 14.9 m waits, 12.1 m
+  waits, 11.9 m walks; then 14.9 m walks".
+
+**THE CAUSE, IN THE TEST.** The guide read the player's walk at every step and walked at 0.8 of it, as built. The
+test's player (`FPossessedPlayer`, on a dungeon the game mode started) is a Ravager, whose `movement_speed` in
+`game/Data/ClassStats.csv` is 4.6, so it walked at 460 and not the default 400. And the test set the player's speed with
+`SetNumericAttributeBase` on the movement speed attribute, which moved nothing:
+`ACataclysmPlayerCharacter::RefreshMovementSpeed` asks the stat pipeline (`StatForSkill("movement_speed")`), whose
+inputs `UCataclysmPlayerClassStats::ApplyTo` writes with the class's own base, and the attribute is only its fallback
+for a stat with no inputs. The test now reads the class walk first and checks the guide against 0.8 of it, then sets
+the player's walk through `SetStatInputs` and `RefreshMovementSpeed`, and reads the player's walk again after each step
+so a step that put the class speed back would fail a set-up line. The guide's code is unchanged.
+
+**tree-2790-w2, at `b4e3f1c05` on 2026-11-20, 19:13 to 19:53. PASSED, and every proof proved.** Its lock was
+named `tree-2790-w1`, as the first window's was: the run script's lock name was not changed between the two.
+
+- Pre-checks "ALL PASS"; the five groups' recount MATCH; the version sweep "28 lines stating a version; NO MISMATCH";
+  the build "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp | exit 0", the unity file holding
+  the corrected test file.
+- Each group alone, at its registered count:
+
+  | Group | Line |
+  |---|---|
+  | `Cataclysm.DungeonModifierEffects.` | "775 tests performed, 775 succeeded, 0 failed" |
+  | `Cataclysm.AI.` | "51 tests performed, 51 succeeded, 0 failed", 2 skipped halves |
+  | `Cataclysm.Brute.` | "23 tests performed, 23 succeeded, 0 failed", 10 skipped halves |
+  | `Cataclysm.Enemy.` | "19 tests performed, 19 succeeded, 0 failed" |
+  | `Cataclysm.GroundDown.` | "3 tests performed, 3 succeeded, 0 failed" |
+
+- The whole suite: "5056 tests performed, 5056 succeeded, 0 failed", 47 skipped halves, "Test saves: 854 written and
+  deleted, 0 left behind" (854 registered), "Declared: 5056 tests in the tree at b4e3f1c05; 5056 performed, gap 0".
+- The two new tests printed "GUIDE PACE: raised at 320; the player at 460 gives 368, at 500 gives 400, at 200 gives
+  160; not a guide 650" and "GUIDE WAIT: 15.1 m waits, 14.9 m waits, 12.1 m waits, 11.9 m walks; then 14.9 m walks".
+- Python "7817 passed, 9 skipped in 323.68s", JUnit 7826 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks
+  passed!".
+- The four C++ guard proofs, each "PROVED: with the break in: 2 tests performed, 1 succeeded, 1 failed ... restored: 2
+  tests performed, 2 succeeded, 0 failed", none crashed, the source hash the same before and after each. The failed
+  assertions, counted on "Error: Expected" lines in each proof's broken-half log:
+
+  | Proof | Test that failed | Assertions, registered | What the test printed with the break in |
+  |---|---|---|---|
+  | F1 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 3, registered 3 | "the player at 460 gives 320, at 500 gives 320, at 200 gives 320" |
+  | F2 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 3, registered 3 | "the player at 460 gives 460, at 500 gives 500, at 200 gives 200" |
+  | F3 | `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` | 4, registered 4 | "raised at 650; the player at 460 gives 650, at 500 gives 650, at 200 gives 650" |
+  | F4 | `TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain` | 2, registered 2 | "15.1 m waits, 14.9 m walks, 12.1 m walks, 11.9 m walks" |
+
+- The lock released; the tested head and the head after the window both `b4e3f1c0`.
+
+---
+
 ## 2026-11-20 — A Gatekeeper taken by Subjugate calls its imps onto its commander's side (#2791)
 
 **Affects:** `ACataclysmGatekeeperCharacter::UseEnemyAbility`, Call the Damned, which now gives each Imp the

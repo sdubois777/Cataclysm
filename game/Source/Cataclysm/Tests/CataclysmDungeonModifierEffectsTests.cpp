@@ -36736,7 +36736,8 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
-// THE FIGURES: A 12 M CHAIN, A GUIDE THAT WAITS BEYOND 15 M, 25% MORE DAMAGE TAKEN.
+// THE FIGURES: A 12 M CHAIN, A GUIDE THAT WAITS BEYOND 15 M, 25% MORE DAMAGE TAKEN, AND A GUIDE THAT WALKS AT 0.8 OF
+// THE PLAYER'S OWN WALK SPEED (issue #2790).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFiguresTest,
 	"Cataclysm.DungeonModifierEffects.DemonicGuideFiguresChainWaitAndDamage",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -36748,6 +36749,7 @@ bool FCataclysmGuideFiguresTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a 12 m chain"), Effects::DemonicGuideChainCm, 1200.0f, 0.001f);
 	TestEqual(TEXT("it waits beyond 15 m"), Effects::DemonicGuideWaitsBeyondCm, 1500.0f, 0.001f);
 	TestEqual(TEXT("25% more damage taken"), Effects::DemonicGuideDamageTakenMorePercent, 25.0f, 0.001f);
+	TestEqual(TEXT("it walks at 0.8 of the player's speed"), Effects::DemonicGuideWalkShareOfPlayer, 0.8f, 0.001f);
 	return true;
 }
 
@@ -36875,6 +36877,151 @@ bool FCataclysmGuideWalksTest::RunTest(const FString& Parameters)
 			  static_cast<int32>(ECataclysmBrainAction::Idle));
 	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(GuideRow),
 			  FString(TEXT("demonic guide: beyond its chain, 25% more damage taken; it waits for you")));
+	return true;
+}
+
+// THE GUIDE KEEPS PACE: IT WALKS AT 0.8 OF THE PLAYER'S OWN WALK SPEED. Issue #2790: it walked at the Imp's own
+// 650 cm/s, against the player's 400. Raised, it walks at 0.8 of the player's default, 320; each step reads the
+// player's own walk. The test's player walks first at its class's own speed (a Ravager's 4.6 m/s in window
+// tree-2790-w1, so not the default the guide was raised at), and the guide follows it at 0.8. Then the player's speed is
+// set as the class and gear set it, through the stat inputs `UCataclysmPlayerClassStats::ApplyTo` writes, which
+// `ACataclysmPlayerCharacter::RefreshMovementSpeed` reads: 5 m/s gives 400 and 2 m/s 160. SETTING THE ATTRIBUTE'S BASE
+// DOES NOT DO IT: the stat inputs carry the class's own base, so the first version of this test, which set the base,
+// left the player at 460 and failed in tree-2790-w1. CONTROL: the same Imp, no longer the guide, walks at its own
+// designed 650. Prints "GUIDE PACE".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuidePaceTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuidePaceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	UCharacterMovementComponent* PlayerMovement = Player.Character->GetCharacterMovement();
+	UCharacterMovementComponent* GuideMovement = Guide->GetCharacterMovement();
+	if (!TestNotNull(TEXT("set-up: the player's movement"), PlayerMovement)
+		|| !TestNotNull(TEXT("set-up: the guide's movement"), GuideMovement))
+	{
+		return false;
+	}
+
+	// THE PLAYER'S WALK, SET AS THE CLASS AND GEAR SET IT: the movement speed stat's inputs, with this base and no
+	// modifier, read by the pawn's own refresh. `SetStatInputs` replaces the character's stat lines rather than adding
+	// to them, which is harmless here because this test reads nothing but walking speeds.
+	auto PlayerWalksAt = [&Player](float MetresPerSecond)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(TEXT("movement_speed"))).Base = MetresPerSecond;
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Player.Character->RefreshMovementSpeed();
+	};
+
+	// WITHIN THE CHAIN, so the step sends the guide on and changes no other figure.
+	StandFromTheGuide(Mode, Player, 500.0f);
+	const float Raised = GuideMovement->MaxWalkSpeed;
+	const float PlayerAtClass = PlayerMovement->MaxWalkSpeed;
+	Beat(Mode, 1);
+	const float AtClass = GuideMovement->MaxWalkSpeed;
+	// THE PLAYER'S WALK IS READ AGAIN AFTER EACH BEAT, so a beat that put the class's own speed back would fail a
+	// set-up line here rather than leave the guide's figure to be read against the wrong player.
+	PlayerWalksAt(5.0f);
+	Beat(Mode, 1);
+	const float PlayerAtFive = PlayerMovement->MaxWalkSpeed;
+	const float AtFive = GuideMovement->MaxWalkSpeed;
+	PlayerWalksAt(2.0f);
+	Beat(Mode, 1);
+	const float PlayerAtTwo = PlayerMovement->MaxWalkSpeed;
+	const float AtTwo = GuideMovement->MaxWalkSpeed;
+
+	// CONTROL: the same Imp, no longer the floor's guide, walks at its own designed speed.
+	Guide->bGuidesThePlayerForTheFloorRule = false;
+	Guide->RefreshWalkSpeed();
+	const float NotAGuide = GuideMovement->MaxWalkSpeed;
+	AddInfo(FString::Printf(TEXT("GUIDE PACE: raised at %.0f; the player at %.0f gives %.0f, at %.0f gives %.0f, at %.0f "
+								 "gives %.0f; not a guide %.0f"),
+							Raised, PlayerAtClass, AtClass, PlayerAtFive, AtFive, PlayerAtTwo, AtTwo, NotAGuide));
+
+	TestEqual(TEXT("raised at 0.8 of the player's default 400: 320"), Raised, 320.0f, 0.5f);
+	TestFalse(TEXT("set-up: the player's class walk is not the default the guide was raised at"),
+			  FMath::IsNearlyEqual(PlayerAtClass, ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond, 0.5f));
+	TestEqual(TEXT("the first step gives it 0.8 of the player's class walk"), AtClass, PlayerAtClass * 0.8f, 0.5f);
+	TestEqual(TEXT("set-up: at 5 m/s the player walks at 500, after the beat"), PlayerAtFive, 500.0f, 0.5f);
+	TestEqual(TEXT("a faster player has a faster guide: 400"), AtFive, 400.0f, 0.5f);
+	TestEqual(TEXT("set-up: at 2 m/s the player walks at 200, after the beat"), PlayerAtTwo, 200.0f, 0.5f);
+	TestEqual(TEXT("a slowed player a slower one: 160"), AtTwo, 160.0f, 0.5f);
+	TestEqual(TEXT("CONTROL: an Imp that is not a guide walks at its own 650"), NotAGuide, 650.0f, 0.5f);
+	return true;
+}
+
+// THE GUIDE KEEPS PACE: ONCE IT WAITS, IT WAITS UNTIL THE PLAYER IS BACK INSIDE ITS 12 M CHAIN. Issue #2790: it walked
+// on again at 15 m, outside its chain, so a player catching up could not get back inside. It waits at 15.1 m, still
+// waits at 14.9 m and at 12.1 m, and walks on at 11.9 m. CONTROL: having walked on, it does not wait at 14.9 m, as a
+// guide that has not waited does not. Prints "GUIDE WAIT".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideWaitTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideWaitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Guide->GetController());
+	if (!TestNotNull(TEXT("the guide has a brain"), Brain))
+	{
+		return false;
+	}
+
+	auto WaitsAt = [Mode, &Player, Guide](float Cm)
+	{
+		StandFromTheGuide(Mode, Player, Cm);
+		Beat(Mode, 1);
+		return Guide->bGuideWaits;
+	};
+	const bool bAt1510 = WaitsAt(1510.0f);
+	const bool bAt1490 = WaitsAt(1490.0f);
+	const bool bAt1210 = WaitsAt(1210.0f);
+	const bool bAt1190 = WaitsAt(1190.0f);
+	const ECataclysmBrainAction Then = Brain->Think();
+	const bool bAgainAt1490 = WaitsAt(1490.0f);
+	AddInfo(FString::Printf(TEXT("GUIDE WAIT: 15.1 m %s, 14.9 m %s, 12.1 m %s, 11.9 m %s; then 14.9 m %s"),
+							bAt1510 ? TEXT("waits") : TEXT("walks"), bAt1490 ? TEXT("waits") : TEXT("walks"),
+							bAt1210 ? TEXT("waits") : TEXT("walks"), bAt1190 ? TEXT("waits") : TEXT("walks"),
+							bAgainAt1490 ? TEXT("waits") : TEXT("walks")));
+
+	TestTrue(TEXT("it waits at 15.1 m"), bAt1510);
+	TestTrue(TEXT("and still waits at 14.9 m"), bAt1490);
+	TestTrue(TEXT("and at 12.1 m, outside its chain"), bAt1210);
+	TestFalse(TEXT("it walks on at 11.9 m, inside its chain"), bAt1190);
+	TestEqual(TEXT("heading for the exit"), static_cast<int32>(Then), static_cast<int32>(ECataclysmBrainAction::Guiding));
+	TestFalse(TEXT("CONTROL: having walked on, it does not wait at 14.9 m"), bAgainAt1490);
 	return true;
 }
 

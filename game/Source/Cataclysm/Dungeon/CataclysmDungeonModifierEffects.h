@@ -3198,8 +3198,11 @@ public:
 	 * figure; every figure here is a play-test value:
 	 * - THE GUIDE IS AN IMP AT THE COMMON RUNG, raised at the entrance of each new arena. It cannot be hurt, pays
 	 *   nothing, takes no hostile action, and is labelled "Guide" under its health bar.
-	 * - IT WALKS TO THE FLOOR'S EXIT, and waits while the player is further from it than
-	 *   `DemonicGuideWaitsBeyondCm`. The creature brain walks it; see `bGuidesThePlayerForTheFloorRule`.
+	 * - IT WALKS TO THE FLOOR'S EXIT AT `DemonicGuideWalkShareOfPlayer` OF THE PLAYER'S OWN WALK SPEED, read at every
+	 *   step, and waits once the player is further from it than `DemonicGuideWaitsBeyondCm`, UNTIL THE PLAYER IS BACK
+	 *   INSIDE ITS CHAIN. Issue #2790: it walked at the Imp's own 650 cm/s against the player's 400, and walked on again
+	 *   at 15 m, outside its chain, so a player following it could not get back inside. The creature brain walks it;
+	 *   see `bGuidesThePlayerForTheFloorRule` and `ACataclysmEnemyCharacter::GuideWalkSpeedCmPerSecond`.
 	 * - BEYOND `DemonicGuideChainCm` FROM IT, THE PLAYER TAKES `DemonicGuideDamageTakenMorePercent` MORE DAMAGE.
 	 * - THE CHAIN IS DRAWN as a zone of that radius around the guide. Nothing holds the player back.
 	 */
@@ -6718,8 +6721,20 @@ public:
 	static constexpr float DemonicGuideDamageTakenMorePercent = 25.0f;
 	static constexpr float DemonicGuideChainRedrawCm = 100.0f;
 
+	/**
+	 * THE GUIDE'S WALK, AS A SHARE OF THE PLAYER'S OWN WALK SPEED, read at every step: 320 cm/s against the player's
+	 * default 400. Issue #2790, accepted by the coordinating session on 2026-11-20. Games that walk a companion beside
+	 * the player set its speed from the player's (Ghost of Tsushima; the older Assassin's Creed games), which is what
+	 * the research settles; THE SHARE IS A JUDGEMENT, below 1 so a player walking with it closes a gap -- 80 cm a
+	 * second at the default speed.
+	 */
+	static constexpr float DemonicGuideWalkShareOfPlayer = 0.8f;
+
 	static_assert(DemonicGuideWaitsBeyondCm > DemonicGuideChainCm,
 		"A guide that waited before the player was beyond its chain would never let the chain be felt.");
+
+	static_assert(DemonicGuideWalkShareOfPlayer > 0.0f && DemonicGuideWalkShareOfPlayer < 1.0f,
+		"A guide that walked at the player's own speed or faster could never be caught up with.");
 
 	static_assert(
 		RawSewageRiversPerFloor > 0 && RawSewageRiversPerHordeArena > 0 && RawSewageSecondsPerStack > 0.0f
