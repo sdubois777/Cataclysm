@@ -423,6 +423,56 @@ After rebasing onto `63d4cbd4c`, at `17172cc41`, the commit that registers tree-
 skipped in 345.85s (0:05:45)"; the JUnit file: tests 7826, failures 0, errors 0, skipped 9. ruff: "All checks
 passed!". The 5 more than at `42c9dbf13` came with #2790's `tools/tests/test_demonic_guide_keeps_pace.py`.
 
+### Window vesselstep-w1, 2026-11-20, 20:32 to 20:58, at `8a0805616` on `63d4cbd4c`: FAILED, THREE OF THE FOUR NEW TESTS
+
+**WHAT DID NOT WORK, FIRST.** Three of the four new tests failed, for two separate reasons, so no proof was run: a
+fix moves the head. Output: `.claude/windows/vesselstep_w1_run.out` in this session's worktree, with each run's
+engine log beside it.
+
+| Step | Read | Registered |
+|---|---|---|
+| Build | "Succeeded - target already up to date, 0 actions, nothing compiled" | succeeds |
+| `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `VesselstepLeavesBothEndsOfTheTradeBurning` alone | 1 of 1 | 1 of 1 |
+| `VesselstepDoesNotTradeWithAnImpBehindAWall` alone | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| `AVesselstepTradesPlacesWithACommandedCreature` alone | 1 of 1 | 1 of 1 |
+| `Cataclysm.Command.` | 26 performed, 23 succeeded, 3 failed: the same three | 26 of 26 |
+| Whole suite | 5060 performed, 5057 succeeded, 3 failed: the same three; 47 skipped halves; every declared test reported | 5060 of 5060, 47 |
+| Test saves | "858 written and deleted, 0 left behind" | 858, 0 |
+| Python | "7817 passed, 9 skipped in 390.44s"; JUnit tests 7826, failures 0, errors 0, skipped 9 | passes |
+| ruff | "All checks passed!" | passes |
+| Proofs | not run | P1 to P4 |
+
+**NO OTHER TEST FAILED.** The whole suite's only failures are the three new tests, so the exchange broke none of
+the 5056 tests the base passed.
+
+**THE EXCHANGE ITSELF WORKED.** Both trade tests read, in their own line: "the player ended 0.0 cm from where the
+imp stood and 0.0 cm above the floor; the imp ended 0.0 cm from where the player stood and 120.0 cm above the floor",
+and the game's line: "Vesselstep traded places with CataclysmMinion_0: CataclysmPlayerCharacter_0 from (-5800, -7000)
+to (-5000, -7000), CataclysmMinion_0 from (-5000, -7000) to (-5800, -7000)." Each failed on one assertion only,
+"and so does the imp: 120.0 cm": the imp is put 120 cm above the floor. The creature standing between them in the
+second test was not moved and did not stop the trade.
+
+**THE CAUSE OF THE 120 CM IS NOT KNOWN YET.** Read and ruled out: the fit not ignoring the player
+(`ComponentEncroachesBlockingGeometry_WithAdjustment` calls `InitSweepCollisionParams`, which adds the ignore list);
+cells at different heights (`ACataclysmDungeonFloor::WorldOfCell` gives every cell the floor actor's height); an
+actor attached to the player (no game code attaches one); the imp's placeholder mesh (`NoCollision`); and
+`TeleportTo` with no check (it runs no fit). The leading candidate, not proven: the test's imp is still falling when
+moved (spawned 500 cm up, never ticked), so `UCharacterMovementComponent::OnTeleported` lands it
+(`bRestoreFloorWhenMissingBaseComponent` is true by default), entering walking runs `AdjustFloorHeight`, a swept move,
+and that pushes the imp out of the player's capsule, which still stands there and is no longer ignored. One fact
+does not fit it: the player, possessed the same way, ended at 0.0 cm rather than the about 2 cm a landing gives. The
+coordinating session ruled one diagnostic press to settle it before any fix is written.
+
+**THE WALL TEST FAILED IN ITS SET-UP**: "Expected 'set-up: two floor cells with a wall between them' to be true".
+`AFloorCellWith` scans every cell of floor 2's plan and none has a floor cell, one rock cell and a floor cell in a
+line. The generator insets each room one cell inside its leaf "so that two rooms never share a wall", so two rooms
+stand at least two rock cells apart. Ruled 2026-11-20: the test builds its wall, a raised `ACataclysmTerrain` wall
+with the floor walls' own `BlockAll` profile, rather than searching for one.
+
+The lock was released when the window ended.
+
 **ONE PYTHON CHECK HAD TO MOVE, AND MOVED.** The first run, at `e0b08060c`, read "1 failed, 7798 passed, 9 skipped":
 `test_the_check_reads_the_game_and_finds_the_helper` in
 `tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py` asserts that at least eight call sites call
