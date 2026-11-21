@@ -213,16 +213,27 @@ def test_no_animation_may_move_the_character():
     THE LESSON IS THE SHAPE OF THE CHECK, not the API. The old one asserted
     that a line I wrote was present. It could not tell whether the character
     moved, so it could not fail for the reason it existed.
+
+    THE LINE MOVED INTO `PlayTheMannequinsAnimationOn` IN ISSUE #2806, a static
+    the player and the creatures that copy it both call, so it is looked for
+    there, and `ResolveAnimationBlueprint` is held to calling it.
     """
+    source = read(PLAYER_CPP)
     body = function_body(
-        read(PLAYER_CPP),
-        "bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint")
+        source, "bool ACataclysmPlayerCharacter::PlayTheMannequinsAnimationOn")
 
     assert "SetRootMotionMode(ERootMotionMode::IgnoreRootMotion)" in body, (
-        "ResolveAnimationBlueprint does not set the animation instance to "
+        "PlayTheMannequinsAnimationOn does not set the animation instance to "
         "ignore root motion, so every attack clip drives the character "
         "forward. IgnoreRootMotion means 'extract it but do not apply it', "
         "which keeps the mesh on the capsule while moving neither.")
+
+    player = function_body(
+        source, "bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint")
+    assert "PlayTheMannequinsAnimationOn(MeshComponent)" in player, (
+        "ResolveAnimationBlueprint no longer calls PlayTheMannequinsAnimationOn, "
+        "so the player's animation Blueprint is set somewhere this check does "
+        "not look, and may not ignore root motion.")
 
 
 def test_using_a_skill_turns_the_character_to_face_the_aim():

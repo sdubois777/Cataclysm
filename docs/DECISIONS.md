@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The Corrupted Stalker and the Worn Residue double wear the player's Mannequin body and hold the weapons they wear, rather than the grey placeholder cylinder (#2806)
+
+**Affects:** `ACataclysmPlayerCharacter::MakeHand`, `WearTheMannequinsBody`, `PlayTheMannequinsAnimationOn`,
+`LoadTheMannequinsDeathClips` and `DrawWeaponsInHands`, new statics holding steps moved out of the player's constructor,
+`ResolveBody`, `ResolveAnimationBlueprint` and `RefreshWeaponMeshes`, which now call them
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`);
+`ACataclysmCorruptedStalkerCharacter::RightHandWeapon`, `LeftHandWeapon`, `RightHandBase`, `LeftHandBase`,
+`ResolveBody`, `PreRegisterAllComponents`, `BeginPlay` and `DrawWornWeapons`, new, and `WearTheBuild`, which draws its
+hands (`CataclysmCorruptedStalkerCharacter.h` and `.cpp`); `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`,
+which draws its hands (`CataclysmConsumptionDoubleCharacter.cpp`). Tests: the new group `Cataclysm.PlayerCopies.`, four,
+in `game/Source/Cataclysm/Tests/CataclysmPlayerCopiesTests.cpp`. Issue
+[#2806](https://github.com/sdubois777/Cataclysm/issues/2806).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
+  session's turn.
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "The corrupted dopples and nemesis should be using the character model
+  we use, it's kinda hard to see a grey cylinder coming at you before it murders you".
+- **A KNOWN VISUAL OFFSET, ruled J1:** the copies keep the creature capsule, radius 48 and half height 80, and the
+  Mannequin is placed with its feet at the capsule's bottom, as it is on the player's own capsule of half height 96.
+  So **the body stands above the capsule's top by up to 32 cm**, the difference between the player's 192 cm capsule
+  and the creature's 160 cm one: the collision is the creature's and the look is the player's. The Mannequin's own
+  height was not measured; without the editor, the 32 cm is the capsules' difference, not the body's.
+- **NOT IN THIS CHANGE, each by a ruling:** no tint to tell a copy from the player (J2: the coordinating session is
+  asking the owner whether the copies should be told apart, and how); no arm swing on a copy's blows (J3: issue
+  [#2811](https://github.com/sdubois777/Cataclysm/issues/2811)).
+
+### What the owner means
+
+Two creatures, and the owner's words name both:
+
+| The owner's word | The creature | Why |
+| :-- | :-- | :-- |
+| "nemesis" | the Corrupted Stalker, `ACataclysmCorruptedStalkerCharacter`, raised by the dungeon modifier `Generic_Corrupted_Stalker` | the owner's own ruling of 2026-08-05 (the entry "A run ending costs the run, not the character") calls its source "the pool of Nemesis characters for that dungeon modifier" |
+| "corrupted dopples" | the Worn Residue double, `ACataclysmConsumptionDoubleCharacter`, a subclass of the Stalker carrying the player's own build | it is the player's corrupted double |
+
+Searched and not a copy of the player: Echoes of the Past (#2740) raises the creatures that died on the last floor;
+the enemy modifier `Chaos_Mirror_Image` swaps a creature's place with the player's; `ACataclysmComparisonStandIn` is
+never drawn, and exists to work out a tooltip's stats. The character headers, `DungeonModifiers.csv`,
+`EnemyModifiers.csv` and the design document were searched.
+
+### Why a grey cylinder
+
+**A missing mesh assignment, not the capsule's debug draw.** `ACataclysmEnemyCharacter`'s constructor gives every
+creature a `PlaceholderBody`, a static mesh of `/Engine/BasicShapes/Cylinder`. Each dressed creature puts its own
+skeletal mesh on and hides the cylinder in its `ResolveBody`. The Stalker and the double set no mesh at all, so they
+kept the cylinder in every checkout, with or without any art.
+
+### The change
+
+- **ONE SET OF STEPS FOR THE PLAYER AND ITS COPIES.** The player's own steps -- making a hand on a socket, putting the
+  Mannequin on at the capsule's bottom and the engine's -90 degree yaw, playing `ABP_Unarmed` with root motion ignored,
+  loading the six death clips with a null kept for one missing, and drawing the worn weapons in the hands -- are moved
+  into five statics on `ACataclysmPlayerCharacter`. **The player's behaviour is unchanged**: it calls them in the same
+  order and keeps its own warnings around them, which is why none of the five logs a missing asset. The window runs the
+  player's groups alone to show it.
+- **THE STALKER DRESSES AS THE PLAYER DOES:** its two hands in its constructor, the body put on before its components
+  register (so the hands find their sockets), and its `ResolveBody` on `BeginPlay`, which places the body on its own
+  capsule, plays `ABP_Unarmed`, loads the death clips into the creature's own `DeathAnimations` (which
+  `ACataclysmEnemyCharacter::PlayDeathAnimation` draws from) and hides the cylinder. The double inherits all of it.
+- **THE WEAPONS THEY WEAR, IN THEIR HANDS.** The player's model shows its equipment only as the weapons in its hands, so
+  that is what a copy shows. `WearTheBuild` and `WearThePlayersBuild` each fill an equipment component that belongs to
+  no actor; each now draws the hands from it, so the Stalker holds its entry's weapon and the double the player's.
+  **`RightHandBase` and `LeftHandBase` record the item base each hand draws**, because the weapon meshes are not in git
+  (below) and the test window runs in a worktree: without them a weapon check could not fail there, and its guard proof
+  could not be proved.
+
+### What a worktree has
+
+- **THE BODY IS IN GIT**: the Mannequin, `ABP_Unarmed` and the clips, 47 files under
+  `game/Content/Characters/Mannequins`. So the body tests check fully in every checkout. Issue #2806's body said the
+  mesh check would be a skipped half; it was corrected on 2026-11-21.
+- **THE WEAPON MESHES ARE NOT**: `DT_WeaponMeshes` names nine meshes in the `Medieval_Weapons` pack, and git carries
+  none. So each weapon test checks the recorded bases everywhere and the meshes only where the pack is, reporting a
+  skipped half without it, as `Cataclysm.WeaponMesh.`'s tests already do.
+
+### Tests
+
+The new group `Cataclysm.PlayerCopies.`, four, written before the change:
+
+| Test | What it checks | The control |
+| :-- | :-- | :-- |
+| `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | a spawned Stalker wears the player's body and animation Blueprint, its cylinder hidden, its feet at its capsule's bottom at the -90 degree yaw, and holds the six death clips, none missing | a plain creature beside it keeps its cylinder visible and has no skeletal mesh |
+| `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | the same for the double | the same |
+| `AStalkerHoldsTheWeaponItsEntryWears` | Famine's entry: the Sword's base in the right hand, nothing in the left; the meshes where the pack is | both hands empty before it wears the entry |
+| `ADoubleHoldsTheWeaponsThePlayersBuildWears` | a build of a Sword and a Dagger: the Sword right and the Dagger left; the meshes where the pack is | both hands empty before it wears the build |
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 4 = 5074; skipped halves 48 + 2 = 50**, the two weapon tests' mesh halves, in a worktree without the weapons pack;
+test saves 859, none left behind. Groups alone: `Cataclysm.PlayerCopies.` 4, and to show the player and the copies
+unchanged otherwise, `PlayerBody.` 7, `PlayerAttack.` 6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14,
+`Death.` 30, `ConsumptionDouble.` 15, `StalkerEntries.` 8 and `StalkerKit.` 13. Each is to be recounted from the
+newest measured log at the window, since development will have moved.
+
+Proofs, each predicted to fail exactly the named tests with the break in and pass its group restored:
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | `AStalkerWears...` and `AWornResidueDoubleWears...` |
+| PC2 | `WearTheBuild` does not draw its hands | `AStalkerHoldsTheWeaponItsEntryWears` |
+| PC3 | `WearThePlayersBuild` does not draw its hands | `ADoubleHoldsTheWeaponsThePlayersBuildWears` |
+
+---
+
 ## 2026-11-21 — Nine empire tree nodes that could not be bought are ruled: Imperial Prowess and city upgrade build times by the owner, five figures and rules by the coordinating session
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the section "City Upgrades" (an upgrade now takes days to build, ruled and not

@@ -14,6 +14,7 @@
 class UCataclysmPrimaryAttributeSet;
 class UCataclysmResistanceAttributeSet;
 class UCataclysmClassResourceAttributeSet;
+class UStaticMeshComponent;
 
 /** One worn piece of a Corrupted Stalker entry: where it is worn, its base, and its affixes, with no values. */
 USTRUCT()
@@ -220,7 +221,57 @@ public:
 	/** The pieces it wears, as items. What layer 3 drops from. */
 	const TArray<FCataclysmItem>& WornPieces() const { return Pieces; }
 
+	// ----------------------------------------------------------------------
+	// Its look: the player's own -- issue #2806, 2026-11-21
+	// ----------------------------------------------------------------------
+	//
+	// THE OWNER'S REPORT OF 2026-11-21: "The corrupted dopples and nemesis should be using the character model we use,
+	// it's kinda hard to see a grey cylinder coming at you before it murders you". Until this it set no mesh, so it kept
+	// `ACataclysmEnemyCharacter`'s `PlaceholderBody`, the engine's basic cylinder. It now wears what the player wears,
+	// through the player's own steps (`ACataclysmPlayerCharacter::WearTheMannequinsBody` and its four siblings), so the
+	// two cannot drift: the Mannequin body, `ABP_Unarmed`, the six death clips, and the weapons it wears in its hands.
+	// `ACataclysmConsumptionDoubleCharacter` inherits all of it.
+	//
+	// ITS OWN CAPSULE, KEPT: 48 by 80, the creature's, not the player's 42 by 96. The coordinating session's ruling J1 of
+	// 2026-11-21: the player's capsule would change its collision, where a hunter fits when it arrives and the reach
+	// measured from capsule edges, for a visual change. The Mannequin's feet are at the capsule's bottom, so the body
+	// stands above the capsule's top by up to 32 cm, the two capsules' difference. NO TINT (ruling J2): whether a copy
+	// is told apart from the player, and how, is the owner's to say. NO SWING ON ITS BLOWS (ruling J3): issue #2811.
+
+	/**
+	 * Puts the player's body, animation Blueprint and death clips on, and hides the placeholder cylinder.
+	 *
+	 * PUBLIC SO A TEST CAN CALL IT, as every dressed creature's is. `BeginPlay` calls it.
+	 *
+	 * @return whether the body was found, which it is in every checkout: the Mannequin is in git
+	 */
+	bool ResolveBody();
+
+	virtual void PreRegisterAllComponents() override;
+	virtual void BeginPlay() override;
+
+	/** The hand its first worn weapon is drawn in, on the body's right-hand socket, as the player's. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
+	TObjectPtr<UStaticMeshComponent> RightHandWeapon;
+
+	/** The hand its second worn weapon is drawn in, on the left-hand socket. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
+	TObjectPtr<UStaticMeshComponent> LeftHandWeapon;
+
+	/**
+	 * The item base each hand draws, none for an empty hand. WHAT IS IN A HAND WITHOUT THE WEAPONS PACK, which git does
+	 * not carry and without which every weapon mesh is null: read by `Cataclysm.PlayerCopies.`.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
+	FName RightHandBase;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
+	FName LeftHandBase;
+
 protected:
+	/** Draws the weapons `Wardrobe` wears in its two hands. Called once it has put on what it wears. */
+	void DrawWornWeapons(const UCataclysmEquipmentComponent* Wardrobe);
+
 	// PROTECTED AND NOT PRIVATE since issue #2688 slice 2a, for `ACataclysmConsumptionDoubleCharacter`, which fills
 	// them from a player's build rather than from an entry.
 	UPROPERTY()
