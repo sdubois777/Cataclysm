@@ -34,6 +34,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
+#include "Dungeon/CataclysmDungeonFloor.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "EngineUtils.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -281,6 +283,12 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::ToggleEmpireMap,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_ToggleEmpireMap);
+
+	// The floor map on Tab. Issue #2805, accepted 2026-11-21. Started, as every
+	// screen's key is.
+	Input->BindNativeAction(Config, Names::ToggleFloorMap,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleFloorMap);
 
 	// Started, so a potion is drunk as the key goes down. Issue #806.
 	Input->BindNativeAction(Config, Names::DrinkPotion1, ETriggerEvent::Started,
@@ -565,7 +573,64 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 	// THE BAG'S TOOLTIP FOR AN ITEM ON THE GROUND, beside the cursor. Issue #2807.
 	RefreshGroundItemHover();
 
+	// WHAT THE PLAYER CAN SEE OF THE FLOOR, for the map Tab shows. Issue #2805.
+	RefreshFloorMapSeen();
+
 	Super::PostProcessInput(DeltaTime, bGamePaused);
+}
+
+void ACataclysmPlayerController::Input_ToggleFloorMap()
+{
+	ToggleFloorMap();
+}
+
+void ACataclysmPlayerController::ToggleFloorMap()
+{
+	bFloorMapShown = !bFloorMapShown;
+	const ACataclysmDungeonGameMode* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+	if (bFloorMapShown && (!Mode || !Mode->CurrentFloor || !Mode->CurrentFloor->IsBuilt()))
+	{
+		UE_LOG(LogCataclysm, Log,
+			TEXT("The floor map is shown and there is no dungeon floor here, so it draws nothing until there is one."));
+	}
+}
+
+bool ACataclysmPlayerController::IsAFullScreenOpen() const
+{
+	const UUserWidget* Screens[] = {InventoryScreen, CharacterCreationScreen, PassiveTreeScreen, EmpireTreeScreen,
+									ForgeScreen, EmpireMapScreen, CharacterSheetScreen, SkillAssignmentScreen, CityScreen};
+	for (const UUserWidget* Screen : Screens)
+	{
+		if (Screen && Screen->IsInViewport())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void ACataclysmPlayerController::RefreshFloorMapSeen()
+{
+	const UWorld* World = GetWorld();
+	const APawn* Body = GetPawn();
+	const ACataclysmDungeonGameMode* Mode = World ? World->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+	ACataclysmDungeonFloor* Floor = Mode ? Mode->CurrentFloor.Get() : nullptr;
+	if (!Body || !Floor || !Floor->IsBuilt())
+	{
+		return;
+	}
+
+	// ONLY ON A CHANGE: a new cell, another floor, or this floor built again. Revealing is at most 49 cells with a
+	// line of at most three steps each, and doing it once a cell rather than once a frame keeps it out of the frame.
+	const FIntPoint Cell = Floor->CellOfWorld(Body->GetActorLocation());
+	if (Floor == FloorMapLastFloor.Get() && Cell == FloorMapLastCell && Floor->BuildGeneration() == FloorMapLastBuild)
+	{
+		return;
+	}
+	FloorMapLastFloor = Floor;
+	FloorMapLastCell = Cell;
+	FloorMapLastBuild = Floor->BuildGeneration();
+	Floor->RevealAround(Cell);
 }
 
 void ACataclysmPlayerController::Input_AbilitySlotPressed(FGameplayTag SlotTag)

@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Tab shows a map of the current floor over play: where the player has been, and the stairs once seen (#2805)
+
+**Affects:** `UCataclysmFloorMap`, `FCataclysmFloorMapRun` and `FCataclysmFloorMapLayout`, new
+(`game/Source/Cataclysm/Interface/CataclysmFloorMap.h` and `.cpp`); the seen-cell record on `ACataclysmDungeonFloor`
+(`RevealAround`, `SeenCells`, `SeenChangeCount`, `BuildGeneration`, `CellPositionOfWorld`); `ACataclysmPlayerController`
+(`ToggleFloorMap`, `IsFloorMapShown`, `IsAFullScreenOpen`, `RefreshFloorMapSeen` from `PostProcessInput`, and the Tab
+binding); `ACataclysmHUD::DrawFloorMap`, first in `DrawHUD`; `CataclysmInputActionNames::ToggleFloorMap`;
+`tools/generate_input_assets.py`; the HUD Elements and controls sections of `docs/Cataclysm_GDD_v2.md`. Tests: the new
+group `Cataclysm.FloorMap.`, eleven, in `game/Source/Cataclysm/Tests/CataclysmFloorMapTests.cpp`. Issue
+[#2805](https://github.com/sdubois777/Cataclysm/issues/2805).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET**, and **TAB DOES NOTHING UNTIL THE INPUT ASSETS ARE REGENERATED** in the editor
+  at the window: `IA_ToggleFloorMap` exists in the generator and in C++, not yet as an asset. Registered below.
+- **NO TEST CAN SEE THE MAP.** `DrawHUD` does not run under -nullrhi (issue #650). The tests hold the statics it draws
+  from and the seen-cell record; `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` holds that
+  the two frame hooks call them, proved below.
+- **WHETHER TAB REACHES THE MAP WHILE A SCREEN HAS KEYBOARD FOCUS IS NOT TESTED.** Slate reads Tab as "next" focus
+  navigation for a focused widget. `Cataclysm.FloorMap.WhatSlateDoesWithTabIsRecorded` records what the navigation
+  configuration does with Tab; whether a press then reaches Enhanced Input is checked in play. The map is not drawn under a
+  full screen anyway, so the case is a press it would ignore.
+- **THE GENRE'S WIKIS COULD NOT BE READ.** poe2wiki, the Diablo fandom mirror, diablowiki, mobalytics and primagames all
+  refused the fetch (HTTP 403 or a bot check). Path of Exile and Last Epoch are evidenced by player forum posts only.
+
+### The owner's request and rulings
+
+- **The request, 2026-11-21, verbatim:** "Tab brings up a map overlay so you can make sure you aren't running in circles".
+- **Creatures, 2026-11-21:** "No enemies (Recommended)". The map marks none.
+- **Size, 2026-11-21:** "Centred on you", whose option read "A fixed scale that moves with you, as in Path of Exile.
+  Larger detail, but parts of the floor can be off the map's edge."
+- **Accepted by the coordinating session, 2026-11-21:** the 3 cell reveal with walls blocking it; not saved; 40%
+  opacity; items not marked; +X up; Tab as `IA_ToggleFloorMap` in both control schemes; not drawn under a full screen;
+  runs rebuilt on a change; the stairs at the map's edge in their direction when they lie beyond it.
+
+### What existed
+
+- **The floor's grid**: `FCataclysmFloorPlan`, Width × Height cells of 4 metres, each Solid or Floor, with `Entrance` and
+  `Exit`; held by `ACataclysmDungeonFloor`, which `ACataclysmDungeonGameMode::CurrentFloor` holds. A floor is 32 to 48
+  cells on a side. Going down the stairs rebuilds the same actor.
+- **Nothing recorded what the player had seen.** `CataclysmHUD.h` said "The minimap is not built".
+- **The design named this without describing it**: "Minimap with dungeon overlay" under HUD Elements, and "map overlay
+  only" as Hardcore's heads-up display.
+- **Tab was bound nowhere.**
+
+### The research
+
+Fetched 2026-11-21.
+
+- **Diablo II**, official (https://classic.battle.net/diablo2exp/basics/controls.shtml): Tab opens the Automap; "The
+  Automap appears over the play area"; "Note that gameplay doesn't stop when you bring up the Automap"; it maps "where
+  you have been" and "shows important terrain features like stairways".
+- **Diablo II: Resurrected**, Maxroll's beginner guide (a community guide, updated 2023-11-22,
+  https://maxroll.gg/d2/resources/tips-tricks): "Automap Size", "Automap Opacity" and "Center When Cleared" settings.
+- **Path of Exile**, player posts on the official forum, no developer reply on the pages read:
+  https://www.pathofexile.com/forum/view-thread/1523500 (2015: "when you Tab the Map to cover the screen", one player at
+  "about 30% opacity"); https://www.pathofexile.com/forum/view-thread/3689143 (2025, PoE 2: an opaque map hides the
+  game). Grinding Gear Games' 2010 development thread, https://www.pathofexile.com/forum/view-thread/241: "One of the
+  things that we really wanted in Path of Exile was an overlay minimap".
+- **Last Epoch**, player posts, no developer reply: https://forum.lastepoch.com/t/give-overlay-map-dynamic-opacity/45255
+  (2021: the overlay preferred to the corner map, one opacity unreadable on light maps).
+- **Diablo IV** has no Tab overlay, by choice: Rod Fergusson, Diablo general manager, April 2023, "No plans at the
+  moment" (https://mp1st.com/news/diablo-4-tab-map-overlay-blizzard-has-no-plans-at-the-moment,
+  https://www.gamewatcher.com/news/diablo-4-tab-overlay-map-no-plans).
+
+**Settled by it**: drawn over play, the game running underneath, where the player has been, the stairs marked,
+see-through. **Judgements**: the 3 cell reveal, the 70% square, 24 pixels a cell at 1080, 40% opacity, the stairs at the
+edge, and the colours.
+
+### What changed
+
+- **Seen.** When the player enters a new cell, or the floor is built again, `RefreshFloorMapSeen` asks the floor to
+  reveal from it: every cell within 3 cells whose straight grid line from the player's cell crosses no Solid cell
+  (`UCataclysmFloorMap::LineOfSight`, Bresenham's line, ends not asked, so a wall itself is seen). At most 49 cells, each
+  a line of at most 3 steps, once a cell rather than once a frame. Kept on the floor, emptied by `Build`, not saved.
+- **Drawn**, by `ACataclysmHUD::DrawFloorMap`, first so every bar is drawn over it, when the map is shown, there is a
+  floor and no full screen is open:
+  - the seen walkable cells as runs along cell Y at one cell X -- one screen row -- one `DrawRect` a run, clipped to the
+    square, at 40% opacity; the runs are rebuilt only when the floor's change count moves;
+  - the stairs, once seen, as a small square; beyond the edge, on the edge along their direction from the player;
+  - the player at the centre, a triangle of three `DrawLine` edges pointing the way they face.
+- **Placed** centred on the player, who is always at the screen's centre: a square of 0.7 × the shorter side, 24 pixels a
+  cell at a screen 1080 high and scaled with the height -- more than the 16 a cell a whole 48 cell floor would fit at --
+  about 31 cells across. World +X is up and +Y right, as the camera looks along +X.
+- **Tab**: `IA_ToggleFloorMap`, "Toggle Floor Map", on Tab in both schemes; the design document's two controls tables
+  carry it. Started, as every screen's key is.
+
+### Tests
+
+The new group `Cataclysm.FloorMap.`, eleven, written before the change:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` | 3 cells seen, 4 not, 2.83 diagonally seen, 4.24 not; a wall hides the cell behind it, against the same room without the wall |
+| `NothingIsSeenFromOffTheFloorAndOnlyNewCellsAreCounted` | nothing from off the grid or a solid cell; the same place again sees nothing new |
+| `TheRunsCoverExactlyTheSeenWalkableCells` | around a pillar, the runs cover each seen walkable cell once and nothing else |
+| `ANewFloorStartsWithNothingSeen` | a rebuilt floor actor has nothing seen and a new generation |
+| `TheMapIsSeventyPercentOfTheShorterSideAtTwentyFourPixelsACell` | 756 pixels and 24 a cell at 1080, 48 at 2160, and more than the whole-floor fit |
+| `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight` | the centring and the axes; the player's marker points the way they face |
+| `ACellBeyondTheMapsEdgeIsClippedAway` | the player's cell drawn whole, a cell 20 away clipped away, a run across the edge cut at it |
+| `TheStairsBeyondTheEdgeAreMarkedOnTheEdgeInTheirDirection` | inside, where they are; beyond, on each edge, a corner, and a slanted direction |
+| `ItIsDrawnWhenShownOnAFloorAndNotUnderAFullScreen` | the four cases of `ShouldDraw` |
+| `TheRunsOnAWhollySeenFloorAreMeasuredForEveryLayout` | the worst case per frame, measured over 20 seeds of each layout and reported, under the arithmetic bound |
+| `WhatSlateDoesWithTabIsRecorded` | what Slate's navigation configuration does with Tab, recorded; see SAID FIRST |
+
+Python: the controls tables and the generator agree (`test_controls_table_matches_the_input_assets.py`), and C++ names
+every action the generator builds (`test_native_input_actions_match_the_engine.py`); the hook test pins
+`RefreshFloorMapSeen()` in `PostProcessInput` and `DrawFloorMap()` in `DrawHUD`.
+
+**Proved, 2026-11-21, with `tools/prove_guard.py`:** removing `DrawFloorMap();` from `DrawHUD` fails
+`test_the_hook_runs_this_job[ACataclysmHUD::DrawHUD-DrawFloorMap()-...]` and restored passes (61 passed); removing
+`RefreshFloorMapSeen();` from `PostProcessInput` fails
+`test_the_hook_runs_this_job[ACataclysmPlayerController::PostProcessInput-RefreshFloorMapSeen()-...]` and restored
+passes (61 passed). Both `PROVED`.
+
+### Registered for the window
+
+**The whole suite 5074 + 11 = 5085**: 5070 measured at `c20ce05e3` (window nocaps-b-w2) and the 4 tests `c89fa5911`
+added by name, recounted at the window, which comes after #2806, #2809, #2807 and #2808. Skipped halves 48, unchanged.
+Groups alone: `Cataclysm.FloorMap.` 11, `Cataclysm.DungeonFloor.` 16 and `Cataclysm.Input.` 9, counted from window
+nocaps-b-w2's log. No `Cataclysm.HUD.` group exists.
+
+**An editor step of its own:** `python tools/run_editor_python.py tools/generate_input_assets.py`, which rewrites every
+input asset it owns. Commit only `IA_ToggleFloorMap`, `IMC_MouseMovement`, `IMC_KeyboardMovement` and `DA_InputConfig`.
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| FM1 | `LineOfSight` answers true always | `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` |
+| FM2 | `ScreenOf` puts +X down rather than up | `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight` and `TheStairsBeyondTheEdge...` |
+| FM3 | `Build` keeps the seen record | `ANewFloorStartsWithNothingSeen` |
+
+---
+
 ## 2026-11-21 — The two quick-cast bolts are drawn to be seen and fire every second, at the damage per second they had (#2808, continued)
 
 **Affects:** `UCataclysmProjectileEffect` (`LookFor`, `MayBeCulled`, `DefaultIntensityOf`, `AttachTo`) and

@@ -92,6 +92,10 @@ NATIVE_ACTIONS = [
     # 2026-11-03: "M opens and closes the empire map", in both control schemes.
     # Built in issue #2733 slice 3, from the parked commit 288b45cc4.
     ("IA_ToggleEmpireMap", "ToggleEmpireMap", BOOLEAN, "Toggle Empire Map"),
+    # The map of the current floor, drawn over play. Issue #2805, from the
+    # owner's playtest of 2026-11-21: "Tab brings up a map overlay so you can
+    # make sure you aren't running in circles".
+    ("IA_ToggleFloorMap", "ToggleFloorMap", BOOLEAN, "Toggle Floor Map"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -165,6 +169,10 @@ MOUSE_MAPPINGS = [
     # screen in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
     # session, 2026-11-03.
     ("IA_ToggleEmpireMap", "M", []),
+    # The floor map. Tab in both schemes, and free in both: Tab is the map
+    # overlay's key in Diablo II, Path of Exile and Last Epoch. Issue #2805,
+    # accepted 2026-11-21.
+    ("IA_ToggleFloorMap", "Tab", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -219,6 +227,10 @@ KEYBOARD_MAPPINGS = [
     # screen in Diablo IV (Tab or M) and in Last Epoch. Ruled by the coordinating
     # session, 2026-11-03.
     ("IA_ToggleEmpireMap", "M", []),
+    # The floor map. Tab in both schemes, and free in both: Tab is the map
+    # overlay's key in Diablo II, Path of Exile and Last Epoch. Issue #2805,
+    # accepted 2026-11-21.
+    ("IA_ToggleFloorMap", "Tab", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

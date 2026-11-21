@@ -131,6 +131,15 @@ namespace CataclysmInputActionNames
 	 * the same function `Cataclysm.EmpireMap` calls.
 	 */
 	inline const FName ToggleEmpireMap = FName(TEXT("ToggleEmpireMap"));
+
+	/**
+	 * Show and hide the map of the current floor. Tapped, not held. Issue #2805, from the owner's playtest of
+	 * 2026-11-21: "Tab brings up a map overlay so you can make sure you aren't running in circles".
+	 *
+	 * Tab by default, free in both control schemes. It is Tab in Diablo II (its Automap), in Path of Exile and in Last
+	 * Epoch. `ACataclysmPlayerController::ToggleFloorMap` is what a press calls.
+	 */
+	inline const FName ToggleFloorMap = FName(TEXT("ToggleFloorMap"));
 }
 
 /**

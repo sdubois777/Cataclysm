@@ -5,6 +5,7 @@
 #include "AI/NavigationSystemBase.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Interface/CataclysmFloorMap.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -168,6 +169,11 @@ bool ACataclysmDungeonFloor::Build(const FCataclysmFloorPlan& InPlan)
 {
 	Plan = InPlan;
 	Blocked.Reset();
+
+	// A NEW FLOOR HAS NOTHING SEEN, whether or not it builds. Issue #2805.
+	Seen.Init(false, Plan.Width * Plan.Height);
+	++SeenChanges;
+	++Builds;
 
 	// AND THE LAST FLOOR'S HIDDEN CHAMBER GOES WITH IT. A floor has none until one is asked for. Issues #1820 and #41.
 	ClearHiddenChamber();
@@ -420,6 +426,28 @@ FVector ACataclysmDungeonFloor::WorldOfCell(FIntPoint Cell) const
 
 	return GetActorLocation()
 		+ FVector((Cell.X - MiddleX) * Size, (Cell.Y - MiddleY) * Size, 0.0f);
+}
+
+int32 ACataclysmDungeonFloor::RevealAround(FIntPoint Cell)
+{
+	const int32 Newly = UCataclysmFloorMap::RevealAround(Plan, Seen, Cell, UCataclysmFloorMap::RevealRadiusCells);
+	if (Newly > 0)
+	{
+		++SeenChanges;
+	}
+	return Newly;
+}
+
+FVector2D ACataclysmDungeonFloor::CellPositionOfWorld(FVector World) const
+{
+	// `CellOfWorld` WITHOUT THE ROUNDING, and the same arithmetic, so the two cannot disagree about which cell.
+	const float Size = DungeonFloorCellSize();
+	if (Size <= 0.0f)
+	{
+		return FVector2D(-1.0, -1.0);
+	}
+	const FVector Offset = World - GetActorLocation();
+	return FVector2D(Offset.X / Size + (Plan.Width - 1) * 0.5, Offset.Y / Size + (Plan.Height - 1) * 0.5);
 }
 
 FIntPoint ACataclysmDungeonFloor::CellOfWorld(FVector World) const

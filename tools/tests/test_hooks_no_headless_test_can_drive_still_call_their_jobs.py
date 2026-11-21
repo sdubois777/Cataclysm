@@ -377,6 +377,10 @@ HOOKS = {
             "UCataclysmShoulderThrough::Step":
                 "Shoulder Through: walking into an enemy pushes it aside and "
                 "strikes it, issue #1515",
+            # Issue #2805: what the player can see of the floor, for the map Tab
+            # shows. A member call, written with its brackets.
+            "RefreshFloorMapSeen()":
+                "the floor map's record of what the player has seen, issue #2805",
         },
         "questions": {
             "UCataclysmMovementSkill::AdvanceDirectionFor",
@@ -384,6 +388,28 @@ HOOKS = {
             # JOB is the engine's AddMovementInput beside them. Fear, 2026-09-25.
             "UCataclysmFear::FleeDirectionFor",
             "UCataclysmFear::IsFeared",
+        },
+    },
+    # THE HEADS-UP DISPLAY'S FRAME, WHICH NEVER RUNS UNDER -nullrhi. Issue #2805.
+    # The floor map's tests hold the statics it draws from; deleting this call
+    # would leave every one of them passing while Tab drew nothing.
+    "ACataclysmHUD::DrawHUD": {
+        "file": (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Interface"
+                 / "CataclysmHUD.cpp"),
+        "jobs": {
+            "DrawFloorMap()":
+                "the map of the current floor Tab shows, issue #2805",
+        },
+        # Whether each other part of the display is switched on. Each part's
+        # own tests own its drawing; this entry is the floor map's.
+        "questions": {
+            "UCataclysmCombatOverlay::OverheadBarsEnabled",
+            "UCataclysmCombatOverlay::PlayerVitalsEnabled",
+            "UCataclysmCombatOverlay::RarityNamesEnabled",
+            "UCataclysmCreaturePanel::CreaturePanelEnabled",
+            "UCataclysmEmpireStatusBar::Enabled",
+            "UCataclysmPotions::Enabled",
+            "UCataclysmSkillBar::Enabled",
         },
     },
 }

@@ -21,6 +21,8 @@
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Interface/CataclysmExperienceBar.h"
+#include "Interface/CataclysmFloorMap.h"
+#include "Dungeon/CataclysmDungeonFloor.h"
 #include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -54,6 +56,9 @@ void ACataclysmHUD::DrawHUD()
 	}
 
 	DropExpired(World->GetTimeSeconds());
+
+	// FIRST, SO EVERY BAR AND NUMBER IS DRAWN OVER IT. Issue #2805.
+	DrawFloorMap();
 
 	if (UCataclysmCombatOverlay::PlayerVitalsEnabled())
 	{
@@ -482,6 +487,68 @@ void ACataclysmHUD::DrawPotions()
 						At.Y + SkillBarKeyInsetPx, SkillBarKeyScale);
 		DrawTextCentred(FString::FromInt(Drinks), FLinearColor::White, Centre,
 						At.Y + Size * 0.5f, SkillBarKeyScale);
+	}
+}
+
+void ACataclysmHUD::DrawFloorMap()
+{
+	using Map = UCataclysmFloorMap;
+
+	const ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	const APawn* Body = Controller ? Controller->GetPawn() : nullptr;
+	const ACataclysmDungeonGameMode* Mode = GetWorld() ? GetWorld()->GetAuthGameMode<ACataclysmDungeonGameMode>() : nullptr;
+	ACataclysmDungeonFloor* Floor = Mode ? Mode->CurrentFloor.Get() : nullptr;
+	const bool bHasFloor = Body && Floor && Floor->IsBuilt();
+	if (!Controller || !Map::ShouldDraw(Controller->IsFloorMapShown(), bHasFloor, Controller->IsAFullScreenOpen()))
+	{
+		return;
+	}
+
+	const FCataclysmFloorPlan& Plan = Floor->GetPlan();
+	if (Floor != FloorMapRunsFloor.Get() || Floor->SeenChangeCount() != FloorMapRunsChange)
+	{
+		FloorMapRuns = Map::RunsOf(Plan, Floor->SeenCells());
+		FloorMapRunsFloor = Floor;
+		FloorMapRunsChange = Floor->SeenChangeCount();
+	}
+
+	const FCataclysmFloorMapLayout Layout = Map::LayoutFor(FVector2D(Canvas->SizeX, Canvas->SizeY));
+	const FVector2D PlayerCell = Floor->CellPositionOfWorld(Body->GetActorLocation());
+	const float Scale = static_cast<float>(Canvas->SizeY) / Map::ReferenceHeightPx;
+
+	FLinearColor FloorColour = UCataclysmCombatOverlay::ColourFromHex(Map::FloorHex);
+	FloorColour.A = Map::FloorOpacity;
+	for (const FCataclysmFloorMapRun& Run : FloorMapRuns)
+	{
+		FBox2D Box = Map::BoxOf(Run, PlayerCell, Layout);
+		if (Map::ClipToArea(Box, Layout))
+		{
+			DrawRect(FloorColour, static_cast<float>(Box.Min.X), static_cast<float>(Box.Min.Y),
+				static_cast<float>(Box.Max.X - Box.Min.X), static_cast<float>(Box.Max.Y - Box.Min.Y));
+		}
+	}
+
+	// THE STAIRS, ONCE THEIR CELL HAS BEEN SEEN, at the map's edge when they lie beyond it.
+	if (Map::IsSeen(Plan, Floor->SeenCells(), Plan.Exit))
+	{
+		bool bOnTheEdge = false;
+		const FVector2D At = Map::MarkerAt(FVector2D(Plan.Exit.X, Plan.Exit.Y), PlayerCell, Layout, bOnTheEdge);
+		const float Size = Map::ExitMarkerPxAt1080 * Scale;
+		DrawRect(UCataclysmCombatOverlay::ColourFromHex(Map::ExitHex), static_cast<float>(At.X) - Size * 0.5f,
+			static_cast<float>(At.Y) - Size * 0.5f, Size, Size);
+	}
+
+	// THE PLAYER, AT THE CENTRE, pointing the way they face: the triangle's three edges, with `AHUD::DrawLine`, which
+	// needs no texture.
+	FVector2D Corners[3];
+	Map::FacingTriangle(Layout.Centre, Body->GetActorRotation().Yaw, Map::PlayerMarkerPxAt1080 * Scale, Corners);
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(Map::PlayerHex);
+	for (int32 Edge = 0; Edge < 3; ++Edge)
+	{
+		const FVector2D& From = Corners[Edge];
+		const FVector2D& To = Corners[(Edge + 1) % 3];
+		DrawLine(static_cast<float>(From.X), static_cast<float>(From.Y), static_cast<float>(To.X),
+			static_cast<float>(To.Y), Ink, 2.0f * Scale);
 	}
 }
 

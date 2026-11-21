@@ -220,6 +220,7 @@ The following are default controls. Players with multiple damage types can map m
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -251,6 +252,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -7073,7 +7075,31 @@ it, which is their own act and not an outcome of play.
   - Empire status bar — active dungeon count, next surge countdown, cities at risk
   - Player resource bars — HP, Mana, Fervour
   - Active skill slots with cooldown indicators
-  - Minimap with dungeon overlay
+  - Minimap with dungeon overlay. **The dungeon overlay is built** (below); the minimap in a corner is not.
+
+  
+
+### **The floor map on Tab**
+
+From the owner's playtest of 2026-11-21: "Tab brings up a map overlay so you can make sure you aren't running in circles". Issue #2805.
+
+  
+
+**Tab shows a map of the current floor over the game, and Tab again hides it. The game keeps running underneath**, as Diablo II's Automap does: "Note that gameplay doesn't stop when you bring up the Automap".
+
+  
+
+- **It shows where the player has been.** A cell is seen when it is within 3 cells (12 metres) of the player's cell and a straight line on the grid reaches it without crossing a wall. What has been seen is kept for the floor and lost with it; it is not saved.
+- **It marks the player**, at its centre, pointing the way they face, **and the stairs down** once their cell has been seen. Stairs beyond the map's edge are marked on the edge, in their direction.
+- **It marks no creatures and no items.** The owner chose "No enemies" on 2026-11-21: the map is for not running in circles.
+- **It is centred on the player at a fixed scale**, the owner's choice of 2026-11-21 ("Centred on you"): a square seven tenths of the screen's shorter side, 24 pixels a cell on a screen 1080 pixels high (about 31 cells across), scaled with the screen's height. Parts of a large floor lie off its edge.
+- **Its floor is drawn at 40% opacity**, inside the 30 to 50% that players report choosing in Path of Exile, so the game shows through.
+- **It is not drawn while a full screen is open**: the inventory, the character sheet, the passive tree, the skill choice screen or one of the empire's screens.
+- **Up on the map is up on the screen.** The camera looks along the world's +X, so the map does too.
+
+  
+
+**What the genre settles, and what it does not.** That such a map is drawn over play, keeps the game running, shows where the player has been and marks the stairs: Diablo II's own controls page. That it is see-through with an opacity players choose: Diablo II: Resurrected's settings and Path of Exile and Last Epoch players' posts. Diablo IV has no such map, by choice. **The 3 cell reveal, the square of seven tenths, 24 pixels a cell and the 40% opacity are judgements.** `docs/DECISIONS.md` records the sources.
 
   
 

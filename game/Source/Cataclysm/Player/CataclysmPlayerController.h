@@ -167,6 +167,30 @@ public:
 	bool CursorIsOverInterface() const;
 
 	/**
+	 * Shows the map of the current floor if it is hidden, and hides it if it is shown. Issue #2805.
+	 *
+	 * THE GAME KEEPS RUNNING: the map is drawn over play, as Diablo II's Automap is, and takes no input. On a level with
+	 * no dungeon floor it is still toggled, and draws nothing until there is one; the log says so.
+	 */
+	void ToggleFloorMap();
+
+	/** Whether the player has the floor map shown. `ACataclysmHUD::DrawFloorMap` reads it. */
+	bool IsFloorMapShown() const { return bFloorMapShown; }
+
+	/**
+	 * Whether a full screen is open over the game: the inventory, the character sheet or its creator, the passive
+	 * tree, the skill assignment, or one of the empire's screens. The floor map is not drawn under one. Issue #2805.
+	 */
+	bool IsAFullScreenOpen() const;
+
+	/**
+	 * Marks what the player can see of the floor as seen, when the player has entered a new cell or the floor has
+	 * been built again. Issue #2805. Runs every frame from `PostProcessInput`; no automation test ticks a player
+	 * controller, so `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` pins the call.
+	 */
+	void RefreshFloorMapSeen();
+
+	/**
 	 * Acts on a LEFT press that landed on the open inventory screen.
 	 *
 	 * Left picks an item up onto the cursor and puts it down again, so the
@@ -497,6 +521,17 @@ private:
 
 	/** The M key's half of it. Calls ToggleEmpireMap above, as `Cataclysm.EmpireMap` does. Ruled 2026-11-03. */
 	void Input_ToggleEmpireMap();
+
+	/** The Tab key's half of it. Calls ToggleFloorMap. Issue #2805. */
+	void Input_ToggleFloorMap();
+
+	/** See `IsFloorMapShown`. Hidden when the controller starts. */
+	bool bFloorMapShown = false;
+
+	/** The floor and cell the seen cells were last revealed from, and that floor's build then. See `RefreshFloorMapSeen`. */
+	TWeakObjectPtr<class ACataclysmDungeonFloor> FloorMapLastFloor;
+	FIntPoint FloorMapLastCell = FIntPoint(-1, -1);
+	int32 FloorMapLastBuild = -1;
 
 	/**
 	 * The four potion keys, 2 to 5. One handler a slot, because a native
