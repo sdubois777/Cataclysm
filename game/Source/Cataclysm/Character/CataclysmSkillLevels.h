@@ -55,6 +55,15 @@ public:
 	/** What each level multiplies the skill's damage percentage by: level 20 is 1.0567 ^ 19, 2.85 times level 1. */
 	static constexpr double DamageFactorPerLevel = 1.0567;
 
+	/**
+	 * What each level multiplies a skill's costs by: its mana cost, its Fervour cost and what each thing it makes
+	 * reserves. Issue #2802: the owner, 2026-11-21, "make it so leveling the skill lowers the cost and increases the
+	 * damage", ruled by the coordinating session the same day. 0.5 to the power of one nineteenth, so level 20 costs half
+	 * of level 1: a judgement between Path of Exile's Enlighten Support (92% at its normal top level, poedb.tw) and Diablo
+	 * II's Teleport (24 mana at level 1, 5 at 20, classic.battle.net). `docs/DECISIONS.md` has the research.
+	 */
+	static constexpr double CostFactorPerLevel = 0.9642;
+
 	/** The share of the character's experience to the paired character level that a skill level costs. A judgement. */
 	static constexpr double PriceShareOfTheCharacters = 0.25;
 
@@ -72,6 +81,27 @@ public:
 
 	/** What a skill at this level multiplies its damage percentage by: 1 at level 1. */
 	static double DamageFactor(int32 SkillLevel);
+
+	/** What a skill at this level multiplies its costs by: 1 at level 1, `CostFactorPerLevel` each level, clamped. */
+	static double CostFactor(int32 SkillLevel);
+
+	/**
+	 * The cost factor of `Ability`'s level, held by its player: 1 for a skill nobody levels -- the basic attack, an
+	 * enemy's, a skill with no row. The counterpart of `LevelFactorOf`, read where each cost is worked out
+	 * (`UCataclysmGameplayAbility::FervourCostFor` and `ManaCostAtTheHoldersLevel`, and a summon's reserve). Issue #2802.
+	 */
+	static double CostFactorOf(const UGameplayAbility* Ability);
+
+	/**
+	 * Re-prices what everything `SkillRow`'s skill made holds back of its commander's pool, at the skill's level now:
+	 * the thralls it took (`ACataclysmEnemyCharacter::TakenBySkillRow`) and the minions it summoned
+	 * (`ACataclysmMinion::SummoningSkillRow`), each to the skill's `UCataclysmSummonSkill::FervourReserveOfOne`. A level
+	 * never raises a reserve, so a re-price only ever frees room; a reserve already lower is kept. Nothing happens when
+	 * the player no longer holds the skill. Issue #2802, ruled by the coordinating session on 2026-11-21: thralls are
+	 * taken for good, so a thrall priced once at the take would hold level 1's figure after Subjugate reached level 20.
+	 * Called by `ACataclysmPlayerState` wherever a skill's level can rise.
+	 */
+	static void RepriceReservesOf(const ACataclysmPlayerState* Holder, FName SkillRow);
 
 	/**
 	 * How full the skill's bar is, from 0 to 1: the experience into its level over what the next level costs. 1 at the

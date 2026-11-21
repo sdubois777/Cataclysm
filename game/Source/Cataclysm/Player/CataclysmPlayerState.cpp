@@ -275,6 +275,7 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 																		  ExperienceIntoLevel));
 		// AND A SKILL WHOSE KEPT EXPERIENCE THE NEW LEVEL LETS THROUGH SAYS ITS OWN LINE. Issue #2764.
 		SaySkillLevelsGained(SkillsBefore);
+		RepriceReservesForLevelsGained(SkillsBefore); // A character level can lift a capped skill's. Issue #2802.
 	}
 	return Gained;
 }
@@ -282,6 +283,7 @@ int32 ACataclysmPlayerState::GrantExperience(int64 Amount)
 void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
 												  int64 NewExperience)
 {
+	const TMap<FName, int32> SkillsBefore = SkillLevelsNow(); // Issue #2802: re-priced below for any level this lifts.
 	CharacterLevel = FMath::Clamp(NewLevel, UCataclysmExperience::FirstLevel,
 								  UCataclysmExperience::MaxLevel);
 
@@ -293,6 +295,7 @@ void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
 	const int64 Ceiling = UCataclysmExperience::CostOfLevel(CharacterLevel + 1);
 	const int64 Most = FMath::Max<int64>(0, Ceiling - 1);
 	ExperienceIntoLevel = FMath::Clamp<int64>(NewExperience, 0, Most);
+	RepriceReservesForLevelsGained(SkillsBefore); // Issue #2802.
 }
 
 void ACataclysmPlayerState::NoteFloorBegan(float WorldSeconds)
@@ -991,6 +994,7 @@ void ACataclysmPlayerState::GrantSkillExperience(int64 KillExperience, const TMa
 		}
 	}
 	SaySkillLevelsGained(Before);
+	RepriceReservesForLevelsGained(Before); // Issue #2802.
 }
 
 TArray<FCataclysmSkillExperience> ACataclysmPlayerState::GetSkillExperienceRecord() const
@@ -1021,7 +1025,22 @@ void ACataclysmPlayerState::SetSkillExperience(FName SkillRow, double Experience
 {
 	if (!SkillRow.IsNone())
 	{
+		const TMap<FName, int32> Before = SkillLevelsNow();
 		SkillExperience.FindOrAdd(SkillRow) = FMath::Max(0.0, Experience);
+		RepriceReservesForLevelsGained(Before); // Issue #2802.
+	}
+}
+
+void ACataclysmPlayerState::RepriceReservesForLevelsGained(const TMap<FName, int32>& Before) const
+{
+	for (const TPair<FName, double>& Each : SkillExperience)
+	{
+		const int32* Was = Before.Find(Each.Key);
+		const int32 From = Was ? *Was : UCataclysmSkillLevels::FirstLevel;
+		if (UCataclysmSkillLevels::LevelFor(Each.Value, GetCharacterLevel()) > From)
+		{
+			UCataclysmSkillLevels::RepriceReservesOf(this, Each.Key);
+		}
 	}
 }
 

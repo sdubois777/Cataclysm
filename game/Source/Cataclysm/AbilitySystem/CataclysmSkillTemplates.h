@@ -1776,6 +1776,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	bool Possess();
 
+	/**
+	 * What one thing this skill makes holds back of its commander's pool now: its row's `FervourReserve`, times its
+	 * level's cost factor, then the commander's reductions (`UCataclysmCommand::ReserveFor`). The figure a take or a
+	 * summon stores, and the one `UCataclysmSkillLevels::RepriceReservesOf` re-prices to. Issue #2802.
+	 */
+	float FervourReserveOfOne() const;
+
 	/** Whether the last use took an enemy. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bTookIt = false;

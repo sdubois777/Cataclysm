@@ -35,6 +35,7 @@ def constant(name: str) -> str:
     ("FirstLevel", "FIRST_LEVEL"),
     ("MaxLevel", "MAX_LEVEL"),
     ("DamageFactorPerLevel", "DAMAGE_FACTOR_PER_LEVEL"),
+    ("CostFactorPerLevel", "COST_FACTOR_PER_LEVEL"),
     ("PriceShareOfTheCharacters", "PRICE_SHARE_OF_THE_CHARACTERS"),
 ])
 def test_each_constant_is_the_same(cpp: str, python: str) -> None:

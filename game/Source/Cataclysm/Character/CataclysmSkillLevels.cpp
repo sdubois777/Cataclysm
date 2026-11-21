@@ -1,6 +1,10 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmSkillLevels.h"
+// What a re-price reaches: the commanded, the summon skill that made them and its reserve. Issue #2802.
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the ability system an instigator acts through, to find the player a carried row belongs to. Slice 2a.
@@ -52,6 +56,55 @@ int32 UCataclysmSkillLevels::LevelFor(double Experience, int32 CharacterLevel)
 double UCataclysmSkillLevels::DamageFactor(int32 SkillLevel)
 {
 	return FMath::Pow(DamageFactorPerLevel, static_cast<double>(FMath::Clamp(SkillLevel, FirstLevel, MaxLevel) - 1));
+}
+
+double UCataclysmSkillLevels::CostFactor(int32 SkillLevel)
+{
+	return FMath::Pow(CostFactorPerLevel, static_cast<double>(FMath::Clamp(SkillLevel, FirstLevel, MaxLevel) - 1));
+}
+
+double UCataclysmSkillLevels::CostFactorOf(const UGameplayAbility* Ability)
+{
+	const FName Row = RowThatLevels(Ability);
+	const ACataclysmPlayerState* Holder = Row.IsNone() ? nullptr : PlayerHolding(Ability);
+	return Holder ? CostFactor(Holder->SkillLevelOf(Row)) : 1.0;
+}
+
+void UCataclysmSkillLevels::RepriceReservesOf(const ACataclysmPlayerState* Holder, FName SkillRow)
+{
+	const UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+	const AActor* Commander = Holder ? Holder->GetPawn() : nullptr;
+	if (!System || !Commander || SkillRow.IsNone())
+	{
+		return;
+	}
+	const UCataclysmSummonSkill* Maker = nullptr;
+	for (const FGameplayAbilitySpec& Spec : System->GetActivatableAbilities())
+	{
+		const UCataclysmSummonSkill* Skill = Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
+		if (Skill && Skill->SkillRow == SkillRow)
+		{
+			Maker = Skill;
+			break;
+		}
+	}
+	const float Now = Maker ? Maker->FervourReserveOfOne() : 0.0f;
+	if (Now <= 0.0f)
+	{
+		return;
+	}
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		const ACataclysmEnemyCharacter* Thrall = Cast<ACataclysmEnemyCharacter>(Follower);
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		const bool bMadeByIt =
+			(Thrall && Thrall->TakenBySkillRow == SkillRow) || (Minion && Minion->SummoningSkillRow == SkillRow);
+		if (Body && bMadeByIt && Body->ReservedFervour > Now)
+		{
+			Body->ReservedFervour = Now;
+		}
+	}
 }
 
 float UCataclysmSkillLevels::FractionFor(double Experience, int32 CharacterLevel)
