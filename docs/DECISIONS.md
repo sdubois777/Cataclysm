@@ -300,7 +300,18 @@ Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6c.
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** The registration below is what its window must print.
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-6c-w1)**, at `abb9a7fc0` on development `c89fa5911`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the written-out record version check found the run, character and account records at 12, 10 and 4, and no test
+    stating another version;
+  - the asset step rebuilt `DT_EmpireTreeNodes.uasset` and `DT_EmpireTreeEffects.uasset`, 102 rows, and committed them
+    with their sources file alone;
+  - the nineteen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 5079, all succeeding, with 48 skipped halves and "859 written and
+    deleted, 0 left behind";
+  - Python passed, 7843 with 9 skipped, and ruff passed;
+  - the eight C++ guard proofs each proved, failing exactly the registered test with exactly the registered number of
+    assertions and the registered values. The six Python guard proofs were proved in phase 1 and after each rebase.
 - **WITH THIS SLICE, 98 OF THE TREE'S NODES ACT**: slices 3a, 3b, 4, 5a, 5b, 6a, 6b and these five. They are every name
   in `EMPIRE_TREE_BUILT` (`tools/generate_datatables.py`); the other 69 nodes and options are shown and cannot be bought.
 - **NO NODE SAYS THE OWNER HAS NOT RULED ON IT ANY MORE.** This slice was written before the owner's rulings of
@@ -439,7 +450,48 @@ check the reason.
 
 ### The window
 
-Not run yet.
+**tree-6c-w1, 2026-11-21, 14:41 to 15:22, at `abb9a7fc0`.** Phase 2's three compiles ran under the lock
+tree-6c-compile from 14:30 to 14:40, after development's CI and Unreal runs for `c89fa5911` and the coordinating
+session's rebuild of the main checkout had finished: the branch (59 files), each changed `.cpp` file alone (16 files:
+`CataclysmEmpireMap.cpp`, `CataclysmEmpireRun.cpp` and `CataclysmEmpireTreeBonuses.cpp` out of the CataclysmEmpire unity
+file; `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmEmpireTree.cpp`,
+`CataclysmGameInstance.cpp`, `CataclysmDataTableTests.cpp` and `CataclysmEmpireTreeGoldHeldTests.cpp` out of the
+Cataclysm one), and the unity files (10). None printed a warning or an error. The window's gate found every pre-check
+passing at 14:41, the recount matched every group, and the written-out version check found "28 lines stating a version;
+NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeEffects.uasset`,
+  `game/Content/Data/DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json` changed; the three were
+  committed alone as `abb9a7fc0` on `4c36b3103` and pushed, and that is the tested head.
+- **Each group alone**: all nineteen at their registered counts, all succeeding, `Cataclysm.EmpireTreeGoldHeld.` 5 of 5
+  among them.
+- **The whole suite**: "Tests: 5079 tests performed, 5079 succeeded, 0 failed. 48 skipped part of what they check";
+  "Test saves: 859 written and deleted, 0 left behind"; "Declared: 5079 tests in the tree at abb9a7fc0; 5079
+  performed, gap 0".
+- **Python**: "7843 passed, 9 skipped"; JUnit tests 7852, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+  The one failure before the window, `tools/tests/test_datatable_assets_are_current.py`, passes with the assets rebuilt.
+- **What the new tests printed**: "GOLD HELD TABLE: gilded 0.010, venture 0.100 to 0.20, pax 5.0, interest 0.0500 to
+  5000; reserve 0.010 at 25 points to 0.25"; "GOLD HELD MAGIC FIND: 35,000 3.0; 120,000 32.0; 1,000,000 120.0; 35,000 at
+  tier 2 1.0; none 0.0; the rules carry 32.0"; "GOLD HELD RESERVE: unset 1.0000; under a step 1.0000; one step 0.7778
+  (population 0.7778); two steps 0.7500"; "GOLD HELD INCOME: day 7 615 + 0; day 20 615 + 500; day 0 interest 0; day 40
+  of 1,000,000 interest 5000; tier 2 1845 + 15000; raised Pax 861; no node 0"; "GOLD HELD DAYS: from day 1, called 3
+  times: 2, 3, 4".
+- **The proofs**, each 5 performed, 4 succeeded, 1 failed with the break in, failing exactly its registered test, and
+  5 performed, 5 succeeded with it restored:
+
+| Proof | The failed assertions |
+|---|---|
+| J1 | `TheGoldHeldGivesMagicFindInWholeStepsAtTheTiersScale` 1: "1,000,000: 100, uncapped, and 20" (300) |
+| J2 | the same test, 1: "35,000 at tier 2: 1 point" (3) |
+| J3 | `ImperialReserveReducesEveryCitysDamageByTheGoldHeld` 2: "one step: 0.99^25" (1.00); "two steps, held at 25%: 0.75" (1.00) |
+| J4 | the same test, 1: "two steps, held at 25%: 0.75" (0.605) |
+| J5 | `TheDayPaysPaxEveryDayAndInterestEveryTwentiethDay` 1: "no interest on day 7" (500) |
+| J6 | the same test, 1: "and the cap 15,000" (5000) |
+| J7 | the same test, 1: "raised by Untouchable Wealth's 0.40: 861" (615) |
+| J8 | `TheRunCallsTheDaysHookOnceForEveryDay` 2: "called three times" (0); "on the three days that follow" |
+
+Every value read with the break in is the value registered for it.
 
 ---
 
