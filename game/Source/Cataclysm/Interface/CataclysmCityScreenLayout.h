@@ -137,7 +137,9 @@ public:
 	 *
 	 * "Horde, 12 floors, 9 days until it bites" -- THE SUB-TYPE LEADS when the
 	 * dungeon has one, and a dungeon without one reads "12 floors, 9 days until
-	 * it bites".
+	 * it bites". A QUEST DUNGEON IS NAMED ONE AFTER ITS SUB-TYPE, since issue
+	 * #2800 (ruled 2026-11-21): "Elite Quest, 22 floors, 7 days until it bites",
+	 * or "Quest, ..." with no sub-type. No other kind is named.
 	 *
 	 * A HOLLOW SAYS WHETHER IT IS STILL SHRINKING, since 2026-10-22: "Hollow,
 	 * 14 floors, shrinking by one a day to 10, 9 days until it bites", or at

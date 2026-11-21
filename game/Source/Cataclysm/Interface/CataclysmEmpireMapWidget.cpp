@@ -635,18 +635,17 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 	}
 
 	// WHAT IS STANDING ON IT AND HOW LONG EACH HAS. This is the whole triage
-	// decision: which dungeon is about to detonate on which city.
+	// decision: which dungeon is about to detonate on which city. EACH NAMED BY
+	// ITS SUB-TYPE, AND A QUEST DUNGEON AS ONE, since issue #2800: "Elite Quest
+	// dungeon of 22 floors, 7 days left". The words are
+	// `UCataclysmEmpireMapLayout::CityDetailDungeonLine`'s, so a test reads them.
 	for (const int32 DungeonId : Run->DungeonsOn(CityId))
 	{
-		const FCataclysmDungeon* Dungeon = Run->FindDungeon(DungeonId);
-		if (Dungeon == nullptr || Run->Clock == nullptr)
+		const FString Line = UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, DungeonId);
+		if (!Line.IsEmpty())
 		{
-			continue;
+			Parts.Add(Line);
 		}
-
-		Parts.Add(FString::Printf(
-			TEXT("dungeon of %d floors, %.0f days left"),
-			Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId)));
 	}
 
 	DetailLabel->SetText(FText::FromString(FString::Join(Parts, TEXT("   "))));

@@ -7,6 +7,7 @@
 #include "Empire/CataclysmSurge.h"
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
 #include "Player/CataclysmGameInstance.h"
 
 // Warm near-white, as six-digit sRGB hex for the reason `CataclysmCombatOverlay.cpp` gives. The rarity word's ink.
@@ -34,6 +35,7 @@ bool FCataclysmEmpireStatusFacts::HasTheSameFiguresAs(const FCataclysmEmpireStat
 	// EVERY FIELD, so a figure that moved is never drawn stale. A new field goes here as well.
 	return bRunBound == Other.bRunBound
 		&& DungeonsStanding == Other.DungeonsStanding
+		&& QuestDungeonsStanding == Other.QuestDungeonsStanding
 		&& DaysToNextSurge == Other.DaysToNextSurge
 		&& DaysOwed == Other.DaysOwed
 		&& CitiesAtRisk == Other.CitiesAtRisk;
@@ -109,6 +111,7 @@ FCataclysmEmpireStatusFacts UCataclysmEmpireStatusBar::FactsOf(const UCataclysmE
 	// which is also true: it never bites one. Read again for issue #1324 slice 6c (2026-11-03) and left as it was;
 	// `Cataclysm.BossOnTheMap.TheStatusBarCountsTheBossAsStandingAndPutsNoCityAtRisk` holds both.
 	Facts.DungeonsStanding = Run->DungeonCount();
+	Facts.QuestDungeonsStanding = UCataclysmEmpireMapLayout::QuestDungeonsStanding(Run);
 	Facts.DaysToNextSurge = DaysToNextSurgeIn(Run);
 	Facts.DaysOwed = Run->DaysOwed();
 	Facts.CitiesAtRisk = CitiesAtRiskIn(Run);
@@ -133,8 +136,9 @@ FString UCataclysmEmpireStatusBar::LineFor(const FCataclysmEmpireStatusFacts& Fa
 		return FString();
 	}
 
-	const FString Dungeons = FString::Printf(TEXT("%d %s standing"), Facts.DungeonsStanding,
-											 Facts.DungeonsStanding == 1 ? TEXT("dungeon") : TEXT("dungeons"));
+	// THE EMPIRE MAP'S OWN WORDS, so the two cannot drift. Issue #2800, ruled 2026-11-21.
+	const FString Dungeons =
+		UCataclysmEmpireMapLayout::StandingWords(Facts.DungeonsStanding, Facts.QuestDungeonsStanding);
 
 	FString Surge;
 	if (Facts.DaysToNextSurge <= 0 && Facts.DaysOwed > 0)
