@@ -798,8 +798,9 @@ int32 ACataclysmGameMode::SpawnCorruptedSentinels()
 			 "degrees. Each has %.0f health with %.0f%% of it as an energy "
 			 "shield, %.0f armour at difficulty tier %d, and **CANNOT MOVE AT "
 			 "ALL** -- its designed speed is zero, so walking out of its range "
-			 "ends the fight. Its Siege Bolt marks a %.0f cm lane for %.2f s "
-			 "and then flies %.0f cm, every %.1f s. Its Brimstone Mortar marks "
+			 "ends the fight. Its Siege Bolt goes off in a %.0f cm blast where "
+			 "it stops, is fired %.2f s after it decides with no marker, and "
+			 "flies %.0f cm, every %.1f s. Its Brimstone Mortar marks "
 			 "a %.0f cm circle for %.2f s and lobs onto it, every %.0f s."),
 		Spawned, CorruptedSentinelDistanceCm, *Centre.ToCompactString(),
 		CorruptedSentinelBearingDegrees,
@@ -889,8 +890,9 @@ int32 ACataclysmGameMode::SpawnSuccubi()
 			 "**the first diagonal, because the four cardinal ones are taken**. "
 			 "Each has %.0f health with a further %.0f%% of it as an energy "
 			 "shield, %.0f armour at difficulty tier %d, and walks at %.0f "
-			 "cm/s. Its Soulfire marks a %.0f cm lane for %.2f s and then flies "
-			 "%.0f cm at %.0f cm/s, every %.1f s. Its Wither the Living curses "
+			 "cm/s. Its Soulfire goes off in a %.0f cm blast where it stops, is "
+			 "fired %.2f s after it decides with no marker, and flies %.0f cm at "
+			 "%.0f cm/s, every %.1f s. Its Wither the Living curses "
 			 "one target within %.0f cm for %.0f s, every %.0f s, **with no "
 			 "ground marker at all** -- it is read off the caster and answered "
 			 "by interrupting. Its Dominion is held on for as long as it lives "

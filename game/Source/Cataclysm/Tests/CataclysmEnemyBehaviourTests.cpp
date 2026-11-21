@@ -2672,19 +2672,15 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		// AND THE ARITHMETIC IS STILL CHECKED, because it does not need any art.
 		// These are the numbers that decide when the creature's wind-up half
 		// ends, and getting them wrong is what four pull requests did.
-		TestEqual(TEXT("the stomp lands on the thinking pass at 1.50 s, not when "
-					   "its 1.4 s telegraph expires"),
+		// AT THE TELEGRAPH'S OWN LENGTH SINCE ISSUE #2808. Until then the stomp
+		// landed on the thinking pass at 1.50, and the rock throw at 1.00 or
+		// 1.25 by a coin toss of frame timing (issue #413).
+		TestEqual(TEXT("the stomp lands when its 1.4 s telegraph expires, not on "
+					   "the next thinking pass at 1.50 s"),
 			ACataclysmBruteCharacter::LandsAtSecondsFor(
 				ACataclysmBruteCharacter::StompWindUpSeconds),
-			1.50f, 0.001f);
-		// THE ROCK THROW'S TELEGRAPH SITS EXACTLY ON A STEP, so 1.00 is the
-		// earliest pass that can land it rather than the one that will. It often
-		// really lands on the next pass, at 1.25, because a timer callback runs
-		// on the first frame past its deadline and the comparison is a strict
-		// less-than. Sizing the wind-up half against the earliest is what makes
-		// that harmless: the poised pose is held until the attack really lands.
-		TestEqual(TEXT("and the rock throw can land as early as 1.00 s, which is "
-					   "what its wind-up half is sized against"),
+			1.40f, 0.001f);
+		TestEqual(TEXT("and the rock throw lands at its 1.00 s telegraph"),
 			ACataclysmBruteCharacter::LandsAtSecondsFor(
 				ACataclysmBruteCharacter::RockThrowWindUpSeconds),
 			1.00f, 0.001f);
@@ -2704,7 +2700,8 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 	// THE WHOLE REASON THE SLAM READS SMOOTHLY NOW.
 	//
 	// The ground smash reaches the ground 1.012 seconds into its montage and the
-	// attack lands at 1.500, so 0.488 seconds are unaccounted for. The first
+	// attack lands at 1.400 (1.500 until issue #2808), so 0.388 seconds are
+	// unaccounted for. The first
 	// version started the montage at once and then froze it on a single frame to
 	// use up the difference. The project owner reported that on 2026-08-08: "He
 	// reaches his arms up in the air, freezes for a second or so, then continues
@@ -2746,7 +2743,7 @@ bool FCataclysmBruteFinishesItsAbilitiesTest::RunTest(const FString&)
 		int32(ACataclysmBruteCharacter::StompAbility));
 
 	// THE STOMP IS NOT COMPRESSED. It reaches the ground 1.012 seconds in
-	// against a telegraph that ends at 1.500, so it has room to spare and plays
+	// against a telegraph that ends at 1.400, so it has room to spare and plays
 	// at the speed it was authored. The spare time is waited out beforehand
 	// rather than taken out of the animation, because slowing the animation down
 	// was tried first and reported from a play session as slow motion.

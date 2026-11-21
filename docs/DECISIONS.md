@@ -2,6 +2,184 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Two enemy bolts become quick casts with no marker, and every wind-up lands at its own length (#2808)
+
+**Affects:** `FCataclysmEnemyAbility::bDrawsNoMarker` and `QuickCastSeconds`, new
+(`game/Source/Cataclysm/Character/CataclysmCharacterBase.h`); the Succubus's Soulfire and the Corrupted Sentinel's
+Siege Bolt (`CataclysmSuccubusCharacter.h`/`.cpp`, `CataclysmCorruptedSentinelCharacter.h`/`.cpp`);
+`ACataclysmEnemyController::IsWindUpDue` and `LandWindUpIfDue`, new, `ContinueWindUp` and `ShowWindUpMarker`, with
+`PassesForWindUp` and `WindUpPassesLeft` removed (`CataclysmEnemyController.h`/`.cpp`); `ACataclysmEnemyCharacter::Tick`;
+`ACataclysmBruteCharacter::LandsAtSecondsFor`; the sandbox's log lines in `CataclysmGameMode.cpp`;
+`sim/cataclysm_sim/enemy_abilities.py` (`QUICK_CAST_SECONDS`, `Ability.quick_cast`, `quick_cast_dodge_distance` and a new
+import-time check); the Attack Telegraphs subsection and the Succubus, Corrupted Sentinel, Abyssal Warden and Gatekeeper
+sections of `docs/Cataclysm_GDD_v2.md`; `game/docs/enemy-source-assets.md`. Issue
+[#2808](https://github.com/sdubois777/Cataclysm/issues/2808).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 2; the compile and the window wait for the coordinating
+  session's turn, after #2807.
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Attack animations/sequences seem kinda slow all around for enemies. Not
+  everything needs a big windup and cast animation, sometimes enemies should be able to just shoot a fireball at you as
+  long as you can see it."
+- **THE SIEGE BOLT'S CLIP STILL DOES NOT LINE UP WITH ITS SHOT.** The moment inside `Fire_Planted` where the muzzle fires
+  has never been measured (issue #478), so the bolt now leaves at half a second wherever the clip happens to be. Ruled
+  2026-11-21: change the timing now and leave the clip until #478.
+- **A STATEMENT IN THE PHASE 1 REPORT WAS WRONG ABOUT THE MECHANISM, AND ITS CONCLUSION STANDS.** It said the two bolts
+  were fired 6.3 and 4.2 metres wide. They were not: neither pierces, so each flies with `ACataclysmProjectile`'s
+  standard 40 cm body and goes off where it stops -- against what it touches, or at the point it was aimed, where the
+  player stood -- hitting everything within its `Radius` of 3.15 or 2.1 metres. Nobody can leave a blast that size at
+  their own feet in the bolt's flight, so the radius still had to come down for a quick cast.
+- **THE CAST IS 0.5 SECONDS, NOT THE 0.45 THE RULING NAMED, AND IT LANDS AT THE RULED 0.50.** 0.45 was proposed only to
+  stay clear of a thinking-pass boundary, so that it would land on the second pass at 0.50 every time. Ruling (4) lands
+  every wind-up at its own length, so 0.45 would land at 0.45; 0.5 keeps the ruled landing time.
+
+### What was measured (phase 1)
+
+From the code and recorded clip measurements; nothing timed in a running game. "Lands" was the first quarter-second
+thinking pass at or after the wind-up's length (issue #413), and a length exactly on a pass landed on it or the next.
+
+| Creature | Attack | Wind-up | Landed at | Since this change |
+| :-- | :-- | :-: | :-: | :-: |
+| Imp, Brute, Abyssal Warden | ordinary swing | none | 0.242 to 0.308, 0.331, 0.176 s (measured clips) | unchanged |
+| Hellhound | Maul | none | at once (clip unmeasured) | unchanged |
+| Hellhound, Abyssal Warden | Hellrush, Stampede (charges) | 0.83 | 1.00 | 0.83 |
+| Brute | Stomp | 1.4 | 1.50 | 1.4 |
+| Brute | Rip and Toss | 1.0 | 1.00 or 1.25 | 1.0 |
+| Corrupted Sentinel | Siege Bolt | 1.0 | 1.00 or 1.25 | **0.5, a quick cast** |
+| Corrupted Sentinel, Gatekeeper | Brimstone Mortar, Soulfall | 1.2571 | 1.50 | 1.2571 |
+| Succubus | Soulfire | 1.3 | 1.50 | **0.5, a quick cast** |
+| Gatekeeper | Dread Cleave | 0.9714 | 1.00 | 0.9714 |
+| Abyssal Warden, Gatekeeper | Molten Roar, Soul Harvest | 2.0 | 2.00 or 2.25 | 2.0 |
+| Succubus, Gatekeeper | Wither the Living, Call the Damned | 0 | at once | unchanged |
+
+Projectiles and charges also turn to face first: up to 0.375 s at 480 degrees a second, a second for the Brute.
+Soulfire's cast clip releases 0.156 s in, so before this the creature stood still for 1.14 s and then flicked the bolt.
+
+### The research
+
+Fetched 2026-11-21. **Settled by it: the split.** Ordinary ranged monsters in the genre fire a projectile after a short
+cast with no ground marker, and the projectile is the warning; ground markers and long delays are kept for areas.
+
+- **Path of Exile**, monster skill data on poedb.tw (data-mined, not a developer statement): the Goatman Fire-raiser's
+  Fireball "Cast Time: 1.33 sec" (https://poedb.tw/us/Goatman_Fire-raiser); the Ironclad Arsonist's 0.85 s
+  (https://poedb.tw/us/Ironclad_Arsonist); the Vaal Fanatic's Fireball and mortar 1.2 s (https://poedb.tw/us/Vaal_Fanatic);
+  the player's Fireball gem 0.75 s (https://poedb.tw/us/Fireball).
+- **Path of Exile 2**: Jonathan Rogers, game director, PAX West 2023, of boss mechanics: "They're all telegraphed, you can
+  dodge" (https://maxroll.gg/poe/news/pax-west-path-of-exile-2-interview-with-jonathan-rogers). No timings.
+- **Diablo IV**, Maxroll's elite affix guide (a community guide, updated 2025-12-09,
+  https://maxroll.gg/d4/resources/elites-affixes): Frozen explodes "after 3 seconds"; Terrifying's pentagrams deal damage
+  "after 2 seconds"; Lightning Teleporter has "a 0.33 second cast time" with a cue.
+- **Diablo III**, Maxroll's elite affix guide (Season 26, https://maxroll.gg/d3/resources/elite-affixes): Frozen "4 sec to
+  explode"; Arcane Enchanted "2 sec delay after cast"; Poison Enchanted "2 sec trigger time".
+- **Last Epoch**: no published timings found. The 2019 forum thread
+  https://forum.lastepoch.com/t/poorly-telegraphed-high-damage-abilities/15075 asks for reports and promises adjustments
+  with no figures; its author shows no staff badge on the page.
+- **General**: Mike Stout, "Enemy Attacks and Telegraphing", Game Developer, 2015
+  (https://gamedeveloper.com/design/enemy-attacks-and-telegraphing): a projectile enemy is warned of by a charge-up before
+  it fires; no durations.
+
+**Not settled by it, and a judgement each:** the half second (quicker than every caster monster found, because the owner
+asked for quicker, and the reaction allowance plus a tenth so the cast itself can be seen); the 0.5 metre radius. No
+source publishes a rule for either.
+
+### The rulings
+
+The coordinating session, 2026-11-21, on the phase 1 report:
+
+1. **The quick cast is accepted as a second kind of attack**, on the owner's own words above. Soulfire and Siege Bolt
+   become quick casts: a cast landing at 0.50 s, no lane, a 0.5 metre bolt, under the walk-out rule with the flight
+   counted.
+2. **Soulfire's damage is unchanged for now**, to be tuned in play. Its damage share of 1.60 was set for a slow, wide
+   bolt ("slow but powerful"), so it is the first figure to look at if the quick bolt hits too hard.
+3. **Area attacks are kept as they are**, the owner's choice when asked: "Keep them as they are". Dread Cleave, the Stomp,
+   the lobs, the rings and both charges keep their wind-ups.
+4. **Every wind-up lands at its own length**, which the owner chose as "each one lands exactly on time instead of waiting
+   up to a quarter second extra".
+5. **The Siege Bolt's timing changes now and its clip stays misaligned until #478.**
+
+### What changed
+
+- **THE QUICK CAST.** A flat bolt fired `QuickCastSeconds`, 0.5, after the decision, with `bDrawsNoMarker` set so
+  `ShowWindUpMarker` draws nothing. It still turns to face first, and it is still aimed where the target stood when the
+  cast began. **The rule** (the Attack Telegraphs subsection): from the moment the cast begins to the bolt arriving there
+  must be at least the reaction allowance plus the time for the slowest class to walk out of the bolt's radius with its
+  own 0.42 metres, `Cast + Distance / Speed >= 0.4 + (Radius + 0.42) / 3.5`. The model checks at import that every quick
+  cast is a flat bolt with a Speed, has a Radius under the 1 metre marker floor, and can be stepped around somewhere
+  inside its range.
+
+  | Quick cast | Cast | Radius | Speed | Stepped around from |
+  | :-- | :-: | :-: | :-: | :-: |
+  | Soulfire | 0.5 s | 0.5 m (was 3.15) | 1200 cm/s | 1.95 m |
+  | Siege Bolt | 0.5 s | 0.5 m (was 2.1) | 1400 cm/s | 2.28 m |
+
+  Closer than that it cannot be stepped around, which is accepted: it is inside the reach a melee build stands at.
+  Siege Bolt's 1400 cm/s was derived from its old 1.0 s wind-up (one second of marker, one of flight) and is kept,
+  since half a second of cast and a second of flight still land inside its 2.0 s interval.
+- **THE EXACT LANDING, AND THE REVERSAL OF ISSUE #413's COUNT.** `ACataclysmEnemyCharacter::Tick` calls
+  `LandWindUpIfDue` every frame; a wind-up is due when `Now + 0.001 >= WindUpLandsAt` (`IsWindUpDue`), so it lands on the
+  first frame at or after its length. `PassesForWindUp` and `WindUpPassesLeft` are removed.
+  **#413's reasons, read first:** (a) on a quarter-second thinking pass, a frame of timer overshoot decided a whole pass
+  for a telegraph sitting exactly on a boundary -- the rock throw landed at 1.00 or 1.25, 246 times late in 500
+  simulated jittery runs; (b) every automation test moves the clock by hand and calls the brain directly, so a landing on
+  its own timer could not be observed. **Why reversing it is safe:** (a) came from checking four times a second;
+  checked every frame, the lateness is at most one frame at any length, and nothing rounds. (b) A test moves the clock
+  by hand and calls `LandWindUpIfDue` as the frame would, and the landing is then a comparison of two numbers the test
+  set -- deterministic every run. The millisecond of tolerance lets a test that moves the clock by exactly the wind-up
+  land it despite a float deadline; it is never more than a millisecond early. The frame does not land a wind-up for a
+  creature that is dead, unable to act or fleeing; `Think`'s next pass abandons it, as before.
+- **THE MARKER'S BACKSTOP** lifespan is the wind-up plus a thinking interval, since the landing that removes it may come
+  up to a frame after the wind-up's length.
+- **THE BRUTE'S MONTAGE** aims at the telegraph itself (`LandsAtSecondsFor`), so the stomp's fists land at 1.4, not 1.5.
+- **SOULFIRE'S CAST CLIP** now waits 0.344 s, not 1.144, before it plays, so its 0.156 s flick still comes as the bolt is
+  fired. No code changed for that: `SoulfireDelaySeconds` already worked from the wind-up.
+- **DREAD CLEAVE IS THE ONLY TELEGRAPHED BASIC ATTACK AGAIN.** From 2026-08-21 (issue #763) there were three.
+
+### Tests
+
+Unreal, written before the change was compiled, none yet run:
+
+| Test | What it checks |
+| :-- | :-- |
+| `Cataclysm.QuickCast.SoulfireIsFiredHalfASecondAfterItDecidesWithNoMarker` | through the brain: no marker, nothing at 0.49 s, the bolt at 0.50 s with a 50 cm radius |
+| `Cataclysm.QuickCast.SiegeBoltIsFiredHalfASecondAfterItDecidesAndTheMortarStillMarks` | the same for the bolt; the control is the same creature's mortar drawing its circle |
+| `Cataclysm.QuickCast.OnlyTheTwoBoltsAreQuickAndEveryAreaKeepsItsWindUp` | every enemy ability's wind-up held as a literal, the areas, lobs and charges as before, and exactly two quick casts |
+| `Cataclysm.AI.AWindUpLandsAtItsOwnLengthNotOnTheNextThinkingPass` | the stomp (1.4) and the rock throw (1.0, the boundary case) land at their length and not 0.01 s before |
+| `Cataclysm.AI.AWindUpIsDueAtItsLengthNeverEarlierAtAnyLengthOrClock` | every length 0.01 to 3.00 s at clocks of 0, 60 and 3600 s: due at its length, not 2 ms before; control, the old rounding put the stomp at 1.5 |
+| `Cataclysm.AI.TheFrameDoesNotLandAWindUpForACreatureThatCannotAct` | a stunned Brute's stomp is not landed by the frame, and the next pass abandons it |
+| `Cataclysm.Telegraph.TheMarkerIsShownUntilTheAttackLandsAndNoLonger` | the marker outlasts the wind-up by a thinking interval, and the landing removes it |
+
+Removed with the count they tested: `Cataclysm.AI.AWindUpTakesTheSameNumberOfPassesEveryTime`,
+`Cataclysm.AI.ATelegraphIsRoundedUpToAWholePassNeverDown` and
+`Cataclysm.Telegraph.TheMarkerIsShownForAsLongAsTheAttackReallyTakes`. Changed: the Succubus's and the Sentinel's ability
+tables (`Cataclysm.Succubus.`, `Cataclysm.Sentinel.`), which asserted a wind-up of half the interval; the Brute's
+no-art half of its montage test (1.40, not 1.50); the hit reaction test that set the removed count.
+
+Python: `tools/tests/test_wind_up_lands_on_a_counted_pass.py` is renamed `test_wind_up_lands_at_its_own_length.py` and
+rewritten to hold the exact landing; `tools/tests/test_quick_cast.py` is new, with each refusal of the model's check
+beside the unchanged control; the frame's call is pinned in
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`; the enemy ability, telegraph, Succubus and
+Sentinel tests are updated to the quick casts.
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (development `c20ce05e3`, the base of this branch): **the whole suite 5070 - 3 +
+4 + 3 = 5074; skipped halves 48, unchanged**; test saves 859. To be recounted at the window, since #2806, #2809 and #2807
+are ahead of it. Groups alone: `Cataclysm.QuickCast.` 3; `Cataclysm.AI.` 51 to 52; `Cataclysm.Telegraph.` 14, unchanged;
+`Cataclysm.Succubus.` 10; `Cataclysm.Sentinel.` 6; `Cataclysm.Brute.` 23; `Cataclysm.Enemy.` 19;
+`Cataclysm.HitReaction.` 12; `Cataclysm.Silence.` 26; `Cataclysm.LobMinimum.` 7; `Cataclysm.Gatekeeper.` 14;
+`Cataclysm.Warden.` 20; `Cataclysm.Hellhound.` 11.
+
+Proofs:
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| QC1 | `ShowWindUpMarker` ignores `bDrawsNoMarker` | both bolt tests in `Cataclysm.QuickCast.` |
+| QC2 | `IsWindUpDue` rounds the deadline up to a thinking pass | `AWindUpLandsAtItsOwnLength...` and `AWindUpIsDueAtItsLength...` |
+| QC3 | `LandWindUpIfDue` stops asking whether the creature can act | `TheFrameDoesNotLandAWindUp...` |
+
+---
+
 ## 2026-11-21 — Hovering an item on the ground shows the bag's tooltip and its comparison with what is worn, through the same code (#2807)
 
 **Affects:** `UCataclysmItemComparison::TooltipColumnsFor`, new, the steps `UCataclysmInventoryWidget` wrote out

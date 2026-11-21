@@ -357,6 +357,11 @@ HOOKS = {
                 "an ordinary blow that waited for its swing being dealt when "
                 "the swing connects, or dropped when the creature lost its "
                 "attack, issue #783",
+            # Issue #2808: a wind-up lands on the frame it is due, not on the
+            # next quarter-second thinking pass. The tests call it by hand.
+            "LandWindUpIfDue()":
+                "a wound-up ability landing at its own length, on the frame it "
+                "is due, issue #2808",
         },
         "questions": set(),
     },

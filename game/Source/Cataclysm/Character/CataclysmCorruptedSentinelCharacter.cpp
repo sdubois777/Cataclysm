@@ -230,10 +230,14 @@ ACataclysmCorruptedSentinelCharacter::EnemyAbilities() const
 	Bolt.CooldownSeconds = SiegeBoltCooldownSeconds;
 	Bolt.WindUpSeconds = SiegeBoltWindUpSeconds;
 
-	// A LANE, because it travels flat and hits what it passes.
+	// A FLAT PROJECTILE, so the creature still turns to face before it casts.
 	Bolt.Shape = ECataclysmSkillShape::Projectile;
 	Bolt.bArcsOntoItsTarget = false;
 	Bolt.MarkerRadiusCm = SiegeBoltRadiusCm;
+
+	// A QUICK CAST: NO LANE ON THE GROUND. The bolt in flight is the warning.
+	// Issue #2808; see SiegeBoltWindUpSeconds in the header.
+	Bolt.bDrawsNoMarker = true;
 
 	// AND IT IS THE BASIC ATTACK, which a silence leaves usable. Ruled 2026-10-17 (O1).
 	Bolt.bIsBasicAttack = true;
@@ -265,12 +269,14 @@ void ACataclysmCorruptedSentinelCharacter::BeginEnemyAbilityWindUp(
 	// seconds into 2.00 is 1.20. Passing the interval as the window is that
 	// decision, and it means the clip finishes exactly as the next shot begins.
 	//
-	// SO THE BOLT LEAVES HALF WAY THROUGH THE CLIP. The wind-up is 1.0 second of
-	// a 2.0 second window, and the shell leaves at 1.26 of it. **Whether the
-	// visible muzzle flash agrees with either is unknown**: issue #478 is that
-	// the release moment inside `Fire_Planted` has never been measured, and
+	// SO THE BOLT LEAVES A QUARTER OF THE WAY THROUGH THE CLIP. The quick cast
+	// is 0.5 seconds of a 2.0 second window (it was a 1.0 second wind-up until
+	// issue #2808), and the shell leaves at 1.26 of it. **Whether the visible
+	// muzzle flash agrees with either is unknown**: issue #478 is that the
+	// release moment inside `Fire_Planted` has never been measured, and
 	// `tools/measure_sentinel_release.py` records two ways of measuring it that
-	// both failed their control.
+	// both failed their control. The bolt's timing was changed without it, by
+	// the ruling of 2026-11-21.
 	PlayFireAnimation();
 }
 
@@ -301,13 +307,13 @@ void ACataclysmCorruptedSentinelCharacter::UseEnemyAbility(
 
 	if (Index == SiegeBoltAbility)
 	{
-		// AIMED WHERE IT WAS MARKED. AimedAt is where the target stood when the
-		// wind-up began, so a player who stepped out of the lane is not hit --
-		// which is the whole of what a telegraph buys.
+		// AIMED WHERE THE TARGET STOOD WHEN THE CAST BEGAN, not where it is now,
+		// so a player who moved during the half second is not followed.
 		//
 		// A SPEED AND NO FLIGHT TIME, so it travels flat. At 1400 cm/s it
-		// crosses its whole 14 metre range in exactly one second, so a player
-		// who leaves the lane after the marker goes still has time.
+		// crosses its whole 14 metre range in exactly one second, and that
+		// flight is what the player steps around: a quick cast draws no lane.
+		// Issue #2808.
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SiegeBoltRadiusCm,
 			SiegeBoltSpeedCmPerSecond, SiegeBoltPierce, /*bInReturns=*/false,

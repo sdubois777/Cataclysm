@@ -13,7 +13,7 @@
  * WHAT IT DOES, from `ABILITIES['Succubus']` in
  * `sim/cataclysm_sim/enemy_abilities.py`:
  *
- *   Soulfire            Projectile  Basic    a slow bolt down an 8 metre lane
+ *   Soulfire            Projectile  Basic    a slow bolt, a quick cast with no marker
  *   Wither the Living   Debuff      Support  a curse on the player, 5 seconds
  *   Dominion            Aura        Aura     allies within 8 metres are buffed
  *
@@ -40,8 +40,9 @@
  * default arm already draws nothing for both, and says so.
  *
  * **ITS BASIC ATTACK IS AN ENTRY IN `EnemyAbilities`**, the same shape the
- * Corrupted Sentinel established. Soulfire is TELEGRAPHED, and the ordinary
- * `AttackTarget` path has no wind-up and draws no marker. An ability with a
+ * Corrupted Sentinel established. Soulfire is a QUICK CAST with half a second
+ * of wind-up (issue #2808), and the ordinary `AttackTarget` path has no
+ * wind-up at all. An ability with a
  * cooldown of ZERO fires exactly on the creature's attack interval, because
  * `ACataclysmEnemyController::UseAbilitiesOn` gates every ability by
  * `SecondsBetweenAttacks()` as well as by the ability's own cooldown, and stamps
@@ -223,7 +224,7 @@ public:
 	static constexpr float SuccubusRoamRadiusCm = 600.0f;
 
 	// ----------------------------------------------------------------------
-	// Soulfire, the telegraphed basic attack
+	// Soulfire, the basic attack: a quick cast since issue #2808
 	//
 	// EVERY NUMBER HERE IS A COPY of `ABILITIES['Succubus']`.
 	// ----------------------------------------------------------------------
@@ -237,10 +238,15 @@ public:
 	 *  build. */
 	static constexpr float SoulfireRangeCm = 800.0f;
 
-	/** Half the lane's width. `Radius` is 3.15 metres, so the lane is 6.3 metres
-	 *  across -- the largest telegraph any ordinary Demonic enemy produces
-	 *  except the Brute's. */
-	static constexpr float SoulfireRadiusCm = 315.0f;
+	/** The BLAST where the bolt stops. `Radius` is 0.5 metres. The bolt does not
+	 *  pierce, so `ACataclysmProjectile` flies it with the standard 40 cm body
+	 *  and it goes off where it stops -- against what it touches, or at the
+	 *  point it was aimed -- hitting everything within this. **IT WAS 3.15 UNTIL
+	 *  ISSUE #2808**, the half-width of the lane it marked, and nobody can leave
+	 *  a 3.15 metre blast at their own feet in the bolt's flight. At 0.5 the
+	 *  slowest class can step clear from 1.95 metres out
+	 *  (`quick_cast_dodge_distance` in the model). */
+	static constexpr float SoulfireRadiusCm = 50.0f;
 
 	/** How fast the bolt travels. `Speed` is 1200 cm/s, **the slowest projectile
 	 *  speed anything in the game uses**: it is Magma Quake's, the slowest player
@@ -255,30 +261,30 @@ public:
 	static constexpr float SoulfireCooldownSeconds = 0.0f;
 
 	/**
-	 * How long the lane is marked before the bolt leaves.
+	 * How long after the decision the bolt leaves. A QUICK CAST, issue #2808.
 	 *
-	 * DERIVED FROM THE RADIUS. The rule is `0.4 + Radius / 3.5` seconds, from
-	 * the Attack Telegraphs subsection of `docs/Cataclysm_GDD_v2.md`. 0.4 + 3.15
-	 * / 3.5 is exactly 1.3.
+	 * THE OWNER'S PLAYTEST OF 2026-11-21: "Not everything needs a big windup and
+	 * cast animation, sometimes enemies should be able to just shoot a fireball
+	 * at you as long as you can see it." So no lane is drawn (`bDrawsNoMarker`)
+	 * and the bolt in flight is the warning; the Attack Telegraphs subsection of
+	 * `docs/Cataclysm_GDD_v2.md` describes it as the second kind of attack.
 	 *
-	 * **AND 3.15 METRES IS EXACTLY THE LARGEST THE RULE ALLOWS IT.** The cap is
-	 * `3.5 x (attack interval / 2 - 0.4)`, which at 2.6 seconds is 3.15, so this
-	 * creature's basic attack uses the whole of its allowance and its wind-up is
-	 * exactly half its interval. The Corrupted Sentinel's Siege Bolt is the only
-	 * other ability in the game that does this.
+	 * **IT WAS 1.3 UNTIL THEN**, derived from a 3.15 metre lane by the walk-out
+	 * rule `0.4 + Radius / 3.5`, and it landed at 1.5 on the next thinking pass.
+	 * Since the same issue an attack lands at its own length, so this lands at
+	 * 0.5.
 	 */
-	static constexpr float SoulfireWindUpSeconds = 1.3f;
+	static constexpr float SoulfireWindUpSeconds = 0.5f;
 
 	static_assert(
-		SoulfireWindUpSeconds > 0.4f + SoulfireRadiusCm / 100.0f / 3.5f - 0.002f
-		&& SoulfireWindUpSeconds < 0.4f + SoulfireRadiusCm / 100.0f / 3.5f + 0.002f,
-		"Soulfire's wind-up has drifted from the radius it is derived from. "
-		"The rule is 0.4 + Radius / 3.5 seconds, from the Attack Telegraphs "
-		"subsection of docs/Cataclysm_GDD_v2.md. Change both or neither.");
+		SoulfireWindUpSeconds == FCataclysmEnemyAbility::QuickCastSeconds,
+		"Soulfire is a quick cast and its wind-up is not the quick cast's. "
+		"QUICK_CAST_SECONDS in sim/cataclysm_sim/enemy_abilities.py is the "
+		"one figure; change it there and in FCataclysmEnemyAbility.");
 
 	static_assert(
 		SoulfireWindUpSeconds < DesignedAttackIntervalSeconds,
-		"Soulfire's telegraph is at least as long as the interval between "
+		"Soulfire's wind-up is at least as long as the interval between "
 		"shots, so the creature would begin warning about the next shot before "
 		"this one had landed and the marker would never leave the ground.");
 
@@ -475,11 +481,14 @@ public:
 	/**
 	 * Casting Soulfire. `Primary_Attack_Normal`, 0.9000 seconds.
 	 *
-	 * **IT IS SHORTER THAN THE WIND-UP IT PLAYS ACROSS**, which is 1.3 seconds,
-	 * so it is played at its authored speed and the creature holds the last pose
-	 * for the remaining 0.4 seconds before the bolt leaves. That is the
-	 * project's rule from issue #369 -- never slower than authored, only faster
-	 * -- applied to a clip that is already short enough.
+	 * **ITS CAST RELEASES 0.156 SECONDS IN**, inside the 0.5 second quick cast
+	 * (issue #2808), so it is played at its authored speed, started 0.344
+	 * seconds after the decision so the flick and the bolt coincide, and the
+	 * rest of the clip plays out after the bolt has left. That is the project's
+	 * rule from issue #369 -- never slower than authored, only faster -- applied
+	 * to a clip that is already short enough. (Until issue #2808 this said the
+	 * clip was shorter than a 1.3 second wind-up and the creature held its last
+	 * pose for 0.4 seconds; issue #784 had already replaced that with a wait.)
 	 *
 	 * THE PACK'S `Primary_Attack_Slow` WOULD FILL THE WIND-UP ALMOST EXACTLY at
 	 * 1.5000 seconds and a play rate of 1.1538, and it is NOT used, because it
@@ -538,8 +547,8 @@ public:
 	 *
 	 * **AT 0.156 OF A 0.9 SECOND CLIP THE CAST IS AN EARLY FLICK**, and the
 	 * remaining three quarters is the creature settling. Fitting the clip to the
-	 * 1.3 second wind-up by its whole LENGTH therefore released it 1.14 seconds
-	 * before the bolt appeared. Issue #784.
+	 * then 1.3 second wind-up by its whole LENGTH therefore released it 1.14
+	 * seconds before the bolt appeared. Issue #784.
 	 *
 	 * NO ANIMATION NOTIFY EXISTS TO READ INSTEAD. All thirteen basic-attack
 	 * clips in the project were checked and every one is empty.
@@ -555,8 +564,9 @@ public:
 	 * The rate the cast clip plays at, and how long after the wind-up begins it
 	 * starts, so the bolt leaves the hand exactly as the bolt is fired.
 	 *
-	 * **1.00 AND 1.144 SECONDS.** The clip releases at 0.156 and the bolt is
-	 * fired at 1.3, so the clip does not need speeding up -- it needs to wait.
+	 * **1.00 AND 0.344 SECONDS.** The clip releases at 0.156 and the bolt is
+	 * fired at 0.5, so the clip does not need speeding up -- it needs to wait.
+	 * It waited 1.144 seconds while the wind-up was 1.3, until issue #2808.
 	 *
 	 * **THE CREATURE STANDS IN ITS IDLE FOR THAT WAIT, NOT FROZEN.** Holding a
 	 * clip on one frame was tried on the Brute and read as the creature seizing

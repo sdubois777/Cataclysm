@@ -456,13 +456,13 @@ CATACLYSM_TEST(FCataclysmHitReactionWindUpTest,
 		return false;
 	}
 
-	// PAST ANY CLIP THAT PLAYED, then committed to Molten Roar as the brain commits: the ability, when it lands, and
-	// how many passes are left. Set by hand, as `Cataclysm.Gatekeeper` sets its sweep's.
+	// PAST ANY CLIP THAT PLAYED, then committed to Molten Roar as the brain commits: the ability and when it lands.
+	// Set by hand, as `Cataclysm.Gatekeeper` sets its sweep's. (It also set a count of passes left until issue #2808
+	// removed the count.)
 	PushTheClockOn(World, LongerThanAnyFlinchSeconds);
 	const float LandsAt = WorldNowIn(World) + Warden_t::MoltenRoarWindUpSeconds;
 	Brain->WindingUpAbility = Warden_t::MoltenRoarAbility;
 	Brain->WindUpLandsAt = LandsAt;
-	Brain->WindUpPassesLeft = 8;
 
 	LandABlow(Striker, Warden);
 	TestEqual(TEXT("a hit during Molten Roar's wind-up starts no flinch"), Warden->FlinchesChosen, 1);
@@ -473,7 +473,6 @@ CATACLYSM_TEST(FCataclysmHitReactionWindUpTest,
 	TestEqual(TEXT("the wind-up is still Molten Roar"), Brain->WindingUpAbility,
 		static_cast<int32>(Warden_t::MoltenRoarAbility));
 	TestEqual(TEXT("landing when it was going to"), Brain->WindUpLandsAt, LandsAt, 0.0001f);
-	TestEqual(TEXT("with as many passes still to go"), Brain->WindUpPassesLeft, 8);
 
 	Brain->WindingUpAbility = INDEX_NONE;
 	return true;

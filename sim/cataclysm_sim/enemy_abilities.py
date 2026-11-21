@@ -233,6 +233,21 @@ SMALLEST_USEFUL_MARKER_METRES = 1.0
 REACTION_ALLOWANCE = 0.4
 WALK_OUT_SPEED = 3.5
 
+#: How long a QUICK CAST takes from the decision to fire to the bolt leaving, in
+#: seconds. Issue #2808, from the owner's playtest of 2026-11-21: "sometimes
+#: enemies should be able to just shoot a fireball at you as long as you can see
+#: it". The second kind of attack in the Attack Telegraphs subsection of
+#: `docs/Cataclysm_GDD_v2.md`: a flat bolt narrow enough to be stepped around
+#: after it is fired draws no lane, and the bolt in flight is the warning.
+#:
+#: A JUDGEMENT, BOUNDED BY THE GENRE. Path of Exile's caster monsters fire a
+#: Fireball after a cast of 0.85 to 1.33 seconds and its player gem casts in
+#: 0.75 (poedb.tw, recorded with the decision in `docs/DECISIONS.md`). Half a
+#: second is quicker than all of them, which is what the owner asked for, and
+#: it is the reaction allowance plus a tenth, so the cast itself is long enough
+#: to be seen. `quick_cast_dodge_distance` is what makes it fair.
+QUICK_CAST_SECONDS = 0.5
+
 
 @dataclass(frozen=True)
 class Ability:
@@ -255,6 +270,13 @@ class Ability:
     #: Seconds before it may be used again. Zero for a Basic attack, which runs
     #: on the archetype's attack interval, and for an Aura, which is held on.
     cooldown: float = 0.0
+
+    #: A QUICK CAST: a flat Projectile fired `QUICK_CAST_SECONDS` after the
+    #: decision, drawing no lane. The bolt in flight is the warning, so it must
+    #: be narrow enough to step around once it is seen; see
+    #: `quick_cast_dodge_distance` and `_check_every_quick_cast_can_be_stepped_
+    #: around_in_flight`. Issue #2808.
+    quick_cast: bool = False
 
     #: The first phase this ability is available from. 1 for every ability of
     #: every single-phase enemy, which is six of the seven.
@@ -333,6 +355,10 @@ def is_telegraphed(ability: Ability, kind: Archetype | str) -> bool:
     And the wind-up for that marker has to fit inside half the cycle.
     """
     kind = archetype(kind) if isinstance(kind, str) else kind
+    # A QUICK CAST DRAWS NO MARKER, by design rather than by the numbers: the
+    # bolt in flight is its warning. Issue #2808.
+    if ability.quick_cast:
+        return False
     if ability.shape not in TELEGRAPHED_SHAPES:
         return False
     if float(ability.params.get("Radius", 0.0)) < SMALLEST_USEFUL_MARKER_METRES:
@@ -370,6 +396,31 @@ def wind_up_seconds(radius: float) -> float:
     """
     return min(REACTION_ALLOWANCE + radius / WALK_OUT_SPEED,
                MAXIMUM_WIND_UP_SECONDS)
+
+
+def quick_cast_dodge_distance(ability: Ability) -> float:
+    """How far from its caster a quick cast can still be stepped around, in metres.
+
+    THE WALK-OUT RULE WITH THE FLIGHT COUNTED. A marked attack must leave the
+    slowest class `REACTION_ALLOWANCE` plus the time to walk the marker's width.
+    A quick cast has no marker, so the same rule is asked of the time from the
+    cast beginning to the bolt reaching the player: the cast plus the flight
+    must be at least the reaction allowance plus the time to walk out of the
+    bolt's Radius -- the blast where a bolt that does not pierce stops, which is
+    wider than its 40 cm body in flight -- with the player's own radius. The
+    bolt stops at the point it was aimed, which is where the player stood.
+    Rearranged, a target at least this far away -- caster's centre to player's
+    centre -- can step clear.
+
+    CLOSER THAN THIS IT CANNOT, AND THAT IS ACCEPTED. It is under 2.5 metres for
+    both designed quick casts, which is inside the reach a melee build stands
+    at, and a caster monster in Path of Exile is no different at that range.
+    Issue #2808.
+    """
+    radius = float(ability.params.get("Radius", 0.0))
+    speed = float(ability.params["Speed"]) / 100.0
+    needed = REACTION_ALLOWANCE + (radius + PLAYER_BODY_RADIUS) / WALK_OUT_SPEED
+    return max(0.0, speed * (needed - QUICK_CAST_SECONDS))
 
 
 def telegraph_cap_metres(kind: Archetype | str) -> float:
@@ -659,16 +710,35 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Soulfire",
             shape="Projectile",
             slot="Basic",
-            # Radius 3.15 is the largest marker a 2.6 second attack interval
-            # allows, so its wind-up is exactly half the interval. The Succubus
-            # takes all of it because "slow but powerful" has to mean something
-            # the player can see. Speed 1200 is the slowest player projectile in
+            # A QUICK CAST SINCE ISSUE #2808: fired half a second after the
+            # decision with no lane, and the bolt in flight is the warning. The
+            # owner's playtest of 2026-11-21: "sometimes enemies should be able
+            # to just shoot a fireball at you as long as you can see it".
+            #
+            # RADIUS 0.5, DOWN FROM 3.15, BECAUSE IT IS THE BLAST WHERE THE BOLT
+            # STOPS. The bolt does not pierce, so it flies with the projectile's
+            # standard 40 cm body and goes off where it stops -- against what it
+            # touches, or at the point it was aimed, which is where the player
+            # stood -- hitting everything within Radius. 3.15 was the lane the
+            # player stepped out of during a 1.3 second wind-up, and the blast at
+            # the aimed point was that size; with no wind-up nobody could leave
+            # 3.15 metres in the bolt's flight. At 0.5 the slowest class can
+            # step clear from 1.95 metres out (`quick_cast_dodge_distance`).
+            #
+            # Speed 1200 is the slowest player projectile in
             # game/Data/WeaponSkills.csv, Magma Quake's; a slow bolt is a
-            # readable one, and the marker is on the ground before it flies.
-            params={"Range": 8, "Radius": 3.15, "Speed": 1200},
-            note="A slow bolt of demonic fire, marked on the ground for 1.3 "
-                 "seconds first. The largest telegraph any ordinary Demonic "
-                 "enemy produces except the Brute's.",
+            # readable one, which matters more now that the bolt is the warning.
+            #
+            # ITS DAMAGE WAS SET FOR THE SLOW, WIDE BOLT. The Succubus's damage
+            # share of 1.60 in enemy_stats.py was justified by "slow but
+            # powerful", and the coordinating session left it unchanged on
+            # 2026-11-21 to be tuned in play. It is the first figure to look at
+            # if the quick bolt hits too hard.
+            params={"Range": 8, "Radius": 0.5, "Speed": 1200},
+            quick_cast=True,
+            note="A bolt of demonic fire, fired half a second after it decides "
+                 "to with no marker on the ground. The slowest projectile in "
+                 "the game, so it is stepped around once it is seen.",
         ),
         Ability(
             name="Wither the Living",
@@ -967,35 +1037,36 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             name="Siege Bolt",
             shape="Projectile",
             slot="Basic",
-            # RADIUS 2.1 IS THE LARGEST A 2.0 SECOND INTERVAL ALLOWS, so its
-            # wind-up is 0.4 + 2.1 / 3.5 = exactly 1.0 second, which is exactly
-            # half the interval. That is the same place the Succubus sits and
-            # for the same reason: a creature whose whole role is forcing the
-            # player to move should mark as much ground as the rule permits.
+            # A QUICK CAST SINCE ISSUE #2808, as the Succubus's Soulfire is:
+            # fired half a second after the decision, no lane, and the bolt in
+            # flight is the warning.
+            #
+            # RADIUS 0.5, DOWN FROM 2.1, BECAUSE IT IS THE BLAST WHERE THE BOLT
+            # STOPS, as Soulfire's is: it does not pierce, so it flies with a
+            # 40 cm body and goes off where it stops, hitting everything within
+            # Radius. 2.1 was the largest lane a 2.0 second interval allowed,
+            # and the blast at the aimed point was that size. At 0.5 the slowest
+            # class can step clear from 2.28 metres out
+            # (`quick_cast_dodge_distance`).
             #
             # RANGE 14 IS ITS ATTACK REACH. See ATTACK_REACH above: the longest
             # range any player attack reaches, taken because reach is the only
             # tool a creature that cannot move has.
             #
-            # SPEED 1400 FALLS OUT OF THE OTHER TWO RATHER THAN BEING CHOSEN.
-            # The bolt should land before the next one is marked, or the
-            # creature has a shot in the air and a marker on the ground at once
-            # and neither means anything. The wind-up takes 1.0 second of the
-            # 2.0 second interval, so the flight has the other 1.0. Fourteen
-            # metres in one second is 1400 cm/s, and 1400 is one of the ten
-            # speeds game/Data/WeaponSkills.csv uses -- Blood Pyre's.
-            #
-            # SO THE RHYTHM IS EXACTLY TWO SECONDS WITH NOTHING IDLE IN IT: one
-            # second of marker, one second of flight, and the next marker
-            # appears as the shot lands. That is "forces the player to stay
-            # mobile" written as a number rather than as an adjective.
+            # SPEED 1400 WAS DERIVED FROM THE OLD WIND-UP AND IS KEPT. Until
+            # issue #2808 the 1.0 second wind-up took half the 2.0 second
+            # interval and the flight had the other half: fourteen metres in
+            # one second is 1400 cm/s, one of the ten speeds
+            # game/Data/WeaponSkills.csv uses -- Blood Pyre's. With a half
+            # second cast the bolt still lands before the next one is fired
+            # (0.5 + 1.0 inside 2.0), which was the condition the derivation
+            # served, so the speed did not have to move and was not moved.
             #
             # IT IS FASTER THAN THE SUCCUBUS'S 1200 AND THAT IS DELIBERATE. The
             # 1200 ceiling in Rip and Toss's comment above is reasoning about a
             # LOB, which is fastest as it lands; this is a flat bolt and is not
             # bound by it. 1400 is still the second slowest of the ten speeds
-            # in the player skill table, and what makes this shot readable is
-            # the second of ground marker in front of it rather than its speed.
+            # in the player skill table.
             #
             # PIERCE 0 BECAUSE IT IS ONE BOLT. It stops at what it hits.
             #
@@ -1009,11 +1080,12 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # and has to step out of it every two seconds like everybody else.
             # That is its answer to being stood on, and it needs no new
             # mechanic. Issue #352.
-            params={"Range": 14, "Radius": 2.1, "Pierce": 0, "Speed": 1400},
-            note="A bolt down a marked lane 2.1 metres to either side, on the "
-                 "ground for 1 second first. It does not lead the player: the "
-                 "area is fixed when the wind-up starts, which is the rule for "
-                 "every telegraph. Geometry blocks it, so cover works.",
+            params={"Range": 14, "Radius": 0.5, "Pierce": 0, "Speed": 1400},
+            quick_cast=True,
+            note="A bolt fired half a second after it decides to, with no "
+                 "marker on the ground. It does not lead the player: it is "
+                 "aimed where the player stood when the cast began. Geometry "
+                 "blocks it, so cover works.",
         ),
         Ability(
             name="Brimstone Mortar",
@@ -1235,31 +1307,28 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # metre cone warns for 0.97 seconds, which its 3.0 second interval
             # holds with half a cycle to spare (1.5 allowed).
             #
-            # THREE OF THE SEVEN BASICS ARE TELEGRAPHED, NOT ONE. The
-            # Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire are
-            # the other two, and both are projectiles rather than swings.
+            # IT IS THE ONLY TELEGRAPHED BASIC ATTACK, AGAIN. From issue #763
+            # (2026-08-21) until issue #2808 (2026-11-21) there were three:
+            # the Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire
+            # were telegraphed too, and both became quick casts with no marker.
             # `is_telegraphed` computes it from the numbers rather than from
             # this comment, and `tools/tests/test_enemy_telegraphs.py` holds
-            # the design document's prose to what it computes. This comment
-            # and that document both said "the only" until 2026-08-21, which
-            # is issue #763.
+            # the design document's prose to what it computes.
             #
             # RADIUS 2.0 IS A JUDGEMENT, bounded twice. Above the 1 metre
             # marker floor, or nothing is drawn and a 2-hit kill arrives
             # unannounced. Under the 3.85 metres its own interval allows, so
             # the basic swing stays visibly smaller than everything on a
-            # cooldown. NO MaxTargets, WHICH IT SHARES WITH THE OTHER TWO
-            # TELEGRAPHED BASICS AND WITH NOTHING ELSE: those three are
-            # exactly the ordinary attacks that mark an area, and an area
-            # attack hits what is standing in it. The four contact swings
-            # state MaxTargets=1. This comment said "unlike the other six"
-            # until 2026-08-21; issue #763.
+            # cooldown. NO MaxTargets, WHICH IT SHARES WITH THE TWO QUICK
+            # CASTS AND WITH NOTHING ELSE: this is the one ordinary attack that
+            # marks an area, and an area attack hits what is standing in it.
+            # The four contact swings state MaxTargets=1. This comment said
+            # "unlike the other six" until 2026-08-21; issue #763.
             params={"Radius": 2.0, "Angle": 120},
             note="A hammer sweep across a 120 degree arc, 2 metres out, marked "
-                 "for 0.97 seconds first. The only telegraphed basic attack "
-                 "that is a melee swing; the Corrupted Sentinel's Siege Bolt "
-                 "and the Succubus's Soulfire are the other two telegraphed "
-                 "basics and both are projectiles. It is telegraphed because "
+                 "for 0.97 seconds first. The only telegraphed basic attack; "
+                 "the Corrupted Sentinel's Siege Bolt and the Succubus's "
+                 "Soulfire are quick casts with no marker. It is telegraphed because "
                  "two of these kill the reference geared character. Sevarog's "
                  "three swing chains at their slow speeds (1.70 s) fit inside "
                  "the 3.0 second interval.",
@@ -1612,6 +1681,44 @@ def _check_every_projectile_states_a_speed_or_an_arc_but_not_both() -> None:
                 "changes throughout, and they describe different motion.")
 
 
+def _check_every_quick_cast_can_be_stepped_around_in_flight() -> None:
+    """A quick cast is fair only because the bolt in flight can be dodged.
+
+    THREE CONDITIONS, from the second kind of attack in the Attack Telegraphs
+    subsection of `docs/Cataclysm_GDD_v2.md`. Issue #2808.
+
+    It is a FLAT Projectile stating a Speed. A lob lands on an area, and an area
+    is the kind of attack the design keeps a marker for.
+
+    Its Radius is under the smallest useful marker. A bolt that does not pierce
+    goes off where it stops and hits everything within Radius, so a Radius of a
+    metre or more is an area arriving at the player's feet, which is what a
+    marker is for; 3.15 and 2.1 metres are what the two quick casts carried
+    before issue #2808.
+
+    It can be stepped around from no further out than the creature's own reach
+    allows it to fire from, or it is unavoidable at every range it is used at.
+    """
+    for name, entries in ABILITIES.items():
+        for ability in entries:
+            if not ability.quick_cast:
+                continue
+            assert ability.shape == "Projectile" and "Speed" in ability.params \
+                and "Arc" not in ability.params, (
+                    f"{name}'s {ability.name} is a quick cast and not a flat "
+                    "Projectile stating a Speed. Only a bolt seen in flight "
+                    "can be its own warning.")
+            radius = float(ability.params.get("Radius", 0.0))
+            assert radius < SMALLEST_USEFUL_MARKER_METRES, (
+                f"{name}'s {ability.name} is a quick cast with a {radius} m "
+                f"Radius. At {SMALLEST_USEFUL_MARKER_METRES} m or more the blast "
+                "where it stops is an area, which needs a marker.")
+            reach = float(ability.params.get("Range", 0.0))
+            assert quick_cast_dodge_distance(ability) < reach, (
+                f"{name}'s {ability.name} cannot be stepped around anywhere "
+                f"inside its {reach} m range.")
+
+
 def _check_no_lobbed_attack_marks_the_ground_its_caster_stands_on() -> None:
     """Its minimum range must be further than the creature's own body.
 
@@ -1658,6 +1765,7 @@ _check_every_phase_is_reachable_and_starts_at_one()
 _check_every_stun_is_spaced_by_the_immunity_window()
 _check_no_stun_outlasts_the_longest_the_player_has()
 _check_every_projectile_states_a_speed_or_an_arc_but_not_both()
+_check_every_quick_cast_can_be_stepped_around_in_flight()
 _check_no_lobbed_attack_marks_the_ground_its_caster_stands_on()
 _check_reach_and_pack_are_only_set_for_designed_enemies()
 

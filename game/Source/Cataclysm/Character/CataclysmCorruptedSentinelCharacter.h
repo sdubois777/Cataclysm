@@ -12,7 +12,7 @@
  * WHAT IT DOES, from `ABILITIES['Corrupted Sentinel']` in
  * `sim/cataclysm_sim/enemy_abilities.py`:
  *
- *   Siege Bolt        Projectile  Basic    a flat bolt down a 14 metre lane
+ *   Siege Bolt        Projectile  Basic    a flat 14 metre bolt, a quick cast
  *   Brimstone Mortar  Projectile  Special  a lobbed shell bursting 3 m in radius
  *
  * **IT IS THE ONLY CREATURE IN THE ROSTER THAT CANNOT MOVE.** `move_speed` is
@@ -29,8 +29,10 @@
  * **ITS BASIC ATTACK IS AN ENTRY IN `EnemyAbilities`, WHICH IS NEW HERE.** Every
  * other creature's basic attack is `MeleeReachCm` plus `AttackIntervalSeconds`
  * and reaches the target through `AttackTarget`. That path has no wind-up and
- * draws no marker, and this creature's basic attack is TELEGRAPHED -- Siege Bolt
- * marks a lane for a full second before it fires.
+ * draws no marker, and this creature's basic attack was TELEGRAPHED -- Siege
+ * Bolt marked a lane for a full second before it fired. Since issue #2808 it is
+ * a quick cast that marks nothing and fires after half a second, and it is still
+ * an entry in `EnemyAbilities`, which is what gives it a wind-up at all.
  *
  * NO NEW MACHINERY WAS NEEDED FOR THAT, and it is worth saying exactly why,
  * because the obvious conclusion is that some was.
@@ -227,7 +229,7 @@ public:
 	static constexpr float SentinelRoamRadiusCm = 0.0f;
 
 	// ----------------------------------------------------------------------
-	// Siege Bolt, the telegraphed basic attack
+	// Siege Bolt, the basic attack: a quick cast since issue #2808
 	//
 	// EVERY NUMBER HERE IS A COPY of `ABILITIES['Corrupted Sentinel']`.
 	// ----------------------------------------------------------------------
@@ -236,8 +238,13 @@ public:
 	 *  reach in the slice and the same range the mortar has. */
 	static constexpr float SiegeBoltRangeCm = 1400.0f;
 
-	/** Half the lane's width. `Radius` is 2.1 metres. */
-	static constexpr float SiegeBoltRadiusCm = 210.0f;
+	/** The BLAST where the bolt stops, as Soulfire's is: the bolt does not
+	 *  pierce, so it flies with a 40 cm body and goes off where it stops,
+	 *  hitting everything within this. `Radius` is 0.5 metres. **IT WAS 2.1
+	 *  UNTIL ISSUE #2808**, the half-width of the lane it marked. At 0.5 the
+	 *  slowest class can step clear from 2.28 metres out
+	 *  (`quick_cast_dodge_distance` in the model). */
+	static constexpr float SiegeBoltRadiusCm = 50.0f;
 
 	/** How fast the bolt travels. `Speed` is 1400 cm/s, so it crosses its whole
 	 *  range in exactly one second. */
@@ -249,29 +256,30 @@ public:
 	static constexpr float SiegeBoltCooldownSeconds = 0.0f;
 
 	/**
-	 * How long the lane is marked before the bolt leaves.
+	 * How long after the decision the bolt leaves. A QUICK CAST, issue #2808,
+	 * as the Succubus's Soulfire is: no lane is drawn (`bDrawsNoMarker`) and the
+	 * bolt in flight is the warning.
 	 *
-	 * DERIVED FROM THE RADIUS. The rule is `0.4 + Radius / 3.5` seconds, from
-	 * the Attack Telegraphs subsection of `docs/Cataclysm_GDD_v2.md`. 0.4 + 2.1
-	 * / 3.5 is exactly 1.0.
+	 * **IT WAS 1.0 UNTIL THEN**, derived from a 2.1 metre lane by the walk-out
+	 * rule `0.4 + Radius / 3.5`.
 	 *
-	 * **AND 2.1 METRES IS EXACTLY THE LARGEST THE RULE ALLOWS IT.** The cap is
-	 * `3.5 x (attack interval / 2 - 0.4)`, which at 2.0 seconds is 2.1, so this
-	 * creature's basic attack uses the whole of its allowance and its wind-up is
-	 * exactly half its interval. The Succubus's basic does the same thing.
+	 * **THE VISIBLE SHOT DOES NOT LINE UP WITH THIS YET.** The firing clip plays
+	 * across the whole attack interval and the moment inside it where the
+	 * muzzle fires has never been measured (issue #478), so the bolt leaves at
+	 * half a second wherever the clip happens to be. Ruled 2026-11-21: change the
+	 * timing now and leave the clip until #478.
 	 */
-	static constexpr float SiegeBoltWindUpSeconds = 1.0f;
+	static constexpr float SiegeBoltWindUpSeconds = 0.5f;
 
 	static_assert(
-		SiegeBoltWindUpSeconds > 0.4f + SiegeBoltRadiusCm / 100.0f / 3.5f - 0.002f
-		&& SiegeBoltWindUpSeconds < 0.4f + SiegeBoltRadiusCm / 100.0f / 3.5f + 0.002f,
-		"Siege Bolt's wind-up has drifted from the radius it is derived from. "
-		"The rule is 0.4 + Radius / 3.5 seconds, from the Attack Telegraphs "
-		"subsection of docs/Cataclysm_GDD_v2.md. Change both or neither.");
+		SiegeBoltWindUpSeconds == FCataclysmEnemyAbility::QuickCastSeconds,
+		"Siege Bolt is a quick cast and its wind-up is not the quick cast's. "
+		"QUICK_CAST_SECONDS in sim/cataclysm_sim/enemy_abilities.py is the "
+		"one figure; change it there and in FCataclysmEnemyAbility.");
 
 	static_assert(
 		SiegeBoltWindUpSeconds < DesignedAttackIntervalSeconds,
-		"Siege Bolt's telegraph is at least as long as the interval between "
+		"Siege Bolt's wind-up is at least as long as the interval between "
 		"shots, so the creature would begin warning about the next shot before "
 		"this one had landed and the marker would never leave the ground.");
 

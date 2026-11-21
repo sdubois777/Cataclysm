@@ -655,33 +655,23 @@ public:
 	static float WindUpSecondsFor(int32 Index);
 
 	/**
-	 * The EARLIEST moment an ability can land, in seconds after its wind-up
-	 * begins. Not the telegraph, and not a promise about the real landing.
+	 * When an ability lands, in seconds after its wind-up begins: the
+	 * telegraph's own length.
 	 *
-	 * NOT THE TELEGRAPH, AND THE DIFFERENCE IS WHAT FOUR PULL REQUESTS KEPT
-	 * TRIPPING OVER. An ability does not land when its telegraph expires. It
-	 * lands on the first pass of the brain's thinking timer at or after that
-	 * moment -- ACataclysmEnemyController::ContinueWindUp returns early while
-	 * Now < WindUpLandsAt and only runs on a pass. So the stomp's 1.4 second
-	 * telegraph lands at 1.50, and anything sized to 1.4 finishes a tenth of a
-	 * second early.
+	 * THE TELEGRAPH ITSELF SINCE ISSUE #2808, which lands every wind-up at its
+	 * own length, checked every frame (`ACataclysmEnemyController::IsWindUpDue`).
+	 * The montage is timed so its strike arrives at this moment.
 	 *
-	 * AND NOT A FIXED GRID EITHER, WHICH IS THE PART THAT IS EASY TO GET WRONG.
-	 * A timer callback runs on the first frame whose clock has passed its
-	 * deadline, so every pass carries up to one frame of overshoot and the
-	 * overshoot differs between the pass that starts a wind-up and the pass that
-	 * lands it. Where a telegraph sits clear of a step that does not matter: the
-	 * stomp's 1.4 is 0.1 clear of 1.50 and never moves. Where a telegraph sits
-	 * exactly ON a step it matters a great deal, because the comparison is a
-	 * strict less-than with no tolerance. The rock throw's 1.0 second telegraph
-	 * is exactly four steps, and simulating the engine's own timer arithmetic
-	 * over 500 jittery frames between 50 and 70 per second landed it at 1.25
-	 * rather than 1.00 in very nearly half of them.
+	 * WHAT IT WAS. Until then an ability landed on the first quarter-second
+	 * thinking pass at or after its telegraph, so this returned the telegraph
+	 * rounded up to a pass: the stomp's 1.4 landed at 1.50, and sizing the
+	 * montage to 1.4 had made its hold clip stop a tenth of a second early in
+	 * pull request #409. The rock throw's 1.0 sat exactly on a pass and landed at
+	 * 1.00 or 1.25 by a coin toss of frame timing (issue #413), so this returned
+	 * the earlier. Neither is true any more: both land at their telegraph.
 	 *
-	 * SO THIS RETURNS THE EARLIEST, AND THAT IS DELIBERATE RATHER THAN
-	 * OPTIMISTIC. The montage is timed so that its strike arrives by this moment.
-	 * Arriving early costs a small misalignment; arriving late would deal the
-	 * damage while the creature was still raising its fists.
+	 * KEPT AS A FUNCTION rather than replaced by the telegraph at each caller,
+	 * so the montage arithmetic says in one place which moment it aims at.
 	 */
 	static float LandsAtSecondsFor(float WindUpSeconds);
 

@@ -321,7 +321,7 @@ withdrawn figure that leaves no trace gets published again.
 | Creature | Play rate | Strike in play | Damage lands at | Gap |
 |---|:-:|:-:|:-:|---|
 | Gatekeeper | 1.00, after waiting 0.689 s | 0.971 s | 0.971 s, the wind-up's end | **none** |
-| Succubus | 1.00, after waiting 1.144 s | 1.300 s | 1.300 s, the wind-up's end | **none** |
+| Succubus | 1.00, after waiting 0.344 s | 0.500 s | 0.500 s, the quick cast's end (1.300 s until issue #2808) | **none** |
 | Brute | 1.00 | 0.331 s | 0.331 s, the damage waits for the swing | **none** |
 | Imp | 1.00 | 0.242 to 0.308 s | the drawn swipe's own strike; 0.276 s for B and C | **none** for A, D and E; B and C are not measured |
 | Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0.176 s, the left swing | **none**, at the left swing |
@@ -894,7 +894,7 @@ material slots. Half its height is 90.4 cm, which is the capsule half-height
 
 | Animation | Length | What plays it |
 |---|:-:|---|
-| `Primary_Attack_Normal` | 0.9000 | Soulfire's wind-up. Played as authored, so the creature holds the last pose for 0.4 s of the 1.3 s telegraph. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
+| `Primary_Attack_Normal` | 0.9000 | Soulfire's cast. Played as authored, started 0.344 s into the 0.5 s quick cast so its release at 0.156 s comes as the bolt is fired (issue [#2808](https://github.com/sdubois777/Cataclysm/issues/2808); it was a 1.3 s telegraph until then). Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
 | `Cast` | 1.1333 | Wither the Living. **A different clip from the attack on purpose**: the design's counter to the curse is interrupting it, and a player cannot interrupt what they cannot tell apart from an ordinary attack |
 | `Idle_Relaxed` | 42.3333 | Standing. **The longest idle in the project by four times**, against the Hellhound's 10.0 |
 | `Jog_Fwd` | 1.8000 | Walking, at a play rate of 350 / 321.0 = 1.090 |
@@ -904,7 +904,7 @@ material slots. Half its height is 90.4 cm, which is the capsule half-height
 
 | Animation | Length | Why not |
 |---|:-:|---|
-| `Primary_Attack_Fast_V1` | 0.6000 | Would leave 0.7 s of the 1.3 s telegraph with the creature holding a pose |
+| `Primary_Attack_Fast_V1` | 0.6000 | Would have left 0.7 s of the 1.3 s telegraph Soulfire had until issue #2808 with the creature holding a pose |
 | `Primary_Attack_Slow` | 1.5000 | Would fill the telegraph almost exactly at a play rate of 1.1538, and is the **only** primary attack in the pack that ships a separate recovery clip. Nothing here plays a recovery. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
 | `Primary_Attack_Slow_Recovery` | 1.3333 | The recovery that clip needs |
 | `Idle_Straight` | 7.5000 | The alternative idle. `Idle_Pose`, `Idle_Additive` and `Idle_Facial` are all 7.5000 and are a pose and two additive layers rather than something to loop |
