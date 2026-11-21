@@ -51,9 +51,11 @@ takes the creature off the floor's list; `ACataclysmDungeonGameMode::ForgetACrea
   rule put on a creature -- Grim Totems' and the Plaguebearer's damage, Morale Break's panic, the Trial of Endurance's
   doubling, and the rest -- for each thrall it finds with `UCataclysmCommand::ThingsCommandedBy`, not through the list,
   so taking the thrall off the list does not stop it.
-- **ONE BEHAVIOUR CHANGES THAT NO RULING NAMED, ON A HORDE FLOOR.** `ChooseTheFloorsMedic` chooses no new Field Medic
-  while a creature on the list already is one. A taken Field Medic used to stay on the list and so stopped a new medic
-  being chosen on a later wave; it no longer does, so a later wave can bring a new medic. Recorded, not changed.
+- **A TAKEN FIELD MEDIC NO LONGER STOPS A NEW ONE, ON A HORDE FLOOR. Ruled acceptable by the coordinating session,
+  2026-11-20, under the same rule as the rest of this change:** a taken medic is the player's creature, not the
+  floor's, so the floor may choose a new medic of its own on a later wave. `ChooseTheFloorsMedic` chooses no new Field
+  Medic while a creature on the list already is one; a taken medic used to stay on the list and so stopped a new medic
+  being chosen, and now it does not.
 
 ### Every reader of `FloorEnemies`, read at development `156f2b9e8`
 
