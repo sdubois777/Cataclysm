@@ -22546,6 +22546,72 @@ bool FCataclysmDirgeArrivalTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// NOT A PLAYER'S THRALL. Issue #2797: the row hastes "all enemies", and a creature the player has
+// taken with Subjugate is no longer one. Subjugate leaves it on the floor's list of enemies, which
+// is the list the crescendo walks, so the crescendo has to skip it as the floor's other rules do
+// (issue #1202, ruled 2026-09-30). An untaken creature on the same floor is the control.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeThrallTest,
+	"Cataclysm.DungeonModifierEffects.TheDirgeCrescendoDoesNotHasteAPlayersThrall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDirgeThrallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDirgeRow(*this, World, Player);
+	ACataclysmEnemyCharacter* Taken =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0) : nullptr;
+	ACataclysmEnemyCharacter* Stranger =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0) : nullptr;
+	const FGameplayTag Haste = EmpoweredTag();
+	if (!TestNotNull(TEXT("a creature to take"), Taken)
+		|| !TestNotNull(TEXT("and one nobody takes"), Stranger)
+		|| !TestTrue(TEXT("set-up: the game has the haste tag"), Haste.IsValid())
+		|| !TestTrue(TEXT("the player takes the first"), UCataclysmCommand::Subjugate(Player.Character, Taken)))
+	{
+		return false;
+	}
+
+	// STILL ON THE LIST THE CRESCENDO WALKS, which is why the crescendo itself has to skip it.
+	// If the take ever takes it off the list, this test no longer tests the skip and says so here.
+	if (!TestTrue(TEXT("set-up: the thrall is still on the floor's list of enemies"),
+				  Mode->FloorEnemies.Contains(Taken)))
+	{
+		return false;
+	}
+
+	// ITS SPEEDS ARE READ AFTER THE TAKE, because a commanded creature's walk is its commander's.
+	const FCreatureSpeeds TakenBefore = SpeedsOf(Taken);
+	const FCreatureSpeeds StrangerBefore = SpeedsOf(Stranger);
+
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds));
+
+	// THE CONTROL: the crescendo came, and the creature nobody took is hasted and fearless.
+	if (!IsHastedFrom(*this, TEXT("the creature nobody took"), SpeedsOf(Stranger), StrangerBefore)
+		|| !TestTrue(TEXT("and immune to fear"),
+					 UCataclysmSkillEffects::HasTag(Stranger, UCataclysmFear::FearImmuneTag())))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the thrall is not given the haste"), UCataclysmSkillEffects::HasTag(Taken, Haste));
+	TestFalse(TEXT("nor the fear immunity"),
+			  UCataclysmSkillEffects::HasTag(Taken, UCataclysmFear::FearImmuneTag()));
+	const FCreatureSpeeds TakenAfter = SpeedsOf(Taken);
+	TestEqual(TEXT("so the thrall attacks at its own pace"), TakenAfter.Interval, TakenBefore.Interval, 0.0001f);
+	TestEqual(TEXT("and walks at its own speed"), TakenAfter.Walk, TakenBefore.Walk, 0.01f);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // Famine_Scarcity. Issues #1820 and #41.
 //

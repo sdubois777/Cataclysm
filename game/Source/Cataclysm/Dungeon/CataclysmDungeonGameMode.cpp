@@ -19070,10 +19070,18 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 			// EVERY LIVING CREATURE, MARKED ONES INCLUDED: the row says "all enemies".
 			// The creature is its own instigator, as Hallowed Groundfall's grant has it:
 			// nothing on the floor is doing the hasting.
+			//
+			// AND NOT A PLAYER'S THRALL, which is no longer an enemy. Subjugate leaves a
+			// taken creature on `FloorEnemies`, so this loop skips it, as the floor's
+			// other rules that walk that list do (issue #1202, ruled 2026-09-30). Plague
+			// Harbinger's trail, Hallowed Groundfall's craters and Commander's Aura grant
+			// this buff only to creatures hostile to the player, to the same end.
+			// Issue #2797.
 			int32 Hasted = 0;
 			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 			{
-				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+					&& !DungeonGameModeIsAPlayersFollower(Enemy))
 				{
 					UCataclysmSkillEffects::ApplyTagForDuration(
 						Enemy, Enemy, Haste, Effects::DirgeResonanceHasteSeconds);

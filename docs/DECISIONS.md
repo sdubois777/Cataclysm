@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — The Dirge Resonance crescendo no longer hastes a creature the player has taken with Subjugate (#2797, phase 1)
+
+**Affects:** `ACataclysmDungeonGameMode::StepDirgeResonance`
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`), whose loop over `FloorEnemies` now skips a creature a
+player commands. Tests: one, new, `Cataclysm.DungeonModifierEffects.TheDirgeCrescendoDoesNotHasteAPlayersThrall`, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2797](https://github.com/sdubois777/Cataclysm/issues/2797), found by the session that built #2793.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE.** The owner is playtesting with the editor open, so nothing on this branch has
+  been built. The bug is found by reading the code; the new test is the run that will show it, and what the run must
+  show is under "Registered before window dirge-w1".
+- **THE CAUSE, BY READING.** The Dirge Resonance row says "all enemies gain haste and fear immunity for 10 seconds".
+  `StepDirgeResonance` gives `Status.Buff.Commander` and fear immunity to every living creature on `FloorEnemies`, and
+  asked nothing else. `UCataclysmCommand::Subjugate` does not take a creature off `FloorEnemies` (the readers are listed below), so a creature
+  the player had taken was hasted with the player's enemies: 20% faster attacks and walk, and immune to fear, for ten
+  seconds of every ninety.
+
+### What changed
+
+- **THE CRESCENDO SKIPS A PLAYER'S THRALL**, by the test this file already uses for it,
+  `DungeonGameModeIsAPlayersFollower` (a player is the creature's commander, `UCataclysmCommand::CommanderOf`). It is
+  the test the floor's other rules that walk `FloorEnemies` use, from issue #1202's ruling of 2026-09-30 that a
+  floor's rules are about the floor's creatures and a player's thrall goes floor to floor with the player instead.
+  Plague Harbinger's trail, Hallowed Groundfall's craters and Commander's Aura, the other three floor rules that grant
+  `Status.Buff.Commander`, already grant it only to creatures hostile to the player.
+- **WHY THE SKIP AND NOT TAKING THE THRALL OFF THE LIST AT THE TAKE: NOT DECIDED HERE.** The skip is what the
+  coordinating session ordered for phase 1, with the list of readers below to be made before choosing. The list shows
+  three things, and the choice is put to the coordinating session with them:
+  1. **The code already treats a thrall as off the list everywhere but between the take and the next clear.** A load
+     puts saved creatures back on the list except those the player commanded (`CataclysmSaveApply.cpp`,
+     `DungeonFloorInto`: "A THRALL IS THE PLAYER'S, not one of the floor's own"); Warzone allies, taken by `Subjugate`
+     as they arrive, are never put on it ("NOT ON THE FLOOR'S LIST: it is no enemy of the floor"); and
+     `ClearFloorEnemies` drops a thrall from it without destroying it. `ClearFloorEnemies` runs when a floor is
+     populated, so a thrall taken on a floor stays on the list for the rest of that floor, and on a Horde floor whose
+     arena is kept, for every later wave.
+  2. **Eleven other readers do not skip a thrall** (the table), so the skip alone leaves those as they are. One of
+     them may hold the stairs shut, by reading only: Blood Gates' kill target counts a standing thrall, and the
+     comment above that count says the gate opens "once none stands".
+  3. **`Subjugate` tells the game mode nothing** (`UCataclysmCommand::Subjugate`, `CataclysmCommand.cpp`), so taking a
+     thrall off the list at the take needs a new call from the take, or a pass on the floor's beat. Saving does not
+     read the list (`FCataclysmSaveGather::FloorFrom` walks every creature in the world), and a thrall is carried to
+     the next floor and ended at the run's end through the list of what the player commands, not this one.
+
+### Every reader of `FloorEnemies`, read at development `156f2b9e8`
+
+Read by a helper session and checked here at the lines that decide the answer. "Skips a thrall" means the reader
+already asks `DungeonGameModeIsAPlayersFollower`, or counts only the floor's own standing
+(`IsOneOfTheFloorsOwnStanding`). Line numbers are `CataclysmDungeonGameMode.cpp`'s at `156f2b9e8`.
+
+**Readers that do not skip a thrall**, and what a thrall on the list does there today:
+
+| Line | Function | What it reads the list for | A thrall on the list |
+|---|---|---|---|
+| 1469 | `EnterThePendingWalkIfReady` | counts creatures for a log line | is counted in the log line only |
+| 2678 | `ChooseTheFloorsMedic` | picks the rarest creature as Field Medic | can be picked on a later Horde wave |
+| 2767 | `ChooseTheFloorsCommander` | picks the highest-rung creature as March of Progress's Commander | can be picked on a later Horde wave |
+| 3760 | `StepBloodBond` | binds the nearest creature that may be bonded | can be bound, if it meets `BloodBondMayBond` |
+| 5855 | `NoteDeathForObsidianSarcophagi` | a paid death of one of the floor's creatures feeds a coffin | its death feeds a coffin |
+| 9500 | `NoteDeathForInfestedHoard` | a paid death of one of the floor's creatures may drop hoard loot | its death may drop hoard loot |
+| 11935 | `StepShadowyEnemies`, the light | lights creatures that cannot move and that no light reaches | can be lit |
+| 14277 | `StepDivineWrath` | the beam kills the creatures it covers | is killed by the beam |
+| 14920 | `RaiseTheTrickOrTreatPair` | gathers the kinds of creature on the floor | its kind is gathered |
+| 15181 | `BloodGatesPlacedCount` | the kill target: the slain plus the standing | raises the target while it stands |
+| 19074 | `StepDirgeResonance` | hastes every living creature | **is hasted: skipped by this change** |
+| 20756 | `DivineResurgencePlacedCount` | the placed count: the fallen plus the standing | counts as standing |
+
+**Readers that already skip a thrall:** `ClearFloorEnemies` (it drops a thrall from the list and destroys the rest);
+`LivingFloorEnemies` and through it `FloorIsCleared`, `NoteTheFloorsClearTime`, `StepTrialOfEndurance` and
+`LiveCountsForTheFloor`; `StepPlaguebearer`; `StepMoraleBreak`; `StandingInSection`; `ChooseTheSoulChainBearers`;
+`StepShadowyEnemies`' shroud; `StepSanctionedPassage`; `ChooseAtGrimTotem`; `ChooseTheSealBearers`;
+`LightforgedWallsStanding`. `RestoreFloorRuleState` reads it only after a load, when no thrall is on it, and
+`GoToFloor` reads it for a Gatekeeper, which cannot be taken.
+
+**Writers:** about thirty places add creatures a rule or a wave spawns, none of them a thrall;
+`ClearFloorEnemies` resets it; a load prunes it and adds back all but thralls; `RestoreCreatureRoles` removes a
+voidling, a bloom wave's creature and a portal's creature after a load. No asset, configuration or plugin file names
+it.
+
+### Registered before window dirge-w1
+
+The base is window follow-w2, for #2793, run at `d4d0773ac`, whose `game/` tree is development `156f2b9e8`'s, this
+branch's base (`git diff d4d0773ac 156f2b9e8 -- game/` prints nothing). Its output, `f2793_suite_d4d0773a.log` and
+`f2793_suite_engine_d4d0773a.log` in `.claude/windows/` in the worktree `interesting-snyder-dca273`, reads "5072
+tests performed, 5072 succeeded, 0 failed. 48 skipped part of what they check" and "Test saves: 859 written and
+deleted, 0 left behind", with 775 "Test Completed" lines whose path begins `Cataclysm.DungeonModifierEffects.`, all
+`Result={Success}`. Its save and completion lines are in `.claude/windows/followw2_saves_and_completed_d4d0773a.log`
+in this session's worktree.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone,
+  `CataclysmDungeonGameMode.cpp` and `CataclysmDungeonModifierEffectsTests.cpp`; the unity files again -- each succeed
+  with no warning or error line.
+- **The new test alone, by its own name:** 1 performed, 1 succeeded. And the four Dirge Resonance tests already
+  there, each alone: `Cataclysm.DungeonModifierEffects.TheDirgeCrescendoAtNinetySecondsHastesEveryCreature`,
+  `Cataclysm.DungeonModifierEffects.TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater`,
+  `Cataclysm.DungeonModifierEffects.ACreatureArrivingAfterTheCrescendoIsNotHasted` and
+  `Cataclysm.Fear.TheDirgeCrescendoMakesEveryCreatureImmuneToFear`, 1 of 1 each.
+- **The group `Cataclysm.DungeonModifierEffects.`:** 776 performed, 776 succeeded: the base's 775 plus 1.
+- **The whole suite:** 5073 performed, 5073 succeeded, 48 skipped halves: the base's 5072 plus 1. "Test saves: 859
+  written and deleted, 0 left behind": THE NEW TEST WRITES NONE. It builds its floor with
+  `AFloorCarryingTheDirgeRow`, as the three Dirge Resonance tests in this file do, and each of those wrote 0 in
+  window follow-w2; the thrall tests in this file that wrote 1 each reach floor 2 with `GoToFloor`, which this one does
+  not. `Subjugate` wrote none in the base's other tests that take a creature without changing floor, such as
+  `Cataclysm.DungeonMode.AThrallTakenFromAWaveIsNotCountedAsStillStanding`.
+- **One guard proof**, through `prove_cpp_guard`, with the prefix `Cataclysm.DungeonModifierEffects.TheDirge`, which
+  selects the new test and the two other tests whose names begin so. The anchor was checked to match exactly once at
+  the commit that registers it:
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The skip is taken out: `&& !DungeonGameModeIsAPlayersFollower(Enemy)` in `StepDirgeResonance`'s loop is removed | 3 performed, 2 succeeded, 1 failed: `TheDirgeCrescendoDoesNotHasteAPlayersThrall`, on at least "the thrall is not given the haste" and "nor the fear immunity". Its two speed assertions are reported, not registered: whether the haste reaches a thrall's walk past its commander's pace is not settled by reading | 3 of 3 |
+
+**The window scripts** will be in `.claude/windows/` in this session's worktree.
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
