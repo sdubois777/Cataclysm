@@ -2,6 +2,258 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The empire map's top line counts Quest dungeons cleared and the Quest dungeons standing, and the city screen, the map's city detail and the status bar name a Quest dungeon (#2800)
+
+**Affects:** `UCataclysmEmpireMapLayout::ProgressLine`, whose objective count now reads "N Quest dungeons cleared";
+`StandingPart`, `StandingWords`, `QuestDungeonsStanding` and `CityDetailDungeonLine`, new
+(`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp`); `UCataclysmEmpireMapWidget`'s status line
+and city detail, which now take their words from those (`CataclysmEmpireMapWidget.cpp`);
+`UCataclysmCityScreenLayout::DungeonLinesFor` (`CataclysmCityScreenLayout.h` and `.cpp`); `UCataclysmEmpireStatusBar`
+and `FCataclysmEmpireStatusFacts::QuestDungeonsStanding`, new (`CataclysmEmpireStatusBar.h` and `.cpp`). Tests: four
+new, `Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared`,
+`Cataclysm.EmpireScreen.ACitysDetailNamesEachDungeonsSubTypeAndAQuestDungeonsKind`,
+`Cataclysm.CityScreen.EachQuestDungeonStandingIsNamedAQuestDungeon` and
+`Cataclysm.EmpireStatusBar.TheLineCountsTheQuestDungeonsStandingAsTheMapDoes`; the old words updated in
+`CataclysmEmpireScreenTests.cpp`, `CataclysmBossOnTheMapTests.cpp`, `CataclysmCityScreenTests.cpp` and
+`CataclysmEmpireStatusBarTests.cpp`; `docs/Play_Loop_Checklist.md`'s description of the map. Issue
+[#2800](https://github.com/sdubois777/Cataclysm/issues/2800), from the owner's playtest of 2026-11-21.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE** when this entry was written. It is compiled and run in one window with
+  #2797, the entry below this one. What the run must show is under "Registered before the shared window
+  dirge-quest-w1".
+- **WHAT THE OWNER SAW.** On day 78 of the character 'testminion', "in the overview at the top": "it's saying there's 2
+  dungeons active, one quest, but they're both over 20 floors on outposts", and "it only labelled one as a quest
+  dungeon". The game's log at that moment names both standing dungeons "the Elite Quest dungeon": dungeon 3 on Outpost
+  (2,-1), 22 floors, and dungeon 8 on Outpost (1,-2), 23 floors. Dungeon 7, a 24-floor Elite Quest dungeon, had just
+  been cleared. The empire map's top line read "2 dungeons standing   1 dungeon cleared, 1 quest objective, ...".
+- **THE CAUSE IS THE WORDING, NOT THE DATA.** "1 quest objective" is `UCataclysmEmpireRun::QuestObjectives`, which only a
+  Quest dungeon's clear raises: `UCataclysmEmpireRun::ClearDungeon` is the one place it is raised outside tests, a new
+  run sets it to 0, and a load copies it from the record. So it counts Quest dungeons cleared. Beside "2 dungeons
+  standing" it read as one of the two being a Quest dungeon. And no line that lists a standing dungeon named its kind.
+  Found by the coordinating session; the owner, told what the count meant: "ahh I see, that makes sense".
+
+### What changed
+
+**Ruled by the coordinating session, 2026-11-21, the words only, no rule changes:**
+
+- **THE TOP LINE.** "N quest objective(s)" becomes "N Quest dungeon(s) cleared", and "no quest objectives" becomes "no
+  Quest dungeons cleared". "N dungeon(s) standing" gains, when any standing dungeon is a Quest dungeon, how many are, in
+  brackets: "2 dungeons standing (2 Quest)". Nothing is in brackets when none is.
+- **THE CITY SCREEN.** A Quest dungeon's line names the kind after its sub-type: "Elite Quest, 22 floors, 7 days until
+  it bites"; "Quest, ..." with no sub-type. Every other dungeon's line is as it was. The Hollow and Ascendant lines,
+  whose Quest dungeons the tests place, read "Hollow Quest, ..." and "Ascendant Quest, ...".
+- **THE EMPIRE MAP'S CITY DETAIL.** Each dungeon is named by its sub-type, and a Quest dungeon as one: "Elite Quest
+  dungeon of 22 floors, 7 days left", "Elite dungeon of 9 floors, 30 days left". A sub-type of `None` adds no word, so
+  such a Basic dungeon reads "dungeon of 12 floors, 9 days left", as every line did before.
+- **THE IN-GAME STATUS BAR** says the dungeons standing in the top line's words: "3 dungeons standing (2 Quest) | surge
+  in 4 days | 2 cities at risk".
+
+**How:**
+
+- **COUNTED FROM THE RUN'S OWN LIST, AND NO NEW STATE IN THE RUN**, as ruled: `QuestDungeonsStanding` counts the dungeons
+  in `UCataclysmEmpireRun::Dungeons` whose `Type` is `Quest`. The total standing is `DungeonCount`, as both lines always
+  read it, so the Cataclysm boss dungeon is counted among those standing and not as a Quest dungeon.
+- **ONE FUNCTION WRITES THE STANDING WORDS FOR BOTH LINES**, `StandingWords`, so the map and the status bar cannot word
+  them differently. The status bar's figures gain `QuestDungeonsStanding`, and `HasTheSameFiguresAs` compares it, so
+  the HUD redraws the bar when it changes.
+- **THE MAP'S WORDS MOVED FROM THE WIDGET TO THE LAYOUT CLASS**, the standing count and the city detail, as
+  `ProgressLine` was for the same reason: a headless test cannot read a label.
+
+### Registered before the shared window dirge-quest-w1
+
+The base, the compiles, the groups and the whole suite are the shared window's, written out in full in #2797's entry,
+the entry below this one. For #2800: its four new tests each alone, 1 performed, 1 succeeded;
+`Cataclysm.EmpireScreen.` 16 of 16, `Cataclysm.CityScreen.` 17 of 17, `Cataclysm.EmpireStatusBar.` 9 of 9 and
+`Cataclysm.BossOnTheMap.` 5 of 5; and none of the four new tests builds a world or writes a save.
+
+- **#2800's four guard proofs**, through `prove_cpp_guard`. Each prefix selects one new test alone, checked with a
+  case-insensitive `git grep`, and each anchor was checked to match exactly once in its file at the commit that
+  registers it:
+
+| Proof | Prefix | The break | The broken half | Restored |
+|---|---|---|---|---|
+| P1 | `Cataclysm.EmpireScreen.TheOverviewCounts` | No bracket: in `StandingWords`, `QuestStanding > 0 ?` becomes `false ?` | 1 performed, 1 failed, on two assertions: "both standing are counted as Quest dungeons" and "four standing, one of them a Quest dungeon" | 1 of 1 |
+| P3 | `Cataclysm.CityScreen.EachQuest` | `if (Dungeon->Type == ECataclysmDungeonType::Quest)` becomes `if (false)` in `CataclysmCityScreenLayout.cpp` | 1 performed, 1 failed, on two assertions: "the Quest dungeon on the first city is named a Quest dungeon" and "and so is the one on the second"; the Basic control passes | 1 of 1 |
+| P4 | `Cataclysm.EmpireScreen.ACitysDetail` | The same break in `CataclysmEmpireMapLayout.cpp` | 1 performed, 1 failed, on two assertions: "an Elite Quest dungeon" and "a Quest dungeon with no sub-type is still named a Quest dungeon" | 1 of 1 |
+| P5 | `Cataclysm.EmpireStatusBar.TheLineCountsTheQuest` | The bar's figures leave the Quest count out: `Facts.QuestDungeonsStanding = UCataclysmEmpireMapLayout::QuestDungeonsStanding(Run);` becomes `(void)0;` | 1 performed, 1 failed, on three assertions: "the bar counts the Quest dungeons standing", "and its line says so in the map's words" and "the same words as the map's top line" | 1 of 1 |
+
+**NO PROOF OF THE NEW WORDS FOR THE CLEARED COUNT.** One was registered here (P2: `TEXT("%d Quest dungeon%s cleared")`
+back to `TEXT("%d quest objective%s")`) and was dropped, ruled by the coordinating session 2026-11-21 under its rule of
+one C++ proof per behaviour only a C++ test guards: three tests compare the whole of `ProgressLine`'s output to an exact
+string in the new words -- `Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared`,
+`Cataclysm.EmpireScreen.TheScreenSaysWhatThePlayerHasClearedAndEarned` and
+`Cataclysm.BossOnTheMap.TheProgressLineCountsTheCataclysmsFinishedAndSaysWhenTheBossOpens` -- and none of them can
+pass with the old words back. No Python check guards any of these behaviours, so none of the proofs is a Python one.
+
+**The window scripts** will be in `.claude/windows/` in this session's worktree.
+
+---
+
+## 2026-11-20 — A creature the player takes with Subjugate leaves the floor's list of enemies at the take, so no floor rule counts it as an enemy, and the Dirge Resonance crescendo skips it as well (#2797)
+
+**Affects:** `UCataclysmCommand::Subjugate` (`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`), which now
+takes the creature off the floor's list; `ACataclysmDungeonGameMode::ForgetACreatureTaken`, new, and
+`StepDirgeResonance`, whose loop over `FloorEnemies` now also skips a creature a player commands
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`). Tests: two, new,
+`Cataclysm.DungeonModifierEffects.ATakenCreatureIsNotHastedByTheDirgeCrescendo` and
+`Cataclysm.DungeonModifierEffects.ATakenCreatureDoesNotHoldTheBloodGatesShut`, in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2797](https://github.com/sdubois777/Cataclysm/issues/2797), found by the session that built #2793.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN THE ENGINE** when this entry was written. It is compiled and run in one window with
+  #2800, the entry above this one. The fault is found by reading the code; the two new tests are the run that will
+  show it, and what the run must show is under "Registered before the shared window dirge-quest-w1".
+- **THE CAUSE, BY READING.** `UCataclysmCommand::Subjugate` did not take a creature off `FloorEnemies`, the floor's list
+  of its enemies, so a creature the player had taken stayed on it until the next floor's clear, and on a Horde floor
+  whose arena is kept, for every later wave. Twelve readers of the list do not ask who commands a creature (the table
+  below), so each counted the thrall as an enemy. Dirge Resonance hasted it with the player's enemies; Blood Gates
+  counted it toward the kills the stairs wait for; Divine Wrath's beam killed it.
+- **WHAT THE CODE ALREADY SAID.** A thrall was off the list everywhere else: a load puts saved creatures back on the
+  list except those the player commanded (`CataclysmSaveApply.cpp`, `DungeonFloorInto`: "A THRALL IS THE PLAYER'S, not
+  one of the floor's own"); Warzone allies, taken by `Subjugate` as they arrive, are never put on it ("NOT ON THE
+  FLOOR'S LIST: it is no enemy of the floor"); and `ClearFloorEnemies` drops a thrall without destroying it. The fault
+  was the time between the take and the next clear.
+
+### What changed
+
+- **THE TAKE TAKES THE CREATURE OFF THE LIST. Ruled by the coordinating session, 2026-11-20,** after phase 1 listed
+  every reader of the list. `Subjugate` finds the dungeon game mode with `ACataclysmDungeonGameMode::InWorld`, which
+  walks the level and so finds the one a test spawns, and calls `ForgetACreatureTaken`. That removes the creature from
+  `FloorEnemies` and sets its `FloorSection` to none, as `ClearFloorEnemies` does for a thrall, since with the creature
+  off the list nothing would reset it before the next floor; it does nothing to a creature not on the list. IN
+  `Subjugate` AND NOT ON THE FLOOR'S BEAT, because every take goes through it: its two callers outside tests are the
+  Subjugate skill's `UCataclysmSummonSkill::Possess` (`CataclysmSkillTemplates.cpp`) and the Warzone's allies, which
+  are not on the list, so for them it does nothing.
+- **THE DIRGE CRESCENDO ALSO SKIPS A PLAYER'S FOLLOWER**, by `DungeonGameModeIsAPlayersFollower`, the check the floor's
+  other rules that walk the list use (issue #1202, ruled 2026-09-30). Kept by the same ruling. NO TEST CAN TELL IT
+  APART NOW, because the take leaves no thrall on the list for it to skip, so it has no guard proof (see the proofs).
+- **A FREED THRALL: THERE IS NONE TO PUT BACK.** No code frees a thrall. Outside tests, a creature's owner is written
+  only by `Subjugate`, by a taken Gatekeeper giving its called Imps itself as owner, and by a load giving a saved
+  thrall the player; and every other write of a creature's team outside tests, besides `Subjugate`'s and the load's,
+  gives a creature just spawned its side (each of the dungeon game mode's fourteen follows a spawn). A thrall stays the player's until it dies or the run ends (`EndEveryPlayersFollowers`). So nothing puts a
+  creature back on the list, and no test of it was written.
+- **WHAT A THRALL CARRIED FROM BEFORE THE TAKE IS STILL PUT BACK.** `StepPlayersFollowers` undoes the values a floor
+  rule put on a creature -- Grim Totems' and the Plaguebearer's damage, Morale Break's panic, the Trial of Endurance's
+  doubling, and the rest -- for each thrall it finds with `UCataclysmCommand::ThingsCommandedBy`, not through the list,
+  so taking the thrall off the list does not stop it.
+- **A TAKEN FIELD MEDIC NO LONGER STOPS A NEW ONE, ON A HORDE FLOOR. Ruled acceptable by the coordinating session,
+  2026-11-20, under the same rule as the rest of this change:** a taken medic is the player's creature, not the
+  floor's, so the floor may choose a new medic of its own on a later wave. `ChooseTheFloorsMedic` chooses no new Field
+  Medic while a creature on the list already is one; a taken medic used to stay on the list and so stopped a new medic
+  being chosen, and now it does not.
+
+### Every reader of `FloorEnemies`, read at development `156f2b9e8`
+
+Read by a helper session and checked here at the lines that decide the answer. "Skips a thrall" means the reader
+already asks `DungeonGameModeIsAPlayersFollower`, or counts only the floor's own standing
+(`IsOneOfTheFloorsOwnStanding`). Line numbers are `CataclysmDungeonGameMode.cpp`'s at `156f2b9e8`. No reader was
+added up to development `89fdc50a6`, the branch's base: `FloorEnemies` is named 87 times outside the tests at both.
+
+**Readers that do not skip a thrall**, and what a thrall on the list did there until this change:
+
+| Line | Function | What it reads the list for | A thrall on the list |
+|---|---|---|---|
+| 1469 | `EnterThePendingWalkIfReady` | counts creatures for a log line | was counted in the log line only |
+| 2678 | `ChooseTheFloorsMedic` | picks the rarest creature as Field Medic | could be picked on a later Horde wave, and a taken medic stopped a new one |
+| 2767 | `ChooseTheFloorsCommander` | picks the highest-rung creature as March of Progress's Commander | could be picked on a later Horde wave |
+| 3760 | `StepBloodBond` | binds the nearest creature that may be bonded | could be bound, if it met `BloodBondMayBond` |
+| 5855 | `NoteDeathForObsidianSarcophagi` | a paid death of one of the floor's creatures feeds a coffin | its death fed a coffin |
+| 9500 | `NoteDeathForInfestedHoard` | a paid death of one of the floor's creatures may drop hoard loot | its death could drop hoard loot |
+| 11935 | `StepShadowyEnemies`, the light | lights creatures that cannot move and that no light reaches | could be lit |
+| 14277 | `StepDivineWrath` | the beam kills the creatures it covers | was killed by the beam |
+| 14920 | `RaiseTheTrickOrTreatPair` | gathers the kinds of creature on the floor | its kind was gathered |
+| 15181 | `BloodGatesPlacedCount` | the kill target: the slain plus the standing | raised the target while it stood |
+| 19074 | `StepDirgeResonance` | hastes every living creature | was hasted |
+| 20756 | `DivineResurgencePlacedCount` | the placed count: the fallen plus the standing | counted as standing |
+
+**Readers that already skip a thrall:** `ClearFloorEnemies` (it drops a thrall from the list and destroys the rest);
+`LivingFloorEnemies` and through it `FloorIsCleared`, `NoteTheFloorsClearTime`, `StepTrialOfEndurance` and
+`LiveCountsForTheFloor`; `StepPlaguebearer`; `StepMoraleBreak`; `StandingInSection`; `ChooseTheSoulChainBearers`;
+`StepShadowyEnemies`' shroud; `StepSanctionedPassage`; `ChooseAtGrimTotem`; `ChooseTheSealBearers`;
+`LightforgedWallsStanding`. `RestoreFloorRuleState` reads it only after a load, when no thrall is on it, and
+`GoToFloor` reads it for a Gatekeeper, which cannot be taken.
+
+**Writers:** about thirty places add creatures a rule or a wave spawns, none of them a thrall;
+`ClearFloorEnemies` resets it; a load prunes it and adds back all but thralls; `RestoreCreatureRoles` removes a
+voidling, a bloom wave's creature and a portal's creature after a load; and now `ForgetACreatureTaken` removes a
+creature at its take. No asset, configuration or plugin file names it. Saving does not read it:
+`FCataclysmSaveGather::FloorFrom` walks every creature in the world.
+
+**Tests that read the list after a take**, found by a script that read every test body calling `Subjugate`: the new
+Dirge test; `FCataclysmThrallDoesNotHoldTheFloorTest`, which asks `LivingFloorEnemies` for 0 and is 0 either way; and
+`FCataclysmSaveLoadPlacedAroundTest`, which reads the list only after `GoToFloor` has filled it afresh. None asserts
+that a thrall is on it.
+
+### Registered before the shared window dirge-quest-w1
+
+#2797 and #2800 are compiled and run in one window, dirge-quest-w1, on the branch `fix/dirge-and-quest-words`,
+which holds both on development `89fdc50a6`. The base is window tree-6c-w1, for #2741 slice 6c, run at `abb9a7fc0`,
+whose `game/` tree is `89fdc50a6`'s (`git diff abb9a7fc0 89fdc50a6 -- game/` prints nothing). Its output,
+`t2741s6c_suite_abb9a7fc.log` and `t2741s6c_suite_engine_abb9a7fc.log` in `.claude/windows/` in the worktree
+`laughing-curran-69e4bb`, reads "5079 tests performed, 5079 succeeded, 0 failed. 48 skipped part of what they check"
+and "Test saves: 859 written and deleted, 0 left behind". Its "Test Completed" lines number 775 in
+`Cataclysm.DungeonModifierEffects.`, 14 in `Cataclysm.EmpireScreen.`, 16 in `Cataclysm.CityScreen.`, 8 in
+`Cataclysm.EmpireStatusBar.` and 5 in `Cataclysm.BossOnTheMap.`, all `Result={Success}`. Counted from the "Test
+saves:" line before each "Test Completed" line, the tests in `Cataclysm.DungeonModifierEffects.` wrote 539 saves and
+those in the other four groups none.
+
+In the order the window runs them:
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
+  three of #2797 (`CataclysmCommand.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`)
+  and the eight of #2800 (`CataclysmEmpireMapLayout.cpp`, `CataclysmEmpireMapWidget.cpp`,
+  `CataclysmCityScreenLayout.cpp`, `CataclysmEmpireStatusBar.cpp`, `CataclysmEmpireScreenTests.cpp`,
+  `CataclysmBossOnTheMapTests.cpp`, `CataclysmCityScreenTests.cpp`, `CataclysmEmpireStatusBarTests.cpp`); the unity
+  files again -- each succeed with no warning or error line.
+- **The five groups first:** `Cataclysm.DungeonModifierEffects.` 777 of 777, the base's 775 plus #2797's 2, with "Test
+  saves: 540", the base's 539 plus 1; `Cataclysm.EmpireScreen.` 16 of 16, 14 plus 2; `Cataclysm.CityScreen.` 17 of
+  17, 16 plus 1; `Cataclysm.EmpireStatusBar.` 9 of 9, 8 plus 1; `Cataclysm.BossOnTheMap.` 5 of 5, as at the base. The
+  four interface groups write no save.
+- **The six new tests, each alone by its own name:** 1 performed, 1 succeeded.
+- **The whole Unreal suite:** 5085 performed, 5085 succeeded, 48 skipped halves: the base's 5079 plus 6, #2797's 2 and
+  #2800's 4. "Test saves: 860 written and deleted, 0 left behind": the base's 859 plus 1, #2797's Blood Gates test.
+- **The Python suite, run at the same time as the whole Unreal suite** with a JUnit file: no failure and no error. Its
+  count is quoted from the run.
+- **Five guard proofs**, through `prove_cpp_guard`, after both suites have ended: #2797's P1 and #2800's P1, P3, P4 and
+  P5, each in its own entry.
+
+For #2797 alone:
+
+- **#2797's own, in this window:** the two new tests each alone, 1 of 1, as above, which the window runs with the
+  other new tests; and, each alone, 1 of 1, the four
+  Dirge Resonance tests already there, `Cataclysm.DungeonModifierEffects.TheDirgeCrescendoAtNinetySecondsHastesEveryCreature`,
+  `Cataclysm.DungeonModifierEffects.TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater`,
+  `Cataclysm.DungeonModifierEffects.ACreatureArrivingAfterTheCrescendoIsNotHasted` and
+  `Cataclysm.Fear.TheDirgeCrescendoMakesEveryCreatureImmuneToFear`; and the two Blood Gates tests the new one is
+  written beside, `Cataclysm.DungeonModifierEffects.TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor` and
+  `Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`.
+- **The save #2797 adds.** THE DIRGE TEST WRITES NONE: it builds its floor with
+  `AFloorCarryingTheDirgeRow`, as the three Dirge Resonance tests in this file do, and each of those wrote 0 in window
+  tree-6c-w1. THE BLOOD GATES TEST WRITES ONE: it reaches its floor with `AFloorCarryingTheBloodGatesRow` and takes the
+  stairs, as `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor` does, which wrote 1. `Subjugate` wrote none in
+  the base's tests that take a creature without changing floor, such as
+  `Cataclysm.DungeonMode.AThrallTakenFromAWaveIsNotCountedAsStillStanding`.
+- **#2797's guard proof**, through `prove_cpp_guard`, with the prefix `Cataclysm.DungeonModifierEffects.ATakenCreature`,
+  which selects the two new tests and no other (checked with a case-insensitive `git grep`: the nearest other name,
+  `ATakenPlaguebearerCountsAsFallen`, does not begin so). The anchor was checked to match exactly once at the commit
+  that registers it:
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The take leaves the creature on the list: `Floor->ForgetACreatureTaken(Creature);` in `Subjugate` becomes `(void)Floor;` | 2 performed, 0 succeeded, 2 failed: `ATakenCreatureIsNotHastedByTheDirgeCrescendo` on "the thrall is no longer on the floor's list of enemies", 1 assertion, where it stops; and `ATakenCreatureDoesNotHoldTheBloodGatesShut` on "the two taken are no longer counted" (the panel reads "0 of 3 slain, open at 2"), "and with the last of the floor's slain the gate is open" ("1 of 3 slain, open at 2") and "so the stairs lead down" (1), 3 assertions | 2 of 2 |
+
+**NO PROOF OF THE DIRGE SKIP.** Taking `&& !DungeonGameModeIsAPlayersFollower(Enemy)` out of `StepDirgeResonance`
+fails no test, because no creature a player commands is on the list the loop walks: the take removes it, and a load
+never puts one back. A proof registered on it would be one that cannot fail, so none is.
+
+**The window scripts** will be in `.claude/windows/` in this session's worktree.
+
+---
+
 ## 2026-11-21 — A refused skill press and every Subjugate cast say why in the play log, naming the numbers, so one press by the owner settles why Subjugate is refused (#2801)
 
 **Affects:** `UCataclysmSkillTemplate::PressRefusalLine`, `FervourFiguresFor` and `ReservedFervourByKindText`, new
