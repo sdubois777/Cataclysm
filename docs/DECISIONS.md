@@ -326,11 +326,12 @@ eleven tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, on development `789bfd400`,
-  and rebased onto development `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. The coordinating session
-  moved it ahead of #2792's second window on 2026-11-20, after #2792's first window failed, so it is compiled three
-  ways and run in the window registered below on `63d4cbd4c`, with no further rebase unless something merges before
-  it. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
+- **ITS ONE WINDOW SO FAR FAILED ONE TEST, AND WHAT CHANGED SINCE IS NOT COMPILED.** Phase 1 was written without a
+  compile, as ruled, on development `789bfd400`, and rebased onto development `63d4cbd4c`, which holds #2787's branch A,
+  #2791 and #2790. There it compiled three ways and ran in window follow-w1, recorded below, which failed one test on
+  its layout. The layout correction and the Vengeful Wraith ruling followed; the branch was then rebased onto
+  development `7c3e06ab2`, which adds #2792, and is compiled three ways and run again in window follow-w2, registered
+  below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
   it, as the coordinating session accepted. A guide is never commanded: the floor rule makes it unable to be hurt, and
   `UCataclysmCommand::Subjugate` refuses a creature that cannot be hurt.
 - **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
@@ -524,7 +525,7 @@ an aura. The Vengeful Wraiths rule's `WraithMultiplier` is not: `bIsVengefulWrai
 | Step | Registered |
 | :-- | :-- |
 | `Cataclysm.MinionFollowSpeed.` alone | 11 performed, 11 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
-| The whole suite | the measured total of the base it is rebased onto, plus these 11, every one succeeding; skipped halves that base's plus 1; test saves that base's plus 0, predicted, not measured, because no test here builds a floor. On `63d4cbd4c` that is 5067, 48 and 854; after the rebase onto #2792 it is re-registered from window vesselstep-w2's log |
+| The whole suite | 5072 performed, 5072 succeeded: the base's 5061 plus these 11. 48 skipped part of what they check: the base's 47 plus 1. "Test saves: 859 written and deleted, 0 left behind": the base's 859 plus 0, predicted, not measured, because no test here builds a floor. The base, after the rebase onto development `7c3e06ab2` (#2792 merged): window vesselstep-w2 measured 5061 performed, 5061 succeeded, 47 skipped halves and 859 saves with 0 left behind at `bff2772d4`, whose `game/` is the same as `7c3e06ab2`'s |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 
 Six C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted from
