@@ -20,9 +20,9 @@ new, `Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeonsStandingAndCleared`,
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN THE ENGINE** when this entry was written. It is compiled and run in one window with
-  #2797, the entry below this one. What the run must show is under "Registered before the shared window
-  dirge-quest-w1".
+- **COMPILED, RUN AND PROVED IN ONE WINDOW WITH #2797 (dirge-quest-w1)**, at `2826b9622` on development `89fdc50a6`:
+  every figure as registered, and P1, P3, P4 and P5 PROVED. The window's whole record is in #2797's entry, the entry
+  below this one; #2800's own figures are under "The window", below.
 - **WHAT THE OWNER SAW.** On day 78 of the character 'testminion', "in the overview at the top": "it's saying there's 2
   dungeons active, one quest, but they're both over 20 floors on outposts", and "it only labelled one as a quest
   dungeon". The game's log at that moment names both standing dungeons "the Elite Quest dungeon": dungeon 3 on Outpost
@@ -87,7 +87,22 @@ string in the new words -- `Cataclysm.EmpireScreen.TheOverviewCountsQuestDungeon
 `Cataclysm.BossOnTheMap.TheProgressLineCountsTheCataclysmsFinishedAndSaysWhenTheBossOpens` -- and none of them can
 pass with the old words back. No Python check guards any of these behaviours, so none of the proofs is a Python one.
 
-**The window scripts** will be in `.claude/windows/` in this session's worktree.
+**The window scripts** are #2797's, in `.claude/windows/` in the worktree `adoring-jennings-f8c84c`.
+
+### The window
+
+Window dirge-quest-w1, 2026-11-21, at `2826b9622`; the whole record, the compiles and the whole suite are in #2797's
+entry, below this one. #2800's own figures:
+
+| Step | Registered | Measured |
+|---|---|---|
+| `Cataclysm.EmpireScreen.`, `Cataclysm.CityScreen.`, `Cataclysm.EmpireStatusBar.`, `Cataclysm.BossOnTheMap.` | 16, 17, 9 and 5 | 16 of 16, 17 of 17, 9 of 9 and 5 of 5, no save written |
+| The four new tests, each alone | 1 of 1 each, no save | 1 of 1 each, no save |
+| What the new tests read, from their info lines in the whole suite's log | -- | the top line "2 dungeons standing (2 Quest)   1 dungeon cleared, 1 Quest dungeon cleared, 0 of 1 Cataclysm finished; the boss dungeon opens when 1 is finished"; the city screen "Elite Quest, 22 floors, 7 days until it bites"; the city detail "Elite Quest dungeon of 22 floors, 7 days left"; the status bar "3 dungeons standing (2 Quest) \| surge in 90 days \| 2 cities at risk" |
+| P1 | 1 failed on two assertions, then 1 of 1 | PROVED: "both standing are counted as Quest dungeons" read "2 dungeons standing"; "four standing, one of them a Quest dungeon" read "4 dungeons standing". Restored 1 of 1 |
+| P3 | 1 failed on two assertions, then 1 of 1 | PROVED: "the Quest dungeon on the first city is named a Quest dungeon" read "Elite, 22 floors, 7 days until it bites"; "and so is the one on the second" read "Elite, 23 floors, 15 days until it bites". Restored 1 of 1 |
+| P4 | 1 failed on two assertions, then 1 of 1 | PROVED: "an Elite Quest dungeon" read "Elite dungeon of 22 floors, 7 days left"; "a Quest dungeon with no sub-type is still named a Quest dungeon" read "dungeon of 25 floors, 20 days left". Restored 1 of 1 |
+| P5 | 1 failed on three assertions, then 1 of 1 | PROVED: "the bar counts the Quest dungeons standing" read 0, expected 2; "and its line says so in the map's words" and "the same words as the map's top line" each expected true. Restored 1 of 1 |
 
 ---
 
@@ -104,9 +119,12 @@ takes the creature off the floor's list; `ACataclysmDungeonGameMode::ForgetACrea
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN THE ENGINE** when this entry was written. It is compiled and run in one window with
-  #2800, the entry above this one. The fault is found by reading the code; the two new tests are the run that will
-  show it, and what the run must show is under "Registered before the shared window dirge-quest-w1".
+- **COMPILED, RUN AND PROVED IN ONE WINDOW WITH #2800 (dirge-quest-w1)**, at `2826b9622` on development `89fdc50a6`:
+  all three compiles succeeded with no warning, each of the 11 changed `.cpp` files compiled alone; every group and test
+  run alone performed and passed its registered count; the whole Unreal suite performed 5085, all succeeded, 48 skipped
+  halves, "Test saves: 860 written and deleted, 0 left behind", every figure as registered; Python, run at the same time,
+  7843 passed and 9 skipped (JUnit 7852 tests, 0 failures, 0 errors, 9 skipped); ruff clean; and P1 PROVED. Measured
+  under "The window", below. The fault was found by reading the code; the two new tests are the run that shows it.
 - **THE CAUSE, BY READING.** `UCataclysmCommand::Subjugate` did not take a creature off `FloorEnemies`, the floor's list
   of its enemies, so a creature the player had taken stayed on it until the next floor's clear, and on a Horde floor
   whose arena is kept, for every later wave. Twelve readers of the list do not ask who commands a creature (the table
@@ -250,7 +268,34 @@ For #2797 alone:
 fails no test, because no creature a player commands is on the list the loop walks: the take removes it, and a load
 never puts one back. A proof registered on it would be one that cannot fail, so none is.
 
-**The window scripts** will be in `.claude/windows/` in this session's worktree.
+**The window scripts** are in `.claude/windows/` in the worktree `adoring-jennings-f8c84c`:
+`compile_dirgequest.py`, `prechecks_dirgequest.py`, `run_dirgequest.py` and `prove_dirgequest.py`, made by
+`make_dirgequest_scripts.py`.
+
+### The window
+
+Window dirge-quest-w1, 2026-11-21, at `2826b9622`, the registration commit, under the lock `dirge-quest-w1` (the
+compiles under `dirgequest-compile`), every pre-check passing. Its output is `dirgequest_compile.out` and
+`dirgequest_w1_run.out` in `.claude/windows/` in the worktree `adoring-jennings-f8c84c`, with the logs they name.
+
+| Step | Registered | Measured |
+|---|---|---|
+| Build 1, the branch | succeeds, no warning | "Succeeded - 66 actions, 59 files compiled", 0 warning or error lines |
+| Build 2, each changed `.cpp` alone | the 11 files, no warning | "24 actions, 21 files compiled"; "Excluded from Cataclysm unity file" names all 11; 0 lines |
+| Build 3, the unity files | succeeds, no warning | "13 actions, 10 files compiled", 0 lines |
+| `Cataclysm.DungeonModifierEffects.` | 777 of 777, saves 540 | 777 of 777, "Test saves: 540 written and deleted, 0 left behind" |
+| `Cataclysm.EmpireScreen.` | 16 of 16 | 16 of 16, saves 0 |
+| `Cataclysm.CityScreen.` | 17 of 17 | 17 of 17, saves 0 |
+| `Cataclysm.EmpireStatusBar.` | 9 of 9 | 9 of 9, saves 0 |
+| `Cataclysm.BossOnTheMap.` | 5 of 5 | 5 of 5, saves 0 |
+| The six new tests, each alone | 1 of 1 each | 1 of 1 each; the Blood Gates test wrote 1 save, the other five none |
+| #2797's six existing tests, each alone | 1 of 1 each | 1 of 1 each; the two Blood Gates tests wrote 1 save each, the four Dirge tests none |
+| The whole Unreal suite | 5085, 48 skipped halves, saves 860 | "5085 tests performed, 5085 succeeded, 0 failed. 48 skipped part of what they check"; "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5085 tests in the tree at 2826b9622; 5085 performed, gap 0"; the rise of 1 save over the base is `ATakenCreatureDoesNotHoldTheBloodGatesShut`'s, and no other test's share changed |
+| Python, at the same time | no failure, no error | "7843 passed, 9 skipped in 316.42s"; JUnit tests 7852, failures 0, errors 0, skipped 9 |
+| ruff | clean | "All checks passed!" |
+| P1 | 2 failed, then 2 of 2 | PROVED. Broken half: 2 performed, 0 succeeded, 2 failed: `ATakenCreatureIsNotHastedByTheDirgeCrescendo` on "the thrall is no longer on the floor's list of enemies" (expected false); `ATakenCreatureDoesNotHoldTheBloodGatesShut` on "the two taken are no longer counted" ("blood gates: 0 of 3 slain, open at 2"), "and with the last of the floor's slain the gate is open" ("blood gates: 1 of 3 slain, open at 2") and "so the stairs lead down" (1). Restored: 2 of 2 |
+
+The memory summary at the suite's end: 5692 tests, peak used virtual memory 9193 MB.
 
 ---
 
