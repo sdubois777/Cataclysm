@@ -130,10 +130,17 @@ entry above registers.
 **An editor step of its own:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
 `DT_EnemyArchetypes` and the hash record it writes. Until then `test_datatable_assets_are_current.py` fails.
 
+**One C++ proof, by the rule of 2026-11-21** (one per behaviour only a C++ test guards; a Python check's proof where
+one guards the same thing, since it costs no build):
+
 | Proof | Break | Predicted to fail |
 | :-- | :-- | :-- |
 | QC4 | `MayBeCulled` answers true for everything | `EachBoltIsDrawnLargerBrighterAndNeverCulled` |
-| QC5 | the Sentinel's `DesignedAttackIntervalSeconds` back to 2.0 | `EachBoltRepeatsEverySecond` |
+
+**QC5 is proved in Python instead**, 2026-11-21, with `tools/prove_guard.py` in a copy of the branch at `14300929e`: the
+Sentinel's `DesignedAttackIntervalSeconds` back to 2.0 fails
+`tools/tests/test_sentinel_matches_the_model.py::test_the_profile_matches_the_archetype[DesignedAttackIntervalSeconds-attack_interval-1.0-seconds between shots]`
+and restored passes: `PROVED: 1 failed, 42 passed | restored: 43 passed`.
 
 ---
 
@@ -305,13 +312,16 @@ are ahead of it. Groups alone: `Cataclysm.QuickCast.` 3; `Cataclysm.AI.` 51 to 5
 `Cataclysm.HitReaction.` 12; `Cataclysm.Silence.` 26; `Cataclysm.LobMinimum.` 7; `Cataclysm.Gatekeeper.` 14;
 `Cataclysm.Warden.` 20; `Cataclysm.Hellhound.` 11.
 
-Proofs:
+Proofs: **all three proved in Python, and no C++ proof is registered for them**, by the rule of 2026-11-21 (one C++
+proof per behaviour only a C++ test guards; each of these is also guarded by a Python check of the source). Run
+2026-11-21 with `tools/prove_guard.py` in a copy of the branch at `14300929e`, each failing with its break in and
+passing restored (7 passed):
 
-| Proof | Break | Predicted to fail |
+| Proof | Break | Failed with it in |
 | :-- | :-- | :-- |
-| QC1 | `ShowWindUpMarker` ignores `bDrawsNoMarker` | both bolt tests in `Cataclysm.QuickCast.` |
-| QC2 | `IsWindUpDue` rounds the deadline up to a thinking pass | `AWindUpLandsAtItsOwnLength...` and `AWindUpIsDueAtItsLength...` |
-| QC3 | `LandWindUpIfDue` stops asking whether the creature can act | `TheFrameDoesNotLandAWindUp...` |
+| QC1 | `ShowWindUpMarker` reads `MarkerRadiusCm < 0` instead of `bDrawsNoMarker` | `test_wind_up_lands_at_its_own_length.py::test_a_quick_cast_draws_no_marker` |
+| QC2 | `IsWindUpDue` rounds the deadline up to a thinking pass | `test_wind_up_lands_at_its_own_length.py::test_the_landing_is_due_at_its_own_length_and_nothing_rounds_it` |
+| QC3 | `LandWindUpIfDue` stops asking whether the creature can act | `test_wind_up_lands_at_its_own_length.py::test_the_frame_lands_one_only_for_a_creature_that_can_still_make_it` |
 
 ---
 
