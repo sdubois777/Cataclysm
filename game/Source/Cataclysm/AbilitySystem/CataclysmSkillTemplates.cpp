@@ -3761,10 +3761,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	{
 		const FVector PartnerNow = SwappedWith->GetActorLocation();
 		UE_LOG(LogCataclysm, Display,
-			TEXT("%s traded places with %s: %s from (%.0f, %.0f) to (%.0f, %.0f), %s from (%.0f, %.0f) to "
-				 "(%.0f, %.0f)."),
-			*SkillName, *GetNameSafe(SwappedWith), *GetNameSafe(Self), SelfWas.X, SelfWas.Y, ArrivedAt.X,
-			ArrivedAt.Y, *GetNameSafe(SwappedWith), PartnerWas.X, PartnerWas.Y, PartnerNow.X, PartnerNow.Y);
+			TEXT("%s traded places with %s: %s from (%.0f, %.0f, %.0f) to (%.0f, %.0f, %.0f), %s from (%.0f, %.0f, "
+				 "%.0f) to (%.0f, %.0f, %.0f)."),
+			*SkillName, *GetNameSafe(SwappedWith), *GetNameSafe(Self), SelfWas.X, SelfWas.Y, SelfWas.Z, ArrivedAt.X,
+			ArrivedAt.Y, ArrivedAt.Z, *GetNameSafe(SwappedWith), PartnerWas.X, PartnerWas.Y, PartnerWas.Z,
+			PartnerNow.X, PartnerNow.Y, PartnerNow.Z);
 	}
 
 	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
