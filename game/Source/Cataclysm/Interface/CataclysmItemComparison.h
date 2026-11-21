@@ -229,4 +229,23 @@ public:
 						const UDataTable* BaseTable, const UDataTable* AffixTable,
 						const UDataTable* CraftingMaterialTable, const UDataTable* PositiveEnchantmentTable,
 						const UDataTable* NegativeEnchantmentTable, FString& OutLeft, FString& OutRight);
+
+	/**
+	 * A tooltip's text for what a slot holds, as the bag shows it and as hovering it on the ground shows it: THE ONE
+	 * FUNCTION BOTH CALL, so the two cannot disagree. Issue #2807.
+	 *
+	 * GEAR, WITH EQUIPMENT AND A STAND-IN, IS COMPARED: `Compare`, then `Columns`, into two columns, and this answers
+	 * true. Anything else -- a crafting material, an empty slot, gear with no equipment or stand-in to compare against,
+	 * or gear `Compare` declines -- is the slot's own text (`UCataclysmItemTooltip::TextFor`) in `OutLeft`, with
+	 * `OutRight` empty, and this answers false. Exactly what `UCataclysmInventoryWidget` did inline until this.
+	 *
+	 * @param WornNow  the reading of what is worn now, shared across a screen's items: read here into it the first time
+	 *                 it is needed, as the bag did. Null reads it inside `Compare` for this item alone.
+	 */
+	static bool TooltipColumnsFor(const FCataclysmCarriedSlot& Slot, UCataclysmEquipmentComponent* Equipment,
+								  const UAbilitySystemComponent* Abilities, ACataclysmComparisonStandIn* StandIn,
+								  FCataclysmComparisonReading* WornNow, const UDataTable* BaseTable,
+								  const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
+								  const UDataTable* PositiveEnchantmentTable, const UDataTable* NegativeEnchantmentTable,
+								  FString& OutLeft, FString& OutRight);
 };

@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Hovering an item on the ground shows the bag's tooltip and its comparison with what is worn, through the same code (#2807)
+
+**Affects:** `UCataclysmItemComparison::TooltipColumnsFor`, new, the steps `UCataclysmInventoryWidget` wrote out
+inline, which the bag now calls (`game/Source/Cataclysm/Interface/CataclysmItemComparison.h` and `.cpp`,
+`CataclysmInventoryWidget.cpp`); `FCataclysmItemTooltipPanel::Build`, new, the bag's tooltip panel moved unchanged out
+of `UCataclysmInventoryWidget::MakeComparisonToolTip`, which now calls it (`CataclysmItemTooltipPanel.h` and `.cpp`);
+`UCataclysmInventoryScreen::PanelColour` and `InkColour`, new, which the bag's file-local helpers now return
+(`CataclysmInventoryScreen.h` and `.cpp`); `UCataclysmGroundItemHover` and `UCataclysmGroundItemTooltip`, new
+(`CataclysmGroundItemHover.h` and `.cpp`); `ACataclysmPlayerController::RefreshGroundItemHover`, new, run from
+`PostProcessInput`, with its widget, what it shows and its stand-in (`game/Source/Cataclysm/Player/CataclysmPlayerController.h`
+and `.cpp`). Tests: the new group `Cataclysm.GroundItemHover.`, six, in
+`game/Source/Cataclysm/Tests/CataclysmGroundItemHoverTests.cpp`. Issue
+[#2807](https://github.com/sdubois777/Cataclysm/issues/2807).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
+  session's turn.
+- **THE OWNER'S REQUEST, 2026-11-21, VERBATIM:** "I would like that same gear comparison thing we have in the inventory
+  to pop up when you hover over an item on the ground. That way you can tell if it's worth picking up before clogging
+  your inventory".
+- **WHAT NO TEST HERE CAN SEE: the panel reaching the screen.** The automation command passes -nullrhi, and issue #650
+  records that a widget does not move that wall. **The bag's own cell tooltip cannot be built in a test world either**,
+  so the tests compare the hover with the steps the bag takes, built in the test exactly as the bag built them before
+  this change, and not with the bag's widget. That the panel looks like the bag's rests on it being the same builder.
+
+### The rulings
+
+The coordinating session, 2026-11-21:
+
+- **Q1: the comparison shows by default, with no key held**, as the bag shows it (issue #832's ruling (d)), and as the
+  owner asked: "that same gear comparison thing".
+- **Q2: the control with no comparison is a crafting material.** The issue said "an item with no equipped counterpart
+  shows no comparison", which is not what the bag does: gear whose slot is empty still compares, its right column
+  reading "Compared with nothing". So a ring for an empty slot is checked to show that same "Compared with nothing" on
+  the ground. The issue's body is corrected.
+- **The bag's behaviour must be unchanged**, and the hover must not cost the frame.
+
+### What existed
+
+- **A drop's name tag is what a click picks up** (the owner's decision of 2026-08-18): `ACataclysmHUD::DrawDropNames`
+  draws a tag for each drop within 10 m, pushes overlapping tags apart, and keeps each tag's box;
+  `ACataclysmPlayerController::DropUnderCursor` asks `ACataclysmHUD::DropUnderPoint`, where the topmost of two
+  overlapping tags wins. Nothing hovered a drop.
+- **The bag's tooltip:** gear compared with what wearing it would replace (`Compare`, then `Columns`, in two columns), or
+  the slot's own text (`UCataclysmItemTooltip::TextFor`) for a material or when nothing is compared, shown in a panel
+  built by `MakeComparisonToolTip`.
+- **The precedent for a hover:** `ACataclysmHUD::CreatureUnderCursor`, which shows nothing while the cursor is over the
+  interface.
+
+### What changed
+
+- **ONE TEXT:** `TooltipColumnsFor` holds the bag's steps unchanged, and the bag and the hover both call it. **ONE
+  PANEL:** `FCataclysmItemTooltipPanel::Build` holds the bag's panel unchanged, and both draw it; the hover puts it in a
+  holder with no look of its own. The panel's two colours have one definition, on `UCataclysmInventoryScreen`.
+- **WHAT IS HOVERED IS WHAT A CLICK WOULD PICK UP:** `DropUnderCursor`, the click's own test, each frame, and nothing
+  while the cursor is over the interface. Gear shows the two columns; a material its own lines; a gold pile nothing,
+  since it has no item and its tag already states its amount. Several drops close together show one tooltip, for the
+  tag on top.
+- **BESIDE THE CURSOR:** below and to the right by 16 pixels, turned to the left or above at an edge, and held inside the
+  viewport. Never hit-tested, so it cannot take a click or make the cursor read as over the interface.
+- **THE HOVER DOES NOT COST THE FRAME:** the text is worked out again only when a different drop is hovered or the
+  equipment's change count has moved (`UCataclysmGroundItemHover::NeedsRebuild`); otherwise only the panel's position
+  is set.
+- **ITS STAND-IN** (what `Compare` reads the character's totals on): the controller's own, spawned by
+  `RefreshGroundItemHover` the first time a piece of gear is hovered, whether or not the inventory has ever been opened.
+  `ACataclysmComparisonStandIn::SpawnIn` makes it transient and hidden, so it goes with its world: a level change
+  destroys it, the controller's weak pointer reads null, and the next hover spawns one in the new world. The bag keeps
+  its own the same way, so there can be two in a world, one hidden actor each.
+
+### Tests
+
+The new group `Cataclysm.GroundItemHover.`, six, written before the change:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AHelmOnTheFloorShowsTheBagsComparisonWithTheWornHelm` | a wearer in a plain helm, a helm with health on the floor: the hover's two columns are the bag's, word for word, and it compares |
+| `ARingForAnEmptySlotShowsComparedWithNothingAsTheBagDoes` | no ring worn: the bag's right column says "Compared with nothing", and the hover's columns are the bag's (Q2) |
+| `AMaterialOnTheFloorShowsItsOwnLinesAndNoComparison` | the control with no comparison: three shards show the bag's lines for the same stack and no right column |
+| `NothingHoveredAndAGoldPileShowNothing` | the control with nothing: no drop, and a gold pile, show nothing and empty both columns |
+| `ThePanelSitsBelowRightOfTheCursorAndStaysOnScreen` | the panel's position with room, at the right edge, at the bottom edge, and for a panel larger than the viewport |
+| `ThePanelIsRebuiltOnlyWhenTheDropOrTheWornGearChanges` | the same drop and the same worn gear is not rebuilt (the control); another drop, a change to what is worn, a drop where nothing was shown and nothing where a drop was shown are |
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 6 = 5076; skipped halves 48, unchanged**, since no new test needs art; test saves 859, none left behind. To be
+recounted at the window, since #2806 and #2809 are ahead of this in the queue. Groups alone, to show the bag unchanged
+and the hover working: `Cataclysm.GroundItemHover.` 6, `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11,
+`InventoryScreen.` 7, `HeldItem.` 5, `Equipment.` 30 and `DropPickup.` 20.
+
+Proofs:
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| GH1 | `TooltipColumnsFor` never compares, giving the slot's own text for gear too | `AHelmOnTheFloor...` and `ARingForAnEmptySlot...` |
+| GH2 | `NeedsRebuild` answers true every frame | `ThePanelIsRebuiltOnlyWhen...` |
+
+---
+
 ## 2026-11-21 — A charging creature reports its charge's velocity, so it runs through a charge instead of sliding in its idle, and the Abyssal Warden plays Stampede through the run (#2809)
 
 **Affects:** `ACataclysmEnemyCharacter::GetVelocity`, new, overriding the engine's, and `ChargeDirection`, new, set by

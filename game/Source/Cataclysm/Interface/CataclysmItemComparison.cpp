@@ -383,3 +383,42 @@ void UCataclysmItemComparison::Columns(const FCataclysmCarriedSlot& Hovered, con
 	}
 	OutRight = FString::Join(Right, TEXT("\n"));
 }
+
+bool UCataclysmItemComparison::TooltipColumnsFor(const FCataclysmCarriedSlot& Slot,
+												 UCataclysmEquipmentComponent* Equipment,
+												 const UAbilitySystemComponent* Abilities,
+												 ACataclysmComparisonStandIn* StandIn,
+												 FCataclysmComparisonReading* WornNow, const UDataTable* BaseTable,
+												 const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
+												 const UDataTable* PositiveEnchantmentTable,
+												 const UDataTable* NegativeEnchantmentTable, FString& OutLeft,
+												 FString& OutRight)
+{
+	OutLeft.Reset();
+	OutRight.Reset();
+
+	// A PIECE OF GEAR IS COMPARED WITH WHAT WEARING IT WOULD REPLACE, since issue #832, in two columns, shown whenever
+	// it is hovered with no key held (ruling (d)). Moved here from `UCataclysmInventoryWidget` for issue #2807, so the
+	// ground hover runs the same steps.
+	FCataclysmComparisonResult Compared;
+	if (!Slot.Item.Base.IsNone() && Equipment && StandIn)
+	{
+		if (WornNow && !WornNow->bRead)
+		{
+			*WornNow = ReadingOf(Equipment->GetSlots(), *Equipment, Abilities, *StandIn);
+		}
+		Compared = Compare(Slot.Item, *Equipment, Abilities, *StandIn, WornNow);
+	}
+
+	if (Compared.bCompared)
+	{
+		Columns(Slot, Compared, BaseTable, AffixTable, CraftingMaterialTable, PositiveEnchantmentTable,
+				NegativeEnchantmentTable, OutLeft, OutRight);
+		return true;
+	}
+
+	// A MATERIAL, AN EMPTY SLOT, OR GEAR WITH NOTHING TO COMPARE AGAINST: its own text.
+	OutLeft = UCataclysmItemTooltip::TextFor(Slot, BaseTable, AffixTable, CraftingMaterialTable,
+											 PositiveEnchantmentTable, NegativeEnchantmentTable);
+	return false;
+}
