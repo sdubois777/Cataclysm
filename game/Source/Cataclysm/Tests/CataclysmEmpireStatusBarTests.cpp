@@ -10,6 +10,7 @@
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -31,11 +32,13 @@
 namespace CataclysmEmpireStatusBarTest
 {
 	/** Facts as a bound run would give them, written by hand so a test of the words needs no campaign. */
-	FCataclysmEmpireStatusFacts BoundFacts(int32 Dungeons, int32 DaysToSurge, int32 Owed, int32 Cities)
+	FCataclysmEmpireStatusFacts BoundFacts(int32 Dungeons, int32 DaysToSurge, int32 Owed, int32 Cities,
+										   int32 QuestDungeons = 0)
 	{
 		FCataclysmEmpireStatusFacts Facts;
 		Facts.bRunBound = true;
 		Facts.DungeonsStanding = Dungeons;
+		Facts.QuestDungeonsStanding = QuestDungeons;
 		Facts.DaysToNextSurge = DaysToSurge;
 		Facts.DaysOwed = Owed;
 		Facts.CitiesAtRisk = Cities;
@@ -107,6 +110,53 @@ bool FCataclysmEmpireStatusBarWordsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// THE QUEST DUNGEONS AMONG THOSE STANDING, in the empire map's words. Issue #2800, ruled by the coordinating session
+// 2026-11-21: the status bar says what the map's top line says, through the same code, so the two cannot drift. Read
+// from a begun run whose board is set by hand, and from figures; the controls have no Quest dungeon and no bracket.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireStatusBarQuestTest,
+	"Cataclysm.EmpireStatusBar.TheLineCountsTheQuestDungeonsStandingAsTheMapDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireStatusBarQuestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEmpireStatusBarTest;
+
+	TestEqual(TEXT("two Quest dungeons of two standing"), UCataclysmEmpireStatusBar::LineFor(BoundFacts(2, 4, 0, 2, 2)),
+			  FString(TEXT("2 dungeons standing (2 Quest) | surge in 4 days | 2 cities at risk")));
+	TestEqual(TEXT("CONTROL: none of them a Quest dungeon, no bracket"),
+			  UCataclysmEmpireStatusBar::LineFor(BoundFacts(2, 4, 0, 2, 0)),
+			  FString(TEXT("2 dungeons standing | surge in 4 days | 2 cities at risk")));
+
+	// FROM A RUN: three standing, two of them Quest dungeons, on two cities.
+	UCataclysmEmpireRun* Run = BegunOnDayOne(nullptr);
+	if (!TestNotNull(TEXT("set-up: a begun run"), Run) || !TestTrue(TEXT("set-up: two cities"), Run->Map->Cities.Num() >= 2))
+	{
+		return false;
+	}
+	Run->Dungeons.Reset();
+	StandADungeonOn(*Run, 960, Run->Map->Cities[0].CityId);
+	StandADungeonOn(*Run, 961, Run->Map->Cities[1].CityId);
+	StandADungeonOn(*Run, 962, Run->Map->Cities[1].CityId);
+	Run->Dungeons[0].Type = ECataclysmDungeonType::Quest;
+	Run->Dungeons[1].Type = ECataclysmDungeonType::Quest;
+
+	const FCataclysmEmpireStatusFacts Facts = UCataclysmEmpireStatusBar::FactsOf(Run);
+	const FString Line = UCataclysmEmpireStatusBar::LineFor(Facts);
+	AddInfo(FString::Printf(TEXT("STATUS BAR: \"%s\""), *Line));
+	TestEqual(TEXT("the bar counts the Quest dungeons standing"), Facts.QuestDungeonsStanding, 2);
+	TestTrue(TEXT("and its line says so in the map's words"), Line.StartsWith(TEXT("3 dungeons standing (2 Quest) | ")));
+	TestTrue(TEXT("the same words as the map's top line"),
+			  Line.StartsWith(UCataclysmEmpireMapLayout::StandingPart(Run) + TEXT(" | ")));
+
+	// CONTROL: with no Quest dungeon among them, no bracket.
+	Run->Dungeons[0].Type = ECataclysmDungeonType::Basic;
+	Run->Dungeons[1].Type = ECataclysmDungeonType::Basic;
+	TestTrue(TEXT("CONTROL: no Quest dungeon, no bracket"),
+			 UCataclysmEmpireStatusBar::LineFor(UCataclysmEmpireStatusBar::FactsOf(Run))
+				 .StartsWith(TEXT("3 dungeons standing | ")));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireStatusBarZeroDaysTest,
 	"Cataclysm.EmpireStatusBar.ASurgeTheDaysOwedReachLandsWhenThePlayerLeaves",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -154,6 +204,7 @@ bool FCataclysmEmpireStatusBarSameFiguresTest::RunTest(const FString& Parameters
 	TestFalse(TEXT("a day closer to the surge is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 3, 0, 2)));
 	TestFalse(TEXT("a day owed is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 1, 2)));
 	TestFalse(TEXT("another city at risk is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 0, 3)));
+	TestFalse(TEXT("another Quest dungeon among them is a change"), Drawn.HasTheSameFiguresAs(BoundFacts(3, 4, 0, 2, 1)));
 
 	return true;
 }
@@ -344,6 +395,13 @@ bool FCataclysmEmpireStatusBarWorldTest::RunTest(const FString& Parameters)
 
 	const int32 Standing = Run->Dungeons.Num();
 	const int32 Cities = StandingCitiesCarryingADungeon(*Run);
+
+	// THE QUEST DUNGEONS AMONG THEM, counted here apart from the code it checks. Issue #2800.
+	int32 Quest = 0;
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		Quest += Dungeon.Type == ECataclysmDungeonType::Quest ? 1 : 0;
+	}
 	const int32 Days = FMath::CeilToInt(Run->Surges->DaysUntilNextSurge(Run->Day()));
 
 	// THE SET-UP LINES BELOW ARE READ FROM THE RUN, NOT ASSUMED, and the code says why each holds on day 1 whatever the
@@ -370,9 +428,10 @@ bool FCataclysmEmpireStatusBarWorldTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the bar counts every dungeon standing"), Gathered.DungeonsStanding, Standing);
 	TestEqual(TEXT("and the distinct standing cities they stand on"), Gathered.CitiesAtRisk, Cities);
 	TestEqual(TEXT("and the days to the next surge, rounded up"), Gathered.DaysToNextSurge, Days);
-	TestEqual(TEXT("the world's line says those three figures"),
+	TestEqual(TEXT("and the Quest dungeons among those standing"), Gathered.QuestDungeonsStanding, Quest);
+	TestEqual(TEXT("the world's line says those figures"),
 			  UCataclysmEmpireStatusBar::LineForWorld(World),
-			  UCataclysmEmpireStatusBar::LineFor(BoundFacts(Standing, Days, 0, Cities)));
+			  UCataclysmEmpireStatusBar::LineFor(BoundFacts(Standing, Days, 0, Cities, Quest)));
 
 	// A WALK THAT OWES THREE DAYS: the countdown moves three days closer while the run's day stands still.
 	Run->OwedDays = 3;
@@ -382,7 +441,7 @@ bool FCataclysmEmpireStatusBarWorldTest::RunTest(const FString& Parameters)
 			  UCataclysmEmpireStatusBar::FactsForWorld(World).DaysToNextSurge, DaysFromTheWalk);
 	TestEqual(TEXT("and the world's line says so"),
 			  UCataclysmEmpireStatusBar::LineForWorld(World),
-			  UCataclysmEmpireStatusBar::LineFor(BoundFacts(Standing, DaysFromTheWalk, 3, Cities)));
+			  UCataclysmEmpireStatusBar::LineFor(BoundFacts(Standing, DaysFromTheWalk, 3, Cities, Quest)));
 
 	World->DestroyWorld(false);
 	return true;

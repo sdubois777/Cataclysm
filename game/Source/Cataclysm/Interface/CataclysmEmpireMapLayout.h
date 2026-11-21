@@ -262,6 +262,27 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString StandingPart(const UCataclysmEmpireRun* Run);
 
+	/**
+	 * The words for a count of dungeons standing and how many of them are Quest dungeons: "2 dungeons standing (2
+	 * Quest)", "1 dungeon standing" with no Quest dungeon. `StandingPart` says it for a run, and the in-game status bar
+	 * (`UCataclysmEmpireStatusBar::LineFor`) says it from its figures, so the two lines cannot word it differently.
+	 * Issue #2800, ruled by the coordinating session 2026-11-21.
+	 */
+	static FString StandingWords(int32 Standing, int32 QuestStanding);
+
+	/** How many of the run's dungeons standing are Quest dungeons, by each one's `Type`; 0 with no run. Issue #2800. */
+	static int32 QuestDungeonsStanding(const UCataclysmEmpireRun* Run);
+
+	/**
+	 * One dungeon's words in a city's detail on the empire map: "Elite Quest dungeon of 22 floors, 7 days left", "Elite
+	 * dungeon of 9 floors, 30 days left", or "dungeon of 12 floors, 9 days left" for a dungeon with no sub-type. Empty
+	 * when the run, its clock or the dungeon cannot be found. Issue #2800, ruled by the coordinating session 2026-11-21:
+	 * the sub-type for every dungeon, in `SubTypeName`'s words, none for `None`; and the kind after it for a Quest
+	 * dungeon only. Moved here from `UCataclysmEmpireMapWidget`'s city detail, for the reason `ProgressLine` gives: a
+	 * headless test cannot read a label.
+	 */
+	static FString CityDetailDungeonLine(const UCataclysmEmpireRun* Run, int32 DungeonId);
+
 	// ----------------------------------------------------------------------
 	// The empire upgrade point bank -- issue #52, the first slice
 	// ----------------------------------------------------------------------

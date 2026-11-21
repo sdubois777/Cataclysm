@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmEmpireMapLayout.h"
 
+#include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
@@ -141,16 +142,54 @@ FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
 		return FString();
 	}
 
+	return StandingWords(Run->DungeonCount(), QuestDungeonsStanding(Run));
+}
+
+FString UCataclysmEmpireMapLayout::StandingWords(int32 Standing, int32 QuestStanding)
+{
+	// NOTHING IN BRACKETS WHEN NO QUEST DUNGEON STANDS. Issue #2800, ruled 2026-11-21.
+	const FString Kinds = QuestStanding > 0 ? FString::Printf(TEXT(" (%d Quest)"), QuestStanding) : FString();
+	return FString::Printf(TEXT("%d dungeon%s standing%s"), Standing, Standing == 1 ? TEXT("") : TEXT("s"), *Kinds);
+}
+
+int32 UCataclysmEmpireMapLayout::QuestDungeonsStanding(const UCataclysmEmpireRun* Run)
+{
 	// THE RUN'S OWN LIST, BY EACH DUNGEON'S KIND, and no new state. Issue #2800, ruled 2026-11-21.
 	int32 Quest = 0;
-	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	if (Run != nullptr)
 	{
-		Quest += Dungeon.Type == ECataclysmDungeonType::Quest ? 1 : 0;
+		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+		{
+			Quest += Dungeon.Type == ECataclysmDungeonType::Quest ? 1 : 0;
+		}
+	}
+	return Quest;
+}
+
+FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireRun* Run, int32 DungeonId)
+{
+	const FCataclysmDungeon* Dungeon = Run != nullptr ? Run->FindDungeon(DungeonId) : nullptr;
+	if (Dungeon == nullptr || Run->Clock == nullptr)
+	{
+		return FString();
 	}
 
-	const int32 Standing = Run->DungeonCount();
-	const FString Kinds = Quest > 0 ? FString::Printf(TEXT(" (%d Quest)"), Quest) : FString();
-	return FString::Printf(TEXT("%d dungeon%s standing%s"), Standing, Standing == 1 ? TEXT("") : TEXT("s"), *Kinds);
+	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.
+	// `SubTypeName` answers nothing for `None`, so a dungeon without one reads as the line always did.
+	TArray<FString> Words;
+	const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon->SubType);
+	if (!SubType.IsEmpty())
+	{
+		Words.Add(SubType);
+	}
+	if (Dungeon->Type == ECataclysmDungeonType::Quest)
+	{
+		Words.Add(UCataclysmSurgeScheduler::KindName(Dungeon->Type));
+	}
+	Words.Add(TEXT("dungeon"));
+
+	return FString::Printf(TEXT("%s of %d floors, %.0f days left"), *FString::Join(Words, TEXT(" ")), Dungeon->Floors,
+						   Run->Clock->DaysUntilResolveFor(DungeonId));
 }
 
 FString UCataclysmEmpireMapLayout::ProgressLine(const UCataclysmEmpireRun* Run)

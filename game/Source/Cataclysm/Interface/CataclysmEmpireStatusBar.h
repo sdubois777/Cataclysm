@@ -22,6 +22,9 @@ struct CATACLYSM_API FCataclysmEmpireStatusFacts
 	/** Every dungeon standing on the map, `UCataclysmEmpireRun::DungeonCount`. */
 	int32 DungeonsStanding = 0;
 
+	/** How many of them are Quest dungeons, `UCataclysmEmpireMapLayout::QuestDungeonsStanding`. Issue #2800. */
+	int32 QuestDungeonsStanding = 0;
+
 	/**
 	 * Whole days from the day the walk has reached to the next scheduled surge, rounded up; 0 when the days the walk
 	 * owes already reach it. See `UCataclysmEmpireStatusBar::DaysToNextSurgeIn`.
@@ -123,7 +126,9 @@ public:
 	 * The line, or empty when no run is bound.
 	 *
 	 * "3 dungeons standing | surge in 4 days | 2 cities at risk". ONE IS SINGULAR AND EVERYTHING ELSE PLURAL, nought
-	 * included: "1 dungeon standing", "0 cities at risk". The surge reads:
+	 * included: "1 dungeon standing", "0 cities at risk". HOW MANY OF THE DUNGEONS ARE QUEST DUNGEONS follows their
+	 * count in brackets when any is, "3 dungeons standing (2 Quest)", in the words of the empire map's top line, which
+	 * `UCataclysmEmpireMapLayout::StandingWords` gives both. Issue #2800. The surge reads:
 	 *
 	 *   "surge in N days"       N of 2 or more
 	 *   "surge tomorrow"        N of 1; and N of 0 with no days owed, which is a surge already due and lands as the next

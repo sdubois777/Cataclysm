@@ -919,15 +919,15 @@ bool FCataclysmCityScreenHollowLinesTest::RunTest(const FString& Parameters)
 	}
 
 	TestEqual(TEXT("a Hollow above its minimum says it is shrinking and to what"), Lines[0],
-			  FString(TEXT("Hollow, 14 floors, shrinking by one a day to 10, 9 days until it bites")));
+			  FString(TEXT("Hollow Quest, 14 floors, shrinking by one a day to 10, 9 days until it bites")));
 	TestEqual(TEXT("one at its minimum says it is no longer shrinking"), Lines[1],
-			  FString(TEXT("Hollow, 10 floors, no longer shrinking, 25 days until it bites")));
+			  FString(TEXT("Hollow Quest, 10 floors, no longer shrinking, 25 days until it bites")));
 	TestEqual(TEXT("one whose city added floors stops that many higher"), Lines[2],
-			  FString(TEXT("Hollow, 17 floors, shrinking by one a day to 13, 31 days until it bites")));
+			  FString(TEXT("Hollow Quest, 17 floors, shrinking by one a day to 13, 31 days until it bites")));
 
 	// THE CONTROL. Any other dungeon's line is exactly as it was.
-	TestEqual(TEXT("CONTROL: a Horde's line is as it was"), Lines[3],
-			  FString(TEXT("Horde, 30 floors, 40 days until it bites")));
+	TestEqual(TEXT("CONTROL: a Horde Quest dungeon's line has only its sub-type and kind"), Lines[3],
+			  FString(TEXT("Horde Quest, 30 floors, 40 days until it bites")));
 
 	return true;
 }
@@ -969,15 +969,75 @@ bool FCataclysmCityScreenAscendantLinesTest::RunTest(const FString& Parameters)
 	const int32 Deepest = FMath::Min(UCataclysmDungeonModifierRules::AscendantMostEdicts,
 									 UCataclysmDungeonModifierRules::EdictKeys().Num());
 	TestEqual(TEXT("a deep Ascendant names as many Edicts as its last floor holds, and its Core"), Lines[0],
-			  FString::Printf(TEXT("Ascendant, 30 floors, %d Edicts by its last floor and a Heavenly Core, 9 days until "
+			  FString::Printf(TEXT("Ascendant Quest, 30 floors, %d Edicts by its last floor and a Heavenly Core, 9 days until "
 								   "it bites"),
 							  Deepest));
 	TestEqual(TEXT("a one-floor Ascendant names one"), Lines[1],
-			  FString(TEXT("Ascendant, 1 floors, 1 Edict by its last floor and a Heavenly Core, 25 days until it bites")));
+			  FString(TEXT("Ascendant Quest, 1 floors, 1 Edict by its last floor and a Heavenly Core, 25 days until it bites")));
 
 	// THE CONTROL. Any other dungeon's line is exactly as it was.
-	TestEqual(TEXT("CONTROL: a Horde's line is as it was"), Lines[2],
-			  FString(TEXT("Horde, 30 floors, 40 days until it bites")));
+	TestEqual(TEXT("CONTROL: a Horde Quest dungeon's line has only its sub-type and kind"), Lines[2],
+			  FString(TEXT("Horde Quest, 30 floors, 40 days until it bites")));
+	return true;
+}
+
+// EACH QUEST DUNGEON STANDING IS NAMED A QUEST DUNGEON WHERE THE PLAYER CHOOSES WHICH TO WALK. Issue #2800, from the
+// owner's playtest of 2026-11-21, with two Elite Quest dungeons standing on two Outposts; ruled by the coordinating
+// session the same day: "Elite Quest, 22 floors, 7 days until it bites", for a Quest dungeon only. The scene is the
+// owner's: two Elite Quest dungeons, each on its own city, and an Elite Basic dungeon beside the second, the control.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenQuestKindTest,
+	"Cataclysm.CityScreen.EachQuestDungeonStandingIsNamedAQuestDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCityScreenQuestKindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCityScreenTest;
+
+	// TWO CITIES WITH NOTHING STANDING ON THEM YET, so each list holds only what this test places.
+	UCataclysmEmpireRun* Run = MakeRun();
+	TArray<int32> Empty;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (Empty.Num() < 2 && Run->DungeonsOn(City.CityId).IsEmpty())
+		{
+			Empty.Add(City.CityId);
+		}
+	}
+	if (!TestEqual(TEXT("set-up: two cities with nothing standing on them"), Empty.Num(), 2))
+	{
+		return false;
+	}
+	const int32 First = Empty[0];
+	const int32 Second = Empty[1];
+
+	PlaceDungeon(*Run, First, /* DungeonId */ 740, /* Floors */ 22, /* ResolveDays */ 7.0f);
+	PlaceDungeon(*Run, Second, /* DungeonId */ 741, /* Floors */ 23, /* ResolveDays */ 15.0f);
+	PlaceDungeon(*Run, Second, /* DungeonId */ 742, /* Floors */ 9, /* ResolveDays */ 30.0f);
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.DungeonId >= 740 && Dungeon.DungeonId <= 742)
+		{
+			Dungeon.Type = Dungeon.DungeonId == 742 ? ECataclysmDungeonType::Basic : ECataclysmDungeonType::Quest;
+			Dungeon.SubType = ECataclysmDungeonSubType::Elite;
+		}
+	}
+
+	const TArray<FString> OnTheFirst = UCataclysmCityScreenLayout::DungeonLinesFor(Run, First);
+	const TArray<FString> OnTheSecond = UCataclysmCityScreenLayout::DungeonLinesFor(Run, Second);
+	if (!TestEqual(TEXT("set-up: one dungeon on the first city"), OnTheFirst.Num(), 1)
+		|| !TestEqual(TEXT("set-up: two on the second, the Quest dungeon first, sooner to bite"), OnTheSecond.Num(), 2))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("QUEST DUNGEON LINES: first city \"%s\"; second city \"%s\" and \"%s\""),
+							*OnTheFirst[0], *OnTheSecond[0], *OnTheSecond[1]));
+	TestEqual(TEXT("the Quest dungeon on the first city is named a Quest dungeon"), OnTheFirst[0],
+			  FString(TEXT("Elite Quest, 22 floors, 7 days until it bites")));
+	TestEqual(TEXT("and so is the one on the second"), OnTheSecond[0],
+			  FString(TEXT("Elite Quest, 23 floors, 15 days until it bites")));
+	TestEqual(TEXT("CONTROL: the Basic dungeon beside it names its sub-type only"), OnTheSecond[1],
+			  FString(TEXT("Elite, 9 floors, 30 days until it bites")));
 	return true;
 }
 

@@ -1003,6 +1003,65 @@ bool FCataclysmEmpireQuestWordsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * A city's detail on the empire map names each dungeon's sub-type, and a Quest dungeon as one. Issue #2800, ruled by
+ * the coordinating session 2026-11-21: "Elite Quest dungeon of 22 floors, 7 days left" for a Quest dungeon, "Elite
+ * dungeon of 9 floors, 30 days left" for any other, and no word for a sub-type of `None`. The words moved from the
+ * widget to `UCataclysmEmpireMapLayout::CityDetailDungeonLine` so this test can read them.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireCityDetailKindTest,
+	"Cataclysm.EmpireScreen.ACitysDetailNamesEachDungeonsSubTypeAndAQuestDungeonsKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireCityDetailKindTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::CityDetailDungeonLine(nullptr, 1), FString());
+
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(7);
+	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get())
+		|| !TestNotNull(TEXT("set-up: and a clock"), Run->Clock.Get()))
+	{
+		return false;
+	}
+
+	// FOUR DUNGEONS, EACH WITH ITS OWN TIMER, SET BY HAND: the words are what is tested.
+	auto Place = [Run](int32 DungeonId, int32 Floors, float ResolveDays, ECataclysmDungeonType Type,
+					   ECataclysmDungeonSubType SubType)
+	{
+		FCataclysmDungeon Dungeon;
+		Dungeon.DungeonId = DungeonId;
+		Dungeon.CityId = Run->Map->Cities[0].CityId;
+		Dungeon.Floors = Floors;
+		Dungeon.ResolveDays = ResolveDays;
+		Dungeon.Type = Type;
+		Dungeon.SubType = SubType;
+		Run->Dungeons.Add(Dungeon);
+		Run->Clock->AddDungeon(DungeonId, Floors);
+		Run->Clock->SetResolveDays(DungeonId, ResolveDays);
+	};
+	Place(950, 22, 7.0f, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::Elite);
+	Place(951, 9, 30.0f, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::Elite);
+	Place(952, 12, 9.0f, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None);
+	Place(953, 25, 20.0f, ECataclysmDungeonType::Quest, ECataclysmDungeonSubType::None);
+
+	const FString QuestElite = UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 950);
+	AddInfo(FString::Printf(TEXT("CITY DETAIL: \"%s\""), *QuestElite));
+	TestEqual(TEXT("an Elite Quest dungeon"), QuestElite, FString(TEXT("Elite Quest dungeon of 22 floors, 7 days left")));
+	TestEqual(TEXT("CONTROL: an Elite Basic dungeon names its sub-type and no kind"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 951),
+			  FString(TEXT("Elite dungeon of 9 floors, 30 days left")));
+	TestEqual(TEXT("a dungeon with no sub-type and no named kind reads as the line always did"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 952),
+			  FString(TEXT("dungeon of 12 floors, 9 days left")));
+	TestEqual(TEXT("a Quest dungeon with no sub-type is still named a Quest dungeon"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 953),
+			  FString(TEXT("Quest dungeon of 25 floors, 20 days left")));
+	TestEqual(TEXT("a dungeon the run does not hold says nothing"),
+			  UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, 999), FString());
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // The last hit a dungeon's timer landed
 // ---------------------------------------------------------------------------

@@ -200,10 +200,23 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 		// that before the floors. The words are `SubTypeName`'s, which the run's
 		// own description uses, and `None` adds nothing: most dungeons have a
 		// sub-type, and one without reads as it always did.
+		//
+		// AND A QUEST DUNGEON IS NAMED ONE, AFTER ITS SUB-TYPE, since issue #2800,
+		// ruled 2026-11-21: "Elite Quest, 22 floors, 7 days until it bites". No
+		// other kind is named, so a Basic dungeon's line is as it was.
+		TArray<FString> Words;
 		const FString SubType =
 			UCataclysmSurgeScheduler::SubTypeName(Dungeon->SubType);
+		if (!SubType.IsEmpty())
+		{
+			Words.Add(SubType);
+		}
+		if (Dungeon->Type == ECataclysmDungeonType::Quest)
+		{
+			Words.Add(UCataclysmSurgeScheduler::KindName(Dungeon->Type));
+		}
 		const FString Marked =
-			SubType.IsEmpty() ? FString() : SubType + TEXT(", ");
+			Words.IsEmpty() ? FString() : FString::Join(Words, TEXT(" ")) + TEXT(", ");
 
 		// A HOLLOW SAYS WHETHER IT IS STILL SHRINKING AND TO WHAT, since
 		// 2026-10-22. It loses a floor a day down to half its natural depth,
