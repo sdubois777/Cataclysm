@@ -50,8 +50,8 @@ Positive_Your_spells_cost_10_20_less_mana,Your spells cost 10%-20% less mana,Gen
 Positive_Reflect_20_50_of_damage_taken_back_to_attacker,Reflect 20%-50% of damage taken back to attackers,Generic,3.0,Stat.Defense.Retaliation,False,,0
 Positive_Your_melee_attacks_have_a_12_15_chance_to_trig,Your melee attacks have a 12%-15% chance to trigger twice,Generic,2.0,"Type.Strike, Type.Melee",False,,0
 Positive_Skills_get_1_4_to_projectile_count,Skills get +1-4 to projectile count,Generic,2.0,Type.Projectile,False,,0
-Positive_Your_trap_skills_get_1_6_to_max_trap_count,Your trap skills get +1-6 to max trap count,Generic,2.0,Type.Trap,False,,0
-Positive_Add_1_3_to_your_max_deployable_count,Add +1-3 to your max deployable count,Generic,2.0,Type.Deployable,False,,0
+Positive_Your_traps_reserve_5_25_reduced_Fervour,Your traps reserve 5%-25% reduced Fervour,Generic,2.0,Type.Trap,False,,0
+Positive_Your_deployables_reserve_15_30_reduced_Fervour,Your deployables reserve 15%-30% reduced Fervour,Generic,2.0,Type.Deployable,False,,0
 Positive_Traps_trigger_simultaneously_when_any_one_of_the,"Traps trigger simultaneously when any one of them is triggered, if within 8-12 meters of each other",Generic,2.0,Type.Trap,False,,0
 Positive_Traps_deal_bonus_damage_equal_to_5_10_of_the_t,Traps deal bonus damage equal to 5%-10% of the triggering enemy's maximum HP,Generic,2.0,Type.Trap,False,,0
 Positive_Enemies_killed_by_traps_explode_dealing_50_100,"Enemies killed by traps explode, dealing 50%-100% of the trap's damage to all enemies within 4 meters",Generic,3.0,"Type.Trap, Type.AOE.PointBlank, Trigger.OnKill",False,,0
@@ -308,7 +308,7 @@ Positive_Your_persistent_AOE_zones_also_slow_enemies_with,Your persistent AOE zo
 Positive_Enemies_that_enter_your_persistent_AOE_zones_are,Enemies that enter your persistent AOE zones are briefly staggered,Generic,4.0,"Type.AOE.Persistent, Keyword.Stagger, Keyword.CC",False,,0
 Positive_Persistent_AOE_zones_apply_a_DoT_to_enemies_stan,Persistent AOE zones apply a DoT to enemies standing in them,Generic,4.0,"Type.AOE.Persistent, Keyword.DoT.Generic",False,,0
 Positive_Increase_your_auras_AOE_by_100,Increase your auras AOE by 100%,Generic,4.0,"Type.AOE.Aura, Slot.Aura",False,,0
-Positive_Add_2_4_to_your_maximum_minion_count,Add 2-4 to your maximum minion count,Generic,2.0,"Type.Summon, Type.Minion",False,,0
+Positive_Your_minions_reserve_15_30_reduced_Fervour,Your minions reserve 15%-30% reduced Fervour,Generic,2.0,"Type.Summon, Type.Minion",False,,0
 Positive_Your_minions_leave_behind_chaos_pools_when_they,Your minions leave behind chaos pools when they die,Generic,4.0,"Type.Minion, Element.Chaos",False,,0
 Positive_Gain_5_10_attack_speed_on_basic_attack_for_4_s,Gain 5%-10% attack speed on basic attack for 4 seconds,Generic,4.0,"Stat.Offense.Speed, Slot.Basic",False,,0
 Positive_Teleport_to_a_random_location_within_4_meters_wh,Teleport to a random location within 4 meters when hit,Generic,4.0,"Slot.Movement, Trigger.OnHit",False,,0

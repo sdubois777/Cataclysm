@@ -208,7 +208,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionsParameterTest,
 
 bool FCataclysmMinionsParameterTest::RunTest(const FString&)
 {
-	// Summon Imp's cell, verbatim from the Weapon Skills sheet.
+	// Summon Imp's cell as the Weapon Skills sheet held it until issue #2787's branch B removed its MaxActive=3.
+	// Kept as it was, because what this reads is that a key beside Minions survives the parse, and MaxActive is
+	// still a key: the War deployables state it (Bolt Turret, Ballista and Iron Fortress).
 	FString Error;
 	const FCataclysmSkillShapeParams One = UCataclysmSkillShapes::ParseParams(
 		TEXT("Count=1; MaxActive=3; Radius=3; Minions=Imp:1"), &Error);

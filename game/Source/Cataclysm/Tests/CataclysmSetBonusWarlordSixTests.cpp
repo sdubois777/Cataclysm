@@ -592,7 +592,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordSixSummonTest,
 
 /**
  * Q3 and Q4: a landed blow taken rolls the row's 10%, and below it summons one Warhound beside the wearer, the
- * wearer's, outside the summon caps, for the row's 10 s.
+ * wearer's, for the row's 10 s, reserving its 5. It also stood outside the summon caps until branch B of issue #2787,
+ * when the owner's ruling of 2026-11-20 removed every count cap on what reserves the class resource; a count of its
+ * type counts it now.
  *
  * THE ROLL IS PINNED, AFTER THE WORLD IS MADE. THE CONTROL IS READ FIRST: a roll of 10, equal to the chance, summons
  * none. A roll of 9.9 summons one.
@@ -636,26 +638,27 @@ bool FCataclysmWarlordSixSummonTest::RunTest(const FString&)
 	TestEqual(TEXT("it stands 1.5 m from the wearer, where a re-summoned minion appears"),
 			  static_cast<float>(FVector::Dist2D(Warhound->GetActorLocation(), Wearer.Actor->GetActorLocation())),
 			  UCataclysmSummonSkill::ResummonDistanceCm, 1.0f);
-	TestTrue(TEXT("it holds no place under a summon cap"), Warhound->bOutsideSummonCaps);
-	TestEqual(TEXT("so no cap count of its type counts it"),
-			  UCataclysmCommand::MinionsOfTypeCommandedBy(Wearer.Actor, Warhound->TypeName).Num(), 0);
+	TestEqual(TEXT("a count of its type counts it"),
+			  UCataclysmCommand::MinionsOfTypeCommandedBy(Wearer.Actor, Warhound->TypeName).Num(), 1);
+	TestEqual(TEXT("and it reserves its 5"), Warhound->ReservedFervour, ACataclysmMinion::WarhoundFervourReserve, 0.001f);
 	TestEqual(TEXT("it is given the row's ten seconds"), Warhound->GetLifeSpan(), WarhoundSeconds,
 			  ClockAllowanceSeconds);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordSixRefreshTest,
-	"Cataclysm.SetBonus.Warlord6.ASecondSummonRestartsTheWarhoundsTimeKeepsItsHealthAndMakesNoSecond",
+	"Cataclysm.SetBonus.Warlord6.ASecondSummonMakesASecondWarhoundAndLeavesTheFirstsTimeAndHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Q3: at most one; a new summon restarts the time of the one standing at the full 10 s and keeps its health; it is
- * gone when its time has run.
+ * A second Warhound beside the first. The owner's ruling of 2026-11-20 (issue #2787, branch B) removed every count cap
+ * on what reserves the class resource, which replaced Q3 of 2026-10-18: at most one, a new summon restarting the time
+ * of the one standing and keeping its health.
  *
- * THE CONTROL IS READ FIRST: six seconds after it was summoned the Warhound has four left. A second blow comes up: the
- * same Warhound stands, no second is made, its health is what it was a moment before, and its time is ten seconds
- * again. Six seconds later it still stands, and four and a half after that it is gone. THE CLOCK RUNS: the attacker
- * stands 30 m off, and the wearer and its Warhound are on one team.
+ * THE CONTROL IS READ FIRST: six seconds after it was summoned the first Warhound has four left. A second blow comes
+ * up: a second Warhound is made and the pool holds both their 5s; the first keeps its health and its own four seconds,
+ * and four and a half seconds later it is gone while the second stands. THE CLOCK RUNS: the attacker stands 30 m off,
+ * and the wearer and its Warhounds are on one team.
  */
 bool FCataclysmWarlordSixRefreshTest::RunTest(const FString&)
 {
@@ -691,19 +694,17 @@ bool FCataclysmWarlordSixRefreshTest::RunTest(const FString&)
 	const float HealthBefore = Its->GetNumericAttribute(Vital::GetHealthAttribute());
 
 	StrikeTheWearer(Attacker.Actor, Wearer.Actor);
-	TestTrue(TEXT("the second blow leaves the same Warhound standing"),
-			 ACataclysmMinion::WarhoundOf(Wearer.Actor) == Warhound);
-	TestEqual(TEXT("and makes no second"), WarhoundsStanding(Wearer.Actor), 1);
-	TestEqual(TEXT("its health is kept"), Its->GetNumericAttribute(Vital::GetHealthAttribute()), HealthBefore, 0.01f);
-	TestEqual(TEXT("its time restarts at the full ten seconds"), Warhound->GetLifeSpan(), WarhoundSeconds,
+	TestEqual(TEXT("the second blow makes a second Warhound"), WarhoundsStanding(Wearer.Actor), 2);
+	TestEqual(TEXT("and the pool holds both their 5s"), UCataclysmCommand::ReservedFervourOf(Wearer.Actor),
+			  2.0f * ACataclysmMinion::WarhoundFervourReserve, 0.001f);
+	TestTrue(TEXT("the first still stands"), IsValid(Warhound));
+	TestEqual(TEXT("keeping its health"), Its->GetNumericAttribute(Vital::GetHealthAttribute()), HealthBefore, 0.01f);
+	TestEqual(TEXT("and its own four seconds, not restarted"), Warhound->GetLifeSpan(), WarhoundSeconds - 6.0f,
 			  ClockAllowanceSeconds);
 
-	CataclysmTestWorld::RunClock(World, 6.0f);
-	TestTrue(TEXT("six seconds later it still stands, two past where its first time ended"), IsValid(Warhound));
-
 	CataclysmTestWorld::RunClock(World, 4.5f);
-	TestFalse(TEXT("and it is gone once the restarted ten seconds have run"), IsValid(Warhound));
-	TestEqual(TEXT("leaving the wearer none"), WarhoundsStanding(Wearer.Actor), 0);
+	TestFalse(TEXT("four and a half seconds later the first is gone"), IsValid(Warhound));
+	TestEqual(TEXT("and the second stands"), WarhoundsStanding(Wearer.Actor), 1);
 	return true;
 }
 
@@ -716,7 +717,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarlordSixWhatRollsTest,
  *
  * THE ROLL IS PINNED AT 0, SO EVERY BLOW THAT ROLLS SUMMONS. `NoteHitTaken` is called as the vital set calls it: a
  * tick summons none, and an evaded blow none. THE CONTROL is a landed blow, which summons one. A fifth of a second
- * later a landed blow does not refresh it, inside the quarter second; a tenth after that, one does.
+ * later a landed blow summons nothing, inside the quarter second; a tenth after that, one summons a second Warhound.
+ *
+ * A SECOND WARHOUND, NOT A RESTARTED FIRST, SINCE ISSUE #2787 BRANCH B: the owner's ruling of 2026-11-20 removed every
+ * count cap on what reserves the class resource, the Warhound's one at most and its refresh with them (Q3 of
+ * 2026-10-18). Until then this test's last step read the first Warhound's time restarted to ten seconds. Missed when
+ * branch B rewrote its sibling `ASecondSummonMakesASecondWarhoundAndLeavesTheFirstsTimeAndHealth`: window nocaps-b-w1
+ * read 9.75 against 10.
  */
 bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 {
@@ -732,7 +739,19 @@ bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 
 	FWarlordCreature Wearer(World, FVector::ZeroVector, ECataclysmTeam::Players);
 	Wearer.AbilitySystem->SetStatInputs(WarhoundFlats(WarlordSixBonus()));
-	ON_SCOPE_EXIT { Clear({ACataclysmMinion::WarhoundOf(Wearer.Actor)}); };
+	ON_SCOPE_EXIT
+	{
+		TArray<ACataclysmMinion*> Made;
+		for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Wearer.Actor))
+		{
+			ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+			if (IsValid(Minion) && Minion->bIsWarhound)
+			{
+				Made.Add(Minion);
+			}
+		}
+		Clear(Made);
+	};
 
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/true);
 	TestEqual(TEXT("a tick of damage over time summons no Warhound"), WarhoundsStanding(Wearer.Actor), 0);
@@ -746,16 +765,22 @@ bool FCataclysmWarlordSixWhatRollsTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const double SummonedAt = World->GetTimeSeconds();
 
 	CataclysmTestWorld::RunClock(World, 0.2f);
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
-	TestEqual(TEXT("a landed blow 0.2 s later, inside the quarter second, does not restart its time"),
-			  Warhound->GetLifeSpan(), WarhoundSeconds - 0.2f, ClockAllowanceSeconds);
+	TestEqual(TEXT("a landed blow 0.2 s later, inside the quarter second, summons no second Warhound"),
+			  WarhoundsStanding(Wearer.Actor), 1);
+	TestEqual(TEXT("and the first's time runs on"), Warhound->GetLifeSpan(), WarhoundSeconds - 0.2f,
+			  ClockAllowanceSeconds);
 
 	CataclysmTestWorld::RunClock(World, 0.1f);
 	Wearer.AbilitySystem->NoteHitTaken(/*bLanded=*/true, /*Attacker=*/nullptr, /*bDamageOverTime=*/false);
-	TestEqual(TEXT("and one 0.3 s after the summon does"), Warhound->GetLifeSpan(), WarhoundSeconds,
-			  ClockAllowanceSeconds);
+	TestEqual(TEXT("and one 0.3 s after the summon summons a second"), WarhoundsStanding(Wearer.Actor), 2);
+	// THE ELAPSED TIME IS THE WORLD'S, NOT THE 0.3 ASKED FOR: window nocaps-b-w1 read the first's life span at 9.75,
+	// a quarter second gone by the world's clock, and 10 - 0.3 would pass only by the allowance's last hundredth.
+	TestEqual(TEXT("leaving the first's time running, not restarted"), Warhound->GetLifeSpan(),
+			  WarhoundSeconds - static_cast<float>(World->GetTimeSeconds() - SummonedAt), ClockAllowanceSeconds);
 	return true;
 }
 
@@ -856,7 +881,7 @@ bool FCataclysmWarlordSixNotReplacedTest::RunTest(const FString&)
 		{
 			Skill->SkillName = TEXT("Summon Imp");
 			Skill->Params = UCataclysmSkillShapes::ParseParams(
-				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+				TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 		}
 		return Skill;
 	};

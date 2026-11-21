@@ -1359,8 +1359,8 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 
 			// AND A MINION OF THIS CHARACTER'S FIRST SUMMON SKILL MAY BE SPAWNED WHERE THE KILLED ENEMY DIED. Ruled
 			// 2026-10-19 (C5-C7) for Reaper's Embrace's ten-piece: heard for exactly the kills that raise `kill` above,
-			// the cull's own included, and a call of its own for the reason the death sentence's is. Free, never above
-			// the cap and nothing without a summon skill: `UCataclysmSummonSkill::SpawnOneAtAKill`.
+			// the cull's own included, and a call of its own for the reason the death sentence's is. Free, refused when
+			// the pool cannot hold its reserve, and nothing without a summon skill: `UCataclysmSummonSkill::SpawnOneAtAKill`.
 			UCataclysmSummonSkill::SpawnOneAtAKill(this, Notice.Location);
 
 			// THE EXPLOSION A WORN ROW ASKED FOR AT THIS KILL. Ruled 2026-10-07: "Enemies killed by you explode

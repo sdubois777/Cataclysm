@@ -16,16 +16,16 @@ struct FGameplayTagContainer;
  *
  * THE RITUALIST'S STARTING NODE, `Ritualist_basic_spine_000`: "An enemy that
  * dies carrying a curse you laid on it rises as a lesser imp that fights for you
- * for 20 seconds, if you hold fewer imps than Summon Imp allows at once." Added
+ * for 20 seconds, if you hold fewer imps than Summon Imp allows at once." (the
+ * node's words before issue #2787, which removed that cap). Added
  * 2026-09-27 under the owner's ruling that the Ritualist is a Wand and Staff
  * caster, so a Wand Ritualist has minions from what the Wand does.
  *
- * THE IMP IS SUMMON IMP'S, READ FROM ITS ROW. Its type, lifetime, burning and
- * explosion radius come from `Demonic_Staff_Special` in the generated weapon
- * skill table, and so does its cap, through `UCataclysmSummonSkill::CapFor`, so
- * The Swarm and the minion-count enchantments move this cap exactly as they move
- * Summon Imp's. The count is shared: `UCataclysmCommand::MinionsOfTypeCommandedBy`
- * counts every imp the player holds, from either source.
+ * THE IMP IS SUMMON IMP'S, READ FROM ITS ROW. Its type, lifetime, burning,
+ * explosion radius and reserve come from `Demonic_Staff_Special` in the
+ * generated weapon skill table. It shared Summon Imp's cap until issue #2787
+ * removed every count cap on what reserves the class resource; its reserve is
+ * now the only limit on how many rise.
  *
  * A CURSE IS ANY `Status.Debuff.*` EFFECT WHOSE INSTIGATOR HOLDS THE RULE. The
  * rule is the stat `curse_death_raises_imp` above zero, which only the node
@@ -40,11 +40,8 @@ struct FGameplayTagContainer;
  * should hold some reserve." That replaced the rulings of 2026-09-27 and
  * 2026-09-30 that a risen imp reserves nothing because it is not a skill. So a
  * risen imp holds back 10, or 5 under Crowned, and when the pool cannot hold
- * that, nothing rises and nothing is destroyed, as at the cap.
+ * that, nothing rises and nothing is destroyed.
  *
- * AT THE CAP NOTHING RISES AND NOTHING IS DESTROYED. The sentence says "if you
- * hold fewer imps", so a full hand is a refusal, not an eviction; only a press
- * of Summon Imp destroys the oldest.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmRisenImps : public UBlueprintFunctionLibrary
@@ -73,8 +70,8 @@ public:
 	static AActor* CurserOf(const AActor* Dying);
 
 	/**
-	 * Raise the imp for a creature that has just died, if a curse, the cap and
-	 * the curser's pool allow it. Called once per death from
+	 * Raise the imp for a creature that has just died, if a curse and the
+	 * curser's pool allow it. Called once per death from
 	 * `ACataclysmEnemyCharacter::HandleDeath`.
 	 *
 	 * @return the imp, or null when nothing rose
@@ -107,7 +104,7 @@ public:
 	 * what the skill was and not what killed, so they are not asked.
 	 *
 	 * THE STATED SECONDS ARE ITS LIFETIME, scaled by `minion_duration` as every
-	 * summon's is, and it is raised OUTSIDE EVERY SUMMON CAP: ruled 2026-10-02.
+	 * summon's is (ruled 2026-10-02).
 	 * It is Summon Imp's kind, the one precedent for a raised minion.
 	 *
 	 * @param Victim       what died; nothing rises unless it was hostile to the killer

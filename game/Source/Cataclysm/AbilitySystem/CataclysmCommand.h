@@ -101,12 +101,11 @@ public:
 	 * The living minions of one type this character commands, oldest first.
 	 * Issue #1479.
 	 *
-	 * ONE COUNT FOR EVERY SOURCE OF AN IMP, ruled 2026-09-27 under the owner's
-	 * delegation. Summon Imp's cap and the Ritualist's risen imps share it:
-	 * a summon at the cap destroys the oldest imp whichever made it, and an
-	 * enemy rises only while this list is shorter than the cap. Each summon
-	 * skill's own `Minions` list could not answer that, because a risen imp is
-	 * in none of them.
+	 * EVERY SOURCE OF THE TYPE, a summon skill's, a risen imp's, a necrosis kill's.
+	 * It was written for the count cap Summon Imp and the Ritualist's risen imps
+	 * shared (ruled 2026-09-27); issue #2787 removed every count cap on what
+	 * reserves the class resource, so nothing in the game reads it for a cap now,
+	 * and it counts every minion of the type.
 	 *
 	 * DEAD AND DESTROYED ONES ARE LEFT OUT, as `LivingMinionCount` leaves them
 	 * out of a skill's own list (issue #1957). `ThingsCommandedBy` drops the
@@ -350,16 +349,12 @@ public:
 
 	/**
 	 * Whether a new follower reserving `NewReserve` fits in this character's
-	 * pool, with `Freed` Fervour about to be let go first. Issue #1934, ruling
-	 * R1: a summon needs a free slot under its cap AND enough unreserved Fervour.
-	 *
-	 * `Freed` IS WHAT A CAP IS ABOUT TO EVICT, ruled 2026-09-30: at the cap Summon
-	 * Imp destroys the oldest imp, and that imp's reserve is counted as freed
-	 * before the fit is asked, so a press is refused only when the pool cannot
-	 * hold the new imp. A skill trap over its cap does the same since issue #2787.
+	 * pool. Issue #1934, ruling R1, and since issue #2787 the only limit on how
+	 * many of a kind stand: the owner's ruling of 2026-11-20 removed every count
+	 * cap on what reserves the class resource. (A `Freed` figure, what a cap was
+	 * about to evict, went with the caps.)
 	 */
-	static bool HasRoomToReserve(const AActor* Commander, float NewReserve,
-								 float Freed = 0.0f);
+	static bool HasRoomToReserve(const AActor* Commander, float NewReserve);
 
 	/**
 	 * Take current Fervour down to what the reserve leaves spendable. Issue
@@ -371,7 +366,8 @@ public:
 
 	/**
 	 * What one follower of a kind reserves for this commander: `Stated` less
-	 * Crowned's reduction, never below `SmallestMinionReserve`. Issue #2787.
+	 * Crowned's reduction, times one less the percent `MinionReservePercentLessStat`
+	 * reads, never below `SmallestMinionReserve`. Issue #2787.
 	 *
 	 * EVERY KIND READS ITS RESERVE HERE, whether a skill's row states it or the
 	 * kind's own constant does: a thrall and a summoned imp from their skill's
@@ -453,20 +449,25 @@ public:
 	static constexpr float SmallestMinionReserve = 1.0f;
 
 	/**
-	 * The stat holding how many more minions a skill that states a cap may keep
-	 * active. Issue #1718.
+	 * The stat holding how many percent LESS one minion, gadget or trap reserves; a
+	 * negative figure is that many percent MORE. Issue #2787, the owner's ruling
+	 * of 2026-11-20 that what raised a count cap lowers the reserve instead ("Lower
+	 * the reserve instead"), since the count caps went.
 	 *
-	 * `Ritualist_keystone_b_kA` The Swarm was the only source: "Each skill that
-	 * limits how many of its minions may be active allows 2 more." Its row is
-	 * flat 2. Two enchantments now write it too, "Add 2-4 to your maximum
-	 * minion count" and, since issue #1833's rows-only batch, "Minus 2-4 to
-	 * your max minion count", which is the first source to subtract.
+	 * FIVE SOURCES, each sized to let the player hold about as many more as its old
+	 * cap bonus did (reduction = N / (C + N), a judgement): The Swarm, "Your minions
+	 * reserve 12% reduced Fervour"; "Your minions reserve 15%-30% reduced Fervour";
+	 * "Your minions reserve 25%-65% increased Fervour", the negative one; "Your
+	 * deployables reserve 15%-30% reduced Fervour" (`Type.Deployable`); and "Your
+	 * traps reserve 5%-25% reduced Fervour" (`Type.Trap`).
 	 *
-	 * IT REACHES ONLY A SKILL WHOSE ROW STATES A CAP. A skill stating none has
-	 * no limit at all, and a bonus added to a cap of zero would give it one it
-	 * was never designed to have.
+	 * READ BY `ReserveFor` WITH THE KIND'S TAGS, the percentages that reach a kind
+	 * adding into one figure as Path of Exile adds increased and reduced
+	 * reservation efficiency. No gameplay attribute and no base: it is listed in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute`, because a negative
+	 * figure would be floored at nought in the combat attribute set.
 	 */
-	static const TCHAR* MinionCapBonusStat;
+	static const TCHAR* MinionReservePercentLessStat;
 
 	/**
 	 * Take an enemy permanently into this character's command.

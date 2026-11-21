@@ -62,50 +62,6 @@
 namespace
 {
 	/**
-	 * What one of this character's passive stats reads, for use against a figure
-	 * the skill's own row states. Issue #1718.
-	 *
-	 * TWO KEYSTONES ADJUST A FIGURE THIS WAY -- Crowned lowers what a minion
-	 * reserves and The Swarm raises how many minions a skill may keep active --
-	 * and the shape is the one `possession_threshold_bonus` established: the
-	 * stat starts at zero and is applied to whatever the row says, so re-tuning
-	 * the row follows through. A stat holding the figure itself would state the
-	 * same number twice and win silently.
-	 *
-	 * THE VALUE IS ALWAYS ZERO OR ABOVE, AND THE CALLER DECIDES THE DIRECTION.
-	 * Every attribute in the combat set is floored at zero -- see
-	 * `FervourReserveFor` below for the measurement -- so a stat that lowers a
-	 * figure names the size of the reduction and is subtracted by its caller.
-	 * This function is deliberately not called `...BonusFor`: Crowned's caller
-	 * subtracted what it returned. Since issue #2787 Crowned is read by
-	 * `UCataclysmCommand::ReserveFor` in the same way, because minions no skill
-	 * makes ask it too, and The Swarm's `MinionCapFor` is the caller here.
-	 *
-	 * READ WITH THE SKILL'S OWN TAGS, so a future row scoped to a keyword counts
-	 * only for the skills it names. `StatForSkill` falls back to the attribute
-	 * when nothing was recorded, which is the right answer for an enemy and for
-	 * a character before its first stat refresh.
-	 *
-	 * THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute whose set
-	 * the component does not hold raises an engine ensure rather than answering
-	 * zero, and a test may build a component without the combat set.
-	 */
-	float PassiveStatFor(const AActor* Self, const TCHAR* StatName,
-						  const FGameplayAttribute& Stat,
-						  const FGameplayTagContainer& SkillTags)
-	{
-		const UCataclysmAbilitySystemComponent* Mine =
-			Cast<UCataclysmAbilitySystemComponent>(
-				UCataclysmTargeting::AbilitySystemOf(Self));
-		if (!Mine || !Mine->HasAttributeSetForAttribute(Stat))
-		{
-			return 0.0f;
-		}
-		return Mine->StatForSkill(FName(StatName), SkillTags,
-								  Mine->GetNumericAttribute(Stat));
-	}
-
-	/**
 	 * What one minion of this skill reserves for this character, in Fervour.
 	 * Issue #1718.
 	 *
@@ -156,51 +112,6 @@ namespace
 							const FGameplayTagContainer& SkillTags)
 	{
 		return UCataclysmCommand::ReserveFor(Self, Params.FervourReserve, SkillTags);
-	}
-
-	/**
-	 * How many minions this skill may keep active at once. Issue #1718.
-	 *
-	 * `Ritualist_keystone_b_kA` The Swarm is the node: "Each skill that limits
-	 * how many of its minions may be active allows 2 more."
-	 *
-	 * THE BONUS REACHES EVERY SKILL THAT STATES A CAP, WHATEVER IT SUMMONS OR
-	 * DEPLOYS, because the node says "each skill" since the owner's decision of
-	 * 2026-09-16. Until then it said "You may have 5 imps active rather than
-	 * 3", and this reached only a row whose `Minions` parameter named an imp.
-	 * Three places read a cap through this: a summon destroying its oldest, a
-	 * deployable refusing to place another, and a summon that spawns over time.
-	 *
-	 * AND ONLY WHERE THE ROW STATES A CAP ABOVE ZERO. Every read site takes zero
-	 * to mean "no cap at all", so a bonus added whether or not the row states a
-	 * cap would give a skill designed to have none a cap of two -- and would
-	 * cap thralls, fighting Crowned on the same character. Measured 2026-09-16:
-	 * of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's states
-	 * a cap.
-	 */
-	int32 MinionCapFor(const AActor* Self,
-					   const FCataclysmSkillShapeParams& Params,
-					   const FGameplayTagContainer& SkillTags)
-	{
-		if (Params.MaxActive <= 0)
-		{
-			return Params.MaxActive;
-		}
-
-		const float Bonus = PassiveStatFor(
-			Self, UCataclysmCommand::MinionCapBonusStat,
-			UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
-			SkillTags);
-
-		// AT LEAST ONE, AND SOMETHING NOW SUBTRACTS. "Minus 2-4 to your max
-		// minion count" is a negative flat on this stat, issue #1833, and
-		// `StatForSkill` answers the pipeline's figure, which is not floored the
-		// way the combat attribute set floors the attribute -- `FervourReserveFor`
-		// above carries that measurement. So the sum can fall below the row's
-		// figure. A cap of zero is read as NO CAP at all by every read site, so
-		// without this floor a large enough subtraction would be an unlimited
-		// army rather than a smaller one.
-		return FMath::Max(1, Params.MaxActive + FMath::RoundToInt(Bonus));
 	}
 }
 
@@ -4280,11 +4191,13 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		return nullptr;
 	}
 
-	// THE CAP STOPS PLACING RATHER THAN REPLACING. Summon Imp destroys its
-	// oldest to make room and says so in its description; none of the three
+	// THE CAP STOPS PLACING RATHER THAN REPLACING: none of the three War
 	// deployable skills says anything of the kind, so reaching the cap here
-	// simply means nothing more goes down.
-	const int32 DeployCap = MinionCapFor(Avatar(), Params, SkillTags);
+	// simply means nothing more goes down. THE ROW'S OWN FIGURE AND NO BONUS:
+	// these War rows reserve nothing yet (issue #1934, the no-War rule), so they
+	// keep the cap issue #2787 took from everything that reserves, and the cap
+	// bonus that once raised it became "Your deployables reserve 15%-30% reduced".
+	const int32 DeployCap = Params.MaxActive;
 	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
 	{
 		return nullptr;
@@ -4392,31 +4305,6 @@ int32 UCataclysmSummonSkill::LivingMinionCount()
 	return Minions.Num();
 }
 
-TArray<ACataclysmMinion*> UCataclysmSummonSkill::MinionsSharingTheCap()
-{
-	LivingMinionCount();
-	const FString SummonedType =
-		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
-	TArray<ACataclysmMinion*> Sharing =
-		UCataclysmCommand::MinionsOfTypeCommandedBy(Avatar(), SummonedType);
-	for (const TObjectPtr<ACataclysmMinion>& Own : Minions)
-	{
-		Sharing.AddUnique(Own.Get());
-	}
-	Sharing.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B)
-	{
-		return A.SpawnOrder < B.SpawnOrder;
-	});
-	return Sharing;
-}
-
-int32 UCataclysmSummonSkill::CapFor(const AActor* Summoner,
-									const FCataclysmSkillShapeParams& SkillParams,
-									const FGameplayTagContainer& SummonTags)
-{
-	return MinionCapFor(Summoner, SkillParams, SummonTags);
-}
-
 const TCHAR* UCataclysmSummonSkill::ReplacedOnDeathStat =
 	TEXT("minion_death_replaced_every_seconds");
 const TCHAR* UCataclysmSummonSkill::ReplacedOnExplosionStat =
@@ -4466,8 +4354,8 @@ ACataclysmMinion* UCataclysmSummonSkill::ResummonNow(AActor* Commander,
 	{
 		return nullptr;
 	}
-	// `SummonReplacementAt` REFUSES AT THE CAP AND WHEN THE RESERVE HAS NO ROOM,
-	// which is the ruling: no room when the wait ends means no minion.
+	// `SummonReplacementAt` REFUSES WHEN THE RESERVE HAS NO ROOM, which is the
+	// ruling: no room when the wait ends means no minion.
 	return Skill->SummonReplacementAt(
 		Commander->GetActorLocation() + Commander->GetActorForwardVector() * ResummonDistanceCm);
 }
@@ -4476,13 +4364,6 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 {
 	AActor* Self = Avatar();
 	if (!Self || Params.bPossess)
-	{
-		return nullptr;
-	}
-
-	// THE SHARED COUNT, issue #1479: a risen imp holds a place here too.
-	const int32 SummonCap = MinionCapFor(Self, Params, SkillTags);
-	if (SummonCap > 0 && MinionsSharingTheCap().Num() >= SummonCap)
 	{
 		return nullptr;
 	}
@@ -4827,68 +4708,18 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		return nullptr;
 	}
 
-	// THE CAP IS ENFORCED BEFORE THE SPAWN, NOT AFTER, so the number alive never
-	// exceeds it even for an instant. Summon Imp: "up to 3 imps may be active at
-	// once. Summoning a fourth destroys the oldest, which explodes for damage in
-	// a 3 meter radius."
-	//
-	// THE OLDEST OF EVERY IMP THE SUMMONER HOLDS, NOT ONLY OF THIS SKILL'S.
-	// Issue #1479, ruled 2026-09-27 under the owner's delegation: the
-	// Ritualist's risen imps share this cap, so the oldest may be one that
-	// rose from a cursed enemy and is in no skill's list.
-	const int32 SummonCap = MinionCapFor(Avatar(), Params, SkillTags);
-	const TArray<ACataclysmMinion*> Sharing =
-		SummonCap > 0 ? MinionsSharingTheCap() : TArray<ACataclysmMinion*>();
-	const bool bEvicts = SummonCap > 0 && Sharing.Num() >= SummonCap;
-
-	// AND THE POOL MUST HOLD THE NEW ONE'S RESERVE. Issue #1934, ruling R1:
-	// both the count cap and the Fervour limit apply. At the cap the oldest is
-	// about to go, so its reserve is counted as freed first, ruled 2026-09-30;
-	// a press is refused only when the pool cannot hold the new imp, and then
-	// nothing is destroyed either.
+	// NO COUNT CAP, AND NOTHING IS DESTROYED TO MAKE ROOM. Issue #2787: the owner's ruling of 2026-11-20 removed every
+	// count cap on what reserves the class resource ("that's limiting on its own"), Summon Imp's three included, and
+	// "Summoning a fourth destroys the oldest, which explodes" with it ("Drop it with the cap"). The pool is the
+	// limit: a press is refused, with nothing made and nothing destroyed, when it cannot hold the new imp's reserve
+	// (issue #1934, ruling R1).
 	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
-	const float Freed = bEvicts && IsValid(Sharing[0]) ? Sharing[0]->ReservedFervour : 0.0f;
-	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve, Freed))
+	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' has no room in its pool for another reserving %.0f Fervour."),
 			*SkillName, Reserve);
 		return nullptr;
-	}
-
-	if (bEvicts)
-	{
-		ACataclysmMinion* Oldest = Sharing[0];
-		Minions.Remove(Oldest);
-		if (UCataclysmSummonSkill* Maker = Oldest->SummonedBy.Get())
-		{
-			Maker->Minions.Remove(Oldest);
-		}
-		if (IsValid(Oldest))
-		{
-			// A MINION'S EXPLOSION TAKES NONE OF THE SUMMONER'S AREA OF EFFECT, so
-			// this reads the stated radius rather than the scaled one. The
-			// design names area of effect among what a minion does not take
-			// from its summoner, and the only way in is a stat that says
-			// "minion".
-			//
-			// ONE EXCEPTION, A PASSIVE THAT SAYS "MINION": A Second Self's
-			// chosen minion explodes over its summoner's area of effect, which
-			// `Explode` asks `UCataclysmSecondSelf::AreaMultiplierFor`. Issue
-			// #1515, under the ruling that such a passive may pass a summoner
-			// stat to a minion.
-			//
-			// THAT STAT DOES NOT EXIST YET. The project owner asked for one on
-			// 2026-08-24 and it is #910. The attribute channel #340 built does
-			// not supply it: MinionScaling.csv scales a minion's damage and
-			// nothing else, so no attribute widens an explosion either. So this
-			// is a recorded gap rather than an oversight, and the line below is
-			// deliberate. Issue #895.
-			//
-			// AND IT IS THIS SKILL'S OWN EXPLOSION, so it credits the skill that summoned the oldest. Issue #2764,
-			// slice 2b, ruled 2026-11-20 (Q-B): see `ACataclysmMinion::Explode`.
-			Oldest->Explode(/*bSetOffByTheSummonCap=*/true);
-		}
 	}
 
 	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
@@ -4911,10 +4742,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	if (Minion)
 	{
 		// WHAT ITS DEATH WOULD EXPLODE FOR, TOLD NOW WHILE THE ROW IS IN HAND.
-		// Issue #1515. These are the same two figures the cap uses above when
-		// it destroys the oldest, and a dead minion cannot reach this ability
-		// to ask for them. `minion_explodes_on_death` on the summoner is what
-		// decides whether they are ever used.
+		// Issue #1515. A dead minion cannot reach this ability to ask for them.
+		// `minion_explodes_on_death` on the summoner is what decides whether
+		// they are ever used.
 		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minion->SummonedBy = this;
 		RecordTheSkillOn(Minion);
@@ -5034,8 +4864,9 @@ void UCataclysmSummonSkill::SpawnTick()
 {
 	// "Spawns a lesser imp every 2 seconds to a maximum of 5." The maximum is a
 	// total for this rift rather than a rolling cap, so once it has made five it
-	// stops rather than replacing them.
-	const int32 TickCap = MinionCapFor(Avatar(), Params, SkillTags);
+	// stops rather than replacing them. THE ROW'S OWN FIGURE: a total made by one
+	// cast is not the count cap issue #2787 removed, and no bonus raises it.
+	const int32 TickCap = Params.MaxActive;
 	if (TickCap > 0 && Minions.Num() >= TickCap)
 	{
 		if (UWorld* World = GetWorld())

@@ -373,6 +373,14 @@ INVENTORY = {
         'attribute as the fallback; no blow is in hand, because it is asked '
         'when the thing is made. Issue #2787 moved it here from the skill '
         "templates' FervourReserveFor so minions no skill makes ask it too",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(MinionReservePercentLessStat), Tags, 0.0f'):
+        'the percentage less that one minion, gadget or trap reserves, '
+        "asked with the same tags as Crowned's reduction beside it so a "
+        'row requiring Type.Deployable or Type.Trap reaches only those; '
+        'no attribute, so nought is the fallback, and no blow is in hand. '
+        "Issue #2787, branch B. The call it replaced, the skill templates' "
+        "PassiveStatFor for The Swarm's minion cap, went with the cap",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "
@@ -697,10 +705,6 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(TEXT("added_health_cost_of_current")), SkillTags, FromAttribute'):
         "a skill's own cost and shape, asked before any blow exists",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
-     'FName(StatName), SkillTags, Mine->GetNumericAttribute(Stat)'):
-        "an aura's upkeep and a skill's own numbers, asked with no blow "
-        'in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
      'FName(UCataclysmCommand::PossessionThresholdBonusStat), SkillTags, Mine->GetNumericAttribute(Stat)'):
         "an aura's upkeep and a skill's own numbers, asked with no blow "

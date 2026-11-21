@@ -212,7 +212,14 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: Fervour, never less than 1" and The Swarm's "allows 2 more". None of the
 #: four old sentences contained it. Rekindled and Sacrificial Ward already
 #: said "no more than once" and still do.
-STRINGS_CONTAINING_THE_WORD = 46
+#:
+#: CONTAINING FELL BY ONE ON 2026-11-21 AND MAGNITUDES DID NOT MOVE, issue
+#: #2787 branch B. The Swarm's "allows 2 more" became "Your minions reserve 12%
+#: reduced Fervour.", which uses neither word: the coordinating session ruled
+#: "reduced" rather than "less" because the percentages reaching a kind add.
+#: The Fervour node's sentence changed the same day and uses neither word,
+#: before or after.
+STRINGS_CONTAINING_THE_WORD = 45
 STRINGS_USING_IT_AS_A_MAGNITUDE = 26
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%

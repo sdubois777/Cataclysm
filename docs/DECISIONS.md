@@ -773,6 +773,290 @@ trade was one of the eight and no longer sweeps. Its floor is now seven, with th
 
 ---
 
+## 2026-11-20 — Nothing that reserves the class resource has a count cap, and what raised a cap now lowers the reserve (#2787, branch B)
+
+**Affects:** `UCataclysmSummonSkill::SummonOne`, `SummonReplacementAt` and `SpawnTick`, with `MinionsSharingTheCap`,
+`CapFor` and the file-local cap helpers removed (`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and
+`.cpp`); `ACataclysmMinion::SummonWarhound`, `SummonTyrantsMinion`, `PlaceSkillTrap` and `Explode`, with
+`bOutsideSummonCaps`, `TrapCapBonusStat`, `SkillTrapsMostPerPlayer` and `SkillTrapsMostFor` removed
+(`CataclysmMinion.h` and `.cpp`); `UCataclysmRisenImps::RiseOnDeath` (`CataclysmRisenImps.h` and `.cpp`);
+`UCataclysmCommand::ReserveFor`, `HasRoomToReserve` (its `Freed` argument removed), `MinionsOfTypeCommandedBy` and
+`MinionReservePercentLessStat`, new, replacing `MinionCapBonusStat` (`CataclysmCommand.h` and `.cpp`);
+`MinionCapBonus` removed from `UCataclysmCombatAttributeSet`; `UCataclysmPlayerClassStats` (`trap_cap_bonus` out of
+the stats with no attribute, `minion_reserve_percent_less` in, the `minion_cap_bonus` mapping out); the skill bar's trap
+words, "Traps N" (`game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp`); comments in
+`CataclysmAbilitySystemComponent.h`, `CataclysmReaperSoul.h` and `CataclysmPlayerCharacter.cpp`;
+`tools/generate_datatables.py` (`refuse_a_trap_expiry_row_the_game_cannot_read`, formerly with the trap cap in it;
+`refuse_a_reserve_percent_row_the_game_cannot_read` and `refuse_a_count_cap_on_a_summon`, new);
+`docs/Cataclysm_GDD_v2.md` (the paragraph "Every minion, gadget and trap the player makes reserves Fervour", Summon
+Imp's row of the Staff's skills, and "WHAT EARNS A SKILL EXPERIENCE"). Tests: the new group `Cataclysm.NoCaps.`, six,
+at the end of `game/Source/Cataclysm/Tests/CataclysmKindReservesTests.cpp`; eight deleted, twenty-two renamed and
+rewritten, and two assertion messages reworded, in twenty test files, listed under Tests below; `tools/tests/test_damage_over_time_names_its_skill.py`,
+`test_generate_datatables.py` and `test_minion_skill_shapes.py`. Issue
+[#2787](https://github.com/sdubois777/Cataclysm/issues/2787).
+
+### SAID FIRST
+
+- **COMPILED AND PASSED IN UNREAL, window nocaps-b-w2 at 2fcf9733a, with every proof proved**; see "The windows"
+  at the end. The workbook turn of 2026-11-21 wrote the workbook's rows (Summon Imp's text and parameters, the four
+  enchantments' texts and effect rows, The Swarm's effect row), the Ritualist tree's three node sentences in
+  `docs/Ritualist_Class_Tree_Final.json`, regenerated `game/Data`, added the four renamed enchantments to
+  `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, moved the Python tests that pinned the old texts,
+  each named under "The workbook turn" below, and rebuilt the six DataTable assets those tables feed.
+- **THE WORKBOOK'S OTHER HOLDER.** The parked branch `data/two-handed-weapons-drawn-at-1-75` (#1130, commit
+  912fcea9f, four cells drawing the two-handed bases at scale 1.75) holds unmerged workbook changes, parked by the
+  owner's ruling of 2026-11-17. This branch takes the workbook; #1130's four cells are applied again on top of
+  `development` after this merges, and #1130's branch is not touched.
+- **THIS REPLACES SIX RULINGS.** The owner's ruling #3 of 2026-10-17, at most one Tyrant's Minion, a new summon
+  restarting its time and keeping its health. Q3 of 2026-10-18, the same for the Warhound. T6 of 2026-10-19, at most
+  five skill traps across every converted slot, the oldest destroyed without triggering. M1 of 2026-10-21, one cap for
+  every slot raised by `trap_cap_bonus`. The ruling of 2026-09-27 that Summon Imp's three and the risen imps share one
+  count. And issue #1718's wording of The Swarm, "Each skill that limits how many of its minions may be active allows 2
+  more." Each entry stays as the record of what it ruled.
+- **IT UNDOES PART OF SLICE 2b (#2764).** Summon Imp's eviction set off an explosion that slice 2b credited to Summon
+  Imp (Q-B, option b). The eviction is gone, so `Explode` takes no flag and every minion explosion credits nothing, as
+  a passive's already did; the level factor on the explosion's figure stays. Test 17 keeps its passive half under a new
+  name, and proof L12's subject no longer exists.
+- **A KNOWN COST, NOT MEASURED.** With no count cap and a floor of one point, a pool holds dozens: 180 at 5 each is 36
+  imps. The owner parked performance (2026-11-17), and the coordinating session ruled it no blocker. Likewise the
+  Tyrant's Chains ten-piece's "Your Tyrant's Minion now casts your ultimate ability every 3 seconds" now holds for
+  each Tyrant's Minion standing, up to ten on a pool of 100 with nothing else reserved; the coordinating session said
+  it was telling the owner.
+
+### The rulings
+
+The owner, 2026-11-20, three:
+
+1. "Also, are the risen imps limited in number you can have out? We shouldn't be putting arbitrary limits on any of
+   those things that reserve the class resource, since that's limiting on its own". So nothing that reserves has a
+   count cap; the reserve is the limit.
+2. On the nodes and enchantments that added "+N to max minions" or "+N to max traps": "Lower the reserve instead
+   (Recommended)". Each becomes "<that kind> reserves less of your resource", sized to let the player hold about N more
+   at a typical pool, keeping its purpose.
+3. On Summon Imp's "Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius": "Drop it
+   with the cap (Recommended)". An imp still explodes at its death where a passive gives it that.
+
+The coordinating session, the same day, on readings sent with the plan:
+
+- **Removed, as count caps:** Summon Imp's three; the cap the risen imps and the Reaper's Embrace ten-piece's
+  kill-spawned imp shared with it; the five skill traps; the Warhound's and the Tyrant's Minion's one at most, with
+  their refresh.
+- **Kept, as how a mechanic works:** a skill gadget's one per converted slot, a press moving it ("It is how the gadget
+  is controlled, not an arbitrary count": the gadget has no lifespan, and its slot's key is the only way to place it
+  anew); Press-Ganged's and Rekindled's rates; Behind the Veil's "three or more minions"; every lifetime. The War
+  deployables keep their caps under the no-War rule until issue #1934. `SpawnTick` keeps its total, which no player row
+  uses; the generator now refuses `MaxActive` on a Summon row without an `Interval`.
+- **The skill gadget stays at 15.**
+- **The conversions:** one new stat, `minion_reserve_percent_less`, read with the kind's tags, replaces
+  `minion_cap_bonus` and `trap_cap_bonus`; the percentages reaching one kind add into one figure; reserve = max(1,
+  (stated - Crowned's 5) x (1 - net / 100)); the four renamed enchantments are aliased; their weights do not change.
+
+### The rewords, verbatim
+
+| What | Was | Becomes |
+| :-- | :-- | :-- |
+| Summon Imp (Weapon Skills, `Demonic_Staff_Special`) | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out. Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius." | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out." Parameters lose `MaxActive=3` and keep `Radius=3`, the radius a passive's death explosion uses. |
+| The Ritualist's first node, Fervour (`basic_spine_000`) | its clause "rises as a lesser imp that fights for you for 20 seconds, if you hold fewer imps than Summon Imp allows at once." | "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds and reserves 10 Fervour while it is out, if you have the Fervour to reserve. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it." |
+| The Swarm (`keystone_b_kA`) | "Each skill that limits how many of its minions may be active allows 2 more." | "Your minions reserve 12% reduced Fervour." |
+| Every One Bursts (`keystone_b_kB`) | "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it." | "Every minion explodes when it dies, with the radius and damage of the skill that brought it." |
+| Enchantment | "Add 2-4 to your maximum minion count" | "Your minions reserve 15%-30% reduced Fervour" |
+| Enchantment | "Minus 2-4 to your max minion count" | "Your minions reserve 25%-65% increased Fervour" |
+| Enchantment | "Add 1-3 to your max deployable count" | "Your deployables reserve 15%-30% reduced Fervour" |
+| Enchantment | "Your trap skills get +1-6 to max trap count" | "Your traps reserve 5%-25% reduced Fervour" |
+
+**EVERY ONE BURSTS, RULED 2026-11-20 by the coordinating session, accepting the proposed sentence verbatim.** Found at
+the rebase onto 156f2b9e8: its clause "as one destroyed to make room for another does" names the eviction this branch
+removes, and the plan had listed only the Fervour and The Swarm sentences. The coordinating session's reason: "the
+owner's ruling of 2026-11-20 drops the cap and the explosion it caused ("Drop it with the cap"). The keystone's own
+effect, an explosion at every minion's death, is unchanged, so the only change is removing the clause that names the
+dropped cap." Written in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv`, and in the three
+comments that quote it (`CataclysmMinion.cpp`, `CataclysmCommandTests.cpp`, `CataclysmPassiveTreeTests.cpp`). The
+`DT_PassiveNodes` asset held the old sentence until the workbook turn's asset rebuild of 2026-11-21, and
+`tools/tests/test_datatable_assets_are_current.py` failed, naming `PassiveNodes.csv`, until then. The row's stat and
+value are unchanged.
+
+**THE WORDING, RULED 2026-11-21 by the coordinating session: "reduced" and "increased", not "less" and "more".**
+The first sentences said "12% less" and "25%-65% more". The workbook turn's Python run refused The Swarm's: "12%
+less" reads as a separate multiplier (`test_the_bucket_matches_the_nodes_own_wording`), and this project's vocabulary
+says so, the owner's "multiplicative means more" of 2026-08-17. But the percentages reaching a kind add into one
+figure, ruled with the plan, so The Swarm's 12 and an enchantment's 30 make 42 and not 1 - 0.88 x 0.70. The
+coordinating session's reason: "A sentence saying 'less' about a figure that adds would break the first rule to keep
+the second." The meaning of the five sentences is unchanged. The table above holds the final words.
+
+- **The house form, matched:** subject, verb, percentage, "increased" or "reduced", resource, as in "Your auras cost
+  100%-200% increased mana per second" (a negative enchantment, the nearest kind of sentence, an upkeep) and
+  "Summon skills have 30%-60% reduced cooldown" and "Summoned minions have 30%-50% increased HP" (positive
+  enchantments).
+- **The row names changed once more, before anything shipped them.** The aliases take each old cap name straight to
+  the final name, with no step between; `test_every_enchantment_alias_points_at_a_current_row.py` holds that for the
+  four by name, and that no alias names the "less" and "more" names. Proved with `tools/prove_guard.py`: with the
+  trap row's alias pointed at its "less" name, three tests in that file failed; restored, all passed.
+- **The drawback's negative value beside "increased"** is accepted on `minion_reserve_percent_less` alone, a fifth
+  stat-scoped set in `tools/tests/test_enchantment_effects_match_the_row_text.py` (`RESERVES_MORE_WHEN_NEGATIVE`),
+  beside `LONGER_WHEN_NEGATIVE` and the others, with a test on made-up rows showing it reaches that stat only.
+- **The genre, as far as it could be read.** `www.poewiki.net` refused the fetch with its bot-protection page. Read
+  verbatim on 2026-11-21: poedb.tw's Reservation Efficiency page lists passives in the additive form, "8% increased
+  Mana Reservation Efficiency of Skills"; poe2db.tw's Spirit page has a separate multiplier in the other form,
+  "Non-Minion Skills have 50% less Reservation Efficiency". Neither page states how the two combine. That Path of
+  Exile adds every "increased" reservation efficiency into one figure and applies each "less" separately is this
+  session's knowledge and is NOT verified from a page.
+
+### The workbook turn
+
+Each Python pin it moved, with what the pin counts:
+
+- `test_minion_count_enchantments.py`: it held exactly one enchantment raising the minion count. It now holds none,
+  by the owner's ruling "Lower the reserve instead", shows its pattern still matches the two old wordings and not
+  the new one, holds the successor at weight 2 with both tags, and holds the design document to "Minion count has no
+  cap" and not the old +2 to +4 bound.
+- `test_minion_damage.py`: the check that a count enchantment exists asks for the reserve enchantment instead.
+- `test_class_passive_trees.py`: `STRINGS_CONTAINING_THE_WORD`, the tree sentences holding "more" or "less", 46 to
+  45, because The Swarm's "allows 2 more" became a sentence with neither word. `STRINGS_USING_IT_AS_A_MAGNITUDE`
+  stays 26. Nothing else reads either count.
+- `test_stat_lookups_hand_over_what_they_should.py`: the inventory of `StatForSkill` call sites gains `ReserveFor`'s
+  percentage call and loses the skill templates' `PassiveStatFor`, which only The Swarm's cap called. These two came
+  from this branch's code commit, not from the workbook.
+- `docs/Cataclysm_GDD_v2.md`: the minion section's three paragraphs on count (gear-modifiable count, the two count
+  enchantments, count on summons and not deployables) now say count has no cap and gear changes the reserve. A
+  search for "+2 and +4", "maximum minion count", "count" and "cap" found no other passage about minion count.
+
+### Why a percentage: what the genre does
+
+Fetched 2026-11-20 and fetched again before this entry was written, game text from poe2db.tw and tlidb.com.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile 2 | [poe2db, Skeletal Warrior](https://poe2db.tw/us/Skeletal_Warrior) | no limit on the count; the version history: "allows you to summon additional skeletons by reserving spirit" |
+| Path of Exile 2 | [poe2db, Raise Zombie](https://poe2db.tw/us/Raise_Zombie), [Unearth](https://poe2db.tw/us/Unearth) | the temporary minions, which reserve nothing, are the ones with a count: "Limit 10 Raised Zombies", "Limit (8—20) Bone Constructs" |
+| Path of Exile 2 | [poe2db, Lord of Horrors](https://poe2db.tw/us/Lord_of_Horrors) | a notable: "12% increased Reservation Efficiency of Minion Skills" |
+| Path of Exile 2 | [poe2db, Easy Going](https://poe2db.tw/us/Easy_Going) | a notable: "25% increased Reservation Efficiency of Companion Skills" |
+| Path of Exile 2 | [poe2db, Reservation](https://poe2db.tw/us/Reservation) | Bones of Ullr, unique boots: "(20—30)% increased Reservation Efficiency of Skills which create Undead Minions" |
+| Torchlight Infinite | [tlidb, Sealed Mana](https://tlidb.com/Sealed_Mana) | support gems: "-12%" to "-30% Sealed Mana Compensation for the supported skill"; the Magnificent summon supports "-50%" |
+
+**What the research settles:** the owner's "the reserve is the limit" is how Path of Exile 2 already treats a minion
+that reserves, and a reduction of what something reserves is a percentage, from about 12 to 30 per cent on a passive
+or an item and up to 50 on a rare support. **What it does not settle, and is a judgement:** the size of each of ours,
+below, and that several add into one figure, as Path of Exile adds increased and reduced reservation efficiency.
+
+**CORRECTIONS TO THE PLAN, found by fetching again.** The plan gave Torchlight Infinite's range as "-20%" to "-50%";
+the page's supports run from "-12%". The plan also named Path of Exile 1's Charisma (16%) and Efficient Explosives
+(30%); both came from a summary of a part of poedb's page that was not read, so they are left out here. Neither
+changes a figure.
+
+**The sizing, a judgement:** reduction = N / (C + N), so a player holds about N more, where C is how many of the kind a
+typical pool holds: 10 imps on 100, 15 on the Ritualist's 150, about 6.7 gadgets at 15 on 100, 20 traps at 5 on 100.
+
+| Source | Was | Calculation | Becomes |
+| :-- | :-- | :-- | :-- |
+| The Swarm | +2 | imps at 10 on 150, C = 15: 11.8% | 12% less |
+| Minion enchantment | +2 to +4 | C = 10: 16.7% to 28.6% | 15% to 30% less |
+| The negative one | -2 to -4 | C = 10: 25% to 66.7% more | 25% to 65% more |
+| Deployable enchantment | +1 to +3 | C = 6.7: 13% to 31% | 15% to 30% less |
+| Trap enchantment | +1 to +6 | C = 20: 4.8% to 23% | 5% to 25% less |
+
+**Crowned first, then the percentage, then the floor**, a judgement: Crowned's sentence is points off the figure, the
+percentage a share of what is reserved. 30% less of an imp under Crowned is (10 - 5) x 0.7 = 3.5.
+
+### The change
+
+- **No count anywhere a reserving kind is made.** `SummonOne` asks only `HasRoomToReserve` and destroys nothing;
+  `SummonReplacementAt` (Press-Ganged, Rekindled, a resummon, a kill-spawned imp) likewise; `RiseOnDeath` drops the
+  shared cap; `SummonWarhound` and `SummonTyrantsMinion` make a new one beside any standing; `PlaceSkillTrap` asks only
+  the pool. `WarhoundOf` and `TyrantsMinionOf` answer the nearest of any standing.
+- **`ReserveFor` reads the percentage** with `StatForSkill(minion_reserve_percent_less, the kind's tags, 0)`. No
+  attribute holds it, so a negative figure is not floored at nought by the combat attribute set.
+- **`Explode` takes no argument and credits nothing.** Its call from the cap is gone; `HandleDeath`'s remains.
+- **The generator** checks the new stat (flat; required tags none, `Type.Deployable` or `Type.Trap`; each end other than
+  nought and within 100 either way; both ends of one sign) and refuses `MaxActive` on a Summon row with no `Interval`.
+
+### Tests
+
+- **Six new, `Cataclysm.NoCaps.`:** a fourth imp is summoned beside three and the pool refuses the one that does not
+  fit; a risen imp rises beside three imps already standing; a percent less takes its share after Crowned (The
+  Swarm's 12, the enchantment's 15 and 30); a percent more raises it (25 and 65); the percentages reaching a kind add,
+  and a tagged row reaches only its kinds; no reduction takes a reserve below one point.
+- **Eight deleted**, each about a cap or eviction that no longer exists: Command.TheSwarmKeepsMoreImpsAlive...,
+  Command.TheSwarmLetsADeployable..., MinionDeath.TheExplosionTheSummonCapSetsOff..., FervourReserve.AtTheCapTheOldest...,
+  RisenImps.NothingRisesWhileYouHoldSummonImpsCap, RisenImps.TheSwarmRaisesTheCap..., RisenImps.SummoningAtTheCapDestroys...,
+  Skills.SummoningPastTheCapExplodesTheOldest.
+- **Twenty-two renamed and rewritten** to read the pool as the limit, among them branch A's tests 5, 6 and 8 in
+  `Cataclysm.KindReserves.`, the Tyrant's Chains and Warlord's Will six-piece refresh tests, the Reaper's Embrace
+  ten-piece spawn tests, the three trap-cap tests in `Cataclysm.Traps.`, three enchantment tests and The Swarm's
+  passive test. The full list, old name and new, is in the registration sent to the coordinating session.
+- **Found at the rebase onto `development` at 156f2b9e8, by a sweep of every test file that calls a maker and that
+  this branch had not changed.** `Cataclysm.SetBonus.Reaper6.EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone`
+  is renamed `...AndAnExplosionLeavesNoneOfItsOwn`, the twenty-second: it calls `Explode` itself, which still writes
+  no health, so it passes unchanged, but its name and messages called that the summon cap's removal. Two assertion
+  messages that named the trap cap are reworded, in `CataclysmSkillTrapNearbyTrapsTests.cpp` and
+  `CataclysmSkillTrapBlowHooksTests.cpp`, as are two comments in `CataclysmMinion.h` and `.cpp` and one in
+  `CataclysmStatExemptionTests.cpp`. What each test asserts is unchanged.
+- **Python:** `test_generate_datatables.py` holds `TestTheNoExpireFlag` (formerly with the trap cap) and
+  `TestTheReservePercentage`, new; `test_minion_skill_shapes.py` holds three tests of the Summon cap refusal, one of
+  them on the shipped rows.
+
+### The windows
+
+**The DataTable asset rebuild, 2026-11-21, under the editor lock nocaps-b-assets**, in this worktree: "rebuilt 6
+DataTable assets and left 27 already current, 3924 rows in total across /Game/Data" (`efd52d397`). The six are the
+tables the workbook turn changed, and nothing else was re-saved. No data row struct changed, so the build could follow
+it.
+
+**The three compiles, 11:00 to 11:12 at efd52d397, lock nocaps-b-compile: all succeeded**, each with no compiler warning
+or error line: the branch, 53 actions and 48 files; each changed `.cpp` alone, 49 actions and 46 files; the unity
+build, 18 actions and 15 files.
+
+**nocaps-b-w1, 11:13 to 11:38 at efd52d397: FAILED two tests, both set-ups missed at registration.** 14 of 15 groups
+alone passed; the whole suite performed 5070, registered 5070, and failed 2. Python passed 7828, 9 skipped, and ruff
+passed. The proofs did not run.
+
+- `Cataclysm.Attributes.CharacterSheetIsComplete`: "Expected 'Twenty-eight combat and utility stats, plus 46 off the
+  sheet' to be 74, but it was 73", and the sheet's own count 45 against 46. This branch removed the attribute
+  `MinionCapBonus`, one of the combat stats off the sheet, and did not move `OffSheetCombatStats`.
+- `Cataclysm.SetBonus.Warlord6.NeitherATickNorAnEvadedBlowNorABlowWithinAQuarterSecondSummons`: "Expected 'and one
+  0.3 s after the summon does' to be 10.000000, but it was 9.750000". With no cap that blow summons a second Warhound;
+  the test still read the first's time restarted. Its sibling `ASecondSummonMakesASecondWarhound...` had been rewritten
+  and this one missed.
+- **The fix, 2fcf9733a**, test bodies only, no `#include` changed: `OffSheetCombatStats` 46 to 45, the sheet staying at
+  46; and the Warlord's Will test reads one Warhound after the blow inside the quarter second and two after the next,
+  the first's life span against the world's clock rather than the 0.3 asked for, since w1's 9.75 shows 0.25 seconds
+  had passed. **WHAT THE SECOND WINDOW READ FOR IT IS NOT IN ITS LOG**: an assertion that passes prints nothing, so w2
+  says only that the life span was within 0.06 of ten seconds less the world's elapsed time. The coordinating session
+  gave the second window without the three separate compiles, as for branch A's second window.
+
+**nocaps-b-w2, 11:44 to 12:21 at 2fcf9733a on 156f2b9e8: PASSED, and every proof PROVED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, 5 actions, 2 files compiled: the two unity files holding the two changed tests |
+| Groups alone, 16 of 16 | KindReserves 12/12, NoCaps 6/6, Command 25/25, FervourReserve 4/4, MinionDeath 18/18, RisenImps 8/8, NecrosisRise 4/4, Resummon 6/6, Tyrant6 5/5, Warlord6 10/10, Reaper10 8/8, Reaper6 9/9, Traps 60/60, SkillLevelSources 19/19, SkillGadgets 22/22, Attributes 21/21 |
+| Whole suite | 5070 performed, 5070 succeeded, registered 5070 (window follow-w2's measured 5072, less 27 removed, plus 25 added); 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind; declared 5070, gap 0 |
+| Python | 7828 passed, 9 skipped; the JUnit file: 7837 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+Each Unreal proof ran the groups its prediction names, each group alone, because `prove_cpp_guard` takes one prefix
+and N2's eight span five groups; `.claude/windows/prove_nc.py` in the worktree combines the runs. Every one failed
+exactly the tests registered for it with the break in, and passed every test of those groups restored:
+
+| Proof | Break | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| N1 | a cap of 3 imps put back on Summon Imp's summon | NoCaps.AFourthImpIsSummonedBesideThreeAndThePoolRefusesTheOneThatDoesNotFit | 6 of 6 |
+| N2 | the reserve percentage not applied | NoCaps.APercentLess..., NoCaps.APercentMore..., NoCaps.EveryPercentReachingAKind..., NoCaps.NoReduction..., Passives.TheSwarmLowersARealRitualistsImpReserveByTwelvePercent, Enchantments.TheWornTrapLayerThreeRows..., Traps.TheTrapReserveRowLets..., StatExemption.EveryStatWithNoAttributeIsActuallyRead | 630 of 630, across NoCaps, Passives, Enchantments, Traps and StatExemption |
+| N3 | the "increased" direction floored at nought | NoCaps.APercentMoreRaisesWhatAKindReserves | 6 of 6 |
+| N4 | the floor of one point removed | NoCaps.NoReductionTakesAReserveBelowOnePoint, KindReserves.CrownedTakesFiveOffEveryKindNeverBelowOne | 18 of 18 |
+| N5 | a trap cap of 5 put back in `PlaceSkillTrap` | KindReserves.ASkillTrapReservesFiveASixthStands..., Traps.ASixthTrapStands..., Traps.SevenTrapsStand..., Traps.TheNoExpireFlag..., Traps.TheTrapReserveRowLets... | 72 of 72 |
+
+The two Python proofs, with `tools/prove_guard.py`, at 2fcf9733a after the Unreal ones (they first ran at efd52d397
+during the compiles, with the same result):
+
+| Proof | Break | Result |
+| :-- | :-- | :-- |
+| P1 | the generator's refusal of `MaxActive` on a Summon row with no `Interval` disabled | "PROVED: 1 failed, 25 passed \| restored: 26 passed": `test_minion_skill_shapes.py::test_a_summon_stating_a_count_cap_is_refused` |
+| P2 | the reserve percentage row's kind check disabled | "PROVED: 2 failed, 2 passed \| restored: 4 passed": `TestTheReservePercentage::test_every_shape_the_game_would_read_as_nothing_is_refused` and `::test_the_whole_sheets_validation_runs_the_check` |
+
+The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
 
 **Affects:** `FCataclysmCity::bTookSurgeDamage`, new, set in `UCataclysmEmpireMap::Damage`

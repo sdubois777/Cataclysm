@@ -757,11 +757,17 @@ CATACLYSM_TEST(FCataclysmSkillTrapCastTest,
 }
 
 // ==========================================================================
-// 5. The cap and the expiry (T4, T6)
+// 5. No cap, and the expiry (T4). T6's cap of five went with issue #2787's branch B
 // ==========================================================================
 
+/**
+ * T6, a judgement of 2026-10-19, held at most five traps standing and destroyed the oldest for a sixth. The owner's
+ * ruling of 2026-11-20 removed every count cap on what reserves the class resource, so a sixth now stands beside the
+ * five, at 5 each of the player's 100, and destroys nothing. The pool's refusal of the trap that does not fit is
+ * `Cataclysm.KindReserves.ASkillTrapReservesFiveASixthStandsWhileThePoolHasRoomAndTheNextIsRefused`.
+ */
 CATACLYSM_TEST(FCataclysmSkillTrapCapAndExpiryTest,
-	"Cataclysm.Traps.ASixthTrapDestroysTheOldestWithoutTriggeringAndATrapThatExpiresDoesNotTrigger")
+	"Cataclysm.Traps.ASixthTrapStandsBesideFiveDestroyingNothingAndATrapThatExpiresDoesNotTrigger")
 {
 	using namespace CataclysmSkillTrapTest;
 
@@ -811,7 +817,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapCapAndExpiryTest,
 	FSkillTrapEventCount Triggers(Rig.System, TEXT("trap_triggered"));
 
 	// THE CONTROL, READ FIRST: FIVE STAND, THE OLDEST FIRST.
-	TestEqual(TEXT("control: five traps stand, the most (T6)"), ACataclysmMinion::SkillTrapsOf(Rig.Player).Num(), 5);
+	TestEqual(TEXT("control: five traps stand"), ACataclysmMinion::SkillTrapsOf(Rig.Player).Num(), 5);
 	TestTrue(TEXT("control: the oldest is the first placed"), ACataclysmMinion::SkillTrapsOf(Rig.Player)[0] == Five[0]);
 
 	// THE SIXTH.
@@ -822,10 +828,10 @@ CATACLYSM_TEST(FCataclysmSkillTrapCapAndExpiryTest,
 		return false;
 	}
 	const TArray<ACataclysmMinion*> After = ACataclysmMinion::SkillTrapsOf(Rig.Player);
-	TestEqual(TEXT("with a sixth placed, five still stand"), After.Num(), 5);
-	TestTrue(TEXT("the oldest is gone"), SkillTrapGone(Oldest));
+	TestEqual(TEXT("with a sixth placed, six stand"), After.Num(), 6);
+	TestFalse(TEXT("the oldest is not destroyed"), SkillTrapGone(Oldest));
 	TestTrue(TEXT("and the sixth stands"), After.Contains(Sixth));
-	TestEqual(TEXT("the oldest did not trigger as it went: the enemy 2 m from it is untouched"),
+	TestEqual(TEXT("the enemy 2 m from the oldest is untouched"),
 		SkillTrapHealthOf(ByTheOldest), SkillTrapEnemyHealth, 0.001f);
 	TestEqual(TEXT("and no trap_triggered was raised"), Triggers.Count, 0);
 
@@ -1045,7 +1051,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapBarAndTintTest,
 	TestTrue(TEXT("converted, the Heavy box is a trap's"), Converted.bIsASkillTrap);
 	TestEqual(TEXT("it reads Trap"), Converted.Name, UCataclysmSkillBar::SkillTrapName());
 	TestEqual(TEXT("and the traps standing over the most, none yet"), UCataclysmSkillBar::SkillTrapTextFor(Converted),
-		FString(TEXT("Traps 0/5")));
+		FString(TEXT("Traps 0")));
 	TestEqual(TEXT("with no sweep before a press"), Converted.CooldownRemaining, 0.0f, 0.001f);
 	TestFalse(TEXT("the Special box, which no row converts, is not a trap's"),
 		SkillTrapBox(Rig.Player, ECataclysmAbilitySlot::Special).bIsASkillTrap);
@@ -1061,7 +1067,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapBarAndTintTest,
 		return false;
 	}
 	const FCataclysmSkillBarSlot Pressed = SkillTrapBox(Rig.Player, ECataclysmAbilitySlot::Heavy);
-	TestEqual(TEXT("after a press it counts one"), UCataclysmSkillBar::SkillTrapTextFor(Pressed), FString(TEXT("Traps 1/5")));
+	TestEqual(TEXT("after a press it counts one"), UCataclysmSkillBar::SkillTrapTextFor(Pressed), FString(TEXT("Traps 1")));
 	TestTrue(*FString::Printf(TEXT("and sweeps with the Heavy cooldown the press started: %.2f of %.2f s left"),
 							  Pressed.CooldownRemaining, Pressed.CooldownDuration),
 		Pressed.CooldownRemaining > 0.0f && FMath::IsNearlyEqual(Pressed.CooldownRemaining, Pressed.CooldownDuration, 0.01f));

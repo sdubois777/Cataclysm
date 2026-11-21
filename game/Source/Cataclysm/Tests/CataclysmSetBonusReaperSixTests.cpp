@@ -346,14 +346,15 @@ namespace CataclysmSetBonusReaperSixTest
 // EVERY TEST OPENS THE NAMESPACE INSIDE ITS OWN BODY, because this module is built as a unity blob.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperSixDeathsTest,
-	"Cataclysm.SetBonus.Reaper6.EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndTheSummonCapsRemovalLeavesNone",
+	"Cataclysm.SetBonus.Reaper6.EachDeathTheHookAnswersLeavesOneSoulWhereItDiedAndAnExplosionLeavesNoneOfItsOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * R1. With the flag at nought an imp's death leaves no Soul (the control). With it at 1, exactly one Soul, left for
  * the commander, where each of these died: an imp, a thrall, a gadget (a Bolt Turret), a Tyrant's Minion and a
- * Warhound, each by its health written to nought. An imp the summon cap removes (`Explode`, which writes no health)
- * leaves none.
+ * Warhound, each by its health written to nought. An imp's explosion (`Explode`, which writes no health) leaves no Soul
+ * of its own. Until issue #2787 removed every count cap, this was the imp the summon cap removed; since then `Explode`
+ * runs only for a minion that explodes when it dies, whose death has already left its Soul.
  */
 bool FCataclysmReaperSixDeathsTest::RunTest(const FString&)
 {
@@ -400,7 +401,7 @@ bool FCataclysmReaperSixDeathsTest::RunTest(const FString&)
 	ACataclysmEnemyCharacter* Thrall = ReaperSoulCreature(World, Here + FVector(-3 * M, 0, 0));
 	if (!TestNotNull(TEXT("set-up: a Tyrant's Minion"), Tyrants) || !TestNotNull(TEXT("set-up: a Warhound"), Warhound)
 		|| !TestNotNull(TEXT("set-up: an imp"), Imp) || !TestNotNull(TEXT("set-up: a Bolt Turret"), Turret)
-		|| !TestNotNull(TEXT("set-up: the imp the cap removes"), Removed)
+		|| !TestNotNull(TEXT("set-up: the imp that explodes"), Removed)
 		|| !TestNotNull(TEXT("set-up: a creature"), Thrall))
 	{
 		return false;
@@ -436,11 +437,11 @@ bool FCataclysmReaperSixDeathsTest::RunTest(const FString&)
 		TestTrue(Death.Said, ReaperSoulsAt(World, Died, Scene.Player) == 1 && ReaperSoulsIn(World).Num() == Lying + 1);
 	}
 
-	const int32 BeforeTheCap = ReaperSoulsIn(World).Num();
+	const int32 BeforeTheExplosion = ReaperSoulsIn(World).Num();
 	Removed->Explode();
-	TestFalse(TEXT("set-up: the cap's removal destroyed the imp"), IsValid(Removed));
-	TestEqual(TEXT("an imp the summon cap removes writes no health and leaves no Soul"), ReaperSoulsIn(World).Num(),
-			  BeforeTheCap);
+	TestFalse(TEXT("set-up: the explosion destroyed the imp"), IsValid(Removed));
+	TestEqual(TEXT("an imp's explosion writes no health and leaves no Soul of its own"), ReaperSoulsIn(World).Num(),
+			  BeforeTheExplosion);
 	return true;
 }
 

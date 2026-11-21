@@ -593,21 +593,6 @@ public:
 	FGameplayAttributeData MinionReserveReduction;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MinionReserveReduction)
 
-	/**
-	 * How many more minions a skill that states a cap may keep active. Issue
-	 * #1718.
-	 *
-	 * `Ritualist_keystone_b_kA` The Swarm is the node: "Each skill that limits
-	 * how many of its minions may be active allows 2 more." Its row is flat 2.
-	 *
-	 * IT REACHES ONLY A SKILL WHOSE ROW STATES A CAP, whatever that skill
-	 * summons or deploys. A skill stating none has no limit at all, and a bonus
-	 * added to a cap of zero would give it one the design never gave it.
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_MinionCapBonus)
-	FGameplayAttributeData MinionCapBonus;
-	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MinionCapBonus)
-
 	// -----------------------------------------------------------------------
 	// The three energy-shield keystones. Issue #1515.
 	//
@@ -1247,7 +1232,6 @@ protected:
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MinionReserveReduction(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_MinionCapBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargeHasNoDelay(const FGameplayAttributeData& OldValue);

@@ -564,16 +564,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ritualist's Dominion keystone, as a flat modifier, added to "
 			  "the threshold the Subjugate skill row states")},
 
-		// Issue #1718. The same shape twice more: a bonus of zero added to a
+		// Issue #1718. The same shape once more: a bonus of zero taken off a
 		// figure a skill's own row states, reaching only the subject its node
-		// names. Neither has an engine-supplied base, for the reason the entry
-		// above gives.
+		// names. It has no engine-supplied base, for the reason the entry above
+		// gives. Its sibling `minion_cap_bonus`, The Swarm's, went with the count
+		// caps in issue #2787's branch B; The Swarm now writes
+		// `minion_reserve_percent_less`, which drives no attribute.
 		{TEXT("minion_reserve_reduction"),
 		 TEXT("the Ritualist's Crowned keystone, as a flat modifier, taken off "
 			  "the reserve each summoning or deploying skill row states")},
-		{TEXT("minion_cap_bonus"),
-		 TEXT("the Ritualist's The Swarm keystone, as a flat modifier, added to "
-			  "the cap a summoning or deploying skill row states")},
 
 		// Issue #1515. The three energy-shield keystones, and all three are
 		// FLAGS rather than bonuses: zero or above zero, with nothing in between

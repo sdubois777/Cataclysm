@@ -281,13 +281,17 @@ bool FCataclysmTyrantSixBlastTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTyrantSixSummonTest,
-	"Cataclysm.SetBonus.Tyrant6.ADyingMinionSummonsATyrantsMinionOutsideTheCapsThatIsGoneAfterTenSeconds",
+	"Cataclysm.SetBonus.Tyrant6.ADyingMinionSummonsATyrantsMinionThatReservesTenAndIsGoneAfterTenSeconds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The summon, Q2 and Q4: a minion's death summons a Tyrant's Minion where it died, outside the summon caps, for the
- * row's 10 s. THE CONTROL IS READ FIRST: before the death the summoner commands no Tyrant's Minion. After 9.5 s it
- * still stands, and a second later it is gone.
+ * The summon, Q4: a minion's death summons a Tyrant's Minion where it died, for the row's 10 s, reserving its 10.
+ * THE CONTROL IS READ FIRST: before the death the summoner commands no Tyrant's Minion. After 9.5 s it still stands,
+ * and a second later it is gone.
+ *
+ * IT ALSO HELD NO PLACE UNDER THE SUMMON CAPS (Q2) until branch B of issue #2787, when the owner's ruling of 2026-11-20
+ * removed every count cap on what reserves the class resource; so there is no cap for it to stand outside, and a count
+ * of its type counts it.
  */
 bool FCataclysmTyrantSixSummonTest::RunTest(const FString&)
 {
@@ -324,9 +328,10 @@ bool FCataclysmTyrantSixSummonTest::RunTest(const FString&)
 	TestTrue(TEXT("it is the summoner's"), Tyrants->Summoner == Summoner.Actor);
 	TestEqual(TEXT("it stands where the imp died"),
 			  static_cast<float>(FVector::Dist(Tyrants->GetActorLocation(), Where)), 0.0f, 1.0f);
-	TestTrue(TEXT("it holds no place under a summon cap"), Tyrants->bOutsideSummonCaps);
-	TestEqual(TEXT("so no cap count of its type counts it"),
-			  UCataclysmCommand::MinionsOfTypeCommandedBy(Summoner.Actor, Tyrants->TypeName).Num(), 0);
+	TestEqual(TEXT("a count of its type counts it"),
+			  UCataclysmCommand::MinionsOfTypeCommandedBy(Summoner.Actor, Tyrants->TypeName).Num(), 1);
+	TestEqual(TEXT("and it reserves its 10"), Tyrants->ReservedFervour, ACataclysmMinion::TyrantsMinionFervourReserve,
+			  0.001f);
 	TestEqual(TEXT("it is given the row's ten seconds"), Tyrants->GetLifeSpan(), TyrantsSeconds,
 			  ClockAllowanceSeconds);
 
@@ -377,7 +382,7 @@ bool FCataclysmTyrantSixOwnDeathTest::RunTest(const FString&)
 		{
 			Skill->SkillName = TEXT("Summon Imp");
 			Skill->Params = UCataclysmSkillShapes::ParseParams(
-				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+				TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1"));
 		}
 		return Skill;
 	};
@@ -449,16 +454,17 @@ bool FCataclysmTyrantSixOwnDeathTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTyrantSixRefreshTest,
-	"Cataclysm.SetBonus.Tyrant6.ASecondDeathWhileOneStandsRestartsItsTimeKeepsItsHealthAndMakesNoSecond",
+	"Cataclysm.SetBonus.Tyrant6.ASecondDeathWhileOneStandsSummonsASecondAndLeavesTheFirstsTimeAndHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Ruling #3 and Q5: at most one; a new summon restarts the time of the one standing at full and keeps its health.
+ * A second Tyrant's Minion beside the first. The owner's ruling of 2026-11-20 (issue #2787, branch B) removed every
+ * count cap on what reserves the class resource, which replaced their ruling #3 of 2026-10-17 and Q5: at most one, a
+ * new summon restarting the time of the one standing and keeping its health.
  *
- * THE CONTROL IS READ FIRST: six seconds after it was summoned the Tyrant's Minion has four left. Then a second imp
- * dies. The same Tyrant's Minion stands, no second is made, its health is what it was a moment before, and its time
- * is ten seconds again. Six seconds later it still stands, which it would not have without the refresh, and four and
- * a half after that it is gone.
+ * THE CONTROL IS READ FIRST: six seconds after it was summoned the first has four left. Then a second imp dies. A
+ * second Tyrant's Minion is made beside it and the pool holds both their 10s; the first keeps its health and its own
+ * four seconds, and four and a half seconds later it is gone while the second stands.
  */
 bool FCataclysmTyrantSixRefreshTest::RunTest(const FString&)
 {
@@ -502,18 +508,17 @@ bool FCataclysmTyrantSixRefreshTest::RunTest(const FString&)
 	const float HealthBefore = HealthOf(Tyrants);
 
 	Kill(Second);
-	TestTrue(TEXT("the second death leaves the same Tyrant's Minion standing"),
-			 ACataclysmMinion::TyrantsMinionOf(Summoner.Actor) == Tyrants);
-	TestEqual(TEXT("and makes no second"), TyrantsStanding(Summoner.Actor), 1);
-	TestEqual(TEXT("its health is kept"), HealthOf(Tyrants), HealthBefore, 0.01f);
-	TestEqual(TEXT("its time restarts at the full ten seconds"), Tyrants->GetLifeSpan(), TyrantsSeconds,
+	TestEqual(TEXT("the second death makes a second Tyrant's Minion"), TyrantsStanding(Summoner.Actor), 2);
+	TestEqual(TEXT("and the pool holds both their 10s"), UCataclysmCommand::ReservedFervourOf(Summoner.Actor),
+			  2.0f * ACataclysmMinion::TyrantsMinionFervourReserve, 0.001f);
+	TestTrue(TEXT("the first still stands"), IsValid(Tyrants));
+	TestEqual(TEXT("keeping its health"), HealthOf(Tyrants), HealthBefore, 0.01f);
+	TestEqual(TEXT("and its own four seconds, not restarted"), Tyrants->GetLifeSpan(), TyrantsSeconds - 6.0f,
 			  ClockAllowanceSeconds);
 
-	CataclysmTestWorld::RunClock(World, 6.0f);
-	TestTrue(TEXT("six seconds later it still stands, two past where its first time ended"), IsValid(Tyrants));
-
 	CataclysmTestWorld::RunClock(World, 4.5f);
-	TestFalse(TEXT("and it is gone once the restarted ten seconds have run"), IsValid(Tyrants));
+	TestFalse(TEXT("four and a half seconds later the first is gone"), IsValid(Tyrants));
+	TestEqual(TEXT("and the second stands"), TyrantsStanding(Summoner.Actor), 1);
 	return true;
 }
 

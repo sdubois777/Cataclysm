@@ -184,6 +184,39 @@ def test_a_count_agreeing_with_the_minion_list_is_accepted():
         _tables("Count=1; Minions=Imp:1")) == []
 
 
+def test_a_summon_stating_a_count_cap_is_refused():
+    """Issue #2787, branch B: nothing that reserves the class resource has a
+    count cap, by the owner's ruling of 2026-11-20, so the reserve is the only
+    limit and `UCataclysmSummonSkill::SummonOne` reads no `MaxActive`. Summon
+    Imp's own cell as it stood before that turn."""
+    problems = gen.refuse_a_count_cap_on_a_summon(
+        _tables("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"))
+    assert len(problems) == 1 and "MaxActive=3" in problems[0], problems
+
+
+def test_a_summon_with_no_cap_a_rift_and_a_deployable_are_left_alone():
+    """THE CONTROLS, so the refusal above is about the cap and nothing else:
+    Summon Imp's cell after branch B; a rift's pattern, a spawn every Interval,
+    where `SpawnTick` reads MaxActive as how many one cast makes; and a War
+    deployable, which keeps its cap until issue #1934."""
+    assert gen.refuse_a_count_cap_on_a_summon(
+        _tables("Count=1; Duration=20; Radius=3; Minions=Imp:1")) == []
+    assert gen.refuse_a_count_cap_on_a_summon(
+        _tables("Count=1; MaxActive=5; Duration=8; Interval=1; Minions=Imp:1")) == []
+    deployable = {"WeaponSkills": [{"Name": "Turret", "Shape": "Deployable",
+                                    "ShapeParams": "Count=1; MaxActive=1; Duration=20; "
+                                                   "Minions=BoltTurret:1"}]}
+    assert gen.refuse_a_count_cap_on_a_summon(deployable) == []
+
+
+def test_no_shipped_summon_states_a_count_cap():
+    """The same check the generator runs, against the committed data. It
+    fails until branch B's workbook turn takes `MaxActive=3` off Summon Imp's
+    row in the Weapon Skills sheet and `game/Data/WeaponSkills.csv` is
+    generated again."""
+    assert gen.refuse_a_count_cap_on_a_summon({"WeaponSkills": skills()}) == []
+
+
 def test_the_real_workbook_has_no_dangling_minion_reference():
     """The same check the generator runs, against the committed data."""
     tables = {

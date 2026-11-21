@@ -456,7 +456,6 @@ CATACLYSM_TEST(FCataclysmSkillGadgetPressPlacesTest,
 	TestTrue(*FString::Printf(TEXT("at the player's feet: %.3f cm away"), FVector::Dist(Gadget->GetActorLocation(), Feet)),
 		FVector::Dist(Gadget->GetActorLocation(), Feet) < 1.0f);
 	TestEqual(TEXT("of the SkillGadget type"), Gadget->TypeName, FString(ACataclysmMinion::SkillGadgetTypeName));
-	TestTrue(TEXT("outside every summon cap"), Gadget->bOutsideSummonCaps);
 	TestEqual(TEXT("with no lifespan"), Gadget->GetLifeSpan(), 0.0f, 0.0001f);
 	TestEqual(TEXT("the player's mana is unchanged"), Rig.Get(Mana), 1000.0f, 0.001f);
 	TestFalse(TEXT("no Heavy cooldown runs"), Rig.System->HasMatchingGameplayTag(HeavyCooldown));

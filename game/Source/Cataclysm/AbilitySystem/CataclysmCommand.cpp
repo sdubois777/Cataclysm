@@ -43,10 +43,9 @@ const TCHAR* UCataclysmCommand::PossessionThresholdBonusStat =
 const TCHAR* UCataclysmCommand::MinionReserveReductionStat =
 	TEXT("minion_reserve_reduction");
 
-// AND WHAT THE SWARM GRANTS. Issue #1718: "Each skill that limits how many of its
-// minions may be active allows 2 more." The limit is on the skill's own row;
-// Summon Imp's is 3.
-const TCHAR* UCataclysmCommand::MinionCapBonusStat = TEXT("minion_cap_bonus");
+// AND THE PERCENT LESS A KIND RESERVES, WHICH REPLACED THE CAP BONUSES. Issue #2787: The Swarm, "Your minions reserve
+// 12% reduced Fervour", and four enchantments, one of them negative.
+const TCHAR* UCataclysmCommand::MinionReservePercentLessStat = TEXT("minion_reserve_percent_less");
 
 namespace
 {
@@ -115,17 +114,13 @@ TArray<ACataclysmMinion*> UCataclysmCommand::MinionsOfTypeCommandedBy(
 	for (AActor* Follower : ThingsCommandedBy(Commander))
 	{
 		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
-		// ONE RAISED OUTSIDE THE CAPS IS LEFT OUT. Issue #1833 group E part 4b:
-		// both callers are cap counts -- a summon skill's shared cap and the
-		// risen imps' -- and a necrosis-risen minion holds a place under neither.
-		if (IsValid(Minion) && Minion->TypeName == TypeName && !Minion->bOutsideSummonCaps)
+		if (IsValid(Minion) && Minion->TypeName == TypeName)
 		{
 			Found.Add(Minion);
 		}
 	}
 
-	// OLDEST FIRST, which is what a summon at the cap destroys. The spawn order
-	// and not the spawn time, because two imps made in one frame share a time.
+	// OLDEST FIRST, by the spawn order and not the spawn time, because two imps made in one frame share a time.
 	Found.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B)
 	{
 		return A.SpawnOrder < B.SpawnOrder;
@@ -852,8 +847,7 @@ float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
 	return Reserved;
 }
 
-bool UCataclysmCommand::HasRoomToReserve(const AActor* Commander, float NewReserve,
-										  float Freed)
+bool UCataclysmCommand::HasRoomToReserve(const AActor* Commander, float NewReserve)
 {
 	if (NewReserve <= 0.0f)
 	{
@@ -870,7 +864,7 @@ bool UCataclysmCommand::HasRoomToReserve(const AActor* Commander, float NewReser
 	// AGAINST THE WHOLE MAXIMUM, NOT WHAT IS IN THE POOL RIGHT NOW. A reservation
 	// is a standing claim rather than a payment, so spending Fervour does not
 	// cost a thrall or an imp.
-	return ReservedFervourOf(Commander) - Freed + NewReserve
+	return ReservedFervourOf(Commander) + NewReserve
 		<= Cataclysm->MaximumClassResource();
 }
 
@@ -904,6 +898,7 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 	// attribute as the fallback, and the attribute only when the component holds
 	// its set, because reading one it does not hold raises an engine ensure.
 	float Reduction = 0.0f;
+	float PercentLess = 0.0f;
 	const FGameplayAttribute Stat = UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute();
 	if (const UCataclysmAbilitySystemComponent* Theirs =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander)))
@@ -913,8 +908,15 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 			Reduction = Theirs->StatForSkill(FName(MinionReserveReductionStat), Tags,
 											 Theirs->GetNumericAttribute(Stat));
 		}
+		// AND THE PERCENT LESS, issue #2787: every row reaching this kind's tags, added into one figure, a negative
+		// row raising it. No attribute, so the pipeline's figure with nought as the fallback.
+		PercentLess = Theirs->StatForSkill(FName(MinionReservePercentLessStat), Tags, 0.0f);
 	}
-	return FMath::Max(SmallestMinionReserve, Stated - Reduction);
+	// CROWNED FIRST, THEN THE PERCENTAGE, and the floor last, a judgement of issue #2787: Crowned's sentence is a
+	// number of points off the figure, the percentage a share of what is reserved. A net 100 percent or more less
+	// would be nothing reserved, which the floor turns into one point.
+	const float Multiplier = FMath::Max(0.0f, 1.0f - PercentLess / 100.0f);
+	return FMath::Max(SmallestMinionReserve, (Stated - Reduction) * Multiplier);
 }
 
 void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,

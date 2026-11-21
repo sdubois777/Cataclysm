@@ -105,12 +105,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitPossessionThresholdBonus(0.0f);
 
 	// ZERO FOR BOTH, FOR THE SAME REASON. Issue #1718. Each is applied to a
-	// figure a skill's own row states -- what a minion reserves, how many
-	// minions may be active -- so a starting value of anything else would
-	// state that number a second time. Zero also decides that a row moving
-	// either takes `flat`: an increase against zero grants nothing.
+	// figure a skill's own row states -- what a minion reserves -- so a
+	// starting value of anything else would state that number a second time.
+	// Zero also decides that a row moving it takes `flat`: an increase against
+	// zero grants nothing.
 	InitMinionReserveReduction(0.0f);
-	InitMinionCapBonus(0.0f);
 
 	// THE THREE ENERGY-SHIELD KEYSTONES, ALL FLAGS AT ZERO. Issue #1515.
 	// Zero is the rule the design states for every character that has not
@@ -250,7 +249,6 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionReserveReduction);
-	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionCapBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay);
@@ -457,9 +455,9 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		// IT AS A THRALL, in percentage points added to the skill row's own
 		// figure. Issue #1718.
 		GetPossessionThresholdBonusAttribute(),
-		// AND WHAT ONE MINION RESERVES, AND HOW MANY MINIONS MAY BE ACTIVE,
-		// both applied to a figure the skill's own row states. Issue #1718.
-		GetMinionReserveReductionAttribute(), GetMinionCapBonusAttribute(),
+		// AND WHAT ONE MINION RESERVES, applied to a figure the skill's own row
+		// states. Issue #1718.
+		GetMinionReserveReductionAttribute(),
 		GetShieldAbsorbsDamageOverTimeAttribute(),
 		GetShieldRechargesWhileDamagedAttribute(),
 		GetShieldRechargeHasNoDelayAttribute(),
@@ -530,7 +528,6 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionReserveReduction)
-CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)

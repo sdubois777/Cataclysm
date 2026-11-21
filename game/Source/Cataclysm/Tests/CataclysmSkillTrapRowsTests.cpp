@@ -6,7 +6,9 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
@@ -365,17 +367,19 @@ namespace CataclysmTrapRowTest
 	bool TestClass::RunTest(const FString& Parameters)
 
 // ==========================================================================
-// 18. The cap bonus raises the one cap, and the bar shows it (M1)
+// 18. The trap-reserve row lowers what a trap reserves, so a pool holds more, and the bar counts them
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowCapBonusTest,
-	"Cataclysm.Traps.TheCapBonusRaisesTheOneCapSoASixthTrapStandsAndTheBarShowsTrapsSixOfEight")
+	"Cataclysm.Traps.TheTrapReserveRowLetsAPoolHoldMoreTrapsAndTheBarCountsThem")
 {
 	using namespace CataclysmTrapRowTest;
 
-	// TWO PLAYERS 100 M APART, EACH PLACING HEAVY TRAPS 10 M APART ALONG Y: the control holds the Heavy flag alone, the
-	// other the flag and a flat 3 on trap_cap_bonus requiring Type.Trap ("Your trap skills get +1-6 to max trap count"
-	// rolled at 3). No enemy and no step, so nothing triggers.
+	// TWO PLAYERS 100 M APART, EACH WITH A POOL OF 25, PLACING HEAVY TRAPS 10 M APART ALONG Y: the control holds the Heavy
+	// flag alone, the other the flag and 25 on the reserve percentage requiring Type.Trap ("Your traps reserve 5%-25%
+	// reduced Fervour" at its top). UNTIL BRANCH B OF ISSUE #2787 this was M1's cap bonus, "Your trap skills get
+	// +1-6 to max trap count" rolled at 3, raising the one cap of five; the owner's ruling of 2026-11-20 removed the
+	// cap and made the row a smaller reserve. No enemy and no step, so nothing triggers.
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -390,15 +394,17 @@ CATACLYSM_TEST(FCataclysmTrapRowCapBonusTest,
 		return false;
 	}
 	Plain.Holds({TrapRowSlotFlag(TEXT("Slot.Heavy"))});
-	Bonus.Holds({TrapRowSlotFlag(TEXT("Slot.Heavy")), TrapRowFlat(ACataclysmMinion::TrapCapBonusStat, 3.0f)});
+	Bonus.Holds({TrapRowSlotFlag(TEXT("Slot.Heavy")), TrapRowFlat(UCataclysmCommand::MinionReservePercentLessStat, 25.0f)});
+	for (const FTrapRowRig* Each : {&Plain, &Bonus})
+	{
+		Each->Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 25.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 25.0f);
+	}
 	const auto At = [](int32 Index) { return FVector(0.0f, 10.0f * M * static_cast<float>(Index), 0.0f); };
 
-	// THE CONTROL, READ FIRST: FIVE AND NO MORE.
-	TestEqual(TEXT("control: with no cap bonus the most traps standing is five (T6)"),
-		ACataclysmMinion::SkillTrapsMostFor(Plain.Player), 5);
 	TArray<ACataclysmMinion*> PlainTraps;
 	TArray<ACataclysmMinion*> BonusTraps;
-	for (int32 Index = 1; Index <= 6; ++Index)
+	for (int32 Index = 1; Index <= 5; ++Index)
 	{
 		ACataclysmMinion* PlainMade = TrapRowPlace(*this, Plain, ECataclysmAbilitySlot::Heavy, At(Index));
 		ACataclysmMinion* BonusMade = TrapRowPlace(*this, Bonus, ECataclysmAbilitySlot::Heavy, BonusHome + At(Index));
@@ -411,36 +417,37 @@ CATACLYSM_TEST(FCataclysmTrapRowCapBonusTest,
 	}
 	const TWeakObjectPtr<ACataclysmMinion> PlainFirst(PlainTraps[0]);
 	const TWeakObjectPtr<ACataclysmMinion> BonusFirst(BonusTraps[0]);
-	TestEqual(TEXT("control: with a sixth placed, five stand"), ACataclysmMinion::SkillTrapsOf(Plain.Player).Num(), 5);
-	TestTrue(TEXT("control: and the first is gone"), TrapRowGone(PlainFirst));
-	TestEqual(TEXT("control: the box reads five of five"),
+
+	// THE CONTROL, READ FIRST: FIVE AT 5 FILL 25, AND A SIXTH IS REFUSED.
+	TestEqual(TEXT("control: five stand, holding the pool of 25"), UCataclysmCommand::ReservedFervourOf(Plain.Player), 25.0f,
+		0.001f);
+	TestNull(TEXT("control: a sixth does not fit and is refused"),
+		ACataclysmMinion::PlaceSkillTrap(Plain.Player, ECataclysmAbilitySlot::Heavy, At(6)));
+	TestEqual(TEXT("control: so five stand"), ACataclysmMinion::SkillTrapsOf(Plain.Player).Num(), 5);
+	TestFalse(TEXT("control: and the first still stands"), TrapRowGone(PlainFirst));
+	TestEqual(TEXT("control: the box reads five"),
 		UCataclysmSkillBar::SkillTrapTextFor(TrapRowBox(Plain.Player, ECataclysmAbilitySlot::Heavy)),
-		FString(TEXT("Traps 5/5")));
+		FString(TEXT("Traps 5")));
 
-	// THE BONUS: ONE CAP ACROSS EVERY SLOT, FIVE AND THREE (M1 (a)).
-	TestEqual(TEXT("with a cap bonus of 3 the most traps standing is eight"), ACataclysmMinion::SkillTrapsMostFor(Bonus.Player),
-		8);
-	TestEqual(TEXT("so with a sixth placed, six stand"), ACataclysmMinion::SkillTrapsOf(Bonus.Player).Num(), 6);
-	TestFalse(TEXT("and the first still stands"), TrapRowGone(BonusFirst));
-	TestEqual(TEXT("and the box reads six of eight"),
-		UCataclysmSkillBar::SkillTrapTextFor(TrapRowBox(Bonus.Player, ECataclysmAbilitySlot::Heavy)),
-		FString(TEXT("Traps 6/8")));
-
-	// AND PAST THE RAISED CAP THE OLDEST STILL GOES (T6).
-	for (int32 Index = 7; Index <= 9; ++Index)
+	// THE ROW: A TRAP RESERVES 3.75, SO A SIXTH FITS IN 25 AND A SEVENTH DOES NOT.
+	TestEqual(TEXT("with the row, five hold 18.75"), UCataclysmCommand::ReservedFervourOf(Bonus.Player), 18.75f, 0.001f);
+	if (!TrapRowPlace(*this, Bonus, ECataclysmAbilitySlot::Heavy, BonusHome + At(6)))
 	{
-		if (!TrapRowPlace(*this, Bonus, ECataclysmAbilitySlot::Heavy, BonusHome + At(Index)))
-		{
-			return false;
-		}
+		return false;
 	}
-	TestEqual(TEXT("with a ninth placed, eight stand"), ACataclysmMinion::SkillTrapsOf(Bonus.Player).Num(), 8);
-	TestTrue(TEXT("and the first is gone, without triggering"), TrapRowGone(BonusFirst));
+	TestEqual(TEXT("so a sixth is placed and six stand"), ACataclysmMinion::SkillTrapsOf(Bonus.Player).Num(), 6);
+	TestFalse(TEXT("and the first still stands"), TrapRowGone(BonusFirst));
+	TestEqual(TEXT("and the box reads six"),
+		UCataclysmSkillBar::SkillTrapTextFor(TrapRowBox(Bonus.Player, ECataclysmAbilitySlot::Heavy)),
+		FString(TEXT("Traps 6")));
+	TestNull(TEXT("a seventh, needing 26.25 of 25, is refused"),
+		ACataclysmMinion::PlaceSkillTrap(Bonus.Player, ECataclysmAbilitySlot::Heavy, BonusHome + At(7)));
+	TestEqual(TEXT("so six stand"), ACataclysmMinion::SkillTrapsOf(Bonus.Player).Num(), 6);
 	return true;
 }
 
 // ==========================================================================
-// 19. The no-expire flag: no life span, taken at placing; the cap still holds (M2)
+// 19. The no-expire flag: no life span, taken at placing; the pool still bounds them (M2)
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapRowNoExpiryTest,
@@ -514,7 +521,11 @@ CATACLYSM_TEST(FCataclysmTrapRowNoExpiryTest,
 		TrapRowTakenFrom(NeverEnemy) > 0.0f);
 	TestTrue(TEXT("and is used up, which is what ends it now"), TrapRowGone(NeverWatched));
 
-	// AND THE CAP STILL DESTROYS THE OLDEST (M2 (a)): six more flagged traps with no enemy, beside the one placed before.
+	// AND THE POOL STILL BOUNDS WHAT NEVER EXPIRES (M2 (a)). Until branch B of issue #2787 the cap of five destroyed the
+	// oldest here; with the cap gone the pool is the bound. A pool of 35 holds six more flagged traps with no enemy, at 5
+	// each, beside the one placed before (a test world's timers never fire, so it stands), and refuses the next,
+	// destroying nothing.
+	Never.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 35.0f);
 	TArray<ACataclysmMinion*> Six;
 	for (int32 Index = 1; Index <= 6; ++Index)
 	{
@@ -527,8 +538,11 @@ CATACLYSM_TEST(FCataclysmTrapRowNoExpiryTest,
 		Six.Add(Made);
 	}
 	const TWeakObjectPtr<ACataclysmMinion> FirstOfSix(Six[0]);
-	TestEqual(TEXT("with the flag five still stand at most"), ACataclysmMinion::SkillTrapsOf(Never.Player).Num(), 5);
-	TestTrue(TEXT("the oldest flagged one is gone"), TrapRowGone(FirstOfSix));
+	TestEqual(TEXT("with the flag seven stand, filling the pool of 35"), ACataclysmMinion::SkillTrapsOf(Never.Player).Num(),
+		7);
+	TestNull(TEXT("and the next is refused"), ACataclysmMinion::PlaceSkillTrap(Never.Player, ECataclysmAbilitySlot::Heavy,
+		NeverHome - FVector(0.0f, 120.0f * M, 0.0f)));
+	TestFalse(TEXT("destroying nothing: the oldest flagged one still stands"), TrapRowGone(FirstOfSix));
 	return true;
 }
 

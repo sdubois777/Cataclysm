@@ -840,11 +840,16 @@ CATACLYSM_TEST(FCataclysmSkillTrapHeavyNearestTest,
 }
 
 // ==========================================================================
-// 16. The cap across a basic, a Support and a Heavy trap together (T6)
+// 16. No cap across a basic, a Support and a Heavy trap together. T6's cap of five went with issue #2787's branch B
 // ==========================================================================
 
+/**
+ * T6, a judgement of 2026-10-19, held one cap of five across every converted slot and destroyed the oldest for a sixth.
+ * The owner's ruling of 2026-11-20 removed every count cap on what reserves the class resource, so seven stand across the
+ * three slots, at 5 each of the player's 100, and none is destroyed.
+ */
 CATACLYSM_TEST(FCataclysmSkillTrapMixedCapTest,
-	"Cataclysm.Traps.FiveTrapsStandAcrossTheBasicSupportAndHeavySlotsAndANewOneDestroysTheOldest")
+	"Cataclysm.Traps.SevenTrapsStandAcrossTheBasicSupportAndHeavySlotsDestroyingNothing")
 {
 	using namespace CataclysmSkillTrapConversionsTest;
 
@@ -883,7 +888,7 @@ CATACLYSM_TEST(FCataclysmSkillTrapMixedCapTest,
 
 	// THE CONTROL, READ FIRST: FIVE STAND ACROSS THE THREE SLOTS, THE FIRST BASIC TRAP THE OLDEST.
 	const TArray<ACataclysmMinion*> Standing = ACataclysmMinion::SkillTrapsOf(Rig.Player);
-	TestEqual(TEXT("control: five traps stand across the basic, Support and Heavy slots (T6)"), Standing.Num(), 5);
+	TestEqual(TEXT("control: five traps stand across the basic, Support and Heavy slots"), Standing.Num(), 5);
 	TestTrue(TEXT("control: the oldest is the first basic trap"), !Standing.IsEmpty() && Standing[0] == Five[0]);
 
 	ACataclysmMinion* SixthHeavy = ConvertedTrapPlace(*this, Rig, ECataclysmAbilitySlot::Heavy, At(6));
@@ -892,13 +897,11 @@ CATACLYSM_TEST(FCataclysmSkillTrapMixedCapTest,
 	{
 		return false;
 	}
-	TestEqual(TEXT("with a Heavy and a Support more, five still stand"), ACataclysmMinion::SkillTrapsOf(Rig.Player).Num(),
-		5);
-	TestTrue(TEXT("the Heavy, placed sixth, destroyed the oldest, the first basic trap"), ConvertedTrapGone(FirstBasic));
-	TestTrue(TEXT("the Support, placed seventh, destroyed the next oldest, the first Support trap"),
-		ConvertedTrapGone(FirstSupport));
-	TestEqual(TEXT("one basic trap stands"), ConvertedTrapsOfSlot(Rig.Player, ECataclysmAbilitySlot::BasicAttack), 1);
-	TestEqual(TEXT("two Support traps"), ConvertedTrapsOfSlot(Rig.Player, ECataclysmAbilitySlot::Support), 2);
+	TestEqual(TEXT("with a Heavy and a Support more, seven stand"), ACataclysmMinion::SkillTrapsOf(Rig.Player).Num(), 7);
+	TestFalse(TEXT("the first basic trap still stands"), ConvertedTrapGone(FirstBasic));
+	TestFalse(TEXT("and the first Support trap"), ConvertedTrapGone(FirstSupport));
+	TestEqual(TEXT("two basic traps stand"), ConvertedTrapsOfSlot(Rig.Player, ECataclysmAbilitySlot::BasicAttack), 2);
+	TestEqual(TEXT("three Support traps"), ConvertedTrapsOfSlot(Rig.Player, ECataclysmAbilitySlot::Support), 3);
 	TestEqual(TEXT("and two Heavy traps"), ConvertedTrapsOfSlot(Rig.Player, ECataclysmAbilitySlot::Heavy), 2);
 	return true;
 }
@@ -914,13 +917,13 @@ CATACLYSM_TEST(FCataclysmSkillTrapBasicLineTest,
 
 	// THE WORDS FIRST, THEN READ OFF A WHIP PLAYER AT THE RIG'S 0.8 S WITH AN ENEMY 2 M EAST TO CLICK, AND A WAR SHIELD
 	// PLAYER 100 M AWAY, WHOSE WEAPON HAS NO BASIC ATTACK.
-	TestEqual(TEXT("not converted, no line"), UCataclysmSkillBar::BasicTrapTextFor(false, false, 0.0f, 0, 5), FString());
-	TestEqual(TEXT("a basic trap that can cast nothing says so"), UCataclysmSkillBar::BasicTrapTextFor(true, true, 0.0f, 0, 5),
+	TestEqual(TEXT("not converted, no line"), UCataclysmSkillBar::BasicTrapTextFor(false, false, 0.0f, 0), FString());
+	TestEqual(TEXT("a basic trap that can cast nothing says so"), UCataclysmSkillBar::BasicTrapTextFor(true, true, 0.0f, 0),
 		FString(TEXT("Basic trap casts nothing")));
-	TestEqual(TEXT("ready, with none standing"), UCataclysmSkillBar::BasicTrapTextFor(true, false, 0.0f, 0, 5),
-		FString(TEXT("Basic trap ready, traps 0/5")));
-	TestEqual(TEXT("waiting 0.44 s with two standing"), UCataclysmSkillBar::BasicTrapTextFor(true, false, 0.44f, 2, 5),
-		FString(TEXT("Basic trap 0.4s, traps 2/5")));
+	TestEqual(TEXT("ready, with none standing"), UCataclysmSkillBar::BasicTrapTextFor(true, false, 0.0f, 0),
+		FString(TEXT("Basic trap ready, traps 0")));
+	TestEqual(TEXT("waiting 0.44 s with two standing"), UCataclysmSkillBar::BasicTrapTextFor(true, false, 0.44f, 2),
+		FString(TEXT("Basic trap 0.4s, traps 2")));
 
 	FConvertedTrapWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
@@ -947,20 +950,20 @@ CATACLYSM_TEST(FCataclysmSkillTrapBasicLineTest,
 	TestEqual(TEXT("control: holding no row, no line"), UCataclysmSkillBar::BasicTrapTextOf(Rig.Player), FString());
 	Rig.Holds({ConvertedTrapFlag(TEXT("Slot.Basic"))});
 	TestEqual(TEXT("converted, none placed: ready"), UCataclysmSkillBar::BasicTrapTextOf(Rig.Player),
-		FString(TEXT("Basic trap ready, traps 0/5")));
+		FString(TEXT("Basic trap ready, traps 0")));
 	Rig.Clicks(Enemy);
 	if (!TestEqual(TEXT("set-up: the click placed a basic trap"), ACataclysmMinion::SkillTrapsOf(Rig.Player).Num(), 1))
 	{
 		return false;
 	}
 	TestEqual(TEXT("just after the click, the whole swing interval left"), UCataclysmSkillBar::BasicTrapTextOf(Rig.Player),
-		FString(TEXT("Basic trap 0.8s, traps 1/5")));
+		FString(TEXT("Basic trap 0.8s, traps 1")));
 	ConvertedTrapPass(World, 0.5f);
 	TestEqual(TEXT("half a second on, 0.3 s left"), UCataclysmSkillBar::BasicTrapTextOf(Rig.Player),
-		FString(TEXT("Basic trap 0.3s, traps 1/5")));
+		FString(TEXT("Basic trap 0.3s, traps 1")));
 	ConvertedTrapPass(World, 0.5f);
 	TestEqual(TEXT("a second on, ready again"), UCataclysmSkillBar::BasicTrapTextOf(Rig.Player),
-		FString(TEXT("Basic trap ready, traps 1/5")));
+		FString(TEXT("Basic trap ready, traps 1")));
 
 	Shield.Holds({ConvertedTrapFlag(TEXT("Slot.Basic"))});
 	TestEqual(TEXT("the shield player's basic trap would cast nothing, and the line says so (T8)"),

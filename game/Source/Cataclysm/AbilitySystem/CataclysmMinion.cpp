@@ -905,8 +905,6 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 	}
 	Placed->SetLifeSpan(0.0f);
 
-	// OUTSIDE EVERY SUMMON CAP, S8: it fills none and is never destroyed to make room in one.
-	Placed->bOutsideSummonCaps = true;
 	Placed->SkillGadgetSlot = Slot;
 	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
@@ -1842,8 +1840,8 @@ void ACataclysmMinion::HandleDeath()
 
 	// A GADGET KILLED IS A GADGET DESTROYED, told to its summoner before the
 	// explosion below can return. Issue #1833 group D part 5, ruled 2026-10-01:
-	// "destroyed" means killed, so a gadget whose lifespan runs out, or one the
-	// summon cap removes to make room, raises nothing; neither reaches this
+	// "destroyed" means killed, so a gadget whose lifespan runs out, or one
+	// destroyed without being killed, raises nothing; neither reaches this
 	// function. A gadget is what `IsDeployable` says, traps included.
 	//
 	// A SKILL TRAP'S DEATH RAISES NOTHING, ruled 2026-10-19 (T14: `gadget_destroyed` narrowed to gadgets, "a trap's death
@@ -1860,8 +1858,7 @@ void ACataclysmMinion::HandleDeath()
 
 	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
 	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
-	// it dies, as one destroyed to make room for another does, with the radius
-	// and damage of the skill that brought it."
+	// it dies, with the radius and damage of the skill that brought it."
 	//
 	// THE SUMMONER'S STAT DECIDES, NOT THE MINION'S. What the player chose is
 	// on the player, and `Explode` already reads the summoner for everything
@@ -1954,7 +1951,7 @@ void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 	ExplosionRadiusCm = RadiusCm;
 }
 
-void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
+void ACataclysmMinion::Explode()
 {
 	// WHAT IT IS WORTH IS ITS OWN BLOW, NOT ITS SUMMONER'S WEAPON. Issue
 	// #1515. `game/Data/MinionTypes.csv` states the share -- the owner's
@@ -1987,10 +1984,8 @@ void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
 		// `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the
 		// explosion a minion leaves per point."
 		//
-		// HERE RATHER THAN AT EITHER CALLER, so both causes of an explosion
-		// take it: the summon cap destroying the oldest, and a death under
-		// `minion_explodes_on_death`. The sentence names the explosion rather
-		// than what caused it.
+		// HERE RATHER THAN AT A CALLER, so every cause of an explosion takes it.
+		// The sentence names the explosion rather than what caused it.
 		//
 		// AREA OF EFFECT IS STILL NOT TAKEN, and that is unchanged: the
 		// radius is the skill's stated figure, as the caller's comment in
@@ -2003,11 +1998,9 @@ void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
 			GetWorld(), this, GetActorLocation(),
 			ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
 
-		// THE ROW THE EXPLOSION CREDITS: ITS SUMMONING SKILL'S WHEN THE CAP SET IT OFF, AND NONE WHEN A PASSIVE DID. Issue
-		// #2764, slice 2b, ruled 2026-11-20 (Q-B, option b): "Summoning a fourth destroys the oldest, which explodes for
-		// damage in a 3 meter radius" is Summon Imp's own row, so that explosion is the skill's effect; one
-		// `minion_explodes_on_death` sets off is damage a passive adds on top, which judgement 2 says credits nothing.
-		const FName CreditedRow = bSetOffByTheSummonCap ? SummoningSkillRow : NAME_None;
+		// IT CREDITS NO SKILL. Every explosion is one a passive sets off -- `minion_explodes_on_death`, a death blast --
+		// and damage a passive adds on top credits nothing (issue #2764, judgement 2). Summon Imp's cap explosion, the one
+		// that credited the skill (slice 2b, Q-B), went with the cap: issue #2787, the owner's "Drop it with the cap".
 
 		for (AActor* Target : Caught)
 		{
@@ -2037,9 +2030,7 @@ void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
 				/*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 				/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 			float Dealt = 0.0f;
-			FCataclysmHitDelivery Blast = MinionDelivery(this, /*bIsArea=*/true);
-			Blast.SkillRowToCredit = CreditedRow;
-			UCataclysmSkillEffects::ApplyDirectDamage(this, Target, Landed, Blast);
+			UCataclysmSkillEffects::ApplyDirectDamage(this, Target, Landed, MinionDelivery(this, /*bIsArea=*/true));
 			Dealt = Landed;
 			// Designed, for the reason the melee attack above records.
 			//
@@ -2049,15 +2040,14 @@ void ACataclysmMinion::Explode(bool bSetOffByTheSummonCap)
 			// above makes for issue #1156 could never fire here. A check that
 			// cannot fail is worse than no check, because it reads as one.
 			//
-			// AND THE BURN CREDITS WHAT THE EXPLOSION CREDITS, and is not sized again: it is a share of the explosion just
-			// dealt. Issue #2764, slice 2b.
+			// AND THE BURN CREDITS NOTHING, as the explosion credits nothing, and is not sized again: it is a share of the
+			// explosion just dealt.
 			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
 					this, Target, Dealt,
 					/*bScalesWithInstigator=*/false,
-					/*bBurnIsDesigned=*/true, /*DealtBy=*/this, /*Skill=*/nullptr,
-					/*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/CreditedRow);
+					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 			}
 		}
 
@@ -2228,8 +2218,8 @@ const TCHAR* ACataclysmMinion::TyrantsMinionTypeName = TEXT("TyrantsMinion");
 
 ACataclysmMinion* ACataclysmMinion::TyrantsMinionOf(const AActor* Commander)
 {
-	// EVERYTHING THE COMMANDER COMMANDS, WHICH LEAVES OUT THE DEAD, so a Tyrant's Minion whose death is being
-	// handled is not "the one standing".
+	// EVERYTHING THE COMMANDER COMMANDS, WHICH LEAVES OUT THE DEAD, nearest first, so one whose death is being handled
+	// is not counted as standing.
 	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
 	{
 		ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
@@ -2255,16 +2245,9 @@ ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool 
 		return nullptr;
 	}
 
-	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE, ruling #3 and Q5: its time restarts at the full length and its
-	// health is kept. THE LENGTH `Spawn` WOULD GIVE A NEW ONE, the stated seconds raised by `minion_duration`, with
-	// the same guard against a multiplier of nought, which `SetLifeSpan` would read as "never expires".
-	if (ACataclysmMinion* Standing = TyrantsMinionOf(Commander))
-	{
-		const float Duration = Seconds
-			* UCataclysmCommand::SummonerMultiplierFor(Commander, TEXT("minion_duration"), Standing->TypeTags);
-		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
-		return Standing;
-	}
+	// A NEW ONE EVERY TIME, BESIDE ANY STANDING, since issue #2787: the owner's ruling of 2026-11-20 removed every count
+	// cap on what reserves the class resource ("that's limiting on its own"), which replaced ruling #3's "at most one"
+	// and its refresh. Its reserve is the limit.
 
 	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, none is summoned. The lost one is dead, so its
 	// own reserve has already left the total.
@@ -2283,8 +2266,6 @@ ACataclysmMinion* ACataclysmMinion::SummonTyrantsMinion(AActor* Commander, bool 
 	ACataclysmMinion* Made = Spawn(Commander, Where, Seconds, /*bBurns=*/false, FString(TyrantsMinionTypeName));
 	if (Made)
 	{
-		// OUTSIDE EVERY SUMMON CAP, Q4, as a necrosis-risen imp and a skill gadget are.
-		Made->bOutsideSummonCaps = true;
 		Made->bIsTyrantsMinion = true;
 		UCataclysmCommand::HoldReserve(Commander, Made, Reserve);
 	}
@@ -2351,15 +2332,9 @@ ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
 		return nullptr;
 	}
 
-	// ONE STANDING IS REFRESHED AND NO SECOND IS MADE (Q3): its time restarts at the full length and its health is
-	// kept. The length `Spawn` would give a new one, with the same guard against a multiplier of nought.
-	if (ACataclysmMinion* Standing = WarhoundOf(Summoner))
-	{
-		const float Duration = Seconds
-			* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_duration"), Standing->TypeTags);
-		Standing->SetLifeSpan(Duration > 0.0f ? Duration : Seconds);
-		return Standing;
-	}
+	// A NEW ONE EVERY TIME, BESIDE ANY STANDING, since issue #2787: the owner's ruling of 2026-11-20 removed every count
+	// cap on what reserves the class resource, which replaced Q3's "at most one" and its refresh. Its reserve is the
+	// limit.
 
 	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, none is summoned.
 	const float Reserve = UCataclysmCommand::ReserveFor(Summoner, WarhoundFervourReserve, TagsOfType(WarhoundTypeName));
@@ -2378,8 +2353,6 @@ ACataclysmMinion* ACataclysmMinion::SummonWarhound(AActor* Summoner)
 	ACataclysmMinion* Made = Spawn(Summoner, Where, Seconds, /*bBurns=*/false, FString(WarhoundTypeName));
 	if (Made)
 	{
-		// OUTSIDE EVERY SUMMON CAP (Q3), as a Tyrant's Minion is.
-		Made->bOutsideSummonCaps = true;
 		Made->bIsWarhound = true;
 		UCataclysmCommand::HoldReserve(Summoner, Made, Reserve);
 	}
@@ -2673,25 +2646,16 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		return nullptr;
 	}
 
-	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787, WITH THE TRAPS THE CAP IS ABOUT TO DESTROY COUNTED AS FREED,
-	// as Summon Imp counts its evicted oldest (ruled 2026-09-30). When it cannot, nothing is placed and nothing is
-	// destroyed, and the press pays nothing: `PressOfASkillTrapSlot` pays only for a trap placed.
+	// THE POOL MUST HOLD ITS RESERVE, issue #2787, AND THAT IS THE ONLY LIMIT ON HOW MANY STAND: the owner's ruling of
+	// 2026-11-20 removed every count cap on what reserves the class resource, which replaced T6's five. When the pool
+	// cannot hold it, nothing is placed, and the press pays nothing: `PressOfASkillTrapSlot` pays only for a trap placed.
 	const float Reserve = UCataclysmCommand::ReserveFor(Player, SkillTrapFervourReserve, TagsOfType(SkillTrapTypeName));
+	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
-		const TArray<ACataclysmMinion*> AboutToGo = SkillTrapsOf(Player);
-		const int32 Evicted = FMath::Max(0, AboutToGo.Num() - SkillTrapsMostFor(Player) + 1);
-		float Freed = 0.0f;
-		for (int32 Index = 0; Index < Evicted && Index < AboutToGo.Num(); ++Index)
-		{
-			Freed += AboutToGo[Index]->ReservedFervour;
-		}
-		if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve, Freed))
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
-				*Player->GetName(), Reserve);
-			return nullptr;
-		}
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
+			*Player->GetName(), Reserve);
+		return nullptr;
 	}
 
 	// ITS 20 S (T4), lengthened by `Spawn` with the summoner's `minion_duration` rows naming its tags: "Traps last
@@ -2711,20 +2675,8 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		return nullptr;
 	}
 
-	// AT MOST FIVE FOR THE PLAYER, ACROSS EVERY CONVERTED SLOT (T6), AND THE CAP BONUS MORE (M1): THE OLDEST ARE DESTROYED
-	// WITHOUT TRIGGERING, before the new one is told its slot, so it is not among them. Destroyed and not killed: no
-	// `HandleDeath`, no cast.
-	TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
-	while (Standing.Num() >= SkillTrapsMostFor(Player))
-	{
-		Standing[0]->Destroy();
-		Standing.RemoveAt(0);
-	}
-
-	// OUTSIDE EVERY SUMMON CAP, as a skill gadget is (S8): its own cap is the one above.
-	Placed->bOutsideSummonCaps = true;
 	// AND NO LIFE SPAN WHILE THE PLAYER HOLDS "Traps do not expire, they remain armed until triggered" (M2 (a)), as a
-	// skill gadget has none: taken at placing, so a trap placed without it keeps its 20 s. The cap above still applies.
+	// skill gadget has none: taken at placing, so a trap placed without it keeps its 20 s.
 	if (SkillTrapsDoNotExpireFor(Player))
 	{
 		Placed->SetLifeSpan(0.0f);
@@ -2734,7 +2686,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
 	Placed->bSkillTrapArmed = false;
 	Placed->ShowSkillTrapTint();
-	// ITS RESERVE, ONCE THE EVICTED ARE GONE, so the cut to the spendable Fervour reads the total without them.
+	// ITS RESERVE, and the spendable Fervour cut to what is left.
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 
 	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
@@ -2875,8 +2827,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
 	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
-	// keeps the life span it was placed with and still counts against the cap; and, not used up, it is not kept among the
-	// used-up traps, so a later blow of its cast finds it standing.
+	// keeps the life span it was placed with and still counts among its player's traps; and, not used up, it is not
+	// kept among the used-up traps, so a later blow of its cast finds it standing.
 	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
 	{
 		bSkillTrapArmed = false;
@@ -2954,10 +2906,9 @@ AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
 }
 
 // ==========================================================================
-// Traps, layer 3: the cap bonus and the no-expire flag. Ruled 2026-10-21 (M1, M2).
+// Traps, layer 3: the no-expire flag. Ruled 2026-10-21 (M2). The cap bonus (M1) went with the cap, issue #2787.
 // ==========================================================================
 
-const TCHAR* ACataclysmMinion::TrapCapBonusStat = TEXT("trap_cap_bonus");
 const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
 
 namespace
@@ -2969,13 +2920,6 @@ namespace
 			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 		return Theirs ? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(TagOfATrap()), /*Fallback=*/0.0f) : 0.0f;
 	}
-}
-
-int32 ACataclysmMinion::SkillTrapsMostFor(const AActor* Player)
-{
-	// "+1-6 TO MAX TRAP COUNT" IS A WHOLE NUMBER OF TRAPS, so the rolled figure is rounded, as a minion cap's bonus is
-	// (`MinionCapFor`), and the cap is at least one, as that one is.
-	return FMath::Max(1, SkillTrapsMostPerPlayer + FMath::RoundToInt(SkillTrapFigureOf(Player, TrapCapBonusStat)));
 }
 
 bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)

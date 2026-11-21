@@ -108,7 +108,7 @@ Negative_Each_class_point_above_the_max_reduces_your_max,Each class point above 
 Negative_Skills_cost_50_75_more_mana,Skills cost 50%-75% more mana,Generic,3.0,Stat.Resource.Mana,True,,0
 Negative_Can_t_leech_mana,Can't leech mana,Generic,4.0,"Stat.Recovery.Leech, Stat.Resource.Mana",True,,0
 Negative_Your_minions_have_20_50_less_hp,Your minions have 20%-50% less hp,Generic,4.0,Type.Minion,True,,0
-Negative_Minus_2_4_to_your_max_minion_count,Minus 2-4 to your max minion count,Generic,3.0,Type.Minion,True,,0
+Negative_Your_minions_reserve_25_65_increased_Fervour,Your minions reserve 25%-65% increased Fervour,Generic,3.0,Type.Minion,True,,0
 Negative_Lose_10_20_armor_when_you_use_a_skill,Lose 10%-20% armor when you use a skill,Generic,3.0,Stat.Defense.Armor,True,,0
 Negative_While_leeching_reduce_your_max_resistances_by_1,"While leeching, reduce your max resistances by 1%-3% per second",Generic,3.0,"Stat.Recovery.Leech, Stat.Defense.Resist",True,,0
 Negative_Take_10_40_more_damage_when_on_low_mana,Take 10%-40% more damage when on low mana,Generic,4.0,Stat.Resource.Mana,True,,0
