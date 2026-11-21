@@ -8,8 +8,13 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// The pipeline the attribute tooltip evaluates a stat through, with and without the attribute. Issue #2815.
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerClassStats.h"
+// The rows the attribute tooltip is written from. Issue #2815.
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 
@@ -692,6 +697,190 @@ TArray<FCataclysmStatLine> UCataclysmCharacterSheetLayout::AttributeLines(
 	}
 
 	return Lines;
+}
+
+// ---------------------------------------------------------------------------
+// What hovering an attribute says. Issue #2815.
+// ---------------------------------------------------------------------------
+
+const TCHAR* UCataclysmCharacterSheetLayout::AttributeIncreaseSentence =
+	TEXT("An increase is a share of what your class, weapon and items already give, added to your items' own "
+		 "increases. A stat you have none of gains nothing.");
+
+namespace
+{
+	/** A percentage as the tooltip writes it: up to two decimal places, none it does not need. "2", "0.5", "0.01". */
+	FString TooltipPercent(float Value)
+	{
+		FString Text = FString::Printf(TEXT("%.2f"), Value);
+		while (Text.Contains(TEXT(".")) && (Text.EndsWith(TEXT("0")) || Text.EndsWith(TEXT("."))))
+		{
+			Text.LeftChopInline(1);
+		}
+		return Text + TEXT("%");
+	}
+
+	/** "a", "a and b", "a, b and c". */
+	FString JoinedWithAnd(const TArray<FString>& Parts)
+	{
+		if (Parts.Num() <= 1)
+		{
+			return Parts.IsEmpty() ? FString() : Parts[0];
+		}
+		return FString::Join(TArrayView<const FString>(Parts.GetData(), Parts.Num() - 1), TEXT(", "))
+			+ TEXT(" and ") + Parts.Last();
+	}
+
+	/** "Spirit". */
+	FString Capitalised(const FString& Word)
+	{
+		return Word.IsEmpty() ? Word : Word.Left(1).ToUpper() + Word.Mid(1);
+	}
+
+	/** What a minion scaling row's tag is called in words: the two families the design names. */
+	FString MinionFamilyWords(const FString& RequiresTag)
+	{
+		if (RequiresTag.Equals(TEXT("Minion.Creature"), ESearchCase::IgnoreCase))
+		{
+			return TEXT("summoned creatures");
+		}
+		if (RequiresTag.Equals(TEXT("Minion.Machine"), ESearchCase::IgnoreCase))
+		{
+			return TEXT("deployed machines");
+		}
+		return FString::Printf(TEXT("minions tagged %s"), *RequiresTag);
+	}
+
+	/** Every row of `Table` for `Attribute`, in the table's order. */
+	template <typename RowType>
+	TArray<const RowType*> RowsFor(const UDataTable* Table, const FString& Attribute)
+	{
+		TArray<const RowType*> Rows;
+		if (Table)
+		{
+			for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+			{
+				const RowType* Row = reinterpret_cast<const RowType*>(Pair.Value);
+				if (Row->Attribute.Equals(Attribute, ESearchCase::IgnoreCase))
+				{
+					Rows.Add(Row);
+				}
+			}
+		}
+		return Rows;
+	}
+}
+
+FString UCataclysmCharacterSheetLayout::AttributeStatWords(const FString& Stat)
+{
+	if (Stat == TEXT("dot_frequency"))
+	{
+		return TEXT("damage over time tick rate");
+	}
+	return NameFor(Stat).ToLower();
+}
+
+FString UCataclysmCharacterSheetLayout::AttributePerPointText(const FString& Attribute)
+{
+	TArray<FString> Parts;
+	for (const FCataclysmAttributeEffectRow* Row :
+		 RowsFor<FCataclysmAttributeEffectRow>(UCataclysmPlayerClassStats::LoadAttributeTable(), Attribute))
+	{
+		Parts.Add(FString::Printf(TEXT("%s increased %s"), *TooltipPercent(Row->PercentPerPoint),
+								  *AttributeStatWords(Row->Stat)));
+	}
+	FString Text = FString::Printf(TEXT("Each point: %s."), *JoinedWithAnd(Parts));
+	for (const FCataclysmMinionScalingRow* Row :
+		 RowsFor<FCataclysmMinionScalingRow>(UCataclysmPlayerClassStats::LoadMinionScalingTable(), Attribute))
+	{
+		Text += Row->Stat == TEXT("damage")
+			? FString::Printf(TEXT(" Your %s deal %s increased damage."), *MinionFamilyWords(Row->RequiresTag),
+							  *TooltipPercent(Row->PercentPerPoint))
+			: FString::Printf(TEXT(" Your %s have %s increased %s."), *MinionFamilyWords(Row->RequiresTag),
+							  *TooltipPercent(Row->PercentPerPoint), *AttributeStatWords(Row->Stat));
+	}
+	return Text;
+}
+
+FString UCataclysmCharacterSheetLayout::AttributeTooltipFor(const FString& Attribute,
+															 const UAbilitySystemComponent* ASC, int32 SpentPoints)
+{
+	const FString Name = Capitalised(Attribute);
+	TArray<FString> Lines;
+	Lines.Add(Name);
+	Lines.Add(AttributePerPointText(Attribute));
+	Lines.Add(AttributeIncreaseSentence);
+
+	// WHAT THE STATS READ IS THE ATTRIBUTE'S VALUE, rounded and raised by items, not the points spent.
+	const int32 Value = FMath::RoundToInt(ReadStat(ASC, Attribute));
+	if (Value <= 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Now: no %s."), *Name));
+		return FString::Join(Lines, TEXT("\n"));
+	}
+	Lines.Add(Value != SpentPoints
+		? FString::Printf(TEXT("Now, at %d %s (%d spent, %d from items):"), Value, *Name, SpentPoints,
+						  Value - SpentPoints)
+		: FString::Printf(TEXT("Now, at %d %s:"), Value, *Name));
+
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(ASC);
+	for (const FCataclysmAttributeEffectRow* Row :
+		 RowsFor<FCataclysmAttributeEffectRow>(UCataclysmPlayerClassStats::LoadAttributeTable(), Attribute))
+	{
+		const FString Stat = Row->Stat;
+		const FCataclysmStatInputs* Inputs = Cataclysm ? Cataclysm->GetStatInputs(FName(*Stat)) : nullptr;
+		TArray<FCataclysmStatModifier> Without;
+		float FromAttribute = 0.0f;
+		if (Inputs)
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Source == ECataclysmModifierSource::Attribute)
+				{
+					FromAttribute += Modifier.Value;
+				}
+				else
+				{
+					Without.Add(Modifier);
+				}
+			}
+		}
+		const FCataclysmStatBreakdown WithIt = Inputs
+			? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer())
+			: FCataclysmStatBreakdown();
+		const FString StatName = NameFor(Stat);
+
+		// NOTHING TO INCREASE: no base and no flat amount, so the increase multiplies nothing. Ruled by the owner on
+		// 2026-11-21, "Keep it, just explain it". A stat with nothing recorded is read from the sheet's figure.
+		const float Underlying = Inputs ? WithIt.Base + WithIt.Flat : FigureFor(Stat, ASC);
+		if (Underlying <= 0.0f)
+		{
+			Lines.Add(FString::Printf(TEXT("%s: you have none, from your class or your items, so %s does nothing to it yet."),
+									  *StatName, *Name));
+			continue;
+		}
+
+		// THE "TO" FIGURE IS THE SHEET'S, AND THE "FROM" IS IT SCALED BY WHAT THE PIPELINE GIVES WITHOUT THE
+		// ATTRIBUTE, so the line shows the same figure the sheet row beside it shows.
+		const float WithoutFinal = Inputs
+			? UCataclysmStatPipeline::Evaluate(Inputs->Base, Without, FGameplayTagContainer()).Final
+			: WithIt.Final;
+		const float Share = Inputs && WithIt.Final != 0.0f ? WithoutFinal / WithIt.Final : 1.0f;
+		const float To = FigureFor(Stat, ASC);
+		const float From = Stat == TEXT("cooldown_reduction")
+			? FCombat::DisplayedCooldownReduction(ReadStat(ASC, Stat) * Share)
+			: To * Share;
+		Lines.Add(FString::Printf(TEXT("%s: %s to %s (%s increased from %s)"), *StatName, *FigureText(Stat, From),
+								  *FigureText(Stat, To), *TooltipPercent(FromAttribute), *Name));
+	}
+
+	for (const FCataclysmMinionScalingRow* Row :
+		 RowsFor<FCataclysmMinionScalingRow>(UCataclysmPlayerClassStats::LoadMinionScalingTable(), Attribute))
+	{
+		Lines.Add(FString::Printf(TEXT("%s: %s increased %s from %s"), *Capitalised(MinionFamilyWords(Row->RequiresTag)),
+								  *TooltipPercent(Row->PercentPerPoint * Value), *AttributeStatWords(Row->Stat), *Name));
+	}
+	return FString::Join(Lines, TEXT("\n"));
 }
 
 FString UCataclysmCharacterSheetLayout::UnspentPointsText(int32 Unspent)

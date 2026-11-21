@@ -616,6 +616,154 @@ The memory summary at the suite's end: 5692 tests, peak used virtual memory 9193
 
 ---
 
+## 2026-11-21 — Hovering an attribute on the character sheet says what a point gives and what this character's points give now, and which parts do nothing until an item adds the stat (#2815)
+
+**Affects:** `UCataclysmCharacterSheetLayout::AttributeTooltipFor`, `AttributePerPointText`, `AttributeStatWords` and
+`AttributeIncreaseSentence`, new (`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h`, `.cpp`);
+`UCataclysmCharacterSheetWidget::WriteStatus`, which sets each attribute button's tooltip
+(`CataclysmCharacterSheetWidget.cpp`); the Attributes table of `docs/Cataclysm_GDD_v2.md` and a paragraph under it.
+Tests: `game/Source/Cataclysm/Tests/CataclysmAttributeTooltipTests.cpp`, new, three in `Cataclysm.AttributeTooltip.`;
+`tools/tests/test_an_attributes_tooltip_names_every_row.py`, new, four. Issue
+[#2815](https://github.com/sdubois777/Cataclysm/issues/2815); the open question on Luck's magic find is
+[#2816](https://github.com/sdubois777/Cataclysm/issues/2816).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `c89fa5911` without a compile, as ruled. Its turn is
+  queued after #2804's.
+- **THE OWNER CHOSE TO KEEP THE ATTRIBUTES AND EXPLAIN THEM, NOT TO CHANGE THEM**, against the coordinating session's
+  recommendation of flat amounts where a stat has no base. The question and the three options are in "The rulings".
+
+### What the owner asked, and what was found
+
+The owner, 2026-11-21: "do attributes actually do anything? I've forgotten what each one is supposed to do so I can't
+tell in game since they don't have descriptions".
+
+**Attributes work, and every point is an increase.** `UCataclysmClassStats::AttributeModifierForValues` turns each row of
+`game/Data/Attributes.csv` into one modifier in the increased bucket, beside gear's increases; `game/Data/MinionScaling.csv`
+adds 1% increased minion damage per point, Spirit for summoned creatures and Agility for deployed machines. An increase
+multiplies a base and a flat amount, so it does nothing to a stat the character has none of
+(`Cataclysm.Attributes.APointScalingAStatTheClassHasNoBaseForChangesNothing`). `game/Data/ClassStats.csv` gives no class
+a base of evasion, block chance, cooldown reduction or magic find; only the Ritualist has energy shield and its
+regeneration; the Ritualist has no armour. So those parts of Agility, Constitution, Efficacy, Luck and Spirit do nothing
+until an item adds a flat amount of the stat. Critical strike chance has one: holding a weapon gives 5%
+(`UCataclysmEquipmentComponent::StatBasesFromWeapons`), which Ferocity raises.
+
+**Luck's magic find is 0.01% increased per point over gear's flat magic find**, at most 10 on one `Stat_Flat_magic_find`
+affix, so 100 Luck turns 10 magic find into 10.1: it is worth 0.1. The owner kept it as it is; whether the design's
+"+0.01% magic find" meant a flat amount is issue #2816.
+
+### The rulings
+
+**The owner, 2026-11-21**, asked through the question dialog by the coordinating session, verbatim:
+
+> "I need to correct what I told you about attributes. Every attribute point gives an 'increased' percentage, which
+> multiplies whatever your class, weapon and items already give. No class has a base value for evasion, block chance,
+> cooldown reduction or magic find, and only the Ritualist has energy shield. So these parts do nothing until an item
+> adds some of that stat: Agility's evasion, Constitution's block (and its armour, on a Ritualist), Efficacy's cooldown
+> reduction, Luck's magic find, and Spirit's energy shield on every class but the Ritualist. Diablo IV and Path of Exile
+> mostly give flat amounts per point instead, for example '+1 armour per point'. What should we do?"
+
+| Option | What it said |
+| :-- | :-- |
+| 1. "Flat where there's no base (Recommended)" | "The parts with nothing to multiply give a flat amount per point instead, for example +0.1% block chance or +0.2% cooldown reduction per point. A session researches the genre and proposes the figures, and I bring them to you. The parts that already work stay as they are." |
+| 2. "Keep it, just explain it" | "Attributes stay as they are. The new hover text says plainly which parts do nothing for you until an item adds the stat." |
+| 3. "Give every class a small base" | "Each class gets a small starting amount of every stat (some evasion, block, energy shield and so on), so every attribute's percentage has something to multiply." |
+
+The owner's answer: "Keep it, just explain it". **The coordinating session recommended option 1 and the owner chose
+option 2.** So the attributes stay as they are, no number changes, and the hover text says plainly which parts do
+nothing until an item adds the stat.
+
+**The coordinating session, the same day**, accepted the proposed words as written, including the "does nothing to it
+yet" line and the "(8 spent, 1 from items)" heading; "damage over time tick rate" for `dot_frequency`, whose sheet name
+"Damage over time, ticks per second" does not read inside a sentence; and "increased" across the design document's
+Attributes table, since "+0.5% crit chance" reads as a flat half point and the data is not.
+
+### Research
+
+| Game | Source read | What it settles |
+| :-- | :-- | :-- |
+| Diablo IV | `diablo4.wiki.fextralife.com/Strength`, read 2026-11-21 | each attribute's bonus is worded per point, "Grants +1 armor per point", class-gated bonuses marked with the class's name, and no current total |
+| Path of Exile | `poedb.tw/us/Strength`, `poedb.tw/us/Attributes` | item and modifier text only; not the character screen's tooltip |
+| Last Epoch | none readable (`maxroll.gg` 404, `icy-veins.com` 403) | nothing |
+
+So the per-point line follows Diablo IV's pattern. **No source read showed a current total or a "does nothing for you"
+line**: the "Now" part and its wording are this game's own, a judgement the owner's question and ruling ask for, not a
+shape read off another game.
+
+### What changed
+
+**The tooltip**, on each of the character sheet's eight attribute buttons, written with the sheet (when it opens and
+after every spend), four parts:
+
+1. The attribute's name.
+2. **Per point**, written from the rows the game applies, in their table order: "Each point: 2% increased energy shield
+   and 1% increased energy shield regeneration. Your summoned creatures deal 1% increased damage." A stat is named by the
+   sheet's own name in lower case (`NameFor`); a minion row's `Minion.Creature` is "summoned creatures" and
+   `Minion.Machine` "deployed machines".
+3. **How an increase works**, fixed: "An increase is a share of what your class, weapon and items already give, added to
+   your items' own increases. A stat you have none of gains nothing."
+4. **Now**, from the attribute's value on the character (what the stats read: rounded, and raised by items), headed "Now,
+   at 8 Spirit:", or "Now, at 9 Spirit (8 spent, 1 from items):" when items raised it; one line per stat:
+   - "Energy shield: 52 to 58.4 (16% increased from Spirit)". THE "TO" FIGURE IS THE SHEET'S OWN (`FigureFor`). The
+     "from" is that figure scaled by what the stat pipeline gives without the attribute: the stat's recorded base and
+     modifiers (`UCataclysmAbilitySystemComponent::GetStatInputs`) evaluated through `UCataclysmStatPipeline::Evaluate`
+     with and without the modifiers whose source is `Attribute`. Cooldown reduction is shown as the sheet shows it,
+     through `DisplayedCooldownReduction`.
+   - A stat with no base and no flat amount: "Energy shield: you have none, from your class or your items, so Spirit does
+     nothing to it yet."
+   - A minion row: "Summoned creatures: 8% increased damage from Spirit", with no figures, since a minion's damage starts
+     from its own row in `game/Data/MinionTypes.csv`.
+   - An attribute at nought: "Now: no Spirit." and no stat line.
+
+The figures in the examples are illustrative; the test reads the real ones.
+
+**The design document's Attributes table** says "increased" in every cell, and Efficacy's "+1% cooldown increase" is
+"+1% increased cooldown reduction", the stat being `cooldown_reduction`. A paragraph under it states that an increase
+does nothing to a stat the character has none of, which parts that leaves doing nothing, and the owner's ruling.
+
+### Tests
+
+`CataclysmAttributeTooltipTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachAttributeNamesEveryRowItApplies` | for every row of `DT_Attributes` and `DT_MinionScaling`, its attribute's per-point line contains the row's figure and stat words; Spirit's, Luck's and Efficacy's lines are the proposed words exactly |
+| `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | a Ritualist at level 10 with 8 Spirit and 30% increased energy shield from items: the energy shield and regeneration lines' two figures are the sheet's figures for a Ritualist with the same items and no Spirit, and for this one; the summoned creatures' line; a Ravager with 8 Spirit and 8 Constitution: energy shield and block chance said to gain nothing, armour's two figures as the sheet's; cooldown reduction with 12 flat from items and 8 Efficacy, the sheet's two shares; 12.5% increased Spirit from items on 8 points heads "Now, at 9 Spirit (8 spent, 1 from items):". Prints "ATTRIBUTE TOOLTIP" |
+| `AnAttributeAtNoughtStatesThePerPointLineAndNoNowFigure` | CONTROL: a Ritualist with no points: four lines, the last "Now: no Spirit."; the same with no ability system |
+
+`tools/tests/test_an_attributes_tooltip_names_every_row.py`, four: every `Attributes.csv` stat has a player's name in
+`NameFor`'s table, so none shows as a raw name; every `MinionScaling.csv` family has words; `WriteStatus` sets the
+attribute buttons' tooltip from `AttributeTooltipFor`; and every row's figure is stated as "+N% increased" in its
+attribute's cell of the design table, with no "cooldown increase" left. Proved with `tools/prove_guard.py` in a copy of
+the working tree, each restored half 4 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| B1 | `max_energy_shield` taken out of `NameFor`'s table | "1 failed, 3 passed": the name check | PROVED |
+| B2 | `Minion.Machine` spelled `Minion.Device` in `MinionFamilyWords` | "1 failed, 3 passed": the family check | PROVED |
+| B3 | `WriteStatus` sets the tooltip from `UnspentPointsText` instead | "1 failed, 3 passed": the widget check | PROVED |
+| B4 | the design table's "+0.5% increased crit chance" back to "+0.5% crit chance" | "1 failed, 3 passed": the table check | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its three compiles, under a lock of its own; no asset step, since no data table changes.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.AttributeTooltip.` alone | 3 performed, 3 succeeded |
+| The whole suite | the newest measured total at the turn plus 3, every one succeeding; skipped halves and test saves as that base's, the saves predicted |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Two C++ guard proofs, with `test_prefix="Cataclysm.AttributeTooltip."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| R1 | in `AttributeTooltipFor`, `: To * Share;` to `: To;`, so the "from" figure is the "to" | 3 performed, 2 succeeded, 1 failed: `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | 3 of 3 |
+| R2 | `if (Underlying <= 0.0f)` to `if (Underlying < -1.0f)`, so a stat with nothing to increase gets figures | 3 performed, 2 succeeded, 1 failed: the same test (the Ravager's energy shield reads "0 to 0") | 3 of 3 |
+
+---
+
 ## 2026-11-21 — The skill-assignment tooltip states what a press costs, in the skill bar's words, read through a template stamped from the skill's row (#2804)
 
 **Affects:** `UCataclysmSkillAssignmentWidget::ToolTipFor`, a three-argument overload, and `CostLineFor`, new

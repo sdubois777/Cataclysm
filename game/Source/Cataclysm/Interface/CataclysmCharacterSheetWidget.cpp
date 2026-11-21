@@ -247,6 +247,11 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 							  TEXT("%s %d"), *Names[Index], Spent)),
 						  /*bChosen*/ Spent > 0,
 						  /*bAvailable*/ Unspent > 0);
+
+		// AND WHAT THE ATTRIBUTE DOES, ON HOVER: per point, and what these points give now. Issue #2815. Written
+		// whenever the sheet is, so a spend moves the figures with it.
+		Button->SetToolTipText(FText::FromString(UCataclysmCharacterSheetLayout::AttributeTooltipFor(
+			Names[Index], ShownAbilitySystem(), Spent)));
 	}
 }
 

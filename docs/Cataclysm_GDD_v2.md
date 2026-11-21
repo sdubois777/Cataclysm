@@ -1056,14 +1056,23 @@ Players gain 1 attribute point per level. Attributes are spread across eight cat
 
 | Attribute | Stats | Per Point |
 | :-: | :-: | :-: |
-| Agility | Move Speed / Evasion | +2% move speed / +0.5% evasion |
-| Ferocity | Crit Chance / Crit Multiplier | +0.5% crit chance / +5% crit multiplier |
-| Constitution | Armor / Block Chance | +2% armor / +1% block chance |
-| Vitality | Max HP / HP Regen | +2% HP / +1% increased HP regeneration |
-| Mind | Max Mana / Mana Regen | +2% mana / +1% increased mana regeneration |
-| Spirit | Energy Shield / Shield Regen | +2% energy shield / +1% increased shield regeneration |
-| Efficacy | CDR / AOE / DoT Frequency | +1% cooldown increase / +2% AOE / +1% increased DoT frequency |
-| Luck | Magic Find / Loot Quantity | +0.01% magic find / +1% loot quantity |
+| Agility | Move Speed / Evasion | +2% increased move speed / +0.5% increased evasion |
+| Ferocity | Crit Chance / Crit Multiplier | +0.5% increased crit chance / +5% increased crit multiplier |
+| Constitution | Armor / Block Chance | +2% increased armor / +1% increased block chance |
+| Vitality | Max HP / HP Regen | +2% increased HP / +1% increased HP regeneration |
+| Mind | Max Mana / Mana Regen | +2% increased mana / +1% increased mana regeneration |
+| Spirit | Energy Shield / Shield Regen | +2% increased energy shield / +1% increased shield regeneration |
+| Efficacy | CDR / AOE / DoT Frequency | +1% increased cooldown reduction / +2% increased AOE / +1% increased DoT frequency |
+| Luck | Magic Find / Loot Quantity | +0.01% increased magic find / +1% increased loot quantity |
+
+**Every figure in this table is an increase, and an increase does nothing to a stat the character has none of.** A point
+multiplies what the class, the weapon and items already give, added to the items' own increases; it never supplies a
+stat by itself. No class has a base of evasion, block chance, cooldown reduction or magic find, only the Ritualist has
+energy shield, and the Ritualist has no armour, so those parts of Agility, Constitution, Efficacy, Luck and Spirit do
+nothing until an item adds a flat amount of the stat. Holding a weapon gives a critical strike chance of 5%, which
+Ferocity raises. The project owner ruled on 2026-11-21, choosing "Keep it, just explain it" over flat amounts where a
+stat has no base and over a small base of every stat for every class: the attributes stay as they are, and hovering an attribute on the character sheet says plainly which parts do nothing until an item adds the stat
+(issue #2815). Whether Luck's "+0.01% magic find" was meant as a flat amount is issue #2816.
 
   
 
