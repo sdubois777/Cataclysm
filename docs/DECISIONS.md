@@ -215,8 +215,11 @@ Proofs:
 | Proof | Break | Predicted to fail | Where it can be shown |
 | :-- | :-- | :-- | :-- |
 | CG1 | `GetVelocity` returns the engine's answer during a charge | all nine `ChargeGait` tests, on their art-free assertions | any checkout |
-| CG2 | `JogPlayRateAtItsWalkingSpeed` loses its charge branch | the Imp's, Hellhound's, Succubus's and Gatekeeper's clip halves | **not run** |
-| CG3 | the Warden's wind-up plays Stampede again and the run plays nothing | the Warden's clip half | **not run** |
+
+**CG2 AND CG3 ARE NOT REGISTERED**, by the rule of 2026-11-21 (one C++ proof per behaviour only a C++ test guards, and
+no more): each needs the Paragon art, which only the main checkout has, and no proof runs there, so neither could ever
+run. They broke `JogPlayRateAtItsWalkingSpeed`'s charge branch (the Imp's, Hellhound's, Succubus's and Gatekeeper's clip
+halves) and the Warden's Stampede clip (its clip half).
 
 **CG2 AND CG3 ARE NOT RUN: the clip halves need the Paragon art, which only the main checkout has**, and the
 coordinating session ruled on 2026-11-21 that no proof runs there: it is the owner's working copy, and a proof breaks
@@ -352,9 +355,12 @@ Proofs, each predicted to fail exactly the named tests with the break in and pas
 | Proof | Break | Predicted to fail |
 | :-- | :-- | :-- |
 | PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | `AStalkerWears...` and `AWornResidueDoubleWears...` |
-| PC2 | `WearTheBuild` does not draw its hands | `AStalkerHoldsTheWeaponItsEntryWears` |
-| PC3 | `WearThePlayersBuild` does not draw its hands | `ADoubleHoldsTheWeaponsThePlayersBuildWears` |
+| PC2 | `WearTheBuild` AND `WearThePlayersBuild` do not draw their hands, in one break | `AStalkerHoldsTheWeaponItsEntryWears` and `ADoubleHoldsTheWeaponsThePlayersBuildWears` |
 | PT1 | `ResolveBody` does not call `WearTheCopiesTint` | `AStalkerWears...` and `AWornResidueDoubleWears...`, on their tint assertions |
+
+**PC2 AND PC3 WERE TWO PROOFS UNTIL 2026-11-21 AND ARE ONE**, by the rule of that day: one C++ proof per behaviour. Both
+are the behaviour "a copy draws the weapons it wears in its hands", in the Stalker and in the Worn Residue double, so one
+break of both call sites predicts both tests to fail, at the cost of one proof's two builds rather than two proofs' four.
 
 ---
 
