@@ -28,9 +28,11 @@ Issue
   Ultimate costs 50 Fervour, and nothing the player reads said so. The instrumentation stays, because a refused press
   that logs nothing is a fault on its own and the next press confirms H1; Subjugate now costs 30, by the owner's ruling,
   and a skill's pop-up says what a press costs. Both are in the section on them below.
-- **NOT COMPILED AND NOT RUN IN UNREAL YET.** Written on development `156f2b9e8` without a compile, as ruled, and
-  rebased at its turn onto `c20ce05e3`, branch B of #2787's merge, as `fix/subjugate-refused-2801-2`. The workbook
-  column and the regenerated table were written then; the compiles and the window follow.
+- **THE FIRST WINDOW, subjugate-w1, FAILED 13 OF 5074 UNREAL TESTS, every one a test this slice should have updated
+  and did not; no guard proof ran.** The corrections are written and NOT YET COMPILED; the second window follows. The
+  record is at the end of this entry. Written on development `156f2b9e8` without a compile, as ruled, and rebased at
+  its turn onto `c20ce05e3`, branch B of #2787's merge, as `fix/subjugate-refused-2801-2`; the three compiles of
+  `24e5bfc85` all succeeded.
 
 ### The owner's words, and what the log showed
 
@@ -205,6 +207,43 @@ Two more, with `test_prefix="Cataclysm.SkillCost."`:
 | :-- | :-- | :-- | :-- |
 | Q2 | in `FervourCostFor`, `if (FervourCostOverride >= 0.0f)` to `if (FervourCostOverride >= 1000000.0f)`, so the skill's own figure is never read | 3 performed, 0 succeeded, 3 failed: the own-cost test (30 against 50), the two-thralls test (refused at 40) and the pop-up test (its line opening "Costs 50 Fervour") | 3 of 3 |
 | Q3 | in `CostLineFor`, `if (Slot.FervourCost > 0.0f)` to `if (Slot.FervourCost > 1000000.0f)`, so no Fervour is named | 3 performed, 2 succeeded, 1 failed: the pop-up test | 3 of 3 |
+
+### The record
+
+**The three compiles of `24e5bfc85`, 12:50 to 12:58, lock subjugate-cost-compile: ALL SUCCEEDED**, 0 compiler warning or
+error lines in each. The branch with `Makefile.bin` moved aside: 50 actions, 47 files, every changed .cpp in its unity
+file. Each changed .cpp alone (`git read-tree c20ce05e3`): the build tool's Adaptive Build line lists all eight as
+excluded from the unity files, each compiled alone. The unity files again: the eight unity files holding them.
+
+**Window subjugate-w1, 12:58 to 13:21 at `24e5bfc85`, the tested head `ea9374a77` after the asset step: FAILED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, target already up to date |
+| Asset step | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` changed and nothing else; committed alone as `ea9374a77` and pushed |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded, registered 1 |
+| `Cataclysm.SkillCost.` alone | 3 performed, 2 succeeded, 1 failed: `ThirtyIsPaidWithTwoThrallsHeld`; registered 3 of 3 |
+| Whole suite | 5074 performed, 5061 succeeded, 13 failed, registered 5074 of 5074; 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind; declared 5074, gap 0 |
+| Python | 7837 passed, 9 skipped; the JUnit file: 7846 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+| Proofs | none run, as the window does when a group or the suite does not match |
+
+The 13, by cause:
+
+| Cause | Tests | Correction |
+| :-- | :-- | :-- |
+| A test that builds a Weapon Skills table from CSV text has no `FervourCost` column, and `CreateTableFromCSVString` reports a row struct column missing from the text ("Expected column 'FervourCost' not found in input") | 11: the eight of `Cataclysm.Creation.`, `Cataclysm.Crit.ASkillRowsOwnCriticalStrikeChanceReachesTheSkill`, `Cataclysm.WeaponSlots.ASkillRowsCriticalStrikeChanceReachesTheGrantedAbility`, `Cataclysm.SetBonus.Tyrant10.ASelfBuffUltimateIsGrantedWithinEightMetresOfTheMinionAndNotWhileOneItGrantedRuns` | each of the four tables' headers gains `FervourCost` and each of its 17 rows `-1`, the row saying nothing (`CataclysmCharacterCreationTests.cpp`, `CataclysmCriticalStrikeTests.cpp`, `CataclysmWeaponSlotsTests.cpp`, `CataclysmSetBonusTyrantTenTests.cpp`) |
+| A test counted the pop-up's lines before the cost line existed: "the pop-up shows the name, then the description", 2, read 3 | 1: `Cataclysm.SkillBar.ABoxCarriesTheDescriptionOfTheSkillTheWeaponGranted` | three lines: the name, a line opening "Costs ", and the description (`CataclysmSkillBarTests.cpp`) |
+| This slice's own set-up wrote 100 into the Fervour pool's stored base with `SetNumericAttributeBase`, and the pool showed the 40 the two thralls leave; the press was cast and took 30 from the hidden 100, and the set's clamp after the effect wrote the pool back to 40. The game clamps the base only after a gameplay effect, which is how Fervour is gained in play; the three game sites that write the base directly write a starting or a saved figure | 1: `Cataclysm.SkillCost.ThirtyIsPaidWithTwoThrallsHeld`, "and takes 30, leaving 10", read 40 | after reading the 40, the set-up writes the stored base to it (`CataclysmSkillCostTests.cpp`) |
+
+**What I missed and should not have**: before the window I did not search the tests for CSV text naming the Weapon
+Skills columns, nor for tests counting the pop-up's lines, and both were findable by a grep for `Cooldown,ManaCost`
+and `PopupLinesFor`.
+
+**Registered for the second window**: the same counts, because no test is added or removed: `Cataclysm.PressRefusal.`
+1 of 1, `Cataclysm.SkillCost.` 3 of 3, the whole suite 5074 of 5074 with 48 skipped halves and 859 saves (predicted),
+no asset step (`ea9374a77` holds the rebuilt asset), Python and ruff, then Q1-Q3 as registered above, Q2's two-thralls
+prediction unchanged (the pool now holds 40 in base and current, and 50 refuses at 40).
 
 ---
 

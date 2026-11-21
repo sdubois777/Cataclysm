@@ -871,10 +871,11 @@ CATACLYSM_TEST(FCataclysmSkillRowCarriesItsChanceTest,
 		// -1 here, meaning the row says nothing, because this test is about the
 		// critical strike chance beside them. A column missing from this string
 		// is reported by CreateTableFromCSVString rather than ignored, which is
-		// what makes this notice a row struct that grew.
-		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost\r\n"
-		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,,,20,-1,-1,-1\r\n"
-		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1,-1,-1,-1\r\n");
+		// what makes this notice a row struct that grew. FERVOUR COST since
+		// issue #2801, -1 for the same reason.
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost,FervourCost\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,,,20,-1,-1,-1,-1\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,,,-1,-1,-1,-1,-1\r\n");
 
 	const TArray<FString> Problems = Table->CreateTableFromCSVString(Csv);
 	if (!TestEqual(TEXT("the CSV imports with no problems"), Problems.Num(), 0))

@@ -1210,7 +1210,13 @@ bool FCataclysmSkillBarGrantedDescriptionTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("CONTROL: the box shows the granted skill's name"), Box->Name, FString(TEXT("Riven Arc")));
 	TestEqual(TEXT("the box carries the granted skill's description"), Box->Description,
 			  FString(TEXT("Swing in a wide arc that splits the ground.")));
-	TestEqual(TEXT("and the pop-up shows the name, then the description"), Lines.Num(), 2);
+	// THE COST LINE BETWEEN THEM since issue #2801, which is what a press of the skill costs.
+	if (TestEqual(TEXT("and the pop-up shows the name, the cost, then the description"), Lines.Num(), 3))
+	{
+		TestTrue(TEXT("its second line is the cost"), Lines[1].StartsWith(TEXT("Costs ")));
+		TestEqual(TEXT("and its third the description"), Lines[2],
+				  FString(TEXT("Swing in a wide arc that splits the ground.")));
+	}
 	return true;
 }
 

@@ -1240,9 +1240,9 @@ bool FCataclysmSkillRowCritChanceReachesTheAbilityTest::RunTest(const FString&)
 		// NONE. That is the pair this test needs: one skill carrying its own
 		// damage, cooldown and mana cost through to the granted instance, and
 		// one leaving all three at -1 so its slot supplies them. Issue #836.
-		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost\r\n"
-		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,20,321,7.5,42\r\n"
-		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1\r\n"));
+		"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost,FervourCost\r\n"
+		"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,20,321,7.5,42,-1\r\n"
+		"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"));
 	if (!TestEqual(TEXT("the table built for this test imports"), Problems.Num(), 0))
 	{
 		for (const FString& Problem : Problems)
