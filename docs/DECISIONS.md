@@ -797,12 +797,12 @@ rewritten, and two assertion messages reworded, in twenty test files, listed und
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET** when the workbook turn began, 2026-11-21. That turn wrote the workbook's rows
-  (Summon Imp's text and parameters, the four enchantments' texts and effect rows, The Swarm's effect row), the
-  Ritualist tree's three node sentences in `docs/Ritualist_Class_Tree_Final.json`, regenerated `game/Data`, added the
-  four renamed enchantments to `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, and moved the Python
-  tests that pinned the old texts, each named under "The workbook turn" below. The DataTable asset rebuild, the
-  compiles and the window follow it.
+- **COMPILED AND PASSED IN UNREAL, window nocaps-b-w2 at 2fcf9733a, with every proof proved**; see "The windows"
+  at the end. The workbook turn of 2026-11-21 wrote the workbook's rows (Summon Imp's text and parameters, the four
+  enchantments' texts and effect rows, The Swarm's effect row), the Ritualist tree's three node sentences in
+  `docs/Ritualist_Class_Tree_Final.json`, regenerated `game/Data`, added the four renamed enchantments to
+  `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, moved the Python tests that pinned the old texts,
+  each named under "The workbook turn" below, and rebuilt the six DataTable assets those tables feed.
 - **THE WORKBOOK'S OTHER HOLDER.** The parked branch `data/two-handed-weapons-drawn-at-1-75` (#1130, commit
   912fcea9f, four cells drawing the two-handed bases at scale 1.75) holds unmerged workbook changes, parked by the
   owner's ruling of 2026-11-17. This branch takes the workbook; #1130's four cells are applied again on top of
@@ -871,8 +871,8 @@ owner's ruling of 2026-11-20 drops the cap and the explosion it caused ("Drop it
 effect, an explosion at every minion's death, is unchanged, so the only change is removing the clause that names the
 dropped cap." Written in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv`, and in the three
 comments that quote it (`CataclysmMinion.cpp`, `CataclysmCommandTests.cpp`, `CataclysmPassiveTreeTests.cpp`). The
-`DT_PassiveNodes` asset still holds the old sentence until the DataTable asset rebuild of this branch's workbook turn,
-and until then `tools/tests/test_datatable_assets_are_current.py` fails, naming `PassiveNodes.csv`. The row's stat and
+`DT_PassiveNodes` asset held the old sentence until the workbook turn's asset rebuild of 2026-11-21, and
+`tools/tests/test_datatable_assets_are_current.py` failed, naming `PassiveNodes.csv`, until then. The row's stat and
 value are unchanged.
 
 **THE WORDING, RULED 2026-11-21 by the coordinating session: "reduced" and "increased", not "less" and "more".**
@@ -993,6 +993,67 @@ percentage a share of what is reserved. 30% less of an imp under Crowned is (10 
 - **Python:** `test_generate_datatables.py` holds `TestTheNoExpireFlag` (formerly with the trap cap) and
   `TestTheReservePercentage`, new; `test_minion_skill_shapes.py` holds three tests of the Summon cap refusal, one of
   them on the shipped rows.
+
+### The windows
+
+**The DataTable asset rebuild, 2026-11-21, under the editor lock nocaps-b-assets**, in this worktree: "rebuilt 6
+DataTable assets and left 27 already current, 3924 rows in total across /Game/Data" (`efd52d397`). The six are the
+tables the workbook turn changed, and nothing else was re-saved. No data row struct changed, so the build could follow
+it.
+
+**The three compiles, 11:00 to 11:12 at efd52d397, lock nocaps-b-compile: all succeeded**, each with no compiler warning
+or error line: the branch, 53 actions and 48 files; each changed `.cpp` alone, 49 actions and 46 files; the unity
+build, 18 actions and 15 files.
+
+**nocaps-b-w1, 11:13 to 11:38 at efd52d397: FAILED two tests, both set-ups missed at registration.** 14 of 15 groups
+alone passed; the whole suite performed 5070, registered 5070, and failed 2. Python passed 7828, 9 skipped, and ruff
+passed. The proofs did not run.
+
+- `Cataclysm.Attributes.CharacterSheetIsComplete`: "Expected 'Twenty-eight combat and utility stats, plus 46 off the
+  sheet' to be 74, but it was 73", and the sheet's own count 45 against 46. This branch removed the attribute
+  `MinionCapBonus`, one of the combat stats off the sheet, and did not move `OffSheetCombatStats`.
+- `Cataclysm.SetBonus.Warlord6.NeitherATickNorAnEvadedBlowNorABlowWithinAQuarterSecondSummons`: "Expected 'and one
+  0.3 s after the summon does' to be 10.000000, but it was 9.750000". With no cap that blow summons a second Warhound;
+  the test still read the first's time restarted. Its sibling `ASecondSummonMakesASecondWarhound...` had been rewritten
+  and this one missed.
+- **The fix, 2fcf9733a**, test bodies only, no `#include` changed: `OffSheetCombatStats` 46 to 45, the sheet staying at
+  46; and the Warlord's Will test reads one Warhound after the blow inside the quarter second and two after the next,
+  the first's life span against the world's clock rather than the 0.3 asked for, since w1's 9.75 shows 0.25 seconds
+  had passed. **WHAT THE SECOND WINDOW READ FOR IT IS NOT IN ITS LOG**: an assertion that passes prints nothing, so w2
+  says only that the life span was within 0.06 of ten seconds less the world's elapsed time. The coordinating session
+  gave the second window without the three separate compiles, as for branch A's second window.
+
+**nocaps-b-w2, 11:44 to 12:21 at 2fcf9733a on 156f2b9e8: PASSED, and every proof PROVED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, 5 actions, 2 files compiled: the two unity files holding the two changed tests |
+| Groups alone, 16 of 16 | KindReserves 12/12, NoCaps 6/6, Command 25/25, FervourReserve 4/4, MinionDeath 18/18, RisenImps 8/8, NecrosisRise 4/4, Resummon 6/6, Tyrant6 5/5, Warlord6 10/10, Reaper10 8/8, Reaper6 9/9, Traps 60/60, SkillLevelSources 19/19, SkillGadgets 22/22, Attributes 21/21 |
+| Whole suite | 5070 performed, 5070 succeeded, registered 5070 (window follow-w2's measured 5072, less 27 removed, plus 25 added); 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind; declared 5070, gap 0 |
+| Python | 7828 passed, 9 skipped; the JUnit file: 7837 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+Each Unreal proof ran the groups its prediction names, each group alone, because `prove_cpp_guard` takes one prefix
+and N2's eight span five groups; `.claude/windows/prove_nc.py` in the worktree combines the runs. Every one failed
+exactly the tests registered for it with the break in, and passed every test of those groups restored:
+
+| Proof | Break | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| N1 | a cap of 3 imps put back on Summon Imp's summon | NoCaps.AFourthImpIsSummonedBesideThreeAndThePoolRefusesTheOneThatDoesNotFit | 6 of 6 |
+| N2 | the reserve percentage not applied | NoCaps.APercentLess..., NoCaps.APercentMore..., NoCaps.EveryPercentReachingAKind..., NoCaps.NoReduction..., Passives.TheSwarmLowersARealRitualistsImpReserveByTwelvePercent, Enchantments.TheWornTrapLayerThreeRows..., Traps.TheTrapReserveRowLets..., StatExemption.EveryStatWithNoAttributeIsActuallyRead | 630 of 630, across NoCaps, Passives, Enchantments, Traps and StatExemption |
+| N3 | the "increased" direction floored at nought | NoCaps.APercentMoreRaisesWhatAKindReserves | 6 of 6 |
+| N4 | the floor of one point removed | NoCaps.NoReductionTakesAReserveBelowOnePoint, KindReserves.CrownedTakesFiveOffEveryKindNeverBelowOne | 18 of 18 |
+| N5 | a trap cap of 5 put back in `PlaceSkillTrap` | KindReserves.ASkillTrapReservesFiveASixthStands..., Traps.ASixthTrapStands..., Traps.SevenTrapsStand..., Traps.TheNoExpireFlag..., Traps.TheTrapReserveRowLets... | 72 of 72 |
+
+The two Python proofs, with `tools/prove_guard.py`, at 2fcf9733a after the Unreal ones (they first ran at efd52d397
+during the compiles, with the same result):
+
+| Proof | Break | Result |
+| :-- | :-- | :-- |
+| P1 | the generator's refusal of `MaxActive` on a Summon row with no `Interval` disabled | "PROVED: 1 failed, 25 passed \| restored: 26 passed": `test_minion_skill_shapes.py::test_a_summon_stating_a_count_cap_is_refused` |
+| P2 | the reserve percentage row's kind check disabled | "PROVED: 2 failed, 2 passed \| restored: 4 passed": `TestTheReservePercentage::test_every_shape_the_game_would_read_as_nothing_is_refused` and `::test_the_whole_sheets_validation_runs_the_check` |
+
+The lock was released when the window ended.
 
 ---
 
