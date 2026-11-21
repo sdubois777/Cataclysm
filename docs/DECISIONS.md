@@ -419,6 +419,10 @@ After rebasing onto `3b37878bf`, at `42c9dbf13`, the commit that registers again
 skipped in 340.34s (0:05:40)"; the JUnit file: tests 7821, failures 0, errors 0, skipped 9. ruff: "All checks
 passed!". The 13 more tests than at `8905d301b` came with development's #2787 branch A and #2791.
 
+After rebasing onto `63d4cbd4c`, at `17172cc41`, the commit that registers tree-2790-w2's figures: "7817 passed, 9
+skipped in 345.85s (0:05:45)"; the JUnit file: tests 7826, failures 0, errors 0, skipped 9. ruff: "All checks
+passed!". The 5 more than at `42c9dbf13` came with #2790's `tools/tests/test_demonic_guide_keeps_pace.py`.
+
 **ONE PYTHON CHECK HAD TO MOVE, AND MOVED.** The first run, at `e0b08060c`, read "1 failed, 7798 passed, 9 skipped":
 `test_the_check_reads_the_game_and_finds_the_helper` in
 `tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py` asserts that at least eight call sites call
