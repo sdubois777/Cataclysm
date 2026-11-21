@@ -1544,9 +1544,9 @@ private:
 	 *
 	 * THE NEAREST CREATURE THE CHARACTER COMMANDS AND CAN SEE, within the skill's range, FOR WHICH BOTH FIT: the
 	 * character in the creature's place and the creature in the character's. Each place is the other body's spot
-	 * at the mover's own height, then fitted by `UWorld::FindTeleportSpot`, which moves it out of anything that
-	 * blocks the mover's collision or refuses it. A creature for which either does not fit is passed over for the
-	 * next nearest.
+	 * with the mover's bottom where the other's bottom was, so each stands on the ground the other stood on; then
+	 * fitted by `UWorld::FindTeleportSpot`, which moves it out of anything that blocks the mover's collision or
+	 * refuses it. A creature for which either does not fit is passed over for the next nearest.
 	 *
 	 * EACH BODY LEAVES THE OTHER OUT OF ITS FIT, through `IgnoreActorWhenMoving`, which the fit reads: at the
 	 * moment of asking, each place is occupied by the other body, which is about to leave it. What either body

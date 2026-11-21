@@ -86,7 +86,6 @@
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmHarvestedSoul.h"
 #include "Engine/DataTable.h"
-#include "Engine/OverlapResult.h"
 #include "GameplayTagsManager.h"
 #include "Engine/TargetPoint.h"
 #include "Engine/World.h"
@@ -64363,8 +64362,14 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
-	 * A floor cell `OutHere` and one of the four ways `OutWay` such that the two cells along that way are floor. Two
-	 * cells are 8 metres, inside Vesselstep's 14.
+	 * A floor cell `OutHere` and one of the four ways `OutWay` such that the two cells along that way are floor, all
+	 * three more than three cells from the entrance and more than one cell from the exit. Two cells are 8 metres,
+	 * inside Vesselstep's 14.
+	 *
+	 * CLEAR OF THE EXIT, where the stairs stand: three 20 cm tiers, the widest a whole cell across
+	 * (`ACataclysmDungeonStairs`). The diagnostic press of 2026-11-20 found that the first cell the search returned,
+	 * kept away from the entrance only, was the exit: the player stood at floor level inside the steps, and the imp
+	 * traded there was rightly put clear of them, 120 cm up. Issue #2792.
 	 *
 	 * NO SEARCH FOR A ROCK CELL BETWEEN TWO FLOOR CELLS. Window vesselstep-w1 (2026-11-20) found none on floor 2: the
 	 * generator insets each room one cell inside its leaf "so that two rooms never share a wall", so two rooms stand
@@ -64372,14 +64377,32 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	bool ThreeCellsInARow(const FCataclysmFloorPlan& Plan, FIntPoint& OutHere, FIntPoint& OutWay)
 	{
+		const auto ClearOfTheStairs = [&Plan](const FIntPoint& Cell)
+		{
+			return FMath::Abs(Cell.X - Plan.Exit.X) > 1 || FMath::Abs(Cell.Y - Plan.Exit.Y) > 1;
+		};
+		const auto AwayFromTheEntrance = [&Plan](const FIntPoint& Cell)
+		{
+			return FMath::Abs(Cell.X - Plan.Entrance.X) > 3 || FMath::Abs(Cell.Y - Plan.Entrance.Y) > 3;
+		};
 		for (const FIntPoint Way : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
 		{
-			const FIntPoint Here = AFloorCellWith(Plan, Plan.Entrance, {Way, Way * 2});
-			if (Here.X >= 0)
+			for (int32 Y = 0; Y < Plan.Height; ++Y)
 			{
-				OutHere = Here;
-				OutWay = Way;
-				return true;
+				for (int32 X = 0; X < Plan.Width; ++X)
+				{
+					bool bFits = true;
+					for (const FIntPoint Cell : {FIntPoint(X, Y), FIntPoint(X, Y) + Way, FIntPoint(X, Y) + Way * 2})
+					{
+						bFits = bFits && Plan.IsFloor(Cell) && ClearOfTheStairs(Cell) && AwayFromTheEntrance(Cell);
+					}
+					if (bFits)
+					{
+						OutHere = FIntPoint(X, Y);
+						OutWay = Way;
+						return true;
+					}
+				}
 			}
 		}
 		return false;
@@ -64457,93 +64480,6 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Scene;
 	}
 
-	/**
-	 * DIAGNOSTIC FOR ONE PRESS, issue #2792, ruled 2026-11-20; AddInfo only, nothing asserted. Before the cast: each
-	 * capsule's half-height and radius, each one's movement mode, and the imp's own fit at the player's spot asked as
-	 * `ChooseTradePartner` asks it (each ignoring the other), with every blocking overlap the fit's query finds there.
-	 */
-	void SayTheImpsFitAtThePlayersSpot(FAutomationTestBase& Test, const FVesselstepScene& Scene,
-									   const FPossessedPlayer& Player)
-	{
-		ACataclysmPlayerCharacter* Me = Player.Character;
-		ACataclysmMinion* Imp = Scene.Imp;
-		UCapsuleComponent* MyBody = Me->GetCapsuleComponent();
-		UCapsuleComponent* ImpBody = Imp->GetCapsuleComponent();
-		UWorld* World = Imp->GetWorld();
-		const FVector Spot(Me->GetActorLocation().X, Me->GetActorLocation().Y, Imp->GetActorLocation().Z);
-		const float Floor = FloorHeightUnder(Scene.Mode, Spot);
-		Test.AddInfo(FString::Printf(
-			TEXT("VESSELSTEP DIAGNOSTIC: half-heights: player %.1f cm, imp %.1f cm; radii: player %.1f cm, imp %.1f cm; "
-				 "movement before the cast: player %s, imp %s"),
-			MyBody->GetScaledCapsuleHalfHeight(), ImpBody->GetScaledCapsuleHalfHeight(), MyBody->GetScaledCapsuleRadius(),
-			ImpBody->GetScaledCapsuleRadius(), *Me->GetCharacterMovement()->GetMovementName(),
-			*Imp->GetCharacterMovement()->GetMovementName()));
-
-		const bool bImpIgnoredMe = ImpBody->GetMoveIgnoreActors().Contains(Me);
-		const bool bIIgnoredImp = MyBody->GetMoveIgnoreActors().Contains(Imp);
-		ImpBody->IgnoreActorWhenMoving(Me, true);
-		MyBody->IgnoreActorWhenMoving(Imp, true);
-		FVector Fitted = Spot;
-		const bool bFits = World->FindTeleportSpot(Imp, Fitted, Imp->GetActorRotation());
-		FCollisionQueryParams Params(SCENE_QUERY_STAT(VesselstepDiagnostic), /*bInTraceComplex=*/false, Imp);
-		FCollisionResponseParams Responses;
-		ImpBody->InitSweepCollisionParams(Params, Responses);
-		TArray<FOverlapResult> Overlaps;
-		World->OverlapMultiByChannel(Overlaps, Spot, ImpBody->GetComponentQuat(), ImpBody->GetCollisionObjectType(),
-									 ImpBody->GetCollisionShape(), Params, Responses);
-		if (!bImpIgnoredMe)
-		{
-			ImpBody->IgnoreActorWhenMoving(Me, false);
-		}
-		if (!bIIgnoredImp)
-		{
-			MyBody->IgnoreActorWhenMoving(Imp, false);
-		}
-
-		FString Found;
-		for (const FOverlapResult& Overlap : Overlaps)
-		{
-			const UPrimitiveComponent* Component = Overlap.GetComponent();
-			if (!Component)
-			{
-				continue;
-			}
-			Found += FString::Printf(TEXT("[%s.%s, object type %d, response to the imp's channel %d, top %.1f cm] "),
-									 *GetNameSafe(Component->GetOwner()), *Component->GetName(),
-									 static_cast<int32>(Component->GetCollisionObjectType()),
-									 static_cast<int32>(Component->GetCollisionResponseToChannel(
-										 ImpBody->GetCollisionObjectType())),
-									 static_cast<float>(Component->Bounds.GetBox().Max.Z) - Floor);
-		}
-		const float HalfHeight = ImpBody->GetScaledCapsuleHalfHeight();
-		Test.AddInfo(FString::Printf(
-			TEXT("VESSELSTEP DIAGNOSTIC: the imp's fit at the player's spot, each ignoring the other: %s; its bottom "
-				 "asked at %.1f cm above the floor, returned at %.1f cm; %d overlaps there: %s"),
-			bFits ? TEXT("fits") : TEXT("does not fit"), static_cast<float>(Spot.Z) - HalfHeight - Floor,
-			static_cast<float>(Fitted.Z) - HalfHeight - Floor, Overlaps.Num(), *Found));
-	}
-
-	/**
-	 * DIAGNOSTIC FOR ONE PRESS, as above. After the cast: each one's movement mode and gap, then the imp's own
-	 * movement ticked 30 times at 1/60 s (half a second; NOTHING ELSE IN THE WORLD IS TICKED) and its gap again.
-	 */
-	void SayWhereTheImpSettles(FAutomationTestBase& Test, const FVesselstepScene& Scene, const FPossessedPlayer& Player)
-	{
-		UCharacterMovementComponent* ImpMoves = Scene.Imp->GetCharacterMovement();
-		Test.AddInfo(FString::Printf(
-			TEXT("VESSELSTEP DIAGNOSTIC: after the cast: player %s, %.1f cm above the floor; imp %s, %.1f cm above it"),
-			*Player.Character->GetCharacterMovement()->GetMovementName(), GapUnder(Scene.Mode, Player.Character),
-			*ImpMoves->GetMovementName(), GapUnder(Scene.Mode, Scene.Imp)));
-		for (int32 Frame = 0; Frame < 30; ++Frame)
-		{
-			ImpMoves->TickComponent(1.0f / 60.0f, LEVELTICK_All, nullptr);
-		}
-		Test.AddInfo(FString::Printf(
-			TEXT("VESSELSTEP DIAGNOSTIC: after the imp's own movement ticked 30 times at 1/60 s (nothing else ticked): "
-				 "imp %s, %.1f cm above the floor"),
-			*ImpMoves->GetMovementName(), GapUnder(Scene.Mode, Scene.Imp)));
-	}
-
 	/** Where each ended against where the other began, and each one's gap to the floor, said and tested. */
 	void TestTheyTradedPlaces(FAutomationTestBase& Test, const FVesselstepScene& Scene, const FPossessedPlayer& Player,
 							  const FVector& PlayerWas, const FVector& ImpWas)
@@ -64591,13 +64527,11 @@ bool FCataclysmVesselstepTradesOnAFloorTest::RunTest(const FString& Parameters)
 	}
 	const FVector PlayerWas = Player.Character->GetActorLocation();
 	const FVector ImpWas = Scene.Imp->GetActorLocation();
-	SayTheImpsFitAtThePlayersSpot(*this, Scene, Player);
 	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff))
 	{
 		return false;
 	}
 	TestTheyTradedPlaces(*this, Scene, Player, PlayerWas, ImpWas);
-	SayWhereTheImpSettles(*this, Scene, Player);
 	return true;
 }
 
@@ -64633,13 +64567,11 @@ bool FCataclysmVesselstepPastACreatureTest::RunTest(const FString& Parameters)
 	const FVector BetweenWas = Between->GetActorLocation();
 	const FVector PlayerWas = Player.Character->GetActorLocation();
 	const FVector ImpWas = Scene.Imp->GetActorLocation();
-	SayTheImpsFitAtThePlayersSpot(*this, Scene, Player);
 	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Scene.Vesselstep, 1.0f).bWentOff))
 	{
 		return false;
 	}
 	TestTheyTradedPlaces(*this, Scene, Player, PlayerWas, ImpWas);
-	SayWhereTheImpSettles(*this, Scene, Player);
 	TestTrue(TEXT("and the creature between them was not moved"),
 			 FVector::Dist2D(Between->GetActorLocation(), BetweenWas) <= 1.0);
 	return true;
@@ -64739,6 +64671,102 @@ bool FCataclysmVesselstepNotThroughAWallTest::RunTest(const FString& Parameters)
 			 Scene.Vesselstep->SwappedWith == Seen);
 	TestTrue(TEXT("CONTROL: the imp behind the wall is where it was"),
 			 FVector::Dist2D(Scene.Imp->GetActorLocation(), ImpWas) <= 1.0);
+	return true;
+}
+
+// EACH STANDS ON THE GROUND THE OTHER STOOD ON: the player on top of the exit stairs, the imp on the open floor. Each
+// body's feet go where the other's were, ruled by the coordinating session 2026-11-20 (issue #2792): keeping each
+// body's own centre height asked the imp's bottom 60 cm inside the steps, and the fit lifted it 120 cm.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVesselstepOntoTheStairsTest,
+	"Cataclysm.Command.VesselstepPutsEachOnTheGroundTheOtherStoodOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVesselstepOntoTheStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlainFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	UCataclysmMovementSkill* Vesselstep = GrantVesselstep(Player);
+	if (!TestNotNull(TEXT("set-up: the player holds Vesselstep"), Vesselstep))
+	{
+		return false;
+	}
+
+	// THE STAIRS, ON THE EXIT CELL: three tiers, each `TierRiseCm` above the one outside it, the top one 200 cm wide.
+	const FCataclysmFloorPlan& Plan = Mode->CurrentFloor->GetPlan();
+	const FVector ExitAt = Mode->CurrentFloor->ExitWorld();
+	int32 StairsOnTheExit = 0;
+	for (TActorIterator<ACataclysmDungeonStairs> It(World); It; ++It)
+	{
+		StairsOnTheExit += FVector::Dist2D(It->GetActorLocation(), ExitAt) <= 1.0 ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("set-up: the stairs stand on the exit cell"), StairsOnTheExit, 1))
+	{
+		return false;
+	}
+	FIntPoint Way(0, 0);
+	for (const FIntPoint Each : {FIntPoint(1, 0), FIntPoint(-1, 0), FIntPoint(0, 1), FIntPoint(0, -1)})
+	{
+		if (Plan.IsFloor(Plan.Exit + Each) && Plan.IsFloor(Plan.Exit + Each * 2))
+		{
+			Way = Each;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: two floor cells in a line from the stairs"), Way != FIntPoint(0, 0)))
+	{
+		return false;
+	}
+
+	// THE PLAYER ON TOP OF THE STAIRS, the imp two cells away on the open floor, 8 metres, inside the 14.
+	const float StairsTop = ACataclysmDungeonStairs::TierCount * ACataclysmDungeonStairs::TierRiseCm;
+	Player.Character->SetActorLocation(FVector(
+		ExitAt.X, ExitAt.Y,
+		FloorHeightUnder(Mode, ExitAt) + StairsTop + Player.Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
+	ACataclysmMinion* Imp = AnImpThePlayerSummoned(Player, Mode, Mode->CurrentFloor->WorldOfCell(Plan.Exit + Way * 2));
+	if (!TestNotNull(TEXT("set-up: an imp the player summoned"), Imp))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: the player stands on top of the stairs"), GapUnder(Mode, Player.Character), StairsTop, 0.1f);
+	TestEqual(TEXT("set-up: the imp stands touching the floor"), GapUnder(Mode, Imp), 0.0f, 0.1f);
+	const FVector PlayerWas = Player.Character->GetActorLocation();
+	const FVector ImpWas = Imp->GetActorLocation();
+	if (!TestTrue(TEXT("Vesselstep went off"), RuleOfChaosUseAtManaShare(Player, Vesselstep, 1.0f).bWentOff))
+	{
+		return false;
+	}
+
+	const float PlayerOff = static_cast<float>(FVector::Dist2D(Player.Character->GetActorLocation(), ImpWas));
+	const float ImpOff = static_cast<float>(FVector::Dist2D(Imp->GetActorLocation(), PlayerWas));
+	const float PlayerGap = GapUnder(Mode, Player.Character);
+	const float ImpGap = GapUnder(Mode, Imp);
+	AddInfo(FString::Printf(
+		TEXT("VESSELSTEP ON THE STAIRS: the player ended %.1f cm from where the imp stood and %.1f cm above the floor; "
+			 "the imp ended %.1f cm from where the player stood and %.1f cm above the floor, on stairs %.1f cm high"),
+		PlayerOff, PlayerGap, ImpOff, ImpGap, StairsTop));
+	TestTrue(TEXT("it traded with the imp"), Vesselstep->SwappedWith == Imp);
+	TestTrue(FString::Printf(TEXT("the player is where the imp stood, within 1 cm: %.1f cm"), PlayerOff),
+			 PlayerOff <= 1.0f);
+	TestTrue(FString::Printf(TEXT("and the imp is where the player stood, within 1 cm: %.1f cm"), ImpOff),
+			 ImpOff <= 1.0f);
+	TestTrue(FString::Printf(TEXT("the imp stands on top of the stairs, 0 to 5 cm above them: %.1f cm above the floor"),
+							 ImpGap),
+			 ImpGap >= StairsTop - 0.5f && ImpGap <= StairsTop + 5.0f);
+	TestTrue(FString::Printf(TEXT("and the player stands on the open floor, 0 to 5 cm above it: %.1f cm"), PlayerGap),
+			 PlayerGap >= -0.5f && PlayerGap <= 5.0f);
 	return true;
 }
 

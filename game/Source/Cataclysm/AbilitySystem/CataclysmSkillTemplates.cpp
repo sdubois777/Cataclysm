@@ -3138,10 +3138,17 @@ bool UCataclysmMovementSkill::ChooseTradePartner(AActor* Self, AActor*& OutPartn
 			continue;
 		}
 
-		// EACH IN THE OTHER'S SPOT, AT ITS OWN HEIGHT. See the trade in `ActivateAbility`.
+		// EACH STANDS WHERE THE OTHER STOOD, MEASURED AT THE FEET: each body's bottom goes where the other's bottom
+		// was, so two bodies of different heights each stand on the ground the other stood on. Ruled by the
+		// coordinating session, 2026-11-20, after the diagnostic press of issue #2792: keeping each body's own centre
+		// height put an imp traded with a player standing on the exit stairs 60 cm inside the steps, and the fit's
+		// summed adjustment lifted it 120 cm, from where it dropped. Half a body is the vertical half-extent of its
+		// root's collision shape: a capsule's half-height, a sphere's radius.
 		const FVector There = Partner->GetActorLocation();
-		FVector SelfTo(There.X, There.Y, Here.Z);
-		FVector PartnerTo(Here.X, Here.Y, There.Z);
+		const double SelfHalf = SelfBody->GetCollisionShape().GetExtent().Z;
+		const double PartnerHalf = PartnerBody->GetCollisionShape().GetExtent().Z;
+		FVector SelfTo(There.X, There.Y, There.Z - PartnerHalf + SelfHalf);
+		FVector PartnerTo(Here.X, Here.Y, Here.Z - SelfHalf + PartnerHalf);
 
 		// EACH LEAVES THE OTHER OUT OF ITS FIT, and what either already ignored is left as it was.
 		const bool bSelfIgnoredIt = SelfBody->GetMoveIgnoreActors().Contains(Partner);
@@ -3636,8 +3643,8 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// THE CREATURE IS MOVED HERE AND THE CASTER IS MOVED BELOW, where every movement mode moves it, so the enemies
 	// at both ends and the ground at the point left are found before the caster arrives, as for a blink.
 	//
-	// AT EACH ONE'S OWN HEIGHT, the arrangement every other arrival in this file uses: taking the other body's
-	// height drops one of them through the floor when the two are of different sizes.
+	// EACH ONE'S FEET WHERE THE OTHER'S WERE, so each stands on the ground the other stood on whatever their
+	// heights: see `ChooseTradePartner`.
 	FVector PartnerWas = FVector::ZeroVector;
 	if (Params.MovementMode == ECataclysmMovementMode::Swap)
 	{
