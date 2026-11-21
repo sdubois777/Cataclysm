@@ -28,9 +28,9 @@ Issue
   Ultimate costs 50 Fervour, and nothing the player reads said so. The instrumentation stays, because a refused press
   that logs nothing is a fault on its own and the next press confirms H1; Subjugate now costs 30, by the owner's ruling,
   and a skill's pop-up says what a press costs. Both are in the section on them below.
-- **THE FIRST WINDOW, subjugate-w1, FAILED 13 OF 5074 UNREAL TESTS, every one a test this slice should have updated
-  and did not; no guard proof ran.** The corrections are written and NOT YET COMPILED; the second window follows. The
-  record is at the end of this entry. Written on development `156f2b9e8` without a compile, as ruled, and rebased at
+- **THE SECOND WINDOW, subjugate-w2, PASSED at `512fd30f9`, and every proof PROVED.** The first, subjugate-w1, failed
+  13 of 5074 Unreal tests, every one a test this slice should have updated and did not, and ran no proof. Both are
+  recorded at the end of this entry. Written on development `156f2b9e8` without a compile, as ruled, and rebased at
   its turn onto `c20ce05e3`, branch B of #2787's merge, as `fix/subjugate-refused-2801-2`; the three compiles of
   `24e5bfc85` all succeeded.
 
@@ -244,6 +244,34 @@ and `PopupLinesFor`.
 1 of 1, `Cataclysm.SkillCost.` 3 of 3, the whole suite 5074 of 5074 with 48 skipped halves and 859 saves (predicted),
 no asset step (`ea9374a77` holds the rebuilt asset), Python and ruff, then Q1-Q3 as registered above, Q2's two-thralls
 prediction unchanged (the pool now holds 40 in base and current, and 50 refuses at 40).
+
+**The three compiles of `512fd30f9` (`0078ff5a5`'s corrections and the coordinating session's citation of
+`PostGameplayEffectExecute`), 13:26 to 13:30, lock subjugate-cost-compile: ALL SUCCEEDED**, 0 compiler warning or error
+lines in each. Each changed .cpp alone: the Adaptive Build line lists all thirteen; the six test files changed since
+`24e5bfc85` compiled alone, and the build tool found the other seven's alone objects current, their source unchanged
+since `24e5bfc85` (`git diff --stat 24e5bfc85 512fd30f9 -- game/Source` lists only the six), where each compiled alone.
+The unity files: twelve, holding all thirteen.
+
+**Window subjugate-w2, 13:31 to 13:57 at `512fd30f9`: PASSED, and every proof PROVED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, target already up to date |
+| Asset step | none, as registered: `ea9374a77` holds the rebuilt `DT_WeaponSkills` |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded, registered 1 |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded, registered 3 |
+| Whole suite | 5074 performed, 5074 succeeded, registered 5074; 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind, registered 859 (predicted); declared 5074, gap 0 |
+| Python | 7837 passed, 9 skipped; the JUnit file: 7846 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+| Proof | Broken half, as the engine printed it | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| Q1 | 1 performed, 0 succeeded, 1 failed: `TheFervourFiguresNameTheCeilingAndEachKindHoldingTheRest` | 1 of 1 | PROVED, as registered |
+| Q2 | 3 performed, 0 succeeded, 3 failed: `ASkillsOwnFervourCostIsWhatItsPressAsksAndTakes`, `ThePopupSaysWhatAPressCosts`, `ThirtyIsPaidWithTwoThrallsHeld` | 3 of 3 | PROVED, as registered |
+| Q3 | 3 performed, 2 succeeded, 1 failed: `ThePopupSaysWhatAPressCosts` | 3 of 3 | PROVED, as registered |
+
+P1-P4, the Python proofs above, run again with `tools/prove_guard.py` in a copy of `512fd30f9` extracted by `git
+archive`: each PROVED with the same failures as before, each restored half 5 passed.
 
 ---
 
