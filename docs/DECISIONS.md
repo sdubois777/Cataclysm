@@ -369,16 +369,14 @@ reported as a problem, and becomes an issue if the owner reports it.
 
 ### Registered before the run
 
-The base is the whole-suite figures of the window that runs #2790 (the Demonic Guide), which goes on the machine
-before this one and is not yet measured; **this branch's figures are that window's measured figures plus what this
-branch adds, and are written in here when it is measured, at this branch's last rebase.** The newest measured window
-is thrall-imps-w1, for #2791, run at `b0aba0a84`, whose `game/` tree is development `3b37878bf`'s, this branch's base
-now (`git diff --stat 3b37878bf b0aba0a84 -- game/` prints nothing). Its output, `.claude/windows/gk_run.out` and
-`gk_suite_engine_b0aba0a8.log` in the worktree `sharp-meitner-246682`, reads "suite: Tests: 5054 tests performed, 5054
-succeeded, 0 failed. 47 skipped part of what they check" and "Test saves: 852 written and deleted, 0 left behind";
-its engine log has 22 "Test Completed" lines in `Cataclysm.Command.`, each `Result={Success}`. The coordinating
-session states that #2790 adds 2 tests and 0 saves, so the figures below are expected to read 5060 and 856 if #2790
-merges first. That is a prediction from #2790's stated additions, not a measurement.
+The base is window tree-2790-w2, for #2790 (the Demonic Guide), run at `b4e3f1c0`, whose `game/` tree is development
+`63d4cbd4c`'s, this branch's base (`git diff --stat b4e3f1c0 63d4cbd4c -- game/` prints nothing). Its output,
+`.claude/windows/t2790_run.out` and `t2790_suite_engine_b4e3f1c0.log` in the worktree `laughing-curran-69e4bb`, reads
+"suite: Tests: 5056 tests performed, 5056 succeeded, 0 failed. 47 skipped part of what they check" and "Test saves: 854
+written and deleted, 0 left behind"; its engine log has 22 "Test Completed" lines in `Cataclysm.Command.`, each
+`Result={Success}`, and none in the whole log that is not. Its save and completion lines are copied to
+`.claude/windows/t2790_base_saves_and_completed_b4e3f1c0.log` in this session's worktree, for the run to compare each
+test's saves against.
 
 - **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
   index read from the base (`CataclysmCommand.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
@@ -389,11 +387,10 @@ merges first. That is a prediction from #2790's stated additions, not a measurem
   `Cataclysm.Command.VesselstepLeavesBothEndsOfTheTradeBurning`,
   `Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall` and the bare-actor
   `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature`, unchanged.
-- **The group `Cataclysm.Command.`:** #2790's measured count plus 4, all succeeding; 26 if #2790 adds none to it
-  (22 at thrall-imps-w1).
-- **The whole suite:** #2790's measured total plus 4, all succeeding, 47 skipped halves (5054 + 2 + 4 = 5060 by
-  #2790's stated additions), and "Test saves:" #2790's measured count plus 4, 0 left behind (852 + 0 + 4 = 856).
-  EACH NEW TEST WRITES ONE SAVE, as each test that stands the player on a plain floor does in thrall-imps-w1's log:
+- **The group `Cataclysm.Command.`:** 26 performed, 26 succeeded: the base's 22 plus 4.
+- **The whole suite:** 5060 performed, 5060 succeeded, 47 skipped halves: the base's 5056 plus 4. "Test saves: 858
+  written and deleted, 0 left behind": the base's 854 plus 4. EACH NEW TEST WRITES ONE SAVE, as each test that stands
+  the player on a plain floor does in the base log:
   `ThePlayersMovementSkillMovesThemFromWhereTheFloorStoodThem`,
   `AKnockbackMovesACreatureStandingOnTheFloorItsWholeDistance` and `ATetherDragsBothEndsBackOnAFloor` each write 1. No
   other test's share differs from the base log's.
