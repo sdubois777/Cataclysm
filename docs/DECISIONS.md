@@ -2,6 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — No line that lists a standing dungeon names it a Quest dungeon: phase 1, the test that shows it, with the words of the fix put to the coordinating session (#2800)
+
+**Affects:** tests only, so far. One new test, `Cataclysm.CityScreen.EachQuestDungeonStandingIsNamedAQuestDungeon`, in
+`game/Source/Cataclysm/Tests/CataclysmCityScreenTests.cpp`. Issue
+[#2800](https://github.com/sdubois777/Cataclysm/issues/2800), from the owner's playtest of 2026-11-21.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN, AND NO FIX IS WRITTEN.** The words a screen should use are a ruling for the coordinating
+  session, put to it with this phase. The test is written to fail today; what it must show is under "Registered before
+  the reproduction press".
+- **WHAT THE OWNER SAW, AND WHAT THE RUN HELD.** The owner, on day 78 of the character 'testminion': "it's saying
+  there's 2 dungeons active, one quest, but they're both over 20 floors on outposts", and "it only labelled one as a
+  quest dungeon". The game's log at that moment names both standing dungeons "the Elite Quest dungeon": dungeon 3 on
+  Outpost (2,-1), 22 floors, and dungeon 8 on Outpost (1,-2), 23 floors. Dungeon 7, an Elite Quest dungeon beside
+  dungeon 8 on Outpost (1,-2), had just been cleared. The run's data was right; what was on the screens was not enough.
+
+### The cause, by reading
+
+No screen names a standing dungeon's kind. Each place the interface writes a dungeon's kind or the word "quest", read
+at development `156f2b9e8`:
+
+| Where | What it writes | About |
+|---|---|---|
+| City screen, `UCataclysmCityScreenLayout::DungeonLinesFor` | "Elite, 22 floors, 7 days until it bites" | each standing dungeon: its sub-type only |
+| Empire map, a city's detail, `UCataclysmEmpireMapWidget` | "dungeon of 22 floors, 7 days left" | each standing dungeon: neither kind nor sub-type |
+| Empire map, top line, `UCataclysmEmpireMapLayout::ProgressLine` | "... dungeons standing ... N quest objectives ..." | objectives earned; a Quest clear adds one |
+| Empire map, second line, `UCataclysmEmpireMapLayout::LastClearLine` | "Day 78: you cleared the Elite Quest dungeon on Outpost (1,-2). ..." | the dungeon just cleared |
+| Empire map, `LatestEventLine` | "a Quest dungeon moved ..." or "a Quest dungeon's timer hit ..." | past events |
+
+`UCataclysmEmpireRun::Describe` names each dungeon's kind, but only a console command prints it. THE LEADING
+HYPOTHESIS: the empire map's top line read "2 dungeons standing" beside a quest objective count, and its second line
+named "the Elite Quest dungeon on Outpost (1,-2)", the dungeon just cleared, beside dungeon 8 on that city. Read
+together, the two lines say two dungeons stand and one of them is a Quest dungeon. NOT SETTLED: which screen the owner
+read, and whether the objective count read 1; the log does not show the clears before this session.
+
+### Proposed, not built
+
+- Name the kind on each line that lists a standing dungeon: the city screen's, as "Elite Quest, 22 floors, 7 days until
+  it bites", and the empire map city detail's, as "Elite Quest dungeon of 22 floors, 7 days left", with that detail's
+  text moved into `UCataclysmEmpireMapLayout` so a test can read it. The existing tests that pin a Quest dungeon's
+  city screen line change with it, such as `AnAscendantSaysHowManyEdictsItHoldsAndItsHeavenlyCore`.
+- Possibly, "quest objectives earned" on the progress line, so it cannot be read as a count of Quest dungeons.
+
+### Registered before the reproduction press
+
+The base is window follow-w2, for #2793, at `d4d0773ac`, whose `game/` tree is development `156f2b9e8`'s, this branch's
+base. It measured 16 tests in `Cataclysm.CityScreen.`, all succeeding, each writing no test save.
+
+- **The new test alone, at this commit, with no fix:** 1 performed, 0 succeeded, 1 failed, on exactly two assertions,
+  "the Quest dungeon on the first city is named a Quest dungeon" and "and so is the one on the second". Its two
+  controls pass: the Basic dungeon's line does not say "Quest" and begins "Elite". Its info line reads the three lines
+  as `DungeonLinesFor` writes them today: "Elite, 22 floors, 7 days until it bites", "Elite, 23 floors, 15 days until
+  it bites" and "Elite, 9 floors, 30 days until it bites". It writes no test save.
+- **The group and the whole suite** are registered with the fix, once its words are ruled.
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
