@@ -48,6 +48,30 @@ The coordinating session, 2026-11-20, on the plan:
   creature on the Monsters team standing as close as the commander, and the commander still commands the Gatekeeper
   alone.
 
+### The window
+
+**thrall-imps-w1, 2026-11-20, 17:32 to 17:56, at b0aba0a84 on 50954626c: PASSED.** The three compiles before it, 17:25 to
+17:31, all succeeded with no warning or error line: the branch (47 files), the two changed files alone, and the unity
+build.
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, already up to date from the compiles |
+| `Cataclysm.Gatekeeper.` alone | 14 performed, 14 succeeded, registered 14 |
+| Whole suite | 5054 performed, 5054 succeeded, registered 5054 (reserves-a-w2's 5053 + 1); 47 skipped halves, registered 47; 852 test saves written and deleted, 0 left behind; declared 5054, gap 0 |
+| Python | 7812 passed, 9 skipped; the JUnit file: 7821 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+**Proof G1, PROVED.** With `Imp->SetGenericTeamId(GetGenericTeamId());` replaced by `(void)GetGenericTeamId();`, 14
+were performed and only the new test failed, on each of its three Imps: "a taken Gatekeeper's Imp is on its commander's
+team" and "and its brain chooses the free creature, not the commander". Restored, 14 of 14 passed. Its other assertion,
+"and friendly to its commander", did not fail with the break in: `UCataclysmTeams` (`CataclysmTeams.cpp` line 56)
+answers friendly for two actors sharing an owner chain, and the owner line, which the break left, chains the Imp to the
+Gatekeeper and the Gatekeeper to its commander. So that assertion reads the owner line, and the team line is what the
+brain's choice and the team assertion read.
+
+The lock was released when the window ended.
+
 ---
 
 ## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
