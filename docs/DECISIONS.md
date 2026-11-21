@@ -418,6 +418,10 @@ merges first. That is a prediction from #2790's stated additions, not a measurem
 At `8905d301b`, the code, its tests and this entry committed: "7799 passed, 9 skipped in 337.09s (0:05:37)"; the
 JUnit file: tests 7808, failures 0, errors 0, skipped 9. ruff: "All checks passed!". This branch adds no Python test.
 
+After rebasing onto `3b37878bf`, at `42c9dbf13`, the commit that registers against #2790's window: "7812 passed, 9
+skipped in 340.34s (0:05:40)"; the JUnit file: tests 7821, failures 0, errors 0, skipped 9. ruff: "All checks
+passed!". The 13 more tests than at `8905d301b` came with development's #2787 branch A and #2791.
+
 **ONE PYTHON CHECK HAD TO MOVE, AND MOVED.** The first run, at `e0b08060c`, read "1 failed, 7798 passed, 9 skipped":
 `test_the_check_reads_the_game_and_finds_the_helper` in
 `tools/tests/test_swept_moves_go_through_the_one_that_does_not_stick.py` asserts that at least eight call sites call
