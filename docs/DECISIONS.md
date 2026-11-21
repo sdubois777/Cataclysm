@@ -725,8 +725,13 @@ the stairs, as a drop of about 58 cm onto them; that case is what the feet rule 
 
 ### Registered before window vesselstep-w2
 
-The base is window follow-w1, for #2793 (minion follow and speed), which goes on the machine before this one; its
-measured figures are written in here at this branch's rebase onto #2793's merge. What this branch adds is fixed here.
+The base is window tree-2790-w2, for #2790, run at `b4e3f1c0`, whose `game/` tree is development `63d4cbd4c`'s, this
+branch's base, unchanged since window vesselstep-w1 (the coordinating session moved this window ahead of #2793's,
+whose window follow-w1 failed). Its output, `t2790_run.out` and `t2790_suite_engine_b4e3f1c0.log` in the worktree
+`laughing-curran-69e4bb`, reads "5056 tests performed, 5056 succeeded, 0 failed. 47 skipped part of what they check"
+and "Test saves: 854 written and deleted, 0 left behind", with 22 "Test Completed" lines in `Cataclysm.Command.`; its
+save and completion lines are in `.claude/windows/t2790_base_saves_and_completed_b4e3f1c0.log` in this session's
+worktree. Window vesselstep-w1 measured 5060, 858 and 26 on it, which is that base plus the four tests then written.
 
 - **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone, the
   index read from the base (`CataclysmCommand.cpp`, `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
@@ -738,9 +743,9 @@ measured figures are written in here at this branch's rebase onto #2793's merge.
   `Cataclysm.Command.VesselstepDoesNotTradeWithAnImpBehindAWall`,
   `Cataclysm.Command.VesselstepPutsEachOnTheGroundTheOtherStoodOn` and the bare-actor
   `Cataclysm.Command.AVesselstepTradesPlacesWithACommandedCreature`, unchanged.
-- **The group `Cataclysm.Command.`:** follow-w1's measured count plus 5, all succeeding.
-- **The whole suite:** follow-w1's measured total plus 5, all succeeding, with its measured skipped halves; "Test
-  saves:" its measured count plus 5, 0 left behind. EACH NEW TEST WRITES ONE SAVE, as each did in window
+- **The group `Cataclysm.Command.`:** 27 performed, 27 succeeded: the base's 22 plus 5.
+- **The whole suite:** 5061 performed, 5061 succeeded, 47 skipped halves: the base's 5056 plus 5. "Test saves: 859
+  written and deleted, 0 left behind": the base's 854 plus 5. EACH NEW TEST WRITES ONE SAVE, as each did in window
   vesselstep-w1 (858 there, 854 plus 4), the stairs test included, because each builds a floor.
 - **The "VESSELSTEP ON A FLOOR" and "VESSELSTEP ON THE STAIRS" lines** say where each body ended and how far above
   the floor; reported, not registered.
