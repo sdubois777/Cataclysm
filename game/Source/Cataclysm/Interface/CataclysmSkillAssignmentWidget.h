@@ -151,6 +151,23 @@ public:
 	static FString ToolTipFor(const FCataclysmWeaponSkill& Skill, ECataclysmAbilitySlot OnKey);
 
 	/**
+	 * The same, with what a press costs `Holder` as a line above the description, when it has an ability system: five
+	 * lines. Issue #2804, ruled by the coordinating session on 2026-11-21, replacing Q7's "no numbers" -- whose reason was
+	 * a second copy of the slot's fallback, which `CostLineFor` below does not make.
+	 */
+	static FString ToolTipFor(const FCataclysmWeaponSkill& Skill, ECataclysmAbilitySlot OnKey,
+							  const ACataclysmPlayerState* Holder);
+
+	/**
+	 * What a press of `Skill` costs `Holder`, in the skill bar's words (`UCataclysmSkillBar::CostLineFor`), or empty
+	 * when `Holder` has no ability system. Read through ONE TRANSIENT TEMPLATE of the row's shape, stamped from the row
+	 * as granting stamps one (`UCataclysmWeaponSkills::StampOnto`), so its own figures and its slot's fallback are read
+	 * where the press reads them; priced at `Holder`'s level of the row, 1 for one never used
+	 * (`UCataclysmSkillTemplate::PreviewSkillLevel`). Issue #2804.
+	 */
+	static FString CostLineFor(const FCataclysmWeaponSkill& Skill, const ACataclysmPlayerState* Holder);
+
+	/**
 	 * The line under a key whose choice is kept while its weapon is off (ruled Q4): "Kept: Pyroclasm (Greataxe, a
 	 * middle dot, Demonic). It returns when that weapon is worn." Read from the weapon skill table, because a kept
 	 * skill is not in the pool.

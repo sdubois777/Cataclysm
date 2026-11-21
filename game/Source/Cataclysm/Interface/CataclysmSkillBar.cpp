@@ -518,6 +518,17 @@ FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 	return Line;
 }
 
+FString UCataclysmSkillBar::ReserveNounFor(const UCataclysmSummonSkill& Skill)
+{
+	if (Skill.Params.bPossess)
+	{
+		return TEXT("thrall");
+	}
+	return Skill.Params.Minions.IsEmpty() || Skill.Params.Minions[0].Type.IsEmpty()
+		? FString(TEXT("minion"))
+		: Skill.Params.Minions[0].Type.ToLower();
+}
+
 FString UCataclysmSkillBar::SkillGadgetName()
 {
 	return TEXT("Gadget");
@@ -770,10 +781,7 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		if (const UCataclysmSummonSkill* Maker = Cast<UCataclysmSummonSkill>(Ability))
 		{
 			Box.ReserveEach = Maker->FervourReserveOfOne();
-			Box.ReserveNoun = Maker->Params.bPossess ? FString(TEXT("thrall"))
-				: Maker->Params.Minions.IsEmpty() || Maker->Params.Minions[0].Type.IsEmpty()
-				? FString(TEXT("minion"))
-				: Maker->Params.Minions[0].Type.ToLower();
+			Box.ReserveNoun = ReserveNounFor(*Maker);
 		}
 		Box.bShortOfFervour =
 			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);

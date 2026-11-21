@@ -4518,9 +4518,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 	return Minion;
 }
 
-float UCataclysmSummonSkill::FervourReserveOfOne() const
+float UCataclysmSummonSkill::FervourReserveOfOne(const AActor* Commander) const
 {
-	return FervourReserveFor(Avatar(), Params, SkillTags, this);
+	return FervourReserveFor(Commander ? Commander : Avatar(), Params, SkillTags, this);
 }
 
 void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
