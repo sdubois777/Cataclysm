@@ -1495,7 +1495,29 @@ public:
 	 */
 	float SpeedMultiplier() const
 	{
-		return CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier()
+		return SpeedMultiplierWithWraithFactor(WraithMultiplier());
+	}
+
+	/**
+	 * `SpeedMultiplier` as the creature's WALK reads it: the same factors, without the Vengeful Wraiths rule's 1.2 while
+	 * something commands the creature. Issue #2793, ruled by the coordinating session on 2026-11-20: the wraith's figure
+	 * is a standing multiplier from a dungeon rule that makes the player's enemies harder; a taken wraith is not the
+	 * player's enemy; and the owner's rule is "equal to 1.25 of your own". Freed, it walks with the 1.2 again, because
+	 * `bIsVengefulWraith` stays set.
+	 *
+	 * EVERY OTHER FACTOR STAYS: Commander, Cripple, Ground Down and the ailment slow are each cast, or granted by an aura,
+	 * and act on a commanded creature as they act on the player. Its ATTACK rate still reads `SpeedMultiplier`, which
+	 * this ruling does not touch. Read after `WalkSpeedBaseCmPerSecond`, which sets `bWalkSpeedFollowsACommander`.
+	 */
+	float WalkSpeedMultiplier() const
+	{
+		return SpeedMultiplierWithWraithFactor(bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier());
+	}
+
+	/** `SpeedMultiplier`'s factors, with the wraith's given, so the list is written once. Issue #2793. */
+	float SpeedMultiplierWithWraithFactor(float WraithFactor) const
+	{
+		return CommanderMultiplier() * CrippleMultiplier() * WraithFactor
 			* GroundDownMultiplier() * AilmentSlowMultiplier();
 	}
 

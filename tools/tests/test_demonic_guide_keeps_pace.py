@@ -93,7 +93,7 @@ def test_a_guides_walk_comes_before_and_in_place_of_the_designed_speed() -> None
     # SINCE ISSUE #2793 THE DESIGNED SPEED IS READ AS THE UNCOMMANDED BASE, and a commanded creature's base is its
     # commander's pace instead; the multipliers then apply to that base. The guide's branch comes before both.
     designed = refresh.find("const float Base = WalkSpeedBaseCmPerSecond(DesignedWalkSpeedCmPerSecond);")
-    multiplied = refresh.find("const float Wanted = Base * SpeedMultiplier() * AilmentWalkMultiplier();")
+    multiplied = refresh.find("const float Wanted = Base * WalkSpeedMultiplier() * AilmentWalkMultiplier();")
     assert -1 < guide < designed < multiplied, (
         "a guide's walk speed is not applied before the designed speed, a commander's pace and their multipliers")
     branch = refresh[guide:refresh.index("}", refresh.index("return;", guide)) + 1]

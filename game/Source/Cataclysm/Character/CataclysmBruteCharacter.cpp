@@ -353,7 +353,10 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 	// AND WHAT SLOWS ITS MOVEMENT ALONE. Issue #1833, 2026-10-06. See
 	// `AilmentWalkMultiplier`: this is the second of the two places a creature's
 	// walk speed is written.
-	Movement->MaxWalkSpeed = Designed * SpeedMultiplier() * AilmentWalkMultiplier();
+	//
+	// AND WITHOUT THE VENGEFUL WRAITHS RULE'S 1.2 WHILE SOMETHING COMMANDS IT, as `RefreshWalkSpeed` does: a Brute is one
+	// of the kinds a wraith rises as. Issue #2793; see `WalkSpeedMultiplier`.
+	Movement->MaxWalkSpeed = Designed * WalkSpeedMultiplier() * AilmentWalkMultiplier();
 }
 
 void ACataclysmBruteCharacter::RefreshWalkSpeed()

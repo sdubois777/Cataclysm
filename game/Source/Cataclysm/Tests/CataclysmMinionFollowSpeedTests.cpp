@@ -42,6 +42,11 @@
  * THE PLAYER IS A SPAWNED `ACataclysmPlayerCharacter` NOBODY POSSESSES, walking at its designed 400 cm/s, so its
  * commanded minions walk at 500. `ApplyMovementSpeed` changes it the way the movement speed stat does.
  *
+ * A COMMANDED CREATURE'S HASTES STILL APPLY, so a Succubus on the player's side speeds the player's other minions within
+ * 8 metres by 20%, by design of its Dominion aura. A test that stands creatures side by side keeps them further apart
+ * than that: window follow-w1 failed on a Hellhound thrall 5 metres from a Succubus, walking at 600 and not 500.
+ * T11: THE ONE STANDING FIGURE LEFT OUT is the Vengeful Wraiths rule's 1.2, while the creature is commanded.
+ *
  * EXCEPT T10, WHICH IS THE PATH THE OWNER PLAYS. Its player is possessed, so it holds an ability system and walks at
  * its class's own speed through the stat pipeline (a Ravager's 4.6 m/s, 460 cm/s, when nothing chooses another class),
  * and its speed is changed through the stat inputs, as #2790's guide test changes it. Asked for by the coordinating
@@ -50,6 +55,13 @@
 namespace CataclysmMinionFollowSpeedTest
 {
 	constexpr float M = 100.0f;
+
+	/** HOW FAR APART CREATURES STAND WHEN A TEST PUTS SEVERAL SIDE BY SIDE: further than a Succubus's Dominion reaches,
+	 *  so its 20% haste reaches none of the others. Window follow-w1 (2026-11-20) stood them 5 metres apart, and a
+	 *  Hellhound thrall walked at 600, not 500. */
+	constexpr float CreatureSpacingCm = 10 * M;
+	static_assert(CreatureSpacingCm > ACataclysmSuccubusCharacter::DominionRadiusCm,
+				  "creatures standing side by side in a test must be outside a Succubus's Dominion, or it hastes them");
 
 	/** What a player's minions walk at while the player walks at its designed 400: 1.25 x 400 = 500, WRITTEN OUT rather than worked out from the code's own share,
 	 *  so a change to the share or to where it is applied is seen here rather than repeated on both sides. */
@@ -247,14 +259,15 @@ bool FCataclysmFollowSpeedEveryKindTest::RunTest(const FString&)
 				  FollowSpeedWalkOf(Minion), CommandedAtDesigned, 0.01f);
 	}
 
-	// THE THRALLS, five metres apart on another line twenty metres out.
+	// THE THRALLS, `CreatureSpacingCm` apart on another line twenty metres out, so the Succubus's Dominion reaches none
+	// of the others. At five metres it reached the Hellhound in window follow-w1.
 	ACataclysmEnemyCharacter* Thralls[] = {
 		SpawnFollowSpeedCreature<ACataclysmImpCharacter>(World, FVector(20 * M, 0.0f, 0.0f)),
-		SpawnFollowSpeedCreature<ACataclysmHellhoundCharacter>(World, FVector(20 * M, 5 * M, 0.0f)),
-		SpawnFollowSpeedCreature<ACataclysmSuccubusCharacter>(World, FVector(20 * M, 10 * M, 0.0f)),
-		SpawnFollowSpeedCreature<ACataclysmAbyssalWardenCharacter>(World, FVector(20 * M, 15 * M, 0.0f)),
-		SpawnFollowSpeedCreature<ACataclysmBruteCharacter>(World, FVector(20 * M, 20 * M, 0.0f)),
-		SpawnFollowSpeedCreature<ACataclysmCorruptedSentinelCharacter>(World, FVector(20 * M, 25 * M, 0.0f)),
+		SpawnFollowSpeedCreature<ACataclysmHellhoundCharacter>(World, FVector(20 * M, 1 * CreatureSpacingCm, 0.0f)),
+		SpawnFollowSpeedCreature<ACataclysmSuccubusCharacter>(World, FVector(20 * M, 2 * CreatureSpacingCm, 0.0f)),
+		SpawnFollowSpeedCreature<ACataclysmAbyssalWardenCharacter>(World, FVector(20 * M, 3 * CreatureSpacingCm, 0.0f)),
+		SpawnFollowSpeedCreature<ACataclysmBruteCharacter>(World, FVector(20 * M, 4 * CreatureSpacingCm, 0.0f)),
+		SpawnFollowSpeedCreature<ACataclysmCorruptedSentinelCharacter>(World, FVector(20 * M, 5 * CreatureSpacingCm, 0.0f)),
 	};
 	const TCHAR* Names[] = {TEXT("Imp"), TEXT("Hellhound"), TEXT("Succubus"), TEXT("Abyssal Warden"), TEXT("Brute"),
 							TEXT("Corrupted Sentinel")};
@@ -663,6 +676,86 @@ bool FCataclysmFollowSpeedPossessedPlayerTest::RunTest(const FString&)
 								 "at %.0f, %.0f and %.0f; at %.0f, %.0f and %.0f"),
 							AtClass, ImpAtClass, ThrallAtClass, PlayerAtFive, ImpAtFive, ThrallAtFive, PlayerAtTwo,
 							ImpAtTwo, ThrallAtTwo));
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// T11. A TAKEN VENGEFUL WRAITH WALKS AT 1.25 TIMES ITS COMMANDER, WITHOUT THE RULE'S 1.2; nobody's keeps the 1.2; and a
+// freed one has it back. An Imp, through `RefreshWalkSpeed`, and a Brute, through `ApplyChaseSpeed`. Ruled by the
+// coordinating session on 2026-11-20, after window follow-w1.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFollowSpeedTakenWraithTest,
+	"Cataclysm.MinionFollowSpeed.ATakenVengefulWraithWalksAtItsCommandersPaceWithoutTheRulesIncrease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFollowSpeedTakenWraithTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionFollowSpeedTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// FOUR WRAITHS, `CreatureSpacingCm` apart: an Imp and a Brute the player takes, and an Imp and a Brute nobody takes.
+	// The flag is what the Vengeful Wraiths rule sets on the creature it raises, and all `WraithMultiplier` reads.
+	ACataclysmPlayerCharacter* Player = SpawnFollowSpeedPlayer(World);
+	ACataclysmImpCharacter* TakenImp =
+		SpawnFollowSpeedCreature<ACataclysmImpCharacter>(World, FVector(10 * M, 0.0f, 0.0f));
+	ACataclysmImpCharacter* NobodysImp =
+		SpawnFollowSpeedCreature<ACataclysmImpCharacter>(World, FVector(10 * M, 1 * CreatureSpacingCm, 0.0f));
+	ACataclysmBruteCharacter* TakenBrute =
+		SpawnFollowSpeedCreature<ACataclysmBruteCharacter>(World, FVector(10 * M, 2 * CreatureSpacingCm, 0.0f));
+	ACataclysmBruteCharacter* NobodysBrute =
+		SpawnFollowSpeedCreature<ACataclysmBruteCharacter>(World, FVector(10 * M, 3 * CreatureSpacingCm, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: an Imp to take"), TakenImp)
+		|| !TestNotNull(TEXT("set-up: nobody's Imp"), NobodysImp)
+		|| !TestNotNull(TEXT("set-up: a Brute to take"), TakenBrute)
+		|| !TestNotNull(TEXT("set-up: nobody's Brute"), NobodysBrute))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Wraiths[] = {TakenImp, NobodysImp, TakenBrute, NobodysBrute};
+	for (ACataclysmEnemyCharacter* Wraith : Wraiths)
+	{
+		Wraith->bIsVengefulWraith = true;
+	}
+	if (!TestTrue(TEXT("set-up: the player takes the Imp wraith"), TakeForFollowSpeed(Player, TakenImp))
+		|| !TestTrue(TEXT("set-up: the player takes the Brute wraith"), TakeForFollowSpeed(Player, TakenBrute)))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Wraith : Wraiths)
+	{
+		Wraith->RefreshWalkSpeed();
+	}
+
+	// TAKEN: 1.25 x 400 = 500, with no 1.2 on top. The Imp's figure is kept, because it is freed below.
+	const float TakenImpPace = FollowSpeedWalkOf(TakenImp);
+	TestEqual(TEXT("the taken Imp wraith walks at 1.25 times its commander's speed, without the rule's 1.2"),
+			  TakenImpPace, CommandedAtDesigned, 0.01f);
+	TestEqual(TEXT("and the taken Brute wraith too, through its own walk"), FollowSpeedWalkOf(TakenBrute),
+			  CommandedAtDesigned, 0.01f);
+
+	// CONTROL: nobody's keeps the rule's 1.2 on its designed speed, written out: an Imp 650 x 1.2 = 780, a Brute, not
+	// chasing, 250 x 1.2 = 300.
+	TestEqual(TEXT("CONTROL: nobody's Imp wraith walks at 780, its designed 650 with the rule's 1.2"),
+			  FollowSpeedWalkOf(NobodysImp), 780.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: nobody's Brute wraith, not chasing, at 300, its designed 250 with the rule's 1.2"),
+			  FollowSpeedWalkOf(NobodysBrute), 300.0f, 0.01f);
+
+	// FREED: a thrall names its commander as its owner, so an owner of nothing is no commander, and the 1.2 is back.
+	TakenImp->SetOwner(nullptr);
+	TakenImp->RefreshWalkSpeed();
+	TestEqual(TEXT("freed, the Imp wraith walks at 780 again, because it is still a wraith"),
+			  FollowSpeedWalkOf(TakenImp), 780.0f, 0.01f);
+
+	AddInfo(FString::Printf(TEXT("WRAITH PACE: taken Imp %.0f, taken Brute %.0f; nobody's Imp %.0f, nobody's Brute %.0f; "
+								 "freed Imp %.0f"),
+							TakenImpPace, FollowSpeedWalkOf(TakenBrute), FollowSpeedWalkOf(NobodysImp),
+							FollowSpeedWalkOf(NobodysBrute), FollowSpeedWalkOf(TakenImp)));
 	return true;
 }
 

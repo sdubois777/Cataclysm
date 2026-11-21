@@ -320,8 +320,9 @@ the jog play rate of the Imp, the Hellhound, the Succubus and the Abyssal Warden
 `RefreshWalkSpeed` and `UncommandedWalkSpeedCmPerSecond` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`,
 `.cpp`); `ACataclysmCorruptedSentinelCharacter`'s jog (`JogAnimationName`, `JogAnimation`, `WalkingThresholdCmPerSecond`,
 `UnmeasuredJogPlayRate`); `docs/Cataclysm_GDD_v2.md` (a new "How fast a minion walks" and the Sentinel's exception);
-`game/docs/enemy-source-assets.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmMinionFollowSpeedTests.cpp`, new, ten
-tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
+`game/docs/enemy-source-assets.md`; after window follow-w1, `ACataclysmEnemyCharacter::WalkSpeedMultiplier` and
+`SpeedMultiplierWithWraithFactor`, new. Tests: `game/Source/Cataclysm/Tests/CataclysmMinionFollowSpeedTests.cpp`, new,
+eleven tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
 
 ### SAID FIRST
 
@@ -354,6 +355,12 @@ The coordinating session ruled on 2026-11-20, on this slice's plan:
   did before. Summoned minions get no new multiplier path.
 - **THE SENTINEL'S JOG RATE**: "register 1.0 as UNMEASURED, said plainly in the entry and the test."
 - **NO `PlantedExit` OR `PlantedIntro` TRANSITION** for now, accepted as a judgement.
+- **THE VENGEFUL WRAITHS RULE'S 1.2 IS LEFT OUT WHILE A CREATURE IS COMMANDED**, ruled after window follow-w1: "it is a
+  standing multiplier from a dungeon rule that makes the player's enemies harder. A taken wraith is no longer the
+  player's enemy, and the owner's rule is 'equal to 1.25 of your own'." Freed, it has the 1.2 back. Every other factor
+  of `SpeedMultiplier` stays, because each is cast or granted by an aura. So **a Succubus on the player's side speeds
+  the player's other minions within 8 metres by 20%, by design of its Dominion aura**, and the every-kind test keeps
+  its thralls out of that range.
 
 ### The cause of the Sentinel fault: its speed
 
@@ -399,7 +406,8 @@ standing jog.
 
 ### Tests
 
-`CataclysmMinionFollowSpeedTests.cpp`, ten. The first nine use a spawned player nobody possesses, which has no ability
+`CataclysmMinionFollowSpeedTests.cpp`, ten at first, and an eleventh after window follow-w1, in the section on it below.
+The first nine use a spawned player nobody possesses, which has no ability
 system and so walks at the constructor's 400 cm/s, so the pace is 500, written out as a figure in the test rather than
 worked out from the code's own share. The tenth is the path the owner plays, asked for by the coordinating session on
 2026-11-20 after window tree-2790-w1 found a possessed test player walking at a Ravager's 460: a possessed player at its
@@ -484,6 +492,63 @@ pace, as the ruling that a thrall's own hastes still apply says it should: 500 x
 the Succubus, was outside it; the Abyssal Warden, 5 metres from it, was spawned after the Succubus's sweep, and no
 automation test ticks a world, so no later sweep reached it. The correction to the test's layout, and a second window,
 follow in their own commits.
+
+### After window follow-w1: the layout corrected, the wraith's 1.2 left out, and the registration for follow-w2
+
+**THE CHECK THAT CAME FIRST.** Asked by the coordinating session before anything changed: every factor of a commanded
+creature's walk, cast or aura against standing. `Wanted = Base x SpeedMultiplier() x AilmentWalkMultiplier()`, and the
+Brute's `ApplyChaseSpeed` is the same product; `SpeedMultiplier` is Commander x Cripple x Wraith x Ground Down x the
+ailment slow. Commander (the Succubus's Dominion, the Horde Leader and sacrifice modifiers, and four floor rules, three
+of which reach only creatures hostile to the player), Cripple, Ground Down and both ailment slows are cast or granted by
+an aura. The Vengeful Wraiths rule's `WraithMultiplier` is not: `bIsVengefulWraith` is set on the creature for life
+(`ACataclysmDungeonGameMode::ApplyVengefulWraithFigures`), and nothing stops Subjugate taking one.
+
+**WHAT CHANGED.**
+
+- `ACataclysmEnemyCharacter::WalkSpeedMultiplier` is `SpeedMultiplier`'s factors with the wraith's left out while
+  `bWalkSpeedFollowsACommander` holds; `SpeedMultiplierWithWraithFactor` holds the list once for both. `RefreshWalkSpeed`
+  and the Brute's `ApplyChaseSpeed` multiply by it. A Brute is one of the seven kinds a wraith rises as
+  (`ECataclysmDungeonCreature`). A creature nobody commands gets the same product as before, in the same order. Its
+  attack rate still reads `SpeedMultiplier`.
+- `EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed` stands its thralls `CreatureSpacingCm`, 10 metres,
+  apart, with a static assertion that it is more than `ACataclysmSuccubusCharacter::DominionRadiusCm`.
+- `tools/tests/test_demonic_guide_keeps_pace.py` reads `Base * WalkSpeedMultiplier() * AilmentWalkMultiplier()`, the
+  line `RefreshWalkSpeed` now has.
+
+| New test | What it checks |
+| :-- | :-- |
+| `ATakenVengefulWraithWalksAtItsCommandersPaceWithoutTheRulesIncrease` | a taken Imp wraith and a taken Brute wraith walk at 500; CONTROL nobody's Imp wraith 780 and nobody's Brute wraith, not chasing, 300, each written out as its design x 1.2; the Imp wraith freed walks at 780 again. Prints "WRAITH PACE" |
+
+**REGISTERED FOR WINDOW follow-w2**, at the slice's turn, after its rebase onto #2792 and its three compiles:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.MinionFollowSpeed.` alone | 11 performed, 11 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
+| The whole suite | the measured total of the base it is rebased onto, plus these 11, every one succeeding; skipped halves that base's plus 1; test saves that base's plus 0, predicted, not measured, because no test here builds a floor. On `63d4cbd4c` that is 5067, 48 and 854; after the rebase onto #2792 it is re-registered from window vesselstep-w2's log |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Six C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted from
+the tests as written. P1 to P5 break what they broke for follow-w1; P6 is new:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | the commanded figure without the 1.25 | as registered for follow-w1, and the wraith test (its two taken rows, 400 against 500); 11 performed, 4 succeeded, 7 failed | 11 of 11 |
+| P2 | the refusal of a creature designed at nought before the commanded base | as registered for follow-w1; the wraith test passes; 11 performed, 8 succeeded, 3 failed | 11 of 11 |
+| P3 | a summoned minion always at its type's speed | as registered for follow-w1; the wraith test passes; 11 performed, 8 succeeded, 3 failed | 11 of 11 |
+| P4 | the Brute's base back to its chase or walk speed | every-kind (the Brute's row) and the wraith test (the taken Brute, 300 against 500: never told it is commanded, it keeps the 1.2); 11 performed, 9 succeeded, 2 failed | 11 of 11 |
+| P5 | the commanded jog rate back to the designed rate | as registered for follow-w1; 11 performed, 10 succeeded, 1 failed | 11 of 11 |
+| P6 | in `WalkSpeedMultiplier`, `bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier()` back to `WraithMultiplier()` | the wraith test alone (its two taken rows, 600 against 500); 11 performed, 10 succeeded, 1 failed | 11 of 11 |
+
+In every broken half the controls pass, the wraith test's among them.
+
+### Seen in passing
+
+- **Dirge Resonance may haste thralls.** `ACataclysmDungeonGameMode::StepDirgeResonance` grants `Status.Buff.Commander`
+  to every living creature in `FloorEnemies` (`CataclysmDungeonGameMode.cpp` line 19074) with no check of its side, and
+  nothing found removes a taken creature from that list. UNCONFIRMED; the coordinating session opens an issue for it.
+- **The sacrifice modifier's buff is left as it is.** A creature that eats a pack-mate grants itself
+  `Status.Buff.Commander` for `SacrificeBuffSeconds` (`CataclysmEnemyModifiers.cpp` line 1132): a temporary buff from a
+  modifier it rolled, and whether a thrall can still sacrifice is not known.
 
 ---
 

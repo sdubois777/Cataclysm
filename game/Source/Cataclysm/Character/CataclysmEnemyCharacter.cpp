@@ -1312,7 +1312,10 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	//
 	// A THRALL'S OWN HASTES AND SLOWS STILL APPLY, ON TOP OF ITS COMMANDER'S PACE, as ruled by the coordinating
 	// session on 2026-11-20: a Cripple on a thrall slows it, as it slowed it before. Issue #2793.
-	const float Wanted = Base * SpeedMultiplier() * AilmentWalkMultiplier();
+	//
+	// BUT NOT THE VENGEFUL WRAITHS RULE'S 1.2, WHILE IT IS COMMANDED: a standing figure a dungeon rule gives the
+	// player's enemies, ruled the same night after window follow-w1. See `WalkSpeedMultiplier`.
+	const float Wanted = Base * WalkSpeedMultiplier() * AilmentWalkMultiplier();
 
 	// ONLY ON A CHANGE. Assigning the same float every frame is harmless, and
 	// checking first says out loud that this is a state that changes rarely
