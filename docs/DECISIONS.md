@@ -335,6 +335,53 @@ or risen, as before, since both reserve 10.
   six kinds, each figure in it is the one the game uses (Summon Imp's row for the risen imp), and every figure is above
   zero. Proved with `tools/prove_guard.py`: the Warhound's constant changed from 5 to 6 failed
   `test_each_kinds_figure_is_the_one_the_game_uses[Warhound]` and nothing else, and the restored file passed all 13.
+- **Two test set-ups changed after window reserves-a-w1**, below: the Warlord's Will six-piece tests' wearer and the
+  necrosis-rise probe's killer each hold a class resource pool.
+
+### The windows
+
+**reserves-a-w1, 2026-11-20, 15:38 to 16:11, at 9e7119725: FAILED five tests, for one reason.** The build compiled 46
+files. Nine of the ten groups alone passed; `Cataclysm.SetBonus.Warlord6.` failed 4 of 10, and the whole suite performed
+5053 and failed 5: those four and `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`. Python passed 7812,
+9 skipped, and ruff passed. The proofs did not run.
+
+- **The cause: two test set-ups gave the summoner no class resource pool**, so the new reserve refused the minion for
+  room. The Warlord's Will tests' wearer, `FWarlordCreature` in `CataclysmSetBonusWarlordSixTests.cpp`, is an
+  `ACataclysmEnemyCharacter`, and a creature carries no class resource set, so its maximum is nought and a Warhound's 5
+  never fits: "Expected 'a roll of 9.9 summons a Warhound' to be not null" (test line 621), and the same at lines 670,
+  736 and 788. The probe for `necrosis_kill_raises_imp_seconds` gives a bare `FScopedFighter` the stat, with no pool, so
+  the imp's 5 never fits: "Expected 'with 7 of it an imp rises' to be not null" (`CataclysmStatExemptionTests.cpp` line
+  6383). In play the summoner is a player, who has a pool, so the game was right and the set-ups were not.
+- **Missed at registration**: the Warlord's Will file has a second helper, `FWarhoundBody`, which does hold 150, and that
+  was the one read.
+- **The fix, e104ab9dc**, test set-up only, 16 lines in two files and no `#include` changed: `FWarlordCreature` adds a
+  class resource set when it has none, at 150, and the probe gives its killer a set at a maximum of 100. The probe's
+  control still raises nothing, for want of the stat. The coordinating session gave the second window without the
+  three separate compiles, as for skills-2b-w2, since only test bodies changed.
+
+**reserves-a-w2, 2026-11-20, 16:21 to 16:59, at e104ab9dc: PASSED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, 52 actions, 47 files compiled |
+| Groups alone, 10 of 10 | KindReserves 12/12, FervourReserve 5/5, Command 22/22, Tyrant10 9/9, Tyrant6 5/5, Warlord6 10/10, RisenImps 11/11, NecrosisRise 4/4, Traps 60/60, SkillGadgets 22/22 |
+| Whole suite | 5053 performed, 5053 succeeded, registered 5053; 47 skipped halves, registered 47; 852 test saves written and deleted, 0 left behind; declared 5053, gap 0 |
+| Python | 7812 passed, 9 skipped; the JUnit file: 7821 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+Every proof failed a named test with its break in and passed all 12 of `Cataclysm.KindReserves.` with it restored:
+
+| Proof | Break | Failed with the break in |
+| :-- | :-- | :-- |
+| K1 | the risen imp's reserve not recorded | ARisenImpReservesSummonImpsTenAtOnceAndFreesItWhenItDies, ARisenImpThePoolCannotHoldDoesNotRise, UnderCrownedARisenImpReservesFive, WithEveryKindGoneNothingIsHeld |
+| K2 | the risen imp's room check asks for nothing | ARisenImpThePoolCannotHoldDoesNotRise |
+| K3 | the Tyrant's Minion's reserve not recorded | ATyrantsMinionReservesTenARefreshHoldsNothingMoreAndAFullPoolSummonsNone, CrownedTakesFiveOffEveryKindNeverBelowOne, WithEveryKindGoneNothingIsHeld |
+| K4 | the skill gadget's reserve not recorded | AFullPoolRefusesASkillGadgetAndPlacesNothing, ASkillGadgetReserves15AndASecondPressMovesItAndHoldsNothingMore, CrownedTakesFiveOffEveryKindNeverBelowOne, WithEveryKindGoneNothingIsHeld |
+| K5 | the traps the cap is about to destroy free nothing | ASkillTrapReservesFiveAndOverTheCapTheOldestsShareIsFreedFirst |
+| K6 | the bar's condition back to a generator only | TheBarIsDrawnForAReserveWithNoGeneratorAndNotWithNeither |
+| K7 | Crowned's reduction read and not taken off | CrownedTakesFiveOffEveryKindNeverBelowOne, UnderCrownedARisenImpReservesFive |
+
+The lock was released when the window ended.
 
 ---
 
