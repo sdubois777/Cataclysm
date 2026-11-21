@@ -616,6 +616,69 @@ The memory summary at the suite's end: 5692 tests, peak used virtual memory 9193
 
 ---
 
+## 2026-11-21 — The skill-assignment tooltip states what a press costs, in the skill bar's words, read through a template stamped from the skill's row (#2804)
+
+**Affects:** `UCataclysmSkillAssignmentWidget::ToolTipFor`, a three-argument overload, and `CostLineFor`, new
+(`game/Source/Cataclysm/Interface/CataclysmSkillAssignmentWidget.h`, `.cpp`); `UCataclysmSkillTemplate::PreviewSkillLevel`,
+new, read first by `UCataclysmSkillLevels::CostFactorOf`; `UCataclysmSummonSkill::FervourReserveOfOne`, now given an
+optional commander; `UCataclysmSkillBar::ReserveNounFor`, new, shared by both screens. Tests:
+`game/Source/Cataclysm/Tests/CataclysmTooltipCostTests.cpp`, new, one in `Cataclysm.TooltipCost.`. Issue
+[#2804](https://github.com/sdubois777/Cataclysm/issues/2804).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2802's branch at `96b765874` without a compile, as ruled. Its turn
+  is queued at the end with #2802's, after the empire tree's slice 6c, #2803, #2797 and #2800; it is rebased onto
+  #2802's merge then.
+- **IT REPLACES RULING Q7'S "NO NUMBERS" FOR THIS TOOLTIP.** Q7's reason was that a skill's numbers would put the
+  designed slot's fallback in a second place. This change reads every figure through the functions the press reads,
+  on a template stamped from the row as granting stamps one, so no figure and no fallback is written twice.
+
+### The ruling
+
+The owner, 2026-11-21, of Subjugate's cost: "that's all the description tells you", naming no screen. The coordinating
+session ruled the same day: "show the same cost line there through the same functions, at level 1 for a skill not yet
+granted (or at its known level if the character has one). This replaces Q7's 'no numbers'; its reason was the
+duplicated fallback, which your route avoids."
+
+### What changed
+
+- **THE TOOLTIP.** `ToolTipFor(Skill, OnKey, Holder)` is the four lines with a fifth, the cost, above the description,
+  as the skill bar's pop-up places it. The two-argument `ToolTipFor` is unchanged, four lines, for a caller with no
+  holder. All three of the screen's callers pass the screen's player state.
+- **THE COST.** `CostLineFor(Skill, Holder)` makes one transient template of the row's shape
+  (`UCataclysmWeaponSkills::TemplateFor`), stamps it (`StampOnto`), sets its `PreviewSkillLevel` to the holder's level
+  of the row, 1 for one never used, and fills a skill-bar box from it -- `FervourCostFor`, `ManaCostFor`, the pool,
+  `CooldownAfterReduction`, and a summon's `FervourReserveOfOne` with the holder's pawn as the commander -- then returns
+  `UCataclysmSkillBar::CostLineFor`, so the two screens cannot word a cost differently. Empty when the holder has no
+  ability system.
+- **THE LEVEL.** A transient template is held by no player, so `CostFactorOf` would read it as level 1;
+  `PreviewSkillLevel`, when above 0, is the level it is priced at.
+
+### Tests
+
+`CataclysmTooltipCostTests.cpp`, one, `TheAssignmentTooltipStatesTheCostTheSkillBarStates`, on the possessed Staff
+player at character level 32: Subjugate's tooltip has five lines, its fourth a cost equal to the skill bar's cost line
+for the granted Subjugate and its fifth the description; Compel, never used, is priced as the bar prices it; at
+Subjugate's level 10 the tooltip states the bar's level 10 cost, not level 1's; CONTROL, the two-argument tooltip is
+four lines and names no cost. Prints "TOOLTIP COST". `Cataclysm.SkillChoiceScreen.`'s tooltip test calls the
+two-argument form and does not move.
+
+### Registered before the window
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.TooltipCost.` alone | 1 performed, 1 succeeded |
+| The whole suite | the newest measured total at the turn plus 1, every one succeeding; skipped halves and saves as that base's, predicted |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+One C++ guard proof, T1, with `test_prefix="Cataclysm.TooltipCost."`: in `CostLineFor`, `Priced->PreviewSkillLevel =
+FMath::Max(1, Holder->SkillLevelOf(Skill.RowName));` to `Priced->PreviewSkillLevel = 1;`, so the tooltip always prices
+at level 1. Broken half: 1 performed, 0 succeeded, 1 failed, at level 10 (the bar's level 10 cost against the
+tooltip's level 1). Restored: 1 of 1.
+
+---
+
 ## 2026-11-21 — A skill's level lowers its costs: each level multiplies its mana, its Fervour and what each thing it makes reserves by 0.9642, so level 20 costs half, and a reserve already held is re-priced when the skill levels (#2802)
 
 **Affects:** `UCataclysmSkillLevels::CostFactorPerLevel`, `CostFactor`, `CostFactorOf` and `RepriceReservesOf`, new

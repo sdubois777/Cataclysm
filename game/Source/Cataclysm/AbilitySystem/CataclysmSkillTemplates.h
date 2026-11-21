@@ -1779,9 +1779,10 @@ public:
 	/**
 	 * What one thing this skill makes holds back of its commander's pool now: its row's `FervourReserve`, times its
 	 * level's cost factor, then the commander's reductions (`UCataclysmCommand::ReserveFor`). The figure a take or a
-	 * summon stores, and the one `UCataclysmSkillLevels::RepriceReservesOf` re-prices to. Issue #2802.
+	 * summon stores, and the one `UCataclysmSkillLevels::RepriceReservesOf` re-prices to. Issue #2802. `Commander`, when
+	 * given, is whose reductions apply, for a transient skill priced for a screen that has no avatar (issue #2804).
 	 */
-	float FervourReserveOfOne() const;
+	float FervourReserveOfOne(const AActor* Commander = nullptr) const;
 
 	/** Whether the last use took an enemy. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")

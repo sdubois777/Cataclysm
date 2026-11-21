@@ -450,6 +450,10 @@ public:
 	 */
 	static FString CostLineFor(const FCataclysmSkillBarSlot& Slot);
 
+	/** What one thing `Skill` makes is called in a cost line: "thrall" for a skill that takes creatures, else its minion's
+	 *  type in lower case, else "minion". Issue #2802; shared with the skill-assignment tooltip (#2804). */
+	static FString ReserveNounFor(const class UCataclysmSummonSkill& Skill);
+
 	/** What a box converted into a skill gadget reads, "Gadget". Ruled 2026-10-16 (S14). */
 	static FString SkillGadgetName();
 

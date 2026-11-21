@@ -1,6 +1,12 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Interface/CataclysmSkillAssignmentWidget.h"
+// A skill priced for the tooltip: its template, stamped from its row, and the pools it is paid from. Issue #2804.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystemComponent.h"
+#include "UObject/Package.h"
 
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/Button.h"
@@ -328,7 +334,7 @@ void UCataclysmSkillAssignmentWidget::HandleSkillHovered(FName Value)
 	// ONLY THE DESCRIPTION MOVES, as on the passive tree: hovering is not an act, and it clears no refusal.
 	const FCataclysmWeaponSkill* Skill =
 		ShownPool.FindByPredicate([Value](const FCataclysmWeaponSkill& Each) { return Each.RowName == Value; });
-	LastDescription = Skill ? ToolTipFor(*Skill, KeyHolding(Value)) : FString();
+	LastDescription = Skill ? ToolTipFor(*Skill, KeyHolding(Value), ShownState()) : FString();
 	if (DescriptionLabel)
 	{
 		DescriptionLabel->SetText(FText::FromString(LastDescription));
@@ -351,7 +357,8 @@ void UCataclysmSkillAssignmentWidget::DescribeSlotButton(UCataclysmChoiceButton&
 					 /*bInChosen=*/Row.Key == SelectedSlot, /*bInAvailable=*/true);
 	const FCataclysmWeaponSkill* Held =
 		ShownPool.FindByPredicate([&Row](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == Row.HeldRow; });
-	Button.SetToolTipText(FText::FromString(Held && !Row.HeldRow.IsNone() ? ToolTipFor(*Held, Row.Key) : FString()));
+	Button.SetToolTipText(
+		FText::FromString(Held && !Row.HeldRow.IsNone() ? ToolTipFor(*Held, Row.Key, ShownState()) : FString()));
 }
 
 void UCataclysmSkillAssignmentWidget::DescribePoolButton(UCataclysmChoiceButton& Button,
@@ -360,7 +367,7 @@ void UCataclysmSkillAssignmentWidget::DescribePoolButton(UCataclysmChoiceButton&
 	// CHOSEN-LOOKING WHEN IT SITS ON A KEY, so the pool says which of its skills are in use.
 	const ECataclysmAbilitySlot OnKey = KeyHolding(Skill.RowName);
 	// AND ITS LEVEL, "Molten Cleave, level 3", for a skill that levels: every pool skill but the basic attack. Issue
-	// #2764. On the label and not the tool tip, which stays the skill's four lines (ruled Q7).
+	// #2764. On the label and not the tool tip, whose lines describe the skill and its cost (#2804).
 	FString Label = SkillScreenName(Skill);
 	const ACataclysmPlayerState* Holder = ShownState();
 	if (Holder && UCataclysmWeaponSkills::DesignedSlotOf(Skill) != ECataclysmAbilitySlot::BasicAttack)
@@ -369,7 +376,7 @@ void UCataclysmSkillAssignmentWidget::DescribePoolButton(UCataclysmChoiceButton&
 	}
 	Button.SetChoice(Skill.RowName, FText::FromString(Label),
 					 /*bInChosen=*/OnKey != ECataclysmAbilitySlot::None, /*bInAvailable=*/true);
-	Button.SetToolTipText(FText::FromString(ToolTipFor(Skill, OnKey)));
+	Button.SetToolTipText(FText::FromString(ToolTipFor(Skill, OnKey, Holder)));
 }
 
 void UCataclysmSkillAssignmentWidget::DescribeButtonForTests(UCataclysmChoiceButton& Button, FName Value,
@@ -394,8 +401,9 @@ void UCataclysmSkillAssignmentWidget::DescribeButtonForTests(UCataclysmChoiceBut
 
 FString UCataclysmSkillAssignmentWidget::ToolTipFor(const FCataclysmWeaponSkill& Skill, ECataclysmAbilitySlot OnKey)
 {
-	// FOUR LINES AND NO NUMBERS (ruled Q7): showing a skill's numbers would put the designed slot's fallback in a
-	// second place, which `CataclysmWeaponSkills.cpp` warns against.
+	// FOUR LINES, AND THE COST IN THE THREE-ARGUMENT FORM BELOW. Ruled Q7 had no numbers here, because a skill's
+	// numbers would put the designed slot's fallback in a second place, which `CataclysmWeaponSkills.cpp` warns
+	// against; issue #2804 states the cost read through the press's own functions instead, which makes no second copy.
 	TArray<FString> Lines;
 	Lines.Add(SkillScreenName(Skill));
 	const ECataclysmAbilitySlot Designed = UCataclysmWeaponSkills::DesignedSlotOf(Skill);
@@ -408,6 +416,54 @@ FString UCataclysmSkillAssignmentWidget::ToolTipFor(const FCataclysmWeaponSkill&
 	Lines.Add(FString::Printf(TEXT("%s%s%s"), *Skill.WeaponType, SkillScreenDot, *Skill.DamageType));
 	Lines.Add(Skill.Description);
 	return FString::Join(Lines, TEXT("\n"));
+}
+
+FString UCataclysmSkillAssignmentWidget::ToolTipFor(const FCataclysmWeaponSkill& Skill, ECataclysmAbilitySlot OnKey,
+													const ACataclysmPlayerState* Holder)
+{
+	// THE FOUR LINES, WITH THE COST ABOVE THE DESCRIPTION, as the skill bar's pop-up puts it. Issue #2804.
+	TArray<FString> Lines;
+	ToolTipFor(Skill, OnKey).ParseIntoArray(Lines, TEXT("\n"), /*InCullEmpty=*/false);
+	const FString Cost = CostLineFor(Skill, Holder);
+	if (!Cost.IsEmpty() && Lines.Num() >= 1)
+	{
+		Lines.Insert(Cost, Lines.Num() - 1);
+	}
+	return FString::Join(Lines, TEXT("\n"));
+}
+
+FString UCataclysmSkillAssignmentWidget::CostLineFor(const FCataclysmWeaponSkill& Skill,
+													 const ACataclysmPlayerState* Holder)
+{
+	const UAbilitySystemComponent* Abilities = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+	const TSubclassOf<UCataclysmGameplayAbility> Shape = UCataclysmWeaponSkills::TemplateFor(Skill.Shape);
+	UCataclysmSkillTemplate* Priced = Abilities && Shape
+		? NewObject<UCataclysmSkillTemplate>(GetTransientPackage(), Shape.Get())
+		: nullptr;
+	if (!Priced)
+	{
+		return FString();
+	}
+	UCataclysmWeaponSkills::StampOnto(*Priced, Skill);
+	Priced->PreviewSkillLevel = FMath::Max(1, Holder->SkillLevelOf(Skill.RowName));
+
+	FCataclysmSkillBarSlot Box;
+	Box.bFilled = true;
+	Box.FervourCost = Priced->FervourCostFor(Abilities);
+	Box.ManaCost = Priced->ManaCostFor(Abilities);
+	Box.bCostPaidFromHealth =
+		UCataclysmGameplayAbility::CostPool(Abilities) == UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Box.HealthCostPercent = Priced->ManaCostPaidAsHealthPercent(Abilities);
+	Box.CooldownLength = Priced->GetBaseCooldown() > 0.0f
+		? UCataclysmGameplayAbility::CooldownAfterReduction(Abilities, Priced->GetBaseCooldown(),
+															 Priced->SkillTagsForStats())
+		: 0.0f;
+	if (const UCataclysmSummonSkill* Maker = Cast<UCataclysmSummonSkill>(Priced))
+	{
+		Box.ReserveEach = Maker->FervourReserveOfOne(Holder->GetPawn());
+		Box.ReserveNoun = UCataclysmSkillBar::ReserveNounFor(*Maker);
+	}
+	return UCataclysmSkillBar::CostLineFor(Box);
 }
 
 FString UCataclysmSkillAssignmentWidget::KeptTextFor(FName SkillRow)

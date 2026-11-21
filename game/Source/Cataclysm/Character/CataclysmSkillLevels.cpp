@@ -65,6 +65,12 @@ double UCataclysmSkillLevels::CostFactor(int32 SkillLevel)
 
 double UCataclysmSkillLevels::CostFactorOf(const UGameplayAbility* Ability)
 {
+	// A SKILL PRICED FOR A SCREEN, NOT GRANTED, at the level it is shown at. Issue #2804.
+	if (const UCataclysmSkillTemplate* Shown = Cast<const UCataclysmSkillTemplate>(Ability);
+		Shown && Shown->PreviewSkillLevel > 0)
+	{
+		return CostFactor(Shown->PreviewSkillLevel);
+	}
 	const FName Row = RowThatLevels(Ability);
 	const ACataclysmPlayerState* Holder = Row.IsNone() ? nullptr : PlayerHolding(Ability);
 	return Holder ? CostFactor(Holder->SkillLevelOf(Row)) : 1.0;
