@@ -3741,12 +3741,16 @@ EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
 #: waits on, or built it. The coordinating session's rulings R1 to R10 of that
 #: day; `docs/DECISIONS.md` has them.
 EMPIRE_TREE_SYSTEMS = {
-    "gold rules": "its gold rules, which are not built yet (issue #2741)",
     # A Treasurer city upgrade can be bought since issue #2781; what R1 to R4 do
     # with one is built in a later slice of #2741.
     "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
                           "yet (issue #2741)"),
-    "gold ruling": "a ruling on what it does, which the owner has not made",
+    # Tax Collection and Treasury Guard: the owner ruled on both on 2026-11-20,
+    # after slice 6c was written; slice 6d builds them.
+    "gold rules": "its gold rules, which are not built yet (issue #2741)",
+    # Global Credit and Sovereign Loans: the owner allowed a gold debt only through
+    # the tree's own options for one (2026-11-20); a later slice builds it.
+    "gold debt": "a gold debt, which is not built yet (issue #2741)",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
@@ -3831,6 +3835,9 @@ EMPIRE_TREE_BUILT = {
     # Treasury, slice 6b: the run record's five (B1 to B5, 2026-11-20).
     "Price Controls": 6, "Stimulus Package": 6, "Cleanup Crew": 6,
     "Salvage Rights": 6, "Investment Funds": 6,
+    # Treasury, slice 6c: the gold held and the day's income (B6 to B8).
+    "The Gilded Path": 6, "Venture Capital": 6, "Imperial Reserve": 6,
+    "Pax Imperialis": 6, "Wealth Interest": 6,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3857,18 +3864,18 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6c builds the "gold rules" nodes left (slice 6a built
-    # eleven and 6b five, 2026-11-20): the six that need the gold balance inside
-    # the empire layer. R1 to R4 wait on their Treasurer rules (#2781 made the
-    # city upgrades buyable), R7 to R9 on the owner, and the rest on what their
-    # text needs and the game lacks.
-    "The Gilded Path": "gold rules", "Venture Capital": "gold rules",
-    "Imperial Reserve": "gold rules", "Tax Collection": "gold rules",
-    "Pax Imperialis": "gold rules", "Wealth Interest": "gold rules",
+    # Treasury. Slice 6 builds the nodes its gold rules reach (6a eleven, 6b five,
+    # 6c five, 2026-11-20). R1 to R4 wait on their Treasurer rules (#2781 made the
+    # city upgrades buyable). The owner ruled on R7 to R9 and Tax Collection on
+    # 2026-11-20, after this slice was written: Tax Collection and Treasury Guard
+    # wait on their gold rules, Global Credit and Sovereign Loans on the gold debt
+    # the owner allowed through them. The rest wait on what their text needs and
+    # the game lacks.
+    "Tax Collection": "gold rules",
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
-    "Treasury Guard": "gold ruling", "Global Credit": "gold ruling",
-    "Sovereign Loans": "gold ruling",
+    "Treasury Guard": "gold rules", "Global Credit": "gold debt",
+    "Sovereign Loans": "gold debt",
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
@@ -4115,6 +4122,10 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # Slice 6b: the run record's five.
     "SurgeDamagedCityUpgradePriceReduced", "GoldDoubledBelowHalfPopulation",
     "UnpickedGoldShareAtClear", "GoldPerFloorAtClear", "ClearPayoutIncreased",
+    # Slice 6c: the gold held and the day's income.
+    "MagicFindPerTenThousandGoldHeld", "MagicFindPerFiftyThousandGoldHeld",
+    "DamageTakenPerHundredThousandGold", "GoldPerThousandCitizensDaily",
+    "GoldInterestEveryTwentyDays",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4280,6 +4291,18 @@ EMPIRE_TREE_EFFECTS = {
     "Cleanup Crew": [("UnpickedGoldShareAtClear", 0.10)],
     "Salvage Rights": [("GoldPerFloorAtClear", 50.0)],
     "Investment Funds": [("ClearPayoutIncreased", 0.10)],
+    # Slice 6c, the coordinating session's B6 to B8 of 2026-11-20, every gold
+    # figure a tier 1 one scaled to the tier (R10). THE GILDED PATH and VENTURE
+    # CAPITAL add magic find to a kill for each whole 10,000 and 50,000 gold held
+    # (B6), The Gilded Path uncapped because its text names no cap; IMPERIAL
+    # RESERVE reduces every city's damage for each whole 100,000, compounded (B7);
+    # PAX IMPERIALIS pays every day and WEALTH INTEREST every 20th (B8). The steps
+    # are in C++.
+    "The Gilded Path": [("MagicFindPerTenThousandGoldHeld", 0.01)],
+    "Venture Capital": [("MagicFindPerFiftyThousandGoldHeld", 0.01, 0, "", 0.20)],
+    "Imperial Reserve": [("DamageTakenPerHundredThousandGold", 0.01, 0, "", 0.25)],
+    "Pax Imperialis": [("GoldPerThousandCitizensDaily", 5.0)],
+    "Wealth Interest": [("GoldInterestEveryTwentyDays", 0.005, 0, "", 5000.0)],
 }
 
 

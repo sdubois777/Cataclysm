@@ -2362,6 +2362,26 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** Increased gold paid at a clear, per point (Investment Funds, B5). */
 	ClearPayoutIncreased,
+
+	// ---- Slice 6c: the gold held and the day's income. The coordinating session's B6 to B8 of 2026-11-20.
+
+	/** Magic find a kill gets, per point, for each whole 10,000 tier 1 gold held (The Gilded Path, B6): uncapped, by its
+	 *  text. */
+	MagicFindPerTenThousandGoldHeld,
+
+	/** The same for each whole 50,000, to a cap (Venture Capital, B6). */
+	MagicFindPerFiftyThousandGoldHeld,
+
+	/** Every city's damage reduced, per point, for each whole 100,000 tier 1 gold held, compounded, to a cap (Imperial
+	 *  Reserve, B7). */
+	DamageTakenPerHundredThousandGold,
+
+	/** Tier 1 gold paid every day for each whole 1,000 citizens of the standing cities (Pax Imperialis, B8). */
+	GoldPerThousandCitizensDaily,
+
+	/** The share of the gold held paid as interest every 20th day, per point, to a tier 1 cap a payment (Wealth
+	 *  Interest, B8). */
+	GoldInterestEveryTwentyDays,
 };
 
 /**

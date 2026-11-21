@@ -676,6 +676,21 @@ public:
 	void NotePopulationAgainstHalf();
 
 	/**
+	 * THE GOLD HELD, IN TIER 1 GOLD, which Imperial Reserve reads when a dungeon damages a city. Issue #2741 slice 6c, the
+	 * coordinating session's B7 of 2026-11-20. The balance is the Cataclysm module's, which this module may not reach,
+	 * so the game instance sets this as `UCataclysmEmpireMap::TodayIs` is set (`UCataclysmGameInstance::
+	 * WireTheRunToTheBalance`). NOT SAVED: set again on every run begun and every load. Unset, the gold held is none.
+	 */
+	TFunction<double()> GoldHeldAtTierOne;
+
+	/**
+	 * CALLED ONCE FOR EVERY DAY THAT PASSES, with the day's number, after the day's resolutions: Pax Imperialis and
+	 * Wealth Interest pay through it (B8). Days owed during a walk run at its end, and each calls this then. Set by the
+	 * game instance beside `GoldHeldAtTierOne`; NOT SAVED. Unset, a day pays nothing.
+	 */
+	TFunction<void(UCataclysmEmpireRun& Run, int32 Day)> OnDayPassed;
+
+	/**
 	 * Arms Last Stand Protocols on the map for the next hit, when the tree holds it, it has not held this run, and the
 	 * city is a living Sanctuary. Called before the two hits a dungeon's resolution deals and no other (Q3).
 	 */

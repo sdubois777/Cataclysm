@@ -131,6 +131,20 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** Salvage Rights' tier 1 gold for every floor cleared, paid at a clear (B4); Investment Funds' increase of it (B5). */
 	float GoldPerFloorAtClear = 0.0f;
 	float ClearPayoutIncreased = 0.0f;
+
+	// ---- Slice 6c, the coordinating session's B6 and B8 of 2026-11-20. ----
+
+	/** The Gilded Path's magic find for each whole 10,000 tier 1 gold held, uncapped by its text; Venture Capital's for
+	 *  each whole 50,000, held at its cap (B6). */
+	float MagicFindPerTenThousandGoldHeld = 0.0f;
+	float MagicFindPerFiftyThousandGoldHeld = 0.0f;
+	float MagicFindFromGoldCap = 0.0f;
+
+	/** Pax Imperialis' tier 1 gold a day for each whole 1,000 citizens; Wealth Interest's share of the gold held every
+	 *  20th day and its tier 1 cap a payment (B8). */
+	float GoldPerThousandCitizensDaily = 0.0f;
+	float GoldInterestEveryTwentyDays = 0.0f;
+	float GoldInterestCap = 0.0f;
 };
 
 /**
@@ -183,6 +197,24 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 
 	/** `UCataclysmEmpireRun::bPopulationFellBelowHalf`, which Stimulus Package reads. Slice 6b (B2). */
 	bool bPopulationBelowHalf = false;
+
+	/** The gold the character playing holds, and the tier's gold scale (R10), which The Gilded Path and Venture Capital
+	 *  read. Slice 6c (B6). Filled by the dungeon game mode at a kill; none and 1 elsewhere. */
+	int64 GoldHeld = 0;
+	double GoldScale = 1.0;
+};
+
+/**
+ * What the empire upgrade tree pays on a day that passes, in gold. Issue #2741 slice 6c, the coordinating session's B8
+ * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th. Worked out by `UCataclysmEmpireTree::
+ * DailyIncomeFor` and paid by the game instance through `UCataclysmEmpireRun::OnDayPassed`.
+ */
+struct CATACLYSM_API FCataclysmEmpireTreeDailyIncome
+{
+	int64 Pax = 0;
+	int64 Interest = 0;
+
+	int64 Total() const { return Pax + Interest; }
 };
 
 /**
@@ -259,6 +291,10 @@ struct CATACLYSM_API FCataclysmEmpireTreeDropRules
 	 * multiplies each pile's amount after the pile's own draws, so it draws nothing and `RollsAnything` leaves it out.
 	 */
 	float GoldMultiplier = 1.0f;
+
+	/** The magic find, in percentage points, the gold held gives this kill: The Gilded Path and Venture Capital (slice 6c,
+	 *  B6). Nothing drawn. */
+	float MagicFindFromGold = 0.0f;
 
 	bool RollsAnything() const
 	{
@@ -339,6 +375,14 @@ public:
 	 *  nodes' texts. */
 	static constexpr int32 ProsperityCitizensAStep = 10000;
 	static constexpr int32 FiscalPolicyUpgradesAStep = 5;
+
+	/** And slice 6c's: The Gilded Path's "per 10,000 Gold", Venture Capital's "Every 50,000 Gold", both in tier 1 gold
+	 *  (R10); Pax Imperialis' "For every 1,000 surviving citizens"; Wealth Interest's "Every 20 days". Each counted in
+	 *  whole steps. `tools/tests/test_empire_tree_gold_held.py` finds each in its node's text. */
+	static constexpr int32 GildedPathGoldAStep = 10000;
+	static constexpr int32 VentureCapitalGoldAStep = 50000;
+	static constexpr int32 PaxCitizensAStep = 1000;
+	static constexpr int32 WealthInterestDaysAStep = 20;
 
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
@@ -435,6 +479,31 @@ public:
 	 * kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down, and nothing
 	 * multiplies it, because the piles already were.
 	 */
+	/**
+	 * The run-wide part of the state the tree reads: the active Cataclysm types, the counts over the cities slice 6a's
+	 * nodes read, and the run's Stimulus Package flag. `DungeonStateFor` starts from it, and a day's income reads it with
+	 * no dungeon. Issue #2741 slice 6c.
+	 */
+	static FCataclysmEmpireTreeDungeonState EmpireStateFor(const UCataclysmEmpireRun& Run);
+
+	/**
+	 * The magic find, in percentage points, the gold held gives a kill (B6): The Gilded Path's per point for each whole
+	 * 10,000, uncapped by its text, and Venture Capital's per point for each whole 50,000, held at its cap, the gold
+	 * taken in tier 1 gold (`State.GoldHeld` over `State.GoldScale`, R10).
+	 */
+	static float MagicFindFromGoldFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+									  const FCataclysmEmpireTreeDungeonState& State);
+
+	/**
+	 * What the tree pays on day `Day` (B8): Pax Imperialis' gold a day for each whole 1,000 citizens of the standing
+	 * cities, and on every 20th day Wealth Interest's share of the gold held, held at its cap; each in tier 1 gold
+	 * times `GoldScale` (R10), and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth,
+	 * Fiscal Policy, Prosperity Index). Rounded to whole gold.
+	 */
+	static FCataclysmEmpireTreeDailyIncome DailyIncomeFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+														  const FCataclysmEmpireTreeDungeonState& State, int32 Day,
+														  int64 GoldHeld, double GoldScale);
+
 	static FCataclysmEmpireTreeClearPay ClearPayFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 													const FCataclysmEmpireTreeDungeonState& State, int32 Floors,
 													double GoldScale, int64 GoldDropped, int64 GoldPickedUp);

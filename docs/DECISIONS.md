@@ -275,6 +275,226 @@ archive`: each PROVED with the same failures as before, each restored half 5 pas
 
 ---
 
+## 2026-11-20 — Five more of the empire upgrade tree's gold nodes act: the gold held gives magic find and lowers every city's damage, and Pax Imperialis and Wealth Interest pay as days pass (#2741, slice 6c)
+
+**Affects:** `FCataclysmEmpireTreeBonuses::ReductionPerGoldStep`, `GoldStepPoints`, `GoldReductionCap`,
+`ImperialReserveGoldAStep` and `GoldDamageFactorFor`, new (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireTreeBonuses.cpp`); `UCataclysmEmpireRun::GoldHeldAtTierOne` and
+`OnDayPassed`, new, read by every city's damage factor and called by `AdvanceDay` after the day's resolutions
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `UCataclysmEmpireTree::EmpireStateFor`,
+`MagicFindFromGoldFor` and `DailyIncomeFor`, new, `FCataclysmEmpireTreeDailyIncome`, new, and new fields of
+`FCataclysmEmpireTreePlayerBonuses`, `FCataclysmEmpireTreeDungeonState` (`GoldHeld`, `GoldScale`) and
+`FCataclysmEmpireTreeDropRules` (`MagicFindFromGold`) (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and
+`.cpp`); `UCataclysmGameInstance::WireTheRunToTheBalance`, new
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.h` and `.cpp`); `ACataclysmDungeonGameMode::EmpireTreeDropRulesHere`
+(`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`) and `ACataclysmEnemyCharacter::HandleDeath`
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`); `ECataclysmEmpireTreeEffect`, five values
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 102 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeGoldHeldTests.cpp`, new, 5 in the new group
+`Cataclysm.EmpireTreeGoldHeld.`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 102 rows;
+`tools/tests/test_empire_tree_gold_held.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+`tools/tests/test_empire_tree_gold_nodes.py` and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, changed.
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6c.
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-6c-w1)**, at `abb9a7fc0` on development `c89fa5911`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the written-out record version check found the run, character and account records at 12, 10 and 4, and no test
+    stating another version;
+  - the asset step rebuilt `DT_EmpireTreeNodes.uasset` and `DT_EmpireTreeEffects.uasset`, 102 rows, and committed them
+    with their sources file alone;
+  - the nineteen groups each passed alone at their registered counts;
+  - the whole Unreal suite performed the registered 5079, all succeeding, with 48 skipped halves and "859 written and
+    deleted, 0 left behind";
+  - Python passed, 7843 with 9 skipped, and ruff passed;
+  - the eight C++ guard proofs each proved, failing exactly the registered test with exactly the registered number of
+    assertions and the registered values. The six Python guard proofs were proved in phase 1 and after each rebase.
+- **WITH THIS SLICE, 98 OF THE TREE'S NODES ACT**: slices 3a, 3b, 4, 5a, 5b, 6a, 6b and these five. They are every name
+  in `EMPIRE_TREE_BUILT` (`tools/generate_datatables.py`); the other 69 nodes and options are shown and cannot be bought.
+- **NO NODE SAYS THE OWNER HAS NOT RULED ON IT ANY MORE.** This slice was written before the owner's rulings of
+  2026-11-20 on Treasury Guard, Global Credit, Sovereign Loans and Tax Collection, and gave Tax Collection the reason
+  "a ruling on what it does, which the owner has not made", which the other three already had on development. Since
+  those rulings that text is false. When the slice was rebased onto `156f2b9e8` it was corrected (now `f363a8c6d`): Tax
+  Collection and Treasury Guard wait on "its gold rules, which are not built yet (issue #2741)", and Global Credit and
+  Sovereign Loans on "a gold debt, which is not built yet (issue #2741)", the text slice 6d gives them. The reason "gold
+  ruling" is gone. Slice 6d builds Tax Collection and Treasury Guard.
+- **NO SAVED RECORD CHANGES.** The gold held is the balance the character or account already saves, and the day's
+  income is paid into it.
+- **PAX IMPERIALIS, BUILT AS STATED, PAYS ABOUT 2,500 GOLD A DAY AT TIER 1 TO A FULL EMPIRE.** Its text is "For every
+  1,000 surviving citizens, generate 5 Gold every 1 day", one point. An empire of about 500,000 citizens therefore earns
+  about 2,500 gold a day at tier 1, against a city upgrade price of 10,000. The coordinating session puts that to the
+  owner beside Tax Collection's figure as one question about the size of the income nodes. If it is cut, the change is a
+  figure in the tree file, not code.
+
+### The rulings this slice builds on
+
+From the coordinating session on slice 6's plan, 2026-11-20, as recorded by this session:
+
+- **R10**: every gold amount a node names is a tier 1 figure, scaled to the run's tier as a gold pile is.
+- **B6, The Gilded Path and Venture Capital**: a kill's magic find gains a point for each whole 10,000 tier 1 gold held
+  (The Gilded Path) and, per point, for each whole 50,000 (Venture Capital), read at each kill. **The Gilded Path is
+  uncapped because its text names no cap**; Venture Capital is held at its text's 20%.
+- **B7, Imperial Reserve**: every city's damage, defence and population alike, compounded per point for each whole
+  100,000 tier 1 gold held, and held at its text's 25%, as Reclaimer's Resolve is.
+- **B8, Pax Imperialis and Wealth Interest**: the empire module cannot reach the balance, so the game instance hands the
+  run a function that pays the day's income, called after each day's resolutions. Pax Imperialis pays every day and
+  Wealth Interest every 20th day, both raised by the "all sources" increases. **Tax Collection was held back** while
+  the size of its payout went to the owner.
+- **I1 to I3, this session's readings, accepted**: Wealth Interest's 5,000 cap applies before the "all sources"
+  increases, as its text orders them (I1); each payment is rounded to the nearest whole gold (I2); the gold held is
+  read at each kill, so gold picked up on a floor counts at the next kill (I3).
+- **`EmpireStateFor`** is the one place the run-wide counts the tree reads are worked out, and the dungeon's state
+  starts from it.
+
+### What the genre does
+
+Not researched for this slice: every figure and every schedule is the node's own text, and the coordinating session's
+rulings settle what the text leaves open. The judgements are I1 to I3 above and the compounding of Imperial Reserve,
+which copies Reclaimer's Resolve in this tree.
+
+### The change
+
+- The game instance hands each run two functions where it hands it its tree, as a run begins and at every refresh,
+  which a load calls (`WireTheRunToTheBalance`): the gold held in tier 1 gold, and the day's hook, which pays what
+  `DailyIncomeFor` works out into the balance.
+- `UCataclysmEmpireRun::AdvanceDay` calls the day's hook once a day, after the day's resolutions and the Stimulus
+  Package check, and every city's damage factor takes Imperial Reserve's `GoldDamageFactorFor` from the gold held.
+- The dungeon's drop rules carry the gold held's magic find, and `HandleDeath` adds it to the kill's magic find before
+  its paying branch.
+- `generate_datatables.py` builds the five, with five new effect kinds, 102 effect rows.
+
+### Tests
+
+- **`Cataclysm.EmpireTreeGoldHeld.`**, new, five tests, each building a run or a set of figures and no dungeon floor:
+  `TheFiveNodesAddUpFromTheirRows` ("GOLD HELD TABLE"),
+  `TheGoldHeldGivesMagicFindInWholeStepsAtTheTiersScale` ("GOLD HELD MAGIC FIND"),
+  `ImperialReserveReducesEveryCitysDamageByTheGoldHeld` ("GOLD HELD RESERVE"),
+  `TheDayPaysPaxEveryDayAndInterestEveryTwentiethDay` ("GOLD HELD INCOME") and
+  `TheRunCallsTheDaysHookOnceForEveryDay` ("GOLD HELD DAYS").
+- `Cataclysm.Data.`'s effect table pin moves from 97 to 102 rows.
+- `tools/tests/test_empire_tree_gold_held.py`, new, five checks, because continuous integration compiles no C++. Its
+  fifth holds the four nodes the owner ruled on to the reasons above and that no "gold ruling" reason is left.
+
+### Registered before the run
+
+- **Base: 5074**, measured by window subjugate-w2 at `512fd30f9`, whose `game/` is development `c89fa5911`'s (`git
+  diff --quiet 512fd30f9 c89fa5911 -- game/` exits 0): "5074 tests performed, 5074 succeeded, 0 failed. 48 skipped part
+  of what they check" and "Test saves: 859 written and deleted, 0 left behind". The slice was written as
+  `feat/empire-tree-6c-gold` on slice 6b's head and moved with the stack; it was rebased onto `156f2b9e8` as
+  `feat/empire-tree-6c-gold-2`, clean, and then onto `c89fa5911` as `feat/empire-tree-6c-gold-3`, where only this
+  entry conflicted, with #2801's entry above it. Its three code commits' patches are unchanged by both rebases (`git
+  patch-id --stable` de9108cf2796, 3ddef53fa1b4 and f8631d740c94 before and after). It was first registered against
+  follow-w2 at `d4d0773ac` (5072, `game/` equal to `156f2b9e8`'s); #2787 branch B and #2801 moved the suite by a net 2
+  between, renaming, removing and adding tests, none in the 19 groups below.
+- **The whole suite: 5079 performed, 5079 succeeded, 0 failed**: the base's 5074 and the 5 new tests; 48 skipped halves
+  and "859 written and deleted, 0 left behind", the base's, because none of the five builds a dungeon floor or writes a
+  save.
+- **Each group alone**, counted from the base log's "Test Completed. Result={" lines with a literal match on
+  `Path={Cataclysm.<Group>.`, each the same in subjugate-w2's log as in follow-w2's: `Cataclysm.EmpireTreeGoldHeld.` 5 (new, 0 in the base); `EmpireTreeClearGold.` 9,
+  `EmpireTreeGold.` 6, `CityUpgradePrice.` 7; `EmpireTreeDrops.` 13, `EmpireTreeLoot.` 10, `EmpireTreeWalk.` 14,
+  `EmpireTreeCity.` 17, `EmpireTreeEvents.` 14, `EmpireTreeScreen.` 10; `EmpireRun.` 71, `EmpireMap.` 17,
+  `EmpireRunTier.` 5, `DayClock.` 10; `DungeonMode.` 46, `Drop.` 30, `Gold.` 13, `Data.` 7, `SaveLoad.` 81. Every
+  group name that begins a longer one was listed by its full name first; the trailing dot keeps
+  `Cataclysm.EmpireTreeGold.` from selecting `Cataclysm.EmpireTreeGoldHeld.`, `Cataclysm.Drop.` from `DropPickup.` and
+  `Cataclysm.EmpireRun.` from `EmpireRunTier.`.
+- **The written-out record version check** wants the run record at 12, the character record at 10 and the account
+  record at 4, which development holds.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_EmpireTreeNodes.uasset` and
+  `game/Content/Data/DT_EmpireTreeEffects.uasset`, 102 rows, and rewrites `game/Data/datatable_asset_sources.json`; those
+  three files and no other are committed and pushed before the tests run, and that commit is the tested head.
+- **Before the window**, #2781's first window's lesson was checked: no Unreal test outside this slice's group names one
+  of the five nodes as an example of a refused node, and none reads a refusal reason this slice changes.
+- **Eight C++ guard proofs**, each narrowed to `Cataclysm.EmpireTreeGoldHeld.` (5 tests), each predicted at 5 performed,
+  4 succeeded and 1 failed, the restored half passing every test it ran:
+
+| Proof | The break | Predicted failing test and assertions |
+|---|---|---|
+| J1 | Venture Capital not held at its cap | `TheGoldHeldGivesMagicFindInWholeStepsAtTheTiersScale`, 1 ("1,000,000: 100, uncapped, and 20", 300) |
+| J2 | the tier's scale ignored | the same test, 1 ("35,000 at tier 2: 1 point", 3) |
+| J3 | Imperial Reserve not applied | `ImperialReserveReducesEveryCitysDamageByTheGoldHeld`, 2 (one step 1.00; two steps 1.00) |
+| J4 | Imperial Reserve not held at its cap | the same test, 1 (two steps 0.605 against 0.75) |
+| J5 | interest paid every day | `TheDayPaysPaxEveryDayAndInterestEveryTwentiethDay`, 1 ("no interest on day 7", 500) |
+| J6 | the interest cap not scaled | the same test, 1 ("and the cap 15,000", 5,000) |
+| J7 | the income not raised | the same test, 1 ("raised by Untouchable Wealth's 0.40: 861", 615) |
+| J8 | the day's hook never called | `TheRunCallsTheDaysHookOnceForEveryDay`, 2 (called 0 times; the three days) |
+
+- **Python before the window**: the full suite at `8954f200b`, rebased onto `c89fa5911`: "1 failed, 7842 passed, 9
+  skipped in 335.84s", JUnit tests 7852, failures 1, errors 0, skipped 9. The one failure is
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  naming `EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`, which the asset step clears. The six Python guards below
+  proved again at that head. Before the rebase, at `19a5f8899`, the slice's
+  test files and their neighbours (`tools/tests/test_empire_tree*.py`, `test_city_upgrade*.py`, `test_datatable*.py`):
+  261 tests, 260 passed, 1 failed, JUnit tests 261, failures 1, errors 0, skipped 0. The one failure is the asset
+  step's to clear, `tools/tests/test_datatable_assets_are_current.py`. Ruff "All checks passed!";
+  `python tools/generate_datatables.py --check` "All 33 DataTable CSVs are up to date."
+
+### The six Python guards, proved in phase 1 and again after each rebase
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_gold_held.py` and
+`tools/tests/test_empire_tree_gold_nodes.py` (10 tests), `proved` True at the rebased head:
+
+| Proof | The break | Test that failed |
+|---|---|---|
+| H1 | Venture Capital's step in C++ becomes 25,000 | `test_every_step_is_its_nodes_own_words` |
+| H2 | a load's refresh no longer hands the run the two functions | `test_the_game_instance_hands_the_run_both_functions_where_it_hands_it_the_tree` |
+| H3 | the day's function no longer pays into the balance | the same test |
+| H4 | the run calls the day before its resolutions | `test_the_run_calls_the_day_after_its_resolutions_and_every_city_takes_the_reserve` |
+| H5 | the kill leaves the gold held's magic find out | `test_a_kill_adds_the_gold_helds_magic_find_before_it_rolls` |
+| H6 | Tax Collection waits on "a ruling ... the owner has not made" again | `test_the_nodes_the_owner_ruled_on_wait_on_what_is_not_built_and_none_on_a_ruling`, and `test_only_tax_collection_and_treasury_guard_wait_on_their_gold_rules` |
+
+H6 was "Tax Collection built" in phase 1; it changed with the correction above, and it fails two tests because both
+check the reason.
+
+### The window
+
+**tree-6c-w1, 2026-11-21, 14:41 to 15:22, at `abb9a7fc0`.** Phase 2's three compiles ran under the lock
+tree-6c-compile from 14:30 to 14:40, after development's CI and Unreal runs for `c89fa5911` and the coordinating
+session's rebuild of the main checkout had finished: the branch (59 files), each changed `.cpp` file alone (16 files:
+`CataclysmEmpireMap.cpp`, `CataclysmEmpireRun.cpp` and `CataclysmEmpireTreeBonuses.cpp` out of the CataclysmEmpire unity
+file; `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmEmpireTree.cpp`,
+`CataclysmGameInstance.cpp`, `CataclysmDataTableTests.cpp` and `CataclysmEmpireTreeGoldHeldTests.cpp` out of the
+Cataclysm one), and the unity files (10). None printed a warning or an error. The window's gate found every pre-check
+passing at 14:41, the recount matched every group, and the written-out version check found "28 lines stating a version;
+NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_EmpireTreeEffects.uasset`,
+  `game/Content/Data/DT_EmpireTreeNodes.uasset` and `game/Data/datatable_asset_sources.json` changed; the three were
+  committed alone as `abb9a7fc0` on `4c36b3103` and pushed, and that is the tested head.
+- **Each group alone**: all nineteen at their registered counts, all succeeding, `Cataclysm.EmpireTreeGoldHeld.` 5 of 5
+  among them.
+- **The whole suite**: "Tests: 5079 tests performed, 5079 succeeded, 0 failed. 48 skipped part of what they check";
+  "Test saves: 859 written and deleted, 0 left behind"; "Declared: 5079 tests in the tree at abb9a7fc0; 5079
+  performed, gap 0".
+- **Python**: "7843 passed, 9 skipped"; JUnit tests 7852, failures 0, errors 0, skipped 9; ruff "All checks passed!".
+  The one failure before the window, `tools/tests/test_datatable_assets_are_current.py`, passes with the assets rebuilt.
+- **What the new tests printed**: "GOLD HELD TABLE: gilded 0.010, venture 0.100 to 0.20, pax 5.0, interest 0.0500 to
+  5000; reserve 0.010 at 25 points to 0.25"; "GOLD HELD MAGIC FIND: 35,000 3.0; 120,000 32.0; 1,000,000 120.0; 35,000 at
+  tier 2 1.0; none 0.0; the rules carry 32.0"; "GOLD HELD RESERVE: unset 1.0000; under a step 1.0000; one step 0.7778
+  (population 0.7778); two steps 0.7500"; "GOLD HELD INCOME: day 7 615 + 0; day 20 615 + 500; day 0 interest 0; day 40
+  of 1,000,000 interest 5000; tier 2 1845 + 15000; raised Pax 861; no node 0"; "GOLD HELD DAYS: from day 1, called 3
+  times: 2, 3, 4".
+- **The proofs**, each 5 performed, 4 succeeded, 1 failed with the break in, failing exactly its registered test, and
+  5 performed, 5 succeeded with it restored:
+
+| Proof | The failed assertions |
+|---|---|
+| J1 | `TheGoldHeldGivesMagicFindInWholeStepsAtTheTiersScale` 1: "1,000,000: 100, uncapped, and 20" (300) |
+| J2 | the same test, 1: "35,000 at tier 2: 1 point" (3) |
+| J3 | `ImperialReserveReducesEveryCitysDamageByTheGoldHeld` 2: "one step: 0.99^25" (1.00); "two steps, held at 25%: 0.75" (1.00) |
+| J4 | the same test, 1: "two steps, held at 25%: 0.75" (0.605) |
+| J5 | `TheDayPaysPaxEveryDayAndInterestEveryTwentiethDay` 1: "no interest on day 7" (500) |
+| J6 | the same test, 1: "and the cap 15,000" (5000) |
+| J7 | the same test, 1: "raised by Untouchable Wealth's 0.40: 861" (615) |
+| J8 | `TheRunCallsTheDaysHookOnceForEveryDay` 2: "called three times" (0); "on the three days that follow" |
+
+Every value read with the break in is the value registered for it.
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
