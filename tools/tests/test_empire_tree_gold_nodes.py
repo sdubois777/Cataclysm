@@ -12,7 +12,7 @@ price function every screen and the purchase share.
 WHAT IS CHECKED:
 
   1. no node's refusal and no comment in the game's source says the game has no gold, or that a city upgrade is free;
-  2. no node is refused for its gold rules any more, and none for gold or a gold cost;
+  2. only Tax Collection and Treasury Guard are refused for their gold rules, and no node for gold or a gold cost;
   3. a kill passes its drop rules' gold multiplier to `SpawnGoldFor`, which multiplies each pile after its draws and
      leaves it as rolled at exactly 1; and the drop rules carry `GoldMultiplierFor`;
   4. the steps C++ counts in are the nodes' own words, and the price cap is the ruling's 75%;
@@ -39,8 +39,9 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
 
-#: NONE: slice 6c built the last nodes its gold rules reached, and Tax Collection waits on the owner (2026-11-20).
-SLICE_6B: set[str] = set()
+#: THE TWO STILL WAITING ON THEIR GOLD RULES after slice 6c: Tax Collection and Treasury Guard, which the owner ruled on
+#: (2026-11-20) after slice 6c was written.
+SLICE_6B = {"Tax Collection", "Treasury Guard"}
 
 #: WORDS NO SCREEN OR COMMENT MAY SAY ANY MORE, each true until #2742 and false since.
 FALSE_GOLD = ("gold, which the game does not have yet", "free and immediate today", "and there is no gold",
@@ -80,7 +81,7 @@ def test_nothing_the_game_shows_or_says_claims_there_is_no_gold() -> None:
     assert not said, "a source file still says the game has no gold:\n" + "\n".join(said)
 
 
-def test_no_node_is_refused_for_its_gold_rules_any_more() -> None:
+def test_only_tax_collection_and_treasury_guard_wait_on_their_gold_rules() -> None:
     waiting = {name for name, system in gen.EMPIRE_TREE_REFUSED.items() if system == "gold rules"}
     assert waiting == SLICE_6B, (sorted(waiting - SLICE_6B), sorted(SLICE_6B - waiting))
     assert not set(gen.EMPIRE_TREE_REFUSED.values()) & {"gold", "upgrade cost"}, (

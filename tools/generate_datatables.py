@@ -3740,7 +3740,12 @@ EMPIRE_TREE_SYSTEMS = {
     # with one is built in a later slice of #2741.
     "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
                           "yet (issue #2741)"),
-    "gold ruling": "a ruling on what it does, which the owner has not made",
+    # Tax Collection and Treasury Guard: the owner ruled on both on 2026-11-20,
+    # after slice 6c was written; slice 6d builds them.
+    "gold rules": "its gold rules, which are not built yet (issue #2741)",
+    # Global Credit and Sovereign Loans: the owner allowed a gold debt only through
+    # the tree's own options for one (2026-11-20); a later slice builds it.
+    "gold debt": "a gold debt, which is not built yet (issue #2741)",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
@@ -3854,16 +3859,18 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
-    # five, 6c five, 2026-11-20). R1 to R4 wait on their Treasurer rules (#2781
-    # made the city upgrades buyable); R7 to R9 and TAX COLLECTION on the owner
-    # (its payout's size went to the owner on 2026-11-20); the rest on what their
-    # text needs and the game lacks.
-    "Tax Collection": "gold ruling",
+    # Treasury. Slice 6 builds the nodes its gold rules reach (6a eleven, 6b five,
+    # 6c five, 2026-11-20). R1 to R4 wait on their Treasurer rules (#2781 made the
+    # city upgrades buyable). The owner ruled on R7 to R9 and Tax Collection on
+    # 2026-11-20, after this slice was written: Tax Collection and Treasury Guard
+    # wait on their gold rules, Global Credit and Sovereign Loans on the gold debt
+    # the owner allowed through them. The rest wait on what their text needs and
+    # the game lacks.
+    "Tax Collection": "gold rules",
     "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
     "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
-    "Treasury Guard": "gold ruling", "Global Credit": "gold ruling",
-    "Sovereign Loans": "gold ruling",
+    "Treasury Guard": "gold rules", "Global Credit": "gold debt",
+    "Sovereign Loans": "gold debt",
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",

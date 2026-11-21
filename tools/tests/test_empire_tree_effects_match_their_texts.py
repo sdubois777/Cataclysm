@@ -124,7 +124,8 @@ SLICE_6B = {"Price Controls", "Stimulus Package", "Cleanup Crew", "Salvage Right
             "Investment Funds"}
 
 #: SLICE 6C'S FIVE, the gold held and the day's income: the coordinating
-#: session's B6 to B8 of 2026-11-20. Tax Collection waits on the owner.
+#: session's B6 to B8 of 2026-11-20. Tax Collection and Treasury Guard wait on
+#: their gold rules, which the owner ruled on after this slice was written.
 SLICE_6C = {"The Gilded Path", "Venture Capital", "Imperial Reserve", "Pax Imperialis",
             "Wealth Interest"}
 
