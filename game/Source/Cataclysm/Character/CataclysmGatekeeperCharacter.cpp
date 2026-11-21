@@ -719,7 +719,14 @@ void ACataclysmGatekeeperCharacter::UpdateLoopingAnimation()
 
 	// **THE WALK RATE IS A PLACEHOLDER AND NOT A DERIVATION.** See JogPlayRate
 	// in the header: the stride measurement cannot read this rig. Issue #778.
-	MeshComponent->SetPlayRate(bWalking ? JogPlayRate : 1.0f);
+	//
+	// SCALED BY A CHARGE'S SPEED WHILE ONE RUNS, and only then, capped at the
+	// ceiling: a Gatekeeper carrying Inferno Charge. Issue #2809. Walking, it
+	// keeps the placeholder as before.
+	MeshComponent->SetPlayRate(!bWalking ? 1.0f
+		: IsCharging() ? JogPlayRateAtItsWalkingSpeed(JogPlayRate, DesignedWalkSpeedCmPerSecond,
+													   MinimumPlayRate, MaximumPlayRate)
+		: JogPlayRate);
 }
 
 float ACataclysmGatekeeperCharacter::PlayOneShot(UAnimSequence* Animation,

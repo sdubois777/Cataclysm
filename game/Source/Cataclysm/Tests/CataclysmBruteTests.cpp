@@ -23,6 +23,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "GameFramework/CharacterMovementComponent.h"
 // ON_SCOPE_EXIT. This file used it from the first version and compiled anyway,
 // through a transitive include that nothing guarantees. Named here so a change
@@ -1127,6 +1128,83 @@ bool FCataclysmStompShovesWhatItCatches::RunTest(const FString&)
 	TestTrue(TEXT("and the stomp still stuns, which is what it is for"),
 		UCataclysmSkillEffects::IsStunned(Caught));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmBruteChargeGaitTest,
+	"Cataclysm.ChargeGait.AChargingBrutesGraphReadsTheChargeSpeed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2809: the Brute has no charge of its own, but carrying the creature modifier Inferno Charge it charges, and
+ * its graph, `ABP_Brute`, computes `GroundSpeed` from a `GetVelocity` call. Until the charge reported its velocity
+ * there, the graph read nought through the whole run and played the idle. THE CONTROL is the same graph read standing.
+ * In this file for `ReadNumber` and `ReadFlag`, which read the graph's variables; the group is `Cataclysm.ChargeGait.`.
+ */
+bool FCataclysmBruteChargeGaitTest::RunTest(const FString&)
+{
+	using namespace CataclysmBruteTest;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a Brute"), Brute))
+	{
+		return false;
+	}
+
+	// THE ART-FREE HALF: what the graph is handed.
+	const float Speed = UCataclysmEnemyModifiers::InfernoChargeSpeedCmPerSecond;
+	TestTrue(TEXT("control: standing, it reports no movement"), Brute->GetVelocity().IsNearlyZero());
+	Brute->BeginCharge(FVector(1000.0f, 0.0f, 0.0f), Speed, /*HalfWidthCm=*/50.0f, /*DamagePercent=*/0.0f);
+	if (!TestTrue(TEXT("set-up: the charge set off"), Brute->IsCharging()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("charging, it reports the charge's speed"), static_cast<float>(Brute->GetVelocity().Size2D()),
+		Speed, 0.5f);
+
+	if (FSoftObjectPath(ACataclysmBruteCharacter::BodyMeshPath).TryLoad() == nullptr)
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, TEXT("Paragon Rampage pack is not installed, so there is no "
+			"skeleton to run a graph on: WHAT ITS GRAPH READS DURING A CHARGE IS NOT CHECKED. That it reports the "
+			"charge's speed is"));
+		return true;
+	}
+	if (!TestTrue(TEXT("set-up: the body and its animation Blueprint resolved"),
+		Brute->ResolveBody(/*bIncludeAnimation=*/true)))
+	{
+		return false;
+	}
+	USkeletalMeshComponent* Mesh = Brute->GetMesh();
+	UAnimInstance* Graph = Mesh ? Mesh->GetAnimInstance() : nullptr;
+	if (!TestNotNull(TEXT("set-up: the graph has an instance to run"), Graph))
+	{
+		return false;
+	}
+
+	Mesh->TickAnimation(0.1f, /*bNeedsValidRootMotion=*/false);
+	double GroundSpeed = -1.0;
+	bool bMoving = false;
+	if (!TestTrue(TEXT("set-up: the graph has a GroundSpeed variable"), ReadNumber(Graph, TEXT("GroundSpeed"), GroundSpeed))
+		|| !TestTrue(TEXT("set-up: the graph has a bMoving variable"), ReadFlag(Graph, TEXT("bMoving"), bMoving)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("charging, its graph reads the charge's speed"), static_cast<float>(GroundSpeed), Speed, 1.0f);
+	TestTrue(TEXT("and moving"), bMoving);
+
+	Brute->CancelCharge();
+	Mesh->TickAnimation(0.1f, /*bNeedsValidRootMotion=*/false);
+	ReadNumber(Graph, TEXT("GroundSpeed"), GroundSpeed);
+	ReadFlag(Graph, TEXT("bMoving"), bMoving);
+	TestEqual(TEXT("control: stopped, its graph reads nought"), static_cast<float>(GroundSpeed), 0.0f, 1.0f);
+	TestFalse(TEXT("control: and not moving"), bMoving);
 	return true;
 }
 

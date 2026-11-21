@@ -1058,11 +1058,13 @@ compressed.
 | `PrimaryAttack_LB` | 1.0667 | |
 | `PrimaryAttack_FourStrikes` | 3.7000 | Exceeds the 2.4 s interval. Usable at a play rate of 1.54, under the 2.50 ceiling |
 
-**The charge clip exists and nothing can play it.** `Stampede` is 0.7000 seconds
-and `Stampede_Knockup` is 1.5333. The design gives this creature a charge, and
-`ACataclysmEnemyController` cannot execute a Movement-shape ability at all —
-issue #491. The 0.7000 second clip is what decided the design should be a charge
-rather than a leap: a leap has to be stitched from five clips.
+**The charge clip plays through the charge's run.** `Stampede` is 0.7000 seconds
+and `Stampede_Knockup` is 1.5333. The 0.7000 second clip is what decided the
+design should be a charge rather than a leap: a leap has to be stitched from
+five clips. Until issue #2809 it played through the 0.83 second wind-up and the
+run showed the idle; since the coordinating session's ruling J2 of 2026-11-21 the
+wind-up holds its first frame and the run, which lasts its 0.70 seconds, plays it.
+This paragraph said nothing could play it, from before issue #491 built the charge.
 
 | Animation | Length | Note |
 |---|:-:|---|
@@ -1075,7 +1077,7 @@ rather than a leap: a leap has to be stitched from five clips.
 | `Jump_Fall` | 1.3333 | |
 | `Jump_Land` | 0.9000 | |
 | `Attack_Melee_Air` | 1.0000 | |
-| `Stampede` | 0.7000 | The charge. Fits an 0.83 s wind-up as authored |
+| `Stampede` | 0.7000 | The charge. Plays through the 0.70 s run at its authored rate; the wind-up holds its first frame (issue #2809) |
 | `Stampede_Knockup` | 1.5333 | A charge that knocks the target up. Nothing can knock the player back yet, issue #310 |
 
 **The four hit reactions are additive and one thing is not.** `HitReact_Front`

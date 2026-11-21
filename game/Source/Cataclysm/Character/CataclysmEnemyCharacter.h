@@ -110,6 +110,23 @@ public:
 	bool IsCharging() const { return bCharging; }
 
 	/**
+	 * Its velocity as everything that asks sees it: WHILE A CHARGE RUNS, the lane's direction times the charge's speed,
+	 * flat; otherwise the engine's own answer, its movement component's. Issue #2809, from the owner's playtest of
+	 * 2026-11-21: "Enemies using any charge attack aren't sprinting like they're charging, they're just sliding into
+	 * position."
+	 *
+	 * WHY. A charge's steps move the body with `SetActorLocation`, so the movement component's velocity stays nought,
+	 * and until this every creature that chooses its loop from `GetVelocity` -- the Imp, the Hellhound, the Succubus,
+	 * the Abyssal Warden, the Corrupted Sentinel, the Gatekeeper, and `ABP_Brute`, whose graph calls `GetVelocity` --
+	 * chose its idle and slid. A charging creature really is moving at that speed, so every other reader is told the
+	 * truth too; `docs/DECISIONS.md` lists each reader and what it now sees.
+	 *
+	 * THE MOVEMENT COMPONENT IS NOT TOUCHED. Its own velocity stays what its own movement made it, so nothing about how
+	 * a creature walks or stops changes, and the brain's `StopMovement` during a charge still stops what it stops.
+	 */
+	virtual FVector GetVelocity() const override;
+
+	/**
 	 * Stop a charge where it is.
 	 *
 	 * THE ONLY CALLER IS A STUN, and that is the decision rather than an
@@ -2071,6 +2088,8 @@ public:
 	 * SCALED FROM THE DESIGNED RATE RATHER THAN WORKED OUT AGAIN, because each creature divides by its own clip's
 	 * authored speed and only it knows that figure; the designed rate already holds it, and the rate is in proportion
 	 * to the speed.
+	 *
+	 * AND WHILE A CHARGE RUNS, scaled by the charge's speed instead, clamped the same way. Issue #2809.
 	 */
 	float JogPlayRateAtItsWalkingSpeed(float DesignedPlayRate, float DesignedSpeedCmPerSecond,
 									   float MinimumPlayRate, float MaximumPlayRate) const;
@@ -2744,6 +2763,12 @@ private:
 
 	/** How fast the running charge travels, in centimetres per second. */
 	float ChargeSpeedCmPerSecond = 0.0f;
+
+	/**
+	 * Which way the running charge travels: flat and of unit length, set by `BeginCharge` and by each step, and nought
+	 * when the lane has no length. What `GetVelocity` multiplies by the charge's speed. Issue #2809.
+	 */
+	FVector ChargeDirection = FVector::ZeroVector;
 
 	/** The running charge's lane half-width, in centimetres. */
 	float ChargeHalfWidthCm = 0.0f;
