@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -1746,6 +1747,123 @@ bool FCataclysmGatekeeperCalledImpHasAStartingMaximum::RunTest(const FString&)
 	Called->SetRarityStep(Called->RarityStep + 1);
 	const float After = Called->GetAbilitySystemComponent()->GetNumericAttribute(MaxHealth);
 	TestTrue(*FString::Printf(TEXT("a rung up rewrites its maximum (%.1f, then %.1f)"), Before, After), After > Before);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmGatekeeperTakenImpsServeItsCommander,
+	"Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2791, from the owner's playtest of 2026-11-20: "If you subjugate a gatekeeper, the imps it spawns spawn as
+ * enemies." Subjugate's row says a thrall "keeps its own abilities", and Call the Damned is the Gatekeeper's.
+ *
+ * THE CONTROL, READ FIRST: a free Gatekeeper's Imps are on the Monsters team, hostile to a creature on the Players
+ * team, have no commander, and an Imp's brain chooses that creature. THEN A GATEKEEPER TAKEN BY A COMMANDER ON THE
+ * PLAYERS TEAM: its Imps are on the commander's team and friendly to it, their commander is the Gatekeeper and not the
+ * player, so the commander still commands the Gatekeeper alone, and an Imp's brain chooses a free creature on the
+ * Monsters team standing as close as the commander does.
+ *
+ * STANDING: the free Gatekeeper at (0, 100 m) with its target 5 m along +X; the taken one at the origin, its commander
+ * 5 m along +X and the free creature 5 m along -X. Imps arrive 2.5 to 4 m from their Gatekeeper, so everything is
+ * inside an Imp's 10 m notice radius.
+ */
+bool FCataclysmGatekeeperTakenImpsServeItsCommander::RunTest(const FString&)
+{
+	using namespace CataclysmGatekeeperTest;
+	using Gatekeeper_t = ACataclysmGatekeeperCharacter;
+	constexpr float Metre = 100.0f;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	const auto ImpsOf = [](const Gatekeeper_t* Gatekeeper)
+	{
+		TArray<ACataclysmImpCharacter*> Found;
+		for (const TWeakObjectPtr<ACataclysmImpCharacter>& Weak : Gatekeeper->CalledImps)
+		{
+			if (ACataclysmImpCharacter* Imp = Weak.Get())
+			{
+				Found.Add(Imp);
+			}
+		}
+		return Found;
+	};
+	const auto ChoiceOf = [](const ACataclysmImpCharacter* Imp) -> AActor*
+	{
+		const ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Imp->GetController());
+		return Brain ? Brain->ChooseTarget() : nullptr;
+	};
+	const FGenericTeamId Players = UCataclysmTeams::IdFor(ECataclysmTeam::Players);
+	const FGenericTeamId Monsters = UCataclysmTeams::IdFor(ECataclysmTeam::Monsters);
+
+	// --- THE CONTROL: A FREE GATEKEEPER ------------------------------------
+
+	const FVector FreeHome(0.0f, 100.0f * Metre, 0.0f);
+	Gatekeeper_t* Free = SpawnGatekeeper(World, FreeHome);
+	ACataclysmEnemyCharacter* FreeTarget = SpawnOn(World, ECataclysmTeam::Players, FreeHome + FVector(5.0f * Metre, 0, 0));
+	if (!Free || !FreeTarget)
+	{
+		AddError(TEXT("set-up: could not spawn the free Gatekeeper and its target"));
+		return false;
+	}
+	Free->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, Free->GetActorLocation());
+	const TArray<ACataclysmImpCharacter*> FreeImps = ImpsOf(Free);
+	if (!TestEqual(TEXT("set-up: the free Gatekeeper called its designed number of Imps"), FreeImps.Num(),
+				   Gatekeeper_t::CallTheDamnedCount))
+	{
+		return false;
+	}
+	for (const ACataclysmImpCharacter* Imp : FreeImps)
+	{
+		TestTrue(TEXT("control: a free Gatekeeper's Imp is on the Monsters team"), Imp->GetGenericTeamId() == Monsters);
+		TestFalse(TEXT("control: and hostile to a creature on the Players team"),
+				  UCataclysmTargeting::IsFriendlyTo(Imp, FreeTarget));
+		TestNull(TEXT("control: with no commander"), UCataclysmCommand::CommanderOf(Imp));
+		TestTrue(TEXT("control: and its brain chooses the creature on the Players team"), ChoiceOf(Imp) == FreeTarget);
+	}
+
+	// --- A GATEKEEPER TAKEN BY A COMMANDER ON THE PLAYERS TEAM -------------
+
+	Gatekeeper_t* Taken = SpawnGatekeeper(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Commander = SpawnOn(World, ECataclysmTeam::Players, FVector(5.0f * Metre, 0, 0));
+	ACataclysmEnemyCharacter* Enemy = SpawnOn(World, ECataclysmTeam::Monsters, FVector(-5.0f * Metre, 0, 0));
+	if (!Taken || !Commander || !Enemy)
+	{
+		AddError(TEXT("set-up: could not spawn the Gatekeeper to take, its commander and the free creature"));
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: the commander takes the Gatekeeper"), UCataclysmCommand::Subjugate(Commander, Taken))
+		|| !TestTrue(TEXT("set-up: the Gatekeeper is now the commander's"),
+					 UCataclysmCommand::CommanderOf(Taken) == Commander))
+	{
+		return false;
+	}
+	Taken->UseEnemyAbility(Gatekeeper_t::CallTheDamnedAbility, nullptr, Taken->GetActorLocation());
+	const TArray<ACataclysmImpCharacter*> TakenImps = ImpsOf(Taken);
+	if (!TestEqual(TEXT("set-up: the taken Gatekeeper called its designed number of Imps"), TakenImps.Num(),
+				   Gatekeeper_t::CallTheDamnedCount))
+	{
+		return false;
+	}
+	for (const ACataclysmImpCharacter* Imp : TakenImps)
+	{
+		TestTrue(TEXT("a taken Gatekeeper's Imp is on its commander's team"), Imp->GetGenericTeamId() == Players);
+		TestTrue(TEXT("and friendly to its commander"), UCataclysmTargeting::IsFriendlyTo(Imp, Commander));
+		TestTrue(TEXT("its commander is the Gatekeeper, whom it walks back to"),
+				 UCataclysmCommand::CommanderOf(Imp) == Taken);
+		TestTrue(TEXT("and its brain chooses the free creature, not the commander"), ChoiceOf(Imp) == Enemy);
+	}
+	TestEqual(TEXT("the commander still commands the Gatekeeper alone: the Imps are not its followers"),
+			  UCataclysmCommand::ThingsCommandedBy(Commander).Num(), 1);
 	return true;
 }
 

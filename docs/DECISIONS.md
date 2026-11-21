@@ -2,6 +2,78 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-20 — A Gatekeeper taken by Subjugate calls its imps onto its commander's side (#2791)
+
+**Affects:** `ACataclysmGatekeeperCharacter::UseEnemyAbility`, Call the Damned, which now gives each Imp the
+Gatekeeper's team, and the Gatekeeper as owner when the Gatekeeper has a commander
+(`game/Source/Cataclysm/Character/CataclysmGatekeeperCharacter.cpp`). Test: one new,
+`Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot`, in
+`game/Source/Cataclysm/Tests/CataclysmGatekeeperTests.cpp`. Issue
+[#2791](https://github.com/sdubois777/Cataclysm/issues/2791).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** It goes on the machine after #2787's branch A merges.
+- **THE OWNER'S REPORT**, playtest of 2026-11-20: "If you subjugate a gatekeeper, the imps it spawns spawn as
+  enemies."
+- **THE CAUSE.** `UCataclysmCommand::Subjugate` gives a taken creature its commander as owner and its commander's
+  team. Call the Damned spawned each `ACataclysmImpCharacter` with no owner and no team, and every creature starts on
+  the Monsters team (`ACataclysmEnemyCharacter`'s constructor), so a thrall's own ability fought the player. No other
+  creature ability in the game spawns a creature: every other spawn of one is a dungeon rule, a development spawn or a
+  save being loaded.
+
+### The rulings
+
+The coordinating session, 2026-11-20, on the plan:
+
+- **The team always, the owner only when taken.** A free Gatekeeper is on Monsters, so its Imps are as they were; and
+  a free Gatekeeper's Imps get no owner, since an owner is a commander and a creature with a commander walks back to it
+  (issue #1517).
+- **The reserve, recorded as the coordinating session's reading** (the owner is told in one line in case they want it
+  otherwise): the called Imps reserve nothing and sit inside the thrall's own 30. The owner's reserve rule of the same
+  day (#2787) is about what the player makes, and the thrall makes these with "its own abilities", Subjugate's words.
+  They follow the Gatekeeper, not the player (`FollowsCommander` reads the direct owner), so they are not the player's
+  followers: they add nothing to "1 per second for each minion you have", Press-Ganged and Rekindled do not replace
+  them, and Vesselstep cannot choose them. So Call the Damned's limit of six alive stays: it is not a cap on anything
+  that reserves, and the no-cap ruling (#2787) does not reach it.
+- **Imps already standing when the Gatekeeper is taken stay enemies.** Subjugate takes one creature (`MaxTargets=1`).
+- **A taken Gatekeeper's Imps stay on its commander's side after it dies, until they are killed**, as a free
+  Gatekeeper's outlive it.
+
+### Tests
+
+- **One new**, the control read first: a free Gatekeeper's Imps are on Monsters, hostile to a creature on the Players
+  team, with no commander, and an Imp's brain chooses that creature; a Gatekeeper taken by a commander on the Players
+  team calls Imps on that team, friendly to the commander, whose commander is the Gatekeeper, whose brain chooses a free
+  creature on the Monsters team standing as close as the commander, and the commander still commands the Gatekeeper
+  alone.
+
+### The window
+
+**thrall-imps-w1, 2026-11-20, 17:32 to 17:56, at b0aba0a84 on 50954626c: PASSED.** The three compiles before it, 17:25 to
+17:31, all succeeded with no warning or error line: the branch (47 files), the two changed files alone, and the unity
+build.
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, already up to date from the compiles |
+| `Cataclysm.Gatekeeper.` alone | 14 performed, 14 succeeded, registered 14 |
+| Whole suite | 5054 performed, 5054 succeeded, registered 5054 (reserves-a-w2's 5053 + 1); 47 skipped halves, registered 47; 852 test saves written and deleted, 0 left behind; declared 5054, gap 0 |
+| Python | 7812 passed, 9 skipped; the JUnit file: 7821 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+**Proof G1, PROVED.** With `Imp->SetGenericTeamId(GetGenericTeamId());` replaced by `(void)GetGenericTeamId();`, 14
+were performed and only the new test failed, on each of its three Imps: "a taken Gatekeeper's Imp is on its commander's
+team" and "and its brain chooses the free creature, not the commander". Restored, 14 of 14 passed. Its other assertion,
+"and friendly to its commander", did not fail with the break in: `UCataclysmTeams` (`CataclysmTeams.cpp` line 56)
+answers friendly for two actors sharing an owner chain, and the owner line, which the break left, chains the Imp to the
+Gatekeeper and the Gatekeeper to its commander. So that assertion reads the owner line, and the team line is what the
+brain's choice and the team assertion read.
+
+The lock was released when the window ended.
+
+---
+
 ## 2026-11-20 — Five of the empire upgrade tree's gold nodes act on run record version 12: Price Controls, Stimulus Package, Cleanup Crew, Salvage Rights and Investment Funds (#2741, slice 6b)
 
 **Affects:** `FCataclysmCity::bTookSurgeDamage`, new, set in `UCataclysmEmpireMap::Damage`

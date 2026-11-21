@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Cataclysm.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -564,6 +565,22 @@ void ACataclysmGatekeeperCharacter::UseEnemyAbility(
 			if (!Imp)
 			{
 				continue;
+			}
+
+			// ON THE GATEKEEPER'S OWN SIDE, AND THE GATEKEEPER'S WHEN IT HAS BEEN TAKEN. Issue #2791, from the owner's
+			// playtest of 2026-11-20: "If you subjugate a gatekeeper, the imps it spawns spawn as enemies." Every
+			// creature starts on the Monsters team (`ACataclysmEnemyCharacter`'s constructor), and these were given
+			// nothing else, so a thrall's own ability, which Subjugate's row says it keeps, fought its commander.
+			// THE TEAM ALWAYS: a free Gatekeeper is on Monsters, so its Imps are where they were. THE OWNER ONLY WHEN
+			// TAKEN: it makes the Gatekeeper their commander, so they walk back to it (issue #1517) and are not the
+			// player's followers. Ruled by the coordinating session the same day: they reserve no Fervour and sit inside
+			// the thrall's own reserve, since the thrall makes them and not the player; so the six-alive limit above
+			// stays, not being a cap on anything that reserves. Imps already standing when it is taken stay enemies,
+			// and a taken Gatekeeper's Imps stay on its commander's side after it dies, until they are killed.
+			Imp->SetGenericTeamId(GetGenericTeamId());
+			if (UCataclysmCommand::CommanderOf(this))
+			{
+				Imp->SetOwner(this);
 			}
 
 			// A STARTING MAXIMUM, AS EVERY OTHER CREATURE PLAY SPAWNS HAS ONE: the maximum it arrived with, so its
