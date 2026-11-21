@@ -33,9 +33,16 @@ const TCHAR* ACataclysmCorruptedSentinelCharacter::AnimationFolder =
 
 // `Idle_Planted`, THE ROOTED IDLE, AND IT IS ONE POSE. 0.0333 seconds, which is
 // a single frame at 30 frames a second. The pack also ships `Idle` at 7.40
-// seconds, which is the creature standing up; this creature never stands up.
+// seconds, which is the creature standing still upright. Nothing plays it: nobody's
+// Sentinel never stands up, and one the player has taken stands up only to jog.
 const TCHAR* ACataclysmCorruptedSentinelCharacter::IdleAnimationName =
 	TEXT("Idle_Planted");
+
+// `Jog_Fwd_NonCombat`, THE STANDING JOG, FOR A SENTINEL THE PLAYER HAS TAKEN. Issue #2793: a thrall walks at its
+// commander's pace, and this is the one walking clip of the siege folder that is not a combat stance. Nobody's
+// Sentinel never walks, so it never plays it.
+const TCHAR* ACataclysmCorruptedSentinelCharacter::JogAnimationName =
+	TEXT("Jog_Fwd_NonCombat");
 
 // THE TWO ROOTED FIRING CLIPS, ALTERNATED. `game/docs/enemy-source-assets.md`
 // said before this creature was built that alternating them is what stops
@@ -129,6 +136,8 @@ ACataclysmCorruptedSentinelCharacter::ACataclysmCorruptedSentinelCharacter()
 	// this moves at Unreal's default 600 cm/s, which would turn a turret into a
 	// slow melee creature and remove the one thing it is for. It still TURNS,
 	// which is what lets a rooted creature track a player who circles it.
+	// A SENTINEL THE PLAYER HAS TAKEN IS GIVEN ITS COMMANDER'S PACE, by
+	// `RefreshWalkSpeed`, and this figure is what it goes back to. Issue #2793.
 	GetCharacterMovement()->MaxWalkSpeed = DesignedWalkSpeedCmPerSecond;
 	GetCharacterMovement()->RotationRate =
 		FRotator(0.0f, DesignedTurnRateDegreesPerSecond, 0.0f);
@@ -391,11 +400,12 @@ void ACataclysmCorruptedSentinelCharacter::UpdateLoopingAnimation()
 		return;
 	}
 
-	// THERE IS ONLY ONE LOOPING CLIP, BECAUSE THE CREATURE ONLY EVER DOES ONE
-	// THING WHEN IT IS NOT SHOOTING. Every other creature here chooses between
-	// standing and walking from its own velocity; this one cannot walk, so
-	// there is nothing to choose.
-	UAnimSequence* Wanted = IdleAnimation.Get();
+	// STANDING ROOTED, OR JOGGING WHILE IT WALKS, chosen from its own velocity as every other creature here chooses.
+	// Until issue #2793 there was only the rooted pose, because nobody's Sentinel cannot walk and so never reaches the
+	// jog; a Sentinel the player has taken walks at its commander's pace. NO UNROOTING CLIP BETWEEN THE TWO, a
+	// judgement of 2026-11-20: `PlantedExit` and `PlantedIntro` are in the pack and are not played.
+	const bool bWalking = GetVelocity().Size2D() > WalkingThresholdCmPerSecond;
+	UAnimSequence* Wanted = (bWalking && JogAnimation) ? JogAnimation.Get() : IdleAnimation.Get();
 	if (!Wanted || Wanted == CurrentLoopingAnimation)
 	{
 		return;
@@ -403,11 +413,13 @@ void ACataclysmCorruptedSentinelCharacter::UpdateLoopingAnimation()
 
 	CurrentLoopingAnimation = Wanted;
 
-	// LOOPED, EVEN THOUGH IT IS ONE FRAME. A single pose played once holds that
+	// LOOPED, EVEN THOUGH THE ROOTED POSE IS ONE FRAME. A single pose played once holds that
 	// pose anyway, and looping it costs nothing and means the branch does not
 	// have to know how long the clip is.
+	//
+	// THE JOG AT AN UNMEASURED 1.0, as `UnmeasuredJogPlayRate` records. Issue #2793.
 	MeshComponent->PlayAnimation(Wanted, /*bLooping=*/true);
-	MeshComponent->SetPlayRate(1.0f);
+	MeshComponent->SetPlayRate(Wanted == JogAnimation ? UnmeasuredJogPlayRate : 1.0f);
 }
 
 float ACataclysmCorruptedSentinelCharacter::PlayOneShot(UAnimSequence* Animation,
@@ -495,6 +507,11 @@ bool ACataclysmCorruptedSentinelCharacter::ResolveBody(bool bIncludeAnimation)
 		IdleAnimation = Cast<UAnimSequence>(
 			FSoftObjectPath(ClipPathIn(AnimationFolder, IdleAnimationName))
 				.TryLoad());
+
+		// AND THE STANDING JOG, FOR A SENTINEL THE PLAYER HAS TAKEN. Issue #2793. Its absence is not reported below:
+		// nobody's Sentinel never plays it, and a taken one without it stands in its rooted pose as it walks.
+		JogAnimation = Cast<UAnimSequence>(
+			FSoftObjectPath(ClipPathIn(AnimationFolder, JogAnimationName)).TryLoad());
 
 		FireAnimations.Reset();
 		for (const TCHAR* Name : FireAnimationNames)

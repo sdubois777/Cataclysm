@@ -275,12 +275,23 @@ void ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation()
 	// this function exists to stop.
 	if (Wanted == CurrentLoopingAnimation)
 	{
+		// A COMMANDED CREATURE'S SPEED FOLLOWS ITS COMMANDER'S WHILE IT JOGS, so the rate is put right on the clip
+		// already playing; `SetPlayRate` does not restart it. A creature nobody commands is left alone, as before.
+		// Issue #2793.
+		if (bWalking && bWalkSpeedFollowsACommander)
+		{
+			MeshComponent->SetPlayRate(JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
+																	MinimumPlayRate, MaximumPlayRate));
+		}
 		return;
 	}
 
 	CurrentLoopingAnimation = Wanted;
 	MeshComponent->PlayAnimation(Wanted, /*bLooping=*/true);
-	MeshComponent->SetPlayRate(bWalking ? JogPlayRate() : 1.0f);
+	// AT THE RATE FOR THE SPEED IT WALKS AT, which is its designed speed unless something commands it. Issue #2793.
+	MeshComponent->SetPlayRate(bWalking ? JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
+																	   MinimumPlayRate, MaximumPlayRate)
+										: 1.0f);
 }
 
 float ACataclysmAbyssalWardenCharacter::AttackIntervalSecondsInUse()

@@ -2353,6 +2353,12 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
   
 
+### **How fast a minion walks**
+
+**Every minion the player commands walks at 1.25 times the player's walking speed now.** The project owner's ruling of 2026-11-20 (issue #2793): "Your minions movespeed should be equal to 1.25 of your own. That way they actually keep up." It covers every summoned creature and every thrall, and it is the pace itself rather than a floor: a creature that walks faster on its own, such as a Hellhound or an Imp taken by Subjugate, is slowed to it, and so is a Mote. It follows the player's speed as buffs and slows change it. A thrall's own hastes and slows still apply on top of it. A deployed machine stays where it is put.
+
+
+
 ### **Which attribute a minion scales from**
 
 **The attribute is chosen per minion type, not once for all minions**, which is
@@ -6258,7 +6264,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt down a marked lane that it fires constantly, and a shell it lobs over cover on a cooldown.
+**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt down a marked lane that it fires constantly, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate is the exception**: it follows its commander at a minion's pace, and jogs as it walks (issue #2793).
 
   
 

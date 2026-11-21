@@ -310,6 +310,280 @@ The lock was released when the window ended.
 
 ---
 
+## 2026-11-20 — A Corrupted Sentinel the player has taken follows its commander, and every minion the player commands walks at 1.25 times the player's walking speed now (#2793)
+
+**Affects:** `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` and `CommandedWalkSpeedShareOfCommander`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`); `ACataclysmEnemyCharacter::RefreshWalkSpeed`,
+`WalkSpeedBaseCmPerSecond`, `JogPlayRateAtItsWalkingSpeed` and `bWalkSpeedFollowsACommander`
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`, `.cpp`); `ACataclysmBruteCharacter::ApplyChaseSpeed`;
+the jog play rate of the Imp, the Hellhound, the Succubus and the Abyssal Warden; `ACataclysmMinion::Tick`,
+`RefreshWalkSpeed` and `UncommandedWalkSpeedCmPerSecond` (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`,
+`.cpp`); `ACataclysmCorruptedSentinelCharacter`'s jog (`JogAnimationName`, `JogAnimation`, `WalkingThresholdCmPerSecond`,
+`UnmeasuredJogPlayRate`); `docs/Cataclysm_GDD_v2.md` (a new "How fast a minion walks" and the Sentinel's exception);
+`game/docs/enemy-source-assets.md`; after window follow-w1, `ACataclysmEnemyCharacter::WalkSpeedMultiplier` and
+`SpeedMultiplierWithWraithFactor`, new. Tests: `game/Source/Cataclysm/Tests/CataclysmMinionFollowSpeedTests.cpp`, new,
+eleven tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
+
+### SAID FIRST
+
+- **ITS SECOND WINDOW, follow-w2, MATCHED ITS REGISTRATION AND PROVED ALL SIX GUARDS; ITS FIRST FAILED ONE TEST.**
+  Phase 1 was written without a compile, as ruled, on development `789bfd400`, and rebased onto development
+  `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. There it compiled three ways and ran in window follow-w1,
+  recorded below, which failed one test on its layout. The layout correction and the Vengeful Wraith ruling followed;
+  the branch was then rebased onto development `7c3e06ab2`, which adds #2792, compiled three ways again and ran in
+  window follow-w2, recorded below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
+  it, as the coordinating session accepted. A guide is never commanded: the floor rule makes it unable to be hurt, and
+  `UCataclysmCommand::Subjugate` refuses a creature that cannot be hurt.
+- **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
+  this slice does not otherwise need. Until it is measured the Sentinel's feet may slide as it walks.
+- **SOME MINIONS BECOME SLOWER THAN THEY WERE**, as the ruling "equal, not the faster of the two" means. Against a
+  player at a class's base speed (Default 4.0, Ravager 4.6, Ritualist 3.5 metres a second, so a minion pace of 5.0,
+  5.75 or 4.375): a Hellhound thrall from 7.5, an Imp thrall from 6.5, a chasing Brute thrall from 5.0 for a Ritualist,
+  and a summoned Mote from 5.5 for Default and Ritualist. The coordinating session tells the owner, who may change it to
+  the faster of the two.
+
+### The owner's words, and the rulings
+
+The owner, from the playtest of 2026-11-20: "Corrupted sentinels don't seem to follow you when subjugated. Your minions
+movespeed should be equal to 1.25 of your own. That way they actually keep up."
+
+The coordinating session ruled on 2026-11-20, on this slice's plan:
+
+- **EQUAL, NOT THE FASTER OF THE TWO.** "The owner's words are 'should be equal to 1.25 of your own', a single rule
+  tied to the player. Every commanded minion's base walk speed becomes 1.25 x the commander's live MaxWalkSpeed,
+  including thralls that are faster today."
+- **A THRALL'S OWN HASTES AND SLOWS** "still multiply on top of the 1.25 base". A Cripple on a thrall slows it, as it
+  did before. Summoned minions get no new multiplier path.
+- **THE SENTINEL'S JOG RATE**: "register 1.0 as UNMEASURED, said plainly in the entry and the test."
+- **NO `PlantedExit` OR `PlantedIntro` TRANSITION** for now, accepted as a judgement.
+- **THE VENGEFUL WRAITHS RULE'S 1.2 IS LEFT OUT WHILE A CREATURE IS COMMANDED**, ruled after window follow-w1: "it is a
+  standing multiplier from a dungeon rule that makes the player's enemies harder. A taken wraith is no longer the
+  player's enemy, and the owner's rule is 'equal to 1.25 of your own'." Freed, it has the 1.2 back. Every other factor
+  of `SpeedMultiplier` stays, because each is cast or granted by an aura. So **a Succubus on the player's side speeds
+  the player's other minions within 8 metres by 20%, by design of its Dominion aura**, and the every-kind test keeps
+  its thralls out of that range.
+
+### The cause of the Sentinel fault: its speed
+
+A Corrupted Sentinel is built at a walking speed of nought, as its design says ("Stationary ranged. Forces the player
+to stay mobile"). Subjugate changes its owner, its side, its health and nothing else. Its brain did order it to follow:
+`ACataclysmEnemyController::FollowCommander` issues a move to the commander, since the Sentinel does not stay where it
+is put. But `ACataclysmEnemyCharacter::RefreshWalkSpeed`, the one place a creature's walking speed is written, refused
+every creature designed at nought, so the movement component was told nought and the order moved it nowhere. The
+Sentinel also had one looping clip, its rooted pose, so a moving Sentinel would have slid in it. Its pack has a
+standing jog.
+
+### What changed
+
+- **One figure for every commanded creature.** `UCataclysmCommand::CommandedWalkSpeedCmPerSecond` is 1.25 times the
+  commander's movement component's `MaxWalkSpeed`, read now, for anything that has a commander (`CommanderOf`) and does
+  not stay where it is put; nought otherwise. The player writes its speed there after every modifier, so a minion
+  follows the player's buffs and slows. It is the figure `UCataclysmGroundZone::WalkSpeedOf` reads for a patch that
+  follows its owner.
+- **Thralls.** `RefreshWalkSpeed` takes that figure as its base while the creature is commanded, and its designed speed
+  otherwise, through `WalkSpeedBaseCmPerSecond`; its own hastes and slows still multiply it. The refusal of a creature
+  designed at nought now applies only to one nobody commands, and one a commander had moved is written back to nought.
+  The Brute writes its own walk in `ApplyChaseSpeed`, which overrides `RefreshWalkSpeed`, so it asks the same function,
+  chasing or walking. `DesignedWalkSpeedCmPerSecond` is not touched, so the Echoes rule that tells a creature that walks
+  from one that cannot still reads the design.
+- **Summoned minions.** A minion that walks now ticks, and each tick writes the commanded figure, or its type's speed
+  when it has nobody to read (`UncommandedWalkSpeedCmPerSecond`). A deployable does not tick and is given no pace.
+  Risen imps and necrosis imps are made by the same `Spawn`, with the Imp row.
+- **Jog play rates.** The Imp, the Hellhound, the Succubus and the Abyssal Warden played their jog at the rate fitted to
+  their designed speed. While commanded, the rate is that one scaled by the speed walked over the designed speed
+  (`JogPlayRateAtItsWalkingSpeed`), and put right on the clip already playing when the pace changes. A creature nobody
+  commands is unchanged.
+- **The Sentinel's jog.** `Jog_Fwd_NonCombat` while it walks faster than 10 cm/s, its rooted pose otherwise, at the
+  unmeasured 1.0.
+
+### Judgements of this slice
+
+- **The commander's figure is its movement component's `MaxWalkSpeed`**, not its movement speed stat, because the
+  component is where the player's every modifier ends up, Cripple and a channel included.
+- **A minion with no summoner to read walks at its type's speed**, which no shipped summon has. Its type's speed being
+  nought still marks a deployable, so `test_minion_stat_blocks.py`'s rule holds unchanged.
+- **The jog rate is scaled rather than worked out again**, because each creature divides by its own clip's authored
+  speed, which the designed rate already holds.
+
+### Tests
+
+`CataclysmMinionFollowSpeedTests.cpp`, ten at first, and an eleventh after window follow-w1, in the section on it below.
+The first nine use a spawned player nobody possesses, which has no ability
+system and so walks at the constructor's 400 cm/s, so the pace is 500, written out as a figure in the test rather than
+worked out from the code's own share. The tenth is the path the owner plays, asked for by the coordinating session on
+2026-11-20 after window tree-2790-w1 found a possessed test player walking at a Ravager's 460: a possessed player at its
+class's own speed, changed through the movement speed stat's inputs as #2790's guide test changes it:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` | the share is 1.25; a taken Sentinel walks at 500; CONTROL nobody's stays at 0; its design stays 0; once nobody commands it, it roots again |
+| `ATakenSentinelIsOrderedToFollowAndHasASpeedToFollowWith` | with nothing to fight it is ordered to follow, and has a speed above nought |
+| `EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed` | summoned Imp, Mote, Warhound, TyrantsMinion and an untyped minion; thrall Imp, Hellhound, Succubus, Abyssal Warden, Brute and Sentinel: each at 500 |
+| `ThePaceFollowsTheCommandersSpeedAsItChanges` | a summoned imp ticks; the player at 600 gives 750 and at 200 gives 250, for a summoned imp and a thrall |
+| `ADeployableStaysWhereItIsPutAndDoesNotTick` | CONTROL: a BoltTurret, a Ballista and a SpikeTrap are given no pace, no commanded figure, and do not tick |
+| `ACreatureNobodyHasTakenWalksAsItWasDesigned` | CONTROL: nobody's Imp 650, Hellhound 750, Brute 250 |
+| `AThrallsOwnSlowStillAppliesOnTopOfItsCommandersPace` | Ground Down's 15% on a thrall Imp gives 425 |
+| `ACommandedCreaturesJogRateFollowsTheSpeedItWalksAt` | a taken Imp's jog rate is its designed rate x 500 / 650; CONTROL nobody's Imp at exactly its designed rate; a taken Hellhound slower than its designed rate |
+| `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` | the rate is the unmeasured 1.0; with the Paragon Minions pack, walking it plays the jog at 1.0 and stopped its rooted pose; without the pack it reports a skipped half |
+| `APossessedPlayersMinionsWalkAtOneAndAQuarterOfItsClassSpeed` | set-up: a possessed player walks at its class's speed, not 400; a summoned imp and a thrall imp at 1.25 times it; the stat at 5 m/s gives the player 500 and both 625; at 2 m/s, 200 and both 250. Prints "POSSESSED PACE" |
+
+No automation test ticks a world, so walking itself is not measured; what the movement component is told to walk at,
+and the brain's order, are.
+
+**#2790's guide-order check, changed in the rebase onto `63d4cbd4c`.**
+`tools/tests/test_demonic_guide_keeps_pace.py::test_a_guides_walk_comes_before_and_in_place_of_the_designed_speed`
+looked for `DesignedWalkSpeedCmPerSecond * SpeedMultiplier() * AilmentWalkMultiplier()` in `RefreshWalkSpeed`, a line
+this slice replaced, so it failed on the rebased tree (1 failed, 7816 passed, 9 skipped). It now requires the guide's
+branch before `WalkSpeedBaseCmPerSecond(DesignedWalkSpeedCmPerSecond)`, where a commander's pace is read, and that
+before the multiplication: the same rule, and a guide is kept from a commander's pace as well. Proved with
+`tools/prove_guard.py`, the two commanded-base lines moved above the guide's branch: "1 failed, 4 passed", that test
+alone; restored, "5 passed".
+
+### Registered before the window
+
+At the slice's turn, after its rebase and its three compiles, on the coordinating session's GO, under a lock of its own:
+
+| Step | Registered |
+| :-- | :-- |
+| Pre-checks | those of the earlier windows |
+| The build | succeeds; no asset step, because this slice changes no data table |
+| `Cataclysm.MinionFollowSpeed.` alone | 10 performed, 10 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
+| The whole suite | 5066 performed, 5066 succeeded: the base's 5056 plus these 10. 48 skipped part of what they check: the base's 47 plus 1. "Test saves: 854 written and deleted, 0 left behind": the base's 854 plus 0, which is predicted, not measured, because no test here builds a floor and that possessing a player writes no save has not been measured. The base is window tree-2790-w2, which measured 5056 performed, 5056 succeeded, 47 skipped halves and 854 saves with 0 left behind at `b4e3f1c05`, whose `game/` is the same as development `63d4cbd4c`'s |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Five C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted
+from the tests as written:
+
+| Proof | The break | Broken half: the tests that fail | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | in `CommandedWalkSpeedCmPerSecond`, `return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander;` to `return Movement->MaxWalkSpeed;` | the taken-Sentinel test (500 against 400), every-kind (eleven rows), the pace-follows test (four figures), the thrall's-own-slow test (425 against 340), the jog-rate test (its taken Imp's figure) and the possessed-player test (six figures, the class walk's 575 against 460 among them); 10 performed, 4 succeeded, 6 failed | 10 of 10 |
+| P2 | in `RefreshWalkSpeed`, the refusal of a creature designed at nought put back before the commanded base | the taken-Sentinel test, the Sentinel-ordered-to-follow test (its speed) and every-kind (the Sentinel's row); 10 performed, 7 succeeded, 3 failed | 10 of 10 |
+| P3 | in `ACataclysmMinion::RefreshWalkSpeed`, the commanded figure dropped, so it always walks at its type's speed | every-kind (the Imp, Mote, Warhound and TyrantsMinion rows; the untyped minion's default of 500 happens to equal the pace) and the pace-follows test (the summoned imp's two figures) and the possessed-player test (the summoned imp's three figures, at the Imp row's 440); 10 performed, 7 succeeded, 3 failed | 10 of 10 |
+| P4 | in `ApplyChaseSpeed`, the Brute's base back to its chase or walk speed | every-kind (the Brute's row, 250 against 500); 10 performed, 9 succeeded, 1 failed | 10 of 10 |
+| P5 | in `JogPlayRateAtItsWalkingSpeed`, the commanded rate back to the designed rate | the jog-rate test (the taken Imp's figure, its "slower", and the Hellhound's "slower"); 10 performed, 9 succeeded, 1 failed | 10 of 10 |
+
+In every broken half the controls (nobody's creatures, the deployables) pass.
+
+### Window follow-w1, 2026-11-20: one test failed, so no proof ran
+
+At `c5d538d4b`, under the lock follow-w1, from 21:12 to 21:35, after the three compiles: the branch (67 actions, 60
+files compiled), each changed `.cpp` alone (20 actions, 17 files compiled, all ten changed files named as excluded
+from the unity file) and the unity files (10 actions, 7 files compiled), each succeeding with no compiler warning or
+error line. The lock was released when the window ended.
+
+| Step | Measured |
+| :-- | :-- |
+| Pre-checks | "PRECHECKS: ALL PASS", measured at 21:12:13 |
+| The build | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.MinionFollowSpeed.` alone | "10 tests performed, 9 succeeded, 1 failed: EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed. 1 skipped part of what they check: Cataclysm.MinionFollowSpeed.ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops". Registered: 10 performed, 10 succeeded, the same skipped half |
+| The whole suite | "5066 tests performed, 5065 succeeded, 1 failed", the same test; 48 skipped part of what they check, as registered; "Test saves: 854 written and deleted, 0 left behind", as predicted; "Declared: 5066 tests in the tree at c5d538d4b; 5066 performed, gap 0" |
+| Python | 7817 passed, 9 skipped; the JUnit file: tests 7826, failures 0, errors 0, skipped 9 |
+| Ruff | All checks passed |
+| P1 to P5 | NOT RUN: the window runs its proofs only when the group and the whole suite match their registration |
+
+**The failure**, the only error line of the run: "Expected 'the Hellhound thrall walks at 1.25 times its commander's
+speed' to be 500.000000, but it was 600.000000 and outside tolerance 0.010000", at
+`CataclysmMinionFollowSpeedTests.cpp` line 271. Every other row of that test passed.
+
+**The cause, read from the code and not measured: the test's layout, not the game.** The test stood its six thralls 5
+metres apart, and put the Hellhound 5 metres from the Succubus. A Succubus's Dominion grants `Status.Buff.Commander`
+to every ally within `ACataclysmSuccubusCharacter::DominionRadiusCm`, 8 metres, from the moment it spawns, and
+`ACataclysmEnemyCharacter::CommanderMultiplier` makes that 1.2, which `SpeedMultiplier` multiplies onto the commanded
+pace, as the ruling that a thrall's own hastes still apply says it should: 500 x 1.2 = 600. The Imp, 10 metres from
+the Succubus, was outside it; the Abyssal Warden, 5 metres from it, was spawned after the Succubus's sweep, and no
+automation test ticks a world, so no later sweep reached it. The correction to the test's layout, and a second window,
+follow in their own commits.
+
+### After window follow-w1: the layout corrected, the wraith's 1.2 left out, and the registration for follow-w2
+
+**THE CHECK THAT CAME FIRST.** Asked by the coordinating session before anything changed: every factor of a commanded
+creature's walk, cast or aura against standing. `Wanted = Base x SpeedMultiplier() x AilmentWalkMultiplier()`, and the
+Brute's `ApplyChaseSpeed` is the same product; `SpeedMultiplier` is Commander x Cripple x Wraith x Ground Down x the
+ailment slow. Commander (the Succubus's Dominion, the Horde Leader and sacrifice modifiers, and four floor rules, three
+of which reach only creatures hostile to the player), Cripple, Ground Down and both ailment slows are cast or granted by
+an aura. The Vengeful Wraiths rule's `WraithMultiplier` is not: `bIsVengefulWraith` is set on the creature for life
+(`ACataclysmDungeonGameMode::ApplyVengefulWraithFigures`), and nothing stops Subjugate taking one.
+
+**WHAT CHANGED.**
+
+- `ACataclysmEnemyCharacter::WalkSpeedMultiplier` is `SpeedMultiplier`'s factors with the wraith's left out while
+  `bWalkSpeedFollowsACommander` holds; `SpeedMultiplierWithWraithFactor` holds the list once for both. `RefreshWalkSpeed`
+  and the Brute's `ApplyChaseSpeed` multiply by it. A Brute is one of the seven kinds a wraith rises as
+  (`ECataclysmDungeonCreature`). A creature nobody commands gets the same product as before, in the same order. Its
+  attack rate still reads `SpeedMultiplier`.
+- `EveryKindTheCommanderCommandsWalksAtOneAndAQuarterOfItsSpeed` stands its thralls `CreatureSpacingCm`, 10 metres,
+  apart, with a static assertion that it is more than `ACataclysmSuccubusCharacter::DominionRadiusCm`.
+- `tools/tests/test_demonic_guide_keeps_pace.py` reads `Base * WalkSpeedMultiplier() * AilmentWalkMultiplier()`, the
+  line `RefreshWalkSpeed` now has.
+
+| New test | What it checks |
+| :-- | :-- |
+| `ATakenVengefulWraithWalksAtItsCommandersPaceWithoutTheRulesIncrease` | a taken Imp wraith and a taken Brute wraith walk at 500; CONTROL nobody's Imp wraith 780 and nobody's Brute wraith, not chasing, 300, each written out as its design x 1.2; the Imp wraith freed walks at 780 again. Prints "WRAITH PACE" |
+
+**REGISTERED FOR WINDOW follow-w2**, at the slice's turn, after its rebase onto #2792 and its three compiles:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.MinionFollowSpeed.` alone | 11 performed, 11 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
+| The whole suite | 5072 performed, 5072 succeeded: the base's 5061 plus these 11. 48 skipped part of what they check: the base's 47 plus 1. "Test saves: 859 written and deleted, 0 left behind": the base's 859 plus 0, predicted, not measured, because no test here builds a floor. The base, after the rebase onto development `7c3e06ab2` (#2792 merged): window vesselstep-w2 measured 5061 performed, 5061 succeeded, 47 skipped halves and 859 saves with 0 left behind at `bff2772d4`, whose `game/` is the same as `7c3e06ab2`'s |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Six C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted from
+the tests as written. P1 to P5 break what they broke for follow-w1; P6 is new:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | the commanded figure without the 1.25 | as registered for follow-w1, and the wraith test (its two taken rows, 400 against 500); 11 performed, 4 succeeded, 7 failed | 11 of 11 |
+| P2 | the refusal of a creature designed at nought before the commanded base | as registered for follow-w1; the wraith test passes; 11 performed, 8 succeeded, 3 failed | 11 of 11 |
+| P3 | a summoned minion always at its type's speed | as registered for follow-w1; the wraith test passes; 11 performed, 8 succeeded, 3 failed | 11 of 11 |
+| P4 | the Brute's base back to its chase or walk speed | every-kind (the Brute's row) and the wraith test (the taken Brute, 300 against 500: never told it is commanded, it keeps the 1.2); 11 performed, 9 succeeded, 2 failed | 11 of 11 |
+| P5 | the commanded jog rate back to the designed rate | as registered for follow-w1; 11 performed, 10 succeeded, 1 failed | 11 of 11 |
+| P6 | in `WalkSpeedMultiplier`, `bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier()` back to `WraithMultiplier()` | the wraith test alone (its two taken rows, 600 against 500); 11 performed, 10 succeeded, 1 failed | 11 of 11 |
+
+In every broken half the controls pass, the wraith test's among them.
+
+### Window follow-w2, 2026-11-20: every figure as registered, and all six proofs PROVED
+
+At `d4d0773ac`, under the lock follow-w2, from 22:51 to 23:30, after the three compiles: the branch (52 actions, 47
+files compiled), each changed `.cpp` alone (20 actions, 17 files compiled, all ten changed files named as excluded
+from the unity file) and the unity files (10 actions, 7 files compiled), each succeeding with no compiler warning or
+error line. The lock was released when the window ended.
+
+| Step | Measured |
+| :-- | :-- |
+| Pre-checks | "PRECHECKS: ALL PASS", at 22:51:26 |
+| The build | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.MinionFollowSpeed.` alone | "11 tests performed, 11 succeeded, 0 failed. 1 skipped part of what they check: Cataclysm.MinionFollowSpeed.ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops", as registered |
+| The whole suite | "5072 tests performed, 5072 succeeded, 0 failed. 48 skipped part of what they check", as registered; "Test saves: 859 written and deleted, 0 left behind", as predicted; "Declared: 5072 tests in the tree at d4d0773ac; 5072 performed, gap 0" |
+| Python | 7817 passed, 9 skipped; the JUnit file: tests 7826, failures 0, errors 0, skipped 9 |
+| Ruff | All checks passed |
+
+The figures the tests print, from the suite's engine log: "POSSESSED PACE: the player's class walk 460 gives the imp
+575 and the thrall 575; at 500, 625 and 625; at 200, 250 and 250", and "WRAITH PACE: taken Imp 500, taken Brute 500;
+nobody's Imp 780, nobody's Brute 300; freed Imp 780".
+
+| Proof | Broken half, as measured | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| P1 | 11 performed, 4 succeeded, 7 failed: the taken-Sentinel, every-kind, pace-follows, thrall's-own-slow, jog-rate, possessed-player and wraith tests, as predicted | 11 of 11 | PROVED |
+| P2 | 11 performed, 8 succeeded, 3 failed: the taken-Sentinel, Sentinel-ordered-to-follow and every-kind tests, as predicted | 11 of 11 | PROVED |
+| P3 | 11 performed, 8 succeeded, 3 failed: the every-kind, pace-follows and possessed-player tests, as predicted | 11 of 11 | PROVED |
+| P4 | 11 performed, 9 succeeded, 2 failed: the every-kind and wraith tests, as predicted | 11 of 11 | PROVED |
+| P5 | 11 performed, 10 succeeded, 1 failed: the jog-rate test, as predicted | 11 of 11 | PROVED |
+| P6 | 11 performed, 10 succeeded, 1 failed: the wraith test, as predicted | 11 of 11 | PROVED |
+
+Each proof's anchor matched once, nothing crashed in either half, and the source hash was the same before and after.
+
+### Seen in passing
+
+- **Dirge Resonance may haste thralls.** `ACataclysmDungeonGameMode::StepDirgeResonance` grants `Status.Buff.Commander`
+  to every living creature in `FloorEnemies` (`CataclysmDungeonGameMode.cpp` line 19074) with no check of its side, and
+  nothing found removes a taken creature from that list. UNCONFIRMED; the coordinating session opens an issue for it.
+- **The sacrifice modifier's buff is left as it is.** A creature that eats a pack-mate grants itself
+  `Status.Buff.Commander` for `SacrificeBuffSeconds` (`CataclysmEnemyModifiers.cpp` line 1132): a temporary buff from a
+  modifier it rolled, and whether a thrall can still sacrifice is not known.
+
+---
+
 ## 2026-11-20 — Vesselstep trades places by an exchange: the player and a commanded creature they can see each end where the other stood, and a creature behind a wall is not traded with (#2792)
 
 **Affects:** `UCataclysmCommand::ThingsCommandedInSightOf`, new

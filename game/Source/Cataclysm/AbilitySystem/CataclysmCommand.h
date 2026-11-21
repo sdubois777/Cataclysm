@@ -129,6 +129,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
 	static AActor* CommanderOf(const AActor* Follower);
 
+	/**
+	 * How fast a commanded creature walks, in centimetres a second: its commander's walking speed now, times
+	 * `CommandedWalkSpeedShareOfCommander`. Nought when it has no commander, when it stays where it is put, or when
+	 * its commander is not a character that walks.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-20, issue #2793: "Your minions movespeed should be equal to 1.25 of your own. That
+	 * way they actually keep up." EQUAL, AND NOT THE FASTER OF THE TWO, as the coordinating session ruled the same day:
+	 * a thrall that walked faster than this before -- a Hellhound, an Imp, a Brute chasing -- is slowed to it, and so
+	 * is a Mote, whose type row says 5.5 metres a second.
+	 *
+	 * THE COMMANDER'S FIGURE IS ITS MOVEMENT COMPONENT'S `MaxWalkSpeed`, READ NOW. The player writes its speed there
+	 * after every modifier -- its movement speed stat, a Cripple, a channel -- so a minion follows its buffs and slows.
+	 * It is the figure `UCataclysmGroundZone::WalkSpeedOf` reads for a patch that follows its owner.
+	 *
+	 * A BASE FOR A THRALL, NOT ITS FINAL SPEED. Its own hastes and slows still multiply it, as they multiplied its
+	 * designed speed: see `ACataclysmEnemyCharacter::RefreshWalkSpeed`. A summoned minion has no such path and walks at
+	 * this figure (`ACataclysmMinion::RefreshWalkSpeed`).
+	 */
+	static float CommandedWalkSpeedCmPerSecond(const AActor* Follower);
+
+	/** The share of its commander's walking speed a commanded creature walks at. The owner's 1.25, issue #2793. */
+	static constexpr float CommandedWalkSpeedShareOfCommander = 1.25f;
+
 	/** The `Status.Debuff.Quarry` tag, requested by name. Invalid if the sheet drops it. */
 	static FGameplayTag QuarryTag();
 

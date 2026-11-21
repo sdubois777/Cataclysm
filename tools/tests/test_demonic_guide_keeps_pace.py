@@ -15,7 +15,8 @@ WHAT IS CHECKED:
   1. the share is a figure below 1, held so by a static assertion, and named in the rule's own description;
   2. each step sets the guide's walk from the player's own walk speed times the share;
   3. the guide is raised at its share of the player's default walk, after it is made the floor's guide;
-  4. a guide's walk speed is applied before, and in place of, the designed speed and its multipliers;
+  4. a guide's walk speed is applied before, and in place of, the designed speed and its multipliers, and before a
+     commander's pace (issue #2793), which is read in the same function;
   5. once it waits, it waits while the player is beyond its chain.
 """
 
@@ -89,8 +90,12 @@ def test_the_guide_is_raised_at_its_share_of_the_players_default_walk() -> None:
 def test_a_guides_walk_comes_before_and_in_place_of_the_designed_speed() -> None:
     refresh = squeeze(body(code(ENEMY), "void ACataclysmEnemyCharacter::RefreshWalkSpeed()", "CataclysmEnemyCharacter.cpp"))
     guide = refresh.find("if (bGuidesThePlayerForTheFloorRule && GuideWalkSpeedCmPerSecond > 0.0f)")
-    designed = refresh.find("DesignedWalkSpeedCmPerSecond * SpeedMultiplier() * AilmentWalkMultiplier()")
-    assert -1 < guide < designed, "a guide's walk speed is not applied before the designed speed and its multipliers"
+    # SINCE ISSUE #2793 THE DESIGNED SPEED IS READ AS THE UNCOMMANDED BASE, and a commanded creature's base is its
+    # commander's pace instead; the multipliers then apply to that base. The guide's branch comes before both.
+    designed = refresh.find("const float Base = WalkSpeedBaseCmPerSecond(DesignedWalkSpeedCmPerSecond);")
+    multiplied = refresh.find("const float Wanted = Base * WalkSpeedMultiplier() * AilmentWalkMultiplier();")
+    assert -1 < guide < designed < multiplied, (
+        "a guide's walk speed is not applied before the designed speed, a commander's pace and their multipliers")
     branch = refresh[guide:refresh.index("}", refresh.index("return;", guide)) + 1]
     assert "Movement->MaxWalkSpeed = GuideWalkSpeedCmPerSecond;" in branch and "return;" in branch, (
         "a guide's walk speed is not applied in place of the designed speed")

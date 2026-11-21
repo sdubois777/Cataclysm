@@ -401,9 +401,12 @@ bool ACataclysmMinion::HitsCountAsTheSummoners(const ACataclysmMinion* Minion)
 
 ACataclysmMinion::ACataclysmMinion()
 {
-	// Nothing to do per frame. Its controller thinks on a timer and the
-	// character movement component walks it.
-	PrimaryActorTick.bCanEverTick = false;
+	// ONE THING TO DO PER FRAME, AND ONLY FOR A MINION THAT WALKS: keep its walking speed at 1.25 times its
+	// summoner's, which changes whenever the summoner's does. Issue #2793. Its controller still thinks on a timer and
+	// the character movement component still walks it. Off until `Spawn` says whether it walks, so a turret, a
+	// ballista and a trap never tick.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 	bReplicates = true;
 
 	// The same brain a monster has. What differs is its side and what its
@@ -423,6 +426,7 @@ ACataclysmMinion::ACataclysmMinion()
 	GetCapsuleComponent()->InitCapsuleSize(MinionCapsuleRadius, MinionCapsuleHalfHeight);
 
 	GetCharacterMovement()->MaxWalkSpeed = MinionWalkSpeedCmPerSecond;
+	UncommandedWalkSpeedCmPerSecond = MinionWalkSpeedCmPerSecond;
 	bUseControllerRotationYaw = false;
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 640.0f, 0.0f);
@@ -1358,6 +1362,10 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		{
 			Movement->MaxWalkSpeed = Type->MoveSpeed * 100.0f;
 		}
+		// AND KEPT, BECAUSE IT IS NO LONGER WHAT A MINION WITH A SUMMONER WALKS AT. Issue #2793: a walking minion takes
+		// its summoner's pace (`RefreshWalkSpeed`); its type's speed is what it walks at with nobody to read, and its
+		// being nought is still what marks a deployable.
+		Minion->UncommandedWalkSpeedCmPerSecond = Type->MoveSpeed * 100.0f;
 
 		// AND ITS OWN HEALTH AND DAMAGE, RAISED BY THE SUMMONER'S LEVEL. Issue
 		// #340. The decision of 2026-08-06 reversed the rule this file used to
@@ -1470,7 +1478,38 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	// health the gadget was placed with.
 	GadgetStep(Minion);
 
+	// AND A MINION THAT WALKS WALKS AT ITS SUMMONER'S PACE FROM ITS FIRST FRAME, and every frame after. Issue #2793.
+	// Only such a minion ticks: a deployable stays where it is put and has nothing to do per frame.
+	Minion->SetActorTickEnabled(!Minion->StaysWhereItIsPut());
+	Minion->RefreshWalkSpeed();
+
 	return Minion;
+}
+
+void ACataclysmMinion::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	RefreshWalkSpeed();
+}
+
+void ACataclysmMinion::RefreshWalkSpeed()
+{
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (!Movement || StaysWhereItIsPut())
+	{
+		return;
+	}
+
+	// ITS SUMMONER'S PACE, OR ITS OWN WHEN THERE IS NO SUMMONER TO READ. `CommandedWalkSpeedCmPerSecond` answers nought
+	// for a summoner that is not a walking character, which no shipped summon has. Issue #2793.
+	const float Commanded = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(this);
+	const float Wanted = Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond;
+
+	// ONLY ON A CHANGE, as a creature's walking speed is written: a state that changes rarely, not a value recomputed.
+	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, Wanted))
+	{
+		Movement->MaxWalkSpeed = Wanted;
+	}
 }
 
 void ACataclysmMinion::AttackOnce()
