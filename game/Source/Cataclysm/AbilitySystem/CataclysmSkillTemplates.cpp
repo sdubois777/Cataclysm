@@ -4631,8 +4631,8 @@ bool UCataclysmSummonSkill::Possess()
 		// silence, so a verbose run and a console command together still could not
 		// say which of them a failing cast took. The two that did log were the two
 		// that were ruled out, which left the real cause unnamed.
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' ran with no avatar, so it searched for nothing."),
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' ran with no avatar, so it searched for nothing."),
 			*SkillName);
 		return false;
 	}
@@ -4679,8 +4679,8 @@ bool UCataclysmSummonSkill::Possess()
 		// LINE. Issue #1519 was a search that ran at a size of zero and could
 		// take nobody, and a miss and a search of no size are the same silence
 		// without the number. Since issue #1529 the size is the range.
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' found no enemy within %.0fcm of the caster, so it took "
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' found no enemy within %.0fcm of the caster, so it took "
 				 "nobody."),
 			*SkillName, ScaledRangeCm());
 		return false;
@@ -4706,8 +4706,8 @@ bool UCataclysmSummonSkill::Possess()
 		// THE BLOW HAS ALREADY LANDED BY HERE, so this is not a miss: it is a
 		// creature whose health cannot be read at all. Worth naming, because it
 		// looks exactly like the health threshold refusing from outside.
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' hit '%s', which has no ability system, so its health could "
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' hit '%s', which has no ability system, so its health could "
 				 "not be read and it could not be taken."),
 			*SkillName, *Target->GetName());
 		return false;
@@ -4771,8 +4771,9 @@ bool UCataclysmSummonSkill::Possess()
 		// and the two parted company when the passive bonus was added. A
 		// diagnostic naming a number the code did not use is worse than none,
 		// because it is read as the reason for the refusal.
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' left '%s' at %.0f of %.0f health, above the %.0f%% it "
+		// AT `Log` SINCE ISSUE #2801, as every outcome of a cast here is: one line a cast, which a play log holds.
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' left '%s' at %.0f of %.0f health, above the %.0f%% it "
 				 "must be under to be taken (%.0f%% from the row and %.0f%% from "
 				 "this character)."),
 			*SkillName, *Target->GetName(), Health, MaxHealth, ThresholdPercent,
@@ -4788,17 +4789,33 @@ bool UCataclysmSummonSkill::Possess()
 			Self, FervourReserveFor(Self, Params, SkillTags)))
 	{
 		bRefusedForRoom = true;
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' has no room for another thrall at %.0f reserved each, so "
-				 "'%s' was left where it was."),
+		const UCataclysmAbilitySystemComponent* Pool =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' has no room for another thrall at %.0f reserved each, so "
+				 "'%s' was left where it was: %s, against a maximum of %.0f."),
 			*SkillName, FervourReserveFor(Self, Params, SkillTags),
-			*Target->GetName());
+			*Target->GetName(), *UCataclysmSkillTemplate::ReservedFervourByKindText(Self),
+			Pool ? Pool->MaximumClassResource() : 0.0f);
 		return false;
 	}
 
 	bTookIt = UCataclysmCommand::Subjugate(Self, Target);
+	if (!bTookIt)
+	{
+		// THE COMMAND'S OWN REFUSAL, NAMED BY WHICH OF ITS REASONS HOLDS. Issue #2801. Asked here rather than inside
+		// `UCataclysmCommand::Subjugate`, which answers only true or false; the health and the room were judged above.
+		const ACataclysmEnemyCharacter* AsEnemy = Cast<ACataclysmEnemyCharacter>(Target);
+		UE_LOG(LogCataclysm, Log,
+			TEXT("TAKE REFUSED: '%s' could not take '%s': boss %s, cannot be hurt %s, already on its side %s."),
+			*SkillName, *Target->GetName(), AsEnemy && AsEnemy->IsBoss() ? TEXT("yes") : TEXT("no"),
+			AsEnemy && AsEnemy->bCannotBeHurt ? TEXT("yes") : TEXT("no"),
+			UCataclysmTargeting::IsFriendlyTo(Target, Self) ? TEXT("yes") : TEXT("no"));
+	}
 	if (bTookIt)
 	{
+		UE_LOG(LogCataclysm, Log, TEXT("TAKE: '%s' took '%s', reserving %.0f."), *SkillName, *Target->GetName(),
+			   FervourReserveFor(Self, Params, SkillTags));
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
