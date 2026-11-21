@@ -800,7 +800,8 @@ rewritten, and two assertion messages reworded, in twenty test files, listed und
 - **NOT COMPILED OR RUN IN UNREAL YET**, and **NOT FINISHED**. The rows the design workbook holds wait for this
   branch's turn with it, which comes after branch A and the empire tree's slices 6c, 6d and 6e: Summon Imp's text and
   parameters, the four enchantments' texts and effect rows, The Swarm's effect row, the Ritualist tree's two node
-  sentences in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv`, the four renamed enchantments'
+  sentences still to change in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv` (Every One
+  Bursts, the third, is written; see the rewords below), the four renamed enchantments'
   pairs in `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, the DataTable asset rebuild, and the Python
   tests that pin the old texts. Until then the Python suite fails where it reads the old rows; the first such failure is
   `tools/tests/test_minion_skill_shapes.py::test_no_shipped_summon_states_a_count_cap`, written to fail until Summon
@@ -860,10 +861,22 @@ The coordinating session, the same day, on readings sent with the plan:
 | Summon Imp (Weapon Skills, `Demonic_Staff_Special`) | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out. Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius." | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out." Parameters lose `MaxActive=3` and keep `Radius=3`, the radius a passive's death explosion uses. |
 | The Ritualist's first node, Fervour (`basic_spine_000`) | its clause "rises as a lesser imp that fights for you for 20 seconds, if you hold fewer imps than Summon Imp allows at once." | "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds and reserves 10 Fervour while it is out, if you have the Fervour to reserve. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it." |
 | The Swarm (`keystone_b_kA`) | "Each skill that limits how many of its minions may be active allows 2 more." | "Your minions reserve 12% less Fervour." |
+| Every One Bursts (`keystone_b_kB`) | "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it." | "Every minion explodes when it dies, with the radius and damage of the skill that brought it." |
 | Enchantment | "Add 2-4 to your maximum minion count" | "Your minions reserve 15%-30% less Fervour" |
 | Enchantment | "Minus 2-4 to your max minion count" | "Your minions reserve 25%-65% more Fervour" |
 | Enchantment | "Add 1-3 to your max deployable count" | "Your deployables reserve 15%-30% less Fervour" |
 | Enchantment | "Your trap skills get +1-6 to max trap count" | "Your traps reserve 5%-25% less Fervour" |
+
+**EVERY ONE BURSTS, RULED 2026-11-20 by the coordinating session, accepting the proposed sentence verbatim.** Found at
+the rebase onto 156f2b9e8: its clause "as one destroyed to make room for another does" names the eviction this branch
+removes, and the plan had listed only the Fervour and The Swarm sentences. The coordinating session's reason: "the
+owner's ruling of 2026-11-20 drops the cap and the explosion it caused ("Drop it with the cap"). The keystone's own
+effect, an explosion at every minion's death, is unchanged, so the only change is removing the clause that names the
+dropped cap." Written in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv`, and in the three
+comments that quote it (`CataclysmMinion.cpp`, `CataclysmCommandTests.cpp`, `CataclysmPassiveTreeTests.cpp`). The
+`DT_PassiveNodes` asset still holds the old sentence until the DataTable asset rebuild of this branch's workbook turn,
+and until then `tools/tests/test_datatable_assets_are_current.py` fails, naming `PassiveNodes.csv`. The row's stat and
+value are unchanged.
 
 ### Why a percentage: what the genre does
 

@@ -1714,8 +1714,7 @@ bool FCataclysmSubjugateHealsTest::RunTest(const FString&)
  * What the five cases below share. Issue #1515.
  *
  * `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when it
- * dies, as one destroyed to make room for another does, with the radius and
- * damage of the skill that brought it."
+ * dies, with the radius and damage of the skill that brought it."
  * `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the explosion a
  * minion leaves per point."
  *

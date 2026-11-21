@@ -406,7 +406,7 @@ Ritualist_basic_b_b2,Ritualist,basic_b_b2,basic,Spiteful Ash,+3% increased damag
 Ritualist_basic_b_c0,Ritualist,basic_b_c0,basic,Kept Longer,+3% increased duration of what you summon per point.,8,0,-750.0,120.0,,,,,,
 Ritualist_basic_b_c1,Ritualist,basic_b_c1,basic,Overflow,+2% increased maximum Fervour per point.,6,0,-750.0,-12.0,,,,,,
 Ritualist_keystone_b_kA,Ritualist,keystone_b_kA,keystone,The Swarm,Each skill that limits how many of its minions may be active allows 2 more.,1,0,-1050.0,-144.0,,,,,,
-Ritualist_keystone_b_kB,Ritualist,keystone_b_kB,keystone,Every One Bursts,"Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it.",1,0,-900.0,-144.0,,,,,,
+Ritualist_keystone_b_kB,Ritualist,keystone_b_kB,keystone,Every One Bursts,"Every minion explodes when it dies, with the radius and damage of the skill that brought it.",1,0,-900.0,-144.0,,,,,,
 Ritualist_keystone_b_kC,Ritualist,keystone_b_kC,keystone,Rekindled,"When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds.",1,0,-750.0,-144.0,,,,,,
 Ritualist_basic_c_stem0,Ritualist,basic_c_stem0,basic,Thin Ward,+3% increased Maximum Energy Shield per point.,6,0,450.0,516.0,,,,,,
 Ritualist_basic_c_stem1,Ritualist,basic_c_stem1,basic,Quick Ward,+3% increased Energy Shield Regeneration per point.,6,0,450.0,384.0,,,,,,

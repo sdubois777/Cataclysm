@@ -16048,8 +16048,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEveryOneBurstsRowTest,
  * `Ritualist_keystone_b_kB` Every One Bursts, read out of the tables the game
  * loads. Issue #1515.
  *
- * "Every minion explodes when it dies, as one destroyed to make room for another
- * does, with the radius and damage of the skill that brought it."
+ * "Every minion explodes when it dies, with the radius and damage of the skill
+ * that brought it."
  *
  * A FLAG OF ONE, because the death path asks whether the stat is above zero
  * rather than how much of it there is. What a death then does with it is

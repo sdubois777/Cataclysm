@@ -1858,8 +1858,7 @@ void ACataclysmMinion::HandleDeath()
 
 	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
 	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
-	// it dies, as one destroyed to make room for another does, with the radius
-	// and damage of the skill that brought it."
+	// it dies, with the radius and damage of the skill that brought it."
 	//
 	// THE SUMMONER'S STAT DECIDES, NOT THE MINION'S. What the player chose is
 	// on the player, and `Explode` already reads the summoner for everything

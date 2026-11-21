@@ -903,7 +903,7 @@
       "data": {
         "kind": "keystone",
         "name": "Every One Bursts",
-        "description": "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it.",
+        "description": "Every minion explodes when it dies, with the radius and damage of the skill that brought it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
