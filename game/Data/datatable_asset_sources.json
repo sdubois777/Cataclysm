@@ -118,8 +118,8 @@
     {
       "asset": "DT_Gems",
       "csv": "Gems.csv",
-      "rows": 27,
-      "csv_sha256": "a743f8d36e688ea757217c7f13e0b7d1422b33d6bc9ac576e147bfef0ecc15e8"
+      "rows": 28,
+      "csv_sha256": "3f2c341ce2a8e38cf66a1463cbe22ed3976df9b5f87b8c472116f134b2712b62"
     },
     {
       "asset": "DT_Gold",
