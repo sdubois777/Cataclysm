@@ -2136,6 +2136,10 @@ Skills in Cataclysm are not learned independently. They are determined entirely 
 
   
 
+**AN INCREASE TO SKILL EXPERIENCE GAIN RAISES EVERY SKILL'S SHARE ALIKE.** The stat `skill_experience_gain` multiplies a creature's experience before it is shared among the skills that hurt it, so it reaches every skill and not only one; increases to it add together, as every increase to one stat does. The character's own experience does not read it. The gem Of The Scholar, "Increases skill experience gain by 10%", rising to 90% at Cataclysmic rarity, writes it -- **but no gem acts until gems can be put in sockets (#46)**; the stat and the code that reads it are built now. Issue #2803, the project owner's request of 2026-11-21; the values are a judgement, and `docs/DECISIONS.md` has the sources.
+
+  
+
 **WHAT THE PLAYER SEES.** The skill bar shows each skill's level in its box's top left corner and a thin bar of the experience into it along the box's foot; the box's pop-up says it in words, "Level 3: 45.2%", or "Level 2: waits for character level 4". The skill choice screen names each skill with its level. A PLAY LOOP line says each skill level gained.
 
   

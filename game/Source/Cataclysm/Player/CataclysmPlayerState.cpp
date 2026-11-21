@@ -201,6 +201,22 @@ int32 ACataclysmPlayerState::GetCharacterLevel() const
 
 const TCHAR* ACataclysmPlayerState::ExperienceGainStat = TEXT("experience_gain");
 
+const TCHAR* ACataclysmPlayerState::SkillExperienceGainStat = TEXT("skill_experience_gain");
+
+double ACataclysmPlayerState::SkillExperienceGainFactor() const
+{
+	const UCataclysmAbilitySystemComponent* Earner =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Earner)
+	{
+		return 1.0;
+	}
+	// NO SKILL TAGS: every gem gives the whole character its bonus, and the ruling of 2026-11-21 (issue #2803) is that
+	// this one raises every skill's share alike.
+	return FMath::Max(0.0, static_cast<double>(Earner->StatAppliedTo(
+							   FName(SkillExperienceGainStat), FGameplayTagContainer(), 100.0f)) / 100.0);
+}
+
 int64 ACataclysmPlayerState::ExperienceAfterGain(int32 KillScore) const
 {
 	const UCataclysmAbilitySystemComponent* Earner =
@@ -962,12 +978,16 @@ void ACataclysmPlayerState::GrantSkillExperience(int64 KillExperience, const TMa
 		return;
 	}
 
+	// RAISED BEFORE IT IS SHARED, by `skill_experience_gain` (issue #2803), so every skill's share rises alike. A kill
+	// the character's own `experience_gain` reduced to nothing never reaches here.
+	const double Raised = static_cast<double>(KillExperience) * SkillExperienceGainFactor();
+
 	const TMap<FName, int32> Before = SkillLevelsNow();
 	for (const TPair<FName, float>& Each : HealthRemovedBySkill)
 	{
 		if (!Each.Key.IsNone() && Each.Value > 0.0f)
 		{
-			SkillExperience.FindOrAdd(Each.Key) += static_cast<double>(KillExperience) * Each.Value / Whole;
+			SkillExperience.FindOrAdd(Each.Key) += Raised * Each.Value / Whole;
 		}
 	}
 	SaySkillLevelsGained(Before);

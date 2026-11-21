@@ -715,6 +715,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ACataclysmPlayerState::ExperienceAfterGain. Issue #1833: "Kills no
 		// longer generate any experience".
 		TEXT("experience_gain"),
+		// Increases to the experience every skill earns from a kill, read by
+		// ACataclysmPlayerState::SkillExperienceGainFactor with no skill tags.
+		// Issue #2803: the gem Of The Scholar, "Increases skill experience gain
+		// by 10%", once gems can be socketed (#46).
+		TEXT("skill_experience_gain"),
 		// A share of the maximum mana added to a skill's cost, read in
 		// UCataclysmGameplayAbility::ManaCostFor with the skill's tags. Issue
 		// #1833: "Movement abilities cost 20%-50% of your maximum mana".
