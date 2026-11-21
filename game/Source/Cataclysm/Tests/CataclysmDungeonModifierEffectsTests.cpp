@@ -22075,6 +22075,71 @@ bool FCataclysmBloodGatesOtherKillerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// A CREATURE THE PLAYER TOOK DOES NOT HOLD THE GATE SHUT. Issue #2797: "placed" is the player's kills plus the
+// unmarked still standing, read off the floor's list of enemies, and a creature taken with Subjugate used to stay on
+// that list until the next floor. Two of three taken and the third slain by the player: with the two counted, one of
+// three is short of the two that open the gate, and the player would wait on creatures fighting for them. The panel
+// before the takes is the control: all three are counted while they are the floor's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesThrallTest,
+	"Cataclysm.DungeonModifierEffects.ATakenCreatureDoesNotHoldTheBloodGatesShut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesThrallTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+
+	// THE CONTROL: three of the floor's, and two open the stairs.
+	if (!TestEqual(TEXT("set-up: three placed, and two open the stairs"), GatesPanelLine(Mode),
+				   FString(TEXT("blood gates: 0 of 3 slain, open at 2"))))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the player takes the first"), UCataclysmCommand::Subjugate(Player.Character, Placed[0]))
+		|| !TestTrue(TEXT("and the second"), UCataclysmCommand::Subjugate(Player.Character, Placed[1])))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the two taken are no longer counted"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 1 slain, open at 1")));
+
+	if (!ThePlayerKills(*this, Player, Placed[2]))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the first thrall still stands"), UCataclysmSkillEffects::IsDead(Placed[0]));
+	TestFalse(TEXT("and so does the second"), UCataclysmSkillEffects::IsDead(Placed[1]));
+	TestEqual(TEXT("and with the last of the floor's slain the gate is open"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("so the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
 // ONCE NO UNMARKED CREATURE STANDS, THE GATE IS OPEN, however the floor was emptied: the
 // property that keeps a player from being left on a floor with no way down.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesEmptiedTest,
@@ -22547,11 +22612,12 @@ bool FCataclysmDirgeArrivalTest::RunTest(const FString& Parameters)
 }
 
 // NOT A PLAYER'S THRALL. Issue #2797: the row hastes "all enemies", and a creature the player has
-// taken with Subjugate is no longer one. Subjugate leaves it on the floor's list of enemies, which
-// is the list the crescendo walks, so the crescendo has to skip it as the floor's other rules do
-// (issue #1202, ruled 2026-09-30). An untaken creature on the same floor is the control.
+// taken with Subjugate is no longer one. The take takes it off the floor's list of enemies, which
+// is the list the crescendo walks; the crescendo also skips a player's follower, as the floor's
+// other rules do (issue #1202, ruled 2026-09-30). An untaken creature on the same floor is the
+// control.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeThrallTest,
-	"Cataclysm.DungeonModifierEffects.TheDirgeCrescendoDoesNotHasteAPlayersThrall",
+	"Cataclysm.DungeonModifierEffects.ATakenCreatureIsNotHastedByTheDirgeCrescendo",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDirgeThrallTest::RunTest(const FString& Parameters)
@@ -22581,10 +22647,10 @@ bool FCataclysmDirgeThrallTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// STILL ON THE LIST THE CRESCENDO WALKS, which is why the crescendo itself has to skip it.
-	// If the take ever takes it off the list, this test no longer tests the skip and says so here.
-	if (!TestTrue(TEXT("set-up: the thrall is still on the floor's list of enemies"),
-				  Mode->FloorEnemies.Contains(Taken)))
+	// OFF THE LIST THE CRESCENDO WALKS, from the moment it is taken.
+	if (!TestFalse(TEXT("the thrall is no longer on the floor's list of enemies"),
+				   Mode->FloorEnemies.Contains(Taken))
+		|| !TestTrue(TEXT("set-up: the creature nobody took still is"), Mode->FloorEnemies.Contains(Stranger)))
 	{
 		return false;
 	}

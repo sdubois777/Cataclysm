@@ -15,6 +15,8 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// A creature taken leaves the floor's list of enemies. Issue #2797.
+#include "Dungeon/CataclysmDungeonGameMode.h"
 // The line of sight `ThingsCommandedInSightOf` traces. Issue #2792.
 #include "CollisionQueryParams.h"
 #include "Engine/World.h"
@@ -993,6 +995,19 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// other is half taken.
 	Taken->SetOwner(Commander);
 	Taken->SetGenericTeamId(UCataclysmTeams::TeamOf(Commander));
+
+	// AND IT IS NO LONGER ONE OF THE FLOOR'S ENEMIES. Issue #2797, ruled by the coordinating session 2026-11-20: a load
+	// never puts a thrall back on `FloorEnemies` and the next floor's clear takes it off, so the list is the floor's
+	// enemies, and the take is where a creature stops being one. Here, because every take comes through this function:
+	// the Subjugate skill's `UCataclysmSummonSkill::Possess` and the Warzone's allies alike. The game mode is found by
+	// walking the level, so a world built for a test finds it too; a world with none has no list to leave.
+	if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Taken))
+	{
+		if (ACataclysmDungeonGameMode* Floor = ACataclysmDungeonGameMode::InWorld(Creature->GetWorld()))
+		{
+			Floor->ForgetACreatureTaken(Creature);
+		}
+	}
 
 	// WHEN IT CAME UNDER COMMAND, for A Second Self's "held longest", and not
 	// anybody's Second Self yet. Issue #1515.
