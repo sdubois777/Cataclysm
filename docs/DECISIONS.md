@@ -150,9 +150,12 @@ coordinating session re-confirms the base then.**
 |---|---|---|---|
 | C1 | the skills share the kill before it is raised | `Cataclysm.SkillLevels.` (13) | `IncreasedSkillExperienceGain...`, 2 (900 and 450 read 600 and 300) |
 
-- **Python before the window**: every Python test file that reads a changed file (29 files): 1789 passed, JUnit 1789
-  tests, 0 failures, 0 errors, 0 skipped. The 137 files that read the design document: 3096 passed, 2 skipped. Ruff "All
-  checks passed!". The full suite waits until the owner's editor is closed.
+- **Python before the window**: the full suite at `9a20a43ee`, on development `89fdc50a6`: "1 failed, 7847 passed, 9
+  skipped in 326.06s", JUnit tests 7857, failures 1, errors 0, skipped 9. The one failure is
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  naming `Gems.csv` alone, which the asset step clears. Ruff "All checks passed!". In phase 1, every Python test file
+  that read a changed file (29 files): 1789 passed; the 137 files that read the design document: 3096 passed, 2
+  skipped.
 
 ### The six Python guards, proved in phase 1
 
