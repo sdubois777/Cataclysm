@@ -114,8 +114,17 @@ Sent to and accepted by the coordinating session on 2026-11-20. The branch was r
   halves and 852 test saves, the base's; none left behind.
 - **Each group alone**, counted in thrall-imps-w1's log on "Test Completed. Result={" lines and by distinct path, which
   agree: `Cataclysm.DungeonModifierEffects.` 773 -> 775; `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23,
-  `Cataclysm.Enemy.` 133 and `Cataclysm.GroundDown.` 3, unchanged. #2791 added its test to `Cataclysm.Gatekeeper.`,
+  `Cataclysm.Enemy.` 19 and `Cataclysm.GroundDown.` 3, unchanged. #2791 added its test to `Cataclysm.Gatekeeper.`,
   none of these.
+- **`Cataclysm.Enemy.` WAS FIRST REGISTERED AS 133, WHICH WAS WRONG.** This session counted it with `grep -c
+  "Path={Cataclysm\.Enemy."`, whose last dot is unescaped and matches any character, so the count also took in the 114
+  tests of nine other groups whose names begin `Cataclysm.Enemy`: `EnemyModifiers.` 57, `EnemyHitTiming.` 14,
+  `EnemyScore.` 12, `EnemyStrength.` 8, `EnemyTags.` 8, `EnemyRarity.` 6, `EnemyBurn.` 4, `EnemyDeath.` 4 and
+  `EnemyCloth.` 1. The window's own recount, which matches the prefix as literal text, stopped the first start of
+  window tree-2790-w1 at 18:26 on 2026-11-20 with "Cataclysm.Enemy. base 19 lines, 19 distinct paths; registered 133
+  less 0 this slice adds: MISMATCH", before it took the lock. The other four groups matched. Recounted with a literal
+  match (`grep -cF`): 773, 51, 23, 19 and 3. The figure is re-registered with the coordinating session before the
+  window starts again.
 - **Four C++ guard proofs**, prefix `Cataclysm.DungeonModifierEffects.TheGuideKeepsPace` (no test matched it in
   thrall-imps-w1, so it selects exactly the two new tests), each predicted 2 performed, 1 succeeded, 1 failed:
 
