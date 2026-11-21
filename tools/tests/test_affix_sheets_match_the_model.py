@@ -296,4 +296,5 @@ class TestTheCountsThatAreAssertedInUnreal:
         moved fails only in the C++ suite, which nothing on a pull request runs.
         """
         gem_rows = read_sheet("Gems")
-        assert len(gem_rows) == 27
+        # 28 since issue #2803 added Of The Scholar, which raises skill experience gain.
+        assert len(gem_rows) == 28

@@ -8,14 +8,16 @@ Decisions made outside the Google Drive documents, newest first.
 `GrantSkillExperience`, which multiplies the kill by the factor before sharing it
 (`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`); `UCataclysmPlayerClassStats::StatsWithNoAttribute`
 gains `skill_experience_gain` (`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`); `split_a_kill`
-(`sim/cataclysm_sim/skill_levels.py`); `docs/Cataclysm_GDD_v2.md`, "What a Skill Levels". In #2803's own turn:
-`docs/All_Things_Cataclysm.xlsx`, the Gems sheet, `game/Data/Gems.csv`, `game/Content/Data/DT_Gems.uasset` and
-`game/Data/datatable_asset_sources.json`. Tests:
+(`sim/cataclysm_sim/skill_levels.py`); `docs/Cataclysm_GDD_v2.md`, "What a Skill Levels";
+`docs/All_Things_Cataclysm.xlsx`, the Gems sheet's row 29; `game/Data/Gems.csv`; `docs/README.md`, the Gems sheet's row
+count; `game/Content/Data/DT_Gems.uasset` and `game/Data/datatable_asset_sources.json`, in the window. Tests:
 `Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`, new
 (`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp`); a probe for the stat in
 `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
-(`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`); `tools/tests/test_skill_experience_gain.py`, new;
-`sim/tests/test_skill_levels.py`, one new. Issue [#2803](https://github.com/sdubois777/Cataclysm/issues/2803).
+(`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`); the gem count in
+`CHECK_TABLE(FCataclysmGemRow, ...)` (`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`) and
+`test_the_gem_count` in `tools/tests/test_affix_sheets_match_the_model.py`, 27 to 28;
+`tools/tests/test_skill_experience_gain.py`, new; `sim/tests/test_skill_levels.py`, one new. Issue [#2803](https://github.com/sdubois777/Cataclysm/issues/2803).
 
 ### SAID FIRST
 
@@ -25,8 +27,8 @@ gains `skill_experience_gain` (`game/Source/Cataclysm/Character/CataclysmPlayerC
   the code that reads its stat are built now. #46 must map this gem to `skill_experience_gain` as an increase, with
   source `ECataclysmModifierSource::Gem`; the sheet's 0.10 is 10 in the stat pipeline, where an increase is stated in
   percentage points.
-- **NOT COMPILED OR RUN IN UNREAL YET.** The workbook row, `Gems.csv` and the asset step come in #2803's own turn,
-  queued after slice 6c of #2741, because the workbook has one writer at a time.
+- **NOT COMPILED OR RUN IN UNREAL YET.** The workbook row and `Gems.csv` are written; the asset step for
+  `DT_Gems.uasset` is in the window.
 - **THE CHARACTER'S OWN EXPERIENCE IS UNCHANGED.** Only the skills' share of a kill reads the stat.
 
 ### The request and the ruling
@@ -101,30 +103,52 @@ cap sooner, and every socket it fills holds no power gem.
 - **`tools/tests/test_skill_experience_gain.py`**, new, four checks, because continuous integration compiles no C++.
 - **`sim/tests/test_skill_levels.py`**: one new check, 900 and 450 at 0.5, and nothing at -2.
 
+### The gem's row
+
+Row 29 of the workbook's Gems sheet, below Of Embers: "Of The Scholar", "Increases skill experience gain by 10%", then
+0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.9 for Quality to Cataclysmic, and "Utility". The generator reads the Everyday value,
+0.1, out of the text, so `game/Data/Gems.csv` gains `Gem_Of_The_Scholar,Of The Scholar,Increases skill experience gain by
+10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9`, and no other generated file changes. The row's cells take row 23's (Of
+Area's) formats. The sheet's Excel table, `Table4`, still covers `A1:J26`, as it did before Of Wasting and Of Embers
+were added in rows 27 and 28; the generator reads every row and does not read the table.
+
+**The sweep of what the row moves**, by the gem file's name, the sheet's name, the row type and the old count 27, over
+`game/Source/**/Tests`, `tools/tests`, `sim/tests` and `docs/README.md`: three pins held 27 and now hold 28,
+`CHECK_TABLE(FCataclysmGemRow, "Gems.csv", ...)`, `test_the_gem_count` and the Gems line of `docs/README.md`'s sheet
+table, which `tools/tests/test_docs_readme_sheet_table_is_true.py` checks. The other gem readers,
+`tools/tests/test_every_player_applied_effect_can_be_built.py`, `test_gem_values_rise_with_rarity.py`,
+`test_magic_find_has_one_name.py`, `test_power_score_port.py`, `test_generate_datatables.py` and
+`sim/tests/test_affixes.py`, read only gems that apply an effect on hit, read named gems, or check the ladder rises, and
+pass with the row. No test pins the number of stats with no attribute.
+
 ### Registered before the run
 
-Counted on the "Test Completed. Result={" lines of window follow-w2's log at `d4d0773ac`, whose `game/` is development
-`156f2b9e8`'s, with a literal match on `Path={Cataclysm.<Group>.`. **#2787 branch B, #2801 and slice 6c of #2741 merge
-before this window, so every figure is restated from the newest measured window at #2803's turn.**
+Counted on the "Test Completed. Result={" lines of window tree-6c-w1's whole-suite log at `abb9a7fc0`, whose `game/` is
+development `89fdc50a6`'s (`git diff --quiet abb9a7fc0 89fdc50a6 -- game/` exits 0), with a literal match on
+`Path={Cataclysm.<Group>.`: "5079 tests performed, 5079 succeeded, 0 failed. 48 skipped part of what they check" and
+"859 written and deleted, 0 left behind". Phase 1 registered against follow-w2 at `d4d0773ac` (5072); the ten groups
+below have the same counts in both logs. **The gold session's #2797 and #2800 merge before this window, so the
+coordinating session re-confirms the base then.**
 
-- **The whole suite: the base + 1** (5072 + 1 = 5073 against follow-w2), 0 failed; 48 skipped halves and 859 test saves,
+- **The whole suite: the base + 1** (5079 + 1 = 5080 against tree-6c-w1), 0 failed; 48 skipped halves and 859 test saves,
   the base's, because the new test builds no floor.
 - **Each group alone**: `Cataclysm.SkillLevels.` 12 to 13; `SkillLevelSources.` 19, `StatExemption.` 37,
   `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4, `Equipment.` 30
   and `Data.` 7, unchanged. `Experience.` is matched with its dot and so leaves out `ExperienceBar.` (2).
-- **The asset step**, in #2803's turn: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_Gems.uasset`,
-  28 rows, and rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed before the
-  tests run. The gem counts move to 28 in the same turn, in
-  `tools/tests/test_affix_sheets_match_the_model.py::test_the_gem_count` and `CHECK_TABLE(FCataclysmGemRow, "Gems.csv",
-  ...)` in `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
-- **Four C++ guard proofs**, the restored half passing every test it ran:
+- **The groups first**: `Data.`, `SkillLevels.` and `StatExemption.` are the groups whose tests the change moves, and
+  they run before the others and before the whole suite.
+- **The asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_Gems.uasset`, 28 rows, and
+  rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed before the tests run.
+- **One C++ guard proof**, the restored half passing every test it ran. The coordinating session's rule of 2026-11-21:
+  one C++ proof for each behaviour only a C++ test guards, and a Python proof where a Python check guards the same
+  thing. C1 is kept because it is the only proof that the new Unreal test fails when the kill is shared before it is
+  raised; G2 proves the same break from the source text. Three proofs registered in phase 1 were dropped under that
+  rule: the factor asking `experience_gain` (G1 guards it), the character's own gain read through the factor (G4
+  guards it), and C1's break on the exemption test (C1 and G3 cover it).
 
 | Proof | The break | Prefix | Predicted failing test and assertions |
 |---|---|---|---|
 | C1 | the skills share the kill before it is raised | `Cataclysm.SkillLevels.` (13) | `IncreasedSkillExperienceGain...`, 2 (900 and 450 read 600 and 300) |
-| C2 | the factor asks `experience_gain` instead | `Cataclysm.SkillLevels.` (13) | the same test, 3 (900, 450 and the factor 1.5, which read 600, 300 and 1.0) |
-| C3 | the character's own gain is multiplied by the factor as well | `Cataclysm.SkillLevels.` (13) | the same test, 1 ("the character's own kill is not raised: 100 stays 100", 150) |
-| C4 | the break of C1 | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (1) | that test, 1 ("skill_experience_gain is read: 50 increased gives 1500", 1000) |
 
 - **Python before the window**: every Python test file that reads a changed file (29 files): 1789 passed, JUnit 1789
   tests, 0 failures, 0 errors, 0 skipped. The 137 files that read the design document: 3096 passed, 2 skipped. Ruff "All

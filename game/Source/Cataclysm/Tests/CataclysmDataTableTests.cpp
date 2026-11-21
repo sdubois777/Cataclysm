@@ -118,7 +118,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// one status effect in the data that nothing applied, and the Of Embers gem
 	// to apply Burn, which every designed Demonic skill applies and which no gem
 	// and no affix could reach.
-	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   27)
+	// 28, not 27. Of The Scholar raises the experience every skill earns, through the stat skill_experience_gain
+	// (issue #2803); it acts once gems can be put in sockets (issue #46).
+	CHECK_TABLE(FCataclysmGemRow,               "Gems.csv",                   28)
 	CHECK_TABLE(FCataclysmCityUpgradeRow,       "CityUpgrades.csv",           24)
 	// 46 SINCE 2026-08-23, issue #852, and it was 37. The one row named
 	// "Upgrade Stone (x)" was a placeholder that showed on screen that way.
