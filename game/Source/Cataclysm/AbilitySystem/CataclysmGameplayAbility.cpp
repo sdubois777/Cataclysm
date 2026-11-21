@@ -388,6 +388,13 @@ float UCataclysmGameplayAbility::FervourCostFor(
 	{
 		return 0.0f;
 	}
+	// THE SKILL'S OWN FIGURE FIRST, AND THE SLOT'S WHEN IT STATES NONE. Issue #2801: Subjugate costs 30, every other
+	// Ultimate its slot's 50. Every caller reads the cost here -- `CheckCost`, `ApplyCost`, the skill bar and the
+	// refused press's line -- so they cannot disagree.
+	if (FervourCostOverride >= 0.0f)
+	{
+		return FervourCostOverride;
+	}
 	EnsureSlotNumbersLoaded();
 	return FMath::Max(0.0f, SlotFervourCost);
 }

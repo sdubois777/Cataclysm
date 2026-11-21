@@ -85,26 +85,26 @@ namespace CataclysmCreationTest
 		Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
 
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
-			"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost\r\n"
+			"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,DamagePercent,Cooldown,ManaCost,FervourCost\r\n"
 			// Sword: War with four skills written, Death with none.
-			"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"War_Sword_Support,Sword,War,Support,Guard,Guards.,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"War_Sword_Aura,Sword,War,Aura,Banner,Flies.,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"War_Sword_Ultimate,Sword,War,Ultimate,,,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"War_Sword_Movement,Sword,War,Movement,,,,Strike,Radius=4,-1,-1,-1,-1\r\n"
-			"Death_Sword_Heavy,Sword,Death,Heavy,,,,Strike,Radius=4,-1,-1,-1,-1\r\n"
+			"War_Sword_Heavy,Sword,War,Heavy,Precise Cut,Cuts.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Special,Sword,War,Special,Wild Swing,Swings.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Support,Sword,War,Support,Guard,Guards.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Aura,Sword,War,Aura,Banner,Flies.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Ultimate,Sword,War,Ultimate,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"War_Sword_Movement,Sword,War,Movement,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
+			"Death_Sword_Heavy,Sword,Death,Heavy,,,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
 			// Staff: two casters and no War, which is the design's own rule --
 			// "Wand and Staff are excluded from War, which has no caster build".
-			"Death_Staff_Heavy,Staff,Death,Heavy,Grave Bolt,Bolts.,,Projectile,Range=8,-1,-1,-1,-1\r\n"
-			"Demonic_Staff_Heavy,Staff,Demonic,Heavy,Hellfire,Burns.,,Projectile,Range=8,-1,-1,-1,-1\r\n"
+			"Death_Staff_Heavy,Staff,Death,Heavy,Grave Bolt,Bolts.,,Projectile,Range=8,-1,-1,-1,-1,-1\r\n"
+			"Demonic_Staff_Heavy,Staff,Demonic,Heavy,Hellfire,Burns.,,Projectile,Range=8,-1,-1,-1,-1,-1\r\n"
 			// Greataxe and Demonic: the pair a character has when nobody chose.
-			"Demonic_Greataxe_Heavy,Greataxe,Demonic,Heavy,Cleave,Cleaves.,,Strike,Radius=4,-1,-1,-1,-1\r\n"
+			"Demonic_Greataxe_Heavy,Greataxe,Demonic,Heavy,Cleave,Cleaves.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"
 			// A Shield does carry skills. It is excluded for a different reason.
-			"War_Shield_Heavy,Shield,War,Heavy,Shield Bash,Bashes.,,Strike,Radius=2,-1,-1,-1,-1\r\n"
+			"War_Shield_Heavy,Shield,War,Heavy,Shield Bash,Bashes.,,Strike,Radius=2,-1,-1,-1,-1,-1\r\n"
 			// The auras, which do not care what is held. Counting this row as a
 			// weapon would give every weapon every damage type.
-			"Void_All_Aura,All,Void,Aura,Dread,Spreads.,,Strike,Radius=4,-1,-1,-1,-1\r\n"));
+			"Void_All_Aura,All,Void,Aura,Dread,Spreads.,,Strike,Radius=4,-1,-1,-1,-1,-1\r\n"));
 
 		for (const FString& Problem : Problems)
 		{

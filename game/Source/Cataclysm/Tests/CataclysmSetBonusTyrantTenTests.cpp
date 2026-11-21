@@ -384,10 +384,10 @@ namespace CataclysmSetBonusTyrantTenTest
 		Table->RowStruct = FCataclysmWeaponSkillRow::StaticStruct();
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(TEXT(
 			"Name,WeaponType,DamageType,Slot,SkillName,SkillDescription,Tags,Shape,ShapeParams,CritChancePercent,"
-			"DamagePercent,Cooldown,ManaCost\r\n"
+			"DamagePercent,Cooldown,ManaCost,FervourCost\r\n"
 			"Demonic_Whip_Ultimate,Whip,Demonic,Ultimate,Tyrants Test Coil,A self buff in the Ultimate slot.,"
 			"\"Item.Weapon.Whip, Element.Demonic, Type.Buff, Slot.Ultimate\",SelfBuff,"
-			"Duration=10; Interval=1; Radius=3; RangeIncrease=30; Knockback=3,-1,-1,-1,-1\r\n"));
+			"Duration=10; Interval=1; Radius=3; RangeIncrease=30; Knockback=3,-1,-1,-1,-1,-1\r\n"));
 		if (Problems.Num() > 0)
 		{
 			for (const FString& Problem : Problems)

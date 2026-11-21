@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// The health attribute, which the pop-up's cost line names a pool paid from health by. Issue #2801.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For a slot converted into a skill gadget. Ruled 2026-10-16.
 #include "AbilitySystem/CataclysmMinion.h"
 // For whether the player swings at all, which the basic attack gadget's line asks. Ruled 2026-10-16, stack 2.
@@ -157,6 +159,12 @@ TArray<FString> UCataclysmSkillBar::PopupLinesFor(const FCataclysmSkillBarSlot& 
 	if (!Slot.SkillLevelText.IsEmpty())
 	{
 		Lines.Add(Slot.SkillLevelText);
+	}
+	// AND WHAT A PRESS COSTS, ABOVE THE DESCRIPTION. Issue #2801.
+	const FString Cost = CostLineFor(Slot);
+	if (!Cost.IsEmpty())
+	{
+		Lines.Add(Cost);
 	}
 
 	TArray<FString> Words;
@@ -460,6 +468,48 @@ FString UCataclysmSkillBar::FervourTextFor(const FCataclysmSkillBarSlot& Slot)
 						   FMath::CeilToInt(Slot.FervourCost));
 }
 
+FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
+{
+	if (!Slot.bFilled || Slot.bIsASkillGadget)
+	{
+		return FString();
+	}
+	// UP, AS "needs 50 Fervour" ROUNDS, less a hair so a figure a float holds as 14.0000001 still reads 14.
+	auto Whole = [](float Value) { return FMath::CeilToInt(Value - 0.001f); };
+	TArray<FString> Costs;
+	if (Slot.FervourCost > 0.0f)
+	{
+		Costs.Add(FString::Printf(TEXT("%d Fervour"), Whole(Slot.FervourCost)));
+	}
+	if (Slot.HealthCostPercent > 0.0f)
+	{
+		Costs.Add(FString::Printf(TEXT("%d%% of current health"), Whole(Slot.HealthCostPercent)));
+	}
+	else if (Slot.ManaCost > 0.0f)
+	{
+		Costs.Add(FString::Printf(TEXT("%d %s"), Whole(Slot.ManaCost),
+								  Slot.bCostPaidFromHealth ? TEXT("health") : TEXT("mana")));
+	}
+	FString Line = Costs.IsEmpty() ? FString(TEXT("Costs nothing."))
+								   : FString::Printf(TEXT("Costs %s."), *FString::Join(Costs, TEXT(" and ")));
+	if (Slot.CooldownLength > 0.0f)
+	{
+		FString Seconds = FString::Printf(TEXT("%.1f"), Slot.CooldownLength);
+		Seconds.RemoveFromEnd(TEXT(".0"));
+		Line += FString::Printf(TEXT(" %s s cooldown"), *Seconds);
+		if (Slot.MaxCharges > 1)
+		{
+			Line += FString::Printf(TEXT(", %d charges"), Slot.MaxCharges);
+		}
+		Line += TEXT(".");
+	}
+	else
+	{
+		Line += TEXT(" No cooldown.");
+	}
+	return Line;
+}
+
 FString UCataclysmSkillBar::SkillGadgetName()
 {
 	return TEXT("Gadget");
@@ -699,6 +749,14 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 
 		// AND THE FERVOUR, THE SAME QUESTION `CheckCost` ASKS FIRST. Issue #1478.
 		Box.FervourCost = Ability->FervourCostFor(Abilities);
+		// AND THE REST OF WHAT THE POP-UP'S COST LINE NAMES, from the press's own functions. Issue #2801.
+		Box.bCostPaidFromHealth =
+			UCataclysmGameplayAbility::CostPool(Abilities) == UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Box.HealthCostPercent = Ability->ManaCostPaidAsHealthPercent(Abilities);
+		Box.CooldownLength = Ability->GetBaseCooldown() > 0.0f
+			? UCataclysmGameplayAbility::CooldownAfterReduction(Abilities, Ability->GetBaseCooldown(),
+																 Ability->SkillTagsForStats())
+			: 0.0f;
 		Box.bShortOfFervour =
 			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);
 		Box.bAffordable = Box.bAffordable && !Box.bShortOfFervour;

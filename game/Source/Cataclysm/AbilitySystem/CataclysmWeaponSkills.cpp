@@ -100,6 +100,7 @@ void UCataclysmWeaponSkills::StampOnto(UCataclysmSkillTemplate& Template,
 	Template.DamagePercentOverride = Skill.DamagePercent;
 	Template.CooldownOverride = Skill.Cooldown;
 	Template.ManaCostOverride = Skill.ManaCost;
+	Template.FervourCostOverride = Skill.FervourCost; // Issue #2801.
 
 	// AND THE SLOT IT WAS MADE FOR, which every rule reads wherever the skill sits (O1, issue #837 layer 3). The key
 	// is the caller's, as above.
@@ -162,6 +163,7 @@ namespace
 		Skill.DamagePercent = Row.DamagePercent;
 		Skill.Cooldown = Row.Cooldown;
 		Skill.ManaCost = Row.ManaCost;
+		Skill.FervourCost = Row.FervourCost; // Issue #2801.
 
 		// Named in the error so a bad cell says which of the 398 rows it
 		// is. The generator refuses one already, so this only fires for

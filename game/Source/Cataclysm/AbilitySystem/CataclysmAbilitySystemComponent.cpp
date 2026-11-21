@@ -313,7 +313,23 @@ void UCataclysmAbilitySystemComponent::ProcessAbilityInput()
 		// engine turns a client's TryActivateAbility on such an ability into a
 		// server remote call rather than refusing it. With it off, every ability
 		// press on a client would be silently dropped.
-		TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true);
+		if (!TryActivateAbility(Handle, /*bAllowRemoteActivation=*/true))
+		{
+			// A REFUSED PRESS SAYS WHY, WITH EVERY CHECK'S FIGURES. Issue #2801: "subjugate constantly says I can't
+			// use it even when I have enough resources and it's off cd", and no check that refuses a press wrote
+			// anything, so the play log could not say which one did. Once per fresh press, at `Log`, which is what a
+			// play log holds; never for the basic attack, which a held button presses again and again. The granted
+			// instance, not the class default object, holds the skill's name and row; see `UCataclysmSkillBar::Read`.
+			const FGameplayAbilitySpec* Refused = FindAbilitySpecFromHandle(Handle);
+			const UCataclysmSkillTemplate* Skill = Refused
+				? Cast<UCataclysmSkillTemplate>(Refused->GetPrimaryInstance()
+													? Refused->GetPrimaryInstance() : Refused->Ability.Get())
+				: nullptr;
+			if (Skill && Skill->GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack)
+			{
+				UE_LOG(LogCataclysm, Log, TEXT("PRESS REFUSED: %s"), *Skill->PressRefusalLine(this));
+			}
+		}
 		// AND WHAT WAITED FOR ITS END, #2472.
 		ActOnWhatWaitedForTheAbilityList();
 	}

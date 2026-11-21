@@ -802,6 +802,9 @@ def weapon_skills(book) -> list[dict]:
         damage_percent = clean(raw[9]) if len(raw) > 9 else ""
         cooldown = clean(raw[10]) if len(raw) > 10 else ""
         mana_cost = clean(raw[11]) if len(raw) > 11 else ""
+        # Issue #2801: a skill's own Fervour cost, Subjugate's 30; blank takes
+        # the slot's, as the three columns before it do.
+        fervour_cost = clean(raw[12]) if len(raw) > 12 else ""
         where = f"Weapon Skills row {index} ({damage} {weapon} {slot})"
 
         if shape and shape not in SHAPE_PARAMS:
@@ -830,7 +833,9 @@ def weapon_skills(book) -> list[dict]:
                     "DamagePercent": skill_number(
                         damage_percent, "damage percentage", where),
                     "Cooldown": skill_number(cooldown, "cooldown", where),
-                    "ManaCost": skill_number(mana_cost, "mana cost", where)})
+                    "ManaCost": skill_number(mana_cost, "mana cost", where),
+                    "FervourCost": skill_number(
+                        fervour_cost, "Fervour cost", where)})
     return unique(out, "Weapon Skills")
 
 
@@ -853,8 +858,8 @@ def check_a_roll_states_no_damage_percent(params: dict[str, str],
             f"the Damage Percent cell blank")
 
 
-#: What the DamagePercent, Cooldown and ManaCost columns hold for a skill that
-#: states none of its own, and takes its slot's figure instead.
+#: What the DamagePercent, Cooldown, ManaCost and FervourCost columns hold for a
+#: skill that states none of its own, and takes its slot's figure instead.
 #:
 #: A SLOT IS A KEY AND A SKILL IS WORTH WHAT IT IS WORTH, decided by the project
 #: owner on 2026-08-22 and recorded in docs/DECISIONS.md. Any skill may go in any
@@ -879,7 +884,7 @@ UNSTATED_SKILL_NUMBER = -1.0
 
 
 def skill_number(cell: str, what: str, where: str) -> float:
-    """A per-skill damage, cooldown or mana cost, or -1 when the cell is blank.
+    """A per-skill damage, cooldown, mana or Fervour cost, or -1 when blank.
 
     Blank is the ordinary case and is not a fault: most rows state no figure of
     their own and take their slot's.

@@ -67,7 +67,7 @@ heading row describe their layout instead. Issue #1884.
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
 | **Tags** | **145** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
-| Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost |
+| Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
 | Buffs | 17 | one description per row, no heading row |
 | Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |

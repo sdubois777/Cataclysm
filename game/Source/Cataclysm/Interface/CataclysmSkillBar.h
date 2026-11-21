@@ -89,6 +89,27 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	float ManaCost = 0.0f;
 
 	/**
+	 * Whether that cost is paid from health rather than mana (`UCataclysmGameplayAbility::CostPool`), so the pop-up names
+	 * the right pool. Issue #2801.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bCostPaidFromHealth = false;
+
+	/**
+	 * The share of current health a use takes instead of mana, or 0 (`ManaCostPaidAsHealthPercent`). Issue #2801.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float HealthCostPercent = 0.0f;
+
+	/**
+	 * How long a use puts the skill on cooldown, after this character's reductions, or 0 for none: the length
+	 * `UCataclysmGameplayAbility::ApplyCooldown` works out, without a next-spell charge, which has its own line. Not
+	 * `CooldownDuration` above, which is the wait running now and 0 when the skill is ready. Issue #2801.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float CooldownLength = 0.0f;
+
+	/**
 	 * The skill's level, or 0 for a box whose skill does not level: an empty box, or a skill that is not the player's.
 	 * The bar has no box for the basic attack (`SlotsShown`), which does not level. Issue #2764: the box shows its level
 	 * in its corner, with a thin bar of the experience into it along its foot.
@@ -407,6 +428,16 @@ public:
 	 * ruled on 2026-09-27.
 	 */
 	static FString FervourTextFor(const FCataclysmSkillBarSlot& Slot);
+
+	/**
+	 * What a press of the box's skill costs, for its pop-up: "Costs 30 Fervour and 14 mana. 20 s cooldown." Empty for
+	 * an empty box and a skill gadget, whose placing costs nothing. Issue #2801: the owner, 2026-11-21, of Subjugate's
+	 * cost, "that's all the description tells you". Read from the box's own figures, which are the press checks'
+	 * (`FervourCostFor`, `ManaCostFor`, `CooldownAfterReduction`) after the character's reductions, so the words cannot
+	 * disagree with a refusal. Whole Fervour and mana are rounded up, as `FervourTextFor` does; seconds to one decimal,
+	 * a whole number without it. More than one charge is named.
+	 */
+	static FString CostLineFor(const FCataclysmSkillBarSlot& Slot);
 
 	/** What a box converted into a skill gadget reads, "Gadget". Ruled 2026-10-16 (S14). */
 	static FString SkillGadgetName();

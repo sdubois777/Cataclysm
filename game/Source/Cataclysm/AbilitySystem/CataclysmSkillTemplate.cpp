@@ -812,6 +812,95 @@ void UCataclysmSkillTemplate::EndAbility(
 	ClickedTarget.Reset();
 }
 
+FString UCataclysmSkillTemplate::ReservedFervourByKindText(const AActor* Commander)
+{
+	int32 Thralls = 0;
+	float HeldByThralls = 0.0f;
+	float Counted = 0.0f;
+	TMap<FString, TPair<int32, float>> Minions;
+	Minions.Add(TEXT("Imp"), TPair<int32, float>(0, 0.0f));
+	for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
+	{
+		const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		if (!Body)
+		{
+			continue;
+		}
+		if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Body))
+		{
+			TPair<int32, float>& Kind =
+				Minions.FindOrAdd(Minion->TypeName.IsEmpty() ? FString(TEXT("untyped minion")) : Minion->TypeName);
+			++Kind.Key;
+			Kind.Value += Minion->ReservedFervour;
+		}
+		else
+		{
+			++Thralls;
+			HeldByThralls += Body->ReservedFervour;
+		}
+		Counted += Body->ReservedFervour;
+	}
+	const float Total = UCataclysmCommand::ReservedFervourOf(Commander);
+	FString Text = FString::Printf(TEXT("reserved %.0f: %d thralls %.0f"), Total, Thralls, HeldByThralls);
+	Minions.KeySort(TLess<FString>());
+	for (const auto& Kind : Minions)
+	{
+		Text += FString::Printf(TEXT(", %d %s %.0f"), Kind.Value.Key, *Kind.Key, Kind.Value.Value);
+	}
+	// THE CHOSEN THRALL'S SECOND SHARE, which `ReservedFervourOf` adds and no holder's own field carries.
+	if (Total - Counted > 0.5f)
+	{
+		Text += FString::Printf(TEXT(", the chosen thrall's second share %.0f"), Total - Counted);
+	}
+	return Text;
+}
+
+FString UCataclysmSkillTemplate::FervourFiguresFor(const UAbilitySystemComponent* AbilitySystem,
+												   const AActor* Commander, float Cost)
+{
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem ? AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+	if (!Resource)
+	{
+		return TEXT("no Fervour pool");
+	}
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float Maximum = Cataclysm ? Cataclysm->MaximumClassResource() : Resource->GetMaxClassResource();
+	return FString::Printf(TEXT("Fervour %.1f of %.0f (ceiling %.0f of %.0f; %s)"), Resource->GetClassResource(), Cost,
+						   Resource->MaximumClassResourceAsked(), Maximum, *ReservedFervourByKindText(Commander));
+}
+
+FString UCataclysmSkillTemplate::PressRefusalLine(const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const AActor* Who = AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr;
+	auto YesNo = [](bool bYes) { return bYes ? TEXT("yes") : TEXT("no"); };
+
+	// THE POOL THE COST IS PAID FROM, by its attribute's name: mana for nearly every character, and whichever pool
+	// `CostPool` names for one that pays from another. A cost moved onto health is said so, as `CheckCost` allows it.
+	const FGameplayAttribute Pool = CostPool(AbilitySystem);
+	const float PoolHeld = AbilitySystem && Pool.IsValid() && AbilitySystem->HasAttributeSetForAttribute(Pool)
+		? AbilitySystem->GetNumericAttribute(Pool) : 0.0f;
+	const FString CostPart = ManaCostPaidAsHealthPercent(AbilitySystem) > 0.0f
+		? FString(TEXT("its cost paid in health"))
+		: FString::Printf(TEXT("%s %.1f of %.0f"), *Pool.GetName(), PoolHeld, ManaCostFor(AbilitySystem));
+
+	// THE CHARGES, WHICH IS WHAT `CheckCooldown` COUNTS: none held is a cooldown running.
+	const FString ChargesPart = GetBaseCooldown() <= 0.0f ? FString(TEXT("no cooldown"))
+		: Cataclysm ? FString::Printf(TEXT("charges %d"), Cataclysm->SkillChargesHeld(Slot, SkillTagsForStats()))
+					: FString(TEXT("charges unread"));
+
+	const bool bLocked = Cataclysm && GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack
+		&& Cataclysm->StatForSkill(FName(UCataclysmSkillSlots::LockedStat), SkillTags, 0.0f) > 0.0f;
+
+	return FString::Printf(TEXT("%s in %s: %s; %s; %s; locked %s; cannot act %s; feared %s; weapon planted %s"),
+						   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(),
+						   *FervourFiguresFor(AbilitySystem, Who, FervourCostFor(AbilitySystem)), *CostPart,
+						   *ChargesPart, YesNo(bLocked), YesNo(Who && UCataclysmSkillEffects::CannotAct(Who)),
+						   YesNo(Who && UCataclysmFear::IsFeared(Who)),
+						   YesNo(Who && ACataclysmPlantedWeapon::HeldBy(Who) != nullptr));
+}
+
 bool UCataclysmSkillTemplate::CanActivateAbility(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,

@@ -171,6 +171,14 @@ struct FCataclysmWeaponSkillRow : public FTableRowBase
 	/** Mana one use costs at character level 100. -1 takes the slot's. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
 	float ManaCost = -1.0f;
+
+	/**
+	 * Fervour one use costs. -1 takes the slot's (`SkillSlots`' Fervour Cost, 50 on the Ultimate). Issue #2801: the
+	 * owner ruled on 2026-11-21 that Subjugate costs 30, "I think we should actually change it to cost 30 fervor", and
+	 * the workbook's Weapon Skills sheet states it on that row alone.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Skill")
+	float FervourCost = -1.0f;
 };
 
 /**

@@ -2,6 +2,279 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A refused skill press and every Subjugate cast say why in the play log, naming the numbers, so one press by the owner settles why Subjugate is refused (#2801)
+
+**Affects:** `UCataclysmSkillTemplate::PressRefusalLine`, `FervourFiguresFor` and `ReservedFervourByKindText`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h`, `.cpp`);
+`UCataclysmAbilitySystemComponent::ProcessAbilityInput` (`CataclysmAbilitySystemComponent.cpp`);
+`UCataclysmSummonSkill::Possess`, its seven outcomes at `Log` (`CataclysmSkillTemplates.cpp`);
+`UCataclysmGameplayAbility::FervourCostOverride` and `FervourCostFor`, `FCataclysmWeaponSkill::FervourCost` and
+`UCataclysmWeaponSkills::StampOnto`; `UCataclysmSkillBar::CostLineFor`, `PopupLinesFor`, and the box's
+`CooldownLength`, `HealthCostPercent` and `bCostPaidFromHealth` (`game/Source/Cataclysm/Interface/CataclysmSkillBar.h`,
+`.cpp`); Subjugate's row in `docs/Cataclysm_GDD_v2.md`'s Staff table; the Weapon Skills sheet's Fervour Cost column
+(`docs/All_Things_Cataclysm.xlsx`), `FCataclysmWeaponSkillRow::FervourCost`
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`) and its copy in `CataclysmWeaponSkills.cpp`,
+`tools/generate_datatables.py`'s `weapon_skills`, and `game/Data/WeaponSkills.csv`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmPressRefusalTests.cpp`, new, one test in the group `Cataclysm.PressRefusal.`;
+`game/Source/Cataclysm/Tests/CataclysmSkillCostTests.cpp`, new, three in `Cataclysm.SkillCost.`;
+`tools/tests/test_a_refused_press_and_a_take_say_why.py` and `tools/tests/test_subjugate_costs_thirty_fervour.py`, new.
+Issue
+[#2801](https://github.com/sdubois777/Cataclysm/issues/2801).
+
+### SAID FIRST
+
+- **THE OWNER HAS VERY LIKELY GIVEN THE CAUSE, AND IT IS H1 BELOW.** Their words, the same day: "Ah I see, I assumed
+  it cost 30 fervour because it reserves 30, which would make sense. And that's all the description tells you." Every
+  Ultimate costs 50 Fervour, and nothing the player reads said so. The instrumentation stays, because a refused press
+  that logs nothing is a fault on its own and the next press confirms H1; Subjugate now costs 30, by the owner's ruling,
+  and a skill's pop-up says what a press costs. Both are in the section on them below.
+- **THE SECOND WINDOW, subjugate-w2, PASSED at `512fd30f9`, and every proof PROVED.** The first, subjugate-w1, failed
+  13 of 5074 Unreal tests, every one a test this slice should have updated and did not, and ran no proof. Both are
+  recorded at the end of this entry. Written on development `156f2b9e8` without a compile, as ruled, and rebased at
+  its turn onto `c20ce05e3`, branch B of #2787's merge, as `fix/subjugate-refused-2801-2`; the three compiles of
+  `24e5bfc85` all succeeded.
+
+### The owner's words, and what the log showed
+
+The owner, from the play-test of 2026-11-21: "subjugate constantly says I can't use it even when I have enough
+resources and it's off cd, not sure what's going on there." Character `testminion`, level 7 to 10, a Staff build:
+Subjugate in the Ultimate slot, Summon Imp, Compel, Quarry, Conflagration and Vesselstep.
+
+The log (a copy kept at `nice-carson-77a188/.claude/windows/playtest_2026-11-21_Cataclysm.log`): 16 Subjugate casts
+went off between 16:25 and 17:18, each on a Herald, a Legendary or, once, a Boss; no line says any was taken or why
+not. 517 Summon Imp casts. The Conflagration aura switched off 13 times on mana it could not pay, with 1.0 to 3.1 left.
+No Fervour figure and no refused press anywhere.
+
+### What refuses a press, and what the screen shows
+
+| Where | Refuses when | What the skill bar shows |
+| :-- | :-- | :-- |
+| `UCataclysmSkillTemplate::CanActivateAbility` | the lock stat above 0; cannot act or feared; a planted weapon | the lock notice; nothing for the others |
+| `CheckCooldown` | no charge held | the sweep |
+| `CheckCost`, Fervour first | current Fervour below the Ultimate's 50 (`game/Data/SkillSlots.csv`) | grey, "Ultimate needs 50 Fervour" |
+| `CheckCost`, then its pool | mana below the Ultimate's cost, 150 before reductions | grey, no words |
+
+The only words on screen that refuse an Ultimate are "Ultimate needs 50 Fervour", so that is most likely what the owner
+read as "says I can't use it"; a grey box read the same way is not ruled out.
+
+### Hypotheses, none confirmed
+
+- **H1, Fervour short.** It starts at 0 and rises only through a generator rate; 16 casts show this character has one,
+  and it may fill slowly.
+- **H2, mana short.** The aura's upkeep and 517 summons ran mana to nothing 13 times.
+- **H3, a lock, a hard stop or a planted weapon**, none of which the bar names but the lock.
+- **H4, the coordinating session's, which it thinks leads: thralls price out the Ultimate.** Each thrall reserves 30,
+  and every Fervour gain is clamped to `MaximumClassResourceAsked()`, the pool's maximum less
+  `UCataclysmCommand::ReservedFervourOf`. On a pool of 100, two thralls leave a ceiling of 40; on a Ritualist's 150
+  (`game/Data/ClassStats.csv`), three thralls and three imps leave 30. Below 50 the Ultimate cannot be paid while they
+  live. No take is logged, so the log cannot rule it out.
+
+**THE FERVOUR BAR DOES SHOW THE RESERVED PART** (`ACataclysmHUD::DrawPlayerPool`): the fill is the current Fervour out of
+the full maximum, the reserved share is a darker band at the right end labelled "N reserved", and "current / maximum"
+is printed in the middle. Two things make it read FULL under H4: the band is the fill's own hue, darker (`5E1C43`
+against `C7398D`), and a pool at its ceiling has no empty section at all, the fill meeting the band. No reserved
+section needs building; whether the bar should say the Ultimate is priced out is for a ruling after the press.
+
+**A CONSEQUENCE TO CHECK, NOT A FAULT.** Branch B of #2787 removes every count cap, so the reserve is the only limit,
+by the owner's ruling ("we shouldn't be putting arbitrary limits ... since that's limiting on its own"). A character
+who keeps summoning can reserve more than its pool less 50, and then its Ultimate cannot be paid until something it
+commands dies. The coordinating session will not change that, and will not raise it with the owner until the press
+shows whether it is what they hit.
+
+### What changed
+
+- **A refused press is logged.** `ProcessAbilityInput` asks `TryActivateAbility`'s answer, and when a fresh press of
+  anything but the basic attack is refused it logs, at `Log`, "PRESS REFUSED: " and `PressRefusalLine`, read from the
+  granted instance, which holds the skill's name and row: the Fervour against its cost with the ceiling and what holds
+  the rest by kind; the pool the cost is paid from against the cost, or that it is paid in health; the charges held; the
+  lock; cannot act; feared; a planted weapon. For example: "PRESS REFUSED: Subjugate in Slot.Ultimate: Fervour 40.0 of
+  50 (ceiling 40 of 100; reserved 60: 2 thralls 60, 0 Imp 0); Mana 80.0 of 150; charges 1; locked no; cannot act no;
+  feared no; weapon planted no".
+- **Every Subjugate cast is logged.** `Possess`'s seven outcomes are at `Log`, six beginning "TAKE REFUSED:" -- no
+  avatar, no enemy in range, no ability system, too healthy (its health, the maximum and the threshold), no room (the
+  reserve each, what is held by kind and the maximum), the command's refusal (boss, cannot be hurt, already on its
+  side) -- and "TAKE: '...' took '...', reserving N." Until now all were `Verbose` and a take logged nothing.
+
+### Tests
+
+`CataclysmPressRefusalTests.cpp`, one, `TheFervourFiguresNameTheCeilingAndEachKindHoldingTheRest`: a possessed player,
+two thralls at 30 and a summoned Imp at 10; nothing commanded reads "reserved 0: 0 thralls 0, 0 Imp 0"; then "reserved
+70: 2 thralls 60, 1 Imp 10", and the pool asked to fill stops at the maximum less 70, named in the figures; CONTROL, the
+two thralls freed, "reserved 10: 0 thralls 0, 1 Imp 10" and the ceiling the maximum less 10. Prints "PRESS FIGURES".
+
+`tools/tests/test_a_refused_press_and_a_take_say_why.py`, four: the refused press logged at `Log` from the granted
+instance; the line reading every check; the figures naming the ceiling and who holds the rest; every take outcome at
+`Log`. Proved with `tools/prove_guard.py`, each break failing exactly its own test, each restored half 4 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| G1 | the "PRESS REFUSED" line at `Verbose` | "1 failed, 3 passed": the refused-press test | PROVED |
+| G2 | the line's "cannot act" figure always `no` | "1 failed, 3 passed": the every-check test | PROVED |
+| G3 | the figures print the maximum as the ceiling | "1 failed, 3 passed": the ceiling test | PROVED |
+| G4 | the too-healthy refusal at `Verbose` | "1 failed, 3 passed": the take test | PROVED |
+
+### Subjugate costs 30 Fervour, and a skill's pop-up says what a press costs
+
+**THE OWNER'S RULINGS, 2026-11-21, verbatim.** Asked whether Subjugate's cost to cast should match its 30 reserve or
+stay at every Ultimate's 50: "I think we should actually change it to cost 30 fervor". Then, on levels (issue #2802):
+"make it so leveling the skill lowers the cost and increases the damage", choosing "Cost and reserve" for what
+Subjugate's level lowers and "30 at level 1" for where it starts. So the 30 is level 1's figure; #2801 does not scale
+it.
+
+**THE COORDINATING SESSION'S RULINGS, the same day.** A skill's own Fervour cost is a column of the Weapon Skills table
+beside `ManaCost`, -1 meaning the slot's, 30 on `Demonic_Staff_Ultimate` alone; a `ShapeParams` key was rejected, as it
+would put a press's cost among a shape's behaviour. `FervourCostFor` reads it first and stays the one function every
+caller reads -- `CheckCost`, `ApplyCost`, the skill bar, the refused press's line -- and `FervourReserveFor` stays the one
+for the reserve, so #2802 scales each in one place. The 30 is literal; a reduction to a Fervour cost would apply to it
+as to any cost, and none exists in code today (the one passive text naming "the Fervour cost", Saboteur's Rapid
+Deployment, is about automatic gadgets); the reserve reductions act in `UCataclysmCommand::ReserveFor` and never touch
+the cost. The cost line goes on the skill bar's pop-up only. The skill-assignment screen's tooltip keeps ruling Q7, "four
+lines and no numbers", for now; issue #2804 records that its figures can come from the same functions with no second
+copy of the slot's fallback, for a ruling.
+
+**WHAT CHANGED NOW.** `UCataclysmGameplayAbility::FervourCostOverride`, -1 by default, read first by `FervourCostFor`;
+`FCataclysmWeaponSkill::FervourCost`, carried onto the granted skill by `UCataclysmWeaponSkills::StampOnto`.
+`UCataclysmSkillBar::CostLineFor`, the pop-up's second line, under the level and above the description, from the box's
+own figures: the Fervour cost, the mana cost at the character's level after its reductions (`ManaCostFor`), the pool it
+is paid from, a share of current health when a cost is moved there, and the cooldown after reductions
+(`CooldownAfterReduction`, the length `ApplyCooldown` works out). Whole Fervour and mana rounded up, seconds to one
+decimal. The words:
+
+| Case | The line |
+| :-- | :-- |
+| Fervour, mana and a cooldown | "Costs 30 Fervour and 14 mana. 20 s cooldown." |
+| no Fervour | "Costs 14 mana. 6 s cooldown." |
+| Fervour alone, no cooldown | "Costs 30 Fervour. No cooldown." |
+| nothing | "Costs nothing. No cooldown." |
+| a cost moved onto health, a part second, two charges | "Costs 30 Fervour and 12% of current health. 12.5 s cooldown, 2 charges." |
+| a cost paid from the health pool | "Costs 30 Fervour and 14 health. 12.5 s cooldown." |
+| a skill gadget | no line: placing costs nothing |
+
+Subjugate's description keeps its own sentence, "Holding a thrall reserves 30 Fervour", so its pop-up reads the cost
+and then the reserve. When #2802 levels the reserve, that fixed sentence will go stale, and #2802 moves the reserve into
+the worked-out line.
+
+**THE COLUMN, WRITTEN AT THE SLICE'S TURN** once branch B of #2787 had merged and released the design workbook. The
+Weapon Skills sheet gains column M, "Fervour Cost", 30 on Subjugate's row (Staff, Demonic, Ultimate) and blank on every
+other; a cell-by-cell comparison of the workbook before and after finds those two cells changed and nothing else.
+`tools/generate_datatables.py` reads it as it reads Mana Cost, through `skill_number`, so blank is -1 and a negative
+figure is refused, into a `FervourCost` column of `game/Data/WeaponSkills.csv`: 30.0 on `Demonic_Staff_Ultimate`, -1.0
+on the other 402 rows. `FCataclysmWeaponSkillRow::FervourCost`, -1 by default, and its copy onto the skill in
+`CataclysmWeaponSkills.cpp` carry it to `StampOnto`. The window's asset step rebuilds `DT_WeaponSkills` and commits it
+alone. The Unreal tests below give a skill its figure the way granting does, through `StampOnto`, so they do not read
+the table.
+
+`tools/tests/test_subjugate_costs_thirty_fervour.py`, five: Subjugate's row states 30 and no other row states any; the
+Ultimate slot still costs 50 (a control); the generator reads the column, blank as -1; a negative figure is refused;
+and the C++ carries the row's field to the skill and the skill's to the template. Proved with `tools/prove_guard.py` in
+a copy of `8eaab6a83` extracted by `git archive`, each restored half 5 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| P1 | the generator reads no Fervour Cost cell | "2 failed, 3 passed": the column test and the negative-figure test | PROVED |
+| P2 | Subjugate's CSV row states -1 | "1 failed, 4 passed": the 30-on-Subjugate test | PROVED |
+| P3 | the row's figure is not copied onto the skill | "1 failed, 4 passed": the C++ test | PROVED |
+| P4 | the Ultimate slot's Fervour cost moved to 30 | "1 failed, 4 passed": the control | PROVED |
+
+**TESTS.** `CataclysmSkillCostTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ASkillsOwnFervourCostIsWhatItsPressAsksAndTakes` | an Ultimate stamped with 30 costs 30; at 29 Fervour it is refused and takes nothing; at 30 it is cast and takes 30; CONTROL an Ultimate stamped with none costs 50 and is refused at 30 |
+| `ThirtyIsPaidWithTwoThrallsHeld` | two thralls holding 60 of 100 leave the pool at 40, and a press costing 30 is cast, leaving 10 |
+| `ThePopupSaysWhatAPressCosts` | the words in each case above; the line under the name and above the description; through the bar, the Ultimate's line opens "Costs 30 Fervour and", a Heavy skill's names no Fervour, and 5 flat off `mana_cost` lowers the box's mana cost by 5 and the words with it. Prints "COST LINE" |
+
+### Registered before the window
+
+At the slice's turn, after its three compiles, under a lock of its own:
+
+| Step | Registered |
+| :-- | :-- |
+| The build | succeeds |
+| The asset step | `DT_WeaponSkills.uasset` and `game/Data/datatable_asset_sources.json` rebuilt and committed alone, nothing else changed |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded |
+| The whole suite | the newest measured total plus 4, every one succeeding; skipped halves and test saves as that base's, the saves predicted, not measured. The newest measured base is window nocaps-b-w2's, 5070 performed, 48 skipped halves and 859 saves at `2fcf9733a`, whose `game/` is the same tree as development `c20ce05e3`'s (`git diff --stat 2fcf9733a c20ce05e3 -- game/` prints nothing): so 5074, 48 and 859 |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+One C++ guard proof, Q1, through `prove_cpp_guard` with `test_prefix="Cataclysm.PressRefusal."`: in `FervourFiguresFor`,
+`Resource->MaximumClassResourceAsked()` printed as `Maximum`. Broken half: 1 performed, 0 succeeded, 1 failed, the
+figures test (its figures and its control's ceiling). Restored: 1 of 1.
+
+Two more, with `test_prefix="Cataclysm.SkillCost."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| Q2 | in `FervourCostFor`, `if (FervourCostOverride >= 0.0f)` to `if (FervourCostOverride >= 1000000.0f)`, so the skill's own figure is never read | 3 performed, 0 succeeded, 3 failed: the own-cost test (30 against 50), the two-thralls test (refused at 40) and the pop-up test (its line opening "Costs 50 Fervour") | 3 of 3 |
+| Q3 | in `CostLineFor`, `if (Slot.FervourCost > 0.0f)` to `if (Slot.FervourCost > 1000000.0f)`, so no Fervour is named | 3 performed, 2 succeeded, 1 failed: the pop-up test | 3 of 3 |
+
+### The record
+
+**The three compiles of `24e5bfc85`, 12:50 to 12:58, lock subjugate-cost-compile: ALL SUCCEEDED**, 0 compiler warning or
+error lines in each. The branch with `Makefile.bin` moved aside: 50 actions, 47 files, every changed .cpp in its unity
+file. Each changed .cpp alone (`git read-tree c20ce05e3`): the build tool's Adaptive Build line lists all eight as
+excluded from the unity files, each compiled alone. The unity files again: the eight unity files holding them.
+
+**Window subjugate-w1, 12:58 to 13:21 at `24e5bfc85`, the tested head `ea9374a77` after the asset step: FAILED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, target already up to date |
+| Asset step | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` changed and nothing else; committed alone as `ea9374a77` and pushed |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded, registered 1 |
+| `Cataclysm.SkillCost.` alone | 3 performed, 2 succeeded, 1 failed: `ThirtyIsPaidWithTwoThrallsHeld`; registered 3 of 3 |
+| Whole suite | 5074 performed, 5061 succeeded, 13 failed, registered 5074 of 5074; 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind; declared 5074, gap 0 |
+| Python | 7837 passed, 9 skipped; the JUnit file: 7846 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+| Proofs | none run, as the window does when a group or the suite does not match |
+
+The 13, by cause:
+
+| Cause | Tests | Correction |
+| :-- | :-- | :-- |
+| A test that builds a Weapon Skills table from CSV text has no `FervourCost` column, and `CreateTableFromCSVString` reports a row struct column missing from the text ("Expected column 'FervourCost' not found in input") | 11: the eight of `Cataclysm.Creation.`, `Cataclysm.Crit.ASkillRowsOwnCriticalStrikeChanceReachesTheSkill`, `Cataclysm.WeaponSlots.ASkillRowsCriticalStrikeChanceReachesTheGrantedAbility`, `Cataclysm.SetBonus.Tyrant10.ASelfBuffUltimateIsGrantedWithinEightMetresOfTheMinionAndNotWhileOneItGrantedRuns` | each of the four tables' headers gains `FervourCost` and each of its 17 rows `-1`, the row saying nothing (`CataclysmCharacterCreationTests.cpp`, `CataclysmCriticalStrikeTests.cpp`, `CataclysmWeaponSlotsTests.cpp`, `CataclysmSetBonusTyrantTenTests.cpp`) |
+| A test counted the pop-up's lines before the cost line existed: "the pop-up shows the name, then the description", 2, read 3 | 1: `Cataclysm.SkillBar.ABoxCarriesTheDescriptionOfTheSkillTheWeaponGranted` | three lines: the name, a line opening "Costs ", and the description (`CataclysmSkillBarTests.cpp`) |
+| This slice's own set-up wrote 100 into the Fervour pool's stored base with `SetNumericAttributeBase`, and the pool showed the 40 the two thralls leave; the press was cast and took 30 from the hidden 100, and `UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute` wrote the pool back to 40 through its setter. That function does so after every gameplay effect, which is how Fervour is gained in play, so in play the base cannot stay above the ceiling; `Cataclysm.Fervour.AnEffectAtAFullPoolIsNotBankedForTheNextSpend` guards it. The three game sites that write the base directly write a starting or a saved figure | 1: `Cataclysm.SkillCost.ThirtyIsPaidWithTwoThrallsHeld`, "and takes 30, leaving 10", read 40 | after reading the 40, the set-up writes the stored base to it (`CataclysmSkillCostTests.cpp`) |
+
+**What I missed and should not have**: before the window I did not search the tests for CSV text naming the Weapon
+Skills columns, nor for tests counting the pop-up's lines, and both were findable by a grep for `Cooldown,ManaCost`
+and `PopupLinesFor`.
+
+**Registered for the second window**: the same counts, because no test is added or removed: `Cataclysm.PressRefusal.`
+1 of 1, `Cataclysm.SkillCost.` 3 of 3, the whole suite 5074 of 5074 with 48 skipped halves and 859 saves (predicted),
+no asset step (`ea9374a77` holds the rebuilt asset), Python and ruff, then Q1-Q3 as registered above, Q2's two-thralls
+prediction unchanged (the pool now holds 40 in base and current, and 50 refuses at 40).
+
+**The three compiles of `512fd30f9` (`0078ff5a5`'s corrections and the coordinating session's citation of
+`PostGameplayEffectExecute`), 13:26 to 13:30, lock subjugate-cost-compile: ALL SUCCEEDED**, 0 compiler warning or error
+lines in each. Each changed .cpp alone: the Adaptive Build line lists all thirteen; the six test files changed since
+`24e5bfc85` compiled alone, and the build tool found the other seven's alone objects current, their source unchanged
+since `24e5bfc85` (`git diff --stat 24e5bfc85 512fd30f9 -- game/Source` lists only the six), where each compiled alone.
+The unity files: twelve, holding all thirteen.
+
+**Window subjugate-w2, 13:31 to 13:57 at `512fd30f9`: PASSED, and every proof PROVED.**
+
+| Check | Result |
+| :-- | :-- |
+| Build | Succeeded, target already up to date |
+| Asset step | none, as registered: `ea9374a77` holds the rebuilt `DT_WeaponSkills` |
+| `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded, registered 1 |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded, registered 3 |
+| Whole suite | 5074 performed, 5074 succeeded, registered 5074; 48 skipped halves, registered 48; 859 test saves written and deleted, 0 left behind, registered 859 (predicted); declared 5074, gap 0 |
+| Python | 7837 passed, 9 skipped; the JUnit file: 7846 tests, 0 failures, 0 errors, 9 skipped |
+| Ruff | All checks passed |
+
+| Proof | Broken half, as the engine printed it | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| Q1 | 1 performed, 0 succeeded, 1 failed: `TheFervourFiguresNameTheCeilingAndEachKindHoldingTheRest` | 1 of 1 | PROVED, as registered |
+| Q2 | 3 performed, 0 succeeded, 3 failed: `ASkillsOwnFervourCostIsWhatItsPressAsksAndTakes`, `ThePopupSaysWhatAPressCosts`, `ThirtyIsPaidWithTwoThrallsHeld` | 3 of 3 | PROVED, as registered |
+| Q3 | 3 performed, 2 succeeded, 1 failed: `ThePopupSaysWhatAPressCosts` | 3 of 3 | PROVED, as registered |
+
+P1-P4, the Python proofs above, run again with `tools/prove_guard.py` in a copy of `512fd30f9` extracted by `git
+archive`: each PROVED with the same failures as before, each restored half 5 passed.
+
+---
+
 ## 2026-11-20 — The Demonic Guide walks at 0.8 of the player's own walk speed, and once it waits it waits until the player is back inside its chain (#2790)
 
 **Affects:** `UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer`, new, 0.8, with a static assertion
