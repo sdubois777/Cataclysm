@@ -306,7 +306,7 @@ Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6c.
 - **NO NODE SAYS THE OWNER HAS NOT RULED ON IT ANY MORE.** This slice was written before the owner's rulings of
   2026-11-20 on Treasury Guard, Global Credit, Sovereign Loans and Tax Collection, and gave Tax Collection the reason
   "a ruling on what it does, which the owner has not made", which the other three already had on development. Since
-  those rulings that text is false. When the slice was rebased onto `156f2b9e8` it was corrected (`590c11242`): Tax
+  those rulings that text is false. When the slice was rebased onto `156f2b9e8` it was corrected (now `f363a8c6d`): Tax
   Collection and Treasury Guard wait on "its gold rules, which are not built yet (issue #2741)", and Global Credit and
   Sovereign Loans on "a gold debt, which is not built yet (issue #2741)", the text slice 6d gives them. The reason "gold
   ruling" is gone. Slice 6d builds Tax Collection and Treasury Guard.
@@ -369,17 +369,20 @@ which copies Reclaimer's Resolve in this tree.
 
 ### Registered before the run
 
-- **Base: 5072**, measured by window follow-w2 at `d4d0773ac`, whose `game/` is development `156f2b9e8`'s (`git diff
-  d4d0773ac 156f2b9e8 -- game/` prints nothing): "5072 tests performed, 5072 succeeded, 0 failed. 48 skipped part of
-  what they check" and "Test saves: 859 written and deleted, 0 left behind". The slice was written as
+- **Base: 5074**, measured by window subjugate-w2 at `512fd30f9`, whose `game/` is development `c89fa5911`'s (`git
+  diff --quiet 512fd30f9 c89fa5911 -- game/` exits 0): "5074 tests performed, 5074 succeeded, 0 failed. 48 skipped part
+  of what they check" and "Test saves: 859 written and deleted, 0 left behind". The slice was written as
   `feat/empire-tree-6c-gold` on slice 6b's head and moved with the stack; it was rebased onto `156f2b9e8` as
-  `feat/empire-tree-6c-gold-2`, clean, with its first commit's patch unchanged (`git patch-id --stable` de9108cf2796
-  before and after).
-- **The whole suite: 5077 performed, 5077 succeeded, 0 failed**: the base's 5072 and the 5 new tests; 48 skipped halves
+  `feat/empire-tree-6c-gold-2`, clean, and then onto `c89fa5911` as `feat/empire-tree-6c-gold-3`, where only this
+  entry conflicted, with #2801's entry above it. Its three code commits' patches are unchanged by both rebases (`git
+  patch-id --stable` de9108cf2796, 3ddef53fa1b4 and f8631d740c94 before and after). It was first registered against
+  follow-w2 at `d4d0773ac` (5072, `game/` equal to `156f2b9e8`'s); #2787 branch B and #2801 moved the suite by a net 2
+  between, renaming, removing and adding tests, none in the 19 groups below.
+- **The whole suite: 5079 performed, 5079 succeeded, 0 failed**: the base's 5074 and the 5 new tests; 48 skipped halves
   and "859 written and deleted, 0 left behind", the base's, because none of the five builds a dungeon floor or writes a
   save.
 - **Each group alone**, counted from the base log's "Test Completed. Result={" lines with a literal match on
-  `Path={Cataclysm.<Group>.`: `Cataclysm.EmpireTreeGoldHeld.` 5 (new, 0 in the base); `EmpireTreeClearGold.` 9,
+  `Path={Cataclysm.<Group>.`, each the same in subjugate-w2's log as in follow-w2's: `Cataclysm.EmpireTreeGoldHeld.` 5 (new, 0 in the base); `EmpireTreeClearGold.` 9,
   `EmpireTreeGold.` 6, `CityUpgradePrice.` 7; `EmpireTreeDrops.` 13, `EmpireTreeLoot.` 10, `EmpireTreeWalk.` 14,
   `EmpireTreeCity.` 17, `EmpireTreeEvents.` 14, `EmpireTreeScreen.` 10; `EmpireRun.` 71, `EmpireMap.` 17,
   `EmpireRunTier.` 5, `DayClock.` 10; `DungeonMode.` 46, `Drop.` 30, `Gold.` 13, `Data.` 7, `SaveLoad.` 81. Every
