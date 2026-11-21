@@ -36882,8 +36882,13 @@ bool FCataclysmGuideWalksTest::RunTest(const FString& Parameters)
 
 // THE GUIDE KEEPS PACE: IT WALKS AT 0.8 OF THE PLAYER'S OWN WALK SPEED. Issue #2790: it walked at the Imp's own
 // 650 cm/s, against the player's 400. Raised, it walks at 0.8 of the player's default, 320; each step reads the
-// player's own walk, set here through the movement speed attribute as gear and passives set it: 4 m/s gives 320, 5 m/s
-// 400 and 2 m/s 160. CONTROL: the same Imp, no longer the guide, walks at its own designed 650. Prints "GUIDE PACE".
+// player's own walk. The test's player walks first at its class's own speed (a Ravager's 4.6 m/s in window
+// tree-2790-w1, so not the default the guide was raised at), and the guide follows it at 0.8. Then the player's speed is
+// set as the class and gear set it, through the stat inputs `UCataclysmPlayerClassStats::ApplyTo` writes, which
+// `ACataclysmPlayerCharacter::RefreshMovementSpeed` reads: 5 m/s gives 400 and 2 m/s 160. SETTING THE ATTRIBUTE'S BASE
+// DOES NOT DO IT: the stat inputs carry the class's own base, so the first version of this test, which set the base,
+// left the player at 460 and failed in tree-2790-w1. CONTROL: the same Imp, no longer the guide, walks at its own
+// designed 650. Prints "GUIDE PACE".
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuidePaceTest,
 	"Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -36914,33 +36919,49 @@ bool FCataclysmGuidePaceTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE PLAYER'S WALK, SET AS THE CLASS AND GEAR SET IT: the movement speed stat's inputs, with this base and no
+	// modifier, read by the pawn's own refresh. `SetStatInputs` replaces the character's stat lines rather than adding
+	// to them, which is harmless here because this test reads nothing but walking speeds.
+	auto PlayerWalksAt = [&Player](float MetresPerSecond)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(TEXT("movement_speed"))).Base = MetresPerSecond;
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Player.Character->RefreshMovementSpeed();
+	};
+
 	// WITHIN THE CHAIN, so the step sends the guide on and changes no other figure.
 	StandFromTheGuide(Mode, Player, 500.0f);
 	const float Raised = GuideMovement->MaxWalkSpeed;
-	const float PlayerAtFour = PlayerMovement->MaxWalkSpeed;
+	const float PlayerAtClass = PlayerMovement->MaxWalkSpeed;
 	Beat(Mode, 1);
-	const float AtFour = GuideMovement->MaxWalkSpeed;
-	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(), 5.0f);
+	const float AtClass = GuideMovement->MaxWalkSpeed;
+	// THE PLAYER'S WALK IS READ AGAIN AFTER EACH BEAT, so a beat that put the class's own speed back would fail a
+	// set-up line here rather than leave the guide's figure to be read against the wrong player.
+	PlayerWalksAt(5.0f);
+	Beat(Mode, 1);
 	const float PlayerAtFive = PlayerMovement->MaxWalkSpeed;
-	Beat(Mode, 1);
 	const float AtFive = GuideMovement->MaxWalkSpeed;
-	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(), 2.0f);
+	PlayerWalksAt(2.0f);
 	Beat(Mode, 1);
+	const float PlayerAtTwo = PlayerMovement->MaxWalkSpeed;
 	const float AtTwo = GuideMovement->MaxWalkSpeed;
 
 	// CONTROL: the same Imp, no longer the floor's guide, walks at its own designed speed.
 	Guide->bGuidesThePlayerForTheFloorRule = false;
 	Guide->RefreshWalkSpeed();
 	const float NotAGuide = GuideMovement->MaxWalkSpeed;
-	AddInfo(FString::Printf(TEXT("GUIDE PACE: raised at %.0f; the player at %.0f gives %.0f, at %.0f gives %.0f, at 2 m/s "
+	AddInfo(FString::Printf(TEXT("GUIDE PACE: raised at %.0f; the player at %.0f gives %.0f, at %.0f gives %.0f, at %.0f "
 								 "gives %.0f; not a guide %.0f"),
-							Raised, PlayerAtFour, AtFour, PlayerAtFive, AtFive, AtTwo, NotAGuide));
+							Raised, PlayerAtClass, AtClass, PlayerAtFive, AtFive, PlayerAtTwo, AtTwo, NotAGuide));
 
 	TestEqual(TEXT("raised at 0.8 of the player's default 400: 320"), Raised, 320.0f, 0.5f);
-	TestEqual(TEXT("set-up: the player walks at 400"), PlayerAtFour, 400.0f, 0.5f);
-	TestEqual(TEXT("with the player at 400: 320"), AtFour, 320.0f, 0.5f);
-	TestEqual(TEXT("set-up: at 5 m/s the player walks at 500"), PlayerAtFive, 500.0f, 0.5f);
+	TestFalse(TEXT("set-up: the player's class walk is not the default the guide was raised at"),
+			  FMath::IsNearlyEqual(PlayerAtClass, ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond, 0.5f));
+	TestEqual(TEXT("the first step gives it 0.8 of the player's class walk"), AtClass, PlayerAtClass * 0.8f, 0.5f);
+	TestEqual(TEXT("set-up: at 5 m/s the player walks at 500, after the beat"), PlayerAtFive, 500.0f, 0.5f);
 	TestEqual(TEXT("a faster player has a faster guide: 400"), AtFive, 400.0f, 0.5f);
+	TestEqual(TEXT("set-up: at 2 m/s the player walks at 200, after the beat"), PlayerAtTwo, 200.0f, 0.5f);
 	TestEqual(TEXT("a slowed player a slower one: 160"), AtTwo, 160.0f, 0.5f);
 	TestEqual(TEXT("CONTROL: an Imp that is not a guide walks at its own 650"), NotAGuide, 650.0f, 0.5f);
 	return true;
