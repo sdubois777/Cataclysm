@@ -34,3 +34,12 @@ def test_a_kill_is_shared_by_the_health_each_skill_removed_and_never_more_than_t
     healed = sl.split_a_kill(1000, {"Heavy": 150.0, "Special": 50.0}, 100.0)
     assert healed == {"Heavy": 750.0, "Special": 250.0}
     assert sl.split_a_kill(0, {"Heavy": 10.0}, 100.0) == {}
+
+
+def test_each_level_lowers_a_cost_and_level_twenty_costs_half() -> None:
+    """Issue #2802: the cost factor is 1 at level 1, 0.9642 a level, about half at level 20, clamped at both ends."""
+    assert sl.cost_factor(1) == 1.0
+    assert abs(sl.cost_factor(10) - 0.9642 ** 9) < 1e-12
+    assert abs(sl.cost_factor(20) - 0.5) < 0.001
+    assert sl.cost_factor(25) == sl.cost_factor(20) and sl.cost_factor(0) == 1.0
+    assert all(sl.cost_factor(level + 1) < sl.cost_factor(level) for level in range(1, sl.MAX_LEVEL))

@@ -153,9 +153,12 @@ namespace
 	 */
 	float FervourReserveFor(const AActor* Self,
 							const FCataclysmSkillShapeParams& Params,
-							const FGameplayTagContainer& SkillTags)
+							const FGameplayTagContainer& SkillTags,
+							const UGameplayAbility* Skill)
 	{
-		return UCataclysmCommand::ReserveFor(Self, Params.FervourReserve, SkillTags);
+		// THE SKILL'S LEVEL FIRST, ON ITS STATED FIGURE, AND THE COMMANDER'S REDUCTIONS AFTER. Issue #2802.
+		return UCataclysmCommand::ReserveFor(
+			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)), SkillTags);
 	}
 
 	/**
@@ -4308,7 +4311,7 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 		// stays open for them. (The skill gadget an enchantment places reserves
 		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
 		// it is this one line, with a fit check before the spawn like Summon
-		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
+		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
 	}
 	return Machine;
 }
@@ -4491,7 +4494,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 	// cost" is the cast, and the row's reserve is held while the minion is out.
 	// The lost one has already left the total, so this normally fits; when the
 	// maximum fell meanwhile, nothing is summoned.
-	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
 		return nullptr;
@@ -4513,6 +4516,11 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		UCataclysmCommand::ClampFervourToSpendable(Self);
 	}
 	return Minion;
+}
+
+float UCataclysmSummonSkill::FervourReserveOfOne() const
+{
+	return FervourReserveFor(Avatar(), Params, SkillTags, this);
 }
 
 void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
@@ -4786,7 +4794,7 @@ bool UCataclysmSummonSkill::Possess()
 	// than after, so a refusal leaves the creature exactly as the blow left it
 	// rather than taking it and giving it back.
 	if (!UCataclysmCommand::HasRoomForAnotherThrall(
-			Self, FervourReserveFor(Self, Params, SkillTags)))
+			Self, FervourReserveFor(Self, Params, SkillTags, this)))
 	{
 		bRefusedForRoom = true;
 		const UCataclysmAbilitySystemComponent* Pool =
@@ -4794,7 +4802,7 @@ bool UCataclysmSummonSkill::Possess()
 		UE_LOG(LogCataclysm, Log,
 			TEXT("TAKE REFUSED: '%s' has no room for another thrall at %.0f reserved each, so "
 				 "'%s' was left where it was: %s, against a maximum of %.0f."),
-			*SkillName, FervourReserveFor(Self, Params, SkillTags),
+			*SkillName, FervourReserveFor(Self, Params, SkillTags, this),
 			*Target->GetName(), *UCataclysmSkillTemplate::ReservedFervourByKindText(Self),
 			Pool ? Pool->MaximumClassResource() : 0.0f);
 		return false;
@@ -4815,12 +4823,12 @@ bool UCataclysmSummonSkill::Possess()
 	if (bTookIt)
 	{
 		UE_LOG(LogCataclysm, Log, TEXT("TAKE: '%s' took '%s', reserving %.0f."), *SkillName, *Target->GetName(),
-			   FervourReserveFor(Self, Params, SkillTags));
+			   FervourReserveFor(Self, Params, SkillTags, this));
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
+			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,
@@ -4863,7 +4871,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// about to go, so its reserve is counted as freed first, ruled 2026-09-30;
 	// a press is refused only when the pool cannot hold the new imp, and then
 	// nothing is destroyed either.
-	const float Reserve = FervourReserveFor(Self, Params, SkillTags);
+	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
 	const float Freed = bEvicts && IsValid(Sharing[0]) ? Sharing[0]->ReservedFervour : 0.0f;
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve, Freed))
 	{

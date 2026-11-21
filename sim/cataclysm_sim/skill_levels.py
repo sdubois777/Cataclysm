@@ -12,6 +12,10 @@ the research and the rulings.
   * A skill is capped at MAX_LEVEL and at the level paired with the character's level; experience above it is kept.
   * Each level multiplies the skill's damage percentage by DAMAGE_FACTOR_PER_LEVEL: level 20 is 2.85 times level 1, as
     Path of Exile's Cleave is (179.4% of base damage at gem level 1, 511.2% at 20).
+  * Each level multiplies the skill's costs -- its mana, its Fervour and what each thing it makes reserves -- by
+    COST_FACTOR_PER_LEVEL: level 20 costs half of level 1. Issue #2802, the owner's ruling of 2026-11-21 ("leveling the
+    skill lowers the cost and increases the damage"); 0.5 at level 20 is a judgement between Path of Exile's Enlighten
+    Support and Diablo II's Teleport.
 
 THE CHARACTER'S CURVE IS HANDED IN rather than imported: `total_to_reach(level)` is the experience from level 1 to
 `level`, which `sim/analyse_experience_curve.py` works out and the game's `UCataclysmExperience::TotalToReach` matches
@@ -26,6 +30,7 @@ from typing import Callable
 FIRST_LEVEL = 1
 MAX_LEVEL = 20
 DAMAGE_FACTOR_PER_LEVEL = 1.0567
+COST_FACTOR_PER_LEVEL = 0.9642
 PRICE_SHARE_OF_THE_CHARACTERS = 0.25
 
 #: Path of Exile's "Requires Level" for gem levels 1 to 20, the same for Fireball and Cleave (poedb.tw, 2026-11-19).
@@ -57,6 +62,11 @@ def level_for(experience: float, character_level: int, total_to_reach: Callable[
 def damage_factor(skill_level: int) -> float:
     """What a skill at this level multiplies its damage percentage by: 1 at level 1."""
     return DAMAGE_FACTOR_PER_LEVEL ** (min(max(skill_level, FIRST_LEVEL), MAX_LEVEL) - 1)
+
+
+def cost_factor(skill_level: int) -> float:
+    """What a skill at this level multiplies its costs by: 1 at level 1, half at level 20. Issue #2802."""
+    return COST_FACTOR_PER_LEVEL ** (min(max(skill_level, FIRST_LEVEL), MAX_LEVEL) - 1)
 
 
 def split_a_kill(kill_experience: float, removed_by_skill: dict, max_health: float) -> dict:

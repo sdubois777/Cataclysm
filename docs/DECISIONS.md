@@ -2,6 +2,149 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A skill's level lowers its costs: each level multiplies its mana, its Fervour and what each thing it makes reserves by 0.9642, so level 20 costs half, and a reserve already held is re-priced when the skill levels (#2802)
+
+**Affects:** `UCataclysmSkillLevels::CostFactorPerLevel`, `CostFactor`, `CostFactorOf` and `RepriceReservesOf`, new
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h`, `.cpp`); `UCataclysmGameplayAbility::FervourCostFor` and
+`ManaCostAtTheHoldersLevel` (`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`); `FervourReserveFor`
+and `UCataclysmSummonSkill::FervourReserveOfOne`, new (`CataclysmSkillTemplates.h`, `.cpp`);
+`ACataclysmPlayerState::RepriceReservesForLevelsGained`, new, called from `GrantExperience`, `SetLevelAndExperience`,
+`GrantSkillExperience` and `SetSkillExperience` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`); the skill
+bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`CataclysmSkillBar.h`, `.cpp`);
+`sim/cataclysm_sim/skill_levels.py` and `sim/analyse_opening.py`; the "What a Skill Levels" table in
+`docs/Cataclysm_GDD_v2.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, three in
+`Cataclysm.LevelCosts.`; `tools/tests/test_a_skills_level_lowers_its_costs.py`, new; one in
+`sim/tests/test_skill_levels.py`; `tools/tests/test_skill_levels_port.py` pins the new constant. Issue
+[#2802](https://github.com/sdubois777/Cataclysm/issues/2802).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2801's branch at `efe7c0bfc` without a compile, as ruled. It is
+  rebased onto #2801's merge at its own turn, which is queued after the empire tree's slice 6c, #2803, #2797 and #2800.
+- **WHAT WAITS FOR THAT TURN, WHICH NEEDS THE DESIGN WORKBOOK:** the fixed figures in two skills' descriptions --
+  Subjugate's "Holding a thrall reserves 30 Fervour" and Summon Imp's "Each imp reserves 10 Fervour" -- lose their
+  numbers, since the pop-up now states the levelled reserve itself. Until then those sentences state level 1's figure.
+- **NOT IN THIS CHANGE:** the reserves of a skill gadget and a skill trap, which a converted slot's skill makes. Their
+  figures are written in `CataclysmMinion.cpp`, which branch B of #2787 rewrites; they take the skill's factor after
+  the rebase onto B's merge, as its own commit.
+
+### The owner's words, and the rulings
+
+The owner, 2026-11-21: "Or better yet, and this would apply to all skills, make it so leveling the skill lowers the
+cost and increases the damage. Those exact benefits don't have to apply to every skill but you get the idea. That way,
+the higher you level Subjugate the more mobs you can control. It's fairly hard to level, so I don't think it would be
+too much of a balance issue." Asked which Subjugate's level should lower, they chose "Cost and reserve"; asked where it
+starts, "30 at level 1".
+
+The coordinating session ruled on this slice's proposal the same day, the owner having delegated unstated numbers:
+
+- **THE CURVE, A JUDGEMENT:** each level multiplies a cost by 0.9642, 0.5 to the power of one nineteenth, so level 20
+  costs half of level 1. Clamped at level 20, as the damage factor is; reserves keep their floor of 1.
+- **MANA AS WELL AS FERVOUR**: "this would apply to all skills ... For most skills the cost is mana, so a rule that
+  lowered only Fervour would not reach most skills."
+- **RESERVES RE-PRICED AT LEVEL-UP, NOT READ ONCE**: "Subjugate's thralls are taken permanently. A thrall priced at the
+  take would keep holding level 1's 30 after Subjugate reached level 20 ... When a skill levels, re-read the reserve of
+  everything that skill made, using the same function ... A level never raises a reserve, so re-pricing can only free
+  room." A thrall's and a minion's DAMAGE is still read once, at the take or the summon, as before.
+- **NOT LOWERED**: cooldowns, and the reserves of what no skill level makes (a set bonus's minion, a passive's risen
+  and necrosis imps).
+
+### The research, from pages fetched verbatim
+
+In the genre a skill's level mostly RAISES its cost with its power; LOWERING it is the exception, and the owner's rule
+follows the exceptions.
+
+| Game | What a level does to a cost | Source |
+| :-- | :-- | :-- |
+| Diablo II | Fire Ball's mana 5 at level 1 to 14.5 at 20; Raise Skeleton's 6 to 25 while its skeletons rise 1 to 8; TELEPORT's falls 24 to 5, one a level, and further points "only give a reduction in mana cost" | classic.battle.net, the sorceress and necromancer skill pages |
+| Path of Exile 1 | Fireball's mana 5 at gem level 1 to 20 at 20; Raise Zombie's 9 to 28 while its maximum zombies rise 3 to 6; Wrath reserves 50% at every level; ENLIGHTEN SUPPORT's "Cost & Reservation Multiplier" is 100% at level 1, 96%, 92%, 88%, 84% at 5 and 64% at 10 | poedb.tw, each gem's level table |
+| Last Epoch | A skill's level gives points in its own specialization tree ("invest Points into its Specialization Tree"; "default maximum level of 20"); a cost cut is a node bought with them, such as Soul Feast's Engorged, "-3 mana cost per point" | maxroll.gg/last-epoch/resources/passives-and-skills; the 1.0 patch notes on forum.lastepoch.com |
+| Torchlight Infinite | NOT ESTABLISHED: every Maxroll page tried returned HTTP 404 | -- |
+
+A search summary claimed Dread Shade's "Spectral Menace" grants -10% mana cost per point; it was on neither patch-note
+page fetched, so it is not used. Path of Exile's Enlighten page states its range as levels 1 to 3 and 100% to 92% while
+its table runs to level 10; the table's figures are the ones quoted.
+
+### What changed
+
+- **THE FACTOR.** `UCataclysmSkillLevels::CostFactor(level)` is 0.9642 to the power of the level less one, clamped to 1
+  to 20; `CostFactorOf(ability)` is the factor of the ability's level held by its player, 1 for a skill nobody levels.
+- **THE COSTS.** `FervourCostFor` multiplies the skill's own figure or its slot's by it (Subjugate's 30 at level 1 is 15
+  at level 20; every other Ultimate's 50 is 25); `ManaCostAtTheHoldersLevel`, which both the engine's cost and
+  `ManaCostFor` read, multiplies the mana cost by it after the character-level scaling.
+- **THE RESERVE.** `FervourReserveFor` multiplies the row's `FervourReserve` by it, THEN the commander's reductions
+  apply (`UCataclysmCommand::ReserveFor`: Crowned, the percent-less stat, the floor). `FervourReserveOfOne` is that
+  figure for a granted summon skill.
+- **THE RE-PRICE.** `ACataclysmPlayerState::RepriceReservesForLevelsGained`, after each of the four places a level can
+  rise, calls `UCataclysmSkillLevels::RepriceReservesOf` for each skill whose level rose: every thrall it took
+  (`TakenBySkillRow`) and every minion it summoned (`SummoningSkillRow`) that holds more than the skill's
+  `FervourReserveOfOne` now is lowered to it. None is raised. The ceiling the pool fills to rises by what was freed.
+- **THE WORDS.** The pop-up's cost line from #2801 reads `FervourCostFor` and `ManaCostFor`, so it states the levelled
+  figures already; it now ends with what each thing the skill makes reserves: "Costs 22 Fervour and 14 mana. 20 s
+  cooldown. Each thrall reserves 22 Fervour." -- "thrall" for a skill that takes creatures, else its minion's type.
+
+### Subjugate's figures
+
+Thralls held needs both room (n x reserve within the maximum) and a payable cast (the cost within the maximum less the
+reserve of the n-1 held). With branch B's reductions, max(1, (stated - 5) x (1 - percent / 100)); the 30% is an example
+figure, not a measured build; the Second Self's chosen thrall, which holds a double share, is not counted.
+
+| Level | Cost and reserve | No reductions, on 100 / 150 | Crowned -5 | Crowned -5 and 30% less |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | 30 / 30 | 3 / 5 | 3 / 5 (the cast limits it on 100) | 5 / 7 |
+| 10 | 21.6 / 21.6 | 4 / 6 | 5 / 8 | 7 / 12 |
+| 20 | 15 / 15 | 6 / 10 | 9 / 14 | 13 / 20 |
+
+The owner's reasoning, recorded: "It's fairly hard to level, so I don't think it would be too much of a balance
+issue." What level 20 does: every levelled skill costs half its mana and Fervour, and with its damage at 2.85 times,
+a point of damage costs 0.175 of what it did at level 1. A main skill is at level 3 after the first surge's Outposts
+(issue #2764's measurement), where the factor is 0.930.
+
+### The simulation
+
+`sim/cataclysm_sim/skill_levels.py` gains `COST_FACTOR_PER_LEVEL` and `cost_factor`, pinned equal to the game's by
+`tools/tests/test_skill_levels_port.py`. `sim/analyse_opening.py`'s section seven, the only script that uses levels,
+charges each slot's mana at its skill's cost factor. MEASURED, run before and after on this branch: NO PRINTED FIGURE
+MOVED -- the section's end levels, damage shares and per-floor fight seconds are the same, and so is every other
+section. Those pack fights last 3 to 5 seconds and are not short of mana, so a cheaper skill changes nothing there.
+
+### Tests
+
+`CataclysmLevelCostsTests.cpp`, three, on the possessed Staff player `Cataclysm.SkillLevelSources.`'s thrall test
+builds, raised to character level 32 so a skill can reach level 10:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachLevelLowersACostAndLevelTwentyHalvesIt` | the factor is 0.9642; 1 at level 1, 0.72013 at 10, 0.5 at 20; clamped above 20 and below 1 |
+| `ASkillsManaAndFervourCostsFallWithItsLevel` | Subjugate at level 10 costs 0.72013 times its level 1 Fervour and mana; CONTROL Compel, not levelled, costs what it did |
+| `AHeldThrallIsRepricedWhenItsSkillLevels` | a thrall taken at level 1 holds 30 and the pool fills to 120; CONTROL Summon Imp reaching level 10 leaves it at 30; Subjugate reaching level 10 makes it hold 21.6 with no new take, and the ceiling rises by 8.4. Prints "REPRICED" |
+
+`tools/tests/test_a_skills_level_lowers_its_costs.py`: each of the four places a level can rise re-prices with the
+levels it took before; the re-price reaches every risen skill; the Fervour cost, the mana cost and a summon's reserve
+each multiply by `CostFactorOf`.
+
+### Registered before the window
+
+At the slice's turn, after its rebase onto #2801's merge and its three compiles:
+
+| Step | Registered |
+| :-- | :-- |
+| The build | succeeds; the asset step only if the workbook's two description sentences are written in that turn |
+| `Cataclysm.LevelCosts.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded: its pop-up test's built boxes state no reserve, so its words do not move |
+| The whole suite | the newest measured total at the turn plus 3, every one succeeding; skipped halves and saves as that base's, the saves predicted, not measured |
+| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+
+Three C++ guard proofs, with `test_prefix="Cataclysm.LevelCosts."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| L1 | `CostFactorPerLevel = 0.9642` to `1.0` | 3 performed, 0 succeeded, 3 failed: the factor test, the costs test (no fall) and the re-price test (21.6 against 30) | 3 of 3 |
+| L2 | in `RepriceReservesOf`, `Body->ReservedFervour = Now;` to `Body->ReservedFervour = Body->ReservedFervour;` | 3 performed, 2 succeeded, 1 failed: the re-price test | 3 of 3 |
+| L3 | in `ManaCostAtTheHoldersLevel`, the factor dropped: `* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this))` to `* 1.0f` | 3 performed, 2 succeeded, 1 failed: the costs test (its mana) | 3 of 3 |
+
+---
+
 ## 2026-11-21 — A refused skill press and every Subjugate cast say why in the play log, naming the numbers, so one press by the owner settles why Subjugate is refused (#2801)
 
 **Affects:** `UCataclysmSkillTemplate::PressRefusalLine`, `FervourFiguresFor` and `ReservedFervourByKindText`, new
