@@ -214,8 +214,10 @@ bool FCataclysmSkillCostUnderTwoThrallsTest::RunTest(const FString&)
 	Caster.SetFervour(100.0f);
 	TestEqual(TEXT("set-up: two thralls holding 60 leave the pool at 40"), Caster.Fervour(), 40.0f, 0.001f);
 	// AND THE STORED BASE IS WRITTEN TO THE 40 IT SHOWS. `SetNumericAttributeBase` keeps the 100 it was given as the
-	// base and clamps only the current value; the set clamps the base after a gameplay effect, which is how Fervour is
-	// gained in play. Window subjugate-w1 read 40 after the press: the 30 had come off the hidden 100.
+	// base and clamps only the current value. In play the base cannot stay above the ceiling, because
+	// `UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute` writes the pool back through its setter after
+	// every gameplay effect, and Fervour is gained through effects. Window subjugate-w1 read 40 after the press: the 30
+	// had come off the hidden 100.
 	Caster.SetFervour(Caster.Fervour());
 	TestTrue(TEXT("a press costing 30 is accepted at a ceiling of 40"), Caster.Use(Own));
 	TestEqual(TEXT("and takes 30, leaving 10"), Caster.Fervour(), 10.0f, 0.001f);
