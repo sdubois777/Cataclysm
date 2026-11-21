@@ -325,10 +325,12 @@ tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, on development `789bfd400`.
-  Its turn in the Unreal queue comes after #2787's branch A, #2791, #2790 and #2792. At that turn it is rebased, and
-  #2790's new guide speed field, which also goes into `RefreshWalkSpeed`, is read from that branch first; then it is
-  compiled three ways and run in the window registered below.
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Phase 1 was written without a compile, as ruled, on development `789bfd400`,
+  and rebased onto development `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. Its turn in the Unreal queue
+  comes after #2792, onto which it is rebased once more; then it is compiled three ways and run in the window
+  registered below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
+  it, as the coordinating session accepted. A guide is never commanded: the floor rule makes it unable to be hurt, and
+  `UCataclysmCommand::Subjugate` refuses a creature that cannot be hurt.
 - **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
   this slice does not otherwise need. Until it is measured the Sentinel's feet may slide as it walks.
 - **SOME MINIONS BECOME SLOWER THAN THEY WERE**, as the ruling "equal, not the faster of the two" means. Against a
@@ -418,6 +420,15 @@ class's own speed, changed through the movement speed stat's inputs as #2790's g
 No automation test ticks a world, so walking itself is not measured; what the movement component is told to walk at,
 and the brain's order, are.
 
+**#2790's guide-order check, changed in the rebase onto `63d4cbd4c`.**
+`tools/tests/test_demonic_guide_keeps_pace.py::test_a_guides_walk_comes_before_and_in_place_of_the_designed_speed`
+looked for `DesignedWalkSpeedCmPerSecond * SpeedMultiplier() * AilmentWalkMultiplier()` in `RefreshWalkSpeed`, a line
+this slice replaced, so it failed on the rebased tree (1 failed, 7816 passed, 9 skipped). It now requires the guide's
+branch before `WalkSpeedBaseCmPerSecond(DesignedWalkSpeedCmPerSecond)`, where a commander's pace is read, and that
+before the multiplication: the same rule, and a guide is kept from a commander's pace as well. Proved with
+`tools/prove_guard.py`, the two commanded-base lines moved above the guide's branch: "1 failed, 4 passed", that test
+alone; restored, "5 passed".
+
 ### Registered before the window
 
 At the slice's turn, after its rebase and its three compiles, on the coordinating session's GO, under a lock of its own:
@@ -427,7 +438,7 @@ At the slice's turn, after its rebase and its three compiles, on the coordinatin
 | Pre-checks | those of the earlier windows |
 | The build | succeeds; no asset step, because this slice changes no data table |
 | `Cataclysm.MinionFollowSpeed.` alone | 10 performed, 10 succeeded; in a worktree, `ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops` reports a skipped half |
-| The whole suite | the newest measured total on the rebased base plus these 10, every one succeeding; skipped halves that base's count plus 1; the same test saves as that base, none left behind. No test here builds a floor; that possessing a player writes no save is predicted, not measured |
+| The whole suite | #2792's measured total plus these 10, every one succeeding; skipped halves #2792's count plus 1; test saves #2792's count plus 0, none left behind. The plus 0 is predicted, not measured: no test here builds a floor, and that possessing a player writes no save has not been measured. The base under #2792: window tree-2790-w2 measured 5056 performed, 5056 succeeded, 47 skipped part of what they check, and 854 test saves written and deleted with 0 left behind, at `b4e3f1c05`, whose `game/` is the same as development `63d4cbd4c`'s. #2792 registers 4 tests and 4 saves, so if its window measures what it registered, this window's figures are 5070 performed, 48 skipped halves and 858 saves |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 
 Five C++ guard proofs through `prove_cpp_guard`, each with `test_prefix="Cataclysm.MinionFollowSpeed."`, predicted
