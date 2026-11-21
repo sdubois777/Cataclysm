@@ -2,6 +2,154 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A gem raises the experience every skill earns: Of The Scholar, and the stat skill_experience_gain, which acts once gems can be socketed (#2803)
+
+**Affects:** `ACataclysmPlayerState::SkillExperienceGainStat` and `SkillExperienceGainFactor`, new, and
+`GrantSkillExperience`, which multiplies the kill by the factor before sharing it
+(`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`); `UCataclysmPlayerClassStats::StatsWithNoAttribute`
+gains `skill_experience_gain` (`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`); `split_a_kill`
+(`sim/cataclysm_sim/skill_levels.py`); `docs/Cataclysm_GDD_v2.md`, "What a Skill Levels". In #2803's own turn:
+`docs/All_Things_Cataclysm.xlsx`, the Gems sheet, `game/Data/Gems.csv`, `game/Content/Data/DT_Gems.uasset` and
+`game/Data/datatable_asset_sources.json`. Tests:
+`Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`, new
+(`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp`); a probe for the stat in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+(`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`); `tools/tests/test_skill_experience_gain.py`, new;
+`sim/tests/test_skill_levels.py`, one new. Issue [#2803](https://github.com/sdubois777/Cataclysm/issues/2803).
+
+### SAID FIRST
+
+- **THE GEM DOES NOT ACT UNTIL GEMS CAN BE PUT IN SOCKETS (#46).** Items roll a socket count, but nothing puts a gem in
+  a socket. No code outside the tests reads `FCataclysmGemRow`, and no gem writes a stat;
+  `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` says "gems do not exist yet (issue #46)". The gem's row and
+  the code that reads its stat are built now. #46 must map this gem to `skill_experience_gain` as an increase, with
+  source `ECataclysmModifierSource::Gem`; the sheet's 0.10 is 10 in the stat pipeline, where an increase is stated in
+  percentage points.
+- **NOT COMPILED OR RUN IN UNREAL YET.** The workbook row, `Gems.csv` and the asset step come in #2803's own turn,
+  queued after slice 6c of #2741, because the workbook has one writer at a time.
+- **THE CHARACTER'S OWN EXPERIENCE IS UNCHANGED.** Only the skills' share of a kill reads the stat.
+
+### The request and the ruling
+
+The project owner, 2026-11-21, verbatim: "Speaking of skill leveling, we need to create a new gem that increases the
+exp gain for skills, you can just add it to the gems spreadsheet."
+
+The coordinating session accepted this session's proposal as written on 2026-11-21:
+
+- the gem `Gem_Of_The_Scholar`, "Of The Scholar", Utility, "Increases skill experience gain by 10%";
+- its values 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.90, **a judgement** that copies the ladder of Of Area, Of
+  Urgency and Of Shredding exactly;
+- a new stat, `skill_experience_gain`, read in `GrantSkillExperience` with no skill tags so that it applies to every
+  skill, multiplying the kill's experience before the split, with the character's own experience unchanged;
+- the simulation's `split_a_kill` takes the gain.
+
+**Why every skill, and not only skills tied to the gemmed item.** Every gem's effect is character-wide: attack speed,
+armour, health, magic find. Skills are not socketed into items in this game, and the design gives a gem no link to a
+skill ("Gems provide stat bonuses").
+
+**"Increased".** Increases to `skill_experience_gain` add together and multiply once, by the design's three-bucket
+rule. No other source raises it today. It is a separate stat from the character's `experience_gain`, which is read
+first, so a kill whose experience the enchantment "Kills no longer generate any experience" removed still gives the
+skills nothing.
+
+### What the genre does
+
+Fetched 2026-11-21 from poedb.tw, whose pages loaded. poewiki.net refused the fetch with an "Access Denied" page.
+
+- **Path of Exile, Ashes of the Stars** (unique amulet, "Requires Level 60"): "(5—10)% increased Experience Gain of
+  Gems", stat `gem experience gain +%`, Global. https://poedb.tw/us/Ashes_of_the_Stars
+- **Path of Exile, Dialla's Malefaction** (unique body armour, "Requires Level 37"): "Gems Socketed in Blue Sockets
+  gain 100% increased Experience", raised in 3.19.0 from 25%. https://poedb.tw/us/Diallas_Malefaction
+- **Path of Exile, Mutated Growth** (unique jewel): "10% increased Experience Gain for Corrupted Gems".
+  https://poedb.tw/us/Mutated_Growth
+- **Path of Exile, Enlighten Support**: "This Gem gains (0—100)% increased Experience", from its quality.
+  https://poedb.tw/us/Enlighten_Support
+- **Last Epoch**: items give no bonus to experience. **This came through a web search's quotation of Last Epoch's
+  support page, not a fetch**; the page itself returns 403 to the fetch tool.
+- **Torchlight Infinite, and Diablo II, III and IV**: no affix raising skill experience was found.
+
+The research settles the wording, "increased experience", and that it is one source in the increased bucket. Path of
+Exile prices it at 5-10% on a level 60 unique that reaches every gem and 100% on a level 37 unique that reaches one
+socket colour. It does not settle a rarity ladder; Path of Exile has none for this stat. The ladder is the judgement
+above, ending at 90%, near Dialla's 100%.
+
+**Stacking is bounded by the skill's cap, not by the gem.** A character can fill 45 sockets, but a skill's level stops
+at the level paired with the character's level, and the experience above it is kept. More of the gem only reaches that
+cap sooner, and every socket it fills holds no power gem.
+
+### The change
+
+- `ACataclysmPlayerState::SkillExperienceGainFactor` asks `skill_experience_gain` through `StatAppliedTo` over a base
+  of 100 with no skill tags, and answers it over 100, never below 0. It is exactly 1 for a character with no ability
+  system or no row.
+- `GrantSkillExperience` multiplies the kill's experience by it before sharing it among the skills that hurt the
+  creature.
+- `skill_experience_gain` is on `UCataclysmPlayerClassStats::StatsWithNoAttribute`, because no gameplay attribute holds
+  it, with a probe that grants it and reads the answer change.
+- `split_a_kill(kill, removed, max_health, skill_experience_gain=0.0)` in the simulation raises the kill by
+  `1 + gain`, never below nothing.
+- "What a Skill Levels" in the design document says what the stat does and that the gem waits on #46.
+
+### Tests
+
+- **`Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`**, new. Two player
+  states share a kill of 1000, 60 and 30 of a creature's 100 health. Without the stat: 600 and 300. With 50 increased:
+  900 and 450, factor 1.5. Controls: the character's own kill of 100 stays 100, and the character gains no experience
+  of its own. It builds no dungeon floor and writes no save. Prints "SKILL EXPERIENCE GAIN".
+- **The probe** `ProbeSkillExperienceGain` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: 50
+  increased turns a kill of 1000 shared whole into 1500. That test's count does not move.
+- **`tools/tests/test_skill_experience_gain.py`**, new, four checks, because continuous integration compiles no C++.
+- **`sim/tests/test_skill_levels.py`**: one new check, 900 and 450 at 0.5, and nothing at -2.
+
+### Registered before the run
+
+Counted on the "Test Completed. Result={" lines of window follow-w2's log at `d4d0773ac`, whose `game/` is development
+`156f2b9e8`'s, with a literal match on `Path={Cataclysm.<Group>.`. **#2787 branch B, #2801 and slice 6c of #2741 merge
+before this window, so every figure is restated from the newest measured window at #2803's turn.**
+
+- **The whole suite: the base + 1** (5072 + 1 = 5073 against follow-w2), 0 failed; 48 skipped halves and 859 test saves,
+  the base's, because the new test builds no floor.
+- **Each group alone**: `Cataclysm.SkillLevels.` 12 to 13; `SkillLevelSources.` 19, `StatExemption.` 37,
+  `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4, `Equipment.` 30
+  and `Data.` 7, unchanged. `Experience.` is matched with its dot and so leaves out `ExperienceBar.` (2).
+- **The asset step**, in #2803's turn: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_Gems.uasset`,
+  28 rows, and rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed before the
+  tests run. The gem counts move to 28 in the same turn, in
+  `tools/tests/test_affix_sheets_match_the_model.py::test_the_gem_count` and `CHECK_TABLE(FCataclysmGemRow, "Gems.csv",
+  ...)` in `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- **Four C++ guard proofs**, the restored half passing every test it ran:
+
+| Proof | The break | Prefix | Predicted failing test and assertions |
+|---|---|---|---|
+| C1 | the skills share the kill before it is raised | `Cataclysm.SkillLevels.` (13) | `IncreasedSkillExperienceGain...`, 2 (900 and 450 read 600 and 300) |
+| C2 | the factor asks `experience_gain` instead | `Cataclysm.SkillLevels.` (13) | the same test, 3 (900, 450 and the factor 1.5, which read 600, 300 and 1.0) |
+| C3 | the character's own gain is multiplied by the factor as well | `Cataclysm.SkillLevels.` (13) | the same test, 1 ("the character's own kill is not raised: 100 stays 100", 150) |
+| C4 | the break of C1 | `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (1) | that test, 1 ("skill_experience_gain is read: 50 increased gives 1500", 1000) |
+
+- **Python before the window**: every Python test file that reads a changed file (29 files): 1789 passed, JUnit 1789
+  tests, 0 failures, 0 errors, 0 skipped. The 137 files that read the design document: 3096 passed, 2 skipped. Ruff "All
+  checks passed!". The full suite waits until the owner's editor is closed.
+
+### The six Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_skill_experience_gain.py` and
+`sim/tests/test_skill_levels.py` (9 tests), `proved` True:
+
+| Proof | The break | Test that failed |
+|---|---|---|
+| G1 | the factor asks `experience_gain` | `test_the_factor_reads_the_stat_with_no_tags_and_the_kill_is_raised_before_it_is_shared` |
+| G2 | the skills share the kill before it is raised | the same test |
+| G3 | the stat left off the list of stats with no attribute | `test_the_stat_has_no_attribute_and_a_probe_that_reads_it` |
+| G4 | the character's own gain asks the factor | `test_the_characters_own_grant_does_not_read_it_and_the_kill_hands_both_the_gained_experience` |
+| G5 | the simulation's split ignores the gain | `test_increased_skill_experience_gain_raises_every_share_alike_before_the_split` |
+| G6 | the design document says the gem acts now | `test_the_design_says_what_the_stat_does_and_that_the_gem_waits_on_sockets` |
+
+### The window
+
+Not run yet.
+
+---
+
 ## 2026-11-21 — The empire map's top line counts Quest dungeons cleared and the Quest dungeons standing, and the city screen, the map's city detail and the status bar name a Quest dungeon (#2800)
 
 **Affects:** `UCataclysmEmpireMapLayout::ProgressLine`, whose objective count now reads "N Quest dungeons cleared";
