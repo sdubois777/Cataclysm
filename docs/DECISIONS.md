@@ -326,12 +326,12 @@ eleven tests in the group `Cataclysm.MinionFollowSpeed.`. Issue #2793.
 
 ### SAID FIRST
 
-- **ITS ONE WINDOW SO FAR FAILED ONE TEST, AND WHAT CHANGED SINCE IS NOT COMPILED.** Phase 1 was written without a
-  compile, as ruled, on development `789bfd400`, and rebased onto development `63d4cbd4c`, which holds #2787's branch A,
-  #2791 and #2790. There it compiled three ways and ran in window follow-w1, recorded below, which failed one test on
-  its layout. The layout correction and the Vengeful Wraith ruling followed; the branch was then rebased onto
-  development `7c3e06ab2`, which adds #2792, and is compiled three ways and run again in window follow-w2, registered
-  below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
+- **ITS SECOND WINDOW, follow-w2, MATCHED ITS REGISTRATION AND PROVED ALL SIX GUARDS; ITS FIRST FAILED ONE TEST.**
+  Phase 1 was written without a compile, as ruled, on development `789bfd400`, and rebased onto development
+  `63d4cbd4c`, which holds #2787's branch A, #2791 and #2790. There it compiled three ways and ran in window follow-w1,
+  recorded below, which failed one test on its layout. The layout correction and the Vengeful Wraith ruling followed;
+  the branch was then rebased onto development `7c3e06ab2`, which adds #2792, compiled three ways again and ran in
+  window follow-w2, recorded below. In `RefreshWalkSpeed`, #2790's guide branch comes first and unchanged and the commanded base after
   it, as the coordinating session accepted. A guide is never commanded: the floor rule makes it unable to be hurt, and
   `UCataclysmCommand::Subjugate` refuses a creature that cannot be hurt.
 - **THE SENTINEL'S JOG PLAYS AT 1.0, UNMEASURED**, as ruled. Its authored speed needs the editor under the lock, which
@@ -541,6 +541,37 @@ the tests as written. P1 to P5 break what they broke for follow-w1; P6 is new:
 | P6 | in `WalkSpeedMultiplier`, `bWalkSpeedFollowsACommander ? 1.0f : WraithMultiplier()` back to `WraithMultiplier()` | the wraith test alone (its two taken rows, 600 against 500); 11 performed, 10 succeeded, 1 failed | 11 of 11 |
 
 In every broken half the controls pass, the wraith test's among them.
+
+### Window follow-w2, 2026-11-20: every figure as registered, and all six proofs PROVED
+
+At `d4d0773ac`, under the lock follow-w2, from 22:51 to 23:30, after the three compiles: the branch (52 actions, 47
+files compiled), each changed `.cpp` alone (20 actions, 17 files compiled, all ten changed files named as excluded
+from the unity file) and the unity files (10 actions, 7 files compiled), each succeeding with no compiler warning or
+error line. The lock was released when the window ended.
+
+| Step | Measured |
+| :-- | :-- |
+| Pre-checks | "PRECHECKS: ALL PASS", at 22:51:26 |
+| The build | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| `Cataclysm.MinionFollowSpeed.` alone | "11 tests performed, 11 succeeded, 0 failed. 1 skipped part of what they check: Cataclysm.MinionFollowSpeed.ATakenSentinelJogsWhileItWalksAndStandsRootedWhenItStops", as registered |
+| The whole suite | "5072 tests performed, 5072 succeeded, 0 failed. 48 skipped part of what they check", as registered; "Test saves: 859 written and deleted, 0 left behind", as predicted; "Declared: 5072 tests in the tree at d4d0773ac; 5072 performed, gap 0" |
+| Python | 7817 passed, 9 skipped; the JUnit file: tests 7826, failures 0, errors 0, skipped 9 |
+| Ruff | All checks passed |
+
+The figures the tests print, from the suite's engine log: "POSSESSED PACE: the player's class walk 460 gives the imp
+575 and the thrall 575; at 500, 625 and 625; at 200, 250 and 250", and "WRAITH PACE: taken Imp 500, taken Brute 500;
+nobody's Imp 780, nobody's Brute 300; freed Imp 780".
+
+| Proof | Broken half, as measured | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| P1 | 11 performed, 4 succeeded, 7 failed: the taken-Sentinel, every-kind, pace-follows, thrall's-own-slow, jog-rate, possessed-player and wraith tests, as predicted | 11 of 11 | PROVED |
+| P2 | 11 performed, 8 succeeded, 3 failed: the taken-Sentinel, Sentinel-ordered-to-follow and every-kind tests, as predicted | 11 of 11 | PROVED |
+| P3 | 11 performed, 8 succeeded, 3 failed: the every-kind, pace-follows and possessed-player tests, as predicted | 11 of 11 | PROVED |
+| P4 | 11 performed, 9 succeeded, 2 failed: the every-kind and wraith tests, as predicted | 11 of 11 | PROVED |
+| P5 | 11 performed, 10 succeeded, 1 failed: the jog-rate test, as predicted | 11 of 11 | PROVED |
+| P6 | 11 performed, 10 succeeded, 1 failed: the wraith test, as predicted | 11 of 11 | PROVED |
+
+Each proof's anchor matched once, nothing crashed in either half, and the source hash was the same before and after.
 
 ### Seen in passing
 
