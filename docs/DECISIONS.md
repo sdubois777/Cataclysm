@@ -11,10 +11,14 @@ Decisions made outside the Google Drive documents, newest first.
 `UCataclysmGameplayAbility::FervourCostOverride` and `FervourCostFor`, `FCataclysmWeaponSkill::FervourCost` and
 `UCataclysmWeaponSkills::StampOnto`; `UCataclysmSkillBar::CostLineFor`, `PopupLinesFor`, and the box's
 `CooldownLength`, `HealthCostPercent` and `bCostPaidFromHealth` (`game/Source/Cataclysm/Interface/CataclysmSkillBar.h`,
-`.cpp`); Subjugate's row in `docs/Cataclysm_GDD_v2.md`'s Staff table. Tests:
+`.cpp`); Subjugate's row in `docs/Cataclysm_GDD_v2.md`'s Staff table; the Weapon Skills sheet's Fervour Cost column
+(`docs/All_Things_Cataclysm.xlsx`), `FCataclysmWeaponSkillRow::FervourCost`
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`) and its copy in `CataclysmWeaponSkills.cpp`,
+`tools/generate_datatables.py`'s `weapon_skills`, and `game/Data/WeaponSkills.csv`. Tests:
 `game/Source/Cataclysm/Tests/CataclysmPressRefusalTests.cpp`, new, one test in the group `Cataclysm.PressRefusal.`;
 `game/Source/Cataclysm/Tests/CataclysmSkillCostTests.cpp`, new, three in `Cataclysm.SkillCost.`;
-`tools/tests/test_a_refused_press_and_a_take_say_why.py`, new. Issue
+`tools/tests/test_a_refused_press_and_a_take_say_why.py` and `tools/tests/test_subjugate_costs_thirty_fervour.py`, new.
+Issue
 [#2801](https://github.com/sdubois777/Cataclysm/issues/2801).
 
 ### SAID FIRST
@@ -24,8 +28,9 @@ Decisions made outside the Google Drive documents, newest first.
   Ultimate costs 50 Fervour, and nothing the player reads said so. The instrumentation stays, because a refused press
   that logs nothing is a fault on its own and the next press confirms H1; Subjugate now costs 30, by the owner's ruling,
   and a skill's pop-up says what a press costs. Both are in the section on them below.
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `156f2b9e8` without a compile, as ruled. Its turn on
-  the machine is after #2787's branch B, ahead of the empire tree's slice 6c.
+- **NOT COMPILED AND NOT RUN IN UNREAL YET.** Written on development `156f2b9e8` without a compile, as ruled, and
+  rebased at its turn onto `c20ce05e3`, branch B of #2787's merge, as `fix/subjugate-refused-2801-2`. The workbook
+  column and the regenerated table were written then; the compiles and the window follow.
 
 ### The owner's words, and what the log showed
 
@@ -147,13 +152,19 @@ Subjugate's description keeps its own sentence, "Holding a thrall reserves 30 Fe
 and then the reserve. When #2802 levels the reserve, that fixed sentence will go stale, and #2802 moves the reserve into
 the worked-out line.
 
-**WHAT WAITS FOR THE SLICE'S TURN, WHICH NEEDS THE DESIGN WORKBOOK.** The column has to exist on the workbook's Weapon
-Skills sheet, which branch B of #2787 holds until it merges: then `FCataclysmWeaponSkillRow::FervourCost`, its copy
-into the skill in `CataclysmWeaponSkills.cpp`, `tools/generate_datatables.py` writing and checking it, the workbook
-cell of 30, the regenerated `game/Data/WeaponSkills.csv`, the window's asset step rebuilding `DT_WeaponSkills` and
-committing it alone, and a Python test that the column is 30 on Subjugate's row and -1 on every other, with the
-Ultimate slot's row still 50. Until then no row carries a figure and every skill takes its slot's, as before; the tests
-below give a skill its figure the way granting does, through `StampOnto`.
+**THE COLUMN, WRITTEN AT THE SLICE'S TURN** once branch B of #2787 had merged and released the design workbook. The
+Weapon Skills sheet gains column M, "Fervour Cost", 30 on Subjugate's row (Staff, Demonic, Ultimate) and blank on every
+other; a cell-by-cell comparison of the workbook before and after finds those two cells changed and nothing else.
+`tools/generate_datatables.py` reads it as it reads Mana Cost, through `skill_number`, so blank is -1 and a negative
+figure is refused, into a `FervourCost` column of `game/Data/WeaponSkills.csv`: 30.0 on `Demonic_Staff_Ultimate`, -1.0
+on the other 402 rows. `FCataclysmWeaponSkillRow::FervourCost`, -1 by default, and its copy onto the skill in
+`CataclysmWeaponSkills.cpp` carry it to `StampOnto`. The window's asset step rebuilds `DT_WeaponSkills` and commits it
+alone. The Unreal tests below give a skill its figure the way granting does, through `StampOnto`, so they do not read
+the table.
+
+`tools/tests/test_subjugate_costs_thirty_fervour.py`, five: Subjugate's row states 30 and no other row states any; the
+Ultimate slot still costs 50 (a control); the generator reads the column, blank as -1; a negative figure is refused;
+and the C++ carries the row's field to the skill and the skill's to the template.
 
 **TESTS.** `CataclysmSkillCostTests.cpp`, three:
 
@@ -169,11 +180,11 @@ At the slice's turn, after its three compiles, under a lock of its own:
 
 | Step | Registered |
 | :-- | :-- |
-| The build | succeeds; no asset step, because this slice changes no data table |
+| The build | succeeds |
 | The asset step | `DT_WeaponSkills.uasset` and `game/Data/datatable_asset_sources.json` rebuilt and committed alone, nothing else changed |
 | `Cataclysm.PressRefusal.` alone | 1 performed, 1 succeeded |
 | `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded |
-| The whole suite | the newest measured total at the slice's turn plus 4, every one succeeding; skipped halves and test saves as that base's, the saves predicted, not measured. On follow-w2's measured base (5072, 48 and 859 at `d4d0773ac`, whose `game/` is development `156f2b9e8`'s) that is 5076, 48 and 859 |
+| The whole suite | the newest measured total plus 4, every one succeeding; skipped halves and test saves as that base's, the saves predicted, not measured. The newest measured base is window nocaps-b-w2's, 5070 performed, 48 skipped halves and 859 saves at `2fcf9733a`, whose `game/` is the same tree as development `c20ce05e3`'s (`git diff --stat 2fcf9733a c20ce05e3 -- game/` prints nothing): so 5074, 48 and 859 |
 | Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
 
 One C++ guard proof, Q1, through `prove_cpp_guard` with `test_prefix="Cataclysm.PressRefusal."`: in `FervourFiguresFor`,

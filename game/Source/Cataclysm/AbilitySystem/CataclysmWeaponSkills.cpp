@@ -163,6 +163,7 @@ namespace
 		Skill.DamagePercent = Row.DamagePercent;
 		Skill.Cooldown = Row.Cooldown;
 		Skill.ManaCost = Row.ManaCost;
+		Skill.FervourCost = Row.FervourCost; // Issue #2801.
 
 		// Named in the error so a bad cell says which of the 398 rows it
 		// is. The generator refuses one already, so this only fires for
