@@ -797,15 +797,12 @@ rewritten, and two assertion messages reworded, in twenty test files, listed und
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET**, and **NOT FINISHED**. The rows the design workbook holds wait for this
-  branch's turn with it, which comes after branch A and the empire tree's slices 6c, 6d and 6e: Summon Imp's text and
-  parameters, the four enchantments' texts and effect rows, The Swarm's effect row, the Ritualist tree's two node
-  sentences still to change in `docs/Ritualist_Class_Tree_Final.json` and `game/Data/PassiveNodes.csv` (Every One
-  Bursts, the third, is written; see the rewords below), the four renamed enchantments'
-  pairs in `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, the DataTable asset rebuild, and the Python
-  tests that pin the old texts. Until then the Python suite fails where it reads the old rows; the first such failure is
-  `tools/tests/test_minion_skill_shapes.py::test_no_shipped_summon_states_a_count_cap`, written to fail until Summon
-  Imp's `MaxActive=3` is gone.
+- **NOT COMPILED OR RUN IN UNREAL YET** when the workbook turn began, 2026-11-21. That turn wrote the workbook's rows
+  (Summon Imp's text and parameters, the four enchantments' texts and effect rows, The Swarm's effect row), the
+  Ritualist tree's three node sentences in `docs/Ritualist_Class_Tree_Final.json`, regenerated `game/Data`, added the
+  four renamed enchantments to `FCataclysmEnchantmentRenames::Aliases()` and its pinned list, and moved the Python
+  tests that pinned the old texts, each named under "The workbook turn" below. The DataTable asset rebuild, the
+  compiles and the window follow it.
 - **THE WORKBOOK'S OTHER HOLDER.** The parked branch `data/two-handed-weapons-drawn-at-1-75` (#1130, commit
   912fcea9f, four cells drawing the two-handed bases at scale 1.75) holds unmerged workbook changes, parked by the
   owner's ruling of 2026-11-17. This branch takes the workbook; #1130's four cells are applied again on top of
@@ -860,12 +857,12 @@ The coordinating session, the same day, on readings sent with the plan:
 | :-- | :-- | :-- |
 | Summon Imp (Weapon Skills, `Demonic_Staff_Special`) | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out. Up to 3 imps may be active at once. Summoning a fourth destroys the oldest, which explodes for damage in a 3 meter radius." | "Tear a lesser imp out of the rift to fight for you. It attacks the nearest enemy, sets what it hits alight, and lasts 20 seconds. Each imp reserves 10 Fervour while it is out." Parameters lose `MaxActive=3` and keep `Radius=3`, the radius a passive's death explosion uses. |
 | The Ritualist's first node, Fervour (`basic_spine_000`) | its clause "rises as a lesser imp that fights for you for 20 seconds, if you hold fewer imps than Summon Imp allows at once." | "Your minions generate Fervour: 1 per second for each minion you have, and 5 when one of them dies. An enemy that dies carrying a curse you laid on it rises as a lesser imp that fights for you for 20 seconds and reserves 10 Fervour while it is out, if you have the Fervour to reserve. While you have this, Fervour does not decay, so what you hold is held until you spend it or reserve it." |
-| The Swarm (`keystone_b_kA`) | "Each skill that limits how many of its minions may be active allows 2 more." | "Your minions reserve 12% less Fervour." |
+| The Swarm (`keystone_b_kA`) | "Each skill that limits how many of its minions may be active allows 2 more." | "Your minions reserve 12% reduced Fervour." |
 | Every One Bursts (`keystone_b_kB`) | "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it." | "Every minion explodes when it dies, with the radius and damage of the skill that brought it." |
-| Enchantment | "Add 2-4 to your maximum minion count" | "Your minions reserve 15%-30% less Fervour" |
-| Enchantment | "Minus 2-4 to your max minion count" | "Your minions reserve 25%-65% more Fervour" |
-| Enchantment | "Add 1-3 to your max deployable count" | "Your deployables reserve 15%-30% less Fervour" |
-| Enchantment | "Your trap skills get +1-6 to max trap count" | "Your traps reserve 5%-25% less Fervour" |
+| Enchantment | "Add 2-4 to your maximum minion count" | "Your minions reserve 15%-30% reduced Fervour" |
+| Enchantment | "Minus 2-4 to your max minion count" | "Your minions reserve 25%-65% increased Fervour" |
+| Enchantment | "Add 1-3 to your max deployable count" | "Your deployables reserve 15%-30% reduced Fervour" |
+| Enchantment | "Your trap skills get +1-6 to max trap count" | "Your traps reserve 5%-25% reduced Fervour" |
 
 **EVERY ONE BURSTS, RULED 2026-11-20 by the coordinating session, accepting the proposed sentence verbatim.** Found at
 the rebase onto 156f2b9e8: its clause "as one destroyed to make room for another does" names the eviction this branch
@@ -877,6 +874,51 @@ comments that quote it (`CataclysmMinion.cpp`, `CataclysmCommandTests.cpp`, `Cat
 `DT_PassiveNodes` asset still holds the old sentence until the DataTable asset rebuild of this branch's workbook turn,
 and until then `tools/tests/test_datatable_assets_are_current.py` fails, naming `PassiveNodes.csv`. The row's stat and
 value are unchanged.
+
+**THE WORDING, RULED 2026-11-21 by the coordinating session: "reduced" and "increased", not "less" and "more".**
+The first sentences said "12% less" and "25%-65% more". The workbook turn's Python run refused The Swarm's: "12%
+less" reads as a separate multiplier (`test_the_bucket_matches_the_nodes_own_wording`), and this project's vocabulary
+says so, the owner's "multiplicative means more" of 2026-08-17. But the percentages reaching a kind add into one
+figure, ruled with the plan, so The Swarm's 12 and an enchantment's 30 make 42 and not 1 - 0.88 x 0.70. The
+coordinating session's reason: "A sentence saying 'less' about a figure that adds would break the first rule to keep
+the second." The meaning of the five sentences is unchanged. The table above holds the final words.
+
+- **The house form, matched:** subject, verb, percentage, "increased" or "reduced", resource, as in "Your auras cost
+  100%-200% increased mana per second" (a negative enchantment, the nearest kind of sentence, an upkeep) and
+  "Summon skills have 30%-60% reduced cooldown" and "Summoned minions have 30%-50% increased HP" (positive
+  enchantments).
+- **The row names changed once more, before anything shipped them.** The aliases take each old cap name straight to
+  the final name, with no step between; `test_every_enchantment_alias_points_at_a_current_row.py` holds that for the
+  four by name, and that no alias names the "less" and "more" names. Proved with `tools/prove_guard.py`: with the
+  trap row's alias pointed at its "less" name, three tests in that file failed; restored, all passed.
+- **The drawback's negative value beside "increased"** is accepted on `minion_reserve_percent_less` alone, a fifth
+  stat-scoped set in `tools/tests/test_enchantment_effects_match_the_row_text.py` (`RESERVES_MORE_WHEN_NEGATIVE`),
+  beside `LONGER_WHEN_NEGATIVE` and the others, with a test on made-up rows showing it reaches that stat only.
+- **The genre, as far as it could be read.** `www.poewiki.net` refused the fetch with its bot-protection page. Read
+  verbatim on 2026-11-21: poedb.tw's Reservation Efficiency page lists passives in the additive form, "8% increased
+  Mana Reservation Efficiency of Skills"; poe2db.tw's Spirit page has a separate multiplier in the other form,
+  "Non-Minion Skills have 50% less Reservation Efficiency". Neither page states how the two combine. That Path of
+  Exile adds every "increased" reservation efficiency into one figure and applies each "less" separately is this
+  session's knowledge and is NOT verified from a page.
+
+### The workbook turn
+
+Each Python pin it moved, with what the pin counts:
+
+- `test_minion_count_enchantments.py`: it held exactly one enchantment raising the minion count. It now holds none,
+  by the owner's ruling "Lower the reserve instead", shows its pattern still matches the two old wordings and not
+  the new one, holds the successor at weight 2 with both tags, and holds the design document to "Minion count has no
+  cap" and not the old +2 to +4 bound.
+- `test_minion_damage.py`: the check that a count enchantment exists asks for the reserve enchantment instead.
+- `test_class_passive_trees.py`: `STRINGS_CONTAINING_THE_WORD`, the tree sentences holding "more" or "less", 46 to
+  45, because The Swarm's "allows 2 more" became a sentence with neither word. `STRINGS_USING_IT_AS_A_MAGNITUDE`
+  stays 26. Nothing else reads either count.
+- `test_stat_lookups_hand_over_what_they_should.py`: the inventory of `StatForSkill` call sites gains `ReserveFor`'s
+  percentage call and loses the skill templates' `PassiveStatFor`, which only The Swarm's cap called. These two came
+  from this branch's code commit, not from the workbook.
+- `docs/Cataclysm_GDD_v2.md`: the minion section's three paragraphs on count (gear-modifiable count, the two count
+  enchantments, count on summons and not deployables) now say count has no cap and gear changes the reserve. A
+  search for "+2 and +4", "maximum minion count", "count" and "cap" found no other passage about minion count.
 
 ### Why a percentage: what the genre does
 

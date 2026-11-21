@@ -160,6 +160,21 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Negative_Ranged_attacks_deal_40_more_damage_to_you")},
 		{TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_25_les"),
 		 TEXT("Negative_All_buffs_you_apply_to_yourself_now_last_50_les")},
+		//
+		// AND FOUR ON 2026-11-21, issue #2787 branch B: the owner's ruling of 2026-11-20 removed every count cap on
+		// what reserves the class resource, and each enchantment that raised or lowered a cap now lowers or raises the
+		// reserve instead, "Lower the reserve instead". A new sentence, so a new name; the weights did not change. Each
+		// old name points straight at the final one, with no step between: the first wording, "less" and "more",
+		// became "reduced" and "increased" by the coordinating session's ruling of 2026-11-21, before anything
+		// shipped it.
+		{TEXT("Positive_Add_2_4_to_your_maximum_minion_count"),
+		 TEXT("Positive_Your_minions_reserve_15_30_reduced_Fervour")},
+		{TEXT("Negative_Minus_2_4_to_your_max_minion_count"),
+		 TEXT("Negative_Your_minions_reserve_25_65_increased_Fervour")},
+		{TEXT("Positive_Add_1_3_to_your_max_deployable_count"),
+		 TEXT("Positive_Your_deployables_reserve_15_30_reduced_Fervour")},
+		{TEXT("Positive_Your_trap_skills_get_1_6_to_max_trap_count"),
+		 TEXT("Positive_Your_traps_reserve_5_25_reduced_Fervour")},
 	};
 	return Table;
 }

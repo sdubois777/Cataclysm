@@ -953,7 +953,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentLessTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The Swarm's "Your minions reserve 12% less Fervour" takes an imp's 10 to 8.8, and a summoned imp holds that. The
+ * The Swarm's "Your minions reserve 12% reduced Fervour" takes an imp's 10 to 8.8, and a summoned imp holds that. The
  * minion enchantment's two ends, 15 and 30, take it to 8.5 and 7. With Crowned's 5 points as well, the points come off
  * first and the percentage second, a judgement of issue #2787: 30% less of 5 is 3.5, where the other order would be 2.
  */
@@ -975,7 +975,7 @@ bool FCataclysmNoCapsPercentLessTest::RunTest(const FString&)
 		10.0f, 0.001f);
 
 	Player.Holds({PercentLess(12.0f)});
-	TestEqual(TEXT("The Swarm's 12% less makes it 8.8"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.8f, 0.001f);
+	TestEqual(TEXT("The Swarm's 12% reduced makes it 8.8"), ReserveOfType(Player, 10.0f, TEXT("Imp")), 8.8f, 0.001f);
 	UCataclysmSummonSkill* Skill = NoCapsGrantImps(Player);
 	if (!TestNotNull(TEXT("set-up: Summon Imp is granted"), Skill))
 	{
@@ -1004,8 +1004,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsPercentMoreTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your minions reserve 25%-65% more Fervour", the negative enchantment, is the stat at minus 25 to minus 65: an imp's
- * 10 becomes 12.5 at one end and 16.5 at the other, and at 25% more a pool of 30 holds two imps where it held three.
+ * "Your minions reserve 25%-65% increased Fervour", the negative enchantment, is the stat at minus 25 to minus 65: an
+ * imp's 10 becomes 12.5 at one end and 16.5 at the other, and at 25% increased a pool of 30 holds two imps where it
+ * held three.
  */
 bool FCataclysmNoCapsPercentMoreTest::RunTest(const FString&)
 {

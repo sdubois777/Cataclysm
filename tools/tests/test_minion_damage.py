@@ -255,17 +255,22 @@ def test_the_named_inheritance_exception_actually_exists(section):
         f"nothing crosses from summoner to minion.")
 
 
-def test_the_count_enchantments_the_rule_depends_on_exist():
-    """The design says count is gear-modifiable through enchantments. If none
-    exist, minion count has no lever at all and the rule is empty."""
+def test_the_reserve_enchantment_the_rule_depends_on_exists():
+    """The design says gear changes how many minions a pool holds only through
+    enchantments on the reserve. If none exist, that has no lever on gear at all
+    and the rule is empty.
+
+    IT ASKED FOR A COUNT ENCHANTMENT UNTIL ISSUE #2787, whose branch B carried
+    out the owner's ruling of 2026-11-20: no count has a cap, and the count
+    enchantment became "Your minions reserve 15%-30% reduced Fervour"."""
     text = ENCHANTMENTS.read_text(encoding="utf-8")
     found = [line for line in text.splitlines()
-             if "minion" in line.lower()
-             and ("additional minions" in line or "maximum minion count" in line)]
+             if "Your minions reserve" in line and "reduced Fervour" in line]
     assert found, (
-        f"{ENCHANTMENTS.name} has no enchantment that raises the minion count. "
-        f"{DESIGN_DOC.name} states count is gear-modifiable only through "
-        f"enchantments, so without one the archetype cannot scale at all.")
+        f"{ENCHANTMENTS.name} has no enchantment that lowers what minions "
+        f"reserve. {DESIGN_DOC.name} states gear changes how many minions a "
+        f"pool holds only through enchantments on the reserve, so without one "
+        f"the archetype cannot scale its numbers from gear at all.")
 
 
 # --------------------------------------------------------------------------

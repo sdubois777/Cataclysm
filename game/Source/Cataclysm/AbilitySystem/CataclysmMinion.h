@@ -1316,7 +1316,7 @@ public:
 	 * `TrapsDoNotExpireStat`, a flag: A TRAP PLACED WHILE IT IS HELD HAS NO LIFE SPAN (M2 (a)), taken at placing. It is
 	 * the player's, asked with `Type.Trap` alone, so a row requiring nothing or `Type.Trap` reaches it. No gameplay
 	 * attribute and no base. M1's "+1-6 to max trap count" went with the cap in issue #2787 and became "Your traps
-	 * reserve 5%-25% less Fervour", read by `UCataclysmCommand::ReserveFor`.
+	 * reserve 5%-25% reduced Fervour", read by `UCataclysmCommand::ReserveFor`.
 	 */
 	static const TCHAR* TrapsDoNotExpireStat;
 

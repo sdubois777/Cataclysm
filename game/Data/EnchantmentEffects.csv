@@ -212,7 +212,7 @@ Negative_Your_auras_cost_100_200_increased_mana_per_sec#1,Negative_Your_auras_co
 Positive_While_below_50_HP_your_skills_cost_no_mana#1,Positive_While_below_50_HP_your_skills_cost_no_mana,mana_cost,removed,1.0,1.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Regenerate_2_5_of_your_maximum_mana_per_second#1,Positive_Regenerate_2_5_of_your_maximum_mana_per_second,mana_regen,flat,2.0,5.0,,,0.0,max_mana,100.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_traps_ignore_20_40_of_enemy_armor#1,Positive_Your_traps_ignore_20_40_of_enemy_armor,armor_penetration,flat,20.0,40.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_Add_2_4_to_your_maximum_minion_count#1,Positive_Add_2_4_to_your_maximum_minion_count,minion_cap_bonus,flat,2.0,4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_minions_reserve_15_30_reduced_Fervour#1,Positive_Your_minions_reserve_15_30_reduced_Fervour,minion_reserve_percent_less,flat,15.0,30.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Your_class_resource_does_not_decay_out_of_combat#1,Positive_Your_class_resource_does_not_decay_out_of_combat,fervour_decay_per_second,removed,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_You_cannot_regenerate_HP_above_50_of_your_maxim#1,Negative_You_cannot_regenerate_HP_above_50_of_your_maxim,healing_ceiling_reduction,flat,50.0,50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Spell_damage_ignores_20_40_of_your_armor#1,Negative_Spell_damage_ignores_20_40_of_your_armor,armor,more,-20.0,-40.0,,hit_is_spell,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
@@ -341,7 +341,7 @@ Positive_Every_10_seconds_your_movement_speed_is_increase#1,Positive_Every_10_se
 Negative_Every_20_seconds_your_damage_is_halved_for_5_sec#1,Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,attack_damage,more,-50.0,-50.0,,,0.0,own_stacks,1.0,,every_seconds,,1,5.0,0.0,20.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Every_20_seconds_your_damage_is_halved_for_5_sec#2,Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,spell_damage,more,-50.0,-50.0,,,0.0,own_stacks,1.0,,every_seconds,,1,5.0,0.0,20.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Lose_10_20_armor_when_you_use_a_skill#1,Negative_Lose_10_20_armor_when_you_use_a_skill,armor,increased,-10.0,-20.0,,,0.0,own_stacks,1.0,,skill_use,,1,3.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Negative_Minus_2_4_to_your_max_minion_count#1,Negative_Minus_2_4_to_your_max_minion_count,minion_cap_bonus,flat,-2.0,-4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_Your_minions_reserve_25_65_increased_Fervour#1,Negative_Your_minions_reserve_25_65_increased_Fervour,minion_reserve_percent_less,flat,-25.0,-65.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Your_class_resource_decays_twice_as_fast#1,Negative_Your_class_resource_decays_twice_as_fast,fervour_decay_per_second,more,100.0,100.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor#1,Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,max_health,more,-40.0,-60.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Burn_effects_you_apply_deal_30_60_increased_da#1,Positive_Burn_effects_you_apply_deal_30_60_increased_da,dot_damage,increased,30.0,60.0,Keyword.DoT.Burn,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
@@ -369,7 +369,7 @@ Positive_While_stationary_your_gadgets_deal_20_40_incr#1,Positive_While_stationa
 Positive_Gadgets_have_40_70_increased_HP#1,Positive_Gadgets_have_40_70_increased_HP,minion_health,increased,40.0,70.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gadgets_last_30_60_longer#1,Positive_Gadgets_last_30_60_longer,minion_duration,increased,30.0,60.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gadgets_fire_20_40_faster#1,Positive_Gadgets_fire_20_40_faster,minion_attack_speed,increased,20.0,40.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_Add_1_3_to_your_max_deployable_count#1,Positive_Add_1_3_to_your_max_deployable_count,minion_cap_bonus,flat,1.0,3.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_deployables_reserve_15_30_reduced_Fervour#1,Positive_Your_deployables_reserve_15_30_reduced_Fervour,minion_reserve_percent_less,flat,15.0,30.0,Type.Deployable,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Negative_When_you_die_all_your_buffs_are_removed#1,Negative_When_you_die_all_your_buffs_are_removed,auras_end_at_death,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Ultimate_has_1_3_additional_charges#1,Positive_Ultimate_has_1_3_additional_charges,skill_charges_bonus,flat,1.0,3.0,Slot.Ultimate,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Gain_1_3_additional_charges_for_your_cooldown_ab#1,Positive_Gain_1_3_additional_charges_for_your_cooldown_ab,skill_charges_bonus,flat,1.0,3.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
@@ -684,7 +684,7 @@ Positive_Your_support_ability_is_converted_into_a_placeab#1,Positive_Your_suppor
 Positive_Your_basic_attack_is_converted_into_a_placeable#1,Positive_Your_basic_attack_is_converted_into_a_placeable,skill_slot_is_a_trap,flat,1.0,1.0,Slot.Basic,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Traps_arm_30_60_faster#1,Positive_Traps_arm_30_60_faster,trap_arming_speed,increased,30.0,60.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Traps_have_30_50_increased_trigger_radius#1,Positive_Traps_have_30_50_increased_trigger_radius,trap_trigger_radius,increased,30.0,50.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
-Positive_Your_trap_skills_get_1_6_to_max_trap_count#1,Positive_Your_trap_skills_get_1_6_to_max_trap_count,trap_cap_bonus,flat,1.0,6.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Your_traps_reserve_5_25_reduced_Fervour#1,Positive_Your_traps_reserve_5_25_reduced_Fervour,minion_reserve_percent_less,flat,5.0,25.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Traps_do_not_expire_they_remain_armed_until_tr#1,Positive_Traps_do_not_expire_they_remain_armed_until_tr,traps_do_not_expire,flat,1.0,1.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Traps_apply_a_20_35_slow_to_triggered_enemies#1,Positive_Traps_apply_a_20_35_slow_to_triggered_enemies,,,20.0,35.0,Type.Trap,,0.0,,0.0,slow_for_seconds,trap_triggered,,0,2.0,0.0,0.0,0,0.0,4.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength#1,Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength,,,1.0,2.0,Type.Trap,,0.0,,0.0,apply_status_sized,deployable_hit,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,Bleed,0.0

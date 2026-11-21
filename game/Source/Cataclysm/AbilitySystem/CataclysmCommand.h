@@ -456,10 +456,10 @@ public:
 	 *
 	 * FIVE SOURCES, each sized to let the player hold about as many more as its old
 	 * cap bonus did (reduction = N / (C + N), a judgement): The Swarm, "Your minions
-	 * reserve 12% less Fervour"; "Your minions reserve 15%-30% less Fervour";
-	 * "Your minions reserve 25%-65% more Fervour", the negative one; "Your
-	 * deployables reserve 15%-30% less Fervour" (`Type.Deployable`); and "Your
-	 * traps reserve 5%-25% less Fervour" (`Type.Trap`).
+	 * reserve 12% reduced Fervour"; "Your minions reserve 15%-30% reduced Fervour";
+	 * "Your minions reserve 25%-65% increased Fervour", the negative one; "Your
+	 * deployables reserve 15%-30% reduced Fervour" (`Type.Deployable`); and "Your
+	 * traps reserve 5%-25% reduced Fervour" (`Type.Trap`).
 	 *
 	 * READ BY `ReserveFor` WITH THE KIND'S TAGS, the percentages that reach a kind
 	 * adding into one figure as Path of Exile adds increased and reduced

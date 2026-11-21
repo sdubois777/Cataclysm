@@ -170,6 +170,16 @@ ENEMIES_GAIN = re.compile(r"^enemies\b.*\bgain\b", re.IGNORECASE)
 SLOWER_WHEN_NEGATIVE = {"leech_payout_rate"}
 MORE_SLOWLY = re.compile(r"\bmore\s+slowly\b", re.IGNORECASE)
 
+#: A stat on which a negative value makes a minion RESERVE MORE, so its sentence
+#: says "reserve ... increased" rather than a word that takes away. "Your minions
+#: reserve 25%-65% increased Fervour" is minus 25 to minus 65 on
+#: `minion_reserve_percent_less`, issue #2787 branch B. Ruled by the coordinating
+#: session on 2026-11-21, with the sentence's "increased" rather than "more"
+#: because the percentages reaching a kind add: accepted on this stat only, since
+#: "increased" in TAKING would let a negative row on any stat pass on that word.
+RESERVES_MORE_WHEN_NEGATIVE = {"minion_reserve_percent_less"}
+RESERVE_INCREASED = re.compile(r"\breserves?\b.*\bincreased\b", re.IGNORECASE)
+
 #: A sentence saying a stat is gone, which is what the `removed` kind is for.
 #: Issue #1791. The eleven sentences it was written for say it four ways: "You
 #: have no armor" and "You no longer regenerate mana", "Cannot block", "Can't
@@ -1225,6 +1235,7 @@ def takes_something_away(stat: str, words: str, action: str = "") -> bool:
         stat in GAINED_BY_ENEMIES_WHEN_NEGATIVE and bool(ENEMIES_GAIN.search(words))) or (
         stat in EXPIRES_FASTER_WHEN_NEGATIVE and bool(EXPIRES_FASTER.search(words))) or (
         stat in SLOWER_WHEN_NEGATIVE and bool(MORE_SLOWLY.search(words))) or (
+        stat in RESERVES_MORE_WHEN_NEGATIVE and bool(RESERVE_INCREASED.search(words))) or (
         action == "health" and bool(DAMAGE.search(words)))
 
 
@@ -1981,6 +1992,22 @@ def test_paying_out_more_slowly_excuses_a_negative_value_on_one_stat_only():
         "life_leech", "Your leech pays out 50% more slowly")
     assert not takes_something_away(
         "leech_payout_rate", "Your leech pays out over 6 seconds")
+
+
+def test_reserving_more_excuses_a_negative_value_on_one_stat_only():
+    """The fifth widening this file allows, ruled 2026-11-21 for issue #2787's
+    branch B and checked on made-up rows as the four above are. A negative
+    percentage less reserved is what "reserve ... increased" means; the same
+    words on another stat, and the stat beside words that say neither, stay
+    refused."""
+    assert takes_something_away(
+        "minion_reserve_percent_less", "Your minions reserve 25%-65% increased Fervour")
+    assert not takes_something_away(
+        "minion_reserve_reduction", "Your minions reserve 25%-65% increased Fervour")
+    assert not takes_something_away(
+        "minion_damage", "Your minions reserve 25%-65% increased Fervour")
+    assert not takes_something_away(
+        "minion_reserve_percent_less", "Your minions deal 25%-65% increased damage")
 
 
 def test_a_sentence_that_drains_takes_something_away():

@@ -44,7 +44,7 @@ const TCHAR* UCataclysmCommand::MinionReserveReductionStat =
 	TEXT("minion_reserve_reduction");
 
 // AND THE PERCENT LESS A KIND RESERVES, WHICH REPLACED THE CAP BONUSES. Issue #2787: The Swarm, "Your minions reserve
-// 12% less Fervour", and four enchantments, one of them negative.
+// 12% reduced Fervour", and four enchantments, one of them negative.
 const TCHAR* UCataclysmCommand::MinionReservePercentLessStat = TEXT("minion_reserve_percent_less");
 
 namespace

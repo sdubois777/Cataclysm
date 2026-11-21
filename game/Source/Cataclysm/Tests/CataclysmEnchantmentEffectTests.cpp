@@ -7393,11 +7393,11 @@ bool FCataclysmFervourDecayRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCountRowTest,
-	"Cataclysm.Enchantments.TheMinionReserveMoreRowMakesTheReservePercentMinus65",
+	"Cataclysm.Enchantments.TheMinionReserveIncreasedRowMakesTheReservePercentMinus65",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your minions reserve 25%-65% more Fervour", at 65. Issue #2787, branch B: the
+ * "Your minions reserve 25%-65% increased Fervour", at 65. Issue #2787, branch B: the
  * owner's ruling of 2026-11-20 turned "Minus 2-4 to your max minion count"
  * (issue #1833, the rows-only batch) into a reserve that is larger, when the
  * count caps went.
@@ -7410,7 +7410,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCountRowTest,
 bool FCataclysmMinionCountRowTest::RunTest(const FString&)
 {
 	using CataclysmRowsOnlyTest::FWorn;
-	FWorn Worn(TEXT("Negative_Your_minions_reserve_25_65_more_Fervour"), false);
+	FWorn Worn(TEXT("Negative_Your_minions_reserve_25_65_increased_Fervour"), false);
 	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 	{
 		return false;
@@ -8791,7 +8791,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeployableCapRowTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your deployables reserve 15%-30% less Fervour", at 30: the reserve percentage
+ * "Your deployables reserve 15%-30% reduced Fervour", at 30: the reserve percentage
  * 30 for a skill tagged Type.Deployable, and nothing for a summon, whose tags do
  * not name it. Issue #2787, branch B: until the owner's ruling of 2026-11-20 the
  * row was issue #1833's "Add 1-3 to your max deployable count", and the count
@@ -8811,7 +8811,7 @@ bool FCataclysmDeployableCapRowTest::RunTest(const FString&)
 	FCataclysmItem AlsoRemoved;
 	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
 	Wearer.Equipment->Equip(
-		Carrying(TEXT("Head_Helm"), TEXT("Positive_Your_deployables_reserve_15_30_less_Fervour"),
+		Carrying(TEXT("Head_Helm"), TEXT("Positive_Your_deployables_reserve_15_30_reduced_Fervour"),
 				 DrawbackWithNoEffect),
 		Removed, AlsoRemoved, Slot);
 	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
@@ -28458,15 +28458,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrapLayerThreeRowsTest,
  * built before the rows it fails eight times, and only there.
  *
  * THE TRAP-COUNT ROW IS THE TRAP-RESERVE ROW SINCE BRANCH B OF ISSUE #2787: "Your trap skills get +1-6 to max trap
- * count" became "Your traps reserve 5%-25% less Fervour" when the owner's ruling of 2026-11-20 removed the trap cap, so
- * its case asks what a trap reserves, through `UCataclysmCommand::ReserveFor` with a trap's own tags.
+ * count" became "Your traps reserve 5%-25% reduced Fervour" when the owner's ruling of 2026-11-20 removed the trap
+ * cap, so its case asks what a trap reserves, through `UCataclysmCommand::ReserveFor` with a trap's own tags.
  */
 bool FCataclysmTrapLayerThreeRowsTest::RunTest(const FString&)
 {
 	using namespace CataclysmEnchantmentEffectTest;
 	const TCHAR* Arming = TEXT("Positive_Traps_arm_30_60_faster");
 	const TCHAR* Radius = TEXT("Positive_Traps_have_30_50_increased_trigger_radius");
-	const TCHAR* Cap = TEXT("Positive_Your_traps_reserve_5_25_less_Fervour");
+	const TCHAR* Cap = TEXT("Positive_Your_traps_reserve_5_25_reduced_Fervour");
 	const TCHAR* NoExpiry = TEXT("Positive_Traps_do_not_expire_they_remain_armed_until_tr");
 	const TCHAR* Slow = TEXT("Positive_Traps_apply_a_20_35_slow_to_triggered_enemies");
 	const TCHAR* Bleed = TEXT("Positive_Traps_cause_a_bleed_of_1_2_times_normal_strength");

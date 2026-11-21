@@ -4196,7 +4196,7 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	// simply means nothing more goes down. THE ROW'S OWN FIGURE AND NO BONUS:
 	// these War rows reserve nothing yet (issue #1934, the no-War rule), so they
 	// keep the cap issue #2787 took from everything that reserves, and the cap
-	// bonus that once raised it became "Your deployables reserve 15%-30% less".
+	// bonus that once raised it became "Your deployables reserve 15%-30% reduced".
 	const int32 DeployCap = Params.MaxActive;
 	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
 	{

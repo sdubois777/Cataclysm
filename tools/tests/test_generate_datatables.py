@@ -10080,16 +10080,16 @@ class TestTheReservePercentage(GadgetRowsOnAMadeUpSheet):
 
     TAG = "Type.Trap"
     ROWS = (
-        ("Your minions reserve 15%-30% less Fervour",
+        ("Your minions reserve 15%-30% reduced Fervour",
          {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 15,
           "Value High": 30, "Required Tags": None}),
-        ("Your minions reserve 25%-65% more Fervour",
+        ("Your minions reserve 25%-65% increased Fervour",
          {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": -25,
           "Value High": -65, "Required Tags": None}),
-        ("Your deployables reserve 15%-30% less Fervour",
+        ("Your deployables reserve 15%-30% reduced Fervour",
          {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 15,
           "Value High": 30, "Required Tags": "Type.Deployable"}),
-        ("Your traps reserve 5%-25% less Fervour",
+        ("Your traps reserve 5%-25% reduced Fervour",
          {"Stat": "minion_reserve_percent_less", "Value Kind": "flat", "Value Low": 5,
           "Value High": 25, "Required Tags": "Type.Trap"}),
     )

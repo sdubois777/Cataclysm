@@ -376,10 +376,10 @@ CATACLYSM_TEST(FCataclysmTrapRowCapBonusTest,
 	using namespace CataclysmTrapRowTest;
 
 	// TWO PLAYERS 100 M APART, EACH WITH A POOL OF 25, PLACING HEAVY TRAPS 10 M APART ALONG Y: the control holds the Heavy
-	// flag alone, the other the flag and 25 on the reserve percentage requiring Type.Trap ("Your traps reserve 5%-25% less
-	// Fervour" at its top). UNTIL BRANCH B OF ISSUE #2787 this was M1's cap bonus, "Your trap skills get +1-6 to max trap
-	// count" rolled at 3, raising the one cap of five; the owner's ruling of 2026-11-20 removed the cap and made the row a
-	// smaller reserve. No enemy and no step, so nothing triggers.
+	// flag alone, the other the flag and 25 on the reserve percentage requiring Type.Trap ("Your traps reserve 5%-25%
+	// reduced Fervour" at its top). UNTIL BRANCH B OF ISSUE #2787 this was M1's cap bonus, "Your trap skills get
+	// +1-6 to max trap count" rolled at 3, raising the one cap of five; the owner's ruling of 2026-11-20 removed the
+	// cap and made the row a smaller reserve. No enemy and no step, so nothing triggers.
 	FTrapRowWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{

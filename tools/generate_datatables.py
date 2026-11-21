@@ -13130,7 +13130,7 @@ def refuse_a_trap_increase_row_the_game_cannot_read(
 #: no life span (M2 (a)). ITS SIBLING, THE TRAP CAP BONUS (M1), WENT WITH THE
 #: TRAP CAP in issue #2787's branch B, when the owner's ruling of 2026-11-20
 #: removed every count cap on what reserves the class resource; "Your trap
-#: skills get +1-6 to max trap count" became "Your traps reserve 5%-25% less
+#: skills get +1-6 to max trap count" became "Your traps reserve 5%-25% reduced
 #: Fervour", on `MINION_RESERVE_PERCENT_LESS_STAT` below.
 TRAPS_DO_NOT_EXPIRE_STAT = "traps_do_not_expire"
 

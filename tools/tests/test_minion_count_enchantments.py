@@ -22,14 +22,25 @@ multiplies damage, effective health and every rider at once. A second count
 enchantment added later would silently double the bound the document promises,
 and nothing else would notice.
 
+AND THEN THERE WERE NONE, issue #2787 branch B. The owner ruled on 2026-11-20
+that nothing which reserves the class resource has a count cap ("We shouldn't
+be putting arbitrary limits on any of those things that reserve the class
+resource, since that's limiting on its own"), and that the enchantments which
+raised a cap "Lower the reserve instead". So the merged enchantment became
+"Your minions reserve 15%-30% reduced Fervour", at the same weight and with the
+same tags, and no enchantment raises a count at all. The bound this file was
+written for is now the pool: a count enchantment added later would bring back
+a cap the owner removed, which is still what this file has to catch.
+
 WHAT IS ASSERTED HERE.
 
-    exactly one positive enchantment raises maximum minion count
-    it is the merged one, at weight 2, with the tags of both
+    no positive enchantment raises maximum minion count
+    the merged one's successor is at weight 2, with the tags of both
     the removed one is gone from the generated data
     the negative enchantment that shared its spreadsheet row survived, because
       the two tables sit side by side and a row deletion would have taken it
-    the design document states the +2 to +4 bound and no longer says "two"
+    the design document says count has no cap, and no longer states the +2 to
+      +4 bound or says "two"
 """
 
 from __future__ import annotations
@@ -45,10 +56,16 @@ GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 POSITIVE = REPO_ROOT / "game" / "Data" / "EnchantmentsPositive.csv"
 NEGATIVE = REPO_ROOT / "game" / "Data" / "EnchantmentsNegative.csv"
 
-#: The merged enchantment, exactly as the workbook spells it.
+#: The merged enchantment, as the workbook spelled it until issue #2787. Named
+#: so that putting it back fails: `RAISES_COUNT` matches it.
 MERGED = "Add 2-4 to your maximum minion count"
 
-#: Its weight. Lower is rarer, so the stronger of the two took the rarer tier.
+#: What it became when the owner's ruling of 2026-11-20 removed the count caps,
+#: exactly as the workbook spells it.
+SUCCESSOR = "Your minions reserve 15%-30% reduced Fervour"
+
+#: Its weight, kept through both changes. Lower is rarer, so the stronger of the
+#: two took the rarer tier in 2026-08, and the reserve row kept it.
 MERGED_WEIGHT = 2.0
 
 #: The one that was removed. Named so that putting it back fails.
@@ -101,36 +118,50 @@ def document() -> str:
 # One enchantment, and the bound that follows from that
 # --------------------------------------------------------------------------
 
-def test_exactly_one_enchantment_raises_minion_count(positives) -> None:
-    """THE BOUND IS THE COUNT. Each enchantment appears at most once across all
-    equipped gear, so however many of these exist is how many a player can
-    stack. Adding a second silently doubles what the design document promises.
-    """
+def test_no_enchantment_raises_minion_count(positives) -> None:
+    """NO COUNT HAS A CAP, so nothing raises one. The owner's ruling of
+    2026-11-20 removed every count cap on what reserves the class resource and
+    turned the count enchantments into reserve enchantments. A count
+    enchantment found here would bring a cap back. Issue #2787.
+
+    THE CONTROL IS `MERGED`, which this pattern matches: see
+    `test_the_pattern_still_matches_what_it_is_for` below."""
     raising = sorted(r["Effect"] for r in positives
                      if RAISES_COUNT.search(r["Effect"]))
-    assert raising == [MERGED], (
+    assert raising == [], (
         f"the positive enchantment table has {len(raising)} enchantment(s) "
-        f"raising maximum minion count: {raising}. There is meant to be exactly "
-        f"one, {MERGED!r}, because each enchantment can appear once across all "
-        f"gear and so the number of them IS the bound. The design document "
-        f"states +2 to +4 on that basis. Issue #339.")
+        f"raising maximum minion count: {raising}. There are meant to be none: "
+        f"the owner's ruling of 2026-11-20 removed every count cap on what "
+        f"reserves the class resource, so a count enchantment raises a cap "
+        f"that does not exist. Issue #2787.")
 
 
-def test_the_surviving_one_is_the_stronger_at_the_rarer_weight(
+def test_the_pattern_still_matches_what_it_is_for() -> None:
+    """The control for the test above: an empty list passes on a pattern that
+    matches nothing, so it is shown to match the two wordings it was written
+    for, and not the reserve sentence that replaced them."""
+    assert RAISES_COUNT.search(MERGED)
+    assert RAISES_COUNT.search(REMOVED)
+    assert not RAISES_COUNT.search(SUCCESSOR)
+
+
+def test_the_successor_kept_the_rarer_weight_and_both_tags(
         positives) -> None:
-    """The inversion issue #339 was raised for. A lower weight is rarer, so the
-    +2 to +4 grant belongs at weight 2 and not at weight 4."""
-    row = next((r for r in positives if r["Effect"] == MERGED), None)
+    """The inversion issue #339 was raised for put the stronger grant at weight
+    2. The reserve row that replaced it in issue #2787 changed its words and
+    not its weight or its tags, as the coordinating session ruled ("their
+    weights do not change")."""
+    row = next((r for r in positives if r["Effect"] == SUCCESSOR), None)
     assert row is not None, (
-        f"the positive enchantment table no longer has {MERGED!r}. It is the "
-        f"merged minion count enchantment. Issue #339.")
+        f"the positive enchantment table has no {SUCCESSOR!r}. It is what the "
+        f"merged minion count enchantment became. Issues #339 and #2787.")
     assert float(row["Weight"]) == MERGED_WEIGHT, (
-        f"{MERGED!r} is weight {row['Weight']}, not {MERGED_WEIGHT}. A lower "
-        f"weight is rarer, and the point of the merge was that the stronger "
-        f"grant sits at the rarer tier. Issue #339.")
+        f"{SUCCESSOR!r} is weight {row['Weight']}, not {MERGED_WEIGHT}. The "
+        f"count enchantment it replaced sat at the rarer weight, and issue "
+        f"#2787 changed its words only.")
     for tag in ("Type.Summon", "Type.Minion"):
         assert tag in row["Tags"], (
-            f"{MERGED!r} no longer carries the {tag} tag. The merged "
+            f"{SUCCESSOR!r} no longer carries the {tag} tag. The merged "
             f"enchantment took the tags of both, and the removed one supplied "
             f"Type.Summon. Issue #339.")
 
@@ -166,15 +197,18 @@ def test_the_negative_sharing_its_spreadsheet_row_survived(
 # The design document agrees with the data
 # --------------------------------------------------------------------------
 
-def test_the_document_states_the_bound_that_follows(document) -> None:
-    """The number a reader takes away, and it changed. Two enchantments bounded
-    gear-granted count at +3 to +6; one bounds it at +2 to +4."""
-    assert ("gear contributes between +2 and +4 minions and can never "
-            "contribute more") in document, (
-        "the minion section of the design document does not state what gear "
-        "can contribute to minion count. It is +2 to +4, because one "
-        "enchantment raises it and each enchantment appears once across all "
-        "gear. Issue #339.")
+def test_the_document_says_count_has_no_cap(document) -> None:
+    """The rule a reader takes away, and it changed twice. Two enchantments
+    bounded gear-granted count at +3 to +6; one bounded it at +2 to +4; since
+    issue #2787 nothing caps it and the reserve is the limit."""
+    assert "Minion count has no cap" in document, (
+        "the minion section of the design document does not say minion count "
+        "has no cap. The owner's ruling of 2026-11-20 removed every count cap "
+        "on what reserves the class resource. Issue #2787.")
+    assert "gear contributes between +2 and +4 minions" not in document, (
+        "the design document still states the +2 to +4 bound gear placed on "
+        "minion count. The enchantment that set it now lowers the reserve, "
+        "and no count has a cap. Issue #2787.")
 
 
 def test_the_document_no_longer_says_two_enchantments_raise_it(

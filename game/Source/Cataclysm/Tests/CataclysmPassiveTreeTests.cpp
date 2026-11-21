@@ -11030,7 +11030,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
  * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718, and issue
  * #2787's branch B.
  *
- * "Your minions reserve 12% less Fervour."
+ * "Your minions reserve 12% reduced Fervour."
  *
  * IT WAS "Each skill that limits how many of its minions may be active allows 2
  * more", flat 2 on `minion_cap_bonus`, until the owner's ruling of 2026-11-20

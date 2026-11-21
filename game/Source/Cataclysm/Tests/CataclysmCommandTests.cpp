@@ -3625,7 +3625,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShippedDeployableCapsTest,
  * what reserves the class resource, and these reserve nothing until issue #1934
  * reaches the War tree. The half of this test where a cap bonus of 3 left three
  * turrets went with the bonus: "Add 1-3 to your max deployable count" became
- * "Your deployables reserve 15%-30% less Fervour".
+ * "Your deployables reserve 15%-30% reduced Fervour".
  */
 bool FCataclysmShippedDeployableCapsTest::RunTest(const FString&)
 {
