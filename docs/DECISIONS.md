@@ -17,7 +17,12 @@ new. Issue [#2790](https://github.com/sdubois777/Cataclysm/issues/2790).
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Its window comes after the coordinating session's rebuild of the main checkout.
+- **ITS FIRST WINDOW FAILED ONE OF ITS OWN TWO NEW TESTS, AND THE FAULT WAS IN THE TEST.** Window tree-2790-w1 at
+  `fad5d7427`: `TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk` failed five assertions, every other test passed, and no
+  proof ran. The guide did what the change says -- it walked at 368, which is 0.8 of the 460 the test's player walked
+  at -- but the test's player is a Ravager, whose class walk is 4.6 m/s, and the test moved the player's speed by setting
+  the movement speed attribute's base, which the player's walk does not read. The test is corrected; the section on the
+  windows has the lines. **The second window has not run.**
 - **THE OWNER'S REPORT**, from the play-test of 2026-11-20, verbatim: "the demonic guide dungeon mechanic is wonky,
   that dude is SPRINTING. It's impossible to keep up with him." The owner's log (`game/Saved/Logs/Cataclysm.log` in the
   main checkout) shows the rule on two dungeons, with the line "Demonic Guide: CataclysmImpCharacter_130 at floor 1's
@@ -90,8 +95,11 @@ the share.
 ### Tests
 
 - **`Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk`**, new: the guide is raised at
-  320; with the player's movement speed attribute at 4, 5 and 2 m/s it reads 320, 400 and 160. Control: the same Imp,
-  no longer the guide, walks at its own 650. Prints "GUIDE PACE".
+  320, 0.8 of the player's default 400. After the first step it walks at 0.8 of the test player's class walk, which is
+  not 400 (a Ravager's 460). With the player's walk then set through the movement speed stat's inputs, as the class and
+  gear set it, at 5 and 2 m/s, the player reads 500 and 200 after the step and the guide 400 and 160. Control: the same
+  Imp, no longer the guide, walks at its own 650. Prints "GUIDE PACE". Rewritten after window tree-2790-w1; see the
+  section on the windows.
 - **`Cataclysm.DungeonModifierEffects.TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain`**, new: it waits at
   15.1 m, still waits at 14.9 m and at 12.1 m, walks on at 11.9 m, and the brain then returns `Guiding`. Control:
   having walked on, it does not wait at 14.9 m. Prints "GUIDE WAIT".
@@ -111,7 +119,9 @@ Sent to and accepted by the coordinating session on 2026-11-20. The branch was r
   and deleted, 0 left behind". The first registration was made from window reserves-a-w2 at `e104ab9dc` (5053) as
   "#2791's measured total + 2".
 - **The whole suite: 5056 performed, 5056 succeeded, 0 failed**: the base's 5054 and the 2 new tests; 47 skipped
-  halves and 852 test saves, the base's; none left behind.
+  halves, the base's; **854 test saves written and deleted, none left behind**. This was first registered as 852, the
+  base's, which was wrong: each of the two new tests builds a dungeon floor, and the floor writes one save. Window
+  tree-2790-w1 printed "Test saves: 854 written and deleted, 0 left behind".
 - **Each group alone**, counted in thrall-imps-w1's log on "Test Completed. Result={" lines and by distinct path, which
   agree: `Cataclysm.DungeonModifierEffects.` 773 -> 775; `Cataclysm.AI.` 51, `Cataclysm.Brute.` 23,
   `Cataclysm.Enemy.` 19 and `Cataclysm.GroundDown.` 3, unchanged. #2791 added its test to `Cataclysm.Gatekeeper.`,
@@ -130,10 +140,13 @@ Sent to and accepted by the coordinating session on 2026-11-20. The branch was r
 
   | Proof | Break | Test that fails | Assertions |
   |---|---|---|---|
-  | F1 | the step sets no walk | `...AtFourFifthsOfThePlayersWalk` | 2 |
+  | F1 | the step sets no walk | `...AtFourFifthsOfThePlayersWalk` | 3 |
   | F2 | the step gives the guide 1.0 of the player's walk | `...AtFourFifthsOfThePlayersWalk` | 3 |
   | F3 | `RefreshWalkSpeed`'s guide branch is never taken | `...AtFourFifthsOfThePlayersWalk` | 4 |
   | F4 | the "until back inside its chain" term is dropped | `...WaitingUntilThePlayerIsBackInsideItsChain` | 2 |
+
+  F1 was registered at 2 assertions and moved to 3 when the pace test was rewritten after window tree-2790-w1: the test
+  now also checks the guide after the first step, at 0.8 of the class walk, which a guide left at 320 fails as well.
 
 ### The five Python guards, proved in phase 1
 
@@ -151,9 +164,38 @@ out (235 tests: the new file and its two neighbours):
 The full Python suite at the phase 1 commit `8667afc62`: "7804 passed, 9 skipped", JUnit 7813 tests, 0 failures, 0
 errors, 9 skipped; ruff "All checks passed!".
 
-### The window
+### The windows
 
-Not run yet.
+**tree-2790-w1, at `fad5d7427` on 2026-11-20, 18:31 to 19:02. FAILED, on the test.**
+
+- Pre-checks "ALL PASS"; the five groups' recount MATCH; the version sweep "28 lines stating a version; NO MISMATCH";
+  the build "target already up to date, 0 actions, nothing compiled" (the three builds of 2fb21d397 had compiled the
+  same `game/`).
+- `Cataclysm.DungeonModifierEffects.` alone: "775 tests performed, 774 succeeded, 1 failed:
+  TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk". `AI.` 51, `Brute.` 23, `Enemy.` 19 and `GroundDown.` 3 passed.
+- The whole suite: "5056 tests performed, 5055 succeeded, 1 failed: TheGuideKeepsPaceAtFourFifthsOfThePlayersWalk", 47
+  skipped halves, "Test saves: 854 written and deleted, 0 left behind", "Declared: 5056 tests in the tree at fad5d7427;
+  5056 performed, gap 0".
+- Python "7817 passed, 9 skipped in 321.77s", JUnit 7826 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks
+  passed!".
+- "STOPPED before the proofs", as registered; the lock released.
+- The test printed "GUIDE PACE: raised at 320; the player at 460 gives 368, at 460 gives 368, at 2 m/s gives 368; not a
+  guide 650". The failed lines included "Expected 'set-up: the player walks at 400' to be 400.000000, but it was
+  460.000000" and "Expected 'a faster player has a faster guide: 400' to be 400.000000, but it was 368.000000".
+  `TheGuideKeepsPaceWaitingUntilThePlayerIsBackInsideItsChain` passed: "GUIDE WAIT: 15.1 m waits, 14.9 m waits, 12.1 m
+  waits, 11.9 m walks; then 14.9 m walks".
+
+**THE CAUSE, IN THE TEST.** The guide read the player's walk at every step and walked at 0.8 of it, as built. The
+test's player (`FPossessedPlayer`, on a dungeon the game mode started) is a Ravager, whose `movement_speed` in
+`game/Data/ClassStats.csv` is 4.6, so it walked at 460 and not the default 400. And the test set the player's speed with
+`SetNumericAttributeBase` on the movement speed attribute, which moved nothing:
+`ACataclysmPlayerCharacter::RefreshMovementSpeed` asks the stat pipeline (`StatForSkill("movement_speed")`), whose
+inputs `UCataclysmPlayerClassStats::ApplyTo` writes with the class's own base, and the attribute is only its fallback
+for a stat with no inputs. The test now reads the class walk first and checks the guide against 0.8 of it, then sets
+the player's walk through `SetStatInputs` and `RefreshMovementSpeed`, and reads the player's walk again after each step
+so a step that put the class speed back would fail a set-up line. The guide's code is unchanged.
+
+**tree-2790-w2.** Not run yet.
 
 ---
 
