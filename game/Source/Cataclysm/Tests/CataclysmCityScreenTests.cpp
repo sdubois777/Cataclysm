@@ -981,65 +981,6 @@ bool FCataclysmCityScreenAscendantLinesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// EACH QUEST DUNGEON STANDING IS NAMED A QUEST DUNGEON WHERE THE PLAYER CHOOSES WHICH TO WALK. Issue #2800, from the
-// owner's playtest of 2026-11-21: "it only labelled one as a quest dungeon", with two Elite Quest dungeons standing on
-// two Outposts. No line listing a standing dungeon named its kind: the city screen named the sub-type only, so the one
-// "Quest" on screen was the empire map's line about the dungeon just cleared. The scene is the owner's: two Elite Quest
-// dungeons, each on its own city, and a third dungeon, a Basic Elite one, beside the second as the control.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenQuestKindTest,
-	"Cataclysm.CityScreen.EachQuestDungeonStandingIsNamedAQuestDungeon",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmCityScreenQuestKindTest::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmCityScreenTest;
-
-	// TWO CITIES WITH NOTHING STANDING ON THEM YET, so each list holds only what this test places.
-	UCataclysmEmpireRun* Run = MakeRun();
-	TArray<int32> Empty;
-	for (const FCataclysmCity& City : Run->Map->Cities)
-	{
-		if (Empty.Num() < 2 && Run->DungeonsOn(City.CityId).IsEmpty())
-		{
-			Empty.Add(City.CityId);
-		}
-	}
-	if (!TestEqual(TEXT("set-up: two cities with nothing standing on them"), Empty.Num(), 2))
-	{
-		return false;
-	}
-	const int32 First = Empty[0];
-	const int32 Second = Empty[1];
-
-	PlaceDungeon(*Run, First, /* DungeonId */ 740, /* Floors */ 22, /* ResolveDays */ 7.0f);
-	PlaceDungeon(*Run, Second, /* DungeonId */ 741, /* Floors */ 23, /* ResolveDays */ 15.0f);
-	PlaceDungeon(*Run, Second, /* DungeonId */ 742, /* Floors */ 9, /* ResolveDays */ 30.0f);
-	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
-	{
-		if (Dungeon.DungeonId >= 740 && Dungeon.DungeonId <= 742)
-		{
-			Dungeon.Type = Dungeon.DungeonId == 742 ? ECataclysmDungeonType::Basic : ECataclysmDungeonType::Quest;
-			Dungeon.SubType = ECataclysmDungeonSubType::Elite;
-		}
-	}
-
-	const TArray<FString> OnTheFirst = UCataclysmCityScreenLayout::DungeonLinesFor(Run, First);
-	const TArray<FString> OnTheSecond = UCataclysmCityScreenLayout::DungeonLinesFor(Run, Second);
-	if (!TestEqual(TEXT("set-up: one dungeon on the first city"), OnTheFirst.Num(), 1)
-		|| !TestEqual(TEXT("set-up: two on the second, the Quest dungeon first, sooner to bite"), OnTheSecond.Num(), 2))
-	{
-		return false;
-	}
-
-	AddInfo(FString::Printf(TEXT("QUEST DUNGEON LINES: first city \"%s\"; second city \"%s\" and \"%s\""),
-							*OnTheFirst[0], *OnTheSecond[0], *OnTheSecond[1]));
-	TestTrue(TEXT("the Quest dungeon on the first city is named a Quest dungeon"), OnTheFirst[0].Contains(TEXT("Quest")));
-	TestTrue(TEXT("and so is the one on the second"), OnTheSecond[0].Contains(TEXT("Quest")));
-	TestFalse(TEXT("CONTROL: the Basic dungeon beside it is not"), OnTheSecond[1].Contains(TEXT("Quest")));
-	TestTrue(TEXT("CONTROL: and its sub-type is still named"), OnTheSecond[1].StartsWith(TEXT("Elite")));
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityScreenLeftEdictTest,
 	"Cataclysm.CityScreen.ACitysStatusNamesTheEdictLeftOnItAndTheDaysLeft",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

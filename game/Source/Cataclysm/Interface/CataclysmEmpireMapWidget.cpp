@@ -503,11 +503,14 @@ void UCataclysmEmpireMapWidget::WriteStatus()
 		const FString Owed = UCataclysmEmpireMapLayout::DaysOwedLine(Run);
 		const FString Bank = UCataclysmEmpireMapLayout::EmpirePointsLineIn(this, Run);
 		const FString Gold = UCataclysmEmpireMapLayout::GoldLineIn(this);
+		//
+		// AND HOW MANY OF THE DUNGEONS STANDING ARE QUEST DUNGEONS, in brackets after their count, since issue #2800:
+		// "2 dungeons standing (2 Quest)". See `UCataclysmEmpireMapLayout::StandingPart`.
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Day %d%s   %d cities lost of 24   %d dungeon%s standing   %s%s%s%s%s"),
+			TEXT("Day %d%s   %d cities lost of 24   %s   %s%s%s%s%s"),
 			Run->Day(), Owed.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Owed),
-			Run->Map->FallenCityCount(), Run->DungeonCount(),
-			Run->DungeonCount() == 1 ? TEXT("") : TEXT("s"),
+			Run->Map->FallenCityCount(),
+			*UCataclysmEmpireMapLayout::StandingPart(Run),
 			*UCataclysmEmpireMapLayout::ProgressLine(Run),
 			Bank.IsEmpty() ? TEXT("") : TEXT("   "), *Bank,
 			Gold.IsEmpty() ? TEXT("") : TEXT("   "), *Gold)));

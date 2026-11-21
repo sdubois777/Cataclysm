@@ -52,7 +52,8 @@ capital with the days away shown, a second walk ended by a death, and a Continue
 ### 3. The capital opens, with the empire map
 
 - **On screen:** a nearly empty level, and the empire map open over it. The map's status line begins "Day 0", says
-  "12 dungeons standing", and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
+  "12 dungeons standing", with how many of them are Quest dungeons in brackets when any is, such as "(2 Quest)"
+  (issue #2800), and ends with the gold balance, "0 gold" for a new lethality mode. Each city's box shows its tier and the share of its defence left, "Outpost 100%".
   **M** closes the map and opens it again.
 - **The new character is level 1, with no experience.** Close the map with **M** and look at the bottom-left corner:
   the lowest bar, under health, is the level and experience bar. It reads "Level 1: 0.0%" and is empty. Health, mana
