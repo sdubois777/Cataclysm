@@ -112,6 +112,20 @@ Row 29 of the workbook's Gems sheet, below Of Embers: "Of The Scholar", "Increas
 Area's) formats. The sheet's Excel table, `Table4`, still covers `A1:J26`, as it did before Of Wasting and Of Embers
 were added in rows 27 and 28; the generator reads every row and does not read the table.
 
+**Every gem row has this layout.** The sheet's header is "Column 1", "Everyday Gemstone", "Quality Gemstone" to
+"Cataclysmic Gemstone", "Type": the "Everyday Gemstone" column holds the effect text, and no column holds the Everyday
+value as a number. Checked over all 28 rows on 2026-11-21: each has text with a percentage in column B, seven numbers
+in columns C to I and a type in column J, and in `game/Data/Gems.csv` each row's Everyday value equals the percentage
+in its text. Of Area, row 23, beside the new row:
+
+| Row | A | B | C to I | J |
+|---|---|---|---|---|
+| 23 | Of Area | Increases AoE by 10% | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9 | Utility |
+| 29 | Of The Scholar | Increases skill experience gain by 10% | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9 | Utility |
+
+Generated: `Gem_Of_Area,Of Area,Increases AoE by 10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9` and
+`Gem_Of_The_Scholar,Of The Scholar,Increases skill experience gain by 10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9`.
+
 **The sweep of what the row moves**, by the gem file's name, the sheet's name, the row type and the old count 27, over
 `game/Source/**/Tests`, `tools/tests`, `sim/tests` and `docs/README.md`: three pins held 27 and now hold 28,
 `CHECK_TABLE(FCataclysmGemRow, "Gems.csv", ...)`, `test_the_gem_count` and the Gems line of `docs/README.md`'s sheet
