@@ -286,8 +286,10 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     figures move with it. Gold gained its system in #2742: slice 6 of #2741
     (2026-11-20) split the 303 points "gold" and "upgrade cost" held into the
     reason each node really waits on: 189 of them the gold rules slice 6 builds,
-    92 of those built in slice 6a, 42 in 6b and 47 in 6c; Tax Collection's 8
-    wait on the owner since 6c."""
+    92 of those built in slice 6a, 42 in 6b and 47 in 6c. The owner ruled on
+    Tax Collection, Treasury Guard, Global Credit and Sovereign Loans on
+    2026-11-20: Tax Collection's 8 and Treasury Guard's 10 wait on their gold
+    rules, and Global Credit's and Sovereign Loans' 10 on a gold debt."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -303,7 +305,7 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
 
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 181,
-        "treasurer upgrade": 17, "gold ruling": 28,
+        "treasurer upgrade": 17, "gold rules": 18, "gold debt": 10,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
         "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
@@ -345,10 +347,11 @@ def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     ("Commercial Hubs", "treasurer upgrade"),  # R1
     ("Trade Routes", "treasurer upgrade"),    # R3
     ("The Golden Touch", "treasurer upgrade"),  # R4
-    ("Treasury Guard", "gold ruling"),        # R7: the owner's question
-    ("Global Credit", "gold ruling"),         # R8
-    ("Sovereign Loans", "gold ruling"),       # R9
-    ("Tax Collection", "gold ruling"),        # B8: its payout's size, to the owner
+    # The owner's rulings of 2026-11-20, made after slice 6c was written.
+    ("Treasury Guard", "gold rules"),         # R7: the cities' damage
+    ("Global Credit", "gold debt"),           # R8: debt only through these two
+    ("Sovereign Loans", "gold debt"),         # R9
+    ("Tax Collection", "gold rules"),         # B8: built as written
 ])
 def test_a_ruled_node_is_refused_for_its_reason(name, system) -> None:
     assert gen.EMPIRE_TREE_REFUSED.get(name) == system
