@@ -322,11 +322,11 @@ its move of the caster (`CataclysmSkillTemplates.h` and `.cpp`). Tests: five, ne
 
 ### SAID FIRST
 
-- **COMPILED AND RUN ONCE, AND THE FIRST WINDOW FAILED; THE SECOND IS REGISTERED BELOW.** Window vesselstep-w1 failed
-  three of the four tests then written, and no other test. The exchange worked in it. The two trade tests failed only
-  because the test stood the player inside the floor's exit stairs, which a diagnostic press found; the wall test
-  failed because floor 2 has no single rock cell between two floor cells. Both are now changed in the tests, and each
-  body's feet now go where the other's were. See the sections after "Python, measured".
+- **WINDOW VESSELSTEP-W2 PASSED AT `bff2772d4`, WITH ALL FIVE PROOFS PROVED; THE FIRST WINDOW FAILED.** Window
+  vesselstep-w1 failed three of the four tests then written, and no other test. The exchange worked in it. The two trade
+  tests failed only because the test stood the player inside the floor's exit stairs, which a diagnostic press found;
+  the wall test failed because floor 2 has no single rock cell between two floor cells. Both are now changed in the
+  tests, and each body's feet now go where the other's were. See the sections after "Python, measured".
 - **THE CAUSE, BY READING.** Each body was moved by `UCataclysmMovement::MoveWithoutSticking`, a SWEPT move, the
   creature first. The player's capsule (radius 42 cm) and a summoned imp's (`ACataclysmMinion`, radius 30 cm) are both
   pawns, and pawns block pawns. So the imp's move toward the player's spot stopped when the two capsules touched, 72 cm
@@ -763,6 +763,51 @@ worktree. Window vesselstep-w1 measured 5060, 858 and 26 on it, which is that ba
 
 **The window scripts** are in `.claude/windows/` in this session's worktree: `compile_vesselstep.py`,
 `run_vesselstep.py` (lock `vesselstep-w2`), `prove_vesselstep.py` and `prechecks_vesselstep.py`.
+
+### Window vesselstep-w2, 2026-11-20, 21:45 to 22:16, at `bff2772d4` on `63d4cbd4c`: PASSED, AND P1 TO P5 PROVED
+
+Output: `.claude/windows/vesselstep_w2_run.out` in this session's worktree, with each run's engine log and both halves
+of each proof's log beside it. The three compiles before it, 21:38 to 21:44, each succeeded with no warning or error
+line; the second compiled `CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp` and
+`CataclysmDungeonModifierEffectsTests.cpp` alone, and named `CataclysmCommand.cpp` excluded from the unity file
+without recompiling it: that file is unchanged since `8a0805616`, whose second compile built it alone with no warning.
+
+| Step | Read | Registered |
+|---|---|---|
+| Build | "Succeeded - target already up to date, 0 actions, nothing compiled" | succeeds |
+| `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` alone | 1 of 1 | 1 of 1 |
+| `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` alone | 1 of 1 | 1 of 1 |
+| `VesselstepLeavesBothEndsOfTheTradeBurning` alone | 1 of 1 | 1 of 1 |
+| `VesselstepDoesNotTradeWithAnImpBehindAWall` alone | 1 of 1 | 1 of 1 |
+| `VesselstepPutsEachOnTheGroundTheOtherStoodOn` alone | 1 of 1 | 1 of 1 |
+| `AVesselstepTradesPlacesWithACommandedCreature` alone | 1 of 1 | 1 of 1 |
+| `Cataclysm.Command.` | 27 performed, 27 succeeded | 27 of 27 |
+| Whole suite | 5061 performed, 5061 succeeded, 0 failed; 47 skipped halves; "Declared: 5061 tests in the tree at bff2772d4; 5061 performed, gap 0" | 5061 of 5061, 47 |
+| Test saves | "859 written and deleted, 0 left behind"; each of the five new tests wrote 1, accounting for the whole rise of 5 from 854 | 859, 0 |
+| Python | "7817 passed, 9 skipped in 323.45s"; JUnit tests 7826, failures 0, errors 0, skipped 9 | passes |
+| ruff | "All checks passed!" | passes |
+
+The tests' own lines, from the whole suite:
+
+- "VESSELSTEP ON A FLOOR: the player ended 0.0 cm from where the imp stood and 0.0 cm above the floor; the imp ended
+  0.0 cm from where the player stood and 0.0 cm above the floor" (each trade test).
+- "VESSELSTEP ON THE STAIRS: the player ended 0.0 cm from where the imp stood and 0.0 cm above the floor; the imp
+  ended 0.0 cm from where the player stood and 60.0 cm above the floor, on stairs 60.0 cm high".
+- "VESSELSTEP ON A FLOOR: 1 burning ground within 1 m of where the player stood, 1 of where the imp stood, 2 on the
+  floor".
+
+**The proofs**, each with the prefix `Cataclysm.Command.Vesselstep`, every anchor matching once, the source hash the
+same after each:
+
+| Proof | Broken half | Registered | Restored |
+|---|---|---|---|
+| P1 | 5 performed, 2 succeeded, 3 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` ("and the imp is where the player stood, within 1 cm: 461.8 cm"), `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` (73.8 cm) and `VesselstepPutsEachOnTheGroundTheOtherStoodOn` (123.1 cm, and 51.0 cm above the floor on the 60 cm stairs) | 5, 2, 3, the same three | 5 of 5 |
+| P2 | 5 performed, 1 succeeded, 4 failed: `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` ("the player is where the imp stood, within 1 cm: 800.0 cm"); and, not predicted, `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood` (800.0 cm), `VesselstepPutsEachOnTheGroundTheOtherStoodOn` (801.7 cm) and `VesselstepLeavesBothEndsOfTheTradeBurning` ("one burning ground where the player stood ... it was 2" and "and one where the imp stood ... it was 0"): the player's sweep began inside the imp's capsule, which had just been put where the player stood, and the player did not move, so the second burning ground was left at its start | the named test fails; the other four reported | 5 of 5 |
+| P3 | 5 performed, 2 succeeded, 3 failed: `VesselstepPutsThePlayerAndTheImpEachWhereTheOtherStood`, and, reported, `VesselstepTradesPlacesEvenWithACreatureStandingBetweenThem` and `VesselstepPutsEachOnTheGroundTheOtherStoodOn`, each with both bodies 72.0 cm from the other's spot: 42 plus 30, the two capsules' radii, so each fit moved its spot off the other body | the named test fails; the other four reported | 5 of 5 |
+| P4 | 5 performed, 4 succeeded, 1 failed: `VesselstepDoesNotTradeWithAnImpBehindAWall` | 5, 4, 1, the same | 5 of 5 |
+| P5 | 5 performed, 4 succeeded, 1 failed: `VesselstepPutsEachOnTheGroundTheOtherStoodOn` ("the imp stands on top of the stairs, 0 to 5 cm above them: 120.0 cm above the floor" and "and the player stands on the open floor, 0 to 5 cm above it: 60.0 cm") | 5, 4, 1, the same; heights not predicted | 5 of 5 |
+
+The lock was released when the window ended.
 
 ---
 
