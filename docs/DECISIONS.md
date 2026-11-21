@@ -26,8 +26,16 @@ in `game/Source/Cataclysm/Tests/CataclysmPlayerCopiesTests.cpp`. Issue
   So **the body stands above the capsule's top by up to 32 cm**, the difference between the player's 192 cm capsule
   and the creature's 160 cm one: the collision is the creature's and the look is the player's. The Mannequin's own
   height was not measured; without the editor, the 32 cm is the capsules' difference, not the body's.
-- **NOT IN THIS CHANGE, each by a ruling:** no tint to tell a copy from the player (J2: the coordinating session is
-  asking the owner whether the copies should be told apart, and how); no arm swing on a copy's blows (J3: issue
+- **A DARK RED TINT, THE OWNER'S RULING J2 OF 2026-11-21, VERBATIM:** "give them a dark red tint", for the Corrupted
+  Stalker and the Worn Residue double. See "The tint" below.
+- **THE TINT IS AN INTERIM.** The owner revised it the same day, verbatim: "it should probably be like a glowing red
+  aura particle effect sort of deal. Since eventually we'll have gear equipped", since worn gear will later cover the
+  body. Nothing in the project draws a lasting glow around a body today: the five Niagara systems in git are a
+  one-shot cast burst, a projectile, a swing arc, a hit burst and the ground ring that marks burning ground, which a
+  player would read as a patch that deals damage. So the aura needs a new system and the editor, and by the
+  coordinating session's ruling the tint ships here as the interim and the aura is issue
+  [#2813](https://github.com/sdubois777/Cataclysm/issues/2813).
+- **NOT IN THIS CHANGE, by a ruling:** no arm swing on a copy's blows (J3: issue
   [#2811](https://github.com/sdubois777/Cataclysm/issues/2811)).
 
 ### What the owner means
@@ -90,6 +98,24 @@ The new group `Cataclysm.PlayerCopies.`, four, written before the change:
 | `AStalkerHoldsTheWeaponItsEntryWears` | Famine's entry: the Sword's base in the right hand, nothing in the left; the meshes where the pack is | both hands empty before it wears the entry |
 | `ADoubleHoldsTheWeaponsThePlayersBuildWears` | a build of a Sword and a Dagger: the Sword right and the Dagger left; the meshes where the pack is | both hands empty before it wears the build |
 
+### The tint
+
+- **NO EDITOR NEEDED.** `M_Mannequin`, the Mannequin's material, declares a colour parameter named `Paint Tint`, and
+  `MI_Manny_01_New`, the body's instance, sets it; both names were read out of the assets' name tables, which git
+  carries. The one colour `MI_Manny_01_New` stores is (0.9219, 0.9219, 0.9219, 1), a light grey; that it is
+  `Paint Tint`'s value is read from the bytes and not confirmed by the editor, and the player control in the tests
+  is what checks the player's body does not read the dark red.
+- **HOW:** `ACataclysmCorruptedStalkerCharacter::WearTheCopiesTint`, called by its `ResolveBody` once the body is on,
+  gives every material slot of the body a dynamic material instance of its own and writes the tint to `Paint
+  Tint`. The double inherits it. **The player's body is untouched**: the tint is in the copies' dressing and not in
+  the five steps the player shares with them.
+- **THE COLOUR, A JUDGEMENT:** linear (0.30, 0.02, 0.02), which displays as about sRGB (149, 39, 39), a deep red.
+  Dark enough to read as dark red, light enough to stay visible on a dark dungeon floor, and far from the player's
+  light grey. The dungeon floors' own colours were not measured; the owner judges it in play.
+- **TESTS:** the two body tests now also check that every slot of the copy's body is a dynamic instance reading the
+  dark red, and, as the control, that a player character spawned beside it has no dynamic instance and no slot
+  reading the dark red. No test is added, so the counts below are unchanged.
+
 ### Registered for the window
 
 From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
@@ -106,6 +132,7 @@ Proofs, each predicted to fail exactly the named tests with the break in and pas
 | PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | `AStalkerWears...` and `AWornResidueDoubleWears...` |
 | PC2 | `WearTheBuild` does not draw its hands | `AStalkerHoldsTheWeaponItsEntryWears` |
 | PC3 | `WearThePlayersBuild` does not draw its hands | `ADoubleHoldsTheWeaponsThePlayersBuildWears` |
+| PT1 | `ResolveBody` does not call `WearTheCopiesTint` | `AStalkerWears...` and `AWornResidueDoubleWears...`, on their tint assertions |
 
 ---
 

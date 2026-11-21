@@ -22,6 +22,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Items/CataclysmWeaponMeshes.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -147,6 +148,26 @@ ACataclysmCorruptedStalkerCharacter::ACataclysmCorruptedStalkerCharacter()
 														  UCataclysmWeaponMeshes::LeftHandSocket);
 }
 
+const FLinearColor ACataclysmCorruptedStalkerCharacter::CopyTint(0.30f, 0.02f, 0.02f, 1.0f);
+const FName ACataclysmCorruptedStalkerCharacter::CopyTintParameter(TEXT("Paint Tint"));
+
+void ACataclysmCorruptedStalkerCharacter::WearTheCopiesTint()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return;
+	}
+	// EVERY SLOT, EACH ITS OWN INSTANCE, so one copy's tint is never written to an asset another body shares.
+	for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
+	{
+		if (UMaterialInstanceDynamic* Instance = MeshComponent->CreateDynamicMaterialInstance(Slot))
+		{
+			Instance->SetVectorParameterValue(CopyTintParameter, CopyTint);
+		}
+	}
+}
+
 void ACataclysmCorruptedStalkerCharacter::PreRegisterAllComponents()
 {
 	Super::PreRegisterAllComponents();
@@ -193,6 +214,9 @@ bool ACataclysmCorruptedStalkerCharacter::ResolveBody()
 	{
 		PlaceholderBody->SetVisibility(false);
 	}
+
+	// AND THE COPIES' DARK RED, the owner's ruling of 2026-11-21: "give them a dark red tint". See `CopyTint`.
+	WearTheCopiesTint();
 	return true;
 }
 

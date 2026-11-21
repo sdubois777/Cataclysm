@@ -21,7 +21,10 @@
 #include "Engine/World.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponMeshes.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/SoftObjectPath.h"
@@ -126,6 +129,66 @@ namespace CataclysmPlayerCopiesTest
 					   static_cast<int32>(UE_ARRAY_COUNT(ACataclysmPlayerCharacter::DeathAnimationNames)));
 	}
 
+	/** What `Material` reads for the copies' tint parameter; false when it has no such parameter. */
+	bool TintOf(UMaterialInterface* Material, FLinearColor& Out)
+	{
+		const FHashedMaterialParameterInfo Info(ACataclysmCorruptedStalkerCharacter::CopyTintParameter);
+		return Material && Material->GetVectorParameterValue(Info, Out);
+	}
+
+	/**
+	 * The owner's ruling of 2026-11-21, "give them a dark red tint": every material slot of a copy's body is its own
+	 * dynamic instance, and reads the copies' dark red.
+	 */
+	void WearsTheDarkRedTint(FAutomationTestBase& Test, ACataclysmEnemyCharacter* Copy)
+	{
+		USkeletalMeshComponent* MeshComponent = Copy->GetMesh();
+		const int32 Slots = MeshComponent ? MeshComponent->GetNumMaterials() : 0;
+		Test.TestTrue(TEXT("set-up: its body has material slots"), Slots > 0);
+		for (int32 Slot = 0; Slot < Slots; ++Slot)
+		{
+			UMaterialInterface* Material = MeshComponent->GetMaterial(Slot);
+			FLinearColor Tint;
+			Test.TestNotNull(*FString::Printf(TEXT("slot %d is a dynamic instance of its own"), Slot),
+							 Cast<UMaterialInstanceDynamic>(Material));
+			Test.TestTrue(*FString::Printf(TEXT("slot %d has the tint parameter"), Slot), TintOf(Material, Tint));
+			Test.TestTrue(*FString::Printf(TEXT("slot %d reads the copies' dark red"), Slot),
+						  Tint.Equals(ACataclysmCorruptedStalkerCharacter::CopyTint, 0.0001f));
+		}
+	}
+
+	/**
+	 * THE CONTROL: a player character keeps its own colours. Its body's slots are not dynamic instances, and none reads
+	 * the copies' dark red, so the tint is in the copies' dressing and not in the steps the player shares with them.
+	 */
+	void ThePlayerKeepsItsOwnColours(FAutomationTestBase& Test, UWorld* World)
+	{
+		// WITH A PLAYER STATE, as `Cataclysm.WeaponMesh.`'s tests spawn one.
+		ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Player =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector(0.0f, -1000.0f, 0.0f), FRotator::ZeroRotator);
+		if (State && Player)
+		{
+			Player->SetPlayerState(State);
+			Player->OnRep_PlayerState();
+		}
+		USkeletalMeshComponent* MeshComponent = Player ? Player->GetMesh() : nullptr;
+		if (!Test.TestNotNull(TEXT("control: a player character's body"), MeshComponent)
+			|| !Test.TestTrue(TEXT("control: it wears the Mannequin"), MeshComponent->GetSkeletalMeshAsset() != nullptr))
+		{
+			return;
+		}
+		for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
+		{
+			UMaterialInterface* Material = MeshComponent->GetMaterial(Slot);
+			FLinearColor Tint;
+			Test.TestNull(*FString::Printf(TEXT("control: the player's slot %d is not a dynamic instance"), Slot),
+						  Cast<UMaterialInstanceDynamic>(Material));
+			Test.TestFalse(*FString::Printf(TEXT("control: the player's slot %d does not read the dark red"), Slot),
+						   TintOf(Material, Tint) && Tint.Equals(ACataclysmCorruptedStalkerCharacter::CopyTint, 0.0001f));
+		}
+	}
+
 	/** The mesh `Base` draws in a hand, and whether the weapon pack is on this machine for it. */
 	UStaticMesh* MeshOf(const TCHAR* Base)
 	{
@@ -187,6 +250,8 @@ bool FCataclysmStalkerWearsThePlayersBodyTest::RunTest(const FString&)
 		return false;
 	}
 	WearsThePlayersBody(*this, Stalker, Mannequin);
+	WearsTheDarkRedTint(*this, Stalker);
+	ThePlayerKeepsItsOwnColours(*this, World);
 	return true;
 }
 
@@ -219,6 +284,8 @@ bool FCataclysmDoubleWearsThePlayersBodyTest::RunTest(const FString&)
 		return false;
 	}
 	WearsThePlayersBody(*this, Double, Mannequin);
+	WearsTheDarkRedTint(*this, Double);
+	ThePlayerKeepsItsOwnColours(*this, World);
 	return true;
 }
 

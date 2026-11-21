@@ -235,8 +235,8 @@ public:
 	// ITS OWN CAPSULE, KEPT: 48 by 80, the creature's, not the player's 42 by 96. The coordinating session's ruling J1 of
 	// 2026-11-21: the player's capsule would change its collision, where a hunter fits when it arrives and the reach
 	// measured from capsule edges, for a visual change. The Mannequin's feet are at the capsule's bottom, so the body
-	// stands above the capsule's top by up to 32 cm, the two capsules' difference. NO TINT (ruling J2): whether a copy
-	// is told apart from the player, and how, is the owner's to say. NO SWING ON ITS BLOWS (ruling J3): issue #2811.
+	// stands above the capsule's top by up to 32 cm, the two capsules' difference. A DARK RED TINT, the owner's ruling
+	// of 2026-11-21 (J2): see `CopyTint`. NO SWING ON ITS BLOWS (ruling J3): issue #2811.
 
 	/**
 	 * Puts the player's body, animation Blueprint and death clips on, and hides the placeholder cylinder.
@@ -246,6 +246,29 @@ public:
 	 * @return whether the body was found, which it is in every checkout: the Mannequin is in git
 	 */
 	bool ResolveBody();
+
+	/**
+	 * The copies' tint: the owner's ruling of 2026-11-21, verbatim, "give them a dark red tint", for the Corrupted
+	 * Stalker and the Worn Residue double, so they are told apart from the player at a glance.
+	 *
+	 * THE COLOUR IS A JUDGEMENT AND IT IS LABELLED ONE: linear (0.30, 0.02, 0.02), which displays as about sRGB
+	 * (149, 39, 39), a deep red. Dark enough to read as dark red, light enough to stay visible on a dark floor, and far
+	 * from the player's own `Paint Tint`, a light grey of 0.9219 in each channel in `MI_Manny_01_New`.
+	 */
+	static const FLinearColor CopyTint;
+
+	/**
+	 * The Mannequin's material parameter the tint is written to. `M_Mannequin` declares it, and `MI_Manny_01_New`, the
+	 * body's instance, sets it; read out of the assets' name tables, since the editor is not needed to name it.
+	 */
+	static const FName CopyTintParameter;
+
+	/**
+	 * Gives every material slot of its body a dynamic instance of its own and writes `CopyTint` to it. Called by
+	 * `ResolveBody` once the body is on. HERE AND NOT IN THE STEPS THE PLAYER SHARES, so the player's body keeps its
+	 * colours.
+	 */
+	void WearTheCopiesTint();
 
 	virtual void PreRegisterAllComponents() override;
 	virtual void BeginPlay() override;
