@@ -636,18 +636,21 @@ def test_the_succubus_basic_attack_is_a_quick_cast_that_can_be_dodged(
     """A quick cast since issue #2808: half a second, no marker, and a radius the
     slowest class can step out of in the bolt's flight from under two metres.
 
-    THE INTERVAL STILL ALLOWS THE OLD MARKER, which is the control: 3.15 metres,
-    the lane Soulfire drew until then. That it no longer draws one is the
-    owner's request of 2026-11-21, not a rule the numbers forced."""
+    AND SINCE THE SAME ISSUE ITS INTERVAL ALLOWS NO MARKER AT ALL: a bolt every
+    second, the owner's requirement, allows 0.35 metres, under the 1 metre
+    floor. The 2.6 second interval it had allowed the 3.15 metre lane Soulfire
+    drew before; the control computes that from the old interval."""
     from cataclysm_sim.enemy_abilities import (QUICK_CAST_SECONDS,
                                                largest_telegraphed_radius,
                                                quick_cast_dodge_distance)
 
     basic = next(a for a in succubus_abilities if a.is_basic_attack)
     assert basic.quick_cast, "the Succubus's basic attack is no longer a quick cast."
-    assert largest_telegraphed_radius(succubus.attack_interval) == pytest.approx(3.15), (
-        "the 2.6 second interval no longer allows the 3.15 metre lane Soulfire "
-        "drew before issue #2808, so this control says nothing.")
+    assert largest_telegraphed_radius(succubus.attack_interval) == pytest.approx(0.35), (
+        "the Succubus's interval is no longer the 1.0 second the owner asked for.")
+    assert largest_telegraphed_radius(2.6) == pytest.approx(3.15), (
+        "the 2.6 second interval it had no longer allows the 3.15 metre lane "
+        "Soulfire drew before issue #2808, so this control says nothing.")
     assert float(basic.params["Radius"]) == pytest.approx(0.5)
     assert quick_cast_dodge_distance(basic) == pytest.approx(1.954, abs=0.001), (
         f"Soulfire can be stepped around from {quick_cast_dodge_distance(basic):.3f} m "
@@ -1658,14 +1661,16 @@ def test_the_sentinel_reach_is_the_longest_range_any_player_attack_has():
 
 
 def test_the_bolt_is_a_quick_cast_that_can_be_dodged(sentinel, sentinel_abilities):
-    """A quick cast since issue #2808, as the Succubus's is. THE CONTROL: its
-    2.0 second interval still allows the 2.1 metre lane it drew until then."""
+    """A quick cast since issue #2808, as the Succubus's is, every second. THE
+    CONTROL: the 2.0 second interval it had allows the 2.1 metre lane it drew
+    until then; its 1.0 second interval allows 0.35."""
     from cataclysm_sim.enemy_abilities import (largest_telegraphed_radius,
                                                quick_cast_dodge_distance)
 
     bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
     assert bolt.quick_cast, "the Siege Bolt is no longer a quick cast."
-    assert largest_telegraphed_radius(sentinel.attack_interval) == pytest.approx(2.1)
+    assert largest_telegraphed_radius(sentinel.attack_interval) == pytest.approx(0.35)
+    assert largest_telegraphed_radius(2.0) == pytest.approx(2.1)
     assert float(bolt.params["Radius"]) == pytest.approx(0.5)
     assert quick_cast_dodge_distance(bolt) == pytest.approx(2.28, abs=0.001), (
         f"the Siege Bolt can be stepped around from "
@@ -1673,28 +1678,35 @@ def test_the_bolt_is_a_quick_cast_that_can_be_dodged(sentinel, sentinel_abilitie
         "states 2.28.")
 
 
-#: The Siege Bolt's wind-up before issue #2808, which its speed was derived
-#: from: 0.4 + 2.1 / 3.5 seconds for the 2.1 metre lane it marked.
+#: The Siege Bolt's wind-up and interval before issue #2808, which its speed
+#: was derived from: 0.4 + 2.1 / 3.5 seconds for the 2.1 metre lane it marked,
+#: inside a 2.0 second interval.
 SIEGE_BOLT_WIND_UP_BEFORE_2808 = 1.0
+SIEGE_BOLT_INTERVAL_BEFORE_2808 = 2.0
 
 
-def test_the_bolt_lands_before_the_next_one_is_fired(sentinel, sentinel_abilities):
-    """Half a second of cast and a second of flight land inside the 2.0 second
-    interval, which is the condition the speed was derived to meet."""
+def test_the_bolt_speed_still_records_its_derivation(sentinel, sentinel_abilities):
+    """The speed was derived so the bolt landed as the next was marked: one
+    second of wind-up and one of flight in a 2.0 second interval.
+
+    SINCE ISSUE #2808 THAT CONDITION DOES NOT HOLD, and this says so rather than
+    hiding it: a bolt is fired every second, so at long range the next is cast
+    while the last is in flight. The owner asked for the bolt every second; the
+    speed was kept, not re-derived."""
     from cataclysm_sim.enemy_abilities import QUICK_CAST_SECONDS
 
     bolt = next(a for a in sentinel_abilities if a.is_basic_attack)
     flight = (float(bolt.params["Range"]) * CM_PER_METRE
               / float(bolt.params["Speed"]))
 
-    assert QUICK_CAST_SECONDS + flight <= sentinel.attack_interval, (
-        f"the Siege Bolt casts for {QUICK_CAST_SECONDS} s and flies for "
-        f"{flight:.2f} s, which is past its {sentinel.attack_interval} s "
-        "interval, so one shot is in the air when the next is fired.")
     assert SIEGE_BOLT_WIND_UP_BEFORE_2808 + flight == pytest.approx(
-        sentinel.attack_interval), (
-        "the speed no longer fills the interval with the wind-up it was "
+        SIEGE_BOLT_INTERVAL_BEFORE_2808), (
+        "the speed no longer fills the old interval with the wind-up it was "
         "derived from, so the derivation the document records is wrong.")
+    assert QUICK_CAST_SECONDS + flight > sentinel.attack_interval, (
+        "a bolt now lands before the next is fired again, so the design "
+        "document's sentence that the next is cast while the last is in flight "
+        "is wrong.")
 
 
 def test_the_bolt_speed_is_the_slowest_in_the_table_that_still_lands_in_time():
@@ -1707,16 +1719,14 @@ def test_the_bolt_speed_is_the_slowest_in_the_table_that_still_lands_in_time():
     """
     from cataclysm_sim.enemy_abilities import (REACTION_ALLOWANCE,
                                                WALK_OUT_SPEED, abilities)
-    from cataclysm_sim.enemy_stats import archetype
 
-    kind = archetype("Corrupted Sentinel")
     bolt = next(a for a in abilities("Corrupted Sentinel") if a.is_basic_attack)
-    # THE WIND-UP IT HAD WHEN THE SPEED WAS DERIVED, the 2.1 metre lane's. Since
-    # issue #2808 the cast is half a second and the speed was kept, not
-    # re-derived; the design document says so.
+    # THE WIND-UP AND INTERVAL IT HAD WHEN THE SPEED WAS DERIVED. Since issue
+    # #2808 the cast is half a second, the interval a second, and the speed was
+    # kept, not re-derived; the design document says so.
     wind_up = REACTION_ALLOWANCE + 2.1 / WALK_OUT_SPEED
     assert wind_up == pytest.approx(SIEGE_BOLT_WIND_UP_BEFORE_2808)
-    budget = kind.attack_interval - wind_up
+    budget = SIEGE_BOLT_INTERVAL_BEFORE_2808 - wind_up
     floor = float(bolt.params["Range"]) * CM_PER_METRE / budget
 
     workable = [speed for speed in player_projectile_speeds() if speed >= floor]
@@ -2966,7 +2976,8 @@ PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
     ("Succubus", "Succubus", "Wither the Living", "Duration"): (
         "**{n} seconds, because that is the duration",),
     ("Succubus", "Succubus", "Wither the Living", "cooldown"): (
-        "**{n} seconds of cooldown",),
+        "**{n} seconds of cooldown",
+        "Its curse keeps its {n} second cooldown"),
     ("Succubus", "Succubus", "Dominion", "Radius"): (
         "every allied enemy within {n} metres",),
 }

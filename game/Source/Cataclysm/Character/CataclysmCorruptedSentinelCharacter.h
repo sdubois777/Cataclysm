@@ -126,8 +126,10 @@ public:
 	// that Python test is the only thing checking these on a pull request.
 	// ----------------------------------------------------------------------
 
-	/** Seconds between shots. `attack_interval` is 2.0. */
-	static constexpr float DesignedAttackIntervalSeconds = 2.0f;
+	/** Seconds between shots. `attack_interval` is 1.0: a bolt every second, the
+	 *  owner's requirement of 2026-11-21 (issue #2808). It was 2.0; its
+	 *  `damage_share` fell with it, so its damage per second is as it was. */
+	static constexpr float DesignedAttackIntervalSeconds = 1.0f;
 
 	/** Percent of all incoming damage resisted. `resistance` is 20.0, the second
 	 *  highest in the slice behind the Gatekeeper's 30. */
@@ -251,7 +253,7 @@ public:
 	static constexpr float SiegeBoltSpeedCmPerSecond = 1400.0f;
 
 	/** Seconds before it may be used again. **Zero, which is what makes it the
-	 *  basic attack.** The creature's 2.0 second attack interval is the only
+	 *  basic attack.** The creature's 1.0 second attack interval (2.0 until issue #2808) is the only
 	 *  thing spacing it out, which is what an interval means. */
 	static constexpr float SiegeBoltCooldownSeconds = 0.0f;
 
@@ -362,9 +364,14 @@ public:
 		"Brimstone Mortar's wind-up has drifted from the radius it is derived "
 		"from. The rule is 0.4 + Radius / 3.5 seconds.");
 
-	/** What one shell is worth, as a percentage of an ordinary hit. The Special
-	 *  row of `game/Data/SkillSlots.csv` is 150%. */
-	static constexpr float BrimstoneMortarDamagePercent = 150.0f;
+	/** What one shell is worth, as a percentage of an ordinary hit.
+	 *
+	 *  **300, TWICE THE SPECIAL ROW'S 150% IN `game/Data/SkillSlots.csv`, SO THE
+	 *  SHELL IS WORTH WHAT IT WAS.** Issue #2808 halved the creature's ordinary
+	 *  hit to fire it every second at the same damage per second (`damage_share`
+	 *  1.10 to 0.55), and this is a percentage of that hit. Ruled by the
+	 *  coordinating session on 2026-11-21. */
+	static constexpr float BrimstoneMortarDamagePercent = 300.0f;
 
 	/**
 	 * How far the shell sags below its own chord, as a fraction of the distance
@@ -442,15 +449,17 @@ public:
 	 *
 	 * **IT IS LONGER THAN THE INTERVAL, AND THIS CREATURE IS THE ONLY ONE WHOSE
 	 * ATTACK CLIP IS.** Issue #369 settled what to do: the clip is played to fit
-	 * the interval, so 2.40 into 2.00 is a play rate of 1.20, which is the
-	 * gentlest rate scaling in the project. The alternative clips the pack ships
+	 * the interval, so 2.40 into 1.00 is a play rate of 2.40, under the 2.5
+	 * ceiling. It was 1.20 into a 2.00 interval, the gentlest rate scaling in the
+	 * project, until issue #2808 made the bolt a second's; the coordinating
+	 * session accepted the faster rate on 2026-11-21. The alternative clips the pack ships
 	 * -- `Fire_A`, `Fire_B` and `Fire_C` -- are 2.80 and are unrooted, so there
 	 * is nothing shorter to reach for.
 	 */
 	static constexpr float FireAnimationSeconds = 2.4f;
 
 	/** Play rate floor and ceiling, the same two figures every other creature
-	 *  clamps to. This creature's firing clip needs 1.20. */
+	 *  clamps to. This creature's firing clip needs 2.40 (1.20 until issue #2808). */
 	static constexpr float MinimumPlayRate = 0.2f;
 	static constexpr float MaximumPlayRate = 2.5f;
 

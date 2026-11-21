@@ -80,9 +80,9 @@ static TAutoConsoleVariable<float> CVarSuccubusAttackInterval(
 	TEXT("Cataclysm.Succubus.AttackInterval"),
 	0.0f,
 	TEXT("Seconds between the Succubus's Soulfire bolts. 0 uses its designed "
-		 "2.6. Remember that its telegraph is exactly half its interval and is "
-		 "the largest the rules allow, so shortening this shortens the warning "
-		 "too and the marker stops being legal below about 2.6."),
+		 "1.0, a bolt every second since issue #2808. Soulfire is a quick cast "
+		 "with no marker, so this changes how often it fires and nothing about "
+		 "its warning."),
 	ECVF_Default);
 
 /**
@@ -276,7 +276,7 @@ void ACataclysmSuccubusCharacter::AttackTarget(AActor* /*Target*/)
 	//
 	// The base class's AttackTarget applies direct damage at `MeleeReachCm`, and
 	// this creature's reach is its SHOT's range of 8 metres. Left to the base it
-	// would deal a free melee hit at eight metres every 2.6 seconds on top of
+	// would deal a free melee hit at eight metres every second on top of
 	// the bolt it is already firing, and nothing on screen would say where the
 	// damage came from. The Corrupted Sentinel found this first.
 	//
@@ -417,7 +417,9 @@ void ACataclysmSuccubusCharacter::UseEnemyAbility(
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SoulfireRadiusCm,
 			SoulfireSpeedCmPerSecond, SoulfirePierce, /*bInReturns=*/false,
-			SoulfireDamagePercent, SoulfireShotTags, /*bInBurns=*/false);
+			SoulfireDamagePercent, SoulfireShotTags, /*bInBurns=*/false,
+			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/-1.0f,
+			/*InSkillHealthCostPercent=*/-1.0f, /*InFiringSkill=*/nullptr, /*bInQuickCast=*/true);
 		return;
 	}
 

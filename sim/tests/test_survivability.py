@@ -223,9 +223,26 @@ def test_a_pack_of_common_enemies_very_much_is_the_threat():
 
 
 def test_an_elite_is_between_trash_and_a_mini_boss():
+    """IN SECONDS, NOT HITS, SINCE ISSUE #2808. The Succubus fires every second
+    since 2026-11-21 at the damage per second it had, so it takes 29 smaller hits
+    where it took 12; how DANGEROUS it is, which is what this asks, did not move.
+    The test said `6 <= hits <= 20` until then. The bounds are the two neighbours
+    the name states: the Herald Abyssal Warden kills faster, and a Common Imp
+    slower."""
+    import math
+
+    def seconds(name, rarity):
+        e = enemy(name, rarity)
+        return math.ceil(hits_to_kill_the_reference_build(e)) * e.attack_interval
+
+    mini_boss = seconds("Abyssal Warden", "Herald")
+    trash = seconds("Imp", "Common")
     for name in ("Succubus", "Brute"):
-        hits = hits_to_kill_the_reference_build(enemy(name, "Elite"))
-        assert 6 <= hits <= 20, f"an Elite {name} takes {hits:.0f} hits"
+        elite = seconds(name, "Elite")
+        assert mini_boss < elite < trash, (
+            f"an Elite {name} kills the reference character in {elite:.1f} s, "
+            f"and the mini-boss takes {mini_boss:.1f} s and a Common Imp "
+            f"{trash:.1f} s")
 
 
 # --------------------------------------------------------------------------

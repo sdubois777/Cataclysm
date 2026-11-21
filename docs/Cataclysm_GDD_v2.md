@@ -5311,9 +5311,9 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | :-- | :-: | :-: | :-- |
 | Imp | 0.9 s | 0.2 m | **No** |
 | Hellhound | 1.1 s | 0.5 m | **No**, for its basic attack |
-| Corrupted Sentinel | 2.0 s | 2.1 m | Yes |
+| Corrupted Sentinel | 1.0 s | 0.4 m | **No** |
 | Abyssal Warden | 2.4 s | 2.8 m | Yes |
-| Succubus | 2.6 s | 3.2 m | Yes |
+| Succubus | 1.0 s | 0.4 m | **No** |
 | Brute | 1.2 s | 0.7 m | **No**, for its basic attack |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
 
@@ -5327,7 +5327,7 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 
   
 
-**The Succubus and the Corrupted Sentinel could telegraph their basic attacks and since 2026-11-21 do not.** The table says what each attack interval allows. Both creatures' basic attacks are now quick casts, the second kind of attack described below, which draw no marker at all.
+**The Succubus and the Corrupted Sentinel no longer telegraph their basic attacks, by either rule.** Both are quick casts since 2026-11-21, the second kind of attack described below, which draw no marker at all; and both fire every second since the same day, the owner's requirement that they be "a basic attack sort of thing", which leaves a marker of 0.35 metres, under the 1 metre floor. Until then their 2.0 and 2.6 second intervals allowed 2.1 and 3.2 metres.
 
   
 
@@ -5831,7 +5831,7 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 | Enemy | Role |
 | :-: | :-: |
 | The Imp | Fast, swarming melee. Weak individually, overwhelming in packs. |
-| The Succubus | Ranged caster. Debuffs player and buffs nearby allies. Slow but powerful attacks. |
+| The Succubus | Ranged caster. Debuffs player and buffs nearby allies. A quick bolt every second. |
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
 | The Brute | Heavily armored slow melee. Stomp stun attack. Can be outmaneuvered. |
 | The Corrupted Sentinel | Stationary ranged. Forces the player to stay mobile. |
@@ -5986,7 +5986,7 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Soulfire | Basic | Projectile | `Range=8; Radius=0.5; Speed=1200` | its 2.6 s attack interval | No: a quick cast, 0.5 s |
+| Soulfire | Basic | Projectile | `Range=8; Radius=0.5; Speed=1200` | its 1.0 s attack interval | No: a quick cast, 0.5 s |
 | Wither the Living | Support | Debuff | `Range=8; MaxTargets=1; Duration=5; Effect=Withered Touch` | a 10 s cooldown | No |
 | Dominion | Aura | Aura | `Radius=8; Effect=Commander` | held on while it lives | No |
 
@@ -6004,7 +6004,9 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
   
 
-**Its damage was set for that slow, wide bolt and has not moved.** Its damage share of 1.60 is the second highest in the slice, justified by "slow but powerful". It was left unchanged on 2026-11-21 to be tuned in play, and it is the first figure to look at if the quick bolt hits too hard.
+**It fires every second, at the damage per second it had.** The owner's requirement of 2026-11-21: "give those quick enemy ranged attacks a 1 second cooldown. They should be a basic attack sort of thing." Its attack interval went from 2.6 seconds to 1.0, and the coordinating session ruled its damage per second held, so its damage share went from 1.60 to 1.60 × 1.0 ÷ 2.6 = 0.6154: an Elite Succubus at tier 8 hits for 3,804 rather than 9,891, at 3,804 a second either way. That share is the first figure to look at if the bolt hits too hard or too softly. Its curse keeps its 10 second cooldown.
+
+**What else reads its hit falls with it.** Infernal Brand's explosion, a Hellfire burst, Holy Repercussions' retaliation and Nothing Is Forgotten's portion are all worth a share of the creature's own hit, so each is 0.385 of what it was for a Succubus. `docs/DECISIONS.md` lists them at tier 8.
 
   
 
@@ -6357,7 +6359,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Siege Bolt | Basic | Projectile | `Range=14; Radius=0.5; Pierce=0; Speed=1400` | its 2.0 s attack interval | No: a quick cast, 0.5 s |
+| Siege Bolt | Basic | Projectile | `Range=14; Radius=0.5; Pierce=0; Speed=1400` | its 1.0 s attack interval | No: a quick cast, 0.5 s |
 | Brimstone Mortar | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25` | an 8 s cooldown | Yes, 1.26 s wind-up |
 
   
@@ -6390,7 +6392,9 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**Its speed of 1400 was derived from that wind-up and is kept.** The bolt had to land before the next one was marked; the wind-up took 1.0 second of the 2.0 second cycle, so the flight had the other 1.0, and fourteen metres in one second is 1400 centimetres per second, one of the ten speeds `game/Data/WeaponSkills.csv` uses. With a half second cast the bolt still lands before the next is fired, which is what the derivation served, so the speed did not have to move.
+**Its speed of 1400 was derived from that wind-up and is kept, although the reason for it has gone.** The bolt had to land before the next one was marked; the wind-up took 1.0 second of the 2.0 second cycle, so the flight had the other 1.0, and fourteen metres in one second is 1400 centimetres per second, one of the ten speeds `game/Data/WeaponSkills.csv` uses. **It fires every second since 2026-11-21**, the owner's requirement that it be "a basic attack sort of thing", so at long range the next bolt is cast while the last is still in flight. The speed was not re-derived.
+
+**Its damage per second is what it was.** Its attack interval went from 2.0 seconds to 1.0, and the coordinating session ruled its damage per second held, so its damage share went from 1.10 to 0.55: a Legendary Sentinel at tier 8 hits for 4,802 rather than 9,604, at 4,802 a second either way. **Its mortar went from 150% of a hit to 300%**, so a shell is worth what it was. Infernal Brand's explosion, a Hellfire burst, Holy Repercussions' retaliation and Nothing Is Forgotten's portion read its hit and are half what they were.
 
   
 
@@ -6398,7 +6402,7 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**The visible shot does not yet line up with the bolt leaving.** The release moment inside its firing clip has never been measured (issue #478), so the clip still plays across the whole 2.0 second interval and the half second cast was changed without it. That was ruled on 2026-11-21.
+**The visible shot does not yet line up with the bolt leaving.** The release moment inside its firing clip has never been measured (issue #478), so the clip still plays across the whole attack interval and the half second cast was changed without it. That was ruled on 2026-11-21. **With a 1.0 second interval the clip plays at 2.40 times its authored speed**, under the 2.5 ceiling, where it played at 1.20; and the mortar's shell, which leaves 1.26 seconds after the decision, now leaves after the clip has ended.
 
   
 
@@ -6444,7 +6448,7 @@ A Sentinel that only shoots in straight lines is answered by one pillar, and it 
 | How long it is in the air | 1.69 s at full range | derived from the arc: `√(8 × Arc × range ÷ g)` |
 | How fast it lands | 1171 cm/s | under the 1200 ceiling the Brute's rock is held to, and a lob is fastest as it lands |
 | How near it will fire | 3.48 m | the marked circle's 3.0 m plus the creature's own 0.48 m body radius |
-| How often | every 8 seconds | inside the Special slot's 3 to 10 second band, and exactly four bolts between one shell and the next |
+| How often | every 8 seconds | inside the Special slot's 3 to 10 second band, and eight bolts between one shell and the next (four until the bolt became a second's, 2026-11-21) |
 
   
 
@@ -6466,7 +6470,7 @@ Three things. Everything else above is read off `game/Data/WeaponSkills.csv`, `g
 
 - **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1 metre lane, so the two markers differed (the bolt has drawn none since 2026-11-21), and above by the 8 metre cap and by what its cooldown allows. The value inside that window is chosen, and 3.0 is the second largest radius any player Projectile uses.
 - **Two abilities rather than one or three.** The Imp's subsection above argues that one ability can be a complete design, and that argument could have been made here. It was not, because nothing except the mortar answers cover.
-- **The 8 second cooldown.** Inside the slot's band, and it puts four bolts between shells, but the band is wide.
+- **The 8 second cooldown.** Inside the slot's band, and it puts eight bolts between shells since the bolt became a second's (four before), but the band is wide.
 
   
 

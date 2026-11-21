@@ -865,12 +865,16 @@ bool FCataclysmSuccubusCastReleasesWhenItsBoltLeaves::RunTest(const FString&)
 		Delay + Succubus_t::SoulfireReleaseSeconds / Rate,
 		Succubus_t::SoulfireWindUpSeconds, 0.001f);
 
+	// BEFORE THE NEXT BOLT'S CLIP STARTS, which is the interval plus the same
+	// wait. Issue #2808 made the bolt a second's: the clip finishes 1.244 s in,
+	// past the 1.0 s interval, and the next clip starts at 1.344. This compared
+	// with the interval alone until then.
 	TestTrue(*FString::Printf(
-			TEXT("the clip finishes %.4f s in, inside the %.2f s interval"),
+			TEXT("the clip finishes %.4f s in, before the next starts at %.4f s"),
 			Delay + Succubus_t::AttackAnimationSeconds / Rate,
-			Succubus_t::DesignedAttackIntervalSeconds),
+			Succubus_t::DesignedAttackIntervalSeconds + Delay),
 		Delay + Succubus_t::AttackAnimationSeconds / Rate
-			< Succubus_t::DesignedAttackIntervalSeconds);
+			< Succubus_t::DesignedAttackIntervalSeconds + Delay);
 
 	// --- and the creature really waits ------------------------------------
 

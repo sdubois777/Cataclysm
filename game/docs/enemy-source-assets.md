@@ -195,21 +195,25 @@ being sped up, and the creature starts an attack it has not finished.
 | Enemy | Interval | Shortest usable attack | Length | Play rate | Verdict |
 |---|:-:|---|:-:|:-:|---|
 | Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | 1.00 | Passes as authored |
+| Corrupted Sentinel | 1.0 s | `Fire_Planted` | 2.40 s | **2.40** | Passes, sped up, under the 2.50 ceiling |
+| Succubus | 1.0 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored, by 0.10 s |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | 1.00 | Passes as authored |
 | Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | 1.00 | Passes as authored, by 0.23 s |
-| Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **1.20** | Passes, sped up |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | 1.00 | Passes as authored |
-| Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored |
 | Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | 1.00 | Passes as authored |
 
 **The Corrupted Sentinel is the only one of the seven that needs any compression,
-and 1.20 is the gentlest rate scaling in the project.** Its two rooted firing
-clips are both 2.40 seconds against a 2.0 second interval, and the pack has
-nothing shorter — its unrooted alternatives are 2.80. For comparison the Brute
+and since issue #2808 it needs 2.40.** Its two rooted firing clips are both 2.40
+seconds, and its interval has been 1.0 second since 2026-11-21, when the owner
+asked for its bolt every second ("a basic attack sort of thing"); the
+coordinating session accepted the faster rate the same day. Until then the
+interval was 2.0 and the rate 1.20, the gentlest scaling in the project. The pack
+has nothing shorter — its unrooted alternatives are 2.80. The Succubus's interval
+went from 2.6 to 1.0 on the same day; its 0.90 second clip still fits as authored. For comparison the Brute
 plays its walk at 1.11, its chase at 1.43 and its rip-and-throw montage at 1.67.
 
-**At 1.20 there is no gap between one shot and the next.** 2.40 ÷ 1.20 is exactly
-2.00, so the clip finishes as the next one starts. The pack ships two rooted
+**There is no gap between one shot and the next.** 2.40 ÷ 2.40 is exactly
+1.00, so the clip finishes as the next one starts (2.40 ÷ 1.20 = 2.00 before). The pack ships two rooted
 firing clips, `Fire_Planted` and `Fire_Planted_B`, and alternating them is what
 stops continuous fire reading as one clip looping. The Brute's fifth of a second
 of gap is not a designed margin to match: its clip happens to be 1.0 seconds
@@ -614,8 +618,8 @@ asset and every one matched what was written here on 2026-08-07, except
 | `Idle_Planted` | 0.03 | Rooted idle. **A single pose, not a loop** — one frame at 30 fps, the same shape as Rampage's `Ability_GroundSmash_Loop` |
 | `PlantedExit` | 0.50 | Unroots |
 | `PlantedIntro` | 0.63 | Roots itself in place |
-| `Fire_Planted` | 2.40 | Rooted attack. Played at **1.20** to fit the 2.0 s interval. #369 |
-| `Fire_Planted_B` | 2.40 | Second rooted attack. Same length, so the same 1.20 |
+| `Fire_Planted` | 2.40 | Rooted attack. Played at **2.40** to fit the 1.0 s interval (1.20 to fit 2.0 s until issue #2808). #369 |
+| `Fire_Planted_B` | 2.40 | Second rooted attack. Same length, so the same 2.40 |
 | `MeleeAttack_A` | 2.40 | Close-range fallback |
 | `Fire_A`, `Fire_B`, `Fire_C` | 2.80 | Unrooted, slower still. Would need 1.40 |
 

@@ -970,14 +970,15 @@ protected:
 
 	/**
 	 * What one of its bolts is worth. The training dummy's 20 times the designed
-	 * damage share of 1.10, on the same scaffolding reasoning as
-	 * `BruteAttackDamage`.
+	 * damage share of 0.55, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`. It was 22, 20 times 1.10, until issue #2808 made the
+	 * bolt a second's at the same damage per second.
 	 *
-	 * ITS MORTAR IS WORTH ONE AND A HALF OF THESE, because the Special slot is
-	 * 150%.
+	 * ITS MORTAR IS WORTH THREE OF THESE, 300%, twice the Special slot's 150%,
+	 * so a shell is worth what it was before the bolt's hit halved.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float CorruptedSentinelAttackDamage = 22.0f;
+	float CorruptedSentinelAttackDamage = 11.0f;
 
 	/** How many Succubi to place. Zero for none. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
@@ -1054,14 +1055,15 @@ protected:
 
 	/**
 	 * What one of its bolts is worth. The training dummy's 20 times the designed
-	 * damage share of 1.60, on the same scaffolding reasoning as
-	 * `BruteAttackDamage`.
+	 * damage share of 0.6154, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`. It can double on a critical strike at 10% for 200%.
 	 *
-	 * **THE HARDEST ORDINARY HIT IN THE SANDBOX**, ahead of the Brute's 35, and
-	 * it can double on a critical strike at 10% for 200%.
+	 * IT WAS 32, THE HARDEST ORDINARY HIT IN THE SANDBOX, until issue #2808 made
+	 * the bolt a second's at the same damage per second: 20 times 1.60 every 2.6
+	 * seconds became 20 times 0.6154 every second.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float SuccubusAttackDamage = 32.0f;
+	float SuccubusAttackDamage = 12.308f;
 
 	/** How many Gatekeepers to place. Zero for none. **One**, because it is a
 	 *  boss and two of them is not a thing the design has. */

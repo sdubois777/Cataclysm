@@ -416,9 +416,15 @@ ARCHETYPES: dict[str, Archetype] = {
         ),
         Archetype(
             name="Succubus",
-            role="Ranged caster. Slow but powerful attacks",
-            health_share=0.60, damage_share=1.60, armor_share=0.20,
-            attack_interval=2.6, crit_chance=10.0, crit_multiplier=200.0,
+            role="Ranged caster. A quick bolt every second",
+            # A BOLT EVERY SECOND, AT THE SAME DAMAGE PER SECOND. Issue #2808, the
+            # owner's requirement of 2026-11-21: "give those quick enemy ranged
+            # attacks a 1 second cooldown. They should be a basic attack sort of
+            # thing." The coordinating session ruled the damage per second held:
+            # the share was 1.60 at 2.6 seconds, and 1.60 x 1.0 / 2.6 is 0.6154.
+            # Its role said "Slow but powerful attacks" until then.
+            health_share=0.60, damage_share=0.6154, armor_share=0.20,
+            attack_interval=1.0, crit_chance=10.0, crit_multiplier=200.0,
             move_speed=3.5, evasion=10.0, energy_shield_fraction=0.50,
             # Little of its own. What keeps it alive is the shield.
             resistance=10.0,
@@ -499,8 +505,12 @@ ARCHETYPES: dict[str, Archetype] = {
         Archetype(
             name="Corrupted Sentinel",
             role="Stationary ranged. Forces the player to stay mobile",
-            health_share=1.30, damage_share=1.10, armor_share=2.20,
-            attack_interval=2.0, move_speed=0.0, energy_shield_fraction=0.35,
+            # A BOLT EVERY SECOND, AT THE SAME DAMAGE PER SECOND, as the
+            # Succubus's: issue #2808. The share was 1.10 at 2.0 seconds, and
+            # 1.10 x 1.0 / 2.0 is 0.55. Its mortar's percentage doubled to 300
+            # with it, so a shell is worth what it was.
+            health_share=1.30, damage_share=0.55, armor_share=2.20,
+            attack_interval=1.0, move_speed=0.0, energy_shield_fraction=0.35,
             # A construct rather than a living thing, so it is hard to hurt by
             # any means. It cannot retreat, so it has to be able to take hits.
             resistance=20.0,

@@ -179,7 +179,7 @@ void ACataclysmCorruptedSentinelCharacter::AttackTarget(AActor* /*Target*/)
 	//
 	// The base class's AttackTarget applies direct damage at `MeleeReachCm`, and
 	// this creature's reach is its SHOT's range of 14 metres. Left to the base
-	// it would deal a free melee hit at fourteen metres every two seconds on top
+	// it would deal a free melee hit at fourteen metres every second on top
 	// of the bolt it is already firing.
 	//
 	// ITS BASIC ATTACK IS Siege Bolt, which is an entry in EnemyAbilities
@@ -266,12 +266,14 @@ void ACataclysmCorruptedSentinelCharacter::BeginEnemyAbilityWindUp(
 	//
 	// Issue #369 already decided what rate to play it at -- "an enemy's attack
 	// animation is played to fit its designed attack interval" -- which for 2.40
-	// seconds into 2.00 is 1.20. Passing the interval as the window is that
+	// seconds into 1.00 is 2.40 (1.20 into 2.00 until issue #2808). Passing the interval as the window is that
 	// decision, and it means the clip finishes exactly as the next shot begins.
 	//
-	// SO THE BOLT LEAVES A QUARTER OF THE WAY THROUGH THE CLIP. The quick cast
-	// is 0.5 seconds of a 2.0 second window (it was a 1.0 second wind-up until
-	// issue #2808), and the shell leaves at 1.26 of it. **Whether the visible
+	// SO THE BOLT LEAVES HALF WAY THROUGH THE CLIP. The quick cast is 0.5
+	// seconds of a 1.0 second window (issue #2808: it was a 1.0 second wind-up
+	// in a 2.0 second window until then). **THE SHELL LEAVES AFTER THE CLIP HAS
+	// ENDED**: the mortar's wind-up is 1.26 seconds and the window is now 1.0.
+	// It left at 1.26 of a 2.0 second window before. **Whether the visible
 	// muzzle flash agrees with either is unknown**: issue #478 is that the
 	// release moment inside `Fire_Planted` has never been measured, and
 	// `tools/measure_sentinel_release.py` records two ways of measuring it that
@@ -317,7 +319,9 @@ void ACataclysmCorruptedSentinelCharacter::UseEnemyAbility(
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SiegeBoltRadiusCm,
 			SiegeBoltSpeedCmPerSecond, SiegeBoltPierce, /*bInReturns=*/false,
-			SiegeBoltDamagePercent, BoltTags, /*bInBurns=*/false);
+			SiegeBoltDamagePercent, BoltTags, /*bInBurns=*/false,
+			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/-1.0f,
+			/*InSkillHealthCostPercent=*/-1.0f, /*InFiringSkill=*/nullptr, /*bInQuickCast=*/true);
 		return;
 	}
 
@@ -362,8 +366,8 @@ float ACataclysmCorruptedSentinelCharacter::FirePlayRate()
 	}
 
 	// NEVER SLOWER THAN AUTHORED, ONLY FASTER. The same rule every creature
-	// here uses. 2.40 seconds into a 2.00 second interval is 1.20, which is the
-	// gentlest rate scaling in the project.
+	// here uses. 2.40 seconds into a 1.00 second interval is 2.40, under the 2.5
+	// ceiling; it was 1.20 into 2.00 until issue #2808.
 	return FMath::Clamp(FMath::Max(1.0f, FireAnimationSeconds / Interval),
 						MinimumPlayRate, MaximumPlayRate);
 }

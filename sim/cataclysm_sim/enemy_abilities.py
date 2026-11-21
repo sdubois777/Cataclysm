@@ -1057,10 +1057,12 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             # issue #2808 the 1.0 second wind-up took half the 2.0 second
             # interval and the flight had the other half: fourteen metres in
             # one second is 1400 cm/s, one of the ten speeds
-            # game/Data/WeaponSkills.csv uses -- Blood Pyre's. With a half
-            # second cast the bolt still lands before the next one is fired
-            # (0.5 + 1.0 inside 2.0), which was the condition the derivation
-            # served, so the speed did not have to move and was not moved.
+            # game/Data/WeaponSkills.csv uses -- Blood Pyre's. The condition
+            # that derivation served -- the bolt lands before the next is
+            # fired -- NO LONGER HOLDS: since the same issue a bolt is fired
+            # every second, so at long range the next is cast while the last is
+            # still in flight (0.5 + 1.0 against 1.0). The owner asked for the
+            # bolt every second; the speed was not re-derived and was not moved.
             #
             # IT IS FASTER THAN THE SUCCUBUS'S 1200 AND THAT IS DELIBERATE. The
             # 1200 ceiling in Rip and Toss's comment above is reasoning about a
@@ -1137,9 +1139,10 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             #
             # WHAT IT IS REALLY SETTING is how many ordinary shots fall between
             # shells, which is the cooldown divided by the attack interval.
-            # Eight against 2.0 is exactly four bolts between one shell and the
-            # next -- the same measure the Brute's two cooldowns were settled
-            # by playing against.
+            # Eight against 1.0 is eight bolts between one shell and the next
+            # -- the same measure the Brute's two cooldowns were settled by
+            # playing against. It was four against 2.0 until issue #2808 made the
+            # bolt a second's; the cooldown was kept, so a shell comes as often.
             cooldown=8.0,
             note="A shell lobbed over cover onto a marked circle 3 metres "
                  "across, on the ground for 1.26 seconds first. It is what a "

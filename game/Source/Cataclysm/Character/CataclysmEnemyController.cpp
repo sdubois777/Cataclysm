@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmEnemyController.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmCastEffect.h"
 // For announcing a creature's ability as a skill used. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
@@ -1130,10 +1131,14 @@ void ACataclysmEnemyController::ShowWindUpMarker(
 	// floor.
 	const FVector Feet = FloorUnder(Driven, Driven->GetActorLocation());
 
-	// A QUICK CAST DRAWS NOTHING. The bolt in flight is its warning. Issue
-	// #2808; see `FCataclysmEnemyAbility::bDrawsNoMarker`.
+	// A QUICK CAST DRAWS NOTHING ON THE GROUND. The bolt in flight is its
+	// warning, and the cast flare at the creature says it is coming: the owner's
+	// requirement of 2026-11-21, "Make sure those attacks can actually be seen".
+	// Issue #2808; see `FCataclysmEnemyAbility::bDrawsNoMarker`.
 	if (Ability.bDrawsNoMarker)
 	{
+		UCataclysmCastEffect::PlayFor(Driven, WindUpAimedAt - Driven->GetActorLocation(),
+			UCataclysmSkillEffects::DamageTypeOf(Driven), Ability.MarkerRadiusCm);
 		return;
 	}
 

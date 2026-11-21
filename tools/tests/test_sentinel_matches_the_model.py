@@ -374,12 +374,22 @@ def test_the_mortar_refuses_a_target_standing_on_top_of_it():
         "used at all.")
 
 
-def test_the_mortar_damage_is_the_special_slots_percentage():
+def test_the_mortar_damage_is_twice_the_special_slots_percentage():
+    """300, twice the Special row's 150, so a shell is worth what it was.
+
+    Issue #2808 halved the creature's ordinary hit (damage share 1.10 to 0.55)
+    to fire its bolt every second at the same damage per second, and the shell
+    is a percentage of that hit. Ruled by the coordinating session, 2026-11-21.
+    THE SHELL HOLDS: 300% of 0.55 is 150% of 1.10."""
     slot = 150.0
-    assert constant("BrimstoneMortarDamagePercent") == pytest.approx(slot), (
+    assert constant("BrimstoneMortarDamagePercent") == pytest.approx(2.0 * slot), (
         f"BrimstoneMortarDamagePercent is "
-        f"{constant('BrimstoneMortarDamagePercent')} and the Special row of "
-        f"game/Data/SkillSlots.csv is {slot}.")
+        f"{constant('BrimstoneMortarDamagePercent')} and twice the Special row "
+        f"of game/Data/SkillSlots.csv is {2.0 * slot}.")
+    shell_now = constant("BrimstoneMortarDamagePercent") / 100.0 * sentinel().damage_share
+    assert shell_now == pytest.approx(slot / 100.0 * 1.10), (
+        f"a shell is worth {shell_now:.4f} of the creature's score and was "
+        f"{slot / 100.0 * 1.10:.4f}.")
 
 
 def test_the_mortar_is_listed_before_the_bolt():

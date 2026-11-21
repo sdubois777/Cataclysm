@@ -769,7 +769,8 @@ bool FCataclysmSentinelAlternatesItsFiringClips::RunTest(const FString&)
 		Sentinel->IdleAnimation.Get());
 
 	// THE PLAY RATE IS THE ONE ISSUE #369 SETTLED: the clip is played to fit the
-	// interval, which for 2.40 into 2.00 is 1.20.
+	// interval, which for 2.40 into 1.00 is 2.40 since issue #2808 (1.20 into
+	// 2.00 before).
 	const float Expected = Sentinel_t::FireAnimationSeconds
 						 / Sentinel_t::DesignedAttackIntervalSeconds;
 	TestEqual(TEXT("the firing clip is played to fit the attack interval"),

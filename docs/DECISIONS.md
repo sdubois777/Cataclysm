@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The two quick-cast bolts are drawn to be seen and fire every second, at the damage per second they had (#2808, continued)
+
+**Affects:** `UCataclysmProjectileEffect` (`LookFor`, `MayBeCulled`, `DefaultIntensityOf`, `AttachTo`) and
+`FCataclysmProjectileLook`, new, in `game/Source/Cataclysm/AbilitySystem/CataclysmProjectileEffect.h`/`.cpp`;
+`UCataclysmCastEffect::PlayFor`; `ACataclysmProjectile::Fire`'s new `bInQuickCast` and the projectile's `bQuickCast`;
+`ACataclysmEnemyController::ShowWindUpMarker`, which plays the cast flare for a quick cast; the Succubus's and the
+Corrupted Sentinel's attack intervals, `BrimstoneMortarDamagePercent` and their sandbox damage figures;
+`sim/cataclysm_sim/enemy_stats.py`, `game/Data/EnemyArchetypes.csv` and `game/Tests/EnemyStrength/ExpectedFigures.csv`
+regenerated from it; `sim/cataclysm_sim/enemy_abilities.py`; `docs/Cataclysm_GDD_v2.md`; `game/docs/enemy-source-assets.md`;
+`tools/measure_attack_impact.py`. Issues [#2808](https://github.com/sdubois777/Cataclysm/issues/2808) and
+[#2817](https://github.com/sdubois777/Cataclysm/issues/2817).
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET**, and **`tools/tests/test_datatable_assets_are_current.py` FAILS UNTIL THE WINDOW**:
+  `game/Data/EnemyArchetypes.csv` changed, so `DT_EnemyArchetypes` must be rebuilt in the editor. Registered below as its
+  own window step.
+- **NO TEST CAN SEE WHETHER THE BOLTS NOW LOOK "OBVIOUS".** `-nullrhi` (issue #559). Every visual figure below is a
+  judgement for the owner to judge in play.
+- **AN OFF-SCREEN SIEGE BOLT COULD CROSS THE SCREEN WITH NOTHING DRAWN, AND THAT WAS A BUG BEFORE THIS ISSUE.** Every
+  projectile draws `NS_Proj_Body`, whose effect type `FXT_Enemy` culls when not rendered and by view frustum with "Kill and
+  Clear", and allows twenty of one system. A Sentinel reaches 14 metres, past the frame's edge, so its bolt could be
+  refused at spawn and still deal its damage. A hostile's projectile is now never culled.
+- **AT LONG RANGE THE NEXT BOLT IS CAST WHILE THE LAST IS STILL IN FLIGHT.** The Siege Bolt's speed of 1400 was derived so
+  a bolt landed as the next was marked (a 1.0 second wind-up and a 1.0 second flight in 2.0 seconds); at a bolt a second
+  that no longer holds. The speed was kept.
+- **THE SENTINEL'S MORTAR SHELL NOW LEAVES AFTER ITS FIRING CLIP HAS ENDED.** The clip is played across the 1.0 second
+  interval and the shell leaves at 1.26 seconds. The release inside the clip is unmeasured anyway (issue #478).
+- **The design document's table of hits to kill the geared character was stale before this change**, and only its
+  Succubus and Sentinel rows were moved, scaled from the table's own figures. Reported to the coordinating session.
+
+### The owner's two requirements, 2026-11-21, verbatim
+
+- "Make sure those attacks can actually be seen. Like a flaming fireball that's obvious to the player"
+- "and give those quick enemy ranged attacks a 1 second cooldown. They should be a basic attack sort of thing."
+
+### Seen in flight
+
+What the bolts drew: `NS_Proj_Body` (a `Core` mesh `SM_FractalElement`, a `Trail` of dot sprites whose spawn rate is
+`User.Intensity`, a `Streak` ribbon, and a light renderer), with `User.Scale` 0.4 from the 40 cm body of a projectile that
+does not pierce, Demonic orange from `DT_ElementVisuals`, and `User.Intensity` never set. Its effect type, `FXT_Enemy`, was
+read from the asset's name table. Ruled by the coordinating session, 2026-11-21:
+
+| | What | Figure | Judgement or rule |
+| :-- | :-- | :-- | :-- |
+| A1 | A hostile's projectile, and a hostile's cast flare, are never culled | `bPreCullCheck = false`, `SetAllowScalability(false)` | the bug above; the player's own effects keep the budget |
+| A2 | A quick cast is drawn at its blast radius | `User.Scale` 0.5, was 0.4 | a projectile's look is sized to what it hits with |
+| A3 | Brighter | the damage type's colour × 4 | judgement; the hue is unchanged |
+| A4 | A denser trail | 3 × the asset's own `User.Intensity` default, read at load | judgement |
+| A5 | A flare at the creature for the half-second cast | the existing `NS_Cast_Windup`, through `UCataclysmCastEffect::PlayFor` | judgement |
+| A6 | Both stay Demonic orange | — | colour means damage type, which says which resistance applies |
+
+A real flaming fireball -- a new Niagara system with a flame head, smoke, embers and a light, and sounds for the cast and
+the flight -- needs the editor and assets, and **the project has no sound assets at all**. Issue #2817, opened 2026-11-21,
+quoting the owner.
+
+### Every second, at the damage per second it had
+
+A creature's `damage_share` sets its damage per hit, so its damage per second is the share over its `attack_interval`.
+The bolts are each creature's basic attack, with no cooldown, so the interval alone paces them. **Ruled by the
+coordinating session: hold the damage per second.** So each hit falls by the change in the interval:
+
+| Tier 8, as met | Interval | Share per hit | Hit | Damage a second | With criticals |
+| :-- | :-: | :-: | :-: | :-: | :-: |
+| Elite Succubus, before | 2.6 | 1.60 | 9,891 | 3,804.1 | 4,184.5 |
+| Elite Succubus, after | 1.0 | 0.6154 | 3,804 | 3,804.2 | 4,184.6 |
+| Legendary Corrupted Sentinel, before | 2.0 | 1.10 | 9,604 | 4,801.9 | 4,921.9 |
+| Legendary Corrupted Sentinel, after | 1.0 | 0.55 | 4,802 | 4,801.9 | 4,921.9 |
+
+**The other abilities keep their timing.** `ACataclysmEnemyController::UseAbilitiesOn` refuses any ability within the
+interval of the last attack, so the curse or a shell may now follow a bolt after 1.0 second rather than 2.6 or 2.0; each
+keeps its own cooldown (Wither the Living 10 s, Brimstone Mortar 8 s), so neither comes more often. Eight bolts fall
+between shells where four did.
+
+**The mortar's percentage doubled, 150 to 300, so a shell is worth what it was**: 300% of 0.55 is 150% of 1.10.
+
+**What else reads the creature's hit falls with it**, as recommended and ruled. At tier 8, from the model's hits above:
+
+| Reader | Worth | Elite Succubus | Legendary Sentinel |
+| :-- | :-- | :-: | :-: |
+| Infernal Brand's explosion (`CataclysmEnemyModifiers.cpp`) | 5 hits | 49,455 to 19,020 | 48,020 to 24,010 |
+| Hellfire's burst (`CataclysmDungeonGameMode.cpp`) | 1 hit | 9,891 to 3,804 | 9,604 to 4,802 |
+| Holy Repercussions' retaliation (`CataclysmDungeonGameMode.cpp`) | 1 hit | 9,891 to 3,804 | 9,604 to 4,802 |
+| Nothing Is Forgotten's portion (`CataclysmDungeonGameMode.cpp`) | 5% of a hit | 494.6 to 190.2 | 480.2 to 240.1 |
+
+**Clips.** The Sentinel's 2.40 second firing clip is played to fit its interval, so 2.40 times its authored speed, where it
+was 1.20; under the 2.5 ceiling, accepted 2026-11-21. The Succubus's 0.90 second cast fits a second as authored; its clip
+finishes 1.244 seconds after a cast begins and the next starts 1.344 seconds after, so nothing cuts it except its curse,
+every 10 seconds, which may cut the last 0.244 seconds when it follows a bolt.
+
+**The model's report, `python -m cataclysm_sim.enemy_stats`, before and after.** Only these lines moved:
+
+    before  Elite Succubus                   3,770    1,885     9,891   2.6s      183     10%    3.5    10%
+    after   Elite Succubus                   3,770    1,885     3,804   1.0s      183     10%    3.5    10%
+    before  Legendary Corrupted Sentinel    15,245    5,336     9,604   2.0s    2,748     20%    0.0     0%
+    after   Legendary Corrupted Sentinel    15,245    5,336     4,802   1.0s    2,748     20%    0.0     0%
+    before  Elite Succubus (hits a gearless Ravager survives)    0.6    after  1.5
+    before  Legendary Corrupted Sentinel (the same)               0.6    after  1.3
+
+**`sim/analyse_opening.py`, before and after: the same output**, every line but its run time. It fights ten Common Imps
+and reads neither creature.
+
+### Tests
+
+Unreal, in `Cataclysm.QuickCast.`, written before the change was compiled, none yet run:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachBoltIsDrawnLargerBrighterAndNeverCulled` | both fired bolts: a quick cast, scale 0.5, colour × 4, trail × 3, never culled; controls: the mortar's shell keeps its own look and is never culled, a thrall's Soulfire may be culled |
+| `AQuickCastAsksForTheCastFlareAndAMarkedAttackDoesNot` | the Siege Bolt asks for the flare once, in Demonic; the mortar asks for none |
+| `EachBoltRepeatsEverySecond` | three bolts through the brain, each a second apart and not a hundredth sooner |
+| `TheDenserTrailIsAMultipleOfTheAssetsOwnDefault` | `NS_Proj_Body`'s own `User.Intensity` default is read and usable |
+| `OnlyTheTwoBoltsAreQuickAndEveryAreaKeepsItsWindUp`, extended | every ability's cooldown as a literal: the control that the faster bolts moved no other ability |
+
+Python, `tools/tests/test_quick_cast.py`: each bolt repeats every second; each holds its damage per second within
+rounding; the curse and the mortar keep their cooldowns; and `AttachTo` and `PlayFor` pass the cull answer, the scale and
+the colour on. The tests that pinned the old interval and share are updated, each saying why; the Elite survival test
+is stated in seconds, since the Succubus now takes 29 smaller hits where it took 12.
+
+### Registered for the window
+
+**The whole suite 5074 + 4 = 5078**, recounted at the window after #2806, #2809 and #2807; skipped halves 48. Groups alone:
+`Cataclysm.QuickCast.` 7, `Cataclysm.Succubus.` 10, `Cataclysm.Sentinel.` 6, `Cataclysm.Effects.`, and the groups the
+entry above registers.
+
+**An editor step of its own:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+`DT_EnemyArchetypes` and the hash record it writes. Until then `test_datatable_assets_are_current.py` fails.
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| QC4 | `MayBeCulled` answers true for everything | `EachBoltIsDrawnLargerBrighterAndNeverCulled` |
+| QC5 | the Sentinel's `DesignedAttackIntervalSeconds` back to 2.0 | `EachBoltRepeatsEverySecond` |
+
+---
+
 ## 2026-11-21 — Two enemy bolts become quick casts with no marker, and every wind-up lands at its own length (#2808)
 
 **Affects:** `FCataclysmEnemyAbility::bDrawsNoMarker` and `QuickCastSeconds`, new

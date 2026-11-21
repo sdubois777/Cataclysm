@@ -48,7 +48,7 @@
  * `SecondsBetweenAttacks()` as well as by the ability's own cooldown, and stamps
  * that interval when a wind-up lands. `AttackTarget` is overridden here to do
  * nothing at all, or the creature would deal a free melee hit at eight metres
- * every 2.6 seconds on top of the bolt it already fired.
+ * every second on top of the bolt it already fired.
  *
  * WHY WITHER THE LIVING IS LISTED FIRST. `ChooseAbility` takes the first entry
  * whose range and cooldown fit and never looks at the shape. Soulfire has a
@@ -136,9 +136,11 @@ public:
 	// that Python test is the only thing checking these on a pull request.
 	// ----------------------------------------------------------------------
 
-	/** Seconds between shots. `attack_interval` is 2.6, the second longest in
-	 *  the slice behind the Gatekeeper's 3.0. */
-	static constexpr float DesignedAttackIntervalSeconds = 2.6f;
+	/** Seconds between shots. `attack_interval` is 1.0: a bolt every second, the
+	 *  owner's requirement of 2026-11-21 (issue #2808). It was 2.6, the second
+	 *  longest in the slice; its `damage_share` fell with it, so its damage per
+	 *  second is as it was. */
+	static constexpr float DesignedAttackIntervalSeconds = 1.0f;
 
 	/** Percent of all incoming damage resisted. `resistance` is 10.0. It has
 	 *  little of its own; what keeps it alive is the energy shield. */
@@ -148,9 +150,10 @@ public:
 	 * `crit_chance` 10.0 and `crit_multiplier` 200.0.
 	 *
 	 * **THE HARDEST-HITTING CRITICAL IN THE SLICE**, tied with the Brute's 200.
-	 * Its `damage_share` of 1.60 is the second highest of the seven, and a
-	 * doubling on top of that is what "slow but powerful attacks" means once the
-	 * arithmetic is done.
+	 * Its `damage_share` was 1.60, the second highest of the seven, and a
+	 * doubling on top of that was what "slow but powerful attacks" meant once the
+	 * arithmetic was done. Since issue #2808 the share is 0.6154 at a bolt every
+	 * second, the same damage per second, and the critical still doubles a hit.
 	 */
 	static constexpr float DesignedCritChancePercent = 10.0f;
 	static constexpr float DesignedCritMultiplierPercent = 200.0f;
@@ -256,8 +259,8 @@ public:
 	static constexpr float SoulfireSpeedCmPerSecond = 1200.0f;
 
 	/** Seconds before it may be used again. **Zero, which is what makes it the
-	 *  basic attack.** The creature's 2.6 second attack interval is the only
-	 *  thing spacing it out, which is what an interval means. */
+	 *  basic attack.** The creature's 1.0 second attack interval (2.6 until issue
+	 *  #2808) is the only thing spacing it out, which is what an interval means. */
 	static constexpr float SoulfireCooldownSeconds = 0.0f;
 
 	/**
@@ -403,7 +406,7 @@ public:
 	 * player's auras and for the same reason: the work is an overlap query and
 	 * running it every frame would cost sixty times what it costs to be correct.
 	 * Half a second is fast enough that an ally walking into the field is buffed
-	 * before it has taken a swing at 2.6 second intervals.
+	 * before it has taken its next swing.
 	 */
 	static constexpr float DominionRefreshSeconds = 0.5f;
 

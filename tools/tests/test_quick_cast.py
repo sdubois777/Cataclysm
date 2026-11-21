@@ -116,3 +116,86 @@ def test_the_dodge_distance_grows_with_the_radius(soulfire) -> None:
         12.0 * (0.4 + 0.92 / 3.5 - 0.5))
     wider = dataclasses.replace(soulfire, params={**soulfire.params, "Radius": 0.9})
     assert quick_cast_dodge_distance(wider) > quick_cast_dodge_distance(soulfire)
+
+
+# --------------------------------------------------------------------------
+# A bolt every second, at the damage per second it had. Issue #2808, the
+# owner's requirement of 2026-11-21: "give those quick enemy ranged attacks a
+# 1 second cooldown. They should be a basic attack sort of thing."
+# --------------------------------------------------------------------------
+
+#: What each creature had before the requirement: its share per hit and its
+#: attack interval. The ruling held damage per second, share / interval.
+BEFORE_2808 = {"Succubus": (1.60, 2.6), "Corrupted Sentinel": (1.10, 2.0)}
+
+
+@pytest.mark.parametrize("name", sorted(BEFORE_2808))
+def test_each_bolt_repeats_every_second(name) -> None:
+    from cataclysm_sim.enemy_stats import archetype
+
+    assert archetype(name).attack_interval == pytest.approx(1.0), (
+        f"the {name}'s bolt no longer repeats every second.")
+
+
+@pytest.mark.parametrize("name", sorted(BEFORE_2808))
+def test_each_bolt_holds_its_damage_per_second(name) -> None:
+    """Within rounding: the share is written to four places."""
+    from cataclysm_sim.enemy_stats import archetype
+
+    share, interval = BEFORE_2808[name]
+    kind = archetype(name)
+    assert kind.damage_share / kind.attack_interval == pytest.approx(
+        share / interval, rel=1e-4), (
+        f"the {name} deals {kind.damage_share / kind.attack_interval:.4f} of its "
+        f"score a second and dealt {share / interval:.4f}.")
+
+
+def test_the_other_abilities_keep_their_cooldowns() -> None:
+    """THE CONTROL. The interval gates every ability, but each keeps its own
+    cooldown, so the curse and the mortar come no more often than before."""
+    from cataclysm_sim.enemy_abilities import abilities
+
+    cooldowns = {a.name: a.cooldown for name in BEFORE_2808 for a in abilities(name)}
+    assert cooldowns["Wither the Living"] == pytest.approx(10.0)
+    assert cooldowns["Brimstone Mortar"] == pytest.approx(8.0)
+
+
+# --------------------------------------------------------------------------
+# Seen in flight. Issue #2808, the owner's requirement of 2026-11-21: "Make
+# sure those attacks can actually be seen. Like a flaming fireball that's
+# obvious to the player". No test can see an effect (-nullrhi, issue #559), so
+# these read that the code passes its decisions on.
+# --------------------------------------------------------------------------
+
+EFFECT_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+              / "CataclysmProjectileEffect.cpp")
+CAST_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+            / "CataclysmCastEffect.cpp")
+
+
+def code_of(path: pathlib.Path, signature: str) -> str:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(re.escape(signature) + r".*?\n\}", text, re.S)
+    assert match is not None, f"{path.name} has no {signature!r}"
+    return "\n".join(line.split("//", 1)[0] for line in match.group(0).splitlines())
+
+
+def test_a_projectiles_effect_takes_its_cull_answer_from_the_look() -> None:
+    body = code_of(EFFECT_CPP, "UNiagaraComponent* UCataclysmProjectileEffect::AttachTo(")
+    assert "/*bPreCullCheck=*/Look.bMayBeCulled" in body, (
+        "AttachTo no longer spawns with the look's answer as its pre-cull "
+        "check, so a hostile's bolt can be refused at spawn again.")
+    assert re.search(r"if\s*\(\s*!Look\.bMayBeCulled\s*\)\s*\{\s*Component->"
+                     r"SetAllowScalability\(false\);", body), (
+        "AttachTo no longer turns scalability off for a hostile's bolt, so it "
+        "can be culled after it spawns.")
+    assert "Primary * Look.ColourMultiplier" in body
+    assert "SetVariableFloat(ScaleParameter, Look.Scale)" in body
+
+
+def test_a_cast_flare_takes_the_same_cull_answer() -> None:
+    body = code_of(CAST_CPP, "UNiagaraComponent* UCataclysmCastEffect::PlayFor(")
+    assert "UCataclysmProjectileEffect::MayBeCulled(Caster)" in body
+    assert "/*bPreCullCheck=*/bMayBeCulled" in body
+    assert re.search(r"if\s*\(\s*!bMayBeCulled\s*\)\s*\{\s*Component->"
+                     r"SetAllowScalability\(false\);", body)

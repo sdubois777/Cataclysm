@@ -172,7 +172,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	float InSpeed, int32 InPierce, bool bInReturns, float InDamagePercent,
 	const FGameplayTagContainer& InSkillTags, bool bInBurns,
 	UStaticMesh* InBodyMesh, float InFlightSeconds, float InCritChancePercent,
-	float InSkillHealthCostPercent, const UGameplayAbility* InFiringSkill)
+	float InSkillHealthCostPercent, const UGameplayAbility* InFiringSkill, bool bInQuickCast)
 {
 	UWorld* World = Instigator ? Instigator->GetWorld() : nullptr;
 	if (!World || InRadiusCm <= 0.0f)
@@ -304,6 +304,9 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 		Projectile->StatedAilment = Firing->Params.Ailment;
 	}
 	Projectile->bBurns = bInBurns;
+
+	// BEFORE THE EFFECT, which draws a quick cast differently. Issue #2808.
+	Projectile->bQuickCast = bInQuickCast;
 
 	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
 	// and the firer for its colour, and the firer is the actor's Owner, which
