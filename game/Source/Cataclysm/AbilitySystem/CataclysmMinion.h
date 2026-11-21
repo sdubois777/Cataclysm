@@ -129,6 +129,14 @@ public:
 	static const struct FCataclysmMinionTypeRow* FindType(const UDataTable* Table,
 														  const FString& TypeName);
 
+	/**
+	 * A type row's Tags column as tags, which `Spawn` gives a new minion as its
+	 * `TypeTags`. Empty when the table has no such row. Issue #2787: a kind's
+	 * reserve is asked with these BEFORE the spawn, because the pool must have
+	 * room before anything is made, so they cannot be read off the minion.
+	 */
+	static FGameplayTagContainer TagsOfType(const FString& TypeName);
+
 	/** Which row of the minion type table this one was made from. Empty if none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	FString TypeName;
@@ -461,6 +469,14 @@ public:
 	 * a number under the owner's delegation of unstated numbers. Measured along the floor, gadget to player.
 	 */
 	static constexpr float SkillGadgetSelfBuffReachCm = 800.0f;
+
+	/**
+	 * The Fervour one skill gadget reserves while it stands, before Crowned. Issue #2787, a number under the owner's
+	 * delegation of unstated numbers: half a thrall's 30, because it stands as long as a thrall does (until the floor
+	 * is cleared or it is killed) but stays where it was put and casts one skill. A new press MOVES the slot's gadget
+	 * (S6) and reserves nothing more.
+	 */
+	static constexpr float SkillGadgetFervourReserve = 15.0f;
 
 	/**
 	 * Place a skill gadget for `Player`'s `Slot` at `Location`, or null with the reason logged.
@@ -973,6 +989,13 @@ public:
 	static const TCHAR* TyrantsMinionTypeName;
 
 	/**
+	 * The Fervour one Tyrant's Minion reserves while it stands, before Crowned. Issue #2787, a number under the
+	 * owner's delegation: an imp's 10, for a creature that lasts half an imp's time and hits about three times as
+	 * hard. Refreshing the one standing reserves nothing more.
+	 */
+	static constexpr float TyrantsMinionFervourReserve = 10.0f;
+
+	/**
 	 * True for a Tyrant's Minion. WHAT TELLS IT FROM AN IMP, since it is made from the Imp's row: its own death
 	 * summons none (ruling #3), and the two replacement paths, Press-Ganged's and Rekindled's `ReplaceLost` and the
 	 * re-summon `ScheduleResummon`, are not asked at its death (Q4).
@@ -1022,6 +1045,13 @@ public:
 	 * damage of its own (its blow is a share of its summoner's armour), every other cell the Imp's.
 	 */
 	static const TCHAR* WarhoundTypeName;
+
+	/**
+	 * The Fervour one Warhound reserves while it stands, before Crowned. Issue #2787, a number under the owner's
+	 * delegation: half an imp's 10, for a creature that lasts half an imp's time and comes from a chance on a blow
+	 * taken rather than a choice. Refreshing the one standing reserves nothing more.
+	 */
+	static constexpr float WarhoundFervourReserve = 5.0f;
 
 	/**
 	 * How long after a blow summons or refreshes a Warhound the next blow may not (Q4: "with its 0.25 s trigger
@@ -1178,6 +1208,13 @@ public:
 
 	/** The most skill traps one player has standing, across every converted slot (T6). */
 	static constexpr int32 SkillTrapsMostPerPlayer = 5;
+
+	/**
+	 * The Fervour one skill trap reserves while it stands, before Crowned. Issue #2787, a number under the owner's
+	 * delegation: the War gadgets' 5, for a machine that lasts 20 s and is used up by one cast. Over the cap the
+	 * oldest traps' reserves are counted as freed before the new one is asked to fit, as an evicted imp's are.
+	 */
+	static constexpr float SkillTrapFervourReserve = 5.0f;
 
 	/**
 	 * "Traps arm 30%-60% faster" and "Traps have 30%-50% increased trigger radius": two increased stats of the player,

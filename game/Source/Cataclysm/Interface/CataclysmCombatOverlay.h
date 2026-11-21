@@ -949,17 +949,6 @@ public:
 	static bool ManaOf(const AActor* Actor, float& OutMana, float& OutMaxMana);
 
 	/**
-	 * The same for Fervour, the one resource every class shares. Issue #954.
-	 *
-	 * FALSE FOR AN ACTOR THAT CANNOT MOVE IT, which is a stronger condition than
-	 * the other three use and is the point. Every class has a pool of 100, so a
-	 * check on the maximum would draw the bar for every character in the game
-	 * including the ones with no way of filling it, and a bar that can only ever
-	 * read zero says the opposite of what is true. This answers true only when
-	 * the character has spent a point on a generator, so the bar appearing IS
-	 * the confirmation that the node did something.
-	 */
-	/**
 	 * The Fervour this character's army holds back, for the bar's reserved
 	 * section. Issue #1160. What `FervourOf` answers as the maximum is already
 	 * the spendable part, so the whole bar is that plus this.
@@ -972,6 +961,20 @@ public:
 	 */
 	static FString ReservedTextFor(float Reserved);
 
+	/**
+	 * The same for Fervour, the one resource every class shares. Issue #954.
+	 *
+	 * FALSE FOR AN ACTOR THAT CANNOT MOVE IT AND RESERVES NONE OF IT, which is a
+	 * stronger condition than the other three use and is the point. Every class
+	 * has a pool of 100, so a check on the maximum would draw the bar for every
+	 * character in the game including the ones with no way of filling it, and a
+	 * bar that can only ever read zero says the opposite of what is true. This
+	 * answers true when the character has spent a point on a generator, so the
+	 * bar appearing is the confirmation that the node did something -- OR when
+	 * anything it commands reserves part of the pool, since issue #2787, so a
+	 * reserve is always seen. Its answer decides whether the heads-up display
+	 * draws the bar.
+	 */
 	static bool FervourOf(const AActor* Actor, float& OutFervour,
 						  float& OutMaxFervour);
 

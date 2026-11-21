@@ -874,11 +874,13 @@ void ACataclysmHUD::DrawPlayerVitals()
 	// written, and the project owner's standing rule of 2026-08-24 is that a
 	// system they cannot see in game is not finished.
 	//
-	// `FervourOf` REFUSES A CHARACTER WITH NO GENERATOR, which is why there is
-	// no maximum check here as there is on the two above. Every class has a pool
-	// of 100 and almost no character has a way to fill it, so a check on the
-	// maximum would draw a bar that could only ever read zero. As it stands the
-	// bar appearing is itself the confirmation that a generator node worked.
+	// `FervourOf` REFUSES A CHARACTER WITH NO GENERATOR AND NOTHING RESERVED,
+	// which is why there is no maximum check here as there is on the two above.
+	// Every class has a pool of 100 and almost no character has a way to fill it,
+	// so a check on the maximum would draw a bar that could only ever read zero.
+	// As it stands the bar appearing is the confirmation that a generator node
+	// worked, or that something the character commands holds part of the pool
+	// back (issue #2787), which the reserved section then shows.
 	//
 	// ON TOP RATHER THAN BESIDE HEALTH, because health must not move when a bar
 	// above it appears: it is the one a player watches while being hit.

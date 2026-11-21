@@ -34,9 +34,13 @@ struct FGameplayTagContainer;
  * because `UCataclysmSkillEffects::ApplyTagForDuration` refreshes the running
  * application rather than replacing it.
  *
- * IT RESERVES NO FERVOUR. The ruling that a summon needs unreserved Fervour
- * governs skills that state a `FervourReserve`; this is not a skill. Its limits
- * are the shared cap and the 20 seconds.
+ * IT RESERVES SUMMON IMP'S FERVOUR, READ FROM THE SAME ROW, since issue #2787.
+ * The owner, 2026-11-20: "the minions I create as a Ritualist aren't holding my
+ * special resource in reserve, which they should be. All gadgets/traps/minions
+ * should hold some reserve." That replaced the rulings of 2026-09-27 and
+ * 2026-09-30 that a risen imp reserves nothing because it is not a skill. So a
+ * risen imp holds back 10, or 5 under Crowned, and when the pool cannot hold
+ * that, nothing rises and nothing is destroyed, as at the cap.
  *
  * AT THE CAP NOTHING RISES AND NOTHING IS DESTROYED. The sentence says "if you
  * hold fewer imps", so a full hand is a refusal, not an eviction; only a press
@@ -69,8 +73,9 @@ public:
 	static AActor* CurserOf(const AActor* Dying);
 
 	/**
-	 * Raise the imp for a creature that has just died, if a curse and the cap
-	 * allow it. Called once per death from `ACataclysmEnemyCharacter::HandleDeath`.
+	 * Raise the imp for a creature that has just died, if a curse, the cap and
+	 * the curser's pool allow it. Called once per death from
+	 * `ACataclysmEnemyCharacter::HandleDeath`.
 	 *
 	 * @return the imp, or null when nothing rose
 	 */
@@ -88,6 +93,13 @@ public:
 	static const TCHAR* NecrosisRiseSecondsStat;
 
 	/**
+	 * The Fervour an imp raised by a necrosis kill reserves while it stands, before Crowned. Issue #2787, a number
+	 * under the owner's delegation of unstated numbers: half a summoned imp's 10, because it is the same creature and
+	 * lasts 5-10 seconds against Summon Imp's 20.
+	 */
+	static constexpr float NecrosisImpFervourReserve = 5.0f;
+
+	/**
 	 * Raise an imp for `Killer` where an enemy it killed with necrosis fell.
 	 *
 	 * NECROSIS IS READ OFF THE KILLING TAGS, which a lethal tick fills with the
@@ -102,7 +114,8 @@ public:
 	 * @param Where        where it fell
 	 * @param KillingTags  the death notice's killing tags, which may be null
 	 * @return the imp, or null when the rule is not held, the kill was not
-	 *         necrosis, the victim was no enemy, or the type could not be found
+	 *         necrosis, the victim was no enemy, the type could not be found, or
+	 *         the killer's pool has no room for `NecrosisImpFervourReserve`
 	 */
 	static ACataclysmMinion* RiseOnNecrosisKill(AActor* Killer, const AActor* Victim,
 												const FVector& Where,

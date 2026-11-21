@@ -7,6 +7,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmCommand.generated.h"
 
+class ACataclysmCharacterBase;
 class ACataclysmMinion;
 
 /**
@@ -312,10 +313,10 @@ public:
 	 * pool, with `Freed` Fervour about to be let go first. Issue #1934, ruling
 	 * R1: a summon needs a free slot under its cap AND enough unreserved Fervour.
 	 *
-	 * `Freed` IS SUMMON IMP'S EVICTED OLDEST, ruled 2026-09-30: at the cap the row
-	 * destroys the oldest imp, and that imp's reserve is counted as freed before
-	 * the fit is asked, so a press is refused only when the pool cannot hold the
-	 * new imp.
+	 * `Freed` IS WHAT A CAP IS ABOUT TO EVICT, ruled 2026-09-30: at the cap Summon
+	 * Imp destroys the oldest imp, and that imp's reserve is counted as freed
+	 * before the fit is asked, so a press is refused only when the pool cannot
+	 * hold the new imp. A skill trap over its cap does the same since issue #2787.
 	 */
 	static bool HasRoomToReserve(const AActor* Commander, float NewReserve,
 								 float Freed = 0.0f);
@@ -327,6 +328,36 @@ public:
 	 * Called whenever a follower that reserves something is made or taken.
 	 */
 	static void ClampFervourToSpendable(const AActor* Commander);
+
+	/**
+	 * What one follower of a kind reserves for this commander: `Stated` less
+	 * Crowned's reduction, never below `SmallestMinionReserve`. Issue #2787.
+	 *
+	 * EVERY KIND READS ITS RESERVE HERE, whether a skill's row states it or the
+	 * kind's own constant does: a thrall and a summoned imp from their skill's
+	 * row, a risen imp from Summon Imp's row, and the necrosis imp, the Warhound,
+	 * Tyrant's Minion, the skill gadget and the skill trap from the constants
+	 * beside their other numbers. Crowned says "each minion", so it reaches all
+	 * of them alike.
+	 *
+	 * ZERO OR LESS STAYS AS STATED. A stat that adjusts a designed figure must
+	 * not bring one into existence: zero means "this reserves nothing", and the
+	 * floor would otherwise turn it into one.
+	 *
+	 * @param Tags  what the reduction is asked with: the making skill's tags, or
+	 *              the kind's type row tags (`ACataclysmMinion::TagsOfType`), so a
+	 *              later row scoped to a keyword reaches only what it names
+	 */
+	static float ReserveFor(const AActor* Commander, float Stated,
+							const FGameplayTagContainer& Tags);
+
+	/**
+	 * Record `Reserve` on a follower just made or taken, and cut its commander's
+	 * Fervour to what is left spendable. Issue #2787. The two steps every maker
+	 * takes once the follower exists, after it has asked `HasRoomToReserve`.
+	 */
+	static void HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,
+							float Reserve);
 
 	/**
 	 * The stat holding percentage points ADDED to the health threshold a blow
@@ -362,10 +393,11 @@ public:
 	 * the measurement and the rule it produced -- a stat that lowers a figure
 	 * names the size of the reduction.
 	 *
-	 * A REDUCTION AND NOT THE RESERVE ITSELF. Five skills state a reserve of
-	 * their own -- Subjugate 30, Summon Imp 10, three deployables 5 -- so a
-	 * stat holding the figure would state one of them twice and be wrong for
-	 * the other four.
+	 * A REDUCTION AND NOT THE RESERVE ITSELF. Each kind states a reserve of its
+	 * own -- Subjugate 30, Summon Imp 10, three deployables 5, and since issue
+	 * #2787 a figure for every minion no skill makes -- so a stat holding the
+	 * figure would state one of them twice and be wrong for the others.
+	 * `ReserveFor` applies it.
 	 */
 	static const TCHAR* MinionReserveReductionStat;
 

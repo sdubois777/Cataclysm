@@ -103,6 +103,20 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
 		return nullptr;
 	}
 
+	// AND THE POOL MUST HOLD ITS RESERVE, Summon Imp's from Summon Imp's row, after Crowned. Issue #2787, the owner's
+	// ruling of 2026-11-20 that every minion reserves. When it cannot, nothing rises and nothing is destroyed, as at
+	// the cap.
+	const float Reserve =
+		UCataclysmCommand::ReserveFor(Curser, SummonImp->Params.FervourReserve, SummonImp->Tags);
+	if (!UCataclysmCommand::HasRoomToReserve(Curser, Reserve))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' died cursed by '%s', whose pool has no room for an imp reserving %.0f Fervour, so "
+				 "nothing rose."),
+			*GetNameSafe(Dying), *Curser->GetName(), Reserve);
+		return nullptr;
+	}
+
 	const float Lifetime =
 		SummonImp->Params.Duration > 0.0f ? SummonImp->Params.Duration : 20.0f;
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
@@ -114,6 +128,7 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
 		{
 			Imp->RisenAtSeconds = World->GetTimeSeconds();
 		}
+		UCataclysmCommand::HoldReserve(Curser, Imp, Reserve);
 	}
 	return Imp;
 }
@@ -158,8 +173,22 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(
 		return nullptr;
 	}
 
+	// AND THE POOL MUST HOLD ITS OWN RESERVE, issue #2787: not Summon Imp's 10, since it lasts 5-10 seconds against
+	// Summon Imp's 20 and holds no place under its cap. When it cannot, nothing rises.
+	const FString Type = SummonImp->Params.Minions[0].Type;
+	const float Reserve = UCataclysmCommand::ReserveFor(
+		Killer, NecrosisImpFervourReserve, ACataclysmMinion::TagsOfType(Type));
+	if (!UCataclysmCommand::HasRoomToReserve(Killer, Reserve))
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("'%s' killed '%s' with necrosis, and its pool has no room for an imp reserving %.0f Fervour, so "
+				 "nothing rose."),
+			*Killer->GetName(), *GetNameSafe(Victim), Reserve);
+		return nullptr;
+	}
+
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
-		Killer, Where, Seconds, SummonImp->Params.bBurns, SummonImp->Params.Minions[0].Type);
+		Killer, Where, Seconds, SummonImp->Params.bBurns, Type);
 	if (Imp)
 	{
 		Imp->bOutsideSummonCaps = true;
@@ -168,6 +197,7 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(
 		{
 			Imp->RisenAtSeconds = World->GetTimeSeconds();
 		}
+		UCataclysmCommand::HoldReserve(Killer, Imp, Reserve);
 	}
 	return Imp;
 }

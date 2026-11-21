@@ -1164,7 +1164,11 @@ bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
 	// and draw a bar that could only ever read zero. Asking whether anything can
 	// move it makes the bar's appearance mean "the generator node you spent on
 	// is working", which is what the project owner needs to see. Issue #954.
-	if (!UCataclysmFervour::HasAGenerator(AbilitySystem))
+	//
+	// OR ANYTHING RESERVED, since issue #2787. A character with no generator can
+	// hold a skill gadget, a skill trap or a set bonus's minion, each of which
+	// reserves, and the player must be able to see that part of the pool held.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && ReservedFervourOf(Actor) <= 0.0f)
 	{
 		return false;
 	}

@@ -530,14 +530,15 @@ public:
 	 * The Fervour this character holds back from its commander's pool while it
 	 * is commanded, or zero. Issues #1160 and #1934.
 	 *
-	 * FIXED WHEN IT IS MADE OR TAKEN, by the skill that made it: Summon Imp's
-	 * `FervourReserve` for an imp, Subjugate's for a thrall, each after Crowned.
-	 * A Second Self's chosen one counts twice when the reserve is totalled, in
-	 * `UCataclysmCommand::ReservedFervourOf`, and not here.
+	 * FIXED WHEN IT IS MADE OR TAKEN, by whatever made it, each after Crowned
+	 * through `UCataclysmCommand::ReserveFor`: Summon Imp's `FervourReserve` for a
+	 * summoned or risen imp, Subjugate's for a thrall, and since issue #2787 its
+	 * kind's own figure for a necrosis imp, a Warhound, a Tyrant's Minion, a skill
+	 * gadget and a skill trap. A Second Self's chosen one counts twice when the
+	 * reserve is totalled, in `UCataclysmCommand::ReservedFervourOf`, and not here.
 	 *
-	 * ZERO FOR EVERYTHING NOT MADE THAT WAY: a risen imp, a minion spawned
-	 * directly, and a gadget, which the owner's no-War mandate leaves out of
-	 * this change (ruled 2026-09-30).
+	 * ZERO FOR A MINION SPAWNED DIRECTLY, which nothing in play does, and for a
+	 * War gadget, which the owner's no-War mandate leaves to issue #1934.
 	 */
 	float ReservedFervour = 0.0f;
 

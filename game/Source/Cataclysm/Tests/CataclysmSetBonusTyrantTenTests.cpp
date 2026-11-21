@@ -549,9 +549,12 @@ bool FCataclysmTyrantTenFreeStartTest::RunTest(const FString& Parameters)
 	// after the second window, where the control's press wrote nothing: maximum before current, as the Mana Weaver
 	// ten-piece caster writes them.
 	const FGameplayAttribute Fervour = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	// THE MAXIMUM IS 100 MORE THAN THE TYRANT'S MINION HOLDS BACK, since issue #2787 made it reserve: the minion is
+	// already standing, so a maximum of 100 would leave 90 to hold, and the press must find 100.
 	for (const FTyrantsUltimateRig* Each : {&Free, &Pressed})
 	{
-		Each->Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Each->Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+			100.0f + ACataclysmMinion::TyrantsMinionFervourReserve);
 		Each->Set(Fervour, 100.0f);
 	}
 	if (!TestEqual(TEXT("set-up: the free player holds 100 Fervour"), Free.Get(Fervour), 100.0f, 0.001f)

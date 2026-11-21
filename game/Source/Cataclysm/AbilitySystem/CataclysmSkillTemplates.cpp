@@ -74,8 +74,10 @@ namespace
 	 * Every attribute in the combat set is floored at zero -- see
 	 * `FervourReserveFor` below for the measurement -- so a stat that lowers a
 	 * figure names the size of the reduction and is subtracted by its caller.
-	 * This function is deliberately not called `...BonusFor`: one of its two
-	 * callers subtracts what it returns.
+	 * This function is deliberately not called `...BonusFor`: Crowned's caller
+	 * subtracted what it returned. Since issue #2787 Crowned is read by
+	 * `UCataclysmCommand::ReserveFor` in the same way, because minions no skill
+	 * makes ask it too, and The Swarm's `MinionCapFor` is the caller here.
 	 *
 	 * READ WITH THE SKILL'S OWN TAGS, so a future row scoped to a keyword counts
 	 * only for the skills it names. `StatForSkill` falls back to the attribute
@@ -115,11 +117,16 @@ namespace
 	 * at 30, Summon Imp at 10, and three deployables at 5 -- so the keystone
 	 * takes a thrall's to 25, an imp's to 5, and a deployable's to the floor.
 	 *
-	 * A THRALL'S AND AN IMP'S RESERVES ARE READ TODAY, A DEPLOYABLE'S IS NOT.
-	 * Subjugate's check for room and Summon Imp's -- the imp's since issue
-	 * #2172 -- are the callers. Nothing reads what a deployable reserves, which
-	 * is issue #1934's remaining half, so for those the reduction changes
+	 * A THRALL'S AND AN IMP'S RESERVES ARE READ TODAY, A WAR DEPLOYABLE'S IS
+	 * NOT. Subjugate's check for room and Summon Imp's -- the imp's since issue
+	 * #2172 -- are the callers. Nothing reads what a War deployable reserves,
+	 * which is issue #1934's remaining half, so for those the reduction changes
 	 * nothing until something does, and no test can show it.
+	 *
+	 * THE ARITHMETIC IS `UCataclysmCommand::ReserveFor` SINCE ISSUE #2787, which
+	 * every kind of minion now asks, the ones no skill makes included; this
+	 * passes it the row's figure. The paragraphs below are why it is shaped as
+	 * it is.
 	 *
 	 * AND ONLY WHERE THE ROW STATES A RESERVE ABOVE ZERO. A stat that adjusts a
 	 * designed figure must not bring the figure into existence: zero means "this
@@ -146,18 +153,7 @@ namespace
 							const FCataclysmSkillShapeParams& Params,
 							const FGameplayTagContainer& SkillTags)
 	{
-		if (Params.FervourReserve <= 0.0f)
-		{
-			return Params.FervourReserve;
-		}
-
-		const float Reduction = PassiveStatFor(
-			Self, UCataclysmCommand::MinionReserveReductionStat,
-			UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute(),
-			SkillTags);
-
-		return FMath::Max(UCataclysmCommand::SmallestMinionReserve,
-						  Params.FervourReserve - Reduction);
+		return UCataclysmCommand::ReserveFor(Self, Params.FervourReserve, SkillTags);
 	}
 
 	/**
@@ -4215,9 +4211,10 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	{
 		Deployed.Add(Machine);
 
-		// A GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: gadgets are
-		// War skills and the owner's mandate is no War work yet, so #1934 stays
-		// open for them. Their rows already state `FervourReserve`, so building
+		// A WAR GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: these
+		// are War skills and the owner's mandate is no War work yet, so #1934
+		// stays open for them. (The skill gadget an enchantment places reserves
+		// since issue #2787; it is `ACataclysmMinion::PlaceSkillGadget`, not this.) Their rows already state `FervourReserve`, so building
 		// it is this one line, with a fit check before the spawn like Summon
 		// Imp's:  Machine->ReservedFervour = FervourReserveFor(Self, Params, SkillTags);
 	}
