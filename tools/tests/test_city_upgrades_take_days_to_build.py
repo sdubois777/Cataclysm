@@ -22,7 +22,8 @@ WHAT IS CHECKED:
   7. every test that runs an older run file through the chain adds what `Migrate_12_to_13` writes, and no test reads
      `Run_v12.json` but the one that migrates it; the fixtures README lists `Run_v13.json`;
   8. the city screen, the map's city detail and the console say the build, in one wording;
-  9. War Funding's "first upgrade in a city" counts an upgrade being built as the first.
+  9. War Funding's "first upgrade in a city" counts an upgrade being built as the first;
+ 10. the design document's "City Upgrades" section states the three figures the code holds.
 """
 
 from __future__ import annotations
@@ -236,6 +237,17 @@ def test_the_city_screen_the_map_and_the_console_say_the_build_in_one_wording() 
     assert "UCataclysmCityScreenLayout::BuildLineFor(Run, CityId)" in console, "Cataclysm.CityUpgrades omits the build"
     assert "UCataclysmCityUpgradePurchase::BuildDaysIn(World, Run, RowName, City->CityId)" in console, (
         "Cataclysm.CityUpgrades does not list each offer's days")
+
+
+def test_the_design_document_states_the_days_the_code_holds() -> None:
+    header = code(EMPIRE / "CataclysmCityUpgrade.h")
+    days = [int(re.search(rf"static constexpr int32 BuildDaysTier{tier} = (\d+);", header).group(1)) for tier in (1, 2, 3)]
+    design = (REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    paragraph = design[design.index("**A city upgrade costs gold, and takes days to build.**"):]
+    paragraph = paragraph[:paragraph.index(chr(10))]
+    stated = (f"An upgrade at upgrade tier 1 takes {days[0]} days, at tier 2 {days[1]} days and at tier 3 {days[2]} days")
+    assert stated in paragraph, f"docs/Cataclysm_GDD_v2.md's City Upgrades paragraph does not say {stated!r}"
+    assert "not built yet** (issue #2825)" not in paragraph, "the design document still says build times are not built"
 
 
 def test_war_funding_counts_an_upgrade_being_built_as_the_first() -> None:

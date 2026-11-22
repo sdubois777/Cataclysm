@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A city upgrade takes days to build: 6, 12 or 24 by its tier, its slot taken at purchase, nothing done until it is finished, one at a time per city (#2825)
+
+**Affects:** `UCataclysmCityUpgradeRules` (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`):
+`BuildDaysTier1` to `BuildDaysTier3`, `MinimumBuildDays` and `BuildDaysFor`, new, replacing `BuildDays` and
+`IsInstant`; `ECataclysmCityUpgradeResult::BuildUnderWay`, which takes value 8 from `CannotWaitForABuildYet`;
+`FCataclysmCityUpgrade::BuildDaysLeft`, new. `FCataclysmCity::Building` and `IsBuilding`,
+`UCataclysmEmpireMap::StartBuild`, new, and `FreeUpgradeSlots` counting a build (`CataclysmEmpireMap.h` and `.cpp`).
+`UCataclysmEmpireRun` (`CataclysmEmpireRun.h` and `.cpp`): `BuyCityUpgrade`'s new `BuildDays` parameter,
+`AdvanceCityBuilds`, `CompleteCityUpgrade`, `BuildOn`, `IsBuildPaused` and `BuildReadyDay`, new, and
+`FCataclysmDayReport::UpgradesFinishedOn`, new. The run record at version 13 (`CataclysmSaveRecords.h` and `.cpp`,
+`Migrate_12_to_13`; `CataclysmSaveApply.cpp`). `UCataclysmCityUpgradePurchase::BuildDaysIn` and `BuildDaysText`, new,
+and `Buy` passing the days; `FCataclysmPlayLoopLog::UpgradeLine` and `AwayAccount`; `UCataclysmCityScreenLayout`
+(`BuildLineFor`, new; `HeldLinesFor`, `SlotsTextFor`, `OffersFor`, `ButtonTextFor`) and its offer's `BuildDays` and
+`bWaitsOnABuild`, new; `CataclysmCityScreenWidget.cpp`; `CataclysmEmpireMapWidget.cpp`; the two city upgrade console
+commands in `CataclysmPlayerCharacter.cpp`; War Funding's first-upgrade check in `CataclysmEmpireTree.cpp`. Tests:
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeBuildTests.cpp` (4),
+`game/Source/Cataclysm/Tests/CataclysmCityUpgradeBuildSaveTests.cpp` (2) and
+`CataclysmCityUpgradeBuildScreenTests.cpp` (2), new; `Cataclysm.CityUpgrade.AnUpgradeIsStillImmediate` renamed
+`AnUpgradeTakesTheDaysOfItsTier`; the price and screen tests that buy through `Buy`; every test that read
+`game/Tests/SaveFixtures/Run_v12.json`, moved to `game/Tests/SaveFixtures/Run_v13.json`, new; `tools/tests/test_city_upgrades_take_days_to_build.py`,
+new, `test_city_upgrades_cost_gold.py` (the purchase's call with its days), `test_empire_tree_event_counts_are_saved.py`
+(the finishing day now stamped in `CompleteCityUpgrade`) and `test_game_readme_is_true.py` (the new empire test file);
+`docs/Cataclysm_GDD_v2.md`, "City Upgrades"; `game/README.md`, the empire bullet. Issue [#2825](https://github.com/sdubois777/Cataclysm/issues/2825).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction: code, tests and this entry, with no
+  compile and no Unreal run. Nothing below about the C++ is measured yet; the registration is what a window will check.
+- **THE THREE EMPIRE TREE NODES THAT ACT ON BUILD DAYS ARE NOT IN THIS CHANGE.** Scaffolding, Rapid Renovation and
+  Rapid Funding stay refused (`EMPIRE_TREE_REFUSED` in `tools/generate_datatables.py`, reason "build time") until the
+  next slice. They act through the empire tree's own code, which the empire tree session's combined window for slices
+  6d and 6e is changing now, and Rapid Funding needs a second purchase button. `UCataclysmCityUpgradePurchase::BuildDaysIn`
+  is where they will apply, as the price nodes apply in `PriceIn`.
+- **THE RUN RECORD GOES TO 13, AND GEMS SLICE G5 ALSO RAISES IT.** Whichever merges first takes 13, by the
+  coordinating session's ruling of 2026-11-21, and the other re-registers.
+- **THE DESIGN DOCUMENT NOW SAYS IT IS BUILT.** The rulings entry below (PR #2826) wrote the "City Upgrades" paragraph
+  of `docs/Cataclysm_GDD_v2.md` as ruled and not built; this change replaces that sentence with what the city screen
+  shows, and says the three empire tree nodes are not built yet. `game/README.md`'s empire bullet says a purchase takes
+  days to build.
+
+### The rulings
+
+- **The owner, 2026-11-21**, reversing the ruling of 2026-11-18 that an upgrade stays instant (#1264, now closed): "My
+  ruling was probably incorrect. They need build times. Probably based on their tier."
+- **The coordinating session, 2026-11-21**, on #2825's plan: "their tier" is the upgrade's tier; 6, 12 and 24 days;
+  one build at a time per city; and the rest as written -- the gold paid and the slot taken at purchase, no effect until
+  it is finished, a Siege and a fall pausing it, no cancelling, the days fixed at purchase.
+
+### The judgements, each with what it rests on
+
+| Judgement | Value | What it rests on |
+| :-- | :-- | :-- |
+| Tier 1's days | 6, **derived** | Rapid Renovation takes up to 3 days off (3 points of 1) and Rapid Funding 2, both "Min 1 day": 3 + 2 + 1 is the least at which both act in full. `tools/tests/test_city_upgrades_take_days_to_build.py` derives it from the tree file |
+| Tiers 2 and 3 | 12 and 24, **judgement** | the price ladder's doubling; nothing reaches them (#1265) |
+| Days at higher difficulty tiers | not scaled | a price scales because gold income does; a floor is a day at every tier |
+| Where a build waits | `FCataclysmCity::Building`, a list of its own | every existing reader of `Upgrades` (17 places in 7 files) then sees only finished upgrades and none had to change |
+| When a day of building is counted | in `AdvanceDay`, before the city upgrade repairs and the day's assaults | the repairs' reason in the code: a wall finished today stands against today's bites |
+| What a finished upgrade's `BoughtDay` holds | the day it was finished | Enduring Foundations reads "active for 10+ days", and a build is not active |
+| An interval upgrade's first trigger | a full interval after it is finished | as it was after a purchase |
+| A purchase with no build days | finished at once | the empire layer's own tests buy that way, as they buy free (`GoldCost` 0); the game passes `BuildDaysIn` |
+| Where one-at-a-time is checked | after the slot count, before the price | a city whose last slot is building says it is full; no gold changes the answer |
+| War Funding's "first upgrade in a city" | counts an upgrade being built | it was paid for and took the slot, so it is the first |
+| The tree's counts of upgrades a city holds (Imperial Command's "2+ upgrades", Fiscal Policy's "active City upgrades", The Cartographer's Blessing and The Golden Touch) | finished upgrades only | an upgrade being built does nothing, and these read `Upgrades`, unchanged |
+| What the screens say | the city's list ends with "<upgrade>  --  being built, 4 days left, ready on day 57", or "paused while a Siege dungeon stands on this city" or "paused while this city is fallen"; each offer's button "10,000 gold, 6 days to build"; the other offers greyed with "An upgrade is already being built on this city, and a city builds one at a time."; the map's city detail the same build line | "every system needs a basic UI"; one wording, `UCataclysmCityScreenLayout::BuildLineFor`, for the screen, the map and the console |
+| The play log | the purchase line ends "; being built, ready on day 57"; the capital's account of the days away ends "; city upgrades finished: <city>" when any was | the owner's check that a build took the days it showed |
+
+### The run record, version 13
+
+`FCataclysmCity::Building` and `FCataclysmCityUpgrade::BuildDaysLeft` are saved with the cities. `Migrate_12_to_13`
+writes an empty `Building` on every city and a `BuildDaysLeft` of 0 on every upgrade: a version 12 run could build
+nothing. `game/Tests/SaveFixtures/Run_v13.json` is `Run_v12.json` at version 13 with its first city (city 0, not the
+Pillar) building `Architect_Increase_max_defense_by_20` with 4 days left and its second building nothing. Every test that
+read `Run_v12.json` as the committed run file reads `Run_v13.json`, with its history note extended; every chain test
+adds `CataclysmSaveFixtures::AddTheRunsVersion13Defaults`; `Run_v12.json` is read only by
+`Cataclysm.CityUpgradeBuildSave.ARunFileFromVersion12MigratesBuildingNothing`. The written-out version check, copied
+from the windows' (run 13, character 10, account 4): "30 lines stating a version; NO MISMATCH".
+
+### Registered for the window
+
+Counted on the "Test Completed. Result={" lines of the skills window's whole-suite log at `a7fadce0b`, whose `game/` is
+development `1537dac4e`'s, with a literal match on `Path={Cataclysm.<Group>.`: "5094 tests performed, 5094 succeeded,
+0 failed. 48 skipped part of what they check" and "860 written and deleted, 0 left behind".
+
+- **The whole suite: the base + 8** (5094 + 8 = 5102), 0 failed; 48 skipped halves and 860 test saves, the base's,
+  because no new test writes a save slot.
+- **The groups first**, the ones whose tests this change adds or moves: `Cataclysm.CityUpgradeBuild.` 0 to 4,
+  `CityUpgradeBuildSave.` 0 to 2, `CityScreen.` 17 to 19, `CityUpgrade.` 15 (one renamed), `CityUpgradePrice.` 7.
+- **Then each group alone**, the ones that read the committed run file or the chain: `SaveLoad.` 81, `SaveRecords.` 17,
+  `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `Gold.`
+  13, `Seeding.` 3, `WalkSeed.` 5, `WinningTheRun.` 11, `ConsumptionDouble.` 15; and the ones whose code it changes:
+  `EmpireRun.` 71, `EmpireMap.` 17, `EmpireTreeCity.` 17, `EmpireTreeGold.` 6, `EmpireScreen.` 16, `Surge.` 54. Unchanged.
+- **No asset step.** No DataTable or widget asset changes.
+- **Two C++ guard proofs**, by the coordinating session's rule of one for each behaviour only a C++ test guards:
+  - C1, the day's count: `Build.BuildDaysLeft - 1` made `- 2` in `AdvanceCityBuilds`. Predicted to fail
+    `Cataclysm.CityUpgradeBuild.AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ASiegeOrAFallPausesTheBuild` and
+    `AnIntervalUpgradeFirstFiresAFullIntervalAfterItIsFinished`, and
+    `Cataclysm.CityUpgradeBuildSave.ABuildUnderWayIsSavedAndGoesOnAfterALoad`.
+  - C2, the ready day: `Clock->Day + Build->BuildDaysLeft` made `Clock->Day + Build->BuildDaysLeft - 1` in
+    `BuildReadyDay`. Predicted to fail `AnUpgradeDoesNothingUntilItsDaysHavePassed` and
+    `Cataclysm.CityScreen.ABuildUnderWayIsListedAndTheOtherOffersWaitForIt`.
+
+### Python
+
+`tools/tests/test_city_upgrades_take_days_to_build.py`, 10 tests. Before the last two fixes, the whole suite at the
+branch's first state: 7886 passed, 2 failed, 9 skipped (JUnit 7897 tests, 2 failures): `game/README.md`'s empire bullet
+did not name the new empire test file, and `test_empire_tree_event_counts_are_saved.py` looked for the day stamp in
+`BuyCityUpgrade`. Both are fixed in this change.
+
+By `tools/prove_guard.py`, 2026-11-21, each **PROVED** (with the break, the named tests failed; restored, 34 of 34
+passed), over this file, `test_city_upgrades_cost_gold.py` and `test_empire_tree_event_counts_are_saved.py`:
+
+| Proof | The break | Failed with the break in |
+|---|---|---|
+| PY1 | builds counted after the repairs | `test_the_day_counts_builds_before_the_repairs_and_the_assaults_and_pauses_a_fallen_or_besieged_city` |
+| PY2 | a besieged city counts its build | the same |
+| PY3 | tier 1 takes 7 days | `test_the_days_per_tier_are_the_ruled_ones_and_tier_one_is_derived_from_the_two_nodes`, `test_the_design_document_states_the_days_the_code_holds` |
+| PY4 | the purchase passes no days | `test_the_purchase_passes_the_days_and_the_run_puts_a_build_on_the_list`, `test_city_upgrades_cost_gold.py::test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgrade` |
+| PY5 | `Run_v13.json` builds nothing | `test_run_v13_is_run_v12_with_the_build_fields_and_one_build_under_way` |
+| PY6 | War Funding ignores a build | `test_war_funding_counts_an_upgrade_being_built_as_the_first` |
+| PY7 | the map's city detail omits the build | `test_the_city_screen_the_map_and_the_console_say_the_build_in_one_wording` |
+| PY8 | the migration writes no days left | `test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building` |
+
+---
+
 ## 2026-11-21 — Tab shows a map of the current floor over play: where the player has been, and the stairs once seen (#2805)
 
 **Affects:** `UCataclysmFloorMap`, `FCataclysmFloorMapRun` and `FCataclysmFloorMapLayout`, new
