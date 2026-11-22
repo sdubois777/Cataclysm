@@ -2,6 +2,115 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Items carry typed sockets, a drop rolls each socket's type evenly, and the gems in a worn item add their modifiers once (#46, slice G3)
+
+**Affects:** `ECataclysmSocketType` and `FCataclysmSocket`, new, and `FCataclysmItem::Sockets`, a list of them where it
+was a count (`game/Source/Cataclysm/Items/CataclysmItem.h`); `UCataclysmItemModifiers::AccumulateInto`
+(`CataclysmItem.cpp`); `UCataclysmGems::SocketTypeName`, `GemFits`, `RollSocketType`, `AddGemModifier`,
+`AddSocketedGems` and `SocketLinesFor`, new (`CataclysmGems.h`, `.cpp`); `UCataclysmDropRoll::RollItem`
+(`CataclysmDropRoll.cpp`); the item tooltip (`game/Source/Cataclysm/Interface/CataclysmItemTooltip.cpp`); eleven lines
+in seven test files that read the count (`CataclysmDropPickupTests.cpp`, `CataclysmDropRollTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmExtraDamageTypesTests.cpp`, `CataclysmInventoryTests.cpp`,
+`CataclysmItemTooltipTests.cpp`, `CataclysmSaveRecordTests.cpp`). Tests:
+`game/Source/Cataclysm/Tests/CataclysmItemSocketsTests.cpp`, new, four in `Cataclysm.ItemSockets.`;
+`tools/tests/test_items_have_typed_sockets.py`, new. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G2's branch head without a compile, as ruled. The branch is
+  `feat/item-sockets-46-g3`, on `feat/gem-stacks-46-g2`.
+- **TWO RECORDS' VERSIONS ARE NOT MOVED YET, AND MUST BE BEFORE THIS MERGES.** An item is saved in the character record
+  (carried and worn) and in the run record (on the ground), and the item's `Sockets` changes from a number to a list.
+  Each record takes the next number free at this slice's turn, ruled by the coordinating session on 2026-11-21, and
+  its migration turns a saved count of N into N empty sockets that fit any type ("sockets migrated from today's count
+  fit any type"). The figure is written in the migrations and their fixtures only. Until then the save tests that load
+  a fixture holding a socket count cannot pass. Written after the empire tree's 6d and 6e window merges, as G2's is.
+- **`UCataclysmGems::AddGemModifier` READS `FCataclysmGemRow::Stat` AND `ValueKind`**, which slice G1's workbook stage
+  adds. This branch does not compile until it is rebased onto that stage, and the worn-gem test reads the generated
+  table's Stat column.
+- **PROOF GR6 WAS NOT PROVED ON ITS FIRST RUN.** The check that a socketed gem is added once looked only for the call
+  and for words that double, so a second call passed it. It now requires exactly one call; rerun, it proved.
+
+### What changed
+
+- **A socket** has a type (Attack, Defense, Utility, or Any) and may hold one gem at a rarity. Any is no drop's type: it
+  is what a socket saved before types becomes, and what the enchantment "Sockets on this equipment fit any gem type"
+  will make of a piece's sockets (slice G7). A socket's default type is Any, so a socket read from a save written
+  before types fits any gem.
+- **`FCataclysmItem::Sockets` is the list, under the old count's name**, so every reader of the count stopped compiling
+  rather than reading a list as a number. The two game readers (the drop roll and the tooltip) and eleven test lines
+  were moved to it.
+- **A drop rolls how many sockets as before, from the drop's stream, and each one's type evenly among the three from a
+  stream of its own**, seeded through `CataclysmSeedMix::Mix` from the drop's stream's current seed without drawing
+  from it. No later roll of a drop moves, so a seeded drop keeps the residue, affixes and enchantments it rolled before
+  sockets had types. The first version seeded it by XOR, which `tools/tests/test_placement_seed_mix_port.py` refused:
+  an XOR-seeded stream is related to the one it came from (issue #2749).
+- **A gem fits a socket of its own type** (`GemFits`: the socket's type name against the gem's GemType, in any case),
+  and an Any socket fits every gem.
+- **A worn item's gems reach the character.** `AccumulateInto`, which only the worn-equipment reading
+  (`UCataclysmEquipmentComponent::GatherModifiersReading`) calls, ends by adding each socketed gem's modifier through
+  `AddGemModifier`: the row's Stat and ValueKind at the socket's rarity, as slice G1 ruled. Once per gem, and a
+  two-handed weapon does not double its gems (ruled 2026-11-21). A gem in a carried item does nothing, because nothing
+  passes a carried item there. A gem the table lacks is skipped and logged.
+- **The item tooltip** keeps its "2 sockets" line and adds one line per socket: "Attack socket: Of The Viper (Superb)",
+  "Defense socket: empty", "Socket for any gem: empty".
+
+### Tests
+
+`CataclysmItemSocketsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ASocketsTypeIsRolledEvenlyAndNeverAny` | 3,000 rolls from a seeded stream: each type within 100 of 1,000 (over four standard deviations), none Any; a new socket's default type is Any. Prints "SOCKET TYPES" |
+| `AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem` | Attack in Attack fits; Defense in Attack and Attack in Utility do not; Utility in Any fits; " defense " is read as Defense |
+| `AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem` | a helm with a Superb Of Life and an empty socket: one gem modifier in all, 25 increased maximum health; a two-handed greataxe with a Superb Of The Viper: one flat modifier of 60 poison chance, not 120. Prints "WORN GEMS" |
+| `AnItemsSocketLinesNameEachTypeAndGem` | three sockets, three lines, each as above |
+
+`tools/tests/test_items_have_typed_sockets.py`:
+
+- the socket's three fields and the item's list are saved, and a socket defaults to Any;
+- the socket types are exactly the gem types in `Gems.csv`, and Any;
+- a new socket's type is one of the three and never Any;
+- the drop roll takes socket types from a stream of their own;
+- `AccumulateInto` adds the gems, and only the worn-equipment reading calls it outside the tests;
+- each socketed gem is added exactly once;
+- the tooltip lists each socket;
+- nothing in the C++ reads `Sockets` as a number.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `4492a88c2`, and all six again on `433befdf8`, after the
+seed went through the mix, each restored half "8 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GR1 | a socket's default type Attack, not Any | "1 failed, 7 passed": `test_a_socket_and_the_items_socket_list_are_saved_and_a_socket_defaults_to_any` | PROVED |
+| GR2 | Of The Scholar's type "Learning" in `Gems.csv` | "1 failed, 7 passed": `test_the_socket_types_are_the_gem_types_and_any` | PROVED |
+| GR3 | `RollSocketType` can return Any | "1 failed, 7 passed": `test_a_new_sockets_type_is_one_of_the_three_and_never_any` | PROVED |
+| GR4 | socket types drawn from the drop's own stream | "1 failed, 7 passed": `test_the_drop_roll_takes_socket_types_from_a_stream_of_their_own` | PROVED |
+| GR5 | `AccumulateInto` stops adding the gems | "1 failed, 7 passed": `test_only_worn_items_reach_the_character_with_their_gems` | PROVED |
+| GR6 | a second `AddGemModifier` call for each socket | "1 failed, 7 passed": `test_a_socketed_gem_is_added_once_and_not_doubled` | PROVED (on the second run; see SAID FIRST) |
+
+### Registered before the window
+
+At the slice's turn, after its save versions and its three compiles, which move these counts; registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ItemSockets.` alone | 4 performed, 4 succeeded |
+| The groups whose tests read the socket count | `Cataclysm.Drop.`, `Cataclysm.DropPickup.`, `Cataclysm.Inventory.`, `Cataclysm.Tooltip.` and `Cataclysm.SaveRecords.` alone, each at its measured count, every test succeeding |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ItemSockets."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K7 | in `RollSocketType`, `case 1:		return ECataclysmSocketType::Defense;` to `return ECataclysmSocketType::Attack;` | 4 performed, 3 succeeded, 1 failed: `ASocketsTypeIsRolledEvenlyAndNeverAny` | 4 of 4 |
+| K8 | in `GemFits`, `return Type == ECataclysmSocketType::Any` to `return false` | 4 performed, 3 succeeded, 1 failed: `AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem` | 4 of 4 |
+| K9 | in `AddSocketedGems`, `if (Socket.Gem.IsNone())` to `if (!Socket.Gem.IsNone())` | 4 performed, 3 succeeded, 1 failed: `AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem` | 4 of 4 |
+| K10 | in `SocketLinesFor`, `TEXT("empty")` to `TEXT("nothing")` | 4 performed, 3 succeeded, 1 failed: `AnItemsSocketLinesNameEachTypeAndGem` | 4 of 4 |
+
+---
+
 ## 2026-11-21 — Gems are carried in stacks, one per gem and rarity, with a cell and a tooltip, and a gem stack cannot be dropped until gems can lie on the floor (#46, slice G2)
 
 **Affects:** `FCataclysmCarriedSlot::Gem` and `GemRarity`, new, and `UCataclysmInventoryComponent::AddGems`,
