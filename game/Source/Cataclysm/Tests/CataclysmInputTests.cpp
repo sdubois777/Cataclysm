@@ -370,6 +370,8 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		// The empire overview on M, ruled by the coordinating session on
 		// 2026-11-03. It joined on 2026-11-17, issue #2733 slice 3.
 		CataclysmInputActionNames::ToggleEmpireMap,
+		// The floor map on Tab, issue #2805. It joined on 2026-11-21.
+		CataclysmInputActionNames::ToggleFloorMap,
 	};
 
 	for (const FName& Name : NativeNames)

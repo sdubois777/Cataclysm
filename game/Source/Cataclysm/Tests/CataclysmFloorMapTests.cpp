@@ -38,6 +38,10 @@ namespace CataclysmFloorMapTest
 				Plan.Carve(FIntPoint(X, Y));
 			}
 		}
+		// AN ENTRANCE AND AN EXIT ON THE FLOOR, in opposite corners, because a plan without them is not built
+		// (`FCataclysmFloorPlan::IsBuilt`) and `ACataclysmDungeonFloor::Build` refuses it. Window E's first run.
+		Plan.Entrance = FIntPoint(0, 0);
+		Plan.Exit = FIntPoint(Width - 1, Height - 1);
 		return Plan;
 	}
 
@@ -104,7 +108,10 @@ bool FCataclysmFloorMapRevealsWithinThreeCellsNotThroughWalls::RunTest(const FSt
 	TestTrue(TEXT("the wall's own cell is seen"), Map::IsSeen(Walled, SeenWalled, FIntPoint(7, 5)));
 	TestFalse(TEXT("**the cell behind the wall is not**"), Map::IsSeen(Walled, SeenWalled, FIntPoint(8, 5)));
 	TestTrue(TEXT("and it was, in the room without the wall"), Map::IsSeen(Open, Seen, FIntPoint(8, 5)));
-	TestTrue(TEXT("a line that misses the wall still sees"), Map::IsSeen(Walled, SeenWalled, FIntPoint(8, 4)));
+	// (7, 4), 2.24 cells away, whose line passes (6, 4) and not the wall. Not (8, 4): that is 3.16 cells away, beyond
+	// the reveal, and unseen with or without the wall (window E's first run).
+	TestTrue(TEXT("a line that misses the wall still sees"), Map::IsSeen(Walled, SeenWalled, FIntPoint(7, 4)));
+	TestTrue(TEXT("as it does without the wall"), Map::IsSeen(Open, Seen, FIntPoint(7, 4)));
 	return true;
 }
 
@@ -292,8 +299,10 @@ bool FCataclysmFloorMapClipsToTheSquare::RunTest(const FString&)
 	FBox2D Far = Map::BoxOf(FCataclysmFloorMapRun{30, 10, 10}, Player, Layout);
 	TestFalse(TEXT("**a cell beyond the edge is clipped away**"), Map::ClipToArea(Far, Layout));
 
-	// A RUN ACROSS THE EDGE is cut at it.
-	FBox2D Across = Map::BoxOf(FCataclysmFloorMapRun{10, 0, 40}, Player, Layout);
+	// A RUN ACROSS BOTH EDGES is cut at each: 25 cells, 600 pixels, either side of a player at its middle, past the 378
+	// pixel half side. (Window E's first run had the player 10 cells from the run's start, inside the square.)
+	const FVector2D Middle(10.0, 25.0);
+	FBox2D Across = Map::BoxOf(FCataclysmFloorMapRun{10, 0, 50}, Middle, Layout);
 	TestTrue(TEXT("a run across the edge is drawn"), Map::ClipToArea(Across, Layout));
 	TestEqual(TEXT("up to the right edge"), Across.Max.X, Layout.Area().Max.X, 0.001);
 	TestEqual(TEXT("and from the left edge"), Across.Min.X, Layout.Area().Min.X, 0.001);

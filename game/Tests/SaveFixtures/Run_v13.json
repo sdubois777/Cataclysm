@@ -77,7 +77,7 @@
 				{
 					"RowName": "Architect_Increase_max_defense_by_20",
 					"Effect": "MaxDefence",
-					"Value": 0.2,
+					"Value": 0.25,
 					"IntervalDays": 0.0,
 					"Tier": 1,
 					"bOneTimeUse": false,
