@@ -8,6 +8,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
+// The gems in an item's sockets, issue #46 slice G3.
+#include "Items/CataclysmGems.h"
 
 namespace
 {
@@ -778,6 +780,11 @@ void UCataclysmItemModifiers::AccumulateInto(
 		}
 		Add(FName(*Affix->Stat), Bucket, ECataclysmModifierSource::GearAffix, Value);
 	}
+
+	// AND THE GEMS IN ITS SOCKETS, since issue #46 (slice G3). Only worn pieces are passed here
+	// (`UCataclysmEquipmentComponent` reads its worn slots), so a gem in a carried piece does nothing. Once per gem,
+	// not doubled on a two-handed weapon, ruled 2026-11-21.
+	UCataclysmGems::AddSocketedGems(Item, UCataclysmGems::LoadGeneratedTable(), Totals);
 }
 
 // ---------------------------------------------------------------------------

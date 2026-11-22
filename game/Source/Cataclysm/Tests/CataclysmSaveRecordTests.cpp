@@ -67,7 +67,7 @@ namespace CataclysmSaveRecordTest
 		FCataclysmCarriedSlot Gear;
 		Gear.Item.Base = FName(TEXT("Circlet"));
 		Gear.Item.GearLevel = 7;
-		Gear.Item.Sockets = 2;
+		Gear.Item.Sockets.SetNum(2);
 		Gear.Item.Residue = 4.25f;
 		Gear.Item.Affixes.Add(Affix);
 		Gear.Item.Enchantments.Add(Enchantment);
@@ -498,7 +498,7 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 	TestEqual(TEXT("the gear's base came back"), Read->CarriedSlots[0].Item.Base,
 		FName(TEXT("Circlet")));
 	TestEqual(TEXT("the gear's upgrade level came back"), Read->CarriedSlots[0].Item.GearLevel, 7);
-	TestEqual(TEXT("the gear's sockets came back"), Read->CarriedSlots[0].Item.Sockets, 2);
+	TestEqual(TEXT("the gear's sockets came back"), Read->CarriedSlots[0].Item.Sockets.Num(), 2);
 	TestEqual(TEXT("the gear's residue came back"), Read->CarriedSlots[0].Item.Residue, 4.25f);
 
 	if (Read->CarriedSlots[0].Item.Affixes.Num() != 1)
@@ -1493,7 +1493,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		TestEqual(TEXT("at tier 4"), Weapon.Item.Affixes[0].Tier, 4);
 		TestEqual(TEXT("rolled at a half"), Weapon.Item.Affixes[0].Roll, 0.5f);
 	}
-	TestEqual(TEXT("with 3 sockets"), Weapon.Item.Sockets, 3);
+	TestEqual(TEXT("with 3 sockets"), Weapon.Item.Sockets.Num(), 3);
 	TestEqual(TEXT("and 2.5 residue"), Weapon.Item.Residue, 2.5f);
 	TestEqual(TEXT("and 123456 kills, issue #1833"), Weapon.Item.Kills, 123456);
 

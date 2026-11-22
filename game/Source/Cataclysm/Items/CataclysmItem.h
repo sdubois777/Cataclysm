@@ -144,11 +144,50 @@ struct CATACLYSM_API FCataclysmRolledEnchantment
 };
 
 /**
+ * Which gems a socket fits. Issue #46, slice G3.
+ *
+ * Ruled by the coordinating session on 2026-11-21: sockets are typed, rolled evenly among the three on a drop, and a
+ * gem fits a socket of its own type, its `GemType` in `game/Data/Gems.csv`. `Any` is no drop's type: it is what a socket
+ * saved before sockets had types becomes ("sockets migrated from today's count fit any type"), and what the enchantment
+ * "Sockets on this equipment fit any gem type" makes of a piece's sockets (slice G7).
+ */
+UENUM(BlueprintType)
+enum class ECataclysmSocketType : uint8
+{
+	Attack		UMETA(DisplayName = "Attack"),
+	Defense		UMETA(DisplayName = "Defense"),
+	Utility		UMETA(DisplayName = "Utility"),
+	Any			UMETA(DisplayName = "Any"),
+};
+
+/**
+ * One gem socket on an item: its type, and the gem in it, if any. Issue #46, slice G3.
+ *
+ * EVERY FIELD IS `SaveGame`, for the reason `FCataclysmItem` gives.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmSocket
+{
+	GENERATED_BODY()
+
+	/** Which gems it fits. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	ECataclysmSocketType Type = ECataclysmSocketType::Any;
+
+	/** The gem in it, a row key in `game/Data/Gems.csv`. None when it is empty. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	FName Gem;
+
+	/** That gem's rarity. Read only when `Gem` names one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	ECataclysmRarity GemRarity = ECataclysmRarity::Everyday;
+};
+
+/**
  * One item: which base it is, how far it has been upgraded, and what it rolled.
  *
  * WHAT IS NOT HERE. Rarity, because it is computed from the contents. The affix
- * values, because they depend on the upgrade level and the base. Which gem sits
- * in a socket, which is issue #46. What an enchantment DOES, which is
+ * values, because they depend on the upgrade level and the base. What an enchantment DOES, which is
  * `UCataclysmItemModifiers::AccumulateEnchantmentsInto` reading
  * `game/Data/EnchantmentEffects.csv` since issue #45: an enchantment with no row
  * there still changes nothing.
@@ -238,14 +277,16 @@ struct CATACLYSM_API FCataclysmItem
 	TArray<FCataclysmRolledEnchantment> Enchantments;
 
 	/**
-	 * How many gem sockets the piece has, from none up to its base's maximum.
+	 * The piece's gem sockets, from none up to its base's maximum, each with its type and the gem in it.
 	 *
-	 * THE COUNT, NOT WHAT IS IN THEM. Which gem sits in a socket is issue #46.
-	 * A drop rolls this uniformly, so a piece can arrive with none, and the Add
-	 * Socket craft only has something to do because of that.
+	 * A LIST SINCE ISSUE #46 (slice G3), AND A COUNT BEFORE IT. The name is kept so that every reader of the old count
+	 * stops compiling rather than reading a list as a number. A drop rolls how many uniformly, so a piece can arrive
+	 * with none, and the Add Socket craft only has something to do because of that; each socket's type is rolled
+	 * evenly among Attack, Defense and Utility. A gem in a socket of a WORN piece adds its modifier
+	 * (`UCataclysmGems::AddSocketedGems`); in a carried piece it does nothing.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
-	int32 Sockets = 0;
+	TArray<FCataclysmSocket> Sockets;
 
 	/**
 	 * The Cataclysmic Residue the piece carries.

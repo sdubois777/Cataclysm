@@ -1290,11 +1290,11 @@ bool FCataclysmWholeItemRollTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		const int32 Maximum = FDrop::MaxSocketsFor(Tables.Sockets, *BaseRow);
-		if (Item.Sockets < 0 || Item.Sockets > Maximum)
+		if (Item.Sockets.Num() > Maximum)
 		{
 			AddError(FString::Printf(
 				TEXT("a %s has %d sockets and its base allows %d"), *Slot,
-				Item.Sockets, Maximum));
+				Item.Sockets.Num(), Maximum));
 			return false;
 		}
 

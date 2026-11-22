@@ -621,10 +621,12 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 		Lines.Add(FString::Printf(TEXT("Kills: %d"), Item.Kills));
 	}
 
-	if (Item.Sockets > 0)
+	if (Item.Sockets.Num() > 0)
 	{
-		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets,
-								  Item.Sockets == 1 ? TEXT("") : TEXT("s")));
+		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets.Num(),
+								  Item.Sockets.Num() == 1 ? TEXT("") : TEXT("s")));
+		// AND EACH SOCKET: its type and the gem in it. Issue #46, slice G3.
+		Lines.Append(UCataclysmGems::SocketLinesFor(Item));
 	}
 
 	if (Item.Residue > 0.0f)

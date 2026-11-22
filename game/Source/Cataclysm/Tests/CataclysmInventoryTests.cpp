@@ -235,7 +235,7 @@ bool FCataclysmInventoryRefusesANonItemTest::RunTest(const FString&)
 	// base is unknown.
 	FCataclysmItem Baseless;
 	Baseless.GearLevel = 10;
-	Baseless.Sockets = 3;
+	Baseless.Sockets.SetNum(3);
 	Baseless.Residue = 400.0f;
 	TestEqual(TEXT("an item with affixes but no base is refused too"),
 		Inventory->AddItem(Baseless), INDEX_NONE);
@@ -325,7 +325,7 @@ bool FCataclysmInventoryKeepsTheWholeItemTest::RunTest(const FString&)
 	Item.GearLevel = 7;
 	Item.Affixes = { Affix };
 	Item.EnchantmentCount = 1;
-	Item.Sockets = 2;
+	Item.Sockets.SetNum(2);
 	Item.Residue = 312.5f;
 
 	const int32 Slot = Inventory->AddItem(Item);
@@ -343,7 +343,7 @@ bool FCataclysmInventoryKeepsTheWholeItemTest::RunTest(const FString&)
 	TestEqual(TEXT("the base survived"), Stored->Base, Item.Base);
 	TestEqual(TEXT("the upgrade level survived"), Stored->GearLevel, 7);
 	TestEqual(TEXT("the enchantment count survived"), Stored->EnchantmentCount, 1);
-	TestEqual(TEXT("the socket count survived"), Stored->Sockets, 2);
+	TestEqual(TEXT("the socket count survived"), Stored->Sockets.Num(), 2);
 	TestEqual(TEXT("the residue survived"), Stored->Residue, 312.5f);
 
 	if (!TestEqual(TEXT("the affix survived"), Stored->Affixes.Num(), 1))

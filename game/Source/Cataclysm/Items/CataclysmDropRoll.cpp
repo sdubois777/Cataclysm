@@ -5,6 +5,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Engine/DataTable.h"
+// A socket's type, issue #46 slice G3.
+#include "Items/CataclysmGems.h"
 
 namespace
 {
@@ -2202,7 +2204,18 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 	OutItem.Base = Base;
 	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);
 	OutItem.EnchantmentCount = UCataclysmItemValues::EnchantmentsFor(Rarity);
-	OutItem.Sockets = RollSockets(SocketTable, *BaseRow, Stream);
+	// HOW MANY SOCKETS FROM THE DROP'S STREAM, AS BEFORE, AND THEIR TYPES FROM A STREAM OF THEIR OWN. Issue #46, slice
+	// G3: each socket's type is rolled evenly among the three. The second stream is seeded from the first without
+	// drawing from it, so no roll after this one moves: a seeded drop rolls the same residue, affixes and enchantments
+	// it rolled before sockets had types.
+	const int32 SocketCount = RollSockets(SocketTable, *BaseRow, Stream);
+	FRandomStream TypeStream(Stream.GetCurrentSeed() ^ 0x50C4E7);
+	OutItem.Sockets.Reset(SocketCount);
+	for (int32 Index = 0; Index < SocketCount; ++Index)
+	{
+		FCataclysmSocket& Socket = OutItem.Sockets.AddDefaulted_GetRef();
+		Socket.Type = UCataclysmGems::RollSocketType(TypeStream);
+	}
 	OutItem.Residue = RollResidue(GearRarityTable, Rarity, Stream);
 
 	int32 Prefixes = 0;

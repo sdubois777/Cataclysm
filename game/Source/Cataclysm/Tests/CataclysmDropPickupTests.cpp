@@ -46,7 +46,7 @@ namespace CataclysmDropPickupTest
 		FCataclysmItem Item;
 		Item.Base = FName(Base);
 		Item.GearLevel = 3;
-		Item.Sockets = 1;
+		Item.Sockets.SetNum(1);
 		Item.Residue = 42.0f;
 		return Item;
 	}
@@ -625,7 +625,7 @@ bool FCataclysmPickupTakesTheItemTest::RunTest(const FString&)
 	// silently strip every roll off everything the player collected.
 	TestEqual(TEXT("the base came with it"), Carried->Base, FName(TEXT("Greataxe")));
 	TestEqual(TEXT("the upgrade level came with it"), Carried->GearLevel, 3);
-	TestEqual(TEXT("the sockets came with it"), Carried->Sockets, 1);
+	TestEqual(TEXT("the sockets came with it"), Carried->Sockets.Num(), 1);
 	TestEqual(TEXT("the residue came with it"), Carried->Residue, 42.0f);
 
 	// AND THE FLOOR IS CLEAR. Counting actors rather than asking the pointer,
@@ -1281,7 +1281,7 @@ bool FCataclysmDropLeavesTheBagTest::RunTest(const FString&)
 	TestEqual(TEXT("the base went with it"), Drop->Item.Base,
 		FName(TEXT("Greataxe")));
 	TestEqual(TEXT("the upgrade level went with it"), Drop->Item.GearLevel, 3);
-	TestEqual(TEXT("the sockets went with it"), Drop->Item.Sockets, 1);
+	TestEqual(TEXT("the sockets went with it"), Drop->Item.Sockets.Num(), 1);
 	TestEqual(TEXT("the residue went with it"), Drop->Item.Residue, 42.0f);
 
 	// AND IT LANDED WHERE IT WAS ASKED TO. A drop that ignored the location
@@ -1350,7 +1350,7 @@ bool FCataclysmDropThenPickUpTest::RunTest(const FString&)
 	TestEqual(TEXT("the base survived the round trip"), Back->Base,
 		FName(TEXT("Greataxe")));
 	TestEqual(TEXT("the upgrade level survived"), Back->GearLevel, 3);
-	TestEqual(TEXT("the sockets survived"), Back->Sockets, 1);
+	TestEqual(TEXT("the sockets survived"), Back->Sockets.Num(), 1);
 	TestEqual(TEXT("the residue survived"), Back->Residue, 42.0f);
 
 	return true;

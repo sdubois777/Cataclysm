@@ -24458,7 +24458,7 @@ namespace CataclysmDungeonModifierEffectsTest
 		{
 			Drop->Item.Base = FName(TEXT("Greataxe"));
 			Drop->Item.GearLevel = 3;
-			Drop->Item.Sockets = 1;
+			Drop->Item.Sockets.SetNum(1);
 			Drop->Item.Residue = 42.0f;
 			Drop->DisplayName = TEXT("Treat");
 		}

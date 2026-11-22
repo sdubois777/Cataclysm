@@ -100,4 +100,45 @@ public:
 	 * carried, when more than one, as a material's tooltip says it. A gem the table lacks gets its row key and rarity.
 	 */
 	static TArray<FString> TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+
+	//~ Gems in sockets. Issue #46, slice G3.
+
+	/** A socket type's name as the player reads it: "Attack", "Defense", "Utility", "Any". */
+	static FString SocketTypeName(ECataclysmSocketType Type);
+
+	/**
+	 * Whether a gem of `GemType` ("Attack", "Defense", "Utility", the Gems sheet's column) fits a socket of `Type`.
+	 * An `Any` socket fits every gem; a typed one fits a gem of its own type, ruled 2026-11-21.
+	 */
+	static bool GemFits(ECataclysmSocketType Type, const FString& GemType);
+
+	/** A new socket's type, evenly among Attack, Defense and Utility; never `Any`. Ruled 2026-11-21. */
+	static ECataclysmSocketType RollSocketType(FRandomStream& Stream);
+
+	/**
+	 * Adds the modifier of one gem at `Rarity` to `Totals`: `AddModifier` with the row's Stat, its ValueKind and its
+	 * sheet value at that rarity. False, adding nothing, when the row names no stat or kind.
+	 *
+	 * IT READS `FCataclysmGemRow::Stat` AND `ValueKind`, which the Gems sheet's columns of the same names give in slice
+	 * G1's workbook stage. This branch does not compile until it is rebased onto that stage.
+	 */
+	static bool AddGemModifier(const FCataclysmGemRow& Row, ECataclysmRarity Rarity,
+							   TMap<FName, TArray<FCataclysmStatModifier>>& Totals);
+
+	/**
+	 * Adds the modifier of every gem in `Item`'s sockets to `Totals`. Called for each worn piece by
+	 * `UCataclysmItemModifiers::AccumulateInto`, so a gem in a carried piece does nothing.
+	 *
+	 * ONCE PER GEM, WHATEVER THE PIECE: one effect per gem whatever it is socketed into, and a two-handed weapon does not
+	 * double its gems, because its 6 sockets already equal a pair's 3 + 3 (both ruled 2026-11-21). A gem the table
+	 * lacks is skipped and logged, rather than reaching the character as nothing under a wrong name.
+	 */
+	static void AddSocketedGems(const FCataclysmItem& Item, const UDataTable* GemTable,
+								TMap<FName, TArray<FCataclysmStatModifier>>& Totals);
+
+	/**
+	 * One tooltip line per socket, in order: "Attack socket: empty", "Defense socket: Of The Titan (Superb)", and for a
+	 * socket that fits any gem, "Socket for any gem: empty".
+	 */
+	static TArray<FString> SocketLinesFor(const FCataclysmItem& Item);
 };

@@ -125,6 +125,72 @@ FString UCataclysmGems::EffectAt(const FCataclysmGemRow& Row, ECataclysmRarity R
 	return Text.Left(Start) + Figure + Text.Mid(End);
 }
 
+FString UCataclysmGems::SocketTypeName(ECataclysmSocketType Type)
+{
+	return StaticEnum<ECataclysmSocketType>()->GetDisplayNameTextByValue(static_cast<int64>(Type)).ToString();
+}
+
+bool UCataclysmGems::GemFits(ECataclysmSocketType Type, const FString& GemType)
+{
+	return Type == ECataclysmSocketType::Any
+		|| GemType.TrimStartAndEnd().Equals(SocketTypeName(Type), ESearchCase::IgnoreCase);
+}
+
+ECataclysmSocketType UCataclysmGems::RollSocketType(FRandomStream& Stream)
+{
+	// EVENLY AMONG THE THREE TYPES A GEM CAN HAVE, and never Any, which no drop rolls.
+	switch (Stream.RandRange(0, 2))
+	{
+	case 0:		return ECataclysmSocketType::Attack;
+	case 1:		return ECataclysmSocketType::Defense;
+	default:	return ECataclysmSocketType::Utility;
+	}
+}
+
+bool UCataclysmGems::AddGemModifier(const FCataclysmGemRow& Row, ECataclysmRarity Rarity,
+									TMap<FName, TArray<FCataclysmStatModifier>>& Totals)
+{
+	return AddModifier(Row.Stat.IsEmpty() ? NAME_None : FName(*Row.Stat), Row.ValueKind, SheetValueAt(Row, Rarity),
+					   Totals);
+}
+
+void UCataclysmGems::AddSocketedGems(const FCataclysmItem& Item, const UDataTable* GemTable,
+									 TMap<FName, TArray<FCataclysmStatModifier>>& Totals)
+{
+	for (const FCataclysmSocket& Socket : Item.Sockets)
+	{
+		if (Socket.Gem.IsNone())
+		{
+			continue;
+		}
+		const FCataclysmGemRow* Row = RowOf(GemTable, Socket.Gem);
+		if (!Row)
+		{
+			UE_LOG(LogCataclysm, Warning,
+				TEXT("The gem '%s' socketed in '%s' is not in the gem table, so it grants nothing."),
+				*Socket.Gem.ToString(), *Item.Base.ToString());
+			continue;
+		}
+		AddGemModifier(*Row, Socket.GemRarity, Totals);
+	}
+}
+
+TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item)
+{
+	TArray<FString> Lines;
+	for (const FCataclysmSocket& Socket : Item.Sockets)
+	{
+		const FString Holder = Socket.Type == ECataclysmSocketType::Any
+			? FString(TEXT("Socket for any gem"))
+			: FString::Printf(TEXT("%s socket"), *SocketTypeName(Socket.Type));
+		const FString Held = Socket.Gem.IsNone()
+			? FString(TEXT("empty"))
+			: FString::Printf(TEXT("%s (%s)"), *NameOf(Socket.Gem), *RarityName(Socket.GemRarity));
+		Lines.Add(FString::Printf(TEXT("%s: %s"), *Holder, *Held));
+	}
+	return Lines;
+}
+
 TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
 {
 	TArray<FString> Lines;
