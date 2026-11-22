@@ -119,7 +119,7 @@ tests and writes no save.
 | D1 | in `RaiseUpgrade`, `City->MaxDefence *= (1.0f + Raised.Value) / OldFactor;` removed: a raised maximum not refolded | `ARaisedMaximum...` fails, on "on the twelfth the maximum is tier 2's". 7 performed, 6 succeeded | 7 of 7 |
 | D2 | in `RaiseUpgrade`, `RestoreOnce(*City, Raised.Effect, Raised.Value);` removed: a raised restore does not fire again | `ASpentOneTimeUpgrade...` fails, on "the raise restores again, to the maximum". 7 performed, 6 succeeded | 7 of 7 |
 | D3 | in `RaiseUpgrade`, `FMath::Min(Held->NextTriggerDay, Next)` made `Next`: a raise moves a repair that was due | `ARaisedInterval...` fails, on "the repair due on day 20 stays due on day 20" (25). 7 performed, 6 succeeded | 7 of 7 |
-| D4 | in `WouldRaiseCityUpgrade`, `if (!City->Building.IsEmpty())` made `if (false && !City->Building.IsEmpty())`: two builds at once | `EveryRefusalSaysWhichOneItIs` fails, on "one build at a time". 7 performed, 6 succeeded | 7 of 7 |
+| D4 | in `WouldRaiseCityUpgrade`, `if (!City->Building.IsEmpty())` made `if (false && !City->Building.IsEmpty())`: two builds at once. THE BREAK TEXT MUST INCLUDE THE COMMENT LINE ABOVE IT, `// THE CITY'S ONE BUILD AT A TIME (Q8, derived from issue #2825's rule).`, because the bare `if` also stands in `WouldBuyCityUpgrade` and appears twice in the file | `EveryRefusalSaysWhichOneItIs` fails, on "one build at a time". 7 performed, 6 succeeded | 7 of 7 |
 
 **Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive` of `26dfbb876` (rebased onto #2838's path fix as `8ad7e89f1`,
 which changes nothing else), 2026-11-22, each PROVED, failing one named test with its break in and passing all four with it out:
