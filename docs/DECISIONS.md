@@ -953,8 +953,8 @@ builds, raised to character level 32 so a skill can reach level 10:
 
 | Test | What it checks |
 | :-- | :-- |
-| `EachLevelLowersACostAndLevelTwentyHalvesIt` | the factor is 0.9642; 1 at level 1, 0.72013 at 10, 0.5 at 20; clamped above 20 and below 1 |
-| `ASkillsManaAndFervourCostsFallWithItsLevel` | Subjugate at level 10 costs 0.72013 times its level 1 Fervour and mana; CONTROL Compel, not levelled, costs what it did |
+| `EachLevelLowersACostAndLevelTwentyHalvesIt` | the factor is 0.9642; 1 at level 1, 0.72028 at 10, 0.5 at 20; clamped above 20 and below 1 |
+| `ASkillsManaAndFervourCostsFallWithItsLevel` | Subjugate at level 10 costs 0.72028 times its level 1 Fervour and mana; CONTROL Compel, not levelled, costs what it did |
 | `AHeldThrallIsRepricedWhenItsSkillLevels` | a thrall taken at level 1 holds 30 and the pool fills to 120; CONTROL Summon Imp reaching level 10 leaves it at 30; Subjugate reaching level 10 makes it hold 21.6 with no new take, and the ceiling rises by 8.4. Prints "REPRICED" |
 | `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | a gadget and a trap for the Heavy slot, Compel's, hold 15 and 5 at level 1; Compel reaching level 10 makes the same two hold 10.8 and 3.6; CONTROL a trap for the Ultimate slot, Subjugate's, keeps 5; a Heavy trap placed at level 10 holds 3.6. Prints "GADGET AND TRAP" |
 
@@ -1026,6 +1026,34 @@ tested head:
 
 **G1 and P-G1 were added by the coordinating session on 2026-11-21**: "the gadget and trap re-price is a separate
 branch from L2's thrall write-back, and only the C++ test guards it", and P-G1 "costs no build".
+
+### Window skills-w1: ONE TEST FAILED, ON A WRONG FIGURE IN THE TEST; NO PROOF WAS RUN
+
+The three compiles of `457064e6a` succeeded, each changed .cpp compiled in each, with no compiler warning or error
+line. Window skills-w1 then rebuilt the Weapon Skills asset alone and committed it as `d00738f04`, the tested head, and
+measured:
+
+| Step | Registered | Measured |
+| :-- | :-- | :-- |
+| The asset step | the two files alone | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json`, committed alone as `d00738f04` and pushed |
+| The six swept groups alone | 8, 22, 3, 19, 12, 10 | each as registered, every test succeeding |
+| `Cataclysm.LevelCosts.` alone | 4 of 4 | **4 performed, 3 succeeded, 1 failed: `EachLevelLowersACostAndLevelTwentyHalvesIt`** |
+| `Cataclysm.TooltipCost.` and `Cataclysm.AttributeTooltip.` alone | 1 and 3 | 1 of 1 and 3 of 3 |
+| The whole suite | 5094 of 5094; 48 skipped halves; 860 saves | 5094 performed, 5093 succeeded, the same 1 failed; 48 skipped halves; "Test saves: 860 written and deleted, 0 left behind"; every declared test reported |
+| Python, alongside the suite | every test passing | "7866 passed, 9 skipped"; JUnit tests 7875, failures 0, errors 0, skipped 9 |
+| ruff | clean | "All checks passed!" |
+
+No proof ran, because a group and the whole suite did not pass.
+
+**THE CAUSE IS THE TEST'S FIGURE, NOT THE GAME.** The failure: "Expected 'level 10 costs 0.9642 to the ninth of it' to
+be 0.720130, but it was 0.720285". 0.9642 to the ninth is 0.720285, which the game gave. The test's `AtTen` held
+0.72013, which is 0.5 to the power of nine nineteenths, the curve before it was rounded to 0.9642 a level, while its
+own comment said "0.9642 to the ninth". The tests that multiply it (21.6, 10.8, 3.6) passed inside their 0.01. It is
+0.72028 now, in the test and in this entry's table; no game file changed.
+
+**Window skills-w2 is registered as skills-w1 was**, at the corrected head, after its compiles: every figure in
+"Registered before the window" above, the asset step not repeated (it is committed), and the five C++ and seven Python
+proofs.
 
 ---
 

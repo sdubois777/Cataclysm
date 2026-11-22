@@ -46,7 +46,7 @@ namespace CataclysmLevelCostsTest
 	const FName Compel(TEXT("Demonic_Staff_Heavy"));
 
 	/** Level 10's cost factor written out, 0.9642 to the ninth, rather than read back from the code under test. */
-	constexpr float AtTen = 0.72013f;
+	constexpr float AtTen = 0.72028f;
 
 	struct FCostsPlayer
 	{
@@ -243,7 +243,7 @@ bool FCataclysmLevelCostsRepriceTest::RunTest(const FString&)
 	// ITS OWN SKILL'S LEVEL RE-PRICES IT, WITH NO NEW TAKE.
 	Player.State->SetSkillExperience(Subjugate, Levels::ExperienceToReach(10));
 	TestEqual(TEXT("set-up: Subjugate is at level 10"), Player.State->SkillLevelOf(Subjugate), 10);
-	TestEqual(TEXT("at Subjugate's level 10 the same thrall holds 30 x 0.72013, 21.6"), Thrall->ReservedFervour,
+	TestEqual(TEXT("at Subjugate's level 10 the same thrall holds 30 x 0.72028, 21.6"), Thrall->ReservedFervour,
 			  30.0f * AtTen, 0.01f);
 	TestEqual(TEXT("and the ceiling rises by the 8.4 it no longer holds"), CeilingOf(Player.Abilities) - CeilingAtOne,
 			  30.0f - 30.0f * AtTen, 0.01f);
@@ -255,7 +255,7 @@ bool FCataclysmLevelCostsRepriceTest::RunTest(const FString&)
 
 // --------------------------------------------------------------------------------------------------------------------
 // LC4. A skill gadget and a skill trap reserve at the level of the skill in their slot: 15 and 5 at level 1, and when
-// that skill reaches level 10 the standing ones are re-priced to 15 x 0.72013 and 5 x 0.72013. A trap for a slot holding
+// that skill reaches level 10 the standing ones are re-priced to 15 x 0.72028 and 5 x 0.72028. A trap for a slot holding
 // another skill keeps its 5.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLevelCostsGadgetAndTrapTest,
@@ -305,9 +305,9 @@ bool FCataclysmLevelCostsGadgetAndTrapTest::RunTest(const FString&)
 	// COMPEL'S LEVEL RE-PRICES WHAT ITS SLOT MADE, WITH NOTHING PLACED AGAIN.
 	Player.State->SetSkillExperience(Compel, Levels::ExperienceToReach(10));
 	TestEqual(TEXT("set-up: Compel is at level 10"), Player.State->SkillLevelOf(Compel), 10);
-	TestEqual(TEXT("at Compel's level 10 the same gadget holds 15 x 0.72013, 10.8"), Gadget->ReservedFervour,
+	TestEqual(TEXT("at Compel's level 10 the same gadget holds 15 x 0.72028, 10.8"), Gadget->ReservedFervour,
 			  15.0f * AtTen, 0.01f);
-	TestEqual(TEXT("and the same trap 5 x 0.72013, 3.6"), Trap->ReservedFervour, 5.0f * AtTen, 0.01f);
+	TestEqual(TEXT("and the same trap 5 x 0.72028, 3.6"), Trap->ReservedFervour, 5.0f * AtTen, 0.01f);
 	TestEqual(TEXT("CONTROL: the Ultimate slot's trap, Subjugate's, keeps 5"), OtherTrap->ReservedFervour,
 			  ACataclysmMinion::SkillTrapFervourReserve, 0.001f);
 
