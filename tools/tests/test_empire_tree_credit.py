@@ -22,6 +22,9 @@ WHAT IS CHECKED:
      and the day's hook takes Sovereign Loans' part after the income;
   6. the purchase counts the credit as gold held and gives none while anything is owed;
   7. every screen that shows the balance or a refusal shows the debt.
+  8. Sovereign Loans' part a day is rounded up, so ten days pay it all, and an offer on credit says so only when it
+     would leave something owed (D4, D6). Added when slices 6d and 6e were joined for one window (2026-11-21): the
+     C++ proofs of these two breaks were dropped, and this is what guards them.
 """
 
 from __future__ import annotations
@@ -190,3 +193,12 @@ def test_every_screen_shows_the_debt() -> None:
     assert 'TEXT("%s, and no more credit until the %s owed is paid.")' in refusal
     button = body(code(LAYOUT), "FString UCataclysmCityScreenLayout::ButtonTextFor(", "CataclysmCityScreenLayout.cpp")
     assert 'TEXT("%s  --  %s on credit, %s owed")' in button, "an offer on credit does not say so (D6)"
+
+
+def test_the_part_a_day_is_rounded_up_and_an_offer_on_credit_says_so_only_when_something_is_owed() -> None:
+    part = body(code(INSTANCE), "int64 DailyPartOf(int64 Owed)", "CataclysmGameInstance.cpp")
+    assert re.search(r"\(Owed \+ Days - 1\) / Days", part), "Sovereign Loans' part a day is not rounded up (D4)"
+    button = body(code(LAYOUT), "FString UCataclysmCityScreenLayout::ButtonTextFor(", "CataclysmCityScreenLayout.cpp")
+    branch = button[:button.index('TEXT("%s  --  %s on credit, %s owed")')]
+    assert re.search(r"if \(Offer\.OwedIfBought > 0\)\s*\{\s*return FString::Printf\(\s*$", branch), (
+        "the city screen's button says an offer is on credit other than when it would leave something owed (D6)")
