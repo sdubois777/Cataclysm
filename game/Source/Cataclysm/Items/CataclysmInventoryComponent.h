@@ -49,7 +49,7 @@
  */
 /**
  * One slot of the carried inventory: a gear item, a stack of one crafting
- * material, or nothing.
+ * material, a stack of one gem at one rarity, or nothing.
  *
  * ONE BAG HOLDS BOTH, because the design says so: the carried inventory is 48
  * slots and a character carries whatever it has picked up in them. A second
@@ -60,6 +60,12 @@
  * A MATERIAL IS A NAME AND A COUNT, NOT AN ITEM. It has no affixes, no upgrade
  * level, no sockets and no residue; two of the same material are the same thing
  * twice. That is why they stack and gear cannot.
+ *
+ * A GEM IS A NAME, A RARITY AND A COUNT, for the same reason. Ruled by the
+ * coordinating session on 2026-11-21 (issue #46): gems stack, one stack per gem
+ * and rarity, because a gem of one rarity is "a quantity of an interchangeable
+ * thing", which is the design's reason for stacking materials. Two rarities of
+ * one gem are different things and take two slots.
  *
  * EVERY FIELD HERE IS MARKED `SaveGame` for the reason FCataclysmItem gives: a
  * carried slot is persisted inside a character record, and a field without the
@@ -88,8 +94,19 @@ struct CATACLYSM_API FCataclysmCarriedSlot
 	FName Material;
 
 	/**
-	 * How many of that material are stacked here. Zero when the slot holds no
-	 * material.
+	 * Which gem is stacked here, as a row key in `game/Data/Gems.csv`. None when
+	 * the slot holds no gem. Issue #46, slice G2.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Inventory")
+	FName Gem;
+
+	/** The rarity of the gems stacked here. Read only when `Gem` names one. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Inventory")
+	ECataclysmRarity GemRarity = ECataclysmRarity::Everyday;
+
+	/**
+	 * How many of that material, or of that gem, are stacked here. Zero when the
+	 * slot holds neither.
 	 *
 	 * NO CEILING. The project owner decided on 2026-08-19 that all crafting
 	 * materials stack, and set no maximum. The Storage section of
@@ -262,8 +279,25 @@ public:
 	bool RemoveMaterial(FName Material, int32 Quantity);
 
 	/**
-	 * The item in a slot, or nullptr when the slot is empty, holds a material,
-	 * or is not a slot.
+	 * Adds gems of one kind and rarity, stacking them onto any already carried. Issue #46, slice G2.
+	 *
+	 * @return the slot they went into, or **INDEX_NONE when there was no room**, in which case nothing was stored.
+	 *
+	 * AS `AddMaterial` DOES: a stack first, a free slot second, and no ceiling. ONE STACK PER GEM AND RARITY, ruled
+	 * 2026-11-21, so an Everyday Of The Viper does not join a Superb one. A gem with no name, or none of one, is
+	 * refused.
+	 */
+	int32 AddGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+
+	/** The slot gems of this kind and rarity are stacked in, or INDEX_NONE for none. */
+	int32 SlotOfGems(FName Gem, ECataclysmRarity Rarity) const;
+
+	/** How many gems of this kind and rarity are carried, across every slot. */
+	int32 CountOfGems(FName Gem, ECataclysmRarity Rarity) const;
+
+	/**
+	 * The item in a slot, or nullptr when the slot is empty, holds a material
+	 * or gems, or is not a slot.
 	 *
 	 * NOT REACHABLE FROM BLUEPRINT, because a pointer to a struct is not a thing
 	 * Blueprint can hold. The screen that needs this is issue #49 and it can take

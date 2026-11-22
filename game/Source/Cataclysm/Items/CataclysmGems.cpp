@@ -4,6 +4,9 @@
 
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
+
+const TCHAR* UCataclysmGems::TableAssetPath = TEXT("/Game/Data/DT_Gems.DT_Gems");
 
 float UCataclysmGems::SheetValueAt(const FCataclysmGemRow& Row, ECataclysmRarity Rarity)
 {
@@ -56,4 +59,94 @@ bool UCataclysmGems::AddModifier(FName Stat, const FString& ValueKind, float She
 	Modifier.Value = SheetValue * PointsPerSheetUnit;
 	Totals.FindOrAdd(Stat).Add(Modifier);
 	return true;
+}
+
+const UDataTable* UCataclysmGems::LoadGeneratedTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, TableAssetPath);
+	if (!Table)
+	{
+		UE_LOG(LogCataclysm, Error,
+			TEXT("Could not load %s. It is produced by tools/generate_datatable_assets.py from game/Data/Gems.csv, which "
+				 "tools/generate_datatables.py produces from the Gems sheet of docs/All_Things_Cataclysm.xlsx."),
+			TableAssetPath);
+	}
+	return Table;
+}
+
+const FCataclysmGemRow* UCataclysmGems::RowOf(const UDataTable* Table, FName Gem)
+{
+	return Table && !Gem.IsNone()
+		? Table->FindRow<FCataclysmGemRow>(Gem, TEXT("UCataclysmGems::RowOf"), /*bWarnIfMissing=*/false)
+		: nullptr;
+}
+
+FString UCataclysmGems::NameOf(FName Gem)
+{
+	const FCataclysmGemRow* Row = RowOf(LoadGeneratedTable(), Gem);
+	return Row && !Row->GemName.IsEmpty() ? Row->GemName : Gem.ToString();
+}
+
+FString UCataclysmGems::RarityName(ECataclysmRarity Rarity)
+{
+	return StaticEnum<ECataclysmRarity>()->GetDisplayNameTextByValue(static_cast<int64>(Rarity)).ToString();
+}
+
+FString UCataclysmGems::EffectAt(const FCataclysmGemRow& Row, ECataclysmRarity Rarity)
+{
+	// THE FIRST FIGURE BEFORE A "%", which is the one the generator reads as the Everyday value ("(\d*\.?\d+)\s*%").
+	const FString& Text = Row.Effect;
+	int32 Percent = INDEX_NONE;
+	if (!Text.FindChar(TEXT('%'), Percent))
+	{
+		return Text;
+	}
+	int32 End = Percent;
+	while (End > 0 && FChar::IsWhitespace(Text[End - 1]))
+	{
+		--End;
+	}
+	int32 Start = End;
+	while (Start > 0 && (FChar::IsDigit(Text[Start - 1]) || Text[Start - 1] == TEXT('.')))
+	{
+		--Start;
+	}
+	if (Start == End)
+	{
+		return Text;
+	}
+
+	// TWO PLACES AT MOST, WITH NO TRAILING NOUGHTS: 60, 0.5, 1.5.
+	FString Figure = FString::Printf(TEXT("%.2f"), SheetValueAt(Row, Rarity) * PointsPerSheetUnit);
+	while (Figure.Contains(TEXT(".")) && (Figure.EndsWith(TEXT("0")) || Figure.EndsWith(TEXT("."))))
+	{
+		Figure.LeftChopInline(1);
+	}
+	return Text.Left(Start) + Figure + Text.Mid(End);
+}
+
+TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
+{
+	TArray<FString> Lines;
+	const FCataclysmGemRow* Row = RowOf(LoadGeneratedTable(), Gem);
+	Lines.Add(Row && !Row->GemName.IsEmpty() ? Row->GemName : Gem.ToString());
+	const FString Type = Row ? Row->GemType.TrimStartAndEnd() : FString();
+	Lines.Add(Type.IsEmpty() ? FString::Printf(TEXT("%s gem"), *RarityName(Rarity))
+							 : FString::Printf(TEXT("%s %s gem"), *RarityName(Rarity), *Type));
+	if (Row)
+	{
+		Lines.Add(EffectAt(*Row, Rarity));
+	}
+	if (!Type.IsEmpty())
+	{
+		// "AN" BEFORE A VOWEL SOUND: an Attack socket, a Defense socket, a Utility socket.
+		const bool bAn = Type.StartsWith(TEXT("A")) || Type.StartsWith(TEXT("E")) || Type.StartsWith(TEXT("I"))
+			|| Type.StartsWith(TEXT("O"));
+		Lines.Add(FString::Printf(TEXT("Fits %s %s socket"), bAn ? TEXT("an") : TEXT("a"), *Type));
+	}
+	if (Quantity > 1)
+	{
+		Lines.Add(FString::Printf(TEXT("%d carried"), Quantity));
+	}
+	return Lines;
 }

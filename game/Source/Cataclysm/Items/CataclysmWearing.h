@@ -136,6 +136,13 @@ enum class ECataclysmWearResult : uint8
 	 * was open.
 	 */
 	NoLongerThere		UMETA(DisplayName = "It is no longer where it was"),
+
+	/**
+	 * Not dropped, and still in the bag: the slot holds gems, and nothing can lie on the floor as a gem until gem drops
+	 * are built (issue #46, slice G5). `UCataclysmDropSpawner::PutOnTheFloor` refuses nothing, so without this a gem
+	 * stack would become a drop holding nothing and the gems would be destroyed. Issue #46, slice G2.
+	 */
+	GemsStayInTheBag	UMETA(DisplayName = "Gems cannot be put on the floor yet"),
 };
 
 /**

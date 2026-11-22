@@ -9,6 +9,7 @@
 #include "CataclysmGems.generated.h"
 
 struct FCataclysmGemRow;
+class UDataTable;
 
 /**
  * What a gem gives the character it is socketed into. Issue #46, slice G1.
@@ -31,7 +32,11 @@ struct FCataclysmGemRow;
  * arguments, which is also how the tests drive them. `tools/tests/test_every_gem_names_a_stat_the_game_reads.py`
  * holds the ruled table of all 28.
  *
- * WHAT IS NOT HERE: putting a gem in a socket, or a socket carrying a gem (slices G3 and G4). Nothing calls these yet.
+ * GEMS AS ITEMS, slice G2: a gem is carried as a stack of one gem at one rarity (`FCataclysmCarriedSlot::Gem`), and
+ * its name, its effect at that rarity and its tooltip are read from `DT_Gems` here.
+ *
+ * WHAT IS NOT HERE: putting a gem in a socket, or a socket carrying a gem (slices G3 and G4). Nothing calls
+ * `AddModifier` yet.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmGems : public UBlueprintFunctionLibrary
@@ -63,4 +68,36 @@ public:
 	 */
 	static bool AddModifier(FName Stat, const FString& ValueKind, float SheetValue,
 							TMap<FName, TArray<FCataclysmStatModifier>>& Totals);
+
+	//~ Gems as items. Issue #46, slice G2.
+
+	/** Where the generated gem table lives: `DT_Gems`, from `game/Data/Gems.csv`. */
+	static const TCHAR* TableAssetPath;
+
+	/** The generated gem table, or null with the reason logged. */
+	static const UDataTable* LoadGeneratedTable();
+
+	/** A gem's row in `Table`, or null for no table or no such gem. */
+	static const FCataclysmGemRow* RowOf(const UDataTable* Table, FName Gem);
+
+	/** What the player reads for a gem: its GemName, "Of The Viper", or the row key when the table has no such row. */
+	static FString NameOf(FName Gem);
+
+	/** A rarity's name as the player reads it: "Superb". */
+	static FString RarityName(ECataclysmRarity Rarity);
+
+	/**
+	 * The gem's effect text at `Rarity`: its Effect with the figure it states replaced by that rarity's value.
+	 * "20% chance to apply poison" is "60% chance to apply poison" at Superb, and "Increases Magic Find by .5%" is
+	 * "Increases Magic Find by 0.5%" at Everyday. The Everyday figure in the text is the one the generator extracts as
+	 * the Everyday value, so the first figure before a "%" is the one replaced.
+	 */
+	static FString EffectAt(const FCataclysmGemRow& Row, ECataclysmRarity Rarity);
+
+	/**
+	 * A carried gem stack's tooltip, one line each: its name; "Superb Attack gem"; its effect at that rarity; which
+	 * socket it fits ("Fits an Attack socket", ruled 2026-11-21: a gem fits a socket of its own type); and how many are
+	 * carried, when more than one, as a material's tooltip says it. A gem the table lacks gets its row key and rarity.
+	 */
+	static TArray<FString> TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
 };

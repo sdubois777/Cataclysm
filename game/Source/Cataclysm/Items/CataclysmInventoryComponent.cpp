@@ -21,11 +21,11 @@ bool UCataclysmInventoryComponent::SlotIsEmpty(const FCataclysmItem& Item)
 
 bool UCataclysmInventoryComponent::SlotIsEmpty(const FCataclysmCarriedSlot& Slot)
 {
-	// A SLOT IS EMPTY ONLY WHEN IT HOLDS NEITHER KIND. A material stack of zero
-	// is not a stack, and a material with no name is not a material, so both
-	// have to be false before the quantity is worth looking at.
+	// A SLOT IS EMPTY ONLY WHEN IT HOLDS NO KIND. A stack of zero is not a
+	// stack, and a material or a gem with no name is not one, so a name has to be
+	// there before the quantity is worth looking at. Gems since issue #46.
 	return SlotIsEmpty(Slot.Item)
-		&& (Slot.Material.IsNone() || Slot.Quantity <= 0);
+		&& ((Slot.Material.IsNone() && Slot.Gem.IsNone()) || Slot.Quantity <= 0);
 }
 
 int32 UCataclysmInventoryComponent::NumItems() const
@@ -197,6 +197,70 @@ bool UCataclysmInventoryComponent::RemoveMaterial(FName Material, int32 Quantity
 	return true;
 }
 
+int32 UCataclysmInventoryComponent::SlotOfGems(FName Gem, ECataclysmRarity Rarity) const
+{
+	if (Gem.IsNone())
+	{
+		return INDEX_NONE;
+	}
+	for (int32 Slot = 0; Slot < Slots.Num(); ++Slot)
+	{
+		if (Slots[Slot].Gem == Gem && Slots[Slot].GemRarity == Rarity && Slots[Slot].Quantity > 0)
+		{
+			return Slot;
+		}
+	}
+	return INDEX_NONE;
+}
+
+int32 UCataclysmInventoryComponent::CountOfGems(FName Gem, ECataclysmRarity Rarity) const
+{
+	if (Gem.IsNone())
+	{
+		return 0;
+	}
+	// SUMMED ACROSS EVERY SLOT, as `CountOfMaterial` is, so a second stack would be noticed rather than hidden.
+	int32 Total = 0;
+	for (const FCataclysmCarriedSlot& Slot : Slots)
+	{
+		if (Slot.Gem == Gem && Slot.GemRarity == Rarity && Slot.Quantity > 0)
+		{
+			Total += Slot.Quantity;
+		}
+	}
+	return Total;
+}
+
+int32 UCataclysmInventoryComponent::AddGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
+{
+	if (Gem.IsNone() || Quantity <= 0)
+	{
+		return INDEX_NONE;
+	}
+
+	// A STACK OF THIS GEM AT THIS RARITY FIRST, as a material joins its stack. No ceiling, so this never fails.
+	const int32 Stacked = SlotOfGems(Gem, Rarity);
+	if (Stacked != INDEX_NONE)
+	{
+		Slots[Stacked].Quantity += Quantity;
+		++Changes;
+		UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
+		return Stacked;
+	}
+
+	const int32 Slot = FirstFreeSlot();
+	if (Slot == INDEX_NONE)
+	{
+		return INDEX_NONE;
+	}
+	Slots[Slot].Gem = Gem;
+	Slots[Slot].GemRarity = Rarity;
+	Slots[Slot].Quantity = Quantity;
+	++Changes;
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
+	return Slot;
+}
+
 bool UCataclysmInventoryComponent::SwapSlots(int32 First, int32 Second)
 {
 	if (!Slots.IsValidIndex(First) || !Slots.IsValidIndex(Second))
@@ -299,8 +363,8 @@ void UCataclysmInventoryComponent::RemoveEverything()
 
 const FCataclysmItem* UCataclysmInventoryComponent::ItemAt(int32 Slot) const
 {
-	// A SLOT HOLDING A MATERIAL HOLDS NO ITEM, so this answers nothing for one
-	// rather than answering an item with no base.
+	// A SLOT HOLDING A MATERIAL OR GEMS HOLDS NO ITEM, so this answers nothing
+	// for one rather than answering an item with no base.
 	if (!Slots.IsValidIndex(Slot) || SlotIsEmpty(Slots[Slot].Item))
 	{
 		return nullptr;

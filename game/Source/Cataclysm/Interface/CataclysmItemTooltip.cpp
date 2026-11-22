@@ -6,6 +6,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
+// A gem stack's tooltip, issue #46 slice G2.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 
@@ -512,6 +514,13 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 		// no text does not appear at all, which is what hovering over an empty
 		// cell should do.
 		return Lines;
+	}
+
+	// -- a gem stack --------------------------------------------------------
+	// Its name, its rarity and type, its effect at that rarity, the socket it fits and how many. Issue #46, slice G2.
+	if (!TooltipSlotHoldsGear(Slot) && !Slot.Gem.IsNone())
+	{
+		return UCataclysmGems::TooltipLinesFor(Slot.Gem, Slot.GemRarity, Slot.Quantity);
 	}
 
 	// -- a crafting material ------------------------------------------------
