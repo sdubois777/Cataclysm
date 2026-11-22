@@ -18,8 +18,8 @@ and `.cpp`). Tests: the new group `Cataclysm.GroundItemHover.`, six, in
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
-  session's turn.
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
 - **THE OWNER'S REQUEST, 2026-11-21, VERBATIM:** "I would like that same gear comparison thing we have in the inventory
   to pop up when you hover over an item on the ground. That way you can tell if it's worth picking up before clogging
   your inventory".
@@ -139,15 +139,57 @@ followed from it), now `FHoverScene`; `WearTheMannequinsBody`'s parameter `Capsu
 
 **TWO PRE-CHECKS WERE CHANGED FOR THIS WINDOW BY THE COORDINATING SESSION'S RULINGS OF 2026-11-21:**
 
-- **Free memory, at least 9,216 MB rather than 10,240, for window D only.** The owner's own programs held the rest
-  (Firefox about 4.3 GB across its processes, Discord and Steam), which are not the project's to close, and the Unreal
-  test editor has run at about 3 GB with Python alongside it before. Any sign of memory trouble in the run -- a line
-  saying memory ran out, a crash, a test timing out -- stops the window and sends the next one back to 10 GB.
+- **Free memory, at least 9,216 MB rather than 10,240.** The owner's own programs held the rest (Firefox about 4.3 GB
+  across its processes, Discord and Steam), which are not the project's to close, and the Unreal test editor has run
+  at about 3 GB with Python alongside it before. Any sign of memory trouble in the run -- a line saying memory ran out,
+  a crash, a test timing out -- stops the window and sends the next one back to 10 GB. **Ruled first for the window's
+  pre-checks; then, the same day, for the compile gate and the compile script too**, after `compile_wd.py` read 10127
+  MB at its own start and stopped without taking the lock ("the compile draws less memory than the window with
+  Python alongside"); **and for every gate in later windows, unless a run shows memory trouble.** This run showed none:
+  its `CataclysmTestMemorySummary` read `peak_used_virtual_mb=9190`.
 - **No workflow run in progress and no pull request open COUNT ONLY WHAT CHANGES `game/`.** They exist to stop a build
   colliding with the window's, and a change with no file under `game/` starts no build on this machine. A run of the
   Unreal workflow always counts, and a lookup that cannot be read counts. Pull request #2826 (three documents, nothing
   under `game/`) was open when the first run started, and was merged during it. The rule stands for later windows
   (`.claude/windows/run_shared.py`, item 5).
+
+### The record: window-d-w2
+
+**2026-11-21, under the lock window-d-w2, at `2414abdd7`** (`feat/window-d-copies-charge-hover-3` on development
+`3b1ae6911`). Every registered figure measured, and every proof proved.
+
+- **The three compiles** (lock window-d-compile, at `2414abdd7`, 10124 MB free): the branch as committed, "Build:
+  Succeeded - 54 actions, 49 files compiled"; each changed `.cpp` alone, "Build: Succeeded - 33 actions, 30 files
+  compiled"; the unity files again, "Build: Succeeded - 14 actions, 11 files compiled". Each with 0 compiler warning
+  or error lines in the build tool's log.
+- **The pre-checks**: all passed at 20:52:30, with 9,216 MB the memory figure (above).
+- **Groups alone: 29 of 29 passed, each at its registered count**: `PlayerCopies.` 4, `ChargeGait.` 9,
+  `GroundItemHover.` 6, `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11, `InventoryScreen.` 7, `HeldItem.` 5,
+  `Equipment.` 30, `DropPickup.` 20, `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6, `Succubus.` 10,
+  `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51, `EnemyModifiers.` 57, `PlayerBody.` 7, `PlayerAttack.`
+  6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14, `Death.` 30, `ConsumptionDouble.` 15, `StalkerEntries.` 8,
+  `StalkerKit.` 13. **`Imp.` ran at its first try** ("6 tests performed, 6 succeeded, 0 failed"), so its retry was not
+  needed, and **the start-up assertion of the first run did not repeat**; by the ruling, no issue is opened for it.
+- **The whole suite: "5113 tests performed, 5113 succeeded, 0 failed. 57 skipped part of what they check"**, against
+  5113 and 57 registered; "Declared: 5113 tests in the tree at 2414abdd7; 5113 performed, gap 0"; "Test saves: 860
+  written and deleted, 0 left behind". Memory: `peak_used_virtual_mb=9190`.
+- **Python, alongside it: "7879 passed, 9 skipped in 345.69s"**, exit 0; its JUnit file: tests 7888, failures 0, errors
+  0, skipped 9. **ruff: "All checks passed!"**
+- **The six Unreal guard proofs, each PROVED** through `prove_cpp_guard`, after both suites ended, each failing exactly
+  its predicted tests with the break in and passing its whole group restored:
+
+| Proof | The break | With the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | 4 performed, 2 failed: `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder`, `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | 4 of 4 |
+| PC2 | `DrawWornWeapons`, which `WearTheBuild` and `WearThePlayersBuild` both call, draws nothing | 4 performed, 2 failed: `ADoubleHoldsTheWeaponsThePlayersBuildWears`, `AStalkerHoldsTheWeaponItsEntryWears` | 4 of 4 |
+| PT1 | `ResolveBody` does not call `WearTheCopiesTint` | 4 performed, 2 failed: `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder`, `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | 4 of 4 |
+| CG1 | `GetVelocity` returns the engine's answer during a charge | 9 performed, 9 failed: every `ChargeGait` test | 9 of 9 |
+| GH1 | `TooltipColumnsFor` never compares | 6 performed, 2 failed: `AHelmOnTheFloorShowsTheBagsComparisonWithTheWornHelm`, `ARingForAnEmptySlotShowsComparedWithNothingAsTheBagDoes` | 6 of 6 |
+| GH2 | `NeedsRebuild` answers true every frame | 6 performed, 1 failed: `ThePanelIsRebuiltOnlyWhenTheDropOrTheWornGearChanges` | 6 of 6 |
+
+The logs are in `.claude/windows/` in the worktree `sharp-meitner-246682`: `wd_run.out`, `wd_suite_engine_2414abdd.log`,
+`wd_python_2414abdd.log`, `wd_junit_2414abdd.xml`, `wd_compile.out`, and each proof's `wd_<proof>_2414abdd.log` with
+the two halves' engine logs.
 
 ### The first run, with #2811
 
@@ -178,6 +220,22 @@ followed from it), now `FHoverScene`; `WearTheMannequinsBody`'s parameter `Capsu
   22 fewer tests; no line saying memory ran out and no crash in the suite; the only "timed out" lines are the editor's
   web check of `google.com/generate_204`. So the 9,216 MB ruling was not reverted.
 
+**TWO STATEMENTS IN THAT REPORT ARE WRONG, corrected here and left above as they were sent:**
+
+- **"`RunClock` fires timers and ticks no actor, so the brain is not it" is wrong.** The gold session, which wrote
+  #2811, found the cause the same day: the copy's own enemy controller thinks on a timer, every 0.25 s, and a think
+  attacks any hostile target in reach, so moving the clock ran it. Each creature's first think is delayed by an amount
+  set from a count of every enemy the process has possessed (`GCataclysmEnemyControllerPossessions`), so whether a
+  think landed during the swing's wait depended on which tests ran before. Its fix takes the copy's AI away in the
+  tests' set-up and makes `FinishTheSwingsOf` refuse while a controller drives the caster
+  (`fix/copies-swing-their-blows-2`); #2811 rides window E with it. Issue
+  [#2827](https://github.com/sdubois777/Cataclysm/issues/2827) holds the wider hazard, the tests that move the clock while
+  an enemy keeps its AI.
+- **"with the same figure both times" and "Tiers 2 to 8 each lost exactly one blow" are wrong for the group run alone.**
+  Tier 1 was 267.0 in both. In the group run alone **tier 5 failed too**: "26846.0 (15979.8 before the multiplier of
+  1.680)", against 1195; in the whole suite tier 5 took 2008.0 and passed. The gold session pointed it out, and it is
+  what a cause that depends on test order gives.
+
 ---
 
 ## 2026-11-21 — A charging creature reports its charge's velocity, so it runs through a charge instead of sliding in its idle, and the Abyssal Warden plays Stampede through the run (#2809)
@@ -194,8 +252,8 @@ paragraph and table row. Tests: the new group `Cataclysm.ChargeGait.`, nine: eig
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
-  session's turn.
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
 - **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Enemies using any charge attack aren't sprinting like they're
   charging, they're just sliding into position."
 - **THE JOG IS CAPPED AT 2.5 DURING A CHARGE, so feet still cover less ground than the body (ruling J1).** No creature's
@@ -320,8 +378,8 @@ in `game/Source/Cataclysm/Tests/CataclysmPlayerCopiesTests.cpp`. Issue
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 1; the compile and the window wait for the coordinating
-  session's turn.
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
 - **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "The corrupted dopples and nemesis should be using the character model
   we use, it's kinda hard to see a grey cylinder coming at you before it murders you".
 - **A KNOWN VISUAL OFFSET, ruled J1:** the copies keep the creature capsule, radius 48 and half height 80, and the
