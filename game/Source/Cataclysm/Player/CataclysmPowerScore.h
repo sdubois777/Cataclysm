@@ -6,6 +6,8 @@
 #include "CataclysmPowerScore.generated.h"
 
 class ACataclysmPlayerCharacter;
+class ACataclysmEnemyCharacter;
+struct FCataclysmScoredFloor;
 struct FCataclysmItem;
 
 /**
@@ -232,6 +234,53 @@ public:
 	/** `Breakdown` of `ScoredCharacterOf` at the difficulty tier of the character's world. */
 	static FCataclysmPowerBreakdown LiveBreakdownOf(const ACataclysmPlayerCharacter* Character);
 
-	/** `LiveBreakdownOf`'s total, or `INDEX_NONE` for no character. */
+	/**
+	 * `LiveBreakdownOf`'s total, or `INDEX_NONE` for no character.
+	 *
+	 * CACHED ON THE CHARACTER SINCE SLICE B (issue #2824), because Overwhelm reads it on every hit the player takes.
+	 * Worked out again when any of four things differs from the last time: the equipment component's `ChangeCount`
+	 * (gear worn or removed), its `RefreshCount` (every stat refresh: gear, a level gained, passive points, a dungeon
+	 * modifier's stat change), the player state's level, and the world's difficulty tier. A resistance written straight
+	 * onto the attribute with no refresh, as a test does, is NOT seen until one of the four moves.
+	 */
 	static int32 LiveScoreOf(const ACataclysmPlayerCharacter* Character);
+
+	// ---------------------------------------------------------------------
+	// OVERWHELM. Issue #2824, slice b, ruled by the coordinating session on 2026-11-22 (Q7, Q8).
+	// ---------------------------------------------------------------------
+
+	/** Mitigation lost per tier width of shortfall: `OVERWHELM_RATE` in `sim/cataclysm_sim/combat.py`. */
+	static constexpr float OverwhelmRate = 0.25f;
+
+	/** The most Overwhelm can take: `OVERWHELM_CAP` in `sim/cataclysm_sim/combat.py`. */
+	static constexpr float OverwhelmCap = 0.50f;
+
+	/**
+	 * The design's Overwhelm, as a fraction: min(50%, 25% x (Enemy Score - Player Score) / Tier Width), nothing below 0.
+	 * A port of `overwhelm` in `sim/cataclysm_sim/combat.py`; 0 for a tier width of 0 or less, as there.
+	 */
+	static float OverwhelmFor(int32 PlayerScore, int32 EnemyScore, double TierWidth);
+
+	/**
+	 * The Overwhelm, in percentage points, a creature of `RarityStep` (0 Common to 5 Cataclysm Boss) on `Floor` applies
+	 * to a player scoring `PlayerScore`: `OverwhelmFor` of that floor's `UCataclysmEnemyScore::ScoreFor` at that rung,
+	 * with the floor's tier's `TierWidth`, times 100. 0 for a `PlayerScore` of `INDEX_NONE`.
+	 */
+	static float OverwhelmPointsAt(int32 PlayerScore, const FCataclysmScoredFloor& Floor, int32 RarityStep);
+
+	/**
+	 * What a hit from `Attacker` takes off `Defender`'s mitigation, in percentage points: `OverwhelmPointsAt` of the
+	 * defender's live score, the attacker's world's floor (`UCataclysmEnemyScore::FloorIn`) and the attacker's own rung
+	 * (`RarityStep`, what it stands at, not what its death pays as). 0 when either is missing: a hazard, a player's blow,
+	 * a blow on a creature.
+	 */
+	static float OverwhelmPointsAgainst(const ACataclysmPlayerCharacter* Defender,
+										const ACataclysmEnemyCharacter* Attacker);
+
+	/**
+	 * The floor panel's line: what Overwhelm a Common and a Cataclysm Boss apply on `Floor` to a player scoring
+	 * `PlayerScore`, so a player can see why they take more damage. Empty for `INDEX_NONE`. "Overwhelm here: none, your
+	 * Power Score is at or above every creature's." when both are 0.
+	 */
+	static FString OverwhelmText(int32 PlayerScore, const FCataclysmScoredFloor& Floor);
 };

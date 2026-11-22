@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPowerScore.h"
 // For where a landed blow came from, so the creature it struck flinches away from it. Issue #745.
 #include "Character/CataclysmHitReaction.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -860,6 +862,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// different route and can ignore 20% of armour on its own. Issue #659.
 			const bool bCanPenetrate = !AssetTags.HasTag(
 				UCataclysmDamageCalculation::NoPenetrationTag());
+
+			// OVERWHELM: A CREATURE'S BLOW ON A PLAYER, by how far the creature's Enemy Score stands above the player's
+			// live Power Score. Issue #2824, slice b. Not penetration, so the no-penetration tag above does not stop it:
+			// the design gives enemies no penetration and Overwhelm in its place. Every blow the creature is the
+			// instigator of, its ticks of damage over time and its area blows included (ruling Q8).
+			if (const UAbilitySystemComponent* Instigator =
+					Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent())
+			{
+				Hit.OverwhelmPoints = UCataclysmPowerScore::OverwhelmPointsAgainst(
+					Cast<ACataclysmPlayerCharacter>(CataclysmDefendingBody(*this)),
+					Cast<ACataclysmEnemyCharacter>(Instigator->GetAvatarActor()));
+			}
 
 			if (const UAbilitySystemComponent* Attacker =
 					Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent())

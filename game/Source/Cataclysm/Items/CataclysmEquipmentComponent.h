@@ -672,6 +672,13 @@ public:
 	 */
 	int32 ChangeCount() const { return Changes; }
 
+	/**
+	 * How many times `RefreshAttributesAs` has written a stat line through this component: gear, a level gained, passive
+	 * points, a dungeon modifier's stat change. Issue #2824, slice b: the live Power Score's cache is worked out again
+	 * when this moves (`UCataclysmPowerScore::LiveScoreOf`). Starts at zero, only rises, not saved, as `ChangeCount`.
+	 */
+	int32 RefreshCount() const { return Refreshes; }
+
 private:
 	/**
 	 * Raise the count and tell every listener, in that order.
@@ -690,6 +697,9 @@ private:
 	 * session rather than the character.
 	 */
 	int32 Changes = 0;
+
+	/** The count `RefreshCount` answers with. Mutable because `RefreshAttributesAs` is const. */
+	mutable int32 Refreshes = 0;
 
 	/** While true, `AnnounceChange` changes nothing: `PreviewEquip` runs `Equip` on slots it puts back. */
 	bool bAnnouncingSilenced = false;

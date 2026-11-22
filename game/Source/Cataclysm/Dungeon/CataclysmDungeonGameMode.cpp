@@ -21678,11 +21678,20 @@ void ACataclysmDungeonGameMode::RefreshFloorModifierPanel()
 	// carries the dark floor's seal is listed whatever rows that floor drew. Ruled 2026-10-09.
 	// AND, WHILE AN EMPIRE DUNGEON IS WALKED, ITS DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE. Issue #2824.
 	FString ScoreLine;
+	// AND UNDER IT THE OVERWHELM THIS FLOOR'S CREATURES APPLY, from a Common to a Cataclysm Boss, so a player can see
+	// why they take more damage. Issue #2824, slice b. Worked out when the panel is, on entering the floor.
 	if (BoundDungeon() != nullptr)
 	{
-		ScoreLine = UCataclysmEmpireMapLayout::DungeonScoreText(
-			UCataclysmEnemyScore::DungeonScoreFor(UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this))),
-			UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Cataclysm->GetPawn())));
+		const FCataclysmScoredFloor ThisFloor = UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this));
+		const int32 PlayerScore =
+			UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Cataclysm->GetPawn()));
+		ScoreLine = UCataclysmEmpireMapLayout::DungeonScoreText(UCataclysmEnemyScore::DungeonScoreFor(ThisFloor),
+																PlayerScore);
+		const FString OverwhelmLine = UCataclysmPowerScore::OverwhelmText(PlayerScore, ThisFloor);
+		if (!OverwhelmLine.IsEmpty())
+		{
+			ScoreLine += TEXT("\n") + OverwhelmLine;
+		}
 	}
 	Cataclysm->ShowFloorModifiers(RowsTheFloorPanelLists(), FloorBrief.FloorNumber,
 								  LiveCountsForTheFloor(), ScoreLine);

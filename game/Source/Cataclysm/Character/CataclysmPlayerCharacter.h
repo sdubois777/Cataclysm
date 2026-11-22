@@ -514,6 +514,21 @@ public:
 	/** What the character is wearing. Issue #828. */
 	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
 
+	/**
+	 * The live Power Score as last worked out, and what it was worked out from. Issue #2824, slice b: Overwhelm reads
+	 * the score on every hit the character takes. Read and written only by `UCataclysmPowerScore::LiveScoreOf`, which
+	 * says when it is worked out again. Not saved: a loaded character starts with nothing cached, which is correct.
+	 */
+	struct FLiveScoreCache
+	{
+		int32 Score = INDEX_NONE;
+		int32 EquipmentChanges = INDEX_NONE;
+		int32 Refreshes = INDEX_NONE;
+		int32 Level = INDEX_NONE;
+		int32 Tier = INDEX_NONE;
+	};
+	FLiveScoreCache& LiveScoreCache() const { return CachedLiveScore; }
+
 	/** The ItemBases row the character begins wearing. Issue #840. */
 	FName GetStartingWeaponBase() const { return StartingWeaponBase; }
 
@@ -973,6 +988,9 @@ protected:
 	FName StartingWeaponBase = TEXT("Weapon_Greataxe");
 
 private:
+	/** See `LiveScoreCache`. Mutable because the score is read from const places, a hit's defender among them. */
+	mutable FLiveScoreCache CachedLiveScore;
+
 	/**
 	 * Wears StartingWeaponBase, if the character is wearing no weapon at all.
 	 *

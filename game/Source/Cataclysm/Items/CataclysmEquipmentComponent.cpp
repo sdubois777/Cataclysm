@@ -1024,6 +1024,10 @@ int32 UCataclysmEquipmentComponent::RefreshAttributesAs(
 		return 0;
 	}
 
+	// COUNTED BEFORE ANYTHING IS WRITTEN, so the live Power Score's cache cannot miss a refresh that returns early
+	// below. Issue #2824, slice b.
+	++Refreshes;
+
 	// NOT CONST ANY MORE, because the passive tree adds to it below. What
 	// the worn items grant and what the spent passive points grant are the
 	// same three buckets applied to the same character, so they belong in

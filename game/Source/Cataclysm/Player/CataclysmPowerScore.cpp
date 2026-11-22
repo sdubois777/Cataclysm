@@ -4,7 +4,9 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Player/CataclysmGameMode.h"
@@ -320,5 +322,81 @@ FCataclysmPowerBreakdown UCataclysmPowerScore::LiveBreakdownOf(const ACataclysmP
 
 int32 UCataclysmPowerScore::LiveScoreOf(const ACataclysmPlayerCharacter* Character)
 {
-	return Character ? LiveBreakdownOf(Character).Total : INDEX_NONE;
+	if (Character == nullptr)
+	{
+		return INDEX_NONE;
+	}
+
+	// THE FOUR THINGS THE SCORE IS WORKED OUT FROM, read cheaply; the score itself is worked out only when one moved.
+	// Issue #2824, slice b. See the header.
+	const UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	const ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const int32 EquipmentChanges = Equipment ? Equipment->ChangeCount() : INDEX_NONE;
+	const int32 Refreshes = Equipment ? Equipment->RefreshCount() : INDEX_NONE;
+	const int32 Level = State ? State->GetCharacterLevel() : 0;
+	const int32 Tier = ACataclysmGameMode::DifficultyTierIn(Character);
+
+	ACataclysmPlayerCharacter::FLiveScoreCache& Cache = Character->LiveScoreCache();
+	if (Cache.Score == INDEX_NONE || Cache.EquipmentChanges != EquipmentChanges || Cache.Refreshes != Refreshes
+		|| Cache.Level != Level || Cache.Tier != Tier)
+	{
+		Cache.Score = Breakdown(ScoredCharacterOf(Character, Tier)).Total;
+		Cache.EquipmentChanges = EquipmentChanges;
+		Cache.Refreshes = Refreshes;
+		Cache.Level = Level;
+		Cache.Tier = Tier;
+	}
+	return Cache.Score;
+}
+
+float UCataclysmPowerScore::OverwhelmFor(int32 PlayerScore, int32 EnemyScore, double TierWidth)
+{
+	if (TierWidth <= 0.0)
+	{
+		return 0.0f;
+	}
+	const double Gap = FMath::Max(0.0, static_cast<double>(EnemyScore) - static_cast<double>(PlayerScore));
+	return static_cast<float>(FMath::Min(static_cast<double>(OverwhelmCap), OverwhelmRate * Gap / TierWidth));
+}
+
+float UCataclysmPowerScore::OverwhelmPointsAt(int32 PlayerScore, const FCataclysmScoredFloor& Floor, int32 RarityStep)
+{
+	if (PlayerScore == INDEX_NONE)
+	{
+		return 0.0f;
+	}
+	return 100.0f
+		* OverwhelmFor(PlayerScore, UCataclysmEnemyScore::ScoreFor(Floor, RarityStep),
+					   UCataclysmEnemyScore::TierWidth(Floor.DifficultyTier));
+}
+
+float UCataclysmPowerScore::OverwhelmPointsAgainst(const ACataclysmPlayerCharacter* Defender,
+												   const ACataclysmEnemyCharacter* Attacker)
+{
+	if (Defender == nullptr || Attacker == nullptr)
+	{
+		return 0.0f;
+	}
+	// THE RUNG IT STANDS AT, NOT THE ONE ITS DEATH PAYS AS: the Corrupted Stalker pays as a Boss while it stands, and
+	// hits, as a Common (`ACataclysmEnemyCharacter::RarityStepItPaysAs`). The coordinating session's judgement, slice b.
+	return OverwhelmPointsAt(LiveScoreOf(Defender), UCataclysmEnemyScore::FloorIn(Attacker), Attacker->RarityStep);
+}
+
+FString UCataclysmPowerScore::OverwhelmText(int32 PlayerScore, const FCataclysmScoredFloor& Floor)
+{
+	if (PlayerScore == INDEX_NONE)
+	{
+		return FString();
+	}
+	// THE TWO ENDS OF THE LADDER: the rung met most often and the strongest. Every rung between applies between them.
+	const float FromCommon = OverwhelmPointsAt(PlayerScore, Floor, 0);
+	const float FromCataclysmBoss =
+		OverwhelmPointsAt(PlayerScore, Floor, UCataclysmEnemyScore::RarityStepCount - 1);
+	if (FromCataclysmBoss <= 0.0f)
+	{
+		return TEXT("Overwhelm here: none, your Power Score is at or above every creature's.");
+	}
+	return FString::Printf(TEXT("Overwhelm here: %.1f from a Common, %.1f from a Cataclysm Boss, in points off your "
+								"resistance, armour, block and evasion."),
+						   FromCommon, FromCataclysmBoss);
 }
