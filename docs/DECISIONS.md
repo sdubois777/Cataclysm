@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Kills drop gems, about one a floor at a full clear, measured so a full clear of a tier fills that tier's reference character; a gem lies on the floor, comes without a click into its stack, and is saved on the ground (#46, slice G5)
+
+**Affects:** `sim/cataclysm_sim/loot.py`'s `GEM_DROPS_PER_GEAR_DROP`, `ENEMY_GEM_DROPS`, `expected_gem_drops` and
+`roll_gem_drops_from_kill`, new; `sim/analyse_gem_drops.py`, new, the measurement; `sim/tests/test_gem_drops.py`, new.
+`ACataclysmDroppedItem::Gem`, `GemRarity`, `GemQuantity` and `IsGem`, new, and `IsAQuantity`, `DescribeItself`,
+`UCataclysmDropPickup::TakeInto`, `UCataclysmDropSpawner::PutOnTheFloor` (three gem arguments, defaulted),
+`SpawnGemsFor`, `GemStreamSalt` and `GemScatterOffset`, new (`game/Source/Cataclysm/Items/CataclysmDroppedItem.h`,
+`.cpp`); `UCataclysmDropRoll::ExpectedGemDrops`, new (`CataclysmDropRoll.h`, `.cpp`); `UCataclysmGems::RollGem` and
+`FloorNameOf`, new (`CataclysmGems.h`, `.cpp`); the creature's death (`CataclysmEnemyCharacter.cpp`);
+`FCataclysmSavedGroundItem::Gem`, `GemRarity` and `GemQuantity`, new (`CataclysmSaveRecords.h`), and
+`FCataclysmSaveGather::GroundItemFrom` and `FCataclysmSaveApply::GroundItemInto`; `UCataclysmWearing::DropCarried`,
+and `ECataclysmWearResult::GemsStayInTheBag` removed (`CataclysmWearing.h`, `.cpp`); `docs/Play_Loop_Checklist.md`,
+step 17's last line and step 18, new. Tests: `game/Source/Cataclysm/Tests/CataclysmGemDropsTests.cpp`, new, four in
+`Cataclysm.GemDrops.`; `CataclysmGemStacksTests.cpp`'s GK3 rewritten and renamed;
+`CataclysmDungeonModifierEffectsTests.cpp`, two drop counts that skip gems; `tools/tests/test_gems_drop_from_kills.py`,
+new; `tools/tests/test_gems_are_carried_in_stacks.py`, one check rewritten. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G4's branch head without a compile, as ruled. The branch is
+  `feat/gem-drops-46-g5`, on `feat/forge-gems-46-g4`. If ready at the turn it goes through the gems' one shared window
+  with G1 to G4, ruled by the coordinating session on 2026-11-21.
+- **IT DOES NOT COMPILE UNTIL ITS WORKBOOK STAGE.** `UCataclysmDropRoll::ExpectedGemDrops` reads
+  `FCataclysmEnemyDropRow::GemDrops`, which comes with a Gem Drops column on the workbook's Enemy Drops sheet, the
+  generator reading it, and `tools/tests/test_enemy_drop_sheet_matches_the_model.py` comparing it with
+  `loot.ENEMY_GEM_DROPS`. A struct field before its column fails
+  `tools/tests/test_csv_columns_match_their_row_structs.py`, so all of that waits for the workbook, as G1's columns do.
+- **THE RUN RECORD'S VERSION DOES NOT MOVE HERE.** The ground item gains three saved fields. Their version step, with
+  its migration and fixture, is written at the turn: 14 to 15 by the current order, or folded into G3's 13 to 14 if G5
+  is in the same window, which needs only one run-record step (the coordinating session, 2026-11-21).
+- **THE RATE IS SET BY TIER 8, SO EVERY LOWER TIER GETS FAR MORE THAN ITS CEILING NEEDS.** At tier 1 a full clear's gems
+  are worth 1,909 Everyday gems against the 6 the reference character fills. That follows from one share for every tier,
+  which "gems follow the gear column" rules; a share by tier would need a ruling.
+
+### The measurement, and what in it is derived
+
+`sim/analyse_gem_drops.py`, run 2026-11-21. The rate is the least share of gear drops at which a full clear of a tier's
+dungeons drops enough gems, counted at the tier's own rarity, to fill the sockets the design's reference character
+fills at that tier.
+
+| Figure | Value | Derived or a judgement |
+| :-- | :-- | :-- |
+| Kills in a tier | 333,462: 26 dungeons x 49.8 floors x 257.5 creatures | **Derived**, from `analyse_experience_curve.py`'s inputs. **It assumes every creature is killed**, which nobody has measured (issue #925); a half-cleared floor halves the gems |
+| Gear drops a kill | 0.4760, by `EnemyRarities.csv`'s spawn weights over `loot.ENEMY_GEAR_DROPS` | **Derived** |
+| A gem's rarity | the gear's spread at the tier, with the creature's magic find added | **Derived** from the design: "Gems ... have the same rarity tiers as gear" |
+| A gem against the tier's own rarity | 2 to the power of the rungs between them | **Derived** from the ruling of 2026-11-21 that two gems combine into one of the next rarity |
+| Gems the reference character fills | 6 at tier 1 to 45 at tier 8 | **Derived**, `player_power.reference_character` |
+| The target: a full clear reaches the ceiling | -- | **A judgement**: the design calls the reference character a tier's ceiling, so the rate is the least that makes it reachable |
+| Any gem counts | -- | **A judgement**: the Power Score reads a gem's rarity only. A build after six or seven particular gems of 28 needs about four times the kills |
+| Gems follow the gear column across creature rarities | -- | **A judgement**, the shape magic find already follows |
+| Which gem: evenly among the 28 | -- | **Ruled** 2026-11-21 |
+
+Each tier's need, in gems a gear drop: 0.00002, 0.00006, 0.00014, 0.00031, 0.00070, 0.00151, 0.00315 and **0.00671**
+at tier 8, where the tier's own rarity is rarest. Shipped: `GEM_DROPS_PER_GEAR_DROP = 0.0068`, that figure rounded up,
+so the Gem Drops column is Common 0.001088, Elite 0.0034, Legendary 0.0068, Herald 0.0136, Boss 0.034 and Cataclysm
+Boss 0.0816 gems a kill. A tier's full clear drops 1,079 gems, 41.5 a dungeon, about 0.83 a floor; at tier 8 they are
+worth 46 Cataclysmic gems against the 45 needed.
+
+### What changed in the game
+
+- **A kill drops gems** (`SpawnGemsFor`), after everything else it drops, from a stream of their own seeded from the
+  kill's through `CataclysmSeedMix::Mix` with the salt "GEM". It reads the kill's stream and draws nothing from it, so
+  every item, material, pile and extra drop a kill rolls is what it rolled before. How many: a Poisson draw on the
+  rung's Gem Drops times the loot quantity, as gear is counted. Which rarity: the gear's roll at the tier being played,
+  the creature's magic find added to the player's. Which gem: evenly among the Gems sheet's rows. Only a paying death
+  drops gems, and a creature a rule raised marks them as its other drops are marked, so Trick or Treat rolls nothing for
+  them. A dungeon rule's reward of drops gives none, as it gives no gold (a judgement, the same line).
+- **A gem on the floor** is one drop, named "Of Rot (Everyday)", in its rarity's colour and border, on a ring of its
+  own 75 cm out for a lone gem. **It is a quantity** (a judgement: gems stack for the reason materials do, ruled
+  2026-11-21), so it is named at any distance and comes without a click within fifteen metres, onto the stack of its
+  gem and rarity. Taking one says no PLAY LOOP line, as a material says none.
+- **The run record keeps a gem lying on the ground**: its gem, rarity and count, both ways.
+- **G2's refusal to drop a gem stack is lifted.** A dropped stack lies on the floor whole, as one gem drop, and comes
+  back the same way. G2's entry above records the change, the renamed test and its withdrawn proof K5.
+
+### Tests
+
+`CataclysmGemDropsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | for each of the six rungs, the expected gems are the expected gear times 0.0068, more than the rung below, and doubled at twice the loot quantity; a Cataclysm Boss 0.0816; none at no loot quantity. Prints "GEM DROPS" |
+| `AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity` | 28 gems; 28,000 draws give every gem 850 to 1,150 times; no table, no gem; "Of The Viper (Superb)". Prints "WHICH GEM" |
+| `AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack` | CONTROL: no loot quantity places none; a Cataclysm Boss at 1,000 times the loot quantity places gems, each lying there, each one gem at a rarity tier 1 reaches with its name and border, none on the corpse; one is a quantity that comes without a click and goes into a stack of 1. Prints "GEMS ON THE FLOOR" |
+| `AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` | three Superb Of Life are saved with their gem, rarity and count and restored as gems named "Of Life (Superb)"; three Superb Of The Viper dropped from the bag leave it and lie as one drop of 3. Prints "GEM GROUND" |
+
+`CataclysmGemStacksTests.cpp`'s GK3, renamed `AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses`: with no
+world the gem stack is offered to the floor, refused as `TheFloorRefusedIt`, and all 3 are still carried.
+
+`CataclysmDungeonModifierEffectsTests.cpp`: `DropsOnTheFloor` and the Corrupted Stalker's "is a piece it wore" loop skip
+gems. A sweep of every test that kills a creature and then counts the drops found these two that a gem would break:
+the Stalker pays as a Boss, 3.4% a kill. A third, `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`, would
+have failed on an unmarked gem; the code marks it rather than the test skipping it.
+
+`tools/tests/test_gems_drop_from_kills.py`: the Unreal test's share is the simulation's; the gem stream is seeded
+through the mix and the kill's stream only read; a death rolls gems last, only when it pays, marked when raised; a gem
+drop goes onto its stack and is a quantity; the ground record keeps it both ways; its border is its rarity's; which gem
+is drawn evenly. `tools/tests/test_gems_are_carried_in_stacks.py`: `DropCarried` gives the floor the gem, its rarity
+and the count. `sim/tests/test_gem_drops.py`: the shipped share reaches every tier's need, is within 5% of the most
+any needs, tier 8 sets it, the column rises by rung, and a kill's gems follow the gear's rarity spread at the tier.
+`sim/tests/test_analysis_scripts.py` runs `analyse_gem_drops.py` and checks its printed binding tier and its last table.
+Three checks that list what the code does were told of gems: the death's jobs
+(`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`), the ground restore's gold argument
+(`tools/tests/test_gold_drops_and_the_balance.py`), and the analysis scripts' list.
+
+Proved with `tools/prove_guard.py` in `git archive` copies: GS1 to GX9 but GX8 in one of `d67b3dc72`, and GX8 in one of
+`7cae94ba1`, after GX8's first run did not prove (below). Each restored half passed every test it ran: 5 for the
+simulation's file, 17 for the two checks together.
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GS1 | `GEM_DROPS_PER_GEAR_DROP` 0.0066, below tier 8's 0.00671 | "1 failed, 4 passed": `test_the_shipped_rate_reaches_the_ceiling_at_every_tier` | PROVED |
+| GS2 | `GEM_DROPS_PER_GEAR_DROP` 0.0075, over 5% above the measurement | "1 failed, 4 passed": `test_the_shipped_rate_is_the_measured_one_rounded_up_and_no_more` | PROVED |
+| GS3 | a Herald drops 0.0034 gems, a Legendary's | "1 failed, 4 passed": `test_a_better_enemy_drops_more_gems_and_every_kill_can_drop_one` | PROVED |
+| GS4 | `roll_gem_drops_from_kill` rolls at tier 8 whatever the tier | "1 failed, 4 passed": `test_a_kills_gems_are_rolled_at_the_gears_rarity_spread_at_the_tier` | PROVED |
+| GX1 | the Unreal test's `GemsPerGearDrop` 0.0070 | "1 failed, 16 passed": `test_the_unreal_test_holds_the_table_to_the_simulations_rate` | PROVED |
+| GX2 | the gem stream seeded by XOR, not the mix | "1 failed, 16 passed": `test_a_kills_gems_come_from_a_stream_of_their_own` | PROVED |
+| GX3 | the death's `SpawnGemsFor` passes no mark | "1 failed, 16 passed": `test_a_death_rolls_its_gems_last_only_when_it_pays_and_marked_when_raised` | PROVED |
+| GX4 | `IsAQuantity` leaves gems out | "1 failed, 16 passed": `test_a_gem_drop_goes_onto_its_stack_and_is_a_quantity` | PROVED |
+| GX5 | `GroundItemFrom` does not copy `GemQuantity` | "1 failed, 16 passed": `test_the_run_record_keeps_a_gem_lying_on_the_ground` | PROVED |
+| GX6 | `DescribeItself`'s gem branch does not set `Rarity` | "1 failed, 16 passed": `test_a_gem_drops_border_is_its_raritys` | PROVED |
+| GX7 | `RollGem` always gives the first row | "1 failed, 16 passed": `test_which_gem_is_drawn_evenly_among_the_rows` | PROVED |
+| GX8 | `DropCarried` gives the floor `NAME_None` for the gem | first run "17 passed", NOT PROVED: the check looked for `Leaving.Gem`, which `Leaving.GemRarity` contains. Matched with its comma, "1 failed, 16 passed": `test_a_dropped_gem_stack_goes_to_the_floor_as_gems` | PROVED on the second run |
+| GX9 | `TakeInto` takes a gem drop as a piece of gear | "1 failed, 16 passed": `test_a_gem_drop_goes_onto_its_stack_and_is_a_quantity` | PROVED |
+
+Two more faults were found while writing this and corrected before any proof: `sim/tests/test_gem_drops.py`'s rarity
+test asked only that each rolled rarity be listed in the gear's spread, which lists all eight, so it could not fail; it
+now compares the share of Everyday gems with the spread's. And the sweep found the raised creature's gems unmarked,
+corrected in the code.
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G4 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemDrops.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.GemStacks.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.DungeonModifierEffects.`, `Cataclysm.Drop.`, `Cataclysm.Gold.`, `Cataclysm.SaveLoad.` and `Cataclysm.SaveFloor.` alone, which kill creatures and count drops or save the ground | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.GemDrops."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K15 | in `ExpectedGemDrops`, `ScaledByLootQuantity(Row->GemDrops, LootQuantity)` to `Row->GemDrops` | 4 performed, 3 succeeded, 1 failed: `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | 4 of 4 |
+| K16 | in `RollGem`, `Stream.RandRange(0, Gems.Num() - 1)` to `Stream.RandRange(0, Gems.Num() - 2)` | 4 performed, 3 succeeded, 1 failed: `AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity` | 4 of 4 |
+| K17 | in `DescribeItself`'s gem branch, `Rarity = GemRarity;` removed | 4 performed, 3 succeeded, 1 failed: `AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack` | 4 of 4 |
+| K18 | in `DropCarried`, `Leaving.Gem, Leaving.GemRarity,` to `NAME_None, Leaving.GemRarity,` | 4 performed, 3 succeeded, 1 failed: `AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` | 4 of 4 |
+
+---
+
 ## 2026-11-21 — The forge sockets a gem for a Setting Agent, 5 residue and a day, and unsockets one for Dismantling Dust, 3 residue and a day, the gem back to the bag (#46, slice G4)
 
 **Affects:** `FCataclysmForgeSocketing`, new, and `UCataclysmForge::SettingAgentRow`, `DismantlingDustRow`,
