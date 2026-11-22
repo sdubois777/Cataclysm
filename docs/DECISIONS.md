@@ -432,6 +432,34 @@ and every screen that offers a dungeon calls the score functions.
 | L6 | a dungeon on the map scored at floor 1, not its middle | 7, 1: `ADungeonShowsItsDungeonScoreBesideThePlayers` |
 | L7 | a tier's range read from the tier below's end rather than one above it | 7, 1: `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` |
 
+### The window, power-score, 2026-11-22: PASSED on `5b6042222`, the third attempt
+
+The window carried #1267 (City Upgrades!B11, `CityUpgrades.csv`) and Forge slices F1 and F2 (#47) with this slice, and
+their proofs FA1 to FA6 and FC1 to FC5 beside L1 to L7.
+
+- **The first attempt, 13:07, did not build: 50 errors, all in F2's test file.** Its scene helper was named `FScene`,
+  which the engine already declares globally (C2872, ambiguous symbol). Renamed `FAffixChangeScene` in `5d470823e`; no
+  test ran.
+- **w1, 13:16 to 13:48, on `b1441d5de`: FAILED, one test.** The compiles built with no warnings; the editor step rebuilt
+  `DT_CityUpgrades` from #1267's `CityUpgrades.csv` and was committed as `b1441d5de`; 21 of 22 groups passed alone, and
+  the whole suite performed 5271, 5270 succeeded, 1 failed:
+  `Cataclysm.PowerScoreLive.TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty`. **The test was wrong, not the
+  code:** it set the character's resistance before equipping the helm, and equipping refreshes every stat attribute
+  (`OnEquipmentChanged` runs `RefreshAttributes`, which applies the class stats), so the value it set was rewritten.
+  `5b6042222` sets it after equipping. No proof ran, by the rule that proofs run only when every group passed.
+- **w2, 13:50 to 14:38, on `5b6042222`: PASSED.** Lock `power-score-w2`, taken and released.
+  - Build: "4 actions, 1 file compiled: Module.Cataclysm.34.cpp". The assets were `b1441d5de`'s, an ancestor.
+  - Groups alone: 22 of 22 passed.
+  - Whole suite: "5271 tests performed, 5271 succeeded, 0 failed. 57 skipped part of what they check"; "Test saves:
+    860 written and deleted, 0 left behind"; "Declared: 5271 tests in the tree at 5b6042222; 5271 performed, gap 0".
+    Memory: peak_used_virtual_mb=9154.
+  - Python, alongside: "8156 passed, 10 skipped in 385.46s"; JUnit 8166 tests, 0 failures, 0 errors, 10 skipped. ruff
+    "All checks passed!".
+  - **All eighteen Unreal guard proofs PROVED, each as predicted**, the source hash the same after every one:
+    L1 to L7 each "8 tests performed, 7 succeeded, 1 failed" with the test named in the table above, restored 8 of 8;
+    FA1 to FA6 each 6 performed, 5 succeeded, its own test failing, restored 6 of 6; FC1 to FC5 each 5 performed, 4
+    succeeded, its own test failing, restored 5 of 5.
+
 ---
 
 ## 2026-11-22 — The shared window: the cleanse (#2838), raising a city upgrade (#1265), the gem enchantments (#46 G10) and the socket crafts (#46 G9) on one branch, registered
