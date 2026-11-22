@@ -91,6 +91,12 @@ before editing and writes after every change; no file under `game/Source/Catacly
 `test_the_loot_filter_screen_is_generated_with_its_bindings.py`, 3 checks, the forge screen's. LF1's
 `test_the_loot_filter_is_wired_in.py` now checks the default through the preferences, not the removed field.
 
+**Python suite at `253b5ae31`**: "8167 passed, 10 skipped in 407.23s"; JUnit 8177 tests, 0 failures, 0 errors, 10
+skipped; ruff "All checks passed!". **Python guard proofs, in a `git archive` copy of `253b5ae31`: 2 of 2 PROVED**:
+PP1, `SetRule` reaching the player's filter without `EditableFilter`, failed
+`test_every_change_asks_the_one_check_that_refuses_a_built_in`; PP2, `FromJson` keeping what it read without
+`Sanitised`, failed `test_reading_the_file_sanitises_it`; each passed restored.
+
 ### Registered for the shared window
 
 Added to LF1's registration (the entry below), on the same base, development `3cbacdac4`, 5271 tests:
