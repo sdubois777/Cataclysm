@@ -479,6 +479,40 @@ the JUnit file `tests="7963"`, `failures="1"`, `errors="0"`, `skipped="9"`. The 
 window's asset step, which needs the editor. ruff on every Python file the slice touches: "All checks passed!".
 **Not run: the Unreal tests and the C++ proofs**, which wait for the window.
 
+
+### Window tree-s9-w1: FAILED, 5216 of 5218, two tests' set-up
+
+The compiles, at `c0ae0ebce`, on the third attempt. The first stopped before taking the lock: the compile script still
+asked 10,240 MB free, copied from the slices 6d to 8 window's, and 9,598 MB was free; it asks the standing 9,216 now.
+The second built the branch and FAILED: `UCataclysmCharacterSave` had no `GoldSpentOnCityUpgrades`, because the script
+that re-applied the record changes onto the gems window cut the field's text to the next "/**", which matched where the
+cut began; and `GiveModifiersFrom`'s parameter `Stream` hid the run's member (C4458). `c0ae0ebce` restores the field,
+renames the parameter `Draws`, and adds `test_each_record_declares_the_fields_its_step_writes`, which failed on the
+header as it was. The third: "Build: Succeeded - 60 actions, 55 files compiled", each changed .cpp alone "59 actions,
+54 files compiled", the unity files again "22 actions, 17 files compiled", 0 compiler warning or error lines in each.
+
+The window, `run_t2741s9.py`, from 06:50 on 2026-11-22. The asset step committed `3c9d6928f` (the two empire tree
+tables and `datatable_asset_sources.json`, three files) and the window tested that head.
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 39 | 37 passed; `Cataclysm.EmpireTreeBribery.` 1 of 2 and `Cataclysm.EmpireTree.` 23 of 24 failed |
+| `Cataclysm.GemStacks.`, GK6 riding | 6 | 6 of 6 |
+| Whole suite | 5218 | "5218 tests performed, 5216 succeeded, 2 failed: ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich, ABribeNeedsTheNodeAndTheWholeFee" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5218 | "5218 tests in the tree at 3c9d6928f; 5218 performed, gap 0" |
+| Python, beside it | the asset check passes | "8086 passed, 10 skipped"; JUnit 8096, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+| C++ proofs | 14 | not run: the window stops before them when the suite misses its total |
+
+Both failures were set-up faults in tests. `ABribeNeedsTheNodeAndTheWholeFee` ("Expected 'set-up: an ordinary dungeon
+on the board' to be not null") looked for a dungeon on a run that had only begun, which has none until its first day
+is spent; it now places one on an Outpost, as the run's half of the bribe tests does.
+`ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich` ("Expected 'Civic Pride, with Metropolitan Growth at 8, still waits on a population growth rate'
+to be true") used Civic Pride as its node that waits on a missing system, and this slice built it; it now uses Scorched
+Earth, behind Imperial Roads, and checks that Civic Pride waits on nothing. Both in `07e24f49a`.
+
 ---
 
 ## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
