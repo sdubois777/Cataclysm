@@ -185,6 +185,22 @@ public:
 												  bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
 												  FString& OutMessage);
 
+	//~ The three crafts that change one affix. Issue #47, slice F1.
+
+	/** What one of the three crafts on the affix `Affix` of the item at a target would take now. */
+	static FCataclysmForgeAffixWork AffixWorkPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													 ECataclysmForgeAffixCraft Craft, int32 Affix);
+
+	/**
+	 * Reroll, perfect or raise the tier of the affix `Affix` of the item at a target, carried or worn: one of the craft's
+	 * material leaves the bag, the affix's roll or tier changes and nothing else of it, the item carries the craft's
+	 * residue, and the days pass. A reroll's roll is `UCataclysmForge::RerolledAffixRoll` for the run's day, drawn before
+	 * the days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult CraftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+											ECataclysmForgeAffixCraft Craft, int32 Affix, bool bConfirmedPastThreshold,
+											FCataclysmForgeAffixWork& OutDone, FString& OutMessage);
+
 private:
 	/**
 	 * The part `AddSocket` and `ChangeSocketType` share, given a possible plan, as `DoSocketing` is for socketing: the

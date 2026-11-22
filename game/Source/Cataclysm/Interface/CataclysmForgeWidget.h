@@ -80,6 +80,10 @@ public:
 	/** The socket additions and type changes shown for the piece chosen. Issue #46, slice G9. */
 	const TArray<FCataclysmForgeSocketWorkAction>& SocketWorkActionsShown() const { return ShownSocketWorkActions; }
 
+	/** The affix crafts shown for the piece chosen, and a press of one. Issue #47, slice F1. */
+	const TArray<FCataclysmForgeAffixAction>& AffixActionsShown() const { return ShownAffixActions; }
+	void ClickAffixActionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
+
 	/** The gem combines shown, and a press of one. Issue #46, slice G6. */
 	const TArray<FCataclysmForgeGemCombineAction>& GemCombinesShown() const { return ShownGemCombines; }
 	void ClickGemCombineForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
@@ -141,6 +145,7 @@ private:
 	TArray<int32> ShownCombineLevels;
 	TArray<FCataclysmForgeSocketAction> ShownSocketActions;
 	TArray<FCataclysmForgeSocketWorkAction> ShownSocketWorkActions;
+	TArray<FCataclysmForgeAffixAction> ShownAffixActions;
 	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;
 
 	/** The socket action whose first press was made; its second press does it. None for none. Issue #46, slice G4. */

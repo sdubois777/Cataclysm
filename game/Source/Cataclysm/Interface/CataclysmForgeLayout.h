@@ -46,6 +46,15 @@ struct FCataclysmForgeSocketWorkAction
 	ECataclysmSocketType NewType = ECataclysmSocketType::Any;
 };
 
+/** One affix craft the forge offers for the piece chosen: reroll, perfect or raise the tier of one affix. #47, F1. */
+struct FCataclysmForgeAffixAction
+{
+	FName ButtonName;
+	FString Label;
+	ECataclysmForgeAffixCraft Craft = ECataclysmForgeAffixCraft::RerollValue;
+	int32 Affix = INDEX_NONE;
+};
+
 /**
  * One gem combine the forge offers: two carried gems of a kind and rarity into one of the next rarity. Issue #46, slice
  * G6.
@@ -140,6 +149,26 @@ public:
 	/** The action a button stands for, among those shown. False for a button that is none of them. */
 	static bool SocketWorkActionForButton(FName ButtonName, const TArray<FCataclysmForgeSocketWorkAction>& Shown,
 										  FCataclysmForgeSocketWorkAction& OutAction);
+
+	//~ The three affix crafts. Issue #47, slice F1.
+
+	/**
+	 * The piece's affixes for the screen's detail, numbered from 1 as the buttons are: "Affixes: 1. +12 to armor (tier
+	 * 2), roll 50 percent; 2. ...", each read as the item's tool tip reads it; empty for a piece with none.
+	 */
+	static FString AffixesDetailFor(const FCataclysmItem& Item);
+
+	/**
+	 * The affix crafts for a piece, affix by affix: "Reroll affix 1", then "Perfect affix 1" while its roll is below the
+	 * top, then "Raise affix 1 to tier 3" while its tier is below 7. A perfecting and an upgrade that
+	 * `UCataclysmForge::AffixWorkOf` would refuse for the affix itself are not offered; one refused for the material or
+	 * the gold is, so pressing it says why.
+	 */
+	static TArray<FCataclysmForgeAffixAction> AffixActionsFor(const FCataclysmItem& Item);
+
+	/** The action a button stands for, among those shown. False for a button that is none of them. */
+	static bool AffixActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixAction>& Shown,
+									 FCataclysmForgeAffixAction& OutAction);
 
 	//~ Combining gems. Issue #46, slice G6.
 

@@ -25,6 +25,12 @@ const TCHAR* UCataclysmForge::ShatteredCoreRow = TEXT("Material_Shattered_Core")
 const TCHAR* UCataclysmForge::FocusingLensRow = TEXT("Material_Focusing_Lens");
 const TCHAR* UCataclysmForge::AddSocketOperationRow = TEXT("Operation_Add_Socket");
 const TCHAR* UCataclysmForge::ChangeSocketTypeOperationRow = TEXT("Operation_Change_Socket_Type");
+const TCHAR* UCataclysmForge::CorruptedMoteRow = TEXT("Material_Corrupted_Mote");
+const TCHAR* UCataclysmForge::PrimalSparkRow = TEXT("Material_Primal_Spark");
+const TCHAR* UCataclysmForge::PotencyCrystalRow = TEXT("Material_Potency_Crystal");
+const TCHAR* UCataclysmForge::RerollAffixValueOperationRow = TEXT("Operation_Reroll_Affix_Value");
+const TCHAR* UCataclysmForge::PerfectRollOperationRow = TEXT("Operation_Perfect_Roll_Attempt");
+const TCHAR* UCataclysmForge::UpgradeAffixTierOperationRow = TEXT("Operation_Upgrade_Affix_Tier");
 
 FName UCataclysmForge::StoneFor(int32 Level)
 {
@@ -570,6 +576,156 @@ FString UCataclysmForge::SocketWorkQuestion(const FCataclysmForgeSocketWork& Pla
 	}
 	return FString::Printf(TEXT("Press again to make socket %d a %s socket: one Focusing Lens, %s."), Plan.Socket + 1,
 						   *UCataclysmGems::SocketTypeName(Plan.ToType), *Cost);
+}
+
+FName UCataclysmForge::MaterialFor(ECataclysmForgeAffixCraft Craft)
+{
+	switch (Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:	return FName(PrimalSparkRow);
+	case ECataclysmForgeAffixCraft::UpgradeTier:	return FName(PotencyCrystalRow);
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:										return FName(CorruptedMoteRow);
+	}
+}
+
+FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(const FCataclysmItem& Item, ECataclysmForgeAffixCraft Craft,
+													   int32 Affix, int32 MaterialHeld, int32 DifficultyTier,
+													   int64 GoldHeld)
+{
+	FCataclysmForgeAffixWork Out;
+	Out.Craft = Craft;
+	Out.Affix = Affix;
+	Out.Material = MaterialFor(Craft);
+	Out.MaterialHeld = FMath::Max(0, MaterialHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to craft.");
+		return Out;
+	}
+	if (!Item.Affixes.IsValidIndex(Affix))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no affix %d."), Affix + 1);
+		return Out;
+	}
+	const FCataclysmRolledAffix& Rolled = Item.Affixes[Affix];
+	Out.AffixRow = Rolled.Affix;
+	Out.FromTier = Rolled.Tier;
+	Out.ToTier = Rolled.Tier;
+	Out.FromRoll = Rolled.Roll;
+	Out.ToRoll = Rolled.Roll;
+
+	// EACH CRAFT'S ROW: its residue, its base days and its Base Gold, falling back on the constant the sheet's figure
+	// mirrors. An upgrade's residue and days are the affix's tier before it, "10 CR*(Current affix tier)" and
+	// "1(current affix tier)", and its Base Gold the sheet's flat 250 (Q13).
+	float Added = 0.0f;
+	int32 BaseDays = 0;
+	int32 BaseGold = 0;
+	FString Doing;
+	switch (Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:
+		Added = PerfectRollResidue;
+		BaseDays = PerfectRollBaseDays;
+		BaseGold = BaseGoldOf(PerfectRollOperationRow, BaseGoldFor(PerfectRollBaseDays));
+		Doing = TEXT("Perfecting an affix's roll");
+		Out.ToRoll = 1.0f;
+		break;
+	case ECataclysmForgeAffixCraft::UpgradeTier:
+		Added = UpgradeAffixTierResiduePerTier * static_cast<float>(Rolled.Tier);
+		BaseDays = Rolled.Tier;
+		BaseGold = BaseGoldOf(UpgradeAffixTierOperationRow, GoldPerCraftDay);
+		Doing = TEXT("Raising an affix's tier");
+		Out.ToTier = Rolled.Tier + 1;
+		break;
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:
+		Added = RerollAffixValueResidue;
+		BaseDays = RerollAffixValueBaseDays;
+		BaseGold = BaseGoldOf(RerollAffixValueOperationRow, BaseGoldFor(RerollAffixValueBaseDays));
+		Doing = TEXT("Rerolling an affix's value");
+		break;
+	}
+	Out.ResidueAfter = Item.Residue + Added;
+	Out.Days = DaysFor(Item.Residue, BaseDays);
+	Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);
+
+	// A PERFECTING OF A ROLL AT THE TOP WOULD SPEND A PRIMAL SPARK FOR NOTHING. A JUDGEMENT of this slice, as a socket's
+	// change to its own type is refused.
+	if (Craft == ECataclysmForgeAffixCraft::PerfectRoll && Rolled.Roll >= 1.0f)
+	{
+		Out.Refusal = TEXT("That affix's roll is the top of its tier already.");
+		return Out;
+	}
+	// TIER 7 IS THE TOP: "Raises an affix by one tier, to a maximum of 7".
+	if (Craft == ECataclysmForgeAffixCraft::UpgradeTier && Rolled.Tier >= UCataclysmItemValues::MaxAffixTier)
+	{
+		Out.ToTier = Rolled.Tier;
+		Out.Refusal = FString::Printf(TEXT("That affix is tier %d, the highest."), Rolled.Tier);
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		const TCHAR* Material = Craft == ECataclysmForgeAffixCraft::PerfectRoll ? TEXT("a Primal Spark")
+			: Craft == ECataclysmForgeAffixCraft::UpgradeTier					 ? TEXT("a Potency Crystal")
+																				 : TEXT("a Corrupted Mote");
+		Out.Refusal = FString::Printf(TEXT("%s takes %s; 0 held."), *Doing, Material);
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(Doing, Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+int32 UCataclysmForge::RerolledAffixSeed(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+{
+	// AN ADDED SOCKET'S TWO MIXES, with this craft's salt and the affix's place for the socket count.
+	const int32 OfTheRunAndDay = CataclysmSeedMix::Mix(WalkSeedMask, RerolledAffixSalt, Day);
+	const uint32 Crc = FCrc::StrCrc32(*ItemSeedText(Item));
+	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Affix);
+}
+
+float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+{
+	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`).
+	const FRandomStream Stream(RerolledAffixSeed(Item, Affix, WalkSeedMask, Day));
+	return Stream.FRand();
+}
+
+int32 UCataclysmForge::RollPercent(float Roll)
+{
+	return FMath::RoundToInt(FMath::Clamp(Roll, 0.0f, 1.0f) * 100.0f);
+}
+
+FString UCataclysmForge::AffixWorkQuestion(const FCataclysmForgeAffixWork& Plan)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	switch (Plan.Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:
+		return FString::Printf(TEXT("Press again to perfect affix %d, from %d to 100 percent of tier %d's range: one Primal "
+									"Spark, %s."),
+							   Plan.Affix + 1, RollPercent(Plan.FromRoll), Plan.FromTier, *Cost);
+	case ECataclysmForgeAffixCraft::UpgradeTier:
+		return FString::Printf(TEXT("Press again to raise affix %d from tier %d to tier %d, its roll kept at %d percent: one "
+									"Potency Crystal, %s."),
+							   Plan.Affix + 1, Plan.FromTier, Plan.ToTier, RollPercent(Plan.FromRoll), *Cost);
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:
+		return FString::Printf(TEXT("Press again to reroll affix %d: one Corrupted Mote, %s; its roll, now %d percent of tier "
+									"%d's range, is drawn again and can fall."),
+							   Plan.Affix + 1, *Cost, RollPercent(Plan.FromRoll), Plan.FromTier);
+	}
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

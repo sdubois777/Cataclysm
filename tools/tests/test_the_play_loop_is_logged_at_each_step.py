@@ -14,7 +14,7 @@ twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the 
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the twenty-five places says its builder's line;
+  1. each of the twenty-eight places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -38,7 +38,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The twenty-five places, by file and signature, and the builder each one says.
+#: The twenty-eight places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -72,6 +72,8 @@ STEPS = [
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(", "ForgeSocketLine"),
     # AND TWO GEMS COMBINED INTO ONE OF THE NEXT RARITY, issue #46 slice G6.
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::CombineGems(", "ForgeGemCombineLine"),
+    # AND AN AFFIX REROLLED, PERFECTED OR RAISED A TIER, issue #47 slice F1.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(", "ForgeAffixLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),
@@ -102,6 +104,7 @@ AFTER = {
     "Upgrade": "Run->AdvanceDays(Plan.Days);",
     "Combine": "Inventory->AddMaterial(Plan.Into, 1)",
     "DoSocketing": "Run->AdvanceDays(Plan.Days);",
+    "CraftAffix": "Run->AdvanceDays(Plan.Days);",
     "TakeInto": "Inventory->AddItem(Drop->Item)",
     "WearFromCarried": "Equipment->Equip(Item, First, Second, OutSlot)",
 }

@@ -838,3 +838,159 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(const UObject* WorldCon
 	OutDone = Done;
 	return ECataclysmForgeResult::Done;
 }
+
+FCataclysmForgeAffixWork UCataclysmForgeCraft::AffixWorkPlanFor(const UObject* WorldContext,
+																const FCataclysmForgeTarget& Target,
+																ECataclysmForgeAffixCraft Craft, int32 Affix)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::AffixWorkOf(FCataclysmItem(), Craft, Affix, 0, GoldTierOf(WorldContext), 0);
+	}
+	return UCataclysmForge::AffixWorkOf(*Item, Craft, Affix,
+										Character->GetInventory()->CountOfMaterial(UCataclysmForge::MaterialFor(Craft)),
+										GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+														ECataclysmForgeAffixCraft Craft, int32 Affix,
+														bool bConfirmedPastThreshold, FCataclysmForgeAffixWork& OutDone,
+														FString& OutMessage)
+{
+	OutDone = FCataclysmForgeAffixWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeAffixWork Plan = AffixWorkPlanFor(WorldContext, Target, Craft, Affix);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+
+	UWorld* World = ForgeWorldOf(WorldContext);
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+
+	// THE DAYS NEED A RUN TO PASS IN, as an upgrade's do, and a reroll's draw reads the run's mask and day.
+	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	if (Run == nullptr)
+	{
+		OutMessage = TEXT("There is no run to take the craft's days from.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem* Held = ItemAt(*Character, Target);
+	if (Held == nullptr)
+	{
+		OutMessage = TEXT("There is nothing there to craft.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem Before = *Held; // A COPY: the pointer is into the component's own array.
+	const FString Name = UCataclysmForge::NameOf(Before, UCataclysmItemModifiers::LoadBaseTable(),
+												 UCataclysmDropRoll::LoadAffixTable());
+	const float Added = Plan.ResidueAfter - Plan.ResidueBefore;
+
+	// THE THRESHOLD, FOR A WORN PIECE ONLY, as socketing asks it.
+	bool bCrosses = false;
+	if (Target.bWorn)
+	{
+		const float Threshold =
+			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
+		const float Now = Equipment->WornResidue();
+		const float After = Now + Added;
+		bCrosses = Now < Threshold && After >= Threshold;
+		if (bCrosses && !bConfirmedPastThreshold)
+		{
+			const TCHAR* Doing = Craft == ECataclysmForgeAffixCraft::PerfectRoll ? TEXT("Perfecting an affix of")
+				: Craft == ECataclysmForgeAffixCraft::UpgradeTier				  ? TEXT("Raising an affix's tier on")
+																				  : TEXT("Rerolling an affix of");
+			OutMessage = FString::Printf(
+				TEXT("%s %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"), Doing,
+				*Name, FMath::RoundToInt(After), FMath::RoundToInt(Threshold), UCataclysmWearing::ThresholdConsequence);
+			return ECataclysmForgeResult::AsksAboutTheThreshold;
+		}
+	}
+	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const bool bWasMarked = State != nullptr && State->IsMarkedByConsumption();
+	if (bCrosses && State != nullptr)
+	{
+		State->MarkByConsumption();
+	}
+	const auto TakeBackTheMark = [&]()
+	{
+		if (bCrosses && State != nullptr && !bWasMarked)
+		{
+			State->ClearConsumptionMark();
+		}
+	};
+
+	// THE GOLD, THE MATERIAL, THEN THE ITEM. A refusal after anything is taken puts it back.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+	if (!Inventory->RemoveMaterial(Plan.Material, 1))
+	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		OutMessage = TEXT("The material could not be taken from the bag; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	// THE AFFIX CHANGED, AND NOTHING ELSE OF IT. A reroll's roll is drawn from the item as it stood, the run's mask and
+	// the day before the craft's days pass, so the same item on the same day of the same run draws the same roll.
+	FCataclysmForgeAffixWork Done = Plan;
+	if (Craft == ECataclysmForgeAffixCraft::RerollValue)
+	{
+		Done.ToRoll = UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run->WalkSeedMask, Run->Day());
+	}
+	FCataclysmItem Changed = Before;
+	FCataclysmRolledAffix& Affixed = Changed.Affixes[Plan.Affix];
+	Affixed.Tier = Done.ToTier;
+	Affixed.Roll = Done.ToRoll;
+	Changed.Residue = Plan.ResidueAfter;
+	const bool bReplaced = Target.bWorn ? Equipment->ReplaceEquippedAt(Target.WornSlot, Changed)
+										: Inventory->ReplaceItemAt(Target.CarriedSlot, Changed);
+	if (!bReplaced)
+	{
+		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		UE_LOG(LogCataclysm, Error, TEXT("The forge could not put %s back where it was; what it took is back in the bag."),
+			   *Name);
+		OutMessage = TEXT("The item could not be changed; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	const int32 DayBefore = Run->Day();
+	Run->AdvanceDays(Plan.Days);
+	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
+	{
+		State->SetConsumptionBuild(FCataclysmPlayerBuild::Of(*Character));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("The forge changed affix %d (%s) of %s: tier %d to %d, roll %.4f to %.4f; residue %.0f to "
+								   "%.0f; %d day(s), day %d to day %d."),
+		   Plan.Affix + 1, *Plan.AffixRow.ToString(), *Name, Done.FromTier, Done.ToTier, Done.FromRoll, Done.ToRoll,
+		   Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, DayBefore, Run->Day());
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeAffixLine(
+		Craft, Plan.Affix + 1, Name, Plan.Gold, Done.FromTier, Done.ToTier,
+		UCataclysmForge::RollPercent(Done.FromRoll), UCataclysmForge::RollPercent(Done.ToRoll),
+		FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
+
+	// SAVED: the character record holds the item and the material, the run record the days, the account record the gold
+	// when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
+
+	OutDone = Done;
+	return ECataclysmForgeResult::Done;
+}
