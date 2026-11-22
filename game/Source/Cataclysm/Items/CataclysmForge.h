@@ -220,6 +220,55 @@ struct FCataclysmForgeAffixWork
 };
 
 /**
+ * What adding a chosen affix to an item, or shifting one of its affixes to another stat, would take, or why it cannot.
+ * Issue #47, slice F2.
+ */
+struct FCataclysmForgeAffixChange
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** True to shift an affix's stat (Affix Shifting), false to add a chosen affix (Deterministic Affix). */
+	bool bShift = false;
+
+	/** The affix changed, from 0; for an addition, the place the new affix takes, the item's affix count. */
+	int32 Affix = INDEX_NONE;
+
+	/** A shift's affix row before it; None for an addition. */
+	FName FromRow;
+
+	/** The affix row after: the one chosen for an addition, the one drawn for a shift. */
+	FName ToRow;
+
+	/** The damage types a resistance affix covers after, drawn as a drop draws them; empty for every other kind. */
+	TArray<FName> ToDamageTypes;
+
+	/** The tier and roll after: a shift keeps both; an addition takes the tier chosen and a roll drawn in it. */
+	int32 Tier = 0;
+	float Roll = 0.0f;
+
+	/** The piece's rarity before and after. An addition promotes it one rarity; a piece with no affix has none before. */
+	bool bHadRarity = false;
+	ECataclysmRarity FromRarity = ECataclysmRarity::Everyday;
+	ECataclysmRarity ToRarity = ECataclysmRarity::Everyday;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: its base days, and the residue's time penalty read before the craft. */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -586,4 +635,97 @@ public:
 	 * again to raise affix 1 from tier 2 to tier 3, its roll kept at 50 percent: one Potency Crystal, ..."
 	 */
 	static FString AffixWorkQuestion(const FCataclysmForgeAffixWork& Plan);
+
+	//~ Adding a chosen affix, and shifting an affix to another stat. Issue #47, slice F2, ruled by the coordinating
+	// session on 2026-11-22.
+	//
+	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Deterministic Affix | Schematic Fragments |
+	// 5 CR per tier of affix | 1 day per tier of affix. (Max of 8)", Base Gold 250, "Guaranteed Affix."; and "Affix
+	// Shifting (Stat Type) | Crystal of Instability | 15 CR | 1", Base Gold 250, "Rerolls stat type ... Can't be used on
+	// enchantments.", through `DaysFor` and `GoldFor` as every craft.
+	//
+	// AN ADDITION takes the affix and the tier the player CHOOSES, T1 to T7 (Q8), among the affixes a drop could put on
+	// the piece's slot, prefix or suffix (Q10), never one of a stat group the piece holds; its roll is drawn within the
+	// tier (Q11). It needs a free slot of the four, so a piece with an enchantment, whose four are always full, takes
+	// none; it promotes the piece one rarity, as the design's "Adding an affix promotes the piece" says. No limit on how
+	// many a piece takes (Q9). A SHIFT draws a new affix from the same position's pool, never the affix it was and never
+	// one of a group the piece holds (Q3), and KEEPS ITS TIER AND ROLL (Q4); a resistance's damage types are drawn again,
+	// as a drop draws them (Q5). Both draws are seeded from the item, the run's mask and the day, as a reroll's is.
+
+	/** The rows of the materials the two consume, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* SchematicFragmentsRow;
+	static const TCHAR* CrystalOfInstabilityRow;
+
+	/** The two operations' rows in `game/Data/ForgeOperations.csv`, whose Base Gold `BaseGoldOf` reads. */
+	static const TCHAR* DeterministicAffixOperationRow;
+	static const TCHAR* AffixShiftingOperationRow;
+
+	/** The residue an addition adds for each tier of the affix added: "5 CR per tier of affix". */
+	static constexpr float DeterministicAffixResiduePerTier = 5.0f;
+
+	/** An addition's base days are the affix's tier, "(Max of 8)". */
+	static constexpr int32 DeterministicAffixMaxBaseDays = 8;
+
+	/** The residue a shift adds and its base days, the sheet's CR impact and Base Days. */
+	static constexpr float AffixShiftingResidue = 15.0f;
+	static constexpr int32 AffixShiftingBaseDays = 1;
+
+	/** The salts an addition's and a shift's draws mix into the run's seed: "SCHM" and "SHFT". */
+	static constexpr int32 DeterministicAffixSalt = 0x5343484D;
+	static constexpr int32 ShiftedAffixSalt = 0x53484654;
+
+	/** The slot the item's base occupies, "Head" or "Weapon", as the Affixes table's `AllowedSlots` names it; empty when its base is not found. */
+	static FString SlotOf(const FCataclysmItem& Item, const UDataTable* BaseTable);
+
+	/** Every stat group the item's affixes occupy, `UCataclysmDropRoll::GroupsOf` of each with its damage types. */
+	static void HeldGroupsOf(const FCataclysmItem& Item, const UDataTable* AffixTable, TSet<FString>& OutGroups);
+
+	/**
+	 * The affixes an addition may put on the item, in the table's order: every row a drop could roll on its slot, prefix
+	 * or suffix, none of a stat group the item holds. A resistance family covering some damage types is offered while at
+	 * least as many types as it covers are not held. Empty when its base is not found.
+	 */
+	static TArray<FName> AddableAffixesFor(const FCataclysmItem& Item, const UDataTable* AffixTable,
+										   const UDataTable* BaseTable);
+
+	/**
+	 * The seed of an addition's or a shift's draw: `CataclysmSeedMix::Mix` of the run's `WalkSeedMask`, the craft's salt
+	 * and the run's day, mixed again with the CRC of `ItemSeedText` and `Index`, as a reroll's seed is.
+	 */
+	static int32 AffixCraftSeed(const FCataclysmItem& Item, int32 Salt, int32 Index, int32 WalkSeedMask, int32 Day);
+
+	/**
+	 * What adding the affix `AffixRow` at `Tier` to the item takes, against the Schematic Fragments held. The roll, and a
+	 * resistance family's damage types among those the item does not hold, are drawn from a stream of `Seed`.
+	 *
+	 * REFUSED for no item, a base not found, no free slot of the four, a tier outside 1 to 7, an affix the item cannot
+	 * take (not on its slot, or of a stat group it holds), no Schematic Fragments, and too little gold.
+	 */
+	static FCataclysmForgeAffixChange DeterministicAffixOf(const FCataclysmItem& Item, FName AffixRow, int32 Tier,
+														   int32 Seed, const UDataTable* AffixTable,
+														   const UDataTable* BaseTable, int32 FragmentsHeld,
+														   int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What shifting the item's affix `Affix` to another stat takes, against the Crystals of Instability held. The new
+	 * affix, and its damage types, are drawn from a stream of `Seed` among `UCataclysmDropRoll::CandidatesFor` of the
+	 * slot and the affix's position, less the affix's own row and any candidate of a stat group the item holds.
+	 *
+	 * REFUSED for no item, a base not found, no such affix, no other affix able to take its place, no Crystal of
+	 * Instability, and too little gold.
+	 */
+	static FCataclysmForgeAffixChange AffixShiftOf(const FCataclysmItem& Item, int32 Affix, int32 Seed,
+												   const UDataTable* AffixTable, const UDataTable* BaseTable,
+												   int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld);
+
+	/** An affix row's name as the sheet gives it, "Flat armor"; the row key when the table does not hold it. */
+	static FString AffixNameOf(FName AffixRow, const UDataTable* AffixTable);
+
+	/**
+	 * What the first press of one says, before the second does it: "Press again to add Flat armor at tier 3 as affix 2,
+	 * making the piece Quality: Schematic Fragments, 450 gold, residue 40 to 55, 3 days of the run; its roll is drawn in
+	 * the tier." or "Press again to shift affix 1, Flat evasion, to another stat, keeping tier 2 and its roll: one Crystal
+	 * of Instability, 450 gold, residue 40 to 55, 1 day of the run; the new stat is drawn."
+	 */
+	static FString AffixChangeQuestion(const FCataclysmForgeAffixChange& Plan, const UDataTable* AffixTable);
 };

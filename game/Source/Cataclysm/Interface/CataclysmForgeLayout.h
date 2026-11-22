@@ -56,6 +56,18 @@ struct FCataclysmForgeAffixAction
 };
 
 /**
+ * One affix shift, or one step of choosing an affix to add, that the forge offers for the piece chosen. Issue #47, slice
+ * F2. A shift names its affix; the chooser's steps name what they change; only `AddAffixButtonName` adds.
+ */
+struct FCataclysmForgeAffixChangeAction
+{
+	FName ButtonName;
+	FString Label;
+	bool bShift = false;
+	int32 Affix = INDEX_NONE;
+};
+
+/**
  * One gem combine the forge offers: two carried gems of a kind and rarity into one of the next rarity. Issue #46, slice
  * G6.
  */
@@ -169,6 +181,38 @@ public:
 	/** The action a button stands for, among those shown. False for a button that is none of them. */
 	static bool AffixActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixAction>& Shown,
 									 FCataclysmForgeAffixAction& OutAction);
+
+	//~ Adding a chosen affix, and shifting an affix. Issue #47, slice F2.
+
+	/** The chooser's buttons: step through the affixes, lower and raise the tier, and add the one shown. */
+	static FName AddAffixPreviousButtonName();
+	static FName AddAffixNextButtonName();
+	static FName AddAffixTierDownButtonName();
+	static FName AddAffixTierUpButtonName();
+	static FName AddAffixButtonName();
+
+	/** "Shift affix 1", and so on, one for each affix of the piece. */
+	static TArray<FCataclysmForgeAffixChangeAction> ShiftActionsFor(const FCataclysmItem& Item);
+
+	/**
+	 * The chooser for adding an affix, when the piece has a free slot of the four and `Addable` is not empty: "Previous
+	 * affix", "Next affix", "Lower tier", "Raise tier", then "Add Flat armor at tier 3". The affix shown is
+	 * `Addable[Chosen]`; `Chosen` and `Tier` are the screen's, kept within the list and 1 to 7 by the screen.
+	 */
+	static TArray<FCataclysmForgeAffixChangeAction> AddAffixActionsFor(const FCataclysmItem& Item,
+																		const TArray<FName>& Addable, int32 Chosen,
+																		int32 Tier, const UDataTable* AffixTable);
+
+	/**
+	 * The chooser's line for the screen's detail: "Affix to add: Flat armor (prefix), 3 of 32, at tier 2", or that the
+	 * piece's four slots are full, or empty for a piece with no base or nothing it could take.
+	 */
+	static FString AddAffixDetailFor(const FCataclysmItem& Item, const TArray<FName>& Addable, int32 Chosen, int32 Tier,
+									 const UDataTable* AffixTable);
+
+	/** The action a button stands for, among those shown. False for a button that is none of them. */
+	static bool AffixChangeActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixChangeAction>& Shown,
+										   FCataclysmForgeAffixChangeAction& OutAction);
 
 	//~ Combining gems. Issue #46, slice G6.
 
