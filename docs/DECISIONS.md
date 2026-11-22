@@ -2,6 +2,166 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Treasury Guard and Tax Collection act: the gold held lowers every city's damage beside Imperial Reserve, and the standing cities pay tax every tenth day (#2741, slice 6d)
+
+**Affects:** `FCataclysmEmpireTreeBonuses::ReductionPerHeldGoldStep`, `HeldGoldStepPoints`, `HeldGoldReductionCap` and
+`TreasuryGuardGoldAStep`, new, and `GoldDamageFactorFor`, which multiplies Treasury Guard's reduction with Imperial
+Reserve's (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`,
+`game/Source/CataclysmEmpire/Empire/CataclysmEmpireTreeBonuses.cpp`);
+`FCataclysmEmpireTreePlayerBonuses::GoldShareOfPopulationEveryTenDays`, `FCataclysmEmpireTreeDailyIncome::Tax` and
+`UCataclysmEmpireTree::TaxCollectionDaysAStep`, new, and `DailyIncomeFor`
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); the day's log line
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.cpp`); `ECataclysmEmpireTreeEffect`, two values
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 104 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeTreasuryTests.cpp`, new, 3 in the new group
+`Cataclysm.EmpireTreeTreasury.`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 104 effect rows;
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeGoldHeldTests.cpp`, its header; `tools/tests/test_empire_tree_treasury_and_tax.py`,
+new; `tools/tests/test_empire_tree_effects_match_their_texts.py`, `tools/tests/test_empire_tree_gold_held.py`,
+`tools/tests/test_empire_tree_gold_nodes.py` and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, changed.
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 6d.
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** The three new Unreal tests were written without a build. The registration
+  below is what the window must print.
+- **WITH THIS SLICE, 100 OF THE TREE'S NODES ACT**: the 98 of slices 3a to 6c and these two. Global Credit and Sovereign
+  Loans now wait on "a gold debt, which is not built yet (issue #2741)", which slice 6e builds; no node waits on its gold
+  rules or on a ruling.
+- **NO SAVE RECORD MOVES.** Neither node keeps anything between days that the run does not already save.
+- **ONE JUDGEMENT, LABELLED AS ONE (D9):** Treasury Guard and Imperial Reserve each keep their own cap and the two
+  multiply, so together they take at most 40% (0.80 x 0.75 = 0.60 of the damage left).
+
+### The rulings this slice builds on
+
+The project owner, 2026-11-20, relayed by the coordinating session, verbatim: "1. to your cities. 2. no gold debt
+unless there's an option for it in the empire tree, i don't remember if there is. 3. I have no idea. But we can adjust
+the gold prices and all of that later".
+
+- **Treasury Guard** ("+1% damage reduction per 50,000 Gold currently held (multiplicative). 20% cap.", 10 points). The
+  owner's "1. to your cities": the reduction is to the cities' damage, as Imperial Reserve's is (slice 6c, B7). 1% a
+  point for each whole 50,000 tier 1 gold held (R10's scale), compounded, held at its 20%.
+- **Tax Collection** ("Every 10 days, gain Gold equal to 2% of your total City Population per point.", 8 points). The
+  owner's "3. I have no idea. But we can adjust the gold prices and all of that later": built as written. 2% a point of
+  the standing cities' citizens, the count Pax Imperialis reads, as tier 1 gold on every tenth day, scaled by the tier's
+  gold scale and raised by the "all sources" increases as Pax is (D8). **For the owner's later tuning: at tier 1, 8
+  points and 500,000 citizens pay 80,000 gold every 10 days** (0.16 x 500,000).
+- **Global Credit and Sovereign Loans.** The owner's "2. no gold debt unless there's an option for it in the empire
+  tree": these two are those options, and slice 6e builds the debt.
+- **D9, A JUDGEMENT.** Treasury Guard's text says "(multiplicative)" and gives its own cap; Imperial Reserve's gives its
+  own. Each is held at its own cap and the two factors multiply, as every other reduction in the game multiplies (S5).
+  The texts do not say whether the two caps are one; reading them as two is the judgement.
+
+### The change
+
+- `FCataclysmEmpireTreeBonuses::GoldDamageFactorFor` takes Imperial Reserve's whole steps of 100,000 and Treasury
+  Guard's of 50,000 from the gold held at tier 1, compounds each per point to its own cap through `KeptAfter`, and
+  multiplies the two. With no point of either it is exactly 1, as it was.
+- Treasury Guard's row fills its own fields, `ReductionPerHeldGoldStep`, `HeldGoldStepPoints` and
+  `HeldGoldReductionCap`, never Imperial Reserve's.
+- `UCataclysmEmpireTree::DailyIncomeFor` pays `Tax` on a day above 0 that divides by 10:
+  `round(share x citizens x scale x raised)`. `Total()` is `Pax + Interest + Tax`, and the game instance's day line
+  logs "Tax Collection %lld".
+- `tools/generate_datatables.py` builds the two nodes in slice 6, adds their effect rows (104 in all), and removes the
+  reason "gold rules", which no node waits on any more.
+
+### Tests
+
+- **`Cataclysm.EmpireTreeTreasury.TheTwoNodesAddUpFromTheirRows`**: Treasury Guard at 10 points fills 0.01 a step, 10
+  points and 0.20, and none of Imperial Reserve's points; Tax Collection at 8 points is 0.16; an empty tree gives
+  neither.
+- **`Cataclysm.EmpireTreeTreasury.TreasuryGuardCompoundsWithImperialReserveEachHeldAtItsOwnCap`**: under a step 1; one
+  step 0.99^10; two 0.99^20; three held at 0.80; with Imperial Reserve at 100,000 0.99^45; both at their caps 0.60; the
+  run's city takes 0.60 for its defence and its population; no node 1.
+- **`Cataclysm.EmpireTreeTreasury.TaxCollectionPaysEveryTenthDayFromTheStandingCitiesCitizens`**: day 10 and day 20
+  80,000; days 7, 15 and 0 nothing; tier 2 240,000; raised by Untouchable Wealth's 0.40 112,000; 123,456 citizens
+  19,753; with Pax Imperialis the day pays 82,500; no node nothing.
+- **`tools/tests/test_empire_tree_treasury_and_tax.py`**, new, six checks of the source, because continuous integration
+  compiles no C++.
+
+### The rebase
+
+Written as `feat/empire-tree-6d-gold` on slice 6c's first branch (`6e8130997`) on 2026-11-20, and rebased on 2026-11-21
+onto development `b8df7e1fe` as `feat/empire-tree-6d-gold-2`. Seven files conflicted with slice 6c's correction of its
+refusal reasons, which landed after this slice was written. In each conflict this slice's side was kept, hunk by hunk,
+except in `tools/tests/test_empire_tree_gold_held.py`, where the check that no node waits on a ruling was kept and now
+holds Global Credit and Sovereign Loans to "gold debt" and no node to "gold rules". `python tools/check_resolved_cpp.py
+--changed`: "9 files read, 0 with complaints". `python tools/generate_datatables.py --check`: "All 33 DataTable CSVs are
+up to date."
+
+### The sweep of what this slice moves
+
+By the effect table's row count, the node table's, the two new effect names, `DailyIncomeFor`, `GoldDamageFactorFor`,
+`Total()` and the day's log line, over `game/Source/**/Tests`, `tools/tests` and `sim/tests`: the effect count is pinned
+once, at 104, in `CataclysmDataTableTests.cpp`; the other callers of `DailyIncomeFor` and `GoldDamageFactorFor`, in
+`CataclysmEmpireTreeGoldHeldTests.cpp`, give neither node a point, so their figures do not move; no test reads the day's
+log line but `test_the_day_hook_logs_tax_collections_share`; no C++ test counts the effect enum. The groups whose tests
+the slice moves, `EmpireTreeTreasury.`, `Data.` and `EmpireTreeGoldHeld.`, run first in the window.
+
+### Registered before the run
+
+Counted on the "Test Completed. Result={" lines of window tree-2803-w1's whole-suite log at `8f2491711`, with a literal
+match on `Path={Cataclysm.<Group>.`: "5086 tests performed, 5086 succeeded, 0 failed. 48 skipped part of what they
+check" and "860 written and deleted, 0 left behind". **#2803 merges before this slice, and the coordinating session's
+queue puts three more windows ahead of it, so every figure is restated from the newest measured window at this slice's
+turn.**
+
+- **The whole suite: the base + 3** (5086 + 3 = 5089 against tree-2803-w1), 0 failed; 48 skipped halves and 860 test
+  saves, the base's, because none of the three builds a dungeon floor or writes a save.
+- **Each group alone, the first three first**: `Cataclysm.EmpireTreeTreasury.` 3 (new, 0 in the base), `Data.` 7 and
+  `EmpireTreeGoldHeld.` 5; then `EmpireTreeClearGold.` 9, `EmpireTreeGold.` 6, `CityUpgradePrice.` 7,
+  `EmpireTreeDrops.` 13, `EmpireTreeLoot.` 10, `EmpireTreeWalk.` 14, `EmpireTreeCity.` 17, `EmpireTreeEvents.` 14,
+  `EmpireTreeScreen.` 10, `EmpireRun.` 71, `EmpireMap.` 17, `EmpireRunTier.` 5, `DayClock.` 10, `DungeonMode.` 46,
+  `Drop.` 30, `Gold.` 13 and `SaveLoad.` 81, unchanged. The trailing dot keeps `Cataclysm.EmpireTreeGold.` from
+  selecting `EmpireTreeGoldHeld.`, `Drop.` from `DropPickup.` and `EmpireRun.` from `EmpireRunTier.`.
+- **The written-out record version check** wants the run record at 12, the character record at 10 and the account
+  record at 4, which development holds.
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes.uasset` and
+  `DT_EmpireTreeEffects.uasset`, 104 effect rows, and rewrites `game/Data/datatable_asset_sources.json`; those three
+  files and no other are committed before the tests run.
+- **The Python suite runs beside the whole Unreal suite**, and the proofs only after both have ended.
+- **Three C++ guard proofs**, one for each new Unreal test, so that each is seen to fail; each predicted at 3 performed,
+  2 succeeded, 1 failed with the break in and 3 of 3 with it restored. Under the coordinating session's rule of
+  2026-11-21 (one C++ proof for each behaviour only a C++ test guards), five breaks drafted in phase 1 were dropped,
+  because a Python check fails on each: C2 (M8), C3 (M9), C5 (M10), C6 (M11) and C7 (M5).
+
+| Proof | The break | Predicted failing test and assertions |
+|---|---|---|
+| C8 | Treasury Guard's row fills Imperial Reserve's points | `TheTwoNodesAddUpFromTheirRows`, 2 ("at 10 points": 0; "and none of it in Imperial Reserve's fields": 10) |
+| C1 | the city damage factor leaves Treasury Guard out | `TreasuryGuardCompounds...`, 7 (one, two and three steps; both at 100,000 and at the caps; the run's defence and population) |
+| C4 | Tax Collection is paid every day | `TaxCollectionPays...`, 2 ("nothing on day 7" and "nothing on day 15": 80,000) |
+
+- **Python before the window**: at the rebased head, `tools/tests/test_empire_tree*.py`, `test_city_upgrade*.py`,
+  `test_datatable*.py` and `test_generate_datatables.py`: 1323 tests, 1322 passed, 1 failed, JUnit tests 1323, failures
+  1, errors 0, skipped 0. The one failure is the asset step's to clear, `tools/tests/test_datatable_assets_are_current.py`.
+  Ruff "All checks passed!".
+
+### The eleven Python guards
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empire_tree_treasury_and_tax.py` and its two
+neighbours, `proved` True. M1 to M7 were proved in phase 1 and again at the rebased head; M8 to M11 at the rebased head.
+
+| Proof | The break | Test that failed |
+|---|---|---|
+| M1 | Treasury Guard's step in C++ becomes 25,000 | `test_every_step_is_its_nodes_own_words` |
+| M2 | Treasury Guard's row fills Imperial Reserve's points | `test_the_tree_fills_each_nodes_own_fields` |
+| M3 | the city damage factor leaves Treasury Guard out | `test_the_city_damage_factor_multiplies_each_nodes_own_reduction` |
+| M4 | Tax Collection is paid every day | `test_tax_is_paid_every_tenth_day_from_the_standing_cities_citizens` |
+| M5 | the day's total leaves Tax Collection out | the same test |
+| M6 | the day's log line leaves Tax Collection out | `test_the_day_hook_logs_tax_collections_share` |
+| M7 | Global Credit waits on a ruling again | `test_the_debt_nodes_wait_on_the_debt_and_none_on_a_ruling` |
+| M8 | Treasury Guard counts its steps in Imperial Reserve's 100,000s | `test_the_city_damage_factor_multiplies_each_nodes_own_reduction` |
+| M9 | Treasury Guard's cap is not applied | the same test |
+| M10 | Tax Collection is not scaled by the tier | `test_tax_is_paid_every_tenth_day_from_the_standing_cities_citizens` |
+| M11 | Tax Collection is not raised by the "all sources" increases | the same test |
+
+### The window
+
+Not run yet.
+
+---
+
 ## 2026-11-21 — The empire map's top line counts Quest dungeons cleared and the Quest dungeons standing, and the city screen, the map's city detail and the status bar name a Quest dungeon (#2800)
 
 **Affects:** `UCataclysmEmpireMapLayout::ProgressLine`, whose objective count now reads "N Quest dungeons cleared";
