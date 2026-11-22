@@ -2,6 +2,143 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The forge charges the Crafting sheet's costs: 250 gold a base day by the tier and the residue, days equal to the level reached, and one combine price doubling by rung (#2830, #46 slice G7)
+
+**Affects:** `UCataclysmForge::GoldPerCraftDay`, `ResiduePerGoldStep`, `CombineGoldAtTheLowestRung`, `BaseGoldFor`,
+`GoldFor`, `CombineGoldFor` and `GoldRefusal`, new; `UpgradeOf`, `CombineOf`, `GemCombineOf`, `SocketGemOf` and
+`UnsocketGemOf`, which take the tier and the gold held; `BaseDaysPerLevel` and the one-argument `DaysFor`, deleted; the
+four plans' `Gold` and `GoldHeld`, new (`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`); every craft in
+`UCataclysmForgeCraft` (`CataclysmForgeCraft.cpp`); the forge's PLAY LOOP lines (`CataclysmPlayLoopLog.h`, `.cpp`); the
+screen's detail line and messages (`CataclysmForgeLayout.cpp`, `CataclysmForgeWidget.cpp`); `docs/Cataclysm_GDD_v2.md`,
+"Gear Leveling", "Sockets and Gems" and the gold multiplier's rounding; `docs/Play_Loop_Checklist.md`, steps 16, 17
+and 19. Tests: `game/Source/Cataclysm/Tests/CataclysmForgeCostsTests.cpp`, new, three in `Cataclysm.ForgeCosts.`;
+`CataclysmForgeTests.cpp`, `CataclysmForgeScreenTests.cpp`, `CataclysmForgeGemsTests.cpp`, `CataclysmGemCombineTests.cpp`
+and `CataclysmPlayLoopTests.cpp` follow; `tools/tests/test_the_forge_charges_the_sheets_costs.py`, new;
+`test_the_forge_matches_the_design.py`, `test_the_forge_combines_gems.py` and `test_city_upgrades_cost_gold.py` follow.
+Issue [#2830](https://github.com/sdubois777/Cataclysm/issues/2830); parent
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G6's branch head without a compile. The branch is
+  `feat/crafting-costs-46-g7`, on `feat/gem-combine-46-g6`. The coordinating session ruled that the gems window carries
+  G1 to G6 and these costs, so gems never ship free.
+- **NO GOLD INCOME HAS BEEN MEASURED.** The 250 rests on the only estimate there is (#2742: 7,000 to 14,000 gold for a
+  12-floor tier 1 walk, about 583 to 1,167 a walk day). It is a judgement, and the one figure to tune.
+- **THE BASE FIGURES ARE CONSTANTS UNTIL THE WORKBOOK STAGE.** Ruling 5 below generates the Crafting sheet's operations
+  table into its own `game/Data/ForgeOperations.csv` for the forge to read. That needs the workbook, which the empire
+  tree window holds, so it is written at the turn: a Base Gold column computed from one GoldPerCraftDay cell, a Combine
+  row, the generator writing the new file and no longer writing operation rows into `game/Data/CraftingMaterials.csv`
+  (where an operation's materials, CR impact and base days sit under the columns TierAndSource, PrimaryUse and
+  Functions), `FCataclysmForgeOperationRow`, `DT_ForgeOperations`, and the forge reading its costs from that table.
+- **NO RECORD VERSION MOVES.** Gold balances are already saved; a craft changes their values.
+- **#2829's TABLES COUNT THE OLD DAYS.** Its proposal to halve crafting material drops computes levelling at one day a
+  level; under the new rule each level takes days equal to the level reached, so its "spent in a craft day" figures
+  need recomputing before its halving is chosen.
+
+### The rulings
+
+The owner, 2026-11-21, word for word, on what combining should cost: "I have costs set in the crafting excel sheet.
+Something like that should be implemented".
+
+The owner, in the question dialog the same day, word for word:
+1. On an upgrade's days: "+0 to +10 takes 55 days per item (1+2+...+10)". Each level's upgrade takes days equal to the
+   level reached, plus the `CR / 100` penalty.
+2. On the combine: "Gold only (Recommended)". 50 gold at tier 1 for the lowest rung, doubled for each rung above, no
+   days, for stones and gems alike, read by both through `CombineGoldFor`.
+
+The coordinating session, under the owner's delegation of numbers:
+3. `GoldPerCraftDay = 250` at tier 1, a judgement resting on the #2742 income estimate. An operation with no days, or
+   fewer, costs one day's price.
+4. The multiplier `(CR / 50) + 1` is NOT rounded; only the final gold figure is.
+5. The operations table is generated into its own `ForgeOperations.csv`, with a row struct and data table, and the
+   mis-mapped rows come out of `CraftingMaterials.csv` (the workbook stage).
+
+**The research behind the shape** (the plan of 2026-11-21): Diablo IV's Jeweler crafts gems for about ten times the
+gold at each tier, and its masterworking costs gold rising by rank; Diablo III's Jeweler combines gems for gold,
+cheap at low ranks and about 400,000 at the highest; Path of Exile and Last Epoch charge no gold for crafting. Sources:
+icy-veins.com/d4/guides/jeweler-guide, maxroll.gg/d4/resources/jeweler-gems-socketing,
+us.forums.blizzard.com/en/d4/t/masterworking-cost-totals/202561, diablo-archive.fandom.com/wiki/The_Jeweler. What it
+settles: where crafting costs gold, the price rises with the tier made. What it does not: the base, which is this
+game's own income.
+
+### What changed
+
+- **The price** (`UCataclysmForge::GoldFor`): base gold x the tier's gold scale (`UCataclysmDropRoll::GoldScaleFor`, 1 to
+  30, which every gold price reads) x `(CR / 50) + 1` unrounded, on the item's residue as the craft begins, rounded to
+  whole gold and at least 1. `BaseGoldFor` is 250 a base day, one day's price at the least. At tier 1: no residue 250;
+  50 residue 500; 10 residue 300; 87 residue 685; tier 8 at no residue 7,500.
+- **The upgrade**: base days and base gold are the level reached, so +2 to +3 at 87 residue costs 3 days and 2,055 gold,
+  and +0 to +10 at no residue 55 base days.
+- **Socket Gem and Unsocket Gem**: one base day each, so 250 gold before the multiplier.
+- **The combines** (`CombineGoldFor`): 50 gold at the lowest rung (a +1 stone, an Everyday gem) doubled for each rung,
+  times the tier's scale, no residue. The stone combine reads it at rung `Level - 1`, the gem combine at the rarity's.
+  Climbing one gem from Everyday to Ascendant: 63 combines, 9,600 gold at tier 1, no days.
+- **Every rule refuses too little gold**, after its other refusals: "Raising it to +3 takes 2,055 gold; 100 gold held."
+- **Every craft pays first and gives back**: the gold is taken from the balance city upgrades pay from (a Solo
+  Self-Found character's own, else its lethality mode's account), before any material, gem, item or day changes, and is
+  given back on every later failure. The account record is written when the account paid.
+- **A price is read at the run's difficulty tier**, as a city upgrade's is, and at the lowest with no run.
+- **The screen** names the gold in an upgrade's detail ("takes two +3 stones (5 held) and 2,055 gold"), every
+  first-press question, and every result; the PLAY LOOP lines name it ("with two +1 stones, 14 left, and 510 gold";
+  "into one +2 for 50 gold").
+
+### Tests
+
+`CataclysmForgeCostsTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung` | every price above; the climb of 63 combines and 9,600 gold; +0 to +10 at 55 base days; the five gold refusals in their words. Prints "FORGE COSTS" |
+| `ACraftTakesItsGoldAndWithTooLittleNothingMoves` | a Solo Self-Found character with 600 gold: +0 to +1 takes 500 and a day; +1 to +2, 1,250, is refused with nothing moving; a stone combine takes 50 and a gem combine the last 50; the next gem combine is refused and both gems stay. Prints "FORGE GOLD" |
+| `TheScreenSaysTheGoldAndTheDaysOfTheLevelReached` | the detail line names 2,055 gold and 3 days. Prints "FORGE DETAIL" |
+
+The forge's other tests follow: their scenes are Solo Self-Found with 1,000,000 gold of their own, so no account record
+is written; the pure rules take tier 1 and that gold; the expected sentences name the gold; the rules test expects 3
+days and 2,055 gold for +2 to +3; the screen expects "Raised to +1. It cost 500 gold and 1 day of the run."; the play
+loop lines expect the gold.
+
+`tools/tests/test_the_forge_charges_the_sheets_costs.py`: the constants and the sheet's multiplier; the unrounded
+multiplier and the tier's scale; one combine price doubling by rung, read by both combines; every built craft pricing
+itself and refusing too little gold; the upgrade's days by level; every craft paying before taking anything and giving
+the gold back on every later failure, and writing the account record; the run's tier. Three checks were told of the
+change: `test_the_forge_matches_the_design.py` (the days by level), `test_the_forge_combines_gems.py` (the tier may enter
+the gem combine through its gold only), and `test_city_upgrades_cost_gold.py` (the forge is the second place that
+spends gold). Proved with `tools/prove_guard.py` in a `git archive` copy of `afb2fe454`, each restored half "14 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| FP1 | `GoldPerCraftDay` 300 | "1 failed, 13 passed": `test_the_constants_are_the_ruled_ones_and_the_multiplier_is_the_sheets` | PROVED |
+| FP2 | the multiplier rounded | "1 failed, 13 passed": `test_the_gold_formula_does_not_round_its_multiplier_and_reads_the_tiers_scale` | PROVED |
+| FP3 | a combine's price not doubling by rung | "1 failed, 13 passed": `test_both_combines_read_one_price_and_it_doubles_by_rung` | PROVED |
+| FP4 | the gem combine at a flat 50, not through `CombineGoldFor` | "2 failed, 12 passed": `test_both_combines_read_one_price_and_it_doubles_by_rung`, `test_every_built_craft_prices_itself_and_refuses_too_little_gold[...GemCombineOf...]` | PROVED |
+| FP5 | socketing's gold refusal removed | "1 failed, 13 passed": `test_every_built_craft_prices_itself_and_refuses_too_little_gold[...SocketGemOf...]` | PROVED |
+| FP6 | an upgrade's days back to one a level | "1 failed, 13 passed": `test_an_upgrades_days_are_the_level_it_reaches` | PROVED |
+| FP7 | the stone combine keeping the gold when the stones cannot be taken | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[bool UCataclysmForgeCraft::Combine(]` | PROVED |
+| FP8 | socketing never paying | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...DoSocketing(]` | PROVED |
+| FP9 | the upgrade not writing the account record | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...Upgrade(]` | PROVED |
+| FP10 | a price read at the lowest tier, not the run's | "1 failed, 13 passed": `test_a_price_is_read_at_the_runs_tier_as_a_city_upgrades_is` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G6 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ForgeCosts.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.Forge.`, `Cataclysm.ForgeScreen.`, `Cataclysm.ForgeGems.`, `Cataclysm.GemCombine.` and `Cataclysm.PlayLoop.` alone, whose tests this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Three C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ForgeCosts."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K22 | in `GoldFor`, the multiplier wrapped in `FMath::RoundToDouble(...)` | 3 performed, 2 succeeded, 1 failed: `ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung` (10 residue: 250, not 300) | 3 of 3 |
+| K23 | in `UCataclysmForgeCraft::Upgrade`, `if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))` to `if (false)` | 3 performed, 2 succeeded, 1 failed: `ACraftTakesItsGoldAndWithTooLittleNothingMoves` (600 gold held, not 100) | 3 of 3 |
+| K24 | in `UCataclysmForgeLayout::DetailFor`, " and %s, adds" to ", adds" with its gold argument removed | 3 performed, 2 succeeded, 1 failed: `TheScreenSaysTheGoldAndTheDaysOfTheLevelReached` | 3 of 3 |
+
+---
+
 ## 2026-11-21 — Two gems of a kind and rarity combine at the forge into one of the next rarity, with no cap and, as the stone combine, no cost (#46, slice G6)
 
 **Affects:** `FCataclysmForgeGemCombine`, new, and `UCataclysmForge::GemsPerCombine` and `GemCombineOf`, new
