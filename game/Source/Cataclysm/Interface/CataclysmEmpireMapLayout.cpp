@@ -8,6 +8,7 @@
 #include "Empire/CataclysmSurge.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Dungeon/CataclysmEnemyScore.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveRecords.h"
 
@@ -768,4 +769,23 @@ FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run
 
 	return FString::Printf(TEXT("Run won on day %d at tier %d against %s. %s %s"), Run->LastRunWonDay,
 						   Run->LastRunWonTier, *Against, *PointsPart, *FacesPart);
+}
+
+FString UCataclysmEmpireMapLayout::ScoreText(int32 Score)
+{
+	return ACataclysmDroppedItem::GoldAmountText(FMath::Max(0, Score));
+}
+
+FString UCataclysmEmpireMapLayout::DungeonScoreText(int32 DungeonScore, int32 PlayerScore)
+{
+	return PlayerScore == INDEX_NONE
+		? FString::Printf(TEXT("Dungeon Score %s."), *ScoreText(DungeonScore))
+		: FString::Printf(TEXT("Dungeon Score %s; your Power Score %s."), *ScoreText(DungeonScore),
+						  *ScoreText(PlayerScore));
+}
+
+FString UCataclysmEmpireMapLayout::DungeonScoreLine(const UCataclysmEmpireRun* Run, int32 DungeonId, int32 PlayerScore)
+{
+	const int32 DungeonScore = UCataclysmEnemyScore::DungeonScoreOf(Run, DungeonId);
+	return DungeonScore == INDEX_NONE ? FString() : DungeonScoreText(DungeonScore, PlayerScore);
 }

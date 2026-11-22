@@ -441,6 +441,67 @@ material, a gem's for one, is refused: "Gem_Of_Life is no crafting material in t
 - **At the slot's most sockets** the add button is gone; pressed before it went, it says "That piece holds its most
   sockets, 6." and nothing moves.
 
+### 21. Reroll, perfect and raise the tier of an affix
+
+At the forge (step 16), for a piece chosen that has affixes (issue #47, slice F1). A Corrupted Mote is common (about 1
+crafting material drop in 8), a Potency Crystal uncommon (about 1 in 27) and a Primal Spark extremely rare (about 1 in
+1,705), so put some in the bag from the console first: `Cataclysm.GrantMaterial Material_Corrupted_Mote 2`,
+`Cataclysm.GrantMaterial Material_Potency_Crystal` and `Cataclysm.GrantMaterial Material_Primal_Spark`.
+
+- **The piece's detail lists its affixes**, numbered from 1, each as its tool tip reads it, with its tier and its roll:
+  "Affixes: 1. +3 to evasion (tier 2), roll 50 percent; 2. +40 to armor (tier 4), roll 25 percent".
+- **Each affix has up to three buttons**: "Reroll affix 1", "Perfect affix 1" while its roll is below 100 percent, and
+  "Raise affix 1 to tier 3" while its tier is below 7.
+- **Click "Reroll affix 1"**, twice. The first press asks: "Press again to reroll affix 1: one Corrupted Mote, 450 gold,
+  residue 40 to 42, 0 days of the run; its roll, now 50 percent of tier 2's range, is drawn again and can fall." The
+  roll is drawn again anywhere in the tier's range, and the tier stays. Below 100 residue no day passes. **The roll is
+  the same if you reload and reroll again on the same day**: it is drawn from the piece and the run's day.
+- **In the log:**
+
+  `PLAY LOOP: rerolled affix 1 of Quality Helm for 450 gold, its roll 50 to 11 percent of tier 2; residue 40 to 42; it cost 0 days, day 20 to day 20`
+
+- **Click "Perfect affix 1"**, twice: one Primal Spark, 50 residue and five days. The roll is 100 percent, always.
+- **In the log:**
+
+  `PLAY LOOP: perfected affix 1 of Quality Helm for 2,300 gold, its roll 11 to 100 percent of tier 2; residue 42 to 92; it cost 5 days, day 20 to day 25`
+
+- **Click "Raise affix 2 to tier 5"**, twice: one Potency Crystal, 10 residue and one day for each tier the affix has
+  (tier 4: 40 residue, 4 days), and the roll is kept.
+- **In the log:**
+
+  `PLAY LOOP: raised affix 2 of Quality Helm for 710 gold from tier 4 to tier 5, its roll kept at 25 percent; residue 92 to 132; it cost 4 days, day 25 to day 29`
+
+- **At tier 7 the raise button is gone**, and at a roll of 100 percent the perfect button is. With no material, the
+  first press says so and nothing moves: "Raising an affix's tier takes a Potency Crystal; 0 held."
+
+### 22. Add a chosen affix to a piece, and shift an affix to another stat
+
+At the forge (step 16), for a piece chosen (issue #47, slice F2). Schematic Fragments are common (about 1 crafting
+material drop in 8) and a Crystal of Instability very rare (about 1 in 426), so put some in the bag from the console
+first: `Cataclysm.GrantMaterial Material_Schematic_Fragments 2` and `Cataclysm.GrantMaterial
+Material_Crystal_of_Instability`.
+
+- **A piece with a free slot of the four** (Everyday, Quality or Superb, or a piece with no affix) shows "Affix to add:
+  Flat maximum health (prefix), 1 of 27, at tier 1" under its detail, and five buttons: "Previous affix", "Next affix",
+  "Lower tier", "Raise tier" and "Add Flat maximum health at tier 1". The list holds only affixes the piece's slot can
+  roll and none of a stat it already has. A Masterful piece, or one with an enchantment, says "No affix can be added:
+  that piece's four slots are full."
+- **Step to an affix and a tier, then click "Add ..."**, twice. The first press asks: "Press again to add Flat block
+  chance at tier 3 as affix 3, making the piece Superb: Schematic Fragments, 450 gold, residue 40 to 55, 3 days of the
+  run; its roll is drawn in the tier." The piece gains the affix and is one rarity higher; 5 residue and one day for
+  each tier.
+- **In the log:**
+
+  `PLAY LOOP: added Flat block chance at tier 3 to Quality Helm for 450 gold as affix 3, making it Superb; residue 40 to 55; it cost 3 days, day 20 to day 23`
+
+- **Each affix has "Shift affix N"**. Click it twice: "Press again to shift affix 1, Flat evasion, to another stat,
+  keeping tier 2 and its roll: one Crystal of Instability, 525 gold, residue 55 to 70, 1 day of the run; the new stat is
+  drawn." The affix becomes another of its prefix or suffix pool, never one the piece already has, at the same tier and
+  roll. **It is the same if you reload and shift again on the same day.**
+- **In the log:**
+
+  `PLAY LOOP: shifted affix 1 of Superb Helm for 525 gold from Flat evasion to Increased maximum mana, tier 2 kept; residue 55 to 70; it cost 1 day, day 23 to day 24`
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

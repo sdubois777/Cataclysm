@@ -25,6 +25,58 @@ const TCHAR* UCataclysmForge::ShatteredCoreRow = TEXT("Material_Shattered_Core")
 const TCHAR* UCataclysmForge::FocusingLensRow = TEXT("Material_Focusing_Lens");
 const TCHAR* UCataclysmForge::AddSocketOperationRow = TEXT("Operation_Add_Socket");
 const TCHAR* UCataclysmForge::ChangeSocketTypeOperationRow = TEXT("Operation_Change_Socket_Type");
+const TCHAR* UCataclysmForge::CorruptedMoteRow = TEXT("Material_Corrupted_Mote");
+const TCHAR* UCataclysmForge::PrimalSparkRow = TEXT("Material_Primal_Spark");
+const TCHAR* UCataclysmForge::PotencyCrystalRow = TEXT("Material_Potency_Crystal");
+const TCHAR* UCataclysmForge::RerollAffixValueOperationRow = TEXT("Operation_Reroll_Affix_Value");
+const TCHAR* UCataclysmForge::PerfectRollOperationRow = TEXT("Operation_Perfect_Roll_Attempt");
+const TCHAR* UCataclysmForge::UpgradeAffixTierOperationRow = TEXT("Operation_Upgrade_Affix_Tier");
+const TCHAR* UCataclysmForge::SchematicFragmentsRow = TEXT("Material_Schematic_Fragments");
+const TCHAR* UCataclysmForge::CrystalOfInstabilityRow = TEXT("Material_Crystal_of_Instability");
+const TCHAR* UCataclysmForge::DeterministicAffixOperationRow = TEXT("Operation_Deterministic_Affix");
+const TCHAR* UCataclysmForge::AffixShiftingOperationRow = TEXT("Operation_Affix_Shifting_Stat_Type");
+
+namespace
+{
+	/** Whether an affix row may roll on a slot: its comma separated `AllowedSlots`, as `CandidatesFor` reads it. */
+	bool ForgeAffixAllowedOn(const FCataclysmAffixRow& Row, const FString& Slot)
+	{
+		TArray<FString> Allowed;
+		Row.AllowedSlots.ParseIntoArray(Allowed, TEXT(","), true);
+		for (const FString& Each : Allowed)
+		{
+			if (Each.TrimStartAndEnd().Equals(Slot, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A resistance family covering some of the eight damage types, which chooses which when it rolls. */
+	bool ForgeChoosesDamageTypes(const FCataclysmAffixRow& Row)
+	{
+		return Row.AffixKind.Equals(TEXT("Resistance"), ESearchCase::IgnoreCase) && Row.Breadth > 0
+			&& Row.Breadth < UCataclysmItemModifiers::DamageTypeNames().Num();
+	}
+
+	/** The damage types whose resistance group the item does not hold, in the design's order. */
+	TArray<FName> ForgeUnheldDamageTypes(const UDataTable* AffixTable, const FCataclysmAffixRow& Row,
+										 const TSet<FString>& Held)
+	{
+		TArray<FName> Out;
+		for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
+		{
+			TSet<FString> Groups;
+			UCataclysmDropRoll::GroupsOf(AffixTable, Row, {Type}, Groups);
+			if (Groups.Intersect(Held).Num() == 0)
+			{
+				Out.Add(Type);
+			}
+		}
+		return Out;
+	}
+}
 
 FName UCataclysmForge::StoneFor(int32 Level)
 {
@@ -570,6 +622,439 @@ FString UCataclysmForge::SocketWorkQuestion(const FCataclysmForgeSocketWork& Pla
 	}
 	return FString::Printf(TEXT("Press again to make socket %d a %s socket: one Focusing Lens, %s."), Plan.Socket + 1,
 						   *UCataclysmGems::SocketTypeName(Plan.ToType), *Cost);
+}
+
+FName UCataclysmForge::MaterialFor(ECataclysmForgeAffixCraft Craft)
+{
+	switch (Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:	return FName(PrimalSparkRow);
+	case ECataclysmForgeAffixCraft::UpgradeTier:	return FName(PotencyCrystalRow);
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:										return FName(CorruptedMoteRow);
+	}
+}
+
+FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(const FCataclysmItem& Item, ECataclysmForgeAffixCraft Craft,
+													   int32 Affix, int32 MaterialHeld, int32 DifficultyTier,
+													   int64 GoldHeld)
+{
+	FCataclysmForgeAffixWork Out;
+	Out.Craft = Craft;
+	Out.Affix = Affix;
+	Out.Material = MaterialFor(Craft);
+	Out.MaterialHeld = FMath::Max(0, MaterialHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to craft.");
+		return Out;
+	}
+	if (!Item.Affixes.IsValidIndex(Affix))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no affix %d."), Affix + 1);
+		return Out;
+	}
+	const FCataclysmRolledAffix& Rolled = Item.Affixes[Affix];
+	Out.AffixRow = Rolled.Affix;
+	Out.FromTier = Rolled.Tier;
+	Out.ToTier = Rolled.Tier;
+	Out.FromRoll = Rolled.Roll;
+	Out.ToRoll = Rolled.Roll;
+
+	// EACH CRAFT'S ROW: its residue, its base days and its Base Gold, falling back on the constant the sheet's figure
+	// mirrors. An upgrade's residue and days are the affix's tier before it, "10 CR*(Current affix tier)" and
+	// "1(current affix tier)", and its Base Gold the sheet's flat 250 (Q13).
+	float Added = 0.0f;
+	int32 BaseDays = 0;
+	int32 BaseGold = 0;
+	FString Doing;
+	switch (Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:
+		Added = PerfectRollResidue;
+		BaseDays = PerfectRollBaseDays;
+		BaseGold = BaseGoldOf(PerfectRollOperationRow, BaseGoldFor(PerfectRollBaseDays));
+		Doing = TEXT("Perfecting an affix's roll");
+		Out.ToRoll = 1.0f;
+		break;
+	case ECataclysmForgeAffixCraft::UpgradeTier:
+		Added = UpgradeAffixTierResiduePerTier * static_cast<float>(Rolled.Tier);
+		BaseDays = Rolled.Tier;
+		BaseGold = BaseGoldOf(UpgradeAffixTierOperationRow, GoldPerCraftDay);
+		Doing = TEXT("Raising an affix's tier");
+		Out.ToTier = Rolled.Tier + 1;
+		break;
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:
+		Added = RerollAffixValueResidue;
+		BaseDays = RerollAffixValueBaseDays;
+		BaseGold = BaseGoldOf(RerollAffixValueOperationRow, BaseGoldFor(RerollAffixValueBaseDays));
+		Doing = TEXT("Rerolling an affix's value");
+		break;
+	}
+	Out.ResidueAfter = Item.Residue + Added;
+	Out.Days = DaysFor(Item.Residue, BaseDays);
+	Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);
+
+	// A PERFECTING OF A ROLL AT THE TOP WOULD SPEND A PRIMAL SPARK FOR NOTHING. A JUDGEMENT of this slice, as a socket's
+	// change to its own type is refused.
+	if (Craft == ECataclysmForgeAffixCraft::PerfectRoll && Rolled.Roll >= 1.0f)
+	{
+		Out.Refusal = TEXT("That affix's roll is the top of its tier already.");
+		return Out;
+	}
+	// TIER 7 IS THE TOP: "Raises an affix by one tier, to a maximum of 7".
+	if (Craft == ECataclysmForgeAffixCraft::UpgradeTier && Rolled.Tier >= UCataclysmItemValues::MaxAffixTier)
+	{
+		Out.ToTier = Rolled.Tier;
+		Out.Refusal = FString::Printf(TEXT("That affix is tier %d, the highest."), Rolled.Tier);
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		const TCHAR* Material = Craft == ECataclysmForgeAffixCraft::PerfectRoll ? TEXT("a Primal Spark")
+			: Craft == ECataclysmForgeAffixCraft::UpgradeTier					 ? TEXT("a Potency Crystal")
+																				 : TEXT("a Corrupted Mote");
+		Out.Refusal = FString::Printf(TEXT("%s takes %s; 0 held."), *Doing, Material);
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(Doing, Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+int32 UCataclysmForge::RerolledAffixSeed(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+{
+	// AN ADDED SOCKET'S TWO MIXES, with this craft's salt and the affix's place for the socket count.
+	const int32 OfTheRunAndDay = CataclysmSeedMix::Mix(WalkSeedMask, RerolledAffixSalt, Day);
+	const uint32 Crc = FCrc::StrCrc32(*ItemSeedText(Item));
+	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Affix);
+}
+
+float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+{
+	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`).
+	const FRandomStream Stream(RerolledAffixSeed(Item, Affix, WalkSeedMask, Day));
+	return Stream.FRand();
+}
+
+int32 UCataclysmForge::RollPercent(float Roll)
+{
+	return FMath::RoundToInt(FMath::Clamp(Roll, 0.0f, 1.0f) * 100.0f);
+}
+
+FString UCataclysmForge::AffixWorkQuestion(const FCataclysmForgeAffixWork& Plan)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	switch (Plan.Craft)
+	{
+	case ECataclysmForgeAffixCraft::PerfectRoll:
+		return FString::Printf(TEXT("Press again to perfect affix %d, from %d to 100 percent of tier %d's range: one Primal "
+									"Spark, %s."),
+							   Plan.Affix + 1, RollPercent(Plan.FromRoll), Plan.FromTier, *Cost);
+	case ECataclysmForgeAffixCraft::UpgradeTier:
+		return FString::Printf(TEXT("Press again to raise affix %d from tier %d to tier %d, its roll kept at %d percent: one "
+									"Potency Crystal, %s."),
+							   Plan.Affix + 1, Plan.FromTier, Plan.ToTier, RollPercent(Plan.FromRoll), *Cost);
+	case ECataclysmForgeAffixCraft::RerollValue:
+	default:
+		return FString::Printf(TEXT("Press again to reroll affix %d: one Corrupted Mote, %s; its roll, now %d percent of tier "
+									"%d's range, is drawn again and can fall."),
+							   Plan.Affix + 1, *Cost, RollPercent(Plan.FromRoll), Plan.FromTier);
+	}
+}
+
+FString UCataclysmForge::SlotOf(const FCataclysmItem& Item, const UDataTable* BaseTable)
+{
+	const FCataclysmItemBaseRow* Row = BaseTable != nullptr && !Item.Base.IsNone()
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForge::SlotOf"), /*bWarnIfMissing=*/false)
+		: nullptr;
+	return Row != nullptr ? Row->Slot : FString();
+}
+
+void UCataclysmForge::HeldGroupsOf(const FCataclysmItem& Item, const UDataTable* AffixTable, TSet<FString>& OutGroups)
+{
+	OutGroups.Reset();
+	for (const FCataclysmRolledAffix& Rolled : Item.Affixes)
+	{
+		const FCataclysmAffixRow* Row = AffixTable != nullptr
+			? AffixTable->FindRow<FCataclysmAffixRow>(Rolled.Affix, TEXT("UCataclysmForge::HeldGroupsOf"),
+													  /*bWarnIfMissing=*/false)
+			: nullptr;
+		if (Row != nullptr)
+		{
+			TSet<FString> Groups;
+			UCataclysmDropRoll::GroupsOf(AffixTable, *Row, Rolled.DamageTypes, Groups);
+			OutGroups.Append(Groups);
+		}
+	}
+}
+
+TArray<FName> UCataclysmForge::AddableAffixesFor(const FCataclysmItem& Item, const UDataTable* AffixTable,
+												 const UDataTable* BaseTable)
+{
+	TArray<FName> Out;
+	const FString Slot = SlotOf(Item, BaseTable);
+	if (Slot.IsEmpty() || AffixTable == nullptr)
+	{
+		return Out;
+	}
+	TSet<FString> Held;
+	HeldGroupsOf(Item, AffixTable, Held);
+	AffixTable->ForeachRow<FCataclysmAffixRow>(TEXT("UCataclysmForge::AddableAffixesFor"),
+		[&](const FName& Key, const FCataclysmAffixRow& Row)
+		{
+			// A DROP'S POOL FOR THE SLOT, PREFIX OR SUFFIX (Q10), as `CandidatesFor` reads it.
+			if (!ForgeAffixAllowedOn(Row, Slot))
+			{
+				return;
+			}
+			// NEVER A STAT GROUP THE PIECE HOLDS, the drop's rule: a resistance family covering some types while enough
+			// types are free, any other while its own groups are.
+			if (ForgeChoosesDamageTypes(Row))
+			{
+				if (ForgeUnheldDamageTypes(AffixTable, Row, Held).Num() >= Row.Breadth)
+				{
+					Out.Add(Key);
+				}
+				return;
+			}
+			TSet<FString> Groups;
+			UCataclysmDropRoll::GroupsOf(AffixTable, Row, {}, Groups);
+			if (Groups.Intersect(Held).Num() == 0)
+			{
+				Out.Add(Key);
+			}
+		});
+	return Out;
+}
+
+int32 UCataclysmForge::AffixCraftSeed(const FCataclysmItem& Item, int32 Salt, int32 Index, int32 WalkSeedMask, int32 Day)
+{
+	// A REROLL'S TWO MIXES (`RerolledAffixSeed`), with the craft's salt and its index.
+	const int32 OfTheRunAndDay = CataclysmSeedMix::Mix(WalkSeedMask, Salt, Day);
+	const uint32 Crc = FCrc::StrCrc32(*ItemSeedText(Item));
+	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Index);
+}
+
+FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclysmItem& Item, FName AffixRow, int32 Tier,
+																  int32 Seed, const UDataTable* AffixTable,
+																  const UDataTable* BaseTable, int32 FragmentsHeld,
+																  int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeAffixChange Out;
+	Out.Affix = Item.Affixes.Num();
+	Out.ToRow = AffixRow;
+	Out.Tier = Tier;
+	Out.Material = FName(SchematicFragmentsRow);
+	Out.MaterialHeld = FMath::Max(0, FragmentsHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+	Out.bHadRarity = UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Out.FromRarity);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to craft.");
+		return Out;
+	}
+	if (SlotOf(Item, BaseTable).IsEmpty())
+	{
+		Out.Refusal = TEXT("What that piece is cannot be found.");
+		return Out;
+	}
+	// A FREE SLOT OF THE FOUR: a piece with an enchantment fills all four, so it takes none.
+	if (Item.Affixes.Num() + Item.EnchantmentCount >= UCataclysmItemValues::SlotsPerPiece)
+	{
+		Out.Refusal = TEXT("That piece's four slots are full.");
+		return Out;
+	}
+	if (Tier < 1 || Tier > UCataclysmItemValues::MaxAffixTier)
+	{
+		Out.Refusal = FString::Printf(TEXT("An affix can be added at tier 1 to %d."), UCataclysmItemValues::MaxAffixTier);
+		return Out;
+	}
+	const FCataclysmAffixRow* Row = AffixTable != nullptr && !AffixRow.IsNone()
+		? AffixTable->FindRow<FCataclysmAffixRow>(AffixRow, TEXT("UCataclysmForge::DeterministicAffixOf"),
+												  /*bWarnIfMissing=*/false)
+		: nullptr;
+	if (Row == nullptr || !AddableAffixesFor(Item, AffixTable, BaseTable).Contains(AffixRow))
+	{
+		Out.Refusal = FString::Printf(TEXT("%s cannot be added to that piece."), *AffixNameOf(AffixRow, AffixTable));
+		return Out;
+	}
+
+	// ADDING AN AFFIX PROMOTES THE PIECE, by the definition of rarity: one more affix in the same slots.
+	UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num() + 1, Out.ToRarity);
+	Out.ResidueAfter = Item.Residue + DeterministicAffixResiduePerTier * static_cast<float>(Tier);
+	Out.Days = DaysFor(Item.Residue, FMath::Min(Tier, DeterministicAffixMaxBaseDays));
+	Out.Gold = GoldFor(BaseGoldOf(DeterministicAffixOperationRow, GoldPerCraftDay), Item.Residue, DifficultyTier);
+
+	// THE DRAW: a resistance family's damage types among those the piece does not hold, as `CandidatesFor` draws them,
+	// then the roll in the tier, as a drop draws it (Q11).
+	FRandomStream Stream(Seed);
+	if (ForgeChoosesDamageTypes(*Row))
+	{
+		TSet<FString> Held;
+		HeldGroupsOf(Item, AffixTable, Held);
+		TArray<FName> Pool = ForgeUnheldDamageTypes(AffixTable, *Row, Held);
+		for (int32 Taken = 0; Taken < Row->Breadth && Taken < Pool.Num(); ++Taken)
+		{
+			const int32 Index = Stream.RandRange(Taken, Pool.Num() - 1);
+			Pool.Swap(Taken, Index);
+			Out.ToDamageTypes.Add(Pool[Taken]);
+		}
+	}
+	Out.Roll = Stream.FRand();
+
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Adding an affix takes Schematic Fragments; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Adding an affix"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FCataclysmForgeAffixChange UCataclysmForge::AffixShiftOf(const FCataclysmItem& Item, int32 Affix, int32 Seed,
+														  const UDataTable* AffixTable, const UDataTable* BaseTable,
+														  int32 CrystalsHeld, int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeAffixChange Out;
+	Out.bShift = true;
+	Out.Affix = Affix;
+	Out.Material = FName(CrystalOfInstabilityRow);
+	Out.MaterialHeld = FMath::Max(0, CrystalsHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+	Out.bHadRarity = UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Out.FromRarity);
+	Out.ToRarity = Out.FromRarity;
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to craft.");
+		return Out;
+	}
+	const FString Slot = SlotOf(Item, BaseTable);
+	if (Slot.IsEmpty())
+	{
+		Out.Refusal = TEXT("What that piece is cannot be found.");
+		return Out;
+	}
+	if (!Item.Affixes.IsValidIndex(Affix))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no affix %d."), Affix + 1);
+		return Out;
+	}
+	const FCataclysmRolledAffix& Rolled = Item.Affixes[Affix];
+	Out.FromRow = Rolled.Affix;
+	Out.ToRow = Rolled.Affix;
+	Out.ToDamageTypes = Rolled.DamageTypes;
+	// THE TIER AND THE ROLL ARE KEPT (Q4): "Rerolls the stat type, not its value".
+	Out.Tier = Rolled.Tier;
+	Out.Roll = Rolled.Roll;
+	Out.ResidueAfter = Item.Residue + AffixShiftingResidue;
+	Out.Days = DaysFor(Item.Residue, AffixShiftingBaseDays);
+	Out.Gold = GoldFor(BaseGoldOf(AffixShiftingOperationRow, BaseGoldFor(AffixShiftingBaseDays)), Item.Residue,
+					   DifficultyTier);
+
+	const FCataclysmAffixRow* FromRow = AffixTable != nullptr
+		? AffixTable->FindRow<FCataclysmAffixRow>(Rolled.Affix, TEXT("UCataclysmForge::AffixShiftOf"),
+												  /*bWarnIfMissing=*/false)
+		: nullptr;
+	if (FromRow == nullptr)
+	{
+		Out.Refusal = TEXT("That affix is not in the affix table.");
+		return Out;
+	}
+
+	// THE DRAW: the drop's pool for the slot and the affix's own position, its resistance types drawn as a drop draws
+	// them, less the affix's own row and any candidate of a stat group the piece holds, the affix's own groups among
+	// them (Q3); then one of what is left, evenly.
+	FRandomStream Stream(Seed);
+	TArray<FCataclysmAffixCandidate> Candidates;
+	UCataclysmDropRoll::CandidatesFor(AffixTable, Slot, FromRow->Position, Stream, Candidates);
+	TSet<FString> Held;
+	HeldGroupsOf(Item, AffixTable, Held);
+	TArray<FCataclysmAffixCandidate> Open;
+	for (const FCataclysmAffixCandidate& Candidate : Candidates)
+	{
+		const FCataclysmAffixRow* Row = Candidate.Affix == Rolled.Affix
+			? nullptr
+			: AffixTable->FindRow<FCataclysmAffixRow>(Candidate.Affix, TEXT("UCataclysmForge::AffixShiftOf"),
+													  /*bWarnIfMissing=*/false);
+		if (Row == nullptr)
+		{
+			continue;
+		}
+		TSet<FString> Groups;
+		UCataclysmDropRoll::GroupsOf(AffixTable, *Row, Candidate.DamageTypes, Groups);
+		if (Groups.Intersect(Held).Num() == 0)
+		{
+			Open.Add(Candidate);
+		}
+	}
+	if (Open.IsEmpty())
+	{
+		Out.Refusal = TEXT("No other affix can take that one's place on that piece.");
+		return Out;
+	}
+	const FCataclysmAffixCandidate& Drawn = Open[Stream.RandRange(0, Open.Num() - 1)];
+	Out.ToRow = Drawn.Affix;
+	Out.ToDamageTypes = Drawn.DamageTypes;
+
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Shifting an affix takes a Crystal of Instability; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Shifting an affix"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FString UCataclysmForge::AffixNameOf(FName AffixRow, const UDataTable* AffixTable)
+{
+	const FCataclysmAffixRow* Row = AffixTable != nullptr && !AffixRow.IsNone()
+		? AffixTable->FindRow<FCataclysmAffixRow>(AffixRow, TEXT("UCataclysmForge::AffixNameOf"), /*bWarnIfMissing=*/false)
+		: nullptr;
+	return Row != nullptr && !Row->AffixName.IsEmpty() ? Row->AffixName : AffixRow.ToString();
+}
+
+FString UCataclysmForge::AffixChangeQuestion(const FCataclysmForgeAffixChange& Plan, const UDataTable* AffixTable)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	if (Plan.bShift)
+	{
+		return FString::Printf(TEXT("Press again to shift affix %d, %s, to another stat, keeping tier %d and its roll: one "
+									"Crystal of Instability, %s; the new stat is drawn."),
+							   Plan.Affix + 1, *AffixNameOf(Plan.FromRow, AffixTable), Plan.Tier, *Cost);
+	}
+	return FString::Printf(TEXT("Press again to add %s at tier %d as affix %d, making the piece %s: Schematic Fragments, %s; "
+								"its roll is drawn in the tier."),
+						   *AffixNameOf(Plan.ToRow, AffixTable), Plan.Tier, Plan.Affix + 1,
+						   *UCataclysmGems::RarityName(Plan.ToRarity), *Cost);
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

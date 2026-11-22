@@ -10,6 +10,8 @@
 #include "Items/CataclysmEquipmentComponent.h"
 // A gold amount as a player reads it, issue #2830.
 #include "Items/CataclysmDroppedItem.h"
+// The affix table, for the affixes a piece can take, issue #47 slice F2.
+#include "Items/CataclysmDropRoll.h"
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -72,6 +74,28 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		// AND A SOCKET TO ADD, AND EACH EMPTY SOCKET'S TYPE TO CHANGE. Issue #46, slice G9.
 		ShownSocketWorkActions =
 			UCataclysmForgeLayout::SocketWorkActionsFor(*Item, UCataclysmForgeCraft::MaxSocketsOf(*Item));
+		// AND ITS AFFIXES, with a reroll, a perfecting and a raise for each. Issue #47, slice F1.
+		const FString Affixes = UCataclysmForgeLayout::AffixesDetailFor(*Item);
+		if (!Affixes.IsEmpty())
+		{
+			Detail += TEXT("\n") + Affixes;
+		}
+		ShownAffixActions = UCataclysmForgeLayout::AffixActionsFor(*Item);
+		// AND A SHIFT FOR EACH AFFIX, AND THE CHOOSER FOR ADDING ONE, the choice kept within what the piece can take.
+		// Issue #47, slice F2.
+		const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+		AddableAffixes = UCataclysmForge::AddableAffixesFor(*Item, AffixTable, UCataclysmItemModifiers::LoadBaseTable());
+		AddAffixChosen = AddableAffixes.IsEmpty() ? 0 : FMath::Clamp(AddAffixChosen, 0, AddableAffixes.Num() - 1);
+		AddAffixTier = FMath::Clamp(AddAffixTier, 1, UCataclysmItemValues::MaxAffixTier);
+		ShownAffixChangeActions = UCataclysmForgeLayout::ShiftActionsFor(*Item);
+		ShownAffixChangeActions.Append(
+			UCataclysmForgeLayout::AddAffixActionsFor(*Item, AddableAffixes, AddAffixChosen, AddAffixTier, AffixTable));
+		const FString Adding =
+			UCataclysmForgeLayout::AddAffixDetailFor(*Item, AddableAffixes, AddAffixChosen, AddAffixTier, AffixTable);
+		if (!Adding.IsEmpty())
+		{
+			Detail += TEXT("\n") + Adding;
+		}
 	}
 	else
 	{
@@ -79,6 +103,9 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		UpgradeWords = TEXT("Upgrade");
 		ShownSocketActions.Reset();
 		ShownSocketWorkActions.Reset();
+		ShownAffixActions.Reset();
+		ShownAffixChangeActions.Reset();
+		AddableAffixes.Reset();
 	}
 
 	BuildPieceButtons();
@@ -153,6 +180,30 @@ void UCataclysmForgeWidget::BuildActionButtons()
 		}
 	}
 
+	// THE AFFIX CRAFTS, two presses each as socket work is. Issue #47, slice F1.
+	for (const FCataclysmForgeAffixAction& Action : ShownAffixActions)
+	{
+		if (UCataclysmChoiceButton* AffixWork = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			AffixWork->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			AffixWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(AffixWork);
+		}
+	}
+
+	// THE SHIFTS AND THE ADD-AN-AFFIX CHOOSER. Issue #47, slice F2.
+	for (const FCataclysmForgeAffixChangeAction& Action : ShownAffixChangeActions)
+	{
+		if (UCataclysmChoiceButton* AffixChange = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			AffixChange->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+								   /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			AffixChange->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(AffixChange);
+		}
+	}
+
 	for (const int32 Level : ShownCombineLevels)
 	{
 		if (UCataclysmChoiceButton* Combine = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
@@ -210,6 +261,12 @@ void UCataclysmForgeWidget::HandlePieceClicked(FName ButtonName)
 	FCataclysmForgeTarget Target;
 	if (UCataclysmForgeLayout::TargetForButton(ButtonName, Target))
 	{
+		// ANOTHER PIECE STARTS THE ADD-AN-AFFIX CHOOSER AGAIN, at its first affix and tier 1. Issue #47, slice F2.
+		if (!(bHasChosen && Target == ChosenTarget))
+		{
+			AddAffixChosen = 0;
+			AddAffixTier = 1;
+		}
 		ChosenTarget = Target;
 		bHasChosen = true;
 	}
@@ -361,6 +418,166 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
 								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
 			break;
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// AN AFFIX REROLLED, PERFECTED OR RAISED A TIER, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as socket work is.
+	// Issue #47, slice F1.
+	FCataclysmForgeAffixAction AffixWork;
+	if (bHasChosen && UCataclysmForgeLayout::AffixActionForButton(ButtonName, ShownAffixActions, AffixWork))
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeAffixWork Plan =
+			UCataclysmForgeCraft::AffixWorkPlanFor(Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::AffixWorkQuestion(Plan);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeAffixWork Done;
+		FString Said;
+		const ECataclysmForgeResult Result = UCataclysmForgeCraft::CraftAffix(
+			Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix, bThresholdWasAsked, Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+		{
+			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
+												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
+												 Done.Days == 1 ? TEXT("") : TEXT("s"));
+			Message = Done.Craft == ECataclysmForgeAffixCraft::UpgradeTier
+				? FString::Printf(TEXT("Affix %d is tier %d now, its roll kept at %d percent. %s"), Done.Affix + 1,
+								  Done.ToTier, UCataclysmForge::RollPercent(Done.ToRoll), *Cost)
+				: FString::Printf(TEXT("Affix %d's roll is %d percent of tier %d's range now, from %d. %s"), Done.Affix + 1,
+								  UCataclysmForge::RollPercent(Done.ToRoll), Done.ToTier,
+								  UCataclysmForge::RollPercent(Done.FromRoll), *Cost);
+			break;
+		}
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// THE ADD-AN-AFFIX CHOOSER'S STEPS ARE ONE PRESS EACH and change nothing but what the chooser shows; an affix shifted
+	// or added is asked on its first press and done on its second, as the other affix crafts are. Issue #47, slice F2.
+	FCataclysmForgeAffixChangeAction AffixChange;
+	if (bHasChosen && UCataclysmForgeLayout::AffixChangeActionForButton(ButtonName, ShownAffixChangeActions, AffixChange))
+	{
+		const int32 Count = AddableAffixes.Num();
+		if (ButtonName == UCataclysmForgeLayout::AddAffixPreviousButtonName()
+			|| ButtonName == UCataclysmForgeLayout::AddAffixNextButtonName()
+			|| ButtonName == UCataclysmForgeLayout::AddAffixTierDownButtonName()
+			|| ButtonName == UCataclysmForgeLayout::AddAffixTierUpButtonName())
+		{
+			CancelThePendingUpgrade();
+			Message.Reset();
+			if (Count > 0 && ButtonName == UCataclysmForgeLayout::AddAffixPreviousButtonName())
+			{
+				AddAffixChosen = (AddAffixChosen + Count - 1) % Count;
+			}
+			else if (Count > 0 && ButtonName == UCataclysmForgeLayout::AddAffixNextButtonName())
+			{
+				AddAffixChosen = (AddAffixChosen + 1) % Count;
+			}
+			else if (ButtonName == UCataclysmForgeLayout::AddAffixTierDownButtonName())
+			{
+				AddAffixTier = FMath::Max(1, AddAffixTier - 1);
+			}
+			else if (ButtonName == UCataclysmForgeLayout::AddAffixTierUpButtonName())
+			{
+				AddAffixTier = FMath::Min(UCataclysmItemValues::MaxAffixTier, AddAffixTier + 1);
+			}
+			RefreshDisplay();
+			return;
+		}
+
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+		const FName Adding = !AffixChange.bShift && AddableAffixes.IsValidIndex(AddAffixChosen)
+			? AddableAffixes[AddAffixChosen]
+			: NAME_None;
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeAffixChange Plan = AffixChange.bShift
+			? UCataclysmForgeCraft::ShiftAffixPlanFor(Context(), ChosenTarget, AffixChange.Affix)
+			: UCataclysmForgeCraft::AddAffixPlanFor(Context(), ChosenTarget, Adding, AddAffixTier);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::AffixChangeQuestion(Plan, AffixTable);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeAffixChange Done;
+		FString Said;
+		const ECataclysmForgeResult Result = AffixChange.bShift
+			? UCataclysmForgeCraft::ShiftAffix(Context(), ChosenTarget, AffixChange.Affix, bThresholdWasAsked, Done, Said)
+			: UCataclysmForgeCraft::AddAffix(Context(), ChosenTarget, Adding, AddAffixTier, bThresholdWasAsked, Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+		{
+			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
+												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
+												 Done.Days == 1 ? TEXT("") : TEXT("s"));
+			Message = Done.bShift
+				? FString::Printf(TEXT("Affix %d is %s now, tier %d kept. %s"), Done.Affix + 1,
+								  *UCataclysmForge::AffixNameOf(Done.ToRow, AffixTable), Done.Tier, *Cost)
+				: FString::Printf(TEXT("Added %s at tier %d as affix %d; the piece is %s now. %s"),
+								  *UCataclysmForge::AffixNameOf(Done.ToRow, AffixTable), Done.Tier, Done.Affix + 1,
+								  *UCataclysmGems::RarityName(Done.ToRarity), *Cost);
+			break;
+		}
 		case ECataclysmForgeResult::Refused:
 		default:
 			Message = Said;

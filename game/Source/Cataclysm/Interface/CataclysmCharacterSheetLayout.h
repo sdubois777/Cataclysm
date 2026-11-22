@@ -7,6 +7,8 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmCharacterSheetLayout.generated.h"
 
+struct FCataclysmPowerBreakdown;
+
 class UAbilitySystemComponent;
 
 /**
@@ -127,6 +129,17 @@ public:
 	 * not lines of the stat list, whose 46 the model pins.
 	 */
 	static FString KillsLine(int32 RunKills, int32 LifetimeKills);
+
+	/** The player's Power Score on the sheet's status line: "Power Score 4,745". Issue #2824. */
+	static FString PowerScoreLine(int32 Score);
+
+	/**
+	 * What hovering the status line says of the score: the tier range it falls in (design section XII, from
+	 * `UCataclysmPowerScore::TierAnchors`), then each of the four terms, rounded to a whole number. "Power Score 4,745,
+	 * in tier 7's range of 4,058 to 5,120." -- or "above tier 8's range, which ends at 6,327." -- then "From level:
+	 * 633", "From gear: 2,950", "From gems: 1,000", "From resistances: 162". Issue #2824.
+	 */
+	static FString PowerScoreTooltip(const FCataclysmPowerBreakdown& Breakdown);
 
 	/**
 	 * Worn Residue against the Consumption Threshold of the tier being played, as the sheet's status line shows it:

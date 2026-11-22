@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Empire/CataclysmSurge.h"
 #include "Player/CataclysmGameMode.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -305,4 +308,59 @@ double UCataclysmEnemyScore::StrengthScoreFor(const FCataclysmScoredFloor& Floor
 	const double Least = static_cast<double>(ScoreFor(Reference, RarityStep)) - Relief;
 
 	return FMath::Max(0.0, FMath::Max(Here, Least));
+}
+
+int32 UCataclysmEnemyScore::MiddleFloorOf(int32 TotalFloors)
+{
+	return FMath::Max(1, FMath::CeilToInt(FMath::Max(1, TotalFloors) / 2.0));
+}
+
+int32 UCataclysmEnemyScore::DungeonScoreFor(const FCataclysmScoredFloor& Floor)
+{
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	if (Rarities == nullptr)
+	{
+		return 0;
+	}
+	FCataclysmScoredFloor Middle = Floor;
+	Middle.FloorNumber = MiddleFloorOf(Floor.TotalFloors);
+
+	// AS THE MODEL SUMS IT: each rarity's rounded score times its weight, from Common up, in doubles.
+	double Sum = 0.0;
+	for (int32 Step = 0; Step < RarityStepCount; ++Step)
+	{
+		const double Weight =
+			FMath::RoundToDouble(static_cast<double>(UCataclysmEnemyRarity::SpawnWeightForStep(Rarities, Step)) * 10000.0)
+			/ 10000.0;
+		if (Weight > 0.0)
+		{
+			Sum += static_cast<double>(ScoreFor(Middle, Step)) * Weight;
+		}
+	}
+	// HALF UP, the model's `_js_round`, as `ScoreFor` rounds its own.
+	return static_cast<int32>(FMath::FloorToDouble(Sum + 0.5));
+}
+
+bool UCataclysmEnemyScore::FloorOfDungeon(const UCataclysmEmpireRun* Run, int32 DungeonId, FCataclysmScoredFloor& Out)
+{
+	const FCataclysmDungeon* Dungeon = Run != nullptr ? Run->FindDungeon(DungeonId) : nullptr;
+	if (Dungeon == nullptr)
+	{
+		return false;
+	}
+	Out = FCataclysmScoredFloor();
+	Out.DifficultyTier = Run->DifficultyTier;
+	Out.Type = Dungeon->Type;
+	Out.SubType = Dungeon->SubType;
+	Out.TotalFloors = FMath::Max(1, Dungeon->Floors);
+	Out.FloorNumber = MiddleFloorOf(Out.TotalFloors);
+	Out.ModifierScore = Run->ModifierScoreCarriedBy(DungeonId);
+	Out.CityTier = Dungeon->CityTier;
+	return true;
+}
+
+int32 UCataclysmEnemyScore::DungeonScoreOf(const UCataclysmEmpireRun* Run, int32 DungeonId)
+{
+	FCataclysmScoredFloor Floor;
+	return FloorOfDungeon(Run, DungeonId, Floor) ? DungeonScoreFor(Floor) : INDEX_NONE;
 }
