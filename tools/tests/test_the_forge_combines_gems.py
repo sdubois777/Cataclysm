@@ -2,13 +2,13 @@
 
 WHY THIS EXISTS. Issue #46, slice G6. The coordinating session ruled on 2026-11-21 that two gems combine into one of
 the next rarity as stones do (the design's "Gems are upgraded by combining lower-tier gems", and issue #46's "same as
-gear"), that it costs no day because it changes no item, and that combining is capped by the difficulty tier: the
-gems' drop rate is one share at every tier, so a low tier drops far more than its ceiling needs, and how high a gem's
-rarity can be pushed is where its power comes from. `Cataclysm.GemCombine.`
+gear"). The owner ruled the same day that it works as gear levelling: "I don't think I want to cap what players can
+level their stuff to", so there is no cap by the difficulty tier, and it costs what the stone combine costs, which is
+no day, no residue and no gold. `Cataclysm.GemCombine.`
 (`game/Source/Cataclysm/Tests/CataclysmGemCombineTests.cpp`) tests what the craft does; this checks its shape:
 
-  1. a combine takes two, as a stone combine does;
-  2. the cap is the highest rarity that drops at full weight at the tier, read from the tier being played;
+  1. a combine takes the stone combine's own count, read from it;
+  2. no tier and no ceiling enter the rule or the craft;
   3. the craft passes no day, adds no residue, refuses during a walk, says its PLAY LOOP line, saves, and puts the two
      back when the made gem has nowhere to go;
   4. the screen does it on one press, as a stone combine.
@@ -57,26 +57,24 @@ def constant(name: str) -> int:
     return int(found.group(1))
 
 
-def test_a_gem_combine_takes_two_as_a_stone_combine_does() -> None:
-    assert constant("GemsPerCombine") == constant("StonesPerCombine") == 2, (
-        "two gems make one of the next rarity, as two stones make one of the next level ('same as gear')")
+def test_a_gem_combine_takes_the_stone_combines_count_read_from_it() -> None:
+    assert "static constexpr int32 GemsPerCombine = StonesPerCombine;" in code(FORGE_H), (
+        "the gem combine's count is no longer read from the stone combine's, so the two can drift apart")
+    assert constant("StonesPerCombine") == 2, "the stone combine no longer takes two"
 
 
-def test_the_cap_is_the_tiers_full_weight_rarity_and_is_checked() -> None:
-    ceiling = squeeze(body(code(FORGE_CPP), "ECataclysmRarity UCataclysmForge::GemCombineCeiling(", FORGE_CPP.name))
-    assert "return UCataclysmDropRoll::HighestUnpenalisedRarity(DifficultyTier);" in ceiling, (
-        "the gem combine's cap is no longer the highest rarity that drops at full weight at the tier")
+def test_no_tier_and_no_ceiling_enter_the_rule_or_the_craft() -> None:
     rule = squeeze(body(code(FORGE_CPP), "FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(", FORGE_CPP.name))
-    assert "Out.Ceiling = GemCombineCeiling(DifficultyTier);" in rule, "GemCombineOf does not ask the cap"
-    assert "if (static_cast<uint8>(Out.Into) > static_cast<uint8>(Out.Ceiling))" in rule, (
-        "GemCombineOf does not refuse a rarity above the cap")
+    craft = squeeze(body(code(CRAFT_CPP), "bool UCataclysmForgeCraft::CombineGems(", CRAFT_CPP.name))
+    for where, text in (("GemCombineOf", rule), ("CombineGems", craft)):
+        for word in ("DifficultyTier", "Ceiling", "HighestUnpenalisedRarity"):
+            assert word not in text, (
+                f"{where} reads {word}; the owner ruled on 2026-11-21 that combining is not capped by the tier")
 
 
 def test_the_craft_passes_no_day_logs_saves_and_puts_back() -> None:
     craft = squeeze(body(code(CRAFT_CPP), "bool UCataclysmForgeCraft::CombineGems(", CRAFT_CPP.name))
     assert craft.find("OutReason = RefusalNow(WorldContext);") != -1, "CombineGems does not refuse during a walk"
-    assert "ACataclysmGameMode::DifficultyTierIn(WorldContext)" in craft, (
-        "CombineGems does not read the tier being played, so the cap would not follow it")
     for absent in ("AdvanceDays(", "Residue"):
         assert absent not in craft, f"CombineGems uses {absent}; a gem combine changes no item and costs no day"
     assert "FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeGemCombineLine(" in craft, (

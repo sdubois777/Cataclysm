@@ -382,9 +382,8 @@ At the forge (step 16), each gem stack the bag holds below Cataclysmic has a but
 
   `PLAY LOOP: combined two Of Rot (Everyday) into one Of Rot (Quality): 0 Everyday and 1 Quality held`
 
-- **At difficulty tier 1 a Quality gem does not combine.** Its next rarity, Superb, is above the highest rarity that
-  drops at full weight there: "At difficulty tier 1 a gem can be combined up to Quality; a Superb Of Rot is above that."
-  A higher tier allows one rung more for each tier, up to Cataclysmic at tier 7.
+- **There is no limit by difficulty tier**: two Quality gems make a Superb one at tier 1. With one gem of a kind and
+  rarity it says "Combining takes two Of Rot (Everyday); 1 held." and nothing moves.
 
 ## If a step does not show what it should
 

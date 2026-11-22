@@ -281,9 +281,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 
-	// AT THE TIER BEING PLAYED, read as every other tier gate reads it.
-	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(
-		Gem, Rarity, Inventory->CountOfGems(Gem, Rarity), ACataclysmGameMode::DifficultyTierIn(WorldContext));
+	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(Gem, Rarity, Inventory->CountOfGems(Gem, Rarity));
 	if (!Plan.bPossible)
 	{
 		OutReason = Plan.Refusal;

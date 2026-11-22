@@ -119,8 +119,8 @@ public:
 
 	/**
 	 * A combine for each carried gem stack below Cataclysmic, in cell order: "Combine two Of Life (Superb) into one Of
-	 * Life (Masterful), 3 held". A stack of one, or one whose next rarity is above the tier's ceiling, is still offered,
-	 * as a stone level with one stone is, so that pressing it says why it cannot be done.
+	 * Life (Masterful), 3 held". A stack of one is still offered, as a stone level with one stone is, so that pressing it
+	 * says why it cannot be done.
 	 */
 	static TArray<FCataclysmForgeGemCombineAction> GemCombineActionsFor(const UCataclysmInventoryComponent* Inventory);
 

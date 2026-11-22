@@ -11,7 +11,6 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmForgeLayout.h"
-#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmForge.h"
 #include "Items/CataclysmGems.h"
@@ -25,15 +24,13 @@
 #include "UObject/Package.h"
 
 /**
- * COMBINING GEMS AT THE FORGE: TWO OF A KIND AND RARITY MAKE ONE OF THE NEXT RARITY, NO DAY, UP TO THE TIER'S CEILING.
+ * COMBINING GEMS AT THE FORGE: TWO OF A KIND AND RARITY MAKE ONE OF THE NEXT RARITY, WITH NO CAP AND NO COST.
  * Issue #46, slice G6.
  *
- * Ruled by the coordinating session on 2026-11-21: two make one, as stones combine ("same as gear"); it costs no day
- * and no residue, because it changes no item; combining is capped by the difficulty tier, because how high a gem's
- * rarity can be pushed is where its power comes from. The cap is the highest rarity that drops at full weight there,
- * `UCataclysmDropRoll::HighestUnpenalisedRarity`. A world built by a test has no game mode, so the tier is 1 there,
- * and its ceiling is Quality. The scene is the one `CataclysmForgeGemsTests.cpp` builds, copied into this file's
- * namespace because the module is built in unity files.
+ * The owner ruled on 2026-11-21 that it works as the stone combine: two make one, no cap by the difficulty tier ("I
+ * don't think I want to cap what players can level their stuff to"), and the stone combine's cost, which is no day, no
+ * residue and no gold. The scene is the one `CataclysmForgeGemsTests.cpp` builds, copied into this file's namespace
+ * because the module is built in unity files.
  */
 namespace CataclysmGemCombineTest
 {
@@ -92,58 +89,53 @@ namespace CataclysmGemCombineTest
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GC1. The rule: two make one of the next rarity, up to the tier's ceiling, and every refusal.
+// GC1. The rule: two make one of the next rarity, at any rarity up to Cataclysmic, and every refusal.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemCombineRulesTest,
-	"Cataclysm.GemCombine.TwoGemsMakeOneOfTheNextRarityUpToTheTiersCeiling",
+	"Cataclysm.GemCombine.TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemCombineRulesTest::RunTest(const FString&)
 {
 	using namespace CataclysmGemCombineTest;
 
-	// THE CEILING BY TIER: the tier's own rarity and one above, Cataclysmic at the top.
-	const ECataclysmRarity Expected[] = {ECataclysmRarity::Quality, ECataclysmRarity::Superb, ECataclysmRarity::Masterful,
-										 ECataclysmRarity::Legendary, ECataclysmRarity::Mythical,
-										 ECataclysmRarity::Ascendant, ECataclysmRarity::Cataclysmic,
-										 ECataclysmRarity::Cataclysmic};
-	FString Ceilings;
-	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	// EVERY RARITY BELOW CATACLYSMIC MAKES THE NEXT, with two held: no tier enters the rule.
+	FString Combines;
+	for (uint8 Rung = 0; Rung < static_cast<uint8>(ECataclysmRarity::Cataclysmic); ++Rung)
 	{
-		const ECataclysmRarity Ceiling = UCataclysmForge::GemCombineCeiling(Tier);
-		Ceilings += FString::Printf(TEXT(" %d %s;"), Tier, *UCataclysmGems::RarityName(Ceiling));
-		TestTrue(FString::Printf(TEXT("tier %d's ceiling is the rarity that drops there at full weight"), Tier),
-				 Ceiling == Expected[Tier - 1] && Ceiling == UCataclysmDropRoll::HighestUnpenalisedRarity(Tier));
+		const FCataclysmForgeGemCombine Each =
+			UCataclysmForge::GemCombineOf(Life, static_cast<ECataclysmRarity>(Rung), 2);
+		Combines += FString::Printf(TEXT(" %s to %s;"), *UCataclysmGems::RarityName(Each.From),
+								 *UCataclysmGems::RarityName(Each.Into));
+		TestTrue(FString::Printf(TEXT("two %s Of Life make the next rarity"),
+								 *UCataclysmGems::RarityName(static_cast<ECataclysmRarity>(Rung))),
+				 Each.bPossible && static_cast<uint8>(Each.Into) == Rung + 1);
 	}
-	AddInfo(FString::Printf(TEXT("GEM COMBINE CEILINGS:%s"), *Ceilings));
+	AddInfo(FString::Printf(TEXT("GEM COMBINES:%s"), *Combines));
+	TestEqual(TEXT("a combine takes the stone combine's two"), UCataclysmForge::GemsPerCombine,
+			  UCataclysmForge::StonesPerCombine);
 
-	const FCataclysmForgeGemCombine Made = UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 2, 1);
-	TestTrue(TEXT("two Everyday Of Life combine at tier 1"), Made.bPossible);
+	const FCataclysmForgeGemCombine Made = UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 2);
+	TestTrue(TEXT("two Everyday Of Life combine"), Made.bPossible);
 	TestTrue(TEXT("into a Quality one"), Made.Into == ECataclysmRarity::Quality);
 	TestEqual(TEXT("taking two"), Made.GemsNeeded, 2);
 
-	TestEqual(TEXT("one held is refused"), UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 1, 1).Refusal,
+	TestEqual(TEXT("one held is refused"), UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 1).Refusal,
 			  FString(TEXT("Combining takes two Of Life (Everyday); 1 held.")));
-	TestEqual(TEXT("above tier 1's ceiling is refused"),
-			  UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Quality, 5, 1).Refusal,
-			  FString(TEXT("At difficulty tier 1 a gem can be combined up to Quality; a Superb Of Life is above that.")));
-	TestTrue(TEXT("the same combine at tier 2, whose ceiling is Superb, is not"),
-			 UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Quality, 5, 2).bPossible);
-	TestTrue(TEXT("two Ascendant make a Cataclysmic at tier 8"),
-			 UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Ascendant, 2, 8).bPossible);
 	TestEqual(TEXT("a Cataclysmic gem is the highest"),
-			  UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Cataclysmic, 4, 8).Refusal,
+			  UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Cataclysmic, 4).Refusal,
 			  FString(TEXT("A Cataclysmic gem is the highest; there is none above it to make.")));
-	TestEqual(TEXT("no gem is refused"), UCataclysmForge::GemCombineOf(NAME_None, ECataclysmRarity::Everyday, 2, 1).Refusal,
+	TestEqual(TEXT("no gem is refused"), UCataclysmForge::GemCombineOf(NAME_None, ECataclysmRarity::Everyday, 2).Refusal,
 			  FString(TEXT("There is no gem to combine.")));
 	return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GC2. The craft: two gems leave the bag, one of the next rarity joins it, no day passes; above the ceiling nothing moves.
+// GC2. The craft: two gems leave the bag, one of the next rarity joins it, no day passes, at any rarity; one held moves
+// nothing.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemCombineCraftTest,
-	"Cataclysm.GemCombine.CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDay",
+	"Cataclysm.GemCombine.CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemCombineCraftTest::RunTest(const FString&)
@@ -174,13 +166,12 @@ bool FCataclysmGemCombineCraftTest::RunTest(const FString&)
 	TestEqual(TEXT("and one Quality was made"), Scene.Bag()->CountOfGems(Life, ECataclysmRarity::Quality), 1);
 	TestEqual(TEXT("and no day passed"), Scene.Run->Day(), DayBefore);
 
-	// ABOVE TIER 1'S CEILING: two Quality Of Rot would make a Superb, so nothing moves.
-	TestFalse(TEXT("two Quality Of Rot do not combine at tier 1"),
-			  UCataclysmForgeCraft::CombineGems(Scene.World, Rot, ECataclysmRarity::Quality, Done, Reason));
-	TestEqual(TEXT("and say why"), Reason,
-			  FString(TEXT("At difficulty tier 1 a gem can be combined up to Quality; a Superb Of Rot is above that.")));
-	TestEqual(TEXT("both are still carried"), Scene.Bag()->CountOfGems(Rot, ECataclysmRarity::Quality), 2);
-	TestEqual(TEXT("and no Superb was made"), Scene.Bag()->CountOfGems(Rot, ECataclysmRarity::Superb), 0);
+	// NO CAP BY THE TIER: at tier 1, a world with no game mode, two Quality Of Rot make a Superb.
+	TestTrue(TEXT("two Quality Of Rot combine at tier 1"),
+			 UCataclysmForgeCraft::CombineGems(Scene.World, Rot, ECataclysmRarity::Quality, Done, Reason));
+	TestEqual(TEXT("both Quality are gone"), Scene.Bag()->CountOfGems(Rot, ECataclysmRarity::Quality), 0);
+	TestEqual(TEXT("and a Superb was made"), Scene.Bag()->CountOfGems(Rot, ECataclysmRarity::Superb), 1);
+	TestEqual(TEXT("and still no day passed"), Scene.Run->Day(), DayBefore);
 
 	// ONE HELD: refused, and it stays.
 	TestFalse(TEXT("the one Everyday Of Life left does not combine"),

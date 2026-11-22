@@ -77,9 +77,6 @@ struct FCataclysmForgeGemCombine
 	/** How many of the lower gem it consumes, and how many are held. */
 	int32 GemsNeeded = 0;
 	int32 GemsHeld = 0;
-
-	/** The highest rarity combining may make at the difficulty tier being played (`UCataclysmForge::GemCombineCeiling`). */
-	ECataclysmRarity Ceiling = ECataclysmRarity::Everyday;
 };
 
 /**
@@ -182,32 +179,22 @@ public:
 
 	//~ Combining gems. Issue #46, slice G6.
 
-	/** How many gems of a kind and rarity one combine consumes: two, as stones combine ("same as gear"). */
-	static constexpr int32 GemsPerCombine = 2;
+	/**
+	 * How many gems of a kind and rarity one combine consumes: the stone combine's own figure, read from it rather than
+	 * copied, since the owner ruled on 2026-11-21 that combining gems "should probably work the same way as gear
+	 * leveling".
+	 */
+	static constexpr int32 GemsPerCombine = StonesPerCombine;
 
 	/**
-	 * The highest rarity a gem may be combined up to at a difficulty tier: the highest rarity that drops there at full
-	 * weight, `UCataclysmDropRoll::HighestUnpenalisedRarity`, the tier's own rarity and one above it (Quality at tier 1,
-	 * Cataclysmic at tiers 7 and 8).
+	 * What combining two gems of `Gem` at `Rarity` into one of the next rarity takes, against those held.
 	 *
-	 * WHY A CAP, AND WHY THIS ONE. The coordinating session ruled on 2026-11-21 that gems drop at one share at every
-	 * tier, so a low tier drops far more than its ceiling needs, and that the limit belongs on combining: a count of
-	 * gems is not where their power comes from; how high a gem's rarity can be pushed is. The design's one-above is
-	 * this rung (the gems plan's D9: a gem's rarity "reaches at most one rarity above the difficulty tier"), and the game
-	 * already computes it for gear. UNLIKE THE STONES, whose combine has no cap
-	 * (`UCataclysmDropRoll::MaxUpgradeStoneOnADrop` caps their drops only), and that difference is deliberate.
+	 * REFUSED for no gem, for a Cataclysmic gem -- the highest rarity -- and for fewer than two held. NO CAP BY THE
+	 * DIFFICULTY TIER, as the stone combine has none: the owner's ruling of 2026-11-21, "I don't think I want to cap what
+	 * players can level their stuff to". AND NO DAY, NO RESIDUE AND NO GOLD, as the stone combine costs none of them: it
+	 * changes no item (the design's "Gear Leveling" paragraph), and no craft has a gold price yet.
 	 */
-	static ECataclysmRarity GemCombineCeiling(int32 DifficultyTier);
-
-	/**
-	 * What combining two gems of `Gem` at `Rarity` into one of the next rarity takes, against those held, at a
-	 * difficulty tier.
-	 *
-	 * REFUSED for no gem, for a Cataclysmic gem -- the highest rarity -- for a rarity made above the tier's ceiling, and
-	 * for fewer than two held. No day and no residue: it changes no item, as a stone combine does not.
-	 */
-	static FCataclysmForgeGemCombine GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
-												  int32 DifficultyTier);
+	static FCataclysmForgeGemCombine GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis);
 
 	/**
 	 * What the first press of Upgrade says, before the second does it: "Press again to upgrade to +3: two +3 stones,

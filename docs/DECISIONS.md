@@ -37,9 +37,12 @@ new; `tools/tests/test_gems_are_carried_in_stacks.py`, one check rewritten. Issu
   a full clear's gems are worth 1,909 Everyday gems against the 6 the reference character fills. The coordinating
   session ruled on 2026-11-21 to keep one share for every tier, as "gems follow the gear column" already ruled, and not
   to make a share per tier: the overflow at a low tier is a count of gems, and a count is not where a gem's power comes
-  from; how high its rarity can be pushed is. So the limit belongs on combining (slice G6), not on the drop rate.
-  Uncombined, the overflow is about 38 gems of each of the 28 kinds; combined without a limit, two of a rarity into one
-  of the next, they would make about one Ascendant gem of each kind at tier 1.
+  from; how high its rarity can be pushed is. Uncombined, the overflow is about 38 gems of each of the 28 kinds;
+  combined, two of a rarity into one of the next, they make about one Ascendant gem of each kind at tier 1. **THIS
+  ENTRY ONCE SAID THE LIMIT WOULD BE A CAP ON COMBINING; THE OWNER RULED AGAINST A CAP** the same day (slice G6's entry
+  has the words): combining works as the stone combine, with no cap. The owner also said crafting material drops are
+  far too high, which goes to the gold session as its own change; this rate stays until then, and follows that change
+  if it lowers a factor gems also read.
 
 ### The measurement, and what in it is derived
 
