@@ -9,8 +9,8 @@ the coordinating session ruled on 2026-11-22. Branch `feat/gems-window-46`.
 
 **Uncertain or not yet shown, first:**
 
-- **NOTHING HERE HAS RUN IN THE ENGINE YET.** The branch compiled; the window's registration is below, and its results
-  are recorded after it, not before.
+- **WINDOW gems-w2 PASSED at `868df83d3`**, after gems-w1 failed on one of #2832's tests and one of this branch's
+  Python checks; both are below.
 - **THE DECISIONS LOG'S ORDER BY DATE COULD NOT BE KEPT EXACTLY.** Development's 15 entries since this branch's base
   are not in date order themselves, and for 11 of them the only commit that holds them is the squash merge, so the
   author date of the branch commit that first wrote each is not in git. The seven gem entries were put above
@@ -155,6 +155,65 @@ the two files `80f827ddf` changed.
 three tests in `CataclysmCityUpgradeSpeedTests.cpp` took a pointer into the temporary list `OffersFor` returns and read
 it after the list was freed. `d69c46313` keeps the list in a local in those three tests and changes nothing else;
 #2832's commit stays as it was. The registration for window gems-w2 is unchanged.
+
+### Window gems-w2, 2026-11-22, at `868df83d3`: PASSED
+
+- **Groups alone: 51 of 51 passed**, each performing at least one test and every one succeeding:
+  GemStats 3, GemStacks 5, ItemSockets 4, ForgeGems 4, GemDrops 4, GemCombine 3, ForgeCosts 3, GemSave 2,
+  CityUpgradeSpeed 8, Forge 8, ForgeScreen 4, PlayLoop 12, Drop 30, DropRoll 1, DropPickup 20, Item 13, Gold 13,
+  Inventory 11, InventoryScreen 7, Tooltip 18, ExtraDamageTypes 6, Data 7, SaveRecords 17, SaveLoad 81, SaveApply
+  24, CataclysmDraw 6, CityUpgradeBuildSave 2, ConsumptionDouble 15, ConsumptionMark 6, DeathCost 9, EarnedBossSave
+  3, EmpireTreeClearGold 9, EmpireTreeCredit 8, EmpireTreeDrops 13, EmpireTreeEvents 14, EmpireTree 24,
+  EmpireTreeProwess 6, Seeding 3, SkillLevels 13, WalkSeed 5, WinningTheRun 11, CityUpgradePrice 7, CityScreen 19,
+  CityDungeonRewards 5, CityUpgradeBuild 4, CityUpgrade 15, EmpireTreeGold 6, EmpireTreeCity 17, EmpireTreeScreen
+  10, EmpireRun 71, DungeonModifierEffects 777.
+- **The whole suite**: "5204 tests performed, 5204 succeeded, 0 failed"; 57 skipped halves; "860 written and deleted, 0
+  left behind"; Declared 5204, gap 0. Each as registered.
+- **Python beside it**: "8074 passed, 10 skipped", JUnit 8084 tests, 0 failures, 0 errors; ruff clean.
+- **C++ guard proofs: 30 of 30 PROVED**, each failing with its break in and passing with it out, the source hash the same
+  across each. Named failures, short names:
+
+| Proof | Named failures |
+| :-- | :-- |
+| K1 | AGemsSheetValueAtEachRarityIsItsColumn |
+| K2 | AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease |
+| K3 | AGemThatNamesNoStatOrKindOrValueAddsNothing |
+| K4 | AFullBagRefusesANewGemAndStillStacksACarriedOne, GemsStackByGemAndRarity |
+| K6 | AGemStacksCellAndTooltipNameItsRarityEffectAndSocket |
+| K7 | ASocketsTypeIsRolledEvenlyAndNeverAny |
+| K8 | AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem |
+| K9 | AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem |
+| K10 | AnItemsSocketLinesNameEachTypeAndGem |
+| K11 | SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay |
+| K12 | SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay |
+| K13 | UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves |
+| K14 | TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne |
+| K15 | AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack, TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt |
+| K16 | AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity |
+| K17 | AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack |
+| K18 | AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor |
+| K19 | CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap, TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic |
+| K20 | CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap |
+| K21 | TheScreenOffersACombineForEachGemStackBelowCataclysmic |
+| K22 | ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung, ACraftTakesItsGoldAndWithTooLittleNothingMoves, TheScreenSaysTheGoldAndTheDaysOfTheLevelReached |
+| K23 | ACraftTakesItsGoldAndWithTooLittleNothingMoves |
+| K24 | TheScreenSaysTheGoldAndTheDaysOfTheLevelReached |
+| GP1 | ACharacterFileFromVersion12HasEachSocketCountAsThatManyEmptySocketsOfAnyType |
+| GP2 | ARunFileFromVersion13LoadsWithSocketListsAndNoGemOnTheFloor |
+| GK5 | AGemRaisingAStatNoClassHasSaysItNeedsGearAndOthersDoNot |
+| S1 | ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays |
+| S2 | TheDaysAreDoubledThenShortenedThenHeldAtOne |
+| S3 | ARushWithoutRapidFundingIsRefusedAndTakesNothing |
+| S4 | ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed |
+
+**THE REGISTRATION ABOVE SAID "EACH PREDICTING ONE NAMED FAILURE", AND FOUR NAMED MORE**: K4 two, as G2's own entry
+registered; K15 two, K19 two and K22 three. Each predicted test is among those named, and the extra ones are tests in the
+same group that read the same broken value (K22's rounded multiplier reaches every price the group checks). It is
+recorded here rather than written into the registration after the fact.
+
+**THE BLANK LINE BELOW THE W1 RECORD**, missing at `868df83d3`, is added in this commit: without it the paragraph above
+the entry's `---` rendered as a heading. The coordinating session found it; the design-log checks passed either way.
+
 ---
 
 ## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
