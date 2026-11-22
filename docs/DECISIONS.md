@@ -198,14 +198,15 @@ and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, changed. Issue
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** The six new Unreal tests were written without a build. Slice 8 goes through a
-  later window than slices 6d, 6e and 7.
+- **NOT COMPILED OR RUN IN UNREAL YET.** The six new Unreal tests were written without a build. **SLICE 8 JOINS THE
+  WINDOW OF SLICES 6D, 6E AND 7 AND #1130**, as the coordinating session ruled on 2026-11-21 after accepting it at
+  `c0e3ec642`: the window tests this branch, with S1 to S6 added to its proofs.
 - **TWO SAVE RECORDS MOVE AGAIN: THE ACCOUNT RECORD TO VERSION 6 AND THE CHARACTER RECORD TO VERSION 12.** An older build
   refuses a save this build writes. Older saves load holding no extra option.
-- **THE CHARACTER RECORD'S NUMBER IS THE NEXT FREE ONE, NOT A FIXED 12.** Gems slice G2 also moves the character record
-  from 11 to 12. Whichever of the two merges second takes the number after the other's and re-registers, so 12 is
-  written only into the migration, its fixtures and the fixture helper's name; every test reads
-  `UCataclysmCharacterSave::SchemaVersionNow`.
+- **THE CHARACTER RECORD TAKES 12 AND GEMS SLICE G2 TAKES 13.** G2 also moves the character record; the coordinating
+  session ruled that slice 8, in the earlier window, takes 12 and G2, merging after, 13. 12 is still written only into
+  the migration, its fixtures and the fixture helper's name, and every test reads
+  `UCataclysmCharacterSave::SchemaVersionNow`, so a later move renames three things and edits no test.
 - **WITH THIS SLICE, 107 OF THE TREE'S 167 NODES AND OPTIONS ACT.** Imperial Prowess was the only option refused for
   a ruling not made; the reason "prowess ruling" is gone.
 
@@ -239,7 +240,7 @@ in `tools/tests/test_empire_tree_prowess.py` holds both halves, so a threshold g
 
 - **Saved.** `FCataclysmPassiveAllocation` holds one pair, `ExtraOptionNode` and `ExtraOption`: the milestone holding the
   extra option and which option it is, None and 0 for none. **ONE PAIR ON THE ALLOCATION, NOT A FIELD ON EACH NODE AS THE
-  PLAN SAID**, because J2 is one extra pick in total, which one pair states and a field per node would only allow; and a
+  PLAN SAID**, accepted by the coordinating session at `c0e3ec642`, because J2 is one extra pick in total, which one pair states and a field per node would only allow; and a
   migration then writes two keys into each allocation instead of one into every node. The account record's `EmpireTree`
   and the character record's three allocations (`PassiveAllocation`, `ConsumptionBuild.PassiveAllocation`,
   `PrivateEmpireTree`) carry it, because they share the struct; only an empire tree uses it.
@@ -361,8 +362,9 @@ and `tools/tests/test_empire_tree_treasury_and_tax.py`, changed. Issue
 - **WITH THIS SLICE, 106 OF THE TREE'S 167 NODES AND OPTIONS ACT**, and no node waits on a Treasurer city upgrade. It is
   the last slice of #2741 that needs no new system: the 61 left wait on crafting, a market, a gold cap, a stash, a loot
   chest, rerolls, a loot filter, a destroy action, or a ruling or a figure the design does not give.
-- **WHICH WINDOW IS NOT DECIDED.** The coordinating session said slice 7 may join the slices 6d and 6e window, which
-  already carries #1130, and that it is asked first. Its registration is written when that is answered.
+- **SLICE 7 JOINS THE WINDOW OF SLICES 6D AND 6E AND #1130**, the coordinating session ruled on 2026-11-21, with its
+  seven C++ proofs, K1 to K7; slice 8 joined the same window afterwards. The registration for the whole window is
+  written at its turn, from the newest measured window.
 
 ### The texts
 
