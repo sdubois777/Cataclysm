@@ -201,5 +201,8 @@ def test_the_part_a_day_is_rounded_up_and_an_offer_on_credit_says_so_only_when_s
     assert re.search(r"\(Owed \+ Days - 1\) / Days", part), "Sovereign Loans' part a day is not rounded up (D4)"
     button = body(code(LAYOUT), "FString UCataclysmCityScreenLayout::ButtonTextFor(", "CataclysmCityScreenLayout.cpp")
     branch = button[:button.index('TEXT("%s  --  %s on credit, %s owed")')]
-    assert re.search(r"if \(Offer\.OwedIfBought > 0\)\s*\{\s*return FString::Printf\(\s*$", branch), (
+    # THE TEXT IS MADE INSIDE THE BRANCH, then the days to build added to it, since issue #2825 merged with 6e.
+    assert re.search(r"if \(Offer\.OwedIfBought > 0\)\s*\{\s*const FString OnCredit = FString::Printf\(\s*$", branch), (
         "the city screen's button says an offer is on credit other than when it would leave something owed (D6)")
+    assert 'return Days.IsEmpty() ? OnCredit : FString::Printf(TEXT("%s, %s"), *OnCredit, *Days);' in button, (
+        "an offer on credit leaves out the days it takes to build, which every other priced offer states (#2825)")
