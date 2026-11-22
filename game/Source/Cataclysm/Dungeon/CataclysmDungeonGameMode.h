@@ -9,6 +9,7 @@
 #include "Dungeon/CataclysmFloorObstacle.h"
 #include "Dungeon/CataclysmFloorPlan.h"
 #include "Dungeon/CataclysmFloorPopulation.h"
+#include "Dungeon/CataclysmPowerGapRewards.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Templates/SubclassOf.h"
@@ -924,6 +925,32 @@ public:
 
 	/** The same, for a kill in this world: what `ACataclysmEnemyCharacter::HandleDeath` asks. Issue #2781. */
 	static FCataclysmCityDungeonRewards CityRewardsIn(UWorld* World);
+
+	/**
+	 * What a kill here is multiplied by for the gap between the walked dungeon's score and the player's (`FCataclysmPower
+	 * GapRule`). Issue #2824, slice c. The dungeon's is the floor panel's: `UCataclysmEnemyScore::DungeonScoreFor` of
+	 * this floor at this world's difficulty tier; the player's is `UCataclysmPowerScore::LiveScoreOf` the first player
+	 * controller's pawn. NOTHING (both 1) WITH NO DUNGEON BOUND OR NOBODY PLAYING, so a kill in the sandbox, or in a
+	 * test world with no player, pays what it did.
+	 */
+	FCataclysmPowerGapRewards PowerGapRewardsHere() const;
+
+	/** The same, for a kill in this world: what `ACataclysmEnemyCharacter::HandleDeath` asks. Issue #2824. */
+	static FCataclysmPowerGapRewards PowerGapRewardsIn(UWorld* World);
+
+	/**
+	 * The two scores `PowerGapRewardsHere` and `FloorScoreLineHere` both read, from this one place so the factor a kill
+	 * pays is the factor the panel shows: the walked floor's Dungeon Score, the player's live Power Score (`INDEX_NONE`
+	 * with nobody playing) and this world's difficulty tier. False, the outputs unchanged, with no dungeon bound.
+	 */
+	bool GapScoresHere(int32& OutDungeonScore, int32& OutPlayerScore, int32& OutDifficultyTier) const;
+
+	/**
+	 * The floor panel's first line while an empire dungeon is walked: "Dungeon Score 2,009; your Power Score 1,100." and
+	 * what a kill here pays for the gap between them, "Rewards: experience 5%, loot 25%.". Empty with no dungeon bound.
+	 * Issue #2824, slices a and c.
+	 */
+	FString FloorScoreLineHere() const;
 
 	/**
 	 * What the empire upgrade tree pays at the clear of the bound dungeon, worked out now (`UCataclysmEmpireTree::

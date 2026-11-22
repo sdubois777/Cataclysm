@@ -352,7 +352,8 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	AddRow(UCataclysmCityScreenLayout::DungeonHeading(Dungeons.Num()),
 		   /* bIsHeading */ true, /* bDim */ false);
 
-	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, above its Walk button, since issue #2824.
+	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, above its Walk button, since issue #2824;
+	// AND WHAT A KILL THERE PAYS FOR THE GAP BETWEEN THEM, on the same line, since slice c.
 	const int32 PlayerScore = UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(GetOwningPlayerPawn()));
 	for (int32 Index = 0; Index < Dungeons.Num(); ++Index)
 	{
@@ -360,7 +361,7 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 
 		if (DungeonIds.IsValidIndex(Index))
 		{
-			AddRow(UCataclysmEmpireMapLayout::DungeonScoreLine(Run, DungeonIds[Index], PlayerScore),
+			AddRow(UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, DungeonIds[Index], PlayerScore),
 				   /* bIsHeading */ false, /* bDim */ true);
 			AddWalkButton(DungeonIds[Index]);
 			AddBribeButton(DungeonIds[Index]); // While Bribery is held (issue #2741 slice 9, V14).

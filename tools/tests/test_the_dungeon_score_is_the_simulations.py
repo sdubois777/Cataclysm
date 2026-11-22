@@ -102,8 +102,17 @@ def test_every_screen_that_offers_a_dungeon_shows_both_scores() -> None:
     for widget in ("CataclysmEmpireMapWidget.cpp", "CataclysmCityScreenWidget.cpp"):
         text = flat(code(interface / widget))
         assert "UCataclysmPowerScore::LiveScoreOf(" in text, widget
-        assert "UCataclysmEmpireMapLayout::DungeonScoreLine(Run, " in text, widget
-    walked = body(code(SOURCE / "Dungeon" / "CataclysmDungeonGameMode.cpp"),
-                  "void ACataclysmDungeonGameMode::RefreshFloorModifierPanel(")
-    assert "UCataclysmEnemyScore::DungeonScoreFor(" in walked
+        # Since #2824 slice c through `DungeonScoreAndRewardsLine`, which is `DungeonScoreLine` with the rewards after it;
+        # `tools/tests/test_power_gap_rewards_port.py` checks that it begins with `DungeonScoreLine`.
+        assert "UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, " in text, widget
+    mode = code(SOURCE / "Dungeon" / "CataclysmDungeonGameMode.cpp")
+    walked = body(mode, "void ACataclysmDungeonGameMode::RefreshFloorModifierPanel(")
+    # Since #2824 slice c the panel's line is `FloorScoreLineHere`'s, and the two scores are `GapScoresHere`'s, which a
+    # kill's factor reads too.
+    assert "FloorScoreLineHere()" in walked
     assert "LiveCountsForTheFloor(), ScoreLine)" in walked
+    scores = body(mode, "bool ACataclysmDungeonGameMode::GapScoresHere(")
+    assert "UCataclysmEnemyScore::DungeonScoreFor(" in scores
+    assert "UCataclysmPowerScore::LiveScoreOf(" in scores
+    line = body(mode, "FString ACataclysmDungeonGameMode::FloorScoreLineHere(")
+    assert "GapScoresHere(" in line and "UCataclysmEmpireMapLayout::DungeonScoreText(" in line

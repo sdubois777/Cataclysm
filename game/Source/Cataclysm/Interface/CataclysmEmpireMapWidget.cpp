@@ -649,7 +649,8 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 	// ITS SUB-TYPE, AND A QUEST DUNGEON AS ONE, since issue #2800: "Elite Quest
 	// dungeon of 22 floors, 7 days left". The words are
 	// `UCataclysmEmpireMapLayout::CityDetailDungeonLine`'s, so a test reads them.
-	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, since issue #2824.
+	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, since issue #2824;
+	// AND WHAT A KILL THERE PAYS FOR THE GAP BETWEEN THEM, on the same line, since slice c.
 	const int32 PlayerScore = UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(GetOwningPlayerPawn()));
 	for (const int32 DungeonId : Run->DungeonsOn(CityId))
 	{
@@ -657,7 +658,7 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 		if (!Line.IsEmpty())
 		{
 			Parts.Add(Line);
-			Parts.Add(UCataclysmEmpireMapLayout::DungeonScoreLine(Run, DungeonId, PlayerScore));
+			Parts.Add(UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, DungeonId, PlayerScore));
 		}
 	}
 
