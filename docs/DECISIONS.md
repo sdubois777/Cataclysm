@@ -16,8 +16,10 @@ one new test; `tools/tests/test_ai_first_think_is_counted_per_world.py`, new. Is
   break was to make one count for every world. It made a count that never advances: `TObjectKey<UWorld>(nullptr)`
   resolves to no object, so the loop above it removes that entry as a world that is gone on every call, and every
   creature took the count 0. So "world B's first creature takes the count 0" passed, which was predicted to fail always,
-  and a second test failed, which was not predicted. That a process-wide count fails the new test is still argued from
-  the code and not shown by a run. See "Window ai-think-w1" below.
+  and a second test failed, which was not predicted. See "Window ai-think-w1" below.
+- **C1b, A PROOF-ONLY RUN RULED TO TEST WHAT C1 DID NOT, PROVED AS PREDICTED.** With one count for the whole process,
+  the shape of the code before #2827, the new test fails and the group's other 52 pass; restored, 53 of 53. See "C1b"
+  below.
 - **THE WINDOW PASSED EVERYTHING ELSE.** Window ai-think-w1, 2026-11-22, at `bc065ebc6` on development `d684a3d0e`: the
   whole Unreal suite 5144 of 5144, and no test moved, so #2827 has no candidates.
 - **EVERY TEST THAT POSSESSES AN ENEMY NOW GETS THE FIRST-THINK TIMES IT GETS WHEN IT IS THE FIRST TO RUN IN A FRESH
@@ -144,6 +146,24 @@ ruling.
   three as well unless no earlier test in the group possessed a creature. Every other test in the group passes, because
   the spread holds from any starting count. So 52 of 53 succeed.
 - **Predicted, restored half:** 53 performed, 53 succeeded, 0 failed.
+
+### C1b, run 2026-11-22: PROVED, as predicted
+
+At `368425ab9`, whose `game/` is the window's tree `027ac8b1d`, lock ai-think-c1b, the pre-checks passed twice (free
+memory 10360 and 10375 MB). By `unreal_build.prove_cpp_guard`, prefix `Cataclysm.AI.`; the source hash was the same
+before and after (`e64699450d19d6ee`).
+
+- **Broken half:** 53 performed, 52 succeeded, 1 failed: `ACreaturesFirstThinkDependsOnlyOnItsOwnWorld`, on all five of
+  its assertions, the two predicted always among them: "world B's first creature takes the count 0, whatever world A
+  possessed" (0.151220, not 0.250000) and "and world A's fourth goes on from its own count, 3" (0.246711, not 0.036475);
+  and world A's first three (0.114745, 0.210237 and 0.055728, not 0.250000, 0.095492 and 0.190983), because earlier
+  tests in the group had possessed creatures, which the prediction allowed for. Its line: "PER WORLD: world A's first
+  passes 0.1147, 0.2102, 0.0557 and 0.2467; world B's first 0.1512".
+- **Restored half:** 53 performed, 53 succeeded, 0 failed.
+- **Every other test in the group passed with the break in**, `CreaturesPossessedInTheSameFrameDoNotAllThinkInTheSameFrame`
+  among them: one count for the whole process still spreads a wave, which is why the old code passed it.
+
+So the claim in "Tests" above, that the new test fails on the old code whatever ran before it, is now shown by a run.
 
 ---
 
