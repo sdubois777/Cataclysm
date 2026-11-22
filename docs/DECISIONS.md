@@ -6,8 +6,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Uncertain or not yet shown, first:**
 
-- **NOTHING HERE HAS RUN IN THE ENGINE YET.** The branch compiled (below); the window's results are recorded after it,
-  not before.
+- **WINDOW shared-w1 PASSED at `17c735d24`**, on its first run: every group at its count, the whole suite at 5244,
+  Python, ruff, and 18 of 18 C++ proofs, each failing exactly the tests its prediction named. The results are below.
 - **THE DECISIONS LOG'S ENTRIES WERE PLACED BY DATE BY HAND.** `tools/resolve_decisions_log.py resolve` orders the two
   sides of a conflict as whole blocks, and here the incoming entries belonged between entries already on
   `development`. `.claude/windows/place_entry_by_date.py` placed each one, keeping every entry byte for byte. The
@@ -68,6 +68,48 @@ the diff: `CityCleanse.` 3 and `CityCleanseSave.` 1 (#2838), `CityUpgradeRaise.`
 
 **Python guard proofs are each branch's own and proved before the window**: #2838's and #1265's in their entries,
 PG1 to PG8 (G10), PS1 to PS8 (G9). None is run again.
+
+
+### Window shared-w1, 2026-11-22, at `17c735d24`: PASSED
+
+| What | Registered | Measured |
+| :-- | :-- | :-- |
+| One build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| Groups alone | 50, 1024 tests, each at its count | 50 of 50, each performed and succeeded at exactly its count, none failed |
+| Whole suite | 5244 | "5244 tests performed, 5244 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5244 | "5244 tests in the tree at 17c735d24; 5244 performed, gap 0" |
+| Python, beside it | every test passing | "8123 passed, 10 skipped"; JUnit 8133, 0 failures, 0 errors, 10 skipped |
+| ruff | clean | "All checks passed!" |
+
+**C++ guard proofs: 18 of 18 PROVED**, each through `unreal_build.prove_cpp_guard`, the anchor matching once and the
+source hash the same before and after. Each failed exactly the tests its branch predicted, short names:
+
+| Proof | Named failures |
+| :-- | :-- |
+| C1 | EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds |
+| C2 | EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds, ItIsOfferedFromDifficultyTierThreeAndOnceARun, WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt |
+| C3 | WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt |
+| D1 | ARaisedMaximumActsAtItsOldTierUntilItsBuildIsFinishedAndKeepsAFullCityFull |
+| D2 | ASpentOneTimeUpgradeFiresAgainAtTheNewTiersFullFigure |
+| D3 | ARaisedIntervalKeepsARepairThatWasDueAndShortensOneThatWasNot |
+| D4 | EveryRefusalSaysWhichOneItIs |
+| GP1 | AWeaponWhoseSocketsFitAnyGemTakesAnOffTypeGemAtTheForge, BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| GP2 | BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt, LessEffectiveHalvesEachGemInItsOwnPieceOnly |
+| GP3 | AGemTheEnchantmentLetInStopsActingWhenItIsReplaced, BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| GP4 | TheSocketLinesSayWhatFitsAndWhatActs |
+| GP5 | BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| FS1 | AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold |
+| FS2 | AnAddedSocketsTypeIsRolledEvenlyAndTheSameForTheSameRunDayAndItem |
+| FS3 | AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold, AnItemAtItsSlotsMaximumIsRefusedAndATwoHanderReachesSix |
+| FS4 | ChangingASocketsTypeTakesAFocusingLens10ResidueTwoDaysAndItsGold |
+| FS5 | AChangeIsRefusedForAFullSocketItsOwnTypeAndAnAnySocket |
+| FS6 | TheScreenOffersAnAddBelowTheMaximumAndAChangeToEachOtherTypeOfAnEmptySocket |
+
+FS2 passing confirms that the C++ `ItemSeedText`, `FCrc::StrCrc32`, `CataclysmSeedMix::Mix` and `FRandomStream` give
+exactly the figures the Python copy computed: seed 1581167466, the fixed pair Attack and Utility, and Attack 1075,
+Defense 966, Utility 959 over 3000 days. The lock was released when the run ended.
 
 ---
 
