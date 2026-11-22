@@ -1324,6 +1324,22 @@ public:
 	 */
 	bool AddUpgrade(int32 CityId, const FCataclysmCityUpgrade& Upgrade);
 
+	/**
+	 * Raises an upgrade the city holds to the tier `Raised` carries, in place, on the day its raise is finished. Issue
+	 * #1265, the coordinating session's rulings of 2026-11-22:
+	 *   - its tier, value and interval become the new tier's; the day it was first finished is KEPT, so Enduring
+	 *     Foundations goes on counting from it;
+	 *   - a raised maximum (Q11, derived): the maximum becomes its base times one plus the new value in place of one
+	 *     plus the old, and what the city holds rises by what the maximum with the tree rose by, as a purchase does;
+	 *   - a one-time restore fires again at the new tier's full figure (Q9, a judgement);
+	 *   - an interval upgrade's next trigger is the sooner of the one already set and the finishing day plus the new
+	 *     interval (Q10, a judgement), so a raise never delays a repair that was due.
+	 * Removing dungeons is the run's, as for a purchase.
+	 *
+	 * @return false when there is no such city or it does not hold that row.
+	 */
+	bool RaiseUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised, int32 Day);
+
 	/** How many upgrade slots that city has left, or zero if it does not
 	 *  exist. AN UPGRADE BEING BUILT HAS TAKEN ITS SLOT, since issue #2825. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
@@ -1338,6 +1354,13 @@ public:
 	 * @return false only when there is no such city.
 	 */
 	bool StartBuild(int32 CityId, const FCataclysmCityUpgrade& Upgrade);
+
+private:
+	/** A one-time restore of defence or population at that value, as `AddUpgrade` and `RaiseUpgrade` both fire one;
+	 *  nothing for any other effect. Of the maximum with the tree, never overfilling. */
+	void RestoreOnce(FCataclysmCity& City, ECataclysmCityUpgradeEffect Effect, float Value);
+
+public:
 
 	/**
 	 * A city falls: its defence is gone and its lane opens.

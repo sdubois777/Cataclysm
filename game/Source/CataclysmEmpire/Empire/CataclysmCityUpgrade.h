@@ -278,6 +278,19 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 * purchase once", ruled once a run, empire-wide, on 2026-11-22. Issue #2838.
 	 */
 	AlreadyBoughtThisRun	= 13,
+
+	/** A raise was asked for an upgrade already at tier 3, the top of every ladder. Issue #1265, ruled 2026-11-22. */
+	AtTheTopTier			= 14,
+
+	/** A raise was asked for an upgrade the city does not hold. Issue #1265. */
+	NotHeld					= 15,
+
+	/**
+	 * A raise was asked for an upgrade with no tier ladder: the cleanse, the one row whose tier 2 and 3 cells are
+	 * empty. Said by the run for the cleanse, and by `UCataclysmCityUpgradePurchase::Raise`, which reads the table, for
+	 * any row without a next tier. Issue #1265.
+	 */
+	NoTierToRaiseTo			= 16,
 };
 
 /**
@@ -321,11 +334,12 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	float IntervalDays = 0.0f;
 
 	/**
-	 * Which tier it was bought at. Always 1 today.
+	 * Which tier it is at, 1 to 3. Bought at tier 1.
 	 *
-	 * NOTHING RAISES IT. The sheet gives every upgrade a tier 2 and a tier 3
-	 * value and no system in this game upgrades an upgrade, so a bought upgrade
-	 * is at tier 1 for the whole run. Issue #1265.
+	 * RAISED IN PLACE SINCE ISSUE #1265, the coordinating session's rulings of 2026-11-22: in the same slot, for the
+	 * next tier's gold and its build days (`UCataclysmEmpireRun::RaiseCityUpgrade`), acting at its old tier while the
+	 * raise is built and at the new one from the day it is finished. On an upgrade in `FCataclysmCity::Building` it is
+	 * the tier the build will reach.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Tier = 1;
@@ -506,10 +520,13 @@ public:
 	 * (Scaffolding, Rapid Renovation, Rapid Funding, which act in the `Cataclysm` module because the tree is there).
 	 *
 	 * A TIER BELOW 1 IS READ AS 1 AND ONE ABOVE 3 AS 3, the ends of the ladder, as `UCataclysmCityUpgradeMapping`
-	 * reads a price. Only tier 1 can be bought today (issue #1265).
+	 * reads a price. A purchase is at tier 1; a raise is at the tier it reaches, 2 or 3 (issue #1265).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static int32 BuildDaysFor(int32 UpgradeTier);
+
+	/** The top of every upgrade's tier ladder: the sheet's Tier 1, Tier 2 and Tier 3 columns. Issue #1265. */
+	static constexpr int32 HighestTier = 3;
 
 	// ----------------------------------------------------------------------
 	// The cleanse. Issue #2838, ruled by the coordinating session on 2026-11-22.

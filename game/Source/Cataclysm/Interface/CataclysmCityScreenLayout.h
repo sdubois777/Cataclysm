@@ -117,6 +117,66 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	/** Why a rush cannot be bought, or empty when it can. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	FString RushRefusal;
+
+	// ---- RAISING IT, on an upgrade the city holds. Issue #1265, the coordinating session's rulings of 2026-11-22: in
+	// the same slot, for the next tier's gold and days, asked of the run as `UCataclysmCityUpgradePurchase::Raise`
+	// asks it. ----
+
+	/** Whether the city holds it, so it has a Raise button: pressable, or greyed and saying why. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bRaiseOffered = false;
+
+	/** The tier a raise would reach, one above the tier held; above 3 when it is at the top. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 RaiseTier = 0;
+
+	/** What the raise does when it is finished, "removes 50% of this city's dungeons when built" (`RaiseWhatFor`).
+	 *  Empty when there is no tier to raise it to. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString RaiseWhat;
+
+	/** Whether the raise would go through now, at `RaisePrice` against the gold held and the tree's credit. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCanRaise = false;
+
+	/** Whether gold is all that stops it. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bRaiseShortOfGold = false;
+
+	/** What it costs (`PriceIn` at the raised tier) and the days it takes (`BuildDaysIn` at that tier). */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RaisePrice = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 RaiseDays = 0;
+
+	/** What it would leave owed on the tree's credit, as `OwedIfBought`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RaiseOwedIfBought = 0;
+
+	/** Why it cannot be raised, or empty when it can: "Already at tier 3." among the run's own words. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString RaiseRefusal;
+
+	/** A rush of the raise, with Rapid Funding held (`bRushOffered`), as a purchase's rush: whether it would go
+	 *  through, whether gold is all that stops it, its price and days, what it leaves owed, and why not. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCanRaiseRush = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bRaiseRushShortOfGold = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RaiseRushPrice = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 RaiseRushDays = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RaiseRushOwedIfBought = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString RaiseRushRefusal;
 };
 
 /**
@@ -288,7 +348,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString RushButtonTextFor(const FCataclysmCityUpgradeOffer& Offer);
 
+	/**
+	 * The words on a held upgrade's Raise button, issue #1265: "Raise to tier 2: removes 50% of this city's dungeons
+	 * when built  --  20,000 gold, 12 days to build"; on credit, "... 20,000 gold on credit, 1,000 owed, 12 days to
+	 * build"; when gold is all that stops it, "...  --  Costs 20,000 gold; 5,000 more needed."; and otherwise
+	 * "Raise  --  " and the reason, "Already at tier 3." among them.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString RaiseButtonTextFor(const FCataclysmCityUpgradeOffer& Offer);
+
+	/** The words on a raise's Rush button, as `RushButtonTextFor`'s: "Rush the raise  --  30,000 gold, 10 days to
+	 *  build". */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString RaiseRushButtonTextFor(const FCataclysmCityUpgradeOffer& Offer);
+
+	/**
+	 * What an upgrade of that effect does at those figures, in a few words for a Raise button, the coordinating
+	 * session's ruling of 2026-11-22: "removes 50% of this city's dungeons when built", "raises max defence by 30%",
+	 * "every 10 days this city's defences heal 10%". Empty for an effect that is not built.
+	 */
+	static FString RaiseWhatFor(ECataclysmCityUpgradeEffect Effect, float Value, float IntervalDays);
+
 	/** What one row in the not-built section says. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString NotBuiltLineFor(const FCataclysmCityUpgradeOffer& Offer);
+
+private:
+	/** Fills an offer's raise fields for an upgrade the city holds (issue #1265). */
+	static void AddTheRaise(const UObject* WorldContext, const UCataclysmEmpireRun* Run, int32 CityId, int64 GoldHeld,
+							FCataclysmCityUpgradeOffer& Offer);
 };

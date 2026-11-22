@@ -99,21 +99,39 @@ ECataclysmCityUpgradeEffect UCataclysmCityUpgradeMapping::EffectFor(
 }
 
 FCataclysmCityUpgrade UCataclysmCityUpgradeMapping::Make(
-	FName RowName, const FCataclysmCityUpgradeRow& Row)
+	FName RowName, const FCataclysmCityUpgradeRow& Row, int32 Tier)
 {
 	FCataclysmCityUpgrade Upgrade;
+	const int32 At = FMath::Clamp(Tier, 1, UCataclysmCityUpgradeRules::HighestTier);
+
+	// A TIER THE ROW DOES NOT HAVE IS NO UPGRADE: the cleanse above tier 1 (issue #1265).
+	if (!HasTier(Row, At))
+	{
+		return Upgrade;
+	}
 
 	Upgrade.RowName = RowName;
 	Upgrade.Effect = EffectFor(RowName);
 	Upgrade.bOneTimeUse = Row.IsOneTimeUse;
-	Upgrade.Tier = 1;
+	Upgrade.Tier = At;
 
-	// TIER 1 IS WHAT A NEWLY BOUGHT UPGRADE IS WORTH, and nothing raises it.
-	// Issue #1265.
-	Upgrade.Value = Row.Tier1Value;
-	Upgrade.IntervalDays = Row.Tier1IntervalDays;
+	// TIER 1 IS WHAT A NEWLY BOUGHT UPGRADE IS WORTH; TIERS 2 AND 3 ARE WHAT A RAISE MAKES IT (issue #1265).
+	Upgrade.Value = At == 3 ? Row.Tier3Value : At == 2 ? Row.Tier2Value : Row.Tier1Value;
+	Upgrade.IntervalDays =
+		At == 3 ? Row.Tier3IntervalDays : At == 2 ? Row.Tier2IntervalDays : Row.Tier1IntervalDays;
 
 	return Upgrade;
+}
+
+bool UCataclysmCityUpgradeMapping::HasTier(const FCataclysmCityUpgradeRow& Row, int32 Tier)
+{
+	switch (Tier)
+	{
+	case 1:	return true;
+	case 2:	return !Row.Tier2Raw.TrimStartAndEnd().IsEmpty();
+	case 3:	return !Row.Tier3Raw.TrimStartAndEnd().IsEmpty();
+	default: return false;
+	}
 }
 
 const UDataTable* UCataclysmCityUpgradeMapping::LoadGeneratedTable()
@@ -154,6 +172,15 @@ FCataclysmCityUpgrade UCataclysmCityUpgradeMapping::MakeFromTable(FName RowName)
 	}
 
 	return Make(RowName, *Row);
+}
+
+FCataclysmCityUpgrade UCataclysmCityUpgradeMapping::MakeAtTier(FName RowName, int32 Tier)
+{
+	const UDataTable* Table = LoadGeneratedTable();
+	const FCataclysmCityUpgradeRow* Row = Table != nullptr
+		? Table->FindRow<FCataclysmCityUpgradeRow>(RowName, TEXT("MakeAtTier"), /* bWarnIfMissing */ false)
+		: nullptr;
+	return Row != nullptr ? Make(RowName, *Row, Tier) : FCataclysmCityUpgrade();
 }
 
 TArray<FName> UCataclysmCityUpgradeMapping::AllRowNames()
@@ -206,10 +233,15 @@ int64 UCataclysmCityUpgradeMapping::PriceAt(int32 TierOneGold, float GoldPerPile
 							   / static_cast<double>(GoldPerPileAtTierOne));
 }
 
-int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier)
+int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier, int32 UpgradeTier)
 {
 	const FCataclysmCityUpgradeRow* Row = FindCityUpgradeRow(RowName);
-	if (Row == nullptr || Row->Tier1Gold <= 0)
+	// THE COLUMN OF THE TIER BOUGHT OR RAISED TO (issue #1265): tier 1 for a purchase.
+	const int32 Gold = Row == nullptr ? 0
+		: UpgradeTier == 3			  ? Row->Tier3Gold
+		: UpgradeTier == 2			  ? Row->Tier2Gold
+									  : Row->Tier1Gold;
+	if (Row == nullptr || Gold <= 0)
 	{
 		return 0;
 	}
@@ -221,10 +253,10 @@ int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier
 	if (AtTier == nullptr || AtTierOne == nullptr)
 	{
 		UE_LOG(LogCataclysm, Error,
-			   TEXT("City upgrade %s is priced at its tier 1 figure, %d gold, unscaled: the Gold table (%s) would not "
-					"load or has no row for tier %d. Run tools/generate_datatable_assets.py."),
-			   *RowName.ToString(), Row->Tier1Gold, UCataclysmDropRoll::GoldTableAssetPath, DifficultyTier);
-		return Row->Tier1Gold;
+			   TEXT("City upgrade %s is priced at its difficulty tier 1 figure, %d gold, unscaled: the Gold table (%s) "
+					"would not load or has no row for tier %d. Run tools/generate_datatable_assets.py."),
+			   *RowName.ToString(), Gold, UCataclysmDropRoll::GoldTableAssetPath, DifficultyTier);
+		return Gold;
 	}
-	return PriceAt(Row->Tier1Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile);
+	return PriceAt(Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile);
 }

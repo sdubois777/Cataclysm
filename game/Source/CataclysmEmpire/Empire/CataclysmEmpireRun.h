@@ -2109,6 +2109,30 @@ public:
 		int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost = 0,
 		int64 GoldHeld = 0) const;
 
+	/**
+	 * Raises an upgrade the city holds by one tier, in place. Issue #1265, the coordinating session's rulings of
+	 * 2026-11-22: in the same slot, for the next tier's gold, which the caller has taken, and its build days. The raise
+	 * waits on the city's build list as the upgrade at its new tier and is the city's one build at a time; the upgrade
+	 * goes on acting at its old tier meanwhile (Q7) and acts at the new one from the day the raise is finished, through
+	 * `CompleteCityUpgrade`. A Siege or a fall pauses it, as it does any build.
+	 *
+	 * @param Raised    the upgrade at the tier it is raised to, one above the tier held, from
+	 *                  `UCataclysmCityUpgradeMapping::MakeFromTable` in the `Cataclysm` module.
+	 * @param BuildDays its days, with the empire tree's three build nodes; nought finishes it at once, as the empire
+	 *                  layer's own tests ask.
+	 */
+	ECataclysmCityUpgradeResult RaiseCityUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised, int64 GoldCost = 0,
+												 int64 GoldHeld = 0, int32 BuildDays = 0);
+
+	/**
+	 * What `RaiseCityUpgrade` would answer, without raising anything, for the screen as `WouldBuyCityUpgrade` is.
+	 * In order: no run, not an upgrade, not built, the cleanse (which has no ladder), no such city, a fallen city, a
+	 * besieged one, not held (or being built, not yet held), already at tier 3, a tier other than the next, another
+	 * build under way, and last the gold.
+	 */
+	ECataclysmCityUpgradeResult WouldRaiseCityUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised,
+													  int64 GoldCost = 0, int64 GoldHeld = 0) const;
+
 	// ----------------------------------------------------------------------
 	// Seeing it
 	// ----------------------------------------------------------------------
@@ -2425,4 +2449,11 @@ private:
 	 * taken. The dungeons are removed, not cleared: nobody walked them, so they pay nothing.
 	 */
 	void CleanseEveryCity();
+
+	/**
+	 * Removes that share of the dungeons standing on the city, soonest to resolve first, rounded rather than floored:
+	 * "Remove 25% of dungeons on this city" at its tier's figure, when a purchase or a raise of it is finished. Removed,
+	 * not cleared: nobody walked them, so they pay nothing.
+	 */
+	void RemoveShareOfDungeonsOn(int32 CityId, float Share);
 };

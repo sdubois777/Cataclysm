@@ -236,6 +236,13 @@ FString UCataclysmCityUpgradeRules::ResultText(
 	case ECataclysmCityUpgradeResult::AlreadyBoughtThisRun:
 		// ISSUE #2838: the same ruling's words. Once a run, on any city.
 		return TEXT("Already bought this run.");
+	case ECataclysmCityUpgradeResult::AtTheTopTier:
+		// ISSUE #1265: the words the coordinating session accepted on 2026-11-22.
+		return FString::Printf(TEXT("Already at tier %d."), UCataclysmCityUpgradeRules::HighestTier);
+	case ECataclysmCityUpgradeResult::NotHeld:
+		return TEXT("This city does not hold that upgrade, so there is nothing to raise.");
+	case ECataclysmCityUpgradeResult::NoTierToRaiseTo:
+		return TEXT("That upgrade has no tier to raise it to.");
 	default:
 		return TEXT("Refused.");
 	}

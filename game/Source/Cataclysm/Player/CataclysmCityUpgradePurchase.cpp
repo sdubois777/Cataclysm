@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
+#include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -17,10 +18,11 @@
 #include "Save/CataclysmSaveWriter.h"
 
 int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName,
-											 int32 CityId)
+											 int32 CityId, int32 UpgradeTier)
 {
 	const int32 Tier = Run != nullptr ? Run->DifficultyTier : ACataclysmGameMode::LowestDifficultyTier;
-	const int64 TiersPrice = UCataclysmCityUpgradeMapping::PriceFor(RowName, Tier);
+	// AT THE UPGRADE TIER BOUGHT OR RAISED TO, its own gold column (issue #1265).
+	const int64 TiersPrice = UCataclysmCityUpgradeMapping::PriceFor(RowName, Tier, UpgradeTier);
 
 	// THE TREE'S PRICE NODES ON THIS CITY (slice 6a). A factor of exactly 1 leaves the tier's price as it is.
 	const float Factor = UCataclysmEmpireTree::UpgradePriceFactorFor(
@@ -31,17 +33,16 @@ int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, const 
 }
 
 int32 UCataclysmCityUpgradePurchase::BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run,
-												 FName RowName, int32 CityId, bool bRush)
+												 FName RowName, int32 CityId, bool bRush, int32 UpgradeTier)
 {
-	// THE TIER A PURCHASE IS AT: every bought upgrade is at tier 1 (issue #1265; `UCataclysmEmpireRun::BuyCityUpgrade`
-	// sets it). The run, the row and the city do not move the days today; they are passed so a later rule can read
-	// them without every caller changing.
+	// THE UPGRADE TIER IT IS BOUGHT AT, 1, OR RAISED TO (issue #1265). The run, the row and the city do not move the
+	// days today; they are passed so a later rule can read them without every caller changing.
 	(void)Run;
 	(void)RowName;
 	(void)CityId;
 	// AND THE TREE'S THREE BUILD NODES (issue #2832), from the tree the character playing holds.
 	return UCataclysmEmpireTree::UpgradeBuildDaysFor(UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext),
-													 UCataclysmCityUpgradeRules::BuildDaysFor(1), bRush);
+													 UCataclysmCityUpgradeRules::BuildDaysFor(UpgradeTier), bRush);
 }
 
 bool UCataclysmCityUpgradePurchase::CanRushIn(const UObject* WorldContext)
@@ -50,9 +51,9 @@ bool UCataclysmCityUpgradePurchase::CanRushIn(const UObject* WorldContext)
 }
 
 int64 UCataclysmCityUpgradePurchase::RushPriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run,
-												 FName RowName, int32 CityId)
+												 FName RowName, int32 CityId, int32 UpgradeTier)
 {
-	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
+	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId, UpgradeTier);
 	const FCataclysmEmpireTreePlayerBonuses Bonuses = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
 	if (!UCataclysmEmpireTree::CanRushUpgrades(Bonuses))
 	{
@@ -88,6 +89,117 @@ int64 UCataclysmCityUpgradePurchase::GoldOwedIn(const UObject* WorldContext)
 	return UCataclysmGameInstance::GoldOwedBy(WorldContext, Owed, EachDay) ? Owed : 0;
 }
 
+namespace CataclysmCityUpgradePurchase
+{
+	using FPurchase = UCataclysmCityUpgradePurchase;
+
+	/**
+	 * A purchase, or since issue #1265 a raise, of `Upgrade` at `UpgradeTier`: every step `Buy` names, with the run's
+	 * question and its record being `WouldBuyCityUpgrade` and `BuyCityUpgrade` for a purchase and the `Raise` pair for
+	 * a raise. One body, so a raise is paid, credited, rushed, counted and saved exactly as a purchase is.
+	 */
+	ECataclysmCityUpgradeResult PayAndBuild(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
+											FName RowName, bool bRush, const FCataclysmCityUpgrade& Upgrade,
+											int32 UpgradeTier, bool bRaise)
+	{
+		const int64 Price = bRush ? FPurchase::RushPriceIn(WorldContext, Run, RowName, CityId, UpgradeTier)
+								  : FPurchase::PriceIn(WorldContext, Run, RowName, CityId, UpgradeTier);
+		const int64 Held = FPurchase::GoldHeldIn(WorldContext);
+		const int32 Days = FPurchase::BuildDaysIn(WorldContext, Run, RowName, CityId, bRush, UpgradeTier);
+		const bool bOnCredit = Price > Held;
+		const int64 Credit = bOnCredit ? FPurchase::CreditIn(WorldContext, Price) : 0;
+
+		// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse. The credit the tree gives counts as
+		// gold held for it (slice 6e, D2), as the city screen asks it.
+		const ECataclysmCityUpgradeResult Asked = bRaise ? Run->WouldRaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit)
+														 : Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit);
+		if (Asked != ECataclysmCityUpgradeResult::Bought)
+		{
+			return Asked;
+		}
+
+		// THE GOLD BEFORE THE UPGRADE, so an upgrade is never held unpaid. All or nothing: a balance that holds less is
+		// left as it was, which the question above has just ruled out. ON CREDIT the whole balance is taken and the rest
+		// owed (D2), repaid by day when Sovereign Loans is held (D4).
+		bool bFromTheCharacter = false;
+		int64 Owed = 0;
+		const bool bPaid = Price <= 0
+			|| (bOnCredit ? UCataclysmGameInstance::SpendGoldOnCreditFor(
+								WorldContext, Price, Credit,
+								UCataclysmEmpireTree::RepaidDailyFor(
+									UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext)),
+								bFromTheCharacter, Owed)
+						  : UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter));
+		if (!bPaid)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("City upgrade %s on city %d: the run would sell it for %lld gold against %lld held, and the "
+						"balance would not pay it. Nothing was bought."),
+				   *RowName.ToString(), CityId, Price, Held);
+			return ECataclysmCityUpgradeResult::NotEnoughGold;
+		}
+
+		// WITH THE DAYS IT TAKES TO BUILD, since issue #2825: the run puts it on the city's build list. The credit counts
+		// as gold held for it as well (slice 6e, D2).
+		const ECataclysmCityUpgradeResult Result = bRaise ? Run->RaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)
+														  : Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days);
+		if (Result != ECataclysmCityUpgradeResult::Bought)
+		{
+			// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above. On credit, the balance taken is
+			// given back and the debt made is forgiven.
+			bool bIntoTheCharacter = false;
+			if (Price > 0 && Owed > 0)
+			{
+				UCataclysmGameInstance::UndoCreditFor(WorldContext, Price - Owed, Owed);
+			}
+			else if (Price > 0)
+			{
+				UCataclysmGameInstance::AddGoldFor(WorldContext, Price, bIntoTheCharacter);
+			}
+			UE_LOG(LogCataclysm, Error, TEXT("City upgrade %s on city %d was refused after its price was taken (%s); "
+											 "the %lld gold was given back."),
+				   *RowName.ToString(), CityId, *UCataclysmCityUpgradeRules::ResultText(Result), Price);
+			return Result;
+		}
+
+		// REINVESTMENT'S COUNT, now the purchase is accepted and not before (V4): the price charged, borrowed part and all,
+		// in tier 1 gold (V20). Counted whether the node is held or not (V5). The run's bonuses are read again so the next
+		// clear pays with it. Issue #2741 slice 9.
+		if (Price > 0)
+		{
+			const double Scale = FMath::Max(1.0e-6, static_cast<double>(UCataclysmDropRoll::GoldScaleFor(Run->DifficultyTier)));
+			// UNROUNDED (V20 as ruled): the division loses nothing.
+			UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(WorldContext, static_cast<double>(Price) / Scale);
+			UCataclysmGameInstance::RefreshEmpireTreeBonuses(WorldContext);
+		}
+
+		// THE SAVES: the run record holds the upgrade and the character record a Solo Self-Found character's own gold
+		// (`CityUpgradeBought`); the account record the account's gold, when it paid (`AccountChanged`). Both hold
+		// Reinvestment's count as well (slice 9).
+		const UWorld* World = WorldContext != nullptr && GEngine != nullptr
+			? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+			: nullptr;
+		if (Price > 0 && !bFromTheCharacter)
+		{
+			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+		}
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::CityUpgradeBought);
+
+		int64 After = 0;
+		if (!UCataclysmGameInstance::GoldHeldBy(WorldContext, After))
+		{
+			After = -1;
+		}
+		const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(RowName);
+		// A RAISE NAMES THE TIER IT REACHES (issue #1265), before the row's sentence.
+		const FString Named = Effect.IsEmpty() ? RowName.ToString() : Effect;
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::UpgradeLine(
+			bRaise ? FString::Printf(TEXT("Raise to tier %d: %s"), UpgradeTier, *Named) : Named, Run, CityId, Price, After,
+			Run->BuildReadyDay(CityId), bRush));
+		return ECataclysmCityUpgradeResult::Bought;
+	}
+}
+
 ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run,
 																int32 CityId, FName RowName, bool bRush)
 {
@@ -100,97 +212,49 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	{
 		return ECataclysmCityUpgradeResult::RushNotHeld;
 	}
+	return CataclysmCityUpgradePurchase::PayAndBuild(WorldContext, Run, CityId, RowName, bRush,
+													 UCataclysmCityUpgradeMapping::MakeFromTable(RowName),
+													 /*UpgradeTier=*/1, /*bRaise=*/false);
+}
 
-	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
-	const int64 Price = bRush ? RushPriceIn(WorldContext, Run, RowName, CityId) : PriceIn(WorldContext, Run, RowName, CityId);
-	const int64 Held = GoldHeldIn(WorldContext);
-	const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId, bRush);
-	const bool bOnCredit = Price > Held;
-	const int64 Credit = bOnCredit ? CreditIn(WorldContext, Price) : 0;
-
-	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse. The credit the tree gives counts as
-	// gold held for it (slice 6e, D2), as the city screen asks it.
-	const ECataclysmCityUpgradeResult Asked = Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit);
-	if (Asked != ECataclysmCityUpgradeResult::Bought)
-	{
-		return Asked;
-	}
-
-	// THE GOLD BEFORE THE UPGRADE, so an upgrade is never held unpaid. All or nothing: a balance that holds less is
-	// left as it was, which the question above has just ruled out. ON CREDIT the whole balance is taken and the rest
-	// owed (D2), repaid by day when Sovereign Loans is held (D4).
-	bool bFromTheCharacter = false;
-	int64 Owed = 0;
-	const bool bPaid = Price <= 0
-		|| (bOnCredit ? UCataclysmGameInstance::SpendGoldOnCreditFor(
-							WorldContext, Price, Credit,
-							UCataclysmEmpireTree::RepaidDailyFor(
-								UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext)),
-							bFromTheCharacter, Owed)
-					  : UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter));
-	if (!bPaid)
-	{
-		UE_LOG(LogCataclysm, Error,
-			   TEXT("City upgrade %s on city %d: the run would sell it for %lld gold against %lld held, and the "
-					"balance would not pay it. Nothing was bought."),
-			   *RowName.ToString(), CityId, Price, Held);
-		return ECataclysmCityUpgradeResult::NotEnoughGold;
-	}
-
-	// WITH THE DAYS IT TAKES TO BUILD, since issue #2825: the run puts it on the city's build list. The credit counts
-	// as gold held for it as well (slice 6e, D2).
-	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days);
-	if (Result != ECataclysmCityUpgradeResult::Bought)
-	{
-		// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above. On credit, the balance taken is
-		// given back and the debt made is forgiven.
-		bool bIntoTheCharacter = false;
-		if (Price > 0 && Owed > 0)
-		{
-			UCataclysmGameInstance::UndoCreditFor(WorldContext, Price - Owed, Owed);
-		}
-		else if (Price > 0)
-		{
-			UCataclysmGameInstance::AddGoldFor(WorldContext, Price, bIntoTheCharacter);
-		}
-		UE_LOG(LogCataclysm, Error, TEXT("City upgrade %s on city %d was refused after its price was taken (%s); "
-										 "the %lld gold was given back."),
-			   *RowName.ToString(), CityId, *UCataclysmCityUpgradeRules::ResultText(Result), Price);
-		return Result;
-	}
-
-	// REINVESTMENT'S COUNT, now the purchase is accepted and not before (V4): the price charged, borrowed part and all,
-	// in tier 1 gold (V20). Counted whether the node is held or not (V5). The run's bonuses are read again so the next
-	// clear pays with it. Issue #2741 slice 9.
-	if (Price > 0)
-	{
-		const double Scale = FMath::Max(1.0e-6, static_cast<double>(UCataclysmDropRoll::GoldScaleFor(Run->DifficultyTier)));
-		// UNROUNDED (V20 as ruled): the division loses nothing.
-		UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(WorldContext, static_cast<double>(Price) / Scale);
-		UCataclysmGameInstance::RefreshEmpireTreeBonuses(WorldContext);
-	}
-
-	// THE SAVES: the run record holds the upgrade and the character record a Solo Self-Found character's own gold
-	// (`CityUpgradeBought`); the account record the account's gold, when it paid (`AccountChanged`). Both hold
-	// Reinvestment's count as well (slice 9).
-	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
-		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+int32 UCataclysmCityUpgradePurchase::RaiseTierIn(const UCataclysmEmpireRun* Run, int32 CityId, FName RowName)
+{
+	const FCataclysmCity* City = Run != nullptr && Run->Map != nullptr ? Run->Map->Find(CityId) : nullptr;
+	const FCataclysmCityUpgrade* Held = City != nullptr
+		? City->Upgrades.FindByPredicate(
+			  [RowName](const FCataclysmCityUpgrade& Upgrade) { return Upgrade.RowName == RowName; })
 		: nullptr;
-	if (Price > 0 && !bFromTheCharacter)
-	{
-		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
-	}
-	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::CityUpgradeBought);
+	return Held != nullptr ? Held->Tier + 1 : INDEX_NONE;
+}
 
-	int64 After = 0;
-	if (!UCataclysmGameInstance::GoldHeldBy(WorldContext, After))
+ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Raise(const UObject* WorldContext, UCataclysmEmpireRun* Run,
+																  int32 CityId, FName RowName, bool bRush)
+{
+	if (Run == nullptr)
 	{
-		After = -1;
+		return ECataclysmCityUpgradeResult::RunHasNotBegun;
 	}
-	const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(RowName);
-	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::UpgradeLine(Effect.IsEmpty() ? RowName.ToString() : Effect, Run,
-																   CityId, Price, After, Run->BuildReadyDay(CityId), bRush));
-	return ECataclysmCityUpgradeResult::Bought;
+	const int32 Tier = RaiseTierIn(Run, CityId, RowName);
+	if (Tier == INDEX_NONE)
+	{
+		return ECataclysmCityUpgradeResult::NotHeld;
+	}
+	if (Tier > UCataclysmCityUpgradeRules::HighestTier)
+	{
+		return ECataclysmCityUpgradeResult::AtTheTopTier;
+	}
+	// THE ROW'S NEXT TIER, read from the table: none for the cleanse, whose tier 2 and 3 cells are empty.
+	const FCataclysmCityUpgrade Raised = UCataclysmCityUpgradeMapping::MakeAtTier(RowName, Tier);
+	if (!Raised.IsValid())
+	{
+		return ECataclysmCityUpgradeResult::NoTierToRaiseTo;
+	}
+	if (bRush && !CanRushIn(WorldContext))
+	{
+		return ECataclysmCityUpgradeResult::RushNotHeld;
+	}
+	return CataclysmCityUpgradePurchase::PayAndBuild(WorldContext, Run, CityId, RowName, bRush, Raised, Tier,
+													 /*bRaise=*/true);
 }
 
 FString UCataclysmCityUpgradePurchase::PriceText(int64 Price)

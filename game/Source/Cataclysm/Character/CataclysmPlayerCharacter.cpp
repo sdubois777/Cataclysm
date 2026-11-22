@@ -5159,6 +5159,51 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 			}
 		}));
 
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmRaiseCityUpgrade(
+	TEXT("Cataclysm.RaiseCityUpgrade"),
+	TEXT("Raise an upgrade a city holds by one tier, in the same slot: Cataclysm.RaiseCityUpgrade "
+		 "<cityId> <rowName> [rush]. It costs the next tier's gold now and takes its days to build, 12 to "
+		 "tier 2 and 24 to tier 3; the upgrade acts at its old tier until then. Tier 3 is the top. A city "
+		 "builds one thing at a time. Issue #1265."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run || !Run->Map)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin starts one."));
+				return;
+			}
+			if (Args.Num() < 2)
+			{
+				Ar.Log(TEXT("Cataclysm.RaiseCityUpgrade <cityId> <rowName> [rush]. Cataclysm.CityUpgrades <cityId> "
+							"lists what a city holds."));
+				return;
+			}
+
+			const int32 CityId = FCString::Atoi(*Args[0]);
+			const FName RowName(*Args[1]);
+			const bool bRush = Args.Num() > 2 && Args[2].Equals(TEXT("rush"), ESearchCase::IgnoreCase);
+
+			// RAISED AS THE CITY SCREEN RAISES, through the one place that charges.
+			const int32 Tier = UCataclysmCityUpgradePurchase::RaiseTierIn(Run, CityId, RowName);
+			const int64 Price = bRush ? UCataclysmCityUpgradePurchase::RushPriceIn(World, Run, RowName, CityId, Tier)
+									  : UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId, Tier);
+			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
+			const ECataclysmCityUpgradeResult Result =
+				UCataclysmCityUpgradePurchase::Raise(World, Run, CityId, RowName, bRush);
+			const int32 ReadyDay = Run->BuildReadyDay(CityId);
+			const FString Said =
+				Result != ECataclysmCityUpgradeResult::Bought
+					? UCataclysmCityUpgradePurchase::RefusalTextIn(World, Result, Price, Held)
+					: ReadyDay == INDEX_NONE
+						  ? FString::Printf(TEXT("Raised to tier %d for %s."), Tier,
+											*UCataclysmCityUpgradePurchase::PriceText(Price))
+						  : FString::Printf(TEXT("Raising to tier %d for %s; being built, ready on day %d."), Tier,
+											*UCataclysmCityUpgradePurchase::PriceText(Price), ReadyDay);
+			Ar.Logf(TEXT("%s"), *Said);
+		}));
+
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(
 	TEXT("Cataclysm.EnterDungeon"),
 	TEXT("Walk a dungeon that stands on the empire map: Cataclysm.EnterDungeon "

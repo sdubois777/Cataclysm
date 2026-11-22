@@ -39,11 +39,12 @@ public:
 	 * offers, `Buy` and the console command all ask this, so the price shown is the price paid. No context, no tree
 	 * held, or no such city: the tier's price.
 	 */
-	static int64 PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
+	static int64 PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId,
+						 int32 UpgradeTier = 1);
 
 	/**
 	 * The days the upgrade takes to build in this run, on this city: `UCataclysmCityUpgradeRules::BuildDaysFor` at the
-	 * tier it is bought at, which is 1 (issue #1265). Issue #2825, ruled 2026-11-21.
+	 * upgrade tier it is bought at, 1, or raised to, 2 or 3 (issue #1265). Issue #2825, ruled 2026-11-21.
 	 *
 	 * THE ONE FIGURE, as `PriceIn` is the one price: the city screen's offers, `Buy` and the console command all ask
 	 * this, so the days shown are the days counted.
@@ -54,7 +55,7 @@ public:
 	 * bought later does not shorten a build under way.
 	 */
 	static int32 BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId,
-							 bool bRush = false);
+							 bool bRush = false, int32 UpgradeTier = 1);
 
 	/** Whether the character playing holds Rapid Funding, so each offer has a Rush. Issue #2832. */
 	static bool CanRushIn(const UObject* WorldContext);
@@ -63,7 +64,8 @@ public:
 	 * What a rush of the upgrade costs: `PriceIn`, after every discount, times Rapid Funding's 150%, rounded to whole
 	 * gold. Issue #2832, ruled 2026-11-21. `PriceIn` when Rapid Funding is not held, which `Buy` refuses to rush.
 	 */
-	static int64 RushPriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
+	static int64 RushPriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId,
+							 int32 UpgradeTier = 1);
 
 	/**
 	 * The gold the character playing holds (`UCataclysmGameInstance::GoldHeldBy`), or 0 when it has no balance. What
@@ -106,6 +108,24 @@ public:
 	 */
 	static ECataclysmCityUpgradeResult Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
 										   FName RowName, bool bRush = false);
+
+	/**
+	 * The tier a raise of that row on that city would reach: one above the tier the city holds it at, or `INDEX_NONE`
+	 * when the city does not hold it. Issue #1265.
+	 */
+	static int32 RaiseTierIn(const UCataclysmEmpireRun* Run, int32 CityId, FName RowName);
+
+	/**
+	 * Raises an upgrade the city holds by one tier for the character playing, as `Buy` buys one: the same payment, on
+	 * credit as a purchase may be, the same rush, Reinvestment's count, the saves and a play loop line. Issue #1265,
+	 * the coordinating session's rulings of 2026-11-22: in the same slot, for the next tier's gold (`PriceIn` at that
+	 * tier) and its build days (`BuildDaysIn` at that tier), the run told through `RaiseCityUpgrade`.
+	 *
+	 * @return `NotHeld` when the city does not hold it, `NoTierToRaiseTo` when its row has no next tier, `RushNotHeld`
+	 *         for a rush without Rapid Funding; otherwise the run's answer, as `Buy`.
+	 */
+	static ECataclysmCityUpgradeResult Raise(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
+											 FName RowName, bool bRush = false);
 
 	/** "10,000 gold". */
 	static FString PriceText(int64 Price);

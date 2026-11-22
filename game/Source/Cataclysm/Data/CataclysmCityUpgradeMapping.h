@@ -61,14 +61,22 @@ public:
 	 * magnitude existed solely inside the effect sentence and nothing could read
 	 * it. Issue #1262.
 	 *
-	 * NOTHING REACHES TIER 2 OR TIER 3, so those columns are not read here at
-	 * all. Issue #1265.
+	 * AT TIER 2 OR 3 IT READS THAT TIER'S COLUMNS, for a raise (issue #1265, ruled 2026-11-22).
 	 *
+	 * @param Tier 1 to 3; a tier outside that is read as the nearer end.
 	 * @return an upgrade whose `Effect` is `None` when the row is not
-	 *         recognised, which `UCataclysmEmpireRun::BuyCityUpgrade` refuses.
+	 *         recognised, which `UCataclysmEmpireRun::BuyCityUpgrade` refuses,
+	 *         or when the row has no such tier (`HasTier`).
 	 */
 	static FCataclysmCityUpgrade Make(FName RowName,
-									  const FCataclysmCityUpgradeRow& Row);
+									  const FCataclysmCityUpgradeRow& Row, int32 Tier = 1);
+
+	/** Whether the row has that tier: tier 1 always, tiers 2 and 3 when its raw cell for them is written. Only the
+	 *  cleanse has no tier 2 or 3. Issue #1265. */
+	static bool HasTier(const FCataclysmCityUpgradeRow& Row, int32 Tier);
+
+	/** `MakeFromTable` at a tier, for a raise: `None` when the table, the row or the tier is missing. Issue #1265. */
+	static FCataclysmCityUpgrade MakeAtTier(FName RowName, int32 Tier);
 
 	/**
 	 * Loads the generated table, or logs which script should have produced it
@@ -115,12 +123,13 @@ public:
 	 * the pile column rather than a second column kept equal to it, so an upgrade costs the same number of walks at
 	 * every tier. That is a judgement, and `docs/DECISIONS.md` records it.
 	 *
-	 * Upgrade tier 1's price, because nothing raises a bought upgrade above tier 1 (issue #1265).
+	 * AT AN UPGRADE TIER, its own column: `Tier1Gold` for a purchase, `Tier2Gold` or `Tier3Gold` for a raise to that
+	 * tier (issue #1265, ruled 2026-11-22), each scaled the same way.
 	 *
-	 * @return 0 for a row the table does not hold or one with no price (the unbranched last resort, never sold). The
+	 * @return 0 for a row the table does not hold or one with no price at that tier (the cleanse above tier 1). The
 	 *         row's unscaled price, with an error logged, when the Gold table will not load.
 	 */
-	static int64 PriceFor(FName RowName, int32 DifficultyTier);
+	static int64 PriceFor(FName RowName, int32 DifficultyTier, int32 UpgradeTier = 1);
 
 	/**
 	 * `PriceFor`'s arithmetic without the tables: `TierOneGold` times `GoldPerPileAtTier` over `GoldPerPileAtTierOne`,
