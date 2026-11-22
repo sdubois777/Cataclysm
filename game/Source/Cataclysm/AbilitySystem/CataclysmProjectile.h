@@ -388,6 +388,15 @@ public:
 	int32 EnemiesHit = 0;
 
 	/**
+	 * Whether it is a creature's QUICK CAST: a bolt fired with no marker on the ground, whose warning is the bolt in
+	 * flight. Issue #2808. Set by `Fire` before the effect is attached, because `UCataclysmProjectileEffect::LookFor`
+	 * draws a quick cast larger, brighter and with a denser trail: the owner's requirement of 2026-11-21, "Make sure
+	 * those attacks can actually be seen. Like a flaming fireball that's obvious to the player".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	bool bQuickCast = false;
+
+	/**
 	 * How many of its contacts LANDED: struck and not evaded. Issue #1686.
 	 *
 	 * NOT `EnemiesHit`, which counts an evaded contact too, because the figure
@@ -777,15 +786,6 @@ private:
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;
-
-	/**
-	 * Whether it is a creature's QUICK CAST: a bolt fired with no marker on the ground, whose warning is the bolt in
-	 * flight. Issue #2808. Set by `Fire` before the effect is attached, because `UCataclysmProjectileEffect::LookFor`
-	 * draws a quick cast larger, brighter and with a denser trail: the owner's requirement of 2026-11-21, "Make sure
-	 * those attacks can actually be seen. Like a flaming fireball that's obvious to the player".
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
-	bool bQuickCast = false;
 
 	/**
 	 * Whether Finish has already run.
