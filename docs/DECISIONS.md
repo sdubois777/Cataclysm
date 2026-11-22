@@ -2,6 +2,75 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The shared window: the cleanse (#2838), raising a city upgrade (#1265), the gem enchantments (#46 G10) and the socket crafts (#46 G9) on one branch, registered
+
+**Uncertain or not yet shown, first:**
+
+- **NOTHING HERE HAS RUN IN THE ENGINE YET.** The branch compiled (below); the window's results are recorded after it,
+  not before.
+- **THE DECISIONS LOG'S ENTRIES WERE PLACED BY DATE BY HAND.** `tools/resolve_decisions_log.py resolve` orders the two
+  sides of a conflict as whole blocks, and here the incoming entries belonged between entries already on
+  `development`. `.claude/windows/place_entry_by_date.py` placed each one, keeping every entry byte for byte. The
+  order, newest first by the author date of the commit that first wrote each: raising a city upgrade (09:38), a gem on
+  the ground shows its tooltip (09:24, on `development`), the gem enchantments (09:23), the socket crafts (09:15), the
+  cleanse (09:14), a gem's tooltip says when it does nothing (09:03, on `development`). The two already on
+  `development` kept their order.
+
+### What happened at the turn
+
+Ruled by the coordinating session on 2026-11-22: one window for four branches, driven by the gems session, on
+development `2edb0642b` (#2841's merge, the gem tooltip window).
+
+1. **Seventeen cherry-picks** onto `2edb0642b` as `feat/shared-window-2838-1265-46`, in the ruled order: the gold
+   session's eight (`9b3af2800` to `840a0875f`, the cleanse and raising a city upgrade), the empire tree session's five
+   (`af4fcaa5d` to `1d9cf8350`, the gem enchantments, without `9b3af2800`, which the first step carries), and the
+   gems session's four (`bd72f016f` to `003b1f00d`, the socket crafts). Only `docs/DECISIONS.md` conflicted, five
+   times; after each resolve, `.claude/windows/check_no_markers.py` found no marker line and the separator check
+   passed, as the coordinating session ruled after a dry run had committed markers on a scratch branch. No C++ file
+   needed a hand resolve. The gem enchantments' entry is byte for byte its own branch's after its rename commit.
+2. **Save versions**, against the base: account 7, character 14, run 15; the branch moves only the run record, to 16
+   (the cleanse's `bCleanseBoughtThisRun`, `Run_v16.json`).
+3. **The workbook** equals `439e9b8c1`'s, the gem enchantments' workbook stage on the cleanse's file (blob
+   `8053bbb4a1df`), and `python tools/generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+4. **Every one of the 18 C++ proof anchors matches once** on the window's head (`.claude/windows/prove_shared.py`).
+5. **The three compiles**: `.claude/windows/compile_shared.py` at `ac86646cd`, the cached build plan moved aside before each: the branch
+   "Build: Succeeded - 70 actions, 65 files compiled", each changed file alone "62 actions, 57 files compiled", the
+   unity files "22 actions, 17 files compiled", each with 0 compiler warning or error lines. Three `CataclysmEmpire`
+   test files (`CataclysmCityCleanseTests.cpp`, `CataclysmCityUpgradeRaiseTests.cpp`, `CataclysmCityUpgradeTests.cpp`)
+   compiled alone in the branch build and had nothing to compile in the other two.
+6. **The asset step**: one run of `tools/generate_datatable_assets.py` changed `DT_CityUpgrades.uasset`,
+   `DT_EnchantmentEffects.uasset` (707 rows to 709) and `datatable_asset_sources.json` and nothing else, committed
+   alone as `f788a1d36`; `test_datatable_assets_are_current`: 18 passed.
+
+### Registered for the window
+
+The base: window gem-tooltip-w1, "5222 tests performed, 5222 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `2edb0642b`'s game/. The window adds 22 test names and removes none, counted from
+the diff: `CityCleanse.` 3 and `CityCleanseSave.` 1 (#2838), `CityUpgradeRaise.` 4 and `CityUpgradeRaiseScreen.` 3
+(#1265), `GemEnchantments.` 5 (G10), `ForgeSockets.` 6 (G9).
+
+| Step | Registered |
+| :-- | :-- |
+| One build | nothing to compile |
+| The four new groups alone, first | `Cataclysm.CityCleanse` 4, `Cataclysm.CityUpgradeRaise` 7 (each with no dot, as its branch registered, each prefix matching exactly its names), `Cataclysm.GemEnchantments.` 5, `Cataclysm.ForgeSockets.` 6 |
+| Every group the four branches registered, alone, at its count in the base's engine log (`gt_suite_engine_c30f61b8.log`, counted with a literal match, which gives the run's 5222 in all) | `Capital.` 7, `CityScreen.` 19, `CityUpgrade.` 15, `CityUpgradeBuildSave.` 2, `CityUpgradeBuild.` 4, `CityUpgradePrice.` 7, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `FirstSurge.` 3, `GemSave.` 2, `Gold.` 13, `PlayLoop.` 12, `RuleDamageParts.` 11, `SaveLoad.` 81, `SaveRecords.` 17, `Seeding.` 3, `Travel.` 9, `WalkSeed.` 5, `WinningTheRun.` 11, `CityUpgradeSpeed.` 8, `EmpireTreeCredit.` 8, `EmpireTreeCity.` 17, `ItemSockets.` 4, `ForgeGems.` 4, `ForgeCosts.` 3, `ForgeScreen.` 4, `Forge.` 8, `Equipment.` 30, `GemStacks.` 6, `GemDrops.` 4, `StatExemption.` 37, `Enchantments.` 366, `Passives.` 161, `Attributes.` 21, `PlayerStats.` 14, `Data.` 7, `GemCombine.` 3: 50 groups and 1024 tests, each count agreeing with its branch's registration |
+| The whole suite | 5244 performed, 5244 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, 18, each as its branch's entry registers it**, through `.claude/windows/prove_shared.py`:
+
+| Proof | Branch | Prefix | Predicted |
+| :-- | :-- | :-- | :-- |
+| C1 to C3 | #2838 | `Cataclysm.CityCleanse` | C1 4 performed, 3 succeeded; C2 4, 1; C3 4, 3 |
+| D1 to D4 | #1265 | `Cataclysm.CityUpgradeRaise` | each 7 performed, 6 succeeded (D4 with the comment line above its break, `840a0875f`) |
+| GP1 to GP5 | #46 G10 | `Cataclysm.GemEnchantments.` | GP1 to GP3 5 performed, 3 succeeded; GP4 and GP5 5, 4 (copied exactly from the empire tree session's table) |
+| FS1 to FS6 | #46 G9 | `Cataclysm.ForgeSockets.` | FS3 6 performed, 4 succeeded; the rest 6, 5 |
+
+**Python guard proofs are each branch's own and proved before the window**: #2838's and #1265's in their entries,
+PG1 to PG8 (G10), PS1 to PS8 (G9). None is run again.
+
+---
+
 ## 2026-11-22 — A bought city upgrade can be raised to tier 2 and tier 3 in its own slot, for the next tier's gold and build days, acting at its old tier until the raise is finished (#1265)
 
 **Affects:** `ECataclysmCityUpgradeResult::AtTheTopTier`, `NotHeld` and `NoTierToRaiseTo`, new,
