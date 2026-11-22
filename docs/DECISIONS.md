@@ -989,7 +989,8 @@ the game is plain ASCII.
 | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` | a 22-floor Elite dungeon, a player two widths above it: the line ends "Rewards: experience 5%, loot 25%."; no player, `DungeonScoreLine`'s alone; CONTROL: no line off the map |
 | `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` | 2,009 against 3,443 at tier 4: experience 5%, loot exactly 25%; a loot quantity of 125 and a gold multiplier of 1.875 handed on as exactly a quarter, 31.25 and 0.46875; CONTROL: a possessed player with no dungeon bound, not scored, both handed on unchanged |
 
-Python: `test_power_gap_rewards_port.py`, seven checks: the port's seven constants are the ruled rule's fields; the
+Python: `test_power_gap_rewards_port.py`, eight checks (the eighth added after window forge-pg-w1, below): the port's
+seven constants are the ruled rule's fields; the
 multiplier is written as the simulation writes it; the first two automation tests' tables are the simulation's; the
 death handler takes its loot quantity and gold multiplier from `KillLootFor`, which multiplies both by the loot factor,
 and passes both experience grants through the experience factor; the panel and the kill read the same two scores; the
@@ -1031,6 +1032,34 @@ map and the city screen call the line with the rewards.
 | C2 | `CataclysmDungeonGameMode.cpp` | the panel's line without the rewards: in `FloorScoreLineHere`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
 | C3 | `CataclysmEmpireMapLayout.cpp` | the map's line without the rewards: in `DungeonScoreAndRewardsLine`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
 | C4 | `CataclysmPowerGapRewards.cpp` | the gold multiplier without the factor, G4's twin: `Out.GoldMultiplier = GoldMultiplier * static_cast<float>(Rewards.Loot);` written `Out.GoldMultiplier = GoldMultiplier;` | 4, 1: `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` |
+
+### Window forge-pg-w1 failed one test, a fault in the test; fixed in `d7bcdf506`
+
+**`AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` failed, alone and in the suite**;
+`Cataclysm.PowerGapRewards.` ran 4 of 5. Its two failed assertions:
+- "Expected 'the kill grants the figure times the experience factor' to be 232, but it was -1."
+- "Expected 'CONTROL: and the same kill grants the whole figure' to be 468, but it was -1."
+
+**The cause: neither creature was made, so nothing was killed.** -1 is `INDEX_NONE`, which the test's
+`KillAndMeasure` returns when `SpawnActor` gives back null. The window's engine log has, just before the test's "GAP
+KILL" line, "LogSpawn: SpawnActor failed because of collision at the spawn location [X=300.000 Y=0.000 Z=0.000] for
+[CataclysmEnemyCharacter]", and the same at X=-300 for the control. An entered empire dungeon has generated its floor,
+and the default collision handling refused both. `HandleDeath` was not reached, so the experience code was not tested.
+The rest of the test passed: the factor (experience x0.4966, loot x0.6026 at a gap of -1.1299, Dungeon Score 191
+against the player's 626) and the panel's line.
+
+**"and less than the whole figure" passed only because -1 is less than 468.** The test did not check that its
+creature existed.
+
+**The fix, `d7bcdf506`, changes the test and a Python check, not the game:**
+- `KillAndMeasure` spawns with `ESpawnActorCollisionHandlingMethod::AlwaysSpawn`, as 41 other test files do.
+- The test asserts, as set-up, that both creatures were made (`Gained != INDEX_NONE`, `GainedOutside != INDEX_NONE`).
+- `test_the_kill_tests_creatures_are_made_whatever_the_floor_holds` holds both. **PROVED** with `tools/prove_guard.py`
+  in a copy of `d7bcdf506`, the `AlwaysSpawn` override removed: "PROVED: 1 failed, 7 passed in 0.37s | restored: 8
+  passed in 0.19s", the one named failure that check.
+
+**Not yet shown:** that the creatures are now made and the kill grants 232 (and 468 in the control). That is shown by
+the next window, which carries slice c. Predicted there: `Cataclysm.PowerGapRewards.` 5 of 5.
 
 ---
 
