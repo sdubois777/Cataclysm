@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Gems are carried in stacks, one per gem and rarity, with a cell and a tooltip, and a gem stack cannot be dropped until gems can lie on the floor (#46, slice G2)
+
+**Affects:** `FCataclysmCarriedSlot::Gem` and `GemRarity`, new, and `UCataclysmInventoryComponent::AddGems`,
+`SlotOfGems` and `CountOfGems`, new, and `SlotIsEmpty` (`game/Source/Cataclysm/Items/CataclysmInventoryComponent.h`,
+`.cpp`); `ECataclysmWearResult::GemsStayInTheBag`, new, `UCataclysmWearing::DropCarried` and `Explain`
+(`CataclysmWearing.h`, `.cpp`); `UCataclysmGems::TableAssetPath`, `LoadGeneratedTable`, `RowOf`, `NameOf`, `RarityName`,
+`EffectAt` and `TooltipLinesFor`, new (`CataclysmGems.h`, `.cpp`); `UCataclysmInventoryScreen::LabelFor`,
+`QuantityTextFor`, `ColourFor` and `BorderThicknessFor` (`game/Source/Cataclysm/Interface/CataclysmInventoryScreen.cpp`);
+`UCataclysmItemTooltip::LinesFor` (`CataclysmItemTooltip.cpp`). Tests:
+`game/Source/Cataclysm/Tests/CataclysmGemStacksTests.cpp`, new, four in `Cataclysm.GemStacks.`;
+`tools/tests/test_gems_are_carried_in_stacks.py`, new. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G1's branch head without a compile, as ruled. The branch is
+  `feat/gem-stacks-46-g2`, on `feat/gem-stats-46-g1-2`.
+- **THE CHARACTER RECORD'S VERSION IS NOT MOVED YET, AND MUST BE BEFORE THIS MERGES.** The two new slot fields are
+  `SaveGame`, so a carried gem is written into the character record. The empire tree's 6d and 6e window moves that
+  record from 10 to 11, and its slice 8 also moves it, 11 to 12. **This slice takes the next number free when it
+  merges**, ruled by the coordinating session on 2026-11-21: whichever of slice 8 and this merges second takes the
+  next number and registers again. Its migration writes no gem into every carried slot. The version figure is written
+  in the migration and its fixtures only, so a move costs one edit. It is written after the 6d and 6e window merges
+  (this session's choice, of building on that branch or waiting for it), with a test that a carried gem stack
+  survives a save and a load.
+- **THE TOOLTIP DOES NOT YET SAY WHEN A GEM DOES NOTHING FOR THE CHARACTER** (the ruling's point 5). That line needs
+  the gem's stat, which `FCataclysmGemRow` gains with G1's workbook stage; it is added to this slice then.
+- **A GEM STACK CANNOT BE DROPPED** until gem drops are built (slice G5). The reason is below.
+- **G1 MOVED BRANCH.** This slice was first committed onto G1's branch by mistake and pushed. A force push is not
+  allowed, so G1 alone is now `feat/gem-stats-46-g1-2` at `928fd764d`, and the first branch, `feat/gem-stats-46-g1`, is
+  superseded.
+
+### What changed
+
+- **A carried slot holds a gear item, a stack of one material, or a stack of one gem at one rarity.** The gem is a row
+  key in `game/Data/Gems.csv`; the count is the slot's existing `Quantity`. `SlotIsEmpty` reads the gem, so a gem stack
+  is not an empty slot.
+- **`AddGems(gem, rarity, count)`** stacks onto the stack of that gem at that rarity, or takes the first free slot, as
+  `AddMaterial` does, with no ceiling. Two rarities of one gem are two stacks (ruled 2026-11-21). A gem with no name,
+  or none of one, is refused. `SlotOfGems` and `CountOfGems` find and count them.
+- **The cell** shows the gem's name, the count when it is above one, and its rarity's colour and border, as gear of
+  that rarity has.
+- **The tooltip**, from `UCataclysmGems::TooltipLinesFor`, five lines for three Superb Of The Viper: "Of The Viper",
+  "Superb Attack gem", "60% chance to apply poison", "Fits an Attack socket", "3 carried". The effect line is the gem's
+  own text with its figure replaced by that rarity's value: the first figure before a "%", which is the one the
+  generator reads as the Everyday value, so "Increases Magic Find by .5%" reads "Increases Magic Find by 0.5%".
+- **Dropping a gem stack is refused, and the gems stay in the bag** (`GemsStayInTheBag`, "Gems cannot be put on the
+  floor yet, so they are still in the bag."). `UCataclysmDropSpawner::PutOnTheFloor` refuses nothing: handed an empty
+  item and no material it makes a drop of nothing, and `DropCarried` then empties the slot. Without the refusal,
+  dropping a gem stack would have destroyed the gems.
+
+**What else reads a carried slot, and why it needed nothing:** wearing, the item comparison and the Forge reach an item
+through `ItemAt`, which answers nothing for a gem stack as for a material; the save writer copies whole slots; the
+dungeon's "most of one material" reading checks a material name.
+
+### Tests
+
+`CataclysmGemStacksTests.cpp`, four, on a bare inventory and the generated `DT_Gems`:
+
+| Test | What it checks |
+| :-- | :-- |
+| `GemsStackByGemAndRarity` | two then one Superb Of The Viper make one stack of 3 in slot 0; an Everyday one is slot 1; a material is slot 2; a gem stack is not empty and holds no item; CONTROL: no name, and none of a gem, are refused |
+| `AFullBagRefusesANewGemAndStillStacksACarriedOne` | with 48 slots used, a new gem is refused and a carried stack takes 4 more |
+| `AGemStackIsNotDroppedAndStaysInTheBag` | dropping the gem stack answers `GemsStayInTheBag` and all 3 are still carried; CONTROL: a material is offered to the floor, which with no world refuses it as `TheFloorRefusedIt` |
+| `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` | the cell's name, count and border; the tooltip's five lines; Of The Goblin at Everyday and Of The Abyss at Cataclysmic; a Utility gem fits a Utility socket. Prints "GEM STACK TOOLTIP" |
+
+`tools/tests/test_gems_are_carried_in_stacks.py`: both slot fields are `SaveGame`; `SlotIsEmpty` reads the gem; a
+stack is found by gem and rarity; `DropCarried` refuses a gem stack before it asks the floor, and `Explain` says why;
+the cell's four readers and the tooltip each read the gem; the table path is the asset made from `Gems.csv`. Proved
+with `tools/prove_guard.py` in a `git archive` copy of `42bd7cc94`, each restored half "10 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GQ1 | `SaveGame` taken off `Gem` | "1 failed, 9 passed": `test_the_carried_slot_saves_its_gem_and_rarity` | PROVED |
+| GQ2 | `SlotIsEmpty` stops reading the gem | "1 failed, 9 passed": `test_a_gem_stack_is_not_an_empty_slot` | PROVED |
+| GQ3 | `SlotOfGems` matches the gem alone | "1 failed, 9 passed": `test_a_stack_is_found_by_gem_and_rarity` | PROVED |
+| GQ4 | `DropCarried`'s gem refusal removed | "1 failed, 9 passed": `test_dropping_a_gem_stack_is_refused_before_the_floor_is_asked` | PROVED |
+| GQ5 | the border's gem branch removed | "1 failed, 9 passed": `test_each_reader_of_a_carried_slot_knows_a_gem_stack[...BorderThicknessFor(]` | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its save version and its three compiles, which move these counts; registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStacks.` alone | 4 performed, 4 succeeded |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Three C++ guard proofs, one for each new test to be seen failing (the coordinating session's rule for G1), with
+`test_prefix="Cataclysm.GemStacks."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K4 | in `AddGems`, the `Slots[Stacked].Quantity += Quantity;` that follows `SlotOfGems(Gem, Rarity)` (the file has a second, in `AddMaterial`) to `Slots[Stacked].Quantity = Quantity;` | 4 performed, 2 succeeded, 2 failed: `GemsStackByGemAndRarity` (1 carried, not 3) and `AFullBagRefusesANewGemAndStillStacksACarriedOne` (4, not 5) | 4 of 4 |
+| K5 | `DropCarried`'s gem refusal removed | 4 performed, 3 succeeded, 1 failed: `AGemStackIsNotDroppedAndStaysInTheBag` (`TheFloorRefusedIt`, not `GemsStayInTheBag`) | 4 of 4 |
+| K6 | in `EffectAt`, `SheetValueAt(Row, Rarity) * PointsPerSheetUnit` to `Row.Everyday * PointsPerSheetUnit` | 4 performed, 3 succeeded, 1 failed: `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` ("20% chance to apply poison") | 4 of 4 |
+
+---
+
 ## 2026-11-21 — Gems and sockets are planned and ruled, and a gem's stat is a flat ailment chance or an increase in percentage points from source Gem (#46, slice G1)
 
 **Affects:** `UCataclysmGems`, new: `PointsPerSheetUnit`, `SheetValueAt`, `BucketNamed` and `AddModifier`
