@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f2`, cut from slice F1's head
+`15e101a19`, because it reuses F1's affix screen; the coordinating session accepted that base. Its window is registered
+below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS ENTRY**, and this slice's
+claims were not re-read page by page as F1's were: they are the survey's (`.claude/windows/survey_forge_47.md` in the
+gems session's worktree), named below as the survey gave them.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The Forge survey's 27 recommendations were ruled as written. The ones this slice carries:
+
+1. **Deterministic Affix's tier is chosen, T1 to T7, priced per tier** (Q8): the row's "5 CR per tier of affix" and "1
+   day per tier of affix. (Max of 8)", whose cap of 8 is never reached by a tier of at most 7. The decisions log calls
+   "one day per tier of affix" a real cost ("Crafting is not gated by the difficulty tier, and cost is what limits it").
+   The alternative, T1 only, would make the tier price meaningless.
+2. **No limit on crafted affixes per piece** (Q9). The genre limits them (the survey: Path of Exile's one crafted
+   modifier, Diablo IV's one tempered affix), but the design's cheapest route to Cataclysmic, "each step is one affix or
+   one imprint", adds three.
+3. **The new affix is a prefix or a suffix, whichever the chosen affix is** (Q10); the piece's split is what results.
+4. **Its roll is drawn within the tier** (Q11), as the survey reports Path of Exile's bench and Diablo IV's tempering do;
+   a perfect roll is slice F1's Primal Spark.
+5. **A shift draws a random new stat from the same position's pool**, never one of a stat group the piece holds (Q3):
+   the design's "rerolls". The survey names Last Epoch's Glyph of Chaos and Path of Exile 2's Chaos Orb as random.
+6. **A shift keeps the tier and the roll** (Q4), from the row's "not its value".
+7. **A shifted resistance's damage types are drawn again** (Q5), as a drop draws them.
+
+### Two judgements of this slice, not in the survey
+
+- **A shift never draws the affix it was.** "Rerolls stat type (e.g., Strength → random new stat)" reads as a different
+  stat. The held-group rule already excludes it for every kind but a resistance family, which could otherwise draw
+  itself again with other damage types.
+- **An added resistance family's damage types are drawn, not chosen**, among those the piece does not hold. The survey
+  ruled the affix and the tier chosen and did not say which damage types a chosen resistance covers. Drawing them keeps
+  the chooser to an affix and a tier, and the drop's own rule for the types.
+
+### What it does
+
+- **`UCataclysmForge::DeterministicAffixOf` and `AffixShiftOf`** (`CataclysmForge.h`, `.cpp`), plans in the order every
+  craft refuses, gold last:
+  - Deterministic Affix: Schematic Fragments, 5 residue and one base day for each tier of the affix added, Base Gold
+    250. Refused for a base not found, no free slot of the four (a piece with an enchantment fills all four), a tier
+    outside 1 to 7, an affix the piece cannot take, the material and the gold. The piece is one rarity higher, by the
+    definition of rarity (`UCataclysmItemValues::RarityOf` of one more affix).
+  - Affix Shifting: a Crystal of Instability, 15 residue, 1 base day, Base Gold 250. Refused for a base not found, no
+    such affix, an affix not in the table, no other affix able to take its place, the material and the gold.
+- **`AddableAffixesFor`**: every affix a drop could roll on the piece's slot, prefix or suffix, none of a group it
+  holds; a resistance family covering some damage types while enough are free. **`HeldGroupsOf`**, **`SlotOf`**.
+- **`AffixCraftSeed`**, a reroll's seed (F1) with a salt per craft, "SCHM" and "SHFT". **The draw is in the plan**: the
+  screen's question and the craft read the same plan for the run's mask and day, so a reload on the same day draws the
+  same, and the craft writes what the plan drew and draws nothing again.
+- **`UCataclysmForgeCraft::AddAffix`** and **`ShiftAffix`**, on a carried or worn piece, through `DoAffixChange`, in
+  `CraftAffix`'s order: the capital-only refusal, the threshold question for a worn piece, the gold, the material, the
+  item, the days, the log line and the save triggers.
+- **The forge screen**: a "Shift affix N" for each affix, and for a piece with a free slot a chooser, "Previous affix",
+  "Next affix", "Lower tier", "Raise tier" and "Add Flat maximum health at tier 1", with "Affix to add: Flat maximum
+  health (prefix), 1 of 27, at tier 1" under the detail. The chooser's steps are one press each; an addition and a shift
+  are asked on the first press and done on the second.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeAffixChangeLine`: "added Flat block chance at tier 3 to ... as affix 3,
+  making it Superb; ..." and "shifted affix 1 of ... from Flat evasion to ..., tier 2 kept; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 22.
+- **Nothing moves** in the workbook, the assets or the save versions.
+
+**Noticed, not changed**: `DoAffixChange` is the fifth copy of the threshold, gold, material, item and days sequence.
+The coordinating session ruled that slice F5 shares it as its first step.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeAffixChange.`, 5 tests**, in `CataclysmForgeAffixChangeTests.cpp`. The fixed
+helm: gear level 3, flat evasion at tier 2 rolled 0.5 and flat armor at tier 4 rolled 0.25, residue 40, Quality.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FC1 | `AddingAnAffixTakesSchematicFragmentsFiveResidueADayATierAndPromotesThePiece` | flat block chance at tier 3: residue 40 to 55, 3 days, 450 gold, Quality to Superb, the question; tier 7's 7 days; the eight refusals (tiers 0 and 8, a held group, an affix no helm rolls, a Masterful piece, a Legendary piece, the material, the gold, no piece); the craft appends it with the roll drawn for its run and day, the helm Superb, 3 days, 450 gold |
+| FC2 | `AnAddedAffixsRollAndResistanceTypesAreDrawnFromTheItemTheRunAndTheDay` | 27 affixes the helm can take, never flat armor or a hybrid with it, first flat maximum health, last flat energy shield regeneration; 28 with a War resistance in place of flat armor; seed 1655429928 and roll 0.209570; the War helm's seed 2086854589, two resistances drawing Famine and Celestial then 0.220961; over days 1 to 300 never War |
+| FC3 | `ShiftingAnAffixTakesACrystalOfInstabilityFifteenResidueADayAndKeepsItsTierAndRoll` | residue 40 to 55, 1 day, 450 gold, tier and roll and rarity kept, the question, three refusals; over 200 days every draw a helm prefix of no held group and never flat evasion, more than five different; the craft writes the drawn affix, tier 2 and roll 0.5 kept |
+| FC4 | `TheScreenShiftsEachAffixAndChoosesAnAffixAndTierToAdd` | a full piece: four shifts and the reason no affix can be added; the helm's shifts and chooser; next, tier up twice to 3, down three times to 1, back twice to the last of 27; two presses add flat energy shield regeneration and the helm is Superb |
+| FC5 | `AWornAffixChangeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn helm 10 below the threshold: a tier 1 addition is done at once; a shift asks, changes nothing, and confirmed marks the character |
+
+**Python**: `tools/tests/test_the_forge_adds_and_shifts_affixes.py`, 7 tests; its copy of the pool and the addition's
+draw gives the exact figures FC2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two rows' fallbacks,
+the two rules' prices and `DoAffixChange`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains
+`DoAffixChange`'s line, and its count of places says twenty-nine.
+
+**Python guard proofs, in a `git archive` copy of `e24082b7e`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f2_python.py`): 10 of 10 PROVED**, each failing exactly the tests predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PA1 | `AffixShiftingResidue` 10 | `test_the_sheets_two_rows_hold_the_forges_figures` |
+| PA2 | the addition's material refusal reworded | `test_each_rule_reads_its_row_and_refuses_for_its_material_before_its_gold` |
+| PA3 | an addition refused only past four slots | `test_an_addition_needs_a_free_slot_and_promotes_the_piece` |
+| PA4 | a shift's roll made 1 | `test_a_shift_keeps_tier_and_roll_and_draws_neither_itself_nor_a_held_group` |
+| PA5 | the salt `0x5343484E` | `test_the_python_copy_gives_the_figures_fc2_asserts` |
+| PA6 | the craft drawing the roll again | `test_the_craft_writes_what_the_plan_drew_and_passes_the_days_after` |
+| PA7 | the chooser offered to a full piece | `test_the_screen_offers_the_chooser_only_with_a_free_slot` |
+| PA8 | `AffixShiftingBaseDays` 2 | `test_the_sheets_two_rows_hold_the_forges_figures`, and the gold check's `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+| PA9 | `DoAffixChange` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...DoAffixChange(]` |
+| PA10 | the shift's line reading "shifted the affix" | `test_the_checklist_quotes_only_lines_the_game_says` |
+
+### Registered for the window
+
+The base is development as it stands when this window registers, which will hold slice F1. This slice adds 5 test
+names and removes none. **The whole suite is registered as the base's last measured total plus 5**; the groups below
+at their counts in that base's newest engine log, re-taken there, since slice F1 and the Power Score slices land
+before it.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeAffixChange.` 5; then, each at its count in the base's newest log, the groups whose files call the changed forge code: `ForgeAffixes.` (6 at F1's registration), `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.` |
+| The whole suite | the base's total plus 5, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeAffixChange.` with its trailing dot, through
+`.claude/windows/prove_f2.py`. Every anchor matches once on `e24082b7e`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FC1 | in `DeterministicAffixOf`, the base days `FMath::Min(Tier + 1, ...)` | 5 performed, 4 succeeded, 1 failed: FC1, on the days; FC4 and FC5 do not check an addition's days |
+| FC2 | in `AffixCraftSeed`, the index mixed as `Index + 1` | 5, 4, 1: FC2, on the seeds and draws; FC1 and FC3 compare with the same function |
+| FC3 | in `AffixShiftOf`, `Out.Roll = 1.0f;` | 5, 4, 1: FC3, on the kept roll; FC5 checks only that the affix changed |
+| FC4 | in the screen, "Previous affix" stopping at the first | 5, 4, 1: FC4, on "the last of 27" |
+| FC5 | in `DoAffixChange`, `bCrosses = false && ...` | 5, 4, 1: FC5, on "shifting affix 1 asks first" |
+
+---
+
 ## 2026-11-22 — The forge rerolls an affix's value, perfects its roll and raises its tier, one affix at a time, at the Crafting sheet's costs (#47, slice F1)
 
 **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f1`, cut from development `4a7aaac4e`.
