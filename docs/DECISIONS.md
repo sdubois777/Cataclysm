@@ -2,6 +2,128 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The player's own Power Score and each dungeon's Dungeon Score are worked out and shown: the character sheet, the empire map, the city screen and the floor panel (#2824, slice a)
+
+**Affects:** `UCataclysmPowerScore::ScoredCharacterFrom`, `ScoredCharacterOf`, `LiveBreakdownOf`, `LiveScoreOf` and
+`HandSockets`, new (`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`); `UCataclysmEnemyScore::MiddleFloorOf`,
+`DungeonScoreFor`, `FloorOfDungeon` and `DungeonScoreOf`, new (`game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`
+and `.cpp`); `UCataclysmDamageCalculation::ResistanceBeforeTheCapFor`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`); the character sheet's
+`PowerScoreLine` and `PowerScoreTooltip` (`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h` and `.cpp`)
+and its status line (`CataclysmCharacterSheetWidget.cpp`); the empire map's `ScoreText`, `DungeonScoreText` and
+`DungeonScoreLine` (`CataclysmEmpireMapLayout.h` and `.cpp`) and its city detail (`CataclysmEmpireMapWidget.cpp`); the
+city screen's dungeon rows (`CataclysmCityScreenWidget.cpp`); the floor panel's score line
+(`CataclysmFloorModifierPanel.h` and `.cpp`), `ACataclysmPlayerController::ShowFloorModifiers`
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`) and
+`ACataclysmDungeonGameMode::RefreshFloorModifierPanel` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`).
+Tests: `Cataclysm.PowerScoreLive.`, eight, new, in `game/Source/Cataclysm/Tests/CataclysmPowerScoreLiveTests.cpp`;
+`tools/tests/test_the_dungeon_score_is_the_simulations.py`, new. Issue
+[#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22.
+- **NO TEST CAN SEE A SCORE ON A SCREEN** (-nullrhi, issue #650). The tests hold the words each screen shows, and the
+  Python check holds that each screen calls the function that makes them.
+- **THE FLOOR PANEL NOW SHOWS ON EVERY FLOOR OF AN EMPIRE DUNGEON**, because it carries the Dungeon Score there. Until
+  now a floor with no dungeon modifier showed no panel; a sandbox floor, which has no empire dungeon, still shows none.
+  A judgement, following the ruling that the score is shown wherever a dungeon is offered, the walk included.
+- **THE SCORE IS WORKED OUT WHEN A SCREEN IS WRITTEN, NOT CACHED.** It is nineteen slots, their sockets and eight
+  resistances. The cache the plan named waits for slice b, whose Overwhelm reads the score on every hit taken.
+
+### What the design and the rulings say, and what this builds
+
+The design, section IV: "A player's Power Score combines level, gear quality, gear level, gem quality, socket count,
+and resistances into a single comparable number." The formula and its weights were built (`Score`, `Breakdown`); the
+only character the game scored was the reference one. The owner, 2026-11-22: "do the power score stuff since that
+effects loot and enemy damage and stuff", and "Dungeons also need their power scores as well". The design's "Dungeon
+Score Formula": "A dungeon's score is its middle floor, with that floor's six rarity scores collapsed into one number by
+how common each rarity is", `round(Common x 0.6 + Elite x 0.2 + Legendary x 0.15 + Herald x 0.04 + Boss x 0.01)`. No C++
+computed it: no file under `game/Source` named a Dungeon Score before this (searched where it would be defined,
+`CataclysmEnemyScore` and `CataclysmEnemyRarity`, 2026-11-22).
+
+The coordinating session's rulings of 2026-11-22:
+
+| Ruling | What it settles |
+| :-- | :-- |
+| Q4, a judgement | When the two hands hold different pieces, the higher-scoring counts, so an offhand never lowers a score |
+| Q5, derived | Resistance after the run's tier penalty, held at 70: the reference character is "capped" at its own tier |
+| Q6, as corrected | A dungeon shows its Dungeon Score, the design's formula, not one rarity's Enemy Score |
+| Q3 and the correction | Both scores wherever a dungeon is offered: the empire map, the city screen beside the Walk button, the floor panel |
+
+Two more judgements of this change, each with what it rests on:
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **A resistance below 0 counts 0** | the score's resistance term runs from no resistance to the 70 cap; a tier's penalty can leave -75 at tier 8, and a negative term would score a character below one with no resistance at all |
+| **Of the hands' filled sockets, the six of the highest rarity count** | the hands count as one piece and every loadout gives six sockets (section V); the capstone's twelve are "partly uncounted, by design" (#2824) |
+
+**The Dungeon Score is a port of `sim/cataclysm_sim/scoring.py`'s `dungeon_score`**, the same arithmetic in the same
+order: each rarity's rounded score on the middle floor (`ceil(floors / 2)`, the model's own) times its weight, summed
+from Common up, then rounded half up. The weights are the rarity table's `SpawnWeight`, the numbers that draw the
+spawns, read as the nearest ten-thousandth so a float's 0.6 is the model's 0.6. No formula is proposed; slices b and c
+are not in this change. Slice b's Overwhelm compares each attacker's own Enemy Score; slice c compares the player's score
+to the Dungeon Score.
+
+### The words
+
+| Where | What it says |
+| :-- | :-- |
+| The character sheet's status line | "Power Score 4,745", after the level and the difficulty tier |
+| Hovering it | "Power Score 4,745, in tier 7's range of 4,058 to 5,120." then "From level: 633", "From gear: 2,950", "From gems: 1,000", "From resistances: 162"; above 6,327, "above tier 8's range, which ends at 6,327." |
+| The empire map's city detail, after each dungeon | "Dungeon Score 2,009; your Power Score 1,100." |
+| The city screen, under each dungeon line, above its Walk button | the same |
+| The floor panel while an empire dungeon is walked, first | the same, for the dungeon being walked |
+
+The figures are the tests' examples (`TheSheetSaysTheScoreItsTierRangeAndItsFourTerms`, and 2,009 is the simulation's
+tier 4 Quest Elite dungeon of 22 floors), not measurements of a character.
+
+### Tests
+
+`Cataclysm.PowerScoreLive.`, eight, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `GearBuiltToTheTierEightReferenceScoresItsAnchor` | level 100, eighteen Cataclysmic +10 pieces, 45 Cataclysmic gems, eight resistances at 70: the reference's score, which is the code's tier 8 anchor (`TierAnchors()[8]`) |
+| `TheHandsCountOnceWithTheBetterPieceAndSixGems` | a second weapon adds nothing; the better hand counts; twelve hand gems count six; CONTROL: a weak weapon alone scores less |
+| `ResistanceCountsBetweenNoughtAndSeventy` | 95 scores as 70, -20 as 0; CONTROL: 40 between |
+| `ASocketedGemAddsItsRarityTimesTheGemWeight` | one Superb gem adds 3 x `GemWeight`; an empty socket nothing |
+| `TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty` | a possessed player at level 32 with a Cataclysmic +10 helm and 100 resistance to one type: at tier 1 it counts 70, at tier 8 100 less the tier's penalty; CONTROL: a type with none counts 0 |
+| `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | "Power Score 4,745" and its tooltip, word for word; above tier 8's range; tier 1's range from 0 |
+| `ADungeonShowsItsDungeonScoreBesideThePlayers` | an Elite dungeon of 22 floors: floor 11 of 22, its Dungeon Score worked out by hand from the rarity table, and its line with and without a player score; CONTROL: no line for a dungeon not on the map |
+| `TheDungeonScoreIsTheSimulationsOnSixDungeons` | six dungeons at the simulation's figures, 201 at tier 1 among them, the same asked from the first or last floor; modifiers raise it |
+
+Python: `test_the_dungeon_score_is_the_simulations.py`, three checks: the automation test's six figures are
+`scoring.dungeon_score`'s; the port reads the rarity table's weights, which are the simulation's `DUNGEON_SCORE_MIX`;
+and every screen that offers a dungeon calls the score functions.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log. As written, on development `4a7aaac4e`:
+
+- **The whole suite: the base + 8**, the eight new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot).
+- **No save record moves. No editor step.**
+- **Groups alone, first**, name-literal counts on this branch, each a prefix of no other group: `PowerScoreLive.` 8
+  (new); `PowerScore.` 4; `EnemyScore.` 12 and `EnemyStrength.` 8 (the file the Dungeon Score is added to);
+  `CharacterSheet.` 10; `EmpireScreen.` 16; `CityScreen.` 19; `WalkFromTheScreen.` 5; `DungeonMode.` 46 (the floor
+  panel's refresh); `Damage.` 21 and `ShowResistancesCap.` 3 (the resistance read).
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "8126 passed, 10
+  skipped in 349.16s", JUnit 8136 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!".
+- **Seven Unreal guard proofs**, each narrowed to `Cataclysm.PowerScoreLive.` (8):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| L1 | the first hand is kept rather than the better (`Value(Piece) > Value(Hand)` read as false) | 7 succeeded, 1 failed: `TheHandsCountOnceWithTheBetterPieceAndSixGems` |
+| L2 | every gem in the hands counts, not six | 7, 1: `TheHandsCountOnceWithTheBetterPieceAndSixGems` |
+| L3 | a resistance below 0 is not held at 0 | 7, 1: `ResistanceCountsBetweenNoughtAndSeventy` |
+| L4 | the character's resistance read at tier 1 whatever the tier | 7, 1: `TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty` |
+| L5 | the Dungeon Score read on the floor it is asked of, not the middle | 7, 1: `TheDungeonScoreIsTheSimulationsOnSixDungeons` |
+| L6 | a dungeon on the map scored at floor 1, not its middle | 7, 1: `ADungeonShowsItsDungeonScoreBesideThePlayers` |
+| L7 | a tier's range read from the tier below's end rather than one above it | 7, 1: `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` |
+
+---
+
 ## 2026-11-22 — The shared window: the cleanse (#2838), raising a city upgrade (#1265), the gem enchantments (#46 G10) and the socket crafts (#46 G9) on one branch, registered
 
 **Uncertain or not yet shown, first:**

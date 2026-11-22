@@ -1461,3 +1461,10 @@ bool UCataclysmDamageCalculation::MeleeIsReflected(const UAbilitySystemComponent
 	return Hit.bIsMelee && !Hit.bIsDamageOverTime
 		&& DefenderChancePasses(Defender, MeleeReflectChanceStat, Hit, CVarMeleeReflectRoll.GetValueOnAnyThread());
 }
+
+float UCataclysmDamageCalculation::ResistanceBeforeTheCapFor(const UAbilitySystemComponent* Defender, FName DamageType,
+															 int32 DifficultyTier)
+{
+	// THE FUNCTION A HIT USES, so the score and the hit cannot read two resistances. Issue #2824.
+	return ResistanceFor(Defender, DamageType, DifficultyTier);
+}

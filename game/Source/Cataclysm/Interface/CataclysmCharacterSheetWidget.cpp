@@ -9,6 +9,8 @@
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPowerScore.h"
 
 namespace
 {
@@ -207,9 +209,14 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 			Pawn ? Pawn->FindComponentByClass<UCataclysmEquipmentComponent>() : nullptr;
 		// AND THE CONSUMPTION MARK, only when the character carries it. Issue #2688.
 		const FString Mark = UCataclysmCharacterSheetLayout::ConsumptionMarkLine(State && State->IsMarkedByConsumption());
+		// AND THE POWER SCORE, read from the character as it is now, its four terms on hover. Issue #2824.
+		const FCataclysmPowerBreakdown Power =
+			UCataclysmPowerScore::LiveBreakdownOf(Cast<ACataclysmPlayerCharacter>(Pawn));
+		StatusLabel->SetToolTipText(FText::FromString(UCataclysmCharacterSheetLayout::PowerScoreTooltip(Power)));
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Level %d   Difficulty tier %d   %s   %s%s%s"),
+			TEXT("Level %d   Difficulty tier %d   %s   %s   %s%s%s"),
 			State ? State->GetCharacterLevel() : 0, ShownDifficultyTier(),
+			*UCataclysmCharacterSheetLayout::PowerScoreLine(Power.Total),
 			*UCataclysmCharacterSheetLayout::KillsLine(
 				State ? State->GetRunKills() : 0,
 				State ? State->GetLifetimeKills() : 0),

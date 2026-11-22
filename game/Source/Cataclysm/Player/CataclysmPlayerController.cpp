@@ -65,19 +65,22 @@ ACataclysmPlayerController::ACataclysmPlayerController()
 
 void ACataclysmPlayerController::ShowFloorModifiers(
 	const TArray<FName>& RowKeys, int32 FloorNumber,
-	const TMap<FName, FString>& LiveCounts)
+	const TMap<FName, FString>& LiveCounts, const FString& ScoreLine)
 {
 	// WHAT THIS WAS TOLD, FIRST, for a test that cannot read the screen: a test world has no local player, so the
 	// return below is taken there and the panel never made. The last call only. Issue #1841.
 	LastFloorModifiersShown.RowKeys = RowKeys;
 	LastFloorModifiersShown.FloorNumber = FloorNumber;
 	LastFloorModifiersShown.LiveCounts = LiveCounts;
+	LastFloorModifiersShown.ScoreLine = ScoreLine;
 	++LastFloorModifiersShown.Calls;
 
 	// NOTHING ON THE FLOOR, NOTHING ON THE SCREEN. Every floor walked in the
 	// sandbox carries no modifiers, and a panel reading "0 dungeon modifiers" on
 	// all of them would be noise over the game.
-	if (RowKeys.IsEmpty())
+	// AND NO SCORE TO SHOW: an empire dungeon's floor always has its Dungeon Score (issue #2824), so its panel shows
+	// on every floor; a sandbox floor has none.
+	if (RowKeys.IsEmpty() && ScoreLine.IsEmpty())
 	{
 		if (FloorModifierPanel && FloorModifierPanel->IsInViewport())
 		{
@@ -121,7 +124,7 @@ void ACataclysmPlayerController::ShowFloorModifiers(
 		}
 	}
 
-	FloorModifierPanel->SetFloorModifiers(RowKeys, FloorNumber, LiveCounts);
+	FloorModifierPanel->SetFloorModifiers(RowKeys, FloorNumber, LiveCounts, ScoreLine);
 	if (!FloorModifierPanel->IsInViewport())
 	{
 		FloorModifierPanel->AddToViewport();

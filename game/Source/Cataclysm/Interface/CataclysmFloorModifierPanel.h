@@ -60,7 +60,11 @@ public:
 	 */
 	void SetFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber,
 						   const TMap<FName, FString>& LiveCounts =
-							   TMap<FName, FString>());
+							   TMap<FName, FString>(),
+						   const FString& InScoreLine = FString());
+
+	/** The Dungeon Score and Power Score line the panel shows first, or empty. Issue #2824. */
+	const FString& ShownScoreLine() const { return ScoreLine; }
 
 	/** What the panel is showing, for a test that cannot read the screen. */
 	const TArray<FCataclysmFloorModifierLine>& ShownLines() const { return Lines; }
@@ -120,6 +124,9 @@ private:
 
 	/** Which floor it is on. */
 	int32 FloorNumber = 1;
+
+	/** See `ShownScoreLine`. */
+	FString ScoreLine;
 
 	/** One text block per row, name and description lines alike. */
 	UPROPERTY(Transient)

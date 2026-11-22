@@ -17,6 +17,8 @@
 #include "Engine/DataTable.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Player/CataclysmPowerScore.h"
 
 namespace
 {
@@ -894,4 +896,38 @@ FString UCataclysmCharacterSheetLayout::UnspentPointsText(int32 Unspent)
 
 	return FString::Printf(TEXT("%d point%s to spend."), Unspent,
 						   Unspent == 1 ? TEXT("") : TEXT("s"));
+}
+
+FString UCataclysmCharacterSheetLayout::PowerScoreLine(int32 Score)
+{
+	return FString::Printf(TEXT("Power Score %s"), *ACataclysmDroppedItem::GoldAmountText(FMath::Max(0, Score)));
+}
+
+FString UCataclysmCharacterSheetLayout::PowerScoreTooltip(const FCataclysmPowerBreakdown& Breakdown)
+{
+	const auto Whole = [](double Value)
+	{
+		return ACataclysmDroppedItem::GoldAmountText(static_cast<int64>(FMath::FloorToDouble(FMath::Max(0.0, Value) + 0.5)));
+	};
+	const TArray<int32>& Anchors = UCataclysmPowerScore::TierAnchors();
+	const int32 Top = Anchors.Num() - 1;
+	FString Range;
+	if (Breakdown.Total > Anchors[Top])
+	{
+		Range = FString::Printf(TEXT("above tier %d's range, which ends at %s."), Top, *Whole(Anchors[Top]));
+	}
+	else
+	{
+		int32 Tier = 1;
+		while (Tier < Top && Breakdown.Total > Anchors[Tier])
+		{
+			++Tier;
+		}
+		// TIER 1 FROM 0; EVERY OTHER FROM ONE ABOVE THE TIER BELOW'S END, as section XII's table reads.
+		const int32 From = Tier == 1 ? 0 : Anchors[Tier - 1] + 1;
+		Range = FString::Printf(TEXT("in tier %d's range of %s to %s."), Tier, *Whole(From), *Whole(Anchors[Tier]));
+	}
+	return FString::Printf(TEXT("Power Score %s, %s\nFrom level: %s\nFrom gear: %s\nFrom gems: %s\nFrom resistances: %s"),
+						   *Whole(Breakdown.Total), *Range, *Whole(Breakdown.FromLevel), *Whole(Breakdown.FromGear),
+						   *Whole(Breakdown.FromGems), *Whole(Breakdown.FromResistances));
 }

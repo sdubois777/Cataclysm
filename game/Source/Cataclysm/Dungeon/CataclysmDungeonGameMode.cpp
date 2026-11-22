@@ -38,6 +38,8 @@
 #include "Character/CataclysmEnemyRarity.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Dungeon/CataclysmEnemyStrength.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
@@ -21674,8 +21676,16 @@ void ACataclysmDungeonGameMode::RefreshFloorModifierPanel()
 
 	// THE ROWS THE PANEL LISTS AND NOT ONLY THE FLOOR'S OWN: on the dark floor a fall leads to, the row whose line
 	// carries the dark floor's seal is listed whatever rows that floor drew. Ruled 2026-10-09.
+	// AND, WHILE AN EMPIRE DUNGEON IS WALKED, ITS DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE. Issue #2824.
+	FString ScoreLine;
+	if (BoundDungeon() != nullptr)
+	{
+		ScoreLine = UCataclysmEmpireMapLayout::DungeonScoreText(
+			UCataclysmEnemyScore::DungeonScoreFor(UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this))),
+			UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Cataclysm->GetPawn())));
+	}
 	Cataclysm->ShowFloorModifiers(RowsTheFloorPanelLists(), FloorBrief.FloorNumber,
-								  LiveCountsForTheFloor());
+								  LiveCountsForTheFloor(), ScoreLine);
 }
 
 TArray<FName> ACataclysmDungeonGameMode::RowsTheFloorPanelLists() const

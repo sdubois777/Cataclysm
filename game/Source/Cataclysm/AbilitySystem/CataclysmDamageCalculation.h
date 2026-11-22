@@ -1359,6 +1359,15 @@ public:
 	static float TypedResistanceOf(const UAbilitySystemComponent* Defender,
 								   FName DamageType);
 
+	/**
+	 * A defender's resistance to a damage type as a hit meets it before the cap: the generic figure, the typed one
+	 * (`TypedResistanceOf`), and, for a player, less the difficulty tier's penalty (`ResistancePenaltyFor`). What the
+	 * player's Power Score reads, issue #2824, by the coordinating session's ruling of 2026-11-22 (Q5): the reference
+	 * character is "capped" at its own tier, so a live character's resistance is read after its tier's penalty.
+	 */
+	static float ResistanceBeforeTheCapFor(const UAbilitySystemComponent* Defender, FName DamageType,
+										   int32 DifficultyTier);
+
 	/** Armor as a percentage of damage removed. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Damage")
 	static float ArmorReduction(float Armor, int32 Tier);

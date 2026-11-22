@@ -20,9 +20,10 @@ void UCataclysmFloorModifierPanel::NativeConstruct()
 
 void UCataclysmFloorModifierPanel::SetFloorModifiers(
 	const TArray<FName>& RowKeys, int32 InFloorNumber,
-	const TMap<FName, FString>& LiveCounts)
+	const TMap<FName, FString>& LiveCounts, const FString& InScoreLine)
 {
 	FloorNumber = FMath::Max(1, InFloorNumber);
+	ScoreLine = InScoreLine;
 	Lines = UCataclysmFloorModifierPanelLayout::LinesFor(
 		RowKeys, UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
 		LiveCounts); // A panel's: what each row is counting. Tested, issue #1841.
@@ -51,6 +52,12 @@ void UCataclysmFloorModifierPanel::Redraw()
 
 	ModifierBox->ClearChildren();
 	Rows.Reset();
+
+	// THE DUNGEON'S SCORE BESIDE THE PLAYER'S, FIRST, since issue #2824.
+	if (!ScoreLine.IsEmpty())
+	{
+		AddRow(ScoreLine, NameFontSize, /*bDim=*/false);
+	}
 
 	for (const FCataclysmFloorModifierLine& Line : Lines)
 	{

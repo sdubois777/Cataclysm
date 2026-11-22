@@ -13,6 +13,8 @@
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPowerScore.h"
 
 namespace
 {
@@ -647,12 +649,15 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 	// ITS SUB-TYPE, AND A QUEST DUNGEON AS ONE, since issue #2800: "Elite Quest
 	// dungeon of 22 floors, 7 days left". The words are
 	// `UCataclysmEmpireMapLayout::CityDetailDungeonLine`'s, so a test reads them.
+	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, since issue #2824.
+	const int32 PlayerScore = UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(GetOwningPlayerPawn()));
 	for (const int32 DungeonId : Run->DungeonsOn(CityId))
 	{
 		const FString Line = UCataclysmEmpireMapLayout::CityDetailDungeonLine(Run, DungeonId);
 		if (!Line.IsEmpty())
 		{
 			Parts.Add(Line);
+			Parts.Add(UCataclysmEmpireMapLayout::DungeonScoreLine(Run, DungeonId, PlayerScore));
 		}
 	}
 

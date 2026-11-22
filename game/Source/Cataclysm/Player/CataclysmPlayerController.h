@@ -32,6 +32,7 @@ struct FCataclysmFloorModifiersShown
 	TArray<FName> RowKeys;
 	int32 FloorNumber = 0;
 	TMap<FName, FString> LiveCounts;
+	FString ScoreLine;
 	int32 Calls = 0;
 };
 class UCataclysmInputConfig;
@@ -98,7 +99,8 @@ public:
 	 */
 	void ShowFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber,
 							const TMap<FName, FString>& LiveCounts =
-								TMap<FName, FString>());
+								TMap<FName, FString>(),
+							const FString& ScoreLine = FString());
 
 	/** What `ShowFloorModifiers` was last told, for a test that cannot read the screen. Issue #1841. */
 	const FCataclysmFloorModifiersShown& FloorModifiersShown() const { return LastFloorModifiersShown; }
