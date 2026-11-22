@@ -1929,13 +1929,13 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		}
 	}
 
-	// AND THE CITY IS REPAIRED A LITTLE, IF IT BOUGHT THAT UPGRADE. The sheet
-	// says "When you clear a dungeon, the city's Defense restores by an
-	// ADDITIONAL 5%", and there is no base restore for it to be additional to:
-	// neither this class nor `Simulation._clear` in the Python model gives a
-	// city anything back for a dungeon being beaten. So the upgrade grants the
-	// whole 5% rather than an increment on something. Issue #1267 asks whether
-	// the base restore the word implies was meant to exist.
+	// AND THE CITY IS REPAIRED A LITTLE, IF IT BOUGHT THAT UPGRADE: "When you
+	// clear a dungeon, the city's Defense restores by 5%", the whole 5%. A clear
+	// gives a city nothing back without it, by the owner's ruling of 2026-11-22,
+	// verbatim: "Dungeon clears do not restore city defenses." The sheet said
+	// "an additional 5%" until then, and the word was taken out (issue #1267).
+	// Neither this class nor `Simulation._clear` in the Python model has a base
+	// restore, and neither is to have one.
 	if (Map != nullptr && CityId != INDEX_NONE)
 	{
 		if (FCataclysmCity* City = Map->FindMutable(CityId))

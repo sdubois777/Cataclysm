@@ -129,8 +129,8 @@ CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedTwoRunsTest,
 /**
  * `Run_v7.json`, written before the mask, migrates to a mask of 0 with every other field kept, and each of its
  * dungeons keeps the walk seed it had: its identifier plus one. So a walk saved at version 7 loads the floors it was on.
- * CONTROL: the committed run file's mask, 12345 -- `Run_v16.json`'s since the run record went to version 16 (issue
- * #2838), `Run_v15.json`'s from version 15 (issue #2741 slice 9), `Run_v14.json`'s from version 14 (issue #46), `Run_v13.json`'s from version 13 (issue #2825), `Run_v12.json`'s from version 12 (issue #2741 slice 6b), `Run_v11.json`'s from version 11 (issue #2741 slice 5b), `Run_v10.json`'s from version 10 (issue #2725), `Run_v9.json`'s from version 9 (issue #2741 slice
+ * CONTROL: the committed run file's mask, 12345 -- `Run_v17.json`'s since the run record went to version 17 (issue
+ * #2840), `Run_v16.json`'s from version 16 (issue #2838), `Run_v15.json`'s from version 15 (issue #2741 slice 9), `Run_v14.json`'s from version 14 (issue #46), `Run_v13.json`'s from version 13 (issue #2825), `Run_v12.json`'s from version 12 (issue #2741 slice 6b), `Run_v11.json`'s from version 11 (issue #2741 slice 5b), `Run_v10.json`'s from version 10 (issue #2725), `Run_v9.json`'s from version 9 (issue #2741 slice
  * 3b), `Run_v8.json`'s before -- gives the same dungeons other seeds. Prints "WALK SEED MIGRATED".
  */
 CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedMigrationTest,
@@ -161,7 +161,7 @@ CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedMigrationTest,
 	FString ReadText;
 	const UCataclysmRunSave* Read = ReadWalkSeedFixture(*this, TEXT("Run_v7.json"), ReadText);
 	FString CurrentText;
-	const UCataclysmRunSave* Current = ReadWalkSeedFixture(*this, TEXT("Run_v16.json"), CurrentText);
+	const UCataclysmRunSave* Current = ReadWalkSeedFixture(*this, TEXT("Run_v17.json"), CurrentText);
 	if (Read == nullptr || Current == nullptr)
 	{
 		return false;
@@ -186,6 +186,7 @@ CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedMigrationTest,
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
+	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -201,7 +202,7 @@ CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedMigrationTest,
 	}
 
 	AddInfo(FString::Printf(TEXT("WALK SEED MIGRATED: the step %d (%s); mask written %s %.0f; the record at version %d with "
-								 "mask %d; %d of %d dungeons keep their seed; Run_v16.json's mask %d moves %d; the rest %s"),
+								 "mask %d; %d of %d dungeons keep their seed; Run_v17.json's mask %d moves %d; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), Written,
 							Read->SchemaVersion, Read->WalkSeedMask, Kept, Read->Dungeons.Num(), Current->WalkSeedMask,
 							MovedByTheCurrentFilesMask, bSame ? TEXT("kept") : *Where));

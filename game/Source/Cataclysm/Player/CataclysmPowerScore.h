@@ -5,6 +5,9 @@
 #include "CoreMinimal.h"
 #include "CataclysmPowerScore.generated.h"
 
+class ACataclysmPlayerCharacter;
+struct FCataclysmItem;
+
 /**
  * One equipped item, as far as Power Score cares.
  *
@@ -192,4 +195,43 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Power")
 	static FCataclysmScoredCharacter ReferenceCharacter(int32 Tier);
+
+	// ---------------------------------------------------------------------
+	// THE PLAYER'S OWN SCORE. Issue #2824, slice a, ruled by the coordinating session on 2026-11-22.
+	// ---------------------------------------------------------------------
+
+	/** How many of the hands' filled sockets count: six, what every loadout gives (design section V). */
+	static constexpr int32 HandSockets = 6;
+
+	/**
+	 * A character as the score reads it, from its level, what it wears and its eight resistances.
+	 *
+	 * `Worn` is indexed by `ECataclysmGearSlot`, as `UCataclysmEquipmentComponent::GetSlots` holds it; a slot with no
+	 * base is empty. Each worn piece outside the hands is one entry: its rarity (`RarityOfItem`, from what fills its
+	 * slots, 1 for Everyday to 8 for Cataclysmic) and its gear level. THE HANDS ARE ONE PIECE (design section IV): of
+	 * the two weapon slots, the higher-scoring piece counts, the coordinating session's judgement (Q4), so an offhand
+	 * never lowers a score. Each filled socket of a piece outside the hands is one gem; of the hands' filled sockets,
+	 * the six of the highest rarity count, because the hands count as one piece and every loadout gives six, so the
+	 * capstone's twelve are partly uncounted by design.
+	 *
+	 * EACH RESISTANCE IS HELD AT 0 TO 70: above 70 adds nothing (the design's rule), and below 0, which a tier's penalty
+	 * can leave, takes nothing away (the coordinating session's judgement: the score's resistance term runs from no
+	 * resistance to the cap).
+	 */
+	static FCataclysmScoredCharacter ScoredCharacterFrom(int32 Level, const TArray<FCataclysmItem>& Worn,
+														 const TArray<float>& Resistances);
+
+	/**
+	 * The character playing, scored at `DifficultyTier`: its player state's level, its equipment component's slots,
+	 * and its eight resistances as a hit meets them before the cap, after that tier's penalty
+	 * (`UCataclysmDamageCalculation::ResistanceBeforeTheCapFor`), the ruling's Q5. A level of 0, and nothing worn or
+	 * resisted, for a character with no player state, equipment or abilities.
+	 */
+	static FCataclysmScoredCharacter ScoredCharacterOf(const ACataclysmPlayerCharacter* Character, int32 DifficultyTier);
+
+	/** `Breakdown` of `ScoredCharacterOf` at the difficulty tier of the character's world. */
+	static FCataclysmPowerBreakdown LiveBreakdownOf(const ACataclysmPlayerCharacter* Character);
+
+	/** `LiveBreakdownOf`'s total, or `INDEX_NONE` for no character. */
+	static int32 LiveScoreOf(const ACataclysmPlayerCharacter* Character);
 };

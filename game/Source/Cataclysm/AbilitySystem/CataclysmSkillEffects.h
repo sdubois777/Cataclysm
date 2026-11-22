@@ -1392,6 +1392,13 @@ public:
 	 *                 its ticks' kills, and IDENTITY ONLY; see `ApplyDamageOverTime`. Issue #2683
 	 * @param SkillRowWithNoSkill  the row of that skill, captured while it was there, for the same blows; handed to
 	 *                 `ApplyDamageOverTime`, which credits and scales the burn by it. Issue #2764, slice 2a
+	 * @param LevelFactor  a skill level factor read elsewhere, multiplying the burn's figure, for a burn NOT scaled by its
+	 *                 applier: a summoned minion's burn (its summoning skill's, `ACataclysmMinion::LevelFactorOnCreatures`)
+	 *                 and a thrall's (the skill that took it, `ACataclysmEnemyCharacter::TakenLevelFactorOnCreatures`).
+	 *                 1 for every other burn, and a burn scaled by its applier takes its factor in `ApplyDamageOverTime`
+	 *                 instead. Issue #2784, ruled 2026-11-22 (Q4) from the owner's answer of 2026-11-19, "Yes, they
+	 *                 scale too": a burn is flat (`DoT_Burn`, 25 a second), not a share of the blow, so a minion's
+	 *                 burn took no level factor at all until this, and Summon Imp's imps never burned harder for it
 	 * @return whether a burn was applied
 	 */
 	static bool ApplyBurn(AActor* Instigator, AActor* Target, float HitDamage,
@@ -1400,7 +1407,8 @@ public:
 						  AActor* DealtBy = nullptr,
 						  const UGameplayAbility* Skill = nullptr,
 						  const FGameplayTagContainer* SkillTagsWithNoSkill = nullptr,
-						  FName SkillRowWithNoSkill = NAME_None);
+						  FName SkillRowWithNoSkill = NAME_None,
+						  float LevelFactor = 1.0f);
 
 	/**
 	 * A percentage-of-normal stat read as a plain multiplier.

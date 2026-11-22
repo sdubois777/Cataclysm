@@ -8,6 +8,7 @@
 #include "CataclysmEnemyScore.generated.h"
 
 class ACataclysmGameMode;
+class UCataclysmEmpireRun;
 
 // `ECataclysmDungeonType` AND `ECataclysmDungeonSubType` USED TO BE DECLARED
 // HERE, and are now in `Empire/CataclysmDungeonKind.h` in the `CataclysmEmpire`
@@ -212,6 +213,43 @@ public:
 
 	/** Every rarity's score on one floor, indexed by rarity step 0 to 5. */
 	static TArray<int32> ScoresFor(const FCataclysmScoredFloor& Floor);
+
+	// ---------------------------------------------------------------------
+	// THE DUNGEON SCORE. Issue #2824, the owner's "Dungeons also need their power scores as well" (2026-11-22).
+	// ---------------------------------------------------------------------
+
+	/** A dungeon's middle floor: `ceil(total / 2)`, as the score model's `middle_floor`, and at least 1. */
+	static int32 MiddleFloorOf(int32 TotalFloors);
+
+	/**
+	 * The design's Dungeon Score (`docs/Cataclysm_GDD_v2.md`, "Dungeon Score Formula"): "its middle floor, with that
+	 * floor's six rarity scores collapsed into one number by how common each rarity is" --
+	 * `round(Common x 0.6 + Elite x 0.2 + Legendary x 0.15 + Herald x 0.04 + Boss x 0.01)`.
+	 *
+	 * A PORT OF `sim/cataclysm_sim/scoring.py`'s `dungeon_score`, the same arithmetic in the same order: each rarity's
+	 * `ScoreFor` on the middle floor of `Floor`'s dungeon (its tier, kind, sub-type, length, modifiers and ring), each
+	 * already rounded, times its weight, summed from Common up, then rounded half up. The floor number `Floor` carries
+	 * is ignored: any floor of a dungeon gives the same score.
+	 *
+	 * THE WEIGHTS ARE THE RARITY TABLE'S `SpawnWeight`, the same numbers that draw the spawns, not retyped. Each is
+	 * read as the nearest ten-thousandth, so a float's 0.6 is the score model's 0.6 and a total ending in exactly .5
+	 * rounds as the model rounds it. A Cataclysm Boss weighs 0 there and adds nothing.
+	 *
+	 * @return 0 when the rarity table cannot be loaded
+	 */
+	static int32 DungeonScoreFor(const FCataclysmScoredFloor& Floor);
+
+	/**
+	 * A dungeon standing on the empire map as a scored floor, at its middle floor: the run's difficulty tier, the
+	 * dungeon's kind, sub-type, length and ring, and the modifier score it carries (`ModifierScoreCarriedBy`), as
+	 * `ACataclysmDungeonGameMode::EnterEmpireDungeon` reads them when it is walked.
+	 *
+	 * @return false, `Out` unchanged, when there is no run or no such dungeon
+	 */
+	static bool FloorOfDungeon(const UCataclysmEmpireRun* Run, int32 DungeonId, FCataclysmScoredFloor& Out);
+
+	/** `DungeonScoreFor` of a dungeon on the map, or `INDEX_NONE` when there is no run or no such dungeon. */
+	static int32 DungeonScoreOf(const UCataclysmEmpireRun* Run, int32 DungeonId);
 
 	/**
 	 * Where a fight is happening, read out of the world's game mode.

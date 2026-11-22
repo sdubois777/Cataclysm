@@ -240,6 +240,9 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 			Record.bSecondSelf = Creature->bIsSecondSelf;
 			Record.ReservedFervour = Creature->ReservedFervour;
 			Record.CommanderHealthMultiplier = Creature->GetCommanderHealthMultiplier();
+			// AND THE SKILL THAT TOOK IT, read once at the take (issue #2840).
+			Record.TakenBySkillRow = Creature->TakenBySkillRow;
+			Record.TakenLevelFactorOnCreatures = Creature->TakenLevelFactorOnCreatures;
 		}
 		if (DungeonMode)
 		{

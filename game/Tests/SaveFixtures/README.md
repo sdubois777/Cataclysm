@@ -697,6 +697,21 @@ followed, ruled 2026-11-01:
   that read it as the committed file reads the new one, and every test that runs
   an older run file through the whole chain adds what the step writes through
   `CataclysmSaveFixtures::AddTheRunsVersion16Defaults`.
+- **The run record went to version 17 on 2026-11-22**, for a thrall loaded from
+  a save (issue #2840): a thrall's saved creature keeps the skill that took it,
+  `TakenBySkillRow`, and that skill's level factor at the take,
+  `TakenLevelFactorOnCreatures`. The step writes Subjugate's row,
+  `Demonic_Staff_Ultimate`, and 1 on a creature the player commanded, and None
+  and 1 on every other creature: Subjugate is the one row that takes a creature,
+  and the level at the take was not recorded, so 1, the factor at level 1, is the
+  one figure that never overstates (the coordinating session's ruling, Q1).
+  `Run_v17.json` is `Run_v16.json` at version 17 with its thrall, the Abyssal
+  Warden, holding Subjugate's row and a factor of 1.5, a figure and not the
+  default, and the Brute beside it None and 1. `Run_v16.json` is now a migration
+  input, not edited again; every test that read it as the committed file reads
+  the new one, and every test that runs an older run file through the whole chain
+  adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion17Defaults`.
   **THE NUMBERS FOLLOW THE GEMS WINDOW'S** (issue #46, character 13 and run 14,
   the same day): this slice was written at character 13 and run 14 and renumbered
   when it was rebased onto the gems window (the coordinating session's V1).
@@ -928,6 +943,7 @@ followed, ruled 2026-11-01:
 | `Run_v14.json` | The same run at version 14: version 13's contents, with each ground item's socket count of 0 as an empty list and no gem on either ground item |
 | `Run_v15.json` | The same run at version 15: version 14's contents, plus its first city bailed out and its second not, its dungeon not a bonus one, 2 bonus dungeons cleared and the surge's bribe spent |
 | `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
+| `Run_v17.json` | The same run at version 17: version 16's contents, plus its thrall's taking skill, `Demonic_Staff_Ultimate`, at a level factor of 1.5, and the other creature None and 1 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

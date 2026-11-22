@@ -1,7 +1,14 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Player/CataclysmPowerScore.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
+#include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayerState.h"
 
 const TArray<int32>& UCataclysmPowerScore::TierAnchors()
 {
@@ -206,4 +213,112 @@ FCataclysmScoredCharacter UCataclysmPowerScore::ReferenceCharacter(int32 Tier)
 
 	Out.Resistances.Init(ResistanceCap * Tier / 8.0f, ResistanceCount);
 	return Out;
+}
+
+FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterFrom(int32 Level, const TArray<FCataclysmItem>& Worn,
+																	const TArray<float>& Resistances)
+{
+	FCataclysmScoredCharacter Out;
+	Out.Level = Level;
+
+	const auto Scored = [](const FCataclysmItem& Item, FCataclysmScoredGear& OutPiece)
+	{
+		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+		if (Item.Base.IsNone() || !UCataclysmItemModifiers::RarityOfItem(Item, Rarity))
+		{
+			return false;
+		}
+		OutPiece.Rarity = static_cast<int32>(Rarity) + 1;
+		OutPiece.Upgrade = Item.GearLevel;
+		return true;
+	};
+	const auto Value = [](const FCataclysmScoredGear& Piece)
+	{
+		return Piece.Rarity * (1.0 + static_cast<double>(UpgradeFactor()) * Piece.Upgrade);
+	};
+
+	const int32 FirstHand = static_cast<int32>(ECataclysmGearSlot::Weapon1);
+	const int32 SecondHand = static_cast<int32>(ECataclysmGearSlot::Weapon2);
+	TArray<int32> HandGems;
+	bool bHandHeld = false;
+	FCataclysmScoredGear Hand;
+	for (int32 Index = 0; Index < Worn.Num() && Index < static_cast<int32>(ECataclysmGearSlot::Count); ++Index)
+	{
+		const FCataclysmItem& Item = Worn[Index];
+		FCataclysmScoredGear Piece;
+		if (!Scored(Item, Piece))
+		{
+			continue;
+		}
+		const bool bInTheHands = Index == FirstHand || Index == SecondHand;
+		for (const FCataclysmSocket& Socket : Item.Sockets)
+		{
+			if (!Socket.Gem.IsNone())
+			{
+				(bInTheHands ? HandGems : Out.Gems).Add(static_cast<int32>(Socket.GemRarity) + 1);
+			}
+		}
+		if (!bInTheHands)
+		{
+			Out.Gear.Add(Piece);
+		}
+		// THE HANDS AS ONE PIECE: the higher-scoring of the two (Q4).
+		else if (!bHandHeld || Value(Piece) > Value(Hand))
+		{
+			Hand = Piece;
+			bHandHeld = true;
+		}
+	}
+	if (bHandHeld)
+	{
+		Out.Gear.Add(Hand);
+	}
+	// AND SIX OF THE HANDS' GEMS, the highest.
+	HandGems.Sort([](int32 A, int32 B) { return A > B; });
+	for (int32 Index = 0; Index < HandGems.Num() && Index < HandSockets; ++Index)
+	{
+		Out.Gems.Add(HandGems[Index]);
+	}
+
+	for (const float Resistance : Resistances)
+	{
+		Out.Resistances.Add(FMath::Clamp(Resistance, 0.0f, ResistanceCap));
+	}
+	return Out;
+}
+
+FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterOf(const ACataclysmPlayerCharacter* Character,
+																  int32 DifficultyTier)
+{
+	if (Character == nullptr)
+	{
+		FCataclysmScoredCharacter None;
+		None.Level = 0;
+		return None;
+	}
+	const ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Character);
+
+	TArray<float> Resistances;
+	if (Abilities != nullptr)
+	{
+		for (const FName& DamageType : UCataclysmItemModifiers::DamageTypeNames())
+		{
+			Resistances.Add(
+				UCataclysmDamageCalculation::ResistanceBeforeTheCapFor(Abilities, DamageType, DifficultyTier));
+		}
+	}
+	return ScoredCharacterFrom(State ? State->GetCharacterLevel() : 0,
+							   Equipment ? Equipment->GetSlots() : TArray<FCataclysmItem>(), Resistances);
+}
+
+FCataclysmPowerBreakdown UCataclysmPowerScore::LiveBreakdownOf(const ACataclysmPlayerCharacter* Character)
+{
+	return Breakdown(ScoredCharacterOf(Character, Character ? ACataclysmGameMode::DifficultyTierIn(Character) : 1));
+}
+
+int32 UCataclysmPowerScore::LiveScoreOf(const ACataclysmPlayerCharacter* Character)
+{
+	return Character ? LiveBreakdownOf(Character).Total : INDEX_NONE;
 }

@@ -15,6 +15,9 @@
 #include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
+#include "Player/CataclysmPowerScore.h"
 
 void UCataclysmCityScreenWidget::NativeConstruct()
 {
@@ -349,12 +352,16 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	AddRow(UCataclysmCityScreenLayout::DungeonHeading(Dungeons.Num()),
 		   /* bIsHeading */ true, /* bDim */ false);
 
+	// AND EACH ONE'S DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE, above its Walk button, since issue #2824.
+	const int32 PlayerScore = UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(GetOwningPlayerPawn()));
 	for (int32 Index = 0; Index < Dungeons.Num(); ++Index)
 	{
 		AddRow(Dungeons[Index], /* bIsHeading */ false, /* bDim */ false);
 
 		if (DungeonIds.IsValidIndex(Index))
 		{
+			AddRow(UCataclysmEmpireMapLayout::DungeonScoreLine(Run, DungeonIds[Index], PlayerScore),
+				   /* bIsHeading */ false, /* bDim */ true);
 			AddWalkButton(DungeonIds[Index]);
 			AddBribeButton(DungeonIds[Index]); // While Bribery is held (issue #2741 slice 9, V14).
 		}

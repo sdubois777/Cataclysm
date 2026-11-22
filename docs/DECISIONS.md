@@ -2,6 +2,472 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
+
+**COMPILED AND TESTED SINCE: window power-score-w2 passed on `5b6042222`**, with FC1 to FC5 PROVED; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original note follows.
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f2`, cut from slice F1's head
+`15e101a19`, because it reuses F1's affix screen; the coordinating session accepted that base. Its window is registered
+below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS ENTRY**, and this slice's
+claims were not re-read page by page as F1's were: they are the survey's (`.claude/windows/survey_forge_47.md` in the
+gems session's worktree), named below as the survey gave them.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The Forge survey's 27 recommendations were ruled as written. The ones this slice carries:
+
+1. **Deterministic Affix's tier is chosen, T1 to T7, priced per tier** (Q8): the row's "5 CR per tier of affix" and "1
+   day per tier of affix. (Max of 8)", whose cap of 8 is never reached by a tier of at most 7. The decisions log calls
+   "one day per tier of affix" a real cost ("Crafting is not gated by the difficulty tier, and cost is what limits it").
+   The alternative, T1 only, would make the tier price meaningless.
+2. **No limit on crafted affixes per piece** (Q9). The genre limits them (the survey: Path of Exile's one crafted
+   modifier, Diablo IV's one tempered affix), but the design's cheapest route to Cataclysmic, "each step is one affix or
+   one imprint", adds three.
+3. **The new affix is a prefix or a suffix, whichever the chosen affix is** (Q10); the piece's split is what results.
+4. **Its roll is drawn within the tier** (Q11), as the survey reports Path of Exile's bench and Diablo IV's tempering do;
+   a perfect roll is slice F1's Primal Spark.
+5. **A shift draws a random new stat from the same position's pool**, never one of a stat group the piece holds (Q3):
+   the design's "rerolls". The survey names Last Epoch's Glyph of Chaos and Path of Exile 2's Chaos Orb as random.
+6. **A shift keeps the tier and the roll** (Q4), from the row's "not its value".
+7. **A shifted resistance's damage types are drawn again** (Q5), as a drop draws them.
+
+### Two judgements of this slice, not in the survey
+
+- **A shift never draws the affix it was.** "Rerolls stat type (e.g., Strength → random new stat)" reads as a different
+  stat. The held-group rule already excludes it for every kind but a resistance family, which could otherwise draw
+  itself again with other damage types.
+- **An added resistance family's damage types are drawn, not chosen**, among those the piece does not hold. The survey
+  ruled the affix and the tier chosen and did not say which damage types a chosen resistance covers. Drawing them keeps
+  the chooser to an affix and a tier, and the drop's own rule for the types.
+
+### What it does
+
+- **`UCataclysmForge::DeterministicAffixOf` and `AffixShiftOf`** (`CataclysmForge.h`, `.cpp`), plans in the order every
+  craft refuses, gold last:
+  - Deterministic Affix: Schematic Fragments, 5 residue and one base day for each tier of the affix added, Base Gold
+    250. Refused for a base not found, no free slot of the four (a piece with an enchantment fills all four), a tier
+    outside 1 to 7, an affix the piece cannot take, the material and the gold. The piece is one rarity higher, by the
+    definition of rarity (`UCataclysmItemValues::RarityOf` of one more affix).
+  - Affix Shifting: a Crystal of Instability, 15 residue, 1 base day, Base Gold 250. Refused for a base not found, no
+    such affix, an affix not in the table, no other affix able to take its place, the material and the gold.
+- **`AddableAffixesFor`**: every affix a drop could roll on the piece's slot, prefix or suffix, none of a group it
+  holds; a resistance family covering some damage types while enough are free. **`HeldGroupsOf`**, **`SlotOf`**.
+- **`AffixCraftSeed`**, a reroll's seed (F1) with a salt per craft, "SCHM" and "SHFT". **The draw is in the plan**: the
+  screen's question and the craft read the same plan for the run's mask and day, so a reload on the same day draws the
+  same, and the craft writes what the plan drew and draws nothing again.
+- **`UCataclysmForgeCraft::AddAffix`** and **`ShiftAffix`**, on a carried or worn piece, through `DoAffixChange`, in
+  `CraftAffix`'s order: the capital-only refusal, the threshold question for a worn piece, the gold, the material, the
+  item, the days, the log line and the save triggers.
+- **The forge screen**: a "Shift affix N" for each affix, and for a piece with a free slot a chooser, "Previous affix",
+  "Next affix", "Lower tier", "Raise tier" and "Add Flat maximum health at tier 1", with "Affix to add: Flat maximum
+  health (prefix), 1 of 27, at tier 1" under the detail. The chooser's steps are one press each; an addition and a shift
+  are asked on the first press and done on the second.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeAffixChangeLine`: "added Flat block chance at tier 3 to ... as affix 3,
+  making it Superb; ..." and "shifted affix 1 of ... from Flat evasion to ..., tier 2 kept; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 22.
+- **Nothing moves** in the workbook, the assets or the save versions.
+
+**Noticed, not changed**: `DoAffixChange` is the fifth copy of the threshold, gold, material, item and days sequence.
+The coordinating session ruled that slice F5 shares it as its first step.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeAffixChange.`, 5 tests**, in `CataclysmForgeAffixChangeTests.cpp`. The fixed
+helm: gear level 3, flat evasion at tier 2 rolled 0.5 and flat armor at tier 4 rolled 0.25, residue 40, Quality.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FC1 | `AddingAnAffixTakesSchematicFragmentsFiveResidueADayATierAndPromotesThePiece` | flat block chance at tier 3: residue 40 to 55, 3 days, 450 gold, Quality to Superb, the question; tier 7's 7 days; the eight refusals (tiers 0 and 8, a held group, an affix no helm rolls, a Masterful piece, a Legendary piece, the material, the gold, no piece); the craft appends it with the roll drawn for its run and day, the helm Superb, 3 days, 450 gold |
+| FC2 | `AnAddedAffixsRollAndResistanceTypesAreDrawnFromTheItemTheRunAndTheDay` | 27 affixes the helm can take, never flat armor or a hybrid with it, first flat maximum health, last flat energy shield regeneration; 28 with a War resistance in place of flat armor; seed 1655429928 and roll 0.209570; the War helm's seed 2086854589, two resistances drawing Famine and Celestial then 0.220961; over days 1 to 300 never War |
+| FC3 | `ShiftingAnAffixTakesACrystalOfInstabilityFifteenResidueADayAndKeepsItsTierAndRoll` | residue 40 to 55, 1 day, 450 gold, tier and roll and rarity kept, the question, three refusals; over 200 days every draw a helm prefix of no held group and never flat evasion, more than five different; the craft writes the drawn affix, tier 2 and roll 0.5 kept |
+| FC4 | `TheScreenShiftsEachAffixAndChoosesAnAffixAndTierToAdd` | a full piece: four shifts and the reason no affix can be added; the helm's shifts and chooser; next, tier up twice to 3, down three times to 1, back twice to the last of 27; two presses add flat energy shield regeneration and the helm is Superb |
+| FC5 | `AWornAffixChangeThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn helm 10 below the threshold: a tier 1 addition is done at once; a shift asks, changes nothing, and confirmed marks the character |
+
+**Python**: `tools/tests/test_the_forge_adds_and_shifts_affixes.py`, 7 tests; its copy of the pool and the addition's
+draw gives the exact figures FC2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two rows' fallbacks,
+the two rules' prices and `DoAffixChange`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains
+`DoAffixChange`'s line, and its count of places says twenty-nine.
+
+**Python suite at `b51e6ae48`**: "8143 passed, 10 skipped"; JUnit 8153 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". Slice F1's 8132 and this slice's 11: 7 tests and 4 cases added to existing parametrized
+checks.
+
+**Python guard proofs, in a `git archive` copy of `e24082b7e`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f2_python.py`): 10 of 10 PROVED**, each failing exactly the tests predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PA1 | `AffixShiftingResidue` 10 | `test_the_sheets_two_rows_hold_the_forges_figures` |
+| PA2 | the addition's material refusal reworded | `test_each_rule_reads_its_row_and_refuses_for_its_material_before_its_gold` |
+| PA3 | an addition refused only past four slots | `test_an_addition_needs_a_free_slot_and_promotes_the_piece` |
+| PA4 | a shift's roll made 1 | `test_a_shift_keeps_tier_and_roll_and_draws_neither_itself_nor_a_held_group` |
+| PA5 | the salt `0x5343484E` | `test_the_python_copy_gives_the_figures_fc2_asserts` |
+| PA6 | the craft drawing the roll again | `test_the_craft_writes_what_the_plan_drew_and_passes_the_days_after` |
+| PA7 | the chooser offered to a full piece | `test_the_screen_offers_the_chooser_only_with_a_free_slot` |
+| PA8 | `AffixShiftingBaseDays` 2 | `test_the_sheets_two_rows_hold_the_forges_figures`, and the gold check's `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+| PA9 | `DoAffixChange` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...DoAffixChange(]` |
+| PA10 | the shift's line reading "shifted the affix" | `test_the_checklist_quotes_only_lines_the_game_says` |
+
+### Registered for the window
+
+The base is development as it stands when this window registers, which will hold slice F1. This slice adds 5 test
+names and removes none. **The whole suite is registered as the base's last measured total plus 5**; the groups below
+at their counts in that base's newest engine log, re-taken there, since slice F1 and the Power Score slices land
+before it.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeAffixChange.` 5; then, each at its count in the base's newest log, the groups whose files call the changed forge code: `ForgeAffixes.` (6 at F1's registration), `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.` |
+| The whole suite | the base's total plus 5, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeAffixChange.` with its trailing dot, through
+`.claude/windows/prove_f2.py`. Every anchor matches once on `e24082b7e`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FC1 | in `DeterministicAffixOf`, the base days `FMath::Min(Tier + 1, ...)` | 5 performed, 4 succeeded, 1 failed: FC1, on the days; FC4 and FC5 do not check an addition's days |
+| FC2 | in `AffixCraftSeed`, the index mixed as `Index + 1` | 5, 4, 1: FC2, on the seeds and draws; FC1 and FC3 compare with the same function |
+| FC3 | in `AffixShiftOf`, `Out.Roll = 1.0f;` | 5, 4, 1: FC3, on the kept roll; FC5 checks only that the affix changed |
+| FC4 | in the screen, "Previous affix" stopping at the first | 5, 4, 1: FC4, on "the last of 27" |
+| FC5 | in `DoAffixChange`, `bCrosses = false && ...` | 5, 4, 1: FC5, on "shifting affix 1 asks first" |
+
+---
+
+## 2026-11-22 — The forge rerolls an affix's value, perfects its roll and raises its tier, one affix at a time, at the Crafting sheet's costs (#47, slice F1)
+
+**COMPILED AND TESTED SINCE: window power-score-w2 passed on `5b6042222`**, with FA1 to FA6 PROVED; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original note follows.
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f1`, cut from development `4a7aaac4e`.
+Its window is registered below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS
+ENTRY**: the session wrote the agent's brief and read its report. Before this entry was written, a second agent re-read
+the five pages cited below for the exact claims; what that re-read corrected is said under each claim.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The Forge survey (`.claude/windows/survey_forge_47.md` in the gems session's worktree, not committed) was accepted with
+all 27 recommendations ruled as written. The three that shape this slice:
+
+1. **Each craft acts on one affix the player chooses** (Q1 for the reroll, Q7 for the perfecting), as the rows' names
+   say ("Reroll Affix Value", "Upgrade Affix Tier"). A JUDGEMENT: the genre's value reroll acts on every affix. Path of
+   Exile's Divine Orb "Randomises the values of the random modifiers on an item" (poedb.tw/us/Divine_Orb), and Last
+   Epoch's Rune of Refinement "Rerolls the value of all affixes on the item within their tiers"
+   (maxroll.gg/last-epoch/resources/beginner-crafting-guide). One affix is the more targeted craft, and its +2 residue
+   and Common material keep it a small, frequent step, the row's "Low-risk, high-frequency action".
+2. **A reroll draws the roll again evenly, and it can fall** (Q2). Last Epoch's rune draws "within their tiers". The
+   re-read Divine Orb text does not say whether a value can fall; that part is this slice's choice.
+3. **A perfecting is certain** (Q6), from the design's "Forces the maximum stat roll"; the row's "Attempt" is its name,
+   not a rule. A JUDGEMENT AGAINST THE GENRE, which guarantees no perfect roll: Path of Exile's Necropolis grave crafts
+   "Reroll Modifier Values of each Explicit Modifier 3 times, keeping the best outcome" (poedb.tw/us/Necropolis_Grave);
+   Path of Exile 2's sanctifying multiplies each modifier by "a random value ranging from 78% to 122%", after which
+   "Most methods of item crafting and modification cannot be used" (poe2db.tw/us/Sanctified_Items); Diablo IV's
+   masterworking capstone gives "a +50% bonus to a random affix" (maxroll.gg/d4/resources/masterworking-guide). Here
+   the material is about 1 crafting material drop in 1,705 and the craft costs 50 residue and five days; cost is the
+   limit, as the decisions log rules for affix tiers ("Crafting is not gated by the difficulty tier, and cost is what
+   limits it").
+4. **An upgrade raises the tier by one, to 7, and keeps the roll** (Q12), the same place in the new tier's range. Last
+   Epoch's upgrade is the same shape, one chosen affix up one tier: "Upgrade an existing affix that's below tier 5 by
+   clicking on the up arrow" (the Maxroll guide). **CORRECTED BY THE RE-READ:** the survey said Last Epoch rerolls the
+   value on an upgrade unless a Glyph of Order is used, and that its cost rises with the tier. The guide only implies
+   the first (the Glyph "maintains the roll range") and gives one example cost, not a rule. Keeping the roll here is
+   this slice's choice: it keeps a reroll and a perfecting worth doing before an upgrade. Last Epoch stops at tier 5;
+   this design's Potency Crystal reaches 7.
+5. **An upgrade's Base Gold is the sheet's flat 250** (Q13), which `GoldFor` multiplies by the residue the affix's
+   earlier steps added.
+6. **Perfecting a roll at the top is refused**, "That affix's roll is the top of its tier already.", and the screen does
+   not offer it. A JUDGEMENT of this slice, not in the survey: it would spend a Primal Spark for nothing, as a socket's
+   change to its own type is refused. A reroll of a roll at the top is not refused: the roll can fall, and the player
+   chose it.
+
+### What it does
+
+- **`UCataclysmForge::AffixWorkOf`** (`CataclysmForge.h`, `.cpp`), one plan for the three crafts, refusing in the order
+  every craft does, gold last:
+  - Reroll Affix Value: a Corrupted Mote, 2 residue, 0 base days, Base Gold 250;
+  - Perfect Roll Attempt: a Primal Spark, 50 residue, 5 base days, Base Gold 1,250;
+  - Upgrade Affix Tier: a Potency Crystal, 10 residue and one base day for each tier the affix has before it, Base Gold
+    250; refused at tier 7.
+  Each through `DaysFor` and `GoldFor`, its Base Gold from `ForgeOperations.csv` through `BaseGoldOf`.
+- **`RerolledAffixSeed` and `RerolledAffixRoll`**, the reroll's draw: the socket craft's two mixes, a salt of its own
+  ("ROLL") and the affix's place for the socket count, over `ItemSeedText`, then `FRandomStream::FRand`, as a drop draws
+  an affix's roll. **A RELOAD ON THE SAME DAY DRAWS THE SAME ROLL**; the reroll changes the item's text, so a second
+  reroll draws another.
+- **`UCataclysmForgeCraft::CraftAffix`** (`CataclysmForgeCraft.cpp`), on a carried or worn piece, in `DoSocketWork`'s
+  order: the capital-only refusal, the threshold question for a worn piece, the gold, the material, the affix's tier and
+  roll and nothing else of it, the residue, the days, the log line and the save triggers. Anything that cannot be
+  finished puts back what it took. A reroll's roll is drawn before the craft's days pass.
+- **The forge screen** (`CataclysmForgeLayout`, `CataclysmForgeWidget`): the chosen piece's affixes listed under its
+  detail, each as its tool tip reads it with its roll in percent, and for each affix "Reroll affix N", "Perfect affix N"
+  below the top and "Raise affix N to tier T" below 7, asked on the first press and done on the second.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeAffixLine`: "rerolled affix 1 of ... for 450 gold, its roll 50 to 11
+  percent of tier 2; ...", "perfected affix 1 of ...", "raised affix 2 of ... from tier 4 to tier 5, its roll kept at
+  25 percent; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 21, with the console commands that put the three materials in the bag
+  (`Cataclysm.GrantMaterial`, added by slice G9).
+- **Nothing moves** in the workbook, the assets or the save versions: the three rows and materials were already on the
+  sheets, and an affix's tier and roll are already saved.
+
+**What the survey's maps said this slice lets the empire tree build later**: Apprentice Smith, Precision Crafting,
+Master's Workshop and Quality Materials read an affix's tier or roll through these crafts. None is built here.
+
+**One thing noticed, not changed**: `CraftAffix` is the fourth copy of the same threshold-gold-material-item-days
+sequence (`Upgrade`, `DoSocketing`, `DoSocketWork`, `CraftAffix`). Slice F5 changes every craft's residue and days and
+is the natural place to share it.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeAffixes.`, 6 tests**, in `CataclysmForgeAffixesTests.cpp`. The fixed helm: gear
+level 3, flat evasion at tier 2 rolled 0.5 and flat armor at tier 4 rolled 0.25, residue 40.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FA1 | `RerollingAnAffixTakesACorruptedMoteTwoResidueNoBaseDayAndItsGold` | the rule's figures (residue 40 to 42, 0 days, 450 gold at tier 1), its question and refusals; the craft on a carried helm draws the roll `RerolledAffixRoll` gives for its run and day, keeps the tier, row and the other affix, uses the mote, passes no day and pays 450 |
+| FA2 | `ARerolledRollIsDrawnEvenlyAndTheSameForTheSameRunDayAndItem` | the helm's seed text and seeds (939699652 and 1276092663 on day 7 of mask 12345) as the Python copy computes them; affix 1 draws 0.110541, again on a second call; affix 2 draws 0.179841; the helm with affix 1 rolled 0.625 draws 0.984251; over days 1 to 3000 by quarter 750, 703, 746, 801 |
+| FA3 | `PerfectingAnAffixTakesAPrimalSparkFiftyResidueFiveDaysAndMakesTheRollTheTop` | the rule's figures (40 to 90, 5 days, 2,250 gold) and question; refused at the top; the craft makes the roll 1 and keeps the tier |
+| FA4 | `RaisingAnAffixsTierTakesAPotencyCrystalTenResidueATierAndKeepsTheRoll` | tier 4: 40 residue, 4 days, 450 gold; tier 6: 60 and 6; at 150 residue a fifth day and 1,000 gold; refused at 7; the craft raises affix 2 to tier 5 with its roll kept at 0.25 |
+| FA5 | `TheScreenOffersEachAffixCraftOnlyWhereItCanChangeTheAffix` | the six buttons, a reroll only for a tier 7 affix at the top, the affixes in the detail; two presses on the screen raise the tier, and with no crystal the first press says why |
+| FA6 | `AWornAffixCraftThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn helm 10 below the threshold: a reroll is done at once; a raise asks, changes nothing, and confirmed marks the character and holds the build |
+
+**Python**: `tools/tests/test_the_forge_crafts_one_affix.py`, 6 tests; its copy of the reroll's seed and draw gives the
+exact figures FA2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the three rows' fallbacks, the rule's
+price and the craft's pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains the craft's line, and its
+count of places, which said twenty-five and was 27 on `development`, says twenty-eight.
+
+**Python suite at `6632b6377`**: "8132 passed, 10 skipped"; JUnit 8142 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". The shared window's 8123 and this slice's 9: 6 tests and 3 cases added to existing
+parametrized checks.
+
+**Python guard proofs, in a `git archive` copy of `6d4ef07b0`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f1_python.py`): 8 of 8 PROVED**, each failing exactly the one test predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PF1 | `PerfectRollResidue` 40 | `test_the_sheets_three_rows_hold_the_forges_figures` |
+| PF2 | the upgrade's fallback `BaseGoldFor(Rolled.Tier)` | `test_the_rule_reads_each_row_and_refuses_for_the_material_before_the_gold` |
+| PF3 | the upgrade raising two tiers | `test_a_perfecting_makes_the_roll_one_and_an_upgrade_raises_the_tier_and_keeps_the_roll` |
+| PF4 | the salt `0x524F4C4D` | `test_the_python_copy_gives_the_figures_fa2_asserts` |
+| PF5 | the reroll drawn from the day after the craft's days | `test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` |
+| PF6 | the screen offering a perfecting at the top | `test_the_screen_offers_no_perfecting_at_the_top_and_no_raise_at_tier_seven` |
+| PF7 | `CraftAffix` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...CraftAffix(]` |
+| PF8 | the reroll's line reading "rerolled the affix" | `test_the_checklist_quotes_only_lines_the_game_says` |
+
+### Registered for the window
+
+The base: window shared-w1, "5244 tests performed, 5244 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `4a7aaac4e`'s game/. This slice adds 6 test names and removes none. Each count
+below is the group's count in that run's engine log (`.claude/windows/sw_suite_engine_17c735d2.log` in the gems
+session's worktree, counted with a literal match), and the slice adds no name to any of them.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeAffixes.` 6; then the groups whose files call the changed forge code: `Forge.` 8, `ForgeScreen.` 4, `ForgeSockets.` 6, `ForgeGems.` 4, `ForgeCosts.` 3, `GemCombine.` 3, `GemEnchantments.` 5, `PlayLoop.` 12, each performed and succeeded at exactly its count |
+| The whole suite | 5250 performed, 5250 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+If the window shares a run with the Power Score slices, the whole-suite figure is 5250 plus the names they add.
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeAffixes.` with its trailing dot, through
+`.claude/windows/prove_f1.py`. Every anchor matches once on `6d4ef07b0`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FA1 | in `AffixWorkOf`, `Added = RerollAffixValueResidue;` to `+ 1.0f` | 6 performed, 5 succeeded, 1 failed: FA1, on the residue |
+| FA2 | in `RerolledAffixSeed`, the affix's place mixed as `Affix + 1` | 6, 5, 1: FA2, on the seeds and every roll; FA1 passes, since it compares with the same function |
+| FA3 | in `AffixWorkOf`, `Out.ToRoll = 1.0f;` to `0.99f` | 6, 5, 1: FA3 |
+| FA4 | in `AffixWorkOf`, `BaseDays = Rolled.Tier;` to `+ 1` | 6, 5, 1: FA4, on the days; FA5 and FA6 do not check an upgrade's days |
+| FA5 | in `AffixActionsFor`, `Rolled.Tier < UCataclysmItemValues::MaxAffixTier` to `<=` | 6, 5, 1: FA5, on the tier 7 affix's buttons |
+| FA6 | in `CraftAffix`, `bCrosses = false && ...` | 6, 5, 1: FA6, on "raising affix 1's tier asks first" |
+
+---
+
+## 2026-11-22 — Clearing a dungeon restores no city defence, by the owner's ruling; the upgrade that restores 5% on a clear loses the word "additional" (#1267)
+
+**COMPILED AND TESTED SINCE, AND THE ASSET REBUILT: `DT_CityUpgrades` was rebuilt in the window's editor step as `b1441d5de`, and window power-score-w2 passed on `5b6042222`**; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original notes follow.
+
+**Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell B11, "When you clear a
+dungeon, the city's Defense restores by an additional 5%." to "... restores by 5%."; `game/Data/CityUpgrades.csv`,
+regenerated, the only CSV that moved, its row name `Architect_When_you_clear_a_dungeon_the_city_s_Def` and tier 1 value
+0.05 unchanged; the comment in `UCataclysmEmpireRun::ClearDungeon`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`). No behaviour changes. The asset `DT_CityUpgrades` is
+NOT rebuilt here. Issue [#1267](https://github.com/sdubois777/Cataclysm/issues/1267).
+
+### The ruling
+
+The owner, 2026-11-22, verbatim: **"Dungeon clears do not restore city defenses."**
+
+This answers the open question the 2026-09-05 entry left ("Whether that base was meant to exist is issue #1267"):
+there is no base restore. The game and the simulation already gave a city nothing back for a cleared dungeon, so the
+design now says what the game does. The upgrade grants the whole 5%, as the 2026-09-05 judgement read it, and that
+judgement is now the design's sentence rather than a reading of a word with nothing to add to.
+
+The coordinating session took the question to the owner, with both answers and their costs.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** `tools/tests/test_datatable_assets_are_current.py` fails
+  on `CityUpgrades.csv` until `DT_CityUpgrades` is rebuilt in a window, and until then the city screen shows the old
+  sentence.
+- **THE WORKBOOK EDIT IS ONE CELL.** Read back cell by cell against development `4a7aaac4e`: 28 sheets, 105,705 cells,
+  one differs, B11.
+
+---
+
+## 2026-11-22 — The player's own Power Score and each dungeon's Dungeon Score are worked out and shown: the character sheet, the empire map, the city screen and the floor panel (#2824, slice a)
+
+**Affects:** `UCataclysmPowerScore::ScoredCharacterFrom`, `ScoredCharacterOf`, `LiveBreakdownOf`, `LiveScoreOf` and
+`HandSockets`, new (`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`); `UCataclysmEnemyScore::MiddleFloorOf`,
+`DungeonScoreFor`, `FloorOfDungeon` and `DungeonScoreOf`, new (`game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`
+and `.cpp`); `UCataclysmDamageCalculation::ResistanceBeforeTheCapFor`, new
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`); the character sheet's
+`PowerScoreLine` and `PowerScoreTooltip` (`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h` and `.cpp`)
+and its status line (`CataclysmCharacterSheetWidget.cpp`); the empire map's `ScoreText`, `DungeonScoreText` and
+`DungeonScoreLine` (`CataclysmEmpireMapLayout.h` and `.cpp`) and its city detail (`CataclysmEmpireMapWidget.cpp`); the
+city screen's dungeon rows (`CataclysmCityScreenWidget.cpp`); the floor panel's score line
+(`CataclysmFloorModifierPanel.h` and `.cpp`), `ACataclysmPlayerController::ShowFloorModifiers`
+(`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`) and
+`ACataclysmDungeonGameMode::RefreshFloorModifierPanel` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`).
+Tests: `Cataclysm.PowerScoreLive.`, eight, new, in `game/Source/Cataclysm/Tests/CataclysmPowerScoreLiveTests.cpp`;
+`tools/tests/test_the_dungeon_score_is_the_simulations.py`, new. Issue
+[#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22.
+- **NO TEST CAN SEE A SCORE ON A SCREEN** (-nullrhi, issue #650). The tests hold the words each screen shows, and the
+  Python check holds that each screen calls the function that makes them.
+- **THE FLOOR PANEL NOW SHOWS ON EVERY FLOOR OF AN EMPIRE DUNGEON**, because it carries the Dungeon Score there. Until
+  now a floor with no dungeon modifier showed no panel; a sandbox floor, which has no empire dungeon, still shows none.
+  A judgement, following the ruling that the score is shown wherever a dungeon is offered, the walk included.
+- **THE SCORE IS WORKED OUT WHEN A SCREEN IS WRITTEN, NOT CACHED.** It is nineteen slots, their sockets and eight
+  resistances. The cache the plan named waits for slice b, whose Overwhelm reads the score on every hit taken.
+
+### What the design and the rulings say, and what this builds
+
+The design, section IV: "A player's Power Score combines level, gear quality, gear level, gem quality, socket count,
+and resistances into a single comparable number." The formula and its weights were built (`Score`, `Breakdown`); the
+only character the game scored was the reference one. The owner, 2026-11-22: "do the power score stuff since that
+effects loot and enemy damage and stuff", and "Dungeons also need their power scores as well". The design's "Dungeon
+Score Formula": "A dungeon's score is its middle floor, with that floor's six rarity scores collapsed into one number by
+how common each rarity is", `round(Common x 0.6 + Elite x 0.2 + Legendary x 0.15 + Herald x 0.04 + Boss x 0.01)`. No C++
+computed it: no file under `game/Source` named a Dungeon Score before this (searched where it would be defined,
+`CataclysmEnemyScore` and `CataclysmEnemyRarity`, 2026-11-22).
+
+The coordinating session's rulings of 2026-11-22:
+
+| Ruling | What it settles |
+| :-- | :-- |
+| Q4, a judgement | When the two hands hold different pieces, the higher-scoring counts, so an offhand never lowers a score |
+| Q5, derived | Resistance after the run's tier penalty, held at 70: the reference character is "capped" at its own tier |
+| Q6, as corrected | A dungeon shows its Dungeon Score, the design's formula, not one rarity's Enemy Score |
+| Q3 and the correction | Both scores wherever a dungeon is offered: the empire map, the city screen beside the Walk button, the floor panel |
+
+Two more judgements of this change, each with what it rests on:
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **A resistance below 0 counts 0** | the score's resistance term runs from no resistance to the 70 cap; a tier's penalty can leave -75 at tier 8, and a negative term would score a character below one with no resistance at all |
+| **Of the hands' filled sockets, the six of the highest rarity count** | the hands count as one piece and every loadout gives six sockets (section V); the capstone's twelve are "partly uncounted, by design" (#2824) |
+
+**The Dungeon Score is a port of `sim/cataclysm_sim/scoring.py`'s `dungeon_score`**, the same arithmetic in the same
+order: each rarity's rounded score on the middle floor (`ceil(floors / 2)`, the model's own) times its weight, summed
+from Common up, then rounded half up. The weights are the rarity table's `SpawnWeight`, the numbers that draw the
+spawns, read as the nearest ten-thousandth so a float's 0.6 is the model's 0.6. No formula is proposed; slices b and c
+are not in this change. Slice b's Overwhelm compares each attacker's own Enemy Score; slice c compares the player's score
+to the Dungeon Score.
+
+### The words
+
+| Where | What it says |
+| :-- | :-- |
+| The character sheet's status line | "Power Score 4,745", after the level and the difficulty tier |
+| Hovering it | "Power Score 4,745, in tier 7's range of 4,058 to 5,120." then "From level: 633", "From gear: 2,950", "From gems: 1,000", "From resistances: 162"; above 6,327, "above tier 8's range, which ends at 6,327." |
+| The empire map's city detail, after each dungeon | "Dungeon Score 2,009; your Power Score 1,100." |
+| The city screen, under each dungeon line, above its Walk button | the same |
+| The floor panel while an empire dungeon is walked, first | the same, for the dungeon being walked |
+
+The figures are the tests' examples (`TheSheetSaysTheScoreItsTierRangeAndItsFourTerms`, and 2,009 is the simulation's
+tier 4 Quest Elite dungeon of 22 floors), not measurements of a character.
+
+### Tests
+
+`Cataclysm.PowerScoreLive.`, eight, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `GearBuiltToTheTierEightReferenceScoresItsAnchor` | level 100, eighteen Cataclysmic +10 pieces, 45 Cataclysmic gems, eight resistances at 70: the reference's score, which is the code's tier 8 anchor (`TierAnchors()[8]`) |
+| `TheHandsCountOnceWithTheBetterPieceAndSixGems` | a second weapon adds nothing; the better hand counts; twelve hand gems count six; CONTROL: a weak weapon alone scores less |
+| `ResistanceCountsBetweenNoughtAndSeventy` | 95 scores as 70, -20 as 0; CONTROL: 40 between |
+| `ASocketedGemAddsItsRarityTimesTheGemWeight` | one Superb gem adds 3 x `GemWeight`; an empty socket nothing |
+| `TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty` | a possessed player at level 32 with a Cataclysmic +10 helm and 100 resistance to one type: at tier 1 it counts 70, at tier 8 100 less the tier's penalty; CONTROL: a type with none counts 0 |
+| `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | "Power Score 4,745" and its tooltip, word for word; above tier 8's range; tier 1's range from 0 |
+| `ADungeonShowsItsDungeonScoreBesideThePlayers` | an Elite dungeon of 22 floors: floor 11 of 22, its Dungeon Score worked out by hand from the rarity table, and its line with and without a player score; CONTROL: no line for a dungeon not on the map |
+| `TheDungeonScoreIsTheSimulationsOnSixDungeons` | six dungeons at the simulation's figures, 201 at tier 1 among them, the same asked from the first or last floor; modifiers raise it |
+
+Python: `test_the_dungeon_score_is_the_simulations.py`, three checks: the automation test's six figures are
+`scoring.dungeon_score`'s; the port reads the rarity table's weights, which are the simulation's `DUNGEON_SCORE_MIX`;
+and every screen that offers a dungeon calls the score functions.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log. As written, on development `4a7aaac4e`:
+
+- **The whole suite: the base + 8**, the eight new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot).
+- **No save record moves. No editor step.**
+- **Groups alone, first**, name-literal counts on this branch, each a prefix of no other group: `PowerScoreLive.` 8
+  (new); `PowerScore.` 4; `EnemyScore.` 12 and `EnemyStrength.` 8 (the file the Dungeon Score is added to);
+  `CharacterSheet.` 10; `EmpireScreen.` 16; `CityScreen.` 19; `WalkFromTheScreen.` 5; `DungeonMode.` 46 (the floor
+  panel's refresh); `Damage.` 21 and `ShowResistancesCap.` 3 (the resistance read).
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "8126 passed, 10
+  skipped in 349.16s", JUnit 8136 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!".
+- **Two Python guard proofs, PROVED**, run with `tools/prove_guard.py` in a copy of `0ed11b833`: the automation test's
+  tier 4 figure written 2010, not the simulation's 2009, "PROVED: 1 failed, 2 passed | restored: 3 passed", the one
+  named failure `test_the_automation_tests_figures_are_the_simulations`; and the city screen's player score replaced by
+  `INDEX_NONE`, the same, `test_every_screen_that_offers_a_dungeon_shows_both_scores`.
+- **Seven Unreal guard proofs**, each narrowed to `Cataclysm.PowerScoreLive.` (8):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| L1 | the first hand is kept rather than the better (`Value(Piece) > Value(Hand)` read as false) | 7 succeeded, 1 failed: `TheHandsCountOnceWithTheBetterPieceAndSixGems` |
+| L2 | every gem in the hands counts, not six | 7, 1: `TheHandsCountOnceWithTheBetterPieceAndSixGems` |
+| L3 | a resistance below 0 is not held at 0 | 7, 1: `ResistanceCountsBetweenNoughtAndSeventy` |
+| L4 | the character's resistance read at tier 1 whatever the tier | 7, 1: `TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty` |
+| L5 | the Dungeon Score read on the floor it is asked of, not the middle | 7, 1: `TheDungeonScoreIsTheSimulationsOnSixDungeons` |
+| L6 | a dungeon on the map scored at floor 1, not its middle | 7, 1: `ADungeonShowsItsDungeonScoreBesideThePlayers` |
+| L7 | a tier's range read from the tier below's end rather than one above it | 7, 1: `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` |
+
+### The window, power-score, 2026-11-22: PASSED on `5b6042222`, the third attempt
+
+The window carried #1267 (City Upgrades!B11, `CityUpgrades.csv`) and Forge slices F1 and F2 (#47) with this slice, and
+their proofs FA1 to FA6 and FC1 to FC5 beside L1 to L7.
+
+- **The first attempt, 13:07, did not build: 50 errors, all in F2's test file.** Its scene helper was named `FScene`,
+  which the engine already declares globally (C2872, ambiguous symbol). Renamed `FAffixChangeScene` in `5d470823e`; no
+  test ran.
+- **w1, 13:16 to 13:48, on `b1441d5de`: FAILED, one test.** The compiles built with no warnings; the editor step rebuilt
+  `DT_CityUpgrades` from #1267's `CityUpgrades.csv` and was committed as `b1441d5de`; 21 of 22 groups passed alone, and
+  the whole suite performed 5271, 5270 succeeded, 1 failed:
+  `Cataclysm.PowerScoreLive.TheCharacterIsReadWithItsResistanceAfterTheTiersPenalty`. **The test was wrong, not the
+  code:** it set the character's resistance before equipping the helm, and equipping refreshes every stat attribute
+  (`OnEquipmentChanged` runs `RefreshAttributes`, which applies the class stats), so the value it set was rewritten.
+  `5b6042222` sets it after equipping. No proof ran, by the rule that proofs run only when every group passed.
+- **w2, 13:50 to 14:38, on `5b6042222`: PASSED.** Lock `power-score-w2`, taken and released.
+  - Build: "4 actions, 1 file compiled: Module.Cataclysm.34.cpp". The assets were `b1441d5de`'s, an ancestor.
+  - Groups alone: 22 of 22 passed.
+  - Whole suite: "5271 tests performed, 5271 succeeded, 0 failed. 57 skipped part of what they check"; "Test saves:
+    860 written and deleted, 0 left behind"; "Declared: 5271 tests in the tree at 5b6042222; 5271 performed, gap 0".
+    Memory: peak_used_virtual_mb=9154.
+  - Python, alongside: "8156 passed, 10 skipped in 385.46s"; JUnit 8166 tests, 0 failures, 0 errors, 10 skipped. ruff
+    "All checks passed!".
+  - **All eighteen Unreal guard proofs PROVED, each as predicted**, the source hash the same after every one:
+    L1 to L7 each "8 tests performed, 7 succeeded, 1 failed" with the test named in the table above, restored 8 of 8;
+    FA1 to FA6 each 6 performed, 5 succeeded, its own test failing, restored 6 of 6; FC1 to FC5 each 5 performed, 4
+    succeeded, its own test failing, restored 5 of 5.
+
+---
+
 ## 2026-11-22 — A kill's experience and loot are scaled by the gap between the player's Power Score and the dungeon's: full within a band, up to 25% more above it, down to 5% experience and 25% loot below it (#2824 slice c, the rule; no game code yet)
 
 **Affects:** `sim/analyse_power_gap_rewards.py`, new, the simulation the rule was chosen from;
@@ -305,6 +771,113 @@ which changes nothing else), 2026-11-22, each PROVED, failing one named test wit
 
 ---
 
+## 2026-11-22 — A thrall loaded from a save keeps the skill that took it and its level factor; an older thrall is given Subjugate at level 1 (#2840)
+
+**Affects:** `FCataclysmSavedCreature::TakenBySkillRow` and `TakenLevelFactorOnCreatures`, new, and the run record at
+version 17, `UCataclysmRunSave::SchemaVersionNow` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`);
+`Migrate_16_to_17` and its row, `SubjugateRow` (`CataclysmSaveRecords.cpp`); the save's commanded-creature block
+(`CataclysmSaveGather.cpp`) and `FCataclysmSaveApply::ThrallInto` (`CataclysmSaveApply.cpp`);
+`game/Tests/SaveFixtures/Run_v17.json`, new, and `game/Tests/SaveFixtures/README.md`;
+`CataclysmSaveFixtures::AddTheRunsVersion17Defaults`, new (`game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`).
+Tests: `Cataclysm.ThrallSave.`, three, new, one in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two in
+`CataclysmThrallSaveTests.cpp`, new; the fourteen test files that read the committed run file or run an older one
+through the chain, moved to `game/Tests/SaveFixtures/Run_v17.json` and the version 17 defaults; `tools/tests/test_a_loaded_thrall_keeps_the_skill_that_took_it.py`,
+new; `tools/tests/test_the_cleanse_city_upgrade.py`, which read the run record's version as exactly 16 and now reads it
+as 16 or later. Issue [#2840](https://github.com/sdubois777/Cataclysm/issues/2840), found while planning
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22. It rides in #2784's
+  window, which the empire tree session drives, cherry-picked onto #2784's branch after its own commits.
+- **BUILT ON THE CLEANSE'S BRANCH, NOT ON DEVELOPMENT**: this branch, `feat/thrall-save-2840`, starts at
+  `feat/city-upgrade-cleanse`'s `97fae58ae`, because the run record is at 15 on
+  development `45b33c70f` and the cleanse (#2838, in the shared gems window) takes it to 16. This change's step is 16 to
+  17 only if the cleanse lands first; the empire tree session confirms the number when it rebases.
+- **NO TEST CAN SEE A THRALL'S BLOW CREDIT SUBJUGATE OR CARRY THE FACTOR AFTER A LOAD** through `ApplyHit`: the tests hold
+  the two fields after the load and the one reader a player feels most, the reserve that falls when Subjugate levels.
+
+### What was wrong
+
+`UCataclysmSummonSkill::Possess` sets two fields on a creature it takes, read once at the take: `TakenBySkillRow`, the
+row its blows credit, and `TakenLevelFactorOnCreatures`, the level factor its blows on creatures carry. A thrall's saved
+creature kept `bCommandedByThePlayer`, `bSecondSelf`, `ReservedFervour` and `CommanderHealthMultiplier`, not these. So
+after a load a thrall's blows credited no skill and lost the factor; and, found while planning this, a THIRD EFFECT:
+`UCataclysmSkillLevels::RepriceReservesOf` lowers each thrall's Fervour reserve when its skill levels, matched by
+`TakenBySkillRow`, so a loaded thrall's reserve never fell. **That third effect is fixed by the row alone**: the row
+restored, or given by the step, is what the repricing matches.
+
+### The rulings, the coordinating session, 2026-11-22
+
+- **Q1: an older thrall gets Subjugate's row and a factor of 1.** Derived, not chosen: exactly one row of
+  `WeaponSkills.csv` takes a creature (`Demonic_Staff_Ultimate`, "Possess=1"), and the only other thrall, the Warzone
+  rule's ally, is never saved (it is raised by a rule and in none of the lists `RaisedByOf` names), so the row is
+  knowable; the level at the take was not recorded, so 1, the factor at level 1, is the one figure that never
+  overstates. (Subjugate's current level could not be read in any case: the step reads the run record, and skill
+  levels are on the character record.)
+- **Q2: a version step, `Migrate_16_to_17`.** Unlike the four thrall fields before it, which were added without a step
+  because their defaults are what an older file meant, this step writes a value that is not the default.
+- **Q3: a Python check that exactly one row takes a creature**, since Q1 rests on it, proved by a break in a copy.
+- **Q4: the burn of #2784 is not added to the round-trip test.**
+
+No formula is proposed: the change keeps two figures across a save.
+
+### The change
+
+- The saved creature declares both fields, None and 1 by default. The save writes them in the block that writes a
+  thrall's other four; `ThrallInto` writes them back beside its other four.
+- `Migrate_16_to_17` writes, on each creature of the floor, `Demonic_Staff_Ultimate` and 1 where `bCommandedByThePlayer`
+  is true, and None and 1 on every other.
+- `Run_v17.json` is `Run_v16.json` at version 17 with its thrall, the Abyssal Warden, at `Demonic_Staff_Ultimate` and
+  1.5 (a figure a float holds exactly, and not the default) and its Brute at None and 1. `Run_v16.json` is a migration
+  input now. The fourteen test files that read the committed run file read `Run_v17.json`, each comment's history
+  extended by one line; the eleven chain tests add `AddTheRunsVersion17Defaults`.
+
+### Tests
+
+`Cataclysm.ThrallSave.`, three, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad` | a Brute taken by the player and given Subjugate's row and level 10's factor, 0.72028, saved by the writer and loaded by `CharacterAndRun`: the same row and factor; CONTROL: the creature beside it, None and 1 |
+| `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne` | `Run_v16.json` migrates: its thrall `Demonic_Staff_Ultimate` and 1, its Brute None and 1; CONTROL: `Run_v17.json` is read, not migrated, its thrall at 1.5 |
+| `ALoadedThrallsReserveFallsWhenSubjugateLevels` | two thralls restored by `CreatureInto` and `ThrallInto`, each holding 30: at Subjugate's level 10 the one saved with Subjugate's row holds 30 x 0.72028; CONTROL: the one saved with none keeps 30 |
+
+Python: `test_a_loaded_thrall_keeps_the_skill_that_took_it.py`, five checks: the one row that takes; the fields both
+ways; the step and the version; the committed file against the previous one; and every chain test adding the step.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log, by the empire tree session, which drives
+#2784's window. As written, on this branch:
+
+- **The whole suite: the base + 3**, the three new tests; skipped halves and test saves unchanged (the round-trip test's
+  save slot is deleted, as the thrall test beside it deletes its own).
+- **The run record moves to 17** (the record version check wants run 17). No editor step.
+- **Groups alone, first**, name-literal counts on this branch: `ThrallSave.` 3 (new); `SaveLoad.` 81, `SaveRecords.` 17,
+  `CityCleanseSave.` 1, `CityUpgradeBuildSave.` 2, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3,
+  `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `GemSave.` 2,
+  `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5 and `WinningTheRun.` 11 (the fourteen files whose pins move); `LevelCosts.`
+  4 and `SecondSelf.` 6 (the repricing and the Second Self, both reading thralls).
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "2 failed, 8097
+  passed, 10 skipped in 331.67s", JUnit 8109 tests, 2 failures, 0 errors, 10 skipped. One failure was this entry's: its
+  Affects paragraph named `Run_v17.json` without its path, now corrected, and the 97 files that read this log then gave
+  "3654 passed, 1 skipped". The other, `test_datatable_assets_are_current.py` on `CityUpgrades.csv`, is the cleanse
+  branch's own: this branch changes neither that file nor any asset, and the cleanse's window rebuilds it. ruff: "All
+  checks passed!".
+- **The Python guard proof, PROVED**, run with `tools/prove_guard.py` in a copy of the committed tree: Summon Imp's row
+  (`Demonic_Staff_Special`) given "Possess=1": "PROVED: 1 failed, 4 passed | restored: 5 passed", the one named
+  failure `test_exactly_one_skill_row_takes_a_creature`.
+- **Three Unreal guard proofs**, each narrowed to `Cataclysm.ThrallSave.` (3):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| R1 | the save does not write `TakenBySkillRow` | 2 succeeded, 1 failed: `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`, on "still names Subjugate" |
+| R2 | `ThrallInto` does not write the row back | 1 succeeded, 2 failed: the round-trip test, on "still names Subjugate", and `ALoadedThrallsReserveFallsWhenSubjugateLevels`, on "names Subjugate" and "falls to 21.6" |
+| R3 | `Migrate_16_to_17` writes None on a thrall | 2 succeeded, 1 failed: `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`, on "given Subjugate's row" |
+
+---
+
 ## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
 
 **Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
@@ -407,6 +980,165 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
   and run again ("8086 passed, 10 skipped in 411.88s") before the commit.
 - **Not seen by any test**: the tooltip and the ground panel on the screen (-nullrhi, issue #650). The owner checks
   those in play.
+
+---
+
+## 2026-11-22 — A thrall sets alight what it strikes, and a minion's or a thrall's burn grows with its skill's level: a burn is flat, not a share of the blow, so a minion's took no level factor at all (#2784)
+
+**Affects:** `UCataclysmSkillEffects::ApplyHit`, `ApplyBurn` (its new `LevelFactor`) and
+`CataclysmSkillEffectsLevels::PlayersThrall`, with one new include, `Character/CataclysmPlayerCharacter.h`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`); the imp's two burns, its swing's and its
+explosion's, in `ACataclysmMinion` (`CataclysmMinion.cpp`); `docs/Cataclysm_GDD_v2.md`, the skill table's Subjugate row,
+"WHAT EARNS A SKILL EXPERIENCE" and the skill level rules' "Its ailments and minions" row. Tests: `Cataclysm.ThrallBurn.`,
+5, in `game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`; `tools/tests/test_thrall_burn.py`, new. Issue
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784); [#2840](https://github.com/sdubois777/Cataclysm/issues/2840)
+filed from it.
+
+### SAID FIRST
+
+- **COMPILED AND TESTED IN WINDOW tree-2784-w1, WHICH PASSED**, with #2840 riding; recorded at the end of this entry.
+- **THE IMP'S BURN WAS WRONG BEFORE THIS, AND THE DESIGN DOCUMENT SAID IT WAS RIGHT.** The owner's answer of 2026-11-19
+  (the skill levels entry below) says burns and minions "scale too", up to 2.85 times at level 20, and names Summon Imp:
+  "Without this, Summon Imp levels up but its imps never hit harder because of it." Slice 2b left the imp's burn out of
+  the level factor on the ground that it was "a share of the blow just dealt, which already carries the level factor".
+  It is not: `DoT_Burn` in `game/Data/StatusEffects.csv` is flat, 25 a second for 4 seconds, with a percent of the hit of
+  nought. So the imp's burn ignored Summon Imp's level. The design document's level rules said the same of "a burn a
+  minion's blow sets"; they are corrected, as are the imp's two comments.
+- **#2784'S OWN TEXT RESTED ON THE SAME PREMISE**: "the burn ... carries the thrall's level factor no second time, by
+  slice 2b's rule for a figure taken from a scaled blow". The burn takes the factor once, itself, because nothing else
+  gives it one.
+- **A THRALL LOADED FROM A SAVE LOSES ITS BURN'S FACTOR AND CREDIT**, as it already loses its blows': `TakenBySkillRow` and
+  `TakenLevelFactorOnCreatures` are not saved. Filed as #2840 by the ruling (Q5); not built here.
+
+### The rulings, the coordinating session's of 2026-11-22
+
+| Ruling | What | Kind |
+|---|---|---|
+| Q1 | A thrall is a creature whose commander is the player, read every blow: no new field, no save version | ruled |
+| Q2 | A taken Gatekeeper's imps, whose commander is the Gatekeeper (#2791), set nothing alight | ruled |
+| Q3 | The summoned imp's swing burn's shape: designed (#917); the flat `DoT_Burn`, set by the thrall; neither side's damage over time stats (the design document's minions table: a minion does not take its summoner's "damage over time"); only on a blow not evaded (#1156) and not refused as immune to its attacker; credited to the skill that took it | derived |
+| Q4 | The level factor NOW, on the thrall's burn and on the imp's: from the owner's answer of 2026-11-19, "Yes, they scale too". The basic attack's ailments are left as they are | derived |
+| Q5 | The save gap filed as its own issue, #2840 | ruled |
+| Q6 | Every blow the thrall deals through `ApplyHit`, but not a share struck at an ally and not a tick | ruled |
+
+**Genre, fetched 2026-11-22, and thin.** poedb.tw/us/Ignite: ignite "Deals Base Fire Damage per second" and its "Base
+duration is 4 seconds". No page read verbatim said whose modifiers scale a minion's ignite (poedb.tw/us/Minion), and
+maxroll's Last Epoch ailment and minion pages returned 404. The rule this follows is the design document's own minions
+table, recorded there from earlier research, and the owner's answer for the level.
+
+**"Sets alight" is one thing in this game**: the burn, `DoT_Burn`, laid by `ApplyBurn` or by the "Burn" ailment kind's
+chance (`burn_chance`) on a landed blow. There is no separate ignite. A thrall's own chances still roll as they did; both
+lay the same single burn, which refreshes.
+
+### The change
+
+- **The thrall's burn.** `ApplyHit`'s branch for a blow that is no gadget's or trap's -- the one a thrall's swing, charge
+  and abilities take -- keeps the blow's result and, for a landed blow that is no share on an ally and no tick, by a
+  creature `PlayersThrall` finds (one whose commander is an `ACataclysmPlayerCharacter`), calls
+  `ApplyBurn(thrall, target, sent, unscaled, designed, dealt by the thrall, row = TakenBySkillRow, factor =
+  ThrallsLevelFactor)`: the imp's call, with the taker's row and the factor its blow took, on a creature.
+- **The factor.** `ApplyBurn(..., float LevelFactor = 1.0f)` multiplies the burn's figure by it, never below nought, for a
+  burn not scaled by its applier; a burn scaled by its applier still takes its skill's factor in `ApplyDamageOverTime`.
+- **The imp.** Its swing's burn and its explosion's burn pass `LevelFactorOnCreatures` on a creature. The explosion's burn
+  still credits nothing, as the explosion does. Both are "the imp's burn" in this reading of Q4, the explosion's damage
+  already carrying the same factor ("scaling follows the figure", ruled 2026-11-20); the report says so.
+- **No workbook, asset or save version moves.**
+
+### The tests
+
+- **Unreal, `Cataclysm.ThrallBurn.`, 5**, beside the slice 2b tests whose helpers they use:
+  1. `ATakenCreatureSetsAlightWhatItStrikes`: 25 a tick; THE CONTROL, a creature nobody took, its blow dealt, none;
+  2. `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`: 25 at level 1 (the control) and 25 x 1.0567 squared at 3,
+     both crediting Subjugate;
+  3. `AnEvadedBlowSetsNothingAlight`, against 100 evasion, with the same thrall's landed blow as the control;
+  4. `ACreatureATakenCreatureCommandsSetsNothingAlight`, the Gatekeeper's `SetOwner(this)` shape, with the thrall's own
+     blow as the control;
+  5. `AnImpsBurnGrowsWithSummonImpsLevel`: the swing's and the explosion's burns, 25 at level 1 and 25 x 1.0567 squared
+     at 3; the swing's credits Summon Imp, the explosion's nothing.
+  Each striker's own burn chance is set to nought, so only the burn built here can appear.
+- **The sweep for figures this moves.** No damage over time ticks when it is laid (`bExecutePeriodicEffectOnApplication`
+  is false), so a figure moves only where a test lets time pass after a thrall's or a levelled imp's blow. Of the 22 test
+  files that take a creature, a search found a world tick in four (`CataclysmDungeonGameModeTests.cpp`,
+  `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyBehaviourTests.cpp`, `CataclysmSaveLoadTests.cpp`), and a
+  search of each test's own text in those and eight more found none that both takes a creature and lets time pass. A
+  SEARCH, NOT A READING: a tick made through a helper with another name would not be found. The imp tests at a
+  raised Summon Imp level (`ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel`, the explosion test) read the
+  immediate blow and its credit. So no existing figure is expected to move; the window's whole suite is the check.
+- **Python:** `tools/tests/test_thrall_burn.py`, 5 checks: the call after a landed blow with its arguments; the player
+  as commander; the factor in `ApplyBurn`; both imp burns' factors; and a sweep that every burn laid unscaled by its
+  applier names a factor (three today).
+
+### Python guard proofs, PB1 to PB6, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `6300cddc3`, running
+`tools/tests/test_thrall_burn.py`; each failed the named test with the break in and passed 5 of 5 restored.
+`.claude/windows/prove_2784_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| PB1 | `ApplyHit` lays no burn for a thrall | the call check and the sweep (2) |
+| PB2 | any commanded creature burns | the player check |
+| PB3 | `ApplyBurn` ignores the factor | the factor check |
+| PB4 | the imp's explosion burn passes 1 | the imp check |
+| PB5 | the imp's explosion burn names no factor | the imp check and the sweep (2) |
+| PB6 | a blow refused as immune to its attacker still burns | the call check |
+
+### Python before its window
+
+The full suite on `6300cddc3`, in a git worktree of it: "8092 passed, 9 skipped in 400.77s"; JUnit 8101 tests, 0
+failures, 0 errors, 9 skipped. ruff: "All checks passed!" on `tools/tests/test_thrall_burn.py`. No CSV changed, so the
+asset check passes.
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_2784_table.py.txt`, each narrowed to `Cataclysm.ThrallBurn.` (5) with its trailing dot, every
+anchor checked to occur once on the LF text. Predictions reasoned from the code; none has run.
+
+| Proof | The break | Predicted |
+|---|---|---|
+| TP1 | `ApplyHit` lays no burn for a thrall | 1, 4: TB1, TB2, TB3's control, TB4's control; TB5 holds |
+| TP2 | the thrall's burn passes a factor of 1 | 4, 1: TB2 (the level 3 burn ticks 25) |
+| TP3 | an evaded blow burns | 4, 1: TB3 |
+| TP4 | any commanded creature burns | 4, 1: TB4 |
+| TP5 | the imp's explosion burn passes a factor of 1 | 4, 1: TB5 (the level 3 explosion burn ticks 25) |
+
+
+### Window tree-2784-w1: PASSED, 5252 of 5252, and 8 of 8 C++ proofs
+
+On development `4a7aaac4e` (the shared window, #2842, merged): this entry's two commits, then #2840's `58c145e64` and
+`8d837787b`, riding by the coordinating session's ruling, as `feat/thrall-burn-2784-2` at `4d029f3bd`. The run record
+was 16 on `4a7aaac4e` and is 17 at the head. Both `docs/DECISIONS.md` conflicts were resolved by inserting each entry
+whole into development's log in the order each was first written; outside that file, each carried change's added and
+removed lines are identical to its original. #1267 arrived after the registration and did not ride.
+
+**The compiles**: the branch "Build: Succeeded - 73 actions, 66 files compiled", each changed file alone "42 actions, 39
+files compiled", the unity files again "19 actions, 16 files compiled", 0 compiler warning or error lines in each.
+
+**The window**, no asset step (no CSV changed), registered from window shared-w1's measured log
+(`sw_suite_engine_17c735d2.log`, at development's `game/` tree `3237ce11d`: "5244 tests performed", "860 written and
+deleted, 0 left behind"):
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 29, 368 tests: `ThrallBurn.` 5 and `ThrallSave.` 3 new, and the groups both changes reach | 29 of 29 |
+| Whole suite | 5252: 5244, this change's 5 and #2840's 3 | "5252 tests performed, 5252 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5252 | "5252 tests in the tree at 4d029f3bd; 5252 performed, gap 0" |
+| Record versions | run 17, character 14, account 7 | "26 lines stating a version; NO MISMATCH" |
+| Python, beside it | | "8133 passed, 10 skipped"; JUnit 8143, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+
+**No existing figure moved**, as the sweep for figures expected: the whole suite passed at its registered total.
+
+**8 C++ proofs, all PROVED**, each failing exactly the tests predicted with the break in and passing restored: TP1, 4 of
+5 (`ATakenCreatureSetsAlightWhatItStrikes`, `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`,
+`AnEvadedBlowSetsNothingAlight`, `ACreatureATakenCreatureCommandsSetsNothingAlight`); TP2, `TheThrallsBurnCredits...`;
+TP3, `AnEvadedBlow...`; TP4, `ACreatureATakenCreatureCommands...`; TP5, `AnImpsBurnGrowsWithSummonImpsLevel`; and #2840's
+R1 to R3, run as TS1 to TS3 with anchors written from its commit to its entry's words: TS1,
+`AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`; TS2, that and
+`ALoadedThrallsReserveFallsWhenSubjugateLevels`; TS3, `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`. TB3's
+set-up assertion that 100 evasion evades held: the evade was not capped.
 
 ---
 

@@ -283,6 +283,20 @@ public:
 	 */
 	static FString CityDetailDungeonLine(const UCataclysmEmpireRun* Run, int32 DungeonId);
 
+	/** A score as the screens show it: "2,009". Issue #2824. */
+	static FString ScoreText(int32 Score);
+
+	/**
+	 * A dungeon's score beside the player's: "Dungeon Score 2,009; your Power Score 1,100.", or "Dungeon Score 2,009."
+	 * when the player's is not known (`INDEX_NONE`). Issue #2824: the owner's "Dungeons also need their power scores as
+	 * well", shown wherever a dungeon is offered -- the empire map's city detail, the city screen's dungeon rows beside
+	 * the Walk button, and the floor panel while it is walked.
+	 */
+	static FString DungeonScoreText(int32 DungeonScore, int32 PlayerScore);
+
+	/** `DungeonScoreText` for a dungeon on the map (`UCataclysmEnemyScore::DungeonScoreOf`), or empty when it is not. */
+	static FString DungeonScoreLine(const UCataclysmEmpireRun* Run, int32 DungeonId, int32 PlayerScore);
+
 	// ----------------------------------------------------------------------
 	// The empire upgrade point bank -- issue #52, the first slice
 	// ----------------------------------------------------------------------

@@ -1749,6 +1749,119 @@ bool FCataclysmSaveLoadThrallTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A thrall keeps the skill that took it and that skill's level factor through a save and a load. Issue #2840: until
+ * it, `TakenBySkillRow` came back None and `TakenLevelFactorOnCreatures` 1, so a loaded thrall's blows credited no
+ * skill, lost the level factor, and its reserve never fell when the skill levelled. The thrall is taken as the test
+ * above takes it, then given the two fields as `UCataclysmSummonSkill::Possess` gives them at the take: Subjugate's row
+ * and its level factor at level 10, 0.9642 to the ninth written out, 0.72028 (not read back from the code under test).
+ * CONTROL: the creature beside it, never taken, comes back with no skill and a factor of 1. Prints "THRALL SKILL LOAD".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallSaveRoundTripTest,
+	"Cataclysm.ThrallSave.AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmThrallSaveRoundTripTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	const FName TakingRow(TEXT("Demonic_Staff_Ultimate"));
+	constexpr float LevelTenFactor = 0.72028f;
+
+	auto Brute = [](const FVector& At)
+	{
+		FCataclysmSavedCreature Saved;
+		Saved.ArchetypeRow = FName(TEXT("Brute"));
+		Saved.Location = At;
+		Saved.Health = 100.0f;
+		Saved.MaxHealth = 100.0f;
+		return Saved;
+	};
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	{
+		FLoadScene Scene = MakeScene();
+		if (!TestTrue(TEXT("set-up: the saving world was built"), Scene.IsUsable()))
+		{
+			if (Scene.World)
+			{
+				Scene.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+
+		ACataclysmEnemyCharacter* Taken = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(500.0f, 0.0f, 100.0f)));
+		ACataclysmEnemyCharacter* Wild = FCataclysmSaveApply::CreatureInto(*Scene.World, Brute(FVector(-500.0f, 0.0f, 100.0f)));
+		if (!TestNotNull(TEXT("set-up: the first Brute stands"), Taken)
+			|| !TestNotNull(TEXT("set-up: the second Brute stands"), Wild)
+			|| !TestTrue(TEXT("set-up: the player took the first"), UCataclysmCommand::Subjugate(Scene.Character, Taken)))
+		{
+			return false;
+		}
+		// AS THE SKILL LEAVES IT AT LEVEL 10: its row, and its level factor read once at the take.
+		Taken->TakenBySkillRow = TakingRow;
+		Taken->TakenLevelFactorOnCreatures = LevelTenFactor;
+		Scene.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FLoadScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the loading world was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.World, *Scene.Character,
+																			 Saved.CharacterId);
+	ACataclysmEnemyCharacter* Thrall = nullptr;
+	ACataclysmEnemyCharacter* Other = nullptr;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(Scene.World); It; ++It)
+	{
+		if (!IsValid(*It))
+		{
+			continue;
+		}
+		if (FVector::Dist2D(It->GetActorLocation(), FVector(500.0f, 0.0f, 0.0f)) < 1.0f)
+		{
+			Thrall = *It;
+		}
+		else if (FVector::Dist2D(It->GetActorLocation(), FVector(-500.0f, 0.0f, 0.0f)) < 1.0f)
+		{
+			Other = *It;
+		}
+	}
+	if (!TestNotNull(TEXT("the thrall stands after the load"), Thrall)
+		|| !TestNotNull(TEXT("and the creature beside it"), Other))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("THRALL SKILL LOAD: %s (%s); the thrall %s, row %s, factor %.5f; the other row %s, factor %.5f"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
+							UCataclysmCommand::CommanderOf(Thrall) == Scene.Character ? TEXT("commanded") : TEXT("NOT COMMANDED"),
+							*Thrall->TakenBySkillRow.ToString(), Thrall->TakenLevelFactorOnCreatures,
+							*Other->TakenBySkillRow.ToString(), Other->TakenLevelFactorOnCreatures));
+
+	TestEqual(TEXT("set-up: the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("set-up: the thrall is commanded by the player"), UCataclysmCommand::CommanderOf(Thrall) == Scene.Character);
+	TestEqual(TEXT("**the thrall still names Subjugate as the skill that took it**"), Thrall->TakenBySkillRow, TakingRow);
+	TestEqual(TEXT("**and still carries its level factor at the take**"), Thrall->TakenLevelFactorOnCreatures,
+			  LevelTenFactor, 1.0e-5f);
+	TestTrue(TEXT("CONTROL: the creature beside it names no skill"), Other->TakenBySkillRow.IsNone());
+	TestEqual(TEXT("CONTROL: and carries a factor of 1"), Other->TakenLevelFactorOnCreatures, 1.0f);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // The walk's state held for creatures
 // ---------------------------------------------------------------------------
@@ -5431,7 +5544,7 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
  * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
- * `Run_v16.json` since the run record went to version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
+ * `Run_v17.json` since the run record went to version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
  * `Run_v13.json` from version 13 (issue #2825),
  * `Run_v12.json` from version 12 (issue
  * #2741 slice 6b), reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
@@ -5447,7 +5560,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v16.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5488,7 +5601,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v16.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v17.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5507,6 +5620,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
+	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5525,7 +5639,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v16.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v17.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5534,7 +5648,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v16.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v17.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -11198,6 +11312,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
+	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -11228,14 +11343,15 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v16.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v17.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
  * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
  * slice 5b, and `Run_v11.json` until it went to version 12 the same day, issue #2741 slice 6b, and `Run_v12.json` until it
  * went to version 13 on 2026-11-21, issue #2825, and `Run_v13.json` until it went to version 14 on 2026-11-22, issue #46,
  * and `Run_v14.json` until it went to version 15 the same day, issue #2741 slice 9, and `Run_v15.json` until it went to
- * version 16 the same day, issue #2838, and the ten hold the same
+ * version 16 the same day, issue #2838, and `Run_v16.json` until it went to version 17 the same day, issue #2840,
+ * and the eleven hold the same
  * values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
@@ -11248,7 +11364,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v16.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11259,7 +11375,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v16.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v17.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
