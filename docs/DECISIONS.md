@@ -21,8 +21,8 @@ head `5fca8616b`.
 
 ### SAID FIRST
 
-- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 2 written on the coordinating session's ruling; the build machine waits
-  for its turn. What the run must show is under "Registered for the window".
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2".
 - **THE ISSUE'S PREMISE WAS WRONG, AND IT DECIDED THE SHAPE OF THE CHANGE.** The issue said the skill's call to
   `PlayAttackAnimation` "reaches them and does nothing". It did not reach them. The Stalker's `AttackTarget` and
   `UseEnemyAbility` started every blow through `UCataclysmTriggeredSkill::Trigger` with a cast place, its own
@@ -230,6 +230,70 @@ The bullets below were written as additions to window D's figures; the totals ab
 **The window scripts** are `compile_we.py`, `prechecks_we.py`, `run_we.py` and `prove_we.py` in `.claude/windows/`
 in the worktree `sharp-meitner-246682`, which runs window E.
 
+### The record: window-e-w2
+
+**2026-11-22, under the lock window-e-w2, at `f4d43387c`** (`feat/window-e-bolts-map-builds-swings` on development
+`82c34930c`). Every registered figure measured, and every proof proved.
+
+- **NO SEPARATE COMPILES BEFORE IT, by the coordinating session's ruling.** `git diff 9f74a7e37 f4d43387c` touches only
+  `CataclysmFloorMapTests.cpp` and `CataclysmInputTests.cpp` (test bodies, no `#include` line) and the fixture
+  `Run_v13.json`, so the window's own build compiles the two test files, as with earlier test-only fixes: "Build:
+  Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.27.cpp, Module.Cataclysm.30.cpp". The three compiles of the
+  whole change ran before the first run, at `a87b4d53e` (below).
+- **The editor step was not run again**: it ran in the first run and its six files are `9f74a7e37`, an ancestor of
+  this head ("committed in window-e-w1 as 9f74a7e37, an ancestor of HEAD: True"), and a second DataTable run would find
+  the table current and change nothing.
+- **Groups alone: 47 of 47 passed, each at its registered count** (the 44 groups and this change's three new tests).
+- **The whole suite: "5143 tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they check"**, against
+  5143 and 57 registered; "Declared: 5143 tests in the tree at f4d43387c; 5143 performed, gap 0"; "Test saves: 860
+  written and deleted, 0 left behind". Memory: `peak_used_virtual_mb=9172`.
+- **Python, alongside it: "7910 passed, 10 skipped in 317.66s"**, exit 0; its JUnit file: tests 7920, failures 0,
+  errors 0, skipped 10. The DataTable check passes. **ruff: "All checks passed!"**
+- **The seven Unreal guard proofs, each PROVED** through `prove_cpp_guard`, after both suites ended, each failing
+  exactly its predicted tests with the break in and passing every test of its groups restored:
+
+| Proof | Issue | The break | With the break in | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| QC4 | #2808 | `MayBeCulled` answers true for everything | 7 performed, 1 failed: `EachBoltIsDrawnLargerBrighterAndNeverCulled` | 7 of 7 |
+| FM1 | #2805 | `LineOfSight` answers true at once | 11 performed, 1 failed: `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` | 11 of 11 |
+| FM2 | #2805 | `ScreenOf` puts +X down rather than up | 11 performed, 2 failed: `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight`, `TheStairsBeyondTheEdgeAreMarkedOnTheEdgeInTheirDirection` | 11 of 11 |
+| FM3 | #2805 | `Build` keeps what was seen (`Seen.SetNum` in place of `Seen.Init`) | 11 performed, 1 failed: `ANewFloorStartsWithNothingSeen` | 11 of 11 |
+| C1 | #2825 | `AdvanceCityBuilds` counts a build down 2 a day | `CityUpgradeBuild.` and `CityUpgradeBuildSave.`, 6 performed, 4 failed: `AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ASiegeOrAFallPausesTheBuild`, `AnIntervalUpgradeFirstFiresAFullIntervalAfterItIsFinished`, `ABuildUnderWayIsSavedAndGoesOnAfterALoad` | 6 of 6 |
+| C2 | #2825 | `BuildReadyDay` answers one day early | `CityUpgradeBuild.` and `CityScreen.`, 23 performed, 2 failed: `AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ABuildUnderWayIsListedAndTheOtherOffersWaitForIt` | 23 of 23 |
+| P1 | #2811 | the Stalker's basic attack given its own place again | 7 performed, 2 failed: `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`, `AWornResidueDoublesBlowSwingsAsTheStalkersDoes` | 7 of 7 |
+
+The logs are in `.claude/windows/` in the worktree `sharp-meitner-246682`: `we_run.out`, `we_suite_engine_f4d43387.log`,
+`we_python_f4d43387.log`, `we_junit_f4d43387.xml`, and each proof's `we_<proof>_f4d43387.log` with the two halves'
+engine logs; the first run's with the suffix `_a87b4d53e`.
+
+### Window E's first build and first run
+
+- **The first build, at `99d4b6ac4`, stopped in Unreal Header Tool** after 6 seconds, no file compiled:
+  "CataclysmProjectile.h(787): Error: BlueprintReadOnly should not be used on private members". #2808, never compiled
+  before, had declared `ACataclysmProjectile::bQuickCast` in the class's private section, where
+  `UCataclysmProjectileEffect::LookFor` and the quick-cast tests read it. Moved unchanged to the public section beside
+  `EnemiesHit` (`a87b4d53e`).
+- **The three compiles at `a87b4d53e`**, 0 compiler warning or error lines each: "69 actions, 62 files compiled"; each
+  changed `.cpp` alone, "91 actions, 86 files compiled"; the unity files again, "35 actions, 30 files compiled".
+- **The first run, window-e-w1, at `a87b4d53e`.** The editor step did exactly what was registered: the DataTable run
+  changed only `DT_EnemyArchetypes.uasset` and `datatable_asset_sources.json`; the input run rewrote 26 files, 20 were
+  restored, and `IA_ToggleFloorMap` (new), `DA_InputConfig` and both mapping contexts were kept, each of the three naming
+  `IA_ToggleFloorMap`; the six were committed as `9f74a7e37` and pushed with `git lfs push`, each a Git LFS object.
+  **Then 5 of 5143 failed** ("5143 tests performed, 5138 succeeded, 5 failed"; groups alone 44 of 47), each a fault in
+  a test or a fixture and not in the game, fixed in `f4d43387c`:
+  - `FloorMap.ANewFloorStartsWithNothingSeen`, "built": the tests' room had no entrance or exit, and a plan without
+    walkable ones is not built (`FCataclysmFloorPlan::IsBuilt`), so `Build` refused it.
+  - `FloorMap.TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt`, "a line that misses the wall still sees": (8, 4)
+    is 3.16 cells from (5, 5), beyond the 3 cell reveal; now (7, 4), with a control in the open room.
+  - `FloorMap.ACellBeyondTheMapsEdgeIsClippedAway`, "and from the left edge" 708 against 582: the run began inside the
+    square; the player now stands 25 cells into a run of 50.
+  - `Input.ConfigListsEverySlotAndNativeAction`, "and lists no others" 14 against 13: the test's list of native actions
+    lacked `ToggleFloorMap`. The sweep had searched for written counts and this one is a list's length.
+  - `SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` (#2825): `Run_v13.json`'s build held "Value": 0.2, which
+    a float cannot hold, so the record wrote back another number and the exact comparison failed; now 0.25, as the
+    fixtures' other values are float-exact. The gold session agreed.
+  Python alongside it: "7910 passed, 10 skipped"; memory `peak_used_virtual_mb=9374`; no proof ran.
+
 ---
 
 ## 2026-11-21 — A city upgrade takes days to build: 6, 12 or 24 by its tier, its slot taken at purchase, nothing done until it is finished, one at a time per city (#2825)
@@ -258,8 +322,9 @@ new, `test_city_upgrades_cost_gold.py` (the purchase's call with its days), `tes
 
 ### SAID FIRST
 
-- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction: code, tests and this entry, with no
-  compile and no Unreal run. Nothing below about the C++ is measured yet; the registration is what a window will check.
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". One fixture value was changed
+  there: `Run_v13.json`'s build holds 0.25, not 0.2 (below, under window E's first run).
 - **THE THREE EMPIRE TREE NODES THAT ACT ON BUILD DAYS ARE NOT IN THIS CHANGE.** Scaffolding, Rapid Renovation and
   Rapid Funding stay refused (`EMPIRE_TREE_REFUSED` in `tools/generate_datatables.py`, reason "build time") until the
   next slice. They act through the empire tree's own code, which the empire tree session's combined window for slices
@@ -369,8 +434,10 @@ group `Cataclysm.FloorMap.`, eleven, in `game/Source/Cataclysm/Tests/CataclysmFl
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET**, and **TAB DOES NOTHING UNTIL THE INPUT ASSETS ARE REGENERATED** in the editor
-  at the window: `IA_ToggleFloorMap` exists in the generator and in C++, not yet as an asset. Registered below.
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". The input assets were
+  generated there, so `IA_ToggleFloorMap` is an asset and Tab reaches the map; whether it does in play is the owner's to
+  see.
 - **NO TEST CAN SEE THE MAP.** `DrawHUD` does not run under -nullrhi (issue #650). The tests hold the statics it draws
   from and the seen-cell record; `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` holds that
   the two frame hooks call them, proved below.
@@ -503,9 +570,9 @@ regenerated from it; `sim/cataclysm_sim/enemy_abilities.py`; `docs/Cataclysm_GDD
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET**, and **`tools/tests/test_datatable_assets_are_current.py` FAILS UNTIL THE WINDOW**:
-  `game/Data/EnemyArchetypes.csv` changed, so `DT_EnemyArchetypes` must be rebuilt in the editor. Registered below as its
-  own window step.
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". `DT_EnemyArchetypes` was
+  rebuilt there, and `test_datatable_assets_are_current.py` passes.
 - **NO TEST CAN SEE WHETHER THE BOLTS NOW LOOK "OBVIOUS".** `-nullrhi` (issue #559). Every visual figure below is a
   judgement for the owner to judge in play.
 - **AN OFF-SCREEN SIEGE BOLT COULD CROSS THE SCREEN WITH NOTHING DRAWN, AND THAT WAS A BUG BEFORE THIS ISSUE.** Every
@@ -650,8 +717,8 @@ sections of `docs/Cataclysm_GDD_v2.md`; `game/docs/enemy-source-assets.md`. Issu
 
 ### SAID FIRST
 
-- **NOT COMPILED OR RUN IN UNREAL YET.** Written in phase 2; the compile and the window wait for the coordinating
-  session's turn, after #2807.
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2".
 - **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Attack animations/sequences seem kinda slow all around for enemies. Not
   everything needs a big windup and cast animation, sometimes enemies should be able to just shoot a fireball at you as
   long as you can see it."
