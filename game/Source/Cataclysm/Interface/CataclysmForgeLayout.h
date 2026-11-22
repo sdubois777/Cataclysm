@@ -79,6 +79,26 @@ struct FCataclysmForgeDamageTypeAction
 };
 
 /**
+ * One imprint the forge offers, giving up one affix, or one enchantment whose drawback it offers to change, for the piece
+ * chosen. Issue #47, slice F3.
+ */
+struct FCataclysmForgeEnchantmentAction
+{
+	FName ButtonName;
+	FString Label;
+	bool bImprint = false;
+
+	/** An imprint's affix given up, from 0, or a change's enchantment pair, from 0. */
+	int32 Index = INDEX_NONE;
+
+	/**
+	 * What the craft's question names: "affix 2", numbered as slice F1's affix list in the screen's detail
+	 * (`AffixesDetailFor`), or the enchantment's benefit as the tool tip reads it.
+	 */
+	FString Named;
+};
+
+/**
  * One gem combine the forge offers: two carried gems of a kind and rarity into one of the next rarity. Issue #46, slice
  * G6.
  */
@@ -244,6 +264,24 @@ public:
 	/** The action a button stands for, among those shown. False for a button that is none of them. */
 	static bool DamageTypeActionForButton(FName ButtonName, const TArray<FCataclysmForgeDamageTypeAction>& Shown,
 										  FCataclysmForgeDamageTypeAction& OutAction);
+
+	//~ Imprinting an enchantment and changing an enchantment's drawback. Issue #47, slice F3.
+
+	/**
+	 * For a piece with every slot filled, Masterful and up, "Imprint, giving up affix 2" for each affix it holds, the
+	 * player choosing which goes (the survey's Q15), numbered as slice F1's affix list in the screen's detail
+	 * (`AffixesDetailFor`), which reads each affix as the tool tip does; then "Change the drawback of 10% increased attack
+	 * speed" for each enchantment that is not a set's, as `UCataclysmForge::ChangeNegativeOf` refuses a set's (ruled
+	 * 2026-11-22, F3-Q1). A piece below the gear level the imprint needs is still offered it, so that pressing it says
+	 * what it needs, as a stone level with one stone is offered a combine.
+	 */
+	static TArray<FCataclysmForgeEnchantmentAction> EnchantmentActionsFor(const FCataclysmItem& Item,
+																		  const UDataTable* PositiveTable,
+																		  const UDataTable* NegativeTable);
+
+	/** The action a button stands for, among those shown. False for a button that is none of them. */
+	static bool EnchantmentActionForButton(FName ButtonName, const TArray<FCataclysmForgeEnchantmentAction>& Shown,
+										   FCataclysmForgeEnchantmentAction& OutAction);
 
 	//~ Combining gems. Issue #46, slice G6.
 

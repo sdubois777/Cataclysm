@@ -254,7 +254,45 @@ public:
 												 bool bConfirmedPastThreshold, FCataclysmForgeDamageTypeWork& OutDone,
 												 FString& OutMessage);
 
+	/** What imprinting an enchantment on the item at a target, giving up its affix `Affix`, would take now. Issue #47. */
+	static FCataclysmForgeEnchantmentWork ImprintPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+														 int32 Affix);
+
+	/** What changing the negative of the enchantment pair `Pair` of the item at a target would take now. Issue #47. */
+	static FCataclysmForgeEnchantmentWork ChangeNegativePlanFor(const UObject* WorldContext,
+																const FCataclysmForgeTarget& Target, int32 Pair);
+
+	/**
+	 * Imprint an enchantment on the item at a target, carried or worn, giving up its affix `Affix`: one Aetherial Shard
+	 * leaves the bag, the pair `UCataclysmForge::DrawImprint` draws for the run's day is added and the affix removed
+	 * (`UCataclysmForge::ApplyImprint`), the item carries 5 more residue, and the days pass. Asks about the threshold as
+	 * `SocketGem` does. `OutDone.Drawn` is the pair drawn.
+	 */
+	static ECataclysmForgeResult Imprint(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Affix,
+										 bool bConfirmedPastThreshold, FCataclysmForgeEnchantmentWork& OutDone,
+										 FString& OutMessage);
+
+	/**
+	 * Change the negative of the item's enchantment pair `Pair`: one Regret Essence leaves the bag, the pair takes the
+	 * negative `UCataclysmForge::DrawChangedNegative` draws for the run's day, a different one with a new roll, the item
+	 * carries 100 more residue, and the days pass. Asks about the threshold as `SocketGem` does. `OutDone.Drawn` is the
+	 * pair after.
+	 */
+	static ECataclysmForgeResult ChangeNegative(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												int32 Pair, bool bConfirmedPastThreshold,
+												FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage);
+
 private:
+	/**
+	 * The part `Imprint` and `ChangeNegative` share, given a possible plan, in the order slice F1's `CraftAffix` keeps:
+	 * the threshold question, the gold, the material, the draw and the item changed, the days, the line and the save.
+	 * Anything that cannot be finished, a draw that fails included, puts back what it took.
+	 */
+	static ECataclysmForgeResult DoEnchantmentWork(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												   const FCataclysmForgeEnchantmentWork& Plan,
+												   bool bConfirmedPastThreshold, FCataclysmForgeEnchantmentWork& OutDone,
+												   FString& OutMessage);
+
 	/**
 	 * The part `AddAffix` and `ShiftAffix` share, given a possible plan drawn for the run's day: the threshold question,
 	 * the gold, the material, the item changed, the days, the line and the save, in `CraftAffix`'s order. Anything that

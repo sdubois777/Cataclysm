@@ -118,6 +118,12 @@ def test_both_combines_read_one_price_and_it_doubles_by_rung() -> None:
     ("FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(",
      "Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);"),
     ("FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(", "Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);"),
+    # ISSUE #47 SLICE F3: Imprint Enchantment and Change Enchantment Negative.
+    ("FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(",
+     "Out.Gold = GoldFor(BaseGoldOf(ImprintOperationRow, BaseGoldFor(ImprintBaseDays)), Item.Residue, DifficultyTier);"),
+    ("FCataclysmForgeEnchantmentWork UCataclysmForge::ChangeNegativeOf(",
+     "Out.Gold = GoldFor(BaseGoldOf(ChangeNegativeOperationRow, BaseGoldFor(ChangeNegativeBaseDays)), Item.Residue, "
+     "DifficultyTier);"),
     ("FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(",
      "Out.Gold = GoldFor(BaseGoldOf(DeterministicAffixOperationRow, GoldPerCraftDay), Item.Residue, DifficultyTier);"),
     ("FCataclysmForgeAffixChange UCataclysmForge::AffixShiftOf(",
@@ -147,6 +153,7 @@ def test_an_upgrades_days_are_the_level_it_reaches() -> None:
     "bool UCataclysmForgeCraft::CombineGems(",
     "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(",
     "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(",
+    "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
     "ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(",
     "ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(",
 ])
@@ -192,7 +199,10 @@ def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
                 "InfuseRandomDamageTypeOperationRow": constant("GoldPerCraftDay"),
                 "InfuseSpecificDamageTypeOperationRow": constant("GoldPerCraftDay")
                 * constant("InfuseSpecificDamageTypeBaseDays"),
-                "ChangeDamageTypeOperationRow": constant("GoldPerCraftDay")}
+                "ChangeDamageTypeOperationRow": constant("GoldPerCraftDay"),
+                # ISSUE #47 SLICE F3: 2 and 7 base days, so 500 and 1,750.
+                "ImprintOperationRow": constant("GoldPerCraftDay") * constant("ImprintBaseDays"),
+                "ChangeNegativeOperationRow": constant("GoldPerCraftDay") * constant("ChangeNegativeBaseDays")}
     assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
     for field, figure in expected.items():
         row = rows.get(named[field])

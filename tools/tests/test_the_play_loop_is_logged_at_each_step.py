@@ -72,6 +72,9 @@ STEPS = [
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(", "ForgeSocketLine"),
     # AND TWO GEMS COMBINED INTO ONE OF THE NEXT RARITY, issue #46 slice G6.
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::CombineGems(", "ForgeGemCombineLine"),
+    # AND AN ENCHANTMENT IMPRINTED OR A DRAWBACK CHANGED, issue #47 slice F3: both crafts finish in `DoEnchantmentWork`.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
+     "ForgeEnchantmentWorkLine"),
     # AND AN AFFIX REROLLED, PERFECTED OR RAISED A TIER, issue #47 slice F1.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(", "ForgeAffixLine"),
     # AND AN AFFIX ADDED OR SHIFTED, issue #47 slice F2: both crafts finish in `DoAffixChange`, which says the line.
@@ -108,6 +111,7 @@ AFTER = {
     "Upgrade": "Run->AdvanceDays(Plan.Days);",
     "Combine": "Inventory->AddMaterial(Plan.Into, 1)",
     "DoSocketing": "Run->AdvanceDays(Plan.Days);",
+    "DoEnchantmentWork": "Run->AdvanceDays(Plan.Days);",
     "CraftAffix": "Run->AdvanceDays(Plan.Days);",
     "DoAffixChange": "Run->AdvanceDays(Plan.Days);",
     "CraftDamageType": "Run->AdvanceDays(Plan.Days);",

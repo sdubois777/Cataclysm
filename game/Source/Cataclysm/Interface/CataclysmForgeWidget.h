@@ -96,6 +96,9 @@ public:
 	const TArray<FCataclysmForgeDamageTypeAction>& DamageTypeActionsShown() const { return ShownDamageTypeActions; }
 	void ClickDamageTypeActionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
 
+	/** The imprints and drawback changes shown for the piece chosen. Issue #47, slice F3. */
+	const TArray<FCataclysmForgeEnchantmentAction>& EnchantmentActionsShown() const { return ShownEnchantmentActions; }
+
 	/** The gem combines shown, and a press of one. Issue #46, slice G6. */
 	const TArray<FCataclysmForgeGemCombineAction>& GemCombinesShown() const { return ShownGemCombines; }
 	void ClickGemCombineForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
@@ -158,6 +161,7 @@ private:
 	TArray<FCataclysmForgeSocketAction> ShownSocketActions;
 	TArray<FCataclysmForgeSocketWorkAction> ShownSocketWorkActions;
 	TArray<FCataclysmForgeAffixAction> ShownAffixActions;
+	TArray<FCataclysmForgeEnchantmentAction> ShownEnchantmentActions;
 	TArray<FCataclysmForgeAffixChangeAction> ShownAffixChangeActions;
 	TArray<FCataclysmForgeDamageTypeAction> ShownDamageTypeActions;
 	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;

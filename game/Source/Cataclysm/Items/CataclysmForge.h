@@ -319,6 +319,53 @@ struct FCataclysmForgeDamageTypeWork
 };
 
 /**
+ * What imprinting an enchantment on an item, or changing one enchantment's negative, would take, or why it cannot.
+ * Issue #47, slice F3.
+ */
+struct FCataclysmForgeEnchantmentWork
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** True to imprint an enchantment, false to change a negative. */
+	bool bImprint = false;
+
+	/** An imprint's affix given up, from 0, and its row. */
+	int32 Affix = INDEX_NONE;
+	FName AffixRow;
+
+	/** A change's enchantment pair, from 0, as it stands before the change. */
+	int32 Pair = INDEX_NONE;
+	FCataclysmRolledEnchantment Before;
+
+	/**
+	 * The pair the craft drew: an imprint's new pair or a change's pair with its new negative. EMPTY IN A PLAN, filled
+	 * only once the craft is done, since it is drawn then, as an added socket's type is.
+	 */
+	FCataclysmRolledEnchantment Drawn;
+
+	/** An imprint's rarity before and after, and the gear level the rarity after needs (`GearLevelGate`). */
+	ECataclysmRarity RarityBefore = ECataclysmRarity::Everyday;
+	ECataclysmRarity RarityAfter = ECataclysmRarity::Everyday;
+	int32 GearLevelNeeded = 0;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: its base days, and the residue's time penalty read before the craft. */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -864,4 +911,103 @@ public:
 	 * type: one Prismatic Catalyst, ...; the new type is drawn among those the weapon lacks."
 	 */
 	static FString DamageTypeQuestion(const FCataclysmForgeDamageTypeWork& Plan);
+
+	//~ Imprinting an enchantment and changing an enchantment's negative. Issue #47, slice F3, ruled by the coordinating
+	//~ session on 2026-11-22 (the forge survey's Q14 to Q18).
+	//
+	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Imprint Enchantment | Aetherial Shard |
+	// 5 CR | 2", Base Gold 500, and "Change Enchantment Negative | Regret Essence | 100 CR | 7", Base Gold 1,750, through
+	// `DaysFor` and `GoldFor` as every craft.
+	//
+	// AN IMPRINT ADDS ONE ENCHANTMENT AND GIVES UP ONE AFFIX: "Applying an enchantment to a Masterful piece makes it
+	// Legendary, and the piece gives up a regular affix to do it" (`docs/Cataclysm_GDD_v2.md`, section VI). The pair is
+	// RANDOM, a positive and its negative drawn as a drop draws them (Q14); the PLAYER CHOOSES the affix given up (Q15);
+	// and only a piece with every slot filled, Masterful and up, is imprinted (Q16). The rarity it becomes must be one
+	// its gear level reaches: the design's rarity table, "Legendary ... Requires gear level 4+", `GearLevelGate` in
+	// `game/Data/GearRarity.csv`.
+	//
+	// A CHANGE DRAWS A DIFFERENT NEGATIVE AT RANDOM under the weight rule (Q17), never the same one again (Q18), and
+	// keeps the positive and its roll. A set's pair is not changed: its negative is the set's own.
+
+	/** The rows of the materials each consumes, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* AetherialShardRow;
+	static const TCHAR* RegretEssenceRow;
+
+	/** The two operations' rows in `game/Data/ForgeOperations.csv`, whose Base Gold `BaseGoldOf` reads. */
+	static const TCHAR* ImprintOperationRow;
+	static const TCHAR* ChangeNegativeOperationRow;
+
+	/** The residue each adds, the sheet's CR impact. */
+	static constexpr float ImprintResidue = 5.0f;
+	static constexpr float ChangeNegativeResidue = 100.0f;
+
+	/** The days each costs before the residue's time penalty, the sheet's Base Days. */
+	static constexpr int32 ImprintBaseDays = 2;
+	static constexpr int32 ChangeNegativeBaseDays = 7;
+
+	/** The salts each draw mixes into the run's seed: "IMPR" and "NEGA". */
+	static constexpr int32 ImprintSalt = 0x494D5052;
+	static constexpr int32 ChangeNegativeSalt = 0x4E454741;
+
+	/**
+	 * What imprinting an enchantment on the item, giving up its affix `Affix`, takes, against the Aetherial Shards held.
+	 *
+	 * REFUSED for no item, a piece with a slot left empty (below Masterful), a piece with no affix left (Cataclysmic), no
+	 * such affix, a gear rarity table that cannot be read, a piece below the gear level the rarity after needs, no
+	 * Aetherial Shard, and too little gold.
+	 */
+	static FCataclysmForgeEnchantmentWork ImprintOf(const FCataclysmItem& Item, int32 Affix, int32 ShardsHeld,
+													const UDataTable* GearRarityTable, int32 DifficultyTier,
+													int64 GoldHeld);
+
+	/**
+	 * What changing the negative of the item's enchantment pair `Pair` takes, against the Regret Essences held.
+	 *
+	 * REFUSED for no item, no such pair, a set's pair, and, read from `PositiveTable`, a positive not in it; no Regret
+	 * Essence, and too little gold.
+	 */
+	static FCataclysmForgeEnchantmentWork ChangeNegativeOf(const FCataclysmItem& Item, int32 Pair, int32 EssencesHeld,
+														   const UDataTable* PositiveTable, int32 DifficultyTier,
+														   int64 GoldHeld);
+
+	/**
+	 * The item an imprint makes: the affix `Affix` given up, `Pair` added and the enchantment count raised with it (the
+	 * two "MUST AGREE", `FCataclysmItem`), and, when the new pair says the weapon carries more damage types ("This weapon
+	 * has 2-4 damage types"), the types topped up from `Stream` as a drop tops them up. Separate from the draw so a test
+	 * can apply a pair it names.
+	 *
+	 * @return false for no such affix or a piece the imprint would leave with no rarity
+	 */
+	static bool ApplyImprint(const FCataclysmItem& Item, int32 Affix, const FCataclysmRolledEnchantment& Pair,
+							 const UDataTable* BaseTable, const UDataTable* WeaponSkillTable,
+							 const UDataTable* EnchantmentEffectTable, FRandomStream& Stream, FCataclysmItem& OutItem);
+
+	/**
+	 * The pair an imprint on the item draws: `UCataclysmDropRoll::RollEnchantments` for one pair on the item's slot
+	 * (`SlotOf`), the pairs it holds counting as taken, on a stream of slice F2's `AffixCraftSeed` with `ImprintSalt` and
+	 * the item's pair count as its index. READ FROM THE ITEM BEFORE THE CRAFT, so the same pair is drawn whichever affix
+	 * the player gives up, and the same item on the same day of the same run draws the same, so a reload cannot change
+	 * it. `OutStream` is that stream after the draw, which `ApplyImprint` tops up damage types from.
+	 */
+	static bool DrawImprint(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* PositiveTable,
+							const UDataTable* NegativeTable, int32 WalkSeedMask, int32 Day,
+							FCataclysmRolledEnchantment& OutPair, FRandomStream& OutStream);
+
+	/**
+	 * The pair a change of the item's pair `Pair` draws: `UCataclysmDropRoll::DrawReplacementNegative` on the item's slot
+	 * (`SlotOf`), on a stream of slice F2's `AffixCraftSeed` with `ChangeNegativeSalt` and `Pair` as its index, read from
+	 * the item before the craft, as an imprint's is.
+	 */
+	static bool DrawChangedNegative(const FCataclysmItem& Item, int32 Pair, const UDataTable* BaseTable,
+									const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+									int32 WalkSeedMask, int32 Day, FCataclysmRolledEnchantment& OutPair);
+
+	/**
+	 * What the first press of one says, before the second does it, `Named` being the affix given up or the enchantment
+	 * changed as the item's tool tip reads it: "Press again to imprint an enchantment, giving up +12 to strength: one
+	 * Aetherial Shard, 500 gold, residue 150 to 155, 2 days of the run; the piece becomes Legendary and the enchantment
+	 * is drawn at random." or "Press again to change the drawback of <enchantment>: one Regret Essence, 1,750 gold,
+	 * residue 200 to 300, 9 days of the run; a different drawback is drawn at random."
+	 */
+	static FString EnchantmentWorkQuestion(const FCataclysmForgeEnchantmentWork& Plan, const FString& Named);
 };
