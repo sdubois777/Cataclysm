@@ -389,6 +389,122 @@ the test's subject. Predictions reasoned from the code; none has run.
 
 ---
 
+## 2026-11-22 — The forge adds a socket, its type rolled from the item and the day, and changes an empty socket's type to the one chosen, each at the Crafting sheet's costs (#46, slice G9)
+
+**NOT COMPILED, NOT RUN.** Phase 1 on `feat/socket-crafts-46-g9`, cut from development `45b33c70f`. Its window is
+registered below; nothing here has run in the engine.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The plan was accepted with eight answers:
+
+1. **An added socket's type is rolled evenly among Attack, Defense and Utility, as a drop rolls it.** DERIVED from the
+   research: a random result is cheap and a chosen result costs more, and here the chosen result is the rarer tier 4
+   Focusing Lens. The sources:
+   - Path of Exile, read on poedb.tw. The Jeweller's Orb "Reforges the number of sockets on an item" at random,
+     "limited by the type of equipment and item level". The Chromatic Orb "Reforges the colour of sockets on an item",
+     also at random. The crafting bench sells a set result for more orbs: "Six Sockets" for 350 Jeweller's Orbs, "At
+     Least Four Non-White Sockets" for 75 Chromatic Orbs.
+   - Diablo III, Ramaladni's Gift: one socket added to a weapon (diablowiki.net, a fan wiki).
+   - Diablo IV: a Scattered Prism adds one socket at a time under a cap per item type (Maxroll, ginx.tv; the guides
+     disagree on the caps).
+   - Diablo II: Larzuk's quest and the Horadric Cube add sockets up to the item's maximum (Maxroll, guides).
+   - Last Epoch has no sockets; Idols fill the role (Maxroll, Icy Veins).
+2. **The roll's seed**: `CataclysmSeedMix::Mix` of the run's `WalkSeedMask`, a salt of its own and the run's day, mixed
+   again with the item's identity and its socket count. **Items carry no saved identifier**, so option (a) was ruled:
+   a CRC (`FCrc::StrCrc32`) over everything the item saves, written out as text, each socket's type, gem and rarity
+   included. The rows' text, not FName hashes, which differ between game sessions. Refused: (b) the piece's slot,
+   which would let a player reload, move the piece and roll again; (c) a saved identifier, a save version step for one
+   roll. **A RELOAD ON THE SAME DAY GIVES THE SAME TYPE**, which is intended: the result cannot be changed by
+   reloading.
+3. **The cap is the slot's maximum** in `game/Data/ItemSockets.csv`; at it the craft is refused with the maximum named.
+4. **A socket holding a gem cannot change type**: "Unsocket the gem first." DERIVED from the design's "There is no free
+   removal".
+5. **A socket for any gem is not offered a change.**
+6. **The types offered are the two the socket is not.**
+7. **The sheet's rows, through `DaysFor` and `GoldFor`**: no new figure.
+8. **Slice G9 of #46, these two crafts only.**
+
+### What it does
+
+- **`UCataclysmForge::AddSocketOf`** and **`ChangeSocketTypeOf`** (`CataclysmForge.h`, `.cpp`), plans in the order every
+  craft refuses, gold last.
+  - Add Socket: a Shattered Core, 15 residue, 3 base days, Base Gold 750 from `ForgeOperations.csv`.
+  - Change Socket Type: a Focusing Lens, 10 residue, 2 base days, Base Gold 500.
+- **`ItemSeedText`, `AddedSocketSeed` and `AddedSocketType`**, the roll.
+- **`UCataclysmForgeCraft::AddSocket`** and **`ChangeSocketType`** (`CataclysmForgeCraft.cpp`), on a carried or worn
+  piece, through `DoSocketWork`, which follows `DoSocketing`: the capital-only refusal, the threshold question for a worn
+  piece, the gold, the material, the item, the days, the log line and the save triggers. Anything that cannot be finished
+  puts back what it took.
+  - The added socket's type is rolled from the item as it stood, before the craft's days pass.
+  - `MaxSocketsOf` reads the slot's maximum through `UCataclysmDropRoll::MaxSocketsFor`.
+- **The forge screen** (`CataclysmForgeLayout`, `CataclysmForgeWidget`): "Add a socket (3 of 6)" below the maximum, and
+  "Make socket N <type>" for each empty typed socket, asked on the first press and done on the second, as socketing is.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeSocketWorkLine`: "added socket 3 to Everyday Jerkin for 1,200 gold,
+  rolled Defense; ..." and "made socket 3 of Everyday Jerkin Utility, from Defense, for 950 gold; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 20.
+- **Nothing moves** in the workbook, the assets or the save versions: both rows and both materials were already on the
+  sheets, and an added socket is one more entry in the item's saved list.
+
+**One thing the owner should know**: both materials drop rarely. By `MaterialTiers.csv`'s weights, about 1 material drop
+in 130 is a Shattered Core and 1 in 430 a Focusing Lens, and there is no console command that grants a material.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeSockets.`, 6 tests**, in `CataclysmForgeSocketsTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FS1 | `AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold` | the rule's figures (residue 87 to 102, 3 days, 2,055 gold at tier 1), its question and refusals; the craft on a carried helm: one empty socket of Attack, Defense or Utility, the core used, 3 days, 2,055 gold; a second addition refused at the helm's 2 |
+| FS2 | `AnAddedSocketsTypeIsRolledEvenlyAndTheSameForTheSameRunDayAndItem` | a fixed helm's seed text and seed (1581167466 on day 7 of mask 12345) as the Python copy computes them; Attack, and Attack again; the same helm with one affix rolled 0.625 instead of 0.5 rolls Utility; over days 1 to 3000, Attack 1075, Defense 966, Utility 959 |
+| FS3 | `AnItemAtItsSlotsMaximumIsRefusedAndATwoHanderReachesSix` | a helm 2, a ring 1, a two-handed greatsword 6, an unknown base -1; the greatsword from 5 to 6 and then refused |
+| FS4 | `ChangingASocketsTypeTakesAFocusingLens10ResidueTwoDaysAndItsGold` | the rule's figures (87 to 97, 2 days, 1,370 gold) and question; the craft makes socket 1 Utility, uses the lens, 2 days, 1,370 gold |
+| FS5 | `AChangeIsRefusedForAFullSocketItsOwnTypeAndAnAnySocket` | the six refusals; on the character, nothing moves |
+| FS6 | `TheScreenOffersAnAddBelowTheMaximumAndAChangeToEachOtherTypeOfAnEmptySocket` | the buttons, and none for a full socket or one for any gem |
+
+**Python**: `tools/tests/test_the_forge_adds_and_changes_sockets.py`, 6 tests. Its copy of the seed text, the CRC (the
+standard CRC-32 over each character as four bytes, which `FCrc::StrCrc32` is), the mix and the stream gives the exact
+figures FS2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two rows' fallbacks.
+
+**Python suite at `bd72f016f`**: "8092 passed, 10 skipped"; JUnit 8102 tests, 0 failures, 0 errors; ruff clean.
+
+**Python guard proofs, in a `git archive` copy of `bd72f016f`: 7 of 7 PROVED.**
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PS1 | the sheet's Add Socket at 800 gold | `test_the_sheets_two_rows_hold_the_forges_figures` |
+| PS2 | Add Socket not reading its row's Base Gold | `test_each_rule_reads_its_row_and_refuses_for_its_material_before_its_gold` |
+| PS3 | the seed text without the kills | `test_the_seed_text_names_every_field_the_item_saves` |
+| PS4 | FS2 asserting seed 1581167467 | `test_the_python_copy_gives_the_figures_fs2_asserts` |
+| PS5 | the added socket rolled from the day after | `test_the_added_socket_is_rolled_before_the_days_pass` |
+| PS6 | the screen offering a change for a socket for any gem | `test_the_screen_offers_no_change_for_a_full_socket_or_one_for_any_gem` |
+| PS7 | Add Socket's base days 4 | `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+
+### Registered for the window
+
+The base: window tree-s9-w2, "5218 tests performed, 5218 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `45b33c70f`'s game/. This slice adds 6 test names and removes none.
+
+| Step | Registered |
+| :-- | :-- |
+| Each group alone, first | `Cataclysm.ForgeSockets.` 6; and the groups whose files the slice touches, each at the count its own run prints: `Forge.`, `ForgeScreen.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `PlayLoop.` |
+| The whole suite | 5224 performed, 5224 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeSockets.` with its trailing dot. Predicted, not
+run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FS1 | in `AddSocketOf`, `Out.ResidueAfter = Item.Residue + AddSocketResidue;` to `+ ChangeSocketTypeResidue;` | 6 performed, 5 succeeded, 1 failed: FS1, on "residue 87 becomes 102", the question and the craft's residue |
+| FS2 | in `AddedSocketSeed`, the CRC replaced: `static_cast<int32>(Crc)` to `static_cast<int32>(Crc) * 0 + 1` | 6, 5, 1: FS2, on the seed, and on the pair and the spread as the rolls move |
+| FS3 | in `AddSocketOf`, `Item.Sockets.Num() >= MaxSockets` to `>` | 6, 4, 2: FS3 (the sixth and the ring's second not refused) and FS1 (the helm's third addition refused for the core, not the maximum) |
+| FS4 | in `DoSocketWork`, `Changed.Sockets[Plan.Socket].Type = Plan.ToType;` to `= Plan.FromType;` | 6, 5, 1: FS4, on "socket 1 is a Utility socket" |
+| FS5 | in `ChangeSocketTypeOf`, `if (!Changed.Gem.IsNone())` to `if (false && !Changed.Gem.IsNone())` | 6, 5, 1: FS5, on "a socket holding a gem" and the craft's refusal |
+| FS6 | in `SocketWorkActionsFor`, `if (Type == Socket.Type)` to `if (false && Type == Socket.Type)` | 6, 5, 1: FS6, on the labels |
+
+---
+
 ## 2026-11-22 — The cleanse city upgrade is built: from difficulty tier 3, once a run, 40,000 gold, and on every city that has not fallen it removes half the counted dungeons and half of what the city holds (#2838)
 
 **Affects:** `ECataclysmCityUpgradeEffect::CleanseEveryCity`'s comment, `ECataclysmCityUpgradeResult::BelowItsDifficultyTier`
