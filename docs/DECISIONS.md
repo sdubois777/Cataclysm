@@ -912,41 +912,45 @@ The coordinating session took the question to the owner, with both answers and t
 ## 2026-11-22 — A kill in an empire dungeon pays its experience, loot quantity and gold multiplier times the Power Score gap's factor, and the floor panel, the empire map and the city screen say the factor after the Dungeon Score (#2824 slice c, the game code)
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmPowerGapRewards.h` and `game/Source/Cataclysm/Dungeon/
-CataclysmPowerGapRewards.cpp`, new: `FCataclysmPowerGapRule`, the rule, and `FCataclysmPowerGapRewards`, its two
-factors; `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GapScoresHere`, `PowerGapRewardsHere`,
-`PowerGapRewardsIn` and `FloorScoreLineHere`, new, and `RefreshFloorModifierPanel`, which now takes its line from
-`FloorScoreLineHere`; `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`'s `HandleDeath`; `game/Source/
-Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`: `DungeonScoreAndRewardsLine`, new, which `game/Source/Cataclysm/
-Interface/CataclysmEmpireMapWidget.cpp` and `game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.cpp` now call;
-`game/Source/Cataclysm/Tests/CataclysmPowerGapRewardsTests.cpp`, new; `tools/tests/test_power_gap_rewards_port.py`,
-new; `tools/tests/test_the_dungeon_score_is_the_simulations.py`, whose screen check follows the two calls that moved.
-Issue [#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+CataclysmPowerGapRewards.cpp`, new: `FCataclysmPowerGapRule`, the rule and `KillLootFor`, and
+`FCataclysmPowerGapRewards` and `FCataclysmPowerGapKillLoot`, what they return; `game/Source/Cataclysm/Dungeon/
+CataclysmDungeonGameMode.cpp`: `GapScoresHere`, `PowerGapRewardsHere`, `PowerGapRewardsIn` and `FloorScoreLineHere`,
+new, and `RefreshFloorModifierPanel`, which now takes its line from `FloorScoreLineHere`; `game/Source/Cataclysm/
+Character/CataclysmEnemyCharacter.cpp`'s `HandleDeath`; `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`:
+`DungeonScoreAndRewardsLine`, new, which `game/Source/Cataclysm/Interface/CataclysmEmpireMapWidget.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.cpp` now call; `game/Source/Cataclysm/Tests/
+CataclysmPowerGapRewardsTests.cpp`, new; `tools/tests/test_power_gap_rewards_port.py`, new;
+`tools/tests/test_the_dungeon_score_is_the_simulations.py`, whose screen check follows the two calls that moved; and
+`tools/tests/test_city_upgrade_dungeon_rewards.py` and `tools/tests/test_empire_tree_gold_nodes.py`, whose gold checks
+follow the multiplier into `KillLootFor`'s second argument. Issue [#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
 
 ### SAID FIRST
 
-- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled. The four automation tests are registered below and run in
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled. The five automation tests are registered below and run in
   a window.
-- **THE LOOT AND GOLD MULTIPLICATION IS GUARDED BY A PYTHON SOURCE CHECK ONLY.** A kill's drops are rolled, so no
-  automation test here counts them under the factor. `GapRewards.Loot` reaching the loot quantity and the gold
-  multiplier is held by `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward`, proved below
-  (G2). The experience is held by an automation test that kills a creature (C1).
+- **THE LOOT CUT IS READ FROM ONE FUNCTION, NOT FROM DROPS.** A kill's drops are rolled, so no test counts them under
+  the factor. The death handler takes its loot quantity and gold multiplier from `FCataclysmPowerGapRule::KillLootFor`,
+  and `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` reads the owner's 25% from it (C4). That the
+  handler hands those two figures to the spawner is held by a Python source check (G2), not by an automation test. The
+  coordinating session's addition of 2026-11-22.
 - **BUILT ON #2824 SLICE A'S UNMERGED HEAD**, `feat/live-power-score-2824` at `374c3f6fb`, with the simulation's three
   commits of pull request #2843 carried on top, because the port check imports the simulation. When slice a merges,
-  this branch's own commits are cherry-picked onto development; #2843's are skipped if it has merged first.
+  this branch's own commits are cherry-picked onto development; #2843's are skipped if it has merged first. Its window is
+  the one after slice a's.
 - **THE FLOOR PANEL'S LINE IS DRAWN WHEN THE PANEL IS REFRESHED**, as slice a's line already was, while a kill reads the
   player's score at the moment of the kill. A piece equipped mid-floor moves the factor a kill pays at once and the
   panel's line at its next refresh.
 
 ### The rule, and what each reward takes
 
-The rule is the entry headed "A kill's experience and loot are scaled by the gap", further down, ruled 2026-11-22: the coordinating session's rule D and the owner's 25% loot
-floor, verbatim "25% loot floor (Recommended)".
+The rule is the entry headed "A kill's experience and loot are scaled by the gap", further down, ruled 2026-11-22: the
+coordinating session's rule D and the owner's 25% loot floor, verbatim "25% loot floor (Recommended)".
 
 | Reward | Where | What it becomes |
 | :-- | :-- | :-- |
 | The creature's experience | `HandleDeath`, both grants | `ExperienceAfterGain(GapRewards.ExperienceFrom(CityRewards.ExperienceFrom(Score)))`: the city's "more" first, then the gap's factor rounded to a whole point, then the player's own gain. The skills' share follows the same figure |
-| Loot quantity | `HandleDeath`, after the city's `LootMore`, before anything rolls | times the loot factor: so the gear, the materials, the tree's extra drops and the gems |
-| The gold multiplier | `HandleDeath`, the last argument of `SpawnGoldFor` | the tree's multiplier times the city's, times the loot factor. Gold pile counts are not scaled by loot quantity, which is why gold takes the factor here |
+| Loot quantity | `HandleDeath`, `KillLootFor`'s first figure, after the city's `LootMore`, before anything rolls | times the loot factor: so the gear, the materials, the tree's extra drops and the gems |
+| The gold multiplier | `HandleDeath`, `KillLootFor`'s second figure, the last argument of `SpawnGoldFor` | the tree's multiplier times the city's, times the loot factor. Gold pile counts are not scaled by loot quantity, which is why gold takes the factor here |
 | What it wore | unchanged | `DropWhatItWore` is not loot quantity |
 
 **Both factors are exactly 1** outside a dungeon of the empire (`BoundDungeon()` null), and with nobody playing
@@ -975,7 +979,7 @@ the game is plain ASCII.
 
 ### Tests
 
-`Cataclysm.PowerGapRewards.`, a new group of four:
+`Cataclysm.PowerGapRewards.`, a new group of five:
 
 | Test | What it checks |
 | :-- | :-- |
@@ -983,17 +987,19 @@ the game is plain ASCII.
 | `TwoScoresGiveBothFactorsAndTheLineAndNoScoreChangesNothing` | at tier 4 (width 717), 2,009 against 2,009, 1,292, 2,726 and 3,443: "Rewards 100%.", "Rewards 125%.", "Rewards: experience 62%, loot 70%.", "Rewards: experience 5%, loot 25%."; no player score, both 1 and no line; 137 experience is 7 at 5%, 171 at 125% |
 | `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` | a possessed level 99 player in a 10-floor Basic dungeon: cut, loot cut less than experience, a Boss grants the figure times the factor and less than the whole; the panel's line is the scores' and then the rewards'; CONTROL: the dungeon left, the whole figure and no line |
 | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` | a 22-floor Elite dungeon, a player two widths above it: the line ends "Rewards: experience 5%, loot 25%."; no player, `DungeonScoreLine`'s alone; CONTROL: no line off the map |
+| `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` | 2,009 against 3,443 at tier 4: experience 5%, loot exactly 25%; a loot quantity of 125 and a gold multiplier of 1.875 handed on as exactly a quarter, 31.25 and 0.46875; CONTROL: a possessed player with no dungeon bound, not scored, both handed on unchanged |
 
 Python: `test_power_gap_rewards_port.py`, seven checks: the port's seven constants are the ruled rule's fields; the
 multiplier is written as the simulation writes it; the first two automation tests' tables are the simulation's; the
-death handler applies each factor; the panel and the kill read the same two scores; the map and the city screen call
-the line with the rewards.
+death handler takes its loot quantity and gold multiplier from `KillLootFor`, which multiplies both by the loot factor,
+and passes both experience grants through the experience factor; the panel and the kill read the same two scores; the
+map and the city screen call the line with the rewards.
 
 ### Registered for the window
 
 **The counts are taken at the turn** from the newest measured whole-suite log.
 
-- **The whole suite: the base + 4**, the four new tests; skipped halves and test saves unchanged (no new test skips a
+- **The whole suite: the base + 5**, the five new tests; skipped halves and test saves unchanged (no new test skips a
   half or writes a save slot).
 - **No save record moves. No editor step. No asset.**
 - **No existing test is predicted to change.** Swept: every test that binds an empire dungeon (`EnterEmpireDungeon` or
@@ -1001,28 +1007,30 @@ the line with the rewards.
   possessed player; the save tests that count drops compare the saved count with the loaded count, which the factor
   moves together. The kill tests that read experience (`Cataclysm.CharacterLevel.`, `Cataclysm.EnemyScore.`, the
   Corrupted Stalker's) spawn no dungeon game mode, so the factor is 1 there.
-- **Groups alone, first:** `PowerGapRewards.` 4 (new); `PowerScoreLive.` 8 (slice a's, its lines unchanged);
+- **Groups alone, first:** `PowerGapRewards.` 5 (new); `PowerScoreLive.` 8 (slice a's, its lines unchanged);
   `CityDungeonRewards.` 5 (the same death handler); `CharacterLevel.` and `EnemyScore.` (a kill's experience);
   `DungeonMode.` (the floor panel's refresh); `EmpireScreen.` and `CityScreen.` (the two screens).
 - **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch at
-  `a07ec60e8`: "8140 passed, 10 skipped in 342.49s", JUnit 8150 tests, 0 failures, 0 errors, 10 skipped; ruff "All
+  `61f20464f`: "8140 passed, 10 skipped in 427.65s", JUnit 8150 tests, 0 failures, 0 errors, 10 skipped; ruff "All
   checks passed!".
-- **Three Python guard proofs, PROVED**, run with `tools/prove_guard.py` in a copy of `a07ec60e8`, each narrowed to
+- **Four Python guard proofs, PROVED**, run with `tools/prove_guard.py` in a copy of `61f20464f`, each narrowed to
   `tools/tests/test_power_gap_rewards_port.py`:
 
 | Proof | The break | Result | The named failure |
 | :-- | :-- | :-- | :-- |
-| G1 | the port's `LootFloor` written 0.05 | "PROVED: 1 failed, 6 passed in 0.38s \| restored: 7 passed in 0.18s" | `test_the_ports_constants_are_the_ruled_rules` |
-| G2 | the gold multiplier without `* static_cast<float>(GapRewards.Loot)` | "PROVED: 1 failed, 6 passed in 0.25s \| restored: 7 passed in 0.19s" | `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward` |
-| G3 | the automation test's "Rewards 125%." written 124% | "PROVED: 1 failed, 6 passed in 0.26s \| restored: 7 passed in 0.20s" | `test_the_automation_tests_lines_are_the_simulations` |
+| G1 | the port's `LootFloor` written 0.05 | "PROVED: 1 failed, 6 passed in 0.37s \| restored: 7 passed in 0.19s" | `test_the_ports_constants_are_the_ruled_rules` |
+| G2 | the death handler hands `SpawnGoldFor` the uncut `TreeDrops.GoldMultiplier * CityRewards.GoldMore` in place of `KillLoot.GoldMultiplier` | "PROVED: 1 failed, 6 passed in 0.24s \| restored: 7 passed in 0.20s" | `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward` |
+| G3 | the automation test's "Rewards 125%." written 124% | "PROVED: 1 failed, 6 passed in 0.24s \| restored: 7 passed in 0.21s" | `test_the_automation_tests_lines_are_the_simulations` |
+| G4 | `KillLootFor`'s gold multiplier without the loot factor | "PROVED: 1 failed, 6 passed in 0.25s \| restored: 7 passed in 0.20s" | `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward` |
 
-- **Three Unreal guard proofs**, each narrowed to `Cataclysm.PowerGapRewards.` (4):
+- **Four Unreal guard proofs**, each narrowed to `Cataclysm.PowerGapRewards.` (5):
 
 | Proof | File | The break | Predicted |
 | :-- | :-- | :-- | :-- |
-| C1 | `CataclysmEnemyCharacter.cpp` | the character's grant without the factor: `State->GrantExperience(State->ExperienceAfterGain(GapRewards.ExperienceFrom(` (once in the file) written `State->GrantExperience(State->ExperienceAfterGain((` | 3 succeeded, 1 failed: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
-| C2 | `CataclysmDungeonGameMode.cpp` | the panel's line without the rewards: in `FloorScoreLineHere`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 3, 1: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
-| C3 | `CataclysmEmpireMapLayout.cpp` | the map's line without the rewards: in `DungeonScoreAndRewardsLine`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 3, 1: `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
+| C1 | `CataclysmEnemyCharacter.cpp` | the character's grant without the factor: `State->GrantExperience(State->ExperienceAfterGain(GapRewards.ExperienceFrom(` (once in the file) written `State->GrantExperience(State->ExperienceAfterGain((` | 4 succeeded, 1 failed: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C2 | `CataclysmDungeonGameMode.cpp` | the panel's line without the rewards: in `FloorScoreLineHere`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C3 | `CataclysmEmpireMapLayout.cpp` | the map's line without the rewards: in `DungeonScoreAndRewardsLine`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
+| C4 | `CataclysmPowerGapRewards.cpp` | the gold multiplier without the factor, G4's twin: `Out.GoldMultiplier = GoldMultiplier * static_cast<float>(Rewards.Loot);` written `Out.GoldMultiplier = GoldMultiplier;` | 4, 1: `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` |
 
 ---
 
