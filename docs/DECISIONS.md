@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Two gems of a kind and rarity combine at the forge into one of the next rarity, with no cap and, as the stone combine, no cost (#46, slice G6)
+
+**Affects:** `FCataclysmForgeGemCombine`, new, and `UCataclysmForge::GemsPerCombine` and `GemCombineOf`, new
+(`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`); `UCataclysmForgeCraft::CombineGems`, new
+(`game/Source/Cataclysm/Player/CataclysmForgeCraft.h`, `.cpp`); `FCataclysmPlayLoopLog::ForgeGemCombineLine`, new
+(`CataclysmPlayLoopLog.h`, `.cpp`); `FCataclysmForgeGemCombineAction`, new, and
+`UCataclysmForgeLayout::GemCombineActionsFor` and `GemCombineActionForButton`, new (`CataclysmForgeLayout.h`, `.cpp`);
+`UCataclysmForgeWidget`'s gem combine buttons (`CataclysmForgeWidget.h`, `.cpp`); `docs/Play_Loop_Checklist.md`, step
+19, new. Tests: `game/Source/Cataclysm/Tests/CataclysmGemCombineTests.cpp`, new, three in `Cataclysm.GemCombine.`;
+`tools/tests/test_the_forge_combines_gems.py`, new; `tools/tests/test_the_play_loop_is_logged_at_each_step.py` lists the
+new line. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G5's branch head without a compile, as ruled. The branch is
+  `feat/gem-combine-46-g6`, on `feat/gem-drops-46-g5`. If ready at the turn it goes through the gems' one shared window
+  with G1 to G5.
+- **THE OWNER RULED, REVERSING THE COORDINATING SESSION'S CAP AND ITS "NO DAY".** Asked whether to cap gem combining by
+  the difficulty tier, use fewer gems at low tiers, or set no limit, the owner answered on 2026-11-21, word for word:
+  "should probably work the same way as gear leveling right? Which, we need to lower the drop quantity/amount of
+  crafting materials. It's way too high. I don't think I want to cap what players can level their stuff to, however the
+  gold/days cost should be enough of a deterrent".
+- **SO THERE IS NO CAP**, as the stone combine has none. A first version capped combining at the highest rarity that
+  drops at full weight at the tier (`UCataclysmDropRoll::HighestUnpenalisedRarity`); the ruling took it out before any
+  window.
+- **THE COST IS THE STONE COMBINE'S, AND THAT IS NONE.** The ruling says gem combining costs what gear levelling's
+  combine costs. That is no day and no residue (the design's "Gear Leveling" paragraph: "Combining two stones into one
+  of the next level costs no day and adds no residue, because it changes no item"), and no gold, since no craft has a
+  gold price yet ("the base is a later choice across all eighteen operations"). So the owner's "gold/days cost" as a
+  deterrent does not exist on either combine today. Reported to the coordinating session on 2026-11-21, with the
+  recommendation that one question decide a cost for both combines together. Until it is answered, the gem combine stays
+  the stone combine's equal: free. **Not yet confirmed by the coordinating session.**
+- **THE OWNER'S OTHER POINT, THAT CRAFTING MATERIAL DROPS ARE FAR TOO HIGH,** goes to the gold session as its own
+  change. G5's gem rate stays until then.
+- **NO RECORD VERSION MOVES.** Gem stacks are already saved (slice G2); a combine changes their counts, not their shape.
+
+### What changed
+
+- **The rule** (`UCataclysmForge::GemCombineOf`): two gems of one kind and rarity make one of the next rarity. It takes
+  `GemsPerCombine`, which is the stone combine's `StonesPerCombine`, read rather than copied. It refuses no gem ("There
+  is no gem to combine."), a Cataclysmic gem ("A Cataclysmic gem is the highest; there is none above it to make."), and
+  fewer than two ("Combining takes two Of Life (Everyday); 1 held."). No tier enters it.
+- **The craft** (`UCataclysmForgeCraft::CombineGems`), as the stone combine's: refused during a walk and without a run;
+  refused when the made gem has nowhere to go; the two leave the bag and the one joins it, the two put back if it
+  cannot; a PLAY LOOP line, "combined two Of Life (Superb) into one Of Life (Masterful): 1 Superb and 1 Masterful
+  held"; `ForgeCrafted` saves. No day passes.
+- **The forge's screen** offers a combine for each carried gem stack below Cataclysmic, "Combine two Of Life (Superb)
+  into one Of Life (Masterful), 3 held", done on one press as a stone combine is. A stack of one is offered, as a stone
+  level with one stone is, so a press says why it cannot be done.
+
+### Tests
+
+`CataclysmGemCombineTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic` | every rarity from Everyday to Ascendant makes the next with two held; it takes the stone combine's two; one held, a Cataclysmic gem and no gem are refused in their words. Prints "GEM COMBINES" |
+| `CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap` | three Everyday Of Life leave one and make one Quality, no day passing; at tier 1 two Quality Of Rot make a Superb, no day passing; the one Everyday left is refused and stays. Prints "GEMS COMBINED" |
+| `TheScreenOffersACombineForEachGemStackBelowCataclysmic` | for three Superb Of Life, two Cataclysmic Of The Viper and one Everyday Of Rot: two combines, the Life's and the Rot's, with their words; a button finds its combine; a stone combine's button and a gem combine's are not taken for each other. Prints "GEM COMBINES SHOWN" |
+
+`tools/tests/test_the_forge_combines_gems.py`: the count is read from the stone combine's; no tier and no ceiling enter
+the rule or the craft; the craft refuses during a walk, passes no day and adds no residue, says its line, saves and
+puts the two back; the screen combines on one press. Proved with `tools/prove_guard.py` in a `git archive` copy of
+`a95965fad`, each restored half "4 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GG1 | `GemsPerCombine = 2`, not read from `StonesPerCombine` | "1 failed, 3 passed": `test_a_gem_combine_takes_the_stone_combines_count_read_from_it` | PROVED |
+| GG2 | the craft reads the difficulty tier | "1 failed, 3 passed": `test_no_tier_and_no_ceiling_enter_the_rule_or_the_craft` | PROVED |
+| GG3 | the craft passes a day | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG4 | the two not put back when the made gem has nowhere to go | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG5 | the craft says no PLAY LOOP line | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG6 | the screen asks before a gem combine | "1 failed, 3 passed": `test_the_screen_combines_gems_on_one_press` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G5 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemCombine.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.Forge.`, `Cataclysm.ForgeScreen.` and `Cataclysm.ForgeGems.` alone, which read the code this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Three C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.GemCombine."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K19 | in `GemCombineOf`, `Out.Into = static_cast<ECataclysmRarity>(static_cast<uint8>(Rarity) + 1);` to `Out.Into = Rarity;` | 3 performed, 2 succeeded, 1 failed: `TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic` | 3 of 3 |
+| K20 | in `CombineGems`, `Inventory->AddGems(Gem, Plan.Into, 1)` to `Inventory->AddGems(Gem, Plan.From, 1)` | 3 performed, 2 succeeded, 1 failed: `CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap` | 3 of 3 |
+| K21 | in `GemCombineActionsFor`, ` \|\| Carried.GemRarity == ECataclysmRarity::Cataclysmic` removed | 3 performed, 2 succeeded, 1 failed: `TheScreenOffersACombineForEachGemStackBelowCataclysmic` | 3 of 3 |
+
+---
+
 ## 2026-11-21 — Kills drop gems, about one a floor at a full clear, measured so a full clear of a tier fills that tier's reference character; a gem lies on the floor, comes without a click into its stack, and is saved on the ground (#46, slice G5)
 
 **Affects:** `sim/cataclysm_sim/loot.py`'s `GEM_DROPS_PER_GEAR_DROP`, `ENEMY_GEM_DROPS`, `expected_gem_drops` and
