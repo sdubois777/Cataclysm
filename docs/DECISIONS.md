@@ -135,6 +135,26 @@ the two files `80f827ddf` changed.
 | PW5 | magic find left out of the tooltip's list | `test_the_tooltip_explains_exactly_the_stats_of_the_four_gems` |
 | PW6 | the run record's `Migrate_12_to_13` writing `Buildings` | `test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building` |
 
+
+### Window gems-w1, 2026-11-22, at `742c28386`: NOT PASSED
+
+- **Groups alone: 50 of 51 passed** at their own counts -- GemStats 3, GemStacks 5, ItemSockets 4, ForgeGems 4, GemDrops
+  4, GemCombine 3, ForgeCosts 3, GemSave 2, and every swept group (SaveLoad 81, SaveRecords 17, Drop 30,
+  DungeonModifierEffects 777, EmpireRun 71, among them). **`Cataclysm.CityUpgradeSpeed.` did not: 8 performed, 7
+  succeeded, 1 failed.**
+- **The whole suite**: "5204 tests performed, 5203 succeeded, 1 failed: TheRushButtonSaysItsPriceAndDaysOrWhatIsMissing";
+  57 skipped halves; "860 written and deleted, 0 left behind"; Declared 5204, gap 0.
+- **Python beside it**: "1 failed, 8073 passed, 10 skipped", JUnit 8084 tests, 1 failure; ruff clean. The failure was
+  this window's own: the tooltip list's comment in `CataclysmGems.cpp` wrapped the name of the check it cites across two
+  lines, so `test_every_python_test_a_cpp_comment_cites_exists` read `test_every_gem_names_a_stat_the_`. The comment now
+  names it on one line (`4ce2f316e`).
+- **No proof ran.**
+
+**#2832's failure was a test-only fault in its own tests**, ruled (A) by the coordinating session: the test expected
+"Rush  --  Costs 15,000 gold; 3,000 more needed." and read "Rush  --  " followed by three unreadable characters, because
+three tests in `CataclysmCityUpgradeSpeedTests.cpp` took a pointer into the temporary list `OffersFor` returns and read
+it after the list was freed. `d69c46313` keeps the list in a local in those three tests and changes nothing else;
+#2832's commit stays as it was. The registration for window gems-w2 is unchanged.
 ---
 
 ## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
