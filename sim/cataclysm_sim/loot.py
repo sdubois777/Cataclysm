@@ -1460,6 +1460,73 @@ def roll_material_drops_from_kill(enemy_rarity: str, magic_find: float,
 
 
 # --------------------------------------------------------------------------
+# Gems. Issue #46, slice G5.
+# --------------------------------------------------------------------------
+
+#: How many gems a kill drops for every gear item it drops: the gem column of
+#: the Enemy Drops sheet is the gear column times this. MEASURED by
+#: `sim/analyse_gem_drops.py` on 2026-11-21, rounded up from 0.00671:
+#:
+#:   - THE TARGET, A JUDGEMENT: a full clear of a tier's dungeons drops enough
+#:     gems to fill the sockets the design's reference character fills at that
+#:     tier (6 at tier 1 to 45 at tier 8, "Expected Character by Tier"), each at
+#:     the tier's own rarity. The design calls that character the ceiling of a
+#:     tier, so the rate is the least that makes the ceiling reachable;
+#:   - ANY GEM COUNTS, A JUDGEMENT: the Power Score reads only a gem's rarity, so
+#:     the reference character is filled by any gem of the rarity, not by
+#:     particular ones. A build after particular gems needs more kills;
+#:   - DERIVED: the kills in a tier (26 dungeons of 49.8 floors of 257.5
+#:     creatures, the inputs `analyse_experience_curve.py` uses, which assume
+#:     every creature is killed, issue #925); a gem's rarity spread, the gear
+#:     one (`rarity_distribution`, with the enemy's magic find); and what a gem
+#:     of a lower rarity is worth, half a rung per rung, since two combine into
+#:     one of the next (ruled 2026-11-21);
+#:   - TIER 8 SETS IT: the tier's own rarity is rarest there, so it needs the
+#:     most drops for each gear item, 0.00671. Every lower tier needs less, and
+#:     gets more than it needs.
+GEM_DROPS_PER_GEAR_DROP = 0.0068
+
+#: How many gems a kill of each enemy rarity is expected to drop, before loot
+#: quantity: the gear column times `GEM_DROPS_PER_GEAR_DROP`, so gems follow the
+#: gear column's shape across enemy rarities (a judgement, the shape magic find
+#: already follows). Mirrors the Gem Drops column of the Enemy Drops sheet, which
+#: is authoritative, as the gear and material columns are.
+ENEMY_GEM_DROPS: dict[str, float] = {
+    "Common":          0.001088,
+    "Elite":           0.0034,
+    "Legendary":       0.0068,
+    "Herald":          0.0136,
+    "Boss":            0.034,
+    "Cataclysm Boss":  0.0816,
+}
+
+
+def expected_gem_drops(enemy_rarity: str,
+                       loot_quantity: float = BASELINE_LOOT_QUANTITY) -> float:
+    """How many gems a kill of this rarity is expected to drop."""
+    _enemy_rarity(enemy_rarity)
+    if loot_quantity < 0.0:
+        raise ValueError(
+            f"loot quantity is {loot_quantity}; it is a percentage with a "
+            "baseline of 100 and cannot be negative")
+    return ENEMY_GEM_DROPS[enemy_rarity] * loot_quantity / BASELINE_LOOT_QUANTITY
+
+
+def roll_gem_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
+                             loot_quantity: float, rng) -> list[str]:
+    """The rarity of every gem one kill drops.
+
+    THE GEAR'S RARITY ROLL, with the enemy's magic find added to the player's:
+    "Gems ... have the same rarity tiers as gear", and the difficulty tier gates
+    a gem's rarity as it gates gear's. Which of the 28 gems it is does not matter
+    to anything modelled here, and the game draws it evenly.
+    """
+    count = roll_count(expected_gem_drops(enemy_rarity, loot_quantity), rng)
+    together = magic_find + magic_find_from(enemy_rarity)
+    return [roll_rarity(tier, together, rng) for _ in range(count)]
+
+
+# --------------------------------------------------------------------------
 # Checks that run on import, the same way affixes.py does it.
 # --------------------------------------------------------------------------
 
@@ -2020,3 +2087,19 @@ _check_every_material_tier_has_a_weight()
 _check_no_material_tier_gets_commoner_as_it_rises()
 _check_no_material_tier_overtakes_the_one_below_it()
 _check_the_material_distribution_sums_to_one()
+
+
+def _check_gems_follow_the_gear_column() -> None:
+    """Every enemy rarity drops gems, at the gear column times the measured share."""
+    if set(ENEMY_GEM_DROPS) != set(ENEMY_GEAR_DROPS):
+        raise AssertionError(
+            "the gem and gear drop tables cover different enemy rarities: "
+            f"{sorted(set(ENEMY_GEM_DROPS) ^ set(ENEMY_GEAR_DROPS))}")
+    for rarity, gems in ENEMY_GEM_DROPS.items():
+        if abs(gems - ENEMY_GEAR_DROPS[rarity] * GEM_DROPS_PER_GEAR_DROP) > 1e-9:
+            raise AssertionError(
+                f"a {rarity} drops {gems} gems against "
+                f"{ENEMY_GEAR_DROPS[rarity]} x {GEM_DROPS_PER_GEAR_DROP}")
+
+
+_check_gems_follow_the_gear_column()
