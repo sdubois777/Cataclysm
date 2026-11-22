@@ -66,7 +66,7 @@ namespace CataclysmForgeDamageTypesTest
 		return Item;
 	}
 
-	struct FScene
+	struct FDamageTypeCraftScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -84,9 +84,9 @@ namespace CataclysmForgeDamageTypesTest
 	};
 
 	/** A world with this project's game instance, a possessed player with a million gold of its own, and a run. */
-	FScene MakeScene()
+	FDamageTypeCraftScene MakeScene()
 	{
-		FScene Out;
+		FDamageTypeCraftScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -120,7 +120,7 @@ namespace CataclysmForgeDamageTypesTest
 		return Out;
 	}
 
-	ECataclysmGearSlot Wear(const FScene& Scene, const FCataclysmItem& Item)
+	ECataclysmGearSlot Wear(const FDamageTypeCraftScene& Scene, const FCataclysmItem& Item)
 	{
 		FCataclysmItem First;
 		FCataclysmItem Second;
@@ -145,7 +145,7 @@ namespace CataclysmForgeDamageTypesTest
 	}
 
 	/** The plan the craft will make for this weapon now, so a test can compare with what it did. */
-	FCataclysmForgeDamageTypeWork PlanNow(const FScene& Scene, const FCataclysmItem& Item, ECataclysmForgeDamageTypeCraft Craft,
+	FCataclysmForgeDamageTypeWork PlanNow(const FDamageTypeCraftScene& Scene, const FCataclysmItem& Item, ECataclysmForgeDamageTypeCraft Craft,
 										 FName Chosen)
 	{
 		const bool bChange = Craft == ECataclysmForgeDamageTypeCraft::Change;
@@ -196,7 +196,7 @@ bool FCataclysmForgeDamageTypesRandomTest::RunTest(const FString&)
 			  UCataclysmForge::DamageTypeWorkOf(Item, Random, NAME_None, 1, Skills, Bases, 1, 1, 100).Refusal,
 			  FString(TEXT("Infusing a random damage type takes 450 gold; 100 gold held.")));
 
-	FScene Scene = MakeScene();
+	FDamageTypeCraftScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -341,7 +341,7 @@ bool FCataclysmForgeDamageTypesSpecificTest::RunTest(const FString&)
 			  UCataclysmForge::DamageTypeWorkOf(Item, Specific, Demonic, 1, Skills, Bases, 0, 1, 1000000).Refusal,
 			  FString(TEXT("Infusing a chosen damage type takes a Sovereign Ingot; 0 held.")));
 
-	FScene Scene = MakeScene();
+	FDamageTypeCraftScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -417,7 +417,7 @@ bool FCataclysmForgeDamageTypesChangeTest::RunTest(const FString&)
 			  UCataclysmForge::DamageTypeWorkOf(Item, Change, War, 1, Skills, Bases, 0, 1, 1000000).Refusal,
 			  FString(TEXT("Changing a damage type takes a Prismatic Catalyst; 0 held.")));
 
-	FScene Scene = MakeScene();
+	FDamageTypeCraftScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -507,7 +507,7 @@ bool FCataclysmForgeDamageTypesScreenTest::RunTest(const FString&)
 			 UCataclysmForgeLayout::DamageTypesDetailFor(Creation, 4).EndsWith(UCataclysmForge::CreationWeaponRefusal));
 	TestEqual(TEXT("a helm's is empty"), UCataclysmForgeLayout::DamageTypesDetailFor(Helm, 0), FString());
 
-	FScene Scene = MakeScene();
+	FDamageTypeCraftScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -552,7 +552,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeDamageTypesThresholdTest,
 bool FCataclysmForgeDamageTypesThresholdTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeDamageTypesTest;
-	FScene Scene = MakeScene();
+	FDamageTypeCraftScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
