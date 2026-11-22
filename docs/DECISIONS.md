@@ -110,6 +110,10 @@ and every screen that offers a dungeon calls the score functions.
   panel's refresh); `Damage.` 21 and `ShowResistancesCap.` 3 (the resistance read).
 - **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "8126 passed, 10
   skipped in 349.16s", JUnit 8136 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!".
+- **Two Python guard proofs, PROVED**, run with `tools/prove_guard.py` in a copy of `0ed11b833`: the automation test's
+  tier 4 figure written 2010, not the simulation's 2009, "PROVED: 1 failed, 2 passed | restored: 3 passed", the one
+  named failure `test_the_automation_tests_figures_are_the_simulations`; and the city screen's player score replaced by
+  `INDEX_NONE`, the same, `test_every_screen_that_offers_a_dungeon_shows_both_scores`.
 - **Seven Unreal guard proofs**, each narrowed to `Cataclysm.PowerScoreLive.` (8):
 
 | Proof | The break | Predicted |
