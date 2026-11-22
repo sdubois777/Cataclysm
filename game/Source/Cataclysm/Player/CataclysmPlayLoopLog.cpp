@@ -589,6 +589,12 @@ FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearL
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);
 }
 
+FString FCataclysmPlayLoopLog::SoldLine(const FString& ItemName, int32 GearLevel, int64 Gold, int64 Held)
+{
+	return FString::Printf(TEXT("sold %s, +%d, for %s; %s held"), *ItemName, GearLevel,
+						   *ACataclysmDroppedItem::GoldName(Gold), *ACataclysmDroppedItem::GoldName(Held));
+}
+
 FCataclysmPlayLoopLog::FHits FCataclysmPlayLoopLog::HitsOf(const UCataclysmEquipmentComponent& Worn)
 {
 	FHits Hits;

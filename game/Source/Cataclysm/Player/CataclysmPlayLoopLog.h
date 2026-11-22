@@ -347,6 +347,12 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString PickedUpLine(const FString& ItemName, int32 GearLevel);
 
 	/**
+	 * A carried piece sold to the merchant: "sold Quality Torc of Warding, +2, for 15 gold; 1,234 gold held". Issue #48,
+	 * slice S1. Said by `UCataclysmMerchant::Sell`, after the gold is banked and the piece taken.
+	 */
+	static FString SoldLine(const FString& ItemName, int32 GearLevel, int64 Gold, int64 Held);
+
+	/**
 	 * The basic attack's hits for the gear a character wears: the plain one and one on each of the run's families,
 	 * as the item comparison prices them (`UCataclysmItemComparison::BasicHitOf` and `BasicHitOnAFamilyOf`).
 	 */

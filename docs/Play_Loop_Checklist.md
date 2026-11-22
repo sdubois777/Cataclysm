@@ -620,6 +620,23 @@ material, and it destroys the piece.
 - **A full bag** with no stack of something the piece gives back refuses first, "Make room in the bag first.", and
   destroys nothing.
 
+### 27. Sell a carried piece to the merchant
+
+In the capital, between walks (issue #48, slice S1). Open the empire map (M) and click **"Merchant"**, under the
+"Forge" button.
+
+- **The screen lists every carried piece of gear** with what it sells for, and the gold held above them. Worn pieces,
+  materials and gems are not listed. The price doubles for each rarity rung and rises 10% for each upgrade level,
+  counted in the tier's gold pile: at tier 1 an Everyday +0 piece sells for 1 gold, a Masterful +0 for 5, a Masterful
+  +3 for 7.
+- **Click a piece, then "Sell" twice.** The first press asks: "Sell Masterful Handwraps of Warding for 7 gold? Press Sell again
+  to sell it." The second sells it: the piece leaves the bag, the gold held rises, and **no day passes**. Clicking
+  another piece between the two presses cancels the question.
+- **During a walk** the screen opens, and "Sell" says "The merchant trades in the capital, not during a walk."
+- **In the log:**
+
+  `PLAY LOOP: sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held`
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

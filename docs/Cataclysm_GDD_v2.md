@@ -4952,6 +4952,9 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
 | Stash | Shared storage. One stash per lethality mode per population, offline and online never sharing one. A Solo Self-Found character opens a private one of its own instead |
+| Merchant | Buys a carried piece of gear for gold. Costs no day |
+
+**The merchant buys a carried piece of gear for gold, and a sale costs no day**, the one service that does not cost time, by the owner's choice of 2026-11-22 ("No days"). A piece sells for a number of the tier's gold piles: Everyday 1/16, doubling a rarity rung to Cataclysmic 8, and 10% more for each upgrade level. Affixes and enchantments do not change the price. A worn piece is not sold; take it off first. Until the capital is built, the merchant's screen opens from the empire map's "Merchant" button, under the Forge's. Issue #48; `DECISIONS.md` carries the rulings and the simulation sweep the numbers were chosen on.
 
   
 

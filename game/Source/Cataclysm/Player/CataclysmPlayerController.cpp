@@ -18,6 +18,7 @@
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
 #include "Interface/CataclysmLootFilterWidget.h"
+#include "Interface/CataclysmMerchantWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -618,7 +619,7 @@ bool ACataclysmPlayerController::IsAFullScreenOpen() const
 {
 	const UUserWidget* Screens[] = {InventoryScreen, CharacterCreationScreen, PassiveTreeScreen, EmpireTreeScreen,
 									ForgeScreen, EmpireMapScreen, CharacterSheetScreen, SkillAssignmentScreen, CityScreen,
-									LootFilterScreen};
+									LootFilterScreen, MerchantScreen};
 	for (const UUserWidget* Screen : Screens)
 	{
 		if (Screen && Screen->IsInViewport())
@@ -1367,6 +1368,48 @@ void ACataclysmPlayerController::ToggleForge()
 bool ACataclysmPlayerController::IsForgeOpen() const
 {
 	return ForgeScreen != nullptr && ForgeScreen->IsInViewport();
+}
+
+void ACataclysmPlayerController::ToggleMerchant()
+{
+	// THE FORGE'S SHAPE. Issue #48, slice S1.
+	if (!MerchantScreen)
+	{
+		UClass* ScreenClass = MerchantScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no merchant screen to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *MerchantScreenClass.ToString());
+			return;
+		}
+
+		MerchantScreen = CreateWidget<UCataclysmMerchantWidget>(this, ScreenClass);
+		if (!MerchantScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The merchant screen could not be created, so the button that opens it does nothing."));
+			return;
+		}
+	}
+
+	// THE SAME INPUT MODE OPENING AND CLOSING, for the reason issue #1015 recorded on the passive tree screen.
+	ApplyPlayingInputMode();
+
+	if (MerchantScreen->IsInViewport())
+	{
+		MerchantScreen->RemoveFromParent();
+		return;
+	}
+
+	MerchantScreen->Refresh();
+	MerchantScreen->AddToViewport();
+}
+
+bool ACataclysmPlayerController::IsMerchantOpen() const
+{
+	return MerchantScreen != nullptr && MerchantScreen->IsInViewport();
 }
 
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const

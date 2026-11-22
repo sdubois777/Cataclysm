@@ -34,6 +34,9 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_LootFilter          the loot filter screen: the filters, the picked
                             filter's rules, and an editor for the picked rule,
                             issue #2846 slice LF2
+    WBP_Merchant            the merchant: the gold held, every carried piece
+                            with its price, Sell (asked, then done) and Close,
+                            issue #48 slice S1
 
 AND ONE LEVEL, under `/Game/Maps`:
 
@@ -1116,6 +1119,66 @@ def make_loot_filter():
     log("created {}/{}".format(INTERFACE_DIR, LOOT_FILTER_ASSET))
 
 
+MERCHANT_PARENT = "CataclysmMerchantWidget"
+MERCHANT_ASSET = "WBP_Merchant"
+
+
+def make_merchant():
+    """The merchant, issue #48 slice S1: the empire map's "Merchant" button opens it.
+
+    THE FORGE'S SHAPE: the title, the gold held, one button per carried piece in a
+    scroll box holding a wrap box, the chosen piece's line, the Sell button in a
+    wrap box, the message a press leaves, and Close. EMPTY HERE AND FILLED AT RUN
+    TIME by UCataclysmMerchantWidget.
+    """
+    parent = parent_class(MERCHANT_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, MERCHANT_ASSET):
+        log("{}/{} already exists; left alone.".format(INTERFACE_DIR, MERCHANT_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(INTERFACE_DIR, MERCHANT_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(MERCHANT_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Merchant", size=30)
+
+    gold = add(blueprint, unreal.TextBlock, "GoldLabel", "Body")
+    set_text(gold, "", size=18)
+
+    pieces = add(blueprint, unreal.ScrollBox, "PieceScroll", "Body")
+    fill_remaining_height(pieces)
+    add(blueprint, unreal.WrapBox, "PieceBox", "PieceScroll")
+
+    detail = add(blueprint, unreal.TextBlock, "DetailLabel", "Body")
+    set_text(detail, "", size=18)
+    detail.set_editor_property("auto_wrap_text", True)
+
+    add(blueprint, unreal.WrapBox, "ActionBox", "Body")
+
+    message = add(blueprint, unreal.TextBlock, "MessageLabel", "Body")
+    set_text(message, "", size=16)
+    message.set_editor_property("auto_wrap_text", True)
+
+    add(blueprint, unreal.Button, "CloseButton", "Body")
+    close = add(blueprint, unreal.TextBlock, "CloseLabel", "CloseButton")
+    set_text(close, "Close", size=18)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(MERCHANT_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, MERCHANT_ASSET))
+
+
 MAPS_DIR = "/Game/Maps"
 FRONT_END_LEVEL = "L_FrontEnd"
 FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
@@ -1185,6 +1248,7 @@ def main():
     make_empire_tree()
     make_forge()
     make_loot_filter()
+    make_merchant()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
     make_front_end_map()
