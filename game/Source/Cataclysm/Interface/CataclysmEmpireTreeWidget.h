@@ -70,9 +70,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	bool ChooseOption(FName Node, int32 Option);
 
+	/** Take Imperial Prowess's extra option -- one more option of an earlier centre milestone -- through the game
+	 *  instance, and redraw. Issue #2741 slice 8. */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
+	bool ChooseExtraOption(FName Node, int32 Option);
+
+	/** Whether the options in the list are offered as Imperial Prowess's extra option rather than as the choice. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|EmpireTree")
+	bool IsChoosingAnExtraOption() const { return bChoosingExtraOption; }
+
 	/**
 	 * What a click on a node means: on a centre capstone that has opened and awaits a choice, its three options are put
-	 * in the list (and nothing is bought); on any other node, a point is bought. Public so a test can drive the click,
+	 * in the list (and nothing is bought); on an earlier centre milestone while Imperial Prowess's extra option is open
+	 * there, its options are put in the list as that extra option (issue #2741 slice 8); on any other node, a point is
+	 * bought. Public so a test can drive the click,
 	 * for the reason `UCataclysmPassiveTreeWidget::TouchNode` gives.
 	 *
 	 * @return true when a point was bought or the options were put in the list
@@ -301,6 +312,10 @@ private:
 
 	UPROPERTY(Transient)
 	FName ChoosingOptionFor;
+
+	/** Whether `ChoosingOptionFor`'s options are offered as Imperial Prowess's extra option. Issue #2741 slice 8. */
+	UPROPERTY(Transient)
+	bool bChoosingExtraOption = false;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UCataclysmChoiceButton>> NodeButtons;

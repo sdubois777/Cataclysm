@@ -129,7 +129,11 @@ namespace CataclysmSaveRecordTest
 	static TArray<FFixture> Fixtures()
 	{
 		return {
-			// ACCOUNT IS AT v4 SINCE 2026-11-18, when it came to hold what its
+			// ACCOUNT IS AT v6 SINCE 2026-11-21, when its empire tree came to hold
+			// Imperial Prowess's extra option (issue #2741 slice 8), and was at v5 from
+			// 2026-11-20, for a gold debt (slice 6e); Account_v5.json and Account_v4.json
+			// are migration inputs now.
+			// ACCOUNT WAS AT v4 FROM 2026-11-18, when it came to hold what its
 			// empire upgrade tree has bought (issue #2741 slice 1b);
 			// Account_v3.json is a migration input now.
 			// ACCOUNT WAS AT v3 FROM 2026-11-18, when it came to hold its gold
@@ -137,7 +141,7 @@ namespace CataclysmSaveRecordTest
 			// ACCOUNT WAS AT v2 FROM 2026-11-03, when its banked empire upgrade
 			// points became a double so a fraction of a point is kept (issue #52);
 			// Account_v1.json is a migration input now.
-			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v5.json") },
+			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v6.json") },
 			// RUN IS AT v11 SINCE 2026-11-20, when a run came to carry the dungeons cleared
 			// since the last death (issue #2741 slice 5b); Run_v10.json is a migration input now.
 			// RUN WAS AT v10 FROM 2026-11-19, when a saved creature came to say whether it
@@ -186,7 +190,10 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v11.json") },
+			// CHARACTER IS AT v12 SINCE 2026-11-21, when its allocations came to hold
+			// Imperial Prowess's extra option (issue #2741 slice 8); Character_v11.json is a
+			// migration input now.
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v12.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v13.json") },
 		};
 	}
@@ -630,7 +637,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -643,14 +650,15 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v11.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v12.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// 11 SINCE `Character_v11.json` BECAME THE COMMITTED FILE (issue #2741 slice 6e); it was 10 from issue #2764, 9
-	// from issue #2741 slice 1c, 8 until then.
-	TestEqual(TEXT("it says it is version 11"), Read->SchemaVersion, 11);
+	// THE CURRENT VERSION SINCE `Character_v12.json` BECAME THE COMMITTED FILE (issue #2741 slice 8); it was 11 from
+	// issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then. Read from the record rather
+	// than written here, because gems slice G2 also moves the character record and the second to merge renumbers.
+	TestEqual(TEXT("it says it is the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
 	TestEqual(TEXT("the Cataclysm order seed in the file"), Read->CataclysmOrderSeed,
 		CataclysmSaveFixtures::CommittedCharacterOrderSeed);
@@ -901,6 +909,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
+	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1448,7 +1457,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1460,7 +1469,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v11.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v12.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

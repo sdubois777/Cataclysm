@@ -2414,6 +2414,11 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The gold and crafting materials a kill drops increased, for each Treasurer city (The Golden Touch, R4). */
 	GoldAndMaterialsPerTreasurerCity,
+
+	// ---- Slice 8: Imperial Prowess, the project owner's ruling of 2026-11-21 and the coordinating session's J1 to J5.
+
+	/** How many extra options may be taken from earlier tiers' centre milestones (Imperial Prowess: one, J2). */
+	ExtraEarlierMilestoneOption,
 };
 
 /**

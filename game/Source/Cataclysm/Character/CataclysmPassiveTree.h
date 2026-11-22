@@ -56,7 +56,12 @@ struct CATACLYSM_API FCataclysmSpentNode
  * avoiding.
  *
  * ONLY NODES THAT HOLD SOMETHING ARE IN IT. A node with no points has no entry
- * rather than an entry saying zero, so an untouched character's record is empty.
+ * rather than an entry saying zero, so an untouched character's `Nodes` is empty.
+ *
+ * AND ONE EXTRA OPTION, `ExtraOptionNode` and `ExtraOption`, which only the empire
+ * upgrade tree uses: Imperial Prowess's extra pick from an earlier tier's milestone
+ * (issue #2741 slice 8). One pair, because the coordinating session ruled one extra
+ * pick in total (J2, 2026-11-21). A class tree leaves it at None and 0.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmPassiveAllocation
@@ -65,6 +70,18 @@ struct CATACLYSM_API FCataclysmPassiveAllocation
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Passives")
 	TArray<FCataclysmSpentNode> Nodes;
+
+	/**
+	 * The centre milestone that holds an extra option, and which of its options it is: 1, 2 or 3; None and 0 when no
+	 * extra option is taken. Imperial Prowess's "pick an additional keystone from a previous tier" (the project owner,
+	 * 2026-11-21), taken through `UCataclysmEmpireTree::ChooseExtraOption`. Saved on the account record's `EmpireTree`
+	 * and on the character record's three allocations since issue #2741 slice 8; the empire tree's rules alone read it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Passives")
+	FName ExtraOptionNode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Cataclysm|Passives")
+	int32 ExtraOption = 0;
 
 	/** How many points are spent altogether, across every tree. */
 	int32 Total() const;
@@ -81,8 +98,23 @@ struct CATACLYSM_API FCataclysmPassiveAllocation
 	/** Record which of a capstone's three options was taken. */
 	void SetChosenOption(FName Node, int32 Option);
 
-	/** Forget everything, so every point can be spent again. */
-	void Clear() { Nodes.Reset(); }
+	/** The extra option taken on this node, or 0 when it holds none. */
+	int32 ExtraOptionIn(FName Node) const { return ExtraOption > 0 && ExtraOptionNode == Node ? ExtraOption : 0; }
+
+	/** Record the one extra option: this node's option 1, 2 or 3. */
+	void SetExtraOption(FName Node, int32 Option)
+	{
+		ExtraOptionNode = Node;
+		ExtraOption = Option;
+	}
+
+	/** Forget everything, so every point can be spent again: every node, every choice and the extra option. */
+	void Clear()
+	{
+		Nodes.Reset();
+		ExtraOptionNode = NAME_None;
+		ExtraOption = 0;
+	}
 };
 
 /**

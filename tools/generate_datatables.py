@@ -3757,9 +3757,6 @@ EMPIRE_TREE_SYSTEMS = {
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
     "loot filter": "a loot filter, which the game does not have",
-    "prowess ruling": ("a ruling on what \"an additional keystone from any of "
-                       "the previous tiers\" means, which the owner has not "
-                       "made"),
     "destroy upgrade": ("a city screen action that destroys a city upgrade, "
                         "which the game does not have"),
 }
@@ -3768,7 +3765,8 @@ EMPIRE_TREE_SYSTEMS = {
 #: name, with the slice that makes it act: 3 for the city numbers, 4 for a
 #: dungeon's walk and depth, 5 for the player's loot and movement, 6 for gold
 #: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price), 7
-#: for the four nodes that read a Treasurer city upgrade (2026-11-21).
+#: for the four nodes that read a Treasurer city upgrade (2026-11-21), 8 for
+#: Imperial Prowess's extra option (2026-11-21).
 #: Until its slice lands a node here can be bought and does nothing.
 #:
 #: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
@@ -3787,6 +3785,9 @@ EMPIRE_TREE_BUILT = {
     "The Delver": 4, "The Collector's Decree": 4, "The Warlord": 4,
     "The Last Stand": 4,
     "The Hoarder": 5,
+    # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
+    # additional keystone from a previous tier"; J1 to J5 the same day.
+    "Imperial Prowess": 8,
     # Architect.
     "Foundation": 3, "Structural Integrity": 3, "Urban Planning": 3,
     "Fortified Gates": 3, "Enduring Foundations": 3, "Civil Order": 3,
@@ -3853,7 +3854,6 @@ EMPIRE_TREE_BUILT = {
 EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
-    "Imperial Prowess": "prowess ruling",
     # Architect.
     "Scaffolding": "build time", "Rapid Renovation": "build time",
     "Scorched Earth": "destroy upgrade",
@@ -4124,6 +4124,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # Slice 7: Commercial Hubs, Economic Zones, Trade Routes, The Golden Touch.
     "GoldIncreasedOnTreasurerCity", "GoldMoreFromTreasurerCities",
     "GoldEveryTwentyDaysPerTreasurerCity", "GoldAndMaterialsPerTreasurerCity",
+    # Slice 8: Imperial Prowess.
+    "ExtraEarlierMilestoneOption",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4329,6 +4331,12 @@ EMPIRE_TREE_EFFECTS = {
     "Economic Zones": [("GoldMoreFromTreasurerCities", 0.05)],
     "Trade Routes": [("GoldEveryTwentyDaysPerTreasurerCity", 50.0)],
     "The Golden Touch": [("GoldAndMaterialsPerTreasurerCity", 0.10)],
+    # Slice 8, the project owner's ruling of 2026-11-21: "Keystones are tier gated
+    # behind point thresholds. Imperial prowess lets you pick an additional
+    # keystone from a previous tier." The keystones with point thresholds are the
+    # centre milestones' options; "an additional keystone" is one (J2). The rules
+    # that take it are in C++ (`UCataclysmEmpireTree::ChooseExtraOption`).
+    "Imperial Prowess": [("ExtraEarlierMilestoneOption", 1.0)],
 }
 
 

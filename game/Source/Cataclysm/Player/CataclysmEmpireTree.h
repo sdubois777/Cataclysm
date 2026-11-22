@@ -171,6 +171,12 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 
 	/** The Golden Touch's increase to the gold and the crafting materials a kill drops, for each Treasurer city (T3, T4). */
 	float GoldAndMaterialsPerTreasurerCity = 0.0f;
+
+	// ---- Slice 8, Imperial Prowess (the project owner, 2026-11-21; J1 to J5). ----
+
+	/** How many extra options may be taken from earlier tiers' centre milestones: 1 with Imperial Prowess (J2), 0
+	 *  without. `RefusalForChoosingExtraOption` reads it. */
+	int32 ExtraEarlierMilestoneOptions = 0;
 };
 
 /**
@@ -685,6 +691,38 @@ public:
 	/** Choose one of a centre capstone's three options. Choosing costs nothing; the capstone's point is spent after. */
 	static bool ChooseOption(const UDataTable* NodeTable, FCataclysmPassiveAllocation& Allocation, FName Node,
 							 int32 Option, FString& OutReason);
+
+	//~ Imperial Prowess's extra option. Issue #2741 slice 8.
+
+	/**
+	 * Why this option of this centre milestone cannot be taken as the extra option, or empty when it can.
+	 *
+	 * THE PROJECT OWNER, 2026-11-21: "Keystones are tier gated behind point thresholds. Imperial prowess lets you pick an
+	 * additional keystone from a previous tier." The keystones that carry point thresholds are the four centre
+	 * milestones' options, so the extra pick is one more option of an earlier milestone beside the one chosen there.
+	 *
+	 * In this order, the first that applies: no such node; no extra pick held (Imperial Prowess chosen and its
+	 * milestone's point bought); not a centre milestone; no such option; not an earlier tier than the milestone that
+	 * grants the pick; that milestone's own option not chosen or its point not bought (J1); the option is the one chosen
+	 * there; the option waits on a system (J4: The Soul Forge and The Master Tinkerer, crafting); the one extra pick is
+	 * taken (J2), and it stands until a respec (J5).
+	 */
+	static FString RefusalForChoosingExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+												 const FCataclysmPassiveAllocation& Allocation, FName Node,
+												 int32 Option);
+
+	/** Take this option of this earlier centre milestone as the extra option. Costs nothing; refused whole, changing
+	 *  nothing, with `OutReason` saying why. */
+	static bool ChooseExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+								  FCataclysmPassiveAllocation& Allocation, FName Node, int32 Option, FString& OutReason);
+
+	/** Whether an extra option is held and not yet taken, and this centre milestone has an option it could be. */
+	static bool OffersAnExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+									const FCataclysmPassiveAllocation& Allocation, FName Node);
+
+	/** The name of the option that grants the extra pick -- "Imperial Prowess" -- read from the effect table; empty when
+	 *  no row grants one. */
+	static FString ExtraOptionGranterName(const UDataTable* NodeTable, const UDataTable* EffectTable);
 
 	/**
 	 * Whether this node is a centre capstone that has opened and is waiting to be told which option to take: the

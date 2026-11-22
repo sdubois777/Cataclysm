@@ -42,7 +42,7 @@ namespace CataclysmEmpireTreeTestNodes
 	// The centre.
 	const FName Foundations(TEXT("capstone_0000000m"));			// 25: Aegis of Hope, The Delver, The Hoarder
 	const FName EdictsOfPower(TEXT("capstone_0000000n"));		// 50: option 3, The Soul Forge, waits on crafting
-	const FName ImperialZenith(TEXT("capstone_0000000p"));		// 200: option 1, Imperial Prowess, waits on a ruling
+	const FName ImperialZenith(TEXT("capstone_0000000p"));		// 200: option 1, Imperial Prowess, built in slice 8
 
 	/**
 	 * Puts `Points` into one branch's ordinary nodes, in the branch's own order, ignoring every rule. For a test whose
@@ -383,10 +383,11 @@ bool FCataclysmEmpireTreeOptionWaitsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The Collector's Decree, its second, can"),
 			 UCataclysmEmpireTree::RefusalForChoosingOption(Nodes, Allocation, EdictsOfPower, 2).IsEmpty());
 
-	// IMPERIAL PROWESS waits on a ruling (Q5); the other two options of The Imperial Zenith can be chosen.
-	TestFalse(TEXT("Imperial Prowess cannot be chosen"),
-			  UCataclysmEmpireTree::RefusalForChoosingOption(Nodes, Allocation, ImperialZenith, 1).IsEmpty());
-	TestTrue(TEXT("so The Imperial Zenith still awaits a decision"),
+	// IMPERIAL PROWESS WAITED ON A RULING (Q5) UNTIL THE PROJECT OWNER'S OF 2026-11-21, and slice 8 of #2741 builds it:
+	// all three options of The Imperial Zenith can be chosen now.
+	TestTrue(TEXT("Imperial Prowess can be chosen"),
+			 UCataclysmEmpireTree::RefusalForChoosingOption(Nodes, Allocation, ImperialZenith, 1).IsEmpty());
+	TestTrue(TEXT("and The Imperial Zenith awaits a decision"),
 			 UCataclysmEmpireTree::AwaitsAnOptionChoice(Nodes, Allocation, ImperialZenith));
 	TestFalse(TEXT("an option that does not exist is refused"),
 			  UCataclysmEmpireTree::ChooseOption(Nodes, Allocation, ImperialZenith, 4, Reason));

@@ -276,8 +276,8 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_five_slices_that_make_it_act() -> None:
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7}
+def test_a_built_node_names_one_of_the_six_slices_that_make_it_act() -> None:
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -314,8 +314,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
         "destroy upgrade": 1,
     }
     assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7)) == 855
+    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
-                             "crafting": 2, "slice 6": 1, "prowess ruling": 1}
+                             "crafting": 2, "slice 6": 1, "slice 8": 1}
 
 
 @pytest.mark.parametrize("name, slice_", [
@@ -341,13 +342,15 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     ("Economic Zones", 7),      # R2
     ("Trade Routes", 7),        # R3
     ("The Golden Touch", 7),    # R4
+    # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
+    # additional keystone from a previous tier".
+    ("Imperial Prowess", 8),
 ])
 def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     assert gen.EMPIRE_TREE_BUILT.get(name) == slice_
 
 
 @pytest.mark.parametrize("name, system", [
-    ("Imperial Prowess", "prowess ruling"),   # Q5
     ("Scorched Earth", "destroy upgrade"),    # Q6
     ("Explorer Synergy", "crafting"),         # Q8: its cap waits on crafting
     ("Architectural Synergy", "crafting"),

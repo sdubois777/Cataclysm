@@ -937,6 +937,47 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 	return true;
 }
 
+bool UCataclysmGameInstance::ChooseEmpireTreeExtraOption(const UObject* WorldContext, FName Node, int32 Option,
+														FString& OutReason)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		OutReason = Held.Why;
+		return false;
+	}
+	OutReason = EmpireTreeChangeRefusal(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	const UDataTable* Effects = UCataclysmEmpireTree::LoadEffectTable();
+	if (Nodes == nullptr || Effects == nullptr)
+	{
+		OutReason = CataclysmGameInstanceEmpireTree::TablesMissing;
+		return false;
+	}
+
+	if (!UCataclysmEmpireTree::ChooseExtraOption(Nodes, Effects, *Held.Allocation, Node, Option, OutReason))
+	{
+		return false;
+	}
+
+	// THE EXTRA OPTION ACTS AT ONCE: its milestone's point is already bought (J1). Issue #2741 slice 8.
+	RefreshEmpireTreeBonuses(WorldContext);
+
+	// THE PLAY LOOP: which option of which milestone, as a choice says it.
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
+	const TArray<FString> Options = Row != nullptr ? UCataclysmEmpireTree::OptionNamesOf(*Row) : TArray<FString>();
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeOptionLine(
+		Options.IsValidIndex(Option - 1) ? Options[Option - 1] : FString::Printf(TEXT("option %d"), Option),
+		CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node)));
+	NoteTheEmpireTreeChanged(WorldContext, Held);
+	return true;
+}
+
 bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32& OutPointsReturned, int32& OutDays,
 											  FString& OutReason)
 {

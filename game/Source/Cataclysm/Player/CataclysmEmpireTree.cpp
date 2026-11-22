@@ -132,14 +132,18 @@ const UDataTable* UCataclysmEmpireTree::LoadEffectTable()
 // namespace for the unity build's sake, as the one above.
 namespace CataclysmEmpireTreeEffectRows
 {
-	/** A node's points, or one for an option that is chosen and whose capstone's point is bought. */
+	/** A node's points, or one for an option that is chosen, or taken as the extra option (Imperial Prowess, issue
+	 *  #2741 slice 8), and whose capstone's point is bought. */
 	int32 PointsFor(const FCataclysmEmpireTreeEffectRow& Row, const FCataclysmPassiveAllocation& Allocation)
 	{
 		const FName Node(*Row.Node);
 		const int32 Held = Allocation.PointsIn(Node);
-		return Row.Option == 0
-			? Held
-			: (Held > 0 && Allocation.ChosenOptionIn(Node) == Row.Option ? 1 : 0);
+		if (Row.Option == 0)
+		{
+			return Held;
+		}
+		const bool bTaken = Allocation.ChosenOptionIn(Node) == Row.Option || Allocation.ExtraOptionIn(Node) == Row.Option;
+		return Held > 0 && bTaken ? 1 : 0;
 	}
 
 	/** The total, for an effect that adds: per point, times whole steps of another branch where it counts them (C3),
@@ -541,6 +545,11 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 			break;
 		case ECataclysmEmpireTreeEffect::GoldAndMaterialsPerTreasurerCity:
 			Bonuses.GoldAndMaterialsPerTreasurerCity += Total;
+			break;
+
+		// SLICE 8. Imperial Prowess: how many extra options (J2: one).
+		case ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption:
+			Bonuses.ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);
 			break;
 		default:
 			break;
@@ -1295,6 +1304,137 @@ bool UCataclysmEmpireTree::ChooseOption(const UDataTable* NodeTable, FCataclysmP
 
 	Allocation.SetChosenOption(Node, Option);
 	return true;
+}
+
+FString UCataclysmEmpireTree::ExtraOptionGranterName(const UDataTable* NodeTable, const UDataTable* EffectTable)
+{
+	if (!NodeTable || !EffectTable)
+	{
+		return FString();
+	}
+	for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+	{
+		const FCataclysmEmpireTreeEffectRow* Row = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+		if (Row && Row->Effect == ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption)
+		{
+			const FCataclysmEmpireTreeNodeRow* Node = FindNode(NodeTable, FName(*Row->Node));
+			return Node ? CataclysmEmpireTreeTables::OptionField(*Node, Row->Option, /*bWaitsOn=*/false) : FString();
+		}
+	}
+	return FString();
+}
+
+FString UCataclysmEmpireTree::RefusalForChoosingExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+															const FCataclysmPassiveAllocation& Allocation, FName Node,
+															int32 Option)
+{
+	const FCataclysmEmpireTreeNodeRow* Row = FindNode(NodeTable, Node);
+	if (!Row)
+	{
+		return FString::Printf(TEXT("%s is not a node of the empire upgrade tree."), *Node.ToString());
+	}
+
+	// THE MILESTONE THAT GRANTS THE PICK, AND ITS THRESHOLD: read from the effect row rather than named, as every other
+	// node here is. No row, or the row's option not held, is no extra pick.
+	const FCataclysmEmpireTreeEffectRow* Granting = nullptr;
+	if (EffectTable)
+	{
+		for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+		{
+			const FCataclysmEmpireTreeEffectRow* Effect = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+			if (Effect && Effect->Effect == ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption)
+			{
+				Granting = Effect;
+				break;
+			}
+		}
+	}
+	const FString Granter = ExtraOptionGranterName(NodeTable, EffectTable);
+	const int32 Allowed = PlayerBonusesFor(NodeTable, EffectTable, Allocation).ExtraEarlierMilestoneOptions;
+	if (!Granting || Allowed <= 0)
+	{
+		return FString::Printf(TEXT("A second option of %s can be taken only with %s, chosen and its point bought."),
+							   *Row->NodeName, Granter.IsEmpty() ? TEXT("a node that grants one") : *Granter);
+	}
+
+	if (!CataclysmEmpireTreeTables::IsCentreCapstone(*Row))
+	{
+		return FString::Printf(TEXT("%s offers no choice."), *Row->NodeName);
+	}
+
+	const FString& Name = CataclysmEmpireTreeTables::OptionField(*Row, Option, /*bWaitsOn=*/false);
+	if (Name.IsEmpty())
+	{
+		return FString::Printf(TEXT("Choose 1, 2 or 3, not %d."), Option);
+	}
+
+	// "FROM A PREVIOUS TIER": a milestone whose threshold is below the granting milestone's. The granting milestone
+	// itself is not one.
+	const FCataclysmEmpireTreeNodeRow* GrantingRow = FindNode(NodeTable, FName(*Granting->Node));
+	if (!GrantingRow || Row->Threshold >= GrantingRow->Threshold)
+	{
+		return FString::Printf(TEXT("%s takes an option from a tier before %s, and %s is not one."), *Granter,
+							   GrantingRow ? *GrantingRow->NodeName : TEXT("its own"), *Row->NodeName);
+	}
+
+	// J1: AN ADDITIONAL OPTION, BESIDE THE ONE ALREADY TAKEN THERE, so that one must be chosen and its point bought.
+	const int32 Chosen = Allocation.ChosenOptionIn(Node);
+	if (Chosen <= 0 || Allocation.PointsIn(Node) <= 0)
+	{
+		return FString::Printf(TEXT("%s's own option must be chosen and its point bought before %s can add another."),
+							   *Row->NodeName, *Granter);
+	}
+	if (Chosen == Option)
+	{
+		return FString::Printf(TEXT("%s is already %s's choice."), *Name, *Row->NodeName);
+	}
+
+	// J4: AN OPTION WAITING ON A SYSTEM IS REFUSED HERE AS IT IS AS A CHOICE.
+	const FString& Needs = CataclysmEmpireTreeTables::OptionField(*Row, Option, /*bWaitsOn=*/true);
+	if (!Needs.IsEmpty())
+	{
+		return FString::Printf(TEXT("%s cannot be chosen yet: it needs %s."), *Name, *Needs);
+	}
+
+	// J2 AND J5: ONE EXTRA OPTION IN TOTAL, AND IT STANDS UNTIL A RESPEC.
+	if (Allocation.ExtraOption > 0)
+	{
+		const FCataclysmEmpireTreeNodeRow* Taken = FindNode(NodeTable, Allocation.ExtraOptionNode);
+		const FString TakenName = Taken
+			? CataclysmEmpireTreeTables::OptionField(*Taken, Allocation.ExtraOption, /*bWaitsOn=*/false)
+			: Allocation.ExtraOptionNode.ToString();
+		return FString::Printf(TEXT("%s's extra option is already taken: %s. A respec of the empire tree frees it."),
+							   *Granter, *TakenName);
+	}
+
+	return FString();
+}
+
+bool UCataclysmEmpireTree::ChooseExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+											 FCataclysmPassiveAllocation& Allocation, FName Node, int32 Option,
+											 FString& OutReason)
+{
+	OutReason = RefusalForChoosingExtraOption(NodeTable, EffectTable, Allocation, Node, Option);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	Allocation.SetExtraOption(Node, Option);
+	return true;
+}
+
+bool UCataclysmEmpireTree::OffersAnExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+											   const FCataclysmPassiveAllocation& Allocation, FName Node)
+{
+	for (int32 Option = 1; Option <= CapstoneOptions; ++Option)
+	{
+		if (RefusalForChoosingExtraOption(NodeTable, EffectTable, Allocation, Node, Option).IsEmpty())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool UCataclysmEmpireTree::AwaitsAnOptionChoice(const UDataTable* NodeTable,

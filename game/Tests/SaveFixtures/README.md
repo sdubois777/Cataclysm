@@ -665,6 +665,35 @@ followed, ruled 2026-11-01:
   read it as the committed character file reads `Character_v10.json`, and every
   test that runs an older character file through the whole chain adds what the
   step writes through `CataclysmSaveFixtures::AddTheCharactersVersion10Defaults`.
+- **The account record went to version 6 and the character record to version 12
+  on 2026-11-21**, for Imperial Prowess's extra option (issue #2741 slice 8): the
+  project owner ruled that day, "Imperial prowess lets you pick an additional
+  keystone from a previous tier", and the coordinating session ruled one extra
+  pick in total. `FCataclysmPassiveAllocation` gained two fields after `Nodes`,
+  `ExtraOptionNode` and `ExtraOption`: the centre milestone holding the extra
+  option and which option it is. Every allocation a record holds carries them --
+  the account's `EmpireTree`, and the character's `PassiveAllocation`,
+  `ConsumptionBuild.PassiveAllocation` and `PrivateEmpireTree` -- though only an
+  empire tree uses them. `Migrate_5_to_6` and the character record's newest step
+  write "None" and 0 into each allocation the record holds, keep a value of the
+  right kind already there and refuse anything else.
+  `Account_v6.json` is `Account_v5.json` at version 6 with
+  `"ExtraOptionNode": "capstone_0000000m"` and `"ExtraOption": 1` in its tree,
+  and `Character_v12.json` is `Character_v11.json` at version 12 with the same
+  milestone and 3 in its own empire tree and "None" and 0 in its other two
+  allocations. **Figures and not None and 0** in the empire trees, for the reason
+  below. Neither tree holds Imperial Prowess, so play could not take these extra
+  options; they are kept so that each file differs from the one before in these
+  fields only. `Account_v5.json` and `Character_v11.json` are now migration
+  inputs, not edited again; `Cataclysm.EmpireTreeProwess.ThePreviousFilesMigrateHoldingNoExtraOption`
+  runs each through its step, every test that read them as the committed files
+  reads the new ones, and every test that runs an older file through the whole
+  chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheAccountsVersion6Defaults` or
+  `CataclysmSaveFixtures::AddTheCharactersVersion12Defaults`. **THE CHARACTER
+  RECORD'S NUMBER IS THE NEXT FREE ONE**: gems slice G2 also moves the character
+  record, and whichever of the two merges second takes the number after the
+  other's.
 - **The account record went to version 5 and the character record to version 11
   on 2026-11-20**, for a gold debt (issue #2741 slice 6e): the owner ruled that
   day, "no gold debt unless there's an option for it in the empire tree", and
@@ -809,6 +838,7 @@ followed, ruled 2026-11-01:
 | `Account_v3.json` | The same account at version 3: version 2's contents, plus its gold, 1234567 |
 | `Account_v4.json` | The same account at version 4: version 3's contents, plus its empire upgrade tree, 26 points in the Architect branch and the first centre capstone with its second option chosen |
 | `Account_v5.json` | The same account at version 5: version 4's contents, plus a gold debt, 2500 owed with 250 taken a day |
+| `Account_v6.json` | The same account at version 6: version 5's contents, plus an extra option in its tree, the first of Foundations of the Empire's |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -820,6 +850,7 @@ followed, ruled 2026-11-01:
 | `Character_v9.json` | The same character at version 9: version 8's contents, with its own empire upgrade points 12.75, a fraction, and its own tree, Structural Integrity at 3 |
 | `Character_v10.json` | The same character at version 10: version 9's contents, plus the experience of two skills, `War_Greatsword_Heavy` at 37810.5 and `Demonic_Greataxe_Ultimate` at 1234.25 |
 | `Character_v11.json` | The same character at version 11: version 10's contents, plus its own gold debt, 1500 owed with 150 taken a day |
+| `Character_v12.json` | The same character at version 12: version 11's contents, plus an extra option in its own empire tree, the third of Foundations of the Empire's, and none in its other two allocations |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |

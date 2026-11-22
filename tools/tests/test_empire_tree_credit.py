@@ -103,7 +103,9 @@ def test_the_two_records_hold_the_debt_at_their_new_versions() -> None:
             ("UCataclysmAccountSave", 5, "Migrate_4_to_5", 4, "CataclysmAccountSaveMigration"),
             ("UCataclysmCharacterSave", 11, "Migrate_10_to_11", 10, "CataclysmCharacterSaveMigration")):
         record = record_class(name)
-        assert re.search(rf"SchemaVersionNow\s*=\s*{version}\s*;", record), f"{name} is not at version {version}"
+        # AT THIS VERSION OR LATER: slice 8 of #2741 moved both records on again (account 6, character 12).
+        found = re.search(r"SchemaVersionNow\s*=\s*(\d+)\s*;", record)
+        assert found and int(found.group(1)) >= version, f"{name} is below version {version}"
         for field in DEBT:
             assert re.search(rf"UPROPERTY\(SaveGame[^)]*\)\s*int64\s+{field}\s*=\s*0\s*;", record), (
                 f"{name} does not save {field}")
@@ -142,8 +144,7 @@ def test_only_the_migration_test_reads_the_previous_files() -> None:
                      if re.search(r'TEXT\("(Account_v4|Character_v10)\.json"\)', code(path)))
     assert readers == [CREDIT_TESTS.name], (
         f"{readers} read Account_v4.json or Character_v10.json; since the records went to versions 5 and 11 (issue "
-        "#2741 slice 6e) the committed files are Account_v5.json and Character_v11.json, and only the test that migrates "
-        "the older ones reads them")
+        "#2741 slice 6e) the committed files are newer ones, and only the test that migrates these reads them")
 
 
 def test_only_a_pickup_pays_a_debt_down_and_the_day_takes_its_part_after_the_income() -> None:

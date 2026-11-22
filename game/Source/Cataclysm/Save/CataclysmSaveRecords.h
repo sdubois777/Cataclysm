@@ -1048,7 +1048,11 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
  * defeated dungeon's award, since issue #52's first slice.
  *
- * VERSION 5 SINCE 2026-11-20. The account holds a gold debt beside its balance (`GoldOwed`, `GoldOwedEachDay`, issue
+ * VERSION 6 SINCE 2026-11-21. The account's empire tree holds Imperial Prowess's one extra option of an earlier centre
+ * milestone (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8), and
+ * `Migrate_5_to_6` writes none into an account written at 5: nothing could take one before the fields existed.
+ *
+ * VERSION 5 FROM 2026-11-20. The account holds a gold debt beside its balance (`GoldOwed`, `GoldOwedEachDay`, issue
  * #2741 slice 6e): the owner ruled that day, "no gold debt unless there's an option for it in the empire tree", and
  * Global Credit and Sovereign Loans are those options. `Migrate_4_to_5` writes nothing owed into an account written at
  * 4: nothing could be bought on credit before the fields existed.
@@ -1074,7 +1078,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 5;
+	static constexpr int32 SchemaVersionNow = 6;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1324,7 +1328,11 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 11 SINCE 2026-11-20. A Solo Self-Found character holds its own gold debt beside its own gold (`GoldOwed`,
+	 * 12 SINCE 2026-11-21. Each of the character's three allocations holds Imperial Prowess's one extra option
+	 * (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8); only a Solo Self-Found
+	 * character's own empire tree uses it. `Migrate_11_to_12` writes none: nothing could take one before.
+	 *
+	 * 11 FROM 2026-11-20. A Solo Self-Found character holds its own gold debt beside its own gold (`GoldOwed`,
 	 * `GoldOwedEachDay`, issue #2741 slice 6e), as the account record does at its version 5. `Migrate_10_to_11` writes
 	 * nothing owed: nothing could be bought on credit before.
 	 *
@@ -1367,7 +1375,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 11;
+	static constexpr int32 SchemaVersionNow = 12;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written

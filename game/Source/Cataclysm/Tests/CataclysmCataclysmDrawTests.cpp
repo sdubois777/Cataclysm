@@ -216,6 +216,7 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
+	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -261,7 +262,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -273,7 +274,7 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v11.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v12.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -293,9 +294,10 @@ bool FCataclysmDrawFixtureTest::RunTest(const FString& Parameters)
 							UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId),
 							Back ? *FString::FromInt(Back->CataclysmOrderSeed) : *Error));
 
-	// 11 SINCE `Character_v11.json` BECAME THE COMMITTED FILE (issue #2741 slice 6e); it was 10 from issue #2764, 9
-	// from issue #2741 slice 1c, 8 until then.
-	TestEqual(TEXT("set-up: the file is version 11"), Read->SchemaVersion, 11);
+	// THE CURRENT VERSION SINCE `Character_v12.json` BECAME THE COMMITTED FILE (issue #2741 slice 8); it was 11 from
+	// issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then.
+	TestEqual(TEXT("set-up: the file is the current version"), Read->SchemaVersion,
+			  UCataclysmCharacterSave::SchemaVersionNow);
 	TestEqual(TEXT("the seed the file states"), Read->CataclysmOrderSeed, CataclysmSaveFixtures::CommittedCharacterOrderSeed);
 	TestTrue(TEXT("CONTROL: which is not the seed its identifier gives"),
 			 Read->CataclysmOrderSeed != UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId));

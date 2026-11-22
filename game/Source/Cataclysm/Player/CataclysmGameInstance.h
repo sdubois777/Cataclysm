@@ -593,6 +593,14 @@ public:
 	static bool ChooseEmpireTreeOption(const UObject* WorldContext, FName Node, int32 Option, FString& OutReason);
 
 	/**
+	 * Takes Imperial Prowess's extra option -- one more option of an earlier centre milestone -- in the tree
+	 * `EmpireTreeHeldBy` reads, and has the record written. The rules and refusals are
+	 * `UCataclysmEmpireTree::ChooseExtraOption`'s, and refused during a walk (`EmpireTreeChangeRefusal`). Says a PLAY
+	 * LOOP line, as a choice does. Issue #2741 slice 8.
+	 */
+	static bool ChooseEmpireTreeExtraOption(const UObject* WorldContext, FName Node, int32 Option, FString& OutReason);
+
+	/**
 	 * Returns every point spent in the tree `EmpireTreeHeldBy` reads to its bank and forgets every choice, at the
 	 * price of days off the run being played. Issue #2741 slice 1b; the coordinating session's Q3 of 2026-11-18.
 	 *
