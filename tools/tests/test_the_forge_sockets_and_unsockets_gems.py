@@ -145,22 +145,32 @@ def test_each_craft_refuses_during_a_walk_passes_its_days_logs_and_saves() -> No
         found = body(text, signature, CRAFT_CPP.name)
         assert "RefusalNow(WorldContext)" in found and "DoSocketing(" in found, f"{signature} skips a step"
     doing = squeeze(body(text, "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(", CRAFT_CPP.name))
-    for step in ("Run->AdvanceDays(Plan.Days);", "FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSocketLine(",
-                 "UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);"):
-        assert step in doing, f"DoSocketing no longer does {step!r}"
+    assert "DoItemCraft(" in doing and "FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSocketLine(" in doing, (
+        "DoSocketing no longer hands its craft to DoItemCraft with its own line")
+    # SLICE F5: THE DAYS AND THE SAVE ARE `DoItemCraft`'S; `test_every_item_craft_goes_through_one_sequence.py` holds their order.
+    shared = squeeze(body(text, "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", CRAFT_CPP.name))
+    for step in ("Run->AdvanceDays(Step.Days);", "UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);"):
+        assert step in shared, f"DoItemCraft no longer does {step!r}"
 
 
 def test_what_a_craft_took_is_put_back_when_it_cannot_finish() -> None:
     doing = squeeze(body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(", CRAFT_CPP.name))
-    assert doing.count("Inventory->AddMaterial(Plan.Material, 1);") == 3, (
-        "the material must be put back on each of the three failures after it is taken: the gem not taken, the item "
-        "not replaced, and the unsocketed gem with nowhere to go")
-    assert "PutTheItemBack();" in doing, "an unsocketed gem with nowhere to go must leave the item as it was"
+    # SLICE F5: SOCKETING HANDS DoItemCraft ITS GEM: taken after the material, given back on a later failure; and for an
+    # unsocketing, given back to the bag after the change, a failure there putting the item back.
+    for hook in ("Hooks.TakeBeforeTheChange = ", "Inventory->RemoveGems(Plan.Gem, Plan.Rarity, 1)",
+                 "Hooks.GiveBackWhatWasTaken = ", "Hooks.AfterTheChange = ", "Inventory->AddGems(Plan.Gem, Plan.Rarity, 1)"):
+        assert hook in doing, f"DoSocketing no longer hands DoItemCraft {hook!r}"
+    shared = squeeze(body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", CRAFT_CPP.name))
+    assert shared.count("GiveMaterialsBack(Inventory, Taken);") == 4, (
+        "the material must be put back on each of the four failures after it is taken: the gem not taken, the change "
+        "refused, the item not replaced, and the unsocketed gem with nowhere to go")
+    assert "PutTheItem(Before);" in shared, "an unsocketed gem with nowhere to go must leave the item as it was"
 
 
 def test_the_screen_asks_before_it_acts() -> None:
     handling = squeeze(body(code(WIDGET_CPP), "void UCataclysmForgeWidget::HandleActionClicked(", WIDGET_CPP.name))
-    asked = handling.find("Message = UCataclysmForge::SocketingQuestion(Plan);")
+    # SLICE F5 APPENDS THE OPTIONS' EFFECT TO THE QUESTION, so it is found without its closing semicolon.
+    asked = handling.find("Message = UCataclysmForge::SocketingQuestion(Plan)")
     done = handling.find("UCataclysmForgeCraft::UnsocketGem(")
     assert asked != -1 and done != -1 and asked < done, "the screen socketing on the first press, without asking"
     assert "PendingSocketAction = ButtonName;" in handling

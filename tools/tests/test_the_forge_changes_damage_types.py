@@ -179,7 +179,9 @@ def test_the_craft_writes_the_plans_type_in_place_and_draws_nothing_again() -> N
     assert "Changed.DamageTypes[Replaced] = Plan.ToType;" in craft, "a change no longer puts the new type in the old one's place"
     assert "Changed.DamageTypes.Add(Plan.ToType);" in craft, "an infusion no longer adds the type"
     written = craft.find("Changed.DamageTypes[Replaced] = Plan.ToType;")
-    assert -1 < written < craft.find("Run->AdvanceDays(Plan.Days)"), "the weapon is written after the days pass"
+    # SLICE F5: THE DAYS PASS IN `DoItemCraft`, after the change it is handed, which this write is inside;
+    # `test_every_item_craft_goes_through_one_sequence.py` holds that order.
+    assert -1 < craft.find("DoItemCraft(") < written, "the weapon is not written inside the change DoItemCraft makes"
     plan = body(code(CRAFT_CPP), "FCataclysmForgeDamageTypeWork UCataclysmForgeCraft::DamageTypeWorkPlanFor(")
     assert "Item->DamageTypes.IndexOfByKey(Chosen) : Item->DamageTypes.Num()" in plan, (
         "a change's seed is no longer the replaced type's place, or an infusion's the new type's")

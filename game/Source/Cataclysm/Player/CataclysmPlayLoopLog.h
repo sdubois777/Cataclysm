@@ -287,6 +287,23 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 										int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * The residue tools used with a craft, said after the craft's own line. At 250 residue, tier 1: an added socket with
+	 * both, "used a Chaos Stabilizer and 1 Tainted Shard on Quality Helm for 3,000 gold: 7.5 residue and 1 day saved"; one
+	 * with the Stabilizer only, "used a Chaos Stabilizer on Quality Helm for 1,500 gold: 7.5 residue saved"; one with two
+	 * Shards, "used 2 Tainted Shards on Quality Helm for 3,000 gold: 2 days saved". Issue #47, slice F5. Said by
+	 * `UCataclysmForgeCraft::DoItemCraft`, only when an option was used.
+	 */
+	static FString ForgeOptionsLine(const FString& ItemName, bool bStabilizer, int32 Shards, float ResidueSaved,
+									int32 DaysSaved, int64 Gold);
+
+	/**
+	 * A cleanse at the forge, at tier 1: "cleansed Quality Helm for 6,250 gold: residue 1200 to 600; it cost 3 days, day
+	 * 20 to day 23". Issue #47, slice F5. Said by `UCataclysmForgeCraft::Cleanse`, after the craft and the days.
+	 */
+	static FString ForgeCleanseLine(const FString& ItemName, int64 Gold, int32 ResidueBefore, int32 ResidueAfter,
+									int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
 	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;
 	 * residue 40 to 50; it cost 1 day, day 20 to day 21", "infused Quality Sword with Death, chosen, for 2,250 gold;
 	 * ...", or "changed War on Quality Sword to Death for 450 gold; ...". Issue #47, slice F4. Said by

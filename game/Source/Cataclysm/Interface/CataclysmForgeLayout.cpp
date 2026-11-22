@@ -483,6 +483,50 @@ bool UCataclysmForgeLayout::AffixChangeActionForButton(FName ButtonName,
 	return false;
 }
 
+FName UCataclysmForgeLayout::StabilizerButtonName()
+{
+	return FName(TEXT("OptionStabilizer"));
+}
+
+FName UCataclysmForgeLayout::ShardsButtonName()
+{
+	return FName(TEXT("OptionShards"));
+}
+
+FName UCataclysmForgeLayout::CleanseButtonName()
+{
+	return FName(TEXT("Cleanse"));
+}
+
+TArray<FCataclysmForgeOptionAction> UCataclysmForgeLayout::OptionActionsFor(const FCataclysmItem& Item,
+																			 const FCataclysmForgeCraftOptions& Options,
+																			 int32 StabilizersHeld, int32 ShardsHeld,
+																			 int32 EssenceHeld)
+{
+	TArray<FCataclysmForgeOptionAction> Out;
+	if (Item.Base.IsNone())
+	{
+		return Out;
+	}
+	if (StabilizersHeld > 0 || Options.bChaosStabilizer)
+	{
+		Out.Add({StabilizerButtonName(), FString::Printf(TEXT("Chaos Stabilizer: %s (%d held)"),
+														 Options.bChaosStabilizer ? TEXT("on") : TEXT("off"),
+														 FMath::Max(0, StabilizersHeld))});
+	}
+	if (ShardsHeld > 0 || Options.TaintedShards > 0)
+	{
+		Out.Add({ShardsButtonName(), FString::Printf(TEXT("Tainted Shards: %d of %d held"), FMath::Max(0, Options.TaintedShards),
+													 FMath::Max(0, ShardsHeld))});
+	}
+	if (Item.Residue > 0.0f)
+	{
+		Out.Add({CleanseButtonName(), FString::Printf(TEXT("Cleanse half the residue (%d Purified Essence held)"),
+													  FMath::Max(0, EssenceHeld))});
+	}
+	return Out;
+}
+
 FString UCataclysmForgeLayout::DamageTypesDetailFor(const FCataclysmItem& Item, int32 MaxTypes)
 {
 	if (Item.Base.IsNone() || MaxTypes <= 0)

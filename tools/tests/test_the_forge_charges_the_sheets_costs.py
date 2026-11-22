@@ -147,21 +147,19 @@ def test_an_upgrades_days_are_the_level_it_reaches() -> None:
     assert "BaseDaysPerLevel =" not in code(FORGE_H), "the one-day-a-level constant is back"
 
 
-@pytest.mark.parametrize("signature", [
-    "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(",
-    "bool UCataclysmForgeCraft::Combine(",
-    "bool UCataclysmForgeCraft::CombineGems(",
-    "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(",
-    "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(",
-    "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
-    "ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(",
-    "ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(",
+# ISSUE #47 SLICE F5: EVERY ITEM CRAFT PAYS IN `DoItemCraft`, the one sequence it goes through, so the check is made
+# there once rather than on seven copies; `test_every_item_craft_goes_through_one_sequence.py` holds that no other
+# function in the file pays. The two combines change no item and pay on their own.
+@pytest.mark.parametrize("signature, gold", [
+    ("ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "Step.Gold"),
+    ("bool UCataclysmForgeCraft::Combine(", "Plan.Gold"),
+    ("bool UCataclysmForgeCraft::CombineGems(", "Plan.Gold"),
 ])
-def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(signature: str) -> None:
+def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(signature: str, gold: str) -> None:
     text = squeeze(body(code(CRAFT_CPP), signature, CRAFT_CPP.name))
-    paid = text.find("if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter)) {")
+    paid = text.find(f"if (!PayForTheCraft(WorldContext, {gold}, bGoldFromTheCharacter)) {{")
     assert paid != -1, f"{signature} does not pay its gold"
-    for taken in ("RemoveMaterial(", "RemoveGems(", "AdvanceDays("):
+    for taken in ("RemoveMaterial(", "TakeMaterials(", "RemoveGems(", "AdvanceDays("):
         at = text.find(taken)
         assert at == -1 or at > paid, f"{signature} takes {taken} before it pays, so a refused payment would leave it gone"
     # AFTER THE PAYMENT'S OWN REFUSAL, every refusal gives the gold back first.
@@ -169,7 +167,7 @@ def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(sign
     exits = [match.start() for match in re.finditer(r"return (false|ECataclysmForgeResult::Refused);", after)]
     previous = 0
     for at in exits:
-        assert "GiveTheGoldBack(WorldContext, Plan.Gold);" in after[previous:at], (
+        assert f"GiveTheGoldBack(WorldContext, {gold});" in after[previous:at], (
             f"{signature} refuses after taking the gold without giving it back: {after[previous:at][-160:]}")
         previous = at
     assert exits, f"{signature} has no refusal after its payment, which this check expected to see"
@@ -202,7 +200,11 @@ def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
                 "ChangeDamageTypeOperationRow": constant("GoldPerCraftDay"),
                 # ISSUE #47 SLICE F3: 2 and 7 base days, so 500 and 1,750.
                 "ImprintOperationRow": constant("GoldPerCraftDay") * constant("ImprintBaseDays"),
-                "ChangeNegativeOperationRow": constant("GoldPerCraftDay") * constant("ChangeNegativeBaseDays")}
+                "ChangeNegativeOperationRow": constant("GoldPerCraftDay") * constant("ChangeNegativeBaseDays"),
+                # ISSUE #47 SLICE F5: the residue tools, each one day's price, the sheet's 250 (G1).
+                "ReduceResidueGainOperationRow": constant("GoldPerCraftDay"),
+                "AccelerateCraftOperationRow": constant("GoldPerCraftDay"),
+                "CleanseOperationRow": constant("GoldPerCraftDay")}
     assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
     for field, figure in expected.items():
         row = rows.get(named[field])

@@ -172,10 +172,12 @@ def test_the_python_copy_gives_the_figures_fa2_asserts() -> None:
 
 def test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes() -> None:
     craft = body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(")
-    drawn = craft.find("UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run->WalkSeedMask, Run->Day())")
-    advanced = craft.find("Run->AdvanceDays(Plan.Days)")
+    drawn = craft.find("UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day())")
+    # SLICE F5: THE DAYS PASS IN `DoItemCraft`, after the change it is handed, which this draw is inside;
+    # `test_every_item_craft_goes_through_one_sequence.py` holds that order.
+    handed = craft.find("DoItemCraft(")
     assert drawn != -1, "a reroll's roll is not drawn from the item before the craft, the mask and the day"
-    assert advanced != -1 and drawn < advanced, "the roll is drawn after the days pass, so a reload draws another"
+    assert -1 < handed < drawn, "the roll is not drawn inside the change DoItemCraft makes before the days pass"
     changed = re.findall(r"Affixed\.(\w+) = ", craft)
     assert sorted(changed) == ["Roll", "Tier"], f"the craft changes the affix's {changed}; only its tier and roll"
 

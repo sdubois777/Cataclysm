@@ -267,8 +267,10 @@ def test_the_craft_writes_what_the_plan_drew_and_passes_the_days_after() -> None
     for redraw in ("AffixCraftSeed(", "DeterministicAffixOf(", "AffixShiftOf(", "FRandomStream"):
         assert redraw not in work, f"DoAffixChange draws again with {redraw}, so it can write what the plan did not ask"
     written = work.find("NewAffix.Affix = Plan.ToRow;")
-    advanced = work.find("Run->AdvanceDays(Plan.Days)")
-    assert -1 < written < advanced, "the item is not written from the plan before the days pass"
+    # SLICE F5: THE DAYS PASS IN `DoItemCraft`, after the change it is handed, which this write is inside;
+    # `test_every_item_craft_goes_through_one_sequence.py` holds that order.
+    handed = work.find("DoItemCraft(")
+    assert -1 < handed < written, "the item is not written from the plan inside the change DoItemCraft makes"
     for craft in ("ECataclysmForgeResult UCataclysmForgeCraft::AddAffix(", "ECataclysmForgeResult UCataclysmForgeCraft::ShiftAffix("):
         assert "PlanFor(WorldContext, Target" in body(code(CRAFT_CPP), craft), f"{craft} does not plan before it crafts"
 
