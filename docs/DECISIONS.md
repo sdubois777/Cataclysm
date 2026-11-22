@@ -2,6 +2,36 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Clearing a dungeon restores no city defence, by the owner's ruling; the upgrade that restores 5% on a clear loses the word "additional" (#1267)
+
+**Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell B11, "When you clear a
+dungeon, the city's Defense restores by an additional 5%." to "... restores by 5%."; `game/Data/CityUpgrades.csv`,
+regenerated, the only CSV that moved, its row name `Architect_When_you_clear_a_dungeon_the_city_s_Def` and tier 1 value
+0.05 unchanged; the comment in `UCataclysmEmpireRun::ClearDungeon`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`). No behaviour changes. The asset `DT_CityUpgrades` is
+NOT rebuilt here. Issue [#1267](https://github.com/sdubois777/Cataclysm/issues/1267).
+
+### The ruling
+
+The owner, 2026-11-22, verbatim: **"Dungeon clears do not restore city defenses."**
+
+This answers the open question the 2026-09-05 entry left ("Whether that base was meant to exist is issue #1267"):
+there is no base restore. The game and the simulation already gave a city nothing back for a cleared dungeon, so the
+design now says what the game does. The upgrade grants the whole 5%, as the 2026-09-05 judgement read it, and that
+judgement is now the design's sentence rather than a reading of a word with nothing to add to.
+
+The coordinating session took the question to the owner, with both answers and their costs.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** `tools/tests/test_datatable_assets_are_current.py` fails
+  on `CityUpgrades.csv` until `DT_CityUpgrades` is rebuilt in a window, and until then the city screen shows the old
+  sentence.
+- **THE WORKBOOK EDIT IS ONE CELL.** Read back cell by cell against development `4a7aaac4e`: 28 sheets, 105,705 cells,
+  one differs, B11.
+
+---
+
 ## 2026-11-22 — The player's own Power Score and each dungeon's Dungeon Score are worked out and shown: the character sheet, the empire map, the city screen and the floor panel (#2824, slice a)
 
 **Affects:** `UCataclysmPowerScore::ScoredCharacterFrom`, `ScoredCharacterOf`, `LiveBreakdownOf`, `LiveScoreOf` and
