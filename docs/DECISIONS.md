@@ -130,6 +130,21 @@ at least 3. A break that would test it is the old code's own shape, `uint32& Cou
 GCataclysmEnemyControllerPossessionsByWorld.FindOrAdd(TObjectKey<UWorld>(World));` made `static uint32 Count = 0;
 (void)World;`.
 
+### Registered for C1b, a proof-only run, 2026-11-22
+
+Ruled by the coordinating session on 2026-11-22: a proof-only run under a lock, with no other run, because nothing under
+`game/` changes after the window. Registered here before it runs, with the prediction sent to that session before the
+ruling.
+
+- **C1b**, in `TakeThePossessionCountIn`, `uint32& Count =
+  GCataclysmEnemyControllerPossessionsByWorld.FindOrAdd(TObjectKey<UWorld>(World));` made `static uint32 Count = 0;
+  (void)World;`: one count for the whole process, the shape of the code before #2827. Prefix `Cataclysm.AI.`.
+- **Predicted, broken half:** `Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld` fails, always on "world B's
+  first creature takes the count 0" and "and world A's fourth goes on from its own count, 3", and on world A's first
+  three as well unless no earlier test in the group possessed a creature. Every other test in the group passes, because
+  the spread holds from any starting count. So 52 of 53 succeed.
+- **Predicted, restored half:** 53 performed, 53 succeeded, 0 failed.
+
 ---
 
 ## 2026-11-21 — The Corrupted Stalker and the Worn Residue double swing the player's clips on their blows, and each blow lands when its swing connects, as the player's does (#2811)
