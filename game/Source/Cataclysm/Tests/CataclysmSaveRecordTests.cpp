@@ -193,8 +193,8 @@ namespace CataclysmSaveRecordTest
 			// CHARACTER IS AT v12 SINCE 2026-11-21, when its allocations came to hold
 			// Imperial Prowess's extra option (issue #2741 slice 8); Character_v11.json is a
 			// migration input now.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v12.json") },
-			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v13.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v13.json") },
+			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v14.json") },
 		};
 	}
 }
@@ -637,7 +637,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v13.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -650,13 +650,13 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v12.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v13.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// THE CURRENT VERSION SINCE `Character_v12.json` BECAME THE COMMITTED FILE (issue #2741 slice 8); it was 11 from
-	// issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then. Read from the record rather
+	// THE CURRENT VERSION SINCE `Character_v13.json` BECAME THE COMMITTED FILE (issue #46, the gems window); it was 12
+	// from issue #2741 slice 8, 11 from issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then. Read from the record rather
 	// than written here, because gems slice G2 also moves the character record and the second to merge renumbers.
 	TestEqual(TEXT("it says it is the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
 	// THE SEED THE FILE STATES, NOT THE ONE ITS IDENTIFIER GIVES, so a seed re-derived on load cannot pass. #1324 6a.
@@ -910,6 +910,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
 	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
+	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1083,7 +1084,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1096,7 +1097,7 @@ bool FCataclysmSaveRunFixtureKeepsTheFloor::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v13.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v14.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1190,7 +1191,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1212,7 +1213,7 @@ bool FCataclysmSaveRunFileWithoutThePartOfADay::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v13.json no longer carries a PartialDay line to "
+		AddError(TEXT("Run_v14.json no longer carries a PartialDay line to "
 					  "remove, so this test would prove nothing. If the field "
 					  "was renamed, rename it here."));
 		return false;
@@ -1274,7 +1275,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1288,7 +1289,7 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v13.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v14.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1349,7 +1350,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1388,7 +1389,7 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 		if (!bRemoved)
 		{
 			AddError(FString::Printf(
-				TEXT("Run_v13.json no longer carries the line `%s`, so this test "
+				TEXT("Run_v14.json no longer carries the line `%s`, so this test "
 					 "would prove nothing. If the field was renamed or its value "
 					 "changed, change it here too."), *Line));
 			return false;
@@ -1457,7 +1458,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v13.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1469,7 +1470,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v12.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v13.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1622,7 +1623,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1635,7 +1636,7 @@ bool FCataclysmSaveRunFixtureKeepsTheDarkFloor::RunTest(const FString&)
 										GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v13.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v14.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -1662,7 +1663,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1684,7 +1685,7 @@ bool FCataclysmSaveRunFileWithoutTheDarkFloor::RunTest(const FString&)
 	}
 	else
 	{
-		AddError(TEXT("Run_v13.json no longer carries the two dark floor lines to remove, so this test would prove "
+		AddError(TEXT("Run_v14.json no longer carries the two dark floor lines to remove, so this test would prove "
 					  "nothing. If a field was renamed, rename it here."));
 		return false;
 	}

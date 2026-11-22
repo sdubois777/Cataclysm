@@ -246,6 +246,7 @@ bool FCataclysmEarnedBossSaveMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -276,7 +277,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v13.json` reads into the three values it states, none of them a default, so
+ * `Run_v14.json` reads into the three values it states, none of them a default, so
  * each is read and not re-defaulted. Prints "BOSS FILE". It read `Run_v4.json`
  * until the run record went to version 5 on 2026-11-03 (issue #1324 slice 6e),
  * `Run_v5.json` until it went to version 6 on 2026-11-17 (issue #2733 slice 3),
@@ -286,15 +287,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveCommittedFileTest,
  * `Run_v9.json` until it went to version 10 the same day (issue #2725), and
  * `Run_v10.json` until it went to version 11 on 2026-11-20 (issue #2741 slice 5b),
  * `Run_v11.json` until it went to version 12 the same day (issue #2741 slice 6b);
- * `Run_v12.json` until it went to version 13 on 2026-11-21 (issue #2825);
- * `Run_v13.json` holds the same three values, and the older files are migration
+ * `Run_v12.json` until it went to version 13 on 2026-11-21 (issue #2825),
+ * `Run_v13.json` until it went to version 14 on 2026-11-22 (issue #46);
+ * `Run_v14.json` holds the same three values, and the older files are migration
  * inputs now.
  */
 bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -305,7 +307,7 @@ bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameter
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v13.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v14.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
@@ -314,7 +316,7 @@ bool FCataclysmEarnedBossSaveCommittedFileTest::RunTest(const FString& Parameter
 							Read->SchemaVersion, Read->bCataclysmDungeonOpened ? TEXT("yes") : TEXT("no"),
 							Read->CataclysmDungeonOpenedDay, Read->CataclysmDungeonBaseFloors));
 
-	TestEqual(TEXT("it says it is version 13"), Read->SchemaVersion, 13);
+	TestEqual(TEXT("it says it is version 14"), Read->SchemaVersion, 14);
 	TestTrue(TEXT("the boss opened"), Read->bCataclysmDungeonOpened);
 	TestEqual(TEXT("on day 109"), Read->CataclysmDungeonOpenedDay, 109);
 	TestEqual(TEXT("having rolled 137 floors"), Read->CataclysmDungeonBaseFloors, 137);

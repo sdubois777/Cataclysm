@@ -70,7 +70,7 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json` to `Character_v12.json` state: not the one their identifier gives, so a seed
+	/** The seed `Character_v7.json` to `Character_v13.json` state: not the one their identifier gives, so a seed
 	 *  re-derived on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
@@ -376,9 +376,8 @@ namespace CataclysmSaveFixtures
 
 	/**
 	 * What the character record's newest step writes into a character file written before it: no extra option in any of
-	 * its three allocations. Issue #2741 slice 8. NAMED FOR THE VERSION IT REACHES TODAY, 12; gems slice G2 also moves
-	 * the character record, and whichever merges second takes the next number. ONE COPY, for every test that runs an
-	 * older character file through the whole chain.
+	 * its three allocations. Issue #2741 slice 8. THE CHARACTER RECORD'S 12; the gems window (issue #46) took 13, after
+	 * it. ONE COPY, for every test that runs an older character file through the whole chain.
 	 */
 	inline void AddTheCharactersVersion12Defaults(FJsonObject& Expected)
 	{
@@ -388,6 +387,107 @@ namespace CataclysmSaveFixtures
 		if (Expected.TryGetObjectField(TEXT("ConsumptionBuild"), Build) && Build != nullptr && Build->IsValid())
 		{
 			AddTheExtraOptionDefaults(**Build, TEXT("PassiveAllocation"));
+		}
+	}
+
+	/**
+	 * Every socket count the JSON value holds, at any depth, written as that many empty sockets that fit any type: what
+	 * `CataclysmSaveGems::WriteTheSocketLists` writes. Issue #46, slice G3, ruled 2026-11-21: "sockets migrated from
+	 * today's count fit any type". Used by the character record's version 13 defaults and the run record's version 14.
+	 */
+	inline void AddTheSocketLists(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid())
+		{
+			return;
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				AddTheSocketLists(Entry);
+			}
+			return;
+		}
+		if (Value->Type != EJson::Object || !Value->AsObject().IsValid())
+		{
+			return;
+		}
+		const TSharedPtr<FJsonObject> Holder = Value->AsObject();
+		double Count = 0.0;
+		const TSharedPtr<FJsonValue> Sockets = Holder->TryGetField(TEXT("Sockets"));
+		if (Sockets.IsValid() && Sockets->Type == EJson::Number && Sockets->TryGetNumber(Count))
+		{
+			TArray<TSharedPtr<FJsonValue>> List;
+			for (int32 Index = 0; Index < static_cast<int32>(Count); ++Index)
+			{
+				const TSharedRef<FJsonObject> Socket = MakeShared<FJsonObject>();
+				Socket->SetStringField(TEXT("Type"), TEXT("Any"));
+				Socket->SetStringField(TEXT("Gem"), TEXT("None"));
+				Socket->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				List.Add(MakeShared<FJsonValueObject>(Socket));
+			}
+			Holder->SetArrayField(TEXT("Sockets"), List);
+		}
+		for (const auto& Field : Holder->Values) // `auto`: the key type follows the engine's JSON storage setting.
+		{
+			AddTheSocketLists(Field.Value);
+		}
+	}
+
+	/** "No gem" on every object of the list `Holder[Key]`: `Gem` and `GemRarity`, and `GemQuantity` when asked. */
+	inline void AddNoGemOnEach(FJsonObject& Holder, const TCHAR* Key, bool bWithQuantity)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (!Holder.TryGetArrayField(Key, Entries) || !Entries)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& Entry : *Entries)
+		{
+			const TSharedPtr<FJsonObject>* Slot = nullptr;
+			if (Entry.IsValid() && Entry->TryGetObject(Slot) && Slot && Slot->IsValid())
+			{
+				(*Slot)->SetStringField(TEXT("Gem"), TEXT("None"));
+				(*Slot)->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				if (bWithQuantity)
+				{
+					(*Slot)->SetNumberField(TEXT("GemQuantity"), 0);
+				}
+			}
+		}
+	}
+
+	/**
+	 * What the character record's `Migrate_12_to_13` writes into a character file written before version 13: each socket
+	 * count as that many empty sockets of type Any, and no gem in any carried or stashed slot. Issue #46, slices G2 and
+	 * G3. THE CHARACTER RECORD'S 13. ONE COPY, for every test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion13Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddTheSocketLists(Field.Value);
+		}
+		AddNoGemOnEach(Expected, TEXT("CarriedSlots"), false);
+		AddNoGemOnEach(Expected, TEXT("PrivateStash"), false);
+	}
+
+	/**
+	 * What the run record's `Migrate_13_to_14` writes into a run file written before version 14: each socket count as
+	 * that many empty sockets of type Any, and no gem on any ground item of `Floor`. Issue #46, slices G3 and G5. THE RUN
+	 * RECORD'S 14. ONE COPY, beside the version 13 one and for the same callers.
+	 */
+	inline void AddTheRunsVersion14Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddTheSocketLists(Field.Value);
+		}
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		if (Expected.TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid())
+		{
+			AddNoGemOnEach(**Floor, TEXT("GroundItems"), true);
 		}
 	}
 

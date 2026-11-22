@@ -1341,7 +1341,12 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 12 SINCE 2026-11-21. Each of the character's three allocations holds Imperial Prowess's one extra option
+	 * 13 SINCE 2026-11-22. Issue #46, slices G2 and G3: an item's `Sockets` is a list of typed sockets, each holding a
+	 * gem or none, where it was a count, and a carried or stashed slot may hold a stack of one gem at one rarity (`Gem`,
+	 * `GemRarity`). `Migrate_12_to_13` writes each saved count of N as N empty sockets that fit any type, as the
+	 * coordinating session ruled on 2026-11-21, and no gem in every slot: nothing could hold a gem before.
+	 *
+	 * 12 FROM 2026-11-21. Each of the character's three allocations holds Imperial Prowess's one extra option
 	 * (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8); only a Solo Self-Found
 	 * character's own empire tree uses it. `Migrate_11_to_12` writes none: nothing could take one before.
 	 *
@@ -1388,7 +1393,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 12;
+	static constexpr int32 SchemaVersionNow = 13;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1855,12 +1860,17 @@ public:
 	 * below its maximum may be one whose maximum the tree raised), the effective maximum the run's flag compares against
 	 * depends on the tree, which the record does not hold, and a walk resumed from it counts its gold from the load.
 	 *
-	 * 13 SINCE 2026-11-21. Issue #2825: a city upgrade takes days to build, so each city carries what it is building,
+	 * 13 FROM 2026-11-21. Issue #2825: a city upgrade takes days to build, so each city carries what it is building,
 	 * `Building`, and each upgrade the days left on it, `BuildDaysLeft`. `Migrate_12_to_13` writes an empty `Building`
 	 * on every city and a `BuildDaysLeft` of 0 on every upgrade it holds: a version 12 run could build nothing, since
 	 * every purchase was finished at once.
+	 *
+	 * 14 SINCE 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
+	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
+	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
+	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 13;
+	static constexpr int32 SchemaVersionNow = 14;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
