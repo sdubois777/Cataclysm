@@ -502,7 +502,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
  * The first creature possessed in a new world has its first thinking pass one whole interval after it was possessed,
  * the count of 0, however many creatures another world possessed first; inside one world the counts still run on.
  * Issue #2827: the count was one for the whole process, so a creature's first think depended on what earlier tests had
- * possessed, and #2811's two tests in window D passed alone and failed in the suite. Prints "PER WORLD".
+ * possessed, and #2811's two tests in window D gave one result alone and another in the suite. Prints "PER WORLD".
  *
  * IT FAILS ON THE OLD CODE WHATEVER RAN BEFORE IT: world A possesses three creatures first, so under a process-wide
  * count world B's first creature would take a count of at least 3.

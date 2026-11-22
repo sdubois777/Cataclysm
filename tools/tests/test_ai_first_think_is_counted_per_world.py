@@ -3,7 +3,8 @@
 WHY THIS EXISTS. Issue #2827. `ACataclysmEnemyController` staggers each creature's first thinking pass by a count of
 the possessions made before it (`FirstThinkDelaySeconds`, issue #1543). The count was one for the whole editor process,
 so a creature's first think depended on how many enemies earlier tests had possessed, and a test that moved the clock
-with an enemy alive could pass alone and fail in the whole suite: #2811's two tests did, in window D. The count is now
+with an enemy alive could give one result alone and another in the whole suite: #2811's two tests did, in window D.
+The count is now
 kept per world. In play nothing changes inside a world, and creatures of two worlds never share a timer manager.
 
 WHY IT IS CHECKED FROM PYTHON. Continuous integration compiles no C++, so

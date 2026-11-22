@@ -63,8 +63,10 @@ namespace
 	 * ONE COUNT PER WORLD, SINCE ISSUE #2827, rather than one for the process.
 	 * The process-wide count gave a creature a first think that depended on how
 	 * many enemies every earlier test had possessed, so a test that moved the
-	 * clock with an enemy alive could pass alone and fail in the whole suite:
-	 * #2811's two failures in window D did exactly that. In play nothing changes
+	 * clock with an enemy alive could give one result alone and another in the
+	 * whole suite. #2811's two tests did, in window D: one passed alone and
+	 * failed in the suite, and the other failed at its tier 5 only when its
+	 * group ran alone. In play nothing changes
 	 * within a world -- the counts still run consecutively, and the golden-ratio
 	 * spread holds from any starting count -- and creatures of two worlds never
 	 * share a timer manager, so the count only ever spread creatures of one world.
