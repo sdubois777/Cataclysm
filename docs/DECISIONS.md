@@ -2,6 +2,182 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Gems and sockets are planned and ruled, and a gem's stat is a flat ailment chance or an increase in percentage points from source Gem (#46, slice G1)
+
+**Affects:** `UCataclysmGems`, new: `PointsPerSheetUnit`, `SheetValueAt`, `BucketNamed` and `AddModifier`
+(`game/Source/Cataclysm/Items/CataclysmGems.h`, `.cpp`); `docs/Cataclysm_GDD_v2.md`, "Sockets and Gems", a list of the
+rulings. Tests: `game/Source/Cataclysm/Tests/CataclysmGemStatsTests.cpp`, new, three in `Cataclysm.GemStats.`;
+`tools/tests/test_every_gem_names_a_stat_the_game_reads.py`, new. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46), narrowed to sockets and gems on 2026-11-21; the player's own
+Power Score is [#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `1537dac4e` without a compile, as ruled.
+- **THE GEMS SHEET'S STAT AND VALUEKIND COLUMNS ARE NOT WRITTEN YET.** The design workbook is held by #1130 until the
+  empire tree's 6d and 6e window merges. With the columns come their generator code, `FCataclysmGemRow::Stat` and
+  `ValueKind`, a function reading a gem's modifier off its row, and a check that the generated `Gems.csv` matches the
+  ruled table. They cannot come earlier: `tools/tests/test_csv_columns_match_their_row_structs.py` fails a row struct
+  field that its CSV lacks, and the CSV is generated from the workbook.
+- **NOTHING CALLS `UCataclysmGems` YET.** A gem reaches a character only once a socket can hold one (slices G3 and G4).
+- **THE GEAR-LEVELLING HALF OF #46 WAS ALREADY BUILT**: the Forge's upgrade and stone combining (#2763) and stone drops
+  capped by the difficulty tier (#863). #46 now holds sockets and gems alone, and #531 holds where stones come from.
+
+### What the owner asked, and how it was planned
+
+The owner, 2026-11-21: "Once the empire tree is done I think the next biggest thing is gems". The coordinating session
+asked for a plan for #46: what the design already decides, the genre's practice, a stat for each gem, drops, the
+interface, saving, the Power Score, and slices. The plan read the design document's "Sockets and Gems", the Forge's
+operations and materials, "Power Score", "Storage" and "Capital Services"; this log's entries of 2026-08-02, 2026-08-18
+and 2026-11-21 (#2803); `game/Data/Gems.csv`, `ItemSockets.csv`, `Affixes.csv`, `CraftingMaterials.csv` and
+`ClassStats.csv`; and the code for items, the Forge, the Power Score and potions.
+
+**What the design already decided**, so the plan did not reopen it: gems take the eight rarity tiers of gear; they are
+upgraded by combining lower ones; each slot's socket maximum and the total of 45; a drop rolls 0 to the maximum sockets;
+the Forge's Socket Gem (Jeweler's Setting Agent, 5 residue, 1 day), Unsocket Gem (Dismantling Dust, 3 residue, 1 day),
+Change Socket Type (Focusing Lens, 10 residue, 2 days) and Add Socket (Shattered Core, 15 residue, 3 days); that
+sockets have types (Change Socket Type, the enchantment "Sockets on this equipment fit any gem type", and each gem's
+GemType of Attack, Defense or Utility); a gem's rarity at most one above the difficulty tier; and the Power Score's gem
+term, 5.2725 per point of rarity in each filled socket.
+
+**What was found that the plan had to report:**
+
+- **No game code computes the player's own Power Score.** Only the reference character is scored
+  (`UCataclysmPowerScore::ReferenceCharacter`). So gems cannot change a player's score until #2824 is built.
+- **Jeweler's Setting Agent and Dismantling Dust already drop.** A material drop picks evenly among every material of
+  its tier (`UCataclysmDropRoll::RollMaterial`), and both are tier 1. Dust drops although its stated source, dismantling,
+  is not built.
+- **All 28 gems map to stats the game already reads.** 27 are in `UCataclysmPlayerClassStats::StatToAttribute` and
+  `skill_experience_gain` is in `StatsWithNoAttribute`.
+
+### The research, from pages fetched on 2026-11-21
+
+| Game | Pages read | What they say |
+| :-- | :-- | :-- |
+| Path of Exile 1 | `poedb.tw/us/Socket`, `/us/Chromatic_Orb`, `/us/Jewellers_Orb` | Sockets are coloured red, green, blue or white, and "Skill gems have to be placed into a socket with the corresponding colour", white excepted. Colour is weighted by the item's attribute requirements. The Chromatic Orb "Reforges the colour of sockets"; the Jeweller's Orb rerolls their number, capped by item type (one-handed weapon 3, body armour and two-handed weapon 6) and by item level (4 sockets from level 25, 6 from 50). Inserting and removing a gem were not on these pages |
+| Diablo IV | `maxroll.gg/d4/resources/jeweler-gems-socketing` (updated July 2026), `diablo4.wiki.fextralife.com/Gems` (edited September 2026) | Gems are crafted at the Jeweler from fragments, about ten times as many for each tier, plus gold. Removal there is "free of charge" and keeps the gem; salvaging an item returns its gems. A gem's effect depends on the slot: Ruby is fire damage in a weapon, strength in armour, fire resistance in jewellery. Items drop with up to 2 sockets on a helm, chest, pants and two-handed weapon and 1 elsewhere, and a Scattered Prism adds one |
+| Diablo II | `classic.battle.net/diablo2exp/items/gems.shtml`, `/socketeditems.shtml`, `/cube.shtml` | Five grades, Chipped to Perfect; "3 Gems of the Same Type and Grade ... = 1 Higher Grade Gem", in the Horadric Cube. Effect by item type: Chipped Amethyst is +40 attack rating in a weapon, +8 defense in a shield, +3 strength in armour. "Once inserted, gems cannot be removed"; the Hel rune recipe removes them and "will destroy any gems" |
+| Last Epoch | `maxroll.gg/last-epoch/resources/gear-walkthrough` (updated April 2026) | No gem sockets are mentioned; idols fill the role, in a 20-slot container unlocked through the campaign and dungeons |
+| Torchlight Infinite | `tlidb.com/en/Ember`, `/en/Gear` (the site's data is from beta testing) | No sockets on the gear page; Embers are crafting materials consumed to add affixes |
+
+Refused or missing: `www.icy-veins.com` (403, twice), `support.lastepoch.com` (403), `poedb.tw/us/Jewel` (404),
+`maxroll.gg/torchlight-infinite/getting-started/skill-system-overview` (404).
+
+**What the research settles:** typed sockets, with one currency to change a socket's type and one to change the count,
+are Path of Exile's shape, matching this design's socket types, Focusing Lens and Shattered Core; combining several of a
+tier into one of the next is Diablo II's. **What it does not settle, and is this game's own:** the day and residue
+costs, gem drop rates, whether gems stack (no page said), and what a gem in a potion slot does.
+
+### The rulings
+
+**The coordinating session, 2026-11-21**, accepted the plan and ruled its eight questions itself, each being settled
+by the design document, a gem's own text or the owner's precedent. It will tell the owner what was chosen, and that
+any of it can change.
+
+1. **Socketing is a Forge craft costing a day**, as the design's operations table says.
+2. **Removal needs Dismantling Dust**, as the design says. No free removal.
+3. **Sockets are typed**: rolled evenly on a drop; Change Socket Type lets the player choose.
+4. **Increased**: every non-ailment gem's text says "Increases", Of Hatred's ("Increases Crit Multiplier by 5%")
+   included. Ailment gems are a flat chance, as the ailment affixes are.
+5. **The four gems for stats no class has a base for** (Of The Bulwark, block chance; Of The Wraith, evasion; Of
+   Urgency, cooldown reduction; Of The Goblin, magic find): **keep and explain**, the owner's own ruling for attributes
+   in #2815 ("Keep it, just explain it"). The gem's tooltip says plainly when it does nothing for the character.
+6. **Gems stack** by gem and rarity.
+7. **A gem in a potion slot** gives its stat for the 3 seconds the potion's heal runs. This session's judgement, which
+   stands for now; slice G8 is last, and the coordinating session will look again before it.
+8. **One effect per gem**, whatever it is socketed into.
+
+Also ruled: gem drop rates are measured in the simulation in slice G5; two gems of one kind and rarity make one of the
+next, with no day and no residue, as stones combine; sockets migrated from today's count fit any type; and a two-handed
+weapon does not double its gems, because its 6 sockets already equal a pair's 3 + 3.
+
+### The slices
+
+| Slice | What it does |
+| :-- | :-- |
+| G1 | A gem's stat (this entry, and its workbook stage) |
+| G2 | Gems as items: stacks in the carried inventory, the cell and tooltip, saving (character record 10 to 11) |
+| G3 | Typed sockets on items: the socket list, types rolled on drop, the count migrated; a gem in a worn item applies its modifier |
+| G4 | The Forge's Socket Gem and Unsocket Gem |
+| G5 | Gem drops, measured in the simulation; gems on the ground saved (run record 12 to 13) |
+| G6 | Combining gems at the Forge |
+| G7 | Change Socket Type, Add Socket, and effect rows for the two enchantments that wait on gems |
+| G8 | Potion gems |
+
+### What changed
+
+**`UCataclysmGems`**, a function library with nothing calling it yet:
+
+- `PointsPerSheetUnit` = 100: the sheet's 0.2 is 20 percentage points;
+- `SheetValueAt(row, rarity)`: Everyday is the value the generator extracts from the effect text, Quality to
+  Cataclysmic the sheet's seven numeric columns;
+- `BucketNamed(kind)`: "flat" or "increased" in any case, nothing else, "more" included;
+- `AddModifier(stat, kind, sheet value, totals)`: adds one modifier, the sheet value times 100, in that bucket, from
+  `ECataclysmModifierSource::Gem`, keyed by stat as `UCataclysmItemModifiers::ModifiersFor` keys an item's. A gem with no
+  stat, a refused kind or a value of nought or less adds nothing and logs a warning.
+
+**The design document's "Sockets and Gems"** now lists the rulings.
+
+**The ruled table of all 28**, in `tools/tests/test_every_gem_names_a_stat_the_game_reads.py`:
+
+| Bucket | Gems and stats |
+| :-- | :-- |
+| Flat chance (10) | Of The Abyss `void_splinter_chance`, Of The Viper `poison_chance`, Of Rending `bleed_chance`, Of Madness `madness_chance`, Of Rot `disease_chance`, Of Wasting `necrosis_chance`, Of Embers `burn_chance`, Of Maiming `cripple_chance`, Of Withering `weaken_chance`, Of Shredding `shred_chance` |
+| Increased (18) | Of Ticking `dot_frequency`, Of Striking `attack_speed`, Of Hatred `crit_multiplier`, Of Ferocity `crit_chance`, Of Recovery `health_regen`, Of Shielding `energy_shield_regen`, Of The Titan `armor`, Of The Bulwark `block_chance`, Of The Wraith `evasion`, Of The Mage `max_energy_shield`, Of Life `max_health`, Of Rejuvination `mana_regen`, Of Quickness `movement_speed`, Of Area `area_of_effect`, Of Urgency `cooldown_reduction`, Of Mana `max_mana`, Of The Goblin `magic_find`, Of The Scholar `skill_experience_gain` |
+
+### Tests
+
+`CataclysmGemStatsTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AGemsSheetValueAtEachRarityIsItsColumn` | Of The Viper's eight values, 0.2 to 1.8, each at its rarity |
+| `AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease` | Of The Viper's Everyday 0.2 is one flat modifier of 20 on `poison_chance` from source Gem; Of Life's Cataclysmic 0.85, kind "Increased", is one increased modifier of 85 on `max_health`; through `UCataclysmStatPipeline::Evaluate`, 1,000 becomes 1,850 and 0 becomes 20. Prints "GEM STATS" |
+| `AGemThatNamesNoStatOrKindOrValueAddsNothing` | CONTROL: no stat, the kind "more", no kind and a value of nought each return false, log a warning and add nothing; " Flat " is read as flat |
+
+`tools/tests/test_every_gem_names_a_stat_the_game_reads.py`:
+
+- the ruled table holds every gem in `Gems.csv` and no other;
+- every stat it names is in `StatToAttribute` or `StatsWithNoAttribute`;
+- each of the 10 ailment gems is flat on the chance stat `UCataclysmAilments` keeps for the ailment its affix names, and
+  no other gem is flat;
+- each gem's text says what its bucket is ("chance to apply" or "Increases");
+- the gems whose stat neither a class line nor code gives a base to are exactly the four ruled;
+- `UCataclysmGems` multiplies by 100 and gives source Gem.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `761d6b1bb`, each restored half "60 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GP1 | `Modifier.Source = ECataclysmModifierSource::Gem;` to `GearAffix` | "1 failed, 59 passed": `test_the_gem_library_states_percentage_points_from_source_gem` | PROVED |
+| GP2 | `PointsPerSheetUnit = 100.0f` to `1.0f` | "1 failed, 59 passed": the same test | PROVED |
+| GP3 | `UCataclysmAilments`' Poison kept under `venom_chance` | "1 failed, 59 passed": `test_each_ailment_gem_is_flat_on_its_affixs_ailment_stat_and_no_other_gem_is_flat` | PROVED |
+| GP4 | `skill_experience_gain` taken out of `StatsWithNoAttribute` | "1 failed, 59 passed": `test_every_ruled_stat_is_one_the_game_reads[Gem_Of_The_Scholar]` | PROVED |
+| GP5 | Of Hatred's text "Increases" to "Raises" in `Gems.csv` | "1 failed, 59 passed": `test_a_gems_text_says_what_its_bucket_is[Gem_Of_Hatred]` | PROVED |
+| GP6 | a Default base of 5 block chance in `ClassStats.csv` | "1 failed, 59 passed": `test_the_gems_with_nothing_to_increase_are_the_four_the_ruling_names` | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its workbook stage and its three compiles. The workbook stage adds its own test of the
+generated table and moves these counts; they are registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStats.` alone | 3 performed, 3 succeeded |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Three C++ guard proofs, one per behaviour only a C++ test guards, with `test_prefix="Cataclysm.GemStats."`. The source
+and the factor of 100 are guarded from Python (GP1, GP2), so they have none:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K1 | in `SheetValueAt`, `case ECataclysmRarity::Superb:	return Row.Superb;` to `return Row.Quality;` | 3 performed, 2 succeeded, 1 failed: `AGemsSheetValueAtEachRarityIsItsColumn` | 3 of 3 |
+| K2 | in `BucketNamed`, `OutBucket = ECataclysmStatBucket::Increased;` to `OutBucket = ECataclysmStatBucket::Flat;` | 3 performed, 2 succeeded, 1 failed: `AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease` (1,000 + 85, not 1,850) | 3 of 3 |
+| K3 | in `AddModifier`, `SheetValue <= 0.0f` to `SheetValue < 0.0f` | 3 performed, 2 succeeded, 1 failed: `AGemThatNamesNoStatOrKindOrValueAddsNothing` (a modifier of nought added, and three warnings where four are expected) | 3 of 3 |
+
+---
+
 ## 2026-11-21 — A creature's first AI think is staggered by a count kept for its own world, so a test gives the same result alone and in the suite (#2827)
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (`GCataclysmEnemyControllerPossessionsByWorld`
