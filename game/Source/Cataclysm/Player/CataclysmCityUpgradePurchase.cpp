@@ -29,6 +29,18 @@ int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, const 
 						  : static_cast<int64>(FMath::RoundToDouble(static_cast<double>(TiersPrice) * Factor));
 }
 
+int32 UCataclysmCityUpgradePurchase::BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run,
+												 FName RowName, int32 CityId)
+{
+	// THE TIER A PURCHASE IS AT: every bought upgrade is at tier 1 (issue #1265; `UCataclysmEmpireRun::BuyCityUpgrade`
+	// sets it). The context, the row and the city are what the tree's build nodes will read in the next slice.
+	(void)WorldContext;
+	(void)Run;
+	(void)RowName;
+	(void)CityId;
+	return UCataclysmCityUpgradeRules::BuildDaysFor(1);
+}
+
 int64 UCataclysmCityUpgradePurchase::GoldHeldIn(const UObject* WorldContext)
 {
 	int64 Held = 0;
@@ -46,6 +58,7 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
 	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
 	const int64 Held = GoldHeldIn(WorldContext);
+	const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId);
 
 	// THE RUN'S QUESTION FIRST, so nothing is taken for a purchase it would refuse.
 	const ECataclysmCityUpgradeResult Asked = Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held);
@@ -66,7 +79,8 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 		return ECataclysmCityUpgradeResult::NotEnoughGold;
 	}
 
-	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held);
+	// WITH THE DAYS IT TAKES TO BUILD, since issue #2825: the run puts it on the city's build list.
+	const ECataclysmCityUpgradeResult Result = Run->BuyCityUpgrade(CityId, Upgrade, Price, Held, Days);
 	if (Result != ECataclysmCityUpgradeResult::Bought)
 	{
 		// GIVEN BACK, a guard: the run refuses only what it refused a moment ago, above.
@@ -99,13 +113,18 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	}
 	const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(RowName);
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::UpgradeLine(Effect.IsEmpty() ? RowName.ToString() : Effect, Run,
-																   CityId, Price, After));
+																   CityId, Price, After, Run->BuildReadyDay(CityId)));
 	return ECataclysmCityUpgradeResult::Bought;
 }
 
 FString UCataclysmCityUpgradePurchase::PriceText(int64 Price)
 {
 	return ACataclysmDroppedItem::GoldName(FMath::Max<int64>(0, Price));
+}
+
+FString UCataclysmCityUpgradePurchase::BuildDaysText(int32 Days)
+{
+	return Days == 1 ? FString(TEXT("1 day to build")) : FString::Printf(TEXT("%d days to build"), Days);
 }
 
 FString UCataclysmCityUpgradePurchase::RefusalText(ECataclysmCityUpgradeResult Result, int64 Price, int64 Held)

@@ -549,6 +549,11 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// falling is saved by a repair that was already due, rather than falling and
 	// then being healed while fallen. Repairing first is the reading a player
 	// would expect and the more forgiving of the two.
+	// A CITY UPGRADE FINISHED TODAY IS FINISHED BEFORE THE REPAIRS AND THE ASSAULTS, for the reason above: a wall
+	// that is done today stands against today's bites. A fallen or besieged city counts no day of its build. A Siege a
+	// surge landed a moment ago pauses it from today. Issue #2825.
+	AdvanceCityBuilds(Today, Report);
+
 	RunCityUpgradeIntervals(Today);
 
 	// AND THE EMPIRE UPGRADE TREE'S TWO REPAIRS, at the same point for the same reason. Issue #2741 slice 3b.
@@ -2520,16 +2525,6 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::NotAnUpgrade;
 	}
 
-	// THE GUARD ON THE BUILD TIME. An upgrade is immediate because no build
-	// time is written anywhere: the owner ruled on 2026-11-18 that build days
-	// come later. If somebody raises it without building what would then be
-	// needed, every purchase refuses instead of quietly handing out the upgrade
-	// at once. Issue #1264.
-	if (!UCataclysmCityUpgradeRules::IsInstant())
-	{
-		return ECataclysmCityUpgradeResult::CannotWaitForABuildYet;
-	}
-
 	if (!UCataclysmCityUpgradeRules::IsBuilt(Upgrade.Effect))
 	{
 		// REFUSED RATHER THAN SOLD. Five of the 24 upgrades are waiting on a
@@ -2555,12 +2550,8 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 	// buying new ones, while leaving the effects of upgrades the city already
 	// holds working.
 	//
-	// ONLY THE BLOCKING HALF IS HERE, AND THE OTHER HALF IS NOT MISSING SO MUCH
-	// AS IMPOSSIBLE. Nothing is ever part way through being built: `BuildDays`
-	// is zero and every purchase is instant, so there is no in-progress build to
-	// interrupt. Whoever gives an upgrade a build time under issue #1264 should
-	// stop it here as well. Raising `BuildDays` alone would trip `IsInstant`
-	// above and refuse every purchase in the game.
+	// THE OTHER HALF, A SIEGE PAUSING A BUILD UNDER WAY, is `AdvanceCityBuilds`,
+	// since issue #2825.
 	//
 	// CHECKED BEFORE THE SLOT COUNT, so a player asking about a besieged city
 	// that is also full is told the thing they can actually act on.
@@ -2569,7 +2560,9 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::CityIsBesieged;
 	}
 
-	if (City->HasUpgrade(Upgrade.RowName))
+	// AN UPGRADE BEING BUILT IS ALREADY BOUGHT: its slot is taken and it is
+	// finished when its days are counted. Issue #2825.
+	if (City->HasUpgrade(Upgrade.RowName) || City->IsBuilding(Upgrade.RowName))
 	{
 		return ECataclysmCityUpgradeResult::AlreadyBought;
 	}
@@ -2577,6 +2570,14 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 	if (Map->FreeUpgradeSlots(CityId) <= 0)
 	{
 		return ECataclysmCityUpgradeResult::NoSlotsLeft;
+	}
+
+	// ONE BUILD AT A TIME PER CITY, the coordinating session's ruling of
+	// 2026-11-21 (issue #2825). After the slot count, so a city whose last slot
+	// is the one being built says it is full.
+	if (!City->Building.IsEmpty())
+	{
+		return ECataclysmCityUpgradeResult::BuildUnderWay;
 	}
 
 	// THE PRICE, LAST, so a refusal for anything above -- which no amount of
@@ -2594,7 +2595,7 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 
 ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost,
-	int64 GoldHeld)
+	int64 GoldHeld, int32 BuildDays)
 {
 	// EVERY CHECK IS ABOVE, IN ONE PLACE. The city screen greys out what a city
 	// cannot buy and says why, and it asks exactly this question rather than
@@ -2610,17 +2611,105 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	FCataclysmCityUpgrade Bought = Upgrade;
 	Bought.Tier = 1;
 
-	// THE DAY IT WAS BOUGHT, which Enduring Foundations reads. Issue #2741 slice 3b.
-	Bought.BoughtDay = Clock->Day;
+	// IT TAKES DAYS TO BUILD, since issue #2825: the slot is taken now, and the
+	// upgrade does nothing until `AdvanceCityBuilds` has counted its days. The
+	// gold was taken by the caller already; a build cannot be cancelled and
+	// nothing is refunded (ruled 2026-11-21).
+	if (BuildDays > 0)
+	{
+		Bought.BuildDaysLeft = BuildDays;
+		Map->StartBuild(CityId, Bought);
+		return ECataclysmCityUpgradeResult::Bought;
+	}
 
-	// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade bought on day 37
+	// NOUGHT DAYS IS FINISHED AT ONCE, which is what the empire layer's own
+	// tests buy, as they buy free.
+	CompleteCityUpgrade(CityId, Bought, Clock->Day);
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+const FCataclysmCityUpgrade* UCataclysmEmpireRun::BuildOn(int32 CityId) const
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	return City != nullptr && !City->Building.IsEmpty() ? &City->Building[0] : nullptr;
+}
+
+bool UCataclysmEmpireRun::IsBuildPaused(int32 CityId) const
+{
+	if (BuildOn(CityId) == nullptr)
+	{
+		return false;
+	}
+	const FCataclysmCity* City = Map->Find(CityId);
+	return City->bFallen || IsBesieged(CityId);
+}
+
+int32 UCataclysmEmpireRun::BuildReadyDay(int32 CityId) const
+{
+	const FCataclysmCityUpgrade* Build = BuildOn(CityId);
+	if (Build == nullptr || Clock == nullptr || IsBuildPaused(CityId))
+	{
+		return INDEX_NONE;
+	}
+	return Clock->Day + Build->BuildDaysLeft;
+}
+
+void UCataclysmEmpireRun::AdvanceCityBuilds(int32 Today, FCataclysmDayReport& Report)
+{
+	if (Map == nullptr)
+	{
+		return;
+	}
+
+	for (FCataclysmCity& City : Map->Cities)
+	{
+		// PAUSED: A FALLEN CITY BUILDS NOTHING, AND NEITHER DOES A BESIEGED ONE. The build keeps its days left and goes
+		// on when the city is retaken or the Siege is gone (ruled 2026-11-21; the Siege by the owner, 2026-09-05).
+		if (City.Building.IsEmpty() || City.bFallen || IsBesieged(City.CityId))
+		{
+			continue;
+		}
+
+		// TAKEN OFF THE LIST BEFORE IT IS APPLIED, so the city holds it once: in `Upgrades`, never in both.
+		TArray<FCataclysmCityUpgrade> Finished;
+		for (int32 Index = City.Building.Num() - 1; Index >= 0; --Index)
+		{
+			FCataclysmCityUpgrade& Build = City.Building[Index];
+			Build.BuildDaysLeft = FMath::Max(0, Build.BuildDaysLeft - 1);
+			if (Build.BuildDaysLeft == 0)
+			{
+				Finished.Insert(Build, 0);
+				City.Building.RemoveAt(Index);
+			}
+		}
+
+		// THE CITY ID IS COPIED, because finishing an upgrade can remove dungeons, and nothing below may hold a
+		// reference into the map across it.
+		const int32 CityId = City.CityId;
+		for (const FCataclysmCityUpgrade& Done : Finished)
+		{
+			CompleteCityUpgrade(CityId, Done, Today);
+			Report.UpgradesFinishedOn.Add(CityId);
+		}
+	}
+}
+
+void UCataclysmEmpireRun::CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrade Bought, int32 Day)
+{
+	Bought.BuildDaysLeft = 0;
+
+	// THE DAY IT WAS FINISHED, which Enduring Foundations reads: an upgrade being built does nothing, so it has been
+	// "active" only from today. Issue #2741 slice 3b; finished rather than bought since issue #2825.
+	Bought.BoughtDay = Day;
+
+	// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade finished on day 37
 	// with a 20 day interval first fires on day 57, rather than on whichever
 	// coming day happens to divide by 20. Zero for every effect that is not one
 	// of the two interval ones, and unread for them.
 	if (Bought.IntervalDays > 0.0f)
 	{
 		Bought.NextTriggerDay =
-			Clock->Day + FMath::Max(1, FMath::RoundToInt(Bought.IntervalDays));
+			Day + FMath::Max(1, FMath::RoundToInt(Bought.IntervalDays));
 	}
 
 	// THE MAP RECORDS IT AND APPLIES WHAT BELONGS TO THE CITY: the two raised
@@ -2660,8 +2749,6 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 			RemoveDungeon(ByUrgency[Index]);
 		}
 	}
-
-	return ECataclysmCityUpgradeResult::Bought;
 }
 
 void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)

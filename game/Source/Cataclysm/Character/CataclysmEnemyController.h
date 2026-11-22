@@ -372,9 +372,10 @@ public:
 	 * as.
 	 *
 	 * ONLY THE FIRST PASS MOVES. The timer still repeats every
-	 * `ThinkIntervalSeconds`, so `PassesForWindUp` and the Brute's
-	 * `LandsAtSecondsFor`, which both count whole passes from the pass that began
-	 * a wind-up, mean what they meant. Unreal keeps a looping timer's timing by
+	 * `ThinkIntervalSeconds`. (This said that `PassesForWindUp` and the Brute's
+	 * `LandsAtSecondsFor` counted whole passes from the pass that began a
+	 * wind-up; since issue #2808 a wind-up lands at its own length, checked every
+	 * frame, and neither counts passes.) Unreal keeps a looping timer's timing by
 	 * adding the interval to the time it was due rather than to the time it ran
 	 * (`FTimerManager::Tick`, engine 5.8), so the spread lasts the creature's
 	 * whole life.
@@ -801,62 +802,63 @@ public:
 	bool IsAbilityReady(int32 Index) const;
 
 	/**
-	 * How many thinking passes a telegraph of this length takes.
+	 * Whether a wind-up that lands at `LandsAt` is due at world time `Now`.
 	 *
-	 * ROUNDED UP, NEVER DOWN, AND THAT IS THE PLAYER'S GUARANTEE. The design
-	 * states a telegraph as the time the player has to walk clear, so an
-	 * attack must never land sooner than it. A wind-up that is not a whole
-	 * number of passes therefore takes the pass after it: the Brute's 1.4
-	 * second stomp takes six passes and lands at 1.5, which is what it already
-	 * did before this was counted rather than compared.
+	 * AT ITS OWN LENGTH, NOT ON THE NEXT THINKING PASS. Issue #2808, the owner's
+	 * choice of 2026-11-21: "each one lands exactly on time instead of waiting
+	 * up to a quarter second extra". Until then a wind-up was counted in
+	 * quarter-second thinking passes and rounded up (issue #413), so the Brute's
+	 * 1.4 second stomp landed at 1.5 and the Succubus's 1.3 second bolt at 1.5.
 	 *
-	 * AT LEAST ONE, so that an ability with a very short telegraph is still
-	 * committed to for a pass rather than landing on the pass that began it.
+	 * WHAT #413 COUNTED FOR, AND WHY THIS KEEPS IT. Comparing the clock on a
+	 * thinking pass turned a frame of timer overshoot into a whole quarter
+	 * second for a telegraph sitting exactly on a pass boundary, so #413 counted
+	 * passes instead. That coin toss came from checking four times a second.
+	 * `LandWindUpIfDue` checks every frame, so the overshoot is at most one
+	 * frame whatever the telegraph's length, and nothing rounds to a pass.
 	 *
-	 * Static and public so a test can check the arithmetic without arranging a
-	 * world in which each length happens.
+	 * A MILLISECOND OF TOLERANCE, `WindUpLandingToleranceSeconds`, so a deadline
+	 * stored as a float is met by a clock that reached it: a test that moves the
+	 * clock by exactly the wind-up lands it, deterministically. Never early by
+	 * more than that millisecond.
+	 *
+	 * Static and public so a test can check the comparison without a world.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Cataclysm|AI")
-	static int32 PassesForWindUp(float WindUpSeconds);
+	static bool IsWindUpDue(float Now, float LandsAt);
+
+	/** See `IsWindUpDue`. One millisecond: far under a frame at any rate the game runs. */
+	static constexpr float WindUpLandingToleranceSeconds = 0.001f;
+
+	/**
+	 * Land the wind-up in progress if it is due, and do nothing otherwise.
+	 *
+	 * CALLED EVERY FRAME FROM `ACataclysmEnemyCharacter::Tick`, which is what
+	 * makes an attack land at its own length rather than on the next thinking
+	 * pass. Issue #2808. A test calls it by hand after moving the clock, because
+	 * no automation test ticks a world.
+	 *
+	 * IT DOES NOT LAND ONE THE CREATURE CAN NO LONGER MAKE. Dead, unable to act
+	 * or fleeing, it leaves the wind-up for `Think`, whose next pass abandons it
+	 * in the order it always has.
+	 *
+	 * @return whether it landed one
+	 */
+	bool LandWindUpIfDue();
 
 	/** Which ability it is winding up, or -1. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
 	int32 WindingUpAbility = -1;
 
-	/** World seconds at which the ability being wound up lands. Read by tests. */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
-	float WindUpLandsAt = 0.0f;
-
 	/**
-	 * Thinking passes still to go before the ability being wound up lands.
+	 * World seconds at which the ability being wound up lands. Read by tests.
 	 *
-	 * WHY A COUNT AND NOT JUST THE CLOCK ABOVE. Issue #413. Landing on "the
-	 * first pass whose clock has passed WindUpLandsAt" sounds exact and is not.
-	 * A timer callback runs on the first FRAME past its deadline, so every pass
-	 * carries up to a frame of overshoot, and the overshoot on the pass that
-	 * starts a wind-up is not the overshoot on the pass that should land it. The
-	 * comparison then turns a difference of a few milliseconds into a difference
-	 * of a whole quarter of a second.
-	 *
-	 * IT ONLY SHOWS WHERE A TELEGRAPH SITS ON A PASS BOUNDARY, which is exactly
-	 * where the Brute's rock throw sits. Its wind-up is 1.000 second and a pass
-	 * is 0.250, so the deadline and the pass coincide. Simulating the engine's
-	 * own timer arithmetic over 500 jittery frames between 50 and 70 frames a
-	 * second landed it on the LATER pass 246 times out of 500: half at 1.00 and
-	 * half at 1.25. The stomp never moved, because its 1.400 second wind-up sits
-	 * 0.1 clear of the 1.500 boundary, which is far more than a frame.
-	 *
-	 * WHY IT SURVIVED. It lands at exactly 1.00 whenever a quarter second is a
-	 * whole number of frames, which is true at 30, 60, 120 and 144 frames a
-	 * second held steady. Every controlled test sees the good case.
-	 *
-	 * WHAT THE COUNT DOES. PassesForWindUp turns the telegraph into a number of
-	 * passes once, when the wind-up starts. Counting them down cannot be
-	 * affected by frame timing at all, so the same telegraph always takes the
-	 * same number of passes.
+	 * THE WIND-UP'S OWN LENGTH AFTER IT BEGAN, AND IT LANDS THEN. Issue #2808;
+	 * see `IsWindUpDue`. Until then a count of thinking passes, rounded up,
+	 * decided the landing and this was only a backstop (issue #413). The count,
+	 * `WindUpPassesLeft`, was removed with the rounding.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
-	int32 WindUpPassesLeft = 0;
+	float WindUpLandsAt = 0.0f;
 
 	/**
 	 * Where the ability being wound up was aimed when it started.

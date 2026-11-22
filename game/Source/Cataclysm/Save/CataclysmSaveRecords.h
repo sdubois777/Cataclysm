@@ -1799,8 +1799,13 @@ public:
 	 * on every city, false on the run and 0 and 0 on the walk: the record cannot prove a city's past damage (a city
 	 * below its maximum may be one whose maximum the tree raised), the effective maximum the run's flag compares against
 	 * depends on the tree, which the record does not hold, and a walk resumed from it counts its gold from the load.
+	 *
+	 * 13 SINCE 2026-11-21. Issue #2825: a city upgrade takes days to build, so each city carries what it is building,
+	 * `Building`, and each upgrade the days left on it, `BuildDaysLeft`. `Migrate_12_to_13` writes an empty `Building`
+	 * on every city and a `BuildDaysLeft` of 0 on every upgrade it holds: a version 12 run could build nothing, since
+	 * every purchase was finished at once.
 	 */
-	static constexpr int32 SchemaVersionNow = 12;
+	static constexpr int32 SchemaVersionNow = 13;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

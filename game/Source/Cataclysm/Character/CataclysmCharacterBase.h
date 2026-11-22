@@ -98,6 +98,36 @@ struct FCataclysmEnemyAbility
 	bool bArcsOntoItsTarget = false;
 
 	/**
+	 * Whether its wind-up draws no marker on the ground at all. Issue #2808.
+	 *
+	 * A QUICK CAST SETS IT: a flat bolt fired `QuickCastSeconds` after the
+	 * decision, whose warning is the bolt in flight. The owner's playtest of
+	 * 2026-11-21: "sometimes enemies should be able to just shoot a fireball at
+	 * you as long as you can see it". The Attack Telegraphs subsection of
+	 * `docs/Cataclysm_GDD_v2.md` describes it as the second kind of attack.
+	 *
+	 * A FLAG RATHER THAN A ZERO RADIUS, because `ShowWindUpMarker` draws a lane
+	 * for every flat Projectile from its shape alone, and because the radius is
+	 * also the blast the bolt makes where it stops.
+	 *
+	 * THE SHAPE STAYS Projectile, so `AbilityNeedsFacing` still turns the
+	 * creature to its target before the cast begins, and the shot is still aimed
+	 * where the target stood when it began.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	bool bDrawsNoMarker = false;
+
+	/**
+	 * How long a quick cast takes from the decision to the bolt leaving, in
+	 * seconds. A copy of `QUICK_CAST_SECONDS` in
+	 * `sim/cataclysm_sim/enemy_abilities.py`, which states why: quicker than
+	 * every caster monster found in Path of Exile (0.85 to 1.33 s), and the
+	 * reaction allowance plus a tenth so the cast itself is long enough to see.
+	 * Issue #2808.
+	 */
+	static constexpr float QuickCastSeconds = 0.5f;
+
+	/**
 	 * How wide the marked area is, in centimetres. A radius for a Strike, the
 	 * projectile's own radius for a Projectile.
 	 *

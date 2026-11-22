@@ -906,6 +906,7 @@ bool FCataclysmConsumptionDoubleRunMigrationTest::RunTest(const FString& Paramet
 	// version 11 since 2026-11-20 (issue #2741 slice 5b).
 	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

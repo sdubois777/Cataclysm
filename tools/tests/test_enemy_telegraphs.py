@@ -543,7 +543,10 @@ def test_the_document_states_how_many_basic_attacks_are_telegraphed():
         f"outside the one-to-seven this check knows how to spell.")
 
     text = unwrapped(GDD.read_text(encoding="utf-8")).lower()
-    sentence = f"{count} of the seven enemies telegraph their ordinary attack"
+    # ONE TAKES THE SINGULAR. One since issue #2808; three before it.
+    sentence = (f"{count} of the seven enemies telegraphs its ordinary attack"
+                if len(telegraphed) == 1 else
+                f"{count} of the seven enemies telegraph their ordinary attack")
 
     assert sentence in text, (
         f"docs/Cataclysm_GDD_v2.md does not say {sentence!r}. "
@@ -552,7 +555,7 @@ def test_the_document_states_how_many_basic_attacks_are_telegraphed():
         f"is what issue #763 was.")
 
 
-def test_the_basics_with_no_target_cap_are_exactly_the_telegraphed_ones():
+def test_the_basics_with_no_target_cap_are_the_telegraphed_ones_and_the_quick_casts():
     """**THE SECOND CLAIM ISSUE #763's SECTION GOT WRONG**, which the issue
     itself did not notice. The document said of Dread Cleave "Unlike every
     other basic attack it has no target cap". Three basic attacks have no cap,
@@ -563,16 +566,24 @@ def test_the_basics_with_no_target_cap_are_exactly_the_telegraphed_ones():
     it; a contact swing hits the one thing it reaches. If the two sets ever
     stop matching, one of the two rules has been broken and the document's
     sentence saying they are the same set is wrong."""
+    from cataclysm_sim.enemy_abilities import ABILITIES
+
     telegraphed = telegraphed_basic_attacks()
     uncapped = uncapped_basic_attacks()
+    # A QUICK CAST'S BOLT GOES OFF IN A BLAST WHERE IT STOPS, so it is an area
+    # too and has no cap either. Issue #2808 made the Succubus's and the
+    # Sentinel's basic attacks quick casts; they were telegraphed before.
+    quick = sorted((enemy, a.name) for enemy, entries in ABILITIES.items()
+                   for a in entries if a.slot == "Basic" and a.quick_cast)
 
-    assert telegraphed == uncapped, (
-        f"the basic attacks that are telegraphed are {telegraphed} and the "
-        f"ones with no MaxTargets are {uncapped}. The Gatekeeper's section in "
-        f"docs/Cataclysm_GDD_v2.md says those are the same set, because a "
-        f"marked area hits what stands in it and a contact swing hits one "
-        f"thing. Whichever changed, the document now says something false.")
+    assert sorted(telegraphed + quick) == uncapped, (
+        f"the basic attacks that are telegraphed are {telegraphed}, the quick "
+        f"casts are {quick}, and the ones with no MaxTargets are {uncapped}. "
+        f"The Gatekeeper's section in docs/Cataclysm_GDD_v2.md says the "
+        f"uncapped ones are exactly those, because an area hits what stands in "
+        f"it and a contact swing hits one thing.")
 
-    assert len(telegraphed) > 1, (
-        f"only {telegraphed} is left, so the document's sentence about \"the "
-        f"other two telegraphed basics\" is now wrong.")
+    text = unwrapped(GDD.read_text(encoding="utf-8")).lower()
+    assert "neither do the two quick casts" in text, (
+        "the Gatekeeper's section no longer says the two quick casts have no "
+        "target cap either.")

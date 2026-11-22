@@ -257,35 +257,23 @@ def test_the_bolt_is_the_basic_attack_and_has_no_cooldown():
     assert constant("SiegeBoltCooldownSeconds") == 0.0
 
 
-def test_the_bolt_is_telegraphed_and_uses_its_whole_allowance():
-    """Its radius is exactly the largest the rule allows for a 2.0 second
-    interval, so its wind-up is exactly half its interval."""
-    from cataclysm_sim.enemy_abilities import is_telegraphed, wind_up_seconds
+def test_the_bolt_is_a_quick_cast_with_no_marker():
+    """Issue #2808. The model says quick cast, so the C++ must wind up for the
+    quick cast's half second and draw no marker for it. THE CONTROL is the
+    mortar, an area, which keeps its marker."""
+    from cataclysm_sim.enemy_abilities import QUICK_CAST_SECONDS, is_telegraphed
 
-    assert is_telegraphed(siege_bolt(), "Corrupted Sentinel"), (
-        "Siege Bolt is no longer telegraphed in the model, and the class draws "
-        "a marker for it. A basic attack that marks the ground when the design "
-        "says it should not is worse than one that does not when it should.")
-
-    interval = constant("DesignedAttackIntervalSeconds")
-    largest_radius_metres = 3.5 * (interval / 2.0 - 0.4)
-
-    assert (constant("SiegeBoltRadiusCm") / CM_PER_METRE
-            == pytest.approx(largest_radius_metres)), (
-        f"Siege Bolt's radius is {constant('SiegeBoltRadiusCm') / CM_PER_METRE} "
-        f"m and the largest a {interval} s interval allows is "
-        f"{largest_radius_metres} m. The design has it using the whole of its "
-        f"allowance.")
-
-    designed_wind_up = wind_up_seconds(siege_bolt().params["Radius"])
-    assert constant("SiegeBoltWindUpSeconds") == pytest.approx(
-        designed_wind_up, abs=0.002), (
-        f"SiegeBoltWindUpSeconds is {constant('SiegeBoltWindUpSeconds')} and "
-        f"the rule 0.4 + Radius / 3.5 gives {designed_wind_up}.")
-
-    assert constant("SiegeBoltWindUpSeconds") == pytest.approx(interval / 2.0), (
-        "Siege Bolt's wind-up is no longer exactly half its attack interval, "
-        "which is what using the whole telegraph allowance means.")
+    assert siege_bolt().quick_cast
+    assert not is_telegraphed(siege_bolt(), "Corrupted Sentinel")
+    assert constant("SiegeBoltWindUpSeconds") == pytest.approx(QUICK_CAST_SECONDS), (
+        f"SiegeBoltWindUpSeconds is {constant('SiegeBoltWindUpSeconds')} and the "
+        f"model's quick cast is {QUICK_CAST_SECONDS} s.")
+    body = source(SENTINEL_SOURCE)
+    assert "Bolt.bDrawsNoMarker = true;" in body, (
+        "CataclysmCorruptedSentinelCharacter.cpp no longer marks the Siege Bolt "
+        "as drawing no marker, so the brain draws a lane for a quick cast.")
+    assert "Mortar.bDrawsNoMarker" not in body, (
+        "the mortar is marked as drawing no marker, and it is an area.")
 
 
 def test_the_bolt_crosses_its_range_in_a_time_a_player_can_read():
@@ -294,8 +282,8 @@ def test_the_bolt_crosses_its_range_in_a_time_a_player_can_read():
     seconds = constant("SiegeBoltRangeCm") / constant("SiegeBoltSpeedCmPerSecond")
     assert seconds == pytest.approx(1.0), (
         f"the bolt now crosses its whole range in {seconds:.3f} s. At one "
-        f"second a player who leaves the lane as the marker goes still has "
-        f"time; much faster and the marker is the only warning there is.")
+        f"second it is the second slowest speed in the player skill table, and "
+        f"since issue #2808 the bolt in flight is its only warning.")
 
 
 def test_the_bolt_damage_is_the_basic_slots_percentage():
@@ -386,12 +374,22 @@ def test_the_mortar_refuses_a_target_standing_on_top_of_it():
         "used at all.")
 
 
-def test_the_mortar_damage_is_the_special_slots_percentage():
+def test_the_mortar_damage_is_twice_the_special_slots_percentage():
+    """300, twice the Special row's 150, so a shell is worth what it was.
+
+    Issue #2808 halved the creature's ordinary hit (damage share 1.10 to 0.55)
+    to fire its bolt every second at the same damage per second, and the shell
+    is a percentage of that hit. Ruled by the coordinating session, 2026-11-21.
+    THE SHELL HOLDS: 300% of 0.55 is 150% of 1.10."""
     slot = 150.0
-    assert constant("BrimstoneMortarDamagePercent") == pytest.approx(slot), (
+    assert constant("BrimstoneMortarDamagePercent") == pytest.approx(2.0 * slot), (
         f"BrimstoneMortarDamagePercent is "
-        f"{constant('BrimstoneMortarDamagePercent')} and the Special row of "
-        f"game/Data/SkillSlots.csv is {slot}.")
+        f"{constant('BrimstoneMortarDamagePercent')} and twice the Special row "
+        f"of game/Data/SkillSlots.csv is {2.0 * slot}.")
+    shell_now = constant("BrimstoneMortarDamagePercent") / 100.0 * sentinel().damage_share
+    assert shell_now == pytest.approx(slot / 100.0 * 1.10), (
+        f"a shell is worth {shell_now:.4f} of the creature's score and was "
+        f"{slot / 100.0 * 1.10:.4f}.")
 
 
 def test_the_mortar_is_listed_before_the_bolt():

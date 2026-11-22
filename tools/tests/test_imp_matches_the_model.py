@@ -513,7 +513,7 @@ def sandbox_stat_block():
 def test_the_sandbox_spawns_a_pack_rather_than_a_creature():
     """'A pack is ten' is a heading in the design document.
 
-    One Imp takes 48 seconds to kill a geared character and ten take 4.9, so a
+    One Imp takes 54 seconds to kill a geared character and ten take 5.4, so a
     single one in the level cannot demonstrate the only thing this creature is
     for.
     """

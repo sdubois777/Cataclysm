@@ -24,6 +24,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmItem.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Tests/CataclysmTestSwings.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystemComponent.h"
 #include "Components/SphereComponent.h"
@@ -591,12 +592,16 @@ bool FCataclysmStalkerEntriesNecrosisTest::RunTest(const FString& Parameters)
 		ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearing(World, EntryOf(Type), FVector(0.0f, Y, 0.0f));
 		ACataclysmPlayerCharacter* Player = APlayerAt(World, FVector(2.0f * M, Y, 0.0f));
 		UAbilitySystemComponent* Abilities = Player ? Player->GetAbilitySystemComponent() : nullptr;
-		if (!TestNotNull(TEXT("set-up: the Stalker"), Stalker) || !TestNotNull(TEXT("set-up: the player"), Abilities))
+		if (!TestNotNull(TEXT("set-up: the Stalker"), Stalker) || !TestNotNull(TEXT("set-up: the player"), Abilities)
+			|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
 		{
 			return false;
 		}
 		const float Before = Read(Player, Vital::GetHealthAttribute());
 		Stalker->UseEnemyAbility(ChoiceIndexOf(Slot::Heavy), Player, Player->GetActorLocation());
+		// SINCE ISSUE #2811 A COPY'S BLOW WAITS FOR ITS SWING TO CONNECT, as the player's does, so the swing is finished here,
+		// as the player's tests finish theirs: the clock is moved until it connects (`CataclysmTestSwings`).
+		TestTrue(TEXT("set-up: its swing connected"), CataclysmTestSwings::FinishTheSwingsOf(World, Stalker));
 		bHurt = Read(Player, Vital::GetHealthAttribute()) < Before;
 		const FGameplayTag Tag =
 			UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Necrosis")), false);

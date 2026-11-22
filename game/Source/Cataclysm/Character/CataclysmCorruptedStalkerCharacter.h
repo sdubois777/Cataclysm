@@ -236,7 +236,8 @@ public:
 	// 2026-11-21: the player's capsule would change its collision, where a hunter fits when it arrives and the reach
 	// measured from capsule edges, for a visual change. The Mannequin's feet are at the capsule's bottom, so the body
 	// stands above the capsule's top by up to 32 cm, the two capsules' difference. A DARK RED TINT, the owner's ruling
-	// of 2026-11-21 (J2): see `CopyTint`. NO SWING ON ITS BLOWS (ruling J3): issue #2811.
+	// of 2026-11-21 (J2): see `CopyTint`. ITS BLOWS SWING AS THE PLAYER'S DO, since issue #2811: see
+	// `PlayAttackAnimation`.
 
 	/**
 	 * Puts the player's body, animation Blueprint and death clips on, and hides the placeholder cylinder.
@@ -273,6 +274,18 @@ public:
 	virtual void PreRegisterAllComponents() override;
 	virtual void BeginPlay() override;
 
+	/**
+	 * Swings as the player swings: the next of the Mannequin's three attack clips, through the player's own step
+	 * (`ACataclysmPlayerCharacter::PlayTheMannequinsSwing`), leaving the seconds until it connects for the skill to wait
+	 * on. Issue #2811, ruled by the coordinating session on 2026-11-21.
+	 *
+	 * CALLED BY `UCataclysmSkillTemplate::CommitAndBegin`, as the player's is, because this creature starts its blows
+	 * with no cast place (`AttackTarget`, `UseEnemyAbility`): a use given one plays no clip and waits for no swing. So
+	 * not on a movement skill or an aura toggle, by the template's own rulings, and a Strike, a Projectile and a curse
+	 * land when the swing connects. PUBLIC, as the base class declares it.
+	 */
+	virtual void PlayAttackAnimation() override;
+
 	/** The hand its first worn weapon is drawn in, on the body's right-hand socket, as the player's. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Stalker")
 	TObjectPtr<UStaticMeshComponent> RightHandWeapon;
@@ -294,6 +307,16 @@ public:
 protected:
 	/** Draws the weapons `Wardrobe` wears in its two hands. Called once it has put on what it wears. */
 	void DrawWornWeapons(const UCataclysmEquipmentComponent* Wardrobe);
+
+	/**
+	 * The Mannequin's attack clips, cycled in turn as the player's are. Loaded by `ResolveBody`, through
+	 * `ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips`. Issue #2811.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAnimSequence>> AttackAnimations;
+
+	/** Which attack clip comes next. Wraps. */
+	int32 NextAttackAnimation = 0;
 
 	// PROTECTED AND NOT PRIVATE since issue #2688 slice 2a, for `ACataclysmConsumptionDoubleCharacter`, which fills
 	// them from a player's build rather than from an entry.

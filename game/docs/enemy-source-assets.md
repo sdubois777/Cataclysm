@@ -195,21 +195,25 @@ being sped up, and the creature starts an attack it has not finished.
 | Enemy | Interval | Shortest usable attack | Length | Play rate | Verdict |
 |---|:-:|---|:-:|:-:|---|
 | Imp | 0.9 s | `Attack_A_SetA` | 0.80 s | 1.00 | Passes as authored |
+| Corrupted Sentinel | 1.0 s | `Fire_Planted` | 2.40 s | **2.40** | Passes, sped up, under the 2.50 ceiling |
+| Succubus | 1.0 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored, by 0.10 s |
 | Hellhound | 1.1 s | `Scorch_Primary_Fire_Med` | 0.97 s | 1.00 | Passes as authored |
 | Brute | 1.2 s | `Attack_Melee_A` | 0.97 s | 1.00 | Passes as authored, by 0.23 s |
-| Corrupted Sentinel | 2.0 s | `Fire_Planted` | 2.40 s | **1.20** | Passes, sped up |
 | Abyssal Warden | 2.4 s | `PrimaryAttack_LA` | 1.13 s | 1.00 | Passes as authored |
-| Succubus | 2.6 s | `Primary_Attack_Normal` | 0.90 s | 1.00 | Passes as authored |
 | Gatekeeper | 3.0 s | `Swing1_Medium` | 1.13 s | 1.00 | Passes as authored |
 
 **The Corrupted Sentinel is the only one of the seven that needs any compression,
-and 1.20 is the gentlest rate scaling in the project.** Its two rooted firing
-clips are both 2.40 seconds against a 2.0 second interval, and the pack has
-nothing shorter — its unrooted alternatives are 2.80. For comparison the Brute
+and since issue #2808 it needs 2.40.** Its two rooted firing clips are both 2.40
+seconds, and its interval has been 1.0 second since 2026-11-21, when the owner
+asked for its bolt every second ("a basic attack sort of thing"); the
+coordinating session accepted the faster rate the same day. Until then the
+interval was 2.0 and the rate 1.20, the gentlest scaling in the project. The pack
+has nothing shorter — its unrooted alternatives are 2.80. The Succubus's interval
+went from 2.6 to 1.0 on the same day; its 0.90 second clip still fits as authored. For comparison the Brute
 plays its walk at 1.11, its chase at 1.43 and its rip-and-throw montage at 1.67.
 
-**At 1.20 there is no gap between one shot and the next.** 2.40 ÷ 1.20 is exactly
-2.00, so the clip finishes as the next one starts. The pack ships two rooted
+**There is no gap between one shot and the next.** 2.40 ÷ 2.40 is exactly
+1.00, so the clip finishes as the next one starts (2.40 ÷ 1.20 = 2.00 before). The pack ships two rooted
 firing clips, `Fire_Planted` and `Fire_Planted_B`, and alternating them is what
 stops continuous fire reading as one clip looping. The Brute's fifth of a second
 of gap is not a designed margin to match: its clip happens to be 1.0 seconds
@@ -321,7 +325,7 @@ withdrawn figure that leaves no trace gets published again.
 | Creature | Play rate | Strike in play | Damage lands at | Gap |
 |---|:-:|:-:|:-:|---|
 | Gatekeeper | 1.00, after waiting 0.689 s | 0.971 s | 0.971 s, the wind-up's end | **none** |
-| Succubus | 1.00, after waiting 1.144 s | 1.300 s | 1.300 s, the wind-up's end | **none** |
+| Succubus | 1.00, after waiting 0.344 s | 0.500 s | 0.500 s, the quick cast's end (1.300 s until issue #2808) | **none** |
 | Brute | 1.00 | 0.331 s | 0.331 s, the damage waits for the swing | **none** |
 | Imp | 1.00 | 0.242 to 0.308 s | the drawn swipe's own strike; 0.276 s for B and C | **none** for A, D and E; B and C are not measured |
 | Abyssal Warden | 1.00 | 0.168 to 0.176 s | 0.176 s, the left swing | **none**, at the left swing |
@@ -614,8 +618,8 @@ asset and every one matched what was written here on 2026-08-07, except
 | `Idle_Planted` | 0.03 | Rooted idle. **A single pose, not a loop** — one frame at 30 fps, the same shape as Rampage's `Ability_GroundSmash_Loop` |
 | `PlantedExit` | 0.50 | Unroots |
 | `PlantedIntro` | 0.63 | Roots itself in place |
-| `Fire_Planted` | 2.40 | Rooted attack. Played at **1.20** to fit the 2.0 s interval. #369 |
-| `Fire_Planted_B` | 2.40 | Second rooted attack. Same length, so the same 1.20 |
+| `Fire_Planted` | 2.40 | Rooted attack. Played at **2.40** to fit the 1.0 s interval (1.20 to fit 2.0 s until issue #2808). #369 |
+| `Fire_Planted_B` | 2.40 | Second rooted attack. Same length, so the same 2.40 |
 | `MeleeAttack_A` | 2.40 | Close-range fallback |
 | `Fire_A`, `Fire_B`, `Fire_C` | 2.80 | Unrooted, slower still. Would need 1.40 |
 
@@ -894,7 +898,7 @@ material slots. Half its height is 90.4 cm, which is the capsule half-height
 
 | Animation | Length | What plays it |
 |---|:-:|---|
-| `Primary_Attack_Normal` | 0.9000 | Soulfire's wind-up. Played as authored, so the creature holds the last pose for 0.4 s of the 1.3 s telegraph. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
+| `Primary_Attack_Normal` | 0.9000 | Soulfire's cast. Played as authored, started 0.344 s into the 0.5 s quick cast so its release at 0.156 s comes as the bolt is fired (issue [#2808](https://github.com/sdubois777/Cataclysm/issues/2808); it was a 1.3 s telegraph until then). Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
 | `Cast` | 1.1333 | Wither the Living. **A different clip from the attack on purpose**: the design's counter to the curse is interrupting it, and a player cannot interrupt what they cannot tell apart from an ordinary attack |
 | `Idle_Relaxed` | 42.3333 | Standing. **The longest idle in the project by four times**, against the Hellhound's 10.0 |
 | `Jog_Fwd` | 1.8000 | Walking, at a play rate of 350 / 321.0 = 1.090 |
@@ -904,7 +908,7 @@ material slots. Half its height is 90.4 cm, which is the capsule half-height
 
 | Animation | Length | Why not |
 |---|:-:|---|
-| `Primary_Attack_Fast_V1` | 0.6000 | Would leave 0.7 s of the 1.3 s telegraph with the creature holding a pose |
+| `Primary_Attack_Fast_V1` | 0.6000 | Would have left 0.7 s of the 1.3 s telegraph Soulfire had until issue #2808 with the creature holding a pose |
 | `Primary_Attack_Slow` | 1.5000 | Would fill the telegraph almost exactly at a play rate of 1.1538, and is the **only** primary attack in the pack that ships a separate recovery clip. Nothing here plays a recovery. Issue [#767](https://github.com/sdubois777/Cataclysm/issues/767) |
 | `Primary_Attack_Slow_Recovery` | 1.3333 | The recovery that clip needs |
 | `Idle_Straight` | 7.5000 | The alternative idle. `Idle_Pose`, `Idle_Additive` and `Idle_Facial` are all 7.5000 and are a pose and two additive layers rather than something to loop |

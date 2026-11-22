@@ -446,8 +446,8 @@ bool FCataclysmLobMinimumEliteSentinelTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmLobMinimumTest;
 
-	// NOTHING TO SPEND: Brimstone Mortar comes first in its list. Refused, it falls to Siege Bolt, whose lane is not a
-	// circle.
+	// NOTHING TO SPEND: Brimstone Mortar comes first in its list. Refused, it falls to Siege Bolt, a quick cast that
+	// draws no marker at all since issue #2808.
 	return CheckTheLobNeverMarksItsOwnBody<ACataclysmCorruptedSentinelCharacter>(*this, TEXT("Corrupted Sentinel"),
 		TEXT("Brimstone Mortar"), 1, ACataclysmCorruptedSentinelCharacter::BrimstoneMortarAbility, INDEX_NONE);
 }

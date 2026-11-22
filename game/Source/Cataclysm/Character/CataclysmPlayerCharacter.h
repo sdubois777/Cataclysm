@@ -9,6 +9,7 @@
 #include "Character/CataclysmHitLog.h"
 #include "CataclysmPlayerCharacter.generated.h"
 
+class UAbilitySystemComponent;
 class UAnimSequence;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
@@ -599,6 +600,34 @@ public:
 	static void DrawWeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
 								   UStaticMeshComponent* RightHand, UStaticMeshComponent* LeftHand,
 								   FName& OutRightBase, FName& OutLeftBase);
+
+	//~ The player's swing, shared with the creatures that copy a player. Issue #2811.
+	//
+	// THE CORRUPTED STALKER AND THE WORN RESIDUE DOUBLE SWING AS THE PLAYER SWINGS, ruled by the coordinating session on
+	// 2026-11-21: these two are the player's own steps, moved out of `ResolveBody` and `PlayAttackAnimation` so that
+	// the player and its copies run the same code and cannot drift. THE PLAYER'S BEHAVIOUR IS UNCHANGED: it calls them
+	// at the same points, and keeps its own warning about missing clips.
+
+	/**
+	 * Loads the Mannequin's three attack clips into `OutClips`, in `AttackAnimationNames` order, DROPPING one that did
+	 * not load: the clips are cycled in order, so a missing one is left out of the cycle rather than kept as a swing
+	 * that plays nothing.
+	 *
+	 * @return how many loaded
+	 */
+	static int32 LoadTheMannequinsAttackClips(TArray<TObjectPtr<UAnimSequence>>& OutClips);
+
+	/**
+	 * Plays the next of `Clips` into `MeshComponent`'s animation Blueprint slot `AttackSlotName`, at a rate fitted to
+	 * the swing interval `Abilities` gives (never slower than authored, at most `MaximumAttackPlayRate`), and moves
+	 * `InOutNext` on. See `PlayAttackAnimation` for why each.
+	 *
+	 * @return the seconds until the swing connects, which the caller stores as its `SwingConnectsInSeconds`; nought
+	 *         when nothing played (no clips, no animation Blueprint, a null clip or one of no length), which means the
+	 *         blow lands now
+	 */
+	static float PlayTheMannequinsSwing(USkeletalMeshComponent* MeshComponent, const UAbilitySystemComponent* Abilities,
+										const TArray<TObjectPtr<UAnimSequence>>& Clips, int32& InOutNext);
 
 	/**
 	 * Swings when the character uses any skill, including the basic attack.

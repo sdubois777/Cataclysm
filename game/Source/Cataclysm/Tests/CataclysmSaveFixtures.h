@@ -256,6 +256,43 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What `Migrate_12_to_13` writes into a run file written before version 13, and so what a test that runs an older
+	 * run file through the chain adds before comparing: an empty `Building` on every city and a `BuildDaysLeft` of 0 on
+	 * every upgrade it holds. Issue #2825, 2026-11-21. THE RUN RECORD'S 13. ONE COPY, beside the version 12 one and for
+	 * the same callers.
+	 */
+	inline void AddTheRunsVersion13Defaults(FJsonObject& Expected)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (!Expected.TryGetArrayField(TEXT("Cities"), Cities) || !Cities)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+		{
+			const TSharedPtr<FJsonObject>* City = nullptr;
+			if (!CityEntry.IsValid() || !CityEntry->TryGetObject(City) || !City || !City->IsValid())
+			{
+				continue;
+			}
+			(*City)->SetArrayField(TEXT("Building"), TArray<TSharedPtr<FJsonValue>>());
+			const TArray<TSharedPtr<FJsonValue>>* Upgrades = nullptr;
+			if (!(*City)->TryGetArrayField(TEXT("Upgrades"), Upgrades) || !Upgrades)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& UpgradeEntry : *Upgrades)
+			{
+				const TSharedPtr<FJsonObject>* Upgrade = nullptr;
+				if (UpgradeEntry.IsValid() && UpgradeEntry->TryGetObject(Upgrade) && Upgrade && Upgrade->IsValid())
+				{
+					(*Upgrade)->SetNumberField(TEXT("BuildDaysLeft"), 0);
+				}
+			}
+		}
+	}
+
+	/**
 	 * What `Migrate_3_to_4` writes into an account file written before version 4, and so what the account record
 	 * writes back for one: an empty empire upgrade tree, `"EmpireTree": { "Nodes": [] }`. Issue #2741 slice 1b,
 	 * 2026-11-18. ONE COPY, for every test that runs an older account file through the whole chain.

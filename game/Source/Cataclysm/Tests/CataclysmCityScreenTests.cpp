@@ -738,14 +738,16 @@ bool FCataclysmCityScreenClickBuysTest::RunTest(const FString& Parameters)
 
 	Screen->ClickOfferForTests(Wanted);
 
+	// ON THE CITY'S BUILD LIST, since issue #2825: a purchase takes days to
+	// build, so the slot is spent now and the upgrade is finished later.
 	if (!TestEqual(TEXT("pressing it spends a slot"),
-				   Run->Map->Find(0)->Upgrades.Num(), 1))
+				   Run->Map->FreeUpgradeSlots(0), UCataclysmCityUpgradeRules::SlotsNormally - 1))
 	{
 		return false;
 	}
 
-	TestTrue(TEXT("on the upgrade that was pressed"),
-			 Run->Map->Find(0)->HasUpgrade(Wanted));
+	TestTrue(TEXT("on the upgrade that was pressed, now being built"),
+			 Run->Map->Find(0)->IsBuilding(Wanted));
 
 	int64 Left = -1;
 	UCataclysmGameInstance::GoldHeldBy(World, Left);
@@ -758,7 +760,7 @@ bool FCataclysmCityScreenClickBuysTest::RunTest(const FString& Parameters)
 	Screen->ClickOfferForTests(Wanted);
 
 	TestEqual(TEXT("no second slot was spent"),
-			  Run->Map->Find(0)->Upgrades.Num(), 1);
+			  Run->Map->FreeUpgradeSlots(0), UCataclysmCityUpgradeRules::SlotsNormally - 1);
 
 	return true;
 }

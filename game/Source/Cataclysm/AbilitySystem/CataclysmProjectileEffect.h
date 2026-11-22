@@ -16,6 +16,26 @@ class ACataclysmProjectile;
  * dereferences the result has to include NiagaraComponent.h itself.
  */
 class UNiagaraComponent;
+class UNiagaraSystem;
+
+/**
+ * How one projectile's effect is drawn: what `UCataclysmProjectileEffect::AttachTo` sets on it, worked out by
+ * `UCataclysmProjectileEffect::LookFor` so a test can read it without a rendering device. Issue #2808.
+ */
+struct CATACLYSM_API FCataclysmProjectileLook
+{
+	/** `User.Scale`: the radius in metres the sprites are sized from. */
+	float Scale = 0.0f;
+
+	/** What the damage type's primary colour is multiplied by. Above one, the additive core and trail glow. */
+	float ColourMultiplier = 1.0f;
+
+	/** What the system's own `User.Intensity` default is multiplied by. It drives the trail's spawn rate. */
+	float IntensityMultiplier = 1.0f;
+
+	/** Whether the effect type's scalability may refuse or kill it: distance, view, instance count, budget. */
+	bool bMayBeCulled = true;
+};
 
 /**
  * What a projectile looks like while it is in the air.
@@ -120,6 +140,47 @@ public:
 	 * NAME_None means "draw the authored default", not "something went wrong".
 	 */
 	static FName DamageTypeFor(const ACataclysmProjectile* Projectile);
+
+	/**
+	 * How a projectile's effect is drawn. Issue #2808, the owner's requirement of 2026-11-21: "Make sure those
+	 * attacks can actually be seen. Like a flaming fireball that's obvious to the player".
+	 *
+	 * AN ORDINARY PROJECTILE is drawn as it always was: `ScaleFor` its body, the colour as the table gives it, the
+	 * system's own intensity.
+	 *
+	 * A QUICK CAST (`ACataclysmProjectile::bQuickCast`) has no marker on the ground, so the bolt in flight is the
+	 * player's only warning. It is drawn at its blast radius in metres (0.5 for both designed quick casts, against
+	 * 0.4 for the standard 40 cm body), by the rule that a projectile's look is sized to what it hits with; with
+	 * its colour multiplied by `QuickCastColourMultiplier`; and with `QuickCastIntensityMultiplier` times the
+	 * system's own trail. All three are judgements, set 2026-11-21, to be judged in play.
+	 *
+	 * NOT CULLED WHEN A HOSTILE FIRED IT (`MayBeCulled`), whatever it is.
+	 */
+	static FCataclysmProjectileLook LookFor(const ACataclysmProjectile* Projectile);
+
+	/** A quick cast's colour is multiplied by this. A judgement; see `LookFor`. */
+	static constexpr float QuickCastColourMultiplier = 4.0f;
+
+	/** A quick cast's trail spawns this many times the system's own default. A judgement; see `LookFor`. */
+	static constexpr float QuickCastIntensityMultiplier = 3.0f;
+
+	/**
+	 * Whether an effect something drew may be culled by its effect type: true unless a creature hostile to the
+	 * player drew it. Issue #2808.
+	 *
+	 * WHY A HOSTILE'S IS EXEMPT. `FXT_Enemy` culls when not rendered and by the view frustum, with "Kill and
+	 * Clear", and allows twenty instances of one system. So a Corrupted Sentinel standing off screen -- its reach
+	 * is 14 metres -- fired a bolt whose effect was refused at spawn, and the bolt crossed the screen with nothing
+	 * drawn while still dealing its damage. That was a bug before it was a quick cast; with no marker on the ground
+	 * it would have been the only warning, and missing. The player's own effects keep the budget, which is what it
+	 * was measured for (docs/Niagara_Conventions.md, issue #547).
+	 *
+	 * A NULL DRAWER keeps the budget: nothing says it is hostile.
+	 */
+	static bool MayBeCulled(const AActor* Drawer);
+
+	/** The system's own default for `User.Intensity`, or one when it has none. Read from the asset, never guessed. */
+	static float DefaultIntensityOf(const UNiagaraSystem* System);
 
 	/**
 	 * Gives a projectile its head and its trail, and colours them.

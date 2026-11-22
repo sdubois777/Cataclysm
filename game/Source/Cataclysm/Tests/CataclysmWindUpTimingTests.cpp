@@ -11,25 +11,30 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Engine/World.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Misc/ScopeExit.h"
 
 /**
  * Tests for when a wound-up ability actually lands.
  *
- * WHAT THESE GUARD. Issue #413. An ability used to land on "the first thinking
- * pass whose clock has gone past the deadline", which sounds exact and is not. A
- * timer callback runs on the first FRAME past its deadline, so every pass carries
- * up to a frame of overshoot, and the overshoot on the pass that starts a wind-up
- * is not the overshoot on the pass that should land it. Where a telegraph sits on
- * a pass boundary -- which is exactly where the Brute's rock throw's 1.000 second
- * telegraph sits against a 0.250 second pass -- that difference of a few
- * milliseconds decided a whole quarter of a second, roughly half and half.
+ * AT ITS OWN LENGTH, SINCE ISSUE #2808. The owner's choice of 2026-11-21: "each
+ * one lands exactly on time instead of waiting up to a quarter second extra".
+ * `ACataclysmEnemyCharacter::Tick` asks `ACataclysmEnemyController::
+ * LandWindUpIfDue` every frame, so an attack lands on the first frame at or
+ * after its wind-up's length.
  *
- * WHY NOTHING CAUGHT IT. Every other test in this project moves the world clock
- * by hand in one jump and then calls Think, so the clock is always far past the
- * deadline and the coin toss never happens. These tests deliberately do the
- * opposite: they never move the clock at all, so the only thing that can land an
- * ability is the pass count.
+ * WHAT CAME BEFORE, AND WHY IT WAS REVERSED. Issue #413 found that landing on
+ * "the first thinking pass whose clock has gone past the deadline" was a coin
+ * toss for a telegraph sitting exactly on a quarter-second pass boundary, and
+ * fixed it by counting whole passes, rounded up: the stomp's 1.4 second
+ * telegraph landed at 1.5. The coin toss came from checking four times a
+ * second. Checked every frame, the lateness is at most one frame whatever the
+ * length, so there is nothing to count and nothing to round.
+ *
+ * DETERMINISTIC IN A TEST, WHICH IS WHAT #413 ALSO NEEDED. No automation test
+ * ticks a world, so these move the clock by hand and call `LandWindUpIfDue` as
+ * the frame would. Whether it lands is then a comparison of two numbers the
+ * test set, and the same every run.
  */
 
 namespace CataclysmWindUpTimingTest
@@ -57,155 +62,157 @@ namespace CataclysmWindUpTimingTest
 		}
 		return Target;
 	}
+
+	/** A world clock moved by hand. See CataclysmEnemyBehaviourTests.cpp. */
+	static void AdvanceWorldClock(UWorld* World, double Seconds)
+	{
+		World->TimeSeconds += Seconds;
+	}
+
+	/** A Brute, something for it to attack at `TargetMetres`, and its brain. */
+	struct FBruteAndBrain
+	{
+		ACataclysmBruteCharacter* Brute = nullptr;
+		ACataclysmEnemyCharacter* Target = nullptr;
+		ACataclysmEnemyController* Brain = nullptr;
+	};
+
+	static FBruteAndBrain SpawnBruteFacing(UWorld* World, float TargetMetres)
+	{
+		FBruteAndBrain Out;
+		Out.Brute = World->SpawnActor<ACataclysmBruteCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		Out.Target = SpawnTarget(World, FVector(TargetMetres * M, 0.0f, 0.0f));
+		Out.Brain = Out.Brute ? Cast<ACataclysmEnemyController>(Out.Brute->GetController()) : nullptr;
+		return Out;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmWindUpTakesTheCountedNumberOfPasses,
-	"Cataclysm.AI.AWindUpTakesTheSameNumberOfPassesEveryTime",
+	FCataclysmWindUpLandsAtItsOwnLength,
+	"Cataclysm.AI.AWindUpLandsAtItsOwnLengthNotOnTheNextThinkingPass",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmWindUpTakesTheCountedNumberOfPasses::RunTest(const FString&)
+bool FCataclysmWindUpLandsAtItsOwnLength::RunTest(const FString&)
 {
 	using namespace CataclysmWindUpTimingTest;
 
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("world"), World))
+	// THE TWO CASES ISSUE #413 WAS ABOUT. The stomp's 1.4 seconds sits between two
+	// thinking passes and landed on the later, at 1.5. The rock throw's 1.0 sits
+	// exactly on one and landed at 1.00 or 1.25 by a coin toss.
+	struct FCase
 	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		const TCHAR* What;
+		float TargetMetres;
+		int32 Ability;
+		float WindUp;
+	};
+	const FCase Cases[] = {
+		// Inside the stomp's 3.5 metre ring.
+		{TEXT("the stomp"), 1.0f, ACataclysmBruteCharacter::StompAbility,
+			ACataclysmBruteCharacter::StompWindUpSeconds},
+		// Past the stomp's ring, inside the throw's 10 metres.
+		{TEXT("the rock throw"), 7.0f, ACataclysmBruteCharacter::RockThrowAbility,
+			ACataclysmBruteCharacter::RockThrowWindUpSeconds},
+	};
 
-	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
-		FVector::ZeroVector, FRotator::ZeroRotator);
-	// Out past the stomp's 3.5 m ring and inside the throw's 10 m range, so the
-	// rock throw is the ability it chooses. That is the one whose telegraph sits
-	// on a pass boundary.
-	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(7.0f * M, 0.0f, 0.0f));
-	if (!TestNotNull(TEXT("brute"), Brute)
-		|| !TestNotNull(TEXT("something for it to attack"), Target))
+	for (const FCase& Case : Cases)
 	{
-		return false;
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("world"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		const FBruteAndBrain Spawned = SpawnBruteFacing(World, Case.TargetMetres);
+		if (!TestNotNull(TEXT("brute"), Spawned.Brute) || !TestNotNull(TEXT("its target"), Spawned.Target)
+			|| !TestNotNull(TEXT("its brain"), Spawned.Brain))
+		{
+			return false;
+		}
+		ACataclysmEnemyController* Brain = Spawned.Brain;
+
+		if (!TestEqual(FString::Printf(TEXT("it begins %s"), Case.What),
+				static_cast<int32>(Brain->Think()), static_cast<int32>(ECataclysmBrainAction::WindingUp))
+			|| !TestEqual(FString::Printf(TEXT("and it is %s"), Case.What), Brain->WindingUpAbility, Case.Ability))
+		{
+			return false;
+		}
+
+		// A HUNDREDTH SHORT OF ITS LENGTH: NOT YET. Never early.
+		AdvanceWorldClock(World, Case.WindUp - 0.01);
+		TestFalse(FString::Printf(TEXT("%s has not landed a hundredth of a second short of %.2f s"), Case.What,
+			Case.WindUp), Brain->LandWindUpIfDue());
+		TestEqual(TEXT("so no ability has been used"), Brain->AbilitiesUsed, 0);
+
+		// AT ITS LENGTH: LANDED. Before issue #2808 the stomp was still winding up here, 0.1 s short of its pass.
+		AdvanceWorldClock(World, 0.01);
+		TestTrue(FString::Printf(TEXT("**%s lands at %.2f s, its own length**"), Case.What, Case.WindUp),
+			Brain->LandWindUpIfDue());
+		TestEqual(TEXT("so one ability has been used"), Brain->AbilitiesUsed, 1);
+		TestEqual(TEXT("and the wind-up is over"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+		TestNull(TEXT("and its marker is gone"), Brain->WindUpMarker.Get());
+
+		// AND ASKED AGAIN, NOTHING: one landing per wind-up.
+		TestFalse(TEXT("asked again on the next frame, it lands nothing more"), Brain->LandWindUpIfDue());
+		TestEqual(TEXT("still one"), Brain->AbilitiesUsed, 1);
 	}
-
-	ACataclysmEnemyController* Brain =
-		Cast<ACataclysmEnemyController>(Brute->GetController());
-	if (!TestNotNull(TEXT("the Brute has a controller"), Brain))
-	{
-		return false;
-	}
-
-	// THE CLOCK IS NEVER TOUCHED IN THIS TEST. A world made by UWorld::CreateWorld
-	// is never ticked, so its clock stands still at whatever it was. Every pass
-	// below therefore sees the same time, which is well short of the deadline --
-	// so if the pass count were not doing the work, this ability would never land
-	// at all and the test would fail rather than pass by accident.
-	const float ClockAtStart = World->GetTimeSeconds();
-
-	if (!TestEqual(TEXT("it begins a rock throw"),
-		static_cast<int32>(Brain->Think()),
-		static_cast<int32>(ECataclysmBrainAction::WindingUp)))
-	{
-		return false;
-	}
-
-	const int32 Expected = ACataclysmEnemyController::PassesForWindUp(
-		ACataclysmBruteCharacter::RockThrowWindUpSeconds);
-
-	TestEqual(TEXT("and counts the passes its telegraph is worth"),
-		Brain->WindUpPassesLeft, Expected);
-	TestEqual(TEXT("which for a one second telegraph and a quarter second pass is four"),
-		Expected, 4);
-
-	// One short of the count. Every one of these must still be winding up: an
-	// ability that landed here would be landing before its telegraph was over.
-	for (int32 Pass = 1; Pass < Expected; ++Pass)
-	{
-		TestEqual(FString::Printf(
-			TEXT("pass %d of %d is still winding up"), Pass, Expected),
-			static_cast<int32>(Brain->Think()),
-			static_cast<int32>(ECataclysmBrainAction::WindingUp));
-		TestEqual(FString::Printf(TEXT("and no ability has landed by pass %d"), Pass),
-			Brain->AbilitiesUsed, 0);
-	}
-
-	// The counted pass. This is the one the old code tossed a coin over.
-	Brain->Think();
-
-	TestEqual(TEXT("the ability lands on exactly the counted pass"),
-		Brain->AbilitiesUsed, 1);
-	TestEqual(TEXT("and the wind-up is over"), Brain->WindingUpAbility, -1);
-	TestEqual(TEXT("and its pass count is cleared"), Brain->WindUpPassesLeft, 0);
-
-	TestEqual(TEXT("with the world clock never having moved"),
-		static_cast<double>(World->GetTimeSeconds()),
-		static_cast<double>(ClockAtStart));
-
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmWindUpPassCountRoundsUp,
-	"Cataclysm.AI.ATelegraphIsRoundedUpToAWholePassNeverDown",
+	FCataclysmWindUpIsDueNeitherEarlyNorLate,
+	"Cataclysm.AI.AWindUpIsDueAtItsLengthNeverEarlierAtAnyLengthOrClock",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmWindUpPassCountRoundsUp::RunTest(const FString&)
+bool FCataclysmWindUpIsDueNeitherEarlyNorLate::RunTest(const FString&)
 {
-	const float Pass = ACataclysmEnemyController::ThinkIntervalSeconds;
+	using Brain_t = ACataclysmEnemyController;
 
-	// THE PLAYER'S GUARANTEE IS A FLOOR, NOT AN APPROXIMATION. The design states
-	// a telegraph as the time the player has to walk clear, so an attack must
-	// never land sooner than it. Rounding rather than taking the ceiling would
-	// land the Brute's 1.4 second stomp at 1.25.
-	TestEqual(TEXT("exactly one pass is one pass"),
-		ACataclysmEnemyController::PassesForWindUp(Pass), 1);
-	TestEqual(TEXT("a hair over one pass is two"),
-		ACataclysmEnemyController::PassesForWindUp(Pass + 0.001f), 2);
-	TestEqual(TEXT("a hair under two passes is still two"),
-		ACataclysmEnemyController::PassesForWindUp(Pass * 2.0f - 0.001f), 2);
+	// AS A PROPERTY RATHER THAN AS EXAMPLES: every wind-up from a hundredth of a second to three seconds, begun at a
+	// clock of zero, of a minute and of an hour, is due at its length and not two milliseconds before it. The hour is
+	// there because a float deadline loses precision as the clock grows; at an hour it is still under a millisecond.
+	TestTrue(TEXT("the tolerance is a millisecond, far under a frame"),
+		Brain_t::WindUpLandingToleranceSeconds <= 0.001f);
 
-	// The two telegraphs the game actually has.
-	TestEqual(TEXT("the rock throw's one second telegraph is four passes"),
-		ACataclysmEnemyController::PassesForWindUp(
-			ACataclysmBruteCharacter::RockThrowWindUpSeconds), 4);
-	TestEqual(TEXT("the stomp's 1.4 second telegraph is six, so it lands at 1.5"),
-		ACataclysmEnemyController::PassesForWindUp(
-			ACataclysmBruteCharacter::StompWindUpSeconds), 6);
-
-	// A very short telegraph is still committed to for a pass, rather than
-	// landing on the pass that began it.
-	TestEqual(TEXT("a telegraph shorter than a pass still takes one"),
-		ACataclysmEnemyController::PassesForWindUp(0.01f), 1);
-
-	// No telegraph at all is answered explicitly rather than as "already over".
-	TestEqual(TEXT("no telegraph is no passes"),
-		ACataclysmEnemyController::PassesForWindUp(0.0f), 0);
-
-	// AND NO ROUNDED TELEGRAPH IS EVER SHORTER THAN THE ONE IT STANDS FOR. Said
-	// as the property rather than as six examples, so a change to the pass
-	// length is covered too.
-	for (int32 Hundredths = 1; Hundredths <= 300; ++Hundredths)
+	const float Starts[] = {0.0f, 60.0f, 3600.0f};
+	for (const float Start : Starts)
 	{
-		const float WindUp = static_cast<float>(Hundredths) / 100.0f;
-		const float Effective =
-			ACataclysmEnemyController::PassesForWindUp(WindUp) * Pass;
-		if (Effective + UE_KINDA_SMALL_NUMBER < WindUp)
+		for (int32 Hundredths = 1; Hundredths <= 300; ++Hundredths)
 		{
-			AddError(FString::Printf(
-				TEXT("a telegraph of %.2f s lands after %.2f s, which is sooner "
-					 "than the player was told they had"), WindUp, Effective));
-			return false;
+			const float WindUp = static_cast<float>(Hundredths) / 100.0f;
+			const float LandsAt = Start + WindUp;
+			if (Brain_t::IsWindUpDue(Start + WindUp - 0.002f, LandsAt))
+			{
+				AddError(FString::Printf(TEXT("a %.2f s wind-up begun at %.0f s is due two milliseconds early"),
+					WindUp, Start));
+				return false;
+			}
+			if (!Brain_t::IsWindUpDue(LandsAt, LandsAt))
+			{
+				AddError(FString::Printf(TEXT("a %.2f s wind-up begun at %.0f s is not due at its own length"),
+					WindUp, Start));
+				return false;
+			}
 		}
 	}
 
+	// THE CONTROL: the rounding issue #2808 removed. The stomp's 1.4 seconds, rounded up to a quarter-second pass,
+	// was 1.5; it is due at 1.4 and that is a tenth of a second sooner.
+	const float Stomp = ACataclysmBruteCharacter::StompWindUpSeconds;
+	const float OldLanding =
+		FMath::CeilToFloat(Stomp / Brain_t::ThinkIntervalSeconds) * Brain_t::ThinkIntervalSeconds;
+	TestEqual(TEXT("the stomp used to land on the pass at 1.5 s"), OldLanding, 1.5f, 0.0001f);
+	TestTrue(TEXT("**and is due at 1.4 s, before that pass**"), Brain_t::IsWindUpDue(Stomp, Stomp));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCataclysmTheMarkerLastsAsLongAsTheWindUpReallyDoes,
-	"Cataclysm.Telegraph.TheMarkerIsShownForAsLongAsTheAttackReallyTakes",
+	FCataclysmWindUpNotLandedByTheFrameWhenStunned,
+	"Cataclysm.AI.TheFrameDoesNotLandAWindUpForACreatureThatCannotAct",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmTheMarkerLastsAsLongAsTheWindUpReallyDoes::RunTest(const FString&)
+bool FCataclysmWindUpNotLandedByTheFrameWhenStunned::RunTest(const FString&)
 {
 	using namespace CataclysmWindUpTimingTest;
 
@@ -216,28 +223,65 @@ bool FCataclysmTheMarkerLastsAsLongAsTheWindUpReallyDoes::RunTest(const FString&
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
-		FVector::ZeroVector, FRotator::ZeroRotator);
-	// Inside the stomp's ring. The stomp is the ability whose telegraph is NOT a
-	// whole number of passes -- 1.4 seconds against a 0.25 second pass -- so it
-	// is the one whose marker and landing could come apart.
-	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(1.0f * M, 0.0f, 0.0f));
-	if (!TestNotNull(TEXT("brute"), Brute)
-		|| !TestNotNull(TEXT("something for it to attack"), Target))
+	const FBruteAndBrain Spawned = SpawnBruteFacing(World, 1.0f);
+	if (!TestNotNull(TEXT("brute"), Spawned.Brute) || !TestNotNull(TEXT("its target"), Spawned.Target)
+		|| !TestNotNull(TEXT("its brain"), Spawned.Brain))
+	{
+		return false;
+	}
+	ACataclysmEnemyController* Brain = Spawned.Brain;
+
+	if (!TestEqual(TEXT("it begins a stomp"), static_cast<int32>(Brain->Think()),
+			static_cast<int32>(ECataclysmBrainAction::WindingUp)))
 	{
 		return false;
 	}
 
-	ACataclysmEnemyController* Brain =
-		Cast<ACataclysmEnemyController>(Brute->GetController());
-	if (!TestNotNull(TEXT("the Brute has a controller"), Brain))
+	// STUNNED HALF A SECOND IN, then the clock passes the stomp's length with no thinking pass between: in play, the
+	// frames come before the next pass. The frame must not land what the creature can no longer make.
+	AdvanceWorldClock(World, 0.5);
+	if (!TestTrue(TEXT("it is stunned"), UCataclysmSkillEffects::ApplyStun(Spawned.Target, Spawned.Brute,
+			/*DurationSeconds=*/1.5f, /*DamageDealt=*/1000.0f, /*bStunIsDesigned=*/true)))
 	{
 		return false;
 	}
+	AdvanceWorldClock(World, ACataclysmBruteCharacter::StompWindUpSeconds);
+	TestFalse(TEXT("**the frame does not land the stomp of a stunned Brute**"), Brain->LandWindUpIfDue());
+	TestEqual(TEXT("so no ability has been used"), Brain->AbilitiesUsed, 0);
 
-	if (!TestEqual(TEXT("it begins a stomp"),
-		static_cast<int32>(Brain->Think()),
-		static_cast<int32>(ECataclysmBrainAction::WindingUp)))
+	// AND THE THINKING PASS ABANDONS IT, as it always has.
+	TestEqual(TEXT("the next pass reports it stunned"), static_cast<int32>(Brain->Think()),
+		static_cast<int32>(ECataclysmBrainAction::Stunned));
+	TestEqual(TEXT("and the wind-up is abandoned"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmTheMarkerOutlastsTheLanding,
+	"Cataclysm.Telegraph.TheMarkerIsShownUntilTheAttackLandsAndNoLonger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheMarkerOutlastsTheLanding::RunTest(const FString&)
+{
+	using namespace CataclysmWindUpTimingTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FBruteAndBrain Spawned = SpawnBruteFacing(World, 1.0f);
+	if (!TestNotNull(TEXT("brute"), Spawned.Brute) || !TestNotNull(TEXT("its target"), Spawned.Target)
+		|| !TestNotNull(TEXT("its brain"), Spawned.Brain))
+	{
+		return false;
+	}
+	ACataclysmEnemyController* Brain = Spawned.Brain;
+
+	if (!TestEqual(TEXT("it begins a stomp"), static_cast<int32>(Brain->Think()),
+			static_cast<int32>(ECataclysmBrainAction::WindingUp)))
 	{
 		return false;
 	}
@@ -248,26 +292,19 @@ bool FCataclysmTheMarkerLastsAsLongAsTheWindUpReallyDoes::RunTest(const FString&
 		return false;
 	}
 
-	// WHAT WENT WRONG. The marker carries its own lifespan as a backstop, and it
-	// was given the DESIGNED telegraph of 1.4 seconds. An ability lands on a
-	// whole thinking pass, so the stomp really lands at 1.5. The marker took
-	// itself off the floor a tenth of a second before the ring it warned about
-	// went off, which is the one moment it must not do that.
-	const float Designed = ACataclysmBruteCharacter::StompWindUpSeconds;
-	const float Real = ACataclysmEnemyController::PassesForWindUp(Designed)
-		* ACataclysmEnemyController::ThinkIntervalSeconds;
+	// THE MARKER'S OWN LIFESPAN IS A BACKSTOP. The landing removes it, up to a frame after the wind-up's length, so a
+	// lifespan of exactly the length could take it off the floor a frame early -- the fault issue #413 found when the
+	// landing could come a tenth of a second late. It is the length plus a thinking interval.
+	const float Stomp = ACataclysmBruteCharacter::StompWindUpSeconds;
+	TestTrue(FString::Printf(TEXT("the marker would stay %.2f s, longer than the %.2f s stomp"),
+		Marker->GetLifeSpan(), Stomp), Marker->GetLifeSpan() > Stomp);
+	TestEqual(TEXT("by exactly a thinking interval"), Marker->GetLifeSpan(),
+		Stomp + ACataclysmEnemyController::ThinkIntervalSeconds, 0.0001f);
 
-	TestTrue(FString::Printf(
-		TEXT("the stomp really takes longer than its designed %.2f s (%.2f s), "
-			 "which is what makes this test worth having"), Designed, Real),
-		Real > Designed);
-
-	TestEqual(TEXT("and the marker is shown for exactly that long"),
-		Marker->GetLifeSpan(), Real);
-
-	TestTrue(TEXT("so it is still on the floor when the attack lands"),
-		Marker->GetLifeSpan() >= Real);
-
+	// AND THE LANDING TAKES IT AWAY, so it is never on the floor after the ring went off.
+	AdvanceWorldClock(World, Stomp);
+	TestTrue(TEXT("the stomp lands"), Brain->LandWindUpIfDue());
+	TestNull(TEXT("**and its marker goes with it**"), Brain->WindUpMarker.Get());
 	return true;
 }
 

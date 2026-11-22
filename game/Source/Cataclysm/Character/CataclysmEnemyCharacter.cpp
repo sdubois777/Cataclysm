@@ -693,6 +693,14 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 	// and `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
 	// is what fails if this line goes, because no automation test ticks a world.
 	LandPendingBasicAttack();
+
+	// AND A WIND-UP LANDS HERE, ON THE FRAME IT IS DUE, rather than on the
+	// brain's next quarter-second thinking pass. Issue #2808. The same test
+	// file pins this line, for the same reason.
+	if (ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(GetController()))
+	{
+		Brain->LandWindUpIfDue();
+	}
 }
 
 void ACataclysmEnemyCharacter::NoteHeldBy(const AActor* Holder, float UntilSeconds,

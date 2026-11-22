@@ -342,6 +342,13 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SurgeDungeons = 0;
+
+	/**
+	 * The cities on which a city upgrade was finished today, one entry per upgrade. Issue #2825: the capital's account
+	 * of the days away names them. Additive only, as `Hits` is; the model has no city upgrades.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> UpgradesFinishedOn;
 };
 
 /**
@@ -559,10 +566,30 @@ public:
 	 * Whether a Siege stands on that city.
 	 *
 	 * WHAT IT IS FOR. A besieged city cannot buy an upgrade. See
-	 * `ECataclysmCityUpgradeResult::CityIsBesieged`.
+	 * `ECataclysmCityUpgradeResult::CityIsBesieged`. AND IT COUNTS NO DAY OF THE
+	 * UPGRADE IT IS BUILDING, since issue #2825 (`AdvanceCityBuilds`).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsBesieged(int32 CityId) const;
+
+	/**
+	 * The upgrade that city is building, or null when it is building none. Issue #2825. A city builds one at a time.
+	 */
+	const FCataclysmCityUpgrade* BuildOn(int32 CityId) const;
+
+	/**
+	 * Whether the build on that city counts no days now: the city has fallen, or a Siege stands on it. False when it is
+	 * building nothing. Issue #2825, ruled 2026-11-21 (the Siege by the owner's ruling of 2026-09-05).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	bool IsBuildPaused(int32 CityId) const;
+
+	/**
+	 * The day the build on that city will be finished if nothing pauses it: today plus its days left. INDEX_NONE when
+	 * it is building nothing or the build is paused, since a paused build has no finishing day to give. Issue #2825.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	int32 BuildReadyDay(int32 CityId) const;
 
 	/** The 25 cities and their lanes. Null until `Begin` runs. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
@@ -1935,27 +1962,34 @@ public:
 	 * upgrade the city already has, and an upgrade whose effect is not built.
 	 * See `ECataclysmCityUpgradeResult`.
 	 *
-	 * IT COSTS GOLD AND IS IMMEDIATE. The price and the gold the character holds
-	 * are passed in, since both belong to the `Cataclysm` module, and a
-	 * character holding less than the price is refused with `NotEnoughGold`.
-	 * THIS DOES NOT TAKE THE GOLD: the balance is not this module's to change.
+	 * IT COSTS GOLD. The price and the gold the character holds are passed in,
+	 * since both belong to the `Cataclysm` module, and a character holding less
+	 * than the price is refused with `NotEnoughGold`. THIS DOES NOT TAKE THE
+	 * GOLD: the balance is not this module's to change.
 	 * `UCataclysmCityUpgradePurchase::Buy` takes it once this answers `Bought`,
 	 * and that is the only caller that charges. Issue #2742's second slice.
-	 * Build days are still zero (`UCataclysmCityUpgradeRules::BuildDays`), and
-	 * this refuses outright if they are raised without the timer being built.
-	 * Issue #1264.
 	 *
-	 * @param Upgrade  what to buy. `UCataclysmCityUpgradeMapping::Make` in the
-	 *                 `Cataclysm` module builds one from a row of
-	 *                 `game/Data/CityUpgrades.csv`.
-	 * @param GoldCost its price at the run's difficulty tier. Nought for a free
-	 *                 one, which is what the empire layer's own tests buy.
-	 * @param GoldHeld the gold the character buying it holds.
+	 * AND IT TAKES DAYS TO BUILD, since issue #2825. With `BuildDays` above
+	 * nought the upgrade goes on the city's build list: its slot is taken now
+	 * and it does nothing until `AdvanceCityBuilds` has counted its days. With
+	 * nought it is finished at once, as every purchase was before issue #2825.
+	 * `UCataclysmCityUpgradePurchase::Buy` passes the tier's days
+	 * (`UCataclysmCityUpgradePurchase::BuildDaysIn`).
+	 *
+	 * @param Upgrade   what to buy. `UCataclysmCityUpgradeMapping::Make` in the
+	 *                  `Cataclysm` module builds one from a row of
+	 *                  `game/Data/CityUpgrades.csv`.
+	 * @param GoldCost  its price at the run's difficulty tier. Nought for a free
+	 *                  one, which is what the empire layer's own tests buy.
+	 * @param GoldHeld  the gold the character buying it holds.
+	 * @param BuildDays the days it takes to build. Nought for one finished at
+	 *                  once, which is what the empire layer's own tests buy, as
+	 *                  they buy free; the empire layer's build tests pass days.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Empire")
 	ECataclysmCityUpgradeResult BuyCityUpgrade(
 		int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost = 0,
-		int64 GoldHeld = 0);
+		int64 GoldHeld = 0, int32 BuildDays = 0);
 
 	/**
 	 * What `BuyCityUpgrade` would answer, without buying anything.
@@ -2265,4 +2299,21 @@ private:
 	 * evenly.
 	 */
 	void RunCityUpgradeIntervals(int32 Today);
+
+	/**
+	 * Counts a day of every city upgrade being built, and finishes each whose days are counted. Issue #2825.
+	 *
+	 * A FALLEN OR BESIEGED CITY COUNTS NO DAY, the coordinating session's ruling of 2026-11-21 (a Siege's by the
+	 * owner's ruling of 2026-09-05 that a Siege "stops any upgrade part way through being built"): the build waits and
+	 * goes on when the city is retaken or the Siege is gone. CALLED BESIDE `RunCityUpgradeIntervals`, BEFORE THE DAY'S
+	 * ASSAULTS, for that function's reason: an upgrade finished today stands against today's bites.
+	 */
+	void AdvanceCityBuilds(int32 Today, FCataclysmDayReport& Report);
+
+	/**
+	 * Finishes a city upgrade on that day: stamps the day, sets an interval's first trigger a full interval later, has
+	 * the map record and apply it, and acts on the dungeons standing on the city for the one effect that does. What a
+	 * purchase did at once before issue #2825; now a purchase with no build days, and the day a build's days run out.
+	 */
+	void CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrade Upgrade, int32 Day);
 };

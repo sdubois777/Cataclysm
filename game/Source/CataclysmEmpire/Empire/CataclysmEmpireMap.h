@@ -622,9 +622,11 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * could be applied from it.
 	 *
 	 * HOW MANY MAY BE HERE is `UCataclysmEmpireMap::UpgradeSlots`, three
-	 * normally and two on Heretic. `UCataclysmEmpireRun::BuyCityUpgrade` is the
-	 * only thing that should add to this, because several upgrades act on the
-	 * dungeons standing on a city and the map does not own those.
+	 * normally and two on Heretic, counted with `Building`. Only
+	 * `UCataclysmEmpireRun::CompleteCityUpgrade` should add to this -- a purchase
+	 * with no build days reaches it at once, and a build the day its days run
+	 * out (issue #2825) -- because several upgrades act on the dungeons standing
+	 * on a city and the map does not own those.
 	 *
 	 * A ONE-TIME UPGRADE STAYS IN THE LIST after it has fired. It has spent its
 	 * slot, and removing it would hand the slot back and let it be bought again.
@@ -632,8 +634,29 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<FCataclysmCityUpgrade> Upgrades;
 
-	/** Whether this city has already bought that upgrade. */
+	/**
+	 * What this city has bought and is still building. Issue #2825, ruled 2026-11-21.
+	 *
+	 * AT MOST ONE: a city builds one upgrade at a time (`ECataclysmCityUpgradeResult::BuildUnderWay`). An array so the
+	 * record holds nothing at all when nothing is building.
+	 *
+	 * A LIST OF ITS OWN AND NOT A FLAG ON `Upgrades`, so that every reader of `Upgrades` -- the effects, the empire
+	 * tree's counts of upgrades held, the dungeon rewards -- sees only finished upgrades and none of them had to
+	 * change. What reads both is the slot count (`UCataclysmEmpireMap::FreeUpgradeSlots`) and the duplicate check
+	 * (`IsBuilding`): an upgrade being built has taken its slot and cannot be bought twice.
+	 *
+	 * IT DOES NOTHING UNTIL IT IS FINISHED. `UCataclysmEmpireRun::AdvanceCityBuilds` takes a day off it for each day
+	 * that passes while this city is neither fallen nor besieged, and at nought moves it to `Upgrades` and applies it.
+	 * RUN RECORD VERSION 13; `Migrate_12_to_13` writes an empty list on every city.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<FCataclysmCityUpgrade> Building;
+
+	/** Whether this city has already bought that upgrade and finished it. */
 	bool HasUpgrade(FName RowName) const;
+
+	/** Whether this city is building that upgrade now. Issue #2825. */
+	bool IsBuilding(FName RowName) const;
 
 	/**
 	 * The total value of every standing upgrade with that effect.
@@ -1200,13 +1223,15 @@ public:
 	 * NOT THE PLACE TO BUY ONE. It makes none of the checks a purchase has to
 	 * make -- it does not look at the slot count, at whether the city has this
 	 * already, or at whether the effect is built.
-	 * `UCataclysmEmpireRun::BuyCityUpgrade` makes all of those and then calls
-	 * this. Buying lives there because several upgrades act on the dungeons
-	 * standing on a city, and this class does not own dungeons.
+	 * `UCataclysmEmpireRun::BuyCityUpgrade` makes all of those, and
+	 * `UCataclysmEmpireRun::CompleteCityUpgrade` calls this when the upgrade is
+	 * finished: at once for one with no build days, or the day its build's days
+	 * run out (issue #2825). Buying lives in the run because several upgrades act
+	 * on the dungeons standing on a city, and this class does not own dungeons.
 	 *
 	 * WHICH EFFECTS ARE APPLIED HERE. The two that raise a maximum and the two
 	 * that restore, because all four change a city's numbers the moment they are
-	 * bought. The two resistances are applied in `Damage` instead, and everything
+	 * finished. The two resistances are applied in `Damage` instead, and everything
 	 * that involves a dungeon or a day is the run's.
 	 *
 	 * A RAISED MAXIMUM RAISES CURRENT DEFENCE BY THE SAME AMOUNT, so a city at
@@ -1221,9 +1246,19 @@ public:
 	bool AddUpgrade(int32 CityId, const FCataclysmCityUpgrade& Upgrade);
 
 	/** How many upgrade slots that city has left, or zero if it does not
-	 *  exist. */
+	 *  exist. AN UPGRADE BEING BUILT HAS TAKEN ITS SLOT, since issue #2825. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	int32 FreeUpgradeSlots(int32 CityId) const;
+
+	/**
+	 * Puts an upgrade on a city's build list, to be finished when its `BuildDaysLeft` have been counted. Issue #2825.
+	 *
+	 * NOT THE PLACE TO BUY ONE, as `AddUpgrade` is not: `UCataclysmEmpireRun::BuyCityUpgrade` makes every check and
+	 * then calls this. It applies nothing; an upgrade being built does nothing.
+	 *
+	 * @return false only when there is no such city.
+	 */
+	bool StartBuild(int32 CityId, const FCataclysmCityUpgrade& Upgrade);
 
 	/**
 	 * A city falls: its defence is gone and its lane opens.

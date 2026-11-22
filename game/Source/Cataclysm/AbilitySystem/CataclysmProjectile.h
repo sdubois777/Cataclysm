@@ -128,7 +128,8 @@ public:
 									  float InFlightSeconds = 0.0f,
 									  float InCritChancePercent = -1.0f,
 									  float InSkillHealthCostPercent = -1.0f,
-									  const UGameplayAbility* InFiringSkill = nullptr);
+									  const UGameplayAbility* InFiringSkill = nullptr,
+									  bool bInQuickCast = false);
 
 	/**
 	 * Swap what the flying object looks like, and size it to BodyRadiusCm.
@@ -385,6 +386,15 @@ public:
 	/** How many enemies it has hit, over its whole flight including any return. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
 	int32 EnemiesHit = 0;
+
+	/**
+	 * Whether it is a creature's QUICK CAST: a bolt fired with no marker on the ground, whose warning is the bolt in
+	 * flight. Issue #2808. Set by `Fire` before the effect is attached, because `UCataclysmProjectileEffect::LookFor`
+	 * draws a quick cast larger, brighter and with a denser trail: the owner's requirement of 2026-11-21, "Make sure
+	 * those attacks can actually be seen. Like a flaming fireball that's obvious to the player".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	bool bQuickCast = false;
 
 	/**
 	 * How many of its contacts LANDED: struck and not evaded. Issue #1686.

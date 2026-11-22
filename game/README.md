@@ -99,7 +99,7 @@ them by hand.
 | `Content/Maps/L_FrontEnd.umap` | The level the game and the editor open on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor opened on `L_Sandbox` until issue #2733 slice 2, so pressing Play now opens the front end. Issue #753. |
 | `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. A Walk button on its map takes the character to `L_Dungeon` to walk that dungeon, and the end of the walk brings it back here (since issue #2733 slice 3). Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
 | `Content/Data/` | Thirty-three DataTable assets: twenty-six imported from the design workbook, two from the simulation package's enemy model, and five from the tree files: the class passive trees and the empire upgrade tree. See below. |
-| `Content/Input/` | The Enhanced Input mapping contexts, nineteen input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+| `Content/Input/` | The Enhanced Input mapping contexts, twenty input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
 **Not in git.**
 
@@ -386,7 +386,11 @@ by `git add` with no error and no warning. Guarded by
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.
   A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a
-  slot, and **fourteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
+  slot, and since issue #2825 a purchase takes days to build: 6, 12 or 24 by the
+  upgrade's tier (`UCataclysmCityUpgradeRules::BuildDaysFor`). It waits on the
+  city's `Building` list, `UCataclysmEmpireRun::AdvanceCityBuilds` counts a day of
+  it each day the city is neither fallen nor besieged, and it does nothing until
+  it is finished. And **fourteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
   something**: the ten Architect ones, which raise a city's maxima, restore its
   defence and population, resist what a dungeon takes, repair it on a schedule,
   and disperse the dungeons standing on it; and all four Explorer ones that shape

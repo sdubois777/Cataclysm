@@ -67,8 +67,10 @@ public:
 	 * Where a free start is cast FROM, when that is not its avatar's own place: `FreeRepeatOrigin`, read while
 	 * `bFreeRepeatHasOrigin` is set. Ruled 2026-10-14, for "Gadgets copy the last skill you used and fire it at their
 	 * target once every 2 seconds": the copy is the summoner's own skill, started from the gadget's place. SET ONLY
-	 * BY `UCataclysmTriggeredSkill::Trigger` WHEN ITS CALLER GIVES A PLACE, which `ACataclysmMinion` alone does, on a
-	 * one-use grant whose instance nothing else holds. Cleared when the use ends.
+	 * BY `UCataclysmTriggeredSkill::Trigger` WHEN ITS CALLER GIVES A PLACE, which `ACataclysmMinion` alone does (in
+	 * `CopySummonersLastSkill` and `StartPlayersSkillFromHere`), on a one-use grant whose instance nothing else holds. The Corrupted
+	 * Stalker gave its own place from 2026-10-25 until issue #2811 (2026-11-21), and so swung no clip and waited for no
+	 * swing; it now gives none. Cleared when the use ends.
 	 *
 	 * EVERY READ OF THE CASTER'S PLACE ON THE THREE SHAPES A ROW MAY CAST AGAIN asks `CastOrigin`, which answers this
 	 * when it is set and the avatar's location otherwise; `docs/DECISIONS.md`, 2026-10-14, lists each read and each

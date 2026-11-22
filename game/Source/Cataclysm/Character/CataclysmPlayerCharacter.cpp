@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmPlayerCharacter.h"
 // For the one sentence every way of leaving a walk early is refused with. Issue #2733 slice 3.
+#include "Interface/CataclysmCityScreenLayout.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 
 #include "Cataclysm.h"
@@ -487,22 +488,9 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 	// A basic attack fires every two thirds of a second at a fast weapon, so
 	// resolving a path each time would be a load attempt several times a second.
 	//
-	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
-	// nulls because a random draw over a fixed count decides which one plays,
-	// and removing one would change every other draw. These are cycled through
-	// in order, so a missing clip should simply not be part of the cycle rather
-	// than showing as a swing where the character does nothing.
-	AttackAnimations.Reset();
-	for (const TCHAR* Name : AttackAnimationNames)
-	{
-		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
-											 AttackAnimationFolder, Name, Name);
-		if (UAnimSequence* Clip =
-				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
-		{
-			AttackAnimations.Add(Clip);
-		}
-	}
+	// THE SAME STEP THE CREATURES THAT COPY A PLAYER TAKE. Issue #2811. A null
+	// entry is dropped there; see `LoadTheMannequinsAttackClips`.
+	LoadTheMannequinsAttackClips(AttackAnimations);
 	NextAttackAnimation = 0;
 
 	if (AttackAnimations.Num() < UE_ARRAY_COUNT(AttackAnimationNames))
@@ -526,21 +514,53 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 
 void ACataclysmPlayerCharacter::PlayAttackAnimation()
 {
-	// CLEARED FIRST, AND EVERY EARLY RETURN BELOW DEPENDS ON IT. Issue #1133.
-	// Zero means "the blow lands now". Five of the paths through this function
+	// THE SAME STEP THE CREATURES THAT COPY A PLAYER TAKE, issue #2811: the Corrupted Stalker and the Worn Residue
+	// double swing through it too, so the two cannot drift. It answers nought from every path that plays nothing,
+	// so this line is the whole of "cleared first" (issue #1133).
+	SwingConnectsInSeconds =
+		PlayTheMannequinsSwing(GetMesh(), GetAbilitySystemComponent(), AttackAnimations, NextAttackAnimation);
+}
+
+int32 ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips(TArray<TObjectPtr<UAnimSequence>>& OutClips)
+{
+	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
+	// nulls because a random draw over a fixed count decides which one plays,
+	// and removing one would change every other draw. These are cycled through
+	// in order, so a missing clip should simply not be part of the cycle rather
+	// than showing as a swing where the character does nothing.
+	OutClips.Reset();
+	for (const TCHAR* Name : AttackAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 AttackAnimationFolder, Name, Name);
+		if (UAnimSequence* Clip =
+				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
+		{
+			OutClips.Add(Clip);
+		}
+	}
+	return OutClips.Num();
+}
+
+float ACataclysmPlayerCharacter::PlayTheMannequinsSwing(USkeletalMeshComponent* MeshComponent,
+													  const UAbilitySystemComponent* Abilities,
+													  const TArray<TObjectPtr<UAnimSequence>>& Clips,
+													  int32& InOutNext)
+{
+	// NOUGHT FROM EVERY EARLY RETURN, AND THE CALLER STORES WHAT THIS ANSWERS. Issue #1133.
+	// Zero means "the blow lands now". Four of the paths through this function
 	// give up without playing anything -- no clips, no animation Blueprint, a
 	// null clip, a clip of no length -- and each one has to leave a character
 	// that deals damage at once rather than one still holding the delay its
 	// previous swing worked out. Setting it only on success would make a
-	// refused animation silently reuse the last figure.
-	SwingConnectsInSeconds = 0.0f;
+	// refused animation silently reuse the last figure; answering nought from
+	// each return, which the caller writes in full, cannot.
 
-	if (AttackAnimations.Num() == 0)
+	if (Clips.Num() == 0)
 	{
-		return;
+		return 0.0f;
 	}
 
-	USkeletalMeshComponent* MeshComponent = GetMesh();
 	UAnimInstance* AnimInstance =
 		MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
@@ -550,25 +570,25 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 		// the component instead is deliberately not done: that is what a death
 		// does, and it would leave the character holding the last frame of a
 		// swing until something else took the mesh back.
-		return;
+		return 0.0f;
 	}
 
 	// IN TURN RATHER THAN AT RANDOM. See the header: a basic attack fires often
 	// enough that a random draw over three clips repeats one about a third of
 	// the time, which reads as the animation sticking rather than as variety.
 	UAnimSequence* Clip =
-		AttackAnimations[NextAttackAnimation % AttackAnimations.Num()].Get();
-	NextAttackAnimation = (NextAttackAnimation + 1) % AttackAnimations.Num();
+		Clips[InOutNext % Clips.Num()].Get();
+	InOutNext = (InOutNext + 1) % Clips.Num();
 
 	if (!Clip)
 	{
-		return;
+		return 0.0f;
 	}
 
 	const float Length = Clip->GetPlayLength();
 	if (Length <= 0.0f)
 	{
-		return;
+		return 0.0f;
 	}
 
 	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
@@ -584,7 +604,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	float Rate = 1.0f;
 	float Interval = 0.0f;
 	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
-			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+			Cast<const UCataclysmAbilitySystemComponent>(Abilities))
 	{
 		Interval = UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
 		if (Interval > 0.0f)
@@ -608,7 +628,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	// clip that carries no `UCataclysmSwingConnectsNotify`, and
 	// `SecondsUntilSwingConnects` falls back to the middle of the clip for that
 	// case, so an unmarked clip behaves sensibly rather than failing.
-	SwingConnectsInSeconds = UCataclysmSwingTiming::SecondsUntilSwingConnects(
+	const float ConnectsInSeconds = UCataclysmSwingTiming::SecondsUntilSwingConnects(
 		Length, UCataclysmSwingTiming::MarkedStrikeSeconds(Clip), Rate, Interval);
 
 	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
@@ -618,6 +638,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	AnimInstance->PlaySlotAnimationAsDynamicMontage(
 		Clip, AttackSlotName, AttackBlendInSeconds, AttackBlendOutSeconds,
 		Rate, /*LoopCount=*/1);
+	return ConnectsInSeconds;
 }
 
 bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
@@ -4923,13 +4944,20 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 			}
 
 			Ar.Logf(TEXT("%s: %d of %d upgrade slots filled."), *City->Name,
-					City->Upgrades.Num(), Run->Map->UpgradeSlots);
+					City->Upgrades.Num() + City->Building.Num(), Run->Map->UpgradeSlots); // With its build: #2825.
 
 			for (const FCataclysmCityUpgrade& Held : City->Upgrades)
 			{
 				Ar.Logf(TEXT("  has  %s (%s, %.2f)"), *Held.RowName.ToString(),
 						*UCataclysmCityUpgradeRules::EffectName(Held.Effect),
 						Held.Value);
+			}
+
+			// AND WHAT IT IS BUILDING, since issue #2825.
+			const FString Building = UCataclysmCityScreenLayout::BuildLineFor(Run, CityId);
+			if (!Building.IsEmpty())
+			{
+				Ar.Logf(TEXT("  building  %s"), *Building);
 			}
 
 			// WHAT IT COULD BUY, AND WHAT IT COULD NOT, because five of the
@@ -4940,7 +4968,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 				const FCataclysmCityUpgrade Upgrade =
 					UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
 
-				if (City->HasUpgrade(RowName))
+				if (City->HasUpgrade(RowName) || City->IsBuilding(RowName))
 				{
 					continue;
 				}
@@ -4954,12 +4982,15 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 					continue;
 				}
 
-				// WITH ITS PRICE IN THIS RUN, since issue #2742's second slice.
-				Ar.Logf(TEXT("  buy  %s (%s, %.2f) for %s"), *RowName.ToString(),
+				// WITH ITS PRICE IN THIS RUN, since issue #2742's second slice, AND
+				// ITS DAYS TO BUILD, since issue #2825.
+				Ar.Logf(TEXT("  buy  %s (%s, %.2f) for %s, %s"), *RowName.ToString(),
 						*UCataclysmCityUpgradeRules::EffectName(Upgrade.Effect),
 						Upgrade.Value,
 						*UCataclysmCityUpgradePurchase::PriceText(
-							UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, City->CityId)));
+							UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, City->CityId)),
+						*UCataclysmCityUpgradePurchase::BuildDaysText(
+							UCataclysmCityUpgradePurchase::BuildDaysIn(World, Run, RowName, City->CityId)));
 			}
 		}));
 
@@ -4967,8 +4998,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 	TEXT("Cataclysm.BuyCityUpgrade"),
 	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
 		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names and "
-		 "prices. It costs the character playing that much gold and is "
-		 "immediate, because no build time is designed yet."),
+		 "prices. It costs the character playing that much gold now, and the "
+		 "upgrade does nothing until its days to build have passed: 6 days at "
+		 "upgrade tier 1. A city builds one upgrade at a time."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -5015,11 +5047,16 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 			const ECataclysmCityUpgradeResult Result =
 				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);
 
+			// AND THE DAY IT WILL BE FINISHED, since issue #2825.
+			const int32 ReadyDay = Run->BuildReadyDay(CityId);
 			const FString Said =
-				Result == ECataclysmCityUpgradeResult::Bought
-					? FString::Printf(TEXT("Bought for %s."),
-									  *UCataclysmCityUpgradePurchase::PriceText(Price))
-					: UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
+				Result != ECataclysmCityUpgradeResult::Bought
+					? UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held)
+					: ReadyDay == INDEX_NONE
+						  ? FString::Printf(TEXT("Bought for %s."),
+											*UCataclysmCityUpgradePurchase::PriceText(Price))
+						  : FString::Printf(TEXT("Bought for %s; being built, ready on day %d."),
+											*UCataclysmCityUpgradePurchase::PriceText(Price), ReadyDay);
 			Ar.Logf(TEXT("%s"), *Said);
 
 			if (Result == ECataclysmCityUpgradeResult::Bought)
@@ -5028,7 +5065,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 				Ar.Logf(TEXT("%s now has %d of %d slots filled. Defence %.0f of "
 							 "%.0f, %.0f of %.0f people."),
-						*City->Name, City->Upgrades.Num(),
+						*City->Name, City->Upgrades.Num() + City->Building.Num(), // With its build: #2825.
 						Run->Map->UpgradeSlots, Run->Map->DefenceOf(*City), Run->Map->EffectiveMaxDefence(*City),
 						Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)); // With the tree: #2741 3a.
 			}

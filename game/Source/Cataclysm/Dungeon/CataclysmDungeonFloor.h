@@ -158,6 +158,36 @@ public:
 	bool IsBuilt() const;
 
 	// ----------------------------------------------------------------------
+	// What the player has seen of it. Issue #2805
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Marks the cells seen from this one, by `UCataclysmFloorMap::RevealAround` at
+	 * `UCataclysmFloorMap::RevealRadiusCells`. Called by the player controller when the player enters a new cell.
+	 *
+	 * @return how many cells were newly seen
+	 */
+	int32 RevealAround(FIntPoint Cell);
+
+	/** One bit a cell of the plan, row by row: whether the player has seen it. Emptied by `Build`. */
+	const TBitArray<>& SeenCells() const { return Seen; }
+
+	/** Moves whenever a cell is newly seen or the floor is built, so the map rebuilds its runs only then. */
+	int32 SeenChangeCount() const { return SeenChanges; }
+
+	/**
+	 * How many times `Build` has run on this actor. Going down the stairs rebuilds the same actor, so this is how the
+	 * controller tells a new floor from the old one when the player happens to stand in the same cell.
+	 */
+	int32 BuildGeneration() const { return Builds; }
+
+	/**
+	 * Where a world position is, in cell coordinates that are not rounded: a cell's centre is a whole number. The map
+	 * centres on this, so it moves smoothly rather than a cell at a time.
+	 */
+	FVector2D CellPositionOfWorld(FVector World) const;
+
+	// ----------------------------------------------------------------------
 	// Where things are
 	// ----------------------------------------------------------------------
 
@@ -265,4 +295,13 @@ private:
 
 	/** See `HiddenChamberCells`. Emptied by `Build` and by `ClearHiddenChamber`. */
 	TArray<FIntPoint> ChamberCells;
+
+	/** See `SeenCells`. NOT SAVED: a floor loaded mid-way starts with nothing seen. Issue #2805, accepted 2026-11-21. */
+	TBitArray<> Seen;
+
+	/** See `SeenChangeCount`. */
+	int32 SeenChanges = 0;
+
+	/** See `BuildGeneration`. */
+	int32 Builds = 0;
 };

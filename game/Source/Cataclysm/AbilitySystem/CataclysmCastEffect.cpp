@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmCastEffect.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
+#include "AbilitySystem/CataclysmProjectileEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -153,14 +154,23 @@ UNiagaraComponent* UCataclysmCastEffect::PlayFor(const AActor* Caster,
 	// one-shot burst spawned in that first frame, so all four would keep the
 	// authored white for their whole lives rather than for one frame. The
 	// projectile body effect carries the same note and it was learned there.
+	//
+	// A HOSTILE'S CAST IS NEVER CULLED, by the rule a hostile's projectile follows: it is the warning that a quick
+	// cast is coming. Issue #2808; see `UCataclysmProjectileEffect::MayBeCulled`.
+	const bool bMayBeCulled = UCataclysmProjectileEffect::MayBeCulled(Caster);
 	UNiagaraComponent* Component =
 		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			World, System, Caster->GetActorLocation(),
 			FacingFor(Direction, Caster), FVector::OneVector,
-			/*bAutoDestroy=*/true, /*bAutoActivate=*/false);
+			/*bAutoDestroy=*/true, /*bAutoActivate=*/false, ENCPoolMethod::None,
+			/*bPreCullCheck=*/bMayBeCulled);
 	if (!Component)
 	{
 		return nullptr;
+	}
+	if (!bMayBeCulled)
+	{
+		Component->SetAllowScalability(false);
 	}
 
 	FLinearColor Primary;

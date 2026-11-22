@@ -127,8 +127,9 @@ FString UCataclysmCityScreenLayout::SlotsTextFor(const UCataclysmEmpireRun* Run,
 		return FString();
 	}
 
+	// AN UPGRADE BEING BUILT HAS TAKEN ITS SLOT, since issue #2825.
 	return FString::Printf(TEXT("%d of %d upgrade slots filled."),
-						   City->Upgrades.Num(), Run->Map->UpgradeSlots);
+						   City->Upgrades.Num() + City->Building.Num(), Run->Map->UpgradeSlots);
 }
 
 FString UCataclysmCityScreenLayout::SlotsAndGoldTextFor(const UObject* WorldContext,
@@ -286,7 +287,42 @@ TArray<FString> UCataclysmCityScreenLayout::HeldLinesFor(
 		Lines.Add(Effect.IsEmpty() ? Held.RowName.ToString() : Effect);
 	}
 
+	// AND THE ONE IT IS BUILDING, LAST, since issue #2825: its slot is taken, so it belongs with what the city has,
+	// and the line says it does nothing yet.
+	const FString Building = BuildLineFor(Run, CityId);
+	if (!Building.IsEmpty())
+	{
+		Lines.Add(Building);
+	}
+
 	return Lines;
+}
+
+FString UCataclysmCityScreenLayout::BuildLineFor(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	const FCataclysmCityUpgrade* Build = Run != nullptr ? Run->BuildOn(CityId) : nullptr;
+	const FCataclysmCity* City = CityIn(Run, CityId);
+	if (Build == nullptr || City == nullptr)
+	{
+		return FString();
+	}
+
+	const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(Build->RowName);
+	const FString Name = Effect.IsEmpty() ? Build->RowName.ToString() : Effect;
+	const FString Left = Build->BuildDaysLeft == 1 ? FString(TEXT("1 day left"))
+												   : FString::Printf(TEXT("%d days left"), Build->BuildDaysLeft);
+
+	// PAUSED, AND WHY: a fallen city builds nothing and neither does a besieged one (ruled 2026-11-21).
+	if (City->bFallen)
+	{
+		return FString::Printf(TEXT("%s  --  being built, %s, paused while this city is fallen"), *Name, *Left);
+	}
+	if (Run->IsBesieged(CityId))
+	{
+		return FString::Printf(TEXT("%s  --  being built, %s, paused while a Siege dungeon stands on this city"),
+							   *Name, *Left);
+	}
+	return FString::Printf(TEXT("%s  --  being built, %s, ready on day %d"), *Name, *Left, Run->BuildReadyDay(CityId));
 }
 
 TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
@@ -327,6 +363,9 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 		Offer.bCanBuy = Result == ECataclysmCityUpgradeResult::Bought;
 		Offer.bShortOfGold = Result == ECataclysmCityUpgradeResult::NotEnoughGold;
 		Offer.bBesieged = Result == ECataclysmCityUpgradeResult::CityIsBesieged;
+		// AND THE DAYS, AND WHETHER ANOTHER BUILD IS WHAT STOPS IT, since issue #2825.
+		Offer.BuildDays = UCataclysmCityUpgradePurchase::BuildDaysIn(WorldContext, Run, RowName, CityId);
+		Offer.bWaitsOnABuild = Result == ECataclysmCityUpgradeResult::BuildUnderWay;
 		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalText(
 			Result, Offer.Price, GoldHeld);
 
@@ -373,19 +412,24 @@ FString UCataclysmCityScreenLayout::ButtonTextFor(
 	const FString Text =
 		Offer.Effect.IsEmpty() ? Offer.RowName.ToString() : Offer.Effect;
 
-	// THE PRICE ON THE BUTTON, since issue #2742's second slice, and when gold
-	// or a Siege is what stops it, why instead.
-	if (Offer.bShortOfGold || Offer.bBesieged)
+	// THE PRICE ON THE BUTTON, since issue #2742's second slice, and when gold,
+	// a Siege or another build is what stops it, why instead.
+	if (Offer.bShortOfGold || Offer.bBesieged || Offer.bWaitsOnABuild)
 	{
 		return FString::Printf(TEXT("%s  --  %s"), *Text, *Offer.Refusal);
 	}
+	// AND THE DAYS IT TAKES TO BUILD, since issue #2825: "10,000 gold, 6 days to build".
+	const FString Days = Offer.BuildDays > 0
+		? UCataclysmCityUpgradePurchase::BuildDaysText(Offer.BuildDays)
+		: FString();
 	if (Offer.Price > 0)
 	{
-		return FString::Printf(
-			TEXT("%s  --  %s"), *Text,
-			*UCataclysmCityUpgradePurchase::PriceText(Offer.Price));
+		const FString Price = UCataclysmCityUpgradePurchase::PriceText(Offer.Price);
+		return Days.IsEmpty()
+			? FString::Printf(TEXT("%s  --  %s"), *Text, *Price)
+			: FString::Printf(TEXT("%s  --  %s, %s"), *Text, *Price, *Days);
 	}
-	return Text;
+	return Days.IsEmpty() ? Text : FString::Printf(TEXT("%s  --  %s"), *Text, *Days);
 }
 
 FString UCataclysmCityScreenLayout::NotBuiltLineFor(

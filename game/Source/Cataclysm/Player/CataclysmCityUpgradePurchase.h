@@ -42,6 +42,17 @@ public:
 	static int64 PriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
 
 	/**
+	 * The days the upgrade takes to build in this run, on this city: `UCataclysmCityUpgradeRules::BuildDaysFor` at the
+	 * tier it is bought at, which is 1 (issue #1265). Issue #2825, ruled 2026-11-21.
+	 *
+	 * THE ONE FIGURE, as `PriceIn` is the one price: the city screen's offers, `Buy` and the console command all ask
+	 * this, so the days shown are the days counted. The empire upgrade tree's three build nodes (Scaffolding, Rapid
+	 * Renovation, Rapid Funding) are not here yet; they come in the next slice of issue #2825, as the price nodes came
+	 * to `PriceIn`.
+	 */
+	static int32 BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
+
+	/**
 	 * The gold the character playing holds (`UCataclysmGameInstance::GoldHeldBy`), or 0 when it has no balance. What
 	 * the city screen passes `UCataclysmCityScreenLayout::OffersFor`, which asks the run as `Buy` does.
 	 */
@@ -55,6 +66,9 @@ public:
 	 * `AccountChanged` as well when the gold came from the account. And it says the PLAY LOOP line
 	 * (`FCataclysmPlayLoopLog::UpgradeLine`).
 	 *
+	 * IT TAKES DAYS TO BUILD, since issue #2825: the run is told `BuildDaysIn`, puts the upgrade on the city's build
+	 * list and finishes it when those days have passed. The gold is taken now; a build cannot be cancelled.
+	 *
 	 * @return the run's answer; `NotEnoughGold` when the balance holds less than the price, or there is none.
 	 */
 	static ECataclysmCityUpgradeResult Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
@@ -62,6 +76,9 @@ public:
 
 	/** "10,000 gold". */
 	static FString PriceText(int64 Price);
+
+	/** "6 days to build", or "1 day to build". Issue #2825. */
+	static FString BuildDaysText(int32 Days);
 
 	/**
 	 * Why an upgrade was refused, in words a screen can show: the run's own words, and for `NotEnoughGold` the price

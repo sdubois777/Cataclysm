@@ -6,6 +6,7 @@
 #include "GameFramework/HUD.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
+#include "Interface/CataclysmFloorMap.h"
 #include "Math/Box2D.h"
 #include "CataclysmHUD.generated.h"
 
@@ -146,6 +147,18 @@ private:
 	 * class already has with `UCataclysmCombatOverlay` for everything else.
 	 */
 	void DrawSkillBar();
+
+	/**
+	 * The map of the current floor, when the player has it shown. Issue #2805. Every judgement is a static on
+	 * `UCataclysmFloorMap`; this draws: the seen floor as one rectangle a run, clipped to the map's square, the stairs
+	 * once seen, and the player at the centre. Nothing is drawn while a full screen is open.
+	 */
+	void DrawFloorMap();
+
+	/** The runs last worked out, which floor and which change they are for. Rebuilt only on a change. */
+	TArray<FCataclysmFloorMapRun> FloorMapRuns;
+	TWeakObjectPtr<class ACataclysmDungeonFloor> FloorMapRunsFloor;
+	int32 FloorMapRunsChange = -1;
 
 	/** The pop-up over one box: its name and description, above the box. Issue #1193. */
 	void DrawSkillPopup(const struct FCataclysmSkillBarSlot& Slot, const FVector2D& BoxOrigin);

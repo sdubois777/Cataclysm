@@ -267,36 +267,21 @@ def test_the_bolt_is_the_basic_attack_and_has_no_cooldown():
         "would sometimes do nothing at all.")
 
 
-def test_the_bolt_is_telegraphed_and_uses_its_whole_allowance():
-    """The wind-up is 0.4 + Radius / 3.5 and the radius is the largest a 2.6
-    second interval allows, so the wind-up is exactly half the interval. Only
-    the Corrupted Sentinel's Siege Bolt does the same."""
-    from cataclysm_sim.enemy_abilities import (is_telegraphed,
-                                               largest_telegraphed_radius,
-                                               wind_up_seconds)
+def test_the_bolt_is_a_quick_cast_with_no_marker():
+    """Issue #2808. The model says quick cast, so the C++ must wind up for the
+    quick cast's half second and draw no marker for it. THE CONTROL is the curse,
+    which draws none by its shape and does not set the flag."""
+    from cataclysm_sim.enemy_abilities import QUICK_CAST_SECONDS, is_telegraphed
 
-    assert is_telegraphed(soulfire(), succubus()), (
-        "the model no longer telegraphs Soulfire, and the C++ gives it a "
-        "wind-up and a marker.")
-
-    radius = float(soulfire().params["Radius"])
-    allowed = largest_telegraphed_radius(succubus().attack_interval)
-    assert radius == pytest.approx(allowed), (
-        f"Soulfire's radius is {radius} m and the largest its 2.6 second "
-        f"interval allows is {allowed:.4f} m. The header claims it uses the "
-        f"whole allowance.")
-
-    designed = wind_up_seconds(radius)
-    written = constant("SoulfireWindUpSeconds")
-    assert written == pytest.approx(designed, abs=0.002), (
-        f"SoulfireWindUpSeconds is {written} and the rule 0.4 + Radius / 3.5 "
-        f"gives {designed:.4f}.")
-
-    assert written == pytest.approx(succubus().attack_interval / 2.0,
-                                    abs=0.002), (
-        f"the wind-up is {written} and half the attack interval is "
-        f"{succubus().attack_interval / 2.0}. The header says these are the "
-        f"same number and the design document says so too.")
+    assert soulfire().quick_cast and not is_telegraphed(soulfire(), succubus())
+    assert constant("SoulfireWindUpSeconds") == pytest.approx(QUICK_CAST_SECONDS), (
+        f"SoulfireWindUpSeconds is {constant('SoulfireWindUpSeconds')} and the "
+        f"model's quick cast is {QUICK_CAST_SECONDS} s.")
+    body = source(SUCCUBUS_SOURCE)
+    assert "Soulfire.bDrawsNoMarker = true;" in body, (
+        "CataclysmSuccubusCharacter.cpp no longer marks Soulfire as drawing no "
+        "marker, so the brain draws a lane for a quick cast.")
+    assert "Wither.bDrawsNoMarker" not in body
 
 
 def test_the_bolt_is_the_slowest_projectile_in_the_game():

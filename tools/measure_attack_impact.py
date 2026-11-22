@@ -111,14 +111,15 @@ CLIPS = [
      "/Game/ParagonGrux/Characters/Heroes/Grux/Animations/"
      "PrimaryAttack_RA_Fast"),
 
-    ("Corrupted Sentinel", 2.0,
+    # 1.0 SINCE ISSUE #2808: both bolts fire every second (2.0 and 2.6 before).
+    ("Corrupted Sentinel", 1.0,
      "/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege/"
      "Fire_Planted"),
-    ("Corrupted Sentinel", 2.0,
+    ("Corrupted Sentinel", 1.0,
      "/Game/ParagonMinions/Characters/Minions/Down_Minions/Animations/Siege/"
      "Fire_Planted_B"),
 
-    ("Succubus", 2.6,
+    ("Succubus", 1.0,
      "/Game/ParagonCountess/Characters/Heroes/Countess/Animations/"
      "Primary_Attack_Normal"),
 

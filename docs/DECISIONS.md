@@ -2,6 +2,887 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The Corrupted Stalker and the Worn Residue double swing the player's clips on their blows, and each blow lands when its swing connects, as the player's does (#2811)
+
+**Affects:** `ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips` and `PlayTheMannequinsSwing`, new, the player's
+own attack-clip loading and swing moved out of `ResolveBody` and `PlayAttackAnimation`, which now call them
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`);
+`ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation`, new, `AttackAnimations` and `NextAttackAnimation`, new,
+`ResolveBody`, which loads the clips, and `AttackTarget` and `UseEnemyAbility`, which now start a blow with no cast place
+(`CataclysmCorruptedStalkerCharacter.h` and `.cpp`); the comment on `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h`). Tests: three new in `Cataclysm.PlayerCopies.`
+(`CataclysmPlayerCopiesTests.cpp`); `game/Source/Cataclysm/Tests/CataclysmTestSwings.h`, new, which finishes a
+caster's waiting swings; four existing tests that read a copy's blow in the frame it started, which now finish the
+swing first (`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmStalkerEntryTests.cpp`);
+`tools/tests/test_the_player_swings.py`, two checks reading the swing where it moved and one new. Issue
+[#2811](https://github.com/sdubois777/Cataclysm/issues/2811), following
+[#2806](https://github.com/sdubois777/Cataclysm/issues/2806). On the branch fix/copies-swing-their-blows, from window D's
+head `5fca8616b`.
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2".
+- **THE ISSUE'S PREMISE WAS WRONG, AND IT DECIDED THE SHAPE OF THE CHANGE.** The issue said the skill's call to
+  `PlayAttackAnimation` "reaches them and does nothing". It did not reach them. The Stalker's `AttackTarget` and
+  `UseEnemyAbility` started every blow through `UCataclysmTriggeredSkill::Trigger` with a cast place, its own
+  location, and a use given a place turns nobody, draws no cast burst, plays no clip and waits for no swing
+  (`UCataclysmSkillTemplate::CommitAndBegin` and `SecondsUntilTheSwingConnects`, the gadget rule of 2026-10-14). The
+  double inherits both. So an override of `PlayAttackAnimation` alone would never have been called.
+- **RULED BY THE COORDINATING SESSION, 2026-11-21: OPTION (A) WITH THE WAIT.** The copies take the player's own path:
+  no cast place, and a `PlayAttackAnimation` override that calls the player's swing step, moved into shared statics with
+  the player's behaviour unchanged. The blow lands at the clip's contact point. The consequences were listed before the
+  ruling and accepted, because they match the player: the copy turns to face its target, it shows the cast burst, its
+  skill is cast from where it stands when the swing connects, and a swing cancelled before it connects loses its blow.
+  No simulation change.
+
+### What changed
+
+- **ONE SWING STEP FOR THE PLAYER AND ITS COPIES.** `PlayTheMannequinsSwing` is the player's `PlayAttackAnimation`
+  body, moved: the next clip in turn, into `DefaultSlot`, at a rate never slower than authored and at most
+  `MaximumAttackPlayRate`, answering the seconds until the swing connects, or nought from each of its four early
+  returns. `LoadTheMannequinsAttackClips` is the player's loading loop, moved, dropping a clip that did not load. The
+  player calls both at the same points and stores the answer as before; its own warning about missing clips stays
+  where it was.
+- **THE COPIES CALL THEM.** The Stalker loads the three clips in `ResolveBody`, with a warning naming any it did not
+  find, and its `PlayAttackAnimation` stores what `PlayTheMannequinsSwing` answers. `AttackTarget` and
+  `UseEnemyAbility` pass no cast place, so `CommitAndBegin` turns the copy, draws its cast burst and calls its swing,
+  except on a movement skill and an aura toggle (the template's own rulings), and a Strike, a Projectile and a curse
+  land through `WhenTheSwingConnects`.
+- **WHICH CLIPS:** the player's three, `MM_Attack_01` to `MM_Attack_03`, in turn. All three carry a
+  `UCataclysmSwingConnectsNotify` (each `.uasset` holds the class's name), so the contact point is each clip's marker.
+  `MM_ChargedAttack` stays out, as it does for the player. Only the Mannequin's unarmed clips are in git, as for the
+  player.
+
+### The cast place, and the comment that described it
+
+- **THE STALKER'S PLACE HAD NO RECORDED FAULT BEHIND IT.** Its comment gave the reason as "the way the enemy-cast
+  measurement of window w53 started a creature's Strike". The w53 entry (2026-10-25, "A dungeon carries the Corrupted
+  Stalker one time in twenty ...") records only that a creature's Strike through `Trigger` hurt the player; it records
+  no fault without a place. The place was the Stalker's own location, so the only differences it made were the four
+  above and where a distance is measured from (`FCataclysmHitDelivery::bStruckFromAPoint`), which is the same point
+  while the copy stands still.
+- **THE COMMENT ON `bFreeRepeatHasOrigin` SAID `ACataclysmMinion` ALONE PASSES A PLACE.** It had been untrue since
+  2026-10-25. It is true again, and the comment now says so and names the two callers. Checked by listing every call
+  to `UCataclysmTriggeredSkill::Trigger` outside the tests (eleven) with the argument in its cast-place position: two
+  pass one, both in `CataclysmMinion.cpp` (`CopySummonersLastSkill`, `StartPlayersSkillFromHere`); the Stalker's two
+  and the other seven pass none.
+
+### What the research settled, and what is a judgement
+
+- **WAITING FOR THE CONTACT POINT IS SETTLED.** Every creature here that plays a swing clip already waits for it
+  (#783: the Brute, the Imp, the Abyssal Warden; the Hellhound's wait is nought until its clip is measured), and so does
+  the player (#1133). The research recorded for #1133 (the entry "What the research settled": Unreal's notifies, Diablo
+  4's hit frames, Last Epoch, Path of Exile) ties the blow to a moment in the swing in every case.
+- **NO SIMULATION CHANGE: A JUDGEMENT.** `sim/cataclysm_sim/fight.py` models the Stalker as a blow every
+  `STALKER_SECONDS_BETWEEN_BLOWS` (0.75 s). A fixed wait per blow does not change that rate; it moves each blow later
+  by less than its swing interval times `LatestFractionOfSwingInterval`. What it does change is a later first blow and a
+  blow lost when the copy dies, is stunned or its skill is cancelled mid-swing; the fight measured there is a damage
+  rate.
+
+### Tests
+
+**New, in `Cataclysm.PlayerCopies.`:**
+
+| Test | What it asserts | The control |
+|---|---|---|
+| `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` | Famine's Stalker strikes a target a quarter turn to its left: `MM_Attack_01` in `DefaultSlot`, a wait above nought, the blow waiting and not landed, the Stalker turned to face the target; the swing finished, the blow landed. Its second blow plays `MM_Attack_02` and does the same | a plain creature casting the same Sword's basic attack through the same `Trigger` swings nothing and waits for nothing |
+| `AWornResidueDoublesBlowSwingsAsTheStalkersDoes` | a double wearing a Sword build: the same as the Stalker's first blow | -- |
+| `AStalkersMovementSkillSwingsNothing` | Famine's Stalker casts its movement skill: paid for, and no swing played | -- |
+
+**Changed: four existing tests that read a copy's blow in the frame it started.** Since this change the blow waits for
+the swing, on a timer no test world runs by itself. Each now finishes the swing the way the player's tests finish
+theirs (`CataclysmBasicReachTests.cpp`, `ReachFinishTheSwing`): `CataclysmTestSwings::FinishTheSwingsOf` moves the
+world's clock a twentieth of a second at a time until no skill of the copy waits, and the test asserts that it
+connected. No assertion was changed or removed.
+
+| Test | Change |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer` | finishes the swing before reading the player's health |
+| `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` | finishes each tier's swing before reading the blow, and its target is given no health regeneration: the clock now moves before the blow is read, and a regeneration step after it would take part of the blow back from a figure fitted to the whole of it |
+| `Cataclysm.DungeonModifierEffects.WhetherFervourBuildsOnACorruptedStalkerInAFight` | finishes each of the twenty swings before its Fervour step |
+| `Cataclysm.StalkerEntries.TheDeathStalkersHeavySkillLaysNecrosisOnThePlayer` | finishes the heavy skill's swing before reading health and the Necrosis tag |
+
+The other tests that make a copy strike read only what happens before the wait: the mana a cast pays
+(`AStalkerOfEachTypeCastsEachOfItsSixSlots`) and whether an aura or an Ultimate runs
+(`ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana`,
+`ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt`). An aura toggle plays no clip, and nothing
+stops a skill starting while another waits for its swing. Found by listing every test body that names a copy and
+calls `AttackTarget`, `UseEnemyAbility`, `StrikeAsARuleOrders`, `Trigger` or a brain's `Think`: seven, all in a world
+that has begun play.
+
+**Python:** `tools/tests/test_the_player_swings.py`'s two checks that read the slot and the play rate now read
+`PlayTheMannequinsSwing`, and the new `test_the_player_and_its_copies_swing_through_one_step` holds both the player's
+and the Stalker's `PlayAttackAnimation` to calling it.
+
+### Window D failed two tests, and why
+
+**Window D ran this change and two of its tests failed** (the level-1 session's logs, `wd_suite_engine_da85b7c8.log` and
+`wd_alone_engine_DungeonModifierEffects_da85b7c8.log`, in the worktree `sharp-meitner-246682`); the coordinating session
+took #2811 out of that window.
+
+- `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`. **Run in its group alone:** tier 1's
+  blow read 4450.0 before its multiplier against the 348 the table was fitted to (267.0 taken against an attack damage
+  of 20.9), and **tier 5's too**: 15979.8 against 1195 (26,846 taken against 2,007.9); the other six tiers each took one
+  blow, and the engine's frame counter, which `CataclysmTestWorld::RunClock` raises once a step, shows tiers 1 and 5
+  moved the clock about 27 steps and the others about 6. **In the whole suite:** tier 1 failed the same way, 267.0, and
+  **tier 5 passed**, at 2008.0. The two runs differed at tier 5, which is what a cause set by test order gives. (The
+  level-1 session's first report said tier 1 alone failed and that the figure was the same in both runs; it confirmed
+  and corrected both on 2026-11-22.)
+- `Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`, in the whole suite only: the second
+  blow played `MM_Attack_03` where `MM_Attack_02` was due. Alone and in its group it passed.
+
+**One cause, read from the code; no diagnosis run was made.** Every spawned enemy is possessed by
+`ACataclysmEnemyController` (`AutoPossessAI = PlacedInWorldOrSpawned`), whose `OnPossess` starts a looping think every
+0.25 s, and `Think` attacks any hostile target in reach. `CataclysmTestSwings::FinishTheSwingsOf` moves the clock through
+the timer manager, so it fired the copy's own think: a think that fell during the wait attacked again, with a new swing
+that stepped the clip order and kept the wait going. The first think's delay is staggered by a counter of every enemy
+the process has possessed (`GCataclysmEnemyControllerPossessions`, `FirstThinkDelaySeconds`), so whether it fell in the
+wait depended on the tests that ran before. Before this change the tests moved no clock, which is why tier 1 read 21.0.
+
+**The change, accepted by the coordinating session on 2026-11-21, weakens no assertion.** `CataclysmTestSwings` gains
+`TakeTheAIFrom`, which unpossesses a copy (`OnUnPossess` clears the think timer), and every test that strikes with a copy
+and moves the clock calls it at set-up as a checked line, "set-up: its AI is taken away, so only the test strikes": the
+single blow, every tier's Stalker and the Fervour measurement in `CataclysmDungeonModifierEffectsTests.cpp`, the Stalker's
+and the double's tests in `CataclysmPlayerCopiesTests.cpp`, and the Heavy cast in `CataclysmStalkerEntryTests.cpp`.
+`FinishTheSwingsOf` refuses, moving no clock, while an AI controller still drives the caster, so a test that forgets the
+helper fails instead of passing or failing by test order. A copy turns to face its target through `SetActorRotation`,
+which needs no controller.
+
+`tools/tests/test_the_player_swings.py::test_a_test_that_finishes_a_copys_swing_takes_its_ai_away_first` checks, test by
+test (following a helper that finishes a swing into the tests that call it), that the AI is taken before the swing is
+finished, and that the helper refuses. By `tools/prove_guard.py`, 2026-11-21, each **PROVED** (the one test failed with
+the break in; restored, 14 of 14 passed): PG1, the tier test keeping its Stalkers' AI; PG2, the Stalker's copies test
+keeping its AI, through the helper; PG3, `FinishTheSwingsOf` without its refusal.
+
+**The registration below stands**: no test is added or removed. The two tests that failed are among those the window
+runs first.
+
+### Registered for the window
+
+**WINDOW E, REGISTERED AS ONE, 2026-11-21: #2808, #2805, #2825 and this change together**, on
+`feat/window-e-bolts-map-builds-swings`, development `82c34930c` (window D's merge) plus the four. The base is window
+D's measured engine log at `2414abdd7`, whose `game/` equals `82c34930c`'s (`git diff --name-only 2414abdd7 82c34930c
+-- game` lists nothing): **5113 performed, all succeeded, 57 skipped halves, 860 test saves written and deleted.**
+Counted by the names in `game/Source` at `82c34930c` and at the head, window E adds 34 tests and removes 4, net 30:
+#2808 +8 (`QuickCast` 7; `AI` +3 and -2; `Telegraph` one renamed), #2805 +11 (`FloorMap`), #2825 +8 (`CityUpgradeBuild`
+4, `CityUpgradeBuildSave` 2, `CityScreen` 2; `CityUpgrade` one renamed) and this change +3 (`PlayerCopies`). So:
+
+- **The whole suite 5113 + 30 = 5143**, all succeeding; **skipped halves 57**, unchanged (no new or changed test reports
+  a skipped half: the four add no `ReportSkippedHalf` call); **test saves 860**, unchanged (#2825's two save tests write
+  and read the run record as text in memory, not a save slot).
+- **The editor step, first, under the lock**: `tools/generate_datatable_assets.py` rebuilds `DT_EnemyArchetypes` from
+  #2808's `EnemyArchetypes.csv` and its record; `tools/generate_input_assets.py` writes #2805's `IA_ToggleFloorMap` and
+  the config and both mapping contexts that bind it to Tab, and the other files it rewrites are restored. Those six
+  files are committed and become the tested head. Until then
+  `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded` fails, and nothing
+  else in the Python suite.
+- **Groups alone, first**, each its count in that log less the tests removed and plus the tests added: the new groups
+  `QuickCast.` 7, `FloorMap.` 11, `CityUpgradeBuild.` 4, `CityUpgradeBuildSave.` 2, and `PlayerCopies.` 7 with this
+  change's three new tests each alone; the groups whose tests move, `AI.` 52, `Telegraph.` 14, `CityScreen.` 19,
+  `CityUpgrade.` 15, `CityUpgradePrice.` 7, `DungeonModifierEffects.` 777, `StalkerEntries.` 8, `PlayerAttack.` 6; then
+  #2808's `Succubus.` 10, `Sentinel.` 6, `Brute.` 23, `Enemy.` 19, `HitReaction.` 12, `Silence.` 26, `LobMinimum.` 7,
+  `Gatekeeper.` 14, `Warden.` 20, `Hellhound.` 11, `Effects.` 55; #2805's `DungeonFloor.` 16 and `Input.` 9; and #2825's
+  `SaveLoad.` 81, `SaveRecords.` 17, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.`
+  13, `EmpireTreeEvents.` 14, `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5, `WinningTheRun.` 11, `ConsumptionDouble.` 15,
+  `EmpireRun.` 71, `EmpireMap.` 17, `EmpireTreeCity.` 17, `EmpireTreeGold.` 6, `EmpireScreen.` 16, `Surge.` 54.
+  Forty-four groups. Each count is the same as its issue's own registration where that names it.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch before the
+  editor step: "1 failed, 7909 passed, 10 skipped in 312.69s", JUnit 7920 tests, 1 failure, 0 errors, 10 skipped, the one failure the DataTable check named above; ruff "All checks passed!".
+- **Seven Unreal guard proofs**, after both suites end: QC4 (#2808); FM1, FM2 and FM3 (#2805); C1 and C2 (#2825); and
+  P1 (this change), each as its entry registers it.
+- **The sweep** (commit "Window E's sweep"): the survival table's Succubus and Sentinel rows recomputed from the model at
+  #2808 (29 hits in 29.0 s and 25 in 25.0 s), and the Imp pack figures #2818 moved, where the old ones were still
+  written. The four branches share no game file but `CataclysmPlayerController.cpp`, where #2807's ground hover (now on
+  development) and #2805's floor map each add a call to `PostProcessInput`, and both are kept; and `game/README.md`,
+  on different lines. Memory: every gate at 9,216 MB, the coordinating session's ruling of 2026-11-21.
+
+The bullets below were written as additions to window D's figures; the totals above include them.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone,
+  `CataclysmPlayerCharacter.cpp`, `CataclysmCorruptedStalkerCharacter.cpp`, `CataclysmPlayerCopiesTests.cpp`,
+  `CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStalkerEntryTests.cpp`; the unity files again -- each
+  succeed with no warning or error line.
+- **Groups:** `Cataclysm.PlayerCopies.` window D's 4 plus 3, all passing; `Cataclysm.PlayerAttack.`, the player's swing
+  tests, as in window D, all passing, which shows the player unchanged; `Cataclysm.DungeonModifierEffects.` and
+  `Cataclysm.StalkerEntries.` as in window D, all passing.
+- **The three new tests, each alone:** 1 performed, 1 succeeded.
+- **The whole suite:** window D's measured total plus 3, all succeeding; skipped halves as in window D (no new test
+  skips a half); test saves as in window D (no new test writes one).
+- **Python, with the whole suite:** no failure, no error.
+- **One C++ guard proof**, through `prove_cpp_guard`, with the prefix `Cataclysm.PlayerCopies.` (the group, with its
+  dot; seven tests):
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The Stalker's basic attack is given its own place again: in `AttackTarget`, the call `Trigger(this, BasicAttack, ..., /*bPaysCost=*/false);` becomes `const FVector From = GetActorLocation();` and the same call ending `/*bPaysCost=*/false, &From);` | 7 performed, 5 succeeded, 2 failed: `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` and `AWornResidueDoublesBlowSwingsAsTheStalkersDoes`, each blow on "its blow plays the Mannequin's ...", "the swing connects later than now", "its blow waits for the swing", "and has not landed yet" and "it turned to face its target": 10 assertions in the first (two blows), 5 in the second. The movement test and #2806's four pass | 7 of 7 |
+
+- **THE SWING STEP ITSELF IS PROVED IN PYTHON, NOT C++** (the coordinating session's limit of one C++ proof per
+  behaviour only a C++ test guards): `test_the_player_and_its_copies_swing_through_one_step` guards that the Stalker
+  swings through the player's step. **PROVED, 2026-11-21**, by `tools/prove_guard.py`, the break
+  `ACataclysmPlayerCharacter::PlayTheMannequinsSwing(GetMesh()` made `ACataclysmPlayerCharacter::PlayOwnSwing(GetMesh()`
+  in `CataclysmCorruptedStalkerCharacter.cpp`: "PROVED: 1 failed, 12 passed in 0.11s | restored: 13 passed in 0.06s",
+  the one named failure
+  `tools/tests/test_the_player_swings.py::test_the_player_and_its_copies_swing_through_one_step`.
+- **NO PROOF OF THE MOVEMENT TEST.** The rule it shows for a copy, no clip on a movement skill, is the template's and is
+  guarded by the player's own tests; no break of this change can fail it.
+
+**The window scripts** are `compile_we.py`, `prechecks_we.py`, `run_we.py` and `prove_we.py` in `.claude/windows/`
+in the worktree `sharp-meitner-246682`, which runs window E.
+
+### The record: window-e-w2
+
+**2026-11-22, under the lock window-e-w2, at `f4d43387c`** (`feat/window-e-bolts-map-builds-swings` on development
+`82c34930c`). Every registered figure measured, and every proof proved.
+
+- **NO SEPARATE COMPILES BEFORE IT, by the coordinating session's ruling.** `git diff 9f74a7e37 f4d43387c` touches only
+  `CataclysmFloorMapTests.cpp` and `CataclysmInputTests.cpp` (test bodies, no `#include` line) and the fixture
+  `Run_v13.json`, so the window's own build compiles the two test files, as with earlier test-only fixes: "Build:
+  Succeeded - 5 actions, 2 files compiled: Module.Cataclysm.27.cpp, Module.Cataclysm.30.cpp". The three compiles of the
+  whole change ran before the first run, at `a87b4d53e` (below).
+- **The editor step was not run again**: it ran in the first run and its six files are `9f74a7e37`, an ancestor of
+  this head ("committed in window-e-w1 as 9f74a7e37, an ancestor of HEAD: True"), and a second DataTable run would find
+  the table current and change nothing.
+- **Groups alone: 47 of 47 passed, each at its registered count** (the 44 groups and this change's three new tests).
+- **The whole suite: "5143 tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they check"**, against
+  5143 and 57 registered; "Declared: 5143 tests in the tree at f4d43387c; 5143 performed, gap 0"; "Test saves: 860
+  written and deleted, 0 left behind". Memory: `peak_used_virtual_mb=9172`.
+- **Python, alongside it: "7910 passed, 10 skipped in 317.66s"**, exit 0; its JUnit file: tests 7920, failures 0,
+  errors 0, skipped 10. The DataTable check passes. **ruff: "All checks passed!"**
+- **The seven Unreal guard proofs, each PROVED** through `prove_cpp_guard`, after both suites ended, each failing
+  exactly its predicted tests with the break in and passing every test of its groups restored:
+
+| Proof | Issue | The break | With the break in | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| QC4 | #2808 | `MayBeCulled` answers true for everything | 7 performed, 1 failed: `EachBoltIsDrawnLargerBrighterAndNeverCulled` | 7 of 7 |
+| FM1 | #2805 | `LineOfSight` answers true at once | 11 performed, 1 failed: `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` | 11 of 11 |
+| FM2 | #2805 | `ScreenOf` puts +X down rather than up | 11 performed, 2 failed: `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight`, `TheStairsBeyondTheEdgeAreMarkedOnTheEdgeInTheirDirection` | 11 of 11 |
+| FM3 | #2805 | `Build` keeps what was seen (`Seen.SetNum` in place of `Seen.Init`) | 11 performed, 1 failed: `ANewFloorStartsWithNothingSeen` | 11 of 11 |
+| C1 | #2825 | `AdvanceCityBuilds` counts a build down 2 a day | `CityUpgradeBuild.` and `CityUpgradeBuildSave.`, 6 performed, 4 failed: `AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ASiegeOrAFallPausesTheBuild`, `AnIntervalUpgradeFirstFiresAFullIntervalAfterItIsFinished`, `ABuildUnderWayIsSavedAndGoesOnAfterALoad` | 6 of 6 |
+| C2 | #2825 | `BuildReadyDay` answers one day early | `CityUpgradeBuild.` and `CityScreen.`, 23 performed, 2 failed: `AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ABuildUnderWayIsListedAndTheOtherOffersWaitForIt` | 23 of 23 |
+| P1 | #2811 | the Stalker's basic attack given its own place again | 7 performed, 2 failed: `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`, `AWornResidueDoublesBlowSwingsAsTheStalkersDoes` | 7 of 7 |
+
+The logs are in `.claude/windows/` in the worktree `sharp-meitner-246682`: `we_run.out`, `we_suite_engine_f4d43387.log`,
+`we_python_f4d43387.log`, `we_junit_f4d43387.xml`, and each proof's `we_<proof>_f4d43387.log` with the two halves'
+engine logs; the first run's with the suffix `_a87b4d53e`.
+
+### Window E's first build and first run
+
+- **The first build, at `99d4b6ac4`, stopped in Unreal Header Tool** after 6 seconds, no file compiled:
+  "CataclysmProjectile.h(787): Error: BlueprintReadOnly should not be used on private members". #2808, never compiled
+  before, had declared `ACataclysmProjectile::bQuickCast` in the class's private section, where
+  `UCataclysmProjectileEffect::LookFor` and the quick-cast tests read it. Moved unchanged to the public section beside
+  `EnemiesHit` (`a87b4d53e`).
+- **The three compiles at `a87b4d53e`**, 0 compiler warning or error lines each: "69 actions, 62 files compiled"; each
+  changed `.cpp` alone, "91 actions, 86 files compiled"; the unity files again, "35 actions, 30 files compiled".
+- **The first run, window-e-w1, at `a87b4d53e`.** The editor step did exactly what was registered: the DataTable run
+  changed only `DT_EnemyArchetypes.uasset` and `datatable_asset_sources.json`; the input run rewrote 26 files, 20 were
+  restored, and `IA_ToggleFloorMap` (new), `DA_InputConfig` and both mapping contexts were kept, each of the three naming
+  `IA_ToggleFloorMap`; the six were committed as `9f74a7e37` and pushed with `git lfs push`, each a Git LFS object.
+  **Then 5 of 5143 failed** ("5143 tests performed, 5138 succeeded, 5 failed"; groups alone 44 of 47), each a fault in
+  a test or a fixture and not in the game, fixed in `f4d43387c`:
+  - `FloorMap.ANewFloorStartsWithNothingSeen`, "built": the tests' room had no entrance or exit, and a plan without
+    walkable ones is not built (`FCataclysmFloorPlan::IsBuilt`), so `Build` refused it.
+  - `FloorMap.TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt`, "a line that misses the wall still sees": (8, 4)
+    is 3.16 cells from (5, 5), beyond the 3 cell reveal; now (7, 4), with a control in the open room.
+  - `FloorMap.ACellBeyondTheMapsEdgeIsClippedAway`, "and from the left edge" 708 against 582: the run began inside the
+    square; the player now stands 25 cells into a run of 50.
+  - `Input.ConfigListsEverySlotAndNativeAction`, "and lists no others" 14 against 13: the test's list of native actions
+    lacked `ToggleFloorMap`. The sweep had searched for written counts and this one is a list's length.
+  - `SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` (#2825): `Run_v13.json`'s build held "Value": 0.2, which
+    a float cannot hold, so the record wrote back another number and the exact comparison failed; now 0.25, as the
+    fixtures' other values are float-exact. The gold session agreed.
+  Python alongside it: "7910 passed, 10 skipped"; memory `peak_used_virtual_mb=9374`; no proof ran.
+
+---
+
+## 2026-11-21 — A city upgrade takes days to build: 6, 12 or 24 by its tier, its slot taken at purchase, nothing done until it is finished, one at a time per city (#2825)
+
+**Affects:** `UCataclysmCityUpgradeRules` (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`):
+`BuildDaysTier1` to `BuildDaysTier3`, `MinimumBuildDays` and `BuildDaysFor`, new, replacing `BuildDays` and
+`IsInstant`; `ECataclysmCityUpgradeResult::BuildUnderWay`, which takes value 8 from `CannotWaitForABuildYet`;
+`FCataclysmCityUpgrade::BuildDaysLeft`, new. `FCataclysmCity::Building` and `IsBuilding`,
+`UCataclysmEmpireMap::StartBuild`, new, and `FreeUpgradeSlots` counting a build (`CataclysmEmpireMap.h` and `.cpp`).
+`UCataclysmEmpireRun` (`CataclysmEmpireRun.h` and `.cpp`): `BuyCityUpgrade`'s new `BuildDays` parameter,
+`AdvanceCityBuilds`, `CompleteCityUpgrade`, `BuildOn`, `IsBuildPaused` and `BuildReadyDay`, new, and
+`FCataclysmDayReport::UpgradesFinishedOn`, new. The run record at version 13 (`CataclysmSaveRecords.h` and `.cpp`,
+`Migrate_12_to_13`; `CataclysmSaveApply.cpp`). `UCataclysmCityUpgradePurchase::BuildDaysIn` and `BuildDaysText`, new,
+and `Buy` passing the days; `FCataclysmPlayLoopLog::UpgradeLine` and `AwayAccount`; `UCataclysmCityScreenLayout`
+(`BuildLineFor`, new; `HeldLinesFor`, `SlotsTextFor`, `OffersFor`, `ButtonTextFor`) and its offer's `BuildDays` and
+`bWaitsOnABuild`, new; `CataclysmCityScreenWidget.cpp`; `CataclysmEmpireMapWidget.cpp`; the two city upgrade console
+commands in `CataclysmPlayerCharacter.cpp`; War Funding's first-upgrade check in `CataclysmEmpireTree.cpp`. Tests:
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeBuildTests.cpp` (4),
+`game/Source/Cataclysm/Tests/CataclysmCityUpgradeBuildSaveTests.cpp` (2) and
+`CataclysmCityUpgradeBuildScreenTests.cpp` (2), new; `Cataclysm.CityUpgrade.AnUpgradeIsStillImmediate` renamed
+`AnUpgradeTakesTheDaysOfItsTier`; the price and screen tests that buy through `Buy`; every test that read
+`game/Tests/SaveFixtures/Run_v12.json`, moved to `game/Tests/SaveFixtures/Run_v13.json`, new; `tools/tests/test_city_upgrades_take_days_to_build.py`,
+new, `test_city_upgrades_cost_gold.py` (the purchase's call with its days), `test_empire_tree_event_counts_are_saved.py`
+(the finishing day now stamped in `CompleteCityUpgrade`) and `test_game_readme_is_true.py` (the new empire test file);
+`docs/Cataclysm_GDD_v2.md`, "City Upgrades"; `game/README.md`, the empire bullet. Issue [#2825](https://github.com/sdubois777/Cataclysm/issues/2825).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". One fixture value was changed
+  there: `Run_v13.json`'s build holds 0.25, not 0.2 (below, under window E's first run).
+- **THE THREE EMPIRE TREE NODES THAT ACT ON BUILD DAYS ARE NOT IN THIS CHANGE.** Scaffolding, Rapid Renovation and
+  Rapid Funding stay refused (`EMPIRE_TREE_REFUSED` in `tools/generate_datatables.py`, reason "build time") until the
+  next slice. They act through the empire tree's own code, which the empire tree session's combined window for slices
+  6d and 6e is changing now, and Rapid Funding needs a second purchase button. `UCataclysmCityUpgradePurchase::BuildDaysIn`
+  is where they will apply, as the price nodes apply in `PriceIn`.
+- **THE RUN RECORD GOES TO 13, AND GEMS SLICE G5 ALSO RAISES IT.** Whichever merges first takes 13, by the
+  coordinating session's ruling of 2026-11-21, and the other re-registers.
+- **THE DESIGN DOCUMENT NOW SAYS IT IS BUILT.** The rulings entry below (PR #2826) wrote the "City Upgrades" paragraph
+  of `docs/Cataclysm_GDD_v2.md` as ruled and not built; this change replaces that sentence with what the city screen
+  shows, and says the three empire tree nodes are not built yet. `game/README.md`'s empire bullet says a purchase takes
+  days to build.
+
+### The rulings
+
+- **The owner, 2026-11-21**, reversing the ruling of 2026-11-18 that an upgrade stays instant (#1264, now closed): "My
+  ruling was probably incorrect. They need build times. Probably based on their tier."
+- **The coordinating session, 2026-11-21**, on #2825's plan: "their tier" is the upgrade's tier; 6, 12 and 24 days;
+  one build at a time per city; and the rest as written -- the gold paid and the slot taken at purchase, no effect until
+  it is finished, a Siege and a fall pausing it, no cancelling, the days fixed at purchase.
+
+### The judgements, each with what it rests on
+
+| Judgement | Value | What it rests on |
+| :-- | :-- | :-- |
+| Tier 1's days | 6, **derived** | Rapid Renovation takes up to 3 days off (3 points of 1) and Rapid Funding 2, both "Min 1 day": 3 + 2 + 1 is the least at which both act in full. `tools/tests/test_city_upgrades_take_days_to_build.py` derives it from the tree file |
+| Tiers 2 and 3 | 12 and 24, **judgement** | the price ladder's doubling; nothing reaches them (#1265) |
+| Days at higher difficulty tiers | not scaled | a price scales because gold income does; a floor is a day at every tier |
+| Where a build waits | `FCataclysmCity::Building`, a list of its own | every existing reader of `Upgrades` (17 places in 7 files) then sees only finished upgrades and none had to change |
+| When a day of building is counted | in `AdvanceDay`, before the city upgrade repairs and the day's assaults | the repairs' reason in the code: a wall finished today stands against today's bites |
+| What a finished upgrade's `BoughtDay` holds | the day it was finished | Enduring Foundations reads "active for 10+ days", and a build is not active |
+| An interval upgrade's first trigger | a full interval after it is finished | as it was after a purchase |
+| A purchase with no build days | finished at once | the empire layer's own tests buy that way, as they buy free (`GoldCost` 0); the game passes `BuildDaysIn` |
+| Where one-at-a-time is checked | after the slot count, before the price | a city whose last slot is building says it is full; no gold changes the answer |
+| War Funding's "first upgrade in a city" | counts an upgrade being built | it was paid for and took the slot, so it is the first |
+| The tree's counts of upgrades a city holds (Imperial Command's "2+ upgrades", Fiscal Policy's "active City upgrades", The Cartographer's Blessing and The Golden Touch) | finished upgrades only | an upgrade being built does nothing, and these read `Upgrades`, unchanged |
+| What the screens say | the city's list ends with "<upgrade>  --  being built, 4 days left, ready on day 57", or "paused while a Siege dungeon stands on this city" or "paused while this city is fallen"; each offer's button "10,000 gold, 6 days to build"; the other offers greyed with "An upgrade is already being built on this city, and a city builds one at a time."; the map's city detail the same build line | "every system needs a basic UI"; one wording, `UCataclysmCityScreenLayout::BuildLineFor`, for the screen, the map and the console |
+| The play log | the purchase line ends "; being built, ready on day 57"; the capital's account of the days away ends "; city upgrades finished: <city>" when any was | the owner's check that a build took the days it showed |
+
+### The run record, version 13
+
+`FCataclysmCity::Building` and `FCataclysmCityUpgrade::BuildDaysLeft` are saved with the cities. `Migrate_12_to_13`
+writes an empty `Building` on every city and a `BuildDaysLeft` of 0 on every upgrade: a version 12 run could build
+nothing. `game/Tests/SaveFixtures/Run_v13.json` is `Run_v12.json` at version 13 with its first city (city 0, not the
+Pillar) building `Architect_Increase_max_defense_by_20` with 4 days left and its second building nothing. Every test that
+read `Run_v12.json` as the committed run file reads `Run_v13.json`, with its history note extended; every chain test
+adds `CataclysmSaveFixtures::AddTheRunsVersion13Defaults`; `Run_v12.json` is read only by
+`Cataclysm.CityUpgradeBuildSave.ARunFileFromVersion12MigratesBuildingNothing`. The written-out version check, copied
+from the windows' (run 13, character 10, account 4): "30 lines stating a version; NO MISMATCH".
+
+### Registered for the window
+
+Counted on the "Test Completed. Result={" lines of the skills window's whole-suite log at `a7fadce0b`, whose `game/` is
+development `1537dac4e`'s, with a literal match on `Path={Cataclysm.<Group>.`: "5094 tests performed, 5094 succeeded,
+0 failed. 48 skipped part of what they check" and "860 written and deleted, 0 left behind".
+
+- **The whole suite: the base + 8** (5094 + 8 = 5102), 0 failed; 48 skipped halves and 860 test saves, the base's,
+  because no new test writes a save slot.
+- **The groups first**, the ones whose tests this change adds or moves: `Cataclysm.CityUpgradeBuild.` 0 to 4,
+  `CityUpgradeBuildSave.` 0 to 2, `CityScreen.` 17 to 19, `CityUpgrade.` 15 (one renamed), `CityUpgradePrice.` 7.
+- **Then each group alone**, the ones that read the committed run file or the chain: `SaveLoad.` 81, `SaveRecords.` 17,
+  `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `Gold.`
+  13, `Seeding.` 3, `WalkSeed.` 5, `WinningTheRun.` 11, `ConsumptionDouble.` 15; and the ones whose code it changes:
+  `EmpireRun.` 71, `EmpireMap.` 17, `EmpireTreeCity.` 17, `EmpireTreeGold.` 6, `EmpireScreen.` 16, `Surge.` 54. Unchanged.
+- **No asset step.** No DataTable or widget asset changes.
+- **Two C++ guard proofs**, by the coordinating session's rule of one for each behaviour only a C++ test guards:
+  - C1, the day's count: `Build.BuildDaysLeft - 1` made `- 2` in `AdvanceCityBuilds`. Predicted to fail
+    `Cataclysm.CityUpgradeBuild.AnUpgradeDoesNothingUntilItsDaysHavePassed`, `ASiegeOrAFallPausesTheBuild` and
+    `AnIntervalUpgradeFirstFiresAFullIntervalAfterItIsFinished`, and
+    `Cataclysm.CityUpgradeBuildSave.ABuildUnderWayIsSavedAndGoesOnAfterALoad`.
+  - C2, the ready day: `Clock->Day + Build->BuildDaysLeft` made `Clock->Day + Build->BuildDaysLeft - 1` in
+    `BuildReadyDay`. Predicted to fail `AnUpgradeDoesNothingUntilItsDaysHavePassed` and
+    `Cataclysm.CityScreen.ABuildUnderWayIsListedAndTheOtherOffersWaitForIt`.
+
+### Python
+
+`tools/tests/test_city_upgrades_take_days_to_build.py`, 10 tests. Before the last two fixes, the whole suite at the
+branch's first state: 7886 passed, 2 failed, 9 skipped (JUnit 7897 tests, 2 failures): `game/README.md`'s empire bullet
+did not name the new empire test file, and `test_empire_tree_event_counts_are_saved.py` looked for the day stamp in
+`BuyCityUpgrade`. Both are fixed in this change.
+
+By `tools/prove_guard.py`, 2026-11-21, each **PROVED** (with the break, the named tests failed; restored, 34 of 34
+passed), over this file, `test_city_upgrades_cost_gold.py` and `test_empire_tree_event_counts_are_saved.py`:
+
+| Proof | The break | Failed with the break in |
+|---|---|---|
+| PY1 | builds counted after the repairs | `test_the_day_counts_builds_before_the_repairs_and_the_assaults_and_pauses_a_fallen_or_besieged_city` |
+| PY2 | a besieged city counts its build | the same |
+| PY3 | tier 1 takes 7 days | `test_the_days_per_tier_are_the_ruled_ones_and_tier_one_is_derived_from_the_two_nodes`, `test_the_design_document_states_the_days_the_code_holds` |
+| PY4 | the purchase passes no days | `test_the_purchase_passes_the_days_and_the_run_puts_a_build_on_the_list`, `test_city_upgrades_cost_gold.py::test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgrade` |
+| PY5 | `Run_v13.json` builds nothing | `test_run_v13_is_run_v12_with_the_build_fields_and_one_build_under_way` |
+| PY6 | War Funding ignores a build | `test_war_funding_counts_an_upgrade_being_built_as_the_first` |
+| PY7 | the map's city detail omits the build | `test_the_city_screen_the_map_and_the_console_say_the_build_in_one_wording` |
+| PY8 | the migration writes no days left | `test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building` |
+
+---
+
+## 2026-11-21 — Tab shows a map of the current floor over play: where the player has been, and the stairs once seen (#2805)
+
+**Affects:** `UCataclysmFloorMap`, `FCataclysmFloorMapRun` and `FCataclysmFloorMapLayout`, new
+(`game/Source/Cataclysm/Interface/CataclysmFloorMap.h` and `.cpp`); the seen-cell record on `ACataclysmDungeonFloor`
+(`RevealAround`, `SeenCells`, `SeenChangeCount`, `BuildGeneration`, `CellPositionOfWorld`); `ACataclysmPlayerController`
+(`ToggleFloorMap`, `IsFloorMapShown`, `IsAFullScreenOpen`, `RefreshFloorMapSeen` from `PostProcessInput`, and the Tab
+binding); `ACataclysmHUD::DrawFloorMap`, first in `DrawHUD`; `CataclysmInputActionNames::ToggleFloorMap`;
+`tools/generate_input_assets.py`; the HUD Elements and controls sections of `docs/Cataclysm_GDD_v2.md`. Tests: the new
+group `Cataclysm.FloorMap.`, eleven, in `game/Source/Cataclysm/Tests/CataclysmFloorMapTests.cpp`. Issue
+[#2805](https://github.com/sdubois777/Cataclysm/issues/2805).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". The input assets were
+  generated there, so `IA_ToggleFloorMap` is an asset and Tab reaches the map; whether it does in play is the owner's to
+  see.
+- **NO TEST CAN SEE THE MAP.** `DrawHUD` does not run under -nullrhi (issue #650). The tests hold the statics it draws
+  from and the seen-cell record; `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py` holds that
+  the two frame hooks call them, proved below.
+- **WHETHER TAB REACHES THE MAP WHILE A SCREEN HAS KEYBOARD FOCUS IS NOT TESTED.** Slate reads Tab as "next" focus
+  navigation for a focused widget. `Cataclysm.FloorMap.WhatSlateDoesWithTabIsRecorded` records what the navigation
+  configuration does with Tab; whether a press then reaches Enhanced Input is checked in play. The map is not drawn under a
+  full screen anyway, so the case is a press it would ignore.
+- **THE GENRE'S WIKIS COULD NOT BE READ.** poe2wiki, the Diablo fandom mirror, diablowiki, mobalytics and primagames all
+  refused the fetch (HTTP 403 or a bot check). Path of Exile and Last Epoch are evidenced by player forum posts only.
+
+### The owner's request and rulings
+
+- **The request, 2026-11-21, verbatim:** "Tab brings up a map overlay so you can make sure you aren't running in circles".
+- **Creatures, 2026-11-21:** "No enemies (Recommended)". The map marks none.
+- **Size, 2026-11-21:** "Centred on you", whose option read "A fixed scale that moves with you, as in Path of Exile.
+  Larger detail, but parts of the floor can be off the map's edge."
+- **Accepted by the coordinating session, 2026-11-21:** the 3 cell reveal with walls blocking it; not saved; 40%
+  opacity; items not marked; +X up; Tab as `IA_ToggleFloorMap` in both control schemes; not drawn under a full screen;
+  runs rebuilt on a change; the stairs at the map's edge in their direction when they lie beyond it.
+
+### What existed
+
+- **The floor's grid**: `FCataclysmFloorPlan`, Width × Height cells of 4 metres, each Solid or Floor, with `Entrance` and
+  `Exit`; held by `ACataclysmDungeonFloor`, which `ACataclysmDungeonGameMode::CurrentFloor` holds. A floor is 32 to 48
+  cells on a side. Going down the stairs rebuilds the same actor.
+- **Nothing recorded what the player had seen.** `CataclysmHUD.h` said "The minimap is not built".
+- **The design named this without describing it**: "Minimap with dungeon overlay" under HUD Elements, and "map overlay
+  only" as Hardcore's heads-up display.
+- **Tab was bound nowhere.**
+
+### The research
+
+Fetched 2026-11-21.
+
+- **Diablo II**, official (https://classic.battle.net/diablo2exp/basics/controls.shtml): Tab opens the Automap; "The
+  Automap appears over the play area"; "Note that gameplay doesn't stop when you bring up the Automap"; it maps "where
+  you have been" and "shows important terrain features like stairways".
+- **Diablo II: Resurrected**, Maxroll's beginner guide (a community guide, updated 2023-11-22,
+  https://maxroll.gg/d2/resources/tips-tricks): "Automap Size", "Automap Opacity" and "Center When Cleared" settings.
+- **Path of Exile**, player posts on the official forum, no developer reply on the pages read:
+  https://www.pathofexile.com/forum/view-thread/1523500 (2015: "when you Tab the Map to cover the screen", one player at
+  "about 30% opacity"); https://www.pathofexile.com/forum/view-thread/3689143 (2025, PoE 2: an opaque map hides the
+  game). Grinding Gear Games' 2010 development thread, https://www.pathofexile.com/forum/view-thread/241: "One of the
+  things that we really wanted in Path of Exile was an overlay minimap".
+- **Last Epoch**, player posts, no developer reply: https://forum.lastepoch.com/t/give-overlay-map-dynamic-opacity/45255
+  (2021: the overlay preferred to the corner map, one opacity unreadable on light maps).
+- **Diablo IV** has no Tab overlay, by choice: Rod Fergusson, Diablo general manager, April 2023, "No plans at the
+  moment" (https://mp1st.com/news/diablo-4-tab-map-overlay-blizzard-has-no-plans-at-the-moment,
+  https://www.gamewatcher.com/news/diablo-4-tab-overlay-map-no-plans).
+
+**Settled by it**: drawn over play, the game running underneath, where the player has been, the stairs marked,
+see-through. **Judgements**: the 3 cell reveal, the 70% square, 24 pixels a cell at 1080, 40% opacity, the stairs at the
+edge, and the colours.
+
+### What changed
+
+- **Seen.** When the player enters a new cell, or the floor is built again, `RefreshFloorMapSeen` asks the floor to
+  reveal from it: every cell within 3 cells whose straight grid line from the player's cell crosses no Solid cell
+  (`UCataclysmFloorMap::LineOfSight`, Bresenham's line, ends not asked, so a wall itself is seen). At most 49 cells, each
+  a line of at most 3 steps, once a cell rather than once a frame. Kept on the floor, emptied by `Build`, not saved.
+- **Drawn**, by `ACataclysmHUD::DrawFloorMap`, first so every bar is drawn over it, when the map is shown, there is a
+  floor and no full screen is open:
+  - the seen walkable cells as runs along cell Y at one cell X -- one screen row -- one `DrawRect` a run, clipped to the
+    square, at 40% opacity; the runs are rebuilt only when the floor's change count moves;
+  - the stairs, once seen, as a small square; beyond the edge, on the edge along their direction from the player;
+  - the player at the centre, a triangle of three `DrawLine` edges pointing the way they face.
+- **Placed** centred on the player, who is always at the screen's centre: a square of 0.7 × the shorter side, 24 pixels a
+  cell at a screen 1080 high and scaled with the height -- more than the 16 a cell a whole 48 cell floor would fit at --
+  about 31 cells across. World +X is up and +Y right, as the camera looks along +X.
+- **Tab**: `IA_ToggleFloorMap`, "Toggle Floor Map", on Tab in both schemes; the design document's two controls tables
+  carry it. Started, as every screen's key is.
+
+### Tests
+
+The new group `Cataclysm.FloorMap.`, eleven, written before the change:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` | 3 cells seen, 4 not, 2.83 diagonally seen, 4.24 not; a wall hides the cell behind it, against the same room without the wall |
+| `NothingIsSeenFromOffTheFloorAndOnlyNewCellsAreCounted` | nothing from off the grid or a solid cell; the same place again sees nothing new |
+| `TheRunsCoverExactlyTheSeenWalkableCells` | around a pillar, the runs cover each seen walkable cell once and nothing else |
+| `ANewFloorStartsWithNothingSeen` | a rebuilt floor actor has nothing seen and a new generation |
+| `TheMapIsSeventyPercentOfTheShorterSideAtTwentyFourPixelsACell` | 756 pixels and 24 a cell at 1080, 48 at 2160, and more than the whole-floor fit |
+| `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight` | the centring and the axes; the player's marker points the way they face |
+| `ACellBeyondTheMapsEdgeIsClippedAway` | the player's cell drawn whole, a cell 20 away clipped away, a run across the edge cut at it |
+| `TheStairsBeyondTheEdgeAreMarkedOnTheEdgeInTheirDirection` | inside, where they are; beyond, on each edge, a corner, and a slanted direction |
+| `ItIsDrawnWhenShownOnAFloorAndNotUnderAFullScreen` | the four cases of `ShouldDraw` |
+| `TheRunsOnAWhollySeenFloorAreMeasuredForEveryLayout` | the worst case per frame, measured over 20 seeds of each layout and reported, under the arithmetic bound |
+| `WhatSlateDoesWithTabIsRecorded` | what Slate's navigation configuration does with Tab, recorded; see SAID FIRST |
+
+Python: the controls tables and the generator agree (`test_controls_table_matches_the_input_assets.py`), and C++ names
+every action the generator builds (`test_native_input_actions_match_the_engine.py`); the hook test pins
+`RefreshFloorMapSeen()` in `PostProcessInput` and `DrawFloorMap()` in `DrawHUD`.
+
+**Proved, 2026-11-21, with `tools/prove_guard.py`:** removing `DrawFloorMap();` from `DrawHUD` fails
+`test_the_hook_runs_this_job[ACataclysmHUD::DrawHUD-DrawFloorMap()-...]` and restored passes (61 passed); removing
+`RefreshFloorMapSeen();` from `PostProcessInput` fails
+`test_the_hook_runs_this_job[ACataclysmPlayerController::PostProcessInput-RefreshFloorMapSeen()-...]` and restored
+passes (61 passed). Both `PROVED`.
+
+### Registered for the window
+
+**The whole suite 5074 + 11 = 5085**: 5070 measured at `c20ce05e3` (window nocaps-b-w2) and the 4 tests `c89fa5911`
+added by name, recounted at the window, which comes after #2806, #2809, #2807 and #2808. Skipped halves 48, unchanged.
+Groups alone: `Cataclysm.FloorMap.` 11, `Cataclysm.DungeonFloor.` 16 and `Cataclysm.Input.` 9, counted from window
+nocaps-b-w2's log. No `Cataclysm.HUD.` group exists.
+
+**An editor step of its own:** `python tools/run_editor_python.py tools/generate_input_assets.py`, which rewrites every
+input asset it owns. Commit only `IA_ToggleFloorMap`, `IMC_MouseMovement`, `IMC_KeyboardMovement` and `DA_InputConfig`.
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| FM1 | `LineOfSight` answers true always | `TheCellsWithinThreeAreSeenAndAWallHidesWhatIsBehindIt` |
+| FM2 | `ScreenOf` puts +X down rather than up | `ThePlayerIsAtTheCentreWithPlusXUpAndPlusYRight` and `TheStairsBeyondTheEdge...` |
+| FM3 | `Build` keeps the seen record | `ANewFloorStartsWithNothingSeen` |
+
+---
+
+## 2026-11-21 — The two quick-cast bolts are drawn to be seen and fire every second, at the damage per second they had (#2808, continued)
+
+**Affects:** `UCataclysmProjectileEffect` (`LookFor`, `MayBeCulled`, `DefaultIntensityOf`, `AttachTo`) and
+`FCataclysmProjectileLook`, new, in `game/Source/Cataclysm/AbilitySystem/CataclysmProjectileEffect.h`/`.cpp`;
+`UCataclysmCastEffect::PlayFor`; `ACataclysmProjectile::Fire`'s new `bInQuickCast` and the projectile's `bQuickCast`;
+`ACataclysmEnemyController::ShowWindUpMarker`, which plays the cast flare for a quick cast; the Succubus's and the
+Corrupted Sentinel's attack intervals, `BrimstoneMortarDamagePercent` and their sandbox damage figures;
+`sim/cataclysm_sim/enemy_stats.py`, `game/Data/EnemyArchetypes.csv` and `game/Tests/EnemyStrength/ExpectedFigures.csv`
+regenerated from it; `sim/cataclysm_sim/enemy_abilities.py`; `docs/Cataclysm_GDD_v2.md`; `game/docs/enemy-source-assets.md`;
+`tools/measure_attack_impact.py`. Issues [#2808](https://github.com/sdubois777/Cataclysm/issues/2808) and
+[#2817](https://github.com/sdubois777/Cataclysm/issues/2817).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2". `DT_EnemyArchetypes` was
+  rebuilt there, and `test_datatable_assets_are_current.py` passes.
+- **NO TEST CAN SEE WHETHER THE BOLTS NOW LOOK "OBVIOUS".** `-nullrhi` (issue #559). Every visual figure below is a
+  judgement for the owner to judge in play.
+- **AN OFF-SCREEN SIEGE BOLT COULD CROSS THE SCREEN WITH NOTHING DRAWN, AND THAT WAS A BUG BEFORE THIS ISSUE.** Every
+  projectile draws `NS_Proj_Body`, whose effect type `FXT_Enemy` culls when not rendered and by view frustum with "Kill and
+  Clear", and allows twenty of one system. A Sentinel reaches 14 metres, past the frame's edge, so its bolt could be
+  refused at spawn and still deal its damage. A hostile's projectile is now never culled.
+- **AT LONG RANGE THE NEXT BOLT IS CAST WHILE THE LAST IS STILL IN FLIGHT.** The Siege Bolt's speed of 1400 was derived so
+  a bolt landed as the next was marked (a 1.0 second wind-up and a 1.0 second flight in 2.0 seconds); at a bolt a second
+  that no longer holds. The speed was kept.
+- **THE SENTINEL'S MORTAR SHELL NOW LEAVES AFTER ITS FIRING CLIP HAS ENDED.** The clip is played across the 1.0 second
+  interval and the shell leaves at 1.26 seconds. The release inside the clip is unmeasured anyway (issue #478).
+- **The design document's table of hits to kill the geared character was stale before this change**, and only its
+  Succubus and Sentinel rows were moved, scaled from the table's own figures. Reported to the coordinating session.
+  **Superseded in window E**: #2818 recomputed the whole table from the model and added a check that recomputes it
+  (`tools/tests/test_the_geared_character_figures_match_the_model.py`), so the two rows are now the model's at this
+  change, computed rather than scaled: the Elite Succubus 29 hits in 29.0 seconds and the Legendary Corrupted Sentinel
+  25 hits in 25.0 seconds. The scaled Sentinel figure, 24 in 24.0, was one hit short.
+
+### The owner's two requirements, 2026-11-21, verbatim
+
+- "Make sure those attacks can actually be seen. Like a flaming fireball that's obvious to the player"
+- "and give those quick enemy ranged attacks a 1 second cooldown. They should be a basic attack sort of thing."
+
+### Seen in flight
+
+What the bolts drew: `NS_Proj_Body` (a `Core` mesh `SM_FractalElement`, a `Trail` of dot sprites whose spawn rate is
+`User.Intensity`, a `Streak` ribbon, and a light renderer), with `User.Scale` 0.4 from the 40 cm body of a projectile that
+does not pierce, Demonic orange from `DT_ElementVisuals`, and `User.Intensity` never set. Its effect type, `FXT_Enemy`, was
+read from the asset's name table. Ruled by the coordinating session, 2026-11-21:
+
+| | What | Figure | Judgement or rule |
+| :-- | :-- | :-- | :-- |
+| A1 | A hostile's projectile, and a hostile's cast flare, are never culled | `bPreCullCheck = false`, `SetAllowScalability(false)` | the bug above; the player's own effects keep the budget |
+| A2 | A quick cast is drawn at its blast radius | `User.Scale` 0.5, was 0.4 | a projectile's look is sized to what it hits with |
+| A3 | Brighter | the damage type's colour × 4 | judgement; the hue is unchanged |
+| A4 | A denser trail | 3 × the asset's own `User.Intensity` default, read at load | judgement |
+| A5 | A flare at the creature for the half-second cast | the existing `NS_Cast_Windup`, through `UCataclysmCastEffect::PlayFor` | judgement |
+| A6 | Both stay Demonic orange | — | colour means damage type, which says which resistance applies |
+
+A real flaming fireball -- a new Niagara system with a flame head, smoke, embers and a light, and sounds for the cast and
+the flight -- needs the editor and assets, and **the project has no sound assets at all**. Issue #2817, opened 2026-11-21,
+quoting the owner.
+
+### Every second, at the damage per second it had
+
+A creature's `damage_share` sets its damage per hit, so its damage per second is the share over its `attack_interval`.
+The bolts are each creature's basic attack, with no cooldown, so the interval alone paces them. **Ruled by the
+coordinating session: hold the damage per second.** So each hit falls by the change in the interval:
+
+| Tier 8, as met | Interval | Share per hit | Hit | Damage a second | With criticals |
+| :-- | :-: | :-: | :-: | :-: | :-: |
+| Elite Succubus, before | 2.6 | 1.60 | 9,891 | 3,804.1 | 4,184.5 |
+| Elite Succubus, after | 1.0 | 0.6154 | 3,804 | 3,804.2 | 4,184.6 |
+| Legendary Corrupted Sentinel, before | 2.0 | 1.10 | 9,604 | 4,801.9 | 4,921.9 |
+| Legendary Corrupted Sentinel, after | 1.0 | 0.55 | 4,802 | 4,801.9 | 4,921.9 |
+
+**The other abilities keep their timing.** `ACataclysmEnemyController::UseAbilitiesOn` refuses any ability within the
+interval of the last attack, so the curse or a shell may now follow a bolt after 1.0 second rather than 2.6 or 2.0; each
+keeps its own cooldown (Wither the Living 10 s, Brimstone Mortar 8 s), so neither comes more often. Eight bolts fall
+between shells where four did.
+
+**The mortar's percentage doubled, 150 to 300, so a shell is worth what it was**: 300% of 0.55 is 150% of 1.10.
+
+**What else reads the creature's hit falls with it**, as recommended and ruled. At tier 8, from the model's hits above:
+
+| Reader | Worth | Elite Succubus | Legendary Sentinel |
+| :-- | :-- | :-: | :-: |
+| Infernal Brand's explosion (`CataclysmEnemyModifiers.cpp`) | 5 hits | 49,455 to 19,020 | 48,020 to 24,010 |
+| Hellfire's burst (`CataclysmDungeonGameMode.cpp`) | 1 hit | 9,891 to 3,804 | 9,604 to 4,802 |
+| Holy Repercussions' retaliation (`CataclysmDungeonGameMode.cpp`) | 1 hit | 9,891 to 3,804 | 9,604 to 4,802 |
+| Nothing Is Forgotten's portion (`CataclysmDungeonGameMode.cpp`) | 5% of a hit | 494.6 to 190.2 | 480.2 to 240.1 |
+
+**Clips.** The Sentinel's 2.40 second firing clip is played to fit its interval, so 2.40 times its authored speed, where it
+was 1.20; under the 2.5 ceiling, accepted 2026-11-21. The Succubus's 0.90 second cast fits a second as authored; its clip
+finishes 1.244 seconds after a cast begins and the next starts 1.344 seconds after, so nothing cuts it except its curse,
+every 10 seconds, which may cut the last 0.244 seconds when it follows a bolt.
+
+**The model's report, `python -m cataclysm_sim.enemy_stats`, before and after.** Only these lines moved:
+
+    before  Elite Succubus                   3,770    1,885     9,891   2.6s      183     10%    3.5    10%
+    after   Elite Succubus                   3,770    1,885     3,804   1.0s      183     10%    3.5    10%
+    before  Legendary Corrupted Sentinel    15,245    5,336     9,604   2.0s    2,748     20%    0.0     0%
+    after   Legendary Corrupted Sentinel    15,245    5,336     4,802   1.0s    2,748     20%    0.0     0%
+    before  Elite Succubus (hits a gearless Ravager survives)    0.6    after  1.5
+    before  Legendary Corrupted Sentinel (the same)               0.6    after  1.3
+
+**`sim/analyse_opening.py`, before and after: the same output**, every line but its run time. It fights ten Common Imps
+and reads neither creature.
+
+### Tests
+
+Unreal, in `Cataclysm.QuickCast.`, written before the change was compiled, none yet run:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachBoltIsDrawnLargerBrighterAndNeverCulled` | both fired bolts: a quick cast, scale 0.5, colour × 4, trail × 3, never culled; controls: the mortar's shell keeps its own look and is never culled, a thrall's Soulfire may be culled |
+| `AQuickCastAsksForTheCastFlareAndAMarkedAttackDoesNot` | the Siege Bolt asks for the flare once, in Demonic; the mortar asks for none |
+| `EachBoltRepeatsEverySecond` | three bolts through the brain, each a second apart and not a hundredth sooner |
+| `TheDenserTrailIsAMultipleOfTheAssetsOwnDefault` | `NS_Proj_Body`'s own `User.Intensity` default is read and usable |
+| `OnlyTheTwoBoltsAreQuickAndEveryAreaKeepsItsWindUp`, extended | every ability's cooldown as a literal: the control that the faster bolts moved no other ability |
+
+Python, `tools/tests/test_quick_cast.py`: each bolt repeats every second; each holds its damage per second within
+rounding; the curse and the mortar keep their cooldowns; and `AttachTo` and `PlayFor` pass the cull answer, the scale and
+the colour on. The tests that pinned the old interval and share are updated, each saying why; the Elite survival test
+is stated in seconds, since the Succubus now takes 29 smaller hits where it took 12.
+
+### Registered for the window
+
+**The whole suite 5074 + 4 = 5078**, recounted at the window after #2806, #2809 and #2807; skipped halves 48. Groups alone:
+`Cataclysm.QuickCast.` 7, `Cataclysm.Succubus.` 10, `Cataclysm.Sentinel.` 6, `Cataclysm.Effects.`, and the groups the
+entry above registers.
+
+**An editor step of its own:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+`DT_EnemyArchetypes` and the hash record it writes. Until then `test_datatable_assets_are_current.py` fails.
+
+**One C++ proof, by the rule of 2026-11-21** (one per behaviour only a C++ test guards; a Python check's proof where
+one guards the same thing, since it costs no build):
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| QC4 | `MayBeCulled` answers true for everything | `EachBoltIsDrawnLargerBrighterAndNeverCulled` |
+
+**QC5 is proved in Python instead**, 2026-11-21, with `tools/prove_guard.py` in a copy of the branch at `14300929e`: the
+Sentinel's `DesignedAttackIntervalSeconds` back to 2.0 fails
+`tools/tests/test_sentinel_matches_the_model.py::test_the_profile_matches_the_archetype[DesignedAttackIntervalSeconds-attack_interval-1.0-seconds between shots]`
+and restored passes: `PROVED: 1 failed, 42 passed | restored: 43 passed`.
+
+---
+
+## 2026-11-21 — Two enemy bolts become quick casts with no marker, and every wind-up lands at its own length (#2808)
+
+**Affects:** `FCataclysmEnemyAbility::bDrawsNoMarker` and `QuickCastSeconds`, new
+(`game/Source/Cataclysm/Character/CataclysmCharacterBase.h`); the Succubus's Soulfire and the Corrupted Sentinel's
+Siege Bolt (`CataclysmSuccubusCharacter.h`/`.cpp`, `CataclysmCorruptedSentinelCharacter.h`/`.cpp`);
+`ACataclysmEnemyController::IsWindUpDue` and `LandWindUpIfDue`, new, `ContinueWindUp` and `ShowWindUpMarker`, with
+`PassesForWindUp` and `WindUpPassesLeft` removed (`CataclysmEnemyController.h`/`.cpp`); `ACataclysmEnemyCharacter::Tick`;
+`ACataclysmBruteCharacter::LandsAtSecondsFor`; the sandbox's log lines in `CataclysmGameMode.cpp`;
+`sim/cataclysm_sim/enemy_abilities.py` (`QUICK_CAST_SECONDS`, `Ability.quick_cast`, `quick_cast_dodge_distance` and a new
+import-time check); the Attack Telegraphs subsection and the Succubus, Corrupted Sentinel, Abyssal Warden and Gatekeeper
+sections of `docs/Cataclysm_GDD_v2.md`; `game/docs/enemy-source-assets.md`. Issue
+[#2808](https://github.com/sdubois777/Cataclysm/issues/2808).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-22, in window E (window-e-w2, at `f4d43387c`)**: every registered figure measured
+  and every proof proved. The record is in #2811's entry, "The record: window-e-w2".
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Attack animations/sequences seem kinda slow all around for enemies. Not
+  everything needs a big windup and cast animation, sometimes enemies should be able to just shoot a fireball at you as
+  long as you can see it."
+- **THE SIEGE BOLT'S CLIP STILL DOES NOT LINE UP WITH ITS SHOT.** The moment inside `Fire_Planted` where the muzzle fires
+  has never been measured (issue #478), so the bolt now leaves at half a second wherever the clip happens to be. Ruled
+  2026-11-21: change the timing now and leave the clip until #478.
+- **A STATEMENT IN THE PHASE 1 REPORT WAS WRONG ABOUT THE MECHANISM, AND ITS CONCLUSION STANDS.** It said the two bolts
+  were fired 6.3 and 4.2 metres wide. They were not: neither pierces, so each flies with `ACataclysmProjectile`'s
+  standard 40 cm body and goes off where it stops -- against what it touches, or at the point it was aimed, where the
+  player stood -- hitting everything within its `Radius` of 3.15 or 2.1 metres. Nobody can leave a blast that size at
+  their own feet in the bolt's flight, so the radius still had to come down for a quick cast.
+- **THE CAST IS 0.5 SECONDS, NOT THE 0.45 THE RULING NAMED, AND IT LANDS AT THE RULED 0.50.** 0.45 was proposed only to
+  stay clear of a thinking-pass boundary, so that it would land on the second pass at 0.50 every time. Ruling (4) lands
+  every wind-up at its own length, so 0.45 would land at 0.45; 0.5 keeps the ruled landing time.
+
+### What was measured (phase 1)
+
+From the code and recorded clip measurements; nothing timed in a running game. "Lands" was the first quarter-second
+thinking pass at or after the wind-up's length (issue #413), and a length exactly on a pass landed on it or the next.
+
+| Creature | Attack | Wind-up | Landed at | Since this change |
+| :-- | :-- | :-: | :-: | :-: |
+| Imp, Brute, Abyssal Warden | ordinary swing | none | 0.242 to 0.308, 0.331, 0.176 s (measured clips) | unchanged |
+| Hellhound | Maul | none | at once (clip unmeasured) | unchanged |
+| Hellhound, Abyssal Warden | Hellrush, Stampede (charges) | 0.83 | 1.00 | 0.83 |
+| Brute | Stomp | 1.4 | 1.50 | 1.4 |
+| Brute | Rip and Toss | 1.0 | 1.00 or 1.25 | 1.0 |
+| Corrupted Sentinel | Siege Bolt | 1.0 | 1.00 or 1.25 | **0.5, a quick cast** |
+| Corrupted Sentinel, Gatekeeper | Brimstone Mortar, Soulfall | 1.2571 | 1.50 | 1.2571 |
+| Succubus | Soulfire | 1.3 | 1.50 | **0.5, a quick cast** |
+| Gatekeeper | Dread Cleave | 0.9714 | 1.00 | 0.9714 |
+| Abyssal Warden, Gatekeeper | Molten Roar, Soul Harvest | 2.0 | 2.00 or 2.25 | 2.0 |
+| Succubus, Gatekeeper | Wither the Living, Call the Damned | 0 | at once | unchanged |
+
+Projectiles and charges also turn to face first: up to 0.375 s at 480 degrees a second, a second for the Brute.
+Soulfire's cast clip releases 0.156 s in, so before this the creature stood still for 1.14 s and then flicked the bolt.
+
+### The research
+
+Fetched 2026-11-21. **Settled by it: the split.** Ordinary ranged monsters in the genre fire a projectile after a short
+cast with no ground marker, and the projectile is the warning; ground markers and long delays are kept for areas.
+
+- **Path of Exile**, monster skill data on poedb.tw (data-mined, not a developer statement): the Goatman Fire-raiser's
+  Fireball "Cast Time: 1.33 sec" (https://poedb.tw/us/Goatman_Fire-raiser); the Ironclad Arsonist's 0.85 s
+  (https://poedb.tw/us/Ironclad_Arsonist); the Vaal Fanatic's Fireball and mortar 1.2 s (https://poedb.tw/us/Vaal_Fanatic);
+  the player's Fireball gem 0.75 s (https://poedb.tw/us/Fireball).
+- **Path of Exile 2**: Jonathan Rogers, game director, PAX West 2023, of boss mechanics: "They're all telegraphed, you can
+  dodge" (https://maxroll.gg/poe/news/pax-west-path-of-exile-2-interview-with-jonathan-rogers). No timings.
+- **Diablo IV**, Maxroll's elite affix guide (a community guide, updated 2025-12-09,
+  https://maxroll.gg/d4/resources/elites-affixes): Frozen explodes "after 3 seconds"; Terrifying's pentagrams deal damage
+  "after 2 seconds"; Lightning Teleporter has "a 0.33 second cast time" with a cue.
+- **Diablo III**, Maxroll's elite affix guide (Season 26, https://maxroll.gg/d3/resources/elite-affixes): Frozen "4 sec to
+  explode"; Arcane Enchanted "2 sec delay after cast"; Poison Enchanted "2 sec trigger time".
+- **Last Epoch**: no published timings found. The 2019 forum thread
+  https://forum.lastepoch.com/t/poorly-telegraphed-high-damage-abilities/15075 asks for reports and promises adjustments
+  with no figures; its author shows no staff badge on the page.
+- **General**: Mike Stout, "Enemy Attacks and Telegraphing", Game Developer, 2015
+  (https://gamedeveloper.com/design/enemy-attacks-and-telegraphing): a projectile enemy is warned of by a charge-up before
+  it fires; no durations.
+
+**Not settled by it, and a judgement each:** the half second (quicker than every caster monster found, because the owner
+asked for quicker, and the reaction allowance plus a tenth so the cast itself can be seen); the 0.5 metre radius. No
+source publishes a rule for either.
+
+### The rulings
+
+The coordinating session, 2026-11-21, on the phase 1 report:
+
+1. **The quick cast is accepted as a second kind of attack**, on the owner's own words above. Soulfire and Siege Bolt
+   become quick casts: a cast landing at 0.50 s, no lane, a 0.5 metre bolt, under the walk-out rule with the flight
+   counted.
+2. **Soulfire's damage is unchanged for now**, to be tuned in play. Its damage share of 1.60 was set for a slow, wide
+   bolt ("slow but powerful"), so it is the first figure to look at if the quick bolt hits too hard.
+3. **Area attacks are kept as they are**, the owner's choice when asked: "Keep them as they are". Dread Cleave, the Stomp,
+   the lobs, the rings and both charges keep their wind-ups.
+4. **Every wind-up lands at its own length**, which the owner chose as "each one lands exactly on time instead of waiting
+   up to a quarter second extra".
+5. **The Siege Bolt's timing changes now and its clip stays misaligned until #478.**
+
+### What changed
+
+- **THE QUICK CAST.** A flat bolt fired `QuickCastSeconds`, 0.5, after the decision, with `bDrawsNoMarker` set so
+  `ShowWindUpMarker` draws nothing. It still turns to face first, and it is still aimed where the target stood when the
+  cast began. **The rule** (the Attack Telegraphs subsection): from the moment the cast begins to the bolt arriving there
+  must be at least the reaction allowance plus the time for the slowest class to walk out of the bolt's radius with its
+  own 0.42 metres, `Cast + Distance / Speed >= 0.4 + (Radius + 0.42) / 3.5`. The model checks at import that every quick
+  cast is a flat bolt with a Speed, has a Radius under the 1 metre marker floor, and can be stepped around somewhere
+  inside its range.
+
+  | Quick cast | Cast | Radius | Speed | Stepped around from |
+  | :-- | :-: | :-: | :-: | :-: |
+  | Soulfire | 0.5 s | 0.5 m (was 3.15) | 1200 cm/s | 1.95 m |
+  | Siege Bolt | 0.5 s | 0.5 m (was 2.1) | 1400 cm/s | 2.28 m |
+
+  Closer than that it cannot be stepped around, which is accepted: it is inside the reach a melee build stands at.
+  Siege Bolt's 1400 cm/s was derived from its old 1.0 s wind-up (one second of marker, one of flight) and is kept,
+  since half a second of cast and a second of flight still land inside its 2.0 s interval.
+- **THE EXACT LANDING, AND THE REVERSAL OF ISSUE #413's COUNT.** `ACataclysmEnemyCharacter::Tick` calls
+  `LandWindUpIfDue` every frame; a wind-up is due when `Now + 0.001 >= WindUpLandsAt` (`IsWindUpDue`), so it lands on the
+  first frame at or after its length. `PassesForWindUp` and `WindUpPassesLeft` are removed.
+  **#413's reasons, read first:** (a) on a quarter-second thinking pass, a frame of timer overshoot decided a whole pass
+  for a telegraph sitting exactly on a boundary -- the rock throw landed at 1.00 or 1.25, 246 times late in 500
+  simulated jittery runs; (b) every automation test moves the clock by hand and calls the brain directly, so a landing on
+  its own timer could not be observed. **Why reversing it is safe:** (a) came from checking four times a second;
+  checked every frame, the lateness is at most one frame at any length, and nothing rounds. (b) A test moves the clock
+  by hand and calls `LandWindUpIfDue` as the frame would, and the landing is then a comparison of two numbers the test
+  set -- deterministic every run. The millisecond of tolerance lets a test that moves the clock by exactly the wind-up
+  land it despite a float deadline; it is never more than a millisecond early. The frame does not land a wind-up for a
+  creature that is dead, unable to act or fleeing; `Think`'s next pass abandons it, as before.
+- **THE MARKER'S BACKSTOP** lifespan is the wind-up plus a thinking interval, since the landing that removes it may come
+  up to a frame after the wind-up's length.
+- **THE BRUTE'S MONTAGE** aims at the telegraph itself (`LandsAtSecondsFor`), so the stomp's fists land at 1.4, not 1.5.
+- **SOULFIRE'S CAST CLIP** now waits 0.344 s, not 1.144, before it plays, so its 0.156 s flick still comes as the bolt is
+  fired. No code changed for that: `SoulfireDelaySeconds` already worked from the wind-up.
+- **DREAD CLEAVE IS THE ONLY TELEGRAPHED BASIC ATTACK AGAIN.** From 2026-08-21 (issue #763) there were three.
+
+### Tests
+
+Unreal, written before the change was compiled, none yet run:
+
+| Test | What it checks |
+| :-- | :-- |
+| `Cataclysm.QuickCast.SoulfireIsFiredHalfASecondAfterItDecidesWithNoMarker` | through the brain: no marker, nothing at 0.49 s, the bolt at 0.50 s with a 50 cm radius |
+| `Cataclysm.QuickCast.SiegeBoltIsFiredHalfASecondAfterItDecidesAndTheMortarStillMarks` | the same for the bolt; the control is the same creature's mortar drawing its circle |
+| `Cataclysm.QuickCast.OnlyTheTwoBoltsAreQuickAndEveryAreaKeepsItsWindUp` | every enemy ability's wind-up held as a literal, the areas, lobs and charges as before, and exactly two quick casts |
+| `Cataclysm.AI.AWindUpLandsAtItsOwnLengthNotOnTheNextThinkingPass` | the stomp (1.4) and the rock throw (1.0, the boundary case) land at their length and not 0.01 s before |
+| `Cataclysm.AI.AWindUpIsDueAtItsLengthNeverEarlierAtAnyLengthOrClock` | every length 0.01 to 3.00 s at clocks of 0, 60 and 3600 s: due at its length, not 2 ms before; control, the old rounding put the stomp at 1.5 |
+| `Cataclysm.AI.TheFrameDoesNotLandAWindUpForACreatureThatCannotAct` | a stunned Brute's stomp is not landed by the frame, and the next pass abandons it |
+| `Cataclysm.Telegraph.TheMarkerIsShownUntilTheAttackLandsAndNoLonger` | the marker outlasts the wind-up by a thinking interval, and the landing removes it |
+
+Removed with the count they tested: `Cataclysm.AI.AWindUpTakesTheSameNumberOfPassesEveryTime`,
+`Cataclysm.AI.ATelegraphIsRoundedUpToAWholePassNeverDown` and
+`Cataclysm.Telegraph.TheMarkerIsShownForAsLongAsTheAttackReallyTakes`. Changed: the Succubus's and the Sentinel's ability
+tables (`Cataclysm.Succubus.`, `Cataclysm.Sentinel.`), which asserted a wind-up of half the interval; the Brute's
+no-art half of its montage test (1.40, not 1.50); the hit reaction test that set the removed count.
+
+Python: `tools/tests/test_wind_up_lands_on_a_counted_pass.py` is renamed `test_wind_up_lands_at_its_own_length.py` and
+rewritten to hold the exact landing; `tools/tests/test_quick_cast.py` is new, with each refusal of the model's check
+beside the unchanged control; the frame's call is pinned in
+`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`; the enemy ability, telegraph, Succubus and
+Sentinel tests are updated to the quick casts.
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (development `c20ce05e3`, the base of this branch): **the whole suite 5070 - 3 +
+4 + 3 = 5074; skipped halves 48, unchanged**; test saves 859. To be recounted at the window, since #2806, #2809 and #2807
+are ahead of it. Groups alone: `Cataclysm.QuickCast.` 3; `Cataclysm.AI.` 51 to 52; `Cataclysm.Telegraph.` 14, unchanged;
+`Cataclysm.Succubus.` 10; `Cataclysm.Sentinel.` 6; `Cataclysm.Brute.` 23; `Cataclysm.Enemy.` 19;
+`Cataclysm.HitReaction.` 12; `Cataclysm.Silence.` 26; `Cataclysm.LobMinimum.` 7; `Cataclysm.Gatekeeper.` 14;
+`Cataclysm.Warden.` 20; `Cataclysm.Hellhound.` 11.
+
+Proofs: **all three proved in Python, and no C++ proof is registered for them**, by the rule of 2026-11-21 (one C++
+proof per behaviour only a C++ test guards; each of these is also guarded by a Python check of the source). Run
+2026-11-21 with `tools/prove_guard.py` in a copy of the branch at `14300929e`, each failing with its break in and
+passing restored (7 passed):
+
+| Proof | Break | Failed with it in |
+| :-- | :-- | :-- |
+| QC1 | `ShowWindUpMarker` reads `MarkerRadiusCm < 0` instead of `bDrawsNoMarker` | `test_wind_up_lands_at_its_own_length.py::test_a_quick_cast_draws_no_marker` |
+| QC2 | `IsWindUpDue` rounds the deadline up to a thinking pass | `test_wind_up_lands_at_its_own_length.py::test_the_landing_is_due_at_its_own_length_and_nothing_rounds_it` |
+| QC3 | `LandWindUpIfDue` stops asking whether the creature can act | `test_wind_up_lands_at_its_own_length.py::test_the_frame_lands_one_only_for_a_creature_that_can_still_make_it` |
+
+---
+
 ## 2026-11-21 — Hovering an item on the ground shows the bag's tooltip and its comparison with what is worn, through the same code (#2807)
 
 **Affects:** `UCataclysmItemComparison::TooltipColumnsFor`, new, the steps `UCataclysmInventoryWidget` wrote out

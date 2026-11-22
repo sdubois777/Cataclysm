@@ -218,6 +218,10 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         # 2026-11-19 for issue #2749's placement seeding slice. The readme's
         # empire bullet now names it.
         "CataclysmSeedMix.h",
+        # City upgrade build times, added 2026-11-21 for issue #2825. The
+        # readme's empire bullet now says a purchase takes days to build and
+        # waits on the city's build list.
+        "CataclysmCityUpgradeBuildTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

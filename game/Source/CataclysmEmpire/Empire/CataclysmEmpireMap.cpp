@@ -739,6 +739,15 @@ bool FCataclysmCity::HasUpgrade(FName RowName) const
 		});
 }
 
+bool FCataclysmCity::IsBuilding(FName RowName) const
+{
+	return Building.ContainsByPredicate(
+		[RowName](const FCataclysmCityUpgrade& Built)
+		{
+			return Built.RowName == RowName;
+		});
+}
+
 float FCataclysmCity::UpgradeValueFor(
 	ECataclysmCityUpgradeEffect Effect) const
 {
@@ -763,7 +772,20 @@ int32 UCataclysmEmpireMap::FreeUpgradeSlots(int32 CityId) const
 		return 0;
 	}
 
-	return FMath::Max(0, UpgradeSlots - City->Upgrades.Num());
+	// AN UPGRADE BEING BUILT HAS TAKEN ITS SLOT (issue #2825), so the two lists count together.
+	return FMath::Max(0, UpgradeSlots - City->Upgrades.Num() - City->Building.Num());
+}
+
+bool UCataclysmEmpireMap::StartBuild(int32 CityId, const FCataclysmCityUpgrade& Upgrade)
+{
+	FCataclysmCity* City = FindMutable(CityId);
+	if (City == nullptr)
+	{
+		return false;
+	}
+
+	City->Building.Add(Upgrade);
+	return true;
 }
 
 bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,

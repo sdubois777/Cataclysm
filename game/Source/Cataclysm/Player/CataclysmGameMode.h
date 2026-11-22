@@ -190,8 +190,8 @@ public:
 	 * This one places ten in a cluster of their own, because ten is what
 	 * `docs/Cataclysm_GDD_v2.md` calls a pack and because one Imp shows almost
 	 * nothing: the design's own line is that a single Common enemy is not the
-	 * threat, a pack is. One Imp takes 48 seconds to kill a geared character;
-	 * ten take 4.9.
+	 * threat, a pack is. One Imp takes 54 seconds to kill a geared character;
+	 * ten take 5.4.
 	 *
 	 * THE RINGS ARE THE CROWD'S TO MAKE. The ring behaviour the design describes
 	 * is what crowd avoidance produces, and since issue #761 every creature walks
@@ -834,12 +834,12 @@ protected:
 	 *
 	 * **TEN, WHICH IS THE ONLY FIGURE HERE THE DESIGN STATES OUTRIGHT.**
 	 * `docs/Cataclysm_GDD_v2.md` has a subsection headed "A pack is ten", and it
-	 * gives the reason: ten is the pack that kills a geared character in 4.9
+	 * gives the reason: ten is the pack that kills a geared character in 5.4
 	 * seconds, and it is three more than one full ring of seven, which is what
 	 * makes the second ring -- and therefore this creature's 1.32 metre reach --
 	 * matter in an ordinary encounter rather than only in a swarm event.
 	 *
-	 * ONE IMP SHOWS ALMOST NOTHING. It takes 48 seconds to kill a geared
+	 * ONE IMP SHOWS ALMOST NOTHING. It takes 54 seconds to kill a geared
 	 * character on its own. Spawning one the way the other three creatures are
 	 * spawned would put a creature in the level that cannot demonstrate the only
 	 * thing it is for.
@@ -909,7 +909,7 @@ protected:
 	 *
 	 * TEN OF THESE EVERY 0.9 SECONDS is what a pack does, which is 100 damage a
 	 * second against a character starting at 100 health. That is the design's
-	 * own claim -- ten Imps kill a geared character in 4.9 seconds -- arriving
+	 * own claim -- ten Imps kill a geared character in 5.4 seconds -- arriving
 	 * from the numbers rather than being aimed at.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
@@ -970,14 +970,15 @@ protected:
 
 	/**
 	 * What one of its bolts is worth. The training dummy's 20 times the designed
-	 * damage share of 1.10, on the same scaffolding reasoning as
-	 * `BruteAttackDamage`.
+	 * damage share of 0.55, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`. It was 22, 20 times 1.10, until issue #2808 made the
+	 * bolt a second's at the same damage per second.
 	 *
-	 * ITS MORTAR IS WORTH ONE AND A HALF OF THESE, because the Special slot is
-	 * 150%.
+	 * ITS MORTAR IS WORTH THREE OF THESE, 300%, twice the Special slot's 150%,
+	 * so a shell is worth what it was before the bolt's hit halved.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float CorruptedSentinelAttackDamage = 22.0f;
+	float CorruptedSentinelAttackDamage = 11.0f;
 
 	/** How many Succubi to place. Zero for none. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
@@ -1054,14 +1055,15 @@ protected:
 
 	/**
 	 * What one of its bolts is worth. The training dummy's 20 times the designed
-	 * damage share of 1.60, on the same scaffolding reasoning as
-	 * `BruteAttackDamage`.
+	 * damage share of 0.6154, on the same scaffolding reasoning as
+	 * `BruteAttackDamage`. It can double on a critical strike at 10% for 200%.
 	 *
-	 * **THE HARDEST ORDINARY HIT IN THE SANDBOX**, ahead of the Brute's 35, and
-	 * it can double on a critical strike at 10% for 200%.
+	 * IT WAS 32, THE HARDEST ORDINARY HIT IN THE SANDBOX, until issue #2808 made
+	 * the bolt a second's at the same damage per second: 20 times 1.60 every 2.6
+	 * seconds became 20 times 0.6154 every second.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float SuccubusAttackDamage = 32.0f;
+	float SuccubusAttackDamage = 12.308f;
 
 	/** How many Gatekeepers to place. Zero for none. **One**, because it is a
 	 *  boss and two of them is not a thing the design has. */

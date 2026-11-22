@@ -8,6 +8,7 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
+#include "Interface/CataclysmCityScreenLayout.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameInstance.h"
@@ -632,6 +633,13 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 								  Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)));
 		Parts.Add(Run->Map->IsExposed(CityId) ? TEXT("exposed")
 											  : TEXT("sealed behind the frontier"));
+	}
+
+	// THE UPGRADE IT IS BUILDING, in the city screen's words, since issue #2825.
+	const FString Building = UCataclysmCityScreenLayout::BuildLineFor(Run, CityId);
+	if (!Building.IsEmpty())
+	{
+		Parts.Add(Building);
 	}
 
 	// WHAT IS STANDING ON IT AND HOW LONG EACH HAS. This is the whole triage

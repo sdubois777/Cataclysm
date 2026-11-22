@@ -298,21 +298,20 @@ bool FCataclysmSentinelOffersItsMortarThenItsBolt::RunTest(const FString&)
 
 	TestEqual(TEXT("the bolt reaches its designed range"),
 		Bolt.MaxRangeCm, Sentinel_t::SiegeBoltRangeCm);
-	TestEqual(TEXT("and marks a lane of its designed half-width"),
+	TestEqual(TEXT("and carries its designed radius"),
 		Bolt.MarkerRadiusCm, Sentinel_t::SiegeBoltRadiusCm);
-	TestEqual(TEXT("and warns for its designed telegraph"),
+	TestEqual(TEXT("and winds up for its designed time"),
 		Bolt.WindUpSeconds, Sentinel_t::SiegeBoltWindUpSeconds);
 
-	// THE TELEGRAPH IS EXACTLY HALF THE INTERVAL, which is the most the rule
-	// allows and is what "it uses the whole of its allowance" means.
-	TestEqual(TEXT("the bolt's telegraph is exactly half its attack interval"),
-		Bolt.WindUpSeconds,
-		Sentinel_t::DesignedAttackIntervalSeconds / 2.0f);
+	// A QUICK CAST SINCE ISSUE #2808: half a second and no lane. It was exactly
+	// half the 2.0 second attack interval, 1.0 second, with a 2.1 metre lane.
+	TestEqual(TEXT("the bolt's wind-up is the quick cast's half second"),
+		Bolt.WindUpSeconds, FCataclysmEnemyAbility::QuickCastSeconds);
+	TestTrue(TEXT("and it draws no marker"), Bolt.bDrawsNoMarker);
+	TestFalse(TEXT("while the mortar, an area, keeps its marker"), Mortar.bDrawsNoMarker);
 
-	// AND IT STILL LEAVES ROOM. A telegraph as long as the interval would mean
-	// the creature began warning about the next shot before this one landed.
-	TestTrue(TEXT("and it is shorter than the interval, so the marker leaves "
-				  "the ground between shots"),
+	// AND IT STILL LEAVES ROOM: the cast is shorter than the interval.
+	TestTrue(TEXT("and it is shorter than the interval"),
 		Bolt.WindUpSeconds < Sentinel_t::DesignedAttackIntervalSeconds);
 
 	TestEqual(TEXT("the mortar reaches its designed range"),
@@ -770,7 +769,8 @@ bool FCataclysmSentinelAlternatesItsFiringClips::RunTest(const FString&)
 		Sentinel->IdleAnimation.Get());
 
 	// THE PLAY RATE IS THE ONE ISSUE #369 SETTLED: the clip is played to fit the
-	// interval, which for 2.40 into 2.00 is 1.20.
+	// interval, which for 2.40 into 1.00 is 2.40 since issue #2808 (1.20 into
+	// 2.00 before).
 	const float Expected = Sentinel_t::FireAnimationSeconds
 						 / Sentinel_t::DesignedAttackIntervalSeconds;
 	TestEqual(TEXT("the firing clip is played to fit the attack interval"),

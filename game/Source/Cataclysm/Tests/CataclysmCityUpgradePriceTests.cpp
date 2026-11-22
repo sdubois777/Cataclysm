@@ -282,7 +282,8 @@ bool FCataclysmCityUpgradePriceBoughtTest::RunTest(const FString&)
 	const int32 Writes = Writer->WritesStarted() - WritesBefore;
 	const ECataclysmSaveTrigger Last = Writer->LastTrigger();
 	const int64 After = Held(Scene.World);
-	const bool bHeld = Scene.Run->Map->Find(0) != nullptr && Scene.Run->Map->Find(0)->HasUpgrade(FName(Row));
+	// BEING BUILT, since issue #2825: a purchase takes days, and the city holds it on its build list until then.
+	const bool bHeld = Scene.Run->Map->Find(0) != nullptr && Scene.Run->Map->Find(0)->IsBuilding(FName(Row));
 	WaitForTheSlot(Slot);
 
 	ECataclysmSaveLoadResult ReadResult = ECataclysmSaveLoadResult::SlotIsEmpty;
@@ -300,7 +301,7 @@ bool FCataclysmCityUpgradePriceBoughtTest::RunTest(const FString&)
 	TestEqual(TEXT("set-up: 25,000 held"), Before, static_cast<int64>(25000));
 	TestEqual(TEXT("it is bought"), static_cast<int32>(Result), static_cast<int32>(ECataclysmCityUpgradeResult::Bought));
 	TestEqual(TEXT("for 10,000, leaving 15,000"), After, static_cast<int64>(15000));
-	TestTrue(TEXT("and the city holds it"), bHeld);
+	TestTrue(TEXT("and the city is building it"), bHeld);
 	TestEqual(TEXT("the writer was told a city upgrade was bought, last"), static_cast<int32>(Last),
 			  static_cast<int32>(ECataclysmSaveTrigger::CityUpgradeBought));
 	TestTrue(TEXT("the purchase started writes: the account record's, and the run and character records'"), Writes >= 2);
@@ -368,7 +369,7 @@ bool FCataclysmCityUpgradePriceSameFrameTest::RunTest(const FString&)
 	{
 		for (const FCataclysmCity& City : Read->Cities)
 		{
-			bOnDisk |= City.CityId == 0 && City.HasUpgrade(FName(Row));
+			bOnDisk |= City.CityId == 0 && City.IsBuilding(FName(Row)); // Being built, since issue #2825.
 		}
 	}
 
@@ -597,7 +598,8 @@ bool FCataclysmCityUpgradePriceScreenTest::RunTest(const FString&)
 	TestEqual(TEXT("with 25,000 every built upgrade can be bought"), Buyable,
 			  UCataclysmCityUpgradeRules::BuiltEffectCount());
 	TestTrue(TEXT("each priced 10,000"), bEveryRichPriceRight);
-	TestTrue(TEXT("its button says the price"), RichButton.EndsWith(TEXT("  --  10,000 gold")));
+	TestTrue(TEXT("its button says the price and the days to build (issue #2825)"),
+			 RichButton.EndsWith(TEXT("  --  10,000 gold, 6 days to build")));
 	TestEqual(TEXT("with 5,000 every one is short of gold"), Short, UCataclysmCityUpgradeRules::BuiltEffectCount());
 	TestTrue(TEXT("each saying the price and what is missing"), bEveryPoorRefusalRight);
 	TestTrue(TEXT("on its button"), PoorButton.EndsWith(TEXT("  --  Costs 10,000 gold; 5,000 more needed.")));

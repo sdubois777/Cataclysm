@@ -516,31 +516,10 @@ float ACataclysmBruteCharacter::StrikeIntoReleaseSecondsFor(int32 Index)
 
 float ACataclysmBruteCharacter::LandsAtSecondsFor(float WindUpSeconds)
 {
-	const float Grid = ACataclysmEnemyController::ThinkIntervalSeconds;
-	if (WindUpSeconds <= 0.0f || Grid <= 0.0f)
-	{
-		return FMath::Max(WindUpSeconds, 0.0f);
-	}
-
-	// THE FIRST THINKING PASS AT OR AFTER THE TELEGRAPH EXPIRES, WHICH IS NOT
-	// THE SAME MOMENT. ACataclysmEnemyController::ContinueWindUp returns early
-	// while Now < WindUpLandsAt and otherwise lands the ability, and it only
-	// runs on a pass of a looping quarter-second timer. So the ability lands on
-	// a grid step at or after the telegraph, never in between.
-	//
-	// The stomp's 1.4 second telegraph is 5.6 steps, so it lands on step 6, at
-	// 1.50. Sizing anything to the telegraph rather than to this is what made
-	// the stomp's hold clip stop a tenth of a second before the attack it
-	// existed to hold open, in pull request #409.
-	//
-	// THE ROCK THROW IS THE CASE THIS FIGURE CANNOT PROMISE. Its 1.0 second
-	// telegraph is exactly four steps, and a timer pass carries up to a frame of
-	// overshoot that differs between the pass which starts a wind-up and the
-	// pass which lands it. Against a strict less-than that decides a whole
-	// quarter second: simulated over 500 jittery frames it landed at 1.25 rather
-	// than 1.00 in nearly half of them. Issue #413. Returning the earliest keeps
-	// the blow from arriving after the damage, which is the worse of the two.
-	return FMath::CeilToFloat(WindUpSeconds / Grid) * Grid;
+	// THE TELEGRAPH'S OWN LENGTH, which is when the ability lands since issue
+	// #2808. It returned the telegraph rounded up to a quarter-second thinking
+	// pass until then; see the header for what that cost.
+	return FMath::Max(WindUpSeconds, 0.0f);
 }
 
 float ACataclysmBruteCharacter::JoinSecondsFor(const UAnimMontage* Montage)

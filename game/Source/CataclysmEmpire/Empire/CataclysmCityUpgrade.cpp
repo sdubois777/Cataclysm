@@ -10,9 +10,14 @@ int32 UCataclysmCityUpgradeRules::SlotsFor(int32 LethalityRung)
 	return LethalityRung == 2 ? SlotsOnHeretic : SlotsNormally;
 }
 
-bool UCataclysmCityUpgradeRules::IsInstant()
+int32 UCataclysmCityUpgradeRules::BuildDaysFor(int32 UpgradeTier)
 {
-	return BuildDays == 0;
+	// THE ENDS OF THE LADDER, so a tier nothing can reach still reads a day count rather than none.
+	if (UpgradeTier >= 3)
+	{
+		return BuildDaysTier3;
+	}
+	return UpgradeTier == 2 ? BuildDaysTier2 : BuildDaysTier1;
 }
 
 bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
@@ -210,9 +215,11 @@ FString UCataclysmCityUpgradeRules::ResultText(
 		return TEXT("A Siege dungeon stands on this city, so it cannot be "
 					"upgraded until that dungeon is gone. The upgrades it "
 					"holds still work.");
-	case ECataclysmCityUpgradeResult::CannotWaitForABuildYet:
-		return TEXT("A city upgrade now takes days to build, and nothing can "
-					"wait for one yet.");
+	case ECataclysmCityUpgradeResult::BuildUnderWay:
+		// ISSUE #2825: a city builds one upgrade at a time. The days left are on
+		// the city screen's line for the build (`UCataclysmCityScreenLayout`).
+		return TEXT("An upgrade is already being built on this city, and a "
+					"city builds one at a time.");
 	case ECataclysmCityUpgradeResult::NotEnoughGold:
 		// THE AMOUNTS ARE NOT HERE: this module is not told them again. The city
 		// screen says the price and how much more is needed

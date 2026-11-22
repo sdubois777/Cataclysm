@@ -220,6 +220,7 @@ The following are default controls. Players with multiple damage types can map m
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -251,6 +252,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | P | Open and close the passive class tree |
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
+| Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -4656,7 +4658,7 @@ definition. Measured before 2026-10-13, when a Quest dungeon's timer cost its ci
 
 Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affect defenses, population, dungeon timers, and other city-specific stats. Strategic allocation of upgrade resources is one of the primary meta-decisions of each run.
 
-**A city upgrade costs gold, and takes days to build.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys. The same day they kept upgrades instant, and on 2026-11-21 they reversed that: "They need build times. Probably based on their tier." An upgrade at upgrade tier 1 takes 6 days, at tier 2 12 days and at tier 3 24 days, whatever the difficulty tier. The gold is paid and the slot taken at purchase, and the upgrade does nothing until it is finished. A Siege on the city or the city's fall pauses the build, a build cannot be cancelled, and a city builds one upgrade at a time. **This is ruled and not built yet** (issue #2825): until it is, an upgrade still takes effect the moment it is bought. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
+**A city upgrade costs gold, and takes days to build.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys. The same day they kept upgrades instant, and on 2026-11-21 they reversed that: "They need build times. Probably based on their tier." An upgrade at upgrade tier 1 takes 6 days, at tier 2 12 days and at tier 3 24 days, whatever the difficulty tier. The gold is paid and the slot taken at purchase, and the upgrade does nothing until it is finished. A Siege on the city or the city's fall pauses the build, a build cannot be cancelled, and a city builds one upgrade at a time. The city screen lists the upgrade being built with its days left and the day it will be ready, each offer shows its days to build beside its price, and the other offers say that a city builds one at a time. Issue #2825; `docs/DECISIONS.md` records each judgement. The empire tree's Scaffolding, Rapid Renovation and Rapid Funding, which act on these days, are not built yet. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
 
 **It is paid from the balance gold is earned into**: the account's for the character's lethality mode, or a Solo Self-Found character's own. A character holding less than the price is refused and told how much more it needs, and nothing is taken. The city screen shows each upgrade's price on its button, greys one the character cannot afford, and shows the balance beside the slots.
 
@@ -5116,9 +5118,9 @@ So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen w
 | :-- | :-: | :-: |
 | Common Imp | 60 | 54.0 |
 | Common Hellhound | 26 | 28.6 |
-| Elite Succubus | 12 | 31.2 |
+| Elite Succubus | 29 | 29.0 |
 | Elite Brute | 11 | 13.2 |
-| Legendary Corrupted Sentinel | 13 | 26.0 |
+| Legendary Corrupted Sentinel | 25 | 25.0 |
 | Herald Abyssal Warden | 5 | 12.0 |
 | Cataclysm Boss Gatekeeper | 2 | 6.0 |
 
@@ -5287,6 +5289,10 @@ A walk-out wind-up has to last long enough for the slowest class to notice the m
 
   
 
+**The attack lands at the wind-up's own length, not later.** An enemy decides what to do four times a second, and until 2026-11-21 an attack landed on the first of those decisions at or after its wind-up had run, so a 1.4 second wind-up landed at 1.5 and a 1.3 second one at 1.5. Since issue #2808 the landing is checked every frame, so it arrives at the stated length and at most one frame after it. The owner chose that on 2026-11-21: each one lands exactly on time instead of waiting up to a quarter second extra.
+
+  
+
 ### **Which attacks get a telegraph**
 
   
@@ -5307,9 +5313,9 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
 | :-- | :-: | :-: | :-- |
 | Imp | 0.9 s | 0.2 m | **No** |
 | Hellhound | 1.1 s | 0.5 m | **No**, for its basic attack |
-| Corrupted Sentinel | 2.0 s | 2.1 m | Yes |
+| Corrupted Sentinel | 1.0 s | 0.4 m | **No** |
 | Abyssal Warden | 2.4 s | 2.8 m | Yes |
-| Succubus | 2.6 s | 3.2 m | Yes |
+| Succubus | 1.0 s | 0.4 m | **No** |
 | Brute | 1.2 s | 0.7 m | **No**, for its basic attack |
 | Gatekeeper | 3.0 s | 3.9 m | Yes |
 
@@ -5320,6 +5326,10 @@ Rearranged, that gives the largest area each enemy can telegraph, straight from 
   
 
 **The Brute joined that list on 2026-08-09, and it does still telegraph.** Its attack interval was shortened from 1.6 seconds to 1.2 by play testing, which took the largest marker its basic attack could draw from 1.4 metres down to 0.7. Its stomp is unaffected and still draws a 3.5 metre circle, because an ability on a cooldown is telegraphed against that cooldown rather than against the attack interval — the rule stated below. This column is about the basic attack alone.
+
+  
+
+**The Succubus and the Corrupted Sentinel no longer telegraph their basic attacks, by either rule.** Both are quick casts since 2026-11-21, the second kind of attack described below, which draw no marker at all; and both fire every second since the same day, the owner's requirement that they be "a basic attack sort of thing", which leaves a marker of 0.35 metres, under the 1 metre floor. Until then their 2.0 and 2.6 second intervals allowed 2.1 and 3.2 metres.
 
   
 
@@ -5392,6 +5402,45 @@ For a creature with the standard 0.48 metre body that is **6.5 metres**. Above i
   
 
 **There used to be a second tier here**, for areas larger than the walk-out limit, escaped with a Movement skill instead of by walking, with its own wind-up of `0.8 + Radius ÷ 16`, its own 8 metre cap and a 5 second minimum cooldown. It was deleted on 2026-08-09 for two reasons. It was unreachable: the walk-out limit grows with the cooldown and its cap did not, so above a 5.36 second cooldown every legal radius was already a walk-out radius, and no designed attack was ever in it. And it would not have done its job: its escape margin was 13.7 metres at every radius against the walk-out tier's 2.3, so it was between identical and twice as forgiving — never harder.
+
+  
+
+### **The second kind: a quick cast, which draws no marker**
+
+  
+
+From the owner's playtest of 2026-11-21: "Not everything needs a big windup and cast animation, sometimes enemies should be able to just shoot a fireball at you as long as you can see it." Issue #2808.
+
+  
+
+**A quick cast is a flat projectile fired half a second after the enemy decides to, with no marker on the ground.** The bolt in flight is the warning, and the player steps around it. It is the second kind of attack beside the marked one above, not a change to it: every area, every lob and every charge keeps its marker and its wind-up.
+
+  
+
+**It is fair only if the bolt can be stepped around once it is seen**, so the walk-out rule is asked of it with the flight counted. A bolt that does not pierce flies with a 40 centimetre body and goes off where it stops — against what it touches, or at the point it was aimed, which is where the player stood — hitting everything within its `Radius`. So from the moment the cast begins to the moment the bolt arrives there must be at least the reaction allowance plus the time for the slowest class to walk out of that radius with its own body's 0.42 metres:
+
+  
+
+    Cast + Distance ÷ Speed ≥ 0.4 + (Radius + 0.42) ÷ 3.5
+
+  
+
+Three conditions follow, and `sim/cataclysm_sim/enemy_abilities.py` checks all three for every quick cast:
+
+- **It is a flat bolt with a speed**, not a lob. A lob lands on an area, and an area keeps its marker.
+- **Its radius is under the 1 metre marker floor.** A radius of a metre or more is an area arriving at the player's feet, which is what a marker is for. Before 2026-11-21 Soulfire carried a 3.15 metre radius and Siege Bolt 2.1, the half-widths of the lanes they marked, so each went off in a blast that size where it stopped; with no marker nobody could leave that in the bolt's flight.
+- **It can be stepped around inside its own range.** Closer than the distance the rule gives, it cannot, and that is accepted: it is inside the reach a melee build stands at.
+
+  
+
+| Quick cast | Cast | Radius | Speed | Stepped around from |
+| :-- | :-: | :-: | :-: | :-: |
+| The Succubus's Soulfire | 0.5 s | 0.5 m | 1200 cm/s | 1.95 m |
+| The Corrupted Sentinel's Siege Bolt | 0.5 s | 0.5 m | 1400 cm/s | 2.28 m |
+
+  
+
+**What the genre settles, and what it does not.** In Path of Exile an ordinary caster monster fires a projectile with no ground marker after a cast, and the projectile is the warning: the Goatman Fire-raiser's Fireball casts in 1.33 seconds, the Ironclad Arsonist's in 0.85 and the Vaal Fanatic's in 1.2, against 0.75 for the player's own Fireball gem (poedb.tw). Ground markers and long delays are kept for areas: Diablo IV's Frozen elites explode after 3 seconds and its Terrifying pentagrams after 2, and Diablo III's Arcane Enchanted beam starts 2 seconds after its cast (Maxroll's elite affix guides). So the split between a bolt seen in flight and a marked area is the genre's. **The half second is a judgement**: quicker than every caster monster found, because the owner asked for quicker, and the reaction allowance plus a tenth so the cast is long enough to see. The 0.5 metre radius is a judgement too. No source publishes a rule for either. `docs/DECISIONS.md` records the sources.
 
   
 
@@ -5784,7 +5833,7 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 | Enemy | Role |
 | :-: | :-: |
 | The Imp | Fast, swarming melee. Weak individually, overwhelming in packs. |
-| The Succubus | Ranged caster. Debuffs player and buffs nearby allies. Slow but powerful attacks. |
+| The Succubus | Ranged caster. Debuffs player and buffs nearby allies. A quick bolt every second. |
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
 | The Brute | Heavily armored slow melee. Stomp stun attack. Can be outmaneuvered. |
 | The Corrupted Sentinel | Stationary ranged. Forces the player to stay mobile. |
@@ -5889,7 +5938,7 @@ Two ranks are twenty Imps and the third is out of reach, so **twenty is the most
 
   
 
-**There is no attack-token rule and there deliberately will not be one.** Limiting how many enemies may swing at once is the standard answer in melee action games: Doom (2016) makes each enemy request a token before attacking, and the Batman Arkham games allow two or three at a time. It is the wrong answer here. This document already commits to ten Imps killing a geared character in 4.9 seconds and twenty in 2.4, and a token limit of two or three would make both false and flatten the difference between a pack of ten and a pack of twenty to nothing. Physical crowding produces the same protection — a player is never surrounded by more than twenty — without capping the damage the design has already promised.
+**There is no attack-token rule and there deliberately will not be one.** Limiting how many enemies may swing at once is the standard answer in melee action games: Doom (2016) makes each enemy request a token before attacking, and the Batman Arkham games allow two or three at a time. It is the wrong answer here. This document already commits to ten Imps killing a geared character in 5.4 seconds and twenty in 2.7, and a token limit of two or three would make both false and flatten the difference between a pack of ten and a pack of twenty to nothing. Physical crowding produces the same protection — a player is never surrounded by more than twenty — without capping the damage the design has already promised.
 
   
 
@@ -5933,31 +5982,33 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
 
   
 
-**The Succubus is the only enemy in the slice that makes the others stronger, and that is what has to be read off it.** It is a ranged caster with three abilities: a slow telegraphed bolt, a curse on the player, and an aura that buffs every allied enemy near it.
+**The Succubus is the only enemy in the slice that makes the others stronger, and that is what has to be read off it.** It is a ranged caster with three abilities: a slow bolt fired as a quick cast, a curse on the player, and an aura that buffs every allied enemy near it.
 
   
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Soulfire | Basic | Projectile | `Range=8; Radius=3.15; Speed=1200` | its 2.6 s attack interval | Yes, 1.3 s wind-up |
+| Soulfire | Basic | Projectile | `Range=8; Radius=0.5; Speed=1200` | its 1.0 s attack interval | No: a quick cast, 0.5 s |
 | Wither the Living | Support | Debuff | `Range=8; MaxTargets=1; Duration=5; Effect=Withered Touch` | a 10 s cooldown | No |
 | Dominion | Aura | Aura | `Radius=8; Effect=Commander` | held on while it lives | No |
 
   
 
-#### **Its wind-up is exactly half its attack interval, which is the most the rule allows**
+#### **Its bolt is a quick cast, and it was the largest marked lane until 2026-11-21**
 
   
 
-The Attack Telegraphs subsection above caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 0.4)`, and for a 2.6 second interval that is 3.15 metres — the figure its per-enemy table rounds to 3.2. **The Succubus uses all of it**, so its wind-up is `0.4 + 3.15 ÷ 3.5`, which is 1.3 seconds, which is exactly half of 2.6.
+**Soulfire is fired half a second after the Succubus decides to, with no marker**, as the second kind of attack in the Attack Telegraphs subsection describes. Its radius is 0.5 metres, so the slowest class can step clear of it from 1.95 metres out. Its speed of 1200 is the slowest player projectile in `game/Data/WeaponSkills.csv`, Magma Quake's; a slow bolt is a readable one, which matters more now that the bolt is the only warning.
 
   
 
-That is what "slow but powerful attacks" has to mean mechanically. Its damage share of 1.60 is the second highest in the slice, and a hit that large has to be visible for as long as the rule permits. It is the biggest marker any ordinary Demonic enemy produces except the Brute's 3.5 metres.
+**What it was.** Until issue #2808 its lane was 3.15 metres to either side, the largest a 2.6 second interval allows, marked for 1.3 seconds — exactly half the interval. That was what "slow but powerful attacks" meant mechanically, and the bolt went off in a blast of the same 3.15 metres where it stopped.
 
   
 
-**A Projectile's marker is a line, not a circle**, of width 2 × `Radius` running out to `Range`, which the telegraph table above already specifies. So the player leaves it by stepping sideways, and the 3.15 metres is how far sideways. Its speed of 1200 is the slowest player projectile in `game/Data/WeaponSkills.csv`, Magma Quake's; a slow bolt is a readable one.
+**It fires every second, at the damage per second it had.** The owner's requirement of 2026-11-21: "give those quick enemy ranged attacks a 1 second cooldown. They should be a basic attack sort of thing." Its attack interval went from 2.6 seconds to 1.0, and the coordinating session ruled its damage per second held, so its damage share went from 1.60 to 1.60 × 1.0 ÷ 2.6 = 0.6154: an Elite Succubus at tier 8 hits for 3,804 rather than 9,891, at 3,804 a second either way. That share is the first figure to look at if the bolt hits too hard or too softly. Its curse keeps its 10 second cooldown.
+
+**What else reads its hit falls with it.** Infernal Brand's explosion, a Hellfire burst, Holy Repercussions' retaliation and Nothing Is Forgotten's portion are all worth a share of the creature's own hit, so each is 0.385 of what it was for a Succubus. `docs/DECISIONS.md` lists them at tier 8.
 
   
 
@@ -6304,13 +6355,13 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt down a marked lane that it fires constantly, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate is the exception**: it follows its commander at a minion's pace, and jogs as it walks (issue #2793).
+**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt it fires constantly, half a second after deciding to and with no marker, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate is the exception**: it follows its commander at a minion's pace, and jogs as it walks (issue #2793).
 
   
 
 | Ability | Slot | Shape | Parameters | Runs on | Telegraphed |
 | :-- | :-: | :-: | :-- | :-: | :-: |
-| Siege Bolt | Basic | Projectile | `Range=14; Radius=2.1; Pierce=0; Speed=1400` | its 2.0 s attack interval | Yes, 1.0 s wind-up |
+| Siege Bolt | Basic | Projectile | `Range=14; Radius=0.5; Pierce=0; Speed=1400` | its 1.0 s attack interval | No: a quick cast, 0.5 s |
 | Brimstone Mortar | Special | Projectile | `Range=14; Radius=3.0; Pierce=0; Arc=0.25` | an 8 s cooldown | Yes, 1.26 s wind-up |
 
   
@@ -6331,23 +6382,29 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-#### **Its wind-up is exactly half its attack interval, and its speed falls out of the same sum**
+#### **Its bolt is a quick cast, and its speed was derived from the wind-up it used to have**
 
   
 
-The wind-up rule caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 0.4)`, which for 2.0 seconds is **2.1 metres**. The Sentinel takes all of it, so its wind-up is `0.4 + 2.1 ÷ 3.5` = **1.0 second**, exactly half the interval. That is the same place the Succubus sits, and for a related reason: a creature whose role is forcing the player to move should mark as much ground as the rule permits.
+**Siege Bolt is fired half a second after the Sentinel decides to, with no marker**, as the second kind of attack in the Attack Telegraphs subsection describes. Its radius is 0.5 metres, so the slowest class can step clear of it from 2.28 metres out.
 
   
 
-**The bolt's speed is then decided rather than chosen.** It has to land before the next one is marked, or the creature has a shot in the air and a marker on the ground at the same time and neither reads as a warning. The wind-up takes 1.0 second of the 2.0 second cycle, so the flight has the other 1.0. Fourteen metres in one second is **1400 centimetres per second**, and 1400 is one of the ten speeds `game/Data/WeaponSkills.csv` uses.
+**What it was.** Until issue #2808 it marked a lane 2.1 metres to either side, the largest a 2.0 second interval allows, for 1.0 second — exactly half the interval, the same place the Succubus sat. The bolt went off in a blast of the same 2.1 metres where it stopped.
 
   
 
-**So its cycle is exactly two seconds with nothing idle in it**: one second of marker on the ground, one second of flight, and the next marker appearing as the shot lands. That is what "forces the player to stay mobile" means as a number rather than as an adjective.
+**Its speed of 1400 was derived from that wind-up and is kept, although the reason for it has gone.** The bolt had to land before the next one was marked; the wind-up took 1.0 second of the 2.0 second cycle, so the flight had the other 1.0, and fourteen metres in one second is 1400 centimetres per second, one of the ten speeds `game/Data/WeaponSkills.csv` uses. **It fires every second since 2026-11-21**, the owner's requirement that it be "a basic attack sort of thing", so at long range the next bolt is cast while the last is still in flight. The speed was not re-derived.
+
+**Its damage per second is what it was.** Its attack interval went from 2.0 seconds to 1.0, and the coordinating session ruled its damage per second held, so its damage share went from 1.10 to 0.55: a Legendary Sentinel at tier 8 hits for 4,802 rather than 9,604, at 4,802 a second either way. **Its mortar went from 150% of a hit to 300%**, so a shell is worth what it was. Infernal Brand's explosion, a Hellfire burst, Holy Repercussions' retaliation and Nothing Is Forgotten's portion read its hit and are half what they were.
 
   
 
-**It is faster than the Succubus's 1200 and that is deliberate.** The 1200 figure is the ceiling on the Brute's thrown rock, which is a lob and is fastest as it lands. This is a flat bolt and is not bound by it. 1400 is still the second slowest of the ten speeds in the player skill table, and what makes this shot readable is the second of ground marker in front of it, not its speed.
+**It is faster than the Succubus's 1200 and that is deliberate.** The 1200 figure is the ceiling on the Brute's thrown rock, which is a lob and is fastest as it lands. This is a flat bolt and is not bound by it. 1400 is still the second slowest of the ten speeds in the player skill table.
+
+  
+
+**The visible shot does not yet line up with the bolt leaving.** The release moment inside its firing clip has never been measured (issue #478), so the clip still plays across the whole attack interval and the half second cast was changed without it. That was ruled on 2026-11-21. **With a 1.0 second interval the clip plays at 2.40 times its authored speed**, under the 2.5 ceiling, where it played at 1.20; and the mortar's shell, which leaves 1.26 seconds after the decision, now leaves after the clip has ended.
 
   
 
@@ -6355,7 +6412,7 @@ The wind-up rule caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 
 
   
 
-**The lane is fixed when the wind-up starts.** That is the general rule the Attack Telegraphs subsection already sets for every telegraph, and it is what makes the marker mean something: an attack that tracks cannot be walked out of. Leading a moving target is the standard way to make a projectile land, which is exactly why this one does not do it.
+**The aim is fixed when the cast begins.** That is the general rule the Attack Telegraphs subsection already sets for every attack, and for a quick cast it is what makes stepping aside work: a bolt that tracks cannot be stepped around. Leading a moving target is the standard way to make a projectile land, which is exactly why this one does not do it. Until 2026-11-21 the same rule fixed the bolt's marked lane.
 
   
 
@@ -6367,11 +6424,11 @@ The wind-up rule caps a telegraphed radius at `3.5 × (attack interval ÷ 2 − 
 
   
 
-**A Projectile's marker is a lane, not a circle** — the telegraph table above says so: a line of width 2 × `Radius` running out to `Range`. A melee character who walks up and stands against the Sentinel is standing in that lane. So they have to step out of it every two seconds like everybody else, and at contact range stepping out of a 4.2 metre wide lane means walking around the creature.
+**Its bolt marked a lane until 2026-11-21**, a line of width 2 × `Radius` running out to `Range`, and a melee character standing against the Sentinel had to step out of a 4.2 metre wide lane every two seconds, which at contact range meant walking around the creature. **Since then the bolt is a quick cast with a blast 1.0 metre wide and no marker**, and closer than 2.28 metres it cannot be stepped around at all: a melee character standing against the Sentinel takes the bolt, as one standing next to a caster monster does in Path of Exile.
 
   
 
-**That is its whole answer to melee and it needs no new mechanic.** The rule that an attack must not mark the ground its own caster stands on was written for the Brute's rock, which is *lobbed* and marks a circle the creature would be standing inside. A lane starting at the caster does not do that: the caster is at the lane's origin, which is where a shooter stands.
+**No minimum range is needed for the bolt.** The rule that an attack must not mark the ground its own caster stands on was written for the Brute's rock, which is *lobbed* and marks a circle the creature would be standing inside. A flat bolt fired from the caster does not do that: the caster is where it starts, which is where a shooter stands.
 
   
 
@@ -6393,7 +6450,7 @@ A Sentinel that only shoots in straight lines is answered by one pillar, and it 
 | How long it is in the air | 1.69 s at full range | derived from the arc: `√(8 × Arc × range ÷ g)` |
 | How fast it lands | 1171 cm/s | under the 1200 ceiling the Brute's rock is held to, and a lob is fastest as it lands |
 | How near it will fire | 3.48 m | the marked circle's 3.0 m plus the creature's own 0.48 m body radius |
-| How often | every 8 seconds | inside the Special slot's 3 to 10 second band, and exactly four bolts between one shell and the next |
+| How often | every 8 seconds | inside the Special slot's 3 to 10 second band, and eight bolts between one shell and the next (four until the bolt became a second's, 2026-11-21) |
 
   
 
@@ -6401,7 +6458,7 @@ A Sentinel that only shoots in straight lines is answered by one pillar, and it 
 
   
 
-**Its marker is 3.0 metres against the bolt's 2.1**, so the two read as different sizes at a glance. Its wind-up is `0.4 + 3.0 ÷ 3.5` = 1.26 seconds, well inside the 12.6 metres its 8 second cooldown would allow and nowhere near the 8 metre cap that would make it cost a Movement skill.
+**Its marker is 3.0 metres, and since 2026-11-21 it is the Sentinel's only marker**: the bolt, whose lane was 2.1 metres, is a quick cast that draws none, so a marker near a Sentinel is always the mortar. Its wind-up is `0.4 + 3.0 ÷ 3.5` = 1.26 seconds, well inside the 12.6 metres its 8 second cooldown would allow and nowhere near the 8 metre cap that would make it cost a Movement skill.
 
   
 
@@ -6413,9 +6470,9 @@ Three things. Everything else above is read off `game/Data/WeaponSkills.csv`, `g
 
   
 
-- **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1, so the two markers differ, and above by the 8 metre cap and by what its cooldown allows. The value inside that window is chosen, and 3.0 is the second largest radius any player Projectile uses.
+- **The mortar's 3.0 metre radius.** Bounded below by the bolt's 2.1 metre lane, so the two markers differed (the bolt has drawn none since 2026-11-21), and above by the 8 metre cap and by what its cooldown allows. The value inside that window is chosen, and 3.0 is the second largest radius any player Projectile uses.
 - **Two abilities rather than one or three.** The Imp's subsection above argues that one ability can be a complete design, and that argument could have been made here. It was not, because nothing except the mortar answers cover.
-- **The 8 second cooldown.** Inside the slot's band, and it puts four bolts between shells, but the band is wide.
+- **The 8 second cooldown.** Inside the slot's band, and it puts eight bolts between shells since the bolt became a second's (four before), but the band is wide.
 
   
 
@@ -6524,7 +6581,7 @@ Two things bound it from below. It has to beat the fastest class at 4.6 metres p
 
   
 
-A ring 6.5 metres in radius at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres and the Succubus's bolt 3.15.
+A ring 6.5 metres in radius at its feet, marked for 2 seconds, every 12 seconds. The Brute's stomp is 3.5 metres.
 
   
 
@@ -6614,11 +6671,11 @@ Two things. Everything else is read off `game/Data/WeaponSkills.csv`, `game/Data
 
   
 
-#### **Dread Cleave is the only telegraphed basic attack that is a melee swing**
+#### **Dread Cleave is the only telegraphed basic attack**
 
   
 
-A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, every 3.0 seconds. **Three of the seven enemies telegraph their ordinary attack, and this is the only one that is a melee swing** — the Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire are the other two and both are projectiles fired from range. Of the four that go unmarked, the Abyssal Warden's Sunder, the Brute's Slam and the Hellhound's Maul all reach 0.9 metres, under the 1 metre marker floor; the Imp's Rend reaches 1.32 metres and is over that floor, and goes unmarked instead because its 0.9 second attack interval allows a marker of only 0.17 metres. This one is drawn because a hit that takes half the player's survivable damage cannot arrive unannounced. Its 2.0 metre radius is a judgement bounded twice — above the 1 metre floor, below the 3.85 metres its own interval would allow — so the basic swing stays visibly smaller than anything on a cooldown. **It has no target cap, and neither do the other two telegraphed basics**: those three are exactly the ordinary attacks that mark an area, and an area attack hits what is standing in it. The four contact swings each state `MaxTargets=1`.
+A hammer sweep across a 120 degree cone, 2 metres out, warned for 0.97 seconds, every 3.0 seconds. **One of the seven enemies telegraphs its ordinary attack, and this is it.** From 2026-08-21 to 2026-11-21 there were three: the Corrupted Sentinel's Siege Bolt and the Succubus's Soulfire were marked too, and both became quick casts with no marker under issue #2808. Of the four that go unmarked, the Abyssal Warden's Sunder, the Brute's Slam and the Hellhound's Maul all reach 0.9 metres, under the 1 metre marker floor; the Imp's Rend reaches 1.32 metres and is over that floor, and goes unmarked instead because its 0.9 second attack interval allows a marker of only 0.17 metres. This one is drawn because a hit that takes half the player's survivable damage cannot arrive unannounced. Its 2.0 metre radius is a judgement bounded twice — above the 1 metre floor, below the 3.85 metres its own interval would allow — so the basic swing stays visibly smaller than anything on a cooldown. **It has no target cap, and neither do the two quick casts**: this is the one ordinary attack that marks an area, and an area attack hits what is standing in it; a quick cast's bolt goes off in a blast where it stops, which hits what is standing in that. The four contact swings each state `MaxTargets=1`.
 
   
 
@@ -7018,7 +7075,31 @@ it, which is their own act and not an outcome of play.
   - Empire status bar — active dungeon count, next surge countdown, cities at risk
   - Player resource bars — HP, Mana, Fervour
   - Active skill slots with cooldown indicators
-  - Minimap with dungeon overlay
+  - Minimap with dungeon overlay. **The dungeon overlay is built** (below); the minimap in a corner is not.
+
+  
+
+### **The floor map on Tab**
+
+From the owner's playtest of 2026-11-21: "Tab brings up a map overlay so you can make sure you aren't running in circles". Issue #2805.
+
+  
+
+**Tab shows a map of the current floor over the game, and Tab again hides it. The game keeps running underneath**, as Diablo II's Automap does: "Note that gameplay doesn't stop when you bring up the Automap".
+
+  
+
+- **It shows where the player has been.** A cell is seen when it is within 3 cells (12 metres) of the player's cell and a straight line on the grid reaches it without crossing a wall. What has been seen is kept for the floor and lost with it; it is not saved.
+- **It marks the player**, at its centre, pointing the way they face, **and the stairs down** once their cell has been seen. Stairs beyond the map's edge are marked on the edge, in their direction.
+- **It marks no creatures and no items.** The owner chose "No enemies" on 2026-11-21: the map is for not running in circles.
+- **It is centred on the player at a fixed scale**, the owner's choice of 2026-11-21 ("Centred on you"): a square seven tenths of the screen's shorter side, 24 pixels a cell on a screen 1080 pixels high (about 31 cells across), scaled with the screen's height. Parts of a large floor lie off its edge.
+- **Its floor is drawn at 40% opacity**, inside the 30 to 50% that players report choosing in Path of Exile, so the game shows through.
+- **It is not drawn while a full screen is open**: the inventory, the character sheet, the passive tree, the skill choice screen or one of the empire's screens.
+- **Up on the map is up on the screen.** The camera looks along the world's +X, so the map does too.
+
+  
+
+**What the genre settles, and what it does not.** That such a map is drawn over play, keeps the game running, shows where the player has been and marks the stairs: Diablo II's own controls page. That it is see-through with an opacity players choose: Diablo II: Resurrected's settings and Path of Exile and Last Epoch players' posts. Diablo IV has no such map, by choice. **The 3 cell reveal, the square of seven tenths, 24 pixels a cell and the 40% opacity are judgements.** `docs/DECISIONS.md` records the sources.
 
   
 

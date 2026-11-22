@@ -38,8 +38,9 @@ const TCHAR* ACataclysmSuccubusCharacter::IdleAnimationName =
 // 1.8000 seconds, carrying a planted foot at 321.0 cm/s. See JogPlayRate.
 const TCHAR* ACataclysmSuccubusCharacter::JogAnimationName = TEXT("Jog_Fwd");
 
-// 0.9000 seconds, into a 1.3 second wind-up. Issue #767 is the 0.4 seconds of
-// held pose that leaves; the header records why the pack's 1.5 second
+// 0.9000 seconds, played so it releases as Soulfire's 0.5 second quick cast
+// ends (issue #2808; it was a 1.3 second wind-up before). Issue #767 asked
+// about the pause before it; the header records why the pack's 1.5 second
 // `Primary_Attack_Slow` was not used instead.
 const TCHAR* ACataclysmSuccubusCharacter::AttackAnimationName =
 	TEXT("Primary_Attack_Normal");
@@ -79,9 +80,9 @@ static TAutoConsoleVariable<float> CVarSuccubusAttackInterval(
 	TEXT("Cataclysm.Succubus.AttackInterval"),
 	0.0f,
 	TEXT("Seconds between the Succubus's Soulfire bolts. 0 uses its designed "
-		 "2.6. Remember that its telegraph is exactly half its interval and is "
-		 "the largest the rules allow, so shortening this shortens the warning "
-		 "too and the marker stops being legal below about 2.6."),
+		 "1.0, a bolt every second since issue #2808. Soulfire is a quick cast "
+		 "with no marker, so this changes how often it fires and nothing about "
+		 "its warning."),
 	ECVF_Default);
 
 /**
@@ -275,7 +276,7 @@ void ACataclysmSuccubusCharacter::AttackTarget(AActor* /*Target*/)
 	//
 	// The base class's AttackTarget applies direct damage at `MeleeReachCm`, and
 	// this creature's reach is its SHOT's range of 8 metres. Left to the base it
-	// would deal a free melee hit at eight metres every 2.6 seconds on top of
+	// would deal a free melee hit at eight metres every second on top of
 	// the bolt it is already firing, and nothing on screen would say where the
 	// damage came from. The Corrupted Sentinel found this first.
 	//
@@ -312,10 +313,10 @@ ACataclysmSuccubusCharacter::EnemyAbilities() const
 	FCataclysmEnemyAbility Soulfire;
 	Soulfire.Name = TEXT("Soulfire");
 
-	// NO MINIMUM RANGE, AND THE DESIGN STATES NONE. A flat shot marks a LANE,
-	// and a lane starts at the creature whatever the distance, so the argument
-	// that gives a lobbed attack a minimum does not apply. The Corrupted
-	// Sentinel's flat bolt is the same.
+	// NO MINIMUM RANGE, AND THE DESIGN STATES NONE. A flat shot starts at the
+	// creature whatever the distance, so the argument that gives a lobbed
+	// attack a minimum -- its circle covering the creature's own feet -- does
+	// not apply. The Corrupted Sentinel's flat bolt is the same.
 	Soulfire.MinRangeCm = 0.0f;
 	Soulfire.MaxRangeCm = SoulfireRangeCm;
 
@@ -325,10 +326,14 @@ ACataclysmSuccubusCharacter::EnemyAbilities() const
 	Soulfire.CooldownSeconds = SoulfireCooldownSeconds;
 	Soulfire.WindUpSeconds = SoulfireWindUpSeconds;
 
-	// A LANE, because it travels flat and hits what it passes.
+	// A FLAT PROJECTILE, so the creature still turns to face before it casts.
 	Soulfire.Shape = ECataclysmSkillShape::Projectile;
 	Soulfire.bArcsOntoItsTarget = false;
 	Soulfire.MarkerRadiusCm = SoulfireRadiusCm;
+
+	// A QUICK CAST: NO LANE ON THE GROUND. The bolt in flight is the warning.
+	// Issue #2808; see SoulfireWindUpSeconds in the header.
+	Soulfire.bDrawsNoMarker = true;
 
 	// AND IT IS THE BASIC ATTACK, which a silence leaves usable. Ruled 2026-10-17 (O1).
 	Soulfire.bIsBasicAttack = true;
@@ -359,8 +364,9 @@ void ACataclysmSuccubusCharacter::BeginEnemyAbilityWindUp(int32 Index, AActor*)
 	// aims, fires and recovers rather than one that winds up.
 	//
 	// **THE CAST WAITS. IT DOES NOT START HERE.** Its clip releases 0.156
-	// seconds in and the bolt is fired at 1.3, so starting it now released the
-	// cast 1.14 seconds before the bolt appeared. Issue #784.
+	// seconds in and the bolt is fired at 0.5, so starting it now would release
+	// the cast 0.344 seconds before the bolt appeared. Issue #784 found it at
+	// 1.14 seconds when the wind-up was 1.3; issue #2808 made it 0.5.
 	// StartPendingWindUpClip, from Tick, starts it once the delay has passed.
 	PendingWindUpAbility = INDEX_NONE;
 
@@ -401,16 +407,19 @@ void ACataclysmSuccubusCharacter::UseEnemyAbility(
 		const FGameplayTagContainer SoulfireShotTags =
 			UCataclysmSkillShapes::TagsFromCell(SoulfireTags);
 
-		// AIMED WHERE IT WAS MARKED. AimedAt is where the target stood when the
-		// wind-up began, so a player who stepped out of the lane is not hit --
-		// which is the whole of what a telegraph buys.
+		// AIMED WHERE THE TARGET STOOD WHEN THE CAST BEGAN, not where it is now,
+		// so a player who moved during the half second is not followed.
 		//
 		// A SPEED AND NO FLIGHT TIME, so it travels flat. At 1200 cm/s it
-		// crosses its whole 8 metre range in two thirds of a second.
+		// crosses its whole 8 metre range in two thirds of a second, and that
+		// flight is what the player steps around: a quick cast draws no lane.
+		// Issue #2808.
 		LastShotFired = ACataclysmProjectile::Fire(
 			this, From, AimedAt, SoulfireRadiusCm,
 			SoulfireSpeedCmPerSecond, SoulfirePierce, /*bInReturns=*/false,
-			SoulfireDamagePercent, SoulfireShotTags, /*bInBurns=*/false);
+			SoulfireDamagePercent, SoulfireShotTags, /*bInBurns=*/false,
+			/*InBodyMesh=*/nullptr, /*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/-1.0f,
+			/*InSkillHealthCostPercent=*/-1.0f, /*InFiringSkill=*/nullptr, /*bInQuickCast=*/true);
 		return;
 	}
 
