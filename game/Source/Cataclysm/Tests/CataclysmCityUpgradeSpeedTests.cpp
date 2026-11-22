@@ -284,8 +284,9 @@ bool FCataclysmCityUpgradeSpeedRushTest::RunTest(const FString&)
 	Scene.Account()->EmpireTree.Add(RapidFunding, 1);
 	Scene.Account()->EmpireTree.Add(MunicipalBonds, 10);
 
-	const FCataclysmCityUpgradeOffer* Offer =
-		OfferFor(UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World)));
+	const TArray<FCataclysmCityUpgradeOffer> OfferList =
+		UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World));
+	const FCataclysmCityUpgradeOffer* Offer = OfferFor(OfferList);
 	if (!TestNotNull(TEXT("set-up: the offer"), Offer))
 	{
 		return false;
@@ -341,8 +342,9 @@ bool FCataclysmCityUpgradeSpeedRushRefusedTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	const FCataclysmCityUpgradeOffer* Offer =
-		OfferFor(UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World)));
+	const TArray<FCataclysmCityUpgradeOffer> OfferList =
+		UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World));
+	const FCataclysmCityUpgradeOffer* Offer = OfferFor(OfferList);
 	if (!TestNotNull(TEXT("set-up: the offer"), Offer))
 	{
 		return false;
@@ -517,8 +519,9 @@ bool FCataclysmCityUpgradeSpeedButtonTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 	Scene.Account()->EmpireTree.Add(RapidFunding, 1);
-	const FCataclysmCityUpgradeOffer* Short =
-		OfferFor(UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World)));
+	const TArray<FCataclysmCityUpgradeOffer> OfferList =
+		UCataclysmCityScreenLayout::OffersFor(Scene.World, Scene.Run, 0, Held(Scene.World));
+	const FCataclysmCityUpgradeOffer* Short = OfferFor(OfferList);
 	if (!TestNotNull(TEXT("set-up: the offer"), Short))
 	{
 		return false;
