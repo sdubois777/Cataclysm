@@ -76,7 +76,7 @@ namespace CataclysmForgeAffixChangeTest
 		return Item;
 	}
 
-	struct FScene
+	struct FAffixChangeScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -94,9 +94,9 @@ namespace CataclysmForgeAffixChangeTest
 	};
 
 	/** A world with this project's game instance, a possessed player with a million gold of its own, and a run. */
-	FScene MakeScene()
+	FAffixChangeScene MakeScene()
 	{
-		FScene Out;
+		FAffixChangeScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -130,7 +130,7 @@ namespace CataclysmForgeAffixChangeTest
 		return Out;
 	}
 
-	ECataclysmGearSlot Wear(const FScene& Scene, const FCataclysmItem& Item)
+	ECataclysmGearSlot Wear(const FAffixChangeScene& Scene, const FCataclysmItem& Item)
 	{
 		FCataclysmItem First;
 		FCataclysmItem Second;
@@ -211,7 +211,7 @@ bool FCataclysmForgeAffixChangeAddTest::RunTest(const FString&)
 	TestEqual(TEXT("no piece"), Refusal(FCataclysmItem(), BlockChance, 3, 1, 1000000),
 			  FString(TEXT("There is nothing there to craft.")));
 
-	FScene Scene = MakeScene();
+	FAffixChangeScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -399,7 +399,7 @@ bool FCataclysmForgeAffixChangeShiftTest::RunTest(const FString&)
 	TestFalse(TEXT("every draw is a helm prefix of no group the helm holds, never flat evasion itself"), bEverWrong);
 	TestTrue(TEXT("and more than five different ones are drawn"), Seen.Num() > 5);
 
-	FScene Scene = MakeScene();
+	FAffixChangeScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -466,7 +466,7 @@ bool FCataclysmForgeAffixChangeScreenTest::RunTest(const FString&)
 	TestEqual(TEXT("and the detail says why"), UCataclysmForgeLayout::AddAffixDetailFor(Full, FullAddable, 0, 1, Affixes),
 			  FString(TEXT("No affix can be added: that piece's four slots are full.")));
 
-	FScene Scene = MakeScene();
+	FAffixChangeScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -539,7 +539,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeAffixChangeThresholdTest,
 bool FCataclysmForgeAffixChangeThresholdTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeAffixChangeTest;
-	FScene Scene = MakeScene();
+	FAffixChangeScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
