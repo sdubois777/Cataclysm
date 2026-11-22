@@ -63,7 +63,13 @@ namespace CataclysmPowerGapRewardsTest
 	int64 KillAndMeasure(UWorld* World, ACataclysmPlayerState* State, int32 RarityStep, const FVector& At)
 	{
 		const int64 Before = State->GetExperienceIntoLevel();
-		ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator);
+		// ALWAYS SPAWN: an entered empire dungeon has generated its floor, and the default collision handling refused the
+		// creature at (300, 0, 0) and at (-300, 0, 0) in window forge-pg-w1 ("SpawnActor failed because of collision at
+		// the spawn location"), so no kill happened and this answered INDEX_NONE. Where it stands does not matter here.
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACataclysmEnemyCharacter* Victim =
+			World->SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator, Params);
 		if (Victim == nullptr)
 		{
 			return INDEX_NONE;
@@ -296,6 +302,8 @@ bool FCataclysmPowerGapRewardsKillTest::RunTest(const FString&)
 	TestTrue(TEXT("**and loot is cut less than experience**"), Here.Loot > Here.Experience);
 	TestTrue(TEXT("set-up: a Boss is worth something here"), Worth > 0);
 	TestEqual(TEXT("set-up: the kill does not cross a level"), LevelAfterTheCut, 99);
+	TestTrue(TEXT("set-up: the creature in the dungeon was made and killed"), Gained != INDEX_NONE);
+	TestTrue(TEXT("set-up: and the control's creature too"), GainedOutside != INDEX_NONE);
 	TestEqual(TEXT("**the kill grants the figure times the experience factor**"), Gained, Expected);
 	TestTrue(TEXT("**and less than the whole figure**"), Gained < Whole);
 	TestEqual(TEXT("**the panel's line is the scores' line and then the rewards'**"), Line,

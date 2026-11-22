@@ -185,3 +185,19 @@ def test_the_map_and_the_city_screen_show_the_rewards_after_the_dungeon_score() 
     for widget in ("CataclysmEmpireMapWidget.cpp", "CataclysmCityScreenWidget.cpp"):
         text = flat(code(SOURCE / "Interface" / widget))
         assert "UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, " in text, widget
+
+
+def test_the_kill_tests_creatures_are_made_whatever_the_floor_holds() -> None:
+    """Window forge-pg-w1: inside an entered empire dungeon the default collision handling refused both creatures of
+    `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` ("SpawnActor failed because of collision at the
+    spawn location"), so no kill happened and the test read -1. The helper that makes them must always spawn, and the
+    test must say so as a set-up failure when it cannot."""
+    test = code(TEST)
+    helper = body(test, "int64 KillAndMeasure(")
+    assert "SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;" in helper, (
+        "KillAndMeasure no longer spawns its creature past whatever the generated floor holds")
+    assert "SpawnActor<ACataclysmEnemyCharacter>(At, FRotator::ZeroRotator, Params)" in helper, (
+        "KillAndMeasure does not pass its spawn parameters")
+    run = body(test, "bool FCataclysmPowerGapRewardsKillTest::RunTest(")
+    for made in ("Gained != INDEX_NONE", "GainedOutside != INDEX_NONE"):
+        assert made in run, f"the kill test does not report a creature it could not make: {made}"
