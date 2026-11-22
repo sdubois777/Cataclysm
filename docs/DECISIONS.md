@@ -121,11 +121,14 @@ and the Stalker's `PlayAttackAnimation` to calling it.
 `wd_alone_engine_DungeonModifierEffects_da85b7c8.log`, in the worktree `sharp-meitner-246682`); the coordinating session
 took #2811 out of that window.
 
-- `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`, in its group and in the suite: tier 1's
+- `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`. **Run in its group alone:** tier 1's
   blow read 4450.0 before its multiplier against the 348 the table was fitted to (267.0 taken against an attack damage
-  of 20.9), and **tier 5's too**: 15979.8 against 1195 (26,846 taken against 2,007.9). The other six tiers each took one
-  blow. The engine's frame counter, which `CataclysmTestWorld::RunClock` raises once a step, shows tiers 1 and 5 moved
-  the clock about 27 steps and the others about 6.
+  of 20.9), and **tier 5's too**: 15979.8 against 1195 (26,846 taken against 2,007.9); the other six tiers each took one
+  blow, and the engine's frame counter, which `CataclysmTestWorld::RunClock` raises once a step, shows tiers 1 and 5
+  moved the clock about 27 steps and the others about 6. **In the whole suite:** tier 1 failed the same way, 267.0, and
+  **tier 5 passed**, at 2008.0. The two runs differed at tier 5, which is what a cause set by test order gives. (The
+  level-1 session's first report said tier 1 alone failed and that the figure was the same in both runs; it confirmed
+  and corrected both on 2026-11-22.)
 - `Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`, in the whole suite only: the second
   blow played `MM_Attack_03` where `MM_Attack_02` was due. Alone and in its group it passed.
 

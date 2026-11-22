@@ -367,8 +367,9 @@ def test_a_test_that_finishes_a_copys_swing_takes_its_ai_away_first():
 
     Issue #2811, window D: moving the clock fires the copy's controller's think timer, and a think attacks any hostile
     target in reach, so a copy left with its controller swung again during the wait -- at a moment set by how many
-    enemies earlier tests had possessed. Thirteen blows' worth at tiers 1 and 5 of
-    `WhatACorruptedStalkerIsBuiltWithAtEachTier`, and a third clip where the second was due in the whole suite only.
+    enemies earlier tests had possessed. About thirteen blows' worth at tier 1 of
+    `WhatACorruptedStalkerIsBuiltWithAtEachTier` in its group alone and in the suite, and at tier 5 in its group alone
+    only; and a third clip where the second was due in the whole suite only.
     Checked per test: each `RunTest` that calls `FinishTheSwingsOf` also calls `TakeTheAIFrom` before it.
     """
     helper = strip_comments(read(SOURCE / "Tests" / "CataclysmTestSwings.h"))

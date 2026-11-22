@@ -26,8 +26,9 @@
  * enemy's controller thinks on one: `ACataclysmEnemyController` starts a looping 0.25 s think when it takes its creature,
  * and a think attacks any hostile target in reach. So a copy left with its controller swung again during the wait,
  * whenever its first think fell there, and when that was depended on how many enemies earlier tests had possessed
- * (`GCataclysmEnemyControllerPossessions`, which staggers the first think). Window D measured both: thirteen blows'
- * worth at tiers 1 and 5 of `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`, and a third
+ * (`GCataclysmEnemyControllerPossessions`, which staggers the first think). Window D measured both: about thirteen
+ * blows' worth at tier 1 of `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` in its group
+ * alone and in the suite, and at tier 5 in its group alone only, and a third
  * clip where the second was due in `Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` in the
  * whole suite only. `FinishTheSwingsOf` therefore refuses a caster that an AI controller still drives.
  */
