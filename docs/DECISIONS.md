@@ -160,11 +160,44 @@ runs first.
 
 ### Registered for the window
 
-**THE BASE IS WINDOW D'S, NOT YET MEASURED.** This branch is window D's head `5fca8616b` plus this change, and window
-D's game code is development `c89fa5911`'s plus #2806, #2807 and #2809; no measured log has that game code. So this
-change is registered as what it adds to window D's measured figures, and is registered again as totals from window D's
-measured log (or the newest one) when this branch is given the machine, after rebasing onto window D's head as it then
-is.
+**WINDOW E, REGISTERED AS ONE, 2026-11-21: #2808, #2805, #2825 and this change together**, on
+`feat/window-e-bolts-map-builds-swings`, development `82c34930c` (window D's merge) plus the four. The base is window
+D's measured engine log at `2414abdd7`, whose `game/` equals `82c34930c`'s (`git diff --name-only 2414abdd7 82c34930c
+-- game` lists nothing): **5113 performed, all succeeded, 57 skipped halves, 860 test saves written and deleted.**
+Counted by the names in `game/Source` at `82c34930c` and at the head, window E adds 34 tests and removes 4, net 30:
+#2808 +8 (`QuickCast` 7; `AI` +3 and -2; `Telegraph` one renamed), #2805 +11 (`FloorMap`), #2825 +8 (`CityUpgradeBuild`
+4, `CityUpgradeBuildSave` 2, `CityScreen` 2; `CityUpgrade` one renamed) and this change +3 (`PlayerCopies`). So:
+
+- **The whole suite 5113 + 30 = 5143**, all succeeding; **skipped halves 57**, unchanged (no new or changed test reports
+  a skipped half: the four add no `ReportSkippedHalf` call); **test saves 860**, unchanged (#2825's two save tests write
+  and read the run record as text in memory, not a save slot).
+- **The editor step, first, under the lock**: `tools/generate_datatable_assets.py` rebuilds `DT_EnemyArchetypes` from
+  #2808's `EnemyArchetypes.csv` and its record; `tools/generate_input_assets.py` writes #2805's `IA_ToggleFloorMap` and
+  the config and both mapping contexts that bind it to Tab, and the other files it rewrites are restored. Those six
+  files are committed and become the tested head. Until then
+  `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded` fails, and nothing
+  else in the Python suite.
+- **Groups alone, first**, each its count in that log less the tests removed and plus the tests added: the new groups
+  `QuickCast.` 7, `FloorMap.` 11, `CityUpgradeBuild.` 4, `CityUpgradeBuildSave.` 2, and `PlayerCopies.` 7 with this
+  change's three new tests each alone; the groups whose tests move, `AI.` 52, `Telegraph.` 14, `CityScreen.` 19,
+  `CityUpgrade.` 15, `CityUpgradePrice.` 7, `DungeonModifierEffects.` 777, `StalkerEntries.` 8, `PlayerAttack.` 6; then
+  #2808's `Succubus.` 10, `Sentinel.` 6, `Brute.` 23, `Enemy.` 19, `HitReaction.` 12, `Silence.` 26, `LobMinimum.` 7,
+  `Gatekeeper.` 14, `Warden.` 20, `Hellhound.` 11, `Effects.` 55; #2805's `DungeonFloor.` 16 and `Input.` 9; and #2825's
+  `SaveLoad.` 81, `SaveRecords.` 17, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.`
+  13, `EmpireTreeEvents.` 14, `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5, `WinningTheRun.` 11, `ConsumptionDouble.` 15,
+  `EmpireRun.` 71, `EmpireMap.` 17, `EmpireTreeCity.` 17, `EmpireTreeGold.` 6, `EmpireScreen.` 16, `Surge.` 54.
+  Forty-four groups. Each count is the same as its issue's own registration where that names it.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch before the
+  editor step: "1 failed, 7909 passed, 10 skipped in 312.69s", JUnit 7920 tests, 1 failure, 0 errors, 10 skipped, the one failure the DataTable check named above; ruff "All checks passed!".
+- **Seven Unreal guard proofs**, after both suites end: QC4 (#2808); FM1, FM2 and FM3 (#2805); C1 and C2 (#2825); and
+  P1 (this change), each as its entry registers it.
+- **The sweep** (commit "Window E's sweep"): the survival table's Succubus and Sentinel rows recomputed from the model at
+  #2808 (29 hits in 29.0 s and 25 in 25.0 s), and the Imp pack figures #2818 moved, where the old ones were still
+  written. The four branches share no game file but `CataclysmPlayerController.cpp`, where #2807's ground hover (now on
+  development) and #2805's floor map each add a call to `PostProcessInput`, and both are kept; and `game/README.md`,
+  on different lines. Memory: every gate at 9,216 MB, the coordinating session's ruling of 2026-11-21.
+
+The bullets below were written as additions to window D's figures; the totals above include them.
 
 - **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone,
   `CataclysmPlayerCharacter.cpp`, `CataclysmCorruptedStalkerCharacter.cpp`, `CataclysmPlayerCopiesTests.cpp`,
@@ -194,7 +227,8 @@ is.
 - **NO PROOF OF THE MOVEMENT TEST.** The rule it shows for a copy, no clip on a movement skill, is the template's and is
   guarded by the player's own tests; no break of this change can fail it.
 
-**The window scripts** will be in `.claude/windows/` in the worktree `adoring-jennings-f8c84c`.
+**The window scripts** are `compile_we.py`, `prechecks_we.py`, `run_we.py` and `prove_we.py` in `.claude/windows/`
+in the worktree `sharp-meitner-246682`, which runs window E.
 
 ---
 
