@@ -208,8 +208,8 @@ TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item)
 
 FString UCataclysmGems::NothingToIncreaseLineFor(const FCataclysmGemRow& Row)
 {
-	// THE FOUR STATS NO CLASS HAS A BASE OF, `game/Data/ClassStats.csv`; `tools/tests/test_every_gem_names_a_stat_the_
-	// game_reads.py` checks this list against that file and the gems that raise them.
+	// THE FOUR STATS NO CLASS HAS A BASE OF, `game/Data/ClassStats.csv`. This list is checked against that file and
+	// the gems that raise them by `tools/tests/test_every_gem_names_a_stat_the_game_reads.py`.
 	static const TCHAR* const NoBase[][2] = {
 		{ TEXT("block_chance"), TEXT("block chance") },
 		{ TEXT("evasion"), TEXT("evasion") },
