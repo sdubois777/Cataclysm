@@ -167,6 +167,93 @@ So the claim in "Tests" above, that the new test fails on the old code whatever 
 
 ---
 
+## 2026-11-21 — The four scaled two-handed weapons are drawn at a scale of 1.75, the owner's ruling of 2026-09-14 (#1130)
+
+**Affects:** the Weapon Meshes sheet of `docs/All_Things_Cataclysm.xlsx` and `game/Data/WeaponMeshes.csv`, generated
+from it; `game/docs/weapon-source-assets.md`, the weapon table's four scaled two-handed rows and the paragraph on why
+the scale figures are what they are; `tools/tests/test_a_weapon_is_drawn_in_the_hand.py`, one new test. Issue
+[#1130](https://github.com/sdubois777/Cataclysm/issues/1130). No C++ changes. `game/Content/Data/DT_WeaponMeshes.uasset`
+and `game/Data/datatable_asset_sources.json` are rebuilt in the editor by the empire tree session's combined window for
+slices 6d and 6e, which carries this change.
+
+### SAID FIRST
+
+- **WHETHER THE GRIP STILL FITS THE HAND AT 1.75 IS A PREDICTION NOBODY HAS LOOKED AT.** The scale is uniform, so the
+  handle thickens with the blade; that is why 1.45 was chosen on 2026-09-01. The automation tests run without
+  rendering and cannot see it. Somebody has to look in the game.
+- **UNTIL THE ASSET STEP, `tools/tests/test_datatable_assets_are_current.py` FAILS ON THIS BRANCH ALONE**, because
+  `WeaponMeshes.csv` no longer matches the hash `datatable_asset_sources.json` records for `DT_WeaponMeshes`. The
+  combined window rebuilds both.
+
+### What changed
+
+The ruling, recorded on issue #1130 on 2026-09-14 under the owner's delegation of that date: "a single scale of 1.75
+for the four two-handed bases". The owner had played the game on 2026-09-01 and reported the two-handed weapons too
+small.
+
+| Base | Mesh | Scale was | Scale now | Drawn length now |
+| :-- | :-- | :-: | :-: | --: |
+| Greatsword | `SM_Sword_3` | 1.45 | 1.75 | 163 cm |
+| Greataxe | `SM_Axe` | 1.45 | 1.75 | 159 cm |
+| Warhammer | `SM_Mace` | 1.45 | 1.75 | 145 cm |
+| Two-Handed Crossbow | `SM_Crossbow` | 1.25 | 1.75 | 156 cm wide |
+| Spear, Staff | `SM_Spear`, `SM_Staff` | 1 | 1, unchanged | 244 cm, 106 cm |
+
+The drawn lengths are the pack's native lengths (93, 91, 83 and 89 cm) times the scale, not measured in the game. They
+sit inside the real ranges the document already quoted: a zweihänder is 150 to 180 cm, a Dane axe 120 to 170.
+
+- **THE WORKBOOK** was edited by a script that finds each base by its name in the sheet's "Base Name" column, exactly
+  once, and refuses unless its Scale cell holds the figure the ruling replaces. Read back cell by cell against a
+  snapshot taken before the save: 28 sheets in the same order, 15009 cells, 4 differ, exactly C9 to C12 of Weapon
+  Meshes, each now 1.75.
+- **`python tools/generate_datatables.py`** moved `WeaponMeshes.csv` and no other CSV, those four rows only;
+  `--check` printed "All 33 DataTable CSVs are up to date."
+- **`weapon-source-assets.md`** cites the ruling, gives the new lengths and says how they were computed, and labels the
+  grip as unchecked.
+
+### The test
+
+`test_the_four_scaled_two_handed_bases_share_the_ruled_scale`, in `tools/tests/test_a_weapon_is_drawn_in_the_hand.py`,
+reads `WeaponMeshes.csv` by its BaseName column: Greatsword, Greataxe, Warhammer and Two-Handed Crossbow at 1.75, Spear
+and Staff at 1. Nothing pinned these figures before; the sweep below found no other reader of them.
+
+By `tools/prove_guard.py`, 2026-11-21, with `python -m pytest tools/tests/test_a_weapon_is_drawn_in_the_hand.py
+tools/tests/test_generate_datatables.py`, each **PROVED**:
+
+| Break in `WeaponMeshes.csv` | With the break in | Restored |
+|---|---|---|
+| The Greatsword back to 1.45 | 2 failed: the new test, and `test_generate_datatables.py::TestAgainstTheRealWorkbook::test_the_committed_csvs_are_current` | 1064 passed, 1 skipped |
+| The Staff at 1.75 | the same 2 | 1064 passed, 1 skipped |
+
+The second failure in each is the check that the CSV matches the workbook, which any hand edit of the CSV trips.
+
+### The sweep
+
+Every reader of the weapon mesh table, from a search of `game/Source` and `tools/tests` for `WeaponMeshes` and
+`DT_WeaponMeshes`:
+
+- `UCataclysmWeaponMeshes::MeshFor` returns the scale and `ACataclysmPlayerCharacter::RefreshWeaponMeshes` applies it
+  on the hand. No automation test compares a drawn scale with a figure: `CataclysmWeaponMeshTests.cpp` reads a scale
+  only for the base that draws nothing (left at 1) and for a one-handed base.
+- `CataclysmDataTableTests.cpp` checks the table's row count, 14, unchanged, and maps `DT_WeaponMeshes` to its CSV.
+- `CataclysmPlantedWeapon.cpp` names the table and does not read a scale.
+- No C++ source or comment quotes 1.45 or 1.25 as a weapon scale.
+
+### Registered for the window that carries it
+
+An addition to the empire tree session's combined window for slices 6d and 6e, counted on the "Test Completed.
+Result={" lines of the skills window's whole-suite log at `a7fadce0b`, whose `game/` is development `1537dac4e`'s
+(`git diff --quiet a7fadce0b 1537dac4e -- game/` exits 0), with a literal match on `Path={Cataclysm.<Group>.`:
+
+- **The whole suite: + 0 tests.** This change adds no Unreal test and moves no test's count.
+- **Groups**: `Cataclysm.WeaponMesh.` 10 and `Cataclysm.Data.` 7, unchanged. (The group is `Data.`; no group
+  `DataTable.` exists.)
+- **The asset step** adds `game/Content/Data/DT_WeaponMeshes.uasset`, 14 rows, to the window's rebuild, with
+  `game/Data/datatable_asset_sources.json`.
+- **No C++ guard proof.** No C++ test guards the figures; the Python test above does, and is proved.
+
+---
+
 ## 2026-11-21 — Global Credit and Sovereign Loans act: a city upgrade can be bought on credit, the debt is saved on account record 5 and character record 11, and gold picked up pays it down (#2741, slice 6e)
 
 **Affects:** the debt, `GoldOwed` and `GoldOwedEachDay`, on `UCataclysmAccountSave` (version 5, `Migrate_4_to_5`) and
