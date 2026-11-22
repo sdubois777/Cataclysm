@@ -132,6 +132,9 @@ piece, the replacement's band floor, the craft keeping F1's order with a failed 
 screen. And
 `test_the_forge_charges_the_sheets_costs.py` and `test_the_play_loop_is_logged_at_each_step.py` gain the two crafts.
 
+**Python suite at `a535f7804`**, in a git worktree: "8155 passed, 9 skipped"; JUnit 8164 tests, 0 failures, 0
+errors, 9 skipped; ruff "All checks passed!".
+
 **Python guard proofs, in a `git archive` copy of `c9bf10524`: 7 of 7 PROVED**, each failing exactly the checks named
 and passing with the break restored:
 
