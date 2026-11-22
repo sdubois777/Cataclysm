@@ -3876,6 +3876,20 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
 
   
 
+**How gems work, ruled by the coordinating session on 2026-11-21 (issue #46)** from this document, each gem's own text and the owner's precedent for attributes. `docs/DECISIONS.md` has the entry and the research.
+
+  - **What a gem gives.** A gem that applies an ailment is a flat chance on that ailment, as the ailment affixes are. Every other gem is an increase, as its text says ("Increases ..."). The Gems sheet states a fraction and the stat pipeline percentage points, so Of The Viper's Everyday 0.2 is +20 poison chance and Of Life's Cataclysmic 0.85 is 85% increased maximum health. Each gem's stat and bucket are the Gems sheet's Stat and ValueKind columns.
+  - **Four gems raise a stat no class has a base for**: Of The Bulwark (block chance), Of The Wraith (evasion), Of Urgency (cooldown reduction) and Of The Goblin (magic find). They stay as they are, and a gem's tooltip says plainly when it does nothing for the character, as the owner ruled for attributes ("Keep it, just explain it").
+  - **One effect per gem**, whatever it is socketed into, and **a two-handed weapon does not double its gems**: its 6 sockets already equal a pair's 3 + 3.
+  - **Sockets are typed.** Each socket is Attack, Defense or Utility, rolled evenly on a drop, and a gem fits a socket of its own type. Change Socket Type lets the player choose the new type. "Sockets on this equipment fit any gem type" lifts the restriction for that piece.
+  - **Socketing and unsocketing are crafts at the Forge**, between walks, at the costs in section VII: Socket Gem uses a Jeweler's Setting Agent, and Unsocket Gem uses Dismantling Dust and returns the gem. There is no free removal.
+  - **Gems stack**, one stack per gem and rarity, in the inventory and the stash, for the reason crafting materials stack.
+  - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine.
+  - **A gem in a potion slot gives its stat for the 3 seconds the potion's heal runs.** That is a judgement, to be looked at again before it is built.
+  - **How often gems drop is not yet set**; it is measured in the simulation when gem drops are built.
+
+  
+
 **The table below is a MAXIMUM, and an item drops with anywhere from none of them up to all of them.** A Chest can drop with no sockets or with six, and neither is more likely than the other; the difficulty tier does not gate it, which makes this the one part of a drop that does not rise with depth. `docs/DECISIONS.md` records the decision and the two alternatives that were declined.
 
   
