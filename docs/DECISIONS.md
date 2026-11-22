@@ -4,6 +4,8 @@ Decisions made outside the Google Drive documents, newest first.
 
 ## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
 
+**COMPILED AND TESTED SINCE: window power-score-w2 passed on `5b6042222`**, with FC1 to FC5 PROVED; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original note follows.
+
 **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f2`, cut from slice F1's head
 `15e101a19`, because it reuses F1's affix screen; the coordinating session accepted that base. Its window is registered
 below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS ENTRY**, and this slice's
@@ -134,6 +136,8 @@ before it.
 ---
 
 ## 2026-11-22 — The forge rerolls an affix's value, perfects its roll and raises its tier, one affix at a time, at the Crafting sheet's costs (#47, slice F1)
+
+**COMPILED AND TESTED SINCE: window power-score-w2 passed on `5b6042222`**, with FA1 to FA6 PROVED; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original note follows.
 
 **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f1`, cut from development `4a7aaac4e`.
 Its window is registered below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS
@@ -279,6 +283,8 @@ If the window shares a run with the Power Score slices, the whole-suite figure i
 ---
 
 ## 2026-11-22 — Clearing a dungeon restores no city defence, by the owner's ruling; the upgrade that restores 5% on a clear loses the word "additional" (#1267)
+
+**COMPILED AND TESTED SINCE, AND THE ASSET REBUILT: `DT_CityUpgrades` was rebuilt in the window's editor step as `b1441d5de`, and window power-score-w2 passed on `5b6042222`**; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original notes follow.
 
 **Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell B11, "When you clear a
 dungeon, the city's Defense restores by an additional 5%." to "... restores by 5%."; `game/Data/CityUpgrades.csv`,
