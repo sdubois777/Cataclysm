@@ -101,6 +101,16 @@ public:
 	 */
 	static TArray<FString> TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
 
+	/**
+	 * The tooltip's line for a gem that increases a stat no class has a base of -- block chance, evasion, cooldown
+	 * reduction or magic find -- and empty for any other gem. Ruled 2026-11-21, "keep and explain", the owner's own
+	 * answer for attributes in #2815 ("Keep it, just explain it"); its form by the coordinating session on 2026-11-22: a
+	 * fixed line chosen from the row's stat alone, true for every character, so it states the rule rather than the
+	 * character's state. Gear is the only source of a flat amount of each of the four (affixes, and the Shield, the
+	 * armour bases and the Reliquary); no passive gives one.
+	 */
+	static FString NothingToIncreaseLineFor(const FCataclysmGemRow& Row);
+
 	//~ Gems in sockets. Issue #46, slice G3.
 
 	/** A socket type's name as the player reads it: "Attack", "Defense", "Utility", "Any". */

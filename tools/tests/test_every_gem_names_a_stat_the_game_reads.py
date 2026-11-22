@@ -170,6 +170,21 @@ def test_the_gems_with_nothing_to_increase_are_the_four_the_ruling_names() -> No
         f"2026-11-21 names {sorted(NOTHING_TO_INCREASE)}. Their tooltip must say when they do nothing (slice G2)")
 
 
+def test_the_tooltip_explains_exactly_the_stats_of_the_four_gems() -> None:
+    """`UCataclysmGems::NothingToIncreaseLineFor` holds its own list of stats; it must be the four gems' stats, so a gem
+    added for a stat no class has a base of is explained, and a class given a base of one stops being told it has none.
+    Ruled 2026-11-21, "keep and explain"; the fixed line's form by the coordinating session on 2026-11-22."""
+    body = re.sub(r"//.*", "", GEMS_CPP.read_text(encoding="utf-8"))
+    start = body.find("FString UCataclysmGems::NothingToIncreaseLineFor(")
+    assert start != -1, "CataclysmGems.cpp no longer defines NothingToIncreaseLineFor"
+    function = body[start:body.find("\n}", start)]
+    listed = set(re.findall(r'\{\s*TEXT\("(\w+)"\)\s*,\s*TEXT\("[^"]+"\)\s*\}', function))
+    raised = {RULED[gem][0] for gem in NOTHING_TO_INCREASE}
+    assert listed == raised, f"the tooltip explains {sorted(listed)}; the four gems raise {sorted(raised)}"
+    assert "NothingToIncreaseLineFor(*Row)" in body[body.find("UCataclysmGems::TooltipLinesFor("):], (
+        "the gem tooltip does not ask for the line")
+
+
 def test_the_gem_library_states_percentage_points_from_source_gem() -> None:
     header = GEMS_H.read_text(encoding="utf-8")
     body = re.sub(r"//.*", "", GEMS_CPP.read_text(encoding="utf-8"))

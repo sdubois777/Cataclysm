@@ -206,6 +206,32 @@ TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item)
 	return Lines;
 }
 
+FString UCataclysmGems::NothingToIncreaseLineFor(const FCataclysmGemRow& Row)
+{
+	// THE FOUR STATS NO CLASS HAS A BASE OF, `game/Data/ClassStats.csv`; `tools/tests/test_every_gem_names_a_stat_the_
+	// game_reads.py` checks this list against that file and the gems that raise them.
+	static const TCHAR* const NoBase[][2] = {
+		{ TEXT("block_chance"), TEXT("block chance") },
+		{ TEXT("evasion"), TEXT("evasion") },
+		{ TEXT("cooldown_reduction"), TEXT("cooldown reduction") },
+		{ TEXT("magic_find"), TEXT("magic find") },
+	};
+	if (!Row.ValueKind.TrimStartAndEnd().Equals(TEXT("increased"), ESearchCase::IgnoreCase))
+	{
+		return FString();
+	}
+	const FString Stat = Row.Stat.TrimStartAndEnd();
+	for (const auto& Pair : NoBase)
+	{
+		if (Stat.Equals(Pair[0], ESearchCase::IgnoreCase))
+		{
+			return FString::Printf(TEXT("An increase multiplies what you already have. No class has a base %s, so this "
+										"gem does nothing until your gear gives some."), Pair[1]);
+		}
+	}
+	return FString();
+}
+
 TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
 {
 	TArray<FString> Lines;
@@ -217,6 +243,11 @@ TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rari
 	if (Row)
 	{
 		Lines.Add(EffectAt(*Row, Rarity));
+		const FString Explained = NothingToIncreaseLineFor(*Row);
+		if (!Explained.IsEmpty())
+		{
+			Lines.Add(Explained);
+		}
 	}
 	if (!Type.IsEmpty())
 	{

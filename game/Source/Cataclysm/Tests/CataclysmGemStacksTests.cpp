@@ -197,9 +197,52 @@ bool FCataclysmGemStacksTooltipTest::RunTest(const FString&)
 	}
 	const TArray<FString> Urgency = UCataclysmGems::TooltipLinesFor(FName(TEXT("Gem_Of_Urgency")),
 																	ECataclysmRarity::Everyday, 1);
+	// OF URGENCY RAISES COOLDOWN REDUCTION, which no class has a base of, so its fourth line says so (GK5).
 	TestTrue(TEXT("a Utility gem fits a Utility socket, and one carried says no count"),
-			 Urgency.Num() == 4 && Urgency[3] == TEXT("Fits a Utility socket"));
+			 Urgency.Num() == 5 && Urgency[4] == TEXT("Fits a Utility socket"));
 	AddInfo(FString::Printf(TEXT("GEM STACK TOOLTIP: %s"), *FString::Join(Lines, TEXT(" | "))));
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// GK5. A gem that increases a stat no class has a base of says its increase needs gear, and no other gem does. Ruled
+// 2026-11-21, "keep and explain"; the fixed line's form by the coordinating session on 2026-11-22.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksNothingToIncreaseTest,
+	"Cataclysm.GemStacks.AGemRaisingAStatNoClassHasSaysItNeedsGearAndOthersDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Of The Wraith (evasion) carries the line after its effect. Of The Viper, a flat poison chance, does not; nor does Of
+ * The Scholar, an increase of skill experience gain, whose base of 100 the game supplies: the line follows the stat,
+ * not the bucket. Prints "NOTHING TO INCREASE".
+ */
+bool FCataclysmGemStacksNothingToIncreaseTest::RunTest(const FString&)
+{
+	if (!TestNotNull(TEXT("set-up: the generated gem table"), UCataclysmGems::LoadGeneratedTable()))
+	{
+		return false;
+	}
+	const TArray<FString> Wraith = UCataclysmGems::TooltipLinesFor(FName(TEXT("Gem_Of_The_Wraith")),
+																   ECataclysmRarity::Everyday, 1);
+	const TArray<FString> Viper = UCataclysmGems::TooltipLinesFor(FName(TEXT("Gem_Of_The_Viper")),
+																  ECataclysmRarity::Everyday, 1);
+	const TArray<FString> Scholar = UCataclysmGems::TooltipLinesFor(FName(TEXT("Gem_Of_The_Scholar")),
+																	ECataclysmRarity::Everyday, 1);
+	const FString Line = TEXT("An increase multiplies what you already have. No class has a base evasion, so this gem "
+							  "does nothing until your gear gives some.");
+	auto Explains = [](const TArray<FString>& Lines)
+	{
+		return Lines.ContainsByPredicate([](const FString& Text) { return Text.Contains(TEXT("No class has a base")); });
+	};
+	AddInfo(FString::Printf(TEXT("NOTHING TO INCREASE: Of The Wraith %s | Of The Viper %s | Of The Scholar %s"),
+							*FString::Join(Wraith, TEXT(" / ")), *FString::Join(Viper, TEXT(" / ")),
+							*FString::Join(Scholar, TEXT(" / "))));
+
+	TestTrue(TEXT("Of The Wraith's fourth line says evasion needs gear"), Wraith.Num() >= 4 && Wraith[3] == Line);
+	TestFalse(TEXT("Of The Viper, a flat chance, says nothing of it"), Explains(Viper));
+	TestFalse(TEXT("nor does Of The Scholar, an increase of a stat the game gives a base"), Explains(Scholar));
+	TestTrue(TEXT("CONTROL: Of The Scholar's tooltip was read"), Scholar.Num() >= 3);
 	return true;
 }
 
