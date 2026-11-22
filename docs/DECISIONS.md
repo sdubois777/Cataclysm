@@ -468,6 +468,67 @@ their proofs FA1 to FA6 and FC1 to FC5 beside L1 to L7.
 
 ---
 
+## 2026-11-22 — A kill's experience and loot are scaled by the gap between the player's Power Score and the dungeon's: full within a band, up to 25% more above it, down to 5% experience and 25% loot below it (#2824 slice c, the rule; no game code yet)
+
+**Affects:** `sim/analyse_power_gap_rewards.py`, new, the simulation the rule was chosen from;
+`sim/tests/test_power_gap_rewards.py`, new; `sim/tests/test_analysis_scripts.py`'s list of scripts that must run. No game code: it
+waits for #2824 slice a, the player's live Power Score and the Dungeon Score in C++. Issue
+[#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### What the design says
+
+`docs/Cataclysm_GDD_v2.md`, section IV, "Power Score": "Dungeons within a close power range provide average exp and
+loot. Dungeons below the threshold provide less. Dungeons above provide more." The direction only; every number below
+was unstated.
+
+### The rulings
+
+- **The coordinating session, 2026-11-22: rule D**, its edges JUDGEMENTS. With `gap = (Dungeon Score - Player Power
+  Score) / Tier Width`, positive when the dungeon is above the player, and the Dungeon Score the design's ("Dungeon
+  Score Formula", `scoring.dungeon_score`):
+  - full reward from 0.6 of a width over the dungeon to 0.25 under it;
+  - a dungeon above the player: a bonus rising evenly to +25%, reached 0.5 of a width beyond the band;
+  - a dungeon below the player: a cut falling evenly to a floor, reached a whole width beyond the band;
+  - one factor on a kill's experience, its loot quantity (gear, materials, gems) and its gold multiplier. Gold pile
+    COUNTS are not scaled by loot quantity, so gold goes through its multiplier.
+- **The owner, 2026-11-22, the loot floor, verbatim: "25% loot floor (Recommended)".** The option as it was put to
+  the owner: "Experience still falls to 5%, but loot stops at 25%. Farming easier dungeons for crafting materials stays
+  somewhat worthwhile. No game I found has a loot rule by power gap, so this is a judgement." So experience falls to
+  5%; loot quantity and the gold multiplier fall to 25%, over the same width; the bonus is the same for both.
+
+### The research, 2026-11-22
+
+| Game | Source (fetch result) | What it states |
+|---|---|---|
+| Diablo IV | diablo4.wiki.fextralife.com/Experience (readable, a fan wiki) | Above the player's level +15%, rising, "capped at twenty-five percent"; below, -10% a level, to nothing at ten levels. The +25% cap is taken from here |
+| Diablo II | classic.battle.net, the experience basics page (readable) | Full experience within 5 levels; "10 levels or more below your level, you receive 5%"; above, to 2%. The 5% experience floor is taken from here |
+| Path of Exile | poedb.tw (the formula is an image with no alt text), poewiki.net (refused), maxroll.gg and the fextralife PoE 2 page (404) | NOT read, so NOT used. Only a safe band of "three plus one for every sixteen complete player levels" and a 1% minimum, from a summary of poedb's text, not verified |
+| Last Epoch | maxroll.gg's experience guide (readable) | No rule by the gap |
+
+**No readable source gives a LOOT rule by the gap.** The 25% loot floor is the owner's judgement.
+
+### What the simulation measured
+
+- **The reference character, a tier's maximum score, sits 0.48 to 0.50 of a width ABOVE its own tier's Dungeon
+  Score, at every tier.** So a band of a quarter width either side, the plan's first suggestion, would cut a player
+  exactly where the design expects them at a tier's end to 0.76-0.78, and the climb would end at level 99. That is
+  why the band's lower side is 0.6.
+- **Under rule D, no clear at the player's own tier is cut**, from the tier's start to its reference, in any dungeon
+  that tier spawns: every (type, city tier) row at both ends of its floor range, every allowed sub-type, and modifiers
+  at their fewest and most with the Corrupted Stalker. The lowest Dungeon Score a tier spawns is 0.48 to 0.49 of a
+  width below the reference. **THE MARGIN IS ABOUT 0.11 OF A WIDTH**: anything that lowered a shallow dungeon's
+  Dungeon Score by that much (the empire tree's negative floors are not counted) would let the cut reach a player at
+  the reference. `test_rule_d_never_cuts_a_player_at_the_reference_in_any_dungeon_their_tier_spawns` fails if it does.
+- **A campaign** (the player's score assumed to rise evenly from the tier below's maximum to the tier's own, a
+  JUDGEMENT) pays 1.015 to 1.019 of today's experience; the levels at the ends of tiers 1 to 8 become 42 60 71 79 85 91
+  96 100, from 42 59 70 79 85 91 95 100. Level 100 still arrives by the end of tier 8.
+- **Factors:** at the reference 1.00 for both; one tier below (the tier's start) 1.12 to 1.14 for both; one tier over
+  (the next tier's maximum) 0.05 experience and 0.25 loot (at tier 8, which has no tier 9 and is modelled as the
+  reference plus a width, 0.14 and 0.32). Gear per full clear of the average dungeon is 6,134 today; under the rule
+  6,134 at the reference, 6,889 to 6,968 one tier below, and 1,533 one tier over.
+
+---
+
 ## 2026-11-22 — The shared window: the cleanse (#2838), raising a city upgrade (#1265), the gem enchantments (#46 G10) and the socket crafts (#46 G9) on one branch, registered
 
 **Uncertain or not yet shown, first:**

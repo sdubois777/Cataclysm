@@ -129,7 +129,8 @@ def penetration_run():
                                   "analyse_architectural_insight_cap.py",
                                   "analyse_enemy_burn_and_thorns.py",
                                   "analyse_placement_seeds.py",
-                                  "analyse_gem_drops.py"])
+                                  "analyse_gem_drops.py",
+                                  "analyse_power_gap_rewards.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
