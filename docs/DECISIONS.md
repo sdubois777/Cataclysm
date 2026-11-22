@@ -740,13 +740,14 @@ Over `game/Source/**/Tests`, `tools/tests` and `sim/tests`. Slice 6d's is in its
 ### Registered before the run, for the whole window: slices 6d, 6e, 7 and 8 and #1130
 
 **Restated on 2026-11-22 for the window the coordinating session gave all five, tested as one branch,
-`feat/empire-tree-8-prowess-2`, on development `d684a3d0e` (window E's merge).** It replaces the registration against
-window tree-2803-w1 (5097). Counted on the "Test Completed. Result={" lines of window E's whole-suite log at
-`f4d43387c`, whose `game/` tree is development `d684a3d0e`'s, with a literal match on `Path={Cataclysm.<Group>.`: "5143
-tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they check" and "860 written and deleted, 0 left
-behind".
+`feat/empire-tree-8-prowess-3`, on development `1226aad28` (#2827's merge).** It replaces the registration against
+window tree-2803-w1 (5097), and the one against window E (5167) that this section held before #2827 merged. Counted
+on the "Test Completed. Result={" lines of window ai-think-w1's whole-suite log at `bc065ebc6`, whose `game/` tree is
+development `1226aad28`'s (`git rev-parse` of each), with a literal match on `Path={Cataclysm.<Group>.`: "5144 tests
+performed, 5144 succeeded, 0 failed. 57 skipped part of what they check" and "860 written and deleted, 0 left behind".
+Every group below has the count it had in window E.
 
-- **The whole suite: the base + 24** (5143 + 3 + 8 + 7 + 6 = 5167), 0 failed; 57 skipped halves and 860 test saves,
+- **The whole suite: the base + 24** (5144 + 3 + 8 + 7 + 6 = 5168), 0 failed; 57 skipped halves and 860 test saves,
   the base's, because none of the 24 builds a dungeon floor or writes a save. #1130 adds no Unreal test.
 - **24 groups, each alone, first.** The four new ones: `Cataclysm.EmpireTreeTreasury.` 3, `EmpireTreeCredit.` 8,
   `EmpireTreeTreasurer.` 7 and `EmpireTreeProwess.` 6. Then 20 at window E's counts: `Data.` 7,
@@ -756,8 +757,9 @@ behind".
   screen's button, where slice 6e meets #2825; `EmpireTreeGold.` 6, `EmpireTreeDrops.` 13, `EmpireTreeClearGold.` 9
   and `EmpireTreeLoot.` 10, the groups that call the functions slice 7 changes (`GoldMultiplierFor`, `DropRulesFor`,
   `ClearPayFor`, `DungeonStateFor`); `EmpireTreeScreen.` 10 and `BuildSave.` 6, for slice 8's screen and the
-  allocation it adds two fields to. Then the whole suite, which counts every other group. **A judgement, to shorten the
-  window:** `Passives.` (161 tests), which also reads that allocation, is left to the whole suite.
+  allocation it adds two fields to. Then the whole suite, which counts every other group. `Passives.` (161 tests),
+  which also reads that allocation, is left to the whole suite: this session's judgement, to shorten the window, RULED
+  by the coordinating session on 2026-11-22.
 - **The written-out record version check** wants the run record at 13, the character record at 12 and the account
   record at 6. Run before the window on `0913e3582`: "27 lines stating a version; NO MISMATCH".
 - **An asset step**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes.uasset`,
@@ -789,13 +791,16 @@ credit unsaid), proofs N11 and N12 below.
 ### The rebase onto development d684a3d0e, and what it moved
 
 The branch was rebased onto window E's merge as `feat/empire-tree-8-prowess-2`. Window E carries #2825, under which a
-city upgrade takes days to build and a city builds one at a time.
+city upgrade takes days to build and a city builds one at a time. It was rebased again onto #2827's merge, `1226aad28`,
+as `feat/empire-tree-8-prowess-3`: only this log conflicted, and #2827's entry stays above all five, because each of
+theirs was first written before #2827's, at 03:51 UTC.
 
 - **Slice 6e conflicted with #2825 in eight files, and both sides were kept.**
   - `UCataclysmCityUpgradePurchase::Buy` asks the run and tells it with the gold held plus the credit, and tells it the
     days: `Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)`.
-  - **A judgement:** an offer on credit states the days to build after the credit, "10,000 gold on credit, 1,000 owed,
-    6 days to build", as #2825 has every other priced offer state them after the price.
+  - An offer on credit states the days to build after the credit, "10,000 gold on credit, 1,000 owed, 6 days to
+    build", as #2825 has every other priced offer state them after the price: this session's judgement, RULED by the
+    coordinating session on 2026-11-22.
   - The city screen's offer carries both #2825's days and 6e's `OwedIfBought` and credit-aware refusal; the console's
     buy command uses 6e's `RefusalTextIn` and #2825's ready day.
   - The committed-file tests read `Account_v6.json`, `Character_v12.json` and `Run_v13.json`.
@@ -814,7 +819,8 @@ city upgrade takes days to build and a city builds one at a time.
   O1's break was registered in words only, and is now written out as code (the table above).
 - **The design log's conflict** was resolved with `tools/resolve_decisions_log.py`: slice 6e's entry, first written
   at 00:48 UTC on 2026-11-22, goes above #2811's, first written at 00:08 UTC.
-- **A reading, not changed:** `UCataclysmEmpireTree::IsTreasurerCity` counts finished upgrades only, so a Treasurer
+- **A reading, RULED by the coordinating session on 2026-11-22, not changed:** `UCataclysmEmpireTree::IsTreasurerCity`
+  counts finished upgrades only, so a Treasurer
   upgrade being built does not make a Treasurer city; #2825 says an upgrade does nothing until it is finished. #2825's
   War Funding line counts a build as the city's first upgrade, which is a price rule and a different question.
 - **The full Python suite on the rebased head `2ae9887a3`**, before the check above was moved: "2 failed, 7940 passed,
