@@ -119,6 +119,14 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 		return Run != nullptr ? Run->Day() : 0;
 	};
 
+	// AND ECONOMIC BAILOUT, ASKED OF THIS RUN when a city's defence reaches 0. Weak for the clock's reason. Issue #2741
+	// slice 9.
+	Map->SaveFromFalling = [WeakRun = TWeakObjectPtr<UCataclysmEmpireRun>(this)](int32 CityId)
+	{
+		UCataclysmEmpireRun* Run = WeakRun.Get();
+		return Run != nullptr && Run->SaveCityFromFalling(CityId);
+	};
+
 	Surges = NewObject<UCataclysmSurgeScheduler>(this);
 	Surges->Mode = Mode;
 	Surges->LethalityRung = LethalityRung;
@@ -279,6 +287,11 @@ FCataclysmDayReport UCataclysmEmpireRun::FireOpeningSurge()
 
 void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 {
+	GiveModifiersFrom(Dungeon, ModifierStream);
+}
+
+void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Stream)
+{
 	if (ModifierPool.Num() == 0)
 	{
 		// NOTHING, AND NOT AN EMPTY LIST. See the header: a dungeon a test built
@@ -293,7 +306,7 @@ void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 		DifficultyTier, Dungeon.SubType);
 
 	const TArray<FCataclysmDungeonModifier> Drawn =
-		UCataclysmDungeonModifierRules::Draw(Pool, Count, ModifierStream);
+		UCataclysmDungeonModifierRules::Draw(Pool, Count, Stream); // `ModifierStream` but for a bonus dungeon (slice 9).
 
 	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);
 	Dungeon.ModifierScore = UCataclysmDungeonModifierRules::DangerOf(Drawn);
@@ -580,7 +593,11 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 
 	for (const int32 DungeonId : Resolved)
 	{
-		ResolveDungeon(DungeonId, Report);
+		// A SCOUT PARTIES BONUS DUNGEON LEAVES INSTEAD, with no consequence (issue #2741 slice 9, V16).
+		if (!LetABonusDungeonLeave(DungeonId))
+		{
+			ResolveDungeon(DungeonId, Report);
+		}
 	}
 
 	// AND STIMULUS PACKAGE'S CHECK, AFTER THE DAY'S BITES (issue #2741 slice 6b, B2).
@@ -624,7 +641,7 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// moves `NextSurgeDay` on from today and advances the escalation counter:
 	// it is the scheduled wave arriving early, not an extra one.
 	if (!Report.bPillarExposed
-		&& Surges->IsDueOnEmptyBoard(Today, Dungeons.Num()))
+		&& Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())) // Not a bonus dungeon: slice 9, V16.
 	{
 		FireSurge(Today, /* bFromCityFall */ false, Report);
 
@@ -728,6 +745,11 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 
 	for (const FCataclysmDungeon& Standing : Dungeons)
 	{
+		// A SCOUT PARTIES BONUS DUNGEON IS NOT COUNTED against a city's cap: it threatens nothing (V16). Slice 9.
+		if (Standing.bBonus)
+		{
+			continue;
+		}
 		if (DungeonsPerCity.IsValidIndex(Standing.CityId))
 		{
 			++DungeonsPerCity[Standing.CityId];
@@ -821,6 +843,9 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	// A NEW SURGE CYCLE, SO GLOBAL VIGILANCE COUNTS AGAIN FROM NONE: "Resets on new Surge". Every surge comes through
 	// here -- the opening one, the clock's, the empty board's and a city's fall -- so every one resets it (Q1).
 	ClearsSinceLastSurge = 0;
+
+	// AND A NEW SURGE GIVES BRIBERY ITS ONE BRIBE AGAIN: "Once per Surge", one for the whole run (V12). Slice 9.
+	bBribedThisSurge = false;
 
 	OutReport.bSurged = true;
 }
@@ -960,6 +985,7 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 					return;
 				}
 				NoteTheLastStand();
+				NoteTheBailouts(OutReport); // Economic Bailout, issue #2741 slice 9.
 			}
 		}
 
@@ -1050,6 +1076,7 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 		CityFell(CityId, OutReport);
 	}
 	NoteTheLastStand();
+	NoteTheBailouts(OutReport); // Economic Bailout, issue #2741 slice 9.
 	NoteHitIn(OutReport, Map.Get(), BeforeTheHit, ECataclysmCityHitKind::Ordinary);
 
 	// IT HIT ITS CITY, SO IT LEAVES THE MAP. The owner's rule of 2026-10-08,
@@ -1464,6 +1491,7 @@ void UCataclysmEmpireRun::ApplySiegeDamage(FCataclysmDayReport& OutReport)
 		{
 			CityFell(CityId, OutReport);
 		}
+		NoteTheBailouts(OutReport); // Economic Bailout, issue #2741 slice 9: a Siege's share is a dungeon's damage.
 		NoteHitIn(OutReport, Map.Get(), BeforeTheHit, ECataclysmCityHitKind::SiegeShare);
 	}
 }
@@ -1768,6 +1796,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		? Dungeon->Type : ECataclysmDungeonType::Basic;
 	const ECataclysmType Sender = Dungeon != nullptr
 		? Dungeon->Cataclysm : ECataclysmType::None;
+	// AND WHETHER SCOUT PARTIES DISCOVERED IT (issue #2741 slice 9, V16).
+	const bool bBonus = Dungeon != nullptr && Dungeon->bBonus;
+	LastBonusDungeonAdded = INDEX_NONE;
 
 	// A CALL THAT CLEARS NOTHING AWARDS NOTHING, so the award a caller reads after it is this call's and never the
 	// last one's. Issue #52.
@@ -1797,7 +1828,9 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// AND VETERAN'S EDGE: "+3% Empire XP gained from dungeon clears per point", summed, on every clear's award (W7).
 	// After `EmpirePointsFor` and not in it, whose body the port tests hold to the simulation's, which has no such node.
 	// Issue #2741 slice 4.
-	LastEmpirePointsAwarded *= 1.0 + static_cast<double>(TreeBonuses.EmpirePointsIncrease);
+	// AND REINVESTMENT'S, added to it (issue #2741 slice 9, V3).
+	LastEmpirePointsAwarded *= 1.0 + static_cast<double>(TreeBonuses.EmpirePointsIncrease)
+		+ static_cast<double>(TreeBonuses.EmpirePointsFromSpending);
 
 	const bool bWasFallenCity = Kind == ECataclysmDungeonType::FallenCity;
 
@@ -1822,7 +1855,13 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 	// dungeon. Quest dungeons and retaken Dungeon Cities do not". So the boss's
 	// depth reads this and never `DungeonsCleared`, or pursuing the win
 	// condition would make the final fight harder. Issue #1315 is the growth.
-	if (Kind == ECataclysmDungeonType::Basic)
+	// A SCOUT PARTIES BONUS DUNGEON IS NOT ONE: it "adds no floor to the Cataclysm boss dungeon", and is counted apart
+	// so the kinds defeated can leave it out (V16, V17, V19). Issue #2741 slice 9.
+	if (bBonus)
+	{
+		++BonusDungeonsCleared;
+	}
+	else if (Kind == ECataclysmDungeonType::Basic)
 	{
 		++BasicDungeonsCleared;
 
@@ -1937,6 +1976,18 @@ bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)
 		}
 	}
 
+	// SCOUT PARTIES: "+10% chance per point to discover a bonus dungeon after clearing one." Any clear but a bonus
+	// dungeon's and the Cataclysm boss's rolls (V15), on its own stream seeded from the run's walk seed mask and this
+	// dungeon's id, so no other roll moves and a reload rolls the same; on the same city, while it stands. Slice 9.
+	if (!bBonus && TreeBonuses.BonusDungeonChance > 0.0f && CityId != INDEX_NONE) // The boss stands on no city.
+	{
+		FRandomStream Roll(CataclysmSeedMix::Mix(WalkSeedMask ^ (DungeonId + 1), ScoutSalt, 0));
+		if (Roll.FRand() < TreeBonuses.BonusDungeonChance)
+		{
+			LastBonusDungeonAdded = AddBonusDungeon(CityId, Roll);
+		}
+	}
+
 	// AND CLEARING THE CATACLYSM'S OWN DUNGEON WINS THE RUN. Issue #1324 slice 6e, ruled by the coordinating session on
 	// 2026-11-02: clearing the boss dungeon, through this function as every dungeon is cleared, is the win.
 	// `docs/Cataclysm_GDD_v2.md`, Game Start: "The run ends when the player defeats the Cataclysm boss dungeon or loses
@@ -2048,6 +2099,146 @@ void UCataclysmEmpireRun::ArmTheLastStandFor(int32 CityId)
 	}
 }
 
+int32 UCataclysmEmpireRun::AddBonusDungeon(int32 CityId, FRandomStream& Roll)
+{
+	const FCataclysmCity* City = Map != nullptr ? Map->Find(CityId) : nullptr;
+	if (City == nullptr || !City->IsAlive() || Surges == nullptr || Clock == nullptr)
+	{
+		return INDEX_NONE; // On a standing city only (V15).
+	}
+
+	// ITS SENDER FROM THE ACTIVE CATACLYSMS, drawn from `Roll` and not `CataclysmStream` (V15).
+	const ECataclysmType Sender = ActiveCataclysms.Num() > 0
+		? ActiveCataclysms[Roll.RandRange(0, ActiveCataclysms.Num() - 1)]
+		: ECataclysmType::None;
+
+	// AN ORDINARY DUNGEON OF THE CITY'S TIER, WITH NO SIEGE, ALWAYS BASIC (V18): its roll only places it.
+	FCataclysmDungeon Dungeon = Surges->MakeDungeon(NextDungeonId, *City, Day(), Roll, /* bSiegeAllowed */ false,
+												   ECataclysmDungeonType::Basic, Sender);
+	Dungeon.Cataclysm = Sender;
+	Dungeon.bBonus = true;
+	GiveModifiersFrom(Dungeon, Roll);
+
+	// THE SAME TWO STEPS A LANDED DUNGEON TAKES, in the same order (`AddFallenCityDungeon`'s reason).
+	if (!Clock->AddDungeon(Dungeon.DungeonId, Dungeon.Floors))
+	{
+		return INDEX_NONE;
+	}
+	Clock->SetResolveDays(Dungeon.DungeonId, Dungeon.ResolveDays);
+	Dungeons.Add(Dungeon);
+	NextDungeonId = FMath::Max(NextDungeonId, Dungeon.DungeonId + 1);
+	return Dungeon.DungeonId;
+}
+
+bool UCataclysmEmpireRun::LetABonusDungeonLeave(int32 DungeonId)
+{
+	// "WHEN ITS TIMER RUNS OUT IT LEAVES WITH NO CONSEQUENCE": no damage, no detonation counted, nothing reported as a
+	// hit (V16). Apart from `ResolveDungeon`, which is the ordinary dungeon's port of the model and removes it once, last.
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	return Dungeon != nullptr && Dungeon->bBonus && RemoveDungeon(DungeonId);
+}
+
+int32 UCataclysmEmpireRun::ThreateningDungeonCount() const
+{
+	int32 Count = 0;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		Count += Dungeon.bBonus ? 0 : 1;
+	}
+	return Count;
+}
+
+FString UCataclysmEmpireRun::RefusalForBribing(int32 DungeonId) const
+{
+	if (Clock == nullptr || Map == nullptr)
+	{
+		return TEXT("No run has begun.");
+	}
+	const FCataclysmDungeon* Dungeon = FindDungeon(DungeonId);
+	if (Dungeon == nullptr)
+	{
+		return TEXT("There is no such dungeon on the map.");
+	}
+	if (Dungeon->Type == ECataclysmDungeonType::Cataclysm)
+	{
+		return TEXT("The Cataclysm's own dungeon cannot be bribed.");
+	}
+	// ANY DUNGEON WHOSE TIMER RESOLVES (V13): an ordinary one, a Scout Parties bonus one among them.
+	if (!Dungeon->Resolves())
+	{
+		return TEXT("Only a dungeon whose timer resolves can be bribed.");
+	}
+	if (bBribedThisSurge)
+	{
+		return TEXT("Bribery has been used this surge; it can be used again after the next surge.");
+	}
+	const FCataclysmDungeonTimer* Timer = Clock->Timers.FindByPredicate(
+		[DungeonId](const FCataclysmDungeonTimer& Candidate) { return Candidate.DungeonId == DungeonId; });
+	if (Timer == nullptr)
+	{
+		return TEXT("That dungeon has no timer to reset.");
+	}
+	// AT ITS START ALREADY: the stored days are compared, and the tree's bonus days are added on both sides when read.
+	if (Timer->DaysUntilResolve >= Timer->ResolveDays)
+	{
+		return TEXT("Its timer is already at its start.");
+	}
+	return FString();
+}
+
+bool UCataclysmEmpireRun::BribeDungeon(int32 DungeonId)
+{
+	if (!RefusalForBribing(DungeonId).IsEmpty())
+	{
+		return false;
+	}
+	FCataclysmDungeonTimer* Timer = Clock->Timers.FindByPredicate(
+		[DungeonId](const FCataclysmDungeonTimer& Candidate) { return Candidate.DungeonId == DungeonId; });
+	if (Timer == nullptr)
+	{
+		return false;
+	}
+	// "RESET A SINGLE DUNGEON RESOLUTION TIMER TO ITS MAXIMUM VALUE": the value it started at (the ruling of 2026-11-21).
+	Timer->DaysUntilResolve = Timer->ResolveDays;
+	bBribedThisSurge = true;
+	return true;
+}
+
+bool UCataclysmEmpireRun::SaveCityFromFalling(int32 CityId)
+{
+	FCataclysmCity* City = Map != nullptr ? Map->FindMutable(CityId) : nullptr;
+	if (City == nullptr || TreeBonuses.CityBailoutPoints <= 0 || City->bFallen || City->bBailedOut
+		|| City->Tier == ECataclysmCityTier::Pillar)
+	{
+		return false;
+	}
+
+	// ALL OR NOTHING, FROM THE BALANCE, and the log says why when it is not paid (V9).
+	if (!PayTheBailout || !PayTheBailout(*this, CityId, City->Tier))
+	{
+		return false;
+	}
+
+	// HALF ITS MAXIMUM DEFENCE, The Architect's Legacy or not, and its population as it is (V8). A doomed city is saved
+	// as any other and stays doomed (V10); only the tenth Void stack dooms one, and that fall never reaches here (V6).
+	City = Map->FindMutable(CityId);
+	if (City == nullptr)
+	{
+		return false;
+	}
+	City->bBailedOut = true;
+	City->Defence = Map->EffectiveMaxDefence(*City) * BailoutDefenceFraction;
+	return true;
+}
+
+void UCataclysmEmpireRun::NoteTheBailouts(FCataclysmDayReport& OutReport)
+{
+	if (Map != nullptr)
+	{
+		OutReport.BailedOut.Append(Map->TakeTheBailouts());
+	}
+}
+
 void UCataclysmEmpireRun::NoteTheLastStand()
 {
 	if (Map != nullptr && Map->TakeTheLastStandHeld())
@@ -2106,8 +2297,10 @@ void UCataclysmEmpireRun::RunTreeIntervals(int32 Today)
 			const float MaxPopulation = Map->EffectiveMaxPopulation(*Lowest);
 			Lowest->Defence = FMath::Min(MaxDefence,
 										 Map->DefenceOf(*Lowest) + MaxDefence * TreeBonuses.LowestCityDefenceRestored);
+			// AND CIVIC PRIDE'S SHARE on the population only (issue #2741 slice 9, V11).
 			Lowest->Population = FMath::Min(MaxPopulation, Map->PopulationOf(*Lowest)
-												+ MaxPopulation * TreeBonuses.LowestCityPopulationRestored);
+												+ MaxPopulation * TreeBonuses.PopulationRestoredShare(
+													TreeBonuses.LowestCityPopulationRestored));
 		}
 	}
 }
@@ -2188,7 +2381,8 @@ float UCataclysmEmpireRun::ScheduledDefenceLossOn(int32 CityId, int32 Days) cons
 	float Loss = 0.0f;
 	for (const FCataclysmDungeon& Dungeon : Dungeons)
 	{
-		if (Dungeon.CityId != CityId)
+		// A SCOUT PARTIES BONUS DUNGEON TAKES NOTHING when it leaves (V16). Issue #2741 slice 9.
+		if (Dungeon.CityId != CityId || Dungeon.bBonus)
 		{
 			continue;
 		}
@@ -2364,6 +2558,12 @@ FCataclysmDayReport UCataclysmEmpireRun::ResolveDungeonOnDeath(int32 DungeonId)
 		// `ResolveDungeon` is deliberately not called: for a Quest dungeon it
 		// runs the relocation, which belongs to the timer running out and draws
 		// from the run's chance. See the header.
+		return Report;
+	}
+
+	// A SCOUT PARTIES BONUS DUNGEON LEAVES INSTEAD, with no consequence and nothing resolved (issue #2741 slice 9, V16).
+	if (LetABonusDungeonLeave(DungeonId))
+	{
 		return Report;
 	}
 
@@ -2795,8 +2995,10 @@ void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)
 			}
 			else
 			{
+				// AND CIVIC PRIDE'S SHARE, to the maximum (issue #2741 slice 9, V11).
 				const float Max = Map->EffectiveMaxPopulation(City);
-				City.Population = FMath::Min(Max, Map->PopulationOf(City) + Max * Map->UpgradeValueNow(Upgrade));
+				City.Population = FMath::Min(Max, Map->PopulationOf(City)
+													  + Max * TreeBonuses.PopulationRestoredShare(Map->UpgradeValueNow(Upgrade)));
 			}
 
 			// THE NEXT ONE IS AN INTERVAL FROM TODAY, not from the day it was

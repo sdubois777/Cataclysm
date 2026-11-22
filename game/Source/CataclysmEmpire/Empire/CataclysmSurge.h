@@ -582,6 +582,18 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	int32 HollowStacksOnto(int32 CityStacks) const;
 
 	/**
+	 * WHETHER SCOUT PARTIES DISCOVERED IT: a bonus dungeon, "an extra dungeon that appears on the same city", which
+	 * threatens nothing (issue #2741 slice 9, the coordinating session's rulings of 2026-11-21 and V15 to V19 of
+	 * 2026-11-22). ALWAYS `Basic` (V18). Its timer counts down like any other, and when it runs out, or the player dies
+	 * in it, it leaves with no damage and no detonation counted (`UCataclysmEmpireRun::ResolveDungeon`). It is not
+	 * counted on the board for the empty-board surge or a city's dungeon cap. Its clear pays the player and counts for
+	 * what pays the player, and not for the boss's floors, a quest objective or Scout Parties' own roll (V16, V17).
+	 * RUN RECORD VERSION 15: `Migrate_14_to_15` writes false on every dungeon of an older run.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bBonus = false;
+
+	/**
 	 * Whether this dungeon is an ordinary one: the kind whose timer running out
 	 * takes its OWN row's damage from its host, scaled by depth, and which then
 	 * leaves the map.

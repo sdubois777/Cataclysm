@@ -199,6 +199,26 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   **Gold:** the map's status line ends with the same balance, "342 gold".
 
+- **With Economic Bailout held** (issue #2741 slice 9), when a dungeon takes an Outpost, a Bulwark or a Sanctuary to 0
+  defence for the first time in the run and the balance holds its fee, the city is saved with half its maximum
+  defence, its screen says "saved once by Economic Bailout", and the log says:
+
+  `PLAY LOOP: Economic Bailout saved Outpost (-3,0) from falling for 50,000 gold; 12,345 gold held`
+
+  When the balance is short the city falls and the log says why:
+
+  `PLAY LOOP: Economic Bailout did not save Outpost (-3,0): its fee is 50,000 gold and 40,000 is held`
+
+- **With Bribery held** (issue #2741 slice 9), each dungeon on the city screen has a second button under its Walk
+  button, "Bribe: reset its timer for 20,000 gold" at difficulty tier 1. Click it on a dungeon whose timer has run
+  down. The dungeon's line shows its timer back at its start, the balance falls by the fee, and the log says:
+
+  `PLAY LOOP: Bribery reset dungeon 7's timer for 20,000 gold; 342 gold held`
+
+  Click it again before the next surge, or on another dungeon: it refuses, says why on the screen, and the log says:
+
+  `PLAY LOOP: Bribery refused for dungeon 7: Bribery has been used this surge; it can be used again after the next surge.`
+
 ### 12. Open the empire upgrade tree, buy a point, and respec
 
 - **Click "Empire upgrade tree"** in the top right corner of the map. The tree's screen opens on the Architect branch,

@@ -1236,6 +1236,227 @@ and the factor of 100 are guarded from Python (GP1, GP2), so they have none:
 
 ---
 
+## 2026-11-22 — Civic Pride, Reinvestment, Economic Bailout, Bribery and Scout Parties act: the five nodes the coordinating session ruled under the owner's delegation, on account record 7, character record 14 and run record 15 (#2741, slice 9)
+
+**Affects:** `FCataclysmEmpireTreeBonuses::PopulationRestoreIncrease`, `PopulationRestoredShare`,
+`EmpirePointsFromSpending`, `CityBailoutPoints` and `BonusDungeonChance`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`, `CataclysmEmpireTreeBonuses.cpp`); the four population
+restores (`UCataclysmEmpireMap::Retake` and `AddUpgrade`, `UCataclysmEmpireRun::RunTreeIntervals` and
+`RunCityUpgradeIntervals`); `UCataclysmEmpireMap::Damage`, `SaveFromFalling`, `TakeTheBailouts` and
+`FCataclysmCity::bBailedOut`; `UCataclysmEmpireRun::SaveCityFromFalling`, `PayTheBailout`, `NoteTheBailouts`,
+`RefusalForBribing`, `BribeDungeon`, `bBribedThisSurge`, `AddBonusDungeon`, `LetABonusDungeonLeave`,
+`GiveModifiersFrom`, `ThreateningDungeonCount`, `BonusDungeonsCleared`, `AdvanceDay`, `ClearDungeon`,
+`ResolveDungeonOnDeath`, `FireSurge` and `ScheduledDefenceLossOn` (`CataclysmEmpireRun.h` and `.cpp`);
+`FCataclysmDungeon::bBonus` (`CataclysmSurge.h`); `FCataclysmDayReport::BailedOut`;
+`UCataclysmEmpireTree::EmpirePointsFromSpendingFor`, `BailoutFeeAtTierOneFor`, `ReinvestmentGoldAStep`,
+`BribeFeeAtTierOne`, the player bonuses' Reinvestment and Bribery fields and the kinds defeated
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); `UCataclysmGameInstance::GoldSpentOnCityUpgradesBy`,
+`AddGoldSpentOnCityUpgradesFor`, `EmpireTreeBonusesFor` and `WireTheRunToTheBalance`;
+`UCataclysmCityUpgradePurchase::Buy`; `FCataclysmDungeonBribe` (`game/Source/Cataclysm/Player/CataclysmDungeonBribe.h`
+and `.cpp`, new); `FCataclysmPlayLoopLog::BailoutLine`; the city screen (`CataclysmCityScreenLayout.cpp`,
+`CataclysmCityScreenWidget.h` and `.cpp`); `Cataclysm.BribeDungeon` (`CataclysmPlayerCharacter.cpp`);
+`ACataclysmPlayerState::GetOwnGoldSpentOnCityUpgrades`; `UCataclysmAccountSave` at 7, `UCataclysmCharacterSave` at 14
+and `UCataclysmRunSave` at 15, `Migrate_6_to_7`, `Migrate_13_to_14` and `Migrate_14_to_15`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `.cpp`), the save copy-out and copy-in;
+`ECataclysmEmpireTreeEffect`, five values (`game/Source/Cataclysm/Data/CataclysmDataRows.h`);
+`tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`, `game/Data/EmpireTreeEffects.csv` (121 rows),
+`game/Content/Data/DT_EmpireTreeNodes.uasset`, `game/Content/Data/DT_EmpireTreeEffects.uasset` and
+`game/Data/datatable_asset_sources.json`; `game/Tests/SaveFixtures/Account_v7.json`,
+`game/Tests/SaveFixtures/Character_v14.json`, `game/Tests/SaveFixtures/Run_v15.json` and
+`game/Tests/SaveFixtures/README.md`; `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades; `docs/Play_Loop_Checklist.md`,
+step 11. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeNineTests.cpp`, new, 13 in five new groups; 22 test
+files moved to the new committed files and steps; `tools/tests/test_empire_tree_slice9.py`, new, 11 checks; ten
+Python checks whose pins the slice moves. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741).
+
+### SAID FIRST
+
+- **NOT COMPILED.** Phase 1 only. The window runs after the gems window (V1).
+- **THE THREE RECORD NUMBERS ARE DEVELOPMENT `02b96b42b`'S NEXT AND ARE RENUMBERED AT THE WINDOW.** The gems window moves
+  the character and run records first, so this slice takes the numbers after its: most likely account 7, character
+  14 and run 15 or 16 (V1). The tests that state a record's number read `SchemaVersionNow`.
+- **REINVESTMENT'S COUNT IS AN UNROUNDED DOUBLE** since the coordinating session's V20 ruling, which added that to
+  this session's recommendation after the first code was written; the code, the records and the files follow it.
+- **PART (A) LEFT THE CHARACTER RECORD AT VERSION 12 WITH A STEP TO 13**, corrected in part (b). Its edit script skipped
+  any edit whose result was already in the file, and the run record's "SchemaVersionNow = 13" matched the character's
+  new line. Part (c)'s two edit scripts refuse a replacement shorter than 80 characters for that reason.
+
+### The rulings this slice builds on
+
+The coordinating session ruled the five on 2026-11-21 under the owner's delegation ("The rest can probably go with your
+rec"); the entry "Nine empire tree nodes that could not be bought are ruled" below has each ruling and its kind. Its
+V1 to V20 of 2026-11-22, each as this session recommended unless said:
+
+- **V1.** One branch in three commits and one window, after the gems window, at the record numbers then next free.
+- **V2.** Reinvestment counts **across runs**, on the account, and on a Solo Self-Found character: "permanent" in a
+  tree whose points and allocations cross runs means across runs. **This ends the sentence "That reading is not ruled;
+  it is for whoever builds the node" in the entry of 2026-11-21.**
+- **V3.** Reinvestment's own cap of 30%, added to Veteran's Edge's (60% with both), as D9 keeps each cap apart.
+- **V4.** What counts is the price charged once the purchase is accepted: the borrowed part of a credit purchase,
+  Scaffolding's halved price and a Rush's 150% included; a refused purchase not.
+- **V5.** The count runs from the first purchase whether the node is held or not; older saves start at 0.
+- **V6.** A fall at the tenth Void stack is not "health hits 0" and is not saved.
+- **V7.** A Sanctuary's Last Stand first; the bailout only where the city would still fall.
+- **V8.** Exactly half the maximum defence, The Architect's Legacy included; the population as it is.
+- **V9.** All or nothing from the balance, no credit; a short balance lets the city fall, leaves the once a run
+  unspent, and the log says why.
+- **V10.** A doomed city can be saved like any other but the Pillar, and the bailout does not clear the mark. **No code
+  is needed for it:** `bDoomed` is set only by the tenth Void stack, which calls `Fall` at once, and V6 rules that fall
+  out, so a bailout never meets a doomed city.
+- **V11.** Civic Pride raises the population part of each restore, not defence; a retake at 0.75 x 1.5 is held at the
+  maximum.
+- **V12.** One bribe a surge for the whole run, given back by the next surge.
+- **V13.** Any dungeon whose timer resolves but the Cataclysm boss's, a Scout Parties bonus dungeon included; refused
+  at its start (which includes the tree's bonus days) and when the balance cannot pay in full with no credit; every
+  refusal says why.
+- **V14.** A Bribe button beside each Walk button on the city screen, showing the fee, and a console command.
+- **V15.** Scout Parties rolls on its own stream, seeded from the cleared dungeon's id; any clear but a bonus dungeon's
+  and the boss's rolls; a standing city only.
+- **V16, NARROWED, IN ITS CORRECTED FORM.** A bonus dungeon's clear counts for what pays the player and not for what
+  moves the empire's pressure, schedule or ending. **No clear counts toward a surge**: the scheduler reads only days and
+  `SurgeIndex`, and `ClearsSinceLastSurge` feeds Global Vigilance, a damage reduction for the player, so it pays. The
+  table below is the sorting the coordinating session accepted row by row. It is never a retake, is not counted for the
+  empty-board surge or a city's cap, and leaves with no damage and no detonation when its timer runs out or the player
+  dies in it.
+- **V17.** A new run counter, `BonusDungeonsCleared`, subtracted where the kinds defeated are worked out, so a bonus
+  clear never reads as a Fallen City clear.
+- **V18.** A bonus dungeon is always `Basic`, its roll only placing it. **V15's "any kind except Siege" is therefore
+  not needed as a rule:** `RollKind` gives only Basic or Quest; the bonus dungeon is built with `bSiegeAllowed` false
+  so its sub-type is never a Siege.
+- **V19.** A bonus clear never adds a kind: the Basic kind is read from `BasicDungeonsCleared` alone.
+- **V20.** Reinvestment's count is kept in tier 1 gold: each accepted purchase adds its price charged over that run's
+  `GoldScaleFor`, and the 25,000 step is compared with that total, so the 30% cap's anchor holds at every tier. **ADDED
+  BY THE RULING:** the total is kept unrounded, as a double, and saved that way; and a test that one 10,000 upgrade
+  adds 10,000 at two tiers (`APurchaseCountsItsPriceInTierOneGold`, tiers 2 and 1).
+
+| What a clear changes | What reads it | A bonus clear |
+|---|---|---|
+| The empire points awarded | the bank; the map screen | counts |
+| `DungeonsCleared` | the map's line; Dungeon Legend; the kinds defeated | counts |
+| `ClearsSinceLastSurge` | Global Vigilance's damage reduction | counts |
+| `ClearsSinceLastDeath` | Relentless Pursuit's loot quantity | counts |
+| The city's "restore defence on clear" upgrade | that city | counts |
+| The Warlord's chance to remove another dungeon | the board | counts |
+| `BasicDungeonsCleared` and the boss's floors | the Cataclysm boss dungeon; the kinds defeated | does not count |
+| Quest objectives | the ending | does not count (never a Quest) |
+| Scout Parties' own roll | V15 | does not roll |
+| A retake, and a win | Reclaimer's Resolve; the ending | do not apply |
+
+### The change
+
+- **Civic Pride**: `PopulationRestoredShare` makes a restore's share 5% a point larger; the retake, the "Restore
+  city's population" upgrade, The Mason's Guild and the 20-day recovery read it for their population part and each is
+  held at the maximum. The retake had no such cap and gains it.
+- **Reinvestment**: `UCataclysmCityUpgradePurchase::Buy` adds the accepted price over the run's gold scale to the
+  count and reads the run's bonuses again; `UCataclysmGameInstance::EmpireTreeBonusesFor` turns the count into the
+  share (1% a whole 25,000, held at 30%; the count unrounded, a double), which `ClearDungeon` adds to Veteran's Edge's.
+- **Economic Bailout**: the map asks `SaveFromFalling` where a dungeon's damage takes a city to 0, after the Last Stand
+  and before `Fall`; the run refuses the Pillar, a city saved before and a run without the node, and pays through
+  `PayTheBailout`, which the game instance sets: 50,000, 100,000 or 150,000 tier 1 gold scaled to the run's tier, taken
+  all or nothing and logged either way. The saved city keeps half its maximum defence, is marked, and is listed in the
+  day's report; the city screen says "saved once by Economic Bailout".
+- **Bribery**: `UCataclysmEmpireRun::RefusalForBribing` and `BribeDungeon` in the empire layer; `FCataclysmDungeonBribe`
+  asks the node and the balance, takes the 20,000 tier 1 gold scaled to the tier before the reset, and gives it back if
+  the run refuses. A Bribe button beside each Walk button while the node is held, and `Cataclysm.BribeDungeon`.
+- **Scout Parties**: at a clear, a roll on a stream seeded from the walk seed mask, the dungeon's id and a salt of its
+  own ("scou") adds an always-Basic dungeon of the city's tier with no Siege, its sender and modifiers drawn from the
+  same stream (`GiveModifiersFrom`), so no other roll moves. **It leaves through `LetABonusDungeonLeave` in
+  `ResolveDungeon`'s two callers**, the day and a death, and not inside `ResolveDungeon`, which is the ordinary
+  dungeon's port of the model and removes a dungeon once, last (`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`).
+  The city screen marks it "bonus (threatens nothing)".
+- **The records**: account `GoldSpentOnCityUpgrades`, a double; character `GoldSpentOnCityUpgrades`, a Solo Self-Found
+  character's, a double; run `bBailedOut` on each city, `bBonus` on each dungeon, `BonusDungeonsCleared`, `bBribedThisSurge`.
+  Each new step writes 0 or false, keeps a value of the right kind and refuses anything else.
+- **The committed files** hold figures, 75000.5 and 50000.25 spent among them, fractions exact in binary, but for the run file's one dungeon, a Siege, whose `bBonus` stays false because
+  a bonus dungeon never is one (V18); the fixtures README says so.
+- **The data**: the five rows, their "waits on" reasons removed (`fee figure`, `cap figure`, `population growth` and
+  `bonus dungeon` no longer name any node), and 121 effect rows: the gems window's 116, which carry #2832's, and
+  the slice's five.
+
+### The tests
+
+- **Unreal, 13 in five new groups** (`CataclysmEmpireTreeNineTests.cpp`): `Cataclysm.EmpireTreeRestores.` 4,
+  `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeScouts.` 3, `EmpireTreeNineSaves.` 1. **Not tested
+  there**: the bailout fee paid through the game instance, and the city screen's Bribe button, because a game instance
+  a test builds has no world context through which the gold functions find a balance; the fee table and the empire
+  layer's half are tested, and the Python checks hold the wiring.
+- **The sweep**: 22 Unreal test files moved to `Account_v7.json`, `Character_v14.json` and `Run_v15.json`, with each
+  chain test adding the three new steps' defaults through three new helpers in `CataclysmSaveFixtures.h` and four literal run-record pins reading `SchemaVersionNow`.
+- **Python**: `tools/tests/test_empire_tree_slice9.py`, 11 checks; and the pins the slice moves, each saying why:
+  `test_city_upgrades_cost_gold.py` (Bribery's fee is the second place that charges), `test_surge_port.py` (the
+  empty-board count), `test_empire_tree_walk_and_depth.py` (Veteran's Edge's line),
+  `test_empire_tree_effects_match_their_texts.py` (115 nodes, 15 caps), `test_empire_tree_tables_match_the_tree_file.py`
+  (slices 3 to 9, 21 points), `test_empire_tree_on_the_account_record.py`, `test_the_hollow_in_the_model_and_in_the_game.py`
+  (the day's resolve loop found by its opening), `test_gems_are_saved_at_the_new_record_versions.py` (the
+  gems window's records at 13 and 14 or later, and its account check reading that no account step writes sockets
+  rather than that the account stays at 6), `test_unreal_pinned_row_counts.py` by
+  way of `CataclysmDataTableTests.cpp` (121), and `test_the_play_loop_is_logged_at_each_step.py` by way of the
+  checklist.
+
+### Python guard proofs, T1 to T13, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `614260872` and again at `7004fc7a1`, running
+`tools/tests/test_empire_tree_slice9.py`; each "PROVED: 1 failed, 10 passed | restored: 11 passed".
+`.claude/windows/prove_t2741s9_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| T1 | a retake's population not held at the maximum | the Civic Pride check |
+| T2 | the count added before the run accepts the purchase | the Reinvestment check |
+| T3 | Reinvestment's share not added at a clear | the same |
+| T4 | the bailout asked at the tenth Void stack | the "asked only at zero defence" check |
+| T5 | the Pillar not refused | the same |
+| T6 | the fee taken on credit | the fee check |
+| T7 | a surge does not give the bribe back | the Bribery check |
+| T8 | the timer reset before the fee is taken | the same |
+| T9 | a bonus dungeon allowed to be a Siege | the Scout Parties check |
+| T10 | a bonus clear adds a floor to the boss | the pressure check |
+| T11 | the kinds defeated leave the bonus clears in | the same |
+| T12 | the run's step leaves the bribe flag out | the steps check |
+| T13 | a chain test leaves the run's new step out | the chain check |
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_t2741s9_table.py.txt`, each narrowed to its group with a trailing dot; every anchor checked
+to occur once. Each prediction was reasoned from the code; none has run.
+
+| Proof | The break | Prefix | Predicted |
+|---|---|---|---|
+| R1 | Reinvestment's share not held at its cap | `Cataclysm.EmpireTreeRestores.` (4) | 3, 1: `TheTwoNodesAddUp...`, 1 assertion (0.32, not 0.30) |
+| R2 | Civic Pride raises no restore | the same | 3, 1: `CivicPrideMakes...`, 4 assertions |
+| R3 | the count in raw gold | the same | 3, 1: `APurchaseCounts...`, 3 assertions at tier 2 (30,000 counted, not 10,000; not exactly 10,000; the share 0.02, not 0.01); the gold table's tier 2 pile is 30 against tier 1's 10, so the scale is 3 |
+| R4 | Reinvestment left out of the award | the same | 3, 1: `ReinvestmentAdds...`, 1 assertion (1.3, not 1.6) |
+| B1 | a saved city keeps a quarter of its defence | `Cataclysm.EmpireTreeBailout.` (3) | 2, 1: `ACityTakenToNothing...`, 1 assertion |
+| B2 | the Pillar may be saved | the same | 2, 1: `ThePillarTheVoid...`, 2 assertions |
+| B3 | an Outpost's fee 40,000 | the same | 2, 1: `TheFeeIsFifty...`, 1 assertion |
+| X1 | a surge does not give the bribe back | `Cataclysm.EmpireTreeBribery.` (2) | 1, 1: `TheRunResetsOneTimer...`, 1 assertion |
+| X2 | the node not asked for | the same | 1, 1: `ABribeNeedsTheNode...`, 1 assertion |
+| D1 | the bonus dungeon's sender drawn from the run's wave stream | `Cataclysm.EmpireTreeScouts.` (3) | 2, 1: `AClearMayDiscover...`, 1 assertion; every run `Begin` makes has an active Cataclysm |
+| D2 | the kinds defeated leave the bonus clears in | the same | 2, 1: `ABonusClearPays...`, 2 assertions |
+| D3 | `LetABonusDungeonLeave` always answers false | the same | 2, 1: `ABonusDungeonLeaves...`, 3 assertions |
+| F1 | the run's step writes a bribe made | `Cataclysm.EmpireTreeNineSaves.` (1) | 0, 1: `ThePreviousFilesMigrate...`, 1 assertion |
+
+### Rebased onto the gems window
+
+The slice was written on development and rebased, as a squash of its branch onto the gems window's head `57f00fa2f`,
+into `feat/empire-tree-9-treasury-and-scouts-2`, so that it lands after the gems window. The gems window took the
+character record to 13 and the run record to 14 first, so this slice's steps were renumbered: the character's
+`Migrate_12_to_13` became `Migrate_13_to_14` and the run's `Migrate_13_to_14` became `Migrate_14_to_15`;
+`Character_v13.json` and `Run_v14.json` became `Character_v14.json` and `Run_v15.json`, each built again on the
+gems window's file at the version before; and the helpers `AddTheCharactersVersion14Defaults` and
+`AddTheRunsVersion15Defaults` follow the gems window's 13 and 14. The account record had no gems step and stays at 7.
+The effect rows and every pin were recounted from the generator's output on the combined code, and the test sweep
+was run again over the gems window's test files.
+
+### Python before its window
+
+The full Python suite on `7004fc7a1`, in a copy of the worktree: "1 failed, 7953 passed, 9 skipped in 329.63s", and
+the JUnit file `tests="7963"`, `failures="1"`, `errors="0"`, `skipped="9"`. The one failure is
+`test_datatable_assets_are_current.py`: the two empire tree tables' CSVs changed and their assets wait for the
+window's asset step, which needs the editor. ruff on every Python file the slice touches: "All checks passed!".
+**Not run: the Unreal tests and the C++ proofs**, which wait for the window.
+
+---
+
 ## 2026-11-21 — A creature's first AI think is staggered by a count kept for its own world, so a test gives the same result alone and in the suite (#2827)
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (`GCataclysmEnemyControllerPossessionsByWorld`

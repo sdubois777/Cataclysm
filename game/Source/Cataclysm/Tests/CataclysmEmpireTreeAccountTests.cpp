@@ -232,7 +232,7 @@ namespace CataclysmEmpireTreeAccountTest
 // ---------------------------------------------------------------------------
 
 /**
- * `Account_v6.json`, the committed account file, reads its tree into the record: three Architect nodes at 10, 8 and 7,
+ * `Account_v7.json`, the committed account file since issue #2741 slice 9, reads its tree into the record: three Architect nodes at 10, 8 and 7,
  * and the first centre capstone with its second option chosen and its point spent; read rather than migrated, beside
  * the bank and the gold it held at version 3. Prints "ACCOUNT FILE".
  */
@@ -246,7 +246,7 @@ bool FCataclysmEmpireTreeAccountFileTest::RunTest(const FString&)
 
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v6.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -258,7 +258,7 @@ bool FCataclysmEmpireTreeAccountFileTest::RunTest(const FString&)
 		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Account_v6.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Account_v7.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
@@ -372,6 +372,7 @@ bool FCataclysmEmpireTreeAccountMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheAccountsVersion4Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
 	CataclysmSaveFixtures::AddTheAccountsVersion6Defaults(*Expected); // And 6, #2741 slice 8: no extra option.
+	CataclysmSaveFixtures::AddTheAccountsVersion7Defaults(*Expected);
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -409,7 +410,7 @@ bool FCataclysmEmpireTreeAccountFileReachableTest::RunTest(const FString&)
 	FString Text;
 	FString Reason;
 	if (!TestTrue(TEXT("set-up: the tree's two tables load"), Nodes != nullptr && Edges != nullptr)
-		|| !CataclysmSaveFixtures::Read(TEXT("Account_v6.json"), Text, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), Text, Reason))
 	{
 		if (!Reason.IsEmpty())
 		{
@@ -422,7 +423,7 @@ bool FCataclysmEmpireTreeAccountFileReachableTest::RunTest(const FString&)
 	FString Message;
 	const UCataclysmAccountSave* Read = Cast<UCataclysmAccountSave>(FCataclysmSaveStorage::FromJson(
 		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (!TestNotNull(TEXT("set-up: Account_v6.json loads"), Read))
+	if (!TestNotNull(TEXT("set-up: Account_v7.json loads"), Read))
 	{
 		return false;
 	}

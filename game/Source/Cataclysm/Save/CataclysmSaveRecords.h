@@ -1061,7 +1061,11 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
  * defeated dungeon's award, since issue #52's first slice.
  *
- * VERSION 6 SINCE 2026-11-21. The account's empire tree holds Imperial Prowess's one extra option of an earlier centre
+ * VERSION 7 SINCE 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
+ * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), which Reinvestment reads, and `Migrate_6_to_7` writes 0 into an
+ * account written at 6: the count starts at this build (V5).
+ *
+ * VERSION 6 FROM 2026-11-21. The account's empire tree holds Imperial Prowess's one extra option of an earlier centre
  * milestone (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8), and
  * `Migrate_5_to_6` writes none into an account written at 5: nothing could take one before the fields existed.
  *
@@ -1091,7 +1095,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 6;
+	static constexpr int32 SchemaVersionNow = 7;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1149,6 +1153,16 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 GoldOwedEachDay = 0;
+
+	/**
+	 * The tier 1 gold spent on city upgrades by the mode's characters, across runs: each accepted purchase's price
+	 * charged over its run's gold scale (V4, V20), UNROUNDED, a double as the empire points bank is, so the division
+	 * loses nothing (the coordinating session's V20 ruling). Reinvestment reads it; it is counted whether the node is
+	 * held or not (V5). `UCataclysmGameInstance::GoldSpentOnCityUpgradesBy` reads it. A Solo Self-Found character's is
+	 * in its character record. Issue #2741 slice 9. RECORD VERSION 7.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentOnCityUpgrades = 0.0;
 
 	/**
 	 * What the partition's empire upgrade tree has bought: each node's points, and which option each centre capstone
@@ -1341,7 +1355,11 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 13 SINCE 2026-11-22. Issue #46, slices G2 and G3: an item's `Sockets` is a list of typed sockets, each holding a
+	 * 14 SINCE 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
+	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
+	 * writes 0: the count starts at this build (V5).
+	 *
+	 * 13 FROM 2026-11-22. Issue #46, slices G2 and G3: an item's `Sockets` is a list of typed sockets, each holding a
 	 * gem or none, where it was a count, and a carried or stashed slot may hold a stack of one gem at one rarity (`Gem`,
 	 * `GemRarity`). `Migrate_12_to_13` writes each saved count of N as N empty sockets that fit any type, as the
 	 * coordinating session ruled on 2026-11-21, and no gem in every slot: nothing could hold a gem before.
@@ -1393,7 +1411,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 13;
+	static constexpr int32 SchemaVersionNow = 14;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1506,6 +1524,8 @@ public:
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 GoldOwedEachDay = 0;
+
+
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the
@@ -1865,12 +1885,16 @@ public:
 	 * on every city and a `BuildDaysLeft` of 0 on every upgrade it holds: a version 12 run could build nothing, since
 	 * every purchase was finished at once.
 	 *
-	 * 14 SINCE 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
+	 * 15 SINCE 2026-11-22. Issue #2741 slice 9: Economic Bailout's once a run on each city (`FCataclysmCity::bBailedOut`),
+	 * Scout Parties' bonus dungeons (`FCataclysmDungeon::bBonus`, `BonusDungeonsCleared`) and Bribery's once a surge
+	 * (`bBribedThisSurge`). `Migrate_14_to_15` writes each false or 0: a version 14 run could use none of slice 9's nodes.
+	 *
+	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 14;
+	static constexpr int32 SchemaVersionNow = 15;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2335,6 +2359,18 @@ public:
 	/** `UCataclysmEmpireRun::bSanctuaryLastStandSpent`: whether Last Stand Protocols has held in this run. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bSanctuaryLastStandSpent = false;
+
+	// ---- THE EMPIRE TREE'S NINTH SLICE, issue #2741 slice 9. RUN RECORD VERSION 15: a record written before it is at
+	// version 14, and `Migrate_14_to_15` writes 0 and false into it. Each city's `bBailedOut` and each dungeon's `bBonus`
+	// are in `Cities` and `Dungeons`. ----
+
+	/** `UCataclysmEmpireRun::BonusDungeonsCleared`: Scout Parties' bonus dungeons cleared, which the kinds leave out. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 BonusDungeonsCleared = 0;
+
+	/** `UCataclysmEmpireRun::bBribedThisSurge`: whether Bribery has been used since the last surge. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bBribedThisSurge = false;
 
 	// ---- RELENTLESS PURSUIT'S CLEARS IN A ROW, issue #2741 slice 5b. RUN RECORD VERSION 11: a record written before it is
 	// at version 10, and `Migrate_10_to_11` writes the run's clears into it when it records no death, else 0. ----

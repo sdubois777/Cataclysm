@@ -405,6 +405,9 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	Record.ClearsSinceLastSurge = Run.ClearsSinceLastSurge;
 	Record.CitiesReclaimed = Run.CitiesReclaimed;
 	Record.bSanctuaryLastStandSpent = Run.bSanctuaryLastStandSpent;
+	// AND SCOUT PARTIES' AND BRIBERY'S, run record version 15. Issue #2741 slice 9.
+	Record.BonusDungeonsCleared = Run.BonusDungeonsCleared;
+	Record.bBribedThisSurge = Run.bBribedThisSurge;
 	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW, run record version 11. Issue #2741 slice 5b.
 	Record.ClearsSinceLastDeath = Run.ClearsSinceLastDeath;
 	Record.bPopulationFellBelowHalf = Run.bPopulationFellBelowHalf;
@@ -587,6 +590,7 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.Gold = State->GetOwnGold(); // A save's: a Solo Self-Found character's own gold, 0 for any other. #2742.
 		Record.GoldOwed = State->GetOwnGoldOwed(); // A save's: its own debt (#2741 slice 6e), 0 for any other.
 		Record.GoldOwedEachDay = State->GetOwnGoldOwedEachDay(); // And the part taken each day.
+		Record.GoldSpentOnCityUpgrades = State->GetOwnGoldSpentOnCityUpgrades(); // Reinvestment's count (#2741 slice 9).
 		// AND ITS OWN EMPIRE UPGRADE POINTS AND TREE, 0 and empty for any other character. Issue #2741 slice 1c.
 		Record.PrivateEmpireUpgradePoints = State->GetOwnEmpireUpgradePoints(); // A save's: its own bank.
 		Record.PrivateEmpireTree = State->GetOwnEmpireTree(); // A save's: its own tree.

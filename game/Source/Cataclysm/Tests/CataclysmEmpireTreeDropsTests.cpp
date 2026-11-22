@@ -446,7 +446,7 @@ bool FCataclysmEmpireTreeDropsSavedTest::RunTest(const FString&)
 /**
  * `Run_v10.json`, written before the count, migrates to the clears it can prove: it records a death, on day 103, so 0;
  * the same file with no death recorded gets its 14 clears, every one made without dying. Every other field is kept.
- * CONTROL: the committed run file, `Run_v14.json` since issue #46 (`Run_v13.json` from issue #2825, `Run_v12.json` from slice 6b), reads 5. Prints "CLEAN CLEARS MIGRATED".
+ * CONTROL: the committed run file, `Run_v15.json` since issue #2741 slice 9 (`Run_v14.json` from issue #46, `Run_v13.json` from issue #2825, `Run_v12.json` from slice 6b), reads 5. Prints "CLEAN CLEARS MIGRATED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeDropsMigrationTest,
 	"Cataclysm.EmpireTreeDrops.ARunFileFromVersion10MigratesWithTheClearsItCanProve",
@@ -460,7 +460,7 @@ bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v15.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -487,7 +487,7 @@ bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
 
 	const UCataclysmRunSave* Died = ReadDropsRunFixture(*this, Text, TEXT("Run_v10.json"));
 	const UCataclysmRunSave* NoDeath = ReadDropsRunFixture(*this, NoDeathText, TEXT("Run_v10.json with no death"));
-	const UCataclysmRunSave* Current = ReadDropsRunFixture(*this, CurrentText, TEXT("Run_v14.json"));
+	const UCataclysmRunSave* Current = ReadDropsRunFixture(*this, CurrentText, TEXT("Run_v15.json"));
 	if (!Died || !NoDeath || !Current)
 	{
 		return false;
@@ -501,6 +501,7 @@ bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
+	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -508,7 +509,7 @@ bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
 		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
 
 	AddInfo(FString::Printf(TEXT("CLEAN CLEARS MIGRATED: the step %d (%s); written %s %.0f; with the death %d at version "
-								 "%d; with none %d of %d clears; Run_v14.json %d; the rest %s"),
+								 "%d; with none %d of %d clears; Run_v15.json %d; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), Written,
 							Died->ClearsSinceLastDeath, Died->SchemaVersion, NoDeath->ClearsSinceLastDeath,
 							NoDeath->DungeonsCleared, Current->ClearsSinceLastDeath, bSame ? TEXT("kept") : *Where));
@@ -519,7 +520,7 @@ bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("with the death: 0"), Died->ClearsSinceLastDeath, 0);
 	TestEqual(TEXT("with no death: every one of the run's 14 clears"), NoDeath->ClearsSinceLastDeath, 14);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v14.json reads 5"), Current->ClearsSinceLastDeath, 5);
+	TestEqual(TEXT("CONTROL: Run_v15.json reads 5"), Current->ClearsSinceLastDeath, 5);
 	return true;
 }
 

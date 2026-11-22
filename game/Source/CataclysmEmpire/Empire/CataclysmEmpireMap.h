@@ -215,6 +215,30 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	float LowestCityPopulationRestored = 0.0f;
 
 	/**
+	 * How much larger each of the four POPULATION restores is: Civic Pride, 5% a point, summed (issue #2741 slice 9,
+	 * V11). The four are a retake, The Mason's Guild, the one-time upgrade "Restore city's population by 50%" and the
+	 * upgrade "Every 20 days this city's population recovers 5%". Defence restores are not raised. See
+	 * `PopulationRestoredShare`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float PopulationRestoreIncrease = 0.0f;
+
+	/**
+	 * Economic Bailout's points, 1 when held: a city whose defence reaches 0 is saved from falling, once per city per
+	 * run, when the balance pays its fee (issue #2741 slice 9, V6 to V10). The run asks
+	 * (`UCataclysmEmpireRun::SaveCityFromFalling`); the fee is paid through `UCataclysmEmpireRun::PayTheBailout`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 CityBailoutPoints = 0;
+
+	/**
+	 * Scout Parties: the chance a clear discovers a bonus dungeon on the same city, 10% a point, summed (issue #2741
+	 * slice 9, V15). Rolled in `UCataclysmEmpireRun::ClearDungeon` on a stream of its own.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float BonusDungeonChance = 0.0f;
+
+	/**
 	 * Global Vigilance: the share each dungeon cleared since the last surge takes off every city's damage, per point,
 	 * compounded; its points; and the most the whole may take off, 15% (Q1).
 	 */
@@ -343,6 +367,15 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	float EmpirePointsIncrease = 0.0f;
 
+	/**
+	 * Reinvestment's increase on the same award, ADDED to Veteran's Edge's, each held at its own cap (V3). NOT FILLED BY
+	 * A ROW: it reads the tier 1 gold spent on city upgrades across runs, which the account (or a Solo Self-Found
+	 * character) holds and this module cannot read, so `UCataclysmGameInstance::EmpireTreeBonusesFor` sets it
+	 * (`UCataclysmEmpireTree::EmpirePointsFromSpendingFor`). Issue #2741 slice 9.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	float EmpirePointsFromSpending = 0.0f;
+
 	// ---------------------------------------------------------------------
 	// The words in the node texts that are rules rather than numbers
 	// ---------------------------------------------------------------------
@@ -406,6 +439,13 @@ struct CATACLYSMEMPIRE_API FCataclysmEmpireTreeBonuses
 	 * (D9). Exactly 1 with no point or under one step of either.
 	 */
 	float GoldDamageFactorFor(double GoldHeldAtTierOne) const;
+
+	/**
+	 * The share of its maximum population a population restore gives back: the restore's own share made larger by Civic
+	 * Pride (`PopulationRestoreIncrease`). The caller still holds the result at the city's maximum: "No restore goes
+	 * above the city's maximum" (V11). Issue #2741 slice 9.
+	 */
+	float PopulationRestoredShare(float Share) const;
 
 	/** Whether any walk node is held, so a walk with none is charged exactly the stored figure. */
 	bool ReachesTheWalk() const;
@@ -556,6 +596,15 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bTookSurgeDamage = false;
+
+	/**
+	 * WHETHER ECONOMIC BAILOUT HAS SAVED THIS CITY IN THIS RUN: "Once per city per Tier", ruled once per city per run
+	 * (2026-11-21). Set by `UCataclysmEmpireRun::SaveCityFromFalling` when the fee was paid; a bailout the balance could
+	 * not pay leaves it false (V9). Never cleared within the run. Issue #2741 slice 9. RUN RECORD VERSION 15:
+	 * `Migrate_14_to_15` writes false on every city of an older run, which could not have been saved.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bBailedOut = false;
 
 	/**
 	 * How many Void stacks this city carries. Ten erase it.
@@ -923,12 +972,24 @@ public:
 	 */
 	TFunction<int32()> TodayIs;
 
+	/**
+	 * ASKED WHEN A DUNGEON'S DAMAGE TAKES A CITY'S DEFENCE TO 0, after any armed Last Stand has not held it (V7):
+	 * whether the city is saved from falling instead. Set by `UCataclysmEmpireRun::BeginForCharacter` to
+	 * `UCataclysmEmpireRun::SaveCityFromFalling`, which sets the city's defence when it says yes. Economic Bailout,
+	 * issue #2741 slice 9. ONLY `Damage` ASKS: a fall at the tenth Void stack is not "health hits 0" and is never
+	 * saved (V6). Unset, nothing is saved.
+	 */
+	TFunction<bool(int32 CityId)> SaveFromFalling;
+
 	/** The city `ArmTheLastStand` armed for the next `Damage` call, `INDEX_NONE` for none; and the defence it keeps. */
 	int32 LastStandArmedFor = INDEX_NONE;
 	float LastStandDefence = 0.0f;
 
 	/** Set when an armed Last Stand held, until `TakeTheLastStandHeld` reads it. */
 	bool bLastStandHeld = false;
+
+	/** The cities `SaveFromFalling` saved, in order, until `TakeTheBailouts` reads them. Issue #2741 slice 9. */
+	TArray<int32> BailedOutSinceRead;
 
 	/**
 	 * Lays out the 25 cities and links their lanes. Discards whatever was here
@@ -1158,6 +1219,9 @@ public:
 
 	/** Whether the Last Stand held since this was last asked; asking clears it. */
 	bool TakeTheLastStandHeld();
+
+	/** The cities Economic Bailout saved since the last call, in order, and empties the list. Issue #2741 slice 9. */
+	TArray<int32> TakeTheBailouts();
 
 	/**
 	 * The same, expressed as a SHARE OF THE CITY'S MAXIMUM.

@@ -276,8 +276,8 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_six_slices_that_make_it_act() -> None:
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8}
+def test_a_built_node_names_one_of_the_seven_slices_that_make_it_act() -> None:
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -292,7 +292,11 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     (2026-11-21) built the 17 that waited on a Treasurer city upgrade: Economic
     Zones' 10, Trade Routes' 5, Commercial Hubs' 1 and The Golden Touch's 1.
     Issue #2832 built the 5 that waited on a city upgrade's build time into
-    slice 6: Scaffolding's 1, Rapid Renovation's 3 and Rapid Funding's 1."""
+    slice 6: Scaffolding's 1, Rapid Renovation's 3 and Rapid Funding's 1.
+    Slice 9 (2026-11-22) built the 21 of the five the coordinating session ruled
+    under the owner's delegation: Civic Pride's 10, which waited on a population
+    growth rate, Scout Parties' 8 on bonus dungeons, Bribery's 1 and Economic
+    Bailout's 1 on a fee figure, and Reinvestment's 1 on a cap figure."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -308,14 +312,13 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
 
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
-        "slice 7": 17,
+        "slice 7": 17, "slice 9": 21,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "fee figure": 2, "cap figure": 1, "crafting": 278,
-        "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
+        "crafting": 278, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7)) == 860
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7, 9)) == 881
     # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
                              "crafting": 2, "slice 6": 1, "slice 8": 1}

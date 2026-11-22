@@ -665,6 +665,32 @@ followed, ruled 2026-11-01:
   read it as the committed character file reads `Character_v10.json`, and every
   test that runs an older character file through the whole chain adds what the
   step writes through `CataclysmSaveFixtures::AddTheCharactersVersion10Defaults`.
+- **The account record went to version 7, the character record to version 14
+  and the run record to version 15 on 2026-11-22**, for the empire tree's ninth
+  slice (issue #2741 slice 9). The account and a Solo Self-Found character count
+  the tier 1 gold spent on city upgrades across runs, `GoldSpentOnCityUpgrades`,
+  which Reinvestment reads; the run holds Economic Bailout's once a run on each
+  city, `bBailedOut`, Scout Parties' bonus dungeons, `bBonus` on each dungeon and
+  `BonusDungeonsCleared`, and Bribery's once a surge, `bBribedThisSurge`. Each
+  step writes 0 or false: a record written before could use none of them.
+  `Account_v7.json` is `Account_v6.json` at version 7 with 75000.5 spent,
+  `Character_v14.json` is `Character_v13.json` at version 14 with 50000.25 spent
+  (the count is a double and unrounded, the coordinating session's V20, and each
+  fraction is exact in binary), and
+  `Run_v15.json` is `Run_v14.json` at version 15 with its first city bailed out,
+  its second not, 2 bonus dungeons cleared and the surge's bribe spent: figures
+  and not the defaults, for the reason below. **ITS ONE DUNGEON'S `bBonus` IS
+  FALSE, THE DEFAULT**, because that dungeon is a Siege and a bonus dungeon is
+  always an ordinary dungeon with no Siege (the coordinating session's V18 of
+  2026-11-22): true would describe a run the game cannot reach. The previous three
+  files are now migration inputs, not edited again; every test that read them as
+  the committed files reads the new ones, and every test that runs an older file
+  through the whole chain adds what the steps write through
+  `CataclysmSaveFixtures::AddTheAccountsVersion7Defaults`,
+  `AddTheCharactersVersion14Defaults` and `AddTheRunsVersion15Defaults`.
+  **THE NUMBERS FOLLOW THE GEMS WINDOW'S** (issue #46, character 13 and run 14,
+  the same day): this slice was written at character 13 and run 14 and renumbered
+  when it was rebased onto the gems window (the coordinating session's V1).
 - **The account record went to version 6 and the character record to version 12
   on 2026-11-21**, for Imperial Prowess's extra option (issue #2741 slice 8): the
   project owner ruled that day, "Imperial prowess lets you pick an additional
@@ -862,6 +888,7 @@ followed, ruled 2026-11-01:
 | `Account_v4.json` | The same account at version 4: version 3's contents, plus its empire upgrade tree, 26 points in the Architect branch and the first centre capstone with its second option chosen |
 | `Account_v5.json` | The same account at version 5: version 4's contents, plus a gold debt, 2500 owed with 250 taken a day |
 | `Account_v6.json` | The same account at version 6: version 5's contents, plus an extra option in its tree, the first of Foundations of the Empire's |
+| `Account_v7.json` | The same account at version 7: version 6's contents, plus 75000.5 tier 1 gold spent on city upgrades |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
 | `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet, and one chosen skill |
@@ -875,6 +902,7 @@ followed, ruled 2026-11-01:
 | `Character_v11.json` | The same character at version 11: version 10's contents, plus its own gold debt, 1500 owed with 150 taken a day |
 | `Character_v12.json` | The same character at version 12: version 11's contents, plus an extra option in its own empire tree, the third of Foundations of the Empire's, and none in its other two allocations |
 | `Character_v13.json` | The same character at version 13: version 12's contents, with each socket count as a list of sockets -- its carried piece's Attack holding Of The Viper at Quality and Defense, its worn greatsword's Attack, Defense and Utility, its held build's three of type Any -- and no gem in either carried slot |
+| `Character_v14.json` | The same character at version 14: version 13's contents, plus 50000.25 tier 1 gold spent on city upgrades |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -889,6 +917,7 @@ followed, ruled 2026-11-01:
 | `Run_v12.json` | The same run at version 12: version 11's contents, plus its first city marked as damaged by a dungeon, the run's population marked as fallen below half, and the walk's 1234 gold dropped and 1000 picked up |
 | `Run_v13.json` | The same run at version 13: version 12's contents, plus a `BuildDaysLeft` of 0 on both its upgrades, its first city building `Architect_Increase_max_defense_by_20` with 4 days left, and its second building nothing |
 | `Run_v14.json` | The same run at version 14: version 13's contents, with each ground item's socket count of 0 as an empty list and no gem on either ground item |
+| `Run_v15.json` | The same run at version 15: version 14's contents, plus its first city bailed out and its second not, its dungeon not a bonus one, 2 bonus dungeons cleared and the surge's bribe spent |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

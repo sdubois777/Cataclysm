@@ -129,6 +129,23 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 *                  INDEX_NONE, an upgrade finished at once, the line says nothing more.
 	 * @param bRushed   bought with Rapid Funding's Rush, since issue #2832: "; rushed" before the ready day.
 	 */
+	/**
+	 * Economic Bailout at a city whose defence reached 0 (issue #2741 slice 9, V9). Paid: "Economic Bailout saved Outpost
+	 * (-3,0) from falling for 50,000 gold; 12,345 gold held". Not paid: "Economic Bailout did not save Outpost (-3,0):
+	 * its fee is 50,000 gold and 40,000 is held", or "and nothing holds a balance to pay it from" when `Held` is below
+	 * zero.
+	 */
+	static FString BailoutLine(const UCataclysmEmpireRun* Run, int32 CityId, int64 Fee, int64 Held, bool bPaid);
+
+	/**
+	 * Bribery reset a dungeon's timer (issue #2741 slice 9, V12 to V14): "Bribery reset dungeon 7's timer for 20,000
+	 * gold; 342 gold held".
+	 */
+	static FString BribeLine(int32 DungeonId, int64 Fee, int64 Held);
+
+	/** Bribery refused, with the refusal the player is shown: "Bribery refused for dungeon 7: <why>". Slice 9. */
+	static FString BribeRefusedLine(int32 DungeonId, const FString& Why);
+
 	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
 							   int64 Held, int32 ReadyDay = INDEX_NONE, bool bRushed = false);
 

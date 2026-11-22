@@ -649,12 +649,28 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 		return false;
 	}
 
+	// ECONOMIC BAILOUT, AFTER THE LAST STAND (V7): "If a City's health hits 0, pay a massive Gold fee to prevent it
+	// becoming a Fallen City." The run decides and, when the fee is paid, sets the city's defence (V8). Issue #2741
+	// slice 9.
+	if (City->Defence <= 0.0f && SaveFromFalling && SaveFromFalling(CityId))
+	{
+		BailedOutSinceRead.Add(CityId);
+		return false;
+	}
+
 	if (City->Defence <= 0.0f)
 	{
 		return Fall(CityId);
 	}
 
 	return false;
+}
+
+TArray<int32> UCataclysmEmpireMap::TakeTheBailouts()
+{
+	TArray<int32> Saved = MoveTemp(BailedOutSinceRead);
+	BailedOutSinceRead.Reset();
+	return Saved;
 }
 
 void UCataclysmEmpireMap::ArmTheLastStand(int32 CityId, float SurviveAt)
@@ -837,8 +853,9 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 
 	case ECataclysmCityUpgradeEffect::RestorePopulation:
 	{
+		// AND CIVIC PRIDE'S SHARE, to the maximum (issue #2741 slice 9, V11).
 		const float Max = EffectiveMaxPopulation(*City);
-		City->Population = FMath::Min(Max, PopulationOf(*City) + Max * Upgrade.Value);
+		City->Population = FMath::Min(Max, PopulationOf(*City) + Max * TreeBonuses.PopulationRestoredShare(Upgrade.Value));
 		break;
 	}
 
@@ -887,7 +904,11 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	const float Fraction = TreeBonuses.RetakeFraction > 0.0f ? TreeBonuses.RetakeFraction : RetakenFraction;
 	City->bFallen = false;
 	City->Defence = EffectiveMaxDefence(*City) * Fraction;
-	City->Population = EffectiveMaxPopulation(*City) * Fraction;
+
+	// THE POPULATION WITH CIVIC PRIDE, held at the maximum: 0.75 x 1.5 would otherwise give 112.5% (V11). The defence is
+	// not raised by it. Issue #2741 slice 9.
+	const float MaxPopulation = EffectiveMaxPopulation(*City);
+	City->Population = FMath::Min(MaxPopulation, MaxPopulation * TreeBonuses.PopulationRestoredShare(Fraction));
 
 	// A RETAKEN CITY'S VOID STACKS ARE CLEARED, as `Simulation._retake` clears
 	// them, ruled by the coordinating session on 2026-10-16. It fell with fewer

@@ -44,6 +44,7 @@
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
+#include "Player/CataclysmDungeonBribe.h"
 #include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPassivePoints.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -5045,6 +5046,35 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 						*UCataclysmCityUpgradePurchase::BuildDaysText(
 							UCataclysmCityUpgradePurchase::BuildDaysIn(World, Run, RowName, City->CityId)));
 			}
+		}));
+
+// BRIBERY FROM THE CONSOLE, beside the city screen's Bribe button (issue #2741 slice 9, V14): the same
+// `FCataclysmDungeonBribe::Bribe`, so the two cannot disagree.
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBribeDungeon(
+	TEXT("Cataclysm.BribeDungeon"),
+	TEXT("Bribery: reset one dungeon's timer to its start for 20,000 gold at difficulty tier 1, once a surge: "
+		 "Cataclysm.BribeDungeon <dungeonId>. Needs Bribery in the empire upgrade tree and the whole fee in the "
+		 "balance; says why when it refuses."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run || !Run->Map)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin starts one."));
+				return;
+			}
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.BribeDungeon <dungeonId>."));
+				return;
+			}
+			const int32 DungeonId = FCString::Atoi(*Args[0]);
+			const FString Refused = FCataclysmDungeonBribe::Bribe(World, Run, DungeonId);
+			Ar.Logf(TEXT("%s"), Refused.IsEmpty()
+				? *FString::Printf(TEXT("Dungeon %d's timer is reset to its start for %lld gold."), DungeonId,
+								   FCataclysmDungeonBribe::FeeIn(Run))
+				: *Refused);
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(

@@ -428,8 +428,10 @@ def day_order_problems(game_source: str) -> list[str]:
     problems = []
 
     game = cpp_code_of(game_source, ADVANCE)
+    # THE RESOLVE LOOP BY ITS OPENING: since issue #2741 slice 9 it lets a Scout Parties bonus dungeon leave before it
+    # resolves the rest, so its body is no longer the one call.
     marks = ("ApplySiegeDamage(Report);", "ShrinkHollows(Today);",
-             "for (const int32 DungeonId : Resolved) { ResolveDungeon(DungeonId, Report); }")
+             "for (const int32 DungeonId : Resolved) {")
     if any(game.count(mark) != 1 for mark in marks):
         problems.append("UCataclysmEmpireRun::AdvanceDay does not hold the Siege "
                         "bite, the shrink and the resolve loop once each")

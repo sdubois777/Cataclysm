@@ -4849,8 +4849,10 @@ character in a mode fixes a starting position for the ones that follow, not a
 life sentence. Without respec it would be a life sentence, which is why the two
 questions were answered together.
 
-**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** Scaffolding, Rapid Renovation and
-Rapid Funding are built (issue #2832); the other six are not yet. `docs/DECISIONS.md` has each ruling in full.
+**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** All nine are built: Imperial
+Prowess in the empire tree's slice 8, Scaffolding, Rapid Renovation and Rapid Funding with city upgrade build times
+(issue #2832), and the last five in slice 9 (2026-11-22, with the coordinating session's readings V1 to V20).
+`docs/DECISIONS.md` has each ruling in full.
 
 - **Imperial Prowess** (The Imperial Zenith) gives one more option from the earlier tier milestones, any the player did
   not pick there. The owner ruled it.
@@ -4858,11 +4860,12 @@ Rapid Funding are built (issue #2832); the other six are not yet. `docs/DECISION
   the same day (the City Upgrades section). Scaffolding halves the price and doubles the days; Rapid Renovation takes
   a day off a point; Rapid Funding rushes an upgrade 2 days for 150% of its price; none goes below 1 day.
 - **Bribery** is a map action that resets one dungeon's resolution timer for 20,000 gold at difficulty tier 1, once per
-  surge.
+  surge: a Bribe button beside each dungeon's Walk button on the city screen.
 - **Economic Bailout** pays 50,000, 100,000 or 150,000 gold at tier 1 automatically when an Outpost, a Bulwark or a
   Sanctuary reaches 0 defence, once per city per run. The city keeps half its maximum defence; the Pillar cannot be
   saved this way.
-- **Reinvestment** is capped at 30%.
+- **Reinvestment** is capped at 30%. The gold it counts is counted across runs, on the account or on a Solo
+  Self-Found character, from the build that added it.
 - **Civic Pride** makes each of the four population restores 5% larger a point: a retake, The Mason's Guild, and the two
   city upgrades that restore population. The design has no other population growth.
 - **Scout Parties'** bonus dungeon is an extra dungeon on the same city that threatens nothing, costs days to walk, adds

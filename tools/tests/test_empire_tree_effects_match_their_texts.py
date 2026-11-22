@@ -148,6 +148,10 @@ SLICE_8 = {"Imperial Prowess"}
 #: Funding's Rush, the coordinating session's rulings of 2026-11-21.
 SLICE_BUILD_DAYS = {"Scaffolding", "Rapid Renovation", "Rapid Funding"}
 
+#: SLICE 9'S FIVE, ruled by the coordinating session under the owner's delegation on 2026-11-21, and V1 to V20 the
+#: next day.
+SLICE_9 = {"Civic Pride", "Reinvestment", "Economic Bailout", "Bribery", "Scout Parties"}
+
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
                "WalkDaysFewerPerActiveType", "WalkDaysFewerOnFallenCities",
@@ -173,7 +177,11 @@ OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more th
                # Slice 8: Imperial Prowess's 1 is its "an additional keystone".
                "ExtraEarlierMilestoneOption": "an additional keystone",
                # Issue #2832: Scaffolding's 2 is "take 2x longer".
-               "UpgradeBuildDaysMultiplied": "{:g}x longer"}
+               "UpgradeBuildDaysMultiplied": "{:g}x longer",
+               # Slice 9: Economic Bailout's and Bribery's 1 is that each is held; their fees are the
+               # coordinating session's rulings, in C++, and no text states a figure.
+               "CityBailout": "prevent it becoming a Fallen City",
+               "DungeonBribe": "reset a single dungeon resolution timer"}
 
 #: AN EFFECT WHOSE VALUE IS A DEFENCE, found in its text as "at <value>": Last
 #: Stand Protocols' "survive at 1".
@@ -221,12 +229,13 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_110_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_and_the_build_nodes_act() -> None:
+def test_exactly_the_115_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_the_build_nodes_and_9_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
     assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4 and len(SLICE_8) == 1
     assert len(SLICE_BUILD_DAYS) == 3
+    assert len(SLICE_9) == 5
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -241,8 +250,10 @@ def test_exactly_the_110_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_and_th
                 | SLICE_6E | SLICE_7) & SLICE_8
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
                 | SLICE_6E | SLICE_7 | SLICE_8) & SLICE_BUILD_DAYS
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS) & SLICE_9
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS)
+             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9)
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -260,6 +271,8 @@ def test_exactly_the_110_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_and_th
         "every slice 7 node with an effect is one EMPIRE_TREE_BUILT gives to slice 7")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 8 for name in SLICE_8), (
         "every slice 8 option with an effect is one EMPIRE_TREE_BUILT gives to slice 8")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 9 for name in SLICE_9), (
+        "every slice 9 node with an effect is one EMPIRE_TREE_BUILT gives to slice 9")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:
@@ -296,7 +309,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_fourteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_fifteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -319,7 +332,12 @@ def test_the_fourteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> 
                     "Wealth Interest": 5000.0,
                     # Slice 6d, its own text's "20% cap", held apart from
                     # Imperial Reserve's (D9).
-                    "Treasury Guard": 0.20}, caps
+                    "Treasury Guard": 0.20,
+                    # Slice 9, the coordinating session's ruling of 2026-11-21:
+                    # Reinvestment's "(Capped)" is 30%, Veteran's Edge at its full
+                    # 10 points, held apart from it (V3).
+                    "Reinvestment": 0.30}, caps
+    assert "(Capped)" in texts["Reinvestment"]
     assert "cap 20%" in texts["Venture Capital"]
     assert "20% cap" in texts["Treasury Guard"]
     assert "25% cap" in texts["Imperial Reserve"]
