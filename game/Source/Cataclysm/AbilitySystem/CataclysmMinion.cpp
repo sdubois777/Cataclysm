@@ -1765,13 +1765,17 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// above: a burn a minion's swing applies is the minion's, or a minion's
 		// swing and the fire it starts would belong to different characters.
 		//
-		// AND IT CREDITS THE SKILL THAT SUMMONED THE MINION, AND IS NOT SIZED AGAIN. Issue #2764, slice 2b: the burn is a
-		// share of the blow just dealt, which already carries the level factor, so a second factor would count the level
-		// twice; its ticks credit the row as the blow did.
+		// AND IT CREDITS THE SKILL THAT SUMMONED THE MINION, its ticks crediting the row as the blow did (issue #2764,
+		// slice 2b), AND IS SIZED BY THAT SKILL'S LEVEL, ON A CREATURE, ONCE. Issue #2784, ruled 2026-11-22 (Q4) from the
+		// owner's answer of 2026-11-19, "Yes, they scale too". THIS SAID THE BURN WAS "a share of the blow just dealt,
+		// which already carries the level factor", and passed none: a burn is flat (`DoT_Burn`, 25 a second), not a share
+		// of the blow, so Summon Imp's imps never burned harder as it levelled. The factor is the one the swing took.
 		UCataclysmSkillEffects::ApplyBurn(this, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
 										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this, /*Skill=*/nullptr,
-										  /*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/SummoningSkillRow);
+										  /*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/SummoningSkillRow,
+										  /*LevelFactor=*/Cast<const ACataclysmEnemyCharacter>(Target)
+											  ? LevelFactorOnCreatures : 1.0f);
 	}
 
 	// AND A WARHOUND'S HIT TAUNTS THE ENEMY STRUCK, for its summoner's row's seconds. Warlord's Will's six-piece, ruled
@@ -2051,14 +2055,17 @@ void ACataclysmMinion::Explode()
 			// above makes for issue #1156 could never fire here. A check that
 			// cannot fail is worse than no check, because it reads as one.
 			//
-			// AND THE BURN CREDITS NOTHING, as the explosion credits nothing, and is not sized again: it is a share of the
-			// explosion just dealt.
+			// AND THE BURN CREDITS NOTHING, as the explosion credits nothing, AND IS SIZED BY THE SUMMONING SKILL'S LEVEL ON
+			// A CREATURE, as the explosion is above. Issue #2784 (Q4): this said the burn was "a share of the explosion just
+			// dealt" and passed no factor, and a burn is flat (`DoT_Burn`), not a share of anything.
 			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
 					this, Target, Dealt,
 					/*bScalesWithInstigator=*/false,
-					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
+					/*bBurnIsDesigned=*/true, /*DealtBy=*/this, /*Skill=*/nullptr,
+					/*SkillTagsWithNoSkill=*/nullptr, /*SkillRowWithNoSkill=*/NAME_None,
+					/*LevelFactor=*/Cast<const ACataclysmEnemyCharacter>(Target) ? LevelFactorOnCreatures : 1.0f);
 			}
 		}
 
