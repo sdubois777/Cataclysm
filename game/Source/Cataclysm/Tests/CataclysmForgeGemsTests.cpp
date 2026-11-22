@@ -58,7 +58,7 @@ namespace CataclysmForgeGemsTest
 		return Item;
 	}
 
-	struct FScene
+	struct FForgeGemsScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -74,9 +74,9 @@ namespace CataclysmForgeGemsTest
 	};
 
 	/** A world with this project's game instance, a possessed player and a run; nothing carried, nothing worn. */
-	FScene MakeScene()
+	FForgeGemsScene MakeScene()
 	{
-		FScene Out;
+		FForgeGemsScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -179,7 +179,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeGemsSocketTest,
 bool FCataclysmForgeGemsSocketTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeGemsTest;
-	FScene Scene = MakeScene();
+	FForgeGemsScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)
@@ -235,7 +235,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeGemsUnsocketTest,
 bool FCataclysmForgeGemsUnsocketTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeGemsTest;
-	FScene Scene = MakeScene();
+	FForgeGemsScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
 	{
 		if (Scene.World)

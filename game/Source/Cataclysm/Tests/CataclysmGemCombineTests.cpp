@@ -38,7 +38,7 @@ namespace CataclysmGemCombineTest
 	const FName Viper(TEXT("Gem_Of_The_Viper"));
 	const FName Rot(TEXT("Gem_Of_Rot"));
 
-	struct FScene
+	struct FGemCombineScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -54,9 +54,9 @@ namespace CataclysmGemCombineTest
 	};
 
 	/** A world with this project's game instance, a possessed player and a run; nothing carried, nothing worn. */
-	FScene MakeScene()
+	FGemCombineScene MakeScene()
 	{
-		FScene Out;
+		FGemCombineScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -144,7 +144,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemCombineCraftTest,
 bool FCataclysmGemCombineCraftTest::RunTest(const FString&)
 {
 	using namespace CataclysmGemCombineTest;
-	FScene Scene = MakeScene();
+	FGemCombineScene Scene = MakeScene();
 	ON_SCOPE_EXIT { if (Scene.World) { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); } };
 	if (!TestTrue(TEXT("set-up: a world, a player and a run"), Scene.IsUsable())
 		|| !TestEqual(TEXT("set-up: three Everyday Of Life"), Scene.Bag()->AddGems(Life, ECataclysmRarity::Everyday, 3), 0)

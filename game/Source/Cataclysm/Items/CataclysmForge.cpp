@@ -255,11 +255,12 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 				? TEXT("an")
 				: TEXT("a");
 		};
-		const FString Gem = GemType.TrimStartAndEnd();
+		// NOT NAMED `Gem`, which is this function's parameter: hiding it is an error in this build (C4457).
+		const FString GemTypeWord = GemType.TrimStartAndEnd();
 		const FString Type = UCataclysmGems::SocketTypeName(Into.Type);
 		Out.Refusal = FString::Printf(TEXT("%s %s gem does not fit %s %s socket."),
-									  FCString::Strcmp(Article(Gem), TEXT("an")) == 0 ? TEXT("An") : TEXT("A"), *Gem,
-									  Article(Type), *Type);
+									  FCString::Strcmp(Article(GemTypeWord), TEXT("an")) == 0 ? TEXT("An") : TEXT("A"),
+									  *GemTypeWord, Article(Type), *Type);
 		return Out;
 	}
 	if (Out.MaterialHeld < 1)

@@ -58,7 +58,7 @@ namespace CataclysmForgeCostsTest
 		return Item;
 	}
 
-	struct FScene
+	struct FForgeCostsScene
 	{
 		UWorld* World = nullptr;
 		UCataclysmGameInstance* Instance = nullptr;
@@ -75,9 +75,9 @@ namespace CataclysmForgeCostsTest
 	};
 
 	/** A world with a possessed Solo Self-Found player holding `Gold` of its own, and a run; nothing carried. */
-	FScene MakeScene(int64 Gold)
+	FForgeCostsScene MakeScene(int64 Gold)
 	{
-		FScene Out;
+		FForgeCostsScene Out;
 		Out.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Out.World)
 		{
@@ -188,7 +188,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeCostsCraftTest,
 bool FCataclysmForgeCostsCraftTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeCostsTest;
-	FScene Scene = MakeScene(600);
+	FForgeCostsScene Scene = MakeScene(600);
 	ON_SCOPE_EXIT { if (Scene.World) { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); } };
 	if (!TestTrue(TEXT("set-up: a world, a Solo Self-Found player with 600 gold and a run"), Scene.IsUsable()))
 	{
