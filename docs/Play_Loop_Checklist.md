@@ -534,7 +534,7 @@ put some in the bag from the console first: `Cataclysm.GrantMaterial Material_El
 - **The weapon you were given at creation** shows its types and "The weapon made at creation carries the damage type
   chosen for the character; the forge does not change its damage types." and has none of these buttons (issue #2845).
 
-### 23. Imprint an enchantment on a piece, and change an enchantment's drawback
+### 24. Imprint an enchantment on a piece, and change an enchantment's drawback
 
 At the forge (step 16), for a piece chosen (issue #47, slice F3). An Aetherial Shard (Rare) and a Regret Essence
 (Extremely Rare) drop on the walks, rarely, so put some in the bag from the console first:

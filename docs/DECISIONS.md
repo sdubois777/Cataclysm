@@ -99,7 +99,7 @@ The survey's research was done by a research agent. Its three pages on these two
   You have no armor, on Masterful Helm of Warding, giving up +42 to maximum health, for 2,300 gold; ..." and "changed
   the drawback of Gain 20% increased health on Legendary Helm of Warding from You have no armor to 80% of your health is
   reserved for 8,225 gold; ...".
-- **`docs/Play_Loop_Checklist.md`**, step 23 (F1 holds 21 and slice F2 22), and the two rows' Note cells in the
+- **`docs/Play_Loop_Checklist.md`**, step 24 (F1 holds 21 and slice F2 22), and the two rows' Note cells in the
   design's operations table.
 - **Nothing moves** in the workbook, the assets or the save versions: both rows and both materials were already on the
   sheets, and an item's affixes and enchantments are already saved.
