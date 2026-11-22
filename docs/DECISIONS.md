@@ -2,6 +2,171 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A creature's first AI think is staggered by a count kept for its own world, so a test gives the same result alone and in the suite (#2827)
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (`GCataclysmEnemyControllerPossessionsByWorld`
+and `TakeThePossessionCountIn`, replacing the process-wide `GCataclysmEnemyControllerPossessions`) and the comment on
+`FirstThinkDelaySeconds` in `CataclysmEnemyController.h`; `game/Source/Cataclysm/Tests/CataclysmWindUpTimingTests.cpp`,
+one new test; `tools/tests/test_ai_first_think_is_counted_per_world.py`, new. Issue
+[#2827](https://github.com/sdubois777/Cataclysm/issues/2827).
+
+### SAID FIRST
+
+- **C1 PROVED, BUT ITS REGISTERED PREDICTION WAS WRONG, AND ITS BREAK DID NOT TEST WHAT IT WAS REGISTERED FOR.** The
+  break was to make one count for every world. It made a count that never advances: `TObjectKey<UWorld>(nullptr)`
+  resolves to no object, so the loop above it removes that entry as a world that is gone on every call, and every
+  creature took the count 0. So "world B's first creature takes the count 0" passed, which was predicted to fail always,
+  and a second test failed, which was not predicted. See "Window ai-think-w1" below.
+- **C1b, A PROOF-ONLY RUN RULED TO TEST WHAT C1 DID NOT, PROVED AS PREDICTED.** With one count for the whole process,
+  the shape of the code before #2827, the new test fails and the group's other 52 pass; restored, 53 of 53. See "C1b"
+  below.
+- **THE WINDOW PASSED EVERYTHING ELSE.** Window ai-think-w1, 2026-11-22, at `bc065ebc6` on development `d684a3d0e`: the
+  whole Unreal suite 5144 of 5144, and no test moved, so #2827 has no candidates.
+- **EVERY TEST THAT POSSESSES AN ENEMY NOW GETS THE FIRST-THINK TIMES IT GETS WHEN IT IS THE FIRST TO RUN IN A FRESH
+  WORLD.** Under the old count those times depended on the tests before it, so a test that passed in the suite only
+  because of where it ran may fail now, and one that failed only there may pass. The whole Unreal suite is the check,
+  and any test whose result moves is one of #2827's candidates and gets option (a) below.
+
+### The two ways, and the recommendation
+
+#2827 named two: (a) tests take the AI away when they measure only what they order, as #2811's now do
+(`CataclysmTestSwings::TakeTheAIFrom`); (b) the possession count resets per world.
+
+**Both, with (b) as the general change, the coordinating session's leaning, and this session's recommendation.** (b)
+removes the dependence on test order for every test at once: a test then gives the same result alone and in the suite,
+so a test exposed to an extra think fails where it can be reproduced and read, instead of only in one order. It does not
+stop a think landing inside a test's window; (a) does that, and belongs only where a test means to measure its own orders
+and nothing the AI does.
+
+**What the count is for in play, and why (b) changes nothing there.** `FirstThinkDelaySeconds` (issue #1543) spreads the
+first thinking passes of creatures possessed together, so a Horde wave of 139 does not think all in one frame, four
+times a second. The spread is the fractional part of the count times 0.618..., which spreads any run of consecutive
+counts evenly wherever the run starts (`Cataclysm.AI.AWholeWavesFirstThinksSpreadEvenlyFromAnyStartingCount`). Inside one
+world the counts still run consecutively, so a wave is spread exactly as evenly. Creatures of two worlds never share a
+timer manager, so the count only ever spread creatures of one world. A new world starts at 0, whose first creature waits
+one whole interval, the delay every creature had before #1543.
+
+### What changed
+
+- **One count per world.** `GCataclysmEnemyControllerPossessionsByWorld`, a `TMap<TObjectKey<UWorld>, uint32>`.
+  `TObjectKey` carries the object's serial number, so a world made where a destroyed one was is a new key.
+  `TakeThePossessionCountIn` removes the entries of worlds that are gone, then takes its world's next count.
+- **`OnPossess`** staggers the first think by `TakeThePossessionCountIn(World)`.
+
+### Tests
+
+- `Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld`, new: world A possesses three creatures (counts 0, 1, 2),
+  then world B's first creature takes the count 0 and world A's fourth the count 3, each read from the engine's own
+  schedule (`SecondsUntilNextThink`). It fails on the old code whatever ran before it, because world A's three would give
+  world B's first a count of at least 3.
+- `tools/tests/test_ai_first_think_is_counted_per_world.py`, new: the count is kept per world, no process-wide count
+  remains, `OnPossess` uses the world's count, and the counts of worlds that are gone are removed. By
+  `tools/prove_guard.py`, 2026-11-21, each **PROVED** (1 failed with the break; restored, 1 passed): PA1, the count taken
+  for no world (`TakeThePossessionCountIn(nullptr)`); PA2, dead worlds never removed.
+
+### Registered for the window
+
+Counted on the "Test Completed. Result={" lines of window E's whole-suite log (window-e-w2, at `f4d43387c`, recorded
+by `9aed57a6b`), with a literal match: "5143 tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they
+check" and "860 written and deleted, 0 left behind". Re-registered there on 2026-11-22 from the skills window's log, on
+which this was first registered (5094, 48, 860; `Cataclysm.AI.` 51).
+
+- **The whole suite: the base + 1** (5144); skipped halves 57 and test saves 860, as the base's, **but see SAID FIRST**:
+  a test whose result moves because its first-think times moved is to be read, not taken as this change's fault, and its
+  first failing line recorded against #2827.
+- **The group first:** `Cataclysm.AI.` 52 to 53.
+- **No asset step.**
+- **One C++ guard proof**, for the behaviour only the C++ test guards (that the count is really per world when run):
+  C1, in `TakeThePossessionCountIn`, `FindOrAdd(TObjectKey<UWorld>(World))` made `FindOrAdd(TObjectKey<UWorld>(nullptr))`,
+  one count for every world again. Predicted to fail `Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld` on
+  "world B's first creature takes the count 0" and "and world A's fourth goes on from its own count, 3", with the prefix
+  `Cataclysm.AI.`; and, because that one count then carries every possession the group's earlier tests made, on world
+  A's first three as well unless the count happens to be 0 when the test starts. So 2 to 5 assertions, the two named
+  always among them.
+
+### Window ai-think-w1, 2026-11-22
+
+At `bc065ebc6` (`fix/ai-first-think-per-world-2`, three commits on development `d684a3d0e`, whose `game/` is
+`9aed57a6b`'s), lock ai-think-w1, on the coordinating session's GO, with the pre-checks passed twice before the builds
+and twice before the window (free memory 9225 to 9750 MB, against 9216).
+
+| Step | Registered | Measured |
+|---|---|---|
+| The three builds (the branch; each changed `.cpp` alone; the unity files) | each succeeds, 0 warning or error lines | each succeeded, 0, 0 and 0; build 2 compiled `CataclysmEnemyController.cpp` and `CataclysmWindUpTimingTests.cpp` alone |
+| `Cataclysm.AI.` alone | 53 | 53 performed, 53 succeeded, 0 failed |
+| `Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld` alone | 1 | 1 performed, 1 succeeded |
+| The whole Unreal suite | 5144, skipped halves 57, saves 860 | 5144 performed, 5144 succeeded, 0 failed; 57; 860 written and deleted, 0 left behind; declared 5144, gap 0 |
+| The Python suite, at the same time | passes | 7911 passed, 10 skipped (JUnit: 7921 tests, 0 failures, 0 errors, 10 skipped) |
+| ruff | passes | All checks passed |
+| C1 | proved, the new test failing on 2 to 5 assertions, two named always among them | **PROVED, prediction wrong**, below |
+
+**The new test's own line in the suite:** "PER WORLD: world A's first passes 0.2500, 0.0955, 0.1910 and 0.0365; world
+B's first 0.2500; the counts 0 to 3 give 0.2500, 0.0955, 0.1910 and 0.0365". So in the suite, after world A's three,
+world B's first creature took the count 0 and world A's fourth the count 3.
+
+**No test moved.** SAID FIRST allowed for tests whose result depended on the old count's order; the whole suite performed
+5144 and failed none, so #2827 has no candidate tests and option (a) is needed nowhere beyond #2811's.
+
+**C1, by `unreal_build.prove_cpp_guard`, prefix `Cataclysm.AI.`: PROVED.** With the break in: 53 performed, 51
+succeeded, 2 failed; restored: 53 performed, 53 succeeded, 0 failed. Named failures:
+
+- `ACreaturesFirstThinkDependsOnlyOnItsOwnWorld`, on three assertions: "its second the count 1" (0.250000, not
+  0.095492), "its third the count 2" (0.250000, not 0.190983) and "and world A's fourth goes on from its own count, 3"
+  (0.250000, not 0.036475).
+- `CreaturesPossessedInTheSameFrameDoNotAllThinkInTheSameFrame`, on five: "the busiest frame holds 20 of the 20 first
+  passes, and no more than 3 is allowed", and each quarter of the interval holding 0, 0, 0 and 20 of the 20 where 3 to 7
+  are allowed.
+
+**Why the prediction was wrong.** The break was meant to give one count for every world, as the code before #2827 had.
+`TakeThePossessionCountIn` first removes every entry whose world no longer resolves, and a key made from `nullptr`
+never resolves, so the entry the break adds is removed again on the next call and every count taken is 0. That is a
+count that never advances, the delay every creature had before #1543. So world B's first creature took the count 0,
+the value the test expects, and that assertion passed; world A's second to fourth failed instead; and the wave test,
+which needs the counts to advance, failed too. Both failures are correct for the code that ran, and neither was
+predicted.
+
+**What C1 therefore shows, and what it does not.** It shows that the new test, and the wave test, fail when the count
+does not advance. It does not show that the new test fails under one process-wide count, which is the claim in
+"Tests" above. That rests on the code: under one count, world A's three would give world B's first creature a count of
+at least 3. A break that would test it is the old code's own shape, `uint32& Count =
+GCataclysmEnemyControllerPossessionsByWorld.FindOrAdd(TObjectKey<UWorld>(World));` made `static uint32 Count = 0;
+(void)World;`.
+
+### Registered for C1b, a proof-only run, 2026-11-22
+
+Ruled by the coordinating session on 2026-11-22: a proof-only run under a lock, with no other run, because nothing under
+`game/` changes after the window. Registered here before it runs, with the prediction sent to that session before the
+ruling.
+
+- **C1b**, in `TakeThePossessionCountIn`, `uint32& Count =
+  GCataclysmEnemyControllerPossessionsByWorld.FindOrAdd(TObjectKey<UWorld>(World));` made `static uint32 Count = 0;
+  (void)World;`: one count for the whole process, the shape of the code before #2827. Prefix `Cataclysm.AI.`.
+- **Predicted, broken half:** `Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld` fails, always on "world B's
+  first creature takes the count 0" and "and world A's fourth goes on from its own count, 3", and on world A's first
+  three as well unless no earlier test in the group possessed a creature. Every other test in the group passes, because
+  the spread holds from any starting count. So 52 of 53 succeed.
+- **Predicted, restored half:** 53 performed, 53 succeeded, 0 failed.
+
+### C1b, run 2026-11-22: PROVED, as predicted
+
+At `368425ab9`, whose `game/` is the window's tree `027ac8b1d`, lock ai-think-c1b, the pre-checks passed twice (free
+memory 10360 and 10375 MB). By `unreal_build.prove_cpp_guard`, prefix `Cataclysm.AI.`; the source hash was the same
+before and after (`e64699450d19d6ee`).
+
+- **Broken half:** 53 performed, 52 succeeded, 1 failed: `ACreaturesFirstThinkDependsOnlyOnItsOwnWorld`, on all five of
+  its assertions, the two predicted always among them: "world B's first creature takes the count 0, whatever world A
+  possessed" (0.151220, not 0.250000) and "and world A's fourth goes on from its own count, 3" (0.246711, not 0.036475);
+  and world A's first three (0.114745, 0.210237 and 0.055728, not 0.250000, 0.095492 and 0.190983), because earlier
+  tests in the group had possessed creatures, which the prediction allowed for. Its line: "PER WORLD: world A's first
+  passes 0.1147, 0.2102, 0.0557 and 0.2467; world B's first 0.1512".
+- **Restored half:** 53 performed, 53 succeeded, 0 failed.
+- **Every other test in the group passed with the break in**, `CreaturesPossessedInTheSameFrameDoNotAllThinkInTheSameFrame`
+  among them: one count for the whole process still spreads a wave, which is why the old code passed it.
+
+So the claim in "Tests" above, that the new test fails on the old code whatever ran before it, is now shown by a run.
+
+---
+
 ## 2026-11-21 — The Corrupted Stalker and the Worn Residue double swing the player's clips on their blows, and each blow lands when its swing connects, as the player's does (#2811)
 
 **Affects:** `ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips` and `PlayTheMannequinsSwing`, new, the player's

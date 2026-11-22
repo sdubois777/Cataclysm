@@ -350,7 +350,10 @@ public:
 
 	/**
 	 * How long after it is possessed a controller has its FIRST thinking pass,
-	 * given how many possessions any enemy controller made before it.
+	 * given how many possessions any enemy controller made before it IN THE SAME
+	 * WORLD. One count per world since issue #2827, so a creature's first think
+	 * no longer depends on what earlier tests possessed; see
+	 * `GCataclysmEnemyControllerPossessionsByWorld` in the `.cpp`.
 	 *
 	 * WHAT WAS WRONG, ISSUE #1543. Every controller used to wait exactly
 	 * `ThinkIntervalSeconds` for its first pass. A Horde wave possessed all 139

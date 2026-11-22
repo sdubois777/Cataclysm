@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmEnemyController.h"
+#include "UObject/ObjectKey.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
 // For announcing a creature's ability as a skill used. Issue #41, slice 4.
@@ -54,18 +55,49 @@ CSV_DEFINE_CATEGORY(CataclysmAI, true);
 namespace
 {
 	/**
-	 * How many times any enemy controller has taken over a pawn in this process.
-	 * Each possession takes the next count, and the count is what spreads first
-	 * thinking passes across the interval. See `FirstThinkDelaySeconds` in the
-	 * header.
+	 * How many times any enemy controller has taken over a pawn IN EACH WORLD.
+	 * Each possession takes its world's next count, and the count is what spreads
+	 * first thinking passes across the interval. See `FirstThinkDelaySeconds` in
+	 * the header.
+	 *
+	 * ONE COUNT PER WORLD, SINCE ISSUE #2827, rather than one for the process.
+	 * The process-wide count gave a creature a first think that depended on how
+	 * many enemies every earlier test had possessed, so a test that moved the
+	 * clock with an enemy alive could give one result alone and another in the
+	 * whole suite. #2811's two tests did, in window D: one passed alone and
+	 * failed in the suite, and the other failed at its tier 5 only when its
+	 * group ran alone. In play nothing changes
+	 * within a world -- the counts still run consecutively, and the golden-ratio
+	 * spread holds from any starting count -- and creatures of two worlds never
+	 * share a timer manager, so the count only ever spread creatures of one world.
+	 * A new world starts at 0, whose first creature waits one whole interval, the
+	 * delay every creature had before issue #1543.
+	 *
+	 * KEYED BY `TObjectKey`, which carries the object's serial number, so a world
+	 * made where a destroyed one was is a new key. Entries for worlds that are gone
+	 * are removed at the next possession, so the map holds only the worlds alive.
 	 *
 	 * NAMED FOR THIS FILE, because Unreal compiles a module's `.cpp` files
 	 * together and two file-scope names that match would collide.
 	 *
-	 * WRAPPING IS HARMLESS. It is unsigned, so after 4294967295 it goes back to
-	 * 0, and the spread holds from any count.
+	 * WRAPPING IS HARMLESS. Each count is unsigned, so after 4294967295 it goes
+	 * back to 0, and the spread holds from any count.
 	 */
-	uint32 GCataclysmEnemyControllerPossessions = 0;
+	TMap<TObjectKey<UWorld>, uint32> GCataclysmEnemyControllerPossessionsByWorld;
+
+	/** The world's next possession count, taken: the number before it is raised. */
+	uint32 TakeThePossessionCountIn(const UWorld* World)
+	{
+		for (auto Entry = GCataclysmEnemyControllerPossessionsByWorld.CreateIterator(); Entry; ++Entry)
+		{
+			if (Entry.Key().ResolveObjectPtr() == nullptr)
+			{
+				Entry.RemoveCurrent();
+			}
+		}
+		uint32& Count = GCataclysmEnemyControllerPossessionsByWorld.FindOrAdd(TObjectKey<UWorld>(World));
+		return Count++;
+	}
 }
 
 // A DETOUR CROWD AGENT RATHER THAN A PLAIN PATH FOLLOWER. Issue #761; see the
@@ -122,7 +154,7 @@ void ACataclysmEnemyController::OnPossess(APawn* InPawn)
 			}),
 			ThinkIntervalSeconds, /*bLoop=*/true,
 			/*InFirstDelay=*/FirstThinkDelaySeconds(
-				GCataclysmEnemyControllerPossessions++));
+				TakeThePossessionCountIn(World)));
 	}
 
 	// AFTER `Super::OnPossess`, WHICH IS WHERE THE CROWD IS JOINED:
