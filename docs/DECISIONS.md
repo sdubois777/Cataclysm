@@ -42,9 +42,11 @@ Tests: `Cataclysm.Overwhelm.`, eight, new, in `game/Source/Cataclysm/Tests/Catac
   - **Two that assert an evade by a player at 1,000 evasion**, still evaded: `Cataclysm.DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack`
     and `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`.
   - A possessed player takes the Ravager's class line, 25 armour plus 3.5 a level, about 3% at tier 1, and Overwhelm
-    removes it, so every creature blow on such a player lands about 3% higher. The other affected tests the search found
-    compare a blow with itself or assert no amount. The search did not open every one of about 4,900 tests, so a blow
-    built in a form it did not look for could be missed.
+    removes it, so every creature blow on such a player lands about 3% higher. The coordinating session, 2026-11-22: that
+    is the design's intended pressure on a player below the dungeon's score, and the simulation has always had it. The
+    other affected tests the search found compare a blow with itself or assert no amount. The search did not open every
+    one of about 4,900 tests, so a blow built in a form it did not look for could be missed; the whole Unreal suite in
+    the window is the check, the coordinating session's note of the same day.
 - **THE CACHE DOES NOT SEE A RESISTANCE THAT CHANGES WITHOUT A STAT REFRESH.** It is worked out again when the gear
   changes (`ChangeCount`), on every stat refresh (`RefreshCount`, new: gear, a level gained, passive points, a dungeon
   modifier's stat change), when the level changes and when the difficulty tier changes. A timed buff that grants
@@ -79,14 +81,15 @@ The coordinating session's rulings of 2026-11-22:
 The plan's research (section 5, Q7) found no shipped game with the same mechanic, so Q7 is the simulation's model and
 not a genre shape. That research was done by the session that wrote the plan and was not re-read here.
 
-**The judgements of this change**, each with what it rests on:
+**The judgements of this change**, each with what it rests on. The first, second and fourth were RULED by the
+coordinating session on 2026-11-22, each as a judgement; the third and fifth are this change's own:
 
 | Judgement | What it rests on |
 | :-- | :-- |
-| **A creature's own rung, not the rung its death pays as** | Overwhelm is about how strong the creature that hits is; the Corrupted Stalker pays as a Boss while it stands at the Common rung (`RarityStepItPaysAs`, ruled 2026-10-25) |
-| **The creature's floor is its world's, `UCataclysmEnemyScore::FloorIn`** | the same floor its experience is scored on when it dies (`CataclysmEnemyCharacter.cpp`) |
+| **A creature's own rung, not the rung its death pays as** (ruled) | Overwhelm is about the blow, and the payout is a separate rule; the Corrupted Stalker pays as a Boss while it stands at the Common rung (`RarityStepItPaysAs`, ruled 2026-10-25) |
+| **The creature's floor is its world's, `UCataclysmEnemyScore::FloorIn`** (ruled) | the same floor its experience is scored on when it dies (`CataclysmEnemyCharacter.cpp`) |
 | **Each defence is held at nought** | the simulation's `max(0, 0.70 - ow)`; Overwhelm removes a defence and never adds damage past having none, as penetration stops at nought |
-| **Not stopped by the no-penetration tag** | Overwhelm is not penetration: the tag stops what the attacker's gear ignores, and the design gives creatures Overwhelm in its place |
+| **Not stopped by the no-penetration tag** (ruled) | the design separates the two: "Enemies carry no Penetration stat. Overwhelm ... already reduces the player's mitigation", so a tag about penetration does not reach Overwhelm |
 | **The floor panel shows a Common's and a Cataclysm Boss's** | the two ends of the ladder; every rung between applies between them |
 
 ### The arithmetic
