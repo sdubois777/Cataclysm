@@ -706,3 +706,5 @@ Positive_When_a_trap_is_triggered_near_an_active_gadget#1,Positive_When_a_trap_i
 Positive_For_every_3_traps_triggered_your_nearest_gadget#1,Positive_For_every_3_traps_triggered_your_nearest_gadget,,,200.0,400.0,Type.Trap,,0.0,,0.0,gadget_fires_at_trap_enemy,trap_triggered,,0,0.0,0.0,0.0,3,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_When_a_trap_triggers_all_enemies_within_4_6_met#1,Positive_When_a_trap_triggers_all_enemies_within_4_6_met,trap_pull_radius,flat,4.0,6.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
 Positive_This_weapon_has_2_4_damage_types#1,Positive_This_weapon_has_2_4_damage_types,damage_types_carried,flat,2.0,4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Positive_Sockets_on_this_equipment_fit_any_gem_type#1,Positive_Sockets_on_this_equipment_fit_any_gem_type,socket_fits_any_gem,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
+Negative_Gems_in_this_equipment_are_50_less_effective#1,Negative_Gems_in_this_equipment_are_50_less_effective,socketed_gem_effect,more,-50.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0
