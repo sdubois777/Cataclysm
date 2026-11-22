@@ -549,6 +549,57 @@ public:
 							   const FCataclysmItem*& OutRight,
 							   const FCataclysmItem*& OutLeft);
 
+	//~ The player's look, shared with the creatures that copy a player. Issue #2806.
+	//
+	// THE CORRUPTED STALKER AND THE WORN RESIDUE DOUBLE WEAR WHAT THE PLAYER WEARS, the owner's report of 2026-11-21:
+	// "The corrupted dopples and nemesis should be using the character model we use, it's kinda hard to see a grey
+	// cylinder coming at you before it murders you". These five are the player's own steps, moved out of
+	// `ResolveBody`, `ResolveAnimationBlueprint` and `RefreshWeaponMeshes` so that the player and its copies run the
+	// same code and cannot drift. THE PLAYER'S BEHAVIOUR IS UNCHANGED: it calls them in the same order, and keeps its
+	// own warnings around them, which is why none of these logs a missing asset.
+
+	/**
+	 * Hangs one empty hand from the body's `Socket`, for a worn weapon to be drawn in: no collision and no overlap
+	 * events, since a weapon in this game hits through the ability system rather than by touching anything.
+	 *
+	 * FROM A CONSTRUCTOR ONLY, as `CreateDefaultSubobject` must be called.
+	 */
+	static UStaticMeshComponent* MakeHand(ACharacter* Owner, FName Name, FName Socket);
+
+	/**
+	 * Puts the Mannequin body on `MeshComponent`, its feet at the bottom of a capsule of `HalfHeightCm` and at the
+	 * engine's -90 degree yaw. See `ResolveBody` for why each.
+	 *
+	 * @return false when the body could not be loaded, with nothing changed
+	 */
+	static bool WearTheMannequinsBody(USkeletalMeshComponent* MeshComponent, float HalfHeightCm);
+
+	/**
+	 * Points `MeshComponent` at `ABP_Unarmed`, with root motion ignored, or falls back to single-node mode when the
+	 * Blueprint cannot be loaded. See `ResolveAnimationBlueprint`.
+	 *
+	 * @return whether an animation Blueprint now drives the mesh
+	 */
+	static bool PlayTheMannequinsAnimationOn(USkeletalMeshComponent* MeshComponent);
+
+	/**
+	 * Loads the Mannequin's six death clips into `OutClips`, in `DeathAnimationNames` order, KEEPING A NULL ENTRY for
+	 * one that did not load: the order is the draw.
+	 *
+	 * @return how many loaded
+	 */
+	static int32 LoadTheMannequinsDeathClips(TArray<TObjectPtr<UAnimSequence>>& OutClips);
+
+	/**
+	 * Draws the weapons `FromEquipment` wears in `RightHand` and `LeftHand`, as `WeaponsInHands` chooses them, each at
+	 * its table's scale, and empties a hand that holds nothing. A worn base with no row in `DT_WeaponMeshes` is warned
+	 * about and draws nothing. `OutRightBase` and `OutLeftBase` are the item base each hand draws, none for an empty
+	 * hand: the art-free answer to what is in a hand, since without the weapons pack every mesh is null.
+	 */
+	static void DrawWeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
+								   UStaticMeshComponent* RightHand, UStaticMeshComponent* LeftHand,
+								   FName& OutRightBase, FName& OutLeftBase);
+
 	/**
 	 * Swings when the character uses any skill, including the basic attack.
 	 * Issue #1126.

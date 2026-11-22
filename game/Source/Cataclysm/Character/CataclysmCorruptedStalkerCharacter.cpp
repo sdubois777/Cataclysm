@@ -14,8 +14,15 @@
 #include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
+#include "Cataclysm.h"
 #include "Character/CataclysmClassStats.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Items/CataclysmWeaponMeshes.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -131,6 +138,92 @@ ACataclysmCorruptedStalkerCharacter::ACataclysmCorruptedStalkerCharacter()
 	TypedResistanceAttributes =
 		CreateDefaultSubobject<UCataclysmResistanceAttributeSet>(TEXT("TypedResistanceAttributes"));
 	ClassResourceAttributes = CreateDefaultSubobject<UCataclysmClassResourceAttributeSet>(TEXT("ClassResourceAttributes"));
+
+	// ITS TWO HANDS, AS THE PLAYER'S ARE MADE: empty until it wears a build, hung from the body's hand sockets so they
+	// follow the animation. Issue #2806. The body is put on in `PreRegisterAllComponents`, before these register and
+	// ask for their sockets.
+	RightHandWeapon = ACataclysmPlayerCharacter::MakeHand(this, TEXT("RightHandWeapon"),
+														   UCataclysmWeaponMeshes::RightHandSocket);
+	LeftHandWeapon = ACataclysmPlayerCharacter::MakeHand(this, TEXT("LeftHandWeapon"),
+														  UCataclysmWeaponMeshes::LeftHandSocket);
+}
+
+const FLinearColor ACataclysmCorruptedStalkerCharacter::CopyTint(0.30f, 0.02f, 0.02f, 1.0f);
+const FName ACataclysmCorruptedStalkerCharacter::CopyTintParameter(TEXT("Paint Tint"));
+
+void ACataclysmCorruptedStalkerCharacter::WearTheCopiesTint()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!MeshComponent)
+	{
+		return;
+	}
+	// EVERY SLOT, EACH ITS OWN INSTANCE, so one copy's tint is never written to an asset another body shares.
+	for (int32 Slot = 0; Slot < MeshComponent->GetNumMaterials(); ++Slot)
+	{
+		if (UMaterialInstanceDynamic* Instance = MeshComponent->CreateDynamicMaterialInstance(Slot))
+		{
+			Instance->SetVectorParameterValue(CopyTintParameter, CopyTint);
+		}
+	}
+}
+
+void ACataclysmCorruptedStalkerCharacter::PreRegisterAllComponents()
+{
+	Super::PreRegisterAllComponents();
+
+	// BEFORE THE HANDS REGISTER, as the player does, so they find their sockets on a body. Issue #1542 for the player.
+	WearBodyBeforeComponentsRegister(ACataclysmPlayerCharacter::BodyMeshPath);
+}
+
+void ACataclysmCorruptedStalkerCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	ResolveBody();
+}
+
+bool ACataclysmCorruptedStalkerCharacter::ResolveBody()
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (!ACataclysmPlayerCharacter::WearTheMannequinsBody(
+			MeshComponent, GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("A player copy found no Mannequin body at %s, so it is keeping the placeholder cylinder."),
+			ACataclysmPlayerCharacter::BodyMeshPath);
+		return false;
+	}
+	if (!ACataclysmPlayerCharacter::PlayTheMannequinsAnimationOn(MeshComponent))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("A player copy found no animation Blueprint at %s, so it will slide rather than walk."),
+			ACataclysmPlayerCharacter::AnimationBlueprintPath);
+	}
+
+	// THE DEATH CLIPS ON THE CREATURE'S OWN LIST, which `ACataclysmEnemyCharacter::PlayDeathAnimation` draws from.
+	const int32 Found = ACataclysmPlayerCharacter::LoadTheMannequinsDeathClips(DeathAnimations);
+	if (Found < DeathAnimations.Num())
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("A player copy found %d of %d death clips in %s."), Found,
+			DeathAnimations.Num(), ACataclysmPlayerCharacter::DeathAnimationFolder);
+	}
+
+	// OTHERWISE THE CYLINDER SITS INSIDE THE BODY. `ACataclysmEnemyCharacter` creates PlaceholderBody in its
+	// constructor and nothing about assigning a skeletal mesh removes it.
+	if (PlaceholderBody)
+	{
+		PlaceholderBody->SetVisibility(false);
+	}
+
+	// AND THE COPIES' DARK RED, the owner's ruling of 2026-11-21: "give them a dark red tint". See `CopyTint`.
+	WearTheCopiesTint();
+	return true;
+}
+
+void ACataclysmCorruptedStalkerCharacter::DrawWornWeapons(const UCataclysmEquipmentComponent* Wardrobe)
+{
+	ACataclysmPlayerCharacter::DrawWeaponsInHands(Wardrobe, RightHandWeapon, LeftHandWeapon, RightHandBase,
+												  LeftHandBase);
 }
 
 TArray<FCataclysmStalkerEntry> ACataclysmCorruptedStalkerCharacter::Entries()
@@ -209,6 +302,8 @@ bool ACataclysmCorruptedStalkerCharacter::WearTheBuild(const FCataclysmStalkerEn
 		FCataclysmItem AlsoRemoved;
 		Wardrobe->EquipInto(Pieces[Index], Entry.Pieces[Index].Slot, Removed, AlsoRemoved);
 	}
+	// THE WEAPONS IT WEARS, IN ITS HANDS. Issue #2806.
+	DrawWornWeapons(Wardrobe);
 	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = Wardrobe->GatherModifiers();
 	UCataclysmPassiveTree::AccumulateInto(Modifiers, Entry.Allocation, NodeTable, EffectTable, { Entry.DamageType });
 	const TMap<FName, float> Bases = Wardrobe->StatBasesFromWeapons();

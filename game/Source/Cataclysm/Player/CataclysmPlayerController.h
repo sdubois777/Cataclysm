@@ -17,6 +17,8 @@ class UCataclysmEmpireMapWidget;
 class UCataclysmEmpireTreeWidget;
 class UCataclysmForgeWidget;
 class UCataclysmFloorModifierPanel;
+class UCataclysmGroundItemTooltip;
+class ACataclysmComparisonStandIn;
 
 /**
  * What `ACataclysmPlayerController::ShowFloorModifiers` was last told, and how many times it has been told anything,
@@ -558,6 +560,16 @@ private:
 	class ACataclysmFloorObject* FloorObjectUnderCursor() const;
 
 	/**
+	 * Shows, moves or hides the ground hover's tooltip for the drop under the cursor. Issue #2807: the bag's tooltip
+	 * and comparison for an item on the ground, see `UCataclysmGroundItemHover`. Run every frame from
+	 * `PostProcessInput`; the text is worked out again only when `UCataclysmGroundItemHover::NeedsRebuild` says so.
+	 *
+	 * NOTHING WHILE THE CURSOR IS OVER THE INTERFACE, the inventory screen included, as
+	 * `ACataclysmHUD::CreatureUnderCursor` gives nothing then.
+	 */
+	void RefreshGroundItemHover();
+
+	/**
 	 * Takes every crafting material lying near the character. Issue #851.
 	 *
 	 * RUN EVERY FRAME, beside UpdatePendingPickup, because the character walks
@@ -843,6 +855,22 @@ private:
 	 */
 	UPROPERTY()
 	TObjectPtr<UCataclysmFloorModifierPanel> FloorModifierPanel = nullptr;
+
+	/** The ground hover's tooltip, made the first time a drop is hovered. See `RefreshGroundItemHover`. Issue #2807. */
+	UPROPERTY()
+	TObjectPtr<UCataclysmGroundItemTooltip> GroundItemTooltip = nullptr;
+
+	/** The drop the ground hover's tooltip was last worked out for, and the equipment's change count then. */
+	TWeakObjectPtr<ACataclysmDroppedItem> GroundTooltipShows;
+	int32 GroundTooltipShownAtWornChanges = -1;
+
+	/**
+	 * The stand-in the ground hover compares with: ITS OWN, spawned by `RefreshGroundItemHover` the first time a piece
+	 * of gear is hovered, whether or not the inventory has ever been opened. Transient and hidden
+	 * (`ACataclysmComparisonStandIn::SpawnIn`), so it goes with its world: a level change destroys it, this weak
+	 * pointer reads null, and the next hover spawns one in the new world. The inventory screen keeps its own the same way.
+	 */
+	TWeakObjectPtr<ACataclysmComparisonStandIn> GroundStandIn;
 
 	/** See `FloorModifiersShown`. Issue #1841. */
 	FCataclysmFloorModifiersShown LastFloorModifiersShown;

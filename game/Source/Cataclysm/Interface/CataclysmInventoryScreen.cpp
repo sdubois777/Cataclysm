@@ -9,6 +9,18 @@
 #include "Engine/DataTable.h"
 
 const TCHAR* UCataclysmInventoryScreen::PanelHex = TEXT("0A0F12");
+
+FLinearColor UCataclysmInventoryScreen::PanelColour()
+{
+	FLinearColor Colour = UCataclysmCombatOverlay::ColourFromHex(PanelHex);
+	Colour.A = PanelOpacity;
+	return Colour;
+}
+
+FLinearColor UCataclysmInventoryScreen::InkColour()
+{
+	return UCataclysmCombatOverlay::ColourFromHex(InkHex);
+}
 const TCHAR* UCataclysmInventoryScreen::PanelEdgeHex = TEXT("4A525C");
 const TCHAR* UCataclysmInventoryScreen::CellInteriorHex = TEXT("0A0F12");
 const TCHAR* UCataclysmInventoryScreen::EmptyCellHex = TEXT("5A6470");

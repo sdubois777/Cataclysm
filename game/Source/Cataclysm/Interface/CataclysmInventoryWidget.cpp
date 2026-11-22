@@ -9,6 +9,7 @@
 #include "Interface/CataclysmInventoryScreen.h"
 #include "Interface/CataclysmItemComparison.h"
 #include "Interface/CataclysmItemTooltip.h"
+#include "Interface/CataclysmItemTooltipPanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -39,10 +40,7 @@ namespace
 	/** The panel's colour, with the share of the world it hides. */
 	FLinearColor PanelColour()
 	{
-		FLinearColor Colour =
-			UCataclysmCombatOverlay::ColourFromHex(FScreen::PanelHex);
-		Colour.A = FScreen::PanelOpacity;
-		return Colour;
+		return FScreen::PanelColour();
 	}
 
 	/**
@@ -63,7 +61,7 @@ namespace
 	/** Every piece of text on this screen: the header, a label and a count. */
 	FLinearColor InkColour()
 	{
-		return UCataclysmCombatOverlay::ColourFromHex(FScreen::InkHex);
+		return FScreen::InkColour();
 	}
 
 	/** The panel's edge and the rule under the header. */
@@ -140,34 +138,9 @@ ACataclysmComparisonStandIn* UCataclysmInventoryWidget::StandInForComparing()
 
 UWidget* UCataclysmInventoryWidget::MakeComparisonToolTip(const FString& Left, const FString& Right)
 {
-	// BUILT INTO THE WIDGET TREE LIKE EVERY OTHER WIDGET HERE, with no asset, and only when the contents or what is
-	// worn changed, never every frame: a new tooltip object each frame is issue #1192's fault.
-	UBorder* Back = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Back->SetBrush(FSlateColorBrush(PanelColour()));
-	Back->SetPadding(FMargin(FScreen::PanelPaddingPx * 0.5f));
-
-	UHorizontalBox* Across = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Back->SetContent(Across);
-
-	// THE HOVERED ITEM AND WHAT WEARING IT WOULD DO, ON THE LEFT.
-	UTextBlock* Hovered = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Hovered->SetText(FText::FromString(Left));
-	Hovered->SetColorAndOpacity(FSlateColor(InkColour()));
-	Hovered->SetFontSize(static_cast<float>(FScreen::ComparisonFontPx));
-	Across->AddChildToHorizontalBox(Hovered)->SetVerticalAlignment(VAlign_Top);
-
-	// WHAT IS WORN NOW, ON THE RIGHT, a panel's padding away.
-	if (!Right.IsEmpty())
-	{
-		UTextBlock* Worn = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Worn->SetText(FText::FromString(Right));
-		Worn->SetColorAndOpacity(FSlateColor(InkColour()));
-		Worn->SetFontSize(static_cast<float>(FScreen::ComparisonFontPx));
-		UHorizontalBoxSlot* WornSlot = Across->AddChildToHorizontalBox(Worn);
-		WornSlot->SetVerticalAlignment(VAlign_Top);
-		WornSlot->SetPadding(FMargin(FScreen::PanelPaddingPx, 0.0f, 0.0f, 0.0f));
-	}
-	return Back;
+	// THE PANEL THE GROUND HOVER DRAWS TOO, built in this widget's tree. Issue #2807: moved, unchanged, into
+	// `FCataclysmItemTooltipPanel::Build`, so the two look the same.
+	return FCataclysmItemTooltipPanel::Build(WidgetTree, Left, Right);
 }
 
 void UCataclysmInventoryWidget::BuildTree()
@@ -606,27 +579,18 @@ void UCataclysmInventoryWidget::Refresh(
 			// A PIECE OF GEAR IS COMPARED WITH WHAT WEARING IT WOULD REPLACE,
 			// since issue #832, in two columns, shown whenever it is hovered with
 			// no key held (ruling (d)).
-			FCataclysmComparisonResult Compared;
+			//
+			// THROUGH `UCataclysmItemComparison::TooltipColumnsFor`, which the ground hover calls too, so the two
+			// cannot disagree. Issue #2807: these steps were written out here until then, and that function holds
+			// them unchanged.
 			ACataclysmComparisonStandIn* StandIn =
 				!Carried.Item.Base.IsNone() && Equipment ? StandInForComparing() : nullptr;
-			if (StandIn)
+			FString Left;
+			FString Right;
+			if (UCataclysmItemComparison::TooltipColumnsFor(Carried, Equipment, Abilities, StandIn, &WornNow, Bases,
+															Affixes, Materials, PositiveEnchantments,
+															NegativeEnchantments, Left, Right))
 			{
-				if (!WornNow.bRead)
-				{
-					WornNow = UCataclysmItemComparison::ReadingOf(
-						Equipment->GetSlots(), *Equipment, Abilities, *StandIn);
-				}
-				Compared = UCataclysmItemComparison::Compare(
-					Carried.Item, *Equipment, Abilities, *StandIn, &WornNow);
-			}
-
-			if (Compared.bCompared)
-			{
-				FString Left;
-				FString Right;
-				UCataclysmItemComparison::Columns(Carried, Compared, Bases, Affixes,
-												  Materials, PositiveEnchantments,
-												  NegativeEnchantments, Left, Right);
 				Widgets.Frame->SetToolTip(MakeComparisonToolTip(Left, Right));
 			}
 			else
@@ -638,10 +602,7 @@ void UCataclysmInventoryWidget::Refresh(
 				// AN EMPTY STRING REMOVES THE TOOL TIP RATHER THAN SHOWING A BLANK
 				// BOX, which is what an empty cell should do.
 				Widgets.Frame->SetToolTip(nullptr);
-				Widgets.Frame->SetToolTipText(FText::FromString(
-					UCataclysmItemTooltip::TextFor(Carried, Bases, Affixes, Materials,
-												   PositiveEnchantments,
-												   NegativeEnchantments)));
+				Widgets.Frame->SetToolTipText(FText::FromString(Left));
 			}
 		}
 	}

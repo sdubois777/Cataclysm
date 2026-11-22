@@ -277,8 +277,8 @@ void ACataclysmAbyssalWardenCharacter::UpdateLoopingAnimation()
 	{
 		// A COMMANDED CREATURE'S SPEED FOLLOWS ITS COMMANDER'S WHILE IT JOGS, so the rate is put right on the clip
 		// already playing; `SetPlayRate` does not restart it. A creature nobody commands is left alone, as before.
-		// Issue #2793.
-		if (bWalking && bWalkSpeedFollowsACommander)
+		// Issue #2793. AND A CHARGE'S SPEED WHILE ONE RUNS, issue #2809.
+		if (bWalking && (bWalkSpeedFollowsACommander || IsCharging()))
 		{
 			MeshComponent->SetPlayRate(JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
 																	MinimumPlayRate, MaximumPlayRate));
@@ -389,6 +389,33 @@ void ACataclysmAbyssalWardenCharacter::PlayAttackAnimation()
 	AttackSequenceIndex = 0;
 
 	UpdateLoopingAnimation();
+}
+
+void ACataclysmAbyssalWardenCharacter::HoldFirstFrame(UAnimSequence* Animation, float HoldSeconds)
+{
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (bAnimationBlueprintBound || !Animation || !MeshComponent)
+	{
+		// AS `PlayOneShot` WOULD, which records the clip and handles a missing one and a bound Blueprint. See the header.
+		PlayOneShot(Animation, HoldSeconds);
+		return;
+	}
+
+	// WHATEVER PLAYS NEXT REPLACES A FLINCH, as `PlayOneShot` says.
+	ForgetFlinch();
+	LastPlayedAnimation = Animation;
+
+	// ITS FIRST FRAME, STILL: played, put at nought, and given a rate of nought.
+	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
+	MeshComponent->SetPosition(0.0f, /*bFireNotifies=*/false);
+	MeshComponent->SetPlayRate(0.0f);
+
+	// HELD AGAINST THE LOOP for the wind-up, as a one-shot is.
+	if (const UWorld* World = GetWorld())
+	{
+		OneShotEndsAtSeconds = World->GetTimeSeconds() + HoldSeconds;
+	}
+	CurrentLoopingAnimation = nullptr;
 }
 
 float ACataclysmAbyssalWardenCharacter::PlayOneShot(UAnimSequence* Animation,
@@ -599,6 +626,14 @@ void ACataclysmAbyssalWardenCharacter::UseEnemyAbility(int32 Index,
 		// different distance for a stated reason.
 		BeginCharge(AimedAt, StampedeSpeedCmPerSecondInUse(), StampedeRadiusCm,
 					StampedeDamagePercent, StampedeKnockbackCm);
+
+		// AND THE RUN PLAYS STAMPEDE, at its authored rate, for its 0.7 seconds, which is how long the run lasts.
+		// Ruling J2 of 2026-11-21, issue #2809: see `BeginEnemyAbilityWindUp`. Only when the charge set off: a Warden
+		// standing in a pit is refused it.
+		if (IsCharging())
+		{
+			PlayOneShot(StampedeAnimation);
+		}
 	}
 }
 
@@ -619,16 +654,20 @@ void ACataclysmAbyssalWardenCharacter::BeginEnemyAbilityWindUp(int32 Index,
 
 	if (Index == StampedeAbility)
 	{
-		// THE CLIP RUNS DURING THE WIND-UP, NOT DURING THE TRAVEL, and that is
-		// worth stating because it reads backwards at first. Every ability in
-		// this project plays its animation across the telegraph and resolves at
-		// the end of it, and a charge is no exception: the creature digs in and
-		// gathers itself while the lane is on the floor, then sets off.
+		// THE WIND-UP HOLDS THE CLIP'S FIRST FRAME, AND THE RUN PLAYS IT. The
+		// coordinating session's ruling J2 of 2026-11-21, issue #2809, from the
+		// owner's playtest the same day: "Enemies using any charge attack aren't
+		// sprinting like they're charging, they're just sliding into position."
+		// Until then the clip ran here, through the wind-up, as every ability in
+		// this project plays its animation across the telegraph, and the 0.7
+		// second run showed the idle while the body slid eight metres.
 		//
-		// 0.700 SECONDS INSIDE 0.83, so it plays at its authored speed and holds
-		// its last pose for the remaining tenth. PlayOneShot clamps a rate
-		// upwards only, so nothing here is stretched.
-		PlayOneShot(StampedeAnimation);
+		// STAMPEDE IS THE PACK'S AUTHORED CHARGE, AND ITS 0.700 SECONDS IS THE
+		// RUN: the charge's speed was derived so it covers its range in this
+		// clip's length (see `StampedeSpeedCmPerSecond`). So the run plays it at
+		// its authored rate, from `UseEnemyAbility`, and the creature digs in on
+		// its first pose while the lane is on the floor.
+		HoldFirstFrame(StampedeAnimation, StampedeWindUpSeconds);
 	}
 }
 

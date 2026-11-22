@@ -676,6 +676,16 @@ public:
 	float PlayOneShot(class UAnimSequence* Animation, float HoldSeconds = 0.0f);
 
 	/**
+	 * Shows `Animation`'s first frame, still, for `HoldSeconds`, and records it as `PlayOneShot` does, so the looping
+	 * clip does not replace it. Stampede's wind-up: the creature digs in on the charge's first pose, then runs it.
+	 * Issue #2809, the coordinating session's ruling J2 of 2026-11-21.
+	 *
+	 * WITH AN ANIMATION BLUEPRINT BOUND it plays the clip as `PlayOneShot` does instead, since a slot montage is not held
+	 * on one frame here. None is bound today: `ABP_AbyssalWarden` has never been authored.
+	 */
+	void HoldFirstFrame(class UAnimSequence* Animation, float HoldSeconds);
+
+	/**
 	 * The ground speed `Jog_Fwd` was authored for, in centimetres per second.
 	 *
 	 * MEASURED, NOT GUESSED. `tools/measure_animation_stride.py` samples the two

@@ -45,6 +45,10 @@
 #include "GameFramework/Pawn.h"
 #include "Cataclysm.h"
 #include "Interface/CataclysmFloorModifierPanel.h"
+#include "Interface/CataclysmGroundItemHover.h"
+#include "Character/CataclysmComparisonStandIn.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 
 ACataclysmPlayerController::ACataclysmPlayerController()
 {
@@ -557,6 +561,9 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 			ASC->ProcessAbilityInput();
 		}
 	}
+
+	// THE BAG'S TOOLTIP FOR AN ITEM ON THE GROUND, beside the cursor. Issue #2807.
+	RefreshGroundItemHover();
 
 	Super::PostProcessInput(DeltaTime, bGamePaused);
 }
@@ -1863,6 +1870,79 @@ void ACataclysmPlayerController::OpenChoicePanel(ACataclysmFloorObject* Object)
 		ChoicePanel->AddToViewport();
 	}
 	ApplyPlayingInputMode();
+}
+
+void ACataclysmPlayerController::RefreshGroundItemHover()
+{
+	using Hover = UCataclysmGroundItemHover;
+
+	// WHAT A CLICK WOULD PICK UP, and nothing while the cursor is over the interface.
+	ACataclysmDroppedItem* Hovered = CursorIsOverInterface() ? nullptr : DropUnderCursor();
+	if (Hover::KindFor(Hovered) == ECataclysmGroundHover::Nothing)
+	{
+		Hovered = nullptr;
+	}
+
+	if (!Hovered)
+	{
+		if (GroundItemTooltip && GroundItemTooltip->IsInViewport())
+		{
+			GroundItemTooltip->RemoveFromParent();
+		}
+		GroundTooltipShows = nullptr;
+		return;
+	}
+
+	if (!GroundItemTooltip)
+	{
+		GroundItemTooltip = CreateWidget<UCataclysmGroundItemTooltip>(this, UCataclysmGroundItemTooltip::StaticClass());
+		if (!GroundItemTooltip)
+		{
+			return;
+		}
+		// NEVER HIT-TESTED, so it cannot take a click or make the cursor read as over the interface.
+		GroundItemTooltip->SetVisibility(ESlateVisibility::HitTestInvisible);
+	}
+	if (!GroundItemTooltip->IsInViewport())
+	{
+		GroundItemTooltip->AddToViewport();
+	}
+
+	// WORKED OUT AGAIN ONLY ON A CHANGE: another drop, or a change to what is worn. The hover must not cost the frame.
+	const ACataclysmPlayerCharacter* Hoverer = Cast<ACataclysmPlayerCharacter>(GetPawn());
+	UCataclysmEquipmentComponent* Equipment = Hoverer ? Hoverer->GetEquipment() : nullptr;
+	const int32 WornChanges = Equipment ? Equipment->ChangeCount() : 0;
+	if (Hover::NeedsRebuild(Hovered, GroundTooltipShows.Get(), WornChanges, GroundTooltipShownAtWornChanges))
+	{
+		// ITS OWN STAND-IN, spawned the first time gear is hovered; see the header.
+		if (!GroundStandIn.IsValid() && Hover::KindFor(Hovered) == ECataclysmGroundHover::Gear)
+		{
+			GroundStandIn = ACataclysmComparisonStandIn::SpawnIn(GetWorld());
+		}
+		FString Left;
+		FString Right;
+		Hover::ColumnsFor(Hovered, Equipment, Hoverer ? Hoverer->GetAbilitySystemComponent() : nullptr,
+						  GroundStandIn.Get(), Left, Right);
+		GroundItemTooltip->Show(Left, Right);
+		GroundTooltipShows = Hovered;
+		GroundTooltipShownAtWornChanges = WornChanges;
+	}
+
+	// BESIDE THE CURSOR, IN PIXELS. The panel's desired size is in the interface's units, so it is scaled to pixels.
+	float MouseX = 0.0f;
+	float MouseY = 0.0f;
+	int32 ViewportX = 0;
+	int32 ViewportY = 0;
+	if (!GetMousePosition(MouseX, MouseY))
+	{
+		return;
+	}
+	GetViewportSize(ViewportX, ViewportY);
+	const FVector2D PanelPx = GroundItemTooltip->GetDesiredSize() * UWidgetLayoutLibrary::GetViewportScale(this);
+	GroundItemTooltip->SetPositionInViewport(
+		Hover::PanelPositionFor(FVector2D(MouseX, MouseY), PanelPx,
+								FVector2D(static_cast<double>(ViewportX), static_cast<double>(ViewportY))),
+		/*bRemoveDPIScale=*/true);
 }
 
 ACataclysmDroppedItem* ACataclysmPlayerController::DropUnderCursor() const

@@ -504,6 +504,14 @@ public:
 	 */
 	static const TCHAR* InkHex;
 
+	/**
+	 * The panel's colour, `PanelHex` at `PanelOpacity`, and the ink's, `InkHex`: what the screen's widgets are drawn
+	 * in. HERE SINCE ISSUE #2807 so the item tooltip panel the bag and the ground hover share is drawn in the same
+	 * colours; until then they were file-local helpers in `CataclysmInventoryWidget.cpp`, which now return these.
+	 */
+	static FLinearColor PanelColour();
+	static FLinearColor InkColour();
+
 	/** Clear space between a cell's frame and the label inside it. */
 	static constexpr float LabelPaddingPx = 3.0f;
 };

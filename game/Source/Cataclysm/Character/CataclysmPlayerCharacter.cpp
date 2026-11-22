@@ -300,24 +300,23 @@ ACataclysmPlayerCharacter::ACataclysmPlayerCharacter()
 	// and in a game world PreRegisterAllComponents has put the model on by then:
 	// a mesh with no model cannot answer, and the engine warns each time it is
 	// asked. Issue #1542.
-	RightHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
-		TEXT("RightHandWeapon"));
-	RightHandWeapon->SetupAttachment(GetMesh(),
-									 UCataclysmWeaponMeshes::RightHandSocket);
+	//
+	// THROUGH `MakeHand`, which the creatures that copy a player use too. Issue #2806.
+	RightHandWeapon = MakeHand(this, TEXT("RightHandWeapon"), UCataclysmWeaponMeshes::RightHandSocket);
+	LeftHandWeapon = MakeHand(this, TEXT("LeftHandWeapon"), UCataclysmWeaponMeshes::LeftHandSocket);
+}
 
-	LeftHandWeapon = CreateDefaultSubobject<UStaticMeshComponent>(
-		TEXT("LeftHandWeapon"));
-	LeftHandWeapon->SetupAttachment(GetMesh(),
-									UCataclysmWeaponMeshes::LeftHandSocket);
+UStaticMeshComponent* ACataclysmPlayerCharacter::MakeHand(ACharacter* Owner, FName Name, FName Socket)
+{
+	UStaticMeshComponent* Hand = Owner->CreateDefaultSubobject<UStaticMeshComponent>(Name);
+	Hand->SetupAttachment(Owner->GetMesh(), Socket);
 
-	// NO COLLISION ON EITHER. A weapon in this game hits through the ability
-	// system rather than by touching anything -- see UCataclysmStrikeTemplate --
-	// so collision here would only push the character around and catch on
-	// scenery.
-	RightHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	RightHandWeapon->SetGenerateOverlapEvents(false);
-	LeftHandWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	LeftHandWeapon->SetGenerateOverlapEvents(false);
+	// NO COLLISION. A weapon in this game hits through the ability system rather
+	// than by touching anything -- see UCataclysmStrikeTemplate -- so collision
+	// here would only push the character around and catch on scenery.
+	Hand->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Hand->SetGenerateOverlapEvents(false);
+	return Hand;
 }
 
 void ACataclysmPlayerCharacter::WeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
@@ -364,6 +363,23 @@ void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
 		return;
 	}
 
+	// THE SAME DRAWING THE CREATURES THAT COPY A PLAYER USE. Issue #2806.
+	FName InRightHand;
+	FName InLeftHand;
+	DrawWeaponsInHands(Equipment, RightHandWeapon, LeftHandWeapon, InRightHand, InLeftHand);
+}
+
+void ACataclysmPlayerCharacter::DrawWeaponsInHands(const UCataclysmEquipmentComponent* FromEquipment,
+												   UStaticMeshComponent* RightHand, UStaticMeshComponent* LeftHand,
+												   FName& OutRightBase, FName& OutLeftBase)
+{
+	OutRightBase = NAME_None;
+	OutLeftBase = NAME_None;
+	if (!RightHand || !LeftHand)
+	{
+		return;
+	}
+
 	const UDataTable* Table = UCataclysmWeaponMeshes::LoadTable();
 
 	// RIGHT THEN LEFT, AS `WeaponsInHands` CHOOSES THEM. A two-handed weapon sits
@@ -372,10 +388,12 @@ void ACataclysmPlayerCharacter::RefreshWeaponMeshes()
 	// decision.
 	const FCataclysmItem* InRightHand = nullptr;
 	const FCataclysmItem* InLeftHand = nullptr;
-	WeaponsInHands(Equipment, InRightHand, InLeftHand);
+	WeaponsInHands(FromEquipment, InRightHand, InLeftHand);
+	OutRightBase = InRightHand ? InRightHand->Base : NAME_None;
+	OutLeftBase = InLeftHand ? InLeftHand->Base : NAME_None;
 	const TPair<const FCataclysmItem*, UStaticMeshComponent*> Hands[] = {
-		{InRightHand, RightHandWeapon},
-		{InLeftHand, LeftHandWeapon},
+		{InRightHand, RightHand},
+		{InLeftHand, LeftHand},
 	};
 
 	for (const TPair<const FCataclysmItem*, UStaticMeshComponent*>& Hand : Hands)
@@ -428,9 +446,9 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 		return false;
 	}
 
-	USkeletalMesh* Body =
-		Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad());
-	if (!Body)
+	// THE BODY, PLACED, THROUGH THE STEP THE CREATURES THAT COPY A PLAYER TAKE
+	// TOO. Issue #2806.
+	if (!WearTheMannequinsBody(MeshComponent, CapsuleHalfHeight))
 	{
 		// NOT AN ERROR, AND NOT FATAL. A checkout without the Mannequin assets
 		// gets an invisible capsule that still walks, still fights and still
@@ -445,36 +463,11 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 		return false;
 	}
 
-	MeshComponent->SetSkeletalMesh(Body);
-
-	// FEET ON THE CAPSULE BOTTOM, AND THE ENGINE'S YAW. The same two lines the
-	// Brute and the Abyssal Warden use, for the same two reasons. A skeletal
-	// mesh is authored with its origin at the feet and a capsule's origin is its
-	// centre, so the mesh drops by the half-height or the character walks around
-	// with its waist at floor level. The -90 degree yaw is the engine's
-	// convention for character meshes, which face -Y while the actor faces +X;
-	// without it the character walks sideways.
-	MeshComponent->SetRelativeLocationAndRotation(
-		FVector(0.0f, 0.0f, -CapsuleHalfHeight),
-		FRotator(0.0f, -90.0f, 0.0f));
-
 	ResolveAnimationBlueprint(MeshComponent);
 
-	// THE DEATH CLIPS, AND A NULL ENTRY IS KEPT rather than skipped, which is
-	// the rule ACataclysmEnemyCharacter::PlayDeathAnimation already follows:
-	// dropping one would change how many clips there are and therefore which one
-	// every other death draws.
-	DeathAnimations.Reset();
-	int32 Found = 0;
-	for (const TCHAR* Name : DeathAnimationNames)
-	{
-		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
-											 DeathAnimationFolder, Name, Name);
-		UAnimSequence* Clip =
-			Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad());
-		DeathAnimations.Add(Clip);
-		Found += Clip ? 1 : 0;
-	}
+	// THE DEATH CLIPS, AND A NULL ENTRY IS KEPT rather than skipped: see
+	// `LoadTheMannequinsDeathClips`.
+	const int32 Found = LoadTheMannequinsDeathClips(DeathAnimations);
 
 	if (Found < static_cast<int32>(UE_ARRAY_COUNT(DeathAnimationNames)))
 	{
@@ -630,15 +623,12 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
 	USkeletalMeshComponent* MeshComponent)
 {
+	// THE SAME STEP THE CREATURES THAT COPY A PLAYER TAKE. Issue #2806.
 	if (!MeshComponent)
 	{
 		return false;
 	}
-
-	UClass* AnimationClass =
-		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
-
-	if (!AnimationClass)
+	if (!PlayTheMannequinsAnimationOn(MeshComponent))
 	{
 		// THE SAME FALLBACK THE ABYSSAL WARDEN HAS, and for once it is expected
 		// not to be reached: ABP_Unarmed ships with the Mannequin and is copied
@@ -649,7 +639,25 @@ bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
 				 "character will slide rather than walk. Its death clips are "
 				 "played onto the component directly and are unaffected."),
 			AnimationBlueprintPath);
+		return false;
+	}
+	return true;
+}
 
+bool ACataclysmPlayerCharacter::PlayTheMannequinsAnimationOn(USkeletalMeshComponent* MeshComponent)
+{
+	if (!MeshComponent)
+	{
+		return false;
+	}
+
+	UClass* AnimationClass =
+		FSoftClassPath(AnimationBlueprintPath).TryLoadClass<UAnimInstance>();
+
+	if (!AnimationClass)
+	{
+		// THE CALLER SAYS SO: the player warns in `ResolveAnimationBlueprint`, a copy in its own `ResolveBody`.
+		//
 		// SAID OUTRIGHT RATHER THAN LEFT AT THE DEFAULT, which is what the
 		// Warden does and for the reason recorded there: a mesh component
 		// starts in single-node mode, so this line changes nothing today and is
@@ -692,6 +700,52 @@ bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(
 	}
 
 	return true;
+}
+
+bool ACataclysmPlayerCharacter::WearTheMannequinsBody(USkeletalMeshComponent* MeshComponent,
+													  float HalfHeightCm)
+{
+	USkeletalMesh* Body = MeshComponent
+		? Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad())
+		: nullptr;
+	if (!Body)
+	{
+		return false;
+	}
+
+	MeshComponent->SetSkeletalMesh(Body);
+
+	// FEET ON THE CAPSULE BOTTOM, AND THE ENGINE'S YAW. The same two lines the
+	// Brute and the Abyssal Warden use, for the same two reasons. A skeletal
+	// mesh is authored with its origin at the feet and a capsule's origin is its
+	// centre, so the mesh drops by the half-height or the character walks around
+	// with its waist at floor level. The -90 degree yaw is the engine's
+	// convention for character meshes, which face -Y while the actor faces +X;
+	// without it the character walks sideways.
+	MeshComponent->SetRelativeLocationAndRotation(
+		FVector(0.0f, 0.0f, -HalfHeightCm),
+		FRotator(0.0f, -90.0f, 0.0f));
+	return true;
+}
+
+int32 ACataclysmPlayerCharacter::LoadTheMannequinsDeathClips(TArray<TObjectPtr<UAnimSequence>>& OutClips)
+{
+	// A NULL ENTRY IS KEPT rather than skipped, which is the rule
+	// ACataclysmEnemyCharacter::PlayDeathAnimation already follows: dropping one
+	// would change how many clips there are and therefore which one every other
+	// death draws.
+	OutClips.Reset();
+	int32 Found = 0;
+	for (const TCHAR* Name : DeathAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 DeathAnimationFolder, Name, Name);
+		UAnimSequence* Clip =
+			Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad());
+		OutClips.Add(Clip);
+		Found += Clip ? 1 : 0;
+	}
+	return Found;
 }
 
 float ACataclysmPlayerCharacter::PlayDeathAnimation()

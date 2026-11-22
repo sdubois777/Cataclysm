@@ -2,6 +2,504 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Hovering an item on the ground shows the bag's tooltip and its comparison with what is worn, through the same code (#2807)
+
+**Affects:** `UCataclysmItemComparison::TooltipColumnsFor`, new, the steps `UCataclysmInventoryWidget` wrote out
+inline, which the bag now calls (`game/Source/Cataclysm/Interface/CataclysmItemComparison.h` and `.cpp`,
+`CataclysmInventoryWidget.cpp`); `FCataclysmItemTooltipPanel::Build`, new, the bag's tooltip panel moved unchanged out
+of `UCataclysmInventoryWidget::MakeComparisonToolTip`, which now calls it (`CataclysmItemTooltipPanel.h` and `.cpp`);
+`UCataclysmInventoryScreen::PanelColour` and `InkColour`, new, which the bag's file-local helpers now return
+(`CataclysmInventoryScreen.h` and `.cpp`); `UCataclysmGroundItemHover` and `UCataclysmGroundItemTooltip`, new
+(`CataclysmGroundItemHover.h` and `.cpp`); `ACataclysmPlayerController::RefreshGroundItemHover`, new, run from
+`PostProcessInput`, with its widget, what it shows and its stand-in (`game/Source/Cataclysm/Player/CataclysmPlayerController.h`
+and `.cpp`). Tests: the new group `Cataclysm.GroundItemHover.`, six, in
+`game/Source/Cataclysm/Tests/CataclysmGroundItemHoverTests.cpp`. Issue
+[#2807](https://github.com/sdubois777/Cataclysm/issues/2807).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
+- **THE OWNER'S REQUEST, 2026-11-21, VERBATIM:** "I would like that same gear comparison thing we have in the inventory
+  to pop up when you hover over an item on the ground. That way you can tell if it's worth picking up before clogging
+  your inventory".
+- **WHAT NO TEST HERE CAN SEE: the panel reaching the screen.** The automation command passes -nullrhi, and issue #650
+  records that a widget does not move that wall. **The bag's own cell tooltip cannot be built in a test world either**,
+  so the tests compare the hover with the steps the bag takes, built in the test exactly as the bag built them before
+  this change, and not with the bag's widget. That the panel looks like the bag's rests on it being the same builder.
+
+### The rulings
+
+The coordinating session, 2026-11-21:
+
+- **Q1: the comparison shows by default, with no key held**, as the bag shows it (issue #832's ruling (d)), and as the
+  owner asked: "that same gear comparison thing".
+- **Q2: the control with no comparison is a crafting material.** The issue said "an item with no equipped counterpart
+  shows no comparison", which is not what the bag does: gear whose slot is empty still compares, its right column
+  reading "Compared with nothing". So a ring for an empty slot is checked to show that same "Compared with nothing" on
+  the ground. The issue's body is corrected.
+- **The bag's behaviour must be unchanged**, and the hover must not cost the frame.
+
+### What existed
+
+- **A drop's name tag is what a click picks up** (the owner's decision of 2026-08-18): `ACataclysmHUD::DrawDropNames`
+  draws a tag for each drop within 10 m, pushes overlapping tags apart, and keeps each tag's box;
+  `ACataclysmPlayerController::DropUnderCursor` asks `ACataclysmHUD::DropUnderPoint`, where the topmost of two
+  overlapping tags wins. Nothing hovered a drop.
+- **The bag's tooltip:** gear compared with what wearing it would replace (`Compare`, then `Columns`, in two columns), or
+  the slot's own text (`UCataclysmItemTooltip::TextFor`) for a material or when nothing is compared, shown in a panel
+  built by `MakeComparisonToolTip`.
+- **The precedent for a hover:** `ACataclysmHUD::CreatureUnderCursor`, which shows nothing while the cursor is over the
+  interface.
+
+### What changed
+
+- **ONE TEXT:** `TooltipColumnsFor` holds the bag's steps unchanged, and the bag and the hover both call it. **ONE
+  PANEL:** `FCataclysmItemTooltipPanel::Build` holds the bag's panel unchanged, and both draw it; the hover puts it in a
+  holder with no look of its own. The panel's two colours have one definition, on `UCataclysmInventoryScreen`.
+- **WHAT IS HOVERED IS WHAT A CLICK WOULD PICK UP:** `DropUnderCursor`, the click's own test, each frame, and nothing
+  while the cursor is over the interface. Gear shows the two columns; a material its own lines; a gold pile nothing,
+  since it has no item and its tag already states its amount. Several drops close together show one tooltip, for the
+  tag on top.
+- **BESIDE THE CURSOR:** below and to the right by 16 pixels, turned to the left or above at an edge, and held inside the
+  viewport. Never hit-tested, so it cannot take a click or make the cursor read as over the interface.
+- **THE HOVER DOES NOT COST THE FRAME:** the text is worked out again only when a different drop is hovered or the
+  equipment's change count has moved (`UCataclysmGroundItemHover::NeedsRebuild`); otherwise only the panel's position
+  is set.
+- **ITS STAND-IN** (what `Compare` reads the character's totals on): the controller's own, spawned by
+  `RefreshGroundItemHover` the first time a piece of gear is hovered, whether or not the inventory has ever been opened.
+  `ACataclysmComparisonStandIn::SpawnIn` makes it transient and hidden, so it goes with its world: a level change
+  destroys it, the controller's weak pointer reads null, and the next hover spawns one in the new world. The bag keeps
+  its own the same way, so there can be two in a world, one hidden actor each.
+
+### Tests
+
+The new group `Cataclysm.GroundItemHover.`, six, written before the change:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AHelmOnTheFloorShowsTheBagsComparisonWithTheWornHelm` | a wearer in a plain helm, a helm with health on the floor: the hover's two columns are the bag's, word for word, and it compares |
+| `ARingForAnEmptySlotShowsComparedWithNothingAsTheBagDoes` | no ring worn: the bag's right column says "Compared with nothing", and the hover's columns are the bag's (Q2) |
+| `AMaterialOnTheFloorShowsItsOwnLinesAndNoComparison` | the control with no comparison: three shards show the bag's lines for the same stack and no right column |
+| `NothingHoveredAndAGoldPileShowNothing` | the control with nothing: no drop, and a gold pile, show nothing and empty both columns |
+| `ThePanelSitsBelowRightOfTheCursorAndStaysOnScreen` | the panel's position with room, at the right edge, at the bottom edge, and for a panel larger than the viewport |
+| `ThePanelIsRebuiltOnlyWhenTheDropOrTheWornGearChanges` | the same drop and the same worn gear is not rebuilt (the control); another drop, a change to what is worn, a drop where nothing was shown and nothing where a drop was shown are |
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 6 = 5076; skipped halves 48, unchanged**, since no new test needs art; test saves 859, none left behind. To be
+recounted at the window, since #2806 and #2809 are ahead of this in the queue. Groups alone, to show the bag unchanged
+and the hover working: `Cataclysm.GroundItemHover.` 6, `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11,
+`InventoryScreen.` 7, `HeldItem.` 5, `Equipment.` 30 and `DropPickup.` 20.
+
+Proofs:
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| GH1 | `TooltipColumnsFor` never compares, giving the slot's own text for gear too | `AHelmOnTheFloor...` and `ARingForAnEmptySlot...` |
+| GH2 | `NeedsRebuild` answers true every frame | `ThePanelIsRebuiltOnlyWhen...` |
+
+### Window D, registered as one: #2806, #2809 and this change
+
+**#2811 WAS TAKEN OUT OF WINDOW D on 2026-11-21, by the coordinating session's ruling, after it failed two tests in
+the window's first run; the three issues that passed are not held for it.** The gold session, which wrote #2811,
+diagnoses the two failures, and #2811 rides a later window. The report of that run, as sent to the coordinating
+session, is below under "The first run, with #2811".
+
+**Registered 2026-11-21** on `feat/window-d-copies-charge-hover-3`, development `3b1ae6911` plus #2806, #2809, this
+change and the renames that let them compile (below). The base is window skills-w2's measured engine log at
+`a7fadce0b`, whose `game/` equals `3b1ae6911`'s (`git diff --name-only a7fadce0b 3b1ae6911 -- game` lists nothing):
+**5094 performed, all succeeded, 48 skipped halves, 860 test saves written and deleted.** Window D adds 19 tests by
+name and removes none (`ChargeGait` 9, `GroundItemHover` 6, `PlayerCopies` 4, counted by the names in `game/Source`
+at the base and at the head), so:
+
+- **The whole suite 5094 + 19 = 5113**, all succeeding; **skipped halves 48 + 2 + 7 = 57** in a worktree (#2806's two
+  weapon-mesh halves, #2809's five creature halves and the Warden's and the Brute's clip halves); **test saves 860**,
+  none left behind (no new test writes one).
+- **Groups alone, first**, each its count in that log plus the tests added: `PlayerCopies.` 4, `ChargeGait.` 9,
+  `GroundItemHover.` 6; this change's `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11, `InventoryScreen.` 7,
+  `HeldItem.` 5, `Equipment.` 30, `DropPickup.` 20; #2809's `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6,
+  `Succubus.` 10, `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51, `EnemyModifiers.` 57; #2806's
+  `PlayerBody.` 7, `PlayerAttack.` 6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14, `Death.` 30,
+  `ConsumptionDouble.` 15, `StalkerEntries.` 8, `StalkerKit.` 13. Twenty-nine groups; each count is the same in the
+  three entries' registrations where they name it. **`Imp.` alone is run a second time if its first run reports no
+  count**, by the coordinating session's ruling: in the first run its editor stopped at start-up on an engine
+  assertion (below).
+- **Python, alongside the whole Unreal suite:** no failure, no error.
+- **Six Unreal guard proofs**, after both suites end: PC1, PC2 and PT1 (#2806), CG1 (#2809), GH1 and GH2 (this
+  change), each as its entry registers it.
+
+**THE RENAMES THAT LET IT COMPILE.** The first build of window D, at `e09cbf69e` with #2811, failed on three names in
+code no build had compiled, each now renamed with no change of behaviour: the ground-hover tests' struct `FScene`
+was ambiguous with the engine's renderer `FScene` once the test's namespace was used (every other error in the file
+followed from it), now `FHoverScene`; `WearTheMannequinsBody`'s parameter `CapsuleHalfHeight` hid
+`CataclysmPlayerCharacter.cpp`'s constant of that name (C4459), now `HalfHeightCm`; and `RefreshGroundItemHover`'s local
+`Character` hid `ACharacter`'s member (C4458), now `Hoverer`.
+
+**TWO PRE-CHECKS WERE CHANGED FOR THIS WINDOW BY THE COORDINATING SESSION'S RULINGS OF 2026-11-21:**
+
+- **Free memory, at least 9,216 MB rather than 10,240.** The owner's own programs held the rest (Firefox about 4.3 GB
+  across its processes, Discord and Steam), which are not the project's to close, and the Unreal test editor has run
+  at about 3 GB with Python alongside it before. Any sign of memory trouble in the run -- a line saying memory ran out,
+  a crash, a test timing out -- stops the window and sends the next one back to 10 GB. **Ruled first for the window's
+  pre-checks; then, the same day, for the compile gate and the compile script too**, after `compile_wd.py` read 10127
+  MB at its own start and stopped without taking the lock ("the compile draws less memory than the window with
+  Python alongside"); **and for every gate in later windows, unless a run shows memory trouble.** This run showed none:
+  its `CataclysmTestMemorySummary` read `peak_used_virtual_mb=9190`.
+- **No workflow run in progress and no pull request open COUNT ONLY WHAT CHANGES `game/`.** They exist to stop a build
+  colliding with the window's, and a change with no file under `game/` starts no build on this machine. A run of the
+  Unreal workflow always counts, and a lookup that cannot be read counts. Pull request #2826 (three documents, nothing
+  under `game/`) was open when the first run started, and was merged during it. The rule stands for later windows
+  (`.claude/windows/run_shared.py`, item 5).
+
+### The record: window-d-w2
+
+**2026-11-21, under the lock window-d-w2, at `2414abdd7`** (`feat/window-d-copies-charge-hover-3` on development
+`3b1ae6911`). Every registered figure measured, and every proof proved.
+
+- **The three compiles** (lock window-d-compile, at `2414abdd7`, 10124 MB free): the branch as committed, "Build:
+  Succeeded - 54 actions, 49 files compiled"; each changed `.cpp` alone, "Build: Succeeded - 33 actions, 30 files
+  compiled"; the unity files again, "Build: Succeeded - 14 actions, 11 files compiled". Each with 0 compiler warning
+  or error lines in the build tool's log.
+- **The pre-checks**: all passed at 20:52:30, with 9,216 MB the memory figure (above).
+- **Groups alone: 29 of 29 passed, each at its registered count**: `PlayerCopies.` 4, `ChargeGait.` 9,
+  `GroundItemHover.` 6, `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11, `InventoryScreen.` 7, `HeldItem.` 5,
+  `Equipment.` 30, `DropPickup.` 20, `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6, `Succubus.` 10,
+  `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51, `EnemyModifiers.` 57, `PlayerBody.` 7, `PlayerAttack.`
+  6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14, `Death.` 30, `ConsumptionDouble.` 15, `StalkerEntries.` 8,
+  `StalkerKit.` 13. **`Imp.` ran at its first try** ("6 tests performed, 6 succeeded, 0 failed"), so its retry was not
+  needed, and **the start-up assertion of the first run did not repeat**; by the ruling, no issue is opened for it.
+- **The whole suite: "5113 tests performed, 5113 succeeded, 0 failed. 57 skipped part of what they check"**, against
+  5113 and 57 registered; "Declared: 5113 tests in the tree at 2414abdd7; 5113 performed, gap 0"; "Test saves: 860
+  written and deleted, 0 left behind". Memory: `peak_used_virtual_mb=9190`.
+- **Python, alongside it: "7879 passed, 9 skipped in 345.69s"**, exit 0; its JUnit file: tests 7888, failures 0, errors
+  0, skipped 9. **ruff: "All checks passed!"**
+- **The six Unreal guard proofs, each PROVED** through `prove_cpp_guard`, after both suites ended, each failing exactly
+  its predicted tests with the break in and passing its whole group restored:
+
+| Proof | The break | With the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | 4 performed, 2 failed: `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder`, `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | 4 of 4 |
+| PC2 | `DrawWornWeapons`, which `WearTheBuild` and `WearThePlayersBuild` both call, draws nothing | 4 performed, 2 failed: `ADoubleHoldsTheWeaponsThePlayersBuildWears`, `AStalkerHoldsTheWeaponItsEntryWears` | 4 of 4 |
+| PT1 | `ResolveBody` does not call `WearTheCopiesTint` | 4 performed, 2 failed: `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder`, `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | 4 of 4 |
+| CG1 | `GetVelocity` returns the engine's answer during a charge | 9 performed, 9 failed: every `ChargeGait` test | 9 of 9 |
+| GH1 | `TooltipColumnsFor` never compares | 6 performed, 2 failed: `AHelmOnTheFloorShowsTheBagsComparisonWithTheWornHelm`, `ARingForAnEmptySlotShowsComparedWithNothingAsTheBagDoes` | 6 of 6 |
+| GH2 | `NeedsRebuild` answers true every frame | 6 performed, 1 failed: `ThePanelIsRebuiltOnlyWhenTheDropOrTheWornGearChanges` | 6 of 6 |
+
+The logs are in `.claude/windows/` in the worktree `sharp-meitner-246682`: `wd_run.out`, `wd_suite_engine_2414abdd.log`,
+`wd_python_2414abdd.log`, `wd_junit_2414abdd.xml`, `wd_compile.out`, and each proof's `wd_<proof>_2414abdd.log` with
+the two halves' engine logs.
+
+### The first run, with #2811
+
+2026-11-21, under the lock window-d-w1, at `da85b7c8a` (#2806, #2809, this change and #2811 on development
+`1537dac4e`). The three compiles succeeded there with no warning or error line. Its report, as sent:
+
+- **Groups alone: 31 of 33 passed**, every count as registered but two. **The whole suite: "5116 tests performed, 5114
+  succeeded, 2 failed"**; declared 5116, gap 0; skipped halves 57 against 57 registered; test saves 860 written and
+  deleted, 0 left behind. **Python alongside: "7880 passed, 9 skipped in 414.19s"**, JUnit 7889 tests, 0 failures, 0
+  errors, 9 skipped; ruff: all checks passed. No proof was run.
+- **`Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` failed in its group alone and in the
+  suite, with the same figure both times:** "tier 1: its blow before the multiplier ... to be 348.000000, but it was
+  4450.000000". The target lost 267.0 against an attack damage of 20.9. Tiers 2 to 8 each lost exactly one blow (271.0
+  against 271.3, 640.0 against 640.4 and so on); skills-w2 measured tier 1 at 21.0, before #2811. #2811 made the test
+  move the clock (`CataclysmTestSwings::FinishTheSwingsOf`, timers only, 0.05 s steps) until the blow lands, so about
+  246 more reached the tier 1 target while the clock moved; something the tier 1 build runs on a timer is likely.
+  `RunClock` fires timers and ticks no actor, so the brain is not it. Not confirmed; it needs a run.
+- **`Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` failed in the whole suite only;
+  alone it passed (1 of 1), and so did its group of seven.** "its second blow: its blow plays the Mannequin's
+  MM_Attack_02 ... but it was MM_Attack_03" (`CataclysmPlayerCopiesTests.cpp` line 484); the first blow's checks
+  passed. The clip index moves only inside `PlayTheMannequinsSwing`, for each character, so either the swing step ran
+  once more between the two blows or the clip list lacked `MM_Attack_02` in that run. Which is not known; it depends on
+  what ran before it in the suite.
+- **`Cataclysm.Imp.` alone: the editor stopped at start-up, before any test ran,** on "Assertion failed: TableTag
+  [... EditorDataStorage\TedsCore\Private\TableManager.cpp] [Line: 353]" at frame 0, with `peak_used_virtual_mb`
+  1963: an engine plugin's assertion, not this project's code. All six `Imp.` tests passed in the whole suite.
+- **Memory:** the suite's `CataclysmTestMemorySummary` read `peak_used_virtual_mb=9353`, against 9155 in skills-w2 with
+  22 fewer tests; no line saying memory ran out and no crash in the suite; the only "timed out" lines are the editor's
+  web check of `google.com/generate_204`. So the 9,216 MB ruling was not reverted.
+
+**TWO STATEMENTS IN THAT REPORT ARE WRONG, corrected here and left above as they were sent:**
+
+- **"`RunClock` fires timers and ticks no actor, so the brain is not it" is wrong.** The gold session, which wrote
+  #2811, found the cause the same day: the copy's own enemy controller thinks on a timer, every 0.25 s, and a think
+  attacks any hostile target in reach, so moving the clock ran it. Each creature's first think is delayed by an amount
+  set from a count of every enemy the process has possessed (`GCataclysmEnemyControllerPossessions`), so whether a
+  think landed during the swing's wait depended on which tests ran before. Its fix takes the copy's AI away in the
+  tests' set-up and makes `FinishTheSwingsOf` refuse while a controller drives the caster
+  (`fix/copies-swing-their-blows-2`); #2811 rides window E with it. Issue
+  [#2827](https://github.com/sdubois777/Cataclysm/issues/2827) holds the wider hazard, the tests that move the clock while
+  an enemy keeps its AI.
+- **"with the same figure both times" and "Tiers 2 to 8 each lost exactly one blow" are wrong for the group run alone.**
+  Tier 1 was 267.0 in both. In the group run alone **tier 5 failed too**: "26846.0 (15979.8 before the multiplier of
+  1.680)", against 1195; in the whole suite tier 5 took 2008.0 and passed. The gold session pointed it out, and it is
+  what a cause that depends on test order gives.
+
+---
+
+## 2026-11-21 — A charging creature reports its charge's velocity, so it runs through a charge instead of sliding in its idle, and the Abyssal Warden plays Stampede through the run (#2809)
+
+**Affects:** `ACataclysmEnemyCharacter::GetVelocity`, new, overriding the engine's, and `ChargeDirection`, new, set by
+`BeginCharge` and each step; `JogPlayRateAtItsWalkingSpeed`, which scales by a running charge's speed
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`); the clip-already-playing rate update in the
+Imp's, the Hellhound's, the Succubus's and the Abyssal Warden's `UpdateLoopingAnimation`; the Gatekeeper's jog rate
+while charging (`CataclysmGatekeeperCharacter.cpp`); `ACataclysmAbyssalWardenCharacter::HoldFirstFrame`, new, its
+`BeginEnemyAbilityWindUp` and `UseEnemyAbility` for Stampede; `game/docs/enemy-source-assets.md`, the Warden's Stampede
+paragraph and table row. Tests: the new group `Cataclysm.ChargeGait.`, nine: eight in
+`game/Source/Cataclysm/Tests/CataclysmChargeGaitTests.cpp` and one in `CataclysmBruteTests.cpp`. Issue
+[#2809](https://github.com/sdubois777/Cataclysm/issues/2809).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "Enemies using any charge attack aren't sprinting like they're
+  charging, they're just sliding into position."
+- **THE JOG IS CAPPED AT 2.5 DURING A CHARGE, so feet still cover less ground than the body (ruling J1).** No creature's
+  pack has a clip that matches a charge's speed under the project's 2.5 play-rate ceiling: the Hellhound's Hellrush asks
+  4.72, an Imp's or a Succubus's Inferno Charge about 4.7 and 5.6. At the ceiling the feet cover about half the ground
+  the body does, for the 0.4 to 0.7 seconds a charge lasts. That is a run rather than the idle pose the owner saw slid
+  along; **the owner judges in play whether it still reads as sliding.** The ceiling stays because past it a creature
+  "will read as a sped-up film" (`game/docs/enemy-source-assets.md`).
+- **THE RATE AND CLIP HALVES ARE NOT PROVED.** Which clip a creature plays and at what rate needs the Paragon art,
+  which git does not carry, so in a worktree each creature test reports a skipped half and a proof that breaks only
+  the rate cannot fail there; and no proof runs in the main checkout, the owner's working copy. See the proofs below.
+
+### Every charge, and why it slid
+
+Every charge runs through `ACataclysmEnemyCharacter::BeginCharge` and its per-frame `AdvanceCharge`:
+
+| Charge | Who | Speed | Clip before this change |
+| :-- | :-- | :-- | :-- |
+| Hellrush | the Hellhound | 1428.57 cm/s, 10 m, about 0.7 s | `R_Ability_FireBreath_Start` through the wind-up, then the idle |
+| Stampede | the Abyssal Warden | 1142.86 cm/s, 8 m, 0.70 s | `Stampede` through the wind-up, then the idle |
+| Inferno Charge, the creature modifier `Demonic_Inferno_Charge` | any creature carrying it | 1800 cm/s | the idle, or `ABP_Brute`'s idle |
+
+**Why: a charge's steps move the body with `SetActorLocation`, so the movement component's velocity stays nought, and
+`GetVelocity()` reported nought through the whole run.** Six creatures choose their loop in C++ from
+`GetVelocity().Size2D()` -- the Imp, the Hellhound, the Succubus, the Abyssal Warden, the Corrupted Sentinel and the
+Gatekeeper -- and `ABP_Brute` computes its `GroundSpeed` from a `GetVelocity` call (the call is named in the asset). So
+every one chose its idle while the body moved eight to ten metres. There is no Brute or Gatekeeper charge of their own;
+the player's Movement skills, which the Corrupted Stalker uses, teleport, and are not charges.
+
+### What changed
+
+- **`GetVelocity` reports a running charge**: the lane's direction times the charge's speed, flat; otherwise the
+  engine's own answer. A charging creature really is moving at that speed, so every reader is told the truth. The
+  movement component's own velocity is not touched.
+- **The jog's rate follows the charge's speed, capped (J1)**, through `JogPlayRateAtItsWalkingSpeed`, which the Imp,
+  Hellhound, Succubus and Warden already use; each also updates the rate on a jog already playing while charging, as
+  #2793 made it do for a commanded creature. The Gatekeeper's placeholder rate of 1.0 (issue #778) is scaled only while
+  it charges, so its walk is unchanged. The Sentinel's designed walking speed is nought, so its jog keeps its unmeasured
+  1.0 and is now chosen because it reports moving.
+- **THE WARDEN PLAYS STAMPEDE THROUGH THE RUN AND HOLDS ITS FIRST FRAME THROUGH THE WIND-UP, ruled J2.** It is the
+  pack's authored charge, and its 0.70 seconds is the run: the charge's speed was derived so it covers its range in this
+  clip's length. Until this it played through the wind-up, as every ability here plays its clip across the telegraph,
+  and the comment saying so in `BeginEnemyAbilityWindUp` is rewritten. **A run stopped early by a wall** leaves Stampede
+  playing out its 0.7 seconds where the Warden stopped.
+- **THE SUCCUBUS JOGS AT ITS CEILING, ruled J3.** Its pack's `Sprint_Fwd`, authored at 399.4 cm/s and never played, is
+  the unused candidate for a faster gait, left for later.
+
+### Every reader of a velocity, and what it sees during a charge now
+
+The coordinating session asked for the whole game module and the engine plugins it enables to be searched, since
+`GetVelocity` is an engine-wide virtual. Searched 2026-11-21: `game/Source` (the project has no plugins of its own) for
+`GetVelocity`, `ComponentVelocity` and a movement component's `Velocity`; the engine's `GameplayAbilities` plugin,
+`AIModule` and `NavigationSystem` for `GetVelocity` on an actor.
+
+| Reader | Before, during a charge | Now | Changes play? |
+| :-- | :-- | :-- | :-- |
+| The six creatures' `UpdateLoopingAnimation` | nought, so the idle | the charge's speed, so the jog at the capped rate | yes, the purpose |
+| `ABP_Brute`'s `GroundSpeed`, from its `GetVelocity` call | nought, so the idle | the charge's speed | yes, the purpose |
+| `UCataclysmSkillTemplate::RequirementsAreMet`, `Requires=Stationary`, when a skill is cast | standing | moving, so refused | **no**: while a charge runs the brain starts nothing (`ACataclysmEnemyController::Think` returns `Charging` and stops there) |
+| The held `Requires=Stationary` tally in `UCataclysmSkillTemplates.cpp`, the Greatsword's Unbroken | standing, so the tally kept climbing through a run of metres | moving, so the whole bonus is lost, as its sentence says | **yes**, for a Corrupted Stalker or Worn Residue double with a Greatsword that carries Inferno Charge. Test: `AHeldSkillThatAsksToStandStillLosesItsTallyWhenItsCreatureCharges` |
+| The `WhileMoving` and `WhileStationary` stat conditions | already moving | unchanged | no: they read sampled positions (`UCataclysmAbilitySystemComponent::IsMoving`), not a velocity |
+| The engine's `AISense_Prediction`, which calls `GetVelocity` | -- | -- | no: the game uses no perception component |
+| The movement component, path following and avoidance | -- | -- | no: they read the component's own velocity, which is not touched |
+| `ABP_Unarmed`, which the player and its copies wear | -- | -- | no: it reads the movement component. A copy charges only if it carries Inferno Charge, and would still slide; issue [#2812](https://github.com/sdubois777/Cataclysm/issues/2812) |
+
+Nothing in `GameplayAbilities` or `NavigationSystem` calls an actor's `GetVelocity`.
+
+### Tests
+
+The new group `Cataclysm.ChargeGait.`, nine, written before the change:
+
+| Test | What it checks | Art |
+| :-- | :-- | :-- |
+| `AChargingCreatureReportsItsLaneTimesItsSpeedAndAStandingOneNothing` | a plain creature: nought standing (the control), the lane times the speed while charging and a tenth of a second on, nought at the lane's end | none needed |
+| `AnImpCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | idle standing (the control); charging, the charge's speed, the jog, at 2.5; stopped, nought | the clip half is skipped without the pack |
+| `AHellhoundJogsAtItsCeilingThroughHellrush` | the same at Hellrush's speed | the same |
+| `ASuccubusCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | the same, its jog and not `Sprint_Fwd` (J3) | the same |
+| `AGatekeeperCarryingInfernoChargeJogsAtItsCeilingWhileItCharges` | the same, from its placeholder 1.0 | the same |
+| `ASentinelCarryingInfernoChargeJogsAtItsUnmeasuredRateWhileItCharges` | the same, at its unmeasured 1.0 | the same |
+| `AWardenPlaysStampedeThroughTheRunAndHoldsItsFirstFrameThroughTheWindUp` | the run lasts 0.70 s; the wind-up shows Stampede at rate nought on its first frame; the run reports Stampede's speed and plays Stampede at rate 1 until the run ends (J2) | the clip half is skipped without the pack |
+| `AChargingBrutesGraphReadsTheChargeSpeed` | the Brute reports the charge's speed; its graph's `GroundSpeed` reads it and `bMoving` is set, and reads nought stopped (the control) | the graph half is skipped without the pack |
+| `AHeldSkillThatAsksToStandStillLosesItsTallyWhenItsCreatureCharges` | a creature holding Unbroken counts two seconds standing, then loses them in a second charging; one standing beside it counts three (the control) | none needed |
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 9 = 5079; skipped halves 48 + 7 = 55** in a worktree, the five creature tests', the Warden's and the Brute's
+clip halves; test saves 859, none left behind. To be recounted at the window from the newest measured log, since #2806
+is queued ahead of this and adds four tests and two skipped halves of its own. Groups alone: `Cataclysm.ChargeGait.` 9,
+and those holding the creatures' and the charge's own tests, `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6,
+`Succubus.` 10, `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51 and `EnemyModifiers.` 57.
+
+Proofs:
+
+| Proof | Break | Predicted to fail | Where it can be shown |
+| :-- | :-- | :-- | :-- |
+| CG1 | `GetVelocity` returns the engine's answer during a charge | all nine `ChargeGait` tests, on their art-free assertions | any checkout |
+
+**CG2 AND CG3 ARE NOT REGISTERED**, by the rule of 2026-11-21 (one C++ proof per behaviour only a C++ test guards, and
+no more): each needs the Paragon art, which only the main checkout has, and no proof runs there, so neither could ever
+run. They broke `JogPlayRateAtItsWalkingSpeed`'s charge branch (the Imp's, Hellhound's, Succubus's and Gatekeeper's clip
+halves) and the Warden's Stampede clip (its clip half).
+
+**CG2 AND CG3 ARE NOT RUN: the clip halves need the Paragon art, which only the main checkout has**, and the
+coordinating session ruled on 2026-11-21 that no proof runs there: it is the owner's working copy, and a proof breaks
+files in place. The window runs CG1 only.
+
+---
+
+## 2026-11-21 — The Corrupted Stalker and the Worn Residue double wear the player's Mannequin body and hold the weapons they wear, rather than the grey placeholder cylinder (#2806)
+
+**Affects:** `ACataclysmPlayerCharacter::MakeHand`, `WearTheMannequinsBody`, `PlayTheMannequinsAnimationOn`,
+`LoadTheMannequinsDeathClips` and `DrawWeaponsInHands`, new statics holding steps moved out of the player's constructor,
+`ResolveBody`, `ResolveAnimationBlueprint` and `RefreshWeaponMeshes`, which now call them
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`);
+`ACataclysmCorruptedStalkerCharacter::RightHandWeapon`, `LeftHandWeapon`, `RightHandBase`, `LeftHandBase`,
+`ResolveBody`, `PreRegisterAllComponents`, `BeginPlay` and `DrawWornWeapons`, new, and `WearTheBuild`, which draws its
+hands (`CataclysmCorruptedStalkerCharacter.h` and `.cpp`); `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`,
+which draws its hands (`CataclysmConsumptionDoubleCharacter.cpp`). Tests: the new group `Cataclysm.PlayerCopies.`, four,
+in `game/Source/Cataclysm/Tests/CataclysmPlayerCopiesTests.cpp`. Issue
+[#2806](https://github.com/sdubois777/Cataclysm/issues/2806).
+
+### SAID FIRST
+
+- **COMPILED AND RUN IN UNREAL, 2026-11-21, in window D (window-d-w2, at `2414abdd7`)**: every registered figure
+  measured and every proof proved. The record is in #2807's entry, "The record: window-d-w2".
+- **THE OWNER'S REPORT, 2026-11-21, VERBATIM:** "The corrupted dopples and nemesis should be using the character model
+  we use, it's kinda hard to see a grey cylinder coming at you before it murders you".
+- **A KNOWN VISUAL OFFSET, ruled J1:** the copies keep the creature capsule, radius 48 and half height 80, and the
+  Mannequin is placed with its feet at the capsule's bottom, as it is on the player's own capsule of half height 96.
+  So **the body stands above the capsule's top by up to 32 cm**, the difference between the player's 192 cm capsule
+  and the creature's 160 cm one: the collision is the creature's and the look is the player's. The Mannequin's own
+  height was not measured; without the editor, the 32 cm is the capsules' difference, not the body's.
+- **A DARK RED TINT, THE OWNER'S RULING J2 OF 2026-11-21, VERBATIM:** "give them a dark red tint", for the Corrupted
+  Stalker and the Worn Residue double. See "The tint" below.
+- **THE TINT IS AN INTERIM.** The owner revised it the same day, verbatim: "it should probably be like a glowing red
+  aura particle effect sort of deal. Since eventually we'll have gear equipped", since worn gear will later cover the
+  body. Nothing in the project draws a lasting glow around a body today: the five Niagara systems in git are a
+  one-shot cast burst, a projectile, a swing arc, a hit burst and the ground ring that marks burning ground, which a
+  player would read as a patch that deals damage. So the aura needs a new system and the editor, and by the
+  coordinating session's ruling the tint ships here as the interim and the aura is issue
+  [#2813](https://github.com/sdubois777/Cataclysm/issues/2813).
+- **NOT IN THIS CHANGE, by a ruling:** no arm swing on a copy's blows (J3: issue
+  [#2811](https://github.com/sdubois777/Cataclysm/issues/2811)).
+
+### What the owner means
+
+Two creatures, and the owner's words name both:
+
+| The owner's word | The creature | Why |
+| :-- | :-- | :-- |
+| "nemesis" | the Corrupted Stalker, `ACataclysmCorruptedStalkerCharacter`, raised by the dungeon modifier `Generic_Corrupted_Stalker` | the owner's own ruling of 2026-08-05 (the entry "A run ending costs the run, not the character") calls its source "the pool of Nemesis characters for that dungeon modifier" |
+| "corrupted dopples" | the Worn Residue double, `ACataclysmConsumptionDoubleCharacter`, a subclass of the Stalker carrying the player's own build | it is the player's corrupted double |
+
+Searched and not a copy of the player: Echoes of the Past (#2740) raises the creatures that died on the last floor;
+the enemy modifier `Chaos_Mirror_Image` swaps a creature's place with the player's; `ACataclysmComparisonStandIn` is
+never drawn, and exists to work out a tooltip's stats. The character headers, `DungeonModifiers.csv`,
+`EnemyModifiers.csv` and the design document were searched.
+
+### Why a grey cylinder
+
+**A missing mesh assignment, not the capsule's debug draw.** `ACataclysmEnemyCharacter`'s constructor gives every
+creature a `PlaceholderBody`, a static mesh of `/Engine/BasicShapes/Cylinder`. Each dressed creature puts its own
+skeletal mesh on and hides the cylinder in its `ResolveBody`. The Stalker and the double set no mesh at all, so they
+kept the cylinder in every checkout, with or without any art.
+
+### The change
+
+- **ONE SET OF STEPS FOR THE PLAYER AND ITS COPIES.** The player's own steps -- making a hand on a socket, putting the
+  Mannequin on at the capsule's bottom and the engine's -90 degree yaw, playing `ABP_Unarmed` with root motion ignored,
+  loading the six death clips with a null kept for one missing, and drawing the worn weapons in the hands -- are moved
+  into five statics on `ACataclysmPlayerCharacter`. **The player's behaviour is unchanged**: it calls them in the same
+  order and keeps its own warnings around them, which is why none of the five logs a missing asset. The window runs the
+  player's groups alone to show it.
+- **THE STALKER DRESSES AS THE PLAYER DOES:** its two hands in its constructor, the body put on before its components
+  register (so the hands find their sockets), and its `ResolveBody` on `BeginPlay`, which places the body on its own
+  capsule, plays `ABP_Unarmed`, loads the death clips into the creature's own `DeathAnimations` (which
+  `ACataclysmEnemyCharacter::PlayDeathAnimation` draws from) and hides the cylinder. The double inherits all of it.
+- **THE WEAPONS THEY WEAR, IN THEIR HANDS.** The player's model shows its equipment only as the weapons in its hands, so
+  that is what a copy shows. `WearTheBuild` and `WearThePlayersBuild` each fill an equipment component that belongs to
+  no actor; each now draws the hands from it, so the Stalker holds its entry's weapon and the double the player's.
+  **`RightHandBase` and `LeftHandBase` record the item base each hand draws**, because the weapon meshes are not in git
+  (below) and the test window runs in a worktree: without them a weapon check could not fail there, and its guard proof
+  could not be proved.
+
+### What a worktree has
+
+- **THE BODY IS IN GIT**: the Mannequin, `ABP_Unarmed` and the clips, 47 files under
+  `game/Content/Characters/Mannequins`. So the body tests check fully in every checkout. Issue #2806's body said the
+  mesh check would be a skipped half; it was corrected on 2026-11-21.
+- **THE WEAPON MESHES ARE NOT**: `DT_WeaponMeshes` names nine meshes in the `Medieval_Weapons` pack, and git carries
+  none. So each weapon test checks the recorded bases everywhere and the meshes only where the pack is, reporting a
+  skipped half without it, as `Cataclysm.WeaponMesh.`'s tests already do.
+
+### Tests
+
+The new group `Cataclysm.PlayerCopies.`, four, written before the change:
+
+| Test | What it checks | The control |
+| :-- | :-- | :-- |
+| `AStalkerWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | a spawned Stalker wears the player's body and animation Blueprint, its cylinder hidden, its feet at its capsule's bottom at the -90 degree yaw, and holds the six death clips, none missing | a plain creature beside it keeps its cylinder visible and has no skeletal mesh |
+| `AWornResidueDoubleWearsThePlayersBodyAndAnimationAndHidesTheCylinder` | the same for the double | the same |
+| `AStalkerHoldsTheWeaponItsEntryWears` | Famine's entry: the Sword's base in the right hand, nothing in the left; the meshes where the pack is | both hands empty before it wears the entry |
+| `ADoubleHoldsTheWeaponsThePlayersBuildWears` | a build of a Sword and a Dagger: the Sword right and the Dagger left; the meshes where the pack is | both hands empty before it wears the build |
+
+### The tint
+
+- **NO EDITOR NEEDED.** `M_Mannequin`, the Mannequin's material, declares a colour parameter named `Paint Tint`, and
+  `MI_Manny_01_New`, the body's instance, sets it; both names were read out of the assets' name tables, which git
+  carries. The one colour `MI_Manny_01_New` stores is (0.9219, 0.9219, 0.9219, 1), a light grey; that it is
+  `Paint Tint`'s value is read from the bytes and not confirmed by the editor, and the player control in the tests
+  is what checks the player's body does not read the dark red.
+- **HOW:** `ACataclysmCorruptedStalkerCharacter::WearTheCopiesTint`, called by its `ResolveBody` once the body is on,
+  gives every material slot of the body a dynamic material instance of its own and writes the tint to `Paint
+  Tint`. The double inherits it. **The player's body is untouched**: the tint is in the copies' dressing and not in
+  the five steps the player shares with them.
+- **THE COLOUR, A JUDGEMENT:** linear (0.30, 0.02, 0.02), which displays as about sRGB (149, 39, 39), a deep red.
+  Dark enough to read as dark red, light enough to stay visible on a dark dungeon floor, and far from the player's
+  light grey. The dungeon floors' own colours were not measured; the owner judges it in play.
+- **TESTS:** the two body tests now also check that every slot of the copy's body is a dynamic instance reading the
+  dark red, and, as the control, that a player character spawned beside it has no dynamic instance and no slot
+  reading the dark red. No test is added, so the counts below are unchanged.
+
+### Registered for the window
+
+From window nocaps-b-w2's measured log (`2fcf9733a`, whose game tree is development `c20ce05e3`'s): **the whole suite
+5070 + 4 = 5074; skipped halves 48 + 2 = 50**, the two weapon tests' mesh halves, in a worktree without the weapons pack;
+test saves 859, none left behind. Groups alone: `Cataclysm.PlayerCopies.` 4, and to show the player and the copies
+unchanged otherwise, `PlayerBody.` 7, `PlayerAttack.` 6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14,
+`Death.` 30, `ConsumptionDouble.` 15, `StalkerEntries.` 8 and `StalkerKit.` 13. Each is to be recounted from the
+newest measured log at the window, since development will have moved.
+
+Proofs, each predicted to fail exactly the named tests with the break in and pass its group restored:
+
+| Proof | Break | Predicted to fail |
+| :-- | :-- | :-- |
+| PC1 | the Stalker's `BeginPlay` does not call `ResolveBody` | `AStalkerWears...` and `AWornResidueDoubleWears...` |
+| PC2 | `WearTheBuild` AND `WearThePlayersBuild` do not draw their hands, in one break | `AStalkerHoldsTheWeaponItsEntryWears` and `ADoubleHoldsTheWeaponsThePlayersBuildWears` |
+| PT1 | `ResolveBody` does not call `WearTheCopiesTint` | `AStalkerWears...` and `AWornResidueDoubleWears...`, on their tint assertions |
+
+**PC2 AND PC3 WERE TWO PROOFS UNTIL 2026-11-21 AND ARE ONE**, by the rule of that day: one C++ proof per behaviour. Both
+are the behaviour "a copy draws the weapons it wears in its hands", in the Stalker and in the Worn Residue double, so one
+break of both call sites predicts both tests to fail, at the cost of one proof's two builds rather than two proofs' four.
+
+---
+
 ## 2026-11-21 — Nine empire tree nodes that could not be bought are ruled: Imperial Prowess and city upgrade build times by the owner, five figures and rules by the coordinating session
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the section "City Upgrades" (an upgrade now takes days to build, ruled and not
