@@ -630,8 +630,8 @@ Tests: `game/Source/Cataclysm/Tests/CataclysmAttributeTooltipTests.cpp`, new, th
 ### SAID FIRST
 
 - **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `c89fa5911` without a compile, as ruled, and put on
-  the combined branch of #2802, #2804 and #2815 on development `b8df7e1fe`: one turn, one window, registered in the
-  #2802 entry.
+  the combined branch of #2802, #2804 and #2815, rebased onto development `b52ba76e2` (#2803's merge): one turn, one
+  window, registered in the #2802 entry.
 - **THE OWNER CHOSE TO KEEP THE ATTRIBUTES AND EXPLAIN THEM, NOT TO CHANGE THEM**, against the coordinating session's
   recommendation of flat amounts where a stat has no base. The question and the three options are in "The rulings".
 
@@ -772,8 +772,8 @@ optional commander; `UCataclysmSkillBar::ReserveNounFor`, new, shared by both sc
 ### SAID FIRST
 
 - **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2802's branch at `96b765874` without a compile, as ruled, and put
-  with #2802 and #2815 on one combined branch on development `b8df7e1fe`: one turn, one window, registered in the #2802
-  entry.
+  with #2802 and #2815 on one combined branch, rebased onto development `b52ba76e2` (#2803's merge): one turn, one
+  window, registered in the #2802 entry.
 - **IT REPLACES RULING Q7'S "NO NUMBERS" FOR THIS TOOLTIP.** Q7's reason was that a skill's numbers would put the
   designed slot's fallback in a second place. This change reads every figure through the functions the press reads,
   on a template stamped from the row as granting stamps one, so no figure and no fallback is written twice.
@@ -835,7 +835,9 @@ and `UCataclysmSummonSkill::FervourReserveOfOne`, new (`CataclysmSkillTemplates.
 (`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`, `.cpp`); the skill
 bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`CataclysmSkillBar.h`, `.cpp`);
 `sim/cataclysm_sim/skill_levels.py` and `sim/analyse_opening.py`; the "What a Skill Levels" table in
-`docs/Cataclysm_GDD_v2.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, four in
+`docs/Cataclysm_GDD_v2.md`; two descriptions in `docs/All_Things_Cataclysm.xlsx`'s Weapon Skills sheet, so
+`game/Data/WeaponSkills.csv` and the asset `DT_WeaponSkills`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, four in
 `Cataclysm.LevelCosts.`; `tools/tests/test_a_skills_level_lowers_its_costs.py`, new; one in
 `sim/tests/test_skill_levels.py`; `tools/tests/test_skill_levels_port.py` pins the new constant. Issue
 [#2802](https://github.com/sdubois777/Cataclysm/issues/2802).
@@ -843,11 +845,14 @@ bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`Cat
 ### SAID FIRST
 
 - **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2801's branch at `efe7c0bfc` without a compile, as ruled, and
-  rebased onto development `b8df7e1fe` with #2804 and #2815 on top of it, for one combined turn: one branch, one set of
-  three compiles and one window, ruled by the coordinating session on 2026-11-21.
-- **WHAT WAITS FOR THAT TURN, WHICH NEEDS THE DESIGN WORKBOOK:** the fixed figures in two skills' descriptions --
-  Subjugate's "Holding a thrall reserves 30 Fervour" and Summon Imp's "Each imp reserves 10 Fervour" -- lose their
-  numbers, since the pop-up now states the levelled reserve itself. Until then those sentences state level 1's figure.
+  rebased with #2804 and #2815 on top of it onto development `b52ba76e2` (#2803's merge), for one combined turn: one
+  branch, one set of three compiles and one window, ruled by the coordinating session on 2026-11-21.
+- **THE WORKBOOK STAGE, written at the combined turn once #2803 had merged** (the workbook is a binary file and #2803's
+  Gems row was in it): two skills' descriptions in the Weapon Skills sheet lose their figures, since the pop-up and the
+  assignment tooltip now state the levelled reserve. Subjugate's "Holding a thrall reserves 30 Fervour, so your army is
+  only as large as your pool." is "Holding a thrall reserves Fervour, so your army is only as large as your pool.", and
+  Summon Imp's "Each imp reserves 10 Fervour while it is out." is "Each imp reserves Fervour while it is out." Cells E267
+  and E283; `game/Data/WeaponSkills.csv` regenerated, those two rows changed and nothing else.
 - **THE RESERVES OF A SKILL GADGET AND A SKILL TRAP** take the factor in their own commit after the rebase, since
   branch B of #2787 wrote them: the level is that of the skill in the slot the gadget or trap stands for.
 - **KNOWN AND ACCEPTED: PUTTING ANOTHER SKILL IN THE SLOT RE-PRICES NOTHING.** A standing gadget or trap keeps the
@@ -961,11 +966,10 @@ and `PlaceSkillTrap` reserve that figure.
 ### Registered before the window
 
 **THE COMBINED WINDOW OF #2802, #2804 AND #2815, registered here once for all three**, ruled by the coordinating
-session on 2026-11-21: one branch, `feat/skill-costs-tooltips-2802-2804-2815`, three compiles and one window, lock
-`skills-w1`. The #2804 and #2815 entries point here. **Registered on development `b8df7e1fe`, before #2803's merge**:
-at the rebase onto that merge the base figures below move by what #2803's window measured, and the asset step comes
-with the workbook stage (the two description sentences above), which waits for #2803 because the workbook is a binary
-file that cannot be merged.
+session on 2026-11-21: one branch, `feat/skill-costs-tooltips-2802-2804-2815-2`, three compiles and one window, lock
+`skills-w1`. The #2804 and #2815 entries point here. Registered first on development `b8df7e1fe`, then **moved at the
+rebase onto #2803's merge, development `b52ba76e2`**: the base is window tree-2803-w1's measured figures, and the asset
+step comes with the workbook stage above. #2803 changed no test file in the groups below.
 
 **The sweep before registering** (the window procedure of 2026-11-21): `game/Source/**/Tests`, `tools/tests` and
 `sim/tests` searched for each function, sentence and count the three changes move.
@@ -982,7 +986,7 @@ file that cannot be merged.
 | Step | Registered |
 | :-- | :-- |
 | The build | succeeds, after the three compiles |
-| The asset step | added at the rebase onto #2803's merge: `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` change and nothing else, committed alone before any test |
+| The asset step | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` change and nothing else, committed alone before any test |
 | `Cataclysm.SkillChoiceScreen.` alone, first | 8 performed, 8 succeeded |
 | `Cataclysm.SkillBar.` alone | 22 performed, 22 succeeded |
 | `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded |
@@ -992,7 +996,7 @@ file that cannot be merged.
 | `Cataclysm.LevelCosts.` alone | 4 performed, 4 succeeded |
 | `Cataclysm.TooltipCost.` alone | 1 performed, 1 succeeded |
 | `Cataclysm.AttributeTooltip.` alone | 3 performed, 3 succeeded |
-| The whole suite | 5093 performed, 5093 succeeded: window dirge-quest-w1's 5085 at `2826b9622`, whose `game/` is development `b8df7e1fe`'s, plus the 8 new tests; 48 skipped halves; 860 test saves, predicted, not measured |
+| The whole suite | 5094 performed, 5094 succeeded: window tree-2803-w1's 5086 at `8f2491711` ("Tests: 5086 tests performed, 5086 succeeded, 0 failed", 48 skipped halves, "Test saves: 860 written and deleted, 0 left behind"), whose `game/` is development `b52ba76e2`'s (`git diff 8f2491711 b52ba76e2 -- game/` is empty), plus the 8 new tests; 48 skipped halves; 860 test saves, predicted, not measured |
 | Python, run alongside the whole suite | every test passing, the JUnit file agreeing |
 | ruff | clean |
 
