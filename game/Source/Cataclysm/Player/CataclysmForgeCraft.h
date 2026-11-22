@@ -201,7 +201,48 @@ public:
 											ECataclysmForgeAffixCraft Craft, int32 Affix, bool bConfirmedPastThreshold,
 											FCataclysmForgeAffixWork& OutDone, FString& OutMessage);
 
+	//~ Adding a chosen affix, and shifting an affix to another stat. Issue #47, slice F2.
+
+	/**
+	 * What adding the affix `AffixRow` at `Tier` to the item at a target would take now, its roll drawn for the run's day
+	 * (`UCataclysmForge::AffixCraftSeed` with `DeterministicAffixSalt` and the affix's place). With no run the draw is
+	 * for day 0 of no mask; the craft itself is then refused.
+	 */
+	static FCataclysmForgeAffixChange AddAffixPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													  FName AffixRow, int32 Tier);
+
+	/** What shifting the affix `Affix` of the item at a target would take now, its new stat drawn for the run's day. */
+	static FCataclysmForgeAffixChange ShiftAffixPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+														int32 Affix);
+
+	/**
+	 * Add the affix `AffixRow` at `Tier` to the item at a target, carried or worn: Schematic Fragments leave the bag,
+	 * the item gains the affix with the roll drawn for the run's day and is one rarity higher, it carries 5 residue a
+	 * tier, and the days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult AddAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName AffixRow,
+										  int32 Tier, bool bConfirmedPastThreshold, FCataclysmForgeAffixChange& OutDone,
+										  FString& OutMessage);
+
+	/**
+	 * Shift the affix `Affix` of the item at a target to the stat drawn for the run's day, keeping its tier and roll: a
+	 * Crystal of Instability leaves the bag, the item carries 15 more residue, and the days pass. Asks about the
+	 * threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult ShiftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Affix,
+											bool bConfirmedPastThreshold, FCataclysmForgeAffixChange& OutDone,
+											FString& OutMessage);
+
 private:
+	/**
+	 * The part `AddAffix` and `ShiftAffix` share, given a possible plan drawn for the run's day: the threshold question,
+	 * the gold, the material, the item changed, the days, the line and the save, in `CraftAffix`'s order. Anything that
+	 * cannot be finished puts back what it took.
+	 */
+	static ECataclysmForgeResult DoAffixChange(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+											   const FCataclysmForgeAffixChange& Plan, bool bConfirmedPastThreshold,
+											   FCataclysmForgeAffixChange& OutDone, FString& OutMessage);
+
 	/**
 	 * The part `AddSocket` and `ChangeSocketType` share, given a possible plan, as `DoSocketing` is for socketing: the
 	 * threshold question, the gold, the material, the item changed, the days, the line and the save. Anything that cannot

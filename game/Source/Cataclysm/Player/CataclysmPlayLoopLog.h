@@ -275,6 +275,17 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 								  int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * An affix added or shifted at the forge: "added Flat armor at tier 3 to Everyday Helm for 450 gold as affix 2,
+	 * making it Quality; residue 40 to 55; it cost 3 days, day 20 to day 23", or "shifted affix 1 of Quality Helm for 450
+	 * gold from Flat evasion to Flat armor, tier 2 kept; residue 40 to 55; it cost 1 day, day 20 to day 21". Affix numbers
+	 * count from 1, as the screen's. Issue #47, slice F2. Said by `UCataclysmForgeCraft::AddAffix` and `ShiftAffix`,
+	 * after the craft and the days.
+	 */
+	static FString ForgeAffixChangeLine(bool bShift, int32 AffixNumber, const FString& FromName, const FString& ToName,
+										const FString& ItemName, int64 Gold, int32 Tier, const FString& Rarity,
+										int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling
 	 * of 2026-11-19: the owner's play log said nothing about gear, so a walk could not be read for what was taken. Said
 	 * by `UCataclysmDropPickup::TakeInto`, for a piece of gear only, once it is in the bag. A crafting material is not

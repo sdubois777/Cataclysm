@@ -84,6 +84,14 @@ public:
 	const TArray<FCataclysmForgeAffixAction>& AffixActionsShown() const { return ShownAffixActions; }
 	void ClickAffixActionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
 
+	/** The shifts and the add-an-affix chooser shown for the piece chosen, and a press of one. Issue #47, slice F2. */
+	const TArray<FCataclysmForgeAffixChangeAction>& AffixChangeActionsShown() const { return ShownAffixChangeActions; }
+	void ClickAffixChangeActionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
+
+	/** The affix the chooser shows, by its place among those the piece can take, and the tier it would be added at. */
+	int32 AddAffixChosenForTests() const { return AddAffixChosen; }
+	int32 AddAffixTierForTests() const { return AddAffixTier; }
+
 	/** The gem combines shown, and a press of one. Issue #46, slice G6. */
 	const TArray<FCataclysmForgeGemCombineAction>& GemCombinesShown() const { return ShownGemCombines; }
 	void ClickGemCombineForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
@@ -146,7 +154,13 @@ private:
 	TArray<FCataclysmForgeSocketAction> ShownSocketActions;
 	TArray<FCataclysmForgeSocketWorkAction> ShownSocketWorkActions;
 	TArray<FCataclysmForgeAffixAction> ShownAffixActions;
+	TArray<FCataclysmForgeAffixChangeAction> ShownAffixChangeActions;
 	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;
+
+	/** The affixes the chosen piece can take, the one the chooser shows among them, and its tier. Issue #47, slice F2. */
+	TArray<FName> AddableAffixes;
+	int32 AddAffixChosen = 0;
+	int32 AddAffixTier = 1;
 
 	/** The socket action whose first press was made; its second press does it. None for none. Issue #46, slice G4. */
 	FName PendingSocketAction;

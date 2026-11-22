@@ -375,6 +375,114 @@ bool UCataclysmForgeLayout::AffixActionForButton(FName ButtonName, const TArray<
 	return false;
 }
 
+FName UCataclysmForgeLayout::AddAffixPreviousButtonName()
+{
+	return FName(TEXT("AddAffixPrevious"));
+}
+
+FName UCataclysmForgeLayout::AddAffixNextButtonName()
+{
+	return FName(TEXT("AddAffixNext"));
+}
+
+FName UCataclysmForgeLayout::AddAffixTierDownButtonName()
+{
+	return FName(TEXT("AddAffixTierDown"));
+}
+
+FName UCataclysmForgeLayout::AddAffixTierUpButtonName()
+{
+	return FName(TEXT("AddAffixTierUp"));
+}
+
+FName UCataclysmForgeLayout::AddAffixButtonName()
+{
+	return FName(TEXT("AddAffix"));
+}
+
+TArray<FCataclysmForgeAffixChangeAction> UCataclysmForgeLayout::ShiftActionsFor(const FCataclysmItem& Item)
+{
+	TArray<FCataclysmForgeAffixChangeAction> Out;
+	for (int32 Index = 0; !Item.Base.IsNone() && Index < Item.Affixes.Num(); ++Index)
+	{
+		FCataclysmForgeAffixChangeAction& Shift = Out.AddDefaulted_GetRef();
+		Shift.bShift = true;
+		Shift.Affix = Index;
+		Shift.ButtonName = FName(*FString::Printf(TEXT("ShiftAffix_%d"), Index));
+		Shift.Label = FString::Printf(TEXT("Shift affix %d"), Index + 1);
+	}
+	return Out;
+}
+
+TArray<FCataclysmForgeAffixChangeAction> UCataclysmForgeLayout::AddAffixActionsFor(const FCataclysmItem& Item,
+																					const TArray<FName>& Addable,
+																					int32 Chosen, int32 Tier,
+																					const UDataTable* AffixTable)
+{
+	TArray<FCataclysmForgeAffixChangeAction> Out;
+	// ONLY WITH A FREE SLOT OF THE FOUR AND SOMETHING TO ADD, as `UCataclysmForge::DeterministicAffixOf` refuses the rest.
+	if (Item.Base.IsNone() || !Addable.IsValidIndex(Chosen)
+		|| Item.Affixes.Num() + Item.EnchantmentCount >= UCataclysmItemValues::SlotsPerPiece)
+	{
+		return Out;
+	}
+	const auto Add = [&Out](FName ButtonName, const FString& Label)
+	{
+		FCataclysmForgeAffixChangeAction& Action = Out.AddDefaulted_GetRef();
+		Action.ButtonName = ButtonName;
+		Action.Label = Label;
+		return &Action;
+	};
+	Add(AddAffixPreviousButtonName(), TEXT("Previous affix"));
+	Add(AddAffixNextButtonName(), TEXT("Next affix"));
+	Add(AddAffixTierDownButtonName(), TEXT("Lower tier"));
+	Add(AddAffixTierUpButtonName(), TEXT("Raise tier"));
+	FCataclysmForgeAffixChangeAction* Adding = Add(
+		AddAffixButtonName(),
+		FString::Printf(TEXT("Add %s at tier %d"), *UCataclysmForge::AffixNameOf(Addable[Chosen], AffixTable), Tier));
+	Adding->Affix = Item.Affixes.Num();
+	return Out;
+}
+
+FString UCataclysmForgeLayout::AddAffixDetailFor(const FCataclysmItem& Item, const TArray<FName>& Addable, int32 Chosen,
+												 int32 Tier, const UDataTable* AffixTable)
+{
+	if (Item.Base.IsNone())
+	{
+		return FString();
+	}
+	if (Item.Affixes.Num() + Item.EnchantmentCount >= UCataclysmItemValues::SlotsPerPiece)
+	{
+		return TEXT("No affix can be added: that piece's four slots are full.");
+	}
+	if (!Addable.IsValidIndex(Chosen))
+	{
+		return FString();
+	}
+	const FCataclysmAffixRow* Row = AffixTable != nullptr
+		? AffixTable->FindRow<FCataclysmAffixRow>(Addable[Chosen], TEXT("UCataclysmForgeLayout::AddAffixDetailFor"),
+												  /*bWarnIfMissing=*/false)
+		: nullptr;
+	return FString::Printf(TEXT("Affix to add: %s (%s), %d of %d, at tier %d"),
+						   *UCataclysmForge::AffixNameOf(Addable[Chosen], AffixTable),
+						   Row != nullptr ? *Row->Position : TEXT("?"), Chosen + 1, Addable.Num(), Tier);
+}
+
+bool UCataclysmForgeLayout::AffixChangeActionForButton(FName ButtonName,
+													   const TArray<FCataclysmForgeAffixChangeAction>& Shown,
+													   FCataclysmForgeAffixChangeAction& OutAction)
+{
+	for (const FCataclysmForgeAffixChangeAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
 TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
 	const UCataclysmInventoryComponent* Inventory)
 {

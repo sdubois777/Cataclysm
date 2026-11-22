@@ -485,6 +485,26 @@ FString FCataclysmPlayLoopLog::ForgeAffixLine(ECataclysmForgeAffixCraft Craft, i
 						   Days, Plural, DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeAffixChangeLine(bool bShift, int32 AffixNumber, const FString& FromName,
+													const FString& ToName, const FString& ItemName, int64 Gold,
+													int32 Tier, const FString& Rarity, int32 ResidueBefore,
+													int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo)
+{
+	// TWO PLAIN RETURNS, EACH FORMAT ONE LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can
+	// read each one.
+	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
+	const FString Paid = ACataclysmDroppedItem::GoldName(Gold);
+	if (bShift)
+	{
+		return FString::Printf(TEXT("shifted affix %d of %s for %s from %s to %s, tier %d kept; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   AffixNumber, *ItemName, *Paid, *FromName, *ToName, Tier, ResidueBefore, ResidueAfter,
+							   Days, Plural, DayFrom, DayTo);
+	}
+	return FString::Printf(TEXT("added %s at tier %d to %s for %s as affix %d, making it %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   *ToName, Tier, *ItemName, *Paid, AffixNumber, *Rarity, ResidueBefore, ResidueAfter, Days, Plural,
+						   DayFrom, DayTo);
+}
+
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
 {
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);
