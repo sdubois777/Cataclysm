@@ -136,7 +136,10 @@ def test_the_run_record_step_and_field() -> None:
     assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },' in flat(records)
     header = flat(code(SAVE / "CataclysmSaveRecords.h"))
     run_record = header[header.index("class CATACLYSM_API UCataclysmRunSave "):]
-    assert "static constexpr int32 SchemaVersionNow = 16;" in run_record
+    # AT LEAST 16, read rather than pinned: a later step moves it on (17 for issue #2840), as every other check of the
+    # run record's version reads it.
+    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_record)
+    assert version and int(version.group(1)) >= 16, "the run record does not declare version 16 or later"
     assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*bool bCleanseBoughtThisRun = false;", run_record)
     assert "Record.bCleanseBoughtThisRun = Run.bCleanseBoughtThisRun;" in code(SAVE / "CataclysmSaveGather.cpp")
     assert "Run.bCleanseBoughtThisRun = Record.bCleanseBoughtThisRun;" in code(SAVE / "CataclysmSaveApply.cpp")

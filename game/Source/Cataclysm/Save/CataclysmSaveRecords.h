@@ -171,6 +171,21 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	float CommanderHealthMultiplier = 1.0f;
 
 	/**
+	 * AND THE SKILL THAT TOOK IT, since issue #2840: `ACataclysmEnemyCharacter::TakenBySkillRow`, the row its blows credit
+	 * and whose levelling lowers its Fervour reserve, and `TakenLevelFactorOnCreatures`, that skill's level factor at
+	 * the take, which its blows on creatures are multiplied by. Both read once at the take by
+	 * `UCataclysmSummonSkill::Possess`, and lost on a load until this. None and 1 for a creature no skill took.
+	 *
+	 * A RUN RECORD STEP, 16 TO 17, unlike the four above: `Migrate_16_to_17` writes Subjugate's row and 1 on a thrall in
+	 * an older file, not the defaults (the coordinating session's ruling of 2026-11-22, Q1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName TakenBySkillRow;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	float TakenLevelFactorOnCreatures = 1.0f;
+
+	/**
 	 * SOUL HARVEST: the souls this creature holds, and the maximum health they added, which `MaxHealth` above already
 	 * includes. Its attack damage and resistance additions are worked out again from the souls on a load.
 	 */
@@ -1899,12 +1914,18 @@ public:
 	 * `bCleanseBoughtThisRun`, once a run. `Migrate_15_to_16` writes false: a version 15 run could not buy it, because
 	 * it was refused as not built.
 	 *
+	 * 17 SINCE 2026-11-22. Issue #2840: a thrall's saved creature keeps the skill that took it and that skill's level
+	 * factor at the take (`FCataclysmSavedCreature::TakenBySkillRow`, `TakenLevelFactorOnCreatures`). `Migrate_16_to_17`
+	 * writes, on a creature the player commanded, Subjugate's row (`Demonic_Staff_Ultimate`, the one row of
+	 * `WeaponSkills.csv` that takes a creature) and 1, the factor at level 1, since the level at the take was not
+	 * recorded; and None and 1 on every other creature. Ruled by the coordinating session on 2026-11-22 (Q1).
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 16;
+	static constexpr int32 SchemaVersionNow = 17;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

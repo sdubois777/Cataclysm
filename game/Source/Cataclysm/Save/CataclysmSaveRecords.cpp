@@ -1057,6 +1057,9 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/** The one row of `WeaponSkills.csv` that takes a creature, Subjugate's, which `Migrate_16_to_17` writes on a thrall. */
+	const TCHAR* const SubjugateRow = TEXT("Demonic_Staff_Ultimate");
+
 	/**
 	 * Version 15 to 16, issue #2838, ruled 2026-11-22: whether the cleanse city upgrade has been bought in the run.
 	 * A VERSION 15 RUN COULD NOT BUY IT, because it was refused as not built, so the run is written as not having
@@ -1066,6 +1069,41 @@ namespace CataclysmRunSaveMigration
 	{
 		OutError.Empty();
 		Record->SetBoolField(TEXT("bCleanseBoughtThisRun"), false); // A migration's: never bought.
+		return true;
+	}
+
+	/**
+	 * Version 16 to 17, issue #2840, ruled by the coordinating session on 2026-11-22 (Q1): a thrall's saved creature
+	 * keeps the skill that took it and its level factor. A VERSION 16 THRALL WAS TAKEN BY SUBJUGATE: it is the one row
+	 * of `WeaponSkills.csv` that takes a creature (`tools/tests/test_exactly_one_skill_row_takes_a_creature.py` keeps
+	 * it so), and the only other thrall, the Warzone rule's ally, is never saved. So a creature the player commanded is
+	 * written Subjugate's row, which makes its blows credit Subjugate and its Fervour reserve fall when Subjugate levels;
+	 * and a factor of 1, Subjugate's at level 1, because the level at the take was not recorded and 1 never overstates.
+	 * Every other creature is written None and 1, what no skill took. Written out, for `Migrate_1_to_2`'s reason. A
+	 * floor with no array, or an entry that is not an object, is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_16_to_17(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Creatures = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetArrayField(TEXT("Creatures"), Creatures) && Creatures)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Creatures)
+			{
+				const TSharedPtr<FJsonObject>* Creature = nullptr;
+				if (Entry.IsValid() && Entry->TryGetObject(Creature) && Creature && Creature->IsValid())
+				{
+					bool bThrall = false;
+					(*Creature)->TryGetBoolField(TEXT("bCommandedByThePlayer"), bThrall);
+					// A migration's: Subjugate's row on a thrall, as above; no skill on any other creature.
+					(*Creature)->SetStringField(TEXT("TakenBySkillRow"),
+												bThrall ? FString(SubjugateRow) : FString(TEXT("None")));
+					(*Creature)->SetNumberField(TEXT("TakenLevelFactorOnCreatures"), 1.0); // A migration's: level 1.
+				}
+			}
+		}
 		return true;
 	}
 
@@ -1086,6 +1124,7 @@ namespace CataclysmRunSaveMigration
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
+		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 	};
 }
 

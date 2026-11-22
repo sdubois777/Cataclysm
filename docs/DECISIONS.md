@@ -244,6 +244,105 @@ which changes nothing else), 2026-11-22, each PROVED, failing one named test wit
 
 ---
 
+## 2026-11-22 — A thrall loaded from a save keeps the skill that took it and its level factor; an older thrall is given Subjugate at level 1 (#2840)
+
+**Affects:** `FCataclysmSavedCreature::TakenBySkillRow` and `TakenLevelFactorOnCreatures`, new, and the run record at
+version 17, `UCataclysmRunSave::SchemaVersionNow` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`);
+`Migrate_16_to_17` and its row, `SubjugateRow` (`CataclysmSaveRecords.cpp`); the save's commanded-creature block
+(`CataclysmSaveGather.cpp`) and `FCataclysmSaveApply::ThrallInto` (`CataclysmSaveApply.cpp`);
+`game/Tests/SaveFixtures/Run_v17.json`, new, and `game/Tests/SaveFixtures/README.md`;
+`CataclysmSaveFixtures::AddTheRunsVersion17Defaults`, new (`game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`).
+Tests: `Cataclysm.ThrallSave.`, three, new, one in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two in
+`CataclysmThrallSaveTests.cpp`, new; the fourteen test files that read the committed run file or run an older one
+through the chain, moved to `game/Tests/SaveFixtures/Run_v17.json` and the version 17 defaults; `tools/tests/test_a_loaded_thrall_keeps_the_skill_that_took_it.py`,
+new; `tools/tests/test_the_cleanse_city_upgrade.py`, which read the run record's version as exactly 16 and now reads it
+as 16 or later. Issue [#2840](https://github.com/sdubois777/Cataclysm/issues/2840), found while planning
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22. It rides in #2784's
+  window, which the empire tree session drives, cherry-picked onto #2784's branch after its own commits.
+- **BUILT ON THE CLEANSE'S BRANCH, NOT ON DEVELOPMENT**: this branch, `feat/thrall-save-2840`, starts at
+  `feat/city-upgrade-cleanse`'s `97fae58ae`, because the run record is at 15 on
+  development `45b33c70f` and the cleanse (#2838, in the shared gems window) takes it to 16. This change's step is 16 to
+  17 only if the cleanse lands first; the empire tree session confirms the number when it rebases.
+- **NO TEST CAN SEE A THRALL'S BLOW CREDIT SUBJUGATE OR CARRY THE FACTOR AFTER A LOAD** through `ApplyHit`: the tests hold
+  the two fields after the load and the one reader a player feels most, the reserve that falls when Subjugate levels.
+
+### What was wrong
+
+`UCataclysmSummonSkill::Possess` sets two fields on a creature it takes, read once at the take: `TakenBySkillRow`, the
+row its blows credit, and `TakenLevelFactorOnCreatures`, the level factor its blows on creatures carry. A thrall's saved
+creature kept `bCommandedByThePlayer`, `bSecondSelf`, `ReservedFervour` and `CommanderHealthMultiplier`, not these. So
+after a load a thrall's blows credited no skill and lost the factor; and, found while planning this, a THIRD EFFECT:
+`UCataclysmSkillLevels::RepriceReservesOf` lowers each thrall's Fervour reserve when its skill levels, matched by
+`TakenBySkillRow`, so a loaded thrall's reserve never fell. **That third effect is fixed by the row alone**: the row
+restored, or given by the step, is what the repricing matches.
+
+### The rulings, the coordinating session, 2026-11-22
+
+- **Q1: an older thrall gets Subjugate's row and a factor of 1.** Derived, not chosen: exactly one row of
+  `WeaponSkills.csv` takes a creature (`Demonic_Staff_Ultimate`, "Possess=1"), and the only other thrall, the Warzone
+  rule's ally, is never saved (it is raised by a rule and in none of the lists `RaisedByOf` names), so the row is
+  knowable; the level at the take was not recorded, so 1, the factor at level 1, is the one figure that never
+  overstates. (Subjugate's current level could not be read in any case: the step reads the run record, and skill
+  levels are on the character record.)
+- **Q2: a version step, `Migrate_16_to_17`.** Unlike the four thrall fields before it, which were added without a step
+  because their defaults are what an older file meant, this step writes a value that is not the default.
+- **Q3: a Python check that exactly one row takes a creature**, since Q1 rests on it, proved by a break in a copy.
+- **Q4: the burn of #2784 is not added to the round-trip test.**
+
+No formula is proposed: the change keeps two figures across a save.
+
+### The change
+
+- The saved creature declares both fields, None and 1 by default. The save writes them in the block that writes a
+  thrall's other four; `ThrallInto` writes them back beside its other four.
+- `Migrate_16_to_17` writes, on each creature of the floor, `Demonic_Staff_Ultimate` and 1 where `bCommandedByThePlayer`
+  is true, and None and 1 on every other.
+- `Run_v17.json` is `Run_v16.json` at version 17 with its thrall, the Abyssal Warden, at `Demonic_Staff_Ultimate` and
+  1.5 (a figure a float holds exactly, and not the default) and its Brute at None and 1. `Run_v16.json` is a migration
+  input now. The fourteen test files that read the committed run file read `Run_v17.json`, each comment's history
+  extended by one line; the eleven chain tests add `AddTheRunsVersion17Defaults`.
+
+### Tests
+
+`Cataclysm.ThrallSave.`, three, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad` | a Brute taken by the player and given Subjugate's row and level 10's factor, 0.72028, saved by the writer and loaded by `CharacterAndRun`: the same row and factor; CONTROL: the creature beside it, None and 1 |
+| `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne` | `Run_v16.json` migrates: its thrall `Demonic_Staff_Ultimate` and 1, its Brute None and 1; CONTROL: `Run_v17.json` is read, not migrated, its thrall at 1.5 |
+| `ALoadedThrallsReserveFallsWhenSubjugateLevels` | two thralls restored by `CreatureInto` and `ThrallInto`, each holding 30: at Subjugate's level 10 the one saved with Subjugate's row holds 30 x 0.72028; CONTROL: the one saved with none keeps 30 |
+
+Python: `test_a_loaded_thrall_keeps_the_skill_that_took_it.py`, six checks: the one row that takes; the fields both
+ways; the step and the version; the committed file against the previous one; and every chain test adding the step.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log, by the empire tree session, which drives
+#2784's window. As written, on this branch:
+
+- **The whole suite: the base + 3**, the three new tests; skipped halves and test saves unchanged (the round-trip test's
+  save slot is deleted, as the thrall test beside it deletes its own).
+- **The run record moves to 17** (the record version check wants run 17). No editor step.
+- **Groups alone, first**, name-literal counts on this branch: `ThrallSave.` 3 (new); `SaveLoad.` 81, `SaveRecords.` 17,
+  `CityCleanseSave.` 1, `CityUpgradeBuildSave.` 2, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3,
+  `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `GemSave.` 2,
+  `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5 and `WinningTheRun.` 11 (the fourteen files whose pins move); `LevelCosts.`
+  4 and `SecondSelf.` 6 (the repricing and the Second Self, both reading thralls).
+- **Python, alongside the whole Unreal suite:** no failure, no error.
+- **Three Unreal guard proofs**, each narrowed to `Cataclysm.ThrallSave.` (3):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| R1 | the save does not write `TakenBySkillRow` | 2 succeeded, 1 failed: `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`, on "still names Subjugate" |
+| R2 | `ThrallInto` does not write the row back | 1 succeeded, 2 failed: the round-trip test, on "still names Subjugate", and `ALoadedThrallsReserveFallsWhenSubjugateLevels`, on "names Subjugate" and "falls to 21.6" |
+| R3 | `Migrate_16_to_17` writes None on a thrall | 2 succeeded, 1 failed: `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`, on "given Subjugate's row" |
+
+---
+
 ## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
 
 **Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`

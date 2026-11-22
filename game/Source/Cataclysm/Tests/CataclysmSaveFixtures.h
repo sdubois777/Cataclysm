@@ -549,6 +549,34 @@ namespace CataclysmSaveFixtures
 		Expected.SetBoolField(TEXT("bCleanseBoughtThisRun"), false);
 	}
 
+	/**
+	 * What the run record's newest step writes into a run file written before it: on each creature of the floor,
+	 * Subjugate's row and a factor of 1 when the player commanded it, and None and 1 when not (`TakenBySkillRow`,
+	 * `TakenLevelFactorOnCreatures`). Issue #2840. NAMED FOR THE VERSION IT REACHES, 17. ONE COPY.
+	 */
+	inline void AddTheRunsVersion17Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Creatures = nullptr;
+		if (!Expected.TryGetObjectField(TEXT("Floor"), Floor) || Floor == nullptr || !Floor->IsValid()
+			|| !(*Floor)->TryGetArrayField(TEXT("Creatures"), Creatures) || Creatures == nullptr)
+		{
+			return;
+		}
+		for (const TSharedPtr<FJsonValue>& Entry : *Creatures)
+		{
+			const TSharedPtr<FJsonObject>* Creature = nullptr;
+			if (Entry.IsValid() && Entry->TryGetObject(Creature) && Creature != nullptr && Creature->IsValid())
+			{
+				bool bThrall = false;
+				(*Creature)->TryGetBoolField(TEXT("bCommandedByThePlayer"), bThrall);
+				(*Creature)->SetStringField(TEXT("TakenBySkillRow"),
+											bThrall ? TEXT("Demonic_Staff_Ultimate") : TEXT("None"));
+				(*Creature)->SetNumberField(TEXT("TakenLevelFactorOnCreatures"), 1.0);
+			}
+		}
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;
