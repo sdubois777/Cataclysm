@@ -33,9 +33,13 @@ new; `tools/tests/test_gems_are_carried_in_stacks.py`, one check rewritten. Issu
 - **THE RUN RECORD'S VERSION DOES NOT MOVE HERE.** The ground item gains three saved fields. Their version step, with
   its migration and fixture, is written at the turn: 14 to 15 by the current order, or folded into G3's 13 to 14 if G5
   is in the same window, which needs only one run-record step (the coordinating session, 2026-11-21).
-- **THE RATE IS SET BY TIER 8, SO EVERY LOWER TIER GETS FAR MORE THAN ITS CEILING NEEDS.** At tier 1 a full clear's gems
-  are worth 1,909 Everyday gems against the 6 the reference character fills. That follows from one share for every tier,
-  which "gems follow the gear column" rules; a share by tier would need a ruling.
+- **THE RATE IS SET BY TIER 8, SO EVERY LOWER TIER GETS FAR MORE THAN ITS CEILING NEEDS. KNOWN, AND KEPT.** At tier 1
+  a full clear's gems are worth 1,909 Everyday gems against the 6 the reference character fills. The coordinating
+  session ruled on 2026-11-21 to keep one share for every tier, as "gems follow the gear column" already ruled, and not
+  to make a share per tier: the overflow at a low tier is a count of gems, and a count is not where a gem's power comes
+  from; how high its rarity can be pushed is. So the limit belongs on combining (slice G6), not on the drop rate.
+  Uncombined, the overflow is about 38 gems of each of the 28 kinds; combined without a limit, two of a rarity into one
+  of the next, they would make about one Ascendant gem of each kind at tier 1.
 
 ### The measurement, and what in it is derived
 
