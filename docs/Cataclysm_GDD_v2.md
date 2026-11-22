@@ -2874,12 +2874,12 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
 | Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
 | :-- | --: | --: | --: |
-| Common | 0.16 | 0.16 | 0% |
-| Elite | 0.5 | 0.5 | 50% |
-| Legendary | 1.0 | 1.0 | 100% |
-| Herald | 2.0 | 2.0 | 150% |
-| Boss | 5.0 | 5.0 | 300% |
-| Cataclysm Boss | 12.0 | 12.0 | 500% |
+| Common | 0.16 | 0.04 | 0% |
+| Elite | 0.5 | 0.125 | 50% |
+| Legendary | 1.0 | 0.25 | 100% |
+| Herald | 2.0 | 0.5 | 150% |
+| Boss | 5.0 | 1.25 | 300% |
+| Cataclysm Boss | 12.0 | 3.0 | 500% |
 
   
 
@@ -2915,7 +2915,7 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
   
 
-**A kill drops as many materials as gear, halved from twice as many on 2026-08-23.** The doubling was there because a craft consumes a material and a full loadout takes several hundred crafts, while a piece of gear is kept. That argument was not disproved: the rate was halved because a play test found the floor cluttered with materials, and this is the number that gave way. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
+**A kill drops a quarter as many materials as gear, since 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
 
   
 

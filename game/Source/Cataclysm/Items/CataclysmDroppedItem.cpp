@@ -813,8 +813,8 @@ int32 UCataclysmDropSpawner::SpawnOneInfestedDropFor(UWorld* World, int32 EnemyR
 	{
 		return 0;
 	}
-	// GEAR OR A MATERIAL IN THE CREATURE'S OWN RATIO, which is one to one for
-	// every rarity in game/Data/EnemyDrops.csv today.
+	// GEAR OR A MATERIAL IN THE CREATURE'S OWN RATIO, which is four gear to one
+	// material for every rarity in game/Data/EnemyDrops.csv today (issue #2829).
 	const bool bGear = Stream.FRand() * (Gear + Materials) < Gear;
 	return SpawnDropsFor(World, EnemyRarityStep, MagicFind,
 						 UCataclysmDropRoll::BaselineLootQuantity, At, Stream,

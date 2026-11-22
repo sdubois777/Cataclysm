@@ -1205,33 +1205,33 @@ def test_a_kill_can_drop_for_more_than_one_slot():
 # Crafting materials, on their own roll
 # --------------------------------------------------------------------------
 
-def test_a_kill_drops_as_many_materials_as_gear():
-    """Halved from twice the gear rate on 2026-08-23, issue #850.
+def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
+    """A quarter of the gear rate since 2026-11-22, issue #2829. It was twice
+    the gear rate until 2026-08-23 (issue #850) and the gear rate until #2829.
 
-    THE RELATIONSHIP IS ASSERTED RATHER THAN THE SIX FIGURES, and it was written
-    that way when the ratio was two. It still earns its place at one: what the
-    test is really guarding is that the two columns move together deliberately,
-    so a change to one rarity alone shows up here rather than passing quietly.
+    THE RELATIONSHIP IS ASSERTED RATHER THAN THE SIX FIGURES. What the test
+    guards is that the two columns move together deliberately, so a change to
+    one rarity alone shows up here rather than passing quietly.
     """
     for rarity in loot.ENEMY_GEAR_DROPS:
         assert loot.expected_material_drops(rarity) == pytest.approx(
-            loot.expected_gear_drops(rarity))
+            loot.expected_gear_drops(rarity) / 4)
 
 
 def test_the_material_drop_figures_are_what_the_owner_chose():
-    """The six numbers, stated once so halving them again cannot pass unnoticed.
+    """The six numbers, stated once so changing them again cannot pass unnoticed.
 
     The test above compares two columns against each other, so multiplying BOTH
     by the same factor would satisfy it. This is the one that says what the
-    figures actually are.
+    figures actually are: a quarter of the 2026-08-23 figures, issue #2829.
     """
     assert loot.ENEMY_MATERIAL_DROPS == {
-        "Common":          0.16,
-        "Elite":           0.5,
-        "Legendary":       1.0,
-        "Herald":          2.0,
-        "Boss":            5.0,
-        "Cataclysm Boss": 12.0,
+        "Common":          0.04,
+        "Elite":           0.125,
+        "Legendary":       0.25,
+        "Herald":          0.5,
+        "Boss":            1.25,
+        "Cataclysm Boss":  3.0,
     }
 
 
@@ -1463,8 +1463,8 @@ def test_a_kill_produces_material_tiers():
     assert tiers, "a Boss dropping no materials is possible but not at this seed"
     assert set(tiers) <= set(loot.MATERIAL_TIERS)
 
-    # AND MATERIALS AVERAGE THEIR OWN DESIGNED RATE, which is twice the gear
-    # rate. A second copy of the counting arithmetic living here was how the two
+    # AND MATERIALS AVERAGE THEIR OWN DESIGNED RATE, which is a quarter of the
+    # gear rate. A second copy of the counting arithmetic living here was how the two
     # could have drifted apart; there is one function now.
     counts = [len(loot.roll_material_drops_from_kill("Boss", 0.0, 100.0, rng))
               for _ in range(4000)]

@@ -583,8 +583,9 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
  *
  * WHAT THIS GUARDS. Issue #717: the material roll ran on every kill and its
  * result was thrown away, so a player got the gear half of what a kill is
- * designed to give and silently lost the other half. Materials come at twice the
- * gear rate, so the half that was missing was the larger one.
+ * designed to give and silently lost the other half. Materials came at twice the
+ * gear rate then, so the half that was missing was the larger one. They come at
+ * a quarter of it since issue #2829.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialDropsReachTheFloorTest,
 	"Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo",
@@ -611,8 +612,10 @@ bool FCataclysmMaterialDropsReachTheFloorTest::RunTest(const FString& Parameters
 		return false;
 	}
 
-	// A CATACLYSM BOSS, WHICH AVERAGES 24 MATERIALS. Its rate makes an empty
-	// material roll vanishingly unlikely at any seed.
+	// A CATACLYSM BOSS, WHICH AVERAGES 3 MATERIALS SINCE ISSUE #2829 (24 when
+	// this test was written). The count is drawn from a Poisson distribution, so
+	// at 3 an empty material roll happens about one seed in twenty. Whether
+	// this seed's is empty is what the first check below reports.
 	constexpr int32 CataclysmBossStep = 5;
 
 	FRandomStream Stream(/*InSeed=*/20260819);

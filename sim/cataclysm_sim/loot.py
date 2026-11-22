@@ -1256,30 +1256,30 @@ def roll_drops_from_kill(enemy_rarity: str, tier: int, magic_find: float,
 #: and a shared roll would make that node also reduce the number of gear items
 #: that drop.
 #:
-#: THE SAME RATE AS GEAR, HALVED FROM TWICE IT ON 2026-08-23. The project owner
-#: played and reported far too many materials dropping and cluttering the
-#: screen, and chose to halve the column. Issue #850.
+#: A QUARTER OF THE GEAR RATE SINCE 2026-11-22, issue #2829. It was twice the
+#: gear rate until 2026-08-23, when the project owner found the floor cluttered
+#: and halved it to the gear rate (issue #850). On 2026-11-21 the owner played
+#: again and called the material drops "way too high". The coordinating session
+#: ruled a quarter of the 2026-08-23 figures under the owner's delegation of
+#: numbers.
 #:
-#: WHAT THE DOUBLING WAS FOR, because halving it gave that reason up rather than
-#: disproving it: a craft CONSUMES a material and a full loadout takes several
-#: hundred crafts -- eighteen pieces of promotion, upgrade and socketing is well
-#: over three hundred -- while a piece of gear is kept rather than spent. So the
-#: economy now supplies half what that argument asked for, and if a run turns out
-#: not to yield enough to craft with, this is the number that moved.
-#:
-#: THE CLUTTER AND THE ECONOMY ARE TWO DIFFERENT PROBLEMS and this lever moves
-#: both. Issue #851 is the other one: collecting nearby materials in one pickup
-#: reduces the nuisance without touching the supply.
+#: WHY A QUARTER IS SAFE FOR UPGRADES. Raising an item to level k takes k days
+#: of the run, plus one day for each 100 residue the item carries
+#: (`UCataclysmForge::DaysFor`, issue #2830). Measured on 2026-11-22: at a
+#: quarter, the upgrade stones a 230-creature floor brings are still 1.62 times
+#: (difficulty tier 8) to 5.94 times (tier 2) what one day of upgrading at the
+#: tier's best stone uses. So the days, not the stones, limit how fast gear is
+#: levelled at every tier. `docs/DECISIONS.md` has both tables.
 #:
 #: The two columns are stored separately rather than one being computed from the
-#: other, so either can be tuned without the other. They happen to be equal now.
+#: other, so either can be tuned without the other.
 ENEMY_MATERIAL_DROPS: dict[str, float] = {
-    "Common":          0.16,
-    "Elite":           0.5,
-    "Legendary":       1.0,
-    "Herald":          2.0,
-    "Boss":            5.0,
-    "Cataclysm Boss": 12.0,
+    "Common":          0.04,
+    "Elite":           0.125,
+    "Legendary":       0.25,
+    "Herald":          0.5,
+    "Boss":            1.25,
+    "Cataclysm Boss":  3.0,
 }
 
 #: The five crafting material tiers, weakest first, as the Crafting sheet names
