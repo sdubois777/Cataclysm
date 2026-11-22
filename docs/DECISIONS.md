@@ -446,8 +446,12 @@ The plan was accepted with eight answers:
 - **Nothing moves** in the workbook, the assets or the save versions: both rows and both materials were already on the
   sheets, and an added socket is one more entry in the item's saved list.
 
-**One thing the owner should know**: both materials drop rarely. By `MaterialTiers.csv`'s weights, about 1 material drop
-in 130 is a Shattered Core and 1 in 430 a Focusing Lens, and there is no console command that grants a material.
+**Both materials drop rarely.** By `MaterialTiers.csv`'s weights, about 1 material drop in 130 is a Shattered Core and 1
+in 430 a Focusing Lens. **So `Cataclysm.GrantMaterial <row> [count]` puts them in the bag** (`CataclysmPlayerCharacter.cpp`,
+beside `Cataclysm.GrantGem`), ruled by the coordinating session on 2026-11-22: "The owner tests by playing, and a craft
+whose material drops once in 430 cannot be tested without it." It looks its row up in the crafting material table and
+refuses any other row before adding anything: "Gem_Of_Life is no crafting material in the crafting material table." Its
+coverage is `Cataclysm.GrantGem`'s kind, a Python check, so it adds no Unreal test name.
 
 ### Tests
 
@@ -462,13 +466,16 @@ in 130 is a Shattered Core and 1 in 430 a Focusing Lens, and there is no console
 | FS5 | `AChangeIsRefusedForAFullSocketItsOwnTypeAndAnAnySocket` | the six refusals; on the character, nothing moves |
 | FS6 | `TheScreenOffersAnAddBelowTheMaximumAndAChangeToEachOtherTypeOfAnEmptySocket` | the buttons, and none for a full socket or one for any gem |
 
-**Python**: `tools/tests/test_the_forge_adds_and_changes_sockets.py`, 6 tests. Its copy of the seed text, the CRC (the
+**Python**: `tools/tests/test_the_forge_adds_and_changes_sockets.py`, 7 tests, the seventh for `Cataclysm.GrantMaterial`. Its copy of the seed text, the CRC (the
 standard CRC-32 over each character as four bytes, which `FCrc::StrCrc32` is), the mix and the stream gives the exact
 figures FS2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two rows' fallbacks.
 
-**Python suite at `bd72f016f`**: "8092 passed, 10 skipped"; JUnit 8102 tests, 0 failures, 0 errors; ruff clean.
+**Python suite at `bd72f016f`**: "8092 passed, 10 skipped"; JUnit 8102 tests, 0 failures, 0 errors; ruff clean. **At
+`3c8d98e9d`**, with `Cataclysm.GrantMaterial` and its check: "8093 passed, 10 skipped"; JUnit 8103, 0 failures, 0
+errors; ruff clean.
 
-**Python guard proofs, in a `git archive` copy of `bd72f016f`: 7 of 7 PROVED.**
+**Python guard proofs, in a `git archive` copy of `bd72f016f`: 7 of 7 PROVED; again with PS8 in a copy of
+`3c8d98e9d`: 8 of 8 PROVED.**
 
 | Proof | Break | Failed with it, passed without |
 | :-- | :-- | :-- |
@@ -479,6 +486,7 @@ figures FS2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two 
 | PS5 | the added socket rolled from the day after | `test_the_added_socket_is_rolled_before_the_days_pass` |
 | PS6 | the screen offering a change for a socket for any gem | `test_the_screen_offers_no_change_for_a_full_socket_or_one_for_any_gem` |
 | PS7 | Add Socket's base days 4 | `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+| PS8 | `Cataclysm.GrantMaterial` looking up no row | `test_grant_material_puts_a_crafting_material_in_the_bag_and_refuses_any_other_row` |
 
 ### Registered for the window
 
