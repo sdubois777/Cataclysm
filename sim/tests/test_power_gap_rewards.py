@@ -42,3 +42,15 @@ def test_the_plans_quarter_width_band_costs_the_climb_a_level() -> None:
     plan = next(rule for rule in gaps.RULES if rule.name.startswith("A:"))
     paid = {tier: gaps.curve.PER_DUNGEON[tier] * gaps.campaign_multiplier(plan, tier) for tier in gaps.TIERS}
     assert gaps.curve.whole_levels_at_tier_ends(per_dungeon=paid)[-1] == 99
+
+
+def test_rule_d_never_cuts_a_player_at_the_reference_in_any_dungeon_their_tier_spawns() -> None:
+    # THE COORDINATING SESSION'S QUESTION OF 2026-11-22: a dungeon's timer forces the player to clear shallow
+    # dungeons of their own tier too, so the cut must not reach them there. The lowest Dungeon Score a tier spawns
+    # is 0.48 to 0.49 of a width below the reference; rule D's cut begins at 0.6.
+    rule_d = next(rule for rule in gaps.RULES if rule.name.startswith("D:"))
+    for tier in gaps.TIERS:
+        low, high = gaps.spawn_extremes(tier)
+        width = gaps.scoring.tier_width(tier)
+        assert rule_d.multiplier((low.score - gaps.reference(tier)) / width) == 1.0, tier
+        assert rule_d.multiplier((high.score - gaps.reference(tier)) / width) == 1.0, tier

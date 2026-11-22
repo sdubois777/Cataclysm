@@ -48,7 +48,8 @@ import dataclasses
 import io
 import pathlib
 
-from cataclysm_sim import loot, scoring
+from cataclysm_sim import loot, modifiers, scoring
+from cataclysm_sim.config import TuningConfig
 
 # THE EXPERIENCE CURVE'S SCRIPT PRINTS ITS WHOLE REPORT ON IMPORT, as every analysis script does; it is read for its
 # figures, not its report, so that is discarded.
@@ -125,6 +126,47 @@ def campaign_multiplier(rule: Rule, tier: int) -> float:
     return sum(rule.multiplier(gap(tier, start + (end - start) * (k + 0.5) / steps)) for k in range(steps)) / steps
 
 
+@dataclasses.dataclass(frozen=True)
+class Spawned:
+    """One dungeon a tier can spawn, at one end of its range, and its Dungeon Score."""
+
+    score: float
+    what: str
+
+
+def spawn_extremes(tier: int) -> tuple[Spawned, Spawned]:
+    """The lowest and the highest Dungeon Score among the dungeons a tier can spawn.
+
+    WHAT IS SPANNED, from the simulation's own tables: every (type, city tier) row of `TuningConfig.DUNGEON_SPECS`, at
+    the shortest and the longest floor count of its range; every sub-type the type allows
+    (`SUBTYPE_SPAWN_WEIGHTS` less `SUBTYPES_FORBIDDEN_ON`); and modifiers at their least (one per difficulty tier,
+    each the smallest in `modifiers.MODIFIERS`, 5) and their most (each the largest, 20, twice as many on a
+    Sacrificial dungeon, and the Corrupted Stalker's 20 on top). The empire tree's added floors are left out.
+    """
+    cfg = TuningConfig()
+    smallest = min(score for name, rows in modifiers.MODIFIERS.items() if name != "Generic" for _, score in rows)
+    largest = max(score for name, rows in modifiers.MODIFIERS.items() if name != "Generic" for _, score in rows)
+    low: Spawned | None = None
+    high: Spawned | None = None
+    for (dtype, city_tier), spec in cfg.DUNGEON_SPECS.items():
+        allowed = [sub for sub in cfg.SUBTYPE_SPAWN_WEIGHTS if sub not in cfg.SUBTYPES_FORBIDDEN_ON.get(dtype, ())]
+        for floors in spec.floors:
+            for sub in allowed:
+                slots = cfg.modifiers_per_tier * tier * (cfg.sacrificial_modifier_multiplier if sub == "Sacrificial" else 1)
+                for label, mods in (("fewest modifier points", slots * smallest),
+                                    ("most modifier points and the Stalker", slots * largest + modifiers.CORRUPTED_STALKER[1])):
+                    # THE SCORING PORT NAMES THE TYPE AS THE REFERENCE DOES, "Fallen City" with a space.
+                    kind = "Fallen City" if dtype.value == "FallenCity" else dtype.value
+                    score = scoring.dungeon_score(tier, kind, sub, floors, mods)
+                    what = f"{kind} on a {city_tier.value}, {floors} floors, {sub}, {label}"
+                    if low is None or score < low.score:
+                        low = Spawned(score, what)
+                    if high is None or score > high.score:
+                        high = Spawned(score, what)
+    assert low is not None and high is not None
+    return low, high
+
+
 def rates(column: str) -> dict[str, float]:
     with (DATA / "EnemyDrops.csv").open(encoding="utf-8", newline="") as handle:
         return {row["EnemyRarity"]: float(row[column]) for row in csv.DictReader(handle)}
@@ -171,6 +213,28 @@ def main() -> None:
         total = sum(paid.values()) / sum(curve.PER_DUNGEON.values())
         print(f"  The whole climb's experience is {total:.3f} times today's; level 100 "
               f"{'arrives' if levels[-1] >= 100 else 'does NOT arrive'} by the end of tier 8.\n")
+
+    print("THE WITHIN-TIER SPREAD: WHAT A TIER ACTUALLY SPAWNS, against the reference and a player halfway through")
+    print()
+    print("  A dungeon's timer threatens a city, so a player clears shallow and deep dungeons of their own tier alike.")
+    lows_and_highs = {tier: spawn_extremes(tier) for tier in TIERS}
+    for tier in TIERS:
+        low, high = lows_and_highs[tier]
+        print(f"  Tier {tier}: lowest {low.score:.0f} ({low.what});")
+        print(f"          highest {high.score:.0f} ({high.what})")
+    print()
+    print("  Gap from the player, in tier widths, and the factor each rule gives (A, C, D):")
+    print("  Tier | Player    | Lowest: gap  A     C     D    | Average: gap  A     C     D    | Highest: gap  A     C     D")
+    for tier in TIERS:
+        low, high = lows_and_highs[tier]
+        width = scoring.tier_width(tier)
+        for label, player in (("reference", reference(tier)), ("halfway", campaign_start(tier) + width / 2)):
+            cells = []
+            for score in (low.score, dungeon_score(tier), high.score):
+                g = (score - player) / width
+                cells.append(f"{g:+.2f}  " + "  ".join(f"{rule.multiplier(g):.2f}" for rule in (RULES[0], RULES[2], RULES[3])))
+            print(f"  {tier:4d} | {label:9s} | {cells[0]:24s} | {cells[1]:24s} | {cells[2]}")
+    print()
 
     print("TODAY, for comparison: levels at the end of each tier",
           "  ".join(f"{level:3d}" for level in curve.whole_levels_at_tier_ends()), "\n")
