@@ -13,7 +13,8 @@ the gear-to-material ratio one to one, and the comment on Scavenger's second mat
 `SpawnMaterialsFor` in `CataclysmDroppedItem.h`, which said twice the gear rate. Tests: `sim/tests/test_loot.py`, the pinned dictionary and the gear-to-material
 relationship, now a quarter; `game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp`, the six quoted material figures
 and a Boss at 400% loot quantity, 20 to 5; the comments of `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`
-(`CataclysmDroppedItemTests.cpp`); the comment in `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`
+(`CataclysmDroppedItemTests.cpp`); the set-up of `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` in the same
+file, which now gives each kill no gear and 12 materials, and its new info line; the comment in `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`
 (`CataclysmDungeonModifierEffectsTests.cpp`) giving a Cataclysm Boss's expected drops, 24 to 15. The asset `DT_EnemyDrops` (`game/Content/Data/DT_EnemyDrops.uasset`) is NOT rebuilt
 here. Issue [#2829](https://github.com/sdubois777/Cataclysm/issues/2829), following
 [#2830](https://github.com/sdubois777/Cataclysm/issues/2830) and [#850](https://github.com/sdubois777/Cataclysm/issues/850).
@@ -133,13 +134,31 @@ window's engine log; they are predictions, not measurements.
 
 - **Changed by this branch:** `Cataclysm.Drop.AKillDropsAtTheRateItsRarityStates` (`CataclysmDropRollTests.cpp`): the six
   material figures, and a Boss at 400%, 20 to 5. It passes only once `DT_EnemyDrops` is rebuilt.
-- **May change; depends on rolls after the first kill, not computed:**
-  - `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (`CataclysmDroppedItemTests.cpp`): eight Cataclysm Boss
-    kills on seed 20260823 at tiers 1 and 8. Materials per tier fall from about 96 to about 24. Its checks: materials
-    dropped at each tier, and the best stone at tier 8 above the best at tier 1. The first kill's counts go from 14 gear
-    and 20 materials to 14 and 5.
-  - `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` (same file, same seed and kills): reads gear only, but every gear
-    item after the first kill's material count is rolled from a different place in the stream.
+- **Changed set-up, a judgement: the coordinating session asked for a test predicted to fail to be fixed, and this one
+  could not be predicted:**
+  `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (`CataclysmDroppedItemTests.cpp`), eight Cataclysm Boss kills
+  on seed 20260823 at tiers 1 and 8, checking that the best stone at tier 8 is above the best at tier 1.
+  - Rolled, the materials per tier fall from about 96 to about 24. The outcome at this seed could not be computed,
+    because each gear item draws a varying number of random numbers.
+  - By the simulation's material model, a tier 8 best no better than the tier 1 best then happens at 1.6% of seeds,
+    against about one in seven million at 96.
+  - So each kill is now given its counts: no gear and 12 materials, the 96 a tier it averaged before. The test is about
+    the tier the drop site passes to the material roll, not how many materials drop.
+  - With no gear, the stream carries the material rolls alone. A Python copy of `RollMaterialTier` and `RollMaterial`
+    predicts tier 1's best +3 and tier 8's best +10, over 96 materials each. The closest draw is 0.0034 from its
+    threshold. A new info line in the test, "STONES: tier 1 best +%d over %d materials; tier 8 best +%d over %d
+    materials", reports what lands.
+- **May change; not computed:** `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` (same file, same seed and kills).
+  - It reads gear only, but every gear item after the first kill's material count is rolled from a different place in
+    the stream, which has the same effect as a different seed.
+  - Its own comment records six seeds measured, all passing. Tier 8 to tier 1 mean rarity ran 2.6 to 3.7, against a
+    bound of 2. Tier 1's mean ran 0.68 to 0.95, against a bound of Superb, 2.
+  - The simulation's rarity model does not reproduce those measured means, so no failure chance is derived for it.
+- **The Reality Chamber's given drop:** `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber` now gives
+  an Elite gear item where it gave a material. `RollItem` fails only on faults in the data: a slot with no base, an
+  affix pool with too few stat groups, or enchantment bands that cannot pair. Each of these logs a warning.
+  - None of the three warnings appears in window ai-think-w1's whole-suite engine log, 5144 tests.
+  - So the gear item is predicted to roll, and the test to pass.
 - **Counts move, every check holds at the computed counts:**
   - `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`: 15 gear and 9 materials become 15 and 1.
   - `Cataclysm.Drop.AKillPutsNamedItemsOnTheFloor`: 3 and 4 become 3 and 1.
@@ -162,6 +181,21 @@ window's engine log; they are predictions, not measurements.
 
 Comments updated, no behaviour: `CataclysmDroppedItem.h` ("twice the gear rate"), `CataclysmDroppedItem.cpp`
 (Scavenger's second material), and the Trick or Treat test's expected drop count, 24 to 15.
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive`, 2026-11-22, command
+`python -m pytest sim/tests/test_loot.py tools/tests/test_enemy_drop_sheet_matches_the_model.py`:
+
+| Proof | Break in `sim/cataclysm_sim/loot.py` | Result |
+|---|---|---|
+| PM1 | Boss's materials alone, 1.25 to 2.5 | PROVED: 4 failed, 127 passed; restored, 131 passed |
+| PM2 | the six figures put back to the 2026-08-23 rates | PROVED: 4 failed, 127 passed; restored, 131 passed |
+
+Both broke the same four: `test_a_kill_drops_a_quarter_as_many_materials_as_gear`,
+`test_the_material_drop_figures_are_what_the_owner_chose`, `test_every_material_drop_rate_matches_the_model` and
+`test_the_document_states_the_material_rates_the_model_uses`.
+
+**PM1 was run first with Boss at 5.0, and that run measured nothing.** 5.0 is above the Cataclysm Boss's 3.0, so the
+import-time ladder check stopped the module from loading: the run exited 2 with no test named.
 
 ---
 

@@ -1082,12 +1082,25 @@ bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
 		FRandomStream Stream(/*InSeed=*/20260823);
 		constexpr int32 CataclysmBossStep = 5;
 
+		// THE COUNTS ARE GIVEN, NO GEAR AND TWELVE MATERIALS A KILL, since issue
+		// #2829 cut a Cataclysm Boss's materials from 12 to 3. Rolled, eight
+		// kills averaged 24 materials a tier, and a tier 8 best no better than
+		// the tier 1 best then happens at about one seed in sixty. This test is
+		// about the tier the drop site passes to the material roll, not about
+		// how many materials drop, so the count is fixed at the 96 it averaged
+		// before. With no gear the stream carries the material rolls alone, so
+		// the outcome at this seed can be computed outside the engine. A Python
+		// copy of the two rolls, written for #2829, predicted tier 1's best +3
+		// and tier 8's best +10.
+		constexpr int32 MaterialsPerKill = 12;
 		for (int32 Kill = 0; Kill < 8; ++Kill)
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, CataclysmBossStep, /*MagicFind=*/0.0f,
 				UCataclysmDropRoll::BaselineLootQuantity,
-				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream);
+				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream,
+				/*bMarked=*/false, /*bInfested=*/false,
+				/*GearCountGiven=*/0, /*MaterialCountGiven=*/MaterialsPerKill);
 		}
 
 		int32 Best = 0;
@@ -1122,6 +1135,11 @@ bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// WHAT LANDED, so a run's log can be checked against the prediction above.
+	AddInfo(FString::Printf(
+		TEXT("STONES: tier 1 best +%d over %d materials; tier 8 best +%d over %d materials"),
+		AtTierOne, MaterialsAtOne, AtTierEight, MaterialsAtEight));
 
 	// TIER 1 REACHES +3 AND NO FURTHER. Stated outright rather than read back
 	// from MaxUpgradeStoneOnADrop, so a change to the rule fails here. It is
