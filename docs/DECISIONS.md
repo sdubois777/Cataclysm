@@ -349,6 +349,127 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
 
 ---
 
+## 2026-11-22 — A thrall sets alight what it strikes, and a minion's or a thrall's burn grows with its skill's level: a burn is flat, not a share of the blow, so a minion's took no level factor at all (#2784)
+
+**Affects:** `UCataclysmSkillEffects::ApplyHit`, `ApplyBurn` (its new `LevelFactor`) and
+`CataclysmSkillEffectsLevels::PlayersThrall`, with one new include, `Character/CataclysmPlayerCharacter.h`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`); the imp's two burns, its swing's and its
+explosion's, in `ACataclysmMinion` (`CataclysmMinion.cpp`); `docs/Cataclysm_GDD_v2.md`, the skill table's Subjugate row,
+"WHAT EARNS A SKILL EXPERIENCE" and the skill level rules' "Its ailments and minions" row. Tests: `Cataclysm.ThrallBurn.`,
+5, in `game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`; `tools/tests/test_thrall_burn.py`, new. Issue
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784); [#2840](https://github.com/sdubois777/Cataclysm/issues/2840)
+filed from it.
+
+### SAID FIRST
+
+- **NOT COMPILED.** Phase 1.
+- **THE IMP'S BURN WAS WRONG BEFORE THIS, AND THE DESIGN DOCUMENT SAID IT WAS RIGHT.** The owner's answer of 2026-11-19
+  (the skill levels entry below) says burns and minions "scale too", up to 2.85 times at level 20, and names Summon Imp:
+  "Without this, Summon Imp levels up but its imps never hit harder because of it." Slice 2b left the imp's burn out of
+  the level factor on the ground that it was "a share of the blow just dealt, which already carries the level factor".
+  It is not: `DoT_Burn` in `game/Data/StatusEffects.csv` is flat, 25 a second for 4 seconds, with a percent of the hit of
+  nought. So the imp's burn ignored Summon Imp's level. The design document's level rules said the same of "a burn a
+  minion's blow sets"; they are corrected, as are the imp's two comments.
+- **#2784'S OWN TEXT RESTED ON THE SAME PREMISE**: "the burn ... carries the thrall's level factor no second time, by
+  slice 2b's rule for a figure taken from a scaled blow". The burn takes the factor once, itself, because nothing else
+  gives it one.
+- **A THRALL LOADED FROM A SAVE LOSES ITS BURN'S FACTOR AND CREDIT**, as it already loses its blows': `TakenBySkillRow` and
+  `TakenLevelFactorOnCreatures` are not saved. Filed as #2840 by the ruling (Q5); not built here.
+
+### The rulings, the coordinating session's of 2026-11-22
+
+| Ruling | What | Kind |
+|---|---|---|
+| Q1 | A thrall is a creature whose commander is the player, read every blow: no new field, no save version | ruled |
+| Q2 | A taken Gatekeeper's imps, whose commander is the Gatekeeper (#2791), set nothing alight | ruled |
+| Q3 | The summoned imp's swing burn's shape: designed (#917); the flat `DoT_Burn`, set by the thrall; neither side's damage over time stats (the design document's minions table: a minion does not take its summoner's "damage over time"); only on a blow not evaded (#1156) and not refused as immune to its attacker; credited to the skill that took it | derived |
+| Q4 | The level factor NOW, on the thrall's burn and on the imp's: from the owner's answer of 2026-11-19, "Yes, they scale too". The basic attack's ailments are left as they are | derived |
+| Q5 | The save gap filed as its own issue, #2840 | ruled |
+| Q6 | Every blow the thrall deals through `ApplyHit`, but not a share struck at an ally and not a tick | ruled |
+
+**Genre, fetched 2026-11-22, and thin.** poedb.tw/us/Ignite: ignite "Deals Base Fire Damage per second" and its "Base
+duration is 4 seconds". No page read verbatim said whose modifiers scale a minion's ignite (poedb.tw/us/Minion), and
+maxroll's Last Epoch ailment and minion pages returned 404. The rule this follows is the design document's own minions
+table, recorded there from earlier research, and the owner's answer for the level.
+
+**"Sets alight" is one thing in this game**: the burn, `DoT_Burn`, laid by `ApplyBurn` or by the "Burn" ailment kind's
+chance (`burn_chance`) on a landed blow. There is no separate ignite. A thrall's own chances still roll as they did; both
+lay the same single burn, which refreshes.
+
+### The change
+
+- **The thrall's burn.** `ApplyHit`'s branch for a blow that is no gadget's or trap's -- the one a thrall's swing, charge
+  and abilities take -- keeps the blow's result and, for a landed blow that is no share on an ally and no tick, by a
+  creature `PlayersThrall` finds (one whose commander is an `ACataclysmPlayerCharacter`), calls
+  `ApplyBurn(thrall, target, sent, unscaled, designed, dealt by the thrall, row = TakenBySkillRow, factor =
+  ThrallsLevelFactor)`: the imp's call, with the taker's row and the factor its blow took, on a creature.
+- **The factor.** `ApplyBurn(..., float LevelFactor = 1.0f)` multiplies the burn's figure by it, never below nought, for a
+  burn not scaled by its applier; a burn scaled by its applier still takes its skill's factor in `ApplyDamageOverTime`.
+- **The imp.** Its swing's burn and its explosion's burn pass `LevelFactorOnCreatures` on a creature. The explosion's burn
+  still credits nothing, as the explosion does. Both are "the imp's burn" in this reading of Q4, the explosion's damage
+  already carrying the same factor ("scaling follows the figure", ruled 2026-11-20); the report says so.
+- **No workbook, asset or save version moves.**
+
+### The tests
+
+- **Unreal, `Cataclysm.ThrallBurn.`, 5**, beside the slice 2b tests whose helpers they use:
+  1. `ATakenCreatureSetsAlightWhatItStrikes`: 25 a tick; THE CONTROL, a creature nobody took, its blow dealt, none;
+  2. `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`: 25 at level 1 (the control) and 25 x 1.0567 squared at 3,
+     both crediting Subjugate;
+  3. `AnEvadedBlowSetsNothingAlight`, against 100 evasion, with the same thrall's landed blow as the control;
+  4. `ACreatureATakenCreatureCommandsSetsNothingAlight`, the Gatekeeper's `SetOwner(this)` shape, with the thrall's own
+     blow as the control;
+  5. `AnImpsBurnGrowsWithSummonImpsLevel`: the swing's and the explosion's burns, 25 at level 1 and 25 x 1.0567 squared
+     at 3; the swing's credits Summon Imp, the explosion's nothing.
+  Each striker's own burn chance is set to nought, so only the burn built here can appear.
+- **The sweep for figures this moves.** No damage over time ticks when it is laid (`bExecutePeriodicEffectOnApplication`
+  is false), so a figure moves only where a test lets time pass after a thrall's or a levelled imp's blow. Of the 22 test
+  files that take a creature, a search found a world tick in four (`CataclysmDungeonGameModeTests.cpp`,
+  `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyBehaviourTests.cpp`, `CataclysmSaveLoadTests.cpp`), and a
+  search of each test's own text in those and eight more found none that both takes a creature and lets time pass. A
+  SEARCH, NOT A READING: a tick made through a helper with another name would not be found. The imp tests at a
+  raised Summon Imp level (`ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel`, the explosion test) read the
+  immediate blow and its credit. So no existing figure is expected to move; the window's whole suite is the check.
+- **Python:** `tools/tests/test_thrall_burn.py`, 5 checks: the call after a landed blow with its arguments; the player
+  as commander; the factor in `ApplyBurn`; both imp burns' factors; and a sweep that every burn laid unscaled by its
+  applier names a factor (three today).
+
+### Python guard proofs, PB1 to PB6, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `6300cddc3`, running
+`tools/tests/test_thrall_burn.py`; each failed the named test with the break in and passed 5 of 5 restored.
+`.claude/windows/prove_2784_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| PB1 | `ApplyHit` lays no burn for a thrall | the call check and the sweep (2) |
+| PB2 | any commanded creature burns | the player check |
+| PB3 | `ApplyBurn` ignores the factor | the factor check |
+| PB4 | the imp's explosion burn passes 1 | the imp check |
+| PB5 | the imp's explosion burn names no factor | the imp check and the sweep (2) |
+| PB6 | a blow refused as immune to its attacker still burns | the call check |
+
+### Python before its window
+
+The full suite on `6300cddc3`, in a git worktree of it: "8092 passed, 9 skipped in 400.77s"; JUnit 8101 tests, 0
+failures, 0 errors, 9 skipped. ruff: "All checks passed!" on `tools/tests/test_thrall_burn.py`. No CSV changed, so the
+asset check passes.
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_2784_table.py.txt`, each narrowed to `Cataclysm.ThrallBurn.` (5) with its trailing dot, every
+anchor checked to occur once on the LF text. Predictions reasoned from the code; none has run.
+
+| Proof | The break | Predicted |
+|---|---|---|
+| TP1 | `ApplyHit` lays no burn for a thrall | 1, 4: TB1, TB2, TB3's control, TB4's control; TB5 holds |
+| TP2 | the thrall's burn passes a factor of 1 | 4, 1: TB2 (the level 3 burn ticks 25) |
+| TP3 | an evaded blow burns | 4, 1: TB3 |
+| TP4 | any commanded creature burns | 4, 1: TB4 |
+| TP5 | the imp's explosion burn passes a factor of 1 | 4, 1: TB5 (the level 3 explosion burn ticks 25) |
+
+---
+
 ## 2026-11-22 — The two gem enchantments act on their own piece: "Sockets on this equipment fit any gem type" is read at socket time and apply time and never stored, and "Gems in this equipment are 50% less effective" halves each of that piece's gems before its bucket (#46, slice G10)
 
 **Affects:** `UCataclysmGems::SocketFitsAnyGemStat`, `SocketedGemEffectStat`, `FitsAnyGem`, `SocketedGemEffectOf`,
