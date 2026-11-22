@@ -57,14 +57,15 @@ one whole interval, the delay every creature had before #1543.
 
 ### Registered for the window
 
-Counted on the "Test Completed. Result={" lines of the skills window's whole-suite log at `a7fadce0b`, whose `game/` is
-development `3b1ae6911`'s (`3b1ae6911` changed documents only), with a literal match: "5094 tests performed, 5094
-succeeded, 0 failed. 48 skipped part of what they check" and "860 written and deleted, 0 left behind".
+Counted on the "Test Completed. Result={" lines of window E's whole-suite log (window-e-w2, at `f4d43387c`, recorded
+by `9aed57a6b`), with a literal match: "5143 tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they
+check" and "860 written and deleted, 0 left behind". Re-registered there on 2026-11-22 from the skills window's log, on
+which this was first registered (5094, 48, 860; `Cataclysm.AI.` 51).
 
-- **The whole suite: the base + 1** (5095); skipped halves and test saves as the base's, **but see SAID FIRST**: a test
-  whose result moves because its first-think times moved is to be read, not taken as this change's fault, and its first
-  failing line recorded against #2827.
-- **The group first:** `Cataclysm.AI.` 51 to 52.
+- **The whole suite: the base + 1** (5144); skipped halves 57 and test saves 860, as the base's, **but see SAID FIRST**:
+  a test whose result moves because its first-think times moved is to be read, not taken as this change's fault, and its
+  first failing line recorded against #2827.
+- **The group first:** `Cataclysm.AI.` 52 to 53.
 - **No asset step.**
 - **One C++ guard proof**, for the behaviour only the C++ test guards (that the count is really per world when run):
   C1, in `TakeThePossessionCountIn`, `FindOrAdd(TObjectKey<UWorld>(World))` made `FindOrAdd(TObjectKey<UWorld>(nullptr))`,
