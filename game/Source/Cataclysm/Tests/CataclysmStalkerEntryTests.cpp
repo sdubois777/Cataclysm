@@ -592,7 +592,8 @@ bool FCataclysmStalkerEntriesNecrosisTest::RunTest(const FString& Parameters)
 		ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearing(World, EntryOf(Type), FVector(0.0f, Y, 0.0f));
 		ACataclysmPlayerCharacter* Player = APlayerAt(World, FVector(2.0f * M, Y, 0.0f));
 		UAbilitySystemComponent* Abilities = Player ? Player->GetAbilitySystemComponent() : nullptr;
-		if (!TestNotNull(TEXT("set-up: the Stalker"), Stalker) || !TestNotNull(TEXT("set-up: the player"), Abilities))
+		if (!TestNotNull(TEXT("set-up: the Stalker"), Stalker) || !TestNotNull(TEXT("set-up: the player"), Abilities)
+			|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
 		{
 			return false;
 		}

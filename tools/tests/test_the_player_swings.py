@@ -361,6 +361,56 @@ def test_the_player_and_its_copies_swing_through_one_step():
         "itself rather than through the player's step.")
 
 
+def test_a_test_that_finishes_a_copys_swing_takes_its_ai_away_first():
+    """Every test that moves the clock to finish a copy's swing takes the copy's AI away first, and the helper refuses
+    a caster an AI controller still drives.
+
+    Issue #2811, window D: moving the clock fires the copy's controller's think timer, and a think attacks any hostile
+    target in reach, so a copy left with its controller swung again during the wait -- at a moment set by how many
+    enemies earlier tests had possessed. Thirteen blows' worth at tiers 1 and 5 of
+    `WhatACorruptedStalkerIsBuiltWithAtEachTier`, and a third clip where the second was due in the whole suite only.
+    Checked per test: each `RunTest` that calls `FinishTheSwingsOf` also calls `TakeTheAIFrom` before it.
+    """
+    helper = strip_comments(read(SOURCE / "Tests" / "CataclysmTestSwings.h"))
+    finish = function_body(helper, "inline bool FinishTheSwingsOf")
+    assert re.search(r"if\s*\(\s*AnAIDrives\(\s*Caster\s*\)\s*\)\s*\{\s*return\s+false\s*;", finish), (
+        "FinishTheSwingsOf moves the clock for a caster an AI controller still drives, so its thinking can strike "
+        "during the wait at a moment set by test order")
+    assert "Brain->UnPossess();" in function_body(helper, "inline bool TakeTheAIFrom"), (
+        "TakeTheAIFrom does not take the controller away")
+
+    checked = 0
+    for path in sorted((SOURCE / "Tests").glob("*.cpp")):
+        text = strip_comments(read(path))
+        tests = {}
+        for match in re.finditer(r"bool\s+(\w+)::RunTest\(", text):
+            opening = text.index("{", match.end())
+            depth = 0
+            for index in range(opening, len(text)):
+                depth += {"{": 1, "}": -1}.get(text[index], 0)
+                if depth == 0:
+                    tests[match.group(1)] = (opening, index)
+                    break
+        # A HELPER THAT FINISHES A SWING, outside every test: the tests that call it are the ones checked.
+        reaching = ["CataclysmTestSwings::FinishTheSwingsOf("]
+        for match in re.finditer(r"CataclysmTestSwings::FinishTheSwingsOf\(", text):
+            if any(begin < match.start() < end for begin, end in tests.values()):
+                continue
+            helper = re.findall(r"\n\t(?:inline\s+)?[\w:<>*&]+\s+(\w+)\([^;{]*\)\s*\{", text[:match.start()])
+            assert helper, f"{path.name} finishes a swing outside a test and outside a named helper"
+            reaching.append(f"{helper[-1]}(")
+        for name, (begin, end) in tests.items():
+            body = text[begin:end]
+            first = min((body.find(call) for call in reaching if body.find(call) != -1), default=-1)
+            if first == -1:
+                continue
+            checked += 1
+            taken = body.find("CataclysmTestSwings::TakeTheAIFrom(")
+            assert -1 < taken < first, (
+                f"{path.name}: {name} finishes a copy's swing without taking its AI away first")
+    assert checked >= 5, f"only {checked} tests finish a copy's swing; the sweep reads the wrong folder"
+
+
 # --------------------------------------------------------------------------
 # The clips
 # --------------------------------------------------------------------------

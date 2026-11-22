@@ -63042,6 +63042,10 @@ bool FCataclysmCorruptedStalkerBlowTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("its reach is its weapon's basic attack's"), Stalker->AttackReachCm(), Basic.Params.RadiusCm,
 			  0.01f);
+	if (!TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
+	{
+		return false;
+	}
 
 	const float Before = Player.Read(Vital::GetHealthAttribute());
 	Stalker->AttackTarget(Player.Character);
@@ -63640,6 +63644,12 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		{
 			return false;
 		}
+		// EVERY TIER'S, so no Stalker in the world thinks while a later tier's swing is finished.
+		if (!TestTrue(FString::Printf(TEXT("set-up: tier %d: its AI is taken away, so only the test strikes"), Tier),
+					  CataclysmTestSwings::TakeTheAIFrom(Stalker)))
+		{
+			return false;
+		}
 		const float Multiplier = Effects::CorruptedStalkerHealthMultiplier(Tier);
 		const float Health = StalkerRead(Stalker, Vital::GetMaxHealthAttribute());
 		AddInfo(FString::Printf(TEXT("STALKER BUILD: tier %d: max health %.1f (%.1f before the multiplier of %.3f), "
@@ -63715,7 +63725,8 @@ bool FCataclysmCorruptedStalkerFervourTest::RunTest(const FString& Parameters)
 	const FPossessedPlayer Player(World);
 	ACataclysmCorruptedStalkerCharacter* Stalker = AStalkerWearingTheDemonicEntry(
 		World, Player.Character->GetActorLocation() + FVector(150.0f, 0.0f, 0.0f), /*Tier=*/4, /*Seed=*/2);
-	if (!TestNotNull(TEXT("set-up: a Stalker beside the player"), Stalker))
+	if (!TestNotNull(TEXT("set-up: a Stalker beside the player"), Stalker)
+		|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
 	{
 		return false;
 	}

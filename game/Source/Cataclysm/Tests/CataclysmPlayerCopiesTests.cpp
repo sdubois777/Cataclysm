@@ -540,7 +540,8 @@ bool FCataclysmStalkersBlowSwingsTest::RunTest(const FString&)
 		return false;
 	}
 	ACataclysmEnemyCharacter* Target = ATarget(World, FVector(0.0f, Stalker->AttackReachCm() * 0.5f, 0.0f));
-	if (!TestNotNull(TEXT("set-up: a target to its left"), Target))
+	if (!TestNotNull(TEXT("set-up: a target to its left"), Target)
+		|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Stalker)))
 	{
 		return false;
 	}
@@ -600,7 +601,8 @@ bool FCataclysmDoublesBlowSwingsTest::RunTest(const FString&)
 		return false;
 	}
 	ACataclysmEnemyCharacter* Target = ATarget(World, FVector(0.0f, Double->AttackReachCm() * 0.5f, 0.0f));
-	if (!TestNotNull(TEXT("set-up: a target to its left"), Target))
+	if (!TestNotNull(TEXT("set-up: a target to its left"), Target)
+		|| !TestTrue(TEXT("set-up: its AI is taken away, so only the test strikes"), CataclysmTestSwings::TakeTheAIFrom(Double)))
 	{
 		return false;
 	}

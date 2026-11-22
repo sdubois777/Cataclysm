@@ -115,6 +115,46 @@ that has begun play.
 `PlayTheMannequinsSwing`, and the new `test_the_player_and_its_copies_swing_through_one_step` holds both the player's
 and the Stalker's `PlayAttackAnimation` to calling it.
 
+### Window D failed two tests, and why
+
+**Window D ran this change and two of its tests failed** (the level-1 session's logs, `wd_suite_engine_da85b7c8.log` and
+`wd_alone_engine_DungeonModifierEffects_da85b7c8.log`, in the worktree `sharp-meitner-246682`); the coordinating session
+took #2811 out of that window.
+
+- `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`, in its group and in the suite: tier 1's
+  blow read 4450.0 before its multiplier against the 348 the table was fitted to (267.0 taken against an attack damage
+  of 20.9), and **tier 5's too**: 15979.8 against 1195 (26,846 taken against 2,007.9). The other six tiers each took one
+  blow. The engine's frame counter, which `CataclysmTestWorld::RunClock` raises once a step, shows tiers 1 and 5 moved
+  the clock about 27 steps and the others about 6.
+- `Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects`, in the whole suite only: the second
+  blow played `MM_Attack_03` where `MM_Attack_02` was due. Alone and in its group it passed.
+
+**One cause, read from the code; no diagnosis run was made.** Every spawned enemy is possessed by
+`ACataclysmEnemyController` (`AutoPossessAI = PlacedInWorldOrSpawned`), whose `OnPossess` starts a looping think every
+0.25 s, and `Think` attacks any hostile target in reach. `CataclysmTestSwings::FinishTheSwingsOf` moves the clock through
+the timer manager, so it fired the copy's own think: a think that fell during the wait attacked again, with a new swing
+that stepped the clip order and kept the wait going. The first think's delay is staggered by a counter of every enemy
+the process has possessed (`GCataclysmEnemyControllerPossessions`, `FirstThinkDelaySeconds`), so whether it fell in the
+wait depended on the tests that ran before. Before this change the tests moved no clock, which is why tier 1 read 21.0.
+
+**The change, accepted by the coordinating session on 2026-11-21, weakens no assertion.** `CataclysmTestSwings` gains
+`TakeTheAIFrom`, which unpossesses a copy (`OnUnPossess` clears the think timer), and every test that strikes with a copy
+and moves the clock calls it at set-up as a checked line, "set-up: its AI is taken away, so only the test strikes": the
+single blow, every tier's Stalker and the Fervour measurement in `CataclysmDungeonModifierEffectsTests.cpp`, the Stalker's
+and the double's tests in `CataclysmPlayerCopiesTests.cpp`, and the Heavy cast in `CataclysmStalkerEntryTests.cpp`.
+`FinishTheSwingsOf` refuses, moving no clock, while an AI controller still drives the caster, so a test that forgets the
+helper fails instead of passing or failing by test order. A copy turns to face its target through `SetActorRotation`,
+which needs no controller.
+
+`tools/tests/test_the_player_swings.py::test_a_test_that_finishes_a_copys_swing_takes_its_ai_away_first` checks, test by
+test (following a helper that finishes a swing into the tests that call it), that the AI is taken before the swing is
+finished, and that the helper refuses. By `tools/prove_guard.py`, 2026-11-21, each **PROVED** (the one test failed with
+the break in; restored, 14 of 14 passed): PG1, the tier test keeping its Stalkers' AI; PG2, the Stalker's copies test
+keeping its AI, through the helper; PG3, `FinishTheSwingsOf` without its refusal.
+
+**The registration below stands**: no test is added or removed. The two tests that failed are among those the window
+runs first.
+
 ### Registered for the window
 
 **THE BASE IS WINDOW D'S, NOT YET MEASURED.** This branch is window D's head `5fca8616b` plus this change, and window
