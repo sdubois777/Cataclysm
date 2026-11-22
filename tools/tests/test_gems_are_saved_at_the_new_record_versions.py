@@ -1,4 +1,6 @@
-"""The gems window's save steps (issue #46, slices G2, G3 and G5): the character record at version 13, the run record at 14.
+"""The gems window's save steps (issue #46, slices G2, G3 and G5): the character record's step to version 13, the run
+record's to 14. Issue #2741 slice 9 took the account to 7, the character to 14 and the run to 15 the same day; its
+own steps are held by `test_empire_tree_slice9.py`.
 
 An item's `Sockets` was a count and is a list of typed sockets; a carried or stashed slot gained `Gem` and `GemRarity`;
 a ground item gained `Gem`, `GemRarity` and `GemQuantity`. The coordinating session ruled on 2026-11-21 that "sockets
@@ -6,8 +8,9 @@ migrated from today's count fit any type", so each step writes a saved count of 
 
 WHAT EACH CHECK HOLDS, and what would go wrong without it:
 
-  1. the two records are at 13 and 14 and each chain has the new step, which writes sockets of type Any -- without it a
-     saved count would refuse the whole record, because a list cannot be read from a number;
+  1. the two records are at 13 and 14 or later and each chain has the new step, which writes sockets of type Any --
+     without it a saved count would refuse the whole record, because a list cannot be read from a number; the
+     account record has no such step, because no committed account file holds a stashed item;
   2. `Character_v13.json` is `Character_v12.json` with the step's writes, apart from the hand-written sockets that show
      the fields are read, and `Run_v14.json` is `Run_v13.json` with the step's writes;
   3. every Unreal test that runs an older file through the chain adds what the new step writes, and only the two
@@ -79,9 +82,11 @@ def fixture(name: str) -> dict:
 # 1: the versions and the steps
 # --------------------------------------------------------------------------
 
-def test_the_character_record_is_at_13_and_the_run_record_at_14_each_with_its_step() -> None:
-    assert version_of("UCataclysmCharacterSave") == 13
-    assert version_of("UCataclysmRunSave") == 14
+def test_the_character_record_reached_13_and_the_run_record_14_each_with_its_step() -> None:
+    # AT LEAST, since issue #2741 slice 9 took them to 14 and 15 the same day; the chain entries below are what places
+    # the gems window's steps at 12 -> 13 and 13 -> 14.
+    assert version_of("UCataclysmCharacterSave") >= 13
+    assert version_of("UCataclysmRunSave") >= 14
     records = code(SAVE / "CataclysmSaveRecords.cpp")
     character = namespace(records, "CataclysmCharacterSaveMigration")
     run = namespace(records, "CataclysmRunSaveMigration")
@@ -98,12 +103,14 @@ def test_the_character_record_is_at_13_and_the_run_record_at_14_each_with_its_st
         "a migrated socket is not of type Any, the ruling of 2026-11-21")
 
 
-def test_the_account_record_stays_at_6_because_its_stash_is_empty() -> None:
-    """The account's `Stash` is a list of the slot that gained the gem fields, so moving the account would be needed the
-    day something fills it. Nothing does yet: the committed account file holds it empty."""
-    assert version_of("UCataclysmAccountSave") == 6
-    assert fixture("Account_v6.json")["Stash"] == [], (
-        "Account_v6.json holds a stash: an account can now hold a socket count, so the account record must move too")
+def test_the_account_record_has_no_gem_step_because_its_stash_is_empty() -> None:
+    """The account's `Stash` is a list of the slot that gained the gem fields, so a gem step on the account would be
+    needed the day something fills it. Nothing does yet: every committed account file holds it empty. The account record
+    went to 7 for issue #2741 slice 9's count of gold spent, not for gems, and that step writes no sockets."""
+    assert "WriteTheSocketLists" not in namespace(code(SAVE / "CataclysmSaveRecords.cpp"), "CataclysmAccountSaveMigration")
+    for name in ("Account_v6.json", "Account_v7.json"):
+        assert fixture(name)["Stash"] == [], (
+            f"{name} holds a stash: an account can now hold a socket count, so the account record needs a gem step")
 
 
 # --------------------------------------------------------------------------

@@ -620,6 +620,25 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A Solo Self-Found character's record written before Reinvestment's count existed has spent nothing that counts: the count starts at this build
+	 * (V5). Issue #2741 slice 9, 2026-11-22. Written out, for the character record's `Migrate_3_to_4` reason. A KEY
+	 * ALREADY HOLDING A NUMBER IS KEPT, and one holding anything else is refused rather than read as 0.
+	 */
+	bool Migrate_13_to_14(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentOnCityUpgrades"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentOnCityUpgrades"), Held))
+		{
+			OutError = TEXT("GoldSpentOnCityUpgrades holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentOnCityUpgrades"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -639,6 +658,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
+		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 	};
 }
 
@@ -997,6 +1017,46 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 14 to 15, issue #2741 slice 9, ruled 2026-11-21 and 2026-11-22: the five nodes of the empire tree's ninth
+	 * slice. A VERSION 14 RUN COULD USE NONE OF THEM, so every city is written as never bailed out (`bBailedOut`) --
+	 * written out, for `Migrate_3_to_4`'s reason. A `Cities` that is not an array, or an entry that is not an object, is
+	 * left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_14_to_15(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities)
+		{
+			for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (CityEntry.IsValid() && CityEntry->TryGetObject(City) && City && City->IsValid())
+				{
+					(*City)->SetBoolField(TEXT("bBailedOut"), false); // A migration's: Economic Bailout, never.
+				}
+			}
+		}
+
+		// AND NO DUNGEON WAS A BONUS ONE, NONE CLEARED, AND NO BRIBE MADE: Scout Parties and Bribery.
+		const TArray<TSharedPtr<FJsonValue>>* Standing = nullptr;
+		if (Record->TryGetArrayField(TEXT("Dungeons"), Standing) && Standing)
+		{
+			for (const TSharedPtr<FJsonValue>& DungeonEntry : *Standing)
+			{
+				const TSharedPtr<FJsonObject>* Dungeon = nullptr;
+				if (DungeonEntry.IsValid() && DungeonEntry->TryGetObject(Dungeon) && Dungeon && Dungeon->IsValid())
+				{
+					(*Dungeon)->SetBoolField(TEXT("bBonus"), false); // A migration's: none discovered.
+				}
+			}
+		}
+		Record->SetNumberField(TEXT("BonusDungeonsCleared"), 0); // A migration's: none cleared.
+		Record->SetBoolField(TEXT("bBribedThisSurge"), false);   // A migration's: none made.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1012,6 +1072,7 @@ namespace CataclysmRunSaveMigration
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
+		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 	};
 }
 
@@ -1129,6 +1190,25 @@ namespace CataclysmAccountSaveMigration
 		return CataclysmSaveExtraOption::WriteTheExtraOption(Record, TEXT("EmpireTree"), OutError);
 	}
 
+	/**
+	 * A record written before Reinvestment's count existed has spent nothing that counts: the count starts at this build
+	 * (V5). Issue #2741 slice 9, 2026-11-22. Written out, for the character record's `Migrate_3_to_4` reason. A KEY
+	 * ALREADY HOLDING A NUMBER IS KEPT, and one holding anything else is refused rather than read as 0.
+	 */
+	bool Migrate_6_to_7(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentOnCityUpgrades"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentOnCityUpgrades"), Held))
+		{
+			OutError = TEXT("GoldSpentOnCityUpgrades holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentOnCityUpgrades"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1136,6 +1216,7 @@ namespace CataclysmAccountSaveMigration
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
+		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
 	};
 }
 

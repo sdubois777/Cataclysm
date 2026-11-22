@@ -142,17 +142,16 @@ def test_the_steps_write_no_extra_option_into_each_allocation() -> None:
     assert 'WriteTheExtraOption(Record, TEXT("EmpireTree"), OutError)' in body(
         account, "bool Migrate_5_to_6(", "the account record's chain")
 
-    # THE CHARACTER RECORD'S STEP IS ITS NEWEST TODAY, AND ITS NUMBER IS NOT WRITTEN HERE: gems slice G2 also moves the
-    # record, and whichever merges second renumbers. The step that calls the helper must lead into the current version
-    # or one before it.
+    # THE CHARACTER RECORD'S STEP IS `Migrate_11_to_12`, SETTLED ONCE THE GEMS WINDOW MERGED: this slice merged first, the
+    # gems window then took the record to 13 and issue #2741 slice 9 to 14. Until then this check left the number out and
+    # asked for the current version or one before it, which stopped holding at 14.
     character_version = version_of("UCataclysmCharacterSave")
     character = body(records, "namespace CataclysmCharacterSaveMigration", "CataclysmSaveRecords.cpp")
     steps = re.findall(r"bool (Migrate_(\d+)_to_(\d+))\(const TSharedRef<FJsonObject>& Record, FString& OutError\)\s*\{"
                        r"(?:(?!bool Migrate_).)*?WriteTheExtraOption", character, re.DOTALL)
     assert len(steps) == 1, f"the character record has {len(steps)} steps writing the extra option"
     name, before, after = steps[0]
-    assert int(after) == int(before) + 1 and int(after) in (character_version, character_version - 1), (name,
-                                                                                                         character_version)
+    assert name == "Migrate_11_to_12" and int(after) <= character_version, (name, character_version)
     step = flat(body(character, f"bool {name}(", "the character record's chain"))
     for key in ("PassiveAllocation", "PrivateEmpireTree"):
         assert f'WriteTheExtraOption(Record, TEXT("{key}"), OutError)' in step, f"{name} leaves {key} out"

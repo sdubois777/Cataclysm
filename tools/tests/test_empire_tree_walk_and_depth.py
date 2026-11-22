@@ -113,7 +113,8 @@ def test_the_boss_is_not_given_infinite_depths_and_every_other_dungeon_is() -> N
 def test_veterans_edge_multiplies_the_award_after_empire_points_for() -> None:
     clear = body(code(EMPIRE / "CataclysmEmpireRun.cpp"), "bool UCataclysmEmpireRun::ClearDungeon(int32 DungeonId)")
     awarded = clear.find("LastEmpirePointsAwarded = EmpirePointsFor(")
-    raised = clear.find("LastEmpirePointsAwarded *= 1.0 + static_cast<double>(TreeBonuses.EmpirePointsIncrease);")
+    # AND REINVESTMENT'S SHARE ADDED TO IT since issue #2741 slice 9 (V3), on the same line.
+    raised = clear.find("LastEmpirePointsAwarded *= 1.0 + static_cast<double>(TreeBonuses.EmpirePointsIncrease)")
     assert 0 <= awarded < raised, "Veteran's Edge is not applied to the award after EmpirePointsFor"
 
 

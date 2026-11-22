@@ -813,8 +813,8 @@ int32 UCataclysmDropSpawner::SpawnOneInfestedDropFor(UWorld* World, int32 EnemyR
 	{
 		return 0;
 	}
-	// GEAR OR A MATERIAL IN THE CREATURE'S OWN RATIO, which is one to one for
-	// every rarity in game/Data/EnemyDrops.csv today.
+	// GEAR OR A MATERIAL IN THE CREATURE'S OWN RATIO, which is four gear to one
+	// material for every rarity in game/Data/EnemyDrops.csv today (issue #2829).
 	const bool bGear = Stream.FRand() * (Gear + Materials) < Gear;
 	return SpawnDropsFor(World, EnemyRarityStep, MagicFind,
 						 UCataclysmDropRoll::BaselineLootQuantity, At, Stream,
@@ -1074,8 +1074,9 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 		// player can see how many fell and can leave some.
 		//
 		// EXCEPT SCAVENGER'S SECOND, which is the same drop holding two (E2): the
-		// design halved material drops on 2026-08-23 because the floor was
-		// cluttered, and two on one drop is the same quantity on half the floor.
+		// design halved material drops on 2026-08-23 and quartered them again on
+		// 2026-11-22 (issue #2829) because the floor was cluttered, and two on one
+		// drop is the same quantity on half the floor.
 		Drop->Material = Material;
 		Drop->MaterialQuantity = Quantity;
 		Drop->bDroppedByARaisedCreature = bMarked;

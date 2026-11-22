@@ -491,6 +491,55 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * What the account record's newest step writes into an account file written before it: no tier 1 gold spent on city
+	 * upgrades that Reinvestment counts (`GoldSpentOnCityUpgrades`, 0). Issue #2741 slice 9. NAMED FOR THE VERSION IT
+	 * REACHES, 7. ONE COPY, for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion7Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentOnCityUpgrades"), 0.0);
+	}
+
+	/**
+	 * What the character record's newest step writes into a character file written before it: no tier 1 gold spent on
+	 * city upgrades (`GoldSpentOnCityUpgrades`, 0), for a Solo Self-Found character's Reinvestment. Issue #2741 slice 9.
+	 * NAMED FOR THE VERSION IT REACHES, 14, after the gems window's 13 (V1). ONE COPY.
+	 */
+	inline void AddTheCharactersVersion14Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentOnCityUpgrades"), 0.0);
+	}
+
+	/**
+	 * What the run record's newest step writes into a run file written before it: no city bailed out, no dungeon a bonus
+	 * one, no bonus dungeon cleared and no bribe made (`bBailedOut`, `bBonus`, `BonusDungeonsCleared`,
+	 * `bBribedThisSurge`). Issue #2741 slice 9. NAMED FOR THE VERSION IT REACHES, 15, after the gems window's
+	 * 14 (V1). ONE COPY.
+	 */
+	inline void AddTheRunsVersion15Defaults(FJsonObject& Expected)
+	{
+		for (const TCHAR* Field : { TEXT("Cities"), TEXT("Dungeons") })
+		{
+			const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+			if (!Expected.TryGetArrayField(Field, Entries) || !Entries)
+			{
+				continue;
+			}
+			for (const TSharedPtr<FJsonValue>& Entry : *Entries)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (Entry.IsValid() && Entry->TryGetObject(Object) && Object && Object->IsValid())
+				{
+					(*Object)->SetBoolField(FCString::Strcmp(Field, TEXT("Cities")) == 0 ? TEXT("bBailedOut") : TEXT("bBonus"),
+											false);
+				}
+			}
+		}
+		Expected.SetNumberField(TEXT("BonusDungeonsCleared"), 0.0);
+		Expected.SetBoolField(TEXT("bBribedThisSurge"), false);
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

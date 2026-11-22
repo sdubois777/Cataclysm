@@ -158,6 +158,12 @@ public:
 	void ClickWalkForTests(int32 DungeonId);
 
 	/**
+	 * Presses the Bribe button beside a dungeon's Walk button, through the name the button carries, as
+	 * `ClickWalkForTests` does. Issue #2741 slice 9 (V14).
+	 */
+	void ClickBribeForTests(int32 DungeonId);
+
+	/**
 	 * Why the last press did nothing, as the refusal label shows it; empty when
 	 * it did something. For a test, which cannot read the label: a headless
 	 * widget's labels are null. Issue #2715.
@@ -271,6 +277,13 @@ private:
 	UFUNCTION()
 	void HandleWalkClicked(FName Value);
 
+	/** One Bribe button into `DetailBox`, after the dungeon's Walk button, while Bribery is held (V14). Slice 9. */
+	void AddBribeButton(int32 DungeonId);
+
+	/** A Bribe button was pressed: bribe the dungeon its name stands for, or show why not (V13, V14). Slice 9. */
+	UFUNCTION()
+	void HandleBribeClicked(FName Value);
+
 	/** The level's dungeon game mode, or the one a test supplied, or null. */
 	ACataclysmDungeonGameMode* DungeonMode() const;
 
@@ -301,6 +314,10 @@ private:
 	/** One Walk button per dungeon line, in the lines' order. Issue #2715. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UCataclysmChoiceButton>> WalkButtons;
+
+	/** One Bribe button per dungeon line while Bribery is held, in the lines' order. Issue #2741 slice 9. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UCataclysmChoiceButton>> BribeButtons;
 
 	/**
 	 * The game mode supplied by a test. See `SetDungeonModeForTests`. WEAK, so a

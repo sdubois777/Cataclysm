@@ -3829,13 +3829,8 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "fee figure": "a figure for its gold fee, which the design does not state",
-    "cap figure": "a figure for its cap, which the design does not state",
     "crafting": "crafting, which the game does not have yet (issue #47)",
-    "population growth": ("a population growth rate, which the design does "
-                          "not define"),
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
-    "bonus dungeon": "bonus dungeons, which the design does not define",
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
     "loot filter": "a loot filter, which the game does not have",
@@ -3848,7 +3843,8 @@ EMPIRE_TREE_SYSTEMS = {
 #: dungeon's walk and depth, 5 for the player's loot and movement, 6 for gold
 #: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price), 7
 #: for the four nodes that read a Treasurer city upgrade (2026-11-21), 8 for
-#: Imperial Prowess's extra option (2026-11-21).
+#: Imperial Prowess's extra option (2026-11-21), 9 for the five the coordinating
+#: session ruled under the owner's delegation (2026-11-21; V1 to V19, 2026-11-22).
 #: Until its slice lands a node here can be bought and does nothing.
 #:
 #: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
@@ -3884,12 +3880,18 @@ EMPIRE_TREE_BUILT = {
     "Beacon of Hope": 3, "Last Stand Protocols": 3, "The Architect's Legacy": 3,
     "The Royal Engineer's Blessing": 3,
     "Imperial Roads": 4,
+    # Slice 9: Civic Pride, each of the four population restores 5% larger a
+    # point (V11, 2026-11-22).
+    "Civic Pride": 9,
     # Explorer.
     "Pacing": 4, "Fleet Footed": 4, "Overclock": 4, "Temporal Mastery": 4,
     "Sovereign's Haste": 4, "Opportunist": 4, "Tactical Entry": 4,
     "Rapid Descent": 4, "Deep Boring": 4, "Architect of Greed": 4,
     "Exclusionary Mapping": 4, "Infinite Depths": 4, "Architectural Insight": 4,
     "Veteran's Edge": 4,
+    # Slice 9: Scout Parties, a bonus dungeon that threatens nothing (V15 to V19,
+    # 2026-11-22).
+    "Scout Parties": 9,
     "Eyes of the Empire": 5, "Opportunistic Looting": 5, "Pathfinding": 5,
     "Bounty": 5, "Dungeon Mastery": 5, "Efficiency Premium": 5,
     "Quality over Quantity": 5, "Relentless Pursuit": 5, "Dungeon Expertise": 5,
@@ -3914,6 +3916,14 @@ EMPIRE_TREE_BUILT = {
     "Pax Imperialis": 6, "Wealth Interest": 6,
     # Treasury, slice 6d: the owner's rulings of 2026-11-20 (D8, D9).
     "Treasury Guard": 6, "Tax Collection": 6,
+    # Treasury, slice 9: Reinvestment, tier 1 gold spent on city upgrades across
+    # runs (V2 to V5, V20, 2026-11-22).
+    "Reinvestment": 9,
+    # And Economic Bailout, paid automatically when a city's defence reaches 0
+    # (V6 to V10, 2026-11-22).
+    "Economic Bailout": 9,
+    # And Bribery, a map action once a surge (V12 to V14, 2026-11-22).
+    "Bribery": 9,
     # Treasury, slice 6e: the gold debt the owner allowed through them (D1 to D7).
     "Global Credit": 6, "Sovereign Loans": 6,
     # Treasury, slice 7: the four nodes that read a Treasurer city upgrade, which
@@ -3942,11 +3952,10 @@ EMPIRE_TREE_REFUSED = {
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
     # Architect.
     "Scorched Earth": "destroy upgrade",
-    "Civic Pride": "population growth",
     # Explorer.
     "Supply Caches": "loot chest", "Field Depot I": "stash",
     "Field Depot II": "stash", "Field Depot III": "stash",
-    "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
+    "Gamble": "modifier reroll",
     "Auto-Loot": "loot filter",
     # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
     # five, 6c five, 6d two, 6e two, 2026-11-20) and slice 7 the four that read a
@@ -3955,8 +3964,6 @@ EMPIRE_TREE_REFUSED = {
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
-    "Bribery": "fee figure", "Economic Bailout": "fee figure",
-    "Reinvestment": "cap figure",
     # Artisan.
     "Apprentice Smith": "crafting", "Material Conservation": "crafting",
     "Rough Draft": "crafting", "Tool Maintenance": "crafting",
@@ -4213,6 +4220,10 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # The three build nodes, issue #2832.
     "UpgradePriceLess", "UpgradeBuildDaysMultiplied", "UpgradeBuildDaysFewer",
     "UpgradeRushPriceShare", "UpgradeRushDaysFewer",
+    # Slice 9: Civic Pride and Reinvestment.
+    "PopulationRestoreIncrease", "EmpirePointsPerSpendingStep",
+    # Slice 9: Economic Bailout, Bribery and Scout Parties.
+    "CityBailout", "DungeonBribe", "BonusDungeonChance",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4434,6 +4445,32 @@ EMPIRE_TREE_EFFECTS = {
     "Scaffolding": [("UpgradePriceLess", 0.50), ("UpgradeBuildDaysMultiplied", 2.0)],
     "Rapid Renovation": [("UpgradeBuildDaysFewer", 1.0)],
     "Rapid Funding": [("UpgradeRushPriceShare", 1.50), ("UpgradeRushDaysFewer", 2.0)],
+    # Slice 9, the coordinating session's rulings of 2026-11-21 under the owner's
+    # delegation and V1 to V19 of 2026-11-22. CIVIC PRIDE: the design has no
+    # population growth, so "growth" is population coming back, and each of the
+    # four population restores is 5% larger a point (V11); C++ holds each at the
+    # city's maximum.
+    "Civic Pride": [("PopulationRestoreIncrease", 0.05)],
+    # REINVESTMENT: 1% more empire points a clear pays for each 25,000 tier 1 gold
+    # spent on city upgrades across runs (V2, V4, V5, V20), capped at 30% on its
+    # own and added to Veteran's Edge's (V3). The 30% is the coordinating
+    # session's ruling of 2026-11-21: Veteran's Edge at its full 10 points. The
+    # 25,000 step and the count are in C++.
+    "Reinvestment": [("EmpirePointsPerSpendingStep", 0.01, 0, "", 0.30)],
+    # ECONOMIC BAILOUT: a city whose defence reaches 0 is saved, once per city per
+    # run, when the balance pays 50,000, 100,000 or 150,000 tier 1 gold for an
+    # Outpost, a Bulwark or a Sanctuary; never the Pillar; it keeps half its
+    # maximum defence (the ruling of 2026-11-21, V6 to V10). The fees and the rules
+    # are in C++; the row says only that it is held.
+    "Economic Bailout": [("CityBailout", 1.0)],
+    # BRIBERY: once a surge, the player pays 20,000 tier 1 gold to reset one
+    # resolving dungeon's timer to its start (the ruling of 2026-11-21, V12 to
+    # V14). The fee and the rules are in C++ (`FCataclysmDungeonBribe`).
+    "Bribery": [("DungeonBribe", 1.0)],
+    # SCOUT PARTIES: 10% a point that a clear discovers a bonus dungeon on the same
+    # city, always Basic, which threatens nothing and pays as any dungeon does
+    # (V15 to V19). The rules are in C++ (`UCataclysmEmpireRun::AddBonusDungeon`).
+    "Scout Parties": [("BonusDungeonChance", 0.10)],
 }
 
 

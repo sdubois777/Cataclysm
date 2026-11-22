@@ -453,6 +453,23 @@ public:
 	static bool GoldOwedBy(const UObject* WorldContext, int64& OutOwed, int64& OutEachDay);
 
 	/**
+	 * The tier 1 gold the character playing has spent on city upgrades across runs, which Reinvestment reads (issue
+	 * #2741 slice 9, V2): a Solo Self-Found character's own, on its player state and in its character record, every
+	 * other character's in its lethality mode's account record. Counted whether the node is held or not (V5).
+	 *
+	 * @return false, with 0, where `GoldHeldBy` has no balance
+	 */
+	static bool GoldSpentOnCityUpgradesBy(const UObject* WorldContext, double& OutSpentAtTierOne);
+
+	/**
+	 * Adds an accepted city upgrade purchase's price, in tier 1 gold and unrounded (V4, V20), to that count. IT DOES NOT
+	 * WRITE THE RECORD: `UCataclysmCityUpgradePurchase::Buy` raises the saves, as it does for the gold.
+	 *
+	 * @return false where there is no count to add to
+	 */
+	static bool AddGoldSpentOnCityUpgradesFor(const UObject* WorldContext, double SpentAtTierOne);
+
+	/**
 	 * Takes a price the balance cannot cover on credit (D2): THE WHOLE BALANCE, AND THE REST OWED. Only while nothing is
 	 * owed, and only when the rest is no more than `Allowance`. With `bRepaidDaily` -- Sovereign Loans held at the
 	 * purchase (D4) -- a tenth of the debt, rounded up, is saved as the part taken each day. A price the balance covers

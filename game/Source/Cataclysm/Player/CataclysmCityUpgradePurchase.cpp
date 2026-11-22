@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
@@ -158,8 +159,20 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 		return Result;
 	}
 
+	// REINVESTMENT'S COUNT, now the purchase is accepted and not before (V4): the price charged, borrowed part and all,
+	// in tier 1 gold (V20). Counted whether the node is held or not (V5). The run's bonuses are read again so the next
+	// clear pays with it. Issue #2741 slice 9.
+	if (Price > 0)
+	{
+		const double Scale = FMath::Max(1.0e-6, static_cast<double>(UCataclysmDropRoll::GoldScaleFor(Run->DifficultyTier)));
+		// UNROUNDED (V20 as ruled): the division loses nothing.
+		UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(WorldContext, static_cast<double>(Price) / Scale);
+		UCataclysmGameInstance::RefreshEmpireTreeBonuses(WorldContext);
+	}
+
 	// THE SAVES: the run record holds the upgrade and the character record a Solo Self-Found character's own gold
-	// (`CityUpgradeBought`); the account record the account's gold, when it paid (`AccountChanged`).
+	// (`CityUpgradeBought`); the account record the account's gold, when it paid (`AccountChanged`). Both hold
+	// Reinvestment's count as well (slice 9).
 	const UWorld* World = WorldContext != nullptr && GEngine != nullptr
 		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
 		: nullptr;

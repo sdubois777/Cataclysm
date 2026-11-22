@@ -583,8 +583,9 @@ bool FCataclysmKillingAnEnemyDropsLootTest::RunTest(const FString& Parameters)
  *
  * WHAT THIS GUARDS. Issue #717: the material roll ran on every kill and its
  * result was thrown away, so a player got the gear half of what a kill is
- * designed to give and silently lost the other half. Materials come at twice the
- * gear rate, so the half that was missing was the larger one.
+ * designed to give and silently lost the other half. Materials came at twice the
+ * gear rate then, so the half that was missing was the larger one. They come at
+ * a quarter of it since issue #2829.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialDropsReachTheFloorTest,
 	"Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo",
@@ -611,8 +612,10 @@ bool FCataclysmMaterialDropsReachTheFloorTest::RunTest(const FString& Parameters
 		return false;
 	}
 
-	// A CATACLYSM BOSS, WHICH AVERAGES 24 MATERIALS. Its rate makes an empty
-	// material roll vanishingly unlikely at any seed.
+	// A CATACLYSM BOSS, WHICH AVERAGES 3 MATERIALS SINCE ISSUE #2829 (24 when
+	// this test was written). The count is drawn from a Poisson distribution, so
+	// at 3 an empty material roll happens about one seed in twenty. Whether
+	// this seed's is empty is what the first check below reports.
 	constexpr int32 CataclysmBossStep = 5;
 
 	FRandomStream Stream(/*InSeed=*/20260819);
@@ -1079,12 +1082,25 @@ bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
 		FRandomStream Stream(/*InSeed=*/20260823);
 		constexpr int32 CataclysmBossStep = 5;
 
+		// THE COUNTS ARE GIVEN, NO GEAR AND TWELVE MATERIALS A KILL, since issue
+		// #2829 cut a Cataclysm Boss's materials from 12 to 3. Rolled, eight
+		// kills averaged 24 materials a tier, and a tier 8 best no better than
+		// the tier 1 best then happens at about one seed in sixty. This test is
+		// about the tier the drop site passes to the material roll, not about
+		// how many materials drop, so the count is fixed at the 96 it averaged
+		// before. With no gear the stream carries the material rolls alone, so
+		// the outcome at this seed can be computed outside the engine. A Python
+		// copy of the two rolls, written for #2829, predicted tier 1's best +3
+		// and tier 8's best +10.
+		constexpr int32 MaterialsPerKill = 12;
 		for (int32 Kill = 0; Kill < 8; ++Kill)
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, CataclysmBossStep, /*MagicFind=*/0.0f,
 				UCataclysmDropRoll::BaselineLootQuantity,
-				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream);
+				FVector(Kill * 400.0f, 0.0f, 40.0f), Stream,
+				/*bMarked=*/false, /*bInfested=*/false,
+				/*GearCountGiven=*/0, /*MaterialCountGiven=*/MaterialsPerKill);
 		}
 
 		int32 Best = 0;
@@ -1119,6 +1135,11 @@ bool FCataclysmDroppedStonesRespectTheTier::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// WHAT LANDED, so a run's log can be checked against the prediction above.
+	AddInfo(FString::Printf(
+		TEXT("STONES: tier 1 best +%d over %d materials; tier 8 best +%d over %d materials"),
+		AtTierOne, MaterialsAtOne, AtTierEight, MaterialsAtEight));
 
 	// TIER 1 REACHES +3 AND NO FURTHER. Stated outright rather than read back
 	// from MaxUpgradeStoneOnADrop, so a change to the rule fails here. It is

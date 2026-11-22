@@ -194,6 +194,16 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	 *  it takes. */
 	float UpgradeRushPriceShare = 0.0f;
 	float UpgradeRushDaysFewer = 0.0f;
+
+	// ---- Slice 9, the coordinating session's rulings of 2026-11-21 and V1 to V20 of 2026-11-22. ----
+
+	/** Reinvestment's increase on the empire points a clear pays for each `ReinvestmentGoldAStep` tier 1 gold spent on
+	 *  city upgrades (1%), and the most it may give (30%, V3). `EmpirePointsFromSpendingFor` reads them. */
+	float EmpirePointsPerSpendingStep = 0.0f;
+	float EmpirePointsSpendingCap = 0.0f;
+
+	/** Bribery's points, 1 when held: the player may reset one dungeon's timer a surge for a fee (V12 to V14). */
+	int32 DungeonBribePoints = 0;
 };
 
 /**
@@ -572,6 +582,32 @@ public:
 	 * shortfall cannot be larger than the price, so that is arithmetic and not a cap. 0 with neither node.
 	 */
 	static int64 UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price);
+
+	/**
+	 * Economic Bailout's fee for a city of this tier, in tier 1 gold, scaled to the run's tier as a gold pile is (R10):
+	 * 50,000 for an Outpost, 100,000 for a Bulwark, 150,000 for a Sanctuary, the coordinating session's ruling of
+	 * 2026-11-21 (the 1 : 2 : 3 ratio derived from the 20, 40 and 60 minimum floors of the Dungeon City each becomes,
+	 * the size a judgement). 0 for the Pillar, which cannot be saved this way. Issue #2741 slice 9.
+	 */
+	static int64 BailoutFeeAtTierOneFor(ECataclysmCityTier Tier);
+
+	/**
+	 * Bribery's fee in tier 1 gold, scaled to the run's tier as a gold pile is (R10): 20,000, twice one city upgrade's
+	 * price, because Scorched Earth buys the same reset by destroying an upgrade and Bribery keeps it (the coordinating
+	 * session's ruling of 2026-11-21, a judgement). Issue #2741 slice 9.
+	 */
+	static constexpr int64 BribeFeeAtTierOne = 20000;
+
+	/** Reinvestment's "Every 25,000 Gold spent on City Upgrades", in tier 1 gold (V20). Issue #2741 slice 9. */
+	static constexpr int64 ReinvestmentGoldAStep = 25000;
+
+	/**
+	 * Reinvestment's increase on the empire points a clear pays: 1% for each whole `ReinvestmentGoldAStep` of
+	 * `GoldSpentAtTierOne`, held at its own 30% cap, which adds to Veteran's Edge's rather than sharing it (V3). Nought
+	 * without the node. The count is kept whether the node is held or not, so a respec loses none of it (V5).
+	 * Issue #2741 slice 9.
+	 */
+	static float EmpirePointsFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, double GoldSpentAtTierOne);
 
 	/** Whether either credit node is held, so a debt can be the reason no more credit is given. */
 	static bool AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses);

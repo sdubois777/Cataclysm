@@ -2484,6 +2484,29 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** Rapid Funding's Rush: the days fewer it takes to build, to at least 1. */
 	UpgradeRushDaysFewer,
+
+	// ---- Slice 9: the five nodes the coordinating session ruled under the owner's delegation on 2026-11-21, and V1 to
+	// V19 of 2026-11-22.
+
+	/** How much larger each of the four population restores is (Civic Pride, 5% a point, V11). */
+	PopulationRestoreIncrease,
+
+	/**
+	 * The increase on the empire points a clear pays for each 25,000 tier 1 gold spent on city upgrades, across runs,
+	 * held at the row's cap (Reinvestment: 1% a step, capped at 30%, V2 to V5 and V20).
+	 */
+	EmpirePointsPerSpendingStep,
+
+	/** A city whose defence reaches 0 is saved from falling, once a run, when the balance pays its fee (Economic
+	 *  Bailout, V6 to V10). The fees are in C++ (`UCataclysmEmpireTree::BailoutFeeAtTierOneFor`). */
+	CityBailout,
+
+	/** The player may reset one resolving dungeon's timer to its start, once a surge, for a fee (Bribery, V12 to V14).
+	 *  The fee is in C++ (`UCataclysmEmpireTree::BribeFeeAtTierOne`). */
+	DungeonBribe,
+
+	/** The chance a clear discovers a bonus dungeon on the same city (Scout Parties, 10% a point, V15 to V19). */
+	BonusDungeonChance,
 };
 
 /**

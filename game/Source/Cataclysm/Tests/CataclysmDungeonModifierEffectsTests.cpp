@@ -24783,8 +24783,9 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 
 	// AND THE DEATH PATH PASSES THE CREATURE'S MARK TO THE SPAWNER. The floor is cleared of
 	// drops first. This half's drop roll is the game's own and cannot be seeded. At the
-	// Cataclysm Boss rung the kill is expected to leave 24 drops (12 gear, 12 materials), and
-	// a Poisson draw leaves none with probability e^-24, about once in 26 billion kills. That
+	// Cataclysm Boss rung the kill is expected to leave 15 drops (12 gear, 3 materials, since
+	// issue #2829), and both Poisson draws leave none with probability e^-15, about once in
+	// 3.3 million kills. That
 	// case FAILS the assertion that something fell, rather than passing while checking nothing.
 	DropsLying(Lying);
 	for (ACataclysmDroppedItem* Drop : Lying)

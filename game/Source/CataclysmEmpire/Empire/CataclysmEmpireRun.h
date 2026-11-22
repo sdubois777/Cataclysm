@@ -349,6 +349,13 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> UpgradesFinishedOn;
+
+	/**
+	 * The cities Economic Bailout saved from falling today, in order (issue #2741 slice 9). Additive only, as `Hits` is;
+	 * the model has no gold. The play-loop log and the city screen say so.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> BailedOut;
 };
 
 /**
@@ -671,6 +678,38 @@ public:
 	bool bSanctuaryLastStandSpent = false;
 
 	/**
+	 * Whether Bribery has reset a dungeon's timer since the last surge: "Once per Surge", one bribe for the whole run
+	 * until the next surge fires (V12). Set by `BribeDungeon`; cleared by every surge, in `FireSurge`. Issue #2741
+	 * slice 9. SAVED, RUN RECORD VERSION 15.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bBribedThisSurge = false;
+
+	/**
+	 * Why `BribeDungeon` would refuse this dungeon, or empty when it would not (V13): no run, no such dungeon, the
+	 * Cataclysm's own dungeon, a dungeon whose timer does not resolve, a bribe already made this surge, or a timer
+	 * already at its start (the start includes the empire tree's bonus days, which the clock adds when it is read).
+	 * The node held and the fee are the game module's (`FCataclysmDungeonBribe`). Issue #2741 slice 9.
+	 */
+	FString RefusalForBribing(int32 DungeonId) const;
+
+	/** Resets the dungeon's timer to its start and spends this surge's bribe, when `RefusalForBribing` is empty. */
+	bool BribeDungeon(int32 DungeonId);
+
+	/**
+	 * The dungeons standing that threaten a city: every dungeon but a Scout Parties bonus one, which "leaves with no
+	 * consequence". The empty-board surge counts these (V16). Issue #2741 slice 9.
+	 */
+	int32 ThreateningDungeonCount() const;
+
+	/**
+	 * Removes a Scout Parties bonus dungeon whose timer ran out, or in which the player died, with no damage, no
+	 * detonation and nothing reported as resolved, and answers true; answers false and does nothing for any other
+	 * dungeon. Called before `ResolveDungeon` by the day and by a death (V16). Issue #2741 slice 9.
+	 */
+	bool LetABonusDungeonLeave(int32 DungeonId);
+
+	/**
 	 * Dungeons of every kind cleared since the character last died in this run, which Relentless Pursuit reads: "+5% Loot
 	 * Quantity for each dungeon cleared without dying". Issue #2741 slice 5b, the coordinating session's D5 of
 	 * 2026-11-19: a death ends the walk it happened on, so every clear is "without dying" and only a run of clears in a
@@ -716,6 +755,29 @@ public:
 	 * game instance beside `GoldHeldAtTierOne`; NOT SAVED. Unset, a day pays nothing.
 	 */
 	TFunction<void(UCataclysmEmpireRun& Run, int32 Day)> OnDayPassed;
+
+	/**
+	 * PAYS ECONOMIC BAILOUT'S FEE for a city of this tier, all or nothing, from the balance of the character playing,
+	 * and says so in the log either way (V9). Answers whether it was paid. Set by the game instance beside
+	 * `OnDayPassed`, because the balance is the Cataclysm module's; NOT SAVED. Unset, nothing is paid and nothing saved.
+	 * Issue #2741 slice 9.
+	 */
+	TFunction<bool(UCataclysmEmpireRun& Run, int32 CityId, ECataclysmCityTier Tier)> PayTheBailout;
+
+	/** Economic Bailout's share of its maximum defence a saved city keeps: half, The Architect's Legacy or not (V8). */
+	static constexpr float BailoutDefenceFraction = 0.5f;
+
+	/**
+	 * Whether a city whose defence a dungeon has just taken to 0 is saved from falling: Economic Bailout held, the city
+	 * not the Pillar ("losing it is the designed end of a run") and not saved before this run, and the fee paid
+	 * (`PayTheBailout`). When it is, the city keeps half its maximum defence and its population as it is (V8), and is
+	 * marked saved; a fee the balance cannot pay leaves it unmarked and it falls (V9). The map asks
+	 * (`UCataclysmEmpireMap::SaveFromFalling`). Issue #2741 slice 9.
+	 */
+	bool SaveCityFromFalling(int32 CityId);
+
+	/** After a dungeon's hit: adds the cities Economic Bailout saved to the day's report. Issue #2741 slice 9. */
+	void NoteTheBailouts(FCataclysmDayReport& OutReport);
 
 	/**
 	 * Arms Last Stand Protocols on the map for the next hit, when the tree holds it, it has not held this run, and the
@@ -953,6 +1015,20 @@ public:
 	static constexpr int32 WarlordSalt = 0x7761726C;
 
 	/**
+	 * SCOUT PARTIES' SALT, beside The Warlord's: its roll, and the bonus dungeon's placement, take no draw from the run's
+	 * streams, so the waves and every seeded test are as they were, and a reload rolls the same (V15). "scou".
+	 * Issue #2741 slice 9.
+	 */
+	static constexpr int32 ScoutSalt = 0x73636F75;
+
+	/**
+	 * Adds a Scout Parties bonus dungeon on a standing city: rolled as an ordinary dungeon of its tier with no Siege,
+	 * always `Basic` (V18), its sender and modifiers drawn from `Roll` and not the run's streams (V15). Answers its id,
+	 * or `INDEX_NONE` when nothing was added. Issue #2741 slice 9.
+	 */
+	int32 AddBonusDungeon(int32 CityId, FRandomStream& Roll);
+
+	/**
 	 * The dungeon The Warlord removed at the last `ClearDungeon`, or `INDEX_NONE`: what a test reads to see the roll
 	 * land. Not saved; the removal itself is the run's state.
 	 */
@@ -972,6 +1048,10 @@ public:
 	 * test. The run knows both.
 	 */
 	void GiveModifiers(FCataclysmDungeon& Dungeon);
+
+	/** `GiveModifiers` drawing from the stream it is handed: `ModifierStream` for a surge's dungeon, and a Scout Parties
+	 *  bonus dungeon's own roll for one of those (V15). Not named `Stream`, which is the run's wave stream. */
+	void GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Draws);
 
 	// ----------------------------------------------------------------------
 	// What the run has come to -- issue #1324 slice 5
@@ -1019,6 +1099,17 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 BasicDungeonsCleared = 0;
+
+	/**
+	 * Scout Parties' bonus dungeons cleared in this run (V17): counted in `DungeonsCleared` and never in
+	 * `BasicDungeonsCleared`, so the kinds a player has defeated subtract them and a bonus clear never reads as a
+	 * Fallen City clear, and never adds a kind (V19). Issue #2741 slice 9. SAVED, RUN RECORD VERSION 15.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BonusDungeonsCleared = 0;
+
+	/** The bonus dungeon the last clear discovered, or `INDEX_NONE`; what a clear's caller reads to say so. Slice 9. */
+	int32 LastBonusDungeonAdded = INDEX_NONE;
 
 	/**
 	 * How many quest objectives the player has earned this run.

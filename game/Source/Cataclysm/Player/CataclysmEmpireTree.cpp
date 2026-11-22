@@ -284,6 +284,18 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 		case ECataclysmEmpireTreeEffect::LowestCityRestoresPopulation:
 			Bonuses.LowestCityPopulationRestored += Total;
 			break;
+		// SLICE 9: Civic Pride, each population restore 5% larger a point (V11).
+		case ECataclysmEmpireTreeEffect::PopulationRestoreIncrease:
+			Bonuses.PopulationRestoreIncrease += Total;
+			break;
+		// SLICE 9: Economic Bailout, held or not; the run asks it where a city's defence reaches 0 (V6 to V10).
+		case ECataclysmEmpireTreeEffect::CityBailout:
+			Bonuses.CityBailoutPoints += Points;
+			break;
+		// SLICE 9: Scout Parties, the chance a clear discovers a bonus dungeon (V15).
+		case ECataclysmEmpireTreeEffect::BonusDungeonChance:
+			Bonuses.BonusDungeonChance += Total;
+			break;
 		case ECataclysmEmpireTreeEffect::DamageTakenPerClearThisSurge:
 			Bonuses.ReductionPerClear = Row->PerPoint;
 			Bonuses.ClearPoints += Points;
@@ -569,6 +581,15 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::UpgradeRushDaysFewer:
 			Bonuses.UpgradeRushDaysFewer += Total;
 			break;
+		// SLICE 9: Reinvestment, the step and its own cap apart, because the cap is on the whole (V3).
+		case ECataclysmEmpireTreeEffect::EmpirePointsPerSpendingStep:
+			Bonuses.EmpirePointsPerSpendingStep += Total;
+			Bonuses.EmpirePointsSpendingCap = FMath::Max(Bonuses.EmpirePointsSpendingCap, Row->Cap);
+			break;
+		// SLICE 9: Bribery, held or not; `FCataclysmDungeonBribe` asks it (V12 to V14).
+		case ECataclysmEmpireTreeEffect::DungeonBribe:
+			Bonuses.DungeonBribePoints += Points;
+			break;
 		default:
 			break;
 		}
@@ -622,7 +643,9 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 	// THE FOUR KINDS: three counted where a clear is counted, and the Fallen City clears as what is left over of every
 	// clear. `bWon` is the boss's, and a won run is followed by the next run at once.
 	const int32 Won = Run.bWon ? 1 : 0;
-	const int32 FallenCityClears = Run.DungeonsCleared - Run.BasicDungeonsCleared - Run.QuestObjectives - Won;
+	// LESS THE SCOUT PARTIES BONUS CLEARS, which are no Fallen City clear and add no kind (V17, V19). Slice 9.
+	const int32 FallenCityClears =
+		Run.DungeonsCleared - Run.BasicDungeonsCleared - Run.QuestObjectives - Won - Run.BonusDungeonsCleared;
 	State.KindsDefeated = (Run.BasicDungeonsCleared > 0 ? 1 : 0) + (Run.QuestObjectives > 0 ? 1 : 0)
 		+ (FallenCityClears > 0 ? 1 : 0) + Won;
 
@@ -989,6 +1012,36 @@ int32 UCataclysmEmpireTree::UpgradeBuildDaysFor(const FCataclysmEmpireTreePlayer
 bool UCataclysmEmpireTree::CanRushUpgrades(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
 {
 	return Bonuses.UpgradeRushPriceShare > 0.0f;
+}
+
+int64 UCataclysmEmpireTree::BailoutFeeAtTierOneFor(ECataclysmCityTier Tier)
+{
+	switch (Tier)
+	{
+	case ECataclysmCityTier::Outpost:
+		return 50000;
+	case ECataclysmCityTier::Bulwark:
+		return 100000;
+	case ECataclysmCityTier::Sanctuary:
+		return 150000;
+	default:
+		return 0; // The Pillar: losing it is the designed end of a run.
+	}
+}
+
+float UCataclysmEmpireTree::EmpirePointsFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
+													   double GoldSpentAtTierOne)
+{
+	// REINVESTMENT: "Every 25,000 Gold spent on City Upgrades grants 1% permanent Empire XP modifier boost (Capped)."
+	// Whole steps of tier 1 gold (V20), each the row's 1%, held at its own 30% (V3).
+	if (Bonuses.EmpirePointsPerSpendingStep <= 0.0f || GoldSpentAtTierOne <= 0.0)
+	{
+		return 0.0f;
+	}
+	const float Steps = static_cast<float>(
+		FMath::FloorToDouble(GoldSpentAtTierOne / static_cast<double>(ReinvestmentGoldAStep)));
+	const float Share = Steps * Bonuses.EmpirePointsPerSpendingStep;
+	return Bonuses.EmpirePointsSpendingCap > 0.0f ? FMath::Min(Share, Bonuses.EmpirePointsSpendingCap) : Share;
 }
 
 int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)

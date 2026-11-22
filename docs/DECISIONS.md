@@ -2,6 +2,240 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Crafting materials drop at a quarter of the gear rate, 0.04 to 3.0 a kill, because the forge's levelling days now leave days the limit on levelling at every tier even at a quarter (#2829)
+
+**Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, Enemy Drops sheet, Material Drops column (cells E2 to
+E7); `game/Data/EnemyDrops.csv`, regenerated from it, the only CSV that moved; `ENEMY_MATERIAL_DROPS` in
+`sim/cataclysm_sim/loot.py`; `docs/Cataclysm_GDD_v2.md`, "What a Kill Drops", its table's material column and the
+paragraph that opened "A kill drops as many materials as gear"; the comment in
+`UCataclysmDropSpawner::SpawnOneInfestedDropFor` (`game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`), which called
+the gear-to-material ratio one to one, and the comment on Scavenger's second material in the same file; the comment on
+`SpawnMaterialsFor` in `CataclysmDroppedItem.h`, which said twice the gear rate. Tests: `sim/tests/test_loot.py`, the pinned dictionary and the gear-to-material
+relationship, now a quarter; `game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp`, the six quoted material figures
+and a Boss at 400% loot quantity, 20 to 5; the comments of `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`
+(`CataclysmDroppedItemTests.cpp`); the set-up of `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` in the same
+file, which now gives each kill no gear and 12 materials, and its new info line; the comment in `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`
+(`CataclysmDungeonModifierEffectsTests.cpp`) giving a Cataclysm Boss's expected drops, 24 to 15. The asset `DT_EnemyDrops` (`game/Content/Data/DT_EnemyDrops.uasset`) is NOT rebuilt
+here. Issue [#2829](https://github.com/sdubois777/Cataclysm/issues/2829), following
+[#2830](https://github.com/sdubois777/Cataclysm/issues/2830) and [#850](https://github.com/sdubois777/Cataclysm/issues/850).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** By the coordinating session's instruction of 2026-11-22:
+  no compile, no Unreal lock. `DT_EnemyDrops` must be rebuilt by `tools/generate_datatable_assets.py` in an editor
+  window; until then `tools/tests/test_datatable_assets_are_current.py` fails on `EnemyDrops.csv`, and the game still
+  drops materials at the old rate.
+- **THE RULING CHANGED FROM HALVING TO A QUARTER BECAUSE THE FORGE'S LEVELLING DAYS CHANGED.** The issue proposed
+  halving, and the coordinating session ruled it on 2026-11-21, because at a quarter the stones would have run out
+  before the days from difficulty tier 5 up. That table assumed a level took one day plus the residue penalty. #2830
+  (merged in [#2836](https://github.com/sdubois777/Cataclysm/pull/2836), development `3f3056ca2`) made a level take days
+  equal to the level it reaches, plus the residue penalty. A day of levelling then spends far fewer stones, and at a
+  quarter the days stay the limit at every tier. The coordinating session ruled a quarter on 2026-11-22, under the
+  owner's delegation of numbers, after the recompute below.
+- **GOLD IS NOT MEASURED AS THE LIMIT.** Forge crafts now cost gold too (#2830: 250 gold a base day, scaled by the tier
+  and the residue). Whether gold, rather than days, is what limits levelling was not checked. It does not change the
+  answer about stones.
+- **THE 17 MATERIALS WITH NO USE STAY AN OPEN QUESTION.** Of the 27 crafting materials, 10 are upgrade stones; the other
+  17 are about two thirds of what drops and nothing spends them yet. Whether their share should be lowered is not decided
+  here.
+
+### What the owner asked
+
+The owner, 2026-11-21: "we need to lower the drop quantity/amount of crafting materials. It's way too high. I don't
+think I want to cap what players can level their stuff to, however the gold/days cost should be enough of a deterrent".
+So the figure is chosen so that days, not stones, limit how fast gear is levelled.
+
+### The rule the recompute used, read from the merged code
+
+`UCataclysmForge::DaysFor(Residue, BaseDays)` (`game/Source/Cataclysm/Items/CataclysmForge.cpp`) returns
+`BaseDays + floor(Residue / 100)`. For an upgrade, `BaseDays` is the level the item reaches, and `Residue` is the item's
+own residue before the upgrade adds its 25. So raising an item to level k takes `k + floor((R0 + 25(k - 1)) / 100)` days,
+where R0 is the residue it dropped with.
+
+R0 is rolled at drop from `game/Data/GearRarity.csv`: 38 to 62 for Everyday, up to 300 to 500 for Cataclysmic. Residue
+only adds days, so **R0 = 0 gives the fewest days and the most stones spent a day**: the case most likely to make stones
+the limit. The table below uses it.
+
+### The measurement
+
+The inputs are those of the issue: 0.476 materials per creature at the 2026-08-23 rates, from the spawn weights of
+`game/Data/EnemyRarities.csv` and the simulation's `loot.material_tier_distribution`; **230 creatures a floor, an
+estimate**; a full clear; no magic find or loot quantity of the player's. The best stone that can drop is the tier plus
+2. A +k stone is worth 2^(k-1) +1 stones, and raising an item to level k takes two +k stones, 2^k +1 stones.
+
+The ratio is the +1 stones a floor brings over what one day of levelling at the tier's best stone uses. **Above 1, days
+limit levelling; below 1, stones do.**
+
+**The issue's original table**, with the days rule before #2830 (1 + floor(25(k - 1) / 100)):
+
+| Tier | Best stone | Spent in a craft day | 2026-08-23 rates | Half | Quarter |
+|--:|--:|--:|--:|--:|--:|
+| 1 | +3 | 8 | 7.5 | 3.7 | 1.9 |
+| 2 | +4 | 16 | 5.9 | 3.0 | 1.5 |
+| 3 | +5 | 16 | 7.8 | 3.9 | 2.0 |
+| 4 | +6 | 32 | 5.3 | 2.7 | 1.3 |
+| 5 | +7 | 64 | 3.6 | 1.8 | 0.9 |
+| 6 | +8 | 128 | 2.5 | 1.2 | 0.6 |
+| 7 | +9 | 171 | 2.4 | 1.2 | 0.6 |
+| 8 | +10 | 341 | 1.6 | 0.8 | 0.4 |
+
+**The recompute, 2026-11-22, with the merged rule (#2830), R0 = 0:**
+
+| Tier | Best stone | Days for that level | Spent in a craft day | 2026-08-23 rates | Half | Quarter |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | +3 | 3 | 2.7 | 22.45 | 11.23 | 5.61 |
+| 2 | +4 | 4 | 4.0 | 23.75 | 11.88 | 5.94 |
+| 3 | +5 | 6 | 5.3 | 23.52 | 11.76 | 5.88 |
+| 4 | +6 | 7 | 9.1 | 18.71 | 9.35 | 4.68 |
+| 5 | +7 | 8 | 16.0 | 14.45 | 7.23 | 3.61 |
+| 6 | +8 | 9 | 28.4 | 11.09 | 5.55 | 2.77 |
+| 7 | +9 | 11 | 46.5 | 8.91 | 4.46 | 2.23 |
+| 8 | +10 | 12 | 85.3 | 6.49 | 3.24 | 1.62 |
+
+- **The lowest quarter ratio is 1.62, at tier 8.** So at a quarter, days stay the limit at every tier.
+- With an Everyday item's mean residue at drop, R0 = 50, every quarter ratio is the same or higher: 7.48 at tier 1, 1.62
+  at tier 8.
+- The same script run on development `1226aad28`, before the gems window, gives the same table. The gems window took
+  19 rows that were crafting operations out of `game/Data/CraftingMaterials.csv`; they were not in any material tier, so
+  no stone figure moved.
+- At a quarter a floor drops about 27 materials and a 12-floor dungeon with its Boss about 330, from 110 and 1,319.
+
+### The decision
+
+**The Material Drops column is a quarter of the 2026-08-23 figures: 0.04, 0.125, 0.25, 0.5, 1.25 and 3.0**, for
+Common, Elite, Legendary, Herald, Boss and Cataclysm Boss, from 0.16, 0.5, 1, 2, 5 and 12. The gear, gold and gem
+columns do not move: the owner named materials only.
+
+- **Derived:** the recompute above. A quarter is the round cut the owner's "way too high" points to that still keeps
+  days the limit at every tier.
+- **Judgements:** 230 creatures a floor and a full clear, as in the issue. A player who leaves part of a floor collects
+  less, which makes stones scarcer at the top tiers; at tier 8 a floor brings 1.62 times a day's use, so a player who
+  clears less than about 62% of each floor (1 / 1.62) would find stones the limit there. And "round" over an exact factor.
+- **No genre research was done for this figure.** It is derived from this game's own sink, levelling.
+
+### TO BE RE-MEASURED
+
+The issue's ruling said the figure is to be re-measured against the rebalance session's audit of the Forge's costs. That
+audit became #2830, and the recompute above is that re-measure against #2830's merged days. **If the forge's days or
+the stone costs change again, or gold turns out to limit levelling before days do, this table is to be measured again.**
+
+### Tests
+
+**Python.** `sim/tests/test_loot.py` pins the six figures and asserts materials are a quarter of gear for every rarity.
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py` compares the workbook and the design document with the
+simulation, unchanged. `tools/tests/test_datatable_assets_are_current.py` fails on `EnemyDrops.csv` until
+`DT_EnemyDrops` is rebuilt.
+
+**Unreal: the sweep, 2026-11-22, static, with no Unreal run.** Every test that spawns a kill's drops was read. The
+material count is drawn after the gear count on the same `FRandomStream` (`UCataclysmDropSpawner::SpawnDropsFor`), so
+at a given seed the gear count is unchanged, the material count is the same or smaller, and every draw after it moves.
+The counts below come from a Python copy of `FRandomStream` and `RollDropCount`, checked against four figures in a
+window's engine log; they are predictions, not measurements.
+
+- **Changed by this branch:** `Cataclysm.Drop.AKillDropsAtTheRateItsRarityStates` (`CataclysmDropRollTests.cpp`): the six
+  material figures, and a Boss at 400%, 20 to 5. It passes only once `DT_EnemyDrops` is rebuilt.
+- **Changed set-up, a judgement: the coordinating session asked for a test predicted to fail to be fixed, and this one
+  could not be predicted:**
+  `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (`CataclysmDroppedItemTests.cpp`), eight Cataclysm Boss kills
+  on seed 20260823 at tiers 1 and 8, checking that the best stone at tier 8 is above the best at tier 1.
+  - Rolled, the materials per tier fall from about 96 to about 24. The outcome at this seed could not be computed,
+    because each gear item draws a varying number of random numbers.
+  - By the simulation's material model, a tier 8 best no better than the tier 1 best then happens at 1.6% of seeds,
+    against about one in seven million at 96.
+  - So each kill is now given its counts: no gear and 12 materials, the 96 a tier it averaged before. The test is about
+    the tier the drop site passes to the material roll, not how many materials drop.
+  - With no gear, the stream carries the material rolls alone. A Python copy of `RollMaterialTier` and `RollMaterial`
+    predicts tier 1's best +3 and tier 8's best +10, over 96 materials each. The closest draw is 0.0034 from its
+    threshold. A new info line in the test, "STONES: tier 1 best +%d over %d materials; tier 8 best +%d over %d
+    materials", reports what lands.
+- **May change; not computed:** `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` (same file, same seed and kills).
+  - It reads gear only, but every gear item after the first kill's material count is rolled from a different place in
+    the stream, which has the same effect as a different seed.
+  - Its own comment records six seeds measured, all passing. Tier 8 to tier 1 mean rarity ran 2.6 to 3.7, against a
+    bound of 2. Tier 1's mean ran 0.68 to 0.95, against a bound of Superb, 2.
+  - The simulation's rarity model does not reproduce those measured means, so no failure chance is derived for it.
+- **The Reality Chamber's given drop:** `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber` now gives
+  an Elite gear item where it gave a material. `RollItem` fails only on faults in the data: a slot with no base, an
+  affix pool with too few stat groups, or enchantment bands that cannot pair. Each of these logs a warning.
+  - None of the three warnings appears in window ai-think-w1's whole-suite engine log, 5144 tests.
+  - So the gear item is predicted to roll, and the test to pass.
+- **Counts move, every check holds at the computed counts:**
+  - `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`: 15 gear and 9 materials become 15 and 1.
+  - `Cataclysm.Drop.AKillPutsNamedItemsOnTheFloor`: 3 and 4 become 3 and 1.
+  - `Cataclysm.CityDungeonRewards.MoreMaterialsIsTheMaterialRollsAloneAndOneRollsAsBefore`: materials 18 and 276
+    become 8 and 78; its line "REWARDS MATERIALS" changes.
+  - `Cataclysm.SaveApply.AFloorGatheredAndPutBackIsTheSameFloor` (12 and 13 to 12 and 2) and
+    `ARestoredDropIsDescribedTheSameWayASpawnedOneIs` (13 and 14 to 13 and 5).
+  - `Cataclysm.DungeonModifierEffects.`: `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat` (2 and 5 to 2 and 1),
+    `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves` (7 and 5 to 7 and 1),
+    `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce` (3 and 5 to 3 and 2), and
+    `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`, whose given drop for an empty Elite roll is
+    chosen by the Elite row's ratio: its draw, 0.5133, gave a material at one to one and gives a gear item at four to
+    one. Its checks hold for either kind, provided the Elite gear item rolls.
+- **Hold for any count:** the unseeded kill tests `KillingAnEnemyIsWhatPutsLootOnTheFloor` and
+  `LootQuantityOnThePlayerChangesWhatAKillDrops`; the infested drop's gear-or-material split, now four to one; the save
+  tests that compare drops saved with drops loaded; `Cataclysm.Gold.KillingCreaturesPutsNamedGoldPilesOnTheFloor`.
+- **Not affected:** `Cataclysm.EmpireTreeDrops.`, which give their counts; `Cataclysm.GemDrops.` and
+  `Cataclysm.EmpireTreeGold.`, which call their own spawners.
+- `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` compares row names, which do not change.
+
+Comments updated, no behaviour: `CataclysmDroppedItem.h` ("twice the gear rate"), `CataclysmDroppedItem.cpp`
+(Scavenger's second material), and the Trick or Treat test's expected drop count, 24 to 15.
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive`, 2026-11-22, command
+`python -m pytest sim/tests/test_loot.py tools/tests/test_enemy_drop_sheet_matches_the_model.py`:
+
+| Proof | Break in `sim/cataclysm_sim/loot.py` | Result |
+|---|---|---|
+| PM1 | Boss's materials alone, 1.25 to 2.5 | PROVED: 4 failed, 127 passed; restored, 131 passed |
+| PM2 | the six figures put back to the 2026-08-23 rates | PROVED: 4 failed, 127 passed; restored, 131 passed |
+
+Both broke the same four: `test_a_kill_drops_a_quarter_as_many_materials_as_gear`,
+`test_the_material_drop_figures_are_what_the_owner_chose`, `test_every_material_drop_rate_matches_the_model` and
+`test_the_document_states_the_material_rates_the_model_uses`.
+
+**PM1 was run first with Boss at 5.0, and that run measured nothing.** 5.0 is above the Cataclysm Boss's 3.0, so the
+import-time ladder check stopped the module from loading: the run exited 2 with no test named.
+
+---
+
+## 2026-11-22 — A carried gem stack survives a save and a load: the test G2's entry promised, run in the empire tree slice 9 window (#46, slice G2)
+
+**NOT RUN YET.** Written on `test/gem-stack-survives-a-save`, cut from development `3f3056ca2` (the gems window's merge,
+#2836). The coordinating session ruled on 2026-11-22 that it is not compiled here and rides in the empire tree slice 9
+window, which cherry-picks it. Its results are recorded there, not here.
+
+### Why
+
+G2's entry promised "a test that a carried gem stack survives a save and a load", to be written with the save step.
+It was not written: the two `Cataclysm.GemSave.` tests prove the migration only, `Character_v13.json` holds no gem
+stack, and `Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` covers a gem on the
+floor. The gems pull request said so, and the coordinating session ruled this route rather than a third gems window.
+
+### What it does
+
+`Cataclysm.GemStacks.ACarriedGemStackSurvivesASaveAndALoad` (GK6), in `CataclysmGemStacksTests.cpp`: three Of The Viper
+at Superb and one Of Rot at Quality, beside four Corrupted Motes, are gathered into a character record
+(`FCataclysmSaveGather::CarriedSlotsFrom`), written out and read back as the save file is (`FCataclysmSaveStorage::ToJson`
+and `FromJson`, which keep `SaveGame` fields only), and restored into an empty bag (`RestoreSlots`). Each stack must come
+back in its own slot at its own rarity and count, the file must name the gem, and no Viper at another rarity may
+appear. CONTROL: the motes come back too. No save version moves: the fields it reads were saved since the gems window.
+
+### Registered for the slice 9 window
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStacks.` alone | 6 performed, 6 succeeded |
+| The whole suite | the slice 9 window's own total plus this 1 test |
+
+**C++ guard proof GK6**: in `CataclysmInventoryComponent.h`, the `SaveGame` specifier removed from the `UPROPERTY` above
+`FCataclysmCarriedSlot`'s `FName Gem;`, so the slot's gem is not written. Narrowed to `Cataclysm.GemStacks.`: 6
+performed, 5 succeeded, 1 failed, `ACarriedGemStackSurvivesASaveAndALoad`, on "and the file names the gem", "Of The
+Viper comes back, 3 of them at Superb", "in the slot it was in", "Of Rot comes back, 1 at Quality" and "in its slot";
+"the bag is restored" and the motes' CONTROL still pass. Predicted, not run.
+
+---
+
 ## 2026-11-22 — The gems window: G1 to G7 rebased onto development with #2832 carried, saved at character record 13 and run record 14, the workbook stage, and a tooltip line for the four gems no class has a base for (#46, #2830, #2832)
 
 The turn of the gems work (issue #46, slices G1 to G7, and #2830), with the level-1 session's #2832 carried on top, as
@@ -213,6 +447,318 @@ recorded here rather than written into the registration after the fact.
 
 **THE BLANK LINE BELOW THE W1 RECORD**, missing at `868df83d3`, is added in this commit: without it the paragraph above
 the entry's `---` rendered as a heading. The coordinating session found it; the design-log checks passed either way.
+
+---
+
+## 2026-11-22 — Civic Pride, Reinvestment, Economic Bailout, Bribery and Scout Parties act: the five nodes the coordinating session ruled under the owner's delegation, on account record 7, character record 14 and run record 15 (#2741, slice 9)
+
+**Affects:** `FCataclysmEmpireTreeBonuses::PopulationRestoreIncrease`, `PopulationRestoredShare`,
+`EmpirePointsFromSpending`, `CityBailoutPoints` and `BonusDungeonChance`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h`, `CataclysmEmpireTreeBonuses.cpp`); the four population
+restores (`UCataclysmEmpireMap::Retake` and `AddUpgrade`, `UCataclysmEmpireRun::RunTreeIntervals` and
+`RunCityUpgradeIntervals`); `UCataclysmEmpireMap::Damage`, `SaveFromFalling`, `TakeTheBailouts` and
+`FCataclysmCity::bBailedOut`; `UCataclysmEmpireRun::SaveCityFromFalling`, `PayTheBailout`, `NoteTheBailouts`,
+`RefusalForBribing`, `BribeDungeon`, `bBribedThisSurge`, `AddBonusDungeon`, `LetABonusDungeonLeave`,
+`GiveModifiersFrom`, `ThreateningDungeonCount`, `BonusDungeonsCleared`, `AdvanceDay`, `ClearDungeon`,
+`ResolveDungeonOnDeath`, `FireSurge` and `ScheduledDefenceLossOn` (`CataclysmEmpireRun.h` and `.cpp`);
+`FCataclysmDungeon::bBonus` (`CataclysmSurge.h`); `FCataclysmDayReport::BailedOut`;
+`UCataclysmEmpireTree::EmpirePointsFromSpendingFor`, `BailoutFeeAtTierOneFor`, `ReinvestmentGoldAStep`,
+`BribeFeeAtTierOne`, the player bonuses' Reinvestment and Bribery fields and the kinds defeated
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); `UCataclysmGameInstance::GoldSpentOnCityUpgradesBy`,
+`AddGoldSpentOnCityUpgradesFor`, `EmpireTreeBonusesFor` and `WireTheRunToTheBalance`;
+`UCataclysmCityUpgradePurchase::Buy`; `FCataclysmDungeonBribe` (`game/Source/Cataclysm/Player/CataclysmDungeonBribe.h`
+and `.cpp`, new); `FCataclysmPlayLoopLog::BailoutLine`; the city screen (`CataclysmCityScreenLayout.cpp`,
+`CataclysmCityScreenWidget.h` and `.cpp`); `Cataclysm.BribeDungeon` (`CataclysmPlayerCharacter.cpp`);
+`ACataclysmPlayerState::GetOwnGoldSpentOnCityUpgrades`; `UCataclysmAccountSave` at 7, `UCataclysmCharacterSave` at 14
+and `UCataclysmRunSave` at 15, `Migrate_6_to_7`, `Migrate_13_to_14` and `Migrate_14_to_15`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `.cpp`), the save copy-out and copy-in;
+`ECataclysmEmpireTreeEffect`, five values (`game/Source/Cataclysm/Data/CataclysmDataRows.h`);
+`tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`, `game/Data/EmpireTreeEffects.csv` (121 rows),
+`game/Content/Data/DT_EmpireTreeNodes.uasset`, `game/Content/Data/DT_EmpireTreeEffects.uasset` and
+`game/Data/datatable_asset_sources.json`; `game/Tests/SaveFixtures/Account_v7.json`,
+`game/Tests/SaveFixtures/Character_v14.json`, `game/Tests/SaveFixtures/Run_v15.json` and
+`game/Tests/SaveFixtures/README.md`; `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades; `docs/Play_Loop_Checklist.md`,
+step 11. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeNineTests.cpp`, new, 13 in five new groups; 22 test
+files moved to the new committed files and steps; `tools/tests/test_empire_tree_slice9.py`, new, 11 checks; ten
+Python checks whose pins the slice moves. Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741).
+
+### SAID FIRST
+
+- **COMPILED AND TESTED IN WINDOWS tree-s9-w1 AND tree-s9-w2**, after the gems window (V1). w2 passed; both are
+  recorded at the end of this entry. Phase 1 was written before any compile.
+- **THE THREE RECORD NUMBERS ARE ACCOUNT 7, CHARACTER 14 AND RUN 15**, the numbers after the gems window's (V1): it
+  took the character record to 13 and the run record to 14 first, and this slice was renumbered when it was rebased
+  onto it. The tests that state a record's number read `SchemaVersionNow`.
+- **REINVESTMENT'S COUNT IS AN UNROUNDED DOUBLE** since the coordinating session's V20 ruling, which added that to
+  this session's recommendation after the first code was written; the code, the records and the files follow it.
+- **PART (A) LEFT THE CHARACTER RECORD AT VERSION 12 WITH A STEP TO 13**, corrected in part (b). Its edit script skipped
+  any edit whose result was already in the file, and the run record's "SchemaVersionNow = 13" matched the character's
+  new line. Part (c)'s two edit scripts refuse a replacement shorter than 80 characters for that reason.
+
+### The rulings this slice builds on
+
+The coordinating session ruled the five on 2026-11-21 under the owner's delegation ("The rest can probably go with your
+rec"); the entry "Nine empire tree nodes that could not be bought are ruled" below has each ruling and its kind. Its
+V1 to V20 of 2026-11-22, each as this session recommended unless said:
+
+- **V1.** One branch in three commits and one window, after the gems window, at the record numbers then next free.
+- **V2.** Reinvestment counts **across runs**, on the account, and on a Solo Self-Found character: "permanent" in a
+  tree whose points and allocations cross runs means across runs. **This ends the sentence "That reading is not ruled;
+  it is for whoever builds the node" in the entry of 2026-11-21.**
+- **V3.** Reinvestment's own cap of 30%, added to Veteran's Edge's (60% with both), as D9 keeps each cap apart.
+- **V4.** What counts is the price charged once the purchase is accepted: the borrowed part of a credit purchase,
+  Scaffolding's halved price and a Rush's 150% included; a refused purchase not.
+- **V5.** The count runs from the first purchase whether the node is held or not; older saves start at 0.
+- **V6.** A fall at the tenth Void stack is not "health hits 0" and is not saved.
+- **V7.** A Sanctuary's Last Stand first; the bailout only where the city would still fall.
+- **V8.** Exactly half the maximum defence, The Architect's Legacy included; the population as it is.
+- **V9.** All or nothing from the balance, no credit; a short balance lets the city fall, leaves the once a run
+  unspent, and the log says why.
+- **V10.** A doomed city can be saved like any other but the Pillar, and the bailout does not clear the mark. **No code
+  is needed for it:** `bDoomed` is set only by the tenth Void stack, which calls `Fall` at once, and V6 rules that fall
+  out, so a bailout never meets a doomed city.
+- **V11.** Civic Pride raises the population part of each restore, not defence; a retake at 0.75 x 1.5 is held at the
+  maximum.
+- **V12.** One bribe a surge for the whole run, given back by the next surge.
+- **V13.** Any dungeon whose timer resolves but the Cataclysm boss's, a Scout Parties bonus dungeon included; refused
+  at its start (which includes the tree's bonus days) and when the balance cannot pay in full with no credit; every
+  refusal says why.
+- **V14.** A Bribe button beside each Walk button on the city screen, showing the fee, and a console command.
+- **V15.** Scout Parties rolls on its own stream, seeded from the cleared dungeon's id; any clear but a bonus dungeon's
+  and the boss's rolls; a standing city only.
+- **V16, NARROWED, IN ITS CORRECTED FORM.** A bonus dungeon's clear counts for what pays the player and not for what
+  moves the empire's pressure, schedule or ending. **No clear counts toward a surge**: the scheduler reads only days and
+  `SurgeIndex`, and `ClearsSinceLastSurge` feeds Global Vigilance, a damage reduction for the player, so it pays. The
+  table below is the sorting the coordinating session accepted row by row. It is never a retake, is not counted for the
+  empty-board surge or a city's cap, and leaves with no damage and no detonation when its timer runs out or the player
+  dies in it.
+- **V17.** A new run counter, `BonusDungeonsCleared`, subtracted where the kinds defeated are worked out, so a bonus
+  clear never reads as a Fallen City clear.
+- **V18.** A bonus dungeon is always `Basic`, its roll only placing it. **V15's "any kind except Siege" is therefore
+  not needed as a rule:** `RollKind` gives only Basic or Quest; the bonus dungeon is built with `bSiegeAllowed` false
+  so its sub-type is never a Siege.
+- **V19.** A bonus clear never adds a kind: the Basic kind is read from `BasicDungeonsCleared` alone.
+- **V20.** Reinvestment's count is kept in tier 1 gold: each accepted purchase adds its price charged over that run's
+  `GoldScaleFor`, and the 25,000 step is compared with that total, so the 30% cap's anchor holds at every tier. **ADDED
+  BY THE RULING:** the total is kept unrounded, as a double, and saved that way; and a test that one 10,000 upgrade
+  adds 10,000 at two tiers (`APurchaseCountsItsPriceInTierOneGold`, tiers 2 and 1).
+
+| What a clear changes | What reads it | A bonus clear |
+|---|---|---|
+| The empire points awarded | the bank; the map screen | counts |
+| `DungeonsCleared` | the map's line; Dungeon Legend; the kinds defeated | counts |
+| `ClearsSinceLastSurge` | Global Vigilance's damage reduction | counts |
+| `ClearsSinceLastDeath` | Relentless Pursuit's loot quantity | counts |
+| The city's "restore defence on clear" upgrade | that city | counts |
+| The Warlord's chance to remove another dungeon | the board | counts |
+| `BasicDungeonsCleared` and the boss's floors | the Cataclysm boss dungeon; the kinds defeated | does not count |
+| Quest objectives | the ending | does not count (never a Quest) |
+| Scout Parties' own roll | V15 | does not roll |
+| A retake, and a win | Reclaimer's Resolve; the ending | do not apply |
+
+### The change
+
+- **Civic Pride**: `PopulationRestoredShare` makes a restore's share 5% a point larger; the retake, the "Restore
+  city's population" upgrade, The Mason's Guild and the 20-day recovery read it for their population part and each is
+  held at the maximum. The retake had no such cap and gains it.
+- **Reinvestment**: `UCataclysmCityUpgradePurchase::Buy` adds the accepted price over the run's gold scale to the
+  count and reads the run's bonuses again; `UCataclysmGameInstance::EmpireTreeBonusesFor` turns the count into the
+  share (1% a whole 25,000, held at 30%; the count unrounded, a double), which `ClearDungeon` adds to Veteran's Edge's.
+- **Economic Bailout**: the map asks `SaveFromFalling` where a dungeon's damage takes a city to 0, after the Last Stand
+  and before `Fall`; the run refuses the Pillar, a city saved before and a run without the node, and pays through
+  `PayTheBailout`, which the game instance sets: 50,000, 100,000 or 150,000 tier 1 gold scaled to the run's tier, taken
+  all or nothing and logged either way. The saved city keeps half its maximum defence, is marked, and is listed in the
+  day's report; the city screen says "saved once by Economic Bailout".
+- **Bribery**: `UCataclysmEmpireRun::RefusalForBribing` and `BribeDungeon` in the empire layer; `FCataclysmDungeonBribe`
+  asks the node and the balance, takes the 20,000 tier 1 gold scaled to the tier before the reset, and gives it back if
+  the run refuses. A Bribe button beside each Walk button while the node is held, and `Cataclysm.BribeDungeon`.
+- **Scout Parties**: at a clear, a roll on a stream seeded from the walk seed mask, the dungeon's id and a salt of its
+  own ("scou") adds an always-Basic dungeon of the city's tier with no Siege, its sender and modifiers drawn from the
+  same stream (`GiveModifiersFrom`), so no other roll moves. **It leaves through `LetABonusDungeonLeave` in
+  `ResolveDungeon`'s two callers**, the day and a death, and not inside `ResolveDungeon`, which is the ordinary
+  dungeon's port of the model and removes a dungeon once, last (`tools/tests/test_an_ordinary_dungeon_leaves_in_the_model_and_in_the_game.py`).
+  The city screen marks it "bonus (threatens nothing)".
+- **The records**: account `GoldSpentOnCityUpgrades`, a double; character `GoldSpentOnCityUpgrades`, a Solo Self-Found
+  character's, a double; run `bBailedOut` on each city, `bBonus` on each dungeon, `BonusDungeonsCleared`, `bBribedThisSurge`.
+  Each new step writes 0 or false, keeps a value of the right kind and refuses anything else.
+- **The committed files** hold figures, 75000.5 and 50000.25 spent among them, fractions exact in binary, but for the run file's one dungeon, a Siege, whose `bBonus` stays false because
+  a bonus dungeon never is one (V18); the fixtures README says so.
+- **The data**: the five rows, their "waits on" reasons removed (`fee figure`, `cap figure`, `population growth` and
+  `bonus dungeon` no longer name any node), and 121 effect rows: the gems window's 116, which carry #2832's, and
+  the slice's five.
+
+### The tests
+
+- **Unreal, 13 in five new groups** (`CataclysmEmpireTreeNineTests.cpp`): `Cataclysm.EmpireTreeRestores.` 4,
+  `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeScouts.` 3, `EmpireTreeNineSaves.` 1. **Not tested
+  there**: the bailout fee paid through the game instance, and the city screen's Bribe button, because a game instance
+  a test builds has no world context through which the gold functions find a balance; the fee table and the empire
+  layer's half are tested, and the Python checks hold the wiring.
+- **The sweep**: 22 Unreal test files moved to `Account_v7.json`, `Character_v14.json` and `Run_v15.json`, with each
+  chain test adding the three new steps' defaults through three new helpers in `CataclysmSaveFixtures.h` and four literal run-record pins reading `SchemaVersionNow`.
+- **Python**: `tools/tests/test_empire_tree_slice9.py`, 11 checks; and the pins the slice moves, each saying why:
+  `test_city_upgrades_cost_gold.py` (Bribery's fee is the second place that charges), `test_surge_port.py` (the
+  empty-board count), `test_empire_tree_walk_and_depth.py` (Veteran's Edge's line),
+  `test_empire_tree_effects_match_their_texts.py` (115 nodes, 15 caps), `test_empire_tree_tables_match_the_tree_file.py`
+  (slices 3 to 9, 21 points), `test_empire_tree_on_the_account_record.py`, `test_the_hollow_in_the_model_and_in_the_game.py`
+  (the day's resolve loop found by its opening), `test_gems_are_saved_at_the_new_record_versions.py` (the
+  gems window's records at 13 and 14 or later, and its account check reading that no account step writes sockets
+  rather than that the account stays at 6), `test_unreal_pinned_row_counts.py` by
+  way of `CataclysmDataTableTests.cpp` (121), and `test_the_play_loop_is_logged_at_each_step.py` by way of the
+  checklist.
+
+### Python guard proofs, T1 to T13, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `614260872`, again at `7004fc7a1`, and again after the rebase at `8d168d99c`, running
+`tools/tests/test_empire_tree_slice9.py`; each "PROVED: 1 failed, 10 passed | restored: 11 passed".
+`.claude/windows/prove_t2741s9_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| T1 | a retake's population not held at the maximum | the Civic Pride check |
+| T2 | the count added before the run accepts the purchase | the Reinvestment check |
+| T3 | Reinvestment's share not added at a clear | the same |
+| T4 | the bailout asked at the tenth Void stack | the "asked only at zero defence" check |
+| T5 | the Pillar not refused | the same |
+| T6 | the fee taken on credit | the fee check |
+| T7 | a surge does not give the bribe back | the Bribery check |
+| T8 | the timer reset before the fee is taken | the same |
+| T9 | a bonus dungeon allowed to be a Siege | the Scout Parties check |
+| T10 | a bonus clear adds a floor to the boss | the pressure check |
+| T11 | the kinds defeated leave the bonus clears in | the same |
+| T12 | the run's step leaves the bribe flag out | the steps check |
+| T13 | a chain test leaves the run's new step out | the chain check |
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_t2741s9_table.py.txt`, each narrowed to its group with a trailing dot; every anchor checked
+to occur once. Each prediction was reasoned from the code before any ran; window tree-s9-w2 ran all 13, and each
+failed the test predicted (its record, below).
+
+| Proof | The break | Prefix | Predicted |
+|---|---|---|---|
+| R1 | Reinvestment's share not held at its cap | `Cataclysm.EmpireTreeRestores.` (4) | 3, 1: `TheTwoNodesAddUp...`, 1 assertion (0.32, not 0.30) |
+| R2 | Civic Pride raises no restore | the same | 3, 1: `CivicPrideMakes...`, 4 assertions |
+| R3 | the count in raw gold | the same | 3, 1: `APurchaseCounts...`, 3 assertions at tier 2 (30,000 counted, not 10,000; not exactly 10,000; the share 0.02, not 0.01); the gold table's tier 2 pile is 30 against tier 1's 10, so the scale is 3 |
+| R4 | Reinvestment left out of the award | the same | 3, 1: `ReinvestmentAdds...`, 1 assertion (1.3, not 1.6) |
+| B1 | a saved city keeps a quarter of its defence | `Cataclysm.EmpireTreeBailout.` (3) | 2, 1: `ACityTakenToNothing...`, 1 assertion |
+| B2 | the Pillar may be saved | the same | 2, 1: `ThePillarTheVoid...`, 2 assertions |
+| B3 | an Outpost's fee 40,000 | the same | 2, 1: `TheFeeIsFifty...`, 1 assertion |
+| X1 | a surge does not give the bribe back | `Cataclysm.EmpireTreeBribery.` (2) | 1, 1: `TheRunResetsOneTimer...`, 1 assertion |
+| X2 | the node not asked for | the same | 1, 1: `ABribeNeedsTheNode...`, 1 assertion |
+| D1 | the bonus dungeon's sender drawn from the run's wave stream | `Cataclysm.EmpireTreeScouts.` (3) | 2, 1: `AClearMayDiscover...`, 1 assertion; every run `Begin` makes has an active Cataclysm |
+| D2 | the kinds defeated leave the bonus clears in | the same | 2, 1: `ABonusClearPays...`, 2 assertions |
+| D3 | `LetABonusDungeonLeave` always answers false | the same | 2, 1: `ABonusDungeonLeaves...`, 3 assertions |
+| F1 | the run's step writes a bribe made | `Cataclysm.EmpireTreeNineSaves.` (1) | 0, 1: `ThePreviousFilesMigrate...`, 1 assertion |
+
+### Rebased onto the gems window
+
+The slice was written on development and rebased, as a squash of its branch onto the gems window's head `57f00fa2f`,
+into `feat/empire-tree-9-treasury-and-scouts-2`, so that it lands after the gems window. The gems window took the
+character record to 13 and the run record to 14 first, so this slice's steps were renumbered: the character's
+`Migrate_12_to_13` became `Migrate_13_to_14` and the run's `Migrate_13_to_14` became `Migrate_14_to_15`;
+`Character_v13.json` and `Run_v14.json` became `Character_v14.json` and `Run_v15.json`, each built again on the
+gems window's file at the version before; and the helpers `AddTheCharactersVersion14Defaults` and
+`AddTheRunsVersion15Defaults` follow the gems window's 13 and 14. The account record had no gems step and stays at 7.
+The effect rows and every pin were recounted from the generator's output on the combined code, and the test sweep
+was run again over the gems window's test files. `8d168d99c` on `feat/empire-tree-9-treasury-and-scouts-2` was
+cherry-picked unchanged onto development's `3f3056ca2`, the gems window's merge, as
+`feat/empire-tree-9-treasury-and-scouts-3`: `-2` was already pushed, and moving it would have needed a force push.
+
+The full Python suite on `8d168d99c` found one more pin the renumbering moved: `test_empire_tree_prowess.py` asked for
+Imperial Prowess's character step to lead into the current version or one before it, and its own comment left the
+number out until the gems window's order was settled. It now names `Migrate_11_to_12` and asks that it be no later
+than the current version.
+
+### Python before its window
+
+The full Python suite on `7004fc7a1`, in a copy of the worktree: "1 failed, 7953 passed, 9 skipped in 329.63s", and
+the JUnit file `tests="7963"`, `failures="1"`, `errors="0"`, `skipped="9"`. The one failure is
+`test_datatable_assets_are_current.py`: the two empire tree tables' CSVs changed and their assets wait for the
+window's asset step, which needs the editor. ruff on every Python file the slice touches: "All checks passed!".
+The Unreal tests and the C++ proofs waited for the window; they ran in tree-s9-w1 and tree-s9-w2, recorded below.
+
+
+### Window tree-s9-w1: FAILED, 5216 of 5218, two tests' set-up
+
+The compiles, at `c0ae0ebce`, on the third attempt. The first stopped before taking the lock: the compile script still
+asked 10,240 MB free, copied from the slices 6d to 8 window's, and 9,598 MB was free; it asks the standing 9,216 now.
+The second built the branch and FAILED: `UCataclysmCharacterSave` had no `GoldSpentOnCityUpgrades`, because the script
+that re-applied the record changes onto the gems window cut the field's text to the next "/**", which matched where the
+cut began; and `GiveModifiersFrom`'s parameter `Stream` hid the run's member (C4458). `c0ae0ebce` restores the field,
+renames the parameter `Draws`, and adds `test_each_record_declares_the_fields_its_step_writes`, which failed on the
+header as it was. The third: "Build: Succeeded - 60 actions, 55 files compiled", each changed .cpp alone "59 actions,
+54 files compiled", the unity files again "22 actions, 17 files compiled", 0 compiler warning or error lines in each.
+
+The window, `run_t2741s9.py`, from 06:50 on 2026-11-22. The asset step committed `3c9d6928f` (the two empire tree
+tables and `datatable_asset_sources.json`, three files) and the window tested that head.
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 39 | 37 passed; `Cataclysm.EmpireTreeBribery.` 1 of 2 and `Cataclysm.EmpireTree.` 23 of 24 failed |
+| `Cataclysm.GemStacks.`, GK6 riding | 6 | 6 of 6 |
+| Whole suite | 5218 | "5218 tests performed, 5216 succeeded, 2 failed: ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich, ABribeNeedsTheNodeAndTheWholeFee" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5218 | "5218 tests in the tree at 3c9d6928f; 5218 performed, gap 0" |
+| Python, beside it | the asset check passes | "8086 passed, 10 skipped"; JUnit 8096, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+| C++ proofs | 14 | not run: the window stops before them when the suite misses its total |
+
+Both failures were set-up faults in tests. `ABribeNeedsTheNodeAndTheWholeFee` ("Expected 'set-up: an ordinary dungeon
+on the board' to be not null") looked for a dungeon on a run that had only begun, which has none until its first day
+is spent; it now places one on an Outpost, as the run's half of the bribe tests does.
+`ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich` ("Expected 'Civic Pride, with Metropolitan Growth at 8, still waits on a population growth rate'
+to be true") used Civic Pride as its node that waits on a missing system, and this slice built it; it now uses Scorched
+Earth, behind Imperial Roads, and checks that Civic Pride waits on nothing. Both in `07e24f49a`.
+
+
+### Window tree-s9-w2: PASSED, 5218 of 5218, and 14 of 14 C++ proofs
+
+At `b06946859`: `07e24f49a`'s two test fixes, w1's record, and #2829 (crafting materials at a quarter of the gear rate,
+the gold session's `feat/material-drops-quarter` at `36dc51e30`, three commits cherry-picked unchanged) riding by the
+coordinating session's ruling of 2026-11-22. The editor build compiled 22 files. The asset step committed `c651af7e6`,
+`DT_EnemyDrops.uasset` and `datatable_asset_sources.json` only, and the window tested that head.
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 45: this slice's 39 and #2829's six | 45 of 45 |
+| Whole suite | 5218 | "5218 tests performed, 5218 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5218 | "5218 tests in the tree at c651af7e6; 5218 performed, gap 0" |
+| Python, beside it | | "8086 passed, 10 skipped"; JUnit 8096, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+
+Each C++ proof ran through `unreal_build.prove_cpp_guard`, narrowed to its group with a trailing dot, and each failed
+the test its prediction named with the break in and passed with it out:
+
+| Proof | The test that failed | Break in | Restored |
+|---|---|---|---|
+| R1 | `TheTwoNodesAddUpFromTheirRowsAndTheSpendingShareIsCapped` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R2 | `CivicPrideMakesEachPopulationRestoreLargerToTheMaximum` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R3 | `APurchaseCountsItsPriceInTierOneGold` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R4 | `ReinvestmentAddsToVeteransEdgeOnAClear` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| B1 | `ACityTakenToNothingIsSavedOnceAtHalfItsDefence` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| B2 | `ThePillarTheVoidALastStandAndAnUnpaidFeeAreNotSaved` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| B3 | `TheFeeIsFiftyAHundredOrAHundredAndFiftyThousandAndNoneForThePillar` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| X1 | `TheRunResetsOneTimerASurgeAndSaysWhyItRefuses` | 2 performed, 1 succeeded, 1 failed | 2 of 2 |
+| X2 | `ABribeNeedsTheNodeAndTheWholeFee` | 2 performed, 1 succeeded, 1 failed | 2 of 2 |
+| D1 | `AClearMayDiscoverABonusDungeonOnTheSameCity` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| D2 | `ABonusClearPaysButMovesNoPressureAndAddsNoKind` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| D3 | `ABonusDungeonLeavesWithNoConsequence` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| F1 | `ThePreviousFilesMigrateAndTheCommittedOnesReadTheirFigures` | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| GK6 | `ACarriedGemStackSurvivesASaveAndALoad` | 6 performed, 5 succeeded, 1 failed | 6 of 6 |
+
+#2829's information line, as the coordinating session asked it read: "STONES: tier 1 best +3 over 96 materials; tier 8
+best +10 over 96 materials", as predicted. Its rewards line: "REWARDS MATERIALS: named none 15 gear and 8 materials; at
+1 15 and 8; at 20 15 and 78", the 8 and 78 its entry predicted.
+
+**#2829's changed stone test set-up, CONFIRMED by the coordinating session on 2026-11-22.** #2829's entry calls the
+change to `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (each kill given no gear and 12 materials) a
+judgement. The coordinating session confirmed it: the test exists to show that the drop site passes the tier to the
+material roll, and a count that depended on the drop rate made it fail at about 1.6% of seeds for a reason unrelated to
+that. Recorded here because the gold session could not push to its branch while this window ran.
 
 ---
 

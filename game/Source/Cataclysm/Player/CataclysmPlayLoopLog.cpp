@@ -304,6 +304,36 @@ FString FCataclysmPlayLoopLog::UpgradeLine(const FString& Upgrade, const UCatacl
 						   *Ready);
 }
 
+FString FCataclysmPlayLoopLog::BailoutLine(const UCataclysmEmpireRun* Run, int32 CityId, int64 Fee, int64 Held,
+										   bool bPaid)
+{
+	const FString City = CataclysmPlayLoopLog::CityName(Run, CityId);
+	if (bPaid)
+	{
+		return FString::Printf(TEXT("Economic Bailout saved %s from falling for %s gold; %s gold held"), *City,
+							   *ACataclysmDroppedItem::GoldAmountText(Fee), *ACataclysmDroppedItem::GoldAmountText(Held));
+	}
+	if (Held < 0)
+	{
+		return FString::Printf(TEXT("Economic Bailout did not save %s: its fee is %s gold and nothing holds a balance to "
+									"pay it from"),
+							   *City, *ACataclysmDroppedItem::GoldAmountText(Fee));
+	}
+	return FString::Printf(TEXT("Economic Bailout did not save %s: its fee is %s gold and %s is held"), *City,
+						   *ACataclysmDroppedItem::GoldAmountText(Fee), *ACataclysmDroppedItem::GoldAmountText(Held));
+}
+
+FString FCataclysmPlayLoopLog::BribeLine(int32 DungeonId, int64 Fee, int64 Held)
+{
+	return FString::Printf(TEXT("Bribery reset dungeon %d's timer for %s gold; %s gold held"), DungeonId,
+						   *ACataclysmDroppedItem::GoldAmountText(Fee), *ACataclysmDroppedItem::GoldAmountText(Held));
+}
+
+FString FCataclysmPlayLoopLog::BribeRefusedLine(int32 DungeonId, const FString& Why)
+{
+	return FString::Printf(TEXT("Bribery refused for dungeon %d: %s"), DungeonId, *Why);
+}
+
 FString FCataclysmPlayLoopLog::TreePointLine(const FString& Node, const FString& Branch, int32 Points, int32 MaxPoints,
 											 double Banked)
 {

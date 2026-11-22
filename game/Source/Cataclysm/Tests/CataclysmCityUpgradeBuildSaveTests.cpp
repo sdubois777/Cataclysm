@@ -44,7 +44,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeBuildSaveMigrationTest,
 
 /**
  * `Run_v12.json`, written before version 13, migrates with neither city building anything and both its upgrades
- * finished, every other field kept. CONTROL: the committed run file, `Run_v14.json`, reads its first city building
+ * finished, every other field kept. CONTROL: the committed run file, `Run_v15.json` since issue #2741 slice 9, reads its first city building
  * `Architect_Increase_max_defense_by_20` with 4 days left and its second building nothing. Prints "BUILD MIGRATED".
  */
 bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
@@ -55,15 +55,15 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v12.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v15.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
 	}
 	const UCataclysmRunSave* Migrated = ReadRunText(*this, Text, TEXT("Run_v12.json"));
-	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v14.json"));
+	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v15.json"));
 	if (!Migrated || !Current || !TestEqual(TEXT("set-up: Run_v12.json has two cities"), Migrated->Cities.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v14.json has two cities"), Current->Cities.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v15.json has two cities"), Current->Cities.Num(), 2))
 	{
 		return false;
 	}
@@ -74,6 +74,7 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
+	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -93,7 +94,7 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	const TArray<FCataclysmCityUpgrade>& CurrentBuild = Current->Cities[0].Building;
 
 	AddInfo(FString::Printf(TEXT("BUILD MIGRATED: version %d; building %d and %d; %d upgrade(s) with %d day(s) left in "
-								 "all; the rest %s; Run_v14.json building %d (%s, %d left) and %d"),
+								 "all; the rest %s; Run_v15.json building %d (%s, %d left) and %d"),
 							Migrated->SchemaVersion, Migrated->Cities[0].Building.Num(),
 							Migrated->Cities[1].Building.Num(), MigratedUpgrades, MigratedDaysLeft,
 							bSame ? TEXT("kept") : *Where, CurrentBuild.Num(),
@@ -107,7 +108,7 @@ bool FCataclysmCityUpgradeBuildSaveMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("set-up: it holds two upgrades"), MigratedUpgrades, 2);
 	TestEqual(TEXT("both finished"), MigratedDaysLeft, 0);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v14.json's first city builds one upgrade"), CurrentBuild.Num(), 1);
+	TestEqual(TEXT("CONTROL: Run_v15.json's first city builds one upgrade"), CurrentBuild.Num(), 1);
 	TestTrue(TEXT("CONTROL: the raised maximum, with 4 days left"),
 			 CurrentBuild.Num() == 1 && CurrentBuild[0].RowName == FName(TEXT("Architect_Increase_max_defense_by_20"))
 				 && CurrentBuild[0].BuildDaysLeft == 4);

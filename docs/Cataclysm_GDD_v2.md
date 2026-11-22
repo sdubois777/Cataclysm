@@ -2874,12 +2874,12 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
 | Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
 | :-- | --: | --: | --: |
-| Common | 0.16 | 0.16 | 0% |
-| Elite | 0.5 | 0.5 | 50% |
-| Legendary | 1.0 | 1.0 | 100% |
-| Herald | 2.0 | 2.0 | 150% |
-| Boss | 5.0 | 5.0 | 300% |
-| Cataclysm Boss | 12.0 | 12.0 | 500% |
+| Common | 0.16 | 0.04 | 0% |
+| Elite | 0.5 | 0.125 | 50% |
+| Legendary | 1.0 | 0.25 | 100% |
+| Herald | 2.0 | 0.5 | 150% |
+| Boss | 5.0 | 1.25 | 300% |
+| Cataclysm Boss | 12.0 | 3.0 | 500% |
 
   
 
@@ -2915,7 +2915,7 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
   
 
-**A kill drops as many materials as gear, halved from twice as many on 2026-08-23.** The doubling was there because a craft consumes a material and a full loadout takes several hundred crafts, while a piece of gear is kept. That argument was not disproved: the rate was halved because a play test found the floor cluttered with materials, and this is the number that gave way. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
+**A kill drops a quarter as many materials as gear, since 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
 
   
 
@@ -4849,8 +4849,10 @@ character in a mode fixes a starting position for the ones that follow, not a
 life sentence. Without respec it would be a life sentence, which is why the two
 questions were answered together.
 
-**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** Scaffolding, Rapid Renovation and
-Rapid Funding are built (issue #2832); the other six are not yet. `docs/DECISIONS.md` has each ruling in full.
+**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** All nine are built: Imperial
+Prowess in the empire tree's slice 8, Scaffolding, Rapid Renovation and Rapid Funding with city upgrade build times
+(issue #2832), and the last five in slice 9 (2026-11-22, with the coordinating session's readings V1 to V20).
+`docs/DECISIONS.md` has each ruling in full.
 
 - **Imperial Prowess** (The Imperial Zenith) gives one more option from the earlier tier milestones, any the player did
   not pick there. The owner ruled it.
@@ -4858,11 +4860,12 @@ Rapid Funding are built (issue #2832); the other six are not yet. `docs/DECISION
   the same day (the City Upgrades section). Scaffolding halves the price and doubles the days; Rapid Renovation takes
   a day off a point; Rapid Funding rushes an upgrade 2 days for 150% of its price; none goes below 1 day.
 - **Bribery** is a map action that resets one dungeon's resolution timer for 20,000 gold at difficulty tier 1, once per
-  surge.
+  surge: a Bribe button beside each dungeon's Walk button on the city screen.
 - **Economic Bailout** pays 50,000, 100,000 or 150,000 gold at tier 1 automatically when an Outpost, a Bulwark or a
   Sanctuary reaches 0 defence, once per city per run. The city keeps half its maximum defence; the Pillar cannot be
   saved this way.
-- **Reinvestment** is capped at 30%.
+- **Reinvestment** is capped at 30%. The gold it counts is counted across runs, on the account or on a Solo
+  Self-Found character, from the build that added it.
 - **Civic Pride** makes each of the four population restores 5% larger a point: a retake, The Mason's Guild, and the two
   city upgrades that restore population. The design has no other population growth.
 - **Scout Parties'** bonus dungeon is an extra dungeon on the same city that threatens nothing, costs days to walk, adds

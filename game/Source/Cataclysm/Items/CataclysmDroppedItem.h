@@ -526,8 +526,8 @@ public:
 	/**
 	 * Roll the crafting materials a kill drops and put them on the floor.
 	 *
-	 * CALLED BY SpawnDropsFor RATHER THAN BY A KILL. Materials come at twice the
-	 * gear rate on their own separate roll -- chosen by the project owner on
+	 * CALLED BY SpawnDropsFor RATHER THAN BY A KILL. Materials come at a quarter
+	 * of the gear rate (issue #2829) on their own separate roll -- chosen by the project owner on
 	 * 2026-08-18, so an empire node raising material quantity does not also
 	 * reduce gear -- but they come from the same kill, so nothing outside has to
 	 * remember to ask for them.

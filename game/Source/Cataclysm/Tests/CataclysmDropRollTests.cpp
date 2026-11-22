@@ -773,19 +773,19 @@ bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
 
 	// The figures the workbook states, quoted rather than recomputed.
 	//
-	// THE MATERIAL COLUMN WAS HALVED ON 2026-08-23, issue #850, after a play
-	// test found the floor cluttered with them. It used to be twice the gear
-	// figure and is now the same. Quoting both columns rather than expressing
-	// one as a multiple of the other is what makes that change visible here
-	// instead of passing silently.
+	// THE MATERIAL COLUMN IS A QUARTER OF THE GEAR COLUMN SINCE 2026-11-22,
+	// issue #2829. It was twice the gear figure until 2026-08-23, when it was
+	// halved to the gear figure (issue #850). Quoting both columns rather than
+	// expressing one as a multiple of the other is what makes such a change
+	// visible here instead of passing silently.
 	struct FExpected { const TCHAR* Key; float Gear; float Materials; float Find; };
 	const FExpected Rows[] = {
-		{ TEXT("Common"),         0.16f,  0.16f,   0.0f },
-		{ TEXT("Elite"),          0.5f,   0.5f,   50.0f },
-		{ TEXT("Legendary"),      1.0f,   1.0f,  100.0f },
-		{ TEXT("Herald"),         2.0f,   2.0f,  150.0f },
-		{ TEXT("Boss"),           5.0f,   5.0f,  300.0f },
-		{ TEXT("Cataclysm_Boss"), 12.0f, 12.0f,  500.0f },
+		{ TEXT("Common"),         0.16f,  0.04f,   0.0f },
+		{ TEXT("Elite"),          0.5f,   0.125f, 50.0f },
+		{ TEXT("Legendary"),      1.0f,   0.25f, 100.0f },
+		{ TEXT("Herald"),         2.0f,   0.5f,  150.0f },
+		{ TEXT("Boss"),           5.0f,   1.25f, 300.0f },
+		{ TEXT("Cataclysm_Boss"), 12.0f,  3.0f,  500.0f },
 	};
 
 	for (const FExpected& Row : Rows)
@@ -810,7 +810,7 @@ bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("400 percent loot quantity quadruples a Boss's gear"),
 		FDrop::ExpectedGearDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
 	TestEqual(TEXT("and its materials"),
-		FDrop::ExpectedMaterialDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
+		FDrop::ExpectedMaterialDrops(Drops, TEXT("Boss"), 400.0f), 5.0f);
 
 	// AN UNKNOWN RARITY DROPS NOTHING rather than crashing. "Rare" is the one
 	// that would be typed by mistake: the design document's older enemy list

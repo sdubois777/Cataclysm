@@ -503,6 +503,52 @@ bool UCataclysmGameInstance::GoldOwedBy(const UObject* WorldContext, int64& OutO
 	return true;
 }
 
+bool UCataclysmGameInstance::GoldSpentOnCityUpgradesBy(const UObject* WorldContext, double& OutSpentAtTierOne)
+{
+	OutSpentAtTierOne = 0.0;
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		OutSpentAtTierOne = State->GetOwnGoldSpentOnCityUpgrades();
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutSpentAtTierOne = Account->GoldSpentOnCityUpgrades;
+	return true;
+}
+
+bool UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(const UObject* WorldContext, double SpentAtTierOne)
+{
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	const double Added = FMath::Max(0.0, SpentAtTierOne);
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		State->SetOwnGoldSpentOnCityUpgrades(State->GetOwnGoldSpentOnCityUpgrades() + Added);
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	Account->GoldSpentOnCityUpgrades = FMath::Max(0.0, Account->GoldSpentOnCityUpgrades) + Added;
+	return true;
+}
+
 bool UCataclysmGameInstance::SpendGoldOnCreditFor(const UObject* WorldContext, int64 Price, int64 Allowance,
 												  bool bRepaidDaily, bool& bOutFromTheCharacter, int64& OutOwed)
 {
@@ -691,8 +737,16 @@ FCataclysmEmpireTreeBonuses UCataclysmGameInstance::EmpireTreeBonusesFor(const U
 	{
 		return FCataclysmEmpireTreeBonuses();
 	}
-	return UCataclysmEmpireTree::CityBonusesFor(UCataclysmEmpireTree::LoadNodeTable(),
-												UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
+	FCataclysmEmpireTreeBonuses Bonuses = UCataclysmEmpireTree::CityBonusesFor(
+		UCataclysmEmpireTree::LoadNodeTable(), UCataclysmEmpireTree::LoadEffectTable(), *Held.Allocation);
+
+	// AND REINVESTMENT'S SHARE, which reads the gold spent across runs that this module holds and the run's cannot
+	// (issue #2741 slice 9, V2, V3).
+	double Spent = 0.0;
+	GoldSpentOnCityUpgradesBy(WorldContext, Spent);
+	Bonuses.EmpirePointsFromSpending =
+		UCataclysmEmpireTree::EmpirePointsFromSpendingFor(EmpireTreePlayerBonusesFor(WorldContext), Spent);
+	return Bonuses;
 }
 
 FCataclysmEmpireTreePlayerBonuses UCataclysmGameInstance::EmpireTreePlayerBonusesFor(const UObject* WorldContext)
@@ -759,6 +813,38 @@ void UCataclysmGameInstance::WireTheRunToTheBalance(const UObject* WorldContext,
 									   "Interest %lld, Tax Collection %lld, Trade Routes %lld), and %lld of a debt was "
 									   "repaid."),
 			   Day, bPaid ? Income.Total() : 0, Income.Pax, Income.Interest, Income.Tax, Income.Trade, Repaid);
+	};
+
+	// AND ECONOMIC BAILOUT'S FEE, all or nothing, with no credit, and the log saying why when it is not paid (V9).
+	// Issue #2741 slice 9.
+	Run->PayTheBailout = [Weak](UCataclysmEmpireRun& BailRun, int32 CityId, ECataclysmCityTier Tier) -> bool
+	{
+		UCataclysmGameInstance* Paying = Weak.Get();
+		const int64 AtTierOne = UCataclysmEmpireTree::BailoutFeeAtTierOneFor(Tier);
+		if (Paying == nullptr || AtTierOne <= 0)
+		{
+			return false;
+		}
+		const int64 Fee = static_cast<int64>(FMath::RoundToDouble(
+			static_cast<double>(AtTierOne) * UCataclysmDropRoll::GoldScaleFor(BailRun.DifficultyTier)));
+		int64 Held = 0;
+		const bool bBalance = GoldHeldBy(Paying, Held);
+		bool bFromTheCharacter = false;
+		if (!bBalance || Held < Fee || !SpendGoldFor(Paying, Fee, bFromTheCharacter))
+		{
+			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::BailoutLine(&BailRun, CityId, Fee, bBalance ? Held : -1, false));
+			return false;
+		}
+		UWorld* World = Paying->GetWorld();
+		if (!bFromTheCharacter)
+		{
+			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+		}
+		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
+		int64 After = 0;
+		GoldHeldBy(Paying, After);
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::BailoutLine(&BailRun, CityId, Fee, After, true));
+		return true;
 	};
 }
 

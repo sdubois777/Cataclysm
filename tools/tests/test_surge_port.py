@@ -494,7 +494,10 @@ class TestWhatAnEmptyBoardDoes:
                       "FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay(")
 
         rule = ("if (!Report.bPillarExposed && "
-                "Surges->IsDueOnEmptyBoard(Today, Dungeons.Num())) "
+                # EVERY DUNGEON BUT A SCOUT PARTIES BONUS ONE, which threatens
+                # nothing, since issue #2741 slice 9 (V16); the model has none,
+                # so the two still count the same board.
+                "Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())) "
                 "{ FireSurge(Today, false, Report);")
         assert rule in day, (
             "UCataclysmEmpireRun::AdvanceDay no longer asks "

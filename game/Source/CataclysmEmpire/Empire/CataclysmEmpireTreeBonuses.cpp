@@ -124,6 +124,14 @@ float FCataclysmEmpireTreeBonuses::EventDamageFactorFor(int32 ClearsSinceLastSur
 		* CataclysmEmpireTreeBonuses::KeptAfter(ReductionPerReclaim, ReclaimPoints, CitiesReclaimed, ReclaimReductionCap);
 }
 
+float FCataclysmEmpireTreeBonuses::PopulationRestoredShare(float Share) const
+{
+	// CIVIC PRIDE: "+5% Population growth rate for all Cities per point." The design has no population growth, so
+	// "growth" is population coming back, and each restore is 5% larger a point (the coordinating session's ruling of
+	// 2026-11-21, V11 of 2026-11-22). A multiplier on the restore's own share, not on the city's population.
+	return FMath::Max(0.0f, Share) * (1.0f + FMath::Max(0.0f, PopulationRestoreIncrease));
+}
+
 float FCataclysmEmpireTreeBonuses::GoldDamageFactorFor(double GoldHeldAtTierOne) const
 {
 	// IMPERIAL RESERVE'S WHOLE STEPS OF 100,000 TIER 1 GOLD, compounded per point and held at its 25% (B7), and

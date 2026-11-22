@@ -113,6 +113,13 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 								  DaysLeft, DaysLeft == 1 ? TEXT("day") : TEXT("days")));
 	}
 
+	// AND ECONOMIC BAILOUT, ONCE IT HAS SAVED THE CITY, which it does once a run (issue #2741 slice 9): the player is told
+	// the city will not be saved again.
+	if (City->bBailedOut)
+	{
+		Parts.Add(TEXT("saved once by Economic Bailout"));
+	}
+
 	Parts.Add(Run->Map->IsExposed(CityId) ? TEXT("exposed")
 										  : TEXT("sealed behind the frontier"));
 
@@ -216,6 +223,11 @@ TArray<FString> UCataclysmCityScreenLayout::DungeonLinesFor(
 		if (Dungeon->Type == ECataclysmDungeonType::Quest)
 		{
 			Words.Add(UCataclysmSurgeScheduler::KindName(Dungeon->Type));
+		}
+		// A SCOUT PARTIES BONUS DUNGEON SAYS SO, and that it threatens nothing (issue #2741 slice 9, V16).
+		if (Dungeon->bBonus)
+		{
+			Words.Add(TEXT("bonus (threatens nothing)"));
 		}
 		const FString Marked =
 			Words.IsEmpty() ? FString() : FString::Join(Words, TEXT(" ")) + TEXT(", ");

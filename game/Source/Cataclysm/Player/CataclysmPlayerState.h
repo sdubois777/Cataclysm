@@ -428,6 +428,16 @@ public:
 	}
 
 	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent on city upgrades, across runs, which
+	 * Reinvestment reads (issue #2741 slice 9, V2). ONLY A SOLO SELF-FOUND CHARACTER'S; every other character's is its
+	 * lethality mode's account's. Only `UCataclysmGameInstance`'s gold functions should read or change it.
+	 */
+	double GetOwnGoldSpentOnCityUpgrades() const { return OwnGoldSpentOnCityUpgrades; }
+
+	/** Set it, as a load or a purchase does. A negative figure is held at 0. */
+	void SetOwnGoldSpentOnCityUpgrades(double Spent) { OwnGoldSpentOnCityUpgrades = FMath::Max(0.0, Spent); }
+
+	/**
 	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent, and what its own empire upgrade
 	 * tree has bought, which its character record holds (version 9). Issue #2741 slice 1c.
 	 *
@@ -1028,6 +1038,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	int64 OwnGoldOwedEachDay = 0;
+
+	/** See `GetOwnGoldSpentOnCityUpgrades`. Issue #2741 slice 9. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	double OwnGoldSpentOnCityUpgrades = 0.0;
 
 	/** See `GetOwnEmpireUpgradePoints`. Issue #2741 slice 1c. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")

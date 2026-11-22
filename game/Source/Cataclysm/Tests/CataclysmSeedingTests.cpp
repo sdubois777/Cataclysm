@@ -232,14 +232,15 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingNeighbourTest,
  * A RUN LOADED FROM A SAVE KEEPS ITS DRAWS: the slice moved how a NEW run seeds its Cataclysm stream, and a loaded run's
  * stream is the state its save stored (`FCataclysmSaveGather` writes `GetCurrentSeed()`, `FCataclysmSaveApply::RunInto`
  * puts it back). Ruled by the coordinating session on 2026-11-19: "add one assertion that a run loaded from a committed
- * fixture draws the same next Cataclysm as before the change". The committed `Run_v14.json` holds the state 1357924680
+ * fixture draws the same next Cataclysm as before the change". The committed `Run_v15.json` holds the state 1357924680
  * and the active Cataclysms Demonic, Death, War and Pestilence; the engine's generator from that state draws index 0
  * then 2, so Demonic then War, as `sim/analyse_placement_seeds.py`'s `Stream` computes, before and after the slice.
  * It followed the committed run file as the run record moved: `Run_v9.json` until the rebase onto `e583b0788`
  * (version 10, issue #2725), `Run_v10.json` until the rebase onto `3d0193bfa` (version 11, issue #2741 slice 5b),
  * `Run_v11.json` until slice 6b took the run record to version 12 (issue #2741) and moved this test when it was
- * rebased onto this slice, `Run_v12.json` until issue #2825 took it to version 13, and `Run_v13.json` until the gems window took it to
- * version 14 (issue #46); since each, only the migration test reads the older file. All six hold the same stream
+ * rebased onto this slice, `Run_v12.json` until issue #2825 took it to version 13, `Run_v13.json` until the gems window took it to
+ * version 14 (issue #46), and `Run_v14.json` until issue #2741 slice 9 took it to version 15; since each, only the migration
+ * test reads the older file. All seven hold the same stream
  * state and Cataclysms.
  *
  * THE DRAW IS `RollCataclysm`'S, WRITTEN OUT: `ActiveCataclysms[CataclysmStream.RandRange(0, Num - 1)]`. That function is
@@ -250,7 +251,7 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingLoadedRunTest,
 {
 	FString Text;
 	FString Reason;
-	if (!TestTrue(TEXT("set-up: Run_v14.json is read"), CataclysmSaveFixtures::Read(TEXT("Run_v14.json"), Text, Reason)))
+	if (!TestTrue(TEXT("set-up: Run_v15.json is read"), CataclysmSaveFixtures::Read(TEXT("Run_v15.json"), Text, Reason)))
 	{
 		AddError(Reason);
 		return false;

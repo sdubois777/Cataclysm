@@ -9,6 +9,8 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
+#include "Player/CataclysmDungeonBribe.h"
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmGameInstance.h"
@@ -259,6 +261,7 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 	DetailBox->ClearChildren();
 	DetailRows.Reset();
 	WalkButtons.Reset();
+	BribeButtons.Reset(); // Bribery's, beside them. Issue #2741 slice 9.
 
 	const UCataclysmEmpireRun* Run = ShownRun();
 	if (Run == nullptr)
@@ -288,6 +291,7 @@ void UCataclysmCityScreenWidget::WriteDetailRows()
 		if (DungeonIds.IsValidIndex(Index))
 		{
 			AddWalkButton(DungeonIds[Index]);
+			AddBribeButton(DungeonIds[Index]); // While Bribery is held (issue #2741 slice 9, V14).
 		}
 	}
 
@@ -433,6 +437,41 @@ void UCataclysmCityScreenWidget::HandleWalkClicked(FName Value)
 	{
 		Controller->CloseEmpireScreens();
 	}
+}
+
+void UCataclysmCityScreenWidget::AddBribeButton(int32 DungeonId)
+{
+	// ONLY WHILE BRIBERY IS HELD, so a player without the node sees the screen as it was.
+	if (DetailBox == nullptr || UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).DungeonBribePoints <= 0)
+	{
+		return;
+	}
+	TSubclassOf<UCataclysmChoiceButton> ButtonClass = ChoiceButtonClass.LoadSynchronous();
+	UCataclysmChoiceButton* Button = ButtonClass ? CreateWidget<UCataclysmChoiceButton>(this, ButtonClass) : nullptr;
+	if (Button == nullptr)
+	{
+		return;
+	}
+
+	// ALWAYS PRESSABLE, SHOWING THE FEE, AND THE PRESS SAYS WHY WHEN IT IS REFUSED, as the Walk button does (V13).
+	Button->SetChoice(FCataclysmDungeonBribe::ButtonNameFor(DungeonId),
+					  FText::FromString(FCataclysmDungeonBribe::ButtonText(ShownRun())),
+					  /* bChosen */ false, /* bAvailable */ true);
+	Button->OnChoiceClicked.AddDynamic(this, &UCataclysmCityScreenWidget::HandleBribeClicked);
+	DetailBox->AddChild(Button);
+	BribeButtons.Add(Button);
+}
+
+void UCataclysmCityScreenWidget::HandleBribeClicked(FName Value)
+{
+	// A REFUSAL IS SHOWN ON THE LINE A REFUSED UPGRADE OR WALK USES, and the screen redrawn either way.
+	Refusal = FCataclysmDungeonBribe::Bribe(this, ShownRun(), FCataclysmDungeonBribe::DungeonForButton(Value));
+	Refresh();
+}
+
+void UCataclysmCityScreenWidget::ClickBribeForTests(int32 DungeonId)
+{
+	HandleBribeClicked(FCataclysmDungeonBribe::ButtonNameFor(DungeonId));
 }
 
 void UCataclysmCityScreenWidget::ClickWalkForTests(int32 DungeonId)

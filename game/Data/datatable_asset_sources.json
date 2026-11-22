@@ -64,14 +64,14 @@
     {
       "asset": "DT_EmpireTreeEffects",
       "csv": "EmpireTreeEffects.csv",
-      "rows": 116,
-      "csv_sha256": "159e11bb1bc4c0ff6283b8d1e91f9e710f3678fa7779842a1b353b45d1c910ae"
+      "rows": 121,
+      "csv_sha256": "ac9fb2dd4581c2984b7aa724a5adefafa42d3c493225b065410b34c23b58cc14"
     },
     {
       "asset": "DT_EmpireTreeNodes",
       "csv": "EmpireTreeNodes.csv",
       "rows": 159,
-      "csv_sha256": "56551cdb683b4399feea73b8eb54dd1d3581c8c0e2bec8dc4641d77df9bae52a"
+      "csv_sha256": "8c0324bbebad0a6c8f02699f1f313d8d18af8b483e1505d64562c308ee7dc185"
     },
     {
       "asset": "DT_EnchantmentEffects",
@@ -101,7 +101,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "cc89fbf74fd904d29dee2727d590e50009ab094ab863c17367d5e8ba7f2212eb"
+      "csv_sha256": "bca9b368275f616d7e433948a29fbe9c1f50285a117fea677daea67e534c9e3c"
     },
     {
       "asset": "DT_EnemyModifiers",

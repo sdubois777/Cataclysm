@@ -581,6 +581,7 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 		City->bDoomed = Saved.bDoomed;
 		City->bErased = Saved.bErased;
 		City->bTookSurgeDamage = Saved.bTookSurgeDamage;
+		City->bBailedOut = Saved.bBailedOut; // Economic Bailout's once a run. Issue #2741 slice 9.
 		City->VoidStacks = Saved.VoidStacks;
 		City->LeftEdict = Saved.LeftEdict;
 		City->LeftEdictUntilDay = Saved.LeftEdictUntilDay;
@@ -626,6 +627,9 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 	Run.ClearsSinceLastSurge = Record.ClearsSinceLastSurge;
 	Run.CitiesReclaimed = Record.CitiesReclaimed;
 	Run.bSanctuaryLastStandSpent = Record.bSanctuaryLastStandSpent;
+	// AND SCOUT PARTIES' AND BRIBERY'S, run record version 15. Issue #2741 slice 9.
+	Run.BonusDungeonsCleared = Record.BonusDungeonsCleared;
+	Run.bBribedThisSurge = Record.bBribedThisSurge;
 	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW, run record version 11. Issue #2741 slice 5b.
 	Run.ClearsSinceLastDeath = Record.ClearsSinceLastDeath;
 	Run.bPopulationFellBelowHalf = Record.bPopulationFellBelowHalf;
@@ -715,6 +719,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	State->SetCataclysmOrderSeed(Record.CataclysmOrderSeed); // A load's: the character's draw. Issue #1324 slice 6a.
 	State->SetOwnGold(Record.Gold); // A load's: a Solo Self-Found character's own gold. Issue #2742.
 	State->SetOwnGoldOwed(Record.GoldOwed, Record.GoldOwedEachDay); // And its own debt. Issue #2741 slice 6e.
+	State->SetOwnGoldSpentOnCityUpgrades(Record.GoldSpentOnCityUpgrades); // And Reinvestment's count. Slice 9.
 	// A load's: a Solo Self-Found character's own empire upgrade points and tree. Issue #2741 slice 1c.
 	State->SetOwnEmpireTree(Record.PrivateEmpireUpgradePoints, Record.PrivateEmpireTree);
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.
