@@ -167,6 +167,171 @@ So the claim in "Tests" above, that the new test fails on the old code whatever 
 
 ---
 
+## 2026-11-21 — Imperial Prowess acts: one more option of an earlier centre milestone beside the one chosen there, saved on account record 6 and character record 12 (#2741, slice 8)
+
+**Affects:** `FCataclysmPassiveAllocation::ExtraOptionNode`, `ExtraOption`, `ExtraOptionIn`, `SetExtraOption` and
+`Clear` (`game/Source/Cataclysm/Character/CataclysmPassiveTree.h`); `UCataclysmEmpireTree::RefusalForChoosingExtraOption`,
+`ChooseExtraOption`, `OffersAnExtraOption`, `ExtraOptionGranterName`,
+`FCataclysmEmpireTreePlayerBonuses::ExtraEarlierMilestoneOptions` and the option rows' points
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); `UCataclysmGameInstance::ChooseEmpireTreeExtraOption`
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.h` and `.cpp`); the empire tree screen
+(`game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h` and `.cpp`,
+`game/Source/Cataclysm/Interface/CataclysmEmpireTreeLayout.h` and `.cpp`); `UCataclysmAccountSave` at version 6 and
+`UCataclysmCharacterSave` at version 12, `Migrate_5_to_6`, `Migrate_11_to_12` and `CataclysmSaveExtraOption`
+(`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `.cpp`); `ECataclysmEmpireTreeEffect`, one value
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 111 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`;
+`game/Tests/SaveFixtures/Account_v6.json` and `game/Tests/SaveFixtures/Character_v12.json`, new, and
+`game/Tests/SaveFixtures/README.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmEmpireTreeProwessTests.cpp`, new, 6
+in the new group `Cataclysm.EmpireTreeProwess.`; the version 6 and 12 defaults in `CataclysmSaveFixtures.h`, and the
+chain tests and committed-file readers in `CataclysmCataclysmDrawTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`,
+`CataclysmConsumptionMarkTests.cpp`, `CataclysmEmpirePointsBankTests.cpp`, `CataclysmEmpireTreeAccountTests.cpp`,
+`CataclysmEmpireTreeCreditTests.cpp`, `CataclysmEmpireTreeOwnTests.cpp`, `CataclysmGoldTests.cpp`,
+`CataclysmSaveRecordTests.cpp` and `CataclysmSkillLevelsTests.cpp`; `CataclysmEmpireTreeTests.cpp`, where Imperial
+Prowess can now be chosen; `CataclysmDataTableTests.cpp` pins 111 effect rows; all in `game/Source/Cataclysm/Tests/`.
+`tools/tests/test_empire_tree_prowess.py`, new; `tools/tests/test_a_trip_between_levels_is_a_save_and_a_load.py`,
+`tools/tests/test_empire_tree_clear_gold.py`, `tools/tests/test_empire_tree_credit.py`,
+`tools/tests/test_empire_tree_effects_match_their_texts.py`, `tools/tests/test_empire_tree_on_the_account_record.py`
+and `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, changed. Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 8.
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** The six new Unreal tests were written without a build. Slice 8 goes through a
+  later window than slices 6d, 6e and 7.
+- **TWO SAVE RECORDS MOVE AGAIN: THE ACCOUNT RECORD TO VERSION 6 AND THE CHARACTER RECORD TO VERSION 12.** An older build
+  refuses a save this build writes. Older saves load holding no extra option.
+- **THE CHARACTER RECORD'S NUMBER IS THE NEXT FREE ONE, NOT A FIXED 12.** Gems slice G2 also moves the character record
+  from 11 to 12. Whichever of the two merges second takes the number after the other's and re-registers, so 12 is
+  written only into the migration, its fixtures and the fixture helper's name; every test reads
+  `UCataclysmCharacterSave::SchemaVersionNow`.
+- **WITH THIS SLICE, 107 OF THE TREE'S 167 NODES AND OPTIONS ACT.** Imperial Prowess was the only option refused for
+  a ruling not made; the reason "prowess ruling" is gone.
+
+### The ruling
+
+The project owner, 2026-11-21, relayed by the coordinating session, verbatim: "Keystones are tier gated behind point
+thresholds. Imperial prowess lets you pick an additional keystone from a previous tier."
+
+**WHICH NODES THAT SENTENCE CALLS KEYSTONES.** The coordinating session read it, from
+`docs/Empire_Skill_Tree_Keystones.md`, as the four centre milestones' options: that file lists them under "Tier 1" to
+"Tier 4" and calls the branch nodes "NOTABLE". This session checked the tree file, `docs/Empire_Development_Tree_Final.json`:
+
+- its metadata calls the four centre nodes "tier milestone decision capstones": kind "capstone", `isDecision` true,
+  thresholds 25, 50, 100 and 200 points spent in the whole tree;
+- it gives the kind "keystone" to 41 branch nodes, and none of them has a point threshold: each opens through an edge
+  that asks for its parent in full.
+
+So the word differs and the gating agrees: only the centre options are "tier gated behind point thresholds". The
+coordinating session took this as settling the reading. `test_the_centre_milestones_carry_the_thresholds_and_imperial_prowess_is_built`
+in `tools/tests/test_empire_tree_prowess.py` holds both halves, so a threshold given to a branch keystone would fail it.
+
+### The coordinating session's rulings J1 to J5, 2026-11-21, all as this session proposed
+
+- **J1.** The extra pick needs the earlier milestone's own option chosen and its point bought first.
+- **J2.** One extra pick in total: the text says "an additional keystone", singular.
+- **J3.** The record versions move (account 6, character 12), with the G2 rule above.
+- **J4.** The Soul Forge and The Master Tinkerer stay refused as extra picks while crafting is missing.
+- **J5.** An extra pick stands until a respec.
+
+### The change
+
+- **Saved.** `FCataclysmPassiveAllocation` holds one pair, `ExtraOptionNode` and `ExtraOption`: the milestone holding the
+  extra option and which option it is, None and 0 for none. **ONE PAIR ON THE ALLOCATION, NOT A FIELD ON EACH NODE AS THE
+  PLAN SAID**, because J2 is one extra pick in total, which one pair states and a field per node would only allow; and a
+  migration then writes two keys into each allocation instead of one into every node. The account record's `EmpireTree`
+  and the character record's three allocations (`PassiveAllocation`, `ConsumptionBuild.PassiveAllocation`,
+  `PrivateEmpireTree`) carry it, because they share the struct; only an empire tree uses it.
+- **Migrated.** `Migrate_5_to_6` (account) and `Migrate_11_to_12` (character) write "None" and 0 into each allocation the
+  record holds through `CataclysmSaveExtraOption::WriteTheExtraOption`, keep a value of the right kind already there,
+  and refuse anything else.
+- **The rules.** `RefusalForChoosingExtraOption` refuses, in this order: no such node; no extra pick held (Imperial
+  Prowess chosen and its milestone's point bought); not a centre milestone; no such option; not an earlier tier than the
+  milestone that grants the pick (its threshold not below); that milestone's own option not chosen or its point not
+  bought (J1); the option already chosen there; the option waits on a system (J4); the one extra pick taken (J2, J5).
+  The granting option is found from its effect row, `ExtraEarlierMilestoneOption`, worth 1, and named from the table.
+- **What acts.** An option row counts while its milestone's point is bought and it is the choice or the extra option.
+- **Respec.** `Clear` forgets the extra option with every node and choice. The empire tree has no refund of one node.
+- **The screen.** A click on an earlier milestone where the pick is open puts its options in the list as the extra
+  option ("Imperial Prowess lets Foundations of the Empire take a second option. Take one in the list. It stands until a
+  respec."), refused during a walk as a choice is; the taken one reads "(taken with Imperial Prowess)" in the list and
+  on the line under the branch. `UCataclysmGameInstance::ChooseEmpireTreeExtraOption` saves it as a choice is saved.
+- **The tables.** Imperial Prowess is built in slice 8 with one effect row, 111 in all; "prowess ruling" is gone.
+- **The committed files.** `Account_v6.json` holds The Aegis of Hope (1) as its tree's extra option on Foundations of
+  the Empire and `Character_v12.json` The Hoarder (3) in its own tree: figures and not the default, so a read shows the
+  field is read. Neither tree holds Imperial Prowess, so play could not take these; the README says so.
+
+### The tests
+
+`Cataclysm.EmpireTreeProwess.`, new, six tests, each figure and sentence reasoned from the code:
+
+| Test | What it holds |
+|---|---|
+| `ImperialProwessGivesOneExtraOption` | 1 extra option with Imperial Prowess chosen and bought; 0 unbought; 0 with The Last Stand; the name "Imperial Prowess" |
+| `EachRefusalComesInItsOrder` | each refusal's exact sentence in order; The Aegis of Hope open, then taken; a second extra option refused |
+| `TheExtraOptionActsBesideTheChoice` | The Delver's 5 days fewer and The Aegis of Hope's +50% Outpost defence together; 0 without the extra; an unbought milestone's extra gives nothing |
+| `ARespecClearsTheExtraOption` | 2 points back, no node, no extra option, its node None |
+| `ThePreviousFilesMigrateHoldingNoExtraOption` | the version 6 and 12 files read with their extra options; the version 5 and 11 files migrated holding none; a record writes one and reads it back |
+| `TheScreenMarksTheExtraOption` | "1  The Aegis of Hope  (taken with Imperial Prowess)" and the line naming both |
+
+Moved with the slice: `Cataclysm.EmpireTree.AnOptionWhoseSystemIsMissingCannotBeChosen` now holds that Imperial Prowess
+can be chosen; every test that runs an older account or character file through the chain adds
+`AddTheAccountsVersion6Defaults` or `AddTheCharactersVersion12Defaults`; every test that read `Account_v5.json` or
+`Character_v11.json` as the committed file reads the new one; and the four character-record version pins in
+`CataclysmSaveRecordTests.cpp`, `CataclysmCataclysmDrawTests.cpp`, `CataclysmEmpireTreeCreditTests.cpp` and
+`CataclysmSkillLevelsTests.cpp` read `SchemaVersionNow`. Two Python checks of the run record's steps
+(`tools/tests/test_a_trip_between_levels_is_a_save_and_a_load.py`, `tools/tests/test_empire_tree_clear_gold.py`) now
+look only inside the run record's namespace, because the account and character records have a `Migrate_5_to_6` and a
+`Migrate_11_to_12` of their own.
+
+### Python guard proofs, Q1 to Q13, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, running `tools/tests/test_empire_tree_prowess.py` with three
+neighbours (`test_empire_tree_effects_match_their_texts.py`, `test_empire_tree_tables_match_the_tree_file.py`,
+`test_empire_tree_credit.py`): each failed its named check with the break in and passed restored. Script:
+`.claude/windows/prove_t2741s8_python.py` in this session's worktree.
+
+| Proof | Break | Check that failed |
+|---|---|---|
+| Q1 | Imperial Prowess gives 2 | `test_the_centre_milestones_carry_the_thresholds_and_imperial_prowess_is_built` |
+| Q2 | an option row ignores the extra option | `test_an_option_counts_while_chosen_or_taken_as_the_extra_one` |
+| Q3 | a second extra option not refused | `test_the_extra_options_refusals_come_in_their_order` |
+| Q4 | the granting milestone an earlier tier than itself | the same |
+| Q5 | a clear leaves `ExtraOption` | `test_the_allocation_saves_the_two_fields_and_a_clear_forgets_them` |
+| Q6 | the step writes "" for no node | `test_the_steps_write_no_extra_option_into_each_allocation` |
+| Q7 | the account chain without its step from 5 | the same |
+| Q8 | the character's step without its own empire tree | the same |
+| Q9 | a character test writes the version as 12 | `test_no_test_writes_the_character_records_new_number` |
+| Q10 | `Account_v6.json`'s extra option 0 | `test_the_committed_files_are_the_previous_ones_with_the_two_fields` |
+| Q11 | a chain test without the new defaults | `test_every_chain_test_adds_what_the_new_steps_write` |
+| Q12 | a list click takes the choice | `test_the_screen_offers_the_extra_option_and_the_game_instance_saves_it` |
+| Q13 | no refresh after an extra option | the same |
+
+### C++ guard proofs planned, S1 to S6, one for each new Unreal test
+
+Prefix `Cataclysm.EmpireTreeProwess.` (6 tests). Each prediction is reasoned from the code and has not been run.
+
+| Proof | Break | Predicted to fail |
+|---|---|---|
+| S1 | `PlayerBonusesFor`'s `ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);` to `+= 0;` | `ImperialProwessGivesOneExtraOption`, 1 ("one extra option"); and `EachRefusalComesInItsOrder`, 10: with no pick held, every refusal after the first is the no-pick sentence for its own node, The Aegis of Hope is not open and is not taken |
+| S2 | J1's `if (Chosen <= 0 \|\| Allocation.PointsIn(Node) <= 0)` to `if (false)` | `EachRefusalComesInItsOrder`, 1: Edicts of Power's refusal is empty |
+| S3 | `PointsFor`'s `\|\| Allocation.ExtraOptionIn(Node) == Row.Option` removed | `TheExtraOptionActsBesideTheChoice`, 1: Outpost defence 0 |
+| S4 | `Clear`'s `ExtraOption = 0;` removed | `ARespecClearsTheExtraOption`, 1: "no extra option is left" reads 1 |
+| S5 | `WriteTheExtraOption`'s `TEXT("None")` to `TEXT("Foundations")` | `ThePreviousFilesMigrateHoldingNoExtraOption`, 1: the migrated account's node is not None |
+| S6 | `OptionLabel`'s `"  (taken with %s)"` to `"  (with %s)"` | `TheScreenMarksTheExtraOption`, 1: the label |
+
+### Python before its window
+
+Measured on the code commit `7ce3a222b`, in a separate worktree so no edit here could reach the run: **7910 passed, 8
+skipped, 1 failed** in 435.92 s (`1 failed, 7910 passed, 8 skipped`), and the JUnit file agrees: 7919 tests, 1
+failure, 0 errors, 8 skipped. The one failure is `test_every_csv_still_hashes_to_what_was_recorded` in
+`tools/tests/test_datatable_assets_are_current.py`, naming `EmpireTreeEffects.csv`, `EmpireTreeNodes.csv` and
+`WeaponMeshes.csv`, whose assets a window's asset step rebuilds. The 9 more than slice 7's 7910 are
+`tools/tests/test_empire_tree_prowess.py`'s nine checks. `ruff check .` passed.
+
+---
+
 ## 2026-11-21 — Commercial Hubs, Economic Zones, Trade Routes and The Golden Touch act on a Treasurer city upgrade: a standing city holding one counts once, and Economic Zones raises the gold such cities generate (#2741, slice 7)
 
 **Affects:** `UCataclysmEmpireTree::TreasurerBranch`, `IsTreasurerCity`, `TradeRoutesDaysAStep`, the four fields of
