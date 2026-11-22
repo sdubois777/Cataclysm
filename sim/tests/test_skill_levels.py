@@ -42,3 +42,12 @@ def test_increased_skill_experience_gain_raises_every_share_alike_before_the_spl
     assert raised == {"Heavy": 900.0, "Special": 450.0}
     assert sl.split_a_kill(1000, {"Heavy": 60.0}, 100.0, skill_experience_gain=0.0) == {"Heavy": 600.0}
     assert sl.split_a_kill(1000, {"Heavy": 60.0}, 100.0, skill_experience_gain=-2.0) == {"Heavy": 0.0}
+
+
+def test_each_level_lowers_a_cost_and_level_twenty_costs_half() -> None:
+    """Issue #2802: the cost factor is 1 at level 1, 0.9642 a level, about half at level 20, clamped at both ends."""
+    assert sl.cost_factor(1) == 1.0
+    assert abs(sl.cost_factor(10) - 0.9642 ** 9) < 1e-12
+    assert abs(sl.cost_factor(20) - 0.5) < 0.001
+    assert sl.cost_factor(25) == sl.cost_factor(20) and sl.cost_factor(0) == 1.0
+    assert all(sl.cost_factor(level + 1) < sl.cost_factor(level) for level in range(1, sl.MAX_LEVEL))

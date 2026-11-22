@@ -110,6 +110,17 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	float CooldownLength = 0.0f;
 
 	/**
+	 * What one thing the skill makes reserves of the pool now, at its level and after the character's reductions
+	 * (`UCataclysmSummonSkill::FervourReserveOfOne`), or 0 for a skill that makes nothing that reserves. Issue #2802.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float ReserveEach = 0.0f;
+
+	/** What that thing is called in the pop-up: "thrall" for a skill that takes creatures, else its minion's type. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	FString ReserveNoun;
+
+	/**
 	 * The skill's level, or 0 for a box whose skill does not level: an empty box, or a skill that is not the player's.
 	 * The bar has no box for the basic attack (`SlotsShown`), which does not level. Issue #2764: the box shows its level
 	 * in its corner, with a thin bar of the experience into it along its foot.
@@ -438,6 +449,10 @@ public:
 	 * a whole number without it. More than one charge is named.
 	 */
 	static FString CostLineFor(const FCataclysmSkillBarSlot& Slot);
+
+	/** What one thing `Skill` makes is called in a cost line: "thrall" for a skill that takes creatures, else its minion's
+	 *  type in lower case, else "minion". Issue #2802; shared with the skill-assignment tooltip (#2804). */
+	static FString ReserveNounFor(const class UCataclysmSummonSkill& Skill);
 
 	/** What a box converted into a skill gadget reads, "Gadget". Ruled 2026-10-16 (S14). */
 	static FString SkillGadgetName();

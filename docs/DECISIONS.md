@@ -616,6 +616,486 @@ The memory summary at the suite's end: 5692 tests, peak used virtual memory 9193
 
 ---
 
+## 2026-11-21 — Hovering an attribute on the character sheet says what a point gives and what this character's points give now, and which parts do nothing until an item adds the stat (#2815)
+
+**Affects:** `UCataclysmCharacterSheetLayout::AttributeTooltipFor`, `AttributePerPointText`, `AttributeStatWords` and
+`AttributeIncreaseSentence`, new (`game/Source/Cataclysm/Interface/CataclysmCharacterSheetLayout.h`, `.cpp`);
+`UCataclysmCharacterSheetWidget::WriteStatus`, which sets each attribute button's tooltip
+(`CataclysmCharacterSheetWidget.cpp`); the Attributes table of `docs/Cataclysm_GDD_v2.md` and a paragraph under it.
+Tests: `game/Source/Cataclysm/Tests/CataclysmAttributeTooltipTests.cpp`, new, three in `Cataclysm.AttributeTooltip.`;
+`tools/tests/test_an_attributes_tooltip_names_every_row.py`, new, four. Issue
+[#2815](https://github.com/sdubois777/Cataclysm/issues/2815); the open question on Luck's magic find is
+[#2816](https://github.com/sdubois777/Cataclysm/issues/2816).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2**, the combined window of #2802, #2804 and #2815 at `a7fadce0b`:
+  `Cataclysm.AttributeTooltip.` 3 of 3, the whole suite 5094 of 5094, R1, R2 and B1-B4 proved. The #2802 entry holds
+  the registration and the record. Written on development `c89fa5911` without a compile, as ruled.
+- **THE OWNER CHOSE TO KEEP THE ATTRIBUTES AND EXPLAIN THEM, NOT TO CHANGE THEM**, against the coordinating session's
+  recommendation of flat amounts where a stat has no base. The question and the three options are in "The rulings".
+
+### What the owner asked, and what was found
+
+The owner, 2026-11-21: "do attributes actually do anything? I've forgotten what each one is supposed to do so I can't
+tell in game since they don't have descriptions".
+
+**Attributes work, and every point is an increase.** `UCataclysmClassStats::AttributeModifierForValues` turns each row of
+`game/Data/Attributes.csv` into one modifier in the increased bucket, beside gear's increases; `game/Data/MinionScaling.csv`
+adds 1% increased minion damage per point, Spirit for summoned creatures and Agility for deployed machines. An increase
+multiplies a base and a flat amount, so it does nothing to a stat the character has none of
+(`Cataclysm.Attributes.APointScalingAStatTheClassHasNoBaseForChangesNothing`). `game/Data/ClassStats.csv` gives no class
+a base of evasion, block chance, cooldown reduction or magic find; only the Ritualist has energy shield and its
+regeneration; the Ritualist has no armour. So those parts of Agility, Constitution, Efficacy, Luck and Spirit do nothing
+until an item adds a flat amount of the stat. Critical strike chance has one: holding a weapon gives 5%
+(`UCataclysmEquipmentComponent::StatBasesFromWeapons`), which Ferocity raises.
+
+**Luck's magic find is 0.01% increased per point over gear's flat magic find**, at most 10 on one `Stat_Flat_magic_find`
+affix, so 100 Luck turns 10 magic find into 10.1: it is worth 0.1. The owner kept it as it is; whether the design's
+"+0.01% magic find" meant a flat amount is issue #2816.
+
+### The rulings
+
+**The owner, 2026-11-21**, asked through the question dialog by the coordinating session, verbatim:
+
+> "I need to correct what I told you about attributes. Every attribute point gives an 'increased' percentage, which
+> multiplies whatever your class, weapon and items already give. No class has a base value for evasion, block chance,
+> cooldown reduction or magic find, and only the Ritualist has energy shield. So these parts do nothing until an item
+> adds some of that stat: Agility's evasion, Constitution's block (and its armour, on a Ritualist), Efficacy's cooldown
+> reduction, Luck's magic find, and Spirit's energy shield on every class but the Ritualist. Diablo IV and Path of Exile
+> mostly give flat amounts per point instead, for example '+1 armour per point'. What should we do?"
+
+| Option | What it said |
+| :-- | :-- |
+| 1. "Flat where there's no base (Recommended)" | "The parts with nothing to multiply give a flat amount per point instead, for example +0.1% block chance or +0.2% cooldown reduction per point. A session researches the genre and proposes the figures, and I bring them to you. The parts that already work stay as they are." |
+| 2. "Keep it, just explain it" | "Attributes stay as they are. The new hover text says plainly which parts do nothing for you until an item adds the stat." |
+| 3. "Give every class a small base" | "Each class gets a small starting amount of every stat (some evasion, block, energy shield and so on), so every attribute's percentage has something to multiply." |
+
+The owner's answer: "Keep it, just explain it". **The coordinating session recommended option 1 and the owner chose
+option 2.** So the attributes stay as they are, no number changes, and the hover text says plainly which parts do
+nothing until an item adds the stat.
+
+**The coordinating session, the same day**, accepted the proposed words as written, including the "does nothing to it
+yet" line and the "(8 spent, 1 from items)" heading; "damage over time tick rate" for `dot_frequency`, whose sheet name
+"Damage over time, ticks per second" does not read inside a sentence; and "increased" across the design document's
+Attributes table, since "+0.5% crit chance" reads as a flat half point and the data is not.
+
+### Research
+
+| Game | Source read | What it settles |
+| :-- | :-- | :-- |
+| Diablo IV | `diablo4.wiki.fextralife.com/Strength`, read 2026-11-21 | each attribute's bonus is worded per point, "Grants +1 armor per point", class-gated bonuses marked with the class's name, and no current total |
+| Path of Exile | `poedb.tw/us/Strength`, `poedb.tw/us/Attributes` | item and modifier text only; not the character screen's tooltip |
+| Last Epoch | none readable (`maxroll.gg` 404, `icy-veins.com` 403) | nothing |
+
+So the per-point line follows Diablo IV's pattern. **No source read showed a current total or a "does nothing for you"
+line**: the "Now" part and its wording are this game's own, a judgement the owner's question and ruling ask for, not a
+shape read off another game.
+
+### What changed
+
+**The tooltip**, on each of the character sheet's eight attribute buttons, written with the sheet (when it opens and
+after every spend), four parts:
+
+1. The attribute's name.
+2. **Per point**, written from the rows the game applies, in their table order: "Each point: 2% increased energy shield
+   and 1% increased energy shield regeneration. Your summoned creatures deal 1% increased damage." A stat is named by the
+   sheet's own name in lower case (`NameFor`); a minion row's `Minion.Creature` is "summoned creatures" and
+   `Minion.Machine` "deployed machines".
+3. **How an increase works**, fixed: "An increase is a share of what your class, weapon and items already give, added to
+   your items' own increases. A stat you have none of gains nothing."
+4. **Now**, from the attribute's value on the character (what the stats read: rounded, and raised by items), headed "Now,
+   at 8 Spirit:", or "Now, at 9 Spirit (8 spent, 1 from items):" when items raised it; one line per stat:
+   - "Energy shield: 52 to 58.4 (16% increased from Spirit)". THE "TO" FIGURE IS THE SHEET'S OWN (`FigureFor`). The
+     "from" is that figure scaled by what the stat pipeline gives without the attribute: the stat's recorded base and
+     modifiers (`UCataclysmAbilitySystemComponent::GetStatInputs`) evaluated through `UCataclysmStatPipeline::Evaluate`
+     with and without the modifiers whose source is `Attribute`. Cooldown reduction is shown as the sheet shows it,
+     through `DisplayedCooldownReduction`.
+   - A stat with no base and no flat amount: "Energy shield: you have none, from your class or your items, so Spirit does
+     nothing to it yet."
+   - A minion row: "Summoned creatures: 8% increased damage from Spirit", with no figures, since a minion's damage starts
+     from its own row in `game/Data/MinionTypes.csv`.
+   - An attribute at nought: "Now: no Spirit." and no stat line.
+
+The figures in the examples are illustrative; the test reads the real ones.
+
+**The design document's Attributes table** says "increased" in every cell, and Efficacy's "+1% cooldown increase" is
+"+1% increased cooldown reduction", the stat being `cooldown_reduction`. A paragraph under it states that an increase
+does nothing to a stat the character has none of, which parts that leaves doing nothing, and the owner's ruling.
+
+### Tests
+
+`CataclysmAttributeTooltipTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachAttributeNamesEveryRowItApplies` | for every row of `DT_Attributes` and `DT_MinionScaling`, its attribute's per-point line contains the row's figure and stat words; Spirit's, Luck's and Efficacy's lines are the proposed words exactly |
+| `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | a Ritualist at level 10 with 8 Spirit and 30% increased energy shield from items: the energy shield and regeneration lines' two figures are the sheet's figures for a Ritualist with the same items and no Spirit, and for this one; the summoned creatures' line; a Ravager with 8 Spirit and 8 Constitution: energy shield and block chance said to gain nothing, armour's two figures as the sheet's; cooldown reduction with 12 flat from items and 8 Efficacy, the sheet's two shares; 12.5% increased Spirit from items on 8 points heads "Now, at 9 Spirit (8 spent, 1 from items):". Prints "ATTRIBUTE TOOLTIP" |
+| `AnAttributeAtNoughtStatesThePerPointLineAndNoNowFigure` | CONTROL: a Ritualist with no points: four lines, the last "Now: no Spirit."; the same with no ability system |
+
+`tools/tests/test_an_attributes_tooltip_names_every_row.py`, four: every `Attributes.csv` stat has a player's name in
+`NameFor`'s table, so none shows as a raw name; every `MinionScaling.csv` family has words; `WriteStatus` sets the
+attribute buttons' tooltip from `AttributeTooltipFor`; and every row's figure is stated as "+N% increased" in its
+attribute's cell of the design table, with no "cooldown increase" left. Proved with `tools/prove_guard.py` in a copy of
+the working tree, each restored half 4 passed:
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| B1 | `max_energy_shield` taken out of `NameFor`'s table | "1 failed, 3 passed": the name check | PROVED |
+| B2 | `Minion.Machine` spelled `Minion.Device` in `MinionFamilyWords` | "1 failed, 3 passed": the family check | PROVED |
+| B3 | `WriteStatus` sets the tooltip from `UnspentPointsText` instead | "1 failed, 3 passed": the widget check | PROVED |
+| B4 | the design table's "+0.5% increased crit chance" back to "+0.5% crit chance" | "1 failed, 3 passed": the table check | PROVED |
+
+### Registered before the window
+
+**IN THE #2802 ENTRY**, which registers the combined window of #2802, #2804 and #2815 once, with the sweep's groups
+first. This change adds three tests, `Cataclysm.AttributeTooltip.`; its proofs R1 and R2, and the Python proofs B1-B4, are below, as registered there.
+
+Two C++ guard proofs, with `test_prefix="Cataclysm.AttributeTooltip."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| R1 | in `AttributeTooltipFor`, `: To * Share;` to `: To;`, so the "from" figure is the "to" | 3 performed, 2 succeeded, 1 failed: `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | 3 of 3 |
+| R2 | `if (Underlying <= 0.0f)` to `if (Underlying < -1.0f)`, so a stat with nothing to increase gets figures | 3 performed, 2 succeeded, 1 failed: the same test (the Ravager's energy shield reads "0 to 0") | 3 of 3 |
+
+---
+
+## 2026-11-21 — The skill-assignment tooltip states what a press costs, in the skill bar's words, read through a template stamped from the skill's row (#2804)
+
+**Affects:** `UCataclysmSkillAssignmentWidget::ToolTipFor`, a three-argument overload, and `CostLineFor`, new
+(`game/Source/Cataclysm/Interface/CataclysmSkillAssignmentWidget.h`, `.cpp`); `UCataclysmSkillTemplate::PreviewSkillLevel`,
+new, read first by `UCataclysmSkillLevels::CostFactorOf`; `UCataclysmSummonSkill::FervourReserveOfOne`, now given an
+optional commander; `UCataclysmSkillBar::ReserveNounFor`, new, shared by both screens. Tests:
+`game/Source/Cataclysm/Tests/CataclysmTooltipCostTests.cpp`, new, one in `Cataclysm.TooltipCost.`. Issue
+[#2804](https://github.com/sdubois777/Cataclysm/issues/2804).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2**, the combined window of #2802, #2804 and #2815 at `a7fadce0b`:
+  `Cataclysm.TooltipCost.` 1 of 1, the whole suite 5094 of 5094, T1 proved. The #2802 entry holds the registration and
+  the record. Written on #2802's branch at `96b765874` without a compile, as ruled.
+- **IT REPLACES RULING Q7'S "NO NUMBERS" FOR THIS TOOLTIP.** Q7's reason was that a skill's numbers would put the
+  designed slot's fallback in a second place. This change reads every figure through the functions the press reads,
+  on a template stamped from the row as granting stamps one, so no figure and no fallback is written twice.
+
+### The ruling
+
+The owner, 2026-11-21, of Subjugate's cost: "that's all the description tells you", naming no screen. The coordinating
+session ruled the same day: "show the same cost line there through the same functions, at level 1 for a skill not yet
+granted (or at its known level if the character has one). This replaces Q7's 'no numbers'; its reason was the
+duplicated fallback, which your route avoids."
+
+### What changed
+
+- **THE TOOLTIP.** `ToolTipFor(Skill, OnKey, Holder)` is the four lines with a fifth, the cost, above the description,
+  as the skill bar's pop-up places it. The two-argument `ToolTipFor` is unchanged, four lines, for a caller with no
+  holder. All three of the screen's callers pass the screen's player state.
+- **THE COST.** `CostLineFor(Skill, Holder)` makes one transient template of the row's shape
+  (`UCataclysmWeaponSkills::TemplateFor`), stamps it (`StampOnto`), sets its `PreviewSkillLevel` to the holder's level
+  of the row, 1 for one never used, and fills a skill-bar box from it -- `FervourCostFor`, `ManaCostFor`, the pool,
+  `CooldownAfterReduction`, and a summon's `FervourReserveOfOne` with the holder's pawn as the commander -- then returns
+  `UCataclysmSkillBar::CostLineFor`, so the two screens cannot word a cost differently. Empty when the holder has no
+  ability system.
+- **THE LEVEL.** A transient template is held by no player, so `CostFactorOf` would read it as level 1;
+  `PreviewSkillLevel`, when above 0, is the level it is priced at.
+
+### Tests
+
+`CataclysmTooltipCostTests.cpp`, one, `TheAssignmentTooltipStatesTheCostTheSkillBarStates`, on the possessed Staff
+player at character level 32: Subjugate's tooltip has five lines, its fourth a cost equal to the skill bar's cost line
+for the granted Subjugate and its fifth the description; Compel, never used, is priced as the bar prices it; at
+Subjugate's level 10 the tooltip states the bar's level 10 cost, not level 1's; CONTROL, the two-argument tooltip is
+four lines and names no cost. Prints "TOOLTIP COST". **`Cataclysm.SkillChoiceScreen.`'s tooltip test MOVES**: this
+said it calls the two-argument form and does not, but its last check reads a pool button the screen describes, and the
+screen has a player, so the button carries the cost. The sweep before the combined window found it; the test now
+expects five lines, the cost above the description.
+
+### Registered before the window
+
+**IN THE #2802 ENTRY**, which registers the combined window of #2802, #2804 and #2815 once, with the sweep's groups
+first. This change adds one test, `Cataclysm.TooltipCost.`; its proof T1 is below, as registered there.
+
+One C++ guard proof, T1, with `test_prefix="Cataclysm.TooltipCost."`: in `CostLineFor`, `Priced->PreviewSkillLevel =
+FMath::Max(1, Holder->SkillLevelOf(Skill.RowName));` to `Priced->PreviewSkillLevel = 1;`, so the tooltip always prices
+at level 1. Broken half: 1 performed, 0 succeeded, 1 failed, at level 10 (the bar's level 10 cost against the
+tooltip's level 1). Restored: 1 of 1.
+
+---
+
+## 2026-11-21 — A skill's level lowers its costs: each level multiplies its mana, its Fervour and what each thing it makes reserves by 0.9642, so level 20 costs half, and a reserve already held is re-priced when the skill levels (#2802)
+
+**Affects:** `UCataclysmSkillLevels::CostFactorPerLevel`, `CostFactor`, `CostFactorOf` and `RepriceReservesOf`, new
+(`game/Source/Cataclysm/Character/CataclysmSkillLevels.h`, `.cpp`); `UCataclysmGameplayAbility::FervourCostFor` and
+`ManaCostAtTheHoldersLevel` (`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`); `FervourReserveFor`
+and `UCataclysmSummonSkill::FervourReserveOfOne`, new (`CataclysmSkillTemplates.h`, `.cpp`);
+`ACataclysmPlayerState::RepriceReservesForLevelsGained`, new, called from `GrantExperience`, `SetLevelAndExperience`,
+`GrantSkillExperience` and `SetSkillExperience` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`);
+`UCataclysmSkillLevels::RowInSlot` and `CostFactorOfSlot`, new, and `ACataclysmMinion::SkillGadgetReserveFor` and
+`SkillTrapReserveFor`, new, read by `PlaceSkillGadget`, `PlaceSkillTrap` and the re-price
+(`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`, `.cpp`); the skill
+bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`CataclysmSkillBar.h`, `.cpp`);
+`sim/cataclysm_sim/skill_levels.py` and `sim/analyse_opening.py`; the "What a Skill Levels" table in
+`docs/Cataclysm_GDD_v2.md`; two descriptions in `docs/All_Things_Cataclysm.xlsx`'s Weapon Skills sheet, so
+`game/Data/WeaponSkills.csv` and the asset `DT_WeaponSkills`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, four in
+`Cataclysm.LevelCosts.`; `tools/tests/test_a_skills_level_lowers_its_costs.py`, new; one in
+`sim/tests/test_skill_levels.py`; `tools/tests/test_skill_levels_port.py` pins the new constant. Issue
+[#2802](https://github.com/sdubois777/Cataclysm/issues/2802).
+
+### SAID FIRST
+
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2, THE SECOND WINDOW.** Skills-w1 failed one test of this change, on a
+  wrong figure written in the test (0.72013 for 0.9642 to the ninth, 0.72028); corrected, skills-w2 at `a7fadce0b`
+  measured `Cataclysm.LevelCosts.` 4 of 4 and the whole suite 5094 of 5094, and L2, G1, P-L1, P-L3 and P-G1 proved.
+  Written on #2801's branch at `efe7c0bfc` without a compile, as ruled, and carried with #2804 and #2815 on one combined
+  branch, ruled by the coordinating session on 2026-11-21; it ends on development `649559cce`.
+- **THE WORKBOOK STAGE, written at the combined turn once #2803 had merged** (the workbook is a binary file and #2803's
+  Gems row was in it): two skills' descriptions in the Weapon Skills sheet lose their figures, since the pop-up and the
+  assignment tooltip now state the levelled reserve. Subjugate's "Holding a thrall reserves 30 Fervour, so your army is
+  only as large as your pool." is "Holding a thrall reserves Fervour, so your army is only as large as your pool.", and
+  Summon Imp's "Each imp reserves 10 Fervour while it is out." is "Each imp reserves Fervour while it is out." Cells E267
+  and E283; `game/Data/WeaponSkills.csv` regenerated, those two rows changed and nothing else.
+- **THE RESERVES OF A SKILL GADGET AND A SKILL TRAP** take the factor in their own commit after the rebase, since
+  branch B of #2787 wrote them: the level is that of the skill in the slot the gadget or trap stands for.
+- **KNOWN AND ACCEPTED: PUTTING ANOTHER SKILL IN THE SLOT RE-PRICES NOTHING.** A standing gadget or trap keeps the
+  reserve it was placed with, or last re-priced to; only a level rise of the skill in its slot re-prices it. Accepted
+  for now by the coordinating session on 2026-11-21: a reserve only falls with a level, so a swap can leave a gadget
+  holding a figure for a skill no longer in the slot, but never more than level 1's 15, or 5 for a trap.
+
+### The owner's words, and the rulings
+
+The owner, 2026-11-21: "Or better yet, and this would apply to all skills, make it so leveling the skill lowers the
+cost and increases the damage. Those exact benefits don't have to apply to every skill but you get the idea. That way,
+the higher you level Subjugate the more mobs you can control. It's fairly hard to level, so I don't think it would be
+too much of a balance issue." Asked which Subjugate's level should lower, they chose "Cost and reserve"; asked where it
+starts, "30 at level 1".
+
+The coordinating session ruled on this slice's proposal the same day, the owner having delegated unstated numbers:
+
+- **THE CURVE, A JUDGEMENT:** each level multiplies a cost by 0.9642, 0.5 to the power of one nineteenth, so level 20
+  costs half of level 1. Clamped at level 20, as the damage factor is; reserves keep their floor of 1.
+- **MANA AS WELL AS FERVOUR**: "this would apply to all skills ... For most skills the cost is mana, so a rule that
+  lowered only Fervour would not reach most skills."
+- **RESERVES RE-PRICED AT LEVEL-UP, NOT READ ONCE**: "Subjugate's thralls are taken permanently. A thrall priced at the
+  take would keep holding level 1's 30 after Subjugate reached level 20 ... When a skill levels, re-read the reserve of
+  everything that skill made, using the same function ... A level never raises a reserve, so re-pricing can only free
+  room." A thrall's and a minion's DAMAGE is still read once, at the take or the summon, as before.
+- **NOT LOWERED**: cooldowns, and the reserves of what no skill level makes (a set bonus's minion, a passive's risen
+  and necrosis imps).
+
+### The research, from pages fetched verbatim
+
+In the genre a skill's level mostly RAISES its cost with its power; LOWERING it is the exception, and the owner's rule
+follows the exceptions.
+
+| Game | What a level does to a cost | Source |
+| :-- | :-- | :-- |
+| Diablo II | Fire Ball's mana 5 at level 1 to 14.5 at 20; Raise Skeleton's 6 to 25 while its skeletons rise 1 to 8; TELEPORT's falls 24 to 5, one a level, and further points "only give a reduction in mana cost" | classic.battle.net, the sorceress and necromancer skill pages |
+| Path of Exile 1 | Fireball's mana 5 at gem level 1 to 20 at 20; Raise Zombie's 9 to 28 while its maximum zombies rise 3 to 6; Wrath reserves 50% at every level; ENLIGHTEN SUPPORT's "Cost & Reservation Multiplier" is 100% at level 1, 96%, 92%, 88%, 84% at 5 and 64% at 10 | poedb.tw, each gem's level table |
+| Last Epoch | A skill's level gives points in its own specialization tree ("invest Points into its Specialization Tree"; "default maximum level of 20"); a cost cut is a node bought with them, such as Soul Feast's Engorged, "-3 mana cost per point" | maxroll.gg/last-epoch/resources/passives-and-skills; the 1.0 patch notes on forum.lastepoch.com |
+| Torchlight Infinite | NOT ESTABLISHED: every Maxroll page tried returned HTTP 404 | -- |
+
+A search summary claimed Dread Shade's "Spectral Menace" grants -10% mana cost per point; it was on neither patch-note
+page fetched, so it is not used. Path of Exile's Enlighten page states its range as levels 1 to 3 and 100% to 92% while
+its table runs to level 10; the table's figures are the ones quoted.
+
+### What changed
+
+- **THE FACTOR.** `UCataclysmSkillLevels::CostFactor(level)` is 0.9642 to the power of the level less one, clamped to 1
+  to 20; `CostFactorOf(ability)` is the factor of the ability's level held by its player, 1 for a skill nobody levels.
+- **THE COSTS.** `FervourCostFor` multiplies the skill's own figure or its slot's by it (Subjugate's 30 at level 1 is 15
+  at level 20; every other Ultimate's 50 is 25); `ManaCostAtTheHoldersLevel`, which both the engine's cost and
+  `ManaCostFor` read, multiplies the mana cost by it after the character-level scaling.
+- **THE RESERVE.** `FervourReserveFor` multiplies the row's `FervourReserve` by it, THEN the commander's reductions
+  apply (`UCataclysmCommand::ReserveFor`: Crowned, the percent-less stat, the floor). `FervourReserveOfOne` is that
+  figure for a granted summon skill.
+- **THE RE-PRICE.** `ACataclysmPlayerState::RepriceReservesForLevelsGained`, after each of the four places a level can
+  rise, calls `UCataclysmSkillLevels::RepriceReservesOf` for each skill whose level rose: every thrall it took
+  (`TakenBySkillRow`) and every minion it summoned (`SummoningSkillRow`) that holds more than the skill's
+  `FervourReserveOfOne` now is lowered to it. None is raised. The ceiling the pool fills to rises by what was freed.
+- **THE SKILL GADGET AND THE SKILL TRAP.** `ACataclysmMinion::SkillGadgetReserveFor(player, slot)` is the gadget's 15
+  times `UCataclysmSkillLevels::CostFactorOfSlot(player, slot)`, then the commander's reductions, as a summon's reserve;
+  `SkillTrapReserveFor` the same from the trap's 5. `CostFactorOfSlot` is the factor of the level of the skill whose spec
+  carries the slot's tag (`RowInSlot`, as a key press finds it), 1 for an empty slot or the basic attack's.
+  `PlaceSkillGadget` and `PlaceSkillTrap` ask these for the room and the reserve, and `RepriceReservesOf` lowers each
+  standing gadget and trap whose slot holds the levelled skill to them, a skill that summons nothing included.
+- **THE WORDS.** The pop-up's cost line from #2801 reads `FervourCostFor` and `ManaCostFor`, so it states the levelled
+  figures already; it now ends with what each thing the skill makes reserves: "Costs 22 Fervour and 14 mana. 20 s
+  cooldown. Each thrall reserves 22 Fervour." -- "thrall" for a skill that takes creatures, else its minion's type.
+
+### Subjugate's figures
+
+Thralls held needs both room (n x reserve within the maximum) and a payable cast (the cost within the maximum less the
+reserve of the n-1 held). With branch B's reductions, max(1, (stated - 5) x (1 - percent / 100)); the 30% is an example
+figure, not a measured build; the Second Self's chosen thrall, which holds a double share, is not counted.
+
+| Level | Cost and reserve | No reductions, on 100 / 150 | Crowned -5 | Crowned -5 and 30% less |
+| :-- | :-- | :-- | :-- | :-- |
+| 1 | 30 / 30 | 3 / 5 | 3 / 5 (the cast limits it on 100) | 5 / 7 |
+| 10 | 21.6 / 21.6 | 4 / 6 | 5 / 8 | 7 / 12 |
+| 20 | 15 / 15 | 6 / 10 | 9 / 14 | 13 / 20 |
+
+The owner's reasoning, recorded: "It's fairly hard to level, so I don't think it would be too much of a balance
+issue." What level 20 does: every levelled skill costs half its mana and Fervour, and with its damage at 2.85 times,
+a point of damage costs 0.175 of what it did at level 1. A main skill is at level 3 after the first surge's Outposts
+(issue #2764's measurement), where the factor is 0.930.
+
+### The simulation
+
+`sim/cataclysm_sim/skill_levels.py` gains `COST_FACTOR_PER_LEVEL` and `cost_factor`, pinned equal to the game's by
+`tools/tests/test_skill_levels_port.py`. `sim/analyse_opening.py`'s section seven, the only script that uses levels,
+charges each slot's mana at its skill's cost factor. MEASURED, run before and after on this branch: NO PRINTED FIGURE
+MOVED -- the section's end levels, damage shares and per-floor fight seconds are the same, and so is every other
+section. Those pack fights last 3 to 5 seconds and are not short of mana, so a cheaper skill changes nothing there.
+
+### Tests
+
+`CataclysmLevelCostsTests.cpp`, four, on the possessed Staff player `Cataclysm.SkillLevelSources.`'s thrall test
+builds, raised to character level 32 so a skill can reach level 10:
+
+| Test | What it checks |
+| :-- | :-- |
+| `EachLevelLowersACostAndLevelTwentyHalvesIt` | the factor is 0.9642; 1 at level 1, 0.72028 at 10, 0.5 at 20; clamped above 20 and below 1 |
+| `ASkillsManaAndFervourCostsFallWithItsLevel` | Subjugate at level 10 costs 0.72028 times its level 1 Fervour and mana; CONTROL Compel, not levelled, costs what it did |
+| `AHeldThrallIsRepricedWhenItsSkillLevels` | a thrall taken at level 1 holds 30 and the pool fills to 120; CONTROL Summon Imp reaching level 10 leaves it at 30; Subjugate reaching level 10 makes it hold 21.6 with no new take, and the ceiling rises by 8.4. Prints "REPRICED" |
+| `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | a gadget and a trap for the Heavy slot, Compel's, hold 15 and 5 at level 1; Compel reaching level 10 makes the same two hold 10.8 and 3.6; CONTROL a trap for the Ultimate slot, Subjugate's, keeps 5; a Heavy trap placed at level 10 holds 3.6. Prints "GADGET AND TRAP" |
+
+`tools/tests/test_a_skills_level_lowers_its_costs.py`: each of the four places a level can rise re-prices with the
+levels it took before; the re-price reaches every risen skill; the Fervour cost, the mana cost and a summon's reserve
+each multiply by `CostFactorOf`, and a skill gadget's and a skill trap's by `CostFactorOfSlot`; and `PlaceSkillGadget`
+and `PlaceSkillTrap` reserve that figure.
+
+### Registered before the window
+
+**THE COMBINED WINDOW OF #2802, #2804 AND #2815, registered here once for all three**, ruled by the coordinating
+session on 2026-11-21: one branch, `feat/skill-costs-tooltips-2802-2804-2815-2`, three compiles and one window, lock
+`skills-w1`. The #2804 and #2815 entries point here. Registered first on development `b8df7e1fe`, then **moved at the
+rebase onto #2803's merge, development `b52ba76e2`**: the base is window tree-2803-w1's measured figures, and the asset
+step comes with the workbook stage above. #2803 changed no test file in the groups below.
+
+**The sweep before registering** (the window procedure of 2026-11-21): `game/Source/**/Tests`, `tools/tests` and
+`sim/tests` searched for each function, sentence and count the three changes move.
+
+| Searched for | What moves | What was found and done |
+| :-- | :-- | :-- |
+| `SetSkillExperience`, `GrantSkillExperience`, `ExperienceToReach` | a levelled skill's costs and reserves fall | `Cataclysm.SkillLevelSources.` raises Summon Imp and Subjugate to level 3 and then summons and takes: more room, and no cost or reserve is checked; run first |
+| `CostLineFor`, `ReserveEach`, `ReserveNoun`, "reserves ... Fervour." | the cost line gains the reserve sentence | `Cataclysm.SkillCost.`'s boxes state no reserve; `Cataclysm.SkillBar.`'s pop-up test reads only the cost line's start; both run first |
+| `ManaCostFor`, `FervourCostFor`, `ManaCostAtTheHoldersLevel` | each cost is multiplied by the level's factor | twelve test files, each pricing skills at level 1, where the factor is 1 |
+| `ToolTipFor`, `ToolTipText`, `DescribeButtonForTests` | the assignment tooltip gains a cost line | **A HIT:** `Cataclysm.SkillChoiceScreen.APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription` compared a pool button, described for a screen with a player, with the four-line tooltip; the button carries five since #2804. Changed to expect the cost above the description (commit `48eed9665`); run first |
+| `SkillGadgetFervourReserve`, `SkillTrapFervourReserve`, `PlaceSkillGadget`, `PlaceSkillTrap` | the gadget's and trap's reserves follow the slot skill's level | 22 test files place them for players whose slot skills are at level 1, so 15 and 5 hold; `Cataclysm.KindReserves.` run first. `tools/tests/test_every_minion_kind_reserves_fervour.py` compares the design's table with the level 1 constants and passes; the design now says they fall with the level |
+| The Attributes table's cells, `AttributeTooltipFor`, `NameFor` | #2815's words and the sheet's tooltips | only #2815's own checks read them; `Cataclysm.CharacterSheet.` run first for the widget |
+
+| Step | Registered |
+| :-- | :-- |
+| The build | succeeds, after the three compiles |
+| The asset step | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` change and nothing else, committed alone before any test |
+| `Cataclysm.SkillChoiceScreen.` alone, first | 8 performed, 8 succeeded |
+| `Cataclysm.SkillBar.` alone | 22 performed, 22 succeeded |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.SkillLevelSources.` alone | 19 performed, 19 succeeded |
+| `Cataclysm.KindReserves.` alone | 12 performed, 12 succeeded |
+| `Cataclysm.CharacterSheet.` alone | 10 performed, 10 succeeded |
+| `Cataclysm.LevelCosts.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.TooltipCost.` alone | 1 performed, 1 succeeded |
+| `Cataclysm.AttributeTooltip.` alone | 3 performed, 3 succeeded |
+| The whole suite | 5094 performed, 5094 succeeded: window tree-2803-w1's 5086 at `8f2491711` ("Tests: 5086 tests performed, 5086 succeeded, 0 failed", 48 skipped halves, "Test saves: 860 written and deleted, 0 left behind"), whose `game/` is development `b52ba76e2`'s (`git diff 8f2491711 b52ba76e2 -- game/` is empty), plus the 8 new tests; 48 skipped halves; 860 test saves, predicted, not measured |
+| Python, run alongside the whole suite | every test passing, the JUnit file agreeing |
+| ruff | clean |
+
+The six swept groups' counts are measured, in window subjugate-w2's suite log at `512fd30f`, and none of their test
+files has changed since; the three new groups' counts are their registration macros.
+
+**Five C++ guard proofs**, one per behaviour only a C++ test guards (the coordinating session's rule of 2026-11-21),
+after both suites:
+
+| Proof | The break | Prefix | Broken half | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| L2 | in `RepriceReservesOf`, `Body->ReservedFervour = Now;` to `Body->ReservedFervour = Body->ReservedFervour;` | `Cataclysm.LevelCosts.` | 4 performed, 3 succeeded, 1 failed: `AHeldThrallIsRepricedWhenItsSkillLevels` | 4 of 4 |
+| T1 | #2804's, in its entry | `Cataclysm.TooltipCost.` | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| R1 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| R2 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| G1 | in `RepriceReservesOf`, `RowInSlot(Commander, Slot) == SkillRow` to `RowInSlot(Commander, Slot) == NAME_None`, so no standing gadget or trap is re-priced | `Cataclysm.LevelCosts.` | 4 performed, 3 succeeded, 1 failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | 4 of 4 |
+
+**L1 and L3 are Python proofs now**, ruled by the coordinating session on 2026-11-21, since a Python check guards each.
+With B1-B4 (#2815's entry), they run after the C++ proofs, through `tools/prove_guard.py` in a `git archive` copy of the
+tested head:
+
+| Proof | The break | Check run | Broken half |
+| :-- | :-- | :-- | :-- |
+| P-L1 | `CostFactorPerLevel = 0.9642` to `1.0` | `tools/tests/test_skill_levels_port.py` | `test_each_constant_is_the_same`, its `CostFactorPerLevel` case, fails |
+| P-L3 | in `ManaCostAtTheHoldersLevel`, `* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));` to `* 1.0f;` | `tools/tests/test_a_skills_level_lowers_its_costs.py` | `test_each_cost_is_lowered_by_the_skills_level`, its mana cost case, fails |
+| P-G1 | in `SkillTrapReserveFor`, `SkillTrapFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));` to `SkillTrapFervourReserve;` | `tools/tests/test_a_skills_level_lowers_its_costs.py` | `test_each_cost_is_lowered_by_the_skills_level`, its skill trap case, fails |
+
+**G1 and P-G1 were added by the coordinating session on 2026-11-21**: "the gadget and trap re-price is a separate
+branch from L2's thrall write-back, and only the C++ test guards it", and P-G1 "costs no build".
+
+### Window skills-w1: ONE TEST FAILED, ON A WRONG FIGURE IN THE TEST; NO PROOF WAS RUN
+
+The three compiles of `457064e6a` succeeded, each changed .cpp compiled in each, with no compiler warning or error
+line. Window skills-w1 then rebuilt the Weapon Skills asset alone and committed it as `d00738f04`, the tested head, and
+measured:
+
+| Step | Registered | Measured |
+| :-- | :-- | :-- |
+| The asset step | the two files alone | `DT_WeaponSkills.uasset` and `datatable_asset_sources.json`, committed alone as `d00738f04` and pushed |
+| The six swept groups alone | 8, 22, 3, 19, 12, 10 | each as registered, every test succeeding |
+| `Cataclysm.LevelCosts.` alone | 4 of 4 | **4 performed, 3 succeeded, 1 failed: `EachLevelLowersACostAndLevelTwentyHalvesIt`** |
+| `Cataclysm.TooltipCost.` and `Cataclysm.AttributeTooltip.` alone | 1 and 3 | 1 of 1 and 3 of 3 |
+| The whole suite | 5094 of 5094; 48 skipped halves; 860 saves | 5094 performed, 5093 succeeded, the same 1 failed; 48 skipped halves; "Test saves: 860 written and deleted, 0 left behind"; every declared test reported |
+| Python, alongside the suite | every test passing | "7866 passed, 9 skipped"; JUnit tests 7875, failures 0, errors 0, skipped 9 |
+| ruff | clean | "All checks passed!" |
+
+No proof ran, because a group and the whole suite did not pass.
+
+**THE CAUSE IS THE TEST'S FIGURE, NOT THE GAME.** The failure: "Expected 'level 10 costs 0.9642 to the ninth of it' to
+be 0.720130, but it was 0.720285". 0.9642 to the ninth is 0.720285, which the game gave. The test's `AtTen` held
+0.72013, which is 0.5 to the power of nine nineteenths, the curve before it was rounded to 0.9642 a level, while its
+own comment said "0.9642 to the ninth". The tests that multiply it (21.6, 10.8, 3.6) passed inside their 0.01. It is
+0.72028 now, in the test and in this entry's table; no game file changed.
+
+**Window skills-w2 is registered as skills-w1 was**, at the corrected head, after its compiles: every figure in
+"Registered before the window" above, the asset step not repeated (it is committed), and the five C++ and seven Python
+proofs.
+
+### Window skills-w2: EVERY REGISTERED FIGURE MEASURED, EVERY PROOF PROVED
+
+**THE THREE COMPILES WERE NOT RUN AGAIN FOR SKILLS-W2**, ruled by the coordinating session on 2026-11-21: `git diff
+d00738f04 a7fadce0b` touches only `CataclysmLevelCostsTests.cpp` (one constant, no `#include` line) and this log, so
+the window's own build compiles it, as with earlier fixes to a test's body alone. That build printed "Build: Succeeded -
+4 actions, 1 file compiled: Module.Cataclysm.29.cpp", the unity file holding that test. Window skills-w2 ran at
+`a7fadce0b`, lock skills-w2:
+
+| Step | Registered | Measured |
+| :-- | :-- | :-- |
+| `Cataclysm.LevelCosts.` alone, first | 4 of 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| `SkillChoiceScreen.`, `SkillBar.`, `SkillCost.`, `SkillLevelSources.`, `KindReserves.`, `CharacterSheet.` alone | 8, 22, 3, 19, 12, 10 | each as registered, every test succeeding |
+| `TooltipCost.` and `AttributeTooltip.` alone | 1 and 3 | 1 of 1 and 3 of 3 |
+| The whole suite | 5094 of 5094; 48 skipped halves; 860 saves | "5094 tests performed, 5094 succeeded, 0 failed", 48 skipped halves; "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5094 tests in the tree at a7fadce0b; 5094 performed, gap 0" |
+| Python, alongside the suite | every test passing | "7866 passed, 9 skipped"; JUnit tests 7875, failures 0, errors 0, skipped 9 |
+| ruff | clean | "All checks passed!" |
+
+The memory summary at the suite's end: 5701 tests, peak used virtual memory 9155 MB.
+
+| Proof | Broken half | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| L2 | 4 performed, 3 succeeded, 1 failed: `AHeldThrallIsRepricedWhenItsSkillLevels` | 4 of 4 | PROVED |
+| T1 | 1 performed, 0 succeeded, 1 failed: `TheAssignmentTooltipStatesTheCostTheSkillBarStates` | 1 of 1 | PROVED |
+| R1 | 3 performed, 2 succeeded, 1 failed: `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | 3 of 3 | PROVED |
+| R2 | 3 performed, 2 succeeded, 1 failed: the same test | 3 of 3 | PROVED |
+| G1 | 4 performed, 3 succeeded, 1 failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | 4 of 4 | PROVED |
+
+Each as registered. The seven Python proofs ran after them in a `git archive` copy of `a7fadce0b`, "PYTHON PROOFS: 7 of
+7 PROVED", each failing the check registered for it: P-L1 `test_each_constant_is_the_same[CostFactorPerLevel-...]`;
+P-L3 and P-G1 the mana cost and skill trap cases of `test_each_cost_is_lowered_by_the_skills_level`; B1-B4 the name,
+family, widget and design table checks of `test_an_attributes_tooltip_names_every_row.py`.
+
+**Afterwards the branch was rebased onto development `649559cce`** as `feat/skill-costs-tooltips-2802-2804-2815-3`.
+That merge changed the design document, this log and two Python test files and no `game/` file: `git diff a7fadce0b`
+and the rebased head `-- game/` is empty. The checks that read the design document's sections this branch touches, and
+the two changed test files, passed there: "182 passed".
+
+---
+
 ## 2026-11-21 — A refused skill press and every Subjugate cast say why in the play log, naming the numbers, so one press by the owner settles why Subjugate is refused (#2801)
 
 **Affects:** `UCataclysmSkillTemplate::PressRefusalLine`, `FervourFiguresFor` and `ReservedFervourByKindText`, new

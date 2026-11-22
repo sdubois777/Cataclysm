@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// The summon skill, whose reserve the pop-up's cost line names. Issue #2802.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 // The health attribute, which the pop-up's cost line names a pool paid from health by. Issue #2801.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For a slot converted into a skill gadget. Ruled 2026-10-16.
@@ -507,7 +509,24 @@ FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 	{
 		Line += TEXT(" No cooldown.");
 	}
+	// AND WHAT EACH THING IT MAKES RESERVES, rounded up as the costs are. Issue #2802.
+	if (Slot.ReserveEach > 0.0f)
+	{
+		Line += FString::Printf(TEXT(" Each %s reserves %d Fervour."),
+								Slot.ReserveNoun.IsEmpty() ? TEXT("minion") : *Slot.ReserveNoun, Whole(Slot.ReserveEach));
+	}
 	return Line;
+}
+
+FString UCataclysmSkillBar::ReserveNounFor(const UCataclysmSummonSkill& Skill)
+{
+	if (Skill.Params.bPossess)
+	{
+		return TEXT("thrall");
+	}
+	return Skill.Params.Minions.IsEmpty() || Skill.Params.Minions[0].Type.IsEmpty()
+		? FString(TEXT("minion"))
+		: Skill.Params.Minions[0].Type.ToLower();
 }
 
 FString UCataclysmSkillBar::SkillGadgetName()
@@ -757,6 +776,13 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 			? UCataclysmGameplayAbility::CooldownAfterReduction(Abilities, Ability->GetBaseCooldown(),
 																 Ability->SkillTagsForStats())
 			: 0.0f;
+		// AND WHAT EACH THING IT MAKES HOLDS BACK, at its level now. Issue #2802: a level lowers a reserve, so the
+		// description's own fixed figure cannot say it.
+		if (const UCataclysmSummonSkill* Maker = Cast<UCataclysmSummonSkill>(Ability))
+		{
+			Box.ReserveEach = Maker->FervourReserveOfOne();
+			Box.ReserveNoun = ReserveNounFor(*Maker);
+		}
 		Box.bShortOfFervour =
 			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);
 		Box.bAffordable = Box.bAffordable && !Box.bShortOfFervour;

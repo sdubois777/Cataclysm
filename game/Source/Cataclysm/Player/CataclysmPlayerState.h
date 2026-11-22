@@ -801,6 +801,13 @@ public:
 	int32 SkillLevelOf(FName SkillRow) const;
 
 	/**
+	 * For each skill whose level is above what `Before` holds, re-prices what it made
+	 * (`UCataclysmSkillLevels::RepriceReservesOf`). Issue #2802. Called wherever a level can rise: a kill's experience,
+	 * the character's experience, a level or experience set directly.
+	 */
+	void RepriceReservesForLevelsGained(const TMap<FName, int32>& Before) const;
+
+	/**
 	 * A creature's death, shared among the skills that hurt it: `KillExperience`, the figure the character itself was
 	 * granted, times the share of the creature's health each skill removed. The share is measured against
 	 * `MaxHealth`, or against everything the skills removed when that is more -- a creature that healed -- so the

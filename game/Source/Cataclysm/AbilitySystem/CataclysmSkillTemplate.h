@@ -41,6 +41,14 @@ public:
 	FString SkillName;
 
 	/**
+	 * The level a skill NOT GRANTED is priced at, for a screen showing what it would cost: its holder's level of its row,
+	 * 1 for one never used. 0, the default, for every granted skill, whose level is its holder's. Read first by
+	 * `UCataclysmSkillLevels::CostFactorOf`. Issue #2804: the skill-assignment tooltip prices a skill through a transient
+	 * template stamped from its row, which no player holds.
+	 */
+	int32 PreviewSkillLevel = 0;
+
+	/**
 	 * The row of `game/Data/WeaponSkills.csv` this skill was made from, which its experience and level are kept under
 	 * (`ACataclysmPlayerState::GetSkillExperience`). None on a skill no row stamped. Issue #2764.
 	 */

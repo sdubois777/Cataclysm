@@ -479,10 +479,14 @@ def section_seven() -> dict:
             level = PACK.level_for(banked, MODEL)
             skill_level = {slot: sl.level_for(earned.get(slot, 0.0), level, total) for slot in PACK.ROTATION}
             factors = {slot: sl.damage_factor(skill_level[slot]) for slot in PACK.ROTATION}
+            # AND EACH SLOT'S MANA AT ITS SKILL'S LEVEL, since issue #2802: a level lowers a skill's cost. The basic
+            # attack does not level and costs what it did.
+            priced = {name: dict(spec, mana=spec["mana"] * sl.cost_factor(skill_level.get(name, sl.FIRST_LEVEL)))
+                      for name, spec in SLOTS.items()}
             imp = es.strength_on_floor("Common", 1, "Basic", dungeon.subtype, dungeon.floors, floor,
                                        dungeon.modifier_score, kind="Imp")
             dealt: dict = {}
-            fought = PACK.fight(CLASS, level=level, lines=LINES, slots=SLOTS, weapon=WEAPON, slot_factor=factors,
+            fought = PACK.fight(CLASS, level=level, lines=LINES, slots=priced, weapon=WEAPON, slot_factor=factors,
                                 dealt=dealt, constants=dict(CONSTANTS, imp_health=str(imp.health),
                                                             imp_damage=str(imp.damage_per_hit)))
             whole = sum(dealt.values())

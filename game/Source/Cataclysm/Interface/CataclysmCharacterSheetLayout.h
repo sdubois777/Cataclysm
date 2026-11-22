@@ -222,6 +222,35 @@ public:
 	static TArray<FCataclysmStatLine> AttributeLines(
 		const FCataclysmAttributePoints& Points);
 
+	/**
+	 * What hovering an attribute's button says: what a point gives, how an increase works, and what this character's
+	 * points give now. Issue #2815, the owner, 2026-11-21: "do attributes actually do anything? I've forgotten what each
+	 * one is supposed to do so I can't tell in game since they don't have descriptions".
+	 *
+	 * THE PER-POINT LINE IS WRITTEN FROM THE ROWS THE GAME APPLIES, `DT_Attributes` and `DT_MinionScaling`, in their
+	 * order, so the words cannot disagree with the effect. THE "NOW" LINES are the sheet's own figure for each stat
+	 * (`FigureFor`) and the same figure with the attribute's increase taken out, worked out from the stat's recorded
+	 * base and modifiers (`UCataclysmAbilitySystemComponent::GetStatInputs`) through `UCataclysmStatPipeline::Evaluate`
+	 * with and without the modifiers whose source is the attribute. A stat with no base and no flat amount gets a line
+	 * saying the attribute does nothing to it yet, which the owner ruled on 2026-11-21 is how such a part is explained.
+	 *
+	 * @param Attribute  as `FCataclysmAttributePoints::Names` spells it, "spirit".
+	 * @param SpentPoints  the points the player spent in it; the attribute's value on `ASC` is what the stats read, and
+	 *                     the difference is named as coming from items.
+	 */
+	static FString AttributeTooltipFor(const FString& Attribute, const UAbilitySystemComponent* ASC,
+									   int32 SpentPoints);
+
+	/** The tooltip's per-point line for one attribute, "Each point: ...". Issue #2815. */
+	static FString AttributePerPointText(const FString& Attribute);
+
+	/** What one attribute's tooltip calls a stat: the sheet's name in lower case, but "damage over time tick rate" for
+	 *  `dot_frequency`, whose sheet name does not read inside a sentence. Issue #2815. */
+	static FString AttributeStatWords(const FString& Stat);
+
+	/** The tooltip's fixed sentence on how an increase works. Issue #2815. */
+	static const TCHAR* AttributeIncreaseSentence;
+
 	/** "3 points to spend", "No points to spend". */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Character")
 	static FString UnspentPointsText(int32 Unspent);

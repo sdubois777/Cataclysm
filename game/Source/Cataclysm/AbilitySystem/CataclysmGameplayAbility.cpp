@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+// A skill's level lowers its costs. Issue #2802.
+#include "Character/CataclysmSkillLevels.h"
 // For asking what a stat is worth with the character's own state in hand,
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -281,7 +283,9 @@ float UCataclysmGameplayAbility::ManaCostAtTheHoldersLevel(const UAbilitySystemC
 	// was true: `UCataclysmWeaponSlotsComponent` grants every skill at ability
 	// level 1 and nothing raised it, so every character paid the level 1 cost
 	// at every level. `LevelForCosts` reads the level the holder has now.
-	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, LevelForCosts(AbilitySystem, GetAbilityLevel()));
+	// AND THE SKILL'S OWN LEVEL LOWERS IT, as it lowers the Fervour below. Issue #2802.
+	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, LevelForCosts(AbilitySystem, GetAbilityLevel()))
+		* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));
 }
 
 const FGameplayTagContainer& UCataclysmGameplayAbility::SkillTagsForStats() const
@@ -391,12 +395,14 @@ float UCataclysmGameplayAbility::FervourCostFor(
 	// THE SKILL'S OWN FIGURE FIRST, AND THE SLOT'S WHEN IT STATES NONE. Issue #2801: Subjugate costs 30, every other
 	// Ultimate its slot's 50. Every caller reads the cost here -- `CheckCost`, `ApplyCost`, the skill bar and the
 	// refused press's line -- so they cannot disagree.
+	// AND THE SKILL'S LEVEL LOWERS EITHER, here and nowhere else. Issue #2802: Subjugate's 30 is level 1's figure.
+	const float LevelCost = static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));
 	if (FervourCostOverride >= 0.0f)
 	{
-		return FervourCostOverride;
+		return FervourCostOverride * LevelCost;
 	}
 	EnsureSlotNumbersLoaded();
-	return FMath::Max(0.0f, SlotFervourCost);
+	return FMath::Max(0.0f, SlotFervourCost) * LevelCost;
 }
 
 bool UCataclysmGameplayAbility::FervourCovers(
