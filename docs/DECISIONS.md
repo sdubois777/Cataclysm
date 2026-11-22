@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The gems window: G1 to G7 rebased onto development with #2832 carried, saved at character record 13 and run record 14, the workbook stage, and a tooltip line for the four gems no class has a base for (#46, #2830, #2832)
+
+The turn of the gems work (issue #46, slices G1 to G7, and #2830), with the level-1 session's #2832 carried on top, as
+the coordinating session ruled on 2026-11-22. Branch `feat/gems-window-46`.
+
+**Uncertain or not yet shown, first:**
+
+- **NOTHING HERE HAS RUN IN THE ENGINE YET.** The branch compiled; the window's registration is below, and its results
+  are recorded after it, not before.
+- **THE DECISIONS LOG'S ORDER BY DATE COULD NOT BE KEPT EXACTLY.** Development's 15 entries since this branch's base
+  are not in date order themselves, and for 11 of them the only commit that holds them is the squash merge, so the
+  author date of the branch commit that first wrote each is not in git. The seven gem entries were put above
+  development's, as one block in their own order, with `tools/resolve_decisions_log.py resolve --first`; #2832's entry,
+  first written at 00:48 on 2026-11-22, after all seven, above them.
+- **THE ACCOUNT RECORD DOES NOT MOVE, BY JUDGEMENT.** Its `Stash` is a list of the carried slot, which gained `Gem` and
+  `GemRarity`, and an item's `Sockets` changed from a number to a list. But nothing fills the stash yet (the game has
+  no stash, `UCataclysmAccountSave::Stash`) and `Account_v6.json` holds it empty, so no account file can hold either.
+  `tools/tests/test_gems_are_saved_at_the_new_record_versions.py` fails the day the committed account file holds a
+  stash entry, which is when the account record has to move as well.
+
+### What happened at the turn
+
+1. **The rebase.** G7's head `29f33ab1f` (all seven slices) onto development `02b96b42b` (#2834's merge) as
+   `feat/gems-window-46`, with no force push. One conflict, `docs/DECISIONS.md`, at G1's entry commit; the other 23
+   commits applied as they were. No C++ was resolved by hand.
+2. **#2832 carried.** The level-1 session's `feat/city-upgrade-speed-nodes-2` at `1e5b2f4fe`, one commit, cherry-picked
+   unchanged apart from `docs/DECISIONS.md` (its entry first). The coordinating session ruled its one judgement: a rush
+   may be bought on credit.
+3. **Dry runs before anything real was written.** In `git archive` copies, the three stage scripts
+   (`.claude/windows/gems_window_workbook.py`, `gems_window_generator.py`, `gems_window_code.py`) applied without a
+   refused anchor on G7 merged onto #2834's head, on the rebased branch, and on the branch with #2832; the generator
+   wrote 34 CSVs. On the last copy only four CSVs changed -- CraftingMaterials (27 rows), EnemyDrops, Gems and the new
+   ForgeOperations (19) -- and the empire tree CSVs regenerated exactly as #2832 committed them. Its Python suite: "15
+   failed, 8048 passed, 15 skipped", JUnit 8078 tests, 15 failures: 11 need a git repository, 4 wait for the asset step.
+4. **The save steps** (`71675c3b0`), below.
+5. **The workbook stage** (`56afefb3a`), on the real `docs/All_Things_Cataclysm.xlsx`: the Gems sheet's Stat and Value
+   Kind (G1), the Enemy Drops sheet's Gem Drops (G5), and the Crafting sheet's Base Gold column, Gold Per Craft Day cell
+   (250) and Combine row (G7), as numbers because the generator reads cached values only. CraftingMaterials.csv went
+   from 46 rows to 27: the operations table and its header row are no longer read as materials. None of the 20 rows
+   that left it was ever in a drop pool: each carries tier 0, which `UCataclysmDropRoll::RollMaterial` never rolls.
+6. **The tooltip line** (`f1ab85c03`), below, and issue #2835 for the line that reads the character.
+7. **The editor build**: "Build: Succeeded - 70 actions, 63 files compiled".
+8. **The asset step** (`494e22e57`), on that editor: it changed DT_CraftingMaterials, DT_EmpireTreeEffects,
+   DT_EmpireTreeNodes, DT_EnemyDrops, DT_Gems, the new DT_ForgeOperations and `datatable_asset_sources.json`, and
+   nothing else. **IT FOLLOWS THE BUILD, NOT THE OTHER WAY ROUND as the turn notes had it**: it creates DT_ForgeOperations
+   from `FCataclysmForgeOperationRow`, which exists only in the new build.
+9. **The three compiles** (`.claude/windows/compile_gems.py`, the cached build plan moved aside before each). **THE
+   FIRST ROUND FAILED** in the build of each changed file alone: `CataclysmForgeCraft.cpp` and `CataclysmForgeLayout.cpp`
+   read `FCataclysmGemRow`'s members and `CataclysmGems.h` only declares it, so compiled alone each gave C2027 "use of
+   undefined type 'FCataclysmGemRow'"; in the unity build another file's include had supplied it. Both now include
+   `Data/CataclysmDataRows.h` (`80f827ddf`). The second round, at `80f827ddf`: "Build: Succeeded - 31 actions, 26 files
+   compiled", "Build: Succeeded - 33 actions, 28 files compiled" (each file alone) and "Build: Succeeded - 31 actions,
+   26 files compiled" (unity), each with 0 compiler warning or error lines. **In that second round only the two fixed
+   files compiled alone**; the other changed files had compiled alone in the first round, whose 95 compile lines failed
+   in those two files only, and their objects were current. The first round's per-file lines were overwritten when the
+   script ran again, so that rests on its error list, not on a kept line per file.
+
+### The save steps
+
+- **The character record goes from 12 to 13 and the run record from 13 to 14**, the numbers the coordinating session
+  gave after #2834 merged. `Migrate_12_to_13` (character) and `Migrate_13_to_14` (run) write each saved socket count of
+  N as N empty sockets of type Any -- "sockets migrated from today's count fit any type", ruled 2026-11-21 -- and no gem
+  (`"None"`, Everyday, 0) in every carried and stashed slot and on every ground item. `CataclysmSaveGems` in
+  `CataclysmSaveRecords.cpp` holds both: it finds every item by walking the record for a `Sockets` key, because
+  `FCataclysmItem` is the only saved struct with one, and refuses a count that is not a whole number of 0 or more.
+- **Fixtures.** `Character_v13.json` is `Character_v12.json` with the step's writes, except that its carried piece's
+  sockets are Attack holding Of The Viper at Quality and Defense, and its worn greatsword's Attack, Defense and Utility,
+  so the test that reads it shows the fields are read. `Run_v14.json` is `Run_v13.json` with the step's writes. Every
+  test that read the previous file as the committed one reads the new one (21 test files), and the 19 tests that run an
+  older file through the chain add `CataclysmSaveFixtures::AddTheCharactersVersion13Defaults` or
+  `AddTheRunsVersion14Defaults`. `test_city_upgrades_take_days_to_build.py` now reads the run record's
+  `Migrate_12_to_13` from the run record's namespace: the character record's new step of the same name comes first in
+  the file.
+- **Tests.** `Cataclysm.GemSave.ACharacterFileFromVersion12HasEachSocketCountAsThatManyEmptySocketsOfAnyType` and
+  `Cataclysm.GemSave.ARunFileFromVersion13LoadsWithSocketListsAndNoGemOnTheFloor`. The run file's ground items hold no
+  sockets, so the run test shows the conversion only by the record loading at all: a count left as a number refuses it.
+
+### The tooltip line for the four gems
+
+**Ruled by the coordinating session on 2026-11-22**: "build the line NOW, in this window, but in a form that needs no
+character", "a STATIC line chosen from Row.Stat alone", "literally true for every character, so it states the rule
+rather than the character's state"; check the affix and passive tables before choosing the wording, and record what was
+found. It carries the plan's point 5, "keep and explain", the owner's own answer for attributes in #2815 ("Keep it,
+just explain it").
+
+What the tables hold, read on 2026-11-22:
+
+| Stat (gem) | A flat amount from gear | From passives |
+| :-- | :-- | :-- |
+| block chance (Of The Bulwark) | `Stat_Flat_block_chance`; the Shield base's implicit 12 | none |
+| evasion (Of The Wraith) | `Stat_Flat_evasion`; the Hood, Jerkin, Mantle, Leggings and Striders bases | none (`Ravager_keystone_spine_002` is `melee_evasion_suppressed`, another stat) |
+| cooldown reduction (Of Urgency) | `Stat_Flat_cooldown_reduction`; the Reliquary base's implicit 10 | none |
+| magic find (Of The Goblin) | `Stat_Flat_magic_find` | none |
+
+So the line names gear only: "An increase multiplies what you already have. No class has a base evasion, so this gem
+does nothing until your gear gives some." `UCataclysmGems::NothingToIncreaseLineFor` adds it after the effect line, for
+an increase whose stat is one of the four. Tests: GK5,
+`Cataclysm.GemStacks.AGemRaisingAStatNoClassHasSaysItNeedsGearAndOthersDoNot`; GK4's Of Urgency now has five lines.
+`test_every_gem_names_a_stat_the_game_reads.py` checks the C++ list is the four gems' stats. **The line that reads the
+character's own stats is issue #2835**, with the plumbing it needs.
+
+### Registered before the window
+
+The base: #2834's window, 5168 performed, 57 skipped halves and 860 saves, on development `02b96b42b`'s game/. The
+window adds 36 test names and removes none (counted from the diff): 28 for the gems -- GemStats 3, GemStacks 5,
+ItemSockets 4, ForgeGems 4, GemDrops 4, GemCombine 3, ForgeCosts 3, GemSave 2 -- and #2832's 8, CityUpgradeSpeed.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | nothing to compile |
+| Each group alone, first | the 51 groups `.claude/windows/run_gems.py` lists -- the nine new or grown ones, every group whose test file the window changes, and #2832's -- **each at the count its own run prints, as the coordinating session ruled**: at least one test performed, every one succeeding |
+| The whole suite | 5204 performed, 5204 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind (the saves predicted) |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to its group with a trailing dot, each predicting one named failure in that group
+and none in the restored half:** K1 to K24 less K5 (G1 to G7, as registered in their entries; K5 was withdrawn by G5),
+GP1 (`Migrate_12_to_13` writes a socket of type Attack: the character test), GP2 (`Migrate_13_to_14` leaves socket
+counts as numbers: the run test), GK5 (evasion left out of the tooltip's list: GK5), and #2832's S1 to S4 as its entry
+registers them. The exact breaks are in `.claude/windows/prove_gems.py`; K23's anchor carries the upgrade's comment
+line, because the combine and the socketing pay the same way.
+
+**Python guard proofs, run in a `git archive` copy of `494e22e57` before the window: 6 of 6 PROVED.** None of them reads
+the two files `80f827ddf` changed.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PW1 | a migrated socket of type Attack | `test_the_character_record_is_at_13_and_the_run_record_at_14_each_with_its_step` |
+| PW2 | `Character_v13.json`'s second carried slot holding Of The Viper | `test_character_v13_is_v12_with_the_steps_writes_and_its_own_socket_types` |
+| PW3 | `Run_v14.json`'s first ground item holding a gem count of 1 | `test_run_v14_is_v13_with_the_steps_writes` |
+| PW4 | `CataclysmWalkSeedTests.cpp` without `AddTheRunsVersion14Defaults` | `test_every_chain_test_adds_the_new_step_and_only_the_gem_save_tests_read_the_old_files` |
+| PW5 | magic find left out of the tooltip's list | `test_the_tooltip_explains_exactly_the_stats_of_the_four_gems` |
+| PW6 | the run record's `Migrate_12_to_13` writing `Buildings` | `test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building` |
+
+---
+
 ## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
 
 **Affects:** the effect kinds `UpgradePriceLess`, `UpgradeBuildDaysMultiplied`, `UpgradeBuildDaysFewer`,
