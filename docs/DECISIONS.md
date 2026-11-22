@@ -1394,7 +1394,7 @@ V1 to V20 of 2026-11-22, each as this session recommended unless said:
 
 ### Python guard proofs, T1 to T13, all proved
 
-Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `614260872` and again at `7004fc7a1`, running
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `614260872`, again at `7004fc7a1`, and again after the rebase at `8d168d99c`, running
 `tools/tests/test_empire_tree_slice9.py`; each "PROVED: 1 failed, 10 passed | restored: 11 passed".
 `.claude/windows/prove_t2741s9_python.py` holds the breaks.
 
@@ -1445,7 +1445,14 @@ character record to 13 and the run record to 14 first, so this slice's steps wer
 gems window's file at the version before; and the helpers `AddTheCharactersVersion14Defaults` and
 `AddTheRunsVersion15Defaults` follow the gems window's 13 and 14. The account record had no gems step and stays at 7.
 The effect rows and every pin were recounted from the generator's output on the combined code, and the test sweep
-was run again over the gems window's test files.
+was run again over the gems window's test files. `8d168d99c` on `feat/empire-tree-9-treasury-and-scouts-2` was
+cherry-picked unchanged onto development's `3f3056ca2`, the gems window's merge, as
+`feat/empire-tree-9-treasury-and-scouts-3`: `-2` was already pushed, and moving it would have needed a force push.
+
+The full Python suite on `8d168d99c` found one more pin the renumbering moved: `test_empire_tree_prowess.py` asked for
+Imperial Prowess's character step to lead into the current version or one before it, and its own comment left the
+number out until the gems window's order was settled. It now names `Migrate_11_to_12` and asks that it be no later
+than the current version.
 
 ### Python before its window
 
