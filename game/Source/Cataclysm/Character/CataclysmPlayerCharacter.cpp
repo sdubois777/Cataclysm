@@ -488,22 +488,9 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 	// A basic attack fires every two thirds of a second at a fast weapon, so
 	// resolving a path each time would be a load attempt several times a second.
 	//
-	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
-	// nulls because a random draw over a fixed count decides which one plays,
-	// and removing one would change every other draw. These are cycled through
-	// in order, so a missing clip should simply not be part of the cycle rather
-	// than showing as a swing where the character does nothing.
-	AttackAnimations.Reset();
-	for (const TCHAR* Name : AttackAnimationNames)
-	{
-		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
-											 AttackAnimationFolder, Name, Name);
-		if (UAnimSequence* Clip =
-				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
-		{
-			AttackAnimations.Add(Clip);
-		}
-	}
+	// THE SAME STEP THE CREATURES THAT COPY A PLAYER TAKE. Issue #2811. A null
+	// entry is dropped there; see `LoadTheMannequinsAttackClips`.
+	LoadTheMannequinsAttackClips(AttackAnimations);
 	NextAttackAnimation = 0;
 
 	if (AttackAnimations.Num() < UE_ARRAY_COUNT(AttackAnimationNames))
@@ -527,21 +514,53 @@ bool ACataclysmPlayerCharacter::ResolveBody()
 
 void ACataclysmPlayerCharacter::PlayAttackAnimation()
 {
-	// CLEARED FIRST, AND EVERY EARLY RETURN BELOW DEPENDS ON IT. Issue #1133.
-	// Zero means "the blow lands now". Five of the paths through this function
+	// THE SAME STEP THE CREATURES THAT COPY A PLAYER TAKE, issue #2811: the Corrupted Stalker and the Worn Residue
+	// double swing through it too, so the two cannot drift. It answers nought from every path that plays nothing,
+	// so this line is the whole of "cleared first" (issue #1133).
+	SwingConnectsInSeconds =
+		PlayTheMannequinsSwing(GetMesh(), GetAbilitySystemComponent(), AttackAnimations, NextAttackAnimation);
+}
+
+int32 ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips(TArray<TObjectPtr<UAnimSequence>>& OutClips)
+{
+	// A NULL ENTRY IS DROPPED HERE, UNLIKE THE DEATH CLIPS. Those keep their
+	// nulls because a random draw over a fixed count decides which one plays,
+	// and removing one would change every other draw. These are cycled through
+	// in order, so a missing clip should simply not be part of the cycle rather
+	// than showing as a swing where the character does nothing.
+	OutClips.Reset();
+	for (const TCHAR* Name : AttackAnimationNames)
+	{
+		const FString Path = FString::Printf(TEXT("%s/%s.%s"),
+											 AttackAnimationFolder, Name, Name);
+		if (UAnimSequence* Clip =
+				Cast<UAnimSequence>(FSoftObjectPath(Path).TryLoad()))
+		{
+			OutClips.Add(Clip);
+		}
+	}
+	return OutClips.Num();
+}
+
+float ACataclysmPlayerCharacter::PlayTheMannequinsSwing(USkeletalMeshComponent* MeshComponent,
+													  const UAbilitySystemComponent* Abilities,
+													  const TArray<TObjectPtr<UAnimSequence>>& Clips,
+													  int32& InOutNext)
+{
+	// NOUGHT FROM EVERY EARLY RETURN, AND THE CALLER STORES WHAT THIS ANSWERS. Issue #1133.
+	// Zero means "the blow lands now". Four of the paths through this function
 	// give up without playing anything -- no clips, no animation Blueprint, a
 	// null clip, a clip of no length -- and each one has to leave a character
 	// that deals damage at once rather than one still holding the delay its
 	// previous swing worked out. Setting it only on success would make a
-	// refused animation silently reuse the last figure.
-	SwingConnectsInSeconds = 0.0f;
+	// refused animation silently reuse the last figure; answering nought from
+	// each return, which the caller writes in full, cannot.
 
-	if (AttackAnimations.Num() == 0)
+	if (Clips.Num() == 0)
 	{
-		return;
+		return 0.0f;
 	}
 
-	USkeletalMeshComponent* MeshComponent = GetMesh();
 	UAnimInstance* AnimInstance =
 		MeshComponent ? MeshComponent->GetAnimInstance() : nullptr;
 	if (!AnimInstance)
@@ -551,25 +570,25 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 		// the component instead is deliberately not done: that is what a death
 		// does, and it would leave the character holding the last frame of a
 		// swing until something else took the mesh back.
-		return;
+		return 0.0f;
 	}
 
 	// IN TURN RATHER THAN AT RANDOM. See the header: a basic attack fires often
 	// enough that a random draw over three clips repeats one about a third of
 	// the time, which reads as the animation sticking rather than as variety.
 	UAnimSequence* Clip =
-		AttackAnimations[NextAttackAnimation % AttackAnimations.Num()].Get();
-	NextAttackAnimation = (NextAttackAnimation + 1) % AttackAnimations.Num();
+		Clips[InOutNext % Clips.Num()].Get();
+	InOutNext = (InOutNext + 1) % Clips.Num();
 
 	if (!Clip)
 	{
-		return;
+		return 0.0f;
 	}
 
 	const float Length = Clip->GetPlayLength();
 	if (Length <= 0.0f)
 	{
-		return;
+		return 0.0f;
 	}
 
 	// NEVER SLOWER THAN AUTHORED, ONLY FASTER, AND ONLY WHEN IT MUST BE. The
@@ -585,7 +604,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	float Rate = 1.0f;
 	float Interval = 0.0f;
 	if (const UCataclysmAbilitySystemComponent* AbilitySystem =
-			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+			Cast<const UCataclysmAbilitySystemComponent>(Abilities))
 	{
 		Interval = UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem);
 		if (Interval > 0.0f)
@@ -609,7 +628,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	// clip that carries no `UCataclysmSwingConnectsNotify`, and
 	// `SecondsUntilSwingConnects` falls back to the middle of the clip for that
 	// case, so an unmarked clip behaves sensibly rather than failing.
-	SwingConnectsInSeconds = UCataclysmSwingTiming::SecondsUntilSwingConnects(
+	const float ConnectsInSeconds = UCataclysmSwingTiming::SecondsUntilSwingConnects(
 		Length, UCataclysmSwingTiming::MarkedStrikeSeconds(Clip), Rate, Interval);
 
 	// THE SWING DOES NOT MOVE THE CHARACTER, AND WHAT STOPS IT IS NOT HERE. The
@@ -619,6 +638,7 @@ void ACataclysmPlayerCharacter::PlayAttackAnimation()
 	AnimInstance->PlaySlotAnimationAsDynamicMontage(
 		Clip, AttackSlotName, AttackBlendInSeconds, AttackBlendOutSeconds,
 		Rate, /*LoopCount=*/1);
+	return ConnectsInSeconds;
 }
 
 bool ACataclysmPlayerCharacter::ResolveAnimationBlueprint(

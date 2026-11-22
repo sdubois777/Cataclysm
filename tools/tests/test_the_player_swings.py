@@ -44,6 +44,7 @@ PLAYER_H = SOURCE / "Character" / "CataclysmPlayerCharacter.h"
 BASE_H = SOURCE / "Character" / "CataclysmCharacterBase.h"
 SKILL_CPP = SOURCE / "AbilitySystem" / "CataclysmSkillTemplate.cpp"
 SHAPES_CPP = SOURCE / "AbilitySystem" / "CataclysmSkillTemplates.cpp"
+STALKER_CPP = SOURCE / "Character" / "CataclysmCorruptedStalkerCharacter.cpp"
 CONTENT = REPO_ROOT / "game" / "Content"
 ASSET_RECORD = REPO_ROOT / "game" / "docs" / "player-source-assets.md"
 
@@ -288,17 +289,22 @@ def test_the_swing_goes_through_the_animation_blueprint_slot():
     Played onto the component directly -- which is what a death does -- the
     swing would replace the locomotion graph and the character would hold the
     last frame of it until something else took the mesh back.
+
+    THE SWING MOVED INTO `PlayTheMannequinsSwing` IN ISSUE #2811, a static the
+    player and the creatures that copy it both call, so it is looked for there,
+    and `test_the_player_and_its_copies_swing_through_one_step` holds both to
+    calling it.
     """
     body = function_body(
-        read(PLAYER_CPP), "void ACataclysmPlayerCharacter::PlayAttackAnimation")
+        read(PLAYER_CPP), "float ACataclysmPlayerCharacter::PlayTheMannequinsSwing")
 
     assert "PlaySlotAnimationAsDynamicMontage" in body, (
-        "PlayAttackAnimation does not play through the animation Blueprint's "
+        "PlayTheMannequinsSwing does not play through the animation Blueprint's "
         "slot. ABP_Unarmed carries a DefaultSlot exactly so an attack can blend "
         "over the locomotion graph and back out again.")
 
     assert "PlayAnimation(" not in body, (
-        "PlayAttackAnimation plays the clip onto the mesh component directly. "
+        "PlayTheMannequinsSwing plays the clip onto the mesh component directly. "
         "That is what PlayDeathAnimation does, and it is right there because a "
         "corpse must hold its last frame. A swing must not: the character would "
         "freeze mid-attack.")
@@ -310,21 +316,49 @@ def test_a_clip_is_never_slowed_below_its_authored_speed():
     Every attack clip is longer than the interval a weapon's attack speed
     allows, so the rate only ever needs raising. Stretching a clip to fill a
     longer window reads as slow motion, which the Brute's comments record as
-    having been tried and rejected.
+    having been tried and rejected. In `PlayTheMannequinsSwing` since issue #2811.
     """
     body = function_body(
-        read(PLAYER_CPP), "void ACataclysmPlayerCharacter::PlayAttackAnimation")
+        read(PLAYER_CPP), "float ACataclysmPlayerCharacter::PlayTheMannequinsSwing")
 
     assert "FMath::Max(1.0f" in body, (
-        "PlayAttackAnimation does not floor the play rate at 1, so a clip "
+        "PlayTheMannequinsSwing does not floor the play rate at 1, so a clip "
         "shorter than the swing interval would be stretched and play in slow "
         "motion.")
 
     assert "MaximumAttackPlayRate" in body, (
-        "PlayAttackAnimation does not cap the play rate. Attack speed is a stat "
+        "PlayTheMannequinsSwing does not cap the play rate. Attack speed is a stat "
         "that affixes and passives raise and nothing in the design caps it, so "
         "a character stacked far enough would ask for a clip at many times "
         "speed.")
+
+
+def test_the_player_and_its_copies_swing_through_one_step():
+    """The player and the creatures that copy it play their swing through one step.
+
+    Issue #2811, ruled by the coordinating session on 2026-11-21: the Corrupted
+    Stalker and the Worn Residue double swing as the player does, through the
+    player's own `PlayTheMannequinsSwing`, so the two cannot drift. A copy that
+    played its own clip here would pass every test that asks what it plays
+    today and drift from the player at the next change to either.
+    """
+    player = function_body(
+        read(PLAYER_CPP), "void ACataclysmPlayerCharacter::PlayAttackAnimation")
+    assert "PlayTheMannequinsSwing(" in player, (
+        "ACataclysmPlayerCharacter::PlayAttackAnimation no longer calls "
+        "PlayTheMannequinsSwing, so the player swings somewhere this file does "
+        "not look and its copies may no longer swing as it does.")
+
+    stalker = function_body(
+        read(STALKER_CPP),
+        "void ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation")
+    assert "ACataclysmPlayerCharacter::PlayTheMannequinsSwing(" in stalker, (
+        "ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation does not call "
+        "the player's PlayTheMannequinsSwing, so the copies swing by code of "
+        "their own and can drift from the player.")
+    assert "PlaySlotAnimationAsDynamicMontage" not in stalker, (
+        "ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation plays a clip "
+        "itself rather than through the player's step.")
 
 
 # --------------------------------------------------------------------------

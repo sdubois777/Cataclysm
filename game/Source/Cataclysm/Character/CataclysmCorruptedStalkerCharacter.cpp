@@ -208,6 +208,17 @@ bool ACataclysmCorruptedStalkerCharacter::ResolveBody()
 			DeathAnimations.Num(), ACataclysmPlayerCharacter::DeathAnimationFolder);
 	}
 
+	// AND THE PLAYER'S THREE ATTACK CLIPS, which `PlayAttackAnimation` cycles as the player's does. Issue #2811.
+	const int32 Swings = ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips(AttackAnimations);
+	NextAttackAnimation = 0;
+	if (Swings < static_cast<int32>(UE_ARRAY_COUNT(ACataclysmPlayerCharacter::AttackAnimationNames)))
+	{
+		UE_LOG(LogCataclysm, Warning, TEXT("A player copy found %d of %d attack clips in %s, so a blow with none "
+			"lands without a swing."), Swings,
+			static_cast<int32>(UE_ARRAY_COUNT(ACataclysmPlayerCharacter::AttackAnimationNames)),
+			ACataclysmPlayerCharacter::AttackAnimationFolder);
+	}
+
 	// OTHERWISE THE CYLINDER SITS INSIDE THE BODY. `ACataclysmEnemyCharacter` creates PlaceholderBody in its
 	// constructor and nothing about assigning a skeletal mesh removes it.
 	if (PlaceholderBody)
@@ -218,6 +229,14 @@ bool ACataclysmCorruptedStalkerCharacter::ResolveBody()
 	// AND THE COPIES' DARK RED, the owner's ruling of 2026-11-21: "give them a dark red tint". See `CopyTint`.
 	WearTheCopiesTint();
 	return true;
+}
+
+void ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation()
+{
+	// THE PLAYER'S OWN STEP, so the two cannot drift. Nought when nothing played, which lands the blow now.
+	SwingConnectsInSeconds =
+		ACataclysmPlayerCharacter::PlayTheMannequinsSwing(GetMesh(), GetAbilitySystemComponent(), AttackAnimations,
+														  NextAttackAnimation);
 }
 
 void ACataclysmCorruptedStalkerCharacter::DrawWornWeapons(const UCataclysmEquipmentComponent* Wardrobe)
@@ -476,9 +495,12 @@ void ACataclysmCorruptedStalkerCharacter::UseEnemyAbility(int32 Index, AActor* T
 	{
 		return;
 	}
-	const FVector From = GetActorLocation();
+	// NO CAST PLACE, AS THE PLAYER'S OWN USE HAS NONE. Issue #2811, ruled 2026-11-21: a use given a place turns
+	// nobody, plays no swing and waits for none (`UCataclysmSkillTemplate::bFreeRepeatHasOrigin`), so with one this
+	// creature dealt every blow at once with its body standing still. It is cast from where it stands when its swing
+	// connects.
 	const FVector Aim = Target ? Target->GetActorLocation() : AimedAt;
-	UCataclysmTriggeredSkill::Trigger(this, *Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/true, &From);
+	UCataclysmTriggeredSkill::Trigger(this, *Skill, Aim, /*DamageShare=*/1.0f, /*bPaysCost=*/true);
 
 	// A LEAP MOVED IT AT ONCE, so the path it was following is stale; the controller chases again on its next pass.
 	if (Order[Index] == ECataclysmAbilitySlot::Movement)
@@ -598,9 +620,10 @@ void ACataclysmCorruptedStalkerCharacter::AttackTarget(AActor* Target)
 		return;
 	}
 
-	// ITS WEAPON'S BASIC ATTACK, STARTED FROM ITS OWN PLACE, the way the enemy-cast measurement of window w53 started a
-	// creature's Strike, which hurt the player it was aimed at.
-	const FVector From = GetActorLocation();
+	// ITS WEAPON'S BASIC ATTACK, WITH NO CAST PLACE, as the player's is: it turns to face its target, swings, and its
+	// blow lands when the swing connects. Issue #2811, ruled 2026-11-21. Until then it was given its own place, "the
+	// way the enemy-cast measurement of window w53 started a creature's Strike"; that measurement recorded only that
+	// such a Strike hurt the player, and no fault without a place.
 	UCataclysmTriggeredSkill::Trigger(this, BasicAttack, Target->GetActorLocation(), /*DamageShare=*/1.0f,
-									  /*bPaysCost=*/false, &From);
+									  /*bPaysCost=*/false);
 }

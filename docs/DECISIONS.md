@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The Corrupted Stalker and the Worn Residue double swing the player's clips on their blows, and each blow lands when its swing connects, as the player's does (#2811)
+
+**Affects:** `ACataclysmPlayerCharacter::LoadTheMannequinsAttackClips` and `PlayTheMannequinsSwing`, new, the player's
+own attack-clip loading and swing moved out of `ResolveBody` and `PlayAttackAnimation`, which now call them
+(`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp`);
+`ACataclysmCorruptedStalkerCharacter::PlayAttackAnimation`, new, `AttackAnimations` and `NextAttackAnimation`, new,
+`ResolveBody`, which loads the clips, and `AttackTarget` and `UseEnemyAbility`, which now start a blow with no cast place
+(`CataclysmCorruptedStalkerCharacter.h` and `.cpp`); the comment on `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h`). Tests: three new in `Cataclysm.PlayerCopies.`
+(`CataclysmPlayerCopiesTests.cpp`); `game/Source/Cataclysm/Tests/CataclysmTestSwings.h`, new, which finishes a
+caster's waiting swings; four existing tests that read a copy's blow in the frame it started, which now finish the
+swing first (`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmStalkerEntryTests.cpp`);
+`tools/tests/test_the_player_swings.py`, two checks reading the swing where it moved and one new. Issue
+[#2811](https://github.com/sdubois777/Cataclysm/issues/2811), following
+[#2806](https://github.com/sdubois777/Cataclysm/issues/2806). On the branch fix/copies-swing-their-blows, from window D's
+head `5fca8616b`.
+
+### SAID FIRST
+
+- **NOT YET COMPILED OR RUN IN UNREAL.** Phase 2 written on the coordinating session's ruling; the build machine waits
+  for its turn. What the run must show is under "Registered for the window".
+- **THE ISSUE'S PREMISE WAS WRONG, AND IT DECIDED THE SHAPE OF THE CHANGE.** The issue said the skill's call to
+  `PlayAttackAnimation` "reaches them and does nothing". It did not reach them. The Stalker's `AttackTarget` and
+  `UseEnemyAbility` started every blow through `UCataclysmTriggeredSkill::Trigger` with a cast place, its own
+  location, and a use given a place turns nobody, draws no cast burst, plays no clip and waits for no swing
+  (`UCataclysmSkillTemplate::CommitAndBegin` and `SecondsUntilTheSwingConnects`, the gadget rule of 2026-10-14). The
+  double inherits both. So an override of `PlayAttackAnimation` alone would never have been called.
+- **RULED BY THE COORDINATING SESSION, 2026-11-21: OPTION (A) WITH THE WAIT.** The copies take the player's own path:
+  no cast place, and a `PlayAttackAnimation` override that calls the player's swing step, moved into shared statics with
+  the player's behaviour unchanged. The blow lands at the clip's contact point. The consequences were listed before the
+  ruling and accepted, because they match the player: the copy turns to face its target, it shows the cast burst, its
+  skill is cast from where it stands when the swing connects, and a swing cancelled before it connects loses its blow.
+  No simulation change.
+
+### What changed
+
+- **ONE SWING STEP FOR THE PLAYER AND ITS COPIES.** `PlayTheMannequinsSwing` is the player's `PlayAttackAnimation`
+  body, moved: the next clip in turn, into `DefaultSlot`, at a rate never slower than authored and at most
+  `MaximumAttackPlayRate`, answering the seconds until the swing connects, or nought from each of its four early
+  returns. `LoadTheMannequinsAttackClips` is the player's loading loop, moved, dropping a clip that did not load. The
+  player calls both at the same points and stores the answer as before; its own warning about missing clips stays
+  where it was.
+- **THE COPIES CALL THEM.** The Stalker loads the three clips in `ResolveBody`, with a warning naming any it did not
+  find, and its `PlayAttackAnimation` stores what `PlayTheMannequinsSwing` answers. `AttackTarget` and
+  `UseEnemyAbility` pass no cast place, so `CommitAndBegin` turns the copy, draws its cast burst and calls its swing,
+  except on a movement skill and an aura toggle (the template's own rulings), and a Strike, a Projectile and a curse
+  land through `WhenTheSwingConnects`.
+- **WHICH CLIPS:** the player's three, `MM_Attack_01` to `MM_Attack_03`, in turn. All three carry a
+  `UCataclysmSwingConnectsNotify` (each `.uasset` holds the class's name), so the contact point is each clip's marker.
+  `MM_ChargedAttack` stays out, as it does for the player. Only the Mannequin's unarmed clips are in git, as for the
+  player.
+
+### The cast place, and the comment that described it
+
+- **THE STALKER'S PLACE HAD NO RECORDED FAULT BEHIND IT.** Its comment gave the reason as "the way the enemy-cast
+  measurement of window w53 started a creature's Strike". The w53 entry (2026-10-25, "A dungeon carries the Corrupted
+  Stalker one time in twenty ...") records only that a creature's Strike through `Trigger` hurt the player; it records
+  no fault without a place. The place was the Stalker's own location, so the only differences it made were the four
+  above and where a distance is measured from (`FCataclysmHitDelivery::bStruckFromAPoint`), which is the same point
+  while the copy stands still.
+- **THE COMMENT ON `bFreeRepeatHasOrigin` SAID `ACataclysmMinion` ALONE PASSES A PLACE.** It had been untrue since
+  2026-10-25. It is true again, and the comment now says so and names the two callers. Checked by listing every call
+  to `UCataclysmTriggeredSkill::Trigger` outside the tests (eleven) with the argument in its cast-place position: two
+  pass one, both in `CataclysmMinion.cpp` (`CopySummonersLastSkill`, `StartPlayersSkillFromHere`); the Stalker's two
+  and the other seven pass none.
+
+### What the research settled, and what is a judgement
+
+- **WAITING FOR THE CONTACT POINT IS SETTLED.** Every creature here that plays a swing clip already waits for it
+  (#783: the Brute, the Imp, the Abyssal Warden; the Hellhound's wait is nought until its clip is measured), and so does
+  the player (#1133). The research recorded for #1133 (the entry "What the research settled": Unreal's notifies, Diablo
+  4's hit frames, Last Epoch, Path of Exile) ties the blow to a moment in the swing in every case.
+- **NO SIMULATION CHANGE: A JUDGEMENT.** `sim/cataclysm_sim/fight.py` models the Stalker as a blow every
+  `STALKER_SECONDS_BETWEEN_BLOWS` (0.75 s). A fixed wait per blow does not change that rate; it moves each blow later
+  by less than its swing interval times `LatestFractionOfSwingInterval`. What it does change is a later first blow and a
+  blow lost when the copy dies, is stunned or its skill is cancelled mid-swing; the fight measured there is a damage
+  rate.
+
+### Tests
+
+**New, in `Cataclysm.PlayerCopies.`:**
+
+| Test | What it asserts | The control |
+|---|---|---|
+| `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` | Famine's Stalker strikes a target a quarter turn to its left: `MM_Attack_01` in `DefaultSlot`, a wait above nought, the blow waiting and not landed, the Stalker turned to face the target; the swing finished, the blow landed. Its second blow plays `MM_Attack_02` and does the same | a plain creature casting the same Sword's basic attack through the same `Trigger` swings nothing and waits for nothing |
+| `AWornResidueDoublesBlowSwingsAsTheStalkersDoes` | a double wearing a Sword build: the same as the Stalker's first blow | -- |
+| `AStalkersMovementSkillSwingsNothing` | Famine's Stalker casts its movement skill: paid for, and no swing played | -- |
+
+**Changed: four existing tests that read a copy's blow in the frame it started.** Since this change the blow waits for
+the swing, on a timer no test world runs by itself. Each now finishes the swing the way the player's tests finish
+theirs (`CataclysmBasicReachTests.cpp`, `ReachFinishTheSwing`): `CataclysmTestSwings::FinishTheSwingsOf` moves the
+world's clock a twentieth of a second at a time until no skill of the copy waits, and the test asserts that it
+connected. No assertion was changed or removed.
+
+| Test | Change |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.ACorruptedStalkersBlowIsItsWeaponsBasicAttackAndHurtsThePlayer` | finishes the swing before reading the player's health |
+| `Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` | finishes each tier's swing before reading the blow, and its target is given no health regeneration: the clock now moves before the blow is read, and a regeneration step after it would take part of the blow back from a figure fitted to the whole of it |
+| `Cataclysm.DungeonModifierEffects.WhetherFervourBuildsOnACorruptedStalkerInAFight` | finishes each of the twenty swings before its Fervour step |
+| `Cataclysm.StalkerEntries.TheDeathStalkersHeavySkillLaysNecrosisOnThePlayer` | finishes the heavy skill's swing before reading health and the Necrosis tag |
+
+The other tests that make a copy strike read only what happens before the wait: the mana a cast pays
+(`AStalkerOfEachTypeCastsEachOfItsSixSlots`) and whether an aura or an Ultimate runs
+(`ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana`,
+`ACorruptedStalkerIsRaisedWithItsUltimatesFervourKeepsItAloneAndCastsIt`). An aura toggle plays no clip, and nothing
+stops a skill starting while another waits for its swing. Found by listing every test body that names a copy and
+calls `AttackTarget`, `UseEnemyAbility`, `StrikeAsARuleOrders`, `Trigger` or a brain's `Think`: seven, all in a world
+that has begun play.
+
+**Python:** `tools/tests/test_the_player_swings.py`'s two checks that read the slot and the play rate now read
+`PlayTheMannequinsSwing`, and the new `test_the_player_and_its_copies_swing_through_one_step` holds both the player's
+and the Stalker's `PlayAttackAnimation` to calling it.
+
+### Registered for the window
+
+**THE BASE IS WINDOW D'S, NOT YET MEASURED.** This branch is window D's head `5fca8616b` plus this change, and window
+D's game code is development `c89fa5911`'s plus #2806, #2807 and #2809; no measured log has that game code. So this
+change is registered as what it adds to window D's measured figures, and is registered again as totals from window D's
+measured log (or the newest one) when this branch is given the machine, after rebasing onto window D's head as it then
+is.
+
+- **The three compiles** -- the branch as committed, the build plan moved aside first; each changed `.cpp` alone,
+  `CataclysmPlayerCharacter.cpp`, `CataclysmCorruptedStalkerCharacter.cpp`, `CataclysmPlayerCopiesTests.cpp`,
+  `CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStalkerEntryTests.cpp`; the unity files again -- each
+  succeed with no warning or error line.
+- **Groups:** `Cataclysm.PlayerCopies.` window D's 4 plus 3, all passing; `Cataclysm.PlayerAttack.`, the player's swing
+  tests, as in window D, all passing, which shows the player unchanged; `Cataclysm.DungeonModifierEffects.` and
+  `Cataclysm.StalkerEntries.` as in window D, all passing.
+- **The three new tests, each alone:** 1 performed, 1 succeeded.
+- **The whole suite:** window D's measured total plus 3, all succeeding; skipped halves as in window D (no new test
+  skips a half); test saves as in window D (no new test writes one).
+- **Python, with the whole suite:** no failure, no error.
+- **One C++ guard proof**, through `prove_cpp_guard`, with the prefix `Cataclysm.PlayerCopies.` (the group, with its
+  dot; seven tests):
+
+| Proof | The break | The broken half | Restored |
+|---|---|---|---|
+| P1 | The Stalker's basic attack is given its own place again: in `AttackTarget`, the call `Trigger(this, BasicAttack, ..., /*bPaysCost=*/false);` becomes `const FVector From = GetActorLocation();` and the same call ending `/*bPaysCost=*/false, &From);` | 7 performed, 5 succeeded, 2 failed: `AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` and `AWornResidueDoublesBlowSwingsAsTheStalkersDoes`, each blow on "its blow plays the Mannequin's ...", "the swing connects later than now", "its blow waits for the swing", "and has not landed yet" and "it turned to face its target": 10 assertions in the first (two blows), 5 in the second. The movement test and #2806's four pass | 7 of 7 |
+
+- **THE SWING STEP ITSELF IS PROVED IN PYTHON, NOT C++** (the coordinating session's limit of one C++ proof per
+  behaviour only a C++ test guards): `test_the_player_and_its_copies_swing_through_one_step` guards that the Stalker
+  swings through the player's step. **PROVED, 2026-11-21**, by `tools/prove_guard.py`, the break
+  `ACataclysmPlayerCharacter::PlayTheMannequinsSwing(GetMesh()` made `ACataclysmPlayerCharacter::PlayOwnSwing(GetMesh()`
+  in `CataclysmCorruptedStalkerCharacter.cpp`: "PROVED: 1 failed, 12 passed in 0.11s | restored: 13 passed in 0.06s",
+  the one named failure
+  `tools/tests/test_the_player_swings.py::test_the_player_and_its_copies_swing_through_one_step`.
+- **NO PROOF OF THE MOVEMENT TEST.** The rule it shows for a copy, no clip on a movement skill, is the template's and is
+  guarded by the player's own tests; no break of this change can fail it.
+
+**The window scripts** will be in `.claude/windows/` in the worktree `adoring-jennings-f8c84c`.
+
+---
+
 ## 2026-11-21 — A city upgrade takes days to build: 6, 12 or 24 by its tier, its slot taken at purchase, nothing done until it is finished, one at a time per city (#2825)
 
 **Affects:** `UCataclysmCityUpgradeRules` (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`):
