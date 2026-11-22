@@ -786,7 +786,7 @@ bool FCataclysmSandboxImpsArriveAsAPackTest::RunTest(const FString& Parameters)
 
 	// WHAT THIS EXISTS FOR. The other three creatures are placed one each,
 	// around the player start. **A single Imp shows almost nothing**: it takes
-	// 48 seconds to kill a geared character on its own, where ten take 4.9. So
+	// 54 seconds to kill a geared character on its own, where ten take 5.4. So
 	// this spawner does something none of the others does -- it places a group
 	// around a point of their own -- and this is the check that it really did.
 	UWorld* World = MakeWorldThatHasBegunPlay();

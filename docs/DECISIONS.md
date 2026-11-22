@@ -485,6 +485,10 @@ regenerated from it; `sim/cataclysm_sim/enemy_abilities.py`; `docs/Cataclysm_GDD
   interval and the shell leaves at 1.26 seconds. The release inside the clip is unmeasured anyway (issue #478).
 - **The design document's table of hits to kill the geared character was stale before this change**, and only its
   Succubus and Sentinel rows were moved, scaled from the table's own figures. Reported to the coordinating session.
+  **Superseded in window E**: #2818 recomputed the whole table from the model and added a check that recomputes it
+  (`tools/tests/test_the_geared_character_figures_match_the_model.py`), so the two rows are now the model's at this
+  change, computed rather than scaled: the Elite Succubus 29 hits in 29.0 seconds and the Legendary Corrupted Sentinel
+  25 hits in 25.0 seconds. The scaled Sentinel figure, 24 in 24.0, was one hit short.
 
 ### The owner's two requirements, 2026-11-21, verbatim
 

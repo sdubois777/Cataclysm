@@ -5118,9 +5118,9 @@ So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen w
 | :-- | :-: | :-: |
 | Common Imp | 60 | 54.0 |
 | Common Hellhound | 26 | 28.6 |
-| Elite Succubus | 12 | 31.2 |
+| Elite Succubus | 29 | 29.0 |
 | Elite Brute | 11 | 13.2 |
-| Legendary Corrupted Sentinel | 13 | 26.0 |
+| Legendary Corrupted Sentinel | 25 | 25.0 |
 | Herald Abyssal Warden | 5 | 12.0 |
 | Cataclysm Boss Gatekeeper | 2 | 6.0 |
 
@@ -5938,7 +5938,7 @@ Two ranks are twenty Imps and the third is out of reach, so **twenty is the most
 
   
 
-**There is no attack-token rule and there deliberately will not be one.** Limiting how many enemies may swing at once is the standard answer in melee action games: Doom (2016) makes each enemy request a token before attacking, and the Batman Arkham games allow two or three at a time. It is the wrong answer here. This document already commits to ten Imps killing a geared character in 4.9 seconds and twenty in 2.4, and a token limit of two or three would make both false and flatten the difference between a pack of ten and a pack of twenty to nothing. Physical crowding produces the same protection — a player is never surrounded by more than twenty — without capping the damage the design has already promised.
+**There is no attack-token rule and there deliberately will not be one.** Limiting how many enemies may swing at once is the standard answer in melee action games: Doom (2016) makes each enemy request a token before attacking, and the Batman Arkham games allow two or three at a time. It is the wrong answer here. This document already commits to ten Imps killing a geared character in 5.4 seconds and twenty in 2.7, and a token limit of two or three would make both false and flatten the difference between a pack of ten and a pack of twenty to nothing. Physical crowding produces the same protection — a player is never surrounded by more than twenty — without capping the damage the design has already promised.
 
   
 

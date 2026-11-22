@@ -101,7 +101,7 @@ public:
 	 *     third rank    1.92 m out    20 fit     40 in total
 	 *
 	 * **1.32 metres is exactly the second rank.** The design document commits to
-	 * ten Imps killing a geared character in 4.9 seconds and twenty in 2.4, and
+	 * ten Imps killing a geared character in 5.4 seconds and twenty in 2.7, and
 	 * one rank is seven. A reach that let only the rank in contact swing would
 	 * make both of those figures false, because the eighth Imp onward would be
 	 * standing behind the first seven doing nothing.

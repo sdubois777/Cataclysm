@@ -18,7 +18,7 @@ compared against a copy:
                                     enemy_abilities.ring_capacity
     the reach, 1.32 m               the second rank's distance
     the pack, 10                    already stated in section X of the design
-                                    document as the pack that kills in 4.9 s
+                                    document as the pack that kills in 5.4 s
     "not telegraphed"               the wind-up rule in the Attack Telegraphs
                                     subsection, applied to the 0.9 s attack
                                     interval in enemy_stats.py

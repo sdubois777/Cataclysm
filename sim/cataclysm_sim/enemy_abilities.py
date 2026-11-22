@@ -599,7 +599,7 @@ def attackers_within_reach(kind: Archetype | str, reach: float) -> int:
 
     This is the cap on a swarm. There is no attack-token rule anywhere in this
     project and there is deliberately none: the design document states that ten
-    Imps kill a geared character in 4.9 seconds and twenty in 2.4, and a token
+    Imps kill a geared character in 5.4 seconds and twenty in 2.7, and a token
     rule that let only two or three swing at a time would make both figures
     false.
     """
@@ -628,8 +628,8 @@ ATTACK_REACH: dict[str, float] = {
     # 1.32 metres is exactly the second rank's distance: 0.42 for the player's
     # own body, plus three Imp radii. Set there and not by eye, because it is
     # what makes the design document's pack figures true. One rank of Imps is 7
-    # creatures, and 7 of them take 6.9 seconds to kill a geared character; the
-    # document says ten take 4.9 and twenty take 2.4, so a reach that let only
+    # creatures, and 7 of them take 7.7 seconds to kill a geared character; the
+    # document says ten take 5.4 and twenty take 2.7, so a reach that let only
     # the front rank swing would contradict its own numbers. Issue #348.
     "Imp": 1.32,
 
@@ -687,7 +687,7 @@ ATTACK_REACH: dict[str, float] = {
 #: The pack an enemy arrives in. Only swarming enemies have one.
 PACK_SIZE: dict[str, int] = {
     # Ten. The design document already names ten as the pack that kills a geared
-    # character in 4.9 seconds, so this is its number rather than a new one. It
+    # character in 5.4 seconds, so this is its number rather than a new one. It
     # is three more than one full rank, which is what makes the second rank --
     # and therefore the reach above -- do something in an ordinary encounter.
     "Imp": 10,

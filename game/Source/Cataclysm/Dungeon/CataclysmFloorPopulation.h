@@ -307,7 +307,7 @@ public:
 	 * OWN DESIGN. Diablo II's density column spawns "a monster pack" on a tile
 	 * rather than a monster, and `docs/Cataclysm_GDD_v2.md` says of the Imp that
 	 * "a single Common enemy is not the threat. A pack is", with a pack being
-	 * ten: one Imp takes 48 seconds to kill a geared character and ten take 4.9.
+	 * ten: one Imp takes 54 seconds to kill a geared character and ten take 5.4.
 	 * A floor that drew ten separate Imps and scattered them would be a floor of
 	 * ten harmless creatures.
 	 *
