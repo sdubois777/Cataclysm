@@ -84,24 +84,31 @@ becomes `game/Data/WeaponMeshes.csv` and then `DT_WeaponMeshes`.
 | Crossbow | 1 | `SM_Crossbow` | 1.00 | 89 cm wide | exact |
 | Spear | 2 | `SM_Spear` | 1.00 | 244 cm | already two-handed |
 | Staff | 2 | `SM_Staff` | 1.00 | 106 cm | already two-handed |
-| Greatsword | 2 | `SM_Sword_3` | 1.45 | 135 cm | the longest sword, scaled |
-| Greataxe | 2 | `SM_Axe` | 1.45 | 132 cm | the one-handed axe, scaled |
-| Warhammer | 2 | `SM_Mace` | 1.45 | 120 cm | the mace, scaled |
-| Two-Handed Crossbow | 2 | `SM_Crossbow` | 1.25 | 111 cm wide | the same crossbow, larger |
+| Greatsword | 2 | `SM_Sword_3` | 1.75 | 163 cm | the longest sword, scaled |
+| Greataxe | 2 | `SM_Axe` | 1.75 | 159 cm | the one-handed axe, scaled |
+| Warhammer | 2 | `SM_Mace` | 1.75 | 145 cm | the mace, scaled |
+| Two-Handed Crossbow | 2 | `SM_Crossbow` | 1.75 | 156 cm wide | the same crossbow, larger |
 | Fist | 1 | none | — | — | **unarmed draws nothing, by design** |
 | Wand | 1 | none | — | — | nothing suitable in the pack |
 | Whip | 1 | none | — | — | nothing suitable in the pack |
 
 ### Why the scale figures are what they are
 
-**A judgement, and expected to be tuned by looking at the game.** They are in the
-data rather than in C++ so that changing one costs no rebuild.
+**The four scaled two-handed bases share one scale of 1.75, the owner's ruling
+recorded on issue #1130 on 2026-09-14.** The owner played the game on 2026-09-01
+and reported the two-handed weapons too small at 1.45 (and 1.25 for the
+crossbow). The scales are in the data rather than in C++ so that changing one
+costs no rebuild, and `tools/tests/test_a_weapon_is_drawn_in_the_hand.py` pins
+the four at 1.75 and the Spear and the Staff at 1.
 
-Real two-handed weapons run longer than 1.45 would give: a zweihänder is 150 to
-180 cm, a Dane axe 120 to 170. Scaling further was rejected because **uniform
-scaling thickens the grip as well as lengthening the blade**, and a 1.8x handle
-does not fit in a hand. 1.45 reads as a bigger weapon while keeping the grip
-plausible.
+At 1.75 the drawn lengths sit inside what real two-handed weapons measure: a
+zweihänder is 150 to 180 cm, a Dane axe 120 to 170. The lengths in the table
+are the pack's native lengths times the scale, not measured in the game.
+
+1.45 was first chosen because **uniform scaling thickens the grip as well as
+lengthening the blade**. **Whether the grip still fits the hand at 1.75 is a
+prediction nobody has looked at**: no test can see it, because the automation
+tests run without rendering, and somebody has to look in the game.
 
 **The Greataxe uses the axe rather than the scythe.** Issue #1125 proposed the
 scythe as an alternative and answered its own question: a scythe is not an axe. A

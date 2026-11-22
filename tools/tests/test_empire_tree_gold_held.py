@@ -5,7 +5,8 @@ Capital give a kill magic find from the gold held, Imperial Reserve reduces ever
 and Wealth Interest pay into the balance as days pass. The balance is the Cataclysm module's and the days and the damage
 are the empire module's, so the game instance hands the run two functions. The owner ruled on Tax Collection, Treasury
 Guard, Global Credit and Sovereign Loans on 2026-11-20, after this slice was written, so none of them may say it waits
-on a ruling.
+on a ruling. Tax Collection and Treasury Guard are slice 6d's, in `tools/tests/test_empire_tree_treasury_and_tax.py`, and
+Global Credit and Sovereign Loans slice 6e's, in `tools/tests/test_empire_tree_credit.py`.
 
 WHY IT IS CHECKED FROM PYTHON. Continuous integration compiles no C++, so the `Cataclysm.EmpireTreeGoldHeld.` automation
 tests never run on a pull request. And the hand-over -- the functions the game instance sets, and where the run calls
@@ -19,8 +20,7 @@ WHAT IS CHECKED:
   3. the run calls the day's function after the day's resolutions, and every city's damage takes Imperial Reserve's
      factor from the gold held;
   4. a kill adds the gold held's magic find before its paying branch, from the gold held and the tier's scale;
-  5. the four nodes the owner ruled on wait on what is not built yet -- Tax Collection and Treasury Guard on their gold
-     rules, Global Credit and Sovereign Loans on a gold debt -- and no node waits on a ruling about them.
+  5. the four nodes the owner ruled on are built, and no node waits on their gold rules, a gold debt or a ruling.
 """
 
 from __future__ import annotations
@@ -129,11 +129,10 @@ def test_a_kill_adds_the_gold_helds_magic_find_before_it_rolls() -> None:
         assert filled in here, f"the kill's rules do not fill {filled}"
 
 
-def test_the_nodes_the_owner_ruled_on_wait_on_what_is_not_built_and_none_on_a_ruling() -> None:
-    ruled = {"Tax Collection": "gold rules", "Treasury Guard": "gold rules",
-             "Global Credit": "gold debt", "Sovereign Loans": "gold debt"}
-    reasons = {name: gen.EMPIRE_TREE_REFUSED.get(name) for name in ruled}
-    assert reasons == ruled, f"a node the owner ruled on (2026-11-20) is built or refused for another reason: {reasons}"
-    for system in set(ruled.values()):
-        assert gen.EMPIRE_TREE_SYSTEMS[system].endswith("which is not built yet (issue #2741)") or             gen.EMPIRE_TREE_SYSTEMS[system].endswith("which are not built yet (issue #2741)"), (system, "says more")
-    assert "gold ruling" not in gen.EMPIRE_TREE_SYSTEMS, "a reason still says the owner has not ruled on a gold node"
+def test_the_nodes_the_owner_ruled_on_are_built_and_none_waits_on_a_ruling() -> None:
+    ruled = ("Tax Collection", "Treasury Guard", "Global Credit", "Sovereign Loans")
+    built = {name: gen.EMPIRE_TREE_BUILT.get(name) for name in ruled}
+    assert built == dict.fromkeys(ruled, 6), f"a node the owner ruled on (2026-11-20) is not built in slice 6: {built}"
+    for reason in ("gold ruling", "gold rules", "gold debt"):
+        assert reason not in gen.EMPIRE_TREE_SYSTEMS and reason not in gen.EMPIRE_TREE_REFUSED.values(), (
+            f"a node still waits on {reason!r}, which slices 6d and 6e built")

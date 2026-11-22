@@ -36,6 +36,47 @@ const FName UCataclysmRunSave::TypeName = FName(TEXT("Run"));
  * That collision is not hypothetical: it compiles locally and fails on
  * `development`, because UnrealBuildTool keeps modified files out of the blob.
  */
+/**
+ * THE EXTRA OPTION OF ONE ALLOCATION, WRITTEN OUT: issue #2741 slice 8. `FCataclysmPassiveAllocation` gained
+ * `ExtraOptionNode` and `ExtraOption`, Imperial Prowess's one extra option of an earlier centre milestone, so a record
+ * written before them states none -- "None" and 0, what the writer writes for an allocation holding none -- for the
+ * character record's `Migrate_3_to_4` reason. Used by the account record's `Migrate_5_to_6` and the character record's
+ * newest step. A KEY ALREADY HOLDING THE RIGHT KIND OF VALUE IS KEPT, and one holding anything else is refused rather
+ * than replaced, as the debt's steps refuse. An allocation the record does not hold is left to the struct's defaults.
+ */
+namespace CataclysmSaveExtraOption
+{
+	bool WriteTheExtraOption(const TSharedRef<FJsonObject>& Holder, const TCHAR* Key, FString& OutError)
+	{
+		if (!Holder->HasField(Key))
+		{
+			return true;
+		}
+		const TSharedPtr<FJsonObject>* Allocation = nullptr;
+		if (!Holder->TryGetObjectField(Key, Allocation) || Allocation == nullptr || !Allocation->IsValid())
+		{
+			OutError = FString::Printf(TEXT("%s holds something that is not an object"), Key);
+			return false;
+		}
+		FString Node = TEXT("None");
+		if ((*Allocation)->HasField(TEXT("ExtraOptionNode"))
+			&& !(*Allocation)->TryGetStringField(TEXT("ExtraOptionNode"), Node))
+		{
+			OutError = FString::Printf(TEXT("%s's ExtraOptionNode holds something that is not a name"), Key);
+			return false;
+		}
+		double Option = 0.0;
+		if ((*Allocation)->HasField(TEXT("ExtraOption")) && !(*Allocation)->TryGetNumberField(TEXT("ExtraOption"), Option))
+		{
+			OutError = FString::Printf(TEXT("%s's ExtraOption holds something that is not a number"), Key);
+			return false;
+		}
+		(*Allocation)->SetStringField(TEXT("ExtraOptionNode"), Node); // A migration's: no extra option, written out.
+		(*Allocation)->SetNumberField(TEXT("ExtraOption"), Option);
+		return true;
+	}
+}
+
 namespace CataclysmCharacterSaveMigration
 {
 	/**
@@ -382,6 +423,55 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before a debt could be owed owes nothing. Issue #2741 slice 6e, 2026-11-20: `GoldOwed` and
+	 * `GoldOwedEachDay` arrived with Global Credit and Sovereign Loans, the only way to owe gold, so the migrated file
+	 * states a debt of 0 -- written out, for the character record's `Migrate_3_to_4` reason. A KEY ALREADY HOLDING A
+	 * NUMBER IS KEPT, and one holding anything else is refused rather than read as 0, as the gold's own step refuses.
+	 */
+	bool Migrate_10_to_11(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		for (const TCHAR* Key : { TEXT("GoldOwed"), TEXT("GoldOwedEachDay") })
+		{
+			double Held = 0.0;
+			if (Record->HasField(Key) && !Record->TryGetNumberField(Key, Held))
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a number"), Key);
+				return false;
+			}
+			Record->SetNumberField(Key, Held); // A migration's: the debt, written out.
+		}
+		return true;
+	}
+
+	/**
+	 * A record written before Imperial Prowess could take an extra option holds none, in each of its three allocations:
+	 * the class trees', the crossing's held build's and a Solo Self-Found character's own empire tree. Issue #2741
+	 * slice 8, 2026-11-21. `CataclysmSaveExtraOption::WriteTheExtraOption` says what is written and refused.
+	 */
+	bool Migrate_11_to_12(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		if (!CataclysmSaveExtraOption::WriteTheExtraOption(Record, TEXT("PassiveAllocation"), OutError)
+			|| !CataclysmSaveExtraOption::WriteTheExtraOption(Record, TEXT("PrivateEmpireTree"), OutError))
+		{
+			return false;
+		}
+		if (Record->HasField(TEXT("ConsumptionBuild")))
+		{
+			const TSharedPtr<FJsonObject>* Build = nullptr;
+			if (!Record->TryGetObjectField(TEXT("ConsumptionBuild"), Build) || Build == nullptr || !Build->IsValid())
+			{
+				OutError = TEXT("ConsumptionBuild holds something that is not an object");
+				return false;
+			}
+			return CataclysmSaveExtraOption::WriteTheExtraOption(Build->ToSharedRef(), TEXT("PassiveAllocation"),
+																 OutError);
+		}
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -398,6 +488,8 @@ namespace CataclysmCharacterSaveMigration
 		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 		{ 8, TEXT("Migrate_8_to_9"), &Migrate_8_to_9 },
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
+		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
+		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 	};
 }
 
@@ -834,11 +926,45 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * A record written before a debt could be owed owes nothing. Issue #2741 slice 6e, 2026-11-20: `GoldOwed` and
+	 * `GoldOwedEachDay` arrived with Global Credit and Sovereign Loans, the only way to owe gold, so the migrated file
+	 * states a debt of 0 -- written out, for the character record's `Migrate_3_to_4` reason. A KEY ALREADY HOLDING A
+	 * NUMBER IS KEPT, and one holding anything else is refused rather than read as 0, as the gold's own step refuses.
+	 */
+	bool Migrate_4_to_5(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		for (const TCHAR* Key : { TEXT("GoldOwed"), TEXT("GoldOwedEachDay") })
+		{
+			double Held = 0.0;
+			if (Record->HasField(Key) && !Record->TryGetNumberField(Key, Held))
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a number"), Key);
+				return false;
+			}
+			Record->SetNumberField(Key, Held); // A migration's: the debt, written out.
+		}
+		return true;
+	}
+
+	/**
+	 * A record written before Imperial Prowess could take an extra option holds none in its empire tree. Issue #2741
+	 * slice 8, 2026-11-21. `CataclysmSaveExtraOption::WriteTheExtraOption` says what is written and refused.
+	 */
+	bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveExtraOption::WriteTheExtraOption(Record, TEXT("EmpireTree"), OutError);
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
 		{ 2, TEXT("Migrate_2_to_3"), &Migrate_2_to_3 },
 		{ 3, TEXT("Migrate_3_to_4"), &Migrate_3_to_4 },
+		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
+		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 	};
 }
 

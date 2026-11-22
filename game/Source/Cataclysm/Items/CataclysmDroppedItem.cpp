@@ -426,9 +426,11 @@ int64 UCataclysmDropPickup::BankGold(UWorld* World, const TArray<ACataclysmDropp
 	}
 
 	// THE BALANCE OF THE CHARACTER PLAYING: its lethality mode's in the account record, or a Solo Self-Found
-	// character's own (the owner's ruling of 2026-11-18). `AddGoldFor` is the one place that decides which.
+	// character's own (the owner's ruling of 2026-11-18), decided as `AddGoldFor` decides. A DEBT IS PAID DOWN FIRST
+	// (issue #2741 slice 6e, D3): Global Credit's "Debt repaid from next gold drops".
 	bool bIntoTheCharacter = false;
-	if (!UCataclysmGameInstance::AddGoldFor(World, Total, bIntoTheCharacter))
+	int64 Repaid = 0;
+	if (!UCataclysmGameInstance::AddPickedUpGoldFor(World, Total, bIntoTheCharacter, Repaid))
 	{
 		// NOBODY PLAYING, OR A BANK REFUSED (`AccountFor` logged which, the first time). Left lying.
 		return 0;

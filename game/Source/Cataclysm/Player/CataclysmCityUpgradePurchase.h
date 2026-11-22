@@ -59,6 +59,17 @@ public:
 	static int64 GoldHeldIn(const UObject* WorldContext);
 
 	/**
+	 * The credit the empire upgrade tree gives the character playing on this price (issue #2741 slice 6e, D2):
+	 * `UCataclysmEmpireTree::UpgradeCreditFor` from the tree it holds, and nought while anything is owed, where there is
+	 * no balance, or with neither Global Credit nor Sovereign Loans. The run is asked with the gold held plus this, so
+	 * the screen and `Buy` agree.
+	 */
+	static int64 CreditIn(const UObject* WorldContext, int64 Price);
+
+	/** What the character playing owes (`UCataclysmGameInstance::GoldOwedBy`), or 0 where there is no balance. */
+	static int64 GoldOwedIn(const UObject* WorldContext);
+
+	/**
 	 * Buys the upgrade on a city for the character playing, taking its price from the balance `GoldHeldBy` reads: the
 	 * account's for the character's lethality mode, or a Solo Self-Found character's own.
 	 *
@@ -69,7 +80,12 @@ public:
 	 * IT TAKES DAYS TO BUILD, since issue #2825: the run is told `BuildDaysIn`, puts the upgrade on the city's build
 	 * list and finishes it when those days have passed. The gold is taken now; a build cannot be cancelled.
 	 *
-	 * @return the run's answer; `NotEnoughGold` when the balance holds less than the price, or there is none.
+	 * ON CREDIT, issue #2741 slice 6e (D2): a price the balance cannot cover but the balance and `CreditIn` can takes the
+	 * whole balance and owes the rest (`UCataclysmGameInstance::SpendGoldOnCreditFor`), repaid by day when Sovereign
+	 * Loans is held (D4).
+	 *
+	 * @return the run's answer; `NotEnoughGold` when the balance and the credit hold less than the price, or there is no
+	 *         balance.
 	 */
 	static ECataclysmCityUpgradeResult Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
 										   FName RowName);
@@ -85,4 +101,12 @@ public:
 	 * and how much more is needed, "Costs 30,000 gold; 2,500 more needed." Empty for `Bought`.
 	 */
 	static FString RefusalText(ECataclysmCityUpgradeResult Result, int64 Price, int64 Held);
+
+	/**
+	 * `RefusalText` for the character playing (issue #2741 slice 6e, D6): what is missing counted beyond the credit the
+	 * tree gives, and an open debt named when it is what stops the credit, "Costs 10,000 gold; 7,500 more needed, and no
+	 * more credit until the 2,500 owed is paid." What the city screen, its button and the console show.
+	 */
+	static FString RefusalTextIn(const UObject* WorldContext, ECataclysmCityUpgradeResult Result, int64 Price,
+								 int64 Held);
 };

@@ -90,6 +90,7 @@ bool UCataclysmEmpireTreeWidget::ShowBranch(const FString& Branch)
 	LastRefusal.Reset();
 	LastTouched = NAME_None;
 	ChoosingOptionFor = NAME_None;
+	bChoosingExtraOption = false;
 	bAwaitingTheSecondRespecPress = false;
 
 	BuildGraph();
@@ -121,6 +122,15 @@ bool UCataclysmEmpireTreeWidget::ChooseOption(FName Node, int32 Option)
 	return bChosen;
 }
 
+bool UCataclysmEmpireTreeWidget::ChooseExtraOption(FName Node, int32 Option)
+{
+	LastTouched = Node;
+	bAwaitingTheSecondRespecPress = false;
+	const bool bTaken = UCataclysmGameInstance::ChooseEmpireTreeExtraOption(Context(), Node, Option, LastRefusal);
+	RefreshDisplay();
+	return bTaken;
+}
+
 bool UCataclysmEmpireTreeWidget::TouchNode(FName Node)
 {
 	bAwaitingTheSecondRespecPress = false;
@@ -134,6 +144,7 @@ bool UCataclysmEmpireTreeWidget::TouchNode(FName Node)
 		{
 			LastTouched = Node;
 			ChoosingOptionFor = NAME_None;
+			bChoosingExtraOption = false;
 			LastRefusal = WalkRefusal;
 			RefreshDisplay();
 			return false;
@@ -142,6 +153,7 @@ bool UCataclysmEmpireTreeWidget::TouchNode(FName Node)
 		// THE OPTIONS, NOT A POINT: a centre capstone takes no point until one is chosen, the class trees' issue #1064.
 		LastTouched = Node;
 		ChoosingOptionFor = Node;
+		bChoosingExtraOption = false;
 		const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
 		LastRefusal = FString::Printf(TEXT("%s has opened. Take one of its three options, in the list. The choice stands "
 										   "until a respec."),
@@ -150,9 +162,37 @@ bool UCataclysmEmpireTreeWidget::TouchNode(FName Node)
 		return true;
 	}
 
+	// AN EARLIER MILESTONE WHILE IMPERIAL PROWESS'S EXTRA OPTION IS OPEN THERE: its options, offered as that extra one
+	// (issue #2741 slice 8), and refused during a walk as a choice is.
+	if (UCataclysmEmpireTree::OffersAnExtraOption(NodeTable(), UCataclysmEmpireTree::LoadEffectTable(), Allocation(),
+												  Node))
+	{
+		LastTouched = Node;
+		const FString WalkRefusal = UCataclysmGameInstance::EmpireTreeChangeRefusal(Context());
+		if (!WalkRefusal.IsEmpty())
+		{
+			ChoosingOptionFor = NAME_None;
+			bChoosingExtraOption = false;
+			LastRefusal = WalkRefusal;
+			RefreshDisplay();
+			return false;
+		}
+		ChoosingOptionFor = Node;
+		bChoosingExtraOption = true;
+		const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
+		LastRefusal = FString::Printf(TEXT("%s lets %s take a second option. Take one in the list. It stands until a "
+										   "respec."),
+									  *UCataclysmEmpireTree::ExtraOptionGranterName(
+										  NodeTable(), UCataclysmEmpireTree::LoadEffectTable()),
+									  Row != nullptr ? *Row->NodeName : *Node.ToString());
+		RefreshDisplay();
+		return true;
+	}
+
 	// ANY OTHER NODE PUTS THE VIEWS BACK, which is also the way out of the options without deciding. Safe to rebuild the
 	// list from here: this click came from a button on the graph, not from one of the list's own children.
 	ChoosingOptionFor = NAME_None;
+	bChoosingExtraOption = false;
 	return BuyPoint(Node);
 }
 
@@ -186,6 +226,7 @@ bool UCataclysmEmpireTreeWidget::PressRespec()
 
 	bAwaitingTheSecondRespecPress = false;
 	ChoosingOptionFor = NAME_None;
+	bChoosingExtraOption = false;
 	int32 Returned = 0;
 	int32 Days = 0;
 	const bool bRespecced = UCataclysmGameInstance::RespecEmpireTree(Context(), Returned, Days, LastRefusal);
@@ -242,8 +283,9 @@ FText UCataclysmEmpireTreeWidget::DescriptionText() const
 	const FString Refusal = bHeld ? UCataclysmEmpireTree::RefusalForSpending(NodeTable(), EdgeTable(), Spent, Node,
 																			 *Tree.Bank)
 								  : FString();
-	return FText::FromString(UCataclysmEmpireTreeLayout::NodeDetail(*Row, Spent.PointsIn(Node),
-																	Spent.ChosenOptionIn(Node), Refusal));
+	return FText::FromString(UCataclysmEmpireTreeLayout::NodeDetail(
+		*Row, Spent.PointsIn(Node), Spent.ChosenOptionIn(Node), Refusal, Spent.ExtraOptionIn(Node),
+		UCataclysmEmpireTree::ExtraOptionGranterName(NodeTable(), UCataclysmEmpireTree::LoadEffectTable())));
 }
 
 void UCataclysmEmpireTreeWidget::NativeConstruct()
@@ -385,6 +427,10 @@ void UCataclysmEmpireTreeWidget::FillList()
 	const FCataclysmEmpireTreeNodeRow* Capstone = UCataclysmEmpireTree::FindNode(NodeTable(), ChoosingOptionFor);
 	const TArray<FString> Names = Capstone != nullptr ? UCataclysmEmpireTree::OptionNamesOf(*Capstone) : TArray<FString>();
 	const int32 Chosen = Allocation().ChosenOptionIn(ChoosingOptionFor);
+	const int32 Extra = Allocation().ExtraOptionIn(ChoosingOptionFor);
+	const FString Granter = Extra > 0
+		? UCataclysmEmpireTree::ExtraOptionGranterName(NodeTable(), UCataclysmEmpireTree::LoadEffectTable())
+		: FString();
 	for (int32 Index = 0; Index < BranchBox->GetChildrenCount(); ++Index)
 	{
 		UCataclysmChoiceButton* Button = Cast<UCataclysmChoiceButton>(BranchBox->GetChildAt(Index));
@@ -399,9 +445,9 @@ void UCataclysmEmpireTreeWidget::FillList()
 			const FString Name = Names.IsValidIndex(Option - 1) ? Names[Option - 1] : FString();
 			const FString WaitsOn = UCataclysmEmpireTree::OptionWaitsOn(NodeTable(), ChoosingOptionFor, Option);
 			Button->SetChoice(Value,
-							  FText::FromString(UCataclysmEmpireTreeLayout::OptionLabel(Option, Name, Chosen == Option,
-																						WaitsOn)),
-							  Chosen == Option, !Name.IsEmpty());
+							  FText::FromString(UCataclysmEmpireTreeLayout::OptionLabel(
+								  Option, Name, Chosen == Option, WaitsOn, Extra == Option ? Granter : FString())),
+							  Chosen == Option || Extra == Option, !Name.IsEmpty());
 			Button->SetDimmed(!WaitsOn.IsEmpty());
 			continue;
 		}
@@ -435,7 +481,15 @@ void UCataclysmEmpireTreeWidget::HandleBranchClicked(FName Value)
 		if (!ChoosingOptionFor.IsNone())
 		{
 			// THE LIST STAYS: its three values do not change, so it is relabelled in place, not emptied under the click.
-			ChooseOption(ChoosingOptionFor, Option);
+			// Imperial Prowess's extra option goes through its own call (issue #2741 slice 8).
+			if (bChoosingExtraOption)
+			{
+				ChooseExtraOption(ChoosingOptionFor, Option);
+			}
+			else
+			{
+				ChooseOption(ChoosingOptionFor, Option);
+			}
 		}
 		return;
 	}
@@ -493,7 +547,10 @@ void UCataclysmEmpireTreeWidget::DescribeNodeButton(UCataclysmChoiceButton& Butt
 	const FString Refusal = bHeld ? UCataclysmEmpireTree::RefusalForSpending(NodeTable(), EdgeTable(), Spent, Node,
 																			 *Tree.Bank)
 								  : Tree.Why;
-	const bool bAwaitsChoice = UCataclysmEmpireTree::AwaitsAnOptionChoice(NodeTable(), Spent, Node);
+	// AND AN EARLIER MILESTONE WHERE IMPERIAL PROWESS'S EXTRA OPTION IS OPEN, which a click offers the same way (issue
+	// #2741 slice 8).
+	const bool bAwaitsChoice = UCataclysmEmpireTree::AwaitsAnOptionChoice(NodeTable(), Spent, Node)
+		|| UCataclysmEmpireTree::OffersAnExtraOption(NodeTable(), UCataclysmEmpireTree::LoadEffectTable(), Spent, Node);
 
 	Button.SetChoice(Node, FText::FromString(UCataclysmEmpireTreeLayout::NodeLabel(*Row, Points)), Points > 0, true);
 	Button.SetDimmed(!Refusal.IsEmpty() && !bAwaitsChoice);

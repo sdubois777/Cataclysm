@@ -80,6 +80,14 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bWaitsOnABuild = false;
+
+	/**
+	 * What buying it now would leave owed: the price less the gold held, when the credit the empire upgrade tree gives
+	 * is what lets it be bought (issue #2741 slice 6e, D2); 0 when the balance covers it or it cannot be bought. Its
+	 * button says so (D6).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 OwedIfBought = 0;
 };
 
 /**

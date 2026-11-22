@@ -3741,16 +3741,6 @@ EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
 #: waits on, or built it. The coordinating session's rulings R1 to R10 of that
 #: day; `docs/DECISIONS.md` has them.
 EMPIRE_TREE_SYSTEMS = {
-    # A Treasurer city upgrade can be bought since issue #2781; what R1 to R4 do
-    # with one is built in a later slice of #2741.
-    "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
-                          "yet (issue #2741)"),
-    # Tax Collection and Treasury Guard: the owner ruled on both on 2026-11-20,
-    # after slice 6c was written; slice 6d builds them.
-    "gold rules": "its gold rules, which are not built yet (issue #2741)",
-    # Global Credit and Sovereign Loans: the owner allowed a gold debt only through
-    # the tree's own options for one (2026-11-20); a later slice builds it.
-    "gold debt": "a gold debt, which is not built yet (issue #2741)",
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
@@ -3767,9 +3757,6 @@ EMPIRE_TREE_SYSTEMS = {
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
     "loot filter": "a loot filter, which the game does not have",
-    "prowess ruling": ("a ruling on what \"an additional keystone from any of "
-                       "the previous tiers\" means, which the owner has not "
-                       "made"),
     "destroy upgrade": ("a city screen action that destroys a city upgrade, "
                         "which the game does not have"),
 }
@@ -3777,7 +3764,9 @@ EMPIRE_TREE_SYSTEMS = {
 #: EVERY NODE AND EVERY CENTRE CAPSTONE OPTION THE GAME WILL BUILD IN #2741, by
 #: name, with the slice that makes it act: 3 for the city numbers, 4 for a
 #: dungeon's walk and depth, 5 for the player's loot and movement, 6 for gold
-#: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price).
+#: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price), 7
+#: for the four nodes that read a Treasurer city upgrade (2026-11-21), 8 for
+#: Imperial Prowess's extra option (2026-11-21).
 #: Until its slice lands a node here can be bought and does nothing.
 #:
 #: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
@@ -3796,6 +3785,9 @@ EMPIRE_TREE_BUILT = {
     "The Delver": 4, "The Collector's Decree": 4, "The Warlord": 4,
     "The Last Stand": 4,
     "The Hoarder": 5,
+    # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
+    # additional keystone from a previous tier"; J1 to J5 the same day.
+    "Imperial Prowess": 8,
     # Architect.
     "Foundation": 3, "Structural Integrity": 3, "Urban Planning": 3,
     "Fortified Gates": 3, "Enduring Foundations": 3, "Civil Order": 3,
@@ -3838,6 +3830,14 @@ EMPIRE_TREE_BUILT = {
     # Treasury, slice 6c: the gold held and the day's income (B6 to B8).
     "The Gilded Path": 6, "Venture Capital": 6, "Imperial Reserve": 6,
     "Pax Imperialis": 6, "Wealth Interest": 6,
+    # Treasury, slice 6d: the owner's rulings of 2026-11-20 (D8, D9).
+    "Treasury Guard": 6, "Tax Collection": 6,
+    # Treasury, slice 6e: the gold debt the owner allowed through them (D1 to D7).
+    "Global Credit": 6, "Sovereign Loans": 6,
+    # Treasury, slice 7: the four nodes that read a Treasurer city upgrade, which
+    # #2781 made buyable (R1 to R4; readings T1 to T4, ruled 2026-11-21).
+    "Commercial Hubs": 7, "Economic Zones": 7, "Trade Routes": 7,
+    "The Golden Touch": 7,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3854,7 +3854,6 @@ EMPIRE_TREE_BUILT = {
 EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
-    "Imperial Prowess": "prowess ruling",
     # Architect.
     "Scaffolding": "build time", "Rapid Renovation": "build time",
     "Scorched Earth": "destroy upgrade",
@@ -3864,18 +3863,10 @@ EMPIRE_TREE_REFUSED = {
     "Field Depot II": "stash", "Field Depot III": "stash",
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
-    # Treasury. Slice 6 builds the nodes its gold rules reach (6a eleven, 6b five,
-    # 6c five, 2026-11-20). R1 to R4 wait on their Treasurer rules (#2781 made the
-    # city upgrades buyable). The owner ruled on R7 to R9 and Tax Collection on
-    # 2026-11-20, after this slice was written: Tax Collection and Treasury Guard
-    # wait on their gold rules, Global Credit and Sovereign Loans on the gold debt
-    # the owner allowed through them. The rest wait on what their text needs and
-    # the game lacks.
-    "Tax Collection": "gold rules",
-    "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
-    "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
-    "Treasury Guard": "gold rules", "Global Credit": "gold debt",
-    "Sovereign Loans": "gold debt",
+    # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
+    # five, 6c five, 6d two, 6e two, 2026-11-20) and slice 7 the four that read a
+    # Treasurer city upgrade (2026-11-21); the rest wait on what their text needs
+    # and the game lacks.
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
@@ -4126,6 +4117,15 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "MagicFindPerTenThousandGoldHeld", "MagicFindPerFiftyThousandGoldHeld",
     "DamageTakenPerHundredThousandGold", "GoldPerThousandCitizensDaily",
     "GoldInterestEveryTwentyDays",
+    # Slice 6d: Treasury Guard and Tax Collection.
+    "DamageTakenPerFiftyThousandGold", "GoldShareOfPopulationEveryTenDays",
+    # Slice 6e: Global Credit and Sovereign Loans.
+    "UpgradeShortfallAllowed", "UpgradeShortfallAllowedRepaidDaily",
+    # Slice 7: Commercial Hubs, Economic Zones, Trade Routes, The Golden Touch.
+    "GoldIncreasedOnTreasurerCity", "GoldMoreFromTreasurerCities",
+    "GoldEveryTwentyDaysPerTreasurerCity", "GoldAndMaterialsPerTreasurerCity",
+    # Slice 8: Imperial Prowess.
+    "ExtraEarlierMilestoneOption",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4303,6 +4303,40 @@ EMPIRE_TREE_EFFECTS = {
     "Imperial Reserve": [("DamageTakenPerHundredThousandGold", 0.01, 0, "", 0.25)],
     "Pax Imperialis": [("GoldPerThousandCitizensDaily", 5.0)],
     "Wealth Interest": [("GoldInterestEveryTwentyDays", 0.005, 0, "", 5000.0)],
+    # Slice 6d, the owner's rulings of 2026-11-20, relayed by the coordinating
+    # session. TREASURY GUARD reduces every city's damage ("1. to your cities")
+    # for each whole 50,000 tier 1 gold held, compounded, held at its own 20% and
+    # multiplied with Imperial Reserve (D9); TAX COLLECTION pays 2% a point of the
+    # standing cities' citizens as tier 1 gold every 10th day (D8). The steps are
+    # in C++.
+    "Treasury Guard": [("DamageTakenPerFiftyThousandGold", 0.01, 0, "", 0.20)],
+    "Tax Collection": [("GoldShareOfPopulationEveryTenDays", 0.02)],
+    # Slice 6e, the owner's ruling of 2026-11-20, "no gold debt unless there's an
+    # option for it in the empire tree": GLOBAL CREDIT lets a city upgrade be
+    # short by 5% a point of its price and SOVEREIGN LOANS by 20% a point, one
+    # allowance and one debt, the whole balance taken and the rest owed, nothing
+    # more on credit until it is paid (D2); gold picked up pays it down first
+    # (D3), and with Sovereign Loans a tenth of it a day (D4). No cap: built as
+    # written, tuned later.
+    "Global Credit": [("UpgradeShortfallAllowed", 0.05)],
+    "Sovereign Loans": [("UpgradeShortfallAllowedRepaidDaily", 0.20)],
+    # Slice 7, the four nodes that read a Treasurer city: a standing city holding
+    # at least one upgrade of the City Upgrades sheet's Treasurer branch (T1,
+    # ruled 2026-11-21). COMMERCIAL HUBS increases a kill's gold while the dungeon's city
+    # is one; ECONOMIC ZONES is a "more" on the gold such a city generates (T2);
+    # TRADE ROUTES pays 50 tier 1 gold a point for each every 20th day (T3); THE
+    # GOLDEN TOUCH increases a kill's gold and crafting materials for each (T3,
+    # T4). The figures are the texts'; the counts and the steps are in C++.
+    "Commercial Hubs": [("GoldIncreasedOnTreasurerCity", 0.20)],
+    "Economic Zones": [("GoldMoreFromTreasurerCities", 0.05)],
+    "Trade Routes": [("GoldEveryTwentyDaysPerTreasurerCity", 50.0)],
+    "The Golden Touch": [("GoldAndMaterialsPerTreasurerCity", 0.10)],
+    # Slice 8, the project owner's ruling of 2026-11-21: "Keystones are tier gated
+    # behind point thresholds. Imperial prowess lets you pick an additional
+    # keystone from a previous tier." The keystones with point thresholds are the
+    # centre milestones' options; "an additional keystone" is one (J2). The rules
+    # that take it are in C++ (`UCataclysmEmpireTree::ChooseExtraOption`).
+    "Imperial Prowess": [("ExtraEarlierMilestoneOption", 1.0)],
 }
 
 

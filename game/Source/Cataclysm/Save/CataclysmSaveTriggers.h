@@ -76,7 +76,10 @@ enum class ECataclysmSaveTrigger : uint8
 	 * NoteTheEmpireTreeChanged`, issue #2741 slices 1b and 1c; a respec raises
 	 * `EmpireTreeRespecced` as well, for the run record). A Solo Self-Found
 	 * character's own tree raises `OwnEmpireTreeChanged` instead: it has no
-	 * account record.
+	 * account record. SO DOES A DEBT that changes in the account (issue #2741
+	 * slice 6e): a city upgrade bought on credit, gold picked up paying it down,
+	 * and Sovereign Loans' part taken on a day that passes (the day's hook in
+	 * `UCataclysmGameInstance::WireTheRunToTheBalance`).
 	 * This said "Nothing else raises it yet -- there is no stash" until slice 1b;
 	 * gold had already made that untrue. Nothing fills the stash yet.
 	 */

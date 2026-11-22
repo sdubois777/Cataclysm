@@ -131,7 +131,8 @@ FString UCataclysmEmpireTreeLayout::NodeLabel(const FCataclysmEmpireTreeNodeRow&
 }
 
 FString UCataclysmEmpireTreeLayout::NodeDetail(const FCataclysmEmpireTreeNodeRow& Row, int32 Points,
-											   int32 ChosenOption, const FString& Refusal)
+											   int32 ChosenOption, const FString& Refusal, int32 ExtraOption,
+											   const FString& ExtraGranter)
 {
 	FString Detail = FString::Printf(TEXT("%s (%s, %d of %d): %s"), *Row.NodeName, *ViewLabel(Row.Branch), Points,
 									 Row.MaxPoints, *Row.Description);
@@ -144,8 +145,12 @@ FString UCataclysmEmpireTreeLayout::NodeDetail(const FCataclysmEmpireTreeNodeRow
 	{
 		if (!Options[Index].IsEmpty())
 		{
-			Named.Add(FString::Printf(TEXT("%d %s%s"), Index + 1, *Options[Index],
-									  ChosenOption == Index + 1 ? TEXT(" (chosen)") : TEXT("")));
+			// AND THE EXTRA OPTION IMPERIAL PROWESS TOOK, marked with what took it (issue #2741 slice 8).
+			const FString Extra = ExtraOption == Index + 1 && ChosenOption != Index + 1
+				? FString::Printf(TEXT(" (taken with %s)"), *ExtraGranter)
+				: FString();
+			Named.Add(FString::Printf(TEXT("%d %s%s%s"), Index + 1, *Options[Index],
+									  ChosenOption == Index + 1 ? TEXT(" (chosen)") : TEXT(""), *Extra));
 		}
 	}
 	if (!Named.IsEmpty())
@@ -161,12 +166,16 @@ FString UCataclysmEmpireTreeLayout::NodeDetail(const FCataclysmEmpireTreeNodeRow
 }
 
 FString UCataclysmEmpireTreeLayout::OptionLabel(int32 Option, const FString& Name, bool bChosen,
-												const FString& WaitsOn)
+												const FString& WaitsOn, const FString& TakenWith)
 {
 	FString Label = FString::Printf(TEXT("%d  %s"), Option, *Name);
 	if (bChosen)
 	{
 		Label += TEXT("  (chosen)");
+	}
+	if (!TakenWith.IsEmpty())
+	{
+		Label += FString::Printf(TEXT("  (taken with %s)"), *TakenWith);
 	}
 	if (!WaitsOn.IsEmpty())
 	{

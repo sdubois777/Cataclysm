@@ -12,6 +12,7 @@ const FString UCataclysmEmpireTree::CentreBranch = TEXT("Centre");
 const FString UCataclysmEmpireTree::BasicKind = TEXT("basic");
 const FString UCataclysmEmpireTree::KeystoneKind = TEXT("keystone");
 const FString UCataclysmEmpireTree::CapstoneKind = TEXT("capstone");
+const FString UCataclysmEmpireTree::TreasurerBranch = TEXT("Treasurer");
 
 // A NAMED NAMESPACE AND NOT AN UNNAMED ONE. `CataclysmPassiveTree.cpp` has helpers of the same names in its unnamed
 // namespace, and a unity build may compile both files as one, where two unnamed namespaces are one namespace and the
@@ -131,14 +132,18 @@ const UDataTable* UCataclysmEmpireTree::LoadEffectTable()
 // namespace for the unity build's sake, as the one above.
 namespace CataclysmEmpireTreeEffectRows
 {
-	/** A node's points, or one for an option that is chosen and whose capstone's point is bought. */
+	/** A node's points, or one for an option that is chosen, or taken as the extra option (Imperial Prowess, issue
+	 *  #2741 slice 8), and whose capstone's point is bought. */
 	int32 PointsFor(const FCataclysmEmpireTreeEffectRow& Row, const FCataclysmPassiveAllocation& Allocation)
 	{
 		const FName Node(*Row.Node);
 		const int32 Held = Allocation.PointsIn(Node);
-		return Row.Option == 0
-			? Held
-			: (Held > 0 && Allocation.ChosenOptionIn(Node) == Row.Option ? 1 : 0);
+		if (Row.Option == 0)
+		{
+			return Held;
+		}
+		const bool bTaken = Allocation.ChosenOptionIn(Node) == Row.Option || Allocation.ExtraOptionIn(Node) == Row.Option;
+		return Held > 0 && bTaken ? 1 : 0;
 	}
 
 	/** The total, for an effect that adds: per point, times whole steps of another branch where it counts them (C3),
@@ -294,6 +299,13 @@ FCataclysmEmpireTreeBonuses UCataclysmEmpireTree::CityBonusesFor(const UDataTabl
 			Bonuses.ReductionPerGoldStep = Row->PerPoint;
 			Bonuses.GoldStepPoints += Points;
 			Bonuses.GoldReductionCap = Row->Cap;
+			break;
+
+		// SLICE 6D. Treasury Guard, the same for each whole 50,000, held at its own cap (D9).
+		case ECataclysmEmpireTreeEffect::DamageTakenPerFiftyThousandGold:
+			Bonuses.ReductionPerHeldGoldStep = Row->PerPoint;
+			Bonuses.HeldGoldStepPoints += Points;
+			Bonuses.HeldGoldReductionCap = Row->Cap;
 			break;
 		case ECataclysmEmpireTreeEffect::SanctuarySurvivesAt:
 			Bonuses.SanctuarySurvivesAt = FMath::Max(Bonuses.SanctuarySurvivesAt, Row->PerPoint);
@@ -507,6 +519,38 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 			Bonuses.GoldInterestEveryTwentyDays += Row->PerPoint * static_cast<float>(Points);
 			Bonuses.GoldInterestCap = Row->Cap;
 			break;
+
+		// SLICE 6D. Tax Collection (D8).
+		case ECataclysmEmpireTreeEffect::GoldShareOfPopulationEveryTenDays:
+			Bonuses.GoldShareOfPopulationEveryTenDays += Total;
+			break;
+
+		// SLICE 6E. Global Credit and Sovereign Loans (D2, D4).
+		case ECataclysmEmpireTreeEffect::UpgradeShortfallAllowed:
+			Bonuses.UpgradeShortfallAllowed += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeShortfallAllowedRepaidDaily:
+			Bonuses.UpgradeShortfallAllowedRepaidDaily += Total;
+			break;
+
+		// SLICE 7. The four nodes that read a Treasurer city (T1 to T4, ruled 2026-11-21).
+		case ECataclysmEmpireTreeEffect::GoldIncreasedOnTreasurerCity:
+			Bonuses.GoldIncreasedOnTreasurerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldMoreFromTreasurerCities:
+			Bonuses.GoldMoreFromTreasurerCities += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldEveryTwentyDaysPerTreasurerCity:
+			Bonuses.GoldEveryTwentyDaysPerTreasurerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldAndMaterialsPerTreasurerCity:
+			Bonuses.GoldAndMaterialsPerTreasurerCity += Total;
+			break;
+
+		// SLICE 8. Imperial Prowess: how many extra options (J2: one).
+		case ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption:
+			Bonuses.ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);
+			break;
 		default:
 			break;
 		}
@@ -581,6 +625,11 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 				}
 			}
 		}
+
+		// AND WHETHER THE DUNGEON'S OWN CITY IS A TREASURER CITY (slice 7, T1): Commercial Hubs reads it, and Economic
+		// Zones raises the gold of a dungeon standing on one. A fallen city is none (X1).
+		const FCataclysmCity* DungeonCity = Run.Map->Find(Dungeon.CityId);
+		State.bDungeonCityIsTreasurer = DungeonCity != nullptr && IsTreasurerCity(*DungeonCity);
 	}
 	return State;
 }
@@ -664,6 +713,11 @@ FCataclysmEmpireTreeDropRules UCataclysmEmpireTree::DropRulesFor(const FCataclys
 
 	// AND THE MAGIC FIND THE GOLD HELD GIVES THE KILL (slice 6c, B6), which draws nothing either.
 	Rules.MagicFindFromGold = MagicFindFromGoldFor(Bonuses, State);
+
+	// AND THE GOLDEN TOUCH'S CRAFTING MATERIALS (slice 7, T4): the material roll's expected count is multiplied by one
+	// plus its increase for each Treasurer city. Draws nothing: the kill multiplies a figure it already passes.
+	Rules.MaterialsMultiplier = 1.0f + FMath::Max(0.0f, Bonuses.GoldAndMaterialsPerTreasurerCity)
+		* static_cast<float>(FMath::Max(0, State.TreasurerCities));
 	return Rules;
 }
 
@@ -689,9 +743,32 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::EmpireStateFor(const UCat
 			}
 			++State.StandingCities;
 			State.StandingCityUpgrades += City.Upgrades.Num();
+
+			// SLICE 7'S COUNTS (T1, T3): the Treasurer cities and the citizens living in them.
+			if (IsTreasurerCity(City))
+			{
+				++State.TreasurerCities;
+				State.TreasurerCitizens += Run.Map->PopulationOf(City);
+			}
 		}
 	}
 	return State;
+}
+
+bool UCataclysmEmpireTree::IsTreasurerCity(const FCataclysmCity& City)
+{
+	if (City.bFallen)
+	{
+		return false;
+	}
+	for (const FCataclysmCityUpgrade& Upgrade : City.Upgrades)
+	{
+		if (UCataclysmCityUpgradeMapping::BranchFor(Upgrade.RowName) == TreasurerBranch)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 float UCataclysmEmpireTree::MagicFindFromGoldFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
@@ -726,12 +803,20 @@ FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCata
 		FMath::Max(0, State.StandingCities)) + Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
 		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps);
 
+	// ECONOMIC ZONES' "MORE" (slice 7, T2) raises the gold the Treasurer cities generate: all of Trade Routes', and of
+	// Pax Imperialis' and Tax Collection's the share counted from the citizens living in Treasurer cities.
+	const double Zones = FMath::Max(0.0, static_cast<double>(Bonuses.GoldMoreFromTreasurerCities));
+	const double TreasurerShare = State.Citizens > 0.0f
+		? FMath::Clamp(static_cast<double>(State.TreasurerCitizens) / static_cast<double>(State.Citizens), 0.0, 1.0)
+		: 0.0;
+	const double CitizensRaised = 1.0 + Zones * TreasurerShare;
+
 	// PAX IMPERIALIS, EVERY DAY: its tier 1 gold for each whole 1,000 citizens of the standing cities.
 	if (Bonuses.GoldPerThousandCitizensDaily > 0.0f)
 	{
 		const double Thousands = FMath::FloorToDouble(FMath::Max(0.0f, State.Citizens) / PaxCitizensAStep);
 		Income.Pax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerThousandCitizensDaily) * Thousands * Scale
-										 * Raised);
+										 * Raised * CitizensRaised);
 	}
 
 	// WEALTH INTEREST, EVERY 20TH DAY: its share of the gold held, held at its tier 1 cap a payment, and then raised.
@@ -744,6 +829,24 @@ FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCata
 			Interest = FMath::Min(Interest, static_cast<double>(Bonuses.GoldInterestCap) * Scale);
 		}
 		Income.Interest = FMath::RoundToInt64(Interest * Raised);
+	}
+
+	// TAX COLLECTION, EVERY 10TH DAY (slice 6d, D8): its share of the standing cities' citizens, the count Pax
+	// Imperialis reads, as tier 1 gold, and then raised as Pax is.
+	if (Bonuses.GoldShareOfPopulationEveryTenDays > 0.0f && Day > 0 && Day % TaxCollectionDaysAStep == 0)
+	{
+		Income.Tax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldShareOfPopulationEveryTenDays)
+										 * static_cast<double>(FMath::Max(0.0f, State.Citizens)) * Scale * Raised
+										 * CitizensRaised);
+	}
+
+	// TRADE ROUTES, EVERY 20TH DAY (slice 7, T3): its tier 1 gold for each Treasurer city, raised as Pax is and wholly
+	// by Economic Zones, because each Treasurer city generates all of it.
+	if (Bonuses.GoldEveryTwentyDaysPerTreasurerCity > 0.0f && State.TreasurerCities > 0 && Day > 0
+		&& Day % TradeRoutesDaysAStep == 0)
+	{
+		Income.Trade = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldEveryTwentyDaysPerTreasurerCity)
+										   * static_cast<double>(State.TreasurerCities) * Scale * Raised * (1.0 + Zones));
 	}
 	return Income;
 }
@@ -761,10 +864,18 @@ float UCataclysmEmpireTree::GoldMultiplierFor(const FCataclysmEmpireTreePlayerBo
 		+ Bonuses.GoldPerActiveType * static_cast<float>(FMath::Max(0, State.ActiveTypes))
 		+ Bonuses.GoldPerFallenCity * static_cast<float>(FMath::Max(0, State.FallenCitiesNotErased))
 		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps
-		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps;
+		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
+		// SLICE 7 (T1, T3): The Golden Touch's increase for each Treasurer city, and Commercial Hubs' while the dungeon's
+		// city is one. Both texts say "increased", so both add into the one increase.
+		+ Bonuses.GoldAndMaterialsPerTreasurerCity * static_cast<float>(FMath::Max(0, State.TreasurerCities))
+		+ (State.bDungeonCityIsTreasurer ? Bonuses.GoldIncreasedOnTreasurerCity : 0.0f);
 	// STIMULUS PACKAGE'S "DOUBLED" IS A "MORE" OF ITS OWN (G1, B2), while the run's population has fallen below half.
 	const float Stimulus = State.bPopulationBelowHalf ? FMath::Max(0.0f, Bonuses.GoldDoubledBelowHalfPopulation) : 0.0f;
-	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore)) * (1.0f + Stimulus);
+	// ECONOMIC ZONES' "MORE" IS ANOTHER (T2), while the dungeon's city is a Treasurer city: the design document names
+	// it, "+5% more Gold from all sources per point", as a "more" that is correct as written.
+	const float Zones = State.bDungeonCityIsTreasurer ? FMath::Max(0.0f, Bonuses.GoldMoreFromTreasurerCities) : 0.0f;
+	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore)) * (1.0f + Stimulus)
+		* (1.0f + Zones);
 }
 
 FCataclysmEmpireTreeClearPay UCataclysmEmpireTree::ClearPayFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
@@ -789,8 +900,13 @@ FCataclysmEmpireTreeClearPay UCataclysmEmpireTree::ClearPayFor(const FCataclysmE
 			+ Bonuses.GoldPerStandingCity * static_cast<float>(FMath::Max(0, State.StandingCities))
 			+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
 			+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps;
+		// AND ECONOMIC ZONES' "MORE" WHILE THE DUNGEON'S CITY IS A TREASURER CITY (slice 7, T2): the payout is gold that
+		// city's dungeon generates.
+		const double Zones = State.bDungeonCityIsTreasurer
+			? FMath::Max(0.0, static_cast<double>(Bonuses.GoldMoreFromTreasurerCities)) : 0.0;
 		Pay.Salvage = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerFloorAtClear) * Floors
-										  * FMath::Max(0.0, GoldScale) * (1.0 + FMath::Max(0.0f, Increased)));
+										  * FMath::Max(0.0, GoldScale) * (1.0 + FMath::Max(0.0f, Increased))
+										  * (1.0 + Zones));
 	}
 
 	// CLEANUP CREW (B3): a tenth of the gold left lying, rounded down, and multiplied by nothing.
@@ -829,6 +945,29 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 		Reduced += Bonuses.SurgeDamagedCityUpgradePriceReduced;
 	}
 	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
+}
+
+int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)
+{
+	// THE TWO SHARES ADD (D2), as two "up to X% of the cost" of one price do; the price itself is the most one can be
+	// short by.
+	const double Share = static_cast<double>(FMath::Max(0.0f, Bonuses.UpgradeShortfallAllowed))
+		+ static_cast<double>(FMath::Max(0.0f, Bonuses.UpgradeShortfallAllowedRepaidDaily));
+	if (Price <= 0 || Share <= 0.0)
+	{
+		return 0;
+	}
+	return FMath::Min(Price, static_cast<int64>(FMath::FloorToDouble(static_cast<double>(Price) * Share)));
+}
+
+bool UCataclysmEmpireTree::AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return Bonuses.UpgradeShortfallAllowed > 0.0f || Bonuses.UpgradeShortfallAllowedRepaidDaily > 0.0f;
+}
+
+bool UCataclysmEmpireTree::RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return Bonuses.UpgradeShortfallAllowedRepaidDaily > 0.0f;
 }
 
 float UCataclysmEmpireTree::MovementSpeedFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
@@ -1165,6 +1304,137 @@ bool UCataclysmEmpireTree::ChooseOption(const UDataTable* NodeTable, FCataclysmP
 
 	Allocation.SetChosenOption(Node, Option);
 	return true;
+}
+
+FString UCataclysmEmpireTree::ExtraOptionGranterName(const UDataTable* NodeTable, const UDataTable* EffectTable)
+{
+	if (!NodeTable || !EffectTable)
+	{
+		return FString();
+	}
+	for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+	{
+		const FCataclysmEmpireTreeEffectRow* Row = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+		if (Row && Row->Effect == ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption)
+		{
+			const FCataclysmEmpireTreeNodeRow* Node = FindNode(NodeTable, FName(*Row->Node));
+			return Node ? CataclysmEmpireTreeTables::OptionField(*Node, Row->Option, /*bWaitsOn=*/false) : FString();
+		}
+	}
+	return FString();
+}
+
+FString UCataclysmEmpireTree::RefusalForChoosingExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+															const FCataclysmPassiveAllocation& Allocation, FName Node,
+															int32 Option)
+{
+	const FCataclysmEmpireTreeNodeRow* Row = FindNode(NodeTable, Node);
+	if (!Row)
+	{
+		return FString::Printf(TEXT("%s is not a node of the empire upgrade tree."), *Node.ToString());
+	}
+
+	// THE MILESTONE THAT GRANTS THE PICK, AND ITS THRESHOLD: read from the effect row rather than named, as every other
+	// node here is. No row, or the row's option not held, is no extra pick.
+	const FCataclysmEmpireTreeEffectRow* Granting = nullptr;
+	if (EffectTable)
+	{
+		for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+		{
+			const FCataclysmEmpireTreeEffectRow* Effect = reinterpret_cast<const FCataclysmEmpireTreeEffectRow*>(Pair.Value);
+			if (Effect && Effect->Effect == ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption)
+			{
+				Granting = Effect;
+				break;
+			}
+		}
+	}
+	const FString Granter = ExtraOptionGranterName(NodeTable, EffectTable);
+	const int32 Allowed = PlayerBonusesFor(NodeTable, EffectTable, Allocation).ExtraEarlierMilestoneOptions;
+	if (!Granting || Allowed <= 0)
+	{
+		return FString::Printf(TEXT("A second option of %s can be taken only with %s, chosen and its point bought."),
+							   *Row->NodeName, Granter.IsEmpty() ? TEXT("a node that grants one") : *Granter);
+	}
+
+	if (!CataclysmEmpireTreeTables::IsCentreCapstone(*Row))
+	{
+		return FString::Printf(TEXT("%s offers no choice."), *Row->NodeName);
+	}
+
+	const FString& Name = CataclysmEmpireTreeTables::OptionField(*Row, Option, /*bWaitsOn=*/false);
+	if (Name.IsEmpty())
+	{
+		return FString::Printf(TEXT("Choose 1, 2 or 3, not %d."), Option);
+	}
+
+	// "FROM A PREVIOUS TIER": a milestone whose threshold is below the granting milestone's. The granting milestone
+	// itself is not one.
+	const FCataclysmEmpireTreeNodeRow* GrantingRow = FindNode(NodeTable, FName(*Granting->Node));
+	if (!GrantingRow || Row->Threshold >= GrantingRow->Threshold)
+	{
+		return FString::Printf(TEXT("%s takes an option from a tier before %s, and %s is not one."), *Granter,
+							   GrantingRow ? *GrantingRow->NodeName : TEXT("its own"), *Row->NodeName);
+	}
+
+	// J1: AN ADDITIONAL OPTION, BESIDE THE ONE ALREADY TAKEN THERE, so that one must be chosen and its point bought.
+	const int32 Chosen = Allocation.ChosenOptionIn(Node);
+	if (Chosen <= 0 || Allocation.PointsIn(Node) <= 0)
+	{
+		return FString::Printf(TEXT("%s's own option must be chosen and its point bought before %s can add another."),
+							   *Row->NodeName, *Granter);
+	}
+	if (Chosen == Option)
+	{
+		return FString::Printf(TEXT("%s is already %s's choice."), *Name, *Row->NodeName);
+	}
+
+	// J4: AN OPTION WAITING ON A SYSTEM IS REFUSED HERE AS IT IS AS A CHOICE.
+	const FString& Needs = CataclysmEmpireTreeTables::OptionField(*Row, Option, /*bWaitsOn=*/true);
+	if (!Needs.IsEmpty())
+	{
+		return FString::Printf(TEXT("%s cannot be chosen yet: it needs %s."), *Name, *Needs);
+	}
+
+	// J2 AND J5: ONE EXTRA OPTION IN TOTAL, AND IT STANDS UNTIL A RESPEC.
+	if (Allocation.ExtraOption > 0)
+	{
+		const FCataclysmEmpireTreeNodeRow* Taken = FindNode(NodeTable, Allocation.ExtraOptionNode);
+		const FString TakenName = Taken
+			? CataclysmEmpireTreeTables::OptionField(*Taken, Allocation.ExtraOption, /*bWaitsOn=*/false)
+			: Allocation.ExtraOptionNode.ToString();
+		return FString::Printf(TEXT("%s's extra option is already taken: %s. A respec of the empire tree frees it."),
+							   *Granter, *TakenName);
+	}
+
+	return FString();
+}
+
+bool UCataclysmEmpireTree::ChooseExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+											 FCataclysmPassiveAllocation& Allocation, FName Node, int32 Option,
+											 FString& OutReason)
+{
+	OutReason = RefusalForChoosingExtraOption(NodeTable, EffectTable, Allocation, Node, Option);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	Allocation.SetExtraOption(Node, Option);
+	return true;
+}
+
+bool UCataclysmEmpireTree::OffersAnExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+											   const FCataclysmPassiveAllocation& Allocation, FName Node)
+{
+	for (int32 Option = 1; Option <= CapstoneOptions; ++Option)
+	{
+		if (RefusalForChoosingExtraOption(NodeTable, EffectTable, Allocation, Node, Option).IsEmpty())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 bool UCataclysmEmpireTree::AwaitsAnOptionChoice(const UDataTable* NodeTable,

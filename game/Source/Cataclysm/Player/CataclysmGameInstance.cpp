@@ -457,10 +457,212 @@ bool UCataclysmGameInstance::SpendGoldFor(const UObject* WorldContext, int64 Gol
 	return true;
 }
 
+namespace CataclysmGameInstanceGold
+{
+	/** A debt cleared to nought takes nothing a day any more. */
+	void SettleAccountDebt(UCataclysmAccountSave& Account)
+	{
+		if (Account.GoldOwed <= 0)
+		{
+			Account.GoldOwed = 0;
+			Account.GoldOwedEachDay = 0;
+		}
+	}
+
+	/** Sovereign Loans' part a day: a tenth of the debt, rounded up, so ten days pay it all (D4). */
+	int64 DailyPartOf(int64 Owed)
+	{
+		const int64 Days = UCataclysmEmpireTree::SovereignLoansDays;
+		return Owed > 0 ? (Owed + Days - 1) / Days : 0;
+	}
+}
+
+bool UCataclysmGameInstance::GoldOwedBy(const UObject* WorldContext, int64& OutOwed, int64& OutEachDay)
+{
+	OutOwed = 0;
+	OutEachDay = 0;
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		OutOwed = State->GetOwnGoldOwed();
+		OutEachDay = State->GetOwnGoldOwedEachDay();
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutOwed = Account->GoldOwed;
+	OutEachDay = Account->GoldOwedEachDay;
+	return true;
+}
+
+bool UCataclysmGameInstance::SpendGoldOnCreditFor(const UObject* WorldContext, int64 Price, int64 Allowance,
+												  bool bRepaidDaily, bool& bOutFromTheCharacter, int64& OutOwed)
+{
+	bOutFromTheCharacter = false;
+	OutOwed = 0;
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (Price <= 0 || Allowance <= 0 || State == nullptr)
+	{
+		return false;
+	}
+
+	// A SOLO SELF-FOUND CHARACTER BORROWS AGAINST ITS OWN, as it pays from its own.
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		const int64 Short = Price - State->GetOwnGold();
+		if (State->GetOwnGoldOwed() > 0 || Short <= 0 || Short > Allowance)
+		{
+			return false;
+		}
+		State->SetOwnGold(0);
+		State->SetOwnGoldOwed(Short, bRepaidDaily ? CataclysmGameInstanceGold::DailyPartOf(Short) : 0);
+		bOutFromTheCharacter = true;
+		OutOwed = Short;
+		return true;
+	}
+
+	// EVERY OTHER CHARACTER AGAINST ITS LETHALITY MODE'S ACCOUNT: the whole balance, and the rest owed (D2).
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	const int64 Short = Price - Account->Gold;
+	if (Account->GoldOwed > 0 || Short <= 0 || Short > Allowance)
+	{
+		return false;
+	}
+	Account->Gold = 0;
+	Account->GoldOwed = Short;
+	Account->GoldOwedEachDay = bRepaidDaily ? CataclysmGameInstanceGold::DailyPartOf(Short) : 0;
+	OutOwed = Short;
+	return true;
+}
+
+bool UCataclysmGameInstance::UndoCreditFor(const UObject* WorldContext, int64 Taken, int64 Owed)
+{
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		State->SetOwnGold(State->GetOwnGold() + FMath::Max<int64>(0, Taken));
+		State->SetOwnGoldOwed(State->GetOwnGoldOwed() - FMath::Max<int64>(0, Owed), State->GetOwnGoldOwedEachDay());
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	Account->Gold += FMath::Max<int64>(0, Taken);
+	Account->GoldOwed -= FMath::Max<int64>(0, Owed);
+	CataclysmGameInstanceGold::SettleAccountDebt(*Account);
+	return true;
+}
+
+bool UCataclysmGameInstance::AddPickedUpGoldFor(const UObject* WorldContext, int64 Gold, bool& bOutIntoTheCharacter,
+												int64& OutRepaid)
+{
+	bOutIntoTheCharacter = false;
+	OutRepaid = 0;
+	if (Gold <= 0)
+	{
+		return false;
+	}
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+
+	// THE DEBT FIRST, THEN THE BALANCE, in one place so the two change together (D3).
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		OutRepaid = FMath::Min(Gold, State->GetOwnGoldOwed());
+		State->SetOwnGoldOwed(State->GetOwnGoldOwed() - OutRepaid, State->GetOwnGoldOwedEachDay());
+		State->AddOwnGold(Gold - OutRepaid);
+		bOutIntoTheCharacter = true;
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutRepaid = FMath::Min(Gold, FMath::Max<int64>(0, Account->GoldOwed));
+	Account->GoldOwed -= OutRepaid;
+	CataclysmGameInstanceGold::SettleAccountDebt(*Account);
+	Account->Gold += Gold - OutRepaid;
+	return true;
+}
+
+int64 UCataclysmGameInstance::RepayTheDaysPartFor(const UObject* WorldContext, bool& bOutFromTheCharacter)
+{
+	bOutFromTheCharacter = false;
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return 0;
+	}
+
+	// THE PART SAVED AT THE PURCHASE, OR THE DEBT OR THE BALANCE IF LESS (D4).
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		const int64 Paid = FMath::Max<int64>(0, FMath::Min3(State->GetOwnGoldOwedEachDay(), State->GetOwnGoldOwed(),
+															 State->GetOwnGold()));
+		if (Paid > 0)
+		{
+			State->SetOwnGold(State->GetOwnGold() - Paid);
+			State->SetOwnGoldOwed(State->GetOwnGoldOwed() - Paid, State->GetOwnGoldOwedEachDay());
+			bOutFromTheCharacter = true;
+		}
+		return Paid;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return 0;
+	}
+	const int64 Paid = FMath::Max<int64>(0, FMath::Min3(Account->GoldOwedEachDay, Account->GoldOwed, Account->Gold));
+	if (Paid > 0)
+	{
+		Account->Gold -= Paid;
+		Account->GoldOwed -= Paid;
+		CataclysmGameInstanceGold::SettleAccountDebt(*Account);
+	}
+	return Paid;
+}
+
 FString UCataclysmGameInstance::GoldBalanceText(const UObject* WorldContext)
 {
 	int64 Held = 0;
-	return GoldHeldBy(WorldContext, Held) ? ACataclysmDroppedItem::GoldName(Held) : FString();
+	if (!GoldHeldBy(WorldContext, Held))
+	{
+		return FString();
+	}
+
+	// AND THE DEBT BESIDE IT WHILE ONE IS OPEN (D6), so no screen shows a balance as if nothing were owed.
+	int64 Owed = 0;
+	int64 EachDay = 0;
+	GoldOwedBy(WorldContext, Owed, EachDay);
+	return Owed > 0 ? FString::Printf(TEXT("%s, %s owed"), *ACataclysmDroppedItem::GoldName(Held),
+									  *ACataclysmDroppedItem::GoldAmountText(Owed))
+					: ACataclysmDroppedItem::GoldName(Held);
 }
 
 bool UCataclysmGameInstance::BankEmpirePointsFor(const UObject* WorldContext, double Points,
@@ -538,18 +740,25 @@ void UCataclysmGameInstance::WireTheRunToTheBalance(const UObject* WorldContext,
 			EmpireTreePlayerBonusesFor(Paying), UCataclysmEmpireTree::EmpireStateFor(DayRun), Day, Held,
 			UCataclysmDropRoll::GoldScaleFor(DayRun.DifficultyTier));
 		bool bIntoTheCharacter = false;
-		if (Income.Total() <= 0 || !AddGoldFor(Paying, Income.Total(), bIntoTheCharacter))
+		const bool bPaid = Income.Total() > 0 && AddGoldFor(Paying, Income.Total(), bIntoTheCharacter);
+
+		// AND SOVEREIGN LOANS' PART OF A DEBT, AFTER THE DAY'S INCOME (slice 6e, D4).
+		bool bRepaidFromTheCharacter = false;
+		const int64 Repaid = RepayTheDaysPartFor(Paying, bRepaidFromTheCharacter);
+		if (!bPaid && Repaid <= 0)
 		{
 			return;
 		}
 		UWorld* World = Paying->GetWorld();
-		if (!bIntoTheCharacter)
+		if ((bPaid && !bIntoTheCharacter) || (Repaid > 0 && !bRepaidFromTheCharacter))
 		{
 			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
 		}
 		UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::InventoryChanged);
 		UE_LOG(LogCataclysm, Log, TEXT("Day %d: the empire upgrade tree paid %lld gold (Pax Imperialis %lld, Wealth "
-									   "Interest %lld)."), Day, Income.Total(), Income.Pax, Income.Interest);
+									   "Interest %lld, Tax Collection %lld, Trade Routes %lld), and %lld of a debt was "
+									   "repaid."),
+			   Day, bPaid ? Income.Total() : 0, Income.Pax, Income.Interest, Income.Tax, Income.Trade, Repaid);
 	};
 }
 
@@ -719,6 +928,47 @@ bool UCataclysmGameInstance::ChooseEmpireTreeOption(const UObject* WorldContext,
 	RefreshEmpireTreeBonuses(WorldContext);
 
 	// THE PLAY LOOP: which option of which capstone. Issue #2741 slice 2.
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
+	const TArray<FString> Options = Row != nullptr ? UCataclysmEmpireTree::OptionNamesOf(*Row) : TArray<FString>();
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeOptionLine(
+		Options.IsValidIndex(Option - 1) ? Options[Option - 1] : FString::Printf(TEXT("option %d"), Option),
+		CataclysmGameInstanceEmpireTree::NameOf(Nodes, Node)));
+	NoteTheEmpireTreeChanged(WorldContext, Held);
+	return true;
+}
+
+bool UCataclysmGameInstance::ChooseEmpireTreeExtraOption(const UObject* WorldContext, FName Node, int32 Option,
+														FString& OutReason)
+{
+	FCataclysmHeldEmpireTree Held;
+	if (!EmpireTreeHeldBy(WorldContext, Held))
+	{
+		OutReason = Held.Why;
+		return false;
+	}
+	OutReason = EmpireTreeChangeRefusal(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	const UDataTable* Effects = UCataclysmEmpireTree::LoadEffectTable();
+	if (Nodes == nullptr || Effects == nullptr)
+	{
+		OutReason = CataclysmGameInstanceEmpireTree::TablesMissing;
+		return false;
+	}
+
+	if (!UCataclysmEmpireTree::ChooseExtraOption(Nodes, Effects, *Held.Allocation, Node, Option, OutReason))
+	{
+		return false;
+	}
+
+	// THE EXTRA OPTION ACTS AT ONCE: its milestone's point is already bought (J1). Issue #2741 slice 8.
+	RefreshEmpireTreeBonuses(WorldContext);
+
+	// THE PLAY LOOP: which option of which milestone, as a choice says it.
 	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(Nodes, Node);
 	const TArray<FString> Options = Row != nullptr ? UCataclysmEmpireTree::OptionNamesOf(*Row) : TArray<FString>();
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeOptionLine(

@@ -5051,7 +5051,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 			const int32 ReadyDay = Run->BuildReadyDay(CityId);
 			const FString Said =
 				Result != ECataclysmCityUpgradeResult::Bought
-					? UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held)
+					? UCataclysmCityUpgradePurchase::RefusalTextIn(World, Result, Price, Held)
 					: ReadyDay == INDEX_NONE
 						  ? FString::Printf(TEXT("Bought for %s."),
 											*UCataclysmCityUpgradePurchase::PriceText(Price))

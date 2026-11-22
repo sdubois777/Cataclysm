@@ -70,7 +70,7 @@ namespace CataclysmSaveFixtures
 	 */
 	inline constexpr int32 FixtureIdentifiersOrderSeed = 1412640493;
 
-	/** The seed `Character_v7.json` to `Character_v10.json` state: not the one their identifier gives, so a seed
+	/** The seed `Character_v7.json` to `Character_v12.json` state: not the one their identifier gives, so a seed
 	 *  re-derived on load cannot pass. */
 	inline constexpr int32 CommittedCharacterOrderSeed = 975318642;
 
@@ -328,6 +328,67 @@ namespace CataclysmSaveFixtures
 	inline void AddTheCharactersVersion10Defaults(FJsonObject& Expected)
 	{
 		Expected.SetArrayField(TEXT("SkillExperience"), TArray<TSharedPtr<FJsonValue>>());
+	}
+
+	/**
+	 * What `Migrate_4_to_5` writes into an account file written before version 5, and so what the account record writes
+	 * back for one: nothing owed, `"GoldOwed": 0, "GoldOwedEachDay": 0`. Issue #2741 slice 6e, 2026-11-20. ONE COPY,
+	 * for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion5Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldOwed"), 0.0);
+		Expected.SetNumberField(TEXT("GoldOwedEachDay"), 0.0);
+	}
+
+	/**
+	 * What `Migrate_10_to_11` writes into a character file written before version 11, and so what the character record
+	 * writes back for one: nothing owed, as the account's version 5. Issue #2741 slice 6e, 2026-11-20. ONE COPY, for
+	 * every test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion11Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldOwed"), 0.0);
+		Expected.SetNumberField(TEXT("GoldOwedEachDay"), 0.0);
+	}
+
+	/**
+	 * What the account record's `Migrate_5_to_6` and the character record's newest step write into each allocation a
+	 * file holds: no extra option, `"ExtraOptionNode": "None", "ExtraOption": 0`. Issue #2741 slice 8, 2026-11-21. An
+	 * allocation the expected record does not hold is left alone, as the step leaves it.
+	 */
+	inline void AddTheExtraOptionDefaults(FJsonObject& Holder, const TCHAR* Key)
+	{
+		const TSharedPtr<FJsonObject>* Allocation = nullptr;
+		if (Holder.TryGetObjectField(Key, Allocation) && Allocation != nullptr && Allocation->IsValid())
+		{
+			(*Allocation)->SetStringField(TEXT("ExtraOptionNode"), TEXT("None"));
+			(*Allocation)->SetNumberField(TEXT("ExtraOption"), 0.0);
+		}
+	}
+
+	/** What `Migrate_5_to_6` writes into an account file written before version 6: no extra option in its tree. ONE COPY,
+	 *  for every test that runs an older account file through the whole chain. */
+	inline void AddTheAccountsVersion6Defaults(FJsonObject& Expected)
+	{
+		AddTheExtraOptionDefaults(Expected, TEXT("EmpireTree"));
+	}
+
+	/**
+	 * What the character record's newest step writes into a character file written before it: no extra option in any of
+	 * its three allocations. Issue #2741 slice 8. NAMED FOR THE VERSION IT REACHES TODAY, 12; gems slice G2 also moves
+	 * the character record, and whichever merges second takes the next number. ONE COPY, for every test that runs an
+	 * older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion12Defaults(FJsonObject& Expected)
+	{
+		AddTheExtraOptionDefaults(Expected, TEXT("PassiveAllocation"));
+		AddTheExtraOptionDefaults(Expected, TEXT("PrivateEmpireTree"));
+		const TSharedPtr<FJsonObject>* Build = nullptr;
+		if (Expected.TryGetObjectField(TEXT("ConsumptionBuild"), Build) && Build != nullptr && Build->IsValid())
+		{
+			AddTheExtraOptionDefaults(**Build, TEXT("PassiveAllocation"));
+		}
 	}
 
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)

@@ -124,10 +124,25 @@ SLICE_6B = {"Price Controls", "Stimulus Package", "Cleanup Crew", "Salvage Right
             "Investment Funds"}
 
 #: SLICE 6C'S FIVE, the gold held and the day's income: the coordinating
-#: session's B6 to B8 of 2026-11-20. Tax Collection and Treasury Guard wait on
-#: their gold rules, which the owner ruled on after this slice was written.
+#: session's B6 to B8 of 2026-11-20.
 SLICE_6C = {"The Gilded Path", "Venture Capital", "Imperial Reserve", "Pax Imperialis",
             "Wealth Interest"}
+
+#: SLICE 6D'S TWO, the owner's rulings of 2026-11-20 relayed by the coordinating
+#: session (D8, D9).
+SLICE_6D = {"Treasury Guard", "Tax Collection"}
+
+#: SLICE 6E'S TWO, the gold debt the owner allowed through them the same day
+#: (D1 to D7), on account record version 5 and character record version 11.
+SLICE_6E = {"Global Credit", "Sovereign Loans"}
+
+#: SLICE 7'S FOUR, the nodes that read a Treasurer city upgrade (R1 to R4;
+#: readings T1 to T4, ruled 2026-11-21).
+SLICE_7 = {"Commercial Hubs", "Economic Zones", "Trade Routes", "The Golden Touch"}
+
+#: SLICE 8'S ONE, Imperial Prowess: the project owner's ruling of 2026-11-21 and
+#: the coordinating session's J1 to J5 the same day.
+SLICE_8 = {"Imperial Prowess"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -146,7 +161,11 @@ OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more th
                "GoldDoubledBelowHalfPopulation": "Gold drops doubled",
                "GoldPerFloorAtClear": "{:g} Gold for every",
                # Slice 6c: Pax Imperialis' 5 is "5 Gold every 1 day".
-               "GoldPerThousandCitizensDaily": "{:g} Gold every 1 day"}
+               "GoldPerThousandCitizensDaily": "{:g} Gold every 1 day",
+               # Slice 7: Trade Routes' 50 is "+50 Gold every 20 days".
+               "GoldEveryTwentyDaysPerTreasurerCity": "+{:g} Gold every 20 days",
+               # Slice 8: Imperial Prowess's 1 is its "an additional keystone".
+               "ExtraEarlierMilestoneOption": "an additional keystone"}
 
 #: AN EFFECT WHOSE VALUE IS A DEFENCE, found in its text as "at <value>": Last
 #: Stand Protocols' "survive at 1".
@@ -194,17 +213,25 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_98_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_and_6c_act() -> None:
+def test_exactly_the_107_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_and_8_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
+    assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4 and len(SLICE_8) == 1
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B) & SLICE_6A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A) & SLICE_6B
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B) & SLICE_6C
-    built = SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C) & SLICE_6D
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D) & SLICE_6E
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E) & SLICE_7
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7) & SLICE_8
+    built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+             | SLICE_6E | SLICE_7 | SLICE_8)
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -214,8 +241,13 @@ def test_exactly_the_98_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_and_6c_act() -> None
         "every slice 4 node with an effect is one EMPIRE_TREE_BUILT gives to slice 4")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 5 for name in SLICE_5A | SLICE_5B), (
         "every slice 5a node with an effect is one EMPIRE_TREE_BUILT gives to slice 5")
-    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6 for name in SLICE_6A | SLICE_6B | SLICE_6C), (
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6
+               for name in SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D | SLICE_6E), (
         "every slice 6a node with an effect is one EMPIRE_TREE_BUILT gives to slice 6")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 7 for name in SLICE_7), (
+        "every slice 7 node with an effect is one EMPIRE_TREE_BUILT gives to slice 7")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 8 for name in SLICE_8), (
+        "every slice 8 option with an effect is one EMPIRE_TREE_BUILT gives to slice 8")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:
@@ -252,7 +284,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_thirteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_fourteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -272,8 +304,12 @@ def test_the_thirteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> 
                     # Imperial Reserve's "25% cap", Wealth Interest's "capped at
                     # 5,000 gold per tick" (a tier 1 figure, R10).
                     "Venture Capital": 0.20, "Imperial Reserve": 0.25,
-                    "Wealth Interest": 5000.0}, caps
+                    "Wealth Interest": 5000.0,
+                    # Slice 6d, its own text's "20% cap", held apart from
+                    # Imperial Reserve's (D9).
+                    "Treasury Guard": 0.20}, caps
     assert "cap 20%" in texts["Venture Capital"]
+    assert "20% cap" in texts["Treasury Guard"]
     assert "25% cap" in texts["Imperial Reserve"]
     assert "capped at 5,000 gold per tick" in texts["Wealth Interest"]
     assert "15% cap" in texts["Global Vigilance"]

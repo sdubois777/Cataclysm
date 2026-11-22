@@ -1,0 +1,40 @@
+{
+	"SchemaVersion": 6,
+	"Lethality": "Hardcore",
+	"Population": "Online",
+	"EmpireUpgradePoints": 37.625,
+	"Gold": 1234567,
+	"GoldOwed": 2500,
+	"GoldOwedEachDay": 250,
+	"EmpireTree": {
+		"Nodes": [
+			{
+				"Node": "basic_0000000w",
+				"Points": 10,
+				"ChosenOption": 0
+			},
+			{
+				"Node": "basic_arch_t1d",
+				"Points": 8,
+				"ChosenOption": 0
+			},
+			{
+				"Node": "basic_00000010",
+				"Points": 7,
+				"ChosenOption": 0
+			},
+			{
+				"Node": "capstone_0000000m",
+				"Points": 1,
+				"ChosenOption": 2
+			}
+		],
+		"ExtraOptionNode": "capstone_0000000m",
+		"ExtraOption": 1
+	},
+	"Characters": [
+		"5C0B1A4E5B7F4D2E9A3C6F81D24E7B03",
+		"9F14D0C7A38B4E5691C2D7E0F5A6B384"
+	],
+	"Stash": []
+}

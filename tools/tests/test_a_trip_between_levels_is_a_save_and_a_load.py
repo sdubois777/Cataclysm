@@ -119,8 +119,9 @@ def test_the_run_record_is_at_version_6_or_later_and_migrate_5_to_6_writes_nothi
     records = code(RECORDS_CPP)
     assert '{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },' in records, (
         "Migrate_5_to_6 is not one of the run record's steps")
-    # THE RUN RECORD'S STEP: the character record has a `Migrate_5_to_6` of its own, in its own namespace.
-    run_steps = records.split("namespace CataclysmRunSaveMigration")[1]
+    # THE RUN RECORD'S STEP: the character record has a `Migrate_5_to_6` of its own, in its own namespace, and the
+    # account record one since issue #2741 slice 8, in the namespace after the run record's.
+    run_steps = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
     step = function_body(run_steps, "bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)")
     for field, written in VERSION_6.items():
         assert written in step, f"Migrate_5_to_6 does not write {field} as {written}"

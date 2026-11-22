@@ -2382,6 +2382,43 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	/** The share of the gold held paid as interest every 20th day, per point, to a tier 1 cap a payment (Wealth
 	 *  Interest, B8). */
 	GoldInterestEveryTwentyDays,
+
+	// ---- Slice 6d: the owner's rulings of 2026-11-20 on Treasury Guard and Tax Collection.
+
+	/** Every city's damage reduced, per point, for each whole 50,000 tier 1 gold held, compounded, to its own cap
+	 *  (Treasury Guard, D9). */
+	DamageTakenPerFiftyThousandGold,
+
+	/** The share of the standing cities' citizens paid as tier 1 gold every 10th day, per point (Tax Collection, D8). */
+	GoldShareOfPopulationEveryTenDays,
+
+	// ---- Slice 6e: the gold debt the owner allowed through the tree's own options for one, 2026-11-20.
+
+	/** The share of a city upgrade's price that may be owed, per point (Global Credit, D2). */
+	UpgradeShortfallAllowed,
+
+	/** The same, repaid by a tenth a day (Sovereign Loans, D2, D4). */
+	UpgradeShortfallAllowedRepaidDaily,
+
+	// ---- Slice 7: the four nodes that read a Treasurer city upgrade (R1 to R4). A "Treasurer city" is a standing city
+	// holding at least one upgrade of the Treasurer branch; readings T1 to T4, ruled 2026-11-21.
+
+	/** The gold a kill drops increased, while the dungeon's city is a Treasurer city (Commercial Hubs, R1). */
+	GoldIncreasedOnTreasurerCity,
+
+	/** "More" gold, per point, from every source tied to a Treasurer city (Economic Zones, R2). */
+	GoldMoreFromTreasurerCities,
+
+	/** Tier 1 gold paid every 20th day for each Treasurer city, per point (Trade Routes, R3). */
+	GoldEveryTwentyDaysPerTreasurerCity,
+
+	/** The gold and crafting materials a kill drops increased, for each Treasurer city (The Golden Touch, R4). */
+	GoldAndMaterialsPerTreasurerCity,
+
+	// ---- Slice 8: Imperial Prowess, the project owner's ruling of 2026-11-21 and the coordinating session's J1 to J5.
+
+	/** How many extra options may be taken from earlier tiers' centre milestones (Imperial Prowess: one, J2). */
+	ExtraEarlierMilestoneOption,
 };
 
 /**

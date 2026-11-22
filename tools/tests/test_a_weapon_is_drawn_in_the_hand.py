@@ -145,6 +145,37 @@ def test_every_mesh_path_is_content_and_every_scale_is_positive():
             "a weapon nobody can see, which is what an empty Mesh is for.")
 
 
+#: The owner's ruling recorded on issue #1130 on 2026-09-14: one scale for the
+#: four two-handed bases that draw a one-handed mesh scaled up.
+TWO_HANDED_SCALE = 1.75
+SCALED_TWO_HANDED = ("Greatsword", "Greataxe", "Warhammer", "Two-Handed Crossbow")
+#: Already two-handed meshes in the pack, drawn as they are.
+NATIVE_TWO_HANDED = ("Spear", "Staff")
+
+
+def test_the_four_scaled_two_handed_bases_share_the_ruled_scale():
+    """Issue #1130: the owner reported the two-handed weapons too small at 1.45
+    and 1.25, and the ruling of 2026-09-14 drew all four at 1.75. The Spear and
+    the Staff are two-handed meshes already and stay at 1.
+
+    Read from game/Data/WeaponMeshes.csv, which the Weapon Meshes sheet of
+    docs/All_Things_Cataclysm.xlsx generates, so a workbook edit that moves one
+    of them fails here rather than only on screen.
+    """
+    scales = {row["BaseName"]: float(row["Scale"]) for row in rows(WEAPON_MESHES)}
+
+    for name in SCALED_TWO_HANDED:
+        assert name in scales, f"{name} has no row in WeaponMeshes.csv"
+        assert scales[name] == pytest.approx(TWO_HANDED_SCALE), (
+            f"{name} is drawn at {scales[name]}, not the {TWO_HANDED_SCALE} ruled "
+            "on issue #1130 on 2026-09-14 for the four scaled two-handed bases.")
+    for name in NATIVE_TWO_HANDED:
+        assert name in scales, f"{name} has no row in WeaponMeshes.csv"
+        assert scales[name] == pytest.approx(1.0), (
+            f"{name} is drawn at {scales[name]}. It is a two-handed mesh in the "
+            "pack already, and issue #1130's ruling left it at 1.")
+
+
 def test_the_bases_that_draw_nothing_are_the_expected_three():
     """Drawing nothing is deliberate for three bases and a mistake anywhere else.
 

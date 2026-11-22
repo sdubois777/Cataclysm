@@ -413,6 +413,21 @@ public:
 	void SetOwnGold(int64 Gold) { OwnGold = FMath::Max<int64>(0, Gold); }
 
 	/**
+	 * A Solo Self-Found character's own gold debt, and the part of it taken each day, which its character record holds
+	 * (version 11). Issue #2741 slice 6e. ONLY A SOLO SELF-FOUND CHARACTER'S, as `GetOwnGold` is; only
+	 * `UCataclysmGameInstance`'s gold functions should read or change them.
+	 */
+	int64 GetOwnGoldOwed() const { return OwnGoldOwed; }
+	int64 GetOwnGoldOwedEachDay() const { return OwnGoldOwedEachDay; }
+
+	/** Set both, as a load or a purchase on credit does. A negative figure is held at 0, and a debt of 0 takes nothing. */
+	void SetOwnGoldOwed(int64 Owed, int64 EachDay)
+	{
+		OwnGoldOwed = FMath::Max<int64>(0, Owed);
+		OwnGoldOwedEachDay = OwnGoldOwed > 0 ? FMath::Max<int64>(0, EachDay) : 0;
+	}
+
+	/**
 	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent, and what its own empire upgrade
 	 * tree has bought, which its character record holds (version 9). Issue #2741 slice 1c.
 	 *
@@ -1006,6 +1021,13 @@ protected:
 	/** See `GetOwnGold`. Issue #2742. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	int64 OwnGold = 0;
+
+	/** See `GetOwnGoldOwed`. Issue #2741 slice 6e. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	int64 OwnGoldOwed = 0;
+
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	int64 OwnGoldOwedEachDay = 0;
 
 	/** See `GetOwnEmpireUpgradePoints`. Issue #2741 slice 1c. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")

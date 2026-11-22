@@ -145,6 +145,38 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float GoldPerThousandCitizensDaily = 0.0f;
 	float GoldInterestEveryTwentyDays = 0.0f;
 	float GoldInterestCap = 0.0f;
+
+	// ---- Slice 6d, the owner's ruling of 2026-11-20 on Tax Collection (D8). ----
+
+	/** Tax Collection's share of the standing cities' citizens, paid as tier 1 gold every 10th day. */
+	float GoldShareOfPopulationEveryTenDays = 0.0f;
+
+	// ---- Slice 6e, the owner's ruling of 2026-11-20 on Global Credit and Sovereign Loans (D2, D4). ----
+
+	/** Global Credit's share of a city upgrade's price that may be owed, and Sovereign Loans' share, repaid by day. */
+	float UpgradeShortfallAllowed = 0.0f;
+	float UpgradeShortfallAllowedRepaidDaily = 0.0f;
+
+	// ---- Slice 7, the four nodes that read a Treasurer city upgrade (R1 to R4); readings T1 to T4, ruled 2026-11-21. A
+	// Treasurer city is a standing city holding at least one upgrade of the Treasurer branch (`IsTreasurerCity`). ----
+
+	/** Commercial Hubs' increase to the gold a kill drops while the dungeon's city is a Treasurer city (T1). */
+	float GoldIncreasedOnTreasurerCity = 0.0f;
+
+	/** Economic Zones' "more" gold from every source tied to a Treasurer city (T2): a multiplier of its own. */
+	float GoldMoreFromTreasurerCities = 0.0f;
+
+	/** Trade Routes' tier 1 gold for each Treasurer city, paid every 20th day (T3). */
+	float GoldEveryTwentyDaysPerTreasurerCity = 0.0f;
+
+	/** The Golden Touch's increase to the gold and the crafting materials a kill drops, for each Treasurer city (T3, T4). */
+	float GoldAndMaterialsPerTreasurerCity = 0.0f;
+
+	// ---- Slice 8, Imperial Prowess (the project owner, 2026-11-21; J1 to J5). ----
+
+	/** How many extra options may be taken from earlier tiers' centre milestones: 1 with Imperial Prowess (J2), 0
+	 *  without. `RefusalForChoosingExtraOption` reads it. */
+	int32 ExtraEarlierMilestoneOptions = 0;
 };
 
 /**
@@ -202,19 +234,29 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 	 *  read. Slice 6c (B6). Filled by the dungeon game mode at a kill; none and 1 elsewhere. */
 	int64 GoldHeld = 0;
 	double GoldScale = 1.0;
+
+	/** Slice 7's counts (T1, T3): the Treasurer cities, standing cities holding a Treasurer upgrade; the citizens living
+	 *  in them, as `UCataclysmEmpireMap::PopulationOf` reads each; and whether the dungeon's own city is one, which
+	 *  only `DungeonStateFor` fills. */
+	int32 TreasurerCities = 0;
+	float TreasurerCitizens = 0.0f;
+	bool bDungeonCityIsTreasurer = false;
 };
 
 /**
  * What the empire upgrade tree pays on a day that passes, in gold. Issue #2741 slice 6c, the coordinating session's B8
- * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th. Worked out by `UCataclysmEmpireTree::
- * DailyIncomeFor` and paid by the game instance through `UCataclysmEmpireRun::OnDayPassed`.
+ * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th; slice 6d's Tax Collection every 10th (D8); and
+ * slice 7's Trade Routes every 20th (T3). Worked out by `UCataclysmEmpireTree::DailyIncomeFor` and paid by the game
+ * instance through `UCataclysmEmpireRun::OnDayPassed`.
  */
 struct CATACLYSM_API FCataclysmEmpireTreeDailyIncome
 {
 	int64 Pax = 0;
 	int64 Interest = 0;
+	int64 Tax = 0;
+	int64 Trade = 0;
 
-	int64 Total() const { return Pax + Interest; }
+	int64 Total() const { return Pax + Interest + Tax + Trade; }
 };
 
 /**
@@ -295,6 +337,14 @@ struct CATACLYSM_API FCataclysmEmpireTreeDropRules
 	/** The magic find, in percentage points, the gold held gives this kill: The Gilded Path and Venture Capital (slice 6c,
 	 *  B6). Nothing drawn. */
 	float MagicFindFromGold = 0.0f;
+
+	/**
+	 * WHAT THE KILL'S CRAFTING MATERIAL ROLL'S EXPECTED COUNT IS MULTIPLIED BY, slice 7 (T4): one plus The Golden Touch's
+	 * increase for each Treasurer city. Multiplied with the city's own "more crafting materials" and passed to
+	 * `UCataclysmDropSpawner::SpawnDropsFor`, which already takes that factor; the roll itself is unchanged. Exactly 1
+	 * without the node.
+	 */
+	float MaterialsMultiplier = 1.0f;
 
 	bool RollsAnything() const
 	{
@@ -384,6 +434,32 @@ public:
 	static constexpr int32 PaxCitizensAStep = 1000;
 	static constexpr int32 WealthInterestDaysAStep = 20;
 
+	/** And slice 6d's: Tax Collection's "Every 10 days". `tools/tests/test_empire_tree_treasury_and_tax.py` finds it in
+	 *  the node's text. */
+	static constexpr int32 TaxCollectionDaysAStep = 10;
+
+	/** And slice 6e's: Sovereign Loans' "repaid automatically over 10 days", a tenth of the debt a day (D4).
+	 *  `tools/tests/test_empire_tree_credit.py` finds it in the node's text. */
+	static constexpr int32 SovereignLoansDays = 10;
+
+	/** And slice 7's: Trade Routes' "every 20 days" (T3). `tools/tests/test_empire_tree_treasurer_cities.py` finds it in
+	 *  the node's text. */
+	static constexpr int32 TradeRoutesDaysAStep = 20;
+
+	/**
+	 * THE CITY UPGRADE BRANCH THE FOUR SLICE 7 NODES READ, as the City Upgrades sheet's Branch column writes it. The
+	 * nodes say "a Treasury Upgrade" and "an economic upgrade"; reading T1, ruled 2026-11-21, takes both as an upgrade of this
+	 * branch. `tools/tests/test_empire_tree_treasurer_cities.py` holds it to the sheet.
+	 */
+	static const FString TreasurerBranch;
+
+	/**
+	 * Whether a city is a Treasurer city (T1, T3): not fallen, and holding at least one upgrade whose row is in
+	 * `TreasurerBranch`. A city holding several counts once. A fallen city does not count, as a fallen city's upgrades pay
+	 * nothing (X1) and The Cartographer's Blessing counts standing cities only.
+	 */
+	static bool IsTreasurerCity(const FCataclysmCity& City);
+
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
 	 * "reduced" does in the design's pipeline, and at full points they reach 125% (Municipal Bonds 45%, Public Works 20%,
@@ -456,8 +532,9 @@ public:
 
 	/**
 	 * What a kill's gold piles are multiplied by. Issue #2741 slice 6a (G1 to G3): one plus Coinage's and Minting
-	 * Rights' increase and the four counted increases, times one plus The Midas Touch's "more". Exactly 1 with no gold
-	 * node. `DropRulesFor` puts it in the rules a kill reads.
+	 * Rights' increase and the four counted increases, times one plus The Midas Touch's "more". Slice 7 adds The Golden
+	 * Touch's increase for each Treasurer city and, while the dungeon's city is one, Commercial Hubs' increase and
+	 * Economic Zones' "more" (T1 to T3). Exactly 1 with no gold node. `DropRulesFor` puts it in the rules a kill reads.
 	 */
 	static float GoldMultiplierFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 								   const FCataclysmEmpireTreeDungeonState& State);
@@ -472,12 +549,26 @@ public:
 									   int32 CityId);
 
 	/**
+	 * The gold a city upgrade of this price may be short by, owed (issue #2741 slice 6e, D2): Global Credit's and
+	 * Sovereign Loans' shares a point of the price, added, rounded down and never more than the price itself -- a
+	 * shortfall cannot be larger than the price, so that is arithmetic and not a cap. 0 with neither node.
+	 */
+	static int64 UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price);
+
+	/** Whether either credit node is held, so a debt can be the reason no more credit is given. */
+	static bool AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/** Whether a debt made now is repaid by day: Sovereign Loans held at the purchase (D4). */
+	static bool RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/**
 	 * What the tree pays at the clear of a dungeon of `Floors` floors. Issue #2741 slice 6b. SALVAGE RIGHTS (B4): its
 	 * tier 1 gold a point for every floor, times `GoldScale` (R10: the tier's gold pile over tier 1's), times one plus
 	 * Investment Funds' increase (B5) and the "from dungeons" and "all sources" increases (G2: Wartime Economy,
-	 * Profiteering, Untouchable Wealth, Fiscal Policy, Prosperity Index); The Midas Touch and Stimulus Package are a
-	 * kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down, and nothing
-	 * multiplies it, because the piles already were.
+	 * Profiteering, Untouchable Wealth, Fiscal Policy, Prosperity Index), and by Economic Zones' "more" while the
+	 * dungeon's city is a Treasurer city (slice 7, T2); The Midas Touch, Stimulus Package, Commercial Hubs and The Golden
+	 * Touch are a kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down,
+	 * and nothing multiplies it, because the piles already were.
 	 */
 	/**
 	 * The run-wide part of the state the tree reads: the active Cataclysm types, the counts over the cities slice 6a's
@@ -496,9 +587,12 @@ public:
 
 	/**
 	 * What the tree pays on day `Day` (B8): Pax Imperialis' gold a day for each whole 1,000 citizens of the standing
-	 * cities, and on every 20th day Wealth Interest's share of the gold held, held at its cap; each in tier 1 gold
-	 * times `GoldScale` (R10), and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth,
-	 * Fiscal Policy, Prosperity Index). Rounded to whole gold.
+	 * cities, on every 20th day Wealth Interest's share of the gold held, held at its cap, and on every 10th day Tax
+	 * Collection's share of the standing cities' citizens (slice 6d, D8); each in tier 1 gold times `GoldScale` (R10),
+	 * and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth, Fiscal Policy, Prosperity
+	 * Index). Slice 7 (T2, T3): on every 20th day Trade Routes' gold for each Treasurer city, raised the same way and
+	 * wholly by Economic Zones' "more"; and Pax and Tax raised by that "more" in the share of the citizens who live in
+	 * Treasurer cities. Rounded to whole gold.
 	 */
 	static FCataclysmEmpireTreeDailyIncome DailyIncomeFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 														  const FCataclysmEmpireTreeDungeonState& State, int32 Day,
@@ -597,6 +691,38 @@ public:
 	/** Choose one of a centre capstone's three options. Choosing costs nothing; the capstone's point is spent after. */
 	static bool ChooseOption(const UDataTable* NodeTable, FCataclysmPassiveAllocation& Allocation, FName Node,
 							 int32 Option, FString& OutReason);
+
+	//~ Imperial Prowess's extra option. Issue #2741 slice 8.
+
+	/**
+	 * Why this option of this centre milestone cannot be taken as the extra option, or empty when it can.
+	 *
+	 * THE PROJECT OWNER, 2026-11-21: "Keystones are tier gated behind point thresholds. Imperial prowess lets you pick an
+	 * additional keystone from a previous tier." The keystones that carry point thresholds are the four centre
+	 * milestones' options, so the extra pick is one more option of an earlier milestone beside the one chosen there.
+	 *
+	 * In this order, the first that applies: no such node; no extra pick held (Imperial Prowess chosen and its
+	 * milestone's point bought); not a centre milestone; no such option; not an earlier tier than the milestone that
+	 * grants the pick; that milestone's own option not chosen or its point not bought (J1); the option is the one chosen
+	 * there; the option waits on a system (J4: The Soul Forge and The Master Tinkerer, crafting); the one extra pick is
+	 * taken (J2), and it stands until a respec (J5).
+	 */
+	static FString RefusalForChoosingExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+												 const FCataclysmPassiveAllocation& Allocation, FName Node,
+												 int32 Option);
+
+	/** Take this option of this earlier centre milestone as the extra option. Costs nothing; refused whole, changing
+	 *  nothing, with `OutReason` saying why. */
+	static bool ChooseExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+								  FCataclysmPassiveAllocation& Allocation, FName Node, int32 Option, FString& OutReason);
+
+	/** Whether an extra option is held and not yet taken, and this centre milestone has an option it could be. */
+	static bool OffersAnExtraOption(const UDataTable* NodeTable, const UDataTable* EffectTable,
+									const FCataclysmPassiveAllocation& Allocation, FName Node);
+
+	/** The name of the option that grants the extra pick -- "Imperial Prowess" -- read from the effect table; empty when
+	 *  no row grants one. */
+	static FString ExtraOptionGranterName(const UDataTable* NodeTable, const UDataTable* EffectTable);
 
 	/**
 	 * Whether this node is a centre capstone that has opened and is waiting to be told which option to take: the

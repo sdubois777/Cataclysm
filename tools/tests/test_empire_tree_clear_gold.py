@@ -100,13 +100,16 @@ def test_the_run_record_is_at_version_12_and_migrate_11_to_12_writes_nothing_pro
         "FCataclysmCity does not save bTookSurgeDamage")
 
     records = code(SAVE / "CataclysmSaveRecords.cpp")
-    step = body(records, "bool Migrate_11_to_12(", "the run record's migrations")
+    # THE RUN RECORD'S OWN STEP: the character record has a `Migrate_11_to_12` too since issue #2741 slice 8, in its own
+    # namespace before the run record's.
+    run_steps = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
+    step = body(run_steps, "bool Migrate_11_to_12(", "the run record's migrations")
     for write in (r'SetBoolField\(\s*TEXT\("bPopulationFellBelowHalf"\)\s*,\s*false\s*\)',
                   r'SetBoolField\(\s*TEXT\("bTookSurgeDamage"\)\s*,\s*false\s*\)',
                   r'SetNumberField\(\s*TEXT\("GoldDroppedThisWalk"\)\s*,\s*0\s*\)',
                   r'SetNumberField\(\s*TEXT\("GoldPickedUpThisWalk"\)\s*,\s*0\s*\)'):
         assert re.search(write, step), f"Migrate_11_to_12 does not write {write}"
-    assert re.search(r'\{\s*11\s*,\s*TEXT\("Migrate_11_to_12"\)', records), "the run record's chain has no step from 11"
+    assert re.search(r'\{\s*11\s*,\s*TEXT\("Migrate_11_to_12"\)', run_steps), "the run record's chain has no step from 11"
 
     gather = code(SAVE / "CataclysmSaveGather.cpp")
     apply = code(SAVE / "CataclysmSaveApply.cpp")

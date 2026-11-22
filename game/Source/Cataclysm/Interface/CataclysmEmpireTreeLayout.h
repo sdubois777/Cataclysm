@@ -72,15 +72,21 @@ public:
 
 	/**
 	 * What the line under the branch says about one node: its name, branch and points, the tree file's description,
-	 * a centre capstone's three options with the chosen one marked, and -- when it is not empty -- why a point cannot
-	 * go in now (`UCataclysmEmpireTree::RefusalForSpending`'s sentence).
+	 * a centre capstone's three options with the chosen one marked, Imperial Prowess's extra option marked "(taken with
+	 * Imperial Prowess)" (issue #2741 slice 8), and -- when it is not empty -- why a point cannot go in now
+	 * (`UCataclysmEmpireTree::RefusalForSpending`'s sentence).
+	 *
+	 * @param ExtraOption  the extra option taken on this node, 0 for none
+	 * @param ExtraGranter what grants it, "Imperial Prowess"
 	 */
 	static FString NodeDetail(const FCataclysmEmpireTreeNodeRow& Row, int32 Points, int32 ChosenOption,
-							  const FString& Refusal);
+							  const FString& Refusal, int32 ExtraOption = 0, const FString& ExtraGranter = FString());
 
-	/** What one of a centre capstone's options says in the list: "2  The Delver", "(chosen)" after the one taken, and
-	 *  "waits on ..." after one that waits on a system. */
-	static FString OptionLabel(int32 Option, const FString& Name, bool bChosen, const FString& WaitsOn);
+	/** What one of a centre capstone's options says in the list: "2  The Delver", "(chosen)" after the one taken,
+	 *  "(taken with Imperial Prowess)" after the extra one (`TakenWith`, issue #2741 slice 8), and "waits on ..." after
+	 *  one that waits on a system. */
+	static FString OptionLabel(int32 Option, const FString& Name, bool bChosen, const FString& WaitsOn,
+							   const FString& TakenWith = FString());
 
 	/**
 	 * What the Respec button says. "Respec: 5 days of the run" until it is pressed; "Press again to respec: 5 days of the

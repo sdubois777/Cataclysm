@@ -276,8 +276,8 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_four_slices_that_make_it_act() -> None:
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6}
+def test_a_built_node_names_one_of_the_six_slices_that_make_it_act() -> None:
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -286,10 +286,11 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     figures move with it. Gold gained its system in #2742: slice 6 of #2741
     (2026-11-20) split the 303 points "gold" and "upgrade cost" held into the
     reason each node really waits on: 189 of them the gold rules slice 6 builds,
-    92 of those built in slice 6a, 42 in 6b and 47 in 6c. The owner ruled on
-    Tax Collection, Treasury Guard, Global Credit and Sovereign Loans on
-    2026-11-20: Tax Collection's 8 and Treasury Guard's 10 wait on their gold
-    rules, and Global Credit's and Sovereign Loans' 10 on a gold debt."""
+    92 of those built in slice 6a, 42 in 6b and 47 in 6c. The owner's rulings
+    of 2026-11-20 built Treasury Guard's 10 and Tax Collection's 8 in 6d, and
+    Global Credit's and Sovereign Loans' 10 with the debt in 6e. Slice 7
+    (2026-11-21) built the 17 that waited on a Treasurer city upgrade: Economic
+    Zones' 10, Trade Routes' 5, Commercial Hubs' 1 and The Golden Touch's 1."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -304,17 +305,18 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
                or f"slice {gen.EMPIRE_TREE_BUILT[name]}"] += int(row["MaxPoints"])
 
     assert dict(points) == {
-        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 181,
-        "treasurer upgrade": 17, "gold rules": 18, "gold debt": 10,
+        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 209,
+        "slice 7": 17,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
         "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6)) == 810
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7)) == 855
+    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
-                             "crafting": 2, "slice 6": 1, "prowess ruling": 1}
+                             "crafting": 2, "slice 6": 1, "slice 8": 1}
 
 
 @pytest.mark.parametrize("name, slice_", [
@@ -329,29 +331,32 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     ("Architectural Insight", 4),  # the owner's ruling 2: capped in slice 4
     ("Temporal Efficiency", 5),
     ("Golden Age", 3),
+    # The owner's rulings of 2026-11-20, relayed by the coordinating session.
+    ("Treasury Guard", 6),      # "1. to your cities" (D9)
+    ("Tax Collection", 6),      # "we can adjust the gold prices ... later" (D8)
+    # "no gold debt unless there's an option for it in the empire tree": these two.
+    ("Global Credit", 6),       # D2, D3
+    ("Sovereign Loans", 6),     # D2, D4
+    # Slice 7: R1 to R4, a Treasurer city upgrade, which #2781 made buyable.
+    ("Commercial Hubs", 7),     # R1
+    ("Economic Zones", 7),      # R2
+    ("Trade Routes", 7),        # R3
+    ("The Golden Touch", 7),    # R4
+    # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
+    # additional keystone from a previous tier".
+    ("Imperial Prowess", 8),
 ])
 def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     assert gen.EMPIRE_TREE_BUILT.get(name) == slice_
 
 
 @pytest.mark.parametrize("name, system", [
-    ("Imperial Prowess", "prowess ruling"),   # Q5
     ("Scorched Earth", "destroy upgrade"),    # Q6
     ("Explorer Synergy", "crafting"),         # Q8: its cap waits on crafting
     ("Architectural Synergy", "crafting"),
     ("Field Depot I", "stash"),               # Q4
     ("Field Depot II", "stash"),
     ("Field Depot III", "stash"),
-    # Slice 6, the coordinating session's rulings of 2026-11-20.
-    ("Economic Zones", "treasurer upgrade"),  # R2: a Treasurer city upgrade (#2781)
-    ("Commercial Hubs", "treasurer upgrade"),  # R1
-    ("Trade Routes", "treasurer upgrade"),    # R3
-    ("The Golden Touch", "treasurer upgrade"),  # R4
-    # The owner's rulings of 2026-11-20, made after slice 6c was written.
-    ("Treasury Guard", "gold rules"),         # R7: the cities' damage
-    ("Global Credit", "gold debt"),           # R8: debt only through these two
-    ("Sovereign Loans", "gold debt"),         # R9
-    ("Tax Collection", "gold rules"),         # B8: built as written
 ])
 def test_a_ruled_node_is_refused_for_its_reason(name, system) -> None:
     assert gen.EMPIRE_TREE_REFUSED.get(name) == system

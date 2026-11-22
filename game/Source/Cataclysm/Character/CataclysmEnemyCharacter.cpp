@@ -339,7 +339,7 @@ void ACataclysmEnemyCharacter::HandleDeath()
 				World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 				Stream, /*bMarked=*/bRaisedByARule, /*bInfested=*/false, RandomGearDropsGiven(),
 				/*MaterialCountGiven=*/-1, TreeDrops.LowTierMaterialExtraChance, ECataclysmRarity::Everyday,
-				CityRewards.MaterialsMore);
+				CityRewards.MaterialsMore * TreeDrops.MaterialsMultiplier);
 			DropWhatItWore(World, GetActorLocation(), Stream);
 
 			// AND ITS GOLD, LAST, so the piles draw on the stream after every item and leave each item as it was. The
