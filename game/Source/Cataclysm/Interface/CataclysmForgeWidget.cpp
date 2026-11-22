@@ -115,6 +115,14 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		}
 		ShownDamageTypeActions = UCataclysmForgeLayout::DamageTypeActionsFor(
 			*Item, UCataclysmForge::DamageTypesOpenTo(*Item, SkillTable, BaseTable), MaxTypes);
+		// AND THE RESIDUE TOOLS: the two options the next craft uses, and the cleanse. Issue #47, slice F5.
+		const int32 Stabilizers = Inventory ? Inventory->CountOfMaterial(FName(UCataclysmForge::ChaosStabilizerRow)) : 0;
+		ShardsHeldNow = Inventory ? Inventory->CountOfMaterial(FName(UCataclysmForge::TaintedShardRow)) : 0;
+		const int32 Essences = Inventory ? Inventory->CountOfMaterial(FName(UCataclysmForge::PurifiedEssenceRow)) : 0;
+		// NEVER MORE THAN IS HELD: a craft that used the options' materials leaves the next one asking for none it lacks.
+		Options.TaintedShards = FMath::Clamp(Options.TaintedShards, 0, ShardsHeldNow);
+		Options.bChaosStabilizer = Options.bChaosStabilizer && Stabilizers > 0;
+		ShownOptionActions = UCataclysmForgeLayout::OptionActionsFor(*Item, Options, Stabilizers, ShardsHeldNow, Essences);
 	}
 	else
 	{
@@ -127,6 +135,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		ShownAffixChangeActions.Reset();
 		AddableAffixes.Reset();
 		ShownDamageTypeActions.Reset();
+		ShownOptionActions.Reset();
 	}
 
 	BuildPieceButtons();
@@ -210,6 +219,20 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			AffixWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(AffixWork);
+		}
+	}
+
+	// THE RESIDUE TOOLS: the options, one press each, and the cleanse, two. Issue #47, slice F5.
+	for (const FCataclysmForgeOptionAction& Action : ShownOptionActions)
+	{
+		if (UCataclysmChoiceButton* Option = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			const bool bOn = (Action.ButtonName == UCataclysmForgeLayout::StabilizerButtonName() && Options.bChaosStabilizer)
+				|| (Action.ButtonName == UCataclysmForgeLayout::ShardsButtonName() && Options.TaintedShards > 0)
+				|| Action.ButtonName == PendingSocketAction;
+			Option->SetChoice(Action.ButtonName, FText::FromString(Action.Label), /*bChosen*/ bOn, /*bAvailable*/ true);
+			Option->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(Option);
 		}
 	}
 
@@ -310,6 +333,8 @@ void UCataclysmForgeWidget::HandlePieceClicked(FName ButtonName)
 		{
 			AddAffixChosen = 0;
 			AddAffixTier = 1;
+			// AND THE OPTIONS, which belong to the piece they were asked for (slice F5).
+			Options = FCataclysmForgeCraftOptions();
 		}
 		ChosenTarget = Target;
 		bHasChosen = true;
@@ -366,6 +391,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -375,7 +407,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::SocketingQuestion(Plan);
+			Message = UCataclysmForge::SocketingQuestion(Plan)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -383,9 +416,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeSocketing Done;
 		FString Said;
 		const ECataclysmForgeResult Result = Socketing.bUnsocket
-			? UCataclysmForgeCraft::UnsocketGem(Context(), ChosenTarget, Socketing.Socket, bThresholdWasAsked, Done, Said)
+			? UCataclysmForgeCraft::UnsocketGem(Context(), ChosenTarget, Socketing.Socket, bThresholdWasAsked, Done, Said, Options)
 			: UCataclysmForgeCraft::SocketGem(Context(), ChosenTarget, Socketing.Socket, Socketing.Gem, Socketing.Rarity,
-											  bThresholdWasAsked, Done, Said);
+											  bThresholdWasAsked, Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -426,6 +459,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -435,7 +475,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::SocketWorkQuestion(Plan);
+			Message = UCataclysmForge::SocketWorkQuestion(Plan)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -443,9 +484,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeSocketWork Done;
 		FString Said;
 		const ECataclysmForgeResult Result = SocketWork.bAdd
-			? UCataclysmForgeCraft::AddSocket(Context(), ChosenTarget, bThresholdWasAsked, Done, Said)
+			? UCataclysmForgeCraft::AddSocket(Context(), ChosenTarget, bThresholdWasAsked, Done, Said, Options)
 			: UCataclysmForgeCraft::ChangeSocketType(Context(), ChosenTarget, SocketWork.Socket, SocketWork.NewType,
-													 bThresholdWasAsked, Done, Said);
+													 bThresholdWasAsked, Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -487,6 +528,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -496,7 +544,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::AffixWorkQuestion(Plan);
+			Message = UCataclysmForge::AffixWorkQuestion(Plan)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -504,7 +553,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeAffixWork Done;
 		FString Said;
 		const ECataclysmForgeResult Result = UCataclysmForgeCraft::CraftAffix(
-			Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix, bThresholdWasAsked, Done, Said);
+			Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix, bThresholdWasAsked, Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -582,6 +631,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -592,7 +648,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::AffixChangeQuestion(Plan, AffixTable);
+			Message = UCataclysmForge::AffixChangeQuestion(Plan, AffixTable)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -600,8 +657,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeAffixChange Done;
 		FString Said;
 		const ECataclysmForgeResult Result = AffixChange.bShift
-			? UCataclysmForgeCraft::ShiftAffix(Context(), ChosenTarget, AffixChange.Affix, bThresholdWasAsked, Done, Said)
-			: UCataclysmForgeCraft::AddAffix(Context(), ChosenTarget, Adding, AddAffixTier, bThresholdWasAsked, Done, Said);
+			? UCataclysmForgeCraft::ShiftAffix(Context(), ChosenTarget, AffixChange.Affix, bThresholdWasAsked, Done, Said, Options)
+			: UCataclysmForgeCraft::AddAffix(Context(), ChosenTarget, Adding, AddAffixTier, bThresholdWasAsked, Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -631,6 +688,60 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		return;
 	}
 
+	// THE OPTIONS ARE ONE PRESS EACH AND CHANGE NOTHING BUT WHAT THE NEXT CRAFT USES: the Stabilizer on and off, and the
+	// Shards one more each press, back to none after the number held. Issue #47, slice F5.
+	if (bHasChosen && (ButtonName == UCataclysmForgeLayout::StabilizerButtonName()
+					   || ButtonName == UCataclysmForgeLayout::ShardsButtonName()))
+	{
+		CancelThePendingUpgrade();
+		Message.Reset();
+		if (ButtonName == UCataclysmForgeLayout::StabilizerButtonName())
+		{
+			Options.bChaosStabilizer = !Options.bChaosStabilizer;
+		}
+		else
+		{
+			Options.TaintedShards = (FMath::Max(0, Options.TaintedShards) + 1) % (FMath::Max(0, ShardsHeldNow) + 1);
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// THE CLEANSE, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND. No option applies to it. Issue #47, slice F5.
+	if (bHasChosen && ButtonName == UCataclysmForgeLayout::CleanseButtonName())
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		CancelThePendingUpgrade();
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeCleanse Plan = UCataclysmForgeCraft::CleansePlanFor(Context(), ChosenTarget);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::CleanseQuestion(Plan);
+			RefreshDisplay();
+			return;
+		}
+		FCataclysmForgeCleanse Done;
+		FString Said;
+		Message = UCataclysmForgeCraft::Cleanse(Context(), ChosenTarget, Done, Said) == ECataclysmForgeResult::Done
+			? FString::Printf(TEXT("The residue is %d now, from %d. It cost %s and %d day%s of the run."),
+							  FMath::RoundToInt(Done.ResidueAfter), FMath::RoundToInt(Done.ResidueBefore),
+							  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"))
+			: Said;
+		RefreshDisplay();
+		return;
+	}
+
 	// A DAMAGE TYPE INFUSED OR CHANGED, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as the other crafts are. Issue
 	// #47, slice F4.
 	FCataclysmForgeDamageTypeAction DamageTypeWork;
@@ -647,6 +758,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -656,7 +774,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::DamageTypeQuestion(Plan);
+			Message = UCataclysmForge::DamageTypeQuestion(Plan)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -664,7 +783,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeDamageTypeWork Done;
 		FString Said;
 		const ECataclysmForgeResult Result = UCataclysmForgeCraft::CraftDamageType(
-			Context(), ChosenTarget, DamageTypeWork.Craft, DamageTypeWork.Type, bThresholdWasAsked, Done, Said);
+			Context(), ChosenTarget, DamageTypeWork.Craft, DamageTypeWork.Type, bThresholdWasAsked, Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -709,6 +828,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		{
 			Refusal = Plan.Refusal;
 		}
+		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+		if (Refusal.IsEmpty() && !Effect.bPossible)
+		{
+			Refusal = Effect.Refusal;
+		}
 		if (!Refusal.IsEmpty())
 		{
 			Message = Refusal;
@@ -718,7 +844,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
-			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named);
+			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 			RefreshDisplay();
 			return;
 		}
@@ -726,9 +853,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeEnchantmentWork Done;
 		FString Said;
 		const ECataclysmForgeResult Result = EnchantmentWork.bImprint
-			? UCataclysmForgeCraft::Imprint(Context(), ChosenTarget, EnchantmentWork.Index, bThresholdWasAsked, Done, Said)
+			? UCataclysmForgeCraft::Imprint(Context(), ChosenTarget, EnchantmentWork.Index, bThresholdWasAsked, Done, Said, Options)
 			: UCataclysmForgeCraft::ChangeNegative(Context(), ChosenTarget, EnchantmentWork.Index, bThresholdWasAsked,
-												   Done, Said);
+												   Done, Said, Options);
 		switch (Result)
 		{
 		case ECataclysmForgeResult::AsksAboutTheThreshold:
@@ -781,6 +908,13 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	{
 		Refusal = Plan.Refusal;
 	}
+	// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
+	const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
+		Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options);
+	if (Refusal.IsEmpty() && !Effect.bPossible)
+	{
+		Refusal = Effect.Refusal;
+	}
 	if (!Refusal.IsEmpty())
 	{
 		CancelThePendingUpgrade();
@@ -793,7 +927,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	if (!bUpgradeAsked)
 	{
 		bUpgradeAsked = true;
-		Message = UCataclysmForge::UpgradeQuestion(Plan);
+		Message = UCataclysmForge::UpgradeQuestion(Plan)
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
 		RefreshDisplay();
 		return;
 	}
@@ -801,7 +936,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	FCataclysmForgeUpgrade Done;
 	FString Said;
 	const ECataclysmForgeResult Result =
-		UCataclysmForgeCraft::Upgrade(Context(), ChosenTarget, bThresholdAsked, Done, Said);
+		UCataclysmForgeCraft::Upgrade(Context(), ChosenTarget, bThresholdAsked, Done, Said, Options);
 	switch (Result)
 	{
 	case ECataclysmForgeResult::AsksAboutTheThreshold:

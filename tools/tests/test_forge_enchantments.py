@@ -171,20 +171,20 @@ def test_a_changed_negative_is_drawn_at_or_below_its_positives_weight_and_never_
 
 def test_the_craft_keeps_slice_f1s_order_and_draws_from_the_item_and_day_before_the_days_pass() -> None:
     work = body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(")
-    imprint = work.find("UCataclysmForge::DrawImprint(Before, BaseTable, Positives, Negatives, Run->WalkSeedMask, "
-                        "Run->Day(),")
+    imprint = work.find("UCataclysmForge::DrawImprint(Before, BaseTable, Positives, Negatives, Run.WalkSeedMask, "
+                        "Run.Day(),")
     change = work.find("UCataclysmForge::DrawChangedNegative(Before, Plan.Pair, BaseTable, Positives, Negatives, "
-                       "Run->WalkSeedMask, Run->Day(),")
-    paid = work.find("PayForTheCraft(")
-    material = work.find("RemoveMaterial(")
-    replaced = work.find("const bool bReplaced =")
-    days = work.find("Run->AdvanceDays(Plan.Days);")
-    assert -1 < paid < material < imprint < replaced < days and material < change < replaced, (
-        "the craft does not keep gold, material, the draw from the item as it stood, the item, then the days "
-        f"(positions {paid}, {material}, {imprint}, {change}, {replaced}, {days})")
-    failed = work[work.find("if (!bDrawn) {"):replaced]
-    assert ("Inventory->AddMaterial(Plan.Material, 1);" in failed and "GiveTheGoldBack(WorldContext, Plan.Gold);" in failed
-            and "return ECataclysmForgeResult::Refused;" in failed), "a draw that fails does not give back what was taken"
+                       "Run.WalkSeedMask, Run.Day(),")
+    # SLICE F5: THE GOLD, THE MATERIAL, THE ITEM AND THE DAYS ARE `DoItemCraft`'S, in that order, and the draw is inside
+    # the change it is handed; `test_every_item_craft_goes_through_one_sequence.py` holds the order and that a refused change gives back
+    # the material, the gold and the mark.
+    handed = work.find("DoItemCraft(")
+    assert -1 < handed < imprint and handed < change, (
+        "the draw from the item as it stood is not inside the change DoItemCraft makes "
+        f"(positions {handed}, {imprint}, {change})")
+    failed = work[work.find("if (!bDrawn) {"):]
+    assert "OutRefusal = TEXT(" in failed and "return bDrawn;" in failed, (
+        "a draw that fails does not refuse the change, so DoItemCraft would not give back what was taken")
 
 
 def test_the_screen_offers_an_imprint_on_a_full_piece_and_no_change_for_a_set() -> None:

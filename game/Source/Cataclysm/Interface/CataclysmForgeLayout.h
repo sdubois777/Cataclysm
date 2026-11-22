@@ -67,6 +67,13 @@ struct FCataclysmForgeAffixChangeAction
 	int32 Affix = INDEX_NONE;
 };
 
+/** One of the residue tools' buttons for the piece chosen: an option to toggle or step, or the cleanse. #47, F5. */
+struct FCataclysmForgeOptionAction
+{
+	FName ButtonName;
+	FString Label;
+};
+
 /** One damage-type craft the forge offers for the weapon chosen. Issue #47, slice F4. */
 struct FCataclysmForgeDamageTypeAction
 {
@@ -244,6 +251,22 @@ public:
 	/** The action a button stands for, among those shown. False for a button that is none of them. */
 	static bool AffixChangeActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixChangeAction>& Shown,
 										   FCataclysmForgeAffixChangeAction& OutAction);
+
+	//~ The residue tools. Issue #47, slice F5.
+
+	/** The buttons' names: the Chaos Stabilizer's toggle, the Tainted Shards' step, and the cleanse. */
+	static FName StabilizerButtonName();
+	static FName ShardsButtonName();
+	static FName CleanseButtonName();
+
+	/**
+	 * The residue tools' buttons for a piece: "Chaos Stabilizer: off (2 held)" while one is held or it is on; "Tainted
+	 * Shards: 1 of 2 held" while one is held or some are asked; and "Cleanse half the residue (1 Purified Essence held)"
+	 * while the piece carries residue. The two options apply to whichever craft is pressed next on this piece.
+	 */
+	static TArray<FCataclysmForgeOptionAction> OptionActionsFor(const FCataclysmItem& Item,
+																 const FCataclysmForgeCraftOptions& Options,
+																 int32 StabilizersHeld, int32 ShardsHeld, int32 EssenceHeld);
 
 	//~ The three damage-type crafts. Issue #47, slice F4.
 

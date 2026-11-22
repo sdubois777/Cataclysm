@@ -9,6 +9,8 @@
 #include "CataclysmForgeCraft.generated.h"
 
 class ACataclysmPlayerCharacter;
+class UCataclysmEmpireRun;
+class UCataclysmInventoryComponent;
 
 /** Where the item an upgrade raises is: one of the character's carried cells, or one of its worn gear slots. */
 struct FCataclysmForgeTarget
@@ -49,6 +51,52 @@ enum class ECataclysmForgeResult : uint8
 
 	/** Nothing changed: the upgrade of a worn piece would cross the Consumption Threshold, and the message asks. */
 	AsksAboutTheThreshold,
+};
+
+/**
+ * Everything an item craft takes and costs, decided by its plan and its options before anything moves: the one shape
+ * every item craft hands `UCataclysmForgeCraft::DoItemCraft`. Issue #47, slice F5.
+ */
+struct FCataclysmForgeCraftStep
+{
+	FCataclysmForgeTarget Target;
+
+	/** The craft's own material, then each option's, each taken through `TakeMaterials`. */
+	TArray<FCataclysmForgeMaterialTake> Materials;
+
+	/** The craft's gold and its options', paid once. */
+	int64 Gold = 0;
+
+	/** The item's residue after the craft and its options; the residue before is the item's own. */
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs, after the options. */
+	int32 Days = 0;
+
+	/** What the options did, for the line that names them; none used is no line. */
+	FCataclysmForgeOptionEffect Options;
+
+	/** The threshold question's first words: "Upgrading", "Socketing a gem into". */
+	FString ThresholdWords;
+
+	/** The refusals with no run, and with nothing at the target. */
+	FString NoRunRefusal = TEXT("There is no run to take the craft's days from.");
+	FString NothingThereRefusal = TEXT("There is nothing there to craft.");
+};
+
+/** The parts only some crafts add to the shared sequence; socketing's gem. Each may be left unset. #47, F5. */
+struct FCataclysmForgeCraftHooks
+{
+	/** Taken after the materials and before the item changes; false refuses with `TakeRefusal`. */
+	TFunction<bool()> TakeBeforeTheChange;
+	FString TakeRefusal;
+
+	/** Puts back what `TakeBeforeTheChange` took, when a later step fails. */
+	TFunction<void()> GiveBackWhatWasTaken;
+
+	/** Done after the item is put back; false puts the item, the materials and the gold back with `AfterRefusal`. */
+	TFunction<bool()> AfterTheChange;
+	FString AfterRefusal;
 };
 
 /**
@@ -104,7 +152,8 @@ public:
 	 */
 	static ECataclysmForgeResult Upgrade(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 										 bool bConfirmedPastThreshold, FCataclysmForgeUpgrade& OutDone,
-										 FString& OutMessage);
+										 FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/**
 	 * Combine two upgrade stones of a level into one of the next. No days, no residue: it changes no item.
@@ -141,7 +190,8 @@ public:
 	 */
 	static ECataclysmForgeResult SocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Socket,
 										   FName Gem, ECataclysmRarity Rarity, bool bConfirmedPastThreshold,
-										   FCataclysmForgeSocketing& OutDone, FString& OutMessage);
+										   FCataclysmForgeSocketing& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/**
 	 * Take the gem out of a socket of the item at a target: one Dismantling Dust leaves the bag, the gem goes back to
@@ -149,7 +199,8 @@ public:
 	 */
 	static ECataclysmForgeResult UnsocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 											 int32 Socket, bool bConfirmedPastThreshold,
-											 FCataclysmForgeSocketing& OutDone, FString& OutMessage);
+											 FCataclysmForgeSocketing& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	//~ Adding a socket and changing a socket's type. Issue #46, slice G9.
 
@@ -174,7 +225,8 @@ public:
 	 */
 	static ECataclysmForgeResult AddSocket(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 										   bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
-										   FString& OutMessage);
+										   FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/**
 	 * Make an empty socket of the item at a target a socket of `NewType`: one Focusing Lens leaves the bag, the item
@@ -183,7 +235,8 @@ public:
 	static ECataclysmForgeResult ChangeSocketType(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 												  int32 Socket, ECataclysmSocketType NewType,
 												  bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
-												  FString& OutMessage);
+												  FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	//~ The three crafts that change one affix. Issue #47, slice F1.
 
@@ -199,7 +252,8 @@ public:
 	 */
 	static ECataclysmForgeResult CraftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 											ECataclysmForgeAffixCraft Craft, int32 Affix, bool bConfirmedPastThreshold,
-											FCataclysmForgeAffixWork& OutDone, FString& OutMessage);
+											FCataclysmForgeAffixWork& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	//~ Adding a chosen affix, and shifting an affix to another stat. Issue #47, slice F2.
 
@@ -222,7 +276,8 @@ public:
 	 */
 	static ECataclysmForgeResult AddAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName AffixRow,
 										  int32 Tier, bool bConfirmedPastThreshold, FCataclysmForgeAffixChange& OutDone,
-										  FString& OutMessage);
+										  FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/**
 	 * Shift the affix `Affix` of the item at a target to the stat drawn for the run's day, keeping its tier and roll: a
@@ -231,7 +286,8 @@ public:
 	 */
 	static ECataclysmForgeResult ShiftAffix(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Affix,
 											bool bConfirmedPastThreshold, FCataclysmForgeAffixChange& OutDone,
-											FString& OutMessage);
+											FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	//~ The three crafts that change a weapon's damage types. Issue #47, slice F4.
 
@@ -252,7 +308,8 @@ public:
 	static ECataclysmForgeResult CraftDamageType(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 												 ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
 												 bool bConfirmedPastThreshold, FCataclysmForgeDamageTypeWork& OutDone,
-												 FString& OutMessage);
+												 FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/** What imprinting an enchantment on the item at a target, giving up its affix `Affix`, would take now. Issue #47. */
 	static FCataclysmForgeEnchantmentWork ImprintPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -270,7 +327,8 @@ public:
 	 */
 	static ECataclysmForgeResult Imprint(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Affix,
 										 bool bConfirmedPastThreshold, FCataclysmForgeEnchantmentWork& OutDone,
-										 FString& OutMessage);
+										 FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
 
 	/**
 	 * Change the negative of the item's enchantment pair `Pair`: one Regret Essence leaves the bag, the pair takes the
@@ -280,9 +338,61 @@ public:
 	 */
 	static ECataclysmForgeResult ChangeNegative(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 												int32 Pair, bool bConfirmedPastThreshold,
-												FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage);
+												FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options = FCataclysmForgeCraftOptions());
+
+	//~ The residue tools. Issue #47, slice F5.
+
+	/**
+	 * What the options do to a craft whose plan takes an item from `ResidueBefore` to `ResidueAfter` in `Days` for
+	 * `CraftGold`, against the Chaos Stabilizers, the Tainted Shards and the gold the character playing holds now:
+	 * `UCataclysmForge::OptionsOn`.
+	 */
+	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
+												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options);
+
+	/** What cleansing the item at a target would take now. */
+	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * Halve the residue of the item at a target, carried or worn: one Purified Essence leaves the bag and the days pass.
+	 * It lowers residue, so it never asks the threshold question, and it lifts no Consumption mark (Q26).
+	 */
+	static ECataclysmForgeResult Cleanse(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										 FCataclysmForgeCleanse& OutDone, FString& OutMessage);
+
+	/** A crafting material's tier, 1 to 5, from `game/Data/CraftingMaterials.csv`; 0 for a row the table lacks (Q17). */
+	static int32 MaterialTierOf(FName Material);
+
+	/**
+	 * THE ONE SEQUENCE EVERY ITEM CRAFT GOES THROUGH. Issue #47, slice F5, ruled by the coordinating session on
+	 * 2026-11-22. In order: the run (`Step.NoRunRefusal`) and the item at the target (`Step.NothingThereRefusal`); for a
+	 * worn piece, the Consumption Threshold question when the craft would cross it ("There is no path across the threshold
+	 * that does not show the warning first."); the mark set before the change; the gold, once; the materials, through
+	 * `TakeMaterials`; the hooks' take; the item changed by `ChangeTheItem` from a copy of it as it stood and the run before
+	 * the days pass, which may refuse; the residue written from `Step.ResidueAfter`; the item put back; the hooks' after;
+	 * the days; the build the double wears, captured after the change; the craft's line through `SayTheLine`, then the
+	 * options' line; and the save triggers. ANYTHING THAT CANNOT BE FINISHED PUTS BACK WHAT IT TOOK.
+	 */
+	static ECataclysmForgeResult DoItemCraft(
+		const UObject* WorldContext, const FCataclysmForgeCraftStep& Step, bool bConfirmedPastThreshold,
+		TFunctionRef<bool(const FCataclysmItem& Before, FCataclysmItem& Changed, const UCataclysmEmpireRun& Run,
+						  FString& OutRefusal)> ChangeTheItem,
+		TFunctionRef<void(const FString& ItemName, int32 DayFrom, int32 DayTo)> SayTheLine,
+		const FCataclysmForgeCraftHooks& Hooks, FString& OutMessage);
 
 private:
+	/**
+	 * THE ONE PLACE A CRAFT'S MATERIALS ARE TAKEN, material by material, recording what was taken so a failure gives back
+	 * exactly that. Each material's tier is read from the table (`MaterialTierOf`). Slice F5 takes everything; the gold
+	 * session's F6b decides here whether Material Conservation, Resource Management or Tempting Fate keeps one (Q17).
+	 */
+	static bool TakeMaterials(UCataclysmInventoryComponent* Inventory, const TArray<FCataclysmForgeMaterialTake>& Materials,
+							  TArray<FCataclysmForgeMaterialTake>& OutTaken);
+
+	/** Puts back what `TakeMaterials` took. */
+	static void GiveMaterialsBack(UCataclysmInventoryComponent* Inventory, const TArray<FCataclysmForgeMaterialTake>& Taken);
+
 	/**
 	 * The part `Imprint` and `ChangeNegative` share, given a possible plan, in the order slice F1's `CraftAffix` keeps:
 	 * the threshold question, the gold, the material, the draw and the item changed, the days, the line and the save.
@@ -291,7 +401,8 @@ private:
 	static ECataclysmForgeResult DoEnchantmentWork(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 												   const FCataclysmForgeEnchantmentWork& Plan,
 												   bool bConfirmedPastThreshold, FCataclysmForgeEnchantmentWork& OutDone,
-												   FString& OutMessage);
+												   FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options);
 
 	/**
 	 * The part `AddAffix` and `ShiftAffix` share, given a possible plan drawn for the run's day: the threshold question,
@@ -300,7 +411,8 @@ private:
 	 */
 	static ECataclysmForgeResult DoAffixChange(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 											   const FCataclysmForgeAffixChange& Plan, bool bConfirmedPastThreshold,
-											   FCataclysmForgeAffixChange& OutDone, FString& OutMessage);
+											   FCataclysmForgeAffixChange& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options);
 
 	/**
 	 * The part `AddSocket` and `ChangeSocketType` share, given a possible plan, as `DoSocketing` is for socketing: the
@@ -309,7 +421,8 @@ private:
 	 */
 	static ECataclysmForgeResult DoSocketWork(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 											  const FCataclysmForgeSocketWork& Plan, bool bConfirmedPastThreshold,
-											  FCataclysmForgeSocketWork& OutDone, FString& OutMessage);
+											  FCataclysmForgeSocketWork& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options);
 
 	/**
 	 * The part `SocketGem` and `UnsocketGem` share, given a possible plan: the threshold question, taking the material
@@ -318,5 +431,6 @@ private:
 	 */
 	static ECataclysmForgeResult DoSocketing(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
 											 const FCataclysmForgeSocketing& Plan, bool bConfirmedPastThreshold,
-											 FCataclysmForgeSocketing& OutDone, FString& OutMessage);
+											 FCataclysmForgeSocketing& OutDone, FString& OutMessage,
+		const FCataclysmForgeCraftOptions& Options);
 };

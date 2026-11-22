@@ -45,6 +45,12 @@ const TCHAR* UCataclysmForge::PrismaticCatalystRow = TEXT("Material_Prismatic_Ca
 const TCHAR* UCataclysmForge::InfuseRandomDamageTypeOperationRow = TEXT("Operation_Infuse_Random_Damage_Type");
 const TCHAR* UCataclysmForge::InfuseSpecificDamageTypeOperationRow = TEXT("Operation_Infuse_Specific_Damage_Type");
 const TCHAR* UCataclysmForge::ChangeDamageTypeOperationRow = TEXT("Operation_Change_Damage_Type");
+const TCHAR* UCataclysmForge::ChaosStabilizerRow = TEXT("Material_Chaos_Stabilizer");
+const TCHAR* UCataclysmForge::TaintedShardRow = TEXT("Material_Tainted_Shard");
+const TCHAR* UCataclysmForge::PurifiedEssenceRow = TEXT("Material_Purified_Essence");
+const TCHAR* UCataclysmForge::ReduceResidueGainOperationRow = TEXT("Operation_Reduce_CR_Gain_1_Craft");
+const TCHAR* UCataclysmForge::AccelerateCraftOperationRow = TEXT("Operation_Accelerate_Craft");
+const TCHAR* UCataclysmForge::CleanseOperationRow = TEXT("Operation_CR_Cleanse_Partial");
 const TCHAR* UCataclysmForge::CreationWeaponRefusal =
 	TEXT("The weapon made at creation carries the damage type chosen for the character; the forge does not change its "
 		 "damage types.");
@@ -1500,6 +1506,162 @@ FString UCataclysmForge::EnchantmentWorkQuestion(const FCataclysmForgeEnchantmen
 	return FString::Printf(TEXT("Press again to change the drawback of %s: one Regret Essence, %s; a different drawback "
 								"is drawn at random."),
 						   *Named, *Cost);
+}
+
+int32 UCataclysmForge::PenaltyDaysFor(float Residue)
+{
+	return FMath::FloorToInt(FMath::Max(0.0f, Residue) / ResiduePerPenaltyDay);
+}
+
+FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
+													   const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
+													   int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeOptionEffect Out;
+	Out.ResidueAfter = ResidueAfter;
+	Out.Days = Days;
+	const float Added = ResidueAfter - ResidueBefore;
+
+	// A CHAOS STABILIZER HALVES WHAT THE CRAFT ADDS, CERTAINLY (Q27). The days and the craft's gold are read from the
+	// residue before the craft, so they do not change.
+	if (Options.bChaosStabilizer)
+	{
+		if (StabilizersHeld < 1)
+		{
+			Out.bPossible = false;
+			Out.Refusal = TEXT("A Chaos Stabilizer is asked for; 0 held.");
+			return Out;
+		}
+		if (Added <= 0.0f)
+		{
+			Out.bPossible = false;
+			Out.Refusal = TEXT("This craft adds no residue for a Chaos Stabilizer to halve.");
+			return Out;
+		}
+		Out.bStabilizerUsed = true;
+		Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;
+		Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
+		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE (G1).
+		Out.Gold += GoldFor(BaseGoldOf(ReduceResidueGainOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier);
+		Out.Materials.Add({FName(ChaosStabilizerRow), 1});
+	}
+
+	// EACH TAINTED SHARD REMOVES ONE PENALTY DAY, never one of the craft's base days (Q24, G2).
+	const int32 Shards = FMath::Max(0, Options.TaintedShards);
+	if (Shards > 0)
+	{
+		const int32 Penalty = PenaltyDaysFor(ResidueBefore);
+		if (ShardsHeld < Shards)
+		{
+			Out.bPossible = false;
+			Out.Refusal = FString::Printf(TEXT("%d Tainted Shard%s asked for; %d held."), Shards, Shards == 1 ? TEXT(" is") : TEXT("s are"),
+										  FMath::Max(0, ShardsHeld));
+			return Out;
+		}
+		if (Penalty <= 0)
+		{
+			Out.bPossible = false;
+			Out.Refusal = TEXT("This craft has no day of the residue's penalty for a Tainted Shard to remove.");
+			return Out;
+		}
+		if (Shards * DaysPerTaintedShard > Penalty)
+		{
+			Out.bPossible = false;
+			const int32 Most = Penalty / DaysPerTaintedShard;
+			Out.Refusal = FString::Printf(TEXT("This craft has %d day%s of the residue's penalty, so at most %d Tainted "
+											   "Shard%s can be used."),
+										  Penalty, Penalty == 1 ? TEXT("") : TEXT("s"), Most, Most == 1 ? TEXT("") : TEXT("s"));
+			return Out;
+		}
+		Out.ShardsUsed = Shards;
+		Out.DaysSaved = Shards * DaysPerTaintedShard;
+		Out.Days = Days - Out.DaysSaved;
+		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE PER SHARD (G1).
+		Out.Gold += GoldFor(BaseGoldOf(AccelerateCraftOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier) * Shards;
+		Out.Materials.Add({FName(TaintedShardRow), Shards});
+	}
+
+	// THE GOLD, THE CRAFT'S AND THE OPTIONS' TOGETHER.
+	if (Out.Gold > 0 && FMath::Max<int64>(0, GoldHeld) < CraftGold + Out.Gold)
+	{
+		Out.bPossible = false;
+		Out.Refusal = GoldRefusal(TEXT("The craft with its options"), CraftGold + Out.Gold, GoldHeld);
+	}
+	return Out;
+}
+
+FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effect, float ResidueBefore,
+										 float PlanResidueAfter, int32 PlanDays)
+{
+	// A RESIDUE AS THE SCREEN SAYS IT: whole when it is whole, else to one place, since a halved craft can add a half.
+	const auto Residue = [](float Value)
+	{
+		return FMath::IsNearlyEqual(Value, FMath::RoundToFloat(Value), 0.01f)
+			? FString::Printf(TEXT("%d"), FMath::RoundToInt(Value))
+			: FString::Printf(TEXT("%.1f"), Value);
+	};
+	FString Out;
+	if (Effect.bStabilizerUsed)
+	{
+		Out += FString::Printf(TEXT(" With a Chaos Stabilizer: residue %s to %s, not %s."), *Residue(ResidueBefore),
+							   *Residue(Effect.ResidueAfter), *Residue(PlanResidueAfter));
+	}
+	if (Effect.ShardsUsed > 0)
+	{
+		Out += FString::Printf(TEXT(" With %d Tainted Shard%s: %d day%s, not %d."), Effect.ShardsUsed,
+							   Effect.ShardsUsed == 1 ? TEXT("") : TEXT("s"), Effect.Days, Effect.Days == 1 ? TEXT("") : TEXT("s"),
+							   PlanDays);
+	}
+	if (Effect.Gold > 0)
+	{
+		Out += FString::Printf(TEXT(" The options cost %s more."), *ACataclysmDroppedItem::GoldName(Effect.Gold));
+	}
+	return Out;
+}
+
+FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
+												  int64 GoldHeld)
+{
+	FCataclysmForgeCleanse Out;
+	Out.Material = FName(PurifiedEssenceRow);
+	Out.MaterialHeld = FMath::Max(0, EssenceHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = FMath::Max(0.0f, Item.Residue) * CleansedResidueShare;
+	// "1 day per 500 CR", A PART COUNTING AS A DAY, AND AT LEAST ONE (Q25).
+	Out.Days = FMath::Max(1, FMath::CeilToInt(FMath::Max(0.0f, Item.Residue) / ResiduePerCleanseDay));
+	Out.Gold = GoldFor(BaseGoldOf(CleanseOperationRow, BaseGoldFor(1)), Item.Residue, DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to cleanse.");
+		return Out;
+	}
+	if (Item.Residue <= 0.0f)
+	{
+		Out.Refusal = TEXT("That piece carries no residue.");
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Cleansing takes a Purified Essence; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Cleansing"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FString UCataclysmForge::CleanseQuestion(const FCataclysmForgeCleanse& Plan)
+{
+	return FString::Printf(TEXT("Press again to cleanse half the residue: one Purified Essence, %s, residue %d to %d, %d day%s "
+								"of the run."),
+						   *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+						   FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, Plan.Days == 1 ? TEXT("") : TEXT("s"));
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

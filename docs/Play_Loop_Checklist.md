@@ -564,6 +564,37 @@ and no enchantment, raised to +4 (step 16's upgrade), because the Legendary it b
 
   `PLAY LOOP: changed the drawback of Gain 20% increased health on Legendary Helm of Warding from You have no armor to 80% of your health is reserved for 8,225 gold; residue 185 to 285; it cost 8 days, day 23 to day 31`
 
+### 25. Use a Chaos Stabilizer and Tainted Shards with a craft, and cleanse a piece
+
+At the forge (step 16), for a piece chosen (issue #47, slice F5). A Chaos Stabilizer is rare (about 1 crafting
+material drop in 128), a Tainted Shard uncommon (about 1 in 27) and a Purified Essence extremely rare (about 1 in
+1,705), so put some in the bag from the console first: `Cataclysm.GrantMaterial Material_Chaos_Stabilizer`,
+`Cataclysm.GrantMaterial Material_Tainted_Shard 2` and `Cataclysm.GrantMaterial Material_Purified_Essence`.
+
+- **The piece's buttons gain** "Chaos Stabilizer: off (1 held)", "Tainted Shards: 0 of 2 held" and "Cleanse half the
+  residue (1 Purified Essence held)". The first two are one press each: the Stabilizer turns on and off, and each press
+  of the Shards asks for one more, back to none after the number held. They apply to whichever craft you press next on
+  this piece, and go back to none when you choose another piece.
+- **Turn the Stabilizer on, ask for 1 Shard, and press a craft**, on a piece carrying 250 residue: "Add a socket", say.
+  Its first press says what the options do: "... With a Chaos Stabilizer: residue 250 to 257.5, not 265. With 1
+  Tainted Shard: 4 days, not 5. The options cost 3,000 gold more." The Stabilizer halves the residue the craft adds; a
+  Shard removes one day of the residue's penalty (a day for each 100 residue), never one of the craft's own days.
+- **Press it again.** The craft's own line, then:
+
+  `PLAY LOOP: used a Chaos Stabilizer and 1 Tainted Shard on Quality Helm for 3,000 gold: 7.5 residue and 1 day saved`
+
+- **Ask for more Shards than the penalty days**, 2 on a piece carrying 150 residue, and the first press refuses: "This
+  craft has 1 day of the residue's
+  penalty, so at most 1 Tainted Shard can be used." Below 100 residue a craft has no penalty day for a Shard.
+- **Click "Cleanse half the residue"**, twice, on a piece carrying 1,200 residue: "Press again to cleanse half the
+  residue: one Purified Essence, 6,250 gold, residue 1200 to 600, 3 days of the run." A day for each 500 residue, or
+  part of it, and at least one. A worn piece is never asked the Consumption Threshold question here: the residue falls.
+- **In the log:**
+
+  `PLAY LOOP: cleansed Quality Helm for 6,250 gold: residue 1200 to 600; it cost 3 days, day 20 to day 23`
+
+- **A character already marked by Consumption stays marked** after a cleanse: only killing the double clears it.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures
