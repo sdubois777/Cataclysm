@@ -793,13 +793,15 @@ bool FCataclysmEmpireTreeBriberyFeeTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	const FCataclysmDungeon* Ordinary = Scene.Run->Dungeons.FindByPredicate(
-		[](const FCataclysmDungeon& Dungeon) { return Dungeon.Resolves(); });
-	if (!TestNotNull(TEXT("set-up: an ordinary dungeon on the board"), Ordinary))
+	// AN ORDINARY DUNGEON PUT ON AN OUTPOST BY HAND, as the run's half does: `Begin` leaves the board empty until the
+	// first day is spent, and this scene spends none.
+	const TArray<FCataclysmCity*> Outposts = AllOf(*Scene.Run, ECataclysmCityTier::Outpost);
+	if (!TestTrue(TEXT("set-up: an Outpost"), Outposts.Num() > 0))
 	{
 		return false;
 	}
-	const int32 DungeonId = Ordinary->DungeonId;
+	const int32 DungeonId = 9601;
+	Place(*Scene.Run, DungeonId, ECataclysmDungeonType::Basic, *Outposts[0], 30.0f);
 	FCataclysmDungeonTimer* Timer = TimerOf(*Scene.Run, DungeonId);
 	if (!TestNotNull(TEXT("set-up: its timer"), Timer))
 	{

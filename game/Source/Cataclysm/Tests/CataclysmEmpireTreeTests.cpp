@@ -31,7 +31,9 @@ namespace CataclysmEmpireTreeTestNodes
 	const FName Foundation(TEXT("basic_0000000v"));				// <- Urban Planning at 2, 10 points
 	const FName Scaffolding(TEXT("keystone_0000000z"));			// <- Foundation full; buyable since issue #2832
 	const FName MetropolitanGrowth(TEXT("basic_00000016"));		// 10 points
-	const FName CivicPride(TEXT("basic_arch_civic_pride"));		// <- Metropolitan Growth at 8; waits on population growth
+	const FName CivicPride(TEXT("basic_arch_civic_pride"));		// <- Metropolitan Growth at 8; buyable since #2741 slice 9
+	const FName ImperialRoads(TEXT("basic_arch_t3d"));			// 10 points
+	const FName ScorchedEarth(TEXT("keystone_00000019"));		// <- Imperial Roads full; waits on destroying an upgrade
 	const FName RoyalEngineersBlessing(TEXT("capstone_0000001i"));	// the Architect branch's capstone
 
 	// Explorer.
@@ -218,14 +220,19 @@ bool FCataclysmEmpireTreeWaitsOnTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the bank is untouched"), Bank, 50.0);
 	TestEqual(TEXT("nothing is spent"), Allocation.Total(), 0);
 
-	// AND EVEN WITH EVERY EDGE INTO IT SATISFIED. Civic Pride since issue #2832, which built Scaffolding, the node this
-	// used to read: a city upgrade's build time is no longer missing.
+	// AND EVEN WITH EVERY EDGE INTO IT SATISFIED. Scorched Earth since issue #2741 slice 9, which built Civic Pride, the
+	// node this read from issue #2832 (Scaffolding before it): a population growth rate is no longer missing.
+	Allocation.Add(ImperialRoads, 10);
+	const FString Waiting = UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, ScorchedEarth, 50.0);
+	TestTrue(TEXT("Scorched Earth, with Imperial Roads full, still waits on destroying a city upgrade"),
+			 Waiting.Contains(TEXT("a city screen action that destroys a city upgrade")));
+	TestTrue(TEXT("Scorched Earth's edge is satisfied, so only its system refuses it"),
+			 UCataclysmEmpireTree::EdgesAllow(Nodes, Edges, Allocation, ScorchedEarth));
+
+	// AND CIVIC PRIDE, WITH METROPOLITAN GROWTH AT 8, CAN BE BOUGHT since issue #2741 slice 9.
 	Allocation.Add(MetropolitanGrowth, 8);
-	const FString Waiting = UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, CivicPride, 50.0);
-	TestTrue(TEXT("Civic Pride, with Metropolitan Growth at 8, still waits on a population growth rate"),
-			 Waiting.Contains(TEXT("a population growth rate")));
-	TestTrue(TEXT("Civic Pride's edge is satisfied, so only its system refuses it"),
-			 UCataclysmEmpireTree::EdgesAllow(Nodes, Edges, Allocation, CivicPride));
+	TestTrue(TEXT("Civic Pride, with Metropolitan Growth at 8, waits on nothing now"),
+			 UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, CivicPride, 50.0).IsEmpty());
 
 	// AND SCAFFOLDING, WITH FOUNDATION FULL, CAN BE BOUGHT since issue #2832.
 	Allocation.Add(Foundation, 10);
