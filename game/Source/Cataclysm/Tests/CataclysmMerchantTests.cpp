@@ -165,8 +165,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMerchantSaleTest,
 
 /**
  * A Solo Self-Found player with 100 gold sells a Masterful +3 at tier 1: 6.5, half up to 7, so 107 held and the cell
- * empty, with no day passed. Selling the empty cell, a material's cell and a cell outside the bag is refused and
- * changes nothing. A worn piece is never among the pieces offered.
+ * empty, with no day passed. Selling the empty cell and a cell outside the bag is refused and changes nothing. A worn
+ * piece and a material are never among the pieces offered: a material is not a piece, and once the inventory tabs
+ * (#2849) land it has no cell of the bag at all, so the offer is what is tested, not a sale of its cell.
  */
 bool FCataclysmMerchantSaleTest::RunTest(const FString&)
 {
@@ -178,7 +179,7 @@ bool FCataclysmMerchantSaleTest::RunTest(const FString&)
 		return false;
 	}
 	const int32 Cell = Scene.Bag()->AddItem(Piece(ECataclysmRarity::Masterful, 3));
-	const int32 MaterialCell = Scene.Bag()->AddMaterial(FName(TEXT("Material_Corrupted_Mote")), 2);
+	Scene.Bag()->AddMaterial(FName(TEXT("Material_Corrupted_Mote")), 2);
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
 	Scene.Character->GetEquipment()->EquipInto(Piece(ECataclysmRarity::Superb, 0, TEXT("Head_Helm")), ECataclysmGearSlot::Head,
@@ -198,7 +199,6 @@ bool FCataclysmMerchantSaleTest::RunTest(const FString&)
 
 	TestFalse(TEXT("**the empty cell is refused**"), FMerchant::Sell(Scene.World, Cell, Gold, Message));
 	TestEqual(TEXT("with its sentence"), Message, FString(FMerchant::NoItemRefusal));
-	TestFalse(TEXT("**a material's cell is refused**"), FMerchant::Sell(Scene.World, MaterialCell, Gold, Message));
 	TestFalse(TEXT("a cell outside the bag is refused"), FMerchant::Sell(Scene.World, 99, Gold, Message));
 	TestEqual(TEXT("**and nothing more was paid**"), Scene.State->GetOwnGold(), static_cast<int64>(107));
 	TestEqual(TEXT("the material is still carried"), Scene.Bag()->CountOfMaterial(FName(TEXT("Material_Corrupted_Mote"))), 2);
