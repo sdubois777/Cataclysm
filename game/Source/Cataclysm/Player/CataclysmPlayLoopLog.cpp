@@ -380,6 +380,22 @@ FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel
 						   IntoLevel, FromHeld, FromLevel, IntoHeld, IntoLevel);
 }
 
+FString FCataclysmPlayLoopLog::ForgeSocketLine(bool bUnsocket, const FString& GemName, const FString& Rarity,
+											  const FString& SocketType, const FString& ItemName, int32 ResidueBefore,
+											  int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo)
+{
+	// TWO PLAIN RETURNS, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can read both formats.
+	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
+	if (bUnsocket)
+	{
+		return FString::Printf(TEXT("unsocketed %s (%s) from %s, back to the bag; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   *GemName, *Rarity, *ItemName, ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+	}
+	return FString::Printf(TEXT("socketed %s (%s) into the %s socket of %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   *GemName, *Rarity, *SocketType, *ItemName, ResidueBefore, ResidueAfter, Days, Plural, DayFrom,
+						   DayTo);
+}
+
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
 {
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);

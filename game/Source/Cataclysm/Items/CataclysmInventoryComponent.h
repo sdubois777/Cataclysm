@@ -296,6 +296,14 @@ public:
 	int32 CountOfGems(FName Gem, ECataclysmRarity Rarity) const;
 
 	/**
+	 * Takes this many gems of one kind and rarity out of their stack. Issue #46, slice G4: the forge's Socket Gem.
+	 *
+	 * ALL OR NOTHING, as `RemoveMaterial` is: fewer carried than asked takes none. A stack taken to nought empties its
+	 * slot.
+	 */
+	bool RemoveGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+
+	/**
 	 * The item in a slot, or nullptr when the slot is empty, holds a material
 	 * or gems, or is not a slot.
 	 *

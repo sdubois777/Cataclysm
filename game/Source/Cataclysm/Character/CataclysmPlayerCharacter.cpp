@@ -76,6 +76,8 @@
 #include "Player/CataclysmGameMode.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
+// Cataclysm.GrantGem, issue #46 slice G4.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -3313,6 +3315,57 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmDrop(
 			Ar.Log(*UCataclysmWearing::Explain(UCataclysmWearing::DropCarried(
 				Character->GetInventory(), FCString::Atoi(*Args[0]), World,
 				UCataclysmDropSpawner::DropSpotInFrontOf(*Character))));
+		}));
+
+// ---------------------------------------------------------------------------
+// Cataclysm.GrantGem. Issue #46, slice G4: gems can be socketed at the forge
+// before anything drops one (slice G5), and this is how a player has one to
+// socket until then. A developer's tool, as Cataclysm.GrantExperience is.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
+	TEXT("Cataclysm.GrantGem"),
+	TEXT("Put gems in the bag: Cataclysm.GrantGem <row, e.g. Gem_Of_The_Viper> [rarity 1 to 8, Everyday to "
+		 "Cataclysmic, default 1] [how many, default 1]. A developer's tool: nothing drops a gem until gem drops "
+		 "are built."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory())
+			{
+				return;
+			}
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.GrantGem <row> [rarity 1 to 8] [how many]. The rows are game/Data/Gems.csv's "
+							"Name column, Gem_Of_The_Abyss to Gem_Of_The_Scholar."));
+				return;
+			}
+			const FName Gem(*Args[0]);
+			if (!UCataclysmGems::RowOf(UCataclysmGems::LoadGeneratedTable(), Gem))
+			{
+				Ar.Logf(TEXT("%s is no gem in the gem table."), *Args[0]);
+				return;
+			}
+			const int32 RarityStep = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 1;
+			const int32 Count = Args.Num() > 2 ? FCString::Atoi(*Args[2]) : 1;
+			if (RarityStep < 1 || RarityStep > 8 || Count < 1)
+			{
+				Ar.Log(TEXT("The rarity is 1 to 8 and the count at least 1."));
+				return;
+			}
+			const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(RarityStep - 1);
+			const int32 Cell = Character->GetInventory()->AddGems(Gem, Rarity, Count);
+			if (Cell == INDEX_NONE)
+			{
+				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				return;
+			}
+			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
+					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(

@@ -113,4 +113,41 @@ public:
 	 * the made stone would have nowhere to go -- no stack of it, no free cell, and the two taken leave a stack behind.
 	 */
 	static bool Combine(const UObject* WorldContext, int32 Level, FCataclysmForgeCombine& OutDone, FString& OutReason);
+
+	//~ Socketing and unsocketing a gem. Issue #46, slice G4.
+
+	/** What putting a carried gem into a socket of the item at a target would take now. */
+	static FCataclysmForgeSocketing SocketPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												  int32 Socket, FName Gem, ECataclysmRarity Rarity);
+
+	/** What taking the gem out of a socket of the item at a target would take now. */
+	static FCataclysmForgeSocketing UnsocketPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													int32 Socket);
+
+	/**
+	 * Put a carried gem into a socket of the item at a target, carried or worn: one Jeweler's Setting Agent and the gem
+	 * leave the bag, the item carries 5 more residue, and the days pass. A worn piece asks first when it would cross the
+	 * Consumption Threshold, as an upgrade does.
+	 */
+	static ECataclysmForgeResult SocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target, int32 Socket,
+										   FName Gem, ECataclysmRarity Rarity, bool bConfirmedPastThreshold,
+										   FCataclysmForgeSocketing& OutDone, FString& OutMessage);
+
+	/**
+	 * Take the gem out of a socket of the item at a target: one Dismantling Dust leaves the bag, the gem goes back to
+	 * it, the item carries 3 more residue, and the days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult UnsocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+											 int32 Socket, bool bConfirmedPastThreshold,
+											 FCataclysmForgeSocketing& OutDone, FString& OutMessage);
+
+private:
+	/**
+	 * The part `SocketGem` and `UnsocketGem` share, given a possible plan: the threshold question, taking the material
+	 * (and for a socketing the gem), changing the item, giving the gem back (for an unsocketing), the days, the line and
+	 * the save. Anything that cannot be finished puts back what it took, so nothing is half done.
+	 */
+	static ECataclysmForgeResult DoSocketing(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+											 const FCataclysmForgeSocketing& Plan, bool bConfirmedPastThreshold,
+											 FCataclysmForgeSocketing& OutDone, FString& OutMessage);
 };

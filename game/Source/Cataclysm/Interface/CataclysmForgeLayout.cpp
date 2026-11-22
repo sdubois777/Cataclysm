@@ -3,6 +3,8 @@
 #include "Interface/CataclysmForgeLayout.h"
 
 #include "Items/CataclysmDropRoll.h"
+// The gems a socket fits and their names, issue #46 slice G4.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 
@@ -162,4 +164,75 @@ TArray<int32> UCataclysmForgeLayout::CombineLevelsFor(const UCataclysmInventoryC
 		}
 	}
 	return Levels;
+}
+
+TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(const FCataclysmItem& Item,
+																			const UCataclysmInventoryComponent* Inventory)
+{
+	TArray<FCataclysmForgeSocketAction> Out;
+	const UDataTable* GemTable = UCataclysmGems::LoadGeneratedTable();
+	for (int32 Index = 0; Index < Item.Sockets.Num(); ++Index)
+	{
+		const FCataclysmSocket& Socket = Item.Sockets[Index];
+		if (!Socket.Gem.IsNone())
+		{
+			FCataclysmForgeSocketAction& Action = Out.AddDefaulted_GetRef();
+			Action.bUnsocket = true;
+			Action.Socket = Index;
+			Action.Gem = Socket.Gem;
+			Action.Rarity = Socket.GemRarity;
+			Action.ButtonName = FName(*FString::Printf(TEXT("Unsocket_%d"), Index));
+			Action.Label = FString::Printf(TEXT("Unsocket %s (%s) from socket %d"), *UCataclysmGems::NameOf(Socket.Gem),
+										   *UCataclysmGems::RarityName(Socket.GemRarity), Index + 1);
+			continue;
+		}
+		if (Inventory == nullptr)
+		{
+			continue;
+		}
+		// EACH CARRIED STACK THAT FITS THIS SOCKET, in cell order.
+		const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+		for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
+		{
+			const FCataclysmCarriedSlot& Carried = Slots[Cell];
+			const FCataclysmGemRow* Row = Carried.Gem.IsNone() || Carried.Quantity <= 0
+				? nullptr
+				: UCataclysmGems::RowOf(GemTable, Carried.Gem);
+			if (Row == nullptr || !UCataclysmGems::GemFits(Socket.Type, Row->GemType))
+			{
+				continue;
+			}
+			FCataclysmForgeSocketAction& Action = Out.AddDefaulted_GetRef();
+			Action.Socket = Index;
+			Action.Gem = Carried.Gem;
+			Action.Rarity = Carried.GemRarity;
+			Action.ButtonName = FName(*FString::Printf(TEXT("Socket_%d_Cell_%d"), Index, Cell));
+			const FString Type = Socket.Type == ECataclysmSocketType::Any
+				? FString(TEXT("any gem"))
+				: UCataclysmGems::SocketTypeName(Socket.Type);
+			Action.Label = FString::Printf(TEXT("Socket %s (%s) into socket %d (%s)"), *UCataclysmGems::NameOf(Carried.Gem),
+										   *UCataclysmGems::RarityName(Carried.GemRarity), Index + 1, *Type);
+		}
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::SocketActionForButton(FName ButtonName, const TArray<FCataclysmForgeSocketAction>& Shown,
+												  FCataclysmForgeSocketAction& OutAction)
+{
+	for (const FCataclysmForgeSocketAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
+FString UCataclysmForgeLayout::SocketsDetailFor(const FCataclysmItem& Item)
+{
+	const TArray<FString> Lines = UCataclysmGems::SocketLinesFor(Item);
+	return Lines.IsEmpty() ? FString() : FString::Printf(TEXT("Sockets: %s"), *FString::Join(Lines, TEXT("; ")));
 }

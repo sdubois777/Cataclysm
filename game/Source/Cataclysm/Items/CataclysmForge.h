@@ -61,6 +61,37 @@ struct FCataclysmForgeCombine
 };
 
 /**
+ * What putting a gem into a socket, or taking one out, would take, or why it cannot. Issue #46, slice G4.
+ */
+struct FCataclysmForgeSocketing
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** False to socket a gem, true to take one out. */
+	bool bUnsocket = false;
+
+	/** Which socket, from 0, and its type. */
+	int32 Socket = INDEX_NONE;
+	ECataclysmSocketType SocketType = ECataclysmSocketType::Any;
+
+	/** The gem put in or taken out, and its rarity. */
+	FName Gem;
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: one, and the residue's time penalty read before the craft adds its own. */
+	int32 Days = 0;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -148,4 +179,58 @@ public:
 	 * piece by it, so the three cannot call one piece by different names.
 	 */
 	static FString NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable);
+
+	//~ Socketing and unsocketing a gem. Issue #46, slice G4, ruled by the coordinating session on 2026-11-21.
+	//
+	// THE DESIGN'S OPERATIONS ROWS, section VII: "Socket Gem | Jeweler's Setting Agent | 5 | 1" and "Unsocket Gem |
+	// Dismantling Dust | 3 | 1", the residue added and the base days, with the same time penalty as every craft. No free
+	// removal: a gem comes out only with Dismantling Dust ("Safe unsocketing"), and comes back to the bag. A gem fits a
+	// socket of its own type, or a socket for any gem.
+
+	/** The row of the material Socket Gem consumes, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* SettingAgentRow;
+
+	/** The row of the material Unsocket Gem consumes, one each. */
+	static const TCHAR* DismantlingDustRow;
+
+	/** The residue Socket Gem adds. Mirrors `SOCKET_GEM_RESIDUE` in `sim/cataclysm_sim/residue.py`. */
+	static constexpr float SocketGemResidue = 5.0f;
+
+	/** The residue Unsocket Gem adds. */
+	static constexpr float UnsocketGemResidue = 3.0f;
+
+	/** The days each costs before the residue's time penalty. */
+	static constexpr int32 SocketGemBaseDays = 1;
+	static constexpr int32 UnsocketGemBaseDays = 1;
+
+	/** The days a craft of `BaseDays` costs on an item carrying this residue: `BaseDays` and `Residue / 100`, down. */
+	static int32 DaysFor(float Residue, int32 BaseDays);
+
+	/**
+	 * What putting `Gem` at `Rarity`, a gem of `GemType`, into the item's socket `Socket` takes, against the gems of that
+	 * kind and the Setting Agents held.
+	 *
+	 * REFUSED for no item, no such socket, a socket that holds a gem, no such gem carried, a gem of another type than a
+	 * typed socket's, and no Setting Agent.
+	 */
+	static FCataclysmForgeSocketing SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
+												ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
+												int32 AgentsHeld);
+
+	/**
+	 * What taking the gem out of the item's socket `Socket` takes, against the Dismantling Dust held and whether the bag
+	 * has room for the gem (a stack of it, a free cell, or the cell the last Dust frees).
+	 *
+	 * REFUSED for no item, no such socket, an empty socket, no Dust, and no room.
+	 */
+	static FCataclysmForgeSocketing UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
+												  bool bRoomForTheGem);
+
+	/**
+	 * What the first press of a socketing says, before the second does it: "Press again to socket Of The Viper (Superb)
+	 * into the Attack socket: one Jeweler's Setting Agent, residue 87 to 92, 1 day of the run." or "Press again to
+	 * unsocket Of The Viper (Superb): one Dismantling Dust, residue 87 to 90, 1 day of the run; the gem goes back to the
+	 * bag."
+	 */
+	static FString SocketingQuestion(const FCataclysmForgeSocketing& Plan);
 };

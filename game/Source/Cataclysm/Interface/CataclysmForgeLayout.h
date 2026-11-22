@@ -20,6 +20,20 @@ struct FCataclysmForgeEntry
 };
 
 /**
+ * One socket action the forge offers for the piece chosen: put a carried gem into an empty socket, or take a gem out.
+ * Issue #46, slice G4.
+ */
+struct FCataclysmForgeSocketAction
+{
+	FName ButtonName;
+	FString Label;
+	bool bUnsocket = false;
+	int32 Socket = INDEX_NONE;
+	FName Gem;
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+};
+
+/**
  * Every word and every list the forge's screen shows, as pure functions of the character's gear and stones, so a test
  * reads them with no widget at all. The screen, `UCataclysmForgeWidget`, lays them out. The owner's ruling of
  * 2026-11-19.
@@ -70,4 +84,22 @@ public:
 
 	/** The levels a combine button is shown for: every level from 1 to 9 with at least one stone held. */
 	static TArray<int32> CombineLevelsFor(const UCataclysmInventoryComponent* Inventory);
+
+	//~ Gems in sockets. Issue #46, slice G4.
+
+	/**
+	 * The socket actions for a piece, socket by socket: a filled socket offers to take its gem out, "Unsocket Of The
+	 * Viper (Superb) from socket 2"; an empty one offers each carried gem stack that fits it, "Socket Of The Titan
+	 * (Superb) into socket 1 (Defense)". Sockets are numbered from 1 to the player. A gem that fits no socket of the
+	 * piece is not offered.
+	 */
+	static TArray<FCataclysmForgeSocketAction> SocketActionsFor(const FCataclysmItem& Item,
+																const UCataclysmInventoryComponent* Inventory);
+
+	/** The action a button stands for, among those shown. False for a button that is no socket action. */
+	static bool SocketActionForButton(FName ButtonName, const TArray<FCataclysmForgeSocketAction>& Shown,
+									  FCataclysmForgeSocketAction& OutAction);
+
+	/** The piece's sockets for the screen's detail, "Sockets: Attack socket: empty; Defense socket: ...", or empty. */
+	static FString SocketsDetailFor(const FCataclysmItem& Item);
 };

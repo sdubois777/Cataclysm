@@ -231,6 +231,24 @@ int32 UCataclysmInventoryComponent::CountOfGems(FName Gem, ECataclysmRarity Rari
 	return Total;
 }
 
+bool UCataclysmInventoryComponent::RemoveGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
+{
+	// ALL OR NOTHING, as a material is taken.
+	const int32 Slot = SlotOfGems(Gem, Rarity);
+	if (Quantity <= 0 || Slot == INDEX_NONE || Slots[Slot].Quantity < Quantity)
+	{
+		return false;
+	}
+	Slots[Slot].Quantity -= Quantity;
+	if (Slots[Slot].Quantity <= 0)
+	{
+		Slots[Slot] = FCataclysmCarriedSlot();
+	}
+	++Changes;
+	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::InventoryChanged);
+	return true;
+}
+
 int32 UCataclysmInventoryComponent::AddGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
 {
 	if (Gem.IsNone() || Quantity <= 0)

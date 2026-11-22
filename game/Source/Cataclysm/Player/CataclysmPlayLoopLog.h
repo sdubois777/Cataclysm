@@ -215,6 +215,16 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld);
 
 	/**
+	 * A gem socketed or unsocketed at the forge: "socketed Of The Viper (Superb) into the Attack socket of Quality Torc
+	 * of Warding; residue 87 to 92; it cost 1 day, day 20 to day 21", or "unsocketed Of The Viper (Superb) from Quality
+	 * Torc of Warding, back to the bag; residue 87 to 90; it cost 1 day, day 20 to day 21". Issue #46, slice G4. Said by
+	 * `UCataclysmForgeCraft::SocketGem` and `UnsocketGem`, after the craft and the days.
+	 */
+	static FString ForgeSocketLine(bool bUnsocket, const FString& GemName, const FString& Rarity,
+								   const FString& SocketType, const FString& ItemName, int32 ResidueBefore,
+								   int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling
 	 * of 2026-11-19: the owner's play log said nothing about gear, so a walk could not be read for what was taken. Said
 	 * by `UCataclysmDropPickup::TakeInto`, for a piece of gear only, once it is in the bag. A crafting material is not

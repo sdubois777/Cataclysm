@@ -331,6 +331,33 @@ click like any other.
   be used in the capital, not during a walk." and changes nothing.
 - **Close** the screen with its Close button.
 
+### 17. Socket a gem at the forge, and take it out again
+
+Nothing drops a gem yet (issue #46's slice G5), so put some in the bag from the console first:
+`Cataclysm.GrantGem Gem_Of_Life 3 2` gives two Superb Of Life, and `Cataclysm.GrantGem Gem_Of_The_Viper 3` one Superb
+Of The Viper. A Jeweler's Setting Agent and Dismantling Dust are Common materials and drop on the walks.
+
+- **Hover a gem in the bag.** Its tooltip names it, its rarity and type, its effect at that rarity ("Increases HP by
+  25%") and the socket it fits ("Fits a Defense socket").
+- **Click "Forge", then a piece with sockets.** The line under the buttons lists them: "Sockets: Attack socket: empty;
+  Defense socket: empty". Each empty socket offers every carried gem that fits it: "Socket Of Life (Superb) into socket
+  2 (Defense)". A gem of another type is not offered for that socket.
+- **Click it.** The line asks first: "Press again to socket Of Life (Superb) into the Defense socket: one Jeweler's
+  Setting Agent, residue 52 to 57, 1 day of the run." Click it again. The piece's sockets now show "Defense socket: Of
+  Life (Superb)", one Of Life and one Setting Agent are gone, and a day passes. Worn, the character sheet's maximum
+  health rises by 25%.
+- **In the log:**
+
+  `PLAY LOOP: socketed Of Life (Superb) into the Defense socket of Everyday Helm; residue 52 to 57; it cost 1 day, day 26 to day 27`
+
+- **Click "Unsocket Of Life (Superb) from socket 2"**, twice. One Dismantling Dust is used, Of Life is back in the bag,
+  and a day passes. With no Dust it says "Unsocketing a gem takes Dismantling Dust; 0 held." and nothing moves.
+- **In the log:**
+
+  `PLAY LOOP: unsocketed Of Life (Superb) from Everyday Helm, back to the bag; residue 57 to 60; it cost 1 day, day 27 to day 28`
+
+- **Dropping a gem stack** from the bag is refused: "Gems cannot be put on the floor yet, so they are still in the bag."
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

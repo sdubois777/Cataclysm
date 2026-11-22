@@ -5,7 +5,12 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
+// A socket's type and a gem's name, issue #46 slice G4.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmWearing.h"
+
+const TCHAR* UCataclysmForge::SettingAgentRow = TEXT("Material_Jeweler_s_Setting_Agent");
+const TCHAR* UCataclysmForge::DismantlingDustRow = TEXT("Material_Dismantling_Dust");
 
 FName UCataclysmForge::StoneFor(int32 Level)
 {
@@ -106,6 +111,141 @@ FString UCataclysmForge::ThresholdQuestion(const FString& ItemName, float WornRe
 		TEXT("Upgrading %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
 		ItemName.IsEmpty() ? TEXT("this") : *ItemName, FMath::RoundToInt(WornResidueAfter),
 		FMath::RoundToInt(Threshold), UCataclysmWearing::ThresholdConsequence);
+}
+
+int32 UCataclysmForge::DaysFor(float Residue, int32 BaseDays)
+{
+	return BaseDays + FMath::FloorToInt(FMath::Max(0.0f, Residue) / ResiduePerPenaltyDay);
+}
+
+FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
+													  ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
+													  int32 AgentsHeld)
+{
+	FCataclysmForgeSocketing Out;
+	Out.Socket = Socket;
+	Out.Gem = Gem;
+	Out.Rarity = Rarity;
+	Out.Material = FName(SettingAgentRow);
+	Out.MaterialHeld = FMath::Max(0, AgentsHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + SocketGemResidue;
+	Out.Days = DaysFor(Item.Residue, SocketGemBaseDays);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to socket.");
+		return Out;
+	}
+	if (!Item.Sockets.IsValidIndex(Socket))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no socket %d."), Socket + 1);
+		return Out;
+	}
+	const FCataclysmSocket& Into = Item.Sockets[Socket];
+	Out.SocketType = Into.Type;
+	if (!Into.Gem.IsNone())
+	{
+		Out.Refusal = FString::Printf(TEXT("That socket already holds %s; unsocket it first."),
+									  *UCataclysmGems::NameOf(Into.Gem));
+		return Out;
+	}
+	if (Gem.IsNone() || GemsHeld <= 0)
+	{
+		Out.Refusal = FString::Printf(TEXT("No %s (%s) is carried."), *UCataclysmGems::NameOf(Gem),
+									  *UCataclysmGems::RarityName(Rarity));
+		return Out;
+	}
+	// A GEM FITS A SOCKET OF ITS OWN TYPE, OR ONE FOR ANY GEM. Ruled 2026-11-21.
+	if (!UCataclysmGems::GemFits(Into.Type, GemType))
+	{
+		// "AN" BEFORE A VOWEL SOUND: an Attack gem, a Defense socket, a Utility socket.
+		const auto Article = [](const FString& Word)
+		{
+			return Word.StartsWith(TEXT("A")) || Word.StartsWith(TEXT("E")) || Word.StartsWith(TEXT("I"))
+					|| Word.StartsWith(TEXT("O"))
+				? TEXT("an")
+				: TEXT("a");
+		};
+		const FString Gem = GemType.TrimStartAndEnd();
+		const FString Type = UCataclysmGems::SocketTypeName(Into.Type);
+		Out.Refusal = FString::Printf(TEXT("%s %s gem does not fit %s %s socket."),
+									  FCString::Strcmp(Article(Gem), TEXT("an")) == 0 ? TEXT("An") : TEXT("A"), *Gem,
+									  Article(Type), *Type);
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Socketing a gem takes a Jeweler's Setting Agent; 0 held.");
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
+														bool bRoomForTheGem)
+{
+	FCataclysmForgeSocketing Out;
+	Out.bUnsocket = true;
+	Out.Socket = Socket;
+	Out.Material = FName(DismantlingDustRow);
+	Out.MaterialHeld = FMath::Max(0, DustHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + UnsocketGemResidue;
+	Out.Days = DaysFor(Item.Residue, UnsocketGemBaseDays);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to unsocket.");
+		return Out;
+	}
+	if (!Item.Sockets.IsValidIndex(Socket))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no socket %d."), Socket + 1);
+		return Out;
+	}
+	const FCataclysmSocket& From = Item.Sockets[Socket];
+	Out.SocketType = From.Type;
+	Out.Gem = From.Gem;
+	Out.Rarity = From.GemRarity;
+	if (From.Gem.IsNone())
+	{
+		Out.Refusal = TEXT("That socket holds no gem.");
+		return Out;
+	}
+	// NO FREE REMOVAL: only Dismantling Dust takes a gem out, and it comes back whole. Ruled 2026-11-21.
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Unsocketing a gem takes Dismantling Dust; 0 held.");
+		return Out;
+	}
+	if (!bRoomForTheGem)
+	{
+		Out.Refusal = TEXT("The bag has no free cell for the gem.");
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FString UCataclysmForge::SocketingQuestion(const FCataclysmForgeSocketing& Plan)
+{
+	const FString Gem = FString::Printf(TEXT("%s (%s)"), *UCataclysmGems::NameOf(Plan.Gem),
+										*UCataclysmGems::RarityName(Plan.Rarity));
+	const FString Cost = FString::Printf(TEXT("residue %d to %d, %d day%s of the run"),
+										 FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Plan.ResidueAfter),
+										 Plan.Days, Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	if (Plan.bUnsocket)
+	{
+		return FString::Printf(TEXT("Press again to unsocket %s: one Dismantling Dust, %s; the gem goes back to the bag."),
+							   *Gem, *Cost);
+	}
+	const FString Into = Plan.SocketType == ECataclysmSocketType::Any
+		? FString(TEXT("the socket for any gem"))
+		: FString::Printf(TEXT("the %s socket"), *UCataclysmGems::SocketTypeName(Plan.SocketType));
+	return FString::Printf(TEXT("Press again to socket %s into %s: one Jeweler's Setting Agent, %s."), *Gem, *Into,
+						   *Cost);
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)
