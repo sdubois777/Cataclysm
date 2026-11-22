@@ -2419,6 +2419,25 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** How many extra options may be taken from earlier tiers' centre milestones (Imperial Prowess: one, J2). */
 	ExtraEarlierMilestoneOption,
+
+	// ---- The three build nodes, issue #2832, ruled by the coordinating session on 2026-11-21. ----
+
+	/** Scaffolding's "cost 50% less gold": the share a city upgrade's price loses, a multiplier of its own after the
+	 *  reductions are held at their cap. */
+	UpgradePriceLess,
+
+	/** Scaffolding's "take 2x longer to build": what a city upgrade's days are multiplied by, before any are taken
+	 *  off. */
+	UpgradeBuildDaysMultiplied,
+
+	/** Rapid Renovation's days fewer to build a city upgrade, per point, to at least 1. */
+	UpgradeBuildDaysFewer,
+
+	/** Rapid Funding's Rush: its price, as a share of the price after every discount. */
+	UpgradeRushPriceShare,
+
+	/** Rapid Funding's Rush: the days fewer it takes to build, to at least 1. */
+	UpgradeRushDaysFewer,
 };
 
 /**

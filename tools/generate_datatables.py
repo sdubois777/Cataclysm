@@ -3745,8 +3745,6 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "build time": ("a build time for city upgrades, which is zero by the "
-                   "owner's ruling of 2026-11-18 (issue #1264)"),
     "fee figure": "a figure for its gold fee, which the design does not state",
     "cap figure": "a figure for its cap, which the design does not state",
     "crafting": "crafting, which the game does not have yet (issue #47)",
@@ -3840,6 +3838,10 @@ EMPIRE_TREE_BUILT = {
     "The Golden Touch": 7,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
+    # The three build nodes, issue #2832: a city upgrade's build days, which issue
+    # #2825 gave it, and Rapid Funding's Rush. Ruled by the coordinating session on
+    # 2026-11-21 (the nine-node entry of docs/DECISIONS.md).
+    "Scaffolding": 6, "Rapid Renovation": 6, "Rapid Funding": 6,
     # Artisan: crafting materials already drop.
     "Scavenger": 5,
 }
@@ -3855,7 +3857,6 @@ EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
     # Architect.
-    "Scaffolding": "build time", "Rapid Renovation": "build time",
     "Scorched Earth": "destroy upgrade",
     "Civic Pride": "population growth",
     # Explorer.
@@ -3870,7 +3871,6 @@ EMPIRE_TREE_REFUSED = {
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
-    "Rapid Funding": "build time",
     "Bribery": "fee figure", "Economic Bailout": "fee figure",
     "Reinvestment": "cap figure",
     # Artisan.
@@ -4126,6 +4126,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "GoldEveryTwentyDaysPerTreasurerCity", "GoldAndMaterialsPerTreasurerCity",
     # Slice 8: Imperial Prowess.
     "ExtraEarlierMilestoneOption",
+    # The three build nodes, issue #2832.
+    "UpgradePriceLess", "UpgradeBuildDaysMultiplied", "UpgradeBuildDaysFewer",
+    "UpgradeRushPriceShare", "UpgradeRushDaysFewer",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4337,6 +4340,16 @@ EMPIRE_TREE_EFFECTS = {
     # centre milestones' options; "an additional keystone" is one (J2). The rules
     # that take it are in C++ (`UCataclysmEmpireTree::ChooseExtraOption`).
     "Imperial Prowess": [("ExtraEarlierMilestoneOption", 1.0)],
+    # The three build nodes, issue #2832, ruled by the coordinating session on
+    # 2026-11-21. SCAFFOLDING halves a city upgrade's price, a multiplier of its
+    # own after the reductions are held at their cap ("less" multiplies, as in the
+    # damage pipeline), and doubles its days; RAPID RENOVATION takes a day off a
+    # point; RAPID FUNDING offers a Rush at 150% of the price after every discount
+    # for 2 days fewer. The doubling comes first, then the days off, then the
+    # floor of 1 day: `UCataclysmEmpireTree::UpgradeBuildDaysFor`.
+    "Scaffolding": [("UpgradePriceLess", 0.50), ("UpgradeBuildDaysMultiplied", 2.0)],
+    "Rapid Renovation": [("UpgradeBuildDaysFewer", 1.0)],
+    "Rapid Funding": [("UpgradeRushPriceShare", 1.50), ("UpgradeRushDaysFewer", 2.0)],
 }
 
 

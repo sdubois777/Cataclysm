@@ -127,9 +127,10 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * @param Held      the balance after the purchase, or below zero when there is none to name, and the line says so.
 	 * @param ReadyDay  the day the upgrade will be finished, since issue #2825: "; being built, ready on day 57". At
 	 *                  INDEX_NONE, an upgrade finished at once, the line says nothing more.
+	 * @param bRushed   bought with Rapid Funding's Rush, since issue #2832: "; rushed" before the ready day.
 	 */
 	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
-							   int64 Held, int32 ReadyDay = INDEX_NONE);
+							   int64 Held, int32 ReadyDay = INDEX_NONE, bool bRushed = false);
 
 	/**
 	 * A point bought in the empire upgrade tree: "bought a point in Structural Integrity (Architect): 3 of 10; 9.5

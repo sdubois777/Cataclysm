@@ -177,6 +177,23 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** How many extra options may be taken from earlier tiers' centre milestones: 1 with Imperial Prowess (J2), 0
 	 *  without. `RefusalForChoosingExtraOption` reads it. */
 	int32 ExtraEarlierMilestoneOptions = 0;
+
+	// ---- The three build nodes, issue #2832, the coordinating session's rulings of 2026-11-21. ----
+
+	/** Scaffolding's "50% less": the share a city upgrade's price loses, multiplied in after the reductions are held at
+	 *  `UpgradePriceReductionCap`. */
+	float UpgradePriceLess = 0.0f;
+
+	/** Scaffolding's "2x longer": what a city upgrade's days are multiplied by. 0 with no node, which multiplies by 1. */
+	float UpgradeBuildDaysMultiplied = 0.0f;
+
+	/** Rapid Renovation's days fewer, 1 a point. */
+	float UpgradeBuildDaysFewer = 0.0f;
+
+	/** Rapid Funding's Rush: the share of the price it pays, 0 with no node, when no Rush is offered; and the days fewer
+	 *  it takes. */
+	float UpgradeRushPriceShare = 0.0f;
+	float UpgradeRushDaysFewer = 0.0f;
 };
 
 /**
@@ -543,7 +560,8 @@ public:
 	 * What a city upgrade's price is multiplied by on this city. Issue #2741 slice 6a (P1, P2): one less Municipal
 	 * Bonds' and Public Works' reduction, War Funding's when the city holds no upgrade, and slice 6b's Price Controls'
 	 * when a dungeon has damaged the city this run (`FCataclysmCity::bTookSurgeDamage`, B1), the sum held at
-	 * `UpgradePriceReductionCap`. Exactly 1 with no price node, or with no map or city.
+	 * `UpgradePriceReductionCap`; then times one less Scaffolding's 50%, a multiplier of its own (issue #2832), so every
+	 * price node together leaves an eighth. Exactly 1 with no price node, or with no map or city.
 	 */
 	static float UpgradePriceFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, const UCataclysmEmpireMap* Map,
 									   int32 CityId);
@@ -560,6 +578,17 @@ public:
 
 	/** Whether a debt made now is repaid by day: Sovereign Loans held at the purchase (D4). */
 	static bool RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/**
+	 * The days a city upgrade of `BaseDays` takes to build with these nodes. Issue #2832, in the order the coordinating
+	 * session ruled on 2026-11-21: Scaffolding's doubling first; then the days taken off, Rapid Renovation's and, for a
+	 * rush with Rapid Funding held, Rapid Funding's 2; then at least `UCataclysmCityUpgradeRules::MinimumBuildDays`.
+	 * `BaseDays` of 0 or fewer, an upgrade finished at once, is returned as it is.
+	 */
+	static int32 UpgradeBuildDaysFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int32 BaseDays, bool bRush);
+
+	/** Whether Rapid Funding is held, so each city upgrade offer has a Rush. Issue #2832. */
+	static bool CanRushUpgrades(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
 
 	/**
 	 * What the tree pays at the clear of a dungeon of `Floors` floors. Issue #2741 slice 6b. SALVAGE RIGHTS (B4): its

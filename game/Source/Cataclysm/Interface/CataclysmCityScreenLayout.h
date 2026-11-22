@@ -88,6 +88,35 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int64 OwedIfBought = 0;
+
+	/** Whether Rapid Funding is held, so the offer has a Rush (`UCataclysmCityUpgradePurchase::CanRushIn`). Issue #2832. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bRushOffered = false;
+
+	/** Whether a rush would go through now: every rule the run asks, at `RushPrice` against the gold held. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCanRush = false;
+
+	/** Whether gold is all that stops a rush, which is then a greyed button saying how much more is needed. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bRushShortOfGold = false;
+
+	/** What a rush costs (`UCataclysmCityUpgradePurchase::RushPriceIn`) and the days it takes (`BuildDaysIn` with the
+	 *  rush). 0 with no Rush offered. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RushPrice = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 RushDays = 0;
+
+	/** What a rush now would leave owed, as `OwedIfBought` for the offer's own price: the rush's price less the gold
+	 *  held, when the tree's credit is what lets it be rushed (slice 6e, D2). 0 otherwise. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int64 RushOwedIfBought = 0;
+
+	/** Why a rush cannot be bought, or empty when it can. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	FString RushRefusal;
 };
 
 /**
@@ -250,6 +279,14 @@ public:
 	/** What a button for one offer says. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString ButtonTextFor(const FCataclysmCityUpgradeOffer& Offer);
+
+	/**
+	 * The words on an offer's Rush button, issue #2832: "Rush  --  15,000 gold, 4 days to build"; on credit, "Rush  --
+	 * 15,000 gold on credit, 1,000 owed, 4 days to build"; or, when gold is all that stops it, "Rush  --  Costs 15,000
+	 * gold; 5,000 more needed."
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString RushButtonTextFor(const FCataclysmCityUpgradeOffer& Offer);
 
 	/** What one row in the not-built section says. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")

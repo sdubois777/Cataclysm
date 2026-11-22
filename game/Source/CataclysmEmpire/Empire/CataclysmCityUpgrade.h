@@ -259,6 +259,11 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 * no amount of gold would change.
 	 */
 	NotEnoughGold			= 10,
+
+	/** A rush was asked for and the character playing does not hold Rapid Funding, the empire upgrade tree's node that
+	 *  offers one. Issue #2832. Said by `UCataclysmCityUpgradePurchase::Buy`, which reads the tree; the run never
+	 *  answers it. */
+	RushNotHeld				= 11,
 };
 
 /**

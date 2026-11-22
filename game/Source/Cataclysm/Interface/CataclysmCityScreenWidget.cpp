@@ -132,6 +132,7 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 	OfferBox->ClearChildren();
 	OfferButtons.Reset();
 	OfferRowNames.Reset();
+	RushButtons.Reset();
 
 	const UCataclysmEmpireRun* Run = ShownRun();
 	if (Run == nullptr)
@@ -184,7 +185,38 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 
 		OfferButtons.Add(Button);
 		OfferRowNames.Add(Offer.RowName);
+
+		// AND ITS RUSH, WITH RAPID FUNDING HELD (issue #2832), under it: greyed, saying how much more is needed, when
+		// gold is all that stops it; left off when anything else stops the offer, which its own button says.
+		if (Offer.bRushOffered && (Offer.bCanBuy || Offer.bShortOfGold))
+		{
+			if (UCataclysmChoiceButton* Rush = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+			{
+				Rush->SetChoice(Offer.RowName,
+								FText::FromString(UCataclysmCityScreenLayout::RushButtonTextFor(Offer)),
+								/* bChosen */ false, /* bAvailable */ Offer.bCanRush);
+				Rush->OnChoiceClicked.AddDynamic(this, &UCataclysmCityScreenWidget::HandleRushClicked);
+				OfferBox->AddChild(Rush);
+				RushButtons.Add(Rush);
+			}
+		}
 	}
+}
+
+void UCataclysmCityScreenWidget::HandleRushClicked(FName Value)
+{
+	UCataclysmEmpireRun* Run = ShownRun();
+	if (Run == nullptr)
+	{
+		return;
+	}
+	// RUSHED THROUGH THE ONE PLACE THAT CHARGES, as `HandleOfferClicked` buys, and a refusal shown the same way.
+	const int64 Price = UCataclysmCityUpgradePurchase::RushPriceIn(this, Run, Value, CityId);
+	const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(this);
+	const ECataclysmCityUpgradeResult Result =
+		UCataclysmCityUpgradePurchase::Buy(this, Run, CityId, Value, /*bRush=*/true);
+	Refusal = UCataclysmCityUpgradePurchase::RefusalTextIn(this, Result, Price, Held);
+	Refresh();
 }
 
 void UCataclysmCityScreenWidget::HandleOfferClicked(FName Value)

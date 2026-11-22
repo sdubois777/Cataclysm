@@ -286,12 +286,14 @@ FString FCataclysmPlayLoopLog::LevelGainedLine(int32 From, int32 To, int64 Exper
 }
 
 FString FCataclysmPlayLoopLog::UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId,
-										   int64 Price, int64 Held, int32 ReadyDay)
+										   int64 Price, int64 Held, int32 ReadyDay, bool bRushed)
 {
 	const FString City = CataclysmPlayLoopLog::CityName(Run, CityId);
-	// THE DAY IT WILL BE FINISHED, since issue #2825; nothing for one finished at once.
-	const FString Ready = ReadyDay == INDEX_NONE ? FString()
-												 : FString::Printf(TEXT("; being built, ready on day %d"), ReadyDay);
+	// THE DAY IT WILL BE FINISHED, since issue #2825; nothing for one finished at once. AND WHETHER IT WAS RUSHED, since
+	// issue #2832.
+	const FString Rushed = bRushed ? FString(TEXT("; rushed")) : FString();
+	const FString Ready = Rushed + (ReadyDay == INDEX_NONE ? FString()
+														   : FString::Printf(TEXT("; being built, ready on day %d"), ReadyDay));
 	if (Held < 0)
 	{
 		return FString::Printf(TEXT("bought '%s' on %s for %s gold; no gold balance to hold it%s"), *Upgrade, *City,

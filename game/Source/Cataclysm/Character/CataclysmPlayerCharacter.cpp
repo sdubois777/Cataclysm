@@ -5050,10 +5050,12 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 	TEXT("Cataclysm.BuyCityUpgrade"),
 	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
-		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names and "
+		 "<cityId> <rowName> [rush]. Cataclysm.CityUpgrades lists the row names and "
 		 "prices. It costs the character playing that much gold now, and the "
 		 "upgrade does nothing until its days to build have passed: 6 days at "
-		 "upgrade tier 1. A city builds one upgrade at a time."),
+		 "upgrade tier 1. A city builds one upgrade at a time. With rush, and "
+		 "Rapid Funding held in the empire upgrade tree, it costs 150% for 2 "
+		 "days fewer."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -5076,6 +5078,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 			const int32 CityId = FCString::Atoi(*Args[0]);
 			const FName RowName(*Args[1]);
+			// A RUSH, issue #2832: Rapid Funding's, refused by `Buy` when it is not held.
+			const bool bRush = Args.Num() > 2 && Args[2].Equals(TEXT("rush"), ESearchCase::IgnoreCase);
 
 			const FCataclysmCityUpgrade Upgrade =
 				UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
@@ -5095,10 +5099,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 			// BOUGHT AS THE CITY SCREEN BUYS, with the character's gold, since
 			// issue #2742's second slice.
-			const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId);
+			const int64 Price = bRush ? UCataclysmCityUpgradePurchase::RushPriceIn(World, Run, RowName, CityId)
+									  : UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId);
 			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
 			const ECataclysmCityUpgradeResult Result =
-				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);
+				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName, bRush);
 
 			// AND THE DAY IT WILL BE FINISHED, since issue #2825.
 			const int32 ReadyDay = Run->BuildReadyDay(CityId);

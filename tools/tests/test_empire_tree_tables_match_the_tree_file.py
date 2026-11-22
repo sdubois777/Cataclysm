@@ -290,7 +290,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     of 2026-11-20 built Treasury Guard's 10 and Tax Collection's 8 in 6d, and
     Global Credit's and Sovereign Loans' 10 with the debt in 6e. Slice 7
     (2026-11-21) built the 17 that waited on a Treasurer city upgrade: Economic
-    Zones' 10, Trade Routes' 5, Commercial Hubs' 1 and The Golden Touch's 1."""
+    Zones' 10, Trade Routes' 5, Commercial Hubs' 1 and The Golden Touch's 1.
+    Issue #2832 built the 5 that waited on a city upgrade's build time into
+    slice 6: Scaffolding's 1, Rapid Renovation's 3 and Rapid Funding's 1."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -305,15 +307,15 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
                or f"slice {gen.EMPIRE_TREE_BUILT[name]}"] += int(row["MaxPoints"])
 
     assert dict(points) == {
-        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 209,
+        "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
         "slice 7": 17,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "build time": 5, "fee figure": 2, "cap figure": 1, "crafting": 278,
+        "fee figure": 2, "cap figure": 1, "crafting": 278,
         "population growth": 10, "loot chest": 8, "bonus dungeon": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
-    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7)) == 855
+    assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7)) == 860
     # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
                              "crafting": 2, "slice 6": 1, "slice 8": 1}

@@ -110,3 +110,8 @@ basic_tres_t2d#1,basic_tres_t2d,0,GoldMoreFromTreasurerCities,0.05,0,,0.0
 basic_tres_t1g#1,basic_tres_t1g,0,GoldEveryTwentyDaysPerTreasurerCity,50.0,0,,0.0
 capstone_0000004b#1,capstone_0000004b,0,GoldAndMaterialsPerTreasurerCity,0.1,0,,0.0
 capstone_0000000p#3,capstone_0000000p,1,ExtraEarlierMilestoneOption,1.0,0,,0.0
+keystone_0000000z#1,keystone_0000000z,0,UpgradePriceLess,0.5,0,,0.0
+keystone_0000000z#2,keystone_0000000z,0,UpgradeBuildDaysMultiplied,2.0,0,,0.0
+basic_arch_t2g#1,basic_arch_t2g,0,UpgradeBuildDaysFewer,1.0,0,,0.0
+keystone_0000003y#1,keystone_0000003y,0,UpgradeRushPriceShare,1.5,0,,0.0
+keystone_0000003y#2,keystone_0000003y,0,UpgradeRushDaysFewer,2.0,0,,0.0

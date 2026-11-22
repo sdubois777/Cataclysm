@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
+
+**Affects:** the effect kinds `UpgradePriceLess`, `UpgradeBuildDaysMultiplied`, `UpgradeBuildDaysFewer`,
+`UpgradeRushPriceShare` and `UpgradeRushDaysFewer`, new (`ECataclysmEmpireTreeEffect` in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`, `EMPIRE_TREE_EFFECT_KINDS` in `tools/generate_datatables.py`); their
+fields on `FCataclysmEmpireTreePlayerBonuses`; `UCataclysmEmpireTree::UpgradePriceFactorFor`, which multiplies in
+Scaffolding's half, and `UpgradeBuildDaysFor` and `CanRushUpgrades`, new (`CataclysmEmpireTree.h` and `.cpp`);
+`UCataclysmCityUpgradePurchase::BuildDaysIn`, which reads the tree and takes a rush, `CanRushIn` and `RushPriceIn`, new,
+and `Buy`'s `bRush` (`CataclysmCityUpgradePurchase.h` and `.cpp`); `ECataclysmCityUpgradeResult::RushNotHeld`, new, and
+its text (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`); the offer's Rush fields and
+`UCataclysmCityScreenLayout::RushButtonTextFor`, new (`CataclysmCityScreenLayout.h` and `.cpp`); the city screen's Rush
+buttons and `HandleRushClicked` (`CataclysmCityScreenWidget.h` and `.cpp`); a rush on credit, since the rebase onto
+slice 6e, and the offer's `RushOwedIfBought`, new; `FCataclysmPlayLoopLog::UpgradeLine`'s
+"; rushed"; `Cataclysm.BuyCityUpgrade`'s optional `rush` (`CataclysmPlayerCharacter.cpp`). The generator: the three
+nodes moved from `EMPIRE_TREE_REFUSED` to `EMPIRE_TREE_BUILT` with their effects, and the "build time" refusal reason,
+which no node gives now, removed; `game/Data/EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` regenerated. Documents:
+`docs/Cataclysm_GDD_v2.md` (City Upgrades, and the nine-node summary) and `docs/Empire_Skill_Tree_Keystones.md`. Tests:
+the new group `Cataclysm.CityUpgradeSpeed.`, eight, in `game/Source/Cataclysm/Tests/CataclysmCityUpgradeSpeedTests.cpp`;
+`Cataclysm.EmpireTree.ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, which used Scaffolding as its refused node and
+now uses Civic Pride; `CataclysmDataTableTests.cpp`'s pinned count of `EmpireTreeEffects.csv`, 111 to 116;
+`tools/tests/test_empire_tree_effects_match_their_texts.py`, `test_empire_tree_tables_match_the_tree_file.py` and
+`test_city_upgrades_take_days_to_build.py`'s pinned call of `BuildDaysIn`, which now passes the rush. Issue [#2832](https://github.com/sdubois777/Cataclysm/issues/2832),
+of [#2741](https://github.com/sdubois777/Cataclysm/issues/2741) and following
+[#2825](https://github.com/sdubois777/Cataclysm/issues/2825).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22: code, tests and this
+  entry, with no compile and no Unreal run. The registration below is what a window will check.
+- **THE EDITOR IS NEEDED AT THE WINDOW**: `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` changed, so
+  `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` must be rebuilt (`tools/generate_datatable_assets.py`). Until then
+  `test_datatable_assets_are_current.py` fails, and in Unreal the three nodes still read as refused.
+- **REBASED ON 2026-11-22** onto development `02b96b42b`, the empire tree session's window (slices 6d to 8 and #1130,
+  [#2834](https://github.com/sdubois777/Cataclysm/pull/2834)), as `feat/city-upgrade-speed-nodes-2`. Fourteen files
+  conflicted; each was resolved by keeping both sides' additions (the effect kinds, the bonus fields and their cases, the
+  generator's lists and effects, the offer's fields), the counts moved to the sum (`EmpireTreeEffects.csv` 116 rows, 110
+  nodes acting, slice 6 at 214 points), and both tables regenerated. `tools/check_resolved_cpp.py --changed`: "17 files
+  read, 0 with complaints".
+- **THE REBASE MET SLICE 6E'S CREDIT**, which `Buy` now gives on any price it takes, a rush's included, while the Rush
+  button was asked without it, so the two could disagree. The button now asks with the credit and says what a rush on
+  credit leaves owed; one new test, `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed`, and one new proof, S4. A
+  judgement, below, not a ruling.
+- **NO TEST CAN SEE THE RUSH BUTTON ON THE SCREEN** (-nullrhi, issue #650). The tests hold the offer's fields and the
+  button's words, which the widget builds the button from.
+
+### The rulings
+
+The coordinating session, 2026-11-21, recorded in the nine-node entry below and in #2825's entry:
+
+- Scaffolding: the price × 0.5 and the days × 2. Rapid Renovation: 1 day fewer a point. Rapid Funding: a Rush on each
+  offer, at 150% of the price the player would otherwise pay, for 2 days fewer.
+- The doubling first, then the days taken off, then the floor of 1 day.
+- The days are fixed at purchase, so a node bought later does not shorten a build under way.
+
+The shapes are those rulings, and this change proposes no new formula. #2825's entry records the genre research behind
+build times (XCOM 2's facility construction in days).
+
+### The judgements, each with what it rests on
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **Scaffolding's half multiplies the price after slice 6a's reductions are held at their 75% cap** | "Less" multiplies where "reduced" adds, in the project's damage pipeline `(base + flat) x (1 + increases) x more`, after Path of Exile's convention that "increased" and "reduced" add and "more" and "less" multiply. So every price node together leaves an eighth of the tier's price (a quarter, halved), not nothing. |
+| A rush's 150% is of `PriceIn`, the price after every node's discount | the ruling's "after every discount" |
+| A rush's price is rounded to whole gold | as `PriceIn` rounds its own |
+| The Rush is a second button under the offer's, "Rush  --  15,000 gold, 4 days to build" | an offer is one button; a Rush is a second way to buy the same offer, so it sits under it. Shown only when the offer's own button is, greyed and saying how much more is needed when gold is all that stops it |
+| A rush asked for with Rapid Funding not held is refused with `RushNotHeld`, nothing taken | the screen never offers it, so only the console command or a caller can ask; refusing keeps `Buy` the one place that charges |
+| An upgrade finished at once (0 days, as the empire layer's own tests buy) stays at 0 | Scaffolding doubles a build's days; it does not make an instant purchase take days |
+| The play log's purchase line says "; rushed" before the ready day | the owner's check that a build took the days it showed (#2825) |
+| **A rush may be bought on credit**, Global Credit's and Sovereign Loans' share taken of the rush's price, and its button says "Rush  --  15,000 gold on credit, 2,000 owed, 4 days to build" | Global Credit's text, "Start a city upgrade even if short by up to 5% of the gold cost": a rush starts a city upgrade, and its gold cost is the rush's price. `Buy` already gave it after the rebase; refusing it would be a rule neither ruling states. The button's words follow the offer's own on credit (slice 6e, D6) |
+
+### Tests
+
+The new group `Cataclysm.CityUpgradeSpeed.`, eight: seven written before the change, and the eighth at the rebase:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays` | from the effect table: 0.5 alone; 0.175 after Municipal Bonds' and Public Works' 0.65; 6 days become 12; no node, exactly 1 and 6 |
+| `TheDaysAreDoubledThenShortenedThenHeldAtOne` | Rapid Renovation 1, 2, 3 points: 5, 4, 3; with Scaffolding 9, not 6; 3 points and a rush 1; a 2 day build with 5 off, 1; a rush not held takes nothing off; 0 stays 0 |
+| `ARushCostsHalfAsMuchAgainForTwoDaysFewer` | with Rapid Funding and Bonds' 10: price 7,000, Rush 10,500 for 4 days; bought, the balance pays 10,500 and the build has 4 days left |
+| `ARushWithoutRapidFundingIsRefusedAndTakesNothing` | no Rush offered; a rush refused with `RushNotHeld`, nothing taken, nothing built; CONTROL: the plain purchase, 10,000 and 6 days |
+| `ANodeTakenDuringABuildLeavesItsDays` | Rapid Renovation's 3 points taken during a build leave it at 6 days and its ready day; the next purchase takes 3 |
+| `TheRushButtonSaysItsPriceAndDaysOrWhatIsMissing` | "Rush  --  10,500 gold, 4 days to build"; with 12,000 held, "Rush  --  Costs 15,000 gold; 3,000 more needed." |
+| `ThePlayLogSaysARushWasRushed` | "; rushed; being built, ready on day 57"; a plain purchase says nothing of it |
+| `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed` | with Rapid Funding, Sovereign Loans' 1 point and 13,000 held: the Rush, 15,000, can be rushed, leaving 2,000 owed, and its button says "Rush  --  15,000 gold on credit, 2,000 owed, 4 days to build"; with 11,000, "Rush  --  Costs 15,000 gold; 1,000 more needed."; bought, the balance is 0, 2,000 is owed and 4 days are left; CONTROL: the offer's own 10,000 owes nothing |
+
+Python: the effects check finds each of the five values in its node's text ("50%", "2x longer", "1 day", "150%",
+"2 day") and counts 110 nodes acting; the tables check counts slice 6's points as 214 and the build time reason gone.
+`CataclysmDataTableTests.cpp` pins `EmpireTreeEffects.csv` at 116 rows, five more than development's 111; before the
+rebase, a Python check (`test_unreal_pinned_row_counts.py`) found the old count the first time the suite ran, as it is
+meant to.
+
+### Registered for the window
+
+**Recounted at the rebase**, on the empire tree window tree-6d8-w1's measured whole suite at `d601cba34`, whose `game/`
+tree is development `02b96b42b`'s (`git rev-parse` of each: `da70099a2`): 5168 performed, 57 skipped halves, 860 test
+saves written and deleted.
+
+- **The whole suite: the base + 8 = 5176**, the eight new tests; skipped halves 57 and test saves 860 unchanged (no new
+  test skips a half or writes a save slot).
+- **No save record version moves**: the branch changes no save record.
+- **The editor step first**: `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` rebuilt and committed.
+- **Groups alone, first**, at the base's counts plus the tests added, each name literal counted the same on window E's
+  `d684a3d0e`, development `02b96b42b` and this branch, the new group aside: `CityUpgradeSpeed.` 8 (new);
+  `EmpireTreeCredit.` 8 (the purchase on credit, which a rush now takes); `EmpireTree.` 24
+  (one test changed), `CityUpgradePrice.` 7, `CityScreen.` 19, `CityDungeonRewards.` 5, `CityUpgradeBuild.` 4,
+  `CityUpgradeBuildSave.` 2, `CityUpgrade.` 15, `PlayLoop.` 12, `EmpireTreeGold.` 6, `EmpireTreeClearGold.` 9,
+  `EmpireTreeEvents.` 14, `EmpireTreeCity.` 17, `EmpireTreeScreen.` 10, `EmpireRun.` 71 and `Data.` 7.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch rebased onto
+  `02b96b42b`: "1 failed, 7941 passed, 10 skipped in 404.92s", JUnit 7952 tests, 1 failure, 0 errors, 10 skipped, the
+  one failure `test_datatable_assets_are_current.py` (`EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`), which the
+  editor step clears; ruff "All checks passed!". The empire tree's and city upgrades' own checks alone: "1 failed, 1362
+  passed", the same one failure.
+- **Four Unreal guard proofs**, one per behaviour only a C++ test guards (the effects' values and the generator's
+  lists are guarded by Python checks), each narrowed to `Cataclysm.CityUpgradeSpeed.` (8):
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| S1 | `UpgradePriceFactorFor` returns the factor after the reductions without Scaffolding's half | `ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays`, on "alone it halves the price" and "after Bonds and Public Works" |
+| S2 | `UpgradeBuildDaysFor` takes the days off before doubling | `TheDaysAreDoubledThenShortenedThenHeldAtOne`, on "with Scaffolding, doubled first" (6 rather than 9) |
+| S3 | `Buy` no longer refuses a rush without Rapid Funding | `ARushWithoutRapidFundingIsRefusedAndTakesNothing` |
+| S4 | `OffersFor` asks the run for a rush with the gold held alone, without the credit | 7 succeeded, 1 failed: `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed`, on "13,000 held and 3,000 of credit can rush it", "leaving 2,000 owed" and "the Rush button says so" |
+
+---
+
 ## 2026-11-21 — The forge charges the Crafting sheet's costs: 250 gold a base day by the tier and the residue, days equal to the level reached, and one combine price doubling by rung (#2830, #46 slice G7)
 
 **Affects:** `UCataclysmForge::GoldPerCraftDay`, `ResiduePerGoldStep`, `CombineGoldAtTheLowestRung`, `BaseGoldFor`,

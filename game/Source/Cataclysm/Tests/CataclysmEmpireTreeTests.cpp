@@ -29,7 +29,9 @@ namespace CataclysmEmpireTreeTestNodes
 	const FName MasonryTechniques(TEXT("basic_00000010"));		// <- Fortified Gates at 6, or Enduring Foundations at 8
 	const FName UrbanPlanning(TEXT("basic_0000000x"));			// <- Enduring Foundations at 2
 	const FName Foundation(TEXT("basic_0000000v"));				// <- Urban Planning at 2, 10 points
-	const FName Scaffolding(TEXT("keystone_0000000z"));			// <- Foundation full; waits on a build time
+	const FName Scaffolding(TEXT("keystone_0000000z"));			// <- Foundation full; buyable since issue #2832
+	const FName MetropolitanGrowth(TEXT("basic_00000016"));		// 10 points
+	const FName CivicPride(TEXT("basic_arch_civic_pride"));		// <- Metropolitan Growth at 8; waits on population growth
 	const FName RoyalEngineersBlessing(TEXT("capstone_0000001i"));	// the Architect branch's capstone
 
 	// Explorer.
@@ -216,13 +218,19 @@ bool FCataclysmEmpireTreeWaitsOnTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the bank is untouched"), Bank, 50.0);
 	TestEqual(TEXT("nothing is spent"), Allocation.Total(), 0);
 
-	// AND EVEN WITH EVERY EDGE INTO IT SATISFIED.
+	// AND EVEN WITH EVERY EDGE INTO IT SATISFIED. Civic Pride since issue #2832, which built Scaffolding, the node this
+	// used to read: a city upgrade's build time is no longer missing.
+	Allocation.Add(MetropolitanGrowth, 8);
+	const FString Waiting = UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, CivicPride, 50.0);
+	TestTrue(TEXT("Civic Pride, with Metropolitan Growth at 8, still waits on a population growth rate"),
+			 Waiting.Contains(TEXT("a population growth rate")));
+	TestTrue(TEXT("Civic Pride's edge is satisfied, so only its system refuses it"),
+			 UCataclysmEmpireTree::EdgesAllow(Nodes, Edges, Allocation, CivicPride));
+
+	// AND SCAFFOLDING, WITH FOUNDATION FULL, CAN BE BOUGHT since issue #2832.
 	Allocation.Add(Foundation, 10);
-	const FString Keystone = UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, Scaffolding, 50.0);
-	TestTrue(TEXT("Scaffolding, with Foundation full, still waits on a build time for city upgrades"),
-			 Keystone.Contains(TEXT("a build time for city upgrades")));
-	TestTrue(TEXT("Scaffolding's edge is satisfied, so only its system refuses it"),
-			 UCataclysmEmpireTree::EdgesAllow(Nodes, Edges, Allocation, Scaffolding));
+	TestTrue(TEXT("Scaffolding, with Foundation full, waits on nothing now"),
+			 UCataclysmEmpireTree::RefusalForSpending(Nodes, Edges, Allocation, Scaffolding, 50.0).IsEmpty());
 
 	TestTrue(TEXT("a node that can be bought waits on nothing"),
 			 UCataclysmEmpireTree::WaitsOn(Nodes, Foundation).IsEmpty());
