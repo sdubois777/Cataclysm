@@ -372,6 +372,20 @@ often from a Boss (3.4% a kill) or a Cataclysm Boss (8.2%) than from a Common cr
 - **At difficulty tier 1** about eight gems in ten are Everyday or Quality, by gear's own rarity roll; a higher tier
   shifts that towards the rarer rungs.
 
+### 19. Combine two gems into one of the next rarity
+
+At the forge (step 16), each gem stack the bag holds below Cataclysmic has a button (issue #46, slice G6).
+
+- **Click "Combine two Of Rot (Everyday) into one Of Rot (Quality), 2 held".** It is done on one press, as a stone
+  combine is: two Everyday Of Rot leave the bag, one Quality Of Rot joins it, and no day passes.
+- **In the log:**
+
+  `PLAY LOOP: combined two Of Rot (Everyday) into one Of Rot (Quality): 0 Everyday and 1 Quality held`
+
+- **At difficulty tier 1 a Quality gem does not combine.** Its next rarity, Superb, is above the highest rarity that
+  drops at full weight there: "At difficulty tier 1 a gem can be combined up to Quality; a Superb Of Rot is above that."
+  A higher tier allows one rung more for each tier, up to Cataclysmic at tier 7.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

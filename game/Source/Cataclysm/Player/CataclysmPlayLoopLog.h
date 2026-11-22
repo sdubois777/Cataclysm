@@ -215,6 +215,14 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld);
 
 	/**
+	 * Two gems of a kind and rarity combined into one of the next rarity at the forge: "combined two Of Life (Superb)
+	 * into one Of Life (Masterful): 1 Superb and 1 Masterful held". Issue #46, slice G6. Said by
+	 * `UCataclysmForgeCraft::CombineGems`, after the gems have changed.
+	 */
+	static FString ForgeGemCombineLine(const FString& GemName, const FString& FromRarity, const FString& IntoRarity,
+									   int32 FromHeld, int32 IntoHeld);
+
+	/**
 	 * A gem socketed or unsocketed at the forge: "socketed Of The Viper (Superb) into the Attack socket of Quality Torc
 	 * of Warding; residue 87 to 92; it cost 1 day, day 20 to day 21", or "unsocketed Of The Viper (Superb) from Quality
 	 * Torc of Warding, back to the bag; residue 87 to 90; it cost 1 day, day 20 to day 21". Issue #46, slice G4. Said by

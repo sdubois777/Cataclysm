@@ -77,6 +77,10 @@ public:
 	/** The socket actions shown for the piece chosen. Issue #46, slice G4. */
 	const TArray<FCataclysmForgeSocketAction>& SocketActionsShown() const { return ShownSocketActions; }
 
+	/** The gem combines shown, and a press of one. Issue #46, slice G6. */
+	const TArray<FCataclysmForgeGemCombineAction>& GemCombinesShown() const { return ShownGemCombines; }
+	void ClickGemCombineForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
+
 protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> TitleLabel;
@@ -133,6 +137,7 @@ private:
 	TArray<FCataclysmForgeEntry> ShownEntries;
 	TArray<int32> ShownCombineLevels;
 	TArray<FCataclysmForgeSocketAction> ShownSocketActions;
+	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;
 
 	/** The socket action whose first press was made; its second press does it. None for none. Issue #46, slice G4. */
 	FName PendingSocketAction;

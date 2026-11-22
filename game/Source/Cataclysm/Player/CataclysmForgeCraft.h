@@ -114,6 +114,16 @@ public:
 	 */
 	static bool Combine(const UObject* WorldContext, int32 Level, FCataclysmForgeCombine& OutDone, FString& OutReason);
 
+	/**
+	 * Combine two carried gems of `Gem` at `Rarity` into one of the next rarity, at the difficulty tier being played.
+	 * No days, no residue: it changes no item. Issue #46, slice G6.
+	 *
+	 * REFUSED, CHANGING NOTHING, during a walk, for the refusals of `UCataclysmForge::GemCombineOf`, and when the made gem
+	 * would have nowhere to go -- no stack of it, no free cell, and the two taken leave a stack behind.
+	 */
+	static bool CombineGems(const UObject* WorldContext, FName Gem, ECataclysmRarity Rarity,
+							FCataclysmForgeGemCombine& OutDone, FString& OutReason);
+
 	//~ Socketing and unsocketing a gem. Issue #46, slice G4.
 
 	/** What putting a carried gem into a socket of the item at a target would take now. */

@@ -236,3 +236,47 @@ FString UCataclysmForgeLayout::SocketsDetailFor(const FCataclysmItem& Item)
 	const TArray<FString> Lines = UCataclysmGems::SocketLinesFor(Item);
 	return Lines.IsEmpty() ? FString() : FString::Printf(TEXT("Sockets: %s"), *FString::Join(Lines, TEXT("; ")));
 }
+
+TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
+	const UCataclysmInventoryComponent* Inventory)
+{
+	TArray<FCataclysmForgeGemCombineAction> Out;
+	if (Inventory == nullptr)
+	{
+		return Out;
+	}
+	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+	for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
+	{
+		const FCataclysmCarriedSlot& Carried = Slots[Cell];
+		if (Carried.Gem.IsNone() || Carried.Quantity <= 0 || Carried.GemRarity == ECataclysmRarity::Cataclysmic)
+		{
+			continue;
+		}
+		const ECataclysmRarity Next = static_cast<ECataclysmRarity>(static_cast<uint8>(Carried.GemRarity) + 1);
+		const FString Name = UCataclysmGems::NameOf(Carried.Gem);
+		FCataclysmForgeGemCombineAction& Action = Out.AddDefaulted_GetRef();
+		Action.Gem = Carried.Gem;
+		Action.Rarity = Carried.GemRarity;
+		Action.ButtonName = FName(*FString::Printf(TEXT("CombineGem_Cell_%d"), Cell));
+		Action.Label = FString::Printf(TEXT("Combine two %s (%s) into one %s (%s), %d held"), *Name,
+									   *UCataclysmGems::RarityName(Carried.GemRarity), *Name,
+									   *UCataclysmGems::RarityName(Next), Carried.Quantity);
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::GemCombineActionForButton(FName ButtonName,
+													  const TArray<FCataclysmForgeGemCombineAction>& Shown,
+													  FCataclysmForgeGemCombineAction& OutAction)
+{
+	for (const FCataclysmForgeGemCombineAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}

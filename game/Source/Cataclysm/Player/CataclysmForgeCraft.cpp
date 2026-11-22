@@ -268,6 +268,66 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 	return true;
 }
 
+bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, ECataclysmRarity Rarity,
+									   FCataclysmForgeGemCombine& OutDone, FString& OutReason)
+{
+	OutDone = FCataclysmForgeGemCombine();
+	OutReason = RefusalNow(WorldContext);
+	if (!OutReason.IsEmpty())
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
+
+	// AT THE TIER BEING PLAYED, read as every other tier gate reads it.
+	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(
+		Gem, Rarity, Inventory->CountOfGems(Gem, Rarity), ACataclysmGameMode::DifficultyTierIn(WorldContext));
+	if (!Plan.bPossible)
+	{
+		OutReason = Plan.Refusal;
+		return false;
+	}
+
+	// ROOM FOR THE MADE GEM, asked before anything moves: a stack of it to join, a free cell, or the cell the two taken
+	// empty.
+	const bool bRoom = Inventory->CountOfGems(Gem, Plan.Into) > 0 || Inventory->NumFreeSlots() > 0
+		|| Plan.GemsHeld == Plan.GemsNeeded;
+	if (!bRoom)
+	{
+		OutReason = FString::Printf(TEXT("The bag has no free cell for a %s %s."), *UCataclysmGems::RarityName(Plan.Into),
+									*UCataclysmGems::NameOf(Gem));
+		return false;
+	}
+
+	if (!Inventory->RemoveGems(Gem, Plan.From, Plan.GemsNeeded))
+	{
+		OutReason = TEXT("The gems could not be taken from the bag.");
+		return false;
+	}
+	if (Inventory->AddGems(Gem, Plan.Into, 1) == INDEX_NONE)
+	{
+		Inventory->AddGems(Gem, Plan.From, Plan.GemsNeeded);
+		OutReason = TEXT("The made gem had nowhere to go; nothing changed.");
+		return false;
+	}
+
+	const int32 FromHeld = Inventory->CountOfGems(Gem, Plan.From);
+	const int32 IntoHeld = Inventory->CountOfGems(Gem, Plan.Into);
+	UE_LOG(LogCataclysm, Log, TEXT("The forge combined two %s at rarity %d into one at %d: %d and %d held."),
+		   *Gem.ToString(), static_cast<int32>(Plan.From), static_cast<int32>(Plan.Into), FromHeld, IntoHeld);
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeGemCombineLine(
+		UCataclysmGems::NameOf(Gem), UCataclysmGems::RarityName(Plan.From), UCataclysmGems::RarityName(Plan.Into),
+		FromHeld, IntoHeld));
+
+	// SAVED: the gems are in the character record.
+	UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);
+
+	OutDone = Plan;
+	return true;
+}
+
 FCataclysmForgeSocketing UCataclysmForgeCraft::SocketPlanFor(const UObject* WorldContext,
 															 const FCataclysmForgeTarget& Target, int32 Socket,
 															 FName Gem, ECataclysmRarity Rarity)

@@ -380,6 +380,13 @@ FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel
 						   IntoLevel, FromHeld, FromLevel, IntoHeld, IntoLevel);
 }
 
+FString FCataclysmPlayLoopLog::ForgeGemCombineLine(const FString& GemName, const FString& FromRarity,
+												  const FString& IntoRarity, int32 FromHeld, int32 IntoHeld)
+{
+	return FString::Printf(TEXT("combined two %s (%s) into one %s (%s): %d %s and %d %s held"), *GemName, *FromRarity,
+						   *GemName, *IntoRarity, FromHeld, *FromRarity, IntoHeld, *IntoRarity);
+}
+
 FString FCataclysmPlayLoopLog::ForgeSocketLine(bool bUnsocket, const FString& GemName, const FString& Rarity,
 											  const FString& SocketType, const FString& ItemName, int32 ResidueBefore,
 											  int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo)

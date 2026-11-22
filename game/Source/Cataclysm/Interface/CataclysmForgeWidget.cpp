@@ -42,6 +42,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 
 	ShownEntries = UCataclysmForgeLayout::EntriesFor(Equipment, Inventory);
 	ShownCombineLevels = UCataclysmForgeLayout::CombineLevelsFor(Inventory);
+	ShownGemCombines = UCataclysmForgeLayout::GemCombineActionsFor(Inventory);
 	Stones = UCataclysmForgeLayout::StonesLine(Inventory);
 
 	// THE PIECE CHOSEN STAYS CHOSEN while it is listed, so a raised piece shows its next step. A piece that is gone --
@@ -146,6 +147,18 @@ void UCataclysmForgeWidget::BuildActionButtons()
 			ActionBox->AddChild(Combine);
 		}
 	}
+
+	// A GEM COMBINE FOR EACH CARRIED GEM STACK below Cataclysmic. Issue #46, slice G6.
+	for (const FCataclysmForgeGemCombineAction& Action : ShownGemCombines)
+	{
+		if (UCataclysmChoiceButton* Combine = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			Combine->SetChoice(Action.ButtonName, FText::FromString(Action.Label), /*bChosen*/ false,
+							   /*bAvailable*/ true);
+			Combine->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(Combine);
+		}
+	}
 }
 
 void UCataclysmForgeWidget::WriteLines()
@@ -196,6 +209,22 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FString Reason;
 		Message = UCataclysmForgeCraft::Combine(Context(), CombineLevel, Done, Reason)
 			? FString::Printf(TEXT("Combined two +%d stones into one +%d."), Done.FromLevel, Done.IntoLevel)
+			: Reason;
+		RefreshDisplay();
+		return;
+	}
+
+	// A GEM COMBINE IS ONE PRESS, as a stone combine is: it changes no item and costs no day. Issue #46, slice G6.
+	FCataclysmForgeGemCombineAction GemCombine;
+	if (UCataclysmForgeLayout::GemCombineActionForButton(ButtonName, ShownGemCombines, GemCombine))
+	{
+		CancelThePendingUpgrade();
+		FCataclysmForgeGemCombine Done;
+		FString Reason;
+		Message = UCataclysmForgeCraft::CombineGems(Context(), GemCombine.Gem, GemCombine.Rarity, Done, Reason)
+			? FString::Printf(TEXT("Combined two %s (%s) into one %s (%s)."), *UCataclysmGems::NameOf(Done.Gem),
+							  *UCataclysmGems::RarityName(Done.From), *UCataclysmGems::NameOf(Done.Gem),
+							  *UCataclysmGems::RarityName(Done.Into))
 			: Reason;
 		RefreshDisplay();
 		return;

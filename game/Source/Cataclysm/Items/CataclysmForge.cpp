@@ -96,6 +96,54 @@ FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThi
 	return Out;
 }
 
+ECataclysmRarity UCataclysmForge::GemCombineCeiling(int32 DifficultyTier)
+{
+	return UCataclysmDropRoll::HighestUnpenalisedRarity(DifficultyTier);
+}
+
+FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
+														int32 DifficultyTier)
+{
+	FCataclysmForgeGemCombine Out;
+	Out.Gem = Gem;
+	Out.From = Rarity;
+	Out.Into = Rarity;
+	Out.GemsHeld = FMath::Max(0, HeldOfThis);
+	Out.GemsNeeded = GemsPerCombine;
+	Out.Ceiling = GemCombineCeiling(DifficultyTier);
+
+	if (Gem.IsNone())
+	{
+		Out.Refusal = TEXT("There is no gem to combine.");
+		return Out;
+	}
+	const FString Name = UCataclysmGems::NameOf(Gem);
+	if (Rarity == ECataclysmRarity::Cataclysmic)
+	{
+		Out.Refusal = TEXT("A Cataclysmic gem is the highest; there is none above it to make.");
+		return Out;
+	}
+
+	Out.Into = static_cast<ECataclysmRarity>(static_cast<uint8>(Rarity) + 1);
+	if (static_cast<uint8>(Out.Into) > static_cast<uint8>(Out.Ceiling))
+	{
+		Out.Refusal = FString::Printf(TEXT("At difficulty tier %d a gem can be combined up to %s; a %s %s is above that."),
+									  FMath::Clamp(DifficultyTier, 1, UCataclysmDropRoll::DifficultyTiers),
+									  *UCataclysmGems::RarityName(Out.Ceiling), *UCataclysmGems::RarityName(Out.Into),
+									  *Name);
+		return Out;
+	}
+	if (Out.GemsHeld < Out.GemsNeeded)
+	{
+		Out.Refusal = FString::Printf(TEXT("Combining takes two %s (%s); %d held."), *Name,
+									  *UCataclysmGems::RarityName(Rarity), Out.GemsHeld);
+		return Out;
+	}
+
+	Out.bPossible = true;
+	return Out;
+}
+
 FString UCataclysmForge::UpgradeQuestion(const FCataclysmForgeUpgrade& Upgrade)
 {
 	return FString::Printf(TEXT("Press again to upgrade to +%d: two +%d stones, residue %d to %d, %d day%s of the run."),
