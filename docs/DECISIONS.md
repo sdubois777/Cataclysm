@@ -132,6 +132,19 @@ colour; Alt's start sets and its end and cancel clear the flag; a new game start
 action is on Left Alt in both schemes. `test_controls_table_matches_the_input_assets.py` gains Left Alt and the row's
 phrase.
 
+**Python suite at `88632e3f0`**: "8160 passed, 10 skipped in 349.34s"; JUnit 8170 tests, 0 failures, 0 errors, 10
+skipped; ruff "All checks passed!". The first run, at `bbbf019b6`, failed one test,
+`test_game_readme_is_true.py::test_the_readme_states_the_right_number_of_input_actions`: `game/README.md` still said
+twenty input actions, and the reveal key makes twenty-one. Corrected in `88632e3f0`.
+
+**Python guard proofs, in a `git archive` copy of `bbbf019b6`, through `tools/prove_guard.break_and_run`: 2 of 2
+PROVED**, each failing the one test predicted and passing restored:
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PW1 | the display's loop reading the drops in range, not what the filter left | `test_the_display_draws_the_names_through_the_filter` |
+| PW2 | letting go of Alt leaving the reveal on | `test_alt_held_and_let_go_sets_and_clears_the_reveal_flag` |
+
 ### Registered for its window, which waits for the owner's word
 
 **The base is development `3cbacdac4`**, whose game/ is the tree window power-score-w2 measured on `5b6042222`: "5271
