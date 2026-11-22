@@ -180,6 +180,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// AND STIMULUS PACKAGE'S FLAG: a new run's population has not fallen. Issue #2741 slice 6b (B2).
 	bPopulationFellBelowHalf = false;
 
+	// AND THE CLEANSE MAY BE BOUGHT AGAIN: once a run (issue #2838).
+	bCleanseBoughtThisRun = false;
+
 	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
 
@@ -2733,6 +2736,22 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::EffectNotBuiltYet;
 	}
 
+	// THE CLEANSE'S TWO GATES, issue #2838, ruled 2026-11-22. Both are the run's and not the city's, so they come
+	// before anything about the city: every city gives the same answer.
+	if (Upgrade.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		// "will only be available on T3 and above": the difficulty tier, ruled 2026-11-22.
+		if (DifficultyTier < UCataclysmCityUpgradeRules::CleanseLowestDifficultyTier)
+		{
+			return ECataclysmCityUpgradeResult::BelowItsDifficultyTier;
+		}
+		// "Can only purchase once": once a run, on any city.
+		if (bCleanseBoughtThisRun)
+		{
+			return ECataclysmCityUpgradeResult::AlreadyBoughtThisRun;
+		}
+	}
+
 	const FCataclysmCity* City = Map->Find(CityId);
 	if (City == nullptr)
 	{
@@ -2811,6 +2830,13 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	FCataclysmCityUpgrade Bought = Upgrade;
 	Bought.Tier = 1;
 
+	// THE CLEANSE IS SPENT FOR THE RUN AT PURCHASE, not when it is finished, so no second city buys it while this one
+	// builds it (issue #2838).
+	if (Bought.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		bCleanseBoughtThisRun = true;
+	}
+
 	// IT TAKES DAYS TO BUILD, since issue #2825: the slot is taken now, and the
 	// upgrade does nothing until `AdvanceCityBuilds` has counted its days. The
 	// gold was taken by the caller already; a build cannot be cancelled and
@@ -2825,6 +2851,91 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 	// NOUGHT DAYS IS FINISHED AT ONCE, which is what the empire layer's own
 	// tests buy, as they buy free.
 	CompleteCityUpgrade(CityId, Bought, Clock->Day);
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldRaiseCityUpgrade(
+	int32 CityId, const FCataclysmCityUpgrade& Raised, int64 GoldCost, int64 GoldHeld) const
+{
+	if (Map == nullptr || Clock == nullptr)
+	{
+		return ECataclysmCityUpgradeResult::RunHasNotBegun;
+	}
+	if (!Raised.IsValid())
+	{
+		return ECataclysmCityUpgradeResult::NotAnUpgrade;
+	}
+	if (!UCataclysmCityUpgradeRules::IsBuilt(Raised.Effect))
+	{
+		return ECataclysmCityUpgradeResult::EffectNotBuiltYet;
+	}
+	// THE CLEANSE HAS NO LADDER: its tier 2 and 3 cells are empty (issue #1265, derived).
+	if (Raised.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		return ECataclysmCityUpgradeResult::NoTierToRaiseTo;
+	}
+
+	const FCataclysmCity* City = Map->Find(CityId);
+	if (City == nullptr)
+	{
+		return ECataclysmCityUpgradeResult::NoSuchCity;
+	}
+	if (City->bFallen)
+	{
+		return ECataclysmCityUpgradeResult::CityHasFallen;
+	}
+	if (IsBesieged(CityId))
+	{
+		return ECataclysmCityUpgradeResult::CityIsBesieged;
+	}
+
+	const FCataclysmCityUpgrade* Held = City->Upgrades.FindByPredicate(
+		[&Raised](const FCataclysmCityUpgrade& Upgrade) { return Upgrade.RowName == Raised.RowName; });
+	if (Held == nullptr)
+	{
+		// BEING BUILT AS A PURCHASE IS NOT YET HELD: it is the build under way that stops a raise.
+		return City->IsBuilding(Raised.RowName) ? ECataclysmCityUpgradeResult::BuildUnderWay
+												: ECataclysmCityUpgradeResult::NotHeld;
+	}
+	if (Held->Tier >= UCataclysmCityUpgradeRules::HighestTier)
+	{
+		return ECataclysmCityUpgradeResult::AtTheTopTier;
+	}
+	// ONE TIER AT A TIME: a raise asked for any tier but the next is not one this game sells.
+	if (Raised.Tier != Held->Tier + 1)
+	{
+		return ECataclysmCityUpgradeResult::NotAnUpgrade;
+	}
+	// THE CITY'S ONE BUILD AT A TIME (Q8, derived from issue #2825's rule).
+	if (!City->Building.IsEmpty())
+	{
+		return ECataclysmCityUpgradeResult::BuildUnderWay;
+	}
+	if (GoldCost > 0 && GoldHeld < GoldCost)
+	{
+		return ECataclysmCityUpgradeResult::NotEnoughGold;
+	}
+	return ECataclysmCityUpgradeResult::Bought;
+}
+
+ECataclysmCityUpgradeResult UCataclysmEmpireRun::RaiseCityUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised,
+																   int64 GoldCost, int64 GoldHeld, int32 BuildDays)
+{
+	const ECataclysmCityUpgradeResult Refusal = WouldRaiseCityUpgrade(CityId, Raised, GoldCost, GoldHeld);
+	if (Refusal != ECataclysmCityUpgradeResult::Bought)
+	{
+		return Refusal;
+	}
+
+	// ON THE BUILD LIST AS THE UPGRADE AT ITS NEW TIER, while the one held goes on acting at its old tier (Q7).
+	FCataclysmCityUpgrade Build = Raised;
+	if (BuildDays > 0)
+	{
+		Build.BuildDaysLeft = BuildDays;
+		Map->StartBuild(CityId, Build);
+		return ECataclysmCityUpgradeResult::Bought;
+	}
+	CompleteCityUpgrade(CityId, Build, Clock->Day);
 	return ECataclysmCityUpgradeResult::Bought;
 }
 
@@ -2898,57 +3009,145 @@ void UCataclysmEmpireRun::CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrad
 {
 	Bought.BuildDaysLeft = 0;
 
-	// THE DAY IT WAS FINISHED, which Enduring Foundations reads: an upgrade being built does nothing, so it has been
-	// "active" only from today. Issue #2741 slice 3b; finished rather than bought since issue #2825.
-	Bought.BoughtDay = Day;
-
-	// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade finished on day 37
-	// with a 20 day interval first fires on day 57, rather than on whichever
-	// coming day happens to divide by 20. Zero for every effect that is not one
-	// of the two interval ones, and unread for them.
-	if (Bought.IntervalDays > 0.0f)
+	// A RAISE, WHEN THE CITY ALREADY HOLDS THE ROW: a purchase of a row the city holds or is building is refused, so a
+	// finished build of a held row is a raise (issue #1265). The map raises it in place and keeps the day it was first
+	// finished.
+	const FCataclysmCity* Holder = Map->Find(CityId);
+	if (Holder != nullptr && Holder->HasUpgrade(Bought.RowName))
 	{
-		Bought.NextTriggerDay =
-			Day + FMath::Max(1, FMath::RoundToInt(Bought.IntervalDays));
+		Map->RaiseUpgrade(CityId, Bought, Day);
+	}
+	else
+	{
+		// THE DAY IT WAS FINISHED, which Enduring Foundations reads: an upgrade being built does nothing, so it has
+		// been "active" only from today. Issue #2741 slice 3b; finished rather than bought since issue #2825.
+		Bought.BoughtDay = Day;
+
+		// THE FIRST TRIGGER IS A FULL INTERVAL AWAY. An upgrade finished on day 37
+		// with a 20 day interval first fires on day 57, rather than on whichever
+		// coming day happens to divide by 20. Zero for every effect that is not one
+		// of the two interval ones, and unread for them.
+		if (Bought.IntervalDays > 0.0f)
+		{
+			Bought.NextTriggerDay =
+				Day + FMath::Max(1, FMath::RoundToInt(Bought.IntervalDays));
+		}
+
+		// THE MAP RECORDS IT AND APPLIES WHAT BELONGS TO THE CITY: the two raised
+		// maxima and the two restores. Everything below here is what the map cannot
+		// do, because it involves dungeons.
+		Map->AddUpgrade(CityId, Bought);
 	}
 
-	// THE MAP RECORDS IT AND APPLIES WHAT BELONGS TO THE CITY: the two raised
-	// maxima and the two restores. Everything below here is what the map cannot
-	// do, because it involves dungeons.
-	Map->AddUpgrade(CityId, Bought);
-
+	// A PURCHASE OR A RAISE OF IT: a raise fires it again at the new tier's full figure (Q9, issue #1265).
 	if (Bought.Effect == ECataclysmCityUpgradeEffect::RemoveDungeons)
 	{
-		const TArray<int32> Standing = DungeonsOn(CityId);
+		RemoveShareOfDungeonsOn(CityId, Bought.Value);
+	}
 
-		// SOONEST TO RESOLVE FIRST, so a one-time upgrade a player spent a slot
-		// on clears the threat that was about to land rather than an arbitrary
-		// one. The sheet says only "Remove 25% of dungeons on this city" and
-		// names no order, so this is a judgement; `docs/DECISIONS.md` records
-		// it.
-		TArray<int32> ByUrgency = Standing;
-		ByUrgency.Sort(
-			[this](const int32 Left, const int32 Right)
-			{
-				return Clock->DaysUntilResolveFor(Left)
-					   < Clock->DaysUntilResolveFor(Right);
-			});
+	if (Bought.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		CleanseEveryCity();
+	}
+}
 
-		// ROUNDED RATHER THAN FLOORED. A quarter of two dungeons removes one; a
-		// quarter of one removes none, which is the honest answer for a
-		// proportional effect on a single dungeon.
-		const int32 ToRemove = FMath::Clamp(
-			FMath::RoundToInt(ByUrgency.Num() * Bought.Value),
-			0, ByUrgency.Num());
+void UCataclysmEmpireRun::RemoveShareOfDungeonsOn(int32 CityId, float Share)
+{
+	const TArray<int32> Standing = DungeonsOn(CityId);
 
-		for (int32 Index = 0; Index < ToRemove; ++Index)
+	// SOONEST TO RESOLVE FIRST, so a one-time upgrade a player spent a slot
+	// on clears the threat that was about to land rather than an arbitrary
+	// one. The sheet says only "Remove 25% of dungeons on this city" and
+	// names no order, so this is a judgement; `docs/DECISIONS.md` records
+	// it.
+	TArray<int32> ByUrgency = Standing;
+	ByUrgency.Sort(
+		[this](const int32 Left, const int32 Right)
 		{
-			// `RemoveDungeon` AND NOT `ClearDungeon`. Nobody walked these; they
-			// were dispersed by building work, so they must not pay out what
-			// beating a dungeon pays out.
-			RemoveDungeon(ByUrgency[Index]);
+			return Clock->DaysUntilResolveFor(Left)
+				   < Clock->DaysUntilResolveFor(Right);
+		});
+
+	// ROUNDED RATHER THAN FLOORED. A quarter of two dungeons removes one; a
+	// quarter of one removes none, which is the honest answer for a
+	// proportional effect on a single dungeon.
+	const int32 ToRemove = FMath::Clamp(
+		FMath::RoundToInt(ByUrgency.Num() * Share),
+		0, ByUrgency.Num());
+
+	for (int32 Index = 0; Index < ToRemove; ++Index)
+	{
+		// `RemoveDungeon` AND NOT `ClearDungeon`. Nobody walked these; they
+		// were dispersed by building work, so they must not pay out what
+		// beating a dungeon pays out.
+		RemoveDungeon(ByUrgency[Index]);
+	}
+}
+
+void UCataclysmEmpireRun::CleanseEveryCity()
+{
+	if (Map == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// THE CITY IDS ARE COPIED FIRST, because removing a dungeon can change the map, and nothing below holds a reference
+	// into it across a removal.
+	TArray<int32> CityIds;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		// EVERY CITY THAT HAS NOT FALLEN, the buying city included (ruling 4). A fallen city has no defence or
+		// population to lose, and its dungeons are its own retaking.
+		if (!City.bFallen)
+		{
+			CityIds.Add(City.CityId);
 		}
 	}
+
+	for (const int32 CityId : CityIds)
+	{
+		// THE DUNGEONS COUNTED: neither a Quest dungeon nor a Fallen City dungeon, as the sheet says ("excluding Quest
+		// and Fallen City dungeons"), nor the Cataclysm's own dungeon. The sheet does not name that one; leaving it out
+		// is DERIVED, confirmed by the coordinating session on 2026-11-22: it is the run's goal, Bribery refuses it
+		// (V13) and a bonus dungeon is never it, so a city upgrade does not take the run's ending away. Issue #2838.
+		TArray<int32> Counted;
+		for (const FCataclysmDungeon& Dungeon : Dungeons)
+		{
+			if (Dungeon.CityId == CityId && Dungeon.Type != ECataclysmDungeonType::Quest
+				&& Dungeon.Type != ECataclysmDungeonType::FallenCity
+				&& Dungeon.Type != ECataclysmDungeonType::Cataclysm)
+			{
+				Counted.Add(Dungeon.DungeonId);
+			}
+		}
+
+		// SOONEST TO RESOLVE FIRST AND ROUNDED, as `RemoveDungeons` takes them (ruling 3): half of three removes two,
+		// half of one removes one.
+		Counted.Sort(
+			[this](const int32 Left, const int32 Right)
+			{
+				return Clock->DaysUntilResolveFor(Left) < Clock->DaysUntilResolveFor(Right);
+			});
+		const int32 ToRemove = FMath::Clamp(
+			FMath::RoundToInt(Counted.Num() * UCataclysmCityUpgradeRules::CleanseDungeonShare), 0, Counted.Num());
+		for (int32 Index = 0; Index < ToRemove; ++Index)
+		{
+			// REMOVED, NOT CLEARED: nobody walked them, so they pay nothing.
+			RemoveDungeon(Counted[Index]);
+		}
+
+		// THEN HALF OF WHAT THE CITY HOLDS NOW: "The cities lose 50% of their remaining defenses and population". Of
+		// what it is read as holding, which is never above the maximum with the empire upgrade tree. Not a dungeon's
+		// hit, so no resistance takes any of it off.
+		if (FCataclysmCity* City = Map->FindMutable(CityId))
+		{
+			City->Defence = Map->DefenceOf(*City) * (1.0f - UCataclysmCityUpgradeRules::CleanseLossShare);
+			City->Population = Map->PopulationOf(*City) * (1.0f - UCataclysmCityUpgradeRules::CleanseLossShare);
+		}
+	}
+
+	// AND STIMULUS PACKAGE'S FLAG, which this can set by itself (issue #2741 slice 6b, B2).
+	NotePopulationAgainstHalf();
 }
 
 void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)

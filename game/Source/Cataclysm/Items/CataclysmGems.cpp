@@ -138,6 +138,72 @@ bool UCataclysmGems::GemFits(ECataclysmSocketType Type, const FString& GemType)
 		|| GemType.TrimStartAndEnd().Equals(SocketTypeName(Type), ESearchCase::IgnoreCase);
 }
 
+const TCHAR* UCataclysmGems::SocketFitsAnyGemStat = TEXT("socket_fits_any_gem");
+const TCHAR* UCataclysmGems::SocketedGemEffectStat = TEXT("socketed_gem_effect");
+
+namespace CataclysmGemEnchantments
+{
+	/**
+	 * Calls `Each` with the value, at the piece's own roll, of every effect row of the piece's drawn enchantments that
+	 * states `Stat`: each positive half at `PositiveRoll`, each negative half at `NegativeRoll`. The shape of
+	 * `UCataclysmDropRoll::DamageTypesCarriedBy`, which reads `damage_types_carried` off a piece the same way.
+	 */
+	template <typename FEach>
+	void ForEachValueOn(const FCataclysmItem& Item, const TCHAR* Stat, const UDataTable* EffectTable, FEach&& Each)
+	{
+		if (EffectTable == nullptr || Item.Enchantments.Num() == 0)
+		{
+			return;
+		}
+		const auto Read = [EffectTable, Stat, &Each](FName Half, float Roll)
+		{
+			if (Half.IsNone())
+			{
+				return;
+			}
+			const FString Named = Half.ToString();
+			for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
+			{
+				const FCataclysmEnchantmentEffectRow* Effect =
+					reinterpret_cast<const FCataclysmEnchantmentEffectRow*>(Row.Value);
+				if (Effect && Effect->Enchantment == Named && Effect->Stat.Equals(Stat, ESearchCase::IgnoreCase))
+				{
+					Each(UCataclysmItemValues::EnchantmentValue(Effect->ValueLow, Effect->ValueHigh, Roll));
+				}
+			}
+		};
+		for (const FCataclysmRolledEnchantment& Rolled : Item.Enchantments)
+		{
+			Read(Rolled.Positive, Rolled.PositiveRoll);
+			Read(Rolled.Negative, Rolled.NegativeRoll);
+		}
+	}
+}
+
+bool UCataclysmGems::FitsAnyGem(const FCataclysmItem& Item, const UDataTable* EnchantmentEffectTable)
+{
+	bool bFits = false;
+	CataclysmGemEnchantments::ForEachValueOn(Item, SocketFitsAnyGemStat, EnchantmentEffectTable,
+											 [&bFits](float Value) { bFits = bFits || Value > 0.0f; });
+	return bFits;
+}
+
+float UCataclysmGems::SocketedGemEffectOf(const FCataclysmItem& Item, const UDataTable* EnchantmentEffectTable)
+{
+	// EACH ROW MULTIPLIES, as "more" and "less" do in the stat pipeline: two rows of 50% less would leave a quarter.
+	float Effect = 1.0f;
+	CataclysmGemEnchantments::ForEachValueOn(Item, SocketedGemEffectStat, EnchantmentEffectTable,
+											 [&Effect](float Value) { Effect *= 1.0f + Value / 100.0f; });
+	return FMath::Max(0.0f, Effect);
+}
+
+bool UCataclysmGems::GemFitsIn(const FCataclysmItem& Item, int32 Socket, const FString& GemType,
+							   const UDataTable* EnchantmentEffectTable)
+{
+	return Item.Sockets.IsValidIndex(Socket)
+		&& (GemFits(Item.Sockets[Socket].Type, GemType) || FitsAnyGem(Item, EnchantmentEffectTable));
+}
+
 FName UCataclysmGems::RollGem(const UDataTable* GemTable, FRandomStream& Stream)
 {
 	if (GemTable == nullptr)
@@ -165,15 +231,19 @@ ECataclysmSocketType UCataclysmGems::RollSocketType(FRandomStream& Stream)
 }
 
 bool UCataclysmGems::AddGemModifier(const FCataclysmGemRow& Row, ECataclysmRarity Rarity,
-									TMap<FName, TArray<FCataclysmStatModifier>>& Totals)
+									TMap<FName, TArray<FCataclysmStatModifier>>& Totals, float Effect)
 {
-	return AddModifier(Row.Stat.IsEmpty() ? NAME_None : FName(*Row.Stat), Row.ValueKind, SheetValueAt(Row, Rarity),
-					   Totals);
+	return AddModifier(Row.Stat.IsEmpty() ? NAME_None : FName(*Row.Stat), Row.ValueKind,
+					   SheetValueAt(Row, Rarity) * Effect, Totals);
 }
 
 void UCataclysmGems::AddSocketedGems(const FCataclysmItem& Item, const UDataTable* GemTable,
+									 const UDataTable* EnchantmentEffectTable,
 									 TMap<FName, TArray<FCataclysmStatModifier>>& Totals)
 {
+	// THE PIECE'S OWN TWO GEM ENCHANTMENTS, read once for all its sockets. Slice G10, ruled 2026-11-22.
+	const bool bFitsAnyGem = FitsAnyGem(Item, EnchantmentEffectTable);
+	const float Effect = SocketedGemEffectOf(Item, EnchantmentEffectTable);
 	for (const FCataclysmSocket& Socket : Item.Sockets)
 	{
 		if (Socket.Gem.IsNone())
@@ -188,21 +258,46 @@ void UCataclysmGems::AddSocketedGems(const FCataclysmItem& Item, const UDataTabl
 				*Socket.Gem.ToString(), *Item.Base.ToString());
 			continue;
 		}
-		AddGemModifier(*Row, Socket.GemRarity, Totals);
+		// A GEM THAT FITS NEITHER ITS SOCKET NOR THE PIECE DOES NOTHING, AND STAYS (Q2, a judgement). It got there
+		// through "Sockets on this equipment fit any gem type", which the piece no longer carries; the socket kept its
+		// own type, so it acts again if the piece carries the enchantment again. Not logged: it is a state a player
+		// reaches, not a fault.
+		if (!bFitsAnyGem && !GemFits(Socket.Type, Row->GemType))
+		{
+			continue;
+		}
+		// THE VALUE TIMES THE PIECE'S OWN GEM EFFECT, BEFORE ITS BUCKET (Q3).
+		AddGemModifier(*Row, Socket.GemRarity, Totals, Effect);
 	}
 }
 
 TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item)
 {
+	return SocketLinesFor(Item, LoadGeneratedTable(), UCataclysmItemModifiers::LoadEnchantmentEffectTable());
+}
+
+TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item, const UDataTable* GemTable,
+											   const UDataTable* EnchantmentEffectTable)
+{
+	const bool bFitsAnyGem = FitsAnyGem(Item, EnchantmentEffectTable);
 	TArray<FString> Lines;
 	for (const FCataclysmSocket& Socket : Item.Sockets)
 	{
-		const FString Holder = Socket.Type == ECataclysmSocketType::Any
+		const FString Holder = bFitsAnyGem
+			? FString(TEXT("Socket for any gem (enchanted)"))
+			: Socket.Type == ECataclysmSocketType::Any
 			? FString(TEXT("Socket for any gem"))
 			: FString::Printf(TEXT("%s socket"), *SocketTypeName(Socket.Type));
-		const FString Held = Socket.Gem.IsNone()
+		FString Held = Socket.Gem.IsNone()
 			? FString(TEXT("empty"))
 			: FString::Printf(TEXT("%s (%s)"), *NameOf(Socket.Gem), *RarityName(Socket.GemRarity));
+		// AND A GEM THAT FITS NEITHER, which `AddSocketedGems` skips (Q2). A gem the table lacks is not marked: it is
+		// skipped for that reason, and logged there.
+		const FCataclysmGemRow* Row = Socket.Gem.IsNone() ? nullptr : RowOf(GemTable, Socket.Gem);
+		if (Row != nullptr && !bFitsAnyGem && !GemFits(Socket.Type, Row->GemType))
+		{
+			Held += TEXT(" (does not fit: inactive)");
+		}
 		Lines.Add(FString::Printf(TEXT("%s: %s"), *Holder, *Held));
 	}
 	return Lines;

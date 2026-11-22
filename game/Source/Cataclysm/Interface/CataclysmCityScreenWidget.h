@@ -140,6 +140,10 @@ public:
 	 */
 	void ClickOfferForTests(FName RowName);
 
+	/** Presses a held upgrade's Raise button as though it had been clicked, for `ClickOfferForTests`'s reason.
+	 *  Issue #1265. */
+	void ClickRaiseForTests(FName RowName);
+
 	/**
 	 * The dungeon game mode a test stands in for the level's. Issue #2715.
 	 *
@@ -262,6 +266,21 @@ private:
 	UFUNCTION()
 	void HandleOfferClicked(FName Value);
 
+	/** A held upgrade's Raise button was pressed: raise it a tier through `UCataclysmCityUpgradePurchase::Raise`.
+	 *  Issue #1265. */
+	UFUNCTION()
+	void HandleRaiseClicked(FName Value);
+
+	/** A raise's Rush button was pressed. Issue #1265. */
+	UFUNCTION()
+	void HandleRaiseRushClicked(FName Value);
+
+	/** The Raise button, and the rush of the raise under it with Rapid Funding held, for one held upgrade. */
+	void AddRaiseButtons(const FCataclysmCityUpgradeOffer& Offer, TSubclassOf<UCataclysmChoiceButton> ButtonClass);
+
+	/** What both raise buttons do. */
+	void RaiseFromTheScreen(FName Value, bool bRush);
+
 	/** An offer's Rush button was pressed: buy it with Rapid Funding's Rush. Issue #2832. */
 	UFUNCTION()
 	void HandleRushClicked(FName Value);
@@ -302,6 +321,10 @@ private:
 	/** One Rush button under each offer that has one, with Rapid Funding held. Issue #2832. */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UCataclysmChoiceButton>> RushButtons;
+
+	/** The Raise buttons, and their rushes, under each held upgrade. Issue #1265. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UCataclysmChoiceButton>> RaiseButtons;
 
 	/** One text block per detail row, headings included. */
 	UPROPERTY(Transient)

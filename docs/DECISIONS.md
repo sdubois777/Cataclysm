@@ -2,6 +2,248 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The shared window: the cleanse (#2838), raising a city upgrade (#1265), the gem enchantments (#46 G10) and the socket crafts (#46 G9) on one branch, registered
+
+**Uncertain or not yet shown, first:**
+
+- **WINDOW shared-w1 PASSED at `17c735d24`**, on its first run: every group at its count, the whole suite at 5244,
+  Python, ruff, and 18 of 18 C++ proofs, each failing exactly the tests its prediction named. The results are below.
+- **THE DECISIONS LOG'S ENTRIES WERE PLACED BY DATE BY HAND.** `tools/resolve_decisions_log.py resolve` orders the two
+  sides of a conflict as whole blocks, and here the incoming entries belonged between entries already on
+  `development`. `.claude/windows/place_entry_by_date.py` placed each one, keeping every entry byte for byte. The
+  order, newest first by the author date of the commit that first wrote each: raising a city upgrade (09:38), a gem on
+  the ground shows its tooltip (09:24, on `development`), the gem enchantments (09:23), the socket crafts (09:15), the
+  cleanse (09:14), a gem's tooltip says when it does nothing (09:03, on `development`). The two already on
+  `development` kept their order.
+
+### What happened at the turn
+
+Ruled by the coordinating session on 2026-11-22: one window for four branches, driven by the gems session, on
+development `2edb0642b` (#2841's merge, the gem tooltip window).
+
+1. **Seventeen cherry-picks** onto `2edb0642b` as `feat/shared-window-2838-1265-46`, in the ruled order: the gold
+   session's eight (`9b3af2800` to `840a0875f`, the cleanse and raising a city upgrade), the empire tree session's five
+   (`af4fcaa5d` to `1d9cf8350`, the gem enchantments, without `9b3af2800`, which the first step carries), and the
+   gems session's four (`bd72f016f` to `003b1f00d`, the socket crafts). Only `docs/DECISIONS.md` conflicted, five
+   times; after each resolve, `.claude/windows/check_no_markers.py` found no marker line and the separator check
+   passed, as the coordinating session ruled after a dry run had committed markers on a scratch branch. No C++ file
+   needed a hand resolve. The gem enchantments' entry is byte for byte its own branch's after its rename commit.
+2. **Save versions**, against the base: account 7, character 14, run 15; the branch moves only the run record, to 16
+   (the cleanse's `bCleanseBoughtThisRun`, `Run_v16.json`).
+3. **The workbook** equals `439e9b8c1`'s, the gem enchantments' workbook stage on the cleanse's file (blob
+   `8053bbb4a1df`), and `python tools/generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+4. **Every one of the 18 C++ proof anchors matches once** on the window's head (`.claude/windows/prove_shared.py`).
+5. **The three compiles**: `.claude/windows/compile_shared.py` at `ac86646cd`, the cached build plan moved aside before each: the branch
+   "Build: Succeeded - 70 actions, 65 files compiled", each changed file alone "62 actions, 57 files compiled", the
+   unity files "22 actions, 17 files compiled", each with 0 compiler warning or error lines. Three `CataclysmEmpire`
+   test files (`CataclysmCityCleanseTests.cpp`, `CataclysmCityUpgradeRaiseTests.cpp`, `CataclysmCityUpgradeTests.cpp`)
+   compiled alone in the branch build and had nothing to compile in the other two.
+6. **The asset step**: one run of `tools/generate_datatable_assets.py` changed `DT_CityUpgrades.uasset`,
+   `DT_EnchantmentEffects.uasset` (707 rows to 709) and `datatable_asset_sources.json` and nothing else, committed
+   alone as `f788a1d36`; `test_datatable_assets_are_current`: 18 passed.
+
+### Registered for the window
+
+The base: window gem-tooltip-w1, "5222 tests performed, 5222 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `2edb0642b`'s game/. The window adds 22 test names and removes none, counted from
+the diff: `CityCleanse.` 3 and `CityCleanseSave.` 1 (#2838), `CityUpgradeRaise.` 4 and `CityUpgradeRaiseScreen.` 3
+(#1265), `GemEnchantments.` 5 (G10), `ForgeSockets.` 6 (G9).
+
+| Step | Registered |
+| :-- | :-- |
+| One build | nothing to compile |
+| The four new groups alone, first | `Cataclysm.CityCleanse` 4, `Cataclysm.CityUpgradeRaise` 7 (each with no dot, as its branch registered, each prefix matching exactly its names), `Cataclysm.GemEnchantments.` 5, `Cataclysm.ForgeSockets.` 6 |
+| Every group the four branches registered, alone, at its count in the base's engine log (`gt_suite_engine_c30f61b8.log`, counted with a literal match, which gives the run's 5222 in all) | `Capital.` 7, `CityScreen.` 19, `CityUpgrade.` 15, `CityUpgradeBuildSave.` 2, `CityUpgradeBuild.` 4, `CityUpgradePrice.` 7, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `FirstSurge.` 3, `GemSave.` 2, `Gold.` 13, `PlayLoop.` 12, `RuleDamageParts.` 11, `SaveLoad.` 81, `SaveRecords.` 17, `Seeding.` 3, `Travel.` 9, `WalkSeed.` 5, `WinningTheRun.` 11, `CityUpgradeSpeed.` 8, `EmpireTreeCredit.` 8, `EmpireTreeCity.` 17, `ItemSockets.` 4, `ForgeGems.` 4, `ForgeCosts.` 3, `ForgeScreen.` 4, `Forge.` 8, `Equipment.` 30, `GemStacks.` 6, `GemDrops.` 4, `StatExemption.` 37, `Enchantments.` 366, `Passives.` 161, `Attributes.` 21, `PlayerStats.` 14, `Data.` 7, `GemCombine.` 3: 50 groups and 1024 tests, each count agreeing with its branch's registration |
+| The whole suite | 5244 performed, 5244 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, 18, each as its branch's entry registers it**, through `.claude/windows/prove_shared.py`:
+
+| Proof | Branch | Prefix | Predicted |
+| :-- | :-- | :-- | :-- |
+| C1 to C3 | #2838 | `Cataclysm.CityCleanse` | C1 4 performed, 3 succeeded; C2 4, 1; C3 4, 3 |
+| D1 to D4 | #1265 | `Cataclysm.CityUpgradeRaise` | each 7 performed, 6 succeeded (D4 with the comment line above its break, `840a0875f`) |
+| GP1 to GP5 | #46 G10 | `Cataclysm.GemEnchantments.` | GP1 to GP3 5 performed, 3 succeeded; GP4 and GP5 5, 4 (copied exactly from the empire tree session's table) |
+| FS1 to FS6 | #46 G9 | `Cataclysm.ForgeSockets.` | FS3 6 performed, 4 succeeded; the rest 6, 5 |
+
+**Python guard proofs are each branch's own and proved before the window**: #2838's and #1265's in their entries,
+PG1 to PG8 (G10), PS1 to PS8 (G9). None is run again.
+
+
+### Window shared-w1, 2026-11-22, at `17c735d24`: PASSED
+
+| What | Registered | Measured |
+| :-- | :-- | :-- |
+| One build | nothing to compile | "Build: Succeeded - target already up to date, 0 actions, nothing compiled" |
+| Groups alone | 50, 1024 tests, each at its count | 50 of 50, each performed and succeeded at exactly its count, none failed |
+| Whole suite | 5244 | "5244 tests performed, 5244 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5244 | "5244 tests in the tree at 17c735d24; 5244 performed, gap 0" |
+| Python, beside it | every test passing | "8123 passed, 10 skipped"; JUnit 8133, 0 failures, 0 errors, 10 skipped |
+| ruff | clean | "All checks passed!" |
+
+**C++ guard proofs: 18 of 18 PROVED**, each through `unreal_build.prove_cpp_guard`, the anchor matching once and the
+source hash the same before and after. Each failed exactly the tests its branch predicted, short names:
+
+| Proof | Named failures |
+| :-- | :-- |
+| C1 | EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds |
+| C2 | EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds, ItIsOfferedFromDifficultyTierThreeAndOnceARun, WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt |
+| C3 | WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt |
+| D1 | ARaisedMaximumActsAtItsOldTierUntilItsBuildIsFinishedAndKeepsAFullCityFull |
+| D2 | ASpentOneTimeUpgradeFiresAgainAtTheNewTiersFullFigure |
+| D3 | ARaisedIntervalKeepsARepairThatWasDueAndShortensOneThatWasNot |
+| D4 | EveryRefusalSaysWhichOneItIs |
+| GP1 | AWeaponWhoseSocketsFitAnyGemTakesAnOffTypeGemAtTheForge, BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| GP2 | BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt, LessEffectiveHalvesEachGemInItsOwnPieceOnly |
+| GP3 | AGemTheEnchantmentLetInStopsActingWhenItIsReplaced, BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| GP4 | TheSocketLinesSayWhatFitsAndWhatActs |
+| GP5 | BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt |
+| FS1 | AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold |
+| FS2 | AnAddedSocketsTypeIsRolledEvenlyAndTheSameForTheSameRunDayAndItem |
+| FS3 | AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold, AnItemAtItsSlotsMaximumIsRefusedAndATwoHanderReachesSix |
+| FS4 | ChangingASocketsTypeTakesAFocusingLens10ResidueTwoDaysAndItsGold |
+| FS5 | AChangeIsRefusedForAFullSocketItsOwnTypeAndAnAnySocket |
+| FS6 | TheScreenOffersAnAddBelowTheMaximumAndAChangeToEachOtherTypeOfAnEmptySocket |
+
+FS2 passing confirms that the C++ `ItemSeedText`, `FCrc::StrCrc32`, `CataclysmSeedMix::Mix` and `FRandomStream` give
+exactly the figures the Python copy computed: seed 1581167466, the fixed pair Attack and Utility, and Attack 1075,
+Defense 966, Utility 959 over 3000 days. The lock was released when the run ended.
+
+---
+
+## 2026-11-22 — A bought city upgrade can be raised to tier 2 and tier 3 in its own slot, for the next tier's gold and build days, acting at its old tier until the raise is finished (#1265)
+
+**Affects:** `ECataclysmCityUpgradeResult::AtTheTopTier`, `NotHeld` and `NoTierToRaiseTo`, new,
+`UCataclysmCityUpgradeRules::HighestTier`, new, and `ResultText`
+(`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`); `UCataclysmEmpireMap::RaiseUpgrade` and
+`RestoreOnce`, new, and `AddUpgrade`, whose two restores now call `RestoreOnce`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `.cpp`); `UCataclysmEmpireRun::RaiseCityUpgrade`,
+`WouldRaiseCityUpgrade` and `RemoveShareOfDungeonsOn`, new, and `CompleteCityUpgrade`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `UCataclysmCityUpgradeMapping::Make`'s tier,
+`HasTier` and `MakeAtTier`, new, and `PriceFor`'s upgrade tier (`game/Source/Cataclysm/Data/CataclysmCityUpgradeMapping.h`
+and `.cpp`); `UCataclysmCityUpgradePurchase::PriceIn`, `BuildDaysIn` and `RushPriceIn`'s upgrade tier, `RaiseTierIn` and
+`Raise`, new, and `PayAndBuild`, new, the body `Buy` and `Raise` share
+(`game/Source/Cataclysm/Player/CataclysmCityUpgradePurchase.h` and `.cpp`); the offer's raise fields,
+`RaiseButtonTextFor`, `RaiseRushButtonTextFor`, `RaiseWhatFor` and `AddTheRaise`, new
+(`game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.h` and `.cpp`); the Raise buttons, `HandleRaiseClicked`,
+`HandleRaiseRushClicked` and `ClickRaiseForTests` (`CataclysmCityScreenWidget.h` and `.cpp`);
+`Cataclysm.RaiseCityUpgrade`, new (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`);
+`docs/Cataclysm_GDD_v2.md`, City Upgrades; `game/README.md`'s empire bullet. Tests:
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeRaiseTests.cpp`, new, four;
+`game/Source/Cataclysm/Tests/CataclysmCityUpgradeRaiseScreenTests.cpp`, new, three;
+`tools/tests/test_a_city_upgrade_is_raised_a_tier.py`, new; and the source checks that read the moved code, in
+`tools/tests/test_city_upgrades_cost_gold.py`, `test_city_upgrades_take_days_to_build.py`,
+`test_empire_tree_gold_nodes.py`, `test_empire_tree_slice9.py` and `test_game_readme_is_true.py`. No workbook cell, no
+asset and no save record moves. Issue [#1265](https://github.com/sdubois777/Cataclysm/issues/1265).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1, by the coordinating session's instruction of 2026-11-22.
+- **NO SAVE RECORD MOVES.** `FCataclysmCityUpgrade::Tier` was already a saved field, so a raise waits on the city's
+  build list as the upgrade at its new tier, and the record stays at the version the cleanse sets, run 16 (#2838).
+- **TWO OF THE THREE QUESTIONS THE RESEARCH WAS ASKED, Q7 AND Q8, ARE ANSWERED NOWHERE IT COULD READ.** No readable
+  page says whether a building keeps working while its next level is built, or how many builds may run at once. Both
+  are ruled from this project's own rules, below, and Q7 is labelled a judgement.
+
+### The research, 2026-11-22: how shipped games raise a building in place
+
+| Game | Source | What it says | Not stated |
+|---|---|---|---|
+| Darkest Dungeon | darkestdungeon.wiki.gg, pages Hamlet, Blacksmith and Abbey (readable) | Buildings are upgraded where they stand, "through the use of heirlooms"; the cost "increases steadily" with each level (the Abbey's Cloister: 4/5, 8/10, 11/14, 15/19, 19/24, 23/29 busts and crests); several independent ladders per building | How long an upgrade takes, and whether the building works meanwhile |
+| XCOM 2 | xcom2.wiki.fextralife.com/Power+Relay and gamepressure.com's Power Relay page (readable); new.ufopaedia.org timed out twice | A facility's upgrades belong to it and add to its own output ("+2 Power, and an additional work station"); they cost supplies and Elerium; the facility itself takes 12 days | An upgrade's time, whether the facility works meanwhile, and whether its two upgrades are a ladder |
+| Frostpunk | gamepressure.com's 2018 technologies guide (readable); frostpunk.wiki.gg returned 401, the fandom wikis 402 | Research lets the existing building be upgraded: "On level 2 you can upgrade the building to Steam Sawmill" | The cost, the time, the footprint and whether it works meanwhile |
+| Total War | the official Rome II manual's construction page and gamepressure.com's 2016 Warhammer guide (readable); totalwar.fandom returned 402 | Construction has a cost and a time, and builds queue; the main building's levels need more each step ("3rd level requires 2, 4th requires 4 and the 5th requires 5 points") | Whether a level is built in place, and whether the old level works meanwhile |
+| Clash of Clans | clashofclans.wiki.gg returned 404 on three pages, the fandom wiki 402 | Nothing read, and nothing is cited from it | |
+
+Path of Exile and Last Epoch were not checked: neither has a building with levels comparable to a city upgrade.
+
+### The rulings, coordinating session, 2026-11-22
+
+- **Q6, DERIVED from the research and the data's shape:** raised in place, in the same slot, for the next tier's gold
+  scaled by difficulty tier and that tier's build days. Tier 3 is the top. Every source raises a level on the building
+  that already holds it, at a rising cost, and the City Upgrades sheet already holds a Tier 2 and Tier 3 Gold and the
+  build days are already 12 and 24.
+- **Q7, A JUDGEMENT:** it keeps acting at its old tier while the raise is built and acts at the new one from the day
+  the raise is finished. #2825's "does nothing until finished" covers what is being built, which is the new tier; the
+  old tier was finished and paid for, and stopping it would make raising a defence upgrade lower a city's defence for
+  12 or 24 days.
+- **Q8, DERIVED from #2825's rule:** a raise is the city's one build at a time.
+- **Q9, A JUDGEMENT:** a spent one-time upgrade may be raised, and finishing the raise fires it again at the new tier's
+  full figure, not the difference. Without it the six tier 2 and 3 values of those three rows could never be reached;
+  the price and the 12 or 24 days are what limit it. The screen says what the raise does when it is finished.
+- **Q10, A JUDGEMENT:** an interval upgrade's next trigger becomes the sooner of the one already set and the finishing
+  day plus the new interval, so a raise never delays a repair that was due.
+- **Q11, DERIVED from the purchase rule:** a raised maximum becomes the base times one plus the new value in place of
+  one plus the old, and what the city holds rises by what the maximum with the tree rose by, so a full city stays full.
+- **The follow-ons, DERIVED:** Scaffolding, Rapid Renovation and Rapid Funding's rush act on a raise as on any build,
+  in the same order; Global Credit and Sovereign Loans may pay for one; Reinvestment counts its price charged (V4);
+  Enduring Foundations counts from the first build's finish and a raise does not reset it, which its text, "City
+  upgrades that have been active for 10+ days", agrees with; a Siege or a fall pauses a raise; the cleanse, the one row
+  with no ladder, cannot be raised; the refusals include "Already at tier 3.".
+
+### The judgements this build made
+
+| Judgement | What it rests on |
+|---|---|
+| A finished build of a row the city holds is a raise | A purchase of a held or building row is refused (`AlreadyBought`), so no other build of a held row can exist |
+| A raise is refused before the city's checks for the cleanse, and after them for the rest | The cleanse is refused whatever the city; the others' order is the purchase's, with "not held" and "at the top" before the build and the gold |
+| A raise asked for a tier other than the next is `NotAnUpgrade` | One tier at a time; only a caller error asks for another |
+| `Buy` and `Raise` charge through one body, `PayAndBuild` | So a raise is paid, credited, rushed, counted and saved exactly as a purchase is; the source checks that read `Buy` read `PayAndBuild` now |
+| The play log names a raise "Raise to tier N: <the row's sentence>" | The purchase line's own format, with the tier |
+| A held upgrade's offer always has a Raise button, greyed with the reason when it cannot be raised | A player sees why, as the purchase buttons do; at tier 3 it says "Raise  --  Already at tier 3." |
+
+### Tests
+
+**Python**, `tools/tests/test_a_city_upgrade_is_raised_a_tier.py`, four checks: the run's refusals in the ruled order
+with no slot check; a finished build of a held row raised in place, its first finished day kept, a maximum refolded,
+the sooner trigger kept and a restore fired again; the purchase pricing, building and charging a raise at its tier
+through one body; the screen and the console reaching it.
+
+**Unreal, new:**
+
+- `Cataclysm.CityUpgradeRaise.ARaisedMaximumActsAtItsOldTierUntilItsBuildIsFinishedAndKeepsAFullCityFull`
+- `Cataclysm.CityUpgradeRaise.ASpentOneTimeUpgradeFiresAgainAtTheNewTiersFullFigure`
+- `Cataclysm.CityUpgradeRaise.ARaisedIntervalKeepsARepairThatWasDueAndShortensOneThatWasNot`
+- `Cataclysm.CityUpgradeRaise.EveryRefusalSaysWhichOneItIs`
+- `Cataclysm.CityUpgradeRaiseScreen.AHeldUpgradesRaiseSaysWhatItDoesItsPriceAndItsDays`
+- `Cataclysm.CityUpgradeRaiseScreen.ThePurchaseRefusesARaiseItCannotMakeAndTakesNothing`
+- `Cataclysm.CityUpgradeRaiseScreen.ARaiseUnderWayIsSavedAndFinishedAfterALoad`
+
+### Registered for the window, 2026-11-22, before it runs
+
+On top of #2838 (`a6813b1d8`), in the window the coordinating session plans to share. From window tree-s9-w2's
+measured figures (5218 tests, 57 skipped halves, 860 test saves) and #2838's registered four, this branch adds seven
+tests and writes no save.
+
+| Step | Predicted |
+|---|---|
+| The groups this branch's code touches, alone, counted with a literal match in w2's engine log | `CityUpgrade.` 15, `CityScreen.` 19, `CityUpgradePrice.` 7, `CityUpgradeBuild.` 4, `CityUpgradeBuildSave.` 2, `CityUpgradeSpeed.` 8, `EmpireTreeCredit.` 8, `EmpireTreeRestores.` 4, `EmpireTreeEvents.` 14, `EmpireTreeCity.` 17, `PlayLoop.` 12: 110, each succeeding |
+| The new tests, prefix `Cataclysm.CityUpgradeRaise` with no dot, which covers both new groups; a case-insensitive search of every test name finds exactly these 7 | 7 performed, 7 succeeded |
+| The whole Unreal suite, with #2838 | 5229 performed, 5229 succeeded; 57 skipped halves; 860 test saves, 0 left behind |
+
+**C++ guard proofs**, by `unreal_build.prove_cpp_guard`, prefix `Cataclysm.CityUpgradeRaise` (7 tests):
+
+| Proof | Break | Predicted, broken half | Restored |
+|---|---|---|---|
+| D1 | in `RaiseUpgrade`, `City->MaxDefence *= (1.0f + Raised.Value) / OldFactor;` removed: a raised maximum not refolded | `ARaisedMaximum...` fails, on "on the twelfth the maximum is tier 2's". 7 performed, 6 succeeded | 7 of 7 |
+| D2 | in `RaiseUpgrade`, `RestoreOnce(*City, Raised.Effect, Raised.Value);` removed: a raised restore does not fire again | `ASpentOneTimeUpgrade...` fails, on "the raise restores again, to the maximum". 7 performed, 6 succeeded | 7 of 7 |
+| D3 | in `RaiseUpgrade`, `FMath::Min(Held->NextTriggerDay, Next)` made `Next`: a raise moves a repair that was due | `ARaisedInterval...` fails, on "the repair due on day 20 stays due on day 20" (25). 7 performed, 6 succeeded | 7 of 7 |
+| D4 | in `WouldRaiseCityUpgrade`, `if (!City->Building.IsEmpty())` made `if (false && !City->Building.IsEmpty())`: two builds at once. THE BREAK TEXT MUST INCLUDE THE COMMENT LINE ABOVE IT, `// THE CITY'S ONE BUILD AT A TIME (Q8, derived from issue #2825's rule).`, because the bare `if` also stands in `WouldBuyCityUpgrade` and appears twice in the file | `EveryRefusalSaysWhichOneItIs` fails, on "one build at a time". 7 performed, 6 succeeded | 7 of 7 |
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive` of `26dfbb876` (rebased onto #2838's path fix as `8ad7e89f1`,
+which changes nothing else), 2026-11-22, each PROVED, failing one named test with its break in and passing all four with it out:
+
+| Proof | Break | The test that failed |
+|---|---|---|
+| PC1 | `RaiseUpgrade` does not refold a raised maximum | `test_a_finished_build_of_a_held_row_is_a_raise_in_place` |
+| PC2 | `RaiseUpgrade` moves the first finished day | `test_a_finished_build_of_a_held_row_is_a_raise_in_place` |
+| PC3 | `BuildDaysIn` takes tier 1's days for every tier | `test_the_purchase_prices_and_builds_a_raise_at_its_tier_through_one_body` |
+| PC4 | `RaiseWhatFor` does not say the ruled example's words | `test_the_screen_and_the_console_reach_a_raise` |
+
+---
+
 ## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
 
 **Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
@@ -104,6 +346,418 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
   and run again ("8086 passed, 10 skipped in 411.88s") before the commit.
 - **Not seen by any test**: the tooltip and the ground panel on the screen (-nullrhi, issue #650). The owner checks
   those in play.
+
+---
+
+## 2026-11-22 — The two gem enchantments act on their own piece: "Sockets on this equipment fit any gem type" is read at socket time and apply time and never stored, and "Gems in this equipment are 50% less effective" halves each of that piece's gems before its bucket (#46, slice G10)
+
+**Affects:** `UCataclysmGems::SocketFitsAnyGemStat`, `SocketedGemEffectStat`, `FitsAnyGem`, `SocketedGemEffectOf`,
+`GemFitsIn`, `AddGemModifier` (its `Effect` argument), `AddSocketedGems` and `SocketLinesFor`
+(`game/Source/Cataclysm/Items/CataclysmGems.h` and `.cpp`); `UCataclysmItemModifiers::AccumulateInto`
+(`game/Source/Cataclysm/Items/CataclysmItem.cpp`) and the comment on `ECataclysmSocketType` (`CataclysmItem.h`);
+`UCataclysmForge::SocketGemOf` (`CataclysmForge.cpp`); `UCataclysmForgeLayout::SocketActionsFor`
+(`game/Source/Cataclysm/Interface/CataclysmForgeLayout.cpp`); `UCataclysmPlayerClassStats::StatsWithNoAttribute`
+(`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`); `tools/generate_datatables.py`
+(`refuse_a_gem_enchantment_row_the_game_cannot_read`); `docs/Cataclysm_GDD_v2.md`, Sockets and Gems. Tests:
+`game/Source/Cataclysm/Tests/CataclysmGemEnchantmentsTests.cpp`, new, `Cataclysm.GemEnchantments.` 5; two probes in
+`CataclysmStatExemptionTests.cpp`; `tools/tests/test_gem_enchantments.py`, new; `tools/tests/test_items_have_typed_sockets.py`.
+Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED.** Phase 1. The window follows the workbook stage.
+- **THIS BRANCH STARTS FROM #2838's COMMIT `9b3af2800`** (the gold session's: City Upgrades!E25 at 40,000, and the
+  generator accepting a tier 1 price on a row with no tier ladder), because the design workbook cannot be merged and
+  the two effect rows had to be written on that session's file (Q5). It therefore depends on #2838: both go through one
+  window with #2838 first, or #2838 merges first and this rebases, as the coordinating session decides.
+- **THE PLAN CHANGED IN ONE PLACE AFTER IT WAS ACCEPTED.** It proposed a list of "item-local" stats that the wearer's
+  enchantment totals would skip. Reading the code showed a precedent: `damage_types_carried` ("This weapon has 2-4 damage
+  types") is on `StatsWithNoAttribute`, is read off one item by `UCataclysmDropRoll::DamageTypesCarriedBy`, has a probe in
+  `Cataclysm.StatExemption.` and a refusal in the generator. The two stats follow it. So both also reach the wearer's
+  totals, where nothing reads them, as `damage_types_carried` does; and the planned test "neither stat reaches the
+  wearer" became the test of both enchantments on one piece (Q7).
+- **THIS SUPERSEDES ONE SENTENCE OF THE G3 ENTRY BELOW**, "what the enchantment 'Sockets on this equipment fit any gem
+  type' will make of a piece's sockets (slice G7)": the enchantment makes no socket `Any` (Q1). The G3 entry is left as
+  it was written. **ITS "G7" IS THIS WORK'S PLANNED NUMBER, AND THE WORK IS G10**: G7 became #2830's crafting costs, and
+  G9 is the gems session's socket crafts (the coordinating session, 2026-11-22).
+
+### The rulings, the coordinating session's of 2026-11-22
+
+| Ruling | What | Kind |
+|---|---|---|
+| Q1 | Fit-any is read from the enchantment at socket time and at apply time, and never stored as `Any` | ruled |
+| Q2 | A gem fit-any let in stays socketed and stops acting until the piece fits it again or the player unsockets it, for Dismantling Dust as usual: a gem that kept acting would let the enchantment be used once and discarded with the gem kept, and one thrown out would land in the bag at a moment the player did not choose | **judgement** |
+| Q3 | "50% less effective" is local to the piece: each gem's value is multiplied before it enters its bucket | derived |
+| Q4 | No rounding | ruled |
+| Q5 | The two rows on the Enchantment Effects sheet and nothing else, read back cell by cell, after the gold session's edit | ruled |
+| Q6 | Fit-any's own Tags (`Item.Slot.Weapon`, so it rolls on weapons only) are left; to be put to the owner with other Tags and Weights | ruled |
+| Q7 | Both on one piece: off-type gems go in and act at half; a two-handed weapon's gems are halved, not doubled | ruled |
+| Q8 | The tooltip: "Socket for any gem (enchanted)" and "(does not fit: inactive)" | ruled |
+
+**Genre, fetched 2026-11-22.** Path of Exile's belt Darkness Enthroned: "(50—100)% increased Effect of Socketed Abyss
+Jewels"; its wiki text, "increases the values of each of the two socketed jewels and rounds the increased values down"
+(poedb.tw/us/Darkness_Enthroned). Path of Exile 2's version: "(50—100)% increased effect of Socketed Augment Items",
+stat "local socketed items effect +%" (poe2db.tw/us/Darkness_Enthroned). Settled by them: the effect is local to the
+item and scales each socketed thing's values. Not settled, and Q2's judgement: what happens to a socketed thing when the
+rule that let it in is removed; no page found says. Path of Exile rounds down because its stats are whole numbers; a
+gem's value here is a float (Q4).
+
+### The change
+
+- **The two stats**, `socket_fits_any_gem` (flat 1, a flag) and `socketed_gem_effect` (`more` -50), are read off the
+  piece's own drawn enchantments at its rolls. `SocketedGemEffectOf` multiplies one plus each row's value over a hundred,
+  so two rows of 50% less leave a quarter, as "more" and "less" multiply in the pipeline; never below nought.
+- **At socket time:** the Forge's `SocketGemOf` asks `GemFitsIn` (the socket's type, or the piece's fit-any), and the
+  Forge screen's `SocketActionsFor` offers every carried gem for a fit-any piece, labelled "(any gem)". A refusal still
+  names the socket's own type, which the enchantment never changes.
+- **At apply time:** `AddSocketedGems` skips a gem that fits neither its socket's type nor the piece, and hands each other
+  gem's value times the piece's gem effect to `AddGemModifier`, still its one call per gem.
+  `UCataclysmItemModifiers::AccumulateInto` passes it the enchantment effect table.
+- **The tooltip:** on a fit-any piece each socket line opens "Socket for any gem (enchanted)"; a gem that fits neither
+  ends "(does not fit: inactive)".
+- **The generator** refuses any other shape of row on the two stats: fit-any must be flat 1, the gem effect `more`
+  above -100 and not nought, neither with tags, an action, a condition or a scale.
+- **No save version moves.** A socket keeps its type, and an item already stores its enchantments' row names.
+
+### The workbook stage
+
+`docs/All_Things_Cataclysm.xlsx`, Enchantment Effects rows 709 and 710, written by
+`.claude/windows/edit_workbook_gem_enchantments_46.py` on `9b3af2800`'s file:
+`Positive_Sockets_on_this_equipment_fit_any_gem_type`, `socket_fits_any_gem`, `flat`, 1; and
+`Negative_Gems_in_this_equipment_are_50_less_effective`, `socketed_gem_effect`, `more`, -50. Read back cell by cell
+against `9b3af2800`'s file: "sheets equal: True 28", "cells compared 105705, differing 10", the ten being A709 to E710.
+`game/Data/EnchantmentEffects.csv` regenerated, 707 to 709 rows; it and #2838's `CityUpgrades.csv` are the only CSVs that
+differ from development `45b33c70f`. The pins the rows move, by `.claude/windows/edit_g7_after_the_workbook.py`:
+`AUTHORED_ROWS` 709 and `AUTHORED_ENCHANTMENTS` 572 with `socket_fits_any_gem` in `FLAG_STATS`
+(`tools/tests/test_enchantment_effects_match_the_row_text.py`), and the `EnchantmentEffects` `CHECK_TABLE` at 709
+(`CataclysmDataTableTests.cpp`). The `DT_EnchantmentEffects` asset is rebuilt in the window's asset step.
+
+### The tests
+
+- **Unreal, `Cataclysm.GemEnchantments.`, 5**, each reading the tables the game loads, with a set-up check that the two
+  shipped rows are there:
+  1. `AWeaponWhoseSocketsFitAnyGemTakesAnOffTypeGemAtTheForge`, the control refusing "A Defense gem does not fit an
+     Attack socket.";
+  2. `LessEffectiveHalvesEachGemInItsOwnPieceOnly`: Of Life 12.5 against 25, Of The Viper in a greataxe 30;
+  3. `AGemTheEnchantmentLetInStopsActingWhenItIsReplaced`: 25, then nothing, still socketed and unsocketable, the
+     fitting Viper 60 either way;
+  4. `TheSocketLinesSayWhatFitsAndWhatActs`;
+  5. `BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt`: offered "Socket Of The Viper (Superb) into socket 1
+     (any gem)", taken, 30; the control offered nothing, refused, nothing.
+- **`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`** gains a probe for each stat: with no row, the
+  Attack socket refuses a Defense gem and the gems are worth 1; with the row, it takes it and they are worth 0.5.
+- **Python:** `tools/tests/test_gem_enchantments.py`, 18 checks; `test_items_have_typed_sockets.py`'s one-call check
+  now names the `Effect` argument.
+
+### Python guard proofs, PG1 to PG8, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `34457f4d2` (this branch's code
+commit before it was replayed onto `9b3af2800` as `af4fcaa5d`) and again at `439e9b8c1`, the workbook stage, running
+`tools/tests/test_gem_enchantments.py` and `test_items_have_typed_sockets.py` (26 tests); each failed the named test with
+the break in and passed 26 of 26 restored. `.claude/windows/prove_g7_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| PG1 | the engine spells the gem effect stat differently | the names check |
+| PG2 | the refusal takes any value kind | the two wrong-kind refusals and the whole sheet's validation (3) |
+| PG3 | the Forge reads the socket's type alone | the Forge check |
+| PG4 | a gem that fits neither still acts | the fits-neither check |
+| PG5 | something writes `Any` into a socket | the never-stored check |
+| PG6 | a gem effect row replaces rather than multiplies | the effect check |
+| PG7 | the effect not handed to the call that adds a gem | `test_a_socketed_gem_is_added_once_and_not_doubled` |
+| PG8 | the tooltip does not mark an inactive gem | the fits-neither check |
+
+**PG2 MEASURED NOTHING ON ITS FIRST TWO RUNS**, "NO MEASUREMENT: the run exited 2". The proof script, copied from slice
+9's, converted each edited text to CRLF, and `break_and_run` reads with `read_text` and writes with `write_text`, which
+convert on their own; the file was written with CR CR LF, which broke every backslash continuation in
+`tools/generate_datatables.py`, so the tests did not import. The `.cpp` breaks were unaffected. The script now hands the
+edit over as it is, and all eight were run again, at both commits.
+
+### Python before its window
+
+The full suite on `34457f4d2`, the code commit before the workbook stage, in a git worktree of it: "8105 passed, 9
+skipped in 426.12s", JUnit 8114 tests, 0 failures, 0 errors, 9 skipped. On `439e9b8c1`, after the stage: "2 failed,
+8105 passed, 9 skipped in 408.70s", JUnit 8116, 2 failures, 0 errors, 9 skipped. The two:
+`test_datatable_assets_are_current.py`, because `EnchantmentEffects.csv` and #2838's `CityUpgrades.csv` changed and
+their assets wait for the window's asset step; and `test_docs_readme_sheet_table_is_true.py`, because `docs/README.md`'s
+sheet table still gave the Enchantment Effects sheet 707 rows. **The scratch-copy rehearsal of the stage ran only the
+enchantment, gem, generator and pinned-count files, so it did not reach that check.** The table says 709 since the
+commit that adds this entry, and that check passes. ruff: "All checks passed!" on every file the branch touches.
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_g7_table.py.txt`, each narrowed to `Cataclysm.GemEnchantments.` (5) with its trailing dot, every
+anchor checked to occur once. Each break leaves the two rows readable, so the set-up checks pass and the failure lands on
+the test's subject. Predictions reasoned from the code; none has run.
+
+| Proof | The break | Predicted |
+|---|---|---|
+| GP1 | the Forge reads the socket's type alone | 3, 2: `AWeaponWhoseSockets...` and `BothOnOnePiece...` |
+| GP2 | the gem effect not handed to `AddGemModifier` | 3, 2: `LessEffectiveHalves...` (25, 60) and `BothOnOnePiece...` (60) |
+| GP3 | a gem that fits neither still acts | 3, 2: `AGemTheEnchantmentLetIn...` (25 after) and `BothOnOnePiece...` (the control's 30) |
+| GP4 | the tooltip does not mark an inactive gem | 4, 1: `TheSocketLinesSay...` |
+| GP5 | the Forge screen offers only the socket's own type | 4, 1: `BothOnOnePiece...` (0 offered) |
+
+---
+
+## 2026-11-22 — The forge adds a socket, its type rolled from the item and the day, and changes an empty socket's type to the one chosen, each at the Crafting sheet's costs (#46, slice G9)
+
+**NOT COMPILED, NOT RUN.** Phase 1 on `feat/socket-crafts-46-g9`, cut from development `45b33c70f`. Its window is
+registered below; nothing here has run in the engine.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The plan was accepted with eight answers:
+
+1. **An added socket's type is rolled evenly among Attack, Defense and Utility, as a drop rolls it.** DERIVED from the
+   research: a random result is cheap and a chosen result costs more, and here the chosen result is the rarer tier 4
+   Focusing Lens. The sources:
+   - Path of Exile, read on poedb.tw. The Jeweller's Orb "Reforges the number of sockets on an item" at random,
+     "limited by the type of equipment and item level". The Chromatic Orb "Reforges the colour of sockets on an item",
+     also at random. The crafting bench sells a set result for more orbs: "Six Sockets" for 350 Jeweller's Orbs, "At
+     Least Four Non-White Sockets" for 75 Chromatic Orbs.
+   - Diablo III, Ramaladni's Gift: one socket added to a weapon (diablowiki.net, a fan wiki).
+   - Diablo IV: a Scattered Prism adds one socket at a time under a cap per item type (Maxroll, ginx.tv; the guides
+     disagree on the caps).
+   - Diablo II: Larzuk's quest and the Horadric Cube add sockets up to the item's maximum (Maxroll, guides).
+   - Last Epoch has no sockets; Idols fill the role (Maxroll, Icy Veins).
+2. **The roll's seed**: `CataclysmSeedMix::Mix` of the run's `WalkSeedMask`, a salt of its own and the run's day, mixed
+   again with the item's identity and its socket count. **Items carry no saved identifier**, so option (a) was ruled:
+   a CRC (`FCrc::StrCrc32`) over everything the item saves, written out as text, each socket's type, gem and rarity
+   included. The rows' text, not FName hashes, which differ between game sessions. Refused: (b) the piece's slot,
+   which would let a player reload, move the piece and roll again; (c) a saved identifier, a save version step for one
+   roll. **A RELOAD ON THE SAME DAY GIVES THE SAME TYPE**, which is intended: the result cannot be changed by
+   reloading.
+3. **The cap is the slot's maximum** in `game/Data/ItemSockets.csv`; at it the craft is refused with the maximum named.
+4. **A socket holding a gem cannot change type**: "Unsocket the gem first." DERIVED from the design's "There is no free
+   removal".
+5. **A socket for any gem is not offered a change.**
+6. **The types offered are the two the socket is not.**
+7. **The sheet's rows, through `DaysFor` and `GoldFor`**: no new figure.
+8. **Slice G9 of #46, these two crafts only.**
+
+### What it does
+
+- **`UCataclysmForge::AddSocketOf`** and **`ChangeSocketTypeOf`** (`CataclysmForge.h`, `.cpp`), plans in the order every
+  craft refuses, gold last.
+  - Add Socket: a Shattered Core, 15 residue, 3 base days, Base Gold 750 from `ForgeOperations.csv`.
+  - Change Socket Type: a Focusing Lens, 10 residue, 2 base days, Base Gold 500.
+- **`ItemSeedText`, `AddedSocketSeed` and `AddedSocketType`**, the roll.
+- **`UCataclysmForgeCraft::AddSocket`** and **`ChangeSocketType`** (`CataclysmForgeCraft.cpp`), on a carried or worn
+  piece, through `DoSocketWork`, which follows `DoSocketing`: the capital-only refusal, the threshold question for a worn
+  piece, the gold, the material, the item, the days, the log line and the save triggers. Anything that cannot be finished
+  puts back what it took.
+  - The added socket's type is rolled from the item as it stood, before the craft's days pass.
+  - `MaxSocketsOf` reads the slot's maximum through `UCataclysmDropRoll::MaxSocketsFor`.
+- **The forge screen** (`CataclysmForgeLayout`, `CataclysmForgeWidget`): "Add a socket (3 of 6)" below the maximum, and
+  "Make socket N <type>" for each empty typed socket, asked on the first press and done on the second, as socketing is.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeSocketWorkLine`: "added socket 3 to Everyday Jerkin for 1,200 gold,
+  rolled Defense; ..." and "made socket 3 of Everyday Jerkin Utility, from Defense, for 950 gold; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 20.
+- **Nothing moves** in the workbook, the assets or the save versions: both rows and both materials were already on the
+  sheets, and an added socket is one more entry in the item's saved list.
+
+**Both materials drop rarely.** By `MaterialTiers.csv`'s weights, about 1 material drop in 130 is a Shattered Core and 1
+in 430 a Focusing Lens. **So `Cataclysm.GrantMaterial <row> [count]` puts them in the bag** (`CataclysmPlayerCharacter.cpp`,
+beside `Cataclysm.GrantGem`), ruled by the coordinating session on 2026-11-22: "The owner tests by playing, and a craft
+whose material drops once in 430 cannot be tested without it." It looks its row up in the crafting material table and
+refuses any other row before adding anything: "Gem_Of_Life is no crafting material in the crafting material table." Its
+coverage is `Cataclysm.GrantGem`'s kind, a Python check, so it adds no Unreal test name.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeSockets.`, 6 tests**, in `CataclysmForgeSocketsTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FS1 | `AddingASocketTakesAShatteredCore15ResidueThreeDaysAndItsGold` | the rule's figures (residue 87 to 102, 3 days, 2,055 gold at tier 1), its question and refusals; the craft on a carried helm: one empty socket of Attack, Defense or Utility, the core used, 3 days, 2,055 gold; a second addition refused at the helm's 2 |
+| FS2 | `AnAddedSocketsTypeIsRolledEvenlyAndTheSameForTheSameRunDayAndItem` | a fixed helm's seed text and seed (1581167466 on day 7 of mask 12345) as the Python copy computes them; Attack, and Attack again; the same helm with one affix rolled 0.625 instead of 0.5 rolls Utility; over days 1 to 3000, Attack 1075, Defense 966, Utility 959 |
+| FS3 | `AnItemAtItsSlotsMaximumIsRefusedAndATwoHanderReachesSix` | a helm 2, a ring 1, a two-handed greatsword 6, an unknown base -1; the greatsword from 5 to 6 and then refused |
+| FS4 | `ChangingASocketsTypeTakesAFocusingLens10ResidueTwoDaysAndItsGold` | the rule's figures (87 to 97, 2 days, 1,370 gold) and question; the craft makes socket 1 Utility, uses the lens, 2 days, 1,370 gold |
+| FS5 | `AChangeIsRefusedForAFullSocketItsOwnTypeAndAnAnySocket` | the six refusals; on the character, nothing moves |
+| FS6 | `TheScreenOffersAnAddBelowTheMaximumAndAChangeToEachOtherTypeOfAnEmptySocket` | the buttons, and none for a full socket or one for any gem |
+
+**Python**: `tools/tests/test_the_forge_adds_and_changes_sockets.py`, 7 tests, the seventh for `Cataclysm.GrantMaterial`. Its copy of the seed text, the CRC (the
+standard CRC-32 over each character as four bytes, which `FCrc::StrCrc32` is), the mix and the stream gives the exact
+figures FS2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the two rows' fallbacks.
+
+**Python suite at `bd72f016f`**: "8092 passed, 10 skipped"; JUnit 8102 tests, 0 failures, 0 errors; ruff clean. **At
+`3c8d98e9d`**, with `Cataclysm.GrantMaterial` and its check: "8093 passed, 10 skipped"; JUnit 8103, 0 failures, 0
+errors; ruff clean.
+
+**Python guard proofs, in a `git archive` copy of `bd72f016f`: 7 of 7 PROVED; again with PS8 in a copy of
+`3c8d98e9d`: 8 of 8 PROVED.**
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PS1 | the sheet's Add Socket at 800 gold | `test_the_sheets_two_rows_hold_the_forges_figures` |
+| PS2 | Add Socket not reading its row's Base Gold | `test_each_rule_reads_its_row_and_refuses_for_its_material_before_its_gold` |
+| PS3 | the seed text without the kills | `test_the_seed_text_names_every_field_the_item_saves` |
+| PS4 | FS2 asserting seed 1581167467 | `test_the_python_copy_gives_the_figures_fs2_asserts` |
+| PS5 | the added socket rolled from the day after | `test_the_added_socket_is_rolled_before_the_days_pass` |
+| PS6 | the screen offering a change for a socket for any gem | `test_the_screen_offers_no_change_for_a_full_socket_or_one_for_any_gem` |
+| PS7 | Add Socket's base days 4 | `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+| PS8 | `Cataclysm.GrantMaterial` looking up no row | `test_grant_material_puts_a_crafting_material_in_the_bag_and_refuses_any_other_row` |
+
+### Registered for the window
+
+The base: window tree-s9-w2, "5218 tests performed, 5218 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `45b33c70f`'s game/. This slice adds 6 test names and removes none.
+
+| Step | Registered |
+| :-- | :-- |
+| Each group alone, first | `Cataclysm.ForgeSockets.` 6; and the groups whose files the slice touches, each at the count its own run prints: `Forge.`, `ForgeScreen.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `PlayLoop.` |
+| The whole suite | 5224 performed, 5224 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeSockets.` with its trailing dot. Predicted, not
+run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FS1 | in `AddSocketOf`, `Out.ResidueAfter = Item.Residue + AddSocketResidue;` to `+ ChangeSocketTypeResidue;` | 6 performed, 5 succeeded, 1 failed: FS1, on "residue 87 becomes 102", the question and the craft's residue |
+| FS2 | in `AddedSocketSeed`, the CRC replaced: `static_cast<int32>(Crc)` to `static_cast<int32>(Crc) * 0 + 1` | 6, 5, 1: FS2, on the seed, and on the pair and the spread as the rolls move |
+| FS3 | in `AddSocketOf`, `Item.Sockets.Num() >= MaxSockets` to `>` | 6, 4, 2: FS3 (the sixth and the ring's second not refused) and FS1 (the helm's third addition refused for the core, not the maximum) |
+| FS4 | in `DoSocketWork`, `Changed.Sockets[Plan.Socket].Type = Plan.ToType;` to `= Plan.FromType;` | 6, 5, 1: FS4, on "socket 1 is a Utility socket" |
+| FS5 | in `ChangeSocketTypeOf`, `if (!Changed.Gem.IsNone())` to `if (false && !Changed.Gem.IsNone())` | 6, 5, 1: FS5, on "a socket holding a gem" and the craft's refusal |
+| FS6 | in `SocketWorkActionsFor`, `if (Type == Socket.Type)` to `if (false && Type == Socket.Type)` | 6, 5, 1: FS6, on the labels |
+
+---
+
+## 2026-11-22 — The cleanse city upgrade is built: from difficulty tier 3, once a run, 40,000 gold, and on every city that has not fallen it removes half the counted dungeons and half of what the city holds (#2838)
+
+**Affects:** `ECataclysmCityUpgradeEffect::CleanseEveryCity`'s comment, `ECataclysmCityUpgradeResult::BelowItsDifficultyTier`
+and `AlreadyBoughtThisRun`, new, `UCataclysmCityUpgradeRules::CleanseLowestDifficultyTier`, `CleanseDungeonShare` and
+`CleanseLossShare`, new, `IsBuilt` and `ResultText` (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and
+`.cpp`); `UCataclysmEmpireRun::bCleanseBoughtThisRun` and `CleanseEveryCity`, new, `WouldBuyCityUpgrade`,
+`BuyCityUpgrade`, `CompleteCityUpgrade` and `BeginForCharacter`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); the run record's `bCleanseBoughtThisRun`,
+`SchemaVersionNow` 16 and `Migrate_15_to_16` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `.cpp`),
+`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and `CataclysmSaveApply.cpp`; the design workbook
+`docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell E25 (the cleanse's Tier 1 Gold), 0 to 40,000;
+`game/Data/CityUpgrades.csv`, regenerated, the only CSV that moved; `tools/generate_datatables.py`'s
+`_city_upgrade_prices`; `docs/Cataclysm_GDD_v2.md`, City Upgrades; `game/README.md`'s empire bullet and
+`tools/tests/test_game_readme_is_true.py`'s list of empire files; `game/Tests/SaveFixtures/Run_v16.json`, new, and
+`game/Tests/SaveFixtures/README.md`. Tests: `game/Source/CataclysmEmpire/Tests/CataclysmCityCleanseTests.cpp`, new,
+three; `game/Source/Cataclysm/Tests/CataclysmCityCleanseSaveTests.cpp`, new, one;
+`tools/tests/test_the_cleanse_city_upgrade.py`, new; `tools/tests/test_city_upgrades_cost_gold.py`;
+`CataclysmSaveFixtures.h`'s `AddTheRunsVersion16Defaults`, new; the built list and count in
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeTests.cpp`; the cleanse set aside in
+`CataclysmCityScreenTests.cpp`, `CataclysmCityUpgradeBuildScreenTests.cpp` and `CataclysmCityUpgradePriceTests.cpp`;
+and the committed run file moved from `game/Tests/SaveFixtures/Run_v15.json` to
+`game/Tests/SaveFixtures/Run_v16.json`, with the step's write added, in
+`CataclysmCityUpgradeBuildSaveTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`,
+`CataclysmEarnedBossSaveTests.cpp`, `CataclysmEmpireTreeClearGoldTests.cpp`, `CataclysmEmpireTreeDropsTests.cpp`,
+`CataclysmEmpireTreeEventsTests.cpp`, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmGemSaveTests.cpp`,
+`CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmSeedingTests.cpp`,
+`CataclysmWalkSeedTests.cpp` and `CataclysmWinningTheRunTests.cpp`. The asset `DT_CityUpgrades` is NOT rebuilt here.
+Issue [#2838](https://github.com/sdubois777/Cataclysm/issues/2838), split from
+[#1265](https://github.com/sdubois777/Cataclysm/issues/1265).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** Phase 1, by the coordinating session's instruction of
+  2026-11-22: no compile and no Unreal lock. `DT_CityUpgrades` must be rebuilt by `tools/generate_datatable_assets.py`
+  in a window; until then `tools/tests/test_datatable_assets_are_current.py` fails on `CityUpgrades.csv`, and the
+  game prices the cleanse at nothing.
+- **THE RUN RECORD GOES FROM VERSION 15 TO 16.** `Migrate_15_to_16` writes `bCleanseBoughtThisRun` false: a version
+  15 run could not buy the cleanse, because it was refused as not built.
+- **THE 2026-11-18 RULE "NO PRICE, AND NEVER SOLD" IS CHANGED, FOR THE CLEANSE.** That rule gave the one row with no
+  tier ladder no price, and `tools/generate_datatables.py` refused any price on such a row. The generator now allows a
+  tier 1 price on a row with no ladder, a whole number above nought, and still refuses a tier 2 or tier 3 price. The
+  coordinating session accepted the change on 2026-11-22.
+
+### The rulings, coordinating session, 2026-11-22
+
+1. **"Available on T3 and above" means difficulty tier 3 or higher.** This reads the owner's sentence and is not new
+   design. The evidence: the cleanse row has no upgrade tier 2 or 3 (its `Tier2Raw` and `Tier3Raw` are empty in
+   `CityUpgrades.csv`), so it cannot be bought at upgrade tier 3; the design writes difficulty tiers as T1 to T8 (the
+   table headed "| Tier | Level | Gear Rarity |" in `docs/Cataclysm_GDD_v2.md`); and the empire tree's The Imperial
+   Vanguard reads "Choose one empire-wide capstone as you enter Tier 3".
+2. **Price and build days, both JUDGEMENTS** under the owner's delegation of unstated numbers (2026-09-11): 40,000
+   gold at difficulty tier 1, the top of the price ladder, scaled by difficulty tier as every gold price is; and 6
+   build days, as any upgrade built at tier 1. It takes a slot in the buying city while it builds.
+3. **Which dungeons go:** on each city, the soonest to resolve first, rounded as "Remove 25% of dungeons on this
+   city" rounds, so half of three removes two and half of one removes one. Quest and Fallen City dungeons are neither
+   counted nor removed.
+4. **Which cities:** every city that has not fallen, the buying city included.
+5. **Once a run, empire-wide**, in a run flag.
+6. **The refusals name the reason:** "Available from difficulty tier 3." and "Already bought this run."
+7. **The Cataclysm's own dungeon is neither counted nor removed.** DERIVED, not a judgement, as the coordinating
+   session confirmed: it is the run's goal, Bribery refuses it (V13), and a bonus dungeon is never it, so a city
+   upgrade does not take the run's ending away.
+
+### The judgements this build made, each with what it rests on
+
+| Judgement | What it rests on |
+|---|---|
+| The run is spent when the cleanse is bought, not when its build finishes | "Can only purchase once": a second city must not buy it while the first builds it |
+| Its two gates come before anything about the city | They are the run's, so every city gives the same answer; on a tier 1 run "Available from difficulty tier 3" is the reason no other action changes |
+| The 50% figures are constants in `UCataclysmCityUpgradeRules`, not data | The row's tier 1 value is 0 on purpose: "Publishing the 50% would say its strength is 50% when 50% is the price" (`tools/tests/test_city_upgrade_tier_one.py`) |
+| Half of what a city "holds" is half of `DefenceOf` and `PopulationOf` | "Remaining": what the city holds now, read as the game reads it, never above the maximum with the empire tree |
+| The loss is not reduced by the city's resistances | The resistances are "of damage" and "of population loss" from a dungeon; this is a price the player chose |
+| The dungeons are removed, not cleared | Nobody walked them, so they pay nothing, as `RemoveDungeons` |
+| Stimulus Package's flag is checked after the cleanse | The cleanse can take the empire's population below half by itself |
+
+### Tests
+
+**Python**, in `tools/tests/test_the_cleanse_city_upgrade.py`, six checks: the cleanse is built and says the ruled
+words; its gates are the run's and come before the city; the run is spent before the build starts and a new run gives
+it back; the counted dungeons, soonest first and rounded, removed and not cleared, and half of what each city holds;
+the run record's step and field; `Run_v16.json` is `Run_v15.json` with the cleanse bought; every chain test adds the
+step's write. And `tools/tests/test_city_upgrades_cost_gold.py`: the cleanse is priced 40,000, 0 and 0, and the
+generator refuses a tier 2 price on a row with no ladder.
+
+**Unreal, new:**
+
+- `Cataclysm.CityCleanse.EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds`: three ordinary dungeons
+  and a Quest, a Cataclysm and a Fallen City dungeon on one city, each of the last three sooner than any ordinary one;
+  the two soonest ordinary ones go and the other four stay (the Cataclysm's dungeon among them, as the coordinating
+  session asked); one dungeon on a second city goes; a fallen city keeps its dungeon, defence and population; the two
+  cities keep half of what they held.
+- `Cataclysm.CityCleanse.ItIsOfferedFromDifficultyTierThreeAndOnceARun`: refused at tiers 1 and 2 with the ruled
+  words, offered at 3, refused on a second city while the first builds it, another upgrade not refused, and a new run
+  may buy it again.
+- `Cataclysm.CityCleanse.NothingHappensUntilItsBuildIsFinished`: on the Pillar, nothing after 5 days and the cleanse
+  on the sixth.
+- `Cataclysm.CityCleanseSave.WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt`: saved and loaded, the flag
+  holds and the loaded run refuses it on another city; a run that bought nothing loads without it; `Run_v15.json`
+  migrates to false; `Run_v16.json` reads true.
+
+**Unreal, changed:** the built list and count, 19 to 20; the screen, price and build tests that loop over every
+built upgrade on a tier 1 run set the cleanse aside, because it says its difficulty tier there; and every test that
+read `Run_v15.json` as the committed run file reads `Run_v16.json`.
+
+### Registered for the window, 2026-11-22, before it runs
+
+From window tree-s9-w2's measured figures on `c651af7e6` (development `45b33c70f`'s tree): 5218 tests, 57 skipped
+halves, 860 test saves. This branch adds four tests and writes no save.
+
+| Step | Predicted |
+|---|---|
+| The groups whose test files this branch changes, alone, counted with a literal match in w2's engine log | `Capital.` 7, `CityScreen.` 19, `CityUpgrade.` 15, `CityUpgradeBuildSave.` 2, `CityUpgradeBuild.` 4, `CityUpgradePrice.` 7, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `FirstSurge.` 3, `GemSave.` 2, `Gold.` 13, `PlayLoop.` 12, `RuleDamageParts.` 11, `SaveLoad.` 81, `SaveRecords.` 17, `Seeding.` 3, `Travel.` 9, `WalkSeed.` 5, `WinningTheRun.` 11: 297, each succeeding |
+| The new tests alone, prefix `Cataclysm.CityCleanse` with no dot, which covers both new groups | 4 performed, 4 succeeded |
+| The whole Unreal suite | 5222 performed, 5222 succeeded; 57 skipped halves; 860 test saves, 0 left behind |
+| The asset step | `DT_CityUpgrades.uasset` and `datatable_asset_sources.json` only |
+
+**C++ guard proofs**, by `unreal_build.prove_cpp_guard`, prefix `Cataclysm.CityCleanse` (both new groups, 4 tests):
+
+| Proof | Break | Predicted, broken half | Restored |
+|---|---|---|---|
+| C1 | in `CleanseEveryCity`, `&& Dungeon.Type != ECataclysmDungeonType::Cataclysm` removed: the Cataclysm's dungeon counted | `EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds` fails, on "and its next" and "the Cataclysm's own dungeon stays (derived: V13)": city A's four counted sort as the Cataclysm's (2 days), then 5, 10 and 15, and half of four removes the first two. 4 performed, 3 succeeded | 4 of 4 |
+| C2 | in `BuyCityUpgrade`, `bCleanseBoughtThisRun = true;` removed: the run never spent | `EachCity...` ("and spent for the run"), `ItIsOfferedFromDifficultyTierThreeAndOnceARun` ("another city is refused while it builds") and `WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt` ("the loaded run has bought the cleanse", "and refuses it on another city") fail; `NothingHappensUntilItsBuildIsFinished` passes. 4 performed, 1 succeeded | 4 of 4 |
+| C3 | in `FCataclysmSaveApply::RunInto`, `Run.bCleanseBoughtThisRun = Record.bCleanseBoughtThisRun;` removed: a load forgets it | `WhetherTheCleanse...` fails, on "the loaded run has bought the cleanse" and "and refuses it on another city"; `Run_v16.json` still reads true, because that reads the record. 4 performed, 3 succeeded | 4 of 4 |
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive` of `eb86e03d9`, 2026-11-22, each
+PROVED, failing one named test with its break in and passing every test with it out:
+
+| Proof | Break | The test that failed | Restored |
+|---|---|---|---|
+| PB1 | `CleanseEveryCity` counts the Cataclysm's dungeon | `test_it_halves_the_counted_dungeons_and_what_each_city_holds` | 6 passed |
+| PB2 | `Migrate_15_to_16` writes the flag true | `test_the_run_record_step_and_field` | 6 passed |
+| PB3 | `BuyCityUpgrade` does not spend the run | `test_the_gates_are_the_runs_and_come_before_the_city` | 6 passed |
+| PB4 | `Run_v16.json` states the flag false, the default | `test_the_committed_run_file_is_the_previous_one_with_the_cleanse_bought` | 6 passed |
+| PB5 | the generator allows a tier 2 price on a row with no ladder | `test_the_generator_reads_the_three_prices_and_refuses_a_wrong_one[no ladder, a tier 2 price]` | 19 passed |
 
 ---
 

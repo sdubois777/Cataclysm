@@ -79,6 +79,8 @@
 #include "Items/CataclysmInventoryComponent.h"
 // Cataclysm.GrantGem, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
+// Cataclysm.GrantMaterial, issue #46 slice G9.
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -3369,6 +3371,61 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
 					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
 		}));
 
+// ---------------------------------------------------------------------------
+// Cataclysm.GrantMaterial. Issue #46, slice G9, ruled by the coordinating
+// session on 2026-11-22: a Shattered Core is about 1 material drop in 130 and
+// a Focusing Lens 1 in 430, so Add Socket and Change Socket Type cannot be
+// tried by playing without a way to have one. A developer's tool, as
+// Cataclysm.GrantGem is.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantMaterial(
+	TEXT("Cataclysm.GrantMaterial"),
+	TEXT("Put crafting materials in the bag: Cataclysm.GrantMaterial <row, e.g. Material_Shattered_Core> [how many, "
+		 "default 1]. A developer's tool, as Cataclysm.GrantGem is."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory())
+			{
+				return;
+			}
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.GrantMaterial <row> [how many]. The rows are game/Data/CraftingMaterials.csv's "
+							"Name column, e.g. Material_Shattered_Core or Material_Focusing_Lens."));
+				return;
+			}
+			// A CRAFTING MATERIAL'S ROW, AND NOTHING ELSE: a gem, a base or a word that is no row is refused.
+			const FName Material(*Args[0]);
+			const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
+			if (Materials == nullptr
+				|| Materials->FindRow<FCataclysmCraftingMaterialRow>(Material, TEXT("Cataclysm.GrantMaterial"),
+																	 /*bWarnIfMissing=*/false) == nullptr)
+			{
+				Ar.Logf(TEXT("%s is no crafting material in the crafting material table."), *Args[0]);
+				return;
+			}
+			const int32 Count = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 1;
+			if (Count < 1)
+			{
+				Ar.Log(TEXT("The count is at least 1."));
+				return;
+			}
+			const int32 Cell = Character->GetInventory()->AddMaterial(Material, Count);
+			if (Cell == INDEX_NONE)
+			{
+				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				return;
+			}
+			Ar.Logf(TEXT("%d %s in cell %d: %d carried."), Count,
+					*UCataclysmDropRoll::MaterialNameOf(Materials, Material), Cell,
+					Character->GetInventory()->CountOfMaterial(Material));
+		}));
+
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 	TEXT("Cataclysm.ShowEquipment"),
 	TEXT("List what is worn, and what is carried, with the slot numbers "
@@ -5157,6 +5214,51 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 						Run->Map->UpgradeSlots, Run->Map->DefenceOf(*City), Run->Map->EffectiveMaxDefence(*City),
 						Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)); // With the tree: #2741 3a.
 			}
+		}));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmRaiseCityUpgrade(
+	TEXT("Cataclysm.RaiseCityUpgrade"),
+	TEXT("Raise an upgrade a city holds by one tier, in the same slot: Cataclysm.RaiseCityUpgrade "
+		 "<cityId> <rowName> [rush]. It costs the next tier's gold now and takes its days to build, 12 to "
+		 "tier 2 and 24 to tier 3; the upgrade acts at its old tier until then. Tier 3 is the top. A city "
+		 "builds one thing at a time. Issue #1265."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(World, /*bStartIfNone*/ false);
+			if (!Run || !Run->Map)
+			{
+				Ar.Log(TEXT("No run has been started. Cataclysm.EmpireBegin starts one."));
+				return;
+			}
+			if (Args.Num() < 2)
+			{
+				Ar.Log(TEXT("Cataclysm.RaiseCityUpgrade <cityId> <rowName> [rush]. Cataclysm.CityUpgrades <cityId> "
+							"lists what a city holds."));
+				return;
+			}
+
+			const int32 CityId = FCString::Atoi(*Args[0]);
+			const FName RowName(*Args[1]);
+			const bool bRush = Args.Num() > 2 && Args[2].Equals(TEXT("rush"), ESearchCase::IgnoreCase);
+
+			// RAISED AS THE CITY SCREEN RAISES, through the one place that charges.
+			const int32 Tier = UCataclysmCityUpgradePurchase::RaiseTierIn(Run, CityId, RowName);
+			const int64 Price = bRush ? UCataclysmCityUpgradePurchase::RushPriceIn(World, Run, RowName, CityId, Tier)
+									  : UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId, Tier);
+			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
+			const ECataclysmCityUpgradeResult Result =
+				UCataclysmCityUpgradePurchase::Raise(World, Run, CityId, RowName, bRush);
+			const int32 ReadyDay = Run->BuildReadyDay(CityId);
+			const FString Said =
+				Result != ECataclysmCityUpgradeResult::Bought
+					? UCataclysmCityUpgradePurchase::RefusalTextIn(World, Result, Price, Held)
+					: ReadyDay == INDEX_NONE
+						  ? FString::Printf(TEXT("Raised to tier %d for %s."), Tier,
+											*UCataclysmCityUpgradePurchase::PriceText(Price))
+						  : FString::Printf(TEXT("Raising to tier %d for %s; being built, ready on day %d."), Tier,
+											*UCataclysmCityUpgradePurchase::PriceText(Price), ReadyDay);
+			Ar.Logf(TEXT("%s"), *Said);
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEnterDungeon(

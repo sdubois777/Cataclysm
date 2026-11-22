@@ -923,7 +923,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 703 SINCE THE SIX ROWS OF TRAPS LAYER 5, issue #1833, from 697.
 	//
 	// AND 706 SINCE THE THREE ROWS OF TRAPS LAYER 6, issue #1833, from 703.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    707)
+	//
+	// AND 709 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G10, from 707: "Sockets on this equipment fit
+	// any gem type" and "Gems in this equipment are 50% less effective", one row each.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    709)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

@@ -1057,6 +1057,18 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 15 to 16, issue #2838, ruled 2026-11-22: whether the cleanse city upgrade has been bought in the run.
+	 * A VERSION 15 RUN COULD NOT BUY IT, because it was refused as not built, so the run is written as not having
+	 * bought it -- written out, for `Migrate_3_to_4`'s reason.
+	 */
+	bool Migrate_15_to_16(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		Record->SetBoolField(TEXT("bCleanseBoughtThisRun"), false); // A migration's: never bought.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1073,6 +1085,7 @@ namespace CataclysmRunSaveMigration
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
+		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 	};
 }
 

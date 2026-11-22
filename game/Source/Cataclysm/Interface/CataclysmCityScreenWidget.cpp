@@ -135,6 +135,7 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 	OfferButtons.Reset();
 	OfferRowNames.Reset();
 	RushButtons.Reset();
+	RaiseButtons.Reset();
 
 	const UCataclysmEmpireRun* Run = ShownRun();
 	if (Run == nullptr)
@@ -153,6 +154,14 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 		 UCataclysmCityScreenLayout::OffersFor(
 			 this, Run, CityId, UCataclysmCityUpgradePurchase::GoldHeldIn(this)))
 	{
+		// A HELD UPGRADE GETS A RAISE BUTTON, since issue #1265: pressable, or greyed saying why -- the gold, a Siege,
+		// another build, or "Already at tier 3." -- and, with Rapid Funding held, a rush of the raise under it.
+		if (Offer.bRaiseOffered)
+		{
+			AddRaiseButtons(Offer, ButtonClass);
+			continue;
+		}
+
 		// ONLY WHAT CAN BE BOUGHT GETS A BUTTON. What the city already has is a
 		// row under "What this city has", and what does nothing yet is a row in
 		// its own section; neither is a thing to press.
@@ -203,6 +212,62 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 			}
 		}
 	}
+}
+
+void UCataclysmCityScreenWidget::AddRaiseButtons(const FCataclysmCityUpgradeOffer& Offer,
+												 TSubclassOf<UCataclysmChoiceButton> ButtonClass)
+{
+	if (UCataclysmChoiceButton* Raise = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Raise->SetChoice(Offer.RowName, FText::FromString(UCataclysmCityScreenLayout::RaiseButtonTextFor(Offer)),
+						 /* bChosen */ false, /* bAvailable */ Offer.bCanRaise);
+		Raise->OnChoiceClicked.AddDynamic(this, &UCataclysmCityScreenWidget::HandleRaiseClicked);
+		OfferBox->AddChild(Raise);
+		RaiseButtons.Add(Raise);
+	}
+	if (Offer.bRushOffered && (Offer.bCanRaise || Offer.bRaiseShortOfGold))
+	{
+		if (UCataclysmChoiceButton* Rush = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			Rush->SetChoice(Offer.RowName, FText::FromString(UCataclysmCityScreenLayout::RaiseRushButtonTextFor(Offer)),
+							/* bChosen */ false, /* bAvailable */ Offer.bCanRaiseRush);
+			Rush->OnChoiceClicked.AddDynamic(this, &UCataclysmCityScreenWidget::HandleRaiseRushClicked);
+			OfferBox->AddChild(Rush);
+			RaiseButtons.Add(Rush);
+		}
+	}
+}
+
+void UCataclysmCityScreenWidget::HandleRaiseClicked(FName Value)
+{
+	RaiseFromTheScreen(Value, /*bRush=*/false);
+}
+
+void UCataclysmCityScreenWidget::HandleRaiseRushClicked(FName Value)
+{
+	RaiseFromTheScreen(Value, /*bRush=*/true);
+}
+
+void UCataclysmCityScreenWidget::RaiseFromTheScreen(FName Value, bool bRush)
+{
+	UCataclysmEmpireRun* Run = ShownRun();
+	if (Run == nullptr)
+	{
+		return;
+	}
+	// RAISED THROUGH THE ONE PLACE THAT CHARGES, and a refusal shown as a purchase's is (issue #1265).
+	const int32 Tier = UCataclysmCityUpgradePurchase::RaiseTierIn(Run, CityId, Value);
+	const int64 Price = bRush ? UCataclysmCityUpgradePurchase::RushPriceIn(this, Run, Value, CityId, Tier)
+							  : UCataclysmCityUpgradePurchase::PriceIn(this, Run, Value, CityId, Tier);
+	const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(this);
+	const ECataclysmCityUpgradeResult Result = UCataclysmCityUpgradePurchase::Raise(this, Run, CityId, Value, bRush);
+	Refusal = UCataclysmCityUpgradePurchase::RefusalTextIn(this, Result, Price, Held);
+	Refresh();
+}
+
+void UCataclysmCityScreenWidget::ClickRaiseForTests(FName RowName)
+{
+	HandleRaiseClicked(RowName);
 }
 
 void UCataclysmCityScreenWidget::HandleRushClicked(FName Value)

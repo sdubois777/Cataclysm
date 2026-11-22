@@ -412,6 +412,35 @@ At the forge (step 16), each gem stack the bag holds below Cataclysmic has a but
 - **There is no limit by difficulty tier**: two Quality gems make a Superb one at tier 1. With one gem of a kind and
   rarity it says "Combining takes two Of Rot (Everyday); 1 held." and nothing moves.
 
+### 20. Add a socket to a piece, and change a socket's type
+
+At the forge (step 16), for a piece chosen (issue #46, slice G9). A Shattered Core (Rare) and a Focusing Lens (Very
+Rare) drop on the walks, rarely: about 1 crafting material drop in 130 is a Shattered Core, and 1 in 430 a Focusing
+Lens. So put some in the bag from the console first: `Cataclysm.GrantMaterial Material_Shattered_Core 2` gives two
+Shattered Cores, and `Cataclysm.GrantMaterial Material_Focusing_Lens` one Focusing Lens. A row that is no crafting
+material, a gem's for one, is refused: "Gem_Of_Life is no crafting material in the crafting material table."
+
+- **A piece below its slot's most sockets** has a button "Add a socket (3 of 6)": a Chest takes 6, a Helm 2, a Ring 1,
+  a two-handed weapon 6.
+- **Click it.** The line asks first: "Press again to add a socket: one Shattered Core, 1,200 gold, residue 30 to 45, 3
+  days of the run; its type is rolled." Click it again. The piece's sockets gain an empty one of type Attack, Defense or
+  Utility, the Shattered Core is gone, and three days pass. **The type is the same if you reload and add it again on
+  the same day**: it is rolled from the piece and the run's day, so a reload cannot change it.
+- **In the log:**
+
+  `PLAY LOOP: added socket 3 to Everyday Jerkin for 1,200 gold, rolled Defense; residue 30 to 45; it cost 3 days, day 28 to day 31`
+
+- **Each empty socket** has two buttons, one for each type it is not: "Make socket 3 Attack", "Make socket 3 Utility".
+  A socket holding a gem has none ("Unsocket the gem first."), nor has a socket for any gem.
+- **Click one**, twice: "Press again to make socket 3 a Utility socket: one Focusing Lens, 950 gold, residue 45 to 55,
+  2 days of the run." The socket is now a Utility socket, the Focusing Lens is gone, and two days pass.
+- **In the log:**
+
+  `PLAY LOOP: made socket 3 of Everyday Jerkin Utility, from Defense, for 950 gold; residue 45 to 55; it cost 2 days, day 31 to day 33`
+
+- **At the slot's most sockets** the add button is gone; pressed before it went, it says "That piece holds its most
+  sockets, 6." and nothing moves.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

@@ -686,6 +686,15 @@ public:
 	bool bBribedThisSurge = false;
 
 	/**
+	 * Whether the cleanse has been bought in this run, on any city: "Can only purchase once", ruled once a run,
+	 * empire-wide, by the coordinating session on 2026-11-22. SET WHEN IT IS BOUGHT, not when its build finishes, so
+	 * a second city cannot buy it while the first builds it. Cleared by `BeginForCharacter`. Issue #2838. SAVED, RUN
+	 * RECORD VERSION 16.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCleanseBoughtThisRun = false;
+
+	/**
 	 * Why `BribeDungeon` would refuse this dungeon, or empty when it would not (V13): no run, no such dungeon, the
 	 * Cataclysm's own dungeon, a dungeon whose timer does not resolve, a bribe already made this surge, or a timer
 	 * already at its start (the start includes the empire tree's bonus days, which the clock adds when it is read).
@@ -2100,6 +2109,30 @@ public:
 		int32 CityId, const FCataclysmCityUpgrade& Upgrade, int64 GoldCost = 0,
 		int64 GoldHeld = 0) const;
 
+	/**
+	 * Raises an upgrade the city holds by one tier, in place. Issue #1265, the coordinating session's rulings of
+	 * 2026-11-22: in the same slot, for the next tier's gold, which the caller has taken, and its build days. The raise
+	 * waits on the city's build list as the upgrade at its new tier and is the city's one build at a time; the upgrade
+	 * goes on acting at its old tier meanwhile (Q7) and acts at the new one from the day the raise is finished, through
+	 * `CompleteCityUpgrade`. A Siege or a fall pauses it, as it does any build.
+	 *
+	 * @param Raised    the upgrade at the tier it is raised to, one above the tier held, from
+	 *                  `UCataclysmCityUpgradeMapping::MakeFromTable` in the `Cataclysm` module.
+	 * @param BuildDays its days, with the empire tree's three build nodes; nought finishes it at once, as the empire
+	 *                  layer's own tests ask.
+	 */
+	ECataclysmCityUpgradeResult RaiseCityUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised, int64 GoldCost = 0,
+												 int64 GoldHeld = 0, int32 BuildDays = 0);
+
+	/**
+	 * What `RaiseCityUpgrade` would answer, without raising anything, for the screen as `WouldBuyCityUpgrade` is.
+	 * In order: no run, not an upgrade, not built, the cleanse (which has no ladder), no such city, a fallen city, a
+	 * besieged one, not held (or being built, not yet held), already at tier 3, a tier other than the next, another
+	 * build under way, and last the gold.
+	 */
+	ECataclysmCityUpgradeResult WouldRaiseCityUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised,
+													  int64 GoldCost = 0, int64 GoldHeld = 0) const;
+
 	// ----------------------------------------------------------------------
 	// Seeing it
 	// ----------------------------------------------------------------------
@@ -2407,4 +2440,20 @@ private:
 	 * purchase did at once before issue #2825; now a purchase with no build days, and the day a build's days run out.
 	 */
 	void CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrade Upgrade, int32 Day);
+
+	/**
+	 * The cleanse, when its build is finished. Issue #2838, the coordinating session's rulings of 2026-11-22: on every
+	 * city that has not fallen, the buying city included, half of the dungeons counted (Quest, Fallen City and
+	 * Cataclysm dungeons neither counted nor removed) are removed, soonest to resolve first and rounded as
+	 * `RemoveDungeons` rounds; then half of the city's remaining defence and half of its remaining population are
+	 * taken. The dungeons are removed, not cleared: nobody walked them, so they pay nothing.
+	 */
+	void CleanseEveryCity();
+
+	/**
+	 * Removes that share of the dungeons standing on the city, soonest to resolve first, rounded rather than floored:
+	 * "Remove 25% of dungeons on this city" at its tier's figure, when a purchase or a raise of it is finished. Removed,
+	 * not cleared: nobody walked them, so they pay nothing.
+	 */
+	void RemoveShareOfDungeonsOn(int32 CityId, float Share);
 };

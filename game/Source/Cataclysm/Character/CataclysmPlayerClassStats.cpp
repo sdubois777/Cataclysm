@@ -1028,6 +1028,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// only so its row is not refused; nothing reads it on the wearer. No
 		// gameplay attribute and no base.
 		TEXT("damage_types_carried"),
+		// "Sockets on this equipment fit any gem type" and "Gems in this equipment are 50% less effective", issue #46
+		// slice G10, ruled 2026-11-22: whether a piece's sockets take any gem, and how effective the gems in it are, each
+		// read off that PIECE's own drawn enchantments by UCataclysmGems::FitsAnyGem and
+		// UCataclysmGems::SocketedGemEffectOf, as damage_types_carried is read, and not off any character. Here only so
+		// their rows are not refused; nothing reads them on the wearer. No gameplay attribute and no base.
+		TEXT("socket_fits_any_gem"),
+		TEXT("socketed_gem_effect"),
 	};
 	return Stats;
 }

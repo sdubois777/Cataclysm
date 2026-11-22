@@ -151,7 +151,50 @@ public:
 											 int32 Socket, bool bConfirmedPastThreshold,
 											 FCataclysmForgeSocketing& OutDone, FString& OutMessage);
 
+	//~ Adding a socket and changing a socket's type. Issue #46, slice G9.
+
+	/**
+	 * The most sockets the item's slot takes, `game/Data/ItemSockets.csv` through `UCataclysmDropRoll::MaxSocketsFor`, a
+	 * weapon matched on its hands; -1 when its base or the table is not found.
+	 */
+	static int32 MaxSocketsOf(const FCataclysmItem& Item);
+
+	/** What adding a socket to the item at a target would take now. */
+	static FCataclysmForgeSocketWork AddSocketPlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/** What making a socket of the item at a target a socket of `NewType` would take now. */
+	static FCataclysmForgeSocketWork ChangeSocketTypePlanFor(const UObject* WorldContext,
+															 const FCataclysmForgeTarget& Target, int32 Socket,
+															 ECataclysmSocketType NewType);
+
+	/**
+	 * Add a socket to the item at a target, carried or worn: one Shattered Core leaves the bag, the item gains an empty
+	 * socket of the type `UCataclysmForge::AddedSocketType` rolls for the run's day, it carries 15 more residue, and the
+	 * days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult AddSocket(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										   bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
+										   FString& OutMessage);
+
+	/**
+	 * Make an empty socket of the item at a target a socket of `NewType`: one Focusing Lens leaves the bag, the item
+	 * carries 10 more residue, and the days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult ChangeSocketType(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												  int32 Socket, ECataclysmSocketType NewType,
+												  bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
+												  FString& OutMessage);
+
 private:
+	/**
+	 * The part `AddSocket` and `ChangeSocketType` share, given a possible plan, as `DoSocketing` is for socketing: the
+	 * threshold question, the gold, the material, the item changed, the days, the line and the save. Anything that cannot
+	 * be finished puts back what it took.
+	 */
+	static ECataclysmForgeResult DoSocketWork(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+											  const FCataclysmForgeSocketWork& Plan, bool bConfirmedPastThreshold,
+											  FCataclysmForgeSocketWork& OutDone, FString& OutMessage);
+
 	/**
 	 * The part `SocketGem` and `UnsocketGem` share, given a possible plan: the threshold question, taking the material
 	 * (and for a socketing the gem), changing the item, giving the gem back (for an unsocketing), the days, the line and

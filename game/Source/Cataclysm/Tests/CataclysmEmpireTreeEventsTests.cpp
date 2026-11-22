@@ -878,8 +878,8 @@ bool FCataclysmEmpireTreeEventsSavedTest::RunTest(const FString&)
 
 /**
  * `Run_v8.json`, written before the event counts, migrates to nothing counted -- 0, 0, false, and a `BoughtDay` of 0 on
- * both its upgrades -- with every other field kept. CONTROL: the committed run file, `Run_v15.json` since the run
- * record went to version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46), `Run_v13.json` from version 13 (issue #2825), `Run_v12.json` from version 12 (issue #2741 slice 6b), `Run_v11.json` from version 11 (issue #2741 slice 5b), `Run_v10.json` from version 10 (issue #2725) and `Run_v9.json`
+ * both its upgrades -- with every other field kept. CONTROL: the committed run file, `Run_v16.json` since the run
+ * record went to version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46), `Run_v13.json` from version 13 (issue #2825), `Run_v12.json` from version 12 (issue #2741 slice 6b), `Run_v11.json` from version 11 (issue #2741 slice 5b), `Run_v10.json` from version 10 (issue #2725) and `Run_v9.json`
  * before, reads 3, 1, true, 101 and 64.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeEventsMigrationTest,
@@ -913,7 +913,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	FString ReadText;
 	const UCataclysmRunSave* Read = ReadRunFixture(*this, TEXT("Run_v8.json"), ReadText);
 	FString CurrentText;
-	const UCataclysmRunSave* Current = ReadRunFixture(*this, TEXT("Run_v15.json"), CurrentText);
+	const UCataclysmRunSave* Current = ReadRunFixture(*this, TEXT("Run_v16.json"), CurrentText);
 	if (Read == nullptr || Current == nullptr)
 	{
 		return false;
@@ -934,6 +934,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
+	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -943,7 +944,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	const TArray<int32> Committed = BoughtDaysIn(*Current);
 
 	AddInfo(FString::Printf(TEXT("EVENTS MIGRATED: the step %d (%s); count written %s; the record at version %d with %d, "
-								 "%d, %s and bought days %s; Run_v15.json %d, %d, %s and %s; the rest %s"),
+								 "%d, %s and bought days %s; Run_v16.json %d, %d, %s and %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"),
 							Read->SchemaVersion, Read->ClearsSinceLastSurge, Read->CitiesReclaimed,
 							Read->bSanctuaryLastStandSpent ? TEXT("true") : TEXT("false"),
@@ -961,7 +962,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	TestFalse(TEXT("the Last Stand not spent"), Read->bSanctuaryLastStandSpent);
 	TestTrue(TEXT("both upgrades bought on day 0"), Migrated == TArray<int32>({ 0, 0 }));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v15.json's clears"), Current->ClearsSinceLastSurge, 3);
+	TestEqual(TEXT("CONTROL: Run_v16.json's clears"), Current->ClearsSinceLastSurge, 3);
 	TestEqual(TEXT("CONTROL: its reclaimed"), Current->CitiesReclaimed, 1);
 	TestTrue(TEXT("CONTROL: its Last Stand spent"), Current->bSanctuaryLastStandSpent);
 	TestTrue(TEXT("CONTROL: its bought days, 101 and 64"), Committed == TArray<int32>({ 101, 64 }));

@@ -109,9 +109,10 @@ def test_the_days_per_tier_are_the_ruled_ones_and_tier_one_is_derived_from_the_t
 
 def test_the_purchase_passes_the_days_and_the_run_puts_a_build_on_the_list() -> None:
     purchase = code(SOURCE / "Cataclysm" / "Player" / "CataclysmCityUpgradePurchase.cpp")
-    buy = body(purchase, "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(", "the purchase")
+    # `PayAndBuild`, THE BODY `Buy` AND `Raise` SHARE since issue #1265, at the upgrade tier bought or raised to.
+    buy = body(purchase, "ECataclysmCityUpgradeResult PayAndBuild(", "the purchase")
     # WITH THE RUSH since issue #2832: a rushed purchase asks for its own days, from the same function.
-    assert "const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId, bRush);" in buy, (
+    assert "const int32 Days = FPurchase::BuildDaysIn(WorldContext, Run, RowName, CityId, bRush, UpgradeTier);" in buy, (
         "Buy does not ask BuildDaysIn for the days, so the days shown and the days counted could differ")
     # THE CREDIT COUNTS AS GOLD HELD as well, since issue #2741 slice 6e (D2).
     assert "Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)" in buy, (

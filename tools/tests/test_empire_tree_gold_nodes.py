@@ -131,9 +131,9 @@ def test_there_is_one_price_and_every_screen_and_the_purchase_ask_it() -> None:
     price = body(purchase, "int64 UCataclysmCityUpgradePurchase::PriceIn(", "CataclysmCityUpgradePurchase.cpp")
     for read in ("UCataclysmEmpireTree::UpgradePriceFactorFor(", "UCataclysmGameInstance::EmpireTreePlayerBonusesFor("):
         assert read in price, f"PriceIn does not read {read}"
-    buy = body(purchase, "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(",
-               "CataclysmCityUpgradePurchase.cpp")
-    assert re.search(r"PriceIn\(\s*WorldContext\s*,\s*Run\s*,\s*RowName\s*,\s*CityId\s*\)", buy), (
+    # `PayAndBuild`, the body `Buy` and `Raise` share since issue #1265, at the upgrade tier bought or raised to.
+    buy = body(purchase, "ECataclysmCityUpgradeResult PayAndBuild(", "CataclysmCityUpgradePurchase.cpp")
+    assert re.search(r"PriceIn\(\s*WorldContext\s*,\s*Run\s*,\s*RowName\s*,\s*CityId\s*,\s*UpgradeTier\s*\)", buy), (
         "Buy does not charge the price PriceIn gives for this city")
     offers = body(code(LAYOUT), "TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(",
                   "CataclysmCityScreenLayout.cpp")
@@ -146,6 +146,7 @@ def test_there_is_one_price_and_every_screen_and_the_purchase_ask_it() -> None:
         for match in re.finditer(r"UCataclysmCityUpgradePurchase::PriceIn\(([^;]*?)\)\s*[;)]", text):
             calls.append((path.name, match.group(1)))
     assert len(calls) >= 6, f"only {len(calls)} calls of PriceIn were found; the search reads the wrong files"
+    # FOUR ARGUMENTS, OR FIVE WITH THE UPGRADE TIER A RAISE NAMES SINCE ISSUE #1265.
     short = [f"{name}: PriceIn({arguments.strip()})" for name, arguments in calls
-             if arguments.count(",") != 3]
+             if arguments.count(",") not in (3, 4)]
     assert not short, "a call of PriceIn does not name a context and a city:\n" + "\n".join(short)

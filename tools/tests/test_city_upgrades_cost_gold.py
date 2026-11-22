@@ -124,7 +124,7 @@ def rows(name: str) -> list[dict[str, str]]:
 # 1 and 2: the prices, in the workbook and the generated table, and what the generator refuses
 # --------------------------------------------------------------------------
 
-def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_is_not() -> None:
+def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_at_tier_1_only() -> None:
     priced = [row for row in rows("CityUpgrades.csv") if row["Tier2Raw"] or row["Tier3Raw"]]
     unpriced = [row for row in rows("CityUpgrades.csv") if not (row["Tier2Raw"] or row["Tier3Raw"])]
     assert len(priced) == 23 and len(unpriced) == 1, (
@@ -133,8 +133,10 @@ def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_is_not()
     wrong = [row["Name"] for row in priced
              if (int(row["Tier1Gold"]), int(row["Tier2Gold"]), int(row["Tier3Gold"])) != LADDER_PRICES]
     assert not wrong, f"these upgrades are not priced 10,000, 20,000 and 40,000 (G4): {wrong}"
-    assert all(int(row[f"Tier{t}Gold"]) == 0 for row in unpriced for t in (1, 2, 3)), (
-        "the upgrade with no tier ladder, the unbranched last resort, has a price; there is no tier to price")
+    # THE CLEANSE, THE ONE ROW WITH NO LADDER, IS PRICED AT TIER 1 ONLY: 40,000, the top of the ladder, a judgement
+    # ruled by the coordinating session on 2026-11-22 (issue #2838). It was unpriced and never sold until then.
+    assert [(int(row["Tier1Gold"]), int(row["Tier2Gold"]), int(row["Tier3Gold"])) for row in unpriced] == [
+        (40000, 0, 0)], "the cleanse, the upgrade with no tier ladder, is not priced 40,000 at tier 1 and nought above"
 
 
 def test_the_workbook_city_upgrades_sheet_is_what_the_table_was_generated_from() -> None:
@@ -153,18 +155,21 @@ def test_the_workbook_city_upgrades_sheet_is_what_the_table_was_generated_from()
 @pytest.mark.parametrize("cells, has_ladder, refused", [
     (["10000", "20000", "40000"], True, None),
     (["", "", ""], False, None),
-    (["10000", "", ""], False, "has a price but no tier ladder"),
+    (["40000", "", ""], False, None),
+    (["40000", "20000", ""], False, "above tier 1 but no tier ladder"),
+    (["40000.5", "", ""], False, "whole number of gold above nought"),
     (["10000", "", "40000"], True, "is empty"),
     (["10000", "5000", "40000"], True, "cannot cost less"),
     (["10000.5", "20000", "40000"], True, "whole number of gold above nought"),
     (["0", "20000", "40000"], True, "whole number of gold above nought"),
-], ids=["a ladder priced", "no ladder, no price", "a price with no ladder", "a missing price", "a falling price",
-        "a fraction", "nought"])
+], ids=["a ladder priced", "no ladder, no price", "no ladder, a tier 1 price", "no ladder, a tier 2 price",
+        "no ladder, a fraction", "a missing price", "a falling price", "a fraction", "nought"])
 def test_the_generator_reads_the_three_prices_and_refuses_a_wrong_one(cells, has_ladder, refused) -> None:
     headers = {column: index for index, column in enumerate(gen.CITY_UPGRADE_GOLD_COLUMNS)}
     if refused is None:
         prices = gen._city_upgrade_prices(cells, headers, 7, "an upgrade", has_ladder)
-        assert prices == ([10000, 20000, 40000] if has_ladder else [0, 0, 0])
+        expected = [10000, 20000, 40000] if has_ladder else ([40000, 0, 0] if cells[0] else [0, 0, 0])
+        assert prices == expected
         return
     with pytest.raises(gen.DataError, match=refused):
         gen._city_upgrade_prices(cells, headers, 7, "an upgrade", has_ladder)
@@ -196,12 +201,15 @@ def test_the_document_states_the_price_at_every_tier_as_the_pile_scale_gives_it(
 
 
 def test_the_price_is_scaled_by_the_pile_column_the_gold_drops_read() -> None:
+    # AT AN UPGRADE TIER SINCE ISSUE #1265: the tier's own gold column, `Gold`, scaled the same way.
     price = body("Cataclysm/Data/CataclysmCityUpgradeMapping.cpp",
-                 "int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier)")
+                 "int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier, int32 UpgradeTier)")
     assert "UCataclysmDropRoll::GoldRow(GoldTable, DifficultyTier)" in price, "the price is not read at the tier asked"
     assert "UCataclysmDropRoll::GoldRow(GoldTable, 1)" in price, "the price is not scaled against tier 1's pile"
-    assert "PriceAt(Row->Tier1Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile)" in price, (
-        "the price is not the row's tier 1 gold times the pile at the tier over the pile at tier 1")
+    assert "PriceAt(Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile)" in price, (
+        "the price is not the row's gold times the pile at the tier over the pile at tier 1")
+    assert "UpgradeTier == 3 ? Row->Tier3Gold : UpgradeTier == 2 ? Row->Tier2Gold : Row->Tier1Gold" in price, (
+        "the price does not read the column of the upgrade tier bought or raised to")
     # SINCE #2741 SLICE 6A THE PRICE IS ASKED ON A CITY WITH THE TREE'S PRICE NODES, so it takes a context and a city;
     # `tools/tests/test_empire_tree_gold_nodes.py` holds what it does with them.
     purchase = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
@@ -245,14 +253,16 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
                         "Cataclysm/Player/CataclysmForgeCraft.cpp"], (
         f"gold is spent in {charging}; a city upgrade's purchase, a bribe and the forge's crafts are the places that "
         "charge")
-    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
-               "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
+    # `Buy` AND, SINCE ISSUE #1265, `Raise` CHARGE THROUGH ONE BODY, `PayAndBuild`, so both are held here.
+    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "ECataclysmCityUpgradeResult PayAndBuild(")
     # THE CREDIT COUNTS AS GOLD HELD for both of the run's questions since issue #2741 slice 6e (D2).
-    asked = buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit)")
+    asked = min(buy.find("Run->WouldRaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit)"),
+                buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit)"))
     spent = buy.find("UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter)")
     # WITH THE DAYS IT TAKES TO BUILD since issue #2825, with the credit since slice 6e (`tools/tests/test_city_upgrades_take_days_to_build.py`).
     on_credit = buy.find("UCataclysmGameInstance::SpendGoldOnCreditFor(")
-    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)")
+    bought = min(buy.find("Run->RaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)"),
+                 buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)"))
     assert -1 not in (asked, spent, on_credit, bought) and asked < min(spent, on_credit) and max(spent, on_credit) < bought, (
         "Buy does not ask the run, then take the gold, then have the run record the upgrade, in that order; an upgrade "
         "could be held unpaid")
@@ -294,8 +304,8 @@ def test_every_purchase_goes_through_the_one_that_charges(relative: str, signatu
 # --------------------------------------------------------------------------
 
 def test_a_purchase_writes_the_records_it_changed() -> None:
-    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
-               "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
+    # `PayAndBuild`, the body `Buy` and `Raise` share since issue #1265.
+    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "ECataclysmCityUpgradeResult PayAndBuild(")
     assert ("if (Price > 0 && !bFromTheCharacter) { UCataclysmSaveWriter::NoteTriggerIn(World, "
             "ECataclysmSaveTrigger::AccountChanged); }") in buy, (
         "a purchase paid from the account does not raise AccountChanged, so the account's gold is not written")

@@ -56,6 +56,10 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::DungeonGold:
 	case ECataclysmCityUpgradeEffect::DungeonLoot:
 	case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
+
+	// AND THE CLEANSE, since issue #2838: gated on the difficulty tier and bought once a run, both in
+	// `UCataclysmEmpireRun::WouldBuyCityUpgrade`.
+	case ECataclysmCityUpgradeEffect::CleanseEveryCity:
 		return true;
 
 	// EVERYTHING ELSE IS WAITING ON A SYSTEM THAT DOES NOT EXIST. Listed rather
@@ -67,10 +71,6 @@ bool UCataclysmCityUpgradeRules::IsBuilt(ECataclysmCityUpgradeEffect Effect)
 	case ECataclysmCityUpgradeEffect::SubTypeChanceSacrificial:
 	case ECataclysmCityUpgradeEffect::SubTypeChanceVolatile:
 		// Issue #41. Nothing rolls a dungeon sub-type.
-		return false;
-
-	case ECataclysmCityUpgradeEffect::CleanseEveryCity:
-		// Issue #1265. Gated on upgrade tier 3, which nothing reaches.
 		return false;
 
 	case ECataclysmCityUpgradeEffect::None:
@@ -229,6 +229,20 @@ FString UCataclysmCityUpgradeRules::ResultText(
 		// ISSUE #2832: said by `UCataclysmCityUpgradePurchase::Buy`, which reads the tree; the run never answers it.
 		return TEXT("Rapid Funding, in the empire upgrade tree, is what lets an "
 					"upgrade be rushed.");
+	case ECataclysmCityUpgradeResult::BelowItsDifficultyTier:
+		// ISSUE #2838: the words the coordinating session ruled on 2026-11-22. Only the cleanse has the gate.
+		return FString::Printf(TEXT("Available from difficulty tier %d."),
+							   UCataclysmCityUpgradeRules::CleanseLowestDifficultyTier);
+	case ECataclysmCityUpgradeResult::AlreadyBoughtThisRun:
+		// ISSUE #2838: the same ruling's words. Once a run, on any city.
+		return TEXT("Already bought this run.");
+	case ECataclysmCityUpgradeResult::AtTheTopTier:
+		// ISSUE #1265: the words the coordinating session accepted on 2026-11-22.
+		return FString::Printf(TEXT("Already at tier %d."), UCataclysmCityUpgradeRules::HighestTier);
+	case ECataclysmCityUpgradeResult::NotHeld:
+		return TEXT("This city does not hold that upgrade, so there is nothing to raise.");
+	case ECataclysmCityUpgradeResult::NoTierToRaiseTo:
+		return TEXT("That upgrade has no tier to raise it to.");
 	default:
 		return TEXT("Refused.");
 	}

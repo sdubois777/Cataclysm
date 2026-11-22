@@ -688,6 +688,15 @@ followed, ruled 2026-11-01:
   through the whole chain adds what the steps write through
   `CataclysmSaveFixtures::AddTheAccountsVersion7Defaults`,
   `AddTheCharactersVersion14Defaults` and `AddTheRunsVersion15Defaults`.
+- **The run record went to version 16 on 2026-11-22**, for the cleanse city
+  upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
+  `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
+  could not buy it, because it was refused as not built. `Run_v16.json` is
+  `Run_v15.json` at version 16 with the cleanse bought, a figure and not the
+  default. `Run_v15.json` is now a migration input, not edited again; every test
+  that read it as the committed file reads the new one, and every test that runs
+  an older run file through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion16Defaults`.
   **THE NUMBERS FOLLOW THE GEMS WINDOW'S** (issue #46, character 13 and run 14,
   the same day): this slice was written at character 13 and run 14 and renumbered
   when it was rebased onto the gems window (the coordinating session's V1).
@@ -918,6 +927,7 @@ followed, ruled 2026-11-01:
 | `Run_v13.json` | The same run at version 13: version 12's contents, plus a `BuildDaysLeft` of 0 on both its upgrades, its first city building `Architect_Increase_max_defense_by_20` with 4 days left, and its second building nothing |
 | `Run_v14.json` | The same run at version 14: version 13's contents, with each ground item's socket count of 0 as an empty list and no gem on either ground item |
 | `Run_v15.json` | The same run at version 15: version 14's contents, plus its first city bailed out and its second not, its dungeon not a bonus one, 2 bonus dungeons cleared and the surge's bribe spent |
+| `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

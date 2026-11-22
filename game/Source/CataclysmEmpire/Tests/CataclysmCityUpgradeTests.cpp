@@ -223,6 +223,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 		ECataclysmCityUpgradeEffect::DungeonGold,
 		ECataclysmCityUpgradeEffect::DungeonLoot,
 		ECataclysmCityUpgradeEffect::DungeonCraftingMaterials,
+		// The cleanse, issue #2838.
+		ECataclysmCityUpgradeEffect::CleanseEveryCity,
 	};
 
 	// THE TWO EXPLORER UPGRADES ABOUT SPEED ARE DIFFERENT UPGRADES, and this is
@@ -249,8 +251,8 @@ bool FCataclysmCityUpgradeWhichAreBuiltTest::RunTest(const FString& Parameters)
 				  UCataclysmCityUpgradeRules::IsBuilt(Effect), bShouldBeBuilt);
 	}
 
-	TestEqual(TEXT("which is nineteen of the twenty-four"),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 19);
+	TestEqual(TEXT("which is twenty of the twenty-four"),
+			  UCataclysmCityUpgradeRules::BuiltEffectCount(), 20);
 
 	// `None` IS NOT AN UPGRADE and must never be buildable, or a
 	// default-constructed struct would buy something.
@@ -293,7 +295,7 @@ bool FCataclysmCityUpgradeRefusalsTest::RunTest(const FString& Parameters)
 			  Run->BuyCityUpgrade(99, Resist),
 			  ECataclysmCityUpgradeResult::NoSuchCity);
 
-	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Five of the
+	// AN EFFECT THAT DOES NOTHING IS REFUSED RATHER THAN SOLD. Four of the
 	// twenty-four are waiting on a system that does not exist, and a slot spent
 	// on one would buy the player nothing at all.
 	//

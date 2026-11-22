@@ -99,8 +99,9 @@ def test_civic_pride_raises_each_population_restore_and_holds_it_at_the_maximum(
     assert ("City->Population = FMath::Min(MaxPopulation, MaxPopulation * TreeBonuses.PopulationRestoredShare(Fraction));"
             in retake), "a retake's population is not raised, or not held at the maximum (0.75 x 1.5 is 112.5%)"
     assert "City->Defence = EffectiveMaxDefence(*City) * Fraction;" in retake, "a retake's defence is raised (V11)"
-    restore = flat(body(code(MAP_CPP), "case ECataclysmCityUpgradeEffect::RestorePopulation:", "CataclysmEmpireMap.cpp"))
-    assert "Min(Max, PopulationOf(*City) + Max * TreeBonuses.PopulationRestoredShare(Upgrade.Value))" in restore
+    # IN `RestoreOnce` SINCE ISSUE #1265, which a purchase and a raise of the restore both fire.
+    restore = flat(body(code(MAP_CPP), "void UCataclysmEmpireMap::RestoreOnce(", "CataclysmEmpireMap.cpp"))
+    assert "Min(Max, PopulationOf(City) + Max * TreeBonuses.PopulationRestoredShare(Value))" in restore
     run = flat(code(RUN_CPP))
     assert ("MaxPopulation * TreeBonuses.PopulationRestoredShare( TreeBonuses.LowestCityPopulationRestored)" in run), (
         "The Mason's Guild's population is not raised")
@@ -111,7 +112,8 @@ def test_civic_pride_raises_each_population_restore_and_holds_it_at_the_maximum(
 
 
 def test_reinvestment_counts_the_accepted_price_in_tier_one_gold_and_adds_to_veterans_edge() -> None:
-    buy = flat(body(code(PURCHASE), "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(", "the purchase"))
+    # `PayAndBuild`, the body `Buy` and `Raise` share since issue #1265, so a raise's price counts as a purchase's.
+    buy = flat(body(code(PURCHASE), "ECataclysmCityUpgradeResult PayAndBuild(", "the purchase"))
     accepted = buy.find("if (Result != ECataclysmCityUpgradeResult::Bought)")
     counted = buy.find("UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(")
     assert -1 < accepted < counted, "the count is added before the run accepts the purchase (V4)"

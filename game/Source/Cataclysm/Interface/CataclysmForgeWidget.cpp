@@ -69,12 +69,16 @@ void UCataclysmForgeWidget::RefreshDisplay()
 			Detail += TEXT("\n") + Sockets;
 		}
 		ShownSocketActions = UCataclysmForgeLayout::SocketActionsFor(*Item, Inventory);
+		// AND A SOCKET TO ADD, AND EACH EMPTY SOCKET'S TYPE TO CHANGE. Issue #46, slice G9.
+		ShownSocketWorkActions =
+			UCataclysmForgeLayout::SocketWorkActionsFor(*Item, UCataclysmForgeCraft::MaxSocketsOf(*Item));
 	}
 	else
 	{
 		Detail = Character ? TEXT("Choose a piece to raise.") : TEXT("No character is playing.");
 		UpgradeWords = TEXT("Upgrade");
 		ShownSocketActions.Reset();
+		ShownSocketWorkActions.Reset();
 	}
 
 	BuildPieceButtons();
@@ -135,6 +139,17 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			Socketing->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(Socketing);
+		}
+	}
+
+	for (const FCataclysmForgeSocketWorkAction& Action : ShownSocketWorkActions)
+	{
+		if (UCataclysmChoiceButton* SocketWork = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			SocketWork->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+								  /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			SocketWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(SocketWork);
 		}
 	}
 
@@ -282,6 +297,69 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 									  Done.bUnsocket ? TEXT("Unsocketed") : TEXT("Socketed"),
 									  *UCataclysmGems::NameOf(Done.Gem), *ACataclysmDroppedItem::GoldName(Done.Gold),
 									  Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
+			break;
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// A SOCKET ADDED OR A SOCKET'S TYPE CHANGED, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as socketing is.
+	// Issue #46, slice G9.
+	FCataclysmForgeSocketWorkAction SocketWork;
+	if (bHasChosen && UCataclysmForgeLayout::SocketWorkActionForButton(ButtonName, ShownSocketWorkActions, SocketWork))
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeSocketWork Plan = SocketWork.bAdd
+			? UCataclysmForgeCraft::AddSocketPlanFor(Context(), ChosenTarget)
+			: UCataclysmForgeCraft::ChangeSocketTypePlanFor(Context(), ChosenTarget, SocketWork.Socket,
+															SocketWork.NewType);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::SocketWorkQuestion(Plan);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeSocketWork Done;
+		FString Said;
+		const ECataclysmForgeResult Result = SocketWork.bAdd
+			? UCataclysmForgeCraft::AddSocket(Context(), ChosenTarget, bThresholdWasAsked, Done, Said)
+			: UCataclysmForgeCraft::ChangeSocketType(Context(), ChosenTarget, SocketWork.Socket, SocketWork.NewType,
+													 bThresholdWasAsked, Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+			Message = Done.bAdd
+				? FString::Printf(TEXT("Added socket %d, a %s socket. It cost %s and %d day%s of the run."),
+								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
+								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"))
+				: FString::Printf(TEXT("Socket %d is now a %s socket. It cost %s and %d day%s of the run."),
+								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
+								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
 			break;
 		case ECataclysmForgeResult::Refused:
 		default:

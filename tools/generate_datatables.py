@@ -1832,15 +1832,25 @@ def _city_upgrade_prices(raw, headers, index: int, effect: str,
 
     A row with a tier ladder must have all three, each a whole number above
     nought and none below the tier before it: a better upgrade cannot cost
-    less. A row without a ladder must have none, and is priced at nought, which
-    `UCataclysmEmpireRun` never sells because nothing builds such a row.
+    less. A row without a ladder may have a tier 1 price and nothing above it,
+    since it is only ever bought at tier 1: the cleanse, priced 40,000 by the
+    coordinating session's ruling of 2026-11-22 (issue #2838). With no price
+    at all it is priced at nought.
     """
     cells = [_cell(raw, headers, column) for column in CITY_UPGRADE_GOLD_COLUMNS]
     if not has_ladder:
-        if any(cells):
+        if any(cells[1:]):
             raise DataError(f"City Upgrades row {index} ({effect!r}) has a price "
-                            "but no tier ladder, so there is no tier to price")
-        return [0, 0, 0]
+                            "above tier 1 but no tier ladder, so there is no "
+                            "tier 2 or 3 to price")
+        if not cells[0]:
+            return [0, 0, 0]
+        value = number(cells[0], f"City Upgrades {CITY_UPGRADE_GOLD_COLUMNS[0]}", index)
+        if value != int(value) or value <= 0:
+            raise DataError(f"City Upgrades row {index} ({effect!r}): "
+                            f"{CITY_UPGRADE_GOLD_COLUMNS[0]} is {value:g}; a price "
+                            "is a whole number of gold above nought")
+        return [int(value), 0, 0]
 
     prices = []
     for column, cell in zip(CITY_UPGRADE_GOLD_COLUMNS, cells, strict=True):
@@ -13921,6 +13931,71 @@ def refuse_a_damage_types_carried_row_the_game_cannot_read(
     return problems
 
 
+#: "Sockets on this equipment fit any gem type" and "Gems in this equipment are
+#: 50% less effective", issue #46 slice G10, ruled by the coordinating session on
+#: 2026-11-22: effect rows with item-level stats, READ OFF THE PIECE'S OWN DRAWN
+#: ENCHANTMENTS and by no character, as `damage_types_carried` is.
+#: `UCataclysmGems::FitsAnyGem` asks whether a row on the first states more than
+#: nought; `UCataclysmGems::SocketedGemEffectOf` multiplies each of the piece's
+#: gems by one plus each row's value on the second over a hundred. The engine
+#: holds the names in `UCataclysmGems::SocketFitsAnyGemStat` and
+#: `SocketedGemEffectStat`.
+SOCKET_FITS_ANY_GEM_STAT = "socket_fits_any_gem"
+SOCKETED_GEM_EFFECT_STAT = "socketed_gem_effect"
+
+
+def refuse_a_gem_enchantment_row_the_game_cannot_read(
+        sheet: str, rows: list[dict]) -> list[str]:
+    """A row on `SOCKET_FITS_ANY_GEM_STAT` or `SOCKETED_GEM_EFFECT_STAT` is one
+    the gem code reads.
+
+    THE GEM CODE READS EACH ROW'S TWO ENDS AT THE PIECE'S ROLL AND NOTHING ELSE.
+    So neither row requires a tag, since nothing matches one; neither has an
+    action, condition or scale, none of which is read; and:
+
+      fits any gem      flat, both ends 1: a flag, asked whether above nought
+      gem effect        `more`, the bucket its "less" names, each end above -100
+                        and not nought, since -100 would leave the gems worth
+                        nothing and nought would change nothing
+
+    A PASSIVE NODE'S ROW IS LEFT ALONE: nothing reads these stats off a node.
+    """
+    problems = []
+    for row in rows:
+        stat = str(row.get("Stat") or "").strip()
+        if stat not in (SOCKET_FITS_ANY_GEM_STAT, SOCKETED_GEM_EFFECT_STAT) or "Node" in row:
+            continue
+        who = f"{sheet}/{row['Name']}"
+        kind = str(row.get("ValueKind") or "").strip().lower()
+        wanted = "flat" if stat == SOCKET_FITS_ANY_GEM_STAT else "more"
+        if kind != wanted:
+            problems.append(
+                f"{who}: states {stat!r} with the value kind {kind!r}. The gem "
+                f"code reads the row's figure itself, so the row must be "
+                f"{wanted!r}.")
+        for column, said in (("RequiredTags", "required tags"), ("Action", "action"),
+                             ("Condition", "condition"), ("Condition2", "second condition"),
+                             ("Scale", "scale")):
+            written = str(row.get(column) or "").strip()
+            if written:
+                problems.append(
+                    f"{who}: states {stat!r} with the {said} {written!r}. The "
+                    f"gem code reads the row's two ends and nothing else, so the "
+                    f"cell must be empty.")
+        for column in ("ValueLow", "ValueHigh"):
+            value = float(row.get(column) or 0.0)
+            if stat == SOCKET_FITS_ANY_GEM_STAT and value != 1.0:
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}. Whether a piece's "
+                    f"sockets fit any gem is a flag, stated as 1.")
+            if stat == SOCKETED_GEM_EFFECT_STAT and not (-100.0 < value and value != 0.0):
+                problems.append(
+                    f"{who}: states {value:g} on {stat!r}. A change to how "
+                    f"effective a piece's gems are is above -100 and not "
+                    f"nought.")
+    return problems
+
+
 #: The scales that count bodies standing inside a radius.
 #:
 #: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
@@ -14445,6 +14520,10 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND THE COUNT OF DAMAGE TYPES A WEAPON'S ENCHANTMENT ADDS IS FLAT, A WHOLE
     # NUMBER FROM 1 TO 8, WITH NOTHING ELSE STATED. Ruled 2026-10-25 (Q-D5).
     problems.extend(refuse_a_damage_types_carried_row_the_game_cannot_read(
+        "EnchantmentEffects", effects))
+    # AND THE TWO GEM ENCHANTMENTS' ROWS ARE THE SHAPES THE GEM CODE READS.
+    # Issue #46 slice G10, ruled 2026-11-22.
+    problems.extend(refuse_a_gem_enchantment_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 
     return problems

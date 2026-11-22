@@ -630,3 +630,211 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 	OutDone = Plan;
 	return ECataclysmForgeResult::Done;
 }
+
+int32 UCataclysmForgeCraft::MaxSocketsOf(const FCataclysmItem& Item)
+{
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FCataclysmItemBaseRow* BaseRow = BaseTable != nullptr && !Item.Base.IsNone()
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForgeCraft::MaxSocketsOf"),
+													/*bWarnIfMissing=*/false)
+		: nullptr;
+	return BaseRow != nullptr ? UCataclysmDropRoll::MaxSocketsFor(UCataclysmDropRoll::LoadItemSocketTable(), *BaseRow)
+							  : -1;
+}
+
+FCataclysmForgeSocketWork UCataclysmForgeCraft::AddSocketPlanFor(const UObject* WorldContext,
+																 const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::AddSocketOf(FCataclysmItem(), 0, 0, GoldTierOf(WorldContext), 0);
+	}
+	return UCataclysmForge::AddSocketOf(
+		*Item, MaxSocketsOf(*Item),
+		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::ShatteredCoreRow)), GoldTierOf(WorldContext),
+		GoldHeldIn(WorldContext));
+}
+
+FCataclysmForgeSocketWork UCataclysmForgeCraft::ChangeSocketTypePlanFor(const UObject* WorldContext,
+																		const FCataclysmForgeTarget& Target,
+																		int32 Socket, ECataclysmSocketType NewType)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::ChangeSocketTypeOf(FCataclysmItem(), Socket, NewType, 0, GoldTierOf(WorldContext), 0);
+	}
+	return UCataclysmForge::ChangeSocketTypeOf(
+		*Item, Socket, NewType, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::FocusingLensRow)),
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::AddSocket(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													  bool bConfirmedPastThreshold, FCataclysmForgeSocketWork& OutDone,
+													  FString& OutMessage)
+{
+	OutDone = FCataclysmForgeSocketWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeSocketWork Plan = AddSocketPlanFor(WorldContext, Target);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	return DoSocketWork(WorldContext, Target, Plan, bConfirmedPastThreshold, OutDone, OutMessage);
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::ChangeSocketType(const UObject* WorldContext,
+															 const FCataclysmForgeTarget& Target, int32 Socket,
+															 ECataclysmSocketType NewType, bool bConfirmedPastThreshold,
+															 FCataclysmForgeSocketWork& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeSocketWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeSocketWork Plan = ChangeSocketTypePlanFor(WorldContext, Target, Socket, NewType);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	return DoSocketWork(WorldContext, Target, Plan, bConfirmedPastThreshold, OutDone, OutMessage);
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+														 const FCataclysmForgeSocketWork& Plan,
+														 bool bConfirmedPastThreshold,
+														 FCataclysmForgeSocketWork& OutDone, FString& OutMessage)
+{
+	UWorld* World = ForgeWorldOf(WorldContext);
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+
+	// THE DAYS NEED A RUN TO PASS IN, as an upgrade's do, and an added socket's roll reads the run's mask and day.
+	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	if (Run == nullptr)
+	{
+		OutMessage = TEXT("There is no run to take the craft's days from.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem* Held = ItemAt(*Character, Target);
+	if (Held == nullptr)
+	{
+		OutMessage = Plan.bAdd ? TEXT("There is nothing there to add a socket to.") : TEXT("There is nothing there to change.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem Before = *Held; // A COPY: the pointer is into the component's own array.
+	const FString Name = UCataclysmForge::NameOf(Before, UCataclysmItemModifiers::LoadBaseTable(),
+												 UCataclysmDropRoll::LoadAffixTable());
+	const float Added = Plan.ResidueAfter - Plan.ResidueBefore;
+
+	// THE THRESHOLD, FOR A WORN PIECE ONLY, as socketing asks it.
+	bool bCrosses = false;
+	if (Target.bWorn)
+	{
+		const float Threshold =
+			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
+		const float Now = Equipment->WornResidue();
+		const float After = Now + Added;
+		bCrosses = Now < Threshold && After >= Threshold;
+		if (bCrosses && !bConfirmedPastThreshold)
+		{
+			OutMessage = FString::Printf(
+				TEXT("%s %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
+				Plan.bAdd ? TEXT("Adding a socket to") : TEXT("Changing a socket of"), *Name, FMath::RoundToInt(After),
+				FMath::RoundToInt(Threshold), UCataclysmWearing::ThresholdConsequence);
+			return ECataclysmForgeResult::AsksAboutTheThreshold;
+		}
+	}
+	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const bool bWasMarked = State != nullptr && State->IsMarkedByConsumption();
+	if (bCrosses && State != nullptr)
+	{
+		State->MarkByConsumption();
+	}
+	const auto TakeBackTheMark = [&]()
+	{
+		if (bCrosses && State != nullptr && !bWasMarked)
+		{
+			State->ClearConsumptionMark();
+		}
+	};
+
+	// THE GOLD, THE MATERIAL, THEN THE ITEM. A refusal after anything is taken puts it back.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+	if (!Inventory->RemoveMaterial(Plan.Material, 1))
+	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		OutMessage = TEXT("The material could not be taken from the bag; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	// THE ITEM CHANGED. An added socket's type is rolled from the item as it stood, the run's mask and the day before
+	// the craft's days pass, so the same item on the same day of the same run rolls the same type (ruled 2026-11-22).
+	FCataclysmForgeSocketWork Done = Plan;
+	FCataclysmItem Changed = Before;
+	if (Plan.bAdd)
+	{
+		Done.ToType = UCataclysmForge::AddedSocketType(Before, Run->WalkSeedMask, Run->Day());
+		FCataclysmSocket& NewSocket = Changed.Sockets.AddDefaulted_GetRef();
+		NewSocket.Type = Done.ToType;
+	}
+	else
+	{
+		Changed.Sockets[Plan.Socket].Type = Plan.ToType;
+	}
+	Changed.Residue = Plan.ResidueAfter;
+	const bool bReplaced = Target.bWorn ? Equipment->ReplaceEquippedAt(Target.WornSlot, Changed)
+										: Inventory->ReplaceItemAt(Target.CarriedSlot, Changed);
+	if (!bReplaced)
+	{
+		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		UE_LOG(LogCataclysm, Error, TEXT("The forge could not put %s back where it was; what it took is back in the bag."),
+			   *Name);
+		OutMessage = TEXT("The item could not be changed; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	const int32 DayBefore = Run->Day();
+	Run->AdvanceDays(Plan.Days);
+	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
+	{
+		State->SetConsumptionBuild(FCataclysmPlayerBuild::Of(*Character));
+	}
+
+	const FString ToType = UCataclysmGems::SocketTypeName(Done.ToType);
+	UE_LOG(LogCataclysm, Log, TEXT("The forge %s socket %d of %s, %s; residue %.0f to %.0f; %d day(s), day %d to day %d."),
+		   Plan.bAdd ? TEXT("added") : TEXT("changed"), Plan.Socket + 1, *Name, *ToType, Plan.ResidueBefore,
+		   Plan.ResidueAfter, Plan.Days, DayBefore, Run->Day());
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSocketWorkLine(
+		Plan.bAdd, Plan.Socket + 1, UCataclysmGems::SocketTypeName(Plan.FromType), ToType, Name, Plan.Gold,
+		FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
+
+	// SAVED: the character record holds the item and the material, the run record the days, the account record the gold
+	// when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
+
+	OutDone = Done;
+	return ECataclysmForgeResult::Done;
+}

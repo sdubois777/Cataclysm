@@ -842,22 +842,9 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 	}
 
 	case ECataclysmCityUpgradeEffect::RestoreDefence:
-	{
-		// A ONE-TIME RESTORE, AND IT CANNOT OVERFILL. "Restore city's defenses
-		// by 50%" on a city at 80% leaves it at 100 rather than 130. Of the
-		// maximum with the empire upgrade tree.
-		const float Max = EffectiveMaxDefence(*City);
-		City->Defence = FMath::Min(Max, DefenceOf(*City) + Max * Upgrade.Value);
-		break;
-	}
-
 	case ECataclysmCityUpgradeEffect::RestorePopulation:
-	{
-		// AND CIVIC PRIDE'S SHARE, to the maximum (issue #2741 slice 9, V11).
-		const float Max = EffectiveMaxPopulation(*City);
-		City->Population = FMath::Min(Max, PopulationOf(*City) + Max * TreeBonuses.PopulationRestoredShare(Upgrade.Value));
+		RestoreOnce(*City, Upgrade.Effect, Upgrade.Value);
 		break;
-	}
 
 	default:
 		// EVERY OTHER EFFECT IS SOMEBODY ELSE'S. The two resistances are read in
@@ -867,6 +854,84 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 		break;
 	}
 
+	return true;
+}
+
+void UCataclysmEmpireMap::RestoreOnce(FCataclysmCity& City, ECataclysmCityUpgradeEffect Effect, float Value)
+{
+	if (Effect == ECataclysmCityUpgradeEffect::RestoreDefence)
+	{
+		// A ONE-TIME RESTORE, AND IT CANNOT OVERFILL. "Restore city's defenses
+		// by 50%" on a city at 80% leaves it at 100 rather than 130. Of the
+		// maximum with the empire upgrade tree.
+		const float Max = EffectiveMaxDefence(City);
+		City.Defence = FMath::Min(Max, DefenceOf(City) + Max * Value);
+	}
+	else if (Effect == ECataclysmCityUpgradeEffect::RestorePopulation)
+	{
+		// AND CIVIC PRIDE'S SHARE, to the maximum (issue #2741 slice 9, V11).
+		const float Max = EffectiveMaxPopulation(City);
+		City.Population = FMath::Min(Max, PopulationOf(City) + Max * TreeBonuses.PopulationRestoredShare(Value));
+	}
+}
+
+bool UCataclysmEmpireMap::RaiseUpgrade(int32 CityId, const FCataclysmCityUpgrade& Raised, int32 Day)
+{
+	FCataclysmCity* City = FindMutable(CityId);
+	FCataclysmCityUpgrade* Held = City != nullptr
+		? City->Upgrades.FindByPredicate(
+			  [&Raised](const FCataclysmCityUpgrade& Upgrade) { return Upgrade.RowName == Raised.RowName; })
+		: nullptr;
+	if (Held == nullptr)
+	{
+		return false;
+	}
+
+	// THE MAXIMA WITH THE TREE BEFORE THE RAISE, as `AddUpgrade` reads them before a purchase.
+	const float DefenceMaxBefore = EffectiveMaxDefence(*City);
+	const float PopulationMaxBefore = EffectiveMaxPopulation(*City);
+
+	// A RAISED MAXIMUM IS FOLDED INTO THE BASE AS (1 + VALUE), so the old factor comes out and the new one goes in (Q11).
+	const float OldFactor = FMath::Max(KINDA_SMALL_NUMBER, 1.0f + Held->Value);
+	if (Raised.Effect == ECataclysmCityUpgradeEffect::MaxDefence)
+	{
+		City->MaxDefence *= (1.0f + Raised.Value) / OldFactor;
+	}
+	else if (Raised.Effect == ECataclysmCityUpgradeEffect::MaxPopulation)
+	{
+		City->MaxPopulation *= (1.0f + Raised.Value) / OldFactor;
+	}
+
+	// THE SOONER OF THE TRIGGER ALREADY SET AND A FULL NEW INTERVAL FROM TODAY (Q10).
+	if (Raised.IntervalDays > 0.0f)
+	{
+		const int32 Next = Day + FMath::Max(1, FMath::RoundToInt(Raised.IntervalDays));
+		Held->NextTriggerDay = Held->NextTriggerDay > 0 ? FMath::Min(Held->NextTriggerDay, Next) : Next;
+	}
+
+	// THE NEW TIER'S FIGURES; THE DAY IT WAS FIRST FINISHED IS KEPT, so Enduring Foundations counts on.
+	Held->Tier = Raised.Tier;
+	Held->Value = Raised.Value;
+	Held->IntervalDays = Raised.IntervalDays;
+	Held->BuildDaysLeft = 0;
+
+	switch (Raised.Effect)
+	{
+	case ECataclysmCityUpgradeEffect::MaxDefence:
+		// WHAT THE CITY HOLDS RISES BY WHAT THE MAXIMUM WITH THE TREE ROSE BY, so a full city stays full.
+		City->Defence = DefenceOf(*City) + FMath::Max(0.0f, EffectiveMaxDefence(*City) - DefenceMaxBefore);
+		break;
+	case ECataclysmCityUpgradeEffect::MaxPopulation:
+		City->Population = PopulationOf(*City) + FMath::Max(0.0f, EffectiveMaxPopulation(*City) - PopulationMaxBefore);
+		break;
+	case ECataclysmCityUpgradeEffect::RestoreDefence:
+	case ECataclysmCityUpgradeEffect::RestorePopulation:
+		// FIRED AGAIN AT THE NEW TIER'S FULL FIGURE, not the difference (Q9).
+		RestoreOnce(*City, Raised.Effect, Raised.Value);
+		break;
+	default:
+		break;
+	}
 	return true;
 }
 

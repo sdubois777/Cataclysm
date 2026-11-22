@@ -222,6 +222,12 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         # readme's empire bullet now says a purchase takes days to build and
         # waits on the city's build list.
         "CataclysmCityUpgradeBuildTests.cpp",
+        # The cleanse city upgrade, added 2026-11-22 for issue #2838. The
+        # readme's empire bullet now says it is built and what it does.
+        "CataclysmCityCleanseTests.cpp",
+        # Raising a city upgrade a tier, added 2026-11-22 for issue #1265. The
+        # readme's empire bullet now says an upgrade can be raised in place.
+        "CataclysmCityUpgradeRaiseTests.cpp",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

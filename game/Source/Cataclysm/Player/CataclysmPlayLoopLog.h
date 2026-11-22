@@ -252,6 +252,17 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 								   int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * A socket added or a socket's type changed at the forge: "added socket 3 to Quality Torc of Warding for 750 gold,
+	 * rolled Defense; residue 40 to 55; it cost 3 days, day 20 to day 23", or "made socket 2 of Quality Torc of Warding
+	 * Utility, from Attack, for 500 gold; residue 40 to 50; it cost 2 days, day 20 to day 22". Socket numbers count from
+	 * 1, as the screen's. Issue #46, slice G9. Said by `UCataclysmForgeCraft::AddSocket` and `ChangeSocketType`, after
+	 * the craft and the days.
+	 */
+	static FString ForgeSocketWorkLine(bool bAdd, int32 SocketNumber, const FString& FromType, const FString& ToType,
+									   const FString& ItemName, int64 Gold, int32 ResidueBefore, int32 ResidueAfter,
+									   int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling
 	 * of 2026-11-19: the owner's play log said nothing about gear, so a walk could not be read for what was taken. Said
 	 * by `UCataclysmDropPickup::TakeInto`, for a piece of gear only, once it is in the bag. A crafting material is not

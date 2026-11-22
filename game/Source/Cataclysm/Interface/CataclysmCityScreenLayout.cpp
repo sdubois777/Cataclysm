@@ -412,6 +412,13 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 				UCataclysmCityUpgradePurchase::RefusalTextIn(WorldContext, Rush, Offer.RushPrice, GoldHeld);
 		}
 
+		// AND RAISING IT, ON AN UPGRADE THE CITY HOLDS (issue #1265): asked of the run as
+		// `UCataclysmCityUpgradePurchase::Raise` asks it, at the next tier's price and days and with the tree's credit.
+		if (Offer.bHeld)
+		{
+			AddTheRaise(WorldContext, Run, CityId, GoldHeld, Offer);
+		}
+
 		Offers.Add(Offer);
 	}
 
@@ -505,6 +512,148 @@ FString UCataclysmCityScreenLayout::RushButtonTextFor(
 	return FString::Printf(TEXT("Rush  --  %s, %s"),
 						   *UCataclysmCityUpgradePurchase::PriceText(Offer.RushPrice),
 						   *UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RushDays));
+}
+
+void UCataclysmCityScreenLayout::AddTheRaise(const UObject* WorldContext, const UCataclysmEmpireRun* Run, int32 CityId,
+											  int64 GoldHeld, FCataclysmCityUpgradeOffer& Offer)
+{
+	Offer.bRaiseOffered = true;
+	Offer.RaiseTier = UCataclysmCityUpgradePurchase::RaiseTierIn(Run, CityId, Offer.RowName);
+	const FCataclysmCityUpgrade Raised = Offer.RaiseTier >= 1 && Offer.RaiseTier <= UCataclysmCityUpgradeRules::HighestTier
+		? UCataclysmCityUpgradeMapping::MakeAtTier(Offer.RowName, Offer.RaiseTier)
+		: FCataclysmCityUpgrade();
+
+	// AT THE TOP, OR NO LADDER: greyed, saying so, as `Raise` refuses.
+	if (Offer.RaiseTier > UCataclysmCityUpgradeRules::HighestTier || !Raised.IsValid())
+	{
+		Offer.RaiseRefusal = UCataclysmCityUpgradeRules::ResultText(
+			Offer.RaiseTier > UCataclysmCityUpgradeRules::HighestTier ? ECataclysmCityUpgradeResult::AtTheTopTier
+																	   : ECataclysmCityUpgradeResult::NoTierToRaiseTo);
+		return;
+	}
+
+	Offer.RaiseWhat = RaiseWhatFor(Raised.Effect, Raised.Value, Raised.IntervalDays);
+	Offer.RaisePrice = UCataclysmCityUpgradePurchase::PriceIn(WorldContext, Run, Offer.RowName, CityId, Offer.RaiseTier);
+	Offer.RaiseDays = UCataclysmCityUpgradePurchase::BuildDaysIn(WorldContext, Run, Offer.RowName, CityId,
+																 /*bRush=*/false, Offer.RaiseTier);
+	const int64 Credit = GoldHeld < Offer.RaisePrice ? UCataclysmCityUpgradePurchase::CreditIn(WorldContext, Offer.RaisePrice)
+													 : 0;
+	const ECataclysmCityUpgradeResult Result =
+		Run->WouldRaiseCityUpgrade(CityId, Raised, Offer.RaisePrice, GoldHeld + Credit);
+	Offer.bCanRaise = Result == ECataclysmCityUpgradeResult::Bought;
+	Offer.bRaiseShortOfGold = Result == ECataclysmCityUpgradeResult::NotEnoughGold;
+	Offer.RaiseOwedIfBought = Offer.bCanRaise && Offer.RaisePrice > GoldHeld ? Offer.RaisePrice - GoldHeld : 0;
+	Offer.RaiseRefusal = UCataclysmCityUpgradePurchase::RefusalTextIn(WorldContext, Result, Offer.RaisePrice, GoldHeld);
+
+	if (Offer.bRushOffered)
+	{
+		Offer.RaiseRushPrice =
+			UCataclysmCityUpgradePurchase::RushPriceIn(WorldContext, Run, Offer.RowName, CityId, Offer.RaiseTier);
+		Offer.RaiseRushDays = UCataclysmCityUpgradePurchase::BuildDaysIn(WorldContext, Run, Offer.RowName, CityId,
+																		 /*bRush=*/true, Offer.RaiseTier);
+		const int64 RushCredit = GoldHeld < Offer.RaiseRushPrice
+			? UCataclysmCityUpgradePurchase::CreditIn(WorldContext, Offer.RaiseRushPrice)
+			: 0;
+		const ECataclysmCityUpgradeResult Rush =
+			Run->WouldRaiseCityUpgrade(CityId, Raised, Offer.RaiseRushPrice, GoldHeld + RushCredit);
+		Offer.bCanRaiseRush = Rush == ECataclysmCityUpgradeResult::Bought;
+		Offer.bRaiseRushShortOfGold = Rush == ECataclysmCityUpgradeResult::NotEnoughGold;
+		Offer.RaiseRushOwedIfBought =
+			Offer.bCanRaiseRush && Offer.RaiseRushPrice > GoldHeld ? Offer.RaiseRushPrice - GoldHeld : 0;
+		Offer.RaiseRushRefusal =
+			UCataclysmCityUpgradePurchase::RefusalTextIn(WorldContext, Rush, Offer.RaiseRushPrice, GoldHeld);
+	}
+}
+
+FString UCataclysmCityScreenLayout::RaiseButtonTextFor(const FCataclysmCityUpgradeOffer& Offer)
+{
+	if (Offer.RaiseWhat.IsEmpty() || (!Offer.bCanRaise && !Offer.bRaiseShortOfGold))
+	{
+		return FString::Printf(TEXT("Raise  --  %s"), *Offer.RaiseRefusal);
+	}
+	const FString What = FString::Printf(TEXT("Raise to tier %d: %s"), Offer.RaiseTier, *Offer.RaiseWhat);
+	if (Offer.bRaiseShortOfGold)
+	{
+		return FString::Printf(TEXT("%s  --  %s"), *What, *Offer.RaiseRefusal);
+	}
+	const FString Days = UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RaiseDays);
+	if (Offer.RaiseOwedIfBought > 0)
+	{
+		return FString::Printf(TEXT("%s  --  %s on credit, %s owed, %s"), *What,
+							   *UCataclysmCityUpgradePurchase::PriceText(Offer.RaisePrice),
+							   *ACataclysmDroppedItem::GoldAmountText(Offer.RaiseOwedIfBought), *Days);
+	}
+	return FString::Printf(TEXT("%s  --  %s, %s"), *What, *UCataclysmCityUpgradePurchase::PriceText(Offer.RaisePrice),
+						   *Days);
+}
+
+FString UCataclysmCityScreenLayout::RaiseRushButtonTextFor(const FCataclysmCityUpgradeOffer& Offer)
+{
+	if (Offer.bRaiseRushShortOfGold || !Offer.bCanRaiseRush)
+	{
+		return FString::Printf(TEXT("Rush the raise  --  %s"), *Offer.RaiseRushRefusal);
+	}
+	if (Offer.RaiseRushOwedIfBought > 0)
+	{
+		return FString::Printf(TEXT("Rush the raise  --  %s on credit, %s owed, %s"),
+							   *UCataclysmCityUpgradePurchase::PriceText(Offer.RaiseRushPrice),
+							   *ACataclysmDroppedItem::GoldAmountText(Offer.RaiseRushOwedIfBought),
+							   *UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RaiseRushDays));
+	}
+	return FString::Printf(TEXT("Rush the raise  --  %s, %s"),
+						   *UCataclysmCityUpgradePurchase::PriceText(Offer.RaiseRushPrice),
+						   *UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RaiseRushDays));
+}
+
+FString UCataclysmCityScreenLayout::RaiseWhatFor(ECataclysmCityUpgradeEffect Effect, float Value, float IntervalDays)
+{
+	// PERCENTAGES ARE FRACTIONS IN THE TABLE, 0.5 for 50%; FLAT FIGURES ARE COUNTS; THE ONE MULTIPLIER IS A FACTOR.
+	const int32 Percent = FMath::RoundToInt(Value * 100.0f);
+	const int32 Count = FMath::RoundToInt(Value);
+	const int32 Days = FMath::RoundToInt(IntervalDays);
+	switch (Effect)
+	{
+	case ECataclysmCityUpgradeEffect::MaxDefence:
+		return FString::Printf(TEXT("raises max defence by %d%%"), Percent);
+	case ECataclysmCityUpgradeEffect::MaxPopulation:
+		return FString::Printf(TEXT("raises max population by %d%%"), Percent);
+	case ECataclysmCityUpgradeEffect::RemoveDungeons:
+		return FString::Printf(TEXT("removes %d%% of this city's dungeons when built"), Percent);
+	case ECataclysmCityUpgradeEffect::RestoreDefence:
+		return FString::Printf(TEXT("restores %d%% of this city's defence when built"), Percent);
+	case ECataclysmCityUpgradeEffect::RestorePopulation:
+		return FString::Printf(TEXT("restores %d%% of this city's population when built"), Percent);
+	case ECataclysmCityUpgradeEffect::ResistDefenceLoss:
+		return FString::Printf(TEXT("this city resists %d%% of damage"), Percent);
+	case ECataclysmCityUpgradeEffect::ResistPopulationLoss:
+		return FString::Printf(TEXT("this city resists %d%% of population loss"), Percent);
+	case ECataclysmCityUpgradeEffect::HealDefenceEvery:
+		return FString::Printf(TEXT("every %d days this city's defences heal %d%%"), Days, Percent);
+	case ECataclysmCityUpgradeEffect::RecoverPopulationEvery:
+		return FString::Printf(TEXT("every %d days this city's population recovers %d%%"), Days, Percent);
+	case ECataclysmCityUpgradeEffect::RestoreDefenceOnClear:
+		return FString::Printf(TEXT("a dungeon cleared here restores %d%% of this city's defence"), Percent);
+	case ECataclysmCityUpgradeEffect::DungeonCap:
+		return FString::Printf(TEXT("no more than %d dungeons on this city"), Count);
+	case ECataclysmCityUpgradeEffect::DungeonWalkDaysFewer:
+		return FString::Printf(TEXT("dungeons here take %d fewer days to beat, to a minimum of 1"), Count);
+	case ECataclysmCityUpgradeEffect::DungeonFloorsMore:
+		return FString::Printf(TEXT("dungeons here have %d more floors"), Count);
+	case ECataclysmCityUpgradeEffect::DungeonFloorsFewer:
+		return FString::Printf(TEXT("dungeons here have %d fewer floors, to a minimum of 1"), Count);
+	case ECataclysmCityUpgradeEffect::DungeonExperience:
+		return FString::Printf(TEXT("dungeons here give %dx the experience"), Count);
+	case ECataclysmCityUpgradeEffect::DungeonMagicFind:
+		return FString::Printf(TEXT("dungeons here have %d%% increased magic find"), Percent);
+	case ECataclysmCityUpgradeEffect::DungeonGold:
+		return FString::Printf(TEXT("dungeons here drop %d%% more gold"), Percent);
+	case ECataclysmCityUpgradeEffect::DungeonLoot:
+		return FString::Printf(TEXT("dungeons here drop %d%% more loot"), Percent);
+	case ECataclysmCityUpgradeEffect::DungeonCraftingMaterials:
+		return FString::Printf(TEXT("dungeons here drop %d%% more crafting materials"), Percent);
+	default:
+		return FString();
+	}
 }
 
 FString UCataclysmCityScreenLayout::NotBuiltLineFor(

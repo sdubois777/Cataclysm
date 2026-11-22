@@ -175,6 +175,9 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 {
 	TArray<FCataclysmForgeSocketAction> Out;
 	const UDataTable* GemTable = UCataclysmGems::LoadGeneratedTable();
+	// THE PIECE'S OWN "FIT ANY GEM TYPE" ENCHANTMENT, read once for all its sockets (slice G10).
+	const UDataTable* EffectTable = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	const bool bFitsAnyGem = UCataclysmGems::FitsAnyGem(Item, EffectTable);
 	for (int32 Index = 0; Index < Item.Sockets.Num(); ++Index)
 	{
 		const FCataclysmSocket& Socket = Item.Sockets[Index];
@@ -202,7 +205,7 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 			const FCataclysmGemRow* Row = Carried.Gem.IsNone() || Carried.Quantity <= 0
 				? nullptr
 				: UCataclysmGems::RowOf(GemTable, Carried.Gem);
-			if (Row == nullptr || !UCataclysmGems::GemFits(Socket.Type, Row->GemType))
+			if (Row == nullptr || !(bFitsAnyGem || UCataclysmGems::GemFits(Socket.Type, Row->GemType)))
 			{
 				continue;
 			}
@@ -211,7 +214,7 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 			Action.Gem = Carried.Gem;
 			Action.Rarity = Carried.GemRarity;
 			Action.ButtonName = FName(*FString::Printf(TEXT("Socket_%d_Cell_%d"), Index, Cell));
-			const FString Type = Socket.Type == ECataclysmSocketType::Any
+			const FString Type = bFitsAnyGem || Socket.Type == ECataclysmSocketType::Any
 				? FString(TEXT("any gem"))
 				: UCataclysmGems::SocketTypeName(Socket.Type);
 			Action.Label = FString::Printf(TEXT("Socket %s (%s) into socket %d (%s)"), *UCataclysmGems::NameOf(Carried.Gem),
@@ -239,6 +242,64 @@ FString UCataclysmForgeLayout::SocketsDetailFor(const FCataclysmItem& Item)
 {
 	const TArray<FString> Lines = UCataclysmGems::SocketLinesFor(Item);
 	return Lines.IsEmpty() ? FString() : FString::Printf(TEXT("Sockets: %s"), *FString::Join(Lines, TEXT("; ")));
+}
+
+TArray<FCataclysmForgeSocketWorkAction> UCataclysmForgeLayout::SocketWorkActionsFor(const FCataclysmItem& Item,
+																					int32 MaxSockets)
+{
+	TArray<FCataclysmForgeSocketWorkAction> Out;
+	if (Item.Base.IsNone())
+	{
+		return Out;
+	}
+	if (Item.Sockets.Num() < MaxSockets)
+	{
+		FCataclysmForgeSocketWorkAction& Add = Out.AddDefaulted_GetRef();
+		Add.bAdd = true;
+		Add.Socket = Item.Sockets.Num();
+		Add.ButtonName = FName(TEXT("AddSocket"));
+		Add.Label = FString::Printf(TEXT("Add a socket (%d of %d)"), Item.Sockets.Num() + 1, MaxSockets);
+	}
+	const ECataclysmSocketType Types[] = { ECataclysmSocketType::Attack, ECataclysmSocketType::Defense,
+										   ECataclysmSocketType::Utility };
+	for (int32 Index = 0; Index < Item.Sockets.Num(); ++Index)
+	{
+		const FCataclysmSocket& Socket = Item.Sockets[Index];
+		// NO CHANGE FOR A FULL SOCKET OR ONE FOR ANY GEM, ruled 2026-11-22 (Q4, Q5).
+		if (!Socket.Gem.IsNone() || Socket.Type == ECataclysmSocketType::Any)
+		{
+			continue;
+		}
+		for (const ECataclysmSocketType Type : Types)
+		{
+			if (Type == Socket.Type)
+			{
+				continue;
+			}
+			FCataclysmForgeSocketWorkAction& Change = Out.AddDefaulted_GetRef();
+			Change.Socket = Index;
+			Change.NewType = Type;
+			const FString TypeName = UCataclysmGems::SocketTypeName(Type);
+			Change.ButtonName = FName(*FString::Printf(TEXT("ChangeSocket_%d_%s"), Index, *TypeName));
+			Change.Label = FString::Printf(TEXT("Make socket %d %s"), Index + 1, *TypeName);
+		}
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::SocketWorkActionForButton(FName ButtonName,
+													  const TArray<FCataclysmForgeSocketWorkAction>& Shown,
+													  FCataclysmForgeSocketWorkAction& OutAction)
+{
+	for (const FCataclysmForgeSocketWorkAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
 }
 
 TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
