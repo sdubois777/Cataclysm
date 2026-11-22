@@ -2,6 +2,182 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Overwhelm: a creature whose Enemy Score is above the player's live Power Score takes points off the player's resistance, armour, block and evasion, and the floor panel says how many (#2824, slice b)
+
+**Affects:** `UCataclysmPowerScore::OverwhelmRate`, `OverwhelmCap`, `OverwhelmFor`, `OverwhelmPointsAt`,
+`OverwhelmPointsAgainst` and `OverwhelmText`, new, and `LiveScoreOf`, now cached
+(`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`); `ACataclysmPlayerCharacter::FLiveScoreCache` and
+`LiveScoreCache`, new (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`);
+`UCataclysmEquipmentComponent::RefreshCount`, new, raised by `RefreshAttributesAs`
+(`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`); `FCataclysmIncomingHit::OverwhelmPoints`, new,
+and `UCataclysmDamageCalculation::Resolve`'s evasion, block, armour and resistance steps
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`); the hit built in
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` (`CataclysmVitalAttributeSet.cpp`); the floor panel's score
+line in `ACataclysmDungeonGameMode::RefreshFloorModifierPanel` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`).
+Tests: `Cataclysm.Overwhelm.`, eight, new, in `game/Source/Cataclysm/Tests/CataclysmOverwhelmTests.cpp`;
+`tools/tests/test_overwhelm_is_the_simulations.py`, new; the expectation of
+`Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`
+(`game/Source/Cataclysm/Tests/CataclysmDamageDoneToAlliesTests.cpp`). Issue
+[#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22, on
+  `feat/overwhelm-2824-b`, cut from slice a's head `5b6042222` (`feat/live-power-score-2824-2`).
+- **EVERY EXISTING TEST IN WHICH A CREATURE'S BLOW LANDS ON A PLAYER NOW MEETS OVERWHELM.** A bare test player scores
+  far below a tier 1 Common (352), so such a blow carries about 20 points. It changes a result only where the player has
+  evasion, block, armour or resistance to that blow above nought, and the test measures what landed. A search of the tests for
+  every route a creature's damage reaches a player (`ApplyHit`, `ApplyDirectDamage`, the damage over time helpers, the
+  ally share, retaliation), read by a subagent and not by me, found:
+  - **One that would fail, changed here:** `Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`.
+    A creature's Demonic blow on an imp shares a tenth to wearers with 800 armour and with 50 Demonic resistance; it
+    expected the full 50% each removes. Its expectation now subtracts each wearer's
+    `OverwhelmPointsAgainst(wearer, creature)` from the armour reduction and from the resistance, and it prints both.
+  - **Two whose figure moves and whose assertion still passes:**
+    - `Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave`. Its burn tick passes either
+      with the armour step or without it, and Overwhelm removes the Ravager's 3.4%, so it now matches the "without"
+      half.
+    - `Cataclysm.DamageDoneToAllies.AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack`. About 26.7 of an upper
+      bound of 30.
+  - **Two that assert an evade by a player at 1,000 evasion**, still evaded: `Cataclysm.DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack`
+    and `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`.
+  - A possessed player takes the Ravager's class line, 25 armour plus 3.5 a level, about 3% at tier 1, and Overwhelm
+    removes it, so every creature blow on such a player lands about 3% higher. The other affected tests the search found
+    compare a blow with itself or assert no amount. The search did not open every one of about 4,900 tests, so a blow
+    built in a form it did not look for could be missed.
+- **THE CACHE DOES NOT SEE A RESISTANCE THAT CHANGES WITHOUT A STAT REFRESH.** It is worked out again when the gear
+  changes (`ChangeCount`), on every stat refresh (`RefreshCount`, new: gear, a level gained, passive points, a dungeon
+  modifier's stat change), when the level changes and when the difficulty tier changes. A timed buff that grants
+  resistance through its own gameplay effect, outside a refresh, moves the score only at the next refresh. The test
+  `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` holds exactly that line.
+- **THE FLOOR PANEL'S LINE IS WRITTEN ON ENTERING THE FLOOR**, as slice a's score line is. Gear changed mid-floor shows
+  at the next floor. The blows themselves read the score as it is at each hit.
+- **THE WIRING OF A REAL BLOW IS HELD BY TEXT, NOT RUN.** No automation test applies a creature's damage effect to a
+  player and watches Overwhelm arrive; `OverwhelmPointsAgainst` is run, and the Python check holds that the vital set
+  calls it with the defending body and the instigator's avatar.
+
+### What the design and the rulings say, and what this builds
+
+The design's Overwhelm section gives the formula, `Overwhelm = min(50%, 25% x (Enemy Score - Player Score) / Tier
+Width)`, nothing below 0, and its damage order subtracts it from resistance at step 4, before the 70 cap, "at the same
+point and for the same reason" as penetration. Enemies carry no penetration; Overwhelm is their equivalent. Its worked
+figures: a tier 8 player at 6,327 loses 8.4% to a Common and 20.9% to a Cataclysm Boss. The simulation already models it:
+`OVERWHELM_RATE = 0.25`, `OVERWHELM_CAP = 0.50` and `overwhelm()` in `sim/cataclysm_sim/combat.py`, with
+`damage_multiplier` treating mitigation as one 70% pool less the Overwhelm points.
+
+The coordinating session's rulings of 2026-11-22:
+
+| Ruling | What it settles |
+| :-- | :-- |
+| Q7, derived from the simulation's model | Overwhelm comes off the block chance, the evasion chance and armour's reduction percentage in points, as it comes off resistance |
+| Q8 | It reaches damage over time and area blows through resistance; evasion stays skipped for both, as the damage order already has it |
+| The constants | The game's two must match the simulation's, held by a Python check |
+| The worked figures | Tested from the constants the code holds, not the document's rounding |
+| The cache | Slice b adds the cache slice a deferred, recomputed on gear, level and tier |
+| The screen | The Overwhelm a creature would apply is shown, at least on the floor panel |
+
+The plan's research (section 5, Q7) found no shipped game with the same mechanic, so Q7 is the simulation's model and
+not a genre shape. That research was done by the session that wrote the plan and was not re-read here.
+
+**The judgements of this change**, each with what it rests on:
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **A creature's own rung, not the rung its death pays as** | Overwhelm is about how strong the creature that hits is; the Corrupted Stalker pays as a Boss while it stands at the Common rung (`RarityStepItPaysAs`, ruled 2026-10-25) |
+| **The creature's floor is its world's, `UCataclysmEnemyScore::FloorIn`** | the same floor its experience is scored on when it dies (`CataclysmEnemyCharacter.cpp`) |
+| **Each defence is held at nought** | the simulation's `max(0, 0.70 - ow)`; Overwhelm removes a defence and never adds damage past having none, as penetration stops at nought |
+| **Not stopped by the no-penetration tag** | Overwhelm is not penetration: the tag stops what the attacker's gear ignores, and the design gives creatures Overwhelm in its place |
+| **The floor panel shows a Common's and a Cataclysm Boss's** | the two ends of the ladder; every rung between applies between them |
+
+### The arithmetic
+
+`OverwhelmFor(Player, Enemy, Width) = min(0.50, 0.25 x max(0, Enemy - Player) / Width)`, and 0 for a width of 0 or
+less, as the simulation's. A blow carries 100 times that, in points: the creature's `ScoreFor(FloorIn(world), its
+rung)`, against the player's live score, over `TierWidth` of the floor's tier. In `Resolve`:
+
+| Step | Before | Now |
+| :-- | :-- | :-- |
+| 1. Evasion | evaded when the roll is below the evasion chance | below the evasion chance less the points, held at 0 |
+| 2. Block | blocked when the roll is below the block chance | below the block chance less the points, held at 0 |
+| 3. Armour | `1 - ArmorReduction / 100` lands | `1 - max(0, ArmorReduction - points) / 100` lands |
+| 4. Resistance | the cap applied to resistance less penetration | the cap applied to resistance less penetration less the points; penetration's rule that nothing pushes a resistance below 0 holds for the sum |
+
+So at 50 resistance a 1,000 blow with 20 points lands for 700, not 500; at 90, over the cap by 20, it lands for 300
+either way. Worked figures, from the code's constants: a Common on the last floor of a 50 floor tier 8 Cataclysm
+dungeon scores 6,733 and takes `25 x 406 / 1,207` = **8.4093** points off a player at 6,327; a Cataclysm Boss there
+scores 7,336 and takes `25 x 1,009 / 1,207` = **20.8989**. The simulation's `overwhelm` gives the same to four places.
+
+### The words
+
+The floor panel, while an empire dungeon is walked, under slice a's score line:
+
+| Case | What it says |
+| :-- | :-- |
+| Below a creature | "Overwhelm here: 8.4 from a Common, 20.9 from a Cataclysm Boss, in points off your resistance, armour, block and evasion." |
+| At or above every creature | "Overwhelm here: none, your Power Score is at or above every creature's." |
+
+The figures are the worked floor's, not a measurement of a character.
+
+### Tests
+
+`Cataclysm.Overwhelm.`, eight, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` | the worked floor: 6,327, 6,733, 7,336 and 1,207 as set-up; 8.4093 and 20.8989 points |
+| `APlayerAtOrAboveTheCreaturesScoreLosesNothing` | level with, above and far above: 0; CONTROL: one point below, above 0 |
+| `ItIsHeldAtHalf` | two tier widths of gap reach 50%; one point less is under; far past is held at it; no width gives 0 |
+| `ItComesOffResistanceBeforeTheCapSoOverCappingAbsorbsIt` | 1,000 Demonic: at 50, 500 then 700 with 20 points; at 90, 300 both; at 80, 400; a tick at 50 with 20, 700 |
+| `ItComesOffEvasionBlockAndArmourHeldAtNought` | 30 evasion against 25 evades, less 4 still, less 10 not; block the same; 800 armour at tier 1: 500, 600 less 10 points, 1,000 less 60 |
+| `ACreatureAppliesItsOwnRungsOverwhelmOnItsFloor` | at tier 1 in a bare world, a Common and a Cataclysm Boss against a bare level 1 player, each its rung's figure worked out from the scores; the Boss's above; nothing with either missing |
+| `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` | a resistance written with no refresh is unseen while the fresh score moves (CONTROL); a helm, level 60 and tier 8 each bring the cached score to the fresh one |
+| `TheFloorPanelSaysWhatACommonAndACataclysmBossTakeOff` | "8.4 from a Common" and "20.9 from a Cataclysm Boss" on the worked floor at 6,327; "none" at 8,000; no line with no player |
+
+Python: `test_overwhelm_is_the_simulations.py`, five checks: the two constants are the simulation's; the automation
+test's two worked figures are `combat.overwhelm`'s; the vital set fills the hit's Overwhelm from `OverwhelmPointsAgainst`
+with the defending body and the instigator's avatar; `Resolve` takes it beside penetration inside the cap's call and off
+armour, evasion and block; the floor panel calls `OverwhelmText`.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log. As written:
+
+- **The whole suite: the base + 8**, the eight new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot). The one changed test's count does not move.
+- **No save record moves. No editor step.**
+- **Groups alone, first**, name-literal counts on this branch: `Overwhelm.` 8 (new); `Damage.` 21 (`Resolve` changed);
+  `PowerScoreLive.` 8 (`LiveScoreOf` now cached); `Equipment.` 30 (`RefreshAttributesAs` counts). `DamageDoneToAllies.` 10 (the changed test), `EnemyBurn.` 4 (the moved figure), and the two evasion tests' groups `DungeonModifierEffects.` and `StrikeTarget.` by name.
+
+**Eight C++ guard proofs**, one per new test, each narrowed to `Cataclysm.Overwhelm.` (8 performed), run by
+`.claude/windows/prove_overwhelm.py <P>`:
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| OW1 | `OverwhelmPointsAt` returns 10 times the fraction, not 100 | the worked figures, the creature's rung, the panel's line (3) |
+| OW2 | the gap not held at nought | at or above the creature's score (1) |
+| OW3 | the 50% cap removed | held at half (1) |
+| OW4 | taken off resistance after the cap, not before | resistance before the cap, and evasion, block and armour, whose blows meet 0 resistance that the break pushes below 0 (2) |
+| OW5 | evasion given the points back | evasion, block and armour (1) |
+| OW6 | every creature read as a Common | the creature's rung (1) |
+| OW7 | the cache worked out only when empty | the cache (1) |
+| OW8 | the panel's top rung read as a Boss, rung 4 | the panel's line (1) |
+
+**Five Python guard proofs**, run in a `git archive` copy of `2d1dcbdf7` by `.claude/windows/prove_overwhelm_python.py`:
+**5 of 5 proved exactly as predicted**, each failing one named check of
+`test_overwhelm_is_the_simulations.py` with the break in and passing 5 of 5 restored.
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| PY1 | `OverwhelmRate` 0.24 | `test_the_two_constants_are_the_simulations` |
+| PY2 | the automation test's 8.4093 written 8.4094 | `test_the_worked_figures_are_the_simulations` |
+| PY3 | the defender read as the set's owning actor, which for a player is the player state | `test_a_creatures_blow_on_a_player_carries_it` |
+| PY4 | taken off resistance after the cap | `test_resolve_takes_it_beside_penetration_before_the_cap` |
+| PY5 | the floor panel's Overwhelm line left empty | `test_the_floor_panel_shows_it` |
+
+**The Python suite on this branch**: recorded in the commit after this one, from its run.
+
+---
+
 ## 2026-11-22 — The forge imprints an enchantment, giving up the affix the player chooses, and changes an enchantment's drawback to a different one never milder than its benefit (#47, slice F3)
 
 **NOT COMPILED, NOT RUN.** Phase 1 on `feat/forge-enchantments-47-3`, cut from slice F2's head `84c2f0ff7`

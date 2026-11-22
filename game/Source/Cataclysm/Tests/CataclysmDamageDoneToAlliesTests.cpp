@@ -23,6 +23,7 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -382,13 +383,26 @@ CATACLYSM_ALLIES_TEST(FCataclysmDamageDoneToAlliesDefencesTest,
 	{
 		return false;
 	}
-	const float ArmourKeeps =
-		1.0f - UCataclysmDamageCalculation::ArmorReduction(Armour, ACataclysmGameMode::DifficultyTierIn(World)) / 100.0f;
+	// LESS EACH WEARER'S OVERWHELM, SINCE ISSUE #2824'S SLICE B: the share is the creature's blow, and a creature whose
+	// Enemy Score is above a wearer's Power Score takes that many points off the wearer's armour reduction and
+	// resistance. Read after the blow from the same cached score the blow read. The plain wearer has neither defence,
+	// so its control is unchanged.
+	const float ArmouredOverwhelm = UCataclysmPowerScore::OverwhelmPointsAgainst(Armoured, Creature);
+	const float ResistantOverwhelm = UCataclysmPowerScore::OverwhelmPointsAgainst(Resistant, Creature);
+	const float ArmourKeeps = 1.0f
+		- FMath::Max(0.0f, UCataclysmDamageCalculation::ArmorReduction(Armour, ACataclysmGameMode::DifficultyTierIn(World))
+							   - ArmouredOverwhelm)
+			/ 100.0f;
+	const float ResistanceKeeps = 1.0f - FMath::Max(0.0f, 50.0f - ResistantOverwhelm) / 100.0f;
+	AddInfo(FString::Printf(TEXT("ALLY SHARE DEFENCES: plain %.2f, armoured %.2f (Overwhelm %.2f), resistant %.2f "
+								 "(Overwhelm %.2f)"),
+							PlainLost, ArmouredLost, ArmouredOverwhelm, ResistantLost, ResistantOverwhelm));
 	TestTrue(*FString::Printf(TEXT("the armoured wearer takes less: %.2f against %.2f"), ArmouredLost, PlainLost),
 		ArmouredLost > 0.0f && ArmouredLost < PlainLost);
-	TestEqual(TEXT("by what its armour removes from a blow"), ArmouredLost, PlainLost * ArmourKeeps, 0.01f);
-	TestEqual(TEXT("and the wearer resisting half of Demonic damage takes half"), ResistantLost, PlainLost * 0.5f,
-		0.01f);
+	TestEqual(TEXT("by what its armour removes from a blow, less the creature's Overwhelm"), ArmouredLost,
+		PlainLost * ArmourKeeps, 0.01f);
+	TestEqual(TEXT("and the wearer resisting half of Demonic damage takes half, less the creature's Overwhelm"),
+		ResistantLost, PlainLost * ResistanceKeeps, 0.01f);
 	return true;
 }
 
