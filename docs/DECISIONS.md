@@ -151,7 +151,7 @@ removes none. If development moves before the window, the base is re-taken there
 
 | Proof | Break | Predicted |
 | :-- | :-- | :-- |
-| LP1 | in `Matches`, the worn comparison `>=` read as `>`, so the same rarity is hidden | 8 performed, 6 succeeded, 2 failed: LF1 (a Superb helm shows) and LF7 (one name without Alt) |
+| LP1 | in `Matches`, the worn comparison `>=` read as `>`, so the same rarity is hidden | 8 performed, 4 succeeded, 4 failed: LF1 (a Superb helm shows), LF2 (a Superb ring shows), LF3 (a Superb weapon shows) and LF7 (one name without Alt) |
 | LP2 | in `WornRaritiesOf`, `FMath::Min` read as `FMath::Max`, so the highest ring decides | 8, 6, 2: LF2 and LF3 (the two hands) |
 | LP3 | in `WornRaritiesOf`, the two-hander's branch never taken (`false && bTwoHandedInBothHands`) | 8, 7, 1: LF3 |
 | LP4 | in `VerdictFor`, every rule read, not the first 75 | 8, 7, 1: LF4 |
