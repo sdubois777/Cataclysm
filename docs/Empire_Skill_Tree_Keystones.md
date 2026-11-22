@@ -43,6 +43,7 @@
 ### Tier 4: The Imperial Zenith
 
 - **Imperial Prowess:** You can now take an additional keystone from any of the previous tiers.
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): one more option from the Tier 1 to Tier 3 milestones above, any not already picked. Not built yet.
 - **The Last Stand:** When you enter a dungeon in a city that is within 7 days of falling, the time it takes to run that dungeon is reduced to **one day**.
 - **The Flood Barrier:** Add 20 days to the surge timer. This applies to every surge.
 
@@ -77,6 +78,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Urban Planning (Max 10 pts):** +5% Base Outpost Population per point.
 - **NOTABLE: Emergency Shelters:** +3 Days to Resolution Timers for Outposts.
 - **NOTABLE: Scaffolding:** City upgrades cost 50% less gold, but take 2x longer to build.
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): city upgrades take 6, 12 or 24 days by their tier; this halves the price and doubles the days. Not built yet (#2825).
 
 ### Tier 2: Expansion & Logistics
 
@@ -85,6 +87,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Imperial Census (Max 10 pts):** +10% Base Population for Bulwarks per point.
 - **NOTABLE: Public Works:** -20% Gold cost for all City Upgrades.
 - **NOTABLE: Rapid Renovation:** -1 Day to city upgrade construction time (Min 1 day).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): acts on the build times above, after Scaffolding's doubling. Not built yet (#2825).
 
 ### Tier 3: The Adaptive Bulwark
 
@@ -124,6 +127,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Global Credit (Max 5 pts):** Allows you to start a city upgrade or crafting project even if you are short by up to 5% of the gold cost (Debt). The debt is repaid from your next gold drops.
 - **NOTABLE: Commercial Hubs:** When running a dungeon in a city with a **Treasury Upgrade**, Gold drops are increased by 20%.
 - **NOTABLE: Rapid Funding:** You can pay 150% of an upgrade's cost to reduce its construction time by 2 days (Min 1 day).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): a Rush on each offer, at 150% of the price after every discount. Not built yet (#2825).
 
 ### Tier 3: The High Chancellor's Office
 
@@ -133,8 +137,10 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Thrifty (Max 25 pts):** Items in the Market cost 1% less gold per point.
 - **Wealth Interest (Max 10 pts):** Every 20 days, gain 0.5% interest on your total Gold Treasury, capped at 5,000 gold per tick.
 - **NOTABLE: Bribery:** Once per "Surge" cycle, you can spend a large Gold fee to reset a single dungeon resolution timer back to its maximum value.
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): a map action; the fee is 20,000 gold at difficulty tier 1. Not built yet.
 - **NOTABLE: Black Market:** A special tab appears in Market that allows you to buy high-tier Artisan materials directly for Gold.
 - **NOTABLE: Reinvestment:** Every 25,000 Gold spent on City Upgrades grants a 1% permanent boost to your Empire XP modifier (Capped).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): capped at 30%. Not built yet.
 
 ### Tier 4: The Sovereign's Vault
 
@@ -143,6 +149,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Imperial Reserve (Max 25 pts):** +1% Global Damage Reduction for all cities for every 100,000 Gold in your Treasury (Capped at 25%).
 - **Golden Age (Max 25 pts):** +1% Total Empire Population per point (Wealth attracts people).
 - **NOTABLE: Economic Bailout:** If a City's health hits 0, you can pay a massive Gold fee (that scales with your level) to prevent it from becoming a **Fallen City**. (Once per city per "Tier".)
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): paid automatically; 50,000, 100,000 or 150,000 gold at difficulty tier 1 for an Outpost, a Bulwark or a Sanctuary, scaling with the difficulty tier rather than the level; once per city per run; the city keeps half its defence; never the Pillar. Not built yet.
 - **NOTABLE: The Gilded Path:** Gain +1% Magic Find in dungeons for every 5% "Gold Cost Reduction" you have across the entire Empire Tree.
 - **NOTABLE: Stimulus Package:** If your Empire Population falls below 50% of its maximum possible value, Gold drops in dungeons are doubled until you reclaim a city.
 - **NOTABLE: Pax Imperialis:** For every 1,000 surviving citizens in your Empire, you generate 5 Gold every 1 day.

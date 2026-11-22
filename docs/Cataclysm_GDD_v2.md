@@ -4656,7 +4656,7 @@ definition. Measured before 2026-10-13, when a Quest dungeon's timer cost its ci
 
 Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affect defenses, population, dungeon timers, and other city-specific stats. Strategic allocation of upgrade resources is one of the primary meta-decisions of each run.
 
-**A city upgrade costs gold, and is still immediate.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys, and that an upgrade stays instant: build days come later. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
+**A city upgrade costs gold, and takes days to build.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys. The same day they kept upgrades instant, and on 2026-11-21 they reversed that: "They need build times. Probably based on their tier." An upgrade at upgrade tier 1 takes 6 days, at tier 2 12 days and at tier 3 24 days, whatever the difficulty tier. The gold is paid and the slot taken at purchase, and the upgrade does nothing until it is finished. A Siege on the city or the city's fall pauses the build, a build cannot be cancelled, and a city builds one upgrade at a time. **This is ruled and not built yet** (issue #2825): until it is, an upgrade still takes effect the moment it is bought. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
 
 **It is paid from the balance gold is earned into**: the account's for the character's lethality mode, or a Solo Self-Found character's own. A character holding less than the price is refused and told how much more it needs, and nothing is taken. The city screen shows each upgrade's price on its button, greys one the character cannot afford, and shows the balance beside the slots.
 
@@ -4827,6 +4827,28 @@ different class is cheap. Respec is what stops it being permanent: the first
 character in a mode fixes a starting position for the ones that follow, not a
 life sentence. Without respec it would be a life sentence, which is why the two
 questions were answered together.
+
+**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** None of them is
+built yet, and `docs/DECISIONS.md` has each ruling in full.
+
+- **Imperial Prowess** (The Imperial Zenith) gives one more option from the earlier tier milestones, any the player did
+  not pick there. The owner ruled it.
+- **Scaffolding, Rapid Renovation and Rapid Funding** act on city upgrade build times, which the owner ruled into being
+  the same day (the City Upgrades section). Scaffolding halves the price and doubles the days; Rapid Renovation takes
+  a day off a point; Rapid Funding rushes an upgrade 2 days for 150% of its price; none goes below 1 day.
+- **Bribery** is a map action that resets one dungeon's resolution timer for 20,000 gold at difficulty tier 1, once per
+  surge.
+- **Economic Bailout** pays 50,000, 100,000 or 150,000 gold at tier 1 automatically when an Outpost, a Bulwark or a
+  Sanctuary reaches 0 defence, once per city per run. The city keeps half its maximum defence; the Pillar cannot be
+  saved this way.
+- **Reinvestment** is capped at 30%.
+- **Civic Pride** makes each of the four population restores 5% larger a point: a retake, The Mason's Guild, and the two
+  city upgrades that restore population. The design has no other population growth.
+- **Scout Parties'** bonus dungeon is an extra dungeon on the same city that threatens nothing, costs days to walk, adds
+  no floor to the Cataclysm boss dungeon and does not roll the chance again.
+
+The last five were ruled by the coordinating session under the owner's delegation; every figure is a judgement or
+derived, as `docs/DECISIONS.md` labels it.
 
 **The partition is storage, not content.** There is one node graph,
 `Empire_Development_Tree_Final.json`, and every tree allocates the same nodes at

@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — Nine empire tree nodes that could not be bought are ruled: Imperial Prowess and city upgrade build times by the owner, five figures and rules by the coordinating session
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the section "City Upgrades" (an upgrade now takes days to build, ruled and not
+built) and the section "Empire-Wide Upgrades" (a new paragraph naming the nine nodes and what each was ruled to do);
+`docs/Empire_Skill_Tree_Keystones.md`, a note under each of the seven of these nodes it describes. Issues
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741) (the empire tree),
+[#2825](https://github.com/sdubois777/Cataclysm/issues/2825) (city upgrade build times) and
+[#1264](https://github.com/sdubois777/Cataclysm/issues/1264) (its build-days half). Documents only: **nothing here is
+built**, and no game code or data changes.
+
+### SAID FIRST
+
+- **THE OWNER REVERSED THE RULING OF 2026-11-18 THAT A CITY UPGRADE IS INSTANT.** That ruling ("Gold now, days later",
+  #1264) kept build days at zero. City upgrades now take days to build, by the upgrade's tier. Until #2825 is built the
+  game still applies an upgrade the moment it is bought, and the design document says so.
+- **THE GAME'S OWN REFUSAL TEXTS ARE NOW OUT OF DATE, AND THIS CHANGE LEAVES THEM.** `EMPIRE_TREE_SYSTEMS` in
+  `tools/generate_datatables.py` still gives these nodes' reasons as "a build time for city upgrades, which is zero by
+  the owner's ruling of 2026-11-18", "a ruling on what ... means, which the owner has not made", "a figure for its gold
+  fee, which the design does not state" and so on, and the player reads those words. Changing them changes a generated
+  table and its asset, which needs the editor. They change when each node is built: #2825 for the three build-time
+  nodes, the empire tree session (#2741) for the other six.
+
+### The owner's answers, verbatim, 2026-11-21
+
+> 1. Keystones are tier gated behind point thresholds. Imperial prowess lets you pick an additional keystone from a
+> previous tier. 2. My ruling was probably incorrect. They need build times. Probably based on their tier. The rest can
+> probably go with your rec
+
+- **(1) Imperial Prowess** ("You can now take an additional keystone from any of the previous tiers", an option of The
+  Imperial Zenith at 200 points) gives one more option from the earlier tier milestones: Foundations of the Empire (25
+  points), Edicts of Power (50) and The Imperial Vanguard (100), any option the player did not pick there. The keystones
+  document lists exactly these options under "Tier 1" to "Tier 3", and names the branches' single-point nodes
+  "NOTABLE" rather than keystones. The Soul Forge and The Master Tinkerer wait on crafting as they do at their own
+  milestones. The empire tree session builds it.
+- **(2) City upgrades take days to build.** "Their tier" is the upgrade's tier, the 1 to 3 ladder its price uses, ruled
+  by the coordinating session the same day: the owner was speaking of city upgrades. Scaffolding, Rapid Renovation and
+  Rapid Funding then have something to act on, and stop waiting on a ruling.
+- **(3) "The rest"** is the five nodes below, which the coordinating session ruled as recommended.
+
+### City upgrade build times (#2825), ruled by the coordinating session
+
+| Upgrade tier | Days | Kind |
+|---|---|---|
+| 1 | 6 | **derived**: Rapid Renovation takes up to 3 days off and Rapid Funding 2, both "Min 1 day", so 3 + 2 + 1 is the least at which both act in full |
+| 2 | 12 | **judgement**: the price ladder's doubling |
+| 3 | 24 | **judgement**: the price ladder's doubling |
+
+- The days do not scale with the difficulty tier.
+- The gold is paid and the slot taken at purchase; the upgrade does nothing until it is finished, and Enduring
+  Foundations counts from that day.
+- A Siege on the city pauses the build (the owner's ruling of 2026-09-05), and so does the city's fall.
+- A build cannot be cancelled, and nothing is refunded.
+- One build at a time per city; any number of cities may build at once.
+- Scaffolding: the price × 0.5 and the days × 2. Rapid Renovation: 1 day fewer a point. Rapid Funding: a Rush on each
+  offer, at 150% of the price the player would otherwise pay, for 2 days fewer. The doubling comes first, then the days
+  taken off, then the floor of 1 day. The days are fixed at purchase, so a node bought later does not shorten a build
+  already under way.
+
+The genre research behind it is in #2825: XCOM 2 counts facility construction in days while the player does other
+things ("Build Time: 12 days", "14 days", "20 days"), halves it with an engineer, and does not let a build under way be
+cancelled.
+
+### The five delegated nodes, ruled by the coordinating session under the owner's delegation
+
+Every gold figure is a difficulty tier 1 figure, scaled to the run's tier as a gold pile is (R10, 2026-11-20). One city
+upgrade costs 10,000 gold at tier 1, estimated at 0.7 to 1.4 twelve-floor walks.
+
+| Node | Its text | The ruling | Kind |
+|---|---|---|---|
+| Bribery | "Once per Surge, spend a large Gold fee to reset a single dungeon resolution timer to its maximum value." | A player action on the empire map: pick a dungeon, see the fee, pay; its timer returns to the value it started at. Once per surge. **20,000 gold**, twice one upgrade's price, because Scorched Earth buys the same reset by destroying an upgrade and Bribery keeps it | figure: judgement |
+| Economic Bailout | "If a City's health hits 0, pay a massive Gold fee to prevent it becoming a Fallen City. Once per city per Tier." | Paid automatically when a city's defence reaches 0 and the balance covers the fee, and said so in the log and on the city screen. **50,000 for an Outpost, 100,000 for a Bulwark, 150,000 for a Sanctuary.** The Pillar is excluded, because losing it is the designed end of a run. The saved city keeps half its maximum defence, as a retaken one does. "Once per city per Tier" is once per city per run, a run being played at one difficulty tier | ratio 1 : 2 : 3: derived, from the 20, 40 and 60 minimum floors of the Dungeon City each becomes; size, half defence and Pillar: judgement |
+| Reinvestment | "Every 25,000 Gold spent on City Upgrades grants 1% permanent Empire XP modifier boost (Capped)." | **Capped at 30%.** Equal to Veteran's Edge at its full 10 points (3% each), and to filling every slot of one empire once at full price (25 × 3 × 10,000 / 25,000) | both anchors: derived; choosing them: judgement |
+| Civic Pride | "+5% Population growth rate for all Cities per point." | The design has no population growth: population starts at its maximum and only falls. "Growth" is read as population coming back. **Each point makes each of the four restores 5% larger**, so 50% larger at 10 points: a retake (half, or 75% with The Architect's Legacy), The Mason's Guild (15% of a city's maximum every 20 days), the one-time city upgrade "Restore city's population by 50%", and the city upgrade "Every 20 days this city's population recovers 5%". No restore goes above the city's maximum | judgement |
+| Scout Parties | "+10% chance per point to discover a bonus dungeon after clearing one." | A bonus dungeon is an extra dungeon that appears on the same city, rolled like an ordinary dungeon for that city's ring. It costs days to walk like any other; when its timer runs out it leaves with no consequence. It pays its normal rewards and empire points, adds no floor to the Cataclysm boss dungeon, and its clear does not roll Scout Parties again | judgement |
+
+- **Reinvestment's "permanent"** was put forward with it as the gold spent counting across runs, saved with the empire
+  tree. **That reading is not ruled**; it is for whoever builds the node.
+- **The keystones document says Economic Bailout's fee "scales with your level".** The tree file, which is the
+  authority, does not say so, and the fee scales with the difficulty tier as every gold amount does.
+- **Genre:** Imperial Prowess has the shape of Path of Exile's Forbidden Flame and Forbidden Flesh, which together grant
+  one Ascendancy notable the character did not take ("Allocates Passive Skill if you have the matching modifier on
+  Forbidden Flesh", poedb.tw). Scout Parties has the shape of Path of Exile's five atlas nodes "Your Maps have +3%
+  chance to contain a Vaal Side Area" (poedb.tw), an optional extra area with its own rewards. **No shipped game was
+  found where gold buys back a threat timer or saves a settlement**, so the two fees rest only on this game's prices.
+
+---
+
 ## 2026-11-21 — The design document's figures for how long a geared character survives are recomputed from the model, and a test now recomputes them (#2818)
 
 **Affects:** `docs/Cataclysm_GDD_v2.md`, the section "How Long a Geared Character Survives" (its four-layer table, its
