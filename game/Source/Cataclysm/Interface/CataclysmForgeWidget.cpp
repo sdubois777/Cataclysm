@@ -9,6 +9,9 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
+// The enchantment pair an imprint or a drawback change drew, read as the tool tip reads it, issue #47 slice F3.
+#include "Interface/CataclysmItemTooltip.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 // A gold amount as a player reads it, issue #2830.
 #include "Items/CataclysmDroppedItem.h"
@@ -83,6 +86,9 @@ void UCataclysmForgeWidget::RefreshDisplay()
 			Detail += TEXT("\n") + Affixes;
 		}
 		ShownAffixActions = UCataclysmForgeLayout::AffixActionsFor(*Item);
+		// AND AN IMPRINT FOR EACH AFFIX, AND A DRAWBACK TO CHANGE FOR EACH ENCHANTMENT. Issue #47, slice F3.
+		ShownEnchantmentActions = UCataclysmForgeLayout::EnchantmentActionsFor(
+			*Item, UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable());
 		// AND A SHIFT FOR EACH AFFIX, AND THE CHOOSER FOR ADDING ONE, the choice kept within what the piece can take.
 		// Issue #47, slice F2.
 		const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
@@ -117,6 +123,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		ShownSocketActions.Reset();
 		ShownSocketWorkActions.Reset();
 		ShownAffixActions.Reset();
+		ShownEnchantmentActions.Reset();
 		ShownAffixChangeActions.Reset();
 		AddableAffixes.Reset();
 		ShownDamageTypeActions.Reset();
@@ -227,6 +234,17 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								   /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			AffixChange->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(AffixChange);
+		}
+	}
+
+	for (const FCataclysmForgeEnchantmentAction& Action : ShownEnchantmentActions)
+	{
+		if (UCataclysmChoiceButton* EnchantmentWork = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			EnchantmentWork->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+									   /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			EnchantmentWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(EnchantmentWork);
 		}
 	}
 
@@ -662,6 +680,77 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			Message = Done.Craft == ECataclysmForgeDamageTypeCraft::Change
 				? FString::Printf(TEXT("%s is %s now. %s"), *Done.FromType.ToString(), *Done.ToType.ToString(), *Cost)
 				: FString::Printf(TEXT("The weapon carries %s now. %s"), *Done.ToType.ToString(), *Cost);
+			break;
+		}
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// AN ENCHANTMENT IMPRINTED OR A DRAWBACK CHANGED, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as a socket's
+	// work is. Issue #47, slice F3.
+	FCataclysmForgeEnchantmentAction EnchantmentWork;
+	if (bHasChosen
+		&& UCataclysmForgeLayout::EnchantmentActionForButton(ButtonName, ShownEnchantmentActions, EnchantmentWork))
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeEnchantmentWork Plan = EnchantmentWork.bImprint
+			? UCataclysmForgeCraft::ImprintPlanFor(Context(), ChosenTarget, EnchantmentWork.Index)
+			: UCataclysmForgeCraft::ChangeNegativePlanFor(Context(), ChosenTarget, EnchantmentWork.Index);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeEnchantmentWork Done;
+		FString Said;
+		const ECataclysmForgeResult Result = EnchantmentWork.bImprint
+			? UCataclysmForgeCraft::Imprint(Context(), ChosenTarget, EnchantmentWork.Index, bThresholdWasAsked, Done, Said)
+			: UCataclysmForgeCraft::ChangeNegative(Context(), ChosenTarget, EnchantmentWork.Index, bThresholdWasAsked,
+												   Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+		{
+			// THE PAIR DRAWN, AS THE TOOL TIP READS IT.
+			const TArray<FString> Lines = UCataclysmItemTooltip::EnchantmentLines(
+				Done.Drawn, UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+				UCataclysmDropRoll::LoadNegativeEnchantmentTable());
+			const FString Positive = Lines.IsValidIndex(0) ? Lines[0] : Done.Drawn.Positive.ToString();
+			const FString Drawback = Lines.IsValidIndex(1) ? Lines[1] : Done.Drawn.Negative.ToString();
+			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
+												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
+												 Done.Days == 1 ? TEXT("") : TEXT("s"));
+			Message = Done.bImprint
+				? FString::Printf(TEXT("Imprinted %s (%s). The piece is now %s. %s"), *Positive, *Drawback,
+								  *UCataclysmGems::RarityName(Done.RarityAfter), *Cost)
+				: FString::Printf(TEXT("%s now carries %s. %s"), *Positive, *Drawback, *Cost);
 			break;
 		}
 		case ECataclysmForgeResult::Refused:

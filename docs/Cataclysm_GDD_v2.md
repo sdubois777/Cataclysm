@@ -4005,7 +4005,7 @@ applied.
 | :-- | :-- | :-: | :-: | :-- |
 | Reroll Affix Value | Corrupted Mote | 2 | 0 | Low-risk, high-frequency action |
 | Unsocket Gem | Dismantling Dust | 3 | 1 | |
-| Imprint Enchantment | Aetherial Shard | 5 | 2 | |
+| Imprint Enchantment | Aetherial Shard | 5 | 2 | Adds one enchantment, drawn at random as a drop draws one, and gives up the regular affix the player chooses. Only a piece with every slot filled, Masterful and up, at the gear level the rarity it becomes needs (issue #47) |
 | Socket Gem | Jeweler's Setting Agent | 5 | 1 | |
 | Deterministic Affix | Schematic Fragments | 5 per affix tier | 1 per affix tier, maximum 8 | Guaranteed affix |
 | Change Socket Type | Focusing Lens | 10 | 2 | |
@@ -4017,7 +4017,7 @@ applied.
 | Upgrade Item Level | Upgrade Stone | 25 per tier | 1 per tier, maximum 10 | Consumes two upgrade stones |
 | Perfect Roll Attempt | Primal Spark | 50 | 5 | Forces the maximum stat roll |
 | Infuse Specific Damage Type | Sovereign Ingot | 50 | 5 | |
-| Change Enchantment Negative | Regret Essence | 100 | 7 | |
+| Change Enchantment Negative | Regret Essence | 100 | 7 | Draws a different drawback at random, never milder than its benefit, with a new number; the benefit and its number are kept. A set's drawback is not changed (issue #47) |
 | Accelerate Craft | Tainted Shard | 0 | −1 | Removes one day of the accumulated time penalty per shard |
 | Reduce CR Gain | Chaos Stabilizer | −50% of the next craft's CR | 0 | Applies to one craft |
 | CR Cleanse | Purified Essence | −50% of accumulated CR | 1 per 500 CR removed | The resource-heavy safety valve |

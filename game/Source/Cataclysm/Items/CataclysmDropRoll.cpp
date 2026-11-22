@@ -1874,7 +1874,8 @@ FName UCataclysmDropRoll::DrawEnchantmentInBand(
 bool UCataclysmDropRoll::RollEnchantments(
 	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
 	const FString& Slot, int32 Count, FRandomStream& Stream,
-	TArray<FCataclysmRolledEnchantment>& OutRolled)
+	TArray<FCataclysmRolledEnchantment>& OutRolled,
+	const TArray<FCataclysmRolledEnchantment>* AlreadyOn)
 {
 	OutRolled.Reset();
 	if (Count <= 0)
@@ -1929,6 +1930,18 @@ bool UCataclysmDropRoll::RollEnchantments(
 	// and a negative are drawn from different tables and cannot collide.
 	TSet<FName> TakenPositives;
 	TSet<FName> TakenNegatives;
+
+	// AND THE PAIRS THE PIECE ALREADY HOLDS, for an imprint (issue #47, slice
+	// F3). Read without drawing, so a drop, which passes none, draws what it
+	// drew before.
+	if (AlreadyOn)
+	{
+		for (const FCataclysmRolledEnchantment& Held : *AlreadyOn)
+		{
+			TakenPositives.Add(Held.Positive);
+			TakenNegatives.Add(Held.Negative);
+		}
+	}
 
 	// ASKED WITHOUT DRAWING. DrawEnchantmentInBand would answer this too, but it
 	// takes a number off the stream to do it, and a test that moves the stream
@@ -2167,6 +2180,75 @@ bool UCataclysmDropRoll::RollEnchantments(
 		OutRolled.Add(MoveTemp(Rolled));
 	}
 
+	return true;
+}
+
+bool UCataclysmDropRoll::DrawReplacementNegative(const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+												 const FString& Slot,
+												 const TArray<FCataclysmRolledEnchantment>& OnThePiece, int32 Pair,
+												 FRandomStream& Stream, FCataclysmRolledEnchantment& OutPair)
+{
+	if (!PositiveTable || !NegativeTable || !OnThePiece.IsValidIndex(Pair))
+	{
+		return false;
+	}
+	const FCataclysmRolledEnchantment& Kept = OnThePiece[Pair];
+	const FCataclysmEnchantmentRow* Positive = PositiveTable->FindRow<FCataclysmEnchantmentRow>(
+		Kept.Positive, TEXT("UCataclysmDropRoll::DrawReplacementNegative"), /*bWarnIfMissing=*/false);
+	// A SET'S PAIR IS NEVER REDRAWN: its negative is the set's own. And a positive whose weight is not a whole 1 to 4
+	// is one the drop could never have drawn, so there is no band to measure the floor against.
+	if (Positive == nullptr || EnchantmentSetId(*Positive) > 0 || EnchantmentDrawWeight(Positive->Weight) <= 0.0f)
+	{
+		return false;
+	}
+	const int32 PositiveBand = FMath::RoundToInt(Positive->Weight) - static_cast<int32>(LowestEnchantmentWeight);
+
+	TArray<TArray<FName>> NegativesByWeight;
+	EnchantmentCandidatesByWeight(NegativeTable, Slot, NegativesByWeight);
+
+	// EVERY NEGATIVE ON THE PIECE IS TAKEN, the one replaced included: never the same one again (Q18), and never one
+	// the piece carries on another pair.
+	TSet<FName> Taken;
+	for (const FCataclysmRolledEnchantment& Held : OnThePiece)
+	{
+		Taken.Add(Held.Negative);
+	}
+
+	// FROM WEIGHT 1 UP TO THE POSITIVE'S WEIGHT, AND NO FURTHER: the floor `RollEnchantments` keeps.
+	TArray<bool> bBandCanSupply;
+	bBandCanSupply.Reserve(EnchantmentWeightCount);
+	for (int32 Band = 0; Band < EnchantmentWeightCount; ++Band)
+	{
+		bool bHasUntaken = false;
+		for (const FName& Row : NegativesByWeight[Band])
+		{
+			bHasUntaken = bHasUntaken || !Taken.Contains(Row);
+		}
+		bBandCanSupply.Add(Band <= PositiveBand && bHasUntaken);
+	}
+	const int32 Weight = DrawEnchantmentWeight(bBandCanSupply, Stream);
+	if (Weight <= 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("No negative at or below weight %d is left for '%s' on a '%s' that holds %d pairs, so its negative "
+					"cannot be changed."),
+			   PositiveBand + static_cast<int32>(LowestEnchantmentWeight), *Kept.Positive.ToString(), *Slot,
+			   OnThePiece.Num());
+		return false;
+	}
+	const FName Negative = DrawEnchantmentInBand(
+		NegativesByWeight[Weight - static_cast<int32>(LowestEnchantmentWeight)], Taken, Stream);
+	if (Negative.IsNone())
+	{
+		return false;
+	}
+
+	// A NEW ROLL, FROM A STREAM OF ITS OWN, as `RollEnchantments` rolls each half's place in its range.
+	FRandomStream Values(static_cast<int32>(HashCombineFast(static_cast<uint32>(Stream.GetCurrentSeed()),
+															EnchantmentValueStreamSalt)));
+	OutPair = Kept;
+	OutPair.Negative = Negative;
+	OutPair.NegativeRoll = Values.GetFraction();
 	return true;
 }
 

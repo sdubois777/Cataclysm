@@ -555,6 +555,68 @@ bool UCataclysmForgeLayout::DamageTypeActionForButton(FName ButtonName,
 	return false;
 }
 
+TArray<FCataclysmForgeEnchantmentAction> UCataclysmForgeLayout::EnchantmentActionsFor(const FCataclysmItem& Item,
+																					  const UDataTable* PositiveTable,
+																					  const UDataTable* NegativeTable)
+{
+	TArray<FCataclysmForgeEnchantmentAction> Out;
+	if (Item.Base.IsNone())
+	{
+		return Out;
+	}
+	// AN IMPRINT FOR EACH AFFIX, ON A PIECE WITH EVERY SLOT FILLED (Q16), the player choosing which affix goes (Q15). Each
+	// is named by its number in slice F1's affix list, `AffixesDetailFor`, which the screen's detail shows.
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+	if (UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Rarity)
+		&& Item.EnchantmentCount + Item.Affixes.Num() >= UCataclysmItemValues::SlotsPerPiece)
+	{
+		for (int32 Index = 0; Index < Item.Affixes.Num(); ++Index)
+		{
+			FCataclysmForgeEnchantmentAction& Imprint = Out.AddDefaulted_GetRef();
+			Imprint.bImprint = true;
+			Imprint.Index = Index;
+			Imprint.Named = FString::Printf(TEXT("affix %d"), Index + 1);
+			Imprint.ButtonName = FName(*FString::Printf(TEXT("Imprint_%d"), Index));
+			Imprint.Label = FString::Printf(TEXT("Imprint, giving up %s"), *Imprint.Named);
+		}
+	}
+	// A DRAWBACK TO CHANGE FOR EACH ENCHANTMENT THAT IS NOT A SET'S: a set's drawback is the set's own.
+	for (int32 Index = 0; Index < Item.Enchantments.Num(); ++Index)
+	{
+		const FCataclysmRolledEnchantment& Pair = Item.Enchantments[Index];
+		const FCataclysmEnchantmentRow* Positive = PositiveTable != nullptr
+			? PositiveTable->FindRow<FCataclysmEnchantmentRow>(Pair.Positive, TEXT("EnchantmentActionsFor"),
+															   /*bWarnIfMissing=*/false)
+			: nullptr;
+		if (Positive == nullptr || UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)
+		{
+			continue;
+		}
+		const TArray<FString> Lines = UCataclysmItemTooltip::EnchantmentLines(Pair, PositiveTable, NegativeTable);
+		FCataclysmForgeEnchantmentAction& Change = Out.AddDefaulted_GetRef();
+		Change.Index = Index;
+		Change.Named = Lines.IsValidIndex(0) ? Lines[0] : Pair.Positive.ToString();
+		Change.ButtonName = FName(*FString::Printf(TEXT("ChangeDrawback_%d"), Index));
+		Change.Label = FString::Printf(TEXT("Change the drawback of %s"), *Change.Named);
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::EnchantmentActionForButton(FName ButtonName,
+													   const TArray<FCataclysmForgeEnchantmentAction>& Shown,
+													   FCataclysmForgeEnchantmentAction& OutAction)
+{
+	for (const FCataclysmForgeEnchantmentAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
 TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
 	const UCataclysmInventoryComponent* Inventory)
 {

@@ -5,12 +5,14 @@
 #include "Cataclysm.h"
 // The damage types designed for each weapon type, issue #47 slice F4.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
 // A gem's type, name and rarity name, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
@@ -1392,5 +1394,251 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* World
 	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
 
 	OutDone = Plan;
+	return ECataclysmForgeResult::Done;
+}
+
+namespace
+{
+	/**
+	 * An enchantment pair as the tool tip reads it: its positive's line, then its drawback's without the tool tip's
+	 * "Drawback: " word, which the play loop's line says itself. A row the tables do not hold reads as its row name.
+	 */
+	TPair<FString, FString> EnchantmentWords(const FCataclysmRolledEnchantment& Pair)
+	{
+		const TArray<FString> Lines = UCataclysmItemTooltip::EnchantmentLines(
+			Pair, UCataclysmDropRoll::LoadPositiveEnchantmentTable(), UCataclysmDropRoll::LoadNegativeEnchantmentTable());
+		FString Drawback = Lines.IsValidIndex(1) ? Lines[1] : Pair.Negative.ToString();
+		Drawback.RemoveFromStart(UCataclysmItemTooltip::DrawbackPrefix);
+		return TPair<FString, FString>(Lines.IsValidIndex(0) ? Lines[0] : Pair.Positive.ToString(), Drawback);
+	}
+}
+
+FCataclysmForgeEnchantmentWork UCataclysmForgeCraft::ImprintPlanFor(const UObject* WorldContext,
+																	const FCataclysmForgeTarget& Target, int32 Affix)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::ImprintOf(FCataclysmItem(), Affix, 0, UCataclysmDropRoll::LoadGearRarityTable(),
+										  GoldTierOf(WorldContext), 0);
+	}
+	return UCataclysmForge::ImprintOf(
+		*Item, Affix, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::AetherialShardRow)),
+		UCataclysmDropRoll::LoadGearRarityTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+}
+
+FCataclysmForgeEnchantmentWork UCataclysmForgeCraft::ChangeNegativePlanFor(const UObject* WorldContext,
+																		   const FCataclysmForgeTarget& Target,
+																		   int32 Pair)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::ChangeNegativeOf(FCataclysmItem(), Pair, 0,
+												 UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+												 GoldTierOf(WorldContext), 0);
+	}
+	return UCataclysmForge::ChangeNegativeOf(
+		*Item, Pair, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::RegretEssenceRow)),
+		UCataclysmDropRoll::LoadPositiveEnchantmentTable(), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::Imprint(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													int32 Affix, bool bConfirmedPastThreshold,
+													FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeEnchantmentWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeEnchantmentWork Plan = ImprintPlanFor(WorldContext, Target, Affix);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	return DoEnchantmentWork(WorldContext, Target, Plan, bConfirmedPastThreshold, OutDone, OutMessage);
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::ChangeNegative(const UObject* WorldContext,
+														   const FCataclysmForgeTarget& Target, int32 Pair,
+														   bool bConfirmedPastThreshold,
+														   FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeEnchantmentWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeEnchantmentWork Plan = ChangeNegativePlanFor(WorldContext, Target, Pair);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	return DoEnchantmentWork(WorldContext, Target, Plan, bConfirmedPastThreshold, OutDone, OutMessage);
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* WorldContext,
+															  const FCataclysmForgeTarget& Target,
+															  const FCataclysmForgeEnchantmentWork& Plan,
+															  bool bConfirmedPastThreshold,
+															  FCataclysmForgeEnchantmentWork& OutDone, FString& OutMessage)
+{
+	UWorld* World = ForgeWorldOf(WorldContext);
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+
+	// THE DAYS NEED A RUN TO PASS IN, and the draw reads the run's mask and day.
+	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	if (Run == nullptr)
+	{
+		OutMessage = TEXT("There is no run to take the craft's days from.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem* Held = ItemAt(*Character, Target);
+	if (Held == nullptr)
+	{
+		OutMessage = Plan.bImprint ? TEXT("There is nothing there to imprint.") : TEXT("There is nothing there to change.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem Before = *Held; // A COPY: the pointer is into the component's own array.
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	const FString Name = UCataclysmForge::NameOf(Before, BaseTable, AffixTable);
+	const float Added = Plan.ResidueAfter - Plan.ResidueBefore;
+
+	// THE THRESHOLD, FOR A WORN PIECE ONLY, as socketing asks it.
+	bool bCrosses = false;
+	if (Target.bWorn)
+	{
+		const float Threshold =
+			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
+		const float Now = Equipment->WornResidue();
+		const float After = Now + Added;
+		bCrosses = Now < Threshold && After >= Threshold;
+		if (bCrosses && !bConfirmedPastThreshold)
+		{
+			OutMessage = FString::Printf(
+				TEXT("%s %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
+				Plan.bImprint ? TEXT("Imprinting") : TEXT("Changing a drawback of"), *Name, FMath::RoundToInt(After),
+				FMath::RoundToInt(Threshold), UCataclysmWearing::ThresholdConsequence);
+			return ECataclysmForgeResult::AsksAboutTheThreshold;
+		}
+	}
+
+	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const bool bWasMarked = State != nullptr && State->IsMarkedByConsumption();
+	if (bCrosses && State != nullptr)
+	{
+		State->MarkByConsumption();
+	}
+	const auto TakeBackTheMark = [&]()
+	{
+		if (bCrosses && State != nullptr && !bWasMarked)
+		{
+			State->ClearConsumptionMark();
+		}
+	};
+
+	// THE GOLD, THE MATERIAL, THEN THE ITEM. A refusal after anything is taken puts it back.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+	if (!Inventory->RemoveMaterial(Plan.Material, 1))
+	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		OutMessage = TEXT("The material could not be taken from the bag; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	// THE ITEM CHANGED, IN SLICE F1'S ORDER (`CraftAffix`): after the gold and the material, before the days. The pair is
+	// drawn from the item as it stood, the run's mask and the day before the craft's days pass, so the same item on the
+	// same day of the same run draws the same, and an imprint draws the same pair whichever affix the player gives up.
+	const UDataTable* Positives = UCataclysmDropRoll::LoadPositiveEnchantmentTable();
+	const UDataTable* Negatives = UCataclysmDropRoll::LoadNegativeEnchantmentTable();
+	FCataclysmForgeEnchantmentWork Done = Plan;
+	FCataclysmItem Changed = Before;
+	bool bDrawn = false;
+	if (Plan.bImprint)
+	{
+		FRandomStream AfterTheDraw;
+		bDrawn = UCataclysmForge::DrawImprint(Before, BaseTable, Positives, Negatives, Run->WalkSeedMask, Run->Day(),
+											  Done.Drawn, AfterTheDraw)
+			&& UCataclysmForge::ApplyImprint(Before, Plan.Affix, Done.Drawn, BaseTable,
+											 UCataclysmWeaponSkills::LoadGeneratedTable(),
+											 UCataclysmItemModifiers::LoadEnchantmentEffectTable(), AfterTheDraw, Changed);
+	}
+	else
+	{
+		bDrawn = UCataclysmForge::DrawChangedNegative(Before, Plan.Pair, BaseTable, Positives, Negatives,
+													  Run->WalkSeedMask, Run->Day(), Done.Drawn);
+		if (bDrawn)
+		{
+			Changed.Enchantments[Plan.Pair] = Done.Drawn;
+		}
+	}
+	if (!bDrawn)
+	{
+		// WHAT IT TOOK GOES BACK, as when the piece cannot be replaced: the material, the gold and the mark.
+		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		UE_LOG(LogCataclysm, Error, TEXT("The forge could not draw an enchantment for %s; what it took is back in the bag."),
+			   *Name);
+		OutMessage = TEXT("No enchantment could be drawn for that piece; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+	Changed.Residue = Plan.ResidueAfter;
+
+	const bool bReplaced = Target.bWorn ? Equipment->ReplaceEquippedAt(Target.WornSlot, Changed)
+										: Inventory->ReplaceItemAt(Target.CarriedSlot, Changed);
+	if (!bReplaced)
+	{
+		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		UE_LOG(LogCataclysm, Error, TEXT("The forge could not put %s back where it was; what it took is back in the bag."),
+			   *Name);
+		OutMessage = TEXT("The item could not be changed; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	const int32 DayBefore = Run->Day();
+	Run->AdvanceDays(Plan.Days);
+	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
+	{
+		State->SetConsumptionBuild(FCataclysmPlayerBuild::Of(*Character));
+	}
+
+	// THE LINE: what was drawn, and what was given up or replaced, as the tool tip reads them.
+	const TPair<FString, FString> Drawn = EnchantmentWords(Done.Drawn);
+	const FString GivenUpOrReplaced = Plan.bImprint
+		? UCataclysmItemTooltip::AffixLine(Before.Affixes[Plan.Affix], Before, BaseTable, AffixTable)
+		: EnchantmentWords(Plan.Before).Value;
+	UE_LOG(LogCataclysm, Log, TEXT("The forge %s %s: %s / %s, for %s; residue %.0f to %.0f; %d day(s), day %d to day %d."),
+		   Plan.bImprint ? TEXT("imprinted") : TEXT("changed a drawback of"), *Name, *Drawn.Key, *Drawn.Value,
+		   *GivenUpOrReplaced, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, DayBefore, Run->Day());
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine(
+		Plan.bImprint, Name, Drawn.Key, Drawn.Value, GivenUpOrReplaced, Plan.Gold, FMath::RoundToInt(Plan.ResidueBefore),
+		FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
+
+	// SAVED: the character record holds the item and the material, the run record the days, the account record the gold
+	// when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
+
+	OutDone = Done;
 	return ECataclysmForgeResult::Done;
 }
