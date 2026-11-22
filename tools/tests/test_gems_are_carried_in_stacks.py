@@ -92,7 +92,8 @@ def test_a_dropped_gem_stack_goes_to_the_floor_as_gems() -> None:
     floor = dropping[dropping.find("PutOnTheFloor("):]
     assert dropping.find("PutOnTheFloor(") != -1, "DropCarried no longer asks the floor"
     call = floor[:floor.find(")")]
-    for argument in ("Leaving.Gem", "Leaving.GemRarity", "bGems ? Leaving.Quantity : 0"):
+    # "Leaving.Gem," WITH ITS COMMA: without it the check is satisfied by "Leaving.GemRarity" alone (proof GX8).
+    for argument in ("Leaving.Gem,", "Leaving.GemRarity,", "bGems ? Leaving.Quantity : 0"):
         assert argument in call, f"DropCarried does not give the floor {argument}, so a dropped gem stack is lost"
 
 
