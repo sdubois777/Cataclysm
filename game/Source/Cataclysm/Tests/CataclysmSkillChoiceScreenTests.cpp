@@ -189,7 +189,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillChoiceScreenToolTipTest,
 /**
  * Q7: four lines and no numbers. Pyroclasm's tool tip names it, the slot it was made for, its weapon type and damage
  * type, and its description; on another key it says which. The control: Molten Cleave's tool tip does not carry
- * Pyroclasm's description. A pool button the test made carries the same text as its tool tip.
+ * Pyroclasm's description. A pool button the test made carries the same four lines with WHAT A PRESS COSTS above the
+ * description, since issue #2804: the screen has a player, so its buttons state the cost to that player.
  */
 bool FCataclysmSkillChoiceScreenToolTipTest::RunTest(const FString&)
 {
@@ -230,7 +231,18 @@ bool FCataclysmSkillChoiceScreenToolTipTest::RunTest(const FString&)
 	}
 	UCataclysmChoiceButton* Button = NewObject<UCataclysmChoiceButton>();
 	Carrier.Screen->DescribeButtonForTests(*Button, ScreenPyroclasmRow, /*bIsSlot=*/false);
-	TestEqual(TEXT("a pool button carries that tool tip"), Button->GetToolTipText().ToString(), Tip);
+	TArray<FString> TipLines;
+	TArray<FString> ButtonLines;
+	Tip.ParseIntoArray(TipLines, TEXT("\n"), /*InCullEmpty=*/false);
+	Button->GetToolTipText().ToString().ParseIntoArray(ButtonLines, TEXT("\n"), /*InCullEmpty=*/false);
+	if (TestEqual(TEXT("a pool button carries that tool tip and its cost: five lines"), ButtonLines.Num(), 5)
+		&& TestEqual(TEXT("set-up: the tool tip's own four"), TipLines.Num(), 4))
+	{
+		TestTrue(TEXT("its first three are the tool tip's"),
+				 ButtonLines[0] == TipLines[0] && ButtonLines[1] == TipLines[1] && ButtonLines[2] == TipLines[2]);
+		TestTrue(TEXT("its fourth what a press costs"), ButtonLines[3].StartsWith(TEXT("Costs ")));
+		TestEqual(TEXT("and its fifth the description"), ButtonLines[4], TipLines[3]);
+	}
 	return true;
 }
 
