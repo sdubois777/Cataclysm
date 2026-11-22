@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Player/CataclysmPowerScore.h"
@@ -24,7 +25,7 @@
 /**
  * A kill's experience and loot by the gap between the dungeon's score and the player's. Issue #2824, slice c: the
  * coordinating session's rule D and the owner's 25% loot floor, both of 2026-11-22, recorded in `docs/DECISIONS.md`.
- * `Cataclysm.PowerGapRewards.` IS A NEW GROUP and selects these four and nothing else.
+ * `Cataclysm.PowerGapRewards.` IS A NEW GROUP and selects these five and nothing else.
  *
  * WRITTEN WITHOUT A BUILD. Phase 1: every figure below is the simulation's or reasoned from the code, and the run that
  * proves them is registered in `docs/DECISIONS.md` before it happens.
@@ -357,6 +358,71 @@ bool FCataclysmPowerGapRewardsMapLineTest::RunTest(const FString&)
 	TestEqual(TEXT("with no player score, the scores' line alone"), Unknown,
 			  UCataclysmEmpireMapLayout::DungeonScoreLine(Run, 961, INDEX_NONE));
 	TestTrue(TEXT("CONTROL: a dungeon not on the map gives no line"), Missing.IsEmpty());
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// PG5. A cut kill hands the spawner a quarter of its loot quantity and gold multiplier.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsKillLootTest,
+	"Cataclysm.PowerGapRewards.ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's 25% loot floor, read without counting a random drop: `FCataclysmPowerGapRule::KillLootFor`, which the
+ * death handler calls for the loot quantity and the gold multiplier it hands the spawner. A player two tier widths above
+ * the dungeon (2,009 against 3,443 at tier 4) gets 5% experience and 25% loot; a loot quantity of 125 (the baseline 100
+ * after a city's 25% more) and a gold multiplier of 1.875 become exactly 31.25 and 0.46875. CONTROL: in a world with a
+ * possessed player and the dungeon game mode but no dungeon bound, what a kill asks is not scored and hands both on
+ * unchanged. Prints "GAP KILL LOOT".
+ */
+bool FCataclysmPowerGapRewardsKillLootTest::RunTest(const FString&)
+{
+	using namespace CataclysmPowerGapRewardsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a test world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestTrue(TEXT("set-up: the dungeon game mode, a player state, a controller and a character"),
+				  Mode && State && Controller && Player))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	Run->Begin(2824);
+	Mode->SetEmpireRunForTests(Run);
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	State->SetLevelAndExperience(99, 0);
+
+	const float Quantity = UCataclysmDropRoll::BaselineLootQuantity * 1.25f;
+	const float Gold = 1.5f * 1.25f;
+	const FCataclysmPowerGapRewards Cut = FCataclysmPowerGapRule::RewardsFor(2009, 3443, 4);
+	const FCataclysmPowerGapKillLoot AtTheCut = FCataclysmPowerGapRule::KillLootFor(Quantity, Gold, Cut);
+	const FCataclysmPowerGapRewards Outside = ACataclysmDungeonGameMode::PowerGapRewardsIn(World);
+	const FCataclysmPowerGapKillLoot Uncut = FCataclysmPowerGapRule::KillLootFor(Quantity, Gold, Outside);
+	AddInfo(FString::Printf(TEXT("GAP KILL LOOT: cut %s: loot quantity %.4f to %.5f, gold multiplier %.4f to %.5f; outside "
+								 "an empire dungeon %s: %.5f and %.5f"),
+							*Describe(Cut), Quantity, AtTheCut.LootQuantity, Gold, AtTheCut.GoldMultiplier,
+							*Describe(Outside), Uncut.LootQuantity, Uncut.GoldMultiplier));
+
+	TestTrue(TEXT("set-up: two widths above the dungeon is scored"), Cut.bScored);
+	TestEqual(TEXT("set-up: experience at its floor, 5%"), Cut.Experience, 0.05, 1.0e-9);
+	TestTrue(TEXT("**loot at the owner's floor, exactly 25%**"), Cut.Loot == 0.25);
+	TestTrue(TEXT("**the loot quantity handed on is exactly a quarter**"), AtTheCut.LootQuantity == Quantity * 0.25f);
+	TestTrue(TEXT("**and the gold multiplier exactly a quarter**"), AtTheCut.GoldMultiplier == Gold * 0.25f);
+	TestFalse(TEXT("CONTROL: outside an empire dungeon, not scored"), Outside.bScored);
+	TestTrue(TEXT("**CONTROL: and the loot quantity handed on unchanged**"), Uncut.LootQuantity == Quantity);
+	TestTrue(TEXT("**CONTROL: and the gold multiplier unchanged**"), Uncut.GoldMultiplier == Gold);
 	return true;
 }
 

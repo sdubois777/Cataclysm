@@ -94,6 +94,11 @@ def test_a_kill_multiplies_its_gold_after_the_draws_and_the_rules_carry_the_figu
     assert call is not None, "the kill no longer drops gold through SpawnGoldFor"
     # THE LAST ARGUMENT, TIMES THE CITY'S "MORE GOLD" since issue #2781.
     last = call.group(1).rsplit(",", 1)[-1]
+    # Since #2824 slice c the multiplier reaches the spawner through `FCataclysmPowerGapRule::KillLootFor`, whose
+    # second argument is the tree's times the city's.
+    if "KillLoot.GoldMultiplier" in last:
+        killloot = re.search(r"FCataclysmPowerGapRule::KillLootFor\(([^;]*)\);", handler)
+        last = killloot.group(1).split(",")[1] if killloot else ""
     assert "TreeDrops.GoldMultiplier" in last, (
         f"the kill does not pass its drop rules' gold multiplier: SpawnGoldFor({call.group(1).strip()})")
 

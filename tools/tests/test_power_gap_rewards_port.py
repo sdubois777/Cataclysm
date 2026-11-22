@@ -142,15 +142,22 @@ def test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward
     handler = body(code(ENEMY), "void ACataclysmEnemyCharacter::HandleDeath()")
     asked = handler.find("const FCataclysmPowerGapRewards GapRewards = ACataclysmDungeonGameMode::PowerGapRewardsIn(World);")
     city_loot = handler.find("LootQuantity *= CityRewards.LootMore;")
-    gap_loot = handler.find("LootQuantity *= static_cast<float>(GapRewards.Loot);")
+    scaled = handler.find("const FCataclysmPowerGapKillLoot KillLoot = FCataclysmPowerGapRule::KillLootFor( LootQuantity, "
+                          "TreeDrops.GoldMultiplier * CityRewards.GoldMore, GapRewards);")
+    taken = handler.find("LootQuantity = KillLoot.LootQuantity;")
     paying = handler.find("if (bPays)")
-    assert -1 < city_loot < asked < gap_loot < paying, (
-        "the kill does not ask for the gap's factor and multiply its loot quantity after the city's, before it pays")
+    assert -1 < city_loot < asked < scaled < taken < paying, (
+        "the kill does not scale its loot quantity and gold multiplier through KillLootFor, after the city's and the "
+        "tree's, before it pays")
 
     gold = re.search(r"UCataclysmDropSpawner::SpawnGoldFor\(([^;]*)\);", handler)
     last = gold.group(1).rsplit(",", 1)[-1] if gold else ""
-    assert "GapRewards.Loot" in last and "CityRewards.GoldMore" in last, (
-        f"the kill's gold multiplier does not take the loot factor: {last.strip()!r}")
+    assert last.strip() == "KillLoot.GoldMultiplier", (
+        f"the kill's gold multiplier is not KillLootFor's: {last.strip()!r}")
+    kill_loot = body(code(RULE_CPP), "FCataclysmPowerGapKillLoot FCataclysmPowerGapRule::KillLootFor(")
+    for field, given in (("LootQuantity", "LootQuantity"), ("GoldMultiplier", "GoldMultiplier")):
+        assert f"Out.{field} = {given} * static_cast<float>(Rewards.Loot);" in kill_loot, (
+            f"KillLootFor does not multiply the {field} by the loot factor")
     for grant in ("State->GrantExperience(", "State->GrantSkillExperience("):
         at = handler.find(grant)
         assert at != -1, f"the kill no longer calls {grant}"

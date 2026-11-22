@@ -25,6 +25,15 @@ double FCataclysmPowerGapRule::GapOf(int32 DungeonScore, int32 PlayerScore, int3
 		/ UCataclysmEnemyScore::TierWidth(DifficultyTier);
 }
 
+FCataclysmPowerGapKillLoot FCataclysmPowerGapRule::KillLootFor(float LootQuantity, float GoldMultiplier,
+															   const FCataclysmPowerGapRewards& Rewards)
+{
+	FCataclysmPowerGapKillLoot Out;
+	Out.LootQuantity = LootQuantity * static_cast<float>(Rewards.Loot);
+	Out.GoldMultiplier = GoldMultiplier * static_cast<float>(Rewards.Loot);
+	return Out;
+}
+
 FCataclysmPowerGapRewards FCataclysmPowerGapRule::RewardsFor(int32 DungeonScore, int32 PlayerScore,
 															 int32 DifficultyTier)
 {

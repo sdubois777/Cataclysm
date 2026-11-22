@@ -28,6 +28,16 @@ struct CATACLYSM_API FCataclysmPowerGapRewards
 	}
 };
 
+/** What a kill hands the drop spawner after the loot factor: its loot quantity and its gold multiplier. */
+struct CATACLYSM_API FCataclysmPowerGapKillLoot
+{
+	/** The loot quantity every roll of the kill uses: gear, materials, the tree's extra drops and gems. */
+	float LootQuantity = 0.0f;
+
+	/** The multiplier on each gold pile. */
+	float GoldMultiplier = 0.0f;
+};
+
 /**
  * THE RULE FOR A KILL'S EXPERIENCE AND LOOT BY THE POWER SCORE GAP. Issue #2824, slice c: the coordinating session's
  * rule D and the owner's loot floor, both of 2026-11-22, recorded in `docs/DECISIONS.md`.
@@ -74,6 +84,15 @@ struct CATACLYSM_API FCataclysmPowerGapRule
 
 	/** `(DungeonScore - PlayerScore) / UCataclysmEnemyScore::TierWidth(DifficultyTier)`. */
 	static double GapOf(int32 DungeonScore, int32 PlayerScore, int32 DifficultyTier);
+
+	/**
+	 * What a kill hands the drop spawner: `LootQuantity` (the player's, after the city's "more loot") and
+	 * `GoldMultiplier` (the empire tree's times the city's), each times `Rewards.Loot`. What
+	 * `ACataclysmEnemyCharacter::HandleDeath` calls, so a test reads the factor's effect without counting random drops.
+	 * Both unchanged at a factor of exactly 1. Issue #2824, slice c.
+	 */
+	static FCataclysmPowerGapKillLoot KillLootFor(float LootQuantity, float GoldMultiplier,
+												  const FCataclysmPowerGapRewards& Rewards);
 
 	/** Both factors for these scores, or the default (1, 1, not scored) when either score is `INDEX_NONE`. */
 	static FCataclysmPowerGapRewards RewardsFor(int32 DungeonScore, int32 PlayerScore, int32 DifficultyTier);
