@@ -85,15 +85,15 @@ def test_a_stack_is_found_by_gem_and_rarity() -> None:
     assert "SlotOfGems(Gem, Rarity)" in adding, "AddGems does not look for the stack of that gem at that rarity"
 
 
-def test_dropping_a_gem_stack_is_refused_before_the_floor_is_asked() -> None:
-    text = code(WEARING_CPP)
-    dropping = body(text, "ECataclysmWearResult UCataclysmWearing::DropCarried(", WEARING_CPP.name)
-    refusal = dropping.find("return ECataclysmWearResult::GemsStayInTheBag;")
-    floor = dropping.find("PutOnTheFloor(")
-    assert refusal != -1, "DropCarried no longer refuses a gem stack, so dropping one would destroy the gems"
-    assert floor != -1 and refusal < floor, "DropCarried asks the floor before it refuses a gem stack"
-    explaining = body(text, "FString UCataclysmWearing::Explain(", WEARING_CPP.name)
-    assert "case ECataclysmWearResult::GemsStayInTheBag:" in explaining, "Explain says nothing for GemsStayInTheBag"
+def test_a_dropped_gem_stack_goes_to_the_floor_as_gems() -> None:
+    # Slice G5 lifted G2's refusal: a gem stack lies on the floor whole, so DropCarried must hand the floor the gem,
+    # its rarity and the count, or the drop would hold nothing and the gems would be destroyed.
+    dropping = body(code(WEARING_CPP), "ECataclysmWearResult UCataclysmWearing::DropCarried(", WEARING_CPP.name)
+    floor = dropping[dropping.find("PutOnTheFloor("):]
+    assert dropping.find("PutOnTheFloor(") != -1, "DropCarried no longer asks the floor"
+    call = floor[:floor.find(")")]
+    for argument in ("Leaving.Gem", "Leaving.GemRarity", "bGems ? Leaving.Quantity : 0"):
+        assert argument in call, f"DropCarried does not give the floor {argument}, so a dropped gem stack is lost"
 
 
 @pytest.mark.parametrize("path, signature", [

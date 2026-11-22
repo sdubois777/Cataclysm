@@ -380,6 +380,19 @@ struct CATACLYSM_API FCataclysmSavedGroundItem
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 Gold = 0;
 
+	/**
+	 * Which gem lies here, its rarity and how many, or None and zero when the drop is not gems. Issue #46, slice G5.
+	 * Without them a save made mid-floor lost every gem not yet collected.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	FName Gem;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	ECataclysmRarity GemRarity = ECataclysmRarity::Everyday;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	int32 GemQuantity = 0;
+
 	/** Whether this drop is crafting materials rather than a piece of gear. */
 	bool IsMaterial() const { return !Material.IsNone() && MaterialQuantity > 0; }
 };

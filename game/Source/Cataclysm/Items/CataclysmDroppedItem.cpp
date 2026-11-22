@@ -16,7 +16,9 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Empire/CataclysmSeedMix.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Player/CataclysmGameInstance.h"
@@ -82,6 +84,20 @@ void ACataclysmDroppedItem::DescribeItself()
 		NameColour = GoldNameColour;
 		Rarity = ECataclysmRarity::Everyday;
 		MaterialTier = 0;
+		return;
+	}
+
+	// A GEM IS NAMED BY THE GEMS SHEET AND ITS RARITY, "Of Life (Superb)", and is coloured and bordered by its rarity as
+	// gear is: `NameBorderThicknessOf` reads `Rarity`, so it is set to the gem's. Issue #46, slice G5.
+	if (IsGem())
+	{
+		DisplayName = UCataclysmGems::FloorNameOf(Gem, GemRarity);
+		Rarity = GemRarity;
+		MaterialTier = 0;
+		if (const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable())
+		{
+			NameColour = UCataclysmDropSpawner::ColourFor(Rarities, GemRarity);
+		}
 		return;
 	}
 
@@ -383,10 +399,13 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 
 	// A MATERIAL GOES ONTO A STACK AND A PIECE OF GEAR TAKES A SLOT. Both can
 	// fail for the same reason -- no free slot -- and both leave the drop where
-	// it is when they do.
+	// it is when they do. A GEM GOES ONTO THE STACK OF ITS GEM AND RARITY, as a
+	// material does (issue #46, slice G5), and fails the same way.
 	const int32 Slot = Drop->IsMaterial()
 		? Inventory->AddMaterial(Drop->Material, Drop->MaterialQuantity)
-		: Inventory->AddItem(Drop->Item);
+		: Drop->IsGem()
+			? Inventory->AddGems(Drop->Gem, Drop->GemRarity, Drop->GemQuantity)
+			: Inventory->AddItem(Drop->Item);
 
 	if (Slot == INDEX_NONE)
 	{
@@ -395,8 +414,9 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 	}
 
 	// A PIECE OF GEAR TAKEN IS SAID IN THE PLAY LOOP, by the name the floor showed for it: the coordinating session's
-	// ruling of 2026-11-19. A material is not; `FCataclysmPlayLoopLog::PickedUpLine` says why.
-	if (!Drop->IsMaterial())
+	// ruling of 2026-11-19. A material is not; `FCataclysmPlayLoopLog::PickedUpLine` says why. Nor is a gem, a quantity
+	// collected without a click for the same reason (issue #46, slice G5); gold returned above.
+	if (!Drop->IsAQuantity())
 	{
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::PickedUpLine(Drop->DisplayName, Drop->Item.GearLevel));
 	}
@@ -493,7 +513,8 @@ FVector UCataclysmDropSpawner::DropSpotInFrontOf(const AActor& Character)
 
 ACataclysmDroppedItem* UCataclysmDropSpawner::PutOnTheFloor(
 	UWorld* World, const FVector& At, const FCataclysmItem& Item,
-	FName Material, int32 MaterialQuantity, int32 Gold)
+	FName Material, int32 MaterialQuantity, int32 Gold, FName Gem,
+	ECataclysmRarity GemRarity, int32 GemQuantity)
 {
 	if (!World)
 	{
@@ -516,6 +537,9 @@ ACataclysmDroppedItem* UCataclysmDropSpawner::PutOnTheFloor(
 	Drop->Material = Material;
 	Drop->MaterialQuantity = MaterialQuantity;
 	Drop->Gold = FMath::Max(0, Gold);
+	Drop->Gem = Gem;
+	Drop->GemRarity = GemRarity;
+	Drop->GemQuantity = FMath::Max(0, GemQuantity);
 
 	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE WORKED OUT rather than
 	// passed in, because all four follow from what the drop IS. A caller holding
@@ -906,6 +930,76 @@ int32 UCataclysmDropSpawner::SpawnGoldFor(UWorld* World, int32 EnemyRarityStep, 
 
 			// COUNTED FOR CLEANUP CREW, the gold a walk's kills dropped (issue #2741 slice 6b, B3).
 			ACataclysmDungeonGameMode::NoteGoldDroppedIn(World, Amount);
+		}
+	}
+	return Placed;
+}
+
+FVector UCataclysmDropSpawner::GemScatterOffset(int32 Index, int32 Count)
+{
+	// TWO STEPS WIDER THAN THE ITEMS' RING AND AN EIGHTH OF A STEP ROUND: a lone gem lands 75 cm off the corpse, where
+	// neither the lone item (on the corpse) nor the lone pile (50 cm off it) is. Overlapping names are separated on
+	// screen in any case (`UCataclysmDropPickup::SeparateOverlappingNames`).
+	const int32 Gems = FMath::Max(1, Count);
+	const float Radius = 25.0f * static_cast<float>(Gems + 2);
+	const float Angle = 2.0f * PI * (static_cast<float>(Index) + 0.125f) / static_cast<float>(Gems);
+	return FVector(Radius * FMath::Cos(Angle), Radius * FMath::Sin(Angle), 0.0f);
+}
+
+int32 UCataclysmDropSpawner::SpawnGemsFor(UWorld* World, int32 EnemyRarityStep, float MagicFind, float LootQuantity,
+										  const FVector& At, const FRandomStream& KillStream, bool bMarked)
+{
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	const UDataTable* Drops = UCataclysmDropRoll::LoadEnemyDropTable();
+	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
+	const UDataTable* Gems = UCataclysmGems::LoadGeneratedTable();
+	if (Drops == nullptr || Rarities == nullptr || Gems == nullptr)
+	{
+		// Each Load* has already said which table is missing and why.
+		return 0;
+	}
+
+	const FName EnemyRarity = EnemyRarityForStep(Drops, EnemyRarityStep);
+	if (EnemyRarity.IsNone())
+	{
+		return 0;
+	}
+
+	// A STREAM OF THE GEMS' OWN, seeded from the kill's through the mix and never by XOR (issue #2749): the kill's
+	// stream is read, not drawn on, so everything it rolled before this is as it was.
+	FRandomStream Stream(CataclysmSeedMix::Mix(KillStream.GetCurrentSeed(), GemStreamSalt, 0));
+
+	// HOW MANY: a Poisson draw on the rung's expected gems, as gear, materials and gold are counted.
+	const int32 Count = UCataclysmDropRoll::RollDropCount(
+		UCataclysmDropRoll::ExpectedGemDrops(Drops, EnemyRarity, LootQuantity), Stream);
+	if (Count <= 0)
+	{
+		return 0;
+	}
+
+	// THE GEAR'S RARITY ROLL, at the tier being played, with the creature's magic find added to the player's as
+	// `SpawnDropsFor` adds it.
+	const float Together = MagicFind + UCataclysmDropRoll::MagicFindFrom(Drops, EnemyRarity);
+	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
+
+	int32 Placed = 0;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const ECataclysmRarity Rarity = UCataclysmDropRoll::RollRarity(Rarities, DifficultyTier, Together, Stream);
+		const FName Gem = UCataclysmGems::RollGem(Gems, Stream);
+		if (Gem.IsNone())
+		{
+			continue;
+		}
+		if (ACataclysmDroppedItem* Drop = PutOnTheFloor(World, At + GemScatterOffset(Index, Count), FCataclysmItem(),
+														NAME_None, 0, 0, Gem, Rarity, 1))
+		{
+			Drop->bDroppedByARaisedCreature = bMarked;
+			++Placed;
 		}
 	}
 	return Placed;

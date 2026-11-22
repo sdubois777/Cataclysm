@@ -265,7 +265,8 @@ Four C++ guard proofs, one for each new test to be seen failing, with `test_pref
 - **Dropping a gem stack is refused, and the gems stay in the bag** (`GemsStayInTheBag`, "Gems cannot be put on the
   floor yet, so they are still in the bag."). `UCataclysmDropSpawner::PutOnTheFloor` refuses nothing: handed an empty
   item and no material it makes a drop of nothing, and `DropCarried` then empties the slot. Without the refusal,
-  dropping a gem stack would have destroyed the gems.
+  dropping a gem stack would have destroyed the gems. **LIFTED BY SLICE G5, before either merged:** a gem can lie on
+  the floor there, so `DropCarried` hands the floor the gem, its rarity and the count, and `GemsStayInTheBag` is gone.
 
 **What else reads a carried slot, and why it needed nothing:** wearing, the item comparison and the Forge reach an item
 through `ItemAt`, which answers nothing for a gem stack as for a material; the save writer copies whole slots; the
@@ -279,7 +280,7 @@ dungeon's "most of one material" reading checks a material name.
 | :-- | :-- |
 | `GemsStackByGemAndRarity` | two then one Superb Of The Viper make one stack of 3 in slot 0; an Everyday one is slot 1; a material is slot 2; a gem stack is not empty and holds no item; CONTROL: no name, and none of a gem, are refused |
 | `AFullBagRefusesANewGemAndStillStacksACarriedOne` | with 48 slots used, a new gem is refused and a carried stack takes 4 more |
-| `AGemStackIsNotDroppedAndStaysInTheBag` | dropping the gem stack answers `GemsStayInTheBag` and all 3 are still carried; CONTROL: a material is offered to the floor, which with no world refuses it as `TheFloorRefusedIt` |
+| `AGemStackIsNotDroppedAndStaysInTheBag`, renamed by slice G5 `AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses` | as written here, dropping the gem stack answered `GemsStayInTheBag` with all 3 still carried. Since G5: the gem stack is offered to the floor, which with no world refuses it as `TheFloorRefusedIt`, and all 3 are still carried; CONTROL: a material is offered and refused the same way |
 | `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` | the cell's name, count and border; the tooltip's five lines; Of The Goblin at Everyday and Of The Abyss at Cataclysmic; a Utility gem fits a Utility socket. Prints "GEM STACK TOOLTIP" |
 
 `tools/tests/test_gems_are_carried_in_stacks.py`: both slot fields are `SaveGame`; `SlotIsEmpty` reads the gem; a
@@ -311,7 +312,7 @@ Three C++ guard proofs, one for each new test to be seen failing (the coordinati
 | Proof | The break | Broken half | Restored |
 | :-- | :-- | :-- | :-- |
 | K4 | in `AddGems`, the `Slots[Stacked].Quantity += Quantity;` that follows `SlotOfGems(Gem, Rarity)` (the file has a second, in `AddMaterial`) to `Slots[Stacked].Quantity = Quantity;` | 4 performed, 2 succeeded, 2 failed: `GemsStackByGemAndRarity` (1 carried, not 3) and `AFullBagRefusesANewGemAndStillStacksACarriedOne` (4, not 5) | 4 of 4 |
-| K5 | `DropCarried`'s gem refusal removed | 4 performed, 3 succeeded, 1 failed: `AGemStackIsNotDroppedAndStaysInTheBag` (`TheFloorRefusedIt`, not `GemsStayInTheBag`) | 4 of 4 |
+| K5 | WITHDRAWN BY SLICE G5, which removes the refusal this breaks. Never run. G5's K18 proves a dropped gem stack reaches the floor | -- | -- |
 | K6 | in `EffectAt`, `SheetValueAt(Row, Rarity) * PointsPerSheetUnit` to `Row.Everyday * PointsPerSheetUnit` | 4 performed, 3 succeeded, 1 failed: `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` ("20% chance to apply poison") | 4 of 4 |
 
 ---

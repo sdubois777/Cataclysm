@@ -356,7 +356,21 @@ Of The Viper. A Jeweler's Setting Agent and Dismantling Dust are Common material
 
   `PLAY LOOP: unsocketed Of Life (Superb) from Everyday Helm, back to the bag; residue 57 to 60; it cost 1 day, day 27 to day 28`
 
-- **Dropping a gem stack** from the bag is refused: "Gems cannot be put on the floor yet, so they are still in the bag."
+- **Dropping a gem stack** from the bag puts the whole stack on the floor as one gem drop, named "Of The Viper
+  (Superb)", which comes back into its stack without a click when walked near (issue #46, slice G5).
+
+### 18. Kill creatures until a gem drops
+
+Gems drop from kills (issue #46, slice G5). They are rare: about one a floor when every creature on it is killed, more
+often from a Boss (3.4% a kill) or a Cataclysm Boss (8.2%) than from a Common creature (0.1%).
+
+- **A gem on the floor** is named with its rarity, "Of Rot (Everyday)", in that rarity's colour and border, and can be
+  read from across the room, as a crafting material can.
+- **Walk near it.** It comes to you without a click, within the fifteen metres a material does, and the bag shows it on
+  the stack of that gem and rarity. No PLAY LOOP line says so: a gem is a quantity, as a material is, and neither is
+  logged when taken.
+- **At difficulty tier 1** about eight gems in ten are Everyday or Quality, by gear's own rarity roll; a higher tier
+  shifts that towards the rarer rungs.
 
 ## If a step does not show what it should
 

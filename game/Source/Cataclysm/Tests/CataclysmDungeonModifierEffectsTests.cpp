@@ -63778,13 +63778,17 @@ namespace CataclysmDungeonModifierEffectsTest
 		return State;
 	}
 
-	/** The dropped things in the world: gear, materials. */
+	/** The dropped things in the world: gear, materials. A gem (issue #46, slice G5) is neither, and is not counted. */
 	void DropsOnTheFloor(UWorld* World, int32& OutGear, int32& OutMaterials)
 	{
 		OutGear = 0;
 		OutMaterials = 0;
 		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 		{
+			if (It->IsGem())
+			{
+				continue;
+			}
 			(It->IsMaterial() ? OutMaterials : OutGear) += 1;
 		}
 	}
@@ -63878,7 +63882,8 @@ bool FCataclysmCorruptedStalkerMaterialsTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("its gear is no more than it wore: %d"), Gear), Gear <= Stalker->WornPieces().Num());
 	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
 	{
-		if (!It->IsMaterial())
+		// A GEM IS NOT GEAR: a Boss-rung death drops one 3.4% of the time (issue #46, slice G5).
+		if (!It->IsMaterial() && !It->IsGem())
 		{
 			TestTrue(FString::Printf(TEXT("%s is a piece it wore"), *It->Item.Base.ToString()), Worn.Contains(It->Item.Base));
 		}

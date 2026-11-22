@@ -19,8 +19,8 @@
  *
  * Ruled by the coordinating session on 2026-11-21: gems stack, one stack per gem and rarity, for the reason crafting
  * materials stack. A gem stack shows its name, its count, its rarity's colour and border, and a tooltip naming its
- * rarity and type, its effect at that rarity and the socket it fits. Gems cannot be put on the floor until gem drops
- * are built (slice G5), so dropping a stack is refused and the gems stay in the bag.
+ * rarity and type, its effect at that rarity and the socket it fits. A dropped stack is offered to the floor whole, as
+ * one gem drop (slice G5; until it, G2 refused to drop gems at all).
  *
  * The inventory is made bare, as `CataclysmDropPickupTests.cpp` makes one: nothing here needs a world. The names and
  * effects are read from the generated `DT_Gems`.
@@ -115,10 +115,12 @@ bool FCataclysmGemStacksFullBagTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GK3. Dropping a gem stack is refused and the gems stay in the bag; dropping a material is not refused for that.
+// GK3. A gem stack is offered to the floor, as a material is, and stays in the bag when the floor refuses it. Slice G5
+// lifted G2's refusal; `Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` drops one
+// into a world.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksDropTest,
-	"Cataclysm.GemStacks.AGemStackIsNotDroppedAndStaysInTheBag",
+	"Cataclysm.GemStacks.AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemStacksDropTest::RunTest(const FString&)
@@ -132,14 +134,13 @@ bool FCataclysmGemStacksDropTest::RunTest(const FString&)
 		return false;
 	}
 
-	// NO WORLD: the gem refusal comes before the floor is asked, so it needs none.
-	TestTrue(TEXT("dropping the gems is refused as gems"),
+	// NO WORLD: the gems are offered to the floor, which has nowhere to put them, so nothing leaves the bag.
+	TestTrue(TEXT("the gems are offered to the floor, which has no world to put them in"),
 			 UCataclysmWearing::DropCarried(Bag, 0, nullptr, FVector::ZeroVector)
-				 == ECataclysmWearResult::GemsStayInTheBag);
+				 == ECataclysmWearResult::TheFloorRefusedIt);
 	TestEqual(TEXT("and all three are still carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
-	TestFalse(TEXT("the refusal says why"), UCataclysmWearing::Explain(ECataclysmWearResult::GemsStayInTheBag).IsEmpty());
 
-	// CONTROL: A MATERIAL REACHES THE FLOOR, which with no world refuses it for its own reason.
+	// CONTROL: A MATERIAL IS OFFERED THE SAME WAY, and refused for the same reason.
 	TestTrue(TEXT("CONTROL: a material is offered to the floor, which has no world to put it in"),
 			 UCataclysmWearing::DropCarried(Bag, 1, nullptr, FVector::ZeroVector)
 				 == ECataclysmWearResult::TheFloorRefusedIt);

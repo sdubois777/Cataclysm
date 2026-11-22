@@ -1075,6 +1075,19 @@ public:
 									   FName EnemyRarity, float LootQuantity);
 
 	/**
+	 * The same, for gems, which drop on a roll of their own: `FCataclysmEnemyDropRow::GemDrops`. Issue #46, slice G5.
+	 *
+	 * LOOT QUANTITY RAISES IT, as it raises gear and materials: a gem is loot, and the design's loot quantity
+	 * sources are increases to how much drops. The column is the gear column times the share
+	 * `sim/analyse_gem_drops.py` measured (`loot.GEM_DROPS_PER_GEAR_DROP`).
+	 *
+	 * IT READS `GemDrops`, which the Enemy Drops sheet's Gem Drops column gives in slice G5's workbook stage. This
+	 * branch does not compile until it is rebased onto that stage.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity);
+
+	/**
 	 * The magic find a kill of this rarity adds to its own drops.
 	 *
 	 * ADDED TO THE PLAYER'S OWN rather than multiplied by it, which is what

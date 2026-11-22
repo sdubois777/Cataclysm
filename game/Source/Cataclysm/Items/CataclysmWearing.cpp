@@ -344,14 +344,6 @@ ECataclysmWearResult UCataclysmWearing::DropCarried(
 		return ECataclysmWearResult::NothingToDrop;
 	}
 
-	// GEMS STAY IN THE BAG. A drop holds an item or a material, and the spawner refuses neither an empty item nor no
-	// material, so a gem stack would become a drop of nothing and be destroyed. Gems reach the floor with gem drops,
-	// issue #46's slice G5.
-	if (!Slots[CarriedSlot].Gem.IsNone())
-	{
-		return ECataclysmWearResult::GemsStayInTheBag;
-	}
-
 	// COPIED BEFORE ANYTHING IS EMPTIED. RemoveItemAt overwrites the slot, so a
 	// reference into the array would be reading freed contents by the time the
 	// spawn needed them.
@@ -362,10 +354,15 @@ ECataclysmWearResult UCataclysmWearing::DropCarried(
 	// the slot first would destroy the item on a failed spawn, and a spawn is
 	// the only step here that can fail for a reason the rules did not choose.
 	// THE TWO NAMES FOR THE COUNT ARE NOT THE SAME. A carried slot calls it
-	// `Quantity` and a drop on the floor calls it `MaterialQuantity`.
+	// `Quantity` and a drop on the floor calls it `MaterialQuantity`, or
+	// `GemQuantity` for a gem stack, which lies on the floor whole as one gem
+	// drop (issue #46, slice G5; until it, G2 refused to drop gems at all).
+	const bool bGems = !Leaving.Gem.IsNone();
 	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving.Item,
 											  Leaving.Material,
-											  Leaving.Quantity))
+											  bGems ? 0 : Leaving.Quantity, /*Gold=*/0,
+											  Leaving.Gem, Leaving.GemRarity,
+											  bGems ? Leaving.Quantity : 0))
 	{
 		return ECataclysmWearResult::TheFloorRefusedIt;
 	}
@@ -543,8 +540,6 @@ FString UCataclysmWearing::Explain(ECataclysmWearResult Result)
 	case ECataclysmWearResult::NoLongerThere:
 		return TEXT("It is no longer where it was when you were asked, so "
 					"nothing was put on.");
-	case ECataclysmWearResult::GemsStayInTheBag:
-		return TEXT("Gems cannot be put on the floor yet, so they are still in the bag.");
 	}
 	return FString();
 }

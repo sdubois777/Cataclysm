@@ -506,6 +506,12 @@ float UCataclysmDropRoll::ExpectedMaterialDrops(const UDataTable* EnemyDropTable
 	return Row ? ScaledByLootQuantity(Row->MaterialDrops, LootQuantity) : 0.0f;
 }
 
+float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity)
+{
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? ScaledByLootQuantity(Row->GemDrops, LootQuantity) : 0.0f;
+}
+
 float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
 										FName EnemyRarity)
 {

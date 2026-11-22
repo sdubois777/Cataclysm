@@ -143,6 +143,12 @@ FCataclysmSavedGroundItem FCataclysmSaveGather::GroundItemFrom(
 	// AND A GOLD PILE'S AMOUNT, so a save made mid-floor keeps the piles not yet collected. Issue #2742.
 	Saved.Gold = Drop.Gold;
 
+	// AND A GEM DROP'S GEM, RARITY AND COUNT, so a save made mid-floor keeps the gems not yet collected. Issue #46,
+	// slice G5.
+	Saved.Gem = Drop.Gem;
+	Saved.GemRarity = Drop.GemRarity;
+	Saved.GemQuantity = Drop.GemQuantity;
+
 	// THE NAME, THE COLOUR, THE RARITY AND THE TIER ARE NOT COPIED. All four are
 	// worked out from the two fields above plus the game's data tables, so a
 	// record holding them would be holding a second copy of something derived --

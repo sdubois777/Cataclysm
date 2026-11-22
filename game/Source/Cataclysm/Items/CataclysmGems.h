@@ -116,6 +116,15 @@ public:
 	static ECataclysmSocketType RollSocketType(FRandomStream& Stream);
 
 	/**
+	 * Which gem a gem drop is: evenly among the table's rows, in the table's own order, so one seed always gives one
+	 * gem. None for a missing or empty table. Issue #46, slice G5, ruled 2026-11-21 ("uniform among the 28").
+	 */
+	static FName RollGem(const UDataTable* GemTable, FRandomStream& Stream);
+
+	/** A gem's name with its rarity, as the floor and the forge show it: "Of Life (Superb)". Issue #46, slice G5. */
+	static FString FloorNameOf(FName Gem, ECataclysmRarity Rarity);
+
+	/**
 	 * Adds the modifier of one gem at `Rarity` to `Totals`: `AddModifier` with the row's Stat, its ValueKind and its
 	 * sheet value at that rarity. False, adding nothing, when the row names no stat or kind.
 	 *

@@ -359,6 +359,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			UCataclysmDropSpawner::SpawnTheTreesExtraDropsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity,
 															  GetActorLocation(), Stream, TreeDrops,
 															  /*bMarked=*/bRaisedByARule);
+
+			// AND ITS GEMS, LAST, FROM A STREAM OF THEIR OWN seeded from this one, so every draw above is as it was.
+			// At the rung it pays as, with the magic find and loot quantity everything above rolled with. Issue #46,
+			// slice G5.
+			UCataclysmDropSpawner::SpawnGemsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
+												Stream, /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

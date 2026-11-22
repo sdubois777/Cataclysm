@@ -136,6 +136,21 @@ bool UCataclysmGems::GemFits(ECataclysmSocketType Type, const FString& GemType)
 		|| GemType.TrimStartAndEnd().Equals(SocketTypeName(Type), ESearchCase::IgnoreCase);
 }
 
+FName UCataclysmGems::RollGem(const UDataTable* GemTable, FRandomStream& Stream)
+{
+	if (GemTable == nullptr)
+	{
+		return NAME_None;
+	}
+	const TArray<FName> Gems = GemTable->GetRowNames();
+	return Gems.Num() > 0 ? Gems[Stream.RandRange(0, Gems.Num() - 1)] : NAME_None;
+}
+
+FString UCataclysmGems::FloorNameOf(FName Gem, ECataclysmRarity Rarity)
+{
+	return FString::Printf(TEXT("%s (%s)"), *NameOf(Gem), *RarityName(Rarity));
+}
+
 ECataclysmSocketType UCataclysmGems::RollSocketType(FRandomStream& Stream)
 {
 	// EVENLY AMONG THE THREE TYPES A GEM CAN HAVE, and never Any, which no drop rolls.
