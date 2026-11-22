@@ -74,7 +74,10 @@ namespace CataclysmGemCombineTest
 			FCataclysmCharacterPartition Partition;
 			Partition.Lethality = ECataclysmLethality::Standard;
 			Partition.Population = ECataclysmPopulation::Offline;
+			// SOLO SELF-FOUND, WITH GOLD OF ITS OWN, so every craft can pay (#2830) and no account record is written.
+			Partition.bSoloSelfFound = true;
 			State->SetIdentity(TEXT("Lapidary"), Partition);
+			State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
 		Out.Run->Begin(/* InSeed */ 2846, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
@@ -104,7 +107,7 @@ bool FCataclysmGemCombineRulesTest::RunTest(const FString&)
 	for (uint8 Rung = 0; Rung < static_cast<uint8>(ECataclysmRarity::Cataclysmic); ++Rung)
 	{
 		const FCataclysmForgeGemCombine Each =
-			UCataclysmForge::GemCombineOf(Life, static_cast<ECataclysmRarity>(Rung), 2);
+			UCataclysmForge::GemCombineOf(Life, static_cast<ECataclysmRarity>(Rung), 2, 1, 1000000);
 		Combines += FString::Printf(TEXT(" %s to %s;"), *UCataclysmGems::RarityName(Each.From),
 								 *UCataclysmGems::RarityName(Each.Into));
 		TestTrue(FString::Printf(TEXT("two %s Of Life make the next rarity"),
@@ -115,17 +118,17 @@ bool FCataclysmGemCombineRulesTest::RunTest(const FString&)
 	TestEqual(TEXT("a combine takes the stone combine's two"), UCataclysmForge::GemsPerCombine,
 			  UCataclysmForge::StonesPerCombine);
 
-	const FCataclysmForgeGemCombine Made = UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 2);
+	const FCataclysmForgeGemCombine Made = UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 2, 1, 1000000);
 	TestTrue(TEXT("two Everyday Of Life combine"), Made.bPossible);
 	TestTrue(TEXT("into a Quality one"), Made.Into == ECataclysmRarity::Quality);
 	TestEqual(TEXT("taking two"), Made.GemsNeeded, 2);
 
-	TestEqual(TEXT("one held is refused"), UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 1).Refusal,
+	TestEqual(TEXT("one held is refused"), UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Everyday, 1, 1, 1000000).Refusal,
 			  FString(TEXT("Combining takes two Of Life (Everyday); 1 held.")));
 	TestEqual(TEXT("a Cataclysmic gem is the highest"),
-			  UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Cataclysmic, 4).Refusal,
+			  UCataclysmForge::GemCombineOf(Life, ECataclysmRarity::Cataclysmic, 4, 1, 1000000).Refusal,
 			  FString(TEXT("A Cataclysmic gem is the highest; there is none above it to make.")));
-	TestEqual(TEXT("no gem is refused"), UCataclysmForge::GemCombineOf(NAME_None, ECataclysmRarity::Everyday, 2).Refusal,
+	TestEqual(TEXT("no gem is refused"), UCataclysmForge::GemCombineOf(NAME_None, ECataclysmRarity::Everyday, 2, 1, 1000000).Refusal,
 			  FString(TEXT("There is no gem to combine.")));
 	return true;
 }

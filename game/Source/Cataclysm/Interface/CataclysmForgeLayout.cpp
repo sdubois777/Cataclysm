@@ -3,6 +3,8 @@
 #include "Interface/CataclysmForgeLayout.h"
 
 #include "Items/CataclysmDropRoll.h"
+// A gold amount as a player reads it, issue #2830.
+#include "Items/CataclysmDroppedItem.h"
 // The gems a socket fits and their names, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -105,9 +107,10 @@ FString UCataclysmForgeLayout::DetailFor(const FCataclysmItem& Item, const FCata
 		return Head + TEXT(" ") + Plan.Refusal;
 	}
 	const FString Cost = FString::Printf(
-		TEXT(" Raising it to +%d takes two +%d stones (%d held), adds %d residue (to %d) and costs %d day%s of the run."),
-		Plan.ToLevel, Plan.ToLevel, Plan.StonesHeld, FMath::RoundToInt(UCataclysmForge::ResiduePerLevel),
-		FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, Plan.Days == 1 ? TEXT("") : TEXT("s"));
+		TEXT(" Raising it to +%d takes two +%d stones (%d held) and %s, adds %d residue (to %d) and costs %d day%s of the run."),
+		Plan.ToLevel, Plan.ToLevel, Plan.StonesHeld, *ACataclysmDroppedItem::GoldName(Plan.Gold),
+		FMath::RoundToInt(UCataclysmForge::ResiduePerLevel), FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+		Plan.Days == 1 ? TEXT("") : TEXT("s"));
 	return Head + Cost;
 }
 

@@ -94,7 +94,10 @@ namespace CataclysmForgeGemsTest
 			FCataclysmCharacterPartition Partition;
 			Partition.Lethality = ECataclysmLethality::Standard;
 			Partition.Population = ECataclysmPopulation::Offline;
+			// SOLO SELF-FOUND, WITH GOLD OF ITS OWN, so every craft can pay (#2830) and no account record is written.
+			Partition.bSoloSelfFound = true;
 			State->SetIdentity(TEXT("Jeweler"), Partition);
+			State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
 		Out.Run->Begin(/* InSeed */ 2846, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
@@ -121,45 +124,45 @@ bool FCataclysmForgeGemsRulesTest::RunTest(const FString&)
 	const FCataclysmItem Item = Helm(87.0f);
 
 	const FCataclysmForgeSocketing In =
-		UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 2, 1);
+		UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 2, 1, 1, 1000000);
 	TestTrue(TEXT("a Defense gem goes into the empty Defense socket"), In.bPossible);
 	TestEqual(TEXT("with a Setting Agent"), In.Material, Agent);
 	TestEqual(TEXT("residue 87 becomes 92"), In.ResidueAfter, 92.0f, 0.001f);
 	TestEqual(TEXT("one day below 100 residue"), In.Days, 1);
 	TestEqual(TEXT("the first press's question"), UCataclysmForge::SocketingQuestion(In),
 			  FString(TEXT("Press again to socket Of Life (Superb) into the Defense socket: one Jeweler's Setting Agent, "
-						   "residue 87 to 92, 1 day of the run.")));
+						   "685 gold, residue 87 to 92, 1 day of the run.")));
 	TestEqual(TEXT("150 residue: two days"),
-			  UCataclysmForge::SocketGemOf(Helm(150.0f), 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 1).Days, 2);
+			  UCataclysmForge::SocketGemOf(Helm(150.0f), 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 1, 1, 1000000).Days, 2);
 
 	TestEqual(TEXT("a filled socket is refused"),
-			  UCataclysmForge::SocketGemOf(Item, 1, Rot, ECataclysmRarity::Everyday, TEXT("Attack"), 1, 1).Refusal,
+			  UCataclysmForge::SocketGemOf(Item, 1, Rot, ECataclysmRarity::Everyday, TEXT("Attack"), 1, 1, 1, 1000000).Refusal,
 			  FString(TEXT("That socket already holds Of The Viper; unsocket it first.")));
 	TestEqual(TEXT("a gem of another type is refused"),
-			  UCataclysmForge::SocketGemOf(Item, 0, Rot, ECataclysmRarity::Everyday, TEXT("Attack"), 1, 1).Refusal,
+			  UCataclysmForge::SocketGemOf(Item, 0, Rot, ECataclysmRarity::Everyday, TEXT("Attack"), 1, 1, 1, 1000000).Refusal,
 			  FString(TEXT("An Attack gem does not fit a Defense socket.")));
 	TestEqual(TEXT("no such socket"),
-			  UCataclysmForge::SocketGemOf(Item, 5, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 1).Refusal,
+			  UCataclysmForge::SocketGemOf(Item, 5, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 1, 1, 1000000).Refusal,
 			  FString(TEXT("That piece has no socket 6.")));
 	TestEqual(TEXT("no such gem carried"),
-			  UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 0, 1).Refusal,
+			  UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 0, 1, 1, 1000000).Refusal,
 			  FString(TEXT("No Of Life (Superb) is carried.")));
 	TestEqual(TEXT("no Setting Agent"),
-			  UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 0).Refusal,
+			  UCataclysmForge::SocketGemOf(Item, 0, Life, ECataclysmRarity::Superb, TEXT("Defense"), 1, 0, 1, 1000000).Refusal,
 			  FString(TEXT("Socketing a gem takes a Jeweler's Setting Agent; 0 held.")));
 
-	const FCataclysmForgeSocketing Out = UCataclysmForge::UnsocketGemOf(Item, 1, 1, true);
+	const FCataclysmForgeSocketing Out = UCataclysmForge::UnsocketGemOf(Item, 1, 1, true, 1, 1000000);
 	TestTrue(TEXT("the Viper comes out with Dust"), Out.bPossible);
 	TestTrue(TEXT("it is the Superb Of The Viper"), Out.Gem == Viper && Out.Rarity == ECataclysmRarity::Superb);
 	TestEqual(TEXT("residue 87 becomes 90"), Out.ResidueAfter, 90.0f, 0.001f);
 	TestEqual(TEXT("its question"), UCataclysmForge::SocketingQuestion(Out),
-			  FString(TEXT("Press again to unsocket Of The Viper (Superb): one Dismantling Dust, residue 87 to 90, 1 day "
+			  FString(TEXT("Press again to unsocket Of The Viper (Superb): one Dismantling Dust, 685 gold, residue 87 to 90, 1 day "
 						   "of the run; the gem goes back to the bag.")));
-	TestEqual(TEXT("an empty socket has nothing to take out"), UCataclysmForge::UnsocketGemOf(Item, 0, 1, true).Refusal,
+	TestEqual(TEXT("an empty socket has nothing to take out"), UCataclysmForge::UnsocketGemOf(Item, 0, 1, true, 1, 1000000).Refusal,
 			  FString(TEXT("That socket holds no gem.")));
-	TestEqual(TEXT("no Dust: no removal"), UCataclysmForge::UnsocketGemOf(Item, 1, 0, true).Refusal,
+	TestEqual(TEXT("no Dust: no removal"), UCataclysmForge::UnsocketGemOf(Item, 1, 0, true, 1, 1000000).Refusal,
 			  FString(TEXT("Unsocketing a gem takes Dismantling Dust; 0 held.")));
-	TestEqual(TEXT("no room for the gem"), UCataclysmForge::UnsocketGemOf(Item, 1, 1, false).Refusal,
+	TestEqual(TEXT("no room for the gem"), UCataclysmForge::UnsocketGemOf(Item, 1, 1, false, 1, 1000000).Refusal,
 			  FString(TEXT("The bag has no free cell for the gem.")));
 	AddInfo(FString::Printf(TEXT("FORGE GEM RULES: %s"), *UCataclysmForge::SocketingQuestion(In)));
 	return true;

@@ -8,6 +8,8 @@
 #include "Components/TextBlock.h"
 #include "Interface/CataclysmChoiceButton.h"
 #include "Items/CataclysmEquipmentComponent.h"
+// A gold amount as a player reads it, issue #2830.
+#include "Items/CataclysmDroppedItem.h"
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -208,7 +210,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeCombine Done;
 		FString Reason;
 		Message = UCataclysmForgeCraft::Combine(Context(), CombineLevel, Done, Reason)
-			? FString::Printf(TEXT("Combined two +%d stones into one +%d."), Done.FromLevel, Done.IntoLevel)
+			? FString::Printf(TEXT("Combined two +%d stones into one +%d for %s."), Done.FromLevel, Done.IntoLevel,
+							  *ACataclysmDroppedItem::GoldName(Done.Gold))
 			: Reason;
 		RefreshDisplay();
 		return;
@@ -222,9 +225,9 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		FCataclysmForgeGemCombine Done;
 		FString Reason;
 		Message = UCataclysmForgeCraft::CombineGems(Context(), GemCombine.Gem, GemCombine.Rarity, Done, Reason)
-			? FString::Printf(TEXT("Combined two %s (%s) into one %s (%s)."), *UCataclysmGems::NameOf(Done.Gem),
+			? FString::Printf(TEXT("Combined two %s (%s) into one %s (%s) for %s."), *UCataclysmGems::NameOf(Done.Gem),
 							  *UCataclysmGems::RarityName(Done.From), *UCataclysmGems::NameOf(Done.Gem),
-							  *UCataclysmGems::RarityName(Done.Into))
+							  *UCataclysmGems::RarityName(Done.Into), *ACataclysmDroppedItem::GoldName(Done.Gold))
 			: Reason;
 		RefreshDisplay();
 		return;
@@ -275,9 +278,10 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			Message = Said + TEXT(" Press it again to go on.");
 			break;
 		case ECataclysmForgeResult::Done:
-			Message = FString::Printf(TEXT("%s %s. It cost %d day%s of the run."),
+			Message = FString::Printf(TEXT("%s %s. It cost %s and %d day%s of the run."),
 									  Done.bUnsocket ? TEXT("Unsocketed") : TEXT("Socketed"),
-									  *UCataclysmGems::NameOf(Done.Gem), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
+									  *UCataclysmGems::NameOf(Done.Gem), *ACataclysmDroppedItem::GoldName(Done.Gold),
+									  Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
 			break;
 		case ECataclysmForgeResult::Refused:
 		default:
@@ -337,7 +341,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		break;
 	case ECataclysmForgeResult::Done:
 		CancelThePendingUpgrade();
-		Message = FString::Printf(TEXT("Raised to +%d. It cost %d day%s of the run."), Done.ToLevel, Done.Days,
+		Message = FString::Printf(TEXT("Raised to +%d. It cost %s and %d day%s of the run."), Done.ToLevel,
+								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
 								  Done.Days == 1 ? TEXT("") : TEXT("s"));
 		break;
 	case ECataclysmForgeResult::Refused:

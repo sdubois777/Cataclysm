@@ -32,6 +32,52 @@ namespace
 			? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
 			: nullptr;
 	}
+
+	/**
+	 * The difficulty tier a forge price is read at: the run's, as a city upgrade's price is
+	 * (`UCataclysmCityUpgradePurchase::PriceIn`), and the lowest with no run. Issue #2830.
+	 */
+	int32 GoldTierOf(const UObject* WorldContext)
+	{
+		const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+		return Run != nullptr ? Run->DifficultyTier : ACataclysmGameMode::LowestDifficultyTier;
+	}
+
+	/** The gold the character playing holds (`UCataclysmGameInstance::GoldHeldBy`), or none. */
+	int64 GoldHeldIn(const UObject* WorldContext)
+	{
+		int64 Held = 0;
+		return UCataclysmGameInstance::GoldHeldBy(WorldContext, Held) ? Held : 0;
+	}
+
+	/**
+	 * Pays a craft's gold from the balance city upgrades pay from, all or nothing. False when it would not pay, with
+	 * nothing taken. Issue #2830.
+	 */
+	bool PayForTheCraft(const UObject* WorldContext, int64 Gold, bool& bOutFromTheCharacter)
+	{
+		bOutFromTheCharacter = false;
+		return Gold <= 0 || UCataclysmGameInstance::SpendGoldFor(WorldContext, Gold, bOutFromTheCharacter);
+	}
+
+	/** Gives a craft's gold back when a later step failed, so nothing is half done. */
+	void GiveTheGoldBack(const UObject* WorldContext, int64 Gold)
+	{
+		bool bIntoTheCharacter = false;
+		if (Gold > 0)
+		{
+			UCataclysmGameInstance::AddGoldFor(WorldContext, Gold, bIntoTheCharacter);
+		}
+	}
+
+	/** The account record is written when the account paid; a Solo Self-Found character's gold is in its own record. */
+	void SaveWhereTheGoldCameFrom(UWorld* World, int64 Gold, bool bFromTheCharacter)
+	{
+		if (Gold > 0 && !bFromTheCharacter)
+		{
+			UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::AccountChanged);
+		}
+	}
 }
 
 ACataclysmPlayerCharacter* UCataclysmForgeCraft::CharacterIn(const UObject* WorldContext)
@@ -76,10 +122,10 @@ FCataclysmForgeUpgrade UCataclysmForgeCraft::PlanFor(const UObject* WorldContext
 	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
 	if (Item == nullptr)
 	{
-		return UCataclysmForge::UpgradeOf(FCataclysmItem(), 0);
+		return UCataclysmForge::UpgradeOf(FCataclysmItem(), 0, GoldTierOf(WorldContext), 0);
 	}
 	const int32 Held = Character->GetInventory()->CountOfMaterial(UCataclysmForge::StoneFor(Item->GearLevel + 1));
-	return UCataclysmForge::UpgradeOf(*Item, Held);
+	return UCataclysmForge::UpgradeOf(*Item, Held, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -158,9 +204,17 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 		}
 	};
 
-	// THE STONES, THEN THE ITEM. A refusal after the stones are taken puts them back, so nothing is half done.
+	// THE GOLD, THEN THE STONES, THEN THE ITEM. A refusal after anything is taken puts it back, so nothing is half done.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
 	if (!Inventory->RemoveMaterial(Plan.Stone, Plan.StonesNeeded))
 	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		TakeBackTheMark();
 		OutMessage = TEXT("The stones could not be taken from the bag; nothing changed.");
 		return ECataclysmForgeResult::Refused;
@@ -175,6 +229,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 	{
 		TakeBackTheMark();
 		Inventory->AddMaterial(Plan.Stone, Plan.StonesNeeded);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		UE_LOG(LogCataclysm, Error,
 			   TEXT("The forge took two %s and could not put the raised %s back where it was. The stones are back in "
 					"the bag and nothing else changed."),
@@ -200,11 +255,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 		   *Name, Plan.FromLevel, Plan.ToLevel, *Plan.Stone.ToString(), StonesLeft, Plan.ResidueBefore,
 		   Plan.ResidueAfter, Plan.Days, DayBefore, Run->Day());
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeUpgradeLine(
-		Name, Plan.FromLevel, Plan.ToLevel, StonesLeft, FMath::RoundToInt(Plan.ResidueBefore),
+		Name, Plan.FromLevel, Plan.ToLevel, StonesLeft, Plan.Gold, FMath::RoundToInt(Plan.ResidueBefore),
 		FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
 
 	// SAVED: the character record holds the raised item and the stones, the run record the days. `ForgeCrafted` writes
-	// both, the run record even after an earlier write in the frame.
+	// both, the run record even after an earlier write in the frame; and the account record its gold, when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
 
 	OutDone = Plan;
@@ -224,8 +280,9 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 
-	const FCataclysmForgeCombine Plan =
-		UCataclysmForge::CombineOf(Level, Inventory->CountOfMaterial(UCataclysmForge::StoneFor(Level)));
+	const FCataclysmForgeCombine Plan = UCataclysmForge::CombineOf(
+		Level, Inventory->CountOfMaterial(UCataclysmForge::StoneFor(Level)), GoldTierOf(WorldContext),
+		GoldHeldIn(WorldContext));
 	if (!Plan.bPossible)
 	{
 		OutReason = Plan.Refusal;
@@ -242,14 +299,23 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 		return false;
 	}
 
+	// THE GOLD FIRST, given back if a later step fails (#2830).
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		OutReason = TEXT("The gold could not be taken; nothing changed.");
+		return false;
+	}
 	if (!Inventory->RemoveMaterial(Plan.From, Plan.StonesNeeded))
 	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		OutReason = TEXT("The stones could not be taken from the bag.");
 		return false;
 	}
 	if (Inventory->AddMaterial(Plan.Into, 1) == INDEX_NONE)
 	{
 		Inventory->AddMaterial(Plan.From, Plan.StonesNeeded);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		OutReason = TEXT("The made stone had nowhere to go; nothing changed.");
 		return false;
 	}
@@ -259,9 +325,10 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 	UE_LOG(LogCataclysm, Log, TEXT("The forge combined two %s into one %s: %d and %d held."), *Plan.From.ToString(),
 		   *Plan.Into.ToString(), FromHeld, IntoHeld);
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeCombineLine(Plan.FromLevel, Plan.IntoLevel, FromHeld,
-																	   IntoHeld));
+																	   IntoHeld, Plan.Gold));
 
-	// SAVED: the stones are in the character record.
+	// SAVED: the stones are in the character record; the gold in the account record when it paid.
+	SaveWhereTheGoldCameFrom(ForgeWorldOf(WorldContext), Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);
 
 	OutDone = Plan;
@@ -281,7 +348,8 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 
-	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(Gem, Rarity, Inventory->CountOfGems(Gem, Rarity));
+	const FCataclysmForgeGemCombine Plan = UCataclysmForge::GemCombineOf(
+		Gem, Rarity, Inventory->CountOfGems(Gem, Rarity), GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 	if (!Plan.bPossible)
 	{
 		OutReason = Plan.Refusal;
@@ -299,14 +367,23 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		return false;
 	}
 
+	// THE GOLD FIRST, given back if a later step fails (#2830).
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		OutReason = TEXT("The gold could not be taken; nothing changed.");
+		return false;
+	}
 	if (!Inventory->RemoveGems(Gem, Plan.From, Plan.GemsNeeded))
 	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		OutReason = TEXT("The gems could not be taken from the bag.");
 		return false;
 	}
 	if (Inventory->AddGems(Gem, Plan.Into, 1) == INDEX_NONE)
 	{
 		Inventory->AddGems(Gem, Plan.From, Plan.GemsNeeded);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		OutReason = TEXT("The made gem had nowhere to go; nothing changed.");
 		return false;
 	}
@@ -317,9 +394,10 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		   *Gem.ToString(), static_cast<int32>(Plan.From), static_cast<int32>(Plan.Into), FromHeld, IntoHeld);
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeGemCombineLine(
 		UCataclysmGems::NameOf(Gem), UCataclysmGems::RarityName(Plan.From), UCataclysmGems::RarityName(Plan.Into),
-		FromHeld, IntoHeld));
+		FromHeld, IntoHeld, Plan.Gold));
 
-	// SAVED: the gems are in the character record.
+	// SAVED: the gems are in the character record; the gold in the account record when it paid.
+	SaveWhereTheGoldCameFrom(ForgeWorldOf(WorldContext), Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);
 
 	OutDone = Plan;
@@ -334,13 +412,15 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::SocketPlanFor(const UObject* Worl
 	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
 	if (Item == nullptr)
 	{
-		return UCataclysmForge::SocketGemOf(FCataclysmItem(), Socket, Gem, Rarity, FString(), 0, 0);
+		return UCataclysmForge::SocketGemOf(FCataclysmItem(), Socket, Gem, Rarity, FString(), 0, 0,
+											GoldTierOf(WorldContext), 0);
 	}
 	const UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 	const FCataclysmGemRow* Row = UCataclysmGems::RowOf(UCataclysmGems::LoadGeneratedTable(), Gem);
 	return UCataclysmForge::SocketGemOf(*Item, Socket, Gem, Rarity, Row ? Row->GemType : FString(),
 										Inventory->CountOfGems(Gem, Rarity),
-										Inventory->CountOfMaterial(FName(UCataclysmForge::SettingAgentRow)));
+										Inventory->CountOfMaterial(FName(UCataclysmForge::SettingAgentRow)),
+										GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 }
 
 FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* WorldContext,
@@ -350,7 +430,7 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* Wo
 	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
 	if (Item == nullptr)
 	{
-		return UCataclysmForge::UnsocketGemOf(FCataclysmItem(), Socket, 0, false);
+		return UCataclysmForge::UnsocketGemOf(FCataclysmItem(), Socket, 0, false, GoldTierOf(WorldContext), 0);
 	}
 	const UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 	const int32 Dust = Inventory->CountOfMaterial(FName(UCataclysmForge::DismantlingDustRow));
@@ -359,7 +439,7 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* Wo
 	const bool bRoom = From != nullptr
 		&& (Inventory->SlotOfGems(From->Gem, From->GemRarity) != INDEX_NONE || Inventory->NumFreeSlots() > 0
 			|| Dust == 1);
-	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom);
+	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::SocketGem(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
@@ -462,9 +542,17 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 		}
 	};
 
-	// THE MATERIAL, AND FOR A SOCKETING THE GEM, THEN THE ITEM. A refusal after anything is taken puts it back.
+	// THE GOLD, THE MATERIAL, AND FOR A SOCKETING THE GEM, THEN THE ITEM. A refusal after anything is taken puts it back.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
 	if (!Inventory->RemoveMaterial(Plan.Material, 1))
 	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		TakeBackTheMark();
 		OutMessage = TEXT("The material could not be taken from the bag; nothing changed.");
 		return ECataclysmForgeResult::Refused;
@@ -472,6 +560,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 	if (!Plan.bUnsocket && !Inventory->RemoveGems(Plan.Gem, Plan.Rarity, 1))
 	{
 		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		TakeBackTheMark();
 		OutMessage = TEXT("The gem could not be taken from the bag; nothing changed.");
 		return ECataclysmForgeResult::Refused;
@@ -496,6 +585,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 		{
 			Inventory->AddGems(Plan.Gem, Plan.Rarity, 1);
 		}
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		TakeBackTheMark();
 		UE_LOG(LogCataclysm, Error, TEXT("The forge could not put %s back where it was; what it took is back in the bag."),
 			   *Name);
@@ -508,6 +598,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 	{
 		PutTheItemBack();
 		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
 		TakeBackTheMark();
 		OutMessage = TEXT("The gem had nowhere to go in the bag; nothing changed.");
 		return ECataclysmForgeResult::Refused;
@@ -527,10 +618,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 		   Plan.bUnsocket ? TEXT("from") : TEXT("into"), *Name, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days,
 		   DayBefore, Run->Day());
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSocketLine(
-		Plan.bUnsocket, GemName, RarityName, UCataclysmGems::SocketTypeName(Plan.SocketType), Name,
+		Plan.bUnsocket, GemName, RarityName, UCataclysmGems::SocketTypeName(Plan.SocketType), Name, Plan.Gold,
 		FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
 
-	// SAVED: the character record holds the item, the gem and the material, the run record the days.
+	// SAVED: the character record holds the item, the gem and the material, the run record the days, the account record
+	// the gold when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
 
 	OutDone = Plan;

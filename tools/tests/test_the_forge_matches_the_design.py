@@ -58,7 +58,11 @@ def constant(name: str) -> float:
 def test_two_stones_one_day_and_the_penalty_are_the_designs() -> None:
     assert constant("StonesPerUpgrade") == 2, "an upgrade consumes two stones (the operations row)"
     assert constant("StonesPerCombine") == 2, "two +1 stones combine into a +2 (Gear Leveling)"
-    assert constant("BaseDaysPerLevel") == 1, "one day per level (the workbook's '1 day per tier')"
+    # THE DAYS ARE THE LEVEL REACHED: the owner's ruling of 2026-11-21, "+0 to +10 takes 55 days per item
+    # (1+2+...+10)", reading the workbook's "1 day per tier. (Max of 10)". Until then one day a level. Issue #2830.
+    upgrade = SOURCE.read_text(encoding="utf-8")
+    assert "Out.Days = DaysFor(Item.Residue, Out.ToLevel);" in upgrade, (
+        "an upgrade's base days are no longer the level it reaches, which the owner ruled on 2026-11-21")
     assert constant("ResiduePerPenaltyDay") == 100, "the design's craft time penalty is CR / 100"
     gdd = GDD.read_text(encoding="utf-8")
     assert "Craft time penalty in days: `CR / 100`, rounded down" in gdd, (

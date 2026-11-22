@@ -3866,7 +3866,11 @@ Gear can be upgraded from +1 to +10 using upgrade stones obtained as dungeon dro
 
 **Where it is done.** At the Cataclysmic Forge, in the capital, between walks (section VII). Until the capital's Smith exists, the forge's screen opens from the empire map's "Forge" button, under the empire upgrade tree's; it opens during a walk too, to be read, and refuses every craft there. Ruled 2026-11-19.
 
-**Combining two stones into one of the next level costs no day and adds no residue**, because it changes no item; the operations table has no row for it. That is a judgement of 2026-11-19 against "All capital services cost time", recorded in `docs/DECISIONS.md`. **No gold is charged for an upgrade yet**: the design gives a gold multiplier, `(CR / 50) + 1`, and no base price for any craft, so the base is a later choice across all eighteen operations.
+**Each level's upgrade takes days equal to the level it reaches**, plus the time penalty below: raising a piece from +0 to +10 takes 55 base days. The owner's ruling of 2026-11-21, word for word: "+0 to +10 takes 55 days per item (1+2+...+10)", reading the workbook's "1 day per tier. (Max of 10)". Until then one day a level was built (issue #2830).
+
+**Every craft costs gold**, issue #2830, after the owner's answer of 2026-11-21: "I have costs set in the crafting excel sheet. Something like that should be implemented". The sheet gives the multiplier, `(CR / 50) + 1`, and no base price, so the base was set by the coordinating session under the owner's delegation of numbers: **250 gold for each base day of the craft at difficulty tier 1**, one day's price for a craft of none, times the tier's gold scale (1, 3, 6, 10, 14, 19, 24, 30), times the multiplier, rounded to whole gold. The 250 is a judgement: about a third of one walk day's gold by the only estimate there is (7,000 to 14,000 gold for a 12-floor tier 1 walk, #2742; nothing measured). A craft without its gold is refused and nothing moves.
+
+**Combining two stones into one of the next level costs gold and no day, and adds no residue**, because it changes no item; the operations table has no row for it. The no-day judgement is of 2026-11-19 against "All capital services cost time", recorded in `docs/DECISIONS.md`; the gold is the owner's answer of 2026-11-21, "Gold only (Recommended)": **50 gold at the lowest rung (a +1 stone), doubled for each rung above it**, times the tier's gold scale, for stones and gems alike. Climbing one gem from Everyday to Ascendant takes 63 combines and 9,600 gold at tier 1.
 
   
 
@@ -3884,7 +3888,7 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
   - **Sockets are typed.** Each socket is Attack, Defense or Utility, rolled evenly on a drop, and a gem fits a socket of its own type. Change Socket Type lets the player choose the new type. "Sockets on this equipment fit any gem type" lifts the restriction for that piece.
   - **Socketing and unsocketing are crafts at the Forge**, between walks, at the costs in section VII: Socket Gem uses a Jeweler's Setting Agent, and Unsocket Gem uses Dismantling Dust and returns the gem. There is no free removal.
   - **Gems stack**, one stack per gem and rarity, in the inventory and the stash, for the reason crafting materials stack.
-  - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine.
+  - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine, for the gold a stone combine of the same rung costs: 50 gold for two Everyday gems, doubled for each rarity above (issue #2830). There is no limit by difficulty tier (the owner, 2026-11-21: "I don't think I want to cap what players can level their stuff to").
   - **A gem in a potion slot gives its stat for the 3 seconds the potion's heal runs.** That is a judgement, to be looked at again before it is built.
   - **How often gems drop is not yet set**; it is measured in the simulation when gem drops are built.
 
@@ -3982,9 +3986,9 @@ the craft's own CR is added.
   
 
 Both formulas reproduce every row of that table. The 99 row is `(99/50)+1 = 2.98`,
-shown rounded; every other row is exact. **Whether the multiplier is rounded for
-display only or rounded in the calculation is not settled**, and it matters below
-100 where the two readings differ — at CR 10 the multiplier is either 1.2 or 2.
+shown rounded; every other row is exact. **The multiplier is not rounded in the
+calculation**, ruled by the coordinating session on 2026-11-21 (issue #2830): at CR 10
+it is 1.2, and only the final gold figure is rounded, to whole gold.
 
   
 

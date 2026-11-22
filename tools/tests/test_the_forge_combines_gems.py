@@ -64,7 +64,10 @@ def test_a_gem_combine_takes_the_stone_combines_count_read_from_it() -> None:
 
 
 def test_no_tier_and_no_ceiling_enter_the_rule_or_the_craft() -> None:
+    # THE TIER ENTERS ONE PLACE, THE GOLD SCALE (#2830): `CombineGoldFor(..., DifficultyTier)`. Taken out, nothing else
+    # in the rule may read it, and no ceiling at all.
     rule = squeeze(body(code(FORGE_CPP), "FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(", FORGE_CPP.name))
+    rule = rule.replace("Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);", "")
     craft = squeeze(body(code(CRAFT_CPP), "bool UCataclysmForgeCraft::CombineGems(", CRAFT_CPP.name))
     for where, text in (("GemCombineOf", rule), ("CombineGems", craft)):
         for word in ("DifficultyTier", "Ceiling", "HighestUnpenalisedRarity"):

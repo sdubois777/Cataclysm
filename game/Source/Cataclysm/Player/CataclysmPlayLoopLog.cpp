@@ -365,42 +365,46 @@ FString FCataclysmPlayLoopLog::SkillForgottenLine(const FString& Slot)
 }
 
 FString FCataclysmPlayLoopLog::ForgeUpgradeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel,
-												int32 StonesLeft, int32 ResidueBefore, int32 ResidueAfter, int32 Days,
-												int32 DayFrom, int32 DayTo)
+												int32 StonesLeft, int64 Gold, int32 ResidueBefore, int32 ResidueAfter,
+												int32 Days, int32 DayFrom, int32 DayTo)
 {
 	return FString::Printf(
-		TEXT("upgraded %s from +%d to +%d with two +%d stones, %d left; residue %d to %d; it cost %d day%s, day %d to day %d"),
-		*ItemName, FromLevel, ToLevel, ToLevel, StonesLeft, ResidueBefore, ResidueAfter, Days,
-		Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
+		TEXT("upgraded %s from +%d to +%d with two +%d stones, %d left, and %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+		*ItemName, FromLevel, ToLevel, ToLevel, StonesLeft, *ACataclysmDroppedItem::GoldName(Gold), ResidueBefore,
+		ResidueAfter, Days, Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
 }
 
-FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld)
+FString FCataclysmPlayLoopLog::ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld,
+												int64 Gold)
 {
-	return FString::Printf(TEXT("combined two +%d upgrade stones into one +%d: %d +%d and %d +%d held"), FromLevel,
-						   IntoLevel, FromHeld, FromLevel, IntoHeld, IntoLevel);
+	return FString::Printf(TEXT("combined two +%d upgrade stones into one +%d for %s: %d +%d and %d +%d held"), FromLevel,
+						   IntoLevel, *ACataclysmDroppedItem::GoldName(Gold), FromHeld, FromLevel, IntoHeld, IntoLevel);
 }
 
 FString FCataclysmPlayLoopLog::ForgeGemCombineLine(const FString& GemName, const FString& FromRarity,
-												  const FString& IntoRarity, int32 FromHeld, int32 IntoHeld)
+												  const FString& IntoRarity, int32 FromHeld, int32 IntoHeld, int64 Gold)
 {
-	return FString::Printf(TEXT("combined two %s (%s) into one %s (%s): %d %s and %d %s held"), *GemName, *FromRarity,
-						   *GemName, *IntoRarity, FromHeld, *FromRarity, IntoHeld, *IntoRarity);
+	return FString::Printf(TEXT("combined two %s (%s) into one %s (%s) for %s: %d %s and %d %s held"), *GemName,
+						   *FromRarity, *GemName, *IntoRarity, *ACataclysmDroppedItem::GoldName(Gold), FromHeld,
+						   *FromRarity, IntoHeld, *IntoRarity);
 }
 
 FString FCataclysmPlayLoopLog::ForgeSocketLine(bool bUnsocket, const FString& GemName, const FString& Rarity,
-											  const FString& SocketType, const FString& ItemName, int32 ResidueBefore,
-											  int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo)
+											  const FString& SocketType, const FString& ItemName, int64 Gold,
+											  int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,
+											  int32 DayTo)
 {
 	// TWO PLAIN RETURNS, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can read both formats.
 	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
 	if (bUnsocket)
 	{
-		return FString::Printf(TEXT("unsocketed %s (%s) from %s, back to the bag; residue %d to %d; it cost %d day%s, day %d to day %d"),
-							   *GemName, *Rarity, *ItemName, ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+		return FString::Printf(TEXT("unsocketed %s (%s) from %s for %s, back to the bag; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   *GemName, *Rarity, *ItemName, *ACataclysmDroppedItem::GoldName(Gold), ResidueBefore,
+							   ResidueAfter, Days, Plural, DayFrom, DayTo);
 	}
-	return FString::Printf(TEXT("socketed %s (%s) into the %s socket of %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
-						   *GemName, *Rarity, *SocketType, *ItemName, ResidueBefore, ResidueAfter, Days, Plural, DayFrom,
-						   DayTo);
+	return FString::Printf(TEXT("socketed %s (%s) into the %s socket of %s for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   *GemName, *Rarity, *SocketType, *ItemName, *ACataclysmDroppedItem::GoldName(Gold), ResidueBefore,
+						   ResidueAfter, Days, Plural, DayFrom, DayTo);
 }
 
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)

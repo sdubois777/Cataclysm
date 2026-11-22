@@ -5,6 +5,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
+// A gold amount as a player reads it, "2,055 gold", issue #2830.
+#include "Items/CataclysmDroppedItem.h"
 // A socket's type and a gem's name, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmWearing.h"
@@ -22,21 +24,43 @@ FName UCataclysmForge::StoneFor(int32 Level)
 	return FName(*FString::Printf(TEXT("Material_Upgrade_Stone_%d"), Level));
 }
 
-int32 UCataclysmForge::DaysFor(float Residue)
+int32 UCataclysmForge::BaseGoldFor(int32 BaseDays)
 {
-	// THE DESIGN'S GLOBAL TIME PENALTY, `CR / 100` rounded down, on the residue the item carries as the craft begins.
-	// A residue below nothing is read as nothing, so no craft costs less than its base day.
-	const int32 Penalty = FMath::FloorToInt(FMath::Max(0.0f, Residue) / ResiduePerPenaltyDay);
-	return BaseDaysPerLevel + Penalty;
+	return GoldPerCraftDay * FMath::Max(1, BaseDays);
 }
 
-FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld)
+int64 UCataclysmForge::GoldFor(int32 BaseGold, float Residue, int32 DifficultyTier)
+{
+	// THE SHEET'S MULTIPLIER, NOT ROUNDED, on the residue the item carries as the craft begins, as the time penalty
+	// reads it. A residue below nothing is read as nothing.
+	const double Multiplier = static_cast<double>(FMath::Max(0.0f, Residue)) / ResiduePerGoldStep + 1.0;
+	const double Gold = static_cast<double>(BaseGold) * UCataclysmDropRoll::GoldScaleFor(DifficultyTier) * Multiplier;
+	return FMath::Max<int64>(1, static_cast<int64>(FMath::RoundToDouble(Gold)));
+}
+
+int64 UCataclysmForge::CombineGoldFor(int32 Rung, int32 DifficultyTier)
+{
+	// DOUBLED FOR EACH RUNG, as each rung is two of the one below; held inside the eight rarities and ten stones.
+	const double AtTheRung = static_cast<double>(CombineGoldAtTheLowestRung) * FMath::Pow(2.0, FMath::Clamp(Rung, 0, 9));
+	return FMath::Max<int64>(
+		1, static_cast<int64>(FMath::RoundToDouble(AtTheRung * UCataclysmDropRoll::GoldScaleFor(DifficultyTier))));
+}
+
+FString UCataclysmForge::GoldRefusal(const FString& What, int64 Gold, int64 Held)
+{
+	return FString::Printf(TEXT("%s takes %s; %s held."), *What, *ACataclysmDroppedItem::GoldName(Gold),
+						   *ACataclysmDroppedItem::GoldName(FMath::Max<int64>(0, Held)));
+}
+
+FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld,
+												  int32 DifficultyTier, int64 GoldHeld)
 {
 	FCataclysmForgeUpgrade Out;
 	Out.FromLevel = Item.GearLevel;
 	Out.ToLevel = Item.GearLevel + 1;
 	Out.StonesHeld = FMath::Max(0, StonesOfTheNextLevelHeld);
 	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
 	{
@@ -55,7 +79,9 @@ FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, in
 	Out.Stone = StoneFor(Out.ToLevel);
 	Out.StonesNeeded = StonesPerUpgrade;
 	Out.ResidueAfter = Item.Residue + ResiduePerLevel;
-	Out.Days = DaysFor(Item.Residue);
+	// THE LEVEL IT REACHES IN BASE DAYS, AND ITS GOLD BY THEM: the owner's ruling of 2026-11-21 and #2830.
+	Out.Days = DaysFor(Item.Residue, Out.ToLevel);
+	Out.Gold = GoldFor(BaseGoldFor(Out.ToLevel), Item.Residue, DifficultyTier);
 
 	if (Out.StonesHeld < Out.StonesNeeded)
 	{
@@ -63,18 +89,25 @@ FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, in
 									  Out.ToLevel, Out.StonesHeld);
 		return Out;
 	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(FString::Printf(TEXT("Raising it to +%d"), Out.ToLevel), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
 
 	Out.bPossible = true;
 	return Out;
 }
 
-FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThisLevelHeld)
+FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThisLevelHeld, int32 DifficultyTier,
+												  int64 GoldHeld)
 {
 	FCataclysmForgeCombine Out;
 	Out.FromLevel = Level;
 	Out.IntoLevel = Level + 1;
 	Out.StonesHeld = FMath::Max(0, StonesOfThisLevelHeld);
 	Out.StonesNeeded = StonesPerCombine;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Level < 1 || Level >= HighestStone)
 	{
@@ -86,9 +119,17 @@ FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThi
 
 	Out.From = StoneFor(Level);
 	Out.Into = StoneFor(Level + 1);
+	// A +1 STONE IS THE LOWEST RUNG (#2830).
+	Out.Gold = CombineGoldFor(Level - 1, DifficultyTier);
 	if (Out.StonesHeld < Out.StonesNeeded)
 	{
 		Out.Refusal = FString::Printf(TEXT("Combining takes two +%d upgrade stones; %d held."), Level, Out.StonesHeld);
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(FString::Printf(TEXT("Combining two +%d upgrade stones"), Level), Out.Gold,
+								  Out.GoldHeld);
 		return Out;
 	}
 
@@ -96,7 +137,8 @@ FCataclysmForgeCombine UCataclysmForge::CombineOf(int32 Level, int32 StonesOfThi
 	return Out;
 }
 
-FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis)
+FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
+														int32 DifficultyTier, int64 GoldHeld)
 {
 	FCataclysmForgeGemCombine Out;
 	Out.Gem = Gem;
@@ -104,6 +146,7 @@ FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRar
 	Out.Into = Rarity;
 	Out.GemsHeld = FMath::Max(0, HeldOfThis);
 	Out.GemsNeeded = GemsPerCombine;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Gem.IsNone())
 	{
@@ -118,10 +161,19 @@ FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRar
 	}
 
 	Out.Into = static_cast<ECataclysmRarity>(static_cast<uint8>(Rarity) + 1);
+	// THE STONE COMBINE'S GOLD, AT THE RARITY'S RUNG: an Everyday gem is the lowest (#2830).
+	Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);
 	if (Out.GemsHeld < Out.GemsNeeded)
 	{
 		Out.Refusal = FString::Printf(TEXT("Combining takes two %s (%s); %d held."), *Name,
 									  *UCataclysmGems::RarityName(Rarity), Out.GemsHeld);
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(FString::Printf(TEXT("Combining two %s (%s)"), *Name,
+												  *UCataclysmGems::RarityName(Rarity)),
+								  Out.Gold, Out.GoldHeld);
 		return Out;
 	}
 
@@ -131,9 +183,10 @@ FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(FName Gem, ECataclysmRar
 
 FString UCataclysmForge::UpgradeQuestion(const FCataclysmForgeUpgrade& Upgrade)
 {
-	return FString::Printf(TEXT("Press again to upgrade to +%d: two +%d stones, residue %d to %d, %d day%s of the run."),
-						   Upgrade.ToLevel, Upgrade.ToLevel, FMath::RoundToInt(Upgrade.ResidueBefore),
-						   FMath::RoundToInt(Upgrade.ResidueAfter), Upgrade.Days, Upgrade.Days == 1 ? TEXT("") : TEXT("s"));
+	return FString::Printf(TEXT("Press again to upgrade to +%d: two +%d stones, %s, residue %d to %d, %d day%s of the run."),
+						   Upgrade.ToLevel, Upgrade.ToLevel, *ACataclysmDroppedItem::GoldName(Upgrade.Gold),
+						   FMath::RoundToInt(Upgrade.ResidueBefore), FMath::RoundToInt(Upgrade.ResidueAfter),
+						   Upgrade.Days, Upgrade.Days == 1 ? TEXT("") : TEXT("s"));
 }
 
 FString UCataclysmForge::ThresholdQuestion(const FString& ItemName, float WornResidueAfter, float Threshold)
@@ -153,7 +206,7 @@ int32 UCataclysmForge::DaysFor(float Residue, int32 BaseDays)
 
 FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
 													  ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
-													  int32 AgentsHeld)
+													  int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld)
 {
 	FCataclysmForgeSocketing Out;
 	Out.Socket = Socket;
@@ -164,6 +217,8 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 	Out.ResidueBefore = Item.Residue;
 	Out.ResidueAfter = Item.Residue + SocketGemResidue;
 	Out.Days = DaysFor(Item.Residue, SocketGemBaseDays);
+	Out.Gold = GoldFor(BaseGoldFor(SocketGemBaseDays), Item.Residue, DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
 	{
@@ -212,12 +267,17 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 		Out.Refusal = TEXT("Socketing a gem takes a Jeweler's Setting Agent; 0 held.");
 		return Out;
 	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Socketing a gem"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
 	Out.bPossible = true;
 	return Out;
 }
 
 FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
-														bool bRoomForTheGem)
+														bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld)
 {
 	FCataclysmForgeSocketing Out;
 	Out.bUnsocket = true;
@@ -227,6 +287,8 @@ FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& It
 	Out.ResidueBefore = Item.Residue;
 	Out.ResidueAfter = Item.Residue + UnsocketGemResidue;
 	Out.Days = DaysFor(Item.Residue, UnsocketGemBaseDays);
+	Out.Gold = GoldFor(BaseGoldFor(UnsocketGemBaseDays), Item.Residue, DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
 	{
@@ -258,6 +320,11 @@ FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& It
 		Out.Refusal = TEXT("The bag has no free cell for the gem.");
 		return Out;
 	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Unsocketing a gem"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
 	Out.bPossible = true;
 	return Out;
 }
@@ -266,9 +333,10 @@ FString UCataclysmForge::SocketingQuestion(const FCataclysmForgeSocketing& Plan)
 {
 	const FString Gem = FString::Printf(TEXT("%s (%s)"), *UCataclysmGems::NameOf(Plan.Gem),
 										*UCataclysmGems::RarityName(Plan.Rarity));
-	const FString Cost = FString::Printf(TEXT("residue %d to %d, %d day%s of the run"),
-										 FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Plan.ResidueAfter),
-										 Plan.Days, Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
 	if (Plan.bUnsocket)
 	{
 		return FString::Printf(TEXT("Press again to unsocket %s: one Dismantling Dust, %s; the gem goes back to the bag."),
