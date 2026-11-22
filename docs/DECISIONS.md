@@ -629,8 +629,9 @@ Tests: `game/Source/Cataclysm/Tests/CataclysmAttributeTooltipTests.cpp`, new, th
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `c89fa5911` without a compile, as ruled. Its turn is
-  queued after #2804's.
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `c89fa5911` without a compile, as ruled, and put on
+  the combined branch of #2802, #2804 and #2815 on development `b8df7e1fe`: one turn, one window, registered in the
+  #2802 entry.
 - **THE OWNER CHOSE TO KEEP THE ATTRIBUTES AND EXPLAIN THEM, NOT TO CHANGE THEM**, against the coordinating session's
   recommendation of flat amounts where a stat has no base. The question and the three options are in "The rulings".
 
@@ -747,13 +748,8 @@ the working tree, each restored half 4 passed:
 
 ### Registered before the window
 
-At the slice's turn, after its three compiles, under a lock of its own; no asset step, since no data table changes.
-
-| Step | Registered |
-| :-- | :-- |
-| `Cataclysm.AttributeTooltip.` alone | 3 performed, 3 succeeded |
-| The whole suite | the newest measured total at the turn plus 3, every one succeeding; skipped halves and test saves as that base's, the saves predicted |
-| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+**IN THE #2802 ENTRY**, which registers the combined window of #2802, #2804 and #2815 once, with the sweep's groups
+first. This change adds three tests, `Cataclysm.AttributeTooltip.`; its proofs R1 and R2, and the Python proofs B1-B4, are below, as registered there.
 
 Two C++ guard proofs, with `test_prefix="Cataclysm.AttributeTooltip."`:
 
@@ -775,9 +771,9 @@ optional commander; `UCataclysmSkillBar::ReserveNounFor`, new, shared by both sc
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2802's branch at `96b765874` without a compile, as ruled. Its turn
-  is queued at the end with #2802's, after the empire tree's slice 6c, #2803, #2797 and #2800; it is rebased onto
-  #2802's merge then.
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2802's branch at `96b765874` without a compile, as ruled, and put
+  with #2802 and #2815 on one combined branch on development `b8df7e1fe`: one turn, one window, registered in the #2802
+  entry.
 - **IT REPLACES RULING Q7'S "NO NUMBERS" FOR THIS TOOLTIP.** Q7's reason was that a skill's numbers would put the
   designed slot's fallback in a second place. This change reads every figure through the functions the press reads,
   on a template stamped from the row as granting stamps one, so no figure and no fallback is written twice.
@@ -809,16 +805,15 @@ duplicated fallback, which your route avoids."
 player at character level 32: Subjugate's tooltip has five lines, its fourth a cost equal to the skill bar's cost line
 for the granted Subjugate and its fifth the description; Compel, never used, is priced as the bar prices it; at
 Subjugate's level 10 the tooltip states the bar's level 10 cost, not level 1's; CONTROL, the two-argument tooltip is
-four lines and names no cost. Prints "TOOLTIP COST". `Cataclysm.SkillChoiceScreen.`'s tooltip test calls the
-two-argument form and does not move.
+four lines and names no cost. Prints "TOOLTIP COST". **`Cataclysm.SkillChoiceScreen.`'s tooltip test MOVES**: this
+said it calls the two-argument form and does not, but its last check reads a pool button the screen describes, and the
+screen has a player, so the button carries the cost. The sweep before the combined window found it; the test now
+expects five lines, the cost above the description.
 
 ### Registered before the window
 
-| Step | Registered |
-| :-- | :-- |
-| `Cataclysm.TooltipCost.` alone | 1 performed, 1 succeeded |
-| The whole suite | the newest measured total at the turn plus 1, every one succeeding; skipped halves and saves as that base's, predicted |
-| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+**IN THE #2802 ENTRY**, which registers the combined window of #2802, #2804 and #2815 once, with the sweep's groups
+first. This change adds one test, `Cataclysm.TooltipCost.`; its proof T1 is below, as registered there.
 
 One C++ guard proof, T1, with `test_prefix="Cataclysm.TooltipCost."`: in `CostLineFor`, `Priced->PreviewSkillLevel =
 FMath::Max(1, Holder->SkillLevelOf(Skill.RowName));` to `Priced->PreviewSkillLevel = 1;`, so the tooltip always prices
@@ -962,23 +957,68 @@ and `PlaceSkillTrap` reserve that figure.
 
 ### Registered before the window
 
-At the slice's turn, after its rebase onto #2801's merge and its three compiles:
+**THE COMBINED WINDOW OF #2802, #2804 AND #2815, registered here once for all three**, ruled by the coordinating
+session on 2026-11-21: one branch, `feat/skill-costs-tooltips-2802-2804-2815`, three compiles and one window, lock
+`skills-w1`. The #2804 and #2815 entries point here. **Registered on development `b8df7e1fe`, before #2803's merge**:
+at the rebase onto that merge the base figures below move by what #2803's window measured, and the asset step comes
+with the workbook stage (the two description sentences above), which waits for #2803 because the workbook is a binary
+file that cannot be merged.
+
+**The sweep before registering** (the window procedure of 2026-11-21): `game/Source/**/Tests`, `tools/tests` and
+`sim/tests` searched for each function, sentence and count the three changes move.
+
+| Searched for | What moves | What was found and done |
+| :-- | :-- | :-- |
+| `SetSkillExperience`, `GrantSkillExperience`, `ExperienceToReach` | a levelled skill's costs and reserves fall | `Cataclysm.SkillLevelSources.` raises Summon Imp and Subjugate to level 3 and then summons and takes: more room, and no cost or reserve is checked; run first |
+| `CostLineFor`, `ReserveEach`, `ReserveNoun`, "reserves ... Fervour." | the cost line gains the reserve sentence | `Cataclysm.SkillCost.`'s boxes state no reserve; `Cataclysm.SkillBar.`'s pop-up test reads only the cost line's start; both run first |
+| `ManaCostFor`, `FervourCostFor`, `ManaCostAtTheHoldersLevel` | each cost is multiplied by the level's factor | twelve test files, each pricing skills at level 1, where the factor is 1 |
+| `ToolTipFor`, `ToolTipText`, `DescribeButtonForTests` | the assignment tooltip gains a cost line | **A HIT:** `Cataclysm.SkillChoiceScreen.APoolSkillsToolTipNamesItsSlotWeaponTypeDamageTypeAndDescription` compared a pool button, described for a screen with a player, with the four-line tooltip; the button carries five since #2804. Changed to expect the cost above the description (commit `48eed9665`); run first |
+| `SkillGadgetFervourReserve`, `SkillTrapFervourReserve`, `PlaceSkillGadget`, `PlaceSkillTrap` | the gadget's and trap's reserves follow the slot skill's level | 22 test files place them for players whose slot skills are at level 1, so 15 and 5 hold; `Cataclysm.KindReserves.` run first. `tools/tests/test_every_minion_kind_reserves_fervour.py` compares the design's table with the level 1 constants and passes; the design now says they fall with the level |
+| The Attributes table's cells, `AttributeTooltipFor`, `NameFor` | #2815's words and the sheet's tooltips | only #2815's own checks read them; `Cataclysm.CharacterSheet.` run first for the widget |
 
 | Step | Registered |
 | :-- | :-- |
-| The build | succeeds; the asset step only if the workbook's two description sentences are written in that turn |
-| `Cataclysm.LevelCosts.` alone | 3 performed, 3 succeeded |
-| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded: its pop-up test's built boxes state no reserve, so its words do not move |
-| The whole suite | the newest measured total at the turn plus 3, every one succeeding; skipped halves and saves as that base's, the saves predicted, not measured |
-| Python and ruff | every test passing, the JUnit file agreeing; ruff clean |
+| The build | succeeds, after the three compiles |
+| The asset step | added at the rebase onto #2803's merge: `DT_WeaponSkills.uasset` and `datatable_asset_sources.json` change and nothing else, committed alone before any test |
+| `Cataclysm.SkillChoiceScreen.` alone, first | 8 performed, 8 succeeded |
+| `Cataclysm.SkillBar.` alone | 22 performed, 22 succeeded |
+| `Cataclysm.SkillCost.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.SkillLevelSources.` alone | 19 performed, 19 succeeded |
+| `Cataclysm.KindReserves.` alone | 12 performed, 12 succeeded |
+| `Cataclysm.CharacterSheet.` alone | 10 performed, 10 succeeded |
+| `Cataclysm.LevelCosts.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.TooltipCost.` alone | 1 performed, 1 succeeded |
+| `Cataclysm.AttributeTooltip.` alone | 3 performed, 3 succeeded |
+| The whole suite | 5093 performed, 5093 succeeded: window dirge-quest-w1's 5085 at `2826b9622`, whose `game/` is development `b8df7e1fe`'s, plus the 8 new tests; 48 skipped halves; 860 test saves, predicted, not measured |
+| Python, run alongside the whole suite | every test passing, the JUnit file agreeing |
+| ruff | clean |
 
-Three C++ guard proofs, with `test_prefix="Cataclysm.LevelCosts."`:
+The six swept groups' counts are measured, in window subjugate-w2's suite log at `512fd30f`, and none of their test
+files has changed since; the three new groups' counts are their registration macros.
 
-| Proof | The break | Broken half | Restored |
+**Four C++ guard proofs**, one per behaviour only a C++ test guards (the coordinating session's rule of 2026-11-21),
+after both suites:
+
+| Proof | The break | Prefix | Broken half | Restored |
+| :-- | :-- | :-- | :-- | :-- |
+| L2 | in `RepriceReservesOf`, `Body->ReservedFervour = Now;` to `Body->ReservedFervour = Body->ReservedFervour;` | `Cataclysm.LevelCosts.` | 4 performed, 3 succeeded, 1 failed: `AHeldThrallIsRepricedWhenItsSkillLevels` | 4 of 4 |
+| T1 | #2804's, in its entry | `Cataclysm.TooltipCost.` | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| R1 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| R2 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+
+**L1 and L3 are Python proofs now**, ruled by the coordinating session on 2026-11-21, since a Python check guards each.
+With B1-B4 (#2815's entry), they run after the C++ proofs, through `tools/prove_guard.py` in a `git archive` copy of the
+tested head:
+
+| Proof | The break | Check run | Broken half |
 | :-- | :-- | :-- | :-- |
-| L1 | `CostFactorPerLevel = 0.9642` to `1.0` | 3 performed, 0 succeeded, 3 failed: the factor test, the costs test (no fall) and the re-price test (21.6 against 30) | 3 of 3 |
-| L2 | in `RepriceReservesOf`, `Body->ReservedFervour = Now;` to `Body->ReservedFervour = Body->ReservedFervour;` | 3 performed, 2 succeeded, 1 failed: the re-price test | 3 of 3 |
-| L3 | in `ManaCostAtTheHoldersLevel`, the factor dropped: `* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this))` to `* 1.0f` | 3 performed, 2 succeeded, 1 failed: the costs test (its mana) | 3 of 3 |
+| P-L1 | `CostFactorPerLevel = 0.9642` to `1.0` | `tools/tests/test_skill_levels_port.py` | `test_each_constant_is_the_same`, its `CostFactorPerLevel` case, fails |
+| P-L3 | in `ManaCostAtTheHoldersLevel`, `* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));` to `* 1.0f;` | `tools/tests/test_a_skills_level_lowers_its_costs.py` | `test_each_cost_is_lowered_by_the_skills_level`, its mana cost case, fails |
+
+**PROPOSED, NOT REGISTERED until the coordinating session adds them:** G1, a C++ proof of the gadget and trap re-price
+(`RowInSlot(Commander, Slot) == SkillRow` to `== NAME_None`, `Cataclysm.LevelCosts.`, 4 performed, 3 succeeded, 1
+failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel`), and P-G1, a Python proof of the trap's figure
+(`SkillTrapReserveFor`'s factor dropped; `test_each_cost_is_lowered_by_the_skills_level`'s skill trap case fails).
 
 ---
 
