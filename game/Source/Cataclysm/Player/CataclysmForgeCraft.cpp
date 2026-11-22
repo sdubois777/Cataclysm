@@ -3,6 +3,8 @@
 #include "Player/CataclysmForgeCraft.h"
 
 #include "Cataclysm.h"
+// The damage types designed for each weapon type, issue #47 slice F4.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -1216,6 +1218,175 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(const UObject* WorldCo
 		FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
 
 	// SAVED: the character record holds the item and the material, the run record the days, the account record the gold
+	// when it paid.
+	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
+	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);
+
+	OutDone = Plan;
+	return ECataclysmForgeResult::Done;
+}
+
+FCataclysmForgeDamageTypeWork UCataclysmForgeCraft::DamageTypeWorkPlanFor(const UObject* WorldContext,
+																		  const FCataclysmForgeTarget& Target,
+																		  ECataclysmForgeDamageTypeCraft Craft, FName Chosen)
+{
+	const UDataTable* SkillTable = UCataclysmWeaponSkills::LoadGeneratedTable();
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Item == nullptr)
+	{
+		return UCataclysmForge::DamageTypeWorkOf(FCataclysmItem(), Craft, Chosen, 1, SkillTable, BaseTable, 0,
+												 GoldTierOf(WorldContext), 0);
+	}
+	int32 Mask = 0;
+	int32 Day = 0;
+	ForgeSeedOfTheRun(WorldContext, Mask, Day);
+	// A CHANGE'S DRAW IS SEEDED BY THE PLACE OF THE TYPE IT REPLACES, AN INFUSION'S BY THE PLACE THE NEW TYPE TAKES.
+	const bool bChange = Craft == ECataclysmForgeDamageTypeCraft::Change;
+	const int32 Seed = UCataclysmForge::AffixCraftSeed(
+		*Item, bChange ? UCataclysmForge::ChangedDamageTypeSalt : UCataclysmForge::InfusedDamageTypeSalt,
+		bChange ? Item->DamageTypes.IndexOfByKey(Chosen) : Item->DamageTypes.Num(), Mask, Day);
+	return UCataclysmForge::DamageTypeWorkOf(
+		*Item, Craft, Chosen, Seed, SkillTable, BaseTable,
+		Character->GetInventory()->CountOfMaterial(UCataclysmForge::MaterialFor(Craft)), GoldTierOf(WorldContext),
+		GoldHeldIn(WorldContext));
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* WorldContext,
+															 const FCataclysmForgeTarget& Target,
+															 ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
+															 bool bConfirmedPastThreshold,
+															 FCataclysmForgeDamageTypeWork& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeDamageTypeWork();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeDamageTypeWork Plan = DamageTypeWorkPlanFor(WorldContext, Target, Craft, Chosen);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+
+	UWorld* World = ForgeWorldOf(WorldContext);
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character->GetInventory();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+
+	// THE DAYS NEED A RUN TO PASS IN, and the plan's draw was made for its mask and day.
+	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	if (Run == nullptr)
+	{
+		OutMessage = TEXT("There is no run to take the craft's days from.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem* Held = ItemAt(*Character, Target);
+	if (Held == nullptr)
+	{
+		OutMessage = TEXT("There is nothing there to craft.");
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmItem Before = *Held; // A COPY: the pointer is into the component's own array.
+	const FString Name = UCataclysmForge::NameOf(Before, UCataclysmItemModifiers::LoadBaseTable(),
+												 UCataclysmDropRoll::LoadAffixTable());
+	const float Added = Plan.ResidueAfter - Plan.ResidueBefore;
+
+	// THE THRESHOLD, FOR A WORN PIECE ONLY, as socketing asks it.
+	bool bCrosses = false;
+	if (Target.bWorn)
+	{
+		const float Threshold =
+			UCataclysmEquipmentComponent::ConsumptionThresholdFor(ACataclysmGameMode::DifficultyTierIn(World));
+		const float Now = Equipment->WornResidue();
+		const float After = Now + Added;
+		bCrosses = Now < Threshold && After >= Threshold;
+		if (bCrosses && !bConfirmedPastThreshold)
+		{
+			OutMessage = FString::Printf(
+				TEXT("%s %s brings your Worn Residue to %d, past this tier's Consumption Threshold of %d. %s"),
+				Craft == ECataclysmForgeDamageTypeCraft::Change ? TEXT("Changing a damage type of")
+																: TEXT("Infusing a damage type into"),
+				*Name, FMath::RoundToInt(After), FMath::RoundToInt(Threshold), UCataclysmWearing::ThresholdConsequence);
+			return ECataclysmForgeResult::AsksAboutTheThreshold;
+		}
+	}
+	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	const bool bWasMarked = State != nullptr && State->IsMarkedByConsumption();
+	if (bCrosses && State != nullptr)
+	{
+		State->MarkByConsumption();
+	}
+	const auto TakeBackTheMark = [&]()
+	{
+		if (bCrosses && State != nullptr && !bWasMarked)
+		{
+			State->ClearConsumptionMark();
+		}
+	};
+
+	// THE GOLD, THE MATERIAL, THEN THE ITEM. A refusal after anything is taken puts it back.
+	bool bGoldFromTheCharacter = false;
+	if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))
+	{
+		TakeBackTheMark();
+		OutMessage = TEXT("The gold could not be taken; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+	if (!Inventory->RemoveMaterial(Plan.Material, 1))
+	{
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		OutMessage = TEXT("The material could not be taken from the bag; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	// THE WEAPON'S LIST CHANGED AS THE PLAN SAYS: a change puts the new type in the chosen one's place, keeping the
+	// order; an infusion adds it last.
+	FCataclysmItem Changed = Before;
+	const int32 Replaced = Changed.DamageTypes.IndexOfByKey(Plan.FromType);
+	if (Craft == ECataclysmForgeDamageTypeCraft::Change && Replaced != INDEX_NONE)
+	{
+		Changed.DamageTypes[Replaced] = Plan.ToType;
+	}
+	else
+	{
+		Changed.DamageTypes.Add(Plan.ToType);
+	}
+	Changed.Residue = Plan.ResidueAfter;
+	const bool bReplaced = Target.bWorn ? Equipment->ReplaceEquippedAt(Target.WornSlot, Changed)
+										: Inventory->ReplaceItemAt(Target.CarriedSlot, Changed);
+	if (!bReplaced)
+	{
+		Inventory->AddMaterial(Plan.Material, 1);
+		GiveTheGoldBack(WorldContext, Plan.Gold);
+		TakeBackTheMark();
+		UE_LOG(LogCataclysm, Error, TEXT("The forge could not put %s back where it was; what it took is back in the bag."),
+			   *Name);
+		OutMessage = TEXT("The item could not be changed; nothing changed.");
+		return ECataclysmForgeResult::Refused;
+	}
+
+	const int32 DayBefore = Run->Day();
+	Run->AdvanceDays(Plan.Days);
+	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
+	{
+		State->SetConsumptionBuild(FCataclysmPlayerBuild::Of(*Character));
+	}
+
+	UE_LOG(LogCataclysm, Log, TEXT("The forge %s %s on %s (%d to %d of at most %d); residue %.0f to %.0f; %d day(s), day %d to "
+								   "day %d."),
+		   Craft == ECataclysmForgeDamageTypeCraft::Change ? TEXT("changed a damage type to") : TEXT("infused"),
+		   *Plan.ToType.ToString(), *Name, Plan.TypesHeld, Changed.DamageTypes.Num(), Plan.MaxTypes, Plan.ResidueBefore,
+		   Plan.ResidueAfter, Plan.Days, DayBefore, Run->Day());
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeDamageTypeLine(
+		Craft, Name, Plan.FromType.ToString(), Plan.ToType.ToString(), Plan.Gold, FMath::RoundToInt(Plan.ResidueBefore),
+		FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, DayBefore, Run->Day()));
+
+	// SAVED: the character record holds the weapon and the material, the run record the days, the account record the gold
 	// when it paid.
 	SaveWhereTheGoldCameFrom(World, Plan.Gold, bGoldFromTheCharacter);
 	UCataclysmSaveWriter::NoteTriggerIn(World, ECataclysmSaveTrigger::ForgeCrafted);

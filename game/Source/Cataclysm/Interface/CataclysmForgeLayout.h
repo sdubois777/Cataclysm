@@ -67,6 +67,17 @@ struct FCataclysmForgeAffixChangeAction
 	int32 Affix = INDEX_NONE;
 };
 
+/** One damage-type craft the forge offers for the weapon chosen. Issue #47, slice F4. */
+struct FCataclysmForgeDamageTypeAction
+{
+	FName ButtonName;
+	FString Label;
+	ECataclysmForgeDamageTypeCraft Craft = ECataclysmForgeDamageTypeCraft::InfuseRandom;
+
+	/** The type a specific infusion adds, or the type a change replaces; None for a random infusion. */
+	FName Type;
+};
+
 /**
  * One gem combine the forge offers: two carried gems of a kind and rarity into one of the next rarity. Issue #46, slice
  * G6.
@@ -213,6 +224,26 @@ public:
 	/** The action a button stands for, among those shown. False for a button that is none of them. */
 	static bool AffixChangeActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixChangeAction>& Shown,
 										   FCataclysmForgeAffixChangeAction& OutAction);
+
+	//~ The three damage-type crafts. Issue #47, slice F4.
+
+	/**
+	 * A weapon's damage types for the screen's detail: "Damage types: War, Death; 2 of at most 4.", or, for the weapon
+	 * made at creation, that the forge does not change them. Empty for an item that is no weapon (`MaxTypes` 0).
+	 */
+	static FString DamageTypesDetailFor(const FCataclysmItem& Item, int32 MaxTypes);
+
+	/**
+	 * The damage-type crafts for a weapon: below its maximum, "Infuse a random damage type" and "Infuse Death" for each
+	 * type in `Open`, the types designed for it that it lacks; and, while `Open` is not empty, "Change War" for each type
+	 * it carries. None for an item that is no weapon (`MaxTypes` 0) or the weapon made at creation (issue #2845).
+	 */
+	static TArray<FCataclysmForgeDamageTypeAction> DamageTypeActionsFor(const FCataclysmItem& Item,
+																		 const TArray<FName>& Open, int32 MaxTypes);
+
+	/** The action a button stands for, among those shown. False for a button that is none of them. */
+	static bool DamageTypeActionForButton(FName ButtonName, const TArray<FCataclysmForgeDamageTypeAction>& Shown,
+										  FCataclysmForgeDamageTypeAction& OutAction);
 
 	//~ Combining gems. Issue #46, slice G6.
 
