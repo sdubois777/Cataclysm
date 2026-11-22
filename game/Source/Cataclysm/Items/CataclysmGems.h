@@ -144,6 +144,48 @@ public:
 	 */
 	static bool GemFits(ECataclysmSocketType Type, const FString& GemType);
 
+	//~ The two enchantments that act on a piece's own gems. Issue #46, slice G7, ruled 2026-11-22.
+
+	/**
+	 * "Sockets on this equipment fit any gem type": its effect row states a flat 1 on this stat. READ OFF THE PIECE'S
+	 * OWN DRAWN ENCHANTMENTS by `FitsAnyGem`, and by no character, as `UCataclysmDropRoll::DamageTypesCarriedStat` is.
+	 */
+	static const TCHAR* SocketFitsAnyGemStat;
+
+	/**
+	 * "Gems in this equipment are 50% less effective": its effect row states `more` -50 on this stat. Read off the
+	 * piece's own drawn enchantments by `SocketedGemEffectOf`, and by no character.
+	 */
+	static const TCHAR* SocketedGemEffectStat;
+
+	/**
+	 * Whether a piece's own enchantments let every one of its sockets take any gem: one of its drawn enchantments has an
+	 * effect row on `SocketFitsAnyGemStat` stating more than nought at the piece's roll.
+	 *
+	 * READ EVERY TIME IT IS ASKED AND NEVER WRITTEN INTO THE SOCKETS (Q1, ruled 2026-11-22). A socket keeps its own type
+	 * under the enchantment, so the Forge asks this when a gem is socketed and `AddSocketedGems` asks it again whenever
+	 * the piece's gems are applied. A gem the enchantment let in stays socketed and stops acting while the piece no
+	 * longer carries it (Q2, a judgement: a gem that kept acting would let the enchantment be used once and replaced,
+	 * and one thrown out would land in the bag at a moment the player did not choose).
+	 */
+	static bool FitsAnyGem(const FCataclysmItem& Item, const UDataTable* EnchantmentEffectTable);
+
+	/**
+	 * What each of this piece's gems is worth, as a multiplier on its value: 1, times (1 + value / 100) for every effect
+	 * row of its drawn enchantments on `SocketedGemEffectStat`, so "50% less effective" gives 0.5. Never below nought.
+	 *
+	 * LOCAL TO THE PIECE, AND APPLIED TO EACH GEM'S VALUE BEFORE IT ENTERS ITS BUCKET (Q3, ruled 2026-11-22), derived
+	 * from Path of Exile's Darkness Enthroned ("(50-100)% increased Effect of Socketed Abyss Jewels", poedb.tw) and Path
+	 * of Exile 2's stat for it, "local socketed items effect" (poe2db.tw). It is not a "more" modifier on the wearer,
+	 * which would also scale every other source of the gem's stat and the gems in other pieces. NOT ROUNDED (Q4): a
+	 * gem's value is a float here.
+	 */
+	static float SocketedGemEffectOf(const FCataclysmItem& Item, const UDataTable* EnchantmentEffectTable);
+
+	/** Whether a gem of `GemType` fits socket `Socket` of `Item`: `GemFits` on that socket's own type, or `FitsAnyGem`. */
+	static bool GemFitsIn(const FCataclysmItem& Item, int32 Socket, const FString& GemType,
+						  const UDataTable* EnchantmentEffectTable);
+
 	/** A new socket's type, evenly among Attack, Defense and Utility; never `Any`. Ruled 2026-11-21. */
 	static ECataclysmSocketType RollSocketType(FRandomStream& Stream);
 
@@ -162,9 +204,12 @@ public:
 	 *
 	 * IT READS `FCataclysmGemRow::Stat` AND `ValueKind`, which the Gems sheet's columns of the same names give in slice
 	 * G1's workbook stage. This branch does not compile until it is rebased onto that stage.
+	 *
+	 * `Effect` multiplies the sheet value before it enters its bucket: 1 for a gem as it is, and the piece's
+	 * `SocketedGemEffectOf` when `AddSocketedGems` adds a socketed one (slice G7).
 	 */
 	static bool AddGemModifier(const FCataclysmGemRow& Row, ECataclysmRarity Rarity,
-							   TMap<FName, TArray<FCataclysmStatModifier>>& Totals);
+							   TMap<FName, TArray<FCataclysmStatModifier>>& Totals, float Effect = 1.0f);
 
 	/**
 	 * Adds the modifier of every gem in `Item`'s sockets to `Totals`. Called for each worn piece by
@@ -173,13 +218,26 @@ public:
 	 * ONCE PER GEM, WHATEVER THE PIECE: one effect per gem whatever it is socketed into, and a two-handed weapon does not
 	 * double its gems, because its 6 sockets already equal a pair's 3 + 3 (both ruled 2026-11-21). A gem the table
 	 * lacks is skipped and logged, rather than reaching the character as nothing under a wrong name.
+	 *
+	 * AND THE PIECE'S OWN TWO GEM ENCHANTMENTS, since slice G7: each gem's value is multiplied by `SocketedGemEffectOf`
+	 * before it enters its bucket, and a gem that fits neither its socket's type nor, through `FitsAnyGem`, the piece is
+	 * skipped (Q2). `EnchantmentEffectTable` is where both are read; with none, neither enchantment acts.
 	 */
 	static void AddSocketedGems(const FCataclysmItem& Item, const UDataTable* GemTable,
+								const UDataTable* EnchantmentEffectTable,
 								TMap<FName, TArray<FCataclysmStatModifier>>& Totals);
 
 	/**
 	 * One tooltip line per socket, in order: "Attack socket: empty", "Defense socket: Of The Titan (Superb)", and for a
 	 * socket that fits any gem, "Socket for any gem: empty".
+	 *
+	 * Since slice G7, on a piece whose enchantment lets its sockets take any gem, each line opens "Socket for any gem
+	 * (enchanted)"; and a gem that fits neither its socket nor the piece ends "(does not fit: inactive)" (Q2, Q8). Reads
+	 * the generated gem table and the enchantment effect table the game loads.
 	 */
 	static TArray<FString> SocketLinesFor(const FCataclysmItem& Item);
+
+	/** `SocketLinesFor` with the two tables given, for a caller that already holds them. */
+	static TArray<FString> SocketLinesFor(const FCataclysmItem& Item, const UDataTable* GemTable,
+										  const UDataTable* EnchantmentEffectTable);
 };

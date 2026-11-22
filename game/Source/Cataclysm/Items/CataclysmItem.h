@@ -148,8 +148,12 @@ struct CATACLYSM_API FCataclysmRolledEnchantment
  *
  * Ruled by the coordinating session on 2026-11-21: sockets are typed, rolled evenly among the three on a drop, and a
  * gem fits a socket of its own type, its `GemType` in `game/Data/Gems.csv`. `Any` is no drop's type: it is what a socket
- * saved before sockets had types becomes ("sockets migrated from today's count fit any type"), and what the enchantment
- * "Sockets on this equipment fit any gem type" makes of a piece's sockets (slice G7).
+ * saved before sockets had types becomes ("sockets migrated from today's count fit any type").
+ *
+ * THE ENCHANTMENT "Sockets on this equipment fit any gem type" DOES NOT MAKE A SOCKET `Any`. It is read off the piece
+ * each time a gem is socketed or applied (`UCataclysmGems::FitsAnyGem`) and never written into the socket, ruled by the
+ * coordinating session on 2026-11-22 (slice G7, Q1), so a socket keeps the type it rolled under it. This comment said
+ * the enchantment made a piece's sockets `Any` until then; that was the plan's sentence, and no code did it.
  */
 UENUM(BlueprintType)
 enum class ECataclysmSocketType : uint8

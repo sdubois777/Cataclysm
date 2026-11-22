@@ -42,6 +42,8 @@
 // For damage_types_carried, which the drop reads off an item. Ruled 2026-10-25.
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
+// For socket_fits_any_gem and socketed_gem_effect, which the gem code reads off a piece. Issue #46 slice G7.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -10556,6 +10558,68 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmDropRoll::DamageTypesCarriedBy({Rolled}, Effects), 3);
 	}
 
+	/** A piece drawn with one probe enchantment as its `Half`, and an effect table with no rows yet. */
+	UDataTable* GemProbeTable(FCataclysmItem& OutItem, const TCHAR* Probe, bool bNegative)
+	{
+		FCataclysmRolledEnchantment Rolled;
+		(bNegative ? Rolled.Negative : Rolled.Positive) = FName(Probe);
+		OutItem.Enchantments = {Rolled};
+		UDataTable* Effects = NewObject<UDataTable>();
+		Effects->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
+		return Effects;
+	}
+
+	/**
+	 * `socket_fits_any_gem`, read off a PIECE's drawn enchantments by `UCataclysmGems::FitsAnyGem`, and off no character.
+	 * Issue #46 slice G7, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: the piece's
+	 * Attack socket refuses a Defense gem. With a flat 1, it takes it.
+	 *
+	 * WHAT THIS DOES NOT REACH. The Forge and the gems' modifiers: `Cataclysm.GemEnchantments.`.
+	 */
+	void ProbeSocketFitsAnyGem(FAutomationTestBase& Test)
+	{
+		FCataclysmItem Piece;
+		FCataclysmSocket Attack;
+		Attack.Type = ECataclysmSocketType::Attack;
+		Piece.Sockets = {Attack};
+		UDataTable* Effects = GemProbeTable(Piece, TEXT("Probe_socket_fits_any_gem"), /*bNegative=*/false);
+		Test.TestFalse(TEXT("control: with no row stating socket_fits_any_gem the Attack socket refuses a Defense gem"),
+					   UCataclysmGems::GemFitsIn(Piece, 0, TEXT("Defense"), Effects));
+		FCataclysmEnchantmentEffectRow Row;
+		Row.Enchantment = TEXT("Probe_socket_fits_any_gem");
+		Row.Stat = UCataclysmGems::SocketFitsAnyGemStat;
+		Row.ValueKind = TEXT("flat");
+		Row.ValueLow = 1.0f;
+		Row.ValueHigh = 1.0f;
+		Effects->AddRow(FName(TEXT("Probe_socket_fits_any_gem#1")), Row);
+		Test.TestTrue(TEXT("with a flat 1 it takes one, so GemFitsIn really reads it"),
+					  UCataclysmGems::GemFitsIn(Piece, 0, TEXT("Defense"), Effects));
+	}
+
+	/**
+	 * `socketed_gem_effect`, read off a PIECE's drawn enchantments by `UCataclysmGems::SocketedGemEffectOf`, and off no
+	 * character. Issue #46 slice G7, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: 1.
+	 * With `more` -50 on a negative half, 0.5.
+	 *
+	 * WHAT THIS DOES NOT REACH. The gems' modifiers it scales: `Cataclysm.GemEnchantments.`.
+	 */
+	void ProbeSocketedGemEffect(FAutomationTestBase& Test)
+	{
+		FCataclysmItem Piece;
+		UDataTable* Effects = GemProbeTable(Piece, TEXT("Probe_socketed_gem_effect"), /*bNegative=*/true);
+		Test.TestEqual(TEXT("control: with no row stating socketed_gem_effect the piece's gems are worth 1"),
+					   UCataclysmGems::SocketedGemEffectOf(Piece, Effects), 1.0f, 0.0001f);
+		FCataclysmEnchantmentEffectRow Row;
+		Row.Enchantment = TEXT("Probe_socketed_gem_effect");
+		Row.Stat = UCataclysmGems::SocketedGemEffectStat;
+		Row.ValueKind = TEXT("more");
+		Row.ValueLow = -50.0f;
+		Row.ValueHigh = -50.0f;
+		Effects->AddRow(FName(TEXT("Probe_socketed_gem_effect#1")), Row);
+		Test.TestEqual(TEXT("with more -50 they are worth 0.5, so SocketedGemEffectOf really reads it"),
+					   UCataclysmGems::SocketedGemEffectOf(Piece, Effects), 0.5f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -10801,6 +10865,8 @@ namespace CataclysmStatExemptionTest
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapDamageOverTimeShareStat); }},
 			{TEXT("trap_pull_radius"), &ProbeTrapPullRadius},
 			{TEXT("damage_types_carried"), &ProbeDamageTypesCarried},
+			{TEXT("socket_fits_any_gem"), &ProbeSocketFitsAnyGem},
+			{TEXT("socketed_gem_effect"), &ProbeSocketedGemEffect},
 		};
 		return Made;
 	}

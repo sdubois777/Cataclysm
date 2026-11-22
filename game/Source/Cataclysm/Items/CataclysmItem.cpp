@@ -783,8 +783,9 @@ void UCataclysmItemModifiers::AccumulateInto(
 
 	// AND THE GEMS IN ITS SOCKETS, since issue #46 (slice G3). Only worn pieces are passed here
 	// (`UCataclysmEquipmentComponent` reads its worn slots), so a gem in a carried piece does nothing. Once per gem,
-	// not doubled on a two-handed weapon, ruled 2026-11-21.
-	UCataclysmGems::AddSocketedGems(Item, UCataclysmGems::LoadGeneratedTable(), Totals);
+	// not doubled on a two-handed weapon, ruled 2026-11-21. Since slice G7 the piece's own enchantments are read there
+	// too: whether its sockets take any gem, and how effective its gems are (ruled 2026-11-22).
+	UCataclysmGems::AddSocketedGems(Item, UCataclysmGems::LoadGeneratedTable(), LoadEnchantmentEffectTable(), Totals);
 }
 
 // ---------------------------------------------------------------------------

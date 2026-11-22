@@ -283,8 +283,10 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 									  *UCataclysmGems::RarityName(Rarity));
 		return Out;
 	}
-	// A GEM FITS A SOCKET OF ITS OWN TYPE, OR ONE FOR ANY GEM. Ruled 2026-11-21.
-	if (!UCataclysmGems::GemFits(Into.Type, GemType))
+	// A GEM FITS A SOCKET OF ITS OWN TYPE, OR ONE FOR ANY GEM. Ruled 2026-11-21. OR ANY SOCKET OF A PIECE WHOSE
+	// ENCHANTMENT SAYS ITS SOCKETS FIT ANY GEM TYPE, read off the piece now and never written into the socket (slice G7,
+	// Q1 of 2026-11-22). The refusal below still names the socket's own type, which the enchantment does not change.
+	if (!UCataclysmGems::GemFitsIn(Item, Socket, GemType, UCataclysmItemModifiers::LoadEnchantmentEffectTable()))
 	{
 		// "AN" BEFORE A VOWEL SOUND: an Attack gem, a Defense socket, a Utility socket.
 		const auto Article = [](const FString& Word)
