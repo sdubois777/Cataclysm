@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge infuses a weapon with a damage type, drawn or chosen, and changes one, held to the drop's own maximum and never on the weapon made at creation (#47, slice F4)
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-damage-type-crafts-47-f4`, cut from slice F2's head
+`84c2f0ff7` as the coordinating session ruled, so the forge's crafts stay in one shape. Its window is registered below.
+**THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS ENTRY**; this slice's claims are
+the survey's (`.claude/windows/survey_forge_47.md` in the gems session's worktree) and were not re-read page by page.
+The survey reported that a damage type on a Path of Exile item is an affix, added specifically by its Essences and
+bench and at random by its Harvest reforge, and that no game converts a weapon's type.
+
+### The rulings, the coordinating session, 2026-11-22
+
+1. **Weapons only** (Q19), as all three materials' text says ("to a weapon", "on a weapon").
+2. **At the maximum the two infusions are refused, saying it** (Q20). A change is the way to alter a type there.
+3. **Q21, RESOLVED, AND THE SURVEY'S PREMISE CORRECTED.** The survey asked whether "enchantment-carried" damage types
+   count toward the maximum, as if an enchantment carried types apart from the weapon. It does not.
+   `UCataclysmDropRoll::DamageTypesCarriedBy` reads the enchantment "This weapon has 2-4 damage types" and returns a
+   COUNT, and `TopUpDamageTypes` adds types to the weapon's own list until it holds that many, under the drop's one
+   ceiling, `MaxDamageTypesFor` (the lower of the base's `MaxDamageTypes` and the types designed for its weapon type).
+   So the types an enchantment adds are in the weapon's list already, and counting the list against that ceiling counts
+   them, as the drop does. **The enchantment's count is a floor the drop tops up to, never a ceiling**: a crafted weapon
+   may carry more types than its enchantment states, up to the maximum.
+4. **A change draws its new type among those the weapon lacks** (Q22); the type replaced is the player's choice. A
+   specific infusion's type is the player's choice; a random infusion's is drawn, as a drop draws one.
+5. **THE WEAPON MADE AT CREATION IS REFUSED**, option (a), DERIVED: `UCataclysmEquipmentComponent::
+   CarryCreationDamageType` sets that weapon's types back to the one chosen for the character on every possession,
+   which happens on every load, and on `ACataclysmPlayerState::SetCreationChoice`. A craft on it would be undone and
+   would take the player's material, gold, residue and days for nothing. The three crafts refuse it with "The weapon
+   made at creation carries the damage type chosen for the character; the forge does not change its damage types.",
+   and the screen offers it none. **Issue #2845** holds the finding and option (b), keeping crafted types through a
+   load, as a later choice; this slice changes no creation or loading code.
+6. **A worn weapon needs nothing more.** The trees and skills a weapon opens follow the types the worn weapons carry,
+   read when asked (`UCataclysmEquipmentComponent::CarriedDamageTypesOf`), and the forge's `ReplaceEquippedAt`
+   announces a change of gear, as swapping weapons does.
+
+### What it does
+
+- **`UCataclysmForge::DamageTypeWorkOf`** (`CataclysmForge.h`, `.cpp`), one plan for the three crafts, refusing in the
+  order every craft does, gold last:
+  - Infuse Random Damage Type: an Elemental Cinder, 10 residue, 1 base day, Base Gold 250;
+  - Infuse Specific Damage Type: a Sovereign Ingot, 50 residue, 5 base days, Base Gold 1,250;
+  - Change Damage Type: a Prismatic Catalyst, 20 residue, 0 base days, Base Gold 250.
+  Refused for a base not found, an item that is no weapon, the weapon made at creation, an infusion at the maximum, no
+  type left to draw, a chosen type held already or one the weapon cannot carry, a change of a type not carried, the
+  material and the gold.
+- **`DamageTypesOpenTo`, `MaxDamageTypesOf`, `CarriesDamageTypes`**, read through the drop's own
+  `DamageTypesAvailableTo` and `MaxDamageTypesFor`.
+- **The draw is in the plan**, seeded as F1's and F2's are (`AffixCraftSeed`, salts "INFS" and "CHNG"): an infusion by
+  the place the new type takes, a change by the place of the type it replaces. A reload on the same day draws the same.
+- **`UCataclysmForgeCraft::CraftDamageType`**, on a carried or worn weapon, in `CraftAffix`'s order. An infusion adds the
+  type last; a change puts it in the replaced type's place.
+- **The forge screen**: "Damage types: War, Death; 2 of at most 4." under a weapon's detail; below the maximum "Infuse a
+  random damage type" and "Infuse <type>" for each it can take and lacks; while one is left "Change <type>" for each it
+  carries; two presses each. The weapon made at creation shows its types and the refusal, and no button.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeDamageTypeLine`: "infused ... with Chaos, drawn, ...", "infused ... with
+  Demonic, chosen, ...", "changed War on ... to Famine ...".
+- **`docs/Play_Loop_Checklist.md`**, step 23.
+- **Nothing moves** in the workbook, the assets or the save versions.
+
+**Noticed, not changed**: `CraftDamageType` is the sixth copy of the threshold, gold, material, item and days sequence.
+Slice F5's first step moves every copy into one function, ruled 2026-11-22.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeDamageTypes.`, 6 tests**, in `CataclysmForgeDamageTypesTests.cpp`. The fixed
+sword: one-handed, gear level 3, War and Death of the seven types designed for a sword, residue 40; at most 4.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FD1 | `InfusingARandomDamageTypeTakesAnElementalCinderTenResidueADayAndDrawsOneTheWeaponLacks` | residue 40 to 50, 1 day, 450 gold, maximum 4, seed 688249076 drawing Chaos, the question, two refusals; the craft adds the type drawn for its run and day, last |
+| FD2 | `ADrawnTypeIsEvenAmongThoseTheWeaponLacksAndTheSameForTheSameRunDayAndWeapon` | the seed text; the five open types; seeds 688249076 and 719900450; Chaos twice, Famine for the change of War; over days 1 to 3000 Demonic 592, Pestilence 605, Famine 601, Celestial 585, Chaos 617, never War, Death or Void |
+| FD3 | `InfusingAChosenDamageTypeTakesASovereignIngotFiftyResidueFiveDaysUpToTheMaximum` | Demonic: 40 to 90, 5 days, 2,250 gold, the question; Void refused, War held, a sword at its 4, a shield at its 3, the ingot; the craft gives War, Death, Demonic |
+| FD4 | `ChangingADamageTypeTakesAPrismaticCatalystTwentyResidueAndWorksAtTheMaximum` | War: 40 to 60, 0 days, 450 gold, the question; possible at the maximum; refused on a full shield, for Void, for the catalyst; the craft puts the drawn type in War's place and keeps Death |
+| FD5 | `OnlyAWeaponNotTheOneMadeAtCreationIsOfferedTheCrafts` | a helm and the creation weapon refused by all three; the buttons for the sword, at its 4, the creation weapon and a helm; the detail lines; two presses infuse Celestial |
+| FD6 | `AWornWeaponsCraftThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn sword 60 below the threshold: Celestial is infused at once; Demonic asks, changes nothing, and confirmed marks the character |
+
+**Python**: `tools/tests/test_the_forge_changes_damage_types.py`, 7 tests; its copy of the open types and the draw
+gives the exact figures FD2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the three rows' fallbacks, the
+rule's price and `CraftDamageType`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains its line,
+and its count of places says thirty.
+
+**Two errors caught before commit**: the checklist's example chosen infusion said 1,500 gold, and at 50 residue it is
+2,500; and FD6 first infused a random type and then Demonic, which a draw of Demonic would have refused. It now infuses
+Celestial and Demonic, both chosen.
+
+**Python guard proofs, in a `git archive` copy of `95249817a`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f4_python.py`): 10 of 10 PROVED**, each failing exactly the tests predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PD1 | `ChangeDamageTypeResidue` 25 | `test_the_sheets_three_rows_hold_the_forges_figures` |
+| PD2 | the change's fallback `GoldPerCraftDay` | `test_the_rule_reads_each_row_and_refuses_for_the_material_before_the_gold` |
+| PD3 | an infusion refused only past the maximum | `test_the_infusions_are_held_to_the_drops_maximum_and_a_change_is_not` |
+| PD4 | the creation weapon not refused | `test_the_weapon_made_at_creation_is_refused_and_offered_nothing` |
+| PD5 | the salt `0x43484E48` | `test_the_python_copy_gives_the_figures_fd2_asserts` |
+| PD6 | a change inserting the new type | `test_the_craft_writes_the_plans_type_in_place_and_draws_nothing_again` |
+| PD7 | the infusions offered at the maximum | `test_the_screen_offers_the_infusions_only_below_the_maximum` |
+| PD8 | `CraftDamageType` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...CraftDamageType(]` |
+| PD9 | the change's line reading "changed the" | `test_the_checklist_quotes_only_lines_the_game_says` |
+| PD10 | `InfuseSpecificDamageTypeBaseDays` 4 | `test_the_sheets_three_rows_hold_the_forges_figures`, and the gold check's `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+
+### Registered for the window
+
+The base is development as it stands when this window registers. This slice adds 6 test names and removes none. **The
+whole suite is registered as the base's last measured total plus 6**, and each group below at its count in the base's
+newest engine log, re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeDamageTypes.` 6; then, each at its count in the base's newest log, the groups whose files call the changed forge code: `ForgeAffixChange.`, `ForgeAffixes.`, `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.` |
+| The whole suite | the base's total plus 6, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeDamageTypes.` with its trailing dot, through
+`.claude/windows/prove_f4.py`. Every anchor matches once on `95249817a`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FD1 | in `DamageTypeWorkOf`, a random infusion's residue `+ 1.0f` | 6 performed, 5 succeeded, 1 failed: FD1, on the residue; FD6 infuses only chosen types |
+| FD2 | in `DamageTypeWorkOf`, the draw `Open[0]` | 6, 5, 1: FD2, on the draws and the spread; FD1 and FD4 compare with the same function |
+| FD3 | in `DamageTypeWorkOf`, `if (false && !Open.Contains(Chosen))` | 6, 5, 1: FD3, on "a type no sword can carry" |
+| FD4 | in `CraftDamageType`, a change adding the type | 6, 5, 1: FD4, on War replaced in its place; the others infuse |
+| FD5 | in `DamageTypeActionsFor`, the creation weapon not left out | 6, 5, 1: FD5, on "the weapon made at creation: none" |
+| FD6 | in `CraftDamageType`, `bCrosses = false && ...` | 6, 5, 1: FD6, on "infusing Demonic asks first" |
+
+---
+
 ## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
 
 **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f2`, cut from slice F1's head
