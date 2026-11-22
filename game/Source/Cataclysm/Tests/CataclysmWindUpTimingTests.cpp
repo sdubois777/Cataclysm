@@ -493,4 +493,76 @@ bool FCataclysmAWholeWaveSpreadsFromAnyCount::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmFirstThinkIsCountedPerWorld,
+	"Cataclysm.AI.ACreaturesFirstThinkDependsOnlyOnItsOwnWorld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The first creature possessed in a new world has its first thinking pass one whole interval after it was possessed,
+ * the count of 0, however many creatures another world possessed first; inside one world the counts still run on.
+ * Issue #2827: the count was one for the whole process, so a creature's first think depended on what earlier tests had
+ * possessed, and #2811's two tests in window D passed alone and failed in the suite. Prints "PER WORLD".
+ *
+ * IT FAILS ON THE OLD CODE WHATEVER RAN BEFORE IT: world A possesses three creatures first, so under a process-wide
+ * count world B's first creature would take a count of at least 3.
+ */
+bool FCataclysmFirstThinkIsCountedPerWorld::RunTest(const FString&)
+{
+	using namespace CataclysmWindUpTimingTest;
+	using Brain = ACataclysmEnemyController;
+
+	UWorld* WorldA = MakeWorldThatHasBegunPlay();
+	UWorld* WorldB = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT
+	{
+		for (UWorld* World : { WorldA, WorldB })
+		{
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+	};
+	if (!TestNotNull(TEXT("world A"), WorldA) || !TestNotNull(TEXT("world B"), WorldB))
+	{
+		return false;
+	}
+
+	const auto FirstThinkOf = [this](UWorld* World, int32 Index) -> float
+	{
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(3.0f * M * static_cast<float>(Index), 0.0f, 0.0f), FRotator::ZeroRotator);
+		const Brain* Controller = Creature ? Cast<Brain>(Creature->GetController()) : nullptr;
+		TestNotNull(FString::Printf(TEXT("set-up: creature %d has a controller"), Index), Controller);
+		return Controller ? Controller->SecondsUntilNextThink() : -1.0f;
+	};
+
+	// WORLD A FIRST: three creatures, its counts 0, 1 and 2.
+	const float A0 = FirstThinkOf(WorldA, 0);
+	const float A1 = FirstThinkOf(WorldA, 1);
+	const float A2 = FirstThinkOf(WorldA, 2);
+	// THEN WORLD B'S FIRST, and world A's fourth after it.
+	const float B0 = FirstThinkOf(WorldB, 0);
+	const float A3 = FirstThinkOf(WorldA, 3);
+
+	AddInfo(FString::Printf(TEXT("PER WORLD: world A's first passes %.4f, %.4f, %.4f and %.4f; world B's first %.4f; the "
+								 "counts 0 to 3 give %.4f, %.4f, %.4f and %.4f"),
+							A0, A1, A2, A3, B0, Brain::FirstThinkDelaySeconds(0u), Brain::FirstThinkDelaySeconds(1u),
+							Brain::FirstThinkDelaySeconds(2u), Brain::FirstThinkDelaySeconds(3u)));
+
+	constexpr float Tolerance = 0.0001f;
+	TestEqual(TEXT("world A's first creature takes the count 0, one whole interval"), A0,
+			  Brain::FirstThinkDelaySeconds(0u), Tolerance);
+	TestEqual(TEXT("its second the count 1"), A1, Brain::FirstThinkDelaySeconds(1u), Tolerance);
+	TestEqual(TEXT("its third the count 2"), A2, Brain::FirstThinkDelaySeconds(2u), Tolerance);
+	TestEqual(TEXT("world B's first creature takes the count 0, whatever world A possessed"), B0,
+			  Brain::FirstThinkDelaySeconds(0u), Tolerance);
+	TestEqual(TEXT("and world A's fourth goes on from its own count, 3"), A3, Brain::FirstThinkDelaySeconds(3u),
+			  Tolerance);
+	TestNotEqual(TEXT("CONTROL: the counts 0 and 3 give different first passes"), Brain::FirstThinkDelaySeconds(0u),
+				 Brain::FirstThinkDelaySeconds(3u));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
