@@ -48,9 +48,22 @@ def test_rule_d_never_cuts_a_player_at_the_reference_in_any_dungeon_their_tier_s
     # THE COORDINATING SESSION'S QUESTION OF 2026-11-22: a dungeon's timer forces the player to clear shallow
     # dungeons of their own tier too, so the cut must not reach them there. The lowest Dungeon Score a tier spawns
     # is 0.48 to 0.49 of a width below the reference; rule D's cut begins at 0.6.
-    rule_d = next(rule for rule in gaps.RULES if rule.name.startswith("D:"))
+    # THE RULED RULE, for experience and for loot.
     for tier in gaps.TIERS:
         low, high = gaps.spawn_extremes(tier)
         width = gaps.scoring.tier_width(tier)
-        assert rule_d.multiplier((low.score - gaps.reference(tier)) / width) == 1.0, tier
-        assert rule_d.multiplier((high.score - gaps.reference(tier)) / width) == 1.0, tier
+        for loot in (False, True):
+            assert gaps.RULED.multiplier((low.score - gaps.reference(tier)) / width, loot=loot) == 1.0, tier
+            assert gaps.RULED.multiplier((high.score - gaps.reference(tier)) / width, loot=loot) == 1.0, tier
+
+
+def test_the_ruled_rule_has_two_floors_and_one_bonus() -> None:
+    # Rule D, ruled by the coordinating session on 2026-11-22, with the owner's loot floor of the same day, verbatim
+    # "25% loot floor (Recommended)": experience falls to 5%, loot quantity and the gold multiplier to 25%, over the
+    # same width; the bonus above the band is the same for both.
+    ruled = gaps.RULED
+    assert (ruled.band, ruled.band_down, ruled.cap_up, ruled.ramp_up, ruled.ramp_down) == (0.25, 0.6, 0.25, 0.5, 1.0)
+    assert ruled.multiplier(-5.0) == pytest.approx(0.05)
+    assert ruled.multiplier(-5.0, loot=True) == pytest.approx(0.25)
+    assert ruled.multiplier(-1.1, loot=True) == pytest.approx(0.625)
+    assert ruled.multiplier(5.0) == ruled.multiplier(5.0, loot=True) == pytest.approx(1.25)

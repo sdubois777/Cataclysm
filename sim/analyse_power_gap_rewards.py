@@ -74,13 +74,17 @@ class Rule:
     #: The band's other side, when it differs: how far ABOVE the dungeon the player may be with full reward. None is
     #: the same as `band`.
     band_down: float | None = None
+    #: The floor LOOT falls to, when it differs from experience's `floor`: the owner's 25% of 2026-11-22. None is the
+    #: same as `floor`. The bonus above the band is the same for both.
+    loot_floor: float | None = None
 
-    def multiplier(self, gap: float) -> float:
+    def multiplier(self, gap: float, loot: bool = False) -> float:
         below = self.band if self.band_down is None else self.band_down
+        floor = self.loot_floor if loot and self.loot_floor is not None else self.floor
         if gap > self.band:
             return 1.0 + self.cap_up * min(1.0, (gap - self.band) / self.ramp_up)
         if gap < -below:
-            return 1.0 - (1.0 - self.floor) * min(1.0, (-gap - below) / self.ramp_down)
+            return 1.0 - (1.0 - floor) * min(1.0, (-gap - below) / self.ramp_down)
         return 1.0
 
 
@@ -91,13 +95,20 @@ RULES = [
     Rule("A: band 0.25, gentle cut", band=0.25, cap_up=0.25, ramp_up=0.5, floor=0.05, ramp_down=1.0),
     # The same band with Diablo II's own steepness: the cut takes as long as the band is wide.
     Rule("B: band 0.25, Diablo II's steep cut", band=0.25, cap_up=0.25, ramp_up=0.5, floor=0.05, ramp_down=0.25),
-    # A band wide enough to hold the reference character at its own tier, 0.51 to 0.54 of a width above the middle
-    # floor's Common score, with 0.06 to spare: about the tier's own range either side of the middle floor.
+    # A band wide enough to hold the reference character at its own tier, 0.48 to 0.50 of a width above its tier's
+    # Dungeon Score, with 0.1 to spare: about the tier's own range either side of the middle floor.
     Rule("C: band 0.6, gentle cut", band=0.6, cap_up=0.25, ramp_up=0.5, floor=0.05, ramp_down=1.0),
     # Uneven: the bonus begins a quarter width above the dungeon, as in A, and the cut 0.6 below it, as in C.
     Rule("D: bonus beyond 0.25, cut beyond 0.6", band=0.25, cap_up=0.25, ramp_up=0.5, floor=0.05, ramp_down=1.0,
          band_down=0.6),
+    # RULED, 2026-11-22: rule D by the coordinating session, and the loot floor by the owner, verbatim: "25% loot
+    # floor (Recommended)". Experience still falls to 5%; loot quantity and the gold multiplier stop at 25%.
+    Rule("RULED: D, loot floor 25%", band=0.25, cap_up=0.25, ramp_up=0.5, floor=0.05, ramp_down=1.0,
+         band_down=0.6, loot_floor=0.25),
 ]
+
+#: The rule ruled on 2026-11-22.
+RULED = RULES[-1]
 
 
 def dungeon_score(tier: int) -> float:
@@ -246,15 +257,26 @@ def main() -> None:
         print(f"  {label:18s} {per_dungeon(column):9.1f}")
     print()
     gear = per_dungeon("GearDrops")
-    for rule in (RULES[0], RULES[2], RULES[3]):
+    for rule in (RULES[0], RULES[2], RULES[3], RULED):
         print(f"  Under rule {rule.name}, gear per dungeon (today {gear:.0f} for every player):")
         print("  Tier | Reference | One tier above | One tier below")
         for tier in TIERS:
             above = scoring.PLAYER_MAX_SCORES.get(tier + 1, reference(tier) + scoring.tier_width(tier))
-            print(f"  {tier:4d} | {gear * rule.multiplier(gap(tier, reference(tier))):9.0f} | "
-                  f"{gear * rule.multiplier(gap(tier, above)):14.0f} | "
-                  f"{gear * rule.multiplier(gap(tier, campaign_start(tier))):14.0f}")
+            print(f"  {tier:4d} | {gear * rule.multiplier(gap(tier, reference(tier)), loot=True):9.0f} | "
+                  f"{gear * rule.multiplier(gap(tier, above), loot=True):14.0f} | "
+                  f"{gear * rule.multiplier(gap(tier, campaign_start(tier)), loot=True):14.0f}")
         print()
+
+    print(f"THE RULED RULE, {RULED.name}: experience and loot factors side by side")
+    print("  Tier | Reference: exp  loot | One tier above: exp  loot | One tier below: exp  loot")
+    for tier in TIERS:
+        above = scoring.PLAYER_MAX_SCORES.get(tier + 1, reference(tier) + scoring.tier_width(tier))
+        cells = []
+        for player in (reference(tier), above, campaign_start(tier)):
+            g = gap(tier, player)
+            cells.append(f"{RULED.multiplier(g):.2f}  {RULED.multiplier(g, loot=True):.2f}")
+        print(f"  {tier:4d} | {cells[0]:>19s} | {cells[1]:>24s} | {cells[2]:>24s}")
+    print("  At tier 8, 'one tier above' is the reference plus a width, since there is no tier 9.")
     assert loot.ENEMY_GEAR_DROPS["Boss"] == rates("GearDrops")["Boss"], "the model and EnemyDrops.csv disagree"
 
 
