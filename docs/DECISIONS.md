@@ -2,6 +2,137 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — A bought city upgrade can be raised to tier 2 and tier 3 in its own slot, for the next tier's gold and build days, acting at its old tier until the raise is finished (#1265)
+
+**Affects:** `ECataclysmCityUpgradeResult::AtTheTopTier`, `NotHeld` and `NoTierToRaiseTo`, new,
+`UCataclysmCityUpgradeRules::HighestTier`, new, and `ResultText`
+(`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`); `UCataclysmEmpireMap::RaiseUpgrade` and
+`RestoreOnce`, new, and `AddUpgrade`, whose two restores now call `RestoreOnce`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireMap.h` and `.cpp`); `UCataclysmEmpireRun::RaiseCityUpgrade`,
+`WouldRaiseCityUpgrade` and `RemoveShareOfDungeonsOn`, new, and `CompleteCityUpgrade`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `UCataclysmCityUpgradeMapping::Make`'s tier,
+`HasTier` and `MakeAtTier`, new, and `PriceFor`'s upgrade tier (`game/Source/Cataclysm/Data/CataclysmCityUpgradeMapping.h`
+and `.cpp`); `UCataclysmCityUpgradePurchase::PriceIn`, `BuildDaysIn` and `RushPriceIn`'s upgrade tier, `RaiseTierIn` and
+`Raise`, new, and `PayAndBuild`, new, the body `Buy` and `Raise` share
+(`game/Source/Cataclysm/Player/CataclysmCityUpgradePurchase.h` and `.cpp`); the offer's raise fields,
+`RaiseButtonTextFor`, `RaiseRushButtonTextFor`, `RaiseWhatFor` and `AddTheRaise`, new
+(`game/Source/Cataclysm/Interface/CataclysmCityScreenLayout.h` and `.cpp`); the Raise buttons, `HandleRaiseClicked`,
+`HandleRaiseRushClicked` and `ClickRaiseForTests` (`CataclysmCityScreenWidget.h` and `.cpp`);
+`Cataclysm.RaiseCityUpgrade`, new (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`);
+`docs/Cataclysm_GDD_v2.md`, City Upgrades; `game/README.md`'s empire bullet. Tests:
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeRaiseTests.cpp`, new, four;
+`game/Source/Cataclysm/Tests/CataclysmCityUpgradeRaiseScreenTests.cpp`, new, three;
+`tools/tests/test_a_city_upgrade_is_raised_a_tier.py`, new; and the source checks that read the moved code, in
+`tools/tests/test_city_upgrades_cost_gold.py`, `test_city_upgrades_take_days_to_build.py`,
+`test_empire_tree_gold_nodes.py`, `test_empire_tree_slice9.py` and `test_game_readme_is_true.py`. No workbook cell, no
+asset and no save record moves. Issue [#1265](https://github.com/sdubois777/Cataclysm/issues/1265).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1, by the coordinating session's instruction of 2026-11-22.
+- **NO SAVE RECORD MOVES.** `FCataclysmCityUpgrade::Tier` was already a saved field, so a raise waits on the city's
+  build list as the upgrade at its new tier, and the record stays at the version the cleanse sets, run 16 (#2838).
+- **TWO OF THE THREE QUESTIONS THE RESEARCH WAS ASKED, Q7 AND Q8, ARE ANSWERED NOWHERE IT COULD READ.** No readable
+  page says whether a building keeps working while its next level is built, or how many builds may run at once. Both
+  are ruled from this project's own rules, below, and Q7 is labelled a judgement.
+
+### The research, 2026-11-22: how shipped games raise a building in place
+
+| Game | Source | What it says | Not stated |
+|---|---|---|---|
+| Darkest Dungeon | darkestdungeon.wiki.gg, pages Hamlet, Blacksmith and Abbey (readable) | Buildings are upgraded where they stand, "through the use of heirlooms"; the cost "increases steadily" with each level (the Abbey's Cloister: 4/5, 8/10, 11/14, 15/19, 19/24, 23/29 busts and crests); several independent ladders per building | How long an upgrade takes, and whether the building works meanwhile |
+| XCOM 2 | xcom2.wiki.fextralife.com/Power+Relay and gamepressure.com's Power Relay page (readable); new.ufopaedia.org timed out twice | A facility's upgrades belong to it and add to its own output ("+2 Power, and an additional work station"); they cost supplies and Elerium; the facility itself takes 12 days | An upgrade's time, whether the facility works meanwhile, and whether its two upgrades are a ladder |
+| Frostpunk | gamepressure.com's 2018 technologies guide (readable); frostpunk.wiki.gg returned 401, the fandom wikis 402 | Research lets the existing building be upgraded: "On level 2 you can upgrade the building to Steam Sawmill" | The cost, the time, the footprint and whether it works meanwhile |
+| Total War | the official Rome II manual's construction page and gamepressure.com's 2016 Warhammer guide (readable); totalwar.fandom returned 402 | Construction has a cost and a time, and builds queue; the main building's levels need more each step ("3rd level requires 2, 4th requires 4 and the 5th requires 5 points") | Whether a level is built in place, and whether the old level works meanwhile |
+| Clash of Clans | clashofclans.wiki.gg returned 404 on three pages, the fandom wiki 402 | Nothing read, and nothing is cited from it | |
+
+Path of Exile and Last Epoch were not checked: neither has a building with levels comparable to a city upgrade.
+
+### The rulings, coordinating session, 2026-11-22
+
+- **Q6, DERIVED from the research and the data's shape:** raised in place, in the same slot, for the next tier's gold
+  scaled by difficulty tier and that tier's build days. Tier 3 is the top. Every source raises a level on the building
+  that already holds it, at a rising cost, and the City Upgrades sheet already holds a Tier 2 and Tier 3 Gold and the
+  build days are already 12 and 24.
+- **Q7, A JUDGEMENT:** it keeps acting at its old tier while the raise is built and acts at the new one from the day
+  the raise is finished. #2825's "does nothing until finished" covers what is being built, which is the new tier; the
+  old tier was finished and paid for, and stopping it would make raising a defence upgrade lower a city's defence for
+  12 or 24 days.
+- **Q8, DERIVED from #2825's rule:** a raise is the city's one build at a time.
+- **Q9, A JUDGEMENT:** a spent one-time upgrade may be raised, and finishing the raise fires it again at the new tier's
+  full figure, not the difference. Without it the six tier 2 and 3 values of those three rows could never be reached;
+  the price and the 12 or 24 days are what limit it. The screen says what the raise does when it is finished.
+- **Q10, A JUDGEMENT:** an interval upgrade's next trigger becomes the sooner of the one already set and the finishing
+  day plus the new interval, so a raise never delays a repair that was due.
+- **Q11, DERIVED from the purchase rule:** a raised maximum becomes the base times one plus the new value in place of
+  one plus the old, and what the city holds rises by what the maximum with the tree rose by, so a full city stays full.
+- **The follow-ons, DERIVED:** Scaffolding, Rapid Renovation and Rapid Funding's rush act on a raise as on any build,
+  in the same order; Global Credit and Sovereign Loans may pay for one; Reinvestment counts its price charged (V4);
+  Enduring Foundations counts from the first build's finish and a raise does not reset it, which its text, "City
+  upgrades that have been active for 10+ days", agrees with; a Siege or a fall pauses a raise; the cleanse, the one row
+  with no ladder, cannot be raised; the refusals include "Already at tier 3.".
+
+### The judgements this build made
+
+| Judgement | What it rests on |
+|---|---|
+| A finished build of a row the city holds is a raise | A purchase of a held or building row is refused (`AlreadyBought`), so no other build of a held row can exist |
+| A raise is refused before the city's checks for the cleanse, and after them for the rest | The cleanse is refused whatever the city; the others' order is the purchase's, with "not held" and "at the top" before the build and the gold |
+| A raise asked for a tier other than the next is `NotAnUpgrade` | One tier at a time; only a caller error asks for another |
+| `Buy` and `Raise` charge through one body, `PayAndBuild` | So a raise is paid, credited, rushed, counted and saved exactly as a purchase is; the source checks that read `Buy` read `PayAndBuild` now |
+| The play log names a raise "Raise to tier N: <the row's sentence>" | The purchase line's own format, with the tier |
+| A held upgrade's offer always has a Raise button, greyed with the reason when it cannot be raised | A player sees why, as the purchase buttons do; at tier 3 it says "Raise  --  Already at tier 3." |
+
+### Tests
+
+**Python**, `tools/tests/test_a_city_upgrade_is_raised_a_tier.py`, four checks: the run's refusals in the ruled order
+with no slot check; a finished build of a held row raised in place, its first finished day kept, a maximum refolded,
+the sooner trigger kept and a restore fired again; the purchase pricing, building and charging a raise at its tier
+through one body; the screen and the console reaching it.
+
+**Unreal, new:**
+
+- `Cataclysm.CityUpgradeRaise.ARaisedMaximumActsAtItsOldTierUntilItsBuildIsFinishedAndKeepsAFullCityFull`
+- `Cataclysm.CityUpgradeRaise.ASpentOneTimeUpgradeFiresAgainAtTheNewTiersFullFigure`
+- `Cataclysm.CityUpgradeRaise.ARaisedIntervalKeepsARepairThatWasDueAndShortensOneThatWasNot`
+- `Cataclysm.CityUpgradeRaise.EveryRefusalSaysWhichOneItIs`
+- `Cataclysm.CityUpgradeRaiseScreen.AHeldUpgradesRaiseSaysWhatItDoesItsPriceAndItsDays`
+- `Cataclysm.CityUpgradeRaiseScreen.ThePurchaseRefusesARaiseItCannotMakeAndTakesNothing`
+- `Cataclysm.CityUpgradeRaiseScreen.ARaiseUnderWayIsSavedAndFinishedAfterALoad`
+
+### Registered for the window, 2026-11-22, before it runs
+
+On top of #2838 (`a6813b1d8`), in the window the coordinating session plans to share. From window tree-s9-w2's
+measured figures (5218 tests, 57 skipped halves, 860 test saves) and #2838's registered four, this branch adds seven
+tests and writes no save.
+
+| Step | Predicted |
+|---|---|
+| The groups this branch's code touches, alone, counted with a literal match in w2's engine log | `CityUpgrade.` 15, `CityScreen.` 19, `CityUpgradePrice.` 7, `CityUpgradeBuild.` 4, `CityUpgradeBuildSave.` 2, `CityUpgradeSpeed.` 8, `EmpireTreeCredit.` 8, `EmpireTreeRestores.` 4, `EmpireTreeEvents.` 14, `EmpireTreeCity.` 17, `PlayLoop.` 12: 110, each succeeding |
+| The new tests, prefix `Cataclysm.CityUpgradeRaise` with no dot, which covers both new groups; a case-insensitive search of every test name finds exactly these 7 | 7 performed, 7 succeeded |
+| The whole Unreal suite, with #2838 | 5229 performed, 5229 succeeded; 57 skipped halves; 860 test saves, 0 left behind |
+
+**C++ guard proofs**, by `unreal_build.prove_cpp_guard`, prefix `Cataclysm.CityUpgradeRaise` (7 tests):
+
+| Proof | Break | Predicted, broken half | Restored |
+|---|---|---|---|
+| D1 | in `RaiseUpgrade`, `City->MaxDefence *= (1.0f + Raised.Value) / OldFactor;` removed: a raised maximum not refolded | `ARaisedMaximum...` fails, on "on the twelfth the maximum is tier 2's". 7 performed, 6 succeeded | 7 of 7 |
+| D2 | in `RaiseUpgrade`, `RestoreOnce(*City, Raised.Effect, Raised.Value);` removed: a raised restore does not fire again | `ASpentOneTimeUpgrade...` fails, on "the raise restores again, to the maximum". 7 performed, 6 succeeded | 7 of 7 |
+| D3 | in `RaiseUpgrade`, `FMath::Min(Held->NextTriggerDay, Next)` made `Next`: a raise moves a repair that was due | `ARaisedInterval...` fails, on "the repair due on day 20 stays due on day 20" (25). 7 performed, 6 succeeded | 7 of 7 |
+| D4 | in `WouldRaiseCityUpgrade`, `if (!City->Building.IsEmpty())` made `if (false && !City->Building.IsEmpty())`: two builds at once | `EveryRefusalSaysWhichOneItIs` fails, on "one build at a time". 7 performed, 6 succeeded | 7 of 7 |
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive` of `26dfbb876` (rebased onto #2838's path fix as `8ad7e89f1`,
+which changes nothing else), 2026-11-22, each PROVED, failing one named test with its break in and passing all four with it out:
+
+| Proof | Break | The test that failed |
+|---|---|---|
+| PC1 | `RaiseUpgrade` does not refold a raised maximum | `test_a_finished_build_of_a_held_row_is_a_raise_in_place` |
+| PC2 | `RaiseUpgrade` moves the first finished day | `test_a_finished_build_of_a_held_row_is_a_raise_in_place` |
+| PC3 | `BuildDaysIn` takes tier 1's days for every tier | `test_the_purchase_prices_and_builds_a_raise_at_its_tier_through_one_body` |
+| PC4 | `RaiseWhatFor` does not say the ruled example's words | `test_the_screen_and_the_console_reach_a_raise` |
+
+---
+
 ## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
 
 **Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
