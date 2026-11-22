@@ -67,6 +67,7 @@ KEY_LABEL_TO_ENGINE_KEYS = {
     "M": ("M",),
     # The floor map, issue #2805, accepted 2026-11-21.
     "Tab": ("Tab",),
+    "Left Alt": ("LeftAlt",),
 }
 
 #: The words the document uses for an action, and the Input Action asset the
@@ -99,6 +100,7 @@ ACTION_PHRASE_TO_INPUT_ACTION = {
     "Open and close the empire map": "IA_ToggleEmpireMap",
     # The floor map, issue #2805.
     "Show and hide the map of the current floor": "IA_ToggleFloorMap",
+    "Held: show the drops the loot filter hides": "IA_RevealDrops",
     # The four potion slots, issue #806. One phrase a slot, because each slot is
     # its own action.
     "Drink the potion in slot 1": "IA_DrinkPotion1",

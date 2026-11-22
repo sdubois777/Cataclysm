@@ -257,6 +257,16 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::StandStill, ETriggerEvent::Completed,
 		this, &ACataclysmPlayerController::Input_StandStillReleased);
 
+	// Alt held shows the drops the loot filter hides; let go, it stops. Canceled as well as Completed, as for
+	// MoveToCursor above: a release lost to a change of mapping context must not leave hidden drops shown. Issue
+	// #2846, slice LF1, the owner's ruling O3.
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_RevealDropsStarted);
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Completed,
+		this, &ACataclysmPlayerController::Input_RevealDropsReleased);
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Canceled,
+		this, &ACataclysmPlayerController::Input_RevealDropsReleased);
+
 	Input->BindNativeAction(Config, Names::Zoom, ETriggerEvent::Triggered,
 		this, &ACataclysmPlayerController::Input_Zoom);
 
@@ -2388,6 +2398,16 @@ void ACataclysmPlayerController::Input_StandStillStarted()
 void ACataclysmPlayerController::Input_StandStillReleased()
 {
 	bStandStill = false;
+}
+
+void ACataclysmPlayerController::Input_RevealDropsStarted()
+{
+	bRevealHiddenDrops = true;
+}
+
+void ACataclysmPlayerController::Input_RevealDropsReleased()
+{
+	bRevealHiddenDrops = false;
 }
 
 bool ACataclysmPlayerController::UpdateCachedDestination()

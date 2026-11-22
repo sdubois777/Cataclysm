@@ -238,6 +238,12 @@ UCataclysmGameInstance* UCataclysmGameInstance::In(const UObject* WorldContext)
 	return World != nullptr ? Cast<UCataclysmGameInstance>(World->GetGameInstance()) : nullptr;
 }
 
+FCataclysmLootFilter UCataclysmGameInstance::ActiveLootFilterIn(const UObject* WorldContext)
+{
+	const UCataclysmGameInstance* Instance = In(WorldContext);
+	return Instance != nullptr ? Instance->ActiveLootFilter : UCataclysmLootFilter::HideWorseThanWorn();
+}
+
 FString UCataclysmGameInstance::AccountSlotFor(const FCataclysmCharacterPartition& Partition)
 {
 	const FString Slot = UCataclysmSavePartition::AccountSlotName(Partition);

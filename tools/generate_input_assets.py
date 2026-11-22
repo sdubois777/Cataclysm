@@ -96,6 +96,9 @@ NATIVE_ACTIONS = [
     # owner's playtest of 2026-11-21: "Tab brings up a map overlay so you can
     # make sure you aren't running in circles".
     ("IA_ToggleFloorMap", "ToggleFloorMap", BOOLEAN, "Toggle Floor Map"),
+    # Held: show the drops the loot filter hides. Issue #2846, slice LF1, the
+    # owner's ruling O3 of 2026-11-22.
+    ("IA_RevealDrops", "RevealDrops", BOOLEAN, "Reveal Hidden Drops"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -173,6 +176,10 @@ MOUSE_MAPPINGS = [
     # overlay's key in Diablo II, Path of Exile and Last Epoch. Issue #2805,
     # accepted 2026-11-21.
     ("IA_ToggleFloorMap", "Tab", []),
+    # Held: show the drops the loot filter hides. Left Alt in both schemes, and
+    # free in both: Path of Exile's key for the same thing. Issue #2846, slice
+    # LF1, ruled 2026-11-22 (N6).
+    ("IA_RevealDrops", "LeftAlt", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -231,6 +238,10 @@ KEYBOARD_MAPPINGS = [
     # overlay's key in Diablo II, Path of Exile and Last Epoch. Issue #2805,
     # accepted 2026-11-21.
     ("IA_ToggleFloorMap", "Tab", []),
+    # Held: show the drops the loot filter hides. Left Alt in both schemes, and
+    # free in both: Path of Exile's key for the same thing. Issue #2846, slice
+    # LF1, ruled 2026-11-22 (N6).
+    ("IA_RevealDrops", "LeftAlt", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

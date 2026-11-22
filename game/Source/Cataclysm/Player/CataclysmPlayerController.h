@@ -495,6 +495,10 @@ private:
 	void Input_StandStillStarted();
 	void Input_StandStillReleased();
 
+	/** Alt held and let go: show and stop showing the drops the loot filter hides. Issue #2846, slice LF1 (O3). */
+	void Input_RevealDropsStarted();
+	void Input_RevealDropsReleased();
+
 	/** Mouse wheel. Handed to the pawn, because the camera boom lives there. */
 	void Input_Zoom(const FInputActionValue& Value);
 
@@ -632,6 +636,17 @@ private:
 	bool TakeDrop(ACataclysmDroppedItem* Drop);
 
 public:
+	/**
+	 * Whether the key that shows hidden drops is held: Alt by default. Issue #2846, slice LF1. The owner's ruling O3 of
+	 * 2026-11-22: a drop the loot filter hides stays on the floor, holding Alt shows it, and while shown it can be taken.
+	 * `ACataclysmHUD::DrawDropNames` reads it every frame, so a name shown this way is drawn, clicked and hovered as any
+	 * other while the key is down.
+	 */
+	bool IsRevealingHiddenDrops() const { return bRevealHiddenDrops; }
+
+	/** Holds or lets go of the reveal key, exactly as the two key events do, for automation tests. */
+	void SetRevealingHiddenDropsForTest(bool bHeld) { bRevealHiddenDrops = bHeld; }
+
 	/**
 	 * Whether an actor found under the cursor is an enemy the player may click: a living hostile that is not the
 	 * player's own pawn and is not hidden. A creature the vision system hides cannot be clicked: "a label you cannot see
@@ -1021,4 +1036,7 @@ private:
 	 * Exile 2 uses shift for attack-in-place. Recorded in docs/DECISIONS.md.
 	 */
 	bool bStandStill = false;
+
+	/** Whether Alt, the key that shows the drops the loot filter hides, is held. Issue #2846, slice LF1. */
+	bool bRevealHiddenDrops = false;
 };

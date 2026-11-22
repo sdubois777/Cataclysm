@@ -26,6 +26,9 @@
 #include "Interface/CataclysmPlayerEffects.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmLootFilter.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
 ACataclysmHUD::ACataclysmHUD()
@@ -1472,16 +1475,32 @@ void ACataclysmHUD::DrawDropNames()
 	// something dies and goes away when it is picked up, and neither of those
 	// happens through this class; keeping a copy would be a second record of
 	// what is on the floor and a way for the two to disagree.
-	TArray<ACataclysmDroppedItem*> Nearby;
+	TArray<ACataclysmDroppedItem*> InRange;
 	UCataclysmDropPickup::DropsToName(World, LocalPawn->GetActorLocation(),
-									  Nearby);
+									  InRange);
+
+	// THE LOOT FILTER DECIDES WHICH OF THOSE ARE NAMED AND HOW. Issue #2846, slice LF1. A drop it hides gets no tag,
+	// so no click and no hover finds it, unless the reveal key (Alt) is held; then it is drawn faintly and is as
+	// clickable as any other (the owner's ruling O3). Read every frame, against what the character wears now, so a
+	// change of gear or of filter shows on the next frame.
+	const ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	const bool bReveal = Controller != nullptr && Controller->IsRevealingHiddenDrops();
+	TArray<ACataclysmDroppedItem*> Nearby;
+	TArray<FCataclysmLootVerdict> Verdicts;
+	UCataclysmLootFilter::VisibleDrops(InRange, UCataclysmGameInstance::ActiveLootFilterIn(this),
+									   UCataclysmLootFilter::ContextOf(LocalPawn), bReveal,
+									   UCataclysmItemModifiers::LoadBaseTable(), Nearby, Verdicts);
+	TArray<FCataclysmLootVerdict> VerdictsNamed;
+	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
 
 	// MEASURED FIRST AND DRAWN AFTERWARDS, in two passes over the same list,
 	// because where a name goes depends on where the other names went. Drawing
 	// as they were found would print the first one before it was known that the
 	// third would land on top of it.
-	for (ACataclysmDroppedItem* Drop : Nearby)
+	for (int32 Found = 0; Found < Nearby.Num(); ++Found)
 	{
+		ACataclysmDroppedItem* Drop = Nearby[Found];
+		const FCataclysmLootVerdict& Verdict = Verdicts[Found];
 		const FVector Anchor = Drop->GetActorLocation()
 			+ FVector(0.0f, 0.0f, ACataclysmDroppedItem::NameHeightCm);
 
@@ -1503,10 +1522,11 @@ void ACataclysmHUD::DrawDropNames()
 		// THE TWO ARRAYS ARE APPENDED TOGETHER AND NOWHERE ELSE, which is what
 		// keeps index N of one describing the same drop as index N of the other.
 		const FBox2D Text = MeasureTextCentred(Drop->DisplayName, Screen.X,
-											   Screen.Y, 1.0f);
+											   Screen.Y, Verdict.Scale);
 		DropNameRects.Add(UCataclysmDropPickup::TagAround(
 			Text, UCataclysmDropPickup::NameBorderThicknessOf(*Drop)));
 		DropsNamed.Add(Drop);
+		VerdictsNamed.Add(Verdict);
 	}
 
 	// NOTHING IS DRAWN YET, so a tag that would have sat on top of another can
@@ -1524,20 +1544,41 @@ void ACataclysmHUD::DrawDropNames()
 		}
 
 		const FBox2D& Tag = DropNameRects[Index];
+		const FCataclysmLootVerdict& Verdict = VerdictsNamed[Index];
 		const int32 Thickness =
 			UCataclysmDropPickup::NameBorderThicknessOf(*Drop);
 
+		// A HIDDEN DROP SHOWN BY THE REVEAL KEY IS DRAWN FAINTLY, so it reads as one the filter hides.
+		const float Alpha = Verdict.bHidden ? UCataclysmLootFilter::RevealedAlpha : 1.0f;
+		FLinearColor Border = Drop->NameColour;
+		Border.A *= Alpha;
+		FLinearColor Letters = Verdict.TextColour != INDEX_NONE
+			? UCataclysmLootFilter::PaletteColour(Verdict.TextColour, Rarities)
+			: Drop->NameColour;
+		Letters.A *= Alpha;
+
+		// A RESTYLE'S BACKGROUND fills the tag inside its border, drawn first so the border and letters sit on it.
+		if (Verdict.BackgroundColour != INDEX_NONE)
+		{
+			FLinearColor Fill = UCataclysmLootFilter::PaletteColour(Verdict.BackgroundColour, Rarities);
+			Fill.A *= Alpha;
+			DrawRect(Fill, static_cast<float>(Tag.Min.X), static_cast<float>(Tag.Min.Y),
+					 static_cast<float>(Tag.Max.X - Tag.Min.X), static_cast<float>(Tag.Max.Y - Tag.Min.Y));
+		}
+
 		// THE BORDER IS THE SECOND CHANNEL, and it is drawn before the text so
-		// the letters sit on top of it rather than under it.
-		DrawBorder(Tag, static_cast<float>(Thickness), Drop->NameColour);
+		// the letters sit on top of it rather than under it. IT KEEPS THE RARITY'S
+		// COLOUR AND WIDTH under any restyle: the owner's ruling O2 of 2026-11-22
+		// keeps the border the rarity marker (#718).
+		DrawBorder(Tag, static_cast<float>(Thickness), Border);
 
 		// THE TEXT SITS INSIDE THE BORDER AND ITS PADDING. TagAround grew the
 		// text by exactly this much on every side, so undoing it here puts the
 		// letters back where they were measured.
 		const float Inset = static_cast<float>(
 			UCataclysmDropPickup::NameBorderPaddingPx + Thickness);
-		DrawOutlinedText(Drop->DisplayName, Drop->NameColour,
-						 Tag.Min.X + Inset, Tag.Min.Y + Inset, 1.0f);
+		DrawOutlinedText(Drop->DisplayName, Letters,
+						 Tag.Min.X + Inset, Tag.Min.Y + Inset, Verdict.Scale);
 	}
 }
 
