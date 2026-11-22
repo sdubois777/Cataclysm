@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge rerolls an affix's value, perfects its roll and raises its tier, one affix at a time, at the Crafting sheet's costs (#47, slice F1)
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-affix-crafts-47-f1`, cut from development `4a7aaac4e`.
+Its window is registered below. **THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS
+ENTRY**: the session wrote the agent's brief and read its report. Before this entry was written, a second agent re-read
+the five pages cited below for the exact claims; what that re-read corrected is said under each claim.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The Forge survey (`.claude/windows/survey_forge_47.md` in the gems session's worktree, not committed) was accepted with
+all 27 recommendations ruled as written. The three that shape this slice:
+
+1. **Each craft acts on one affix the player chooses** (Q1 for the reroll, Q7 for the perfecting), as the rows' names
+   say ("Reroll Affix Value", "Upgrade Affix Tier"). A JUDGEMENT: the genre's value reroll acts on every affix. Path of
+   Exile's Divine Orb "Randomises the values of the random modifiers on an item" (poedb.tw/us/Divine_Orb), and Last
+   Epoch's Rune of Refinement "Rerolls the value of all affixes on the item within their tiers"
+   (maxroll.gg/last-epoch/resources/beginner-crafting-guide). One affix is the more targeted craft, and its +2 residue
+   and Common material keep it a small, frequent step, the row's "Low-risk, high-frequency action".
+2. **A reroll draws the roll again evenly, and it can fall** (Q2). Last Epoch's rune draws "within their tiers". The
+   re-read Divine Orb text does not say whether a value can fall; that part is this slice's choice.
+3. **A perfecting is certain** (Q6), from the design's "Forces the maximum stat roll"; the row's "Attempt" is its name,
+   not a rule. A JUDGEMENT AGAINST THE GENRE, which guarantees no perfect roll: Path of Exile's Necropolis grave crafts
+   "Reroll Modifier Values of each Explicit Modifier 3 times, keeping the best outcome" (poedb.tw/us/Necropolis_Grave);
+   Path of Exile 2's sanctifying multiplies each modifier by "a random value ranging from 78% to 122%", after which
+   "Most methods of item crafting and modification cannot be used" (poe2db.tw/us/Sanctified_Items); Diablo IV's
+   masterworking capstone gives "a +50% bonus to a random affix" (maxroll.gg/d4/resources/masterworking-guide). Here
+   the material is about 1 crafting material drop in 1,705 and the craft costs 50 residue and five days; cost is the
+   limit, as the decisions log rules for affix tiers ("Crafting is not gated by the difficulty tier, and cost is what
+   limits it").
+4. **An upgrade raises the tier by one, to 7, and keeps the roll** (Q12), the same place in the new tier's range. Last
+   Epoch's upgrade is the same shape, one chosen affix up one tier: "Upgrade an existing affix that's below tier 5 by
+   clicking on the up arrow" (the Maxroll guide). **CORRECTED BY THE RE-READ:** the survey said Last Epoch rerolls the
+   value on an upgrade unless a Glyph of Order is used, and that its cost rises with the tier. The guide only implies
+   the first (the Glyph "maintains the roll range") and gives one example cost, not a rule. Keeping the roll here is
+   this slice's choice: it keeps a reroll and a perfecting worth doing before an upgrade. Last Epoch stops at tier 5;
+   this design's Potency Crystal reaches 7.
+5. **An upgrade's Base Gold is the sheet's flat 250** (Q13), which `GoldFor` multiplies by the residue the affix's
+   earlier steps added.
+6. **Perfecting a roll at the top is refused**, "That affix's roll is the top of its tier already.", and the screen does
+   not offer it. A JUDGEMENT of this slice, not in the survey: it would spend a Primal Spark for nothing, as a socket's
+   change to its own type is refused. A reroll of a roll at the top is not refused: the roll can fall, and the player
+   chose it.
+
+### What it does
+
+- **`UCataclysmForge::AffixWorkOf`** (`CataclysmForge.h`, `.cpp`), one plan for the three crafts, refusing in the order
+  every craft does, gold last:
+  - Reroll Affix Value: a Corrupted Mote, 2 residue, 0 base days, Base Gold 250;
+  - Perfect Roll Attempt: a Primal Spark, 50 residue, 5 base days, Base Gold 1,250;
+  - Upgrade Affix Tier: a Potency Crystal, 10 residue and one base day for each tier the affix has before it, Base Gold
+    250; refused at tier 7.
+  Each through `DaysFor` and `GoldFor`, its Base Gold from `ForgeOperations.csv` through `BaseGoldOf`.
+- **`RerolledAffixSeed` and `RerolledAffixRoll`**, the reroll's draw: the socket craft's two mixes, a salt of its own
+  ("ROLL") and the affix's place for the socket count, over `ItemSeedText`, then `FRandomStream::FRand`, as a drop draws
+  an affix's roll. **A RELOAD ON THE SAME DAY DRAWS THE SAME ROLL**; the reroll changes the item's text, so a second
+  reroll draws another.
+- **`UCataclysmForgeCraft::CraftAffix`** (`CataclysmForgeCraft.cpp`), on a carried or worn piece, in `DoSocketWork`'s
+  order: the capital-only refusal, the threshold question for a worn piece, the gold, the material, the affix's tier and
+  roll and nothing else of it, the residue, the days, the log line and the save triggers. Anything that cannot be
+  finished puts back what it took. A reroll's roll is drawn before the craft's days pass.
+- **The forge screen** (`CataclysmForgeLayout`, `CataclysmForgeWidget`): the chosen piece's affixes listed under its
+  detail, each as its tool tip reads it with its roll in percent, and for each affix "Reroll affix N", "Perfect affix N"
+  below the top and "Raise affix N to tier T" below 7, asked on the first press and done on the second.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeAffixLine`: "rerolled affix 1 of ... for 450 gold, its roll 50 to 11
+  percent of tier 2; ...", "perfected affix 1 of ...", "raised affix 2 of ... from tier 4 to tier 5, its roll kept at
+  25 percent; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 21, with the console commands that put the three materials in the bag
+  (`Cataclysm.GrantMaterial`, added by slice G9).
+- **Nothing moves** in the workbook, the assets or the save versions: the three rows and materials were already on the
+  sheets, and an affix's tier and roll are already saved.
+
+**What the survey's maps said this slice lets the empire tree build later**: Apprentice Smith, Precision Crafting,
+Master's Workshop and Quality Materials read an affix's tier or roll through these crafts. None is built here.
+
+**One thing noticed, not changed**: `CraftAffix` is the fourth copy of the same threshold-gold-material-item-days
+sequence (`Upgrade`, `DoSocketing`, `DoSocketWork`, `CraftAffix`). Slice F5 changes every craft's residue and days and
+is the natural place to share it.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeAffixes.`, 6 tests**, in `CataclysmForgeAffixesTests.cpp`. The fixed helm: gear
+level 3, flat evasion at tier 2 rolled 0.5 and flat armor at tier 4 rolled 0.25, residue 40.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FA1 | `RerollingAnAffixTakesACorruptedMoteTwoResidueNoBaseDayAndItsGold` | the rule's figures (residue 40 to 42, 0 days, 450 gold at tier 1), its question and refusals; the craft on a carried helm draws the roll `RerolledAffixRoll` gives for its run and day, keeps the tier, row and the other affix, uses the mote, passes no day and pays 450 |
+| FA2 | `ARerolledRollIsDrawnEvenlyAndTheSameForTheSameRunDayAndItem` | the helm's seed text and seeds (939699652 and 1276092663 on day 7 of mask 12345) as the Python copy computes them; affix 1 draws 0.110541, again on a second call; affix 2 draws 0.179841; the helm with affix 1 rolled 0.625 draws 0.984251; over days 1 to 3000 by quarter 750, 703, 746, 801 |
+| FA3 | `PerfectingAnAffixTakesAPrimalSparkFiftyResidueFiveDaysAndMakesTheRollTheTop` | the rule's figures (40 to 90, 5 days, 2,250 gold) and question; refused at the top; the craft makes the roll 1 and keeps the tier |
+| FA4 | `RaisingAnAffixsTierTakesAPotencyCrystalTenResidueATierAndKeepsTheRoll` | tier 4: 40 residue, 4 days, 450 gold; tier 6: 60 and 6; at 150 residue a fifth day and 1,000 gold; refused at 7; the craft raises affix 2 to tier 5 with its roll kept at 0.25 |
+| FA5 | `TheScreenOffersEachAffixCraftOnlyWhereItCanChangeTheAffix` | the six buttons, a reroll only for a tier 7 affix at the top, the affixes in the detail; two presses on the screen raise the tier, and with no crystal the first press says why |
+| FA6 | `AWornAffixCraftThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn helm 10 below the threshold: a reroll is done at once; a raise asks, changes nothing, and confirmed marks the character and holds the build |
+
+**Python**: `tools/tests/test_the_forge_crafts_one_affix.py`, 6 tests; its copy of the reroll's seed and draw gives the
+exact figures FA2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the three rows' fallbacks, the rule's
+price and the craft's pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains the craft's line, and its
+count of places, which said twenty-five and was 27 on `development`, says twenty-eight.
+
+**Python guard proofs, in a `git archive` copy of `6d4ef07b0`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f1_python.py`): 8 of 8 PROVED**, each failing exactly the one test predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PF1 | `PerfectRollResidue` 40 | `test_the_sheets_three_rows_hold_the_forges_figures` |
+| PF2 | the upgrade's fallback `BaseGoldFor(Rolled.Tier)` | `test_the_rule_reads_each_row_and_refuses_for_the_material_before_the_gold` |
+| PF3 | the upgrade raising two tiers | `test_a_perfecting_makes_the_roll_one_and_an_upgrade_raises_the_tier_and_keeps_the_roll` |
+| PF4 | the salt `0x524F4C4D` | `test_the_python_copy_gives_the_figures_fa2_asserts` |
+| PF5 | the reroll drawn from the day after the craft's days | `test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` |
+| PF6 | the screen offering a perfecting at the top | `test_the_screen_offers_no_perfecting_at_the_top_and_no_raise_at_tier_seven` |
+| PF7 | `CraftAffix` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...CraftAffix(]` |
+| PF8 | the reroll's line reading "rerolled the affix" | `test_the_checklist_quotes_only_lines_the_game_says` |
+
+### Registered for the window
+
+The base: window shared-w1, "5244 tests performed, 5244 succeeded, 0 failed", 57 skipped halves, "860 written and
+deleted, 0 left behind", on development `4a7aaac4e`'s game/. This slice adds 6 test names and removes none. Each count
+below is the group's count in that run's engine log (`.claude/windows/sw_suite_engine_17c735d2.log` in the gems
+session's worktree, counted with a literal match), and the slice adds no name to any of them.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeAffixes.` 6; then the groups whose files call the changed forge code: `Forge.` 8, `ForgeScreen.` 4, `ForgeSockets.` 6, `ForgeGems.` 4, `ForgeCosts.` 3, `GemCombine.` 3, `GemEnchantments.` 5, `PlayLoop.` 12, each performed and succeeded at exactly its count |
+| The whole suite | 5250 performed, 5250 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+If the window shares a run with the Power Score slices, the whole-suite figure is 5250 plus the names they add.
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeAffixes.` with its trailing dot, through
+`.claude/windows/prove_f1.py`. Every anchor matches once on `6d4ef07b0`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FA1 | in `AffixWorkOf`, `Added = RerollAffixValueResidue;` to `+ 1.0f` | 6 performed, 5 succeeded, 1 failed: FA1, on the residue |
+| FA2 | in `RerolledAffixSeed`, the affix's place mixed as `Affix + 1` | 6, 5, 1: FA2, on the seeds and every roll; FA1 passes, since it compares with the same function |
+| FA3 | in `AffixWorkOf`, `Out.ToRoll = 1.0f;` to `0.99f` | 6, 5, 1: FA3 |
+| FA4 | in `AffixWorkOf`, `BaseDays = Rolled.Tier;` to `+ 1` | 6, 5, 1: FA4, on the days; FA5 and FA6 do not check an upgrade's days |
+| FA5 | in `AffixActionsFor`, `Rolled.Tier < UCataclysmItemValues::MaxAffixTier` to `<=` | 6, 5, 1: FA5, on the tier 7 affix's buttons |
+| FA6 | in `CraftAffix`, `bCrosses = false && ...` | 6, 5, 1: FA6, on "raising affix 1's tier asks first" |
+
+---
+
 ## 2026-11-22 — Clearing a dungeon restores no city defence, by the owner's ruling; the upgrade that restores 5% on a clear loses the word "additional" (#1267)
 
 **Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell B11, "When you clear a
