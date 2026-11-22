@@ -27,7 +27,8 @@ four in `Cataclysm.ForgeGems.`; `tools/tests/test_the_forge_sockets_and_unsocket
 - **NO RECORD VERSION MOVES HERE.** A socketed gem is a field of an item, which G3 moves; the materials and gem stacks
   are fields G2 adds. Socketing changes values, not shapes.
 - **NOTHING DROPS A GEM YET** (slice G5), so `Cataclysm.GrantGem` puts gems in the bag for the owner to socket. It is a
-  developer's tool, as `Cataclysm.GrantExperience` is.
+  test tool, as `Cataclysm.GrantExperience` is, and the coordinating session kept it on 2026-11-21: "without it the owner
+  cannot try socketing before gems drop".
 - **A WORN GEM'S EFFECT ON THE CHARACTER SHEET WAITS FOR G1'S WORKBOOK STAGE**, through G3's `AddGemModifier`.
 
 ### What changed
