@@ -2,6 +2,231 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — A gem raises the experience every skill earns: Of The Scholar, and the stat skill_experience_gain, which acts once gems can be socketed (#2803)
+
+**Affects:** `ACataclysmPlayerState::SkillExperienceGainStat` and `SkillExperienceGainFactor`, new, and
+`GrantSkillExperience`, which multiplies the kill by the factor before sharing it
+(`game/Source/Cataclysm/Player/CataclysmPlayerState.h` and `.cpp`); `UCataclysmPlayerClassStats::StatsWithNoAttribute`
+gains `skill_experience_gain` (`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`); `split_a_kill`
+(`sim/cataclysm_sim/skill_levels.py`); `docs/Cataclysm_GDD_v2.md`, "What a Skill Levels";
+`docs/All_Things_Cataclysm.xlsx`, the Gems sheet's row 29; `game/Data/Gems.csv`; `docs/README.md`, the Gems sheet's row
+count; `game/Content/Data/DT_Gems.uasset` and `game/Data/datatable_asset_sources.json`, in the window. Tests:
+`Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`, new
+(`game/Source/Cataclysm/Tests/CataclysmSkillLevelsTests.cpp`); a probe for the stat in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+(`game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`); the gem count in
+`CHECK_TABLE(FCataclysmGemRow, ...)` (`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`) and
+`test_the_gem_count` in `tools/tests/test_affix_sheets_match_the_model.py`, 27 to 28;
+`tools/tests/test_skill_experience_gain.py`, new; `sim/tests/test_skill_levels.py`, one new. Issue [#2803](https://github.com/sdubois777/Cataclysm/issues/2803).
+
+### SAID FIRST
+
+- **THE GEM DOES NOT ACT UNTIL GEMS CAN BE PUT IN SOCKETS (#46).** Items roll a socket count, but nothing puts a gem in
+  a socket. No code outside the tests reads `FCataclysmGemRow`, and no gem writes a stat;
+  `game/Source/Cataclysm/AbilitySystem/CataclysmPotions.h` says "gems do not exist yet (issue #46)". The gem's row and
+  the code that reads its stat are built now. #46 must map this gem to `skill_experience_gain` as an increase, with
+  source `ECataclysmModifierSource::Gem`; the sheet's 0.10 is 10 in the stat pipeline, where an increase is stated in
+  percentage points.
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-2803-w1)**, at `8f2491711` on development `b8df7e1fe`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the asset step rebuilt `DT_Gems.uasset`, 28 rows, and committed it with its sources file alone;
+  - the ten groups each passed alone at their registered counts, the three the change moves first;
+  - the whole Unreal suite performed the registered 5086, all succeeding, with 48 skipped halves and "860 written and
+    deleted, 0 left behind";
+  - Python, run beside the Unreal suite, passed, 7848 with 9 skipped, and ruff passed;
+  - the one C++ guard proof, C1, proved, failing exactly the registered test with exactly the registered two
+    assertions and values. The six Python guard proofs were proved in phase 1.
+- **THE CHARACTER'S OWN EXPERIENCE IS UNCHANGED.** Only the skills' share of a kill reads the stat.
+
+### The request and the ruling
+
+The project owner, 2026-11-21, verbatim: "Speaking of skill leveling, we need to create a new gem that increases the
+exp gain for skills, you can just add it to the gems spreadsheet."
+
+The coordinating session accepted this session's proposal as written on 2026-11-21:
+
+- the gem `Gem_Of_The_Scholar`, "Of The Scholar", Utility, "Increases skill experience gain by 10%";
+- its values 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.90, **a judgement** that copies the ladder of Of Area, Of
+  Urgency and Of Shredding exactly;
+- a new stat, `skill_experience_gain`, read in `GrantSkillExperience` with no skill tags so that it applies to every
+  skill, multiplying the kill's experience before the split, with the character's own experience unchanged;
+- the simulation's `split_a_kill` takes the gain.
+
+**Why every skill, and not only skills tied to the gemmed item.** Every gem's effect is character-wide: attack speed,
+armour, health, magic find. Skills are not socketed into items in this game, and the design gives a gem no link to a
+skill ("Gems provide stat bonuses").
+
+**"Increased".** Increases to `skill_experience_gain` add together and multiply once, by the design's three-bucket
+rule. No other source raises it today. It is a separate stat from the character's `experience_gain`, which is read
+first, so a kill whose experience the enchantment "Kills no longer generate any experience" removed still gives the
+skills nothing.
+
+### What the genre does
+
+Fetched 2026-11-21 from poedb.tw, whose pages loaded. poewiki.net refused the fetch with an "Access Denied" page.
+
+- **Path of Exile, Ashes of the Stars** (unique amulet, "Requires Level 60"): "(5—10)% increased Experience Gain of
+  Gems", stat `gem experience gain +%`, Global. https://poedb.tw/us/Ashes_of_the_Stars
+- **Path of Exile, Dialla's Malefaction** (unique body armour, "Requires Level 37"): "Gems Socketed in Blue Sockets
+  gain 100% increased Experience", raised in 3.19.0 from 25%. https://poedb.tw/us/Diallas_Malefaction
+- **Path of Exile, Mutated Growth** (unique jewel): "10% increased Experience Gain for Corrupted Gems".
+  https://poedb.tw/us/Mutated_Growth
+- **Path of Exile, Enlighten Support**: "This Gem gains (0—100)% increased Experience", from its quality.
+  https://poedb.tw/us/Enlighten_Support
+- **Last Epoch**: items give no bonus to experience. **This came through a web search's quotation of Last Epoch's
+  support page, not a fetch**; the page itself returns 403 to the fetch tool.
+- **Torchlight Infinite, and Diablo II, III and IV**: no affix raising skill experience was found.
+
+The research settles the wording, "increased experience", and that it is one source in the increased bucket. Path of
+Exile prices it at 5-10% on a level 60 unique that reaches every gem and 100% on a level 37 unique that reaches one
+socket colour. It does not settle a rarity ladder; Path of Exile has none for this stat. The ladder is the judgement
+above, ending at 90%, near Dialla's 100%.
+
+**Stacking is bounded by the skill's cap, not by the gem.** A character can fill 45 sockets, but a skill's level stops
+at the level paired with the character's level, and the experience above it is kept. More of the gem only reaches that
+cap sooner, and every socket it fills holds no power gem.
+
+### The change
+
+- `ACataclysmPlayerState::SkillExperienceGainFactor` asks `skill_experience_gain` through `StatAppliedTo` over a base
+  of 100 with no skill tags, and answers it over 100, never below 0. It is exactly 1 for a character with no ability
+  system or no row.
+- `GrantSkillExperience` multiplies the kill's experience by it before sharing it among the skills that hurt the
+  creature.
+- `skill_experience_gain` is on `UCataclysmPlayerClassStats::StatsWithNoAttribute`, because no gameplay attribute holds
+  it, with a probe that grants it and reads the answer change.
+- `split_a_kill(kill, removed, max_health, skill_experience_gain=0.0)` in the simulation raises the kill by
+  `1 + gain`, never below nothing.
+- "What a Skill Levels" in the design document says what the stat does and that the gem waits on #46.
+
+### Tests
+
+- **`Cataclysm.SkillLevels.IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`**, new. Two player
+  states share a kill of 1000, 60 and 30 of a creature's 100 health. Without the stat: 600 and 300. With 50 increased:
+  900 and 450, factor 1.5. Controls: the character's own kill of 100 stays 100, and the character gains no experience
+  of its own. It builds no dungeon floor and writes no save. Prints "SKILL EXPERIENCE GAIN".
+- **The probe** `ProbeSkillExperienceGain` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: 50
+  increased turns a kill of 1000 shared whole into 1500. That test's count does not move.
+- **`tools/tests/test_skill_experience_gain.py`**, new, four checks, because continuous integration compiles no C++.
+- **`sim/tests/test_skill_levels.py`**: one new check, 900 and 450 at 0.5, and nothing at -2.
+
+### The gem's row
+
+Row 29 of the workbook's Gems sheet, below Of Embers: "Of The Scholar", "Increases skill experience gain by 10%", then
+0.2, 0.3, 0.4, 0.5, 0.6, 0.7 and 0.9 for Quality to Cataclysmic, and "Utility". The generator reads the Everyday value,
+0.1, out of the text, so `game/Data/Gems.csv` gains `Gem_Of_The_Scholar,Of The Scholar,Increases skill experience gain by
+10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9`, and no other generated file changes. The row's cells take row 23's (Of
+Area's) formats. The sheet's Excel table, `Table4`, still covers `A1:J26`, as it did before Of Wasting and Of Embers
+were added in rows 27 and 28; the generator reads every row and does not read the table.
+
+**Every gem row has this layout.** The sheet's header is "Column 1", "Everyday Gemstone", "Quality Gemstone" to
+"Cataclysmic Gemstone", "Type": the "Everyday Gemstone" column holds the effect text, and no column holds the Everyday
+value as a number. Checked over all 28 rows on 2026-11-21: each has text with a percentage in column B, seven numbers
+in columns C to I and a type in column J, and in `game/Data/Gems.csv` each row's Everyday value equals the percentage
+in its text. Of Area, row 23, beside the new row:
+
+| Row | A | B | C to I | J |
+|---|---|---|---|---|
+| 23 | Of Area | Increases AoE by 10% | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9 | Utility |
+| 29 | Of The Scholar | Increases skill experience gain by 10% | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9 | Utility |
+
+Generated: `Gem_Of_Area,Of Area,Increases AoE by 10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9` and
+`Gem_Of_The_Scholar,Of The Scholar,Increases skill experience gain by 10%,Utility,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.9`.
+
+**The sweep of what the row moves**, by the gem file's name, the sheet's name, the row type and the old count 27, over
+`game/Source/**/Tests`, `tools/tests`, `sim/tests` and `docs/README.md`: three pins held 27 and now hold 28,
+`CHECK_TABLE(FCataclysmGemRow, "Gems.csv", ...)`, `test_the_gem_count` and the Gems line of `docs/README.md`'s sheet
+table, which `tools/tests/test_docs_readme_sheet_table_is_true.py` checks. The other gem readers,
+`tools/tests/test_every_player_applied_effect_can_be_built.py`, `test_gem_values_rise_with_rarity.py`,
+`test_magic_find_has_one_name.py`, `test_power_score_port.py`, `test_generate_datatables.py` and
+`sim/tests/test_affixes.py`, read only gems that apply an effect on hit, read named gems, or check the ladder rises, and
+pass with the row. No test pins the number of stats with no attribute.
+
+### Registered before the run
+
+Counted on the "Test Completed. Result={" lines of window dirge-quest-w1's whole-suite log at `2826b9622` (#2797 and
+#2800), whose `game/` is development `b8df7e1fe`'s (`git diff --quiet 2826b9622 b8df7e1fe -- game/` exits 0), with a
+literal match on `Path={Cataclysm.<Group>.`: "5085 tests performed, 5085 succeeded, 0 failed. 48 skipped part of what
+they check" and "860 written and deleted, 0 left behind". Phase 1 registered against follow-w2 at `d4d0773ac` (5072),
+and the preparation for this turn against tree-6c-w1 at `abb9a7fc0` (5079); the ten groups below have the same counts
+in all three logs. The branch was rebased onto `b8df7e1fe` as `feat/skill-experience-gem-3`, where only this log
+conflicted, and its code commit's patch is unchanged (`git patch-id --stable` f8e4539dceb7). #2797 and #2800 changed
+none of the files this change reads or pins, and the sweep below finds the same three pins at 28.
+
+- **The whole suite: the base + 1** (5085 + 1 = 5086 against dirge-quest-w1), 0 failed; 48 skipped halves and 860 test saves,
+  the base's, because the new test builds no floor.
+- **Each group alone**: `Cataclysm.SkillLevels.` 12 to 13; `SkillLevelSources.` 19, `StatExemption.` 37,
+  `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4, `Equipment.` 30
+  and `Data.` 7, unchanged. `Experience.` is matched with its dot and so leaves out `ExperienceBar.` (2).
+- **The groups first**: `Data.`, `SkillLevels.` and `StatExemption.` are the groups whose tests the change moves, and
+  they run before the others and before the whole suite.
+- **The asset step**: `tools/generate_datatable_assets.py` rebuilds `game/Content/Data/DT_Gems.uasset`, 28 rows, and
+  rewrites `game/Data/datatable_asset_sources.json`; those two files and no other are committed before the tests run.
+- **One C++ guard proof**, the restored half passing every test it ran. The coordinating session's rule of 2026-11-21:
+  one C++ proof for each behaviour only a C++ test guards, and a Python proof where a Python check guards the same
+  thing. C1 is kept because it is the only proof that the new Unreal test fails when the kill is shared before it is
+  raised; G2 proves the same break from the source text. Three proofs registered in phase 1 were dropped under that
+  rule: the factor asking `experience_gain` (G1 guards it), the character's own gain read through the factor (G4
+  guards it), and C1's break on the exemption test (C1 and G3 cover it).
+
+| Proof | The break | Prefix | Predicted failing test and assertions |
+|---|---|---|---|
+| C1 | the skills share the kill before it is raised | `Cataclysm.SkillLevels.` (13) | `IncreasedSkillExperienceGain...`, 2 (900 and 450 read 600 and 300) |
+
+- **Python before the window**: the full suite at `9a20a43ee`, on development `89fdc50a6`, before the rebase onto
+  `b8df7e1fe`; the window runs it again beside the whole Unreal suite: "1 failed, 7847 passed, 9
+  skipped in 326.06s", JUnit tests 7857, failures 1, errors 0, skipped 9. The one failure is
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  naming `Gems.csv` alone, which the asset step clears. Ruff "All checks passed!". In phase 1, every Python test file
+  that read a changed file (29 files): 1789 passed; the 137 files that read the design document: 3096 passed, 2
+  skipped.
+
+### The six Python guards, proved in phase 1
+
+Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_skill_experience_gain.py` and
+`sim/tests/test_skill_levels.py` (9 tests), `proved` True:
+
+| Proof | The break | Test that failed |
+|---|---|---|
+| G1 | the factor asks `experience_gain` | `test_the_factor_reads_the_stat_with_no_tags_and_the_kill_is_raised_before_it_is_shared` |
+| G2 | the skills share the kill before it is raised | the same test |
+| G3 | the stat left off the list of stats with no attribute | `test_the_stat_has_no_attribute_and_a_probe_that_reads_it` |
+| G4 | the character's own gain asks the factor | `test_the_characters_own_grant_does_not_read_it_and_the_kill_hands_both_the_gained_experience` |
+| G5 | the simulation's split ignores the gain | `test_increased_skill_experience_gain_raises_every_share_alike_before_the_split` |
+| G6 | the design document says the gem acts now | `test_the_design_says_what_the_stat_does_and_that_the_gem_waits_on_sockets` |
+
+### The window
+
+**tree-2803-w1, 2026-11-21, 16:59 to 17:22, at `8f2491711`.** Phase 2's three compiles ran under the lock
+tree-2803-compile from 16:51 to 16:59, after the build service's runs for `b8df7e1fe` had ended: the branch (58 files),
+each changed `.cpp` file alone (10 files; `CataclysmPlayerClassStats.cpp`, `CataclysmPlayerState.cpp`,
+`CataclysmDataTableTests.cpp`, `CataclysmSkillLevelsTests.cpp` and `CataclysmStatExemptionTests.cpp` out of the
+Cataclysm unity file), and the unity files (4). None printed a warning or an error. The window's gate found every
+pre-check passing at 16:59, the recount matched every group, and the written-out version check found "28 lines stating a
+version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_Gems.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; the two were committed alone as `8f2491711` on `eee0e7c8f` and
+  pushed, and that is the tested head.
+- **Each group alone**, in this order: `Data.` 7, `SkillLevels.` 13 and `StatExemption.` 37, then `SkillLevelSources.`
+  19, `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4 and
+  `Equipment.` 30, each all succeeding.
+- **The whole suite**: "Tests: 5086 tests performed, 5086 succeeded, 0 failed. 48 skipped part of what they check";
+  "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5086 tests in the tree at 8f2491711; 5086
+  performed, gap 0".
+- **Python**, started beside the whole Unreal suite: "7848 passed, 9 skipped"; JUnit tests 7857, failures 0, errors 0,
+  skipped 9; ruff "All checks passed!". The one failure before the window,
+  `tools/tests/test_datatable_assets_are_current.py`, passes with the asset rebuilt.
+- **What the new test printed**: "SKILL EXPERIENCE GAIN: without 600.0 and 300.0; with 50 increased 900.0 and 450.0;
+  factor 1.00 and 1.50; the character's own kill of 100 -> 100".
+- **The proof**, after both suites had ended: C1, 13 performed, 12 succeeded, 1 failed with the break in, and 13
+  performed, 13 succeeded with it restored. `IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`
+  failed 2 assertions: "WITH 50 INCREASED, the Heavy's share is half as much again: 900" (600) and "and the Special's
+  alike: 450" (300), the registered values.
+
+---
+
 ## 2026-11-21 — The empire map's top line counts Quest dungeons cleared and the Quest dungeons standing, and the city screen, the map's city detail and the status bar name a Quest dungeon (#2800)
 
 **Affects:** `UCataclysmEmpireMapLayout::ProgressLine`, whose objective count now reads "N Quest dungeons cleared";

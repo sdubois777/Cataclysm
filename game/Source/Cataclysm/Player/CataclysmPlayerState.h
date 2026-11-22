@@ -806,8 +806,26 @@ public:
 	 * `MaxHealth`, or against everything the skills removed when that is more -- a creature that healed -- so the
 	 * shares never pass the whole kill. A PLAY LOOP line says each skill level gained. Nothing for a kill worth nothing
 	 * or a creature no skill hurt.
+	 *
+	 * THE KILL IS RAISED BY `SkillExperienceGainFactor` BEFORE IT IS SHARED (issue #2803), so an increase to
+	 * `skill_experience_gain` raises every skill's share alike. The character's own grant does not read it.
 	 */
 	void GrantSkillExperience(int64 KillExperience, const TMap<FName, float>& HealthRemovedBySkill, float MaxHealth);
+
+	/**
+	 * The stat that raises the experience every skill earns from a kill, asked as a percentage over a base of 100 with
+	 * no skill tags, so it applies to every skill. Issue #2803, ruled 2026-11-21: the gem Of The Scholar,
+	 * "Increases skill experience gain by 10%", writes it as an increase once gems can be socketed (#46). No attribute,
+	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
+	 */
+	static const TCHAR* SkillExperienceGainStat;
+
+	/**
+	 * What a kill's experience is multiplied by before `GrantSkillExperience` shares it: `skill_experience_gain` asked
+	 * through its stat line over a base of 100, divided by 100, and never below 0. Exactly 1 for a character with no
+	 * ability system or no row, so nothing changes for a character the stat does not reach.
+	 */
+	double SkillExperienceGainFactor() const;
 
 	/** Every skill's experience, for the character record: one entry per row, in the order the rows were first met. */
 	TArray<FCataclysmSkillExperience> GetSkillExperienceRecord() const;

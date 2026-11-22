@@ -59,11 +59,17 @@ def damage_factor(skill_level: int) -> float:
     return DAMAGE_FACTOR_PER_LEVEL ** (min(max(skill_level, FIRST_LEVEL), MAX_LEVEL) - 1)
 
 
-def split_a_kill(kill_experience: float, removed_by_skill: dict, max_health: float) -> dict:
+def split_a_kill(kill_experience: float, removed_by_skill: dict, max_health: float,
+                 skill_experience_gain: float = 0.0) -> dict:
     """A creature's experience shared among the skills that hurt it, by the share of its health each removed: against
-    its maximum health, or everything the skills removed when that is more, so the shares never pass the whole kill."""
+    its maximum health, or everything the skills removed when that is more, so the shares never pass the whole kill.
+
+    `skill_experience_gain` is the sum of the "increased skill experience gain" a character holds, as a fraction (0.5 is
+    50%). It raises the kill before it is shared, so every skill's share rises alike, and never below nothing: the
+    game's `ACataclysmPlayerState::SkillExperienceGainFactor`. Issue #2803."""
     removed = sum(max(0.0, amount) for amount in removed_by_skill.values())
     whole = max(max_health, removed)
     if kill_experience <= 0 or whole <= 0:
         return {}
-    return {skill: kill_experience * amount / whole for skill, amount in removed_by_skill.items() if amount > 0}
+    raised = kill_experience * max(0.0, 1.0 + skill_experience_gain)
+    return {skill: raised * amount / whole for skill, amount in removed_by_skill.items() if amount > 0}
