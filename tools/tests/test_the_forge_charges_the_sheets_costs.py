@@ -164,7 +164,10 @@ def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
     named = dict(re.findall(r'const TCHAR\* UCataclysmForge::(\w+OperationRow) = TEXT\("([^"]+)"\);', code(FORGE_CPP)))
     expected = {"UpgradeOperationRow": constant("GoldPerCraftDay"), "SocketGemOperationRow": constant("GoldPerCraftDay"),
                 "UnsocketGemOperationRow": constant("GoldPerCraftDay"),
-                "CombineOperationRow": constant("CombineGoldAtTheLowestRung")}
+                "CombineOperationRow": constant("CombineGoldAtTheLowestRung"),
+                # ISSUE #46 SLICE G9: each falls back on `BaseGoldFor` of its base days, 3 and 2.
+                "AddSocketOperationRow": constant("GoldPerCraftDay") * constant("AddSocketBaseDays"),
+                "ChangeSocketTypeOperationRow": constant("GoldPerCraftDay") * constant("ChangeSocketTypeBaseDays")}
     assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
     for field, figure in expected.items():
         row = rows.get(named[field])

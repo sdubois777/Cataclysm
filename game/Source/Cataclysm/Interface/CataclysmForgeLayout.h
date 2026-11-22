@@ -34,6 +34,19 @@ struct FCataclysmForgeSocketAction
 };
 
 /**
+ * One socket the forge offers to add, or one socket's type it offers to change, for the piece chosen. Issue #46, slice
+ * G9.
+ */
+struct FCataclysmForgeSocketWorkAction
+{
+	FName ButtonName;
+	FString Label;
+	bool bAdd = false;
+	int32 Socket = INDEX_NONE;
+	ECataclysmSocketType NewType = ECataclysmSocketType::Any;
+};
+
+/**
  * One gem combine the forge offers: two carried gems of a kind and rarity into one of the next rarity. Issue #46, slice
  * G6.
  */
@@ -114,6 +127,19 @@ public:
 
 	/** The piece's sockets for the screen's detail, "Sockets: Attack socket: empty; Defense socket: ...", or empty. */
 	static FString SocketsDetailFor(const FCataclysmItem& Item);
+
+	//~ Adding a socket and changing a socket's type. Issue #46, slice G9.
+
+	/**
+	 * "Add a socket (3 of 6)" for a piece below its slot's maximum `MaxSockets`, then, socket by socket, "Make socket 1
+	 * Defense" and "Make socket 1 Utility" for each EMPTY socket of a type, the two types it is not. A socket holding a gem
+	 * and a socket for any gem are offered no change, as `UCataclysmForge::ChangeSocketTypeOf` refuses them.
+	 */
+	static TArray<FCataclysmForgeSocketWorkAction> SocketWorkActionsFor(const FCataclysmItem& Item, int32 MaxSockets);
+
+	/** The action a button stands for, among those shown. False for a button that is none of them. */
+	static bool SocketWorkActionForButton(FName ButtonName, const TArray<FCataclysmForgeSocketWorkAction>& Shown,
+										  FCataclysmForgeSocketWorkAction& OutAction);
 
 	//~ Combining gems. Issue #46, slice G6.
 

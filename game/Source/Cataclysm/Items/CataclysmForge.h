@@ -127,6 +127,44 @@ struct FCataclysmForgeSocketing
 };
 
 /**
+ * What adding a socket to an item, or changing the type of one of its sockets, would take, or why it cannot. Issue #46,
+ * slice G9.
+ */
+struct FCataclysmForgeSocketWork
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** True to add a socket, false to change one's type. */
+	bool bAdd = false;
+
+	/** The socket changed, from 0; or, for an addition, the place the new socket takes, the item's socket count. */
+	int32 Socket = INDEX_NONE;
+
+	/** A change's socket type before and the type chosen. An addition's `ToType` is rolled when it is done. */
+	ECataclysmSocketType FromType = ECataclysmSocketType::Any;
+	ECataclysmSocketType ToType = ECataclysmSocketType::Any;
+
+	/** The most sockets the item's slot takes, `game/Data/ItemSockets.csv`. Read for an addition. */
+	int32 MaxSockets = 0;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: its base days, and the residue's time penalty read before the craft. */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -347,4 +385,80 @@ public:
 	 * bag."
 	 */
 	static FString SocketingQuestion(const FCataclysmForgeSocketing& Plan);
+
+	//~ Adding a socket and changing a socket's type. Issue #46, slice G9, ruled by the coordinating session on 2026-11-22.
+	//
+	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Add Socket | Shattered Core | 15 CR | 3",
+	// Base Gold 750, and "Change Socket Type | Focusing Lens | 10 CR | 2", Base Gold 500, through `DaysFor` and `GoldFor`
+	// as every craft. An added socket is empty and its type is ROLLED evenly among Attack, Defense and Utility, as a
+	// drop rolls one; a changed socket takes the type the player CHOOSES, among the two it is not. Neither touches a gem:
+	// a socket holding one is not changed ("Unsocket the gem first", from the design's "There is no free removal"), and
+	// a socket for any gem is not offered a change, since a change could only narrow it.
+
+	/** The row of the material Add Socket consumes, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* ShatteredCoreRow;
+
+	/** The row of the material Change Socket Type consumes, one each. */
+	static const TCHAR* FocusingLensRow;
+
+	/** The two operations' rows in `game/Data/ForgeOperations.csv`, whose Base Gold `BaseGoldOf` reads. */
+	static const TCHAR* AddSocketOperationRow;
+	static const TCHAR* ChangeSocketTypeOperationRow;
+
+	/** The residue each adds, the sheet's CR impact. */
+	static constexpr float AddSocketResidue = 15.0f;
+	static constexpr float ChangeSocketTypeResidue = 10.0f;
+
+	/** The days each costs before the residue's time penalty, the sheet's Base Days. */
+	static constexpr int32 AddSocketBaseDays = 3;
+	static constexpr int32 ChangeSocketTypeBaseDays = 2;
+
+	/** The salt an added socket's roll mixes into the run's seed: "SOCK". */
+	static constexpr int32 AddedSocketSalt = 0x534F434B;
+
+	/**
+	 * What adding a socket to the item takes, against the most sockets its slot takes and the Shattered Cores held.
+	 *
+	 * REFUSED for no item, a slot whose maximum is not known (below 0), an item at its maximum ("That piece holds its
+	 * most sockets, 6."), no Shattered Core, and too little gold.
+	 */
+	static FCataclysmForgeSocketWork AddSocketOf(const FCataclysmItem& Item, int32 MaxSockets, int32 CoresHeld,
+												 int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What making the item's socket `Socket` a socket of `NewType` takes, against the Focusing Lenses held.
+	 *
+	 * REFUSED for no item, no such socket, a socket for any gem, a socket holding a gem ("Unsocket the gem first."), a
+	 * new type of Any, the socket's own type, no Focusing Lens, and too little gold.
+	 */
+	static FCataclysmForgeSocketWork ChangeSocketTypeOf(const FCataclysmItem& Item, int32 Socket,
+														ECataclysmSocketType NewType, int32 LensesHeld,
+														int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * EVERYTHING THE ITEM SAVES, WRITTEN OUT AS TEXT, for the seed of an added socket's type: its base, gear level and
+	 * damage types; each affix's row, tier, roll and damage types; its enchantment count and each enchantment's rows and
+	 * rolls; each socket's type, gem and rarity; its residue, kills and whether it was made at creation. The rows'
+	 * TEXT, not their FName hashes, which differ between game sessions. The same text is written in Python by
+	 * `tools/tests/test_the_forge_adds_and_changes_sockets.py`. Ruled by the coordinating session on 2026-11-22,
+	 * option (a): items carry no saved identifier, so their contents tell them apart.
+	 */
+	static FString ItemSeedText(const FCataclysmItem& Item);
+
+	/**
+	 * The seed of an added socket's type: `CataclysmSeedMix::Mix` of the run's `WalkSeedMask`, `AddedSocketSalt` and the
+	 * run's day, mixed again with the CRC of `ItemSeedText` (`FCrc::StrCrc32`) and the item's socket count. The same
+	 * item on the same day of the same run rolls the same type, so a reload cannot change it.
+	 */
+	static int32 AddedSocketSeed(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day);
+
+	/** The type an added socket takes: `UCataclysmGems::RollSocketType` on a stream of `AddedSocketSeed`. */
+	static ECataclysmSocketType AddedSocketType(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day);
+
+	/**
+	 * What the first press of one says, before the second does it: "Press again to add a socket: one Shattered Core,
+	 * 750 gold, residue 40 to 55, 3 days of the run; its type is rolled." or "Press again to make socket 2 a Defense
+	 * socket: one Focusing Lens, 500 gold, residue 40 to 50, 2 days of the run."
+	 */
+	static FString SocketWorkQuestion(const FCataclysmForgeSocketWork& Plan);
 };

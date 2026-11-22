@@ -244,6 +244,64 @@ FString UCataclysmForgeLayout::SocketsDetailFor(const FCataclysmItem& Item)
 	return Lines.IsEmpty() ? FString() : FString::Printf(TEXT("Sockets: %s"), *FString::Join(Lines, TEXT("; ")));
 }
 
+TArray<FCataclysmForgeSocketWorkAction> UCataclysmForgeLayout::SocketWorkActionsFor(const FCataclysmItem& Item,
+																					int32 MaxSockets)
+{
+	TArray<FCataclysmForgeSocketWorkAction> Out;
+	if (Item.Base.IsNone())
+	{
+		return Out;
+	}
+	if (Item.Sockets.Num() < MaxSockets)
+	{
+		FCataclysmForgeSocketWorkAction& Add = Out.AddDefaulted_GetRef();
+		Add.bAdd = true;
+		Add.Socket = Item.Sockets.Num();
+		Add.ButtonName = FName(TEXT("AddSocket"));
+		Add.Label = FString::Printf(TEXT("Add a socket (%d of %d)"), Item.Sockets.Num() + 1, MaxSockets);
+	}
+	const ECataclysmSocketType Types[] = { ECataclysmSocketType::Attack, ECataclysmSocketType::Defense,
+										   ECataclysmSocketType::Utility };
+	for (int32 Index = 0; Index < Item.Sockets.Num(); ++Index)
+	{
+		const FCataclysmSocket& Socket = Item.Sockets[Index];
+		// NO CHANGE FOR A FULL SOCKET OR ONE FOR ANY GEM, ruled 2026-11-22 (Q4, Q5).
+		if (!Socket.Gem.IsNone() || Socket.Type == ECataclysmSocketType::Any)
+		{
+			continue;
+		}
+		for (const ECataclysmSocketType Type : Types)
+		{
+			if (Type == Socket.Type)
+			{
+				continue;
+			}
+			FCataclysmForgeSocketWorkAction& Change = Out.AddDefaulted_GetRef();
+			Change.Socket = Index;
+			Change.NewType = Type;
+			const FString TypeName = UCataclysmGems::SocketTypeName(Type);
+			Change.ButtonName = FName(*FString::Printf(TEXT("ChangeSocket_%d_%s"), Index, *TypeName));
+			Change.Label = FString::Printf(TEXT("Make socket %d %s"), Index + 1, *TypeName);
+		}
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::SocketWorkActionForButton(FName ButtonName,
+													  const TArray<FCataclysmForgeSocketWorkAction>& Shown,
+													  FCataclysmForgeSocketWorkAction& OutAction)
+{
+	for (const FCataclysmForgeSocketWorkAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
 TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
 	const UCataclysmInventoryComponent* Inventory)
 {

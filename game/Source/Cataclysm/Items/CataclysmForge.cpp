@@ -4,6 +4,7 @@
 
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
+#include "Empire/CataclysmSeedMix.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
 // A gold amount as a player reads it, "2,055 gold", issue #2830.
@@ -11,6 +12,7 @@
 // A socket's type and a gem's name, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmWearing.h"
+#include "Misc/Crc.h"
 
 const TCHAR* UCataclysmForge::SettingAgentRow = TEXT("Material_Jeweler_s_Setting_Agent");
 const TCHAR* UCataclysmForge::OperationsTableAssetPath = TEXT("/Game/Data/DT_ForgeOperations.DT_ForgeOperations");
@@ -19,6 +21,10 @@ const TCHAR* UCataclysmForge::SocketGemOperationRow = TEXT("Operation_Socket_Gem
 const TCHAR* UCataclysmForge::UnsocketGemOperationRow = TEXT("Operation_Unsocket_Gem");
 const TCHAR* UCataclysmForge::CombineOperationRow = TEXT("Operation_Combine");
 const TCHAR* UCataclysmForge::DismantlingDustRow = TEXT("Material_Dismantling_Dust");
+const TCHAR* UCataclysmForge::ShatteredCoreRow = TEXT("Material_Shattered_Core");
+const TCHAR* UCataclysmForge::FocusingLensRow = TEXT("Material_Focusing_Lens");
+const TCHAR* UCataclysmForge::AddSocketOperationRow = TEXT("Operation_Add_Socket");
+const TCHAR* UCataclysmForge::ChangeSocketTypeOperationRow = TEXT("Operation_Change_Socket_Type");
 
 FName UCataclysmForge::StoneFor(int32 Level)
 {
@@ -390,6 +396,180 @@ FString UCataclysmForge::SocketingQuestion(const FCataclysmForgeSocketing& Plan)
 		: FString::Printf(TEXT("the %s socket"), *UCataclysmGems::SocketTypeName(Plan.SocketType));
 	return FString::Printf(TEXT("Press again to socket %s into %s: one Jeweler's Setting Agent, %s."), *Gem, *Into,
 						   *Cost);
+}
+
+FCataclysmForgeSocketWork UCataclysmForge::AddSocketOf(const FCataclysmItem& Item, int32 MaxSockets, int32 CoresHeld,
+														int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeSocketWork Out;
+	Out.bAdd = true;
+	Out.Socket = Item.Sockets.Num();
+	Out.MaxSockets = MaxSockets;
+	Out.Material = FName(ShatteredCoreRow);
+	Out.MaterialHeld = FMath::Max(0, CoresHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + AddSocketResidue;
+	Out.Days = DaysFor(Item.Residue, AddSocketBaseDays);
+	Out.Gold = GoldFor(BaseGoldOf(AddSocketOperationRow, BaseGoldFor(AddSocketBaseDays)), Item.Residue, DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to add a socket to.");
+		return Out;
+	}
+	if (MaxSockets < 0)
+	{
+		Out.Refusal = TEXT("How many sockets that piece can take is not known.");
+		return Out;
+	}
+	// THE SLOT'S MAXIMUM, `game/Data/ItemSockets.csv`: the design's table "is a MAXIMUM". Ruled 2026-11-22 (Q3).
+	if (Item.Sockets.Num() >= MaxSockets)
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece holds its most sockets, %d."), MaxSockets);
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Adding a socket takes a Shattered Core; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Adding a socket"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FCataclysmForgeSocketWork UCataclysmForge::ChangeSocketTypeOf(const FCataclysmItem& Item, int32 Socket,
+															   ECataclysmSocketType NewType, int32 LensesHeld,
+															   int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeSocketWork Out;
+	Out.Socket = Socket;
+	Out.ToType = NewType;
+	Out.Material = FName(FocusingLensRow);
+	Out.MaterialHeld = FMath::Max(0, LensesHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + ChangeSocketTypeResidue;
+	Out.Days = DaysFor(Item.Residue, ChangeSocketTypeBaseDays);
+	Out.Gold = GoldFor(BaseGoldOf(ChangeSocketTypeOperationRow, BaseGoldFor(ChangeSocketTypeBaseDays)), Item.Residue,
+					   DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to change.");
+		return Out;
+	}
+	if (!Item.Sockets.IsValidIndex(Socket))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no socket %d."), Socket + 1);
+		return Out;
+	}
+	const FCataclysmSocket& Changed = Item.Sockets[Socket];
+	Out.FromType = Changed.Type;
+	// A SOCKET FOR ANY GEM IS NOT CHANGED: it fits every gem, so a change could only narrow it. Ruled 2026-11-22 (Q5).
+	if (Changed.Type == ECataclysmSocketType::Any)
+	{
+		Out.Refusal = TEXT("That socket fits any gem already.");
+		return Out;
+	}
+	// NO FREE REMOVAL: a gem comes out only with Dismantling Dust. Ruled 2026-11-22 (Q4).
+	if (!Changed.Gem.IsNone())
+	{
+		Out.Refusal = TEXT("Unsocket the gem first.");
+		return Out;
+	}
+	if (NewType == ECataclysmSocketType::Any)
+	{
+		Out.Refusal = TEXT("A socket can be made Attack, Defense or Utility, not one for any gem.");
+		return Out;
+	}
+	if (NewType == Changed.Type)
+	{
+		Out.Refusal = FString::Printf(TEXT("That socket is a %s socket already."), *UCataclysmGems::SocketTypeName(NewType));
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Changing a socket's type takes a Focusing Lens; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Changing a socket's type"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FString UCataclysmForge::ItemSeedText(const FCataclysmItem& Item)
+{
+	const auto Names = [](const TArray<FName>& List)
+	{
+		TArray<FString> Words;
+		for (const FName& Each : List)
+		{
+			Words.Add(Each.ToString());
+		}
+		return FString::Join(Words, TEXT("+"));
+	};
+	TArray<FString> Affixes;
+	for (const FCataclysmRolledAffix& Affix : Item.Affixes)
+	{
+		Affixes.Add(FString::Printf(TEXT("%s,%d,%.6f,%s"), *Affix.Affix.ToString(), Affix.Tier,
+									static_cast<double>(Affix.Roll), *Names(Affix.DamageTypes)));
+	}
+	TArray<FString> Enchantments;
+	for (const FCataclysmRolledEnchantment& Enchantment : Item.Enchantments)
+	{
+		Enchantments.Add(FString::Printf(TEXT("%s,%s,%.6f,%.6f"), *Enchantment.Positive.ToString(),
+										 *Enchantment.Negative.ToString(), static_cast<double>(Enchantment.PositiveRoll),
+										 static_cast<double>(Enchantment.NegativeRoll)));
+	}
+	TArray<FString> Sockets;
+	for (const FCataclysmSocket& Socket : Item.Sockets)
+	{
+		Sockets.Add(FString::Printf(TEXT("%s,%s,%d"), *UCataclysmGems::SocketTypeName(Socket.Type),
+									*Socket.Gem.ToString(), static_cast<int32>(Socket.GemRarity)));
+	}
+	return FString::Printf(
+		TEXT("Base=%s;Level=%d;Types=%s;Affixes=%s;Enchantments=%d:%s;Sockets=%s;Residue=%.6f;Kills=%d;Made=%d"),
+		*Item.Base.ToString(), Item.GearLevel, *Names(Item.DamageTypes), *FString::Join(Affixes, TEXT("|")),
+		Item.EnchantmentCount, *FString::Join(Enchantments, TEXT("|")), *FString::Join(Sockets, TEXT("|")),
+		static_cast<double>(Item.Residue), Item.Kills, Item.bMadeAtCreation ? 1 : 0);
+}
+
+int32 UCataclysmForge::AddedSocketSeed(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day)
+{
+	// TWO MIXES, so all four inputs go in: the run's mask, the salt and the day; then the item's text and its count.
+	const int32 OfTheRunAndDay = CataclysmSeedMix::Mix(WalkSeedMask, AddedSocketSalt, Day);
+	const uint32 Crc = FCrc::StrCrc32(*ItemSeedText(Item));
+	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Item.Sockets.Num());
+}
+
+ECataclysmSocketType UCataclysmForge::AddedSocketType(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day)
+{
+	FRandomStream Stream(AddedSocketSeed(Item, WalkSeedMask, Day));
+	return UCataclysmGems::RollSocketType(Stream);
+}
+
+FString UCataclysmForge::SocketWorkQuestion(const FCataclysmForgeSocketWork& Plan)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	if (Plan.bAdd)
+	{
+		return FString::Printf(TEXT("Press again to add a socket: one Shattered Core, %s; its type is rolled."), *Cost);
+	}
+	return FString::Printf(TEXT("Press again to make socket %d a %s socket: one Focusing Lens, %s."), Plan.Socket + 1,
+						   *UCataclysmGems::SocketTypeName(Plan.ToType), *Cost);
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

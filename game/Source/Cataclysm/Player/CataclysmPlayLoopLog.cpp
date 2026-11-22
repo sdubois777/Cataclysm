@@ -439,6 +439,24 @@ FString FCataclysmPlayLoopLog::ForgeSocketLine(bool bUnsocket, const FString& Ge
 						   ResidueAfter, Days, Plural, DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeSocketWorkLine(bool bAdd, int32 SocketNumber, const FString& FromType,
+												   const FString& ToType, const FString& ItemName, int64 Gold,
+												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,
+												   int32 DayTo)
+{
+	// TWO PLAIN RETURNS, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can read both formats.
+	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
+	if (bAdd)
+	{
+		return FString::Printf(TEXT("added socket %d to %s for %s, rolled %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   SocketNumber, *ItemName, *ACataclysmDroppedItem::GoldName(Gold), *ToType, ResidueBefore,
+							   ResidueAfter, Days, Plural, DayFrom, DayTo);
+	}
+	return FString::Printf(TEXT("made socket %d of %s %s, from %s, for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   SocketNumber, *ItemName, *ToType, *FromType, *ACataclysmDroppedItem::GoldName(Gold),
+						   ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+}
+
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
 {
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);
