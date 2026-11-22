@@ -484,10 +484,11 @@ Python checks whose pins the slice moves. Issue [#2741](https://github.com/sdubo
 
 ### SAID FIRST
 
-- **NOT COMPILED.** Phase 1 only. The window runs after the gems window (V1).
-- **THE THREE RECORD NUMBERS ARE DEVELOPMENT `02b96b42b`'S NEXT AND ARE RENUMBERED AT THE WINDOW.** The gems window moves
-  the character and run records first, so this slice takes the numbers after its: most likely account 7, character
-  14 and run 15 or 16 (V1). The tests that state a record's number read `SchemaVersionNow`.
+- **COMPILED AND TESTED IN WINDOWS tree-s9-w1 AND tree-s9-w2**, after the gems window (V1). w2 passed; both are
+  recorded at the end of this entry. Phase 1 was written before any compile.
+- **THE THREE RECORD NUMBERS ARE ACCOUNT 7, CHARACTER 14 AND RUN 15**, the numbers after the gems window's (V1): it
+  took the character record to 13 and the run record to 14 first, and this slice was renumbered when it was rebased
+  onto it. The tests that state a record's number read `SchemaVersionNow`.
 - **REINVESTMENT'S COUNT IS AN UNROUNDED DOUBLE** since the coordinating session's V20 ruling, which added that to
   this session's recommendation after the first code was written; the code, the records and the files follow it.
 - **PART (A) LEFT THE CHARACTER RECORD AT VERSION 12 WITH A STEP TO 13**, corrected in part (b). Its edit script skipped
