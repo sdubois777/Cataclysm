@@ -127,7 +127,8 @@ three; `game/Source/Cataclysm/Tests/CataclysmCityCleanseSaveTests.cpp`, new, one
 `CataclysmSaveFixtures.h`'s `AddTheRunsVersion16Defaults`, new; the built list and count in
 `game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeTests.cpp`; the cleanse set aside in
 `CataclysmCityScreenTests.cpp`, `CataclysmCityUpgradeBuildScreenTests.cpp` and `CataclysmCityUpgradePriceTests.cpp`;
-and the committed run file moved from `Run_v15.json` to `Run_v16.json`, with the step's write added, in
+and the committed run file moved from `game/Tests/SaveFixtures/Run_v15.json` to
+`game/Tests/SaveFixtures/Run_v16.json`, with the step's write added, in
 `CataclysmCityUpgradeBuildSaveTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`,
 `CataclysmEarnedBossSaveTests.cpp`, `CataclysmEmpireTreeClearGoldTests.cpp`, `CataclysmEmpireTreeDropsTests.cpp`,
 `CataclysmEmpireTreeEventsTests.cpp`, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmGemSaveTests.cpp`,
