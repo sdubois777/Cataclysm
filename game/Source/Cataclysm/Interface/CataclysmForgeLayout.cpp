@@ -175,7 +175,7 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 {
 	TArray<FCataclysmForgeSocketAction> Out;
 	const UDataTable* GemTable = UCataclysmGems::LoadGeneratedTable();
-	// THE PIECE'S OWN "FIT ANY GEM TYPE" ENCHANTMENT, read once for all its sockets (slice G7).
+	// THE PIECE'S OWN "FIT ANY GEM TYPE" ENCHANTMENT, read once for all its sockets (slice G10).
 	const UDataTable* EffectTable = UCataclysmItemModifiers::LoadEnchantmentEffectTable();
 	const bool bFitsAnyGem = UCataclysmGems::FitsAnyGem(Item, EffectTable);
 	for (int32 Index = 0; Index < Item.Sockets.Num(); ++Index)

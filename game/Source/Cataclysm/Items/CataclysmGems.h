@@ -144,7 +144,7 @@ public:
 	 */
 	static bool GemFits(ECataclysmSocketType Type, const FString& GemType);
 
-	//~ The two enchantments that act on a piece's own gems. Issue #46, slice G7, ruled 2026-11-22.
+	//~ The two enchantments that act on a piece's own gems. Issue #46, slice G10, ruled 2026-11-22.
 
 	/**
 	 * "Sockets on this equipment fit any gem type": its effect row states a flat 1 on this stat. READ OFF THE PIECE'S
@@ -206,7 +206,7 @@ public:
 	 * G1's workbook stage. This branch does not compile until it is rebased onto that stage.
 	 *
 	 * `Effect` multiplies the sheet value before it enters its bucket: 1 for a gem as it is, and the piece's
-	 * `SocketedGemEffectOf` when `AddSocketedGems` adds a socketed one (slice G7).
+	 * `SocketedGemEffectOf` when `AddSocketedGems` adds a socketed one (slice G10).
 	 */
 	static bool AddGemModifier(const FCataclysmGemRow& Row, ECataclysmRarity Rarity,
 							   TMap<FName, TArray<FCataclysmStatModifier>>& Totals, float Effect = 1.0f);
@@ -219,7 +219,7 @@ public:
 	 * double its gems, because its 6 sockets already equal a pair's 3 + 3 (both ruled 2026-11-21). A gem the table
 	 * lacks is skipped and logged, rather than reaching the character as nothing under a wrong name.
 	 *
-	 * AND THE PIECE'S OWN TWO GEM ENCHANTMENTS, since slice G7: each gem's value is multiplied by `SocketedGemEffectOf`
+	 * AND THE PIECE'S OWN TWO GEM ENCHANTMENTS, since slice G10: each gem's value is multiplied by `SocketedGemEffectOf`
 	 * before it enters its bucket, and a gem that fits neither its socket's type nor, through `FitsAnyGem`, the piece is
 	 * skipped (Q2). `EnchantmentEffectTable` is where both are read; with none, neither enchantment acts.
 	 */
@@ -231,7 +231,7 @@ public:
 	 * One tooltip line per socket, in order: "Attack socket: empty", "Defense socket: Of The Titan (Superb)", and for a
 	 * socket that fits any gem, "Socket for any gem: empty".
 	 *
-	 * Since slice G7, on a piece whose enchantment lets its sockets take any gem, each line opens "Socket for any gem
+	 * Since slice G10, on a piece whose enchantment lets its sockets take any gem, each line opens "Socket for any gem
 	 * (enchanted)"; and a gem that fits neither its socket nor the piece ends "(does not fit: inactive)" (Q2, Q8). Reads
 	 * the generated gem table and the enchantment effect table the game loads.
 	 */

@@ -13932,7 +13932,7 @@ def refuse_a_damage_types_carried_row_the_game_cannot_read(
 
 
 #: "Sockets on this equipment fit any gem type" and "Gems in this equipment are
-#: 50% less effective", issue #46 slice G7, ruled by the coordinating session on
+#: 50% less effective", issue #46 slice G10, ruled by the coordinating session on
 #: 2026-11-22: effect rows with item-level stats, READ OFF THE PIECE'S OWN DRAWN
 #: ENCHANTMENTS and by no character, as `damage_types_carried` is.
 #: `UCataclysmGems::FitsAnyGem` asks whether a row on the first states more than
@@ -14522,7 +14522,7 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     problems.extend(refuse_a_damage_types_carried_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
     # AND THE TWO GEM ENCHANTMENTS' ROWS ARE THE SHAPES THE GEM CODE READS.
-    # Issue #46 slice G7, ruled 2026-11-22.
+    # Issue #46 slice G10, ruled 2026-11-22.
     problems.extend(refuse_a_gem_enchantment_row_the_game_cannot_read(
         "EnchantmentEffects", effects))
 

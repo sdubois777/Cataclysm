@@ -924,7 +924,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// AND 706 SINCE THE THREE ROWS OF TRAPS LAYER 6, issue #1833, from 703.
 	//
-	// AND 709 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G7, from 707: "Sockets on this equipment fit
+	// AND 709 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G10, from 707: "Sockets on this equipment fit
 	// any gem type" and "Gems in this equipment are 50% less effective", one row each.
 	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    709)
 

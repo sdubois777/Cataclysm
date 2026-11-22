@@ -1,7 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 /**
- * The two enchantments that wait on gems. Issue #46, slice G7, ruled by the coordinating session on 2026-11-22.
+ * The two enchantments that wait on gems. Issue #46, slice G10, ruled by the coordinating session on 2026-11-22.
  *
  *   "Sockets on this equipment fit any gem type": read off the piece when a gem is socketed and when its gems are
  *   applied, never written into a socket as Any (Q1). A gem it let in stays socketed and stops acting while the piece

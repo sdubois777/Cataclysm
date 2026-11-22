@@ -1,4 +1,4 @@
-"""The two enchantments that wait on gems: issue #46, slice G7, ruled by the coordinating session on 2026-11-22.
+"""The two enchantments that wait on gems: issue #46, slice G10, ruled by the coordinating session on 2026-11-22.
 
 "Sockets on this equipment fit any gem type" and "Gems in this equipment are 50% less effective" are read off the PIECE
 that carries them, by `UCataclysmGems::FitsAnyGem` and `UCataclysmGems::SocketedGemEffectOf`, and by no character, as

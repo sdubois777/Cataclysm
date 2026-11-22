@@ -42,7 +42,7 @@
 // For damage_types_carried, which the drop reads off an item. Ruled 2026-10-25.
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
-// For socket_fits_any_gem and socketed_gem_effect, which the gem code reads off a piece. Issue #46 slice G7.
+// For socket_fits_any_gem and socketed_gem_effect, which the gem code reads off a piece. Issue #46 slice G10.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -10571,7 +10571,7 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `socket_fits_any_gem`, read off a PIECE's drawn enchantments by `UCataclysmGems::FitsAnyGem`, and off no character.
-	 * Issue #46 slice G7, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: the piece's
+	 * Issue #46 slice G10, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: the piece's
 	 * Attack socket refuses a Defense gem. With a flat 1, it takes it.
 	 *
 	 * WHAT THIS DOES NOT REACH. The Forge and the gems' modifiers: `Cataclysm.GemEnchantments.`.
@@ -10598,7 +10598,7 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `socketed_gem_effect`, read off a PIECE's drawn enchantments by `UCataclysmGems::SocketedGemEffectOf`, and off no
-	 * character. Issue #46 slice G7, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: 1.
+	 * character. Issue #46 slice G10, ruled 2026-11-22. THE CONTROL IS THE SAME ENCHANTMENT WITH NO ROW STATING THE STAT: 1.
 	 * With `more` -50 on a negative half, 0.5.
 	 *
 	 * WHAT THIS DOES NOT REACH. The gems' modifiers it scales: `Cataclysm.GemEnchantments.`.

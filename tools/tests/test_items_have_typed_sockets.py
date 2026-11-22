@@ -123,7 +123,7 @@ def test_only_worn_items_reach_the_character_with_their_gems() -> None:
 
 def test_a_socketed_gem_is_added_once_and_not_doubled() -> None:
     adding = body(code(GEMS_CPP), "void UCataclysmGems::AddSocketedGems(", GEMS_CPP.name)
-    # WITH THE PIECE'S OWN GEM EFFECT since issue #46 slice G7 (1 unless its enchantment makes its gems less effective):
+    # WITH THE PIECE'S OWN GEM EFFECT since issue #46 slice G10 (1 unless its enchantment makes its gems less effective):
     # still one call for each socket's gem.
     assert adding.count("AddGemModifier(") == 1 and "AddGemModifier(*Row, Socket.GemRarity, Totals, Effect);" in adding, (
         f"AddSocketedGems must add each socket's gem exactly once; it calls AddGemModifier "

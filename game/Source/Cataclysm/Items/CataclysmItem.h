@@ -152,7 +152,7 @@ struct CATACLYSM_API FCataclysmRolledEnchantment
  *
  * THE ENCHANTMENT "Sockets on this equipment fit any gem type" DOES NOT MAKE A SOCKET `Any`. It is read off the piece
  * each time a gem is socketed or applied (`UCataclysmGems::FitsAnyGem`) and never written into the socket, ruled by the
- * coordinating session on 2026-11-22 (slice G7, Q1), so a socket keeps the type it rolled under it. This comment said
+ * coordinating session on 2026-11-22 (slice G10, Q1), so a socket keeps the type it rolled under it. This comment said
  * the enchantment made a piece's sockets `Any` until then; that was the plan's sentence, and no code did it.
  */
 UENUM(BlueprintType)

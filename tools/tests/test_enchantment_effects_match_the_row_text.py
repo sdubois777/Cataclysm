@@ -341,7 +341,7 @@ FLAG_STATS = {"skill_locked", "skill_cost_paid_from_health", "auras_end_at_death
               # Traps layer 3, ruled 2026-10-21 (M2): the flag by which a trap placed while it is worn
               # has no life span. Its row states 1 and the sentence names no number.
               "traps_do_not_expire",
-              # ONE MORE JOINED with its row, issue #46 slice G7, ruled 2026-11-22: "Sockets on this
+              # ONE MORE JOINED with its row, issue #46 slice G10, ruled 2026-11-22: "Sockets on this
               # equipment fit any gem type". The gem code asks the piece whether it is above nought
               # (`UCataclysmGems::FitsAnyGem`). Its row states 1 and the sentence names no number.
               "socket_fits_any_gem"}
@@ -1066,7 +1066,7 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-22, from 697 over 561: six rows, five on new enchantments and a second row on one.
 #: AND 706 OVER 569 SINCE THE THREE ROWS OF TRAPS LAYER 6,
 #: issue #1833, 2026-10-22, from 703 over 566: three rows on three enchantments.
-#: AND 709 OVER 572 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G7,
+#: AND 709 OVER 572 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G10,
 #: 2026-11-22, from 707 over 570: one row on each of two enchantments.
 AUTHORED_ROWS = 709
 AUTHORED_ENCHANTMENTS = 572

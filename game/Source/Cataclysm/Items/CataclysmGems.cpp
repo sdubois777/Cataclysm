@@ -241,7 +241,7 @@ void UCataclysmGems::AddSocketedGems(const FCataclysmItem& Item, const UDataTabl
 									 const UDataTable* EnchantmentEffectTable,
 									 TMap<FName, TArray<FCataclysmStatModifier>>& Totals)
 {
-	// THE PIECE'S OWN TWO GEM ENCHANTMENTS, read once for all its sockets. Slice G7, ruled 2026-11-22.
+	// THE PIECE'S OWN TWO GEM ENCHANTMENTS, read once for all its sockets. Slice G10, ruled 2026-11-22.
 	const bool bFitsAnyGem = FitsAnyGem(Item, EnchantmentEffectTable);
 	const float Effect = SocketedGemEffectOf(Item, EnchantmentEffectTable);
 	for (const FCataclysmSocket& Socket : Item.Sockets)
