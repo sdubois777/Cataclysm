@@ -238,6 +238,156 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
 
 ---
 
+## 2026-11-22 — The two gem enchantments act on their own piece: "Sockets on this equipment fit any gem type" is read at socket time and apply time and never stored, and "Gems in this equipment are 50% less effective" halves each of that piece's gems before its bucket (#46, slice G7)
+
+**Affects:** `UCataclysmGems::SocketFitsAnyGemStat`, `SocketedGemEffectStat`, `FitsAnyGem`, `SocketedGemEffectOf`,
+`GemFitsIn`, `AddGemModifier` (its `Effect` argument), `AddSocketedGems` and `SocketLinesFor`
+(`game/Source/Cataclysm/Items/CataclysmGems.h` and `.cpp`); `UCataclysmItemModifiers::AccumulateInto`
+(`game/Source/Cataclysm/Items/CataclysmItem.cpp`) and the comment on `ECataclysmSocketType` (`CataclysmItem.h`);
+`UCataclysmForge::SocketGemOf` (`CataclysmForge.cpp`); `UCataclysmForgeLayout::SocketActionsFor`
+(`game/Source/Cataclysm/Interface/CataclysmForgeLayout.cpp`); `UCataclysmPlayerClassStats::StatsWithNoAttribute`
+(`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`); `tools/generate_datatables.py`
+(`refuse_a_gem_enchantment_row_the_game_cannot_read`); `docs/Cataclysm_GDD_v2.md`, Sockets and Gems. Tests:
+`game/Source/Cataclysm/Tests/CataclysmGemEnchantmentsTests.cpp`, new, `Cataclysm.GemEnchantments.` 5; two probes in
+`CataclysmStatExemptionTests.cpp`; `tools/tests/test_gem_enchantments.py`, new; `tools/tests/test_items_have_typed_sockets.py`.
+Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED.** Phase 1. The window follows the workbook stage.
+- **THIS BRANCH STARTS FROM #2838's COMMIT `9b3af2800`** (the gold session's: City Upgrades!E25 at 40,000, and the
+  generator accepting a tier 1 price on a row with no tier ladder), because the design workbook cannot be merged and
+  the two effect rows had to be written on that session's file (Q5). It therefore depends on #2838: both go through one
+  window with #2838 first, or #2838 merges first and this rebases, as the coordinating session decides.
+- **THE PLAN CHANGED IN ONE PLACE AFTER IT WAS ACCEPTED.** It proposed a list of "item-local" stats that the wearer's
+  enchantment totals would skip. Reading the code showed a precedent: `damage_types_carried` ("This weapon has 2-4 damage
+  types") is on `StatsWithNoAttribute`, is read off one item by `UCataclysmDropRoll::DamageTypesCarriedBy`, has a probe in
+  `Cataclysm.StatExemption.` and a refusal in the generator. The two stats follow it. So both also reach the wearer's
+  totals, where nothing reads them, as `damage_types_carried` does; and the planned test "neither stat reaches the
+  wearer" became the test of both enchantments on one piece (Q7).
+- **THIS SUPERSEDES ONE SENTENCE OF THE G3 ENTRY BELOW**, "what the enchantment 'Sockets on this equipment fit any gem
+  type' will make of a piece's sockets (slice G7)": the enchantment makes no socket `Any` (Q1). The G3 entry is left as
+  it was written.
+
+### The rulings, the coordinating session's of 2026-11-22
+
+| Ruling | What | Kind |
+|---|---|---|
+| Q1 | Fit-any is read from the enchantment at socket time and at apply time, and never stored as `Any` | ruled |
+| Q2 | A gem fit-any let in stays socketed and stops acting until the piece fits it again or the player unsockets it, for Dismantling Dust as usual: a gem that kept acting would let the enchantment be used once and discarded with the gem kept, and one thrown out would land in the bag at a moment the player did not choose | **judgement** |
+| Q3 | "50% less effective" is local to the piece: each gem's value is multiplied before it enters its bucket | derived |
+| Q4 | No rounding | ruled |
+| Q5 | The two rows on the Enchantment Effects sheet and nothing else, read back cell by cell, after the gold session's edit | ruled |
+| Q6 | Fit-any's own Tags (`Item.Slot.Weapon`, so it rolls on weapons only) are left; to be put to the owner with other Tags and Weights | ruled |
+| Q7 | Both on one piece: off-type gems go in and act at half; a two-handed weapon's gems are halved, not doubled | ruled |
+| Q8 | The tooltip: "Socket for any gem (enchanted)" and "(does not fit: inactive)" | ruled |
+
+**Genre, fetched 2026-11-22.** Path of Exile's belt Darkness Enthroned: "(50—100)% increased Effect of Socketed Abyss
+Jewels"; its wiki text, "increases the values of each of the two socketed jewels and rounds the increased values down"
+(poedb.tw/us/Darkness_Enthroned). Path of Exile 2's version: "(50—100)% increased effect of Socketed Augment Items",
+stat "local socketed items effect +%" (poe2db.tw/us/Darkness_Enthroned). Settled by them: the effect is local to the
+item and scales each socketed thing's values. Not settled, and Q2's judgement: what happens to a socketed thing when the
+rule that let it in is removed; no page found says. Path of Exile rounds down because its stats are whole numbers; a
+gem's value here is a float (Q4).
+
+### The change
+
+- **The two stats**, `socket_fits_any_gem` (flat 1, a flag) and `socketed_gem_effect` (`more` -50), are read off the
+  piece's own drawn enchantments at its rolls. `SocketedGemEffectOf` multiplies one plus each row's value over a hundred,
+  so two rows of 50% less leave a quarter, as "more" and "less" multiply in the pipeline; never below nought.
+- **At socket time:** the Forge's `SocketGemOf` asks `GemFitsIn` (the socket's type, or the piece's fit-any), and the
+  Forge screen's `SocketActionsFor` offers every carried gem for a fit-any piece, labelled "(any gem)". A refusal still
+  names the socket's own type, which the enchantment never changes.
+- **At apply time:** `AddSocketedGems` skips a gem that fits neither its socket's type nor the piece, and hands each other
+  gem's value times the piece's gem effect to `AddGemModifier`, still its one call per gem.
+  `UCataclysmItemModifiers::AccumulateInto` passes it the enchantment effect table.
+- **The tooltip:** on a fit-any piece each socket line opens "Socket for any gem (enchanted)"; a gem that fits neither
+  ends "(does not fit: inactive)".
+- **The generator** refuses any other shape of row on the two stats: fit-any must be flat 1, the gem effect `more`
+  above -100 and not nought, neither with tags, an action, a condition or a scale.
+- **No save version moves.** A socket keeps its type, and an item already stores its enchantments' row names.
+
+### The workbook stage
+
+`docs/All_Things_Cataclysm.xlsx`, Enchantment Effects rows 709 and 710, written by
+`.claude/windows/edit_workbook_gem_enchantments_46.py` on `9b3af2800`'s file:
+`Positive_Sockets_on_this_equipment_fit_any_gem_type`, `socket_fits_any_gem`, `flat`, 1; and
+`Negative_Gems_in_this_equipment_are_50_less_effective`, `socketed_gem_effect`, `more`, -50. Read back cell by cell
+against `9b3af2800`'s file: "sheets equal: True 28", "cells compared 105705, differing 10", the ten being A709 to E710.
+`game/Data/EnchantmentEffects.csv` regenerated, 707 to 709 rows; it and #2838's `CityUpgrades.csv` are the only CSVs that
+differ from development `45b33c70f`. The pins the rows move, by `.claude/windows/edit_g7_after_the_workbook.py`:
+`AUTHORED_ROWS` 709 and `AUTHORED_ENCHANTMENTS` 572 with `socket_fits_any_gem` in `FLAG_STATS`
+(`tools/tests/test_enchantment_effects_match_the_row_text.py`), and the `EnchantmentEffects` `CHECK_TABLE` at 709
+(`CataclysmDataTableTests.cpp`). The `DT_EnchantmentEffects` asset is rebuilt in the window's asset step.
+
+### The tests
+
+- **Unreal, `Cataclysm.GemEnchantments.`, 5**, each reading the tables the game loads, with a set-up check that the two
+  shipped rows are there:
+  1. `AWeaponWhoseSocketsFitAnyGemTakesAnOffTypeGemAtTheForge`, the control refusing "A Defense gem does not fit an
+     Attack socket.";
+  2. `LessEffectiveHalvesEachGemInItsOwnPieceOnly`: Of Life 12.5 against 25, Of The Viper in a greataxe 30;
+  3. `AGemTheEnchantmentLetInStopsActingWhenItIsReplaced`: 25, then nothing, still socketed and unsocketable, the
+     fitting Viper 60 either way;
+  4. `TheSocketLinesSayWhatFitsAndWhatActs`;
+  5. `BothOnOnePieceTakeAnyGemAtHalfAndTheForgeScreenOffersIt`: offered "Socket Of The Viper (Superb) into socket 1
+     (any gem)", taken, 30; the control offered nothing, refused, nothing.
+- **`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`** gains a probe for each stat: with no row, the
+  Attack socket refuses a Defense gem and the gems are worth 1; with the row, it takes it and they are worth 0.5.
+- **Python:** `tools/tests/test_gem_enchantments.py`, 18 checks; `test_items_have_typed_sockets.py`'s one-call check
+  now names the `Effect` argument.
+
+### Python guard proofs, PG1 to PG8, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `34457f4d2` (this branch's code
+commit before it was replayed onto `9b3af2800` as `af4fcaa5d`) and again at `439e9b8c1`, the workbook stage, running
+`tools/tests/test_gem_enchantments.py` and `test_items_have_typed_sockets.py` (26 tests); each failed the named test with
+the break in and passed 26 of 26 restored. `.claude/windows/prove_g7_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| PG1 | the engine spells the gem effect stat differently | the names check |
+| PG2 | the refusal takes any value kind | the two wrong-kind refusals and the whole sheet's validation (3) |
+| PG3 | the Forge reads the socket's type alone | the Forge check |
+| PG4 | a gem that fits neither still acts | the fits-neither check |
+| PG5 | something writes `Any` into a socket | the never-stored check |
+| PG6 | a gem effect row replaces rather than multiplies | the effect check |
+| PG7 | the effect not handed to the call that adds a gem | `test_a_socketed_gem_is_added_once_and_not_doubled` |
+| PG8 | the tooltip does not mark an inactive gem | the fits-neither check |
+
+**PG2 MEASURED NOTHING ON ITS FIRST TWO RUNS**, "NO MEASUREMENT: the run exited 2". The proof script, copied from slice
+9's, converted each edited text to CRLF, and `break_and_run` reads with `read_text` and writes with `write_text`, which
+convert on their own; the file was written with CR CR LF, which broke every backslash continuation in
+`tools/generate_datatables.py`, so the tests did not import. The `.cpp` breaks were unaffected. The script now hands the
+edit over as it is, and all eight were run again, at both commits.
+
+### Python before its window
+
+The full suite on `34457f4d2`, the code commit before the workbook stage, in a git worktree of it: "8105 passed, 9
+skipped in 426.12s", JUnit 8114 tests, 0 failures, 0 errors, 9 skipped. On `439e9b8c1`, after the stage: "2 failed,
+8105 passed, 9 skipped in 408.70s", JUnit 8116, 2 failures, 0 errors, 9 skipped. The two:
+`test_datatable_assets_are_current.py`, because `EnchantmentEffects.csv` and #2838's `CityUpgrades.csv` changed and
+their assets wait for the window's asset step; and `test_docs_readme_sheet_table_is_true.py`, because `docs/README.md`'s
+sheet table still gave the Enchantment Effects sheet 707 rows. **The scratch-copy rehearsal of the stage ran only the
+enchantment, gem, generator and pinned-count files, so it did not reach that check.** The table says 709 since the
+commit that adds this entry, and that check passes. ruff: "All checks passed!" on every file the branch touches.
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_g7_table.py.txt`, each narrowed to `Cataclysm.GemEnchantments.` (5) with its trailing dot, every
+anchor checked to occur once. Each break leaves the two rows readable, so the set-up checks pass and the failure lands on
+the test's subject. Predictions reasoned from the code; none has run.
+
+| Proof | The break | Predicted |
+|---|---|---|
+| GP1 | the Forge reads the socket's type alone | 3, 2: `AWeaponWhoseSockets...` and `BothOnOnePiece...` |
+| GP2 | the gem effect not handed to `AddGemModifier` | 3, 2: `LessEffectiveHalves...` (25, 60) and `BothOnOnePiece...` (60) |
+| GP3 | a gem that fits neither still acts | 3, 2: `AGemTheEnchantmentLetIn...` (25 after) and `BothOnOnePiece...` (the control's 30) |
+| GP4 | the tooltip does not mark an inactive gem | 4, 1: `TheSocketLinesSay...` |
+| GP5 | the Forge screen offers only the socket's own type | 4, 1: `BothOnOnePiece...` (0 offered) |
+
+---
+
 ## 2026-11-22 — The cleanse city upgrade is built: from difficulty tier 3, once a run, 40,000 gold, and on every city that has not fallen it removes half the counted dungeons and half of what the city holds (#2838)
 
 **Affects:** `ECataclysmCityUpgradeEffect::CleanseEveryCity`'s comment, `ECataclysmCityUpgradeResult::BelowItsDifficultyTier`
