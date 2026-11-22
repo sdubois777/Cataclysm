@@ -316,7 +316,7 @@ No formula is proposed: the change keeps two figures across a save.
 | `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne` | `Run_v16.json` migrates: its thrall `Demonic_Staff_Ultimate` and 1, its Brute None and 1; CONTROL: `Run_v17.json` is read, not migrated, its thrall at 1.5 |
 | `ALoadedThrallsReserveFallsWhenSubjugateLevels` | two thralls restored by `CreatureInto` and `ThrallInto`, each holding 30: at Subjugate's level 10 the one saved with Subjugate's row holds 30 x 0.72028; CONTROL: the one saved with none keeps 30 |
 
-Python: `test_a_loaded_thrall_keeps_the_skill_that_took_it.py`, six checks: the one row that takes; the fields both
+Python: `test_a_loaded_thrall_keeps_the_skill_that_took_it.py`, five checks: the one row that takes; the fields both
 ways; the step and the version; the committed file against the previous one; and every chain test adding the step.
 
 ### Registered for the window
@@ -332,7 +332,15 @@ ways; the step and the version; the committed file against the previous one; and
   `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `GemSave.` 2,
   `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5 and `WinningTheRun.` 11 (the fourteen files whose pins move); `LevelCosts.`
   4 and `SecondSelf.` 6 (the repricing and the Second Self, both reading thralls).
-- **Python, alongside the whole Unreal suite:** no failure, no error.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "2 failed, 8097
+  passed, 10 skipped in 331.67s", JUnit 8109 tests, 2 failures, 0 errors, 10 skipped. One failure was this entry's: its
+  Affects paragraph named `Run_v17.json` without its path, now corrected, and the 97 files that read this log then gave
+  "3654 passed, 1 skipped". The other, `test_datatable_assets_are_current.py` on `CityUpgrades.csv`, is the cleanse
+  branch's own: this branch changes neither that file nor any asset, and the cleanse's window rebuilds it. ruff: "All
+  checks passed!".
+- **The Python guard proof, PROVED**, run with `tools/prove_guard.py` in a copy of the committed tree: Summon Imp's row
+  (`Demonic_Staff_Special`) given "Possess=1": "PROVED: 1 failed, 4 passed | restored: 5 passed", the one named
+  failure `test_exactly_one_skill_row_takes_a_creature`.
 - **Three Unreal guard proofs**, each narrowed to `Cataclysm.ThrallSave.` (3):
 
 | Proof | The break | Predicted |
