@@ -3741,10 +3741,6 @@ EMPIRE_BRANCH_CAPSTONE_THRESHOLD = 200
 #: waits on, or built it. The coordinating session's rulings R1 to R10 of that
 #: day; `docs/DECISIONS.md` has them.
 EMPIRE_TREE_SYSTEMS = {
-    # A Treasurer city upgrade can be bought since issue #2781; what R1 to R4 do
-    # with one is built in a later slice of #2741.
-    "treasurer upgrade": ("its Treasurer city upgrade rules, which are not built "
-                          "yet (issue #2741)"),
     "market": "a market, which the game does not have",
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
@@ -3771,7 +3767,8 @@ EMPIRE_TREE_SYSTEMS = {
 #: EVERY NODE AND EVERY CENTRE CAPSTONE OPTION THE GAME WILL BUILD IN #2741, by
 #: name, with the slice that makes it act: 3 for the city numbers, 4 for a
 #: dungeon's walk and depth, 5 for the player's loot and movement, 6 for gold
-#: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price).
+#: (slice 6a, 2026-11-20: the gold a kill drops and a city upgrade's price), 7
+#: for the four nodes that read a Treasurer city upgrade (2026-11-21).
 #: Until its slice lands a node here can be bought and does nothing.
 #:
 #: TOGETHER WITH `EMPIRE_TREE_REFUSED` IT NAMES EVERY NODE AND OPTION, AND
@@ -3836,6 +3833,10 @@ EMPIRE_TREE_BUILT = {
     "Treasury Guard": 6, "Tax Collection": 6,
     # Treasury, slice 6e: the gold debt the owner allowed through them (D1 to D7).
     "Global Credit": 6, "Sovereign Loans": 6,
+    # Treasury, slice 7: the four nodes that read a Treasurer city upgrade, which
+    # #2781 made buyable (R1 to R4; readings T1 to T4, not yet ruled).
+    "Commercial Hubs": 7, "Economic Zones": 7, "Trade Routes": 7,
+    "The Golden Touch": 7,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
     # Artisan: crafting materials already drop.
@@ -3863,11 +3864,9 @@ EMPIRE_TREE_REFUSED = {
     "Gamble": "modifier reroll", "Scout Parties": "bonus dungeon",
     "Auto-Loot": "loot filter",
     # Treasury. Slice 6 built every node its gold rules reach (6a eleven, 6b
-    # five, 6c five, 6d two, 2026-11-20). R1 to R4 wait on their Treasurer rules
-    # (#2781 made the city upgrades buyable); the rest on what their text needs
+    # five, 6c five, 6d two, 6e two, 2026-11-20) and slice 7 the four that read a
+    # Treasurer city upgrade (2026-11-21); the rest wait on what their text needs
     # and the game lacks.
-    "Commercial Hubs": "treasurer upgrade", "Economic Zones": "treasurer upgrade",
-    "Trade Routes": "treasurer upgrade", "The Golden Touch": "treasurer upgrade",
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
@@ -4122,6 +4121,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "DamageTakenPerFiftyThousandGold", "GoldShareOfPopulationEveryTenDays",
     # Slice 6e: Global Credit and Sovereign Loans.
     "UpgradeShortfallAllowed", "UpgradeShortfallAllowedRepaidDaily",
+    # Slice 7: Commercial Hubs, Economic Zones, Trade Routes, The Golden Touch.
+    "GoldIncreasedOnTreasurerCity", "GoldMoreFromTreasurerCities",
+    "GoldEveryTwentyDaysPerTreasurerCity", "GoldAndMaterialsPerTreasurerCity",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4316,6 +4318,17 @@ EMPIRE_TREE_EFFECTS = {
     # written, tuned later.
     "Global Credit": [("UpgradeShortfallAllowed", 0.05)],
     "Sovereign Loans": [("UpgradeShortfallAllowedRepaidDaily", 0.20)],
+    # Slice 7, the four nodes that read a Treasurer city: a standing city holding
+    # at least one upgrade of the City Upgrades sheet's Treasurer branch (T1, not
+    # yet ruled). COMMERCIAL HUBS increases a kill's gold while the dungeon's city
+    # is one; ECONOMIC ZONES is a "more" on the gold such a city generates (T2);
+    # TRADE ROUTES pays 50 tier 1 gold a point for each every 20th day (T3); THE
+    # GOLDEN TOUCH increases a kill's gold and crafting materials for each (T3,
+    # T4). The figures are the texts'; the counts and the steps are in C++.
+    "Commercial Hubs": [("GoldIncreasedOnTreasurerCity", 0.20)],
+    "Economic Zones": [("GoldMoreFromTreasurerCities", 0.05)],
+    "Trade Routes": [("GoldEveryTwentyDaysPerTreasurerCity", 50.0)],
+    "The Golden Touch": [("GoldAndMaterialsPerTreasurerCity", 0.10)],
 }
 
 

@@ -122,7 +122,7 @@ def test_tax_is_paid_every_tenth_day_from_the_standing_cities_citizens() -> None
         "Tax Collection is not paid on every tenth day alone")
     for part in ("Income.Tax =", "State.Citizens", "* Scale * Raised"):
         assert part in tax, f"Tax Collection's payment does not hold {part!r}"
-    assert re.search(r"Total\(\)\s*const\s*\{\s*return\s+Pax\s*\+\s*Interest\s*\+\s*Tax\s*;", code(TREE_H)), (
+    assert re.search(r"Total\(\)\s*const\s*\{\s*return\s+Pax\s*\+\s*Interest\s*\+\s*Tax\s*[;+]", code(TREE_H)), (
         "the day's total leaves Tax Collection out")
 
 

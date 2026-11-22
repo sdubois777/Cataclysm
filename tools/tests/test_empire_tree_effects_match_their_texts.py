@@ -136,6 +136,10 @@ SLICE_6D = {"Treasury Guard", "Tax Collection"}
 #: (D1 to D7), on account record version 5 and character record version 11.
 SLICE_6E = {"Global Credit", "Sovereign Loans"}
 
+#: SLICE 7'S FOUR, the nodes that read a Treasurer city upgrade (R1 to R4;
+#: readings T1 to T4 of 2026-11-21, not yet ruled).
+SLICE_7 = {"Commercial Hubs", "Economic Zones", "Trade Routes", "The Golden Touch"}
+
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
                "WalkDaysFewerPerActiveType", "WalkDaysFewerOnFallenCities",
@@ -153,7 +157,9 @@ OTHER_WORDS = {"WalkDaysFewer": "by {:g}", "WalkTimeHalvedAboveFloors": "more th
                "GoldDoubledBelowHalfPopulation": "Gold drops doubled",
                "GoldPerFloorAtClear": "{:g} Gold for every",
                # Slice 6c: Pax Imperialis' 5 is "5 Gold every 1 day".
-               "GoldPerThousandCitizensDaily": "{:g} Gold every 1 day"}
+               "GoldPerThousandCitizensDaily": "{:g} Gold every 1 day",
+               # Slice 7: Trade Routes' 50 is "+50 Gold every 20 days".
+               "GoldEveryTwentyDaysPerTreasurerCity": "+{:g} Gold every 20 days"}
 
 #: AN EFFECT WHOSE VALUE IS A DEFENCE, found in its text as "at <value>": Last
 #: Stand Protocols' "survive at 1".
@@ -201,11 +207,11 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_102_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_and_6e_act() -> None:
+def test_exactly_the_106_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_and_7_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
-    assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2
+    assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -214,8 +220,10 @@ def test_exactly_the_102_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_and_6e_act() 
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B) & SLICE_6C
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C) & SLICE_6D
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D) & SLICE_6E
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E) & SLICE_7
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E)
+             | SLICE_6E | SLICE_7)
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -228,6 +236,8 @@ def test_exactly_the_102_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_and_6e_act() 
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 6
                for name in SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D | SLICE_6E), (
         "every slice 6a node with an effect is one EMPIRE_TREE_BUILT gives to slice 6")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 7 for name in SLICE_7), (
+        "every slice 7 node with an effect is one EMPIRE_TREE_BUILT gives to slice 7")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:

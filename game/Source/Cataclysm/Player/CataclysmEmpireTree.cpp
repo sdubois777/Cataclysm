@@ -12,6 +12,7 @@ const FString UCataclysmEmpireTree::CentreBranch = TEXT("Centre");
 const FString UCataclysmEmpireTree::BasicKind = TEXT("basic");
 const FString UCataclysmEmpireTree::KeystoneKind = TEXT("keystone");
 const FString UCataclysmEmpireTree::CapstoneKind = TEXT("capstone");
+const FString UCataclysmEmpireTree::TreasurerBranch = TEXT("Treasurer");
 
 // A NAMED NAMESPACE AND NOT AN UNNAMED ONE. `CataclysmPassiveTree.cpp` has helpers of the same names in its unnamed
 // namespace, and a unity build may compile both files as one, where two unnamed namespaces are one namespace and the
@@ -527,6 +528,20 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::UpgradeShortfallAllowedRepaidDaily:
 			Bonuses.UpgradeShortfallAllowedRepaidDaily += Total;
 			break;
+
+		// SLICE 7. The four nodes that read a Treasurer city (T1 to T4, not yet ruled).
+		case ECataclysmEmpireTreeEffect::GoldIncreasedOnTreasurerCity:
+			Bonuses.GoldIncreasedOnTreasurerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldMoreFromTreasurerCities:
+			Bonuses.GoldMoreFromTreasurerCities += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldEveryTwentyDaysPerTreasurerCity:
+			Bonuses.GoldEveryTwentyDaysPerTreasurerCity += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::GoldAndMaterialsPerTreasurerCity:
+			Bonuses.GoldAndMaterialsPerTreasurerCity += Total;
+			break;
 		default:
 			break;
 		}
@@ -601,6 +616,11 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::DungeonStateFor(const UCa
 				}
 			}
 		}
+
+		// AND WHETHER THE DUNGEON'S OWN CITY IS A TREASURER CITY (slice 7, T1): Commercial Hubs reads it, and Economic
+		// Zones raises the gold of a dungeon standing on one. A fallen city is none (X1).
+		const FCataclysmCity* DungeonCity = Run.Map->Find(Dungeon.CityId);
+		State.bDungeonCityIsTreasurer = DungeonCity != nullptr && IsTreasurerCity(*DungeonCity);
 	}
 	return State;
 }
@@ -684,6 +704,11 @@ FCataclysmEmpireTreeDropRules UCataclysmEmpireTree::DropRulesFor(const FCataclys
 
 	// AND THE MAGIC FIND THE GOLD HELD GIVES THE KILL (slice 6c, B6), which draws nothing either.
 	Rules.MagicFindFromGold = MagicFindFromGoldFor(Bonuses, State);
+
+	// AND THE GOLDEN TOUCH'S CRAFTING MATERIALS (slice 7, T4): the material roll's expected count is multiplied by one
+	// plus its increase for each Treasurer city. Draws nothing: the kill multiplies a figure it already passes.
+	Rules.MaterialsMultiplier = 1.0f + FMath::Max(0.0f, Bonuses.GoldAndMaterialsPerTreasurerCity)
+		* static_cast<float>(FMath::Max(0, State.TreasurerCities));
 	return Rules;
 }
 
@@ -709,9 +734,32 @@ FCataclysmEmpireTreeDungeonState UCataclysmEmpireTree::EmpireStateFor(const UCat
 			}
 			++State.StandingCities;
 			State.StandingCityUpgrades += City.Upgrades.Num();
+
+			// SLICE 7'S COUNTS (T1, T3): the Treasurer cities and the citizens living in them.
+			if (IsTreasurerCity(City))
+			{
+				++State.TreasurerCities;
+				State.TreasurerCitizens += Run.Map->PopulationOf(City);
+			}
 		}
 	}
 	return State;
+}
+
+bool UCataclysmEmpireTree::IsTreasurerCity(const FCataclysmCity& City)
+{
+	if (City.bFallen)
+	{
+		return false;
+	}
+	for (const FCataclysmCityUpgrade& Upgrade : City.Upgrades)
+	{
+		if (UCataclysmCityUpgradeMapping::BranchFor(Upgrade.RowName) == TreasurerBranch)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 float UCataclysmEmpireTree::MagicFindFromGoldFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
@@ -746,12 +794,20 @@ FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCata
 		FMath::Max(0, State.StandingCities)) + Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
 		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps);
 
+	// ECONOMIC ZONES' "MORE" (slice 7, T2) raises the gold the Treasurer cities generate: all of Trade Routes', and of
+	// Pax Imperialis' and Tax Collection's the share counted from the citizens living in Treasurer cities.
+	const double Zones = FMath::Max(0.0, static_cast<double>(Bonuses.GoldMoreFromTreasurerCities));
+	const double TreasurerShare = State.Citizens > 0.0f
+		? FMath::Clamp(static_cast<double>(State.TreasurerCitizens) / static_cast<double>(State.Citizens), 0.0, 1.0)
+		: 0.0;
+	const double CitizensRaised = 1.0 + Zones * TreasurerShare;
+
 	// PAX IMPERIALIS, EVERY DAY: its tier 1 gold for each whole 1,000 citizens of the standing cities.
 	if (Bonuses.GoldPerThousandCitizensDaily > 0.0f)
 	{
 		const double Thousands = FMath::FloorToDouble(FMath::Max(0.0f, State.Citizens) / PaxCitizensAStep);
 		Income.Pax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerThousandCitizensDaily) * Thousands * Scale
-										 * Raised);
+										 * Raised * CitizensRaised);
 	}
 
 	// WEALTH INTEREST, EVERY 20TH DAY: its share of the gold held, held at its tier 1 cap a payment, and then raised.
@@ -771,7 +827,17 @@ FCataclysmEmpireTreeDailyIncome UCataclysmEmpireTree::DailyIncomeFor(const FCata
 	if (Bonuses.GoldShareOfPopulationEveryTenDays > 0.0f && Day > 0 && Day % TaxCollectionDaysAStep == 0)
 	{
 		Income.Tax = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldShareOfPopulationEveryTenDays)
-										 * static_cast<double>(FMath::Max(0.0f, State.Citizens)) * Scale * Raised);
+										 * static_cast<double>(FMath::Max(0.0f, State.Citizens)) * Scale * Raised
+										 * CitizensRaised);
+	}
+
+	// TRADE ROUTES, EVERY 20TH DAY (slice 7, T3): its tier 1 gold for each Treasurer city, raised as Pax is and wholly
+	// by Economic Zones, because each Treasurer city generates all of it.
+	if (Bonuses.GoldEveryTwentyDaysPerTreasurerCity > 0.0f && State.TreasurerCities > 0 && Day > 0
+		&& Day % TradeRoutesDaysAStep == 0)
+	{
+		Income.Trade = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldEveryTwentyDaysPerTreasurerCity)
+										   * static_cast<double>(State.TreasurerCities) * Scale * Raised * (1.0 + Zones));
 	}
 	return Income;
 }
@@ -789,10 +855,18 @@ float UCataclysmEmpireTree::GoldMultiplierFor(const FCataclysmEmpireTreePlayerBo
 		+ Bonuses.GoldPerActiveType * static_cast<float>(FMath::Max(0, State.ActiveTypes))
 		+ Bonuses.GoldPerFallenCity * static_cast<float>(FMath::Max(0, State.FallenCitiesNotErased))
 		+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps
-		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps;
+		+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
+		// SLICE 7 (T1, T3): The Golden Touch's increase for each Treasurer city, and Commercial Hubs' while the dungeon's
+		// city is one. Both texts say "increased", so both add into the one increase.
+		+ Bonuses.GoldAndMaterialsPerTreasurerCity * static_cast<float>(FMath::Max(0, State.TreasurerCities))
+		+ (State.bDungeonCityIsTreasurer ? Bonuses.GoldIncreasedOnTreasurerCity : 0.0f);
 	// STIMULUS PACKAGE'S "DOUBLED" IS A "MORE" OF ITS OWN (G1, B2), while the run's population has fallen below half.
 	const float Stimulus = State.bPopulationBelowHalf ? FMath::Max(0.0f, Bonuses.GoldDoubledBelowHalfPopulation) : 0.0f;
-	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore)) * (1.0f + Stimulus);
+	// ECONOMIC ZONES' "MORE" IS ANOTHER (T2), while the dungeon's city is a Treasurer city: the design document names
+	// it, "+5% more Gold from all sources per point", as a "more" that is correct as written.
+	const float Zones = State.bDungeonCityIsTreasurer ? FMath::Max(0.0f, Bonuses.GoldMoreFromTreasurerCities) : 0.0f;
+	return (1.0f + FMath::Max(0.0f, Increased)) * (1.0f + FMath::Max(0.0f, Bonuses.GoldMore)) * (1.0f + Stimulus)
+		* (1.0f + Zones);
 }
 
 FCataclysmEmpireTreeClearPay UCataclysmEmpireTree::ClearPayFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
@@ -817,8 +891,13 @@ FCataclysmEmpireTreeClearPay UCataclysmEmpireTree::ClearPayFor(const FCataclysmE
 			+ Bonuses.GoldPerStandingCity * static_cast<float>(FMath::Max(0, State.StandingCities))
 			+ Bonuses.GoldPerFiveCityUpgrades * UpgradeSteps
 			+ Bonuses.GoldPerTenThousandCitizens * CitizenSteps;
+		// AND ECONOMIC ZONES' "MORE" WHILE THE DUNGEON'S CITY IS A TREASURER CITY (slice 7, T2): the payout is gold that
+		// city's dungeon generates.
+		const double Zones = State.bDungeonCityIsTreasurer
+			? FMath::Max(0.0, static_cast<double>(Bonuses.GoldMoreFromTreasurerCities)) : 0.0;
 		Pay.Salvage = FMath::RoundToInt64(static_cast<double>(Bonuses.GoldPerFloorAtClear) * Floors
-										  * FMath::Max(0.0, GoldScale) * (1.0 + FMath::Max(0.0f, Increased)));
+										  * FMath::Max(0.0, GoldScale) * (1.0 + FMath::Max(0.0f, Increased))
+										  * (1.0 + Zones));
 	}
 
 	// CLEANUP CREW (B3): a tenth of the gold left lying, rounded down, and multiplied by nothing.

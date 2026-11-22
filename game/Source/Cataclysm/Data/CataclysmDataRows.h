@@ -2399,6 +2399,21 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The same, repaid by a tenth a day (Sovereign Loans, D2, D4). */
 	UpgradeShortfallAllowedRepaidDaily,
+
+	// ---- Slice 7: the four nodes that read a Treasurer city upgrade (R1 to R4). A "Treasurer city" is a standing city
+	// holding at least one upgrade of the Treasurer branch; readings T1 to T4, not yet ruled.
+
+	/** The gold a kill drops increased, while the dungeon's city is a Treasurer city (Commercial Hubs, R1). */
+	GoldIncreasedOnTreasurerCity,
+
+	/** "More" gold, per point, from every source tied to a Treasurer city (Economic Zones, R2). */
+	GoldMoreFromTreasurerCities,
+
+	/** Tier 1 gold paid every 20th day for each Treasurer city, per point (Trade Routes, R3). */
+	GoldEveryTwentyDaysPerTreasurerCity,
+
+	/** The gold and crafting materials a kill drops increased, for each Treasurer city (The Golden Touch, R4). */
+	GoldAndMaterialsPerTreasurerCity,
 };
 
 /**

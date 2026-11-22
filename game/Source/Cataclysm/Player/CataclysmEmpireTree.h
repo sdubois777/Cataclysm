@@ -156,6 +156,21 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** Global Credit's share of a city upgrade's price that may be owed, and Sovereign Loans' share, repaid by day. */
 	float UpgradeShortfallAllowed = 0.0f;
 	float UpgradeShortfallAllowedRepaidDaily = 0.0f;
+
+	// ---- Slice 7, the four nodes that read a Treasurer city upgrade (R1 to R4); readings T1 to T4, not yet ruled. A
+	// Treasurer city is a standing city holding at least one upgrade of the Treasurer branch (`IsTreasurerCity`). ----
+
+	/** Commercial Hubs' increase to the gold a kill drops while the dungeon's city is a Treasurer city (T1). */
+	float GoldIncreasedOnTreasurerCity = 0.0f;
+
+	/** Economic Zones' "more" gold from every source tied to a Treasurer city (T2): a multiplier of its own. */
+	float GoldMoreFromTreasurerCities = 0.0f;
+
+	/** Trade Routes' tier 1 gold for each Treasurer city, paid every 20th day (T3). */
+	float GoldEveryTwentyDaysPerTreasurerCity = 0.0f;
+
+	/** The Golden Touch's increase to the gold and the crafting materials a kill drops, for each Treasurer city (T3, T4). */
+	float GoldAndMaterialsPerTreasurerCity = 0.0f;
 };
 
 /**
@@ -213,21 +228,29 @@ struct CATACLYSM_API FCataclysmEmpireTreeDungeonState
 	 *  read. Slice 6c (B6). Filled by the dungeon game mode at a kill; none and 1 elsewhere. */
 	int64 GoldHeld = 0;
 	double GoldScale = 1.0;
+
+	/** Slice 7's counts (T1, T3): the Treasurer cities, standing cities holding a Treasurer upgrade; the citizens living
+	 *  in them, as `UCataclysmEmpireMap::PopulationOf` reads each; and whether the dungeon's own city is one, which
+	 *  only `DungeonStateFor` fills. */
+	int32 TreasurerCities = 0;
+	float TreasurerCitizens = 0.0f;
+	bool bDungeonCityIsTreasurer = false;
 };
 
 /**
  * What the empire upgrade tree pays on a day that passes, in gold. Issue #2741 slice 6c, the coordinating session's B8
- * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th; and slice 6d's Tax Collection every 10th (D8).
- * Worked out by `UCataclysmEmpireTree::DailyIncomeFor` and paid by the game instance through
- * `UCataclysmEmpireRun::OnDayPassed`.
+ * of 2026-11-20: Pax Imperialis every day, Wealth Interest every 20th; slice 6d's Tax Collection every 10th (D8); and
+ * slice 7's Trade Routes every 20th (T3). Worked out by `UCataclysmEmpireTree::DailyIncomeFor` and paid by the game
+ * instance through `UCataclysmEmpireRun::OnDayPassed`.
  */
 struct CATACLYSM_API FCataclysmEmpireTreeDailyIncome
 {
 	int64 Pax = 0;
 	int64 Interest = 0;
 	int64 Tax = 0;
+	int64 Trade = 0;
 
-	int64 Total() const { return Pax + Interest + Tax; }
+	int64 Total() const { return Pax + Interest + Tax + Trade; }
 };
 
 /**
@@ -308,6 +331,14 @@ struct CATACLYSM_API FCataclysmEmpireTreeDropRules
 	/** The magic find, in percentage points, the gold held gives this kill: The Gilded Path and Venture Capital (slice 6c,
 	 *  B6). Nothing drawn. */
 	float MagicFindFromGold = 0.0f;
+
+	/**
+	 * WHAT THE KILL'S CRAFTING MATERIAL ROLL'S EXPECTED COUNT IS MULTIPLIED BY, slice 7 (T4): one plus The Golden Touch's
+	 * increase for each Treasurer city. Multiplied with the city's own "more crafting materials" and passed to
+	 * `UCataclysmDropSpawner::SpawnDropsFor`, which already takes that factor; the roll itself is unchanged. Exactly 1
+	 * without the node.
+	 */
+	float MaterialsMultiplier = 1.0f;
 
 	bool RollsAnything() const
 	{
@@ -405,6 +436,24 @@ public:
 	 *  `tools/tests/test_empire_tree_credit.py` finds it in the node's text. */
 	static constexpr int32 SovereignLoansDays = 10;
 
+	/** And slice 7's: Trade Routes' "every 20 days" (T3). `tools/tests/test_empire_tree_treasurer_cities.py` finds it in
+	 *  the node's text. */
+	static constexpr int32 TradeRoutesDaysAStep = 20;
+
+	/**
+	 * THE CITY UPGRADE BRANCH THE FOUR SLICE 7 NODES READ, as the City Upgrades sheet's Branch column writes it. The
+	 * nodes say "a Treasury Upgrade" and "an economic upgrade"; reading T1, not yet ruled, takes both as an upgrade of this
+	 * branch. `tools/tests/test_empire_tree_treasurer_cities.py` holds it to the sheet.
+	 */
+	static const FString TreasurerBranch;
+
+	/**
+	 * Whether a city is a Treasurer city (T1, T3): not fallen, and holding at least one upgrade whose row is in
+	 * `TreasurerBranch`. A city holding several counts once. A fallen city does not count, as a fallen city's upgrades pay
+	 * nothing (X1) and The Cartographer's Blessing counts standing cities only.
+	 */
+	static bool IsTreasurerCity(const FCataclysmCity& City);
+
 	/**
 	 * THE MOST A CITY UPGRADE'S PRICE IS REDUCED BY, so a price never falls below a quarter. The reductions add, as every
 	 * "reduced" does in the design's pipeline, and at full points they reach 125% (Municipal Bonds 45%, Public Works 20%,
@@ -477,8 +526,9 @@ public:
 
 	/**
 	 * What a kill's gold piles are multiplied by. Issue #2741 slice 6a (G1 to G3): one plus Coinage's and Minting
-	 * Rights' increase and the four counted increases, times one plus The Midas Touch's "more". Exactly 1 with no gold
-	 * node. `DropRulesFor` puts it in the rules a kill reads.
+	 * Rights' increase and the four counted increases, times one plus The Midas Touch's "more". Slice 7 adds The Golden
+	 * Touch's increase for each Treasurer city and, while the dungeon's city is one, Commercial Hubs' increase and
+	 * Economic Zones' "more" (T1 to T3). Exactly 1 with no gold node. `DropRulesFor` puts it in the rules a kill reads.
 	 */
 	static float GoldMultiplierFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 								   const FCataclysmEmpireTreeDungeonState& State);
@@ -509,9 +559,10 @@ public:
 	 * What the tree pays at the clear of a dungeon of `Floors` floors. Issue #2741 slice 6b. SALVAGE RIGHTS (B4): its
 	 * tier 1 gold a point for every floor, times `GoldScale` (R10: the tier's gold pile over tier 1's), times one plus
 	 * Investment Funds' increase (B5) and the "from dungeons" and "all sources" increases (G2: Wartime Economy,
-	 * Profiteering, Untouchable Wealth, Fiscal Policy, Prosperity Index); The Midas Touch and Stimulus Package are a
-	 * kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down, and nothing
-	 * multiplies it, because the piles already were.
+	 * Profiteering, Untouchable Wealth, Fiscal Policy, Prosperity Index), and by Economic Zones' "more" while the
+	 * dungeon's city is a Treasurer city (slice 7, T2); The Midas Touch, Stimulus Package, Commercial Hubs and The Golden
+	 * Touch are a kill's alone. CLEANUP CREW (B3): its share of the gold dropped less the gold picked up, rounded down,
+	 * and nothing multiplies it, because the piles already were.
 	 */
 	/**
 	 * The run-wide part of the state the tree reads: the active Cataclysm types, the counts over the cities slice 6a's
@@ -533,7 +584,9 @@ public:
 	 * cities, on every 20th day Wealth Interest's share of the gold held, held at its cap, and on every 10th day Tax
 	 * Collection's share of the standing cities' citizens (slice 6d, D8); each in tier 1 gold times `GoldScale` (R10),
 	 * and then raised by the "all sources" increases G2 sends to income (Untouchable Wealth, Fiscal Policy, Prosperity
-	 * Index). Rounded to whole gold.
+	 * Index). Slice 7 (T2, T3): on every 20th day Trade Routes' gold for each Treasurer city, raised the same way and
+	 * wholly by Economic Zones' "more"; and Pax and Tax raised by that "more" in the share of the citizens who live in
+	 * Treasurer cities. Rounded to whole gold.
 	 */
 	static FCataclysmEmpireTreeDailyIncome DailyIncomeFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses,
 														  const FCataclysmEmpireTreeDungeonState& State, int32 Day,
