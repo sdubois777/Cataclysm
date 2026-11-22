@@ -111,6 +111,14 @@ def ailment_stats() -> dict[str, str]:
     return found
 
 
+def test_the_generated_gems_carry_the_ruled_stat_and_bucket() -> None:
+    # THE GEMS SHEET'S STAT AND VALUE KIND COLUMNS, written at the gems window's workbook stage, are RULED.
+    with (DATA / "Gems.csv").open(encoding="utf-8", newline="") as handle:
+        rows = {row["Name"]: (row["Stat"], row["ValueKind"]) for row in csv.DictReader(handle)}
+    wrong = {name: (rows.get(name), ruled) for name, ruled in RULED.items() if rows.get(name) != ruled}
+    assert not wrong, f"Gems.csv's Stat and ValueKind differ from the ruling of 2026-11-21: {wrong}"
+
+
 def test_the_ruled_table_holds_every_gem_and_no_other() -> None:
     assert sorted(RULED) == sorted(gems()), (
         f"Gems.csv and the ruled table differ. Only in the sheet: {sorted(set(gems()) - set(RULED))}; only in the "

@@ -355,6 +355,15 @@ def test_the_material_counts_match_the_crafting_sheet(material_tiers,
           "Consumption Threshold.")
 
 
+def test_every_gem_drop_rate_matches_the_model(sheet, loot) -> None:
+    # ISSUE #46, SLICE G5: the Gem Drops column is `loot.ENEMY_GEM_DROPS`, the measured share of the gear column.
+    wrong = [f"{text(row['Enemy Rarity'])}: sheet {float(row['Gem Drops']):g}, "
+             f"model {loot.ENEMY_GEM_DROPS.get(text(row['Enemy Rarity']))}"
+             for row in sheet
+             if float(row["Gem Drops"]) != pytest.approx(loot.ENEMY_GEM_DROPS.get(text(row["Enemy Rarity"]), -1))]
+    assert not wrong, f"the {SHEET} sheet and loot.ENEMY_GEM_DROPS disagree about gems a kill drops: " + "; ".join(wrong)
+
+
 def test_every_material_drop_rate_matches_the_model(sheet, loot) -> None:
     wrong = [f"{text(row['Enemy Rarity'])}: sheet {float(row['Material Drops']):g}, "
              f"model {loot.ENEMY_MATERIAL_DROPS.get(text(row['Enemy Rarity']))}"

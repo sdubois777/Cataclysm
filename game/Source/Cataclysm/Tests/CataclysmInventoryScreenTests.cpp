@@ -8,6 +8,9 @@
 #include "Interface/CataclysmInventoryScreen.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
+// The operations table a crafting action now belongs to, issue #2830.
+#include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmForge.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 
@@ -631,12 +634,18 @@ bool FCataclysmMaterialTierOfTest::RunTest(const FString&)
 										   TEXT("Material_Corrupted_Mote")),
 		0);
 
-	// A CRAFTING ACTION IS NOT A MATERIAL AND CARRIES TIER 0, which is what
-	// stops anything dropping "Reroll Affix Value".
-	TestEqual(TEXT("a crafting action has no tier"),
-		UCataclysmDropRoll::MaterialTierOf(Materials,
-										   TEXT("Material_Reroll_Affix_Value")),
-		0);
+	// A CRAFTING ACTION IS NOT A MATERIAL, AND SINCE #2830 IT IS NOT IN THE
+	// MATERIALS TABLE AT ALL: the Crafting sheet's operations are generated into
+	// DT_ForgeOperations. Until then they were rows here with tier 0, which is
+	// what kept "Reroll Affix Value" out of every drop.
+	TestTrue(TEXT("a crafting action is no row of the materials table"),
+		UCataclysmDropRoll::MaterialNameOf(Materials,
+										   TEXT("Material_Reroll_Affix_Value")).IsEmpty());
+	const UDataTable* Operations = UCataclysmForge::LoadOperationsTable();
+	TestTrue(TEXT("it is a row of the operations table"),
+		Operations != nullptr
+			&& Operations->FindRow<FCataclysmForgeOperationRow>(
+				   TEXT("Operation_Reroll_Affix_Value"), TEXT("InventoryScreenTests"), false) != nullptr);
 
 	return true;
 }

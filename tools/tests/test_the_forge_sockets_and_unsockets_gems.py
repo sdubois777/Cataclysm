@@ -39,6 +39,9 @@ WIDGET_CPP = SOURCE / "Interface" / "CataclysmForgeWidget.cpp"
 CHARACTER_CPP = SOURCE / "Character" / "CataclysmPlayerCharacter.cpp"
 GDD = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 MATERIALS = REPO_ROOT / "game" / "Data" / "CraftingMaterials.csv"
+# THE OPERATIONS TABLE HAS ITS OWN FILE since #2830; until then its rows were in CraftingMaterials.csv under the
+# materials' column names (materials under TierAndSource, CR under PrimaryUse, days under Functions).
+OPERATIONS = REPO_ROOT / "game" / "Data" / "ForgeOperations.csv"
 
 sys.path.insert(0, str(REPO_ROOT / "sim"))
 
@@ -87,6 +90,11 @@ def materials() -> dict[str, dict[str, str]]:
         return {row["Name"]: row for row in csv.DictReader(handle)}
 
 
+def operations() -> dict[str, dict[str, str]]:
+    with OPERATIONS.open(encoding="utf-8", newline="") as handle:
+        return {row["Name"]: row for row in csv.DictReader(handle)}
+
+
 def design_row(action: str) -> list[str]:
     for line in GDD.read_text(encoding="utf-8").splitlines():
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
@@ -96,29 +104,30 @@ def design_row(action: str) -> list[str]:
 
 
 def test_the_residue_and_days_are_the_designs_the_sheets_and_the_simulations() -> None:
-    rows = materials()
+    rows = operations()
     for action, residue_name, days_name, sheet_row in (
-            ("Socket Gem", "SocketGemResidue", "SocketGemBaseDays", "Material_Socket_Gem"),
-            ("Unsocket Gem", "UnsocketGemResidue", "UnsocketGemBaseDays", "Material_Unsocket_Gem")):
+            ("Socket Gem", "SocketGemResidue", "SocketGemBaseDays", "Operation_Socket_Gem"),
+            ("Unsocket Gem", "UnsocketGemResidue", "UnsocketGemBaseDays", "Operation_Unsocket_Gem")):
         cells = design_row(action)
         assert constant(residue_name) == float(cells[2]), f"{action} adds {cells[2]} residue in the design"
         assert constant(days_name) == float(cells[3]), f"{action} costs {cells[3]} base day in the design"
         sheet = rows[sheet_row]
-        assert sheet["PrimaryUse"] == f"{int(constant(residue_name))} CR", f"{sheet_row} states {sheet['PrimaryUse']!r}"
-        assert sheet["Functions"] == str(int(constant(days_name))), f"{sheet_row} states {sheet['Functions']!r} days"
+        assert sheet["CRImpact"] == f"{int(constant(residue_name))} CR", f"{sheet_row} states {sheet['CRImpact']!r}"
+        assert sheet["BaseDays"] == str(int(constant(days_name))), f"{sheet_row} states {sheet['BaseDays']!r} days"
     assert constant("SocketGemResidue") == residue.SOCKET_GEM_RESIDUE, (
         "the simulation's SOCKET_GEM_RESIDUE, which the Consumption Thresholds are derived from, differs")
 
 
 def test_the_materials_are_the_rows_the_operations_name() -> None:
     rows = materials()
-    for name, operation in (("SettingAgentRow", "Material_Socket_Gem"), ("DismantlingDustRow", "Material_Unsocket_Gem")):
+    actions = operations()
+    for name, operation in (("SettingAgentRow", "Operation_Socket_Gem"), ("DismantlingDustRow", "Operation_Unsocket_Gem")):
         material = row_text(name)
         assert material in rows, f"UCataclysmForge::{name} names {material!r}, which CraftingMaterials.csv lacks"
-        assert rows[material]["MaterialName"] == rows[operation]["TierAndSource"], (
-            f"{operation} consumes {rows[operation]['TierAndSource']!r} and UCataclysmForge::{name} names "
+        assert rows[material]["MaterialName"] == actions[operation]["Materials"], (
+            f"{operation} consumes {actions[operation]['Materials']!r} and UCataclysmForge::{name} names "
             f"{rows[material]['MaterialName']!r}")
-        assert design_row(rows[operation]["MaterialName"])[1] == rows[material]["MaterialName"]
+        assert design_row(actions[operation]["Action"])[1] == rows[material]["MaterialName"]
 
 
 def test_there_is_no_free_removal() -> None:

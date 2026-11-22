@@ -2,6 +2,7 @@
 
 #include "Items/CataclysmForge.h"
 
+#include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
@@ -12,6 +13,11 @@
 #include "Items/CataclysmWearing.h"
 
 const TCHAR* UCataclysmForge::SettingAgentRow = TEXT("Material_Jeweler_s_Setting_Agent");
+const TCHAR* UCataclysmForge::OperationsTableAssetPath = TEXT("/Game/Data/DT_ForgeOperations.DT_ForgeOperations");
+const TCHAR* UCataclysmForge::UpgradeOperationRow = TEXT("Operation_Upgrade_Item_Level_1_Tier");
+const TCHAR* UCataclysmForge::SocketGemOperationRow = TEXT("Operation_Socket_Gem");
+const TCHAR* UCataclysmForge::UnsocketGemOperationRow = TEXT("Operation_Unsocket_Gem");
+const TCHAR* UCataclysmForge::CombineOperationRow = TEXT("Operation_Combine");
 const TCHAR* UCataclysmForge::DismantlingDustRow = TEXT("Material_Dismantling_Dust");
 
 FName UCataclysmForge::StoneFor(int32 Level)
@@ -41,9 +47,41 @@ int64 UCataclysmForge::GoldFor(int32 BaseGold, float Residue, int32 DifficultyTi
 int64 UCataclysmForge::CombineGoldFor(int32 Rung, int32 DifficultyTier)
 {
 	// DOUBLED FOR EACH RUNG, as each rung is two of the one below; held inside the eight rarities and ten stones.
-	const double AtTheRung = static_cast<double>(CombineGoldAtTheLowestRung) * FMath::Pow(2.0, FMath::Clamp(Rung, 0, 9));
+	const double AtTheRung = static_cast<double>(BaseGoldOf(CombineOperationRow, CombineGoldAtTheLowestRung))
+		* FMath::Pow(2.0, FMath::Clamp(Rung, 0, 9));
 	return FMath::Max<int64>(
 		1, static_cast<int64>(FMath::RoundToDouble(AtTheRung * UCataclysmDropRoll::GoldScaleFor(DifficultyTier))));
+}
+
+const UDataTable* UCataclysmForge::LoadOperationsTable()
+{
+	const UDataTable* Table = LoadObject<UDataTable>(nullptr, OperationsTableAssetPath);
+	if (Table == nullptr)
+	{
+		UE_LOG(LogCataclysm, Error,
+			   TEXT("Could not load %s. It is produced by tools/generate_datatable_assets.py from game/Data/"
+					"ForgeOperations.csv, which tools/generate_datatables.py produces from the Crafting sheet's "
+					"operations table in docs/All_Things_Cataclysm.xlsx."),
+			   OperationsTableAssetPath);
+	}
+	return Table;
+}
+
+int32 UCataclysmForge::BaseGoldOf(const TCHAR* Operation, int32 IfMissing)
+{
+	const UDataTable* Table = LoadOperationsTable();
+	const FCataclysmForgeOperationRow* Row = Table != nullptr
+		? Table->FindRow<FCataclysmForgeOperationRow>(FName(Operation), TEXT("UCataclysmForge::BaseGoldOf"),
+													  /*bWarnIfMissing=*/false)
+		: nullptr;
+	if (Row == nullptr)
+	{
+		UE_LOG(LogCataclysm, Error, TEXT("The forge's operations table has no row %s, so it costs %d gold, the constant the "
+									"sheet's figure mirrors."),
+			   Operation, IfMissing);
+		return IfMissing;
+	}
+	return FMath::RoundToInt(Row->BaseGold);
 }
 
 FString UCataclysmForge::GoldRefusal(const FString& What, int64 Gold, int64 Held)
@@ -81,7 +119,8 @@ FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(const FCataclysmItem& Item, in
 	Out.ResidueAfter = Item.Residue + ResiduePerLevel;
 	// THE LEVEL IT REACHES IN BASE DAYS, AND ITS GOLD BY THEM: the owner's ruling of 2026-11-21 and #2830.
 	Out.Days = DaysFor(Item.Residue, Out.ToLevel);
-	Out.Gold = GoldFor(BaseGoldFor(Out.ToLevel), Item.Residue, DifficultyTier);
+	// THE SHEET'S BASE GOLD FOR A LEVEL, ONCE FOR EACH LEVEL REACHED, as its days are "per tier".
+	Out.Gold = GoldFor(BaseGoldOf(UpgradeOperationRow, GoldPerCraftDay) * Out.ToLevel, Item.Residue, DifficultyTier);
 
 	if (Out.StonesHeld < Out.StonesNeeded)
 	{
@@ -217,7 +256,7 @@ FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(const FCataclysmItem& Item
 	Out.ResidueBefore = Item.Residue;
 	Out.ResidueAfter = Item.Residue + SocketGemResidue;
 	Out.Days = DaysFor(Item.Residue, SocketGemBaseDays);
-	Out.Gold = GoldFor(BaseGoldFor(SocketGemBaseDays), Item.Residue, DifficultyTier);
+	Out.Gold = GoldFor(BaseGoldOf(SocketGemOperationRow, BaseGoldFor(SocketGemBaseDays)), Item.Residue, DifficultyTier);
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())
@@ -288,7 +327,8 @@ FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(const FCataclysmItem& It
 	Out.ResidueBefore = Item.Residue;
 	Out.ResidueAfter = Item.Residue + UnsocketGemResidue;
 	Out.Days = DaysFor(Item.Residue, UnsocketGemBaseDays);
-	Out.Gold = GoldFor(BaseGoldFor(UnsocketGemBaseDays), Item.Residue, DifficultyTier);
+	Out.Gold = GoldFor(BaseGoldOf(UnsocketGemOperationRow, BaseGoldFor(UnsocketGemBaseDays)), Item.Residue,
+					   DifficultyTier);
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
 
 	if (Item.Base.IsNone())

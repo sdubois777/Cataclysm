@@ -497,6 +497,17 @@ struct FCataclysmGemRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Mythical = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Ascendant = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem") float Cataclysmic = 0.0f;
+
+	/**
+	 * The stat the gem's modifier goes to, as `UCataclysmPlayerClassStats` names stats: "max_health", "poison_chance".
+	 * The Gems sheet's Stat column, ruled 2026-11-21 (issue #46, slice G1).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem")
+	FString Stat;
+
+	/** "flat" or "increased": the bucket the sheet value goes into (`UCataclysmGems::BucketNamed`). Slice G1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gem")
+	FString ValueKind;
 };
 
 /**
@@ -1351,6 +1362,34 @@ struct FCataclysmSkillSlotRow : public FTableRowBase
 	FString Note;
 };
 
+/**
+ * One forge operation: what it consumes, its residue, its base days and its base gold. Source: Crafting, the
+ * operations table under its own header row "Action". Issue #2830, slice G7 of the gems work.
+ *
+ * READ BY `UCataclysmForge::BaseGoldOf` for the operations the forge has built. Base Days and CR Impact are prose in
+ * the sheet ("1 day per tier. (Max of 10)", "25 CR per tier") and stay prose here; the forge holds the rules they state,
+ * and `tools/tests` holds the two together.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmForgeOperationRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") FString Action;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") FString Materials;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") FString CRImpact;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") FString BaseDays;
+
+	/**
+	 * The gold the operation costs at difficulty tier 1 before the residue multiplier: the sheet's Gold Per Craft Day
+	 * times its base days (at least once), or once for each tier where its days are "per tier"; the Combine row's is the
+	 * lowest rung's price. Checked against that one cell when it is generated.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") float BaseGold = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Forge") FString Note;
+};
+
 /** A crafting material. Source: Crafting. */
 USTRUCT(BlueprintType)
 struct FCataclysmCraftingMaterialRow : public FTableRowBase
@@ -1691,6 +1730,13 @@ struct FCataclysmEnemyDropRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
 	float GoldDrops = 0.0f;
+
+	/**
+	 * How many gems this kill is expected to drop, before loot quantity: the gear column times the share
+	 * `sim/analyse_gem_drops.py` measured (`loot.GEM_DROPS_PER_GEAR_DROP`). Issue #46, slice G5.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
+	float GemDrops = 0.0f;
 };
 
 /**

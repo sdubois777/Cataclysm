@@ -113,8 +113,9 @@ def test_the_sheet_still_has_the_shape_this_file_assumes(split):
         f"{len(materials)}. If a material was added, add it to the design "
         "document's material table too and update this number."
     )
-    assert len(actions) == 18, (
-        f"Expected 18 operations after the {ACTIONS_HEADER!r} row, found "
+    # 19 SINCE #2830: the Combine row, one price for two stones or two gems.
+    assert len(actions) == 19, (
+        f"Expected 19 operations after the {ACTIONS_HEADER!r} row, found "
         f"{len(actions)}."
     )
 

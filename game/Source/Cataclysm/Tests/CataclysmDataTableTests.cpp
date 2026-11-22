@@ -126,7 +126,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// "Upgrade Stone (x)" was a placeholder that showed on screen that way.
 	// It became ten stones, "+1" through "+10", spread two to a rarity tier
 	// because ten in one tier would have crowded out everything else in it.
-	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      46)
+	// 27 SINCE #2830: the 19 forge operations and the operations table's own header row moved to ForgeOperations.csv,
+	// where they are actions under their own column names; until then they were read here as materials.
+	CHECK_TABLE(FCataclysmCraftingMaterialRow,  "CraftingMaterials.csv",      27)
+	// 18 OPERATIONS AND THE COMBINE ROW, the Crafting sheet's operations table (#2830).
+	CHECK_TABLE(FCataclysmForgeOperationRow,    "ForgeOperations.csv",        19)
 	// 55 bases across 11 slots, at least three per slot, because one base in a
 	// slot is not a choice.
 	CHECK_TABLE(FCataclysmItemBaseRow,          "ItemBases.csv",              55)
@@ -1095,6 +1099,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_CityUpgrades"),          TEXT("CityUpgrades.csv") },
 		{ TEXT("DT_ClassStats"),            TEXT("ClassStats.csv") },
 		{ TEXT("DT_CraftingMaterials"),     TEXT("CraftingMaterials.csv") },
+		{ TEXT("DT_ForgeOperations"),       TEXT("ForgeOperations.csv") },
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
 		{ TEXT("DT_EmpireTreeEdges"),       TEXT("EmpireTreeEdges.csv") },

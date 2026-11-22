@@ -216,6 +216,24 @@ public:
 	/** A refusal for too little gold: "Raising it to +3 takes 2,055 gold; 900 gold held." */
 	static FString GoldRefusal(const FString& What, int64 Gold, int64 Held);
 
+	//~ The Crafting sheet's operations table, `DT_ForgeOperations`, from `game/Data/ForgeOperations.csv` (#2830).
+
+	static const TCHAR* OperationsTableAssetPath;
+	static const TCHAR* UpgradeOperationRow;
+	static const TCHAR* SocketGemOperationRow;
+	static const TCHAR* UnsocketGemOperationRow;
+	static const TCHAR* CombineOperationRow;
+
+	/** The operations table, or null with the reason logged. */
+	static const UDataTable* LoadOperationsTable();
+
+	/**
+	 * An operation's Base Gold from the table, the figure the owner sets in the sheet. `IfMissing` -- the constant the
+	 * sheet's figure mirrors -- only when the table or the row is missing, with the reason logged, so a missing asset
+	 * prices the forge as the sheet did when it was last checked rather than at nothing.
+	 */
+	static int32 BaseGoldOf(const TCHAR* Operation, int32 IfMissing);
+
 	/**
 	 * What raising this item one gear level takes, against the stones of the next level and the gold held, at the
 	 * difficulty tier of the run.

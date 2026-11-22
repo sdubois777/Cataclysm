@@ -4020,6 +4020,7 @@ applied.
 | Accelerate Craft | Tainted Shard | 0 | −1 | Removes one day of the accumulated time penalty per shard |
 | Reduce CR Gain | Chaos Stabilizer | −50% of the next craft's CR | 0 | Applies to one craft |
 | CR Cleanse | Purified Essence | −50% of accumulated CR | 1 per 500 CR removed | The resource-heavy safety valve |
+| Combine | None: the two combined | 0 | 0 | Two stones of a level, or two gems of a kind and rarity, make one of the next; gold only, 50 at the lowest rung and doubled for each rung above (issue #2830) |
 
   
 

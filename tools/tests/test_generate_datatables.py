@@ -216,7 +216,7 @@ class TestGems:
                       "Mythical Gemstone", "Ascendant Gemstone",
                       "Cataclysmic Gemstone", "Type"],
                      ["Of The Abyss", "10% chance to apply void splinter",
-                      0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, "Attack"]]}))
+                      0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, "Attack", "max_health", "increased"]]}))
         row = gen.gems(book)[0]
         assert row["Everyday"] == pytest.approx(0.10)
         assert row["Quality"] == pytest.approx(0.30)
@@ -229,7 +229,7 @@ class TestGems:
                       "Mythical Gemstone", "Ascendant Gemstone",
                       "Cataclysmic Gemstone", "Type"],
                      ["Of Nothing", "does a thing", 0.3, 0.5, 0.75, 1.0, 1.25,
-                      1.5, 2.0, "Attack"]]}))
+                      1.5, 2.0, "Attack", "max_health", "increased"]]}))
         with pytest.raises(gen.DataError, match="states no percentage"):
             gen.gems(book)
 
@@ -247,9 +247,9 @@ class TestGems:
                       "Mythical Gemstone", "Ascendant Gemstone",
                       "Cataclysmic Gemstone", "Type"],
                      ["Of Recovery", "Increases hp regen by 10%",
-                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense", "max_health", "increased"],
                      ["Of Recovery", "Increases CDR by 10%",
-                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility", "max_health", "increased"]]}))
         with pytest.raises(gen.DataError, match="already the name of the gem"):
             gen.gems(book)
 
@@ -265,9 +265,9 @@ class TestGems:
                       "Mythical Gemstone", "Ascendant Gemstone",
                       "Cataclysmic Gemstone", "Type"],
                      ["Of Recovery", "Increases hp regen by 10%",
-                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense"],
+                      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.6, "Defense", "max_health", "increased"],
                      ["Of Urgency", "Increases CDR by 10%",
-                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility"]]}))
+                      0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9, "Utility", "max_health", "increased"]]}))
         names = [row["Name"] for row in gen.gems(book)]
         assert names == ["Gem_Of_Recovery", "Gem_Of_Urgency"], (
             "a gem row key must be readable, not a numeric suffix on someone "
@@ -281,7 +281,7 @@ class TestGems:
                       "Superb Gemstone", "Masterful Gemstone",
                       "Legendary Gemstone", "Mythical Gemstone",
                       "Ascendant Gemstone", "Cataclysmic Gemstone", "Type"],
-                     ["Of Testing", effect, *values, "Utility"]]}))
+                     ["Of Testing", effect, *values, "Utility", "max_health", "increased"]]}))
 
     def test_a_percentage_written_without_a_leading_zero_is_read_whole(
             self, tmp_path):

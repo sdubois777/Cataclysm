@@ -15,8 +15,9 @@ doubled for each rung above, for stones and gems alike. `Cataclysm.ForgeCosts.`
      account record when the account paid;
   6. the tier a price is read at is the run's, as a city upgrade's.
 
-THE BASE FIGURES ARE CONSTANTS UNTIL THE WORKBOOK STAGE, which generates the Crafting sheet's operations table into
-`game/Data/ForgeOperations.csv` for the forge to read.
+THE BASE GOLD IS THE SHEET'S since the workbook stage: the Crafting sheet's operations table is generated into
+`game/Data/ForgeOperations.csv`, and the forge reads each built operation's Base Gold from it
+(`UCataclysmForge::BaseGoldOf`). The constants it falls back on when the table is missing must equal the sheet's.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ FORGE_H = SOURCE / "Items" / "CataclysmForge.h"
 FORGE_CPP = SOURCE / "Items" / "CataclysmForge.cpp"
 CRAFT_CPP = SOURCE / "Player" / "CataclysmForgeCraft.cpp"
 MATERIALS = REPO_ROOT / "game" / "Data" / "CraftingMaterials.csv"
+OPERATIONS = REPO_ROOT / "game" / "Data" / "ForgeOperations.csv"
 
 
 def code(path: pathlib.Path) -> str:
@@ -94,7 +96,7 @@ def test_the_gold_formula_does_not_round_its_multiplier_and_reads_the_tiers_scal
 
 def test_both_combines_read_one_price_and_it_doubles_by_rung() -> None:
     price = rule("int64 UCataclysmForge::CombineGoldFor(")
-    assert "CombineGoldAtTheLowestRung) * FMath::Pow(2.0, FMath::Clamp(Rung, 0, 9))" in price, (
+    assert "BaseGoldOf(CombineOperationRow, CombineGoldAtTheLowestRung)) * FMath::Pow(2.0, FMath::Clamp(Rung, 0, 9))" in price, (
         "a combine's price no longer doubles for each rung")
     assert "UCataclysmDropRoll::GoldScaleFor(DifficultyTier)" in price, "a combine's price does not read the tier's scale"
     assert "Out.Gold = CombineGoldFor(Level - 1, DifficultyTier);" in rule(
@@ -104,12 +106,14 @@ def test_both_combines_read_one_price_and_it_doubles_by_rung() -> None:
 
 
 @pytest.mark.parametrize("signature, priced", [
-    ("FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(", "Out.Gold = GoldFor(BaseGoldFor(Out.ToLevel), Item.Residue, "
-                                                           "DifficultyTier);"),
-    ("FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(", "Out.Gold = GoldFor(BaseGoldFor(SocketGemBaseDays), "
-                                                               "Item.Residue, DifficultyTier);"),
-    ("FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(", "Out.Gold = GoldFor(BaseGoldFor(UnsocketGemBaseDays), "
-                                                                 "Item.Residue, DifficultyTier);"),
+    ("FCataclysmForgeUpgrade UCataclysmForge::UpgradeOf(", "Out.Gold = GoldFor(BaseGoldOf(UpgradeOperationRow, "
+                                                           "GoldPerCraftDay) * Out.ToLevel, Item.Residue, DifficultyTier);"),
+    ("FCataclysmForgeSocketing UCataclysmForge::SocketGemOf(", "Out.Gold = GoldFor(BaseGoldOf(SocketGemOperationRow, "
+                                                               "BaseGoldFor(SocketGemBaseDays)), Item.Residue, "
+                                                               "DifficultyTier);"),
+    ("FCataclysmForgeSocketing UCataclysmForge::UnsocketGemOf(", "Out.Gold = GoldFor(BaseGoldOf(UnsocketGemOperationRow, "
+                                                                 "BaseGoldFor(UnsocketGemBaseDays)), Item.Residue, "
+                                                                 "DifficultyTier);"),
     ("FCataclysmForgeCombine UCataclysmForge::CombineOf(", "Out.Gold = CombineGoldFor(Level - 1, DifficultyTier);"),
     ("FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(",
      "Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);"),
@@ -151,6 +155,22 @@ def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(sign
         previous = at
     assert exits, f"{signature} has no refusal after its payment, which this check expected to see"
     assert "SaveWhereTheGoldCameFrom(" in text, f"{signature} does not write the account record when the account paid"
+
+
+def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
+    # THE ROWS THE FORGE READS, AND THE CONSTANT EACH FALLS BACK ON, must agree, or a missing asset changes a price.
+    with OPERATIONS.open(encoding="utf-8", newline="") as handle:
+        rows = {row["Name"]: row for row in csv.DictReader(handle)}
+    named = dict(re.findall(r'const TCHAR\* UCataclysmForge::(\w+OperationRow) = TEXT\("([^"]+)"\);', code(FORGE_CPP)))
+    expected = {"UpgradeOperationRow": constant("GoldPerCraftDay"), "SocketGemOperationRow": constant("GoldPerCraftDay"),
+                "UnsocketGemOperationRow": constant("GoldPerCraftDay"),
+                "CombineOperationRow": constant("CombineGoldAtTheLowestRung")}
+    assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
+    for field, figure in expected.items():
+        row = rows.get(named[field])
+        assert row is not None, f"ForgeOperations.csv has no row {named[field]}, which UCataclysmForge::{field} names"
+        assert float(row["BaseGold"]) == figure, (
+            f"{named[field]} costs {row['BaseGold']} in the sheet and {figure:g} in the constant the forge falls back on")
 
 
 def test_a_price_is_read_at_the_runs_tier_as_a_city_upgrades_is() -> None:
