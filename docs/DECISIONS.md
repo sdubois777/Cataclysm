@@ -62,6 +62,49 @@ On `feat/gem-tooltip-for-the-character`, development `45b33c70f` and the two com
 | H1 | `KindFor` without the gem check | `Cataclysm.GroundItemHover.` (7) | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` |
 | H2 | `SlotFor` without the gem fields | the same | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` (its left column empty, not the bag's) |
 
+### The window, gem-tooltip-w1, on `c30f61b8d`: PASSED, every registered figure met
+
+Run on 2026-11-22 from 09:24 to 09:58 by `.claude/windows/chain_gt.py`: the compile gate, `compile_gt.py`, the
+window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` at `c30f61b8d` (development
+`45b33c70f`, #2835's `60dd74e35` and #2839's commit).
+
+- **The pre-checks**, 09:24, ALL PASS: development `45b33c70f`, its latest CI and Unreal runs both success; no run in
+  progress or queued; the lock free; no build or editor process; no open pull request; 9,628 MB free (needs 9,216);
+  136 LFS files, no pointer. Again before the window at 09:32:52, ALL PASS.
+- **The owner's editor gate** (the coordinating session, 2026-11-22): every stage held while an UnrealEditor or
+  UnrealEditor-Cmd process ran. None ran: no stage held ("HOLD" appears in none of the three outputs).
+- **Three compiles**, under the lock gem-tooltip-compile, each "0 compiler warning or error lines in the build tool's
+  log": the branch, "Build: Succeeded - 67 actions, 62 files compiled"; each changed `.cpp` alone, "14 actions, 11
+  files compiled", the seven changed files and four unity files; the unity files again, "7 actions, 4 files compiled".
+- **The groups alone**, 5 of 5, each at its registered count with 0 failed: `GemTooltip.` 3, `GemStacks.` 6, `Tooltip.`
+  18, `ItemComparison.` 8, `GroundItemHover.` 7.
+- **The whole Unreal suite**: "5222 tests performed, 5222 succeeded, 0 failed. 57 skipped part of what they check";
+  "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5222 tests in the tree at c30f61b8d; 5222 performed,
+  gap 0". All three as registered. Memory: `peak_used_virtual_mb=9179`, no memory trouble.
+- **What the new tests printed**: "GEM TOOLTIP, NONE: evasion to increase 0.00", the fourth line the character's;
+  "GEM TOOLTIP, SOME: evasion to increase 8.00", Of The Wraith with no such line and Of The Bulwark with "You have no
+  block chance"; "GEM TOOLTIP, HOVER: compared 0", the fourth line the character's; "GROUND GEM: kind 3, shows 1", its
+  lines the bag's, with "You have no evasion" and "2 carried".
+- **The Python suite, beside it**: "8086 passed, 10 skipped in 391.52s", and the JUnit file `tests="8096"`,
+  `failures="0"`, `errors="0"`, `skipped="10"`. ruff: "All checks passed!".
+- **The five C++ guard proofs, every one PROVED**, each failing exactly the tests predicted with the break in and passing
+  all with it out, the source unchanged afterwards ("hash same True"):
+
+| Proof | With the break in | Restored |
+| :-- | :-- | :-- |
+| G1 | 3 performed, 1 failed: `TheInventoryHoverPassesTheCharacter` | 3 of 3 |
+| G2 | 3, 1: `ACharacterWhoseGearGivesSomeIsNotTold` | 3 of 3 |
+| G3 | 3, 2: `ACharacterWithNoneOfTheStatIsToldTheGemDoesNothingForThem`, `TheInventoryHoverPassesTheCharacter` | 3 of 3 |
+| H1 | 7, 1: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` | 7 of 7 |
+| H2 | 7, 1: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` | 7 of 7 |
+
+- **Said plainly, from before the window**: the first script that wrote #2839's edits applied each edit to the file as
+  first read, so two edits to one file overwrote each other and three of six were lost. A proof anchor that matched 0
+  times showed it; the three were applied again, and the Python run that had read the half-edited files was discarded
+  and run again ("8086 passed, 10 skipped in 411.88s") before the commit.
+- **Not seen by any test**: the tooltip and the ground panel on the screen (-nullrhi, issue #650). The owner checks
+  those in play.
+
 ---
 
 ## 2026-11-22 — A gem's tooltip says the gem does nothing for the character reading it, when that character has none of its stat (#2835)
