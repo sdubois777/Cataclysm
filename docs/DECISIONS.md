@@ -849,8 +849,11 @@ bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`Cat
   Subjugate's "Holding a thrall reserves 30 Fervour" and Summon Imp's "Each imp reserves 10 Fervour" -- lose their
   numbers, since the pop-up now states the levelled reserve itself. Until then those sentences state level 1's figure.
 - **THE RESERVES OF A SKILL GADGET AND A SKILL TRAP** take the factor in their own commit after the rebase, since
-  branch B of #2787 wrote them: the level is that of the skill in the slot the gadget or trap stands for. Neither is
-  re-priced when a different skill is put in that slot; only a level rise of the skill in it re-prices.
+  branch B of #2787 wrote them: the level is that of the skill in the slot the gadget or trap stands for.
+- **KNOWN AND ACCEPTED: PUTTING ANOTHER SKILL IN THE SLOT RE-PRICES NOTHING.** A standing gadget or trap keeps the
+  reserve it was placed with, or last re-priced to; only a level rise of the skill in its slot re-prices it. Accepted
+  for now by the coordinating session on 2026-11-21: a reserve only falls with a level, so a swap can leave a gadget
+  holding a figure for a skill no longer in the slot, but never more than level 1's 15, or 5 for a trap.
 
 ### The owner's words, and the rulings
 
@@ -996,7 +999,7 @@ file that cannot be merged.
 The six swept groups' counts are measured, in window subjugate-w2's suite log at `512fd30f`, and none of their test
 files has changed since; the three new groups' counts are their registration macros.
 
-**Four C++ guard proofs**, one per behaviour only a C++ test guards (the coordinating session's rule of 2026-11-21),
+**Five C++ guard proofs**, one per behaviour only a C++ test guards (the coordinating session's rule of 2026-11-21),
 after both suites:
 
 | Proof | The break | Prefix | Broken half | Restored |
@@ -1005,6 +1008,7 @@ after both suites:
 | T1 | #2804's, in its entry | `Cataclysm.TooltipCost.` | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
 | R1 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
 | R2 | #2815's, in its entry | `Cataclysm.AttributeTooltip.` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| G1 | in `RepriceReservesOf`, `RowInSlot(Commander, Slot) == SkillRow` to `RowInSlot(Commander, Slot) == NAME_None`, so no standing gadget or trap is re-priced | `Cataclysm.LevelCosts.` | 4 performed, 3 succeeded, 1 failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | 4 of 4 |
 
 **L1 and L3 are Python proofs now**, ruled by the coordinating session on 2026-11-21, since a Python check guards each.
 With B1-B4 (#2815's entry), they run after the C++ proofs, through `tools/prove_guard.py` in a `git archive` copy of the
@@ -1014,11 +1018,10 @@ tested head:
 | :-- | :-- | :-- | :-- |
 | P-L1 | `CostFactorPerLevel = 0.9642` to `1.0` | `tools/tests/test_skill_levels_port.py` | `test_each_constant_is_the_same`, its `CostFactorPerLevel` case, fails |
 | P-L3 | in `ManaCostAtTheHoldersLevel`, `* static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this));` to `* 1.0f;` | `tools/tests/test_a_skills_level_lowers_its_costs.py` | `test_each_cost_is_lowered_by_the_skills_level`, its mana cost case, fails |
+| P-G1 | in `SkillTrapReserveFor`, `SkillTrapFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));` to `SkillTrapFervourReserve;` | `tools/tests/test_a_skills_level_lowers_its_costs.py` | `test_each_cost_is_lowered_by_the_skills_level`, its skill trap case, fails |
 
-**PROPOSED, NOT REGISTERED until the coordinating session adds them:** G1, a C++ proof of the gadget and trap re-price
-(`RowInSlot(Commander, Slot) == SkillRow` to `== NAME_None`, `Cataclysm.LevelCosts.`, 4 performed, 3 succeeded, 1
-failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel`), and P-G1, a Python proof of the trap's figure
-(`SkillTrapReserveFor`'s factor dropped; `test_each_cost_is_lowered_by_the_skills_level`'s skill trap case fails).
+**G1 and P-G1 were added by the coordinating session on 2026-11-21**: "the gadget and trap re-price is a separate
+branch from L2's thrall write-back, and only the C++ test guards it", and P-G1 "costs no build".
 
 ---
 
