@@ -2,6 +2,8 @@
 
 #include "Interface/CataclysmForgeWidget.h"
 
+// The damage types designed for each weapon type, issue #47 slice F4.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/Button.h"
 #include "Components/PanelWidget.h"
@@ -96,6 +98,17 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		{
 			Detail += TEXT("\n") + Adding;
 		}
+		// AND A WEAPON'S DAMAGE TYPES, with an infusion and a change for each it can take. Issue #47, slice F4.
+		const UDataTable* SkillTable = UCataclysmWeaponSkills::LoadGeneratedTable();
+		const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+		const int32 MaxTypes = UCataclysmForge::MaxDamageTypesOf(*Item, SkillTable, BaseTable);
+		const FString Types = UCataclysmForgeLayout::DamageTypesDetailFor(*Item, MaxTypes);
+		if (!Types.IsEmpty())
+		{
+			Detail += TEXT("\n") + Types;
+		}
+		ShownDamageTypeActions = UCataclysmForgeLayout::DamageTypeActionsFor(
+			*Item, UCataclysmForge::DamageTypesOpenTo(*Item, SkillTable, BaseTable), MaxTypes);
 	}
 	else
 	{
@@ -106,6 +119,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		ShownAffixActions.Reset();
 		ShownAffixChangeActions.Reset();
 		AddableAffixes.Reset();
+		ShownDamageTypeActions.Reset();
 	}
 
 	BuildPieceButtons();
@@ -189,6 +203,18 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			AffixWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(AffixWork);
+		}
+	}
+
+	// THE DAMAGE-TYPE CRAFTS, two presses each. Issue #47, slice F4.
+	for (const FCataclysmForgeDamageTypeAction& Action : ShownDamageTypeActions)
+	{
+		if (UCataclysmChoiceButton* DamageType = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			DamageType->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+								  /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			DamageType->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(DamageType);
 		}
 	}
 
@@ -576,6 +602,66 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				: FString::Printf(TEXT("Added %s at tier %d as affix %d; the piece is %s now. %s"),
 								  *UCataclysmForge::AffixNameOf(Done.ToRow, AffixTable), Done.Tier, Done.Affix + 1,
 								  *UCataclysmGems::RarityName(Done.ToRarity), *Cost);
+			break;
+		}
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// A DAMAGE TYPE INFUSED OR CHANGED, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as the other crafts are. Issue
+	// #47, slice F4.
+	FCataclysmForgeDamageTypeAction DamageTypeWork;
+	if (bHasChosen && UCataclysmForgeLayout::DamageTypeActionForButton(ButtonName, ShownDamageTypeActions, DamageTypeWork))
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeDamageTypeWork Plan =
+			UCataclysmForgeCraft::DamageTypeWorkPlanFor(Context(), ChosenTarget, DamageTypeWork.Craft, DamageTypeWork.Type);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::DamageTypeQuestion(Plan);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeDamageTypeWork Done;
+		FString Said;
+		const ECataclysmForgeResult Result = UCataclysmForgeCraft::CraftDamageType(
+			Context(), ChosenTarget, DamageTypeWork.Craft, DamageTypeWork.Type, bThresholdWasAsked, Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+		{
+			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
+												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
+												 Done.Days == 1 ? TEXT("") : TEXT("s"));
+			Message = Done.Craft == ECataclysmForgeDamageTypeCraft::Change
+				? FString::Printf(TEXT("%s is %s now. %s"), *Done.FromType.ToString(), *Done.ToType.ToString(), *Cost)
+				: FString::Printf(TEXT("The weapon carries %s now. %s"), *Done.ToType.ToString(), *Cost);
 			break;
 		}
 		case ECataclysmForgeResult::Refused:

@@ -483,6 +483,78 @@ bool UCataclysmForgeLayout::AffixChangeActionForButton(FName ButtonName,
 	return false;
 }
 
+FString UCataclysmForgeLayout::DamageTypesDetailFor(const FCataclysmItem& Item, int32 MaxTypes)
+{
+	if (Item.Base.IsNone() || MaxTypes <= 0)
+	{
+		return FString();
+	}
+	const FString Types = Item.DamageTypes.IsEmpty()
+		? FString(TEXT("none"))
+		: FString::JoinBy(Item.DamageTypes, TEXT(", "), [](const FName& Type) { return Type.ToString(); });
+	if (Item.bMadeAtCreation)
+	{
+		return FString::Printf(TEXT("Damage types: %s. %s"), *Types, UCataclysmForge::CreationWeaponRefusal);
+	}
+	return FString::Printf(TEXT("Damage types: %s; %d of at most %d."), *Types, Item.DamageTypes.Num(), MaxTypes);
+}
+
+TArray<FCataclysmForgeDamageTypeAction> UCataclysmForgeLayout::DamageTypeActionsFor(const FCataclysmItem& Item,
+																					 const TArray<FName>& Open,
+																					 int32 MaxTypes)
+{
+	TArray<FCataclysmForgeDamageTypeAction> Out;
+	// NONE FOR AN ITEM THAT IS NO WEAPON, AND NONE FOR THE WEAPON MADE AT CREATION (issue #2845), as the rule refuses them.
+	if (Item.Base.IsNone() || MaxTypes <= 0 || Item.bMadeAtCreation)
+	{
+		return Out;
+	}
+	// THE INFUSIONS BELOW THE MAXIMUM ONLY (Q20, Q21), and only with a type left to add.
+	if (Item.DamageTypes.Num() < MaxTypes && !Open.IsEmpty())
+	{
+		FCataclysmForgeDamageTypeAction& Random = Out.AddDefaulted_GetRef();
+		Random.Craft = ECataclysmForgeDamageTypeCraft::InfuseRandom;
+		Random.ButtonName = FName(TEXT("InfuseRandomType"));
+		Random.Label = TEXT("Infuse a random damage type");
+		for (const FName& Type : Open)
+		{
+			FCataclysmForgeDamageTypeAction& Specific = Out.AddDefaulted_GetRef();
+			Specific.Craft = ECataclysmForgeDamageTypeCraft::InfuseSpecific;
+			Specific.Type = Type;
+			Specific.ButtonName = FName(*FString::Printf(TEXT("InfuseType_%s"), *Type.ToString()));
+			Specific.Label = FString::Printf(TEXT("Infuse %s"), *Type.ToString());
+		}
+	}
+	// A CHANGE FOR EACH TYPE CARRIED, at the maximum too, while there is a type it lacks to draw.
+	if (!Open.IsEmpty())
+	{
+		for (const FName& Type : Item.DamageTypes)
+		{
+			FCataclysmForgeDamageTypeAction& Change = Out.AddDefaulted_GetRef();
+			Change.Craft = ECataclysmForgeDamageTypeCraft::Change;
+			Change.Type = Type;
+			Change.ButtonName = FName(*FString::Printf(TEXT("ChangeType_%s"), *Type.ToString()));
+			Change.Label = FString::Printf(TEXT("Change %s"), *Type.ToString());
+		}
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::DamageTypeActionForButton(FName ButtonName,
+													  const TArray<FCataclysmForgeDamageTypeAction>& Shown,
+													  FCataclysmForgeDamageTypeAction& OutAction)
+{
+	for (const FCataclysmForgeDamageTypeAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
 TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActionsFor(
 	const UCataclysmInventoryComponent* Inventory)
 {

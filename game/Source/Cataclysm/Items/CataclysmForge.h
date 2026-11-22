@@ -268,6 +268,56 @@ struct FCataclysmForgeAffixChange
 	int64 GoldHeld = 0;
 };
 
+/** The three crafts that change a weapon's damage types. Issue #47, slice F4. */
+enum class ECataclysmForgeDamageTypeCraft : uint8
+{
+	/** Infuse Random Damage Type: an Elemental Cinder adds a damage type drawn among those the weapon can take. */
+	InfuseRandom,
+
+	/** Infuse Specific Damage Type: a Sovereign Ingot adds the damage type the player chooses. */
+	InfuseSpecific,
+
+	/** Change Damage Type: a Prismatic Catalyst replaces a damage type the player chooses with one drawn. */
+	Change,
+};
+
+/**
+ * What one of the three damage-type crafts would take on a weapon, or why it cannot. Issue #47, slice F4.
+ */
+struct FCataclysmForgeDamageTypeWork
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** Which of the three crafts. */
+	ECataclysmForgeDamageTypeCraft Craft = ECataclysmForgeDamageTypeCraft::InfuseRandom;
+
+	/** A change's damage type replaced, the one the player chose; None for an infusion. */
+	FName FromType;
+
+	/** The damage type added or put in its place: chosen for a specific infusion, drawn for the other two. */
+	FName ToType;
+
+	/** How many damage types the weapon carries before, and the most it may, `UCataclysmDropRoll::MaxDamageTypesFor`. */
+	int32 TypesHeld = 0;
+	int32 MaxTypes = 0;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: its base days, and the residue's time penalty read before the craft. */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
 /**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
@@ -728,4 +778,90 @@ public:
 	 * of Instability, 450 gold, residue 40 to 55, 1 day of the run; the new stat is drawn."
 	 */
 	static FString AffixChangeQuestion(const FCataclysmForgeAffixChange& Plan, const UDataTable* AffixTable);
+
+	//~ The three crafts that change a weapon's damage types. Issue #47, slice F4, ruled by the coordinating session on
+	// 2026-11-22.
+	//
+	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Infuse Random Damage Type | Elemental
+	// Cinder | 10 CR | 1", Base Gold 250; "Infuse Specific Damage Type | Sovereign Ingot | 50 CR | 5", Base Gold 1,250;
+	// "Change Damage Type | Prismatic Catalyst | 20 CR | 0", Base Gold 250; through `DaysFor` and `GoldFor` as every
+	// craft. WEAPONS ONLY (Q19): a weapon's damage types are its `DamageTypes`, drawn by the drop among the types
+	// designed for its weapon type (`UCataclysmDropRoll::DamageTypesAvailableTo`).
+	//
+	// THE MAXIMUM IS THE DROP'S, `UCataclysmDropRoll::MaxDamageTypesFor`, and the two infusions are refused at it (Q20).
+	// THE TYPES AN ENCHANTMENT ADDS ARE ALREADY IN THE WEAPON'S LIST: "This weapon has 2-4 damage types"
+	// (`DamageTypesCarriedBy`) is a count the drop tops the list up to (`TopUpDamageTypes`), under the same maximum, and
+	// never a ceiling. So counting the list counts them, as the drop does (Q21, resolved 2026-11-22). A change works at
+	// the maximum, and its new type is drawn among those the weapon lacks (Q22).
+	//
+	// THE WEAPON MADE AT CREATION IS REFUSED (ruled 2026-11-22, option (a), issue #2845): its damage types are set back
+	// to the one chosen for the character on every load, by `UCataclysmEquipmentComponent::CarryCreationDamageType`, so a
+	// craft on it would be undone.
+
+	/** The rows of the materials the three consume, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* ElementalCinderRow;
+	static const TCHAR* SovereignIngotRow;
+	static const TCHAR* PrismaticCatalystRow;
+
+	/** The three operations' rows in `game/Data/ForgeOperations.csv`, whose Base Gold `BaseGoldOf` reads. */
+	static const TCHAR* InfuseRandomDamageTypeOperationRow;
+	static const TCHAR* InfuseSpecificDamageTypeOperationRow;
+	static const TCHAR* ChangeDamageTypeOperationRow;
+
+	/** The residue each adds, the sheet's CR impact. */
+	static constexpr float InfuseRandomDamageTypeResidue = 10.0f;
+	static constexpr float InfuseSpecificDamageTypeResidue = 50.0f;
+	static constexpr float ChangeDamageTypeResidue = 20.0f;
+
+	/** The days each costs before the residue's time penalty, the sheet's Base Days. */
+	static constexpr int32 InfuseRandomDamageTypeBaseDays = 1;
+	static constexpr int32 InfuseSpecificDamageTypeBaseDays = 5;
+	static constexpr int32 ChangeDamageTypeBaseDays = 0;
+
+	/** The salts a random infusion's and a change's draws mix into the run's seed: "INFS" and "CHNG". */
+	static constexpr int32 InfusedDamageTypeSalt = 0x494E4653;
+	static constexpr int32 ChangedDamageTypeSalt = 0x43484E47;
+
+	/** The refusal for the weapon made at creation, issue #2845. */
+	static const TCHAR* CreationWeaponRefusal;
+
+	/** The row of the material a craft consumes. */
+	static FName MaterialFor(ECataclysmForgeDamageTypeCraft Craft);
+
+	/** Whether the item's base is a weapon that carries damage types: a `MaxDamageTypes` above 0 and a weapon type. */
+	static bool CarriesDamageTypes(const FCataclysmItem& Item, const UDataTable* BaseTable);
+
+	/**
+	 * The damage types designed for the weapon's type that it does not carry, in `DamageTypeNames` order; empty for an
+	 * item that is no weapon.
+	 */
+	static TArray<FName> DamageTypesOpenTo(const FCataclysmItem& Item, const UDataTable* WeaponSkillTable,
+										   const UDataTable* BaseTable);
+
+	/** The most damage types the weapon may carry, `UCataclysmDropRoll::MaxDamageTypesFor`; 0 for no weapon. */
+	static int32 MaxDamageTypesOf(const FCataclysmItem& Item, const UDataTable* WeaponSkillTable,
+								  const UDataTable* BaseTable);
+
+	/**
+	 * What one of the three crafts takes on the item. `Chosen` is the type a specific infusion adds, or the type a change
+	 * replaces; a random infusion ignores it. A random infusion's and a change's new type are drawn from a stream of
+	 * `Seed` among `DamageTypesOpenTo`.
+	 *
+	 * REFUSED for no item, a base not found, an item that is no weapon, the weapon made at creation, an infusion at the
+	 * maximum, no type left to draw, a chosen type the weapon carries already or cannot carry, a change of a type it
+	 * does not carry, no material, and too little gold.
+	 */
+	static FCataclysmForgeDamageTypeWork DamageTypeWorkOf(const FCataclysmItem& Item,
+														  ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
+														  int32 Seed, const UDataTable* WeaponSkillTable,
+														  const UDataTable* BaseTable, int32 MaterialHeld,
+														  int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What the first press of one says, before the second does it: "Press again to infuse a random damage type: one
+	 * Elemental Cinder, 450 gold, residue 40 to 50, 1 day of the run; the type is drawn among those the weapon can
+	 * take." / "Press again to infuse Death: one Sovereign Ingot, ..." / "Press again to change War to another damage
+	 * type: one Prismatic Catalyst, ...; the new type is drawn among those the weapon lacks."
+	 */
+	static FString DamageTypeQuestion(const FCataclysmForgeDamageTypeWork& Plan);
 };

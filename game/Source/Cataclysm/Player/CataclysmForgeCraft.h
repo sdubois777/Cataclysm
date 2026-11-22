@@ -233,6 +233,27 @@ public:
 											bool bConfirmedPastThreshold, FCataclysmForgeAffixChange& OutDone,
 											FString& OutMessage);
 
+	//~ The three crafts that change a weapon's damage types. Issue #47, slice F4.
+
+	/**
+	 * What one of the three crafts on the weapon at a target would take now. `Chosen` is the type a specific infusion
+	 * adds or the type a change replaces. A drawn type is drawn for the run's day (`UCataclysmForge::AffixCraftSeed` with
+	 * the craft's salt), and for day 0 of no mask with no run, when the craft itself is refused.
+	 */
+	static FCataclysmForgeDamageTypeWork DamageTypeWorkPlanFor(const UObject* WorldContext,
+															   const FCataclysmForgeTarget& Target,
+															   ECataclysmForgeDamageTypeCraft Craft, FName Chosen);
+
+	/**
+	 * Infuse or change a damage type of the weapon at a target, carried or worn: the craft's material leaves the bag,
+	 * the type the plan drew or chose is added to the weapon's list or put in the chosen type's place, the weapon
+	 * carries the craft's residue, and the days pass. Asks about the threshold as `SocketGem` does.
+	 */
+	static ECataclysmForgeResult CraftDamageType(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												 ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
+												 bool bConfirmedPastThreshold, FCataclysmForgeDamageTypeWork& OutDone,
+												 FString& OutMessage);
+
 private:
 	/**
 	 * The part `AddAffix` and `ShiftAffix` share, given a possible plan drawn for the run's day: the threshold question,
