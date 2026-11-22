@@ -100,6 +100,84 @@ Proofs:
 | GH1 | `TooltipColumnsFor` never compares, giving the slot's own text for gear too | `AHelmOnTheFloor...` and `ARingForAnEmptySlot...` |
 | GH2 | `NeedsRebuild` answers true every frame | `ThePanelIsRebuiltOnlyWhen...` |
 
+### Window D, registered as one: #2806, #2809 and this change
+
+**#2811 WAS TAKEN OUT OF WINDOW D on 2026-11-21, by the coordinating session's ruling, after it failed two tests in
+the window's first run; the three issues that passed are not held for it.** The gold session, which wrote #2811,
+diagnoses the two failures, and #2811 rides a later window. The report of that run, as sent to the coordinating
+session, is below under "The first run, with #2811".
+
+**Registered 2026-11-21** on `feat/window-d-copies-charge-hover-3`, development `3b1ae6911` plus #2806, #2809, this
+change and the renames that let them compile (below). The base is window skills-w2's measured engine log at
+`a7fadce0b`, whose `game/` equals `3b1ae6911`'s (`git diff --name-only a7fadce0b 3b1ae6911 -- game` lists nothing):
+**5094 performed, all succeeded, 48 skipped halves, 860 test saves written and deleted.** Window D adds 19 tests by
+name and removes none (`ChargeGait` 9, `GroundItemHover` 6, `PlayerCopies` 4, counted by the names in `game/Source`
+at the base and at the head), so:
+
+- **The whole suite 5094 + 19 = 5113**, all succeeding; **skipped halves 48 + 2 + 7 = 57** in a worktree (#2806's two
+  weapon-mesh halves, #2809's five creature halves and the Warden's and the Brute's clip halves); **test saves 860**,
+  none left behind (no new test writes one).
+- **Groups alone, first**, each its count in that log plus the tests added: `PlayerCopies.` 4, `ChargeGait.` 9,
+  `GroundItemHover.` 6; this change's `Tooltip.` 18, `ItemComparison.` 8, `Inventory.` 11, `InventoryScreen.` 7,
+  `HeldItem.` 5, `Equipment.` 30, `DropPickup.` 20; #2809's `Brute.` 23, `Hellhound.` 11, `Warden.` 20, `Imp.` 6,
+  `Succubus.` 10, `Gatekeeper.` 14, `Sentinel.` 6, `NowhereToRun.` 4, `AI.` 51, `EnemyModifiers.` 57; #2806's
+  `PlayerBody.` 7, `PlayerAttack.` 6, `SwingTiming.` 7, `WeaponMesh.` 10, `PlayerStats.` 14, `Death.` 30,
+  `ConsumptionDouble.` 15, `StalkerEntries.` 8, `StalkerKit.` 13. Twenty-nine groups; each count is the same in the
+  three entries' registrations where they name it. **`Imp.` alone is run a second time if its first run reports no
+  count**, by the coordinating session's ruling: in the first run its editor stopped at start-up on an engine
+  assertion (below).
+- **Python, alongside the whole Unreal suite:** no failure, no error.
+- **Six Unreal guard proofs**, after both suites end: PC1, PC2 and PT1 (#2806), CG1 (#2809), GH1 and GH2 (this
+  change), each as its entry registers it.
+
+**THE RENAMES THAT LET IT COMPILE.** The first build of window D, at `e09cbf69e` with #2811, failed on three names in
+code no build had compiled, each now renamed with no change of behaviour: the ground-hover tests' struct `FScene`
+was ambiguous with the engine's renderer `FScene` once the test's namespace was used (every other error in the file
+followed from it), now `FHoverScene`; `WearTheMannequinsBody`'s parameter `CapsuleHalfHeight` hid
+`CataclysmPlayerCharacter.cpp`'s constant of that name (C4459), now `HalfHeightCm`; and `RefreshGroundItemHover`'s local
+`Character` hid `ACharacter`'s member (C4458), now `Hoverer`.
+
+**TWO PRE-CHECKS WERE CHANGED FOR THIS WINDOW BY THE COORDINATING SESSION'S RULINGS OF 2026-11-21:**
+
+- **Free memory, at least 9,216 MB rather than 10,240, for window D only.** The owner's own programs held the rest
+  (Firefox about 4.3 GB across its processes, Discord and Steam), which are not the project's to close, and the Unreal
+  test editor has run at about 3 GB with Python alongside it before. Any sign of memory trouble in the run -- a line
+  saying memory ran out, a crash, a test timing out -- stops the window and sends the next one back to 10 GB.
+- **No workflow run in progress and no pull request open COUNT ONLY WHAT CHANGES `game/`.** They exist to stop a build
+  colliding with the window's, and a change with no file under `game/` starts no build on this machine. A run of the
+  Unreal workflow always counts, and a lookup that cannot be read counts. Pull request #2826 (three documents, nothing
+  under `game/`) was open when the first run started, and was merged during it. The rule stands for later windows
+  (`.claude/windows/run_shared.py`, item 5).
+
+### The first run, with #2811
+
+2026-11-21, under the lock window-d-w1, at `da85b7c8a` (#2806, #2809, this change and #2811 on development
+`1537dac4e`). The three compiles succeeded there with no warning or error line. Its report, as sent:
+
+- **Groups alone: 31 of 33 passed**, every count as registered but two. **The whole suite: "5116 tests performed, 5114
+  succeeded, 2 failed"**; declared 5116, gap 0; skipped halves 57 against 57 registered; test saves 860 written and
+  deleted, 0 left behind. **Python alongside: "7880 passed, 9 skipped in 414.19s"**, JUnit 7889 tests, 0 failures, 0
+  errors, 9 skipped; ruff: all checks passed. No proof was run.
+- **`Cataclysm.DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier` failed in its group alone and in the
+  suite, with the same figure both times:** "tier 1: its blow before the multiplier ... to be 348.000000, but it was
+  4450.000000". The target lost 267.0 against an attack damage of 20.9. Tiers 2 to 8 each lost exactly one blow (271.0
+  against 271.3, 640.0 against 640.4 and so on); skills-w2 measured tier 1 at 21.0, before #2811. #2811 made the test
+  move the clock (`CataclysmTestSwings::FinishTheSwingsOf`, timers only, 0.05 s steps) until the blow lands, so about
+  246 more reached the tier 1 target while the clock moved; something the tier 1 build runs on a timer is likely.
+  `RunClock` fires timers and ticks no actor, so the brain is not it. Not confirmed; it needs a run.
+- **`Cataclysm.PlayerCopies.AStalkersBlowSwingsThePlayersClipAndLandsWhenItConnects` failed in the whole suite only;
+  alone it passed (1 of 1), and so did its group of seven.** "its second blow: its blow plays the Mannequin's
+  MM_Attack_02 ... but it was MM_Attack_03" (`CataclysmPlayerCopiesTests.cpp` line 484); the first blow's checks
+  passed. The clip index moves only inside `PlayTheMannequinsSwing`, for each character, so either the swing step ran
+  once more between the two blows or the clip list lacked `MM_Attack_02` in that run. Which is not known; it depends on
+  what ran before it in the suite.
+- **`Cataclysm.Imp.` alone: the editor stopped at start-up, before any test ran,** on "Assertion failed: TableTag
+  [... EditorDataStorage\TedsCore\Private\TableManager.cpp] [Line: 353]" at frame 0, with `peak_used_virtual_mb`
+  1963: an engine plugin's assertion, not this project's code. All six `Imp.` tests passed in the whole suite.
+- **Memory:** the suite's `CataclysmTestMemorySummary` read `peak_used_virtual_mb=9353`, against 9155 in skills-w2 with
+  22 fewer tests; no line saying memory ran out and no crash in the suite; the only "timed out" lines are the editor's
+  web check of `google.com/generate_204`. So the 9,216 MB ruling was not reverted.
+
 ---
 
 ## 2026-11-21 — A charging creature reports its charge's velocity, so it runs through a charge instead of sliding in its idle, and the Abyssal Warden plays Stampede through the run (#2809)
