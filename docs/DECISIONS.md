@@ -1811,7 +1811,8 @@ refusal reasons, which landed after this slice was written. In each conflict thi
 except in `tools/tests/test_empire_tree_gold_held.py`, where the check that no node waits on a ruling was kept and now
 holds Global Credit and Sovereign Loans to "gold debt" and no node to "gold rules". `python tools/check_resolved_cpp.py
 --changed`: "9 files read, 0 with complaints". `python tools/generate_datatables.py --check`: "All 33 DataTable CSVs are
-up to date."
+up to date." After #2803 merged it was rebased again, onto `b52ba76e2`, as `feat/empire-tree-6d-gold-3`; only this log
+conflicted, and the code commit's patch is unchanged by that rebase (`git patch-id --stable` 79396e188c20).
 
 ### The sweep of what this slice moves
 
@@ -1824,11 +1825,11 @@ the slice moves, `EmpireTreeTreasury.`, `Data.` and `EmpireTreeGoldHeld.`, run f
 
 ### Registered before the run
 
-Counted on the "Test Completed. Result={" lines of window tree-2803-w1's whole-suite log at `8f2491711`, with a literal
-match on `Path={Cataclysm.<Group>.`: "5086 tests performed, 5086 succeeded, 0 failed. 48 skipped part of what they
-check" and "860 written and deleted, 0 left behind". **#2803 merges before this slice, and the coordinating session's
-queue puts three more windows ahead of it, so every figure is restated from the newest measured window at this slice's
-turn.**
+Counted on the "Test Completed. Result={" lines of window tree-2803-w1's whole-suite log at `8f2491711`, whose `game/`
+is development `b52ba76e2`'s (`git diff --quiet 8f2491711 b52ba76e2 -- game/` exits 0), with a literal match on
+`Path={Cataclysm.<Group>.`: "5086 tests performed, 5086 succeeded, 0 failed. 48 skipped part of what they
+check" and "860 written and deleted, 0 left behind". **The coordinating session's queue puts three more windows ahead of
+this slice, so every figure is restated from the newest measured window at this slice's turn.**
 
 - **The whole suite: the base + 3** (5086 + 3 = 5089 against tree-2803-w1), 0 failed; 48 skipped halves and 860 test
   saves, the base's, because none of the three builds a dungeon floor or writes a save.
@@ -1855,7 +1856,10 @@ turn.**
 | C1 | the city damage factor leaves Treasury Guard out | `TreasuryGuardCompounds...`, 7 (one, two and three steps; both at 100,000 and at the caps; the run's defence and population) |
 | C4 | Tax Collection is paid every day | `TaxCollectionPays...`, 2 ("nothing on day 7" and "nothing on day 15": 80,000) |
 
-- **Python before the window**: at the rebased head, `tools/tests/test_empire_tree*.py`, `test_city_upgrade*.py`,
+- **Python before the window**: the full suite at `459c95f99`, on development `b8df7e1fe`: "1 failed, 7848 passed, 9
+  skipped in 370.42s", JUnit tests 7858, failures 1, errors 0, skipped 9; the one failure is
+  `tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  which the asset step clears. Before it, at the first rebased head, `tools/tests/test_empire_tree*.py`, `test_city_upgrade*.py`,
   `test_datatable*.py` and `test_generate_datatables.py`: 1323 tests, 1322 passed, 1 failed, JUnit tests 1323, failures
   1, errors 0, skipped 0. The one failure is the asset step's to clear, `tools/tests/test_datatable_assets_are_current.py`.
   Ruff "All checks passed!".
