@@ -54,6 +54,8 @@
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 // For a skill's level: the factor its blows get, and the health they remove credited to it. Issue #2764.
 #include "Character/CataclysmSkillLevels.h"
+// For a thrall's burn, laid only by a creature the player commands. Issue #2784.
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
@@ -848,6 +850,18 @@ namespace CataclysmSkillEffectsLevels
 	}
 
 	/**
+	 * `Instigator` when it is a creature THE PLAYER commands -- one Subjugate took, a Second Self thrall included -- and
+	 * null otherwise. Issue #2784, ruled 2026-11-22: Q1, read every blow, so it needs no field and survives a save and a
+	 * load; Q2, a taken Gatekeeper's imps are not it, their commander being the Gatekeeper (issue #2791). Subjugate is the
+	 * only way a creature comes to be commanded by the player.
+	 */
+	const ACataclysmEnemyCharacter* PlayersThrall(const AActor* Instigator)
+	{
+		const ACataclysmEnemyCharacter* Thrall = CommandedThrall(Instigator);
+		return Thrall && Cast<const ACataclysmPlayerCharacter>(UCataclysmCommand::CommanderOf(Thrall)) ? Thrall : nullptr;
+	}
+
+	/**
 	 * What a blow by `Instigator` on `Target` is multiplied by for the skill that took it as a thrall: its
 	 * `TakenLevelFactorOnCreatures`, read at the take, on a creature; 1 for everything else -- a blow that is no
 	 * commanded thrall's, and a thrall's blow on anything that is not a creature. Issue #2764, slice 2b, by the owner's
@@ -1400,8 +1414,27 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// what the blow dealt to health before a death is handled. Issue #2764, slice 1b: the credit made here, after
 		// `ApplyDirectDamage` returned, came after a killing blow's death had paid. See `RowToCredit`.
 		Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Instigator, Target, Arrived, bAShareOnAnAlly);
-		return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
-			? Sent : 0.0f;
+		FCataclysmDamageResult ThrallsOwnResult;
+		FCataclysmDamageResult* const Landed = OutResolved ? OutResolved : &ThrallsOwnResult;
+		const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Landed);
+		// AND A THRALL SETS ALIGHT WHAT IT STRIKES. Issue #2784, Subjugate's row: "...fights for you until it dies, keeps
+		// its own abilities, and sets alight what it strikes." Ruled 2026-11-22, the summoned imp's swing burn's shape
+		// (Q3): DESIGNED, so it lands whatever the blow did (#917); the flat `DoT_Burn`, SET BY THE THRALL, neither side's
+		// damage over time stats reaching it (the design document's minions table); only on a blow NOT EVADED (#1156)
+		// and NOT REFUSED as immune to its attacker; CREDITED TO THE SKILL THAT TOOK IT; and SIZED BY THAT SKILL'S LEVEL
+		// ON A CREATURE (Q4), the factor its blow took above. EVERY BLOW the thrall deals comes through here -- its swing,
+		// its charge, each target of its abilities -- but not a share struck at an ally and not a tick (Q6).
+		if (!bAShareOnAnAlly && !Arrived.bIsDamageOverTime && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker)
+		{
+			if (const ACataclysmEnemyCharacter* Thrall = CataclysmSkillEffectsLevels::PlayersThrall(Instigator))
+			{
+				ApplyBurn(Instigator, Target, Sent, /*bScalesWithInstigator=*/false, /*bBurnIsDesigned=*/true,
+						  /*DealtBy=*/Instigator, /*Skill=*/nullptr, /*SkillTagsWithNoSkill=*/nullptr,
+						  /*SkillRowWithNoSkill=*/Thrall->TakenBySkillRow,
+						  /*LevelFactor=*/CataclysmSkillEffectsLevels::ThrallsLevelFactor(Instigator, Target));
+			}
+		}
+		return bDealt ? Sent : 0.0f;
 	}
 	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled
 	// 2026-10-21, #2462), as a living trap's blow is below. A ZONE'S SWEEP NEVER REACHES HERE: it is dealt through
@@ -2763,7 +2796,9 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// 2.85 times at level 20. READ ONCE, HERE, as the applier's other stats are. Only for an effect scaled by its applier
 	// and laid on another character, as the curse above: not a spread copy, not the trap's share (a share of a blow
 	// already scaled, so no second factor), not a minion's burn, not converted damage. On a creature only, and 1 for the
-	// basic attack, which carries no row. Void Splinter is a share of health and does not come through here.
+	// basic attack, which carries no row. Void Splinter is a share of health and does not come through here. A MINION'S
+	// OR A THRALL'S BURN TAKES ITS FACTOR IN `ApplyBurn` instead, read when the minion was made or the creature taken,
+	// since issue #2784 (Q4).
 	const float SkillsLevel = bScalesWithInstigator && Instigator != Target
 		? static_cast<float>(UCataclysmSkillLevels::DamageFactorFor(Skill, SkillRowWithNoSkill, Instigator, Target))
 		: 1.0f;
@@ -3796,7 +3831,7 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 									   bool bBurnIsDesigned, AActor* DealtBy,
 									   const UGameplayAbility* Skill,
 									   const FGameplayTagContainer* SkillTagsWithNoSkill,
-									   FName SkillRowWithNoSkill)
+									   FName SkillRowWithNoSkill, float LevelFactor)
 {
 	const FCataclysmStatusEffectNumbers Burn = BurnNumbers();
 	if (!Burn.bUsable)
@@ -3854,8 +3889,10 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 	// three stats multiply on top. Burn is now 25 a second for four seconds,
 	// which is 100 before those stats. DamagePerTickAgainst still reads the
 	// percent-of-hit column, so a row stating one would work unchanged.
+	// THE LEVEL FACTOR READ ELSEWHERE, ONCE, ON THE FIGURE: a minion's or a thrall's burn, which is not scaled by its
+	// applier and so takes no factor in `ApplyDamageOverTime`. 1 for every other burn. Issue #2784 (Q4).
 	return ApplyDamageOverTime(Instigator, Target,
-							   Burn.DamagePerTickAgainst(HitDamage),
+							   Burn.DamagePerTickAgainst(HitDamage) * FMath::Max(0.0f, LevelFactor),
 							   Burn.DurationSeconds, BurnTag(),
 							   bScalesWithInstigator, DealtBy, Skill, /*DamageType=*/NAME_None,
 							   /*bIsConvertedDamage=*/false, SkillTagsWithNoSkill, SkillRowWithNoSkill);

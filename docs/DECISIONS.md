@@ -244,6 +244,113 @@ which changes nothing else), 2026-11-22, each PROVED, failing one named test wit
 
 ---
 
+## 2026-11-22 — A thrall loaded from a save keeps the skill that took it and its level factor; an older thrall is given Subjugate at level 1 (#2840)
+
+**Affects:** `FCataclysmSavedCreature::TakenBySkillRow` and `TakenLevelFactorOnCreatures`, new, and the run record at
+version 17, `UCataclysmRunSave::SchemaVersionNow` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h`);
+`Migrate_16_to_17` and its row, `SubjugateRow` (`CataclysmSaveRecords.cpp`); the save's commanded-creature block
+(`CataclysmSaveGather.cpp`) and `FCataclysmSaveApply::ThrallInto` (`CataclysmSaveApply.cpp`);
+`game/Tests/SaveFixtures/Run_v17.json`, new, and `game/Tests/SaveFixtures/README.md`;
+`CataclysmSaveFixtures::AddTheRunsVersion17Defaults`, new (`game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`).
+Tests: `Cataclysm.ThrallSave.`, three, new, one in `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp` and two in
+`CataclysmThrallSaveTests.cpp`, new; the fourteen test files that read the committed run file or run an older one
+through the chain, moved to `game/Tests/SaveFixtures/Run_v17.json` and the version 17 defaults; `tools/tests/test_a_loaded_thrall_keeps_the_skill_that_took_it.py`,
+new; `tools/tests/test_the_cleanse_city_upgrade.py`, which read the run record's version as exactly 16 and now reads it
+as 16 or later. Issue [#2840](https://github.com/sdubois777/Cataclysm/issues/2840), found while planning
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22. It rides in #2784's
+  window, which the empire tree session drives, cherry-picked onto #2784's branch after its own commits.
+- **BUILT ON THE CLEANSE'S BRANCH, NOT ON DEVELOPMENT**: this branch, `feat/thrall-save-2840`, starts at
+  `feat/city-upgrade-cleanse`'s `97fae58ae`, because the run record is at 15 on
+  development `45b33c70f` and the cleanse (#2838, in the shared gems window) takes it to 16. This change's step is 16 to
+  17 only if the cleanse lands first; the empire tree session confirms the number when it rebases.
+- **NO TEST CAN SEE A THRALL'S BLOW CREDIT SUBJUGATE OR CARRY THE FACTOR AFTER A LOAD** through `ApplyHit`: the tests hold
+  the two fields after the load and the one reader a player feels most, the reserve that falls when Subjugate levels.
+
+### What was wrong
+
+`UCataclysmSummonSkill::Possess` sets two fields on a creature it takes, read once at the take: `TakenBySkillRow`, the
+row its blows credit, and `TakenLevelFactorOnCreatures`, the level factor its blows on creatures carry. A thrall's saved
+creature kept `bCommandedByThePlayer`, `bSecondSelf`, `ReservedFervour` and `CommanderHealthMultiplier`, not these. So
+after a load a thrall's blows credited no skill and lost the factor; and, found while planning this, a THIRD EFFECT:
+`UCataclysmSkillLevels::RepriceReservesOf` lowers each thrall's Fervour reserve when its skill levels, matched by
+`TakenBySkillRow`, so a loaded thrall's reserve never fell. **That third effect is fixed by the row alone**: the row
+restored, or given by the step, is what the repricing matches.
+
+### The rulings, the coordinating session, 2026-11-22
+
+- **Q1: an older thrall gets Subjugate's row and a factor of 1.** Derived, not chosen: exactly one row of
+  `WeaponSkills.csv` takes a creature (`Demonic_Staff_Ultimate`, "Possess=1"), and the only other thrall, the Warzone
+  rule's ally, is never saved (it is raised by a rule and in none of the lists `RaisedByOf` names), so the row is
+  knowable; the level at the take was not recorded, so 1, the factor at level 1, is the one figure that never
+  overstates. (Subjugate's current level could not be read in any case: the step reads the run record, and skill
+  levels are on the character record.)
+- **Q2: a version step, `Migrate_16_to_17`.** Unlike the four thrall fields before it, which were added without a step
+  because their defaults are what an older file meant, this step writes a value that is not the default.
+- **Q3: a Python check that exactly one row takes a creature**, since Q1 rests on it, proved by a break in a copy.
+- **Q4: the burn of #2784 is not added to the round-trip test.**
+
+No formula is proposed: the change keeps two figures across a save.
+
+### The change
+
+- The saved creature declares both fields, None and 1 by default. The save writes them in the block that writes a
+  thrall's other four; `ThrallInto` writes them back beside its other four.
+- `Migrate_16_to_17` writes, on each creature of the floor, `Demonic_Staff_Ultimate` and 1 where `bCommandedByThePlayer`
+  is true, and None and 1 on every other.
+- `Run_v17.json` is `Run_v16.json` at version 17 with its thrall, the Abyssal Warden, at `Demonic_Staff_Ultimate` and
+  1.5 (a figure a float holds exactly, and not the default) and its Brute at None and 1. `Run_v16.json` is a migration
+  input now. The fourteen test files that read the committed run file read `Run_v17.json`, each comment's history
+  extended by one line; the eleven chain tests add `AddTheRunsVersion17Defaults`.
+
+### Tests
+
+`Cataclysm.ThrallSave.`, three, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad` | a Brute taken by the player and given Subjugate's row and level 10's factor, 0.72028, saved by the writer and loaded by `CharacterAndRun`: the same row and factor; CONTROL: the creature beside it, None and 1 |
+| `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne` | `Run_v16.json` migrates: its thrall `Demonic_Staff_Ultimate` and 1, its Brute None and 1; CONTROL: `Run_v17.json` is read, not migrated, its thrall at 1.5 |
+| `ALoadedThrallsReserveFallsWhenSubjugateLevels` | two thralls restored by `CreatureInto` and `ThrallInto`, each holding 30: at Subjugate's level 10 the one saved with Subjugate's row holds 30 x 0.72028; CONTROL: the one saved with none keeps 30 |
+
+Python: `test_a_loaded_thrall_keeps_the_skill_that_took_it.py`, five checks: the one row that takes; the fields both
+ways; the step and the version; the committed file against the previous one; and every chain test adding the step.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log, by the empire tree session, which drives
+#2784's window. As written, on this branch:
+
+- **The whole suite: the base + 3**, the three new tests; skipped halves and test saves unchanged (the round-trip test's
+  save slot is deleted, as the thrall test beside it deletes its own).
+- **The run record moves to 17** (the record version check wants run 17). No editor step.
+- **Groups alone, first**, name-literal counts on this branch: `ThrallSave.` 3 (new); `SaveLoad.` 81, `SaveRecords.` 17,
+  `CityCleanseSave.` 1, `CityUpgradeBuildSave.` 2, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3,
+  `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `GemSave.` 2,
+  `Gold.` 13, `Seeding.` 3, `WalkSeed.` 5 and `WinningTheRun.` 11 (the fourteen files whose pins move); `LevelCosts.`
+  4 and `SecondSelf.` 6 (the repricing and the Second Self, both reading thralls).
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch: "2 failed, 8097
+  passed, 10 skipped in 331.67s", JUnit 8109 tests, 2 failures, 0 errors, 10 skipped. One failure was this entry's: its
+  Affects paragraph named `Run_v17.json` without its path, now corrected, and the 97 files that read this log then gave
+  "3654 passed, 1 skipped". The other, `test_datatable_assets_are_current.py` on `CityUpgrades.csv`, is the cleanse
+  branch's own: this branch changes neither that file nor any asset, and the cleanse's window rebuilds it. ruff: "All
+  checks passed!".
+- **The Python guard proof, PROVED**, run with `tools/prove_guard.py` in a copy of the committed tree: Summon Imp's row
+  (`Demonic_Staff_Special`) given "Possess=1": "PROVED: 1 failed, 4 passed | restored: 5 passed", the one named
+  failure `test_exactly_one_skill_row_takes_a_creature`.
+- **Three Unreal guard proofs**, each narrowed to `Cataclysm.ThrallSave.` (3):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| R1 | the save does not write `TakenBySkillRow` | 2 succeeded, 1 failed: `AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`, on "still names Subjugate" |
+| R2 | `ThrallInto` does not write the row back | 1 succeeded, 2 failed: the round-trip test, on "still names Subjugate", and `ALoadedThrallsReserveFallsWhenSubjugateLevels`, on "names Subjugate" and "falls to 21.6" |
+| R3 | `Migrate_16_to_17` writes None on a thrall | 2 succeeded, 1 failed: `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`, on "given Subjugate's row" |
+
+---
+
 ## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
 
 **Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
@@ -346,6 +453,165 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
   and run again ("8086 passed, 10 skipped in 411.88s") before the commit.
 - **Not seen by any test**: the tooltip and the ground panel on the screen (-nullrhi, issue #650). The owner checks
   those in play.
+
+---
+
+## 2026-11-22 — A thrall sets alight what it strikes, and a minion's or a thrall's burn grows with its skill's level: a burn is flat, not a share of the blow, so a minion's took no level factor at all (#2784)
+
+**Affects:** `UCataclysmSkillEffects::ApplyHit`, `ApplyBurn` (its new `LevelFactor`) and
+`CataclysmSkillEffectsLevels::PlayersThrall`, with one new include, `Character/CataclysmPlayerCharacter.h`
+(`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp`); the imp's two burns, its swing's and its
+explosion's, in `ACataclysmMinion` (`CataclysmMinion.cpp`); `docs/Cataclysm_GDD_v2.md`, the skill table's Subjugate row,
+"WHAT EARNS A SKILL EXPERIENCE" and the skill level rules' "Its ailments and minions" row. Tests: `Cataclysm.ThrallBurn.`,
+5, in `game/Source/Cataclysm/Tests/CataclysmSkillLevelSourcesTests.cpp`; `tools/tests/test_thrall_burn.py`, new. Issue
+[#2784](https://github.com/sdubois777/Cataclysm/issues/2784); [#2840](https://github.com/sdubois777/Cataclysm/issues/2840)
+filed from it.
+
+### SAID FIRST
+
+- **COMPILED AND TESTED IN WINDOW tree-2784-w1, WHICH PASSED**, with #2840 riding; recorded at the end of this entry.
+- **THE IMP'S BURN WAS WRONG BEFORE THIS, AND THE DESIGN DOCUMENT SAID IT WAS RIGHT.** The owner's answer of 2026-11-19
+  (the skill levels entry below) says burns and minions "scale too", up to 2.85 times at level 20, and names Summon Imp:
+  "Without this, Summon Imp levels up but its imps never hit harder because of it." Slice 2b left the imp's burn out of
+  the level factor on the ground that it was "a share of the blow just dealt, which already carries the level factor".
+  It is not: `DoT_Burn` in `game/Data/StatusEffects.csv` is flat, 25 a second for 4 seconds, with a percent of the hit of
+  nought. So the imp's burn ignored Summon Imp's level. The design document's level rules said the same of "a burn a
+  minion's blow sets"; they are corrected, as are the imp's two comments.
+- **#2784'S OWN TEXT RESTED ON THE SAME PREMISE**: "the burn ... carries the thrall's level factor no second time, by
+  slice 2b's rule for a figure taken from a scaled blow". The burn takes the factor once, itself, because nothing else
+  gives it one.
+- **A THRALL LOADED FROM A SAVE LOSES ITS BURN'S FACTOR AND CREDIT**, as it already loses its blows': `TakenBySkillRow` and
+  `TakenLevelFactorOnCreatures` are not saved. Filed as #2840 by the ruling (Q5); not built here.
+
+### The rulings, the coordinating session's of 2026-11-22
+
+| Ruling | What | Kind |
+|---|---|---|
+| Q1 | A thrall is a creature whose commander is the player, read every blow: no new field, no save version | ruled |
+| Q2 | A taken Gatekeeper's imps, whose commander is the Gatekeeper (#2791), set nothing alight | ruled |
+| Q3 | The summoned imp's swing burn's shape: designed (#917); the flat `DoT_Burn`, set by the thrall; neither side's damage over time stats (the design document's minions table: a minion does not take its summoner's "damage over time"); only on a blow not evaded (#1156) and not refused as immune to its attacker; credited to the skill that took it | derived |
+| Q4 | The level factor NOW, on the thrall's burn and on the imp's: from the owner's answer of 2026-11-19, "Yes, they scale too". The basic attack's ailments are left as they are | derived |
+| Q5 | The save gap filed as its own issue, #2840 | ruled |
+| Q6 | Every blow the thrall deals through `ApplyHit`, but not a share struck at an ally and not a tick | ruled |
+
+**Genre, fetched 2026-11-22, and thin.** poedb.tw/us/Ignite: ignite "Deals Base Fire Damage per second" and its "Base
+duration is 4 seconds". No page read verbatim said whose modifiers scale a minion's ignite (poedb.tw/us/Minion), and
+maxroll's Last Epoch ailment and minion pages returned 404. The rule this follows is the design document's own minions
+table, recorded there from earlier research, and the owner's answer for the level.
+
+**"Sets alight" is one thing in this game**: the burn, `DoT_Burn`, laid by `ApplyBurn` or by the "Burn" ailment kind's
+chance (`burn_chance`) on a landed blow. There is no separate ignite. A thrall's own chances still roll as they did; both
+lay the same single burn, which refreshes.
+
+### The change
+
+- **The thrall's burn.** `ApplyHit`'s branch for a blow that is no gadget's or trap's -- the one a thrall's swing, charge
+  and abilities take -- keeps the blow's result and, for a landed blow that is no share on an ally and no tick, by a
+  creature `PlayersThrall` finds (one whose commander is an `ACataclysmPlayerCharacter`), calls
+  `ApplyBurn(thrall, target, sent, unscaled, designed, dealt by the thrall, row = TakenBySkillRow, factor =
+  ThrallsLevelFactor)`: the imp's call, with the taker's row and the factor its blow took, on a creature.
+- **The factor.** `ApplyBurn(..., float LevelFactor = 1.0f)` multiplies the burn's figure by it, never below nought, for a
+  burn not scaled by its applier; a burn scaled by its applier still takes its skill's factor in `ApplyDamageOverTime`.
+- **The imp.** Its swing's burn and its explosion's burn pass `LevelFactorOnCreatures` on a creature. The explosion's burn
+  still credits nothing, as the explosion does. Both are "the imp's burn" in this reading of Q4, the explosion's damage
+  already carrying the same factor ("scaling follows the figure", ruled 2026-11-20); the report says so.
+- **No workbook, asset or save version moves.**
+
+### The tests
+
+- **Unreal, `Cataclysm.ThrallBurn.`, 5**, beside the slice 2b tests whose helpers they use:
+  1. `ATakenCreatureSetsAlightWhatItStrikes`: 25 a tick; THE CONTROL, a creature nobody took, its blow dealt, none;
+  2. `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`: 25 at level 1 (the control) and 25 x 1.0567 squared at 3,
+     both crediting Subjugate;
+  3. `AnEvadedBlowSetsNothingAlight`, against 100 evasion, with the same thrall's landed blow as the control;
+  4. `ACreatureATakenCreatureCommandsSetsNothingAlight`, the Gatekeeper's `SetOwner(this)` shape, with the thrall's own
+     blow as the control;
+  5. `AnImpsBurnGrowsWithSummonImpsLevel`: the swing's and the explosion's burns, 25 at level 1 and 25 x 1.0567 squared
+     at 3; the swing's credits Summon Imp, the explosion's nothing.
+  Each striker's own burn chance is set to nought, so only the burn built here can appear.
+- **The sweep for figures this moves.** No damage over time ticks when it is laid (`bExecutePeriodicEffectOnApplication`
+  is false), so a figure moves only where a test lets time pass after a thrall's or a levelled imp's blow. Of the 22 test
+  files that take a creature, a search found a world tick in four (`CataclysmDungeonGameModeTests.cpp`,
+  `CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmEnemyBehaviourTests.cpp`, `CataclysmSaveLoadTests.cpp`), and a
+  search of each test's own text in those and eight more found none that both takes a creature and lets time pass. A
+  SEARCH, NOT A READING: a tick made through a helper with another name would not be found. The imp tests at a
+  raised Summon Imp level (`ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel`, the explosion test) read the
+  immediate blow and its credit. So no existing figure is expected to move; the window's whole suite is the check.
+- **Python:** `tools/tests/test_thrall_burn.py`, 5 checks: the call after a landed blow with its arguments; the player
+  as commander; the factor in `ApplyBurn`; both imp burns' factors; and a sweep that every burn laid unscaled by its
+  applier names a factor (three today).
+
+### Python guard proofs, PB1 to PB6, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree at `6300cddc3`, running
+`tools/tests/test_thrall_burn.py`; each failed the named test with the break in and passed 5 of 5 restored.
+`.claude/windows/prove_2784_python.py` holds the breaks.
+
+| Proof | The break | Failed |
+|---|---|---|
+| PB1 | `ApplyHit` lays no burn for a thrall | the call check and the sweep (2) |
+| PB2 | any commanded creature burns | the player check |
+| PB3 | `ApplyBurn` ignores the factor | the factor check |
+| PB4 | the imp's explosion burn passes 1 | the imp check |
+| PB5 | the imp's explosion burn names no factor | the imp check and the sweep (2) |
+| PB6 | a blow refused as immune to its attacker still burns | the call check |
+
+### Python before its window
+
+The full suite on `6300cddc3`, in a git worktree of it: "8092 passed, 9 skipped in 400.77s"; JUnit 8101 tests, 0
+failures, 0 errors, 9 skipped. ruff: "All checks passed!" on `tools/tests/test_thrall_burn.py`. No CSV changed, so the
+asset check passes.
+
+### C++ guard proofs planned, one for each new Unreal test
+
+In `.claude/windows/prove_2784_table.py.txt`, each narrowed to `Cataclysm.ThrallBurn.` (5) with its trailing dot, every
+anchor checked to occur once on the LF text. Predictions reasoned from the code; none has run.
+
+| Proof | The break | Predicted |
+|---|---|---|
+| TP1 | `ApplyHit` lays no burn for a thrall | 1, 4: TB1, TB2, TB3's control, TB4's control; TB5 holds |
+| TP2 | the thrall's burn passes a factor of 1 | 4, 1: TB2 (the level 3 burn ticks 25) |
+| TP3 | an evaded blow burns | 4, 1: TB3 |
+| TP4 | any commanded creature burns | 4, 1: TB4 |
+| TP5 | the imp's explosion burn passes a factor of 1 | 4, 1: TB5 (the level 3 explosion burn ticks 25) |
+
+
+### Window tree-2784-w1: PASSED, 5252 of 5252, and 8 of 8 C++ proofs
+
+On development `4a7aaac4e` (the shared window, #2842, merged): this entry's two commits, then #2840's `58c145e64` and
+`8d837787b`, riding by the coordinating session's ruling, as `feat/thrall-burn-2784-2` at `4d029f3bd`. The run record
+was 16 on `4a7aaac4e` and is 17 at the head. Both `docs/DECISIONS.md` conflicts were resolved by inserting each entry
+whole into development's log in the order each was first written; outside that file, each carried change's added and
+removed lines are identical to its original. #1267 arrived after the registration and did not ride.
+
+**The compiles**: the branch "Build: Succeeded - 73 actions, 66 files compiled", each changed file alone "42 actions, 39
+files compiled", the unity files again "19 actions, 16 files compiled", 0 compiler warning or error lines in each.
+
+**The window**, no asset step (no CSV changed), registered from window shared-w1's measured log
+(`sw_suite_engine_17c735d2.log`, at development's `game/` tree `3237ce11d`: "5244 tests performed", "860 written and
+deleted, 0 left behind"):
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 29, 368 tests: `ThrallBurn.` 5 and `ThrallSave.` 3 new, and the groups both changes reach | 29 of 29 |
+| Whole suite | 5252: 5244, this change's 5 and #2840's 3 | "5252 tests performed, 5252 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5252 | "5252 tests in the tree at 4d029f3bd; 5252 performed, gap 0" |
+| Record versions | run 17, character 14, account 7 | "26 lines stating a version; NO MISMATCH" |
+| Python, beside it | | "8133 passed, 10 skipped"; JUnit 8143, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+
+**No existing figure moved**, as the sweep for figures expected: the whole suite passed at its registered total.
+
+**8 C++ proofs, all PROVED**, each failing exactly the tests predicted with the break in and passing restored: TP1, 4 of
+5 (`ATakenCreatureSetsAlightWhatItStrikes`, `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`,
+`AnEvadedBlowSetsNothingAlight`, `ACreatureATakenCreatureCommandsSetsNothingAlight`); TP2, `TheThrallsBurnCredits...`;
+TP3, `AnEvadedBlow...`; TP4, `ACreatureATakenCreatureCommands...`; TP5, `AnImpsBurnGrowsWithSummonImpsLevel`; and #2840's
+R1 to R3, run as TS1 to TS3 with anchors written from its commit to its entry's words: TS1,
+`AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`; TS2, that and
+`ALoadedThrallsReserveFallsWhenSubjugateLevels`; TS3, `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`. TB3's
+set-up assertion that 100 evasion evades held: the evade was not capped.
 
 ---
 

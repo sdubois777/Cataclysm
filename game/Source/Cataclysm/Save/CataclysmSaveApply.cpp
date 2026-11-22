@@ -462,6 +462,10 @@ bool FCataclysmSaveApply::ThrallInto(ACataclysmEnemyCharacter& Creature, const F
 	}
 	Creature.bIsSecondSelf = Saved.bSecondSelf;
 	Creature.ReservedFervour = Saved.ReservedFervour;
+	// AND THE SKILL THAT TOOK IT, as `UCataclysmSummonSkill::Possess` set them at the take (issue #2840): the row its
+	// blows credit and its reserve follows, and the level factor its blows on creatures carry.
+	Creature.TakenBySkillRow = Saved.TakenBySkillRow;
+	Creature.TakenLevelFactorOnCreatures = Saved.TakenLevelFactorOnCreatures;
 
 	// THE MULTIPLIER, SO A LATER `ApplyStartingAttributes` KEEPS IT; that call rewrites the maximum and the health,
 	// so the saved figures are written back after it.

@@ -1163,4 +1163,358 @@ bool FCataclysmSkillLevelSourcesCapExplosionTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// Issue #2784: a thrall sets alight what it strikes, and a minion's burn grows with its skill's level.
+// ==========================================================================
+
+namespace CataclysmThrallBurnTest
+{
+	using namespace CataclysmSkillLevelSourcesTest;
+
+	/** The burn running on `Creature`: its figure a tick, -1 when there is none, and the row it credits. */
+	struct FBurnOn
+	{
+		float PerTick = -1.0f;
+		FName Row;
+	};
+
+	FBurnOn BurnOn(ACataclysmEnemyCharacter* Creature)
+	{
+		const FActiveGameplayEffect* Running = SourcesRunning(Creature, UCataclysmSkillEffects::BurnTag());
+		FBurnOn Out;
+		Out.PerTick = SourcesPerTickOf(Running);
+		Out.Row = SourcesRowOf(Running);
+		return Out;
+	}
+
+	/** A creature at `Where` that strikes as `SourcesCreatureToTake`'s does, with no chance of its own to burn. */
+	ACataclysmEnemyCharacter* Striker(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made = SourcesCreatureToTake(World, Where);
+		if (Made)
+		{
+			Made->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBurnChanceAttribute(),
+																	  0.0f);
+		}
+		return Made;
+	}
+
+	/** The burn's figure a tick at level 1: `DoT_Burn`'s flat 25 a second, at the one-second base tick. */
+	constexpr float BurnAtLevelOne = 25.0f;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// TB1. A creature the player took sets alight what it strikes; the same creature not taken does not.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurnStrikeTest,
+	"Cataclysm.ThrallBurn.ATakenCreatureSetsAlightWhatItStrikes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Subjugate's row: "...fights for you until it dies, keeps its own abilities, and sets alight what it strikes." Issue
+ * #2784, ruled 2026-11-22 (Q3). A creature taken by the Staff's own Subjugate at level 1, as
+ * `Cataclysm.SkillLevelSources.AThrallsBlowCreditsSubjugateAndIsScaledByItsLevel` takes one, strikes a creature: it
+ * burns, at 25 a tick. THE CONTROL: a creature of the same figures that nobody took strikes another, its blow dealt, and
+ * nothing burns. Neither striker has a chance of its own to burn. Prints "THRALL BURN".
+ */
+bool FCataclysmThrallBurnStrikeTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallBurnTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSubjugate) : nullptr;
+	ACataclysmEnemyCharacter* Taken = Striker(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded creature"), Take && Taken)
+		|| !TestTrue(TEXT("set-up: Subjugate takes it"), Take->Possess()))
+	{
+		return false;
+	}
+	// THE OTHERS ONLY NOW, past the skill's 15 m, so the take had one enemy within range to choose.
+	ACataclysmEnemyCharacter* Free = Striker(World, FVector(40.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByTaken = SourcesStruckCreature(World, FVector(60.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByFree = SourcesStruckCreature(World, FVector(80.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a creature nobody took, and two to strike"), Free && StruckByTaken && StruckByFree))
+	{
+		return false;
+	}
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const float TookByTaken = SourcesBlowFrom(Taken, StruckByTaken);
+	const float TookByFree = SourcesBlowFrom(Free, StruckByFree);
+	const FBurnOn Burning = BurnOn(StruckByTaken);
+	const FBurnOn NotBurning = BurnOn(StruckByFree);
+	AddInfo(FString::Printf(TEXT("THRALL BURN: the taken creature's blow took %.3f and left a burn of %.3f a tick; the "
+								 "free creature's took %.3f and left %.3f"),
+							TookByTaken, Burning.PerTick, TookByFree, NotBurning.PerTick));
+
+	TestTrue(TEXT("set-up: the taken creature is commanded by the player"),
+			 UCataclysmCommand::CommanderOf(Taken) == Player.Character);
+	TestTrue(TEXT("set-up: both blows were dealt"), TookByTaken > 0.0f && TookByFree > 0.0f);
+	TestEqual(TEXT("THE TAKEN CREATURE'S BLOW SETS ITS TARGET ALIGHT, AT 25 A TICK"), Burning.PerTick, BurnAtLevelOne,
+			  1.0e-3f);
+	TestEqual(TEXT("CONTROL: THE FREE CREATURE'S BLOW SETS NOTHING ALIGHT"), NotBurning.PerTick, -1.0f);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// TB2. A thrall's burn credits Subjugate and grows with the level it was taken at.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurnLevelTest,
+	"Cataclysm.ThrallBurn.TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2784, ruled 2026-11-22 (Q4) from the owner's answer of 2026-11-19, "Yes, they scale too": the burn a thrall
+ * lays credits the skill that took it and is multiplied by the factor its blow takes, read at the take. One creature is
+ * taken at level 1 and, with Subjugate raised to level 3, another; each strikes a creature of its own. The level 1
+ * thrall's burn ticks 25 (THE CONTROL) and the level 3 thrall's 25 times 1.0567 squared; both credit Subjugate. Prints
+ * "THRALL BURN LEVEL".
+ */
+bool FCataclysmThrallBurnLevelTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallBurnTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSubjugate) : nullptr;
+	ACataclysmEnemyCharacter* TakenAtOne = Striker(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded creature"),
+				  Take && TakenAtOne)
+		|| !TestTrue(TEXT("set-up: Subjugate takes the first creature at level 1"), Take->Possess()))
+	{
+		return false;
+	}
+	Player.State->SetSkillExperience(SourcesSubjugate, Levels::ExperienceToReach(3));
+	ACataclysmEnemyCharacter* TakenAtThree = Striker(World, FVector(0.0f, 3.0f * SourcesM, 0.0f));
+	if (!TestTrue(TEXT("set-up: Subjugate takes the second creature at level 3"), TakenAtThree && Take->Possess()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* StruckByOne = SourcesStruckCreature(World, FVector(40.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByThree = SourcesStruckCreature(World, FVector(60.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: two creatures to strike"), StruckByOne && StruckByThree))
+	{
+		return false;
+	}
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	SourcesBlowFrom(TakenAtOne, StruckByOne);
+	SourcesBlowFrom(TakenAtThree, StruckByThree);
+	const FBurnOn AtOne = BurnOn(StruckByOne);
+	const FBurnOn AtThree = BurnOn(StruckByThree);
+	const float Factor = static_cast<float>(Levels::DamageFactor(3));
+	AddInfo(FString::Printf(TEXT("THRALL BURN LEVEL: factors %.4f and %.4f; burns %.4f and %.4f a tick (x%.4f); rows %s "
+								 "and %s"),
+							TakenAtOne->TakenLevelFactorOnCreatures, TakenAtThree->TakenLevelFactorOnCreatures,
+							AtOne.PerTick, AtThree.PerTick, AtOne.PerTick > 0.0f ? AtThree.PerTick / AtOne.PerTick : 0.0f,
+							*AtOne.Row.ToString(), *AtThree.Row.ToString()));
+
+	TestEqual(TEXT("CONTROL: THE LEVEL 1 THRALL'S BURN TICKS 25"), AtOne.PerTick, BurnAtLevelOne, 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 3 THRALL'S TICKS 25 TIMES 1.0567 SQUARED"), AtThree.PerTick, BurnAtLevelOne * Factor, 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 1 THRALL'S BURN CREDITS SUBJUGATE"), AtOne.Row, SourcesSubjugate);
+	TestEqual(TEXT("AND THE LEVEL 3 THRALL'S"), AtThree.Row, SourcesSubjugate);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// TB3. An evaded blow sets nothing alight.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurnEvadedTest,
+	"Cataclysm.ThrallBurn.AnEvadedBlowSetsNothingAlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2784 (Q3), the imp's swing's rule (#1156): only a blow that was not evaded sets anything alight. A thrall
+ * strikes a creature with 100 evasion, and the blow is evaded: nothing burns. THE CONTROL: the same thrall strikes a
+ * creature with none, and it burns. Prints "EVADED".
+ */
+bool FCataclysmThrallBurnEvadedTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallBurnTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSubjugate) : nullptr;
+	ACataclysmEnemyCharacter* Taken = Striker(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded creature"), Take && Taken)
+		|| !TestTrue(TEXT("set-up: Subjugate takes it"), Take->Possess()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Evading = SourcesStruckCreature(World, FVector(40.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Plain = SourcesStruckCreature(World, FVector(60.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: two creatures to strike"), Evading && Plain))
+	{
+		return false;
+	}
+	Evading->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(),
+																 100.0f);
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	FCataclysmDamageResult Evaded;
+	UCataclysmSkillEffects::ApplyHit(Taken, Evading, 100.0f, FGameplayTagContainer(), FCataclysmHitDelivery(), &Evaded);
+	FCataclysmDamageResult Landed;
+	UCataclysmSkillEffects::ApplyHit(Taken, Plain, 100.0f, FGameplayTagContainer(), FCataclysmHitDelivery(), &Landed);
+	const FBurnOn OnEvading = BurnOn(Evading);
+	const FBurnOn OnPlain = BurnOn(Plain);
+	AddInfo(FString::Printf(TEXT("EVADED: evaded %d, burn %.3f; landed %d, burn %.3f"), Evaded.bEvaded ? 1 : 0,
+							OnEvading.PerTick, Landed.bEvaded ? 0 : 1, OnPlain.PerTick));
+
+	TestTrue(TEXT("set-up: the blow on the creature with 100 evasion was evaded"), Evaded.bEvaded);
+	TestFalse(TEXT("set-up: the blow on the plain creature was not"), Landed.bEvaded);
+	TestEqual(TEXT("AN EVADED BLOW SETS NOTHING ALIGHT"), OnEvading.PerTick, -1.0f);
+	TestEqual(TEXT("CONTROL: THE SAME THRALL'S LANDED BLOW DOES"), OnPlain.PerTick, BurnAtLevelOne, 1.0e-3f);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// TB4. A creature a taken creature commands -- as a taken Gatekeeper's imp is -- sets nothing alight.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurnCommandedByAThrallTest,
+	"Cataclysm.ThrallBurn.ACreatureATakenCreatureCommandsSetsNothingAlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2784, ruled 2026-11-22 (Q2): the sentence's "it" is the creature taken, and a taken Gatekeeper's imps are its
+ * ability's summons. The Gatekeeper gives each imp it makes while taken an owner, itself (`Imp->SetOwner(this)`, issue
+ * #2791), so the imp's commander is the Gatekeeper and not the player. This gives a creature the same owner, a taken
+ * creature, and has it strike: nothing burns. THE CONTROL: the taken creature's own blow sets its target alight.
+ * Prints "COMMANDED BY A THRALL".
+ */
+bool FCataclysmThrallBurnCommandedByAThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallBurnTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Take = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSubjugate) : nullptr;
+	ACataclysmEnemyCharacter* Taken = Striker(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Subjugate, and a wounded creature"), Take && Taken)
+		|| !TestTrue(TEXT("set-up: Subjugate takes it"), Take->Possess()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* ItsOwn = Striker(World, FVector(40.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByItsOwn = SourcesStruckCreature(World, FVector(60.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* StruckByTaken = SourcesStruckCreature(World, FVector(80.0f * SourcesM, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: a creature for the taken one to command, and two to strike"),
+				  ItsOwn && StruckByItsOwn && StruckByTaken))
+	{
+		return false;
+	}
+	ItsOwn->SetOwner(Taken);
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	const float TookByItsOwn = SourcesBlowFrom(ItsOwn, StruckByItsOwn);
+	SourcesBlowFrom(Taken, StruckByTaken);
+	const FBurnOn ByItsOwn = BurnOn(StruckByItsOwn);
+	const FBurnOn ByTaken = BurnOn(StruckByTaken);
+	AddInfo(FString::Printf(TEXT("COMMANDED BY A THRALL: its creature's blow took %.3f, burn %.3f; the thrall's burn %.3f"),
+							TookByItsOwn, ByItsOwn.PerTick, ByTaken.PerTick));
+
+	TestTrue(TEXT("set-up: the creature's commander is the taken creature"),
+			 UCataclysmCommand::CommanderOf(ItsOwn) == Taken);
+	TestTrue(TEXT("set-up: its blow was dealt"), TookByItsOwn > 0.0f);
+	TestEqual(TEXT("A CREATURE A TAKEN CREATURE COMMANDS SETS NOTHING ALIGHT"), ByItsOwn.PerTick, -1.0f);
+	TestEqual(TEXT("CONTROL: THE TAKEN CREATURE'S OWN BLOW DOES"), ByTaken.PerTick, BurnAtLevelOne, 1.0e-3f);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// TB5. A Summon Imp imp's burn grows with the level it was summoned at, from its swing and from its explosion.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallBurnImpTest,
+	"Cataclysm.ThrallBurn.AnImpsBurnGrowsWithSummonImpsLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2784, ruled 2026-11-22 (Q4) from the owner's answer of 2026-11-19 ("Without this, Summon Imp levels up but its
+ * imps never hit harder because of it"): the burn an imp's swing lays, and the burn its explosion lays, are multiplied
+ * by the level factor the imp was summoned with. They took none until this, because a burn is flat. One imp is
+ * summoned at level 1 and, with Summon Imp raised to level 3, another. Each swings at a creature of its own, then
+ * explodes beside another. At level 1 both burns tick 25 (THE CONTROL); at level 3 both tick 25 times 1.0567 squared.
+ * The swing's burn credits Summon Imp, and the explosion's credits nothing, as the explosion does. Prints "IMP BURN".
+ */
+bool FCataclysmThrallBurnImpTest::RunTest(const FString&)
+{
+	using namespace CataclysmThrallBurnTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FSourcesPlayer Player = SourcesStaffPlayerIn(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Summon = Player.IsUsable() ? SourcesSummonSkillOfRow(Player.Abilities, SourcesSummonImp) : nullptr;
+	// TWO TO SWING AT, 3 AND 6 M OUT AS `ASummonedImpsBlowCreditsSummonImpAndIsScaledByItsLevel` PLACES ITS OWN, and TWO
+	// 30 M OUT the other way to explode beside, past the 3 m of each explosion from the creatures the swings struck.
+	ACataclysmEnemyCharacter* SwungAtByOne = SourcesStruckCreature(World, FVector(3.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* SwungAtByThree = SourcesStruckCreature(World, FVector(6.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideOne = SourcesStruckCreature(World, FVector(-30.0f * SourcesM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* BesideThree = SourcesStruckCreature(World, FVector(0.0f, -30.0f * SourcesM, 0.0f));
+	if (!TestTrue(TEXT("set-up: a possessed player holding the Staff's Summon Imp, and four creatures"),
+				  Summon && SwungAtByOne && SwungAtByThree && BesideOne && BesideThree))
+	{
+		return false;
+	}
+	ACataclysmMinion* AtOne = Summon->SummonOne();
+	Player.State->SetSkillExperience(SourcesSummonImp, Levels::ExperienceToReach(3));
+	ACataclysmMinion* AtThree = Summon->SummonOne();
+	if (!TestTrue(TEXT("set-up: an imp summoned at level 1, and one at level 3, both burning what they hit"),
+				  AtOne && AtThree && AtOne->bBurnsWhatItHits && AtThree->bBurnsWhatItHits))
+	{
+		return false;
+	}
+	SourcesSwingOf(AtOne, SwungAtByOne);
+	SourcesSwingOf(AtThree, SwungAtByThree);
+	AtOne->SetActorLocation(FVector(-29.0f * SourcesM, 0.0f, 0.0f));
+	AtOne->Explode();
+	AtThree->SetActorLocation(FVector(0.0f, -29.0f * SourcesM, 0.0f));
+	AtThree->Explode();
+	const FBurnOn SwingAtOne = BurnOn(SwungAtByOne);
+	const FBurnOn SwingAtThree = BurnOn(SwungAtByThree);
+	const FBurnOn BlastAtOne = BurnOn(BesideOne);
+	const FBurnOn BlastAtThree = BurnOn(BesideThree);
+	const float Factor = static_cast<float>(Levels::DamageFactor(3));
+	AddInfo(FString::Printf(TEXT("IMP BURN: factors %.4f and %.4f; swing burns %.4f and %.4f, rows %s and %s; explosion "
+								 "burns %.4f and %.4f, rows %s and %s"),
+							AtOne->LevelFactorOnCreatures, AtThree->LevelFactorOnCreatures, SwingAtOne.PerTick,
+							SwingAtThree.PerTick, *SwingAtOne.Row.ToString(), *SwingAtThree.Row.ToString(),
+							BlastAtOne.PerTick, BlastAtThree.PerTick, *BlastAtOne.Row.ToString(),
+							*BlastAtThree.Row.ToString()));
+
+	TestEqual(TEXT("CONTROL: THE LEVEL 1 IMP'S SWING BURN TICKS 25"), SwingAtOne.PerTick, BurnAtLevelOne, 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 3 IMP'S TICKS 25 TIMES 1.0567 SQUARED"), SwingAtThree.PerTick, BurnAtLevelOne * Factor,
+			  1.0e-3f);
+	TestEqual(TEXT("THE SWING'S BURN CREDITS SUMMON IMP"), SwingAtThree.Row, SourcesSummonImp);
+	TestEqual(TEXT("CONTROL: THE LEVEL 1 IMP'S EXPLOSION BURN TICKS 25"), BlastAtOne.PerTick, BurnAtLevelOne, 1.0e-3f);
+	TestEqual(TEXT("THE LEVEL 3 IMP'S EXPLOSION BURN TICKS 25 TIMES 1.0567 SQUARED"), BlastAtThree.PerTick,
+			  BurnAtLevelOne * Factor, 1.0e-3f);
+	TestTrue(TEXT("AND THE EXPLOSION'S BURN CREDITS NOTHING"), BlastAtThree.Row.IsNone());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
