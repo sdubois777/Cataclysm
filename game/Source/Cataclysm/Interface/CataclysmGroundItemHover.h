@@ -25,6 +25,8 @@ enum class ECataclysmGroundHover : uint8
 	Gear,
 	/** A crafting material: its own lines, as in the bag. */
 	Material,
+	/** A gem stack: its own lines, as in the bag, read for the character hovering it. Issue #2839. */
+	Gem,
 };
 
 /**
@@ -50,10 +52,12 @@ class CATACLYSM_API UCataclysmGroundItemHover : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
-	/** What `Drop` gets when hovered: nothing for none, for a gold pile, or for a drop holding nothing. */
+	/** What `Drop` gets when hovered: nothing for none, for a gold pile, or for a drop holding nothing; a gem stack is
+	 *  hovered since issue #2839. */
 	static ECataclysmGroundHover KindFor(const ACataclysmDroppedItem* Drop);
 
-	/** The slot the bag would hold `Drop` in, as picking it up fills one: the item, or the material and its count. */
+	/** The slot the bag would hold `Drop` in, as picking it up fills one: the item, the material and its count, or,
+	 *  since issue #2839, the gem, its rarity and its count. */
 	static FCataclysmCarriedSlot SlotFor(const ACataclysmDroppedItem& Drop);
 
 	/**

@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
+
+**Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
+(`game/Source/Cataclysm/Interface/CataclysmGroundItemHover.h` and `.cpp`). Test:
+`Cataclysm.GroundItemHover.AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes`, new, in
+`game/Source/Cataclysm/Tests/CataclysmGroundItemHoverTests.cpp`. Issue
+[#2839](https://github.com/sdubois777/Cataclysm/issues/2839), found while planning
+[#2835](https://github.com/sdubois777/Cataclysm/issues/2835), the entry below, and following
+[#2807](https://github.com/sdubois777/Cataclysm/issues/2807), the owner's ask that hovering an item on the ground shows
+what it is before it is picked up.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED**, then run in the window below with #2835, as the coordinating session ruled on
+  2026-11-22 (its plan's Q2: a second commit on `feat/gem-tooltip-for-the-character`).
+- **NO TEST CAN SEE THE PANEL ON THE SCREEN** (-nullrhi, issue #650). The test holds the panel's two columns, which
+  `ACataclysmPlayerController::RefreshGroundItemHover` shows.
+
+### What was wrong, and the change
+
+`KindFor` checked for gold, then a material, then answered `Nothing` for a drop with no item base. A gem drop (#46
+slice G5) has a gem, no base and no material, so it was `Nothing`, and the controller removed the panel. `SlotFor`
+filled only a material or an item.
+
+- `ECataclysmGroundHover::Gem`, appended after `Material` (ruled Q1: a value of its own, so a test tells a gem from a
+  material and no reader of `Material` has to learn that it may hold a gem).
+- `KindFor` answers `Gem` for a drop whose `IsGem()` is true, after the material check.
+- `SlotFor` fills the carried slot's gem, rarity and count from the drop's, as `UCataclysmInventoryComponent::AddGems`
+  fills a carried stack.
+- The controller is unchanged: it hides only `Nothing`, spawns the comparison stand-in only for `Gear`, and already
+  passes the hovering character's component to `ColumnsFor`, so a gem on the ground carries #2835's line too.
+
+No formula; the panel shows the bag's own lines.
+
+### Test
+
+`AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes`: two Superb Of The Wraith on the floor; hovered as `Gem`; `ColumnsFor`
+shows something; its left column equals `UCataclysmItemComparison::TooltipColumnsFor`'s for the same carried stack and
+the same wearer (the function the bag's cells call), which starts with the gem's name and carries the line for the
+character ("for you"); no right column.
+
+### Registered for the window: #2835 and #2839, ruled by the coordinating session on 2026-11-22
+
+On `feat/gem-tooltip-for-the-character`, development `45b33c70f` and the two commits. This replaces the registration in
+#2835's entry below, which was written before the counts were ruled.
+
+- **The base: tree-s9-w2's measured whole suite, 5218 performed, 57 skipped halves, 860 test saves.** The whole suite:
+  **5218 + 4 = 5222**, 57 skipped halves and 860 test saves (no new test skips a half or writes a save slot).
+- **Three compiles**, because header signatures change: the branch; each changed `.cpp` alone; the unity files again.
+- **No editor asset step**: no CSV or asset changed. No save record moves.
+- **Groups alone, first**, at that log's counts plus the new tests: `GemTooltip.` 3 (new), `GemStacks.` 6, `Tooltip.`
+  18, `ItemComparison.` 8, `GroundItemHover.` 7 (6 and the new test).
+- **Then the whole suite, the Python suite beside it, then ruff, then the proofs.**
+- **Five Unreal guard proofs**: #2835's G1 to G3 (its entry below, narrowed to `Cataclysm.GemTooltip.`, 3), and:
+
+| Proof | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- |
+| H1 | `KindFor` without the gem check | `Cataclysm.GroundItemHover.` (7) | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` |
+| H2 | `SlotFor` without the gem fields | the same | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` (its left column empty, not the bag's) |
+
+---
+
 ## 2026-11-22 — A gem's tooltip says the gem does nothing for the character reading it, when that character has none of its stat (#2835)
 
 **Affects:** `UCataclysmGems::NothingToIncreaseLineFor` and `TooltipLinesFor`, each given an optional character, and
@@ -71,8 +133,8 @@ The new group `Cataclysm.GemTooltip.`, three, written before the change. The cha
 
 ### Registered for the window
 
-**The counts are taken at the turn** from the newest measured whole-suite log, as the coordinating session ruled on
-2026-11-22. As written, on development `45b33c70f`:
+**SUPERSEDED by the registration in #2839's entry above**, which the coordinating session ruled on 2026-11-22 for the
+window both issues share. As first written, on development `45b33c70f`:
 
 - **The whole suite: the base + 3**, the three new tests; skipped halves and test saves unchanged (no new test skips a
   half or writes a save slot).
