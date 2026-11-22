@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The forge sockets a gem for a Setting Agent, 5 residue and a day, and unsockets one for Dismantling Dust, 3 residue and a day, the gem back to the bag (#46, slice G4)
+
+**Affects:** `FCataclysmForgeSocketing`, new, and `UCataclysmForge::SettingAgentRow`, `DismantlingDustRow`,
+`SocketGemResidue`, `UnsocketGemResidue`, `SocketGemBaseDays`, `UnsocketGemBaseDays`, `DaysFor(Residue, BaseDays)`,
+`SocketGemOf`, `UnsocketGemOf` and `SocketingQuestion`, new (`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`);
+`UCataclysmForgeCraft::SocketPlanFor`, `UnsocketPlanFor`, `SocketGem`, `UnsocketGem` and `DoSocketing`, new
+(`game/Source/Cataclysm/Player/CataclysmForgeCraft.h`, `.cpp`); `UCataclysmInventoryComponent::RemoveGems`, new;
+`FCataclysmPlayLoopLog::ForgeSocketLine`, new (`CataclysmPlayLoopLog.h`, `.cpp`); `FCataclysmForgeSocketAction`, new,
+and `UCataclysmForgeLayout::SocketActionsFor`, `SocketActionForButton` and `SocketsDetailFor`, new
+(`game/Source/Cataclysm/Interface/CataclysmForgeLayout.h`, `.cpp`); `UCataclysmForgeWidget`'s socket actions
+(`CataclysmForgeWidget.h`, `.cpp`); the console command `Cataclysm.GrantGem`, new (`CataclysmPlayerCharacter.cpp`);
+`docs/Play_Loop_Checklist.md`, step 17, new. Tests: `game/Source/Cataclysm/Tests/CataclysmForgeGemsTests.cpp`, new,
+four in `Cataclysm.ForgeGems.`; `tools/tests/test_the_forge_sockets_and_unsockets_gems.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` lists the new line. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G3's branch head without a compile, as ruled. The branch is
+  `feat/forge-gems-46-g4`, on `feat/item-sockets-46-g3`. It goes through one shared window with G1, G2 and G3, ruled
+  by the coordinating session on 2026-11-21: one branch, one registration and one pull request, after the empire tree
+  window merges and hands over the workbook.
+- **NO RECORD VERSION MOVES HERE.** A socketed gem is a field of an item, which G3 moves; the materials and gem stacks
+  are fields G2 adds. Socketing changes values, not shapes.
+- **NOTHING DROPS A GEM YET** (slice G5), so `Cataclysm.GrantGem` puts gems in the bag for the owner to socket. It is a
+  developer's tool, as `Cataclysm.GrantExperience` is.
+- **A WORN GEM'S EFFECT ON THE CHARACTER SHEET WAITS FOR G1'S WORKBOOK STAGE**, through G3's `AddGemModifier`.
+
+### What changed
+
+- **The rules** (`UCataclysmForge`), as the design's operations rows state them: Socket Gem uses one Jeweler's Setting
+  Agent and adds 5 residue; Unsocket Gem uses one Dismantling Dust and adds 3; each costs 1 day and the residue's time
+  penalty, `CR / 100` rounded down, read before the craft adds its own. The simulation's `SOCKET_GEM_RESIDUE` is 5.
+  `SocketGemOf` refuses no item, no such socket, a filled socket ("That socket already holds Of The Viper; unsocket it
+  first."), no such gem carried, a gem of another type than a typed socket's ("An Attack gem does not fit a Defense
+  socket."), and no Setting Agent. `UnsocketGemOf` refuses an empty socket, no Dust ("Unsocketing a gem takes Dismantling
+  Dust; 0 held."), and no room in the bag for the gem (a stack of it, a free cell, or the cell the last Dust frees). No
+  free removal, ruled 2026-11-21.
+- **The crafts** (`UCataclysmForgeCraft`), on a carried or a worn piece, follow the upgrade's order and rules: refused
+  during a walk and without a run; a worn piece asks first when it would cross the Consumption Threshold, and a
+  confirmed crossing marks the character; the material (and for a socketing the gem) leaves the bag; the piece changes
+  in its own cell or slot; an unsocketed gem goes back to the bag; the days pass through the run; a PLAY LOOP line says
+  it; `ForgeCrafted` saves. Whatever was taken is put back when a step cannot finish, so nothing is half done.
+- **The forge's screen** lists the chosen piece's sockets under its detail ("Sockets: Defense socket: empty; Attack
+  socket: Of The Viper (Superb)") and offers, socket by socket, each carried gem that fits an empty socket ("Socket Of
+  Life (Superb) into socket 1 (Defense)") and the removal of each socketed one ("Unsocket Of The Viper (Superb) from
+  socket 2"). Sockets are numbered from 1. A press asks first, with `SocketingQuestion`, and the second does it, as an
+  upgrade does; any other press cancels it.
+- **The play log**: "socketed Of Life (Superb) into the Defense socket of Everyday Helm; residue 52 to 57; it cost 1
+  day, day 26 to day 27", and "unsocketed Of Life (Superb) from Everyday Helm, back to the bag; residue 57 to 60; it cost
+  1 day, day 27 to day 28".
+
+### Tests
+
+`CataclysmForgeGemsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay` | the rules: a Superb Of Life into a helm's Defense socket at 87 residue, 92 after, 1 day, and its question; 150 residue costs 2 days; every refusal's words; the Viper out with Dust, 90 after, and its question. Prints "FORGE GEM RULES" |
+| `SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay` | the craft on a carried helm: the socket holds the gem, one Of Life and the Agent are gone, residue 92, a day passed; a second socketing into the filled socket is refused and moves nothing. Prints "SOCKETED" |
+| `UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves` | with no Dust it is refused and no day passes; with Dust the socket is empty, the Viper is back in the bag, the Dust used, residue 90, a day passed. Prints "UNSOCKETED" |
+| `TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne` | for the helm and a bag of a Superb Of Life and an Everyday Of Rot: two actions, the Life into socket 1 and the Viper out of socket 2, with Rot (an Attack gem) not offered; the sockets line. Prints "FORGE SOCKET ACTIONS" |
+
+`tools/tests/test_the_forge_sockets_and_unsockets_gems.py`:
+
+- both crafts' residue and days are the design table's, the Crafting sheet's, and for socketing the simulation's;
+- their materials are the rows those operations name;
+- no free removal;
+- each craft refuses during a walk, passes its days, says its line and saves;
+- what a craft took is put back on each of its three failures;
+- the screen asks before it acts;
+- `Cataclysm.GrantGem` exists.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `d5b1e1820`, each restored half "7 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GT1 | `SocketGemResidue` 6, not 5 | "1 failed, 6 passed": `test_the_residue_and_days_are_the_designs_the_sheets_and_the_simulations` | PROVED |
+| GT2 | `DismantlingDustRow` names the Setting Agent | "1 failed, 6 passed": `test_the_materials_are_the_rows_the_operations_name` | PROVED |
+| GT3 | `UnsocketGemOf`'s refusal without Dust removed | "1 failed, 6 passed": `test_there_is_no_free_removal` | PROVED |
+| GT4 | `DoSocketing` passes no days | "1 failed, 6 passed": `test_each_craft_refuses_during_a_walk_passes_its_days_logs_and_saves` | PROVED |
+| GT5 | the material not put back when the item cannot be replaced | "1 failed, 6 passed": `test_what_a_craft_took_is_put_back_when_it_cannot_finish` | PROVED |
+| GT6 | the screen's first-press question removed | "1 failed, 6 passed": `test_the_screen_asks_before_it_acts` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1, G2 and G3 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ForgeGems.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.Forge.` and `Cataclysm.ForgeScreen.` alone, which read the code this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ForgeGems."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K11 | in `SocketGemOf`, `TEXT("%s %s gem does not fit %s %s socket.")` to `TEXT("%s %s gem cannot go in %s %s socket.")` | 4 performed, 3 succeeded, 1 failed: `SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay` | 4 of 4 |
+| K12 | in `DoSocketing`, `Socket.Gem = Plan.bUnsocket ? NAME_None : Plan.Gem;` to `Socket.Gem = NAME_None;` | 4 performed, 3 succeeded, 1 failed: `SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay` | 4 of 4 |
+| K13 | in `DoSocketing`, `if (Plan.bUnsocket && Inventory->AddGems(Plan.Gem, Plan.Rarity, 1) == INDEX_NONE)` to `if (Plan.bUnsocket && false)` | 4 performed, 3 succeeded, 1 failed: `UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves` | 4 of 4 |
+| K14 | in `SocketActionsFor`, `if (Row == nullptr \|\| !UCataclysmGems::GemFits(Socket.Type, Row->GemType))` to `if (Row == nullptr)` | 4 performed, 3 succeeded, 1 failed: `TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne` | 4 of 4 |
+
+---
+
 ## 2026-11-21 — Items carry typed sockets, a drop rolls each socket's type evenly, and the gems in a worn item add their modifiers once (#46, slice G3)
 
 **Affects:** `ECataclysmSocketType` and `FCataclysmSocket`, new, and `FCataclysmItem::Sockets`, a list of them where it
