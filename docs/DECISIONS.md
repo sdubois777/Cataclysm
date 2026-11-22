@@ -167,6 +167,203 @@ So the claim in "Tests" above, that the new test fails on the old code whatever 
 
 ---
 
+## 2026-11-21 — Commercial Hubs, Economic Zones, Trade Routes and The Golden Touch act on a Treasurer city upgrade: a standing city holding one counts once, and Economic Zones raises the gold such cities generate (#2741, slice 7)
+
+**Affects:** `UCataclysmEmpireTree::TreasurerBranch`, `IsTreasurerCity`, `TradeRoutesDaysAStep`, the four fields of
+`FCataclysmEmpireTreePlayerBonuses`, the Treasurer counts of `FCataclysmEmpireTreeDungeonState`, Trade Routes' share of
+`FCataclysmEmpireTreeDailyIncome`, `FCataclysmEmpireTreeDropRules::MaterialsMultiplier`, and `PlayerBonusesFor`,
+`EmpireStateFor`, `DungeonStateFor`, `GoldMultiplierFor`, `ClearPayFor`, `DailyIncomeFor` and `DropRulesFor`
+(`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`); the kill's material roll
+(`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`); the day hook's log line
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.cpp`); `ECataclysmEmpireTreeEffect`, four values
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv`,
+`game/Data/EmpireTreeEffects.csv`, 110 rows, `game/Content/Data/DT_EmpireTreeNodes.uasset`,
+`game/Content/Data/DT_EmpireTreeEffects.uasset` and `game/Data/datatable_asset_sources.json`. Tests:
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeTreasurerTests.cpp`, new, 7 in the new group
+`Cataclysm.EmpireTreeTreasurer.`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins 110 effect rows;
+`tools/tests/test_empire_tree_treasurer_cities.py`, new; `tools/tests/test_city_upgrade_dungeon_rewards.py`,
+`tools/tests/test_empire_tree_effects_match_their_texts.py`, `tools/tests/test_empire_tree_tables_match_the_tree_file.py`
+and `tools/tests/test_empire_tree_treasury_and_tax.py`, changed. Issue
+[#2741](https://github.com/sdubois777/Cataclysm/issues/2741), slice 7.
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL YET.** The seven new Unreal tests were written without a build.
+- **THE FOUR READINGS, T1 TO T4, WERE PROPOSED BY THIS SESSION AND RULED AS PROPOSED** by the coordinating session on
+  2026-11-21. The code was written on the proposals before the ruling and did not change with it; the comments that
+  said "not yet ruled" now say ruled.
+- **NO SAVE RECORD MOVES.** Every count is read from the run's map when it is needed.
+- **WITH THIS SLICE, 106 OF THE TREE'S 167 NODES AND OPTIONS ACT**, and no node waits on a Treasurer city upgrade. It is
+  the last slice of #2741 that needs no new system: the 61 left wait on crafting, a market, a gold cap, a stash, a loot
+  chest, rerolls, a loot filter, a destroy action, or a ruling or a figure the design does not give.
+- **WHICH WINDOW IS NOT DECIDED.** The coordinating session said slice 7 may join the slices 6d and 6e window, which
+  already carries #1130, and that it is asked first. Its registration is written when that is answered.
+
+### The texts
+
+From `docs/Empire_Development_Tree_Final.json`, verbatim; `docs/Empire_Skill_Tree_Keystones.md` has the same:
+
+- **Commercial Hubs** (keystone, 1 point): "Running a dungeon in a city with a Treasury Upgrade increases Gold drops by
+  20%."
+- **Economic Zones** (basic, 10 points): "Cities with Treasury upgrades generate +5% more Gold from all sources per
+  point."
+- **Trade Routes** (basic, 5 points): "Each city with a Treasury upgrade generates +50 Gold every 20 days per point."
+- **The Golden Touch** (the Treasury branch's capstone, 1 point): "For every city with an economic upgrade, all gold and
+  crafting materials dropped from dungeons are increased by 10%."
+
+### The rulings this slice builds on
+
+- **R1 to R4, the coordinating session, 2026-11-20**, accepted as readings: a "Treasury" or "economic" upgrade is a
+  Treasurer-branch city upgrade, counted on the dungeon's city (R1 to R3) or over the standing cities (R4), by The
+  Cartographer's Blessing's precedent. They waited until a Treasurer city upgrade could be bought, which #2781 did.
+- **X1, 2026-11-20**: a fallen city's upgrades pay nothing until it is reclaimed.
+- **G1**: the design's pipeline; every "increased" adds into one increase and each "more" is a multiplier of its own.
+- **G2**: each node reaches the gold its own words name; the "all sources" nodes reach a kill's gold, the Salvage Rights
+  payout and the day's income.
+- **R10**: every gold amount a node names is a tier 1 figure scaled as a gold pile is.
+- **B3**: Cleanup Crew's payout is multiplied by nothing, because the piles it counts already were.
+- **THE DESIGN DOCUMENT SETTLES THAT ECONOMIC ZONES IS A "MORE"; IT IS NOT A JUDGEMENT.** `docs/Cataclysm_GDD_v2.md`,
+  the paragraph opening "This covers the empire upgrade tree as well as the four class trees": "`Economic Zones` gives
+  "+5% more Gold from all sources per point" ... all three are correct as written."
+
+No genre research was needed for a formula shape: every figure goes into the three-bucket pipeline, which was chosen
+from that research earlier and is recorded in this log, and the texts say which bucket each takes ("increased" or
+"more").
+
+### The four readings, T1 to T4, RULED AS PROPOSED
+
+The coordinating session, 2026-11-21: "ALL FOUR RULED AS YOU PROPOSE". On T2 it chose the full reading over the narrow
+one "because "from all sources" is explicit, and the citizen share is a direct count, not a guess", and asked for a
+test on the citizen-share formula with two cities of different populations; on T3, Commercial Hubs reads the dungeon's
+own city "under X1 too". Each reading as proposed and ruled:
+
+- **T1, WHICH CITY UPGRADES COUNT.** An upgrade of the City Upgrades sheet's Treasurer branch: the four rows "Dungeons
+  here provide 2x more experience", "Dungeons here have 10% increased magic find.", "Dungeons here drop 25% more gold."
+  and "Dungeons here drop 25% more loot." A Treasurer city is a standing city holding at least one; a city holding
+  several counts once, as "a city with" and "every city with" say and as The Cartographer's Blessing counts. "Treasury
+  Upgrade" is capitalised as a branch name; the tree's branch is "Treasury", the sheet's "Treasurer", and the commentary
+  calls the branch the economy branch, which is what "economic upgrade" names. The design document's City Upgrades
+  section names no branch. This is the narrowest reading the texts support: no text names one row, so the gold row
+  alone would be narrower than any text. The Artisan materials row and the unbranched Cleanse row do not count.
+  Commercial Hubs reads the dungeon's own city.
+- **T2, ECONOMIC ZONES' "GOLD FROM ALL SOURCES FOR SUCH CITIES".** Every source the game has, and whether it can be tied
+  to one city:
+
+  | Source | Tied to a city | Raised |
+  |---|---|---|
+  | a kill's gold piles | the dungeon's city | yes, when it is a Treasurer city |
+  | picking them up | the same gold, raised once when it drops | (as the piles) |
+  | Salvage Rights' payout, with Investment Funds | the dungeon's city | yes, when it is a Treasurer city |
+  | Cleanup Crew's payout | yes | no, by B3 |
+  | Trade Routes | each Treasurer city "generates" it | yes, all of it |
+  | Pax Imperialis and Tax Collection | counted from the standing cities' citizens | yes, the share from citizens of Treasurer cities |
+  | Wealth Interest | no: interest on the gold held | no |
+  | Global Credit and Sovereign Loans | no: a debt, not gold gained | no |
+  | a price given back when a purchase fails | no | no |
+
+  "From all sources" is explicit, and G2 sends the other "all sources" nodes to the kill, the payout and the income;
+  this one differs only in being held to the Treasurer cities. The narrower alternative, the dungeon's gold and Trade
+  Routes alone, was offered beside it and not chosen.
+- **T3, "PER SUCH CITY".** The count of Treasurer cities, standing only (X1, and The Cartographer's Blessing and Fiscal
+  Policy count standing cities), with no cap: neither text names one, and the map's 25 cities bound it. Trade Routes
+  pays on every 20th day, as Wealth Interest's "every 20 days" is read: 50 tier 1 gold a point for each Treasurer city,
+  scaled (R10), raised by the income's "all sources" increases as Pax is, and wholly by Economic Zones. The Golden
+  Touch's +10% for each is an increase into a kill's gold (its text says "increased"); "dropped from dungeons" is a
+  kill's piles in any dungeon of the empire, and a clear's payout is not dropped.
+- **T4, THE GOLDEN TOUCH'S CRAFTING MATERIALS ACT NOW.** Materials drop today, and #2781 already passes a city's "more
+  crafting materials" into the kill's material roll as a factor on its expected count. The drop rules carry 1 + 10% for
+  each Treasurer city, multiplied with the city's factor; no other node increases materials, so it is that bucket alone.
+  At exactly 1 the roll is unchanged.
+
+### The change
+
+- **A kill's gold.** `GoldMultiplierFor` adds The Golden Touch's 0.10 for each Treasurer city and, while the dungeon's
+  city is one, Commercial Hubs' 0.20 into the one increase, and multiplies by 1 + Economic Zones' figure there.
+- **A kill's crafting materials.** `DropRulesFor` sets `MaterialsMultiplier`, and the kill passes
+  `CityRewards.MaterialsMore * TreeDrops.MaterialsMultiplier` to the material roll. `RollsAnything` does not count it,
+  so a kill draws exactly what it drew.
+- **A clear's payout.** Salvage Rights' payout is multiplied by 1 + Economic Zones' figure while the dungeon's city is a
+  Treasurer city; Cleanup Crew's is not.
+- **The day.** Trade Routes is a fourth share of the day's income, in its total and its log line ("Trade Routes %lld").
+  Pax and Tax are multiplied by 1 + Economic Zones' figure x (the citizens of Treasurer cities / all the citizens);
+  Wealth Interest is not.
+- **The counts.** `EmpireStateFor` counts the Treasurer cities and the citizens living in them as
+  `UCataclysmEmpireMap::PopulationOf` reads each; `DungeonStateFor` asks whether the dungeon's own city is one.
+- **The tables.** Four effect rows, 110 in all; the four nodes are built in slice 7 and the reason "its Treasurer city
+  upgrade rules, which are not built yet" is gone.
+
+### The tests
+
+`Cataclysm.EmpireTreeTreasurer.`, new, seven tests, each figure reasoned from the code:
+
+| Test | What it holds |
+|---|---|
+| `TheFourNodesAddUpFromTheirRows` | 0.20, 0.50, 250 and 0.10 from the tables at full points; none from an empty tree |
+| `TreasurerCitiesAreStandingCitiesHoldingATreasurerUpgrade` | of four cities, two count, each once, with their citizens; a fallen one does not, nor its dungeon |
+| `AKillsGoldAndMaterialsTakeTheFourWhereItsDungeonStands` | 2.25 on a Treasurer city, 1.30 elsewhere, 3.00 with Coinage; materials 1.30, 1 at none; no extra roll |
+| `TheSalvagePayoutTakesEconomicZonesOnATreasurerCityAndCleanupNothing` | 750 on a Treasurer city, 500 elsewhere and without Economic Zones; Cleanup 100 in each |
+| `TradeRoutesPaysEveryTwentiethDayForEachTreasurerCity` | 750 on days 20 and 40, nothing on 10, 21 and 0; 2,250, 1,125, 1,050 and 1,575 |
+| `EconomicZonesRaisesPaxAndTaxByTheTreasurerCitizensShare` | Pax 2,750 and Tax 88,000 at a fifth; Interest 500 unraised; 2,500 without the share or the node |
+| `TheCitizenShareIsEachTreasurerCitysOwnPopulation` | every city emptied but two, of 1,000 and 3,000 citizens: Tax 640 becomes 880 for the second, 720 for the first, 960 for both; 640 without the node. The test the ruling asked for |
+
+`tools/tests/test_empire_tree_treasurer_cities.py`, new, seven checks. Four existing Python files move with the slice:
+the effect and point pins (`test_exactly_the_106_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_and_7_act`, 17 points
+from "treasurer upgrade" to "slice 7", 855 built points), the kill's materials argument in
+`tools/tests/test_city_upgrade_dungeon_rewards.py`, and the day's total in
+`tools/tests/test_empire_tree_treasury_and_tax.py`, which now accepts a fourth share after Tax.
+
+### Python guard proofs, P1 to P15, all proved
+
+Each through `tools/prove_guard.py`'s `break_and_run`, running `tools/tests/test_empire_tree_treasurer_cities.py` with
+three neighbours (`test_empire_tree_treasury_and_tax.py`, `test_empire_tree_gold_held.py`,
+`test_city_upgrade_dungeon_rewards.py`). Each failed exactly its named check, "1 failed, 22 passed", and passed again
+restored, "23 passed". Script: `.claude/windows/prove_t2741s7_python.py` in this session's worktree.
+
+| Proof | Break | Check that failed |
+|---|---|---|
+| P1 | `TreasurerBranch` "Treasury" | `test_the_branch_is_the_sheets_and_holds_the_four_rows_t1_names` |
+| P2 | Trade Routes' step 10 days | the same |
+| P3 | Economic Zones' row fills nothing | `test_the_tree_fills_each_nodes_own_field` |
+| P4 | `IsTreasurerCity` stops asking whether the city has fallen | `test_a_treasurer_city_stands_and_holds_the_branch_and_the_run_counts_them` |
+| P5 | the Treasurer cities' citizens not counted | the same |
+| P6 | the dungeon's own city never a Treasurer city | the same |
+| P7 | Commercial Hubs' increase never added | `test_a_kills_gold_and_the_salvage_payout_take_the_four_where_t1_to_t3_say` |
+| P8 | the Salvage Rights payout without Economic Zones | the same |
+| P9 | Trade Routes paid every 10th day | `test_the_day_pays_trade_routes_and_raises_pax_and_tax_by_the_treasurer_share` |
+| P10 | Pax without Economic Zones' share | the same |
+| P11 | the day's total without Trade Routes | the same |
+| P12 | the log line without Trade Routes | the same |
+| P13 | the materials figure ignores the cities | `test_the_golden_touchs_materials_reach_the_material_roll_and_draw_nothing` |
+| P14 | the kill passes the city's materials figure alone | the same |
+| P15 | Trade Routes built in slice 6 | `test_the_four_are_built_in_slice_7_and_none_waits_on_a_treasurer_upgrade` |
+
+### C++ guard proofs planned, K1 to K7, one for each new Unreal test
+
+Prefix `Cataclysm.EmpireTreeTreasurer.` (7 tests). Each prediction is reasoned from the code and has not been run.
+
+| Proof | Break, in `CataclysmEmpireTree.cpp` | Predicted to fail |
+|---|---|---|
+| K1 | `Bonuses.GoldMoreFromTreasurerCities += Total;` to `+= 0.0f;` | `TheFourNodesAddUpFromTheirRows`, 1 assertion: "Economic Zones: 0.50" |
+| K2 | in `IsTreasurerCity`, `if (City.bFallen)` to `if (false && City.bFallen)` | `TreasurerCitiesAreStandingCitiesHoldingATreasurerUpgrade`, 1: "one on the fallen third is not". The run's count skips a fallen city before it asks, so it stays 2 |
+| K3 | Commercial Hubs' term to `(State.bDungeonCityIsTreasurer ? 0.0f : 0.0f)` | `AKillsGoldAndMaterialsTakeTheFourWhereItsDungeonStands`, 2: 2.25 reads 1.95 and 3.00 reads 2.70 |
+| K4 | the Salvage Rights payout's `* (1.0 + Zones)` removed | `TheSalvagePayoutTakesEconomicZonesOnATreasurerCityAndCleanupNothing`, 1: 750 reads 500 |
+| K5 | `Day % TradeRoutesDaysAStep == 0` to `Day % TaxCollectionDaysAStep == 0` | `TradeRoutesPaysEveryTwentiethDayForEachTreasurerCity`, 1: "nothing on day 10" reads 750 |
+| K6 | Pax's `* Raised * CitizensRaised` to `* Raised` | `EconomicZonesRaisesPaxAndTaxByTheTreasurerCitizensShare`, 1: 2,750 reads 2,500 |
+| K7 | the share counted by cities, `TreasurerCities / Max(1, StandingCities)`, rather than by citizens | `TheCitizenShareIsEachTreasurerCitysOwnPopulation`, 3: 880 and 720 read 653 (1 of 25 cities), 960 reads 666 (2 of 25); and `EconomicZonesRaisesPaxAndTaxByTheTreasurerCitizensShare`, 2: Pax 3,750 and Tax 120,000 (1 of no standing city, read as 1 of 1) |
+
+### Python before the window
+
+Measured on the code commit `845db8b3d`, in a separate worktree so no edit here could reach the run: **7901 passed, 8
+skipped, 1 failed** in 443.36 s (`1 failed, 7901 passed, 8 skipped`), and the JUnit file agrees: 7910 tests, 1
+failure, 0 errors, 8 skipped. The one failure is `test_every_csv_still_hashes_to_what_was_recorded` in
+`tools/tests/test_datatable_assets_are_current.py`, naming `EmpireTreeEffects.csv`, `EmpireTreeNodes.csv` and
+`WeaponMeshes.csv`: their assets are rebuilt in the window's asset step. The 7 more than the combined 6d and 6e branch's
+7903 are `tools/tests/test_empire_tree_treasurer_cities.py`'s seven checks. The next commit, `16c59e073`, changed
+comments and added the seventh Unreal test; the empire tree, city upgrade, gold and decisions log files on it, 390
+checks, passed, and `ruff check .` passed.
+
+---
+
 ## 2026-11-21 — The four scaled two-handed weapons are drawn at a scale of 1.75, the owner's ruling of 2026-09-14 (#1130)
 
 **Affects:** the Weapon Meshes sheet of `docs/All_Things_Cataclysm.xlsx` and `game/Data/WeaponMeshes.csv`, generated
