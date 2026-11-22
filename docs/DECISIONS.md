@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Crafting materials drop at a quarter of the gear rate, 0.04 to 3.0 a kill, because the forge's levelling days now leave days the limit on levelling at every tier even at a quarter (#2829)
+
+**Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, Enemy Drops sheet, Material Drops column (cells E2 to
+E7); `game/Data/EnemyDrops.csv`, regenerated from it, the only CSV that moved; `ENEMY_MATERIAL_DROPS` in
+`sim/cataclysm_sim/loot.py`; `docs/Cataclysm_GDD_v2.md`, "What a Kill Drops", its table's material column and the
+paragraph that opened "A kill drops as many materials as gear"; the comment in
+`UCataclysmDropSpawner::SpawnOneInfestedDropFor` (`game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`), which called
+the gear-to-material ratio one to one, and the comment on Scavenger's second material in the same file; the comment on
+`SpawnMaterialsFor` in `CataclysmDroppedItem.h`, which said twice the gear rate. Tests: `sim/tests/test_loot.py`, the pinned dictionary and the gear-to-material
+relationship, now a quarter; `game/Source/Cataclysm/Tests/CataclysmDropRollTests.cpp`, the six quoted material figures
+and a Boss at 400% loot quantity, 20 to 5; the comments of `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`
+(`CataclysmDroppedItemTests.cpp`); the comment in `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`
+(`CataclysmDungeonModifierEffectsTests.cpp`) giving a Cataclysm Boss's expected drops, 24 to 15. The asset `DT_EnemyDrops` (`game/Content/Data/DT_EnemyDrops.uasset`) is NOT rebuilt
+here. Issue [#2829](https://github.com/sdubois777/Cataclysm/issues/2829), following
+[#2830](https://github.com/sdubois777/Cataclysm/issues/2830) and [#850](https://github.com/sdubois777/Cataclysm/issues/850).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** By the coordinating session's instruction of 2026-11-22:
+  no compile, no Unreal lock. `DT_EnemyDrops` must be rebuilt by `tools/generate_datatable_assets.py` in an editor
+  window; until then `tools/tests/test_datatable_assets_are_current.py` fails on `EnemyDrops.csv`, and the game still
+  drops materials at the old rate.
+- **THE RULING CHANGED FROM HALVING TO A QUARTER BECAUSE THE FORGE'S LEVELLING DAYS CHANGED.** The issue proposed
+  halving, and the coordinating session ruled it on 2026-11-21, because at a quarter the stones would have run out
+  before the days from difficulty tier 5 up. That table assumed a level took one day plus the residue penalty. #2830
+  (merged in [#2836](https://github.com/sdubois777/Cataclysm/pull/2836), development `3f3056ca2`) made a level take days
+  equal to the level it reaches, plus the residue penalty. A day of levelling then spends far fewer stones, and at a
+  quarter the days stay the limit at every tier. The coordinating session ruled a quarter on 2026-11-22, under the
+  owner's delegation of numbers, after the recompute below.
+- **GOLD IS NOT MEASURED AS THE LIMIT.** Forge crafts now cost gold too (#2830: 250 gold a base day, scaled by the tier
+  and the residue). Whether gold, rather than days, is what limits levelling was not checked. It does not change the
+  answer about stones.
+- **THE 17 MATERIALS WITH NO USE STAY AN OPEN QUESTION.** Of the 27 crafting materials, 10 are upgrade stones; the other
+  17 are about two thirds of what drops and nothing spends them yet. Whether their share should be lowered is not decided
+  here.
+
+### What the owner asked
+
+The owner, 2026-11-21: "we need to lower the drop quantity/amount of crafting materials. It's way too high. I don't
+think I want to cap what players can level their stuff to, however the gold/days cost should be enough of a deterrent".
+So the figure is chosen so that days, not stones, limit how fast gear is levelled.
+
+### The rule the recompute used, read from the merged code
+
+`UCataclysmForge::DaysFor(Residue, BaseDays)` (`game/Source/Cataclysm/Items/CataclysmForge.cpp`) returns
+`BaseDays + floor(Residue / 100)`. For an upgrade, `BaseDays` is the level the item reaches, and `Residue` is the item's
+own residue before the upgrade adds its 25. So raising an item to level k takes `k + floor((R0 + 25(k - 1)) / 100)` days,
+where R0 is the residue it dropped with.
+
+R0 is rolled at drop from `game/Data/GearRarity.csv`: 38 to 62 for Everyday, up to 300 to 500 for Cataclysmic. Residue
+only adds days, so **R0 = 0 gives the fewest days and the most stones spent a day**: the case most likely to make stones
+the limit. The table below uses it.
+
+### The measurement
+
+The inputs are those of the issue: 0.476 materials per creature at the 2026-08-23 rates, from the spawn weights of
+`game/Data/EnemyRarities.csv` and the simulation's `loot.material_tier_distribution`; **230 creatures a floor, an
+estimate**; a full clear; no magic find or loot quantity of the player's. The best stone that can drop is the tier plus
+2. A +k stone is worth 2^(k-1) +1 stones, and raising an item to level k takes two +k stones, 2^k +1 stones.
+
+The ratio is the +1 stones a floor brings over what one day of levelling at the tier's best stone uses. **Above 1, days
+limit levelling; below 1, stones do.**
+
+**The issue's original table**, with the days rule before #2830 (1 + floor(25(k - 1) / 100)):
+
+| Tier | Best stone | Spent in a craft day | 2026-08-23 rates | Half | Quarter |
+|--:|--:|--:|--:|--:|--:|
+| 1 | +3 | 8 | 7.5 | 3.7 | 1.9 |
+| 2 | +4 | 16 | 5.9 | 3.0 | 1.5 |
+| 3 | +5 | 16 | 7.8 | 3.9 | 2.0 |
+| 4 | +6 | 32 | 5.3 | 2.7 | 1.3 |
+| 5 | +7 | 64 | 3.6 | 1.8 | 0.9 |
+| 6 | +8 | 128 | 2.5 | 1.2 | 0.6 |
+| 7 | +9 | 171 | 2.4 | 1.2 | 0.6 |
+| 8 | +10 | 341 | 1.6 | 0.8 | 0.4 |
+
+**The recompute, 2026-11-22, with the merged rule (#2830), R0 = 0:**
+
+| Tier | Best stone | Days for that level | Spent in a craft day | 2026-08-23 rates | Half | Quarter |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | +3 | 3 | 2.7 | 22.45 | 11.23 | 5.61 |
+| 2 | +4 | 4 | 4.0 | 23.75 | 11.88 | 5.94 |
+| 3 | +5 | 6 | 5.3 | 23.52 | 11.76 | 5.88 |
+| 4 | +6 | 7 | 9.1 | 18.71 | 9.35 | 4.68 |
+| 5 | +7 | 8 | 16.0 | 14.45 | 7.23 | 3.61 |
+| 6 | +8 | 9 | 28.4 | 11.09 | 5.55 | 2.77 |
+| 7 | +9 | 11 | 46.5 | 8.91 | 4.46 | 2.23 |
+| 8 | +10 | 12 | 85.3 | 6.49 | 3.24 | 1.62 |
+
+- **The lowest quarter ratio is 1.62, at tier 8.** So at a quarter, days stay the limit at every tier.
+- With an Everyday item's mean residue at drop, R0 = 50, every quarter ratio is the same or higher: 7.48 at tier 1, 1.62
+  at tier 8.
+- The same script run on development `1226aad28`, before the gems window, gives the same table. The gems window took
+  19 rows that were crafting operations out of `game/Data/CraftingMaterials.csv`; they were not in any material tier, so
+  no stone figure moved.
+- At a quarter a floor drops about 27 materials and a 12-floor dungeon with its Boss about 330, from 110 and 1,319.
+
+### The decision
+
+**The Material Drops column is a quarter of the 2026-08-23 figures: 0.04, 0.125, 0.25, 0.5, 1.25 and 3.0**, for
+Common, Elite, Legendary, Herald, Boss and Cataclysm Boss, from 0.16, 0.5, 1, 2, 5 and 12. The gear, gold and gem
+columns do not move: the owner named materials only.
+
+- **Derived:** the recompute above. A quarter is the round cut the owner's "way too high" points to that still keeps
+  days the limit at every tier.
+- **Judgements:** 230 creatures a floor and a full clear, as in the issue. A player who leaves part of a floor collects
+  less, which makes stones scarcer at the top tiers; at tier 8 a floor brings 1.62 times a day's use, so a player who
+  clears less than about 62% of each floor (1 / 1.62) would find stones the limit there. And "round" over an exact factor.
+- **No genre research was done for this figure.** It is derived from this game's own sink, levelling.
+
+### TO BE RE-MEASURED
+
+The issue's ruling said the figure is to be re-measured against the rebalance session's audit of the Forge's costs. That
+audit became #2830, and the recompute above is that re-measure against #2830's merged days. **If the forge's days or
+the stone costs change again, or gold turns out to limit levelling before days do, this table is to be measured again.**
+
+### Tests
+
+**Python.** `sim/tests/test_loot.py` pins the six figures and asserts materials are a quarter of gear for every rarity.
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py` compares the workbook and the design document with the
+simulation, unchanged. `tools/tests/test_datatable_assets_are_current.py` fails on `EnemyDrops.csv` until
+`DT_EnemyDrops` is rebuilt.
+
+**Unreal: the sweep, 2026-11-22, static, with no Unreal run.** Every test that spawns a kill's drops was read. The
+material count is drawn after the gear count on the same `FRandomStream` (`UCataclysmDropSpawner::SpawnDropsFor`), so
+at a given seed the gear count is unchanged, the material count is the same or smaller, and every draw after it moves.
+The counts below come from a Python copy of `FRandomStream` and `RollDropCount`, checked against four figures in a
+window's engine log; they are predictions, not measurements.
+
+- **Changed by this branch:** `Cataclysm.Drop.AKillDropsAtTheRateItsRarityStates` (`CataclysmDropRollTests.cpp`): the six
+  material figures, and a Boss at 400%, 20 to 5. It passes only once `DT_EnemyDrops` is rebuilt.
+- **May change; depends on rolls after the first kill, not computed:**
+  - `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (`CataclysmDroppedItemTests.cpp`): eight Cataclysm Boss
+    kills on seed 20260823 at tiers 1 and 8. Materials per tier fall from about 96 to about 24. Its checks: materials
+    dropped at each tier, and the best stone at tier 8 above the best at tier 1. The first kill's counts go from 14 gear
+    and 20 materials to 14 and 5.
+  - `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` (same file, same seed and kills): reads gear only, but every gear
+    item after the first kill's material count is rolled from a different place in the stream.
+- **Counts move, every check holds at the computed counts:**
+  - `Cataclysm.Drop.AKillPutsCraftingMaterialsOnTheFloorToo`: 15 gear and 9 materials become 15 and 1.
+  - `Cataclysm.Drop.AKillPutsNamedItemsOnTheFloor`: 3 and 4 become 3 and 1.
+  - `Cataclysm.CityDungeonRewards.MoreMaterialsIsTheMaterialRollsAloneAndOneRollsAsBefore`: materials 18 and 276
+    become 8 and 78; its line "REWARDS MATERIALS" changes.
+  - `Cataclysm.SaveApply.AFloorGatheredAndPutBackIsTheSameFloor` (12 and 13 to 12 and 2) and
+    `ARestoredDropIsDescribedTheSameWayASpawnedOneIs` (13 and 14 to 13 and 5).
+  - `Cataclysm.DungeonModifierEffects.`: `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat` (2 and 5 to 2 and 1),
+    `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves` (7 and 5 to 7 and 1),
+    `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce` (3 and 5 to 3 and 2), and
+    `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`, whose given drop for an empty Elite roll is
+    chosen by the Elite row's ratio: its draw, 0.5133, gave a material at one to one and gives a gear item at four to
+    one. Its checks hold for either kind, provided the Elite gear item rolls.
+- **Hold for any count:** the unseeded kill tests `KillingAnEnemyIsWhatPutsLootOnTheFloor` and
+  `LootQuantityOnThePlayerChangesWhatAKillDrops`; the infested drop's gear-or-material split, now four to one; the save
+  tests that compare drops saved with drops loaded; `Cataclysm.Gold.KillingCreaturesPutsNamedGoldPilesOnTheFloor`.
+- **Not affected:** `Cataclysm.EmpireTreeDrops.`, which give their counts; `Cataclysm.GemDrops.` and
+  `Cataclysm.EmpireTreeGold.`, which call their own spawners.
+- `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` compares row names, which do not change.
+
+Comments updated, no behaviour: `CataclysmDroppedItem.h` ("twice the gear rate"), `CataclysmDroppedItem.cpp`
+(Scavenger's second material), and the Trick or Treat test's expected drop count, 24 to 15.
+
+---
+
 ## 2026-11-22 — A carried gem stack survives a save and a load: the test G2's entry promised, run in the empire tree slice 9 window (#46, slice G2)
 
 **NOT RUN YET.** Written on `test/gem-stack-survives-a-save`, cut from development `3f3056ca2` (the gems window's merge,
