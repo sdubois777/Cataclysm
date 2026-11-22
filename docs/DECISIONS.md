@@ -469,7 +469,7 @@ filed from it.
 
 ### SAID FIRST
 
-- **NOT COMPILED.** Phase 1.
+- **COMPILED AND TESTED IN WINDOW tree-2784-w1, WHICH PASSED**, with #2840 riding; recorded at the end of this entry.
 - **THE IMP'S BURN WAS WRONG BEFORE THIS, AND THE DESIGN DOCUMENT SAID IT WAS RIGHT.** The owner's answer of 2026-11-19
   (the skill levels entry below) says burns and minions "scale too", up to 2.85 times at level 20, and names Summon Imp:
   "Without this, Summon Imp levels up but its imps never hit harder because of it." Slice 2b left the imp's burn out of
@@ -574,6 +574,44 @@ anchor checked to occur once on the LF text. Predictions reasoned from the code;
 | TP3 | an evaded blow burns | 4, 1: TB3 |
 | TP4 | any commanded creature burns | 4, 1: TB4 |
 | TP5 | the imp's explosion burn passes a factor of 1 | 4, 1: TB5 (the level 3 explosion burn ticks 25) |
+
+
+### Window tree-2784-w1: PASSED, 5252 of 5252, and 8 of 8 C++ proofs
+
+On development `4a7aaac4e` (the shared window, #2842, merged): this entry's two commits, then #2840's `58c145e64` and
+`8d837787b`, riding by the coordinating session's ruling, as `feat/thrall-burn-2784-2` at `4d029f3bd`. The run record
+was 16 on `4a7aaac4e` and is 17 at the head. Both `docs/DECISIONS.md` conflicts were resolved by inserting each entry
+whole into development's log in the order each was first written; outside that file, each carried change's added and
+removed lines are identical to its original. #1267 arrived after the registration and did not ride.
+
+**The compiles**: the branch "Build: Succeeded - 73 actions, 66 files compiled", each changed file alone "42 actions, 39
+files compiled", the unity files again "19 actions, 16 files compiled", 0 compiler warning or error lines in each.
+
+**The window**, no asset step (no CSV changed), registered from window shared-w1's measured log
+(`sw_suite_engine_17c735d2.log`, at development's `game/` tree `3237ce11d`: "5244 tests performed", "860 written and
+deleted, 0 left behind"):
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 29, 368 tests: `ThrallBurn.` 5 and `ThrallSave.` 3 new, and the groups both changes reach | 29 of 29 |
+| Whole suite | 5252: 5244, this change's 5 and #2840's 3 | "5252 tests performed, 5252 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5252 | "5252 tests in the tree at 4d029f3bd; 5252 performed, gap 0" |
+| Record versions | run 17, character 14, account 7 | "26 lines stating a version; NO MISMATCH" |
+| Python, beside it | | "8133 passed, 10 skipped"; JUnit 8143, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+
+**No existing figure moved**, as the sweep for figures expected: the whole suite passed at its registered total.
+
+**8 C++ proofs, all PROVED**, each failing exactly the tests predicted with the break in and passing restored: TP1, 4 of
+5 (`ATakenCreatureSetsAlightWhatItStrikes`, `TheThrallsBurnCreditsSubjugateAndGrowsWithItsLevel`,
+`AnEvadedBlowSetsNothingAlight`, `ACreatureATakenCreatureCommandsSetsNothingAlight`); TP2, `TheThrallsBurnCredits...`;
+TP3, `AnEvadedBlow...`; TP4, `ACreatureATakenCreatureCommands...`; TP5, `AnImpsBurnGrowsWithSummonImpsLevel`; and #2840's
+R1 to R3, run as TS1 to TS3 with anchors written from its commit to its entry's words: TS1,
+`AThrallKeepsTheSkillThatTookItAndItsLevelFactorThroughASaveAndALoad`; TS2, that and
+`ALoadedThrallsReserveFallsWhenSubjugateLevels`; TS3, `AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne`. TB3's
+set-up assertion that 100 evasion evades held: the evade was not capped.
 
 ---
 
