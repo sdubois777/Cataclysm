@@ -2,6 +2,184 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Every forge item craft goes through one sequence, and the residue tools: a Chaos Stabilizer and Tainted Shards on a craft's own press, and the cleanse (#47, slice F5)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-residue-tools-47-f5`. It is cut from slice F4's head
+  `00de89243`, with slice F3's three commits (`c9bf10524`, `a535f7804`, `865dfdd6a`, from
+  `feat/forge-enchantments-47-3`) applied unchanged on top, as the coordinating session ordered. Its own window comes
+  after window forge-pg-w1: it rewrites the shared craft path, so the C++ proof anchors of F1 to F4 do not match after
+  it. They run in their own windows first.
+- **MORE THAN `docs/DECISIONS.md` CONFLICTED WHEN F3 WAS APPLIED**, against the order to resolve only that file. Twelve
+  files conflicted.
+  - Eleven are ADDITION-ONLY: every hunk's base part is empty, both slices having added code at the same place.
+    `.claude/windows/union_conflicts.py` checked that from `git checkout --conflict=diff3` before resolving each one,
+    keeping both sides, F4's first.
+  - The twelfth, `test_the_forge_charges_the_sheets_costs.py`, had one base line that both slices edited: the last
+    entry of a dictionary, which each turned into a comma and its own entries. It was resolved by hand, keeping all of
+    both.
+  - After the resolve, `check_no_markers.py` found 0 markers in the 18 changed files, and
+    `tools/check_resolved_cpp.py --changed` read 13 files with 0 complaints.
+  - F3's own files are byte for byte `865dfdd6a`'s. F3's and F4's entries in this log are byte for byte their own
+    branches'. F3's entry sits above F4's by the author date of the commits that wrote them (13:26 against 13:05).
+- **The play checklist had two steps numbered 23**, F4's and F3's, because each slice added one. Here F3's is
+  renumbered 24 and this slice's is 25. F3's and F4's entries each still say "step 23" and are left as written. Window
+  forge-pg-w1, which merges F3 and F4, will meet the same duplicate.
+- **SEVEN PYTHON CHECKS CHANGED SHAPE**, listed under Tests. They read each craft's own body for the days, the payment
+  or the line, and those steps are now in the one sequence. Each moved to the one function where its step now happens.
+  A new check holds that function's order, and that no other function in the file pays, takes materials, puts an item
+  back or passes days. This is the change of shape the coordinating session accepted with the plan, not a check
+  weakened to pass.
+
+### The plan and the rulings, the coordinating session, 2026-11-22
+
+The plan (`.claude/windows/plan_forge_47_f5.md` in the gems session's worktree) was accepted as written:
+- `DoItemCraft` replaces the copies; the combines are left out.
+- `OptionsOn` applies the options.
+- `TakeMaterials` is F6b's one place.
+- Q26 is checked and held by a Python check.
+
+The rulings:
+
+1. **Q23**: the Chaos Stabilizer and the Tainted Shards are options on a craft's own press, spent in it; nothing is
+   saved for a "next craft", so no save version moves.
+2. **Q27**: a Stabilizer halves the residue the craft adds, certainly.
+3. **Q24, and G2 ruled no**: each Shard removes one day of the residue's penalty (`CR / 100`, rounded down), down to the
+   craft's base days. It never removes one of those base days, an upgrade's level days included.
+4. **G1, DERIVED**: each option charges its row's Base Gold, 250, through `GoldFor` at the item's residue, the
+   Stabilizer once and the Shards once per shard. Both operations have a priced row in `ForgeOperations.csv`, and every
+   priced row is charged that way.
+5. **Q25**: a cleanse takes the row's "1 day per 500 CR", a part counting as a day, and at least one.
+6. **Q26**: a cleanse lifts no Consumption mark already made.
+   - The design's "Worn Residue and Consumption" says the mark is set on crossing, and "Only killing the double
+     clears residue"; nothing there says a lower Worn Residue clears the mark.
+   - In the code, `ACataclysmPlayerState::ClearConsumptionMark` is called by the double's death, by an equip or craft
+     that did not happen, and by a load restoring a record that holds no mark.
+7. **Q17**: the option materials count toward the empire tree's material nodes by their tier. So the materials a craft
+   takes are one list, each tier read from the crafting material table:
+   - Material Conservation, "T2 and below": the Shards, the upgrade stones up to +4 and the other tier 1 and 2
+     materials;
+   - Resource Management, "Rare": tier 3, the Stabilizer among them;
+   - Tempting Fate: every material.
+8. **G3, already ruled as F6's Q11**: the material nodes never act on the combines, because a kept stone would make
+   stones from nothing. The combines keep their own short sequence.
+
+### What it does
+
+- **`UCataclysmForgeCraft::DoItemCraft`**, the one sequence. It takes a step and two lambdas: one that changes a copy of
+  the item as it stood, given the run before its days pass and able to refuse, and one that says the craft's own line.
+  - The step holds the materials, one gold payment, the residue and days after the options, the threshold question's
+    words, and the refusals with no run and nothing at the target.
+  - The order: the run and the item; for a worn piece, the threshold question; the mark; the gold; the materials,
+    through `TakeMaterials`; the hooks' take (socketing's gem); the change; the residue written; the item put back; the
+    hooks' after (an unsocketed gem back to the bag); the days; the build the double wears; the craft's line; the
+    options' line; the save triggers.
+  - Every failure after the gold gives it back with the mark, and every failure after the materials gives them back.
+- **The seven crafts on it**: `Upgrade`, `DoSocketing`, `DoSocketWork`, `CraftAffix`, `DoAffixChange`,
+  `CraftDamageType` and F3's `DoEnchantmentWork`. `CataclysmForgeCraft.cpp` is 214 lines shorter. Each keeps its plan,
+  its refusals, its line, and the order in which it draws what it draws. F3's draw that fails now refuses the change, and
+  the sequence gives back the material, the gold and the mark.
+- **`TakeMaterials`**, the one place a craft's materials are taken. **`MaterialTierOf`**, each one's tier.
+- **The options**: every public item craft takes a last argument, defaulted to none, so every call and test written
+  before is unchanged.
+  - `UCataclysmForge::OptionsOn` and `UCataclysmForgeCraft::OptionsFor` apply them to any plan's residue before and
+    after, its days and its gold. No rule function changes.
+  - Refusals: a Stabilizer or Shards asked for and not held; a Stabilizer on a craft adding no residue; a Shard on a
+    craft with no penalty day; more Shards than penalty days ("This craft has 2 days of the residue's penalty, so at
+    most 2 Tainted Shards can be used."); the craft's gold and the options' together.
+- **The cleanse**: `UCataclysmForge::CleanseOf`, and `UCataclysmForgeCraft::Cleanse` through `DoItemCraft`. Half the
+  residue, the row's days, its gold through `GoldFor`. It never asks the threshold question, since the residue falls.
+- **The screen**: for a chosen piece, "Chaos Stabilizer: off (1 held)" and "Tainted Shards: 0 of 2 held", one press each,
+  reset when another piece is chosen and held to what is held after a craft; and "Cleanse half the residue", two
+  presses. **Every craft's first press says what the options do**, from the same `OptionsFor` the craft uses: "... With
+  a Chaos Stabilizer: residue 250 to 257.5, not 265. With 1 Tainted Shard: 4 days, not 5. The options cost 3,000 gold
+  more." A refused option refuses the press.
+- **The play log**: `ForgeOptionsLine`, said by `DoItemCraft` after the craft's own line when an option was used; and
+  `ForgeCleanseLine`.
+- **`docs/Play_Loop_Checklist.md`**: step 25, and F3's step renumbered 24.
+- **Nothing moves** in the save versions, the workbook or the assets.
+
+**Three errors of this slice's own, caught before commit:**
+- comment examples that did not follow from their own figures: a cleanse of 1,200 residue at "2,750 gold" (it is
+  6,250), and an options example pairing 40 residue with a Shard (there is no penalty day at 40);
+- the two new log lines' declarations inserted between F4's comment and its damage-type line, which would have left
+  that comment above the wrong function;
+- the refusal "at most 1 Tainted Shards", reworded so the number and the plural agree.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeResidueTools.`, 5 tests**, in `CataclysmForgeResidueToolsTests.cpp`. Its scene is
+`FResidueToolsScene`, not `FScene`.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FR1 | `TheOptionsHalveTheResidueAndRemovePenaltyDaysEachAtItsRowsGold` | an added socket at 250 residue: the Stabilizer gives 257.5 (7.5 saved, days kept, 1,500 gold); 1 Shard gives 4 days and 2 Shards 3; both together; the six refusals; the penalty days at 99, 100 and 250; the tiers (Stabilizer 3, Shard 2, Essence 5, +4 stone 2, +5 stone 3, unknown 0) |
+| FR2 | `AnUpgradeWithBothOptionsTakesTheirMaterialsAndGoldAndSavesResidueAndADay` | a carried +2 helm at 250 residue raised to +3 with both: 262.5 residue, 4 days, 7,500 gold, the stones and both options' materials used |
+| FR3 | `TheOneSequenceGivesBackEverythingWhenAChangeIsRefusedAndSaysItsLineAfterTheDays` | `DoItemCraft` called directly: a refused change gives back the gold and both materials, with its reason; a material short takes none; a change that succeeds is written with the step's residue and says its line once its 2 days have passed |
+| FR4 | `TheCleanseHalvesTheResidueInADayPer500AndLiftsNoMark` | 1,200 residue to 600 in 3 days for 6,250 gold, the question, the days at 500, 1,001 and 10, two refusals; a worn helm of a marked character cleansed with no threshold question, and still marked |
+| FR5 | `TheScreenSaysWhatTheOptionsDoBeforeACraftAndUsesThem` | the three buttons; the options on; the first press stating their effect; the second adding the socket at 257.5; the options held to what is left |
+
+**Python**: `tools/tests/test_every_item_craft_goes_through_one_sequence.py`, 8 tests: the order; the give-backs; every
+item craft calls `DoItemCraft`; no other function pays, takes materials, puts an item back or passes days, except the
+combines' own payment and stones; the three rows; the options' rule; the cleanse and Q26; the tiers.
+
+**The seven checks that changed shape**, each now pointing to the new file for the order:
+
+| Check | Was | Now |
+| :-- | :-- | :-- |
+| `test_the_added_socket_is_rolled_before_the_days_pass` | the roll before `Run->AdvanceDays` in `DoSocketWork` | the roll inside the change handed to `DoItemCraft` |
+| `test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` | the same for `CraftAffix` | the same |
+| `test_the_craft_writes_what_the_plan_drew_and_passes_the_days_after` | the same for `DoAffixChange` | the same |
+| `test_the_craft_writes_the_plans_type_in_place_and_draws_nothing_again` | the same for `CraftDamageType` | the same |
+| `test_the_craft_keeps_slice_f1s_order_and_draws_from_the_item_and_day_before_the_days_pass` (F3) | gold, material, draw, item, days in `DoEnchantmentWork` | the draw inside the change; a failed draw refuses it |
+| `test_each_craft_refuses_during_a_walk_passes_its_days_logs_and_saves`, `test_what_a_craft_took_is_put_back_when_it_cannot_finish`, `test_the_screen_asks_before_it_acts` (gems) | days, save and give-backs in `DoSocketing`; the question ending in `;` | `DoSocketing`'s hooks and line, and the days, save and four give-backs in `DoItemCraft`; the question without its `;`, which now has the options' words after it |
+| `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account` (gold), and the play-log check's steps | each of seven crafts | `DoItemCraft` and the two combines; each craft's line after its hand-over to `DoItemCraft`, and the play-log check's count of places, 31 after F3 and said "thirty", now thirty-three |
+
+**Python guard proofs, in a `git archive` copy of `ee66bacd8`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f5_python.py`): 11 of 11 PROVED**, each failing exactly the tests predicted and passing
+restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PR1 | the craft's line said before the days | `test_the_one_sequence_keeps_the_order_every_copy_kept` |
+| PR2 | a refused change keeping the materials | `test_every_failure_after_the_gold_gives_back_what_was_taken`, and the gems check's `test_what_a_craft_took_is_put_back_when_it_cannot_finish` |
+| PR3 | `Upgrade` calling another function | `test_every_item_craft_hands_its_craft_to_the_one_sequence`, and the play-log step `[ForgeUpgradeLine]` |
+| PR4 | the cleanse passing days itself | `test_no_other_function_pays_takes_puts_back_or_passes_days` |
+| PR5 | `StabilizedResidueShare` 0.4 | `test_the_three_rows_hold_the_tools_figures` |
+| PR6 | one Shard more than the penalty days allowed | `test_the_options_halve_the_residue_and_remove_only_penalty_days_each_at_its_rows_gold` |
+| PR7 | `DoItemCraft` clearing a mark it did not set | `test_the_cleanse_halves_the_residue_in_its_rows_days_and_lifts_no_mark` |
+| PR8 | every material read as tier 1 | `test_the_material_step_reads_each_materials_tier` |
+| PR9 | the options' line reworded | the play-log checklist checks, both |
+| PR10 | an added socket rolled from the changed copy | `test_the_added_socket_is_rolled_before_the_days_pass` |
+| PR11 | a failed put-back keeping the gold | `test_every_failure_after_the_gold_gives_back_what_was_taken`, and the gold check's `[...DoItemCraft(-Step.Gold]` |
+
+### Registered for the window
+
+The base is development after window forge-pg-w1 merges F3 and F4. This slice adds 5 test names and removes none. **The
+whole suite is registered as the base's last measured total plus 5.** Each group below is registered at its count in
+the base's newest engine log, re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeResidueTools.` 5; then **every forge group, as the regression net for the seven crafts moved onto `DoItemCraft`**: `ForgeEnchantments.` (12 at F3's registration), `ForgeDamageTypes.` (6), `ForgeAffixChange.` (5), `ForgeAffixes.` (6), `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.`, each performed and succeeded at exactly its count |
+| The whole suite | the base's total plus 5, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeResidueTools.` with its trailing dot, through
+`.claude/windows/prove_f5.py`. Every anchor matches once on `ee66bacd8`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FR1 | in `MaterialTierOf`, `Row->Tier + 1` | 5 performed, 4 succeeded, 1 failed: FR1, on the tiers; no other test reads one |
+| FR2 | in `Upgrade`, `Done.Gold = Plan.Gold;` | 5, 4, 1: FR2, on "and the craft reports them" |
+| FR3 | in `DoItemCraft`, a refused change keeping the materials | 5, 4, 1: FR3, on "both materials are given back" |
+| FR4 | in `CleanseOf`, the days rounded down | 5, 4, 1: FR4, on "in 3 days" |
+| FR5 | in the screen, the Stabilizer not held to what is held | 5, 4, 1: FR5, on "the options are held to what is left" |
+
+---
+
 ## 2026-11-22 — The forge imprints an enchantment, giving up the affix the player chooses, and changes an enchantment's drawback to a different one never milder than its benefit (#47, slice F3)
 
 **NOT COMPILED, NOT RUN.** Phase 1 on `feat/forge-enchantments-47-3`, cut from slice F2's head `84c2f0ff7`
