@@ -407,6 +407,12 @@ by `git add` with no error and no warning. Guarded by
   (`UCataclysmEmpireRun::CleanseEveryCity`). Its tests are in
   `Tests/CataclysmCityCleanseTests.cpp`.
 
+  Since issue #1265 a bought upgrade can be raised to tier 2 and tier 3 in its
+  own slot, for the next tier's gold and build days
+  (`UCataclysmEmpireRun::RaiseCityUpgrade`); it acts at its old tier until the
+  raise is finished, when `UCataclysmEmpireMap::RaiseUpgrade` sets the new
+  tier's figures. Its tests are in `Tests/CataclysmCityUpgradeRaiseTests.cpp`.
+
   **Depth and reward are the same axis; depth and time are not, once a player has
   invested.** A floor costs one day to begin with, so the two floor upgrades move
   the resolve timer with the floor count — a deeper dungeon is slower to walk,

@@ -201,12 +201,15 @@ def test_the_document_states_the_price_at_every_tier_as_the_pile_scale_gives_it(
 
 
 def test_the_price_is_scaled_by_the_pile_column_the_gold_drops_read() -> None:
+    # AT AN UPGRADE TIER SINCE ISSUE #1265: the tier's own gold column, `Gold`, scaled the same way.
     price = body("Cataclysm/Data/CataclysmCityUpgradeMapping.cpp",
-                 "int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier)")
+                 "int64 UCataclysmCityUpgradeMapping::PriceFor(FName RowName, int32 DifficultyTier, int32 UpgradeTier)")
     assert "UCataclysmDropRoll::GoldRow(GoldTable, DifficultyTier)" in price, "the price is not read at the tier asked"
     assert "UCataclysmDropRoll::GoldRow(GoldTable, 1)" in price, "the price is not scaled against tier 1's pile"
-    assert "PriceAt(Row->Tier1Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile)" in price, (
-        "the price is not the row's tier 1 gold times the pile at the tier over the pile at tier 1")
+    assert "PriceAt(Gold, AtTier->GoldPerPile, AtTierOne->GoldPerPile)" in price, (
+        "the price is not the row's gold times the pile at the tier over the pile at tier 1")
+    assert "UpgradeTier == 3 ? Row->Tier3Gold : UpgradeTier == 2 ? Row->Tier2Gold : Row->Tier1Gold" in price, (
+        "the price does not read the column of the upgrade tier bought or raised to")
     # SINCE #2741 SLICE 6A THE PRICE IS ASKED ON A CITY WITH THE TREE'S PRICE NODES, so it takes a context and a city;
     # `tools/tests/test_empire_tree_gold_nodes.py` holds what it does with them.
     purchase = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
@@ -250,14 +253,16 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
                         "Cataclysm/Player/CataclysmForgeCraft.cpp"], (
         f"gold is spent in {charging}; a city upgrade's purchase, a bribe and the forge's crafts are the places that "
         "charge")
-    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
-               "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
+    # `Buy` AND, SINCE ISSUE #1265, `Raise` CHARGE THROUGH ONE BODY, `PayAndBuild`, so both are held here.
+    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "ECataclysmCityUpgradeResult PayAndBuild(")
     # THE CREDIT COUNTS AS GOLD HELD for both of the run's questions since issue #2741 slice 6e (D2).
-    asked = buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit)")
+    asked = min(buy.find("Run->WouldRaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit)"),
+                buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held + Credit)"))
     spent = buy.find("UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter)")
     # WITH THE DAYS IT TAKES TO BUILD since issue #2825, with the credit since slice 6e (`tools/tests/test_city_upgrades_take_days_to_build.py`).
     on_credit = buy.find("UCataclysmGameInstance::SpendGoldOnCreditFor(")
-    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)")
+    bought = min(buy.find("Run->RaiseCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)"),
+                 buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)"))
     assert -1 not in (asked, spent, on_credit, bought) and asked < min(spent, on_credit) and max(spent, on_credit) < bought, (
         "Buy does not ask the run, then take the gold, then have the run record the upgrade, in that order; an upgrade "
         "could be held unpaid")
@@ -299,8 +304,8 @@ def test_every_purchase_goes_through_the_one_that_charges(relative: str, signatu
 # --------------------------------------------------------------------------
 
 def test_a_purchase_writes_the_records_it_changed() -> None:
-    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
-               "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
+    # `PayAndBuild`, the body `Buy` and `Raise` share since issue #1265.
+    buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "ECataclysmCityUpgradeResult PayAndBuild(")
     assert ("if (Price > 0 && !bFromTheCharacter) { UCataclysmSaveWriter::NoteTriggerIn(World, "
             "ECataclysmSaveTrigger::AccountChanged); }") in buy, (
         "a purchase paid from the account does not raise AccountChanged, so the account's gold is not written")

@@ -4689,6 +4689,10 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 
   
 
+**A bought upgrade can be raised to tier 2 and then tier 3, in its own slot.** A raise costs the next tier's gold from the City Upgrades sheet, scaled by difficulty tier as every price is, and takes that tier's build days, 12 or 24; the empire tree's build and price nodes, its credit and Rapid Funding's rush act on it as on any build, and it is the city's one build at a time. The upgrade keeps working at its old tier until the raise is finished and works at the new tier from that day. A one-time upgrade fires again at the new tier's full figure when its raise is finished. An upgrade that repairs every N days keeps a repair that was already due, or moves it sooner. A raised maximum replaces the old raise rather than adding to it, and a full city stays full. The cleanse has no tier 2 or 3 and cannot be raised. Ruled by the coordinating session on 2026-11-22 (issue #1265), after looking at how Darkest Dungeon, XCOM 2, Frostpunk and Total War raise a building's level in place.
+
+  
+
 ## **Empire-Wide Upgrades**
 
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.
