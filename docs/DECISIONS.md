@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-21 — The design document's figures for how long a geared character survives are recomputed from the model, and a test now recomputes them (#2818)
+
+**Affects:** `docs/Cataclysm_GDD_v2.md`, the section "How Long a Geared Character Survives" (its four-layer table, its
+enemy table and the pack sentence under it), the enemy ceiling paragraph that quotes it, and the Imp's reach paragraphs
+that quote its pack figures; `tools/tests/test_the_geared_character_figures_match_the_model.py`, new;
+`tools/tests/test_enemy_abilities.py`, whose pack-size check pinned the old "ten take 4.9 seconds". Issue
+[#2818](https://github.com/sdubois777/Cataclysm/issues/2818). Documents and Python only: no game code changes, so no
+Unreal window.
+
+### SAID FIRST
+
+- **EVERY FIGURE BELOW IS THE MODEL'S AT DEVELOPMENT `b8df7e1fe`.** Issue #2808, not merged when this was written,
+  makes the Succubus and the Corrupted Sentinel fire every second at the same damage per second; on its branch the
+  model gives the Elite Succubus 29 hits in 29.0 seconds and the Legendary Sentinel 25 in 25.0. Their rows here are
+  today's, 12 in 31.2 and 13 in 26.0, and **#2808's window will move them**: the new test fails on that branch until
+  its two rows are written from its model, which is the point of the test.
+- **THE CAUSE WAS ALREADY RECORDED, AND ONLY THE DOCUMENT WAS NOT UPDATED.** The entry of 2026-09-04 "A stated floor
+  per affix, and seven tops moved to make room for one" raised the flat damage reduction affix from 2 to 4, took the
+  reference character's damage reduction from 15.95 to 23.95 and what its four layers stop from 89.9% to 90.8%, and
+  left the enemy damage figures fitted against 89.9% for the next balance pass. The design document kept 15.9% and
+  89.9%. Enemy damage and attack intervals were retuned again afterwards (the Brute's interval went 2.8 to 1.6 to 1.2
+  seconds in August 2026, and its row still gave 2.8), and nothing compared the table with the model.
+
+### What changed in the document
+
+| Figure | Was | Now, the model's |
+| :-- | :-: | :-: |
+| Damage reduction, the fourth layer | 15.9% | 23.95% |
+| All four layers together | 89.9% | 90.8% |
+| Common Imp | 54 hits, 48.6 s | 60 hits, 54.0 s |
+| Common Hellhound | 24 hits, 26.4 s | 26 hits, 28.6 s |
+| Elite Succubus | 11 hits, 28.6 s | 12 hits, 31.2 s |
+| Elite Brute | 10 hits, 28.0 s | 11 hits, 13.2 s |
+| Legendary Corrupted Sentinel | 12 hits, 24.0 s | 13 hits, 26.0 s |
+| Herald Abyssal Warden | 5 hits, 12.0 s | unchanged |
+| Cataclysm Boss Gatekeeper | 2 hits, 6.0 s | unchanged |
+| One, ten and twenty Imps (under the table) | 48, 4.9 and 2.4 s | 54.0, 5.4 and 2.7 s |
+| Ten, twenty and seven Imps (the Imp's reach) | 4.9, 2.4 and 6.9 s | 5.4, 2.7 and 7.7 s |
+| Ten Imps (the reason the pack is ten) | 4.9 s | 5.4 s |
+| What the reference character stops (the enemy ceiling) | 89.9% | 90.8% |
+
+The armour (7,299 points, 53.3%), resistance (70.0%) and block (28%, 14.0%) rows were already the model's.
+
+- **A SENTENCE SAYING WHERE THE ENEMY TABLE COMES FROM**, under it: the function, the rarity, and the rounding, and the
+  test that recomputes it.
+- **THE ENEMY CEILING PARAGRAPH** said the ceiling, 89%, is "the whole percent below" what the character stops. With
+  90.8% that is no longer true as written. **No ceiling moves:** the 2026-09-04 entry kept `ENEMY_MITIGATION_CEILING`
+  at 89% because "it still does [sit below], with more room than before". The paragraph now says the ceiling sits
+  below, and that it was set as the whole percent below the 89.9% of the time and kept when that rose to 90.8%.
+- **THE IMP'S REACH ARGUMENT IS UNCHANGED.** It rests on ten and twenty Imps being stated at all and on one rank being
+  seven; only the seconds it quotes moved.
+
+### The test
+
+`tools/tests/test_the_geared_character_figures_match_the_model.py`, 13 tests, reading the document and the model:
+
+- the four-layer table row by row, and the four layers multiplied equal the model's `damage_taken_fraction(8)`, so the
+  table is the whole of what a hit loses;
+- the enemy table names exactly the seven enemies `sim/tests/test_survivability.py` names, in order, and each row's
+  hits and seconds are `damage.hits_to_kill`'s and its rounded-up hits times the attack interval;
+- the pack sentence under the table, the two Imp's reach sentences and the enemy ceiling's quoted figure.
+
+Each printed number is compared to half a unit in its last printed digit, and a hit count exactly. The pattern is
+`tools/tests/test_enemy_telegraphs.py`'s: a section that derives its numbers is checked by deriving them again.
+
+`tools/tests/test_enemy_abilities.py`'s `test_the_pack_size_is_the_one_the_document_already_states` asserted the
+sentence "ten take 4.9 seconds", which pinned the stale figure. It now asserts that the section still states how long
+ten Imps take, and the figure itself is the new test's.
+
+### Proofs
+
+By `tools/prove_guard.py`, 2026-11-21, each **PROVED**:
+
+| Break | With the break in | Restored |
+|---|---|---|
+| The model moves and the document does not: the Imp's `attack_interval=0.9` made `1.0` in `sim/cataclysm_sim/enemy_stats.py` | 3 failed, 10 passed: `test_each_enemy_row_is_the_models[Common Imp]`, `test_the_pack_sentence_under_the_table_is_the_models`, `test_the_imps_reach_quotes_the_same_pack_figures` | 13 passed |
+| The document's old Imp row, 54 hits and 48.6 seconds | 1 failed: `test_each_enemy_row_is_the_models[Common Imp]` | 13 passed |
+| The document's old damage reduction, `15.9%` | 1 failed: `test_the_four_layer_table_is_the_models` | 13 passed |
+
+### Seen, not changed
+
+- **Two C++ comments quote the old pack figure**, "ten Imps killing a geared character in 4.9 seconds":
+  `game/Source/Cataclysm/Character/CataclysmImpCharacter.h` (the Imp's reach) and
+  `game/Source/Cataclysm/Player/CataclysmGameMode.h` (the sandbox's Imp damage). Left, because this change touches no
+  game code and needs no Unreal window; to be corrected by the next change to either file.
+- **Enemy damage is still fitted against 89.9%**, as the 2026-09-04 entry left it. That entry put the difference at
+  about one part in a hundred, measured on what is stopped; measured on what lands, a hit now reaches health for 9.17%
+  of itself against the 10.1% the damage was fitted to, about 9% less. A balance question, recorded there and here,
+  not changed.
+
+---
+
 ## 2026-11-21 — A gem raises the experience every skill earns: Of The Scholar, and the stat skill_experience_gain, which acts once gems can be socketed (#2803)
 
 **Affects:** `ACataclysmPlayerState::SkillExperienceGainStat` and `SkillExperienceGainFactor`, new, and
