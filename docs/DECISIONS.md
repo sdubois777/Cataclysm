@@ -32,8 +32,22 @@ new line. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
   of the next level costs no day and adds no residue, because it changes no item"), and no gold, since no craft has a
   gold price yet ("the base is a later choice across all eighteen operations"). So the owner's "gold/days cost" as a
   deterrent does not exist on either combine today. Reported to the coordinating session on 2026-11-21, with the
-  recommendation that one question decide a cost for both combines together. Until it is answered, the gem combine stays
-  the stone combine's equal: free. **Not yet confirmed by the coordinating session.**
+  recommendation that one question decide a cost for both combines together. **The coordinating session ruled (A) the
+  same day: the gem combine reads the same cost as the stone combine, and gems get no cost of their own.** Asked what
+  combining should cost, the owner answered, word for word: "I have costs set in the crafting excel sheet. Something like
+  that should be implemented". The workbook's Crafting sheet has a gold multiplier and no base price, and no row for
+  combining, so a crafting-cost audit and plan comes before the gems window and will propose one combine row for stones
+  and gems alike. **THERE IS NO COST FUNCTION TO SHARE TODAY**: the stone combine is free because nothing charges it, not
+  because a function returns nothing, so the gem combine is free the same way, and the combine row will be one function
+  both read.
+- **WHAT NO CAP MEANS IN GEMS, AT TODAY'S PRICES.** A tier 1 full clear drops gems worth 1,909 Everyday gems (slice G5),
+  about 38.5 gems of each of the 28 kinds, worth 68.2 Everyday gems a kind. One Ascendant gem is 64 Everyday gems
+  (2 to the power of 6 rungs), so with no cap and no cost a tier 1 full clear can make about one Ascendant gem of each
+  kind, six rungs above tier 1's own rarity. Climbing one gem from Everyday to Ascendant takes 63 combines (32, 16, 8,
+  4, 2 and 1) and, at the stone combine's prices, **no day, no residue and no gold**. That is the figure the owner's
+  deterrent rests on; the crafting-cost plan will show it under the proposed combine row. The coordinating session
+  first passed the owner "about a thousand combines", then "about one Mythical a kind", both from this session's
+  arithmetic, before these figures.
 - **THE OWNER'S OTHER POINT, THAT CRAFTING MATERIAL DROPS ARE FAR TOO HIGH,** goes to the gold session as its own
   change. G5's gem rate stays until then.
 - **NO RECORD VERSION MOVES.** Gem stacks are already saved (slice G2); a combine changes their counts, not their shape.
