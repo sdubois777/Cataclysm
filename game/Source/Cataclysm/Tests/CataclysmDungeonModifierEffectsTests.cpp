@@ -107,6 +107,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Tests/CataclysmTestSwings.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
@@ -63044,6 +63045,9 @@ bool FCataclysmCorruptedStalkerBlowTest::RunTest(const FString& Parameters)
 
 	const float Before = Player.Read(Vital::GetHealthAttribute());
 	Stalker->AttackTarget(Player.Character);
+	// SINCE ISSUE #2811 A COPY'S BLOW WAITS FOR ITS SWING TO CONNECT, as the player's does, so the swing is finished here,
+	// as the player's tests finish theirs: the clock is moved until it connects (`CataclysmTestSwings`).
+	TestTrue(TEXT("its swing connected"), CataclysmTestSwings::FinishTheSwingsOf(World, Stalker));
 	const float After = Player.Read(Vital::GetHealthAttribute());
 	TestTrue(FString::Printf(TEXT("its blow hurt the player: %.1f to %.1f"), Before, After), After < Before);
 	return true;
@@ -63659,8 +63663,18 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
 		Target->SetHealth(10000000.0f);
 		Target->SetArmour(0.0f);
+		// AND NO REGENERATION, since the clock now moves before the blow is read (below): a regeneration step after it
+		// would take some of it back, and the table was fitted to the whole blow.
+		if (UAbilitySystemComponent* TargetAbilities = UCataclysmTargeting::AbilitySystemOf(Target))
+		{
+			TargetAbilities->SetNumericAttributeBase(Vital::GetHealthRegenAttribute(), 0.0f);
+		}
 		const float TargetBefore = StalkerRead(Target, Vital::GetHealthAttribute());
 		Stalker->AttackTarget(Target);
+		// SINCE ISSUE #2811 A COPY'S BLOW WAITS FOR ITS SWING TO CONNECT, as the player's does, so the swing is finished here,
+		// as the player's tests finish theirs: the clock is moved until it connects (`CataclysmTestSwings`).
+		TestTrue(FString::Printf(TEXT("set-up: tier %d: its swing connected"), Tier),
+				 CataclysmTestSwings::FinishTheSwingsOf(World, Stalker));
 		const float Blow = TargetBefore - StalkerRead(Target, Vital::GetHealthAttribute());
 		const float DamageMultiplier = Effects::CorruptedStalkerDamageMultiplier(Tier);
 		AddInfo(FString::Printf(TEXT("STALKER BLOW: tier %d: its basic attack took %.1f (%.1f before the multiplier of "
@@ -63712,6 +63726,10 @@ bool FCataclysmCorruptedStalkerFervourTest::RunTest(const FString& Parameters)
 	for (int32 Blow = 0; Blow < 20; ++Blow)
 	{
 		Stalker->AttackTarget(Player.Character);
+		// SINCE ISSUE #2811 A COPY'S BLOW WAITS FOR ITS SWING TO CONNECT, as the player's does, so the swing is finished here,
+		// as the player's tests finish theirs: the clock is moved until it connects (`CataclysmTestSwings`).
+		TestTrue(FString::Printf(TEXT("set-up: blow %d: its swing connected"), Blow),
+				 CataclysmTestSwings::FinishTheSwingsOf(World, Stalker));
 		Stalker->AfterRegenerationStep();
 		Healths += FString::Printf(TEXT("%s%.0f"), Blow == 0 ? TEXT("") : TEXT(", "),
 								   Player.Read(UCataclysmVitalAttributeSet::GetHealthAttribute()));

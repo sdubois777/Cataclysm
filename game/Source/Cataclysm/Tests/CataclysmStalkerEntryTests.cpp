@@ -24,6 +24,7 @@
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmItem.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Tests/CataclysmTestSwings.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystemComponent.h"
 #include "Components/SphereComponent.h"
@@ -597,6 +598,9 @@ bool FCataclysmStalkerEntriesNecrosisTest::RunTest(const FString& Parameters)
 		}
 		const float Before = Read(Player, Vital::GetHealthAttribute());
 		Stalker->UseEnemyAbility(ChoiceIndexOf(Slot::Heavy), Player, Player->GetActorLocation());
+		// SINCE ISSUE #2811 A COPY'S BLOW WAITS FOR ITS SWING TO CONNECT, as the player's does, so the swing is finished here,
+		// as the player's tests finish theirs: the clock is moved until it connects (`CataclysmTestSwings`).
+		TestTrue(TEXT("set-up: its swing connected"), CataclysmTestSwings::FinishTheSwingsOf(World, Stalker));
 		bHurt = Read(Player, Vital::GetHealthAttribute()) < Before;
 		const FGameplayTag Tag =
 			UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("Keyword.DoT.Necrosis")), false);
