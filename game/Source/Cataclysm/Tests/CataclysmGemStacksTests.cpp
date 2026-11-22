@@ -12,6 +12,9 @@
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmWearing.h"
+#include "Save/CataclysmSaveGather.h"
+#include "Save/CataclysmSaveRecords.h"
+#include "Save/CataclysmSaveStorage.h"
 #include "UObject/Package.h"
 
 /**
@@ -243,6 +246,76 @@ bool FCataclysmGemStacksNothingToIncreaseTest::RunTest(const FString&)
 	TestFalse(TEXT("Of The Viper, a flat chance, says nothing of it"), Explains(Viper));
 	TestFalse(TEXT("nor does Of The Scholar, an increase of a stat the game gives a base"), Explains(Scholar));
 	TestTrue(TEXT("CONTROL: Of The Scholar's tooltip was read"), Scholar.Num() >= 3);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// GK6. A carried gem stack survives a save and a load: the bag gathered into a character record, written to JSON as
+// the save file is, read back and restored into a fresh bag. Promised by G2's entry; ruled by the coordinating session
+// on 2026-11-22 to ride in the empire tree slice 9 window.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksSaveTest,
+	"Cataclysm.GemStacks.ACarriedGemStackSurvivesASaveAndALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three Of The Viper at Superb and one Of Rot at Quality, beside a stack of Corrupted Motes, are gathered into a
+ * character record, written out and read back, and restored into an empty bag: each stack comes back in its own slot
+ * at its own rarity and count, and a Viper at another rarity is not invented. Prints "GEM STACK SAVED".
+ */
+bool FCataclysmGemStacksSaveTest::RunTest(const FString&)
+{
+	using namespace CataclysmGemStacksTest;
+	UCataclysmInventoryComponent* Bag = NewBag();
+	const int32 ViperSlot = Bag->AddGems(Viper, ECataclysmRarity::Superb, 3);
+	const int32 RotSlot = Bag->AddGems(Rot, ECataclysmRarity::Quality, 1);
+	const int32 MoteSlot = Bag->AddMaterial(Mote, 4);
+	if (!TestTrue(TEXT("set-up: three stacks in three slots"),
+				  ViperSlot != INDEX_NONE && RotSlot != INDEX_NONE && MoteSlot != INDEX_NONE
+					  && ViperSlot != RotSlot && RotSlot != MoteSlot))
+	{
+		return false;
+	}
+
+	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>(GetTransientPackage());
+	Record->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
+	FCataclysmSaveGather::CarriedSlotsFrom(*Bag, Record->CarriedSlots);
+	FString Text;
+	FString Error;
+	if (!TestTrue(TEXT("set-up: the record is written"), FCataclysmSaveStorage::ToJson(Record, Text, Error)))
+	{
+		AddError(Error);
+		return false;
+	}
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (!TestNotNull(TEXT("set-up: the record is read back"), Read))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	UCataclysmInventoryComponent* Loaded = NewBag();
+	const bool bRestored = Loaded->RestoreSlots(Read->CarriedSlots);
+	AddInfo(FString::Printf(TEXT("GEM STACK SAVED: restored %d; Viper Superb %d in slot %d, Rot Quality %d in slot %d, "
+								 "motes %d; Viper Quality %d"),
+							bRestored, Loaded->CountOfGems(Viper, ECataclysmRarity::Superb),
+							Loaded->SlotOfGems(Viper, ECataclysmRarity::Superb),
+							Loaded->CountOfGems(Rot, ECataclysmRarity::Quality),
+							Loaded->SlotOfGems(Rot, ECataclysmRarity::Quality), Loaded->CountOfMaterial(Mote),
+							Loaded->CountOfGems(Viper, ECataclysmRarity::Quality)));
+
+	TestTrue(TEXT("the bag is restored"), bRestored);
+	TestTrue(TEXT("and the file names the gem"), Text.Contains(TEXT("\"Gem_Of_The_Viper\"")));
+	TestEqual(TEXT("Of The Viper comes back, 3 of them at Superb"),
+			  Loaded->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
+	TestEqual(TEXT("in the slot it was in"), Loaded->SlotOfGems(Viper, ECataclysmRarity::Superb), ViperSlot);
+	TestEqual(TEXT("Of Rot comes back, 1 at Quality"), Loaded->CountOfGems(Rot, ECataclysmRarity::Quality), 1);
+	TestEqual(TEXT("in its slot"), Loaded->SlotOfGems(Rot, ECataclysmRarity::Quality), RotSlot);
+	TestEqual(TEXT("no Viper at another rarity is invented"), Loaded->CountOfGems(Viper, ECataclysmRarity::Quality), 0);
+	TestEqual(TEXT("CONTROL: the motes beside them come back too"), Loaded->CountOfMaterial(Mote), 4);
 	return true;
 }
 

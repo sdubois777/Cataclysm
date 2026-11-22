@@ -2,6 +2,43 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — A carried gem stack survives a save and a load: the test G2's entry promised, run in the empire tree slice 9 window (#46, slice G2)
+
+**NOT RUN YET.** Written on `test/gem-stack-survives-a-save`, cut from development `3f3056ca2` (the gems window's merge,
+#2836). The coordinating session ruled on 2026-11-22 that it is not compiled here and rides in the empire tree slice 9
+window, which cherry-picks it. Its results are recorded there, not here.
+
+### Why
+
+G2's entry promised "a test that a carried gem stack survives a save and a load", to be written with the save step.
+It was not written: the two `Cataclysm.GemSave.` tests prove the migration only, `Character_v13.json` holds no gem
+stack, and `Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` covers a gem on the
+floor. The gems pull request said so, and the coordinating session ruled this route rather than a third gems window.
+
+### What it does
+
+`Cataclysm.GemStacks.ACarriedGemStackSurvivesASaveAndALoad` (GK6), in `CataclysmGemStacksTests.cpp`: three Of The Viper
+at Superb and one Of Rot at Quality, beside four Corrupted Motes, are gathered into a character record
+(`FCataclysmSaveGather::CarriedSlotsFrom`), written out and read back as the save file is (`FCataclysmSaveStorage::ToJson`
+and `FromJson`, which keep `SaveGame` fields only), and restored into an empty bag (`RestoreSlots`). Each stack must come
+back in its own slot at its own rarity and count, the file must name the gem, and no Viper at another rarity may
+appear. CONTROL: the motes come back too. No save version moves: the fields it reads were saved since the gems window.
+
+### Registered for the slice 9 window
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStacks.` alone | 6 performed, 6 succeeded |
+| The whole suite | the slice 9 window's own total plus this 1 test |
+
+**C++ guard proof GK6**: in `CataclysmInventoryComponent.h`, the `SaveGame` specifier removed from the `UPROPERTY` above
+`FCataclysmCarriedSlot`'s `FName Gem;`, so the slot's gem is not written. Narrowed to `Cataclysm.GemStacks.`: 6
+performed, 5 succeeded, 1 failed, `ACarriedGemStackSurvivesASaveAndALoad`, on "and the file names the gem", "Of The
+Viper comes back, 3 of them at Superb", "in the slot it was in", "Of Rot comes back, 1 at Quality" and "in its slot";
+"the bag is restored" and the motes' CONTROL still pass. Predicted, not run.
+
+---
+
 ## 2026-11-22 — The gems window: G1 to G7 rebased onto development with #2832 carried, saved at character record 13 and run record 14, the workbook stage, and a tooltip line for the four gems no class has a base for (#46, #2830, #2832)
 
 The turn of the gems work (issue #46, slices G1 to G7, and #2830), with the level-1 session's #2832 carried on top, as
