@@ -400,6 +400,13 @@ by `git add` with no error and no warning. Guarded by
   target once it holds its cap of dungeons, so the wave lands elsewhere rather
   than the dungeon vanishing.
 
+  Since issue #2838 the cleanse, the last resort, is built as well: offered from
+  difficulty tier 3 and once a run (`UCataclysmEmpireRun::bCleanseBoughtThisRun`),
+  it removes half of each standing city's dungeons, soonest first, leaving Quest,
+  Fallen City and Cataclysm dungeons, and takes half of what each city holds
+  (`UCataclysmEmpireRun::CleanseEveryCity`). Its tests are in
+  `Tests/CataclysmCityCleanseTests.cpp`.
+
   **Depth and reward are the same axis; depth and time are not, once a player has
   invested.** A floor costs one day to begin with, so the two floor upgrades move
   the resolve timer with the floor count — a deeper dungeon is slower to walk,

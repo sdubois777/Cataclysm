@@ -107,6 +107,142 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
 
 ---
 
+## 2026-11-22 — The cleanse city upgrade is built: from difficulty tier 3, once a run, 40,000 gold, and on every city that has not fallen it removes half the counted dungeons and half of what the city holds (#2838)
+
+**Affects:** `ECataclysmCityUpgradeEffect::CleanseEveryCity`'s comment, `ECataclysmCityUpgradeResult::BelowItsDifficultyTier`
+and `AlreadyBoughtThisRun`, new, `UCataclysmCityUpgradeRules::CleanseLowestDifficultyTier`, `CleanseDungeonShare` and
+`CleanseLossShare`, new, `IsBuilt` and `ResultText` (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and
+`.cpp`); `UCataclysmEmpireRun::bCleanseBoughtThisRun` and `CleanseEveryCity`, new, `WouldBuyCityUpgrade`,
+`BuyCityUpgrade`, `CompleteCityUpgrade` and `BeginForCharacter`
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); the run record's `bCleanseBoughtThisRun`,
+`SchemaVersionNow` 16 and `Migrate_15_to_16` (`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `.cpp`),
+`game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and `CataclysmSaveApply.cpp`; the design workbook
+`docs/All_Things_Cataclysm.xlsx`, City Upgrades sheet, cell E25 (the cleanse's Tier 1 Gold), 0 to 40,000;
+`game/Data/CityUpgrades.csv`, regenerated, the only CSV that moved; `tools/generate_datatables.py`'s
+`_city_upgrade_prices`; `docs/Cataclysm_GDD_v2.md`, City Upgrades; `game/README.md`'s empire bullet and
+`tools/tests/test_game_readme_is_true.py`'s list of empire files; `game/Tests/SaveFixtures/Run_v16.json`, new, and
+`game/Tests/SaveFixtures/README.md`. Tests: `game/Source/CataclysmEmpire/Tests/CataclysmCityCleanseTests.cpp`, new,
+three; `game/Source/Cataclysm/Tests/CataclysmCityCleanseSaveTests.cpp`, new, one;
+`tools/tests/test_the_cleanse_city_upgrade.py`, new; `tools/tests/test_city_upgrades_cost_gold.py`;
+`CataclysmSaveFixtures.h`'s `AddTheRunsVersion16Defaults`, new; the built list and count in
+`game/Source/CataclysmEmpire/Tests/CataclysmCityUpgradeTests.cpp`; the cleanse set aside in
+`CataclysmCityScreenTests.cpp`, `CataclysmCityUpgradeBuildScreenTests.cpp` and `CataclysmCityUpgradePriceTests.cpp`;
+and the committed run file moved from `Run_v15.json` to `Run_v16.json`, with the step's write added, in
+`CataclysmCityUpgradeBuildSaveTests.cpp`, `CataclysmConsumptionDoubleTests.cpp`, `CataclysmDeathCostTests.cpp`,
+`CataclysmEarnedBossSaveTests.cpp`, `CataclysmEmpireTreeClearGoldTests.cpp`, `CataclysmEmpireTreeDropsTests.cpp`,
+`CataclysmEmpireTreeEventsTests.cpp`, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmGemSaveTests.cpp`,
+`CataclysmGoldTests.cpp`, `CataclysmSaveLoadTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmSeedingTests.cpp`,
+`CataclysmWalkSeedTests.cpp` and `CataclysmWinningTheRunTests.cpp`. The asset `DT_CityUpgrades` is NOT rebuilt here.
+Issue [#2838](https://github.com/sdubois777/Cataclysm/issues/2838), split from
+[#1265](https://github.com/sdubois777/Cataclysm/issues/1265).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED, AND THE ASSET IS NOT REBUILT.** Phase 1, by the coordinating session's instruction of
+  2026-11-22: no compile and no Unreal lock. `DT_CityUpgrades` must be rebuilt by `tools/generate_datatable_assets.py`
+  in a window; until then `tools/tests/test_datatable_assets_are_current.py` fails on `CityUpgrades.csv`, and the
+  game prices the cleanse at nothing.
+- **THE RUN RECORD GOES FROM VERSION 15 TO 16.** `Migrate_15_to_16` writes `bCleanseBoughtThisRun` false: a version
+  15 run could not buy the cleanse, because it was refused as not built.
+- **THE 2026-11-18 RULE "NO PRICE, AND NEVER SOLD" IS CHANGED, FOR THE CLEANSE.** That rule gave the one row with no
+  tier ladder no price, and `tools/generate_datatables.py` refused any price on such a row. The generator now allows a
+  tier 1 price on a row with no ladder, a whole number above nought, and still refuses a tier 2 or tier 3 price. The
+  coordinating session accepted the change on 2026-11-22.
+
+### The rulings, coordinating session, 2026-11-22
+
+1. **"Available on T3 and above" means difficulty tier 3 or higher.** This reads the owner's sentence and is not new
+   design. The evidence: the cleanse row has no upgrade tier 2 or 3 (its `Tier2Raw` and `Tier3Raw` are empty in
+   `CityUpgrades.csv`), so it cannot be bought at upgrade tier 3; the design writes difficulty tiers as T1 to T8 (the
+   table headed "| Tier | Level | Gear Rarity |" in `docs/Cataclysm_GDD_v2.md`); and the empire tree's The Imperial
+   Vanguard reads "Choose one empire-wide capstone as you enter Tier 3".
+2. **Price and build days, both JUDGEMENTS** under the owner's delegation of unstated numbers (2026-09-11): 40,000
+   gold at difficulty tier 1, the top of the price ladder, scaled by difficulty tier as every gold price is; and 6
+   build days, as any upgrade built at tier 1. It takes a slot in the buying city while it builds.
+3. **Which dungeons go:** on each city, the soonest to resolve first, rounded as "Remove 25% of dungeons on this
+   city" rounds, so half of three removes two and half of one removes one. Quest and Fallen City dungeons are neither
+   counted nor removed.
+4. **Which cities:** every city that has not fallen, the buying city included.
+5. **Once a run, empire-wide**, in a run flag.
+6. **The refusals name the reason:** "Available from difficulty tier 3." and "Already bought this run."
+7. **The Cataclysm's own dungeon is neither counted nor removed.** DERIVED, not a judgement, as the coordinating
+   session confirmed: it is the run's goal, Bribery refuses it (V13), and a bonus dungeon is never it, so a city
+   upgrade does not take the run's ending away.
+
+### The judgements this build made, each with what it rests on
+
+| Judgement | What it rests on |
+|---|---|
+| The run is spent when the cleanse is bought, not when its build finishes | "Can only purchase once": a second city must not buy it while the first builds it |
+| Its two gates come before anything about the city | They are the run's, so every city gives the same answer; on a tier 1 run "Available from difficulty tier 3" is the reason no other action changes |
+| The 50% figures are constants in `UCataclysmCityUpgradeRules`, not data | The row's tier 1 value is 0 on purpose: "Publishing the 50% would say its strength is 50% when 50% is the price" (`tools/tests/test_city_upgrade_tier_one.py`) |
+| Half of what a city "holds" is half of `DefenceOf` and `PopulationOf` | "Remaining": what the city holds now, read as the game reads it, never above the maximum with the empire tree |
+| The loss is not reduced by the city's resistances | The resistances are "of damage" and "of population loss" from a dungeon; this is a price the player chose |
+| The dungeons are removed, not cleared | Nobody walked them, so they pay nothing, as `RemoveDungeons` |
+| Stimulus Package's flag is checked after the cleanse | The cleanse can take the empire's population below half by itself |
+
+### Tests
+
+**Python**, in `tools/tests/test_the_cleanse_city_upgrade.py`, six checks: the cleanse is built and says the ruled
+words; its gates are the run's and come before the city; the run is spent before the build starts and a new run gives
+it back; the counted dungeons, soonest first and rounded, removed and not cleared, and half of what each city holds;
+the run record's step and field; `Run_v16.json` is `Run_v15.json` with the cleanse bought; every chain test adds the
+step's write. And `tools/tests/test_city_upgrades_cost_gold.py`: the cleanse is priced 40,000, 0 and 0, and the
+generator refuses a tier 2 price on a row with no ladder.
+
+**Unreal, new:**
+
+- `Cataclysm.CityCleanse.EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds`: three ordinary dungeons
+  and a Quest, a Cataclysm and a Fallen City dungeon on one city, each of the last three sooner than any ordinary one;
+  the two soonest ordinary ones go and the other four stay (the Cataclysm's dungeon among them, as the coordinating
+  session asked); one dungeon on a second city goes; a fallen city keeps its dungeon, defence and population; the two
+  cities keep half of what they held.
+- `Cataclysm.CityCleanse.ItIsOfferedFromDifficultyTierThreeAndOnceARun`: refused at tiers 1 and 2 with the ruled
+  words, offered at 3, refused on a second city while the first builds it, another upgrade not refused, and a new run
+  may buy it again.
+- `Cataclysm.CityCleanse.NothingHappensUntilItsBuildIsFinished`: on the Pillar, nothing after 5 days and the cleanse
+  on the sixth.
+- `Cataclysm.CityCleanseSave.WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt`: saved and loaded, the flag
+  holds and the loaded run refuses it on another city; a run that bought nothing loads without it; `Run_v15.json`
+  migrates to false; `Run_v16.json` reads true.
+
+**Unreal, changed:** the built list and count, 19 to 20; the screen, price and build tests that loop over every
+built upgrade on a tier 1 run set the cleanse aside, because it says its difficulty tier there; and every test that
+read `Run_v15.json` as the committed run file reads `Run_v16.json`.
+
+### Registered for the window, 2026-11-22, before it runs
+
+From window tree-s9-w2's measured figures on `c651af7e6` (development `45b33c70f`'s tree): 5218 tests, 57 skipped
+halves, 860 test saves. This branch adds four tests and writes no save.
+
+| Step | Predicted |
+|---|---|
+| The groups whose test files this branch changes, alone, counted with a literal match in w2's engine log | `Capital.` 7, `CityScreen.` 19, `CityUpgrade.` 15, `CityUpgradeBuildSave.` 2, `CityUpgradeBuild.` 4, `CityUpgradePrice.` 7, `ConsumptionDouble.` 15, `DeathCost.` 9, `EarnedBossSave.` 3, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeClearGold.` 9, `EmpireTreeDrops.` 13, `EmpireTreeEvents.` 14, `EmpireTreeNineSaves.` 1, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `FirstSurge.` 3, `GemSave.` 2, `Gold.` 13, `PlayLoop.` 12, `RuleDamageParts.` 11, `SaveLoad.` 81, `SaveRecords.` 17, `Seeding.` 3, `Travel.` 9, `WalkSeed.` 5, `WinningTheRun.` 11: 297, each succeeding |
+| The new tests alone, prefix `Cataclysm.CityCleanse` with no dot, which covers both new groups | 4 performed, 4 succeeded |
+| The whole Unreal suite | 5222 performed, 5222 succeeded; 57 skipped halves; 860 test saves, 0 left behind |
+| The asset step | `DT_CityUpgrades.uasset` and `datatable_asset_sources.json` only |
+
+**C++ guard proofs**, by `unreal_build.prove_cpp_guard`, prefix `Cataclysm.CityCleanse` (both new groups, 4 tests):
+
+| Proof | Break | Predicted, broken half | Restored |
+|---|---|---|---|
+| C1 | in `CleanseEveryCity`, `&& Dungeon.Type != ECataclysmDungeonType::Cataclysm` removed: the Cataclysm's dungeon counted | `EachCityLosesHalfItsCountedDungeonsSoonestFirstAndHalfWhatItHolds` fails, on "and its next" and "the Cataclysm's own dungeon stays (derived: V13)": city A's four counted sort as the Cataclysm's (2 days), then 5, 10 and 15, and half of four removes the first two. 4 performed, 3 succeeded | 4 of 4 |
+| C2 | in `BuyCityUpgrade`, `bCleanseBoughtThisRun = true;` removed: the run never spent | `EachCity...` ("and spent for the run"), `ItIsOfferedFromDifficultyTierThreeAndOnceARun` ("another city is refused while it builds") and `WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt` ("the loaded run has bought the cleanse", "and refuses it on another city") fail; `NothingHappensUntilItsBuildIsFinished` passes. 4 performed, 1 succeeded | 4 of 4 |
+| C3 | in `FCataclysmSaveApply::RunInto`, `Run.bCleanseBoughtThisRun = Record.bCleanseBoughtThisRun;` removed: a load forgets it | `WhetherTheCleanse...` fails, on "the loaded run has bought the cleanse" and "and refuses it on another city"; `Run_v16.json` still reads true, because that reads the record. 4 performed, 3 succeeded | 4 of 4 |
+
+**Python guard proofs**, by `tools/prove_guard.py` in a copy made with `git archive` of `eb86e03d9`, 2026-11-22, each
+PROVED, failing one named test with its break in and passing every test with it out:
+
+| Proof | Break | The test that failed | Restored |
+|---|---|---|---|
+| PB1 | `CleanseEveryCity` counts the Cataclysm's dungeon | `test_it_halves_the_counted_dungeons_and_what_each_city_holds` | 6 passed |
+| PB2 | `Migrate_15_to_16` writes the flag true | `test_the_run_record_step_and_field` | 6 passed |
+| PB3 | `BuyCityUpgrade` does not spend the run | `test_the_gates_are_the_runs_and_come_before_the_city` | 6 passed |
+| PB4 | `Run_v16.json` states the flag false, the default | `test_the_committed_run_file_is_the_previous_one_with_the_cleanse_bought` | 6 passed |
+| PB5 | the generator allows a tier 2 price on a row with no ladder | `test_the_generator_reads_the_three_prices_and_refuses_a_wrong_one[no ladder, a tier 2 price]` | 19 passed |
+
+---
+
 ## 2026-11-22 — A gem's tooltip says the gem does nothing for the character reading it, when that character has none of its stat (#2835)
 
 **Affects:** `UCataclysmGems::NothingToIncreaseLineFor` and `TooltipLinesFor`, each given an optional character, and
