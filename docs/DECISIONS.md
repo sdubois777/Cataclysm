@@ -27,8 +27,15 @@ count; `game/Content/Data/DT_Gems.uasset` and `game/Data/datatable_asset_sources
   the code that reads its stat are built now. #46 must map this gem to `skill_experience_gain` as an increase, with
   source `ECataclysmModifierSource::Gem`; the sheet's 0.10 is 10 in the stat pipeline, where an increase is stated in
   percentage points.
-- **NOT COMPILED OR RUN IN UNREAL YET.** The workbook row and `Gems.csv` are written; the asset step for
-  `DT_Gems.uasset` is in the window.
+- **COMPILED, RUN AND PROVED IN ONE WINDOW (tree-2803-w1)**, at `8f2491711` on development `b8df7e1fe`:
+  - all three of phase 2's compiles succeeded with no warning;
+  - the asset step rebuilt `DT_Gems.uasset`, 28 rows, and committed it with its sources file alone;
+  - the ten groups each passed alone at their registered counts, the three the change moves first;
+  - the whole Unreal suite performed the registered 5086, all succeeding, with 48 skipped halves and "860 written and
+    deleted, 0 left behind";
+  - Python, run beside the Unreal suite, passed, 7848 with 9 skipped, and ruff passed;
+  - the one C++ guard proof, C1, proved, failing exactly the registered test with exactly the registered two
+    assertions and values. The six Python guard proofs were proved in phase 1.
 - **THE CHARACTER'S OWN EXPERIENCE IS UNCHANGED.** Only the skills' share of a kill reads the stat.
 
 ### The request and the ruling
@@ -190,7 +197,33 @@ Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_skill
 
 ### The window
 
-Not run yet.
+**tree-2803-w1, 2026-11-21, 16:59 to 17:22, at `8f2491711`.** Phase 2's three compiles ran under the lock
+tree-2803-compile from 16:51 to 16:59, after the build service's runs for `b8df7e1fe` had ended: the branch (58 files),
+each changed `.cpp` file alone (10 files; `CataclysmPlayerClassStats.cpp`, `CataclysmPlayerState.cpp`,
+`CataclysmDataTableTests.cpp`, `CataclysmSkillLevelsTests.cpp` and `CataclysmStatExemptionTests.cpp` out of the
+Cataclysm unity file), and the unity files (4). None printed a warning or an error. The window's gate found every
+pre-check passing at 16:59, the recount matched every group, and the written-out version check found "28 lines stating a
+version; NO MISMATCH".
+
+- **The build**: "target already up to date, 0 actions, nothing compiled".
+- **The asset step**: `tools/generate_datatable_assets.py` left exactly `game/Content/Data/DT_Gems.uasset` and
+  `game/Data/datatable_asset_sources.json` changed; the two were committed alone as `8f2491711` on `eee0e7c8f` and
+  pushed, and that is the tested head.
+- **Each group alone**, in this order: `Data.` 7, `SkillLevels.` 13 and `StatExemption.` 37, then `SkillLevelSources.`
+  19, `CityDungeonRewards.` 5, `Experience.` 11, `DeathRewards.` 4, `PlayerStats.` 14, `OneSiteStats.` 4 and
+  `Equipment.` 30, each all succeeding.
+- **The whole suite**: "Tests: 5086 tests performed, 5086 succeeded, 0 failed. 48 skipped part of what they check";
+  "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5086 tests in the tree at 8f2491711; 5086
+  performed, gap 0".
+- **Python**, started beside the whole Unreal suite: "7848 passed, 9 skipped"; JUnit tests 7857, failures 0, errors 0,
+  skipped 9; ruff "All checks passed!". The one failure before the window,
+  `tools/tests/test_datatable_assets_are_current.py`, passes with the asset rebuilt.
+- **What the new test printed**: "SKILL EXPERIENCE GAIN: without 600.0 and 300.0; with 50 increased 900.0 and 450.0;
+  factor 1.00 and 1.50; the character's own kill of 100 -> 100".
+- **The proof**, after both suites had ended: C1, 13 performed, 12 succeeded, 1 failed with the break in, and 13
+  performed, 13 succeeded with it restored. `IncreasedSkillExperienceGainRaisesEverySkillsShareAndNotTheCharacters`
+  failed 2 assertions: "WITH 50 INCREASED, the Heavy's share is half as much again: 900" (600) and "and the Special's
+  alike: 450" (300), the registered values.
 
 ---
 
