@@ -99,7 +99,7 @@ them by hand.
 | `Content/Maps/L_FrontEnd.umap` | The level the game and the editor open on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor opened on `L_Sandbox` until issue #2733 slice 2, so pressing Play now opens the front end. Issue #753. |
 | `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. A Walk button on its map takes the character to `L_Dungeon` to walk that dungeon, and the end of the walk brings it back here (since issue #2733 slice 3). Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
 | `Content/Data/` | Thirty-four DataTable assets: twenty-seven imported from the design workbook, two from the simulation package's enemy model, and five from the tree files: the class passive trees and the empire upgrade tree. See below. |
-| `Content/Input/` | The Enhanced Input mapping contexts, twenty-one input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
+| `Content/Input/` | The Enhanced Input mapping contexts, twenty-two input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
 **Not in git.**
 

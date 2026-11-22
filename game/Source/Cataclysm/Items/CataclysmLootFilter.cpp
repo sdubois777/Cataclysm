@@ -6,8 +6,10 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmForge.h"
+#include "Items/CataclysmLootFilterPreferences.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmGameInstance.h"
+#include "Player/CataclysmPlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/World.h"
 
@@ -375,14 +377,15 @@ bool UCataclysmLootFilter::BuiltInNamed(const FString& Name, FCataclysmLootFilte
 }
 
 // ---------------------------------------------------------------------------
-// Cataclysm.LootFilter. Issue #2846, slice LF1: chooses the active filter among the three built-ins for this session,
-// until slice LF2's screen and preferences file. With no name it says which is active and lists the three.
+// Cataclysm.LootFilter. Issue #2846: makes a filter active, a built-in or one of the player's own, and writes the
+// preferences file (slice LF2). With no name it says which is active and lists every filter.
 // ---------------------------------------------------------------------------
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLootFilter(
 	TEXT("Cataclysm.LootFilter"),
-	TEXT("Choose the loot filter the floor's names are drawn through: Cataclysm.LootFilter <Everything | Hide worse "
-		 "than worn | Strict>. With no name, says which is active. Hold Alt to show what it hides."),
+	TEXT("Choose the loot filter the floor's names are drawn through: Cataclysm.LootFilter <name>, a built-in "
+		 "(Everything, Hide worse than worn, Strict) or one of your own. With no name, lists them. Hold Alt to show what "
+		 "it hides; L opens the screen that edits them."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -392,20 +395,44 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLootFilter(
 				Ar.Log(TEXT("No game instance of this project's to hold a loot filter."));
 				return;
 			}
+			FCataclysmLootFilterPreferences& Preferences = Instance->LootFilterPreferences();
 			if (Args.Num() == 0)
 			{
-				Ar.Logf(TEXT("The loot filter is \"%s\". The built-in filters are \"Everything\", \"%s\" and \"Strict\"."),
-						*Instance->ActiveLootFilter.Name, UCataclysmLootFilter::DefaultFilterName);
+				Ar.Logf(TEXT("The loot filter is \"%s\". The filters are: %s."),
+						*UCataclysmLootFilterPreferences::ActiveFilter(Preferences).Name,
+						*FString::Join(UCataclysmLootFilterPreferences::AllNames(Preferences), TEXT(", ")));
 				return;
 			}
 			// A NAME WITH SPACES ARRIVES AS SEVERAL ARGUMENTS, so they are joined again.
 			const FString Name = FString::Join(Args, TEXT(" "));
-			FCataclysmLootFilter Chosen;
-			if (!UCataclysmLootFilter::BuiltInNamed(Name, Chosen))
+			FString Refusal;
+			if (!UCataclysmLootFilterPreferences::SetActive(Preferences, Name, Refusal))
 			{
-				Ar.Logf(TEXT("No built-in loot filter is called \"%s\"."), *Name);
+				Ar.Logf(TEXT("%s (\"%s\")"), *Refusal, *Name);
 				return;
 			}
-			Instance->ActiveLootFilter = Chosen;
-			Ar.Logf(TEXT("The loot filter is now \"%s\"."), *Chosen.Name);
+			Instance->SaveLootFilterPreferences();
+			Ar.Logf(TEXT("The loot filter is now \"%s\"."), *UCataclysmLootFilterPreferences::ActiveFilter(Preferences).Name);
+		}));
+
+// ---------------------------------------------------------------------------
+// Cataclysm.EditLootFilters. Issue #2846, slice LF2: opens and closes the loot filter screen, beside its key L, so a
+// checkout whose input assets predate the key can still open it -- the skill-choice screen's reason for its command.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEditLootFilters(
+	TEXT("Cataclysm.EditLootFilters"),
+	TEXT("Open or close the loot filter screen: choose the filter in use, and make, copy, rename, delete and edit your "
+		 "own. L opens it too."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(World ? World->GetFirstPlayerController() : nullptr);
+			if (!Controller)
+			{
+				Ar.Log(TEXT("There is no Cataclysm player controller, so there is nothing to open a screen on."));
+				return;
+			}
+			Controller->ToggleLootFilterScreen();
 		}));

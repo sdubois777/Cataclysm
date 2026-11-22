@@ -99,6 +99,8 @@ NATIVE_ACTIONS = [
     # Held: show the drops the loot filter hides. Issue #2846, slice LF1, the
     # owner's ruling O3 of 2026-11-22.
     ("IA_RevealDrops", "RevealDrops", BOOLEAN, "Reveal Hidden Drops"),
+    # The loot filter screen. Issue #2846, slice LF2.
+    ("IA_ToggleLootFilter", "ToggleLootFilter", BOOLEAN, "Toggle Loot Filter"),
 ]
 
 # Ability actions: the controller binds these to one shared handler that passes
@@ -180,6 +182,9 @@ MOUSE_MAPPINGS = [
     # free in both: Path of Exile's key for the same thing. Issue #2846, slice
     # LF1, ruled 2026-11-22 (N6).
     ("IA_RevealDrops", "LeftAlt", []),
+    # The loot filter screen. L in both schemes, and free in both. Issue
+    # #2846, slice LF2; a judgement ("L" for loot).
+    ("IA_ToggleLootFilter", "L", []),
 ]
 
 KEYBOARD_MAPPINGS = [
@@ -242,6 +247,9 @@ KEYBOARD_MAPPINGS = [
     # free in both: Path of Exile's key for the same thing. Issue #2846, slice
     # LF1, ruled 2026-11-22 (N6).
     ("IA_RevealDrops", "LeftAlt", []),
+    # The loot filter screen. L in both schemes, and free in both. Issue
+    # #2846, slice LF2; a judgement ("L" for loot).
+    ("IA_ToggleLootFilter", "L", []),
 ]
 
 # --- the sandbox level -------------------------------------------------------

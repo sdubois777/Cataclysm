@@ -6,7 +6,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/GameInstance.h"
-#include "Items/CataclysmLootFilter.h"
+#include "Items/CataclysmLootFilterPreferences.h"
 #include "Save/CataclysmSavePartition.h"
 #include "CataclysmGameInstance.generated.h"
 
@@ -527,17 +527,25 @@ public:
 	int64 GoldPickedUpThisWalk = 0;
 
 	/**
-	 * The loot filter the floor's names are drawn through. Issue #2846, slice LF1.
-	 *
-	 * "HIDE WORSE THAN WORN" UNTIL THE PLAYER CHOOSES ANOTHER: the owner's default of 2026-11-22. HELD HERE AND NOT
-	 * SAVED IN THIS SLICE: the owner ruled (O4) that filters are kept in a preferences file of their own, outside the
-	 * save records, which is slice LF2. Until then `Cataclysm.LootFilter <name>` chooses among the three built-ins for
-	 * the session.
+	 * The player's loot filters and which is active, read from the preferences file the first time they are asked for.
+	 * Issue #2846, slice LF2. The owner's ruling O4 of 2026-11-22: a file of its own on this machine, outside the save
+	 * records (`UCataclysmLootFilterPreferences::FilePath`). A new player, with no file, has "Hide worse than worn"
+	 * active, the owner's default, and no filters of their own.
 	 */
-	FCataclysmLootFilter ActiveLootFilter = UCataclysmLootFilter::HideWorseThanWorn();
+	FCataclysmLootFilterPreferences& LootFilterPreferences();
+
+	/** Writes the preferences to their file. The loot filter screen calls it after every change it makes. */
+	void SaveLootFilterPreferences();
 
 	/** The active loot filter of the world's game instance, or the default filter when there is none (a test world). */
 	static FCataclysmLootFilter ActiveLootFilterIn(const UObject* WorldContext);
+
+private:
+	/** See `LootFilterPreferences`. */
+	FCataclysmLootFilterPreferences LootFilters;
+	bool bLootFiltersRead = false;
+
+public:
 
 	// ----------------------------------------------------------------------
 	// The empire upgrade tree -- issue #2741, slice 1b

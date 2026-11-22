@@ -13,7 +13,7 @@ WHAT IS CHECKED:
      ruling O2 keeps the border the rarity marker, #718);
   2. the controller binds the reveal action's start to one handler and its end and cancel to the other, and the two
      set and clear the flag `IsRevealingHiddenDrops` reads;
-  3. the game instance starts with the owner's default, "Hide worse than worn";
+  3. a player with no preferences file has the owner's default, "Hide worse than worn", active (slice LF2);
   4. the reveal action is on Left Alt in both control schemes.
 """
 
@@ -81,8 +81,18 @@ def test_alt_held_and_let_go_sets_and_clears_the_reveal_flag() -> None:
 
 
 def test_a_new_game_starts_with_the_owners_default() -> None:
-    header = flat(code(SOURCE / "Player" / "CataclysmGameInstance.h"))
-    assert "FCataclysmLootFilter ActiveLootFilter = UCataclysmLootFilter::HideWorseThanWorn();" in header
+    # SINCE SLICE LF2 THE ACTIVE FILTER IS READ FROM THE PREFERENCES FILE, and a player with no file is a new player:
+    # `Load` leaves `NewPlayer()` in place, whose active filter is the default's name.
+    instance = code(SOURCE / "Player" / "CataclysmGameInstance.cpp")
+    assert "UCataclysmLootFilterPreferences::Load(UCataclysmLootFilterPreferences::FilePath(), LootFilters);" in flat(
+        body(instance, "FCataclysmLootFilterPreferences& UCataclysmGameInstance::LootFilterPreferences("))
+    assert "UCataclysmLootFilterPreferences::ActiveFilter(Instance->LootFilterPreferences())" in flat(
+        body(instance, "FCataclysmLootFilter UCataclysmGameInstance::ActiveLootFilterIn("))
+    preferences = code(SOURCE / "Items" / "CataclysmLootFilterPreferences.cpp")
+    assert "Preferences.Active = UCataclysmLootFilter::DefaultFilterName;" in body(
+        preferences, "FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::NewPlayer(")
+    for function in ("bool UCataclysmLootFilterPreferences::Load(", "bool UCataclysmLootFilterPreferences::FromJson("):
+        assert "Out = NewPlayer();" in body(preferences, function), function
     filter_code = code(SOURCE / "Items" / "CataclysmLootFilter.cpp")
     assert 'UCataclysmLootFilter::DefaultFilterName = TEXT("Hide worse than worn");' in flat(filter_code)
     assert "Filter.Name = DefaultFilterName;" in body(filter_code, "FCataclysmLootFilter UCataclysmLootFilter::HideWorseThanWorn(")

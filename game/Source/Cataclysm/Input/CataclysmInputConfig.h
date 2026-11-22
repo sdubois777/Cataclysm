@@ -147,6 +147,13 @@ namespace CataclysmInputActionNames
 	 * item filter page: hold Alt to show every hidden item, and click it once shown). Free in both schemes.
 	 */
 	inline const FName RevealDrops = FName(TEXT("RevealDrops"));
+
+	/**
+	 * Open and close the loot filter screen. Tapped, not held. Issue #2846, slice LF2. L by default, free in both
+	 * control schemes; a judgement of this slice ("L" for loot). `ACataclysmPlayerController::ToggleLootFilterScreen` is
+	 * what a press calls.
+	 */
+	inline const FName ToggleLootFilter = FName(TEXT("ToggleLootFilter"));
 }
 
 /**

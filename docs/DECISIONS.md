@@ -2,6 +2,122 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1
+(the entry below), by the coordinating session's instruction of 2026-11-22. LF1 and LF2 share one window, after the
+owner has played the build without them. Issue [#2846](https://github.com/sdubois777/Cataclysm/issues/2846).
+
+### The rulings it carries
+
+The owner's O4 of 2026-11-22, "Own preferences file (Recommended)": one file on this machine, outside the save records,
+so no save version moves. The coordinating session's numbers, each a judgement: N1, 75 rules; N3, 10 saved filters; N4,
+the 12 colours; N5, the three sizes. The coordinating session's conditions: the owner's rule that every system has a
+basic screen, "a list of filters, a list of rules, and a rule editor with the conditions and actions is enough for a
+first version", and **the three built-in names must be impossible to overwrite.**
+
+### How the three built-in names are protected
+
+All three ways are needed; each closes a route the other two leave open.
+
+1. **They are not stored.** The file holds only the player's filters. A built-in is made from code whenever it is asked
+   for (`UCataclysmLootFilter::BuiltInNamed`), and `UCataclysmLootFilterPreferences::Find` looks built-ins up first, so
+   nothing written to the file can change one or stand in for one.
+2. **Every change refuses a built-in.** Adding, removing, moving or replacing a rule, renaming and deleting all go
+   through one function, `EditableFilter`, which refuses a built-in first, with "The built-in filters cannot be
+   changed. Copy one to make a filter of your own." The screen's editor checks the same before it edits. A built-in can
+   be made the one in use and can be copied.
+3. **No player filter can take a built-in's name**, in any case and with any spaces round it: a rename to one is
+   refused ("Another filter already has that name."), and a file edited by hand to hold one has that filter renamed
+   "My filter N" when it is read (`Sanitised`), as a duplicate, empty or over-long name is.
+
+### Judgements of this slice
+
+- **The file is `Saved/Preferences/LootFilters.json`** under the project, JSON written by the engine's converter from
+  the same USTRUCTs the game uses. Not a save slot, so no save record names it.
+- **A name is at most 40 characters**, so it fits the screen's list. New filters and copies are named "My filter N",
+  the smallest N not taken.
+- **Every change is written to the file at once**, not on closing the screen, so a crash loses nothing.
+- **A file that does not read is a new player's preferences**: the owner's default in use and no filters of their own.
+  A file read with more than 10 filters keeps the first 10, and a filter with more than 75 rules keeps its first 75.
+- **Deleting the filter in use puts the owner's default in use.** Renaming it keeps it in use under its new name.
+- **The screen opens on L**, free in both control schemes ("L" for loot), and on `Cataclysm.EditLootFilters`, the
+  skill-choice screen's reason for a command beside its key. `Cataclysm.LootFilter <name>` now makes any filter active,
+  a player's included, and writes the file.
+- **The editor is buttons, one per choice**: toggles for each rarity, slot and damage type and for "below what is
+  worn"; cycles for the action, the kind of drop and the enchantment; steps for the levels, tiers, sockets, counts,
+  colours and size; and an affix chooser that steps through the Affixes table and adds or removes the affix shown. The
+  restyle's buttons are offered only to a Restyle rule.
+
+### What it does
+
+- **`UCataclysmLootFilterPreferences`** (`game/Source/Cataclysm/Items/CataclysmLootFilterPreferences.h`, `.cpp`): the
+  struct the file holds (`Version`, `Active`, `Filters`) and every change the screen makes, each answering whether it
+  was made and, when not, the sentence the screen shows; `Sanitised`, `ToJson`, `FromJson`, `FilePath`, `Load`, `Save`
+  and `NewPlayer`.
+- **`UCataclysmLootFilterLayout`** (`game/Source/Cataclysm/Interface/CataclysmLootFilterLayout.h`, `.cpp`): the filter
+  line, the rule line ("1. Hide gear: Everyday or Quality; below what is worn"), `EditRule` (what each editor button
+  does to a rule) and `EditorButtonsFor` (every button the editor shows, with its label).
+- **`UCataclysmLootFilterWidget`** (`game/Source/Cataclysm/Interface/CataclysmLootFilterWidget.h`, `.cpp`): the screen.
+  Every click goes through `Press` with the command its button carries, so a headless test presses the same commands.
+- **`WBP_LootFilter`**, written by `make_loot_filter` in `tools/generate_interface_assets.py`: three scroll boxes side by
+  side, the name box and the refusal line.
+- **The game instance** holds the preferences, read from the file the first time they are asked for, and writes them on
+  every change (`LootFilterPreferences`, `SaveLootFilterPreferences`). **LF1's `ActiveLootFilter` field is gone**: the
+  filter in use is the preferences' active one, or the owner's default for a player with no file.
+- **The controller** opens and closes the screen (`ToggleLootFilterScreen`, the L key's `Input_ToggleLootFilterScreen`),
+  counts it among the full screens, and does not pause. A new input action `IA_ToggleLootFilter` on L in both schemes;
+  `game/README.md` counts twenty-two input actions; the design document's two control tables gain the row.
+- **`docs/Cataclysm_GDD_v2.md`** gains a paragraph on the screen and the file after LF1's three.
+- **No save record moves.**
+
+### Tests
+
+**A new Unreal group, `Cataclysm.LootFilterScreen.`, 7 tests**, in `CataclysmLootFilterScreenTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| LS1 | `TheBuiltInNamesCannotBeTakenChangedOrDeleted` | for each of the three: no rule added, removed, moved or replaced, no rename, no delete, each with the built-in sentence; renames to " strict " and "EVERYTHING" refused; a stored "Strict" renamed when read while "Strict" still finds the built-in's two rules; CONTROL: a rename to "My own" and a copy of Strict are done |
+| LS2 | `TheFileKeepsThePlayersFiltersAndTheActiveOne` | a restyle filter, active, written to a test file and read back whole; no built-in's rules in the file; no file and garbled text read as a new player; the real path ends `Preferences/LootFilters.json` |
+| LS3 | `ReadingAFileHoldsEveryLimit` | twelve filters read as ten; 80 rules as 75; empty, duplicate and 41-character names renamed; an active name that names nothing becomes the default |
+| LS4 | `NewCopyRenameDeleteAndTheFilterInUse` | "My filter 1", a copy of Strict as "My filter 2" with its two rules; renamed while active stays active; deleted, the default is active; the eleventh filter and copy refused |
+| LS5 | `RulesAreAddedMovedReplacedAndRemoved` | add, replace, move up, nothing above the first, remove; the 76th rule refused |
+| LS6 | `TheEditorsButtonsChangeEveryFieldWithinItsBounds` | every command: toggles add and remove, cycles wrap, steps stop, the lowest never passes the highest; unknown commands refused; restyle buttons only on a Restyle rule; the rule and filter lines word for word |
+| LS7 | `TheScreenPressesThroughTheModelAndShowsRefusals` | a screen: new filter, add a rule, the Action button, use it; on Everything "Add a rule" and on Strict an editor button refused with the built-in sentence on the refusal line; a rename to "strict" refused and to "Mine" done, still in use |
+
+**Python:** `test_the_loot_filter_preferences_protect_the_built_ins.py`, 4 checks: every change function asks
+`EditableFilter`, which refuses a built-in before it looks; reading the file sanitises it; the screen refuses a built-in
+before editing and writes after every change; no file under `game/Source/Cataclysm/Save` names a loot filter.
+`test_the_loot_filter_screen_is_generated_with_its_bindings.py`, 3 checks, the forge screen's. LF1's
+`test_the_loot_filter_is_wired_in.py` now checks the default through the preferences, not the removed field.
+
+### Registered for the shared window
+
+Added to LF1's registration (the entry below), on the same base, development `3cbacdac4`, 5271 tests:
+
+| Step | Registered for LF1 and LF2 together |
+| :-- | :-- |
+| One build | both slices compiled |
+| **Editor step 1** | `tools/generate_input_assets.py`: commit only `IA_RevealDrops.uasset`, `IA_ToggleLootFilter.uasset`, `IMC_MouseMovement.uasset`, `IMC_KeyboardMovement.uasset` and the input config asset |
+| **Editor step 2** | `tools/generate_interface_assets.py`: commit only `WBP_LootFilter.uasset`; every other screen is left alone when it exists |
+| Each group alone, first | `Cataclysm.LootFilter.` 8, `Cataclysm.LootFilterScreen.` 7, then LF1's list |
+| The whole suite | 5286 performed, 5286 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to `Cataclysm.LootFilterScreen.` with its trailing dot. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| LSP1 | in `EditableFilter`, the built-in refusal never taken (`false &&`) | 7 performed, 5 succeeded, 2 failed: LS1 (the built-in sentence) and LS7 (the refusal line on Everything) |
+| LSP2 | in `Sanitised`, a taken name never replaced (`NameTaken(Out, Name)` read as `false`) | 7, 5, 2: LS1 (the stored "Strict") and LS3 (the duplicate) |
+| LSP3 | the filter limit `>=` read as `>`, in both places it stands (`NewFilter` and `CopyFilter`) | 7, 6, 1: LS4 (the eleventh filter and copy) |
+| LSP4 | `if (bWasActive)` read as `if (false && bWasActive)`, in both places it stands (`RenameFilter` and `DeleteFilter`) | 7, 5, 2: LS4 and LS7 (a renamed filter in use); a deleted one still leaves the default in use, because `ActiveFilter` falls back to it |
+| LSP5 | in `AddRule`, the limit `>=` read as `>` | 7, 6, 1: LS5 |
+| LSP6 | in `EditRule`, the lowest gear level stepped to 10 rather than to the highest | 7, 6, 1: LS6 |
+| LSP7 | in `Load`, the read answered false whatever it read | 7, 6, 1: LS2 |
+
+---
+
 ## 2026-11-22 — The loot filter: rules hide or restyle a drop's name, a new player's filter hides gear worse than what is worn in its slot, and Alt shows what is hidden (#2846, slice LF1)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, cut from development
@@ -104,7 +220,8 @@ no game read uses; that quantities are never hidden; the palette and the sizes.
   (`tools/generate_input_assets.py`), named `RevealDrops` in `CataclysmInputActionNames`; the controller's start and
   end handlers set and clear `bRevealHiddenDrops`, read through `IsRevealingHiddenDrops`. The design document's two
   control tables gain the row.
-- **The active filter** is `UCataclysmGameInstance::ActiveLootFilter`, "Hide worse than worn" until changed, not saved
+- **The active filter** (REPLACED BY SLICE LF2, the entry above, before either merged: the field is gone and the
+  filter in use is kept in the preferences file) was `UCataclysmGameInstance::ActiveLootFilter`, "Hide worse than worn" until changed, not saved
   in this slice. **`Cataclysm.LootFilter <name>`** chooses among the three built-ins for the session, until slice LF2's
   screen.
 - **`docs/Cataclysm_GDD_v2.md`**: three paragraphs after the drop-name paragraphs say what a rule matches and does,

@@ -467,6 +467,13 @@ public:
 	 */
 	void ToggleSkillAssignment();
 
+	/**
+	 * Opens and closes the loot filter screen. Issue #2846, slice LF2. The skill-choice screen's shape, and public for
+	 * its reason: `Cataclysm.EditLootFilters` calls it, so a checkout whose input assets predate the L key can still
+	 * open the screen. It does not pause the game.
+	 */
+	void ToggleLootFilterScreen();
+
 protected:
 	/** Every binding in the game, as data. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
@@ -524,6 +531,9 @@ private:
 
 	/** The K key's half of it. Calls ToggleSkillAssignment above. Issue #837 layer 4. */
 	void Input_ToggleSkillAssignment();
+
+	/** The L key's half of it. Calls ToggleLootFilterScreen above. Issue #2846, slice LF2. */
+	void Input_ToggleLootFilterScreen();
 
 	/** The M key's half of it. Calls ToggleEmpireMap above, as `Cataclysm.EmpireMap` does. Ruled 2026-11-03. */
 	void Input_ToggleEmpireMap();
@@ -864,6 +874,17 @@ private:
 	/** The skill-choice screen, once it has been opened at least once. */
 	UPROPERTY()
 	TObjectPtr<class UCataclysmSkillAssignmentWidget> SkillAssignmentScreen = nullptr;
+
+	/** Which Widget Blueprint the loot filter screen is. Soft, for the reason the character creator's is. Issue #2846,
+	 *  slice LF2. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Interface")
+	TSoftClassPtr<class UCataclysmLootFilterWidget> LootFilterScreenClass =
+		TSoftClassPtr<class UCataclysmLootFilterWidget>(FSoftObjectPath(
+			TEXT("/Game/Interface/WBP_LootFilter.WBP_LootFilter_C")));
+
+	/** The loot filter screen, once it has been opened at least once. */
+	UPROPERTY()
+	TObjectPtr<class UCataclysmLootFilterWidget> LootFilterScreen = nullptr;
 
 	/** Which Widget Blueprint one city's screen is. Soft, for the reason
 	 *  the character creator's is. */
