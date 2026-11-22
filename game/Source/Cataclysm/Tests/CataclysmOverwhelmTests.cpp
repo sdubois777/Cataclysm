@@ -314,8 +314,8 @@ CATACLYSM_OVERWHELM_TEST(FCataclysmOverwhelmCreatureTest,
 		return false;
 	}
 	const int32 TierBefore = Tier->GetInt();
-	Tier->Set(1, ECVF_SetByCode);
-	ON_SCOPE_EXIT { Tier->Set(TierBefore, ECVF_SetByCode); };
+	Tier->Set(1, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Tier->Set(TierBefore, ECVF_SetByConsole); };
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("set-up: a world"), World))
@@ -380,8 +380,8 @@ CATACLYSM_OVERWHELM_TEST(FCataclysmOverwhelmCacheTest,
 		return false;
 	}
 	const int32 TierBefore = Tier->GetInt();
-	Tier->Set(1, ECVF_SetByCode);
-	ON_SCOPE_EXIT { Tier->Set(TierBefore, ECVF_SetByCode); };
+	Tier->Set(1, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { Tier->Set(TierBefore, ECVF_SetByConsole); };
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("set-up: a world"), World))
@@ -431,7 +431,7 @@ CATACLYSM_OVERWHELM_TEST(FCataclysmOverwhelmCacheTest,
 
 	Abilities->SetNumericAttributeBase(Resisted, 100.0f);
 	const int32 BeforeTier = Power::LiveScoreOf(Player);
-	Tier->Set(8, ECVF_SetByCode);
+	Tier->Set(8, ECVF_SetByConsole);
 	const int32 AfterTier = Power::LiveScoreOf(Player);
 	const int32 FreshAfterTier = Fresh();
 	AddInfo(FString::Printf(TEXT("OVERWHELM CACHE: first %d; after the write %d (fresh %d); after the helm %d (fresh %d); "
