@@ -38,6 +38,7 @@ CRAFT_CPP = SOURCE / "Player" / "CataclysmForgeCraft.cpp"
 LAYOUT_CPP = SOURCE / "Interface" / "CataclysmForgeLayout.cpp"
 ITEM_H = SOURCE / "Items" / "CataclysmItem.h"
 TEST_CPP = SOURCE / "Tests" / "CataclysmForgeSocketsTests.cpp"
+CHARACTER_CPP = SOURCE / "Character" / "CataclysmPlayerCharacter.cpp"
 
 M32 = 0xFFFFFFFF
 TYPES = ["Attack", "Defense", "Utility"]
@@ -211,6 +212,24 @@ def test_the_added_socket_is_rolled_before_the_days_pass() -> None:
     advanced = work.find("Run->AdvanceDays(Plan.Days)")
     assert rolled != -1, "the added socket's type is not rolled from the item before the craft, the mask and the day"
     assert advanced != -1 and rolled < advanced, "the type is rolled after the days pass, so a reload rolls another"
+
+
+def test_grant_material_puts_a_crafting_material_in_the_bag_and_refuses_any_other_row() -> None:
+    """`Cataclysm.GrantMaterial`, ruled 2026-11-22: a Shattered Core is about 1 material drop in 130 and a Focusing Lens 1
+    in 430, so the two crafts cannot be tried by playing without it. As `Cataclysm.GrantGem` is checked by
+    `test_the_forge_sockets_and_unsockets_gems.py`: it exists. And it refuses a row that is not a crafting material
+    before it adds anything."""
+    text = code(CHARACTER_CPP)
+    start = text.find("GCataclysmGrantMaterial(")
+    assert start != -1 and 'TEXT("Cataclysm.GrantMaterial")' in text[start:start + 200], (
+        "Cataclysm.GrantMaterial is gone, so Add Socket and Change Socket Type cannot be tried by playing")
+    command = text[start:text.find("}));", start)]
+    looked = command.find("UCataclysmDropRoll::LoadCraftingMaterialTable()")
+    found = command.find("FindRow<FCataclysmCraftingMaterialRow>(Material,")
+    refused = command.find('"%s is no crafting material in the crafting material table."')
+    added = command.find("AddMaterial(Material, Count)")
+    assert -1 not in (looked, found, refused, added), "GrantMaterial does not look its row up in the material table"
+    assert looked < found < refused < added, "GrantMaterial adds before it refuses a row that is no crafting material"
 
 
 def test_the_screen_offers_no_change_for_a_full_socket_or_one_for_any_gem() -> None:

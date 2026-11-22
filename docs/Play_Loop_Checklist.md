@@ -416,7 +416,9 @@ At the forge (step 16), each gem stack the bag holds below Cataclysmic has a but
 
 At the forge (step 16), for a piece chosen (issue #46, slice G9). A Shattered Core (Rare) and a Focusing Lens (Very
 Rare) drop on the walks, rarely: about 1 crafting material drop in 130 is a Shattered Core, and 1 in 430 a Focusing
-Lens.
+Lens. So put some in the bag from the console first: `Cataclysm.GrantMaterial Material_Shattered_Core 2` gives two
+Shattered Cores, and `Cataclysm.GrantMaterial Material_Focusing_Lens` one Focusing Lens. A row that is no crafting
+material, a gem's for one, is refused: "Gem_Of_Life is no crafting material in the crafting material table."
 
 - **A piece below its slot's most sockets** has a button "Add a socket (3 of 6)": a Chest takes 6, a Helm 2, a Ring 1,
   a two-handed weapon 6.

@@ -79,6 +79,8 @@
 #include "Items/CataclysmInventoryComponent.h"
 // Cataclysm.GrantGem, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
+// Cataclysm.GrantMaterial, issue #46 slice G9.
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -3367,6 +3369,61 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
 			}
 			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
 					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
+		}));
+
+// ---------------------------------------------------------------------------
+// Cataclysm.GrantMaterial. Issue #46, slice G9, ruled by the coordinating
+// session on 2026-11-22: a Shattered Core is about 1 material drop in 130 and
+// a Focusing Lens 1 in 430, so Add Socket and Change Socket Type cannot be
+// tried by playing without a way to have one. A developer's tool, as
+// Cataclysm.GrantGem is.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantMaterial(
+	TEXT("Cataclysm.GrantMaterial"),
+	TEXT("Put crafting materials in the bag: Cataclysm.GrantMaterial <row, e.g. Material_Shattered_Core> [how many, "
+		 "default 1]. A developer's tool, as Cataclysm.GrantGem is."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory())
+			{
+				return;
+			}
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.GrantMaterial <row> [how many]. The rows are game/Data/CraftingMaterials.csv's "
+							"Name column, e.g. Material_Shattered_Core or Material_Focusing_Lens."));
+				return;
+			}
+			// A CRAFTING MATERIAL'S ROW, AND NOTHING ELSE: a gem, a base or a word that is no row is refused.
+			const FName Material(*Args[0]);
+			const UDataTable* Materials = UCataclysmDropRoll::LoadCraftingMaterialTable();
+			if (Materials == nullptr
+				|| Materials->FindRow<FCataclysmCraftingMaterialRow>(Material, TEXT("Cataclysm.GrantMaterial"),
+																	 /*bWarnIfMissing=*/false) == nullptr)
+			{
+				Ar.Logf(TEXT("%s is no crafting material in the crafting material table."), *Args[0]);
+				return;
+			}
+			const int32 Count = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 1;
+			if (Count < 1)
+			{
+				Ar.Log(TEXT("The count is at least 1."));
+				return;
+			}
+			const int32 Cell = Character->GetInventory()->AddMaterial(Material, Count);
+			if (Cell == INDEX_NONE)
+			{
+				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				return;
+			}
+			Ar.Logf(TEXT("%d %s in cell %d: %d carried."), Count,
+					*UCataclysmDropRoll::MaterialNameOf(Materials, Material), Cell,
+					Character->GetInventory()->CountOfMaterial(Material));
 		}));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
