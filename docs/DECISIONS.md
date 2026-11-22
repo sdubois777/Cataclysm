@@ -351,7 +351,10 @@ Each through `tools/prove_guard.py`'s `break_and_run` on `tools/tests/test_empir
 
 ### Python before the window
 
-Not run on the combined branch yet.
+The full suite at `af6597721`, the combined branch on development `b52ba76e2`: "1 failed, 7861 passed, 9 skipped in
+307.83s", JUnit tests 7871, failures 1, errors 0, skipped 9. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the asset step clears. Ruff "All checks passed!".
 
 ### The window
 
