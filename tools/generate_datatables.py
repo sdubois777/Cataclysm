@@ -3834,7 +3834,7 @@ EMPIRE_TREE_BUILT = {
     # Treasury, slice 6e: the gold debt the owner allowed through them (D1 to D7).
     "Global Credit": 6, "Sovereign Loans": 6,
     # Treasury, slice 7: the four nodes that read a Treasurer city upgrade, which
-    # #2781 made buyable (R1 to R4; readings T1 to T4, not yet ruled).
+    # #2781 made buyable (R1 to R4; readings T1 to T4, ruled 2026-11-21).
     "Commercial Hubs": 7, "Economic Zones": 7, "Trade Routes": 7,
     "The Golden Touch": 7,
     # The centre: a tier milestone's option, the gold a kill drops.
@@ -4319,8 +4319,8 @@ EMPIRE_TREE_EFFECTS = {
     "Global Credit": [("UpgradeShortfallAllowed", 0.05)],
     "Sovereign Loans": [("UpgradeShortfallAllowedRepaidDaily", 0.20)],
     # Slice 7, the four nodes that read a Treasurer city: a standing city holding
-    # at least one upgrade of the City Upgrades sheet's Treasurer branch (T1, not
-    # yet ruled). COMMERCIAL HUBS increases a kill's gold while the dungeon's city
+    # at least one upgrade of the City Upgrades sheet's Treasurer branch (T1,
+    # ruled 2026-11-21). COMMERCIAL HUBS increases a kill's gold while the dungeon's city
     # is one; ECONOMIC ZONES is a "more" on the gold such a city generates (T2);
     # TRADE ROUTES pays 50 tier 1 gold a point for each every 20th day (T3); THE
     # GOLDEN TOUCH increases a kill's gold and crafting materials for each (T3,

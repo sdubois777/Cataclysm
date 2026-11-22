@@ -157,7 +157,7 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float UpgradeShortfallAllowed = 0.0f;
 	float UpgradeShortfallAllowedRepaidDaily = 0.0f;
 
-	// ---- Slice 7, the four nodes that read a Treasurer city upgrade (R1 to R4); readings T1 to T4, not yet ruled. A
+	// ---- Slice 7, the four nodes that read a Treasurer city upgrade (R1 to R4); readings T1 to T4, ruled 2026-11-21. A
 	// Treasurer city is a standing city holding at least one upgrade of the Treasurer branch (`IsTreasurerCity`). ----
 
 	/** Commercial Hubs' increase to the gold a kill drops while the dungeon's city is a Treasurer city (T1). */
@@ -442,7 +442,7 @@ public:
 
 	/**
 	 * THE CITY UPGRADE BRANCH THE FOUR SLICE 7 NODES READ, as the City Upgrades sheet's Branch column writes it. The
-	 * nodes say "a Treasury Upgrade" and "an economic upgrade"; reading T1, not yet ruled, takes both as an upgrade of this
+	 * nodes say "a Treasury Upgrade" and "an economic upgrade"; reading T1, ruled 2026-11-21, takes both as an upgrade of this
 	 * branch. `tools/tests/test_empire_tree_treasurer_cities.py` holds it to the sheet.
 	 */
 	static const FString TreasurerBranch;

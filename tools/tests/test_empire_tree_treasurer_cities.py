@@ -2,8 +2,8 @@
 
 WHY THIS EXISTS. Issue #2741 slice 7. Commercial Hubs, Economic Zones, Trade Routes and The Golden Touch (the
 coordinating session's R1 to R4 of 2026-11-20) waited on a Treasurer city upgrade until #2781 made those buyable. This
-slice builds them on four readings proposed on 2026-11-21 and NOT YET RULED, so every check below names the reading it
-holds and moves with the ruling:
+slice builds them on four readings this session proposed and the coordinating session RULED AS PROPOSED on 2026-11-21;
+every check below names the reading it holds:
 
   T1  a "Treasury Upgrade" or "economic upgrade" is an upgrade of the City Upgrades sheet's Treasurer branch, and a
       Treasurer city is a standing city holding at least one; Commercial Hubs reads the dungeon's own city

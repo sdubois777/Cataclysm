@@ -137,7 +137,7 @@ SLICE_6D = {"Treasury Guard", "Tax Collection"}
 SLICE_6E = {"Global Credit", "Sovereign Loans"}
 
 #: SLICE 7'S FOUR, the nodes that read a Treasurer city upgrade (R1 to R4;
-#: readings T1 to T4 of 2026-11-21, not yet ruled).
+#: readings T1 to T4, ruled 2026-11-21).
 SLICE_7 = {"Commercial Hubs", "Economic Zones", "Trade Routes", "The Golden Touch"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",

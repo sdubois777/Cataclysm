@@ -529,7 +529,7 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 			Bonuses.UpgradeShortfallAllowedRepaidDaily += Total;
 			break;
 
-		// SLICE 7. The four nodes that read a Treasurer city (T1 to T4, not yet ruled).
+		// SLICE 7. The four nodes that read a Treasurer city (T1 to T4, ruled 2026-11-21).
 		case ECataclysmEmpireTreeEffect::GoldIncreasedOnTreasurerCity:
 			Bonuses.GoldIncreasedOnTreasurerCity += Total;
 			break;

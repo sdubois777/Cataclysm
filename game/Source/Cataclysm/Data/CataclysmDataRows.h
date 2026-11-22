@@ -2401,7 +2401,7 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	UpgradeShortfallAllowedRepaidDaily,
 
 	// ---- Slice 7: the four nodes that read a Treasurer city upgrade (R1 to R4). A "Treasurer city" is a standing city
-	// holding at least one upgrade of the Treasurer branch; readings T1 to T4, not yet ruled.
+	// holding at least one upgrade of the Treasurer branch; readings T1 to T4, ruled 2026-11-21.
 
 	/** The gold a kill drops increased, while the dungeon's city is a Treasurer city (Commercial Hubs, R1). */
 	GoldIncreasedOnTreasurerCity,

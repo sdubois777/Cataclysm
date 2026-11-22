@@ -14,7 +14,7 @@
 
 /**
  * The empire upgrade tree's slice 7: the four Treasury nodes that read a Treasurer city upgrade. Issue #2741, the
- * coordinating session's R1 to R4 of 2026-11-20, on readings T1 to T4 proposed on 2026-11-21 and NOT YET RULED. A
+ * coordinating session's R1 to R4 of 2026-11-20, on readings T1 to T4, ruled as proposed on 2026-11-21. A
  * Treasurer city is a standing city holding at least one upgrade of the City Upgrades sheet's Treasurer branch (T1, T3):
  *
  *   Commercial Hubs    +20% gold a kill drops while the dungeon's city is a Treasurer city, an increase (T1)
@@ -384,6 +384,73 @@ bool FCataclysmEmpireTreeTreasurerShareTest::RunTest(const FString&)
 	TestEqual(TEXT("Wealth Interest is not raised: 500"), Twentieth.Interest, static_cast<int64>(500));
 	TestEqual(TEXT("no citizen in a Treasurer city: Pax 2,500"), Outside.Pax, static_cast<int64>(2500));
 	TestEqual(TEXT("CONTROL: without Economic Zones, Pax 2,500"), Without.Pax, static_cast<int64>(2500));
+	return true;
+}
+
+/**
+ * The citizen share Economic Zones raises Pax and Tax by is counted from each Treasurer city's own population, not from
+ * how many there are (T2, the coordinating session's ruling of 2026-11-21 asked for this test). Every city is emptied
+ * but two: the first holds 1,000 citizens and the second 3,000, so the run holds 4,000. Tax Collection at 0.16 on day 10
+ * pays 640 without Economic Zones; with its 0.50 "more": the second alone a Treasurer city, a share of 3/4, 640 x 1.375
+ * = 880; the first alone, 1/4, 640 x 1.125 = 720; both, the whole, 640 x 1.50 = 960. A share by the count of cities
+ * would give the first and the second alone the same figure. CONTROL: without Economic Zones, 640. Prints "TREASURER
+ * TWO CITIES".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeTreasurerTwoCitiesTest,
+	"Cataclysm.EmpireTreeTreasurer.TheCitizenShareIsEachTreasurerCitysOwnPopulation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeTreasurerTwoCitiesTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeTreasurerTest;
+
+	UCataclysmEmpireRun* Run = QuietTreasurerRun(2741);
+	if (!TestTrue(TEXT("set-up: at least two cities"), Run->Map != nullptr && Run->Map->Cities.Num() >= 2))
+	{
+		return false;
+	}
+	TArray<FCataclysmCity>& Cities = Run->Map->Cities;
+	for (FCataclysmCity& City : Cities)
+	{
+		City.Upgrades.Reset();
+		City.bFallen = false;
+		City.Population = 0.0f;
+	}
+	Cities[0].Population = 1000.0f;
+	Cities[1].Population = 3000.0f;
+
+	FCataclysmEmpireTreePlayerBonuses Bonuses;
+	Bonuses.GoldMoreFromTreasurerCities = 0.50f;
+	Bonuses.GoldShareOfPopulationEveryTenDays = 0.16f;
+	FCataclysmEmpireTreePlayerBonuses NoZones = Bonuses;
+	NoZones.GoldMoreFromTreasurerCities = 0.0f;
+	auto TaxNow = [Run](const FCataclysmEmpireTreePlayerBonuses& Paying)
+	{
+		return UCataclysmEmpireTree::DailyIncomeFor(Paying, UCataclysmEmpireTree::EmpireStateFor(*Run), 10, 0, 1.0).Tax;
+	};
+
+	Cities[1].Upgrades = { Bought(TreasurerGold) };
+	const FCataclysmEmpireTreeDungeonState SecondState = UCataclysmEmpireTree::EmpireStateFor(*Run);
+	const int64 Second = TaxNow(Bonuses);
+	Cities[1].Upgrades.Reset();
+	Cities[0].Upgrades = { Bought(TreasurerGold) };
+	const int64 First = TaxNow(Bonuses);
+	Cities[1].Upgrades = { Bought(TreasurerLoot) };
+	const FCataclysmEmpireTreeDungeonState BothState = UCataclysmEmpireTree::EmpireStateFor(*Run);
+	const int64 Both = TaxNow(Bonuses);
+	const int64 Without = TaxNow(NoZones);
+	AddInfo(FString::Printf(TEXT("TREASURER TWO CITIES: citizens %.0f; the second alone %.0f of them, tax %lld; the first "
+								 "alone %lld; both %d cities, %.0f citizens, tax %lld; without Economic Zones %lld"),
+							SecondState.Citizens, SecondState.TreasurerCitizens, Second, First, BothState.TreasurerCities,
+							BothState.TreasurerCitizens, Both, Without));
+
+	TestEqual(TEXT("set-up: the run holds 4,000 citizens"), SecondState.Citizens, 4000.0f, 0.5f);
+	TestEqual(TEXT("the second alone: 3,000 of them in a Treasurer city"), SecondState.TreasurerCitizens, 3000.0f, 0.5f);
+	TestEqual(TEXT("the second alone, 3/4: 880"), Second, static_cast<int64>(880));
+	TestEqual(TEXT("the first alone, 1/4: 720"), First, static_cast<int64>(720));
+	TestEqual(TEXT("both, two cities and 4,000 citizens"), BothState.TreasurerCities, 2);
+	TestEqual(TEXT("both, the whole: 960"), Both, static_cast<int64>(960));
+	TestEqual(TEXT("CONTROL: without Economic Zones, 640"), Without, static_cast<int64>(640));
 	return true;
 }
 
