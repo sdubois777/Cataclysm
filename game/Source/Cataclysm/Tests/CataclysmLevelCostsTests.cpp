@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -248,6 +249,76 @@ bool FCataclysmLevelCostsRepriceTest::RunTest(const FString&)
 			  30.0f - 30.0f * AtTen, 0.01f);
 	AddInfo(FString::Printf(TEXT("REPRICED: the thrall held 30 at level 1 and %.2f at level 10; the ceiling %.2f to %.2f"),
 							Thrall->ReservedFervour, CeilingAtOne, CeilingOf(Player.Abilities)));
+	return true;
+}
+
+
+// --------------------------------------------------------------------------------------------------------------------
+// LC4. A skill gadget and a skill trap reserve at the level of the skill in their slot: 15 and 5 at level 1, and when
+// that skill reaches level 10 the standing ones are re-priced to 15 x 0.72013 and 5 x 0.72013. A trap for a slot holding
+// another skill keeps its 5.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLevelCostsGadgetAndTrapTest,
+	"Cataclysm.LevelCosts.ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The slot's skill makes a skill gadget and a skill trap, so its level prices their reserve, as a summon's level prices
+ * its minions'. Issue #2802's own commit after the rebase onto branch B of #2787, which wrote these two reserves. The
+ * Staff's Heavy slot holds Compel, its Ultimate Subjugate. Placed directly, as `Cataclysm.KindReserves.`'s trap test
+ * places its traps, since the press is not what is checked here.
+ */
+bool FCataclysmLevelCostsGadgetAndTrapTest::RunTest(const FString&)
+{
+	using namespace CataclysmLevelCostsTest;
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FCostsPlayer Player = StaffPlayerIn(World);
+	const ECataclysmAbilitySlot Heavy = ECataclysmAbilitySlot::Heavy;
+	const ECataclysmAbilitySlot Ultimate = ECataclysmAbilitySlot::Ultimate;
+	if (!TestTrue(TEXT("set-up: a possessed player"), Player.IsUsable())
+		|| !TestEqual(TEXT("set-up: the Heavy slot holds Compel"), Levels::RowInSlot(Player.Character, Heavy), Compel)
+		|| !TestEqual(TEXT("set-up: the Ultimate slot holds Subjugate"), Levels::RowInSlot(Player.Character, Ultimate),
+					  Subjugate))
+	{
+		return false;
+	}
+
+	// AT LEVEL 1, THE STATED FIGURES.
+	ACataclysmMinion* Gadget = ACataclysmMinion::PlaceSkillGadget(Player.Character, Heavy, FVector(3.0f * M, 0, 0));
+	ACataclysmMinion* Trap = ACataclysmMinion::PlaceSkillTrap(Player.Character, Heavy, FVector(0, 3.0f * M, 0));
+	ACataclysmMinion* OtherTrap =
+		ACataclysmMinion::PlaceSkillTrap(Player.Character, Ultimate, FVector(0, -3.0f * M, 0));
+	if (!TestTrue(TEXT("set-up: a gadget and a trap for the Heavy slot and a trap for the Ultimate are placed"),
+				  Gadget && Trap && OtherTrap))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at Compel's level 1 its gadget holds 15"), Gadget->ReservedFervour,
+			  ACataclysmMinion::SkillGadgetFervourReserve, 0.001f);
+	TestEqual(TEXT("and its trap 5"), Trap->ReservedFervour, ACataclysmMinion::SkillTrapFervourReserve, 0.001f);
+
+	// COMPEL'S LEVEL RE-PRICES WHAT ITS SLOT MADE, WITH NOTHING PLACED AGAIN.
+	Player.State->SetSkillExperience(Compel, Levels::ExperienceToReach(10));
+	TestEqual(TEXT("set-up: Compel is at level 10"), Player.State->SkillLevelOf(Compel), 10);
+	TestEqual(TEXT("at Compel's level 10 the same gadget holds 15 x 0.72013, 10.8"), Gadget->ReservedFervour,
+			  15.0f * AtTen, 0.01f);
+	TestEqual(TEXT("and the same trap 5 x 0.72013, 3.6"), Trap->ReservedFervour, 5.0f * AtTen, 0.01f);
+	TestEqual(TEXT("CONTROL: the Ultimate slot's trap, Subjugate's, keeps 5"), OtherTrap->ReservedFervour,
+			  ACataclysmMinion::SkillTrapFervourReserve, 0.001f);
+
+	// AND ONE PLACED NOW IS PRICED AT THE LEVEL.
+	const ACataclysmMinion* NewTrap = ACataclysmMinion::PlaceSkillTrap(Player.Character, Heavy, FVector(0, 6.0f * M, 0));
+	if (TestNotNull(TEXT("a second Heavy trap is placed"), NewTrap))
+	{
+		TestEqual(TEXT("and holds 3.6 from the start"), NewTrap->ReservedFervour, 5.0f * AtTen, 0.01f);
+	}
+	AddInfo(FString::Printf(TEXT("GADGET AND TRAP: the gadget held 15 at level 1 and %.2f at level 10; the trap 5 and %.2f"),
+							Gadget->ReservedFervour, Trap->ReservedFervour));
 	return true;
 }
 

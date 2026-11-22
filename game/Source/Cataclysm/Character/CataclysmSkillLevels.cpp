@@ -94,11 +94,9 @@ void UCataclysmSkillLevels::RepriceReservesOf(const ACataclysmPlayerState* Holde
 			break;
 		}
 	}
+	// NOUGHT WHEN THE SKILL SUMMONS NOTHING, which leaves thralls and minions alone and still reaches the skill's
+	// gadgets and traps below.
 	const float Now = Maker ? Maker->FervourReserveOfOne() : 0.0f;
-	if (Now <= 0.0f)
-	{
-		return;
-	}
 	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Commander))
 	{
 		ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
@@ -106,11 +104,54 @@ void UCataclysmSkillLevels::RepriceReservesOf(const ACataclysmPlayerState* Holde
 		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
 		const bool bMadeByIt =
 			(Thrall && Thrall->TakenBySkillRow == SkillRow) || (Minion && Minion->SummoningSkillRow == SkillRow);
-		if (Body && bMadeByIt && Body->ReservedFervour > Now)
+		if (Body && bMadeByIt && Now > 0.0f && Body->ReservedFervour > Now)
 		{
 			Body->ReservedFervour = Now;
 		}
+
+		// A SKILL GADGET OR A SKILL TRAP STANDING FOR A SLOT THAT HOLDS THE SKILL, at what one placed now reserves.
+		// A trap is asked first: a slot converted into both makes a trap (T17).
+		const bool bTrap = Minion && Minion->IsSkillTrap();
+		const bool bGadget = Minion && !bTrap && Minion->IsSkillGadget();
+		const ECataclysmAbilitySlot Slot =
+			bTrap ? Minion->SkillTrapSlot : (bGadget ? Minion->SkillGadgetSlot : ECataclysmAbilitySlot::None);
+		if (Body && Slot != ECataclysmAbilitySlot::None && RowInSlot(Commander, Slot) == SkillRow)
+		{
+			const float Placed = bTrap ? ACataclysmMinion::SkillTrapReserveFor(Commander, Slot)
+									   : ACataclysmMinion::SkillGadgetReserveFor(Commander, Slot);
+			if (Placed > 0.0f && Body->ReservedFervour > Placed)
+			{
+				Body->ReservedFervour = Placed;
+			}
+		}
 	}
+}
+
+FName UCataclysmSkillLevels::RowInSlot(const AActor* Player, ECataclysmAbilitySlot Slot)
+{
+	const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Player);
+	const FGameplayTag SlotTag = CataclysmAbilitySlots::Tag(Slot);
+	if (!System || !SlotTag.IsValid())
+	{
+		return NAME_None;
+	}
+	// THE SPEC CARRYING THE SLOT'S TAG, as `UCataclysmAbilitySystemComponent::AbilityInputTagPressed` finds the skill a
+	// key starts. Its instance, since only a given, instantiated skill has a holder (`PlayerHolding`).
+	for (const FGameplayAbilitySpec& Spec : System->GetActivatableAbilities())
+	{
+		if (Spec.Ability && Spec.GetDynamicSpecSourceTags().HasTagExact(SlotTag))
+		{
+			return RowThatLevels(Spec.GetPrimaryInstance());
+		}
+	}
+	return NAME_None;
+}
+
+double UCataclysmSkillLevels::CostFactorOfSlot(const AActor* Player, ECataclysmAbilitySlot Slot)
+{
+	const FName Row = RowInSlot(Player, Slot);
+	const ACataclysmPlayerState* Holder = Row.IsNone() ? nullptr : PlayerOf(Player);
+	return Holder ? CostFactor(Holder->SkillLevelOf(Row)) : 1.0;
 }
 
 float UCataclysmSkillLevels::FractionFor(double Experience, int32 CharacterLevel)

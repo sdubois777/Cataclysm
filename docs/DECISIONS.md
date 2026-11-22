@@ -834,24 +834,28 @@ tooltip's level 1). Restored: 1 of 1.
 `ManaCostAtTheHoldersLevel` (`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp`); `FervourReserveFor`
 and `UCataclysmSummonSkill::FervourReserveOfOne`, new (`CataclysmSkillTemplates.h`, `.cpp`);
 `ACataclysmPlayerState::RepriceReservesForLevelsGained`, new, called from `GrantExperience`, `SetLevelAndExperience`,
-`GrantSkillExperience` and `SetSkillExperience` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`); the skill
+`GrantSkillExperience` and `SetSkillExperience` (`game/Source/Cataclysm/Player/CataclysmPlayerState.h`, `.cpp`);
+`UCataclysmSkillLevels::RowInSlot` and `CostFactorOfSlot`, new, and `ACataclysmMinion::SkillGadgetReserveFor` and
+`SkillTrapReserveFor`, new, read by `PlaceSkillGadget`, `PlaceSkillTrap` and the re-price
+(`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h`, `.cpp`); the skill
 bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`CataclysmSkillBar.h`, `.cpp`);
 `sim/cataclysm_sim/skill_levels.py` and `sim/analyse_opening.py`; the "What a Skill Levels" table in
-`docs/Cataclysm_GDD_v2.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, three in
+`docs/Cataclysm_GDD_v2.md`. Tests: `game/Source/Cataclysm/Tests/CataclysmLevelCostsTests.cpp`, new, four in
 `Cataclysm.LevelCosts.`; `tools/tests/test_a_skills_level_lowers_its_costs.py`, new; one in
 `sim/tests/test_skill_levels.py`; `tools/tests/test_skill_levels_port.py` pins the new constant. Issue
 [#2802](https://github.com/sdubois777/Cataclysm/issues/2802).
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2801's branch at `efe7c0bfc` without a compile, as ruled. It is
-  rebased onto #2801's merge at its own turn, which is queued after the empire tree's slice 6c, #2803, #2797 and #2800.
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2801's branch at `efe7c0bfc` without a compile, as ruled, and
+  rebased onto development `b8df7e1fe` with #2804 and #2815 on top of it, for one combined turn: one branch, one set of
+  three compiles and one window, ruled by the coordinating session on 2026-11-21.
 - **WHAT WAITS FOR THAT TURN, WHICH NEEDS THE DESIGN WORKBOOK:** the fixed figures in two skills' descriptions --
   Subjugate's "Holding a thrall reserves 30 Fervour" and Summon Imp's "Each imp reserves 10 Fervour" -- lose their
   numbers, since the pop-up now states the levelled reserve itself. Until then those sentences state level 1's figure.
-- **NOT IN THIS CHANGE:** the reserves of a skill gadget and a skill trap, which a converted slot's skill makes. Their
-  figures are written in `CataclysmMinion.cpp`, which branch B of #2787 rewrites; they take the skill's factor after
-  the rebase onto B's merge, as its own commit.
+- **THE RESERVES OF A SKILL GADGET AND A SKILL TRAP** take the factor in their own commit after the rebase, since
+  branch B of #2787 wrote them: the level is that of the skill in the slot the gadget or trap stands for. Neither is
+  re-priced when a different skill is put in that slot; only a level rise of the skill in it re-prices.
 
 ### The owner's words, and the rulings
 
@@ -904,6 +908,12 @@ its table runs to level 10; the table's figures are the ones quoted.
   rise, calls `UCataclysmSkillLevels::RepriceReservesOf` for each skill whose level rose: every thrall it took
   (`TakenBySkillRow`) and every minion it summoned (`SummoningSkillRow`) that holds more than the skill's
   `FervourReserveOfOne` now is lowered to it. None is raised. The ceiling the pool fills to rises by what was freed.
+- **THE SKILL GADGET AND THE SKILL TRAP.** `ACataclysmMinion::SkillGadgetReserveFor(player, slot)` is the gadget's 15
+  times `UCataclysmSkillLevels::CostFactorOfSlot(player, slot)`, then the commander's reductions, as a summon's reserve;
+  `SkillTrapReserveFor` the same from the trap's 5. `CostFactorOfSlot` is the factor of the level of the skill whose spec
+  carries the slot's tag (`RowInSlot`, as a key press finds it), 1 for an empty slot or the basic attack's.
+  `PlaceSkillGadget` and `PlaceSkillTrap` ask these for the room and the reserve, and `RepriceReservesOf` lowers each
+  standing gadget and trap whose slot holds the levelled skill to them, a skill that summons nothing included.
 - **THE WORDS.** The pop-up's cost line from #2801 reads `FervourCostFor` and `ManaCostFor`, so it states the levelled
   figures already; it now ends with what each thing the skill makes reserves: "Costs 22 Fervour and 14 mana. 20 s
   cooldown. Each thrall reserves 22 Fervour." -- "thrall" for a skill that takes creatures, else its minion's type.
@@ -935,7 +945,7 @@ section. Those pack fights last 3 to 5 seconds and are not short of mana, so a c
 
 ### Tests
 
-`CataclysmLevelCostsTests.cpp`, three, on the possessed Staff player `Cataclysm.SkillLevelSources.`'s thrall test
+`CataclysmLevelCostsTests.cpp`, four, on the possessed Staff player `Cataclysm.SkillLevelSources.`'s thrall test
 builds, raised to character level 32 so a skill can reach level 10:
 
 | Test | What it checks |
@@ -943,10 +953,12 @@ builds, raised to character level 32 so a skill can reach level 10:
 | `EachLevelLowersACostAndLevelTwentyHalvesIt` | the factor is 0.9642; 1 at level 1, 0.72013 at 10, 0.5 at 20; clamped above 20 and below 1 |
 | `ASkillsManaAndFervourCostsFallWithItsLevel` | Subjugate at level 10 costs 0.72013 times its level 1 Fervour and mana; CONTROL Compel, not levelled, costs what it did |
 | `AHeldThrallIsRepricedWhenItsSkillLevels` | a thrall taken at level 1 holds 30 and the pool fills to 120; CONTROL Summon Imp reaching level 10 leaves it at 30; Subjugate reaching level 10 makes it hold 21.6 with no new take, and the ceiling rises by 8.4. Prints "REPRICED" |
+| `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | a gadget and a trap for the Heavy slot, Compel's, hold 15 and 5 at level 1; Compel reaching level 10 makes the same two hold 10.8 and 3.6; CONTROL a trap for the Ultimate slot, Subjugate's, keeps 5; a Heavy trap placed at level 10 holds 3.6. Prints "GADGET AND TRAP" |
 
 `tools/tests/test_a_skills_level_lowers_its_costs.py`: each of the four places a level can rise re-prices with the
 levels it took before; the re-price reaches every risen skill; the Fervour cost, the mana cost and a summon's reserve
-each multiply by `CostFactorOf`.
+each multiply by `CostFactorOf`, and a skill gadget's and a skill trap's by `CostFactorOfSlot`; and `PlaceSkillGadget`
+and `PlaceSkillTrap` reserve that figure.
 
 ### Registered before the window
 

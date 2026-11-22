@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+// For `ECataclysmAbilitySlot`, which a skill gadget's and a skill trap's reserve is asked by. Issue #2802.
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "CataclysmSkillLevels.generated.h"
 
 class AActor;
@@ -93,9 +95,21 @@ public:
 	static double CostFactorOf(const UGameplayAbility* Ability);
 
 	/**
+	 * The row of the levelling skill `Player` holds in `Slot`: the skill whose spec carries the slot's tag, as a key
+	 * press finds it. None for an empty slot, the basic attack, a skill with no row and a non-player. Issue #2802: a
+	 * skill gadget and a skill trap are made by their slot's skill, so its level prices their reserve.
+	 */
+	static FName RowInSlot(const AActor* Player, ECataclysmAbilitySlot Slot);
+
+	/** The cost factor of the level of the skill `Player` holds in `Slot`; 1 where `RowInSlot` is None. Issue #2802. */
+	static double CostFactorOfSlot(const AActor* Player, ECataclysmAbilitySlot Slot);
+
+	/**
 	 * Re-prices what everything `SkillRow`'s skill made holds back of its commander's pool, at the skill's level now:
 	 * the thralls it took (`ACataclysmEnemyCharacter::TakenBySkillRow`) and the minions it summoned
-	 * (`ACataclysmMinion::SummoningSkillRow`), each to the skill's `UCataclysmSummonSkill::FervourReserveOfOne`. A level
+	 * (`ACataclysmMinion::SummoningSkillRow`), each to the skill's `UCataclysmSummonSkill::FervourReserveOfOne`; and
+	 * each skill gadget and skill trap standing for a slot that holds the skill, to
+	 * `ACataclysmMinion::SkillGadgetReserveFor` or `SkillTrapReserveFor`. A level
 	 * never raises a reserve, so a re-price only ever frees room; a reserve already lower is kept. Nothing happens when
 	 * the player no longer holds the skill. Issue #2802, ruled by the coordinating session on 2026-11-21: thralls are
 	 * taken for good, so a thrall priced once at the take would hold level 1's figure after Subjugate reached level 20.

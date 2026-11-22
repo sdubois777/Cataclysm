@@ -14,7 +14,9 @@ reserve stays at level 1's figure in that case.
 WHAT IS CHECKED:
 
   1. each of the four places calls `RepriceReservesForLevelsGained` with the levels it took before the change;
-  2. the Fervour cost, the mana cost and a summon's reserve each multiply by `UCataclysmSkillLevels::CostFactorOf`.
+  2. the Fervour cost, the mana cost and a summon's reserve each multiply by `UCataclysmSkillLevels::CostFactorOf`,
+     and a skill gadget's and a skill trap's reserve by `CostFactorOfSlot`, the level of the skill in their slot;
+  3. a skill gadget and a skill trap are placed holding that figure.
 
 `Cataclysm.LevelCosts.` (`CataclysmLevelCostsTests.cpp`) tests what the factor does.
 """
@@ -31,6 +33,7 @@ SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
 STATE = SOURCE / "Player" / "CataclysmPlayerState.cpp"
 ABILITY = SOURCE / "AbilitySystem" / "CataclysmGameplayAbility.cpp"
 TEMPLATES = SOURCE / "AbilitySystem" / "CataclysmSkillTemplates.cpp"
+MINION = SOURCE / "AbilitySystem" / "CataclysmMinion.cpp"
 
 
 def code(path: pathlib.Path) -> str:
@@ -77,11 +80,23 @@ def test_the_reprice_reaches_every_skill_whose_level_rose() -> None:
     assert "UCataclysmSkillLevels::RepriceReservesOf(this, Each.Key);" in found, "a risen level re-prices nothing"
 
 
-@pytest.mark.parametrize("path, signature, what", [
-    (ABILITY, "float UCataclysmGameplayAbility::FervourCostFor(", "the Fervour cost"),
-    (ABILITY, "float UCataclysmGameplayAbility::ManaCostAtTheHoldersLevel(", "the mana cost"),
-    (TEMPLATES, "float FervourReserveFor(", "a summon's reserve"),
+@pytest.mark.parametrize("path, signature, factor, what", [
+    (ABILITY, "float UCataclysmGameplayAbility::FervourCostFor(", "CostFactorOf(", "the Fervour cost"),
+    (ABILITY, "float UCataclysmGameplayAbility::ManaCostAtTheHoldersLevel(", "CostFactorOf(", "the mana cost"),
+    (TEMPLATES, "float FervourReserveFor(", "CostFactorOf(", "a summon's reserve"),
+    (MINION, "float ACataclysmMinion::SkillGadgetReserveFor(", "CostFactorOfSlot(", "a skill gadget's reserve"),
+    (MINION, "float ACataclysmMinion::SkillTrapReserveFor(", "CostFactorOfSlot(", "a skill trap's reserve"),
 ])
-def test_each_cost_is_lowered_by_the_skills_level(path: pathlib.Path, signature: str, what: str) -> None:
+def test_each_cost_is_lowered_by_the_skills_level(path: pathlib.Path, signature: str, factor: str, what: str) -> None:
     found = squeeze(body(code(path), signature, path.name))
-    assert "UCataclysmSkillLevels::CostFactorOf(" in found, f"{what} is not lowered by the skill's level"
+    assert f"UCataclysmSkillLevels::{factor}" in found, f"{what} is not lowered by the skill's level"
+
+
+@pytest.mark.parametrize("signature, figure", [
+    ("ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(", "SkillGadgetReserveFor(Player, Slot)"),
+    ("ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(", "SkillTrapReserveFor(Player, Slot)"),
+])
+def test_a_skill_gadget_and_a_skill_trap_are_placed_at_their_slot_skills_figure(signature: str, figure: str) -> None:
+    found = squeeze(body(code(MINION), signature, "CataclysmMinion.cpp"))
+    assert f"const float Reserve = {figure};" in found, (
+        f"{signature} does not reserve the figure its slot's skill level gives")

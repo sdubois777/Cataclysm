@@ -469,6 +469,14 @@ public:
 	static constexpr float SkillGadgetFervourReserve = 15.0f;
 
 	/**
+	 * What a skill gadget for `Player`'s `Slot` reserves: `SkillGadgetFervourReserve` times the cost factor of the
+	 * level of the skill in that slot (`UCataclysmSkillLevels::CostFactorOfSlot`), then the commander's reductions
+	 * (`UCataclysmCommand::ReserveFor`). Issue #2802: the slot's skill makes the gadget, so its level lowers the
+	 * reserve as a summon's level lowers its minions'. Asked at the placing and again when that skill levels.
+	 */
+	static float SkillGadgetReserveFor(const AActor* Player, ECataclysmAbilitySlot Slot);
+
+	/**
 	 * Place a skill gadget for `Player`'s `Slot` at `Location`, or null with the reason logged.
 	 *
 	 * NULL, AND NOTHING LEFT STANDING, WHEN THE TYPE ROW IS MISSING: `Spawn` would otherwise make a minion carrying
@@ -1193,6 +1201,9 @@ public:
 	 * how many stand (#2787).
 	 */
 	static constexpr float SkillTrapFervourReserve = 5.0f;
+
+	/** `SkillGadgetReserveFor`'s counterpart for a skill trap, from `SkillTrapFervourReserve`. Issue #2802. */
+	static float SkillTrapReserveFor(const AActor* Player, ECataclysmAbilitySlot Slot);
 
 	/**
 	 * "Traps arm 30%-60% faster" and "Traps have 30%-50% increased trigger radius": two increased stats of the player,

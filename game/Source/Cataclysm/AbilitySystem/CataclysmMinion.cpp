@@ -40,6 +40,8 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "GameFramework/Pawn.h"
 #include "Player/CataclysmPlayerState.h"
+// The level of a slot's skill, which lowers its skill gadget's and skill trap's reserve. Issue #2802.
+#include "Character/CataclysmSkillLevels.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPowerScore.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -878,7 +880,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 
 	// AND THE POOL MUST HOLD ITS RESERVE, issue #2787: when it cannot, the press places nothing. Asked only for a new
 	// gadget; a press that MOVES the slot's standing one never reaches this function.
-	const float Reserve = UCataclysmCommand::ReserveFor(Player, SkillGadgetFervourReserve, TagsOfType(SkillGadgetTypeName));
+	const float Reserve = SkillGadgetReserveFor(Player, Slot);
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
@@ -909,6 +911,15 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 	Placed->SkillGadgetPlacedAtSeconds = Placed->GetWorld()->GetTimeSeconds();
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 	return Placed;
+}
+
+float ACataclysmMinion::SkillGadgetReserveFor(const AActor* Player, ECataclysmAbilitySlot Slot)
+{
+	// THE SLOT SKILL'S LEVEL FIRST, ON THE STATED FIGURE, AND THE COMMANDER'S REDUCTIONS AFTER, as a summon's reserve is
+	// worked out (`FervourReserveFor` in CataclysmSkillTemplates.cpp). Issue #2802.
+	const float Stated =
+		SkillGadgetFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));
+	return UCataclysmCommand::ReserveFor(Player, Stated, TagsOfType(SkillGadgetTypeName));
 }
 
 bool ACataclysmMinion::IsSkillGadget() const
@@ -2639,6 +2650,14 @@ TArray<ACataclysmMinion*> ACataclysmMinion::SkillTrapsOf(const AActor* Player)
 	return Traps;
 }
 
+float ACataclysmMinion::SkillTrapReserveFor(const AActor* Player, ECataclysmAbilitySlot Slot)
+{
+	// AS A SKILL GADGET'S: the slot skill's level on the stated figure, then the commander's reductions. Issue #2802.
+	const float Stated =
+		SkillTrapFervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOfSlot(Player, Slot));
+	return UCataclysmCommand::ReserveFor(Player, Stated, TagsOfType(SkillTrapTypeName));
+}
+
 ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbilitySlot Slot, const FVector& Location)
 {
 	if (!IsValid(Player) || Slot == ECataclysmAbilitySlot::None)
@@ -2649,7 +2668,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	// THE POOL MUST HOLD ITS RESERVE, issue #2787, AND THAT IS THE ONLY LIMIT ON HOW MANY STAND: the owner's ruling of
 	// 2026-11-20 removed every count cap on what reserves the class resource, which replaced T6's five. When the pool
 	// cannot hold it, nothing is placed, and the press pays nothing: `PressOfASkillTrapSlot` pays only for a trap placed.
-	const float Reserve = UCataclysmCommand::ReserveFor(Player, SkillTrapFervourReserve, TagsOfType(SkillTrapTypeName));
+	const float Reserve = SkillTrapReserveFor(Player, Slot);
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
