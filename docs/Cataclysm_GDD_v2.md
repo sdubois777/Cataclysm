@@ -5068,8 +5068,8 @@ A reference character at difficulty tier 8 — a level 100 Ravager spending ever
 | Armor, 7,299 points against the tier 8 curve | 53.3% |
 | Resistance, at the cap | 70.0% |
 | Block chance 28%, removing half a hit each time | 14.0% on average |
-| Damage reduction | 15.9% |
-| **All four together** | **89.9%** |
+| Damage reduction | 23.95% |
+| **All four together** | **90.8%** |
 
   
 
@@ -5083,17 +5083,22 @@ So a hit lands for about **a tenth** of itself. Any enemy damage figure chosen w
 
 | Enemy at tier 8 | Hits to kill it | Seconds |
 | :-- | :-: | :-: |
-| Common Imp | 54 | 48.6 |
-| Common Hellhound | 24 | 26.4 |
-| Elite Succubus | 11 | 28.6 |
-| Elite Brute | 10 | 28.0 |
-| Legendary Corrupted Sentinel | 12 | 24.0 |
+| Common Imp | 60 | 54.0 |
+| Common Hellhound | 26 | 28.6 |
+| Elite Succubus | 12 | 31.2 |
+| Elite Brute | 11 | 13.2 |
+| Legendary Corrupted Sentinel | 13 | 26.0 |
 | Herald Abyssal Warden | 5 | 12.0 |
 | Cataclysm Boss Gatekeeper | 2 | 6.0 |
 
+The hits are what `damage.hits_to_kill` in `sim/cataclysm_sim/damage.py` gives for one of that enemy's average hits against
+the reference character at tier 8, each enemy at the rarity it is normally met at; the seconds are those hits, rounded
+up, times the enemy's attack interval. `tools/tests/test_the_geared_character_figures_match_the_model.py` recomputes
+both tables and the pack figures below, so a change to the model fails there rather than leaving this section wrong.
+
   
 
-**A single Common enemy is not the threat. A pack is.** One Imp takes 48 seconds to kill a geared character; ten take 4.9 seconds and twenty take 2.4. That is what makes the design's own description of the Imp — weak individually, overwhelming in packs — a mechanical fact rather than flavour.
+**A single Common enemy is not the threat. A pack is.** One Imp takes 54.0 seconds to kill a geared character; ten take 5.4 seconds and twenty take 2.7. That is what makes the design's own description of the Imp — weak individually, overwhelming in packs — a mechanical fact rather than flavour.
 
   
 
@@ -5172,7 +5177,7 @@ The reason is that player damage is **adaptive**: a weapon deals one damage numb
 
   
 
-**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 89.9% of what is thrown at them. The ceiling is **89%**, the whole percent below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded.
+**No enemy stops more of a hit than a geared player does.** That is the ceiling on an enemy's defensive layers taken together, and the figure is one the design already had rather than a new one: the reference character in *How Long a Geared Character Survives* stops 90.8% of what is thrown at them. The ceiling is **89%**, below it, so that an enemy sitting exactly at the ceiling still stops less than the player after the published figure is rounded. It was set as the whole percent below the 89.9% the character stopped then, and kept when a stronger damage reduction affix raised that to 90.8% on 2026-09-04: it still sits below, with more room.
 
   
 
@@ -5837,7 +5842,7 @@ Two body measurements feed it, and both are already in the project. The player's
 
   
 
-**The Imp's reach is 1.32 metres, which is exactly the second rank.** It is set there because the document's own pack figures require it. Section X states that ten Imps kill a geared character in 4.9 seconds and twenty in 2.4. One rank is seven Imps, and seven take 6.9 seconds. A reach that let only the rank in contact swing would make both of the stated figures false, because the eighth Imp onward would be standing behind the first seven doing nothing.
+**The Imp's reach is 1.32 metres, which is exactly the second rank.** It is set there because the document's own pack figures require it. Section X states that ten Imps kill a geared character in 5.4 seconds and twenty in 2.7. One rank is seven Imps, and seven take 7.7 seconds. A reach that let only the rank in contact swing would make both of the stated figures false, because the eighth Imp onward would be standing behind the first seven doing nothing.
 
   
 
@@ -5861,7 +5866,7 @@ Two ranks are twenty Imps and the third is out of reach, so **twenty is the most
 
   
 
-Ten, because this document already names ten as the pack that kills a geared character in 4.9 seconds. It is three more than one full rank, which is what makes the second rank, and therefore the reach above, matter in an ordinary encounter rather than only in a swarm event.
+Ten, because this document already names ten as the pack that kills a geared character in 5.4 seconds. It is three more than one full rank, which is what makes the second rank, and therefore the reach above, matter in an ordinary encounter rather than only in a swarm event.
 
   
 

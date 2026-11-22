@@ -587,15 +587,20 @@ def test_the_pack_size_is_the_one_the_document_already_states(imp_section):
 
     assert PACK_SIZE["Imp"] == 10, (
         f"the Imp's pack is now {PACK_SIZE['Imp']}. Section X states that ten "
-        "Imps kill a geared character in 4.9 seconds and the design reuses "
-        "that figure rather than adding another.")
+        "Imps kill a geared character in a stated number of seconds and the "
+        "design reuses that figure rather than adding another.")
     assert "a pack is ten" in imp_section.lower(), (
         "the Imp subsection no longer states the pack size.")
 
+    # WHETHER TEN IS STATED, HERE; HOW MANY SECONDS THEY TAKE, IN
+    # test_the_geared_character_figures_match_the_model.py, which recomputes the
+    # figure from the model. It read "ten take 4.9 seconds" until issue #2818,
+    # and the model had said 5.4 since the damage reduction affix moved on
+    # 2026-09-04, so this pinned a stale figure rather than checking one.
     survival = unwrapped(GDD.read_text(encoding="utf-8"))
-    assert "ten take 4.9 seconds" in survival, (
-        "section X no longer states that ten Imps kill a geared character in "
-        "4.9 seconds, which is where the pack size of ten comes from.")
+    assert "ten take " in survival, (
+        "section X no longer states how long ten Imps take to kill a geared "
+        "character, which is where the pack size of ten comes from.")
 
 
 def test_the_engine_note_names_detour_crowd_rather_than_rvo(imp_section):
