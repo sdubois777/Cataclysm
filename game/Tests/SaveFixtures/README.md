@@ -820,6 +820,29 @@ followed, ruled 2026-11-01:
   committed run file reads `Run_v13.json` now, and every test that runs an
   older run file through the whole chain adds what the step writes through
   `CataclysmSaveFixtures::AddTheRunsVersion13Defaults`.
+- **The character record went to version 13 and the run record to version 14
+  on 2026-11-22**, for gems (issue #46, slices G2, G3 and G5). An item's
+  `Sockets` was a count and is a list of typed sockets, each holding a gem or
+  none; a carried or stashed slot may hold a stack of one gem at one rarity
+  (`Gem`, `GemRarity`); and a ground item may be a stack of gems (`Gem`,
+  `GemRarity`, `GemQuantity`). `Migrate_12_to_13` (character) and
+  `Migrate_13_to_14` (run) write each saved count of N as N empty sockets of
+  type Any -- the coordinating session's ruling of 2026-11-21, "sockets
+  migrated from today's count fit any type" -- and no gem in every slot and on
+  every ground item. `Character_v13.json` is `Character_v12.json` at version 13
+  with those, except that its carried piece's two sockets are Attack, holding
+  `Gem_Of_The_Viper` at Quality, and Defense, and its worn greatsword's three are
+  Attack, Defense and Utility: neither the default nor what the step writes, so
+  the test that reads it shows the fields are read. `Run_v14.json` is
+  `Run_v13.json` at version 14 with those. `Character_v12.json` and
+  `Run_v13.json` are now migration inputs, not edited again: the two
+  `Cataclysm.GemSave.` tests run them through the steps, every test that read
+  either as the committed file reads the new one now, and every test that runs
+  an older file through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheCharactersVersion13Defaults` or
+  `AddTheRunsVersion14Defaults`. **The account record does not move**, though
+  its `Stash` is a list of the same slot: nothing fills that stash, so no
+  account file can hold a socket count.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -851,6 +874,7 @@ followed, ruled 2026-11-01:
 | `Character_v10.json` | The same character at version 10: version 9's contents, plus the experience of two skills, `War_Greatsword_Heavy` at 37810.5 and `Demonic_Greataxe_Ultimate` at 1234.25 |
 | `Character_v11.json` | The same character at version 11: version 10's contents, plus its own gold debt, 1500 owed with 150 taken a day |
 | `Character_v12.json` | The same character at version 12: version 11's contents, plus an extra option in its own empire tree, the third of Foundations of the Empire's, and none in its other two allocations |
+| `Character_v13.json` | The same character at version 13: version 12's contents, with each socket count as a list of sockets -- its carried piece's Attack holding Of The Viper at Quality and Defense, its worn greatsword's Attack, Defense and Utility, its held build's three of type Any -- and no gem in either carried slot |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -864,6 +888,7 @@ followed, ruled 2026-11-01:
 | `Run_v11.json` | The same run at version 11: version 10's contents, plus 5 dungeons cleared since the last death |
 | `Run_v12.json` | The same run at version 12: version 11's contents, plus its first city marked as damaged by a dungeon, the run's population marked as fallen below half, and the walk's 1234 gold dropped and 1000 picked up |
 | `Run_v13.json` | The same run at version 13: version 12's contents, plus a `BuildDaysLeft` of 0 on both its upgrades, its first city building `Architect_Increase_max_defense_by_20` with 4 days left, and its second building nothing |
+| `Run_v14.json` | The same run at version 14: version 13's contents, with each ground item's socket count of 0 as an empty list and no gem on either ground item |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

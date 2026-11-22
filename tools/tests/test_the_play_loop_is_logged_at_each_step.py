@@ -68,6 +68,10 @@ STEPS = [
     # THE FORGE, ruled 2026-11-19: an item raised a level, and two stones combined into one of the next.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeUpgradeLine"),
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::Combine(", "ForgeCombineLine"),
+    # AND A GEM SOCKETED OR UNSOCKETED, issue #46 slice G4: both crafts finish in `DoSocketing`, which says the line.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(", "ForgeSocketLine"),
+    # AND TWO GEMS COMBINED INTO ONE OF THE NEXT RARITY, issue #46 slice G6.
+    ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::CombineGems(", "ForgeGemCombineLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),
@@ -97,6 +101,7 @@ AFTER = {
     "ForgetSkillChoice": "ClearSkillChoice(Slot)",
     "Upgrade": "Run->AdvanceDays(Plan.Days);",
     "Combine": "Inventory->AddMaterial(Plan.Into, 1)",
+    "DoSocketing": "Run->AdvanceDays(Plan.Days);",
     "TakeInto": "Inventory->AddItem(Drop->Item)",
     "WearFromCarried": "Equipment->Equip(Item, First, Second, OutSlot)",
 }

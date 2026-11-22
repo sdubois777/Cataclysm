@@ -607,7 +607,7 @@ bool FCataclysmTooltipWholeItem::RunTest(const FString& Parameters)
 
 	FCataclysmItem Item = HelmWith(FlatHealthAffix);
 	Item.GearLevel = 5;
-	Item.Sockets = 2;
+	Item.Sockets.SetNum(2);
 	Item.Residue = 3.0f;
 
 	const TArray<FString> Lines = UCataclysmItemTooltip::LinesFor(

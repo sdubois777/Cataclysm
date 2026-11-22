@@ -117,7 +117,10 @@ namespace CataclysmForgeTest
 			FCataclysmCharacterPartition Partition;
 			Partition.Lethality = ECataclysmLethality::Standard;
 			Partition.Population = ECataclysmPopulation::Offline;
+			// SOLO SELF-FOUND, WITH GOLD OF ITS OWN, so every craft can pay (#2830) and no account record is written.
+			Partition.bSoloSelfFound = true;
 			Out.State->SetIdentity(TEXT("Smith"), Partition);
+			Out.State->SetOwnGold(1000000);
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
@@ -168,35 +171,36 @@ bool FCataclysmForgeUpgradeRulesTest::RunTest(const FString&)
 {
 	using namespace CataclysmForgeTest;
 
-	const FCataclysmForgeUpgrade Plan = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 2, 87.0f), 5);
+	const FCataclysmForgeUpgrade Plan = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 2, 87.0f), 5, 1, 1000000);
 	TestTrue(TEXT("a +2 piece with five +3 stones can be raised"), Plan.bPossible);
 	TestEqual(TEXT("to +3"), Plan.ToLevel, 3);
 	TestEqual(TEXT("with the +3 stone"), Plan.Stone, FName(TEXT("Material_Upgrade_Stone_3")));
 	TestEqual(TEXT("two of them"), Plan.StonesNeeded, 2);
 	TestEqual(TEXT("residue 87 becomes 112"), Plan.ResidueAfter, 112.0f, 0.001f);
-	TestEqual(TEXT("one day below 100 residue"), Plan.Days, 1);
+	TestEqual(TEXT("three days: the level it reaches, and none for residue below 100 (#2830)"), Plan.Days, 3);
+	TestEqual(TEXT("and 2,055 gold: 750 for three days, times 87 / 50 + 1 (#2830)"), Plan.Gold, static_cast<int64>(2055));
 
-	TestEqual(TEXT("99.9 residue: one day"), UCataclysmForge::DaysFor(99.9f), 1);
-	TestEqual(TEXT("100 residue: two days, the break point"), UCataclysmForge::DaysFor(100.0f), 2);
-	TestEqual(TEXT("250 residue: three days"), UCataclysmForge::DaysFor(250.0f), 3);
-	TestEqual(TEXT("no residue: one day"), UCataclysmForge::DaysFor(0.0f), 1);
+	TestEqual(TEXT("99.9 residue: one day"), UCataclysmForge::DaysFor(99.9f, 1), 1);
+	TestEqual(TEXT("100 residue: two days, the break point"), UCataclysmForge::DaysFor(100.0f, 1), 2);
+	TestEqual(TEXT("250 residue: three days"), UCataclysmForge::DaysFor(250.0f, 1), 3);
+	TestEqual(TEXT("no residue: one day"), UCataclysmForge::DaysFor(0.0f, 1), 1);
 
-	const FCataclysmForgeUpgrade Short = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 2, 87.0f), 1);
+	const FCataclysmForgeUpgrade Short = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 2, 87.0f), 1, 1, 1000000);
 	TestFalse(TEXT("one +3 stone is not enough"), Short.bPossible);
 	TestEqual(TEXT("and it says so"), Short.Refusal, FString(TEXT("Raising it to +3 takes two +3 upgrade stones; 1 held.")));
 
-	const FCataclysmForgeUpgrade Top = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 10, 300.0f), 99);
+	const FCataclysmForgeUpgrade Top = UCataclysmForge::UpgradeOf(PlainOf(GlovesBase, 10, 300.0f), 99, 1, 1000000);
 	TestFalse(TEXT("+10 is the highest"), Top.bPossible);
 	TestEqual(TEXT("and it says so"), Top.Refusal, FString(TEXT("This is +10, the highest an item can be raised to.")));
 	TestTrue(TEXT("and names no stone"), Top.Stone.IsNone());
 
-	TestFalse(TEXT("no item is no upgrade"), UCataclysmForge::UpgradeOf(FCataclysmItem(), 9).bPossible);
+	TestFalse(TEXT("no item is no upgrade"), UCataclysmForge::UpgradeOf(FCataclysmItem(), 9, 1, 1000000).bPossible);
 	TestEqual(TEXT("the +1 stone's row"), UCataclysmForge::StoneFor(1), FName(TEXT("Material_Upgrade_Stone_1")));
 	TestTrue(TEXT("no +11 stone"), UCataclysmForge::StoneFor(11).IsNone());
 
 	AddInfo(FString::Printf(TEXT("UPGRADE RULES: %s"), *UCataclysmForge::UpgradeQuestion(Plan)));
 	TestEqual(TEXT("the first press's question"), UCataclysmForge::UpgradeQuestion(Plan),
-			  FString(TEXT("Press again to upgrade to +3: two +3 stones, residue 87 to 112, 1 day of the run.")));
+			  FString(TEXT("Press again to upgrade to +3: two +3 stones, 2,055 gold, residue 87 to 112, 3 days of the run.")));
 	return true;
 }
 
@@ -207,20 +211,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeCombineRulesTest,
 
 bool FCataclysmForgeCombineRulesTest::RunTest(const FString&)
 {
-	const FCataclysmForgeCombine Two = UCataclysmForge::CombineOf(2, 3);
+	const FCataclysmForgeCombine Two = UCataclysmForge::CombineOf(2, 3, 1, 1000000);
 	TestTrue(TEXT("three +2 stones can make a +3"), Two.bPossible);
 	TestEqual(TEXT("from the +2 row"), Two.From, FName(TEXT("Material_Upgrade_Stone_2")));
 	TestEqual(TEXT("into the +3 row"), Two.Into, FName(TEXT("Material_Upgrade_Stone_3")));
 	TestEqual(TEXT("taking two"), Two.StonesNeeded, 2);
 
-	const FCataclysmForgeCombine One = UCataclysmForge::CombineOf(2, 1);
+	const FCataclysmForgeCombine One = UCataclysmForge::CombineOf(2, 1, 1, 1000000);
 	TestFalse(TEXT("one +2 stone is not two"), One.bPossible);
 	TestEqual(TEXT("and it says so"), One.Refusal, FString(TEXT("Combining takes two +2 upgrade stones; 1 held.")));
 
-	TestFalse(TEXT("+10 is the highest stone"), UCataclysmForge::CombineOf(10, 9).bPossible);
-	TestFalse(TEXT("there is no +0 stone"), UCataclysmForge::CombineOf(0, 9).bPossible);
-	TestTrue(TEXT("+9 makes the +10"), UCataclysmForge::CombineOf(9, 2).bPossible);
-	AddInfo(FString::Printf(TEXT("COMBINE RULES: at +10: %s"), *UCataclysmForge::CombineOf(10, 9).Refusal));
+	TestFalse(TEXT("+10 is the highest stone"), UCataclysmForge::CombineOf(10, 9, 1, 1000000).bPossible);
+	TestFalse(TEXT("there is no +0 stone"), UCataclysmForge::CombineOf(0, 9, 1, 1000000).bPossible);
+	TestTrue(TEXT("+9 makes the +10"), UCataclysmForge::CombineOf(9, 2, 1, 1000000).bPossible);
+	AddInfo(FString::Printf(TEXT("COMBINE RULES: at +10: %s"), *UCataclysmForge::CombineOf(10, 9, 1, 1000000).Refusal));
 	return true;
 }
 

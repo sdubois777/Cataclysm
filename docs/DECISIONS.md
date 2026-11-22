@@ -2,6 +2,1240 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The gems window: G1 to G7 rebased onto development with #2832 carried, saved at character record 13 and run record 14, the workbook stage, and a tooltip line for the four gems no class has a base for (#46, #2830, #2832)
+
+The turn of the gems work (issue #46, slices G1 to G7, and #2830), with the level-1 session's #2832 carried on top, as
+the coordinating session ruled on 2026-11-22. Branch `feat/gems-window-46`.
+
+**Uncertain or not yet shown, first:**
+
+- **WINDOW gems-w2 PASSED at `868df83d3`**, after gems-w1 failed on one of #2832's tests and one of this branch's
+  Python checks; both are below.
+- **THE DECISIONS LOG'S ORDER BY DATE COULD NOT BE KEPT EXACTLY.** Development's 15 entries since this branch's base
+  are not in date order themselves, and for 11 of them the only commit that holds them is the squash merge, so the
+  author date of the branch commit that first wrote each is not in git. The seven gem entries were put above
+  development's, as one block in their own order, with `tools/resolve_decisions_log.py resolve --first`; #2832's entry,
+  first written at 00:48 on 2026-11-22, after all seven, above them.
+- **THE ACCOUNT RECORD DOES NOT MOVE, BY JUDGEMENT.** Its `Stash` is a list of the carried slot, which gained `Gem` and
+  `GemRarity`, and an item's `Sockets` changed from a number to a list. But nothing fills the stash yet (the game has
+  no stash, `UCataclysmAccountSave::Stash`) and `Account_v6.json` holds it empty, so no account file can hold either.
+  `tools/tests/test_gems_are_saved_at_the_new_record_versions.py` fails the day the committed account file holds a
+  stash entry, which is when the account record has to move as well.
+
+### What happened at the turn
+
+1. **The rebase.** G7's head `29f33ab1f` (all seven slices) onto development `02b96b42b` (#2834's merge) as
+   `feat/gems-window-46`, with no force push. One conflict, `docs/DECISIONS.md`, at G1's entry commit; the other 23
+   commits applied as they were. No C++ was resolved by hand.
+2. **#2832 carried.** The level-1 session's `feat/city-upgrade-speed-nodes-2` at `1e5b2f4fe`, one commit, cherry-picked
+   unchanged apart from `docs/DECISIONS.md` (its entry first). The coordinating session ruled its one judgement: a rush
+   may be bought on credit.
+3. **Dry runs before anything real was written.** In `git archive` copies, the three stage scripts
+   (`.claude/windows/gems_window_workbook.py`, `gems_window_generator.py`, `gems_window_code.py`) applied without a
+   refused anchor on G7 merged onto #2834's head, on the rebased branch, and on the branch with #2832; the generator
+   wrote 34 CSVs. On the last copy only four CSVs changed -- CraftingMaterials (27 rows), EnemyDrops, Gems and the new
+   ForgeOperations (19) -- and the empire tree CSVs regenerated exactly as #2832 committed them. Its Python suite: "15
+   failed, 8048 passed, 15 skipped", JUnit 8078 tests, 15 failures: 11 need a git repository, 4 wait for the asset step.
+4. **The save steps** (`71675c3b0`), below.
+5. **The workbook stage** (`56afefb3a`), on the real `docs/All_Things_Cataclysm.xlsx`: the Gems sheet's Stat and Value
+   Kind (G1), the Enemy Drops sheet's Gem Drops (G5), and the Crafting sheet's Base Gold column, Gold Per Craft Day cell
+   (250) and Combine row (G7), as numbers because the generator reads cached values only. CraftingMaterials.csv went
+   from 46 rows to 27: the operations table and its header row are no longer read as materials. None of the 20 rows
+   that left it was ever in a drop pool: each carries tier 0, which `UCataclysmDropRoll::RollMaterial` never rolls.
+6. **The tooltip line** (`f1ab85c03`), below, and issue #2835 for the line that reads the character.
+7. **The editor build**: "Build: Succeeded - 70 actions, 63 files compiled".
+8. **The asset step** (`494e22e57`), on that editor: it changed DT_CraftingMaterials, DT_EmpireTreeEffects,
+   DT_EmpireTreeNodes, DT_EnemyDrops, DT_Gems, the new DT_ForgeOperations and `datatable_asset_sources.json`, and
+   nothing else. **IT FOLLOWS THE BUILD, NOT THE OTHER WAY ROUND as the turn notes had it**: it creates DT_ForgeOperations
+   from `FCataclysmForgeOperationRow`, which exists only in the new build.
+9. **The three compiles** (`.claude/windows/compile_gems.py`, the cached build plan moved aside before each). **THE
+   FIRST ROUND FAILED** in the build of each changed file alone: `CataclysmForgeCraft.cpp` and `CataclysmForgeLayout.cpp`
+   read `FCataclysmGemRow`'s members and `CataclysmGems.h` only declares it, so compiled alone each gave C2027 "use of
+   undefined type 'FCataclysmGemRow'"; in the unity build another file's include had supplied it. Both now include
+   `Data/CataclysmDataRows.h` (`80f827ddf`). The second round, at `80f827ddf`: "Build: Succeeded - 31 actions, 26 files
+   compiled", "Build: Succeeded - 33 actions, 28 files compiled" (each file alone) and "Build: Succeeded - 31 actions,
+   26 files compiled" (unity), each with 0 compiler warning or error lines. **In that second round only the two fixed
+   files compiled alone**; the other changed files had compiled alone in the first round, whose 95 compile lines failed
+   in those two files only, and their objects were current. The first round's per-file lines were overwritten when the
+   script ran again, so that rests on its error list, not on a kept line per file.
+
+### The save steps
+
+- **The character record goes from 12 to 13 and the run record from 13 to 14**, the numbers the coordinating session
+  gave after #2834 merged. `Migrate_12_to_13` (character) and `Migrate_13_to_14` (run) write each saved socket count of
+  N as N empty sockets of type Any -- "sockets migrated from today's count fit any type", ruled 2026-11-21 -- and no gem
+  (`"None"`, Everyday, 0) in every carried and stashed slot and on every ground item. `CataclysmSaveGems` in
+  `CataclysmSaveRecords.cpp` holds both: it finds every item by walking the record for a `Sockets` key, because
+  `FCataclysmItem` is the only saved struct with one, and refuses a count that is not a whole number of 0 or more.
+- **Fixtures.** `Character_v13.json` is `Character_v12.json` with the step's writes, except that its carried piece's
+  sockets are Attack holding Of The Viper at Quality and Defense, and its worn greatsword's Attack, Defense and Utility,
+  so the test that reads it shows the fields are read. `Run_v14.json` is `Run_v13.json` with the step's writes. Every
+  test that read the previous file as the committed one reads the new one (21 test files), and the 19 tests that run an
+  older file through the chain add `CataclysmSaveFixtures::AddTheCharactersVersion13Defaults` or
+  `AddTheRunsVersion14Defaults`. `test_city_upgrades_take_days_to_build.py` now reads the run record's
+  `Migrate_12_to_13` from the run record's namespace: the character record's new step of the same name comes first in
+  the file.
+- **Tests.** `Cataclysm.GemSave.ACharacterFileFromVersion12HasEachSocketCountAsThatManyEmptySocketsOfAnyType` and
+  `Cataclysm.GemSave.ARunFileFromVersion13LoadsWithSocketListsAndNoGemOnTheFloor`. The run file's ground items hold no
+  sockets, so the run test shows the conversion only by the record loading at all: a count left as a number refuses it.
+
+### The tooltip line for the four gems
+
+**Ruled by the coordinating session on 2026-11-22**: "build the line NOW, in this window, but in a form that needs no
+character", "a STATIC line chosen from Row.Stat alone", "literally true for every character, so it states the rule
+rather than the character's state"; check the affix and passive tables before choosing the wording, and record what was
+found. It carries the plan's point 5, "keep and explain", the owner's own answer for attributes in #2815 ("Keep it,
+just explain it").
+
+What the tables hold, read on 2026-11-22:
+
+| Stat (gem) | A flat amount from gear | From passives |
+| :-- | :-- | :-- |
+| block chance (Of The Bulwark) | `Stat_Flat_block_chance`; the Shield base's implicit 12 | none |
+| evasion (Of The Wraith) | `Stat_Flat_evasion`; the Hood, Jerkin, Mantle, Leggings and Striders bases | none (`Ravager_keystone_spine_002` is `melee_evasion_suppressed`, another stat) |
+| cooldown reduction (Of Urgency) | `Stat_Flat_cooldown_reduction`; the Reliquary base's implicit 10 | none |
+| magic find (Of The Goblin) | `Stat_Flat_magic_find` | none |
+
+So the line names gear only: "An increase multiplies what you already have. No class has a base evasion, so this gem
+does nothing until your gear gives some." `UCataclysmGems::NothingToIncreaseLineFor` adds it after the effect line, for
+an increase whose stat is one of the four. Tests: GK5,
+`Cataclysm.GemStacks.AGemRaisingAStatNoClassHasSaysItNeedsGearAndOthersDoNot`; GK4's Of Urgency now has five lines.
+`test_every_gem_names_a_stat_the_game_reads.py` checks the C++ list is the four gems' stats. **The line that reads the
+character's own stats is issue #2835**, with the plumbing it needs.
+
+### Registered before the window
+
+The base: #2834's window, 5168 performed, 57 skipped halves and 860 saves, on development `02b96b42b`'s game/. The
+window adds 36 test names and removes none (counted from the diff): 28 for the gems -- GemStats 3, GemStacks 5,
+ItemSockets 4, ForgeGems 4, GemDrops 4, GemCombine 3, ForgeCosts 3, GemSave 2 -- and #2832's 8, CityUpgradeSpeed.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | nothing to compile |
+| Each group alone, first | the 51 groups `.claude/windows/run_gems.py` lists -- the nine new or grown ones, every group whose test file the window changes, and #2832's -- **each at the count its own run prints, as the coordinating session ruled**: at least one test performed, every one succeeding |
+| The whole suite | 5204 performed, 5204 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind (the saves predicted) |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to its group with a trailing dot, each predicting one named failure in that group
+and none in the restored half:** K1 to K24 less K5 (G1 to G7, as registered in their entries; K5 was withdrawn by G5),
+GP1 (`Migrate_12_to_13` writes a socket of type Attack: the character test), GP2 (`Migrate_13_to_14` leaves socket
+counts as numbers: the run test), GK5 (evasion left out of the tooltip's list: GK5), and #2832's S1 to S4 as its entry
+registers them. The exact breaks are in `.claude/windows/prove_gems.py`; K23's anchor carries the upgrade's comment
+line, because the combine and the socketing pay the same way.
+
+**Python guard proofs, run in a `git archive` copy of `494e22e57` before the window: 6 of 6 PROVED.** None of them reads
+the two files `80f827ddf` changed.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PW1 | a migrated socket of type Attack | `test_the_character_record_is_at_13_and_the_run_record_at_14_each_with_its_step` |
+| PW2 | `Character_v13.json`'s second carried slot holding Of The Viper | `test_character_v13_is_v12_with_the_steps_writes_and_its_own_socket_types` |
+| PW3 | `Run_v14.json`'s first ground item holding a gem count of 1 | `test_run_v14_is_v13_with_the_steps_writes` |
+| PW4 | `CataclysmWalkSeedTests.cpp` without `AddTheRunsVersion14Defaults` | `test_every_chain_test_adds_the_new_step_and_only_the_gem_save_tests_read_the_old_files` |
+| PW5 | magic find left out of the tooltip's list | `test_the_tooltip_explains_exactly_the_stats_of_the_four_gems` |
+| PW6 | the run record's `Migrate_12_to_13` writing `Buildings` | `test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building` |
+
+
+### Window gems-w1, 2026-11-22, at `742c28386`: NOT PASSED
+
+- **Groups alone: 50 of 51 passed** at their own counts -- GemStats 3, GemStacks 5, ItemSockets 4, ForgeGems 4, GemDrops
+  4, GemCombine 3, ForgeCosts 3, GemSave 2, and every swept group (SaveLoad 81, SaveRecords 17, Drop 30,
+  DungeonModifierEffects 777, EmpireRun 71, among them). **`Cataclysm.CityUpgradeSpeed.` did not: 8 performed, 7
+  succeeded, 1 failed.**
+- **The whole suite**: "5204 tests performed, 5203 succeeded, 1 failed: TheRushButtonSaysItsPriceAndDaysOrWhatIsMissing";
+  57 skipped halves; "860 written and deleted, 0 left behind"; Declared 5204, gap 0.
+- **Python beside it**: "1 failed, 8073 passed, 10 skipped", JUnit 8084 tests, 1 failure; ruff clean. The failure was
+  this window's own: the tooltip list's comment in `CataclysmGems.cpp` wrapped the name of the check it cites across two
+  lines, so `test_every_python_test_a_cpp_comment_cites_exists` read `test_every_gem_names_a_stat_the_`. The comment now
+  names it on one line (`4ce2f316e`).
+- **No proof ran.**
+
+**#2832's failure was a test-only fault in its own tests**, ruled (A) by the coordinating session: the test expected
+"Rush  --  Costs 15,000 gold; 3,000 more needed." and read "Rush  --  " followed by three unreadable characters, because
+three tests in `CataclysmCityUpgradeSpeedTests.cpp` took a pointer into the temporary list `OffersFor` returns and read
+it after the list was freed. `d69c46313` keeps the list in a local in those three tests and changes nothing else;
+#2832's commit stays as it was. The registration for window gems-w2 is unchanged.
+
+### Window gems-w2, 2026-11-22, at `868df83d3`: PASSED
+
+- **Groups alone: 51 of 51 passed**, each performing at least one test and every one succeeding:
+  GemStats 3, GemStacks 5, ItemSockets 4, ForgeGems 4, GemDrops 4, GemCombine 3, ForgeCosts 3, GemSave 2,
+  CityUpgradeSpeed 8, Forge 8, ForgeScreen 4, PlayLoop 12, Drop 30, DropRoll 1, DropPickup 20, Item 13, Gold 13,
+  Inventory 11, InventoryScreen 7, Tooltip 18, ExtraDamageTypes 6, Data 7, SaveRecords 17, SaveLoad 81, SaveApply
+  24, CataclysmDraw 6, CityUpgradeBuildSave 2, ConsumptionDouble 15, ConsumptionMark 6, DeathCost 9, EarnedBossSave
+  3, EmpireTreeClearGold 9, EmpireTreeCredit 8, EmpireTreeDrops 13, EmpireTreeEvents 14, EmpireTree 24,
+  EmpireTreeProwess 6, Seeding 3, SkillLevels 13, WalkSeed 5, WinningTheRun 11, CityUpgradePrice 7, CityScreen 19,
+  CityDungeonRewards 5, CityUpgradeBuild 4, CityUpgrade 15, EmpireTreeGold 6, EmpireTreeCity 17, EmpireTreeScreen
+  10, EmpireRun 71, DungeonModifierEffects 777.
+- **The whole suite**: "5204 tests performed, 5204 succeeded, 0 failed"; 57 skipped halves; "860 written and deleted, 0
+  left behind"; Declared 5204, gap 0. Each as registered.
+- **Python beside it**: "8074 passed, 10 skipped", JUnit 8084 tests, 0 failures, 0 errors; ruff clean.
+- **C++ guard proofs: 30 of 30 PROVED**, each failing with its break in and passing with it out, the source hash the same
+  across each. Named failures, short names:
+
+| Proof | Named failures |
+| :-- | :-- |
+| K1 | AGemsSheetValueAtEachRarityIsItsColumn |
+| K2 | AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease |
+| K3 | AGemThatNamesNoStatOrKindOrValueAddsNothing |
+| K4 | AFullBagRefusesANewGemAndStillStacksACarriedOne, GemsStackByGemAndRarity |
+| K6 | AGemStacksCellAndTooltipNameItsRarityEffectAndSocket |
+| K7 | ASocketsTypeIsRolledEvenlyAndNeverAny |
+| K8 | AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem |
+| K9 | AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem |
+| K10 | AnItemsSocketLinesNameEachTypeAndGem |
+| K11 | SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay |
+| K12 | SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay |
+| K13 | UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves |
+| K14 | TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne |
+| K15 | AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack, TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt |
+| K16 | AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity |
+| K17 | AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack |
+| K18 | AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor |
+| K19 | CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap, TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic |
+| K20 | CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap |
+| K21 | TheScreenOffersACombineForEachGemStackBelowCataclysmic |
+| K22 | ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung, ACraftTakesItsGoldAndWithTooLittleNothingMoves, TheScreenSaysTheGoldAndTheDaysOfTheLevelReached |
+| K23 | ACraftTakesItsGoldAndWithTooLittleNothingMoves |
+| K24 | TheScreenSaysTheGoldAndTheDaysOfTheLevelReached |
+| GP1 | ACharacterFileFromVersion12HasEachSocketCountAsThatManyEmptySocketsOfAnyType |
+| GP2 | ARunFileFromVersion13LoadsWithSocketListsAndNoGemOnTheFloor |
+| GK5 | AGemRaisingAStatNoClassHasSaysItNeedsGearAndOthersDoNot |
+| S1 | ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays |
+| S2 | TheDaysAreDoubledThenShortenedThenHeldAtOne |
+| S3 | ARushWithoutRapidFundingIsRefusedAndTakesNothing |
+| S4 | ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed |
+
+**THE REGISTRATION ABOVE SAID "EACH PREDICTING ONE NAMED FAILURE", AND FOUR NAMED MORE**: K4 two, as G2's own entry
+registered; K15 two, K19 two and K22 three. Each predicted test is among those named, and the extra ones are tests in the
+same group that read the same broken value (K22's rounded multiplier reaches every price the group checks). It is
+recorded here rather than written into the registration after the fact.
+
+**THE BLANK LINE BELOW THE W1 RECORD**, missing at `868df83d3`, is added in this commit: without it the paragraph above
+the entry's `---` rendered as a heading. The coordinating session found it; the design-log checks passed either way.
+
+---
+
+## 2026-11-22 — Scaffolding, Rapid Renovation and Rapid Funding act on a city upgrade's price and build days, and Rapid Funding puts a Rush button on each offer (#2832)
+
+**Affects:** the effect kinds `UpgradePriceLess`, `UpgradeBuildDaysMultiplied`, `UpgradeBuildDaysFewer`,
+`UpgradeRushPriceShare` and `UpgradeRushDaysFewer`, new (`ECataclysmEmpireTreeEffect` in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`, `EMPIRE_TREE_EFFECT_KINDS` in `tools/generate_datatables.py`); their
+fields on `FCataclysmEmpireTreePlayerBonuses`; `UCataclysmEmpireTree::UpgradePriceFactorFor`, which multiplies in
+Scaffolding's half, and `UpgradeBuildDaysFor` and `CanRushUpgrades`, new (`CataclysmEmpireTree.h` and `.cpp`);
+`UCataclysmCityUpgradePurchase::BuildDaysIn`, which reads the tree and takes a rush, `CanRushIn` and `RushPriceIn`, new,
+and `Buy`'s `bRush` (`CataclysmCityUpgradePurchase.h` and `.cpp`); `ECataclysmCityUpgradeResult::RushNotHeld`, new, and
+its text (`game/Source/CataclysmEmpire/Empire/CataclysmCityUpgrade.h` and `.cpp`); the offer's Rush fields and
+`UCataclysmCityScreenLayout::RushButtonTextFor`, new (`CataclysmCityScreenLayout.h` and `.cpp`); the city screen's Rush
+buttons and `HandleRushClicked` (`CataclysmCityScreenWidget.h` and `.cpp`); a rush on credit, since the rebase onto
+slice 6e, and the offer's `RushOwedIfBought`, new; `FCataclysmPlayLoopLog::UpgradeLine`'s
+"; rushed"; `Cataclysm.BuyCityUpgrade`'s optional `rush` (`CataclysmPlayerCharacter.cpp`). The generator: the three
+nodes moved from `EMPIRE_TREE_REFUSED` to `EMPIRE_TREE_BUILT` with their effects, and the "build time" refusal reason,
+which no node gives now, removed; `game/Data/EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` regenerated. Documents:
+`docs/Cataclysm_GDD_v2.md` (City Upgrades, and the nine-node summary) and `docs/Empire_Skill_Tree_Keystones.md`. Tests:
+the new group `Cataclysm.CityUpgradeSpeed.`, eight, in `game/Source/Cataclysm/Tests/CataclysmCityUpgradeSpeedTests.cpp`;
+`Cataclysm.EmpireTree.ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, which used Scaffolding as its refused node and
+now uses Civic Pride; `CataclysmDataTableTests.cpp`'s pinned count of `EmpireTreeEffects.csv`, 111 to 116;
+`tools/tests/test_empire_tree_effects_match_their_texts.py`, `test_empire_tree_tables_match_the_tree_file.py` and
+`test_city_upgrades_take_days_to_build.py`'s pinned call of `BuildDaysIn`, which now passes the rush. Issue [#2832](https://github.com/sdubois777/Cataclysm/issues/2832),
+of [#2741](https://github.com/sdubois777/Cataclysm/issues/2741) and following
+[#2825](https://github.com/sdubois777/Cataclysm/issues/2825).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22: code, tests and this
+  entry, with no compile and no Unreal run. The registration below is what a window will check.
+- **THE EDITOR IS NEEDED AT THE WINDOW**: `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` changed, so
+  `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` must be rebuilt (`tools/generate_datatable_assets.py`). Until then
+  `test_datatable_assets_are_current.py` fails, and in Unreal the three nodes still read as refused.
+- **REBASED ON 2026-11-22** onto development `02b96b42b`, the empire tree session's window (slices 6d to 8 and #1130,
+  [#2834](https://github.com/sdubois777/Cataclysm/pull/2834)), as `feat/city-upgrade-speed-nodes-2`. Fourteen files
+  conflicted; each was resolved by keeping both sides' additions (the effect kinds, the bonus fields and their cases, the
+  generator's lists and effects, the offer's fields), the counts moved to the sum (`EmpireTreeEffects.csv` 116 rows, 110
+  nodes acting, slice 6 at 214 points), and both tables regenerated. `tools/check_resolved_cpp.py --changed`: "17 files
+  read, 0 with complaints".
+- **THE REBASE MET SLICE 6E'S CREDIT**, which `Buy` now gives on any price it takes, a rush's included, while the Rush
+  button was asked without it, so the two could disagree. The button now asks with the credit and says what a rush on
+  credit leaves owed; one new test, `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed`, and one new proof, S4. A
+  judgement, below, not a ruling.
+- **NO TEST CAN SEE THE RUSH BUTTON ON THE SCREEN** (-nullrhi, issue #650). The tests hold the offer's fields and the
+  button's words, which the widget builds the button from.
+
+### The rulings
+
+The coordinating session, 2026-11-21, recorded in the nine-node entry below and in #2825's entry:
+
+- Scaffolding: the price × 0.5 and the days × 2. Rapid Renovation: 1 day fewer a point. Rapid Funding: a Rush on each
+  offer, at 150% of the price the player would otherwise pay, for 2 days fewer.
+- The doubling first, then the days taken off, then the floor of 1 day.
+- The days are fixed at purchase, so a node bought later does not shorten a build under way.
+
+The shapes are those rulings, and this change proposes no new formula. #2825's entry records the genre research behind
+build times (XCOM 2's facility construction in days).
+
+### The judgements, each with what it rests on
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **Scaffolding's half multiplies the price after slice 6a's reductions are held at their 75% cap** | "Less" multiplies where "reduced" adds, in the project's damage pipeline `(base + flat) x (1 + increases) x more`, after Path of Exile's convention that "increased" and "reduced" add and "more" and "less" multiply. So every price node together leaves an eighth of the tier's price (a quarter, halved), not nothing. |
+| A rush's 150% is of `PriceIn`, the price after every node's discount | the ruling's "after every discount" |
+| A rush's price is rounded to whole gold | as `PriceIn` rounds its own |
+| The Rush is a second button under the offer's, "Rush  --  15,000 gold, 4 days to build" | an offer is one button; a Rush is a second way to buy the same offer, so it sits under it. Shown only when the offer's own button is, greyed and saying how much more is needed when gold is all that stops it |
+| A rush asked for with Rapid Funding not held is refused with `RushNotHeld`, nothing taken | the screen never offers it, so only the console command or a caller can ask; refusing keeps `Buy` the one place that charges |
+| An upgrade finished at once (0 days, as the empire layer's own tests buy) stays at 0 | Scaffolding doubles a build's days; it does not make an instant purchase take days |
+| The play log's purchase line says "; rushed" before the ready day | the owner's check that a build took the days it showed (#2825) |
+| **A rush may be bought on credit**, Global Credit's and Sovereign Loans' share taken of the rush's price, and its button says "Rush  --  15,000 gold on credit, 2,000 owed, 4 days to build" | Global Credit's text, "Start a city upgrade even if short by up to 5% of the gold cost": a rush starts a city upgrade, and its gold cost is the rush's price. `Buy` already gave it after the rebase; refusing it would be a rule neither ruling states. The button's words follow the offer's own on credit (slice 6e, D6) |
+
+### Tests
+
+The new group `Cataclysm.CityUpgradeSpeed.`, eight: seven written before the change, and the eighth at the rebase:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays` | from the effect table: 0.5 alone; 0.175 after Municipal Bonds' and Public Works' 0.65; 6 days become 12; no node, exactly 1 and 6 |
+| `TheDaysAreDoubledThenShortenedThenHeldAtOne` | Rapid Renovation 1, 2, 3 points: 5, 4, 3; with Scaffolding 9, not 6; 3 points and a rush 1; a 2 day build with 5 off, 1; a rush not held takes nothing off; 0 stays 0 |
+| `ARushCostsHalfAsMuchAgainForTwoDaysFewer` | with Rapid Funding and Bonds' 10: price 7,000, Rush 10,500 for 4 days; bought, the balance pays 10,500 and the build has 4 days left |
+| `ARushWithoutRapidFundingIsRefusedAndTakesNothing` | no Rush offered; a rush refused with `RushNotHeld`, nothing taken, nothing built; CONTROL: the plain purchase, 10,000 and 6 days |
+| `ANodeTakenDuringABuildLeavesItsDays` | Rapid Renovation's 3 points taken during a build leave it at 6 days and its ready day; the next purchase takes 3 |
+| `TheRushButtonSaysItsPriceAndDaysOrWhatIsMissing` | "Rush  --  10,500 gold, 4 days to build"; with 12,000 held, "Rush  --  Costs 15,000 gold; 3,000 more needed." |
+| `ThePlayLogSaysARushWasRushed` | "; rushed; being built, ready on day 57"; a plain purchase says nothing of it |
+| `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed` | with Rapid Funding, Sovereign Loans' 1 point and 13,000 held: the Rush, 15,000, can be rushed, leaving 2,000 owed, and its button says "Rush  --  15,000 gold on credit, 2,000 owed, 4 days to build"; with 11,000, "Rush  --  Costs 15,000 gold; 1,000 more needed."; bought, the balance is 0, 2,000 is owed and 4 days are left; CONTROL: the offer's own 10,000 owes nothing |
+
+Python: the effects check finds each of the five values in its node's text ("50%", "2x longer", "1 day", "150%",
+"2 day") and counts 110 nodes acting; the tables check counts slice 6's points as 214 and the build time reason gone.
+`CataclysmDataTableTests.cpp` pins `EmpireTreeEffects.csv` at 116 rows, five more than development's 111; before the
+rebase, a Python check (`test_unreal_pinned_row_counts.py`) found the old count the first time the suite ran, as it is
+meant to.
+
+### Registered for the window
+
+**Recounted at the rebase**, on the empire tree window tree-6d8-w1's measured whole suite at `d601cba34`, whose `game/`
+tree is development `02b96b42b`'s (`git rev-parse` of each: `da70099a2`): 5168 performed, 57 skipped halves, 860 test
+saves written and deleted.
+
+- **The whole suite: the base + 8 = 5176**, the eight new tests; skipped halves 57 and test saves 860 unchanged (no new
+  test skips a half or writes a save slot).
+- **No save record version moves**: the branch changes no save record.
+- **The editor step first**: `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` rebuilt and committed.
+- **Groups alone, first**, at the base's counts plus the tests added, each name literal counted the same on window E's
+  `d684a3d0e`, development `02b96b42b` and this branch, the new group aside: `CityUpgradeSpeed.` 8 (new);
+  `EmpireTreeCredit.` 8 (the purchase on credit, which a rush now takes); `EmpireTree.` 24
+  (one test changed), `CityUpgradePrice.` 7, `CityScreen.` 19, `CityDungeonRewards.` 5, `CityUpgradeBuild.` 4,
+  `CityUpgradeBuildSave.` 2, `CityUpgrade.` 15, `PlayLoop.` 12, `EmpireTreeGold.` 6, `EmpireTreeClearGold.` 9,
+  `EmpireTreeEvents.` 14, `EmpireTreeCity.` 17, `EmpireTreeScreen.` 10, `EmpireRun.` 71 and `Data.` 7.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch rebased onto
+  `02b96b42b`: "1 failed, 7941 passed, 10 skipped in 404.92s", JUnit 7952 tests, 1 failure, 0 errors, 10 skipped, the
+  one failure `test_datatable_assets_are_current.py` (`EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`), which the
+  editor step clears; ruff "All checks passed!". The empire tree's and city upgrades' own checks alone: "1 failed, 1362
+  passed", the same one failure.
+- **Four Unreal guard proofs**, one per behaviour only a C++ test guards (the effects' values and the generator's
+  lists are guarded by Python checks), each narrowed to `Cataclysm.CityUpgradeSpeed.` (8):
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| S1 | `UpgradePriceFactorFor` returns the factor after the reductions without Scaffolding's half | `ScaffoldingHalvesThePriceAfterTheReductionsAndDoublesTheDays`, on "alone it halves the price" and "after Bonds and Public Works" |
+| S2 | `UpgradeBuildDaysFor` takes the days off before doubling | `TheDaysAreDoubledThenShortenedThenHeldAtOne`, on "with Scaffolding, doubled first" (6 rather than 9) |
+| S3 | `Buy` no longer refuses a rush without Rapid Funding | `ARushWithoutRapidFundingIsRefusedAndTakesNothing` |
+| S4 | `OffersFor` asks the run for a rush with the gold held alone, without the credit | 7 succeeded, 1 failed: `ARushMayBeBoughtOnCreditAndItsButtonSaysWhatIsOwed`, on "13,000 held and 3,000 of credit can rush it", "leaving 2,000 owed" and "the Rush button says so" |
+
+---
+
+## 2026-11-21 — The forge charges the Crafting sheet's costs: 250 gold a base day by the tier and the residue, days equal to the level reached, and one combine price doubling by rung (#2830, #46 slice G7)
+
+**Affects:** `UCataclysmForge::GoldPerCraftDay`, `ResiduePerGoldStep`, `CombineGoldAtTheLowestRung`, `BaseGoldFor`,
+`GoldFor`, `CombineGoldFor` and `GoldRefusal`, new; `UpgradeOf`, `CombineOf`, `GemCombineOf`, `SocketGemOf` and
+`UnsocketGemOf`, which take the tier and the gold held; `BaseDaysPerLevel` and the one-argument `DaysFor`, deleted; the
+four plans' `Gold` and `GoldHeld`, new (`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`); every craft in
+`UCataclysmForgeCraft` (`CataclysmForgeCraft.cpp`); the forge's PLAY LOOP lines (`CataclysmPlayLoopLog.h`, `.cpp`); the
+screen's detail line and messages (`CataclysmForgeLayout.cpp`, `CataclysmForgeWidget.cpp`); `docs/Cataclysm_GDD_v2.md`,
+"Gear Leveling", "Sockets and Gems" and the gold multiplier's rounding; `docs/Play_Loop_Checklist.md`, steps 16, 17
+and 19. Tests: `game/Source/Cataclysm/Tests/CataclysmForgeCostsTests.cpp`, new, three in `Cataclysm.ForgeCosts.`;
+`CataclysmForgeTests.cpp`, `CataclysmForgeScreenTests.cpp`, `CataclysmForgeGemsTests.cpp`, `CataclysmGemCombineTests.cpp`
+and `CataclysmPlayLoopTests.cpp` follow; `tools/tests/test_the_forge_charges_the_sheets_costs.py`, new;
+`test_the_forge_matches_the_design.py`, `test_the_forge_combines_gems.py` and `test_city_upgrades_cost_gold.py` follow.
+Issue [#2830](https://github.com/sdubois777/Cataclysm/issues/2830); parent
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G6's branch head without a compile. The branch is
+  `feat/crafting-costs-46-g7`, on `feat/gem-combine-46-g6`. The coordinating session ruled that the gems window carries
+  G1 to G6 and these costs, so gems never ship free.
+- **NO GOLD INCOME HAS BEEN MEASURED.** The 250 rests on the only estimate there is (#2742: 7,000 to 14,000 gold for a
+  12-floor tier 1 walk, about 583 to 1,167 a walk day). It is a judgement, and the one figure to tune.
+- **THE BASE FIGURES ARE CONSTANTS UNTIL THE WORKBOOK STAGE.** Ruling 5 below generates the Crafting sheet's operations
+  table into its own `game/Data/ForgeOperations.csv` for the forge to read. That needs the workbook, which the empire
+  tree window holds, so it is written at the turn: a Base Gold column computed from one GoldPerCraftDay cell, a Combine
+  row, the generator writing the new file and no longer writing operation rows into `game/Data/CraftingMaterials.csv`
+  (where an operation's materials, CR impact and base days sit under the columns TierAndSource, PrimaryUse and
+  Functions), `FCataclysmForgeOperationRow`, `DT_ForgeOperations`, and the forge reading its costs from that table.
+- **NO RECORD VERSION MOVES.** Gold balances are already saved; a craft changes their values.
+- **#2829's TABLES COUNT THE OLD DAYS.** Its proposal to halve crafting material drops computes levelling at one day a
+  level; under the new rule each level takes days equal to the level reached, so its "spent in a craft day" figures
+  need recomputing before its halving is chosen.
+
+### The rulings
+
+The owner, 2026-11-21, word for word, on what combining should cost: "I have costs set in the crafting excel sheet.
+Something like that should be implemented".
+
+The owner, in the question dialog the same day, word for word:
+1. On an upgrade's days: "+0 to +10 takes 55 days per item (1+2+...+10)". Each level's upgrade takes days equal to the
+   level reached, plus the `CR / 100` penalty.
+2. On the combine: "Gold only (Recommended)". 50 gold at tier 1 for the lowest rung, doubled for each rung above, no
+   days, for stones and gems alike, read by both through `CombineGoldFor`.
+
+The coordinating session, under the owner's delegation of numbers:
+3. `GoldPerCraftDay = 250` at tier 1, a judgement resting on the #2742 income estimate. An operation with no days, or
+   fewer, costs one day's price.
+4. The multiplier `(CR / 50) + 1` is NOT rounded; only the final gold figure is.
+5. The operations table is generated into its own `ForgeOperations.csv`, with a row struct and data table, and the
+   mis-mapped rows come out of `CraftingMaterials.csv` (the workbook stage).
+
+**The research behind the shape** (the plan of 2026-11-21): Diablo IV's Jeweler crafts gems for about ten times the
+gold at each tier, and its masterworking costs gold rising by rank; Diablo III's Jeweler combines gems for gold,
+cheap at low ranks and about 400,000 at the highest; Path of Exile and Last Epoch charge no gold for crafting. Sources:
+icy-veins.com/d4/guides/jeweler-guide, maxroll.gg/d4/resources/jeweler-gems-socketing,
+us.forums.blizzard.com/en/d4/t/masterworking-cost-totals/202561, diablo-archive.fandom.com/wiki/The_Jeweler. What it
+settles: where crafting costs gold, the price rises with the tier made. What it does not: the base, which is this
+game's own income.
+
+### What changed
+
+- **The price** (`UCataclysmForge::GoldFor`): base gold x the tier's gold scale (`UCataclysmDropRoll::GoldScaleFor`, 1 to
+  30, which every gold price reads) x `(CR / 50) + 1` unrounded, on the item's residue as the craft begins, rounded to
+  whole gold and at least 1. `BaseGoldFor` is 250 a base day, one day's price at the least. At tier 1: no residue 250;
+  50 residue 500; 10 residue 300; 87 residue 685; tier 8 at no residue 7,500.
+- **The upgrade**: base days and base gold are the level reached, so +2 to +3 at 87 residue costs 3 days and 2,055 gold,
+  and +0 to +10 at no residue 55 base days.
+- **Socket Gem and Unsocket Gem**: one base day each, so 250 gold before the multiplier.
+- **The combines** (`CombineGoldFor`): 50 gold at the lowest rung (a +1 stone, an Everyday gem) doubled for each rung,
+  times the tier's scale, no residue. The stone combine reads it at rung `Level - 1`, the gem combine at the rarity's.
+  Climbing one gem from Everyday to Ascendant: 63 combines, 9,600 gold at tier 1, no days.
+- **Every rule refuses too little gold**, after its other refusals: "Raising it to +3 takes 2,055 gold; 100 gold held."
+- **Every craft pays first and gives back**: the gold is taken from the balance city upgrades pay from (a Solo
+  Self-Found character's own, else its lethality mode's account), before any material, gem, item or day changes, and is
+  given back on every later failure. The account record is written when the account paid.
+- **A price is read at the run's difficulty tier**, as a city upgrade's is, and at the lowest with no run.
+- **The screen** names the gold in an upgrade's detail ("takes two +3 stones (5 held) and 2,055 gold"), every
+  first-press question, and every result; the PLAY LOOP lines name it ("with two +1 stones, 14 left, and 510 gold";
+  "into one +2 for 50 gold").
+
+### Tests
+
+`CataclysmForgeCostsTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung` | every price above; the climb of 63 combines and 9,600 gold; +0 to +10 at 55 base days; the five gold refusals in their words. Prints "FORGE COSTS" |
+| `ACraftTakesItsGoldAndWithTooLittleNothingMoves` | a Solo Self-Found character with 600 gold: +0 to +1 takes 500 and a day; +1 to +2, 1,250, is refused with nothing moving; a stone combine takes 50 and a gem combine the last 50; the next gem combine is refused and both gems stay. Prints "FORGE GOLD" |
+| `TheScreenSaysTheGoldAndTheDaysOfTheLevelReached` | the detail line names 2,055 gold and 3 days. Prints "FORGE DETAIL" |
+
+The forge's other tests follow: their scenes are Solo Self-Found with 1,000,000 gold of their own, so no account record
+is written; the pure rules take tier 1 and that gold; the expected sentences name the gold; the rules test expects 3
+days and 2,055 gold for +2 to +3; the screen expects "Raised to +1. It cost 500 gold and 1 day of the run."; the play
+loop lines expect the gold.
+
+`tools/tests/test_the_forge_charges_the_sheets_costs.py`: the constants and the sheet's multiplier; the unrounded
+multiplier and the tier's scale; one combine price doubling by rung, read by both combines; every built craft pricing
+itself and refusing too little gold; the upgrade's days by level; every craft paying before taking anything and giving
+the gold back on every later failure, and writing the account record; the run's tier. Three checks were told of the
+change: `test_the_forge_matches_the_design.py` (the days by level), `test_the_forge_combines_gems.py` (the tier may enter
+the gem combine through its gold only), and `test_city_upgrades_cost_gold.py` (the forge is the second place that
+spends gold). Proved with `tools/prove_guard.py` in a `git archive` copy of `afb2fe454`, each restored half "14 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| FP1 | `GoldPerCraftDay` 300 | "1 failed, 13 passed": `test_the_constants_are_the_ruled_ones_and_the_multiplier_is_the_sheets` | PROVED |
+| FP2 | the multiplier rounded | "1 failed, 13 passed": `test_the_gold_formula_does_not_round_its_multiplier_and_reads_the_tiers_scale` | PROVED |
+| FP3 | a combine's price not doubling by rung | "1 failed, 13 passed": `test_both_combines_read_one_price_and_it_doubles_by_rung` | PROVED |
+| FP4 | the gem combine at a flat 50, not through `CombineGoldFor` | "2 failed, 12 passed": `test_both_combines_read_one_price_and_it_doubles_by_rung`, `test_every_built_craft_prices_itself_and_refuses_too_little_gold[...GemCombineOf...]` | PROVED |
+| FP5 | socketing's gold refusal removed | "1 failed, 13 passed": `test_every_built_craft_prices_itself_and_refuses_too_little_gold[...SocketGemOf...]` | PROVED |
+| FP6 | an upgrade's days back to one a level | "1 failed, 13 passed": `test_an_upgrades_days_are_the_level_it_reaches` | PROVED |
+| FP7 | the stone combine keeping the gold when the stones cannot be taken | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[bool UCataclysmForgeCraft::Combine(]` | PROVED |
+| FP8 | socketing never paying | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...DoSocketing(]` | PROVED |
+| FP9 | the upgrade not writing the account record | "1 failed, 13 passed": `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...Upgrade(]` | PROVED |
+| FP10 | a price read at the lowest tier, not the run's | "1 failed, 13 passed": `test_a_price_is_read_at_the_runs_tier_as_a_city_upgrades_is` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G6 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ForgeCosts.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.Forge.`, `Cataclysm.ForgeScreen.`, `Cataclysm.ForgeGems.`, `Cataclysm.GemCombine.` and `Cataclysm.PlayLoop.` alone, whose tests this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Three C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ForgeCosts."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K22 | in `GoldFor`, the multiplier wrapped in `FMath::RoundToDouble(...)` | 3 performed, 2 succeeded, 1 failed: `ACraftCosts250GoldABaseDayScaledByTheTierAndTheResidueAndACombineDoublesByRung` (10 residue: 250, not 300) | 3 of 3 |
+| K23 | in `UCataclysmForgeCraft::Upgrade`, `if (!PayForTheCraft(WorldContext, Plan.Gold, bGoldFromTheCharacter))` to `if (false)` | 3 performed, 2 succeeded, 1 failed: `ACraftTakesItsGoldAndWithTooLittleNothingMoves` (600 gold held, not 100) | 3 of 3 |
+| K24 | in `UCataclysmForgeLayout::DetailFor`, " and %s, adds" to ", adds" with its gold argument removed | 3 performed, 2 succeeded, 1 failed: `TheScreenSaysTheGoldAndTheDaysOfTheLevelReached` | 3 of 3 |
+
+---
+
+## 2026-11-21 — Two gems of a kind and rarity combine at the forge into one of the next rarity, with no cap and, as the stone combine, no cost (#46, slice G6)
+
+**Affects:** `FCataclysmForgeGemCombine`, new, and `UCataclysmForge::GemsPerCombine` and `GemCombineOf`, new
+(`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`); `UCataclysmForgeCraft::CombineGems`, new
+(`game/Source/Cataclysm/Player/CataclysmForgeCraft.h`, `.cpp`); `FCataclysmPlayLoopLog::ForgeGemCombineLine`, new
+(`CataclysmPlayLoopLog.h`, `.cpp`); `FCataclysmForgeGemCombineAction`, new, and
+`UCataclysmForgeLayout::GemCombineActionsFor` and `GemCombineActionForButton`, new (`CataclysmForgeLayout.h`, `.cpp`);
+`UCataclysmForgeWidget`'s gem combine buttons (`CataclysmForgeWidget.h`, `.cpp`); `docs/Play_Loop_Checklist.md`, step
+19, new. Tests: `game/Source/Cataclysm/Tests/CataclysmGemCombineTests.cpp`, new, three in `Cataclysm.GemCombine.`;
+`tools/tests/test_the_forge_combines_gems.py`, new; `tools/tests/test_the_play_loop_is_logged_at_each_step.py` lists the
+new line. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G5's branch head without a compile, as ruled. The branch is
+  `feat/gem-combine-46-g6`, on `feat/gem-drops-46-g5`. If ready at the turn it goes through the gems' one shared window
+  with G1 to G5.
+- **THE OWNER RULED, REVERSING THE COORDINATING SESSION'S CAP AND ITS "NO DAY".** Asked whether to cap gem combining by
+  the difficulty tier, use fewer gems at low tiers, or set no limit, the owner answered on 2026-11-21, word for word:
+  "should probably work the same way as gear leveling right? Which, we need to lower the drop quantity/amount of
+  crafting materials. It's way too high. I don't think I want to cap what players can level their stuff to, however the
+  gold/days cost should be enough of a deterrent".
+- **SO THERE IS NO CAP**, as the stone combine has none. A first version capped combining at the highest rarity that
+  drops at full weight at the tier (`UCataclysmDropRoll::HighestUnpenalisedRarity`); the ruling took it out before any
+  window.
+- **THE COST IS THE STONE COMBINE'S, AND THAT IS NONE.** The ruling says gem combining costs what gear levelling's
+  combine costs. That is no day and no residue (the design's "Gear Leveling" paragraph: "Combining two stones into one
+  of the next level costs no day and adds no residue, because it changes no item"), and no gold, since no craft has a
+  gold price yet ("the base is a later choice across all eighteen operations"). So the owner's "gold/days cost" as a
+  deterrent does not exist on either combine today. Reported to the coordinating session on 2026-11-21, with the
+  recommendation that one question decide a cost for both combines together. **The coordinating session ruled (A) the
+  same day: the gem combine reads the same cost as the stone combine, and gems get no cost of their own.** Asked what
+  combining should cost, the owner answered, word for word: "I have costs set in the crafting excel sheet. Something like
+  that should be implemented". The workbook's Crafting sheet has a gold multiplier and no base price, and no row for
+  combining, so a crafting-cost audit and plan comes before the gems window and will propose one combine row for stones
+  and gems alike. **THERE IS NO COST FUNCTION TO SHARE TODAY**: the stone combine is free because nothing charges it, not
+  because a function returns nothing, so the gem combine is free the same way, and the combine row will be one function
+  both read.
+- **WHAT NO CAP MEANS IN GEMS, AT TODAY'S PRICES.** A tier 1 full clear drops gems worth 1,909 Everyday gems (slice G5),
+  about 38.5 gems of each of the 28 kinds, worth 68.2 Everyday gems a kind. One Ascendant gem is 64 Everyday gems
+  (2 to the power of 6 rungs), so with no cap and no cost a tier 1 full clear can make about one Ascendant gem of each
+  kind, six rungs above tier 1's own rarity. Climbing one gem from Everyday to Ascendant takes 63 combines (32, 16, 8,
+  4, 2 and 1) and, at the stone combine's prices, **no day, no residue and no gold**. That is the figure the owner's
+  deterrent rests on; the crafting-cost plan will show it under the proposed combine row. The coordinating session
+  first passed the owner "about a thousand combines", then "about one Mythical a kind", both from this session's
+  arithmetic, before these figures.
+- **THE OWNER'S OTHER POINT, THAT CRAFTING MATERIAL DROPS ARE FAR TOO HIGH,** goes to the gold session as its own
+  change. G5's gem rate stays until then.
+- **NO RECORD VERSION MOVES.** Gem stacks are already saved (slice G2); a combine changes their counts, not their shape.
+
+### What changed
+
+- **The rule** (`UCataclysmForge::GemCombineOf`): two gems of one kind and rarity make one of the next rarity. It takes
+  `GemsPerCombine`, which is the stone combine's `StonesPerCombine`, read rather than copied. It refuses no gem ("There
+  is no gem to combine."), a Cataclysmic gem ("A Cataclysmic gem is the highest; there is none above it to make."), and
+  fewer than two ("Combining takes two Of Life (Everyday); 1 held."). No tier enters it.
+- **The craft** (`UCataclysmForgeCraft::CombineGems`), as the stone combine's: refused during a walk and without a run;
+  refused when the made gem has nowhere to go; the two leave the bag and the one joins it, the two put back if it
+  cannot; a PLAY LOOP line, "combined two Of Life (Superb) into one Of Life (Masterful): 1 Superb and 1 Masterful
+  held"; `ForgeCrafted` saves. No day passes.
+- **The forge's screen** offers a combine for each carried gem stack below Cataclysmic, "Combine two Of Life (Superb)
+  into one Of Life (Masterful), 3 held", done on one press as a stone combine is. A stack of one is offered, as a stone
+  level with one stone is, so a press says why it cannot be done.
+
+### Tests
+
+`CataclysmGemCombineTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic` | every rarity from Everyday to Ascendant makes the next with two held; it takes the stone combine's two; one held, a Cataclysmic gem and no gem are refused in their words. Prints "GEM COMBINES" |
+| `CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap` | three Everyday Of Life leave one and make one Quality, no day passing; at tier 1 two Quality Of Rot make a Superb, no day passing; the one Everyday left is refused and stays. Prints "GEMS COMBINED" |
+| `TheScreenOffersACombineForEachGemStackBelowCataclysmic` | for three Superb Of Life, two Cataclysmic Of The Viper and one Everyday Of Rot: two combines, the Life's and the Rot's, with their words; a button finds its combine; a stone combine's button and a gem combine's are not taken for each other. Prints "GEM COMBINES SHOWN" |
+
+`tools/tests/test_the_forge_combines_gems.py`: the count is read from the stone combine's; no tier and no ceiling enter
+the rule or the craft; the craft refuses during a walk, passes no day and adds no residue, says its line, saves and
+puts the two back; the screen combines on one press. Proved with `tools/prove_guard.py` in a `git archive` copy of
+`a95965fad`, each restored half "4 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GG1 | `GemsPerCombine = 2`, not read from `StonesPerCombine` | "1 failed, 3 passed": `test_a_gem_combine_takes_the_stone_combines_count_read_from_it` | PROVED |
+| GG2 | the craft reads the difficulty tier | "1 failed, 3 passed": `test_no_tier_and_no_ceiling_enter_the_rule_or_the_craft` | PROVED |
+| GG3 | the craft passes a day | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG4 | the two not put back when the made gem has nowhere to go | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG5 | the craft says no PLAY LOOP line | "1 failed, 3 passed": `test_the_craft_passes_no_day_logs_saves_and_puts_back` | PROVED |
+| GG6 | the screen asks before a gem combine | "1 failed, 3 passed": `test_the_screen_combines_gems_on_one_press` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G5 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemCombine.` alone | 3 performed, 3 succeeded |
+| `Cataclysm.Forge.`, `Cataclysm.ForgeScreen.` and `Cataclysm.ForgeGems.` alone, which read the code this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Three C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.GemCombine."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K19 | in `GemCombineOf`, `Out.Into = static_cast<ECataclysmRarity>(static_cast<uint8>(Rarity) + 1);` to `Out.Into = Rarity;` | 3 performed, 2 succeeded, 1 failed: `TwoGemsMakeOneOfTheNextRarityAtAnyRarityBelowCataclysmic` | 3 of 3 |
+| K20 | in `CombineGems`, `Inventory->AddGems(Gem, Plan.Into, 1)` to `Inventory->AddGems(Gem, Plan.From, 1)` | 3 performed, 2 succeeded, 1 failed: `CombiningTakesTwoGemsGivesOneOfTheNextRarityAndPassesNoDayWithNoTierCap` | 3 of 3 |
+| K21 | in `GemCombineActionsFor`, ` \|\| Carried.GemRarity == ECataclysmRarity::Cataclysmic` removed | 3 performed, 2 succeeded, 1 failed: `TheScreenOffersACombineForEachGemStackBelowCataclysmic` | 3 of 3 |
+
+---
+
+## 2026-11-21 — Kills drop gems, about one a floor at a full clear, measured so a full clear of a tier fills that tier's reference character; a gem lies on the floor, comes without a click into its stack, and is saved on the ground (#46, slice G5)
+
+**Affects:** `sim/cataclysm_sim/loot.py`'s `GEM_DROPS_PER_GEAR_DROP`, `ENEMY_GEM_DROPS`, `expected_gem_drops` and
+`roll_gem_drops_from_kill`, new; `sim/analyse_gem_drops.py`, new, the measurement; `sim/tests/test_gem_drops.py`, new.
+`ACataclysmDroppedItem::Gem`, `GemRarity`, `GemQuantity` and `IsGem`, new, and `IsAQuantity`, `DescribeItself`,
+`UCataclysmDropPickup::TakeInto`, `UCataclysmDropSpawner::PutOnTheFloor` (three gem arguments, defaulted),
+`SpawnGemsFor`, `GemStreamSalt` and `GemScatterOffset`, new (`game/Source/Cataclysm/Items/CataclysmDroppedItem.h`,
+`.cpp`); `UCataclysmDropRoll::ExpectedGemDrops`, new (`CataclysmDropRoll.h`, `.cpp`); `UCataclysmGems::RollGem` and
+`FloorNameOf`, new (`CataclysmGems.h`, `.cpp`); the creature's death (`CataclysmEnemyCharacter.cpp`);
+`FCataclysmSavedGroundItem::Gem`, `GemRarity` and `GemQuantity`, new (`CataclysmSaveRecords.h`), and
+`FCataclysmSaveGather::GroundItemFrom` and `FCataclysmSaveApply::GroundItemInto`; `UCataclysmWearing::DropCarried`,
+and `ECataclysmWearResult::GemsStayInTheBag` removed (`CataclysmWearing.h`, `.cpp`); `docs/Play_Loop_Checklist.md`,
+step 17's last line and step 18, new. Tests: `game/Source/Cataclysm/Tests/CataclysmGemDropsTests.cpp`, new, four in
+`Cataclysm.GemDrops.`; `CataclysmGemStacksTests.cpp`'s GK3 rewritten and renamed;
+`CataclysmDungeonModifierEffectsTests.cpp`, two drop counts that skip gems; `tools/tests/test_gems_drop_from_kills.py`,
+new; `tools/tests/test_gems_are_carried_in_stacks.py`, one check rewritten. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G4's branch head without a compile, as ruled. The branch is
+  `feat/gem-drops-46-g5`, on `feat/forge-gems-46-g4`. If ready at the turn it goes through the gems' one shared window
+  with G1 to G4, ruled by the coordinating session on 2026-11-21.
+- **IT DOES NOT COMPILE UNTIL ITS WORKBOOK STAGE.** `UCataclysmDropRoll::ExpectedGemDrops` reads
+  `FCataclysmEnemyDropRow::GemDrops`, which comes with a Gem Drops column on the workbook's Enemy Drops sheet, the
+  generator reading it, and `tools/tests/test_enemy_drop_sheet_matches_the_model.py` comparing it with
+  `loot.ENEMY_GEM_DROPS`. A struct field before its column fails
+  `tools/tests/test_csv_columns_match_their_row_structs.py`, so all of that waits for the workbook, as G1's columns do.
+- **THE RUN RECORD'S VERSION DOES NOT MOVE HERE.** The ground item gains three saved fields. Their version step, with
+  its migration and fixture, is written at the turn: 14 to 15 by the current order, or folded into G3's 13 to 14 if G5
+  is in the same window, which needs only one run-record step (the coordinating session, 2026-11-21).
+- **THE RATE IS SET BY TIER 8, SO EVERY LOWER TIER GETS FAR MORE THAN ITS CEILING NEEDS. KNOWN, AND KEPT.** At tier 1
+  a full clear's gems are worth 1,909 Everyday gems against the 6 the reference character fills. The coordinating
+  session ruled on 2026-11-21 to keep one share for every tier, as "gems follow the gear column" already ruled, and not
+  to make a share per tier: the overflow at a low tier is a count of gems, and a count is not where a gem's power comes
+  from; how high its rarity can be pushed is. Uncombined, the overflow is about 38 gems of each of the 28 kinds;
+  combined, two of a rarity into one of the next, they make about one Ascendant gem of each kind at tier 1. **THIS
+  ENTRY ONCE SAID THE LIMIT WOULD BE A CAP ON COMBINING; THE OWNER RULED AGAINST A CAP** the same day (slice G6's entry
+  has the words): combining works as the stone combine, with no cap. The owner also said crafting material drops are
+  far too high, which goes to the gold session as its own change; this rate stays until then, and follows that change
+  if it lowers a factor gems also read.
+
+### The measurement, and what in it is derived
+
+`sim/analyse_gem_drops.py`, run 2026-11-21. The rate is the least share of gear drops at which a full clear of a tier's
+dungeons drops enough gems, counted at the tier's own rarity, to fill the sockets the design's reference character
+fills at that tier.
+
+| Figure | Value | Derived or a judgement |
+| :-- | :-- | :-- |
+| Kills in a tier | 333,462: 26 dungeons x 49.8 floors x 257.5 creatures | **Derived**, from `analyse_experience_curve.py`'s inputs. **It assumes every creature is killed**, which nobody has measured (issue #925); a half-cleared floor halves the gems |
+| Gear drops a kill | 0.4760, by `EnemyRarities.csv`'s spawn weights over `loot.ENEMY_GEAR_DROPS` | **Derived** |
+| A gem's rarity | the gear's spread at the tier, with the creature's magic find added | **Derived** from the design: "Gems ... have the same rarity tiers as gear" |
+| A gem against the tier's own rarity | 2 to the power of the rungs between them | **Derived** from the ruling of 2026-11-21 that two gems combine into one of the next rarity |
+| Gems the reference character fills | 6 at tier 1 to 45 at tier 8 | **Derived**, `player_power.reference_character` |
+| The target: a full clear reaches the ceiling | -- | **A judgement**: the design calls the reference character a tier's ceiling, so the rate is the least that makes it reachable |
+| Any gem counts | -- | **A judgement**: the Power Score reads a gem's rarity only. A build after six or seven particular gems of 28 needs about four times the kills |
+| Gems follow the gear column across creature rarities | -- | **A judgement**, the shape magic find already follows |
+| Which gem: evenly among the 28 | -- | **Ruled** 2026-11-21 |
+
+Each tier's need, in gems a gear drop: 0.00002, 0.00006, 0.00014, 0.00031, 0.00070, 0.00151, 0.00315 and **0.00671**
+at tier 8, where the tier's own rarity is rarest. Shipped: `GEM_DROPS_PER_GEAR_DROP = 0.0068`, that figure rounded up,
+so the Gem Drops column is Common 0.001088, Elite 0.0034, Legendary 0.0068, Herald 0.0136, Boss 0.034 and Cataclysm
+Boss 0.0816 gems a kill. A tier's full clear drops 1,079 gems, 41.5 a dungeon, about 0.83 a floor; at tier 8 they are
+worth 46 Cataclysmic gems against the 45 needed.
+
+### What changed in the game
+
+- **A kill drops gems** (`SpawnGemsFor`), after everything else it drops, from a stream of their own seeded from the
+  kill's through `CataclysmSeedMix::Mix` with the salt "GEM". It reads the kill's stream and draws nothing from it, so
+  every item, material, pile and extra drop a kill rolls is what it rolled before. How many: a Poisson draw on the
+  rung's Gem Drops times the loot quantity, as gear is counted. Which rarity: the gear's roll at the tier being played,
+  the creature's magic find added to the player's. Which gem: evenly among the Gems sheet's rows. Only a paying death
+  drops gems, and a creature a rule raised marks them as its other drops are marked, so Trick or Treat rolls nothing for
+  them. A dungeon rule's reward of drops gives none, as it gives no gold (a judgement, the same line).
+- **A gem on the floor** is one drop, named "Of Rot (Everyday)", in its rarity's colour and border, on a ring of its
+  own 75 cm out for a lone gem. **It is a quantity** (a judgement: gems stack for the reason materials do, ruled
+  2026-11-21), so it is named at any distance and comes without a click within fifteen metres, onto the stack of its
+  gem and rarity. Taking one says no PLAY LOOP line, as a material says none.
+- **The run record keeps a gem lying on the ground**: its gem, rarity and count, both ways.
+- **G2's refusal to drop a gem stack is lifted.** A dropped stack lies on the floor whole, as one gem drop, and comes
+  back the same way. G2's entry above records the change, the renamed test and its withdrawn proof K5.
+
+### Tests
+
+`CataclysmGemDropsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | for each of the six rungs, the expected gems are the expected gear times 0.0068, more than the rung below, and doubled at twice the loot quantity; a Cataclysm Boss 0.0816; none at no loot quantity. Prints "GEM DROPS" |
+| `AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity` | 28 gems; 28,000 draws give every gem 850 to 1,150 times; no table, no gem; "Of The Viper (Superb)". Prints "WHICH GEM" |
+| `AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack` | CONTROL: no loot quantity places none; a Cataclysm Boss at 1,000 times the loot quantity places gems, each lying there, each one gem at a rarity tier 1 reaches with its name and border, none on the corpse; one is a quantity that comes without a click and goes into a stack of 1. Prints "GEMS ON THE FLOOR" |
+| `AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` | three Superb Of Life are saved with their gem, rarity and count and restored as gems named "Of Life (Superb)"; three Superb Of The Viper dropped from the bag leave it and lie as one drop of 3. Prints "GEM GROUND" |
+
+`CataclysmGemStacksTests.cpp`'s GK3, renamed `AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses`: with no
+world the gem stack is offered to the floor, refused as `TheFloorRefusedIt`, and all 3 are still carried.
+
+`CataclysmDungeonModifierEffectsTests.cpp`: `DropsOnTheFloor` and the Corrupted Stalker's "is a piece it wore" loop skip
+gems. A sweep of every test that kills a creature and then counts the drops found these two that a gem would break:
+the Stalker pays as a Boss, 3.4% a kill. A third, `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`, would
+have failed on an unmarked gem; the code marks it rather than the test skipping it.
+
+`tools/tests/test_gems_drop_from_kills.py`: the Unreal test's share is the simulation's; the gem stream is seeded
+through the mix and the kill's stream only read; a death rolls gems last, only when it pays, marked when raised; a gem
+drop goes onto its stack and is a quantity; the ground record keeps it both ways; its border is its rarity's; which gem
+is drawn evenly. `tools/tests/test_gems_are_carried_in_stacks.py`: `DropCarried` gives the floor the gem, its rarity
+and the count. `sim/tests/test_gem_drops.py`: the shipped share reaches every tier's need, is within 5% of the most
+any needs, tier 8 sets it, the column rises by rung, and a kill's gems follow the gear's rarity spread at the tier.
+`sim/tests/test_analysis_scripts.py` runs `analyse_gem_drops.py` and checks its printed binding tier and its last table.
+Three checks that list what the code does were told of gems: the death's jobs
+(`tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`), the ground restore's gold argument
+(`tools/tests/test_gold_drops_and_the_balance.py`), and the analysis scripts' list.
+
+Proved with `tools/prove_guard.py` in `git archive` copies: GS1 to GX9 but GX8 in one of `d67b3dc72`, and GX8 in one of
+`7cae94ba1`, after GX8's first run did not prove (below). Each restored half passed every test it ran: 5 for the
+simulation's file, 17 for the two checks together.
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GS1 | `GEM_DROPS_PER_GEAR_DROP` 0.0066, below tier 8's 0.00671 | "1 failed, 4 passed": `test_the_shipped_rate_reaches_the_ceiling_at_every_tier` | PROVED |
+| GS2 | `GEM_DROPS_PER_GEAR_DROP` 0.0075, over 5% above the measurement | "1 failed, 4 passed": `test_the_shipped_rate_is_the_measured_one_rounded_up_and_no_more` | PROVED |
+| GS3 | a Herald drops 0.0034 gems, a Legendary's | "1 failed, 4 passed": `test_a_better_enemy_drops_more_gems_and_every_kill_can_drop_one` | PROVED |
+| GS4 | `roll_gem_drops_from_kill` rolls at tier 8 whatever the tier | "1 failed, 4 passed": `test_a_kills_gems_are_rolled_at_the_gears_rarity_spread_at_the_tier` | PROVED |
+| GX1 | the Unreal test's `GemsPerGearDrop` 0.0070 | "1 failed, 16 passed": `test_the_unreal_test_holds_the_table_to_the_simulations_rate` | PROVED |
+| GX2 | the gem stream seeded by XOR, not the mix | "1 failed, 16 passed": `test_a_kills_gems_come_from_a_stream_of_their_own` | PROVED |
+| GX3 | the death's `SpawnGemsFor` passes no mark | "1 failed, 16 passed": `test_a_death_rolls_its_gems_last_only_when_it_pays_and_marked_when_raised` | PROVED |
+| GX4 | `IsAQuantity` leaves gems out | "1 failed, 16 passed": `test_a_gem_drop_goes_onto_its_stack_and_is_a_quantity` | PROVED |
+| GX5 | `GroundItemFrom` does not copy `GemQuantity` | "1 failed, 16 passed": `test_the_run_record_keeps_a_gem_lying_on_the_ground` | PROVED |
+| GX6 | `DescribeItself`'s gem branch does not set `Rarity` | "1 failed, 16 passed": `test_a_gem_drops_border_is_its_raritys` | PROVED |
+| GX7 | `RollGem` always gives the first row | "1 failed, 16 passed": `test_which_gem_is_drawn_evenly_among_the_rows` | PROVED |
+| GX8 | `DropCarried` gives the floor `NAME_None` for the gem | first run "17 passed", NOT PROVED: the check looked for `Leaving.Gem`, which `Leaving.GemRarity` contains. Matched with its comma, "1 failed, 16 passed": `test_a_dropped_gem_stack_goes_to_the_floor_as_gems` | PROVED on the second run |
+| GX9 | `TakeInto` takes a gem drop as a piece of gear | "1 failed, 16 passed": `test_a_gem_drop_goes_onto_its_stack_and_is_a_quantity` | PROVED |
+
+Two more faults were found while writing this and corrected before any proof: `sim/tests/test_gem_drops.py`'s rarity
+test asked only that each rolled rarity be listed in the gear's spread, which lists all eight, so it could not fail; it
+now compares the share of Everyday gems with the spread's. And the sweep found the raised creature's gems unmarked,
+corrected in the code.
+
+### Registered before the window
+
+In the gems' shared window, registered with G1 to G4 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemDrops.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.GemStacks.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.DungeonModifierEffects.`, `Cataclysm.Drop.`, `Cataclysm.Gold.`, `Cataclysm.SaveLoad.` and `Cataclysm.SaveFloor.` alone, which kill creatures and count drops or save the ground | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.GemDrops."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K15 | in `ExpectedGemDrops`, `ScaledByLootQuantity(Row->GemDrops, LootQuantity)` to `Row->GemDrops` | 4 performed, 3 succeeded, 1 failed: `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | 4 of 4 |
+| K16 | in `RollGem`, `Stream.RandRange(0, Gems.Num() - 1)` to `Stream.RandRange(0, Gems.Num() - 2)` | 4 performed, 3 succeeded, 1 failed: `AGemIsChosenEvenlyAmongTheGemsAndNamedWithItsRarity` | 4 of 4 |
+| K17 | in `DescribeItself`'s gem branch, `Rarity = GemRarity;` removed | 4 performed, 3 succeeded, 1 failed: `AKillsGemsLieOnTheFloorAtRaritiesTheTierAllowsAndGoIntoTheirStack` | 4 of 4 |
+| K18 | in `DropCarried`, `Leaving.Gem, Leaving.GemRarity,` to `NAME_None, Leaving.GemRarity,` | 4 performed, 3 succeeded, 1 failed: `AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` | 4 of 4 |
+
+---
+
+## 2026-11-21 — The forge sockets a gem for a Setting Agent, 5 residue and a day, and unsockets one for Dismantling Dust, 3 residue and a day, the gem back to the bag (#46, slice G4)
+
+**Affects:** `FCataclysmForgeSocketing`, new, and `UCataclysmForge::SettingAgentRow`, `DismantlingDustRow`,
+`SocketGemResidue`, `UnsocketGemResidue`, `SocketGemBaseDays`, `UnsocketGemBaseDays`, `DaysFor(Residue, BaseDays)`,
+`SocketGemOf`, `UnsocketGemOf` and `SocketingQuestion`, new (`game/Source/Cataclysm/Items/CataclysmForge.h`, `.cpp`);
+`UCataclysmForgeCraft::SocketPlanFor`, `UnsocketPlanFor`, `SocketGem`, `UnsocketGem` and `DoSocketing`, new
+(`game/Source/Cataclysm/Player/CataclysmForgeCraft.h`, `.cpp`); `UCataclysmInventoryComponent::RemoveGems`, new;
+`FCataclysmPlayLoopLog::ForgeSocketLine`, new (`CataclysmPlayLoopLog.h`, `.cpp`); `FCataclysmForgeSocketAction`, new,
+and `UCataclysmForgeLayout::SocketActionsFor`, `SocketActionForButton` and `SocketsDetailFor`, new
+(`game/Source/Cataclysm/Interface/CataclysmForgeLayout.h`, `.cpp`); `UCataclysmForgeWidget`'s socket actions
+(`CataclysmForgeWidget.h`, `.cpp`); the console command `Cataclysm.GrantGem`, new (`CataclysmPlayerCharacter.cpp`);
+`docs/Play_Loop_Checklist.md`, step 17, new. Tests: `game/Source/Cataclysm/Tests/CataclysmForgeGemsTests.cpp`, new,
+four in `Cataclysm.ForgeGems.`; `tools/tests/test_the_forge_sockets_and_unsockets_gems.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py` lists the new line. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G3's branch head without a compile, as ruled. The branch is
+  `feat/forge-gems-46-g4`, on `feat/item-sockets-46-g3`. It goes through one shared window with G1, G2 and G3, ruled
+  by the coordinating session on 2026-11-21: one branch, one registration and one pull request, after the empire tree
+  window merges and hands over the workbook.
+- **NO RECORD VERSION MOVES HERE.** A socketed gem is a field of an item, which G3 moves; the materials and gem stacks
+  are fields G2 adds. Socketing changes values, not shapes.
+- **NOTHING DROPS A GEM YET** (slice G5), so `Cataclysm.GrantGem` puts gems in the bag for the owner to socket. It is a
+  test tool, as `Cataclysm.GrantExperience` is, and the coordinating session kept it on 2026-11-21: "without it the owner
+  cannot try socketing before gems drop".
+- **A WORN GEM'S EFFECT ON THE CHARACTER SHEET WAITS FOR G1'S WORKBOOK STAGE**, through G3's `AddGemModifier`.
+
+### What changed
+
+- **The rules** (`UCataclysmForge`), as the design's operations rows state them: Socket Gem uses one Jeweler's Setting
+  Agent and adds 5 residue; Unsocket Gem uses one Dismantling Dust and adds 3; each costs 1 day and the residue's time
+  penalty, `CR / 100` rounded down, read before the craft adds its own. The simulation's `SOCKET_GEM_RESIDUE` is 5.
+  `SocketGemOf` refuses no item, no such socket, a filled socket ("That socket already holds Of The Viper; unsocket it
+  first."), no such gem carried, a gem of another type than a typed socket's ("An Attack gem does not fit a Defense
+  socket."), and no Setting Agent. `UnsocketGemOf` refuses an empty socket, no Dust ("Unsocketing a gem takes Dismantling
+  Dust; 0 held."), and no room in the bag for the gem (a stack of it, a free cell, or the cell the last Dust frees). No
+  free removal, ruled 2026-11-21.
+- **The crafts** (`UCataclysmForgeCraft`), on a carried or a worn piece, follow the upgrade's order and rules: refused
+  during a walk and without a run; a worn piece asks first when it would cross the Consumption Threshold, and a
+  confirmed crossing marks the character; the material (and for a socketing the gem) leaves the bag; the piece changes
+  in its own cell or slot; an unsocketed gem goes back to the bag; the days pass through the run; a PLAY LOOP line says
+  it; `ForgeCrafted` saves. Whatever was taken is put back when a step cannot finish, so nothing is half done.
+- **The forge's screen** lists the chosen piece's sockets under its detail ("Sockets: Defense socket: empty; Attack
+  socket: Of The Viper (Superb)") and offers, socket by socket, each carried gem that fits an empty socket ("Socket Of
+  Life (Superb) into socket 1 (Defense)") and the removal of each socketed one ("Unsocket Of The Viper (Superb) from
+  socket 2"). Sockets are numbered from 1. A press asks first, with `SocketingQuestion`, and the second does it, as an
+  upgrade does; any other press cancels it.
+- **The play log**: "socketed Of Life (Superb) into the Defense socket of Everyday Helm; residue 52 to 57; it cost 1
+  day, day 26 to day 27", and "unsocketed Of Life (Superb) from Everyday Helm, back to the bag; residue 57 to 60; it cost
+  1 day, day 27 to day 28".
+
+### Tests
+
+`CataclysmForgeGemsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay` | the rules: a Superb Of Life into a helm's Defense socket at 87 residue, 92 after, 1 day, and its question; 150 residue costs 2 days; every refusal's words; the Viper out with Dust, 90 after, and its question. Prints "FORGE GEM RULES" |
+| `SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay` | the craft on a carried helm: the socket holds the gem, one Of Life and the Agent are gone, residue 92, a day passed; a second socketing into the filled socket is refused and moves nothing. Prints "SOCKETED" |
+| `UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves` | with no Dust it is refused and no day passes; with Dust the socket is empty, the Viper is back in the bag, the Dust used, residue 90, a day passed. Prints "UNSOCKETED" |
+| `TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne` | for the helm and a bag of a Superb Of Life and an Everyday Of Rot: two actions, the Life into socket 1 and the Viper out of socket 2, with Rot (an Attack gem) not offered; the sockets line. Prints "FORGE SOCKET ACTIONS" |
+
+`tools/tests/test_the_forge_sockets_and_unsockets_gems.py`:
+
+- both crafts' residue and days are the design table's, the Crafting sheet's, and for socketing the simulation's;
+- their materials are the rows those operations name;
+- no free removal;
+- each craft refuses during a walk, passes its days, says its line and saves;
+- what a craft took is put back on each of its three failures;
+- the screen asks before it acts;
+- `Cataclysm.GrantGem` exists.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `d5b1e1820`, each restored half "7 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GT1 | `SocketGemResidue` 6, not 5 | "1 failed, 6 passed": `test_the_residue_and_days_are_the_designs_the_sheets_and_the_simulations` | PROVED |
+| GT2 | `DismantlingDustRow` names the Setting Agent | "1 failed, 6 passed": `test_the_materials_are_the_rows_the_operations_name` | PROVED |
+| GT3 | `UnsocketGemOf`'s refusal without Dust removed | "1 failed, 6 passed": `test_there_is_no_free_removal` | PROVED |
+| GT4 | `DoSocketing` passes no days | "1 failed, 6 passed": `test_each_craft_refuses_during_a_walk_passes_its_days_logs_and_saves` | PROVED |
+| GT5 | the material not put back when the item cannot be replaced | "1 failed, 6 passed": `test_what_a_craft_took_is_put_back_when_it_cannot_finish` | PROVED |
+| GT6 | the screen's first-press question removed | "1 failed, 6 passed": `test_the_screen_asks_before_it_acts` | PROVED |
+
+### Registered before the window
+
+In the gems' shared window, registered with G1, G2 and G3 at its turn:
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ForgeGems.` alone | 4 performed, 4 succeeded |
+| `Cataclysm.Forge.` and `Cataclysm.ForgeScreen.` alone, which read the code this changes | each at its measured count, every test succeeding |
+| The whole suite, Python and ruff | with the shared window's registration |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ForgeGems."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K11 | in `SocketGemOf`, `TEXT("%s %s gem does not fit %s %s socket.")` to `TEXT("%s %s gem cannot go in %s %s socket.")` | 4 performed, 3 succeeded, 1 failed: `SocketingTakesASettingAgent5ResidueAndADayAndUnsocketingDust3ResidueAndADay` | 4 of 4 |
+| K12 | in `DoSocketing`, `Socket.Gem = Plan.bUnsocket ? NAME_None : Plan.Gem;` to `Socket.Gem = NAME_None;` | 4 performed, 3 succeeded, 1 failed: `SocketingACarriedPiecePutsTheGemInTakesTheAgentAndPassesADay` | 4 of 4 |
+| K13 | in `DoSocketing`, `if (Plan.bUnsocket && Inventory->AddGems(Plan.Gem, Plan.Rarity, 1) == INDEX_NONE)` to `if (Plan.bUnsocket && false)` | 4 performed, 3 succeeded, 1 failed: `UnsocketingTakesDustAndGivesTheGemBackAndWithNoDustNothingMoves` | 4 of 4 |
+| K14 | in `SocketActionsFor`, `if (Row == nullptr \|\| !UCataclysmGems::GemFits(Socket.Type, Row->GemType))` to `if (Row == nullptr)` | 4 performed, 3 succeeded, 1 failed: `TheScreenOffersEachFittingGemForAnEmptySocketAndTheRemovalOfASocketedOne` | 4 of 4 |
+
+---
+
+## 2026-11-21 — Items carry typed sockets, a drop rolls each socket's type evenly, and the gems in a worn item add their modifiers once (#46, slice G3)
+
+**Affects:** `ECataclysmSocketType` and `FCataclysmSocket`, new, and `FCataclysmItem::Sockets`, a list of them where it
+was a count (`game/Source/Cataclysm/Items/CataclysmItem.h`); `UCataclysmItemModifiers::AccumulateInto`
+(`CataclysmItem.cpp`); `UCataclysmGems::SocketTypeName`, `GemFits`, `RollSocketType`, `AddGemModifier`,
+`AddSocketedGems` and `SocketLinesFor`, new (`CataclysmGems.h`, `.cpp`); `UCataclysmDropRoll::RollItem`
+(`CataclysmDropRoll.cpp`); the item tooltip (`game/Source/Cataclysm/Interface/CataclysmItemTooltip.cpp`); eleven lines
+in seven test files that read the count (`CataclysmDropPickupTests.cpp`, `CataclysmDropRollTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmExtraDamageTypesTests.cpp`, `CataclysmInventoryTests.cpp`,
+`CataclysmItemTooltipTests.cpp`, `CataclysmSaveRecordTests.cpp`). Tests:
+`game/Source/Cataclysm/Tests/CataclysmItemSocketsTests.cpp`, new, four in `Cataclysm.ItemSockets.`;
+`tools/tests/test_items_have_typed_sockets.py`, new. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G2's branch head without a compile, as ruled. The branch is
+  `feat/item-sockets-46-g3`, on `feat/gem-stacks-46-g2`.
+- **TWO RECORDS' VERSIONS ARE NOT MOVED YET, AND MUST BE BEFORE THIS MERGES.** An item is saved in the character record
+  (carried and worn) and in the run record (on the ground), and the item's `Sockets` changes from a number to a list.
+  Each record takes the next number free at this slice's turn, ruled by the coordinating session on 2026-11-21, and
+  its migration turns a saved count of N into N empty sockets that fit any type ("sockets migrated from today's count
+  fit any type"). The figure is written in the migrations and their fixtures only. Until then the save tests that load
+  a fixture holding a socket count cannot pass. Written after the empire tree's 6d and 6e window merges, as G2's is.
+- **`UCataclysmGems::AddGemModifier` READS `FCataclysmGemRow::Stat` AND `ValueKind`**, which slice G1's workbook stage
+  adds. This branch does not compile until it is rebased onto that stage, and the worn-gem test reads the generated
+  table's Stat column.
+- **PROOF GR6 WAS NOT PROVED ON ITS FIRST RUN.** The check that a socketed gem is added once looked only for the call
+  and for words that double, so a second call passed it. It now requires exactly one call; rerun, it proved.
+
+### What changed
+
+- **A socket** has a type (Attack, Defense, Utility, or Any) and may hold one gem at a rarity. Any is no drop's type: it
+  is what a socket saved before types becomes, and what the enchantment "Sockets on this equipment fit any gem type"
+  will make of a piece's sockets (slice G7). A socket's default type is Any, so a socket read from a save written
+  before types fits any gem.
+- **`FCataclysmItem::Sockets` is the list, under the old count's name**, so every reader of the count stopped compiling
+  rather than reading a list as a number. The two game readers (the drop roll and the tooltip) and eleven test lines
+  were moved to it.
+- **A drop rolls how many sockets as before, from the drop's stream, and each one's type evenly among the three from a
+  stream of its own**, seeded through `CataclysmSeedMix::Mix` from the drop's stream's current seed without drawing
+  from it. No later roll of a drop moves, so a seeded drop keeps the residue, affixes and enchantments it rolled before
+  sockets had types. The first version seeded it by XOR, which `tools/tests/test_placement_seed_mix_port.py` refused:
+  an XOR-seeded stream is related to the one it came from (issue #2749).
+- **A gem fits a socket of its own type** (`GemFits`: the socket's type name against the gem's GemType, in any case),
+  and an Any socket fits every gem.
+- **A worn item's gems reach the character.** `AccumulateInto`, which only the worn-equipment reading
+  (`UCataclysmEquipmentComponent::GatherModifiersReading`) calls, ends by adding each socketed gem's modifier through
+  `AddGemModifier`: the row's Stat and ValueKind at the socket's rarity, as slice G1 ruled. Once per gem, and a
+  two-handed weapon does not double its gems (ruled 2026-11-21). A gem in a carried item does nothing, because nothing
+  passes a carried item there. A gem the table lacks is skipped and logged.
+- **The item tooltip** keeps its "2 sockets" line and adds one line per socket: "Attack socket: Of The Viper (Superb)",
+  "Defense socket: empty", "Socket for any gem: empty".
+
+### Tests
+
+`CataclysmItemSocketsTests.cpp`, four:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ASocketsTypeIsRolledEvenlyAndNeverAny` | 3,000 rolls from a seeded stream: each type within 100 of 1,000 (over four standard deviations), none Any; a new socket's default type is Any. Prints "SOCKET TYPES" |
+| `AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem` | Attack in Attack fits; Defense in Attack and Attack in Utility do not; Utility in Any fits; " defense " is read as Defense |
+| `AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem` | a helm with a Superb Of Life and an empty socket: one gem modifier in all, 25 increased maximum health; a two-handed greataxe with a Superb Of The Viper: one flat modifier of 60 poison chance, not 120. Prints "WORN GEMS" |
+| `AnItemsSocketLinesNameEachTypeAndGem` | three sockets, three lines, each as above |
+
+`tools/tests/test_items_have_typed_sockets.py`:
+
+- the socket's three fields and the item's list are saved, and a socket defaults to Any;
+- the socket types are exactly the gem types in `Gems.csv`, and Any;
+- a new socket's type is one of the three and never Any;
+- the drop roll takes socket types from a stream of their own;
+- `AccumulateInto` adds the gems, and only the worn-equipment reading calls it outside the tests;
+- each socketed gem is added exactly once;
+- the tooltip lists each socket;
+- nothing in the C++ reads `Sockets` as a number.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `4492a88c2`, and all six again on `433befdf8`, after the
+seed went through the mix, each restored half "8 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GR1 | a socket's default type Attack, not Any | "1 failed, 7 passed": `test_a_socket_and_the_items_socket_list_are_saved_and_a_socket_defaults_to_any` | PROVED |
+| GR2 | Of The Scholar's type "Learning" in `Gems.csv` | "1 failed, 7 passed": `test_the_socket_types_are_the_gem_types_and_any` | PROVED |
+| GR3 | `RollSocketType` can return Any | "1 failed, 7 passed": `test_a_new_sockets_type_is_one_of_the_three_and_never_any` | PROVED |
+| GR4 | socket types drawn from the drop's own stream | "1 failed, 7 passed": `test_the_drop_roll_takes_socket_types_from_a_stream_of_their_own` | PROVED |
+| GR5 | `AccumulateInto` stops adding the gems | "1 failed, 7 passed": `test_only_worn_items_reach_the_character_with_their_gems` | PROVED |
+| GR6 | a second `AddGemModifier` call for each socket | "1 failed, 7 passed": `test_a_socketed_gem_is_added_once_and_not_doubled` | PROVED (on the second run; see SAID FIRST) |
+
+### Registered before the window
+
+At the slice's turn, after its save versions and its three compiles, which move these counts; registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.ItemSockets.` alone | 4 performed, 4 succeeded |
+| The groups whose tests read the socket count | `Cataclysm.Drop.`, `Cataclysm.DropPickup.`, `Cataclysm.Inventory.`, `Cataclysm.Tooltip.` and `Cataclysm.SaveRecords.` alone, each at its measured count, every test succeeding |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Four C++ guard proofs, one for each new test to be seen failing, with `test_prefix="Cataclysm.ItemSockets."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K7 | in `RollSocketType`, `case 1:		return ECataclysmSocketType::Defense;` to `return ECataclysmSocketType::Attack;` | 4 performed, 3 succeeded, 1 failed: `ASocketsTypeIsRolledEvenlyAndNeverAny` | 4 of 4 |
+| K8 | in `GemFits`, `return Type == ECataclysmSocketType::Any` to `return false` | 4 performed, 3 succeeded, 1 failed: `AGemFitsASocketOfItsOwnTypeAndAnyFitsEveryGem` | 4 of 4 |
+| K9 | in `AddSocketedGems`, `if (Socket.Gem.IsNone())` to `if (!Socket.Gem.IsNone())` | 4 performed, 3 succeeded, 1 failed: `AWornItemsGemsAddTheirModifiersOnceAndATwoHanderDoesNotDoubleThem` | 4 of 4 |
+| K10 | in `SocketLinesFor`, `TEXT("empty")` to `TEXT("nothing")` | 4 performed, 3 succeeded, 1 failed: `AnItemsSocketLinesNameEachTypeAndGem` | 4 of 4 |
+
+---
+
+## 2026-11-21 — Gems are carried in stacks, one per gem and rarity, with a cell and a tooltip, and a gem stack cannot be dropped until gems can lie on the floor (#46, slice G2)
+
+**Affects:** `FCataclysmCarriedSlot::Gem` and `GemRarity`, new, and `UCataclysmInventoryComponent::AddGems`,
+`SlotOfGems` and `CountOfGems`, new, and `SlotIsEmpty` (`game/Source/Cataclysm/Items/CataclysmInventoryComponent.h`,
+`.cpp`); `ECataclysmWearResult::GemsStayInTheBag`, new, `UCataclysmWearing::DropCarried` and `Explain`
+(`CataclysmWearing.h`, `.cpp`); `UCataclysmGems::TableAssetPath`, `LoadGeneratedTable`, `RowOf`, `NameOf`, `RarityName`,
+`EffectAt` and `TooltipLinesFor`, new (`CataclysmGems.h`, `.cpp`); `UCataclysmInventoryScreen::LabelFor`,
+`QuantityTextFor`, `ColourFor` and `BorderThicknessFor` (`game/Source/Cataclysm/Interface/CataclysmInventoryScreen.cpp`);
+`UCataclysmItemTooltip::LinesFor` (`CataclysmItemTooltip.cpp`). Tests:
+`game/Source/Cataclysm/Tests/CataclysmGemStacksTests.cpp`, new, four in `Cataclysm.GemStacks.`;
+`tools/tests/test_gems_are_carried_in_stacks.py`, new. Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on G1's branch head without a compile, as ruled. The branch is
+  `feat/gem-stacks-46-g2`, on `feat/gem-stats-46-g1-2`.
+- **THE CHARACTER RECORD'S VERSION IS NOT MOVED YET, AND MUST BE BEFORE THIS MERGES.** The two new slot fields are
+  `SaveGame`, so a carried gem is written into the character record. The empire tree's 6d and 6e window moves that
+  record from 10 to 11, and its slice 8 also moves it, 11 to 12. **This slice takes the next number free when it
+  merges**, ruled by the coordinating session on 2026-11-21: whichever of slice 8 and this merges second takes the
+  next number and registers again. Its migration writes no gem into every carried slot. The version figure is written
+  in the migration and its fixtures only, so a move costs one edit. It is written after the 6d and 6e window merges
+  (this session's choice, of building on that branch or waiting for it), with a test that a carried gem stack
+  survives a save and a load.
+- **THE TOOLTIP DOES NOT YET SAY WHEN A GEM DOES NOTHING FOR THE CHARACTER** (the ruling's point 5). That line needs
+  the gem's stat, which `FCataclysmGemRow` gains with G1's workbook stage; it is added to this slice then.
+- **A GEM STACK CANNOT BE DROPPED** until gem drops are built (slice G5). The reason is below.
+- **G1 MOVED BRANCH.** This slice was first committed onto G1's branch by mistake and pushed. A force push is not
+  allowed, so G1 alone is now `feat/gem-stats-46-g1-2` at `928fd764d`, and the first branch, `feat/gem-stats-46-g1`, is
+  superseded.
+
+### What changed
+
+- **A carried slot holds a gear item, a stack of one material, or a stack of one gem at one rarity.** The gem is a row
+  key in `game/Data/Gems.csv`; the count is the slot's existing `Quantity`. `SlotIsEmpty` reads the gem, so a gem stack
+  is not an empty slot.
+- **`AddGems(gem, rarity, count)`** stacks onto the stack of that gem at that rarity, or takes the first free slot, as
+  `AddMaterial` does, with no ceiling. Two rarities of one gem are two stacks (ruled 2026-11-21). A gem with no name,
+  or none of one, is refused. `SlotOfGems` and `CountOfGems` find and count them.
+- **The cell** shows the gem's name, the count when it is above one, and its rarity's colour and border, as gear of
+  that rarity has.
+- **The tooltip**, from `UCataclysmGems::TooltipLinesFor`, five lines for three Superb Of The Viper: "Of The Viper",
+  "Superb Attack gem", "60% chance to apply poison", "Fits an Attack socket", "3 carried". The effect line is the gem's
+  own text with its figure replaced by that rarity's value: the first figure before a "%", which is the one the
+  generator reads as the Everyday value, so "Increases Magic Find by .5%" reads "Increases Magic Find by 0.5%".
+- **Dropping a gem stack is refused, and the gems stay in the bag** (`GemsStayInTheBag`, "Gems cannot be put on the
+  floor yet, so they are still in the bag."). `UCataclysmDropSpawner::PutOnTheFloor` refuses nothing: handed an empty
+  item and no material it makes a drop of nothing, and `DropCarried` then empties the slot. Without the refusal,
+  dropping a gem stack would have destroyed the gems. **LIFTED BY SLICE G5, before either merged:** a gem can lie on
+  the floor there, so `DropCarried` hands the floor the gem, its rarity and the count, and `GemsStayInTheBag` is gone.
+
+**What else reads a carried slot, and why it needed nothing:** wearing, the item comparison and the Forge reach an item
+through `ItemAt`, which answers nothing for a gem stack as for a material; the save writer copies whole slots; the
+dungeon's "most of one material" reading checks a material name.
+
+### Tests
+
+`CataclysmGemStacksTests.cpp`, four, on a bare inventory and the generated `DT_Gems`:
+
+| Test | What it checks |
+| :-- | :-- |
+| `GemsStackByGemAndRarity` | two then one Superb Of The Viper make one stack of 3 in slot 0; an Everyday one is slot 1; a material is slot 2; a gem stack is not empty and holds no item; CONTROL: no name, and none of a gem, are refused |
+| `AFullBagRefusesANewGemAndStillStacksACarriedOne` | with 48 slots used, a new gem is refused and a carried stack takes 4 more |
+| `AGemStackIsNotDroppedAndStaysInTheBag`, renamed by slice G5 `AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses` | as written here, dropping the gem stack answered `GemsStayInTheBag` with all 3 still carried. Since G5: the gem stack is offered to the floor, which with no world refuses it as `TheFloorRefusedIt`, and all 3 are still carried; CONTROL: a material is offered and refused the same way |
+| `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` | the cell's name, count and border; the tooltip's five lines; Of The Goblin at Everyday and Of The Abyss at Cataclysmic; a Utility gem fits a Utility socket. Prints "GEM STACK TOOLTIP" |
+
+`tools/tests/test_gems_are_carried_in_stacks.py`: both slot fields are `SaveGame`; `SlotIsEmpty` reads the gem; a
+stack is found by gem and rarity; `DropCarried` refuses a gem stack before it asks the floor, and `Explain` says why;
+the cell's four readers and the tooltip each read the gem; the table path is the asset made from `Gems.csv`. Proved
+with `tools/prove_guard.py` in a `git archive` copy of `42bd7cc94`, each restored half "10 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GQ1 | `SaveGame` taken off `Gem` | "1 failed, 9 passed": `test_the_carried_slot_saves_its_gem_and_rarity` | PROVED |
+| GQ2 | `SlotIsEmpty` stops reading the gem | "1 failed, 9 passed": `test_a_gem_stack_is_not_an_empty_slot` | PROVED |
+| GQ3 | `SlotOfGems` matches the gem alone | "1 failed, 9 passed": `test_a_stack_is_found_by_gem_and_rarity` | PROVED |
+| GQ4 | `DropCarried`'s gem refusal removed | "1 failed, 9 passed": `test_dropping_a_gem_stack_is_refused_before_the_floor_is_asked` | PROVED |
+| GQ5 | the border's gem branch removed | "1 failed, 9 passed": `test_each_reader_of_a_carried_slot_knows_a_gem_stack[...BorderThicknessFor(]` | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its save version and its three compiles, which move these counts; registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStacks.` alone | 4 performed, 4 succeeded |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Three C++ guard proofs, one for each new test to be seen failing (the coordinating session's rule for G1), with
+`test_prefix="Cataclysm.GemStacks."`:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K4 | in `AddGems`, the `Slots[Stacked].Quantity += Quantity;` that follows `SlotOfGems(Gem, Rarity)` (the file has a second, in `AddMaterial`) to `Slots[Stacked].Quantity = Quantity;` | 4 performed, 2 succeeded, 2 failed: `GemsStackByGemAndRarity` (1 carried, not 3) and `AFullBagRefusesANewGemAndStillStacksACarriedOne` (4, not 5) | 4 of 4 |
+| K5 | WITHDRAWN BY SLICE G5, which removes the refusal this breaks. Never run. G5's K18 proves a dropped gem stack reaches the floor | -- | -- |
+| K6 | in `EffectAt`, `SheetValueAt(Row, Rarity) * PointsPerSheetUnit` to `Row.Everyday * PointsPerSheetUnit` | 4 performed, 3 succeeded, 1 failed: `AGemStacksCellAndTooltipNameItsRarityEffectAndSocket` ("20% chance to apply poison") | 4 of 4 |
+
+---
+
+## 2026-11-21 — Gems and sockets are planned and ruled, and a gem's stat is a flat ailment chance or an increase in percentage points from source Gem (#46, slice G1)
+
+**Affects:** `UCataclysmGems`, new: `PointsPerSheetUnit`, `SheetValueAt`, `BucketNamed` and `AddModifier`
+(`game/Source/Cataclysm/Items/CataclysmGems.h`, `.cpp`); `docs/Cataclysm_GDD_v2.md`, "Sockets and Gems", a list of the
+rulings. Tests: `game/Source/Cataclysm/Tests/CataclysmGemStatsTests.cpp`, new, three in `Cataclysm.GemStats.`;
+`tools/tests/test_every_gem_names_a_stat_the_game_reads.py`, new. Issue
+[#46](https://github.com/sdubois777/Cataclysm/issues/46), narrowed to sockets and gems on 2026-11-21; the player's own
+Power Score is [#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `1537dac4e` without a compile, as ruled.
+- **THE GEMS SHEET'S STAT AND VALUEKIND COLUMNS ARE NOT WRITTEN YET.** The design workbook is held by #1130 until the
+  empire tree's 6d and 6e window merges. With the columns come their generator code, `FCataclysmGemRow::Stat` and
+  `ValueKind`, a function reading a gem's modifier off its row, and a check that the generated `Gems.csv` matches the
+  ruled table. They cannot come earlier: `tools/tests/test_csv_columns_match_their_row_structs.py` fails a row struct
+  field that its CSV lacks, and the CSV is generated from the workbook.
+- **NOTHING CALLS `UCataclysmGems` YET.** A gem reaches a character only once a socket can hold one (slices G3 and G4).
+- **THE GEAR-LEVELLING HALF OF #46 WAS ALREADY BUILT**: the Forge's upgrade and stone combining (#2763) and stone drops
+  capped by the difficulty tier (#863). #46 now holds sockets and gems alone, and #531 holds where stones come from.
+
+### What the owner asked, and how it was planned
+
+The owner, 2026-11-21: "Once the empire tree is done I think the next biggest thing is gems". The coordinating session
+asked for a plan for #46: what the design already decides, the genre's practice, a stat for each gem, drops, the
+interface, saving, the Power Score, and slices. The plan read the design document's "Sockets and Gems", the Forge's
+operations and materials, "Power Score", "Storage" and "Capital Services"; this log's entries of 2026-08-02, 2026-08-18
+and 2026-11-21 (#2803); `game/Data/Gems.csv`, `ItemSockets.csv`, `Affixes.csv`, `CraftingMaterials.csv` and
+`ClassStats.csv`; and the code for items, the Forge, the Power Score and potions.
+
+**What the design already decided**, so the plan did not reopen it: gems take the eight rarity tiers of gear; they are
+upgraded by combining lower ones; each slot's socket maximum and the total of 45; a drop rolls 0 to the maximum sockets;
+the Forge's Socket Gem (Jeweler's Setting Agent, 5 residue, 1 day), Unsocket Gem (Dismantling Dust, 3 residue, 1 day),
+Change Socket Type (Focusing Lens, 10 residue, 2 days) and Add Socket (Shattered Core, 15 residue, 3 days); that
+sockets have types (Change Socket Type, the enchantment "Sockets on this equipment fit any gem type", and each gem's
+GemType of Attack, Defense or Utility); a gem's rarity at most one above the difficulty tier; and the Power Score's gem
+term, 5.2725 per point of rarity in each filled socket.
+
+**What was found that the plan had to report:**
+
+- **No game code computes the player's own Power Score.** Only the reference character is scored
+  (`UCataclysmPowerScore::ReferenceCharacter`). So gems cannot change a player's score until #2824 is built.
+- **Jeweler's Setting Agent and Dismantling Dust already drop.** A material drop picks evenly among every material of
+  its tier (`UCataclysmDropRoll::RollMaterial`), and both are tier 1. Dust drops although its stated source, dismantling,
+  is not built.
+- **All 28 gems map to stats the game already reads.** 27 are in `UCataclysmPlayerClassStats::StatToAttribute` and
+  `skill_experience_gain` is in `StatsWithNoAttribute`.
+
+### The research, from pages fetched on 2026-11-21
+
+| Game | Pages read | What they say |
+| :-- | :-- | :-- |
+| Path of Exile 1 | `poedb.tw/us/Socket`, `/us/Chromatic_Orb`, `/us/Jewellers_Orb` | Sockets are coloured red, green, blue or white, and "Skill gems have to be placed into a socket with the corresponding colour", white excepted. Colour is weighted by the item's attribute requirements. The Chromatic Orb "Reforges the colour of sockets"; the Jeweller's Orb rerolls their number, capped by item type (one-handed weapon 3, body armour and two-handed weapon 6) and by item level (4 sockets from level 25, 6 from 50). Inserting and removing a gem were not on these pages |
+| Diablo IV | `maxroll.gg/d4/resources/jeweler-gems-socketing` (updated July 2026), `diablo4.wiki.fextralife.com/Gems` (edited September 2026) | Gems are crafted at the Jeweler from fragments, about ten times as many for each tier, plus gold. Removal there is "free of charge" and keeps the gem; salvaging an item returns its gems. A gem's effect depends on the slot: Ruby is fire damage in a weapon, strength in armour, fire resistance in jewellery. Items drop with up to 2 sockets on a helm, chest, pants and two-handed weapon and 1 elsewhere, and a Scattered Prism adds one |
+| Diablo II | `classic.battle.net/diablo2exp/items/gems.shtml`, `/socketeditems.shtml`, `/cube.shtml` | Five grades, Chipped to Perfect; "3 Gems of the Same Type and Grade ... = 1 Higher Grade Gem", in the Horadric Cube. Effect by item type: Chipped Amethyst is +40 attack rating in a weapon, +8 defense in a shield, +3 strength in armour. "Once inserted, gems cannot be removed"; the Hel rune recipe removes them and "will destroy any gems" |
+| Last Epoch | `maxroll.gg/last-epoch/resources/gear-walkthrough` (updated April 2026) | No gem sockets are mentioned; idols fill the role, in a 20-slot container unlocked through the campaign and dungeons |
+| Torchlight Infinite | `tlidb.com/en/Ember`, `/en/Gear` (the site's data is from beta testing) | No sockets on the gear page; Embers are crafting materials consumed to add affixes |
+
+Refused or missing: `www.icy-veins.com` (403, twice), `support.lastepoch.com` (403), `poedb.tw/us/Jewel` (404),
+`maxroll.gg/torchlight-infinite/getting-started/skill-system-overview` (404).
+
+**What the research settles:** typed sockets, with one currency to change a socket's type and one to change the count,
+are Path of Exile's shape, matching this design's socket types, Focusing Lens and Shattered Core; combining several of a
+tier into one of the next is Diablo II's. **What it does not settle, and is this game's own:** the day and residue
+costs, gem drop rates, whether gems stack (no page said), and what a gem in a potion slot does.
+
+### The rulings
+
+**The coordinating session, 2026-11-21**, accepted the plan and ruled its eight questions itself, each being settled
+by the design document, a gem's own text or the owner's precedent. It will tell the owner what was chosen, and that
+any of it can change.
+
+1. **Socketing is a Forge craft costing a day**, as the design's operations table says.
+2. **Removal needs Dismantling Dust**, as the design says. No free removal.
+3. **Sockets are typed**: rolled evenly on a drop; Change Socket Type lets the player choose.
+4. **Increased**: every non-ailment gem's text says "Increases", Of Hatred's ("Increases Crit Multiplier by 5%")
+   included. Ailment gems are a flat chance, as the ailment affixes are.
+5. **The four gems for stats no class has a base for** (Of The Bulwark, block chance; Of The Wraith, evasion; Of
+   Urgency, cooldown reduction; Of The Goblin, magic find): **keep and explain**, the owner's own ruling for attributes
+   in #2815 ("Keep it, just explain it"). The gem's tooltip says plainly when it does nothing for the character.
+6. **Gems stack** by gem and rarity.
+7. **A gem in a potion slot** gives its stat for the 3 seconds the potion's heal runs. This session's judgement, which
+   stands for now; slice G8 is last, and the coordinating session will look again before it.
+8. **One effect per gem**, whatever it is socketed into.
+
+Also ruled: gem drop rates are measured in the simulation in slice G5; two gems of one kind and rarity make one of the
+next, with no day and no residue, as stones combine; sockets migrated from today's count fit any type; and a two-handed
+weapon does not double its gems, because its 6 sockets already equal a pair's 3 + 3.
+
+### The slices
+
+| Slice | What it does |
+| :-- | :-- |
+| G1 | A gem's stat (this entry, and its workbook stage) |
+| G2 | Gems as items: stacks in the carried inventory, the cell and tooltip, saving (character record 10 to 11) |
+| G3 | Typed sockets on items: the socket list, types rolled on drop, the count migrated; a gem in a worn item applies its modifier |
+| G4 | The Forge's Socket Gem and Unsocket Gem |
+| G5 | Gem drops, measured in the simulation; gems on the ground saved (run record 12 to 13) |
+| G6 | Combining gems at the Forge |
+| G7 | Change Socket Type, Add Socket, and effect rows for the two enchantments that wait on gems |
+| G8 | Potion gems |
+
+### What changed
+
+**`UCataclysmGems`**, a function library with nothing calling it yet:
+
+- `PointsPerSheetUnit` = 100: the sheet's 0.2 is 20 percentage points;
+- `SheetValueAt(row, rarity)`: Everyday is the value the generator extracts from the effect text, Quality to
+  Cataclysmic the sheet's seven numeric columns;
+- `BucketNamed(kind)`: "flat" or "increased" in any case, nothing else, "more" included;
+- `AddModifier(stat, kind, sheet value, totals)`: adds one modifier, the sheet value times 100, in that bucket, from
+  `ECataclysmModifierSource::Gem`, keyed by stat as `UCataclysmItemModifiers::ModifiersFor` keys an item's. A gem with no
+  stat, a refused kind or a value of nought or less adds nothing and logs a warning.
+
+**The design document's "Sockets and Gems"** now lists the rulings.
+
+**The ruled table of all 28**, in `tools/tests/test_every_gem_names_a_stat_the_game_reads.py`:
+
+| Bucket | Gems and stats |
+| :-- | :-- |
+| Flat chance (10) | Of The Abyss `void_splinter_chance`, Of The Viper `poison_chance`, Of Rending `bleed_chance`, Of Madness `madness_chance`, Of Rot `disease_chance`, Of Wasting `necrosis_chance`, Of Embers `burn_chance`, Of Maiming `cripple_chance`, Of Withering `weaken_chance`, Of Shredding `shred_chance` |
+| Increased (18) | Of Ticking `dot_frequency`, Of Striking `attack_speed`, Of Hatred `crit_multiplier`, Of Ferocity `crit_chance`, Of Recovery `health_regen`, Of Shielding `energy_shield_regen`, Of The Titan `armor`, Of The Bulwark `block_chance`, Of The Wraith `evasion`, Of The Mage `max_energy_shield`, Of Life `max_health`, Of Rejuvination `mana_regen`, Of Quickness `movement_speed`, Of Area `area_of_effect`, Of Urgency `cooldown_reduction`, Of Mana `max_mana`, Of The Goblin `magic_find`, Of The Scholar `skill_experience_gain` |
+
+### Tests
+
+`CataclysmGemStatsTests.cpp`, three:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AGemsSheetValueAtEachRarityIsItsColumn` | Of The Viper's eight values, 0.2 to 1.8, each at its rarity |
+| `AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease` | Of The Viper's Everyday 0.2 is one flat modifier of 20 on `poison_chance` from source Gem; Of Life's Cataclysmic 0.85, kind "Increased", is one increased modifier of 85 on `max_health`; through `UCataclysmStatPipeline::Evaluate`, 1,000 becomes 1,850 and 0 becomes 20. Prints "GEM STATS" |
+| `AGemThatNamesNoStatOrKindOrValueAddsNothing` | CONTROL: no stat, the kind "more", no kind and a value of nought each return false, log a warning and add nothing; " Flat " is read as flat |
+
+`tools/tests/test_every_gem_names_a_stat_the_game_reads.py`:
+
+- the ruled table holds every gem in `Gems.csv` and no other;
+- every stat it names is in `StatToAttribute` or `StatsWithNoAttribute`;
+- each of the 10 ailment gems is flat on the chance stat `UCataclysmAilments` keeps for the ailment its affix names, and
+  no other gem is flat;
+- each gem's text says what its bucket is ("chance to apply" or "Increases");
+- the gems whose stat neither a class line nor code gives a base to are exactly the four ruled;
+- `UCataclysmGems` multiplies by 100 and gives source Gem.
+
+Proved with `tools/prove_guard.py` in a `git archive` copy of `761d6b1bb`, each restored half "60 passed":
+
+| Proof | The break | Broken half | Verdict |
+| :-- | :-- | :-- | :-- |
+| GP1 | `Modifier.Source = ECataclysmModifierSource::Gem;` to `GearAffix` | "1 failed, 59 passed": `test_the_gem_library_states_percentage_points_from_source_gem` | PROVED |
+| GP2 | `PointsPerSheetUnit = 100.0f` to `1.0f` | "1 failed, 59 passed": the same test | PROVED |
+| GP3 | `UCataclysmAilments`' Poison kept under `venom_chance` | "1 failed, 59 passed": `test_each_ailment_gem_is_flat_on_its_affixs_ailment_stat_and_no_other_gem_is_flat` | PROVED |
+| GP4 | `skill_experience_gain` taken out of `StatsWithNoAttribute` | "1 failed, 59 passed": `test_every_ruled_stat_is_one_the_game_reads[Gem_Of_The_Scholar]` | PROVED |
+| GP5 | Of Hatred's text "Increases" to "Raises" in `Gems.csv` | "1 failed, 59 passed": `test_a_gems_text_says_what_its_bucket_is[Gem_Of_Hatred]` | PROVED |
+| GP6 | a Default base of 5 block chance in `ClassStats.csv` | "1 failed, 59 passed": `test_the_gems_with_nothing_to_increase_are_the_four_the_ruling_names` | PROVED |
+
+### Registered before the window
+
+At the slice's turn, after its workbook stage and its three compiles. The workbook stage adds its own test of the
+generated table and moves these counts; they are registered again then.
+
+| Step | Registered |
+| :-- | :-- |
+| `Cataclysm.GemStats.` alone | 3 performed, 3 succeeded |
+| The whole suite | the newest measured total at the turn plus the slice's tests, every one succeeding; skipped halves and saves as that base's, the saves predicted |
+| Python, beside the suite | every test passing, the JUnit file agreeing; ruff clean |
+
+Three C++ guard proofs, one per behaviour only a C++ test guards, with `test_prefix="Cataclysm.GemStats."`. The source
+and the factor of 100 are guarded from Python (GP1, GP2), so they have none:
+
+| Proof | The break | Broken half | Restored |
+| :-- | :-- | :-- | :-- |
+| K1 | in `SheetValueAt`, `case ECataclysmRarity::Superb:	return Row.Superb;` to `return Row.Quality;` | 3 performed, 2 succeeded, 1 failed: `AGemsSheetValueAtEachRarityIsItsColumn` | 3 of 3 |
+| K2 | in `BucketNamed`, `OutBucket = ECataclysmStatBucket::Increased;` to `OutBucket = ECataclysmStatBucket::Flat;` | 3 performed, 2 succeeded, 1 failed: `AnAilmentGemIsAFlatChanceAndAnyOtherGemAnIncrease` (1,000 + 85, not 1,850) | 3 of 3 |
+| K3 | in `AddModifier`, `SheetValue <= 0.0f` to `SheetValue < 0.0f` | 3 performed, 2 succeeded, 1 failed: `AGemThatNamesNoStatOrKindOrValueAddsNothing` (a modifier of nought added, and three warnings where four are expected) | 3 of 3 |
+
+---
+
 ## 2026-11-21 — A creature's first AI think is staggered by a count kept for its own world, so a test gives the same result alone and in the suite (#2827)
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (`GCataclysmEnemyControllerPossessionsByWorld`

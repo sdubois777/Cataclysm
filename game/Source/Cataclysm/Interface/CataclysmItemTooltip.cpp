@@ -6,6 +6,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Items/CataclysmDropRoll.h"
+// A gem stack's tooltip, issue #46 slice G2.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 
@@ -514,6 +516,13 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 		return Lines;
 	}
 
+	// -- a gem stack --------------------------------------------------------
+	// Its name, its rarity and type, its effect at that rarity, the socket it fits and how many. Issue #46, slice G2.
+	if (!TooltipSlotHoldsGear(Slot) && !Slot.Gem.IsNone())
+	{
+		return UCataclysmGems::TooltipLinesFor(Slot.Gem, Slot.GemRarity, Slot.Quantity);
+	}
+
 	// -- a crafting material ------------------------------------------------
 	if (!TooltipSlotHoldsGear(Slot))
 	{
@@ -612,10 +621,12 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 		Lines.Add(FString::Printf(TEXT("Kills: %d"), Item.Kills));
 	}
 
-	if (Item.Sockets > 0)
+	if (Item.Sockets.Num() > 0)
 	{
-		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets,
-								  Item.Sockets == 1 ? TEXT("") : TEXT("s")));
+		Lines.Add(FString::Printf(TEXT("%d socket%s"), Item.Sockets.Num(),
+								  Item.Sockets.Num() == 1 ? TEXT("") : TEXT("s")));
+		// AND EACH SOCKET: its type and the gem in it. Issue #46, slice G3.
+		Lines.Append(UCataclysmGems::SocketLinesFor(Item));
 	}
 
 	if (Item.Residue > 0.0f)

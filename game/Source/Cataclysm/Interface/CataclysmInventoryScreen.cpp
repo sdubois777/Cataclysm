@@ -5,6 +5,8 @@
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
+// A gem stack's name, issue #46 slice G2.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Engine/DataTable.h"
 
@@ -148,6 +150,12 @@ FString UCataclysmInventoryScreen::LabelFor(
 		return Row ? Row->BaseName : FString();
 	}
 
+	// A GEM STACK SHOWS ITS GEM'S NAME, as a material stack shows the material's. Issue #46, slice G2.
+	if (!Slot.Gem.IsNone() && !UCataclysmInventoryComponent::SlotIsEmpty(Slot))
+	{
+		return UCataclysmGems::NameOf(Slot.Gem);
+	}
+
 	if (!UCataclysmInventoryComponent::SlotIsEmpty(Slot))
 	{
 		return UCataclysmDropRoll::MaterialNameOf(CraftingMaterialTable,
@@ -160,7 +168,8 @@ FString UCataclysmInventoryScreen::LabelFor(
 FString UCataclysmInventoryScreen::QuantityTextFor(
 	const FCataclysmCarriedSlot& Slot)
 {
-	if (HoldsGear(Slot) || Slot.Material.IsNone() || Slot.Quantity <= 1)
+	// A STACK OF A MATERIAL OR OF GEMS, gems since issue #46.
+	if (HoldsGear(Slot) || (Slot.Material.IsNone() && Slot.Gem.IsNone()) || Slot.Quantity <= 1)
 	{
 		return FString();
 	}
@@ -184,6 +193,12 @@ FLinearColor UCataclysmInventoryScreen::ColourFor(
 												RarityOfCarried(Slot.Item));
 	}
 
+	// A GEM IN ITS RARITY'S COLOUR, as gear is: "Gems have the same rarity tiers as gear". Issue #46, slice G2.
+	if (!Slot.Gem.IsNone())
+	{
+		return UCataclysmDropSpawner::ColourFor(GearRarityTable, Slot.GemRarity);
+	}
+
 	return UCataclysmDropRoll::MaterialColourFor(
 		MaterialTierTable,
 		UCataclysmDropRoll::MaterialTierOf(CraftingMaterialTable,
@@ -202,6 +217,12 @@ int32 UCataclysmInventoryScreen::BorderThicknessFor(
 	{
 		return UCataclysmDropPickup::NameBorderThicknessFor(
 			RarityOfCarried(Slot.Item));
+	}
+
+	// AND ITS RARITY'S BORDER, as gear's. Issue #46, slice G2.
+	if (!Slot.Gem.IsNone())
+	{
+		return UCataclysmDropPickup::NameBorderThicknessFor(Slot.GemRarity);
 	}
 
 	return UCataclysmDropPickup::NameBorderThicknessForMaterialTier(

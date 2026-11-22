@@ -95,6 +95,7 @@ TABLES = [
     ("DT_CityUpgrades", "CityUpgrades.csv", "CataclysmCityUpgradeRow"),
     ("DT_ClassStats", "ClassStats.csv", "CataclysmClassStatRow"),
     ("DT_CraftingMaterials", "CraftingMaterials.csv", "CataclysmCraftingMaterialRow"),
+    ("DT_ForgeOperations", "ForgeOperations.csv", "CataclysmForgeOperationRow"),
     ("DT_DungeonModifiers", "DungeonModifiers.csv", "CataclysmDungeonModifierRow"),
     ("DT_ElementVisuals", "ElementVisuals.csv", "CataclysmElementVisualRow"),
     ("DT_EmpireTreeEdges", "EmpireTreeEdges.csv", "CataclysmEmpireTreeEdgeRow"),

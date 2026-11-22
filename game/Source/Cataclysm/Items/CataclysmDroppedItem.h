@@ -123,6 +123,24 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
 	int32 Gold = 0;
 
+	/**
+	 * Which gem lies here, as a row key in `game/Data/Gems.csv`, or None when the drop is not gems. Issue #46, slice G5.
+	 *
+	 * A FOURTH KIND ON THE SAME ACTOR, for the reason materials and gold share it: lying on a floor, a name, a colour,
+	 * a border and a position are the same for a gem. A gem goes to the bag as a stack, one stack per gem and rarity
+	 * (`UCataclysmInventoryComponent::AddGems`, slice G2), so the drop holds what a carried gem slot holds.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	FName Gem;
+
+	/** The rarity of the gems lying here. Read only when `Gem` names one; `Rarity` is set to it, for the border. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	ECataclysmRarity GemRarity = ECataclysmRarity::Everyday;
+
+	/** How many of that gem lie here: 1 from a kill, a whole stack when the player dropped one. Zero when not gems. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	int32 GemQuantity = 0;
+
 	/** Whether this drop is crafting materials rather than a piece of gear. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	bool IsMaterial() const
@@ -137,14 +155,24 @@ public:
 		return Gold > 0;
 	}
 
+	/** Whether this drop is gems. Issue #46, slice G5. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	bool IsGem() const
+	{
+		return !Gem.IsNone() && GemQuantity > 0;
+	}
+
 	/**
-	 * Whether this drop is an interchangeable quantity -- a crafting material or gold -- and so collected without a
-	 * click and named at any distance. Issue #2742, ruled 2026-11-18 (G3): the owner's 2026-08-23 reason for
+	 * Whether this drop is an interchangeable quantity -- a crafting material, gold or gems -- and so collected without
+	 * a click and named at any distance. Issue #2742, ruled 2026-11-18 (G3): the owner's 2026-08-23 reason for
 	 * materials, "a material is an interchangeable quantity and collecting it is not a decision", holds for gold.
+	 *
+	 * AND FOR GEMS, a judgement of issue #46's slice G5: gems stack for that same reason, ruled 2026-11-21 ("a gem of
+	 * a rarity is a quantity of an interchangeable thing"), so they are collected as a material is.
 	 */
 	bool IsAQuantity() const
 	{
-		return IsMaterial() || IsGold();
+		return IsMaterial() || IsGold() || IsGem();
 	}
 
 	/**
@@ -276,6 +304,9 @@ public:
 	 *                          crafting material
 	 * @param Material          the material's row key, or None for gear
 	 * @param MaterialQuantity  how many, or 0 for gear
+	 * @param Gem               the gem's row key, or None when not gems (issue #46, slice G5)
+	 * @param GemRarity         the gems' rarity, read only with a gem
+	 * @param GemQuantity       how many gems, or 0 when not gems
 	 *
 	 * @return the actor, or null when the world was missing or the spawn was
 	 *         refused. A caller that is taking the item from somewhere else
@@ -285,7 +316,10 @@ public:
 												const FCataclysmItem& Item,
 												FName Material,
 												int32 MaterialQuantity,
-												int32 Gold = 0);
+												int32 Gold = 0,
+												FName Gem = NAME_None,
+												ECataclysmRarity GemRarity = ECataclysmRarity::Everyday,
+												int32 GemQuantity = 0);
 
 	/** The colour an item of this rarity has its name drawn in, or white when
 	 *  the table is missing it. */
@@ -413,6 +447,42 @@ public:
 	 * the lone item, which `ScatterOffset` puts on the corpse.
 	 */
 	static FVector GoldScatterOffset(int32 Index, int32 Count);
+
+	/**
+	 * Roll the gems a kill drops and put them on the floor, one gem to a drop. Issue #46, slice G5.
+	 *
+	 * HOW MANY, from the creature's rung and the loot quantity (`UCataclysmDropRoll::ExpectedGemDrops`, the Enemy
+	 * Drops sheet's Gem Drops column, which `sim/analyse_gem_drops.py` measured); WHICH RARITY, by the gear's own roll
+	 * at the tier being played with the creature's magic find added to the player's, so the tier gates a gem as it
+	 * gates gear ("Gems ... have the same rarity tiers as gear"); WHICH GEM, evenly among the Gems sheet's rows
+	 * (`UCataclysmGems::RollGem`). The design's plan of 2026-11-21, section 3d, as ruled.
+	 *
+	 * FROM A STREAM OF ITS OWN, seeded from the kill's through `CataclysmSeedMix::Mix` with `GemStreamSalt`, and
+	 * called after everything else a kill drops: it draws nothing from the kill's stream, so every item, material,
+	 * pile and extra drop a kill rolls is what it rolled before gems existed.
+	 *
+	 * CALLED BY A CREATURE'S OWN DEATH AND BY NOTHING ELSE, as gold is: a dungeon rule's reward of drops is not a
+	 * kill and gives no gems (a judgement, the same line gold draws).
+	 *
+	 * ON A RING OF ITS OWN, `GemScatterOffset`, so a gem does not land on the spot an item or a pile of the kill takes.
+	 *
+	 * @param bMarked  a creature a dungeon rule raised mid-floor dropped it, as `SpawnDropsFor`'s: Trick or Treat
+	 *                 rolls nothing for such a drop, a gem included
+	 *
+	 * @return how many gem drops were placed
+	 */
+	static int32 SpawnGemsFor(UWorld* World, int32 EnemyRarityStep, float MagicFind, float LootQuantity,
+							  const FVector& At, const FRandomStream& KillStream, bool bMarked = false);
+
+	/** The salt that seeds a kill's gem stream from its own: "GEM". Issue #46, slice G5. */
+	static constexpr int32 GemStreamSalt = 0x47454D;
+
+	/**
+	 * Where one of a kill's gems lands, relative to the corpse: a ring two steps wider than `ScatterOffset` gives the
+	 * same count, turned an eighth of a step, so a lone gem lands 75 cm off the corpse, clear of the lone item on it
+	 * and the lone pile 50 cm off it. Issue #46, slice G5.
+	 */
+	static FVector GemScatterOffset(int32 Index, int32 Count);
 
 	/**
 	 * The magic find and loot quantity the player in this world is carrying.

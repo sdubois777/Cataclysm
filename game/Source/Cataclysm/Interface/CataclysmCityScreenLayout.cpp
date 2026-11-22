@@ -379,6 +379,27 @@ TArray<FCataclysmCityUpgradeOffer> UCataclysmCityScreenLayout::OffersFor(
 		Offer.Refusal = UCataclysmCityUpgradePurchase::RefusalTextIn(
 			WorldContext, Result, Offer.Price, GoldHeld);
 
+		// AND A RUSH, WITH RAPID FUNDING HELD (issue #2832): asked of the run as the purchase asks it, at the rush's
+		// price and with the credit the tree gives on that price (slice 6e, D2), so the button and `Buy` cannot
+		// disagree.
+		Offer.bRushOffered = UCataclysmCityUpgradePurchase::CanRushIn(WorldContext);
+		if (Offer.bRushOffered)
+		{
+			Offer.RushPrice = UCataclysmCityUpgradePurchase::RushPriceIn(WorldContext, Run, RowName, CityId);
+			Offer.RushDays = UCataclysmCityUpgradePurchase::BuildDaysIn(WorldContext, Run, RowName, CityId,
+																		/*bRush=*/true);
+			const int64 RushCredit = GoldHeld < Offer.RushPrice
+				? UCataclysmCityUpgradePurchase::CreditIn(WorldContext, Offer.RushPrice)
+				: 0;
+			const ECataclysmCityUpgradeResult Rush =
+				Run->WouldBuyCityUpgrade(CityId, Upgrade, Offer.RushPrice, GoldHeld + RushCredit);
+			Offer.bCanRush = Rush == ECataclysmCityUpgradeResult::Bought;
+			Offer.bRushShortOfGold = Rush == ECataclysmCityUpgradeResult::NotEnoughGold;
+			Offer.RushOwedIfBought = Offer.bCanRush && Offer.RushPrice > GoldHeld ? Offer.RushPrice - GoldHeld : 0;
+			Offer.RushRefusal =
+				UCataclysmCityUpgradePurchase::RefusalTextIn(WorldContext, Rush, Offer.RushPrice, GoldHeld);
+		}
+
 		Offers.Add(Offer);
 	}
 
@@ -451,6 +472,27 @@ FString UCataclysmCityScreenLayout::ButtonTextFor(
 			: FString::Printf(TEXT("%s  --  %s, %s"), *Text, *Price, *Days);
 	}
 	return Days.IsEmpty() ? Text : FString::Printf(TEXT("%s  --  %s"), *Text, *Days);
+}
+
+FString UCataclysmCityScreenLayout::RushButtonTextFor(
+	const FCataclysmCityUpgradeOffer& Offer)
+{
+	if (Offer.bRushShortOfGold)
+	{
+		return FString::Printf(TEXT("Rush  --  %s"), *Offer.RushRefusal);
+	}
+	// ON CREDIT, as the offer's own button says it (slice 6e, D6): "Rush  --  15,000 gold on credit, 1,000 owed, 4 days
+	// to build".
+	if (Offer.RushOwedIfBought > 0)
+	{
+		return FString::Printf(TEXT("Rush  --  %s on credit, %s owed, %s"),
+							   *UCataclysmCityUpgradePurchase::PriceText(Offer.RushPrice),
+							   *ACataclysmDroppedItem::GoldAmountText(Offer.RushOwedIfBought),
+							   *UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RushDays));
+	}
+	return FString::Printf(TEXT("Rush  --  %s, %s"),
+						   *UCataclysmCityUpgradePurchase::PriceText(Offer.RushPrice),
+						   *UCataclysmCityUpgradePurchase::BuildDaysText(Offer.RushDays));
 }
 
 FString UCataclysmCityScreenLayout::NotBuiltLineFor(

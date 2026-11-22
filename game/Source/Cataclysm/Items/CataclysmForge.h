@@ -35,8 +35,12 @@ struct FCataclysmForgeUpgrade
 	float ResidueBefore = 0.0f;
 	float ResidueAfter = 0.0f;
 
-	/** The days of the run it costs: one, and the residue's time penalty read before the upgrade adds its own. */
+	/** The days of the run it costs: the level it reaches, and the residue's time penalty read before it adds its own. */
 	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
 };
 
 /**
@@ -58,6 +62,68 @@ struct FCataclysmForgeCombine
 	/** How many of the lower stone it consumes, and how many are held. */
 	int32 StonesNeeded = 0;
 	int32 StonesHeld = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
+/**
+ * What combining two gems of one kind and rarity into one of the next rarity would take, or why it cannot. Issue #46,
+ * slice G6.
+ */
+struct FCataclysmForgeGemCombine
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** The gem, the rarity of the two combined, and the rarity of the one they make. */
+	FName Gem;
+	ECataclysmRarity From = ECataclysmRarity::Everyday;
+	ECataclysmRarity Into = ECataclysmRarity::Everyday;
+
+	/** How many of the lower gem it consumes, and how many are held. */
+	int32 GemsNeeded = 0;
+	int32 GemsHeld = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
+/**
+ * What putting a gem into a socket, or taking one out, would take, or why it cannot. Issue #46, slice G4.
+ */
+struct FCataclysmForgeSocketing
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** False to socket a gem, true to take one out. */
+	bool bUnsocket = false;
+
+	/** Which socket, from 0, and its type. */
+	int32 Socket = INDEX_NONE;
+	ECataclysmSocketType SocketType = ECataclysmSocketType::Any;
+
+	/** The gem put in or taken out, and its rarity. */
+	FName Gem;
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before the craft, and after it adds its own. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: one, and the residue's time penalty read before the craft adds its own. */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. Issue #2830. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
 };
 
 /**
@@ -98,8 +164,9 @@ public:
 	/** The Cataclysmic Residue one level adds to the item. Mirrors `UPGRADE_LEVEL_RESIDUE_PER_LEVEL`. */
 	static constexpr float ResiduePerLevel = 25.0f;
 
-	/** The days one level costs before the residue's time penalty. */
-	static constexpr int32 BaseDaysPerLevel = 1;
+	// THE DAYS AN UPGRADE COSTS BEFORE THE RESIDUE'S TIME PENALTY ARE THE LEVEL IT REACHES: the owner's ruling of
+	// 2026-11-21, word for word, "+0 to +10 takes 55 days per item (1+2+...+10)", reading the Crafting sheet's "1 day per
+	// tier. (Max of 10)". Until that ruling it was one day a level (`BaseDaysPerLevel`, deleted). Issue #2830.
 
 	/** The residue that adds one day to a craft: the design's `CR / 100`, rounded down. */
 	static constexpr float ResiduePerPenaltyDay = 100.0f;
@@ -110,22 +177,100 @@ public:
 	/** The row of the stone that raises an item to this level, "Material_Upgrade_Stone_3"; None outside 1 to 10. */
 	static FName StoneFor(int32 Level);
 
-	/** The days a craft on an item carrying this residue costs: one, and `Residue / 100` rounded down. */
-	static int32 DaysFor(float Residue);
+	//~ Gold. Issue #2830 (#46, slice G7).
 
 	/**
-	 * What raising this item one gear level takes, against the stones of the next level held.
-	 *
-	 * REFUSED for no item, for an item at +10, and for fewer than two stones of the next level.
+	 * The gold one base day of a craft costs at difficulty tier 1. A JUDGEMENT of the coordinating session, 2026-11-21,
+	 * under the owner's delegation of numbers: about a third of one walk day's gold by the only income estimate there is
+	 * (#2742, 7,000 to 14,000 gold for a 12-floor tier 1 walk; nothing measured). An operation's base gold is this times
+	 * its base days, the Crafting sheet's own ordering of what is heavy.
 	 */
-	static FCataclysmForgeUpgrade UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld);
+	static constexpr int32 GoldPerCraftDay = 250;
+
+	/** The residue that adds one more base price: the Crafting sheet's gold multiplier, `(CR / 50) + 1`. */
+	static constexpr float ResiduePerGoldStep = 50.0f;
+
+	/**
+	 * What combining costs at the lowest rung, at tier 1: an Everyday gem or a +1 stone. Each rung above doubles it, for
+	 * stones and gems alike, and no day passes. The owner's answer of 2026-11-21, "Gold only (Recommended)".
+	 */
+	static constexpr int32 CombineGoldAtTheLowestRung = 50;
+
+	/** An operation's base gold: `GoldPerCraftDay` for each base day, and one day's price when it has none or fewer. */
+	static int32 BaseGoldFor(int32 BaseDays);
+
+	/**
+	 * What a craft of `BaseGold` costs on an item carrying `Residue`, at a difficulty tier: the base, times the tier's
+	 * gold scale (`UCataclysmDropRoll::GoldScaleFor`, which every gold price reads), times `(Residue / 50) + 1`.
+	 * THE MULTIPLIER IS NOT ROUNDED; only the gold figure is, to whole gold, at least 1. Ruled 2026-11-21.
+	 */
+	static int64 GoldFor(int32 BaseGold, float Residue, int32 DifficultyTier);
+
+	/**
+	 * What one combine costs at a rung, at a difficulty tier: `CombineGoldAtTheLowestRung` doubled for each rung above
+	 * the lowest, times the tier's gold scale. No residue enters: no item is involved. THE ONE FUNCTION BOTH COMBINES
+	 * READ, the stone combine at rung `Level - 1` and the gem combine at the rarity's rung.
+	 */
+	static int64 CombineGoldFor(int32 Rung, int32 DifficultyTier);
+
+	/** A refusal for too little gold: "Raising it to +3 takes 2,055 gold; 900 gold held." */
+	static FString GoldRefusal(const FString& What, int64 Gold, int64 Held);
+
+	//~ The Crafting sheet's operations table, `DT_ForgeOperations`, from `game/Data/ForgeOperations.csv` (#2830).
+
+	static const TCHAR* OperationsTableAssetPath;
+	static const TCHAR* UpgradeOperationRow;
+	static const TCHAR* SocketGemOperationRow;
+	static const TCHAR* UnsocketGemOperationRow;
+	static const TCHAR* CombineOperationRow;
+
+	/** The operations table, or null with the reason logged. */
+	static const UDataTable* LoadOperationsTable();
+
+	/**
+	 * An operation's Base Gold from the table, the figure the owner sets in the sheet. `IfMissing` -- the constant the
+	 * sheet's figure mirrors -- only when the table or the row is missing, with the reason logged, so a missing asset
+	 * prices the forge as the sheet did when it was last checked rather than at nothing.
+	 */
+	static int32 BaseGoldOf(const TCHAR* Operation, int32 IfMissing);
+
+	/**
+	 * What raising this item one gear level takes, against the stones of the next level and the gold held, at the
+	 * difficulty tier of the run.
+	 *
+	 * REFUSED for no item, for an item at +10, for fewer than two stones of the next level, and for too little gold.
+	 */
+	static FCataclysmForgeUpgrade UpgradeOf(const FCataclysmItem& Item, int32 StonesOfTheNextLevelHeld,
+											int32 DifficultyTier, int64 GoldHeld);
 
 	/**
 	 * What combining two stones of this level into one of the next takes, against the stones of this level held.
 	 *
-	 * REFUSED for a level outside 1 to 9 -- +10 is the highest stone -- and for fewer than two held.
+	 * REFUSED for a level outside 1 to 9 -- +10 is the highest stone -- for fewer than two held, and for too little
+	 * gold (`CombineGoldFor` at rung `Level - 1`).
 	 */
-	static FCataclysmForgeCombine CombineOf(int32 Level, int32 StonesOfThisLevelHeld);
+	static FCataclysmForgeCombine CombineOf(int32 Level, int32 StonesOfThisLevelHeld, int32 DifficultyTier,
+											int64 GoldHeld);
+
+	//~ Combining gems. Issue #46, slice G6.
+
+	/**
+	 * How many gems of a kind and rarity one combine consumes: the stone combine's own figure, read from it rather than
+	 * copied, since the owner ruled on 2026-11-21 that combining gems "should probably work the same way as gear
+	 * leveling".
+	 */
+	static constexpr int32 GemsPerCombine = StonesPerCombine;
+
+	/**
+	 * What combining two gems of `Gem` at `Rarity` into one of the next rarity takes, against those held.
+	 *
+	 * REFUSED for no gem, for a Cataclysmic gem -- the highest rarity -- for fewer than two held, and for too little
+	 * gold. NO CAP BY THE DIFFICULTY TIER, as the stone combine has none: the owner's ruling of 2026-11-21, "I don't think
+	 * I want to cap what players can level their stuff to". NO DAY AND NO RESIDUE: it changes no item. ITS GOLD IS THE
+	 * STONE COMBINE'S, `CombineGoldFor` at the rarity's rung (#2830).
+	 */
+	static FCataclysmForgeGemCombine GemCombineOf(FName Gem, ECataclysmRarity Rarity, int32 HeldOfThis,
+												  int32 DifficultyTier, int64 GoldHeld);
 
 	/**
 	 * What the first press of Upgrade says, before the second does it: "Press again to upgrade to +3: two +3 stones,
@@ -148,4 +293,58 @@ public:
 	 * piece by it, so the three cannot call one piece by different names.
 	 */
 	static FString NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable);
+
+	//~ Socketing and unsocketing a gem. Issue #46, slice G4, ruled by the coordinating session on 2026-11-21.
+	//
+	// THE DESIGN'S OPERATIONS ROWS, section VII: "Socket Gem | Jeweler's Setting Agent | 5 | 1" and "Unsocket Gem |
+	// Dismantling Dust | 3 | 1", the residue added and the base days, with the same time penalty as every craft. No free
+	// removal: a gem comes out only with Dismantling Dust ("Safe unsocketing"), and comes back to the bag. A gem fits a
+	// socket of its own type, or a socket for any gem.
+
+	/** The row of the material Socket Gem consumes, one each: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* SettingAgentRow;
+
+	/** The row of the material Unsocket Gem consumes, one each. */
+	static const TCHAR* DismantlingDustRow;
+
+	/** The residue Socket Gem adds. Mirrors `SOCKET_GEM_RESIDUE` in `sim/cataclysm_sim/residue.py`. */
+	static constexpr float SocketGemResidue = 5.0f;
+
+	/** The residue Unsocket Gem adds. */
+	static constexpr float UnsocketGemResidue = 3.0f;
+
+	/** The days each costs before the residue's time penalty. */
+	static constexpr int32 SocketGemBaseDays = 1;
+	static constexpr int32 UnsocketGemBaseDays = 1;
+
+	/** The days a craft of `BaseDays` costs on an item carrying this residue: `BaseDays` and `Residue / 100`, down. */
+	static int32 DaysFor(float Residue, int32 BaseDays);
+
+	/**
+	 * What putting `Gem` at `Rarity`, a gem of `GemType`, into the item's socket `Socket` takes, against the gems of that
+	 * kind and the Setting Agents held.
+	 *
+	 * REFUSED for no item, no such socket, a socket that holds a gem, no such gem carried, a gem of another type than a
+	 * typed socket's, no Setting Agent, and too little gold.
+	 */
+	static FCataclysmForgeSocketing SocketGemOf(const FCataclysmItem& Item, int32 Socket, FName Gem,
+												ECataclysmRarity Rarity, const FString& GemType, int32 GemsHeld,
+												int32 AgentsHeld, int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What taking the gem out of the item's socket `Socket` takes, against the Dismantling Dust held and whether the bag
+	 * has room for the gem (a stack of it, a free cell, or the cell the last Dust frees).
+	 *
+	 * REFUSED for no item, no such socket, an empty socket, no Dust, no room, and too little gold.
+	 */
+	static FCataclysmForgeSocketing UnsocketGemOf(const FCataclysmItem& Item, int32 Socket, int32 DustHeld,
+												  bool bRoomForTheGem, int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What the first press of a socketing says, before the second does it: "Press again to socket Of The Viper (Superb)
+	 * into the Attack socket: one Jeweler's Setting Agent, residue 87 to 92, 1 day of the run." or "Press again to
+	 * unsocket Of The Viper (Superb): one Dismantling Dust, residue 87 to 90, 1 day of the run; the gem goes back to the
+	 * bag."
+	 */
+	static FString SocketingQuestion(const FCataclysmForgeSocketing& Plan);
 };

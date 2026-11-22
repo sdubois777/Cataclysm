@@ -235,8 +235,11 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
                       and any(spend in squeeze(strip_comments(path.read_bytes().decode("utf-8")))
                               for spend in ("SpendGoldFor(", "SpendGoldOnCreditFor("))
                       and not path.name.endswith("CataclysmGameInstance.cpp"))
-    assert charging == ["Cataclysm/Player/CataclysmCityUpgradePurchase.cpp"], (
-        f"gold is spent in {charging}; UCataclysmCityUpgradePurchase::Buy is the one place that charges")
+    # THE FORGE CHARGES TOO since issue #2830 (its crafts cost the Crafting sheet's gold, the owner's ruling of
+    # 2026-11-21); `tools/tests/test_the_forge_charges_the_sheets_costs.py` holds its order -- pay first, give back on
+    # every later failure. Anything else that spends gold is new and needs the same.
+    assert charging == ["Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "Cataclysm/Player/CataclysmForgeCraft.cpp"], (
+        f"gold is spent in {charging}; a city upgrade's purchase and the forge's crafts are the places that charge")
     buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
                "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
     # THE CREDIT COUNTS AS GOLD HELD for both of the run's questions since issue #2741 slice 6e (D2).

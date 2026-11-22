@@ -46,11 +46,24 @@ public:
 	 * tier it is bought at, which is 1 (issue #1265). Issue #2825, ruled 2026-11-21.
 	 *
 	 * THE ONE FIGURE, as `PriceIn` is the one price: the city screen's offers, `Buy` and the console command all ask
-	 * this, so the days shown are the days counted. The empire upgrade tree's three build nodes (Scaffolding, Rapid
-	 * Renovation, Rapid Funding) are not here yet; they come in the next slice of issue #2825, as the price nodes came
-	 * to `PriceIn`.
+	 * this, so the days shown are the days counted.
+	 *
+	 * AND WITH THE EMPIRE UPGRADE TREE'S THREE BUILD NODES, issue #2832: `UCataclysmEmpireTree::UpgradeBuildDaysFor`,
+	 * from the tree the character playing holds -- Scaffolding's doubling, Rapid Renovation's days off and, when
+	 * `bRush` and Rapid Funding is held, Rapid Funding's 2, to at least a day. The days are fixed at purchase, so a node
+	 * bought later does not shorten a build under way.
 	 */
-	static int32 BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
+	static int32 BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId,
+							 bool bRush = false);
+
+	/** Whether the character playing holds Rapid Funding, so each offer has a Rush. Issue #2832. */
+	static bool CanRushIn(const UObject* WorldContext);
+
+	/**
+	 * What a rush of the upgrade costs: `PriceIn`, after every discount, times Rapid Funding's 150%, rounded to whole
+	 * gold. Issue #2832, ruled 2026-11-21. `PriceIn` when Rapid Funding is not held, which `Buy` refuses to rush.
+	 */
+	static int64 RushPriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run, FName RowName, int32 CityId);
 
 	/**
 	 * The gold the character playing holds (`UCataclysmGameInstance::GoldHeldBy`), or 0 when it has no balance. What
@@ -84,11 +97,15 @@ public:
 	 * whole balance and owes the rest (`UCataclysmGameInstance::SpendGoldOnCreditFor`), repaid by day when Sovereign
 	 * Loans is held (D4).
 	 *
+	 * A RUSH, `bRush`, since issue #2832: `RushPriceIn` is taken and `BuildDaysIn` with the rush is told the run.
+	 * Refused with `RushNotHeld`, and nothing taken, when Rapid Funding is not held.
+	 * A rush may be bought on credit as a plain purchase may, the credit a share of the rush's price.
+	 *
 	 * @return the run's answer; `NotEnoughGold` when the balance and the credit hold less than the price, or there is no
 	 *         balance.
 	 */
 	static ECataclysmCityUpgradeResult Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run, int32 CityId,
-										   FName RowName);
+										   FName RowName, bool bRush = false);
 
 	/** "10,000 gold". */
 	static FString PriceText(int64 Price);

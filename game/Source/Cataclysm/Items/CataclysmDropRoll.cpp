@@ -5,6 +5,9 @@
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Engine/DataTable.h"
+// A socket's type, issue #46 slice G3, from a stream seeded through the seed mix.
+#include "Empire/CataclysmSeedMix.h"
+#include "Items/CataclysmGems.h"
 
 namespace
 {
@@ -501,6 +504,12 @@ float UCataclysmDropRoll::ExpectedMaterialDrops(const UDataTable* EnemyDropTable
 {
 	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
 	return Row ? ScaledByLootQuantity(Row->MaterialDrops, LootQuantity) : 0.0f;
+}
+
+float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity)
+{
+	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
+	return Row ? ScaledByLootQuantity(Row->GemDrops, LootQuantity) : 0.0f;
 }
 
 float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
@@ -2202,7 +2211,19 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 	OutItem.Base = Base;
 	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);
 	OutItem.EnchantmentCount = UCataclysmItemValues::EnchantmentsFor(Rarity);
-	OutItem.Sockets = RollSockets(SocketTable, *BaseRow, Stream);
+	// HOW MANY SOCKETS FROM THE DROP'S STREAM, AS BEFORE, AND THEIR TYPES FROM A STREAM OF THEIR OWN. Issue #46, slice
+	// G3: each socket's type is rolled evenly among the three. The second stream is seeded from the first without
+	// drawing from it, so no roll after this one moves: a seeded drop rolls the same residue, affixes and enchantments
+	// it rolled before sockets had types. THROUGH `CataclysmSeedMix::Mix` and not by XOR, which makes a stream related
+	// to the one it came from (issue #2749's placement seeding slice).
+	const int32 SocketCount = RollSockets(SocketTable, *BaseRow, Stream);
+	FRandomStream TypeStream(CataclysmSeedMix::Mix(Stream.GetCurrentSeed(), /*Salt=*/0x50C4E7, /*Index=*/0));
+	OutItem.Sockets.Reset(SocketCount);
+	for (int32 Index = 0; Index < SocketCount; ++Index)
+	{
+		FCataclysmSocket& Socket = OutItem.Sockets.AddDefaulted_GetRef();
+		Socket.Type = UCataclysmGems::RollSocketType(TypeStream);
+	}
 	OutItem.Residue = RollResidue(GearRarityTable, Rarity, Stream);
 
 	int32 Prefixes = 0;

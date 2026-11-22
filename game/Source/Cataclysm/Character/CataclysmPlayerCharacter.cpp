@@ -76,6 +76,8 @@
 #include "Player/CataclysmGameMode.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
+// Cataclysm.GrantGem, issue #46 slice G4.
+#include "Items/CataclysmGems.h"
 #include "Items/CataclysmWearing.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -3315,6 +3317,57 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmDrop(
 				UCataclysmDropSpawner::DropSpotInFrontOf(*Character))));
 		}));
 
+// ---------------------------------------------------------------------------
+// Cataclysm.GrantGem. Issue #46, slice G4: gems can be socketed at the forge
+// before anything drops one (slice G5), and this is how a player has one to
+// socket until then. A developer's tool, as Cataclysm.GrantExperience is.
+// ---------------------------------------------------------------------------
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
+	TEXT("Cataclysm.GrantGem"),
+	TEXT("Put gems in the bag: Cataclysm.GrantGem <row, e.g. Gem_Of_The_Viper> [rarity 1 to 8, Everyday to "
+		 "Cataclysmic, default 1] [how many, default 1]. A developer's tool: nothing drops a gem until gem drops "
+		 "are built."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
+		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+		{
+			using namespace CataclysmEquipConsole;
+
+			ACataclysmPlayerCharacter* Character = Player(World, Ar);
+			if (!Character || !Character->GetInventory())
+			{
+				return;
+			}
+			if (Args.Num() < 1)
+			{
+				Ar.Log(TEXT("Cataclysm.GrantGem <row> [rarity 1 to 8] [how many]. The rows are game/Data/Gems.csv's "
+							"Name column, Gem_Of_The_Abyss to Gem_Of_The_Scholar."));
+				return;
+			}
+			const FName Gem(*Args[0]);
+			if (!UCataclysmGems::RowOf(UCataclysmGems::LoadGeneratedTable(), Gem))
+			{
+				Ar.Logf(TEXT("%s is no gem in the gem table."), *Args[0]);
+				return;
+			}
+			const int32 RarityStep = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 1;
+			const int32 Count = Args.Num() > 2 ? FCString::Atoi(*Args[2]) : 1;
+			if (RarityStep < 1 || RarityStep > 8 || Count < 1)
+			{
+				Ar.Log(TEXT("The rarity is 1 to 8 and the count at least 1."));
+				return;
+			}
+			const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(RarityStep - 1);
+			const int32 Cell = Character->GetInventory()->AddGems(Gem, Rarity, Count);
+			if (Cell == INDEX_NONE)
+			{
+				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				return;
+			}
+			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
+					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
+		}));
+
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 	TEXT("Cataclysm.ShowEquipment"),
 	TEXT("List what is worn, and what is carried, with the slot numbers "
@@ -4997,10 +5050,12 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 	TEXT("Cataclysm.BuyCityUpgrade"),
 	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
-		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names and "
+		 "<cityId> <rowName> [rush]. Cataclysm.CityUpgrades lists the row names and "
 		 "prices. It costs the character playing that much gold now, and the "
 		 "upgrade does nothing until its days to build have passed: 6 days at "
-		 "upgrade tier 1. A city builds one upgrade at a time."),
+		 "upgrade tier 1. A city builds one upgrade at a time. With rush, and "
+		 "Rapid Funding held in the empire upgrade tree, it costs 150% for 2 "
+		 "days fewer."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -5023,6 +5078,8 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 			const int32 CityId = FCString::Atoi(*Args[0]);
 			const FName RowName(*Args[1]);
+			// A RUSH, issue #2832: Rapid Funding's, refused by `Buy` when it is not held.
+			const bool bRush = Args.Num() > 2 && Args[2].Equals(TEXT("rush"), ESearchCase::IgnoreCase);
 
 			const FCataclysmCityUpgrade Upgrade =
 				UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
@@ -5042,10 +5099,11 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 			// BOUGHT AS THE CITY SCREEN BUYS, with the character's gold, since
 			// issue #2742's second slice.
-			const int64 Price = UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId);
+			const int64 Price = bRush ? UCataclysmCityUpgradePurchase::RushPriceIn(World, Run, RowName, CityId)
+									  : UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, CityId);
 			const int64 Held = UCataclysmCityUpgradePurchase::GoldHeldIn(World);
 			const ECataclysmCityUpgradeResult Result =
-				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);
+				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName, bRush);
 
 			// AND THE DAY IT WILL BE FINISHED, since issue #2825.
 			const int32 ReadyDay = Run->BuildReadyDay(CityId);

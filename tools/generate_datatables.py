@@ -92,6 +92,64 @@ def number(value, field: str, row: int) -> float:
         raise DataError(f"row {row}: {field} is {text!r}, not a number") from error
 
 
+#: The first cell of the Crafting sheet's operations table, its header row. Issue #2830.
+FORGE_OPERATIONS_HEADER = "Action"
+
+#: The operations table's header, as `forge_operations` reads it: its five columns, the Base Gold column and the label of
+#: the one cell every Base Gold follows. Issue #2830.
+FORGE_OPERATIONS_COLUMNS = ["Action", "Core Materials Used", "CR Impact", "Base Days", "Consequence / Note",
+                            "Base Gold", "Gold Per Craft Day"]
+
+
+def forge_operations(book) -> list[dict]:
+    """The Crafting sheet's operations table: what each forge operation consumes, its residue, days and gold.
+
+    Issue #2830, slice G7 of the gems work. The owner, 2026-11-21: "I have costs set in the crafting excel sheet.
+    Something like that should be implemented". The table begins at its own header row, whose first cell is
+    "Action", and ends at the first empty row. Its Base Gold column follows ONE CELL, Gold Per Craft Day, beside the
+    header: an operation of N base days costs that times N, at least once, and one whose days are "per tier" costs it
+    once for each. Checked here, so a changed cell that leaves the column behind fails the generation rather than
+    shipping two prices. The Combine row's Base Gold is its own figure, the lowest rung's price.
+
+    WRITTEN AS NUMBERS IN THE SHEET, not formulas: this generator reads cached values only, and a formula written by
+    a script has none until Excel recalculates it.
+    """
+    rows = list(book["Crafting"].iter_rows(values_only=True))
+    start = next((at for at, raw in enumerate(rows) if raw and clean(raw[0]) == FORGE_OPERATIONS_HEADER), None)
+    if start is None:
+        raise DataError(f"Crafting has no operations table: no row begins {FORGE_OPERATIONS_HEADER!r}")
+    header = [clean(cell) for cell in rows[start][:len(FORGE_OPERATIONS_COLUMNS)]]
+    if header != FORGE_OPERATIONS_COLUMNS:
+        raise DataError(f"Crafting row {start + 1}: the operations table's header reads {header}, not "
+                        f"{FORGE_OPERATIONS_COLUMNS}")
+    per_day = number(rows[start][len(FORGE_OPERATIONS_COLUMNS)], "Gold Per Craft Day", start + 1)
+
+    out = []
+    combines = 0
+    for index, raw in enumerate(rows[start + 1:], start=start + 2):
+        if not raw or not clean(raw[0]):
+            break
+        action = clean(raw[0])
+        days = raw[3]
+        gold = number(raw[5], "Base Gold", index)
+        if action.startswith("Combine"):
+            combines += 1
+        else:
+            expected = per_day * max(1, int(days)) if isinstance(days, (int, float)) else per_day
+            if gold != expected:
+                raise DataError(
+                    f"Crafting row {index}: {action} has a Base Gold of {gold:g}, and the Gold Per Craft Day cell "
+                    f"({per_day:g}) with its Base Days ({clean(days)!r}) makes it {expected:g}. Change the cell and "
+                    f"the column together.")
+        out.append({"Name": row_name("Operation", action), "Action": action, "Materials": clean(raw[1]),
+                    "CRImpact": clean(raw[2]), "BaseDays": clean(days), "BaseGold": gold,
+                    "Note": clean(raw[4])})
+    if combines != 1:
+        raise DataError(f"Crafting's operations table has {combines} Combine rows; the owner ruled one price for "
+                        "stones and gems alike")
+    return unique(out, "Crafting operations")
+
+
 def row_name(*parts: str) -> str:
     """A stable, readable DataTable row name.
 
@@ -1502,6 +1560,15 @@ def gems(book) -> list[dict]:
                 f"keys differ only by a numeric suffix nothing explains.")
         seen_names[name] = index
 
+        # THE STAT AND ITS BUCKET, columns K and L, ruled 2026-11-21 (issue #46, slice G1): the stat a gem's modifier
+        # goes to, and whether its sheet value is a flat amount or an increase.
+        stat = clean(raw[10]) if len(raw) > 10 else ""
+        value_kind = clean(raw[11]) if len(raw) > 11 else ""
+        if not stat or value_kind not in ("flat", "increased"):
+            raise DataError(
+                f"Gems row {index}: {name!r} has Stat {stat!r} and Value Kind {value_kind!r}. Every gem names the stat "
+                f"its modifier goes to, and a Value Kind of 'flat' or 'increased' (issue #46).")
+
         entry = {"Name": row_name("Gem", name), "GemName": name,
                  "Effect": effect,
                  "GemType": clean(raw[9]) if len(raw) > 9 else "",
@@ -1530,6 +1597,8 @@ def gems(book) -> list[dict]:
                     f"text {effect!r} and the rest are the sheet's numeric "
                     f"columns.")
 
+        entry["Stat"] = stat
+        entry["ValueKind"] = value_kind
         out.append(entry)
     return unique(out, "Gems")
 
@@ -1823,6 +1892,11 @@ def crafting_materials(book) -> list[dict]:
         if index == 1 or not raw or not clean(raw[0]):
             continue
         name = clean(raw[0])
+        # THE MATERIALS END AT THE OPERATIONS TABLE'S OWN HEADER. Its rows are things the forge does, read by
+        # `forge_operations`; until #2830 they were read here as materials, the header row included, with an
+        # operation's materials, CR impact and base days under TierAndSource, PrimaryUse and Functions.
+        if name == FORGE_OPERATIONS_HEADER:
+            break
         source = clean(raw[1])
         found = MATERIAL_TIER_AND_SOURCE.match(source or "")
         stone = UPGRADE_STONE_NAME.match(name or "")
@@ -2607,6 +2681,14 @@ def enemy_drops(book) -> list[dict]:
                     f"{what} items. Loot quantity multiplies this, so no amount "
                     "of it would make a rate of zero produce anything.")
 
+        # GEMS PER KILL. Issue #46, slice G5: the gear column times the share `sim/analyse_gem_drops.py` measured,
+        # `loot.ENEMY_GEM_DROPS`. Zero is refused for the reason above: loot quantity multiplies it.
+        gem_drops = number(_cell(raw, headers, "Gem Drops"), "Gem Drops", index)
+        if gem_drops <= 0.0:
+            raise DataError(
+                f"Enemy Drops row {index}: a {rarity} drops {gem_drops:g} gems. Every kill is ruled to have a chance of "
+                "a gem, so a rate of zero is a typing mistake.")
+
         # GOLD PILES PER KILL. Issue #2742, ruled 2026-11-18 (G1): the gear
         # ladder, "as gear and materials drop today". Zero is refused for the
         # reason above, and a rate is never multiplied by loot quantity (G2).
@@ -2632,6 +2714,7 @@ def enemy_drops(book) -> list[dict]:
             "MaterialDrops": materials,
             "MagicFind": magic_find,
             "GoldDrops": gold,
+            "GemDrops": gem_drops,
         })
 
     if not out:
@@ -2654,6 +2737,7 @@ def enemy_drops(book) -> list[dict]:
         for column, what in (("GearDrops", "gear"),
                              ("MaterialDrops", "crafting materials"),
                              ("GoldDrops", "gold"),
+                             ("GemDrops", "gems"),
                              ("MagicFind", "magic find")):
             if above[column] < below[column]:
                 raise DataError(
@@ -3745,8 +3829,6 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "build time": ("a build time for city upgrades, which is zero by the "
-                   "owner's ruling of 2026-11-18 (issue #1264)"),
     "fee figure": "a figure for its gold fee, which the design does not state",
     "cap figure": "a figure for its cap, which the design does not state",
     "crafting": "crafting, which the game does not have yet (issue #47)",
@@ -3840,6 +3922,10 @@ EMPIRE_TREE_BUILT = {
     "The Golden Touch": 7,
     # The centre: a tier milestone's option, the gold a kill drops.
     "The Midas Touch": 6,
+    # The three build nodes, issue #2832: a city upgrade's build days, which issue
+    # #2825 gave it, and Rapid Funding's Rush. Ruled by the coordinating session on
+    # 2026-11-21 (the nine-node entry of docs/DECISIONS.md).
+    "Scaffolding": 6, "Rapid Renovation": 6, "Rapid Funding": 6,
     # Artisan: crafting materials already drop.
     "Scavenger": 5,
 }
@@ -3855,7 +3941,6 @@ EMPIRE_TREE_REFUSED = {
     # The four tier-milestone capstones' options.
     "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
     # Architect.
-    "Scaffolding": "build time", "Rapid Renovation": "build time",
     "Scorched Earth": "destroy upgrade",
     "Civic Pride": "population growth",
     # Explorer.
@@ -3870,7 +3955,6 @@ EMPIRE_TREE_REFUSED = {
     "Black Market": "market", "Master Trader": "market",
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
-    "Rapid Funding": "build time",
     "Bribery": "fee figure", "Economic Bailout": "fee figure",
     "Reinvestment": "cap figure",
     # Artisan.
@@ -4126,6 +4210,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "GoldEveryTwentyDaysPerTreasurerCity", "GoldAndMaterialsPerTreasurerCity",
     # Slice 8: Imperial Prowess.
     "ExtraEarlierMilestoneOption",
+    # The three build nodes, issue #2832.
+    "UpgradePriceLess", "UpgradeBuildDaysMultiplied", "UpgradeBuildDaysFewer",
+    "UpgradeRushPriceShare", "UpgradeRushDaysFewer",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4337,6 +4424,16 @@ EMPIRE_TREE_EFFECTS = {
     # centre milestones' options; "an additional keystone" is one (J2). The rules
     # that take it are in C++ (`UCataclysmEmpireTree::ChooseExtraOption`).
     "Imperial Prowess": [("ExtraEarlierMilestoneOption", 1.0)],
+    # The three build nodes, issue #2832, ruled by the coordinating session on
+    # 2026-11-21. SCAFFOLDING halves a city upgrade's price, a multiplier of its
+    # own after the reductions are held at their cap ("less" multiplies, as in the
+    # damage pipeline), and doubles its days; RAPID RENOVATION takes a day off a
+    # point; RAPID FUNDING offers a Rush at 150% of the price after every discount
+    # for 2 days fewer. The doubling comes first, then the days off, then the
+    # floor of 1 day: `UCataclysmEmpireTree::UpgradeBuildDaysFor`.
+    "Scaffolding": [("UpgradePriceLess", 0.50), ("UpgradeBuildDaysMultiplied", 2.0)],
+    "Rapid Renovation": [("UpgradeBuildDaysFewer", 1.0)],
+    "Rapid Funding": [("UpgradeRushPriceShare", 1.50), ("UpgradeRushDaysFewer", 2.0)],
 }
 
 
@@ -14325,6 +14422,7 @@ TABLES = {
     "Gems": gems,
     "CityUpgrades": city_upgrades,
     "CraftingMaterials": crafting_materials,
+    "ForgeOperations": forge_operations,
     "ItemBases": item_bases,
     "Affixes": affixes,
     "GearRarity": gear_rarity,

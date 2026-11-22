@@ -34,8 +34,14 @@
     {
       "asset": "DT_CraftingMaterials",
       "csv": "CraftingMaterials.csv",
-      "rows": 46,
-      "csv_sha256": "32cb72e348d5a3f3fa91177a1e3383bf59f00d2b90528a928697aa3b540e5c8a"
+      "rows": 27,
+      "csv_sha256": "86bcbb339d10db63dbbdbf769b99bfde494fe0a2efce177c4d6b2371f995c46e"
+    },
+    {
+      "asset": "DT_ForgeOperations",
+      "csv": "ForgeOperations.csv",
+      "rows": 19,
+      "csv_sha256": "04645a642af4552dab643a1add5595a40062743752c4f5134fead800ad9ffde4"
     },
     {
       "asset": "DT_DungeonModifiers",
@@ -58,14 +64,14 @@
     {
       "asset": "DT_EmpireTreeEffects",
       "csv": "EmpireTreeEffects.csv",
-      "rows": 111,
-      "csv_sha256": "58ab3d2f283cef1566f031fb1876d8610b2142ae81dfb5ec100f46958787a034"
+      "rows": 116,
+      "csv_sha256": "159e11bb1bc4c0ff6283b8d1e91f9e710f3678fa7779842a1b353b45d1c910ae"
     },
     {
       "asset": "DT_EmpireTreeNodes",
       "csv": "EmpireTreeNodes.csv",
       "rows": 159,
-      "csv_sha256": "1dc1d729f3a7c26e4e484c84a059206160ff1091e3089ced6ab1a5a24b33ffa8"
+      "csv_sha256": "56551cdb683b4399feea73b8eb54dd1d3581c8c0e2bec8dc4641d77df9bae52a"
     },
     {
       "asset": "DT_EnchantmentEffects",
@@ -95,7 +101,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "670438d80d6c20b3504d23edfb0dd884ba03456b4b8f059305382ae1e649ef2a"
+      "csv_sha256": "cc89fbf74fd904d29dee2727d590e50009ab094ab863c17367d5e8ba7f2212eb"
     },
     {
       "asset": "DT_EnemyModifiers",
@@ -119,7 +125,7 @@
       "asset": "DT_Gems",
       "csv": "Gems.csv",
       "rows": 28,
-      "csv_sha256": "3f2c341ce2a8e38cf66a1463cbe22ed3976df9b5f87b8c472116f134b2712b62"
+      "csv_sha256": "3c539c347042d3bb3b5f0db0832e1dd3685388bc607afa9927f455bca9fe9902"
     },
     {
       "asset": "DT_Gold",

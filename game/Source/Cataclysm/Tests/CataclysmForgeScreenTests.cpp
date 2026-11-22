@@ -77,7 +77,10 @@ namespace CataclysmForgeScreenTest
 			FCataclysmCharacterPartition Partition;
 			Partition.Lethality = ECataclysmLethality::Standard;
 			Partition.Population = ECataclysmPopulation::Offline;
+			// SOLO SELF-FOUND, WITH GOLD OF ITS OWN, so every craft can pay (#2830) and no account record is written.
+			Partition.bSoloSelfFound = true;
 			State->SetIdentity(TEXT("Smith"), Partition);
+			State->SetOwnGold(1000000);
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
@@ -220,7 +223,7 @@ bool FCataclysmForgeScreenTwoPressesTest::RunTest(const FString&)
 	Screen->ClickUpgradeForTests();
 	const FString Done = Screen->MessageText();
 	TestEqual(TEXT("two presses in a row raise the gloves"), Bag->ItemAt(Gloves)->GearLevel, 1);
-	TestEqual(TEXT("and say what it cost"), Done, FString(TEXT("Raised to +1. It cost 1 day of the run.")));
+	TestEqual(TEXT("and say what it cost"), Done, FString(TEXT("Raised to +1. It cost 500 gold and 1 day of the run.")));
 	TestEqual(TEXT("a day passed"), Scene.Run->Day(), DayBefore + 1);
 	TestTrue(TEXT("the detail now reads +1"), Screen->DetailText().Contains(TEXT(", +1, residue 75.")));
 

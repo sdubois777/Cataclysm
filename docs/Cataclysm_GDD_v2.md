@@ -3866,13 +3866,31 @@ Gear can be upgraded from +1 to +10 using upgrade stones obtained as dungeon dro
 
 **Where it is done.** At the Cataclysmic Forge, in the capital, between walks (section VII). Until the capital's Smith exists, the forge's screen opens from the empire map's "Forge" button, under the empire upgrade tree's; it opens during a walk too, to be read, and refuses every craft there. Ruled 2026-11-19.
 
-**Combining two stones into one of the next level costs no day and adds no residue**, because it changes no item; the operations table has no row for it. That is a judgement of 2026-11-19 against "All capital services cost time", recorded in `docs/DECISIONS.md`. **No gold is charged for an upgrade yet**: the design gives a gold multiplier, `(CR / 50) + 1`, and no base price for any craft, so the base is a later choice across all eighteen operations.
+**Each level's upgrade takes days equal to the level it reaches**, plus the time penalty below: raising a piece from +0 to +10 takes 55 base days. The owner's ruling of 2026-11-21, word for word: "+0 to +10 takes 55 days per item (1+2+...+10)", reading the workbook's "1 day per tier. (Max of 10)". Until then one day a level was built (issue #2830).
+
+**Every craft costs gold**, issue #2830, after the owner's answer of 2026-11-21: "I have costs set in the crafting excel sheet. Something like that should be implemented". The sheet gives the multiplier, `(CR / 50) + 1`, and no base price, so the base was set by the coordinating session under the owner's delegation of numbers: **250 gold for each base day of the craft at difficulty tier 1**, one day's price for a craft of none, times the tier's gold scale (1, 3, 6, 10, 14, 19, 24, 30), times the multiplier, rounded to whole gold. The 250 is a judgement: about a third of one walk day's gold by the only estimate there is (7,000 to 14,000 gold for a 12-floor tier 1 walk, #2742; nothing measured). A craft without its gold is refused and nothing moves.
+
+**Combining two stones into one of the next level costs gold and no day, and adds no residue**, because it changes no item; the operations table has no row for it. The no-day judgement is of 2026-11-19 against "All capital services cost time", recorded in `docs/DECISIONS.md`; the gold is the owner's answer of 2026-11-21, "Gold only (Recommended)": **50 gold at the lowest rung (a +1 stone), doubled for each rung above it**, times the tier's gold scale, for stones and gems alike. Climbing one gem from Everyday to Ascendant takes 63 combines and 9,600 gold at tier 1.
 
   
 
 ## **Sockets and Gems**
 
 Gear has sockets that accept gems. Gems provide stat bonuses and have the same rarity tiers as gear. Gems are upgraded by combining lower-tier gems. The total socket count across all equipment is 45.
+
+  
+
+**How gems work, ruled by the coordinating session on 2026-11-21 (issue #46)** from this document, each gem's own text and the owner's precedent for attributes. `docs/DECISIONS.md` has the entry and the research.
+
+  - **What a gem gives.** A gem that applies an ailment is a flat chance on that ailment, as the ailment affixes are. Every other gem is an increase, as its text says ("Increases ..."). The Gems sheet states a fraction and the stat pipeline percentage points, so Of The Viper's Everyday 0.2 is +20 poison chance and Of Life's Cataclysmic 0.85 is 85% increased maximum health. Each gem's stat and bucket are the Gems sheet's Stat and ValueKind columns.
+  - **Four gems raise a stat no class has a base for**: Of The Bulwark (block chance), Of The Wraith (evasion), Of Urgency (cooldown reduction) and Of The Goblin (magic find). They stay as they are, and a gem's tooltip says plainly when it does nothing for the character, as the owner ruled for attributes ("Keep it, just explain it").
+  - **One effect per gem**, whatever it is socketed into, and **a two-handed weapon does not double its gems**: its 6 sockets already equal a pair's 3 + 3.
+  - **Sockets are typed.** Each socket is Attack, Defense or Utility, rolled evenly on a drop, and a gem fits a socket of its own type. Change Socket Type lets the player choose the new type. "Sockets on this equipment fit any gem type" lifts the restriction for that piece.
+  - **Socketing and unsocketing are crafts at the Forge**, between walks, at the costs in section VII: Socket Gem uses a Jeweler's Setting Agent, and Unsocket Gem uses Dismantling Dust and returns the gem. There is no free removal.
+  - **Gems stack**, one stack per gem and rarity, in the inventory and the stash, for the reason crafting materials stack.
+  - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine, for the gold a stone combine of the same rung costs: 50 gold for two Everyday gems, doubled for each rarity above (issue #2830). There is no limit by difficulty tier (the owner, 2026-11-21: "I don't think I want to cap what players can level their stuff to").
+  - **A gem in a potion slot gives its stat for the 3 seconds the potion's heal runs.** That is a judgement, to be looked at again before it is built.
+  - **How often gems drop is not yet set**; it is measured in the simulation when gem drops are built.
 
   
 
@@ -3968,9 +3986,9 @@ the craft's own CR is added.
   
 
 Both formulas reproduce every row of that table. The 99 row is `(99/50)+1 = 2.98`,
-shown rounded; every other row is exact. **Whether the multiplier is rounded for
-display only or rounded in the calculation is not settled**, and it matters below
-100 where the two readings differ — at CR 10 the multiplier is either 1.2 or 2.
+shown rounded; every other row is exact. **The multiplier is not rounded in the
+calculation**, ruled by the coordinating session on 2026-11-21 (issue #2830): at CR 10
+it is 1.2, and only the final gold figure is rounded, to whole gold.
 
   
 
@@ -4002,6 +4020,7 @@ applied.
 | Accelerate Craft | Tainted Shard | 0 | −1 | Removes one day of the accumulated time penalty per shard |
 | Reduce CR Gain | Chaos Stabilizer | −50% of the next craft's CR | 0 | Applies to one craft |
 | CR Cleanse | Purified Essence | −50% of accumulated CR | 1 per 500 CR removed | The resource-heavy safety valve |
+| Combine | None: the two combined | 0 | 0 | Two stones of a level, or two gems of a kind and rarity, make one of the next; gold only, 50 at the lowest rung and doubled for each rung above (issue #2830) |
 
   
 
@@ -4658,7 +4677,7 @@ definition. Measured before 2026-10-13, when a Quest dungeon's timer cost its ci
 
 Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affect defenses, population, dungeon timers, and other city-specific stats. Strategic allocation of upgrade resources is one of the primary meta-decisions of each run.
 
-**A city upgrade costs gold, and takes days to build.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys. The same day they kept upgrades instant, and on 2026-11-21 they reversed that: "They need build times. Probably based on their tier." An upgrade at upgrade tier 1 takes 6 days, at tier 2 12 days and at tier 3 24 days, whatever the difficulty tier. The gold is paid and the slot taken at purchase, and the upgrade does nothing until it is finished. A Siege on the city or the city's fall pauses the build, a build cannot be cancelled, and a city builds one upgrade at a time. The city screen lists the upgrade being built with its days left and the day it will be ready, each offer shows its days to build beside its price, and the other offers say that a city builds one at a time. Issue #2825; `docs/DECISIONS.md` records each judgement. The empire tree's Scaffolding, Rapid Renovation and Rapid Funding, which act on these days, are not built yet. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
+**A city upgrade costs gold, and takes days to build.** The project owner ruled on 2026-11-18 that city upgrades are the first thing gold buys. The same day they kept upgrades instant, and on 2026-11-21 they reversed that: "They need build times. Probably based on their tier." An upgrade at upgrade tier 1 takes 6 days, at tier 2 12 days and at tier 3 24 days, whatever the difficulty tier. The gold is paid and the slot taken at purchase, and the upgrade does nothing until it is finished. A Siege on the city or the city's fall pauses the build, a build cannot be cancelled, and a city builds one upgrade at a time. The city screen lists the upgrade being built with its days left and the day it will be ready, each offer shows its days to build beside its price, and the other offers say that a city builds one at a time. Issue #2825; `docs/DECISIONS.md` records each judgement. The empire tree's Scaffolding, Rapid Renovation and Rapid Funding act on these days (issue #2832): Scaffolding halves the price, after the other price nodes, and doubles the days; Rapid Renovation takes a day off a point; and Rapid Funding gives each offer a Rush button, at 150% of the price after every discount, for 2 days fewer. The doubling comes first, then the days taken off, and no build is shorter than a day. The days are fixed at purchase, so a node taken later does not shorten a build under way. Every upgrade costs 10,000 gold at upgrade tier 1 on difficulty tier 1, and 20,000 and 40,000 at upgrade tiers 2 and 3, which nothing reaches yet. The price follows the run's difficulty tier by the same scale as a gold pile: 30,000 at tier 2, 60,000 at 3, 100,000 at 4, 140,000 at 5, 190,000 at 6, 240,000 at 7 and 300,000 at 8, so an upgrade costs the same number of walks at every tier.
 
 **It is paid from the balance gold is earned into**: the account's for the character's lethality mode, or a Solo Self-Found character's own. A character holding less than the price is refused and told how much more it needs, and nothing is taken. The city screen shows each upgrade's price on its button, greys one the character cannot afford, and shows the balance beside the slots.
 
@@ -4830,8 +4849,8 @@ character in a mode fixes a starting position for the ones that follow, not a
 life sentence. Without respec it would be a life sentence, which is why the two
 questions were answered together.
 
-**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** None of them is
-built yet, and `docs/DECISIONS.md` has each ruling in full.
+**Nine nodes whose text left a rule or a figure open were ruled on 2026-11-21.** Scaffolding, Rapid Renovation and
+Rapid Funding are built (issue #2832); the other six are not yet. `docs/DECISIONS.md` has each ruling in full.
 
 - **Imperial Prowess** (The Imperial Zenith) gives one more option from the earlier tier milestones, any the player did
   not pick there. The owner ruled it.

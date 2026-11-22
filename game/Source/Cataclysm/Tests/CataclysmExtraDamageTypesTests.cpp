@@ -112,7 +112,7 @@ namespace CataclysmExtraDamageTypesTest
 	FString Describe(const FCataclysmItem& Item, bool bWithDamageTypes = true)
 	{
 		FString Out = FString::Printf(TEXT("%s +%d sockets %d residue %.4f enchantments %d:"), *Item.Base.ToString(),
-									  Item.GearLevel, Item.Sockets, Item.Residue, Item.EnchantmentCount);
+									  Item.GearLevel, Item.Sockets.Num(), Item.Residue, Item.EnchantmentCount);
 		if (bWithDamageTypes)
 		{
 			for (const FName& Each : Item.DamageTypes)

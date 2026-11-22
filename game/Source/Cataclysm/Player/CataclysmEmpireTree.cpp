@@ -4,6 +4,7 @@
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Data/CataclysmDataRows.h"
 #include "DayClock/CataclysmDayClock.h"
+#include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/DataTable.h"
@@ -551,6 +552,23 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption:
 			Bonuses.ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);
 			break;
+
+		// THE THREE BUILD NODES, issue #2832.
+		case ECataclysmEmpireTreeEffect::UpgradePriceLess:
+			Bonuses.UpgradePriceLess += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeBuildDaysMultiplied:
+			Bonuses.UpgradeBuildDaysMultiplied += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeBuildDaysFewer:
+			Bonuses.UpgradeBuildDaysFewer += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeRushPriceShare:
+			Bonuses.UpgradeRushPriceShare += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::UpgradeRushDaysFewer:
+			Bonuses.UpgradeRushDaysFewer += Total;
+			break;
 		default:
 			break;
 		}
@@ -944,7 +962,33 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 	{
 		Reduced += Bonuses.SurgeDamagedCityUpgradePriceReduced;
 	}
-	return 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
+	const float AfterTheReductions = 1.0f - FMath::Clamp(Reduced, 0.0f, UpgradePriceReductionCap);
+
+	// SCAFFOLDING'S "50% LESS" (issue #2832): a multiplier of its own after the reductions are held at their cap, as
+	// "less" multiplies where "reduced" adds in the design's pipeline. Exactly 1 with no node.
+	return AfterTheReductions * (1.0f - FMath::Clamp(Bonuses.UpgradePriceLess, 0.0f, 1.0f));
+}
+
+int32 UCataclysmEmpireTree::UpgradeBuildDaysFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int32 BaseDays,
+												bool bRush)
+{
+	if (BaseDays <= 0)
+	{
+		return BaseDays;
+	}
+	// THE ORDER RULED ON 2026-11-21: Scaffolding's doubling first, then the days taken off, then the floor of a day.
+	const float Multiplier = Bonuses.UpgradeBuildDaysMultiplied > 0.0f ? Bonuses.UpgradeBuildDaysMultiplied : 1.0f;
+	float Days = static_cast<float>(BaseDays) * Multiplier - Bonuses.UpgradeBuildDaysFewer;
+	if (bRush && CanRushUpgrades(Bonuses))
+	{
+		Days -= Bonuses.UpgradeRushDaysFewer;
+	}
+	return FMath::Max(UCataclysmCityUpgradeRules::MinimumBuildDays, FMath::RoundToInt(Days));
+}
+
+bool UCataclysmEmpireTree::CanRushUpgrades(const FCataclysmEmpireTreePlayerBonuses& Bonuses)
+{
+	return Bonuses.UpgradeRushPriceShare > 0.0f;
 }
 
 int64 UCataclysmEmpireTree::UpgradeCreditFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, int64 Price)

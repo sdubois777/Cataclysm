@@ -110,7 +110,8 @@ def test_the_days_per_tier_are_the_ruled_ones_and_tier_one_is_derived_from_the_t
 def test_the_purchase_passes_the_days_and_the_run_puts_a_build_on_the_list() -> None:
     purchase = code(SOURCE / "Cataclysm" / "Player" / "CataclysmCityUpgradePurchase.cpp")
     buy = body(purchase, "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(", "the purchase")
-    assert "const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId);" in buy, (
+    # WITH THE RUSH since issue #2832: a rushed purchase asks for its own days, from the same function.
+    assert "const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId, bRush);" in buy, (
         "Buy does not ask BuildDaysIn for the days, so the days shown and the days counted could differ")
     # THE CREDIT COUNTS AS GOLD HELD as well, since issue #2741 slice 6e (D2).
     assert "Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)" in buy, (
@@ -173,7 +174,10 @@ def test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_bui
         "FCataclysmCity does not save what it is building")
     assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*int32\s+BuildDaysLeft\s*=\s*0\s*;",
                      code(EMPIRE / "CataclysmCityUpgrade.h")), "FCataclysmCityUpgrade does not save its days left"
+    # THE RUN RECORD'S STEP: the character record has a `Migrate_12_to_13` of its own since the gems window (issue #46),
+    # in its own namespace, which comes first in the file.
     records = code(SOURCE / "Cataclysm" / "Save" / "CataclysmSaveRecords.cpp")
+    records = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
     step = body(records, "bool Migrate_12_to_13(", "the run record")
     assert 'SetArrayField(TEXT("Building"), TArray<TSharedPtr<FJsonValue>>())' in step, (
         "Migrate_12_to_13 does not write an empty build list")

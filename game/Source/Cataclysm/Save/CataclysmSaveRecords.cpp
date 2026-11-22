@@ -77,6 +77,141 @@ namespace CataclysmSaveExtraOption
 	}
 }
 
+/**
+ * GEMS AND TYPED SOCKETS, WRITTEN OUT: issue #46, slices G2, G3 and G5. Used by the character record's `Migrate_12_to_13`
+ * and the run record's `Migrate_13_to_14`.
+ *
+ * AN ITEM'S `Sockets` WAS A COUNT AND IS A LIST (slice G3). A saved count of N becomes N empty sockets that fit any type,
+ * as the coordinating session ruled on 2026-11-21: "sockets migrated from today's count fit any type". Every item is
+ * found by walking the whole record for a `Sockets` key, because `FCataclysmItem` is the only saved struct with one and
+ * an item is held in several places (carried, stashed, worn, in the held build, on the ground). A count that is not a
+ * whole number of 0 or more is refused, and a key already holding a list is kept.
+ *
+ * A CARRIED OR STASHED SLOT gained `Gem` and `GemRarity` (slice G2), and a ground item `Gem`, `GemRarity` and
+ * `GemQuantity` (slice G5): "None", Everyday and 0, what the writer writes for a slot or drop holding no gem -- for the
+ * character record's `Migrate_3_to_4` reason. A key already holding the right kind of value is kept, and one holding
+ * anything else is refused, as `CataclysmSaveExtraOption` does.
+ *
+ * THE ACCOUNT RECORD DOES NOT MOVE, though its `Stash` is a list of the same slot: nothing fills that stash (the game
+ * has no stash yet, `UCataclysmAccountSave::Stash`), so no account file can hold a socket count or a slot to write.
+ */
+namespace CataclysmSaveGems
+{
+	bool WriteTheSocketLists(const TSharedPtr<FJsonValue>& Value, FString& OutError);
+
+	bool WriteTheSocketLists(const TSharedRef<FJsonObject>& Object, FString& OutError)
+	{
+		const TSharedPtr<FJsonValue> Sockets = Object->TryGetField(TEXT("Sockets"));
+		if (Sockets.IsValid() && Sockets->Type != EJson::Array)
+		{
+			double Count = -1.0;
+			if (!Sockets->TryGetNumber(Count) || Count < 0.0 || Count != FMath::FloorToDouble(Count))
+			{
+				OutError = TEXT("an item's Sockets holds something that is not a whole number of 0 or more");
+				return false;
+			}
+			TArray<TSharedPtr<FJsonValue>> List;
+			for (int32 Index = 0; Index < static_cast<int32>(Count); ++Index)
+			{
+				const TSharedRef<FJsonObject> Socket = MakeShared<FJsonObject>();
+				Socket->SetStringField(TEXT("Type"), TEXT("Any")); // A migration's: today's count fits any type.
+				Socket->SetStringField(TEXT("Gem"), TEXT("None"));
+				Socket->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				List.Add(MakeShared<FJsonValueObject>(Socket));
+			}
+			Object->SetArrayField(TEXT("Sockets"), List);
+		}
+		// `auto`: the map's key type is `FString` or `UE::FSharedString` by the engine's JSON storage setting.
+		for (const auto& Field : Object->Values)
+		{
+			if (!WriteTheSocketLists(Field.Value, OutError))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool WriteTheSocketLists(const TSharedPtr<FJsonValue>& Value, FString& OutError)
+	{
+		if (!Value.IsValid())
+		{
+			return true;
+		}
+		if (Value->Type == EJson::Object)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			return !Object.IsValid() || WriteTheSocketLists(Object.ToSharedRef(), OutError);
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				if (!WriteTheSocketLists(Entry, OutError))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	/** One field written out as "no gem": kept when it already holds the kind of value given, refused otherwise. */
+	bool WriteNoGemField(const TSharedRef<FJsonObject>& Holder, const TCHAR* Key, const TSharedRef<FJsonValue>& None,
+						 FString& OutError)
+	{
+		const TSharedPtr<FJsonValue> Held = Holder->TryGetField(Key);
+		if (!Held.IsValid())
+		{
+			Holder->SetField(Key, None); // A migration's: no gem, written out.
+			return true;
+		}
+		if (Held->Type != None->Type)
+		{
+			OutError = FString::Printf(TEXT("a slot's %s holds the wrong kind of value"), Key);
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Every object in the array `Holder[Key]` written out as holding no gem: `Gem` and `GemRarity`, and `GemQuantity`
+	 * too when `bWithQuantity`. A list the record does not hold is left to the struct's defaults, and one that is not an
+	 * array, or an entry that is not an object, is refused.
+	 */
+	bool WriteNoGemOnEach(const TSharedRef<FJsonObject>& Holder, const TCHAR* Key, bool bWithQuantity, FString& OutError)
+	{
+		if (!Holder->HasField(Key))
+		{
+			return true;
+		}
+		const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
+		if (!Holder->TryGetArrayField(Key, Entries) || Entries == nullptr)
+		{
+			OutError = FString::Printf(TEXT("%s holds something that is not a list"), Key);
+			return false;
+		}
+		for (const TSharedPtr<FJsonValue>& Entry : *Entries)
+		{
+			const TSharedPtr<FJsonObject>* Object = nullptr;
+			if (!Entry.IsValid() || !Entry->TryGetObject(Object) || Object == nullptr || !Object->IsValid())
+			{
+				OutError = FString::Printf(TEXT("%s holds an entry that is not an object"), Key);
+				return false;
+			}
+			const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+			if (!WriteNoGemField(Slot, TEXT("Gem"), MakeShared<FJsonValueString>(TEXT("None")), OutError)
+				|| !WriteNoGemField(Slot, TEXT("GemRarity"), MakeShared<FJsonValueString>(TEXT("Everyday")), OutError)
+				|| (bWithQuantity
+					&& !WriteNoGemField(Slot, TEXT("GemQuantity"), MakeShared<FJsonValueNumber>(0.0), OutError)))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
 namespace CataclysmCharacterSaveMigration
 {
 	/**
@@ -472,6 +607,19 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before gems held a socket count on each item and no gem in any slot. Issue #46, slices G2 and G3,
+	 * 2026-11-21: each count becomes that many empty sockets that fit any type, and every carried and stashed slot holds
+	 * no gem. `CataclysmSaveGems` says what is written and refused.
+	 */
+	bool Migrate_12_to_13(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveGems::WriteTheSocketLists(Record, OutError)
+			&& CataclysmSaveGems::WriteNoGemOnEach(Record, TEXT("CarriedSlots"), false, OutError)
+			&& CataclysmSaveGems::WriteNoGemOnEach(Record, TEXT("PrivateStash"), false, OutError);
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -490,6 +638,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
 		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
+		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 	};
 }
 
@@ -827,6 +976,27 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 13 to 14, issue #46, slices G3 and G5, 2026-11-21: a run written before gems held a socket count on each
+	 * item and no gem on its floor. Each count becomes that many empty sockets that fit any type, and every ground item
+	 * on `Floor` holds no gem. `CataclysmSaveGems` says what is written and refused. A run with no `Floor` is left as it
+	 * is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_13_to_14(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		if (!CataclysmSaveGems::WriteTheSocketLists(Record, OutError))
+		{
+			return false;
+		}
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid())
+		{
+			return CataclysmSaveGems::WriteNoGemOnEach(Floor->ToSharedRef(), TEXT("GroundItems"), true, OutError);
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -841,6 +1011,7 @@ namespace CataclysmRunSaveMigration
 		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
+		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 	};
 }
 

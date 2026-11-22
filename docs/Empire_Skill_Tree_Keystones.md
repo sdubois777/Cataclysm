@@ -78,7 +78,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Urban Planning (Max 10 pts):** +5% Base Outpost Population per point.
 - **NOTABLE: Emergency Shelters:** +3 Days to Resolution Timers for Outposts.
 - **NOTABLE: Scaffolding:** City upgrades cost 50% less gold, but take 2x longer to build.
-  - Ruled 2026-11-21 (`docs/DECISIONS.md`): city upgrades take 6, 12 or 24 days by their tier; this halves the price and doubles the days. Not built yet (#2825).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): city upgrades take 6, 12 or 24 days by their tier; this halves the price and doubles the days. Built (#2832).
 
 ### Tier 2: Expansion & Logistics
 
@@ -87,7 +87,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Imperial Census (Max 10 pts):** +10% Base Population for Bulwarks per point.
 - **NOTABLE: Public Works:** -20% Gold cost for all City Upgrades.
 - **NOTABLE: Rapid Renovation:** -1 Day to city upgrade construction time (Min 1 day).
-  - Ruled 2026-11-21 (`docs/DECISIONS.md`): acts on the build times above, after Scaffolding's doubling. Not built yet (#2825).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): acts on the build times above, after Scaffolding's doubling. Built (#2832).
 
 ### Tier 3: The Adaptive Bulwark
 
@@ -127,7 +127,7 @@ The final ability in each branch is a powerful capstone passive. These are not m
 - **Global Credit (Max 5 pts):** Allows you to start a city upgrade or crafting project even if you are short by up to 5% of the gold cost (Debt). The debt is repaid from your next gold drops.
 - **NOTABLE: Commercial Hubs:** When running a dungeon in a city with a **Treasury Upgrade**, Gold drops are increased by 20%.
 - **NOTABLE: Rapid Funding:** You can pay 150% of an upgrade's cost to reduce its construction time by 2 days (Min 1 day).
-  - Ruled 2026-11-21 (`docs/DECISIONS.md`): a Rush on each offer, at 150% of the price after every discount. Not built yet (#2825).
+  - Ruled 2026-11-21 (`docs/DECISIONS.md`): a Rush on each offer, at 150% of the price after every discount. Built (#2832).
 
 ### Tier 3: The High Chancellor's Office
 

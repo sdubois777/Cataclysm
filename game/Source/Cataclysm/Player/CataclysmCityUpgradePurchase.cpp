@@ -30,15 +30,35 @@ int64 UCataclysmCityUpgradePurchase::PriceIn(const UObject* WorldContext, const 
 }
 
 int32 UCataclysmCityUpgradePurchase::BuildDaysIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run,
-												 FName RowName, int32 CityId)
+												 FName RowName, int32 CityId, bool bRush)
 {
 	// THE TIER A PURCHASE IS AT: every bought upgrade is at tier 1 (issue #1265; `UCataclysmEmpireRun::BuyCityUpgrade`
-	// sets it). The context, the row and the city are what the tree's build nodes will read in the next slice.
-	(void)WorldContext;
+	// sets it). The run, the row and the city do not move the days today; they are passed so a later rule can read
+	// them without every caller changing.
 	(void)Run;
 	(void)RowName;
 	(void)CityId;
-	return UCataclysmCityUpgradeRules::BuildDaysFor(1);
+	// AND THE TREE'S THREE BUILD NODES (issue #2832), from the tree the character playing holds.
+	return UCataclysmEmpireTree::UpgradeBuildDaysFor(UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext),
+													 UCataclysmCityUpgradeRules::BuildDaysFor(1), bRush);
+}
+
+bool UCataclysmCityUpgradePurchase::CanRushIn(const UObject* WorldContext)
+{
+	return UCataclysmEmpireTree::CanRushUpgrades(UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext));
+}
+
+int64 UCataclysmCityUpgradePurchase::RushPriceIn(const UObject* WorldContext, const UCataclysmEmpireRun* Run,
+												 FName RowName, int32 CityId)
+{
+	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
+	const FCataclysmEmpireTreePlayerBonuses Bonuses = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	if (!UCataclysmEmpireTree::CanRushUpgrades(Bonuses))
+	{
+		return Price;
+	}
+	// 150% OF THE PRICE AFTER EVERY DISCOUNT, the ruling of 2026-11-21, rounded to whole gold as `PriceIn` is.
+	return static_cast<int64>(FMath::RoundToDouble(static_cast<double>(Price) * Bonuses.UpgradeRushPriceShare));
 }
 
 int64 UCataclysmCityUpgradePurchase::GoldHeldIn(const UObject* WorldContext)
@@ -68,17 +88,22 @@ int64 UCataclysmCityUpgradePurchase::GoldOwedIn(const UObject* WorldContext)
 }
 
 ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* WorldContext, UCataclysmEmpireRun* Run,
-																int32 CityId, FName RowName)
+																int32 CityId, FName RowName, bool bRush)
 {
 	if (Run == nullptr)
 	{
 		return ECataclysmCityUpgradeResult::RunHasNotBegun;
 	}
+	// A RUSH ONLY WITH RAPID FUNDING HELD (issue #2832), refused before anything is asked or taken.
+	if (bRush && !CanRushIn(WorldContext))
+	{
+		return ECataclysmCityUpgradeResult::RushNotHeld;
+	}
 
 	const FCataclysmCityUpgrade Upgrade = UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
-	const int64 Price = PriceIn(WorldContext, Run, RowName, CityId);
+	const int64 Price = bRush ? RushPriceIn(WorldContext, Run, RowName, CityId) : PriceIn(WorldContext, Run, RowName, CityId);
 	const int64 Held = GoldHeldIn(WorldContext);
-	const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId);
+	const int32 Days = BuildDaysIn(WorldContext, Run, RowName, CityId, bRush);
 	const bool bOnCredit = Price > Held;
 	const int64 Credit = bOnCredit ? CreditIn(WorldContext, Price) : 0;
 
@@ -151,7 +176,7 @@ ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(const UObject* Wo
 	}
 	const FString Effect = UCataclysmCityUpgradeMapping::EffectTextFor(RowName);
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::UpgradeLine(Effect.IsEmpty() ? RowName.ToString() : Effect, Run,
-																   CityId, Price, After, Run->BuildReadyDay(CityId)));
+																   CityId, Price, After, Run->BuildReadyDay(CityId), bRush));
 	return ECataclysmCityUpgradeResult::Bought;
 }
 

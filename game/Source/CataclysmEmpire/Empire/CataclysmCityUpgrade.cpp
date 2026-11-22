@@ -225,6 +225,10 @@ FString UCataclysmCityUpgradeRules::ResultText(
 		// screen says the price and how much more is needed
 		// (`UCataclysmCityUpgradePurchase::RefusalText`).
 		return TEXT("Not enough gold.");
+	case ECataclysmCityUpgradeResult::RushNotHeld:
+		// ISSUE #2832: said by `UCataclysmCityUpgradePurchase::Buy`, which reads the tree; the run never answers it.
+		return TEXT("Rapid Funding, in the empire upgrade tree, is what lets an "
+					"upgrade be rushed.");
 	default:
 		return TEXT("Refused.");
 	}

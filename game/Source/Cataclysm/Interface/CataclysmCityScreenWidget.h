@@ -256,6 +256,10 @@ private:
 	UFUNCTION()
 	void HandleOfferClicked(FName Value);
 
+	/** An offer's Rush button was pressed: buy it with Rapid Funding's Rush. Issue #2832. */
+	UFUNCTION()
+	void HandleRushClicked(FName Value);
+
 	/** One Walk button into `DetailBox`, under the line of the dungeon it
 	 *  walks. Issue #2715. */
 	void AddWalkButton(int32 DungeonId);
@@ -281,6 +285,10 @@ private:
 	TArray<TObjectPtr<UCataclysmChoiceButton>> OfferButtons;
 
 	TArray<FName> OfferRowNames;
+
+	/** One Rush button under each offer that has one, with Rapid Funding held. Issue #2832. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UCataclysmChoiceButton>> RushButtons;
 
 	/** One text block per detail row, headings included. */
 	UPROPERTY(Transient)

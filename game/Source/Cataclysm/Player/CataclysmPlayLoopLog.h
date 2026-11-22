@@ -127,9 +127,10 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * @param Held      the balance after the purchase, or below zero when there is none to name, and the line says so.
 	 * @param ReadyDay  the day the upgrade will be finished, since issue #2825: "; being built, ready on day 57". At
 	 *                  INDEX_NONE, an upgrade finished at once, the line says nothing more.
+	 * @param bRushed   bought with Rapid Funding's Rush, since issue #2832: "; rushed" before the ready day.
 	 */
 	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
-							   int64 Held, int32 ReadyDay = INDEX_NONE);
+							   int64 Held, int32 ReadyDay = INDEX_NONE, bool bRushed = false);
 
 	/**
 	 * A point bought in the empire upgrade tree: "bought a point in Structural Integrity (Architect): 3 of 10; 9.5
@@ -202,17 +203,36 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 
 	/**
 	 * An item raised a gear level at the forge: "upgraded Quality Torc of Warding from +2 to +3 with two +3 stones, 4
-	 * left; residue 87 to 112; it cost 1 day, day 20 to day 21". The owner's ruling of 2026-11-19, "build it next".
-	 * Said by `UCataclysmForgeCraft::Upgrade`, after the stones are taken, the item raised and the days passed.
+	 * left, and 2,055 gold; residue 87 to 112; it cost 3 days, day 20 to day 23". The owner's ruling of 2026-11-19,
+	 * "build it next"; the gold since #2830. Said by `UCataclysmForgeCraft::Upgrade`, after the stones and the gold are
+	 * taken, the item raised and the days passed.
 	 */
-	static FString ForgeUpgradeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel, int32 StonesLeft,
+	static FString ForgeUpgradeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel, int32 StonesLeft, int64 Gold,
 									int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
-	 * Two upgrade stones combined into one of the next level at the forge: "combined two +2 upgrade stones into one +3:
-	 * 17 +2 and 6 +3 held". Said by `UCataclysmForgeCraft::Combine`, after the stones have changed.
+	 * Two upgrade stones combined into one of the next level at the forge: "combined two +2 upgrade stones into one +3
+	 * for 100 gold: 17 +2 and 6 +3 held". Said by `UCataclysmForgeCraft::Combine`, after the stones have changed.
 	 */
-	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld);
+	static FString ForgeCombineLine(int32 FromLevel, int32 IntoLevel, int32 FromHeld, int32 IntoHeld, int64 Gold);
+
+	/**
+	 * Two gems of a kind and rarity combined into one of the next rarity at the forge: "combined two Of Life (Superb)
+	 * into one Of Life (Masterful) for 200 gold: 1 Superb and 1 Masterful held". Issue #46, slice G6, the gold #2830.
+	 * Said by `UCataclysmForgeCraft::CombineGems`, after the gems have changed.
+	 */
+	static FString ForgeGemCombineLine(const FString& GemName, const FString& FromRarity, const FString& IntoRarity,
+									   int32 FromHeld, int32 IntoHeld, int64 Gold);
+
+	/**
+	 * A gem socketed or unsocketed at the forge: "socketed Of The Viper (Superb) into the Attack socket of Quality Torc
+	 * of Warding; residue 87 to 92; it cost 1 day, day 20 to day 21", or "unsocketed Of The Viper (Superb) from Quality
+	 * Torc of Warding, back to the bag; residue 87 to 90; it cost 1 day, day 20 to day 21". Issue #46, slice G4. Said by
+	 * `UCataclysmForgeCraft::SocketGem` and `UnsocketGem`, after the craft and the days.
+	 */
+	static FString ForgeSocketLine(bool bUnsocket, const FString& GemName, const FString& Rarity,
+								   const FString& SocketType, const FString& ItemName, int64 Gold, int32 ResidueBefore,
+								   int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling

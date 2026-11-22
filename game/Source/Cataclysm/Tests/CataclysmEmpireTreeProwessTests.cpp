@@ -231,7 +231,7 @@ bool FCataclysmEmpireTreeProwessRespecTest::RunTest(const FString&)
 }
 
 /**
- * The extra option is saved (J3). `Account_v6.json` and `Character_v12.json`, the committed files, are read rather than
+ * The extra option is saved (J3). `Account_v6.json` and `Character_v13.json`, the committed files, are read rather than
  * migrated with the extra options they state: the account's tree The Aegis of Hope (1) on Foundations of the Empire, the
  * character's own tree The Hoarder (3), its class trees none. The files before them, `Account_v5.json` and
  * `Character_v11.json`, are migrated holding no extra option in any allocation, the account keeping its four nodes. And
@@ -251,7 +251,7 @@ bool FCataclysmEmpireTreeProwessFilesTest::RunTest(const FString&)
 	FString OldCharacterText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v6.json"), AccountText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), CharacterText, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Character_v13.json"), CharacterText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Account_v5.json"), OldAccountText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Character_v11.json"), OldCharacterText, Reason))
 	{
@@ -272,7 +272,7 @@ bool FCataclysmEmpireTreeProwessFilesTest::RunTest(const FString&)
 		OldAccountText, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), OldAccountResult, Message));
 	const UCataclysmCharacterSave* OldCharacter = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		OldCharacterText, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), OldCharacterResult, Message));
-	if (!TestNotNull(TEXT("Account_v6.json loads"), Account) || !TestNotNull(TEXT("Character_v12.json loads"), Character)
+	if (!TestNotNull(TEXT("Account_v6.json loads"), Account) || !TestNotNull(TEXT("Character_v13.json loads"), Character)
 		|| !TestNotNull(TEXT("Account_v5.json loads"), OldAccount)
 		|| !TestNotNull(TEXT("Character_v11.json loads"), OldCharacter))
 	{
@@ -311,7 +311,7 @@ bool FCataclysmEmpireTreeProwessFilesTest::RunTest(const FString&)
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("its tree's extra option: The Aegis of Hope on Foundations"),
 			  Account->EmpireTree.ExtraOptionIn(Foundations), 1);
-	TestEqual(TEXT("Character_v12.json is read rather than migrated"), static_cast<int32>(CharacterResult),
+	TestEqual(TEXT("Character_v13.json is read rather than migrated"), static_cast<int32>(CharacterResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("its own tree's extra option: The Hoarder"), Character->PrivateEmpireTree.ExtraOptionIn(Foundations), 3);
 	TestEqual(TEXT("its class trees hold none"), Character->PassiveAllocation.ExtraOption, 0);

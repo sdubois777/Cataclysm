@@ -1,0 +1,20 @@
+Name,Action,Materials,CRImpact,BaseDays,BaseGold,Note
+Operation_Imprint_Enchantment,Imprint Enchantment,Aetherial Shard,5 CR,2,500.0,Uses Aetherial Shard.
+Operation_Reduce_CR_Gain_1_Craft,Reduce CR Gain (1 Craft),Chaos Stabilizer,-50% CR gain,0,250.0,Reduces CR gain by 50%.
+Operation_Reroll_Affix_Value,Reroll Affix Value,Corrupted Mote,2 CR,0,250.0,"Low-risk, high-frequency action."
+Operation_Affix_Shifting_Stat_Type,Affix Shifting (Stat Type),Crystal of Instability,15 CR,1,250.0,"Rerolls stat type (e.g., Strength → random new stat). Can't be used on enchantments."
+Operation_Unsocket_Gem,Unsocket Gem,Dismantling Dust,3 CR,1,250.0,Uses the dedicated Dismantling Dust.
+Operation_Change_Socket_Type,Change Socket Type,Focusing Lens,10 CR,2,500.0,Uses the rare Focusing Lens.
+Operation_Socket_Gem,Socket Gem,Jeweler's Setting Agent,5 CR,1,250.0,Uses Jeweler's Setting Agent.
+Operation_Perfect_Roll_Attempt,Perfect Roll Attempt,Primal Spark,50 CR,5,1250.0,Forces max stat roll.
+Operation_CR_Cleanse_Partial,CR Cleanse (Partial),Purified Essence,-50% CR,1 day per 500 CR,250.0,Removes accumulated CR by half.
+Operation_Deterministic_Affix,Deterministic Affix,Schematic Fragments,5 CR per tier of affix,1 day per tier of affix. (Max of 8),250.0,Guaranteed Affix.
+Operation_Add_Socket,Add Socket,Shattered Core,15 CR,3,750.0,Uses Shattered Core.
+Operation_Accelerate_Craft,Accelerate Craft,Tainted Shard,0 CR,-1,250.0,Removes the cumulative time penalty (-1 Day per stack).
+Operation_Upgrade_Item_Level_1_Tier,Upgrade Item Level (1 Tier),Upgrade Stone +1 to +10,25 CR per tier,1 day per tier. (Max of 10),250.0,Uses two +x upgrade stones.
+Operation_Infuse_Random_Damage_Type,Infuse Random Damage Type,Elemental Cinder,10 CR,1,250.0,Adds a random damage type.
+Operation_Change_Damage_Type,Change Damage Type,Prismatic Catalyst,20 CR,0,250.0,Changes a damage type.
+Operation_Infuse_Specific_Damage_Type,Infuse Specific Damage Type,Sovereign Ingot,50 CR,5,1250.0,Adds a specific damage type.
+Operation_Upgrade_Affix_Tier,Upgrade Affix Tier,Potency Crystal,10 CR*(Current affix tier),1(current affix tier),250.0,"Increases affix tier by 1, up to 7."
+Operation_Change_Enchantment_Negative,Change Enchantment Negative,Regret Essence,100 CR,7,1750.0,Uses Regret Essence
+Operation_Combine,Combine,"Two stones of a level, or two gems of a kind and rarity",0 CR,0,50.0,"Gold only: 50 gold for the lowest rung, a +1 stone or an Everyday gem, doubled for each rung above (the owner, 2026-11-21). No day: it changes no item."

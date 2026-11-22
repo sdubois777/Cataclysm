@@ -62,7 +62,7 @@ heading row describe their layout instead. Issue #1884.
 | Sheet | Rows | Columns |
 |---|---|---|
 | Dungeon Modifiers | 123 | Cataclysm Type, Modifier Name, Weight, Description |
-| Gems | 28 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type |
+| Gems | 28 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type, Stat, Value Kind |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3, Tier 1 Gold, Tier 2 Gold, Tier 3 Gold, Gold Note |
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
 | **Tags** | **145** | **Tag Name, Description** |
@@ -71,7 +71,7 @@ heading row describe their layout instead. Issue #1884.
 | Buffs | 17 | one description per row, no heading row |
 | Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
-| Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, (blank), (blank), CR Metric, Formula, Outcome |
+| Crafting | 47 | Material Name, Tier & Source, Primary Use, Functions, (blank), (blank), CR Metric, Formula, Outcome |
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
 | Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
@@ -83,7 +83,7 @@ heading row describe their layout instead. Issue #1884.
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
-| Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Note |
+| Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Gem Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
 | Passive Effects | 325 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points |
@@ -103,7 +103,7 @@ which group it is in:
 - **Enemy Modifiers** is a matrix, one column per Cataclysm and each cell holding
   `Name: Description`. Its 11 rows across 8 columns hold 80 modifiers.
 - **Crafting** is three tables stacked: 27 materials, a heading row whose first
-  cell is the word "Action", and 18 Forge operations. Rows 5 to 11 also carry an
+  cell is the word "Action", and 19 Forge operations, the last the Combine row (#2830). Rows 5 to 11 also carry an
   unrelated six-row table in columns 7 to 9.
   `tools/tests/test_crafting_section_matches_the_sheet.py` explains that shape in
   full.

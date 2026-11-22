@@ -354,10 +354,15 @@ ECataclysmWearResult UCataclysmWearing::DropCarried(
 	// the slot first would destroy the item on a failed spawn, and a spawn is
 	// the only step here that can fail for a reason the rules did not choose.
 	// THE TWO NAMES FOR THE COUNT ARE NOT THE SAME. A carried slot calls it
-	// `Quantity` and a drop on the floor calls it `MaterialQuantity`.
+	// `Quantity` and a drop on the floor calls it `MaterialQuantity`, or
+	// `GemQuantity` for a gem stack, which lies on the floor whole as one gem
+	// drop (issue #46, slice G5; until it, G2 refused to drop gems at all).
+	const bool bGems = !Leaving.Gem.IsNone();
 	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving.Item,
 											  Leaving.Material,
-											  Leaving.Quantity))
+											  bGems ? 0 : Leaving.Quantity, /*Gold=*/0,
+											  Leaving.Gem, Leaving.GemRarity,
+											  bGems ? Leaving.Quantity : 0))
 	{
 		return ECataclysmWearResult::TheFloorRefusedIt;
 	}

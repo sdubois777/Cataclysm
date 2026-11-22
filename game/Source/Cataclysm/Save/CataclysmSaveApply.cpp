@@ -324,10 +324,11 @@ ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto(
 	// to the save system where no other caller could reach it, is what issues
 	// #1176 and #1190 both ran into. UCataclysmDropSpawner::PutOnTheFloor is the
 	// one copy; what is left here is unpacking the record.
-	// A GOLD PILE COMES BACK AS ONE, with its amount: run record version 7, issue #2742.
+	// A GOLD PILE COMES BACK AS ONE, with its amount: run record version 7, issue #2742. AND A GEM DROP AS ONE, with
+	// its gem, rarity and count: issue #46, slice G5.
 	ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
 		&World, Saved.Location, Saved.Item, Saved.Material,
-		Saved.MaterialQuantity, Saved.Gold);
+		Saved.MaterialQuantity, Saved.Gold, Saved.Gem, Saved.GemRarity, Saved.GemQuantity);
 	// AND WHETHER A RAISED CREATURE DROPPED IT, so Trick or Treat rolls for it no more after a load than before.
 	// Issue #753, Group 3d-4a.
 	if (Drop)

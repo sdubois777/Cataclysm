@@ -251,6 +251,7 @@ bool FCataclysmEmpireTreeOwnMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
 	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
 	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
+	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);

@@ -307,15 +307,15 @@ bool FCataclysmPlayLoopForgeTextTest::RunTest(const FString&)
 {
 	// The forge, the owner's ruling of 2026-11-19. `docs/Play_Loop_Checklist.md` step 16 quotes both lines.
 	using Log = FCataclysmPlayLoopLog;
-	TestEqual(TEXT("an upgrade of one day"), Log::ForgeUpgradeLine(TEXT("Everyday Torc of Warding"), 0, 1, 14, 52, 77, 1,
-																   25, 26),
-			  FString(TEXT("upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left; residue 52 to 77; "
-						   "it cost 1 day, day 25 to day 26")));
-	TestEqual(TEXT("an upgrade of two days"), Log::ForgeUpgradeLine(TEXT("Treads"), 2, 3, 0, 150, 175, 2, 30, 32),
-			  FString(TEXT("upgraded Treads from +2 to +3 with two +3 stones, 0 left; residue 150 to 175; it cost 2 "
-						   "days, day 30 to day 32")));
-	TestEqual(TEXT("a combine"), Log::ForgeCombineLine(1, 2, 12, 20),
-			  FString(TEXT("combined two +1 upgrade stones into one +2: 12 +1 and 20 +2 held")));
+	TestEqual(TEXT("an upgrade of one day"), Log::ForgeUpgradeLine(TEXT("Everyday Torc of Warding"), 0, 1, 14, 510, 52, 77,
+																   1, 25, 26),
+			  FString(TEXT("upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left, and 510 gold; "
+						   "residue 52 to 77; it cost 1 day, day 25 to day 26")));
+	TestEqual(TEXT("an upgrade of four days"), Log::ForgeUpgradeLine(TEXT("Treads"), 2, 3, 0, 3000, 150, 175, 4, 30, 34),
+			  FString(TEXT("upgraded Treads from +2 to +3 with two +3 stones, 0 left, and 3,000 gold; residue 150 to 175; "
+						   "it cost 4 days, day 30 to day 34")));
+	TestEqual(TEXT("a combine"), Log::ForgeCombineLine(1, 2, 12, 20, 50),
+			  FString(TEXT("combined two +1 upgrade stones into one +2 for 50 gold: 12 +1 and 20 +2 held")));
 	return true;
 }
 

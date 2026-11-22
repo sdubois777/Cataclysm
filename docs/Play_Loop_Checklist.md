@@ -314,22 +314,83 @@ click like any other.
 - **Click "Forge"**, under the empire upgrade tree's button in the top right corner of the map. Its screen lists every
   worn piece, then every carried one, and the stones held: "Upgrade stones held: +1 x16, +2 x19, +3 x5".
 - **Click a piece**, then **Upgrade to +1**. The line under the buttons asks first: "Press again to upgrade to +1: two
-  +1 stones, residue 52 to 77, 1 day of the run." Click it again. The piece's button now ends "+1", two +1 stones are
-  gone, and the map's status line shows the next day. Any other click before the second press cancels it.
+  +1 stones, 510 gold, residue 52 to 77, 1 day of the run." Click it again. The piece's button now ends "+1", two +1
+  stones and 510 gold are gone, and the map's status line shows the next day. Any other click before the second press
+  cancels it.
+- **Every craft costs gold** since issue #2830: 250 gold for each base day at difficulty tier 1, times `(residue / 50) +
+  1`, and more at a higher tier. **Raising a piece costs days equal to the level it reaches**, so +4 to +5 costs 5 days
+  and +0 to +10 costs 55, plus a day for each 100 residue. With too little gold it says so, "Raising it to +2 takes
+  1,270 gold; 900 gold held.", and nothing moves.
 - **In the log:**
 
-  `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left; residue 52 to 77; it cost 1 day, day 25 to day 26`
+  `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left, and 510 gold; residue 52 to 77; it cost 1 day, day 25 to day 26`
 
-- **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2, and no day passes.
+- **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2 for 50 gold, and no day passes. A
+  combine costs 50 gold at the lowest rung and twice as much for each rung above it.
 - **In the log:**
 
-  `PLAY LOOP: combined two +1 upgrade stones into one +2: 12 +1 and 20 +2 held`
+  `PLAY LOOP: combined two +1 upgrade stones into one +2 for 50 gold: 12 +1 and 20 +2 held`
 
 - **A worn piece raised past the Consumption Threshold** asks that question on the second press, and a third press
   raises it and marks the character, as wearing a piece past it does.
 - **During a walk** the screen opens from the map as well, to be read, and every Upgrade and Combine says "The forge can
   be used in the capital, not during a walk." and changes nothing.
 - **Close** the screen with its Close button.
+
+### 17. Socket a gem at the forge, and take it out again
+
+Gems drop rarely (step 18), so put some in the bag from the console first: `Cataclysm.GrantGem Gem_Of_Life 3 2` gives
+two Superb Of Life, and `Cataclysm.GrantGem Gem_Of_The_Viper 3` one Superb Of The Viper. A Jeweler's Setting Agent and Dismantling Dust are Common materials and drop on the walks.
+
+- **Hover a gem in the bag.** Its tooltip names it, its rarity and type, its effect at that rarity ("Increases HP by
+  25%") and the socket it fits ("Fits a Defense socket").
+- **Click "Forge", then a piece with sockets.** The line under the buttons lists them: "Sockets: Attack socket: empty;
+  Defense socket: empty". Each empty socket offers every carried gem that fits it: "Socket Of Life (Superb) into socket
+  2 (Defense)". A gem of another type is not offered for that socket.
+- **Click it.** The line asks first: "Press again to socket Of Life (Superb) into the Defense socket: one Jeweler's
+  Setting Agent, 510 gold, residue 52 to 57, 1 day of the run." Click it again. The piece's sockets now show "Defense socket: Of
+  Life (Superb)", one Of Life and one Setting Agent are gone, and a day passes. Worn, the character sheet's maximum
+  health rises by 25%.
+- **In the log:**
+
+  `PLAY LOOP: socketed Of Life (Superb) into the Defense socket of Everyday Helm for 510 gold; residue 52 to 57; it cost 1 day, day 26 to day 27`
+
+- **Click "Unsocket Of Life (Superb) from socket 2"**, twice. One Dismantling Dust and 535 gold are used, Of Life is
+  back in the bag, and a day passes. With no Dust it says "Unsocketing a gem takes Dismantling Dust; 0 held." and nothing moves.
+- **In the log:**
+
+  `PLAY LOOP: unsocketed Of Life (Superb) from Everyday Helm for 535 gold, back to the bag; residue 57 to 60; it cost 1 day, day 27 to day 28`
+
+- **Dropping a gem stack** from the bag puts the whole stack on the floor as one gem drop, named "Of The Viper
+  (Superb)", which comes back into its stack without a click when walked near (issue #46, slice G5).
+
+### 18. Kill creatures until a gem drops
+
+Gems drop from kills (issue #46, slice G5). They are rare: about one a floor when every creature on it is killed, more
+often from a Boss (3.4% a kill) or a Cataclysm Boss (8.2%) than from a Common creature (0.1%).
+
+- **A gem on the floor** is named with its rarity, "Of Rot (Everyday)", in that rarity's colour and border, and can be
+  read from across the room, as a crafting material can.
+- **Walk near it.** It comes to you without a click, within the fifteen metres a material does, and the bag shows it on
+  the stack of that gem and rarity. No PLAY LOOP line says so: a gem is a quantity, as a material is, and neither is
+  logged when taken.
+- **At difficulty tier 1** about eight gems in ten are Everyday or Quality, by gear's own rarity roll; a higher tier
+  shifts that towards the rarer rungs.
+
+### 19. Combine two gems into one of the next rarity
+
+At the forge (step 16), each gem stack the bag holds below Cataclysmic has a button (issue #46, slice G6).
+
+- **Click "Combine two Of Rot (Everyday) into one Of Rot (Quality), 2 held".** It is done on one press, as a stone
+  combine is: two Everyday Of Rot leave the bag, one Quality Of Rot joins it, 50 gold is paid, and no day passes. A gem
+  combine costs what a stone combine of the same rung costs (issue #2830): 50 gold for Everyday, 100 for Quality, and
+  so on, doubling.
+- **In the log:**
+
+  `PLAY LOOP: combined two Of Rot (Everyday) into one Of Rot (Quality) for 50 gold: 0 Everyday and 1 Quality held`
+
+- **There is no limit by difficulty tier**: two Quality gems make a Superb one at tier 1. With one gem of a kind and
+  rarity it says "Combining takes two Of Rot (Everyday); 1 held." and nothing moves.
 
 ## If a step does not show what it should
 
