@@ -123,7 +123,7 @@ namespace CataclysmGroundItemHoverTest
 	}
 
 	/** The world, a wearer and a stand-in, for one test. */
-	struct FScene
+	struct FHoverScene
 	{
 		UWorld* World = nullptr;
 		TUniquePtr<FWearer> Wearer;
@@ -132,9 +132,9 @@ namespace CataclysmGroundItemHoverTest
 		bool IsUsable() const { return World && Wearer && StandIn; }
 	};
 
-	FScene MakeScene()
+	FHoverScene MakeScene()
 	{
-		FScene Scene;
+		FHoverScene Scene;
 		Scene.World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (Scene.World)
 		{
@@ -158,7 +158,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundHelmComparedTest,
 bool FCataclysmGroundHelmComparedTest::RunTest(const FString&)
 {
 	using namespace CataclysmGroundItemHoverTest;
-	FScene Scene = MakeScene();
+	FHoverScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: a world, a wearer and a stand-in"), Scene.IsUsable()))
 	{
 		return false;
@@ -204,7 +204,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundRingEmptySlotTest,
 bool FCataclysmGroundRingEmptySlotTest::RunTest(const FString&)
 {
 	using namespace CataclysmGroundItemHoverTest;
-	FScene Scene = MakeScene();
+	FHoverScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: a world, a wearer and a stand-in"), Scene.IsUsable()))
 	{
 		return false;
@@ -241,7 +241,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundMaterialTest,
 bool FCataclysmGroundMaterialTest::RunTest(const FString&)
 {
 	using namespace CataclysmGroundItemHoverTest;
-	FScene Scene = MakeScene();
+	FHoverScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: a world, a wearer and a stand-in"), Scene.IsUsable()))
 	{
 		return false;
@@ -284,7 +284,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundNothingTest,
 bool FCataclysmGroundNothingTest::RunTest(const FString&)
 {
 	using namespace CataclysmGroundItemHoverTest;
-	FScene Scene = MakeScene();
+	FHoverScene Scene = MakeScene();
 	if (!TestTrue(TEXT("set-up: a world, a wearer and a stand-in"), Scene.IsUsable()))
 	{
 		return false;

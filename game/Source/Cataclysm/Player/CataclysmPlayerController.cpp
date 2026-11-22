@@ -1909,8 +1909,8 @@ void ACataclysmPlayerController::RefreshGroundItemHover()
 	}
 
 	// WORKED OUT AGAIN ONLY ON A CHANGE: another drop, or a change to what is worn. The hover must not cost the frame.
-	const ACataclysmPlayerCharacter* Character = Cast<ACataclysmPlayerCharacter>(GetPawn());
-	UCataclysmEquipmentComponent* Equipment = Character ? Character->GetEquipment() : nullptr;
+	const ACataclysmPlayerCharacter* Hoverer = Cast<ACataclysmPlayerCharacter>(GetPawn());
+	UCataclysmEquipmentComponent* Equipment = Hoverer ? Hoverer->GetEquipment() : nullptr;
 	const int32 WornChanges = Equipment ? Equipment->ChangeCount() : 0;
 	if (Hover::NeedsRebuild(Hovered, GroundTooltipShows.Get(), WornChanges, GroundTooltipShownAtWornChanges))
 	{
@@ -1921,7 +1921,7 @@ void ACataclysmPlayerController::RefreshGroundItemHover()
 		}
 		FString Left;
 		FString Right;
-		Hover::ColumnsFor(Hovered, Equipment, Character ? Character->GetAbilitySystemComponent() : nullptr,
+		Hover::ColumnsFor(Hovered, Equipment, Hoverer ? Hoverer->GetAbilitySystemComponent() : nullptr,
 						  GroundStandIn.Get(), Left, Right);
 		GroundItemTooltip->Show(Left, Right);
 		GroundTooltipShows = Hovered;

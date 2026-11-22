@@ -567,12 +567,12 @@ public:
 	static UStaticMeshComponent* MakeHand(ACharacter* Owner, FName Name, FName Socket);
 
 	/**
-	 * Puts the Mannequin body on `MeshComponent`, its feet at the bottom of a capsule of `CapsuleHalfHeight` and at the
+	 * Puts the Mannequin body on `MeshComponent`, its feet at the bottom of a capsule of `HalfHeightCm` and at the
 	 * engine's -90 degree yaw. See `ResolveBody` for why each.
 	 *
 	 * @return false when the body could not be loaded, with nothing changed
 	 */
-	static bool WearTheMannequinsBody(USkeletalMeshComponent* MeshComponent, float CapsuleHalfHeight);
+	static bool WearTheMannequinsBody(USkeletalMeshComponent* MeshComponent, float HalfHeightCm);
 
 	/**
 	 * Points `MeshComponent` at `ABP_Unarmed`, with root motion ignored, or falls back to single-node mode when the

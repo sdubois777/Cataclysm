@@ -703,7 +703,7 @@ bool ACataclysmPlayerCharacter::PlayTheMannequinsAnimationOn(USkeletalMeshCompon
 }
 
 bool ACataclysmPlayerCharacter::WearTheMannequinsBody(USkeletalMeshComponent* MeshComponent,
-													  float CapsuleHalfHeight)
+													  float HalfHeightCm)
 {
 	USkeletalMesh* Body = MeshComponent
 		? Cast<USkeletalMesh>(FSoftObjectPath(BodyMeshPath).TryLoad())
@@ -723,7 +723,7 @@ bool ACataclysmPlayerCharacter::WearTheMannequinsBody(USkeletalMeshComponent* Me
 	// convention for character meshes, which face -Y while the actor faces +X;
 	// without it the character walks sideways.
 	MeshComponent->SetRelativeLocationAndRotation(
-		FVector(0.0f, 0.0f, -CapsuleHalfHeight),
+		FVector(0.0f, 0.0f, -HalfHeightCm),
 		FRotator(0.0f, -90.0f, 0.0f));
 	return true;
 }
