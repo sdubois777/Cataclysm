@@ -1832,15 +1832,25 @@ def _city_upgrade_prices(raw, headers, index: int, effect: str,
 
     A row with a tier ladder must have all three, each a whole number above
     nought and none below the tier before it: a better upgrade cannot cost
-    less. A row without a ladder must have none, and is priced at nought, which
-    `UCataclysmEmpireRun` never sells because nothing builds such a row.
+    less. A row without a ladder may have a tier 1 price and nothing above it,
+    since it is only ever bought at tier 1: the cleanse, priced 40,000 by the
+    coordinating session's ruling of 2026-11-22 (issue #2838). With no price
+    at all it is priced at nought.
     """
     cells = [_cell(raw, headers, column) for column in CITY_UPGRADE_GOLD_COLUMNS]
     if not has_ladder:
-        if any(cells):
+        if any(cells[1:]):
             raise DataError(f"City Upgrades row {index} ({effect!r}) has a price "
-                            "but no tier ladder, so there is no tier to price")
-        return [0, 0, 0]
+                            "above tier 1 but no tier ladder, so there is no "
+                            "tier 2 or 3 to price")
+        if not cells[0]:
+            return [0, 0, 0]
+        value = number(cells[0], f"City Upgrades {CITY_UPGRADE_GOLD_COLUMNS[0]}", index)
+        if value != int(value) or value <= 0:
+            raise DataError(f"City Upgrades row {index} ({effect!r}): "
+                            f"{CITY_UPGRADE_GOLD_COLUMNS[0]} is {value:g}; a price "
+                            "is a whole number of gold above nought")
+        return [int(value), 0, 0]
 
     prices = []
     for column, cell in zip(CITY_UPGRADE_GOLD_COLUMNS, cells, strict=True):

@@ -124,7 +124,7 @@ def rows(name: str) -> list[dict[str, str]]:
 # 1 and 2: the prices, in the workbook and the generated table, and what the generator refuses
 # --------------------------------------------------------------------------
 
-def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_is_not() -> None:
+def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_at_tier_1_only() -> None:
     priced = [row for row in rows("CityUpgrades.csv") if row["Tier2Raw"] or row["Tier3Raw"]]
     unpriced = [row for row in rows("CityUpgrades.csv") if not (row["Tier2Raw"] or row["Tier3Raw"])]
     assert len(priced) == 23 and len(unpriced) == 1, (
@@ -133,8 +133,10 @@ def test_every_upgrade_with_a_tier_ladder_is_priced_and_the_one_without_is_not()
     wrong = [row["Name"] for row in priced
              if (int(row["Tier1Gold"]), int(row["Tier2Gold"]), int(row["Tier3Gold"])) != LADDER_PRICES]
     assert not wrong, f"these upgrades are not priced 10,000, 20,000 and 40,000 (G4): {wrong}"
-    assert all(int(row[f"Tier{t}Gold"]) == 0 for row in unpriced for t in (1, 2, 3)), (
-        "the upgrade with no tier ladder, the unbranched last resort, has a price; there is no tier to price")
+    # THE CLEANSE, THE ONE ROW WITH NO LADDER, IS PRICED AT TIER 1 ONLY: 40,000, the top of the ladder, a judgement
+    # ruled by the coordinating session on 2026-11-22 (issue #2838). It was unpriced and never sold until then.
+    assert [(int(row["Tier1Gold"]), int(row["Tier2Gold"]), int(row["Tier3Gold"])) for row in unpriced] == [
+        (40000, 0, 0)], "the cleanse, the upgrade with no tier ladder, is not priced 40,000 at tier 1 and nought above"
 
 
 def test_the_workbook_city_upgrades_sheet_is_what_the_table_was_generated_from() -> None:
@@ -153,18 +155,21 @@ def test_the_workbook_city_upgrades_sheet_is_what_the_table_was_generated_from()
 @pytest.mark.parametrize("cells, has_ladder, refused", [
     (["10000", "20000", "40000"], True, None),
     (["", "", ""], False, None),
-    (["10000", "", ""], False, "has a price but no tier ladder"),
+    (["40000", "", ""], False, None),
+    (["40000", "20000", ""], False, "above tier 1 but no tier ladder"),
+    (["40000.5", "", ""], False, "whole number of gold above nought"),
     (["10000", "", "40000"], True, "is empty"),
     (["10000", "5000", "40000"], True, "cannot cost less"),
     (["10000.5", "20000", "40000"], True, "whole number of gold above nought"),
     (["0", "20000", "40000"], True, "whole number of gold above nought"),
-], ids=["a ladder priced", "no ladder, no price", "a price with no ladder", "a missing price", "a falling price",
-        "a fraction", "nought"])
+], ids=["a ladder priced", "no ladder, no price", "no ladder, a tier 1 price", "no ladder, a tier 2 price",
+        "no ladder, a fraction", "a missing price", "a falling price", "a fraction", "nought"])
 def test_the_generator_reads_the_three_prices_and_refuses_a_wrong_one(cells, has_ladder, refused) -> None:
     headers = {column: index for index, column in enumerate(gen.CITY_UPGRADE_GOLD_COLUMNS)}
     if refused is None:
         prices = gen._city_upgrade_prices(cells, headers, 7, "an upgrade", has_ladder)
-        assert prices == ([10000, 20000, 40000] if has_ladder else [0, 0, 0])
+        expected = [10000, 20000, 40000] if has_ladder else ([40000, 0, 0] if cells[0] else [0, 0, 0])
+        assert prices == expected
         return
     with pytest.raises(gen.DataError, match=refused):
         gen._city_upgrade_prices(cells, headers, 7, "an upgrade", has_ladder)
