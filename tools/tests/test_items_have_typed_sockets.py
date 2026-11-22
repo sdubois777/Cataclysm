@@ -18,8 +18,8 @@ WHAT IS CHECKED:
      to Any, so a socket saved before types came back fits any gem;
   2. the socket types are exactly the gem types `game/Data/Gems.csv` names, and Any;
   3. a new socket's type is rolled among the three and never Any;
-  4. the drop roll takes the types from a stream of their own, seeded from the drop's stream without drawing from it,
-     so no later roll of a drop moves;
+  4. the drop roll takes the types from a stream of their own, seeded through `CataclysmSeedMix::Mix` from the drop's
+     stream without drawing from it, so no later roll of a drop moves;
   5. `AccumulateInto` adds an item's socketed gems, and only the worn-equipment reading calls it outside the tests;
   6. a socketed gem is added once, with nothing doubling it;
   7. the item tooltip lists each socket;
@@ -101,8 +101,9 @@ def test_a_new_sockets_type_is_one_of_the_three_and_never_any() -> None:
 
 def test_the_drop_roll_takes_socket_types_from_a_stream_of_their_own() -> None:
     text = squeeze(code(DROP_CPP))
-    assert "FRandomStream TypeStream(Stream.GetCurrentSeed()" in text, (
-        "the drop roll does not seed a stream of its own for socket types from the drop's stream")
+    assert "FRandomStream TypeStream(CataclysmSeedMix::Mix(Stream.GetCurrentSeed()," in text, (
+        "the drop roll does not seed a stream of its own for socket types from the drop's stream, through the seed "
+        "mix (an XOR makes a related stream, issue #2749)")
     assert "UCataclysmGems::RollSocketType(TypeStream)" in text, "socket types are not rolled from that stream"
     assert "RollSocketType(Stream)" not in text, (
         "a socket type is drawn from the drop's own stream, which moves every roll after it")

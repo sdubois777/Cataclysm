@@ -5,7 +5,8 @@
 #include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Engine/DataTable.h"
-// A socket's type, issue #46 slice G3.
+// A socket's type, issue #46 slice G3, from a stream seeded through the seed mix.
+#include "Empire/CataclysmSeedMix.h"
 #include "Items/CataclysmGems.h"
 
 namespace
@@ -2207,9 +2208,10 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 	// HOW MANY SOCKETS FROM THE DROP'S STREAM, AS BEFORE, AND THEIR TYPES FROM A STREAM OF THEIR OWN. Issue #46, slice
 	// G3: each socket's type is rolled evenly among the three. The second stream is seeded from the first without
 	// drawing from it, so no roll after this one moves: a seeded drop rolls the same residue, affixes and enchantments
-	// it rolled before sockets had types.
+	// it rolled before sockets had types. THROUGH `CataclysmSeedMix::Mix` and not by XOR, which makes a stream related
+	// to the one it came from (issue #2749's placement seeding slice).
 	const int32 SocketCount = RollSockets(SocketTable, *BaseRow, Stream);
-	FRandomStream TypeStream(Stream.GetCurrentSeed() ^ 0x50C4E7);
+	FRandomStream TypeStream(CataclysmSeedMix::Mix(Stream.GetCurrentSeed(), /*Salt=*/0x50C4E7, /*Index=*/0));
 	OutItem.Sockets.Reset(SocketCount);
 	for (int32 Index = 0; Index < SocketCount; ++Index)
 	{
