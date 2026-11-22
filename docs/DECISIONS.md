@@ -311,7 +311,8 @@ neighbours (`test_empire_tree_effects_match_their_texts.py`, `test_empire_tree_t
 
 ### C++ guard proofs planned, S1 to S6, one for each new Unreal test
 
-Prefix `Cataclysm.EmpireTreeProwess.` (6 tests). Each prediction is reasoned from the code and has not been run.
+Prefix `Cataclysm.EmpireTreeProwess.` (6 tests). Each prediction was reasoned from the code before it ran. **All six
+PROVED as predicted in window tree-6d8-w1 on `d601cba34`; the results are in slice 6e's entry.**
 
 | Proof | Break | Predicted to fail |
 |---|---|---|
@@ -506,7 +507,8 @@ restored, "23 passed". Script: `.claude/windows/prove_t2741s7_python.py` in this
 
 ### C++ guard proofs planned, K1 to K7, one for each new Unreal test
 
-Prefix `Cataclysm.EmpireTreeTreasurer.` (7 tests). Each prediction is reasoned from the code and has not been run.
+Prefix `Cataclysm.EmpireTreeTreasurer.` (7 tests). Each prediction was reasoned from the code before it ran. **All seven
+PROVED as predicted in window tree-6d8-w1 on `d601cba34`; the results are in slice 6e's entry.**
 
 | Proof | Break, in `CataclysmEmpireTree.cpp` | Predicted to fail |
 |---|---|---|
@@ -787,6 +789,66 @@ Every group below has the count it had in window E.
 Seven breaks drafted in phase 1 were dropped, because a Python check fails on each: slice 6d's C2, C3, C5, C6 and C7
 (proofs M8 to M11 and M5, in slice 6d's entry) and slice 6e's E2 (the part a day rounded down) and E5 (an offer on
 credit unsaid), proofs N11 and N12 below.
+
+### The window, tree-6d8-w1, on `d601cba34`: PASSED, every registered figure met
+
+Run on 2026-11-22 from 01:50 to 02:48, by `.claude/windows/run_t2741w8.py`, on `feat/empire-tree-8-prowess-3` at
+`dad4b47d4` (development `1226aad28` and the five items), and from the asset step on at `d601cba34`.
+
+- **The pre-run checks**, with the coordinating session's two standing rulings applied before the run: free memory at
+  least **9,216 MB** (window D's ruling of 2026-11-21, extended to every gate, because the owner's own programs hold the
+  rest), and a CI run or open pull request counting only when it changes `game/`. The first gate, at 10,240 MB, failed on
+  memory alone four times, from 01:39 to 01:49 (a check run by hand at 01:47 read 10,054 MB free); it was stopped and
+  restarted with 9,216, and the run's own pre-check at 01:50 read "10022 MB (needs 9216, window D's ruling)".
+- **The three builds** before the window: the branch, 62 files compiled; each changed file alone, 47; the unity files
+  again, 15. Each "Succeeded" with "0 compiler warning or error lines in the build tool's log".
+- **The recount** of the 20 existing groups' registered counts against the base log: every one "MATCH". **The record
+  version check**: "27 lines stating a version; NO MISMATCH".
+- **The asset step** changed exactly the four registered files, committed alone as `d601cba34` and pushed: "THE TESTED
+  HEAD IS NOW d601cba3".
+- **The 24 groups alone**, each at its registered count with 0 failed: `EmpireTreeTreasury.` 3, `EmpireTreeCredit.` 8,
+  `EmpireTreeTreasurer.` 7, `EmpireTreeProwess.` 6, `Data.` 7, `EmpireTreeGoldHeld.` 5, `SaveRecords.` 17, `Gold.` 13,
+  `EmpireTree.` 24, `EmpirePoints.` 16, `SkillLevels.` 13, `CataclysmDraw.` 6, `ConsumptionDouble.` 15,
+  `ConsumptionMark.` 6, `WeaponMesh.` 10, `CityScreen.` 19, `CityUpgradePrice.` 7, `CityUpgradeBuildSave.` 2,
+  `EmpireTreeGold.` 6, `EmpireTreeDrops.` 13, `EmpireTreeClearGold.` 9, `EmpireTreeLoot.` 10, `EmpireTreeScreen.` 10
+  and `BuildSave.` 6.
+- **The whole Unreal suite**: "5168 tests performed, 5168 succeeded, 0 failed. 57 skipped part of what they check";
+  "860 written and deleted, 0 left behind"; "Declared: 5168 tests in the tree at d601cba34; 5168 performed, gap 0". All
+  three as registered.
+- **The Python suite, beside it**: "7942 passed, 10 skipped in 320.05s", and the JUnit file `tests="7952"`,
+  `failures="0"`, `errors="0"`, `skipped="10"`. The asset check that failed before the window passes. ruff: "All checks
+  passed!".
+- **The 23 C++ guard proofs, every one PROVED**, each failing exactly the tests predicted with the break in and passing
+  all with it out, the source unchanged afterwards ("hash same True"):
+
+| Proof | With the break in | Restored |
+|---|---|---|
+| C8 | 3 performed, 1 failed: `TheTwoNodesAddUpFromTheirRows` | 3 of 3 |
+| C1 | 3, 1: `TreasuryGuardCompoundsWithImperialReserveEachHeldAtItsOwnCap` | 3 of 3 |
+| C4 | 3, 1: `TaxCollectionPaysEveryTenthDayFromTheStandingCitiesCitizens` | 3 of 3 |
+| E8 | 8, 1: `TheTwoNodesAddUpAndTheCreditIsTheirSharesOfThePrice` | 8 of 8 |
+| E6 | 8, 2: `ACreditPurchaseTakesTheWholeBalanceAndOwesTheRest`, `TheCityScreenSaysWhatCreditLeavesOwedAndWhatADebtStops` | 8 of 8 |
+| E4 | 8, 2: `AnOpenDebtStopsMoreCreditButNotAFullPrice`, `TheCityScreenSaysWhatCreditLeavesOwedAndWhatADebtStops` | 8 of 8 |
+| E3 | 8, 1: `GoldPickedUpPaysTheDebtFirstAndIncomeDoesNot` | 8 of 8 |
+| E1 | 8, 1: `SovereignLoansTakesATenthOfTheDebtEachDay` | 8 of 8 |
+| O1 | 8, 1: `ASoloSelfFoundCharacterOwesItsOwnGold` | 8 of 8 |
+| E7 | 8, 1: `ThePreviousFilesMigrateOwingNothing` | 8 of 8 |
+| K1 | 7, 1: `TheFourNodesAddUpFromTheirRows` | 7 of 7 |
+| K2 | 7, 1: `TreasurerCitiesAreStandingCitiesHoldingATreasurerUpgrade` | 7 of 7 |
+| K3 | 7, 1: `AKillsGoldAndMaterialsTakeTheFourWhereItsDungeonStands` | 7 of 7 |
+| K4 | 7, 1: `TheSalvagePayoutTakesEconomicZonesOnATreasurerCityAndCleanupNothing` | 7 of 7 |
+| K5 | 7, 1: `TradeRoutesPaysEveryTwentiethDayForEachTreasurerCity` | 7 of 7 |
+| K6 | 7, 1: `EconomicZonesRaisesPaxAndTaxByTheTreasurerCitizensShare` | 7 of 7 |
+| K7 | 7, 2: `EconomicZonesRaisesPaxAndTaxByTheTreasurerCitizensShare`, `TheCitizenShareIsEachTreasurerCitysOwnPopulation` | 7 of 7 |
+| S1 | 6, 2: `EachRefusalComesInItsOrder`, `ImperialProwessGivesOneExtraOption` | 6 of 6 |
+| S2 | 6, 1: `EachRefusalComesInItsOrder` | 6 of 6 |
+| S3 | 6, 1: `TheExtraOptionActsBesideTheChoice` | 6 of 6 |
+| S4 | 6, 1: `ARespecClearsTheExtraOption` | 6 of 6 |
+| S5 | 6, 1: `ThePreviousFilesMigrateHoldingNoExtraOption` | 6 of 6 |
+| S6 | 6, 1: `TheScreenMarksTheExtraOption` | 6 of 6 |
+
+The lock `tree-6d8-w1` was released when the window ended; the tested head is `d601cba34`. The logs are in this
+session's worktree, `.claude/windows/t2741w8_*`.
 
 ### The rebase onto development d684a3d0e, and what it moved
 
