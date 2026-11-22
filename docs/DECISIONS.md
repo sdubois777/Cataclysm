@@ -41,8 +41,9 @@ gear level. The design's rarity table (`docs/Cataclysm_GDD_v2.md`, "Rarity is no
   list in the screen's detail (`UCataclysmForgeLayout::AffixesDetailFor`), "Imprint, giving up affix 2", and the craft
   keeps F1's `CraftAffix` order (threshold, gold, material, the item, the days), so slice F5 folds one pattern.
   **Then moved to slice F2's head (ruling (A))**, which rides the same window as F1, so the draws call F2's
-  `UCataclysmForge::AffixCraftSeed` and `SlotOf` and the forge holds no second copy of either. This slice is to be
-  cherry-picked onto development after that window merges.
+  `UCataclysmForge::AffixCraftSeed` and `SlotOf` and the forge holds no second copy of either. This slice reached
+  development in window forge-pg-w1, as the gems session resolved it on slice F4's head (c69259f6d, 81cf236c6,
+  9499c2fab and its renumber commit), since slice F5 is built on those commits.
 - **F3-Q4. G10's two gem enchantments are tested end to end as FE8 to FE10.** G10's Q2, a gem that stops acting when
   its piece loses fit-any, stays tested by editing the item, as G10 does: no F3 craft removes a positive.
 
@@ -162,26 +163,102 @@ F1's and G9's did not.
 | The whole suite | the base window's total plus 12, all succeeded, 0 failed; the base's skipped halves; the base's saves written and deleted, 0 left behind |
 | Python beside it | every test passing, the JUnit file agreeing; ruff clean |
 
-**C++ guard proofs, ten, each narrowed to `Cataclysm.ForgeEnchantments.` with its trailing dot, covering all twelve
-tests. Predicted, not run:**
+**C++ guard proofs, eight, each narrowed to `Cataclysm.ForgeEnchantments.` with its trailing dot, covering all twelve
+tests. Predicted, not run.** TP2 (no gear level gate) and TP5 (no damage types topped up) were registered and DROPPED
+on 2026-11-22 by the coordinating session: the tests they fail, FE1, FE3 and FE4, are already failed by TP1 and TP4,
+so they cost eight builds and showed nothing the others do not.
 
 | Proof | File | Break | Predicted |
 | :-- | :-- | :-- | :-- |
 | TP1 | `CataclysmForge.cpp` | `Out.ResidueAfter = Item.Residue + ImprintResidue;` to `+ ChangeNegativeResidue;` | 12 performed, 10 succeeded, 2 failed: FE1 (residue 155 and the question), FE4 (residue 155) |
-| TP2 | `CataclysmForge.cpp` | `if (Item.GearLevel < Out.GearLevelNeeded)` to `if (false && Item.GearLevel < Out.GearLevelNeeded)` | 12, 10, 2: FE1 (the +3 and +5 refusals), FE4 (the second imprint done at +4) |
 | TP3 | `CataclysmDropRoll.cpp` | `TakenPositives.Add(Held.Positive);` to `(void)Held;` | 12, 11, 1: FE2, on "the taken rows are never drawn" |
 | TP4 | `CataclysmForge.cpp` | `Changed.Affixes.RemoveAt(Affix);` to `Changed.Affixes.RemoveAt(0);` | 12, 10, 2: FE3 (the third affix not the one gone), FE4 (`Stat_Increased_damage` still there) |
-| TP5 | `CataclysmForge.cpp` | `if (Carried > Changed.DamageTypes.Num() && WeaponSkillTable != nullptr)` to `if (false && Carried > ...)` | 12, 11, 1: FE3, on the damage types |
 | TP6 | `CataclysmDropRoll.cpp` | `bBandCanSupply.Add(Band <= PositiveBand && bHasUntaken);` to `bBandCanSupply.Add(bHasUntaken);` | 12, 11, 1: FE6, on "never above the positive's weight 3" and the weight 1 pair |
 | TP7 | `CataclysmForge.cpp` | `if (UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` to `if (false && UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` | 12, 11, 1: FE5, on "a set's pair" |
 | TP8 | `CataclysmForgeCraft.cpp` | `Changed.Enchantments[Plan.Pair] = Done.Drawn;` to `= Plan.Before;` | 12, 9, 3: FE7, FE9 and FE10, the drawback left as it was |
-| TP9 | `CataclysmForgeCraft.cpp` | the imprint's `Run->WalkSeedMask, Run->Day(),` to `Run->WalkSeedMask, Run->Day() + 1,` | 12, 9, 3: FE4 (not the day's pair), FE8 (fit-any not drawn, so the gem refused), FE12 (no set drawn). FE8 and FE12 are each about 1 in 600 and 1 in 150 to draw the same thing on the next day, so the prediction can be wrong for one of them |
+| TP9 | `CataclysmForgeCraft.cpp` | the imprint's `Run->WalkSeedMask, Run->Day(),` to `Run->WalkSeedMask, Run->Day() + 1,` | 12, 9, 3: FE4, FE8 and FE12, COMPUTED. A Python copy of the scene's seed and the whole draw (`.claude/windows/f3_tp9_predict.py`: the run's mask 621977399 from seed 4747, day 0, `ItemSeedText`, the CRC, `AffixCraftSeed`, `FRandomStream` in single precision, `RollEnchantments` for one pair) gives: FE4's sword draws "Spells deal 10-20 bonus damage..." on day 0 and "Melee kills restore 3-6%..." on day 1, so not the day's pair; FE8 finds fit-any at step 1266 on day 0, and day 1 draws "Skills that cost HP restore that amount as mana", so fit-any is not drawn and Of Life is refused; FE12 finds Null Emperor's 2-piece row at step 190, and day 1 draws "Casting a spell grants 5-10% increased movement", no set. THE COPY IS CHECKED BY THE RUN ITSELF: FE8 and FE12 print the step they found, and they must print 1266 and 190 |
 | TP10 | `CataclysmForgeLayout.cpp` | `if (Positive == nullptr \|\| UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` to `if (Positive == nullptr)` | 12, 11, 1: FE11, on two imprints and one change |
 
 **No type in `CataclysmForgeEnchantmentsTests.cpp` shares a name with one the engine declares globally**: its one type
 is `FForgeEnchantmentsScene`, inside its own namespace. Window power-score-w1's first build failed on F2's `struct
-FScene` (C2872, ambiguous with the renderer's `FScene`), renamed `FAffixChangeScene` on that window's branch; this
-branch takes the rename when it is cherry-picked onto development after that window merges.
+FScene` (C2872, ambiguous with the renderer's `FScene`), renamed `FAffixChangeScene` on that window's branch; window
+forge-pg-w1's branch is cut from development after that window merged, so it holds the rename.
+
+### Window forge-pg-w1: FAILED, on #2824 slice c's test, 2026-11-22
+
+Branch `feat/forge-pg-w1` at `1156682c5`, on development `5ba9eb311` (window power-score-w2's game/ tree, confirmed by
+`git diff`): slice c's 4 commits, slice F4's 5 (`6a739c11b` empty and skipped), slice F3 as the gems session resolved it
+(`c69259f6d`, `81cf236c6`, `9499c2fab`) and its renumber commit `573ae8bbf`. Registered at 5271 + 23 = 5294, 57 skipped
+halves, 860 saves, 25 groups alone and 18 proofs.
+
+- **Compile**: three builds, each "Succeeded" with 0 compiler warning or error lines: the branch, 52 files compiled; each
+  changed file alone, 28 (all 15 changed `.cpp` files named); the unity files again, 13.
+- **Groups alone: 24 of 25** at exactly their counts. `Cataclysm.PowerGapRewards.`: "5 tests performed, 4 succeeded, 1
+  failed".
+- **Whole suite**: "5294 tests performed, 5293 succeeded, 1 failed"; 57 skipped halves; "860 written and deleted, 0 left
+  behind"; "5294 performed, gap 0". Python beside it: "8193 passed, 10 skipped", JUnit 8203 tests, 0 failures, 0 errors;
+  ruff "All checks passed!".
+- **No proof was run**: the run stops before the proofs when the suite misses its registered total.
+
+**The failing test**, alone and in the suite alike:
+`Cataclysm.PowerGapRewards.AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt`.
+
+- "Expected 'the kill grants the figure times the experience factor' to be 232, but it was -1."
+  [`CataclysmPowerGapRewardsTests.cpp(300)`]
+- "Expected 'CONTROL: and the same kill grants the whole figure' to be 468, but it was -1."
+  [`CataclysmPowerGapRewardsTests.cpp(306)`]
+- The test's own line: "GAP KILL: before entering experience x1.0000, loot x1.0000, not scored; in the dungeon at tier 1
+  the Dungeon Score 191, the player's 626 (live 626), gap -1.1299, experience x0.4966, loot x0.6026, scored; the line
+  "Dungeon Score 191; your Power Score 626. Rewards: experience 50%, loot 60%."; a Boss worth 468 granted -1 of 232
+  expected (the whole figure 468), level 99 after; left, experience x1.0000, loot x1.0000, not scored, worth 468 granted".
+
+**A READING, NOT CHECKED against slice c's code**: the factor and the panel's line are right, and the kill granted no
+experience in the dungeon or out of it. The character reads level 99 afterwards, so it looks to be at the level cap,
+where a kill grants nothing: the test raises the character to reach a Power Score of 626, and on this development that
+level is at or past the cap. Slice c was written on slice a's head before power-score-w2 and the level 1 opening; its
+test was registered and, by its entry, never run. The gold session owns the diagnosis.
+
+**F3's own check held**: FE8 printed "FIT-ANY IMPRINTED: step 1266" and FE12 "IMPRINTED SET: step 190", the steps the
+Python copy of the draw (`.claude/windows/f3_tp9_predict.py`) computed, so TP9's prediction stands as computed.
+
+**Ruled**, the coordinating session, 2026-11-22: window forge-pg-w2 at once, without slice c, on the same base; slice c
+rides window ow-f5-w1 once the gold session has fixed it.
+
+### Window forge-pg-w2: PASSED, slices F4 and F3, 2026-11-22
+
+Branch `feat/forge-pg-w2` at `08f4308eb`, on development `5ba9eb311`, built by `.claude/windows/make_branch_forgepg.py
+--without-slice-c`: slice F4's 5 commits (`6a739c11b` empty and skipped), slice F3's `c69259f6d`, `81cf236c6`,
+`9499c2fab` and the renumber commit `573ae8bbf`, every one applied without a conflict, so neither depends on slice c. F3
+arrived as written: its 4 files no other slice touches byte for byte `fec0b0acf`'s, and its 14 shared files changed by
+exactly its lines. The test-name diff against the base: 18 added (`Cataclysm.ForgeEnchantments.` 12,
+`Cataclysm.ForgeDamageTypes.` 6), none removed. Registered at 5271 + 18 = 5289, 57 skipped halves, 860 saves, 24 groups
+alone, 14 proofs.
+
+- **Compile**: three builds, each "Succeeded" with 0 compiler warning or error lines: the branch, 42 files compiled;
+  each changed file alone, 13 (all 8 changed `.cpp` files named); the unity files again, 5.
+- **Record versions**: "26 lines stating a version; NO MISMATCH" against run 17, character 14 and account 7.
+- **Groups alone: 24 of 24 passed**, each at exactly its registered count, `Cataclysm.ForgeEnchantments.` 12,
+  `Cataclysm.ForgeDamageTypes.` 6 and `Cataclysm.Enchantments.` 366 among them.
+- **Whole suite**: "5289 tests performed, 5289 succeeded, 0 failed"; 57 skipped halves; "860 written and deleted, 0 left
+  behind"; "5289 performed, gap 0".
+- **Python beside it**: "8186 passed, 10 skipped"; the JUnit file 8196 tests, 0 failures, 0 errors, 10 skipped. ruff:
+  "All checks passed!".
+
+**C++ guard proofs: 14 of 14 PROVED**, each narrowed to its group with the trailing dot, each failing with the break in
+and passing with it restored:
+
+| Proof | Failed with the break in | As predicted |
+| :-- | :-- | :-- |
+| TP1 | FE1 `ImprintingTakesAnAetherialShard...`, FE4 `TheImprintCraftMakesAMasterfulSwordLegendary...` | yes |
+| TP3 | FE2 `AnImprintDrawsAPairAsADropDoesAndRepeatsNothingOnThePiece` | yes |
+| TP4 | FE3 `AnImprintGivesUpTheChosenAffix...`, FE4 | yes |
+| TP6 | FE6 `AChangedDrawbackIsADifferentOneNeverMilderThanItsPositive` | yes |
+| TP7 | FE5 `ChangingADrawbackTakesARegretEssence...` | yes |
+| TP8 | FE7, FE9, FE10 | yes |
+| TP9 | FE4, FE8 `AnImprintedFitAnyLetsAnOffTypeGemIn...`, FE12 `AnImprintedSetPieceCounts...` | yes, as computed |
+| TP10 | FE11 `TheScreenOffersAnImprintPerAffix...` | yes |
+| FD1, FD3 to FD6 | each the one test slice F4's `prove_f4.py` names | yes |
+| FD2 | `ADrawnTypeIsEvenAmong...`, and also `ChangingADamageTypeTakesAPrismaticCatalyst...` and `InfusingARandomDamageType...` | NO: three failed where one was predicted; it proves its guard, and the two further failures are the gems session's to read |
 
 ---
 
