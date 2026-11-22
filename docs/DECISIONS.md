@@ -238,7 +238,7 @@ window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` a
 
 ---
 
-## 2026-11-22 — The two gem enchantments act on their own piece: "Sockets on this equipment fit any gem type" is read at socket time and apply time and never stored, and "Gems in this equipment are 50% less effective" halves each of that piece's gems before its bucket (#46, slice G7)
+## 2026-11-22 — The two gem enchantments act on their own piece: "Sockets on this equipment fit any gem type" is read at socket time and apply time and never stored, and "Gems in this equipment are 50% less effective" halves each of that piece's gems before its bucket (#46, slice G10)
 
 **Affects:** `UCataclysmGems::SocketFitsAnyGemStat`, `SocketedGemEffectStat`, `FitsAnyGem`, `SocketedGemEffectOf`,
 `GemFitsIn`, `AddGemModifier` (its `Effect` argument), `AddSocketedGems` and `SocketLinesFor`
@@ -267,7 +267,8 @@ Issue [#46](https://github.com/sdubois777/Cataclysm/issues/46).
   wearer" became the test of both enchantments on one piece (Q7).
 - **THIS SUPERSEDES ONE SENTENCE OF THE G3 ENTRY BELOW**, "what the enchantment 'Sockets on this equipment fit any gem
   type' will make of a piece's sockets (slice G7)": the enchantment makes no socket `Any` (Q1). The G3 entry is left as
-  it was written.
+  it was written. **ITS "G7" IS THIS WORK'S PLANNED NUMBER, AND THE WORK IS G10**: G7 became #2830's crafting costs, and
+  G9 is the gems session's socket crafts (the coordinating session, 2026-11-22).
 
 ### The rulings, the coordinating session's of 2026-11-22
 
