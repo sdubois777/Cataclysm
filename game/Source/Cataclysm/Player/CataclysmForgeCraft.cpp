@@ -5,6 +5,7 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"

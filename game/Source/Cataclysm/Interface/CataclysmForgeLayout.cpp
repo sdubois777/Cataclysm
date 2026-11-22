@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmForgeLayout.h"
 
+#include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmDropRoll.h"
 // A gold amount as a player reads it, issue #2830.
 #include "Items/CataclysmDroppedItem.h"
