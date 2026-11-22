@@ -737,29 +737,37 @@ Over `game/Source/**/Tests`, `tools/tests` and `sim/tests`. Slice 6d's is in its
 - **The city screen.** The tests development added to `CataclysmCityScreenTests.cpp` since 6e was written (#2800) read
   no button text, offer, refusal or balance that 6e changes.
 
-### Registered before the run, for both slices
+### Registered before the run, for the whole window: slices 6d, 6e, 7 and 8 and #1130
 
-Counted on the "Test Completed. Result={" lines of window tree-2803-w1's whole-suite log at `8f2491711`, whose `game/` is
-development `b52ba76e2`'s, with a literal match on `Path={Cataclysm.<Group>.`: "5086 tests performed, 5086 succeeded, 0
-failed. 48 skipped part of what they check" and "860 written and deleted, 0 left behind". **The coordinating session's
-queue puts other windows ahead of this one, so every figure is restated from the newest measured window at its turn.**
+**Restated on 2026-11-22 for the window the coordinating session gave all five, tested as one branch,
+`feat/empire-tree-8-prowess-2`, on development `d684a3d0e` (window E's merge).** It replaces the registration against
+window tree-2803-w1 (5097). Counted on the "Test Completed. Result={" lines of window E's whole-suite log at
+`f4d43387c`, whose `game/` tree is development `d684a3d0e`'s, with a literal match on `Path={Cataclysm.<Group>.`: "5143
+tests performed, 5143 succeeded, 0 failed. 57 skipped part of what they check" and "860 written and deleted, 0 left
+behind".
 
-- **The whole suite: the base + 11** (5086 + 3 + 8 = 5097 against tree-2803-w1), 0 failed; 48 skipped halves and 860
-  test saves, the base's, because none of the eleven builds a dungeon floor or writes a save.
-- **The groups whose tests the two slices move, each alone, first**: `Cataclysm.EmpireTreeTreasury.` 3 (new) and
-  `EmpireTreeCredit.` 8 (new); `Data.` 7, `EmpireTreeGoldHeld.` 5, `SaveRecords.` 17, `Gold.` 13, `EmpireTree.` 24,
-  `EmpirePoints.` 16, `SkillLevels.` 13, `CataclysmDraw.` 6, `ConsumptionDouble.` 15 and `ConsumptionMark.` 6. Then the
-  whole suite, which counts every other group. **A judgement, to shorten the window:** the eighteen other groups slice
-  6c ran alone (`SaveLoad.`, `EmpireRun.`, `DungeonMode.` among them) are left to the whole suite and not run alone.
-- **The written-out record version check** wants the run record at 12, the character record at 11 and the account
-  record at 5.
-- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes.uasset` and
-  `DT_EmpireTreeEffects.uasset`, 106 effect rows, and rewrites `game/Data/datatable_asset_sources.json`; those three
-  files and no other are committed before the tests run.
+- **The whole suite: the base + 24** (5143 + 3 + 8 + 7 + 6 = 5167), 0 failed; 57 skipped halves and 860 test saves,
+  the base's, because none of the 24 builds a dungeon floor or writes a save. #1130 adds no Unreal test.
+- **24 groups, each alone, first.** The four new ones: `Cataclysm.EmpireTreeTreasury.` 3, `EmpireTreeCredit.` 8,
+  `EmpireTreeTreasurer.` 7 and `EmpireTreeProwess.` 6. Then 20 at window E's counts: `Data.` 7,
+  `EmpireTreeGoldHeld.` 5, `SaveRecords.` 17, `Gold.` 13, `EmpireTree.` 24, `EmpirePoints.` 16, `SkillLevels.` 13,
+  `CataclysmDraw.` 6, `ConsumptionDouble.` 15 and `ConsumptionMark.` 6, the ten registered before; `WeaponMesh.` 10,
+  for #1130; `CityScreen.` 19, `CityUpgradePrice.` 7 and `CityUpgradeBuildSave.` 2, for the purchase and the city
+  screen's button, where slice 6e meets #2825; `EmpireTreeGold.` 6, `EmpireTreeDrops.` 13, `EmpireTreeClearGold.` 9
+  and `EmpireTreeLoot.` 10, the groups that call the functions slice 7 changes (`GoldMultiplierFor`, `DropRulesFor`,
+  `ClearPayFor`, `DungeonStateFor`); `EmpireTreeScreen.` 10 and `BuildSave.` 6, for slice 8's screen and the
+  allocation it adds two fields to. Then the whole suite, which counts every other group. **A judgement, to shorten the
+  window:** `Passives.` (161 tests), which also reads that allocation, is left to the whole suite.
+- **The written-out record version check** wants the run record at 13, the character record at 12 and the account
+  record at 6. Run before the window on `0913e3582`: "27 lines stating a version; NO MISMATCH".
+- **An asset step**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes.uasset`,
+  `DT_EmpireTreeEffects.uasset` (111 effect rows) and `DT_WeaponMeshes.uasset`, and rewrites
+  `game/Data/datatable_asset_sources.json`; those four files and no other are committed before the tests run.
 - **The Python suite runs beside the whole Unreal suite**, and the proofs only after both have ended.
-- **Ten C++ guard proofs**, one for each new Unreal test so that each is seen to fail, under the coordinating session's
-  rule of 2026-11-21. The city screen test is failed by two of them, so slice 6e needs seven for its eight tests. Every
-  break was predicted from the code without a build.
+- **23 C++ guard proofs**, one for each new Unreal test, under the coordinating session's rule of 2026-11-21, each
+  narrowed to its own group: the ten below, slice 7's K1 to K7 (`Cataclysm.EmpireTreeTreasurer.`, in slice 7's entry)
+  and slice 8's S1 to S6 (`Cataclysm.EmpireTreeProwess.`, in slice 8's entry). Every anchor was checked to match once
+  on `0913e3582`. Every break was predicted from the code without a build.
 
 | Proof | The break | Prefix | Predicted |
 |---|---|---|---|
@@ -768,15 +776,51 @@ queue puts other windows ahead of this one, so every figure is restated from the
 | C4 | Tax Collection is paid every day | the same | `TaxCollectionPays...`, 2 assertions (days 7 and 15: 80,000) |
 | E8 | the credit is not held at the price | `Cataclysm.EmpireTreeCredit.` (8) | 7 succeeded, 1 failed: `TheTwoNodesAddUpAndTheCredit...`, 1 assertion (10,000 read 12,500) |
 | E6 | the balance text leaves the debt out | the same | 6 succeeded, 2 failed: `ACreditPurchaseTakes...`, 1 ("the balance says so"); `TheCityScreenSays...`, 1 ("bought, the balance shows the debt") |
-| E4 | credit is given while a debt is open | the same | 6, 2: `AnOpenDebtStops...`, 2 (the credit 1,000 read 0; its words) and the purchase's own error line; `TheCityScreenSays...`, 2 (the next offer is not short of gold; its button) |
+| E4 | credit is given while a debt is open | the same | 6, 2: `AnOpenDebtStops...`, 2 (the credit 1,000 read 0; its words) and the purchase's own error line; `TheCityScreenSays...`, 2 (the next offer, on another city since the rebase, is not short of gold; its button) |
 | E3 | a pickup pays no debt | the same | 7, 1: `GoldPickedUpPaysTheDebtFirst...`, 7 assertions |
 | E1 | Sovereign Loans' part a day is not saved | the same | 7, 1: `SovereignLoansTakesATenth...`, 4 assertions (151, 1,359 and 146 read 0; 8,495 held read 10,000) |
-| O1 | a Solo Self-Found character's purchase on credit records no debt of its own | the same | 7, 1: `ASoloSelfFoundCharacterOwesItsOwnGold`, 1 assertion ("and its own debt is 1,000": 0) |
-| E7 | the account chain leaves its step to version 5 out | the same | 7, 1: `ThePreviousFilesMigrateOwingNothing`, on "Account_v4.json loads", with whatever the storage logs of the refused file |
+| O1 | a Solo Self-Found character's purchase on credit records no debt of its own: `State->SetOwnGoldOwed(0, 0)` in `UCataclysmGameInstance::SpendGoldOnCreditFor` | the same | 7, 1: `ASoloSelfFoundCharacterOwesItsOwnGold`, 1 assertion ("and its own debt is 1,000": 0) |
+| E7 | the account chain leaves its step out of version 4 out, and keeps slice 8's step out of 5 | the same | 7, 1: `ThePreviousFilesMigrateOwingNothing`, on "Account_v4.json loads", with whatever the storage logs of the refused file |
 
 Seven breaks drafted in phase 1 were dropped, because a Python check fails on each: slice 6d's C2, C3, C5, C6 and C7
 (proofs M8 to M11 and M5, in slice 6d's entry) and slice 6e's E2 (the part a day rounded down) and E5 (an offer on
 credit unsaid), proofs N11 and N12 below.
+
+### The rebase onto development d684a3d0e, and what it moved
+
+The branch was rebased onto window E's merge as `feat/empire-tree-8-prowess-2`. Window E carries #2825, under which a
+city upgrade takes days to build and a city builds one at a time.
+
+- **Slice 6e conflicted with #2825 in eight files, and both sides were kept.**
+  - `UCataclysmCityUpgradePurchase::Buy` asks the run and tells it with the gold held plus the credit, and tells it the
+    days: `Run->BuyCityUpgrade(CityId, Upgrade, Price, Held + Credit, Days)`.
+  - **A judgement:** an offer on credit states the days to build after the credit, "10,000 gold on credit, 1,000 owed,
+    6 days to build", as #2825 has every other priced offer state them after the price.
+  - The city screen's offer carries both #2825's days and 6e's `OwedIfBought` and credit-aware refusal; the console's
+    buy command uses 6e's `RefusalTextIn` and #2825's ready day.
+  - The committed-file tests read `Account_v6.json`, `Character_v12.json` and `Run_v13.json`.
+  - `tools/tests/test_city_upgrades_cost_gold.py` and `tools/tests/test_city_upgrades_take_days_to_build.py` now
+    require the merged call, and `tools/tests/test_empire_tree_credit.py` the merged button, the credit text made
+    inside its branch and the days added to it (`0913e3582`). Both of that check's assertions were proved through
+    `tools/prove_guard.py`: W1, the credit text shown when nothing is owed, and W2, the credit text without the days;
+    each "PROVED: 1 failed, 7 passed | restored: 8 passed".
+- **Two credit tests changed for #2825 where nothing conflicted.** A purchase through `Buy` now goes on the city's
+  build list. `ACreditPurchaseTakesTheWholeBalanceAndOwesTheRest` checks that the city is building the upgrade
+  (`IsBuilding`) rather than holding it, as #2825 changed the price tests. `TheCityScreenSaysWhatCreditLeavesOwedAndWhatADebtStops`
+  asks for its second offer on the first other standing, unbesieged city, because city 0 is building the first upgrade,
+  and its credit button expects the days.
+- **Two proofs changed.** E7's old break removed the account chain's last step, and slice 8 has since added a step
+  after it, so the break now removes the step out of version 4 and keeps the step out of 5; its prediction is unchanged.
+  O1's break was registered in words only, and is now written out as code (the table above).
+- **The design log's conflict** was resolved with `tools/resolve_decisions_log.py`: slice 6e's entry, first written
+  at 00:48 UTC on 2026-11-22, goes above #2811's, first written at 00:08 UTC.
+- **A reading, not changed:** `UCataclysmEmpireTree::IsTreasurerCity` counts finished upgrades only, so a Treasurer
+  upgrade being built does not make a Treasurer city; #2825 says an upgrade does nothing until it is finished. #2825's
+  War Funding line counts a build as the city's first upgrade, which is a price rule and a different question.
+- **The full Python suite on the rebased head `2ae9887a3`**, before the check above was moved: "2 failed, 7940 passed,
+  9 skipped in 343.67s", and the JUnit file 7951 tests, 2 failures, 0 errors, 9 skipped. The two failures were the
+  asset check, which the window's asset step answers, and the credit check moved in `0913e3582`, whose file then read
+  "8 passed".
 
 - **Python before the window**: see the end of this entry.
 
