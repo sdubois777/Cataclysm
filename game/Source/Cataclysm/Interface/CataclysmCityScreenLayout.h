@@ -69,6 +69,17 @@ struct CATACLYSM_API FCataclysmCityUpgradeOffer
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bBesieged = false;
+
+	/** The days it takes to build (`UCataclysmCityUpgradePurchase::BuildDaysIn`). Issue #2825. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BuildDays = 0;
+
+	/**
+	 * Whether another upgrade being built on the city is what stops it (`ECataclysmCityUpgradeResult::BuildUnderWay`).
+	 * Such an offer is a greyed button saying so, as a besieged one is, rather than vanishing. Issue #2825.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bWaitsOnABuild = false;
 };
 
 /**
@@ -169,10 +180,22 @@ public:
 	static TArray<int32> DungeonIdsFor(const UCataclysmEmpireRun* Run,
 									   int32 CityId);
 
-	/** One line per upgrade the city has already bought, in the order bought. */
+	/**
+	 * One line per upgrade the city has already bought, in the order bought, AND LAST THE ONE IT IS BUILDING, since
+	 * issue #2825, in `BuildLineFor`'s words.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static TArray<FString> HeldLinesFor(const UCataclysmEmpireRun* Run,
 										int32 CityId);
+
+	/**
+	 * The upgrade the city is building, and when it will be finished: "Increase max defense by 20%  --  being built, 4
+	 * days left, ready on day 57", or "... being built, 4 days left, paused while a Siege dungeon stands on this city",
+	 * or "... paused while this city is fallen". Empty when it is building nothing. Issue #2825. THE ONE WORDING: the
+	 * map's city detail says the same line.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString BuildLineFor(const UCataclysmEmpireRun* Run, int32 CityId);
 
 	/**
 	 * Every upgrade in `game/Data/CityUpgrades.csv`, in table order, with

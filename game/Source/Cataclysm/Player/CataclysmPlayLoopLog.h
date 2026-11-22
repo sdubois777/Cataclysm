@@ -67,7 +67,9 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * WHAT THE DAYS AWAY DID, from the days' own reports and not from the summary the map reads
 	 * (`UCataclysmEmpireRun::NoteDaysAway`), so the log is a second account to check the map against: "while away,
 	 * days 0 to 12: dungeons resolved: 5 (the dungeon on Outpost (-2,-1)); cities hit: Outpost (-2,-1) lost 750 defence
-	 * and 1200 people; cities fallen: none; 1 surge brought 8 dungeons". "No day passed" when none did.
+	 * and 1200 people; cities fallen: none; 1 surge brought 8 dungeons". "No day passed" when none did. AND THE CITY
+	 * UPGRADES THOSE DAYS FINISHED, since issue #2825, added only when there are any: "; city upgrades finished:
+	 * Outpost (-3,0)".
 	 *
 	 * @param NamesBefore `NamesStanding` read before the days ran; a dungeon the days both brought and resolved is
 	 *                    named by its identifier alone.
@@ -122,10 +124,12 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * by 20%' on Outpost (-3,0) for 10,000 gold; 2,345 gold held". Issue #2742's second slice: the owner's check that
 	 * a purchase took the price it showed.
 	 *
-	 * @param Held  the balance after the purchase, or below zero when there is none to name, and the line says so.
+	 * @param Held      the balance after the purchase, or below zero when there is none to name, and the line says so.
+	 * @param ReadyDay  the day the upgrade will be finished, since issue #2825: "; being built, ready on day 57". At
+	 *                  INDEX_NONE, an upgrade finished at once, the line says nothing more.
 	 */
 	static FString UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId, int64 Price,
-							   int64 Held);
+							   int64 Held, int32 ReadyDay = INDEX_NONE);
 
 	/**
 	 * A point bought in the empire upgrade tree: "bought a point in Structural Integrity (Architect): 3 of 10; 9.5

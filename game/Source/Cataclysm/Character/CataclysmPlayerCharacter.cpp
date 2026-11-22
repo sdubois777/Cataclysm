@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmPlayerCharacter.h"
 // For the one sentence every way of leaving a walk early is refused with. Issue #2733 slice 3.
+#include "Interface/CataclysmCityScreenLayout.h"
 #include "Interface/CataclysmWalkFromTheScreen.h"
 
 #include "Cataclysm.h"
@@ -4923,13 +4924,20 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 			}
 
 			Ar.Logf(TEXT("%s: %d of %d upgrade slots filled."), *City->Name,
-					City->Upgrades.Num(), Run->Map->UpgradeSlots);
+					City->Upgrades.Num() + City->Building.Num(), Run->Map->UpgradeSlots); // With its build: #2825.
 
 			for (const FCataclysmCityUpgrade& Held : City->Upgrades)
 			{
 				Ar.Logf(TEXT("  has  %s (%s, %.2f)"), *Held.RowName.ToString(),
 						*UCataclysmCityUpgradeRules::EffectName(Held.Effect),
 						Held.Value);
+			}
+
+			// AND WHAT IT IS BUILDING, since issue #2825.
+			const FString Building = UCataclysmCityScreenLayout::BuildLineFor(Run, CityId);
+			if (!Building.IsEmpty())
+			{
+				Ar.Logf(TEXT("  building  %s"), *Building);
 			}
 
 			// WHAT IT COULD BUY, AND WHAT IT COULD NOT, because five of the
@@ -4940,7 +4948,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 				const FCataclysmCityUpgrade Upgrade =
 					UCataclysmCityUpgradeMapping::MakeFromTable(RowName);
 
-				if (City->HasUpgrade(RowName))
+				if (City->HasUpgrade(RowName) || City->IsBuilding(RowName))
 				{
 					continue;
 				}
@@ -4954,12 +4962,15 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmCityUpgrades(
 					continue;
 				}
 
-				// WITH ITS PRICE IN THIS RUN, since issue #2742's second slice.
-				Ar.Logf(TEXT("  buy  %s (%s, %.2f) for %s"), *RowName.ToString(),
+				// WITH ITS PRICE IN THIS RUN, since issue #2742's second slice, AND
+				// ITS DAYS TO BUILD, since issue #2825.
+				Ar.Logf(TEXT("  buy  %s (%s, %.2f) for %s, %s"), *RowName.ToString(),
 						*UCataclysmCityUpgradeRules::EffectName(Upgrade.Effect),
 						Upgrade.Value,
 						*UCataclysmCityUpgradePurchase::PriceText(
-							UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, City->CityId)));
+							UCataclysmCityUpgradePurchase::PriceIn(World, Run, RowName, City->CityId)),
+						*UCataclysmCityUpgradePurchase::BuildDaysText(
+							UCataclysmCityUpgradePurchase::BuildDaysIn(World, Run, RowName, City->CityId)));
 			}
 		}));
 
@@ -4967,8 +4978,9 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 	TEXT("Cataclysm.BuyCityUpgrade"),
 	TEXT("Spend one of a city's upgrade slots: Cataclysm.BuyCityUpgrade "
 		 "<cityId> <rowName>. Cataclysm.CityUpgrades lists the row names and "
-		 "prices. It costs the character playing that much gold and is "
-		 "immediate, because no build time is designed yet."),
+		 "prices. It costs the character playing that much gold now, and the "
+		 "upgrade does nothing until its days to build have passed: 6 days at "
+		 "upgrade tier 1. A city builds one upgrade at a time."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(
 		[](const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 		{
@@ -5015,11 +5027,16 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 			const ECataclysmCityUpgradeResult Result =
 				UCataclysmCityUpgradePurchase::Buy(World, Run, CityId, RowName);
 
+			// AND THE DAY IT WILL BE FINISHED, since issue #2825.
+			const int32 ReadyDay = Run->BuildReadyDay(CityId);
 			const FString Said =
-				Result == ECataclysmCityUpgradeResult::Bought
-					? FString::Printf(TEXT("Bought for %s."),
-									  *UCataclysmCityUpgradePurchase::PriceText(Price))
-					: UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held);
+				Result != ECataclysmCityUpgradeResult::Bought
+					? UCataclysmCityUpgradePurchase::RefusalText(Result, Price, Held)
+					: ReadyDay == INDEX_NONE
+						  ? FString::Printf(TEXT("Bought for %s."),
+											*UCataclysmCityUpgradePurchase::PriceText(Price))
+						  : FString::Printf(TEXT("Bought for %s; being built, ready on day %d."),
+											*UCataclysmCityUpgradePurchase::PriceText(Price), ReadyDay);
 			Ar.Logf(TEXT("%s"), *Said);
 
 			if (Result == ECataclysmCityUpgradeResult::Bought)
@@ -5028,7 +5045,7 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmBuyCityUpgrade(
 
 				Ar.Logf(TEXT("%s now has %d of %d slots filled. Defence %.0f of "
 							 "%.0f, %.0f of %.0f people."),
-						*City->Name, City->Upgrades.Num(),
+						*City->Name, City->Upgrades.Num() + City->Building.Num(), // With its build: #2825.
 						Run->Map->UpgradeSlots, Run->Map->DefenceOf(*City), Run->Map->EffectiveMaxDefence(*City),
 						Run->Map->PopulationOf(*City), Run->Map->EffectiveMaxPopulation(*City)); // With the tree: #2741 3a.
 			}

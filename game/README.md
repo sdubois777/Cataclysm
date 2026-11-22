@@ -386,7 +386,11 @@ by `git add` with no error and no warning. Guarded by
   `Empire/CataclysmCityUpgrade.h` names what a city upgrade does, how many slots
   a city has — three, or two on Heretic — and which effects are built.
   A city holds what it bought, `UCataclysmEmpireRun::BuyCityUpgrade` spends a
-  slot, and **fourteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
+  slot, and since issue #2825 a purchase takes days to build: 6, 12 or 24 by the
+  upgrade's tier (`UCataclysmCityUpgradeRules::BuildDaysFor`). It waits on the
+  city's `Building` list, `UCataclysmEmpireRun::AdvanceCityBuilds` counts a day of
+  it each day the city is neither fallen nor besieged, and it does nothing until
+  it is finished. And **fourteen of the 24 upgrades in `game/Data/CityUpgrades.csv` do
   something**: the ten Architect ones, which raise a city's maxima, restore its
   defence and population, resist what a dungeon takes, repair it on a schedule,
   and disperse the dungeons standing on it; and all four Explorer ones that shape

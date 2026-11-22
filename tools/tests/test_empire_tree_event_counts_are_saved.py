@@ -183,9 +183,17 @@ def test_the_last_stand_is_armed_before_the_two_resolution_hits_and_no_other() -
 
 
 def test_a_bought_upgrade_records_the_clocks_day() -> None:
-    buy = body(code(EMPIRE / "CataclysmEmpireRun.cpp"), "ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(",
-               "CataclysmEmpireRun.cpp")
-    assert re.search(r"Bought\.BoughtDay\s*=\s*Clock->Day\s*;", buy), "BuyCityUpgrade does not record the day"
+    """The day an upgrade is finished, which Enduring Foundations reads: at once for a purchase with no build days,
+    and on the day its build's days run out since issue #2825 (`tools/tests/test_city_upgrades_take_days_to_build.py`).
+    """
+    run = code(EMPIRE / "CataclysmEmpireRun.cpp")
+    complete = body(run, "void UCataclysmEmpireRun::CompleteCityUpgrade(", "CataclysmEmpireRun.cpp")
+    assert re.search(r"Bought\.BoughtDay\s*=\s*Day\s*;", complete), "CompleteCityUpgrade does not record the day"
+    buy = body(run, "ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(", "CataclysmEmpireRun.cpp")
+    assert "CompleteCityUpgrade(CityId, Bought, Clock->Day);" in buy, (
+        "a purchase finished at once is not stamped with the clock's day")
+    advance = body(run, "void UCataclysmEmpireRun::AdvanceCityBuilds(", "CataclysmEmpireRun.cpp")
+    assert "CompleteCityUpgrade(CityId, Done, Today);" in advance, "a finished build is not stamped with its day"
 
 
 def test_the_fixtures_readme_lists_run_v9() -> None:

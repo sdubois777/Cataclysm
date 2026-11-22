@@ -158,8 +158,9 @@ void UCataclysmCityScreenWidget::BuildOfferButtons()
 		// slice: its button says the price and how much more is needed, or that
 		// a Siege dungeon stands on the city, and cannot be pressed. Left off, a
 		// player short of gold or under a Siege would see the offers vanish with
-		// nothing to say why.
-		if (!Offer.bCanBuy && !Offer.bShortOfGold && !Offer.bBesieged)
+		// nothing to say why. AND WHAT ANOTHER BUILD ON THE CITY STOPS, since issue
+		// #2825: a city builds one upgrade at a time, and its button says so.
+		if (!Offer.bCanBuy && !Offer.bShortOfGold && !Offer.bBesieged && !Offer.bWaitsOnABuild)
 		{
 			continue;
 		}

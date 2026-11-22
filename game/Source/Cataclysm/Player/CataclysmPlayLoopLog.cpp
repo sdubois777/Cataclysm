@@ -140,8 +140,11 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 	TArray<int32> Fallen;
 	int32 Surges = 0;
 	int32 SurgeDungeons = 0;
+	// AND THE CITY UPGRADES FINISHED, one entry per upgrade, in the order the days finished them. Issue #2825.
+	TArray<int32> Finished;
 	for (const FCataclysmDayReport& Day : Days)
 	{
+		Finished.Append(Day.UpgradesFinishedOn);
 		for (const int32 Id : Day.Resolved)
 		{
 			Resolved.AddUnique(Id);
@@ -184,10 +187,21 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 		: FString::Printf(TEXT("%d surge%s brought %d dungeon%s"), Surges, Surges == 1 ? TEXT("") : TEXT("s"),
 						  SurgeDungeons, SurgeDungeons == 1 ? TEXT("") : TEXT("s"));
 
-	return FString::Printf(TEXT("while away, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s"),
+	// ADDED ONLY WHEN THERE ARE ANY, so a line about days that finished nothing reads as it did before issue #2825.
+	TArray<FString> FinishedParts;
+	for (const int32 CityId : Finished)
+	{
+		FinishedParts.Add(CityName(Run, CityId));
+	}
+	const FString FinishedText = FinishedParts.IsEmpty()
+		? FString()
+		: FString::Printf(TEXT("; city upgrades finished: %s"), *FString::Join(FinishedParts, TEXT(", ")));
+
+	return FString::Printf(TEXT("while away, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s%s"),
 						   FromDay, ToDay, ResolvedParts.IsEmpty() ? TEXT("none") : *FString::Join(ResolvedParts, TEXT(", ")),
 						   HitParts.IsEmpty() ? TEXT("none") : *FString::Join(HitParts, TEXT(", ")),
-						   FallenParts.IsEmpty() ? TEXT("none") : *FString::Join(FallenParts, TEXT(", ")), *SurgeText);
+						   FallenParts.IsEmpty() ? TEXT("none") : *FString::Join(FallenParts, TEXT(", ")), *SurgeText,
+						   *FinishedText);
 }
 
 FString FCataclysmPlayLoopLog::CapitalLine(const UCataclysmEmpireRun* Run, int32 Level, int64 ExperienceIntoLevel,
@@ -272,16 +286,20 @@ FString FCataclysmPlayLoopLog::LevelGainedLine(int32 From, int32 To, int64 Exper
 }
 
 FString FCataclysmPlayLoopLog::UpgradeLine(const FString& Upgrade, const UCataclysmEmpireRun* Run, int32 CityId,
-										   int64 Price, int64 Held)
+										   int64 Price, int64 Held, int32 ReadyDay)
 {
 	const FString City = CataclysmPlayLoopLog::CityName(Run, CityId);
+	// THE DAY IT WILL BE FINISHED, since issue #2825; nothing for one finished at once.
+	const FString Ready = ReadyDay == INDEX_NONE ? FString()
+												 : FString::Printf(TEXT("; being built, ready on day %d"), ReadyDay);
 	if (Held < 0)
 	{
-		return FString::Printf(TEXT("bought '%s' on %s for %s gold; no gold balance to hold it"), *Upgrade, *City,
-							   *ACataclysmDroppedItem::GoldAmountText(Price));
+		return FString::Printf(TEXT("bought '%s' on %s for %s gold; no gold balance to hold it%s"), *Upgrade, *City,
+							   *ACataclysmDroppedItem::GoldAmountText(Price), *Ready);
 	}
-	return FString::Printf(TEXT("bought '%s' on %s for %s gold; %s gold held"), *Upgrade, *City,
-						   *ACataclysmDroppedItem::GoldAmountText(Price), *ACataclysmDroppedItem::GoldAmountText(Held));
+	return FString::Printf(TEXT("bought '%s' on %s for %s gold; %s gold held%s"), *Upgrade, *City,
+						   *ACataclysmDroppedItem::GoldAmountText(Price), *ACataclysmDroppedItem::GoldAmountText(Held),
+						   *Ready);
 }
 
 FString FCataclysmPlayLoopLog::TreePointLine(const FString& Node, const FString& Branch, int32 Points, int32 MaxPoints,

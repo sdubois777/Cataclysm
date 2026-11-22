@@ -816,7 +816,8 @@ float UCataclysmEmpireTree::UpgradePriceFactorFor(const FCataclysmEmpireTreePlay
 	// UPGRADE (P2). Price Controls' "Cities that have taken Surge damage" is slice 6b's, from a saved flag: the reading
 	// "below its maximum now" (P3) was withdrawn, because a maximum the tree raises leaves every full city below it.
 	float Reduced = Bonuses.UpgradePriceReduced;
-	if (City->Upgrades.Num() == 0)
+	// AN UPGRADE BEING BUILT IS THE CITY'S FIRST, since issue #2825: its slot is taken and it was paid for.
+	if (City->Upgrades.Num() + City->Building.Num() == 0)
 	{
 		Reduced += Bonuses.FirstUpgradePriceReduced;
 	}

@@ -115,19 +115,23 @@ bool FCataclysmCityUpgradeSlotsTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeInstantTest,
-	"Cataclysm.CityUpgrade.AnUpgradeIsStillImmediate",
+	"Cataclysm.CityUpgrade.AnUpgradeTakesTheDaysOfItsTier",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCityUpgradeInstantTest::RunTest(const FString& Parameters)
 {
-	// THIS TEST EXISTS TO BE CHANGED DELIBERATELY. The design says an upgrade
-	// takes days to build and no number is written anywhere, and the owner ruled
-	// on 2026-11-18 that upgrades stay instant and build days come later. It was
-	// "AnUpgradeIsStillFreeAndImmediate" until issue #2742's second slice gave an
-	// upgrade a price, which `Cataclysm.CityUpgradePrice.` covers.
-	TestEqual(TEXT("an upgrade takes no days to build"),
-			  UCataclysmCityUpgradeRules::BuildDays, 0);
-	TestTrue(TEXT("so it is immediate"), UCataclysmCityUpgradeRules::IsInstant());
+	// CHANGED DELIBERATELY BY ISSUE #2825, as it said it would be. It was
+	// "AnUpgradeIsStillImmediate", pinning the owner's ruling of 2026-11-18 that
+	// upgrades stay instant; the owner reversed that on 2026-11-21 ("They need
+	// build times. Probably based on their tier."), and the coordinating session
+	// ruled the days the same day. `Cataclysm.CityUpgradeBuild.` tests what a
+	// build does; this pins the figures.
+	TestEqual(TEXT("tier 1 takes 6 days (derived: 3 + 2 + 1)"), UCataclysmCityUpgradeRules::BuildDaysFor(1), 6);
+	TestEqual(TEXT("tier 2 takes 12 (the price ladder's doubling)"), UCataclysmCityUpgradeRules::BuildDaysFor(2), 12);
+	TestEqual(TEXT("tier 3 takes 24"), UCataclysmCityUpgradeRules::BuildDaysFor(3), 24);
+	TestEqual(TEXT("a tier below the ladder reads as tier 1"), UCataclysmCityUpgradeRules::BuildDaysFor(0), 6);
+	TestEqual(TEXT("and one above it as tier 3"), UCataclysmCityUpgradeRules::BuildDaysFor(4), 24);
+	TestEqual(TEXT("no build is shorter than a day"), UCataclysmCityUpgradeRules::MinimumBuildDays, 1);
 
 	return true;
 }

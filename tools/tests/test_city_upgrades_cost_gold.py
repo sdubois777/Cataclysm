@@ -240,7 +240,8 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
                "ECataclysmCityUpgradeResult UCataclysmCityUpgradePurchase::Buy(")
     asked = buy.find("Run->WouldBuyCityUpgrade(CityId, Upgrade, Price, Held)")
     spent = buy.find("UCataclysmGameInstance::SpendGoldFor(WorldContext, Price, bFromTheCharacter)")
-    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held)")
+    # WITH THE DAYS IT TAKES TO BUILD since issue #2825 (`tools/tests/test_city_upgrades_take_days_to_build.py`).
+    bought = buy.find("Run->BuyCityUpgrade(CityId, Upgrade, Price, Held, Days)")
     assert -1 not in (asked, spent, bought) and asked < spent < bought, (
         "Buy does not ask the run, then take the gold, then have the run record the upgrade, in that order; an upgrade "
         "could be held unpaid")

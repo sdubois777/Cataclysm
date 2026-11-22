@@ -697,6 +697,44 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * Version 12 to 13, issue #2825, ruled 2026-11-21: a city upgrade takes days to build. A VERSION 12 RUN COULD BUILD
+	 * NOTHING, because every purchase was finished at once, so every city's `Building` is written empty and every upgrade
+	 * it holds is written with a `BuildDaysLeft` of 0 -- written out, for `Migrate_3_to_4`'s reason. A `Cities` that is
+	 * not an array, or an entry or upgrade that is not an object, is left as it is, for `Migrate_6_to_7`'s reason.
+	 */
+	bool Migrate_12_to_13(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TArray<TSharedPtr<FJsonValue>>* Cities = nullptr;
+		if (Record->TryGetArrayField(TEXT("Cities"), Cities) && Cities)
+		{
+			for (const TSharedPtr<FJsonValue>& CityEntry : *Cities)
+			{
+				const TSharedPtr<FJsonObject>* City = nullptr;
+				if (!CityEntry.IsValid() || !CityEntry->TryGetObject(City) || !City || !City->IsValid())
+				{
+					continue;
+				}
+				(*City)->SetArrayField(TEXT("Building"), TArray<TSharedPtr<FJsonValue>>()); // A migration's: none.
+				const TArray<TSharedPtr<FJsonValue>>* Upgrades = nullptr;
+				if (!(*City)->TryGetArrayField(TEXT("Upgrades"), Upgrades) || !Upgrades)
+				{
+					continue;
+				}
+				for (const TSharedPtr<FJsonValue>& UpgradeEntry : *Upgrades)
+				{
+					const TSharedPtr<FJsonObject>* Upgrade = nullptr;
+					if (UpgradeEntry.IsValid() && UpgradeEntry->TryGetObject(Upgrade) && Upgrade && Upgrade->IsValid())
+					{
+						(*Upgrade)->SetNumberField(TEXT("BuildDaysLeft"), 0); // A migration's: finished.
+					}
+				}
+			}
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -710,6 +748,7 @@ namespace CataclysmRunSaveMigration
 		{ 9, TEXT("Migrate_9_to_10"), &Migrate_9_to_10 },
 		{ 10, TEXT("Migrate_10_to_11"), &Migrate_10_to_11 },
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
+		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 	};
 }
 

@@ -751,6 +751,22 @@ followed, ruled 2026-11-01:
   committed run file reads `Run_v12.json` now, and every test that runs an
   older run file through the whole chain adds what the step writes through
   `CataclysmSaveFixtures::AddTheRunsVersion12Defaults`.
+- **The run record went to version 13 on 2026-11-21**, because a city upgrade
+  takes days to build (issue #2825): each city's `Building`, the upgrade it is
+  building, and each upgrade's `BuildDaysLeft`. `Migrate_12_to_13` writes an
+  empty `Building` on every city and a `BuildDaysLeft` of 0 on every upgrade:
+  a version 12 run could build nothing, since every purchase was finished at
+  once. `Run_v13.json` is `Run_v12.json` at version 13 with a `BuildDaysLeft`
+  of 0 on both its finished upgrades, its first city (city 0) building
+  `Architect_Increase_max_defense_by_20` with 4 days left, and its second, the
+  fallen one, building nothing: the build is neither the default nor what the
+  step writes, so the test that reads it shows the field is read.
+  `Run_v12.json` is now a migration input, not edited again:
+  `Cataclysm.CityUpgradeBuildSave.ARunFileFromVersion12MigratesBuildingNothing`
+  runs it through the step, every test that read `Run_v12.json` as the
+  committed run file reads `Run_v13.json` now, and every test that runs an
+  older run file through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion13Defaults`.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -790,6 +806,7 @@ followed, ruled 2026-11-01:
 | `Run_v10.json` | The same run at version 10: version 9's contents, with its first creature saved as a Vengeful Wraith and its second as not one |
 | `Run_v11.json` | The same run at version 11: version 10's contents, plus 5 dungeons cleared since the last death |
 | `Run_v12.json` | The same run at version 12: version 11's contents, plus its first city marked as damaged by a dungeon, the run's population marked as fallen below half, and the walk's 1234 gold dropped and 1000 picked up |
+| `Run_v13.json` | The same run at version 13: version 12's contents, plus a `BuildDaysLeft` of 0 on both its upgrades, its first city building `Architect_Increase_max_defense_by_20` with 4 days left, and its second building nothing |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

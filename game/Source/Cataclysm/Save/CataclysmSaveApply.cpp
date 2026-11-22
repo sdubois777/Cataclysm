@@ -584,6 +584,8 @@ bool FCataclysmSaveApply::RunInto(const UCataclysmRunSave& Record, UCataclysmEmp
 		City->LeftEdict = Saved.LeftEdict;
 		City->LeftEdictUntilDay = Saved.LeftEdictUntilDay;
 		City->Upgrades = Saved.Upgrades;
+		// AND WHAT IT IS BUILDING, with the days left on it, run record version 13. Issue #2825.
+		City->Building = Saved.Building;
 	}
 
 	// THE CLOCK, THE DUNGEONS AND THE DAYS OWED.

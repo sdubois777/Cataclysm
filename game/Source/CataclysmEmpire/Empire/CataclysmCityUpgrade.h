@@ -216,19 +216,18 @@ enum class ECataclysmCityUpgradeResult : uint8
 	NotAnUpgrade			= 7,
 
 	/**
-	 * An upgrade is no longer instant, and nothing can wait for one to be built.
+	 * An upgrade is being built on that city, and a city builds one at a time.
 	 *
-	 * THIS IS A GUARD RATHER THAN A STATE THE GAME REACHES. It fires only if
-	 * someone raises `UCataclysmCityUpgradeRules::BuildDays` above zero without
-	 * building the timer that would then be needed. Refusing loudly is better
-	 * than silently handing out a built upgrade at once. See `IsInstant`.
+	 * THE COORDINATING SESSION'S RULING OF 2026-11-21 (issue #2825): one build
+	 * at a time per city, and any number of cities may build at once. It is
+	 * checked after the slot count, so a city whose last slot is the one being
+	 * built says it is full.
 	 *
-	 * IT WAS `CannotPayYet` UNTIL ISSUE #2742's SECOND SLICE, guarding a gold
-	 * cost as well as the build time. An upgrade now has a price and the gold to
-	 * pay it, so only the build time is left for it to guard; a price the
-	 * character cannot meet is `NotEnoughGold`.
+	 * IT WAS `CannotWaitForABuildYet` UNTIL ISSUE #2825, a guard that refused
+	 * every purchase if the build days were raised without a timer, and
+	 * `CannotPayYet` before issue #2742's second slice. The timer exists now.
 	 */
-	CannotWaitForABuildYet	= 8,
+	BuildUnderWay			= 8,
 
 	/**
 	 * A Siege stands on that city, and a besieged city may not be improved.
@@ -240,12 +239,9 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 * keeps its raised maximum defence and its damage resistances; it simply
 	 * cannot add to them until the Siege is gone.
 	 *
-	 * ONLY THE BLOCKING HALF EXISTS, AND THAT IS NOT AN OVERSIGHT. Nothing is
-	 * ever part way through being built, because `BuildDays` is zero and every
-	 * purchase is instant -- see `IsInstant`. There is no in-progress build for
-	 * a Siege to interrupt until issue #1264 gives an upgrade a build time, and
-	 * raising `BuildDays` to create one would trip that same guard and refuse
-	 * every purchase in the game.
+	 * BOTH HALVES EXIST SINCE ISSUE #2825. This refuses a purchase, and
+	 * `UCataclysmEmpireRun::AdvanceCityBuilds` counts no day of a build on a
+	 * besieged city, so the build waits until the Siege is gone.
 	 */
 	CityIsBesieged			= 9,
 
@@ -341,11 +337,24 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * The day it was bought, which Enduring Foundations reads: "City upgrades that have been active for 10+ days".
 	 * Issue #2741 slice 3b, Q6.
 	 *
-	 * SET BY `UCataclysmEmpireRun::BuyCityUpgrade`, the one way a player buys one. RUN RECORD VERSION 9: an upgrade
-	 * saved before the field is given day 0 by `Migrate_8_to_9`, so it counts as held since its run began.
+	 * SET BY `UCataclysmEmpireRun::CompleteCityUpgrade`, ON THE DAY THE UPGRADE IS FINISHED, since issue #2825: an
+	 * upgrade does nothing while it is being built, so it has not been "active" until then. RUN RECORD VERSION 9: an
+	 * upgrade saved before the field is given day 0 by `Migrate_8_to_9`, so it counts as held since its run began.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 BoughtDay = 0;
+
+	/**
+	 * The days still to count before an upgrade being built is finished. Issue #2825, ruled 2026-11-21.
+	 *
+	 * NOUGHT ON EVERY FINISHED UPGRADE, in `FCataclysmCity::Upgrades`. Above nought only on one in
+	 * `FCataclysmCity::Building`, where `UCataclysmEmpireRun::AdvanceCityBuilds` takes a day off it for each day that
+	 * passes while the city is neither fallen nor besieged. DAYS LEFT RATHER THAN A FINISHING DAY, because a pause
+	 * moves the finishing day and would have to rewrite it. RUN RECORD VERSION 13: `Migrate_12_to_13` writes 0 on every
+	 * upgrade a version 12 run holds, since all of them were finished.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 BuildDaysLeft = 0;
 
 	bool IsValid() const
 	{
@@ -447,41 +456,43 @@ public:
 	// upgrade is free until gold exists, and on 2026-11-18 that it costs gold.
 	// Issues #1264 and #2742; `docs/DECISIONS.md` records both.
 
-	/**
-	 * Days to build one. ZERO, DELIBERATELY, AND IT SHOULD NOT STAY ZERO.
-	 *
-	 * `docs/Cataclysm_GDD_v2.md`: "Time is the primary resource -- every
-	 * dungeon, craft, and upgrade costs days." Rapid Renovation reduces "city
-	 * upgrade construction time (Min 1 day)" and Scaffolding makes upgrades
-	 * "take 2x longer to build", so both a base duration and a floor are
-	 * assumed. Neither is written down. Same decision, same issue.
-	 *
-	 * AN UPGRADE THEREFORE TAKES EFFECT THE MOMENT IT IS BOUGHT. There is no
-	 * build timer and no half-built upgrade anywhere in this module. Adding one
-	 * is not a matter of raising this number: the standing effects are applied
-	 * to the city when the upgrade is bought rather than recomputed each day, so
-	 * a delay would need them to become derived first. `IsInstant` below is the
-	 * guard that stops this being changed by halves.
-	 *
-	 * STILL ZERO AFTER GOLD: the owner ruled on 2026-11-18 that upgrades stay
-	 * instant and build days come later. Issue #2742.
-	 */
-	static constexpr int32 BuildDays = 0;
+	// ----------------------------------------------------------------------
+	// How long an upgrade takes to build. Issue #2825.
+	// ----------------------------------------------------------------------
+
+	// THE OWNER, 2026-11-21, reversing the ruling of 2026-11-18 that an upgrade
+	// is instant: "They need build times. Probably based on their tier." "Their
+	// tier" is the UPGRADE's tier, the 1 to 3 ladder its price uses, ruled by
+	// the coordinating session the same day, as were the figures below.
+	//
+	// THE DAYS ARE NOT SCALED BY THE DIFFICULTY TIER. A price is, because gold
+	// income is; a floor is one day at every tier, and so is a day of building.
 
 	/**
-	 * Whether an upgrade still takes effect the moment it is bought.
+	 * Tier 1's days. DERIVED: Rapid Renovation takes up to 3 days off and Rapid
+	 * Funding 2, and both texts say "Min 1 day", so 3 + 2 + 1 is the least at
+	 * which both act in full.
+	 */
+	static constexpr int32 BuildDaysTier1 = 6;
+
+	/** Tier 2's days. A JUDGEMENT: the price ladder's doubling. */
+	static constexpr int32 BuildDaysTier2 = 12;
+
+	/** Tier 3's days. A JUDGEMENT: the price ladder's doubling. */
+	static constexpr int32 BuildDaysTier3 = 24;
+
+	/** "Min 1 day", in both Rapid Renovation's and Rapid Funding's texts: no build is shorter. */
+	static constexpr int32 MinimumBuildDays = 1;
+
+	/**
+	 * The days an upgrade at that tier takes to build, before the empire upgrade tree's three build nodes
+	 * (Scaffolding, Rapid Renovation, Rapid Funding, which act in the `Cataclysm` module because the tree is there).
 	 *
-	 * WHY A PURCHASE ASKS. Raising `BuildDays` above zero without also building
-	 * something to wait on would hand out the upgrade at once, silently.
-	 * `UCataclysmEmpireRun::BuyCityUpgrade` refuses with
-	 * `ECataclysmCityUpgradeResult::CannotWaitForABuildYet` instead, so the
-	 * half-done change fails loudly at the first purchase.
-	 *
-	 * IT WAS `IsFreeAndInstant` UNTIL ISSUE #2742's SECOND SLICE, which gave an
-	 * upgrade a price and the gold to pay it.
+	 * A TIER BELOW 1 IS READ AS 1 AND ONE ABOVE 3 AS 3, the ends of the ladder, as `UCataclysmCityUpgradeMapping`
+	 * reads a price. Only tier 1 can be bought today (issue #1265).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	static bool IsInstant();
+	static int32 BuildDaysFor(int32 UpgradeTier);
 
 	// ----------------------------------------------------------------------
 	// Which effects exist
