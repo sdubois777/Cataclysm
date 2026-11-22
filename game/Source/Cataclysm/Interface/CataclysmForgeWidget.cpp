@@ -72,6 +72,13 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		// AND A SOCKET TO ADD, AND EACH EMPTY SOCKET'S TYPE TO CHANGE. Issue #46, slice G9.
 		ShownSocketWorkActions =
 			UCataclysmForgeLayout::SocketWorkActionsFor(*Item, UCataclysmForgeCraft::MaxSocketsOf(*Item));
+		// AND ITS AFFIXES, with a reroll, a perfecting and a raise for each. Issue #47, slice F1.
+		const FString Affixes = UCataclysmForgeLayout::AffixesDetailFor(*Item);
+		if (!Affixes.IsEmpty())
+		{
+			Detail += TEXT("\n") + Affixes;
+		}
+		ShownAffixActions = UCataclysmForgeLayout::AffixActionsFor(*Item);
 	}
 	else
 	{
@@ -79,6 +86,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		UpgradeWords = TEXT("Upgrade");
 		ShownSocketActions.Reset();
 		ShownSocketWorkActions.Reset();
+		ShownAffixActions.Reset();
 	}
 
 	BuildPieceButtons();
@@ -150,6 +158,18 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								  /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			SocketWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(SocketWork);
+		}
+	}
+
+	// THE AFFIX CRAFTS, two presses each as socket work is. Issue #47, slice F1.
+	for (const FCataclysmForgeAffixAction& Action : ShownAffixActions)
+	{
+		if (UCataclysmChoiceButton* AffixWork = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			AffixWork->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			AffixWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(AffixWork);
 		}
 	}
 
@@ -361,6 +381,69 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 								  Done.Socket + 1, *UCataclysmGems::SocketTypeName(Done.ToType),
 								  *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days, Done.Days == 1 ? TEXT("") : TEXT("s"));
 			break;
+		case ECataclysmForgeResult::Refused:
+		default:
+			Message = Said;
+			break;
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// AN AFFIX REROLLED, PERFECTED OR RAISED A TIER, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND, as socket work is.
+	// Issue #47, slice F1.
+	FCataclysmForgeAffixAction AffixWork;
+	if (bHasChosen && UCataclysmForgeLayout::AffixActionForButton(ButtonName, ShownAffixActions, AffixWork))
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		const bool bThresholdWasAsked = bSecondPress && bThresholdAsked;
+		CancelThePendingUpgrade();
+
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeAffixWork Plan =
+			UCataclysmForgeCraft::AffixWorkPlanFor(Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::AffixWorkQuestion(Plan);
+			RefreshDisplay();
+			return;
+		}
+
+		FCataclysmForgeAffixWork Done;
+		FString Said;
+		const ECataclysmForgeResult Result = UCataclysmForgeCraft::CraftAffix(
+			Context(), ChosenTarget, AffixWork.Craft, AffixWork.Affix, bThresholdWasAsked, Done, Said);
+		switch (Result)
+		{
+		case ECataclysmForgeResult::AsksAboutTheThreshold:
+			PendingSocketAction = ButtonName;
+			bThresholdAsked = true;
+			Message = Said + TEXT(" Press it again to go on.");
+			break;
+		case ECataclysmForgeResult::Done:
+		{
+			const FString Cost = FString::Printf(TEXT("It cost %s and %d day%s of the run."),
+												 *ACataclysmDroppedItem::GoldName(Done.Gold), Done.Days,
+												 Done.Days == 1 ? TEXT("") : TEXT("s"));
+			Message = Done.Craft == ECataclysmForgeAffixCraft::UpgradeTier
+				? FString::Printf(TEXT("Affix %d is tier %d now, its roll kept at %d percent. %s"), Done.Affix + 1,
+								  Done.ToTier, UCataclysmForge::RollPercent(Done.ToRoll), *Cost)
+				: FString::Printf(TEXT("Affix %d's roll is %d percent of tier %d's range now, from %d. %s"), Done.Affix + 1,
+								  UCataclysmForge::RollPercent(Done.ToRoll), Done.ToTier,
+								  UCataclysmForge::RollPercent(Done.FromRoll), *Cost);
+			break;
+		}
 		case ECataclysmForgeResult::Refused:
 		default:
 			Message = Said;

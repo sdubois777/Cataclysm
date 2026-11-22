@@ -8,6 +8,7 @@ class UCataclysmEmpireRun;
 class UCataclysmEquipmentComponent;
 struct FCataclysmDayReport;
 struct FCataclysmItem;
+enum class ECataclysmForgeAffixCraft : uint8;
 
 /**
  * THE PLAY LOOP'S LOG: one plain line at each step of the main loop, so that one press of Play leaves the whole loop in
@@ -261,6 +262,17 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeSocketWorkLine(bool bAdd, int32 SocketNumber, const FString& FromType, const FString& ToType,
 									   const FString& ItemName, int64 Gold, int32 ResidueBefore, int32 ResidueAfter,
 									   int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
+	 * An affix rerolled, perfected or raised a tier at the forge: "rerolled affix 1 of Quality Torc of Warding for 250
+	 * gold, its roll 50 to 73 percent of tier 2; residue 40 to 42; it cost 0 days, day 20 to day 20", "perfected affix 1
+	 * of ... for 1,250 gold, its roll 50 to 100 percent of tier 2; ...", or "raised affix 1 of ... for 250 gold from tier
+	 * 2 to tier 3, its roll kept at 50 percent; ...". Affix numbers count from 1, as the screen's. Issue #47, slice F1.
+	 * Said by `UCataclysmForgeCraft::CraftAffix`, after the craft and the days.
+	 */
+	static FString ForgeAffixLine(ECataclysmForgeAffixCraft Craft, int32 AffixNumber, const FString& ItemName, int64 Gold,
+								  int32 FromTier, int32 ToTier, int32 FromPercent, int32 ToPercent, int32 ResidueBefore,
+								  int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling

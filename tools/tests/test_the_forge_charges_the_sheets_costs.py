@@ -117,6 +117,7 @@ def test_both_combines_read_one_price_and_it_doubles_by_rung() -> None:
     ("FCataclysmForgeCombine UCataclysmForge::CombineOf(", "Out.Gold = CombineGoldFor(Level - 1, DifficultyTier);"),
     ("FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(",
      "Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);"),
+    ("FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(", "Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);"),
 ])
 def test_every_built_craft_prices_itself_and_refuses_too_little_gold(signature: str, priced: str) -> None:
     text = rule(signature)
@@ -137,6 +138,7 @@ def test_an_upgrades_days_are_the_level_it_reaches() -> None:
     "bool UCataclysmForgeCraft::Combine(",
     "bool UCataclysmForgeCraft::CombineGems(",
     "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(",
+    "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(",
 ])
 def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(signature: str) -> None:
     text = squeeze(body(code(CRAFT_CPP), signature, CRAFT_CPP.name))
@@ -167,7 +169,12 @@ def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
                 "CombineOperationRow": constant("CombineGoldAtTheLowestRung"),
                 # ISSUE #46 SLICE G9: each falls back on `BaseGoldFor` of its base days, 3 and 2.
                 "AddSocketOperationRow": constant("GoldPerCraftDay") * constant("AddSocketBaseDays"),
-                "ChangeSocketTypeOperationRow": constant("GoldPerCraftDay") * constant("ChangeSocketTypeBaseDays")}
+                "ChangeSocketTypeOperationRow": constant("GoldPerCraftDay") * constant("ChangeSocketTypeBaseDays"),
+                # ISSUE #47 SLICE F1: a reroll's 0 base days are priced as one, a perfecting's 5, and an upgrade of an
+                # affix's tier at one day's price, the sheet's flat 250.
+                "RerollAffixValueOperationRow": constant("GoldPerCraftDay"),
+                "PerfectRollOperationRow": constant("GoldPerCraftDay") * constant("PerfectRollBaseDays"),
+                "UpgradeAffixTierOperationRow": constant("GoldPerCraftDay")}
     assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
     for field, figure in expected.items():
         row = rows.get(named[field])

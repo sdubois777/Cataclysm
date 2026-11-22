@@ -10,6 +10,8 @@
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
+// An affix read as the tool tip reads it, issue #47 slice F1.
+#include "Interface/CataclysmItemTooltip.h"
 
 namespace
 {
@@ -292,6 +294,77 @@ bool UCataclysmForgeLayout::SocketWorkActionForButton(FName ButtonName,
 													  FCataclysmForgeSocketWorkAction& OutAction)
 {
 	for (const FCataclysmForgeSocketWorkAction& Action : Shown)
+	{
+		if (Action.ButtonName == ButtonName)
+		{
+			OutAction = Action;
+			return true;
+		}
+	}
+	return false;
+}
+
+FString UCataclysmForgeLayout::AffixesDetailFor(const FCataclysmItem& Item)
+{
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	TArray<FString> Lines;
+	for (int32 Index = 0; Index < Item.Affixes.Num(); ++Index)
+	{
+		const FCataclysmRolledAffix& Rolled = Item.Affixes[Index];
+		// THE TOOL TIP'S OWN LINE, so the forge and the tool tip cannot read one affix two ways; the row key for an affix
+		// the table does not hold, which the tool tip leaves out.
+		FString Line = UCataclysmItemTooltip::AffixLine(Rolled, Item, BaseTable, AffixTable);
+		if (Line.IsEmpty())
+		{
+			Line = FString::Printf(TEXT("%s (tier %d)"), *Rolled.Affix.ToString(), Rolled.Tier);
+		}
+		Lines.Add(FString::Printf(TEXT("%d. %s, roll %d percent"), Index + 1, *Line,
+								  UCataclysmForge::RollPercent(Rolled.Roll)));
+	}
+	return Lines.IsEmpty() ? FString() : FString::Printf(TEXT("Affixes: %s"), *FString::Join(Lines, TEXT("; ")));
+}
+
+TArray<FCataclysmForgeAffixAction> UCataclysmForgeLayout::AffixActionsFor(const FCataclysmItem& Item)
+{
+	TArray<FCataclysmForgeAffixAction> Out;
+	if (Item.Base.IsNone())
+	{
+		return Out;
+	}
+	for (int32 Index = 0; Index < Item.Affixes.Num(); ++Index)
+	{
+		const FCataclysmRolledAffix& Rolled = Item.Affixes[Index];
+		FCataclysmForgeAffixAction& Reroll = Out.AddDefaulted_GetRef();
+		Reroll.Craft = ECataclysmForgeAffixCraft::RerollValue;
+		Reroll.Affix = Index;
+		Reroll.ButtonName = FName(*FString::Printf(TEXT("RerollAffix_%d"), Index));
+		Reroll.Label = FString::Printf(TEXT("Reroll affix %d"), Index + 1);
+		// NO PERFECTING OF A ROLL AT THE TOP, AND NO UPGRADE AT TIER 7, as the rule refuses them.
+		if (Rolled.Roll < 1.0f)
+		{
+			FCataclysmForgeAffixAction& Perfect = Out.AddDefaulted_GetRef();
+			Perfect.Craft = ECataclysmForgeAffixCraft::PerfectRoll;
+			Perfect.Affix = Index;
+			Perfect.ButtonName = FName(*FString::Printf(TEXT("PerfectAffix_%d"), Index));
+			Perfect.Label = FString::Printf(TEXT("Perfect affix %d"), Index + 1);
+		}
+		if (Rolled.Tier < UCataclysmItemValues::MaxAffixTier)
+		{
+			FCataclysmForgeAffixAction& Raise = Out.AddDefaulted_GetRef();
+			Raise.Craft = ECataclysmForgeAffixCraft::UpgradeTier;
+			Raise.Affix = Index;
+			Raise.ButtonName = FName(*FString::Printf(TEXT("RaiseAffix_%d"), Index));
+			Raise.Label = FString::Printf(TEXT("Raise affix %d to tier %d"), Index + 1, Rolled.Tier + 1);
+		}
+	}
+	return Out;
+}
+
+bool UCataclysmForgeLayout::AffixActionForButton(FName ButtonName, const TArray<FCataclysmForgeAffixAction>& Shown,
+												 FCataclysmForgeAffixAction& OutAction)
+{
+	for (const FCataclysmForgeAffixAction& Action : Shown)
 	{
 		if (Action.ButtonName == ButtonName)
 		{
