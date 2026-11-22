@@ -631,7 +631,8 @@ Each through `tools/prove_guard.py`'s `break_and_run`, in a copy of the worktree
 ### C++ guard proofs planned, one for each new Unreal test
 
 In `.claude/windows/prove_t2741s9_table.py.txt`, each narrowed to its group with a trailing dot; every anchor checked
-to occur once. Each prediction was reasoned from the code; none has run.
+to occur once. Each prediction was reasoned from the code before any ran; window tree-s9-w2 ran all 13, and each
+failed the test predicted (its record, below).
 
 | Proof | The break | Prefix | Predicted |
 |---|---|---|---|
@@ -674,7 +675,7 @@ The full Python suite on `7004fc7a1`, in a copy of the worktree: "1 failed, 7953
 the JUnit file `tests="7963"`, `failures="1"`, `errors="0"`, `skipped="9"`. The one failure is
 `test_datatable_assets_are_current.py`: the two empire tree tables' CSVs changed and their assets wait for the
 window's asset step, which needs the editor. ruff on every Python file the slice touches: "All checks passed!".
-**Not run: the Unreal tests and the C++ proofs**, which wait for the window.
+The Unreal tests and the C++ proofs waited for the window; they ran in tree-s9-w1 and tree-s9-w2, recorded below.
 
 
 ### Window tree-s9-w1: FAILED, 5216 of 5218, two tests' set-up
@@ -709,6 +710,54 @@ is spent; it now places one on an Outpost, as the run's half of the bribe tests 
 `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich` ("Expected 'Civic Pride, with Metropolitan Growth at 8, still waits on a population growth rate'
 to be true") used Civic Pride as its node that waits on a missing system, and this slice built it; it now uses Scorched
 Earth, behind Imperial Roads, and checks that Civic Pride waits on nothing. Both in `07e24f49a`.
+
+
+### Window tree-s9-w2: PASSED, 5218 of 5218, and 14 of 14 C++ proofs
+
+At `b06946859`: `07e24f49a`'s two test fixes, w1's record, and #2829 (crafting materials at a quarter of the gear rate,
+the gold session's `feat/material-drops-quarter` at `36dc51e30`, three commits cherry-picked unchanged) riding by the
+coordinating session's ruling of 2026-11-22. The editor build compiled 22 files. The asset step committed `c651af7e6`,
+`DT_EnemyDrops.uasset` and `datatable_asset_sources.json` only, and the window tested that head.
+
+| What | Registered | Measured |
+|---|---|---|
+| Groups alone | 45: this slice's 39 and #2829's six | 45 of 45 |
+| Whole suite | 5218 | "5218 tests performed, 5218 succeeded, 0 failed" |
+| Skipped halves | 57 | 57 |
+| Test saves | 860, 0 left behind | "860 written and deleted, 0 left behind" |
+| Declared | 5218 | "5218 tests in the tree at c651af7e6; 5218 performed, gap 0" |
+| Python, beside it | | "8086 passed, 10 skipped"; JUnit 8096, 0 failures, 0 errors, 10 skipped |
+| ruff | | "All checks passed!" |
+
+Each C++ proof ran through `unreal_build.prove_cpp_guard`, narrowed to its group with a trailing dot, and each failed
+the test its prediction named with the break in and passed with it out:
+
+| Proof | The test that failed | Break in | Restored |
+|---|---|---|---|
+| R1 | `TheTwoNodesAddUpFromTheirRowsAndTheSpendingShareIsCapped` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R2 | `CivicPrideMakesEachPopulationRestoreLargerToTheMaximum` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R3 | `APurchaseCountsItsPriceInTierOneGold` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| R4 | `ReinvestmentAddsToVeteransEdgeOnAClear` | 4 performed, 3 succeeded, 1 failed | 4 of 4 |
+| B1 | `ACityTakenToNothingIsSavedOnceAtHalfItsDefence` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| B2 | `ThePillarTheVoidALastStandAndAnUnpaidFeeAreNotSaved` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| B3 | `TheFeeIsFiftyAHundredOrAHundredAndFiftyThousandAndNoneForThePillar` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| X1 | `TheRunResetsOneTimerASurgeAndSaysWhyItRefuses` | 2 performed, 1 succeeded, 1 failed | 2 of 2 |
+| X2 | `ABribeNeedsTheNodeAndTheWholeFee` | 2 performed, 1 succeeded, 1 failed | 2 of 2 |
+| D1 | `AClearMayDiscoverABonusDungeonOnTheSameCity` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| D2 | `ABonusClearPaysButMovesNoPressureAndAddsNoKind` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| D3 | `ABonusDungeonLeavesWithNoConsequence` | 3 performed, 2 succeeded, 1 failed | 3 of 3 |
+| F1 | `ThePreviousFilesMigrateAndTheCommittedOnesReadTheirFigures` | 1 performed, 0 succeeded, 1 failed | 1 of 1 |
+| GK6 | `ACarriedGemStackSurvivesASaveAndALoad` | 6 performed, 5 succeeded, 1 failed | 6 of 6 |
+
+#2829's information line, as the coordinating session asked it read: "STONES: tier 1 best +3 over 96 materials; tier 8
+best +10 over 96 materials", as predicted. Its rewards line: "REWARDS MATERIALS: named none 15 gear and 8 materials; at
+1 15 and 8; at 20 15 and 78", the 8 and 78 its entry predicted.
+
+**#2829's changed stone test set-up, CONFIRMED by the coordinating session on 2026-11-22.** #2829's entry calls the
+change to `Cataclysm.Drop.AnUpgradeStoneOnTheFloorRespectsTheTier` (each kill given no gear and 12 materials) a
+judgement. The coordinating session confirmed it: the test exists to show that the drop site passes the tier to the
+material roll, and a count that depended on the drop rate made it fail at about 1.6% of seeds for a reason unrelated to
+that. Recorded here because the gold session could not push to its branch while this window ran.
 
 ---
 
