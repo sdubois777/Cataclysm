@@ -7,6 +7,8 @@
 
 #include "CataclysmItemTooltip.generated.h"
 
+class UAbilitySystemComponent;
+
 struct FCataclysmCarriedSlot;
 struct FCataclysmItem;
 struct FCataclysmRolledAffix;
@@ -208,13 +210,17 @@ public:
 	 * the affixes because they occupy the same four slots and are the same kind
 	 * of thing to a player -- what carrying this does to the character -- and
 	 * after them because they are the rarer half of that pair.
+	 *
+	 * `Character`, since issue #2835: the character reading it. Only a gem stack's lines read it, to say whether the gem
+	 * does nothing for that character (`UCataclysmGems::NothingToIncreaseLineFor`); null keeps the line true for all.
 	 */
 	static TArray<FString> LinesFor(const FCataclysmCarriedSlot& Slot,
 									const UDataTable* BaseTable,
 									const UDataTable* AffixTable,
 									const UDataTable* CraftingMaterialTable,
 									const UDataTable* PositiveEnchantmentTable,
-									const UDataTable* NegativeEnchantmentTable);
+									const UDataTable* NegativeEnchantmentTable,
+									const UAbilitySystemComponent* Character = nullptr);
 
 	/** The same lines joined with newlines, which is what a tool tip takes. */
 	static FString TextFor(const FCataclysmCarriedSlot& Slot,
@@ -222,7 +228,8 @@ public:
 						   const UDataTable* AffixTable,
 						   const UDataTable* CraftingMaterialTable,
 						   const UDataTable* PositiveEnchantmentTable,
-						   const UDataTable* NegativeEnchantmentTable);
+						   const UDataTable* NegativeEnchantmentTable,
+						   const UAbilitySystemComponent* Character = nullptr);
 
 	/**
 	 * A number as a tool tip states it: no decimal point when it is whole.

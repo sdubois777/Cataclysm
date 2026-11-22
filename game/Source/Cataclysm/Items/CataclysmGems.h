@@ -8,6 +8,8 @@
 #include "Items/CataclysmItem.h"
 #include "CataclysmGems.generated.h"
 
+class UAbilitySystemComponent;
+
 struct FCataclysmGemRow;
 class UDataTable;
 
@@ -98,8 +100,12 @@ public:
 	 * A carried gem stack's tooltip, one line each: its name; "Superb Attack gem"; its effect at that rarity; which
 	 * socket it fits ("Fits an Attack socket", ruled 2026-11-21: a gem fits a socket of its own type); and how many are
 	 * carried, when more than one, as a material's tooltip says it. A gem the table lacks gets its row key and rarity.
+	 *
+	 * `Character`, since issue #2835: the character reading it, whose own amount of the gem's stat decides the
+	 * nothing-to-increase line (`NothingToIncreaseLineFor`). Null keeps the line that is true for every character.
 	 */
-	static TArray<FString> TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+	static TArray<FString> TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity,
+										   const UAbilitySystemComponent* Character = nullptr);
 
 	/**
 	 * The tooltip's line for a gem that increases a stat no class has a base of -- block chance, evasion, cooldown
@@ -108,8 +114,24 @@ public:
 	 * fixed line chosen from the row's stat alone, true for every character, so it states the rule rather than the
 	 * character's state. Gear is the only source of a flat amount of each of the four (affixes, and the Shield, the
 	 * armour bases and the Reliquary); no passive gives one.
+	 *
+	 * FOR THE CHARACTER READING IT, since issue #2835 (the coordinating session's plan of 2026-11-22): given a
+	 * `UCataclysmAbilitySystemComponent`, the line is "You have no evasion, from your class or your items, so this gem
+	 * does nothing for you until your gear gives some." when `AmountToIncreaseFor` is 0 or less, and empty when it is
+	 * more -- the effect line already says what the gem does then. Null, or another kind of component, gives the fixed
+	 * line above.
 	 */
-	static FString NothingToIncreaseLineFor(const FCataclysmGemRow& Row);
+	static FString NothingToIncreaseLineFor(const FCataclysmGemRow& Row,
+											const UAbilitySystemComponent* Character = nullptr);
+
+	/**
+	 * What an increase of `Stat` multiplies for this character: its base plus its flat amount, the sum the character
+	 * sheet's attribute tooltip reads ("NOTHING TO INCREASE", `UCataclysmCharacterSheetLayout`). From the stat's recorded
+	 * inputs when it has any (`UCataclysmAbilitySystemComponent::GetStatInputs`), evaluated with no skill tags, so a flat
+	 * amount that applies only under a condition does not count, as on the sheet. A stat with none recorded has no
+	 * modifier at all, so its attribute's value is its base. 0 for no component, or a stat no attribute holds. Issue #2835.
+	 */
+	static float AmountToIncreaseFor(const UAbilitySystemComponent* Character, FName Stat);
 
 	//~ Gems in sockets. Issue #46, slice G3.
 
