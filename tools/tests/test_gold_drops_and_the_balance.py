@@ -316,7 +316,8 @@ def test_a_piles_gold_is_saved_and_restored() -> None:
     restore = body("Save/CataclysmSaveApply.cpp",
                    "ACataclysmDroppedItem* FCataclysmSaveApply::GroundItemInto( UWorld& World, "
                    "const FCataclysmSavedGroundItem& Saved)")
-    assert "Saved.MaterialQuantity, Saved.Gold);" in restore, "the restore no longer puts a pile's gold back"
+    # A GEM'S THREE FIELDS FOLLOW THE GOLD since issue #46's slice G5, so the gold is matched up to its comma.
+    assert "Saved.MaterialQuantity, Saved.Gold," in restore, "the restore no longer puts a pile's gold back"
 
 
 # --------------------------------------------------------------------------

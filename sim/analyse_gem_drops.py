@@ -117,5 +117,6 @@ def main() -> None:
         print(f"    {rarity:<15} {gems}")
 
 
-if __name__ == "__main__":
-    main()
+# PRINTED ON IMPORT, as every analysis script is: `sim/tests/test_analysis_scripts.py` runs each with `runpy.run_path`
+# and reads what it printed, and `sim/tests/test_gem_drops.py` imports this with its output discarded.
+main()

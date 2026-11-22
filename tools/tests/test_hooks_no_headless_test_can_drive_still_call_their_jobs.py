@@ -178,6 +178,8 @@ HOOKS = {
                 "the empire upgrade tree's extra drops, after the gold: an Elite's one more "
                 "item, any kill's one more material, a boss's Legendary or rarer item, "
                 "issue #2741 slice 5b",
+            "UCataclysmDropSpawner::SpawnGemsFor":
+                "the gems the creature dropped, last, from a stream of their own, issue #46 slice G5",
             "UCataclysmHealthDebt::ClearOnKill":
                 "a kill clearing what the killer owes, issue #997",
             "UCataclysmStacks::NoteEnemyKilled":

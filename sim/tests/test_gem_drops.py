@@ -50,10 +50,15 @@ def test_a_better_enemy_drops_more_gems_and_every_kill_can_drop_one() -> None:
     assert all(below < above for below, above in zip(rates[:-1], rates[1:], strict=True))
 
 
-def test_a_kills_gems_are_rolled_at_the_gears_rarity_spread() -> None:
+def test_a_kills_gems_are_rolled_at_the_gears_rarity_spread_at_the_tier() -> None:
+    # The gear's spread lists all eight rarities, at a share of nought or more, so membership in it proves nothing.
+    # What tells a tier apart is how many are Everyday: 45% at tier 1 for a Cataclysm Boss, 4% at tier 8. With about
+    # 490 gems one standard deviation is about 0.022, so 0.10 is more than four.
     rng = random.Random(46)
-    rolled = [rarity for _ in range(3000) for rarity in loot.roll_gem_drops_from_kill("Cataclysm Boss", 1, 0.0, 100.0,
+    rolled = [rarity for _ in range(6000) for rarity in loot.roll_gem_drops_from_kill("Cataclysm Boss", 1, 0.0, 100.0,
                                                                                       rng)]
-    assert len(rolled) > 150, f"3,000 Cataclysm Boss kills at 0.0816 each dropped only {len(rolled)} gems"
-    assert set(rolled) <= set(loot.rarity_distribution(1, loot.magic_find_from("Cataclysm Boss"))), (
-        "a gem rolled a rarity the gear's spread at that tier does not hold")
+    assert len(rolled) > 300, f"6,000 Cataclysm Boss kills at 0.0816 each dropped only {len(rolled)} gems"
+    expected = loot.rarity_distribution(1, loot.magic_find_from("Cataclysm Boss"))["Everyday"]
+    share = rolled.count("Everyday") / len(rolled)
+    assert abs(share - expected) < 0.10, (
+        f"{share:.3f} of a tier 1 kill's gems are Everyday; the gear's spread there gives {expected:.3f}")

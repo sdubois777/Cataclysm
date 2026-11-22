@@ -128,7 +128,8 @@ def penetration_run():
                                   "analyse_empire_tree_caps.py",
                                   "analyse_architectural_insight_cap.py",
                                   "analyse_enemy_burn_and_thorns.py",
-                                  "analyse_placement_seeds.py"])
+                                  "analyse_placement_seeds.py",
+                                  "analyse_gem_drops.py"])
 def test_the_script_runs_and_prints_something(name):
     printed, _ = run(name)
     assert len(printed.splitlines()) > 20, printed
@@ -3968,3 +3969,30 @@ def test_the_planned_seed_is_never_nought_and_differs_for_neighbouring_indices_a
             assert here != 0
             assert here != mix(seed, rarity, index + 1)
             assert here != mix(seed, modifiers, index)
+
+
+# --------------------------------------------------------------------------
+# analyse_gem_drops.py -- issue #46, slice G5
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def gem_drops_run():
+    return run("analyse_gem_drops.py")
+
+
+def test_the_printed_binding_tier_and_share_are_the_computed_ones(gem_drops_run):
+    """The script says which tier needs the most gems for each gear drop and how many; both are its own functions'."""
+    printed, ns = gem_drops_run
+    binding = max(ns["TIERS"], key=ns["needed_share"])
+    assert f"{ns['needed_share'](binding):.5f} gems a gear drop, at tier {binding}." in printed, printed
+
+
+def test_the_shipped_rate_fills_every_tiers_reference_character(gem_drops_run):
+    """Its last table says the shipped rate's gems, at each tier's own rarity, reach the gems that tier fills."""
+    printed, ns = gem_drops_run
+    rows = [line for line in printed.splitlines() if " of " in line and line.strip()[:1].isdigit()]
+    assert len(rows) == 8, rows
+    for row in rows:
+        reach, needed = (int(part.split("|")[-1]) for part in row.split(" of "))
+        assert reach >= needed, row
+
