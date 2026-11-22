@@ -247,6 +247,28 @@ def test_the_new_steps_write_each_fields_default() -> None:
         assert part in step, f"Migrate_14_to_15 does not {part}"
 
 
+def test_each_record_declares_the_fields_its_step_writes() -> None:
+    """A step that writes a field the record does not declare compiles; the code that reads the field does not. The
+    rebase onto the gems window left the character record without its count, and only the Unreal build found it."""
+    header = code(SOURCE / "Cataclysm" / "Save" / "CataclysmSaveRecords.h")
+
+    def record(name: str) -> str:
+        start = header.find(f"class CATACLYSM_API {name} ")
+        assert start != -1, f"CataclysmSaveRecords.h has no {name}"
+        following = header.find("\nclass ", start + 1)
+        return flat(header[start:following if following != -1 else len(header)])
+
+    saved = r"UPROPERTY\(SaveGame[^)]*\)\s*"
+    for name, field in (("UCataclysmAccountSave", r"double\s+GoldSpentOnCityUpgrades\s*=\s*0\.0\s*;"),
+                        ("UCataclysmCharacterSave", r"double\s+GoldSpentOnCityUpgrades\s*=\s*0\.0\s*;"),
+                        ("UCataclysmRunSave", r"int32\s+BonusDungeonsCleared\s*=\s*0\s*;"),
+                        ("UCataclysmRunSave", r"bool\s+bBribedThisSurge\s*=\s*false\s*;")):
+        assert re.search(saved + field, record(name)), f"{name} does not declare {field} as a saved field"
+    for path, field in ((SOURCE / "CataclysmEmpire" / "Empire" / "CataclysmEmpireMap.h", r"bool\s+bBailedOut\s*=\s*false\s*;"),
+                        (SOURCE / "CataclysmEmpire" / "Empire" / "CataclysmSurge.h", r"bool\s+bBonus\s*=\s*false\s*;")):
+        assert re.search(saved + field, flat(code(path))), f"{path.name} does not declare {field} as a saved field"
+
+
 def test_the_committed_files_are_the_previous_ones_with_the_new_fields() -> None:
     # FRACTIONS, because the count is a double and unrounded (V20): a whole number would not show one kept.
     for old, new, added in (("Account_v6.json", "Account_v7.json", {"GoldSpentOnCityUpgrades": 75000.5}),

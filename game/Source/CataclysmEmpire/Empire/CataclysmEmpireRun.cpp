@@ -290,7 +290,7 @@ void UCataclysmEmpireRun::GiveModifiers(FCataclysmDungeon& Dungeon)
 	GiveModifiersFrom(Dungeon, ModifierStream);
 }
 
-void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Stream)
+void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Draws)
 {
 	if (ModifierPool.Num() == 0)
 	{
@@ -306,7 +306,7 @@ void UCataclysmEmpireRun::GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomS
 		DifficultyTier, Dungeon.SubType);
 
 	const TArray<FCataclysmDungeonModifier> Drawn =
-		UCataclysmDungeonModifierRules::Draw(Pool, Count, Stream); // `ModifierStream` but for a bonus dungeon (slice 9).
+		UCataclysmDungeonModifierRules::Draw(Pool, Count, Draws); // `ModifierStream` but for a bonus dungeon (slice 9).
 
 	Dungeon.Modifiers = UCataclysmDungeonModifierRules::KeysOf(Drawn);
 	Dungeon.ModifierScore = UCataclysmDungeonModifierRules::DangerOf(Drawn);

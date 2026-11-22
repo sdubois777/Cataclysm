@@ -1525,7 +1525,13 @@ public:
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 GoldOwedEachDay = 0;
 
-
+	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent on city upgrades across runs:
+	 * `UCataclysmAccountSave::GoldSpentOnCityUpgrades` for a character whose gold is its own. Issue #2741 slice 9;
+	 * `ACataclysmPlayerState::GetOwnGoldSpentOnCityUpgrades`. ZERO AND UNUSED FOR EVERY OTHER CHARACTER. VERSION 14.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentOnCityUpgrades = 0.0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the

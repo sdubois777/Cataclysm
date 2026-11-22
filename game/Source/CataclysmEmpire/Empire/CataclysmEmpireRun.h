@@ -1049,8 +1049,9 @@ public:
 	 */
 	void GiveModifiers(FCataclysmDungeon& Dungeon);
 
-	/** `GiveModifiers` drawing from `Stream` rather than `ModifierStream`: a Scout Parties bonus dungeon's (V15). */
-	void GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Stream);
+	/** `GiveModifiers` drawing from the stream it is handed: `ModifierStream` for a surge's dungeon, and a Scout Parties
+	 *  bonus dungeon's own roll for one of those (V15). Not named `Stream`, which is the run's wave stream. */
+	void GiveModifiersFrom(FCataclysmDungeon& Dungeon, FRandomStream& Draws);
 
 	// ----------------------------------------------------------------------
 	// What the run has come to -- issue #1324 slice 5
