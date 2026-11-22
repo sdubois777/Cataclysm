@@ -408,6 +408,8 @@ bool FCataclysmSaveGather::ProgressFrom(const UCataclysmEmpireRun& Run,
 	// AND SCOUT PARTIES' AND BRIBERY'S, run record version 15. Issue #2741 slice 9.
 	Record.BonusDungeonsCleared = Run.BonusDungeonsCleared;
 	Record.bBribedThisSurge = Run.bBribedThisSurge;
+	// AND WHETHER THE CLEANSE HAS BEEN BOUGHT, run record version 16. Issue #2838.
+	Record.bCleanseBoughtThisRun = Run.bCleanseBoughtThisRun;
 	// AND RELENTLESS PURSUIT'S CLEARS IN A ROW, run record version 11. Issue #2741 slice 5b.
 	Record.ClearsSinceLastDeath = Run.ClearsSinceLastDeath;
 	Record.bPopulationFellBelowHalf = Run.bPopulationFellBelowHalf;

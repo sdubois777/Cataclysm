@@ -152,7 +152,8 @@ namespace CataclysmCityUpgradePriceTest
 /**
  * A priced row costs 10,000 gold at difficulty tier 1 and the Gold sheet's pile scale above it: 30,000 at tier 2 up to
  * 300,000 at tier 8, a tier outside 1 to 8 held inside them. All 23 rows with a tier ladder carry 10,000, 20,000 and
- * 40,000 in the table; the unbranched last resort and an unknown row cost nothing. The run's own tier picks the price.
+ * 40,000 in the table; the unbranched last resort, the cleanse, carries 40,000 at tier 1 and nothing above since issue
+ * #2838, and an unknown row costs nothing. The run's own tier picks the price.
  * Prints "PRICE".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradePriceByTierTest,
@@ -170,7 +171,7 @@ bool FCataclysmCityUpgradePriceByTierTest::RunTest(const FString&)
 	}
 
 	int32 Priced = 0;
-	int32 Unpriced = 0;
+	int32 TierOneOnly = 0;
 	int32 Wrong = 0;
 	FString FirstWrong;
 	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
@@ -180,14 +181,11 @@ bool FCataclysmCityUpgradePriceByTierTest::RunTest(const FString&)
 		{
 			++Priced;
 		}
-		else if (Upgrade->Tier1Gold == 0 && Upgrade->Tier2Gold == 0 && Upgrade->Tier3Gold == 0 && !Upgrade->BranchUndecided)
+		// THE CLEANSE, THE ONE UNBRANCHED ROW, AT TIER 1 ONLY: 40,000, a judgement ruled on 2026-11-22 (issue #2838).
+		else if (Upgrade->Tier1Gold == 40000 && Upgrade->Tier2Gold == 0 && Upgrade->Tier3Gold == 0
+				 && Upgrade->BranchUndecided)
 		{
-			++Wrong;
-			FirstWrong = Pair.Key.ToString();
-		}
-		else if (Upgrade->Tier1Gold == 0 && Upgrade->Tier2Gold == 0 && Upgrade->Tier3Gold == 0)
-		{
-			++Unpriced;
+			++TierOneOnly;
 		}
 		else
 		{
@@ -216,15 +214,15 @@ bool FCataclysmCityUpgradePriceByTierTest::RunTest(const FString&)
 	{
 		Each.Add(FString::Printf(TEXT("%lld"), Price));
 	}
-	AddInfo(FString::Printf(TEXT("PRICE: %d rows priced 10,000/20,000/40,000, %d unpriced, %d otherwise%s; tiers 1-8 %s; "
+	AddInfo(FString::Printf(TEXT("PRICE: %d rows priced 10,000/20,000/40,000, %d at 40,000/0/0, %d otherwise%s; tiers 1-8 %s; "
 								 "tier 0 %lld, tier 99 %lld, no such row %lld; a tier 3 run %lld, no run %lld; "
 								 "PriceAt 10,000 x 30/10 = %lld"),
-							Priced, Unpriced, Wrong, FirstWrong.IsEmpty() ? TEXT("") : *(TEXT(" (") + FirstWrong + TEXT(")")),
+							Priced, TierOneOnly, Wrong, FirstWrong.IsEmpty() ? TEXT("") : *(TEXT(" (") + FirstWrong + TEXT(")")),
 							*FString::Join(Each, TEXT(" ")), BelowOne, AboveEight, NoSuchRow, InTheRun, NoRun,
 							UCataclysmCityUpgradeMapping::PriceAt(10000, 30.0f, 10.0f)));
 
 	TestEqual(TEXT("23 rows are priced 10,000, 20,000 and 40,000"), Priced, 23);
-	TestEqual(TEXT("one, the unbranched last resort, has no price"), Unpriced, 1);
+	TestEqual(TEXT("one, the unbranched last resort, is priced 40,000 at tier 1 only"), TierOneOnly, 1);
 	TestEqual(TEXT("and no row is priced otherwise"), Wrong, 0);
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
@@ -595,16 +593,18 @@ bool FCataclysmCityUpgradePriceScreenTest::RunTest(const FString&)
 							bEveryPoorRefusalRight ? TEXT("yes") : TEXT("NO"), *PoorButton, ShortAtTierTwo,
 							*NotBuiltLine, *SlotsWithGold, *SlotsWithout, *Line, *NoBalanceLine));
 
-	TestEqual(TEXT("with 25,000 every built upgrade can be bought"), Buyable,
-			  UCataclysmCityUpgradeRules::BuiltEffectCount());
+	// EVERY BUILT UPGRADE BUT THE CLEANSE, which is offered only from difficulty tier 3 and checked before the price
+	// (issue #2838); this run is at tiers 1 and 2.
+	TestEqual(TEXT("with 25,000 every built upgrade but the cleanse can be bought"), Buyable,
+			  UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 	TestTrue(TEXT("each priced 10,000"), bEveryRichPriceRight);
 	TestTrue(TEXT("its button says the price and the days to build (issue #2825)"),
 			 RichButton.EndsWith(TEXT("  --  10,000 gold, 6 days to build")));
-	TestEqual(TEXT("with 5,000 every one is short of gold"), Short, UCataclysmCityUpgradeRules::BuiltEffectCount());
+	TestEqual(TEXT("with 5,000 every one is short of gold"), Short, UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 	TestTrue(TEXT("each saying the price and what is missing"), bEveryPoorRefusalRight);
 	TestTrue(TEXT("on its button"), PoorButton.EndsWith(TEXT("  --  Costs 10,000 gold; 5,000 more needed.")));
 	TestEqual(TEXT("at tier 2 each costs 30,000, which 25,000 does not reach"), ShortAtTierTwo,
-			  UCataclysmCityUpgradeRules::BuiltEffectCount());
+			  UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 	TestFalse(TEXT("set-up: a line for an upgrade that is not built was read"), NotBuiltLine.IsEmpty());
 	TestFalse(TEXT("an upgrade that is not built shows no price"), NotBuiltLine.Contains(TEXT("10,000")));
 	TestEqual(TEXT("the slot line ends with the balance"), SlotsWithGold,

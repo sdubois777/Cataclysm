@@ -476,7 +476,7 @@ bool FCataclysmEmpireTreeClearGoldSavedTest::RunTest(const FString&)
 
 /**
  * `Run_v11.json`, written before version 12, migrates unmarked and uncounted: false on both its cities, false on the
- * run, 0 and 0 on the walk, and every other field kept. CONTROL: the committed run file, `Run_v15.json` since issue #2741 slice 9, reads its
+ * run, 0 and 0 on the walk, and every other field kept. CONTROL: the committed run file, `Run_v16.json` since issue #2838 (`Run_v15.json` from issue #2741 slice 9), reads its
  * first city marked, its second not, the flag set and the walk's 1234 and 1000. Prints "CLEAR GOLD MIGRATED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeClearGoldMigrationTest,
@@ -491,15 +491,15 @@ bool FCataclysmEmpireTreeClearGoldMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v11.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v15.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v16.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
 	}
 	const UCataclysmRunSave* Migrated = ReadRunText(*this, Text, TEXT("Run_v11.json"));
-	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v15.json"));
+	const UCataclysmRunSave* Current = ReadRunText(*this, CurrentText, TEXT("Run_v16.json"));
 	if (!Migrated || !Current || !TestEqual(TEXT("set-up: Run_v11.json has two cities"), Migrated->Cities.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v15.json has two cities"), Current->Cities.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v16.json has two cities"), Current->Cities.Num(), 2))
 	{
 		return false;
 	}
@@ -512,13 +512,14 @@ bool FCataclysmEmpireTreeClearGoldMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
 	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
+	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
 	const bool bSame = FCataclysmSaveStorage::ToJson(Migrated, Rewritten, Error)
 		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
 	AddInfo(FString::Printf(TEXT("CLEAR GOLD MIGRATED: version %d; cities %s %s; flag %s; walk %lld and %lld; the rest %s; "
-								 "Run_v15.json cities %s %s, flag %s, walk %lld and %lld"),
+								 "Run_v16.json cities %s %s, flag %s, walk %lld and %lld"),
 							Migrated->SchemaVersion, Migrated->Cities[0].bTookSurgeDamage ? TEXT("marked") : TEXT("unmarked"),
 							Migrated->Cities[1].bTookSurgeDamage ? TEXT("marked") : TEXT("unmarked"),
 							Migrated->bPopulationFellBelowHalf ? TEXT("set") : TEXT("clear"),
@@ -536,7 +537,7 @@ bool FCataclysmEmpireTreeClearGoldMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("no gold dropped in the walk"), Migrated->Walk.GoldDroppedThisWalk, static_cast<int64>(0));
 	TestEqual(TEXT("none picked up"), Migrated->Walk.GoldPickedUpThisWalk, static_cast<int64>(0));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestTrue(TEXT("CONTROL: Run_v15.json's first city is marked and its second is not"),
+	TestTrue(TEXT("CONTROL: Run_v16.json's first city is marked and its second is not"),
 			 Current->Cities[0].bTookSurgeDamage && !Current->Cities[1].bTookSurgeDamage);
 	TestTrue(TEXT("CONTROL: its flag is set"), Current->bPopulationFellBelowHalf);
 	TestTrue(TEXT("CONTROL: its walk holds 1234 and 1000"),

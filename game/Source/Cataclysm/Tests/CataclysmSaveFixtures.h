@@ -540,6 +540,15 @@ namespace CataclysmSaveFixtures
 		Expected.SetBoolField(TEXT("bBribedThisSurge"), false);
 	}
 
+	/**
+	 * What the run record's newest step writes into a run file written before it: the cleanse not bought
+	 * (`bCleanseBoughtThisRun`). Issue #2838. NAMED FOR THE VERSION IT REACHES, 16. ONE COPY.
+	 */
+	inline void AddTheRunsVersion16Defaults(FJsonObject& Expected)
+	{
+		Expected.SetBoolField(TEXT("bCleanseBoughtThisRun"), false);
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

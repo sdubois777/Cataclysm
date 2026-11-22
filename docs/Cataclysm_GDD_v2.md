@@ -4685,6 +4685,10 @@ Each city has upgrade slots (3 normally, 2 on Heretic difficulty). Upgrades affe
 
   
 
+**The cleanse is the last resort, from difficulty tier 3, once a run.** Its row reads "Cleanse every player city of half of the dungeons on them excluding Quest and Fallen City dungeons. The cities lose 50% of their remaining defenses and population. Can only purchase once, and will only be available on T3 and above." "T3" is difficulty tier 3, as the design writes the difficulty tiers T1 to T8: the row has no upgrade tier 2 or 3. It may be bought once a run, on any city, and its 6 days of building take a slot on the city that buys it. When it is finished, every city that has not fallen loses half of its dungeons, soonest to resolve first, and half of the defence and population it holds. The Cataclysm's own dungeon is not counted or removed, since it is the run's goal. It costs 40,000 gold at difficulty tier 1, scaled as every price is, a judgement. Ruled by the coordinating session on 2026-11-22 (issue #2838).
+
+  
+
 ## **Empire-Wide Upgrades**
 
 Players accumulate empire upgrade points by defeating dungeons. These points are spent on a permanent empire-wide upgrade tree that persists through all runs — including failed ones. Empire upgrades provide lasting bonuses to city defenses, population, dungeon floor counts, and more. This is the primary meta-progression system.

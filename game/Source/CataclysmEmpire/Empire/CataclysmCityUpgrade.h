@@ -21,7 +21,8 @@
  * decision made here, and if two rows ever share an effect they should share a
  * value.
  *
- * TEN OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight.
+ * FOUR OF THEM DO NOTHING YET AND THAT IS DELIBERATE, not an oversight (ten
+ * when this was written; four since issue #2838).
  * `UCataclysmCityUpgradeRules::IsBuilt` is the single place that says which, and
  * `UCataclysmEmpireRun::BuyCityUpgrade` refuses to spend a slot on one that does
  * nothing rather than letting a player waste it. Each is named below with the
@@ -162,18 +163,18 @@ enum class ECataclysmCityUpgradeEffect : uint8
 	DungeonCraftingMaterials	= 23,
 
 	// ----------------------------------------------------------------------
-	// The unbranched last resort. NOT BUILT.
+	// The unbranched last resort. BUILT SINCE ISSUE #2838.
 	// ----------------------------------------------------------------------
 
 	/**
-	 * One-time. Cleanses half the dungeons from every city and costs every city
-	 * half its remaining defence and population.
+	 * One-time, once a run. When it is finished, every city that has not fallen loses half of its dungeons, soonest
+	 * to resolve first, and half of its remaining defence and population. Quest, Fallen City and Cataclysm dungeons
+	 * are neither counted nor removed. See `UCataclysmEmpireRun::CleanseEveryCity`.
 	 *
-	 * NOT BUILT BECAUSE THE DESIGN GATES IT AND THERE IS NOTHING TO GATE ON.
-	 * Its own text says it "will only be available on T3 and above", meaning
-	 * upgrade tier 3, and nothing in this game raises a bought upgrade above
-	 * tier 1. Building it now would make it buyable at tier 1, which the design
-	 * forbids. Issue #1265.
+	 * ON DIFFICULTY TIER 3 AND ABOVE. Its text, "will only be available on T3 and above", was read as upgrade tier 3
+	 * until issue #2838 and refused, because nothing raised an upgrade. The coordinating session ruled on 2026-11-22
+	 * that "T3" is the difficulty tier: the row has no upgrade tier 2 or 3, and the design writes difficulty tiers
+	 * as T1 to T8.
 	 */
 	CleanseEveryCity			= 24,
 };
@@ -264,6 +265,19 @@ enum class ECataclysmCityUpgradeResult : uint8
 	 *  offers one. Issue #2832. Said by `UCataclysmCityUpgradePurchase::Buy`, which reads the tree; the run never
 	 *  answers it. */
 	RushNotHeld				= 11,
+
+	/**
+	 * The upgrade is offered only from a difficulty tier the run is below. Only the cleanse has such a gate: "will
+	 * only be available on T3 and above", read as difficulty tier 3 by the coordinating session's ruling of
+	 * 2026-11-22. Issue #2838.
+	 */
+	BelowItsDifficultyTier	= 12,
+
+	/**
+	 * The upgrade may be bought once a run, on any city, and this run has bought it. Only the cleanse: "Can only
+	 * purchase once", ruled once a run, empire-wide, on 2026-11-22. Issue #2838.
+	 */
+	AlreadyBoughtThisRun	= 13,
 };
 
 /**
@@ -311,9 +325,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 *
 	 * NOTHING RAISES IT. The sheet gives every upgrade a tier 2 and a tier 3
 	 * value and no system in this game upgrades an upgrade, so a bought upgrade
-	 * is at tier 1 for the whole run. That is also why
-	 * `ECataclysmCityUpgradeEffect::CleanseEveryCity` is refused: it is gated on
-	 * tier 3 and tier 3 is unreachable.
+	 * is at tier 1 for the whole run. Issue #1265.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Tier = 1;
@@ -500,16 +512,30 @@ public:
 	static int32 BuildDaysFor(int32 UpgradeTier);
 
 	// ----------------------------------------------------------------------
+	// The cleanse. Issue #2838, ruled by the coordinating session on 2026-11-22.
+	// ----------------------------------------------------------------------
+
+	/** "will only be available on T3 and above": the lowest difficulty tier the cleanse is offered at. */
+	static constexpr int32 CleanseLowestDifficultyTier = 3;
+
+	/** "Cleanse every player city of half of the dungeons on them": the share of each city's counted dungeons it
+	 *  removes, rounded as `RemoveDungeons` rounds. */
+	static constexpr float CleanseDungeonShare = 0.5f;
+
+	/** "The cities lose 50% of their remaining defenses and population": the share of each that is taken. */
+	static constexpr float CleanseLossShare = 0.5f;
+
+	// ----------------------------------------------------------------------
 	// Which effects exist
 	// ----------------------------------------------------------------------
 
 	/**
 	 * Whether the empire layer actually acts on this effect.
 	 *
-	 * THE ONE PLACE THAT KNOWS. Nineteen of the 24 are built since issue #2781
-	 * and five are not, each waiting on a system that does not exist: a dungeon
-	 * sub-type roll, or an upgrade tier above one. `ECataclysmCityUpgradeEffect`
-	 * names what each is waiting for, beside the value.
+	 * THE ONE PLACE THAT KNOWS. Twenty of the 24 are built since issue #2838
+	 * and four are not, each waiting on a dungeon sub-type roll (issue #41).
+	 * `ECataclysmCityUpgradeEffect` names what each is waiting for, beside the
+	 * value.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static bool IsBuilt(ECataclysmCityUpgradeEffect Effect);

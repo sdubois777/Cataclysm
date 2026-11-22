@@ -436,18 +436,21 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// NINETEEN SINCE ISSUE #2781, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
+	// EVERY BUILT UPGRADE BUT THE CLEANSE, WHICH IS WHAT THE RULES SAY IS BUILT. Read from the rules as well
 	// as written out, so the two cannot part company and neither can drift
-	// unnoticed.
-	TestEqual(TEXT("a fresh city can buy every built upgrade"),
+	// unnoticed. The cleanse is built since issue #2838 and offered only from
+	// difficulty tier 3; this run is at tier 1.
+	TestEqual(TEXT("a fresh city at tier 1 can buy every built upgrade but the cleanse"),
 			  CountBuyable(List),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount());
+			  UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 
 	TestEqual(TEXT("which is nineteen"), CountBuyable(List), 19);
 
 	// AND THE OTHER FIVE SAY WHY NOT, in the same words the console command
-	// and a refused purchase use.
+	// and a refused purchase use: four not built, and the cleanse below its
+	// difficulty tier.
 	int32 NotBuilt = 0;
+	int32 BelowItsTier = 0;
 
 	for (const FCataclysmCityUpgradeOffer& Offer : List)
 	{
@@ -456,6 +459,14 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 			TestEqual(*FString::Printf(TEXT("%s has no refusal"),
 									   *Offer.RowName.ToString()),
 					  Offer.Refusal, FString());
+			continue;
+		}
+
+		if (Offer.EffectKind == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+		{
+			++BelowItsTier;
+			TestEqual(TEXT("the cleanse says the difficulty tier it is offered from"), Offer.Refusal,
+					  FString(TEXT("Available from difficulty tier 3.")));
 			continue;
 		}
 
@@ -468,12 +479,13 @@ bool FCataclysmCityScreenOffersTest::RunTest(const FString& Parameters)
 					  ECataclysmCityUpgradeResult::EffectNotBuiltYet));
 	}
 
-	TestEqual(TEXT("five do nothing yet"), NotBuilt, 5);
+	TestEqual(TEXT("four do nothing yet"), NotBuilt, 4);
+	TestEqual(TEXT("and the cleanse waits for difficulty tier 3"), BelowItsTier, 1);
 
-	// NINETEEN AND FIVE ARE ALL TWENTY-FOUR. Without this a count could drift
-	// in both directions at once and neither figure above would notice.
-	TestEqual(TEXT("and the two counts are the whole sheet"),
-			  CountBuyable(List) + NotBuilt, 24);
+	// NINETEEN, FOUR AND ONE ARE ALL TWENTY-FOUR. Without this a count could
+	// drift in both directions at once and neither figure above would notice.
+	TestEqual(TEXT("and the three counts are the whole sheet"),
+			  CountBuyable(List) + NotBuilt + BelowItsTier, 24);
 
 	// EVERY OFFER CARRIES THE SENTENCE A DESIGNER WROTE, rather than a
 	// description this screen invented.
@@ -595,8 +607,11 @@ bool FCataclysmCityScreenFullTest::RunTest(const FString& Parameters)
 
 	for (const FCataclysmCityUpgradeOffer& Offer : List)
 	{
+		// THE CLEANSE IS SET ASIDE: at tier 1 it says its difficulty tier, which
+		// is checked before the slots (issue #2838).
 		if (Offer.bHeld
-			|| !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))
+			|| !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind)
+			|| Offer.EffectKind == ECataclysmCityUpgradeEffect::CleanseEveryCity)
 		{
 			continue;
 		}
@@ -654,7 +669,10 @@ bool FCataclysmCityScreenBesiegedTest::RunTest(const FString& Parameters)
 	FString Button;
 	for (const FCataclysmCityUpgradeOffer& Offer : List)
 	{
-		if (!UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))
+		// THE CLEANSE IS SET ASIDE: at tier 1 it says its difficulty tier, which is checked before the Siege
+		// (issue #2838).
+		if (!UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind)
+			|| Offer.EffectKind == ECataclysmCityUpgradeEffect::CleanseEveryCity)
 		{
 			continue;
 		}
@@ -680,13 +698,13 @@ bool FCataclysmCityScreenBesiegedTest::RunTest(const FString& Parameters)
 
 	TestNotEqual(TEXT("a besieged city's refusal has words of its own"), Sentence, FString(TEXT("Refused.")));
 	TestTrue(TEXT("naming the Siege"), Sentence.Contains(TEXT("Siege")));
-	TestEqual(TEXT("set-up: the built upgrades"), Built, UCataclysmCityUpgradeRules::BuiltEffectCount());
+	TestEqual(TEXT("set-up: the built upgrades but the cleanse"), Built, UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 	TestEqual(TEXT("every built upgrade is refused for the Siege, in that sentence"), SaidBesieged, Built);
 	TestTrue(TEXT("on its button"), Button.EndsWith(TEXT("  --  ") + Sentence));
 	TestEqual(TEXT("pressing one spends no slot"), Run->Map->Find(0)->Upgrades.Num(), 0);
 	TestEqual(TEXT("and the screen's refusal line says why"), Screen->LastRefusal(), Sentence);
-	TestEqual(TEXT("CONTROL: city 1, with no Siege, can buy every built upgrade"), CountBuyable(Offers(Run, 1)),
-			  UCataclysmCityUpgradeRules::BuiltEffectCount());
+	TestEqual(TEXT("CONTROL: city 1, with no Siege, can buy every built upgrade but the cleanse"),
+			  CountBuyable(Offers(Run, 1)), UCataclysmCityUpgradeRules::BuiltEffectCount() - 1);
 	return true;
 }
 

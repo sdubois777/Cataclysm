@@ -180,6 +180,9 @@ void UCataclysmEmpireRun::BeginForCharacter(int32 InSeed, int32 InCataclysmOrder
 	// AND STIMULUS PACKAGE'S FLAG: a new run's population has not fallen. Issue #2741 slice 6b (B2).
 	bPopulationFellBelowHalf = false;
 
+	// AND THE CLEANSE MAY BE BOUGHT AGAIN: once a run (issue #2838).
+	bCleanseBoughtThisRun = false;
+
 	// AND NO DEFEAT HAS AWARDED ANYTHING IN THIS RUN YET. Issue #52.
 	LastEmpirePointsAwarded = 0.0;
 
@@ -2733,6 +2736,22 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::WouldBuyCityUpgrade(
 		return ECataclysmCityUpgradeResult::EffectNotBuiltYet;
 	}
 
+	// THE CLEANSE'S TWO GATES, issue #2838, ruled 2026-11-22. Both are the run's and not the city's, so they come
+	// before anything about the city: every city gives the same answer.
+	if (Upgrade.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		// "will only be available on T3 and above": the difficulty tier, ruled 2026-11-22.
+		if (DifficultyTier < UCataclysmCityUpgradeRules::CleanseLowestDifficultyTier)
+		{
+			return ECataclysmCityUpgradeResult::BelowItsDifficultyTier;
+		}
+		// "Can only purchase once": once a run, on any city.
+		if (bCleanseBoughtThisRun)
+		{
+			return ECataclysmCityUpgradeResult::AlreadyBoughtThisRun;
+		}
+	}
+
 	const FCataclysmCity* City = Map->Find(CityId);
 	if (City == nullptr)
 	{
@@ -2810,6 +2829,13 @@ ECataclysmCityUpgradeResult UCataclysmEmpireRun::BuyCityUpgrade(
 
 	FCataclysmCityUpgrade Bought = Upgrade;
 	Bought.Tier = 1;
+
+	// THE CLEANSE IS SPENT FOR THE RUN AT PURCHASE, not when it is finished, so no second city buys it while this one
+	// builds it (issue #2838).
+	if (Bought.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		bCleanseBoughtThisRun = true;
+	}
 
 	// IT TAKES DAYS TO BUILD, since issue #2825: the slot is taken now, and the
 	// upgrade does nothing until `AdvanceCityBuilds` has counted its days. The
@@ -2949,6 +2975,77 @@ void UCataclysmEmpireRun::CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrad
 			RemoveDungeon(ByUrgency[Index]);
 		}
 	}
+
+	if (Bought.Effect == ECataclysmCityUpgradeEffect::CleanseEveryCity)
+	{
+		CleanseEveryCity();
+	}
+}
+
+void UCataclysmEmpireRun::CleanseEveryCity()
+{
+	if (Map == nullptr || Clock == nullptr)
+	{
+		return;
+	}
+
+	// THE CITY IDS ARE COPIED FIRST, because removing a dungeon can change the map, and nothing below holds a reference
+	// into it across a removal.
+	TArray<int32> CityIds;
+	for (const FCataclysmCity& City : Map->Cities)
+	{
+		// EVERY CITY THAT HAS NOT FALLEN, the buying city included (ruling 4). A fallen city has no defence or
+		// population to lose, and its dungeons are its own retaking.
+		if (!City.bFallen)
+		{
+			CityIds.Add(City.CityId);
+		}
+	}
+
+	for (const int32 CityId : CityIds)
+	{
+		// THE DUNGEONS COUNTED: neither a Quest dungeon nor a Fallen City dungeon, as the sheet says ("excluding Quest
+		// and Fallen City dungeons"), nor the Cataclysm's own dungeon. The sheet does not name that one; leaving it out
+		// is DERIVED, confirmed by the coordinating session on 2026-11-22: it is the run's goal, Bribery refuses it
+		// (V13) and a bonus dungeon is never it, so a city upgrade does not take the run's ending away. Issue #2838.
+		TArray<int32> Counted;
+		for (const FCataclysmDungeon& Dungeon : Dungeons)
+		{
+			if (Dungeon.CityId == CityId && Dungeon.Type != ECataclysmDungeonType::Quest
+				&& Dungeon.Type != ECataclysmDungeonType::FallenCity
+				&& Dungeon.Type != ECataclysmDungeonType::Cataclysm)
+			{
+				Counted.Add(Dungeon.DungeonId);
+			}
+		}
+
+		// SOONEST TO RESOLVE FIRST AND ROUNDED, as `RemoveDungeons` takes them (ruling 3): half of three removes two,
+		// half of one removes one.
+		Counted.Sort(
+			[this](const int32 Left, const int32 Right)
+			{
+				return Clock->DaysUntilResolveFor(Left) < Clock->DaysUntilResolveFor(Right);
+			});
+		const int32 ToRemove = FMath::Clamp(
+			FMath::RoundToInt(Counted.Num() * UCataclysmCityUpgradeRules::CleanseDungeonShare), 0, Counted.Num());
+		for (int32 Index = 0; Index < ToRemove; ++Index)
+		{
+			// REMOVED, NOT CLEARED: nobody walked them, so they pay nothing.
+			RemoveDungeon(Counted[Index]);
+		}
+
+		// THEN HALF OF WHAT THE CITY HOLDS NOW: "The cities lose 50% of their remaining defenses and population". Of
+		// what it is read as holding, which is never above the maximum with the empire upgrade tree. Not a dungeon's
+		// hit, so no resistance takes any of it off.
+		if (FCataclysmCity* City = Map->FindMutable(CityId))
+		{
+			City->Defence = Map->DefenceOf(*City) * (1.0f - UCataclysmCityUpgradeRules::CleanseLossShare);
+			City->Population = Map->PopulationOf(*City) * (1.0f - UCataclysmCityUpgradeRules::CleanseLossShare);
+		}
+	}
+
+	// AND STIMULUS PACKAGE'S FLAG, which this can set by itself (issue #2741 slice 6b, B2).
+	NotePopulationAgainstHalf();
 }
 
 void UCataclysmEmpireRun::RunCityUpgradeIntervals(int32 Today)

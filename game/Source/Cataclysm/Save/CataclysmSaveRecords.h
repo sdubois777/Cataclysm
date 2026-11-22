@@ -1895,12 +1895,16 @@ public:
 	 * Scout Parties' bonus dungeons (`FCataclysmDungeon::bBonus`, `BonusDungeonsCleared`) and Bribery's once a surge
 	 * (`bBribedThisSurge`). `Migrate_14_to_15` writes each false or 0: a version 14 run could use none of slice 9's nodes.
 	 *
+	 * 16 SINCE 2026-11-22. Issue #2838: whether the cleanse city upgrade has been bought in the run,
+	 * `bCleanseBoughtThisRun`, once a run. `Migrate_15_to_16` writes false: a version 15 run could not buy it, because
+	 * it was refused as not built.
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 15;
+	static constexpr int32 SchemaVersionNow = 16;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -2377,6 +2381,13 @@ public:
 	/** `UCataclysmEmpireRun::bBribedThisSurge`: whether Bribery has been used since the last surge. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bBribedThisSurge = false;
+
+	// ---- THE CLEANSE, issue #2838. RUN RECORD VERSION 16: a record written before it is at version 15, and
+	// `Migrate_15_to_16` writes false into it. ----
+
+	/** `UCataclysmEmpireRun::bCleanseBoughtThisRun`: whether the cleanse city upgrade has been bought in this run. */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	bool bCleanseBoughtThisRun = false;
 
 	// ---- RELENTLESS PURSUIT'S CLEARS IN A ROW, issue #2741 slice 5b. RUN RECORD VERSION 11: a record written before it is
 	// at version 10, and `Migrate_10_to_11` writes the run's clears into it when it records no death, else 0. ----

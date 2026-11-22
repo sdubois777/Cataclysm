@@ -686,6 +686,15 @@ public:
 	bool bBribedThisSurge = false;
 
 	/**
+	 * Whether the cleanse has been bought in this run, on any city: "Can only purchase once", ruled once a run,
+	 * empire-wide, by the coordinating session on 2026-11-22. SET WHEN IT IS BOUGHT, not when its build finishes, so
+	 * a second city cannot buy it while the first builds it. Cleared by `BeginForCharacter`. Issue #2838. SAVED, RUN
+	 * RECORD VERSION 16.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	bool bCleanseBoughtThisRun = false;
+
+	/**
 	 * Why `BribeDungeon` would refuse this dungeon, or empty when it would not (V13): no run, no such dungeon, the
 	 * Cataclysm's own dungeon, a dungeon whose timer does not resolve, a bribe already made this surge, or a timer
 	 * already at its start (the start includes the empire tree's bonus days, which the clock adds when it is read).
@@ -2407,4 +2416,13 @@ private:
 	 * purchase did at once before issue #2825; now a purchase with no build days, and the day a build's days run out.
 	 */
 	void CompleteCityUpgrade(int32 CityId, FCataclysmCityUpgrade Upgrade, int32 Day);
+
+	/**
+	 * The cleanse, when its build is finished. Issue #2838, the coordinating session's rulings of 2026-11-22: on every
+	 * city that has not fallen, the buying city included, half of the dungeons counted (Quest, Fallen City and
+	 * Cataclysm dungeons neither counted nor removed) are removed, soonest to resolve first and rounded as
+	 * `RemoveDungeons` rounds; then half of the city's remaining defence and half of its remaining population are
+	 * taken. The dungeons are removed, not cleared: nobody walked them, so they pay nothing.
+	 */
+	void CleanseEveryCity();
 };

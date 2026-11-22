@@ -75,7 +75,10 @@ bool FCataclysmCityUpgradeBuildScreenListedTest::RunTest(const FString&)
 	for (const FCataclysmCityUpgradeOffer& Offer :
 		 UCataclysmCityScreenLayout::OffersFor(nullptr, Run, PillarId, 100000000))
 	{
-		if (Offer.RowName == RowName || !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind))
+		// THE CLEANSE IS SET ASIDE: below difficulty tier 3 it says its tier, which is checked before the build
+		// (issue #2838).
+		if (Offer.RowName == RowName || !UCataclysmCityUpgradeRules::IsBuilt(Offer.EffectKind)
+			|| Offer.EffectKind == ECataclysmCityUpgradeEffect::CleanseEveryCity)
 		{
 			continue;
 		}
