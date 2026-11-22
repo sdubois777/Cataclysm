@@ -417,8 +417,9 @@ bool UCataclysmItemComparison::TooltipColumnsFor(const FCataclysmCarriedSlot& Sl
 		return true;
 	}
 
-	// A MATERIAL, AN EMPTY SLOT, OR GEAR WITH NOTHING TO COMPARE AGAINST: its own text.
+	// A MATERIAL, A GEM STACK, AN EMPTY SLOT, OR GEAR WITH NOTHING TO COMPARE AGAINST: its own text, read for the
+	// character, whose own amount of a gem's stat says whether the gem does anything for them (issue #2835).
 	OutLeft = UCataclysmItemTooltip::TextFor(Slot, BaseTable, AffixTable, CraftingMaterialTable,
-											 PositiveEnchantmentTable, NegativeEnchantmentTable);
+											 PositiveEnchantmentTable, NegativeEnchantmentTable, Abilities);
 	return false;
 }

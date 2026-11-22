@@ -21,18 +21,29 @@ ECataclysmGroundHover UCataclysmGroundItemHover::KindFor(const ACataclysmDropped
 	{
 		return ECataclysmGroundHover::Material;
 	}
+	// A GEM STACK, since issue #2839: until then it has no base and no material, and showed nothing.
+	if (Drop->IsGem())
+	{
+		return ECataclysmGroundHover::Gem;
+	}
 	return Drop->Item.Base.IsNone() ? ECataclysmGroundHover::Nothing : ECataclysmGroundHover::Gear;
 }
 
 FCataclysmCarriedSlot UCataclysmGroundItemHover::SlotFor(const ACataclysmDroppedItem& Drop)
 {
-	// AS `UCataclysmDropPickup::TakeInto` FILLS ONE: `AddMaterial` with the material and its count, or `AddItem` with
-	// the item alone.
+	// AS `UCataclysmDropPickup::TakeInto` FILLS ONE: `AddMaterial` with the material and its count, `AddGems` with the
+	// gem, its rarity and its count (issue #2839), or `AddItem` with the item alone.
 	FCataclysmCarriedSlot Slot;
 	if (Drop.IsMaterial())
 	{
 		Slot.Material = Drop.Material;
 		Slot.Quantity = Drop.MaterialQuantity;
+	}
+	else if (Drop.IsGem())
+	{
+		Slot.Gem = Drop.Gem;
+		Slot.GemRarity = Drop.GemRarity;
+		Slot.Quantity = Drop.GemQuantity;
 	}
 	else
 	{

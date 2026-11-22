@@ -504,7 +504,8 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	const FCataclysmCarriedSlot& Slot, const UDataTable* BaseTable,
 	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
 	const UDataTable* PositiveEnchantmentTable,
-	const UDataTable* NegativeEnchantmentTable)
+	const UDataTable* NegativeEnchantmentTable,
+	const UAbilitySystemComponent* Character)
 {
 	TArray<FString> Lines;
 
@@ -520,7 +521,8 @@ TArray<FString> UCataclysmItemTooltip::LinesFor(
 	// Its name, its rarity and type, its effect at that rarity, the socket it fits and how many. Issue #46, slice G2.
 	if (!TooltipSlotHoldsGear(Slot) && !Slot.Gem.IsNone())
 	{
-		return UCataclysmGems::TooltipLinesFor(Slot.Gem, Slot.GemRarity, Slot.Quantity);
+		// AND FOR THE CHARACTER READING IT, since issue #2835.
+		return UCataclysmGems::TooltipLinesFor(Slot.Gem, Slot.GemRarity, Slot.Quantity, Character);
 	}
 
 	// -- a crafting material ------------------------------------------------
@@ -645,10 +647,11 @@ FString UCataclysmItemTooltip::TextFor(
 	const FCataclysmCarriedSlot& Slot, const UDataTable* BaseTable,
 	const UDataTable* AffixTable, const UDataTable* CraftingMaterialTable,
 	const UDataTable* PositiveEnchantmentTable,
-	const UDataTable* NegativeEnchantmentTable)
+	const UDataTable* NegativeEnchantmentTable,
+	const UAbilitySystemComponent* Character)
 {
 	return FString::Join(
 		LinesFor(Slot, BaseTable, AffixTable, CraftingMaterialTable,
-				 PositiveEnchantmentTable, NegativeEnchantmentTable),
+				 PositiveEnchantmentTable, NegativeEnchantmentTable, Character),
 		TEXT("\n"));
 }

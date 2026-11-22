@@ -851,7 +851,9 @@ FString UCataclysmCharacterSheetLayout::AttributeTooltipFor(const FString& Attri
 		const FString StatName = NameFor(Stat);
 
 		// NOTHING TO INCREASE: no base and no flat amount, so the increase multiplies nothing. Ruled by the owner on
-		// 2026-11-21, "Keep it, just explain it". A stat with nothing recorded is read from the sheet's figure.
+		// 2026-11-21, "Keep it, just explain it". A stat with nothing recorded is read from the sheet's figure. A gem's
+		// tooltip asks the same of `UCataclysmGems::AmountToIncreaseFor` (issue #2835), which reads the attribute where
+		// this reads the figure; the coordinating session ruled on 2026-11-22 that the sheet stays as it is.
 		const float Underlying = Inputs ? WithIt.Base + WithIt.Flat : FigureFor(Stat, ASC);
 		if (Underlying <= 0.0f)
 		{

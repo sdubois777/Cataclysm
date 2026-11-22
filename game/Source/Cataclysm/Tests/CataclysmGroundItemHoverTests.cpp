@@ -276,6 +276,65 @@ bool FCataclysmGroundMaterialTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundGemTest,
+	"Cataclysm.GroundItemHover.AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A gem stack on the floor, issue #2839: hovered as a gem, its lines the bag's for the same stack and the same
+ * character, through `UCataclysmItemComparison::TooltipColumnsFor`, the function the bag's cells call, and no comparison.
+ * Of The Wraith, which increases evasion: the wearer has none, so its lines carry #2835's line for the character, which
+ * shows the hover passes the character on. Until #2839 a gem drop was hovered as nothing. Prints "GROUND GEM".
+ */
+bool FCataclysmGroundGemTest::RunTest(const FString&)
+{
+	using namespace CataclysmGroundItemHoverTest;
+	FHoverScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: a world, a wearer and a stand-in"), Scene.IsUsable()))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FName Wraith(TEXT("Gem_Of_The_Wraith"));
+	ACataclysmDroppedItem* Drop = UCataclysmDropSpawner::PutOnTheFloor(
+		Scene.World, FVector(300.0f, 0.0f, 0.0f), FCataclysmItem(), NAME_None, 0, /*Gold=*/0, Wraith,
+		ECataclysmRarity::Superb, 2);
+	if (!TestNotNull(TEXT("set-up: two Superb Of The Wraith on the floor"), Drop))
+	{
+		return false;
+	}
+
+	FCataclysmCarriedSlot Carried;
+	Carried.Gem = Wraith;
+	Carried.GemRarity = ECataclysmRarity::Superb;
+	Carried.Quantity = 2;
+	FString BagLeft;
+	FString BagRight;
+	UCataclysmItemComparison::TooltipColumnsFor(
+		Carried, Scene.Wearer->Equipment, Scene.Wearer->AbilitySystem, Scene.StandIn, /*WornNow=*/nullptr,
+		UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable(),
+		UCataclysmDropRoll::LoadCraftingMaterialTable(), UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), BagLeft, BagRight);
+
+	FString Left;
+	FString Right;
+	const bool bShows = UCataclysmGroundItemHover::ColumnsFor(Drop, Scene.Wearer->Equipment,
+															  Scene.Wearer->AbilitySystem, Scene.StandIn, Left, Right);
+	AddInfo(FString::Printf(TEXT("GROUND GEM: kind %d, shows %d | %s | the bag's: %s"),
+							static_cast<int32>(UCataclysmGroundItemHover::KindFor(Drop)), bShows,
+							*Left.Replace(TEXT("\n"), TEXT(" / ")), *BagLeft.Replace(TEXT("\n"), TEXT(" / "))));
+
+	TestEqual(TEXT("**it is hovered as a gem**"), static_cast<int32>(UCataclysmGroundItemHover::KindFor(Drop)),
+			  static_cast<int32>(ECataclysmGroundHover::Gem));
+	TestTrue(TEXT("**the hover shows something**"), bShows);
+	TestTrue(TEXT("set-up: the bag's lines name the gem"), BagLeft.StartsWith(TEXT("Of The Wraith")));
+	TestEqual(TEXT("**its lines are the bag's for the same stack and character**"), Left, BagLeft);
+	TestTrue(TEXT("and carry the line for the character, so the hover passed it on"), Left.Contains(TEXT("for you")));
+	TestTrue(TEXT("and no comparison"), Right.IsEmpty());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundNothingTest,
 	"Cataclysm.GroundItemHover.NothingHoveredAndAGoldPileShowNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

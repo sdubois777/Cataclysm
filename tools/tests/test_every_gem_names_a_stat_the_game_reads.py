@@ -181,7 +181,8 @@ def test_the_tooltip_explains_exactly_the_stats_of_the_four_gems() -> None:
     listed = set(re.findall(r'\{\s*TEXT\("(\w+)"\)\s*,\s*TEXT\("[^"]+"\)\s*\}', function))
     raised = {RULED[gem][0] for gem in NOTHING_TO_INCREASE}
     assert listed == raised, f"the tooltip explains {sorted(listed)}; the four gems raise {sorted(raised)}"
-    assert "NothingToIncreaseLineFor(*Row)" in body[body.find("UCataclysmGems::TooltipLinesFor("):], (
+    # "(*Row" and not "(*Row)": since issue #2835 the tooltip passes the character reading it as well.
+    assert "NothingToIncreaseLineFor(*Row" in body[body.find("UCataclysmGems::TooltipLinesFor("):], (
         "the gem tooltip does not ask for the line")
 
 

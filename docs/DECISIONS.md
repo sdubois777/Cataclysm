@@ -2,6 +2,203 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — A gem lying on the ground shows its tooltip when hovered, as gear and materials do; and the window for it and #2835 (#2839)
+
+**Affects:** `ECataclysmGroundHover::Gem`, new, and `UCataclysmGroundItemHover::KindFor` and `SlotFor`
+(`game/Source/Cataclysm/Interface/CataclysmGroundItemHover.h` and `.cpp`). Test:
+`Cataclysm.GroundItemHover.AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes`, new, in
+`game/Source/Cataclysm/Tests/CataclysmGroundItemHoverTests.cpp`. Issue
+[#2839](https://github.com/sdubois777/Cataclysm/issues/2839), found while planning
+[#2835](https://github.com/sdubois777/Cataclysm/issues/2835), the entry below, and following
+[#2807](https://github.com/sdubois777/Cataclysm/issues/2807), the owner's ask that hovering an item on the ground shows
+what it is before it is picked up.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED**, then run in the window below with #2835, as the coordinating session ruled on
+  2026-11-22 (its plan's Q2: a second commit on `feat/gem-tooltip-for-the-character`).
+- **NO TEST CAN SEE THE PANEL ON THE SCREEN** (-nullrhi, issue #650). The test holds the panel's two columns, which
+  `ACataclysmPlayerController::RefreshGroundItemHover` shows.
+
+### What was wrong, and the change
+
+`KindFor` checked for gold, then a material, then answered `Nothing` for a drop with no item base. A gem drop (#46
+slice G5) has a gem, no base and no material, so it was `Nothing`, and the controller removed the panel. `SlotFor`
+filled only a material or an item.
+
+- `ECataclysmGroundHover::Gem`, appended after `Material` (ruled Q1: a value of its own, so a test tells a gem from a
+  material and no reader of `Material` has to learn that it may hold a gem).
+- `KindFor` answers `Gem` for a drop whose `IsGem()` is true, after the material check.
+- `SlotFor` fills the carried slot's gem, rarity and count from the drop's, as `UCataclysmInventoryComponent::AddGems`
+  fills a carried stack.
+- The controller is unchanged: it hides only `Nothing`, spawns the comparison stand-in only for `Gear`, and already
+  passes the hovering character's component to `ColumnsFor`, so a gem on the ground carries #2835's line too.
+
+No formula; the panel shows the bag's own lines.
+
+### Test
+
+`AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes`: two Superb Of The Wraith on the floor; hovered as `Gem`; `ColumnsFor`
+shows something; its left column equals `UCataclysmItemComparison::TooltipColumnsFor`'s for the same carried stack and
+the same wearer (the function the bag's cells call), which starts with the gem's name and carries the line for the
+character ("for you"); no right column.
+
+### Registered for the window: #2835 and #2839, ruled by the coordinating session on 2026-11-22
+
+On `feat/gem-tooltip-for-the-character`, development `45b33c70f` and the two commits. This replaces the registration in
+#2835's entry below, which was written before the counts were ruled.
+
+- **The base: tree-s9-w2's measured whole suite, 5218 performed, 57 skipped halves, 860 test saves.** The whole suite:
+  **5218 + 4 = 5222**, 57 skipped halves and 860 test saves (no new test skips a half or writes a save slot).
+- **Three compiles**, because header signatures change: the branch; each changed `.cpp` alone; the unity files again.
+- **No editor asset step**: no CSV or asset changed. No save record moves.
+- **Groups alone, first**, at that log's counts plus the new tests: `GemTooltip.` 3 (new), `GemStacks.` 6, `Tooltip.`
+  18, `ItemComparison.` 8, `GroundItemHover.` 7 (6 and the new test).
+- **Then the whole suite, the Python suite beside it, then ruff, then the proofs.**
+- **Five Unreal guard proofs**: #2835's G1 to G3 (its entry below, narrowed to `Cataclysm.GemTooltip.`, 3), and:
+
+| Proof | The break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- |
+| H1 | `KindFor` without the gem check | `Cataclysm.GroundItemHover.` (7) | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` |
+| H2 | `SlotFor` without the gem fields | the same | 6 succeeded, 1 failed: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` (its left column empty, not the bag's) |
+
+### The window, gem-tooltip-w1, on `c30f61b8d`: PASSED, every registered figure met
+
+Run on 2026-11-22 from 09:24 to 09:58 by `.claude/windows/chain_gt.py`: the compile gate, `compile_gt.py`, the
+window's pre-checks, then `run_gt.py`, on `feat/gem-tooltip-for-the-character` at `c30f61b8d` (development
+`45b33c70f`, #2835's `60dd74e35` and #2839's commit).
+
+- **The pre-checks**, 09:24, ALL PASS: development `45b33c70f`, its latest CI and Unreal runs both success; no run in
+  progress or queued; the lock free; no build or editor process; no open pull request; 9,628 MB free (needs 9,216);
+  136 LFS files, no pointer. Again before the window at 09:32:52, ALL PASS.
+- **The owner's editor gate** (the coordinating session, 2026-11-22): every stage held while an UnrealEditor or
+  UnrealEditor-Cmd process ran. None ran: no stage held ("HOLD" appears in none of the three outputs).
+- **Three compiles**, under the lock gem-tooltip-compile, each "0 compiler warning or error lines in the build tool's
+  log": the branch, "Build: Succeeded - 67 actions, 62 files compiled"; each changed `.cpp` alone, "14 actions, 11
+  files compiled", the seven changed files and four unity files; the unity files again, "7 actions, 4 files compiled".
+- **The groups alone**, 5 of 5, each at its registered count with 0 failed: `GemTooltip.` 3, `GemStacks.` 6, `Tooltip.`
+  18, `ItemComparison.` 8, `GroundItemHover.` 7.
+- **The whole Unreal suite**: "5222 tests performed, 5222 succeeded, 0 failed. 57 skipped part of what they check";
+  "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5222 tests in the tree at c30f61b8d; 5222 performed,
+  gap 0". All three as registered. Memory: `peak_used_virtual_mb=9179`, no memory trouble.
+- **What the new tests printed**: "GEM TOOLTIP, NONE: evasion to increase 0.00", the fourth line the character's;
+  "GEM TOOLTIP, SOME: evasion to increase 8.00", Of The Wraith with no such line and Of The Bulwark with "You have no
+  block chance"; "GEM TOOLTIP, HOVER: compared 0", the fourth line the character's; "GROUND GEM: kind 3, shows 1", its
+  lines the bag's, with "You have no evasion" and "2 carried".
+- **The Python suite, beside it**: "8086 passed, 10 skipped in 391.52s", and the JUnit file `tests="8096"`,
+  `failures="0"`, `errors="0"`, `skipped="10"`. ruff: "All checks passed!".
+- **The five C++ guard proofs, every one PROVED**, each failing exactly the tests predicted with the break in and passing
+  all with it out, the source unchanged afterwards ("hash same True"):
+
+| Proof | With the break in | Restored |
+| :-- | :-- | :-- |
+| G1 | 3 performed, 1 failed: `TheInventoryHoverPassesTheCharacter` | 3 of 3 |
+| G2 | 3, 1: `ACharacterWhoseGearGivesSomeIsNotTold` | 3 of 3 |
+| G3 | 3, 2: `ACharacterWithNoneOfTheStatIsToldTheGemDoesNothingForThem`, `TheInventoryHoverPassesTheCharacter` | 3 of 3 |
+| H1 | 7, 1: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` | 7 of 7 |
+| H2 | 7, 1: `AGemOnTheFloorShowsItsOwnLinesAsTheBagDoes` | 7 of 7 |
+
+- **Said plainly, from before the window**: the first script that wrote #2839's edits applied each edit to the file as
+  first read, so two edits to one file overwrote each other and three of six were lost. A proof anchor that matched 0
+  times showed it; the three were applied again, and the Python run that had read the half-edited files was discarded
+  and run again ("8086 passed, 10 skipped in 411.88s") before the commit.
+- **Not seen by any test**: the tooltip and the ground panel on the screen (-nullrhi, issue #650). The owner checks
+  those in play.
+
+---
+
+## 2026-11-22 — A gem's tooltip says the gem does nothing for the character reading it, when that character has none of its stat (#2835)
+
+**Affects:** `UCataclysmGems::NothingToIncreaseLineFor` and `TooltipLinesFor`, each given an optional character, and
+`AmountToIncreaseFor`, new (`game/Source/Cataclysm/Items/CataclysmGems.h` and `.cpp`); `UCataclysmItemTooltip::LinesFor`
+and `TextFor`, each given an optional character (`game/Source/Cataclysm/Interface/CataclysmItemTooltip.h` and `.cpp`);
+`UCataclysmItemComparison::TooltipColumnsFor`, which passes the character it already had to `TextFor`
+(`CataclysmItemComparison.cpp`); a comment in `CataclysmCharacterSheetLayout.cpp` naming the new helper. Tests: the new
+group `Cataclysm.GemTooltip.`, three, in `game/Source/Cataclysm/Tests/CataclysmGemTooltipTests.cpp`;
+`tools/tests/test_every_gem_names_a_stat_the_game_reads.py`, whose check that the tooltip asks for the line now accepts
+the call that passes the character. Issue [#2835](https://github.com/sdubois777/Cataclysm/issues/2835), of
+[#46](https://github.com/sdubois777/Cataclysm/issues/46) slice G2.
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22: code, tests and this
+  entry, with no compile and no Unreal run. The registration below is what a window will check.
+- **NO TEST CAN SEE THE TOOLTIP ON THE SCREEN** (-nullrhi, issue #650). The tests hold the lines the inventory widget
+  sets as the cell's tooltip text, through the function the widget calls.
+- **NOT COVERED: a change to the character's amount of a stat that is neither a change to the bag nor to the gear** --
+  a passive respec or a buff with the inventory open. The bag's tooltips are rebuilt when the inventory's or the
+  equipment's change count moves (`UCataclysmInventoryWidget`), so such a change shows the next time either moves.
+  Today only gear gives a flat amount of any of the four stats (the comment on `NothingToIncreaseLineFor`), so no line
+  shown is wrong today.
+
+### The plan, accepted by the coordinating session on 2026-11-22, and its rulings
+
+The character was already one call above the tooltip: `UCataclysmItemComparison::TooltipColumnsFor`, which the inventory
+widget's carried cells and the ground hover call, takes the character's ability system component for comparing gear and
+did not pass it to `TextFor`, which a gem stack takes because a gem is not compared. So the change is one optional
+trailing parameter on `TextFor`, `LinesFor` and `TooltipLinesFor`, and one argument. The issue's stash screen does not
+exist: no file under `Interface/` but the inventory widget sets an item tooltip.
+
+- **Q1, ruled**: a character with some of the stat gets no line; the effect line already says what the gem does.
+- **Q2, ruled**: the character sheet's attribute tooltip is not moved onto the new helper in this change; a comment
+  there names it. The two read a stat with nothing recorded differently (the sheet its displayed figure, the helper the
+  attribute), which matters for neither when the answer is "none".
+- **Q3, ruled**: the wiring in `TooltipColumnsFor` is guarded by C++ proof G1, and no Python check is added.
+- **Q4, ruled**: a gem lying on the ground has no hover panel at all, a separate gap, filed as its own issue.
+- **Q5, ruled**: socketed gems' lines are left as they are; they state no effect, so no line about one.
+
+No formula is proposed. The rule the line states -- an increase multiplies the base plus the flat amount -- is the
+damage pipeline's `(base + flat) x (1 + increases) x more`, already the design's, and the line's words follow the
+character sheet's own for the same case ("you have none, from your class or your items").
+
+### The lines
+
+| Read for | Of The Wraith's fourth line |
+| :-- | :-- |
+| no character (`nullptr`, or a component that is not a `UCataclysmAbilitySystemComponent`) | "An increase multiplies what you already have. No class has a base evasion, so this gem does nothing until your gear gives some." -- unchanged |
+| a character with no base and no flat evasion | "An increase multiplies what you already have. You have no evasion, from your class or your items, so this gem does nothing for you until your gear gives some." |
+| a character whose gear gives some | none: the effect line is followed by "Fits a Defense socket" |
+
+The amount is the base plus the flat amount: from the stat's recorded inputs, evaluated with no skill tags, as the
+sheet does (so a flat amount that applies only under a condition does not count), and from the attribute where no input
+is recorded, because `ApplyTo` records only a stat that has a modifier.
+
+### Tests
+
+The new group `Cataclysm.GemTooltip.`, three, written before the change. The characters are built as
+`Cataclysm.AttributeTooltip.` builds them: a Ravager at level 10 from `ApplyTo`, with items given as a modifier map.
+
+| Test | What it checks |
+| :-- | :-- |
+| `ACharacterWithNoneOfTheStatIsToldTheGemDoesNothingForThem` | a Ravager with no gear: 0 evasion to increase; Of The Wraith's fourth line is the character's, and the line for everyone is absent; CONTROL: read with no character, the line for everyone |
+| `ACharacterWhoseGearGivesSomeIsNotTold` | a Ravager with 8 flat evasion from items: 8 to increase; Of The Wraith says nothing of doing nothing, one line fewer than with no gear; CONTROL: Of The Bulwark, block chance, still says it does nothing |
+| `TheInventoryHoverPassesTheCharacter` | `TooltipColumnsFor` given the gem stack and the character: not compared, no second column, the fourth line the character's |
+
+### Registered for the window
+
+**SUPERSEDED by the registration in #2839's entry above**, which the coordinating session ruled on 2026-11-22 for the
+window both issues share. As first written, on development `45b33c70f`:
+
+- **The whole suite: the base + 3**, the three new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot).
+- **No save record moves. No editor step**: no CSV or asset changed.
+- **Groups alone, first**, each a prefix of no other group: `GemTooltip.` 3 (new); `GemStacks.` 6 (its tooltip tests
+  read the gem lines with no character); `Tooltip.` 18 (`CataclysmItemTooltipTests.cpp`, which calls `LinesFor` and
+  `TextFor`); `ItemComparison.` 8 and `GroundItemHover.` 6 (`TooltipColumnsFor`'s callers). Name-literal counts on this
+  branch; recounted against the log at the turn.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch at
+  `45b33c70f` plus this change: "8086 passed, 10 skipped in 356.32s", JUnit 8096 tests, 0 failures, 0 errors, 10
+  skipped; ruff "All checks passed!".
+- **Three Unreal guard proofs**, each narrowed to `Cataclysm.GemTooltip.` (3):
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| G1 | `TooltipColumnsFor` passes `nullptr` to `TextFor` in place of `Abilities` | 2 succeeded, 1 failed: `TheInventoryHoverPassesTheCharacter`, on "its fourth line is the character's" |
+| G2 | `AmountToIncreaseFor` returns the base alone from the recorded inputs, without the flat amount | 2 succeeded, 1 failed: `ACharacterWhoseGearGivesSomeIsNotTold`, on "8 flat evasion" (read 0), "says nothing of doing nothing" and "one line fewer" |
+| G3 | `NothingToIncreaseLineFor` gives the line for everyone where it would give the character's | 1 succeeded, 2 failed: `ACharacterWithNoneOfTheStatIsToldTheGemDoesNothingForThem` and `TheInventoryHoverPassesTheCharacter` |
+
+---
+
 ## 2026-11-22 — Crafting materials drop at a quarter of the gear rate, 0.04 to 3.0 a kill, because the forge's levelling days now leave days the limit on levelling at every tier even at a quarter (#2829)
 
 **Affects:** the design workbook `docs/All_Things_Cataclysm.xlsx`, Enemy Drops sheet, Material Drops column (cells E2 to

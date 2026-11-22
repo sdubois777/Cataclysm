@@ -2,7 +2,9 @@
 
 #include "Items/CataclysmGems.h"
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 
@@ -206,7 +208,7 @@ TArray<FString> UCataclysmGems::SocketLinesFor(const FCataclysmItem& Item)
 	return Lines;
 }
 
-FString UCataclysmGems::NothingToIncreaseLineFor(const FCataclysmGemRow& Row)
+FString UCataclysmGems::NothingToIncreaseLineFor(const FCataclysmGemRow& Row, const UAbilitySystemComponent* Character)
 {
 	// THE FOUR STATS NO CLASS HAS A BASE OF, `game/Data/ClassStats.csv`. This list is checked against that file and
 	// the gems that raise them by `tools/tests/test_every_gem_names_a_stat_the_game_reads.py`.
@@ -223,16 +225,52 @@ FString UCataclysmGems::NothingToIncreaseLineFor(const FCataclysmGemRow& Row)
 	const FString Stat = Row.Stat.TrimStartAndEnd();
 	for (const auto& Pair : NoBase)
 	{
-		if (Stat.Equals(Pair[0], ESearchCase::IgnoreCase))
+		if (!Stat.Equals(Pair[0], ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+		// WITH NO CHARACTER, THE RULE, true for every character (the form ruled on 2026-11-22).
+		if (Cast<UCataclysmAbilitySystemComponent>(Character) == nullptr)
 		{
 			return FString::Printf(TEXT("An increase multiplies what you already have. No class has a base %s, so this "
 										"gem does nothing until your gear gives some."), Pair[1]);
 		}
+		// WITH ONE, ITS OWN STATE (issue #2835): nothing to say when it has some, which the effect line covers.
+		if (AmountToIncreaseFor(Character, FName(Pair[0])) > 0.0f)
+		{
+			return FString();
+		}
+		return FString::Printf(TEXT("An increase multiplies what you already have. You have no %s, from your class or "
+									"your items, so this gem does nothing for you until your gear gives some."), Pair[1]);
 	}
 	return FString();
 }
 
-TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity)
+float UCataclysmGems::AmountToIncreaseFor(const UAbilitySystemComponent* Character, FName Stat)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(Character);
+	if (Cataclysm == nullptr)
+	{
+		return 0.0f;
+	}
+	if (const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(Stat))
+	{
+		const FCataclysmStatBreakdown Breakdown =
+			UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer());
+		return Breakdown.Base + Breakdown.Flat;
+	}
+	// NO MODIFIER WAS RECORDED, so the attribute holds the base unchanged (`UCataclysmPlayerClassStats::ApplyTo` records
+	// only a stat that has one).
+	const FGameplayAttribute* Attribute = UCataclysmPlayerClassStats::StatToAttribute().Find(Stat.ToString());
+	if (Attribute == nullptr || !Attribute->IsValid() || !Cataclysm->HasAttributeSetForAttribute(*Attribute))
+	{
+		return 0.0f;
+	}
+	return Cataclysm->GetNumericAttribute(*Attribute);
+}
+
+TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rarity, int32 Quantity,
+											   const UAbilitySystemComponent* Character)
 {
 	TArray<FString> Lines;
 	const FCataclysmGemRow* Row = RowOf(LoadGeneratedTable(), Gem);
@@ -243,7 +281,7 @@ TArray<FString> UCataclysmGems::TooltipLinesFor(FName Gem, ECataclysmRarity Rari
 	if (Row)
 	{
 		Lines.Add(EffectAt(*Row, Rarity));
-		const FString Explained = NothingToIncreaseLineFor(*Row);
+		const FString Explained = NothingToIncreaseLineFor(*Row, Character);
 		if (!Explained.IsEmpty())
 		{
 			Lines.Add(Explained);
