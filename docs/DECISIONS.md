@@ -99,6 +99,10 @@ exact figures FA2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains th
 price and the craft's pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains the craft's line, and its
 count of places, which said twenty-five and was 27 on `development`, says twenty-eight.
 
+**Python suite at `6632b6377`**: "8132 passed, 10 skipped"; JUnit 8142 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". The shared window's 8123 and this slice's 9: 6 tests and 3 cases added to existing
+parametrized checks.
+
 **Python guard proofs, in a `git archive` copy of `6d4ef07b0`, through `tools/prove_guard.break_and_run`
 (`.claude/windows/prove_f1_python.py`): 8 of 8 PROVED**, each failing exactly the one test predicted and passing restored.
 
