@@ -86,6 +86,10 @@ draw gives the exact figures FC2 asserts. `test_the_forge_charges_the_sheets_cos
 the two rules' prices and `DoAffixChange`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains
 `DoAffixChange`'s line, and its count of places says twenty-nine.
 
+**Python suite at `b51e6ae48`**: "8143 passed, 10 skipped"; JUnit 8153 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". Slice F1's 8132 and this slice's 11: 7 tests and 4 cases added to existing parametrized
+checks.
+
 **Python guard proofs, in a `git archive` copy of `e24082b7e`, through `tools/prove_guard.break_and_run`
 (`.claude/windows/prove_f2_python.py`): 10 of 10 PROVED**, each failing exactly the tests predicted and passing restored.
 
