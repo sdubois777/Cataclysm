@@ -124,6 +124,10 @@ The rulings:
 item craft calls `DoItemCraft`; no other function pays, takes materials, puts an item back or passes days, except the
 combines' own payment and stones; the three rows; the options' rule; the cleanse and Q26; the tiers.
 
+**Python suite at `63f9a977f`**: "8171 passed, 10 skipped"; JUnit 8181 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". F3 and F4 together were not run without F5, so how much of the total is F3's and how
+much this slice's is not measured here.
+
 **The seven checks that changed shape**, each now pointing to the new file for the order:
 
 | Check | Was | Now |
