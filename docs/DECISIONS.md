@@ -629,9 +629,9 @@ Tests: `game/Source/Cataclysm/Tests/CataclysmAttributeTooltipTests.cpp`, new, th
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on development `c89fa5911` without a compile, as ruled, and put on
-  the combined branch of #2802, #2804 and #2815, rebased onto development `b52ba76e2` (#2803's merge): one turn, one
-  window, registered in the #2802 entry.
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2**, the combined window of #2802, #2804 and #2815 at `a7fadce0b`:
+  `Cataclysm.AttributeTooltip.` 3 of 3, the whole suite 5094 of 5094, R1, R2 and B1-B4 proved. The #2802 entry holds
+  the registration and the record. Written on development `c89fa5911` without a compile, as ruled.
 - **THE OWNER CHOSE TO KEEP THE ATTRIBUTES AND EXPLAIN THEM, NOT TO CHANGE THEM**, against the coordinating session's
   recommendation of flat amounts where a stat has no base. The question and the three options are in "The rulings".
 
@@ -771,9 +771,9 @@ optional commander; `UCataclysmSkillBar::ReserveNounFor`, new, shared by both sc
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2802's branch at `96b765874` without a compile, as ruled, and put
-  with #2802 and #2815 on one combined branch, rebased onto development `b52ba76e2` (#2803's merge): one turn, one
-  window, registered in the #2802 entry.
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2**, the combined window of #2802, #2804 and #2815 at `a7fadce0b`:
+  `Cataclysm.TooltipCost.` 1 of 1, the whole suite 5094 of 5094, T1 proved. The #2802 entry holds the registration and
+  the record. Written on #2802's branch at `96b765874` without a compile, as ruled.
 - **IT REPLACES RULING Q7'S "NO NUMBERS" FOR THIS TOOLTIP.** Q7's reason was that a skill's numbers would put the
   designed slot's fallback in a second place. This change reads every figure through the functions the press reads,
   on a template stamped from the row as granting stamps one, so no figure and no fallback is written twice.
@@ -844,9 +844,11 @@ bar's `ReserveEach` and `ReserveNoun` and its cost line's reserve sentence (`Cat
 
 ### SAID FIRST
 
-- **NOT COMPILED AND NOT RUN IN UNREAL.** Written on #2801's branch at `efe7c0bfc` without a compile, as ruled, and
-  rebased with #2804 and #2815 on top of it onto development `b52ba76e2` (#2803's merge), for one combined turn: one
-  branch, one set of three compiles and one window, ruled by the coordinating session on 2026-11-21.
+- **COMPILED, RUN AND PROVED IN WINDOW SKILLS-W2, THE SECOND WINDOW.** Skills-w1 failed one test of this change, on a
+  wrong figure written in the test (0.72013 for 0.9642 to the ninth, 0.72028); corrected, skills-w2 at `a7fadce0b`
+  measured `Cataclysm.LevelCosts.` 4 of 4 and the whole suite 5094 of 5094, and L2, G1, P-L1, P-L3 and P-G1 proved.
+  Written on #2801's branch at `efe7c0bfc` without a compile, as ruled, and carried with #2804 and #2815 on one combined
+  branch, ruled by the coordinating session on 2026-11-21; it ends on development `649559cce`.
 - **THE WORKBOOK STAGE, written at the combined turn once #2803 had merged** (the workbook is a binary file and #2803's
   Gems row was in it): two skills' descriptions in the Weapon Skills sheet lose their figures, since the pop-up and the
   assignment tooltip now state the levelled reserve. Subjugate's "Holding a thrall reserves 30 Fervour, so your army is
@@ -1054,6 +1056,43 @@ own comment said "0.9642 to the ninth". The tests that multiply it (21.6, 10.8, 
 **Window skills-w2 is registered as skills-w1 was**, at the corrected head, after its compiles: every figure in
 "Registered before the window" above, the asset step not repeated (it is committed), and the five C++ and seven Python
 proofs.
+
+### Window skills-w2: EVERY REGISTERED FIGURE MEASURED, EVERY PROOF PROVED
+
+**THE THREE COMPILES WERE NOT RUN AGAIN FOR SKILLS-W2**, ruled by the coordinating session on 2026-11-21: `git diff
+d00738f04 a7fadce0b` touches only `CataclysmLevelCostsTests.cpp` (one constant, no `#include` line) and this log, so
+the window's own build compiles it, as with earlier fixes to a test's body alone. That build printed "Build: Succeeded -
+4 actions, 1 file compiled: Module.Cataclysm.29.cpp", the unity file holding that test. Window skills-w2 ran at
+`a7fadce0b`, lock skills-w2:
+
+| Step | Registered | Measured |
+| :-- | :-- | :-- |
+| `Cataclysm.LevelCosts.` alone, first | 4 of 4 | "4 tests performed, 4 succeeded, 0 failed" |
+| `SkillChoiceScreen.`, `SkillBar.`, `SkillCost.`, `SkillLevelSources.`, `KindReserves.`, `CharacterSheet.` alone | 8, 22, 3, 19, 12, 10 | each as registered, every test succeeding |
+| `TooltipCost.` and `AttributeTooltip.` alone | 1 and 3 | 1 of 1 and 3 of 3 |
+| The whole suite | 5094 of 5094; 48 skipped halves; 860 saves | "5094 tests performed, 5094 succeeded, 0 failed", 48 skipped halves; "Test saves: 860 written and deleted, 0 left behind"; "Declared: 5094 tests in the tree at a7fadce0b; 5094 performed, gap 0" |
+| Python, alongside the suite | every test passing | "7866 passed, 9 skipped"; JUnit tests 7875, failures 0, errors 0, skipped 9 |
+| ruff | clean | "All checks passed!" |
+
+The memory summary at the suite's end: 5701 tests, peak used virtual memory 9155 MB.
+
+| Proof | Broken half | Restored | Verdict |
+| :-- | :-- | :-- | :-- |
+| L2 | 4 performed, 3 succeeded, 1 failed: `AHeldThrallIsRepricedWhenItsSkillLevels` | 4 of 4 | PROVED |
+| T1 | 1 performed, 0 succeeded, 1 failed: `TheAssignmentTooltipStatesTheCostTheSkillBarStates` | 1 of 1 | PROVED |
+| R1 | 3 performed, 2 succeeded, 1 failed: `TheNowFiguresAreTheSheetsWithAndWithoutTheAttribute` | 3 of 3 | PROVED |
+| R2 | 3 performed, 2 succeeded, 1 failed: the same test | 3 of 3 | PROVED |
+| G1 | 4 performed, 3 succeeded, 1 failed: `ASkillGadgetAndASkillTrapReserveAtTheirSlotSkillsLevel` | 4 of 4 | PROVED |
+
+Each as registered. The seven Python proofs ran after them in a `git archive` copy of `a7fadce0b`, "PYTHON PROOFS: 7 of
+7 PROVED", each failing the check registered for it: P-L1 `test_each_constant_is_the_same[CostFactorPerLevel-...]`;
+P-L3 and P-G1 the mana cost and skill trap cases of `test_each_cost_is_lowered_by_the_skills_level`; B1-B4 the name,
+family, widget and design table checks of `test_an_attributes_tooltip_names_every_row.py`.
+
+**Afterwards the branch was rebased onto development `649559cce`** as `feat/skill-costs-tooltips-2802-2804-2815-3`.
+That merge changed the design document, this log and two Python test files and no `game/` file: `git diff a7fadce0b`
+and the rebased head `-- game/` is empty. The checks that read the design document's sections this branch touches, and
+the two changed test files, passed there: "182 passed".
 
 ---
 
