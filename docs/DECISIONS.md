@@ -82,6 +82,10 @@ gives the exact figures FD2 asserts. `test_the_forge_charges_the_sheets_costs.py
 rule's price and `CraftDamageType`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains its line,
 and its count of places says thirty.
 
+**Python suite at `a9ba94d54`, with this entry**: "8155 passed, 10 skipped"; JUnit 8165 tests, 0 failures, 0
+errors, 10 skipped; ruff "All checks passed!". Slice F2's 8143 and this slice's 12: 7 tests and 3 cases added to
+existing parametrized checks, and the 2 tests of the check that no test file declares `FScene` (below).
+
 **Two errors caught before commit**: the checklist's example chosen infusion said 1,500 gold, and at 50 residue it is
 2,500; and FD6 first infused a random type and then Demonic, which a draw of Demonic would have refused. It now infuses
 Celestial and Demonic, both chosen.
@@ -101,6 +105,28 @@ Celestial and Demonic, both chosen.
 | PD8 | `CraftDamageType` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...CraftDamageType(]` |
 | PD9 | the change's line reading "changed the" | `test_the_checklist_quotes_only_lines_the_game_says` |
 | PD10 | `InfuseSpecificDamageTypeBaseDays` 4 | `test_the_sheets_three_rows_hold_the_forges_figures`, and the gold check's `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+
+### A type named FScene, found after the entry above was written
+
+Window power-score-w1's first build stopped on 50 errors in slice F2's `CataclysmForgeAffixChangeTests.cpp`: its
+test namespace declared `struct FScene`, which is ambiguous with the engine's global `FScene` under `using namespace`
+(C2872). The level-1 session renamed it `FAffixChangeScene` on its window branch, commit `5d470823e`. This branch
+is built on F2's, so:
+
+- **`5d470823e` is applied here too** (`6a739c11b`), unchanged, so a rebase onto development after that window merges
+  finds it already there.
+- **F4's own `CataclysmForgeDamageTypesTests.cpp` had the same declaration**, and its scene is now
+  `FDamageTypeCraftScene` (10 uses, `a9ba94d54`). No other change to the file.
+- **The other short names the three forge test files declare** (`War`, `Death`, `Demonic`, `Void`, `Sword`, `Helm`,
+  `Spark` and the rest) were searched for in the engine's `Core/Public`, `CoreUObject/Public`, `Engine/Public` and
+  `Engine/Classes` headers: the only hits were `Void` inside three `enum class` blocks, which declare nothing at
+  global scope. Plugins were not searched.
+- **A check, as the coordinating session ruled (twice makes it a check)**:
+  `tools/tests/test_test_files_declare_no_engine_global_type.py` fails on any `struct` or `class FScene` in a `.cpp`
+  or `.h` under a module's `Tests` folder (358 files), and on reading fewer than 100. **Guard proof PS-FSCENE, in a
+  `git archive` copy of `a9ba94d54`, through `tools/prove_guard.break_and_run`
+  (`.claude/windows/prove_fscene_check.py`): PROVED.** With `struct FScene` put back in F4's file,
+  `test_no_test_file_declares_a_type_the_engine_declares_globally` failed and nothing else did; restored, both passed.
 
 ### Registered for the window
 
