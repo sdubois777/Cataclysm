@@ -6,9 +6,18 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Said first:**
 
-- **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-residue-tools-47-f5`. It is cut from slice F4's head
-  `00de89243`, with slice F3's three commits (`c9bf10524`, `a535f7804`, `865dfdd6a`, from
-  `feat/forge-enchantments-47-3`) applied unchanged on top, as the coordinating session ordered. Its own window comes
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-residue-tools-47-f5b`. It is cut from `573ae8bbf` on
+  `feat/forge-f3-on-f4-47`, which holds:
+  - slice F4's head `00de89243`;
+  - slice F3's three commits applied unchanged on top, as the coordinating session ordered: `c69259f6d`, `81cf236c6`
+    and `9499c2fab`, which are `c9bf10524`, `a535f7804` and `865dfdd6a` from `feat/forge-enchantments-47-3`;
+  - one commit, `573ae8bbf`, numbering F3's checklist step 24.
+- **THIS SLICE WAS FIRST CUT AS `feat/forge-residue-tools-47-f5`, head `1467175c4`**, where the step-24 renumbering was
+  part of this slice's code commit. The coordinating session ruled the split, so window forge-pg-w1 can take F3 and F4
+  without F5. This slice's three commits were cherry-picked onto `573ae8bbf` (`ee66bacd8`, `63f9a977f`, `1467175c4`
+  became `126352ff2`, `4ad075855`, `45cb7b213`). `git diff --stat` shows each new tree differs from its old one only in
+  `docs/DECISIONS.md`, the one line of F3's entry. So the proofs and the suite recorded below at `ee66bacd8` and
+  `63f9a977f` were run on the same source, tests and checklist. Its own window comes
   after window forge-pg-w1: it rewrites the shared craft path, so the C++ proof anchors of F1 to F4 do not match after
   it. They run in their own windows first.
 - **MORE THAN `docs/DECISIONS.md` CONFLICTED WHEN F3 WAS APPLIED**, against the order to resolve only that file. Twelve
@@ -23,9 +32,9 @@ Decisions made outside the Google Drive documents, newest first.
     `tools/check_resolved_cpp.py --changed` read 13 files with 0 complaints.
   - F3's own files are byte for byte `865dfdd6a`'s. F3's and F4's entries in this log are byte for byte their own
     branches'. F3's entry sits above F4's by the author date of the commits that wrote them (13:26 against 13:05).
-- **The play checklist had two steps numbered 23**, F4's and F3's, because each slice added one. Here F3's is
-  renumbered 24 and this slice's is 25. F3's and F4's entries each still say "step 23" and are left as written. Window
-  forge-pg-w1, which merges F3 and F4, will meet the same duplicate.
+- **The play checklist had two steps numbered 23**, F4's and F3's, because each slice added one. Commit `573ae8bbf`,
+  below this slice, numbers F3's step 24 and changes F3's entry from "step 23" to "step 24", as the coordinating
+  session ruled. F4's entry keeps "step 23", which is F4's step. This slice adds step 25.
 - **SEVEN PYTHON CHECKS CHANGED SHAPE**, listed under Tests. They read each craft's own body for the days, the payment
   or the line, and those steps are now in the one sequence. Each moved to the one function where its step now happens.
   A new check holds that function's order, and that no other function in the file pays, takes materials, puts an item
@@ -97,7 +106,7 @@ The rulings:
   more." A refused option refuses the press.
 - **The play log**: `ForgeOptionsLine`, said by `DoItemCraft` after the craft's own line when an option was used; and
   `ForgeCleanseLine`.
-- **`docs/Play_Loop_Checklist.md`**: step 25, and F3's step renumbered 24.
+- **`docs/Play_Loop_Checklist.md`**: step 25.
 - **Nothing moves** in the save versions, the workbook or the assets.
 
 **Three errors of this slice's own, caught before commit:**
