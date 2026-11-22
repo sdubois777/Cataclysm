@@ -174,7 +174,10 @@ armour, evasion and block; the floor panel calls `OverwhelmText`.
 | PY4 | taken off resistance after the cap | `test_resolve_takes_it_beside_penetration_before_the_cap` |
 | PY5 | the floor panel's Overwhelm line left empty | `test_the_floor_panel_shows_it` |
 
-**The Python suite on this branch**: recorded in the commit after this one, from its run.
+**The Python suite on this branch**, at `4b8ea1362`: **8,161 passed, 10 skipped, 0 failed in 417.5 s**; the JUnit
+file agrees, 8,171 tests, 0 failures, 0 errors, 10 skipped. `ruff check .`: all checks passed. An earlier run at
+`2d1dcbdf7` failed one check, `test_every_console_variable_a_test_writes_is_written_at_console_priority`: the new tests
+set the difficulty tier at code priority. `7cd8aafb0` sets it at console priority.
 
 ---
 
