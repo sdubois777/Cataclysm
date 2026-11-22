@@ -283,12 +283,15 @@ bool FCataclysmPowerScoreLiveCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	Abilities->SetNumericAttributeBase(Resisted, 100.0f);
 	FCataclysmItem Helm = Piece(ECataclysmRarity::Cataclysmic, 10);
 	Helm.Base = FName(TEXT("Head_Helm"));
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
 	Equipment->EquipInto(Helm, ECataclysmGearSlot::Head, Removed, AlsoRemoved);
+	// THE RESISTANCE AFTER THE HELM, AND NOT BEFORE IT: equipping announces a change of gear, whose stat refresh
+	// (`UCataclysmPlayerClassStats::ApplyTo`) rewrites every stat attribute from the class line, and a 100 set before
+	// it read 0 in window power-score-w1's first run.
+	Abilities->SetNumericAttributeBase(Resisted, 100.0f);
 
 	const FCataclysmScoredCharacter AtOne = Power::ScoredCharacterOf(Character, 1);
 	const FCataclysmScoredCharacter AtEight = Power::ScoredCharacterOf(Character, 8);
