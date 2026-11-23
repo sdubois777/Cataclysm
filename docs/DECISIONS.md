@@ -140,6 +140,36 @@ anchors match once.
 (`CataclysmInputTests.cpp`) names every native input action and checks the config "lists no others". It expected
 14 and found 16, the two new actions, which are the two registered assets. They are added to its list.
 
+**LF-W2, 19:42 TO 20:19, on `ad8aa059b`: PASSED.** Lock `lf-w2`, taken and released. Run with no separate compiles,
+by the coordinating session's GO, because only a test file changed.
+- Build: "4 actions, 1 file compiled: Module.Cataclysm.32.cpp".
+- The editor steps were not run again: `7cb5e3288` is an ancestor of the tested head.
+- Groups alone: 9 of 9 passed.
+- Whole suite: "5322 tests performed, 5322 succeeded, 0 failed. 57 skipped part of what they check"; "Test saves:
+  861 written and deleted, 0 left behind"; "Declared: 5322 tests in the tree at ad8aa059b; 5322 performed, gap 0".
+  Memory: peak_used_virtual_mb=9139.
+- Python alongside: "8215 passed, 10 skipped in 352.38s"; JUnit 8225 tests, 0 failures, 0 errors. ruff "All
+  checks passed!".
+- **All fifteen Unreal guard proofs PROVED, each failing exactly the tests predicted**, the source hash the same
+  after every one, and every restored half passing its whole group:
+  - LP1 failed LF1, LF2, LF3 and LF7 (8 performed, 4 succeeded);
+  - LP2 failed LF2 and LF3;
+  - LP3 to LP8 each failed its own test (LF3, LF4, LF5, LF6, LF7, LF8);
+  - LSP1 failed LS1 and LS7, LSP2 LS1 and LS3, and LSP4 LS4 and LS7;
+  - LSP3, LSP5, LSP6 and LSP7 each failed its own test (LS4, LS5, LS6, LS2).
+
+**WHERE A NEW INPUT ACTION MUST BE ADDED**, the coordinating session's request after lf-w1, because the Unreal list was
+the third place and was missed:
+1. `tools/generate_input_assets.py`: `NATIVE_ACTIONS` and the key in both `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS`;
+2. `CataclysmInputActionNames` in `game/Source/Cataclysm/Input/CataclysmInputConfig.h`, which the Python check
+   `test_native_input_actions_match_the_engine.py` holds against the generator;
+3. **the `NativeNames` list in `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`**
+   (`game/Source/Cataclysm/Tests/CataclysmInputTests.cpp`), which checks the generated config lists no others. No
+   Python check reads it, so only an Unreal run finds it missing;
+4. the design document's two control tables, with `test_controls_table_matches_the_input_assets.py`'s key and phrase
+   maps;
+5. `game/README.md`'s count of input actions, which `test_game_readme_is_true.py` holds.
+
 Added to LF1's registration (the entry below), on that base, 5307 tests:
 
 | Step | Registered for LF1 and LF2 together |
