@@ -595,6 +595,29 @@ material drop in 128), a Tainted Shard uncommon (about 1 in 27) and a Purified E
 
 - **A character already marked by Consumption stays marked** after a cleanse: only killing the double clears it.
 
+### 26. Choose The Soul Forge or The Master Tinkerer in the empire tree, and craft until it fires
+
+The two crafting options of the empire tree's centre milestones (issue #47, slice F6). The Soul Forge is the third
+option of Edicts of Power, which opens at 50 points spent in the tree; The Master Tinkerer is the second of The Imperial
+Vanguard, which opens at 100. Neither is greyed any more. With Imperial Prowess, either can be the extra option.
+
+- **With The Soul Forge chosen and its point bought, upgrade a piece at the forge.** The first press ends: "The Soul
+  Forge: a 15% chance it rises two levels instead of one." It costs what one level costs. About one upgrade in seven
+  rises two, never past +10. When it does, after the upgrade's own line:
+
+  `PLAY LOOP: The Soul Forge raised Quality Helm two levels, +3 to +5`
+
+- **With The Master Tinkerer chosen and its point bought, imprint an enchantment or change a drawback.** The first press
+  ends: "The Master Tinkerer: a 5% chance of a critical success, its rolls drawn twice with the better kept, taking no
+  days." About one craft in twenty is a critical success: the enchantment's benefit is the better of two rolls and its
+  drawback the milder of two, no day of the run passes, and the residue, the gold and the material are still taken. After
+  the craft's own line:
+
+  `PLAY LOOP: a critical success on Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days`
+
+- **The outcome is not shown before the press**, only the chance. The same piece on the same day draws the same, so a
+  reload does not change it.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

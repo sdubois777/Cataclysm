@@ -564,6 +564,13 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::ExtraEarlierMilestoneOption:
 			Bonuses.ExtraEarlierMilestoneOptions += FMath::RoundToInt(Total);
 			break;
+		// #47 SLICE F6: two chances, each the larger held, as The Warlord's `RemoveAnotherDungeonChance` is.
+		case ECataclysmEmpireTreeEffect::UpgradeExtraLevelChance:
+			Bonuses.UpgradeExtraLevelChance = FMath::Max(Bonuses.UpgradeExtraLevelChance, Row->PerPoint);
+			break;
+		case ECataclysmEmpireTreeEffect::EnchantCriticalChance:
+			Bonuses.EnchantCriticalChance = FMath::Max(Bonuses.EnchantCriticalChance, Row->PerPoint);
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

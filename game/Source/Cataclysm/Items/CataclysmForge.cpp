@@ -1508,6 +1508,59 @@ FString UCataclysmForge::EnchantmentWorkQuestion(const FCataclysmForgeEnchantmen
 						   *Named, *Cost);
 }
 
+int32 UCataclysmForge::SoulForgeLevels(const FCataclysmItem& Item, int32 ToLevel, float Chance, int32 WalkSeedMask,
+									   int32 Day)
+{
+	// AT +9 THE DRAW IS NOT MADE (R7): "up to the maximum of 10".
+	if (Chance <= 0.0f || ToLevel >= UCataclysmItemValues::MaxGearLevel)
+	{
+		return 1;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, SoulForgeSalt, Item.GearLevel, WalkSeedMask, Day));
+	return Stream.GetFraction() < Chance ? 2 : 1;
+}
+
+bool UCataclysmForge::EnchantCritical(const FCataclysmItem& Item, int32 Index, float Chance, int32 WalkSeedMask,
+									  int32 Day, FRandomStream& OutStream)
+{
+	OutStream = FRandomStream(AffixCraftSeed(Item, EnchantCriticalSalt, Index, WalkSeedMask, Day));
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	return OutStream.GetFraction() < Chance;
+}
+
+FCataclysmRolledEnchantment UCataclysmForge::LuckyRolls(const FCataclysmRolledEnchantment& Drawn, bool bPositiveToo,
+														FRandomStream& Stream)
+{
+	// THE HIGHER POSITIVE AND THE LOWER NEGATIVE (R1). The two draws are made in that order whether or not the positive
+	// is kept, so a change's negative is drawn from the same place in the stream as an imprint's.
+	FCataclysmRolledEnchantment Out = Drawn;
+	const float SecondPositive = Stream.GetFraction();
+	const float SecondNegative = Stream.GetFraction();
+	if (bPositiveToo)
+	{
+		Out.PositiveRoll = FMath::Max(Drawn.PositiveRoll, SecondPositive);
+	}
+	Out.NegativeRoll = FMath::Min(Drawn.NegativeRoll, SecondNegative);
+	return Out;
+}
+
+FString UCataclysmForge::MilestoneChanceText(float Chance, bool bUpgrade)
+{
+	if (Chance <= 0.0f)
+	{
+		return FString();
+	}
+	const int32 Percent = FMath::RoundToInt(Chance * 100.0f);
+	return bUpgrade
+		? FString::Printf(TEXT(" The Soul Forge: a %d%% chance it rises two levels instead of one."), Percent)
+		: FString::Printf(TEXT(" The Master Tinkerer: a %d%% chance of a critical success, its rolls drawn twice with the "
+							   "better kept, taking no days."),
+						  Percent);
+}
+
 int32 UCataclysmForge::PenaltyDaysFor(float Residue)
 {
 	return FMath::FloorToInt(FMath::Max(0.0f, Residue) / ResiduePerPenaltyDay);

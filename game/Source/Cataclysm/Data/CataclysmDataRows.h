@@ -2507,6 +2507,14 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a clear discovers a bonus dungeon on the same city (Scout Parties, 10% a point, V15 to V19). */
 	BonusDungeonChance,
+
+	/** The chance an item's upgrade adds two levels instead of one, up to +10 (The Soul Forge, 15%). #47 slice F6, read
+	 *  by `UCataclysmForge::SoulForgeLevels` through `UCataclysmEmpireTree::PlayerBonusesFor`. */
+	UpgradeExtraLevelChance,
+
+	/** The chance an enchantment craft is a critical success: its rolls drawn twice with the better kept, and no days
+	 *  (The Master Tinkerer, 5%). #47 slice F6, read by `UCataclysmForge::EnchantCritical`. */
+	EnchantCriticalChance,
 };
 
 /**

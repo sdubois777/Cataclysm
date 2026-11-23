@@ -537,6 +537,19 @@ FString FCataclysmPlayLoopLog::ForgeCleanseLine(const FString& ItemName, int64 G
 						   Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel)
+{
+	return FString::Printf(TEXT("The Soul Forge raised %s two levels, +%d to +%d"), *ItemName, FromLevel, ToLevel);
+}
+
+FString FCataclysmPlayLoopLog::ForgeCriticalLine(const FString& ItemName)
+{
+	// ONE STRING LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads the whole line.
+	return FString::Printf(
+		TEXT("a critical success on %s: the rolls were drawn twice with the better kept, and the craft took no days"),
+		*ItemName);
+}
+
 FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
 												   const FString& FromType, const FString& ToType, int64 Gold,
 												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,

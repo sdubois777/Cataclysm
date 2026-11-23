@@ -304,6 +304,19 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 									int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * The Soul Forge's second level, said after the upgrade's own line: "The Soul Forge raised Quality Helm two levels,
+	 * +3 to +5". Issue #47, slice F6. Said by `UCataclysmForgeCraft::Upgrade`, only when it rose two.
+	 */
+	static FString ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel);
+
+	/**
+	 * The Master Tinkerer's critical success, said after the enchantment craft's own line: "a critical success on
+	 * Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days". Issue #47, slice F6.
+	 * Said by `UCataclysmForgeCraft::DoEnchantmentWork`, only on a critical success.
+	 */
+	static FString ForgeCriticalLine(const FString& ItemName);
+
+	/**
 	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;
 	 * residue 40 to 50; it cost 1 day, day 20 to day 21", "infused Quality Sword with Death, chosen, for 2,250 gold;
 	 * ...", or "changed War on Quality Sword to Death for 450 gold; ...". Issue #47, slice F4. Said by

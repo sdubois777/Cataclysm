@@ -151,6 +151,8 @@ SLICE_BUILD_DAYS = {"Scaffolding", "Rapid Renovation", "Rapid Funding"}
 #: SLICE 9'S FIVE, ruled by the coordinating session under the owner's delegation on 2026-11-21, and V1 to V20 the
 #: next day.
 SLICE_9 = {"Civic Pride", "Reinvestment", "Economic Bailout", "Bribery", "Scout Parties"}
+#: #47 slice F6, the forge: the two crafting options of the centre milestones (2026-11-22, R1 to R8), numbered 10.
+SLICE_F6 = {"The Soul Forge", "The Master Tinkerer"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -229,13 +231,14 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_115_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_the_build_nodes_and_9_act() -> None:
+def test_exactly_the_117_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_the_build_nodes_9_and_f6_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
     assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4 and len(SLICE_8) == 1
     assert len(SLICE_BUILD_DAYS) == 3
     assert len(SLICE_9) == 5
+    assert len(SLICE_F6) == 2
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -252,8 +255,11 @@ def test_exactly_the_115_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_the_bu
                 | SLICE_6E | SLICE_7 | SLICE_8) & SLICE_BUILD_DAYS
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS) & SLICE_9
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9) & SLICE_F6
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9)
+             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | SLICE_F6)
+    assert len(built) == 117
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -273,6 +279,8 @@ def test_exactly_the_115_nodes_of_slices_3a_3b_4_5a_5b_6a_6b_6c_6d_6e_7_8_the_bu
         "every slice 8 option with an effect is one EMPIRE_TREE_BUILT gives to slice 8")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 9 for name in SLICE_9), (
         "every slice 9 node with an effect is one EMPIRE_TREE_BUILT gives to slice 9")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 10 for name in SLICE_F6), (
+        "every #47 slice F6 option with an effect is one EMPIRE_TREE_BUILT gives to slice 10")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:

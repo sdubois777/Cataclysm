@@ -3873,6 +3873,9 @@ EMPIRE_TREE_BUILT = {
     "The Delver": 4, "The Collector's Decree": 4, "The Warlord": 4,
     "The Last Stand": 4,
     "The Hoarder": 5,
+    # #47 slice F6: the two crafting options, ruled by the coordinating session
+    # on 2026-11-22 (R1 to R8). Numbered 10, the slice after slice 9.
+    "The Soul Forge": 10, "The Master Tinkerer": 10,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -3958,8 +3961,7 @@ EMPIRE_TREE_BUILT = {
 #: I held and III will require II, beside their own edges -- built with the
 #: stash, not now, because none of the three can be bought until then.
 EMPIRE_TREE_REFUSED = {
-    # The four tier-milestone capstones' options.
-    "The Soul Forge": "crafting", "The Master Tinkerer": "crafting",
+    # The four tier-milestone capstones' options: none waits since #47 slice F6.
     # Architect.
     "Scorched Earth": "destroy upgrade",
     # Explorer.
@@ -4234,6 +4236,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "PopulationRestoreIncrease", "EmpirePointsPerSpendingStep",
     # Slice 9: Economic Bailout, Bribery and Scout Parties.
     "CityBailout", "DungeonBribe", "BonusDungeonChance",
+    # #47 slice F6: The Soul Forge and The Master Tinkerer, read by the forge.
+    "UpgradeExtraLevelChance", "EnchantCriticalChance",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4335,6 +4339,10 @@ EMPIRE_TREE_EFFECTS = {
     "Architectural Insight": [("FloorsPerBranchStep", 1.0, 10, "Architect", 10.0)],
     # A clear.
     "The Warlord": [("RemoveAnotherDungeonChance", 0.15)],
+    # #47 slice F6: the forge. "15% chance to increase its level by 2 instead of
+    # 1"; "5% chance to hit a critical success" (docs/Empire_Skill_Tree_Keystones.md).
+    "The Soul Forge": [("UpgradeExtraLevelChance", 0.15)],
+    "The Master Tinkerer": [("EnchantCriticalChance", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).
