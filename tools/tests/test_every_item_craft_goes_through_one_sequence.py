@@ -117,7 +117,9 @@ def test_no_other_function_pays_takes_puts_back_or_passes_days() -> None:
     bodies = function_bodies(code(CRAFT_CPP))
     allowed = {
         "PayForTheCraft(": {"DoItemCraft", "Combine", "CombineGems"},
-        "RemoveMaterial(": {"TakeMaterials", "Combine"},
+        # Dismantle removes only materials it has just added itself, when a later add fails and it puts everything back
+        # (issue #2848). It takes nothing the player paid with.
+        "RemoveMaterial(": {"TakeMaterials", "Combine", "Dismantle"},
         "ReplaceEquippedAt(": {"DoItemCraft"},
         "ReplaceItemAt(": {"DoItemCraft"},
         "AdvanceDays(": {"DoItemCraft"},
