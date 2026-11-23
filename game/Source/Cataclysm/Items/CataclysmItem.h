@@ -335,6 +335,29 @@ struct CATACLYSM_API FCataclysmItem
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
 	bool bMadeAtCreation = false;
+
+	/**
+	 * The gear level the item arrived at: a drop's rarity gate (`UCataclysmDropRoll::RollItem`), 0 for the weapon made at
+	 * creation. Issue #2848, slice S2, ruled by the coordinating session on 2026-11-22.
+	 *
+	 * WHAT A DISMANTLE REFUNDS READS IT: one upgrade stone of each level the item was RAISED through, from this + 1 to
+	 * `GearLevel`, which is exactly half of the two stones each level consumed. The level alone cannot say it: a Legendary
+	 * drops at +4 with no stone spent, so reading `GearLevel` would hand a dropped Cataclysmic stones nobody paid for.
+	 *
+	 * -1, UNKNOWN, FOR AN ITEM SAVED BEFORE THE FIELD EXISTED, read as the gate of its present rarity, so it never refunds
+	 * more than was spent. A field with a default is not a schema version bump, by `bMadeAtCreation`'s precedent.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 GearLevelAtDrop = -1;
+
+	/**
+	 * The difficulty tier the item dropped at, 1 to 8; the tier in play for the weapon made at creation. Issue #2848, slice
+	 * S2. A dismantle's base upgrade stone is capped at this tier's best stone, so a tier 1 piece carried to tier 8 gives
+	 * a tier 1 piece's stones. 0, UNKNOWN, for an item saved before the field existed, read as the run's tier at the
+	 * dismantle. A field with a default, so no schema version bump.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Item")
+	int32 TierAtDrop = 0;
 };
 
 /**

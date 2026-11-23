@@ -2292,6 +2292,10 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 
 	OutItem.Base = Base;
 	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);
+	// WHERE IT ARRIVED, for a dismantle's refund and its base stone's cap (#2848, slice S2): no draw, so no seeded drop
+	// moves.
+	OutItem.GearLevelAtDrop = OutItem.GearLevel;
+	OutItem.TierAtDrop = FMath::Max(1, DifficultyTier);
 	OutItem.EnchantmentCount = UCataclysmItemValues::EnchantmentsFor(Rarity);
 	// HOW MANY SOCKETS FROM THE DROP'S STREAM, AS BEFORE, AND THEIR TYPES FROM A STREAM OF THEIR OWN. Issue #46, slice
 	// G3: each socket's type is rolled evenly among the three. The second stream is seeded from the first without

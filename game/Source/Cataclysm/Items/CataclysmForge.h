@@ -434,6 +434,45 @@ struct FCataclysmForgeEnchantmentWork
 };
 
 /**
+ * What dismantling a carried piece gives, or why it cannot. Issue #2848, slice S2, ruled by the coordinating session on
+ * 2026-11-22 (the plan's sections 6 to 8, and D1 to D5).
+ *
+ * TWO KINDS OF YIELD. What is CERTAIN is known before the draw: the socketed gems, back to the bag, and the refund, one
+ * upgrade stone of each level the piece was raised through. What is DRAWN is each fractional yield, its whole part
+ * always given and its fraction as one more with that chance (D5): Schematic Fragments, Dismantling Dust and the base
+ * upgrade stones. A plan holds the chances; `UCataclysmForge::DrawDismantle` fills what was drawn.
+ */
+struct FCataclysmForgeDismantle
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** The piece's rarity, which its fragment and stone yields and Disassembly Expert read. */
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+
+	/** The two empire tree nodes' increase on the drawn yields: Salvage Protocol's and Disassembly Expert's, added. */
+	float Increase = 0.0f;
+
+	/** Each drawn yield's expected count, the increase included: what the question shows. */
+	float FragmentsExpected = 0.0f;
+	float DustExpected = 0.0f;
+	float StonesExpected = 0.0f;
+
+	/** The refund, certain: one stone of each level from `RefundFromLevel` + 1 to the piece's gear level. */
+	int32 RefundFromLevel = 0;
+	TArray<FName> RefundStones;
+
+	/** The socketed gems, certain, each with its rarity. */
+	TArray<TPair<FName, ECataclysmRarity>> Gems;
+
+	/** True once drawn; then the drawn counts and each base stone's row. */
+	bool bDrawn = false;
+	int32 Fragments = 0;
+	int32 Dust = 0;
+	TArray<FName> BaseStones;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -1154,4 +1193,80 @@ public:
 	 * 6,250 gold, residue 1200 to 600, 3 days of the run."
 	 */
 	static FString CleanseQuestion(const FCataclysmForgeCleanse& Plan);
+
+	//~ Dismantling a carried piece. Issue #2848, slice S2, ruled by the coordinating session on 2026-11-22: the plan of
+	//~ selling and dismantling (sharp-meitner-246682/.claude/windows/plan_selling_and_dismantling.md), sections 6 to 8,
+	//~ and D1 to D5.
+	//
+	// A DISMANTLE IS INSTANT (D2, derived from the owner's O2, "No days (Recommended)", asked of "selling an item or
+	// dismantling it at the Forge"): no gold, no days, no residue, no material taken. It destroys the piece and gives:
+	//   - Schematic Fragments by rarity (N4), Dismantling Dust a socket (N5) and a base upgrade stone yield by rarity
+	//     (the ruling of section 8, after the owner's "shattering dropped items should still give you stones"), each
+	//     raised by Salvage Protocol and Disassembly Expert;
+	//   - the socketed gems, back to the bag;
+	//   - the refund, one stone of each level the piece was raised through, which no node raises.
+
+	/** N4: the Schematic Fragments a dismantle gives, by rarity: 0.06 to Masterful, then 0.1, 0.2, 0.4, 0.8. */
+	static float DismantleFragmentsFor(ECataclysmRarity Rarity);
+
+	/** Section 8 (a): the base upgrade stones a dismantle gives, by rarity: 0.025 to Masterful, then doubling to 0.4. */
+	static float DismantleStonesFor(ECataclysmRarity Rarity);
+
+	/** N5: the Dismantling Dust a dismantle gives for each socket the piece has. */
+	static constexpr float DismantleDustPerSocket = 0.02f;
+
+	/** N6: Salvage Protocol's increase a point on the drawn yields, 25% at its 10 points. */
+	static constexpr float SalvageProtocolIncreasePerPoint = 0.025f;
+
+	/** N7: Disassembly Expert's increase on the drawn yields of a piece of Superb or above (O4: this game has no Rare). */
+	static constexpr float DisassemblyExpertIncrease = 0.20f;
+
+	/** The lowest rarity Disassembly Expert raises: Superb (O4). */
+	static constexpr ECataclysmRarity DisassemblyExpertLowestRarity = ECataclysmRarity::Superb;
+
+	/** The salt a dismantle's draw mixes into the run's seed through `AffixCraftSeed`: "DISM" (D5). */
+	static constexpr int32 DismantleSalt = 0x4449534D;
+
+	/**
+	 * The two nodes' increase on a piece of `Rarity`: `SalvageIncrease` (Salvage Protocol's, its points times
+	 * `SalvageProtocolIncreasePerPoint`) and, from Superb up, `DisassemblyIncrease`. ADDED, as increases are in the
+	 * damage pipeline's one bucket: both nodes say "more crafting materials" of one yield, and neither is a "more".
+	 */
+	static float DismantleIncreaseFor(ECataclysmRarity Rarity, float SalvageIncrease, float DisassemblyIncrease);
+
+	/**
+	 * What dismantling the item gives, before the draw: its rarity, each drawn yield's expected count raised by
+	 * `Increase`, the refund and the gems. `GearRarityTable` gives the gate a piece saved before `GearLevelAtDrop` existed
+	 * is read at.
+	 *
+	 * REFUSED for no item, the weapon made at creation (the game gives it back its type on every load and it is the
+	 * character's own; a judgement, as slice F4 refuses it its crafts), a piece with no rarity, and no gear rarity table.
+	 */
+	static FCataclysmForgeDismantle DismantleOf(const FCataclysmItem& Item, float SalvageIncrease, float DisassemblyIncrease,
+												const UDataTable* GearRarityTable);
+
+	/**
+	 * Draws a plan's fractional yields on `Stream` (D5), in this order: the fragments, the Dust, the count of base
+	 * stones, then for each stone its material tier (`UCataclysmDropRoll::RollMaterialTier` with `MagicFind`, D3) and
+	 * which of that tier's two stones, evenly, held at `MaxUpgradeStoneOnADrop(StoneTier)`. `StoneTier` is the piece's
+	 * `TierAtDrop`, or the run's tier when that is unknown.
+	 */
+	static void DrawDismantle(FCataclysmForgeDismantle& Plan, const UDataTable* MaterialTierTable, float MagicFind,
+							  int32 StoneTier, FRandomStream& Stream);
+
+	/** One expected yield drawn: the whole part always, and one more with the fraction's chance (D5). */
+	static int32 DrawWholeAndFraction(float Expected, FRandomStream& Stream);
+
+	/** The tier a dismantle's base stones are capped at: the piece's `TierAtDrop`, or `RunTier` when that is 0. */
+	static int32 DismantleStoneTier(const FCataclysmItem& Item, int32 RunTier);
+
+	/**
+	 * What the first press says, `Named` the piece's name: "Press again to dismantle Masterful Helm of Warding, +4: it is
+	 * destroyed, and gives back 1 gem and 4 upgrade stones (+1 to +4), and about 0.07 Schematic Fragments, 0.02
+	 * Dismantling Dust and 0.03 upgrade stones drawn at random. No gold, no days."
+	 */
+	static FString DismantleQuestion(const FCataclysmForgeDismantle& Plan, const FString& Named);
+
+	/** What a done dismantle gave, for the screen and the play log: "2 Schematic Fragments, 1 Upgrade Stone +3, ...". */
+	static FString DismantleGiven(const FCataclysmForgeDismantle& Done);
 };
