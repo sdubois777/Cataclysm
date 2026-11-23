@@ -25,6 +25,10 @@ const TCHAR* UCataclysmForge::ShatteredCoreRow = TEXT("Material_Shattered_Core")
 const TCHAR* UCataclysmForge::FocusingLensRow = TEXT("Material_Focusing_Lens");
 const TCHAR* UCataclysmForge::AddSocketOperationRow = TEXT("Operation_Add_Socket");
 const TCHAR* UCataclysmForge::ChangeSocketTypeOperationRow = TEXT("Operation_Change_Socket_Type");
+const TCHAR* UCataclysmForge::AetherialShardRow = TEXT("Material_Aetherial_Shard");
+const TCHAR* UCataclysmForge::RegretEssenceRow = TEXT("Material_Regret_Essence");
+const TCHAR* UCataclysmForge::ImprintOperationRow = TEXT("Operation_Imprint_Enchantment");
+const TCHAR* UCataclysmForge::ChangeNegativeOperationRow = TEXT("Operation_Change_Enchantment_Negative");
 const TCHAR* UCataclysmForge::CorruptedMoteRow = TEXT("Material_Corrupted_Mote");
 const TCHAR* UCataclysmForge::PrimalSparkRow = TEXT("Material_Primal_Spark");
 const TCHAR* UCataclysmForge::PotencyCrystalRow = TEXT("Material_Potency_Crystal");
@@ -35,6 +39,15 @@ const TCHAR* UCataclysmForge::SchematicFragmentsRow = TEXT("Material_Schematic_F
 const TCHAR* UCataclysmForge::CrystalOfInstabilityRow = TEXT("Material_Crystal_of_Instability");
 const TCHAR* UCataclysmForge::DeterministicAffixOperationRow = TEXT("Operation_Deterministic_Affix");
 const TCHAR* UCataclysmForge::AffixShiftingOperationRow = TEXT("Operation_Affix_Shifting_Stat_Type");
+const TCHAR* UCataclysmForge::ElementalCinderRow = TEXT("Material_Elemental_Cinder");
+const TCHAR* UCataclysmForge::SovereignIngotRow = TEXT("Material_Sovereign_Ingot");
+const TCHAR* UCataclysmForge::PrismaticCatalystRow = TEXT("Material_Prismatic_Catalyst");
+const TCHAR* UCataclysmForge::InfuseRandomDamageTypeOperationRow = TEXT("Operation_Infuse_Random_Damage_Type");
+const TCHAR* UCataclysmForge::InfuseSpecificDamageTypeOperationRow = TEXT("Operation_Infuse_Specific_Damage_Type");
+const TCHAR* UCataclysmForge::ChangeDamageTypeOperationRow = TEXT("Operation_Change_Damage_Type");
+const TCHAR* UCataclysmForge::CreationWeaponRefusal =
+	TEXT("The weapon made at creation carries the damage type chosen for the character; the forge does not change its "
+		 "damage types.");
 
 namespace
 {
@@ -1055,6 +1068,438 @@ FString UCataclysmForge::AffixChangeQuestion(const FCataclysmForgeAffixChange& P
 								"its roll is drawn in the tier."),
 						   *AffixNameOf(Plan.ToRow, AffixTable), Plan.Tier, Plan.Affix + 1,
 						   *UCataclysmGems::RarityName(Plan.ToRarity), *Cost);
+}
+
+FName UCataclysmForge::MaterialFor(ECataclysmForgeDamageTypeCraft Craft)
+{
+	switch (Craft)
+	{
+	case ECataclysmForgeDamageTypeCraft::InfuseSpecific:	return FName(SovereignIngotRow);
+	case ECataclysmForgeDamageTypeCraft::Change:			return FName(PrismaticCatalystRow);
+	case ECataclysmForgeDamageTypeCraft::InfuseRandom:
+	default:												return FName(ElementalCinderRow);
+	}
+}
+
+bool UCataclysmForge::CarriesDamageTypes(const FCataclysmItem& Item, const UDataTable* BaseTable)
+{
+	const FCataclysmItemBaseRow* Row = BaseTable != nullptr && !Item.Base.IsNone()
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForge::CarriesDamageTypes"),
+													/*bWarnIfMissing=*/false)
+		: nullptr;
+	return Row != nullptr && Row->MaxDamageTypes > 0 && !Row->WeaponType.IsEmpty();
+}
+
+TArray<FName> UCataclysmForge::DamageTypesOpenTo(const FCataclysmItem& Item, const UDataTable* WeaponSkillTable,
+												 const UDataTable* BaseTable)
+{
+	TArray<FName> Open;
+	const FCataclysmItemBaseRow* Row = BaseTable != nullptr && !Item.Base.IsNone()
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForge::DamageTypesOpenTo"),
+													/*bWarnIfMissing=*/false)
+		: nullptr;
+	if (Row == nullptr || Row->MaxDamageTypes <= 0)
+	{
+		return Open;
+	}
+	// THE DROP'S POOL, the types designed for the weapon's type, less those it carries.
+	for (const FName& Type : UCataclysmDropRoll::DamageTypesAvailableTo(WeaponSkillTable, Row->WeaponType))
+	{
+		if (!Item.DamageTypes.Contains(Type))
+		{
+			Open.Add(Type);
+		}
+	}
+	return Open;
+}
+
+int32 UCataclysmForge::MaxDamageTypesOf(const FCataclysmItem& Item, const UDataTable* WeaponSkillTable,
+										const UDataTable* BaseTable)
+{
+	const FCataclysmItemBaseRow* Row = BaseTable != nullptr && !Item.Base.IsNone()
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForge::MaxDamageTypesOf"),
+													/*bWarnIfMissing=*/false)
+		: nullptr;
+	return Row != nullptr
+		? UCataclysmDropRoll::MaxDamageTypesFor(
+			  *Row, UCataclysmDropRoll::DamageTypesAvailableTo(WeaponSkillTable, Row->WeaponType).Num())
+		: 0;
+}
+
+FCataclysmForgeDamageTypeWork UCataclysmForge::DamageTypeWorkOf(const FCataclysmItem& Item,
+																 ECataclysmForgeDamageTypeCraft Craft, FName Chosen,
+																 int32 Seed, const UDataTable* WeaponSkillTable,
+																 const UDataTable* BaseTable, int32 MaterialHeld,
+																 int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeDamageTypeWork Out;
+	Out.Craft = Craft;
+	Out.Material = MaterialFor(Craft);
+	Out.MaterialHeld = FMath::Max(0, MaterialHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+	Out.TypesHeld = Item.DamageTypes.Num();
+
+	// EACH CRAFT'S ROW: its residue, its base days and its Base Gold, falling back on the constant the sheet mirrors.
+	float Added = 0.0f;
+	int32 BaseDays = 0;
+	FString Doing;
+	switch (Craft)
+	{
+	case ECataclysmForgeDamageTypeCraft::InfuseSpecific:
+		Added = InfuseSpecificDamageTypeResidue;
+		BaseDays = InfuseSpecificDamageTypeBaseDays;
+		Out.Gold = GoldFor(BaseGoldOf(InfuseSpecificDamageTypeOperationRow, BaseGoldFor(InfuseSpecificDamageTypeBaseDays)),
+						   Item.Residue, DifficultyTier);
+		Doing = TEXT("Infusing a chosen damage type");
+		break;
+	case ECataclysmForgeDamageTypeCraft::Change:
+		Added = ChangeDamageTypeResidue;
+		BaseDays = ChangeDamageTypeBaseDays;
+		Out.Gold = GoldFor(BaseGoldOf(ChangeDamageTypeOperationRow, BaseGoldFor(ChangeDamageTypeBaseDays)), Item.Residue,
+						   DifficultyTier);
+		Doing = TEXT("Changing a damage type");
+		break;
+	case ECataclysmForgeDamageTypeCraft::InfuseRandom:
+	default:
+		Added = InfuseRandomDamageTypeResidue;
+		BaseDays = InfuseRandomDamageTypeBaseDays;
+		Out.Gold = GoldFor(BaseGoldOf(InfuseRandomDamageTypeOperationRow, BaseGoldFor(InfuseRandomDamageTypeBaseDays)),
+						   Item.Residue, DifficultyTier);
+		Doing = TEXT("Infusing a random damage type");
+		break;
+	}
+	Out.ResidueAfter = Item.Residue + Added;
+	Out.Days = DaysFor(Item.Residue, BaseDays);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to craft.");
+		return Out;
+	}
+	const FCataclysmItemBaseRow* Row = BaseTable != nullptr
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(Item.Base, TEXT("UCataclysmForge::DamageTypeWorkOf"),
+													/*bWarnIfMissing=*/false)
+		: nullptr;
+	if (Row == nullptr)
+	{
+		Out.Refusal = TEXT("What that piece is cannot be found.");
+		return Out;
+	}
+	// WEAPONS ONLY (Q19).
+	if (!CarriesDamageTypes(Item, BaseTable))
+	{
+		Out.Refusal = TEXT("Only a weapon carries damage types.");
+		return Out;
+	}
+	// THE WEAPON MADE AT CREATION, whose types every load sets back (issue #2845, option (a)).
+	if (Item.bMadeAtCreation)
+	{
+		Out.Refusal = CreationWeaponRefusal;
+		return Out;
+	}
+	Out.MaxTypes = MaxDamageTypesOf(Item, WeaponSkillTable, BaseTable);
+	const TArray<FName> Open = DamageTypesOpenTo(Item, WeaponSkillTable, BaseTable);
+
+	if (Craft == ECataclysmForgeDamageTypeCraft::Change)
+	{
+		// THE TYPE REPLACED IS THE PLAYER'S CHOICE; THE NEW ONE IS DRAWN AMONG THOSE THE WEAPON LACKS (Q22). A change
+		// works at the maximum, since it leaves the count as it is.
+		Out.FromType = Chosen;
+		if (!Item.DamageTypes.Contains(Chosen))
+		{
+			Out.Refusal = FString::Printf(TEXT("That weapon does not carry %s."), *Chosen.ToString());
+			return Out;
+		}
+	}
+	else if (Item.DamageTypes.Num() >= Out.MaxTypes)
+	{
+		// AT THE DROP'S MAXIMUM AN INFUSION IS REFUSED, saying the maximum (Q20, Q21).
+		Out.Refusal = FString::Printf(TEXT("That weapon carries its most damage types, %d."), Out.MaxTypes);
+		return Out;
+	}
+	if (Open.IsEmpty())
+	{
+		Out.Refusal = TEXT("That weapon carries every damage type designed for it.");
+		return Out;
+	}
+	if (Craft == ECataclysmForgeDamageTypeCraft::InfuseSpecific)
+	{
+		Out.ToType = Chosen;
+		if (Item.DamageTypes.Contains(Chosen))
+		{
+			Out.Refusal = FString::Printf(TEXT("That weapon carries %s already."), *Chosen.ToString());
+			return Out;
+		}
+		if (!Open.Contains(Chosen))
+		{
+			Out.Refusal = FString::Printf(TEXT("That weapon cannot carry %s."), *Chosen.ToString());
+			return Out;
+		}
+	}
+	else
+	{
+		// THE DRAW, evenly among the types the weapon can take and does not carry, as the drop draws one.
+		const FRandomStream Stream(Seed);
+		Out.ToType = Open[Stream.RandRange(0, Open.Num() - 1)];
+	}
+
+	if (Out.MaterialHeld < 1)
+	{
+		const TCHAR* Material = Craft == ECataclysmForgeDamageTypeCraft::InfuseSpecific ? TEXT("a Sovereign Ingot")
+			: Craft == ECataclysmForgeDamageTypeCraft::Change							 ? TEXT("a Prismatic Catalyst")
+																						 : TEXT("an Elemental Cinder");
+		Out.Refusal = FString::Printf(TEXT("%s takes %s; 0 held."), *Doing, Material);
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(Doing, Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FString UCataclysmForge::DamageTypeQuestion(const FCataclysmForgeDamageTypeWork& Plan)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	switch (Plan.Craft)
+	{
+	case ECataclysmForgeDamageTypeCraft::InfuseSpecific:
+		return FString::Printf(TEXT("Press again to infuse %s: one Sovereign Ingot, %s."), *Plan.ToType.ToString(), *Cost);
+	case ECataclysmForgeDamageTypeCraft::Change:
+		return FString::Printf(TEXT("Press again to change %s to another damage type: one Prismatic Catalyst, %s; the new "
+									"type is drawn among those the weapon lacks."),
+							   *Plan.FromType.ToString(), *Cost);
+	case ECataclysmForgeDamageTypeCraft::InfuseRandom:
+	default:
+		return FString::Printf(TEXT("Press again to infuse a random damage type: one Elemental Cinder, %s; the type is drawn "
+									"among those the weapon can take."),
+							   *Cost);
+	}
+}
+
+FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(const FCataclysmItem& Item, int32 Affix, int32 ShardsHeld,
+														  const UDataTable* GearRarityTable, int32 DifficultyTier,
+														  int64 GoldHeld)
+{
+	FCataclysmForgeEnchantmentWork Out;
+	Out.bImprint = true;
+	Out.Affix = Affix;
+	Out.AffixRow = Item.Affixes.IsValidIndex(Affix) ? Item.Affixes[Affix].Affix : NAME_None;
+	Out.Material = FName(AetherialShardRow);
+	Out.MaterialHeld = FMath::Max(0, ShardsHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + ImprintResidue;
+	Out.Days = DaysFor(Item.Residue, ImprintBaseDays);
+	Out.Gold = GoldFor(BaseGoldOf(ImprintOperationRow, BaseGoldFor(ImprintBaseDays)), Item.Residue, DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to imprint.");
+		return Out;
+	}
+	// EVERY SLOT FILLED, MASTERFUL AND UP (Q16): a piece below Masterful has a slot left empty, and an enchantment with a
+	// slot left empty is no rarity (`UCataclysmItemValues::RarityOf`). The starting weapon has no rarity at all.
+	if (!UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Out.RarityBefore)
+		|| Item.EnchantmentCount + Item.Affixes.Num() < UCataclysmItemValues::SlotsPerPiece)
+	{
+		Out.Refusal = TEXT("Only a piece with every slot filled, Masterful or better, takes an imprint.");
+		return Out;
+	}
+	if (Item.Affixes.Num() == 0)
+	{
+		Out.Refusal = TEXT("That piece holds four enchantments; it has no affix left to give up.");
+		return Out;
+	}
+	if (!Item.Affixes.IsValidIndex(Affix))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no affix %d."), Affix + 1);
+		return Out;
+	}
+	if (!UCataclysmItemValues::RarityOf(Item.EnchantmentCount + 1, Item.Affixes.Num() - 1, Out.RarityAfter))
+	{
+		Out.Refusal = TEXT("That piece cannot take another enchantment.");
+		return Out;
+	}
+	// THE RARITY AFTER MUST BE ONE THE PIECE'S GEAR LEVEL REACHES: "Legendary ... Requires gear level 4+", the design's
+	// rarity table. A table that cannot be read refuses rather than reading as no gate.
+	if (GearRarityTable == nullptr)
+	{
+		Out.Refusal = TEXT("The gear rarity table could not be read, so the gear level an imprint needs is not known.");
+		return Out;
+	}
+	Out.GearLevelNeeded = UCataclysmDropRoll::GearLevelGateFor(GearRarityTable, Out.RarityAfter);
+	if (Item.GearLevel < Out.GearLevelNeeded)
+	{
+		Out.Refusal = FString::Printf(TEXT("A %s piece needs gear level %d, and that piece is +%d. Upgrade it first."),
+									  *UCataclysmGems::RarityName(Out.RarityAfter), Out.GearLevelNeeded, Item.GearLevel);
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Imprinting an enchantment takes an Aetherial Shard; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Imprinting an enchantment"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+FCataclysmForgeEnchantmentWork UCataclysmForge::ChangeNegativeOf(const FCataclysmItem& Item, int32 Pair,
+																 int32 EssencesHeld, const UDataTable* PositiveTable,
+																 int32 DifficultyTier, int64 GoldHeld)
+{
+	FCataclysmForgeEnchantmentWork Out;
+	Out.Pair = Pair;
+	Out.Material = FName(RegretEssenceRow);
+	Out.MaterialHeld = FMath::Max(0, EssencesHeld);
+	Out.ResidueBefore = Item.Residue;
+	Out.ResidueAfter = Item.Residue + ChangeNegativeResidue;
+	Out.Days = DaysFor(Item.Residue, ChangeNegativeBaseDays);
+	Out.Gold = GoldFor(BaseGoldOf(ChangeNegativeOperationRow, BaseGoldFor(ChangeNegativeBaseDays)), Item.Residue,
+					   DifficultyTier);
+	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);
+
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to change.");
+		return Out;
+	}
+	if (!Item.Enchantments.IsValidIndex(Pair))
+	{
+		Out.Refusal = FString::Printf(TEXT("That piece has no enchantment %d."), Pair + 1);
+		return Out;
+	}
+	Out.Before = Item.Enchantments[Pair];
+	const FCataclysmEnchantmentRow* Positive = PositiveTable != nullptr
+		? PositiveTable->FindRow<FCataclysmEnchantmentRow>(Out.Before.Positive, TEXT("UCataclysmForge::ChangeNegativeOf"),
+														   /*bWarnIfMissing=*/false)
+		: nullptr;
+	if (Positive == nullptr)
+	{
+		Out.Refusal = TEXT("That enchantment is not in the enchantment table, so its drawback cannot be redrawn.");
+		return Out;
+	}
+	// A SET'S DRAWBACK IS THE SET'S OWN, "paired and guaranteed", never drawn.
+	if (UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)
+	{
+		Out.Refusal = TEXT("A set's drawback is part of the set; it is not changed.");
+		return Out;
+	}
+	if (Out.MaterialHeld < 1)
+	{
+		Out.Refusal = TEXT("Changing an enchantment's drawback takes a Regret Essence; 0 held.");
+		return Out;
+	}
+	if (Out.GoldHeld < Out.Gold)
+	{
+		Out.Refusal = GoldRefusal(TEXT("Changing an enchantment's drawback"), Out.Gold, Out.GoldHeld);
+		return Out;
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+bool UCataclysmForge::ApplyImprint(const FCataclysmItem& Item, int32 Affix, const FCataclysmRolledEnchantment& Pair,
+								   const UDataTable* BaseTable, const UDataTable* WeaponSkillTable,
+								   const UDataTable* EnchantmentEffectTable, FRandomStream& Stream,
+								   FCataclysmItem& OutItem)
+{
+	if (!Item.Affixes.IsValidIndex(Affix) || Pair.Positive.IsNone() || Pair.Negative.IsNone())
+	{
+		return false;
+	}
+	FCataclysmItem Changed = Item;
+	Changed.Affixes.RemoveAt(Affix);
+	Changed.Enchantments.Add(Pair);
+	// THE TWO "MUST AGREE" (`FCataclysmItem`), so the count is the pairs held.
+	Changed.EnchantmentCount = Changed.Enchantments.Num();
+	ECataclysmRarity After = ECataclysmRarity::Everyday;
+	if (!UCataclysmItemValues::RarityOf(Changed.EnchantmentCount, Changed.Affixes.Num(), After))
+	{
+		return false;
+	}
+	// THE DAMAGE TYPES AN ENCHANTMENT ADDS, topped up as `UCataclysmDropRoll::RollItem` tops them up after its
+	// enchantments: "This weapon has 2-4 damage types". A pair that adds none draws nothing more.
+	const int32 Carried = UCataclysmDropRoll::DamageTypesCarriedBy(Changed.Enchantments, EnchantmentEffectTable);
+	if (Carried > Changed.DamageTypes.Num() && WeaponSkillTable != nullptr)
+	{
+		const FCataclysmItemBaseRow* BaseRow = BaseTable != nullptr
+			? BaseTable->FindRow<FCataclysmItemBaseRow>(Changed.Base, TEXT("UCataclysmForge::ApplyImprint"),
+														/*bWarnIfMissing=*/false)
+			: nullptr;
+		if (BaseRow != nullptr)
+		{
+			UCataclysmDropRoll::TopUpDamageTypes(WeaponSkillTable, *BaseRow, Carried, Stream, Changed.DamageTypes);
+		}
+	}
+	OutItem = MoveTemp(Changed);
+	return true;
+}
+
+bool UCataclysmForge::DrawImprint(const FCataclysmItem& Item, const UDataTable* BaseTable,
+								  const UDataTable* PositiveTable, const UDataTable* NegativeTable, int32 WalkSeedMask,
+								  int32 Day, FCataclysmRolledEnchantment& OutPair, FRandomStream& OutStream)
+{
+	// SLICE F2'S SLOT AND SEED, its index the pairs the item holds before the craft.
+	const FString Slot = SlotOf(Item, BaseTable);
+	if (Slot.IsEmpty())
+	{
+		return false;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, ImprintSalt, Item.Enchantments.Num(), WalkSeedMask, Day));
+	TArray<FCataclysmRolledEnchantment> Rolled;
+	if (!UCataclysmDropRoll::RollEnchantments(PositiveTable, NegativeTable, Slot, 1, Stream, Rolled,
+											  &Item.Enchantments)
+		|| Rolled.Num() != 1)
+	{
+		return false;
+	}
+	OutPair = Rolled[0];
+	OutStream = Stream;
+	return true;
+}
+
+bool UCataclysmForge::DrawChangedNegative(const FCataclysmItem& Item, int32 Pair, const UDataTable* BaseTable,
+										  const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+										  int32 WalkSeedMask, int32 Day, FCataclysmRolledEnchantment& OutPair)
+{
+	// SLICE F2'S SLOT AND SEED, its index the pair changed.
+	const FString Slot = SlotOf(Item, BaseTable);
+	if (Slot.IsEmpty())
+	{
+		return false;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, ChangeNegativeSalt, Pair, WalkSeedMask, Day));
+	return UCataclysmDropRoll::DrawReplacementNegative(PositiveTable, NegativeTable, Slot, Item.Enchantments, Pair,
+													   Stream, OutPair);
+}
+
+FString UCataclysmForge::EnchantmentWorkQuestion(const FCataclysmForgeEnchantmentWork& Plan, const FString& Named)
+{
+	const FString Cost = FString::Printf(TEXT("%s, residue %d to %d, %d day%s of the run"),
+										 *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
+										 FMath::RoundToInt(Plan.ResidueAfter), Plan.Days,
+										 Plan.Days == 1 ? TEXT("") : TEXT("s"));
+	if (Plan.bImprint)
+	{
+		return FString::Printf(TEXT("Press again to imprint an enchantment, giving up %s: one Aetherial Shard, %s; the "
+									"piece becomes %s and the enchantment is drawn at random."),
+							   *Named, *Cost, *UCataclysmGems::RarityName(Plan.RarityAfter));
+	}
+	return FString::Printf(TEXT("Press again to change the drawback of %s: one Regret Essence, %s; a different drawback "
+								"is drawn at random."),
+						   *Named, *Cost);
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

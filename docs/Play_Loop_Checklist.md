@@ -502,6 +502,68 @@ Material_Crystal_of_Instability`.
 
   `PLAY LOOP: shifted affix 1 of Superb Helm for 525 gold from Flat evasion to Increased maximum mana, tier 2 kept; residue 55 to 70; it cost 1 day, day 23 to day 24`
 
+### 23. Infuse a weapon with a damage type, and change one
+
+At the forge (step 16), for a weapon chosen (issue #47, slice F4). An Elemental Cinder is uncommon (about 1 crafting
+material drop in 27), a Prismatic Catalyst rare (about 1 in 128) and a Sovereign Ingot very rare (about 1 in 426), so
+put some in the bag from the console first: `Cataclysm.GrantMaterial Material_Elemental_Cinder`,
+`Cataclysm.GrantMaterial Material_Sovereign_Ingot` and `Cataclysm.GrantMaterial Material_Prismatic_Catalyst`.
+
+- **A weapon's detail lists its damage types**: "Damage types: War, Death; 2 of at most 4." A one-handed weapon holds at
+  most 4, a two-handed one 8, and never more than the types designed for its weapon type (a Shield has three).
+- **Below its maximum** it has "Infuse a random damage type" and "Infuse Demonic" for each type it can take and lacks;
+  **while any type is left** it has "Change War" for each type it carries, at the maximum too.
+- **Click "Infuse a random damage type"**, twice: "Press again to infuse a random damage type: one Elemental Cinder, 450
+  gold, residue 40 to 50, 1 day of the run; the type is drawn among those the weapon can take." The weapon gains a type,
+  last. **It is the same type if you reload and infuse again on the same day.**
+- **In the log:**
+
+  `PLAY LOOP: infused Quality Sword with Chaos, drawn, for 450 gold; residue 40 to 50; it cost 1 day, day 20 to day 21`
+
+- **Click "Infuse Demonic"**, twice: a Sovereign Ingot, 50 residue and five days, and the weapon carries Demonic.
+- **In the log:**
+
+  `PLAY LOOP: infused Quality Sword with Demonic, chosen, for 2,500 gold; residue 50 to 100; it cost 5 days, day 21 to day 26`
+
+- **Click "Change War"**, twice: a Prismatic Catalyst and 20 residue; War is replaced, in its place, by a type the
+  weapon lacks, drawn. The trees and skills the weapon opens follow its types, as when you swap weapons.
+- **In the log:**
+
+  `PLAY LOOP: changed War on Quality Sword to Famine for 750 gold; residue 100 to 120; it cost 1 day, day 26 to day 27`
+
+- **The weapon you were given at creation** shows its types and "The weapon made at creation carries the damage type
+  chosen for the character; the forge does not change its damage types." and has none of these buttons (issue #2845).
+
+### 24. Imprint an enchantment on a piece, and change an enchantment's drawback
+
+At the forge (step 16), for a piece chosen (issue #47, slice F3). An Aetherial Shard (Rare) and a Regret Essence
+(Extremely Rare) drop on the walks, rarely, so put some in the bag from the console first:
+`Cataclysm.GrantMaterial Material_Aetherial_Shard 2` gives two Aetherial Shards, and
+`Cataclysm.GrantMaterial Material_Regret_Essence` one Regret Essence. An imprint needs a Masterful piece, four affixes
+and no enchantment, raised to +4 (step 16's upgrade), because the Legendary it becomes needs gear level 4.
+
+- **A Masterful piece** has one button per affix: "Imprint, giving up affix 1", and so on, numbered as the affix list
+  in the screen's detail (step 21), "Affixes: 1. +42 to maximum health, roll 50 percent; ...". A piece with a slot
+  empty (Everyday, Quality, Superb) has none.
+- **Click one.** The line asks first: "Press again to imprint an enchantment, giving up affix 1: one Aetherial Shard,
+  2,300 gold, residue 180 to 185, 3 days of the run; the piece becomes Legendary and the enchantment is drawn at
+  random." Click it again. That affix is gone, the piece is Legendary with one enchantment and its drawback,
+  the Aetherial Shard is gone, and three days pass. **The enchantment is the same if you reload and imprint it again on
+  the same day**, whichever affix you give up: it is drawn from the piece and the run's day.
+- **In the log:**
+
+  `PLAY LOOP: imprinted Gain 20% increased health, drawback You have no armor, on Masterful Helm of Warding, giving up +42 to maximum health, for 2,300 gold; residue 180 to 185; it cost 3 days, day 20 to day 23`
+
+- **Press an imprint button again at +4.** It says "A Mythical piece needs gear level 6, and that piece is +4. Upgrade it
+  first." and nothing moves.
+- **Each enchantment** that is not a set's has a button "Change the drawback of Gain 20% increased health". Click it
+  twice: "Press again to change the drawback of Gain 20% increased health: one Regret Essence, 8,225 gold, residue 185
+  to 285, 8 days of the run; a different drawback is drawn at random." The enchantment keeps its benefit and its number,
+  and its drawback is a different one, never milder than the benefit.
+- **In the log:**
+
+  `PLAY LOOP: changed the drawback of Gain 20% increased health on Legendary Helm of Warding from You have no armor to 80% of your health is reserved for 8,225 gold; residue 185 to 285; it cost 8 days, day 23 to day 31`
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

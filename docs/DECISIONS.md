@@ -2,6 +2,419 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge imprints an enchantment, giving up the affix the player chooses, and changes an enchantment's drawback to a different one never milder than its benefit (#47, slice F3)
+
+**NOT COMPILED, NOT RUN.** Phase 1 on `feat/forge-enchantments-47-3`, cut from slice F2's head `84c2f0ff7`
+(`feat/forge-affix-crafts-47-f2`, itself on slice F1's head), as ruled. Nothing here has run in the engine. It was
+written first on `feat/forge-enchantments-47` from development `4a7aaac4e`, then on `-2` from F1's head, and moved each
+time by inserting each of its blocks into the newer files at fixed anchors, since git's merge interleaved the slices'
+new functions line by line.
+
+### The rulings, the coordinating session, 2026-11-22
+
+The forge survey (the gems session's, of the 13 unbuilt crafts) asked five questions of these two crafts, and the
+coordinating session accepted every recommendation:
+
+- **Q14. An imprinted enchantment is random**: a positive and its negative, drawn as a drop draws them, for the piece's
+  slot. A chosen enchantment would be too cheap at 5 residue and 2 days.
+- **Q15. The player chooses which affix is given up.** The design calls it a trade: "Applying an enchantment to a
+  Masterful piece makes it Legendary, and the piece gives up a regular affix to do it."
+- **Q16. Only from Masterful up**: a piece below Masterful has a slot empty, and an enchantment with a slot left empty
+  is no rarity.
+- **Q17. A changed negative is random, under the weight rule**: a chosen one would let a player pick the mildest, which
+  the owner's rule of 2026-09-07 exists to stop ("A NEGATIVE IS NEVER MILDER THAN THE POSITIVE IT IS PAIRED WITH").
+- **Q18. Never the same negative again**, so the 100 residue is never spent for nothing.
+- **No Weight changes**, and no Tags.
+
+**AND ONE RULE THE SURVEY DID NOT NAME, SETTLED BY THE DESIGN RATHER THAN ASKED**: the rarity an imprint makes needs its
+gear level. The design's rarity table (`docs/Cataclysm_GDD_v2.md`, "Rarity is not a property an item carries") says
+"Legendary ... Requires gear level 4+", Mythical 6, Ascendant 8, Cataclysmic 10, which is `GearLevelGate` in
+`game/Data/GearRarity.csv`. So a Masterful piece at +3 is refused until it is raised to +4.
+
+**The plan's four questions, ruled by the coordinating session on 2026-11-22:**
+- **F3-Q1. A set's pair is refused a drawback change**: "A set's drawback is part of the set." DERIVED: the drop gives a
+  set its own negative, paired and guaranteed, never drawn. The screen offers no change for one.
+- **F3-Q2. An imprint can draw a set, as a drop would.** DERIVED from Q14's "as a drop draws them": a set is one option
+  in the weight 1 band. Sets do count worn pieces (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`), so FE12
+  tests that an imprinted set piece counts toward the set's bonus as a dropped one does.
+- **F3-Q3. Built on slice F1's head, reusing its affix list**: the imprint buttons name affixes by their number in F1's
+  list in the screen's detail (`UCataclysmForgeLayout::AffixesDetailFor`), "Imprint, giving up affix 2", and the craft
+  keeps F1's `CraftAffix` order (threshold, gold, material, the item, the days), so slice F5 folds one pattern.
+  **Then moved to slice F2's head (ruling (A))**, which rides the same window as F1, so the draws call F2's
+  `UCataclysmForge::AffixCraftSeed` and `SlotOf` and the forge holds no second copy of either. This slice reached
+  development in window forge-pg-w1, as the gems session resolved it on slice F4's head (c69259f6d, 81cf236c6,
+  9499c2fab and its renumber commit), since slice F5 is built on those commits.
+- **F3-Q4. G10's two gem enchantments are tested end to end as FE8 to FE10.** G10's Q2, a gem that stops acting when
+  its piece loses fit-any, stays tested by editing the item, as G10 does: no F3 craft removes a positive.
+
+**The Master Tinkerer waits for slice F6**, accepted 2026-11-22. Its text, "doubling the rolls of the enchantment and completing the craft
+instantly", has two parts with no settled meaning here: a roll is a fraction from 0 to 1, so doubling one is capped, and
+"instantly" is a rule about days, which slice F5's Accelerate Craft decides.
+
+### The genre, re-read for this entry
+
+The survey's research was done by a research agent. Its three pages on these two crafts were read again on 2026-11-22:
+
+- **Diablo IV's imprint is the nearest.** Maxroll's Occultist guide: imprinting an Aspect "turns a previously rare item
+  into legendary". The page implies the player chooses the Aspect from the Codex of Power; it does not state it.
+  Diablo IV has no drawbacks, which is why a chosen enchantment there and a random one here.
+- **Diablo IV's enchanting rerolls one affix the player chooses**: it "allows you to re-roll one undesirable affix". The
+  player is offered two new stats or the current one, and pays either way. **CORRECTION to the survey**, which said the
+  gold cost escalates: this page does not say so.
+- **Path of Exile 1's Imprint restores an item's modifiers** (poedb.tw, "Restores an imprinted item onto the original"),
+  so the word means something else there.
+- **Path of Exile 1's Runegrafts apply to an allocated Passive Mastery, not to an item** (poedb.tw). **CORRECTION to
+  the survey**, which said they pair a positive with a negative: the page never calls a line a drawback, though some
+  entries carry a penalty line ("10% reduced Attributes" beside "40% increased Defences").
+- **No shipped game read here rerolls only the drawback of a paired enchantment**, so Change Enchantment Negative's
+  shape is this game's own, and Q17 and Q18 are judgements.
+
+### What it does
+
+- **`UCataclysmDropRoll::RollEnchantments`** takes the pairs already on a piece, `AlreadyOn`, as taken, so neither half
+  of a new pair repeats one of theirs. A drop passes none and draws exactly what it drew before: the taken sets start
+  empty and nothing reads the stream to fill them.
+- **`UCataclysmDropRoll::DrawReplacementNegative`** draws a negative for one kept positive: the weight from weight 1 up
+  to the positive's, renormalised as the drop does, then a row evenly inside the band, every negative on the piece
+  taken, with a roll from a stream of its own. False for a set's pair.
+- **`UCataclysmForge::ImprintOf`** and **`ChangeNegativeOf`** (`CataclysmForge.h`, `.cpp`), plans in the order every
+  craft refuses, gold last.
+  - Imprint Enchantment: an Aetherial Shard, 5 residue, 2 base days, Base Gold 500 from `ForgeOperations.csv`.
+  - Change Enchantment Negative: a Regret Essence, 100 residue, 7 base days, Base Gold 1,750.
+- **`DrawImprint`, `DrawChangedNegative` and `ApplyImprint`**: the draws are seeded by slice F2's `AffixCraftSeed`,
+  from the run's `WalkSeedMask`, a salt of each craft's own ("IMPR", "NEGA"), the run's day, the CRC of `ItemSeedText`
+  and an index (an imprint's the item's pair count, a change's the pair changed), all READ FROM THE ITEM BEFORE THE
+  CRAFT, on the slot F2's `SlotOf` reads. So a reload on the same day draws the same, and an
+  imprint draws the same pair whichever affix is given up. `ApplyImprint` removes the chosen affix, adds the pair, keeps
+  `EnchantmentCount` equal to the pairs held, and tops up a weapon's damage types when the pair says the weapon carries
+  more, as `RollItem` does.
+- **`UCataclysmForgeCraft::Imprint`** and **`ChangeNegative`** (`CataclysmForgeCraft.cpp`), through
+  `DoEnchantmentWork`, in slice F1's `CraftAffix` order: the capital-only refusal, the threshold question for a worn
+  piece, the gold, the material, then the draw and the item, then the days, the log line and the save triggers. A draw
+  that fails gives back the material, the gold and the threshold mark, as a craft does when the item cannot be
+  replaced.
+- **The forge screen** (`CataclysmForgeLayout`, `CataclysmForgeWidget`): on a piece with every slot filled, "Imprint,
+  giving up affix 2" for each affix, numbered as F1's affix list; and "Change the drawback of <the benefit>" for each
+  enchantment that is not a set's. Asked on the first press and done on the second.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine`: "imprinted Gain 20% increased health, drawback
+  You have no armor, on Masterful Helm of Warding, giving up +42 to maximum health, for 2,300 gold; ..." and "changed
+  the drawback of Gain 20% increased health on Legendary Helm of Warding from You have no armor to 80% of your health is
+  reserved for 8,225 gold; ...".
+- **`docs/Play_Loop_Checklist.md`**, step 24 (F1 holds 21 and slice F2 22), and the two rows' Note cells in the
+  design's operations table.
+- **Nothing moves** in the workbook, the assets or the save versions: both rows and both materials were already on the
+  sheets, and an item's affixes and enchantments are already saved.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeEnchantments.`, 12 tests**, in `CataclysmForgeEnchantmentsTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FE1 | `ImprintingTakesAnAetherialShardFiveResidueTwoDaysAndAFullPieceAtItsGearLevel` | a Masterful sword at +4, residue 150: 155, 3 days, 2,000 gold, Legendary needing +4, the question; refused for a Superb piece, a Cataclysmic one, affix 8, +3, a Legendary at +5 (Mythical needs +6, and +6 passes), no shard, too little gold, no piece, no gear rarity table |
+| FE2 | `AnImprintDrawsAPairAsADropDoesAndRepeatsNothingOnThePiece` | days 1 to 400: no negative heavier than its positive, nothing the sword holds drawn again, every positive fit for a weapon, the same day the same draw; CONTROL, more than 50 distinct positives, weight 4 commonest. And `RollEnchantments` itself, with every row a weapon can draw held but one of each kind in each band, draws only the rows left in 50 of 50 draws |
+| FE3 | `AnImprintGivesUpTheChosenAffixAndTopsUpAWeaponsDamageTypes` | the third affix gone, the others in order, one pair, the count agreeing, Legendary; "This weapon has 2-4 damage types" tops the sword up to what the row and the sword allow; CONTROL, the health pair adds none |
+| FE4 | `TheImprintCraftMakesAMasterfulSwordLegendaryWithThePairItsDayDraws` | the craft on a carried sword: the pair the day draws, the affix gone, the shard, 3 days, 2,000 gold; a second imprint refused at +4 |
+| FE5 | `ChangingADrawbackTakesARegretEssence100ResidueSevenDaysAndNeverASetsPair` | a Legendary helm at residue 200: 300, 9 days, 8,750 gold, the question; refused for no enchantment 3, a set's pair, a positive not in the table, no essence, too little gold, no piece |
+| FE6 | `AChangedDrawbackIsADifferentOneNeverMilderThanItsPositive` | days 1 to 400: never the one replaced, never the other pair's, never above weight 3, the positive and its roll kept, a weight 1 pair always given a different weight 1 row; CONTROL, more than 40 distinct and weights 1 to 3 reached |
+| FE7 | `TheChangeCraftReplacesOnlyTheDrawbackWithTheOneItsDayDraws` | the craft on a carried helm: the drawback the day draws, everything else as it was, the essence, 9 days, 8,750 gold |
+| FE8 | `AnImprintedFitAnyLetsAnOffTypeGemInAtTheForgeAndItActs` | G10, end to end: a sword the day draws fit-any for (found by stepping an affix roll); Of Life refused by its Attack socket, imprinted, socketed, acting at 25 |
+| FE9 | `ChangingLessEffectiveAwayMakesThePiecesGemActInFull` | G10, end to end: Of Life at 12.5 in a helm with "50% less effective"; after the change, 25 |
+| FE10 | `AChangeThatDrawsLessEffectiveHalvesThePiecesGem` | G10, end to end: a helm the day draws "50% less effective" for; Of Life from 25 to 12.5 |
+| FE11 | `TheScreenOffersAnImprintPerAffixAndADrawbackChangePerEnchantmentButASets` | four imprints on the Masterful sword, "Imprint, giving up affix 1" to 4, numbered as F1's detail; two imprints and one change on a Mythical helm holding a set's pair; nothing on a Superb piece |
+| FE12 | `AnImprintedSetPieceCountsTowardItsSetsBonusAsADroppedOneDoes` | F3-Q2: a sword the day draws a set for (found by stepping an affix roll), imprinted, holding the set's row and its own drawback; worn beside a second piece it grants more than alone, and a dropped copy in its place grants the same modifiers on the same stats |
+
+**FE8 to FE10 do not reach G10's Q2 itself**, a gem that stops acting once the piece LOSES fit-any: no F3 craft removes
+a positive. `Cataclysm.GemEnchantments.AGemTheEnchantmentLetInStopsActingWhenItIsReplaced` remains its test.
+
+**Python**: `tools/tests/test_forge_enchantments.py`, 7 checks of the shape: the sheet's rows against the constants,
+the refusal order, the gear level gate, that a drop draws what it drew before and only the imprint passes the pairs on a
+piece, the replacement's band floor, the craft keeping F1's order with a failed draw giving back what it took, and the
+screen. And
+`test_the_forge_charges_the_sheets_costs.py` and `test_the_play_loop_is_logged_at_each_step.py` gain the two crafts.
+
+**Python suite at `a535f7804`**, in a git worktree: "8155 passed, 9 skipped"; JUnit 8164 tests, 0 failures, 0
+errors, 9 skipped; ruff "All checks passed!".
+
+**Python guard proofs, in a `git archive` copy of `c9bf10524`: 7 of 7 PROVED**, each failing exactly the checks named
+and passing with the break restored:
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PF1 | the sheet's Imprint Enchantment at 600 gold | `test_the_sheets_two_rows_hold_the_forges_figures`, `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+| PF2 | `ImprintOf` reading Change Negative's Base Gold | `test_each_rule_reads_its_row_and_refuses_for_its_material_before_its_gold`, and `ImprintOf`'s case of `test_every_built_craft_prices_itself_and_refuses_too_little_gold` |
+| PF3 | the gear level read for the rarity before, not after | `test_an_imprint_needs_every_slot_filled_and_the_gear_level_its_rarity_needs` |
+| PF4 | the pairs on the piece read by taking a number off the stream | `test_a_drop_draws_what_it_drew_before_and_only_the_imprint_passes_the_pairs_on_a_piece` |
+| PF5 | the replacement offered every band, above the positive's weight too | `test_a_changed_negative_is_drawn_at_or_below_its_positives_weight_and_never_for_a_set` |
+| PF6 | the imprint drawn from the day after | `test_the_craft_keeps_slice_f1s_order_and_draws_from_the_item_and_day_before_the_days_pass` |
+| PF7 | the screen offering a drawback change for a set's pair | `test_the_screen_offers_an_imprint_on_a_full_piece_and_no_change_for_a_set` |
+
+### Registered for the window
+
+**The base is window power-score-w1**, which carries Power Score slice a, #1267 and slices F1 and F2 and has not
+finished. So this window registers **that window's measured total plus 12**, the 12 test names of
+`Cataclysm.ForgeEnchantments.`, removing none; its skipped halves and its saves
+as that window measures them, since these tests call no skip helper, and a craft in a test scene writes no save, as
+F1's and G9's did not.
+
+| Step | Registered |
+| :-- | :-- |
+| Each group alone, first | `Cataclysm.ForgeEnchantments.` 12; then the groups whose files call the changed forge, draw or screen code, at their counts in window tree-2784-w1's engine log (`.claude/windows/t2784_suite_engine_4d029f3b.log`): `Forge.` 8, `ForgeScreen.` 4, `ForgeSockets.` 6, `ForgeGems.` 4, `ForgeCosts.` 3, `ForgeAffixes.` 6, `ForgeAffixChange.` 5 (F1's and F2's registered counts), `GemCombine.` 3, `GemEnchantments.` 5, `PlayLoop.` 12; and for `RollEnchantments`' new parameter, every group that rolls items: `Drop.` 30, `Enchantments.` 366, `EnchantmentSets.` 9, `EmpireTreeDrops.` 13, `EmpireTreeLoot.` 10. Each performed and succeeded at exactly its count, or at the count the base window moves it to |
+| The whole suite | the base window's total plus 12, all succeeded, 0 failed; the base's skipped halves; the base's saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, eight, each narrowed to `Cataclysm.ForgeEnchantments.` with its trailing dot, covering all twelve
+tests. Predicted, not run.** TP2 (no gear level gate) and TP5 (no damage types topped up) were registered and DROPPED
+on 2026-11-22 by the coordinating session: the tests they fail, FE1, FE3 and FE4, are already failed by TP1 and TP4,
+so they cost eight builds and showed nothing the others do not.
+
+| Proof | File | Break | Predicted |
+| :-- | :-- | :-- | :-- |
+| TP1 | `CataclysmForge.cpp` | `Out.ResidueAfter = Item.Residue + ImprintResidue;` to `+ ChangeNegativeResidue;` | 12 performed, 10 succeeded, 2 failed: FE1 (residue 155 and the question), FE4 (residue 155) |
+| TP3 | `CataclysmDropRoll.cpp` | `TakenPositives.Add(Held.Positive);` to `(void)Held;` | 12, 11, 1: FE2, on "the taken rows are never drawn" |
+| TP4 | `CataclysmForge.cpp` | `Changed.Affixes.RemoveAt(Affix);` to `Changed.Affixes.RemoveAt(0);` | 12, 10, 2: FE3 (the third affix not the one gone), FE4 (`Stat_Increased_damage` still there) |
+| TP6 | `CataclysmDropRoll.cpp` | `bBandCanSupply.Add(Band <= PositiveBand && bHasUntaken);` to `bBandCanSupply.Add(bHasUntaken);` | 12, 11, 1: FE6, on "never above the positive's weight 3" and the weight 1 pair |
+| TP7 | `CataclysmForge.cpp` | `if (UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` to `if (false && UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` | 12, 11, 1: FE5, on "a set's pair" |
+| TP8 | `CataclysmForgeCraft.cpp` | `Changed.Enchantments[Plan.Pair] = Done.Drawn;` to `= Plan.Before;` | 12, 9, 3: FE7, FE9 and FE10, the drawback left as it was |
+| TP9 | `CataclysmForgeCraft.cpp` | the imprint's `Run->WalkSeedMask, Run->Day(),` to `Run->WalkSeedMask, Run->Day() + 1,` | 12, 9, 3: FE4, FE8 and FE12, COMPUTED. A Python copy of the scene's seed and the whole draw (`.claude/windows/f3_tp9_predict.py`: the run's mask 621977399 from seed 4747, day 0, `ItemSeedText`, the CRC, `AffixCraftSeed`, `FRandomStream` in single precision, `RollEnchantments` for one pair) gives: FE4's sword draws "Spells deal 10-20 bonus damage..." on day 0 and "Melee kills restore 3-6%..." on day 1, so not the day's pair; FE8 finds fit-any at step 1266 on day 0, and day 1 draws "Skills that cost HP restore that amount as mana", so fit-any is not drawn and Of Life is refused; FE12 finds Null Emperor's 2-piece row at step 190, and day 1 draws "Casting a spell grants 5-10% increased movement", no set. THE COPY IS CHECKED BY THE RUN ITSELF: FE8 and FE12 print the step they found, and they must print 1266 and 190 |
+| TP10 | `CataclysmForgeLayout.cpp` | `if (Positive == nullptr \|\| UCataclysmDropRoll::EnchantmentSetId(*Positive) > 0)` to `if (Positive == nullptr)` | 12, 11, 1: FE11, on two imprints and one change |
+
+**No type in `CataclysmForgeEnchantmentsTests.cpp` shares a name with one the engine declares globally**: its one type
+is `FForgeEnchantmentsScene`, inside its own namespace. Window power-score-w1's first build failed on F2's `struct
+FScene` (C2872, ambiguous with the renderer's `FScene`), renamed `FAffixChangeScene` on that window's branch; window
+forge-pg-w1's branch is cut from development after that window merged, so it holds the rename.
+
+### Window forge-pg-w1: FAILED, on #2824 slice c's test, 2026-11-22
+
+Branch `feat/forge-pg-w1` at `1156682c5`, on development `5ba9eb311` (window power-score-w2's game/ tree, confirmed by
+`git diff`): slice c's 4 commits, slice F4's 5 (`6a739c11b` empty and skipped), slice F3 as the gems session resolved it
+(`c69259f6d`, `81cf236c6`, `9499c2fab`) and its renumber commit `573ae8bbf`. Registered at 5271 + 23 = 5294, 57 skipped
+halves, 860 saves, 25 groups alone and 18 proofs.
+
+- **Compile**: three builds, each "Succeeded" with 0 compiler warning or error lines: the branch, 52 files compiled; each
+  changed file alone, 28 (all 15 changed `.cpp` files named); the unity files again, 13.
+- **Groups alone: 24 of 25** at exactly their counts. `Cataclysm.PowerGapRewards.`: "5 tests performed, 4 succeeded, 1
+  failed".
+- **Whole suite**: "5294 tests performed, 5293 succeeded, 1 failed"; 57 skipped halves; "860 written and deleted, 0 left
+  behind"; "5294 performed, gap 0". Python beside it: "8193 passed, 10 skipped", JUnit 8203 tests, 0 failures, 0 errors;
+  ruff "All checks passed!".
+- **No proof was run**: the run stops before the proofs when the suite misses its registered total.
+
+**The failing test**, alone and in the suite alike:
+`Cataclysm.PowerGapRewards.AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt`.
+
+- "Expected 'the kill grants the figure times the experience factor' to be 232, but it was -1."
+  [`CataclysmPowerGapRewardsTests.cpp(300)`]
+- "Expected 'CONTROL: and the same kill grants the whole figure' to be 468, but it was -1."
+  [`CataclysmPowerGapRewardsTests.cpp(306)`]
+- The test's own line: "GAP KILL: before entering experience x1.0000, loot x1.0000, not scored; in the dungeon at tier 1
+  the Dungeon Score 191, the player's 626 (live 626), gap -1.1299, experience x0.4966, loot x0.6026, scored; the line
+  "Dungeon Score 191; your Power Score 626. Rewards: experience 50%, loot 60%."; a Boss worth 468 granted -1 of 232
+  expected (the whole figure 468), level 99 after; left, experience x1.0000, loot x1.0000, not scored, worth 468 granted".
+
+**A READING, NOT CHECKED against slice c's code**: the factor and the panel's line are right, and the kill granted no
+experience in the dungeon or out of it. The character reads level 99 afterwards, so it looks to be at the level cap,
+where a kill grants nothing: the test raises the character to reach a Power Score of 626, and on this development that
+level is at or past the cap. Slice c was written on slice a's head before power-score-w2 and the level 1 opening; its
+test was registered and, by its entry, never run. The gold session owns the diagnosis.
+
+**F3's own check held**: FE8 printed "FIT-ANY IMPRINTED: step 1266" and FE12 "IMPRINTED SET: step 190", the steps the
+Python copy of the draw (`.claude/windows/f3_tp9_predict.py`) computed, so TP9's prediction stands as computed.
+
+**Ruled**, the coordinating session, 2026-11-22: window forge-pg-w2 at once, without slice c, on the same base; slice c
+rides window ow-f5-w1 once the gold session has fixed it.
+
+### Window forge-pg-w2: PASSED, slices F4 and F3, 2026-11-22
+
+Branch `feat/forge-pg-w2` at `08f4308eb`, on development `5ba9eb311`, built by `.claude/windows/make_branch_forgepg.py
+--without-slice-c`: slice F4's 5 commits (`6a739c11b` empty and skipped), slice F3's `c69259f6d`, `81cf236c6`,
+`9499c2fab` and the renumber commit `573ae8bbf`, every one applied without a conflict, so neither depends on slice c. F3
+arrived as written: its 4 files no other slice touches byte for byte `fec0b0acf`'s, and its 14 shared files changed by
+exactly its lines. The test-name diff against the base: 18 added (`Cataclysm.ForgeEnchantments.` 12,
+`Cataclysm.ForgeDamageTypes.` 6), none removed. Registered at 5271 + 18 = 5289, 57 skipped halves, 860 saves, 24 groups
+alone, 14 proofs.
+
+- **Compile**: three builds, each "Succeeded" with 0 compiler warning or error lines: the branch, 42 files compiled;
+  each changed file alone, 13 (all 8 changed `.cpp` files named); the unity files again, 5.
+- **Record versions**: "26 lines stating a version; NO MISMATCH" against run 17, character 14 and account 7.
+- **Groups alone: 24 of 24 passed**, each at exactly its registered count, `Cataclysm.ForgeEnchantments.` 12,
+  `Cataclysm.ForgeDamageTypes.` 6 and `Cataclysm.Enchantments.` 366 among them.
+- **Whole suite**: "5289 tests performed, 5289 succeeded, 0 failed"; 57 skipped halves; "860 written and deleted, 0 left
+  behind"; "5289 performed, gap 0".
+- **Python beside it**: "8186 passed, 10 skipped"; the JUnit file 8196 tests, 0 failures, 0 errors, 10 skipped. ruff:
+  "All checks passed!".
+
+**C++ guard proofs: 14 of 14 PROVED**, each narrowed to its group with the trailing dot, each failing with the break in
+and passing with it restored:
+
+| Proof | Failed with the break in | As predicted |
+| :-- | :-- | :-- |
+| TP1 | FE1 `ImprintingTakesAnAetherialShard...`, FE4 `TheImprintCraftMakesAMasterfulSwordLegendary...` | yes |
+| TP3 | FE2 `AnImprintDrawsAPairAsADropDoesAndRepeatsNothingOnThePiece` | yes |
+| TP4 | FE3 `AnImprintGivesUpTheChosenAffix...`, FE4 | yes |
+| TP6 | FE6 `AChangedDrawbackIsADifferentOneNeverMilderThanItsPositive` | yes |
+| TP7 | FE5 `ChangingADrawbackTakesARegretEssence...` | yes |
+| TP8 | FE7, FE9, FE10 | yes |
+| TP9 | FE4, FE8 `AnImprintedFitAnyLetsAnOffTypeGemIn...`, FE12 `AnImprintedSetPieceCounts...` | yes, as computed |
+| TP10 | FE11 `TheScreenOffersAnImprintPerAffix...` | yes |
+| FD1, FD3 to FD6 | each the one test slice F4's `prove_f4.py` names | yes |
+| FD2 | `ADrawnTypeIsEvenAmong...`, and also `ChangingADamageTypeTakesAPrismaticCatalyst...` and `InfusingARandomDamageType...` | NO: three failed where one was predicted; it proves its guard, and the two further failures are the gems session's to read |
+
+---
+
+## 2026-11-22 — The forge infuses a weapon with a damage type, drawn or chosen, and changes one, held to the drop's own maximum and never on the weapon made at creation (#47, slice F4)
+
+**NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-damage-type-crafts-47-f4`, cut from slice F2's head
+`84c2f0ff7` as the coordinating session ruled, so the forge's crafts stay in one shape. Its window is registered below.
+**THE GENRE RESEARCH WAS READ BY A RESEARCH AGENT, NOT BY THE SESSION THAT WROTE THIS ENTRY**; this slice's claims are
+the survey's (`.claude/windows/survey_forge_47.md` in the gems session's worktree) and were not re-read page by page.
+The survey reported that a damage type on a Path of Exile item is an affix, added specifically by its Essences and
+bench and at random by its Harvest reforge, and that no game converts a weapon's type.
+
+### The rulings, the coordinating session, 2026-11-22
+
+1. **Weapons only** (Q19), as all three materials' text says ("to a weapon", "on a weapon").
+2. **At the maximum the two infusions are refused, saying it** (Q20). A change is the way to alter a type there.
+3. **Q21, RESOLVED, AND THE SURVEY'S PREMISE CORRECTED.** The survey asked whether "enchantment-carried" damage types
+   count toward the maximum, as if an enchantment carried types apart from the weapon. It does not.
+   `UCataclysmDropRoll::DamageTypesCarriedBy` reads the enchantment "This weapon has 2-4 damage types" and returns a
+   COUNT, and `TopUpDamageTypes` adds types to the weapon's own list until it holds that many, under the drop's one
+   ceiling, `MaxDamageTypesFor` (the lower of the base's `MaxDamageTypes` and the types designed for its weapon type).
+   So the types an enchantment adds are in the weapon's list already, and counting the list against that ceiling counts
+   them, as the drop does. **The enchantment's count is a floor the drop tops up to, never a ceiling**: a crafted weapon
+   may carry more types than its enchantment states, up to the maximum.
+4. **A change draws its new type among those the weapon lacks** (Q22); the type replaced is the player's choice. A
+   specific infusion's type is the player's choice; a random infusion's is drawn, as a drop draws one.
+5. **THE WEAPON MADE AT CREATION IS REFUSED**, option (a), DERIVED: `UCataclysmEquipmentComponent::
+   CarryCreationDamageType` sets that weapon's types back to the one chosen for the character on every possession,
+   which happens on every load, and on `ACataclysmPlayerState::SetCreationChoice`. A craft on it would be undone and
+   would take the player's material, gold, residue and days for nothing. The three crafts refuse it with "The weapon
+   made at creation carries the damage type chosen for the character; the forge does not change its damage types.",
+   and the screen offers it none. **Issue #2845** holds the finding and option (b), keeping crafted types through a
+   load, as a later choice; this slice changes no creation or loading code.
+6. **A worn weapon needs nothing more.** The trees and skills a weapon opens follow the types the worn weapons carry,
+   read when asked (`UCataclysmEquipmentComponent::CarriedDamageTypesOf`), and the forge's `ReplaceEquippedAt`
+   announces a change of gear, as swapping weapons does.
+
+### What it does
+
+- **`UCataclysmForge::DamageTypeWorkOf`** (`CataclysmForge.h`, `.cpp`), one plan for the three crafts, refusing in the
+  order every craft does, gold last:
+  - Infuse Random Damage Type: an Elemental Cinder, 10 residue, 1 base day, Base Gold 250;
+  - Infuse Specific Damage Type: a Sovereign Ingot, 50 residue, 5 base days, Base Gold 1,250;
+  - Change Damage Type: a Prismatic Catalyst, 20 residue, 0 base days, Base Gold 250.
+  Refused for a base not found, an item that is no weapon, the weapon made at creation, an infusion at the maximum, no
+  type left to draw, a chosen type held already or one the weapon cannot carry, a change of a type not carried, the
+  material and the gold.
+- **`DamageTypesOpenTo`, `MaxDamageTypesOf`, `CarriesDamageTypes`**, read through the drop's own
+  `DamageTypesAvailableTo` and `MaxDamageTypesFor`.
+- **The draw is in the plan**, seeded as F1's and F2's are (`AffixCraftSeed`, salts "INFS" and "CHNG"): an infusion by
+  the place the new type takes, a change by the place of the type it replaces. A reload on the same day draws the same.
+- **`UCataclysmForgeCraft::CraftDamageType`**, on a carried or worn weapon, in `CraftAffix`'s order. An infusion adds the
+  type last; a change puts it in the replaced type's place.
+- **The forge screen**: "Damage types: War, Death; 2 of at most 4." under a weapon's detail; below the maximum "Infuse a
+  random damage type" and "Infuse <type>" for each it can take and lacks; while one is left "Change <type>" for each it
+  carries; two presses each. The weapon made at creation shows its types and the refusal, and no button.
+- **The play log**, `FCataclysmPlayLoopLog::ForgeDamageTypeLine`: "infused ... with Chaos, drawn, ...", "infused ... with
+  Demonic, chosen, ...", "changed War on ... to Famine ...".
+- **`docs/Play_Loop_Checklist.md`**, step 23.
+- **Nothing moves** in the workbook, the assets or the save versions.
+
+**Noticed, not changed**: `CraftDamageType` is the sixth copy of the threshold, gold, material, item and days sequence.
+Slice F5's first step moves every copy into one function, ruled 2026-11-22.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeDamageTypes.`, 6 tests**, in `CataclysmForgeDamageTypesTests.cpp`. The fixed
+sword: one-handed, gear level 3, War and Death of the seven types designed for a sword, residue 40; at most 4.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FD1 | `InfusingARandomDamageTypeTakesAnElementalCinderTenResidueADayAndDrawsOneTheWeaponLacks` | residue 40 to 50, 1 day, 450 gold, maximum 4, seed 688249076 drawing Chaos, the question, two refusals; the craft adds the type drawn for its run and day, last |
+| FD2 | `ADrawnTypeIsEvenAmongThoseTheWeaponLacksAndTheSameForTheSameRunDayAndWeapon` | the seed text; the five open types; seeds 688249076 and 719900450; Chaos twice, Famine for the change of War; over days 1 to 3000 Demonic 592, Pestilence 605, Famine 601, Celestial 585, Chaos 617, never War, Death or Void |
+| FD3 | `InfusingAChosenDamageTypeTakesASovereignIngotFiftyResidueFiveDaysUpToTheMaximum` | Demonic: 40 to 90, 5 days, 2,250 gold, the question; Void refused, War held, a sword at its 4, a shield at its 3, the ingot; the craft gives War, Death, Demonic |
+| FD4 | `ChangingADamageTypeTakesAPrismaticCatalystTwentyResidueAndWorksAtTheMaximum` | War: 40 to 60, 0 days, 450 gold, the question; possible at the maximum; refused on a full shield, for Void, for the catalyst; the craft puts the drawn type in War's place and keeps Death |
+| FD5 | `OnlyAWeaponNotTheOneMadeAtCreationIsOfferedTheCrafts` | a helm and the creation weapon refused by all three; the buttons for the sword, at its 4, the creation weapon and a helm; the detail lines; two presses infuse Celestial |
+| FD6 | `AWornWeaponsCraftThatWouldCrossTheThresholdAsksAndMarksOnlyWhenConfirmed` | a worn sword 60 below the threshold: Celestial is infused at once; Demonic asks, changes nothing, and confirmed marks the character |
+
+**Python**: `tools/tests/test_the_forge_changes_damage_types.py`, 7 tests; its copy of the open types and the draw
+gives the exact figures FD2 asserts. `test_the_forge_charges_the_sheets_costs.py` gains the three rows' fallbacks, the
+rule's price and `CraftDamageType`'s pay-first check; `test_the_play_loop_is_logged_at_each_step.py` gains its line,
+and its count of places says thirty.
+
+**Python suite at `a9ba94d54`, with this entry**: "8155 passed, 10 skipped"; JUnit 8165 tests, 0 failures, 0
+errors, 10 skipped; ruff "All checks passed!". Slice F2's 8143 and this slice's 12: 7 tests and 3 cases added to
+existing parametrized checks, and the 2 tests of the check that no test file declares `FScene` (below).
+
+**Two errors caught before commit**: the checklist's example chosen infusion said 1,500 gold, and at 50 residue it is
+2,500; and FD6 first infused a random type and then Demonic, which a draw of Demonic would have refused. It now infuses
+Celestial and Demonic, both chosen.
+
+**Python guard proofs, in a `git archive` copy of `95249817a`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f4_python.py`): 10 of 10 PROVED**, each failing exactly the tests predicted and passing restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PD1 | `ChangeDamageTypeResidue` 25 | `test_the_sheets_three_rows_hold_the_forges_figures` |
+| PD2 | the change's fallback `GoldPerCraftDay` | `test_the_rule_reads_each_row_and_refuses_for_the_material_before_the_gold` |
+| PD3 | an infusion refused only past the maximum | `test_the_infusions_are_held_to_the_drops_maximum_and_a_change_is_not` |
+| PD4 | the creation weapon not refused | `test_the_weapon_made_at_creation_is_refused_and_offered_nothing` |
+| PD5 | the salt `0x43484E48` | `test_the_python_copy_gives_the_figures_fd2_asserts` |
+| PD6 | a change inserting the new type | `test_the_craft_writes_the_plans_type_in_place_and_draws_nothing_again` |
+| PD7 | the infusions offered at the maximum | `test_the_screen_offers_the_infusions_only_below_the_maximum` |
+| PD8 | `CraftDamageType` keeping the gold when the material cannot be taken | `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account[...CraftDamageType(]` |
+| PD9 | the change's line reading "changed the" | `test_the_checklist_quotes_only_lines_the_game_says` |
+| PD10 | `InfuseSpecificDamageTypeBaseDays` 4 | `test_the_sheets_three_rows_hold_the_forges_figures`, and the gold check's `test_the_sheets_base_gold_is_what_the_forge_falls_back_on` |
+
+### A type named FScene, found after the entry above was written
+
+Window power-score-w1's first build stopped on 50 errors in slice F2's `CataclysmForgeAffixChangeTests.cpp`: its
+test namespace declared `struct FScene`, which is ambiguous with the engine's global `FScene` under `using namespace`
+(C2872). The level-1 session renamed it `FAffixChangeScene` on its window branch, commit `5d470823e`. This branch
+is built on F2's, so:
+
+- **`5d470823e` is applied here too** (`6a739c11b`), unchanged, so a rebase onto development after that window merges
+  finds it already there.
+- **F4's own `CataclysmForgeDamageTypesTests.cpp` had the same declaration**, and its scene is now
+  `FDamageTypeCraftScene` (10 uses, `a9ba94d54`). No other change to the file.
+- **The other short names the three forge test files declare** (`War`, `Death`, `Demonic`, `Void`, `Sword`, `Helm`,
+  `Spark` and the rest) were searched for in the engine's `Core/Public`, `CoreUObject/Public`, `Engine/Public` and
+  `Engine/Classes` headers: the only hits were `Void` inside three `enum class` blocks, which declare nothing at
+  global scope. Plugins were not searched.
+- **A check, as the coordinating session ruled (twice makes it a check)**:
+  `tools/tests/test_test_files_declare_no_engine_global_type.py` fails on any `struct` or `class FScene` in a `.cpp`
+  or `.h` under a module's `Tests` folder (358 files), and on reading fewer than 100. **Guard proof PS-FSCENE, in a
+  `git archive` copy of `a9ba94d54`, through `tools/prove_guard.break_and_run`
+  (`.claude/windows/prove_fscene_check.py`): PROVED.** With `struct FScene` put back in F4's file,
+  `test_no_test_file_declares_a_type_the_engine_declares_globally` failed and nothing else did; restored, both passed.
+
+### Registered for the window
+
+The base is development as it stands when this window registers. This slice adds 6 test names and removes none. **The
+whole suite is registered as the base's last measured total plus 6**, and each group below at its count in the base's
+newest engine log, re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeDamageTypes.` 6; then, each at its count in the base's newest log, the groups whose files call the changed forge code: `ForgeAffixChange.`, `ForgeAffixes.`, `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.` |
+| The whole suite | the base's total plus 6, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeDamageTypes.` with its trailing dot, through
+`.claude/windows/prove_f4.py`. Every anchor matches once on `95249817a`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FD1 | in `DamageTypeWorkOf`, a random infusion's residue `+ 1.0f` | 6 performed, 5 succeeded, 1 failed: FD1, on the residue; FD6 infuses only chosen types |
+| FD2 | in `DamageTypeWorkOf`, the draw `Open[0]` | 6, 5, 1: FD2, on the draws and the spread; FD1 and FD4 compare with the same function |
+| FD3 | in `DamageTypeWorkOf`, `if (false && !Open.Contains(Chosen))` | 6, 5, 1: FD3, on "a type no sword can carry" |
+| FD4 | in `CraftDamageType`, a change adding the type | 6, 5, 1: FD4, on War replaced in its place; the others infuse |
+| FD5 | in `DamageTypeActionsFor`, the creation weapon not left out | 6, 5, 1: FD5, on "the weapon made at creation: none" |
+| FD6 | in `CraftDamageType`, `bCrosses = false && ...` | 6, 5, 1: FD6, on "infusing Demonic asks first" |
+
+---
+
 ## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
 
 **COMPILED AND TESTED SINCE: window power-score-w2 passed on `5b6042222`**, with FC1 to FC5 PROVED; see the window record in the #2824 slice a entry below ("The window, power-score, 2026-11-22"), which has its figures and its two earlier attempts. The original note follows.

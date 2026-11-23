@@ -505,6 +505,48 @@ FString FCataclysmPlayLoopLog::ForgeAffixChangeLine(bool bShift, int32 AffixNumb
 						   DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
+												   const FString& FromType, const FString& ToType, int64 Gold,
+												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,
+												   int32 DayTo)
+{
+	// THREE PLAIN RETURNS, EACH FORMAT ONE LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can
+	// read each one.
+	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
+	const FString Paid = ACataclysmDroppedItem::GoldName(Gold);
+	if (Craft == ECataclysmForgeDamageTypeCraft::Change)
+	{
+		return FString::Printf(TEXT("changed %s on %s to %s for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   *FromType, *ItemName, *ToType, *Paid, ResidueBefore, ResidueAfter, Days, Plural, DayFrom,
+							   DayTo);
+	}
+	if (Craft == ECataclysmForgeDamageTypeCraft::InfuseSpecific)
+	{
+		return FString::Printf(TEXT("infused %s with %s, chosen, for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   *ItemName, *ToType, *Paid, ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+	}
+	return FString::Printf(TEXT("infused %s with %s, drawn, for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   *ItemName, *ToType, *Paid, ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+}
+
+FString FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine(bool bImprint, const FString& ItemName, const FString& Positive,
+													   const FString& Drawback, const FString& GivenUpOrReplaced,
+													   int64 Gold, int32 ResidueBefore, int32 ResidueAfter, int32 Days,
+													   int32 DayFrom, int32 DayTo)
+{
+	// TWO PLAIN RETURNS, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can read both formats.
+	const TCHAR* Plural = Days == 1 ? TEXT("") : TEXT("s");
+	if (bImprint)
+	{
+		return FString::Printf(TEXT("imprinted %s, drawback %s, on %s, giving up %s, for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+							   *Positive, *Drawback, *ItemName, *GivenUpOrReplaced, *ACataclysmDroppedItem::GoldName(Gold),
+							   ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+	}
+	return FString::Printf(TEXT("changed the drawback of %s on %s from %s to %s for %s; residue %d to %d; it cost %d day%s, day %d to day %d"),
+						   *Positive, *ItemName, *GivenUpOrReplaced, *Drawback, *ACataclysmDroppedItem::GoldName(Gold),
+						   ResidueBefore, ResidueAfter, Days, Plural, DayFrom, DayTo);
+}
+
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
 {
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);

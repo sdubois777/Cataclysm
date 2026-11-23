@@ -9,6 +9,7 @@ class UCataclysmEquipmentComponent;
 struct FCataclysmDayReport;
 struct FCataclysmItem;
 enum class ECataclysmForgeAffixCraft : uint8;
+enum class ECataclysmForgeDamageTypeCraft : uint8;
 
 /**
  * THE PLAY LOOP'S LOG: one plain line at each step of the main loop, so that one press of Play leaves the whole loop in
@@ -284,6 +285,30 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeAffixChangeLine(bool bShift, int32 AffixNumber, const FString& FromName, const FString& ToName,
 										const FString& ItemName, int64 Gold, int32 Tier, const FString& Rarity,
 										int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
+	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;
+	 * residue 40 to 50; it cost 1 day, day 20 to day 21", "infused Quality Sword with Death, chosen, for 2,250 gold;
+	 * ...", or "changed War on Quality Sword to Death for 450 gold; ...". Issue #47, slice F4. Said by
+	 * `UCataclysmForgeCraft::CraftDamageType`, after the craft and the days.
+	 */
+	static FString ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
+									   const FString& FromType, const FString& ToType, int64 Gold, int32 ResidueBefore,
+									   int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo);
+
+	/**
+	 * An enchantment imprinted or an enchantment's drawback changed at the forge, the item named as it was before and
+	 * each half as the tool tip reads it, the drawback without its "Drawback: " word: "imprinted Gain 20% increased
+	 * health, drawback You have no armor, on Masterful Helm of Warding, giving up +42 to maximum health, for 2,300 gold;
+	 * residue 180 to 185; it cost 3 days, day 20 to day 23", or "changed the drawback of Gain 20% increased health on
+	 * Legendary Helm of Warding from You have no armor to 80% of your health is reserved for 8,225 gold; residue 185 to
+	 * 285; it cost 8 days, day 23 to day 31". Issue #47, slice F3. Said by `UCataclysmForgeCraft::DoEnchantmentWork`
+	 * for `Imprint` and `ChangeNegative`, after the craft and the days.
+	 */
+	static FString ForgeEnchantmentWorkLine(bool bImprint, const FString& ItemName, const FString& Positive,
+											const FString& Drawback, const FString& GivenUpOrReplaced, int64 Gold,
+											int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,
+											int32 DayTo);
 
 	/**
 	 * A piece of gear picked up off a floor: "picked up Quality Torc of Warding, +0". The coordinating session's ruling

@@ -984,12 +984,47 @@ public:
 	 * This is NOT the design's unique-per-character rule, which spans all worn
 	 * gear and is enforced at equip time; that is still unbuilt.
 	 *
+	 * THE PAIRS ALREADY ON THE PIECE COUNT AS TAKEN, when `AlreadyOn` is given:
+	 * the Cataclysmic Forge's Imprint Enchantment draws one more pair onto a
+	 * piece that holds some, and neither half of the new pair may repeat one of
+	 * theirs (issue #47, slice F3). A drop passes none, so it draws exactly what
+	 * it drew before: the taken sets start empty either way, and nothing here
+	 * reads the stream to fill them.
+	 *
+	 * @param AlreadyOn  the pairs the piece holds now, or null for a new piece
 	 * @return false when a table is missing or no band can fill the count
 	 */
 	static bool RollEnchantments(
 		const UDataTable* PositiveTable, const UDataTable* NegativeTable,
 		const FString& Slot, int32 Count, FRandomStream& Stream,
-		TArray<FCataclysmRolledEnchantment>& OutRolled);
+		TArray<FCataclysmRolledEnchantment>& OutRolled,
+		const TArray<FCataclysmRolledEnchantment>* AlreadyOn = nullptr);
+
+	/**
+	 * A new negative for the pair `Pair` of a piece, under the weight rule the drop draws by. Issue #47, slice F3:
+	 * the Cataclysmic Forge's Change Enchantment Negative, ruled by the coordinating session on 2026-11-22 (the survey's
+	 * Q17 and Q18).
+	 *
+	 * THE SAME RULE AS `RollEnchantments`' DRAWBACK: the weight drawn from weight 1 up to the kept positive's weight,
+	 * renormalised over the bands that can supply one (`DrawEnchantmentWeight`), then a row drawn evenly inside the band
+	 * (`DrawEnchantmentInBand`), so the new negative is never milder than the positive it pays for ("A NEGATIVE IS NEVER
+	 * MILDER THAN THE POSITIVE IT IS PAIRED WITH", the owner, 2026-09-07). It may be harsher, as a drop's may.
+	 *
+	 * NEVER THE SAME NEGATIVE AGAIN (Q18), AND NEVER ONE THE PIECE CARRIES ELSEWHERE: every negative on the piece,
+	 * the one replaced included, counts as taken, so neither half repeats on one piece, as `RollEnchantments` keeps.
+	 *
+	 * A NEW ROLL, from a stream of its own seeded from where `Stream` has got to, as `RollEnchantments` seeds its value
+	 * stream. The positive and its roll are kept as they were.
+	 *
+	 * NOT FOR A SET'S PAIR: a set carries its own negative, "paired and guaranteed", and never draws one. This returns
+	 * false for a positive that is a set's row; `UCataclysmForge::ChangeNegativeOf` refuses it first.
+	 *
+	 * @return false when a table is missing, there is no such pair, its positive is not in the table or is a set's, or
+	 *         no untaken negative is left at or below its weight
+	 */
+	static bool DrawReplacementNegative(const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+										const FString& Slot, const TArray<FCataclysmRolledEnchantment>& OnThePiece,
+										int32 Pair, FRandomStream& Stream, FCataclysmRolledEnchantment& OutPair);
 
 	/**
 	 * Roll one whole item for a gear slot at a difficulty tier.

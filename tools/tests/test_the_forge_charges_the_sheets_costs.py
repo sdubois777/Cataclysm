@@ -118,11 +118,20 @@ def test_both_combines_read_one_price_and_it_doubles_by_rung() -> None:
     ("FCataclysmForgeGemCombine UCataclysmForge::GemCombineOf(",
      "Out.Gold = CombineGoldFor(static_cast<int32>(Rarity), DifficultyTier);"),
     ("FCataclysmForgeAffixWork UCataclysmForge::AffixWorkOf(", "Out.Gold = GoldFor(BaseGold, Item.Residue, DifficultyTier);"),
+    # ISSUE #47 SLICE F3: Imprint Enchantment and Change Enchantment Negative.
+    ("FCataclysmForgeEnchantmentWork UCataclysmForge::ImprintOf(",
+     "Out.Gold = GoldFor(BaseGoldOf(ImprintOperationRow, BaseGoldFor(ImprintBaseDays)), Item.Residue, DifficultyTier);"),
+    ("FCataclysmForgeEnchantmentWork UCataclysmForge::ChangeNegativeOf(",
+     "Out.Gold = GoldFor(BaseGoldOf(ChangeNegativeOperationRow, BaseGoldFor(ChangeNegativeBaseDays)), Item.Residue, "
+     "DifficultyTier);"),
     ("FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(",
      "Out.Gold = GoldFor(BaseGoldOf(DeterministicAffixOperationRow, GoldPerCraftDay), Item.Residue, DifficultyTier);"),
     ("FCataclysmForgeAffixChange UCataclysmForge::AffixShiftOf(",
      "Out.Gold = GoldFor(BaseGoldOf(AffixShiftingOperationRow, BaseGoldFor(AffixShiftingBaseDays)), Item.Residue, "
      "DifficultyTier);"),
+    ("FCataclysmForgeDamageTypeWork UCataclysmForge::DamageTypeWorkOf(",
+     "Out.Gold = GoldFor(BaseGoldOf(InfuseSpecificDamageTypeOperationRow, BaseGoldFor(InfuseSpecificDamageTypeBaseDays)), "
+     "Item.Residue, DifficultyTier);"),
 ])
 def test_every_built_craft_prices_itself_and_refuses_too_little_gold(signature: str, priced: str) -> None:
     text = rule(signature)
@@ -144,7 +153,9 @@ def test_an_upgrades_days_are_the_level_it_reaches() -> None:
     "bool UCataclysmForgeCraft::CombineGems(",
     "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(",
     "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(",
+    "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
     "ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(",
+    "ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(",
 ])
 def test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account(signature: str) -> None:
     text = squeeze(body(code(CRAFT_CPP), signature, CRAFT_CPP.name))
@@ -183,7 +194,15 @@ def test_the_sheets_base_gold_is_what_the_forge_falls_back_on() -> None:
                 "UpgradeAffixTierOperationRow": constant("GoldPerCraftDay"),
                 # ISSUE #47 SLICE F2: an addition at one day's price, the sheet's flat 250; a shift's 1 base day.
                 "DeterministicAffixOperationRow": constant("GoldPerCraftDay"),
-                "AffixShiftingOperationRow": constant("GoldPerCraftDay") * constant("AffixShiftingBaseDays")}
+                "AffixShiftingOperationRow": constant("GoldPerCraftDay") * constant("AffixShiftingBaseDays"),
+                # ISSUE #47 SLICE F4: each at `BaseGoldFor` of its base days, 1, 5 and 0 (one day's price).
+                "InfuseRandomDamageTypeOperationRow": constant("GoldPerCraftDay"),
+                "InfuseSpecificDamageTypeOperationRow": constant("GoldPerCraftDay")
+                * constant("InfuseSpecificDamageTypeBaseDays"),
+                "ChangeDamageTypeOperationRow": constant("GoldPerCraftDay"),
+                # ISSUE #47 SLICE F3: 2 and 7 base days, so 500 and 1,750.
+                "ImprintOperationRow": constant("GoldPerCraftDay") * constant("ImprintBaseDays"),
+                "ChangeNegativeOperationRow": constant("GoldPerCraftDay") * constant("ChangeNegativeBaseDays")}
     assert set(named) == set(expected), f"the forge names the operation rows {sorted(named)}"
     for field, figure in expected.items():
         row = rows.get(named[field])
