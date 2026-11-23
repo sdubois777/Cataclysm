@@ -125,6 +125,21 @@ those two files and the screen's was given a name no other file in the module us
 player-facing text changed. Three proof break texts that named the old helpers were updated (LP2, LP5, LSP6); all 17
 anchors match once.
 
+**LF-W1, THE THIRD ATTEMPT, 19:14 TO 19:36, on `07e40686f`: FAILED, ONE TEST.**
+- The three compiles succeeded with no warning.
+- **The editor steps** committed exactly the six registered assets as `7cb5e3288`, each an Unreal package stored
+  through Git LFS. The input run rewrote 26 files; 21 were restored and 5 kept. The interface run made
+  `WBP_LootFilter` and re-saved nothing.
+- Groups alone: 8 of 9 passed.
+- The whole suite: "5322 tests performed, 5321 succeeded, 1 failed: ConfigListsEverySlotAndNativeAction"; 57
+  skipped halves; "861 written and deleted, 0 left behind"; "Declared: 5322 ... gap 0".
+- Python alongside: "8215 passed, 10 skipped"; ruff clean.
+- No proof ran, by the rule that proofs run only when every group passed.
+
+**The failure was a test this slice had not updated**, not the code: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+(`CataclysmInputTests.cpp`) names every native input action and checks the config "lists no others". It expected
+14 and found 16, the two new actions, which are the two registered assets. They are added to its list.
+
 Added to LF1's registration (the entry below), on that base, 5307 tests:
 
 | Step | Registered for LF1 and LF2 together |
