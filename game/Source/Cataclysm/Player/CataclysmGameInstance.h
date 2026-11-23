@@ -6,6 +6,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/GameInstance.h"
+#include "Items/CataclysmLootFilterPreferences.h"
 #include "Save/CataclysmSavePartition.h"
 #include "CataclysmGameInstance.generated.h"
 
@@ -524,6 +525,27 @@ public:
 	 * from the load, which the line says nothing to contradict -- it reports what this session picked up.
 	 */
 	int64 GoldPickedUpThisWalk = 0;
+
+	/**
+	 * The player's loot filters and which is active, read from the preferences file the first time they are asked for.
+	 * Issue #2846, slice LF2. The owner's ruling O4 of 2026-11-22: a file of its own on this machine, outside the save
+	 * records (`UCataclysmLootFilterStore::FilePath`). A new player, with no file, has "Hide worse than worn"
+	 * active, the owner's default, and no filters of their own.
+	 */
+	FCataclysmLootFilterPreferences& LootFilterPreferences();
+
+	/** Writes the preferences to their file. The loot filter screen calls it after every change it makes. */
+	void SaveLootFilterPreferences();
+
+	/** The active loot filter of the world's game instance, or the default filter when there is none (a test world). */
+	static FCataclysmLootFilter ActiveLootFilterIn(const UObject* WorldContext);
+
+private:
+	/** See `LootFilterPreferences`. */
+	FCataclysmLootFilterPreferences LootFilters;
+	bool bLootFiltersRead = false;
+
+public:
 
 	// ----------------------------------------------------------------------
 	// The empire upgrade tree -- issue #2741, slice 1b

@@ -2,6 +2,373 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1
+(the entry below), by the coordinating session's instruction of 2026-11-22. LF1 and LF2 share one window, after the
+owner has played the build without them. Issue [#2846](https://github.com/sdubois777/Cataclysm/issues/2846).
+
+### The rulings it carries
+
+The owner's O4 of 2026-11-22, "Own preferences file (Recommended)": one file on this machine, outside the save records,
+so no save version moves. The coordinating session's numbers, each a judgement: N1, 75 rules; N3, 10 saved filters; N4,
+the 12 colours; N5, the three sizes. The coordinating session's conditions: the owner's rule that every system has a
+basic screen, "a list of filters, a list of rules, and a rule editor with the conditions and actions is enough for a
+first version", and **the three built-in names must be impossible to overwrite.**
+
+### How the three built-in names are protected
+
+All three ways are needed; each closes a route the other two leave open.
+
+1. **They are not stored.** The file holds only the player's filters. A built-in is made from code whenever it is asked
+   for (`UCataclysmLootFilterRules::BuiltInNamed`), and `UCataclysmLootFilterStore::Find` looks built-ins up first, so
+   nothing written to the file can change one or stand in for one.
+2. **Every change refuses a built-in.** Adding, removing, moving or replacing a rule, renaming and deleting all go
+   through one function, `EditableFilter`, which refuses a built-in first, with "The built-in filters cannot be
+   changed. Copy one to make a filter of your own." The screen's editor checks the same before it edits. A built-in can
+   be made the one in use and can be copied.
+3. **No player filter can take a built-in's name**, in any case and with any spaces round it: a rename to one is
+   refused ("Another filter already has that name."), and a file edited by hand to hold one has that filter renamed
+   "My filter N" when it is read (`Sanitised`), as a duplicate, empty or over-long name is.
+
+### Judgements of this slice
+
+- **The file is `Saved/Preferences/LootFilters.json`** under the project, JSON written by the engine's converter from
+  the same USTRUCTs the game uses. Not a save slot, so no save record names it.
+- **A name is at most 40 characters**, so it fits the screen's list. New filters and copies are named "My filter N",
+  the smallest N not taken.
+- **Every change is written to the file at once**, not on closing the screen, so a crash loses nothing.
+- **A file that does not read is a new player's preferences**: the owner's default in use and no filters of their own.
+  A file read with more than 10 filters keeps the first 10, and a filter with more than 75 rules keeps its first 75.
+- **Deleting the filter in use puts the owner's default in use.** Renaming it keeps it in use under its new name.
+- **The screen opens on L**, free in both control schemes ("L" for loot), and on `Cataclysm.EditLootFilters`, the
+  skill-choice screen's reason for a command beside its key. `Cataclysm.LootFilter <name>` now makes any filter active,
+  a player's included, and writes the file.
+- **The editor is buttons, one per choice**: toggles for each rarity, slot and damage type and for "below what is
+  worn"; cycles for the action, the kind of drop and the enchantment; steps for the levels, tiers, sockets, counts,
+  colours and size; and an affix chooser that steps through the Affixes table and adds or removes the affix shown. The
+  restyle's buttons are offered only to a Restyle rule.
+
+### What it does
+
+- **`UCataclysmLootFilterStore`** (`game/Source/Cataclysm/Items/CataclysmLootFilterPreferences.h`, `.cpp`): the
+  struct the file holds (`Version`, `Active`, `Filters`) and every change the screen makes, each answering whether it
+  was made and, when not, the sentence the screen shows; `Sanitised`, `ToJson`, `FromJson`, `FilePath`, `Load`, `Save`
+  and `NewPlayer`.
+- **`UCataclysmLootFilterLayout`** (`game/Source/Cataclysm/Interface/CataclysmLootFilterLayout.h`, `.cpp`): the filter
+  line, the rule line ("1. Hide gear: Everyday or Quality; below what is worn"), `EditRule` (what each editor button
+  does to a rule) and `EditorButtonsFor` (every button the editor shows, with its label).
+- **`UCataclysmLootFilterWidget`** (`game/Source/Cataclysm/Interface/CataclysmLootFilterWidget.h`, `.cpp`): the screen.
+  Every click goes through `Press` with the command its button carries, so a headless test presses the same commands.
+- **`WBP_LootFilter`**, written by `make_loot_filter` in `tools/generate_interface_assets.py`: three scroll boxes side by
+  side, the name box and the refusal line.
+- **The game instance** holds the preferences, read from the file the first time they are asked for, and writes them on
+  every change (`LootFilterPreferences`, `SaveLootFilterPreferences`). **LF1's `ActiveLootFilter` field is gone**: the
+  filter in use is the preferences' active one, or the owner's default for a player with no file.
+- **The controller** opens and closes the screen (`ToggleLootFilterScreen`, the L key's `Input_ToggleLootFilterScreen`),
+  counts it among the full screens, and does not pause. A new input action `IA_ToggleLootFilter` on L in both schemes;
+  `game/README.md` counts twenty-two input actions; the design document's two control tables gain the row.
+- **`docs/Cataclysm_GDD_v2.md`** gains a paragraph on the screen and the file after LF1's three.
+- **No save record moves.**
+
+### Tests
+
+**A new Unreal group, `Cataclysm.LootFilterScreen.`, 7 tests**, in `CataclysmLootFilterScreenTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| LS1 | `TheBuiltInNamesCannotBeTakenChangedOrDeleted` | for each of the three: no rule added, removed, moved or replaced, no rename, no delete, each with the built-in sentence; renames to " strict " and "EVERYTHING" refused; a stored "Strict" renamed when read while "Strict" still finds the built-in's two rules; CONTROL: a rename to "My own" and a copy of Strict are done |
+| LS2 | `TheFileKeepsThePlayersFiltersAndTheActiveOne` | a restyle filter, active, written to a test file and read back whole; no built-in's rules in the file; no file and garbled text read as a new player; the real path ends `Preferences/LootFilters.json` |
+| LS3 | `ReadingAFileHoldsEveryLimit` | twelve filters read as ten; 80 rules as 75; empty, duplicate and 41-character names renamed; an active name that names nothing becomes the default |
+| LS4 | `NewCopyRenameDeleteAndTheFilterInUse` | "My filter 1", a copy of Strict as "My filter 2" with its two rules; renamed while active stays active; deleted, the default is active; the eleventh filter and copy refused |
+| LS5 | `RulesAreAddedMovedReplacedAndRemoved` | add, replace, move up, nothing above the first, remove; the 76th rule refused |
+| LS6 | `TheEditorsButtonsChangeEveryFieldWithinItsBounds` | every command: toggles add and remove, cycles wrap, steps stop, the lowest never passes the highest; unknown commands refused; restyle buttons only on a Restyle rule; the rule and filter lines word for word |
+| LS7 | `TheScreenPressesThroughTheModelAndShowsRefusals` | a screen: new filter, add a rule, the Action button, use it; on Everything "Add a rule" and on Strict an editor button refused with the built-in sentence on the refusal line; a rename to "strict" refused and to "Mine" done, still in use |
+
+**Python:** `test_the_loot_filter_preferences_protect_the_built_ins.py`, 4 checks: every change function asks
+`EditableFilter`, which refuses a built-in before it looks; reading the file sanitises it; the screen refuses a built-in
+before editing and writes after every change; no file under `game/Source/Cataclysm/Save` names a loot filter.
+`test_the_loot_filter_screen_is_generated_with_its_bindings.py`, 3 checks, the forge screen's. LF1's
+`test_the_loot_filter_is_wired_in.py` now checks the default through the preferences, not the removed field.
+
+**Python suite at `253b5ae31`**: "8167 passed, 10 skipped in 407.23s"; JUnit 8177 tests, 0 failures, 0 errors, 10
+skipped; ruff "All checks passed!". **Python guard proofs, in a `git archive` copy of `253b5ae31`: 2 of 2 PROVED**:
+PP1, `SetRule` reaching the player's filter without `EditableFilter`, failed
+`test_every_change_asks_the_one_check_that_refuses_a_built_in`; PP2, `FromJson` keeping what it read without
+`Sanitised`, failed `test_reading_the_file_sanitises_it`; each passed restored.
+
+### Registered for the shared window
+
+**RE-TAKEN AT THE TURN, 2026-11-22, by the coordinating session's GO for window lf-w1.** LF1 and LF2 were rebased onto
+development `52b66e016` (#2851, Overwhelm and forge slice F5, merged). The base's counts are window ow-f5-w1's measured
+whole suite, `ow_suite_engine_a3984536.log` in the gems session's worktree: "5307 tests performed, 5307 succeeded,
+0 failed", 57 skipped halves, "861 written and deleted, 0 left behind". That log's tested head `a39845363` has the
+same game/ as `52b66e016`: `git diff a39845363 52b66e016` names `docs/DECISIONS.md` only. Each group alone below was
+counted in that log with a literal match, and none moved from LF1's registration. The rebase changed nothing outside
+this log: the branch's diff from its base has the same patch id before and after (`9ad032f61fe4`).
+
+**LF-W1'S FIRST ATTEMPT, 18:52, DID NOT BUILD, AND NO TEST RAN.** Unreal Header Tool refused two classes, because
+each shared its engine name with a struct: "Class 'UCataclysmLootFilter' shares engine name 'CataclysmLootFilter'
+with struct 'FCataclysmLootFilter'", and the same for `UCataclysmLootFilterPreferences` and
+`FCataclysmLootFilterPreferences`. A U class and an F struct are the same engine name with the prefix taken off.
+**The two classes were renamed `UCataclysmLootFilterRules` and `UCataclysmLootFilterStore`**, everywhere, whole names
+only. The structs keep their names, and so does every file, since a file may hold more than one type. Nothing else
+changed: 142 renames in 16 files, the loot filter's 11 Python checks passing, and all 17 proof anchors still
+matching once.
+
+**LF-W1'S SECOND ATTEMPT, 19:05, DID NOT BUILD EITHER, AND NO TEST RAN.** 52 files compiled; then the compiler
+stopped on `RarityCount`, defined in an anonymous namespace in both `CataclysmLootFilter.cpp` and
+`CataclysmLootFilterLayout.cpp` (C2374, "redefinition; multiple initialization"). Unreal compiles several .cpp files
+as one unit, so two anonymous namespaces in one unit are one namespace. **Every helper in an anonymous namespace in
+those two files and the screen's was given a name no other file in the module uses** (`RulesRarityCount`,
+`EditorRarityCount`, `StepWithin`, `EditorButton` and ten more; `Step` was also in `CataclysmForgeCraft.cpp`'s). No
+player-facing text changed. Three proof break texts that named the old helpers were updated (LP2, LP5, LSP6); all 17
+anchors match once.
+
+**LF-W1, THE THIRD ATTEMPT, 19:14 TO 19:36, on `07e40686f`: FAILED, ONE TEST.**
+- The three compiles succeeded with no warning.
+- **The editor steps** committed exactly the six registered assets as `7cb5e3288`, each an Unreal package stored
+  through Git LFS. The input run rewrote 26 files; 21 were restored and 5 kept. The interface run made
+  `WBP_LootFilter` and re-saved nothing.
+- Groups alone: 8 of 9 passed.
+- The whole suite: "5322 tests performed, 5321 succeeded, 1 failed: ConfigListsEverySlotAndNativeAction"; 57
+  skipped halves; "861 written and deleted, 0 left behind"; "Declared: 5322 ... gap 0".
+- Python alongside: "8215 passed, 10 skipped"; ruff clean.
+- No proof ran, by the rule that proofs run only when every group passed.
+
+**The failure was a test this slice had not updated**, not the code: `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`
+(`CataclysmInputTests.cpp`) names every native input action and checks the config "lists no others". It expected
+14 and found 16, the two new actions, which are the two registered assets. They are added to its list.
+
+**LF-W2, 19:42 TO 20:19, on `ad8aa059b`: PASSED.** Lock `lf-w2`, taken and released. Run with no separate compiles,
+by the coordinating session's GO, because only a test file changed.
+- Build: "4 actions, 1 file compiled: Module.Cataclysm.32.cpp".
+- The editor steps were not run again: `7cb5e3288` is an ancestor of the tested head.
+- Groups alone: 9 of 9 passed.
+- Whole suite: "5322 tests performed, 5322 succeeded, 0 failed. 57 skipped part of what they check"; "Test saves:
+  861 written and deleted, 0 left behind"; "Declared: 5322 tests in the tree at ad8aa059b; 5322 performed, gap 0".
+  Memory: peak_used_virtual_mb=9139.
+- Python alongside: "8215 passed, 10 skipped in 352.38s"; JUnit 8225 tests, 0 failures, 0 errors. ruff "All
+  checks passed!".
+- **All fifteen Unreal guard proofs PROVED, each failing exactly the tests predicted**, the source hash the same
+  after every one, and every restored half passing its whole group:
+  - LP1 failed LF1, LF2, LF3 and LF7 (8 performed, 4 succeeded);
+  - LP2 failed LF2 and LF3;
+  - LP3 to LP8 each failed its own test (LF3, LF4, LF5, LF6, LF7, LF8);
+  - LSP1 failed LS1 and LS7, LSP2 LS1 and LS3, and LSP4 LS4 and LS7;
+  - LSP3, LSP5, LSP6 and LSP7 each failed its own test (LS4, LS5, LS6, LS2).
+
+**WHERE A NEW INPUT ACTION MUST BE ADDED**, the coordinating session's request after lf-w1, because the Unreal list was
+the third place and was missed:
+1. `tools/generate_input_assets.py`: `NATIVE_ACTIONS` and the key in both `MOUSE_MAPPINGS` and `KEYBOARD_MAPPINGS`;
+2. `CataclysmInputActionNames` in `game/Source/Cataclysm/Input/CataclysmInputConfig.h`, which the Python check
+   `test_native_input_actions_match_the_engine.py` holds against the generator;
+3. **the `NativeNames` list in `Cataclysm.Input.ConfigListsEverySlotAndNativeAction`**
+   (`game/Source/Cataclysm/Tests/CataclysmInputTests.cpp`), which checks the generated config lists no others. No
+   Python check reads it, so only an Unreal run finds it missing;
+4. the design document's two control tables, with `test_controls_table_matches_the_input_assets.py`'s key and phrase
+   maps;
+5. `game/README.md`'s count of input actions, which `test_game_readme_is_true.py` holds.
+
+Added to LF1's registration (the entry below), on that base, 5307 tests:
+
+| Step | Registered for LF1 and LF2 together |
+| :-- | :-- |
+| One build | both slices compiled |
+| **Editor step 1** | `tools/generate_input_assets.py`: commit only `IA_RevealDrops.uasset`, `IA_ToggleLootFilter.uasset`, `IMC_MouseMovement.uasset`, `IMC_KeyboardMovement.uasset` and the input config asset |
+| **Editor step 2** | `tools/generate_interface_assets.py`: commit only `WBP_LootFilter.uasset`; every other screen is left alone when it exists |
+| Each group alone, first | `Cataclysm.LootFilter.` 8, `Cataclysm.LootFilterScreen.` 7, then LF1's list |
+| The whole suite | 5322 performed, 5322 succeeded, 0 failed (5307 + 8 + 7); 57 skipped halves; 861 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to `Cataclysm.LootFilterScreen.` with its trailing dot. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| LSP1 | in `EditableFilter`, the built-in refusal never taken (`false &&`) | 7 performed, 5 succeeded, 2 failed: LS1 (the built-in sentence) and LS7 (the refusal line on Everything) |
+| LSP2 | in `Sanitised`, a taken name never replaced (`NameTaken(Out, Name)` read as `false`) | 7, 5, 2: LS1 (the stored "Strict") and LS3 (the duplicate) |
+| LSP3 | the filter limit `>=` read as `>`, in both places it stands (`NewFilter` and `CopyFilter`) | 7, 6, 1: LS4 (the eleventh filter and copy) |
+| LSP4 | `if (bWasActive)` read as `if (false && bWasActive)`, in both places it stands (`RenameFilter` and `DeleteFilter`) | 7, 5, 2: LS4 and LS7 (a renamed filter in use); a deleted one still leaves the default in use, because `ActiveFilter` falls back to it |
+| LSP5 | in `AddRule`, the limit `>=` read as `>` | 7, 6, 1: LS5 |
+| LSP6 | in `EditRule`, the lowest gear level stepped to 10 rather than to the highest | 7, 6, 1: LS6 |
+| LSP7 | in `Load`, the read answered false whatever it read | 7, 6, 1: LS2 |
+
+---
+
+## 2026-11-22 — The loot filter: rules hide or restyle a drop's name, a new player's filter hides gear worse than what is worn in its slot, and Alt shows what is hidden (#2846, slice LF1)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, cut from development
+`3cbacdac4`. The owner asked on 2026-11-22 to play a build of everything else before the loot filter work starts, so
+this slice does not merge, and is not run in the engine, until the coordinating session says so. Issue
+[#2846](https://github.com/sdubois777/Cataclysm/issues/2846).
+
+### Corrected before it was built: an item has no level of its own
+
+The survey's question O1, and the owner's chosen option, said "gear level (also relative to your level)" and listed
+"upgrade level" separately. **In this game "gear level" is the +0 to +10 upgrade level** (`FCataclysmItem::GearLevel`;
+the design document: "Gear Level is the +1 to +10 upgrade level from section VI"), and there is no item level and no
+required level. So "relative to your level" had nothing to compare, and "upgrade level" named the same condition twice.
+The survey copied the relative condition from Last Epoch, where items have a level, without checking that this game's
+do. The coordinating session ruled (a), 2026-11-22, a judgement: the relative condition becomes **"rarity at least N
+rungs below the current tier's rarity"**, the rarity the design's reference character wears at that difficulty tier
+(section IV's tier table, Everyday at tier 1 through Cataclysmic at tier 8). It replaces the phrase "relative to your
+level"; gear level is counted once.
+
+### The rulings
+
+The owner, 2026-11-22, chose the survey's recommendation on every question:
+
+| | The owner's choice, verbatim | What it settles |
+| :-- | :-- | :-- |
+| O1, O2 | "Full set (Recommended)": "Match: rarity, item kind or slot, gear level (also relative to your level), upgrade level, specific affixes with a minimum tier and count, having an enchantment, socket count, weapon damage type, material tier, gem rarity. Do: show, hide, or restyle the name's text colour, background colour and size. No sound or light beam yet (no assets), and the border stays the rarity marker you chose." | what a rule matches and does, as corrected above |
+| O3 | "Yes, hold Alt to show (Recommended)" | a hidden drop stays on the floor; holding Alt shows it, and it can be taken |
+| O4 | "Own preferences file (Recommended)" | filters are kept on this machine, outside the save records (slice LF2) |
+| O5 | as the design states | Auto-Loot sells hidden items for 25% of their gold value, or turns them into materials |
+| O6 | "Build selling and dismantling first (Recommended)" | selling to an NPC (#48) and dismantling at the Forge ([#2848](https://github.com/sdubois777/Cataclysm/issues/2848)) come first, as player actions; Auto-Loot (slice LF3) then applies them |
+
+The numbers, ruled by the coordinating session as recommended, each a JUDGEMENT: N1, 75 rules (Last Epoch's limit);
+N2, three built-in filters; N3, 10 saved filters (slice LF2); N4, the eight rarity colours and four more; N5, sizes
+1.0, 1.25 and 1.5; N6, Left Alt, held (Path of Exile's key).
+
+**THE OWNER'S DEFAULT, 2026-11-22, verbatim:** "What if we hid everything that was below the tier of the currently
+equipped slot? So for instance, if you had a superb helm, it would hide trash and quality helms. Rings would be the only
+exception as it would have to be based off your lowest ring tier." ("trash" is Everyday; "tier" here is rarity.) **It
+supersedes N7** ("Regular hides Everyday and Quality gear more than 10 levels below the character"), which had nothing
+to refer to, **and the use of ruling (a) as the default**: the tier-relative condition stays, for rules a player writes,
+and the "Regular" built-in was dropped before it was written. The three built-ins are "Everything", "Hide worse than
+worn", the default, and "Strict".
+
+The coordinating session's settlements of the owner's rule, each a JUDGEMENT, told to the owner:
+
+- only strictly lower rarities are hidden; the same rarity shows;
+- an empty slot hides nothing for that slot;
+- weapons work as rings do: with two weapons held the lower rarity decides, and one two-handed weapon fills both hands,
+  so its rarity decides. The equipment stores a two-handed weapon in one weapon slot and leaves the other empty and
+  blocked (`UCataclysmEquipmentComponent::TwoHandedOccupiesBothWeaponSlots`), so only the slot holding it is read;
+- rarity only: no upgrade level and no affixes;
+- materials, gems and gold are never hidden by the default;
+- the rule reads what is worn now. **No hook is needed for a change of gear**: the heads-up display asks the filter
+  every frame, against the equipment as it is that frame (`UCataclysmLootFilterRules::ContextOf`), so a change of gear
+  changes what is hidden on the next frame.
+
+Two judgements of this slice:
+
+- **One empty ring slot is enough to hide no ring**, as one empty hand is for weapons: "the lowest ring worn" with a
+  slot empty is nothing, and an empty slot hides nothing.
+- **"Strict" also hides what the default hides.** Otherwise a character wearing Legendary rings would see Masterful
+  rings under Strict that the default hides, and Strict would be the less strict of the two.
+
+And one judgement of the survey that the ruling did not change: **a crafting material, gold or gems are never hidden**,
+by any rule. They come to the character within fifteen metres whether named or not, so hiding one would remove only
+the sight of it being collected. A Hide rule that matches one shows it unstyled; a restyle applies.
+
+### What the genre settles, and the sources
+
+Re-fetched before this entry was written; claims that rested only on a search summary and could not be read on a page
+are left out.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile | [pathofexile.com/item-filter/about](https://www.pathofexile.com/item-filter/about), the official reference | "If there are multiple conditions in a block then all of them must be matched"; `Continue` lets matching go past a block, so it otherwise stops at the first match. Actions: text, border and background colour, font size 1 to 45, sounds, a minimap icon, a beam |
+| Path of Exile | [poedb.tw/cn/Item_Filter](https://poedb.tw/cn/Item_Filter) (Chinese, translated) | hold Alt to show all hidden items; an item set to Hide cannot be clicked unless it is first shown with Alt |
+| Last Epoch | [maxroll.gg loot filter guide](https://maxroll.gg/last-epoch/resources/loot-filter-guide) (updated 2026-04-02) | "all conditions must be met in order for a rule to apply"; "Rules that are higher on the filter take priority"; Show, Hide and Recolor; "Emphasize" enlarges the nameplate; "combine up to 75 rules"; "Items that are filtered out will still drop, but their nameplates will no longer show" |
+| Torchlight II | [runicgames.com, Pets of Torchlight II](https://www.runicgames.com/blog/2012/03/30/pets-of-torchlight-ii/); [gamebanshee.com Barter](https://www.gamebanshee.com/torchlight/skills/barter.php) | the pet will "sell your unwanted inventory in town"; Barter "Increases the selling price", and "Your pet also benefits": the only automatic selling found, and at the vendor's price |
+
+**What the research settles:** every condition in a rule must match, the highest matching rule decides, a hidden drop
+stays on the floor, and Alt shows it. **What it does not settle, and is this game's own:** the owner's default, which
+no game read uses; that quantities are never hidden; the palette and the sizes.
+
+### What it does
+
+- **`UCataclysmLootFilterRules`** (`game/Source/Cataclysm/Items/CataclysmLootFilter.h`, `.cpp`), static functions over plain
+  values: `Matches` (one rule), `VerdictFor` (a filter: the first matching rule of the first 75 decides; none matched
+  shows the drop as it always was), `WornRaritiesOf` (the rarity worn in each base slot, rings and weapons at their
+  lowest, a two-hander alone), `ContextOf` (a character's difficulty tier and worn rarities), `FactsOf` (a drop's
+  kind, rarity, slot from the base table, gear level, affixes, enchantments, sockets, damage types, material tier),
+  `VisibleDrops` (the drops in range the filter leaves, each with its verdict; hidden ones kept only while Alt is
+  held), the three built-ins, `BuiltInNamed`, the palette and the sizes.
+- **`FCataclysmLootFilterRule`** and **`FCataclysmLootFilter`** are USTRUCTs with UPROPERTY fields, so slice LF2 can
+  write them to the preferences file with the engine's JSON converter.
+- **The heads-up display** (`ACataclysmHUD::DrawDropNames`): the names in range go through `VisibleDrops`; each is
+  measured and drawn at its verdict's scale, its letters in the restyle's colour, a background filled when one is set,
+  and a hidden one shown by Alt at half strength. **The border keeps the rarity's colour and width under any restyle.**
+  A drop the filter leaves out gets no tag, so `DropUnderPoint` finds nothing there: it cannot be clicked or hovered.
+- **The reveal key**: a new input action `IA_RevealDrops` on Left Alt in both control schemes
+  (`tools/generate_input_assets.py`), named `RevealDrops` in `CataclysmInputActionNames`; the controller's start and
+  end handlers set and clear `bRevealHiddenDrops`, read through `IsRevealingHiddenDrops`. The design document's two
+  control tables gain the row.
+- **The active filter** (REPLACED BY SLICE LF2, the entry above, before either merged: the field is gone and the
+  filter in use is kept in the preferences file) was `UCataclysmGameInstance::ActiveLootFilter`, "Hide worse than worn" until changed, not saved
+  in this slice. **`Cataclysm.LootFilter <name>`** chooses among the three built-ins for the session, until slice LF2's
+  screen.
+- **`docs/Cataclysm_GDD_v2.md`**: three paragraphs after the drop-name paragraphs say what a rule matches and does,
+  what hiding does, and the default.
+- **No save record moves.** No data table, workbook or CSV changes.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.LootFilter.`, 8 tests**, in `CataclysmLootFilterTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| LF1 | `ASuperbHelmWornHidesEverydayAndQualityHelmsAndShowsASuperbOne` | the owner's example: Everyday and Quality helms hidden, Superb and Masterful shown; CONTROL: a Quality chest shows with no chest worn, and nothing worn hides nothing |
+| LF2 | `RingsAreJudgedByTheLowestRingWorn` | seven Legendary rings and one Superb: rings read as Superb, a Quality ring hidden, Superb and Masterful shown; one ring slot empty: no ring rarity read, an Everyday ring shown |
+| LF3 | `WeaponsAreJudgedByTheLowerHandAndATwoHanderByItself` | Masterful and Superb held: Quality hidden, Superb shown; one Legendary two-hander: Masterful hidden; CONTROL: one one-handed weapon and an empty hand hide nothing |
+| LF4 | `EveryConditionMustMatchAndTheHighestMatchingRuleDecides` | each condition on its own and two together; the tier-relative condition at tier 5; Show above Hide keeps, Hide above Show hides; no match shows unstyled; the 76th rule is not read |
+| LF5 | `AQuantityIsNeverHiddenAndARestyleSetsColourBackgroundAndSize` | a Hide-all rule hides gear and shows a material, gold and gems; a restyle's colours and size, an index outside the palette dropped, a size held to 1.5 |
+| LF6 | `TheThreeBuiltInFilters` | Everything hides nothing; Strict hides Everyday and Quality and what the default hides; the names found ignoring case, "Regular" not |
+| LF7 | `AHiddenDropHasNoNameUntilAltIsHeld` | three helm drops in a world, slot read from the base table: without Alt one is left, with Alt all three, two marked hidden; the hidden ones still exist |
+| LF8 | `TheContextReadsWhatTheCharacterWearsNow` | a possessed player: a Superb helm put on is read, a Masterful one put on after is read, and a Superb helm drop is then hidden |
+
+**Python:** `tools/tests/test_the_loot_filter_is_wired_in.py`, 4 checks: the display draws through `VisibleDrops`
+with the active filter, the context and the reveal flag, at the verdict's scale, with the border in the drop's own
+colour; Alt's start sets and its end and cancel clear the flag; a new game starts with the owner's default; the
+action is on Left Alt in both schemes. `test_controls_table_matches_the_input_assets.py` gains Left Alt and the row's
+phrase.
+
+**Python suite at `88632e3f0`**: "8160 passed, 10 skipped in 349.34s"; JUnit 8170 tests, 0 failures, 0 errors, 10
+skipped; ruff "All checks passed!". The first run, at `bbbf019b6`, failed one test,
+`test_game_readme_is_true.py::test_the_readme_states_the_right_number_of_input_actions`: `game/README.md` still said
+twenty input actions, and the reveal key makes twenty-one. Corrected in `88632e3f0`.
+
+**Python guard proofs, in a `git archive` copy of `bbbf019b6`, through `tools/prove_guard.break_and_run`: 2 of 2
+PROVED**, each failing the one test predicted and passing restored:
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PW1 | the display's loop reading the drops in range, not what the filter left | `test_the_display_draws_the_names_through_the_filter` |
+| PW2 | letting go of Alt leaving the reveal on | `test_alt_held_and_let_go_sets_and_clears_the_reveal_flag` |
+
+### Registered for its window, which waits for the owner's word
+
+**The base is development `3cbacdac4`**, whose game/ is the tree window power-score-w2 measured on `5b6042222`: "5271
+tests performed, 5271 succeeded, 0 failed", 57 skipped halves, 860 saves written and deleted, 0 left behind
+(`pw_suite_engine_5b604222.log`, in the sharp-meitner worktree's `.claude/windows/`). This slice adds 8 test names and
+removes none. If development moves before the window, the base is re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| **Editor step** | `tools/generate_input_assets.py` builds `IA_RevealDrops` and rewrites both mapping contexts and the input config; commit only `IA_RevealDrops.uasset`, `IMC_MouseMovement.uasset`, `IMC_KeyboardMovement.uasset` and the input config asset |
+| Each group alone, first | `Cataclysm.LootFilter.` 8; then, at their counts in the base log, the groups whose code the slice touches: `Drop.` 30, `DropPickup.` 20, `GroundItemHover.` 7, `Input.` 9, `Equipment.` 30, `GemDrops.` 4, `EmpireTreeDrops.` 13 |
+| The whole suite | 5279 performed, 5279 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind. **RE-TAKEN AT THE TURN on development `52b66e016`: see the LF2 entry above** |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to `Cataclysm.LootFilter.` with its trailing dot. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| LP1 | in `Matches`, the worn comparison `>=` read as `>`, so the same rarity is hidden | 8 performed, 4 succeeded, 4 failed: LF1 (a Superb helm shows), LF2 (a Superb ring shows), LF3 (a Superb weapon shows) and LF7 (one name without Alt) |
+| LP2 | in `WornRaritiesOf`, `FMath::Min` read as `FMath::Max`, so the highest ring decides | 8, 6, 2: LF2 and LF3 (the two hands) |
+| LP3 | in `WornRaritiesOf`, the two-hander's branch never taken (`false && bTwoHandedInBothHands`) | 8, 7, 1: LF3 |
+| LP4 | in `VerdictFor`, every rule read, not the first 75 | 8, 7, 1: LF4 |
+| LP5 | in `VerdictFor`, a Hide verdict hiding a quantity too | 8, 7, 1: LF5 |
+| LP6 | in `Strict`, built on `Everything()` rather than the default | 8, 7, 1: LF6 |
+| LP7 | in `VisibleDrops`, a hidden drop left out even while Alt is held | 8, 7, 1: LF7 |
+| LP8 | in `ContextOf`, every slot read as empty | 8, 7, 1: LF8 |
+
+---
+
 ## 2026-11-22 — Overwhelm: a creature whose Enemy Score is above the player's live Power Score takes points off the player's resistance, armour, block and evasion, and the floor panel says how many (#2824, slice b)
 
 **Affects:** `UCataclysmPowerScore::OverwhelmRate`, `OverwhelmCap`, `OverwhelmFor`, `OverwhelmPointsAt`,

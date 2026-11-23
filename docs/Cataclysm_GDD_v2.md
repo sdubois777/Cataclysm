@@ -221,6 +221,8 @@ The following are default controls. Players with multiple damage types can map m
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
 | Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
+| Left Alt | Held: show the drops the loot filter hides, faintly, so they can be clicked |
+| L | Open and close the loot filter screen: choose the filter in use, and make, copy, rename, delete and edit your own |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -253,6 +255,8 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | K | Open and close the skill choice screen: which skill from the pool goes on which key |
 | M | Open and close the empire map: every city, what is standing on it, and how long until the next wave |
 | Tab | Show and hide the map of the current floor, drawn over play: where you have been, and the stairs once seen |
+| Left Alt | Held: show the drops the loot filter hides, faintly, so they can be clicked |
+| L | Open and close the loot filter screen: choose the filter in use, and make, copy, rename, delete and edit your own |
 | 2 | Drink the potion in slot 1 |
 | 3 | Drink the potion in slot 2 |
 | 4 | Drink the potion in slot 3 |
@@ -7495,6 +7499,14 @@ different and much darker background. Decided on 2026-08-19, issue #734, and
   
 
 **A crafting material has its name drawn at any distance, and that exemption is forced rather than chosen.** Ten metres is shorter than the fifteen metres at which a material is collected without being clicked, and that collection is checked every frame, so a material is only ever still lying on the floor when it is already too far away to be named. The two windows do not overlap at all, and the effect of applying the rule to materials was that a material's name was never drawn in play. Exempting them means a player sees a material named across the room, and sees the name wink out as they walk into the fifteen metres and it comes to them; that is the whole of the feedback that a kill produced materials. It is the mirror of the rule that gear is never collected automatically: the two kinds of drop are collected differently, so they are shown differently. Decided by the project owner on 2026-09-01. Issue #1117.
+
+**The loot filter decides which drops are named, and how.** A filter is a list of rules, highest first. Each rule matches on any of: rarity; the kind of drop or a gear slot; gear level (+0 to +10); specific affixes, with a minimum tier and a minimum count; having an enchantment; socket count; a weapon damage type; a material's tier; a gem's rarity; rarity at least N rungs below the current difficulty tier's rarity; and rarity below what is worn in the same slot. Every condition in a rule must hold, and the highest rule that matches decides. A rule shows the drop, hides it, or restyles its name's text colour, background colour and size (1, 1.25 or 1.5 times), from a palette of the eight rarity colours and four more. **The border is never restyled: it stays the rarity marker.** There is no sound and no beam, because the project has neither. A filter holds at most 75 rules. Decided by the project owner on 2026-11-22, issue #2846; `DECISIONS.md` carries the sources and the rulings.
+
+**A hidden drop stays on the floor. Holding Left Alt shows it, faintly, and while shown it can be clicked.** That is Path of Exile's behaviour. A crafting material, gold and gems are never hidden, because they are collected within fifteen metres whether named or not; they can be restyled.
+
+**A new player's filter is "Hide worse than worn": it hides a piece of gear whose rarity is strictly below the rarity worn in the slot it would fill.** The owner, 2026-11-22: "What if we hid everything that was below the tier of the currently equipped slot? So for instance, if you had a superb helm, it would hide trash and quality helms. Rings would be the only exception as it would have to be based off your lowest ring tier." Rings compare with the lowest ring worn, and weapons with the lower of the two hands; one two-handed weapon decides alone. A slot with nothing worn in it hides nothing, and for rings or weapons one empty slot is enough. The rule reads what is worn now, so changing gear changes what is hidden at once. The other two built-in filters are "Everything", which hides nothing, and "Strict", which also hides every Everyday and Quality piece.
+
+**L opens the loot filter screen.** It lists the filters, the built-in three first; the picked filter's rules; and an editor for the picked rule, where each condition and the action is a button that toggles, cycles or steps. The player makes a filter the one in use, makes a new empty one, copies any filter, renames or deletes one of their own, and adds, removes, moves and edits rules. A player keeps at most ten filters of their own. **The built-in filters can be used and copied but never changed, renamed or deleted, and no filter of the player's can take a built-in's name.** The filters and the choice of the one in use are kept in a file of their own on this machine, outside the save records, so every character on the machine shares them. Decided by the project owner on 2026-11-22, issue #2846.
 
   
 

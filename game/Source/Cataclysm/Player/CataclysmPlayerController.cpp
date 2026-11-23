@@ -17,6 +17,7 @@
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
+#include "Interface/CataclysmLootFilterWidget.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -257,6 +258,16 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::StandStill, ETriggerEvent::Completed,
 		this, &ACataclysmPlayerController::Input_StandStillReleased);
 
+	// Alt held shows the drops the loot filter hides; let go, it stops. Canceled as well as Completed, as for
+	// MoveToCursor above: a release lost to a change of mapping context must not leave hidden drops shown. Issue
+	// #2846, slice LF1, the owner's ruling O3.
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Started,
+		this, &ACataclysmPlayerController::Input_RevealDropsStarted);
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Completed,
+		this, &ACataclysmPlayerController::Input_RevealDropsReleased);
+	Input->BindNativeAction(Config, Names::RevealDrops, ETriggerEvent::Canceled,
+		this, &ACataclysmPlayerController::Input_RevealDropsReleased);
+
 	Input->BindNativeAction(Config, Names::Zoom, ETriggerEvent::Triggered,
 		this, &ACataclysmPlayerController::Input_Zoom);
 
@@ -280,6 +291,11 @@ void ACataclysmPlayerController::SetupInputComponent()
 	Input->BindNativeAction(Config, Names::ToggleSkillAssignment,
 		ETriggerEvent::Started, this,
 		&ACataclysmPlayerController::Input_ToggleSkillAssignment);
+
+	// The loot filter screen on L. Issue #2846, slice LF2. Started, as every screen's key is.
+	Input->BindNativeAction(Config, Names::ToggleLootFilter,
+		ETriggerEvent::Started, this,
+		&ACataclysmPlayerController::Input_ToggleLootFilterScreen);
 
 	// The empire overview on M, ruled by the coordinating session on
 	// 2026-11-03. Started, as every screen's key is. Issue #2733 slice 3.
@@ -601,7 +617,8 @@ void ACataclysmPlayerController::ToggleFloorMap()
 bool ACataclysmPlayerController::IsAFullScreenOpen() const
 {
 	const UUserWidget* Screens[] = {InventoryScreen, CharacterCreationScreen, PassiveTreeScreen, EmpireTreeScreen,
-									ForgeScreen, EmpireMapScreen, CharacterSheetScreen, SkillAssignmentScreen, CityScreen};
+									ForgeScreen, EmpireMapScreen, CharacterSheetScreen, SkillAssignmentScreen, CityScreen,
+									LootFilterScreen};
 	for (const UUserWidget* Screen : Screens)
 	{
 		if (Screen && Screen->IsInViewport())
@@ -1133,6 +1150,48 @@ void ACataclysmPlayerController::ToggleSkillAssignment()
 	// REFRESHED ON EVERY OPENING: the worn weapons, and so the pool, can have changed since it was last closed.
 	SkillAssignmentScreen->Refresh();
 	SkillAssignmentScreen->AddToViewport();
+}
+
+void ACataclysmPlayerController::Input_ToggleLootFilterScreen()
+{
+	ToggleLootFilterScreen();
+}
+
+void ACataclysmPlayerController::ToggleLootFilterScreen()
+{
+	// THE SKILL-CHOICE SCREEN'S SHAPE. Issue #2846, slice LF2.
+	if (!LootFilterScreen)
+	{
+		UClass* ScreenClass = LootFilterScreenClass.LoadSynchronous();
+		if (!ScreenClass)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("There is no loot filter screen to open: %s could not be loaded. Run  python "
+						"tools/run_editor_python.py tools/generate_interface_assets.py  to build it."),
+				   *LootFilterScreenClass.ToString());
+			return;
+		}
+
+		LootFilterScreen = CreateWidget<UCataclysmLootFilterWidget>(this, ScreenClass);
+		if (!LootFilterScreen)
+		{
+			UE_LOG(LogCataclysm, Error,
+				   TEXT("The loot filter screen could not be created, so the key that opens it does nothing."));
+			return;
+		}
+	}
+
+	if (LootFilterScreen->IsInViewport())
+	{
+		LootFilterScreen->RemoveFromParent();
+		ApplyPlayingInputMode();
+		return;
+	}
+
+	// NO PAUSE: no screen in this game pauses.
+	ApplyPlayingInputMode();
+	LootFilterScreen->Refresh();
+	LootFilterScreen->AddToViewport();
 }
 
 void ACataclysmPlayerController::ToggleCityScreen(int32 CityId)
@@ -2388,6 +2447,16 @@ void ACataclysmPlayerController::Input_StandStillStarted()
 void ACataclysmPlayerController::Input_StandStillReleased()
 {
 	bStandStill = false;
+}
+
+void ACataclysmPlayerController::Input_RevealDropsStarted()
+{
+	bRevealHiddenDrops = true;
+}
+
+void ACataclysmPlayerController::Input_RevealDropsReleased()
+{
+	bRevealHiddenDrops = false;
 }
 
 bool ACataclysmPlayerController::UpdateCachedDestination()

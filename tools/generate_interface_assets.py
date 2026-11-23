@@ -31,6 +31,9 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_Forge               the Cataclysmic Forge: every worn and carried piece,
                             Upgrade, one Combine per stone level, and Close,
                             ruled 2026-11-19
+    WBP_LootFilter          the loot filter screen: the filters, the picked
+                            filter's rules, and an editor for the picked rule,
+                            issue #2846 slice LF2
 
 AND ONE LEVEL, under `/Game/Maps`:
 
@@ -1045,6 +1048,74 @@ def make_forge():
     log("created {}/{}".format(INTERFACE_DIR, FORGE_ASSET))
 
 
+LOOT_FILTER_PARENT = "CataclysmLootFilterWidget"
+LOOT_FILTER_ASSET = "WBP_LootFilter"
+
+
+def make_loot_filter():
+    """The loot filter screen, issue #2846 slice LF2: L or Cataclysm.EditLootFilters.
+
+    THREE COLUMNS SIDE BY SIDE, each a scroll box: the filters and what can be
+    done to one; the picked filter's rules and what can be done to one; the
+    editor's buttons for the picked rule, in a wrap box because there are about
+    seventy. EMPTY HERE AND FILLED AT RUN TIME by UCataclysmLootFilterWidget.
+    Under them, the box a new name is typed into and the refusal line.
+    """
+    parent = parent_class(LOOT_FILTER_PARENT)
+    if authoring.widget_blueprint_exists(INTERFACE_DIR, LOOT_FILTER_ASSET):
+        log("{}/{} already exists; left alone.".format(
+            INTERFACE_DIR, LOOT_FILTER_ASSET))
+        return
+
+    blueprint = authoring.create_or_load_widget_blueprint(
+        INTERFACE_DIR, LOOT_FILTER_ASSET, parent)
+    if blueprint is None:
+        raise SystemExit("Could not create {}.".format(LOOT_FILTER_ASSET))
+
+    add(blueprint, unreal.CanvasPanel, "RootCanvas")
+
+    backdrop = add(blueprint, unreal.Border, "Backdrop", "RootCanvas")
+    backdrop.set_editor_property("brush_color", PANEL)
+    fill_the_screen(backdrop)
+    backdrop.set_editor_property("padding", unreal.Margin(48.0, 36.0, 48.0, 36.0))
+
+    add(blueprint, unreal.VerticalBox, "Body", "Backdrop")
+
+    title = add(blueprint, unreal.TextBlock, "TitleLabel", "Body")
+    set_text(title, "Loot filter", size=30)
+
+    status = add(blueprint, unreal.TextBlock, "StatusLabel", "Body")
+    set_text(status, "", size=18)
+    status.set_editor_property("auto_wrap_text", True)
+
+    columns = add(blueprint, unreal.HorizontalBox, "Columns", "Body")
+    fill_remaining_height(columns)
+
+    filters = add(blueprint, unreal.ScrollBox, "FilterScroll", "Columns")
+    fill_remaining_height(filters)
+    add(blueprint, unreal.VerticalBox, "FilterBox", "FilterScroll")
+
+    rules = add(blueprint, unreal.ScrollBox, "RuleScroll", "Columns")
+    fill_remaining_height(rules)
+    add(blueprint, unreal.VerticalBox, "RuleBox", "RuleScroll")
+
+    editor = add(blueprint, unreal.ScrollBox, "EditorScroll", "Columns")
+    fill_remaining_height(editor)
+    add(blueprint, unreal.WrapBox, "EditorBox", "EditorScroll")
+
+    add(blueprint, unreal.EditableTextBox, "NameBox", "Body")
+
+    refusal = add(blueprint, unreal.TextBlock, "RefusalLabel", "Body")
+    set_text(refusal, "", size=16)
+    refusal.set_editor_property("auto_wrap_text", True)
+
+    check_every_bound_widget(blueprint, parent)
+    if not authoring.compile_and_save(blueprint):
+        raise SystemExit("{} did not compile or could not be saved.".format(
+            LOOT_FILTER_ASSET))
+    log("created {}/{}".format(INTERFACE_DIR, LOOT_FILTER_ASSET))
+
+
 MAPS_DIR = "/Game/Maps"
 FRONT_END_LEVEL = "L_FrontEnd"
 FRONT_END_GAME_MODE = "/Script/Cataclysm.CataclysmFrontEndGameMode"
@@ -1113,6 +1184,7 @@ def main():
     make_new_character()
     make_empire_tree()
     make_forge()
+    make_loot_filter()
     editor_assets.save_directory(INTERFACE_DIR, recursive=True)
     # THE LEVEL LAST, AFTER THE SCREENS ARE SAVED, so its save is its own.
     make_front_end_map()

@@ -343,7 +343,7 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Thirteen native bindings, found by the names the controller uses.
+	// Sixteen native bindings, found by the names the controller uses.
 	const FName NativeNames[] = {
 		CataclysmInputActionNames::Move,
 		CataclysmInputActionNames::MoveToCursor,
@@ -372,6 +372,11 @@ bool FCataclysmInputConfigContentsTest::RunTest(const FString& Parameters)
 		CataclysmInputActionNames::ToggleEmpireMap,
 		// The floor map on Tab, issue #2805. It joined on 2026-11-21.
 		CataclysmInputActionNames::ToggleFloorMap,
+		// Left Alt, held, shows the drops the loot filter hides; L opens the loot filter screen. Issue #2846, slices
+		// LF1 and LF2. They joined on 2026-11-22: window lf-w1's first full run failed here on "and lists no others",
+		// 16 against 14, because this list had not been told.
+		CataclysmInputActionNames::RevealDrops,
+		CataclysmInputActionNames::ToggleLootFilter,
 	};
 
 	for (const FName& Name : NativeNames)
