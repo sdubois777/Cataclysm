@@ -116,6 +116,15 @@ only. The structs keep their names, and so does every file, since a file may hol
 changed: 142 renames in 16 files, the loot filter's 11 Python checks passing, and all 17 proof anchors still
 matching once.
 
+**LF-W1'S SECOND ATTEMPT, 19:05, DID NOT BUILD EITHER, AND NO TEST RAN.** 52 files compiled; then the compiler
+stopped on `RarityCount`, defined in an anonymous namespace in both `CataclysmLootFilter.cpp` and
+`CataclysmLootFilterLayout.cpp` (C2374, "redefinition; multiple initialization"). Unreal compiles several .cpp files
+as one unit, so two anonymous namespaces in one unit are one namespace. **Every helper in an anonymous namespace in
+those two files and the screen's was given a name no other file in the module uses** (`RulesRarityCount`,
+`EditorRarityCount`, `StepWithin`, `EditorButton` and ten more; `Step` was also in `CataclysmForgeCraft.cpp`'s). No
+player-facing text changed. Three proof break texts that named the old helpers were updated (LP2, LP5, LSP6); all 17
+anchors match once.
+
 Added to LF1's registration (the entry below), on that base, 5307 tests:
 
 | Step | Registered for LF1 and LF2 together |

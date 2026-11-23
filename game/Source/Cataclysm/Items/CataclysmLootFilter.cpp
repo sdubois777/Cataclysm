@@ -26,16 +26,16 @@ const TCHAR* UCataclysmLootFilterRules::DefaultFilterName = TEXT("Hide worse tha
 
 namespace
 {
-	constexpr int32 RarityCount = static_cast<int32>(ECataclysmRarity::Cataclysmic) + 1;
+	constexpr int32 RulesRarityCount = static_cast<int32>(ECataclysmRarity::Cataclysmic) + 1;
 
-	bool IsAQuantity(ECataclysmLootKind Kind)
+	bool IsAQuantityKind(ECataclysmLootKind Kind)
 	{
 		return Kind == ECataclysmLootKind::Material || Kind == ECataclysmLootKind::Gold
 			|| Kind == ECataclysmLootKind::Gem;
 	}
 
 	/** Whether the drop has a rarity a rarity condition can read: gear and gems. */
-	bool HasARarity(ECataclysmLootKind Kind)
+	bool KindHasARarity(ECataclysmLootKind Kind)
 	{
 		return Kind == ECataclysmLootKind::Gear || Kind == ECataclysmLootKind::Gem;
 	}
@@ -43,15 +43,15 @@ namespace
 
 FLinearColor UCataclysmLootFilterRules::PaletteColour(int32 Index, const UDataTable* GearRarityTable)
 {
-	if (Index >= 0 && Index < RarityCount)
+	if (Index >= 0 && Index < RulesRarityCount)
 	{
 		return GearRarityTable != nullptr
 			? UCataclysmDropSpawner::ColourFor(GearRarityTable, static_cast<ECataclysmRarity>(Index))
 			: FLinearColor::White;
 	}
-	if (Index >= RarityCount && Index < PaletteSize)
+	if (Index >= RulesRarityCount && Index < PaletteSize)
 	{
-		return ExtraColours[Index - RarityCount];
+		return ExtraColours[Index - RulesRarityCount];
 	}
 	return FLinearColor::White;
 }
@@ -59,7 +59,7 @@ FLinearColor UCataclysmLootFilterRules::PaletteColour(int32 Index, const UDataTa
 ECataclysmRarity UCataclysmLootFilterRules::TierRarity(int32 DifficultyTier)
 {
 	// Section IV's tier table: the reference character wears the tier's own rarity, Everyday at tier 1.
-	return static_cast<ECataclysmRarity>(FMath::Clamp(DifficultyTier, 1, RarityCount) - 1);
+	return static_cast<ECataclysmRarity>(FMath::Clamp(DifficultyTier, 1, RulesRarityCount) - 1);
 }
 
 bool UCataclysmLootFilterRules::Matches(const FCataclysmLootFilterRule& Rule, const FCataclysmLootFacts& Facts,
@@ -73,7 +73,7 @@ bool UCataclysmLootFilterRules::Matches(const FCataclysmLootFilterRule& Rule, co
 	const bool bGear = Facts.Kind == ECataclysmLootKind::Gear;
 
 	// RARITY: gear's or a gem's. A material and gold have none, so a rule that names a rarity never matches them.
-	if (Rule.Rarities.Num() > 0 && (!HasARarity(Facts.Kind) || !Rule.Rarities.Contains(Facts.Rarity)))
+	if (Rule.Rarities.Num() > 0 && (!KindHasARarity(Facts.Kind) || !Rule.Rarities.Contains(Facts.Rarity)))
 	{
 		return false;
 	}
@@ -81,7 +81,7 @@ bool UCataclysmLootFilterRules::Matches(const FCataclysmLootFilterRule& Rule, co
 	if (Rule.RungsBelowTierAtLeast > 0)
 	{
 		const int32 Below = static_cast<int32>(TierRarity(Context.DifficultyTier)) - static_cast<int32>(Facts.Rarity);
-		if (!HasARarity(Facts.Kind) || Below < Rule.RungsBelowTierAtLeast)
+		if (!KindHasARarity(Facts.Kind) || Below < Rule.RungsBelowTierAtLeast)
 		{
 			return false;
 		}
@@ -183,7 +183,7 @@ FCataclysmLootVerdict UCataclysmLootFilterRules::VerdictFor(const FCataclysmLoot
 		if (Rule.Action == ECataclysmLootFilterAction::Hide)
 		{
 			// A QUANTITY IS NEVER HIDDEN: it is collected whether named or not. Shown unstyled.
-			Verdict.bHidden = !IsAQuantity(Facts.Kind);
+			Verdict.bHidden = !IsAQuantityKind(Facts.Kind);
 		}
 		else if (Rule.Action == ECataclysmLootFilterAction::Restyle)
 		{
@@ -225,7 +225,7 @@ TMap<FString, ECataclysmRarity> UCataclysmLootFilterRules::WornRaritiesOf(const 
 		}
 
 		bool bEveryCandidateWorn = Candidates.Num() > 0;
-		int32 Lowest = RarityCount;
+		int32 Lowest = RulesRarityCount;
 		for (const ECataclysmGearSlot Slot : Candidates)
 		{
 			const int32 Index = static_cast<int32>(Slot);

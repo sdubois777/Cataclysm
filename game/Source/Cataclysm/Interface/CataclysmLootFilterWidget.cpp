@@ -18,7 +18,7 @@ namespace
 	using FPrefs = UCataclysmLootFilterStore;
 
 	/** The number after a command's colon, or INDEX_NONE when there is none. */
-	int32 IndexIn(const FString& Value)
+	int32 IndexInCommand(const FString& Value)
 	{
 		return Value.IsNumeric() ? FCString::Atoi(*Value) : INDEX_NONE;
 	}
@@ -115,7 +115,7 @@ bool UCataclysmLootFilterWidget::Press(const FString& Command)
 	if (Kind == TEXT("Filter"))
 	{
 		const TArray<FString> Names = FPrefs::AllNames(*Prefs);
-		const int32 Index = IndexIn(Value);
+		const int32 Index = IndexInCommand(Value);
 		bDone = Names.IsValidIndex(Index);
 		if (bDone)
 		{
@@ -126,7 +126,7 @@ bool UCataclysmLootFilterWidget::Press(const FString& Command)
 	else if (Kind == TEXT("Rule"))
 	{
 		FCataclysmLootFilter Filter;
-		const int32 Index = IndexIn(Value);
+		const int32 Index = IndexInCommand(Value);
 		bDone = FPrefs::Find(*Prefs, Picked, Filter) && Filter.Rules.IsValidIndex(Index);
 		if (bDone)
 		{

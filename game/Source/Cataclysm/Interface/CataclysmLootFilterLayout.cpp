@@ -8,9 +8,9 @@
 
 namespace
 {
-	constexpr int32 RarityCount = static_cast<int32>(ECataclysmRarity::Cataclysmic) + 1;
+	constexpr int32 EditorRarityCount = static_cast<int32>(ECataclysmRarity::Cataclysmic) + 1;
 
-	const TCHAR* ActionName(ECataclysmLootFilterAction Action)
+	const TCHAR* LootActionName(ECataclysmLootFilterAction Action)
 	{
 		switch (Action)
 		{
@@ -20,7 +20,7 @@ namespace
 		}
 	}
 
-	const TCHAR* KindName(ECataclysmLootKind Kind)
+	const TCHAR* LootKindName(ECataclysmLootKind Kind)
 	{
 		switch (Kind)
 		{
@@ -32,7 +32,7 @@ namespace
 		}
 	}
 
-	const TCHAR* EnchantName(ECataclysmLootTriState State)
+	const TCHAR* LootEnchantName(ECataclysmLootTriState State)
 	{
 		switch (State)
 		{
@@ -44,7 +44,7 @@ namespace
 
 	/** Adds `Value` when absent, removes it when present. */
 	template <typename T>
-	void Toggle(TArray<T>& Values, const T& Value)
+	void ToggleIn(TArray<T>& Values, const T& Value)
 	{
 		if (Values.Contains(Value))
 		{
@@ -57,20 +57,20 @@ namespace
 	}
 
 	/** Steps `Value` by +1 or -1 within [Low, High]. */
-	void Step(int32& Value, bool bUp, int32 Low, int32 High)
+	void StepWithin(int32& Value, bool bUp, int32 Low, int32 High)
 	{
 		Value = FMath::Clamp(Value + (bUp ? 1 : -1), Low, High);
 	}
 
 	/** Cycles a palette index through INDEX_NONE (none) and 0 to PaletteSize - 1. */
-	void CyclePalette(int32& Index, bool bUp)
+	void CyclePaletteIndex(int32& Index, bool bUp)
 	{
 		const int32 Count = UCataclysmLootFilterRules::PaletteSize + 1;
 		const int32 Position = (Index + 1 + (bUp ? 1 : Count - 1)) % Count;
 		Index = Position - 1;
 	}
 
-	FCataclysmLootEditorButton Button(const FString& Command, const FString& Label, bool bChosen = false)
+	FCataclysmLootEditorButton EditorButton(const FString& Command, const FString& Label, bool bChosen = false)
 	{
 		FCataclysmLootEditorButton Out;
 		Out.Command = Command;
@@ -79,7 +79,7 @@ namespace
 		return Out;
 	}
 
-	FString AffixName(FName Row, const UDataTable* AffixTable)
+	FString EditorAffixName(FName Row, const UDataTable* AffixTable)
 	{
 		const FString Name = UCataclysmForge::AffixNameOf(Row, AffixTable);
 		return Name.IsEmpty() ? Row.ToString() : Name;
@@ -104,13 +104,13 @@ FString UCataclysmLootFilterLayout::RarityName(ECataclysmRarity Rarity)
 FString UCataclysmLootFilterLayout::PaletteName(int32 Index)
 {
 	static const TCHAR* Extras[] = {TEXT("Yellow"), TEXT("Cyan"), TEXT("Pink"), TEXT("Black")};
-	if (Index >= 0 && Index < RarityCount)
+	if (Index >= 0 && Index < EditorRarityCount)
 	{
 		return RarityName(static_cast<ECataclysmRarity>(Index));
 	}
-	if (Index >= RarityCount && Index < UCataclysmLootFilterRules::PaletteSize)
+	if (Index >= EditorRarityCount && Index < UCataclysmLootFilterRules::PaletteSize)
 	{
-		return Extras[Index - RarityCount];
+		return Extras[Index - EditorRarityCount];
 	}
 	return TEXT("None");
 }
@@ -163,14 +163,14 @@ FString UCataclysmLootFilterLayout::RuleLine(const FCataclysmLootFilterRule& Rul
 		TArray<FString> Names;
 		for (const FName& Row : Rule.Affixes)
 		{
-			Names.Add(AffixName(Row, AffixTable));
+			Names.Add(EditorAffixName(Row, AffixTable));
 		}
 		Parts.Add(FString::Printf(TEXT("%d of %s at tier %d or above"), FMath::Max(1, Rule.MinAffixCount),
 								  *FString::Join(Names, TEXT(", ")), Rule.MinAffixTier));
 	}
 	if (Rule.HasEnchantment != ECataclysmLootTriState::Either)
 	{
-		Parts.Add(EnchantName(Rule.HasEnchantment));
+		Parts.Add(LootEnchantName(Rule.HasEnchantment));
 	}
 	if (Rule.MinSockets > 0 || Rule.MaxSockets < 6)
 	{
@@ -190,7 +190,7 @@ FString UCataclysmLootFilterLayout::RuleLine(const FCataclysmLootFilterRule& Rul
 		Parts.Add(FString::Printf(TEXT("material tier %d to %d"), Rule.MinMaterialTier, Rule.MaxMaterialTier));
 	}
 
-	FString Line = FString::Printf(TEXT("%d. %s %s"), Index + 1, ActionName(Rule.Action), KindName(Rule.Kind));
+	FString Line = FString::Printf(TEXT("%d. %s %s"), Index + 1, LootActionName(Rule.Action), LootKindName(Rule.Kind));
 	if (Parts.Num() > 0)
 	{
 		Line += TEXT(": ") + FString::Join(Parts, TEXT("; "));
@@ -226,11 +226,11 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 	else if (Field == TEXT("Rarity"))
 	{
 		const int32 Index = FCString::Atoi(*Value);
-		if (!Value.IsNumeric() || Index < 0 || Index >= RarityCount)
+		if (!Value.IsNumeric() || Index < 0 || Index >= EditorRarityCount)
 		{
 			return false;
 		}
-		Toggle(Rule.Rarities, static_cast<ECataclysmRarity>(Index));
+		ToggleIn(Rule.Rarities, static_cast<ECataclysmRarity>(Index));
 	}
 	else if (Field == TEXT("BelowWorn"))
 	{
@@ -238,7 +238,7 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 	}
 	else if (Field == TEXT("TierRungs"))
 	{
-		Step(Rule.RungsBelowTierAtLeast, bUp, 0, RarityCount - 1);
+		StepWithin(Rule.RungsBelowTierAtLeast, bUp, 0, EditorRarityCount - 1);
 	}
 	else if (Field == TEXT("Slot"))
 	{
@@ -246,15 +246,15 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 		{
 			return false;
 		}
-		Toggle(Rule.Slots, Value);
+		ToggleIn(Rule.Slots, Value);
 	}
 	else if (Field == TEXT("GearMin"))
 	{
-		Step(Rule.MinGearLevel, bUp, 0, Rule.MaxGearLevel);
+		StepWithin(Rule.MinGearLevel, bUp, 0, Rule.MaxGearLevel);
 	}
 	else if (Field == TEXT("GearMax"))
 	{
-		Step(Rule.MaxGearLevel, bUp, Rule.MinGearLevel, 10);
+		StepWithin(Rule.MaxGearLevel, bUp, Rule.MinGearLevel, 10);
 	}
 	else if (Field == TEXT("Affix"))
 	{
@@ -262,15 +262,15 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 		{
 			return false;
 		}
-		Toggle(Rule.Affixes, FName(*Value));
+		ToggleIn(Rule.Affixes, FName(*Value));
 	}
 	else if (Field == TEXT("AffixTier"))
 	{
-		Step(Rule.MinAffixTier, bUp, 1, 7);
+		StepWithin(Rule.MinAffixTier, bUp, 1, 7);
 	}
 	else if (Field == TEXT("AffixCount"))
 	{
-		Step(Rule.MinAffixCount, bUp, 1, 4);
+		StepWithin(Rule.MinAffixCount, bUp, 1, 4);
 	}
 	else if (Field == TEXT("Enchant"))
 	{
@@ -278,11 +278,11 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 	}
 	else if (Field == TEXT("SocketsMin"))
 	{
-		Step(Rule.MinSockets, bUp, 0, Rule.MaxSockets);
+		StepWithin(Rule.MinSockets, bUp, 0, Rule.MaxSockets);
 	}
 	else if (Field == TEXT("SocketsMax"))
 	{
-		Step(Rule.MaxSockets, bUp, Rule.MinSockets, 6);
+		StepWithin(Rule.MaxSockets, bUp, Rule.MinSockets, 6);
 	}
 	else if (Field == TEXT("Damage"))
 	{
@@ -290,27 +290,27 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 		{
 			return false;
 		}
-		Toggle(Rule.DamageTypes, FName(*Value));
+		ToggleIn(Rule.DamageTypes, FName(*Value));
 	}
 	else if (Field == TEXT("MatMin"))
 	{
-		Step(Rule.MinMaterialTier, bUp, 1, Rule.MaxMaterialTier);
+		StepWithin(Rule.MinMaterialTier, bUp, 1, Rule.MaxMaterialTier);
 	}
 	else if (Field == TEXT("MatMax"))
 	{
-		Step(Rule.MaxMaterialTier, bUp, Rule.MinMaterialTier, 5);
+		StepWithin(Rule.MaxMaterialTier, bUp, Rule.MinMaterialTier, 5);
 	}
 	else if (Field == TEXT("Text"))
 	{
-		CyclePalette(Rule.TextColour, bUp);
+		CyclePaletteIndex(Rule.TextColour, bUp);
 	}
 	else if (Field == TEXT("Back"))
 	{
-		CyclePalette(Rule.BackgroundColour, bUp);
+		CyclePaletteIndex(Rule.BackgroundColour, bUp);
 	}
 	else if (Field == TEXT("Size"))
 	{
-		Step(Rule.Size, bUp, 0, UCataclysmLootFilterRules::SizeCount - 1);
+		StepWithin(Rule.Size, bUp, 0, UCataclysmLootFilterRules::SizeCount - 1);
 	}
 	else
 	{
@@ -323,17 +323,17 @@ TArray<FCataclysmLootEditorButton> UCataclysmLootFilterLayout::EditorButtonsFor(
 	const FCataclysmLootFilterRule& Rule, const TArray<FName>& AffixRows, int32 AffixPick, const UDataTable* AffixTable)
 {
 	TArray<FCataclysmLootEditorButton> Out;
-	Out.Add(Button(TEXT("Action"), FString::Printf(TEXT("Action: %s"), ActionName(Rule.Action)), true));
-	Out.Add(Button(TEXT("Kind"), FString::Printf(TEXT("Drops: %s"), KindName(Rule.Kind)), true));
+	Out.Add(EditorButton(TEXT("Action"), FString::Printf(TEXT("Action: %s"), LootActionName(Rule.Action)), true));
+	Out.Add(EditorButton(TEXT("Kind"), FString::Printf(TEXT("Drops: %s"), LootKindName(Rule.Kind)), true));
 
-	for (int32 Index = 0; Index < RarityCount; ++Index)
+	for (int32 Index = 0; Index < EditorRarityCount; ++Index)
 	{
 		const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(Index);
-		Out.Add(Button(FString::Printf(TEXT("Rarity.%d"), Index), RarityName(Rarity), Rule.Rarities.Contains(Rarity)));
+		Out.Add(EditorButton(FString::Printf(TEXT("Rarity.%d"), Index), RarityName(Rarity), Rule.Rarities.Contains(Rarity)));
 	}
-	Out.Add(Button(TEXT("BelowWorn"), TEXT("Below what is worn in its slot"), Rule.bBelowWornRarity));
-	Out.Add(Button(TEXT("TierRungs-"), TEXT("Rungs below the tier -")));
-	Out.Add(Button(TEXT("TierRungs+"),
+	Out.Add(EditorButton(TEXT("BelowWorn"), TEXT("Below what is worn in its slot"), Rule.bBelowWornRarity));
+	Out.Add(EditorButton(TEXT("TierRungs-"), TEXT("Rungs below the tier -")));
+	Out.Add(EditorButton(TEXT("TierRungs+"),
 				   Rule.RungsBelowTierAtLeast > 0
 					   ? FString::Printf(TEXT("%d or more rungs below the tier's rarity +"), Rule.RungsBelowTierAtLeast)
 					   : FString(TEXT("Rungs below the tier: off +")),
@@ -341,58 +341,58 @@ TArray<FCataclysmLootEditorButton> UCataclysmLootFilterLayout::EditorButtonsFor(
 
 	for (const FString& Slot : SlotNames())
 	{
-		Out.Add(Button(TEXT("Slot.") + Slot, Slot, Rule.Slots.Contains(Slot)));
+		Out.Add(EditorButton(TEXT("Slot.") + Slot, Slot, Rule.Slots.Contains(Slot)));
 	}
 
-	Out.Add(Button(TEXT("GearMin-"), TEXT("Lowest gear level -")));
-	Out.Add(Button(TEXT("GearMin+"), FString::Printf(TEXT("Lowest gear level +%d +"), Rule.MinGearLevel)));
-	Out.Add(Button(TEXT("GearMax-"), TEXT("Highest gear level -")));
-	Out.Add(Button(TEXT("GearMax+"), FString::Printf(TEXT("Highest gear level +%d +"), Rule.MaxGearLevel)));
+	Out.Add(EditorButton(TEXT("GearMin-"), TEXT("Lowest gear level -")));
+	Out.Add(EditorButton(TEXT("GearMin+"), FString::Printf(TEXT("Lowest gear level +%d +"), Rule.MinGearLevel)));
+	Out.Add(EditorButton(TEXT("GearMax-"), TEXT("Highest gear level -")));
+	Out.Add(EditorButton(TEXT("GearMax+"), FString::Printf(TEXT("Highest gear level +%d +"), Rule.MaxGearLevel)));
 
 	if (AffixRows.Num() > 0)
 	{
 		const FName Picked = AffixRows[FMath::Clamp(AffixPick, 0, AffixRows.Num() - 1)];
-		Out.Add(Button(TEXT("AffixPick-"), TEXT("Previous affix")));
-		Out.Add(Button(TEXT("AffixPick+"), TEXT("Next affix")));
-		Out.Add(Button(TEXT("Affix.") + Picked.ToString(),
-					   (Rule.Affixes.Contains(Picked) ? TEXT("Remove ") : TEXT("Add ")) + AffixName(Picked, AffixTable),
+		Out.Add(EditorButton(TEXT("AffixPick-"), TEXT("Previous affix")));
+		Out.Add(EditorButton(TEXT("AffixPick+"), TEXT("Next affix")));
+		Out.Add(EditorButton(TEXT("Affix.") + Picked.ToString(),
+					   (Rule.Affixes.Contains(Picked) ? TEXT("Remove ") : TEXT("Add ")) + EditorAffixName(Picked, AffixTable),
 					   Rule.Affixes.Contains(Picked)));
 	}
 	for (const FName& Row : Rule.Affixes)
 	{
-		Out.Add(Button(TEXT("Affix.") + Row.ToString(), TEXT("Remove ") + AffixName(Row, AffixTable), true));
+		Out.Add(EditorButton(TEXT("Affix.") + Row.ToString(), TEXT("Remove ") + EditorAffixName(Row, AffixTable), true));
 	}
-	Out.Add(Button(TEXT("AffixTier-"), TEXT("Affix tier -")));
-	Out.Add(Button(TEXT("AffixTier+"), FString::Printf(TEXT("Affix tier %d or above +"), Rule.MinAffixTier)));
-	Out.Add(Button(TEXT("AffixCount-"), TEXT("Affixes needed -")));
-	Out.Add(Button(TEXT("AffixCount+"), FString::Printf(TEXT("%d of them needed +"), FMath::Max(1, Rule.MinAffixCount))));
+	Out.Add(EditorButton(TEXT("AffixTier-"), TEXT("Affix tier -")));
+	Out.Add(EditorButton(TEXT("AffixTier+"), FString::Printf(TEXT("Affix tier %d or above +"), Rule.MinAffixTier)));
+	Out.Add(EditorButton(TEXT("AffixCount-"), TEXT("Affixes needed -")));
+	Out.Add(EditorButton(TEXT("AffixCount+"), FString::Printf(TEXT("%d of them needed +"), FMath::Max(1, Rule.MinAffixCount))));
 
-	Out.Add(Button(TEXT("Enchant"), FString::Printf(TEXT("Enchantment: %s"), EnchantName(Rule.HasEnchantment)),
+	Out.Add(EditorButton(TEXT("Enchant"), FString::Printf(TEXT("Enchantment: %s"), LootEnchantName(Rule.HasEnchantment)),
 				   Rule.HasEnchantment != ECataclysmLootTriState::Either));
 
-	Out.Add(Button(TEXT("SocketsMin-"), TEXT("Fewest sockets -")));
-	Out.Add(Button(TEXT("SocketsMin+"), FString::Printf(TEXT("Fewest sockets %d +"), Rule.MinSockets)));
-	Out.Add(Button(TEXT("SocketsMax-"), TEXT("Most sockets -")));
-	Out.Add(Button(TEXT("SocketsMax+"), FString::Printf(TEXT("Most sockets %d +"), Rule.MaxSockets)));
+	Out.Add(EditorButton(TEXT("SocketsMin-"), TEXT("Fewest sockets -")));
+	Out.Add(EditorButton(TEXT("SocketsMin+"), FString::Printf(TEXT("Fewest sockets %d +"), Rule.MinSockets)));
+	Out.Add(EditorButton(TEXT("SocketsMax-"), TEXT("Most sockets -")));
+	Out.Add(EditorButton(TEXT("SocketsMax+"), FString::Printf(TEXT("Most sockets %d +"), Rule.MaxSockets)));
 
 	for (const FName& Type : UCataclysmItemModifiers::DamageTypeNames())
 	{
-		Out.Add(Button(TEXT("Damage.") + Type.ToString(), Type.ToString(), Rule.DamageTypes.Contains(Type)));
+		Out.Add(EditorButton(TEXT("Damage.") + Type.ToString(), Type.ToString(), Rule.DamageTypes.Contains(Type)));
 	}
 
-	Out.Add(Button(TEXT("MatMin-"), TEXT("Lowest material tier -")));
-	Out.Add(Button(TEXT("MatMin+"), FString::Printf(TEXT("Lowest material tier %d +"), Rule.MinMaterialTier)));
-	Out.Add(Button(TEXT("MatMax-"), TEXT("Highest material tier -")));
-	Out.Add(Button(TEXT("MatMax+"), FString::Printf(TEXT("Highest material tier %d +"), Rule.MaxMaterialTier)));
+	Out.Add(EditorButton(TEXT("MatMin-"), TEXT("Lowest material tier -")));
+	Out.Add(EditorButton(TEXT("MatMin+"), FString::Printf(TEXT("Lowest material tier %d +"), Rule.MinMaterialTier)));
+	Out.Add(EditorButton(TEXT("MatMax-"), TEXT("Highest material tier -")));
+	Out.Add(EditorButton(TEXT("MatMax+"), FString::Printf(TEXT("Highest material tier %d +"), Rule.MaxMaterialTier)));
 
 	if (Rule.Action == ECataclysmLootFilterAction::Restyle)
 	{
-		Out.Add(Button(TEXT("Text-"), TEXT("Text colour -")));
-		Out.Add(Button(TEXT("Text+"), FString::Printf(TEXT("Text colour: %s +"), *PaletteName(Rule.TextColour))));
-		Out.Add(Button(TEXT("Back-"), TEXT("Background -")));
-		Out.Add(Button(TEXT("Back+"), FString::Printf(TEXT("Background: %s +"), *PaletteName(Rule.BackgroundColour))));
-		Out.Add(Button(TEXT("Size-"), TEXT("Size -")));
-		Out.Add(Button(TEXT("Size+"),
+		Out.Add(EditorButton(TEXT("Text-"), TEXT("Text colour -")));
+		Out.Add(EditorButton(TEXT("Text+"), FString::Printf(TEXT("Text colour: %s +"), *PaletteName(Rule.TextColour))));
+		Out.Add(EditorButton(TEXT("Back-"), TEXT("Background -")));
+		Out.Add(EditorButton(TEXT("Back+"), FString::Printf(TEXT("Background: %s +"), *PaletteName(Rule.BackgroundColour))));
+		Out.Add(EditorButton(TEXT("Size-"), TEXT("Size -")));
+		Out.Add(EditorButton(TEXT("Size+"),
 					   FString::Printf(TEXT("Size %.2gx +"),
 									   UCataclysmLootFilterRules::Sizes[FMath::Clamp(Rule.Size, 0,
 																			   UCataclysmLootFilterRules::SizeCount - 1)])));
