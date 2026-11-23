@@ -91,6 +91,11 @@ STEPS = [
     # AND A CARRIED PIECE DISMANTLED, issue #2848 slice S2, through the same sequence.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(", "ForgeDismantleLine"),
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "ForgeOptionsLine"),
+    # AND WHAT THE FORGE'S TWO EMPIRE MILESTONE OPTIONS DID, issue #47 slice F6: The Soul Forge's second level, said by
+    # the upgrade after its own line, and The Master Tinkerer's critical success, said by the enchantment crafts' end.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeSoulForgeLine"),
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(",
+     "ForgeCriticalLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),

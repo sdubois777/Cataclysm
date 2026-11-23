@@ -8,6 +8,7 @@
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmEmpireTreeLayout.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmEmpireTreeTestTables.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -20,7 +21,8 @@
  * The Imperial Zenith's first option, lets one more option of an earlier milestone be taken beside the one chosen there.
  * The coordinating session's J1 to J5 of the same day: the earlier milestone's own option chosen and its point bought
  * first (J1); one extra option in total (J2); the account and character records move on (J3); The Soul Forge and The
- * Master Tinkerer stay refused while crafting is missing (J4); the extra option stands until a respec (J5).
+ * Master Tinkerer stay refused while crafting is missing (J4; #47 slice F6 built crafting for them, so J4 is shown on a
+ * copy of the table); the extra option stands until a respec (J5).
  *
  * `Cataclysm.EmpireTreeProwess.` IS A NEW GROUP and selects these and nothing else.
  *
@@ -88,7 +90,8 @@ bool FCataclysmEmpireTreeProwessTableTest::RunTest(const FString&)
  *   The Imperial Zenith is not an earlier tier than itself;
  *   Edicts of Power, its option not chosen, must be chosen and bought first (J1);
  *   The Delver is already Foundations' choice;
- *   The Soul Forge, with Edicts of Power's The Sentinel chosen and bought, waits on crafting (J4);
+ *   The Soul Forge, with Edicts of Power's The Sentinel chosen and bought, waits on crafting (J4) -- on a copy of the
+ *   node table in which it still waits, since #47 slice F6 built it; in the generated table it is open;
  *   The Aegis of Hope is taken; then The Collector's Decree is refused, the one extra option taken (J2, J5).
  * CONTROL: The Aegis of Hope is open before it is taken. Prints "PROWESS REFUSALS".
  */
@@ -122,7 +125,11 @@ bool FCataclysmEmpireTreeProwessRefusalsTest::RunTest(const FString&)
 	const FString AlreadyChosen = Refusal(Tree, Foundations, 2);
 	const FString Open = Refusal(Tree, Foundations, 1);
 	Take(Tree, EdictsOfPower, 1);
-	const FString Crafting = Refusal(Tree, EdictsOfPower, 3);
+	// J4 ON A COPY IN WHICH THE SOUL FORGE STILL WAITS: since #47 slice F6 no option of the generated table waits.
+	const UDataTable* Waiting = CataclysmEmpireTreeTestTables::WithAnOptionWaiting(
+		Nodes, EdictsOfPower, 3, CataclysmEmpireTreeTestTables::CraftingReason());
+	const FString Crafting = UCataclysmEmpireTree::RefusalForChoosingExtraOption(Waiting, Effects, Tree, EdictsOfPower, 3);
+	const FString SoulForgeOpen = Refusal(Tree, EdictsOfPower, 3);
 	FString Reason;
 	const bool bTaken = UCataclysmEmpireTree::ChooseExtraOption(Nodes, Effects, Tree, Foundations, 1, Reason);
 	const FString Second = Refusal(Tree, EdictsOfPower, 2);
@@ -144,7 +151,9 @@ bool FCataclysmEmpireTreeProwessRefusalsTest::RunTest(const FString&)
 	TestEqual(TEXT("The Delver is already the choice"), AlreadyChosen,
 			  FString(TEXT("The Delver is already Foundations of the Empire's choice.")));
 	TestTrue(TEXT("CONTROL: The Aegis of Hope is open"), Open.IsEmpty());
-	TestEqual(TEXT("J4: The Soul Forge waits on crafting"), Crafting,
+	TestTrue(TEXT("CONTROL: in the generated table The Soul Forge is open as the extra option, since #47 slice F6"),
+			 SoulForgeOpen.IsEmpty());
+	TestEqual(TEXT("J4: The Soul Forge, while it waits on crafting"), Crafting,
 			  FString(TEXT("The Soul Forge cannot be chosen yet: it needs crafting, which the game does not have yet "
 						   "(issue #47).")));
 	TestTrue(TEXT("The Aegis of Hope is taken"), bTaken && Reason.IsEmpty());

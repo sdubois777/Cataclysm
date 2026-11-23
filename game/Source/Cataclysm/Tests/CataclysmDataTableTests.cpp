@@ -250,11 +250,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// slice 5b's five (5), of slice 6a's eleven gold and price nodes (11), of slice 6b's five (5), of slice 6c's five
 	// (5), of slice 6d's two (2), of slice 6e's two (2), of slice 7's four Treasurer city nodes (4), of slice 8's
 	// Imperial Prowess (1), of issue #2832's three build nodes, Scaffolding and Rapid Funding having two (5), and of
-	// slice 9's five (5), and of issue #2848's two dismantling nodes (2). It was
+	// slice 9's five (5), of issue #2848's two dismantling nodes (2), and of #47 slice F6's two forge options, The
+	// Soul Forge and The Master Tinkerer (2). It was
 	// 32 until slice 3b, 40 until slice 4, 59 until slice 5a, 76 until slice 5b, 81 until slice 6a, 92 until slice 6b,
 	// 97 until slice 6c, 102 until slice 6d, 104 until slice 6e, 106 until slice 7, 110 until slice 8, 111 until
-	// issue #2832, 116 until slice 9 and 121 until issue #2848.
-	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",     123)
+	// issue #2832, 116 until slice 9, 121 until issue #2848 and 123 until #47 slice F6.
+	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv",     125)
 	// 24 of the 293 nodes have an authored effect, and the small share is the
 	// point rather than a shortfall to be fixed by typing: most nodes are not
 	// stat modifiers under any authoring scheme. Issue #939 measures the gap.

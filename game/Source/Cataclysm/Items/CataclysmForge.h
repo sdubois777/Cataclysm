@@ -1118,6 +1118,55 @@ public:
 	 */
 	static FString EnchantmentWorkQuestion(const FCataclysmForgeEnchantmentWork& Plan, const FString& Named);
 
+	//~ The two crafting options of the empire tree's centre milestones. Issue #47, slice F6, ruled by the coordinating
+	//~ session on 2026-11-22 (R1 to R8).
+	//
+	// THE TEXTS, `docs/Empire_Skill_Tree_Keystones.md`: The Soul Forge, "When improving the level of an item, you have a
+	// 15% chance to increase its level by 2 instead of 1, up to the maximum of 10"; The Master Tinkerer, "When enchanting,
+	// you have a 5% chance to hit a critical success, doubling the rolls of the enchantment and completing the craft
+	// instantly". The chances are `FCataclysmEmpireTreePlayerBonuses::UpgradeExtraLevelChance` and `EnchantCriticalChance`.
+	//
+	// EACH DRAWS ON A STREAM OF ITS OWN SALT (R3), so a craft without the option draws nothing more and every draw a craft
+	// made before this slice is made the same. The same item on the same day of the same run draws the same, so a reload
+	// cannot change the outcome, which is not shown before the press (R8).
+
+	/** The salts of the two draws: "SOUL" and "CRIT". */
+	static constexpr int32 SoulForgeSalt = 0x534F554C;
+	static constexpr int32 EnchantCriticalSalt = 0x43524954;
+
+	/**
+	 * How many gear levels an upgrade of the item to `ToLevel` adds: 2 when `Chance` is above nought, `ToLevel` is below
+	 * `UCataclysmItemValues::MaxGearLevel` and a draw on `AffixCraftSeed` with `SoulForgeSalt` and the item's gear level
+	 * is below `Chance`; otherwise 1 (R7: at +9 the draw is not made). Only the upgrade improves an item's level (R6).
+	 */
+	static int32 SoulForgeLevels(const FCataclysmItem& Item, int32 ToLevel, float Chance, int32 WalkSeedMask, int32 Day);
+
+	/**
+	 * Whether an enchantment craft on the item is a critical success: `Chance` above nought and a draw on
+	 * `AffixCraftSeed` with `EnchantCriticalSalt` and `Index` below it. `Index` is the craft's own: an imprint's is the
+	 * item's pair count, a change's the pair it changes, as their own draws use. `OutStream` is that stream after the
+	 * draw, which `LuckyRolls` draws from. "Enchanting" is slice F3's two crafts only (R5).
+	 */
+	static bool EnchantCritical(const FCataclysmItem& Item, int32 Index, float Chance, int32 WalkSeedMask, int32 Day,
+								FRandomStream& OutStream);
+
+	/**
+	 * A critical success's rolls, R1, "Lucky": each roll drawn a second time from `Stream` and the better kept, the
+	 * higher positive and the lower negative, so every value stays inside its row's range. Better for every row, because a
+	 * roll of 1 gives a benefit its best figure and a drawback its harshest (`FCataclysmEnchantmentRow::RollsDown`, ruled
+	 * 2026-10-05). Path of Exile's "Lucky things are rolled twice and the best result is used" (poedb.tw/us/Lucky). A
+	 * change of drawback keeps its positive (`bPositiveToo` false) and applies the same to its new negative.
+	 */
+	static FCataclysmRolledEnchantment LuckyRolls(const FCataclysmRolledEnchantment& Drawn, bool bPositiveToo,
+												  FRandomStream& Stream);
+
+	/**
+	 * What a first press adds when an option is held (R8: the chance, not the outcome): " The Soul Forge: a 15% chance it
+	 * rises two levels instead of one." for an upgrade, " The Master Tinkerer: a 5% chance of a critical success, its
+	 * rolls drawn twice with the better kept, taking no days." for an enchantment craft. Empty for a chance of nought.
+	 */
+	static FString MilestoneChanceText(float Chance, bool bUpgrade);
+
 	//~ The residue tools. Issue #47, slice F5, ruled by the coordinating session on 2026-11-22.
 	//
 	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Reduce CR Gain (1 Craft) | Chaos Stabilizer |

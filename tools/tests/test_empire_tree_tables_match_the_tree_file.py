@@ -276,9 +276,10 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_seven_slices_that_make_it_act() -> None:
-    # AND ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 2848}
+def test_a_built_node_names_one_of_the_eight_slices_or_the_dismantling_issue_that_make_it_act() -> None:
+    # 10 IS #47 SLICE F6's: The Soul Forge and The Master Tinkerer, the forge's two options (2026-11-22). AND ISSUE
+    # #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 2848}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -322,9 +323,10 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
         "destroy upgrade": 1,
     }
     assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7, 9)) == 881
-    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
+    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it. The Soul Forge and
+    # The Master Tinkerer waited on crafting until #47 slice F6 (2026-11-22), numbered 10.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
-                             "crafting": 2, "slice 6": 1, "slice 8": 1}
+                             "slice 10": 2, "slice 6": 1, "slice 8": 1}
 
 
 @pytest.mark.parametrize("name, slice_", [

@@ -210,6 +210,16 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 
 	/** Bribery's points, 1 when held: the player may reset one dungeon's timer a surge for a fee (V12 to V14). */
 	int32 DungeonBribePoints = 0;
+
+	// ---- #47 slice F6: the two crafting options of the centre milestones, ruled 2026-11-22 (R1 to R8). ----
+
+	/** The Soul Forge's chance an upgrade adds two levels, 0.15 when chosen, 0 otherwise (`UCataclysmForge::
+	 *  SoulForgeLevels`). A chance, so the larger held, as The Warlord's is. */
+	float UpgradeExtraLevelChance = 0.0f;
+
+	/** The Master Tinkerer's chance an enchantment craft is a critical success, 0.05 when chosen
+	 *  (`UCataclysmForge::EnchantCritical`). */
+	float EnchantCriticalChance = 0.0f;
 };
 
 /**

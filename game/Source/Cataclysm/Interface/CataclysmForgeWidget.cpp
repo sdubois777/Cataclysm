@@ -20,6 +20,7 @@
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmForgeCraft.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerController.h"
 
 void UCataclysmForgeWidget::NativeConstruct()
@@ -905,8 +906,11 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		if (!bSecondPress)
 		{
 			PendingSocketAction = ButtonName;
+			// AND THE MASTER TINKERER'S CHANCE WHEN IT IS HELD, never the outcome (#47 slice F6, R8).
 			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::MilestoneChanceText(
+					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).EnchantCriticalChance, /*bUpgrade=*/false);
 			RefreshDisplay();
 			return;
 		}
@@ -988,8 +992,11 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	if (!bUpgradeAsked)
 	{
 		bUpgradeAsked = true;
+		// AND THE SOUL FORGE'S CHANCE WHEN IT IS HELD, never the outcome (#47 slice F6, R8).
 		Message = UCataclysmForge::UpgradeQuestion(Plan)
-				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days);
+				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::MilestoneChanceText(
+					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).UpgradeExtraLevelChance, /*bUpgrade=*/true);
 		RefreshDisplay();
 		return;
 	}

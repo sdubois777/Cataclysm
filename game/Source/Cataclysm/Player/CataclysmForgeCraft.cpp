@@ -191,11 +191,18 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 	Done.Days = Step.Days;
 	Done.Gold = Step.Gold;
 	UCataclysmInventoryComponent* Inventory = CharacterIn(WorldContext)->GetInventory();
+	// THE SOUL FORGE (#47 slice F6): a chance the upgrade adds two levels, drawn from the item as it stood and the day
+	// before the days pass, on a stream of its own (R3). The second level costs nothing more (R2): the stones, residue,
+	// days and gold are the +1's.
+	const float SoulForgeChance = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext).UpgradeExtraLevelChance;
 	const ECataclysmForgeResult Result = DoItemCraft(
 		WorldContext, Step, bConfirmedPastThreshold,
-		[&Plan](const FCataclysmItem&, FCataclysmItem& Changed, const UCataclysmEmpireRun&, FString&)
+		[&Plan, &Done, SoulForgeChance](const FCataclysmItem& Before, FCataclysmItem& Changed,
+										const UCataclysmEmpireRun& Run, FString&)
 		{
-			Changed.GearLevel = Plan.ToLevel;
+			Done.ToLevel = Plan.FromLevel
+				+ UCataclysmForge::SoulForgeLevels(Before, Plan.ToLevel, SoulForgeChance, Run.WalkSeedMask, Run.Day());
+			Changed.GearLevel = Done.ToLevel;
 			return true;
 		},
 		[&](const FString& Name, int32 DayFrom, int32 DayTo)
@@ -203,11 +210,16 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 			const int32 StonesLeft = Inventory->CountOfMaterial(Plan.Stone);
 			UE_LOG(LogCataclysm, Log, TEXT("The forge raised %s from +%d to +%d with two %s (%d left); residue %.0f to %.0f; "
 										   "%d day(s), day %d to day %d."),
-				   *Name, Plan.FromLevel, Plan.ToLevel, *Plan.Stone.ToString(), StonesLeft, Plan.ResidueBefore,
+				   *Name, Plan.FromLevel, Done.ToLevel, *Plan.Stone.ToString(), StonesLeft, Plan.ResidueBefore,
 				   Done.ResidueAfter, Done.Days, DayFrom, DayTo);
 			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeUpgradeLine(
-				Name, Plan.FromLevel, Plan.ToLevel, StonesLeft, Done.Gold, FMath::RoundToInt(Plan.ResidueBefore),
+				Name, Plan.FromLevel, Done.ToLevel, StonesLeft, Done.Gold, FMath::RoundToInt(Plan.ResidueBefore),
 				FMath::RoundToInt(Done.ResidueAfter), Done.Days, DayFrom, DayTo));
+			// AND WHAT THE SOUL FORGE DID, only when it did (R8: the line says what happened).
+			if (Done.ToLevel - Plan.FromLevel == 2)
+			{
+				FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeSoulForgeLine(Name, Plan.FromLevel, Done.ToLevel));
+			}
 		},
 		FCataclysmForgeCraftHooks(), OutMessage);
 	if (Result == ECataclysmForgeResult::Done)
@@ -1061,6 +1073,28 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 		Plan.bImprint ? TEXT("There is nothing there to imprint.") : TEXT("There is nothing there to change.");
 	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
 	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	// THE MASTER TINKERER (#47 slice F6): a chance of a critical success, decided BEFORE THE ONE SEQUENCE because it takes
+	// the craft's days away (R4: "instantly", no day passes; the residue, the gold and the material are still taken). Drawn
+	// from the item as it stands and the day now, which is the day the sequence draws the pair on, on a stream of its own
+	// (R3). Not shown before the press (R8). The doubled rolls are drawn from that stream after the pair is (R1).
+	bool bCritical = false;
+	FRandomStream CriticalStream;
+	{
+		const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+		const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+		const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+		if (Item != nullptr && Run != nullptr)
+		{
+			bCritical = UCataclysmForge::EnchantCritical(
+				*Item, Plan.bImprint ? Item->Enchantments.Num() : Plan.Pair,
+				UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext).EnchantCriticalChance, Run->WalkSeedMask,
+				Run->Day(), CriticalStream);
+		}
+	}
+	if (bCritical)
+	{
+		Step.Days = 0;
+	}
 	FCataclysmForgeEnchantmentWork Done = Plan;
 	Done.ResidueAfter = Step.ResidueAfter;
 	Done.Days = Step.Days;
@@ -1082,7 +1116,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			{
 				FRandomStream AfterTheDraw;
 				bDrawn = UCataclysmForge::DrawImprint(Before, BaseTable, Positives, Negatives, Run.WalkSeedMask, Run.Day(),
-													  Done.Drawn, AfterTheDraw)
+													  Done.Drawn, AfterTheDraw);
+				if (bDrawn && bCritical)
+				{
+					Done.Drawn = UCataclysmForge::LuckyRolls(Done.Drawn, /*bPositiveToo=*/true, CriticalStream);
+				}
+				bDrawn = bDrawn
 					&& UCataclysmForge::ApplyImprint(Before, Plan.Affix, Done.Drawn, BaseTable,
 													 UCataclysmWeaponSkills::LoadGeneratedTable(),
 													 UCataclysmItemModifiers::LoadEnchantmentEffectTable(), AfterTheDraw,
@@ -1092,6 +1131,11 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			{
 				bDrawn = UCataclysmForge::DrawChangedNegative(Before, Plan.Pair, BaseTable, Positives, Negatives,
 															  Run.WalkSeedMask, Run.Day(), Done.Drawn);
+				if (bDrawn && bCritical)
+				{
+					// A CHANGE KEEPS ITS POSITIVE AS IT STANDS and doubles only its new negative's roll (R1).
+					Done.Drawn = UCataclysmForge::LuckyRolls(Done.Drawn, /*bPositiveToo=*/false, CriticalStream);
+				}
 				if (bDrawn)
 				{
 					Changed.Enchantments[Plan.Pair] = Done.Drawn;
@@ -1119,6 +1163,11 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine(
 				Plan.bImprint, Name, Drawn.Key, Drawn.Value, GivenUpOrReplaced, Done.Gold,
 				FMath::RoundToInt(Plan.ResidueBefore), FMath::RoundToInt(Done.ResidueAfter), Done.Days, DayFrom, DayTo));
+			// AND THE CRITICAL SUCCESS, only when there was one (R8).
+			if (bCritical)
+			{
+				FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeCriticalLine(Name));
+			}
 		},
 		FCataclysmForgeCraftHooks(), OutMessage);
 	if (Result == ECataclysmForgeResult::Done)
