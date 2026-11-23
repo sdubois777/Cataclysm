@@ -99,7 +99,15 @@ PP1, `SetRule` reaching the player's filter without `EditableFilter`, failed
 
 ### Registered for the shared window
 
-Added to LF1's registration (the entry below), on the same base, development `3cbacdac4`, 5271 tests:
+**RE-TAKEN AT THE TURN, 2026-11-22, by the coordinating session's GO for window lf-w1.** LF1 and LF2 were rebased onto
+development `52b66e016` (#2851, Overwhelm and forge slice F5, merged). The base's counts are window ow-f5-w1's measured
+whole suite, `ow_suite_engine_a3984536.log` in the gems session's worktree: "5307 tests performed, 5307 succeeded,
+0 failed", 57 skipped halves, "861 written and deleted, 0 left behind". That log's tested head `a39845363` has the
+same game/ as `52b66e016`: `git diff a39845363 52b66e016` names `docs/DECISIONS.md` only. Each group alone below was
+counted in that log with a literal match, and none moved from LF1's registration. The rebase changed nothing outside
+this log: the branch's diff from its base has the same patch id before and after (`9ad032f61fe4`).
+
+Added to LF1's registration (the entry below), on that base, 5307 tests:
 
 | Step | Registered for LF1 and LF2 together |
 | :-- | :-- |
@@ -107,7 +115,7 @@ Added to LF1's registration (the entry below), on the same base, development `3c
 | **Editor step 1** | `tools/generate_input_assets.py`: commit only `IA_RevealDrops.uasset`, `IA_ToggleLootFilter.uasset`, `IMC_MouseMovement.uasset`, `IMC_KeyboardMovement.uasset` and the input config asset |
 | **Editor step 2** | `tools/generate_interface_assets.py`: commit only `WBP_LootFilter.uasset`; every other screen is left alone when it exists |
 | Each group alone, first | `Cataclysm.LootFilter.` 8, `Cataclysm.LootFilterScreen.` 7, then LF1's list |
-| The whole suite | 5286 performed, 5286 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| The whole suite | 5322 performed, 5322 succeeded, 0 failed (5307 + 8 + 7); 57 skipped halves; 861 saves written and deleted, 0 left behind |
 | Python beside it | every test passing, the JUnit file agreeing; ruff clean |
 
 **C++ guard proofs, each narrowed to `Cataclysm.LootFilterScreen.` with its trailing dot. Predicted, not run:**
@@ -280,7 +288,7 @@ removes none. If development moves before the window, the base is re-taken there
 | One build | the slice compiled |
 | **Editor step** | `tools/generate_input_assets.py` builds `IA_RevealDrops` and rewrites both mapping contexts and the input config; commit only `IA_RevealDrops.uasset`, `IMC_MouseMovement.uasset`, `IMC_KeyboardMovement.uasset` and the input config asset |
 | Each group alone, first | `Cataclysm.LootFilter.` 8; then, at their counts in the base log, the groups whose code the slice touches: `Drop.` 30, `DropPickup.` 20, `GroundItemHover.` 7, `Input.` 9, `Equipment.` 30, `GemDrops.` 4, `EmpireTreeDrops.` 13 |
-| The whole suite | 5279 performed, 5279 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind |
+| The whole suite | 5279 performed, 5279 succeeded, 0 failed; 57 skipped halves; 860 saves written and deleted, 0 left behind. **RE-TAKEN AT THE TURN on development `52b66e016`: see the LF2 entry above** |
 | Python beside it | every test passing, the JUnit file agreeing; ruff clean |
 
 **C++ guard proofs, each narrowed to `Cataclysm.LootFilter.` with its trailing dot. Predicted, not run:**
