@@ -5,7 +5,6 @@
 #include "Cataclysm.h"
 // The damage types designed for each weapon type, issue #47 slice F4.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
-#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"

@@ -16,7 +16,6 @@
 // A gold amount as a player reads it, issue #2830.
 #include "Items/CataclysmDroppedItem.h"
 // The affix table, for the affixes a piece can take, issue #47 slice F2.
-#include "Items/CataclysmDropRoll.h"
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
