@@ -23,7 +23,7 @@ class UTextBlock;
  *   - picks a rule, adds one, deletes one, or moves one up or down: the highest rule that matches decides;
  *   - changes the picked rule with the editor's buttons: each condition and the action is a toggle, a cycle or a step.
  * A BUILT-IN FILTER CAN BE USED AND COPIED, NOT CHANGED: every change to one is refused with
- * `UCataclysmLootFilterPreferences::BuiltInRefusal`, which the refusal line shows.
+ * `UCataclysmLootFilterStore::BuiltInRefusal`, which the refusal line shows.
  *
  * EVERY CHANGE IS WRITTEN TO THE PREFERENCES FILE AT ONCE (the owner's ruling O4), through the game instance.
  *
@@ -44,7 +44,7 @@ public:
 
 	/**
 	 * What a button's click does. The commands:
-	 *   "Filter:N"  pick filter N of `UCataclysmLootFilterPreferences::AllNames`
+	 *   "Filter:N"  pick filter N of `UCataclysmLootFilterStore::AllNames`
 	 *   "Rule:N"    pick rule N of the picked filter
 	 *   "Do:Use", "Do:New", "Do:Copy", "Do:Rename", "Do:Delete"
 	 *   "Do:AddRule", "Do:DeleteRule", "Do:Up", "Do:Down"

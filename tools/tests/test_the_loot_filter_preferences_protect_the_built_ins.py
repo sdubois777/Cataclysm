@@ -1,7 +1,7 @@
 """Every change to a loot filter goes through the one check that refuses a built-in, and the file stays out of saves.
 
 WHY THIS EXISTS. Issue #2846, slice LF2. The coordinating session's condition of 2026-11-22: the three built-in
-filters' names must be impossible to overwrite. `UCataclysmLootFilterPreferences` protects them three ways, and the
+filters' names must be impossible to overwrite. `UCataclysmLootFilterStore` protects them three ways, and the
 automation tests `Cataclysm.LootFilterScreen.` drive each change through it. What no test can see is a NEW change
 function added later that forgets the check, so this reads the source: every function that changes a filter's rules,
 name or existence asks `EditableFilter`, which refuses a built-in first.
@@ -51,21 +51,21 @@ CHANGES = ("AddRule", "RemoveRule", "MoveRule", "SetRule", "RenameFilter", "Dele
 def test_every_change_asks_the_one_check_that_refuses_a_built_in() -> None:
     text = code(PREFERENCES)
     for change in CHANGES:
-        assert "EditableFilter(Preferences," in body(text, f"bool UCataclysmLootFilterPreferences::{change}("), change
+        assert "EditableFilter(Preferences," in body(text, f"bool UCataclysmLootFilterStore::{change}("), change
     check = body(text, "FCataclysmLootFilter* EditableFilter(")
-    refuse = check.find("UCataclysmLootFilterPreferences::IsBuiltInName(Name)")
+    refuse = check.find("UCataclysmLootFilterStore::IsBuiltInName(Name)")
     look = check.find("OwnFilter(Preferences, Name)")
     assert refuse != -1 and look != -1 and refuse < look, "EditableFilter must refuse a built-in before it looks"
-    assert "OutRefusal = UCataclysmLootFilterPreferences::BuiltInRefusal;" in check
+    assert "OutRefusal = UCataclysmLootFilterStore::BuiltInRefusal;" in check
 
 
 def test_reading_the_file_sanitises_it() -> None:
     text = code(PREFERENCES)
-    assert "return FromJson(Json, Out);" in body(text, "bool UCataclysmLootFilterPreferences::Load(")
-    assert "Out = Sanitised(Read);" in body(text, "bool UCataclysmLootFilterPreferences::FromJson(")
+    assert "return FromJson(Json, Out);" in body(text, "bool UCataclysmLootFilterStore::Load(")
+    assert "Out = Sanitised(Read);" in body(text, "bool UCataclysmLootFilterStore::FromJson(")
     assert "NameTaken(Out, Name) ? FreeName(Out) : Name" in body(
-        text, "FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::Sanitised(")
-    assert "UCataclysmLootFilterPreferences::IsBuiltInName(Name)" in body(text, "bool NameTaken(")
+        text, "FCataclysmLootFilterPreferences UCataclysmLootFilterStore::Sanitised(")
+    assert "UCataclysmLootFilterStore::IsBuiltInName(Name)" in body(text, "bool NameTaken(")
 
 
 def test_the_screen_refuses_a_built_in_and_writes_after_every_change() -> None:
@@ -79,5 +79,5 @@ def test_the_preferences_are_outside_the_save_records() -> None:
     for path in (SOURCE / "Save").rglob("*.*"):
         text = path.read_text(encoding="utf-8", errors="replace")
         assert "LootFilter" not in text, f"{path.relative_to(REPO_ROOT)} names a loot filter; O4 keeps them out of saves"
-    file_path = body(code(PREFERENCES), "FString UCataclysmLootFilterPreferences::FilePath(")
+    file_path = body(code(PREFERENCES), "FString UCataclysmLootFilterStore::FilePath(")
     assert 'FPaths::ProjectSavedDir(), TEXT("Preferences"), TEXT("LootFilters.json")' in file_path

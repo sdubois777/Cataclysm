@@ -13,11 +13,11 @@
  * THE OWNER'S RULING O4 OF 2026-11-22: "Own preferences file". One file on this machine, OUTSIDE THE SAVE RECORDS, so
  * no save version moves and every character on the machine shares the filters: a filter changes only which names are
  * drawn, so sharing it across lethality modes gives no character an advantage. The file is
- * `UCataclysmLootFilterPreferences::FilePath()`.
+ * `UCataclysmLootFilterStore::FilePath()`.
  *
  * ONLY THE PLAYER'S OWN FILTERS ARE STORED. The three built-in filters are never written to the file and are made from
- * code every time they are asked for (`UCataclysmLootFilter::BuiltInNamed`), which is the first of the three ways
- * their names are protected; `UCataclysmLootFilterPreferences` says the other two.
+ * code every time they are asked for (`UCataclysmLootFilterRules::BuiltInNamed`), which is the first of the three ways
+ * their names are protected; `UCataclysmLootFilterStore` says the other two.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmLootFilterPreferences
@@ -32,7 +32,7 @@ struct CATACLYSM_API FCataclysmLootFilterPreferences
 	UPROPERTY()
 	FString Active;
 
-	/** The player's own filters, at most `UCataclysmLootFilterPreferences::MaxSavedFilters`. */
+	/** The player's own filters, at most `UCataclysmLootFilterStore::MaxSavedFilters`. */
 	UPROPERTY()
 	TArray<FCataclysmLootFilter> Filters;
 };
@@ -51,7 +51,7 @@ struct CATACLYSM_API FCataclysmLootFilterPreferences
  *      (`Sanitised`).
  */
 UCLASS()
-class CATACLYSM_API UCataclysmLootFilterPreferences : public UBlueprintFunctionLibrary
+class CATACLYSM_API UCataclysmLootFilterStore : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 
@@ -125,7 +125,7 @@ public:
 
 	/**
 	 * The preferences as they may be kept: at most `MaxSavedFilters` filters, each of at most 75 rules
-	 * (`UCataclysmLootFilter::MaxRules`), and every name unique, not empty, not longer than `MaxNameLength` and no
+	 * (`UCataclysmLootFilterRules::MaxRules`), and every name unique, not empty, not longer than `MaxNameLength` and no
 	 * built-in's; a name that fails is replaced as `NewFilter` names one. An active name that names no filter becomes
 	 * the default's. Run on every file read, so a file edited by hand cannot get round the rules above.
 	 */

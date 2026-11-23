@@ -6,16 +6,16 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
-const TCHAR* UCataclysmLootFilterPreferences::BuiltInRefusal =
+const TCHAR* UCataclysmLootFilterStore::BuiltInRefusal =
 	TEXT("The built-in filters cannot be changed. Copy one to make a filter of your own.");
-const TCHAR* UCataclysmLootFilterPreferences::NameTakenRefusal = TEXT("Another filter already has that name.");
-const TCHAR* UCataclysmLootFilterPreferences::NameEmptyRefusal = TEXT("A filter needs a name.");
-const TCHAR* UCataclysmLootFilterPreferences::NameTooLongRefusal = TEXT("That name is longer than 40 characters.");
-const TCHAR* UCataclysmLootFilterPreferences::TooManyFiltersRefusal =
+const TCHAR* UCataclysmLootFilterStore::NameTakenRefusal = TEXT("Another filter already has that name.");
+const TCHAR* UCataclysmLootFilterStore::NameEmptyRefusal = TEXT("A filter needs a name.");
+const TCHAR* UCataclysmLootFilterStore::NameTooLongRefusal = TEXT("That name is longer than 40 characters.");
+const TCHAR* UCataclysmLootFilterStore::TooManyFiltersRefusal =
 	TEXT("You already have 10 filters of your own. Delete one first.");
-const TCHAR* UCataclysmLootFilterPreferences::TooManyRulesRefusal = TEXT("A filter holds at most 75 rules.");
-const TCHAR* UCataclysmLootFilterPreferences::NoSuchFilterRefusal = TEXT("There is no filter of that name.");
-const TCHAR* UCataclysmLootFilterPreferences::NoSuchRuleRefusal = TEXT("There is no such rule.");
+const TCHAR* UCataclysmLootFilterStore::TooManyRulesRefusal = TEXT("A filter holds at most 75 rules.");
+const TCHAR* UCataclysmLootFilterStore::NoSuchFilterRefusal = TEXT("There is no filter of that name.");
+const TCHAR* UCataclysmLootFilterStore::NoSuchRuleRefusal = TEXT("There is no such rule.");
 
 namespace
 {
@@ -32,7 +32,7 @@ namespace
 	/** Whether any filter, built-in or the player's, has this name, ignoring case. */
 	bool NameTaken(const FCataclysmLootFilterPreferences& Preferences, const FString& Name)
 	{
-		return UCataclysmLootFilterPreferences::IsBuiltInName(Name)
+		return UCataclysmLootFilterStore::IsBuiltInName(Name)
 			|| OwnFilter(const_cast<FCataclysmLootFilterPreferences&>(Preferences), Name) != nullptr;
 	}
 
@@ -56,27 +56,27 @@ namespace
 	FCataclysmLootFilter* EditableFilter(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 										 FString& OutRefusal)
 	{
-		if (UCataclysmLootFilterPreferences::IsBuiltInName(Name))
+		if (UCataclysmLootFilterStore::IsBuiltInName(Name))
 		{
-			OutRefusal = UCataclysmLootFilterPreferences::BuiltInRefusal;
+			OutRefusal = UCataclysmLootFilterStore::BuiltInRefusal;
 			return nullptr;
 		}
 		FCataclysmLootFilter* Filter = OwnFilter(Preferences, Name);
 		if (Filter == nullptr)
 		{
-			OutRefusal = UCataclysmLootFilterPreferences::NoSuchFilterRefusal;
+			OutRefusal = UCataclysmLootFilterStore::NoSuchFilterRefusal;
 		}
 		return Filter;
 	}
 }
 
-TArray<FString> UCataclysmLootFilterPreferences::BuiltInNames()
+TArray<FString> UCataclysmLootFilterStore::BuiltInNames()
 {
-	return {UCataclysmLootFilter::Everything().Name, UCataclysmLootFilter::HideWorseThanWorn().Name,
-			UCataclysmLootFilter::Strict().Name};
+	return {UCataclysmLootFilterRules::Everything().Name, UCataclysmLootFilterRules::HideWorseThanWorn().Name,
+			UCataclysmLootFilterRules::Strict().Name};
 }
 
-bool UCataclysmLootFilterPreferences::IsBuiltInName(const FString& Name)
+bool UCataclysmLootFilterStore::IsBuiltInName(const FString& Name)
 {
 	const FString Trimmed = Name.TrimStartAndEnd();
 	for (const FString& BuiltIn : BuiltInNames())
@@ -89,7 +89,7 @@ bool UCataclysmLootFilterPreferences::IsBuiltInName(const FString& Name)
 	return false;
 }
 
-TArray<FString> UCataclysmLootFilterPreferences::AllNames(const FCataclysmLootFilterPreferences& Preferences)
+TArray<FString> UCataclysmLootFilterStore::AllNames(const FCataclysmLootFilterPreferences& Preferences)
 {
 	TArray<FString> Names = BuiltInNames();
 	for (const FCataclysmLootFilter& Filter : Preferences.Filters)
@@ -99,11 +99,11 @@ TArray<FString> UCataclysmLootFilterPreferences::AllNames(const FCataclysmLootFi
 	return Names;
 }
 
-bool UCataclysmLootFilterPreferences::Find(const FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::Find(const FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 										   FCataclysmLootFilter& OutFilter)
 {
 	// BUILT-INS FIRST, so even a player's filter that somehow held a built-in's name could not stand in for it.
-	if (UCataclysmLootFilter::BuiltInNamed(Name.TrimStartAndEnd(), OutFilter))
+	if (UCataclysmLootFilterRules::BuiltInNamed(Name.TrimStartAndEnd(), OutFilter))
 	{
 		return true;
 	}
@@ -115,13 +115,13 @@ bool UCataclysmLootFilterPreferences::Find(const FCataclysmLootFilterPreferences
 	return false;
 }
 
-FCataclysmLootFilter UCataclysmLootFilterPreferences::ActiveFilter(const FCataclysmLootFilterPreferences& Preferences)
+FCataclysmLootFilter UCataclysmLootFilterStore::ActiveFilter(const FCataclysmLootFilterPreferences& Preferences)
 {
 	FCataclysmLootFilter Filter;
-	return Find(Preferences, Preferences.Active, Filter) ? Filter : UCataclysmLootFilter::HideWorseThanWorn();
+	return Find(Preferences, Preferences.Active, Filter) ? Filter : UCataclysmLootFilterRules::HideWorseThanWorn();
 }
 
-bool UCataclysmLootFilterPreferences::SetActive(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::SetActive(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 												FString& OutRefusal)
 {
 	FCataclysmLootFilter Filter;
@@ -134,7 +134,7 @@ bool UCataclysmLootFilterPreferences::SetActive(FCataclysmLootFilterPreferences&
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::NewFilter(FCataclysmLootFilterPreferences& Preferences, FString& OutName,
+bool UCataclysmLootFilterStore::NewFilter(FCataclysmLootFilterPreferences& Preferences, FString& OutName,
 												FString& OutRefusal)
 {
 	if (Preferences.Filters.Num() >= MaxSavedFilters)
@@ -149,7 +149,7 @@ bool UCataclysmLootFilterPreferences::NewFilter(FCataclysmLootFilterPreferences&
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::CopyFilter(FCataclysmLootFilterPreferences& Preferences, const FString& From,
+bool UCataclysmLootFilterStore::CopyFilter(FCataclysmLootFilterPreferences& Preferences, const FString& From,
 												 FString& OutName, FString& OutRefusal)
 {
 	FCataclysmLootFilter Source;
@@ -169,7 +169,7 @@ bool UCataclysmLootFilterPreferences::CopyFilter(FCataclysmLootFilterPreferences
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::RenameFilter(FCataclysmLootFilterPreferences& Preferences, const FString& From,
+bool UCataclysmLootFilterStore::RenameFilter(FCataclysmLootFilterPreferences& Preferences, const FString& From,
 												   const FString& To, FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, From, OutRefusal);
@@ -204,7 +204,7 @@ bool UCataclysmLootFilterPreferences::RenameFilter(FCataclysmLootFilterPreferenc
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::DeleteFilter(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::DeleteFilter(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 												   FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, Name, OutRefusal);
@@ -217,12 +217,12 @@ bool UCataclysmLootFilterPreferences::DeleteFilter(FCataclysmLootFilterPreferenc
 	Preferences.Filters.RemoveAll([&Deleted](const FCataclysmLootFilter& Each) { return Each.Name == Deleted; });
 	if (bWasActive)
 	{
-		Preferences.Active = UCataclysmLootFilter::DefaultFilterName;
+		Preferences.Active = UCataclysmLootFilterRules::DefaultFilterName;
 	}
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::AddRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::AddRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 											  FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, Name, OutRefusal);
@@ -230,7 +230,7 @@ bool UCataclysmLootFilterPreferences::AddRule(FCataclysmLootFilterPreferences& P
 	{
 		return false;
 	}
-	if (Filter->Rules.Num() >= UCataclysmLootFilter::MaxRules)
+	if (Filter->Rules.Num() >= UCataclysmLootFilterRules::MaxRules)
 	{
 		OutRefusal = TooManyRulesRefusal;
 		return false;
@@ -239,7 +239,7 @@ bool UCataclysmLootFilterPreferences::AddRule(FCataclysmLootFilterPreferences& P
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::RemoveRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::RemoveRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 												 int32 Index, FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, Name, OutRefusal);
@@ -256,7 +256,7 @@ bool UCataclysmLootFilterPreferences::RemoveRule(FCataclysmLootFilterPreferences
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::MoveRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::MoveRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 											   int32 Index, int32 Delta, FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, Name, OutRefusal);
@@ -274,7 +274,7 @@ bool UCataclysmLootFilterPreferences::MoveRule(FCataclysmLootFilterPreferences& 
 	return true;
 }
 
-bool UCataclysmLootFilterPreferences::SetRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
+bool UCataclysmLootFilterStore::SetRule(FCataclysmLootFilterPreferences& Preferences, const FString& Name,
 											  int32 Index, const FCataclysmLootFilterRule& Rule, FString& OutRefusal)
 {
 	FCataclysmLootFilter* Filter = EditableFilter(Preferences, Name, OutRefusal);
@@ -291,7 +291,7 @@ bool UCataclysmLootFilterPreferences::SetRule(FCataclysmLootFilterPreferences& P
 	return true;
 }
 
-FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::Sanitised(
+FCataclysmLootFilterPreferences UCataclysmLootFilterStore::Sanitised(
 	const FCataclysmLootFilterPreferences& Preferences)
 {
 	FCataclysmLootFilterPreferences Out;
@@ -303,9 +303,9 @@ FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::Sanitised(
 			break;
 		}
 		FCataclysmLootFilter Filter = Stored;
-		if (Filter.Rules.Num() > UCataclysmLootFilter::MaxRules)
+		if (Filter.Rules.Num() > UCataclysmLootFilterRules::MaxRules)
 		{
-			Filter.Rules.SetNum(UCataclysmLootFilter::MaxRules);
+			Filter.Rules.SetNum(UCataclysmLootFilterRules::MaxRules);
 		}
 		const FString Name = Filter.Name.TrimStartAndEnd();
 		Filter.Name = Name.IsEmpty() || Name.Len() > MaxNameLength || NameTaken(Out, Name) ? FreeName(Out) : Name;
@@ -321,18 +321,18 @@ FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::Sanitised(
 			{
 				return Each.Name.TrimStartAndEnd().Equals(Active.Name, ESearchCase::IgnoreCase);
 			}));
-	Out.Active = bKept ? Active.Name : FString(UCataclysmLootFilter::DefaultFilterName);
+	Out.Active = bKept ? Active.Name : FString(UCataclysmLootFilterRules::DefaultFilterName);
 	return Out;
 }
 
-FString UCataclysmLootFilterPreferences::ToJson(const FCataclysmLootFilterPreferences& Preferences)
+FString UCataclysmLootFilterStore::ToJson(const FCataclysmLootFilterPreferences& Preferences)
 {
 	FString Json;
 	FJsonObjectConverter::UStructToJsonObjectString(Preferences, Json);
 	return Json;
 }
 
-bool UCataclysmLootFilterPreferences::FromJson(const FString& Json, FCataclysmLootFilterPreferences& Out)
+bool UCataclysmLootFilterStore::FromJson(const FString& Json, FCataclysmLootFilterPreferences& Out)
 {
 	FCataclysmLootFilterPreferences Read;
 	if (!FJsonObjectConverter::JsonObjectStringToUStruct(Json, &Read))
@@ -344,12 +344,12 @@ bool UCataclysmLootFilterPreferences::FromJson(const FString& Json, FCataclysmLo
 	return true;
 }
 
-FString UCataclysmLootFilterPreferences::FilePath()
+FString UCataclysmLootFilterStore::FilePath()
 {
 	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Preferences"), TEXT("LootFilters.json"));
 }
 
-bool UCataclysmLootFilterPreferences::Load(const FString& Path, FCataclysmLootFilterPreferences& Out)
+bool UCataclysmLootFilterStore::Load(const FString& Path, FCataclysmLootFilterPreferences& Out)
 {
 	FString Json;
 	if (!FFileHelper::LoadFileToString(Json, *Path))
@@ -360,14 +360,14 @@ bool UCataclysmLootFilterPreferences::Load(const FString& Path, FCataclysmLootFi
 	return FromJson(Json, Out);
 }
 
-bool UCataclysmLootFilterPreferences::Save(const FString& Path, const FCataclysmLootFilterPreferences& Preferences)
+bool UCataclysmLootFilterStore::Save(const FString& Path, const FCataclysmLootFilterPreferences& Preferences)
 {
 	return FFileHelper::SaveStringToFile(ToJson(Preferences), *Path);
 }
 
-FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::NewPlayer()
+FCataclysmLootFilterPreferences UCataclysmLootFilterStore::NewPlayer()
 {
 	FCataclysmLootFilterPreferences Preferences;
-	Preferences.Active = UCataclysmLootFilter::DefaultFilterName;
+	Preferences.Active = UCataclysmLootFilterRules::DefaultFilterName;
 	return Preferences;
 }

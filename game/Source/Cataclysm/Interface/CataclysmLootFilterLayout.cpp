@@ -65,7 +65,7 @@ namespace
 	/** Cycles a palette index through INDEX_NONE (none) and 0 to PaletteSize - 1. */
 	void CyclePalette(int32& Index, bool bUp)
 	{
-		const int32 Count = UCataclysmLootFilter::PaletteSize + 1;
+		const int32 Count = UCataclysmLootFilterRules::PaletteSize + 1;
 		const int32 Position = (Index + 1 + (bUp ? 1 : Count - 1)) % Count;
 		Index = Position - 1;
 	}
@@ -108,7 +108,7 @@ FString UCataclysmLootFilterLayout::PaletteName(int32 Index)
 	{
 		return RarityName(static_cast<ECataclysmRarity>(Index));
 	}
-	if (Index >= RarityCount && Index < UCataclysmLootFilter::PaletteSize)
+	if (Index >= RarityCount && Index < UCataclysmLootFilterRules::PaletteSize)
 	{
 		return Extras[Index - RarityCount];
 	}
@@ -199,8 +199,8 @@ FString UCataclysmLootFilterLayout::RuleLine(const FCataclysmLootFilterRule& Rul
 	{
 		Line += FString::Printf(TEXT(" -> text %s, background %s, size %.2gx"), *PaletteName(Rule.TextColour),
 								*PaletteName(Rule.BackgroundColour),
-								UCataclysmLootFilter::Sizes[FMath::Clamp(Rule.Size, 0,
-																		 UCataclysmLootFilter::SizeCount - 1)]);
+								UCataclysmLootFilterRules::Sizes[FMath::Clamp(Rule.Size, 0,
+																		 UCataclysmLootFilterRules::SizeCount - 1)]);
 	}
 	return Line;
 }
@@ -310,7 +310,7 @@ bool UCataclysmLootFilterLayout::EditRule(FCataclysmLootFilterRule& Rule, const 
 	}
 	else if (Field == TEXT("Size"))
 	{
-		Step(Rule.Size, bUp, 0, UCataclysmLootFilter::SizeCount - 1);
+		Step(Rule.Size, bUp, 0, UCataclysmLootFilterRules::SizeCount - 1);
 	}
 	else
 	{
@@ -394,8 +394,8 @@ TArray<FCataclysmLootEditorButton> UCataclysmLootFilterLayout::EditorButtonsFor(
 		Out.Add(Button(TEXT("Size-"), TEXT("Size -")));
 		Out.Add(Button(TEXT("Size+"),
 					   FString::Printf(TEXT("Size %.2gx +"),
-									   UCataclysmLootFilter::Sizes[FMath::Clamp(Rule.Size, 0,
-																			   UCataclysmLootFilter::SizeCount - 1)])));
+									   UCataclysmLootFilterRules::Sizes[FMath::Clamp(Rule.Size, 0,
+																			   UCataclysmLootFilterRules::SizeCount - 1)])));
 	}
 	return Out;
 }

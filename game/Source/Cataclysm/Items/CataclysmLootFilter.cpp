@@ -13,16 +13,16 @@
 #include "HAL/IConsoleManager.h"
 #include "Engine/World.h"
 
-const float UCataclysmLootFilter::Sizes[UCataclysmLootFilter::SizeCount] = {1.0f, 1.25f, 1.5f};
+const float UCataclysmLootFilterRules::Sizes[UCataclysmLootFilterRules::SizeCount] = {1.0f, 1.25f, 1.5f};
 
-const FLinearColor UCataclysmLootFilter::ExtraColours[4] = {
+const FLinearColor UCataclysmLootFilterRules::ExtraColours[4] = {
 	FLinearColor(FColor(0xFF, 0xE1, 0x4D)), // yellow
 	FLinearColor(FColor(0x33, 0xE6, 0xFF)), // cyan
 	FLinearColor(FColor(0xFF, 0x66, 0xCC)), // pink
 	FLinearColor::Black,
 };
 
-const TCHAR* UCataclysmLootFilter::DefaultFilterName = TEXT("Hide worse than worn");
+const TCHAR* UCataclysmLootFilterRules::DefaultFilterName = TEXT("Hide worse than worn");
 
 namespace
 {
@@ -41,7 +41,7 @@ namespace
 	}
 }
 
-FLinearColor UCataclysmLootFilter::PaletteColour(int32 Index, const UDataTable* GearRarityTable)
+FLinearColor UCataclysmLootFilterRules::PaletteColour(int32 Index, const UDataTable* GearRarityTable)
 {
 	if (Index >= 0 && Index < RarityCount)
 	{
@@ -56,13 +56,13 @@ FLinearColor UCataclysmLootFilter::PaletteColour(int32 Index, const UDataTable* 
 	return FLinearColor::White;
 }
 
-ECataclysmRarity UCataclysmLootFilter::TierRarity(int32 DifficultyTier)
+ECataclysmRarity UCataclysmLootFilterRules::TierRarity(int32 DifficultyTier)
 {
 	// Section IV's tier table: the reference character wears the tier's own rarity, Everyday at tier 1.
 	return static_cast<ECataclysmRarity>(FMath::Clamp(DifficultyTier, 1, RarityCount) - 1);
 }
 
-bool UCataclysmLootFilter::Matches(const FCataclysmLootFilterRule& Rule, const FCataclysmLootFacts& Facts,
+bool UCataclysmLootFilterRules::Matches(const FCataclysmLootFilterRule& Rule, const FCataclysmLootFacts& Facts,
 								   const FCataclysmLootContext& Context)
 {
 	if (Rule.Kind != ECataclysmLootKind::Any && Rule.Kind != Facts.Kind)
@@ -164,7 +164,7 @@ bool UCataclysmLootFilter::Matches(const FCataclysmLootFilterRule& Rule, const F
 	return true;
 }
 
-FCataclysmLootVerdict UCataclysmLootFilter::VerdictFor(const FCataclysmLootFilter& Filter,
+FCataclysmLootVerdict UCataclysmLootFilterRules::VerdictFor(const FCataclysmLootFilter& Filter,
 														const FCataclysmLootFacts& Facts,
 														const FCataclysmLootContext& Context)
 {
@@ -198,7 +198,7 @@ FCataclysmLootVerdict UCataclysmLootFilter::VerdictFor(const FCataclysmLootFilte
 	return Verdict;
 }
 
-TMap<FString, ECataclysmRarity> UCataclysmLootFilter::WornRaritiesOf(const TArray<const FCataclysmItem*>& Worn,
+TMap<FString, ECataclysmRarity> UCataclysmLootFilterRules::WornRaritiesOf(const TArray<const FCataclysmItem*>& Worn,
 																	  bool bTwoHandedInBothHands)
 {
 	TMap<FString, ECataclysmRarity> Out;
@@ -248,7 +248,7 @@ TMap<FString, ECataclysmRarity> UCataclysmLootFilter::WornRaritiesOf(const TArra
 	return Out;
 }
 
-FCataclysmLootContext UCataclysmLootFilter::ContextOf(const AActor* Character)
+FCataclysmLootContext UCataclysmLootFilterRules::ContextOf(const AActor* Character)
 {
 	FCataclysmLootContext Context;
 	if (Character == nullptr)
@@ -270,7 +270,7 @@ FCataclysmLootContext UCataclysmLootFilter::ContextOf(const AActor* Character)
 	return Context;
 }
 
-FCataclysmLootFacts UCataclysmLootFilter::FactsOf(const ACataclysmDroppedItem& Drop, const UDataTable* BaseTable)
+FCataclysmLootFacts UCataclysmLootFilterRules::FactsOf(const ACataclysmDroppedItem& Drop, const UDataTable* BaseTable)
 {
 	FCataclysmLootFacts Facts;
 	if (Drop.IsGold())
@@ -305,7 +305,7 @@ FCataclysmLootFacts UCataclysmLootFilter::FactsOf(const ACataclysmDroppedItem& D
 	return Facts;
 }
 
-void UCataclysmLootFilter::VisibleDrops(const TArray<ACataclysmDroppedItem*>& Named,
+void UCataclysmLootFilterRules::VisibleDrops(const TArray<ACataclysmDroppedItem*>& Named,
 										const FCataclysmLootFilter& Filter, const FCataclysmLootContext& Context,
 										bool bRevealHidden, const UDataTable* BaseTable,
 										TArray<ACataclysmDroppedItem*>& OutDrops,
@@ -329,14 +329,14 @@ void UCataclysmLootFilter::VisibleDrops(const TArray<ACataclysmDroppedItem*>& Na
 	}
 }
 
-FCataclysmLootFilter UCataclysmLootFilter::Everything()
+FCataclysmLootFilter UCataclysmLootFilterRules::Everything()
 {
 	FCataclysmLootFilter Filter;
 	Filter.Name = TEXT("Everything");
 	return Filter;
 }
 
-FCataclysmLootFilter UCataclysmLootFilter::HideWorseThanWorn()
+FCataclysmLootFilter UCataclysmLootFilterRules::HideWorseThanWorn()
 {
 	FCataclysmLootFilter Filter;
 	Filter.Name = DefaultFilterName;
@@ -349,7 +349,7 @@ FCataclysmLootFilter UCataclysmLootFilter::HideWorseThanWorn()
 	return Filter;
 }
 
-FCataclysmLootFilter UCataclysmLootFilter::Strict()
+FCataclysmLootFilter UCataclysmLootFilterRules::Strict()
 {
 	FCataclysmLootFilter Filter = HideWorseThanWorn();
 	Filter.Name = TEXT("Strict");
@@ -362,7 +362,7 @@ FCataclysmLootFilter UCataclysmLootFilter::Strict()
 	return Filter;
 }
 
-bool UCataclysmLootFilter::BuiltInNamed(const FString& Name, FCataclysmLootFilter& OutFilter)
+bool UCataclysmLootFilterRules::BuiltInNamed(const FString& Name, FCataclysmLootFilter& OutFilter)
 {
 	const TArray<FCataclysmLootFilter> BuiltIns = {Everything(), HideWorseThanWorn(), Strict()};
 	for (const FCataclysmLootFilter& Candidate : BuiltIns)
@@ -399,20 +399,20 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmLootFilter(
 			if (Args.Num() == 0)
 			{
 				Ar.Logf(TEXT("The loot filter is \"%s\". The filters are: %s."),
-						*UCataclysmLootFilterPreferences::ActiveFilter(Preferences).Name,
-						*FString::Join(UCataclysmLootFilterPreferences::AllNames(Preferences), TEXT(", ")));
+						*UCataclysmLootFilterStore::ActiveFilter(Preferences).Name,
+						*FString::Join(UCataclysmLootFilterStore::AllNames(Preferences), TEXT(", ")));
 				return;
 			}
 			// A NAME WITH SPACES ARRIVES AS SEVERAL ARGUMENTS, so they are joined again.
 			const FString Name = FString::Join(Args, TEXT(" "));
 			FString Refusal;
-			if (!UCataclysmLootFilterPreferences::SetActive(Preferences, Name, Refusal))
+			if (!UCataclysmLootFilterStore::SetActive(Preferences, Name, Refusal))
 			{
 				Ar.Logf(TEXT("%s (\"%s\")"), *Refusal, *Name);
 				return;
 			}
 			Instance->SaveLootFilterPreferences();
-			Ar.Logf(TEXT("The loot filter is now \"%s\"."), *UCataclysmLootFilterPreferences::ActiveFilter(Preferences).Name);
+			Ar.Logf(TEXT("The loot filter is now \"%s\"."), *UCataclysmLootFilterStore::ActiveFilter(Preferences).Name);
 		}));
 
 // ---------------------------------------------------------------------------

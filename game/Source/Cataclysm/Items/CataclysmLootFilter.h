@@ -161,7 +161,7 @@ struct CATACLYSM_API FCataclysmLootFilterRule
 
 	// -- The restyle, read only when Action is Restyle --------------------
 
-	/** An index into `UCataclysmLootFilter::PaletteColour`, or INDEX_NONE to keep the name's own colour. */
+	/** An index into `UCataclysmLootFilterRules::PaletteColour`, or INDEX_NONE to keep the name's own colour. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Loot Filter")
 	int32 TextColour = INDEX_NONE;
 
@@ -169,7 +169,7 @@ struct CATACLYSM_API FCataclysmLootFilterRule
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Loot Filter")
 	int32 BackgroundColour = INDEX_NONE;
 
-	/** An index into `UCataclysmLootFilter::Sizes`: 0 is the size every name has today. */
+	/** An index into `UCataclysmLootFilterRules::Sizes`: 0 is the size every name has today. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Loot Filter")
 	int32 Size = 0;
 };
@@ -226,7 +226,7 @@ struct CATACLYSM_API FCataclysmLootContext
 	int32 DifficultyTier = 1;
 
 	/**
-	 * The rarity worn in each base slot ("Head" ... "Weapon"), as `UCataclysmLootFilter::WornRaritiesOf` reads it. A
+	 * The rarity worn in each base slot ("Head" ... "Weapon"), as `UCataclysmLootFilterRules::WornRaritiesOf` reads it. A
 	 * slot that is absent has nothing worn in it, and `bBelowWornRarity` then hides nothing for it.
 	 */
 	TMap<FString, ECataclysmRarity> WornRarity;
@@ -246,7 +246,7 @@ struct CATACLYSM_API FCataclysmLootVerdict
 	/** The palette index for a background, or INDEX_NONE for none. */
 	int32 BackgroundColour = INDEX_NONE;
 
-	/** The scale the name is drawn at: one of `UCataclysmLootFilter::Sizes`. */
+	/** The scale the name is drawn at: one of `UCataclysmLootFilterRules::Sizes`. */
 	float Scale = 1.0f;
 
 	/** The index of the rule that decided, or INDEX_NONE when none matched and the drop is shown as it always was. */
@@ -258,7 +258,7 @@ struct CATACLYSM_API FCataclysmLootVerdict
  * values, so every judgement is testable without a world; `VisibleDrops` is the one place a world's drops meet a filter.
  */
 UCLASS()
-class CATACLYSM_API UCataclysmLootFilter : public UBlueprintFunctionLibrary
+class CATACLYSM_API UCataclysmLootFilterRules : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
 

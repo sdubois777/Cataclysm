@@ -21,7 +21,7 @@ first version", and **the three built-in names must be impossible to overwrite.*
 All three ways are needed; each closes a route the other two leave open.
 
 1. **They are not stored.** The file holds only the player's filters. A built-in is made from code whenever it is asked
-   for (`UCataclysmLootFilter::BuiltInNamed`), and `UCataclysmLootFilterPreferences::Find` looks built-ins up first, so
+   for (`UCataclysmLootFilterRules::BuiltInNamed`), and `UCataclysmLootFilterStore::Find` looks built-ins up first, so
    nothing written to the file can change one or stand in for one.
 2. **Every change refuses a built-in.** Adding, removing, moving or replacing a rule, renaming and deleting all go
    through one function, `EditableFilter`, which refuses a built-in first, with "The built-in filters cannot be
@@ -51,7 +51,7 @@ All three ways are needed; each closes a route the other two leave open.
 
 ### What it does
 
-- **`UCataclysmLootFilterPreferences`** (`game/Source/Cataclysm/Items/CataclysmLootFilterPreferences.h`, `.cpp`): the
+- **`UCataclysmLootFilterStore`** (`game/Source/Cataclysm/Items/CataclysmLootFilterPreferences.h`, `.cpp`): the
   struct the file holds (`Version`, `Active`, `Filters`) and every change the screen makes, each answering whether it
   was made and, when not, the sentence the screen shows; `Sanitised`, `ToJson`, `FromJson`, `FilePath`, `Load`, `Save`
   and `NewPlayer`.
@@ -106,6 +106,15 @@ whole suite, `ow_suite_engine_a3984536.log` in the gems session's worktree: "530
 same game/ as `52b66e016`: `git diff a39845363 52b66e016` names `docs/DECISIONS.md` only. Each group alone below was
 counted in that log with a literal match, and none moved from LF1's registration. The rebase changed nothing outside
 this log: the branch's diff from its base has the same patch id before and after (`9ad032f61fe4`).
+
+**LF-W1'S FIRST ATTEMPT, 18:52, DID NOT BUILD, AND NO TEST RAN.** Unreal Header Tool refused two classes, because
+each shared its engine name with a struct: "Class 'UCataclysmLootFilter' shares engine name 'CataclysmLootFilter'
+with struct 'FCataclysmLootFilter'", and the same for `UCataclysmLootFilterPreferences` and
+`FCataclysmLootFilterPreferences`. A U class and an F struct are the same engine name with the prefix taken off.
+**The two classes were renamed `UCataclysmLootFilterRules` and `UCataclysmLootFilterStore`**, everywhere, whole names
+only. The structs keep their names, and so does every file, since a file may hold more than one type. Nothing else
+changed: 142 renames in 16 files, the loot filter's 11 Python checks passing, and all 17 proof anchors still
+matching once.
 
 Added to LF1's registration (the entry below), on that base, 5307 tests:
 
@@ -185,7 +194,7 @@ The coordinating session's settlements of the owner's rule, each a JUDGEMENT, to
 - rarity only: no upgrade level and no affixes;
 - materials, gems and gold are never hidden by the default;
 - the rule reads what is worn now. **No hook is needed for a change of gear**: the heads-up display asks the filter
-  every frame, against the equipment as it is that frame (`UCataclysmLootFilter::ContextOf`), so a change of gear
+  every frame, against the equipment as it is that frame (`UCataclysmLootFilterRules::ContextOf`), so a change of gear
   changes what is hidden on the next frame.
 
 Two judgements of this slice:
@@ -217,7 +226,7 @@ no game read uses; that quantities are never hidden; the palette and the sizes.
 
 ### What it does
 
-- **`UCataclysmLootFilter`** (`game/Source/Cataclysm/Items/CataclysmLootFilter.h`, `.cpp`), static functions over plain
+- **`UCataclysmLootFilterRules`** (`game/Source/Cataclysm/Items/CataclysmLootFilter.h`, `.cpp`), static functions over plain
   values: `Matches` (one rule), `VerdictFor` (a filter: the first matching rule of the first 75 decides; none matched
   shows the drop as it always was), `WornRaritiesOf` (the rarity worn in each base slot, rings and weapons at their
   lowest, a two-hander alone), `ContextOf` (a character's difficulty tier and worn rarities), `FactsOf` (a drop's

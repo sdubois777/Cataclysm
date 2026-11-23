@@ -529,7 +529,7 @@ public:
 	/**
 	 * The player's loot filters and which is active, read from the preferences file the first time they are asked for.
 	 * Issue #2846, slice LF2. The owner's ruling O4 of 2026-11-22: a file of its own on this machine, outside the save
-	 * records (`UCataclysmLootFilterPreferences::FilePath`). A new player, with no file, has "Hide worse than worn"
+	 * records (`UCataclysmLootFilterStore::FilePath`). A new player, with no file, has "Hide worse than worn"
 	 * active, the owner's default, and no filters of their own.
 	 */
 	FCataclysmLootFilterPreferences& LootFilterPreferences();

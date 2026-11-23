@@ -1,13 +1,13 @@
 """The loot filter is what the floor's names are drawn through, and Alt is what shows what it hides.
 
-WHY THIS EXISTS. Issue #2846, slice LF1. `UCataclysmLootFilter` decides which drops are named and how, and the
+WHY THIS EXISTS. Issue #2846, slice LF1. `UCataclysmLootFilterRules` decides which drops are named and how, and the
 automation tests `Cataclysm.LootFilter.` hold every rule. But the heads-up display draws inside a draw call, which
 never runs under -nullrhi (#650), and no test presses a key. So nothing that runs can see that the display asks the
 filter, or that Alt sets the flag it reads. This reads the source for those calls.
 
 WHAT IS CHECKED:
 
-  1. `ACataclysmHUD::DrawDropNames` passes the names in range through `UCataclysmLootFilter::VisibleDrops`, with the
+  1. `ACataclysmHUD::DrawDropNames` passes the names in range through `UCataclysmLootFilterRules::VisibleDrops`, with the
      game instance's active filter, the character's context and the controller's reveal flag; it measures and draws
      each name at its verdict's scale, and draws the border in the drop's own colour, never the restyle's (the owner's
      ruling O2 keeps the border the rarity marker, #718);
@@ -53,8 +53,8 @@ def body(text: str, signature: str) -> str:
 
 def test_the_display_draws_the_names_through_the_filter() -> None:
     draw = body(code(SOURCE / "Interface" / "CataclysmHUD.cpp"), "void ACataclysmHUD::DrawDropNames(")
-    assert "UCataclysmLootFilter::VisibleDrops(InRange, UCataclysmGameInstance::ActiveLootFilterIn(this), " \
-           "UCataclysmLootFilter::ContextOf(LocalPawn), bReveal," in draw
+    assert "UCataclysmLootFilterRules::VisibleDrops(InRange, UCataclysmGameInstance::ActiveLootFilterIn(this), " \
+           "UCataclysmLootFilterRules::ContextOf(LocalPawn), bReveal," in draw
     assert "Controller->IsRevealingHiddenDrops()" in draw
     assert "MeasureTextCentred(Drop->DisplayName, Screen.X, Screen.Y, Verdict.Scale)" in draw
     assert "Tag.Min.X + Inset, Tag.Min.Y + Inset, Verdict.Scale)" in draw
@@ -84,18 +84,18 @@ def test_a_new_game_starts_with_the_owners_default() -> None:
     # SINCE SLICE LF2 THE ACTIVE FILTER IS READ FROM THE PREFERENCES FILE, and a player with no file is a new player:
     # `Load` leaves `NewPlayer()` in place, whose active filter is the default's name.
     instance = code(SOURCE / "Player" / "CataclysmGameInstance.cpp")
-    assert "UCataclysmLootFilterPreferences::Load(UCataclysmLootFilterPreferences::FilePath(), LootFilters);" in flat(
+    assert "UCataclysmLootFilterStore::Load(UCataclysmLootFilterStore::FilePath(), LootFilters);" in flat(
         body(instance, "FCataclysmLootFilterPreferences& UCataclysmGameInstance::LootFilterPreferences("))
-    assert "UCataclysmLootFilterPreferences::ActiveFilter(Instance->LootFilterPreferences())" in flat(
+    assert "UCataclysmLootFilterStore::ActiveFilter(Instance->LootFilterPreferences())" in flat(
         body(instance, "FCataclysmLootFilter UCataclysmGameInstance::ActiveLootFilterIn("))
     preferences = code(SOURCE / "Items" / "CataclysmLootFilterPreferences.cpp")
-    assert "Preferences.Active = UCataclysmLootFilter::DefaultFilterName;" in body(
-        preferences, "FCataclysmLootFilterPreferences UCataclysmLootFilterPreferences::NewPlayer(")
-    for function in ("bool UCataclysmLootFilterPreferences::Load(", "bool UCataclysmLootFilterPreferences::FromJson("):
+    assert "Preferences.Active = UCataclysmLootFilterRules::DefaultFilterName;" in body(
+        preferences, "FCataclysmLootFilterPreferences UCataclysmLootFilterStore::NewPlayer(")
+    for function in ("bool UCataclysmLootFilterStore::Load(", "bool UCataclysmLootFilterStore::FromJson("):
         assert "Out = NewPlayer();" in body(preferences, function), function
     filter_code = code(SOURCE / "Items" / "CataclysmLootFilter.cpp")
-    assert 'UCataclysmLootFilter::DefaultFilterName = TEXT("Hide worse than worn");' in flat(filter_code)
-    assert "Filter.Name = DefaultFilterName;" in body(filter_code, "FCataclysmLootFilter UCataclysmLootFilter::HideWorseThanWorn(")
+    assert 'UCataclysmLootFilterRules::DefaultFilterName = TEXT("Hide worse than worn");' in flat(filter_code)
+    assert "Filter.Name = DefaultFilterName;" in body(filter_code, "FCataclysmLootFilter UCataclysmLootFilterRules::HideWorseThanWorn(")
 
 
 def test_the_reveal_action_is_on_left_alt_in_both_schemes() -> None:

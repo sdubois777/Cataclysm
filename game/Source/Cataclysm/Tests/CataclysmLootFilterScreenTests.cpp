@@ -24,7 +24,7 @@
  */
 namespace CataclysmLootFilterScreenTest
 {
-	using FPrefs = UCataclysmLootFilterPreferences;
+	using FPrefs = UCataclysmLootFilterStore;
 	using FLayout = UCataclysmLootFilterLayout;
 
 	/** A player's filter with `RuleCount` Show rules. */
@@ -150,7 +150,7 @@ bool FCataclysmLootFilterFileTest::RunTest(const FString&)
 	FCataclysmLootFilterPreferences Missing;
 	TestFalse(TEXT("no file does not read"), FPrefs::Load(Path + TEXT(".absent"), Missing));
 	TestEqual(TEXT("**and is a new player: the owner's default active**"), FPrefs::ActiveFilter(Missing).Name,
-			  FString(UCataclysmLootFilter::DefaultFilterName));
+			  FString(UCataclysmLootFilterRules::DefaultFilterName));
 	FCataclysmLootFilterPreferences Garbled;
 	TestFalse(TEXT("text that is not the file's JSON does not read"), FPrefs::FromJson(TEXT("not json"), Garbled));
 	TestEqual(TEXT("and is a new player too"), Garbled.Filters.Num(), 0);
@@ -190,13 +190,13 @@ bool FCataclysmLootFilterSanitisedTest::RunTest(const FString&)
 
 	const FCataclysmLootFilterPreferences Read = FPrefs::Sanitised(Edited);
 	TestEqual(TEXT("**twelve filters read as ten**"), Read.Filters.Num(), FPrefs::MaxSavedFilters);
-	TestEqual(TEXT("**80 rules read as 75**"), Read.Filters[0].Rules.Num(), UCataclysmLootFilter::MaxRules);
+	TestEqual(TEXT("**80 rules read as 75**"), Read.Filters[0].Rules.Num(), UCataclysmLootFilterRules::MaxRules);
 	TestEqual(TEXT("the empty name is replaced"), Read.Filters[1].Name, FString(TEXT("My filter 1")));
 	TestEqual(TEXT("the first \"Twice\" is kept"), Read.Filters[2].Name, FString(TEXT("Twice")));
 	TestEqual(TEXT("**the duplicate is renamed**"), Read.Filters[3].Name, FString(TEXT("My filter 2")));
 	TestEqual(TEXT("**the 41-character name is renamed**"), Read.Filters[4].Name, FString(TEXT("My filter 3")));
 	TestEqual(TEXT("**an active name that names nothing becomes the default**"), Read.Active,
-			  FString(UCataclysmLootFilter::DefaultFilterName));
+			  FString(UCataclysmLootFilterRules::DefaultFilterName));
 	return true;
 }
 
@@ -235,7 +235,7 @@ bool FCataclysmLootFilterManageTest::RunTest(const FString&)
 			  FPrefs::RenameFilter(Prefs, TEXT("Tight"), FString::ChrN(41, TEXT('y')), Refusal));
 	TestTrue(TEXT("deleted"), FPrefs::DeleteFilter(Prefs, TEXT("Tight"), Refusal));
 	TestEqual(TEXT("**the default is active again**"), FPrefs::ActiveFilter(Prefs).Name,
-			  FString(UCataclysmLootFilter::DefaultFilterName));
+			  FString(UCataclysmLootFilterRules::DefaultFilterName));
 	TestFalse(TEXT("an unknown filter cannot be made active"), FPrefs::SetActive(Prefs, TEXT("Nope"), Refusal));
 
 	while (Prefs.Filters.Num() < FPrefs::MaxSavedFilters)
@@ -278,7 +278,7 @@ bool FCataclysmLootFilterRuleListTest::RunTest(const FString&)
 	TestTrue(TEXT("one Show rule left"), Prefs.Filters[0].Rules.Num() == 1
 										   && Prefs.Filters[0].Rules[0].Action == ECataclysmLootFilterAction::Show);
 
-	while (Prefs.Filters[0].Rules.Num() < UCataclysmLootFilter::MaxRules)
+	while (Prefs.Filters[0].Rules.Num() < UCataclysmLootFilterRules::MaxRules)
 	{
 		FPrefs::AddRule(Prefs, TEXT("Mine"), Refusal);
 	}
@@ -417,7 +417,7 @@ bool FCataclysmLootFilterScreenPressTest::RunTest(const FString&)
 		return false;
 	}
 	Screen->SetPreferencesForTests(FPrefs::NewPlayer());
-	TestEqual(TEXT("**the default is picked**"), Screen->SelectedFilter(), FString(UCataclysmLootFilter::DefaultFilterName));
+	TestEqual(TEXT("**the default is picked**"), Screen->SelectedFilter(), FString(UCataclysmLootFilterRules::DefaultFilterName));
 	TestTrue(TEXT("its filter line is drawn"), Shows(*Screen, TEXT("Filter:1")));
 
 	TestTrue(TEXT("New filter"), Screen->Press(TEXT("Do:New")));
@@ -430,7 +430,7 @@ bool FCataclysmLootFilterScreenPressTest::RunTest(const FString&)
 			 Screen->Preferences().Filters.Num() == 1 && Screen->Preferences().Filters[0].Rules.Num() == 1
 				 && Screen->Preferences().Filters[0].Rules[0].Action == ECataclysmLootFilterAction::Hide);
 	TestTrue(TEXT("Use this filter"), Screen->Press(TEXT("Do:Use")));
-	TestEqual(TEXT("**it is in use**"), UCataclysmLootFilterPreferences::ActiveFilter(Screen->Preferences()).Name,
+	TestEqual(TEXT("**it is in use**"), UCataclysmLootFilterStore::ActiveFilter(Screen->Preferences()).Name,
 			  FString(TEXT("My filter 1")));
 
 	TestTrue(TEXT("pick Everything"), Screen->Press(TEXT("Filter:0")));
@@ -445,7 +445,7 @@ bool FCataclysmLootFilterScreenPressTest::RunTest(const FString&)
 	TestFalse(TEXT("**renaming it \"strict\" is refused**"), Screen->Press(TEXT("Do:Rename")));
 	Screen->SetTypedNameForTests(TEXT("Mine"));
 	TestTrue(TEXT("renaming it \"Mine\" is done"), Screen->Press(TEXT("Do:Rename")));
-	TestEqual(TEXT("**and it stays in use**"), UCataclysmLootFilterPreferences::ActiveFilter(Screen->Preferences()).Name,
+	TestEqual(TEXT("**and it stays in use**"), UCataclysmLootFilterStore::ActiveFilter(Screen->Preferences()).Name,
 			  FString(TEXT("Mine")));
 	TestTrue(TEXT("the refusal line is cleared by a press that works"), Screen->RefusalText().IsEmpty());
 	return true;

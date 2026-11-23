@@ -19,14 +19,14 @@
  * The loot filter, issue #2846, slice LF1: rules that hide a drop's name or restyle it, the owner's default "Hide worse
  * than worn", the Alt reveal and the three built-in filters.
  *
- * WHAT IS NOT COVERED, said plainly: the drawing. `ACataclysmHUD::DrawDropNames` asks `UCataclysmLootFilter::
+ * WHAT IS NOT COVERED, said plainly: the drawing. `ACataclysmHUD::DrawDropNames` asks `UCataclysmLootFilterRules::
  * VisibleDrops` which names to draw and draws each with its verdict, and nothing inside a draw call runs under -nullrhi
  * (#650). Nor does a test press Alt: the controller's two key handlers set the flag `SetRevealingHiddenDropsForTest`
  * sets. `tools/tests/test_the_loot_filter_is_wired_in.py` holds that the display and the controller make those calls.
  */
 namespace CataclysmLootFilterTest
 {
-	using FFilter = UCataclysmLootFilter;
+	using FFilter = UCataclysmLootFilterRules;
 
 	/** A piece of the given rarity and base: as many affixes and enchantments as the rarity is made of. */
 	FCataclysmItem Piece(ECataclysmRarity Rarity, const TCHAR* Base)

@@ -15,7 +15,7 @@ const TCHAR* UCataclysmLootFilterWidget::TitleText = TEXT("Loot filter");
 
 namespace
 {
-	using FPrefs = UCataclysmLootFilterPreferences;
+	using FPrefs = UCataclysmLootFilterStore;
 
 	/** The number after a command's colon, or INDEX_NONE when there is none. */
 	int32 IndexIn(const FString& Value)

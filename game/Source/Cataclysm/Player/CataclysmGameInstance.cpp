@@ -243,7 +243,7 @@ FCataclysmLootFilterPreferences& UCataclysmGameInstance::LootFilterPreferences()
 	// READ ONCE, ON FIRST ASKING: no file is a new player, whose preferences `Load` leaves in place.
 	if (!bLootFiltersRead)
 	{
-		UCataclysmLootFilterPreferences::Load(UCataclysmLootFilterPreferences::FilePath(), LootFilters);
+		UCataclysmLootFilterStore::Load(UCataclysmLootFilterStore::FilePath(), LootFilters);
 		bLootFiltersRead = true;
 	}
 	return LootFilters;
@@ -251,18 +251,18 @@ FCataclysmLootFilterPreferences& UCataclysmGameInstance::LootFilterPreferences()
 
 void UCataclysmGameInstance::SaveLootFilterPreferences()
 {
-	if (!UCataclysmLootFilterPreferences::Save(UCataclysmLootFilterPreferences::FilePath(), LootFilterPreferences()))
+	if (!UCataclysmLootFilterStore::Save(UCataclysmLootFilterStore::FilePath(), LootFilterPreferences()))
 	{
 		UE_LOG(LogCataclysm, Warning, TEXT("The loot filters could not be written to %s."),
-			   *UCataclysmLootFilterPreferences::FilePath());
+			   *UCataclysmLootFilterStore::FilePath());
 	}
 }
 
 FCataclysmLootFilter UCataclysmGameInstance::ActiveLootFilterIn(const UObject* WorldContext)
 {
 	UCataclysmGameInstance* Instance = In(WorldContext);
-	return Instance != nullptr ? UCataclysmLootFilterPreferences::ActiveFilter(Instance->LootFilterPreferences())
-							   : UCataclysmLootFilter::HideWorseThanWorn();
+	return Instance != nullptr ? UCataclysmLootFilterStore::ActiveFilter(Instance->LootFilterPreferences())
+							   : UCataclysmLootFilterRules::HideWorseThanWorn();
 }
 
 FString UCataclysmGameInstance::AccountSlotFor(const FCataclysmCharacterPartition& Partition)

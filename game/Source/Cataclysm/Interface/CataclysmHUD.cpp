@@ -1487,8 +1487,8 @@ void ACataclysmHUD::DrawDropNames()
 	const bool bReveal = Controller != nullptr && Controller->IsRevealingHiddenDrops();
 	TArray<ACataclysmDroppedItem*> Nearby;
 	TArray<FCataclysmLootVerdict> Verdicts;
-	UCataclysmLootFilter::VisibleDrops(InRange, UCataclysmGameInstance::ActiveLootFilterIn(this),
-									   UCataclysmLootFilter::ContextOf(LocalPawn), bReveal,
+	UCataclysmLootFilterRules::VisibleDrops(InRange, UCataclysmGameInstance::ActiveLootFilterIn(this),
+									   UCataclysmLootFilterRules::ContextOf(LocalPawn), bReveal,
 									   UCataclysmItemModifiers::LoadBaseTable(), Nearby, Verdicts);
 	TArray<FCataclysmLootVerdict> VerdictsNamed;
 	const UDataTable* Rarities = UCataclysmDropRoll::LoadGearRarityTable();
@@ -1549,18 +1549,18 @@ void ACataclysmHUD::DrawDropNames()
 			UCataclysmDropPickup::NameBorderThicknessOf(*Drop);
 
 		// A HIDDEN DROP SHOWN BY THE REVEAL KEY IS DRAWN FAINTLY, so it reads as one the filter hides.
-		const float Alpha = Verdict.bHidden ? UCataclysmLootFilter::RevealedAlpha : 1.0f;
+		const float Alpha = Verdict.bHidden ? UCataclysmLootFilterRules::RevealedAlpha : 1.0f;
 		FLinearColor Border = Drop->NameColour;
 		Border.A *= Alpha;
 		FLinearColor Letters = Verdict.TextColour != INDEX_NONE
-			? UCataclysmLootFilter::PaletteColour(Verdict.TextColour, Rarities)
+			? UCataclysmLootFilterRules::PaletteColour(Verdict.TextColour, Rarities)
 			: Drop->NameColour;
 		Letters.A *= Alpha;
 
 		// A RESTYLE'S BACKGROUND fills the tag inside its border, drawn first so the border and letters sit on it.
 		if (Verdict.BackgroundColour != INDEX_NONE)
 		{
-			FLinearColor Fill = UCataclysmLootFilter::PaletteColour(Verdict.BackgroundColour, Rarities);
+			FLinearColor Fill = UCataclysmLootFilterRules::PaletteColour(Verdict.BackgroundColour, Rarities);
 			Fill.A *= Alpha;
 			DrawRect(Fill, static_cast<float>(Tag.Min.X), static_cast<float>(Tag.Min.Y),
 					 static_cast<float>(Tag.Max.X - Tag.Min.X), static_cast<float>(Tag.Max.Y - Tag.Min.Y));
