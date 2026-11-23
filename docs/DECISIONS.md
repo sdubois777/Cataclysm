@@ -2,6 +2,177 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The forge's two empire milestone options: The Soul Forge raises an upgrade two levels 15% of the time, and The Master Tinkerer makes 5% of enchantment crafts a critical success, its rolls drawn twice with the better kept and no days taken (#47, slice F6)
+
+**Affects:** `tools/generate_datatables.py` (the two options leave `EMPIRE_TREE_REFUSED`, join `EMPIRE_TREE_BUILT` as
+slice 10, and gain their effects) and the two tables it writes, `game/Data/EmpireTreeNodes.csv` and
+`EmpireTreeEffects.csv`; `ECataclysmEmpireTreeEffect::UpgradeExtraLevelChance` and `EnchantCriticalChance`, new
+(`game/Source/Cataclysm/Data/CataclysmDataRows.h`); `FCataclysmEmpireTreePlayerBonuses`'s two fields of the same names,
+new, and `UCataclysmEmpireTree::PlayerBonusesFor` (`game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `.cpp`);
+`UCataclysmForge::SoulForgeSalt`, `EnchantCriticalSalt`, `SoulForgeLevels`, `EnchantCritical`, `LuckyRolls` and
+`MilestoneChanceText`, new (`game/Source/Cataclysm/Items/CataclysmForge.h` and `.cpp`); `UCataclysmForgeCraft::Upgrade`
+and `DoEnchantmentWork` (`game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`); the forge screen's two first presses
+(`game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`); `FCataclysmPlayLoopLog::ForgeSoulForgeLine` and
+`ForgeCriticalLine`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `.cpp`); `docs/Play_Loop_Checklist.md`,
+step 26. Tests: `Cataclysm.ForgeMilestones.`, six, new, in `game/Source/Cataclysm/Tests/CataclysmForgeMilestonesTests.cpp`;
+`game/Source/Cataclysm/Tests/CataclysmEmpireTreeTestTables.h`, new; two existing Unreal tests changed (below);
+`tools/tests/test_the_forge_milestones.py`, new; three existing Python checks changed (below). Issue
+[#47](https://github.com/sdubois777/Cataclysm/issues/47).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 on `feat/forge-milestones-47-f6`, cut from development `52b66e016`. Its window
+  comes after sd-w1, by the coordinating session's order.
+- **AN EDITOR STEP MOVES TWO ASSETS.** `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv` change, so
+  `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` are rebuilt by `tools/generate_datatable_assets.py` in the window, with
+  `game/Data/datatable_asset_sources.json`. Until that step,
+  `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`
+  fails on this branch, as it must: the check is the reason the step exists.
+- **NO SAVE VERSION MOVES.** A chosen option is already saved on the allocation by its index, and no field is added.
+- **THE MIDAS TOUCH'S EFFECT ROW IS RENAMED**, `capstone_0000000o#2` to `capstone_0000000o#3`, because the generator
+  numbers a milestone's effect rows in option order and The Master Tinkerer's row now comes first. Nothing names the
+  row key (searched `game/Source`, `tools`, `sim` and `docs` outside this log, 2026-11-22), and a save holds the option,
+  not the row.
+- **NO CENTRE MILESTONE OPTION WAITS ON A SYSTEM ANY MORE.** These two were the last. The refusal for an option that
+  waits is still in the code (`UCataclysmEmpireTree::RefusalForChoosingOption`, and Imperial Prowess's J4), so the two
+  tests that showed it with The Soul Forge now show it on a copy of the node table in which The Soul Forge still waits
+  (`CataclysmEmpireTreeTestTables::WithAnOptionWaiting`), and each adds a control that the generated table lets it be
+  chosen.
+- **THE GENRE RESEARCH IS ONE SOURCE, READ BY A SUBAGENT AND NOT BY ME.** Path of Exile's "Lucky",
+  https://poedb.tw/us/Lucky: "Lucky things are rolled twice and the best result is used". Two Last Epoch crafting pages
+  that might have shown a crafting critical success could not be read (maxroll.gg 404, icy-veins 403).
+
+### The texts and the rulings
+
+`docs/Empire_Skill_Tree_Keystones.md`:
+
+- **The Soul Forge** (Edicts of Power, tier 2, `capstone_0000000n`, option 3): "When improving the level of an item, you
+  have a **15%** chance to increase its level by **2** instead of 1, up to the maximum of 10."
+- **The Master Tinkerer** (The Imperial Vanguard, tier 3, `capstone_0000000o`, option 2): "When enchanting, you have a
+  **5%** chance to hit a critical success, doubling the rolls of the enchantment and completing the craft instantly."
+
+The coordinating session's rulings of 2026-11-22, all as recommended:
+
+| # | Reading | Ruled | Kind |
+| :-- | :-- | :-- | :-- |
+| R1 | "Doubling the rolls of the enchantment" | **Lucky**: each roll drawn twice and the better kept, the higher positive and the lower negative, so every value stays inside its row's range. A change of drawback keeps its positive and applies the same to its new negative | Judgement; the shape is Path of Exile's "Lucky", read at poedb.tw |
+| R2 | What The Soul Forge's second level costs | Nothing more: the +1's stones, residue, days and gold | Judgement |
+| R3 | Which draws the options use | Each its own salted stream, so a craft without the option, and every existing test, draws exactly as before | Judgement, following slice F2's seed rule |
+| R4 | "Completing the craft instantly" | No day passes; the residue, the gold and the material are still taken | Judgement |
+| R5 | Which crafts are "enchanting" | Slice F3's two: imprinting an enchantment and changing its drawback | Judgement, read from the design's names |
+| R6 | Which craft is "improving the level of an item" | The upgrade only, not Upgrade Affix Tier | Read from the text |
+| R7 | At +9 | One level, to +10, and the draw is not made | Read from the text |
+| R8 | Shown in advance? | No: the first press states the chance, and the play log says what happened | Judgement |
+
+**The three readings of R1 not taken, and why:**
+- each roll doubled and capped at 1: every roll of 0.5 or more becomes 1, and the drawback's roll would be doubled too,
+  which nothing in the text asks;
+- two pairs added: an imprint adds one enchantment for one affix given up, and a second breaks the rarity's slot count;
+- the rolled magnitude doubled past the row's maximum: breaks the ranges the enchantment tables hold, which the hover
+  text and the item values read.
+
+**Why "better" is the same direction for every row.** A roll of 1 gives a benefit its best figure and a drawback its
+harshest, whichever way its range is written (`FCataclysmEnchantmentRow::RollsDown`, ruled 2026-10-05). So the higher of
+two positive rolls and the lower of two negative rolls are better for every row.
+
+### What it does
+
+- **The empire tree.** The two options can be chosen, and Imperial Prowess can take either as its extra pick. Each
+  holds one effect, `UpgradeExtraLevelChance` 0.15 and `EnchantCriticalChance` 0.05, carried as the larger held, as The
+  Warlord's chance is. The forge reads them through `UCataclysmGameInstance::EmpireTreePlayerBonusesFor`.
+- **The Soul Forge.** `UCataclysmForge::SoulForgeLevels` answers 2 when the chance is above nought, the upgrade reaches
+  below +10, and a draw on `AffixCraftSeed` with salt "SOUL" and the item's gear level is below the chance; otherwise 1.
+  `UCataclysmForgeCraft::Upgrade` asks it inside the change it hands `DoItemCraft`, from the item as it stood and the day
+  before the days pass, and sets the gear level to the level before plus that.
+- **The Master Tinkerer.** `UCataclysmForge::EnchantCritical` draws on salt "CRIT" with the craft's own index (an
+  imprint's is the pair count, a change's the pair), and hands back the stream after the draw.
+  `UCataclysmForgeCraft::DoEnchantmentWork` asks it BEFORE `DoItemCraft`, because the sequence passes the step's days,
+  and on a critical success sets the step's days to 0. Once the plain pair is drawn, `UCataclysmForge::LuckyRolls` draws
+  a second positive and a second negative from that stream and keeps the higher positive (an imprint only) and the lower
+  negative.
+- **The words.** An upgrade's first press, with The Soul Forge held, ends " The Soul Forge: a 15% chance it rises two
+  levels instead of one."; an enchantment craft's, with The Master Tinkerer, " The Master Tinkerer: a 5% chance of a
+  critical success, its rolls drawn twice with the better kept, taking no days." The play log, only when it happens:
+  `The Soul Forge raised Quality Helm two levels, +3 to +5` and `a critical success on Quality Helm: the rolls were drawn
+  twice with the better kept, and the craft took no days`.
+- **`docs/Play_Loop_Checklist.md` step 26**, numbered from the base's highest step, 25.
+
+### Tests
+
+`Cataclysm.ForgeMilestones.`, six, written before a build. Each test finds the item it needs by its kill count, which no
+cost reads, at the day of the craft, and works out what the draw gives from the seed rather than from the function under
+test.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| M1 | `TheSoulForgeRaisesTwoLevelsOnADrawBelowFifteenPercent` | a helm at +2, 250 residue: CONTROL without the option, a draw below 0.15 gives +3; with it, +4 at the +1's 5 days, 25 residue and 4,500 gold; a draw at or above 0.15 gives +3 |
+| M2 | `TheSoulForgeStopsAtTen` | a helm at +9 whose draw would be below 0.15: +10 |
+| M3 | `TheMasterTinkerersImprintKeepsTheBetterOfTwoRollsAndTakesNoDays` | slice F3's sword on a critical success that changes both rolls: the plain pair, the higher positive roll, the lower negative, no day, residue 150 to 155; CONTROL the same sword, the same day, without the option: the plain rolls and its days |
+| M4 | `TheMasterTinkerersChangeOfDrawbackKeepsTheMilderRoll` | slice F3's helm on a critical success: the positive and its 0.5 kept, the plain drawback at the lower roll, no day, residue 200 to 300 |
+| M5 | `BothOptionsCanBeChosenAndImperialProwessCanTakeEither` | neither waits; each gives its chance and not the other's; CONTROL The Collector's Decree gives neither; Imperial Prowess takes The Soul Forge, whose chance is then held |
+| M6 | `TheForgeSaysTheChanceAndTheLineSaysWhatHappened` | the two first-press sentences, none for nought, and the two play log lines, word for word |
+
+**Two existing Unreal tests changed, each keeping its subject:**
+- `Cataclysm.EmpireTree.AnOptionWhoseSystemIsMissingCannotBeChosen` refuses The Soul Forge on a copy of the node table
+  in which it still waits, with its old refusal word for word; CONTROL: in the generated table it can be chosen.
+- `Cataclysm.EmpireTreeProwess.EachRefusalComesInItsOrder` shows J4 the same way; CONTROL: in the generated table The
+  Soul Forge is open as the extra option.
+
+**Python.** `tools/tests/test_the_forge_milestones.py`, four checks: the two effects are the document's 15% and 5%;
+neither option waits, in the generator or the node table; the upgrade asks `SoulForgeLevels` inside its hand-over and the
+enchantment crafts decide the critical success and take the days away before theirs; every forge salt is its own. Three
+existing checks changed, each with the new slice named: `test_empire_tree_effects_match_their_texts.py` (115 nodes to
+117, `SLICE_F6`), `test_empire_tree_tables_match_the_tree_file.py` (slice 10 allowed; the options' count "crafting": 2
+becomes "slice 10": 2), and `test_the_play_loop_is_logged_at_each_step.py` (the two new lines and where each is said).
+
+### Registered for the window
+
+**The counts are taken at the turn**, from the newest measured whole-suite log once sd-w1 has merged, as the
+coordinating session ordered.
+
+- **The whole suite: the base + 6**, the six new tests; the two changed Unreal tests keep their names. Skipped halves
+  unchanged (no new test skips a half). Test saves unchanged: the new tests' scene is slice F5's, whose crafts wrote no
+  save in window ow-f5-w1 (its 861 differed from the base only by slice c's kill test).
+- **THE EDITOR STEP**: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`
+  and records them in `game/Data/datatable_asset_sources.json`; those three files only are committed alone, and the
+  tested head becomes that commit.
+- **No save record moves.**
+- **Groups alone, first**, name-literal counts on this branch, each prefix ending in a dot: `ForgeMilestones.` 6 (new);
+  `EmpireTree.` 24 and `EmpireTreeProwess.` 6 (the two changed tests); `EmpireTreeScreen.` 10 (the option labels);
+  `Data.` 7 (the pinned row count, 121 to 123); `Forge.` 8, `ForgeScreen.` 4, `ForgeEnchantments.` 12 and
+  `ForgeResidueTools.` 5 (the upgrade and the enchantment crafts); `PlayLoop.` 12.
+
+**Six C++ guard proofs**, one per new test, each narrowed to `Cataclysm.ForgeMilestones.` (6 performed), run by
+`.claude/windows/prove_f6.py <P>`; each anchor matches exactly once at `29edcf655`:
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| M1 | `SoulForgeLevels`' draw compared with `>` instead of `<` | M1 |
+| M2 | the +10 cap removed from `SoulForgeLevels` | M2 |
+| M3 | `LuckyRolls` keeps the lower positive | M3 (a change keeps its positive, so M4 holds) |
+| M4 | a critical success's days not taken away | M3 and M4, the two that check the day |
+| M5 | The Soul Forge's effect written into `EnchantCriticalChance` | M1 and M5 (M2 reaches +10 with or without the chance) |
+| M6 | the Soul Forge's line in figures, "2 levels" | M6 |
+
+**Four Python guard proofs, 4 of 4 PROVED exactly as predicted**, run in a `git archive` copy of `29edcf655` by
+`.claude/windows/prove_f6_python.py`, each failing one named check of `test_the_forge_milestones.py` with the break in
+and passing 4 of 4 restored:
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| PG1 | The Soul Forge's effect 0.16 | `test_the_two_effects_are_the_documents_figures` |
+| PG2 | The Soul Forge back in the waits-on table | `test_neither_option_waits_on_a_system` |
+| PG3 | the critical success's days set on the result, not the step | `test_the_crafts_ask_the_options_where_the_sequence_lets_them_act` |
+| PG4 | `SoulForgeSalt` given the imprint's salt | `test_each_draw_has_a_salt_of_its_own` |
+
+**The Python suite at `29edcf655`: 8,209 passed, 1 failed, 10 skipped in 377.9 s**; JUnit 8,220 tests, 1 failure, 0
+errors, 10 skipped. The one failure is `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears. `ruff check .`: all checks passed. An earlier run, before the commit, also failed
+`test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `Cataclysm.Data.EveryGeneratedTableImports`
+pinned 121 effect rows. The commit pins 123 with the reason in its comment.
+
+---
+
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
 
 **Said first:**
