@@ -242,7 +242,30 @@ worked figures 8.4093 and 20.8989; the changed ally-share test "plain 50.00, arm
 
 **The seventeen proofs** run alone, by the coordinating session's ruling (a) of 2026-11-22, on the head that records
 this, which changes only `docs/DECISIONS.md`, so the `game/` tree the whole suite passed on is the one the proofs break.
-Their results follow in the next commit.
+
+**The seventeen proofs, measured at `466dc414c`** (lock `ow-f5-w1`, `run_ow.py --proofs-only`, 2026-11-22, 17:58 to
+18:20): **17 of 17 PROVED, each failing exactly the tests its prediction named**, each restored half every test of its
+group succeeding, none crashed, each source hash the same before and after.
+
+| Proof | With the break in | Failed |
+| :-- | :-- | :-- |
+| OW1 | 8 performed, 5 succeeded, 3 failed | the creature's rung, the worked figures, the panel's line |
+| OW2 | 8, 7, 1 | `APlayerAtOrAboveTheCreaturesScoreLosesNothing` |
+| OW3 | 8, 7, 1 | `ItIsHeldAtHalf` |
+| OW4 | 8, 6, 2 | `ItComesOffResistanceBeforeTheCapSoOverCappingAbsorbsIt`, `ItComesOffEvasionBlockAndArmourHeldAtNought` |
+| OW5 | 8, 7, 1 | `ItComesOffEvasionBlockAndArmourHeldAtNought` |
+| OW6 | 8, 7, 1 | `ACreatureAppliesItsOwnRungsOverwhelmOnItsFloor` |
+| OW7 | 8, 7, 1 | `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` |
+| OW8 | 8, 7, 1 | `TheFloorPanelSaysWhatACommonAndACataclysmBossTakeOff` |
+| FR1 | 5, 4, 1 | `TheOptionsHalveTheResidueAndRemovePenaltyDaysEachAtItsRowsGold` |
+| FR2 | 5, 4, 1 | `AnUpgradeWithBothOptionsTakesTheirMaterialsAndGoldAndSavesResidueAndADay` |
+| FR3 | 5, 4, 1 | `TheOneSequenceGivesBackEverythingWhenAChangeIsRefusedAndSaysItsLineAfterTheDays` |
+| FR4 | 5, 4, 1 | `TheCleanseHalvesTheResidueInADayPer500AndLiftsNoMark` |
+| FR5 | 5, 4, 1 | `TheScreenSaysWhatTheOptionsDoBeforeACraftAndUsesThem` |
+| C1 | 5, 4, 1 | `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C2 | 5, 4, 1 | `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C3 | 5, 4, 1 | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
+| C4 | 5, 4, 1 | `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` |
 
 ---
 
