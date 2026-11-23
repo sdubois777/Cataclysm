@@ -22,7 +22,7 @@ const TCHAR* UCataclysmMerchantWidget::ChooseFirstText = TEXT("Choose a carried 
 
 namespace
 {
-	FString PieceName(const FCataclysmItem& Item)
+	FString MerchantScreenPieceName(const FCataclysmItem& Item)
 	{
 		return UCataclysmForge::NameOf(Item, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable());
 	}
@@ -92,7 +92,7 @@ bool UCataclysmMerchantWidget::Press(const FString& Command)
 			// THE FIRST PRESS ASKS.
 			bAsked = true;
 			bDone = true;
-			Message = FString::Printf(TEXT("Sell %s for %s? Press Sell again to sell it."), *PieceName(*Item),
+			Message = FString::Printf(TEXT("Sell %s for %s? Press Sell again to sell it."), *MerchantScreenPieceName(*Item),
 									  *ACataclysmDroppedItem::GoldName(
 										  UCataclysmMerchant::SellValueAt(*Item, UCataclysmMerchant::TierIn(World))));
 		}
@@ -140,7 +140,7 @@ void UCataclysmMerchantWidget::Refresh()
 		: FString();
 	const FCataclysmItem* ChosenItem = Bag != nullptr && Chosen != INDEX_NONE ? Bag->ItemAt(Chosen) : nullptr;
 	Detail = ChosenItem != nullptr
-		? FString::Printf(TEXT("%s, +%d: sells for %s"), *PieceName(*ChosenItem), ChosenItem->GearLevel,
+		? FString::Printf(TEXT("%s, +%d: sells for %s"), *MerchantScreenPieceName(*ChosenItem), ChosenItem->GearLevel,
 						  *ACataclysmDroppedItem::GoldName(UCataclysmMerchant::SellValueAt(*ChosenItem, Tier)))
 		: (Cells.Num() > 0 ? FString(ChooseFirstText) : FString(TEXT("You carry no gear to sell.")));
 	if (GoldLabel)
@@ -173,7 +173,7 @@ void UCataclysmMerchantWidget::Refresh()
 	{
 		const FCataclysmItem* Item = Bag->ItemAt(Cell);
 		AddButton(PieceBox, ButtonClass, FString::Printf(TEXT("Cell:%d"), Cell),
-				  FString::Printf(TEXT("%s, +%d: %s"), *PieceName(*Item), Item->GearLevel,
+				  FString::Printf(TEXT("%s, +%d: %s"), *MerchantScreenPieceName(*Item), Item->GearLevel,
 								  *ACataclysmDroppedItem::GoldName(UCataclysmMerchant::SellValueAt(*Item, Tier))),
 				  Cell == Chosen);
 	}
