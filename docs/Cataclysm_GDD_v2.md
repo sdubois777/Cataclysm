@@ -4036,6 +4036,18 @@ Purified Essence halves what has already accumulated.
 
   
 
+**Dismantling a carried piece is not an operation of the table: it destroys the piece and adds nothing.** It is the stated source of Schematic Fragments and Dismantling Dust, at the Forge, instantly: no gold, no days, no residue and no material, by the owner's "No days" asked of selling and dismantling (issue #2848). A dismantle gives:
+
+- the socketed gems, back to the bag;
+- one upgrade stone of each level the piece was raised through, half of the two each level consumed. A piece records the gear level it arrived at, so a Legendary that dropped at +4 refunds nothing for those levels;
+- Schematic Fragments by rarity: 0.06 for Everyday to Masterful, then 0.1, 0.2, 0.4 and 0.8;
+- Dismantling Dust, 0.02 for each socket;
+- base upgrade stones by rarity, by the owner's wish that shattering drops should help farm stones: 0.025 to Masterful, then 0.05, 0.1, 0.2 and 0.4. Each is a material tier's stone, rolled as a material drop rolls one with the player's magic find, and held at the best stone the piece's own tier can drop.
+
+Each fractional yield gives its whole part and one more with the fraction's chance, drawn from the run's seed and the day. Salvage Protocol (2.5% a point) and Disassembly Expert (20% on Superb and above) raise the drawn yields and never the refund. A worn piece and the weapon made at creation are not dismantled.
+
+  
+
 **Ordering the table by CR is deliberate.** The cheapest operations are the ones a
 player repeats — rerolling a value costs 2 — and the ones that change what an item
 fundamentally is cost an order of magnitude more. Changing an enchantment's
