@@ -215,6 +215,35 @@ this slice's five (here `b073b4229`, `affd21c7a`, `1d6321fb5`, `e44217e1a`, `8d4
   head. Slice c's kill test is predicted to print "granted 232 of 232 expected" if the Dungeon Score is 191 and the
   player's 626, as in forge-pg-w1.
 
+### Window ow-f5-w1, measured at `a39845363`
+
+Run 2026-11-22, lock `ow-f5-w1`, by `.claude/windows/chain_ow.py`. Everything passed except one registered figure, so the
+runner stopped before the proofs, as it is built to.
+
+| Stage | Measured |
+| :-- | :-- |
+| The three builds | "Build: Succeeded - 59 actions, 52 files compiled", each changed file alone "40 actions, 37 files compiled", the unity files again "20 actions, 17 files compiled"; 0 compiler warning or error lines in each |
+| Groups alone | 28 of 28, each performed and succeeded at exactly its registered count, none failed |
+| The whole Unreal suite | "5307 tests performed, 5307 succeeded, 0 failed"; 57 skipped part of what they check, as registered; "Declared: 5307 tests in the tree at a39845363; 5307 performed, gap 0" |
+| Test saves | **"861 written and deleted, 0 left behind", against 860 registered: the mismatch that stopped the runner** |
+| Python, alongside | "8204 passed, 10 skipped in 361.07s"; JUnit 8214 tests, 0 failures, 0 errors, 10 skipped |
+| ruff | "All checks passed!" |
+
+**The one extra save.** Slice c's `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` now kills its
+creature, and the kill writes one save, which is deleted. Found by comparing the save count after each test in this
+window's engine log (`ow_suite_engine_a3984536.log`) with `forgepg2_suite_engine_08f4308e.log`: that test is the only
+one that differs, 1 save against none (it was not in that run). **The mistake was this registration's**: it took window
+forge-pg-w1's 860 as evidence that slice c writes no save, and in forge-pg-w1 that test failed before its kill, so it
+never reached the save. The registered 860 above is left as it was written; 861 is what the window measured.
+
+The tests' own lines confirmed the predictions: slice c's kill test printed "granted 232 of 232 expected"; this slice's
+worked figures 8.4093 and 20.8989; the changed ally-share test "plain 50.00, armoured 32.31 (Overwhelm 14.61), resistant
+30.49 (Overwhelm 10.97)".
+
+**The seventeen proofs** run alone, by the coordinating session's ruling (a) of 2026-11-22, on the head that records
+this, which changes only `docs/DECISIONS.md`, so the `game/` tree the whole suite passed on is the one the proofs break.
+Their results follow in the next commit.
+
 ---
 
 ## 2026-11-22 — Every forge item craft goes through one sequence, and the residue tools: a Chaos Stabilizer and Tainted Shards on a craft's own press, and the cleanse (#47, slice F5)
