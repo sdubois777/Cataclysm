@@ -208,10 +208,12 @@ def test_the_python_copy_gives_the_figures_fs2_asserts() -> None:
 
 def test_the_added_socket_is_rolled_before_the_days_pass() -> None:
     work = body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(")
-    rolled = work.find("UCataclysmForge::AddedSocketType(Before, Run->WalkSeedMask, Run->Day())")
-    advanced = work.find("Run->AdvanceDays(Plan.Days)")
+    rolled = work.find("UCataclysmForge::AddedSocketType(Before, Run.WalkSeedMask, Run.Day())")
+    # SLICE F5: THE DAYS PASS IN `DoItemCraft`, after the change it is handed, which this roll is inside;
+    # `test_every_item_craft_goes_through_one_sequence.py` holds that order.
+    handed = work.find("DoItemCraft(")
     assert rolled != -1, "the added socket's type is not rolled from the item before the craft, the mask and the day"
-    assert advanced != -1 and rolled < advanced, "the type is rolled after the days pass, so a reload rolls another"
+    assert -1 < handed < rolled, "the type is not rolled inside the change DoItemCraft makes before the days pass"
 
 
 def test_grant_material_puts_a_crafting_material_in_the_bag_and_refuses_any_other_row() -> None:

@@ -297,6 +297,14 @@ public:
 	/** `DungeonScoreText` for a dungeon on the map (`UCataclysmEnemyScore::DungeonScoreOf`), or empty when it is not. */
 	static FString DungeonScoreLine(const UCataclysmEmpireRun* Run, int32 DungeonId, int32 PlayerScore);
 
+	/**
+	 * `DungeonScoreLine` and, when the player's score is known, what a kill there would pay for the gap between the
+	 * two (`FCataclysmPowerGapRule::RewardsText` at the run's difficulty tier): "Dungeon Score 2,009; your Power Score
+	 * 1,100. Rewards 125%." Issue #2824, slice c: what the empire map's city detail and the city screen show, so a cut
+	 * is seen before the dungeon is walked. Empty when the dungeon is not on the map.
+	 */
+	static FString DungeonScoreAndRewardsLine(const UCataclysmEmpireRun* Run, int32 DungeonId, int32 PlayerScore);
+
 	// ----------------------------------------------------------------------
 	// The empire upgrade point bank -- issue #52, the first slice
 	// ----------------------------------------------------------------------

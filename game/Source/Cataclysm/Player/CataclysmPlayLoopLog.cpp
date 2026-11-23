@@ -505,6 +505,38 @@ FString FCataclysmPlayLoopLog::ForgeAffixChangeLine(bool bShift, int32 AffixNumb
 						   DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeOptionsLine(const FString& ItemName, bool bStabilizer, int32 Shards,
+												float ResidueSaved, int32 DaysSaved, int64 Gold)
+{
+	// THREE PLAIN RETURNS, EACH FORMAT ONE LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` can
+	// read each one. A halved residue can save a half, so the residue is written whole when whole and to one place else.
+	const FString Saved = FMath::IsNearlyEqual(ResidueSaved, FMath::RoundToFloat(ResidueSaved), 0.01f)
+		? FString::Printf(TEXT("%d"), FMath::RoundToInt(ResidueSaved))
+		: FString::Printf(TEXT("%.1f"), ResidueSaved);
+	const FString Paid = ACataclysmDroppedItem::GoldName(Gold);
+	const TCHAR* ShardWord = Shards == 1 ? TEXT("") : TEXT("s");
+	const TCHAR* DayWord = DaysSaved == 1 ? TEXT("") : TEXT("s");
+	if (bStabilizer && Shards > 0)
+	{
+		return FString::Printf(TEXT("used a Chaos Stabilizer and %d Tainted Shard%s on %s for %s: %s residue and %d day%s saved"),
+							   Shards, ShardWord, *ItemName, *Paid, *Saved, DaysSaved, DayWord);
+	}
+	if (bStabilizer)
+	{
+		return FString::Printf(TEXT("used a Chaos Stabilizer on %s for %s: %s residue saved"), *ItemName, *Paid, *Saved);
+	}
+	return FString::Printf(TEXT("used %d Tainted Shard%s on %s for %s: %d day%s saved"), Shards, ShardWord, *ItemName, *Paid,
+						   DaysSaved, DayWord);
+}
+
+FString FCataclysmPlayLoopLog::ForgeCleanseLine(const FString& ItemName, int64 Gold, int32 ResidueBefore,
+												int32 ResidueAfter, int32 Days, int32 DayFrom, int32 DayTo)
+{
+	return FString::Printf(TEXT("cleansed %s for %s: residue %d to %d; it cost %d day%s, day %d to day %d"), *ItemName,
+						   *ACataclysmDroppedItem::GoldName(Gold), ResidueBefore, ResidueAfter, Days,
+						   Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
+}
+
 FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
 												   const FString& FromType, const FString& ToType, int64 Gold,
 												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,

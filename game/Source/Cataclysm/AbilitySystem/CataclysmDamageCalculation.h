@@ -63,6 +63,21 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float ResistancePenetration = 0.0f;
 
+	/**
+	 * Overwhelm, in percentage points: what a creature stronger than the player takes off the player's mitigation.
+	 * Issue #2824, slice b; the design's "Overwhelm" section, and `overwhelm` in `sim/cataclysm_sim/combat.py`.
+	 *
+	 * TAKEN OFF FOUR THINGS IN `Resolve`, the coordinating session's rulings Q7 and Q8 of 2026-11-22: the evasion chance
+	 * and the block chance, each held at nought; armour's reduction percentage, held at nought; and the resistance, beside
+	 * `ResistancePenetration` and BEFORE the cap, so over-capped resistance absorbs it as it absorbs penetration. A tick of
+	 * damage over time and an area blow meet it at every step they meet at all; evasion is skipped for both as before.
+	 *
+	 * FILLED BY `UCataclysmVitalAttributeSet` for a blow from a creature on a player
+	 * (`UCataclysmPowerScore::OverwhelmPointsAgainst`); 0 for every other blow.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float OverwhelmPoints = 0.0f;
+
 	/** Percentage of the defender's armor ignored, from gear and sub-type. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float ArmorPenetration = 0.0f;

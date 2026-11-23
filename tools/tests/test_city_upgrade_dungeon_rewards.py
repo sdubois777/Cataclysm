@@ -111,6 +111,11 @@ def test_a_kill_takes_the_city_rewards_before_it_rolls_and_in_each_grant() -> No
         "the kill does not give its drop roll the city's materials figure")
     gold = re.search(r"UCataclysmDropSpawner::SpawnGoldFor\(([^;]*)\);", handler)
     last = gold.group(1).rsplit(",", 1)[-1] if gold else ""
+    # Since #2824 slice c the multiplier reaches the spawner through `FCataclysmPowerGapRule::KillLootFor`, which
+    # takes the tree's times the city's as its second argument and multiplies it by the Power Score gap's loot factor.
+    if "KillLoot.GoldMultiplier" in last:
+        killloot = re.search(r"FCataclysmPowerGapRule::KillLootFor\(([^;]*)\);", handler)
+        last = killloot.group(1).split(",")[1] if killloot else ""
     assert "TreeDrops.GoldMultiplier" in last and "CityRewards.GoldMore" in last, (
         f"the kill's gold is not the tree's multiplier times the city's: {last.strip()!r}")
     for grant in ("State->GrantExperience(", "State->GrantSkillExperience("):

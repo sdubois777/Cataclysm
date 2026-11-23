@@ -319,6 +319,13 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		MagicFind += CityRewards.MagicFindIncreased;
 		LootQuantity *= CityRewards.LootMore;
 
+		// AND THE GAP BETWEEN THE DUNGEON'S SCORE AND THE PLAYER'S (issue #2824, slice c; rule D and the owner's 25% loot
+		// floor, 2026-11-22): full from 0.6 of a tier width over the dungeon to 0.25 under it, up to 25% more above,
+		// down to 5% experience and 25% loot below. The loot factor reaches the loot quantity and the gold multiplier
+		// through `KillLootFor`, once the tree's gold multiplier is known below; the experience takes its own factor at
+		// the grants. Both 1 outside an empire dungeon or with nobody playing (`PowerGapRewardsIn`). Asking draws nothing.
+		const FCataclysmPowerGapRewards GapRewards = ACataclysmDungeonGameMode::PowerGapRewardsIn(World);
+
 		// Its identity, a salt of its own ("dr") and the clock, through the mix: issue #2749's placement seeding slice; until it this was their XOR, so creatures made or killed together, with neighbouring identities and one clock, drew related rolls.
 		FRandomStream Stream(CataclysmSeedMix::Mix(static_cast<int32>(GetUniqueID()), 0x6472,
 			static_cast<int32>(World->GetTimeSeconds() * 1000.0f)));
@@ -330,6 +337,12 @@ void ACataclysmEnemyCharacter::HandleDeath()
 
 		// AND THE MAGIC FIND THE GOLD HELD GIVES (issue #2741 slice 6c, B6): The Gilded Path and Venture Capital, added.
 		MagicFind += TreeDrops.MagicFindFromGold;
+
+		// THE LOOT FACTOR, ON THE LOOT QUANTITY (so the gear, the materials, the tree's extra drops and the gems) AND ON
+		// THE GOLD MULTIPLIER (the tree's times the city's), in one function a test can call: issue #2824, slice c.
+		const FCataclysmPowerGapKillLoot KillLoot = FCataclysmPowerGapRule::KillLootFor(
+			LootQuantity, TreeDrops.GoldMultiplier * CityRewards.GoldMore, GapRewards);
+		LootQuantity = KillLoot.LootQuantity;
 
 		// THE RUNG IT PAYS AS, which is its own unless a subclass says otherwise, and its random gear as that rung's
 		// unless a subclass gives a count; then what it wore. Issue #1308; see `RarityStepItPaysAs`.
@@ -349,7 +362,7 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			if (UCataclysmDropSpawner::GoldDropsIn(World))
 			{
 				UCataclysmDropSpawner::SpawnGoldFor(World, RarityStepItPaysAs(), GetActorLocation(), Stream,
-													TreeDrops.GoldMultiplier * CityRewards.GoldMore);
+													KillLoot.GoldMultiplier);
 			}
 
 			// AND THE TREE'S EXTRA DROPS AFTER THE GOLD, so every draw above is as it was, and a kill with none of the
@@ -398,16 +411,17 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			if (State && bPays)
 			{
 				// THE CITY'S "MORE EXPERIENCE" DOUBLES THE CREATURE'S FIGURE (issue #2781, X4), and the skills' share
-				// below follows it (ruling 1).
-				State->GrantExperience(State->ExperienceAfterGain(CityRewards.ExperienceFrom(UCataclysmEnemyScore::ScoreFor(
-					UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs()))));
+				// below follows it (ruling 1). THEN THE POWER SCORE GAP'S FACTOR, rounded to a whole point (issue #2824,
+				// slice c), and the skills' share follows that too.
+				State->GrantExperience(State->ExperienceAfterGain(GapRewards.ExperienceFrom(CityRewards.ExperienceFrom(
+					UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World), RarityStepItPaysAs())))));
 
 				// AND THE SAME EXPERIENCE TO THE SKILLS THAT HURT IT, by the share of its health each removed. Issue
 				// #2764, ruled 2026-11-19. The character's own grant above is unchanged; a creature no levelling skill
 				// touched -- killed by the basic attack alone -- gives its skills nothing.
-				State->GrantSkillExperience(State->ExperienceAfterGain(CityRewards.ExperienceFrom(
+				State->GrantSkillExperience(State->ExperienceAfterGain(GapRewards.ExperienceFrom(CityRewards.ExperienceFrom(
 												UCataclysmEnemyScore::ScoreFor(UCataclysmEnemyScore::FloorIn(World),
-																			   RarityStepItPaysAs()))),
+																			   RarityStepItPaysAs())))),
 											HealthRemovedBySkill, MaxHealthForTheSkillSplit());
 			}
 

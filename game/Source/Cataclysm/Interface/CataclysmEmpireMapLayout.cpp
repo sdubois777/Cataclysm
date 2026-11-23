@@ -9,6 +9,7 @@
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Dungeon/CataclysmEnemyScore.h"
+#include "Dungeon/CataclysmPowerGapRewards.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Save/CataclysmSaveRecords.h"
 
@@ -788,4 +789,17 @@ FString UCataclysmEmpireMapLayout::DungeonScoreLine(const UCataclysmEmpireRun* R
 {
 	const int32 DungeonScore = UCataclysmEnemyScore::DungeonScoreOf(Run, DungeonId);
 	return DungeonScore == INDEX_NONE ? FString() : DungeonScoreText(DungeonScore, PlayerScore);
+}
+
+FString UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(const UCataclysmEmpireRun* Run, int32 DungeonId,
+															   int32 PlayerScore)
+{
+	const FString Line = DungeonScoreLine(Run, DungeonId, PlayerScore);
+	if (Line.IsEmpty())
+	{
+		return Line;
+	}
+	const FString Rewards = FCataclysmPowerGapRule::RewardsText(FCataclysmPowerGapRule::RewardsFor(
+		UCataclysmEnemyScore::DungeonScoreOf(Run, DungeonId), PlayerScore, Run->DifficultyTier));
+	return Rewards.IsEmpty() ? Line : Line + TEXT(" ") + Rewards;
 }

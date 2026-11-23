@@ -847,8 +847,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		//
 		// THE ROLL IS STILL THE CALLER'S. Only the number it is compared against
 		// changes, so every test that pins a roll is unaffected.
-		if (Roll < DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(),
-								BlowOf(Hit)))
+		//
+		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
+		if (Roll < FMath::Max(0.0f, DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(), BlowOf(Hit))
+										 - Hit.OverwhelmPoints))
 		{
 			Result.bEvaded = true;
 			return Result;
@@ -928,8 +930,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// it covers exactly what a block covers; a damage over time tick reaches
 		// this step today, and the owner's held question on blocking damage over
 		// time decides both.
-		if (Roll < DefenderStat(Defender, TEXT("block_chance"),
-								Combat->GetBlockChance(), BlowOf(Hit)))
+		//
+		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
+		if (Roll < FMath::Max(0.0f, DefenderStat(Defender, TEXT("block_chance"), Combat->GetBlockChance(), BlowOf(Hit))
+										 - Hit.OverwhelmPoints))
 		{
 			Result.bBlocked = true;
 			const float Pinned = CVarBlockNegationRoll.GetValueOnAnyThread();
@@ -1049,7 +1053,8 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			* (1.0f - Ignored / 100.0f)
 			* (1.0f - Removed / 100.0f);
 		const float BeforeArmour = Damage;
-		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
+		// LESS THE OVERWHELM, in points off the reduction percentage, held at nought. Issue #2824, slice b, ruling Q7.
+		Damage *= 1.0f - FMath::Max(0.0f, ArmorReduction(Armor, Tier) - Hit.OverwhelmPoints) / 100.0f;
 		Result.RemovedByArmour = BeforeArmour - Damage;
 	}
 
@@ -1076,7 +1081,9 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	const float ResistanceMet = EffectiveResistanceUnderCap(
 		ResistanceFor(Defender, Hit.DamageType, Tier)
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
-		Hit.ResistancePenetration, ResistanceCapOf(Defender));
+		// AND THE OVERWHELM BESIDE THE PENETRATION, before the cap, which is where the design's damage order puts it "at
+		// the same point and for the same reason". Issue #2824, slice b.
+		Hit.ResistancePenetration + Hit.OverwhelmPoints, ResistanceCapOf(Defender));
 	const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;
 	if (bMeetsDefences)
 	{

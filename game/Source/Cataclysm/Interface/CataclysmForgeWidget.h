@@ -99,6 +99,11 @@ public:
 	/** The imprints and drawback changes shown for the piece chosen. Issue #47, slice F3. */
 	const TArray<FCataclysmForgeEnchantmentAction>& EnchantmentActionsShown() const { return ShownEnchantmentActions; }
 
+	/** The residue tools' buttons shown, the options asked, and a press of one. Issue #47, slice F5. */
+	const TArray<FCataclysmForgeOptionAction>& OptionActionsShown() const { return ShownOptionActions; }
+	FCataclysmForgeCraftOptions OptionsForTests() const { return Options; }
+	void ClickOptionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
+
 	/** The gem combines shown, and a press of one. Issue #46, slice G6. */
 	const TArray<FCataclysmForgeGemCombineAction>& GemCombinesShown() const { return ShownGemCombines; }
 	void ClickGemCombineForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
@@ -164,6 +169,11 @@ private:
 	TArray<FCataclysmForgeEnchantmentAction> ShownEnchantmentActions;
 	TArray<FCataclysmForgeAffixChangeAction> ShownAffixChangeActions;
 	TArray<FCataclysmForgeDamageTypeAction> ShownDamageTypeActions;
+
+	/** The residue tools' buttons, and the options the next craft on the chosen piece uses. Issue #47, slice F5. */
+	TArray<FCataclysmForgeOptionAction> ShownOptionActions;
+	FCataclysmForgeCraftOptions Options;
+	int32 ShardsHeldNow = 0;
 	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;
 
 	/** The affixes the chosen piece can take, the one the chooser shows among them, and its tier. Issue #47, slice F2. */

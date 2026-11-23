@@ -2,6 +2,464 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — Overwhelm: a creature whose Enemy Score is above the player's live Power Score takes points off the player's resistance, armour, block and evasion, and the floor panel says how many (#2824, slice b)
+
+**Affects:** `UCataclysmPowerScore::OverwhelmRate`, `OverwhelmCap`, `OverwhelmFor`, `OverwhelmPointsAt`,
+`OverwhelmPointsAgainst` and `OverwhelmText`, new, and `LiveScoreOf`, now cached
+(`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`); `ACataclysmPlayerCharacter::FLiveScoreCache` and
+`LiveScoreCache`, new (`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`);
+`UCataclysmEquipmentComponent::RefreshCount`, new, raised by `RefreshAttributesAs`
+(`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`); `FCataclysmIncomingHit::OverwhelmPoints`, new,
+and `UCataclysmDamageCalculation::Resolve`'s evasion, block, armour and resistance steps
+(`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`); the hit built in
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` (`CataclysmVitalAttributeSet.cpp`); the floor panel's score
+line in `ACataclysmDungeonGameMode::RefreshFloorModifierPanel` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`).
+Tests: `Cataclysm.Overwhelm.`, eight, new, in `game/Source/Cataclysm/Tests/CataclysmOverwhelmTests.cpp`;
+`tools/tests/test_overwhelm_is_the_simulations.py`, new; the expectation of
+`Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`
+(`game/Source/Cataclysm/Tests/CataclysmDamageDoneToAlliesTests.cpp`). Issue
+[#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** Phase 1 by the coordinating session's instruction of 2026-11-22, on
+  `feat/overwhelm-2824-b`, cut from slice a's head `5b6042222` (`feat/live-power-score-2824-2`).
+- **EVERY EXISTING TEST IN WHICH A CREATURE'S BLOW LANDS ON A PLAYER NOW MEETS OVERWHELM.** A bare test player scores
+  far below a tier 1 Common (352), so such a blow carries about 20 points. It changes a result only where the player has
+  evasion, block, armour or resistance to that blow above nought, and the test measures what landed. A search of the tests for
+  every route a creature's damage reaches a player (`ApplyHit`, `ApplyDirectDamage`, the damage over time helpers, the
+  ally share, retaliation), read by a subagent and not by me, found:
+  - **One that would fail, changed here:** `Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`.
+    A creature's Demonic blow on an imp shares a tenth to wearers with 800 armour and with 50 Demonic resistance; it
+    expected the full 50% each removes. Its expectation now subtracts each wearer's
+    `OverwhelmPointsAgainst(wearer, creature)` from the armour reduction and from the resistance, and it prints both.
+  - **Two whose figure moves and whose assertion still passes:**
+    - `Cataclysm.EnemyBurn.ATableBurnFromACreatureArrivesAtWhatTheDefendersStepsLeave`. Its burn tick passes either
+      with the armour step or without it, and Overwhelm removes the Ravager's 3.4%, so it now matches the "without"
+      half.
+    - `Cataclysm.DamageDoneToAllies.AShareOfACreaturesBlowOnAnAllyAddsNoWastingSicknessStack`. About 26.7 of an upper
+      bound of 30.
+  - **Two that assert an evade by a player at 1,000 evasion**, still evaded: `Cataclysm.DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack`
+    and `Cataclysm.StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`.
+  - A possessed player takes the Ravager's class line, 25 armour plus 3.5 a level, about 3% at tier 1, and Overwhelm
+    removes it, so every creature blow on such a player lands about 3% higher. The coordinating session, 2026-11-22: that
+    is the design's intended pressure on a player below the dungeon's score, and the simulation has always had it. The
+    other affected tests the search found compare a blow with itself or assert no amount. The search did not open every
+    one of about 4,900 tests, so a blow built in a form it did not look for could be missed; the whole Unreal suite in
+    the window is the check, the coordinating session's note of the same day.
+- **THE CACHE DOES NOT SEE A RESISTANCE THAT CHANGES WITHOUT A STAT REFRESH.** It is worked out again when the gear
+  changes (`ChangeCount`), on every stat refresh (`RefreshCount`, new: gear, a level gained, passive points, a dungeon
+  modifier's stat change), when the level changes and when the difficulty tier changes. A timed buff that grants
+  resistance through its own gameplay effect, outside a refresh, moves the score only at the next refresh. The test
+  `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` holds exactly that line.
+- **THE FLOOR PANEL'S LINE IS WRITTEN ON ENTERING THE FLOOR**, as slice a's score line is. Gear changed mid-floor shows
+  at the next floor. The blows themselves read the score as it is at each hit.
+- **THE WIRING OF A REAL BLOW IS HELD BY TEXT, NOT RUN.** No automation test applies a creature's damage effect to a
+  player and watches Overwhelm arrive; `OverwhelmPointsAgainst` is run, and the Python check holds that the vital set
+  calls it with the defending body and the instigator's avatar.
+
+### What the design and the rulings say, and what this builds
+
+The design's Overwhelm section gives the formula, `Overwhelm = min(50%, 25% x (Enemy Score - Player Score) / Tier
+Width)`, nothing below 0, and its damage order subtracts it from resistance at step 4, before the 70 cap, "at the same
+point and for the same reason" as penetration. Enemies carry no penetration; Overwhelm is their equivalent. Its worked
+figures: a tier 8 player at 6,327 loses 8.4% to a Common and 20.9% to a Cataclysm Boss. The simulation already models it:
+`OVERWHELM_RATE = 0.25`, `OVERWHELM_CAP = 0.50` and `overwhelm()` in `sim/cataclysm_sim/combat.py`, with
+`damage_multiplier` treating mitigation as one 70% pool less the Overwhelm points.
+
+The coordinating session's rulings of 2026-11-22:
+
+| Ruling | What it settles |
+| :-- | :-- |
+| Q7, derived from the simulation's model | Overwhelm comes off the block chance, the evasion chance and armour's reduction percentage in points, as it comes off resistance |
+| Q8 | It reaches damage over time and area blows through resistance; evasion stays skipped for both, as the damage order already has it |
+| The constants | The game's two must match the simulation's, held by a Python check |
+| The worked figures | Tested from the constants the code holds, not the document's rounding |
+| The cache | Slice b adds the cache slice a deferred, recomputed on gear, level and tier |
+| The screen | The Overwhelm a creature would apply is shown, at least on the floor panel |
+
+The plan's research (section 5, Q7) found no shipped game with the same mechanic, so Q7 is the simulation's model and
+not a genre shape. That research was done by the session that wrote the plan and was not re-read here.
+
+**The judgements of this change**, each with what it rests on. The first, second and fourth were RULED by the
+coordinating session on 2026-11-22, each as a judgement; the third and fifth are this change's own:
+
+| Judgement | What it rests on |
+| :-- | :-- |
+| **A creature's own rung, not the rung its death pays as** (ruled) | Overwhelm is about the blow, and the payout is a separate rule; the Corrupted Stalker pays as a Boss while it stands at the Common rung (`RarityStepItPaysAs`, ruled 2026-10-25) |
+| **The creature's floor is its world's, `UCataclysmEnemyScore::FloorIn`** (ruled) | the same floor its experience is scored on when it dies (`CataclysmEnemyCharacter.cpp`) |
+| **Each defence is held at nought** | the simulation's `max(0, 0.70 - ow)`; Overwhelm removes a defence and never adds damage past having none, as penetration stops at nought |
+| **Not stopped by the no-penetration tag** (ruled) | the design separates the two: "Enemies carry no Penetration stat. Overwhelm ... already reduces the player's mitigation", so a tag about penetration does not reach Overwhelm |
+| **The floor panel shows a Common's and a Cataclysm Boss's** | the two ends of the ladder; every rung between applies between them |
+
+### The arithmetic
+
+`OverwhelmFor(Player, Enemy, Width) = min(0.50, 0.25 x max(0, Enemy - Player) / Width)`, and 0 for a width of 0 or
+less, as the simulation's. A blow carries 100 times that, in points: the creature's `ScoreFor(FloorIn(world), its
+rung)`, against the player's live score, over `TierWidth` of the floor's tier. In `Resolve`:
+
+| Step | Before | Now |
+| :-- | :-- | :-- |
+| 1. Evasion | evaded when the roll is below the evasion chance | below the evasion chance less the points, held at 0 |
+| 2. Block | blocked when the roll is below the block chance | below the block chance less the points, held at 0 |
+| 3. Armour | `1 - ArmorReduction / 100` lands | `1 - max(0, ArmorReduction - points) / 100` lands |
+| 4. Resistance | the cap applied to resistance less penetration | the cap applied to resistance less penetration less the points; penetration's rule that nothing pushes a resistance below 0 holds for the sum |
+
+So at 50 resistance a 1,000 blow with 20 points lands for 700, not 500; at 90, over the cap by 20, it lands for 300
+either way. Worked figures, from the code's constants: a Common on the last floor of a 50 floor tier 8 Cataclysm
+dungeon scores 6,733 and takes `25 x 406 / 1,207` = **8.4093** points off a player at 6,327; a Cataclysm Boss there
+scores 7,336 and takes `25 x 1,009 / 1,207` = **20.8989**. The simulation's `overwhelm` gives the same to four places.
+
+### The words
+
+The floor panel, while an empire dungeon is walked, under slice a's score line:
+
+| Case | What it says |
+| :-- | :-- |
+| Below a creature | "Overwhelm here: 8.4 from a Common, 20.9 from a Cataclysm Boss, in points off your resistance, armour, block and evasion." |
+| At or above every creature | "Overwhelm here: none, your Power Score is at or above every creature's." |
+
+The figures are the worked floor's, not a measurement of a character.
+
+### Tests
+
+`Cataclysm.Overwhelm.`, eight, written before a build:
+
+| Test | What it checks |
+| :-- | :-- |
+| `ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` | the worked floor: 6,327, 6,733, 7,336 and 1,207 as set-up; 8.4093 and 20.8989 points |
+| `APlayerAtOrAboveTheCreaturesScoreLosesNothing` | level with, above and far above: 0; CONTROL: one point below, above 0 |
+| `ItIsHeldAtHalf` | two tier widths of gap reach 50%; one point less is under; far past is held at it; no width gives 0 |
+| `ItComesOffResistanceBeforeTheCapSoOverCappingAbsorbsIt` | 1,000 Demonic: at 50, 500 then 700 with 20 points; at 90, 300 both; at 80, 400; a tick at 50 with 20, 700 |
+| `ItComesOffEvasionBlockAndArmourHeldAtNought` | 30 evasion against 25 evades, less 4 still, less 10 not; block the same; 800 armour at tier 1: 500, 600 less 10 points, 1,000 less 60 |
+| `ACreatureAppliesItsOwnRungsOverwhelmOnItsFloor` | at tier 1 in a bare world, a Common and a Cataclysm Boss against a bare level 1 player, each its rung's figure worked out from the scores; the Boss's above; nothing with either missing |
+| `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` | a resistance written with no refresh is unseen while the fresh score moves (CONTROL); a helm, level 60 and tier 8 each bring the cached score to the fresh one |
+| `TheFloorPanelSaysWhatACommonAndACataclysmBossTakeOff` | "8.4 from a Common" and "20.9 from a Cataclysm Boss" on the worked floor at 6,327; "none" at 8,000; no line with no player |
+
+Python: `test_overwhelm_is_the_simulations.py`, five checks: the two constants are the simulation's; the automation
+test's two worked figures are `combat.overwhelm`'s; the vital set fills the hit's Overwhelm from `OverwhelmPointsAgainst`
+with the defending body and the instigator's avatar; `Resolve` takes it beside penetration inside the cap's call and off
+armour, evasion and block; the floor panel calls `OverwhelmText`.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log. As written:
+
+- **The whole suite: the base + 8**, the eight new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot). The one changed test's count does not move.
+- **No save record moves. No editor step.**
+- **Groups alone, first**, name-literal counts on this branch: `Overwhelm.` 8 (new); `Damage.` 21 (`Resolve` changed);
+  `PowerScoreLive.` 8 (`LiveScoreOf` now cached); `Equipment.` 30 (`RefreshAttributesAs` counts). `DamageDoneToAllies.` 10 (the changed test), `EnemyBurn.` 4 (the moved figure), and the two evasion tests' groups `DungeonModifierEffects.` and `StrikeTarget.` by name.
+
+**Eight C++ guard proofs**, one per new test, each narrowed to `Cataclysm.Overwhelm.` (8 performed), run by
+`.claude/windows/prove_overwhelm.py <P>`:
+
+| Proof | The break | Predicted to fail |
+| :-- | :-- | :-- |
+| OW1 | `OverwhelmPointsAt` returns 10 times the fraction, not 100 | the worked figures, the creature's rung, the panel's line (3) |
+| OW2 | the gap not held at nought | at or above the creature's score (1) |
+| OW3 | the 50% cap removed | held at half (1) |
+| OW4 | taken off resistance after the cap, not before | resistance before the cap, and evasion, block and armour, whose blows meet 0 resistance that the break pushes below 0 (2) |
+| OW5 | evasion given the points back | evasion, block and armour (1) |
+| OW6 | every creature read as a Common | the creature's rung (1) |
+| OW7 | the cache worked out only when empty | the cache (1) |
+| OW8 | the panel's top rung read as a Boss, rung 4 | the panel's line (1) |
+
+**Five Python guard proofs**, run in a `git archive` copy of `2d1dcbdf7` by `.claude/windows/prove_overwhelm_python.py`:
+**5 of 5 proved exactly as predicted**, each failing one named check of
+`test_overwhelm_is_the_simulations.py` with the break in and passing 5 of 5 restored.
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| PY1 | `OverwhelmRate` 0.24 | `test_the_two_constants_are_the_simulations` |
+| PY2 | the automation test's 8.4093 written 8.4094 | `test_the_worked_figures_are_the_simulations` |
+| PY3 | the defender read as the set's owning actor, which for a player is the player state | `test_a_creatures_blow_on_a_player_carries_it` |
+| PY4 | taken off resistance after the cap | `test_resolve_takes_it_beside_penetration_before_the_cap` |
+| PY5 | the floor panel's Overwhelm line left empty | `test_the_floor_panel_shows_it` |
+
+**The Python suite on this branch**, at `4b8ea1362`: **8,161 passed, 10 skipped, 0 failed in 417.5 s**; the JUnit
+file agrees, 8,171 tests, 0 failures, 0 errors, 10 skipped. `ruff check .`: all checks passed. An earlier run at
+`2d1dcbdf7` failed one check, `test_every_console_variable_a_test_writes_is_written_at_console_priority`: the new tests
+set the difficulty tier at code priority. `7cd8aafb0` sets it at console priority.
+
+### Window ow-f5-w1, registered
+
+Ruled by the coordinating session on 2026-11-22: this slice shares one window with #47 slice F5 and #2824 slice c, on
+`feat/ow-f5-w1-2824-47`, cut from development `816a5ea3c` (#2850, F3 and F4, merged). Its commits, in this order:
+this slice's five (here `b073b4229`, `affd21c7a`, `1d6321fb5`, `e44217e1a`, `8d4b3392a`, from `2d1dcbdf7`, `7cd8aafb0`,
+`4b8ea1362`, `6474f8ff4`, `5ff3c75b2`); slice c's six (from `a07ec60e8`, `930414088`, `61f20464f`, `eaec37c3d`,
+`d7bcdf506`, `1cf14bb06`); F5's four (from `126352ff2`, `4ad075855`, `45cb7b213`, `416c70868`).
+
+- **The conflicts:** `docs/DECISIONS.md` three times, at the top, resolved with `tools/resolve_decisions_log.py`, entries
+  by the author date of the commit that first wrote each; and `ACataclysmDungeonGameMode::RefreshFloorModifierPanel`,
+  where this slice and slice c each rewrote the floor panel's score line. Resolved as the coordinating session accepted:
+  `FString ScoreLine = FloorScoreLineHere();`, then this slice's Overwhelm line appended on a new line for a bound
+  dungeon, so slice c's own line, which its tests compare word for word, is unchanged. `check_no_markers.py`: 0 markers
+  in the 47 changed files; `tools/check_resolved_cpp.py --changed`: 10 files read, 0 with complaints.
+- **The base:** window forge-pg-w2's whole-suite engine log `forgepg2_suite_engine_08f4308e.log`, "5289 tests performed,
+  5289 succeeded, 0 failed", 57 skipped halves, "860 written and deleted, 0 left behind". Its tested head `08f4308eb`
+  has the same `game/` tree as `816a5ea3c` (`git diff --stat 08f4308eb 816a5ea3c -- game` is empty).
+- **The whole suite: 5,307**, the base plus 18: the test-name diff against development adds 8 `Overwhelm.`, 5
+  `ForgeResidueTools.` and 5 `PowerGapRewards.` names and removes none. Skipped halves 57 and test saves 860, unchanged:
+  window forge-pg-w1, which ran slice c, measured 860 too.
+- **Groups alone, first**, each counted in the base log with a literal match, plus the new tests: `Overwhelm.` 8,
+  `ForgeResidueTools.` 5, `PowerGapRewards.` 5; `Damage.` 21, `PowerScoreLive.` 8, `Equipment.` 30,
+  `DamageDoneToAllies.` 10, `EnemyBurn.` 4; the two evades by full name, 1 each
+  (`DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack`, `StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`);
+  slice c's `CityDungeonRewards.` 5, `CharacterLevel.` 9, `EnemyScore.` 12, `DungeonMode.` 46, `EmpireScreen.` 16,
+  `CityScreen.` 19; F5's `ForgeEnchantments.` 12, `ForgeDamageTypes.` 6, `ForgeAffixChange.` 5, `ForgeAffixes.` 6,
+  `Forge.` 8, `ForgeScreen.` 4, `ForgeSockets.` 6, `ForgeGems.` 4, `ForgeCosts.` 3, `GemCombine.` 3,
+  `GemEnchantments.` 5, `PlayLoop.` 12. 28 runs.
+- **Seventeen C++ guard proofs**: this slice's OW1 to OW8, F5's FR1 to FR5 and slice c's C1 to C4, each with the
+  prediction its entry registers, run by `.claude/windows/prove_ow.py`; every anchor matches exactly once on the combined
+  head. Slice c's kill test is predicted to print "granted 232 of 232 expected" if the Dungeon Score is 191 and the
+  player's 626, as in forge-pg-w1.
+
+### Window ow-f5-w1, measured at `a39845363`
+
+Run 2026-11-22, lock `ow-f5-w1`, by `.claude/windows/chain_ow.py`. Everything passed except one registered figure, so the
+runner stopped before the proofs, as it is built to.
+
+| Stage | Measured |
+| :-- | :-- |
+| The three builds | "Build: Succeeded - 59 actions, 52 files compiled", each changed file alone "40 actions, 37 files compiled", the unity files again "20 actions, 17 files compiled"; 0 compiler warning or error lines in each |
+| Groups alone | 28 of 28, each performed and succeeded at exactly its registered count, none failed |
+| The whole Unreal suite | "5307 tests performed, 5307 succeeded, 0 failed"; 57 skipped part of what they check, as registered; "Declared: 5307 tests in the tree at a39845363; 5307 performed, gap 0" |
+| Test saves | **"861 written and deleted, 0 left behind", against 860 registered: the mismatch that stopped the runner** |
+| Python, alongside | "8204 passed, 10 skipped in 361.07s"; JUnit 8214 tests, 0 failures, 0 errors, 10 skipped |
+| ruff | "All checks passed!" |
+
+**The one extra save.** Slice c's `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` now kills its
+creature, and the kill writes one save, which is deleted. Found by comparing the save count after each test in this
+window's engine log (`ow_suite_engine_a3984536.log`) with `forgepg2_suite_engine_08f4308e.log`: that test is the only
+one that differs, 1 save against none (it was not in that run). **The mistake was this registration's**: it took window
+forge-pg-w1's 860 as evidence that slice c writes no save, and in forge-pg-w1 that test failed before its kill, so it
+never reached the save. The registered 860 above is left as it was written; 861 is what the window measured.
+
+The tests' own lines confirmed the predictions: slice c's kill test printed "granted 232 of 232 expected"; this slice's
+worked figures 8.4093 and 20.8989; the changed ally-share test "plain 50.00, armoured 32.31 (Overwhelm 14.61), resistant
+30.49 (Overwhelm 10.97)".
+
+**The seventeen proofs** run alone, by the coordinating session's ruling (a) of 2026-11-22, on the head that records
+this, which changes only `docs/DECISIONS.md`, so the `game/` tree the whole suite passed on is the one the proofs break.
+
+**The seventeen proofs, measured at `466dc414c`** (lock `ow-f5-w1`, `run_ow.py --proofs-only`, 2026-11-22, 17:58 to
+18:20): **17 of 17 PROVED, each failing exactly the tests its prediction named**, each restored half every test of its
+group succeeding, none crashed, each source hash the same before and after.
+
+| Proof | With the break in | Failed |
+| :-- | :-- | :-- |
+| OW1 | 8 performed, 5 succeeded, 3 failed | the creature's rung, the worked figures, the panel's line |
+| OW2 | 8, 7, 1 | `APlayerAtOrAboveTheCreaturesScoreLosesNothing` |
+| OW3 | 8, 7, 1 | `ItIsHeldAtHalf` |
+| OW4 | 8, 6, 2 | `ItComesOffResistanceBeforeTheCapSoOverCappingAbsorbsIt`, `ItComesOffEvasionBlockAndArmourHeldAtNought` |
+| OW5 | 8, 7, 1 | `ItComesOffEvasionBlockAndArmourHeldAtNought` |
+| OW6 | 8, 7, 1 | `ACreatureAppliesItsOwnRungsOverwhelmOnItsFloor` |
+| OW7 | 8, 7, 1 | `TheLiveScoreIsCachedAndWorkedOutAgainOnGearLevelAndTier` |
+| OW8 | 8, 7, 1 | `TheFloorPanelSaysWhatACommonAndACataclysmBossTakeOff` |
+| FR1 | 5, 4, 1 | `TheOptionsHalveTheResidueAndRemovePenaltyDaysEachAtItsRowsGold` |
+| FR2 | 5, 4, 1 | `AnUpgradeWithBothOptionsTakesTheirMaterialsAndGoldAndSavesResidueAndADay` |
+| FR3 | 5, 4, 1 | `TheOneSequenceGivesBackEverythingWhenAChangeIsRefusedAndSaysItsLineAfterTheDays` |
+| FR4 | 5, 4, 1 | `TheCleanseHalvesTheResidueInADayPer500AndLiftsNoMark` |
+| FR5 | 5, 4, 1 | `TheScreenSaysWhatTheOptionsDoBeforeACraftAndUsesThem` |
+| C1 | 5, 4, 1 | `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C2 | 5, 4, 1 | `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C3 | 5, 4, 1 | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
+| C4 | 5, 4, 1 | `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` |
+
+---
+
+## 2026-11-22 — Every forge item craft goes through one sequence, and the residue tools: a Chaos Stabilizer and Tainted Shards on a craft's own press, and the cleanse (#47, slice F5)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/forge-residue-tools-47-f5b`. It is cut from `573ae8bbf` on
+  `feat/forge-f3-on-f4-47`, which holds:
+  - slice F4's head `00de89243`;
+  - slice F3's three commits applied unchanged on top, as the coordinating session ordered: `c69259f6d`, `81cf236c6`
+    and `9499c2fab`, which are `c9bf10524`, `a535f7804` and `865dfdd6a` from `feat/forge-enchantments-47-3`;
+  - one commit, `573ae8bbf`, numbering F3's checklist step 24.
+- **THIS SLICE WAS FIRST CUT AS `feat/forge-residue-tools-47-f5`, head `1467175c4`**, where the step-24 renumbering was
+  part of this slice's code commit. The coordinating session ruled the split, so window forge-pg-w1 can take F3 and F4
+  without F5. This slice's three commits were cherry-picked onto `573ae8bbf` (`ee66bacd8`, `63f9a977f`, `1467175c4`
+  became `126352ff2`, `4ad075855`, `45cb7b213`). `git diff --stat` shows each new tree differs from its old one only in
+  `docs/DECISIONS.md`, the one line of F3's entry. So the proofs and the suite recorded below at `ee66bacd8` and
+  `63f9a977f` were run on the same source, tests and checklist. Its own window comes
+  after window forge-pg-w1: it rewrites the shared craft path, so the C++ proof anchors of F1 to F4 do not match after
+  it. They run in their own windows first.
+- **MORE THAN `docs/DECISIONS.md` CONFLICTED WHEN F3 WAS APPLIED**, against the order to resolve only that file. Twelve
+  files conflicted.
+  - Eleven are ADDITION-ONLY: every hunk's base part is empty, both slices having added code at the same place.
+    `.claude/windows/union_conflicts.py` checked that from `git checkout --conflict=diff3` before resolving each one,
+    keeping both sides, F4's first.
+  - The twelfth, `test_the_forge_charges_the_sheets_costs.py`, had one base line that both slices edited: the last
+    entry of a dictionary, which each turned into a comma and its own entries. It was resolved by hand, keeping all of
+    both.
+  - After the resolve, `check_no_markers.py` found 0 markers in the 18 changed files, and
+    `tools/check_resolved_cpp.py --changed` read 13 files with 0 complaints.
+  - F3's own files are byte for byte `865dfdd6a`'s. F3's and F4's entries in this log are byte for byte their own
+    branches'. F3's entry sits above F4's by the author date of the commits that wrote them (13:26 against 13:05).
+- **The play checklist had two steps numbered 23**, F4's and F3's, because each slice added one. Commit `573ae8bbf`,
+  below this slice, numbers F3's step 24 and changes F3's entry from "step 23" to "step 24", as the coordinating
+  session ruled. F4's entry keeps "step 23", which is F4's step. This slice adds step 25.
+- **SEVEN PYTHON CHECKS CHANGED SHAPE**, listed under Tests. They read each craft's own body for the days, the payment
+  or the line, and those steps are now in the one sequence. Each moved to the one function where its step now happens.
+  A new check holds that function's order, and that no other function in the file pays, takes materials, puts an item
+  back or passes days. This is the change of shape the coordinating session accepted with the plan, not a check
+  weakened to pass.
+
+### The plan and the rulings, the coordinating session, 2026-11-22
+
+The plan (`.claude/windows/plan_forge_47_f5.md` in the gems session's worktree) was accepted as written:
+- `DoItemCraft` replaces the copies; the combines are left out.
+- `OptionsOn` applies the options.
+- `TakeMaterials` is F6b's one place.
+- Q26 is checked and held by a Python check.
+
+The rulings:
+
+1. **Q23**: the Chaos Stabilizer and the Tainted Shards are options on a craft's own press, spent in it; nothing is
+   saved for a "next craft", so no save version moves.
+2. **Q27**: a Stabilizer halves the residue the craft adds, certainly.
+3. **Q24, and G2 ruled no**: each Shard removes one day of the residue's penalty (`CR / 100`, rounded down), down to the
+   craft's base days. It never removes one of those base days, an upgrade's level days included.
+4. **G1, DERIVED**: each option charges its row's Base Gold, 250, through `GoldFor` at the item's residue, the
+   Stabilizer once and the Shards once per shard. Both operations have a priced row in `ForgeOperations.csv`, and every
+   priced row is charged that way.
+5. **Q25**: a cleanse takes the row's "1 day per 500 CR", a part counting as a day, and at least one.
+6. **Q26**: a cleanse lifts no Consumption mark already made.
+   - The design's "Worn Residue and Consumption" says the mark is set on crossing, and "Only killing the double
+     clears residue"; nothing there says a lower Worn Residue clears the mark.
+   - In the code, `ACataclysmPlayerState::ClearConsumptionMark` is called by the double's death, by an equip or craft
+     that did not happen, and by a load restoring a record that holds no mark.
+7. **Q17**: the option materials count toward the empire tree's material nodes by their tier. So the materials a craft
+   takes are one list, each tier read from the crafting material table:
+   - Material Conservation, "T2 and below": the Shards, the upgrade stones up to +4 and the other tier 1 and 2
+     materials;
+   - Resource Management, "Rare": tier 3, the Stabilizer among them;
+   - Tempting Fate: every material.
+8. **G3, already ruled as F6's Q11**: the material nodes never act on the combines, because a kept stone would make
+   stones from nothing. The combines keep their own short sequence.
+
+### What it does
+
+- **`UCataclysmForgeCraft::DoItemCraft`**, the one sequence. It takes a step and two lambdas: one that changes a copy of
+  the item as it stood, given the run before its days pass and able to refuse, and one that says the craft's own line.
+  - The step holds the materials, one gold payment, the residue and days after the options, the threshold question's
+    words, and the refusals with no run and nothing at the target.
+  - The order: the run and the item; for a worn piece, the threshold question; the mark; the gold; the materials,
+    through `TakeMaterials`; the hooks' take (socketing's gem); the change; the residue written; the item put back; the
+    hooks' after (an unsocketed gem back to the bag); the days; the build the double wears; the craft's line; the
+    options' line; the save triggers.
+  - Every failure after the gold gives it back with the mark, and every failure after the materials gives them back.
+- **The seven crafts on it**: `Upgrade`, `DoSocketing`, `DoSocketWork`, `CraftAffix`, `DoAffixChange`,
+  `CraftDamageType` and F3's `DoEnchantmentWork`. `CataclysmForgeCraft.cpp` is 214 lines shorter. Each keeps its plan,
+  its refusals, its line, and the order in which it draws what it draws. F3's draw that fails now refuses the change, and
+  the sequence gives back the material, the gold and the mark.
+- **`TakeMaterials`**, the one place a craft's materials are taken. **`MaterialTierOf`**, each one's tier.
+- **The options**: every public item craft takes a last argument, defaulted to none, so every call and test written
+  before is unchanged.
+  - `UCataclysmForge::OptionsOn` and `UCataclysmForgeCraft::OptionsFor` apply them to any plan's residue before and
+    after, its days and its gold. No rule function changes.
+  - Refusals: a Stabilizer or Shards asked for and not held; a Stabilizer on a craft adding no residue; a Shard on a
+    craft with no penalty day; more Shards than penalty days ("This craft has 2 days of the residue's penalty, so at
+    most 2 Tainted Shards can be used."); the craft's gold and the options' together.
+- **The cleanse**: `UCataclysmForge::CleanseOf`, and `UCataclysmForgeCraft::Cleanse` through `DoItemCraft`. Half the
+  residue, the row's days, its gold through `GoldFor`. It never asks the threshold question, since the residue falls.
+- **The screen**: for a chosen piece, "Chaos Stabilizer: off (1 held)" and "Tainted Shards: 0 of 2 held", one press each,
+  reset when another piece is chosen and held to what is held after a craft; and "Cleanse half the residue", two
+  presses. **Every craft's first press says what the options do**, from the same `OptionsFor` the craft uses: "... With
+  a Chaos Stabilizer: residue 250 to 257.5, not 265. With 1 Tainted Shard: 4 days, not 5. The options cost 3,000 gold
+  more." A refused option refuses the press.
+- **The play log**: `ForgeOptionsLine`, said by `DoItemCraft` after the craft's own line when an option was used; and
+  `ForgeCleanseLine`.
+- **`docs/Play_Loop_Checklist.md`**: step 25.
+- **Nothing moves** in the save versions, the workbook or the assets.
+
+**Three errors of this slice's own, caught before commit:**
+- comment examples that did not follow from their own figures: a cleanse of 1,200 residue at "2,750 gold" (it is
+  6,250), and an options example pairing 40 residue with a Shard (there is no penalty day at 40);
+- the two new log lines' declarations inserted between F4's comment and its damage-type line, which would have left
+  that comment above the wrong function;
+- the refusal "at most 1 Tainted Shards", reworded so the number and the plural agree.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.ForgeResidueTools.`, 5 tests**, in `CataclysmForgeResidueToolsTests.cpp`. Its scene is
+`FResidueToolsScene`, not `FScene`.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| FR1 | `TheOptionsHalveTheResidueAndRemovePenaltyDaysEachAtItsRowsGold` | an added socket at 250 residue: the Stabilizer gives 257.5 (7.5 saved, days kept, 1,500 gold); 1 Shard gives 4 days and 2 Shards 3; both together; the six refusals; the penalty days at 99, 100 and 250; the tiers (Stabilizer 3, Shard 2, Essence 5, +4 stone 2, +5 stone 3, unknown 0) |
+| FR2 | `AnUpgradeWithBothOptionsTakesTheirMaterialsAndGoldAndSavesResidueAndADay` | a carried +2 helm at 250 residue raised to +3 with both: 262.5 residue, 4 days, 7,500 gold, the stones and both options' materials used |
+| FR3 | `TheOneSequenceGivesBackEverythingWhenAChangeIsRefusedAndSaysItsLineAfterTheDays` | `DoItemCraft` called directly: a refused change gives back the gold and both materials, with its reason; a material short takes none; a change that succeeds is written with the step's residue and says its line once its 2 days have passed |
+| FR4 | `TheCleanseHalvesTheResidueInADayPer500AndLiftsNoMark` | 1,200 residue to 600 in 3 days for 6,250 gold, the question, the days at 500, 1,001 and 10, two refusals; a worn helm of a marked character cleansed with no threshold question, and still marked |
+| FR5 | `TheScreenSaysWhatTheOptionsDoBeforeACraftAndUsesThem` | the three buttons; the options on; the first press stating their effect; the second adding the socket at 257.5; the options held to what is left |
+
+**Python**: `tools/tests/test_every_item_craft_goes_through_one_sequence.py`, 8 tests: the order; the give-backs; every
+item craft calls `DoItemCraft`; no other function pays, takes materials, puts an item back or passes days, except the
+combines' own payment and stones; the three rows; the options' rule; the cleanse and Q26; the tiers.
+
+**Python suite at `63f9a977f`**: "8171 passed, 10 skipped"; JUnit 8181 tests, 0 failures, 0 errors, 10 skipped;
+ruff "All checks passed!". F3 and F4 together were not run without F5, so how much of the total is F3's and how
+much this slice's is not measured here.
+
+**The seven checks that changed shape**, each now pointing to the new file for the order:
+
+| Check | Was | Now |
+| :-- | :-- | :-- |
+| `test_the_added_socket_is_rolled_before_the_days_pass` | the roll before `Run->AdvanceDays` in `DoSocketWork` | the roll inside the change handed to `DoItemCraft` |
+| `test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` | the same for `CraftAffix` | the same |
+| `test_the_craft_writes_what_the_plan_drew_and_passes_the_days_after` | the same for `DoAffixChange` | the same |
+| `test_the_craft_writes_the_plans_type_in_place_and_draws_nothing_again` | the same for `CraftDamageType` | the same |
+| `test_the_craft_keeps_slice_f1s_order_and_draws_from_the_item_and_day_before_the_days_pass` (F3) | gold, material, draw, item, days in `DoEnchantmentWork` | the draw inside the change; a failed draw refuses it |
+| `test_each_craft_refuses_during_a_walk_passes_its_days_logs_and_saves`, `test_what_a_craft_took_is_put_back_when_it_cannot_finish`, `test_the_screen_asks_before_it_acts` (gems) | days, save and give-backs in `DoSocketing`; the question ending in `;` | `DoSocketing`'s hooks and line, and the days, save and four give-backs in `DoItemCraft`; the question without its `;`, which now has the options' words after it |
+| `test_every_craft_pays_first_gives_back_on_failure_and_saves_the_account` (gold), and the play-log check's steps | each of seven crafts | `DoItemCraft` and the two combines; each craft's line after its hand-over to `DoItemCraft`, and the play-log check's count of places, 31 after F3 and said "thirty", now thirty-three |
+
+**Python guard proofs, in a `git archive` copy of `ee66bacd8`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_f5_python.py`): 11 of 11 PROVED**, each failing exactly the tests predicted and passing
+restored.
+
+| Proof | Break | Failed with it, passed without |
+| :-- | :-- | :-- |
+| PR1 | the craft's line said before the days | `test_the_one_sequence_keeps_the_order_every_copy_kept` |
+| PR2 | a refused change keeping the materials | `test_every_failure_after_the_gold_gives_back_what_was_taken`, and the gems check's `test_what_a_craft_took_is_put_back_when_it_cannot_finish` |
+| PR3 | `Upgrade` calling another function | `test_every_item_craft_hands_its_craft_to_the_one_sequence`, and the play-log step `[ForgeUpgradeLine]` |
+| PR4 | the cleanse passing days itself | `test_no_other_function_pays_takes_puts_back_or_passes_days` |
+| PR5 | `StabilizedResidueShare` 0.4 | `test_the_three_rows_hold_the_tools_figures` |
+| PR6 | one Shard more than the penalty days allowed | `test_the_options_halve_the_residue_and_remove_only_penalty_days_each_at_its_rows_gold` |
+| PR7 | `DoItemCraft` clearing a mark it did not set | `test_the_cleanse_halves_the_residue_in_its_rows_days_and_lifts_no_mark` |
+| PR8 | every material read as tier 1 | `test_the_material_step_reads_each_materials_tier` |
+| PR9 | the options' line reworded | the play-log checklist checks, both |
+| PR10 | an added socket rolled from the changed copy | `test_the_added_socket_is_rolled_before_the_days_pass` |
+| PR11 | a failed put-back keeping the gold | `test_every_failure_after_the_gold_gives_back_what_was_taken`, and the gold check's `[...DoItemCraft(-Step.Gold]` |
+
+### Registered for the window
+
+The base is development after window forge-pg-w1 merges F3 and F4. This slice adds 5 test names and removes none. **The
+whole suite is registered as the base's last measured total plus 5.** Each group below is registered at its count in
+the base's newest engine log, re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Each group alone, first | `Cataclysm.ForgeResidueTools.` 5; then **every forge group, as the regression net for the seven crafts moved onto `DoItemCraft`**: `ForgeEnchantments.` (12 at F3's registration), `ForgeDamageTypes.` (6), `ForgeAffixChange.` (5), `ForgeAffixes.` (6), `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `GemCombine.`, `GemEnchantments.`, `PlayLoop.`, each performed and succeeded at exactly its count |
+| The whole suite | the base's total plus 5, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.ForgeResidueTools.` with its trailing dot, through
+`.claude/windows/prove_f5.py`. Every anchor matches once on `ee66bacd8`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| FR1 | in `MaterialTierOf`, `Row->Tier + 1` | 5 performed, 4 succeeded, 1 failed: FR1, on the tiers; no other test reads one |
+| FR2 | in `Upgrade`, `Done.Gold = Plan.Gold;` | 5, 4, 1: FR2, on "and the craft reports them" |
+| FR3 | in `DoItemCraft`, a refused change keeping the materials | 5, 4, 1: FR3, on "both materials are given back" |
+| FR4 | in `CleanseOf`, the days rounded down | 5, 4, 1: FR4, on "in 3 days" |
+| FR5 | in the screen, the Stabilizer not held to what is held | 5, 4, 1: FR5, on "the options are held to what is left" |
+
+---
+
 ## 2026-11-22 — The forge imprints an enchantment, giving up the affix the player chooses, and changes an enchantment's drawback to a different one never milder than its benefit (#47, slice F3)
 
 **NOT COMPILED, NOT RUN.** Phase 1 on `feat/forge-enchantments-47-3`, cut from slice F2's head `84c2f0ff7`
@@ -413,6 +871,13 @@ newest engine log, re-taken there.
 | FD5 | in `DamageTypeActionsFor`, the creation weapon not left out | 6, 5, 1: FD5, on "the weapon made at creation: none" |
 | FD6 | in `CraftDamageType`, `bCrosses = false && ...` | 6, 5, 1: FD6, on "infusing Demonic asks first" |
 
+**What FD2's prediction missed**, measured in window forge-pg-w2 (`forgepg2_FD2_run1.log`, recorded in window
+ow-f5-w1's registration commit by the coordinating session's ruling of 2026-11-22): FD2 failed three tests where it
+was predicted to fail one, because `InfusingARandomDamageTypeTakesAnElementalCinderTenResidueADayAndDrawsOneTheWeaponLacks`
+and `ChangingADamageTypeTakesAPrismaticCatalystTwentyResidueAndWorksAtTheMaximum` each also assert the type a fixed
+seed draws ("seed 688249076 draws Chaos, as computed", "seed 719900450 draws Famine"), and the break's first open
+type is not that one; the proof still proved, and the restored half failed none.
+
 ---
 
 ## 2026-11-22 — The forge adds an affix the player chooses at the tier chosen, and shifts an affix to another stat keeping its tier and roll, at the Crafting sheet's costs (#47, slice F2)
@@ -724,6 +1189,160 @@ The coordinating session took the question to the owner, with both answers and t
   sentence.
 - **THE WORKBOOK EDIT IS ONE CELL.** Read back cell by cell against development `4a7aaac4e`: 28 sheets, 105,705 cells,
   one differs, B11.
+
+---
+
+## 2026-11-22 — A kill in an empire dungeon pays its experience, loot quantity and gold multiplier times the Power Score gap's factor, and the floor panel, the empire map and the city screen say the factor after the Dungeon Score (#2824 slice c, the game code)
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmPowerGapRewards.h` and `game/Source/Cataclysm/Dungeon/
+CataclysmPowerGapRewards.cpp`, new: `FCataclysmPowerGapRule`, the rule and `KillLootFor`, and
+`FCataclysmPowerGapRewards` and `FCataclysmPowerGapKillLoot`, what they return; `game/Source/Cataclysm/Dungeon/
+CataclysmDungeonGameMode.cpp`: `GapScoresHere`, `PowerGapRewardsHere`, `PowerGapRewardsIn` and `FloorScoreLineHere`,
+new, and `RefreshFloorModifierPanel`, which now takes its line from `FloorScoreLineHere`; `game/Source/Cataclysm/
+Character/CataclysmEnemyCharacter.cpp`'s `HandleDeath`; `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`:
+`DungeonScoreAndRewardsLine`, new, which `game/Source/Cataclysm/Interface/CataclysmEmpireMapWidget.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmCityScreenWidget.cpp` now call; `game/Source/Cataclysm/Tests/
+CataclysmPowerGapRewardsTests.cpp`, new; `tools/tests/test_power_gap_rewards_port.py`, new;
+`tools/tests/test_the_dungeon_score_is_the_simulations.py`, whose screen check follows the two calls that moved; and
+`tools/tests/test_city_upgrade_dungeon_rewards.py` and `tools/tests/test_empire_tree_gold_nodes.py`, whose gold checks
+follow the multiplier into `KillLootFor`'s second argument. Issue [#2824](https://github.com/sdubois777/Cataclysm/issues/2824).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled. The five automation tests are registered below and run in
+  a window.
+- **THE LOOT CUT IS READ FROM ONE FUNCTION, NOT FROM DROPS.** A kill's drops are rolled, so no test counts them under
+  the factor. The death handler takes its loot quantity and gold multiplier from `FCataclysmPowerGapRule::KillLootFor`,
+  and `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` reads the owner's 25% from it (C4). That the
+  handler hands those two figures to the spawner is held by a Python source check (G2), not by an automation test. The
+  coordinating session's addition of 2026-11-22.
+- **BUILT ON #2824 SLICE A'S UNMERGED HEAD**, `feat/live-power-score-2824` at `374c3f6fb`, with the simulation's three
+  commits of pull request #2843 carried on top, because the port check imports the simulation. When slice a merges,
+  this branch's own commits are cherry-picked onto development; #2843's are skipped if it has merged first. Its window is
+  the one after slice a's.
+- **THE FLOOR PANEL'S LINE IS DRAWN WHEN THE PANEL IS REFRESHED**, as slice a's line already was, while a kill reads the
+  player's score at the moment of the kill. A piece equipped mid-floor moves the factor a kill pays at once and the
+  panel's line at its next refresh.
+
+### The rule, and what each reward takes
+
+The rule is the entry headed "A kill's experience and loot are scaled by the gap", further down, ruled 2026-11-22: the
+coordinating session's rule D and the owner's 25% loot floor, verbatim "25% loot floor (Recommended)".
+
+| Reward | Where | What it becomes |
+| :-- | :-- | :-- |
+| The creature's experience | `HandleDeath`, both grants | `ExperienceAfterGain(GapRewards.ExperienceFrom(CityRewards.ExperienceFrom(Score)))`: the city's "more" first, then the gap's factor rounded to a whole point, then the player's own gain. The skills' share follows the same figure |
+| Loot quantity | `HandleDeath`, `KillLootFor`'s first figure, after the city's `LootMore`, before anything rolls | times the loot factor: so the gear, the materials, the tree's extra drops and the gems |
+| The gold multiplier | `HandleDeath`, `KillLootFor`'s second figure, the last argument of `SpawnGoldFor` | the tree's multiplier times the city's, times the loot factor. Gold pile counts are not scaled by loot quantity, which is why gold takes the factor here |
+| What it wore | unchanged | `DropWhatItWore` is not loot quantity |
+
+**Both factors are exactly 1** outside a dungeon of the empire (`BoundDungeon()` null), and with nobody playing
+(`LiveScoreOf` answers `INDEX_NONE`), so the sandbox and every test world with no possessed player pay as before.
+
+**The two scores are read in one place**, `GapScoresHere`: the walked floor's Dungeon Score
+(`UCataclysmEnemyScore::DungeonScoreFor(FloorFor(this, tier))`, slice a's floor-panel figure) and the first player
+controller's pawn's live Power Score, at this world's difficulty tier. `PowerGapRewardsHere` (what a kill pays) and
+`FloorScoreLineHere` (what the panel shows) both read it, so the factor paid is the factor shown.
+
+**The margin stays guarded in the simulation**: `test_rule_d_never_cuts_a_player_at_the_reference_in_any_dungeon_their_
+tier_spawns` in `sim/tests/test_power_gap_rewards.py`. The lowest Dungeon Score a tier spawns is 0.48 to 0.49 of a width
+below the reference, so the cut at 0.6 has about 0.11 of a width to spare.
+
+### The words
+
+| Where | What it says |
+| :-- | :-- |
+| The floor panel, first, while an empire dungeon is walked | "Dungeon Score 2,009; your Power Score 1,100. Rewards 125%." |
+| The empire map's city detail, after each dungeon | the same, for that dungeon at the run's difficulty tier |
+| The city screen, under each dungeon line, above its Walk button | the same |
+
+"Rewards 112%." when experience and loot round to the same whole percentage; "Rewards: experience 5%, loot 25%." when
+they do not, which is only below the band. Percentages, not a multiplication sign, because every on-screen string in
+the game is plain ASCII.
+
+### Tests
+
+`Cataclysm.PowerGapRewards.`, a new group of five:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheRuleIsTheSimulationsAtElevenGaps` | the rule at eleven gaps, both floors, both ramps, the band's edges and the cap, each figure the simulation's |
+| `TwoScoresGiveBothFactorsAndTheLineAndNoScoreChangesNothing` | at tier 4 (width 717), 2,009 against 2,009, 1,292, 2,726 and 3,443: "Rewards 100%.", "Rewards 125%.", "Rewards: experience 62%, loot 70%.", "Rewards: experience 5%, loot 25%."; no player score, both 1 and no line; 137 experience is 7 at 5%, 171 at 125% |
+| `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` | a possessed level 99 player in a 10-floor Basic dungeon: cut, loot cut less than experience, a Boss grants the figure times the factor and less than the whole; the panel's line is the scores' and then the rewards'; CONTROL: the dungeon left, the whole figure and no line |
+| `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` | a 22-floor Elite dungeon, a player two widths above it: the line ends "Rewards: experience 5%, loot 25%."; no player, `DungeonScoreLine`'s alone; CONTROL: no line off the map |
+| `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` | 2,009 against 3,443 at tier 4: experience 5%, loot exactly 25%; a loot quantity of 125 and a gold multiplier of 1.875 handed on as exactly a quarter, 31.25 and 0.46875; CONTROL: a possessed player with no dungeon bound, not scored, both handed on unchanged |
+
+Python: `test_power_gap_rewards_port.py`, eight checks (the eighth added after window forge-pg-w1, below): the port's
+seven constants are the ruled rule's fields; the
+multiplier is written as the simulation writes it; the first two automation tests' tables are the simulation's; the
+death handler takes its loot quantity and gold multiplier from `KillLootFor`, which multiplies both by the loot factor,
+and passes both experience grants through the experience factor; the panel and the kill read the same two scores; the
+map and the city screen call the line with the rewards.
+
+### Registered for the window
+
+**The counts are taken at the turn** from the newest measured whole-suite log.
+
+- **The whole suite: the base + 5**, the five new tests; skipped halves and test saves unchanged (no new test skips a
+  half or writes a save slot).
+- **No save record moves. No editor step. No asset.**
+- **No existing test is predicted to change.** Swept: every test that binds an empire dungeon (`EnterEmpireDungeon` or
+  `EmpireDungeonId =`) and kills a creature. None reads the experience, gold or gems of a kill made there with a
+  possessed player; the save tests that count drops compare the saved count with the loaded count, which the factor
+  moves together. The kill tests that read experience (`Cataclysm.CharacterLevel.`, `Cataclysm.EnemyScore.`, the
+  Corrupted Stalker's) spawn no dungeon game mode, so the factor is 1 there.
+- **Groups alone, first:** `PowerGapRewards.` 5 (new); `PowerScoreLive.` 8 (slice a's, its lines unchanged);
+  `CityDungeonRewards.` 5 (the same death handler); `CharacterLevel.` and `EnemyScore.` (a kill's experience);
+  `DungeonMode.` (the floor panel's refresh); `EmpireScreen.` and `CityScreen.` (the two screens).
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on this branch at
+  `61f20464f`: "8140 passed, 10 skipped in 427.65s", JUnit 8150 tests, 0 failures, 0 errors, 10 skipped; ruff "All
+  checks passed!".
+- **Four Python guard proofs, PROVED**, run with `tools/prove_guard.py` in a copy of `61f20464f`, each narrowed to
+  `tools/tests/test_power_gap_rewards_port.py`:
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| G1 | the port's `LootFloor` written 0.05 | "PROVED: 1 failed, 6 passed in 0.37s \| restored: 7 passed in 0.19s" | `test_the_ports_constants_are_the_ruled_rules` |
+| G2 | the death handler hands `SpawnGoldFor` the uncut `TreeDrops.GoldMultiplier * CityRewards.GoldMore` in place of `KillLoot.GoldMultiplier` | "PROVED: 1 failed, 6 passed in 0.24s \| restored: 7 passed in 0.20s" | `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward` |
+| G3 | the automation test's "Rewards 125%." written 124% | "PROVED: 1 failed, 6 passed in 0.24s \| restored: 7 passed in 0.21s" | `test_the_automation_tests_lines_are_the_simulations` |
+| G4 | `KillLootFor`'s gold multiplier without the loot factor | "PROVED: 1 failed, 6 passed in 0.25s \| restored: 7 passed in 0.20s" | `test_a_kill_asks_for_the_factor_before_it_pays_and_applies_it_to_each_reward` |
+
+- **Four Unreal guard proofs**, each narrowed to `Cataclysm.PowerGapRewards.` (5):
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| C1 | `CataclysmEnemyCharacter.cpp` | the character's grant without the factor: `State->GrantExperience(State->ExperienceAfterGain(GapRewards.ExperienceFrom(` (once in the file) written `State->GrantExperience(State->ExperienceAfterGain((` | 4 succeeded, 1 failed: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C2 | `CataclysmDungeonGameMode.cpp` | the panel's line without the rewards: in `FloorScoreLineHere`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` |
+| C3 | `CataclysmEmpireMapLayout.cpp` | the map's line without the rewards: in `DungeonScoreAndRewardsLine`, `? Line : Line + TEXT(" ") + Rewards;` written `? Line : Line;` | 4, 1: `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` |
+| C4 | `CataclysmPowerGapRewards.cpp` | the gold multiplier without the factor, G4's twin: `Out.GoldMultiplier = GoldMultiplier * static_cast<float>(Rewards.Loot);` written `Out.GoldMultiplier = GoldMultiplier;` | 4, 1: `ACutKillHandsTheSpawnerAQuarterOfItsLootQuantityAndGoldMultiplier` |
+
+### Window forge-pg-w1 failed one test, a fault in the test; fixed in `d7bcdf506`
+
+**`AKillInAnEmpireDungeonGrantsTheFactorsExperienceAndThePanelShowsIt` failed, alone and in the suite**;
+`Cataclysm.PowerGapRewards.` ran 4 of 5. Its two failed assertions:
+- "Expected 'the kill grants the figure times the experience factor' to be 232, but it was -1."
+- "Expected 'CONTROL: and the same kill grants the whole figure' to be 468, but it was -1."
+
+**The cause: neither creature was made, so nothing was killed.** -1 is `INDEX_NONE`, which the test's
+`KillAndMeasure` returns when `SpawnActor` gives back null. The window's engine log has, just before the test's "GAP
+KILL" line, "LogSpawn: SpawnActor failed because of collision at the spawn location [X=300.000 Y=0.000 Z=0.000] for
+[CataclysmEnemyCharacter]", and the same at X=-300 for the control. An entered empire dungeon has generated its floor,
+and the default collision handling refused both. `HandleDeath` was not reached, so the experience code was not tested.
+The rest of the test passed: the factor (experience x0.4966, loot x0.6026 at a gap of -1.1299, Dungeon Score 191
+against the player's 626) and the panel's line.
+
+**"and less than the whole figure" passed only because -1 is less than 468.** The test did not check that its
+creature existed.
+
+**The fix, `d7bcdf506`, changes the test and a Python check, not the game:**
+- `KillAndMeasure` spawns with `ESpawnActorCollisionHandlingMethod::AlwaysSpawn`, as 41 other test files do.
+- The test asserts, as set-up, that both creatures were made (`Gained != INDEX_NONE`, `GainedOutside != INDEX_NONE`).
+- `test_the_kill_tests_creatures_are_made_whatever_the_floor_holds` holds both. **PROVED** with `tools/prove_guard.py`
+  in a copy of `d7bcdf506`, the `AlwaysSpawn` override removed: "PROVED: 1 failed, 7 passed in 0.37s | restored: 8
+  passed in 0.19s", the one named failure that check.
+
+**Not yet shown:** that the creatures are now made and the kill grants 232 (and 468 in the control). That is shown by
+the next window, which carries slice c. Predicted there: `Cataclysm.PowerGapRewards.` 5 of 5.
 
 ---
 

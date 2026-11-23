@@ -14,7 +14,7 @@ twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the 
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the thirty places says its builder's line;
+  1. each of the thirty-three places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -38,7 +38,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The thirty places, by file and signature, and the builder each one says.
+#: The thirty-three places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -81,6 +81,10 @@ STEPS = [
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(", "ForgeAffixChangeLine"),
     # AND A WEAPON'S DAMAGE TYPE INFUSED OR CHANGED, issue #47 slice F4.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(", "ForgeDamageTypeLine"),
+    # AND AN ITEM'S RESIDUE HALVED, issue #47 slice F5; and the residue tools used with any item craft, said once by the
+    # one sequence every item craft goes through, after the craft's own line.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(", "ForgeCleanseLine"),
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "ForgeOptionsLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),
@@ -108,13 +112,18 @@ AFTER = {
     "ResetAttributePoints": "SpentAttributePoints = FCataclysmAttributePoints();",
     "ChooseSkill": "AssignSkill(Slot, SkillRow, OutReason)",
     "ForgetSkillChoice": "ClearSkillChoice(Slot)",
-    "Upgrade": "Run->AdvanceDays(Plan.Days);",
+    # ISSUE #47 SLICE F5: AN ITEM CRAFT'S LINE IS SAID BY THE LAMBDA IT HANDS `DoItemCraft`, which passes the days before
+    # it calls that lambda (`test_every_item_craft_goes_through_one_sequence.py`), so the step each line must follow in its
+    # own body is the hand-over.
+    "Upgrade": "DoItemCraft(",
     "Combine": "Inventory->AddMaterial(Plan.Into, 1)",
-    "DoSocketing": "Run->AdvanceDays(Plan.Days);",
-    "DoEnchantmentWork": "Run->AdvanceDays(Plan.Days);",
-    "CraftAffix": "Run->AdvanceDays(Plan.Days);",
-    "DoAffixChange": "Run->AdvanceDays(Plan.Days);",
-    "CraftDamageType": "Run->AdvanceDays(Plan.Days);",
+    "DoSocketing": "DoItemCraft(",
+    "DoEnchantmentWork": "DoItemCraft(",
+    "CraftAffix": "DoItemCraft(",
+    "DoAffixChange": "DoItemCraft(",
+    "CraftDamageType": "DoItemCraft(",
+    "Cleanse": "DoItemCraft(",
+    "DoItemCraft": "Run->AdvanceDays(Step.Days);",
     "TakeInto": "Inventory->AddItem(Drop->Item)",
     "WearFromCarried": "Equipment->Equip(Item, First, Second, OutSlot)",
 }

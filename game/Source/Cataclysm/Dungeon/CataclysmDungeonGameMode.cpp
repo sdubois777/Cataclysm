@@ -15636,6 +15636,57 @@ FCataclysmCityDungeonRewards ACataclysmDungeonGameMode::CityRewardsIn(UWorld* Wo
 	return Mode ? Mode->CityRewardsHere() : FCataclysmCityDungeonRewards();
 }
 
+bool ACataclysmDungeonGameMode::GapScoresHere(int32& OutDungeonScore, int32& OutPlayerScore,
+											  int32& OutDifficultyTier) const
+{
+	// AN EMPIRE DUNGEON ONLY, as the floor panel shows its Dungeon Score only there (issue #2824).
+	if (BoundDungeon() == nullptr)
+	{
+		return false;
+	}
+	UWorld* World = GetWorld();
+	const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	OutDifficultyTier = DifficultyTierIn(this);
+	OutDungeonScore = UCataclysmEnemyScore::DungeonScoreFor(UCataclysmEnemyScore::FloorFor(this, OutDifficultyTier));
+	// `LiveScoreOf` answers INDEX_NONE for no pawn, and `RewardsFor` then changes nothing.
+	OutPlayerScore =
+		UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Controller ? Controller->GetPawn() : nullptr));
+	return true;
+}
+
+FCataclysmPowerGapRewards ACataclysmDungeonGameMode::PowerGapRewardsHere() const
+{
+	int32 DungeonScore = INDEX_NONE;
+	int32 PlayerScore = INDEX_NONE;
+	int32 Tier = 1;
+	return GapScoresHere(DungeonScore, PlayerScore, Tier)
+		? FCataclysmPowerGapRule::RewardsFor(DungeonScore, PlayerScore, Tier)
+		: FCataclysmPowerGapRewards();
+}
+
+FString ACataclysmDungeonGameMode::FloorScoreLineHere() const
+{
+	int32 DungeonScore = INDEX_NONE;
+	int32 PlayerScore = INDEX_NONE;
+	int32 Tier = 1;
+	if (!GapScoresHere(DungeonScore, PlayerScore, Tier))
+	{
+		return FString();
+	}
+	// AND WHAT A KILL HERE PAYS FOR THE GAP BETWEEN THE TWO, on the same line (issue #2824, slice c): a cut the player
+	// cannot see would break the rule that every system has a basic screen.
+	const FString Line = UCataclysmEmpireMapLayout::DungeonScoreText(DungeonScore, PlayerScore);
+	const FString Rewards =
+		FCataclysmPowerGapRule::RewardsText(FCataclysmPowerGapRule::RewardsFor(DungeonScore, PlayerScore, Tier));
+	return Rewards.IsEmpty() ? Line : Line + TEXT(" ") + Rewards;
+}
+
+FCataclysmPowerGapRewards ACataclysmDungeonGameMode::PowerGapRewardsIn(UWorld* World)
+{
+	const ACataclysmDungeonGameMode* Mode = InWorld(World);
+	return Mode ? Mode->PowerGapRewardsHere() : FCataclysmPowerGapRewards();
+}
+
 FCataclysmEmpireTreeClearPay ACataclysmDungeonGameMode::EmpireTreeClearPayHere() const
 {
 	const UCataclysmEmpireRun* Run = EmpireRun();
@@ -21677,12 +21728,21 @@ void ACataclysmDungeonGameMode::RefreshFloorModifierPanel()
 	// THE ROWS THE PANEL LISTS AND NOT ONLY THE FLOOR'S OWN: on the dark floor a fall leads to, the row whose line
 	// carries the dark floor's seal is listed whatever rows that floor drew. Ruled 2026-10-09.
 	// AND, WHILE AN EMPIRE DUNGEON IS WALKED, ITS DUNGEON SCORE BESIDE THE PLAYER'S POWER SCORE. Issue #2824.
-	FString ScoreLine;
+	// AND WHAT A KILL HERE PAYS FOR THE GAP BETWEEN THE TWO, on the same line, since slice c: `FloorScoreLineHere`.
+	FString ScoreLine = FloorScoreLineHere();
+	// AND UNDER IT THE OVERWHELM THIS FLOOR'S CREATURES APPLY, from a Common to a Cataclysm Boss, so a player can see
+	// why they take more damage. Issue #2824, slice b. Worked out when the panel is, on entering the floor. Added here
+	// and not inside `FloorScoreLineHere`, whose line slice c's tests compare word for word.
 	if (BoundDungeon() != nullptr)
 	{
-		ScoreLine = UCataclysmEmpireMapLayout::DungeonScoreText(
-			UCataclysmEnemyScore::DungeonScoreFor(UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this))),
-			UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Cataclysm->GetPawn())));
+		const FCataclysmScoredFloor ThisFloor = UCataclysmEnemyScore::FloorFor(this, DifficultyTierIn(this));
+		const int32 PlayerScore =
+			UCataclysmPowerScore::LiveScoreOf(Cast<ACataclysmPlayerCharacter>(Cataclysm->GetPawn()));
+		const FString OverwhelmLine = UCataclysmPowerScore::OverwhelmText(PlayerScore, ThisFloor);
+		if (!OverwhelmLine.IsEmpty())
+		{
+			ScoreLine += TEXT("\n") + OverwhelmLine;
+		}
 	}
 	Cataclysm->ShowFloorModifiers(RowsTheFloorPanelLists(), FloorBrief.FloorNumber,
 								  LiveCountsForTheFloor(), ScoreLine);

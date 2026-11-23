@@ -268,6 +268,74 @@ struct FCataclysmForgeAffixChange
 	int64 GoldHeld = 0;
 };
 
+/**
+ * The two residue tools a player may add to an item craft's own press: a Chaos Stabilizer, and some Tainted Shards.
+ * Issue #47, slice F5 (Q23): an option spent in the craft it is pressed with, never a saved "next craft".
+ */
+struct FCataclysmForgeCraftOptions
+{
+	/** Use a Chaos Stabilizer: the residue the craft adds is halved (Q27). */
+	bool bChaosStabilizer = false;
+
+	/** Tainted Shards to use: each removes one day of the residue's time penalty, down to the craft's base days (Q24). */
+	int32 TaintedShards = 0;
+};
+
+/** One material an item craft takes, and how many. Its tier is read from the crafting material table. #47, F5. */
+struct FCataclysmForgeMaterialTake
+{
+	FName Material;
+	int32 Count = 1;
+};
+
+/**
+ * What the options do to one item craft: its residue and days after them, the gold they cost on top of the craft's,
+ * the materials they take, and why they cannot be used. Issue #47, slice F5.
+ */
+struct FCataclysmForgeOptionEffect
+{
+	bool bPossible = true;
+	FString Refusal;
+
+	/** The craft's residue after it and its days, with the options; equal to the plan's without them. */
+	float ResidueAfter = 0.0f;
+	int32 Days = 0;
+
+	/** What the options saved: the residue not added, and the days not spent. */
+	float ResidueSaved = 0.0f;
+	int32 DaysSaved = 0;
+
+	/** Whether a Chaos Stabilizer is used, and how many Tainted Shards. */
+	bool bStabilizerUsed = false;
+	int32 ShardsUsed = 0;
+
+	/** The gold the options cost, on top of the craft's own (G1), and the materials they take. */
+	int64 Gold = 0;
+	TArray<FCataclysmForgeMaterialTake> Materials;
+};
+
+/** What halving an item's residue with a Purified Essence would take, or why it cannot. Issue #47, slice F5. */
+struct FCataclysmForgeCleanse
+{
+	bool bPossible = false;
+	FString Refusal;
+
+	/** The material it consumes, one of it, and how many are held. */
+	FName Material;
+	int32 MaterialHeld = 0;
+
+	/** The item's residue before, and half of it after. */
+	float ResidueBefore = 0.0f;
+	float ResidueAfter = 0.0f;
+
+	/** The days of the run it costs: one for each 500 residue or part of it, at least one (Q25). */
+	int32 Days = 0;
+
+	/** The gold it costs at the difficulty tier of the run, and the gold held. */
+	int64 Gold = 0;
+	int64 GoldHeld = 0;
+};
+
 /** The three crafts that change a weapon's damage types. Issue #47, slice F4. */
 enum class ECataclysmForgeDamageTypeCraft : uint8
 {
@@ -1010,4 +1078,80 @@ public:
 	 * residue 200 to 300, 9 days of the run; a different drawback is drawn at random."
 	 */
 	static FString EnchantmentWorkQuestion(const FCataclysmForgeEnchantmentWork& Plan, const FString& Named);
+
+	//~ The residue tools. Issue #47, slice F5, ruled by the coordinating session on 2026-11-22.
+	//
+	// THE CRAFTING SHEET'S OPERATIONS ROWS, `game/Data/ForgeOperations.csv`: "Reduce CR Gain (1 Craft) | Chaos Stabilizer |
+	// -50% CR gain | 0", "Accelerate Craft | Tainted Shard | 0 CR | -1", "Removes the cumulative time penalty (-1 Day per
+	// stack)", and "CR Cleanse (Partial) | Purified Essence | -50% CR | 1 day per 500 CR", each at Base Gold 250.
+	//
+	// THE STABILIZER AND THE SHARDS ARE OPTIONS ON AN ITEM CRAFT'S OWN PRESS (Q23): nothing is saved for a "next craft".
+	// The Stabilizer halves the residue the craft adds, certainly (Q27); the craft's days and gold, read from the residue
+	// before it, do not change. Each Shard removes one day of the residue's time penalty, `CR / 100` rounded down, down to
+	// the craft's base days and never below them (Q24, G2): never an upgrade's level days. Each option charges its row's
+	// Base Gold through `GoldFor` at the item's residue, the Stabilizer once and the Shards once per shard (G1).
+	//
+	// THE CLEANSE IS A CRAFT OF ITS OWN: half the item's residue, one day for each 500 residue or part of it and at least
+	// one (Q25). It never lifts a Consumption mark already made (Q26): the design's "Only killing the double clears
+	// residue", and `ACataclysmPlayerState::ClearConsumptionMark` is the double's death's.
+
+	/** The rows of the three materials: `game/Data/CraftingMaterials.csv`. */
+	static const TCHAR* ChaosStabilizerRow;
+	static const TCHAR* TaintedShardRow;
+	static const TCHAR* PurifiedEssenceRow;
+
+	/** The three operations' rows in `game/Data/ForgeOperations.csv`, whose Base Gold `BaseGoldOf` reads. */
+	static const TCHAR* ReduceResidueGainOperationRow;
+	static const TCHAR* AccelerateCraftOperationRow;
+	static const TCHAR* CleanseOperationRow;
+
+	/** The share of a craft's residue a Chaos Stabilizer lets through: "-50% CR gain". */
+	static constexpr float StabilizedResidueShare = 0.5f;
+
+	/** The days one Tainted Shard removes: "-1 Day per stack". */
+	static constexpr int32 DaysPerTaintedShard = 1;
+
+	/** The share of an item's residue a cleanse leaves: "-50% CR". */
+	static constexpr float CleansedResidueShare = 0.5f;
+
+	/** The residue each day of a cleanse takes: "1 day per 500 CR". */
+	static constexpr float ResiduePerCleanseDay = 500.0f;
+
+	/** The residue's time penalty in days at a residue: `CR / 100`, rounded down. What the Tainted Shards can remove. */
+	static int32 PenaltyDaysFor(float Residue);
+
+	/**
+	 * What the options do to one item craft whose plan takes the item from `ResidueBefore` to `ResidueAfter` in `Days`
+	 * for `CraftGold`, against the Stabilizers, the Shards and the gold held.
+	 *
+	 * REFUSED for a Stabilizer when none is held or the craft adds no residue; for Shards when fewer are held than asked,
+	 * when the craft has no penalty day, or when more are asked than its penalty days ("This craft has 2 days of the
+	 * residue's penalty, so at most 2 Tainted Shards can be used."); and for the gold, the craft's and the options'
+	 * together.
+	 */
+	static FCataclysmForgeOptionEffect OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
+												 const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
+												 int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld);
+
+	/**
+	 * What the options add to a craft's first-press question, empty with none. An added socket at 250 residue, tier 1,
+	 * with both: " With a Chaos Stabilizer: residue 250 to 257.5, not 265. With 1 Tainted Shard: 4 days, not 5. The
+	 * options cost 3,000 gold more."
+	 */
+	static FString OptionsQuestion(const FCataclysmForgeOptionEffect& Effect, float ResidueBefore, float PlanResidueAfter,
+								   int32 PlanDays);
+
+	/**
+	 * What halving the item's residue takes, against the Purified Essence held.
+	 *
+	 * REFUSED for no item, an item carrying no residue, no Purified Essence, and too little gold.
+	 */
+	static FCataclysmForgeCleanse CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
+											int64 GoldHeld);
+
+	/**
+	 * What the first press of a cleanse says, at tier 1: "Press again to cleanse half the residue: one Purified Essence,
+	 * 6,250 gold, residue 1200 to 600, 3 days of the run."
+	 */
+	static FString CleanseQuestion(const FCataclysmForgeCleanse& Plan);
 };
