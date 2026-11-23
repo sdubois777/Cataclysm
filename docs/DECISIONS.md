@@ -182,6 +182,39 @@ file agrees, 8,171 tests, 0 failures, 0 errors, 10 skipped. `ruff check .`: all 
 `2d1dcbdf7` failed one check, `test_every_console_variable_a_test_writes_is_written_at_console_priority`: the new tests
 set the difficulty tier at code priority. `7cd8aafb0` sets it at console priority.
 
+### Window ow-f5-w1, registered
+
+Ruled by the coordinating session on 2026-11-22: this slice shares one window with #47 slice F5 and #2824 slice c, on
+`feat/ow-f5-w1-2824-47`, cut from development `816a5ea3c` (#2850, F3 and F4, merged). Its commits, in this order:
+this slice's five (here `b073b4229`, `affd21c7a`, `1d6321fb5`, `e44217e1a`, `8d4b3392a`, from `2d1dcbdf7`, `7cd8aafb0`,
+`4b8ea1362`, `6474f8ff4`, `5ff3c75b2`); slice c's six (from `a07ec60e8`, `930414088`, `61f20464f`, `eaec37c3d`,
+`d7bcdf506`, `1cf14bb06`); F5's four (from `126352ff2`, `4ad075855`, `45cb7b213`, `416c70868`).
+
+- **The conflicts:** `docs/DECISIONS.md` three times, at the top, resolved with `tools/resolve_decisions_log.py`, entries
+  by the author date of the commit that first wrote each; and `ACataclysmDungeonGameMode::RefreshFloorModifierPanel`,
+  where this slice and slice c each rewrote the floor panel's score line. Resolved as the coordinating session accepted:
+  `FString ScoreLine = FloorScoreLineHere();`, then this slice's Overwhelm line appended on a new line for a bound
+  dungeon, so slice c's own line, which its tests compare word for word, is unchanged. `check_no_markers.py`: 0 markers
+  in the 47 changed files; `tools/check_resolved_cpp.py --changed`: 10 files read, 0 with complaints.
+- **The base:** window forge-pg-w2's whole-suite engine log `forgepg2_suite_engine_08f4308e.log`, "5289 tests performed,
+  5289 succeeded, 0 failed", 57 skipped halves, "860 written and deleted, 0 left behind". Its tested head `08f4308eb`
+  has the same `game/` tree as `816a5ea3c` (`git diff --stat 08f4308eb 816a5ea3c -- game` is empty).
+- **The whole suite: 5,307**, the base plus 18: the test-name diff against development adds 8 `Overwhelm.`, 5
+  `ForgeResidueTools.` and 5 `PowerGapRewards.` names and removes none. Skipped halves 57 and test saves 860, unchanged:
+  window forge-pg-w1, which ran slice c, measured 860 too.
+- **Groups alone, first**, each counted in the base log with a literal match, plus the new tests: `Overwhelm.` 8,
+  `ForgeResidueTools.` 5, `PowerGapRewards.` 5; `Damage.` 21, `PowerScoreLive.` 8, `Equipment.` 30,
+  `DamageDoneToAllies.` 10, `EnemyBurn.` 4; the two evades by full name, 1 each
+  (`DungeonModifierEffects.ContagiousTouchAnEvadedTouchAddsNoStack`, `StrikeTarget.OnARealPlayerTheHitActsOnNoneOfTheWearersOwnOnHitRows`);
+  slice c's `CityDungeonRewards.` 5, `CharacterLevel.` 9, `EnemyScore.` 12, `DungeonMode.` 46, `EmpireScreen.` 16,
+  `CityScreen.` 19; F5's `ForgeEnchantments.` 12, `ForgeDamageTypes.` 6, `ForgeAffixChange.` 5, `ForgeAffixes.` 6,
+  `Forge.` 8, `ForgeScreen.` 4, `ForgeSockets.` 6, `ForgeGems.` 4, `ForgeCosts.` 3, `GemCombine.` 3,
+  `GemEnchantments.` 5, `PlayLoop.` 12. 28 runs.
+- **Seventeen C++ guard proofs**: this slice's OW1 to OW8, F5's FR1 to FR5 and slice c's C1 to C4, each with the
+  prediction its entry registers, run by `.claude/windows/prove_ow.py`; every anchor matches exactly once on the combined
+  head. Slice c's kill test is predicted to print "granted 232 of 232 expected" if the Dungeon Score is 191 and the
+  player's 626, as in forge-pg-w1.
+
 ---
 
 ## 2026-11-22 — Every forge item craft goes through one sequence, and the residue tools: a Chaos Stabilizer and Tainted Shards on a craft's own press, and the cleanse (#47, slice F5)
@@ -785,6 +818,13 @@ newest engine log, re-taken there.
 | FD4 | in `CraftDamageType`, a change adding the type | 6, 5, 1: FD4, on War replaced in its place; the others infuse |
 | FD5 | in `DamageTypeActionsFor`, the creation weapon not left out | 6, 5, 1: FD5, on "the weapon made at creation: none" |
 | FD6 | in `CraftDamageType`, `bCrosses = false && ...` | 6, 5, 1: FD6, on "infusing Demonic asks first" |
+
+**What FD2's prediction missed**, measured in window forge-pg-w2 (`forgepg2_FD2_run1.log`, recorded in window
+ow-f5-w1's registration commit by the coordinating session's ruling of 2026-11-22): FD2 failed three tests where it
+was predicted to fail one, because `InfusingARandomDamageTypeTakesAnElementalCinderTenResidueADayAndDrawsOneTheWeaponLacks`
+and `ChangingADamageTypeTakesAPrismaticCatalystTwentyResidueAndWorksAtTheMaximum` each also assert the type a fixed
+seed draws ("seed 688249076 draws Chaos, as computed", "seed 719900450 draws Famine"), and the break's first open
+type is not that one; the proof still proved, and the restored half failed none.
 
 ---
 
