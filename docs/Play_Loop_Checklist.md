@@ -595,6 +595,31 @@ material drop in 128), a Tainted Shard uncommon (about 1 in 27) and a Purified E
 
 - **A character already marked by Consumption stays marked** after a cleanse: only killing the double clears it.
 
+### 26. Dismantle a carried piece
+
+At the forge (step 16), for a CARRIED piece chosen (issue #2848, slice S2). A dismantle costs no gold, no days and no
+material, and it destroys the piece.
+
+- **A carried piece with a rarity** has a button "Dismantle this piece (it is destroyed)". A worn piece has none, and
+  the weapon made at creation has none.
+- **Click it.** The line asks first, for a Masterful helm raised from +0 to +4 with a Superb gem in its one socket:
+  "Press again to dismantle Masterful Helm of Warding: it is destroyed, and gives back 1 gem and 4 upgrade stones
+  (+1, +2, +3, +4), and about 0.06 Schematic Fragments, 0.02 Dismantling Dust and 0.03 upgrade stones drawn at random.
+  No gold, no days."
+  - The gem and the refund, one upgrade stone of each level the piece was raised through, are certain.
+  - The rest is drawn: the whole part always, and the fraction as one more with that chance.
+- **Click it again.** The piece leaves the bag. The gem, the stones and whatever was drawn join it, and the line says
+  what: "Dismantled. It gave 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb)."
+- **In the log:**
+
+  `PLAY LOOP: dismantled Masterful Helm of Warding into 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb); no gold and no days, day 20`
+
+- **A piece that dropped at +4** (a Legendary) refunds nothing for those four levels: no stone was spent on them.
+- **Salvage Protocol and Disassembly Expert** (the empire tree's Artisan branch) raise the drawn yields: 2.5% a point,
+  and 20% more on Superb and above. They never raise the refund.
+- **A full bag** with no stack of something the piece gives back refuses first, "Make room in the bag first.", and
+  destroys nothing.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

@@ -537,6 +537,11 @@ FString FCataclysmPlayLoopLog::ForgeCleanseLine(const FString& ItemName, int64 G
 						   Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day)
+{
+	return FString::Printf(TEXT("dismantled %s into %s; no gold and no days, day %d"), *ItemName, *Given, Day);
+}
+
 FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
 												   const FString& FromType, const FString& ToType, int64 Gold,
 												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,

@@ -1261,8 +1261,8 @@ public:
 	static int32 DismantleStoneTier(const FCataclysmItem& Item, int32 RunTier);
 
 	/**
-	 * What the first press says, `Named` the piece's name: "Press again to dismantle Masterful Helm of Warding, +4: it is
-	 * destroyed, and gives back 1 gem and 4 upgrade stones (+1 to +4), and about 0.07 Schematic Fragments, 0.02
+	 * What the first press says, `Named` the piece's name: "Press again to dismantle Masterful Helm of Warding: it is
+	 * destroyed, and gives back 1 gem and 4 upgrade stones (+1, +2, +3, +4), and about 0.06 Schematic Fragments, 0.02
 	 * Dismantling Dust and 0.03 upgrade stones drawn at random. No gold, no days."
 	 */
 	static FString DismantleQuestion(const FCataclysmForgeDismantle& Plan, const FString& Named);

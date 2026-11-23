@@ -304,6 +304,13 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 									int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * A carried piece dismantled at the forge, instantly: "dismantled Masterful Helm of Warding into 1 Schematic Fragment,
+	 * 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb); no gold and no days, day 20". Issue #2848, slice S2. Said by
+	 * `UCataclysmForgeCraft::Dismantle`, after the piece left the bag and what it gave joined it.
+	 */
+	static FString ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day);
+
+	/**
 	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;
 	 * residue 40 to 50; it cost 1 day, day 20 to day 21", "infused Quality Sword with Death, chosen, for 2,250 gold;
 	 * ...", or "changed War on Quality Sword to Death for 450 gold; ...". Issue #47, slice F4. Said by

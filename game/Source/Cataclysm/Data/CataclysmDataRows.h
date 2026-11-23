@@ -2507,6 +2507,13 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a clear discovers a bonus dungeon on the same city (Scout Parties, 10% a point, V15 to V19). */
 	BonusDungeonChance,
+
+	/** A dismantle's drawn yields increased: fragments, Dust and base stones, never the refund (Salvage Protocol, 2.5% a
+	 *  point, N6). Issue #2848, slice S2. */
+	DismantleMaterialsIncreased,
+
+	/** The same, for a piece of Superb or above (Disassembly Expert, 20%, N7 and O4). Issue #2848, slice S2. */
+	DismantleMaterialsIncreasedSuperbAndAbove,
 };
 
 /**
