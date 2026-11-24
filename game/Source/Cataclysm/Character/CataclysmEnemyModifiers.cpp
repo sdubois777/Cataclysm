@@ -1158,10 +1158,11 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 						Max * SacrificeHealShareOfHealth);
 				}
 
-				// AND THE DAMAGE BUFF THE ROW PROMISES. Commander is the buff
-				// this game has for "nearby allies hit harder and move faster";
-				// granting it to the creature itself is the closest thing to a
-				// temporary damage buff without inventing a second one.
+				// AND COMMANDER, WHICH THE DESIGN CHOSE FOR THE ROW'S "temporary damage buffs": "The damage buff
+				// is Commander" (docs/DECISIONS.md, 2026-09-05), rather than inventing a second buff. Commander is
+				// 20% increased movement speed and attack speed (`Buff_Commander`, the owner's two stats of
+				// 2026-08-20), so it hits more often, not harder. The row's own text still says "damage buffs";
+				// issue #2876 is that wording, which lives in the design workbook and is changed there.
 				const FGameplayTag Buff =
 					UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
 				if (Buff.IsValid())
