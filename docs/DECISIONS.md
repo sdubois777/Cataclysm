@@ -563,6 +563,183 @@ the engine's compile-time format check may refuse.
 
 ---
 
+## 2026-11-24 — The player's Power Score counts in plain numbers: 10 a level, 2 x rarity x (1 + gear level) a piece, 5 a gem rarity step, 1 a resistance percent (#2853)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at
+`e36bbf4bb` (the rarity cap, owner-ruled and not yet merged), so it carries that change too. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is the entry below.
+
+### Why
+
+**The owner, 2026-11-24, verbatim:** "for some reason I'm getting 38 points from my level, even though i'm only lvl 6.
+That doesn't seem right, and leads me to believe some of the other power score stuff is wrong as well. [...] That
+formula needs to be fixed/adjusted, maybe put more points on your level instead of gear."
+
+38 was not a bug: the level weight was 6.327 a level, 10% of tier 8's 6,327 over 100 levels. The game, the simulation
+and the reference agreed. **The owner, the same day, verbatim:** "do you think it is going to make sense to the player.
+Like why would I think a level is worth 6.3 points? It would make sense as 1, 2, 5, 10, 25, 50, 100, but 6.3 makes no
+sense at all."
+
+The proposal (branch `proposal/power-score-shares-2853`, `8cdd8b9a8`, `sim/measure_power_score_weights.py`) measured
+that with the rarity cap a fresh tier 1 character scores 2.9, 3.2 and 3.8 times the dungeon after 1, 2 and 4 Outpost
+dungeons under the derived weights, and 1.7, 2.2 and 2.8 times under the plain weights it recommended.
+
+### The ruling
+
+**RULING, the owner, 2026-11-24, chosen option quoted: "Adopt, and look at drop supply (Recommended)".** As the
+coordinating session recorded it on the issue: "Adopt the weights 10 / 2 x rarity x (1 + upgrade) / 5 / 1 in
+sim/cataclysm_sim/player_power.py and the game's copy together, and separately investigate drop supply at tier 1, the
+larger cause". The drop supply half is not in this change.
+
+| | Until this change (derived from four shares) | Now (the owner's plain numbers) |
+| :-- | --: | --: |
+| Level Weight, points a level | 6.3270 | **10** |
+| Gear Weight, points a rarity step of a +0 piece | 6.2330 | **2** |
+| Upgrade Factor, what an upgrade level adds, times the +0 worth | 0.2525 | **1** |
+| Gem Weight, points a gem rarity step | 5.2725 | **5** |
+| Resistance Weight, points a resistance percent, to 70 | 1.1298 | **1** |
+| A +10 piece against the same piece at +0 | 3.52 times | 11 times |
+| A level 6 character's level part | 38 | 60 |
+| A Masterful +0 piece (the best tier 1 drop) | 24.9 | 8 |
+| A Cataclysmic +10 piece | 175.8 | 176 |
+
+**THE SHARES NOW FALL OUT OF THE WEIGHTS.** The finished tier 8 character draws 15% from level, 49% from gear, 28% from
+gems and 9% from resistances (10 / 50 / 30 / 10 before, when those four were the input); the finished tier 1 character
+33 / 40 / 8 / 19 (20 / 51 / 8 / 21 before). `player_power.shares_of` computes them.
+
+**THE ANCHORS DID NOT MOVE** (`scoring.PLAYER_MAX_SCORES`, the DungeonSimulator ceilings; DungeonSimulator and
+`scoring.py` were not touched). The reference character now lands near each rather than on it:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Anchor | 385 | 883 | 1,508 | 2,225 | 3,078 | 4,057 | 5,120 | 6,327 |
+| Reference character, before | 384 | 883 | 1,508 | 2,225 | 3,078 | 4,057 | 5,120 | 6,327 |
+| Reference character, now | 364 | 860 | 1,493 | 2,228 | 3,110 | 4,134 | 5,255 | 6,528 |
+| Against the anchor | -5.5% | -2.6% | -1.0% | +0.1% | +1.0% | +1.9% | +2.6% | +3.2% |
+
+### What changed
+
+- **The simulation** (`sim/cataclysm_sim/player_power.py`): `SHARE_*`, `_curve_coefficients` and `_derive_weights` are
+  gone; `LEVEL_WEIGHT`, `GEAR_WEIGHT`, `UPGRADE_FACTOR`, `GEM_WEIGHT` and `RESISTANCE_WEIGHT` are written out and
+  `WEIGHTS` keeps its five keys. `shares_of` is new. The module's docstring and its printed report say the weights are
+  chosen and the shares fall out. `sim/cataclysm_sim/affixes.py`'s `POWER_SCORE_UPGRADE_FACTOR` still reads
+  `WEIGHTS["upgrade_factor"]` and is now 1; its comment says so (the affix ladder, `GEAR_LEVEL_FACTOR` 0.15, is a
+  separate number since 2026-09-03 and did not move).
+- **The game** (`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`): `ShareLevel` and the three other
+  shares are gone, and with them the anonymous-namespace `DeriveWeights`; five constants `PointsPerLevel` (10),
+  `PointsPerGearRarityStep` (2), `UpgradeFactorPerGearLevel` (1), `PointsPerGemRarityStep` (5) and
+  `PointsPerResistancePercent` (1) replace them. `LevelWeight()` and the four other `BlueprintPure` functions keep their
+  signatures and return the constants; `Breakdown` reads the constants.
+- **The character sheet** (`Interface/CataclysmCharacterSheetLayout.cpp`, `PowerScoreTooltip`): each term is shown
+  beside its weight, read from `UCataclysmPowerScore`: "From level: 60 (10 a level)", "From gear: 8 (2 a rarity step of
+  each piece, times 1 + its gear level)", "From gems: 15 (5 a rarity step of each socketed gem)", "From resistances: 10
+  (1 a resistance percent, up to 70)".
+- **The experience curve** (`sim/analyse_experience_curve.py`): `LEVEL_WEIGHT` was written out as 6.3270; it now reads
+  `player_power.LEVEL_WEIGHT`, so the two cannot part. Its out-levelling row, which the design document carries, moved:
+  a character entering tier 2 at level 42 carries 109% of tier 1's ceiling from level alone (69% before), and entering
+  tier 8 at level 95, 19% (12% before).
+- **The design document**, section IV: the weight table (with a column saying each weight as a player reads it), the
+  ruling and the owner's words, a table of what a piece scores, the sheet's tooltip, "11 times", the shares sentence, the
+  tier 8 gear table (6,528 down to 4,944 for all Masterful, 103% to 78% of the anchor), a Power Score column on the
+  reference character table, and the paragraph that said the reference lands exactly on every anchor. Section VI's
+  "section IV still multiplies gear rarity by 3.52" and section XII's out-levelling row.
+
+### What reads the player's score, and whether its thresholds need re-reading
+
+Asked by the coordinating session. Reported, not retuned; no test that guards a design property failed.
+
+- **Overwhelm** reads the live score against each creature's Enemy Score, in tier widths
+  (`UCataclysmPowerScore::OverwhelmPointsAgainst`). Its rate and cap are unchanged. The design's worked figures (8.4 and
+  20.9 points at tier 8) are for "a player at that tier's maximum Power Score", 6,327, and still hold; the tier 8
+  reference character now scores 6,528 and would lose 4.2 and 16.7. Early in tier 1 the opposite: a character after one
+  Outpost dungeon scores about 348 now against 588 before (the proposal's figures), so a tier 1 Cataclysm Boss (545 on a
+  one-floor dungeon) applies about 12.8 points of Overwhelm where it applied none. That is the mechanism working as
+  designed (an out-scored player is stripped), and is the owner's to judge in play. The simulation's 16% to 21% band
+  (`sim/tests/test_power_threshold.py`) reads `PLAYER_MAX_SCORES`, not this model, and did not move.
+- **The experience and loot gap rule** (`FCataclysmPowerGapRule`, `analyse_power_gap_rewards.RULED`) reads the live
+  score against the Dungeon Score, in tier widths; its band is unchanged. A lower early score means less cutting: the
+  proposal measured a tier 1 campaign ending at level 15.5 under the new weights against 13 under the old, both far
+  below the experience curve's 42. That gap is one of the open questions the owner sent to the drop supply
+  investigation; nothing here changes it.
+- **The Corrupted Stalker** does not read the score. It reads `ReferenceCharacter(Tier)`'s level and gear level
+  (`CataclysmCorruptedStalkerCharacter.cpp`, `PiecesAt` and `WearTheBuild`), and the reference character's make-up did
+  not change, only what it scores. Unchanged.
+- **The experience curve's warning** grew, as the proposal said any weight putting more on level would: level 42 alone
+  is now 109% of the tier 1 ceiling. `sim/tests/test_analysis_scripts.py` still holds that the lead shrinks every tier
+  and is under 20% entering tier 8 (19%, so near that line).
+
+### Genre research
+
+The proposal's research (its section 2), re-fetched by this change on 2026-11-24 for the claims recorded here: **none of
+the four single-number systems read counts character level.** Lost Ark's Average Item Level is "an average of the Item
+Levels of their current equipment", the "Weapon, Helmet, Chest Armor, Shoulder Armor, Gloves, and Pants"
+(lostark.wiki.fextralife.com/Armor); World of Warcraft's average item level is on the character sheet and "used as a
+gating requirement when queueing" (warcraft.wiki.gg/wiki/Item_level); Destiny 2: "Your Power is the average of all your
+equipped gear" (shacknews.com, article 102358); Diablo Immortal's Combat Rating is "tied to the quality of your gear
+rather than your character's overall level" (denofgeek.com). The per-step figures the proposal quoted (Lost Ark +5 a
+honing step, World of Warcraft +3 or +4 an upgrade rank) are the proposal's reading and were not re-fetched here.
+
+**What the research settles:** one number built from values the player can read on each item, as the owner asked.
+**What it does not:** putting more on level is the owner's direction and a judgement specific to this game; and summing
+rather than averaging, and rarity multiplied by upgrade level, are forced by this game's eight anchors (they grow 16.4
+times from tier 1 to tier 8), not read off another game.
+
+### Judgements of this change
+
+1. **The sheet's wording**, a judgement: the coordinating session asked for "a character sheet line [that] shows the
+   plain weights". Each term's line carries its weight in brackets, read from the code rather than written out, so a
+   re-tune cannot leave the line stating an old weight.
+2. **The Overwhelm worked-figures test reads the tier 8 anchor, not the reference character's score**, a judgement:
+   `Cataclysm.Overwhelm.ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` used
+   `Score(ReferenceCharacter(8))`, which was 6,327 until this change. The design's sentence says "a player at that
+   tier's maximum Power Score", and `tools/tests/test_overwhelm_is_the_simulations.py` already reads
+   `scoring.PLAYER_MAX_SCORES[8]`, so the test now does too and its figures stand.
+3. **The weights are floats in the simulation** (10.0, 2.0, ...), a judgement: `affixes.POWER_SCORE_UPGRADE_FACTOR is
+   player_power.WEIGHTS["upgrade_factor"]` is an identity check that a small integer would pass for any retyped 1.
+4. **The five C++ constant names** (`PointsPerLevel` and so on) are mine; the five functions keep their names, so
+   nothing that calls them changed.
+5. **The upgrade factor stays a multiplier of rarity**, as ruled; the comment beside `UPGRADE_FACTOR` records the
+   proposal's reason (every additive set near the anchors puts 58 to 61% of the tier 8 score on gems).
+
+### Not done here
+
+- **Drop supply at tier 1**, the other half of the ruling: gem supply (`loot.GEM_DROPS_PER_GEAR_DROP` is one figure for
+  every tier), resistance affix floors at tier 1, the gap rule against the experience curve, and the reference
+  character's level column against the curve. For the coordinating session.
+- **Stale comments in files this change may not touch:** `sim/cataclysm_sim/scoring.py` line 41 says
+  "`player_power.py` pins its curve through those two and nothing else", no longer true; `scoring.py` is the port and is
+  not hand-edited. Not changed.
+
+### Tests
+
+**Python**: `sim/tests/test_player_power.py` replaces the four calibration tests and the three share-derivation tests
+with: the weights are the ruled numbers; each is on the owner's list; a level 6 character scores 60; six pieces score 2
+x rarity x (1 + upgrade); a Masterful +0 equals the tier 1 reference's Everyday +3; a gem and a resistance percent; the
+reference character's eight scores are the proposal's; every tier within -5.5% to +3.2%; the anchors are unchanged; the
+shares at tier 8 and tier 1; the shares are gone. `tools/tests/test_power_score_port.py` compares the five C++ constants
+with the model's (the shares were compared before), checks each weight function and `Breakdown` read them, checks the
+tooltip reads them, and adds `TestTheDesignDocument`, which recomputes section IV's weight table, shares, piece table,
+"11 times", reference table and tier 8 gear table from the model.
+
+**Unreal, registered** (none run; no window yet):
+
+| Group | Test | |
+| :-- | :-- | :-- |
+| `Cataclysm.PowerScore.` | `TheWeightsAreTheOwnersPlainNumbers` | renamed from `WeightsDeriveToTheModelsNumbers` |
+| | `ALevelSixCharacterScoresSixtyFromItsLevel` | new |
+| | `TheReferenceCharacterLandsNearEveryTiersAnchor` | renamed from `TheReferenceCharacterHitsBothEndAnchors` |
+| | `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine` | renamed from `EachSourceSuppliesItsShareAtTierEight` |
+| | `TheFourRulesTheFormulaImplies` | 3.52 times became 11 |
+| `Cataclysm.PowerScoreLive.` | `GearBuiltToTheTierEightReferenceScoresTheReference` | renamed from `...ScoresItsAnchor`; 6,528 |
+| | `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | the tooltip's text |
+| | `AMasterfulPieceAtPlusNoughtScoresTwiceItsRarity` | new |
+| | `TheSheetShowsEachTermBesideItsPlainWeight` | new |
+| `Cataclysm.Overwhelm.` | `ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` | reads the anchor |
+
+Predicted counts: `Cataclysm.PowerScore.` 5, `Cataclysm.PowerScoreLive.` 10, `Cataclysm.Overwhelm.` 8.
+
+---
+
 ## 2026-11-24 — A thrall's Fervour reserve rises with the rarity of the creature taken: Common 30, Elite 45, Legendary 60, Herald 90 (#2856, #2868)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A third commit on `fix/thralls-2856`, by the coordinating

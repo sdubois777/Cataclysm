@@ -464,10 +464,14 @@ DEFENSIVE_SLOTS = frozenset({"Head", "Chest", "Shoulders", "Belt", "Pants",
 RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 
 
-#: How much one gear upgrade level adds to every affix on that piece, as a
-#: fraction of the affix's unupgraded value. A +10 piece is about 3.52 times a
-#: +0 one. It is not a round number because it is DERIVED from the tier anchors
-#: rather than chosen.
+#: HISTORY, KEPT FOR THE REASONING BELOW; THE NUMBERS HAVE MOVED TWICE. This was
+#: how much one gear upgrade level adds to every affix on that piece, as a
+#: fraction of the affix's unupgraded value, and a +10 piece was about 3.52 times
+#: a +0 one, because the Power Score's upgrade factor was then DERIVED from the
+#: tier anchors. Since 2026-09-03 the affix ladder is GEAR_LEVEL_FACTOR below,
+#: and since the owner's ruling of 2026-11-24 (issue #2853) the Power Score's
+#: upgrade factor is a plain 1: each upgrade level adds the piece's +0 worth
+#: again, so a +10 piece scores 11 times a +0 one.
 #:
 #: NOT A SECOND NUMBER. It is read from `player_power.WEIGHTS`, where it is
 #: already used for exactly this: `Cataclysm_GDD_v2.md` says gear upgrade level
@@ -492,8 +496,9 @@ RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 #: how it plays." The alternatives measured at the time were applying it to the
 #: flat bracket only, which lands at 1.64 against a target of 1.56, or cutting
 #: the factor to 0.0268, which makes a +10 piece only 1.27 times a +0 one.
-#: The Power Score model's own upgrade weight. STILL USED FOR SCORING, and no
-#: longer used for what an item's values are -- see GEAR_LEVEL_FACTOR below.
+#: The Power Score model's own upgrade weight, 1 since 2026-11-24. STILL USED FOR
+#: SCORING, and no longer used for what an item's values are -- see
+#: GEAR_LEVEL_FACTOR below.
 POWER_SCORE_UPGRADE_FACTOR = player_power.WEIGHTS["upgrade_factor"]
 
 #: How much one upgrade level adds to what a piece carries.
