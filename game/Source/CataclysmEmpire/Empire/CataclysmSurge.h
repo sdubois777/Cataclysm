@@ -767,8 +767,9 @@ public:
 	 * Whether a city falling fires a surge of its own.
 	 * `config.surge_on_city_fall`. The design document says it does.
 	 *
-	 * NOT EVERY FALL DOES. `IsDueOnCityFall` asks this flag and also that the
-	 * last surge is at least `LeastIntervalDays` behind. Issue #2380.
+	 * EVERY FALL DOES, since the owner's ruling of 2026-11-24 on issue #2865: "surges from cities falling should
+	 * happen regardless". From issue #2380 until then `IsDueOnCityFall` also asked that the last surge was at least
+	 * `LeastIntervalDays` behind.
 	 */
 	static constexpr bool bSurgeOnCityFall = true;
 
@@ -1645,27 +1646,20 @@ public:
 	/**
 	 * Whether a city falling on this day fires a surge of its own.
 	 *
-	 * A PORT OF THE CONDITION AT THE END OF `Simulation._fall`: the rule is on,
-	 * and the last surge is at least `LeastIntervalDays` (25) behind. The model
-	 * has asked both since issue #1432; the game asked only the flag until
-	 * issue #2380.
+	 * A PORT OF THE CONDITION AT THE END OF `Simulation._fall`: the rule is on. Nothing else, since the owner's ruling
+	 * of 2026-11-24 on issue #2865, verbatim "surges from cities falling should happen regardless". From issue #2380
+	 * (2026-10-12) until then it also asked that the last surge was at least `LeastIntervalDays` (25) behind, as the
+	 * model did from issue #1432; the model's `city_fall_surge_braked` gives that rule back there, and ships off.
 	 *
-	 * A REFUSAL IS A LOSS AND NOT A DELAY, which is the opposite of
-	 * `IsDueOnEmptyBoard`. A fall is a moment. The caller asks once, when the
-	 * city falls, and a fall refused today is not asked about tomorrow. The
-	 * city still falls and still becomes a Dungeon City; only the wave is
-	 * withheld.
-	 *
-	 * SO TWO CITIES FALLING ON ONE DAY BRING ONE WAVE. The first fall's surge
-	 * is recorded by `RecordSurge`, which writes today into `LastSurgeDay`,
-	 * and the second fall is then nought days behind it. A fall on a day the
-	 * clock has already surged brings none for the same reason.
+	 * SO TWO CITIES FALLING ON ONE DAY BRING TWO WAVES, and a fall on a day the clock has already surged brings one
+	 * more. Each fall's wave is the scheduled size (`DungeonsInNextSurge()`), and each advances the escalation counter
+	 * (`bCityFallAdvancesEscalation`). The city falls and becomes a Dungeon City first either way.
 	 *
 	 * IT DOES NOT ASK WHAT STANDS ON THE BOARD, unlike the empty-board rule.
 	 *
 	 * IT DECIDES AND DOES NOT ACT, like `IsDue` and `IsDueOnEmptyBoard`.
 	 *
-	 * @param Day the day the city fell on
+	 * @param Day the day the city fell on; not read since issue #2865
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	bool IsDueOnCityFall(int32 Day) const;

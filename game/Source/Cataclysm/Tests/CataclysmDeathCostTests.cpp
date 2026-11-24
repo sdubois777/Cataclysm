@@ -399,10 +399,12 @@ bool FCataclysmDeathCostFellsTest::RunTest(const FString& Parameters)
 							 "and %s fell."), DayOfTheDeath, *CityName, *CityName));
 	// NOTHING IN THE EIGHT DAYS THAT RAN AFTER IT -- the walk's three and the death's five -- HIT A CITY OR MOVED A
 	// DUNGEON, which is what lets the screen still show the death. By the code: the scene's map holds nothing else
-	// and a Dungeon City never resolves. A WAVE DOES COME since issue #2865, because a Dungeon City does not keep the
-	// board from being empty and no least interval holds it back; but no dungeon of it runs out within 15 days, and a
-	// Siege's daily share sets neither `LastHitDay` nor `LastMoveDay`. Until then no surge came within 25 days of the
-	// opening wave.
+	// and a Dungeon City never resolves. A WAVE DOES COME: the city's fall brings its own at the death's resolve, eight
+	// dungeons, since the owner's ruling of 2026-11-24 on issue #2865 ("surges from cities falling should happen
+	// regardless"), and the board then holds ordinary dungeons, so no empty-board wave follows. No dungeon of it runs
+	// out within 15 days (the shortest timer is 15.3), and a Siege's daily share sets neither `LastHitDay` nor
+	// `LastMoveDay`. Earlier on issue #2865 the wave was the empty board's, at the end of the next day; before that
+	// issue no surge came within 25 days of the opening wave.
 	// Established here, so a change to any of that is named by this line rather than by the screen's.
 	TestTrue(TEXT("set-up: no hit and no move came after the death's day"),
 			 Run.LastHitDay <= Run.LastDeathDay && Run.LastMoveDay <= Run.LastDeathDay);

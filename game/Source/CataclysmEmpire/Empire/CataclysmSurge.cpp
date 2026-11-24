@@ -730,13 +730,14 @@ bool UCataclysmSurgeScheduler::IsDueOnEmptyBoard(int32 Day,
 
 bool UCataclysmSurgeScheduler::IsDueOnCityFall(int32 Day) const
 {
-	// THE SAME BRAKE THE EMPTY BOARD HAS, AND THE SAME COMPARISON. The model
-	// fires when the gap is at or above `surge_interval_min`, so `>` here
-	// would refuse the fall that comes exactly 25 days after a surge.
+	// EVERY FALL, WHATEVER THE GAP SINCE THE LAST SURGE. The owner's ruling of 2026-11-24 on issue #2865, verbatim:
+	// "surges from cities falling should happen regardless". From issue #2380 (2026-10-12) until then this also asked
+	// `DaysSinceLastSurge(Day) >= LeastIntervalDays`, the simulation's rule of issue #1432; the simulation drops it in
+	// the same change (`city_fall_surge_braked`, off).
 	//
-	// ON ONE LINE, so the port check in `tools/tests/test_surge_port.py` and
-	// a guard proof can each name the whole condition as one line of text.
-	return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;
+	// THE DAY IS STILL TAKEN, so the callers and the port check keep their shape and a later rule can read it.
+	(void)Day;
+	return bSurgeOnCityFall;
 }
 
 void UCataclysmSurgeScheduler::RecordSurge(int32 Day, bool bFromCityFall)

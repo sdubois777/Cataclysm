@@ -162,7 +162,8 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 		{
 			Fallen.AddUnique(CityId);
 		}
-		Surges += Day.bSurged ? 1 : 0;
+		// EACH SURGE AND NOT EACH DAY THAT HAD ONE: a day can hold several since issue #2865.
+		Surges += Day.Surges;
 		SurgeDungeons += Day.SurgeDungeons;
 	}
 

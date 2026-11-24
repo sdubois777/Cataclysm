@@ -4941,7 +4941,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 				}
 
 				TArray<FString> Parts;
-				if (Report.bSurged)
+				// SEVERAL SURGES ON ONE DAY SAY SO: since issue #2865 every city that falls fires its own.
+				if (Report.Surges > 1)
+				{
+					Parts.Add(FString::Printf(TEXT("%d surges brought %d dungeons"),
+											  Report.Surges, Report.Spawned.Num()));
+				}
+				else if (Report.bSurged)
 				{
 					Parts.Add(FString::Printf(TEXT("a surge brought %d dungeons"),
 											  Report.Spawned.Num()));

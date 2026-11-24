@@ -383,10 +383,17 @@ class TuningConfig:
     # being arithmetically impossible.
     cataclysm_volume_exponent: float = 0.7
 
-    # A surge also fires immediately when a city falls, unless the last surge
-    # landed less than `surge_interval_min` days ago (issue #1432): the same
-    # brake the board-empty trigger respects.
+    # A surge also fires immediately when a city falls, every time. The owner
+    # ruled on 2026-11-24, verbatim: "surges from cities falling should happen
+    # regardless" (issue #2865). From issue #1432 (2026-09-14) until then a fall
+    # fired none when the last surge landed less than `surge_interval_min` days
+    # ago; `city_fall_surge_braked` below gives that rule back.
     surge_on_city_fall: bool = True
+    #: Whether `surge_interval_min` brakes a city fall's surge. True was the rule
+    #: of issue #1432, ruled 2026-09-14 under the owner's delegation and copied
+    #: into the game by issue #2380. False is the owner's ruling of 2026-11-24,
+    #: and ships. Kept so the earlier rule can still be measured.
+    city_fall_surge_braked: bool = False
     # Does a fall-triggered surge also advance the escalation counter? If it
     # does, losing a city permanently speeds the game up -- a death spiral.
     city_fall_advances_escalation: bool = True

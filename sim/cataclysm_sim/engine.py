@@ -1467,20 +1467,22 @@ class Simulation:
             finally:
                 self.making_floors = None
 
-        # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
-        # #1432, ruled 2026-09-14. The scheduled wave spaces itself by
-        # `surge_gap()` and the board-empty trigger refuses inside
-        # `surge_interval_min`; this trigger had no spacing at all, so a fall the
-        # day after a surge landed a whole second wave and two cities falling on
-        # one day landed two. At difficulty tier 4 that was 89% of every surge
-        # that fired, 82% of them inside the 25-day floor. The fall itself still
-        # stands -- the Fallen City dungeon, the lane opening -- and the
-        # scheduled clock is untouched; only the extra wave is withheld when the
-        # last one landed less than `surge_interval_min` days ago. A braked
-        # fall is not retried later: the fall is a moment, not a standing state
-        # like an empty board, and the scheduled wave still comes.
-        if (cfg.surge_on_city_fall
-                and self.days_since_last_surge() >= cfg.surge_interval_min):
+        # EVERY FALL FIRES A SURGE, WHATEVER THE GAP SINCE THE LAST ONE. The
+        # owner's ruling of 2026-11-24 on issue #2865, verbatim: "surges from
+        # cities falling should happen regardless". So a fall the day after a
+        # surge lands a second wave, and two cities falling on one day land two.
+        #
+        # FROM ISSUE #1432 (RULED 2026-09-14) UNTIL THEN a fall respected the
+        # minimum gap: at difficulty tier 4 with no tree the fall trigger had
+        # been 89% of every surge that fired, 82% of them inside the 25-day
+        # floor. `city_fall_surge_braked` gives that rule back. A braked fall
+        # was not retried later: the fall is a moment, not a standing state like
+        # an empty board. The fall itself stands either way -- the Fallen City
+        # dungeon, the lane opening.
+        if cfg.surge_on_city_fall:
+            if (cfg.city_fall_surge_braked
+                    and self.days_since_last_surge() < cfg.surge_interval_min):
+                return
             self.trigger_surge(from_city_fall=True)
 
     def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:
