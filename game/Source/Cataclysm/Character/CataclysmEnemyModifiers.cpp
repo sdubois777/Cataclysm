@@ -700,6 +700,16 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 		return 0.0f;
 	}
 
+	// NOR IS A TARGET ALREADY DEAD BRANDED. Issue #2874. The attribute set calls this after the blow's health write, so
+	// for the blow that kills, after `HandleDeath` has marked the player dead: the owner's log of 2026-11-24 shows
+	// "Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367" two milliseconds after the player's
+	// death line. The brand was not part of the kill -- the swing alone took the health -- but it stacked and burst on a
+	// corpse. A dead target takes no stack, no visible tag and no explosion.
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		return 0.0f;
+	}
+
 	UCataclysmAbilitySystemComponent* Branded =
 		Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(Target));
@@ -776,6 +786,14 @@ bool UCataclysmEnemyModifiers::WitherOnHit(AActor* Attacker, AActor* Target)
 		return false;
 	}
 
+	// NOR A TARGET ALREADY DEAD, as Infernal Brand refuses one (issue #2874): the blow that kills reaches this after the
+	// death. A judgement of the writing session, by the brand's reasoning: a stack on a corpse is cleared at the respawn
+	// and does nothing before it.
+	if (UCataclysmSkillEffects::IsDead(Target))
+	{
+		return false;
+	}
+
 	UCataclysmAbilitySystemComponent* Withered =
 		Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(Target));
@@ -828,6 +846,12 @@ bool UCataclysmEnemyModifiers::TouchOfNothingOnHit(AActor* Attacker, AActor* Tar
 {
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
 	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, TouchOfNothingRow))
+	{
+		return false;
+	}
+
+	// NOR A TARGET ALREADY DEAD, as Infernal Brand and Withering Blows refuse one (issue #2874). The same judgement.
+	if (UCataclysmSkillEffects::IsDead(Target))
 	{
 		return false;
 	}

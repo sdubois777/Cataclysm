@@ -385,6 +385,53 @@ CATACLYSM_TEST(FCataclysmHitTimingDiedFirstTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmHitTimingKilledFirstTest,
+	"Cataclysm.EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards")
+{
+	using namespace CataclysmEnemyHitTimingTest;
+
+	// ISSUE #2874. On 2026-11-24 a Boss Brute's critical swing killed the owner 0.36 s after the owner's 438 critical
+	// on it, and nothing in the log said whether the Brute was already dead. The test above MARKS its Brute dead, so the
+	// only thing it can see refuse the blow is `LandPendingBasicAttack` asking. This one KILLS it, by a blow through
+	// its own attribute set, which is the way a creature dies in play: the health write runs `HandleDeath`, which
+	// forgets the waiting blow at once. Then its swing's moment comes and its own frame runs, and nothing lands.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmBruteCharacter* Brute = SpawnSwinger<ACataclysmBruteCharacter>(World);
+	ACataclysmEnemyCharacter* Struck = SpawnStruck(World, InReachCm);
+	if (!TestNotNull(TEXT("a Brute"), Brute) || !TestNotNull(TEXT("a target"), Struck))
+	{
+		return false;
+	}
+
+	const float Full = StruckHealth(Struck);
+	Brute->AttackTarget(Struck);
+	if (!TestTrue(TEXT("set-up: its swing has started and its blow waits"), Brute->HasPendingBasicAttack()))
+	{
+		return false;
+	}
+
+	// KILLED IN THE GAP BY THE TARGET'S OWN BLOW, far more than any Brute's health.
+	UCataclysmSkillEffects::ApplyDirectDamage(Struck, Brute, /*Damage=*/10000000.0f);
+	if (!TestTrue(TEXT("set-up: the blow killed it"), UCataclysmSkillEffects::IsDead(Brute)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("its death forgot the waiting blow at once"), Brute->HasPendingBasicAttack());
+
+	// ITS SWING'S MOMENT COMES, AND ITS OWN FRAME RUNS, which is what lands a blow in play.
+	MoveTheClock(World, ACataclysmBruteCharacter::SwingStrikeSeconds + OneHundredth);
+	Brute->Tick(0.016f);
+	TestFalse(TEXT("its swing's moment comes and nothing is landed"), Brute->LandPendingBasicAttack());
+	TestEqual(TEXT("and the target is untouched"), StruckHealth(Struck), Full);
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmHitTimingStunnedFirstTest,
 	"Cataclysm.EnemyHitTiming.ACreatureStunnedBeforeItsSwingConnectsDealsNothing")
 {

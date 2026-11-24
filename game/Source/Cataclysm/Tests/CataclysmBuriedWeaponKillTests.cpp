@@ -20,11 +20,17 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For Sacrificial Bond on the ally a leap strikes. Issue #2871.
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmPlayerCharacter.h"
 // For the level a leap is sized at, and the row its loss is credited to. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
 #include "Engine/World.h"
+// For the drops on the floor a kill left. Issue #2871.
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -56,6 +62,9 @@ namespace CataclysmLeapKillTest
 
 	/** The health of an enemy one blow kills. */
 	constexpr float LeapKillDoomedHealth = 50.0f;
+
+	/** The Cataclysm Boss rung, whose kill drops twelve pieces of gear on average (`game/Data/EnemyDrops.csv`). */
+	constexpr int32 LeapKillDropsAsACataclysmBoss = 5;
 
 	/** A world for one test, destroyed when the test ends. */
 	struct FLeapKillWorld
@@ -806,6 +815,145 @@ CATACLYSM_TEST(FCataclysmSkillLevelSourcesLeapTest,
 			ThreeTook * 0.001f);
 		TestEqual(TEXT("as is the level 1 enemy's"), *OneCredited, OneTook, OneTook * 0.001f);
 	}
+	return true;
+}
+
+// ==========================================================================
+// 5. A host whose leap strikes a bonded ally dies once and drops each item once (issue #2871)
+// ==========================================================================
+
+/**
+ * Issue #2871. THE OWNER'S FLOOR, 2026-11-24: a creature with Harrower's axe in it died; its axe leapt to the nearest
+ * living enemy, a Legendary Brute carrying Sacrificial Bond; the bond paid a share of the leap to the Brute's allies,
+ * among them the dying creature, whose death was not yet marked; that share's health write ran its `HandleDeath` again,
+ * which leapt again. The log holds 31 "ranged attack" lines on the Brute in one frame, and every one of those
+ * deaths dropped the same item from the same seed: the owner saw at least 13 "Masterful Fetish of Venom" on the floor.
+ *
+ * THE SET-UP. One Axe player at the origin. THE MEASURE first: an axe buried in a host 20 m north leaps at an enemy of
+ * 50,000 health 4 m east of it, and what that enemy lost is one leap, `Leap`. THEN THE CASE, 60 m north: a host of 50
+ * health that pays as a Cataclysm Boss, so its kill drops a dozen pieces of gear on average, with an axe buried in it;
+ * and 3 m east of it, inside the leap's 10 m and the bond's 6 m, a bonded ally carrying Sacrificial Bond, of one and a
+ * quarter leaps' health. The player's own blow kills the host, through the health write and `HandleDeath`.
+ *
+ * WHAT IS TRUE NOW. The host's death is announced once and pays once: no two pieces of gear on the floor are one item.
+ * The axe leaps once: the bonded ally keeps half of one leap, the dying host's share being the other half, and lives.
+ * BEFORE THE FIX the bond's share ran the host's death again on every leap -- the ally dies on the third, and the fourth
+ * finds nobody -- so the host was announced four times, each piece of gear lay on the floor four times, and the ally
+ * was dead.
+ */
+CATACLYSM_TEST(FCataclysmLeapKillBondedAllyTest,
+	"Cataclysm.BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce")
+{
+	using namespace CataclysmLeapKillTest;
+
+	FLeapKillWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	UWorld* World = Scope.World;
+	const CataclysmTestWorld::FScopedCritRoll NeverCritical(100.0f);
+	if (!TestNotNull(TEXT("set-up: the critical strike roll is pinned at 100"), NeverCritical.Variable))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("set-up: Harrower's tags exist"), LeapKillHarrowerTagsExist()))
+	{
+		return false;
+	}
+	FLeapKillRig Leaping(World, FVector::ZeroVector, TEXT("Axe"));
+	if (!Leaping.IsMade(*this))
+	{
+		return false;
+	}
+
+	// THE MEASURE: ONE LEAP, READ OFF AN ENEMY IT DOES NOT KILL.
+	const FVector MeasureAt(0.0f, 20.0f * M, 0.0f);
+	const FVector East(4.0f * M, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* MeasureHost = LeapKillEnemy(World, MeasureAt);
+	ACataclysmEnemyCharacter* MeasureNext = LeapKillEnemy(World, MeasureAt + East);
+	if (!TestTrue(TEXT("set-up: the measure's host and enemy"), MeasureHost != nullptr && MeasureNext != nullptr)
+		|| !TestNotNull(TEXT("set-up: the measure's axe is buried with Harrower's tags"),
+			UCataclysmBuriedWeapon::BuryIn(MeasureHost, Leaping.Player, 10.0f * M, 100.0f, LeapKillHarrowerTags(false),
+										   /*bInBurns=*/false)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the measure's axe leaps"), UCataclysmBuriedWeapon::LeapFromDying(MeasureHost));
+	const float Leap = LeapKillTakenFrom(MeasureNext);
+	if (!TestTrue(*FString::Printf(TEXT("set-up: one leap takes something: %.2f"), Leap), Leap > 1.0f))
+	{
+		return false;
+	}
+
+	// THE CASE.
+	const FVector HostAt(0.0f, 60.0f * M, 0.0f);
+	const FVector BondedAt(3.0f * M, 60.0f * M, 0.0f);
+	const float BondedHealth = Leap * 1.25f;
+	ACataclysmEnemyCharacter* Host = LeapKillEnemy(World, HostAt, LeapKillDoomedHealth);
+	ACataclysmEnemyCharacter* Bonded = LeapKillEnemy(World, BondedAt, BondedHealth);
+	if (!TestTrue(TEXT("set-up: the host and its bonded ally"), Host != nullptr && Bonded != nullptr))
+	{
+		return false;
+	}
+	// THE RUNG THE KILL PAYS AS, WRITTEN STRAIGHT ONTO THE HOST as the hit log's tests write one, so the health and
+	// defences `LeapKillEnemy` gave it stand.
+	Host->RarityStep = LeapKillDropsAsACataclysmBoss;
+	Bonded->ModifierRows.Add(FName(UCataclysmEnemyModifiers::SacrificialBondRow));
+	if (!TestNotNull(TEXT("set-up: the axe is buried in the host with Harrower's tags"),
+			UCataclysmBuriedWeapon::BuryIn(Host, Leaping.Player, 10.0f * M, 100.0f, LeapKillHarrowerTags(false),
+										   /*bInBurns=*/false)))
+	{
+		return false;
+	}
+	FLeapKillNotices Notices(World);
+	if (!TestNotNull(TEXT("set-up: the world's combat events"), Notices.Events))
+	{
+		return false;
+	}
+
+	// THE PLAYER'S OWN BLOW KILLS THE HOST, as test 1's control kills its enemy.
+	UCataclysmSkillEffects::ApplyHit(Leaping.Player, Host, 100.0f, FGameplayTagContainer(), FCataclysmHitDelivery());
+
+	// EVERY PIECE OF GEAR ON THE FLOOR, AND HOW MANY OF THEM ARE THE SAME ITEM AS ONE BEFORE THEM. Nothing else here
+	// dies: the measure's host was never killed, and the bonded ally lives unless the fault is back.
+	TArray<const ACataclysmDroppedItem*> Gear;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		const ACataclysmDroppedItem* Drop = *It;
+		if (IsValid(Drop) && !Drop->IsAQuantity())
+		{
+			Gear.Add(Drop);
+		}
+	}
+	int32 Copies = 0;
+	for (int32 Index = 1; Index < Gear.Num(); ++Index)
+	{
+		for (int32 Earlier = 0; Earlier < Index; ++Earlier)
+		{
+			if (FCataclysmItem::StaticStruct()->CompareScriptStruct(&Gear[Index]->Item, &Gear[Earlier]->Item, PPF_None))
+			{
+				++Copies;
+				break;
+			}
+		}
+	}
+	const float BondedTook = LeapKillTakenFrom(Bonded, BondedHealth);
+	const int32 HostDeaths = Notices.CountFor(Host);
+
+	AddInfo(FString::Printf(TEXT("LEAP INTO A BOND: one leap %.2f; the host's death announced %d time(s); %d piece(s) of "
+								 "gear on the floor, %d a copy of another; the bonded ally took %.2f of %.2f and is %s"),
+							Leap, HostDeaths, Gear.Num(), Copies, BondedTook, BondedHealth,
+							UCataclysmSkillEffects::IsDead(Bonded) ? TEXT("DEAD") : TEXT("alive")));
+
+	TestTrue(TEXT("set-up: the player's blow killed the host"), UCataclysmSkillEffects::IsDead(Host));
+	TestEqual(TEXT("THE HOST'S DEATH IS ANNOUNCED ONCE"), HostDeaths, 1);
+	TestTrue(TEXT("set-up: its kill dropped gear"), Gear.Num() > 0);
+	TestEqual(TEXT("AND NO PIECE OF GEAR ON THE FLOOR IS A COPY OF ANOTHER: one drop, one item"), Copies, 0);
+	TestFalse(TEXT("the axe leapt once, so the bonded ally lives"), UCataclysmSkillEffects::IsDead(Bonded));
+	TestEqual(TEXT("having kept half of one leap, the dying host's share being the other half"), BondedTook,
+			  Leap * 0.5f, Leap * 0.01f);
+	TestEqual(TEXT("and its death was never announced"), Notices.CountFor(Bonded), 0);
 	return true;
 }
 

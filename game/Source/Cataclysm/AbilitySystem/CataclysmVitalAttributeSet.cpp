@@ -3029,7 +3029,12 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	ACataclysmCharacterBase* Character = AbilitySystem
 		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
 		: nullptr;
-	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	// AND NOT FOR ONE WHOSE DEATH IS BEING MARKED NOW. Issue #2871: a blow dealt from inside `MarkDead`'s own hooks can
+	// write this character's health at nought again before its tag is on -- Harrower's leap into a creature carrying
+	// Sacrificial Bond pays the dying creature a share -- and a second `HandleDeath` here paid the kill twice. The death
+	// under way finishes it; `MarkDead` refuses the same case for every other caller of `HandleDeath`.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character)
+		|| UCataclysmSkillEffects::IsBeingMarkedDead(Character))
 	{
 		return;
 	}

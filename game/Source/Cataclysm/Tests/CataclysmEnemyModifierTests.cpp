@@ -3589,6 +3589,122 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandTagEndsTest,
 	return true;
 }
 
+namespace CataclysmEnemyModifierTest
+{
+	/**
+	 * A player for a brander to strike, `Where`, every blow reaching its health: no evasion, block, armour or energy
+	 * shield, and `Health` of health. Named for the brand-on-the-dead test, issue #2874.
+	 */
+	ACataclysmPlayerCharacter* BrandedPlayerAt(UWorld* World, const FVector& Where, float Health)
+	{
+		ACataclysmPlayerCharacter* Player = SpawnPlayerWithState(World);
+		UAbilitySystemComponent* Its = Player ? Player->GetAbilitySystemComponent() : nullptr;
+		if (!Its)
+		{
+			return nullptr;
+		}
+		Player->SetActorLocation(Where);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		return Player;
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotOnTheDeadTest,
+	"Cataclysm.EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874. The owner's log of 2026-11-24 says "CataclysmBruteCharacter_136's Infernal Brand reached five stacks
+	// on CataclysmPlayerState_0 and dealt 367" two milliseconds after the player's death line. The attribute set calls
+	// `BrandOnHit` after a blow's health write, so for the blow that kills, after `HandleDeath` has marked the player
+	// dead: the killing blow was the fifth brand, and the brand burst on the body.
+	//
+	// THROUGH THE DAMAGE PIPELINE, as `InfernalBrandExplodesOnceForEveryFiveHitsThatLand` drives it, on a REAL PLAYER,
+	// whose death is the one `HandleDeath` marks. THE CONTROL first: a living player's fifth brand bursts, which is a
+	// second blow resolved on its ability system and its four stacks spent. THEN THE CASE: four brands on a second
+	// player 10 m away, and a fifth blow that kills it. One blow is resolved, the killing blow, and the four stacks
+	// are left as they were: none is added to the body and none bursts.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Living = BrandedPlayerAt(World, FVector(200.0f, 0.0f, 0.0f), 5000.0f);
+	ACataclysmPlayerCharacter* Dying = BrandedPlayerAt(World, FVector(0.0f, 1000.0f, 0.0f), 5000.0f);
+	UCataclysmAbilitySystemComponent* LivingSystem =
+		Living ? Cast<UCataclysmAbilitySystemComponent>(Living->GetAbilitySystemComponent()) : nullptr;
+	UCataclysmAbilitySystemComponent* DyingSystem =
+		Dying ? Cast<UCataclysmAbilitySystemComponent>(Dying->GetAbilitySystemComponent()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a living player with its ability system"), LivingSystem)
+		|| !TestNotNull(TEXT("set-up: and a second player with its"), DyingSystem))
+	{
+		return false;
+	}
+
+	// ONE POINT, SO A BRAND'S OWN HIT IS NEGLIGIBLE.
+	const auto Brand = [Brander](ACataclysmPlayerCharacter* Player, float Damage)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, Damage, FCataclysmHitDelivery());
+	};
+
+	// THE CONTROL: A LIVING PLAYER'S FIFTH BRAND BURSTS.
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Brand(Living, 1.0f);
+	}
+	const int32 LivingHeldAfterFour = UCataclysmStacks::Held(LivingSystem, ECataclysmStackKind::InfernalBrand);
+	const uint32 LivingBefore = LivingSystem->GetResolvedHitStamp();
+	Brand(Living, 1.0f);
+	const int32 LivingBlowsOnTheFifth = static_cast<int32>(LivingSystem->GetResolvedHitStamp() - LivingBefore);
+	const int32 LivingHeldAfterFive = UCataclysmStacks::Held(LivingSystem, ECataclysmStackKind::InfernalBrand);
+
+	// THE CASE: FOUR BRANDS, THEN THE BLOW THAT KILLS.
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Brand(Dying, 1.0f);
+	}
+	const int32 DyingHeldAfterFour = UCataclysmStacks::Held(DyingSystem, ECataclysmStackKind::InfernalBrand);
+	const uint32 DyingBefore = DyingSystem->GetResolvedHitStamp();
+	Brand(Dying, 100000.0f);
+	const int32 DyingBlowsOnTheFifth = static_cast<int32>(DyingSystem->GetResolvedHitStamp() - DyingBefore);
+	const int32 DyingHeldAfterFive = UCataclysmStacks::Held(DyingSystem, ECataclysmStackKind::InfernalBrand);
+
+	AddInfo(FString::Printf(TEXT("BRAND ON THE DEAD: living player held %d, the fifth resolved %d blow(s), held %d after; "
+								 "dying player held %d, the killing fifth resolved %d blow(s), held %d after"),
+							LivingHeldAfterFour, LivingBlowsOnTheFifth, LivingHeldAfterFive, DyingHeldAfterFour,
+							DyingBlowsOnTheFifth, DyingHeldAfterFive));
+
+	TestEqual(TEXT("set-up: four brands on the living player"), LivingHeldAfterFour, 4);
+	TestFalse(TEXT("set-up: and it lives"), UCataclysmSkillEffects::IsDead(Living));
+	TestEqual(TEXT("CONTROL: a living player's fifth brand bursts, a second blow resolved"), LivingBlowsOnTheFifth, 2);
+	TestEqual(TEXT("CONTROL: and spends its stacks"), LivingHeldAfterFive, 0);
+
+	TestEqual(TEXT("set-up: four brands on the second player"), DyingHeldAfterFour, 4);
+	TestTrue(TEXT("set-up: the fifth blow killed it"), UCataclysmSkillEffects::IsDead(Dying));
+	TestEqual(TEXT("THE KILLING BLOW IS THE ONLY BLOW RESOLVED: no brand bursts on the body"), DyingBlowsOnTheFifth, 1);
+	TestEqual(TEXT("AND NO STACK IS ADDED TO THE BODY: the four it held are left"), DyingHeldAfterFive, 4);
+	return true;
+}
+
 
 CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 	"Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt")
