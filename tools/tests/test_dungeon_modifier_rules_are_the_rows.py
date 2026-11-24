@@ -4549,20 +4549,24 @@ def test_swarm_of_locusts_row_still_sweeps_obscures_burns_and_asks_for_shelter()
             "SwarmOfLocustsKey in CataclysmDungeonModifierEffects.h. " + words)
 
 
-def test_abyssal_rifts_row_still_has_rifts_closed_by_waves_in_time_and_rewards_that_grow():
-    """The phrases the rule's readings rest on.
+def test_abyssal_rifts_row_still_has_several_killable_boss_rifts_sending_hunters_that_grow_stronger():
+    """The phrases the rule's readings rest on, since the owner's redesign of 2026-11-23 (#2864).
 
-    "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must close these rifts by
-    defeating waves of enemies within a given time limit. The difficulty and rewards increase with each successfully
-    closed rift." WAVES is what a rift sends; CLOSE THESE RIFTS BY DEFEATING WAVES and WITHIN A GIVEN TIME LIMIT are
-    the success; DIFFICULTY AND REWARDS INCREASE are the rung and the magic find each success adds. If any of them
+    "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends
+    a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with
+    great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open.
+    The rewards increase with each rift destroyed." SEVERAL TO A FLOOR is the count; FROM THE MOMENT YOU ENTER and
+    EVERY 3 SECONDS are the hunters' clock, the owner's figure; HUNT YOU DOWN is their sight; A RIFT IS A BOSS and
+    MUST BE DESTROYED are the rift's rung and that it can be killed; GROW STRONGER THE LONGER IT STAYS OPEN is the
+    strength by age; REWARDS INCREASE WITH EACH RIFT DESTROYED is the magic find each success adds. If any of them
     changes, the reading must be revisited.
     """
     words = flat(rows()["Demonic_Abyssal_Rifts"]["Description"])
     lower = words.lower()
 
-    for phrase in ("unleashing waves", "close these rifts by defeating waves", "within a given time limit",
-                   "difficulty and rewards increase", "successfully closed rift"):
+    for phrase in ("several to a floor", "from the moment you enter", "every 3 seconds", "hunt you down",
+                   "a trail back to its source", "a rift is a boss", "must be destroyed",
+                   "grow stronger the longer it stays open", "rewards increase with each rift destroyed"):
         assert phrase in lower, (
             f"Demonic_Abyssal_Rifts no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "AbyssalRiftsKey in CataclysmDungeonModifierEffects.h. " + words)

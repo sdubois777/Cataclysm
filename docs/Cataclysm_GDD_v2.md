@@ -4507,6 +4507,32 @@ The over-corruption mechanic in section VII works offline in full, because the d
 
   
 
+## **Abyssal Rifts (Dungeon Modifier)**
+
+Abyssal Rifts is a Demonic dungeon modifier of weight 10. Its row reads: "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift sends a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss with great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it stays open. The rewards increase with each rift destroyed." It is the project owner's redesign of 2026-11-23 (issue #2864), which replaced a single rift that opened near the player and closed when its three waves were killed in time. `docs/DECISIONS.md` records the owner's words and why each figure below was chosen; every figure but the three seconds is a judgement.
+
+  
+
+**Two rifts on a floor, three on a large one.** A floor whose plan is 40 by 40 cells or more holds a third, so the hunters stay about as thick on the ground on a large floor as on a small one. They stand where the other floor sources stand, at least 20 metres from the entrance and from each other. A Horde arena has none, because its waves already come to the player.
+
+  
+
+**A rift is a Boss the player can target and kill.** It is placed at the Boss rung, with twice the health the floor's enemy score gives an average creature at that rung, because it neither moves nor strikes back and so takes every blow aimed at it. It has no brain and no attack, and says "Rift" under its health bar.
+
+  
+
+**From the moment the player enters, each rift sends a hunter every 3 seconds.** A hunter is one of the floor's own kinds that can walk, at Common, placed beside its rift. It notices the player from anywhere on the floor and walks to them, so the line of arriving hunters leads back to the rift. A rift keeps at most six of its own hunters standing; one killed is replaced on the next beat. Hunters pay nothing and are not counted among the floor's creatures, because a rift left standing never stops and would otherwise be a limitless source of loot and experience.
+
+  
+
+**The longer a rift stands, the stronger its hunters.** Each 15 seconds it has stood gives the hunters it sends 10% more health and damage, to at most twice their own figures after two and a half minutes. A floor left alone for a long time is therefore harder, and never harder than that.
+
+  
+
+**Killing a rift stops its hunters**, and the ones it already sent stay and keep hunting. Each rift killed is a success, worth +10 magic find, to at most +100. Successes count across the dungeon, and end on leaving the dungeon or at the player's death.
+
+  
+
 ## **Dungeon Score Formula**
 
 A dungeon's score is **its middle floor**, with that floor's six rarity scores collapsed into one number by how common each rarity is.

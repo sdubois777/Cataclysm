@@ -824,6 +824,7 @@ bool FCataclysmDeathCostMigrationTest::RunTest(const FString& Parameters)
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2864's step.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -856,7 +857,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostCommittedFileTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Run_v17.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
+ * `Run_v18.json` reads into the five values it states, none of them a default, so each is read and not re-defaulted.
  * Prints "DEATH FILE". It read `Run_v3.json` until the run record went to version 4 on 2026-11-02 (issue #1324 slice
  * 6b), `Run_v4.json` until it went to version 5 on 2026-11-03 (slice 6e), and `Run_v5.json` until it went to version 6
  * on 2026-11-17 (issue #2733 slice 3), `Run_v6.json` until it went to version 7 on 2026-11-18 (issue #2742), and
@@ -866,7 +867,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostCommittedFileTest,
  * 12 the same day (issue #2741 slice 6b), `Run_v12.json` until it went to version 13 on 2026-11-21 (issue #2825),
  * `Run_v13.json` until it went to version 14 on 2026-11-22 (issue #46), `Run_v14.json` until it went to version 15
  * the same day (issue #2741 slice 9), `Run_v15.json` until it went to version 16 the same day (issue #2838), `Run_v16.json`
- * until it went to version 17 the same day (issue #2840); `Run_v17.json` holds the same five
+ * until it went to version 17 the same day (issue #2840), `Run_v17.json` until it went to version 18 on 2026-11-24
+ * (issue #2864); `Run_v18.json` holds the same five
  * values, and the older files are migration inputs
  * now.
  */
@@ -874,7 +876,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -885,7 +887,7 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v17.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

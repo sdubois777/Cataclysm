@@ -1043,7 +1043,7 @@ bool FCataclysmEmpireTreeScoutsLeftTest::RunTest(const FString&)
  * and no bribe, keeping its 3 clears since the last surge. `Account_v7.json` reads 75000.5 spent, `Character_v14.json`
  * 50000.25 (unrounded doubles, V20), and the committed run file its first city bailed out and its second
  * not, 2 bonus clears and the bribe spent, each read
- * rather than migrated. The run file is `Run_v17.json` since issue #2840 (`Run_v16.json` from issue #2838, `Run_v15.json`, which holds the same, from
+ * rather than migrated. The run file is `Run_v18.json` since issue #2864 (`Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json`, which holds the same, from
  * slice 9). Prints "NINE FILES".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeNineSavesFilesTest,
@@ -1069,7 +1069,7 @@ bool FCataclysmEmpireTreeNineSavesFilesTest::RunTest(const FString&)
 		ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v7.json"), AccountResult);
 	const UCataclysmCharacterSave* Character =
 		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v14.json"), CharacterResult);
-	const UCataclysmRunSave* Run = ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v17.json"), RunResult);
+	const UCataclysmRunSave* Run = ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v18.json"), RunResult);
 	if (!OldAccount || !OldCharacter || !OldRun || !Account || !Character || !Run)
 	{
 		return false;
@@ -1118,7 +1118,7 @@ bool FCataclysmEmpireTreeNineSavesFilesTest::RunTest(const FString&)
 	TestEqual(TEXT("with 75000.5 spent, the fraction kept"), Account->GoldSpentOnCityUpgrades, 75000.5);
 	TestEqual(TEXT("Character_v14.json is read"), static_cast<int32>(CharacterResult), Loaded);
 	TestEqual(TEXT("with 50000.25 spent, the fraction kept"), Character->GoldSpentOnCityUpgrades, 50000.25);
-	TestEqual(TEXT("Run_v17.json is read"), static_cast<int32>(RunResult), Loaded);
+	TestEqual(TEXT("Run_v18.json is read"), static_cast<int32>(RunResult), Loaded);
 	TestTrue(TEXT("its first city bailed out and its second not"),
 			 Run->Cities.Num() >= 2 && Run->Cities[0].bBailedOut && !Run->Cities[1].bBailedOut);
 	TestEqual(TEXT("2 bonus clears"), Run->BonusDungeonsCleared, 2);

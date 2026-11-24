@@ -577,6 +577,35 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * What the run record's newest step writes into a run file written before it: the floor's one Abyssal Rift state
+	 * removed, and each rift's health left and seconds stood written in its place -- three of 0 each when the state was
+	 * not 0, a rift the player had met, and two empty lists when it was 0 (`Migrate_17_to_18`). Issue #2864. NAMED FOR
+	 * THE VERSION IT REACHES, 18. ONE COPY. A file with no floor rule state is left as it is, as the step leaves it.
+	 */
+	inline void AddTheRunsVersion18Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (!Expected.TryGetObjectField(TEXT("Floor"), Floor) || Floor == nullptr || !Floor->IsValid()
+			|| !(*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) || RuleState == nullptr || !RuleState->IsValid())
+		{
+			return;
+		}
+		double State = 0.0;
+		(*RuleState)->TryGetNumberField(TEXT("AbyssalRiftState"), State);
+		(*RuleState)->RemoveField(TEXT("AbyssalRiftState"));
+		TArray<TSharedPtr<FJsonValue>> Health;
+		TArray<TSharedPtr<FJsonValue>> Seconds;
+		for (int32 Rift = 0; State != 0.0 && Rift < 3; ++Rift)
+		{
+			Health.Add(MakeShared<FJsonValueNumber>(0.0));
+			Seconds.Add(MakeShared<FJsonValueNumber>(0.0));
+		}
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftHealthLeft"), Health);
+		(*RuleState)->SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

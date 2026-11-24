@@ -2588,7 +2588,7 @@ namespace CataclysmSaveLoadTest
 			Rules.Emplace(TEXT("portals"), CellsOfActors(Mode, Mode.VoidPortalsNow()));
 			Rules.Emplace(TEXT("quarantine"), OneCreature(Mode.QuarantineNow()));
 			Rules.Emplace(TEXT("infection bloom"), OneCreature(Mode.InfectionBloomNow()));
-			Rules.Emplace(TEXT("abyssal rift"), OneCreature(Mode.AbyssalRiftNow()));
+			Rules.Emplace(TEXT("abyssal rifts"), CellsOfActors(Mode, Mode.AbyssalRiftsNow()));
 			Rules.Emplace(TEXT("veins"), CellsOfActors(Mode, Mode.InfestedVeinsStanding()));
 			Rules.Emplace(TEXT("sarcophagi"), CellsOfActors(Mode, Mode.SarcophagiNow()));
 			Rules.Emplace(TEXT("warzone points"), Mode.WarzonePointCellsNow());
@@ -3757,6 +3757,7 @@ namespace CataclysmSaveLoadTest
 		int32 VeinsDestroyedSaved = -1;
 		int32 BeaconsStandingSaved = -1;
 		int32 SuccessesSaved = -1;
+		int32 RiftsStandingSaved = -1;
 		FString StatuesSaved;
 		FIntPoint WokenCell(-1, -1);
 		int32 CreaturesSaved = -1;
@@ -3790,7 +3791,7 @@ namespace CataclysmSaveLoadTest
 			for (int32 Pinned = 1; Pinned <= 20 && Seed == INDEX_NONE; ++Pinned)
 			{
 				PinnedSeed.Pin(Pinned);
-				if (Mode.GoToFloor(2) && Mode.QuarantineNow() && Mode.InfectionBloomNow() && Mode.AbyssalRiftNow()
+				if (Mode.GoToFloor(2) && Mode.QuarantineNow() && Mode.InfectionBloomNow() && !Mode.AbyssalRiftsNow().IsEmpty()
 					&& !Mode.InfestedVeinsStanding().IsEmpty() && !Mode.PlagueBeaconsStanding().IsEmpty()
 					&& !Mode.SarcophagiNow().IsEmpty() && !Mode.AngelicStatueCellsStanding().IsEmpty())
 				{
@@ -3830,15 +3831,11 @@ namespace CataclysmSaveLoadTest
 			WokenCell = Mode.AngelicStatueCellsStanding()[0];
 			bAll = bAll && Test.TestEqual(TEXT("set-up: a divine law broken at a statue woke one"),
 										  Mode.NoteDivineLawViolated(Mode.CurrentFloor->WorldOfCell(WokenCell)), 1);
-			// THE RIFT OPENED AS THE PLAYER OPENS IT, and the beat also counts the vein destroyed.
-			const FVector RiftAt = Mode.AbyssalRiftNow()->GetActorLocation();
-			Player.SetActorLocation(FVector(RiftAt.X + 300.0f, RiftAt.Y, Player.GetActorLocation().Z));
+			// A RIFT KILLED AS THE PLAYER KILLS ONE (#2864), a success; the beat also counts the vein destroyed.
+			bAll = bAll && KillOnTheFloor(Test, Player, Mode.AbyssalRiftsNow()[0], TEXT("a rift"));
 			BeatOnce(Mode);
-			const FVector Entrance = Mode.CurrentFloor->EntranceWorld();
-			Player.SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.GetActorLocation().Z));
 			if (!bAll
-				|| !Test.TestEqual(TEXT("set-up: the rift opened"), static_cast<int32>(Mode.AbyssalRiftStateNow()),
-								   static_cast<int32>(ACataclysmDungeonGameMode::ERiftState::Open))
+				|| !Test.TestEqual(TEXT("set-up: the rift killed is one success"), Mode.AbyssalRiftSuccessesHeld(), 1)
 				|| !Test.TestEqual(TEXT("set-up: one vein counted destroyed"), Mode.InfestedVeinsDestroyedHere(), 1)
 				|| !Test.TestEqual(TEXT("set-up: two paid deaths beside the first coffin"),
 								   Mode.SarcophagusDeathsBeside(Coffin), 2)
@@ -3852,6 +3849,7 @@ namespace CataclysmSaveLoadTest
 			VeinsDestroyedSaved = Mode.InfestedVeinsDestroyedHere();
 			BeaconsStandingSaved = Mode.PlagueBeaconsStanding().Num();
 			SuccessesSaved = Mode.AbyssalRiftSuccessesHeld();
+			RiftsStandingSaved = Mode.AbyssalRiftsNow().Num();
 			StatuesSaved = CellsText(Mode.AngelicStatueCellsStanding());
 			CreaturesSaved = OrdinaryCreaturesStanding(*Scene.Base.World);
 			DropsSaved = DropsLying(*Scene.Base.World);
@@ -3891,13 +3889,13 @@ namespace CataclysmSaveLoadTest
 		const bool bLordLoaded = !Coffins.IsEmpty() && Mode.SarcophagusLordCame(Coffins[0]);
 
 		Test.AddInfo(FString::Printf(
-			TEXT("LOAD RULE CREATURES on seed %d: %s (%s); containment %s, patches %d/%d burn %.2f/%.2f; bloom %s; rift "
-				 "state %d, successes %d/%d; veins standing %d/%d destroyed %d/%d guardians %s; beacons standing %d/%d; "
+			TEXT("LOAD RULE CREATURES on seed %d: %s (%s); containment %s, patches %d/%d burn %.2f/%.2f; bloom %s; rifts "
+				 "standing %d/%d, successes %d/%d; veins standing %d/%d destroyed %d/%d guardians %s; beacons standing %d/%d; "
 				 "coffin deaths 2/%d lord %s; statues %s/%s, woken cell pillared %s; creatures %d/%d; drops %d/%d"),
 			Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why,
 			Mode.QuarantineNow() ? TEXT("STANDS") : TEXT("broken"), PatchesSaved, Patches.Num(), BurnSaved, BurnLoaded,
 			Mode.InfectionBloomNow() ? TEXT("STANDS") : TEXT("destroyed"),
-			static_cast<int32>(Mode.AbyssalRiftStateNow()), SuccessesSaved, Mode.AbyssalRiftSuccessesHeld(),
+			RiftsStandingSaved, Mode.AbyssalRiftsNow().Num(), SuccessesSaved, Mode.AbyssalRiftSuccessesHeld(),
 			VeinsStandingSaved, Mode.InfestedVeinsStanding().Num(), VeinsDestroyedSaved,
 			Mode.InfestedVeinsDestroyedHere(), Mode.InfestedVeinsGuardiansCame() ? TEXT("CAME") : TEXT("none"),
 			BeaconsStandingSaved, Mode.PlagueBeaconsStanding().Num(), DeathsLoaded, bLordLoaded ? TEXT("CAME") : TEXT("none"),
@@ -3911,9 +3909,9 @@ namespace CataclysmSaveLoadTest
 		Test.TestEqual(TEXT("its patch burns again"), Patches.Num(), PatchesSaved);
 		Test.TestEqual(TEXT("at the burn it was charged at"), BurnLoaded, BurnSaved, 0.001f);
 		Test.TestNull(TEXT("the bloom stays destroyed"), Mode.InfectionBloomNow());
-		Test.TestEqual(TEXT("the rift, opened, is closed"), static_cast<int32>(Mode.AbyssalRiftStateNow()),
-					   static_cast<int32>(ACataclysmDungeonGameMode::ERiftState::Closed));
-		Test.TestEqual(TEXT("and failed: no success counted"), Mode.AbyssalRiftSuccessesHeld(), SuccessesSaved);
+		Test.TestEqual(TEXT("the rift killed stays killed: the rifts standing are as saved"), Mode.AbyssalRiftsNow().Num(),
+					   RiftsStandingSaved);
+		Test.TestEqual(TEXT("and its success is not counted again"), Mode.AbyssalRiftSuccessesHeld(), SuccessesSaved);
 		Test.TestEqual(TEXT("the veins standing are as saved"), Mode.InfestedVeinsStanding().Num(), VeinsStandingSaved);
 		Test.TestEqual(TEXT("the vein destroyed is counted once, after a beat"), Mode.InfestedVeinsDestroyedHere(),
 					   VeinsDestroyedSaved);
@@ -4045,8 +4043,8 @@ namespace CataclysmSaveLoadTest
 
 /**
  * The floor's rule creatures and their counters come back after a load as they were, and nothing their deaths paid or
- * charged is paid or charged again: the containment broken and its patch at the burn charged, the bloom destroyed, an
- * opened rift closed and failed (U2), a vein destroyed and counted once, a beacon destroyed, a coffin's two deaths, a
+ * charged is paid or charged again: the containment broken and its patch at the burn charged, the bloom destroyed, a
+ * rift killed staying killed with its success counted once (#2864), a vein destroyed and counted once, a beacon destroyed, a coffin's two deaths, a
  * statue woken. One beat runs after the load first. Issue #753, Group 3c-1, ruled 2026-10-30. Prints "LOAD RULE
  * CREATURES".
  */
@@ -5544,7 +5542,7 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
  * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
- * `Run_v17.json` since the run record went to version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
+ * `Run_v18.json` since the run record went to version 18 (issue #2864), `Run_v17.json` from version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
  * `Run_v13.json` from version 13 (issue #2825),
  * `Run_v12.json` from version 12 (issue
  * #2741 slice 6b), reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
@@ -5560,7 +5558,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5601,7 +5599,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v17.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v18.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5621,6 +5619,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2864's step.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5639,7 +5638,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v17.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v18.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5648,7 +5647,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v17.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v18.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -7547,6 +7546,240 @@ bool FCataclysmSaveLoadPortalCreaturesTest::RunTest(const FString&)
 				TestEqual(TEXT("none is on the floor's list"), OnTheList, 0);
 			});
 	});
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/** Abyssal Rifts' hunters standing, rift by rift, in the standing rifts' order. Issue #2864. */
+	TArray<int32> HuntersByStandingRift(const ACataclysmDungeonGameMode& Mode)
+	{
+		TArray<int32> Counts;
+		for (const ACataclysmEnemyCharacter* Rift : Mode.AbyssalRiftsNow())
+		{
+			Counts.Add(Mode.HuntersOf(Rift).Num());
+		}
+		return Counts;
+	}
+
+	/** The largest placed multiplier among the rifts' hunters standing, which their rift's age gave them. #2864. */
+	float StrongestRiftHunter(const ACataclysmDungeonGameMode& Mode)
+	{
+		float Most = 0.0f;
+		for (const ACataclysmEnemyCharacter* Hunter : Mode.AbyssalRiftHuntersStanding())
+		{
+			Most = FMath::Max(Most, Hunter->GetPlacedDamageMultiplier());
+		}
+		return Most;
+	}
+}
+
+/**
+ * Abyssal Rifts after the owner's redesign (#2864): a floor's rifts and their hunters come back from a load as they were.
+ * Twenty seconds into floor 2 every rift has sent its six, the last two a step stronger; then one rift is killed, a
+ * success, and another taken to half health. After the load, before any beat: the killed rift stays killed and its
+ * success is not counted again, the half-health rift has the health and the twenty seconds it had, and every hunter
+ * stands with its rift, as strong as it was sent, paying nothing, off the floor's list and still seeing across the floor.
+ * One beat after, its age runs on from the saved twenty seconds. Prints "LOAD RIFTS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadAbyssalRiftsTest,
+	"Cataclysm.SaveLoad.AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadAbyssalRiftsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	return WithTheSeedPutBack(*this, [this]()
+	{
+		int32 Seed = INDEX_NONE;
+		int32 PlacedSaved = -1;
+		int32 StandingSaved = -1;
+		float HealthSaved = -1.0f;
+		float AgeSaved = -1.0f;
+		FString HuntersSaved;
+		int32 HuntersStandingSaved = -1;
+		float StrongestSaved = -1.0f;
+		return ARoundTripOfRows(*this, {FName(Effects::AbyssalRiftsKey)},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, FPinnedDungeonSeed& PinnedSeed)
+			{
+				Seed = AFloorTwoWhere(Mode, PinnedSeed, [&Mode]() { return Mode.AbyssalRiftsNow().Num() >= 2; });
+				if (!TestTrue(TEXT("set-up: a seed from 1 to 20 places two rifts or more on floor 2"), Seed != INDEX_NONE))
+				{
+					return false;
+				}
+				StandAtTheEntrance(Mode, Player);
+				RunTheBeatFor(Mode, 20.0f);
+				const TArray<ACataclysmEnemyCharacter*> Rifts = Mode.AbyssalRiftsNow();
+				if (!TestTrue(TEXT("set-up: two rifts or more still stand"), Rifts.Num() >= 2))
+				{
+					return false;
+				}
+				UCataclysmSkillEffects::ReduceHealthDirectly(&Player, Rifts[0], 1000000000.0f);
+				UAbilitySystemComponent* Abilities = Rifts[1]->GetAbilitySystemComponent();
+				if (!TestTrue(TEXT("set-up: the first rift died"), UCataclysmSkillEffects::IsDead(Rifts[0]))
+					|| !TestNotNull(TEXT("set-up: the second has an ability system"), Abilities))
+				{
+					return false;
+				}
+				const float Half =
+					0.5f * Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+				Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Half);
+				PlacedSaved = Mode.AbyssalRiftsPlaced();
+				StandingSaved = Mode.AbyssalRiftsNow().Num();
+				HealthSaved = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+				AgeSaved = Mode.AbyssalRiftSecondsAliveOf(Rifts[1]);
+				HuntersSaved = CountsText(HuntersByStandingRift(Mode));
+				HuntersStandingSaved = Mode.AbyssalRiftHuntersStanding().Num();
+				StrongestSaved = StrongestRiftHunter(Mode);
+				return TestEqual(TEXT("set-up: the killed rift is one success"), Mode.AbyssalRiftSuccessesHeld(), 1)
+					&& TestEqual(TEXT("set-up: one fewer rift stands"), StandingSaved, PlacedSaved - 1)
+					&& TestEqual(TEXT("set-up: each rift sent its six"), HuntersStandingSaved,
+								 PlacedSaved * Effects::AbyssalRiftsMostHuntersPerRift)
+					&& TestEqual(TEXT("set-up: the last two a step stronger"), StrongestSaved,
+								 Effects::AbyssalRiftsHunterMultiplierFor(15.0f), 0.0001f)
+					&& ThePlayerIsAlive(*this, Player);
+			},
+			[&](ACataclysmDungeonGameMode& Mode, ACataclysmPlayerCharacter& Player, UWorld&, const FCataclysmLoadReport& Report)
+			{
+				StandAtTheEntrance(Mode, Player);
+				const TArray<ACataclysmEnemyCharacter*> Rifts = Mode.AbyssalRiftsNow();
+				ACataclysmEnemyCharacter* Halved = Rifts.IsEmpty() ? nullptr : Rifts[0];
+				const UAbilitySystemComponent* Abilities = Halved ? Halved->GetAbilitySystemComponent() : nullptr;
+				const float Health = Abilities
+					? Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute())
+					: -1.0f;
+				const float Age = Mode.AbyssalRiftSecondsAliveOf(Halved);
+				const TArray<ACataclysmEnemyCharacter*> Hunters = Mode.AbyssalRiftHuntersStanding();
+				int32 Unpaid = 0;
+				int32 OnTheList = 0;
+				int32 Seeing = 0;
+				for (ACataclysmEnemyCharacter* Hunter : Hunters)
+				{
+					Unpaid += Hunter->PaysForItsDeath() ? 0 : 1;
+					OnTheList += Mode.FloorEnemies.Contains(Hunter) ? 1 : 0;
+					Seeing += Hunter->SightRadiusMultiplier >= Effects::AbyssalRiftsHunterSightMultiplier ? 1 : 0;
+				}
+				const FString ByRift = CountsText(HuntersByStandingRift(Mode));
+				const float Strongest = StrongestRiftHunter(Mode);
+				BeatOnce(Mode);
+				const float AgeAfterABeat = Mode.AbyssalRiftSecondsAliveOf(Halved);
+				AddInfo(FString::Printf(TEXT("LOAD RIFTS on seed %d: %s (%s); %d of %d placed stand, at the save %d; the "
+											 "halved rift %.1f/%.1f health, %.2f/%.2f s, %.2f s after a beat; hunters by "
+											 "rift [%s], at the save [%s]; %d/%d standing, %d unpaid, %d on the list, %d "
+											 "seeing across; strongest x%.2f/x%.2f; successes %d"),
+										Seed, FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, Rifts.Num(),
+										Mode.AbyssalRiftsPlaced(), StandingSaved, Health, HealthSaved, Age, AgeSaved,
+										AgeAfterABeat, *ByRift, *HuntersSaved, Hunters.Num(), HuntersStandingSaved, Unpaid,
+										OnTheList, Seeing, Strongest, StrongestSaved, Mode.AbyssalRiftSuccessesHeld()));
+				TestEqual(TEXT("the rebuilt floor places as many rifts"), Mode.AbyssalRiftsPlaced(), PlacedSaved);
+				TestEqual(TEXT("the killed rift stays killed"), Rifts.Num(), StandingSaved);
+				TestEqual(TEXT("and its success is the walk's, counted once"), Mode.AbyssalRiftSuccessesHeld(), 1);
+				TestEqual(TEXT("the halved rift has the health it had"), Health, HealthSaved, 0.5f);
+				TestEqual(TEXT("and the seconds it had stood"), Age, AgeSaved, 0.001f);
+				TestEqual(TEXT("which run on from there"), AgeAfterABeat,
+						  AgeSaved + ACataclysmDungeonGameMode::SecondsBetweenWaveChecks, 0.001f);
+				TestEqual(TEXT("every hunter stands again"), Hunters.Num(), HuntersStandingSaved);
+				TestEqual(TEXT("each with its own rift"), ByRift, HuntersSaved);
+				TestEqual(TEXT("as strong as it was sent"), Strongest, StrongestSaved, 0.0001f);
+				TestEqual(TEXT("paying nothing"), Unpaid, Hunters.Num());
+				TestEqual(TEXT("none on the floor's list"), OnTheList, 0);
+				TestEqual(TEXT("and every one still sees across the floor"), Seeing, Hunters.Num());
+			});
+	});
+}
+
+/**
+ * `Run_v17.json`, written before the redesign, held one rift's state, 2, a rift the player had met, which a version 17
+ * load closed and counted failed (U2). The chain removes the state and writes three rifts killed, 0 health and 0
+ * seconds each, with every other field kept; the same file with a state of 0 migrates to no rift saved, two empty
+ * lists. CONTROL: `Run_v18.json` is read, not migrated, and holds a standing rift at 1536.5 health and 96.25 seconds
+ * and a killed one at 0 and 30.5, not what the step writes. Issue #2864. Prints "RIFTS MIGRATED".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadAbyssalRiftsMigrationTest,
+	"Cataclysm.SaveLoad.ARunFileFromVersion17MigratesItsRiftStateToEachRift",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
+{
+	FString Text;
+	FString CurrentText;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), Text, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), CurrentText, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+	const FString StateLine = TEXT("\"AbyssalRiftState\": 2,");
+	if (!TestTrue(TEXT("set-up: Run_v17.json states its rift met, 2"), Text.Contains(StateLine)))
+	{
+		return false;
+	}
+	const FString WaitingText = Text.Replace(*StateLine, TEXT("\"AbyssalRiftState\": 0,"));
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	ECataclysmSaveLoadResult WaitingResult = ECataclysmSaveLoadResult::NotValidJson;
+	ECataclysmSaveLoadResult CurrentResult = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	const UCataclysmRunSave* Met = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
+	const UCataclysmRunSave* Waiting = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		WaitingText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), WaitingResult, Message));
+	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
+		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), CurrentResult, Message));
+	if (!TestNotNull(TEXT("Run_v17.json loads"), Met) || !TestNotNull(TEXT("its copy at 0 loads"), Waiting)
+		|| !TestNotNull(TEXT("Run_v18.json loads"), Current))
+	{
+		AddError(Message);
+		return false;
+	}
+
+	// EVERY OTHER FIELD KEPT: the version 17 file with what the step writes, against what the record writes back.
+	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
+	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected);
+	FString Rewritten;
+	FString Error;
+	FString Where;
+	const bool bSame = FCataclysmSaveStorage::ToJson(Met, Rewritten, Error)
+		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
+
+	const auto Floats = [](const TArray<float>& Values)
+	{
+		FString Out;
+		for (const float Value : Values)
+		{
+			Out += FString::Printf(TEXT("%s%.2f"), Out.IsEmpty() ? TEXT("") : TEXT(","), Value);
+		}
+		return Out;
+	};
+	const FCataclysmSavedFloorRuleState& MetState = Met->Floor.RuleState;
+	const FCataclysmSavedFloorRuleState& WaitingState = Waiting->Floor.RuleState;
+	const FCataclysmSavedFloorRuleState& CurrentState = Current->Floor.RuleState;
+	AddInfo(FString::Printf(TEXT("RIFTS MIGRATED: Run_v17.json %s, health [%s] seconds [%s]; at 0 %s, health [%s] "
+								 "seconds [%s]; Run_v18.json %s, health [%s] seconds [%s]; the rest %s"),
+							FCataclysmSaveStorage::Describe(Result), *Floats(MetState.AbyssalRiftHealthLeft),
+							*Floats(MetState.AbyssalRiftSecondsAlive), FCataclysmSaveStorage::Describe(WaitingResult),
+							*Floats(WaitingState.AbyssalRiftHealthLeft), *Floats(WaitingState.AbyssalRiftSecondsAlive),
+							FCataclysmSaveStorage::Describe(CurrentResult), *Floats(CurrentState.AbyssalRiftHealthLeft),
+							*Floats(CurrentState.AbyssalRiftSecondsAlive), bSame ? TEXT("kept") : *Where));
+
+	TestEqual(TEXT("Run_v17.json is migrated"), static_cast<int32>(Result),
+			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
+	TestEqual(TEXT("and arrives at the current version"), Met->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
+	TestEqual(TEXT("a met rift: three rifts killed"), Floats(MetState.AbyssalRiftHealthLeft),
+			  FString(TEXT("0.00,0.00,0.00")));
+	TestEqual(TEXT("with no seconds stood"), Floats(MetState.AbyssalRiftSecondsAlive), FString(TEXT("0.00,0.00,0.00")));
+	TestTrue(TEXT("and every other field is kept"), bSame);
+	TestTrue(TEXT("a waiting rift: no rift saved"),
+			 WaitingState.AbyssalRiftHealthLeft.IsEmpty() && WaitingState.AbyssalRiftSecondsAlive.IsEmpty());
+	TestEqual(TEXT("CONTROL: Run_v18.json is read, not migrated"), static_cast<int32>(CurrentResult),
+			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
+	TestEqual(TEXT("CONTROL: and holds what it states"),
+			  Floats(CurrentState.AbyssalRiftHealthLeft) + TEXT(" ") + Floats(CurrentState.AbyssalRiftSecondsAlive),
+			  FString(TEXT("1536.50,0.00 96.25,30.50")));
+	return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -11313,6 +11546,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2864's step.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -11343,7 +11577,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v17.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v18.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
  * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
@@ -11364,7 +11598,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11375,7 +11609,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v17.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}

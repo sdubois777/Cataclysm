@@ -715,6 +715,25 @@ followed, ruled 2026-11-01:
   **THE NUMBERS FOLLOW THE GEMS WINDOW'S** (issue #46, character 13 and run 14,
   the same day): this slice was written at character 13 and run 14 and renumbered
   when it was rebased onto the gems window (the coordinating session's V1).
+- **The run record went to version 18 on 2026-11-24**, for the owner's redesign
+  of Abyssal Rifts (issue #2864): a floor holds several rifts the player can kill,
+  so the floor's rule state keeps each rift's health left and seconds stood,
+  `AbyssalRiftHealthLeft` and `AbyssalRiftSecondsAlive`, by the rift's place in
+  the rule's list, where it kept one rift's state, `AbyssalRiftState`. Its hunters
+  are creature records already (`RaisedBy`, `RaisedGroup`), so no creature field
+  was added. `Migrate_17_to_18` removes the state and writes, for a state other
+  than 0 -- a rift the player had met, which a version 17 load closed and counted
+  failed (U2) -- three entries of 0 health and 0 seconds, every rift a floor could
+  then hold killed, and for 0 two empty lists, which a load reads as the rifts
+  standing as the floor rebuilds them. `Run_v18.json` is `Run_v17.json` at version
+  18 with `AbyssalRiftState` replaced by a standing rift at 1536.5 health and
+  96.25 seconds and a killed one at 0 and 30.5: figures and not the defaults.
+  `Run_v17.json` is now a migration input, not edited again; every test that read
+  it as the committed file reads the new one, and every test that runs an older
+  run file through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion18Defaults`. **ANOTHER SESSION WAS
+  ADDING RUN VERSION 18 THE SAME DAY**: whichever lands second renumbers its step,
+  its file and its defaults to the next number.
 - **The account record went to version 6 and the character record to version 12
   on 2026-11-21**, for Imperial Prowess's extra option (issue #2741 slice 8): the
   project owner ruled that day, "Imperial prowess lets you pick an additional
@@ -944,6 +963,7 @@ followed, ruled 2026-11-01:
 | `Run_v15.json` | The same run at version 15: version 14's contents, plus its first city bailed out and its second not, its dungeon not a bonus one, 2 bonus dungeons cleared and the surge's bribe spent |
 | `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
 | `Run_v17.json` | The same run at version 17: version 16's contents, plus its thrall's taking skill, `Demonic_Staff_Ultimate`, at a level factor of 1.5, and the other creature None and 1 |
+| `Run_v18.json` | The same run at version 18: version 17's contents, with the floor's one Abyssal Rift state replaced by two rifts' health left and seconds stood, a standing rift at 1536.5 and 96.25 and a killed one at 0 and 30.5 |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

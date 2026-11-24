@@ -531,7 +531,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 InfernalBeaconStacks = 0;
 
-	/** Abyssal Rifts: rifts closed. */
+	/** Abyssal Rifts: rifts closed, which since issue #2864 is rifts destroyed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int32 AbyssalRiftSuccesses = 0;
 
@@ -802,8 +802,9 @@ struct CATACLYSM_API FCataclysmSavedMoraleGroup
  * - the Heavenly Core destroyed, which unseals the stairs;
  * - Quarantine Breach's containment broken, and each burning patch its released creatures left, at the burn charged;
  * - the Infection Bloom destroyed (its spread is rebuilt fresh, U5);
- * - the Abyssal Rift's state: 0 waiting, 1 open, 2 closed; an open or closed rift loads closed and failed (U2), its
- *   successes being the walk's;
+ * - each Abyssal Rift, by its place in the rule's list: the health it had left, 0 when it was killed, and how long it
+ *   had stood (issue #2864, RUN RECORD VERSION 18, where until then a single rift's state was saved and an open or
+ *   closed one loaded closed and failed, U2); its successes are the walk's;
  * - the Infested Veins destroyed, by place, with the floor's count and whether the guardians came;
  * - the Pestilent beacons destroyed and counted, by place (U1);
  * - each Obsidian Sarcophagus's paid deaths and its lord;
@@ -835,8 +836,22 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bInfectionBloomDestroyed = false;
 
+	/**
+	 * ABYSSAL RIFTS SINCE THE OWNER'S REDESIGN, issue #2864: each rift this floor placed, by its place in the rule's
+	 * list, which the rebuilt floor fills in the same seeded order -- the health it had left, 0 for one killed, and the
+	 * seconds it had stood, which is what makes the hunters it sends stronger. Its hunters are creature records whose
+	 * `RaisedBy` names the rule and whose `RaisedGroup` is the rift's place. The seconds to its next hunter are a timer
+	 * and restart (D1). EMPTY MEANS NOT SAVED: the rebuilt rifts stand as placed.
+	 *
+	 * RUN RECORD VERSION 18. They replace `AbyssalRiftState`, the one rift's state (0 waiting, 1 open, 2 closed), which
+	 * `Migrate_17_to_18` reads and removes: a rift the player had met, open or closed, loaded closed and failed (U2),
+	 * so a state other than 0 is written as every rift a floor can hold killed; 0 as nothing saved.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
-	int32 AbyssalRiftState = 0;
+	TArray<float> AbyssalRiftHealthLeft;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	TArray<float> AbyssalRiftSecondsAlive;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<int32> VeinsDestroyed;
@@ -1924,8 +1939,14 @@ public:
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
+	 *
+	 * 18 SINCE 2026-11-24. Issue #2864, the owner's redesign of Abyssal Rifts: a floor holds several rifts the player
+	 * can kill, so the floor's rule state carries each rift's health left and seconds stood
+	 * (`FCataclysmSavedFloorRuleState::AbyssalRiftHealthLeft`, `AbyssalRiftSecondsAlive`) where it carried one rift's
+	 * state (`AbyssalRiftState`). `Migrate_17_to_18` removes the state and writes, for a state other than 0 -- a rift
+	 * the player had met, which loaded closed and failed -- every rift a floor can hold as killed, and for 0 nothing.
 	 */
-	static constexpr int32 SchemaVersionNow = 17;
+	static constexpr int32 SchemaVersionNow = 18;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

@@ -374,8 +374,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float BloodDebtDamageLessPercent = 0.0f;
 
 	/**
-	 * The magic find the rifts closed in time have earned the player, added flat. Abyssal Rifts. Issues #1820 and
-	 * #41. The only field here that rewards the player for a rule's own success.
+	 * The magic find the rifts destroyed have earned the player, added flat. Abyssal Rifts. Issues #1820, #41 and
+	 * #2864 (a rift was closed in time until #2864). The only field here that rewards the player for a rule's own
+	 * success.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float RiftMagicFindAdded = 0.0f;
@@ -3083,27 +3084,43 @@ public:
 	static const TCHAR* InfestedHoardKey;
 
 	/**
-	 * The row whose rift opens when the player comes near, sends waves, and pays the player for closing it in time.
-	 * Issues #1820 and #41.
+	 * The row whose rifts send a hunter every three seconds from the floor's start until the player destroys them.
+	 * Issues #1820, #41 and #2864.
 	 *
-	 * "Portals to the Abyss open up, unleashing waves of demonic creatures. Players must close these rifts by
-	 * defeating waves of enemies within a given time limit. The difficulty and rewards increase with each
-	 * successfully closed rift."
+	 * "Portals to the Abyss tear open across the dungeon, several to a floor. From the moment you enter, each rift
+	 * sends a demonic creature every 3 seconds to hunt you down, leaving a trail back to its source. A rift is a boss
+	 * with great health that must be destroyed to stop it, and the creatures it sends grow stronger the longer it
+	 * stays open. The rewards increase with each rift destroyed."
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure; every
-	 * figure here is a play-test value:
-	 * - ONE RIFT A FLOOR, placed by Eternal Chorus's picker; NONE on a Horde arena, whose waves already come to the
-	 *   player. `ACataclysmRiftCharacter`, a floor source that cannot be hurt, "Rift" under its bar, with a visible
-	 *   Demonic zone `AbyssalRiftsZoneRadiusCm` across.
-	 * - IT OPENS when the player first comes within `AbyssalRiftsOpensWithinCm`, and sends `AbyssalRiftsWaves` waves
-	 *   of `AbyssalRiftsCreaturesPerWave` creatures of the floor's kinds, one every `AbyssalRiftsSecondsBetweenWaves`,
-	 *   the first at once, onto cells within `AbyssalRiftsZoneRadiusCm`. They pay and are the floor's creatures.
-	 * - EVERY CREATURE IT SENT KILLED WITHIN `AbyssalRiftsSecondsToClose` OF OPENING closes it in time, one success;
-	 *   otherwise it closes with no success and its creatures stay.
-	 * - EACH SUCCESS SO FAR puts a later rift's creatures one rung higher, at most `DemonPrinceRung`, and gives
-	 *   `AbyssalRiftsMagicFindPerSuccess` magic find, summed.
-	 * - SUCCESSES COUNT ACROSS THE DUNGEON, and end where their magic find ends: at leaving the dungeon or at the
-	 *   player's death.
+	 * THE OWNER'S REDESIGN OF 2026-11-23 (#2864), which replaced the rift of 2026-09-25 that opened near the player,
+	 * sent three waves and closed when they were killed in time: "maybe more than one should be able to spawn per
+	 * floor, and they should spawn an enemy every 3 seconds that hunts you on the floor from the moment you enter, so
+	 * you can basically follow the trail back to the source. I think this means the rifts should also be targetable
+	 * and able to be killed, but they should spawn as Bosses and have much more health. The enemies the spawn from
+	 * them should slowly increase in difficulty the longer the rift is alive." The three seconds are the owner's;
+	 * every other figure here is A JUDGEMENT, recorded in `docs/DECISIONS.md`:
+	 * - `AbyssalRiftsFor` RIFTS A FLOOR, two, or three on a floor whose plan holds `AbyssalRiftsLargeFloorCells`
+	 *   cells or more, placed by Eternal Chorus's picker; NONE on a Horde arena, whose waves already come to the
+	 *   player. `ACataclysmRiftCharacter`, "Rift" under its bar, with a visible Demonic zone
+	 *   `AbyssalRiftsZoneRadiusCm` across.
+	 * - A RIFT IS A BOSS THE PLAYER CAN TARGET AND KILL: the Boss rung, `AbyssalRiftsRiftRung`, and the health the
+	 *   floor's enemy score gives an average creature (the Baseline archetype) at that rung, times
+	 *   `AbyssalRiftsHealthMultiplier`. No brain, no attack, no modifier; it pays nothing itself and is not one of the
+	 *   floor's creatures.
+	 * - FROM THE FLOOR'S START, EVERY `AbyssalRiftsSecondsBetweenHunters` A RIFT SENDS ONE HUNTER, a creature of the
+	 *   floor's kinds that walk -- not the Corrupted Sentinel, which cannot move, nor the Gatekeeper, the floor's boss --
+	 *   at Common onto a cell within `AbyssalRiftsZoneRadiusCm`, while fewer than
+	 *   `AbyssalRiftsMostHuntersPerRift` of its own stand. A hunter notices the player from
+	 *   `AbyssalRiftsHunterSightMultiplier` times its own sight, which covers the largest floor, so it walks to the
+	 *   player from wherever it was sent. Like Portal Unleashing's creatures, it pays nothing, is raised by the rule and
+	 *   is not one of the floor's creatures: a rift left standing would otherwise be unlimited loot and experience.
+	 * - A HUNTER IS SENT STRONGER THE LONGER ITS RIFT HAS STOOD: `AbyssalRiftsStrengthPercentPerStep` more health and
+	 *   attack damage for every `AbyssalRiftsSecondsPerStrengthStep` the rift has stood, at most
+	 *   `AbyssalRiftsMostStrengthSteps` steps (`AbyssalRiftsHunterMultiplierFor`).
+	 * - A RIFT KILLED SENDS NO MORE; the hunters it sent stay. Each rift killed is one success: the successes give
+	 *   `AbyssalRiftsMagicFindPerSuccess` magic find each, at most `AbyssalRiftsMostMagicFind`, count across the
+	 *   dungeon, and end at leaving the dungeon or at the player's death, as ruled on 2026-09-25. The rung a success
+	 *   added to later rifts' creatures until #2864 is gone: the rift's age is the difficulty now.
 	 */
 	static const TCHAR* AbyssalRiftsKey;
 
@@ -6599,22 +6616,60 @@ public:
 		"The chance should reach its cap within the stacks a player can hold, or the cap is not the limit.");
 
 	/**
-	 * Abyssal Rifts' figures, every one a play-test value. See the key. The zone's radius is Necrotic Bloom's wave
-	 * radius, which the creatures' cells are chosen by; the highest rung is Demon Prince's.
+	 * Abyssal Rifts' figures since the owner's redesign of 2026-11-23, issue #2864. See the key. The three seconds
+	 * between hunters are the owner's; every other figure is A JUDGEMENT, `docs/DECISIONS.md` says why each.
+	 *
+	 * - TWO RIFTS A FLOOR, THREE ON A LARGE ONE: a floor's plan is 32 to 48 cells a side (`FCataclysmFloorGenerator`),
+	 *   and a plan of 40 by 40, the middle of that range, or more holds a third, so the hunters a rift sends stay
+	 *   about as thick on the ground on a large floor as on a small one. Portal Unleashing places two.
+	 * - THE ZONE'S RADIUS is Necrotic Bloom's wave radius, which the hunters' cells are chosen by, as it was.
+	 * - SIX HUNTERS OF ITS OWN STANDING AT MOST, the cap on what a rift keeps alive, for the frame and for the
+	 *   player: half the twelve the rift of 2026-09-25 sent, so a floor of three rifts holds at most eighteen; reached
+	 *   in eighteen seconds by a rift nobody answers. Portal Unleashing keeps four a portal at a third of the pace.
+	 * - THE HUNTERS' SIGHT is the Vengeful Wraiths' figure, which covers the largest floor corner to corner, as The
+	 *   Reaper's and the Corrupted Stalker's hunts do.
+	 * - THE RIFT'S RUNG IS THE BOSS RUNG, the owner's "spawn as Bosses": `ACataclysmEnemyCharacter::
+	 *   FirstBossRarityStep`, tied to it by a `static_assert` in `CataclysmDungeonGameMode.cpp`, because this file does
+	 *   not include the creature class.
+	 * - TWICE A BOSS'S HEALTH: a rift does not move, dodge or strike, so every blow the player aims at it lands; the
+	 *   doubling stands in for the time a Boss that fights back takes away, for the owner's "much more health".
+	 * - TEN PER CENT A STEP, A STEP EVERY FIFTEEN SECONDS, TEN STEPS: Ravenous Hoard's shape (a share of the creature's
+	 *   own figure for each stretch of time, to a cap), stretched for the owner's "slowly", so a rift left standing for
+	 *   two and a half minutes sends hunters of twice the health and damage, and never more.
+	 * - TEN MAGIC FIND A SUCCESS, the ruling of 2026-09-25, AT MOST A HUNDRED: Infernal Beacons' cap, because two or
+	 *   three rifts a floor would otherwise multiply a reward ruled for one; tied by a `static_assert` in
+	 *   `CataclysmDungeonModifierEffects.cpp`.
 	 */
-	static constexpr float AbyssalRiftsOpensWithinCm = 800.0f;
+	static constexpr int32 AbyssalRiftsPerFloor = 2;
+	static constexpr int32 AbyssalRiftsPerLargeFloor = 3;
+	static constexpr int32 AbyssalRiftsLargeFloorCells = 40 * 40;
 	static constexpr float AbyssalRiftsZoneRadiusCm = NecroticBloomWaveWithinCm;
-	static constexpr int32 AbyssalRiftsWaves = 3;
-	static constexpr int32 AbyssalRiftsCreaturesPerWave = 4;
-	static constexpr float AbyssalRiftsSecondsBetweenWaves = 15.0f;
-	static constexpr float AbyssalRiftsSecondsToClose = 60.0f;
+	static constexpr float AbyssalRiftsSecondsBetweenHunters = 3.0f;
+	static constexpr int32 AbyssalRiftsMostHuntersPerRift = 6;
+	static constexpr float AbyssalRiftsHunterSightMultiplier = VengefulWraithsSightMultiplier;
+	static constexpr int32 AbyssalRiftsRiftRung = 4;
+	static constexpr float AbyssalRiftsHealthMultiplier = 2.0f;
+	static constexpr float AbyssalRiftsSecondsPerStrengthStep = 15.0f;
+	static constexpr float AbyssalRiftsStrengthPercentPerStep = 10.0f;
+	static constexpr int32 AbyssalRiftsMostStrengthSteps = 10;
 	static constexpr float AbyssalRiftsMagicFindPerSuccess = 10.0f;
-	static constexpr int32 AbyssalRiftsHighestRung = DemonPrinceRung;
+	static constexpr float AbyssalRiftsMostMagicFind = 100.0f;
 
-	static_assert(AbyssalRiftsSecondsToClose > (AbyssalRiftsWaves - 1) * AbyssalRiftsSecondsBetweenWaves,
-		"Every wave must arrive before the time runs out, or a rift could never be closed in time.");
-	static_assert(AbyssalRiftsWaves > 0 && AbyssalRiftsCreaturesPerWave > 0 && AbyssalRiftsMagicFindPerSuccess > 0.0f,
-		"A rift that sent nothing or paid nothing is not the row.");
+	/** The archetype row a rift's health is built from: the average enemy, `game/Data/EnemyArchetypes.csv`. */
+	static const TCHAR* AbyssalRiftsHealthArchetypeRow;
+
+	static_assert(AbyssalRiftsPerFloor > 1 && AbyssalRiftsPerLargeFloor >= AbyssalRiftsPerFloor,
+		"The owner's redesign puts more than one rift on a floor.");
+	static_assert(AbyssalRiftsSecondsBetweenHunters > 0.0f && AbyssalRiftsMostHuntersPerRift > 0
+			&& AbyssalRiftsHunterSightMultiplier > 1.0f,
+		"A rift that sends nothing, or hunters that see no further than their kind, is not the row.");
+	static_assert(AbyssalRiftsHealthMultiplier >= 1.0f,
+		"A rift has much more health than a Boss of its floor, never less.");
+	static_assert(AbyssalRiftsSecondsPerStrengthStep > 0.0f && AbyssalRiftsStrengthPercentPerStep > 0.0f
+			&& AbyssalRiftsMostStrengthSteps > 0,
+		"Hunters that never grow stronger, or grow without a cap, are not what was ruled.");
+	static_assert(AbyssalRiftsMagicFindPerSuccess > 0.0f && AbyssalRiftsMostMagicFind >= AbyssalRiftsMagicFindPerSuccess,
+		"A success that pays nothing, or a cap under one success, is not the row's rewards.");
 
 	/**
 	 * Swarm of Locusts' figures, every one a play-test value. See the key. The warning is Artillery Strike's; the
@@ -7887,16 +7942,19 @@ public:
 	/** The share of maximum health, in percent, these stacks drain a second. */
 	static float InfestedHoardPercentPerSecond(int32 Stacks);
 
-	/** Whether an open rift sends its next wave now: it has sent fewer than all, and that wave's time has come. */
-	static bool AbyssalRiftsWaveIsDue(float SecondsOpen, int32 WavesSent);
+	/** How many rifts a floor whose plan holds this many cells (its width times its height) is given: 2, or 3. */
+	static int32 AbyssalRiftsFor(int32 PlanCells);
 
-	/** Whether an open rift's time to be closed has run out. */
-	static bool AbyssalRiftsHasRunOut(float SecondsOpen);
+	/** Whether a rift sends its next hunter now: its clock has reached three seconds and fewer than six of its own stand. */
+	static bool AbyssalRiftsHunterIsDue(float SecondsSinceLastSent, int32 OwnStanding);
 
-	/** The rung a rift's creatures are sent at after this many successes: one higher each, at most the highest. */
-	static int32 AbyssalRiftsRungFor(int32 Successes);
+	/** The strength steps a hunter is sent with by a rift this many seconds old: one each fifteen, at most ten. */
+	static int32 AbyssalRiftsStrengthStepsFor(float SecondsAlive);
 
-	/** The magic find this many successes have earned. */
+	/** What a hunter sent by a rift this many seconds old has its health and its attack damage multiplied by. */
+	static float AbyssalRiftsHunterMultiplierFor(float SecondsAlive);
+
+	/** The magic find this many successes have earned, at most the cap. */
 	static float AbyssalRiftsMagicFindFor(int32 Successes);
 
 	/** Whether a swarm of locusts comes now: this long since the last one ended. */

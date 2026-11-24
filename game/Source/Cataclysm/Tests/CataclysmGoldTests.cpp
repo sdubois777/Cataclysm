@@ -891,6 +891,7 @@ bool FCataclysmGoldRunMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2864's step.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1018,7 +1019,7 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
 
 /**
  * The committed files hold their gold: `Account_v7.json` reads 1234567 into the balance and is read rather than
- * migrated, `Character_v14.json` reads 4321 into the character's own, and `Run_v17.json` restores a pile of 37 beside its
+ * migrated, `Character_v14.json` reads 4321 into the character's own, and `Run_v18.json` restores a pile of 37 beside its
  * piece of gear. Prints "FILES". The account file was `Account_v3.json` until the account record went to version 4 on
  * 2026-11-18 (issue #2741 slice 1b), `Account_v4.json` until it went to version 5 on 2026-11-20 (issue #2741 slice
  * 6e), `Account_v5.json` until it went to version 6 on 2026-11-21 (issue #2741 slice 8), and `Account_v6.json` until it
@@ -1034,7 +1035,7 @@ bool FCataclysmGoldAccountMigrationTest::RunTest(const FString&)
  * went to version 13 on 2026-11-21 (issue #2825), and `Run_v13.json` until it went to version 14 on 2026-11-22 (issue
  * #46), and `Run_v14.json` until it went to version 15 the same day (issue #2741 slice 9), and `Run_v15.json` until it
  * went to version 16 the same day (issue #2838), and `Run_v16.json` until it went to version 17 the same day (issue
- * #2840), each with the same pile.
+ * #2840), and `Run_v17.json` until it went to version 18 on 2026-11-24 (issue #2864), each with the same pile.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldCommittedFilesTest,
 	"Cataclysm.Gold.TheCommittedFilesReadIntoTheGoldTheyState",
@@ -1047,7 +1048,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 	FString CharacterText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), AccountText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v17.json"), RunText, Reason)
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), RunText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Character_v14.json"), CharacterText, Reason))
 	{
 		AddError(Reason);
@@ -1064,7 +1065,7 @@ bool FCataclysmGoldCommittedFilesTest::RunTest(const FString&)
 		RunText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), RunResult, Message));
 	const UCataclysmCharacterSave* Character = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
 		CharacterText, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), CharacterResult, Message));
-	if (!TestNotNull(TEXT("Account_v7.json loads"), Account) || !TestNotNull(TEXT("Run_v17.json loads"), Run)
+	if (!TestNotNull(TEXT("Account_v7.json loads"), Account) || !TestNotNull(TEXT("Run_v18.json loads"), Run)
 		|| !TestNotNull(TEXT("Character_v14.json loads"), Character))
 	{
 		return false;

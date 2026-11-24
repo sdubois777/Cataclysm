@@ -3181,7 +3181,8 @@ public:
 	 * THE RULE THAT RAISED THIS CREATURE IN PLAY AND WOULD KNOW IT AGAIN, by a plain tag, and its group: true only for a
 	 * creature in one of these rules' lists -- the tithe's angels, the relics' spirits, the totems' Elites, the banner's
 	 * assailants, and a Pandora's Box's standing wave, its group the wave's index; and, since 3d-3b and 3d-4, the kinds
-	 * the tags below name, a portal's creature's group the portal's index. Any other creature answers false, and the save
+	 * the tags below name, a portal's creature's group the portal's index, and since issue #2864 an Abyssal Rift's
+	 * hunter's group its rift's index. Any other creature answers false, and the save
 	 * skips it if a rule raised it. Issue #753, Group 3d-3a, ruled 2026-10-31.
 	 */
 	bool RaisedByOf(const ACataclysmEnemyCharacter& Creature, FName& OutTag, int32& OutGroup) const;
@@ -3203,6 +3204,7 @@ public:
 	static constexpr const TCHAR* RaisedUnstablePortalWarden = TEXT("UnstablePortalWarden");
 	static constexpr const TCHAR* RaisedTheReaper = TEXT("TheReaper");
 	static constexpr const TCHAR* RaisedPortalUnleashing = TEXT("PortalUnleashing");
+	static constexpr const TCHAR* RaisedAbyssalRiftHunter = TEXT("AbyssalRiftHunter");
 
 	/** Trick or Treat, for tests: the pair a trick raised that still stands. Issue #753, Group 3d-4a. */
 	TArray<ACataclysmEnemyCharacter*> TrickOrTreatPairStanding() const;
@@ -3478,31 +3480,36 @@ public:
 	/** The Infested Hoard, for the panel and tests: the Infestation stacks the player holds. */
 	int32 InfestedHoardStacksHeld() const { return InfestedHoardStacks; }
 
-	/** Abyssal Rifts, for the panel and tests: where this floor's rift stands in its life. */
-	enum class ERiftState : uint8
-	{
-		Waiting,
-		Open,
-		Closed
-	};
+	/**
+	 * Abyssal Rifts, for the panel and tests: this floor's rifts still standing, in the order the floor placed them.
+	 * Issue #2864. A rift killed is not here; its place in the rule's list is kept (`AbyssalRiftsPlaced`).
+	 */
+	TArray<ACataclysmEnemyCharacter*> AbyssalRiftsNow() const;
 
-	/** Abyssal Rifts, for tests: this floor's rift, or null once it has closed or on a floor with none. */
-	ACataclysmEnemyCharacter* AbyssalRiftNow() const { return AbyssalRift.Get(); }
+	/** Abyssal Rifts, for tests and the save: how many rifts this floor placed, standing or killed. Issue #2864. */
+	int32 AbyssalRiftsPlaced() const { return AbyssalRifts.Num(); }
 
-	/** Abyssal Rifts, for tests: the rift's zone, or null before its first beat and once it has closed. */
-	class ACataclysmGroundZone* AbyssalRiftZoneNow() const { return AbyssalRiftZone.Get(); }
+	/** Abyssal Rifts, for tests: the zone drawn around `Rift`, or null. */
+	class ACataclysmGroundZone* AbyssalRiftZoneOf(const ACataclysmEnemyCharacter* Rift) const;
 
-	/** Abyssal Rifts, for tests: the rift's state. */
-	ERiftState AbyssalRiftStateNow() const { return AbyssalRiftState; }
+	/** Abyssal Rifts, for the panel and tests: the hunters `Rift` sent that still stand. Issue #2864. */
+	TArray<ACataclysmEnemyCharacter*> HuntersOf(const ACataclysmEnemyCharacter* Rift) const;
 
-	/** Abyssal Rifts, for the panel and tests: the rifts closed in time this dungeon. */
+	/** Abyssal Rifts, for tests: every hunter this floor's rifts sent that still stands, a killed rift's included. */
+	TArray<ACataclysmEnemyCharacter*> AbyssalRiftHuntersStanding() const;
+
+	/** Abyssal Rifts, for tests and the panel: how long `Rift` has stood, in seconds, or a negative number. #2864. */
+	float AbyssalRiftSecondsAliveOf(const ACataclysmEnemyCharacter* Rift) const;
+
+	/** Abyssal Rifts, for the panel and tests: the rifts destroyed this dungeon. */
 	int32 AbyssalRiftSuccessesHeld() const { return AbyssalRiftSuccesses; }
 
-	/** Abyssal Rifts, for the panel and tests: the creatures the rift sent that still stand. */
-	TArray<ACataclysmEnemyCharacter*> AbyssalRiftCreaturesStanding() const;
-
-	/** The health a rift is given: the Imp's at Common, 87, as the other floor sources have. */
-	float AbyssalRiftHealth() const { return ImpHealth; }
+	/**
+	 * The health a rift is built with before its Boss rung's scale, on this floor: what the floor's enemy score gives
+	 * the Baseline archetype at the Boss rung, times `AbyssalRiftsHealthMultiplier`. Twice the Imp's fixed figure at
+	 * Common when the tables are missing, as a floor source's fallback. Issue #2864.
+	 */
+	float AbyssalRiftStartingHealth() const;
 
 	/** Swarm of Locusts, for tests: the swarm on the floor, or null between swarms. */
 	class ACataclysmGroundZone* SwarmOfLocustsNow() const { return SwarmOfLocusts.Get(); }
@@ -4094,22 +4101,26 @@ private:
 	/** `Count` of the floor's own kinds beside `Where`, at Common; the floor's creatures when `bTheFloors`. */
 	TArray<ACataclysmEnemyCharacter*> InfectionBloomSend(const FVector& Where, int32 Count, bool bTheFloors);
 
-	/** Abyssal Rifts: this floor's rift, placed where a new arena is populated. None on a Horde arena. */
-	void PlaceTheRift();
+	/** Abyssal Rifts: this floor's rifts, placed where a new arena is populated. None on a Horde arena. Issue #2864. */
+	void PlaceTheRifts();
 
-	/** The rift and its zone destroyed and forgotten. Its creatures are the floor's and stay; the successes stay. */
-	void ForgetTheRift();
-
-	/** The rift closes: destroyed with its zone, with a success or without. */
-	void CloseTheRift(bool bInTime);
+	/** Every rift, its zone and every hunter it sent destroyed and forgotten. The successes stay. */
+	void ForgetTheRifts();
 
 	/**
-	 * Abyssal Rifts, on the beat: the reward written on the player when the successes changed, the rift's zone kept
-	 * drawn, the rift opening when the player comes near, its waves, and its closing in time or not.
+	 * One rift gone, with its zone: it sends no more. Its hunters stay, and its place in the list is kept. A rift
+	 * killed in play goes through its own death; `bDestroyTheRift` destroys one a load closes.
+	 */
+	void CloseTheRiftAt(int32 Index, bool bDestroyTheRift);
+
+	/**
+	 * Abyssal Rifts, on the beat: the reward written on the player when the successes changed, each rift's zone kept
+	 * drawn, its age counted, and a hunter sent by each rift whose clock has run and whose own hunters standing are
+	 * under the cap, as strong as the rift's age makes it.
 	 */
 	void StepAbyssalRifts(class ACataclysmPlayerCharacter* Player, class UCataclysmAbilitySystemComponent* AbilitySystem);
 
-	/** Abyssal Rifts: the player's death ends the successes and their magic find. */
+	/** Abyssal Rifts: a rift killed is a success and sends no more; the player's death ends the successes. */
 	void NoteDeathForAbyssalRifts(const struct FCataclysmDeathNotice& Notice);
 
 	/** Swarm of Locusts: this arena's shelters chosen, where a new arena is populated. Drawn on the next beat. */
@@ -6202,19 +6213,28 @@ private:
 	int32 InfestedHoardPanelStacks = -1;
 
 	/**
-	 * Abyssal Rifts: this floor's rift and its zone, its state, how long it has been open, the waves it has sent and
-	 * the creatures in them, the dungeon's successes and what was last written on the player, and what the panel
-	 * last showed. Issues #1820 and #41.
+	 * Abyssal Rifts: one rift, the zone drawn around it, how long it has stood, the seconds since it last sent a
+	 * hunter, whether it has been killed, and the hunters it sent. Issues #1820, #41 and #2864. A KILLED RIFT KEEPS ITS
+	 * PLACE IN THE LIST, so the save names each rift and each hunter's rift by the same index the rebuilt floor gives.
 	 */
-	TWeakObjectPtr<ACataclysmEnemyCharacter> AbyssalRift;
-	TWeakObjectPtr<class ACataclysmGroundZone> AbyssalRiftZone;
-	ERiftState AbyssalRiftState = ERiftState::Waiting;
-	float AbyssalRiftSecondsOpen = 0.0f;
-	int32 AbyssalRiftWavesSent = 0;
-	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> AbyssalRiftCreatures;
+	struct FAbyssalRift
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Rift;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+		float SecondsAlive = 0.0f;
+		float SecondsSinceLastSent = 0.0f;
+		bool bClosed = false;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Sent;
+	};
+
+	/**
+	 * Abyssal Rifts: this floor's rifts, the dungeon's successes and what was last written on the player, and what the
+	 * panel last showed. Issues #1820, #41 and #2864.
+	 */
+	TArray<FAbyssalRift> AbyssalRifts;
 	int32 AbyssalRiftSuccesses = 0;
 	int32 AbyssalRiftSuccessesApplied = 0;
-	int32 AbyssalRiftPanelSecond = -1;
+	int32 AbyssalRiftPanelKey = -1;
 
 	/**
 	 * Swarm of Locusts: the swarm on the floor, its travel, how long since it appeared and since the last one
