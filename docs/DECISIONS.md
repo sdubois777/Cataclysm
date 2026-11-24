@@ -2,6 +2,187 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — An empty board brings the next surge at once and 4 dungeons larger: only an ordinary dungeon keeps the board from being empty, and no minimum gap holds it back (#2865)
+
+**Affects:** `UCataclysmSurgeScheduler::ExtraDungeonsOnEmptyBoard`, new, `DungeonsInNextSurge(bFromEmptyBoard)`,
+`RollWave(..., bFromEmptyBoard)` and `IsDueOnEmptyBoard` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and
+`.cpp`); `UCataclysmEmpireRun::OrdinaryDungeonCount`, new, `FireSurge(..., bFromEmptyBoard)` and `AdvanceDay`'s
+empty-board check (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`);
+`TuningConfig.empty_board_counts_ordinary_only`, `empty_board_surge_larger`, `empty_board_surge_extra` and
+`empty_board_surge_braked`, new (`sim/cataclysm_sim/config.py`), and `Simulation.surge_count`, `trigger_surge`,
+`board_is_empty` and `_maybe_surge_on_empty_board` (`sim/cataclysm_sim/engine.py`); the design document's "The Surge".
+Tests: six `Cataclysm.EmpireRun.` tests rewritten for the new rule, three of them renamed, and seven others held to the
+run they were written for, in `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`; three
+`Cataclysm.DungeonMode.` tests held the same way in `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`;
+`sim/tests/test_the_empty_board_ruling_of_2026_11_23.py`, new; `sim/tests/test_surge_when_the_board_empties.py`,
+`tools/tests/test_surge_port.py` and `tools/tests/test_empire_tree_slice9.py`. Issue [#2865](https://github.com/sdubois777/Cataclysm/issues/2865).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** On `fix/empty-board-surge-2865`, cut from development `4d33f5994`.
+- **THE MEASUREMENT IS PROVISIONAL.** The gear drop rarity fix (issue #2853) was not in, so the simulated player's power
+  is not yet what the game will give once drops are fixed.
+- **THE 25-DAY BRAKE WAS A GUARANTEE MANY TESTS RELIED ON.** Under the rule of 2026-09-07 no empty-board surge could come
+  within 25 days of the last surge, so a test could empty the board and pass a few days quietly. Now a board left with no
+  ordinary dungeon brings a wave the next day. By the coordinating session's ruling (a) of 2026-11-24 every Unreal test
+  that advances an empire run (157 in 34 files) was read and each affected one was changed in its test file only, so no
+  rule the game no longer ships stays inside the game for them. The sweep, test by test, is below.
+
+### The rulings
+
+- **The owner, 2026-11-23**, on the coordinating session's proposal, verbatim "yes, your rec":
+  1. "The board counts as empty when no ordinary dungeon stands. Quest dungeons, the Cataclysm boss dungeon and Fallen
+     City dungeons do not count." This fixes the rule of 2026-09-07 ("Anytime there are no longer dungeons on the
+     board, a surge happens"): on day 416 of the owner's run one Quest dungeon stood and no surge came, and later a
+     Fallen City dungeon did the same. The owner, the same day: "ah, then it should be working right now, but it doesn't
+     because it's counting the fallen city dungeon".
+  2. "A surge fired because the board emptied brings the previous surge's dungeon count plus 4." Superseded below.
+  3. "The 25-day minimum gap (LeastIntervalDays) does not apply to a surge fired by an empty board."
+  4. The +4 checked in the simulation before the game changes.
+- **The owner, 2026-11-24**, after the measurement showed point 2 compounding, chosen option verbatim "Flat +4, no
+  stacking": an empty-board surge always brings the scheduled count plus 4, 12 today, never growing from the previous
+  wave.
+- **The coordinating session's judgement, 2026-11-24**: the cap `MostDungeonsPerSurge` (14) and the lethality
+  multiplier apply after the +4, "as for any wave". So Heretic's empty-board wave is (8 + 4) x 1.25 = 15, and an
+  empty-board surge at the opening index would be 12 + 4 held at 14. This narrows point 2 of 2026-11-23, which said the
+  cap does not apply; that point was superseded with the size.
+- **The coordinating session's ruling (a), 2026-11-24**, on the tests: sweep every test that advances a run and fix
+  each affected one in its test file.
+
+**Ordinary** is `ECataclysmDungeonType::Basic` and not a Scout Parties bonus dungeon in the game, which already left a
+bonus dungeon out of the empty-board count (slice 9, V16); `DungeonType.BASIC` in the simulation, which has no bonus
+dungeon. The Last Stand and the Cataclysm boss dungeon are both `DungeonType.CATACLYSM` there.
+
+### The measurement
+
+`.claude/windows/measure_empty_board_2865.py` in the session's worktree, settings copied from
+`sim/analyse_board_empty_surge.py`'s `base_config`: difficulty tier 1, the `triage` policy, static surges (opening 12,
+then 8 every 90 days, cap 14), resolve floor ratio 2.0. 2,000 campaigns a cell in two disjoint blocks of 1,000; the
+block-to-block difference was at most 0.14 cities and 1.8 win points.
+
+| World | Rule | Empty-board surges a campaign | Their mean size | Largest wave | Cities lost of 25 | Won |
+| :-- | :-- | --: | --: | --: | --: | --: |
+| No tree | 2026-09-07 | 4.81 | 7.8 | 12.0 | 3.51 | 44.5% |
+| No tree | only ordinary count | 9.17 | 8.0 | 12.0 | 5.72 | 44.1% |
+| No tree | 2026-11-23 (previous wave + 4) | 5.53 | 19.7 | 26.5 | 11.27 | 41.0% |
+| No tree | **2026-11-24 (flat + 4)** | **7.24** | **12.0** | **12.0** | **7.73** | **44.0%** |
+| Architect | 2026-09-07 | 6.02 | 7.7 | 12.0 | 0.44 | 48.4% |
+| Architect | 2026-11-23 (previous wave + 4) | 8.36 | 32.6 | 44.9 | 0.83 | 47.7% |
+| Architect | **2026-11-24 (flat + 4)** | **9.39** | **11.6** | **12.0** | **0.67** | **48.4%** |
+| Explorer | 2026-09-07 | 0.08 | 7.2 | 12.0 | 0.83 | 68.2% |
+| Explorer | **2026-11-24 (flat + 4)** | **0.13** | **10.7** | **12.0** | **0.85** | **68.0%** |
+
+With no tree, the same rule at + 0 loses 5.81 cities, so of the 4.2 cities the ruling adds, about 2.2 come from counting
+only ordinary dungeons and about 1.9 from the + 4; removing the brake adds almost nothing on its own. A player in the
+Explorer tree almost never empties the board and is not affected.
+
+### What it does
+
+- **The game.** `AdvanceDay` asks `IsDueOnEmptyBoard(Today, OrdinaryDungeonCount())` last in the day, as before, and
+  fires `FireSurge(Today, false, Report, true)`. `IsDueOnEmptyBoard` is the flag and no ordinary dungeon standing, with
+  no least interval. `DungeonsInNextSurge(true)` adds `ExtraDungeonsOnEmptyBoard` (4) before the cap and the multiplier,
+  and `RollWave` sizes its wave with it. The clock's surge and a city's fall keep `DungeonsInNextSurge()`.
+- **The simulation.** The four `TuningConfig` fields carry the three parts and the 4; all ship on. Off, each gives back
+  the rule of 2026-09-07, which `sim/tests/test_surge_when_the_board_empties.py` still holds with them set off.
+- **The design document**, "The Surge", gains a paragraph with the three rulings and the measurement.
+
+### Tests
+
+**Unreal, the rule itself.** The six empty-board tests in `CataclysmEmpireRunTests.cpp`, written for issue #1414 and
+slice 9, now hold the new rule:
+
+| Test (`Cataclysm.EmpireRun.`) | What it holds |
+| :-- | :-- |
+| `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons`, renamed from `TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed` | The scheduler alone: due on day 1, on the day of a surge and the day after it with no ordinary dungeon standing, and not with one. The empty board's wave is 14 at the opening index (12 + 4 held at the cap), 12 later, 15 at Heretic; the clock's is 12, 8 and 10. |
+| `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay` | The wave after the clear is 12, and 12 stand. |
+| `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, renamed from `ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed` | Day 2, one day after the last surge, surges with 12. CONTROL: one ordinary dungeon standing, no surge. |
+| `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes` | Empty-board waves on days 2 and 3 move the clock to 92 and 93; an ordinary dungeon then keeps the board through day 92; the clock's 8 come on day 93. |
+| `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, renamed from `EveryKindOfDungeonKeepsTheBoardFromBeingEmpty` | An ordinary dungeon holds the board; a Quest dungeon, a Fallen City, a Cataclysm dungeon and a Scout Parties bonus dungeon alone each leave it empty, and day 2 surges with 12. |
+| `AnEmptyBoardFiresNothingOnceThePillarCanBeReached` | Days 2 to 15 and not 2 to 40, because the control's wave now comes on day 2; the control asserts that day. |
+
+**Python.** `sim/tests/test_the_empty_board_ruling_of_2026_11_23.py`, 13 test functions and 17 collected: only an
+ordinary dungeon keeps the board full; the wave is the scheduled count plus 4, never grown from the previous wave, with
+the cap and the lethality multiplier after the 4; no minimum gap; and the three parts ship on. Each has a control with
+its switch off. `sim/tests/test_surge_when_the_board_empties.py` sets the switches off and keeps the tests of the rule of
+2026-09-07. `tools/tests/test_surge_port.py` loses `test_the_brake_is_the_gap_the_game_already_carries` and gains
+`test_neither_half_brakes_an_empty_board_surge`, `test_both_count_only_ordinary_dungeons` and
+`test_both_bring_the_scheduled_count_plus_four`, each reading the game and the simulation side by side.
+`tools/tests/test_empire_tree_slice9.py` reads the new `AdvanceDay` call and `!Dungeon.bBonus` in
+`OrdinaryDungeonCount`.
+
+### The sweep of the tests that advance a run
+
+**Every verdict below comes from reading the code. Nothing was compiled or run**; the window is what confirms the NOT
+AFFECTED verdicts. Three read-only agents read the tests, and this session read every test it changed. The full record,
+test by test, is `.claude/windows/sweep_2865.md` in the session's worktree.
+
+**The fix where one was needed is to hold the board**: one ordinary dungeon with a timer that never runs out, on the
+Pillar. A wave never targets the Pillar (`UCataclysmEmpireMap::ExposedCities` leaves it out), it does not fall in these
+tests and the holder takes no random draw, so the run is otherwise the one the test was written against. In
+`CataclysmEmpireRunTests.cpp` it is the new helper `HoldTheBoard`, called before any pointer into the dungeons is taken.
+
+| File | Test | Verdict | What changed in the test |
+| :-- | :-- | :-- | :-- |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` | AFFECTED: the day-25 fall left only a Fallen City, so a wave of 12 would land | Held, in the helper `FellTheFirstOutpostOn`; dungeons standing after the fall 1 -> 2 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` | AFFECTED, through its control | The same helper; dungeons standing after the wave 9 -> 10 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AnOrdinaryDungeonHitsItsCityOnceAndIsGone` | AFFECTED: after the hit only a Quest and a Fallen City stood | Held; the control count 2 -> 3 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest` | AFFECTED: the erasure left nothing | Held; "nothing is left on the map" becomes nothing on the erased city, and one dungeon on the whole map |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` | UNCERTAIN: a fall day that also empties the board would surge | Held from day 1; no count moves |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap` | UNCERTAIN: a Siege of the day-2 wave could bite the watched city | Held for the five days charged |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AQuestDungeonThatIsNotAHollowNeitherShrinksNorAddsStacks` | UNCERTAIN: the same | Held before the Horde is placed |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing` | UNCERTAIN, likely: any Siege in the day-2 wave fails its control | Held, in `RunOneCase` |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonHitsItsCityOnceAndTheDungeonLeavesTheMap` | UNCERTAIN: a Siege on the watched city | Held |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged` | UNCERTAIN: the same | Held, in `DieIn` |
+
+**Left as it is, UNCERTAIN:** `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself`, 200 unattended days on
+seed 1. The rule changes which cities fall, and the test needs falls to check, so holding the board would defeat it.
+If it fails in the window the failure is read before anything is changed.
+
+**Comments only:** `MakeEmptyRun`'s, the idle player's in
+`Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`, four section headers in
+`CataclysmEmpireRunTests.cpp` that said no wave lands while their tests run, the death scene's in
+`game/Source/Cataclysm/Tests/CataclysmDeathCostTests.cpp`, and one in
+`game/Source/Cataclysm/Tests/CataclysmEmpireScreenTests.cpp`. Each said no wave could come before day 26.
+
+**Read and NOT AFFECTED:** 67 more of the 81 tests in `CataclysmEmpireRunTests.cpp`, which includes the
+`Cataclysm.EarnedBoss.`, `Cataclysm.BossClearedWins.` and `Cataclysm.EmpirePoints.` tests in that file; the other tests
+in the other 33 files. The readers named 23 in `CataclysmEmpireRunTests.cpp` and 25 in the other files where a wave of
+12 now lands at the end of day 2 or 3, after everything the test reads, and 16 long runs whose later rolls change while
+what they assert holds for any roll; the rest keep an ordinary dungeon standing.
+
+### Registered for the window
+
+**Nothing here has run.** Registered from the sweep, by the procedure of 2026-11-21: the groups the change moves run
+alone first, then the whole suite, with the Python suite in parallel.
+
+- **The build.** The engine change is in `CataclysmSurge.h` and `CataclysmEmpireRun.h`, so both modules recompile
+  widely. Predicted: succeeds, and the compiled list includes `CataclysmSurge.cpp`, `CataclysmEmpireRun.cpp`,
+  `CataclysmEmpireRunTests.cpp`, `CataclysmDungeonCostsDaysTests.cpp`, `CataclysmDeathCostTests.cpp` and
+  `CataclysmEmpireScreenTests.cpp`.
+- **The groups alone, each with a trailing dot.** The branch adds and removes no Unreal test and renames three, so each
+  count is the same group's count in the newest measured log at the turn. In the newest log in this session's worktree,
+  `ow_suite_engine_a3984536.log`, they are: `Cataclysm.EmpireRun.` 71, `Cataclysm.DungeonMode.` 46,
+  `Cataclysm.Surge.` 54, `Cataclysm.DeathCost.` 9, `Cataclysm.EmpireScreen.` 16. Predicted for each: every test
+  succeeds, 0 failed, and the saves line shows 0 left behind. The one test it could be wrong about is
+  `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself` (above).
+- **The whole suite.** The base's last measured total plus 0; 0 failed; 0 saves left behind.
+- **Python.** PYTHON_LINE
+- **C++ guard proofs**, each `prove_cpp_guard` with `test_prefix="Cataclysm.EmpireRun."`, run alone, never while the
+  Python suite runs. Predicted `named_failures`, exactly:
+
+| # | Break | Proves | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| P1 | `IsDueOnEmptyBoard` asks the least interval again: `&& DaysSinceLastSurge(Day) >= LeastIntervalDays` added before `&& OrdinaryDungeonsStanding <= 0;` | no minimum gap | `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons`, `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, `AnEmptyBoardFiresNothingOnceThePillarCanBeReached`. Not `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`: its clear is 30 days after the last surge. |
+| P2 | `Count += static_cast<float>(ExtraDungeonsOnEmptyBoard);` becomes `Count += 0.0f;` | the + 4 in the scheduler | `TheSchedulerAnswers...`, `ClearingTheLastDungeon...`, `ABoardEmptiedTheDayAfter...`, `AnEmptyBoardSurgeMovesTheClockOn...`, `OnlyAnOrdinaryDungeon...` |
+| P3 | The cap moved above the + 4 in `DungeonsInNextSurge` | the cap after the + 4 | `TheSchedulerAnswers...` alone: the opening index reads 16 and not 14 |
+| P4 | `OrdinaryDungeonCount` counts every dungeon: `(Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus) ? 1 : 0` becomes `1` | only an ordinary dungeon counts | `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty` alone |
+| P5 | `AdvanceDay` fires the empty board's wave with `/* bFromEmptyBoard */ false` | the + 4 reaches the wave | `ClearingTheLastDungeon...`, `ABoardEmptiedTheDayAfter...`, `AnEmptyBoardSurgeMovesTheClockOn...`, `OnlyAnOrdinaryDungeon...`. Not the scheduler test. |
+
+Four builds a proof, so twenty for all five. If the window is short, P1, P4 and P5 are the three that prove the owner's
+three rulings reach the game.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1
