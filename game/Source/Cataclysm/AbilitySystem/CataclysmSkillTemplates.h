@@ -735,6 +735,10 @@ public:
 	 * copies tags and deals nothing; this deals a blow and carries the skill's
 	 * identity with it. `Release` is the Spear's third value and is not built.
 	 *
+	 * AND EACH IS SAID IN THE LOG AND DRAWN. Issue #2872: one Display line per
+	 * enemy, under `UCataclysmBuriedWeapon::LogPrefix`, and the weapon drawn in
+	 * it by `UCataclysmBuriedWeapon::DrawIn` when its mesh loads.
+	 *
 	 * Public so a test can drive it without a projectile in flight.
 	 *
 	 * @return how many enemies were left carrying it

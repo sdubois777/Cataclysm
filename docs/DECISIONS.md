@@ -2098,6 +2098,158 @@ ran a resume through `StartPlay`: every one called the load after it.
 
 ---
 
+## 2026-11-24 — A cone counts a creature's body, a skill aims at the enemy under the cursor, and Harrower's axe says each leap, is drawn where it is, and goes on from a host its own leap killed (#2870, #2872)
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmTargeting.h` and `.cpp` (`IsBodyInCone`, `BodyRadiusOf`,
+`IsActorInCone`; `FindEnemiesInCone` applies the last);
+`game/Source/Cataclysm/AbilitySystem/CataclysmAreaShareOnAllies.h` and `.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmDeployableSelfBlast.h` and `.cpp` (their cones use the same test);
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (`AimPointUnderCursor`, and
+`PointCursorForTest` for tests); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (`AimPoint` asks
+the controller); `game/Source/Cataclysm/AbilitySystem/CataclysmBuriedWeapon.h` and `.cpp` (the leap's log lines, the
+drawn weapon, and the chain going on from a host its leap killed);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (`BuryInStruck` names, draws and logs);
+`game/Source/Cataclysm/Tests/CataclysmTargetingTests.cpp` (two tests),
+`game/Source/Cataclysm/Tests/CataclysmWhipAimTests.cpp` (new, three tests),
+`game/Source/Cataclysm/Tests/CataclysmHarrowerLeapsTests.cpp` (new, two tests),
+`game/Source/Cataclysm/Tests/CataclysmBuriedWeaponKillTests.cpp` (one test's layout gains two catchers);
+`tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two patterns follow the code's new shape);
+`docs/Cataclysm_GDD_v2.md` (the Strike shape's row, and how every ability aims). Issues
+[#2870](https://github.com/sdubois777/Cataclysm/issues/2870) and
+[#2872](https://github.com/sdubois777/Cataclysm/issues/2872).
+
+**WRITTEN AND NOT COMPILED, AND NO UNREAL TEST HAS RUN.** The session that wrote it had no build: the coordinating
+session's window compiles the branch and runs the tests registered in its report.
+
+### What the owner said, verbatim
+
+- #2870, 2026-11-23: "Some weapons, like the whip, don't actually hit enemies in their range, it's like it only hits
+  them if they're on the edge. Also, is the targeting towards the cursor or is it based on the direction the player is
+  walking? It should be towards the cursor."
+- #2872, 2026-11-24: "I don't think the axe skill, Harrower, is actually working."
+
+Neither issue carries a comment; nothing below is a ruling of the owner's beyond those two sentences. The coordinating
+session's brief asked for: an enemy whose capsule overlaps the cone is hit; aiming at the cursor, a click on an enemy at
+the enemy, the facing only with no cursor hit; Harrower's leap built or fixed, burning each target, the axe visibly in
+the target where a mesh exists, and a log line for each leap.
+
+### SAID FIRST: what a player will notice
+
+- **A narrow swing now reaches an enemy beside the character.** The Whip's basic attack (`Weapon_Whip`: Radius=3;
+  Angle=45) took an enemy only when its centre was inside the cone, and a 45 degree cone is 41 cm either side of the aim
+  a metre out: an enemy a metre ahead and half a metre aside, its 48 cm body squarely in the swing, was missed, while
+  the same half metre at three metres was inside. Now an enemy is inside when its body overlaps the cone's angle. One
+  metre out, an ordinary creature's centre may now stand this far to one side of the aim and be struck (before, after),
+  for every Strike of under 180 degrees in the data: 15 degrees (the Warhammer's Upthrust) 13 cm to 62; 30 (the Spear's
+  Impale) 27 to 76; 40 (the Spear's basic) 36 to 87; **45 (the Whip's basic, Searing Lash, Wild Lash) 41 to 93**; 60
+  (the Dagger's and Fist's basics, Shield Bash, Emberpierce, Gravepoint, Searing Hook, Septic Hook) 58 to 113; 80 (the
+  Warhammer's basic, Sentence, Molten Crush) 84 to 147; 90 (the Sword's basic, Quench, Hollow Cut) 100 to 168; 100 (the
+  Axe's basic) 119 to 194; 120 (the Greataxe's basic, Molten Cleave) 173 to 269; 140 (the Greatsword's basic,
+  Backswing, Erasure) 275 to 415, where the reach caps it first. The narrow ones change most, and those are the ones the
+  owner met.
+- **The reach does not change.** An enemy is still in reach only while its centre is within the Strike's radius:
+  ruling P7-c of 2026-10-16 ("Reach is measured between the two actors' origins") stands, for the click's walk and for
+  the swing alike.
+- **A creature's cone reaches the player the same way.** The Gatekeeper's Cleave searches with `FindEnemiesInCone` and
+  now counts the player's 42 cm body; an ally sharing a point-blank blow and a wearer in its deployable's cone are
+  inside on the same test.
+- **A skill pressed with the cursor on an enemy is aimed at that enemy.** Aiming was already at the cursor, and is:
+  the facing is used only when the cursor points at nothing in the world. But the cursor's trace is on the visibility
+  channel, which every creature ignores, so a cursor on a creature's body landed on the floor behind it: the camera
+  looks down at sixty degrees, so about 0.58 m beyond its feet for a point a metre up, up the screen. For a creature a
+  metre to the character's left or right that turned the aim thirty degrees off it, outside the Whip's 22.5. That was
+  the other half of "only hits them on the edge". Now an enemy under the cursor, by the click's own test, is aimed at
+  itself; anything else under it, the floor as before. A click on an enemy already aimed at it (P7-b).
+- **Harrower was working, and almost nothing showed it.** The log of the owner's session on 2026-11-24 (the main
+  checkout's `Cataclysm.log`) holds 304 lines "HIT OUT: ranged attack on ...", 143 of them with exactly the sent figure
+  of the Harrower throw before them: those are the leaps, named "ranged attack" because a leap carries the throwing
+  skill's tags and no skill object, which ruling N1/N2 of 2026-10-22 (#2465) keeps. The leap's own line was Verbose,
+  which the log never prints, and nothing was drawn. Now each burial, each leap and each stop writes a Display line
+  beginning "BURIED WEAPON: ", naming the skill, the two creatures, the distance, the figure sent and whether it burned;
+  and the axe is drawn in the creature it is in, when its mesh loads.
+- **And the chain stopped at the first leap that killed.** The new host's death was recorded inside the leap's own
+  blow, before the axe was in it, so nothing tore free and the axe was buried in a corpse. Against ordinary creatures
+  Harrower's leap kills most of what it reaches, so the chain was usually one leap long. Now the axe tears free of a
+  host its own blow killed and goes on, at once, to the nearest living enemy within 10 m of that body, until a host
+  survives or nothing is in reach: "it goes on doing so until nothing is left in reach".
+
+### The shape of the cone test, and where the genre settles it
+
+`UCataclysmTargeting::IsBodyInCone`: inside when the centre is (the old test, unchanged), or when the centre is within
+the radius and either the apex stands inside the body or the body's circle reaches the nearer of the cone's two edges.
+
+**What the research settles is small, and it is said here so it is not overstated.** No shipped game's documentation
+that this session could read states how a melee cone treats a creature's size:
+
+- Path of Exile: `poedb.tw` (the readable mirror; `poewiki.net` refuses this tool) lists a humanoid's hitbox radius
+  and melee ranges of "4 to 7 units", and says nothing of edge or centre. A forum thread
+  (`pathofexile.com/forum/view-thread/3757630`, a player, 2025-04-12, no staff reply) reads an aura failing between two
+  large creatures as "the distance created by two hitboxes", a player's theory that range checks see hitboxes.
+- Last Epoch: player reports of melee missing an enemy pressed against the character and of a cone's "narrow point"
+  being sidestepped close in turned up in search results; the threads answered this tool 404, so they are not quoted.
+- An Unreal cone trace write-up (`sreitich.github.io/cone-trace`) sweeps a sphere and tests the IMPACT POINT on each
+  collider, so a body whose edge is inside counts; it is a tutorial, not a shipped game.
+
+**So the shape is a judgement of the writing session**, with one reason that is not taste: the owner's own words
+describe the centre test's failure exactly, and the body test is the smallest change that removes it. **The reach is
+held to the centre, also a judgement**, because ruling P7-c measures reach between centres and lengthening every melee
+reach by its target's width is a balance change nobody asked for.
+
+### Where the aim's rule comes from
+
+The owner's sentence settles the rule: "It should be towards the cursor." Path of Exile players say the same against
+its auto-targeting: "It should always shoot where the mouse is" (`pathofexile.com/forum/view-thread/3596654`, a
+player, 2024-12-07); and one describes the screen-space gap between the ground point and the height an attack leaves
+from (`pathofexile.com/forum/view-thread/3778983`, a player, 2025-05-08). None of these is a staff post. **Aiming at
+the creature under the cursor, and at nothing that is not under it, is a judgement of the writing session**: it is what
+the cursor is visibly on, it is the test the click already uses, and it adds no auto-target of the kind those players
+object to.
+
+### Judgements of the writing session, each labelled
+
+1. **The body is the creature's simple collision cylinder** (`AActor::GetSimpleCollisionRadius`): 48 cm for an
+   ordinary creature, 30 for an Imp or a minion, 42 for the player.
+2. **The reach stays at the centre** (above).
+3. **An enemy under the cursor aims at its location** for every shape, a Movement skill included: a blink with the
+   cursor on a creature now goes toward the creature and is stopped by its body, where it used to aim at the floor
+   0.6 m behind it.
+4. **A leap that kills goes on at once**, inside the same death, rather than waiting a frame. Every body this chain has
+   left is excluded from its later searches by name, because none of them is recorded dead until the chain returns,
+   and a death already tearing an axe free is not torn again: that is what stops a second axe, in a host this one
+   killed, leaping back into a creature still dying further up the chain.
+5. **No burn on a host the leap killed**: a corpse is not set alight, and the axe goes on to the next.
+6. **The axe is drawn with the mesh the hand draws** for the skill's `Item.Weapon.` tag (`Weapon_Axe`, `SM_Axe`),
+   two thirds of the body's radius out on the side it came from and a third of the way up, its forward axis into the
+   body. Placed without seeing the mesh; **the owner is asked to look.** It has no collision. A base whose mesh does not
+   load is not asked again in the run, so a worktree warns once.
+7. **The test cursor** (`PointCursorForTest`) replaces both traces with what the test gives and runs the controller's
+   own choice between them, so the choice is tested and the traces are not; a test world has no viewport to trace.
+
+### An existing test's layout changed, and why
+
+`Cataclysm.BuriedWeaponKills.ATrapsBuriedWeaponLeapKillExplodesForItsShareAndTheExplosionsOwnKillDoesNot` kills a
+50-health enemy with a leap and reads an explosion's share off a bystander 3 m from it. With the chain going on, the axe
+would leap from the dead into that bystander. Each of its two killing groups gains a catcher of 50,000 health 1 m east
+of the dead, nearer than the bystander, so the bystander still takes the explosion alone; one new assertion reads that
+the control's catcher was struck. No figure the test reads changed.
+
+`test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_priced` reads the buried weapon's code as
+text. Its rule, that the weapon never reads `CastBy` through `Get`, is unchanged; its control looked for the caster read
+through `Get` as `Buried->Caster.Get()`, and the leap now copies the component's fields out first, so it is
+`Carried.Caster.Get()`; and its pattern for `BuryInStruck` ended in three closing brackets, two since the call's result
+is kept. Both patterns follow the code. Proved with `tools/prove_guard.py`: with `Carried.CastBy.Get()` written into
+the leap's delivery, that test alone failed, and it passed with the file restored.
+
+### What was not done
+
+- **Nothing shows the axe in flight from one body to the next.** The leap is instant, as it was; the drawn axe leaves
+  one body and appears in the next. A flight would need a projectile or an effect along the line.
+- **The HIT OUT line still names a leap "ranged attack"**, because the hit notice names a skill object and ruling
+  N1/N2 (#2465) keeps the leap without one; the new BURIED WEAPON line beside it names the skill.
+- **Where the axe is drawn was not seen.** Without the art pack in a worktree, the tests report that half as skipped.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

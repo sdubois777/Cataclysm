@@ -28,12 +28,13 @@ TArray<AActor*> UCataclysmAreaShareOnAllies::AlliesInCone(const UWorld* World, c
 														  const FVector& Apex, const FVector& Forward,
 														  float RadiusCm, float AngleDegrees)
 {
-	// THE ENEMY CONE'S OWN TEST ON THE FRIENDLY SIDE: the sphere of the cone's radius, then `IsInCone` on each body's
-	// location, which is the predicate `FindEnemiesInCone` hands its search.
+	// THE ENEMY CONE'S OWN TEST ON THE FRIENDLY SIDE: the sphere of the cone's radius, then `IsActorInCone` on each
+	// body, which is the test `FindEnemiesInCone` applies. Since issue #2870 a body overlapping the cone's angle is
+	// inside, so an ally stands inside exactly where an enemy would.
 	TArray<AActor*> Inside = UCataclysmTargeting::FindAlliesInSphere(World, Wearer, Apex, RadiusCm);
 	Inside.RemoveAll([&](const AActor* Ally)
 	{
-		return !UCataclysmTargeting::IsInCone(Apex, Forward, Ally->GetActorLocation(), RadiusCm, AngleDegrees);
+		return !UCataclysmTargeting::IsActorInCone(Apex, Forward, Ally, RadiusCm, AngleDegrees);
 	});
 	return Inside;
 }

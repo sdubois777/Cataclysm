@@ -91,7 +91,8 @@ public:
 								  const TWeakObjectPtr<AActor>& UsedUpCastBy = TWeakObjectPtr<AActor>());
 
 	/**
-	 * `Wearer` inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with the same arguments, on the same
+	 * `Wearer` inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with the same arguments, by the same
+	 * test, `UCataclysmTargeting::IsActorInCone` (its body overlapping the cone's angle since issue #2870), on the same
 	 * terms as `WearerInSphere`, `UsedUpCastBy` among them (traps layer 7, L-1); or null.
 	 */
 	static AActor* WearerInCone(const UWorld* World, AActor* Wearer, const AActor* CastFrom, const FVector& Apex,

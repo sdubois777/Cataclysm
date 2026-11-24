@@ -197,6 +197,10 @@ The following are default controls. Players with multiple damage types can map m
 
   
 
+**Every ability aims at the cursor, never the way the character is walking.** The project owner, 2026-11-23: "It should be towards the cursor." A basic attack clicked on an enemy is aimed at that enemy. An ability on a key is aimed at the point under the cursor, and when the cursor is on an enemy, at that enemy rather than at the floor seen behind its body. Only when the cursor points at nothing in the world, past the floor's edge, does an ability go the way the character faces.
+
+  
+
 **There are two schemes and only one is active at a time.** They differ in what moves the character. The Support ability and directional movement both want W, and one key cannot be both, so each scheme gives W to one of them. Keyboard movement ships as the default. The scheme is chosen by `DefaultMappingContext` in `game/Config/DefaultGame.ini`; there is no in-game setting for it yet, which needs the interface work in the Core Interface Screens section.
 
   
@@ -2326,7 +2330,7 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
 | Shape | What it does | Numbers it reads |
 | :-: | :-: | :-: |
-| Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval |
+| Strike | Hits everything in a cone or ring around the caster. An angle of 360 is a ring. An enemy is in the cone when any part of its body is, so a narrow swing reaches a creature beside the character; its centre must still be within the radius, which is the reach. With a duration and an interval it repeats, which is what a spin is. | Radius, Angle, MaxTargets, Duration, Interval |
 | Projectile | Sends something out toward where the player is aiming. One that pierces travels a line and hits what it passes; one that does not lands and hits in a radius there. | Range, Radius, Pierce, Returns, Speed |
 | Self Buff | Grants the caster an effect for a duration. | Duration, Radius |
 | Movement | Moves the caster. A leap hits where it lands, a charge hits everything on the way, a blink hits at both ends and nothing between. | Mode, Range, Radius |
