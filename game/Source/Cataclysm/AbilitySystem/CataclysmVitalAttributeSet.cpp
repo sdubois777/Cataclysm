@@ -2278,57 +2278,66 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					Executable->CullIfLeftBelow(CullByThisHit);
 				}
+			}
 
-				// AND HEALTH LOST TO DAMAGE FILLS FERVOUR. Issue #954. The
-				// Masochist's starting node states the rule -- 1 Fervour per 1%
-				// of maximum health lost -- and a character that has not spent a
-				// point on a generator has a rate of zero, so this costs nothing
-				// for everybody else.
-				//
-				// WHAT REACHED HEALTH, NOT WHAT THE HIT WAS WORTH, and the
-				// difference is a design position rather than an accident.
-				// `docs/Cataclysm_GDD_v2.md` says an energy shield "absorbs the
-				// damage the class needs to convert", so a shield on a Masochist
-				// is a straight loss of resource generation. Putting the whole
-				// hit here instead would quietly delete that.
-				//
-				// THE HIT'S TAGS GO WITH IT, because the tree has a node about
-				// Fervour gained from damage OVER TIME specifically, and the tag
-				// on the effect is what tells the two apart.
-				//
-				// WHAT REACHED HEALTH AFTER THE CONVERSION, AND TODAY THAT IS
-				// THE SAME NUMBER. Issue #985.
-				//
-				// SAYING SO PLAINLY, BECAUSE A GUARD PROOF CAUGHT THE CLAIM THAT
-				// IT WAS NOT. The Breaking Point converts a blow whole or not at
-				// all, so `TurnedIntoBleeding` is either zero or the entire
-				// amount -- and when it is the entire amount, `ToHealth` is zero
-				// and this whole block is skipped, Fervour included. There is no
-				// case today where the two expressions differ HERE, and breaking
-				// this line to the other one failed no test at all.
-				//
-				// IT IS STILL THE RIGHT EXPRESSION. It says what it means -- the
-				// bar is filled by health actually lost -- and it is what a
-				// PARTIAL conversion would need if one is ever added. What it is
-				// not is a fix for a live defect, and calling it one would put a
-				// false story in this file.
-				//
-				// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at
-				// a time, as the Bleeding takes health through this same path.
-				//
-				// SINCE 2026-10-12 THERE IS A CASE WHERE THE TWO EXPRESSIONS DIFFER HERE. A worn row can take
-				// a share of a blow off above and hold it (`UCataclysmDelayedDamage::DelayShare`), and
-				// `ToHealth` is then less than what the blow resolved to. Fervour is filled by what was taken
-				// at once. THE HELD SHARE FILLS NONE WHEN IT IS DRAINED: the drain writes health directly and
-				// does not come through this path.
-				//
-				// AND A SHARE OF AN ALLY'S BLOW FILLS NONE (R7), ruled 2026-10-15: it is health lost to a blow this
-				// character did not take.
-				if (!bShareOfAnAllysDamage)
-				{
-					UCataclysmFervour::GainFromDamage(
-						GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
-				}
+			// AND HEALTH LOST TO DAMAGE FILLS FERVOUR, AND SO DOES WHAT THE ENERGY SHIELD TOOK. Issue #954 for health,
+			// issue #2873 for the shield. The Masochist's starting node states the rule -- 1 Fervour per 1% of maximum
+			// health lost -- and a character that has not spent a point on a generator has a rate of zero, so this
+			// costs nothing for everybody else.
+			//
+			// THE SHIELD'S SHARE COUNTS EXACTLY AS HEALTH LOST, AT THE SAME RATE: per 1% of maximum HEALTH. The project
+			// owner, 2026-11-24: "the massochist doesn't gain fervour with damage to energy shield, and it should."
+			// The coordinating session ruled the detail the same day, option (a) of the issue: the shield's share is
+			// added to what reached health and the one rate is read for both, so the rate and the tree's nodes that
+			// raise it are unchanged and a point of damage is worth the same wherever it lands. Until that ruling this
+			// read what reached health alone, because the design then called a shield "a straight loss of resource
+			// generation" for this class. A RECHARGING SHIELD REMOVES NOTHING: `UCataclysmRegeneration::TopUp` empties
+			// Fervour for health coming back and for no other pool, ruled the same day.
+			//
+			// WHAT THE SHIELD LOST, `Outcome.AbsorbedByShield`, in the shield's own points: a magic blow's bonus and
+			// the defender's "energy shield takes increased damage" make it lose more than the raw blow held, as a
+			// slashing blow's bonus makes health lose more. A judgement of the writing session: the figure on the bar
+			// is the figure that fills Fervour, for the shield as for health. NOT THE TEMPORARY ABSORB AND NOT THE
+			// MANA a row puts first: the owner named the energy shield, and ruled on 2026-10-07 that the temporary
+			// absorb is separate from it. A judgement too.
+			//
+			// OUTSIDE THE BLOCK THAT WRITES HEALTH, BECAUSE A BLOW THE SHIELD TOOK WHOLE NEVER ENTERS IT. That block
+			// runs only when something reaches health, so a shield-only blow filled nothing for as long as this line
+			// sat inside it. Directly after it, so a blow that does reach health fills Fervour at the moment it always
+			// did: after the write, the death check, the execute and the cull, and before the bond pays the allies.
+			//
+			// WHAT REACHED HEALTH, NOT WHAT THE HIT WAS WORTH, for the health half. THE HIT'S TAGS GO WITH IT, because
+			// the tree has a node about Fervour gained from damage OVER TIME specifically, and the tag on the effect is
+			// what tells the two apart. A tick the shield took carries them as a tick to health does.
+			//
+			// WHAT REACHED HEALTH AFTER THE CONVERSION, AND TODAY THAT IS THE SAME NUMBER. Issue #985.
+			//
+			// SAYING SO PLAINLY, BECAUSE A GUARD PROOF CAUGHT THE CLAIM THAT IT WAS NOT. The Breaking Point converts a
+			// blow whole or not at all, so `TurnedIntoBleeding` is either zero or the entire amount -- and when it is
+			// the entire amount, `ToHealth` is zero and the health half adds nothing. There is no case today where the
+			// two expressions differ HERE, and breaking this line to the other one failed no test at all. A CONVERTED
+			// BLOW'S SHIELD SHARE STILL FILLS FERVOUR NOW: the shield took it before the conversion was asked.
+			//
+			// IT IS STILL THE RIGHT EXPRESSION. It says what it means -- the bar is filled by health actually lost --
+			// and it is what a PARTIAL conversion would need if one is ever added.
+			//
+			// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at a time, as the Bleeding takes health
+			// through this same path.
+			//
+			// SINCE 2026-10-12 THERE IS A CASE WHERE THE TWO EXPRESSIONS DIFFER HERE. A worn row can take a share of a
+			// blow off above and hold it (`UCataclysmDelayedDamage::DelayShare`), and `ToHealth` is then less than
+			// what the blow resolved to. Fervour is filled by what was taken at once. THE HELD SHARE FILLS NONE WHEN
+			// IT IS DRAINED: the drain writes health directly and does not come through this path. The shield's share
+			// is never delayed, so all of it fills at once.
+			//
+			// AND A SHARE OF AN ALLY'S BLOW FILLS NONE (R7), ruled 2026-10-15: it is health lost to a blow this
+			// character did not take. Its shield share fills none either, for the same reason.
+			const float HealthLostToTheBlow = FMath::Max(0.0f, ToHealth);
+			const float ShieldLostToTheBlow = FMath::Max(0.0f, Outcome.AbsorbedByShield);
+			if (!bShareOfAnAllysDamage && HealthLostToTheBlow + ShieldLostToTheBlow > 0.0f)
+			{
+				UCataclysmFervour::GainFromDamage(
+					GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);
 			}
 
 			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
@@ -2398,8 +2407,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// WHAT REACHED THE CHARACTER, NOT WHAT WAS AIMED AT IT. A blow
 			// that was evaded or wholly mitigated removed nothing, and is not
 			// damage taken. A shield absorbing it IS damage taken, which is
-			// why both figures count here -- unlike Fervour above, where the
-			// design says a shield is a straight loss of generation.
+			// why both figures count here -- as they do for Fervour above
+			// since issue #2873, ruled 2026-11-24.
 			//
 			// OTHER THAN THE CHARACTER'S OWN TYPE, read from its weapon. An
 			// untyped hit opens nothing, which is what keeps a player's own

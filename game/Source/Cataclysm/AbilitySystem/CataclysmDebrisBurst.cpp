@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmDebrisBurst.h"
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmMeshWidth.h"
 #include "Cataclysm.h"
 #include "Components/SceneComponent.h"
@@ -53,8 +54,13 @@ ACataclysmDebrisBurst* ACataclysmDebrisBurst::Scatter(
 	SpawnParams.SpawnCollisionHandlingOverride =
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
+	// ON THE FLOOR UNDER THE POINT, NOT AT IT. Issue #2863. The one caller, the
+	// Brute's rip crater, hands over its own capsule bottom, which is the floor
+	// while it stands on the floor it is aiming at; this is the project's way of
+	// putting meshes on the ground, so it asks where the ground is rather than
+	// trusting every caller to. See `CataclysmEffectPlacement`.
 	ACataclysmDebrisBurst* Burst = World->SpawnActor<ACataclysmDebrisBurst>(
-		At, FRotator::ZeroRotator, SpawnParams);
+		CataclysmEffectPlacement::OnTheFloor(World, At), FRotator::ZeroRotator, SpawnParams);
 	if (!Burst)
 	{
 		return nullptr;
