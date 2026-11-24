@@ -147,7 +147,8 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 	// Light, Miasma, Pall of Ending, Unreason, Gnawing Want -- dealt the slot's 25% of weapon damage a second to
 	// everything in 10 metres, and Undertow its 150% every six seconds. Each is now its effect alone: the poison, the
 	// curse, the pull, the ally bonus. An aura that deals damage states it in its row's Damage Percent, as Conflagration
-	// states its 10% a second (#2869) and Living Pyre its 400% a pulse.
+	// states its 10% a second (#2869) and Living Pyre its 66.67% a pulse, the Ultimate's 400% spread over its six
+	// pulses (ruled 2026-11-24 on #2875).
 	//
 	// THE SHAPE AND NOT THE SLOT, so the rule holds for an aura on any key and for Living Pyre, an aura made for the
 	// Ultimate slot. A Support aura's slot figure was already nought, so nothing changes for those four.

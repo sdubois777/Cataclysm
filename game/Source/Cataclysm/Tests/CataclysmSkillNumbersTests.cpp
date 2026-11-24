@@ -160,7 +160,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillNumbersAuraStatingNothingTest,
 /**
  * Ruled by the owner on 2026-11-24, issue #2875, "No damage unless stated (Recommended)": an aura deals damage only if
  * its description says so. An aura stating no figure answers nought in the Aura slot, and in the Ultimate slot, Living
- * Pyre's. One stating a figure keeps it: Conflagration's 10 (#2869) and Living Pyre's 400.
+ * Pyre's. One stating a figure keeps it: Conflagration's 10 (#2869) and Living Pyre's 66.67 (#2875).
  *
  * THE CONTROL is a strike stating nothing in the Aura slot. It takes the slot's figure, which is above nought, so the
  * nought an aura answers is the aura's rule and not the slot's number.
@@ -199,9 +199,9 @@ bool FCataclysmSkillNumbersAuraStatingNothingTest::RunTest(const FString& Parame
 		Stated->GetDamagePercent(), 10.0f, 0.01f);
 
 	UCataclysmAuraSkill* StatedUltimate = MakeAuraIn(ECataclysmAbilitySlot::Ultimate);
-	StatedUltimate->DamagePercentOverride = 400.0f;
-	TestEqual(TEXT("and one stating 400 in the Ultimate slot, Living Pyre's figure, deals 400"),
-		StatedUltimate->GetDamagePercent(), 400.0f, 0.01f);
+	StatedUltimate->DamagePercentOverride = 66.67f;
+	TestEqual(TEXT("and one stating 66.67 in the Ultimate slot, Living Pyre's figure, deals 66.67"),
+		StatedUltimate->GetDamagePercent(), 66.67f, 0.01f);
 
 	return true;
 }

@@ -25,6 +25,8 @@ and the four `Cataclysm.AuraDamage.` tests read the asset. **This branch carries
 - **#2875**, the owner, 2026-11-24, as recorded on the issue: "No damage unless stated (Recommended)". "The option
   text: an aura deals damage only if its description says so. Those five become pure effects, and Living Pyre's
   per-pulse damage is checked against its text."
+- **Living Pyre**, the owner, 2026-11-24, as relayed by the coordinating session, chosen option quoted: "400% spread
+  over 6 pulses (Recommended)". The row states 66.67 a pulse.
 
 ### The research behind #2869, re-fetched before it was recorded
 
@@ -67,8 +69,11 @@ measurement).
    `Radius=4`, the rest unchanged; Damage Percent `10`; and the sentence became "Emanate a ring of hellfire in a 4
    meter radius. Enemies within it take 10% weapon damage each second, are continuously set alight and have their
    Demonic resistance reduced by 15%. Allies within it deal 8% increased damage. Drains mana per second while active."
-4. **Living Pyre's row** (row 188, one cell): Damage Percent `400`, which is the Ultimate slot's figure it dealt on every
-   pulse before the rule. See "Living Pyre" below: this keeps its behaviour and does not decide it.
+4. **Living Pyre's row** (row 188, one cell): Damage Percent **`66.67`**, the Ultimate's 400% spread over its six
+   pulses, by the owner's ruling quoted above; before, it dealt the Ultimate slot's 400 on every pulse. **The figure
+   the sheet holds is 66.67 exactly as typed** (a number cell); the generator writes `66.67` to the CSV, and the engine
+   reads it into a float, 66.67f. Six pulses are 400.02% before the 8% growth for each hit taken. Its sentence is
+   unchanged: it already names the pyre's fire damage.
 5. **The Aura slot** (Skill Slots sheet row 6, two cells): Damage Lowest 15 became **10**, and the note now ends "and
    it is what an aura stating damage is typically worth: an aura whose row states none deals none." The typical 25% is
    unchanged. `SKILL_SLOTS` in `sim/cataclysm_sim/character.py` moves with it, which
@@ -90,7 +95,7 @@ dealt until this change, in per cent of weapon damage.
 | Row | Skill | Slot | Its sentence | Before | After |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | `Demonic_All_Aura` | Conflagration | Aura | Emanate a ring of hellfire in a 4 meter radius. Enemies within it take 10% weapon damage each second, are continuously set alight and have their Demonic resistance reduced by 15%. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second, in 10 m | **10 a second, in 4 m** (#2869) |
-| `Demonic_Fist_Ultimate` | Living Pyre | Ultimate | Set yourself alight for 6 seconds. You cannot be stunned, slowed or knocked back, your own fire does you no harm, and enemies within 4 meters are continuously set alight. Every hit you take raises the pyre's fire damage by 8% with no cap, and returns health equal to 25% of the damage that hit dealt. | 400 a pulse, six pulses | **400 a pulse, unchanged**, now stated on the row; see below |
+| `Demonic_Fist_Ultimate` | Living Pyre | Ultimate | Set yourself alight for 6 seconds. You cannot be stunned, slowed or knocked back, your own fire does you no harm, and enemies within 4 meters are continuously set alight. Every hit you take raises the pyre's fire damage by 8% with no cap, and returns health equal to 25% of the damage that hit dealt. | 400 a pulse, six pulses | **66.67 a pulse**, 400.02 over the six (ruled 2026-11-24) |
 | `Celestial_All_Aura` | Exposing Light | Aura | Shine a judging light 10 meters around you. Enemies within it have their Celestial resistance reduced by 15. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none** |
 | `Pestilence_All_Aura` | Miasma | Aura | Breathe a plague cloud 10 meters around you. Enemies within it are poisoned continuously. Allies within it deal 8% increased damage. Drains mana per second while active. | 25 a second | **none**; the poison stays |
 | `Void_All_Aura` | Undertow | Aura | Bend the ground toward you 8 meters around. Every 6 seconds every enemy within it is dragged 2 meters closer. Allies within it deal 8% increased damage. Drains mana per second while active. | 150 every 6 seconds (25 a second) | **none**; the pull stays |
@@ -106,7 +111,7 @@ dealt until this change, in per cent of weapon damage.
 Steel). No template runs them; they are granted the placeholder and deal nothing before or after. Untouched under the
 standing order of no War work.
 
-### Living Pyre: checked against its text, and reported rather than decided
+### Living Pyre: checked against its text, put to the owner, and ruled
 
 **Its sentence says the pyre has fire damage and gives it no figure.** "Enemies within 4 meters are continuously set
 alight" is the burn (`Burn=1`), and "every hit you take raises the pyre's fire damage by 8% with no cap" names damage
@@ -114,23 +119,27 @@ of its own that grows; the project has read that growth as the pulse's damage si
 (`MoreDamagePer=8; ScalingSource=HitTaken`, applied in `UCataclysmAuraSkill::Pulse` to the pulse and not to the burn).
 So under #2875 the pyre deals damage. It states neither a figure a pulse nor a total, so the brief's two readings
 ("what the text says", or "split the 400% across the pulses if the text describes one total") both lack their premise.
-**The row states 400, the figure it dealt before, so nothing about the skill changes until the owner rules.**
+The first commit of this branch (`48a0ef463`) stated 400 on the row, the figure it dealt before, and put the
+question to the owner.
 
-**The question for the owner, with a recommendation.** What is a pulse of Living Pyre worth?
+**The question as it was put, with the recommendation.** What is a pulse of Living Pyre worth?
 
 - **(a) 400% a pulse, as now.** Six pulses are 2,400% before any growth: six times the Ultimate slot's 400% a use, and
   nearly five times Skull Splitter's 500%, the largest single figure an Ultimate states.
 - **(b) The Ultimate's 400% across the six pulses: 66.67% a pulse**, still raised 8% a hit taken. **Recommended.**
-  This game's own precedent is Butcher's Bill: thirty axes at the Ultimate slot's 400% each would have been 12,000%,
-  issue #1142 found it, and the row now states 14% an axe, so the whole use is 420%, inside the Ultimate band. Diablo IV's Hurricane, the
-  nearest shipped analogue, is 360% over 6 seconds on a 17 second cooldown (re-fetched above).
+  This game's own precedent is Butcher's Bill: thirty axes at the Ultimate slot's 400% each would have been
+  12,000%; issue #1142 found it, and the row now states 14% an axe, so the whole use is 420%, inside the Ultimate
+  band. Diablo IV's Hurricane, the nearest shipped analogue, is 360% over 6 seconds on a 17 second cooldown
+  (re-fetched above).
 - **(c) No pulse damage, the burn its only fire.** "Set alight" read as the whole of the pyre's fire. But the 8% growth
   raises the pulse and not the burn, so under (c) "raises the pyre's fire damage" would raise nothing until the growth
   is moved onto the burn, which is a mechanism that does not exist.
 
-A ruling of (b) is one cell, the row's Damage Percent, and the expected figures in two tests: `Cataclysm.AuraDamage.`
-`LivingPyresRow...` and `EveryAuraRowDealsOnlyTheDamageItsRowStates`, and the Python list in
-`test_an_aura_deals_damage_only_where_its_row_states_it.py`.
+**The owner chose (b) on 2026-11-24: "400% spread over 6 pulses (Recommended)".** The second commit of this branch
+sets the row to 66.67, the re-apply script's value for that cell, the figures in
+`Cataclysm.AuraDamage.LivingPyresRow...`, `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates`,
+`Cataclysm.SkillNumbers.AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates` and
+`Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither`, the Python list, and the design document.
 
 ### Judgements of this change, each with its reason
 
@@ -161,23 +170,23 @@ A ruling of (b) is one cell, the row's Damage Percent, and the expected figures 
 | :-- | :-- |
 | `ConflagrationsRowHitsWithinFourMetresForTenPercentOfWeaponDamageAndNotAtFive` | the real row: radius 4 m and 10% read off it; a pulse takes 10 from an enemy 3 m out, sets it alight and lays the Shred; an enemy 5 m out loses nothing and carries neither; a second pulse takes 10 again |
 | `MiasmasRowPoisonsAndHelpsWhatIsInsideAndDealsNoDamage` | the real row states none; a pulse finds the enemy, takes no health, poisons it and helps the ally inside; CONTROL: given 25 by hand the next pulse takes 25 |
-| `EveryAuraRowDealsOnlyTheDamageItsRowStates` | every one of the twelve Aura rows, stamped as a grant stamps it: Conflagration 10, Living Pyre 400, the rest nought |
-| `LivingPyresRowBurnsWithinFourMetresForItsStatedFigureAndGrowsEightPercentAHitTaken` | the real row: a pulse takes 400 from an enemy 2 m out and sets it alight, not one 5 m out; a hit of 200 returns 50; the next pulse takes 432 |
+| `EveryAuraRowDealsOnlyTheDamageItsRowStates` | every one of the twelve Aura rows, stamped as a grant stamps it: Conflagration 10, Living Pyre 66.67, the rest nought |
+| `LivingPyresRowBurnsWithinFourMetresForItsStatedFigureAndGrowsEightPercentAHitTaken` | the real row: a pulse takes 66.67 from an enemy 2 m out (given 1,000 health, so the float reads it back to within a ten-thousandth) and sets it alight, not one 5 m out; a hit of 200 returns 50; the next pulse takes 8% more, 66.67 times 1.08 |
 
 **And one in `Cataclysm.SkillNumbers.`**, now 4: `AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates`, an
-aura stating nothing answers nought in the Aura and Ultimate slots and keeps 10 and 400 when it states them; CONTROL: a
+aura stating nothing answers nought in the Aura and Ultimate slots and keeps 10 and 66.67 when it states them; CONTROL: a
 strike stating nothing in the Aura slot takes the slot's 25.
 
 **Four existing tests read a pulse's damage from an aura stating nothing, and now state a figure**:
 `Cataclysm.Skills.AnAuraSwitchesOffWhenTheManaRunsOut` (10),
-`Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither` (Living Pyre's 400),
+`Cataclysm.Skills.AnAuraStatingNeitherEffectNorAllyBonusGivesNeither` (Living Pyre's 66.67),
 `Cataclysm.Chorus.AnAurasPulseComesAfterTheCastAndIsNotRepeated` (10) and
 `Cataclysm.TriggeredSkill.ARunningAuraKeepsPulsingWhileItsCasterIsStunned` (10). Every other test granting an aura was
 read for a damage assertion and has none, or states its figure already.
 
 **Python:** `tools/tests/test_an_aura_deals_damage_only_where_its_row_states_it.py`, 9 checks: every Aura row listed
 with what it deals and why; each states exactly that or none; a row stating none names no weapon or fire damage, and a
-row stating one does; the figures 10, 400 and nought; Conflagration's row is the ruling; the Aura band holds 10; and the
+row stating one does; the figures 10, 66.67 and nought; Conflagration's row is the ruling; the Aura band holds 10; and the
 C++ rule is present in `GetDamagePercent` between the row's own figure and the slot's, comments stripped.
 
 **Python guard proofs, `tools/prove_guard.py`, 4 of 4 PROVED**, each command the new file alone:
@@ -201,6 +210,13 @@ Conflagration and Living Pyre row tests on their enemy 5 m out.
 `SkillSlots.csv` and `WeaponSkills.csv`: it clears when the window rebuilds their two assets. ruff: "All checks
 passed!". The re-apply script below and this paragraph were added after that run; ruff was run again on them.
 
+**After the Living Pyre ruling, the second commit was not given a whole-suite run**, by the coordinating session's
+instruction: the 274 Python test files that read anything it changed (the design documents, this log, the workbook,
+`WeaponSkills.csv`, `SkillSlots.csv`, the C++ it edits) gave "5995 passed, 8 skipped in 278.99s"; JUnit 6003 tests,
+0 failures, 0 errors, 8 skipped. That set does not include `test_datatable_assets_are_current.py`, which still fails
+as above until the window rebuilds the two assets. The four guard proofs above were run again on it, 4 of 4 PROVED,
+and the re-apply script's proof below was repeated with Living Pyre's cell at 66.67, every figure as stated.
+
 ### The workbook edit, as data, and the script that re-applies it
 
 **Granted to this branch by the coordinating session, and not the only unmerged one**: `feat/abyssal-rifts-2864`
@@ -215,7 +231,7 @@ checks that no other cell changed, and runs `tools/generate_datatables.py`. `--c
 | Weapon Skills | 398 (Conflagration) | E, Skill Description | "...in a 10 meter radius. Enemies within it are continuously set alight..." | the sentence quoted under "What changed" |
 | Weapon Skills | 398 (Conflagration) | H, Shape Params | `Radius=10; ...` | `Radius=4; ...`, the rest unchanged |
 | Weapon Skills | 398 (Conflagration) | J, Damage Percent | blank | 10 |
-| Weapon Skills | 188 (Living Pyre) | J, Damage Percent | blank | 400 |
+| Weapon Skills | 188 (Living Pyre) | J, Damage Percent | blank | 66.67 |
 | Skill Slots | 6 (Aura) | C, Damage Lowest | 15 | 10 |
 | Skill Slots | 6 (Aura) | J, Note | "...This is per second rather than per use." | "...per use, and it is what an aura stating damage is typically worth: an aura whose row states none deals none." |
 

@@ -11,7 +11,8 @@ THE SIX CELLS, KEYED ON CONTENT AND NEVER ON A ROW NUMBER:
     Weapon Skills, the row whose Skill Name is "Conflagration" (#2869)
         Skill Description, Shape Params (Radius=10 -> 4), Damage Percent (-> 10)
     Weapon Skills, the row whose Skill Name is "Living Pyre" (#2875)
-        Damage Percent (-> 400, the figure it dealt before, now stated)
+        Damage Percent (-> 66.67, the Ultimate's 400% spread over its six
+        pulses: the owner's ruling of 2026-11-24 on #2875)
     Skill Slots, the row whose Slot is "Aura" (#2869, #2875)
         Damage Lowest (15 -> 10), Note
 
@@ -68,7 +69,8 @@ EDITS = (
     ("Weapon Skills", "Skill Name", "Conflagration", "Shape Params",
      CONFLAGRATION_PARAMS_BEFORE, CONFLAGRATION_PARAMS_AFTER),
     ("Weapon Skills", "Skill Name", "Conflagration", "Damage Percent", None, 10),
-    ("Weapon Skills", "Skill Name", "Living Pyre", "Damage Percent", None, 400),
+    ("Weapon Skills", "Skill Name", "Living Pyre", "Damage Percent", None,
+     66.67),
     ("Skill Slots", "Slot", "Aura", "Damage Lowest", 15, 10),
     ("Skill Slots", "Slot", "Aura", "Note", AURA_NOTE_BEFORE, AURA_NOTE_AFTER),
 )

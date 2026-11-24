@@ -11847,9 +11847,10 @@ bool FCataclysmAuraWithoutTheseGivesNeitherTest::RunTest(const FString&)
 		return false;
 	}
 
-	// AND ITS ROW'S 400% A PULSE, which the row states since issue #2875: an aura
-	// stating no damage deals none, so the pyre's figure is written on its row.
-	Pyre->DamagePercentOverride = 400.0f;
+	// AND ITS ROW'S 66.67% A PULSE, the Ultimate's 400% spread over its six
+	// pulses, ruled 2026-11-24 on issue #2875: an aura stating no damage deals
+	// none, so the pyre's figure is written on its row.
+	Pyre->DamagePercentOverride = 66.67f;
 
 	const float EnemyBefore = Enemy.Health();
 

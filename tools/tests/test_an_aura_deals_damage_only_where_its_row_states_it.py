@@ -53,10 +53,10 @@ AURAS: dict[str, tuple[str, float | None, str]] = {
         "'Enemies within it take 10% weapon damage each second': the owner's "
         "ruling on #2869"),
     "Demonic_Fist_Ultimate": (
-        "Living Pyre", 400.0,
+        "Living Pyre", 66.67,
         "'raises the pyre's fire damage by 8%' names damage and states no "
-        "figure; the row carries the Ultimate slot's 400 a pulse it dealt "
-        "before, unchanged until the owner rules on it (#2875)"),
+        "figure; the owner ruled on 2026-11-24, '400% spread over 6 pulses "
+        "(Recommended)', so the row states 66.67 a pulse (#2875)"),
     "Celestial_All_Aura": (
         "Exposing Light", None,
         "a resistance cut and an ally bonus; no damage named"),
@@ -175,12 +175,14 @@ def test_an_aura_stating_damage_names_it_in_its_sentence() -> None:
 
 
 def test_what_each_aura_deals_a_second() -> None:
-    """The figures the ruling leaves: Conflagration 10, Living Pyre 400, and
-    nought for the other ten."""
+    """The figures the rulings leave: Conflagration 10, Living Pyre 66.67 (the
+    Ultimate's 400% over its six pulses, 400.02% in all), and nought for the
+    other ten."""
     found = aura_rows()
     by_name = {row["SkillName"]: deals(row) for row in found.values()}
     assert by_name["Conflagration"] == 10.0
-    assert by_name["Living Pyre"] == 400.0
+    assert by_name["Living Pyre"] == 66.67
+    assert abs(6 * by_name["Living Pyre"] - 400.0) < 0.1
     for name in ("Exposing Light", "Miasma", "Undertow", "Pall of Ending",
                  "Unreason", "Gnawing Want"):
         assert by_name[name] == 0.0, name

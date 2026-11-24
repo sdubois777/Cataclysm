@@ -34,6 +34,8 @@
  *   Light, Miasma, Pall of Ending, Unreason and Gnawing Want are pure effects, and so is Undertow, whose sentence names
  *   no damage either. `UCataclysmSkillTemplate::GetDamagePercent` answers nought for an aura stating no figure.
  *
+ *   Living Pyre, #2875, "400% spread over 6 pulses (Recommended)": its row states 66.67% a pulse.
+ *
  * WHY THE GENERATED ROWS AND NOT A ROW TYPED INTO THE TEST. Every older aura test grants the template with parameters
  * written in the test, so it proves the machinery and says nothing about what the sheet supplies; a radius of 10 m
  * typed into a test still passes after the row says 4. These read `DT_WeaponSkills`, so THE WINDOW MUST REBUILD THAT
@@ -279,7 +281,7 @@ bool FCataclysmAuraDamageMiasmaRowTest::RunTest(const FString& Parameters)
 /**
  * EVERY AURA ROW IN THE TABLE, #2875. Each row whose Shape is Aura, read through `SkillsOfDamageType` for each of the
  * eight damage types and stamped onto an aura as a grant stamps it, deals what its row states and nought when it
- * states none: Conflagration 10, Living Pyre 400, the other ten nought. Twelve rows, counted, so a new aura row fails
+ * states none: Conflagration 10, Living Pyre 66.67, the other ten nought. Twelve rows, counted, so a new aura row fails
  * here until somebody says what it deals.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraDamageEveryRowTest,
@@ -296,7 +298,7 @@ bool FCataclysmAuraDamageEveryRowTest::RunTest(const FString& Parameters)
 
 	TMap<FString, float> Stating;
 	Stating.Add(TEXT("Conflagration"), 10.0f);
-	Stating.Add(TEXT("Living Pyre"), 400.0f);
+	Stating.Add(TEXT("Living Pyre"), 66.67f);
 
 	TArray<FString> Seen;
 	for (const TCHAR* DamageType : {TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"), TEXT("Famine"),
@@ -329,10 +331,11 @@ bool FCataclysmAuraDamageEveryRowTest::RunTest(const FString& Parameters)
 /**
  * LIVING PYRE'S OWN ROW, #2875: its sentence says enemies within 4 metres are continuously set alight and that every
  * hit its holder takes raises the pyre's fire damage by 8% with no cap and returns 25% of that hit as health. The
- * figure a pulse deals is not in the sentence; its row states 400, the Ultimate slot's figure it dealt before the row
- * stated one, carried unchanged until the owner rules on it. A holder at the origin, hurt to half health, one enemy 2 m
- * along +X and one 5 m along -X. A pulse takes 400 from the near enemy and sets it alight; a hit of 200 on the holder
- * returns 50; the next pulse takes 432. THE CONTROL is the far enemy, untouched.
+ * figure a pulse deals is not in the sentence, and the owner ruled it on 2026-11-24, "400% spread over 6 pulses
+ * (Recommended)": the row states 66.67% a pulse. A holder at the origin, hurt to half health, one enemy 2 m along +X
+ * with 1,000 health, so a figure with two decimals reads back to within a ten-thousandth, and one 5 m along -X. A
+ * pulse takes 66.67 from the near enemy and sets it alight; a hit of 200 on the holder returns 50; the next pulse
+ * takes 8% more, 72.0036. THE CONTROL is the far enemy, untouched.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraDamageLivingPyreRowTest,
 	"Cataclysm.AuraDamage.LivingPyresRowBurnsWithinFourMetresForItsStatedFigureAndGrowsEightPercentAHitTaken",
@@ -352,8 +355,8 @@ bool FCataclysmAuraDamageLivingPyreRowTest::RunTest(const FString& Parameters)
 				   FString(TEXT("Living Pyre")))
 		|| !TestEqual(TEXT("set-up: its row states a ring of 4 m"), Row.Params.RadiusCm, 4.0f * AuraDamageMetre,
 					  0.01f)
-		|| !TestEqual(TEXT("set-up: and 400% a pulse. If -1, DT_WeaponSkills is older than the CSV"),
-					  Row.DamagePercent, 400.0f, 0.001f)
+		|| !TestEqual(TEXT("set-up: and 66.67% a pulse. If -1 or 400, DT_WeaponSkills is older than the CSV"),
+					  Row.DamagePercent, 66.67f, 0.001f)
 		|| !TestTrue(TEXT("set-up: the burn tag"), Burn.IsValid()))
 	{
 		return false;
@@ -362,6 +365,10 @@ bool FCataclysmAuraDamageLivingPyreRowTest::RunTest(const FString& Parameters)
 	FAuraDamageFighter Holder(World, FVector::ZeroVector);
 	FAuraDamageFighter Near(World, FVector(2.0f * AuraDamageMetre, 0.0f, 0.0f));
 	FAuraDamageFighter Far(World, FVector(-5.0f * AuraDamageMetre, 0.0f, 0.0f));
+	// A SMALL POOL ON THE NEAR ENEMY, so a loss of 66.67 is read back to well inside the tolerance: at 100,000 health
+	// a float holds health only to the nearest 0.008.
+	Near.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Near.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
 	// THE ULTIMATE'S FERVOUR, and room to heal into so a returned share can be seen.
 	Holder.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
 	Holder.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
@@ -375,7 +382,7 @@ bool FCataclysmAuraDamageLivingPyreRowTest::RunTest(const FString& Parameters)
 	const float NearBefore = Near.Health();
 	const float FarBefore = Far.Health();
 	TestEqual(TEXT("a pulse finds the one enemy within 4 m"), Pyre->Pulse(), 1);
-	TestEqual(TEXT("and takes the row's 400% of a weapon dealing 100 from it"), NearBefore - Near.Health(), 400.0f,
+	TestEqual(TEXT("and takes the row's 66.67% of a weapon dealing 100 from it"), NearBefore - Near.Health(), 66.67f,
 			  0.01f);
 	TestTrue(TEXT("and sets it alight, as the sentence says"), Near.Carries(Burn));
 	TestEqual(TEXT("CONTROL: the enemy 5 m away loses nothing"), Far.Health(), FarBefore, 0.0f);
@@ -387,7 +394,8 @@ bool FCataclysmAuraDamageLivingPyreRowTest::RunTest(const FString& Parameters)
 
 	const float BeforeTheHotter = Near.Health();
 	Pyre->Pulse();
-	TestEqual(TEXT("and the next pulse is 8% hotter: 432"), BeforeTheHotter - Near.Health(), 432.0f, 0.01f);
+	TestEqual(TEXT("and the next pulse is 8% hotter: 66.67 times 1.08, 72.0036"), BeforeTheHotter - Near.Health(),
+			  66.67f * 1.08f, 0.01f);
 	return true;
 }
 
