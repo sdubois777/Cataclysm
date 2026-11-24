@@ -39,7 +39,8 @@ hands are one position. Gems fill the worn pieces' sockets, best first. No forgi
 gear, no passive tree. It is the most a player who wears the rarest thing they find gets out of the drops, which is what
 the owner describes doing ("mostly Masterful", the "Hide worse than worn" filter).
 
-Run from `sim/`: python measure_power_score_weights.py     (about two minutes)
+Run from `sim/`: python -u measure_power_score_weights.py     (about eight minutes; the whole-campaign section is
+most of it). Every walk is seeded, so two runs print the same figures.
 """
 
 from __future__ import annotations
@@ -119,13 +120,17 @@ TODAY = WeightSet("today (10/50/30/10 shares)",
 #: THE RECOMMENDATION. Every number a plain one; the shares fall out of them (see the proposal for the reasoning).
 RECOMMENDED = WeightSet("recommended", level=10, per_rarity=2, per_upgrade=2, gem=5, resistance=1)
 
+#: THE ALTERNATIVE the proposal offers if the weights alone are to carry more of the early fix: lower after one
+#: dungeon and closer to the ceilings, at the cost of two numbers off the owner's list and gems worth less.
+ALTERNATIVE = WeightSet("alternative (15/1/2/3/1)", level=15, per_rarity=1, per_upgrade=2, gem=3, resistance=1)
+
 #: The candidates the proposal compares the recommendation with. Each is a judgement; the proposal says why each lost.
 CANDIDATES = (
     TODAY,
     RECOMMENDED,
     WeightSet("today rounded (6/6/1.5/5/1)", level=6, per_rarity=6, per_upgrade=1.5, gem=5, resistance=1),
     WeightSet("closest fit (10/3/2/4/1)", level=10, per_rarity=3, per_upgrade=2, gem=4, resistance=1),
-    WeightSet("lower early (15/1/2/3/1)", level=15, per_rarity=1, per_upgrade=2, gem=3, resistance=1),
+    ALTERNATIVE,
     WeightSet("level 20, gear 1+2, gem 2, resist 0.5", level=20, per_rarity=1, per_upgrade=2, gem=2,
               resistance=0.5),
     WeightSet("level 10, gear 4+1", level=10, per_rarity=4, per_upgrade=1, gem=5, resistance=1),
@@ -420,7 +425,7 @@ def main() -> None:
     print("  THE GAP RULE ON, as the game has it. Each weight set is its own walk, because the rule reads the score.")
     for scenario in scenarios:
         print(f"  {scenario.name}")
-        for weights in (TODAY, RECOMMENDED):
+        for weights in (TODAY, RECOMMENDED, ALTERNATIVE):
             walked = run_many(scenario, weights)
             for n in CHECKPOINTS:
                 print(f"    {weights.name[:26]:26s} after {n}: {describe(walked[n], weights)}")
@@ -432,9 +437,9 @@ def main() -> None:
           f"{LEVELS_AT_TIER_ENDS[0]}; the tier 1 ceiling is {scoring.PLAYER_MAX_SCORES[1]:.0f}.")
     print("  score | level gear gems resistances | mean level | the score as a multiple of the dungeon")
     off = [campaign(TODAY, seed, gap_rule=False) for seed in range(CAMPAIGN_SEEDS)]
-    for weights in (TODAY, RECOMMENDED):
+    for weights in (TODAY, RECOMMENDED, ALTERNATIVE):
         print(f"    gap rule OFF, {weights.name[:26]:26s}: {describe_parts(off, weights, dungeon)}")
-    for weights in (TODAY, RECOMMENDED):
+    for weights in (TODAY, RECOMMENDED, ALTERNATIVE):
         on = [campaign(weights, seed, gap_rule=True) for seed in range(CAMPAIGN_SEEDS)]
         print(f"    gap rule on,  {weights.name[:26]:26s}: {describe_parts(on, weights, dungeon)}")
     print()
