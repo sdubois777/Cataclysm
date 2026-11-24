@@ -3808,6 +3808,102 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotByTicksTest,
 }
 
 
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNeverCriticalTest,
+	"Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874. The owner's Boss Brute's explosion sent 367, five of its hits, and struck critically, so it was ten:
+	// cut to the 396 health the character had left, it killed. Ruled by the coordinating session on 2026-11-24, as the
+	// overkill explosion and the death blast were on 2026-10-07: the explosion cannot critically strike.
+	//
+	// EVERY ROLL CRITICAL: the brander's chance is 100 and the roll is pinned at 0. THE CONTROL: its five one-point hits
+	// are each critical, so the pin and the chance reach its blows. THEN: the fifth sets off the explosion, which sends
+	// five of its 100 hits and is not critical, and lands no more than it sent on a player with no defences.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll EveryRollCritical(0.0f);
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	constexpr float BranderHit = 100.0f;
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), BranderHit);
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+	if (AController* Brain = Brander->GetController())
+	{
+		Brain->UnPossess();
+	}
+
+	ACataclysmPlayerCharacter* Player = BrandedPlayerAt(World, FVector(1000.0f, 0.0f, 0.0f), 5000.0f);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: the announcer"), Events))
+	{
+		return false;
+	}
+
+	// THE BRANDER'S BLOWS ON THE PLAYER: the hits, told apart from the explosion by what each sent.
+	const float Explosion = BranderHit * UCataclysmEnemyModifiers::InfernalBrandExplosionHits;
+	int32 Hits = 0;
+	int32 CriticalHits = 0;
+	int32 Explosions = 0;
+	int32 CriticalExplosions = 0;
+	float ExplosionSent = 0.0f;
+	float ExplosionLanded = 0.0f;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&, Player, Brander](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target != Player || Notice.Attacker != Brander || Notice.bDamageOverTime)
+			{
+				return;
+			}
+			if (Notice.Sent >= Explosion - 0.01f)
+			{
+				++Explosions;
+				CriticalExplosions += Notice.bCritical ? 1 : 0;
+				ExplosionSent = Notice.Sent;
+				ExplosionLanded = Notice.Landed;
+			}
+			else
+			{
+				++Hits;
+				CriticalHits += Notice.bCritical ? 1 : 0;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, /*Damage=*/1.0f, FCataclysmHitDelivery());
+	}
+
+	AddInfo(FString::Printf(TEXT("BRAND NEVER CRITICAL: %d hit(s), %d critical; %d explosion(s), %d critical, sent %.2f "
+								 "and landed %.2f, five hits being %.2f"),
+							Hits, CriticalHits, Explosions, CriticalExplosions, ExplosionSent, ExplosionLanded,
+							Explosion));
+
+	TestEqual(TEXT("set-up: five hits reached the player"), Hits, 5);
+	TestEqual(TEXT("CONTROL: every one of the five hits was a critical strike"), CriticalHits, 5);
+	TestEqual(TEXT("set-up: the fifth set off one explosion"), Explosions, 1);
+	TestEqual(TEXT("THE EXPLOSION SENT FIVE OF THE BRANDER'S HITS"), ExplosionSent, Explosion, 0.01f);
+	TestEqual(TEXT("AND IT WAS NOT A CRITICAL STRIKE"), CriticalExplosions, 0);
+	TestTrue(FString::Printf(TEXT("AND IT LANDED NO MORE THAN IT SENT: %.2f of %.2f"), ExplosionLanded, ExplosionSent),
+			 ExplosionLanded > 0.0f && ExplosionLanded <= ExplosionSent + 0.01f);
+	return true;
+}
+
+
 CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 	"Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt")
 {

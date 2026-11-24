@@ -768,8 +768,15 @@ float UCataclysmEnemyModifiers::BrandOnHit(AActor* Attacker, AActor* Target)
 	// AN ORDINARY DIRECT BLOW. The damage TYPE is not a parameter here: it is
 	// read off the instigator when the hit resolves, which is what makes the
 	// explosion count as this creature's own element without saying so twice.
-	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage,
-											  FCataclysmHitDelivery());
+	//
+	// AND NEVER A CRITICAL STRIKE, ruled by the coordinating session on 2026-11-24 (issue #2874), as the overkill
+	// explosion and a minion's death blast were ruled on 2026-10-07: the owner chose five hits' worth, one banked per
+	// stack, "a figure a player can reason about", and a critical made it ten. The owner's Boss Brute's explosion sent
+	// 367, struck critically, and took the 396 health a level 6 character had left. Said here because a direct blow
+	// from a creature rolls its critical strike chance otherwise.
+	FCataclysmHitDelivery Explosion;
+	Explosion.bCannotCriticallyStrike = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage, Explosion);
 
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("%s's Infernal Brand reached five stacks on %s and dealt %.0f."),

@@ -85,3 +85,24 @@ def test_the_brand_is_called_only_for_a_blow_that_is_not_damage_over_time() -> N
         "BrandOnHit must be called inside the same `if (!Hit.bIsDamageOverTime)` block as WitherOnHit: the brand's row "
         "says 'on hit', a tick is not a hit, and four Hellfire Aura ticks branded the owner to an explosion that killed "
         "on 2026-11-24 (issue #2874)")
+
+
+ENEMY_MODIFIERS = SOURCE / "Character" / "CataclysmEnemyModifiers.cpp"
+
+
+def test_the_brands_explosion_is_sent_with_a_delivery_that_cannot_critically_strike() -> None:
+    """The explosion's delivery sets `bCannotCriticallyStrike` before the blow is sent, and the blow is sent with it.
+
+    Ruled by the coordinating session on 2026-11-24 (issue #2874), as the overkill explosion and a minion's death blast
+    were on 2026-10-07: five hits' worth, never ten.
+    """
+    function = "float UCataclysmEnemyModifiers::BrandOnHit"
+    body = body_of(ENEMY_MODIFIERS, function)
+    declared = re.search(r"FCataclysmHitDelivery\s+(\w+)\s*;", body)
+    assert declared, f"{function} no longer declares a delivery of its own for the explosion"
+    name = declared.group(1)
+    flagged = position(body, f"{name}.bCannotCriticallyStrike = true;", function)
+    sent = position(body, f"UCataclysmSkillEffects::ApplyDirectDamage(Attacker, Target, Damage, {name})", function)
+    assert declared.start() < flagged < sent, (
+        f"{function} must mark its explosion's delivery as unable to critically strike before it sends the blow: a "
+        "critical explosion was ten of the creature's hits and killed the owner on 2026-11-24 (issue #2874)")
