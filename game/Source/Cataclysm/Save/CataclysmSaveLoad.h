@@ -34,6 +34,18 @@ struct CATACLYSM_API FCataclysmLoadReport
 
 	/** Creatures put back on the floor. */
 	int32 CreaturesRestored = 0;
+
+	/**
+	 * Whether the character was put back where its record says it stood: a placement found for it, on a record that
+	 * holds a floor. False for a record with no floor (the character stays at the level's own start), a dropped sandbox
+	 * floor, a run that could not be read and a refusal. WHAT A LEVEL'S START READS SO IT DOES NOT MOVE THE CHARACTER
+	 * AFTERWARDS: `ACataclysmDungeonGameMode::StartPlay` stood it at the floor's entrance after the load until issue
+	 * #2858.
+	 */
+	bool bPutWhereSaved = false;
+
+	/** Where the record says the character stood, when `bPutWhereSaved`. */
+	FVector SavedLocation = FVector::ZeroVector;
 };
 
 /**

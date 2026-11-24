@@ -121,8 +121,12 @@ namespace
 	 * #1833 group D part 2, ruled 2026-09-30: called after the floor's rules
 	 * reach the player in `StartPlay` and `GoToFloor`, and not on leaving the
 	 * dungeon, which also applies the rules and starts no floor. A Horde wave is
-	 * not a floor start. The first floor's `GoToFloor` runs before there is a
-	 * pawn, so it reaches nobody and `StartPlay`'s call is the one that counts.
+	 * not a floor start. `StartPlay` raises it again for the first floor, for a
+	 * pawn its `GoToFloor` could not reach. This said that `GoToFloor` runs
+	 * before there is a pawn; in a launched game the pawn stands by then (the
+	 * engine spawns it at login, before play begins), so the first floor's start
+	 * reaches the player twice. Read from the code for issue #2858 and not
+	 * changed by it.
 	 */
 	void DungeonGameModeRaiseFloorStart(UWorld* World)
 	{
@@ -1343,30 +1347,60 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// save writer, which records the floor being stood on, and a floor that does
 	// not exist yet is one the record cannot describe.
 	//
-	// ITS LAST STEP, STANDING THE PLAYER AT THE ENTRANCE, DOES NOTHING HERE and
-	// that is expected rather than a waste: there is no pawn until the parent has
-	// run, so it is done again below.
+	// ITS LAST STEP STANDS THE PLAYER AT THE ENTRANCE WHEN A PAWN STANDS, and in
+	// a launched game one does: the engine spawns the player's pawn at login,
+	// which `UEngine::LoadMap` and Play In Editor both run before play begins.
+	// This said there was no pawn until the parent had run, until issue #2858.
 	GoToFloor(ChooseFloorNumber());
 
 	Super::StartPlay();
 
-	// AND THE PLAYER IS MOVED AFTER, because the pawn is created during login,
-	// which the parent's `StartPlay` is downstream of. Moved rather than spawned
-	// there: the player start is wherever the map put it, and where the player
-	// arrives is decided by the generator and is different every floor.
+	// AND THE PLAYER IS STOOD AT THE ENTRANCE AGAIN, for a pawn that did not
+	// stand when `GoToFloor` ran above. Moved rather than spawned there: the
+	// player start is wherever the map put it, and where the player arrives is
+	// decided by the generator and is different every floor. Until issue #2858
+	// this said the pawn is created during login downstream of the parent's
+	// `StartPlay`; login runs before play begins, so in a launched game this
+	// stands a pawn `GoToFloor` already stood.
+	//
+	// **EXCEPT A CHARACTER THE PARENT'S LOAD HAS JUST PUT WHERE IT WAS SAVED.**
+	// Issue #2858. Continue on a character saved inside a dungeon loads it here,
+	// in the parent's `StartPlay` (`LoadThePendingCharacter`): the dungeon is
+	// entered again at the saved floor and the character put back where it
+	// stood. In a launched game the pawn already stands by then -- the engine
+	// spawns it at login, before play begins -- and this line stood it at the
+	// floor's entrance a moment after the load put it back, while the load's own
+	// line said "placed where it was saved". A load that put back no place --
+	// a record with no floor, which a trip from the capital writes -- leaves
+	// the character at the level's start, and that is this line's to give.
+	const bool bLeftWhereTheLoadPutIt = PendingLoadPutTheCharacterWhereSaved();
 	if (const APlayerController* Controller =
 			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
 	{
-		PlaceAtEntrance(Controller->GetPawn());
+		if (!bLeftWhereTheLoadPutIt)
+		{
+			PlaceAtEntrance(Controller->GetPawn());
+		}
+		else if (const APawn* Loaded = Controller->GetPawn())
+		{
+			const FVector At = Loaded->GetActorLocation();
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("The loaded character stays where its save put it, at X=%.0f Y=%.0f Z=%.0f on floor %d, "
+						"%.0f cm from the floor's entrance, rather than being stood at the entrance."),
+				   At.X, At.Y, At.Z, FloorNumber,
+				   CurrentFloor ? FVector::Dist2D(At, CurrentFloor->EntranceWorld()) : -1.0f);
+		}
 	}
 
-	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THE FIRST FLOOR, for the same reason: `GoToFloor` ran before there was a
-	// player state to read the mark from. Issue #2688.
+	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THE FIRST FLOOR, for a player state `GoToFloor` could not read the mark
+	// from. Issue #2688.
 	NoteTheConsumptionDoubleAsAFloorIsEntered();
 
-	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
-	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
-	// Issue #41.
+	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for a pawn `GoToFloor`
+	// could not reach. Issue #41. IN A LAUNCHED GAME `GoToFloor` REACHED IT
+	// ALREADY (see above), so this, the double's note above and the floor start
+	// below run a second time for the first floor, after a load as well: read
+	// from the code for issue #2858, which changes only the move above.
 	ApplyFloorRulesKeepingHealth();
 	DungeonGameModeRaiseFloorStart(GetWorld());
 
@@ -25880,8 +25914,10 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
 	// they would be placed at the previous floor's entrance.
 	//
-	// NOTHING TO MOVE DURING `StartPlay`, where the pawn does not exist yet and
-	// the caller does this again afterwards.
+	// NOTHING TO MOVE DURING `StartPlay` WHEN NO PAWN STANDS YET, and the caller
+	// does this again afterwards. In a launched game one stands (the engine
+	// spawns it at login, before play begins); this said it did not exist yet
+	// until issue #2858.
 	//
 	// AND NOT AT ALL WHEN THE FLOOR IS THE SAME SPACE IT WAS. A Horde dungeon's
 	// next wave arrives around the player; teleporting them back to the mouth of

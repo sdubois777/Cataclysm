@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A character continued inside a dungeon stands where it was saved: the dungeon level's start no longer stands it at the floor's entrance after the load put it back (#2858)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/resume-position-2858`, from the coordinating
+session's brief of 2026-11-24. Issue [#2858](https://github.com/sdubois777/Cataclysm/issues/2858).
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Player/CataclysmGameMode.h`, `game/Source/Cataclysm/Player/CataclysmGameMode.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveLoad.h`, `game/Source/Cataclysm/Save/CataclysmSaveLoad.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveWriter.cpp`, `game/Source/Cataclysm/Tests/CataclysmSaveLoadTests.cpp`,
+`docs/Save_System_Design.md`.
+
+### What the owner saw, and why no ruling was needed
+
+The owner, playtest of 2026-11-22, verbatim: "It should be loading you back in the spot you were, with whatever enemies
+were alive as well. Right now it seems to load you back at the start of the level." And on the issue the same day: "The
+enemies were dead up to where I had made it on that floor". `docs/Save_System_Design.md` section 6 already restores
+"Which floor, and where on it the character is standing", so this is a fault against the design, not a new rule.
+
+### The cause, read from the code in the order it runs
+
+1. **The pawn stands before play begins.** The engine spawns the player at login and only then begins play:
+   `UEngine::LoadMap` calls `SpawnPlayActor` before `BeginPlay` (UnrealEngine.cpp lines 16647 and 16661 in the 5.8
+   install), and Play In Editor does the same (GameInstance.cpp 538 and 566). `AGameModeBase::HandleStartingNewPlayer`
+   restarts the player at once. The load it asks for (`ACataclysmGameMode::LoadThePendingCharacter`) waits, because
+   the save writer begins in `StartPlay`.
+2. **`ACataclysmDungeonGameMode::StartPlay` builds the level's floor and calls `Super::StartPlay`**, where the writer
+   begins and the load runs: `ResumeEmpireDungeon` builds the saved floor (the first "Floor N carries ..." line), the
+   saved creatures go back, and `FCataclysmSaveApply::PlacementInto` puts the character where its record says. The load
+   logs "placed where it was saved", and that was true.
+3. **Back in the dungeon's `StartPlay`, `PlaceAtEntrance` stood the pawn at the floor's entrance**, and
+   `ApplyFloorRulesKeepingHealth` wrote "Floor N carries ..." a second time: the 3 milliseconds the issue measured.
+
+**The save was not at fault**: `FCataclysmSaveGather::PlacementFrom` writes the character's own location, and the
+creatures came back as the owner saw. The entrance placement after `Super::StartPlay` came with the dungeon level (#40,
+commit `23d3fec0c`); the load joined the parent's `StartPlay` with select-screen step 3a (commit `17c95a8d1`). No test
+ran a resume through `StartPlay`: every one called the load after it.
+
+### What changed
+
+- `FCataclysmLoadReport::bPutWhereSaved` and `SavedLocation`: set when a placement was found for the character on a
+  record that holds a floor. `ACataclysmGameMode::LoadThePendingCharacter` keeps it, and
+  `PendingLoadPutTheCharacterWhereSaved` answers it.
+- `ACataclysmDungeonGameMode::StartPlay` stands the character at the entrance only when the load did not put it in its
+  place, and otherwise logs that it left it there and how far that is from the entrance. A hand-over's record, which
+  holds no floor, still leaves the character at the level's start.
+- **The log lines the issue asked for.** Every run record write logs the trigger that raised it and the place it holds
+  ("The run record was written for the clock: the character at X=... on floor N of '...', with M creature(s)
+  standing"); the load logs where the character stands just after the put-back, and a timer logs it again a second
+  later.
+- The comments that said no pawn stands during `StartPlay`'s first `GoToFloor` were corrected; they were the premise
+  the old order rested on.
+- No save record version and no fixture changed.
+
+### Judgements
+
+- **A judgement: the level's start reads a flag the load sets, rather than the load moving after the entrance
+  placement.** The placement stays for what it is for: a pawn that did not stand when `GoToFloor` ran, and a load that
+  put back no place. A flag answers exactly the question the start needs, and a load that runs later, in
+  `HandleStartingNewPlayer`, already came after every placement.
+- **A judgement: every run record write is logged, not only the clock's, a floor change's and the hand-over's.** Every
+  write restarts the clock, so in a fight the last write before a quit is usually a creature's death or a fight starting,
+  and a line for three triggers would miss the write a resume reads. The run record is written at most once a frame, so
+  the lines are at most one a frame.
+- **A judgement: the line a second after the load comes from a timer** on the world's timer manager, held by a weak
+  pointer to the character, so it is written in play and never in an automation test, whose world is not ticked.
+- **Not changed, reported:** in a launched game the first floor's start reaches the player twice, because `StartPlay`
+  repeats `NoteTheConsumptionDoubleAsAFloorIsEntered`, `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a
+  pawn `GoToFloor` already reached. After a load the repeated `floor_start` comes after the saved health is put back, so
+  "You start every dungeon floor at 30%-50% of your maximum HP" would cap a resumed character's health. Read from the
+  code, not measured; left for the coordinating session.
+
+### Tests
+
+- New: `Cataclysm.SaveLoad.ACharacterContinuedInsideADungeonStandsWhereItWasSaved`. Saved as play saves it (floor 2 of
+  a walk, two creatures killed, the character moved to a cell three cells or more from both ends of the floor, the
+  clock's write), continued through the dungeon level's own `StartPlay` with the pawn standing first, then one beat of
+  the floor. The character must be within 10 cm of where the record says it stood after the start and after the beat;
+  the CONTROL is that place's distance from the entrance, over 100 times that. It also asserts the creatures standing
+  are the ones saved and that the clock's line and the start's line are each written once.
+- Changed: `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` asserts a hand-over's load
+  reports no place put back, so the level's start still stands that character at the entrance.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

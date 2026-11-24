@@ -20,6 +20,7 @@
 #include "Misc/FileHelper.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
+#include "TimerManager.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
@@ -363,9 +364,46 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 			if (Placement.CharacterId == CharacterId)
 			{
 				bPlaced = FCataclysmSaveApply::PlacementInto(Character, Placement, bPutInPlace); // A record with no floor: not in place.
+				// WHERE IT STOOD, FOR THE LEVEL'S START: `PlacementInto` moves the character whenever the record holds a
+				// floor, whatever its vitals did. Issue #2858.
+				Report.bPutWhereSaved = bPutInPlace;
+				Report.SavedLocation = Placement.Location;
 				break;
 			}
 		}
+	}
+
+	// AND WHERE THE CHARACTER STANDS NOW, AND AGAIN A SECOND LATER. Issue #2858: a resume inside a dungeon logged
+	// "placed where it was saved" while the character stood at the floor's entrance, because the level's start moved it
+	// after this returned. The second line is what shows anything that moves it afterwards. A test world is never ticked,
+	// so the second line is never written in a test.
+	if (Report.bPutWhereSaved)
+	{
+		const FVector At = Character.GetActorLocation();
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Cataclysm.LoadCharacter: character %s was put back at X=%.0f Y=%.0f Z=%.0f, %.0f cm from where its "
+					"record says it stood (X=%.0f Y=%.0f Z=%.0f) on floor %d of '%s'."),
+			   *CharacterId.ToString(EGuidFormats::Digits), At.X, At.Y, At.Z,
+			   FVector::Dist(At, Report.SavedLocation), Report.SavedLocation.X, Report.SavedLocation.Y,
+			   Report.SavedLocation.Z, SavedRun->Floor.Floor, *SavedRun->Floor.Dungeon.ToString());
+
+		const TWeakObjectPtr<ACataclysmPlayerCharacter> Loaded(&Character);
+		const FVector SavedAt = Report.SavedLocation;
+		FTimerHandle OneSecondLater;
+		World.GetTimerManager().SetTimer(
+			OneSecondLater,
+			FTimerDelegate::CreateWeakLambda(&Character, [Loaded, SavedAt]()
+			{
+				if (const ACataclysmPlayerCharacter* Still = Loaded.Get())
+				{
+					const FVector Now = Still->GetActorLocation();
+					UE_LOG(LogCataclysm, Log,
+						   TEXT("Cataclysm.LoadCharacter: a second after the load the character stands at X=%.0f Y=%.0f "
+								"Z=%.0f, %.0f cm from where its record says it stood."),
+						   Now.X, Now.Y, Now.Z, FVector::Dist(Now, SavedAt));
+				}
+			}),
+			1.0f, /*bLoop=*/false);
 	}
 
 	// NO SAVED POOLS PUT BACK: FILLED AT THE LOADED LEVEL. Issue #2744, ruled by the coordinating session on 2026-11-18.

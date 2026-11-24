@@ -469,6 +469,17 @@ leaves the character at the level's own start: the capital's player start, or th
 dungeon's entrance once its walk begins. A place saved in one level means nothing
 in another. Decided 2026-11-17 (#2733 slice 3).
 
+**A record with a floor puts the character back where it stood, and the level's start leaves it there.** Continue on
+a character saved inside a dungeon loads it inside the dungeon level's start (in `ACataclysmGameMode::StartPlay`, which
+`ACataclysmDungeonGameMode::StartPlay` calls once it has built a floor), and until 2026-11-24 the dungeon level's start then stood the
+character at the floor's entrance: in a launched game the engine spawns the player's pawn at login, before play begins,
+so that move reached the character the load had just put back. Every resume inside a dungeon came back at the floor's
+start while the log said "placed where it was saved" (#2858). The level's start now asks whether the load put the
+character in its place (`ACataclysmGameMode::PendingLoadPutTheCharacterWhereSaved`) and leaves it there. **Each run
+record write logs the place it holds and the trigger that raised it, and a load logs where the character stands just
+after the put-back and again a second later**, so a playtest log can tell a save that held the wrong place from a load
+that moved the character afterwards.
+
 **Paying for a death is written too, and it is an ordinary write.**
 `ACataclysmPlayerCharacter::Revive` raises `DeathProcessed` once the dungeon is
 ended, the death's days are charged and the character stands, so the record on
