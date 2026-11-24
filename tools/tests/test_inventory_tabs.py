@@ -95,7 +95,8 @@ def test_the_record_is_at_sixteen_and_its_step_moves_and_blanks() -> None:
         re.search(r"SchemaVersionNow\s*=\s*16\s*;", character)), "the character record is not at version 16"
     for field in ("TArray<FCataclysmCarriedSlot> CarriedMaterials;", "TArray<FCataclysmCarriedSlot> CarriedGems;"):
         assert field in flat(character), f"the character record has no {field}"
-    records = code(RECORDS_CPP)
+    # THE CHARACTER RECORD'S OWN STEPS: the run record has a `Migrate_15_to_16` too (issue #2838's cleanse).
+    records = body(code(RECORDS_CPP), "namespace CataclysmCharacterSaveMigration")
     assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 }' in flat(records), "Migrate_15_to_16 is not a step"
     step = body(records, "bool Migrate_15_to_16(")
     for written in ('Slot->SetStringField(TEXT("Material"), TEXT("None"));',
