@@ -106,3 +106,27 @@ def test_the_brands_explosion_is_sent_with_a_delivery_that_cannot_critically_str
     assert declared.start() < flagged < sent, (
         f"{function} must mark its explosion's delivery as unable to critically strike before it sends the blow: a "
         "critical explosion was ten of the creature's hits and killed the owner on 2026-11-24 (issue #2874)")
+
+
+STRENGTH_TESTS = SOURCE / "Tests" / "CataclysmEnemyStrengthTests.cpp"
+
+
+def test_the_melee_critical_measurements_design_hit_is_the_simulations() -> None:
+    """`OutpostBossBruteDesignHit` in the Unreal measurement is the simulation's hit for the owner's Boss Brute.
+
+    `Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` asserts the
+    floor-built Brute against this figure, so a figure written by hand that drifted from the model would make it measure
+    against nothing. Issue #2874.
+    """
+    from cataclysm_sim import enemy_stats
+
+    if not STRENGTH_TESTS.is_file():
+        pytest.skip(f"{STRENGTH_TESTS.name} is not present")
+    found = re.search(r"constexpr double OutpostBossBruteDesignHit = ([\d.]+);",
+                      without_comments(STRENGTH_TESTS.read_text(encoding="utf-8")))
+    assert found, f"{STRENGTH_TESTS.name} no longer states OutpostBossBruteDesignHit"
+    model = enemy_stats.strength_on_floor("Boss", 1, "Basic", "Timed", 10, 6, kind="Brute", ring="Outpost")
+    assert abs(float(found.group(1)) - model.damage_per_hit) < 1e-3, (
+        f"the Unreal measurement says {found.group(1)} and the simulation {model.damage_per_hit:.4f} for a tier 1 "
+        "Outpost Boss Brute's hit on floor 6 of a 10-floor Timed dungeon")
+    assert model.crit_multiplier == 200.0, "the measurement's critical is the Brute's 200%; the model's moved"

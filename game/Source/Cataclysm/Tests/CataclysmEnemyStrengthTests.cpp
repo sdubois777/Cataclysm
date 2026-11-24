@@ -4,6 +4,20 @@
 
 #if WITH_AUTOMATION_TESTS
 
+// For a floor-built Boss Brute's melee critical on a level 6 character. Issue #2874.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystemComponent.h"
+#include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Data/CataclysmDataRows.h"
@@ -534,6 +548,221 @@ bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
 	Mode->LeaveEmpireDungeon();
 	TestEqual(TEXT("leaving the dungeon puts the walk back on an Outpost"), static_cast<int32>(Mode->RunCityTier()),
 			  static_cast<int32>(ECataclysmCityTier::Outpost));
+	return true;
+}
+
+namespace CataclysmEnemyStrengthTest
+{
+	/**
+	 * The design's hit for the owner's Boss Brute of 2026-11-24, before mitigation: `enemy_stats.strength_on_floor(
+	 * "Boss", 1, "Basic", "Timed", 10, 6, kind="Brute", ring="Outpost").damage_per_hit`, floor 6 of a 10-floor Timed
+	 * dungeon on an Outpost at tier 1 with no modifier score. `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_
+	 * creature_lands_nothing.py` holds this figure to the simulation's. Issue #2874.
+	 */
+	constexpr double OutpostBossBruteDesignHit = 72.3205;
+
+	/** The level the owner's character held when the Brute killed it, and the reference character's here. */
+	constexpr int32 MeleeCriticalReferenceLevel = 6;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyStrengthBossBruteMeleeCritical,
+	"Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * ISSUE #2874, THE MEASUREMENT. The owner was killed on 2026-11-24 by a blow from a tier 1 Boss Brute that took 396 of
+ * 430 health, read at first as the Brute's melee critical. It was not -- it was its Infernal Brand's explosion, which
+ * `Cataclysm.EnemyModifiers.` covers -- and this measures the melee critical anyway, so the question is answered by a
+ * run and not by reading.
+ *
+ * THE BRUTE AS THE FLOOR BUILDS IT, the steps of `ACataclysmDungeonGameMode::ApplyDesignedStats` in its order: the rung,
+ * then `UCataclysmEnemyStrength::StartingFiguresFor` on the floor, then its health, damage and armour. The floor is set
+ * by hand to the owner's: floor 6 of a 10-floor Timed Basic dungeon on an Outpost at tier 1, no modifier score
+ * (`Cataclysm.EnemyStrength.ACreaturePlacedOnAFloorIsBuiltFromTheScore` holds that the floor reaches the same function).
+ * No modifier is drawn: the four it carried change no figure of its swing (Hellfire Aura, Infernal Brand, Bloodthirsty's
+ * leech and Perfect Aim's "cannot be evaded").
+ *
+ * THE LEVEL 6 REFERENCE CHARACTER: the starting class at level 6, possessed and wearing what a new character is given,
+ * which is the character `tools/tests/test_the_starting_character_survives_a_pack.py` and `sim/analyse_opening.py`
+ * measure. Every roll pinned: always critical, never blocked; the hit at tier 1.
+ *
+ * WHAT IS ASSERTED. Before mitigation: the Brute's attack damage is the design's 72.32 and its multiplier the Brute's
+ * 200, so its critical is the design's 144.64. After it: one critical melee swing lands, within 1%, the design's
+ * critical times what the design's layers leave of a hit for this character -- armour at tier 1 and resistance, each
+ * less the Overwhelm this Brute applies (issue #2824 slice b), and the flat damage reduction -- and it is less than the
+ * character's whole health. Prints "BOSS BRUTE MELEE CRITICAL".
+ */
+bool FCataclysmEnemyStrengthBossBruteMeleeCritical::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnemyStrengthTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// EVERY HIT AT TIER 1, the owner's tier, and never blocked. Put back however the test returns.
+	IConsoleVariable* Tier = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.DifficultyTier"));
+	IConsoleVariable* BlockRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.BlockRoll"));
+	if (!TestNotNull(TEXT("set-up: the difficulty tier console variable"), Tier)
+		|| !TestNotNull(TEXT("set-up: the block roll console variable"), BlockRoll))
+	{
+		return false;
+	}
+	const int32 TierBefore = Tier->GetInt();
+	const float BlockRollBefore = BlockRoll->GetFloat();
+	Tier->Set(1, ECVF_SetByConsole);
+	BlockRoll->Set(100.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT
+	{
+		Tier->Set(TierBefore, ECVF_SetByConsole);
+		BlockRoll->Set(BlockRollBefore, ECVF_SetByConsole);
+	};
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// AFTER THE WORLD, which silences the critical roll as it is made.
+	const CataclysmTestWorld::FScopedCritRoll EveryRollCritical(0.0f);
+
+	// THE BRUTE, AS THE FLOOR BUILDS IT.
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		ACataclysmBruteCharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	UAbilitySystemComponent* BrutesSystem = Brute ? Brute->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a Brute with an ability system"), BrutesSystem))
+	{
+		return false;
+	}
+	// ITS BRAIN IS TAKEN AWAY, so nothing but the test orders a swing.
+	if (AController* Brain = Brute->GetController())
+	{
+		Brain->UnPossess();
+	}
+
+	FCataclysmScoredFloor Where = Floor(1, ECataclysmDungeonType::Basic, 10, 6, 0.0f, ECataclysmCityTier::Outpost);
+	Where.SubType = ECataclysmDungeonSubType::Timed;
+	Brute->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	FCataclysmStartingFigures Built;
+	if (!TestTrue(TEXT("set-up: a Boss Brute's figures are built for the owner's floor"),
+				  UCataclysmEnemyStrength::StartingFiguresFor(UCataclysmEnemyRarity::LoadEnemyRarityTable(),
+															  UCataclysmEnemyStrength::LoadEnemyArchetypeTable(),
+															  Brute->ArchetypeRow, Where, Brute->RarityStep, Built)))
+	{
+		return false;
+	}
+	Brute->SetHealth(Built.Health);
+	Brute->SetAttackDamage(Built.AttackDamage);
+	Brute->SetArmour(Built.Armour);
+
+	const float AttackDamage = BrutesSystem->GetNumericAttribute(Combat::GetAttackDamageAttribute());
+	const float CritMultiplier = BrutesSystem->GetNumericAttribute(Combat::GetCritMultiplierAttribute());
+	const double DesignCritical =
+		OutpostBossBruteDesignHit * ACataclysmBruteCharacter::DesignedCritMultiplierPercent / 100.0;
+
+	// THE LEVEL 6 CHARACTER, two metres away.
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		ACataclysmPlayerCharacter::StaticClass(), FVector(200.0f, 0.0f, 0.0f), FRotator::ZeroRotator, SpawnParams);
+	if (!TestTrue(TEXT("set-up: a player state, a controller and a character"), State && Controller && Player))
+	{
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	State->SetLevelAndExperience(MeleeCriticalReferenceLevel, 0);
+	// ITS STAT LINE AGAIN AT LEVEL 6: possession applied it at the level held then. The game's own path, which fills
+	// its pools.
+	Player->ApplyChosenClassStats();
+	UAbilitySystemComponent* PlayersSystem = Player->GetAbilitySystemComponent();
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the character's ability system"), PlayersSystem)
+		|| !TestNotNull(TEXT("set-up: the announcer"), Events))
+	{
+		return false;
+	}
+	const auto Read = [PlayersSystem](const FGameplayAttribute& Attribute)
+	{
+		return PlayersSystem->HasAttributeSetForAttribute(Attribute) ? PlayersSystem->GetNumericAttribute(Attribute)
+																	 : 0.0f;
+	};
+	const float MaxHealth = Read(Vital::GetMaxHealthAttribute());
+	const float Armour = Read(Combat::GetArmorAttribute());
+	const float Reduction = Read(Combat::GetDamageReductionAttribute());
+	const float Resistance = Read(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute());
+	const float Overwhelm = UCataclysmPowerScore::OverwhelmPointsAgainst(Player, Brute);
+
+	// WHAT THE DESIGN'S LAYERS LEAVE OF A HIT FOR THIS CHARACTER, from its own figures and the design's formulas: the
+	// layers the reference character has (armour at tier 1 and the flat reduction, the pack test's
+	// `share_of_a_hit_taken`), resistance, which it holds none of, and the Overwhelm off armour and resistance.
+	const float ArmourKeeps =
+		1.0f - FMath::Max(0.0f, UCataclysmDamageCalculation::ArmorReduction(Armour, 1) - Overwhelm) / 100.0f;
+	const float ResistanceKeeps = 1.0f - UCataclysmDamageCalculation::EffectiveResistance(Resistance, Overwhelm) / 100.0f;
+	const float ReductionKeeps = 1.0f - UCataclysmDamageCalculation::EffectiveDamageReduction(Reduction) / 100.0f;
+	const double DesignLanded = DesignCritical * ArmourKeeps * ResistanceKeeps * ReductionKeeps;
+
+	// THE SWING, heard as the character resolved it.
+	int32 Swings = 0;
+	float Sent = 0.0f;
+	float Landed = 0.0f;
+	bool bCritical = false;
+	bool bMelee = false;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&Swings, &Sent, &Landed, &bCritical, &bMelee, Player, Brute](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target == Player && Notice.Attacker == Brute && !Notice.bDamageOverTime)
+			{
+				++Swings;
+				Sent = Notice.Sent;
+				Landed = Notice.Landed;
+				bCritical = Notice.bCritical;
+				bMelee = Notice.bIsMelee;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+
+	// ORDERED, AND LANDED WHEN THE SWING CONNECTS, as the creature's own frame lands it. The clock is moved by hand; no
+	// world in a test is ticked.
+	Brute->AttackTarget(Player);
+	if (!TestTrue(TEXT("set-up: the swing started and its blow waits"), Brute->HasPendingBasicAttack()))
+	{
+		return false;
+	}
+	World->TimeSeconds = static_cast<double>(Brute->PendingBasicAttackLandsAtSeconds) + 0.01;
+	TestTrue(TEXT("set-up: the swing connected and its blow was dealt"), Brute->LandPendingBasicAttack());
+
+	AddInfo(FString::Printf(
+		TEXT("BOSS BRUTE MELEE CRITICAL: Starting damage %.4f, attack damage %.4f (design %.4f), critical multiplier "
+			 "%.0f; level %d character: health %.1f, armour %.2f, damage reduction %.2f, Demonic resistance %.2f, "
+			 "Overwhelm %.2f points; keeps %.4f of a hit; %d swing(s) heard, sent %.4f, landed %.4f, %s, %s; the design "
+			 "lands %.4f, %.1f%% of the character's health. Its Infernal Brand would explode for %.2f before mitigation "
+			 "(five of its hits, never a critical strike)."),
+		Brute->GetStartingAttackDamage(), AttackDamage, OutpostBossBruteDesignHit, CritMultiplier,
+		MeleeCriticalReferenceLevel, MaxHealth, Armour, Reduction, Resistance, Overwhelm,
+		ArmourKeeps * ResistanceKeeps * ReductionKeeps, Swings, Sent, Landed,
+		bCritical ? TEXT("critical") : TEXT("not critical"), bMelee ? TEXT("melee") : TEXT("not melee"), DesignLanded,
+		MaxHealth > 0.0f ? 100.0 * DesignLanded / MaxHealth : -1.0, AttackDamage * 5.0f));
+
+	// BEFORE MITIGATION: THE DESIGN'S HIT AND THE BRUTE'S MULTIPLIER.
+	TestEqual(TEXT("the floor-built Boss Brute's attack damage is the design's, within 0.5%"),
+			  static_cast<double>(AttackDamage), OutpostBossBruteDesignHit, OutpostBossBruteDesignHit * 0.005);
+	TestEqual(TEXT("and its critical multiplier is the Brute's 200"), CritMultiplier,
+			  ACataclysmBruteCharacter::DesignedCritMultiplierPercent, 0.01f);
+
+	// THE SWING.
+	TestEqual(TEXT("set-up: one swing reached the character"), Swings, 1);
+	TestTrue(TEXT("set-up: it was a critical strike"), bCritical);
+	TestTrue(TEXT("and a melee one, as the log would call it"), bMelee);
+	TestTrue(TEXT("set-up: the character outlived it, so what landed was not cut to the health left"),
+			 !UCataclysmSkillEffects::IsDead(Player));
+
+	// AFTER MITIGATION: THE DESIGN'S FIGURE, WITHIN 1%.
+	TestEqual(TEXT("THE CRITICAL SWING LANDS THE DESIGN'S CRITICAL AFTER THE DESIGN'S LAYERS, within 1%"),
+			  static_cast<double>(Landed), DesignLanded, DesignLanded * 0.01);
+	TestTrue(FString::Printf(TEXT("AND IT DOES NOT ONE-SHOT A LEVEL 6 CHARACTER: %.1f of %.1f"), Landed, MaxHealth),
+			 Landed > 0.0f && Landed < MaxHealth);
 	return true;
 }
 
