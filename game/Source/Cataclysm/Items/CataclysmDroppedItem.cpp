@@ -972,9 +972,12 @@ int32 UCataclysmDropSpawner::SpawnGemsFor(UWorld* World, int32 EnemyRarityStep, 
 	// stream is read, not drawn on, so everything it rolled before this is as it was.
 	FRandomStream Stream(CataclysmSeedMix::Mix(KillStream.GetCurrentSeed(), GemStreamSalt, 0));
 
-	// HOW MANY: a Poisson draw on the rung's expected gems, as gear, materials and gold are counted.
+	// HOW MANY: a Poisson draw on the rung's expected gems at the tier being played, as gear, materials and gold are
+	// counted. The tier's share since issue #2853: three quarters of the tier above's below tier 8. Asking the tier
+	// draws nothing from the stream.
+	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
 	const int32 Count = UCataclysmDropRoll::RollDropCount(
-		UCataclysmDropRoll::ExpectedGemDrops(Drops, EnemyRarity, LootQuantity), Stream);
+		UCataclysmDropRoll::ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier), Stream);
 	if (Count <= 0)
 	{
 		return 0;
@@ -983,7 +986,6 @@ int32 UCataclysmDropSpawner::SpawnGemsFor(UWorld* World, int32 EnemyRarityStep, 
 	// THE GEAR'S RARITY ROLL, at the tier being played, with the creature's magic find added to the player's as
 	// `SpawnDropsFor` adds it.
 	const float Together = MagicFind + UCataclysmDropRoll::MagicFindFrom(Drops, EnemyRarity);
-	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
 
 	int32 Placed = 0;
 	for (int32 Index = 0; Index < Count; ++Index)

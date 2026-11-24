@@ -521,10 +521,22 @@ float UCataclysmDropRoll::ExpectedMaterialDrops(const UDataTable* EnemyDropTable
 	return Row ? ScaledByLootQuantity(Row->MaterialDrops, LootQuantity) : 0.0f;
 }
 
-float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity)
+float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity,
+											int32 DifficultyTier)
 {
 	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
-	return Row ? ScaledByLootQuantity(Row->GemDrops, LootQuantity) : 0.0f;
+	return Row ? ScaledByLootQuantity(Row->GemDrops * GemDropShareAt(DifficultyTier), LootQuantity) : 0.0f;
+}
+
+float UCataclysmDropRoll::GemDropShareAt(int32 DifficultyTier)
+{
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	float Share = 1.0f;
+	for (int32 Below = Tier; Below < DifficultyTiers; ++Below)
+	{
+		Share *= GemDropShareATierDown;
+	}
+	return Share;
 }
 
 float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
@@ -1124,6 +1136,15 @@ void UCataclysmDropRoll::GroupsOf(const UDataTable* AffixTable,
 	}
 
 	OutGroups.Add(StatGroup(Affix.Stat, Affix.ValueKind));
+}
+
+bool UCataclysmDropRoll::RollsOnADropAt(const FCataclysmAffixRow& Row, int32 DifficultyTier)
+{
+	// THE ALL-RESISTANCES FAMILY IS THE RESISTANCE FAMILY COVERING EVERY DAMAGE TYPE, the convention `CandidatesFor`
+	// reads to give it all eight without drawing any.
+	const bool bAllResistances = IsResistanceFamily(Row)
+		&& Row.Breadth >= UCataclysmItemModifiers::DamageTypeNames().Num();
+	return !bAllResistances || DifficultyTier >= AllResistancesLowestDropTier;
 }
 
 void UCataclysmDropRoll::CandidatesFor(
@@ -2353,6 +2374,17 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 
 		TArray<FCataclysmAffixCandidate> Candidates;
 		CandidatesFor(AffixTable, Slot, Each.Key, Stream, Candidates);
+
+		// THE ALL-RESISTANCES FAMILY DOES NOT ROLL ON A TIER 1 DROP, ruled by the project owner on 2026-11-24 (issue
+		// #2853); another affix takes the place, as the draw already does for one it cannot use. Taken out AFTER the
+		// candidates are built, as `loot.roll_item` takes it out, so their damage types are drawn as before.
+		Candidates.RemoveAll([AffixTable, DifficultyTier](const FCataclysmAffixCandidate& Candidate)
+		{
+			const FCataclysmAffixRow* Row = AffixTable != nullptr
+				? AffixTable->FindRow<FCataclysmAffixRow>(Candidate.Affix, TEXT("RollItem"), /*bWarnIfMissing=*/false)
+				: nullptr;
+			return Row != nullptr && !UCataclysmDropRoll::RollsOnADropAt(*Row, DifficultyTier);
+		});
 
 		TArray<FCataclysmAffixCandidate> Drawn;
 		if (!DrawWithoutRepeatingAGroup(AffixTable, Candidates, Each.Value,

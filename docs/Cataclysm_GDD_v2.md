@@ -984,6 +984,8 @@ than a fault: the shared pool is what makes spreading thinner mean something.
 
 A player's Power Score combines level, gear quality, gear level, gem quality, socket count, and resistances into a single comparable number, on the same scale as the Enemy Score in section X. Dungeons within a close power range provide average exp and loot. Dungeons below the threshold provide less. Dungeons above provide more.
 
+**The close range is measured in tier widths, and where the cut below it begins depends on the difficulty tier.** A kill's experience, loot quantity and gold multiplier are paid in full while the dungeon's Dungeon Score is anywhere from a quarter of a tier width above the player's Power Score to the tier's start below it. A dungeon further above pays up to 25% more; one further below cuts the experience to 5% and the loot to 25% over one more tier width (issue #2824, ruled 2026-11-22). **The cut begins when the player is 1.4 tier widths above the dungeon at tier 1, 1.3 at tier 2, 1.1 at tier 3, 1.0 at tier 4, 0.9 at tiers 5 and 6, and 0.8 at tiers 7 and 8**, decided by the project owner on 2026-11-24 (issue #2853), choosing "Per-tier start (Recommended)", in place of 0.6 at every tier. The experience curve's character, at its tier-end level in its tier's reference gear, sits up to 1.22 tier widths above the shallowest dungeon tier 1 spawns, and 0.6 cut a normally levelled player in its own tier, which a dungeon's timer forces the player to clear. Each start is where that character sits plus a tenth, rounded up to a tenth; a character finished in the tier above is still cut to 5% of its experience in this tier's average dungeon (15% at tier 6).
+
   
 
 Power Score = (Level Weight × Character Level) + (Gear Weight × Σ over equipped pieces of Rarity × (1 + Upgrade Factor × Gear Level)) + (Gem Weight × Σ over filled sockets of Gem Rarity) + (Resistance Weight × Σ over the eight resistances of Resistance Percent)
@@ -2930,16 +2932,18 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
 | Enemy rarity | Gear drops per kill | Material drops per kill | Magic find it adds |
 | :-- | --: | --: | --: |
-| Common | 0.16 | 0.04 | 0% |
-| Elite | 0.5 | 0.125 | 50% |
-| Legendary | 1.0 | 0.25 | 100% |
-| Herald | 2.0 | 0.5 | 150% |
-| Boss | 5.0 | 1.25 | 300% |
-| Cataclysm Boss | 12.0 | 3.0 | 500% |
+| Common | 0.08 | 0.04 | 0% |
+| Elite | 0.25 | 0.125 | 50% |
+| Legendary | 0.5 | 0.25 | 100% |
+| Herald | 1.0 | 0.5 | 150% |
+| Boss | 2.5 | 1.25 | 300% |
+| Cataclysm Boss | 6.0 | 3.0 | 500% |
 
   
 
-**The drop count is an expected number, not a chance.** The whole part is certain and the fraction is rolled, so 0.16 means one Common kill in six drops one item, and 5.0 means a Boss always drops five. A chance could not express a Cataclysm Boss dropping twelve things.
+**The gear column was halved on 2026-11-24, every enemy rarity alike** (issue #2853). The project owner, choosing "Halve gear drops (Recommended)": a tier 1 floor of about 258 creatures dropped about 123 gear pieces and a short Outpost dungeon about 919, so a fresh character wore a whole tier's best drops after one dungeon and spent the floor picking things up. It now drops about 61 a floor. The column keeps its shape, so a rarer enemy is still rewarding in the same proportion; the material, gem and gold columns did not move. Path of Exile 2, Diablo IV's Season 4 and Last Epoch's 1.0 each cut how many items drop in favour of what each one is worth; none of them states a size, so the half is a judgement. Until then a Common kill dropped 0.16, Path of Exile's figure for a normal monster, which covers every kind of drop and not gear alone.
+
+**The drop count is an expected number, not a chance.** It is drawn from a Poisson distribution with the figure as its mean, so 0.08 means about one Common kill in thirteen drops an item and now and then one drops two, and 2.5 means a Boss drops two or three on average and occasionally none. A chance could not express a Cataclysm Boss dropping six things.
 
   
 
@@ -2971,7 +2975,7 @@ procedural rarity ladder is colour and effects, and here so is the named tier.
 
   
 
-**A kill drops a quarter as many materials as gear, since 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
+**A kill drops half as many materials as gear, since 2026-11-24, when the gear column halved and the material column did not; a quarter from 2026-11-22.** Materials dropped at twice the gear rate until 2026-08-23, when a play test found the floor cluttered with them and the rate was halved to the gear rate. On 2026-11-21 the owner played again and found the material drops still "way too high", and the rate was cut to a quarter of that. A quarter still brings more upgrade stones than levelling can use: raising an item to level k takes k days of the run plus a day for each 100 residue it carries, and at a quarter a floor brings 1.6 to 5.9 times the stones one day of upgrading uses, depending on the difficulty tier. So the days, not the stones, limit how fast gear is levelled. If a run turns out not to yield enough to craft with, this is what to look at first. The two figures are stated separately in the table above so either can move on its own.
 
   
 
@@ -3051,7 +3055,7 @@ So an Extremely Rare material is one material drop in 341, and since five materi
 
   
 
-**A kill can drop gold too, as piles lying on the floor.** The project owner ruled on 2026-11-18 that gold comes from creature kills, "larger for rarer creatures and deeper floors, as gear and materials drop today" (issue #2742). How many piles a kill drops is an expected number, drawn as the drops above are, and it is the gear column: 0.16 piles for a Common kill and 12 for a Cataclysm Boss. How much a pile holds depends on where the kill happened and not on what was killed: the difficulty tier being played and the floor. That is Diablo II's shape, in which a rarer monster drops more piles and a pile's value follows the level.
+**A kill can drop gold too, as piles lying on the floor.** The project owner ruled on 2026-11-18 that gold comes from creature kills, "larger for rarer creatures and deeper floors, as gear and materials drop today" (issue #2742). How many piles a kill drops is an expected number, drawn as the drops above are, and it is the gear column as it stood when gold was ruled: 0.16 piles for a Common kill and 12 for a Cataclysm Boss. Since the gear column halved on 2026-11-24 (issue #2853) that is twice the gear column; the gold column did not move, as the drop supply proposal the owner adopted recommended. How much a pile holds depends on where the kill happened and not on what was killed: the difficulty tier being played and the floor. That is Diablo II's shape, in which a rarer monster drops more piles and a pile's value follows the level.
 
   
 
@@ -3216,6 +3220,8 @@ Three families, differing in how many resistances one roll covers. Per-type valu
   
 
 The efficient family changes as a run goes on, which is the point of having three. A difficulty tier is a run and each tier adds a Cataclysm, so the number of resistances that matter grows from one to eight. A single-resistance affix is the best use of a slot when one Cataclysm is active and nearly worthless when eight are; an all-resistance affix is the reverse.
+
+**The all-resistances family does not roll on a difficulty tier 1 drop; single and two resistances still do.** Decided by the project owner on 2026-11-24 (issue #2853), choosing "No all-resist at tier 1 (Recommended)". At tier 1 a run faces one Cataclysm, so an all-resistances roll is the weakest family in combat and the strongest in the Power Score, which counts all eight types: one roll was 24 to 29 points, and the family was 58 to 65 per cent of a fresh tier 1 character's resistance points. Path of Exile gates its own all-resistances suffix the same way, from item level 12, where its single-resistance suffix starts at 1. Another affix takes the place on the drop. Crafting is not gated, so a tier 1 player can still forge one.
 
   
 
@@ -3959,7 +3965,7 @@ Gear has sockets that accept gems. Gems provide stat bonuses and have the same r
   - **Gems stack**, one stack per gem and rarity, in the inventory and the stash, for the reason crafting materials stack.
   - **Two gems of one kind and rarity combine into one of the next rarity**, with no day and no residue, as two upgrade stones combine, for the gold a stone combine of the same rung costs: 50 gold for two Everyday gems, doubled for each rarity above (issue #2830). There is no limit by difficulty tier (the owner, 2026-11-21: "I don't think I want to cap what players can level their stuff to").
   - **A gem in a potion slot gives its stat for the 3 seconds the potion's heal runs.** That is a judgement, to be looked at again before it is built.
-  - **How often gems drop is not yet set**; it is measured in the simulation when gem drops are built.
+  - **How often gems drop is measured in the simulation, and falls with the difficulty tier.** A kill drops gems on a roll of its own, at the Enemy Drops sheet's Gem Drops column: 0.0136 gems for every gear drop at tier 8 (0.0068 of the gear column before it halved), the least that lets a full clear of tier 8's dungeons fill tier 8's reference character, rounded up (`sim/analyse_gem_drops.py`). **Each tier below 8 drops three quarters of the tier above's gems**: 13%, 18%, 24%, 32%, 42%, 56%, 75% and 100% of tier 8's rate at tiers 1 to 8, so tier 1 drops about one gem an Outpost dungeon and five or six in an average 50-floor dungeon. The project owner ruled on 2026-11-24 (issue #2853), choosing "Milder: tier 1 gets 1/8 (Recommended)": the rate scales by tier, less steeply than halving per tier, tier 1 getting about an eighth and tier 8 keeping its rate. Until then every tier dropped tier 8's rate, and a fresh character held seven gems after one Outpost dungeon, more than tier 1's whole reference character. Three quarters a step is a judgement: one plain step at every tier, and every tier still drops more than a full clear of it needs to fill its reference character, from 1.01 times at tier 8 to 41 times at tier 1.
 
   
 

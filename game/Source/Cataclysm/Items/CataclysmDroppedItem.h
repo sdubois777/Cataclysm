@@ -253,8 +253,9 @@ public:
 	 * corpse, in centimetres.
 	 *
 	 * SPREAD AROUND A CIRCLE rather than piled on one point, because a Cataclysm
-	 * Boss drops twelve items and twelve names drawn at one position would be
-	 * one unreadable stack. The radius grows with the count so a big drop does
+	 * Boss drops six gear items and three materials on average (twelve gear
+	 * before issue #2853), and nine names drawn at one position would be one
+	 * unreadable stack. The radius grows with the count so a big drop does
 	 * not crowd itself.
 	 *
 	 * FLAT, WITH NO HEIGHT. The floor decides that, and nothing here knows where
@@ -451,8 +452,9 @@ public:
 	/**
 	 * Roll the gems a kill drops and put them on the floor, one gem to a drop. Issue #46, slice G5.
 	 *
-	 * HOW MANY, from the creature's rung and the loot quantity (`UCataclysmDropRoll::ExpectedGemDrops`, the Enemy
-	 * Drops sheet's Gem Drops column, which `sim/analyse_gem_drops.py` measured); WHICH RARITY, by the gear's own roll
+	 * HOW MANY, from the creature's rung, the loot quantity and the tier being played
+	 * (`UCataclysmDropRoll::ExpectedGemDrops`, the Enemy Drops sheet's Gem Drops column, which
+	 * `sim/analyse_gem_drops.py` measured, times the tier's share since issue #2853); WHICH RARITY, by the gear's own roll
 	 * at the tier being played with the creature's magic find added to the player's, so the tier gates a gem as it
 	 * gates gear ("Gems ... have the same rarity tiers as gear"); WHICH GEM, evenly among the Gems sheet's rows
 	 * (`UCataclysmGems::RollGem`). The design's plan of 2026-11-21, section 3d, as ruled.

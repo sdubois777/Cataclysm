@@ -11,7 +11,9 @@ tests what the code does; this checks what the Unreal tests cannot see:
   3. a creature's death rolls its gems after everything else it drops, only when it pays, marked when a rule raised it;
   4. a gem drop goes into the stack of its gem and rarity, and is a quantity collected without a click;
   5. the run record keeps a gem lying on the ground, both ways;
-  6. a gem drop's border is its rarity's.
+  6. a gem drop's border is its rarity's;
+  7. a kill's gems are the column times its tier's share, three quarters of the tier above's, as the simulation's
+     (issue #2853).
 """
 
 from __future__ import annotations
@@ -70,6 +72,34 @@ def test_the_unreal_test_holds_the_table_to_the_simulations_rate() -> None:
     assert float(found.group(1)) == loot.GEM_DROPS_PER_GEAR_DROP, (
         f"{GEM_DROPS_TESTS.name} holds the Enemy Drops table to {found.group(1)} gems a gear drop; the simulation "
         f"measured {loot.GEM_DROPS_PER_GEAR_DROP}")
+
+
+def test_the_tiers_share_of_the_gem_column_is_the_simulations() -> None:
+    """Issue #2853, ruled by the owner on 2026-11-24: a lower tier drops three quarters of the tier above's gems.
+    `loot.gem_drop_share` and `UCataclysmDropRoll::GemDropShareAt` must hold the same step and multiply it the same
+    way, the expected gems must read it, and the spawner must ask it at the tier being played."""
+    header = squeeze(code(SOURCE / "Items" / "CataclysmDropRoll.h"))
+    found = re.search(r"static constexpr float GemDropShareATierDown = (\d*\.\d+)f;", header)
+    assert found and float(found.group(1)) == loot.GEM_DROP_SHARE_A_TIER_DOWN, (
+        f"the game's step is {found.group(1) if found else 'missing'}; the simulation's "
+        f"{loot.GEM_DROP_SHARE_A_TIER_DOWN}")
+    roll = squeeze(code(SOURCE / "Items" / "CataclysmDropRoll.cpp"))
+    share = squeeze(body(roll, "float UCataclysmDropRoll::GemDropShareAt(", "CataclysmDropRoll.cpp"))
+    assert "FMath::Clamp(DifficultyTier, 1, DifficultyTiers)" in share
+    assert "for (int32 Below = Tier; Below < DifficultyTiers; ++Below) { Share *= GemDropShareATierDown; }" in share, (
+        "GemDropShareAt no longer multiplies the step once for each tier below 8")
+    expected = squeeze(body(roll, "float UCataclysmDropRoll::ExpectedGemDrops(", "CataclysmDropRoll.cpp"))
+    assert "ScaledByLootQuantity(Row->GemDrops * GemDropShareAt(DifficultyTier), LootQuantity)" in expected, (
+        "ExpectedGemDrops does not take the tier's share of the column")
+    text = spawner()
+    asked = text.find("const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);")
+    counted = text.find("UCataclysmDropRoll::ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)")
+    assert -1 < asked < counted, "SpawnGemsFor does not count a kill's gems at the tier being played"
+    tests = GEM_DROPS_TESTS.read_text(encoding="utf-8")
+    one = re.search(r"constexpr float TierOneShare = (\d*\.\d+)f;", tests)
+    assert one and float(one.group(1)) == loot.gem_drop_share(1), (
+        f"{GEM_DROPS_TESTS.name} holds tier 1 to {one.group(1) if one else 'nothing'}; the simulation's share is "
+        f"{loot.gem_drop_share(1)}")
 
 
 def test_a_kills_gems_come_from_a_stream_of_their_own() -> None:
