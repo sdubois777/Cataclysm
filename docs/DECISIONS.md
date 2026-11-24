@@ -68,6 +68,19 @@ tier), the ordinary four's weights, and Masterful's tier 1 share. `tools/tests/t
 adds two: the engine's `RaritiesAboveTheReachThatDrop` equals the model's, and the design document's cap table matches
 `highest_droppable_rarity`.
 
+**The Python suite, on `30355619d`:** "8227 passed, 10 skipped in 444.37s"; JUnit 8237 tests, 0 failures, 0 errors.
+ruff: "All checks passed!".
+
+**Python guard proofs, in a `git archive` copy of `30355619d`, each PROVED** (failed with the break in, passed restored):
+
+| Proof | Break | Failed |
+| :-- | :-- | :-- |
+| PP1 | `DROP_RARITIES_ABOVE_THE_REACH = 2` read as `= 3` | the cap written out at tiers 1 to 4; the ordinary four's weights (Masterful's tier 1 share, **not predicted**: the share moves when the cap does); the distribution's keys; the engine constant; the document's cap table. 8 tests |
+| PP2b | the cap line in `drop_weight` and the import-time check that holds it both disabled | nothing above the cap; the ordinary four's weights; the distribution's keys; tier 1 is the sheet untouched; a Boss's spread. 5 tests |
+| PP3 | the design document's `\| 2 \| Legendary \|` read as `\| 2 \| Mythical \|` | the document's cap table. 1 test |
+
+PP2, the cap line alone, was not run: the module's import-time check would stop the import, which measures nothing.
+
 **Unreal, registered, new group `Cataclysm.RarityCap.`, 6 tests:**
 
 | | Test | What it checks |
