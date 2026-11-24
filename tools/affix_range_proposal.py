@@ -8,37 +8,49 @@ The project owner, 2026-11-24:
     it's own range, and that range should be something a PLAYER finds
     reasonable. Not math."
 
-This module does four things and changes nothing in the game:
+And the owner's rulings on the first version of this proposal, issue #2883,
+2026-11-24:
+
+    upgrades   "upgrade everything, once we've fixed the ranges and values, we
+               can look at rebalancing enemies to fit."
+    overlap    "No overlap (Recommended)"
+    small      "Fewer slots (Recommended)"
+    damage     "It's fine, keep the 6 slots and upgrade the damage. We'll fix it
+               with the enemy balance audit like for the first question."
+
+This module does five things and changes nothing in the game:
 
   inventory   every affix tier as the game computes it today, from
-              `game/Data/Affixes.csv` and the simulation's own `affix_value`,
-              with its decimals, overlaps and widths
-  proposal    the proposed table: seven stated whole-number ranges per affix,
-              built by the rule in `.claude/windows/proposal_affix_ranges.md`
-  check       the proposal's own invariants, so a hand edit to the table cannot
-              quietly break one
-  apply       writes the table into a COPY of the design workbook. It refuses
-              the real workbook unless told otherwise in so many words, because
-              other branches hold unmerged edits to it and nothing may be
-              applied before the owner rules.
+              `game/Data/Affixes.csv` and the simulation's own `affix_value`
+  table       the proposed seven whole-number ranges per affix at +0 and +10,
+              hybrids and implicits
+  levels      what a player sees at every upgrade level, +0 to +10, for every
+              distinct ladder in the table
+  measure     the design's derived figures before and after, through the
+              simulation's own functions
+  check       the proposal's invariants at every upgrade level
+  apply       writes the table into a COPY of the design workbook, and refuses
+              the real one unless told otherwise in so many words
 
 Run from the repository root:
 
     python tools/affix_range_proposal.py inventory
     python tools/affix_range_proposal.py table
+    python tools/affix_range_proposal.py levels
     python tools/affix_range_proposal.py measure
     python tools/affix_range_proposal.py check
     python tools/affix_range_proposal.py apply --out <a copy>.xlsx
 
-THE RULE IN ONE PARAGRAPH. A tier is a range of whole numbers written out in
-the workbook, contiguous with the tiers either side and never overlapping them,
-holding at least two values. A roll lands on one of those whole numbers, each
-equally likely, which is the rule enchantments already roll by. An affix that
-adds an AMOUNT (the sheet's Percent column says no: health, mana, shield,
-armour, attack damage, class resource, regeneration) is multiplied by the
-piece's upgrade level and rounded to a whole number once; its table is the +0
-value. An affix that is a PERCENTAGE is the stated number at every upgrade
-level. Implicits keep the upgrade lever and are restated as whole +0 values.
+THE RULE. A tier is a range of whole numbers written in the workbook as its +0
+value, contiguous with the tiers either side and never overlapping them,
+holding at least two values. At an upgrade level each end of the range is
+multiplied by 1 + 0.15 x level and rounded to the nearest whole number, a half
+going up, always from the +0 end; a two-handed weapon doubles inside that
+rounding. A roll is a position in the range, kept when the piece is upgraded,
+and the number it gives is one of the whole numbers in the range at the
+piece's level, each equally likely, which is the rule enchantments already
+roll by. A hybrid at tier N grants each half as that half's own affix at tier
+N - 2. Implicits are whole +0 numbers multiplied the same way.
 """
 
 from __future__ import annotations
@@ -49,6 +61,7 @@ import dataclasses
 import math
 import pathlib
 import shutil
+import statistics
 import sys
 from contextlib import contextmanager
 
@@ -60,6 +73,7 @@ WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 
 TIERS = (1, 2, 3, 4, 5, 6, 7)
 MAX_GEAR_LEVEL = 10
+LEVELS = tuple(range(MAX_GEAR_LEVEL + 1))
 
 #: How many whole values a tier must hold at the least. Two is the smallest
 #: number that leaves the reroll and perfect crafting materials something to do.
@@ -68,8 +82,7 @@ MIN_VALUES_PER_TIER = 2
 #: The smallest seven-tier ladder that can exist: seven tiers of two values.
 MIN_LADDER_VALUES = len(TIERS) * MIN_VALUES_PER_TIER
 
-#: The share of a tier's top its band reaches down to today. Reused for where
-#: tier 7 starts, so the top tier reads the way today's top band reads.
+#: Where tier 7 starts, as a share of the top: where today's top band starts.
 TOP_TIER_START = 0.75
 
 
@@ -85,16 +98,51 @@ def round_half_up(value: float) -> int:
     """A half rounds up, as an attribute does ("How an Attribute Rounds").
 
     Python's own round() sends a half to the even neighbour, so 52.5 would
-    become 52 and 37.5 would become 38. The design states the half-up rule.
+    become 52. The design states the half-up rule. Only for figures that are
+    not upgrade products; those go through `upgraded`, which is exact.
     """
     if value >= 0:
         return math.floor(value + 0.5)
     return -math.floor(-value + 0.5)
 
 
-def gear_multiplier(gear_level: int) -> float:
+# ---------------------------------------------------------------------------
+# The upgrade step, in whole numbers
+# ---------------------------------------------------------------------------
+
+def level_hundredths(gear_level: int) -> int:
+    """An upgrade level's multiplier in hundredths: +0 is 100, +10 is 250.
+
+    READ FROM THE SIMULATION'S `GEAR_LEVEL_FACTOR` AND REFUSED IF IT IS NOT A
+    WHOLE NUMBER OF HUNDREDTHS, because the rounding below is exact only in
+    whole hundredths. Floating point is not: 10 x 1.15 is 11.5 on paper and
+    11.499999999999998 in a double, which rounds the wrong way. Any engine
+    implementation must do this in integers for the same reason.
+    """
     af = _sim()
-    return af.gear_level_multiplier(gear_level)
+    step = af.GEAR_LEVEL_FACTOR * 100
+    if abs(step - round(step)) > 1e-9:
+        raise ValueError(f"GEAR_LEVEL_FACTOR {af.GEAR_LEVEL_FACTOR} is not whole "
+                         "hundredths, so the upgrade rounding is not exact")
+    if not 0 <= gear_level <= MAX_GEAR_LEVEL:
+        raise ValueError(f"gear level {gear_level} outside 0-{MAX_GEAR_LEVEL}")
+    return 100 + int(round(step)) * gear_level
+
+
+def upgraded(base: int, gear_level: int, two_handed: bool = False) -> int:
+    """What a +0 whole number shows at an upgrade level: rounded once, half up.
+
+    Always from the +0 number, never from the level below, so rounding never
+    compounds. A two-handed weapon doubles inside the rounding.
+    """
+    af = _sim()
+    hands = int(af.TWO_HANDED_MULTIPLIER) if two_handed else 1
+    scaled = base * level_hundredths(gear_level) * hands
+    return (scaled + 50) // 100
+
+
+def gear_multiplier(gear_level: int) -> float:
+    return level_hundredths(gear_level) / 100.0
 
 
 # ---------------------------------------------------------------------------
@@ -115,14 +163,15 @@ def is_percent(row: dict[str, str]) -> bool:
     return row["Percent"].strip().lower() in ("true", "yes", "1")
 
 
-def is_amount(row: dict[str, str]) -> bool:
-    """Whether the affix adds an amount rather than a percentage.
-
-    Read off two columns the sheet already has: a Stat affix that is flat and
-    whose Percent column says no. Resistance and Ailment rows are percentages.
-    """
-    return (row["AffixKind"] == "Stat" and row["ValueKind"] == "flat"
-            and not is_percent(row))
+def number_kind(row: dict[str, str]) -> str:
+    """What the affix's number measures: an "amount" (a Stat row that is flat
+    and whose Percent column says no), an "increase", or percentage "points"
+    (every other row: flat percentages, resistances, ailment chances)."""
+    if row["AffixKind"] == "Stat" and row["ValueKind"] == "increased":
+        return "increase"
+    if row["AffixKind"] == "Stat" and row["ValueKind"] == "flat" and not is_percent(row):
+        return "amount"
+    return "points"
 
 
 def slots_of(text: str) -> tuple[str, ...]:
@@ -144,7 +193,6 @@ class TodayAffix:
     kind: str
     top: float
     floor: float
-    amount: bool
     tiers: tuple[TodayTier, ...]
 
     @property
@@ -180,8 +228,7 @@ def today(rows: list[dict[str, str]] | None = None) -> list[TodayAffix]:
                       af.affix_value(top, t, 0.0, MAX_GEAR_LEVEL, floor),
                       af.affix_value(top, t, 1.0, MAX_GEAR_LEVEL, floor))
             for t in TIERS)
-        out.append(TodayAffix(row["AffixName"], row["AffixKind"], top, floor,
-                              is_amount(row), tiers))
+        out.append(TodayAffix(row["AffixName"], row["AffixKind"], top, floor, tiers))
     return out
 
 
@@ -189,97 +236,81 @@ def today(rows: list[dict[str, str]] | None = None) -> list[TodayAffix]:
 # The proposal
 # ---------------------------------------------------------------------------
 
-#: Where the lowest tier starts for a PERCENTAGE affix, as a share of its top.
-#:
-#: Today's worst tier 1 roll on a piece at +3, which is what a difficulty tier 1
-#: character carries (`player_damage.gear_level_at(1)`). A percentage no longer
-#: grows with upgrades under this proposal, so its ladder has to carry the whole
-#: climb by tier alone; starting it where a tier 1 character starts today keeps
-#: the bottom of the game where it is. 0.75 x 3^-1 x 1.45 / 2.5 = 0.145.
-def percent_start_share() -> float:
-    af = _sim()
-    return (af.TIER_FRACTIONS[1] * (1.0 - af.ROLL_BAND_FRACTION)
-            * af.gear_level_multiplier(3) / af.gear_level_multiplier(MAX_GEAR_LEVEL))
-
-
-#: The least a tier 1 roll may be, by what the number measures. A judgement,
-#: from the genre's own lowest tiers (Path of Exile: increased attack speed
-#: 5-7, all resistances 3-5, item rarity 6-10) and from the floors the owner
-#: approved on 2026-09-04 (resistances 10, 7 and 3; leech, damage reduction,
-#: penetration and evasion 1).
-MIN_START_INCREASE = 3
-MIN_START_POINTS = 1
-MIN_START_AMOUNT = 2
+#: The least a tier 1 roll may be at +0, by what the number measures. A
+#: judgement (decision D7), from the genre's own lowest tiers (Path of Exile:
+#: increased attack speed 5-7, all resistances 3-5, item rarity 6-10) and from
+#: the floors the owner approved on 2026-09-04 (resistances 10, 7 and 3; leech,
+#: damage reduction, penetration and evasion 1).
+MIN_START = {"increase": 3, "points": 1, "amount": 2}
 
 
 @dataclasses.dataclass(frozen=True)
 class Override:
     """A stat whose scale or slots the rule alone cannot settle."""
 
-    top: int | None = None              # a new top, in the table's own terms
+    top: int | None = None              # a new top at +10
     slots: tuple[str, ...] | None = None
     retired_into: str | None = None
     why: str = ""
 
 
-#: Each one is a judgement, and the proposal document says why.
+#: Each one is a judgement, and the proposal document says why. THE SLOT LISTS
+#: ARE THE OWNER'S RULING "Fewer slots" (issue #2883): the top rises to what
+#: seven whole ranges need, and the slot list narrows to the piece count whose
+#: ceiling is nearest today's, rounding down where a cap is close. The pieces
+#: chosen keep every hybrid that uses one of these stats able to roll somewhere.
 OVERRIDES: dict[str, Override] = {
-    # CHANGE WHAT THE STAT MEASURES. Critical strike chance has a base on every
-    # skill (5%) and on four implicits, so an increase is the natural affix and
-    # the one Path of Exile uses on gear. 100% increased at the default base is
-    # the old flat affix's top, 5 points.
+    # Retired (D5). A flat crit chance affix would be 33-35 points at +10;
+    # every skill has a 5% base and four implicits add flat crit, so the
+    # increase is the natural affix, and the one Path of Exile uses on gear.
     "Flat critical strike chance": Override(
         retired_into="Increased critical strike chance",
-        why="retired: 1.25-5 points cannot hold seven whole ranges; folded into "
-            "the increase, which reads the skill's base"),
+        why="retired: as whole numbers it would be 33-35 points of crit a piece "
+            "at +10; folded into the increase, which reads the skill's base"),
     "Increased critical strike chance": Override(
         top=100,
         why="absorbs the flat affix: 100% increased is 5 points at the 5% "
-            "default base, the old flat top"),
-    # Every class has a mana regeneration base, so the increase carries it.
+            "default base, the old flat affix's top"),
     "Flat mana regeneration": Override(
         retired_into="Increased mana regeneration",
-        why="retired: 0.2-0.65 a second has no whole numbers at all; the "
-            "increase covers it, since every class has a base"),
-    # THE MOVEMENT-SPEED RULE of 2026-09-04: the top and the slot list move
-    # together so the most a character can carry does not rise.
+        why="retired: 0.65 a second would have to become 35, a twentieth of a "
+            "level 100 pool a second; every class has a base for the increase"),
     "Flat evasion": Override(
-        slots=("Head", "Chest", "Gloves", "Boots"),
-        why="top 4 -> 14, four pieces instead of fourteen: 56 either way"),
+        slots=("Chest",),
+        why="one piece (35) instead of fourteen (56): two would be 70, past "
+            "evasion's soft cap of 60 before implicits"),
     "Flat block chance": Override(
-        slots=("Head", "Chest", "Shoulders", "Belt", "Pants"),
-        why="top 5 -> 14, five pieces instead of fourteen: 70 either way"),
+        slots=("Shoulders", "Belt"),
+        why="two pieces instead of fourteen: 70 either way"),
     "Flat damage reduction": Override(
-        slots=("Chest", "Shoulders", "Belt", "Pants"),
-        why="top 4 -> 14, four pieces instead of fourteen: 56 either way"),
+        slots=("Pants",),
+        why="one piece (35) instead of fourteen (56): two would be 70 against "
+            "a cap of 75, from gear alone"),
     "Flat retaliation": Override(
-        slots=("Head", "Chest", "Shoulders", "Boots"),
-        why="top 4 -> 14, four pieces instead of fourteen: 56 either way"),
+        slots=("Head", "Shoulders"),
+        why="two pieces (70) instead of fourteen (56)"),
     "Flat crowd control resistance": Override(
-        slots=("Head", "Shoulders", "Belt", "Pants", "Boots"),
-        why="top 5 -> 14, five pieces instead of fourteen: 70 either way"),
+        slots=("Belt", "Boots"),
+        why="two pieces instead of fourteen: 70 either way"),
     "Flat life leech": Override(
-        slots=("Weapon", "Gloves", "Necklace"),
-        why="top 4 -> 14, three pieces (four with an offhand) instead of twelve"),
-    "Flat mana leech": Override(
-        slots=("Weapon", "Gloves", "Necklace"),
-        why="as life leech"),
-    "Flat energy shield leech": Override(
-        slots=("Weapon", "Gloves", "Necklace"),
-        why="as life leech"),
+        slots=("Weapon",),
+        why="the weapon only: 35, or 70 two-handed or with an offhand, "
+            "instead of twelve pieces (48)"),
+    "Flat mana leech": Override(slots=("Weapon",), why="as life leech"),
+    "Flat energy shield leech": Override(slots=("Weapon",), why="as life leech"),
     "Flat penetration": Override(
-        slots=("Weapon", "Gloves", "Relic"),
-        why="top 4 -> 14, three pieces instead of twelve; past an enemy's "
-            "resistance (35 at most) penetration is wasted anyway"),
+        slots=("Weapon",),
+        why="the weapon only: 35 is the most any enemy resists, so more is "
+            "wasted; 70 two-handed or with an offhand"),
     "Flat maximum class resource": Override(
         slots=("Necklace", "Relic"),
-        why="top 7 -> 38 at +10, two pieces instead of eleven: 76 against 77"),
+        why="two pieces (76) instead of eleven (77)"),
     "Flat health regeneration": Override(
         slots=("Chest", "Belt", "Necklace"),
-        why="top 8 -> 38 at +10, three pieces instead of twelve: 114 against 96"),
+        why="three pieces (114) instead of twelve (96)"),
     "Flat energy shield regeneration": Override(
         slots=("Head", "Chest", "Shoulders"),
-        why="top 10 -> 38 at +10, three pieces instead of twelve: 114 against 120"),
+        why="three pieces (114) instead of twelve (120)"),
 }
 
 
@@ -288,8 +319,8 @@ class ProposedAffix:
     name: str
     row_name: str
     kind: str
-    amount: bool                         # multiplied by the upgrade level
-    tiers: tuple[tuple[int, int], ...]   # seven (low, high), +0 for an amount
+    number: str                          # "amount", "increase" or "points"
+    tiers: tuple[tuple[int, int], ...]   # seven (low, high) at +0
     old_top: float
     slots: tuple[str, ...]
     old_slots: tuple[str, ...]
@@ -304,8 +335,7 @@ class ProposedAffix:
     @property
     def top(self) -> int:
         """The endgame value: tier 7's best roll on a +10 piece."""
-        high = self.tiers[-1][1]
-        return round_half_up(high * gear_multiplier(MAX_GEAR_LEVEL)) if self.amount else high
+        return upgraded(self.tiers[-1][1], MAX_GEAR_LEVEL)
 
     @property
     def raised(self) -> bool:
@@ -362,60 +392,34 @@ def ladder(low: int, high: int) -> tuple[tuple[int, int], ...]:
 
 
 def _start(row: dict[str, str], top: float) -> int:
-    """Where tier 1 starts: today's bottom, lifted to the class minimum."""
-    floor = float(row["Floor"] or 0.0)
+    """Where tier 1 starts at +0: today's worst roll, lifted to the minimum.
+
+    Today's worst roll is the stated floor where there is one, and otherwise a
+    tenth of the top (tier 1's share, the bottom of the band, and a +0 piece).
+    """
     af = _sim()
-    if is_amount(row):
-        today_worst = top * af.WORST_MULTIPLIER
-        return max(round_half_up(max(today_worst, floor)), MIN_START_AMOUNT)
-    share = top * percent_start_share()
-    start = round_half_up(max(share, floor))
-    minimum = MIN_START_INCREASE if row["ValueKind"] == "increased" else MIN_START_POINTS
-    return max(start, minimum)
+    floor = float(row["Floor"] or 0.0)
+    today_worst = max(top * af.WORST_MULTIPLIER, floor)
+    return max(round_half_up(today_worst), MIN_START[number_kind(row)])
 
 
 def propose_row(row: dict[str, str]) -> ProposedAffix:
     """One non-hybrid affix under the rule."""
     override = OVERRIDES.get(row["AffixName"], Override())
-    amount = is_amount(row)
     old_top = float(row["TopValue"])
     top = float(override.top) if override.top is not None else old_top
     start = _start(row, top)
-
-    # An amount's table is its +0 value; a percentage's is its value.
-    high = round_half_up(top / gear_multiplier(MAX_GEAR_LEVEL)) if amount else round_half_up(top)
+    high = round_half_up(top / gear_multiplier(MAX_GEAR_LEVEL))
     note = override.why
     if high - start + 1 < MIN_LADDER_VALUES:
         high = start + MIN_LADDER_VALUES - 1
         note = note or "raised: the smallest top that holds seven two-value tiers"
-
     old_slots = slots_of(row["AllowedSlots"])
     return ProposedAffix(
         name=row["AffixName"], row_name=row["Name"], kind=row["AffixKind"],
-        amount=amount, tiers=ladder(start, high), old_top=old_top,
+        number=number_kind(row), tiers=ladder(start, high), old_top=old_top,
         slots=override.slots or old_slots, old_slots=old_slots,
         retired_into=override.retired_into, note=note)
-
-
-def top_if_every_affix_scaled(row: dict[str, str]) -> int:
-    """The endgame top an affix would need if upgrades multiplied every affix.
-
-    THE ALTERNATIVE THE OWNER IS ASKED ABOUT, priced. If a percentage kept the
-    upgrade lever, its table would be its +0 value like an amount's, and the
-    +0 ladder needs fourteen whole numbers. This is the smallest +10 top that
-    allows it, with tier 1 starting where today's worst +0 roll does (or the
-    class minimum), and no slot narrowing.
-    """
-    af = _sim()
-    old_top = float(row["TopValue"])
-    floor = float(row["Floor"] or 0.0)
-    minimum = (MIN_START_AMOUNT if is_amount(row)
-               else MIN_START_INCREASE if row["ValueKind"] == "increased"
-               else MIN_START_POINTS)
-    start = max(round_half_up(max(old_top * af.WORST_MULTIPLIER, floor)), minimum)
-    high = round_half_up(old_top / gear_multiplier(MAX_GEAR_LEVEL))
-    high = max(high, start + MIN_LADDER_VALUES - 1)
-    return round_half_up(high * gear_multiplier(MAX_GEAR_LEVEL))
 
 
 def proposal(rows: list[dict[str, str]] | None = None) -> dict[str, ProposedAffix]:
@@ -429,10 +433,8 @@ def proposal(rows: list[dict[str, str]] | None = None) -> dict[str, ProposedAffi
     for row in rows:
         if row["AffixKind"] != "Hybrid":
             continue
-        parts = []
-        for part in (row["HybridPart1"], row["HybridPart2"]):
-            target = out[part]
-            parts.append(target.retired_into or part)
+        parts = [out[p].retired_into or p
+                 for p in (row["HybridPart1"], row["HybridPart2"])]
         allowed = set(slots_of(row["AllowedSlots"]))
         for part in parts:
             allowed &= set(out[part].slots)
@@ -441,7 +443,7 @@ def proposal(rows: list[dict[str, str]] | None = None) -> dict[str, ProposedAffi
         renamed = tuple(parts) != (row["HybridPart1"], row["HybridPart2"])
         out[row["AffixName"]] = ProposedAffix(
             name=row["AffixName"], row_name=row["Name"], kind="Hybrid",
-            amount=False, tiers=(), old_top=0.0, slots=slots,
+            number="", tiers=(), old_top=0.0, slots=slots,
             old_slots=old_slots, hybrid_parts=(parts[0], parts[1]),
             note="a half was retired and is replaced" if renamed else "")
     return out
@@ -458,33 +460,41 @@ def roll_value(low: int, high: int, roll: float) -> int:
     return low + index
 
 
-def value(affix: ProposedAffix, tier: int, roll: float = 1.0,
-          gear_level: int = MAX_GEAR_LEVEL, two_handed: bool = False,
-          seventy_percent: bool = False) -> int:
-    """What a rolled affix grants under the proposal: always a whole number.
-
-    `seventy_percent` is NOT the proposal. It is today's hybrid rule -- each
-    half at 70% of its own affix -- carried over with a rounding step, kept
-    only so `seventy_percent_collisions` can show why the proposal does not use
-    it.
-    """
-    af = _sim()
-    low, high = affix.tiers[tier - 1]
-    base = roll_value(low, high, roll)
-    multiplier = gear_multiplier(gear_level) if affix.amount else 1.0
-    if two_handed:
-        multiplier *= af.TWO_HANDED_MULTIPLIER
-    if seventy_percent:
-        multiplier *= af.HYBRID_FRACTION
-    result = round_half_up(base * multiplier)
-    return max(result, 1) if seventy_percent else result
-
-
 def tier_range(affix: ProposedAffix, tier: int, gear_level: int = 0,
-               two_handed: bool = False,
-               seventy_percent: bool = False) -> tuple[int, int]:
-    return (value(affix, tier, 0.0, gear_level, two_handed, seventy_percent),
-            value(affix, tier, 1.0, gear_level, two_handed, seventy_percent))
+               two_handed: bool = False) -> tuple[int, int]:
+    """A tier's range at an upgrade level: each end of the +0 range upgraded.
+
+    Because the multiplier is never below one, two +0 numbers one apart stay at
+    least one apart after it, so the tier above always starts above this one
+    ends, at every level.
+    """
+    low, high = affix.tiers[tier - 1]
+    return (upgraded(low, gear_level, two_handed),
+            upgraded(high, gear_level, two_handed))
+
+
+def value(affix: ProposedAffix, tier: int, roll: float = 1.0,
+          gear_level: int = MAX_GEAR_LEVEL, two_handed: bool = False) -> int:
+    """What a rolled affix grants: a whole number inside its tier's range at
+    the piece's upgrade level.
+
+    THE ROLL IS A POSITION, NOT A +0 NUMBER. An item stores its roll in [0, 1]
+    as it does today, and the number is that position among the whole numbers
+    of the tier's range at the item's level, each equally likely. So every
+    number a tooltip's range shows can actually roll; multiplying a +0 number
+    instead would leave gaps (at +10, a 1-2 tier would show "3-5" and never 4).
+    Upgrading never lowers a roll: both ends rise and the position is kept.
+    A perfect roll is the top of the range and the worst roll its bottom.
+    """
+    low, high = tier_range(affix, tier, gear_level, two_handed)
+    return roll_value(low, high, roll)
+
+
+def shown(affix: ProposedAffix, tier: int, gear_level: int,
+          two_handed: bool = False) -> list[int]:
+    """Every number a tier can show at an upgrade level."""
+    low, high = tier_range(affix, tier, gear_level, two_handed)
+    return list(range(low, high + 1))
 
 
 #: A HYBRID AT TIER N GRANTS EACH HALF AS ITS OWN AFFIX AT TIER N - 2.
@@ -497,7 +507,7 @@ def tier_range(affix: ProposedAffix, tier: int, gear_level: int = 0,
 #:
 #: SO A HYBRID ROLLS TIERS 3 TO 7 ONLY, and its tier 3 grants both halves at
 #: their tier 1 ranges. Every hybrid range is then a range of its half's own
-#: ladder, whole and separate by construction.
+#: ladder, whole and separate at every upgrade level by construction.
 HYBRID_TIER_DROP = 2
 HYBRID_TIERS = tuple(t for t in TIERS if t > HYBRID_TIER_DROP)
 
@@ -530,8 +540,7 @@ class ProposedImplicit:
         return self.old_stated / gear_multiplier(MAX_GEAR_LEVEL)
 
     def at(self, gear_level: int) -> int:
-        multiplier = gear_multiplier(gear_level)
-        return round_half_up(self.at_zero * multiplier)
+        return upgraded(self.at_zero, gear_level)
 
 
 def implicit_proposal(rows: list[dict[str, str]] | None = None) -> list[ProposedImplicit]:
@@ -559,12 +568,12 @@ def problems(table: dict[str, ProposedAffix] | None = None,
              rows: list[dict[str, str]] | None = None) -> list[str]:
     """Everything wrong with the proposal. Empty when it holds.
 
-    1. Every tier is whole, holds at least two values, and starts one above the
-       tier below it ends: contiguous, never overlapping.
-    2. At every upgrade level, on a two-handed weapon or not, every tier's best
-       roll is below the next tier's worst. The rounding cannot merge them
-       because the multiplier is at least one, and this checks it rather than
-       trusting that.
+    1. At +0 every tier is whole, holds at least two values, and starts one
+       above the tier below it ends.
+    2. AT EVERY UPGRADE LEVEL, +0 TO +10, ON A TWO-HANDED WEAPON OR NOT, every
+       number the affix can show is whole, no number appears twice (neither
+       inside a tier nor in two tiers), every tier shows at least two numbers,
+       and every tier sits wholly above the one below.
     3. A hybrid's slots sit inside both halves' slots, and are not empty.
     4. Every slot can still fill two prefixes and two suffixes.
     5. A retired affix names a live one to fold into.
@@ -599,16 +608,34 @@ def problems(table: dict[str, ProposedAffix] | None = None,
             if k > 1 and low != affix.tiers[k - 2][1] + 1:
                 out.append(f"{affix.name} T{k}: starts at {low}, the tier "
                            f"below ends at {affix.tiers[k - 2][1]}")
-        for level in range(MAX_GEAR_LEVEL + 1):
+        for level in LEVELS:
             for two_handed in (False, True):
-                for k in TIERS[:-1]:
-                    best = tier_range(affix, k, level, two_handed)[1]
-                    worst_above = tier_range(affix, k + 1, level, two_handed)[0]
-                    if best >= worst_above:
-                        out.append(f"{affix.name}: T{k} reaches T{k + 1} at "
-                                   f"+{level}{' two-handed' if two_handed else ''}")
+                where = f"+{level}{' two-handed' if two_handed else ''}"
+                every = []
+                below = None
+                for k in TIERS:
+                    numbers = shown(affix, k, level, two_handed)
+                    if any(not isinstance(n, int) for n in numbers):
+                        out.append(f"{affix.name} T{k} at {where}: not whole")
+                    if len(set(numbers)) < MIN_VALUES_PER_TIER:
+                        out.append(f"{affix.name} T{k} at {where}: shows one number")
+                    if below is not None and min(numbers) <= below:
+                        out.append(f"{affix.name}: T{k} reaches T{k - 1} at {where}")
+                    below = max(numbers)
+                    every.extend(numbers)
+                if len(every) != len(set(every)):
+                    out.append(f"{affix.name}: a number repeats at {where}")
+        for k in TIERS:
+            for roll in ROLL_SAMPLES:
+                seen = [value(affix, k, roll, level) for level in LEVELS]
+                if seen != sorted(seen):
+                    out.append(f"{affix.name} T{k}: an upgrade lowers a roll of {roll}")
     out.extend(_pool_problems(table, rows))
     return out
+
+
+#: Roll positions the monotone check samples: both ends, and between them.
+ROLL_SAMPLES = (0.0, 0.1, 0.25, 0.333, 0.5, 0.667, 0.75, 0.9, 0.999, 1.0)
 
 
 def _pool_problems(table: dict[str, ProposedAffix],
@@ -623,6 +650,27 @@ def _pool_problems(table: dict[str, ProposedAffix],
                     if not a.retired and position[a.name] == pos and slot in a.slots]
             if len(live) < need:
                 out.append(f"{slot}: only {len(live)} {pos}es")
+    return out
+
+
+def unchanged_steps(table: dict[str, ProposedAffix] | None = None
+                    ) -> dict[int, list[int]]:
+    """Which +0 range ends in the table show the same number at two adjacent
+    upgrade levels, and at which steps.
+
+    NOT A FAULT OF THE RULE, a property of rounding: one upgrade adds 0.15 of
+    the +0 number, which is under one for any number below seven, so a small
+    range end moves only every second or third upgrade. Keyed by +0 number;
+    the value lists the levels whose upgrade left it showing the same.
+    """
+    table = table if table is not None else proposal()
+    numbers = sorted({v for a in table.values() if a.tiers and not a.retired
+                      for low, high in a.tiers for v in (low, high)})
+    out = {}
+    for v in numbers:
+        flat = [g for g in LEVELS[1:] if upgraded(v, g) == upgraded(v, g - 1)]
+        if flat:
+            out[v] = flat
     return out
 
 
@@ -642,24 +690,23 @@ def seventy_percent_collisions(table: dict[str, ProposedAffix] | None = None
             continue
         for part_name in hybrid.hybrid_parts or ():
             part = table[part_name]
+            seen = []
             for k in TIERS:
-                low, high = tier_range(part, k, 0, seventy_percent=True)
-                if low == high:
-                    out.append(f"{hybrid.name} / {part_name}: T{k} is the single "
-                               f"value {low} at +0")
-                if k < TIERS[-1]:
-                    worst_above = tier_range(part, k + 1, 0, seventy_percent=True)[0]
-                    if high >= worst_above:
-                        out.append(f"{hybrid.name} / {part_name}: T{k} and "
-                                   f"T{k + 1} share {high} at +0")
+                low, high = part.tiers[k - 1]
+                shown_here = {max(1, (7 * v + 5) // 10) for v in range(low, high + 1)}
+                if len(shown_here) < MIN_VALUES_PER_TIER:
+                    out.append(f"{hybrid.name} / {part_name}: T{k} shows one number")
+                if seen and min(shown_here) <= max(seen):
+                    out.append(f"{hybrid.name} / {part_name}: T{k} meets T{k - 1}")
+                seen = sorted(shown_here)
     return out
 
 
 def hybrid_shares(table: dict[str, ProposedAffix] | None = None
                   ) -> dict[str, tuple[float, float]]:
     """Each hybrid half's best roll at hybrid tier 7 against its own affix's best
-    tier 7 roll, on a +10 piece: (that share, the share at hybrid tier 3 against
-    tier 3). The design's figure is 0.70."""
+    tier 7 roll, on a +10 piece, and the same at hybrid tier 3 against tier 3.
+    The design's figure is 0.70."""
     table = table if table is not None else proposal()
     out = {}
     for hybrid in table.values():
@@ -681,9 +728,9 @@ def hybrid_shares(table: dict[str, ProposedAffix] | None = None
 def simulated(table: dict[str, ProposedAffix] | None = None):
     """Run the simulation with every affix and implicit valued by the proposal.
 
-    Patches the four `value_at`-shaped methods the simulation reads values
-    through, and restores them afterwards whatever happens. A retired affix is
-    worth nothing, which is what an item still carrying one would grant.
+    Patches the five methods the simulation reads affix values through, and
+    restores them afterwards whatever happens. A retired affix is worth
+    nothing, which is what an item still carrying one would grant.
     """
     af = _sim()
     table = table if table is not None else proposal()
@@ -704,9 +751,7 @@ def simulated(table: dict[str, ProposedAffix] | None = None):
 
     def implicit_value(self, gear_level=MAX_GEAR_LEVEL, two_handed=False):
         at_zero = max(1, round_half_up(self.value / gear_multiplier(MAX_GEAR_LEVEL)))
-        multiplier = gear_multiplier(gear_level) * (af.TWO_HANDED_MULTIPLIER
-                                                    if two_handed else 1.0)
-        return float(round_half_up(at_zero * multiplier))
+        return float(upgraded(at_zero, gear_level, two_handed))
 
     def hybrid_value(self, part, tier=7, roll=1.0, gear_level=MAX_GEAR_LEVEL):
         affix = table[part.name]
@@ -734,7 +779,9 @@ def measure() -> dict[str, dict]:
 
     Each entry is computed twice through the same simulation code, once as it
     stands and once inside `simulated()`, so the comparison is the simulation's
-    own arithmetic and not a second copy of it.
+    own arithmetic and not a second copy of it. The reference build is left as
+    it is written -- six flat damage slots, the owner's ruling -- so these are
+    the figures the enemy balance audit (issue #2884) starts from.
     """
     af = _sim()
     from cataclysm_sim import player_damage as pd
@@ -744,12 +791,8 @@ def measure() -> dict[str, dict]:
         hero = rb.gear(7, MAX_GEAR_LEVEL)
         hero1 = rb.gear(pd.affix_tier_at(1), pd.gear_level_at(1))
         return {
-            "damage per hit by difficulty tier": [round(pd.damage_per_hit(t))
-                                                  for t in range(1, 9)],
-            "damage per hit, reference spending 4 flat damage affixes": [
-                round(pd.damage_per_hit(t, flat_affixes=4)) for t in range(1, 9)],
-            "damage per hit, reference spending 3 flat damage affixes": [
-                round(pd.damage_per_hit(t, flat_affixes=3)) for t in range(1, 9)],
+            "damage per hit by difficulty tier (6 flat + 6 increased)": [
+                round(pd.damage_per_hit(t)) for t in range(1, 9)],
             "damage target at tier 8": round(af.damage_target(8)),
             "health crossover base (flat vs increased, +200% increases)":
                 round(af.crossover_base(af.HEALTH_AFFIXES, 2.0)),
@@ -759,6 +802,8 @@ def measure() -> dict[str, dict]:
                 round(af.reference_weapon_base(), 1),
             "slots to cap all eight at tier 8, all-resistance family":
                 round(af.slots_to_cap(af.ALL_RESISTANCE, 8, 8), 1),
+            "slots to cap one at tier 1, single-resistance family":
+                round(af.slots_to_cap(af.SINGLE_RESISTANCE, 1, 1), 1),
             "reference build at tier 8, flat stats from gear": {
                 k: round(v, 1) for k, v in sorted(hero.flat.items())
                 if not k.startswith("resistance_") or k == "resistance_war"},
@@ -772,21 +817,35 @@ def measure() -> dict[str, dict]:
         }
 
     before = figures()
-    table = proposal()
-    with simulated(table):
+    with simulated(proposal()):
         after = figures()
-    out = {key: {"today": before[key], "proposed": after[key]} for key in before}
+    return {key: {"today": before[key], "proposed": after[key]} for key in before}
 
-    # THE OTHER ANSWER FOR FLAT DAMAGE, decision D3: keep its top at 22 and let
-    # it ignore upgrades like a percentage, which leaves room for seven tiers.
-    tier_only = dict(table)
-    tier_only["Flat damage"] = dataclasses.replace(
-        table["Flat damage"], amount=False, tiers=ladder(3, 22))
-    with simulated(tier_only):
-        out["damage per hit, flat damage 3-22 and not upgraded (D3 option b)"] = {
-            "today": before["damage per hit by difficulty tier"],
-            "proposed": [round(pd.damage_per_hit(t)) for t in range(1, 9)]}
-    return out
+
+def headline(rows: list[dict[str, str]] | None = None) -> dict[str, object]:
+    """The before-and-after counts the report leads with."""
+    rows = rows if rows is not None else read_affix_rows()
+    table = proposal(rows)
+    singles = [a for a in table.values() if a.kind != "Hybrid"]
+    live = [a for a in singles if not a.retired]
+    raised = [a for a in live if a.raised]
+    factors = [a.top / a.old_top for a in raised]
+    worst = today(rows)
+    return {
+        "affixes (not hybrids)": len(singles),
+        "retired": len(singles) - len(live),
+        "kept at today's top": len(live) - len(raised),
+        "raised": len(raised),
+        "median raise": round(statistics.median(factors), 2) if factors else 1.0,
+        "largest raise": max(((round(a.top / a.old_top, 2), a.name) for a in raised),
+                             default=None),
+        "narrowed to fewer slots": sum(1 for a in live if a.slots != a.old_slots),
+        "today: affixes with a decimal": sum(a.has_decimal for a in worst),
+        "today: affixes whose tiers overlap": sum(a.overlaps > 0 for a in worst),
+        "today: tier 1 at +0 of the increased maximum health affix": next(
+            f"{_num(a.tiers[0].low0)}-{_num(a.tiers[0].high0)}"
+            for a in worst if a.name == "Increased maximum health"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -794,7 +853,6 @@ def measure() -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 
 TIER_COLUMNS = tuple(f"T{t} {end}" for t in TIERS for end in ("Min", "Max"))
-SCALES_COLUMN = "Scales With Upgrade"
 IMPLICIT_COLUMNS = ("Implicit 1 At +0", "Implicit 2 At +0")
 
 
@@ -807,23 +865,23 @@ def apply(source: pathlib.Path, destination: pathlib.Path, *,
     """Write the proposal into `destination`, a copy of `source`.
 
     What it writes:
-      Affixes      fourteen columns T1 Min .. T7 Max and "Scales With Upgrade"
-                   on every live row; the narrowed Allowed Slots; a hybrid's
-                   renamed half and narrowed slots; and deletes a retired row.
+      Affixes      fourteen columns T1 Min .. T7 Max, the +0 ranges, on every
+                   live row; the narrowed Allowed Slots; a hybrid's renamed half
+                   and narrowed slots; and deletes a retired row.
       Item Bases   "Implicit 1 At +0" and "Implicit 2 At +0", whole numbers.
 
     What it leaves alone: Top Value and Floor, which the game reads today and
-    the implementation will retire; every other sheet, byte for byte in value.
+    the implementation will retire; every other sheet.
 
     REFUSES THE REAL WORKBOOK unless `allow_real_workbook` is set, which is for
-    the day the owner has ruled and the change is being made on purpose.
+    the day the change is being made on purpose.
     """
     import openpyxl
 
     if destination.resolve() == WORKBOOK.resolve() and not allow_real_workbook:
         raise RealWorkbookRefused(
             "this would write the real design workbook; other branches hold "
-            "unmerged edits to it and the owner has not ruled")
+            "unmerged edits to it")
     if source.resolve() != destination.resolve():
         shutil.copyfile(source, destination)
 
@@ -835,7 +893,7 @@ def apply(source: pathlib.Path, destination: pathlib.Path, *,
     sheet = book["Affixes"]
     headers = [c.value for c in sheet[1]]
     column = {h: i + 1 for i, h in enumerate(headers) if h}
-    for title in (*TIER_COLUMNS, SCALES_COLUMN):
+    for title in TIER_COLUMNS:
         if title not in column:
             column[title] = sheet.max_column + 1
             sheet.cell(row=1, column=column[title], value=title)
@@ -863,8 +921,6 @@ def apply(source: pathlib.Path, destination: pathlib.Path, *,
         for t, (low, high) in zip(TIERS, affix.tiers, strict=True):
             sheet.cell(row=r, column=column[f"T{t} Min"], value=low)
             sheet.cell(row=r, column=column[f"T{t} Max"], value=high)
-        sheet.cell(row=r, column=column[SCALES_COLUMN],
-                   value="yes" if affix.amount else "no")
         counts["tier rows"] += 1
 
     for r in reversed(retired_rows):
@@ -907,12 +963,7 @@ def whole_numbers_inside(low: float, high: float) -> int:
 
 
 def inventory_markdown() -> str:
-    """Every affix, every tier, at +0 (what a drop shows) and tier 7 at +10.
-
-    A band is continuous today, so no tier is a single value; the column that
-    says how coarse a tier is counts the whole numbers it contains, which is
-    the most a whole-number display could ever show of it.
-    """
+    """Every affix, every tier, at +0 (what a drop shows) and tier 7 at +10."""
     lines = ["| Affix | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T7 at +10 | decimals "
              "| overlapping pairs | narrowest width | fewest whole numbers in a tier |",
              "| :-- | --: | --: | --: | --: | --: | --: | --: | --: | :-: | --: | --: | --: |"]
@@ -929,37 +980,82 @@ def inventory_markdown() -> str:
     return "\n".join(lines)
 
 
+def _ladder_key(affix: ProposedAffix) -> str:
+    return " ".join(f"{lo}-{hi}" for lo, hi in affix.tiers)
+
+
 def table_markdown() -> str:
+    """The one full table: each tier as its +0 range and its +10 range."""
     table = proposal()
-    rows = {r["AffixName"]: r for r in read_affix_rows()}
-    lines = ["| Affix | Upgrades? | T1 | T2 | T3 | T4 | T5 | T6 | T7 | Top at +10 "
-             "(was) | Pieces (was) | If upgrades multiplied every affix | Change |",
-             "| :-- | :-: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: "
-             "| :-- |"]
+    lines = ["| Affix | T1 | T2 | T3 | T4 | T5 | T6 | T7 | Top at +10 (today) "
+             "| Pieces (today) | Ladder | Change |",
+             "| :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: | :-: | :-- |"]
+    letters = _ladder_letters(table)
     for affix in table.values():
         if affix.kind == "Hybrid":
             continue
-        alternative = top_if_every_affix_scaled(rows[affix.name])
         if affix.retired:
-            lines.append(f"| {affix.name} | | retired into {affix.retired_into} "
+            lines.append(f"| {affix.name} | retired into {affix.retired_into} "
                          f"| | | | | | | -- ({_num(affix.old_top)}) | "
-                         f"-- ({affix.old_pieces()}) | {alternative} | {affix.note} |")
+                         f"-- ({affix.old_pieces()}) | | {affix.note} |")
             continue
-        cells = " | ".join(f"{lo}-{hi}" for lo, hi in affix.tiers)
+        cells = " | ".join(
+            f"{lo}-{hi} / {upgraded(lo, MAX_GEAR_LEVEL)}-{upgraded(hi, MAX_GEAR_LEVEL)}"
+            for lo, hi in affix.tiers)
         pieces = (f"{affix.pieces()} ({affix.old_pieces()})"
                   if affix.slots != affix.old_slots else str(affix.pieces()))
-        change = affix.note or ("" if not affix.raised else "raised to make room")
-        lines.append(f"| {affix.name} | {'yes' if affix.amount else 'no'} | {cells} | "
-                     f"{affix.top} ({_num(affix.old_top)}) | {pieces} | {alternative} "
-                     f"| {change} |")
+        change = affix.note
+        if not change and affix.raised:
+            change = (f"rounding: {affix.tiers[-1][1]} is the nearest whole +0 top, "
+                      f"and shows {affix.top} at +10")
+        lines.append(f"| {affix.name} | {cells} | {affix.top} ({_num(affix.old_top)}) "
+                     f"| {pieces} | {letters[_ladder_key(affix)]} | {change} |")
     return "\n".join(lines)
+
+
+def _ladder_letters(table: dict[str, ProposedAffix]) -> dict[str, str]:
+    """A letter for each distinct +0 ladder, in table order."""
+    letters: dict[str, str] = {}
+    for affix in table.values():
+        if affix.tiers and not affix.retired:
+            key = _ladder_key(affix)
+            if key not in letters:
+                letters[key] = chr(ord("A") + len(letters))
+    return letters
+
+
+def levels_markdown() -> str:
+    """What a player sees at every upgrade level, for every distinct ladder.
+
+    Every affix sharing a ladder shows exactly the same numbers, so one table
+    per ladder is every affix at every level.
+    """
+    table = proposal()
+    letters = _ladder_letters(table)
+    users: dict[str, list[str]] = {}
+    for affix in table.values():
+        if affix.tiers and not affix.retired:
+            users.setdefault(_ladder_key(affix), []).append(affix.name)
+    out = []
+    for key, letter in letters.items():
+        example = table[users[key][0]]
+        out.append(f"#### Ladder {letter}: {', '.join(users[key])}")
+        out.append("")
+        out.append("| Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |")
+        out.append("| :-- | --: | --: | --: | --: | --: | --: | --: | --: |")
+        for level in LEVELS:
+            cells = " | ".join("{}-{}".format(*tier_range(example, k, level))
+                               for k in TIERS)
+            out.append(f"| +{level} | {level_hundredths(level) / 100:.2f} | {cells} |")
+        out.append("")
+    return "\n".join(out)
 
 
 def hybrid_markdown() -> str:
     table = proposal()
     shares = hybrid_shares(table)
     lines = ["| Hybrid | Halves | Hybrid T3 at +0 | Hybrid T7 at +0 | Hybrid T7 at +10 "
-             "| Share of the single affix at T7 | Slots (was) |",
+             "| Share of the single affix at T7 | Slots (today) |",
              "| :-- | :-- | --: | --: | --: | --: | :-- |"]
     for hybrid in table.values():
         if hybrid.kind != "Hybrid":
@@ -980,10 +1076,12 @@ def hybrid_markdown() -> str:
     return "\n".join(lines)
 
 
-def implicit_markdown() -> str:
+def implicit_markdown(changed_only: bool = False) -> str:
     lines = ["| Base | Implicit | Today +0 | Today +10 | Proposed +0 | Proposed +10 |",
              "| :-- | :-- | --: | --: | --: | --: |"]
     for imp in implicit_proposal():
+        if changed_only and imp.at(MAX_GEAR_LEVEL) == round(imp.old_stated, 6):
+            continue
         two = " (x2 two-handed)" if imp.two_handed else ""
         lines.append(f"| {imp.base}{two} | {imp.stat} {imp.kind} | "
                      f"{_num(round(imp.old_at_zero, 2))} | {_num(imp.old_stated)} | "
@@ -996,14 +1094,14 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inventory", help="today's tiers, as markdown")
     sub.add_parser("table", help="the proposed tiers, as markdown")
+    sub.add_parser("levels", help="every ladder at every upgrade level")
     sub.add_parser("measure", help="the design figures before and after")
     sub.add_parser("check", help="the proposal's invariants")
     do = sub.add_parser("apply", help="write the proposal into a COPY")
     do.add_argument("--source", type=pathlib.Path, default=WORKBOOK)
     do.add_argument("--out", type=pathlib.Path, required=True)
     do.add_argument("--i-mean-the-real-workbook", action="store_true",
-                    help="allow --out to be the real workbook; only after the "
-                         "owner has ruled")
+                    help="allow --out to be the real workbook")
     args = parser.parse_args(argv)
 
     if args.command == "inventory":
@@ -1013,20 +1111,29 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(hybrid_markdown())
         print()
-        print(implicit_markdown())
+        print(implicit_markdown(changed_only=True))
+    elif args.command == "levels":
+        print(levels_markdown())
     elif args.command == "measure":
+        for key, item in headline().items():
+            print(f"{key}: {item}")
         for key, pair in measure().items():
             print(f"{key}:\n  today    {pair['today']}\n  proposed {pair['proposed']}")
     elif args.command == "check":
         found = problems()
         for line in found:
             print(line)
+        print(f"{len(found)} problems, at every upgrade level +0 to +10, one- and "
+              "two-handed.")
+        steps = unchanged_steps()
+        print(f"Information: {len(steps)} of the +0 numbers in the table show the "
+              "same number at some pair of adjacent upgrade levels (one upgrade "
+              "adds 0.15 of a number, under one below 7):")
+        for v, flat in steps.items():
+            print(f"  {v}: unchanged by the upgrade to +{', +'.join(map(str, flat))}")
         collisions = seventy_percent_collisions()
-        print(f"{len(found)} problems.")
         print(f"Not the proposal: today's 70% hybrid rule, rounded, would break the "
-              f"new rules in {len(collisions)} places at +0:")
-        for line in collisions:
-            print("  " + line)
+              f"new rules in {len(collisions)} places at +0.")
         return 1 if found else 0
     elif args.command == "apply":
         try:
