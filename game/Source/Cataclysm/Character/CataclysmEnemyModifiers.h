@@ -517,6 +517,10 @@ public:
 	 * One more Infernal Brand on whatever this creature just hit, exploding at
 	 * five.
 	 *
+	 * NOTHING ON A TARGET ALREADY DEAD, issue #2874: the blow that kills reaches
+	 * this after the death, and a brand bursting on a corpse is what the owner's
+	 * log showed. The same refusal is in the two below.
+	 *
 	 * @return the damage the explosion dealt, or zero when it did not fire
 	 */
 	static float BrandOnHit(AActor* Attacker, AActor* Target);

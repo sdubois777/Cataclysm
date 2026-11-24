@@ -32,6 +32,8 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmEnemyDeath.h"
+// For the line that says a creature died, and who struck it last. Issue #2874.
+#include "Character/CataclysmHitLog.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
@@ -182,8 +184,23 @@ void ACataclysmEnemyCharacter::HandleDeath()
 {
 	if (!UCataclysmSkillEffects::MarkDead(this))
 	{
-		// Already dead. Nothing here is safe to run twice.
+		// Already dead, or its death is being marked by a call this one is inside (issue #2871). Nothing here is safe
+		// to run twice.
 		return;
+	}
+
+	// AND THE LOG SAYS THE CREATURE DIED, which it did not until issue #2874. On 2026-11-24 a Boss Brute's swing killed
+	// the owner 0.36 s after the owner's 438 critical on it, and nothing could say whether the Brute was already dead.
+	// AT `Display`, the level the hit log's lines use, so the death sits among the blows in a play session's log, and
+	// ONCE: below the mark, which refuses a second death. Its health is read now, before anything below can move it.
+	if (AbilitySystemComponent)
+	{
+		const FCataclysmLastBlow& Last = AbilitySystemComponent->GetLastBlow();
+		UE_LOG(LogCataclysm, Display, TEXT("%s"), *FCataclysmHitLog::CreatureDeathLine(
+			this,
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			Last.IsOnRecord() ? Last.Attacker.Get() : nullptr));
 	}
 
 	// AND A CREATURE CARRYING HORDE LEADER RALLIES WHAT IS LEFT OF ITS PACK.

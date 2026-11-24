@@ -53,6 +53,8 @@
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
+// For a creature that died while its swing was waiting to connect. Issue #2877.
+#include "Character/CataclysmEnemyCharacter.h"
 // For a ground zone's skill row and level factor, read when it is laid. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
 #include "Player/CataclysmPlayerState.h"
@@ -715,9 +717,31 @@ void UCataclysmSkillTemplate::WhenTheSwingConnects(TFunction<void()> Blow)
 	// A WEAK LAMBDA, NOT A PLAIN ONE. It binds to this ability object, so a
 	// swing still travelling when the ability is destroyed is dropped rather
 	// than run against freed memory.
+	//
+	// AND A CREATURE THAT DIED DURING THE WAIT LANDS NOTHING. Issue #2877: the
+	// Corrupted Stalker and the Worn Residue double swing through these templates
+	// and wait on this timer, which nothing cleared at a creature's death, so one
+	// killed mid-swing still struck. Its blow is dropped and the skill ended as a
+	// cancelled one, which clears the timer and strikes nothing, as an interrupted
+	// skill does: what a creature's own ordinary swing already does since issue
+	// #783 (`ACataclysmEnemyCharacter::HandleDeath` forgets its waiting blow).
+	//
+	// A CREATURE ONLY. A player's waiting blow is left as it was: the owner
+	// answered issue #1549, a dead player's waiting blow, "not important" with no
+	// change planned.
 	World->GetTimerManager().SetTimer(
 		SwingTimer,
-		FTimerDelegate::CreateWeakLambda(this, [Blow]() { Blow(); }),
+		FTimerDelegate::CreateWeakLambda(this, [this, Blow]()
+		{
+			const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Avatar());
+			if (Creature && UCataclysmSkillEffects::IsDead(Creature))
+			{
+				EndAbility(GetCurrentAbilitySpecHandle(), GetCurrentActorInfo(),
+						   GetCurrentActivationInfo(), true, true);
+				return;
+			}
+			Blow();
+		}),
 		Delay, /*bLoop=*/false);
 }
 

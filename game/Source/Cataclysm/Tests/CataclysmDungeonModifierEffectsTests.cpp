@@ -16422,6 +16422,113 @@ bool FCataclysmEpidemicChainTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicSparesTheUnhurtableTest,
+	"Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicSparesTheUnhurtableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. The chain's end writes each creature's health to
+	// nought and calls `HandleDeath`; the write is held at the maximum for a creature that cannot be hurt and the
+	// `HandleDeath` killed it anyway, so a chain ended beside the Reaper or an echo could kill it. Since then the chain's end
+	// passes over one.
+	//
+	// THE LINE OF `AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord`, and beside its fifth kill, 3 m off the line,
+	// an Imp that cannot be hurt and carries nothing. THE CONTROL: every creature of the line within reach dies, so the
+	// chain ended and its killing reached that far. THE CASE: the unhurtable Imp stands.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what this test spawned.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	TArray<ACataclysmEnemyCharacter*> Line;
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill + 2; ++Index)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(
+			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("a creature in the line"), Creature)
+			|| !TestTrue(TEXT("carrying the disease"),
+						 GiveTheDebuff(Player.Character, Creature, Disease)))
+		{
+			return false;
+		}
+		Line.Add(Creature);
+	}
+
+	// BESIDE THE FIFTH KILL, which is where the chain ends: 3 m off the line, inside the 6 m its killing reaches, and
+	// farther from every kill than the next creature of the line, so no disease is passed to it.
+	ACataclysmEnemyCharacter* Unhurtable = SpawnImpWithHealth(
+		World, FVector(600.0f + 100.0f * (Effects::EpidemicSpreadsToKill - 1), 300.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("set-up: an Imp that cannot be hurt"), Unhurtable))
+	{
+		return false;
+	}
+	Unhurtable->bCannotBeHurt = true;
+
+	// FIVE KILLS, EACH WITH SOMEBODY BESIDE IT TO CATCH THE DISEASE.
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Line[Index])))
+		{
+			return false;
+		}
+	}
+
+	int32 StillStanding = 0;
+	for (ACataclysmEnemyCharacter* Creature : Line)
+	{
+		StillStanding += (IsValid(Creature)
+						  && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
+	}
+	const bool bUnhurtableStands = IsValid(Unhurtable) && !UCataclysmSkillEffects::IsDead(Unhurtable);
+	AddInfo(FString::Printf(TEXT("EPIDEMIC AND THE UNHURTABLE: %d of the line still standing; the Imp that cannot be "
+								 "hurt stands %s"),
+							StillStanding, bUnhurtableStands ? TEXT("yes") : TEXT("no")));
+
+	TestEqual(TEXT("CONTROL: the chain ended and killed every creature of the line within reach"), StillStanding, 0);
+	TestTrue(TEXT("THE IMP THAT CANNOT BE HURT, 3 m from the chain's end, STILL STANDS"), bUnhurtableStands);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicNoSecondChainTest,
 	"Cataclysm.DungeonModifierEffects.TheMassKillDoesNotFeedItself",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

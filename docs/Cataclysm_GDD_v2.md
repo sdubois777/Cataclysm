@@ -503,6 +503,13 @@ A corpse is neither an enemy nor an ally. This is a rule about target selection
 rather than about damage: a hit already in flight still resolves, because a
 projectile outlives whoever fired it.
 
+**A blow a creature has not yet struck is not struck.** A creature killed between
+starting a swing and the swing connecting lands nothing, whether the swing is its
+own or a player's skill it casts, as the Corrupted Stalker and the Worn Residue
+double do (issue #2877); a projectile it has already fired still lands. A player's
+waiting blow is left as it is: the owner answered issue #1549 that it is not
+important.
+
   
 
 **A player comes back whole.** No amount of health is carried over from the death
@@ -1662,6 +1669,12 @@ critical strikes as the direct-hit lever.
 **A summoned minion never critically strikes**, which the Minions section already
 states. Its damage is a share of its summoner's, and the share was set on the
 understanding that no critical strike layer compounds with it.
+
+**Nor does a payout of damage banked from earlier blows.** An Infernal Brand's
+explosion is five of its creature's hits, one banked per stack, and never a
+critical strike; the overkill explosion and a minion's death blast are the same.
+A brand is built by hits alone, and a tick of damage over time is not a hit
+(issue #2874).
 
   
 

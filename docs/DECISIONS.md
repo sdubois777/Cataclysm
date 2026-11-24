@@ -2,6 +2,318 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The tier 1 Boss Brute killed with its Infernal Brand, not its swing: a brand is built by hits alone and its explosion never critically strikes; a creature killed mid-swing lands nothing; Sacrifice and Epidemic pass over a creature that cannot be hurt (#2874, #2877, #2876)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/creature-combat-2874`, made from
+`fix/drops-and-death-2871`, a bug-fix agent of the coordinating session, 2026-11-24. Issues
+[#2874](https://github.com/sdubois777/Cataclysm/issues/2874) (part 2),
+[#2877](https://github.com/sdubois777/Cataclysm/issues/2877) and
+[#2876](https://github.com/sdubois777/Cataclysm/issues/2876), and an addition the coordinating session sent the same
+day.
+
+**THIS ENTRY SUPERSEDES TWO SENTENCES OF THE ENTRY BELOW**, written on the branch this one was made from, which is not
+this branch's to change. It said of the owner's death "The brand was not part of the kill -- the swing took the 396
+health left", and "the melee critical is the outlier and the reading of this branch cannot say why". **The killing
+blow was the brand's explosion, and there was no melee critical.** What follows is the evidence.
+
+### What the owner said, and what was ruled
+
+- **The owner, verbatim, on #2874:** "I just got 1 shot by something. I killed a boss, and immediately died."
+- **The coordinating session's rulings of 2026-11-24, verbatim:** "(1a) approved: Infernal Brand stacks only on hits,
+  never on damage-over-time ticks (the row says "on hit"; "a tick is not a hit" is the project's rule). (1b) approved
+  as the coordinating session's ruling, not only a judgement: the Brand's explosion cannot critically strike,
+  consistent with the overkill explosion and death blast ruled 2026-10-07; keep it as its own commit and quote that
+  precedent. (1c) yes, add the melee-critical measurement test. Correct the base branch's DECISIONS note that "the
+  brand was not part of the kill" in your entry (the base branch is not yours to push to; say in your entry that it
+  supersedes that note). (2) Do NOT take the design workbook: it is a binary git cannot merge, so only one branch may
+  carry an unmerged edit to it, and other branches may. Leave #2876's row unchanged and report the exact new text; I
+  will schedule the workbook edit separately."
+- **The precedent (1b) names**, this file, 2026-10-07, ruling 4 on the overkill explosion: "Direct damage of no damage
+  type, dealt by the killer, delivered as area damage and never retaliated against, as `ACataclysmMinion::DeathBlast`
+  delivers a blast at a death. It cannot critically strike."
+- **The addition**, the coordinating session, 2026-11-24: Infernal Sacrifice and Epidemic's chain end write a
+  creature's health to nought and call `HandleDeath` directly, which skips the health hold, so they can kill creatures
+  that cannot be hurt; make both refuse such a target and one already dead or being marked dead, and check the two
+  other direct `HandleDeath` callers.
+
+### #2874: what the log shows
+
+`game/Saved/Logs/Cataclysm.log` in the main checkout, read 2026-11-24:
+
+```
+18:51:16.330  HIT: took 76 from CataclysmBruteCharacter_136 (Boss), ranged attack: 39 to health; health 430 of 430 before it
+18:51:17.512  HIT: took 8.9 from CataclysmBruteCharacter_136 (Boss), burn, 2 ticks within one second: 4.1 to health; ...
+18:51:19.499  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.7 to health; ...
+18:51:19.499  HIT: took 396 from CataclysmBruteCharacter_136 (Boss), attack: 396 to health; critical; health 396 of 430 before it
+18:51:19.507  HIT: took 4.5 from CataclysmBruteCharacter_136 (Boss), burn, 1 tick within one second: 0.5 to health; damage over time; health 396 of 430 before the first
+18:51:19.507  CataclysmPlayerCharacter_0 died at 0 of 430 health ... the killing blow: 396 from CataclysmBruteCharacter_136 (Boss), attack: ...
+18:51:19.509  CataclysmBruteCharacter_136's Infernal Brand reached five stacks on CataclysmPlayerState_0 and dealt 367.
+```
+
+1. **"attack" is not the Brute's swing.** The hit log names a blow with no skill by its tags: a spell, a ranged attack,
+   a melee attack, or "attack" when it carries none of the three (`FCataclysmHitLog::WhatText`). A creature's ordinary
+   swing carries `Type.Melee` (`ACataclysmEnemyCharacter::BasicAttackTags`) and the Brute's stomp carries it too, so
+   either would read "melee attack". The log holds 779 "melee attack" lines and none is from
+   `CataclysmBruteCharacter_136`.
+2. **Every "attack" line that is not a retaliation is a brand's explosion.** All 11 in the log are followed in the same
+   frame, by the same creature, with "Infernal Brand reached five stacks ... dealt X":
+
+   | Time | Creature | Took | Dealt (sent) |
+   | :-- | :-- | --: | --: |
+   | 17:00:47.866 | AbyssalWarden_16 (Boss) | 144, the health left: the killing blow | 273 |
+   | 17:01:27.913 | Imp_151 (Legendary) | 13 | 16 |
+   | 17:16:00.573 | Brute_37 (Boss) | 190 | 245 |
+   | 17:16:59.769 | Imp_284 (Boss) | 59 | 76 |
+   | 17:18:26.152 | Imp_377 (Herald) | 41 | 53 |
+   | 17:20:08.334 | Imp_486 (Boss) | 87 | 105 |
+   | 17:20:12.402 | Imp_478 (Herald) | 50 | 63 |
+   | 18:01:53.309 | Brute_108 (Herald) | 136 | 238 |
+   | 18:35:50.854 | Brute_120 (Boss) | 214, the health left: the killing blow | 532 |
+   | 18:51:19.499 | Brute_136 (Boss) | 396 critical, the health left: the killing blow | 367 |
+   | 19:15:24.904 | Hellhound_242 (Boss) | 272 critical | 225 |
+
+   `BrandOnHit` writes its line after the explosion's blow returns, so the blow's own line comes first, and the death
+   line between them is the explosion's kill. **Three of the owner's deaths that day were brand explosions.**
+3. **The explosion of 18:51:19 was 367 sent**, five times an attack damage of 73.4, **struck critically**, so 734, and
+   was cut to the 396 health left. The design's Brute there, `strength_on_floor("Boss", 1, "Basic", "Timed", 10, 6,
+   kind="Brute", ring="Outpost")`, hits for 72.32; the 1.5% between them was not traced and is most likely the
+   dungeon's modifier score, which that call leaves at nought.
+4. **Its five stacks were one rock and four burn ticks.** `UCataclysmVitalAttributeSet` called `BrandOnHit` for every
+   blow that took health, ticks of damage over time included. The ticks before 16.330 took nothing from health; the
+   rock (39 to health), the two ticks of 17.512, the tick closed at 19.499 and the tick at 19.507 made five, and the
+   last of them, a tick of 0.5, set off the explosion. **The Brute never landed a melee swing in this fight.**
+5. **The other figures fit the design**, as #2874 said: the rock sent 110.1 (150% of 73.4) and landed 76, so the
+   character kept 69% of a hit; the aura's tick is 9% of the hit, 6.6, and landed 4.5.
+
+### What changed
+
+1. **A brand is built by hits alone** (ruling 1a). `BrandOnHit` is called inside the `!Hit.bIsDamageOverTime` block,
+   beside `WitherOnHit` and `TouchOfNothingOnHit`, which the owner's rule for Withering Blows on #1722 already put
+   there: "one stack per hit that takes health". Beguiling's charm is left where it was, on any blow the creature takes.
+2. **The explosion can never be a critical strike** (ruling 1b), in its own commit. `BrandOnHit` sends it with a
+   delivery whose `bCannotCriticallyStrike` is set, as the overkill explosion's is.
+3. **A creature killed while its swing waits lands nothing** (#2877). The Corrupted Stalker and the Worn Residue double
+   strike through the player's skill templates, whose blow waits on `UCataclysmSkillTemplate::SwingTimer`, which
+   nothing cleared at a creature's death. The timer now asks, when it fires, whether its avatar is a creature that has
+   died; if so the blow is dropped and the skill ended as a cancelled one, as an interrupted skill is. **A player's
+   waiting blow is unchanged**: the question is asked only of an `ACataclysmEnemyCharacter`, and the owner answered
+   #1549, a dead player's waiting blow, "not important" with no change planned.
+4. **Infernal Sacrifice and Epidemic's chain end pass over a creature that cannot be hurt, or whose death is being
+   marked** (the addition): each asks `bCannotBeHurt` and `IsBeingMarkedDead` beside `IsDead`, and goes on to the next
+   creature. Shrouded creatures (`bShrouded`) are not passed over: the ruling of 2026-09-26 keeps that field apart from
+   `bCannotBeHurt` for rules that read the latter, and the addition named the latter.
+5. **The two other direct `HandleDeath` callers have the same shape and cannot reach such a creature today; not
+   changed.** The delayed-damage drain (`UCataclysmDelayedDamage::DrainStep`): `TakesNoDamage` empties a blow on a
+   creature that cannot be hurt before `DelayShare` takes its share, so no parcel is ever held. The health-debt drain
+   (`UCataclysmHealthDebt`): a debt is run up only through the class resource set's unpayable-cost rule, and as far
+   as was read a creature holds that set only with a player's build (the Stalker, the double), which no rule makes
+   unhurtable: Blood Bond takes the Elite rung alone, and both stand at Common. The Demonic Guide is handled on
+   `fix/demonic-guide-2860`.
+6. **`docs/Cataclysm_GDD_v2.md`**: "Nor does a payout of damage banked from earlier blows" under the critical strike
+   rule, and "A blow a creature has not yet struck is not struck" under "What Dying Does at the Moment It Happens".
+
+### #2874: the figures, reported and not retuned
+
+- **The melee critical is the design's.** A floor-built tier 1 Outpost Boss Brute on floor 6 hits for 72.32 and
+  critically for 144.64 before mitigation. On the level 6 reference character -- the starting Ravager with its
+  starting weapon and nothing else, 230 health, 42.5 armour (5.05% at tier 1) and 3.25% reduction -- with the
+  Boss's Overwhelm taking the armour's share away, about 140 lands, about 61% of its health: **not a one-shot**. On
+  the owner's character, which kept 69% of a hit, about 100 of 430. **Predicted, not run**: the measurement test
+  below is what runs it.
+- **The Boss Brute's brand, as now built, is 361.6 before mitigation, never doubled.** About 250 of the owner's 430,
+  58%. **On the level 6 reference character it is about 350 against 230 health: it still kills a gearless level 6
+  character outright**, which the design states as intended ("A geared character is never one-shot, and a gearless
+  one still is", `docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8). Reported for
+  the coordinating session, not retuned. After this change the brand needs five of the Brute's own hits within eight
+  seconds of each other, which a Brute swinging every 1.2 seconds in contact reaches in about six.
+
+### #2876: the design says Commander, so the row's text changes, in the workbook, later
+
+- **What the design says.** This file, 2026-09-05, "The remaining six Demonic enemy modifiers", under Infernal
+  Sacrifice: "**The damage buff is Commander**, which is the buff this game has for "hits harder and moves faster",
+  rather than inventing a second one meaning the same thing." Commander had been ruled by the owner on 2026-08-20 to
+  move two stats only (`docs/Cataclysm_GDD_v2.md`: "Those two stats and not every stat"): 20% increased movement speed
+  and attack speed. **So the code grants what the design chose, and the row's "temporary damage buffs" is the
+  inaccuracy.** Nothing in `docs/Cataclysm_GDD_v2.md` names Infernal Sacrifice.
+- **Not changed here, by ruling (2).** The row's text is generated from the design workbook's Enemy Modifiers sheet,
+  so the change is a workbook edit, `game/Data/EnemyModifiers.csv` regenerated, and `DT_EnemyModifiers` rebuilt in a
+  window. **The proposed text**, for the Demonic column's Infernal Sacrifice cell: "Infernal Sacrifice: Sacrifice a
+  nearby ally every 6 seconds to heal yourself for a quarter of your maximum health and gain Commander (20% increased
+  movement speed and attack speed) for 8 seconds." Its figures are the code's: `SacrificeIntervalSeconds` 6,
+  `SacrificeHealShareOfHealth` 0.25, `SacrificeBuffSeconds` 8.
+- **The code's comment beside the grant** said Commander makes "nearby allies hit harder"; it now says what Commander
+  moves and points at #2876.
+
+### Tests
+
+**Six new Unreal tests, in four groups:**
+
+| Test | What it shows |
+| :-- | :-- |
+| `Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` | CONTROL: one direct hit is one brand. THEN the brander's burn runs three seconds on the clock, at least two ticks taking health, and the player still holds one brand and nothing burst |
+| `Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` | every roll critical (chance 100, roll pinned 0); CONTROL: the five one-point hits are each critical. The explosion sends five 100-point hits, is not critical, and lands no more than it sent |
+| `Cataclysm.EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` | the Brute built in `ApplyDesignedStats`' order on the owner's floor: attack damage the design's 72.32 within 0.5%, multiplier 200; its swing ordered and landed when it connects, critical and melee, on the starting class at level 6, lands within 1% of 144.64 times what armour and resistance less its Overwhelm and the flat reduction leave, and less than the character's health. Prints "BOSS BRUTE MELEE CRITICAL" with every figure |
+| `Cataclysm.PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` | CONTROL: Famine's Stalker's first blow waits and lands when its swing connects. THEN its second blow waits, it is killed in the gap, the clock runs past the swing's moment, nothing waits, its body still stands, and the target is untouched |
+| `Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` | an unhurtable ally nearest the eater and an ordinary one farther: CONTROL, the ordinary one is eaten; the unhurtable one stands at its whole health |
+| `Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` | the chain test's line and an unhurtable Imp 3 m from the fifth kill: CONTROL, every creature of the line dies; the unhurtable Imp stands |
+
+**Python:** `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_creature_lands_nothing.py`, 6 checks, by reading the
+source with comments stripped: `BrandOnHit` is called once, inside the block that calls `WitherOnHit`; the explosion's
+delivery is marked before the blow is sent with it; the swing timer asks a creature avatar's death before the blow;
+Sacrifice and Epidemic ask `bCannotBeHurt` and `IsBeingMarkedDead` before `HandleDeath`; and the measurement's design
+figure is `enemy_stats.strength_on_floor`'s.
+
+### Judgements of this change
+
+- **The measurement's reference character** is the starting class at level 6 with its starting weapon and nothing
+  else, which `tools/tests/test_the_starting_character_survives_a_pack.py` and `sim/analyse_opening.py` measure, and
+  its design figure after mitigation includes the Overwhelm the Boss applies (#2824 slice b) and resistance, which
+  that file's `share_of_a_hit_taken` leaves out. A judgement: the design now has Overwhelm, and a figure without it
+  would not be what the game should land. Tolerance 1%.
+- **A creature's dropped blow ends its skill as a cancelled use**, not merely skipped, so nothing of it is left
+  running; a judgement following "A CANCELLED SKILL STRIKES NOTHING" in `UCataclysmSkillTemplate::EndAbility`.
+- **The words of the two `docs/Cataclysm_GDD_v2.md` paragraphs.**
+
+### Sources
+
+No shipped game was researched: no formula or number is chosen. The two brand rulings apply this project's own rules
+(a tick is not a hit; a payout banked from earlier blows cannot critically strike, as ruled 2026-10-07), and the rest
+restore what the code and the design already said.
+
+---
+
+## 2026-11-24 — A death is marked once even when a blow dealt from inside it reaches back to the dying creature; a stack built on hit is refused to a dead target; a creature's death is logged (#2871, #2874)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/drops-and-death-2871`, a bug-fix agent of the
+coordinating session, 2026-11-24. Issues [#2871](https://github.com/sdubois777/Cataclysm/issues/2871) and
+[#2874](https://github.com/sdubois777/Cataclysm/issues/2874).
+
+### What the owner reported, and ruled
+
+- **#2871**, verbatim: "uhhhh.. I just got a ton of duplicate drops." The screenshot showed at least 13 ground labels
+  reading "Masterful Fetish of Venom". The owner's answers on the issue, 2026-11-24, verbatim: "1. All of the duplicates
+  appeared at once, I just accidentally picked up two of them. 2. yes" -- every copy appeared at one moment, and each
+  is a real item that can be picked up.
+- **#2874**, verbatim: "I just got 1 shot by something. I killed a boss, and immediately died." No ruling was asked for
+  or given on the Boss's damage: the coordinating session's brief says to report the figures and not to retune them.
+
+### #2871: what the log shows
+
+`game/Saved/Logs/Cataclysm.log` in the main checkout, dungeon 11, floor 2 (Blood Bond):
+
+- 17:52:42.108, `CataclysmBruteCharacter_85` (Legendary) drew `Demonic_Sacrificial_Bond` and `Generic_Shielder`.
+- 17:56:24.093 and 17:56:29.770, the player's Harrower struck three creatures and then nine,
+  `CataclysmBruteCharacter_85` among the nine, and buried its axe in each it struck.
+- **17:56:37.020 to .032, all in frame 454: 31 lines "HIT OUT: ranged attack on CataclysmBruteCharacter_85 (Legendary):
+  sent 65, ..."** -- 26 landing 54, three critical landing 91, then 39 and 12. "ranged attack" with no skill name is
+  the axe's leap (its blow carries Harrower's tags and no skill object), and "sent 65" is what Harrower's own blow sent
+  at 17:56:24.093.
+- No HIT OUT line names the creature that died in that frame: it died to a tick of damage over time, which the hit log
+  does not say as an outgoing line.
+- 17:57:20.308 and 17:57:21.780, "picked up Masterful Fetish of Venom, +0" twice.
+
+### #2871: the cause
+
+`UCataclysmSkillEffects::MarkDead` refused a second death by asking for the `State.Dead` tag at its top, and put the tag
+on at its bottom, after five hooks that can strike: a spreading curse, a buried weapon's leap, a pinned line released,
+a held swing broken, a planted sword returned. The axe in the dying creature leapt to the nearest living enemy, the
+bonded Brute. Sacrificial Bond divided that blow with the Brute's allies, and the dying creature, not yet tagged, was
+one of them: `ReduceHealthDirectly` wrote its health at nought, `NotifyIfHealthReachedZero` saw a character not yet dead
+and called its `HandleDeath` again, and that `MarkDead` passed the top check, leapt again, and returned true. So did
+every call inside it. **`ACataclysmEnemyCharacter::HandleDeath` ran its whole body once per leap**: drops, gold, gems,
+experience, potion charges, the kill's events. Its drop roll is seeded from the creature's identity and the world's
+time, both the same within one frame, so every run rolled the same items: about 31 copies of each, lying on one spot,
+whose names the heads-up display stacks into a column.
+
+### #2871: the fix
+
+- **`MarkDead` keeps a set of the actors whose death it is marking.** It refuses an actor already in it, adds the actor
+  before the five hooks, and takes it out once the tag is on, before the death is announced. The outer call finishes
+  the death, once; the inner call returns false, and `HandleDeath` returns at once as it does for a creature already
+  dead.
+- **`UCataclysmSkillEffects::IsBeingMarkedDead`** answers whether an actor is in that set, and
+  **`UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero`** asks it beside `IsDead`, so the inner death is not even
+  started: a minion's or thrall's commander's Fervour, its death blast and its burst, which run before `HandleDeath`, are
+  not repeated either.
+- **`IsDead` is unchanged**, deliberately: the hooks run while the dying actor is still an ordinary target, and each
+  one that searches excludes it by name. Making it read as dead there would change what each finds.
+
+### #2874: what was checked, and what was found
+
+1. **A creature's swing cannot land after it dies, and it could not before this change.** Its ordinary blow waits for
+   the swing (#783) as a pending basic attack; `HandleDeath` forgets it, and `LandPendingBasicAttack` asks `IsDead` as
+   well. A brain's wind-up is dropped by `Think` and by `LandWindUpIfDue`, both of which ask `IsDead`; a charge is
+   cancelled by `HandleDeath`; `UCataclysmEnemyModifiers::TimedStep` refuses a dead creature. A projectile already in
+   flight still lands, as the design states ("a hit already in flight still resolves, because a projectile outlives
+   whoever fired it"). **The Boss Brute was very likely alive when it swung.** The player's critical on it reads "sent
+   421, landed 438, 438 to health"; a blow's landed figure is cut to the health left (the Herald's killing blow at
+   17:57:02.295 reads "sent 175, landed 75"), so the Brute held at least 438 health before it, and would have died only
+   at exactly 438. **Found and not fixed: the Corrupted Stalker.** Its weapon kits strike through the player's skill
+   templates, whose blow waits for the swing on `UCataclysmSkillTemplate::SwingTimer`, and nothing clears that timer when
+   a creature dies, so a Stalker killed mid-swing still lands its blow. The same timer is the player's, and #1549 asked
+   whether a dead player's waiting blow should land; the owner answered on 2026-09-11 that it is not important and no
+   change is planned. Changing the shared timer for creatures only is a ruling for the coordinating session, so this
+   branch reports it rather than deciding it.
+2. **The figures, reported and not retuned.** The design's creature at that spot -- `sim/cataclysm_sim/enemy_stats.py`
+   `strength_on_floor("Boss", 1, "Basic", "Timed", total_floors=10, floor=6, kind="Brute", ring="Outpost")`, dungeon 0,
+   a Timed dungeon of 10 floors on an Outpost at tier 1 -- has a score of 331, 4,264.9 health, **72.3 damage a hit and
+   144.6 on a critical** (the Brute's 200% multiplier), before the player's mitigation. **The log's critical took at
+   least 396 after mitigation**: "took 396 ... health 396 of 430 before it" is cut to the health left, so the swing was
+   larger. That is at least 2.7 times the design's whole critical before mitigation. The same Brute's other figures in
+   the log fit the design: its Hellfire Aura ticked 4.5 (a tick is 0.09 of its weapon damage, 6.5 at 72.3, before the
+   player's resistance), and a ranged attack took 76. So **the melee critical is the outlier and the reading of this
+   branch cannot say why**; a measurement is needed (the Brute as the floor builds it, its `AttackDamage` and one
+   critical swing against a level 6 character). What the design says: "A geared character is never one-shot, and a
+   gearless one still is" (`docs/Cataclysm_GDD_v2.md`, "How Long a Geared Character Survives", fitted at tier 8), and
+   tier 1's damage was refitted by issue #2749 so the starting character wins every floor of every first-surge Outpost
+   dungeon with at least 10% of its health left.
+3. **Infernal Brand burst on a corpse, and no longer does.** "CataclysmBruteCharacter_136's Infernal Brand reached five
+   stacks on CataclysmPlayerState_0 and dealt 367" was written 2 ms after the player's death line. The attribute set
+   calls `BrandOnHit` after a blow's health write, so for the killing blow, after `HandleDeath` has marked the player
+   dead. The brand was not part of the kill -- the swing took the 396 health left -- but it stacked and burst on the
+   body. **`BrandOnHit` now refuses a target already dead**: no stack, no visible tag, no explosion.
+4. **A creature's death is now logged.** "DIED: CataclysmBruteCharacter_136 (Boss) at 0.0 of 4265 health; last struck
+   by CataclysmPlayerCharacter_0", at `Display`, once, from `ACataclysmEnemyCharacter::HandleDeath` below the mark, so it
+   sits among the HIT and HIT OUT lines in a play session's log and the order of a death and a swing can be read.
+   `FCataclysmHitLog::CreatureDeathLine` builds it; who struck last is the creature's own record of the last blow to
+   reach its health.
+
+### Judgements of this change
+
+- **Withering Blows and Touch of Nothing refuse a dead target as Infernal Brand does**, by the brand's reasoning. A
+  judgement of the writing session: the issue names only the brand, and both build stacks from the same call after the
+  same health write, so a stack on a body is cleared at the respawn and does nothing before it.
+- **The death line's words**: "DIED: ", never " died at ", which is the player's own death line and what its readers
+  search for; figures as every hit log line says them (whole from ten up, one decimal below); "nobody on record" when no
+  blow reached its health. A judgement.
+- **A creature being marked dead is still found by searches**, so Sacrificial Bond still pays the dying host its share
+  of the leap, which it cannot lose, and the bonded creature keeps half. Excluding it would change what every hook's
+  search finds; left as it was and reported.
+
+### Tests
+
+**Four new Unreal tests, one in each of four groups:**
+
+| Test | What it shows |
+| :-- | :-- |
+| `Cataclysm.BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` | the owner's floor in small: a host of 50 health paying as a Cataclysm Boss, an axe in it, and a bonded ally of 1.25 leaps' health 3 m away; the player's blow kills the host; its death is announced once, no piece of gear on the floor is a copy of another, and the ally lives having kept half of one leap. Before the fix: four deaths, four copies of each item, the ally dead |
+| `Cataclysm.EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` | a Brute KILLED in the gap by a blow, not marked dead: its death forgets the waiting blow at once, and at its swing's moment its own frame and `LandPendingBasicAttack` land nothing |
+| `Cataclysm.EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` | CONTROL: a living player's fifth brand bursts, a second blow resolved, stacks spent. THEN: four brands on a second player and a fifth blow that kills it; one blow resolved, and the four stacks are left as they were |
+| `Cataclysm.HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` | one DIED line at Display, after the HIT OUT line of the killing blow, naming the creature, its rarity and the player; a blow on the body says no second; the words with nobody on record |
+
+**Python:** `tools/tests/test_a_death_is_marked_once_from_inside_its_own_hooks.py`, 5 checks: `MarkDead` refuses an
+actor already being marked before adding it, adds it before its first hook, and takes it out after the tag and before
+the announcement; `NotifyIfHealthReachedZero` asks `IsBeingMarkedDead` before `HandleDeath`; each of the three on-hit
+stack builders asks `IsDead(Target)` before its status and its stack. `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`
+pins the death line as one of `HandleDeath`'s jobs and lists the two attribute reads beside it as questions.
+
+### Sources
+
+No shipped game was researched: no formula or number is chosen here. The fixes restore what the code already said it
+did ("Nothing here is safe to run twice"; "a death is announced once").
+
+---
+
 ## 2026-11-22 — The merchant buys a carried piece of gear for the tier's gold piles by rarity and upgrade level, at no day's cost, from a screen on the empire map (#48, slice S1)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/selling-48-s1`, cut from development

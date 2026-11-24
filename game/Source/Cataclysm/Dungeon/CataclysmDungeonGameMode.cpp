@@ -21415,6 +21415,15 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 			continue;
 		}
 
+		// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating session,
+		// 2026-11-24: the health written to nought below is held at the maximum for a creature that cannot be hurt
+		// (`UCataclysmVitalAttributeSet::PreAttributeChange`), and the `HandleDeath` after it killed it anyway, so a
+		// chain ended beside the Reaper or an echo could kill it. Divine Wrath's beam passes such a creature too.
+		if (UCataclysmSkillEffects::IsBeingMarkedDead(Creature) || Creature->bCannotBeHurt)
+		{
+			continue;
+		}
+
 		// NOR THE CORRUPTED STALKER, for the reason Divine Wrath's beam spares it: a player could end the encounter by
 		// finishing a chain beside it. Ruled by the coordinating session on 2026-10-26. Issue #2523.
 		if (Creature->IsA<ACataclysmCorruptedStalkerCharacter>())
