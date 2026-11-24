@@ -24,8 +24,9 @@
 
 /**
  * A kill's experience and loot by the gap between the dungeon's score and the player's. Issue #2824, slice c: the
- * coordinating session's rule D and the owner's 25% loot floor, both of 2026-11-22, recorded in `docs/DECISIONS.md`.
- * `Cataclysm.PowerGapRewards.` IS A NEW GROUP and selects these five and nothing else.
+ * coordinating session's rule D and the owner's 25% loot floor, both of 2026-11-22, and the owner's per-tier start of
+ * the cut, 2026-11-24 (issue #2853), recorded in `docs/DECISIONS.md`. `Cataclysm.PowerGapRewards.` selects these six
+ * and nothing else.
  *
  * WRITTEN WITHOUT A BUILD. Phase 1: every figure below is the simulation's or reasoned from the code, and the run that
  * proves them is registered in `docs/DECISIONS.md` before it happens.
@@ -90,39 +91,41 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsRuleTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `sim/analyse_power_gap_rewards.py`'s `RULED.multiplier` at eleven gaps, experience and loot, each figure written out
- * here and checked against the simulation by `tools/tests/test_power_gap_rewards_port.py`, which reads this table back.
- * Two at each floor, one on each ramp, the band's two edges and its middle, and two at the cap. Prints "GAP RULE".
+ * `sim/analyse_power_gap_rewards.py`'s `RULED.multiplier` at eleven gaps at difficulty tier 4, where the cut begins a
+ * whole tier width below the player (issue #2853), experience and loot, each figure written out here and checked
+ * against the simulation by `tools/tests/test_power_gap_rewards_port.py`, which reads this table back. Two at each
+ * floor, one on each ramp, the band's two edges and its middle, and two at the cap. Prints "GAP RULE".
  */
 bool FCataclysmPowerGapRewardsRuleTest::RunTest(const FString&)
 {
 	using namespace CataclysmPowerGapRewardsTest;
 	struct FCase
 	{
+		int32 Tier;
 		double Gap;
 		double Experience;
 		double Loot;
 	};
 	// THE SIMULATION'S FIGURES. tools/tests/test_power_gap_rewards_port.py reads these rows back.
 	const FCase Cases[] = {
-		{ -2.0, 0.05, 0.25 },
-		{ -1.6, 0.05, 0.25 },
-		{ -1.1, 0.525, 0.625 },
-		{ -0.85, 0.7625, 0.8125 },
-		{ -0.6, 1.0, 1.0 },
-		{ -0.3, 1.0, 1.0 },
-		{ 0.0, 1.0, 1.0 },
-		{ 0.25, 1.0, 1.0 },
-		{ 0.5, 1.125, 1.125 },
-		{ 0.75, 1.25, 1.25 },
-		{ 1.0, 1.25, 1.25 },
+		{ 4, -3.0, 0.05, 0.25 },
+		{ 4, -2.0, 0.05, 0.25 },
+		{ 4, -1.5, 0.525, 0.625 },
+		{ 4, -1.25, 0.7625, 0.8125 },
+		{ 4, -1.0, 1.0, 1.0 },
+		{ 4, -0.3, 1.0, 1.0 },
+		{ 4, 0.0, 1.0, 1.0 },
+		{ 4, 0.25, 1.0, 1.0 },
+		{ 4, 0.5, 1.125, 1.125 },
+		{ 4, 0.75, 1.25, 1.25 },
+		{ 4, 1.0, 1.25, 1.25 },
 	};
 	TArray<FString> Said;
 	for (const FCase& Case : Cases)
 	{
-		const double Experience = Rule::Multiplier(Case.Gap, /*bLoot=*/false);
-		const double Loot = Rule::Multiplier(Case.Gap, /*bLoot=*/true);
-		Said.Add(FString::Printf(TEXT("%+.2f: %.6f %.6f"), Case.Gap, Experience, Loot));
+		const double Experience = Rule::Multiplier(Case.Gap, /*bLoot=*/false, Case.Tier);
+		const double Loot = Rule::Multiplier(Case.Gap, /*bLoot=*/true, Case.Tier);
+		Said.Add(FString::Printf(TEXT("tier %d %+.2f: %.6f %.6f"), Case.Tier, Case.Gap, Experience, Loot));
 		TestEqual(*FString::Printf(TEXT("**at %+.2f, experience the simulation's %.4f**"), Case.Gap, Case.Experience),
 				  Experience, Case.Experience, 1.0e-9);
 		TestEqual(*FString::Printf(TEXT("**at %+.2f, loot the simulation's %.4f**"), Case.Gap, Case.Loot), Loot,
@@ -140,9 +143,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsScoresTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * At tier 4, whose width is 717, a Dungeon Score of 2,009 against five players, each row written out here and checked
- * against the simulation by `tools/tests/test_power_gap_rewards_port.py`: level with it, "Rewards 100%."; a whole width
- * under it, "Rewards 125%."; a width over it, "Rewards: experience 62%, loot 70%."; two widths over it, "Rewards:
+ * At tier 4, whose width is 717 and whose cut begins a whole width below the player (issue #2853), a Dungeon Score of
+ * 2,009 against five players, each row written out here and checked against the simulation by
+ * `tools/tests/test_power_gap_rewards_port.py`: level with it, "Rewards 100%."; a whole width under it, "Rewards
+ * 125%."; about a width and a half over it (3,085), "Rewards: experience 52%, loot 62%."; two widths over it, "Rewards:
  * experience 5%, loot 25%."; and an unknown player, not scored, both 1, no line. The experience figure 137 is 7 at 5%,
  * 171 at 125% and 137 at 1. Prints "GAP SCORES".
  */
@@ -160,7 +164,7 @@ bool FCataclysmPowerGapRewardsScoresTest::RunTest(const FString&)
 	const FCase Cases[] = {
 		{ 2009, 2009, 4, TEXT("Rewards 100%.") },
 		{ 2009, 1292, 4, TEXT("Rewards 125%.") },
-		{ 2009, 2726, 4, TEXT("Rewards: experience 62%, loot 70%.") },
+		{ 2009, 3085, 4, TEXT("Rewards: experience 52%, loot 62%.") },
 		{ 2009, 3443, 4, TEXT("Rewards: experience 5%, loot 25%.") },
 	};
 	TArray<FString> Said;
@@ -174,8 +178,10 @@ bool FCataclysmPowerGapRewardsScoresTest::RunTest(const FString&)
 		TestTrue(TEXT("scored"), Rewards.bScored);
 		TestEqual(TEXT("the gap is the score difference over the tier's width"), Gap,
 				  (Case.DungeonScore - Case.PlayerScore) / UCataclysmEnemyScore::TierWidth(Case.Tier), 1.0e-12);
-		TestEqual(TEXT("experience is the rule's at that gap"), Rewards.Experience, Rule::Multiplier(Gap, false), 1.0e-12);
-		TestEqual(TEXT("loot is the rule's at that gap"), Rewards.Loot, Rule::Multiplier(Gap, true), 1.0e-12);
+		TestEqual(TEXT("experience is the rule's at that gap and tier"), Rewards.Experience,
+				  Rule::Multiplier(Gap, false, Case.Tier), 1.0e-12);
+		TestEqual(TEXT("loot is the rule's at that gap and tier"), Rewards.Loot, Rule::Multiplier(Gap, true, Case.Tier),
+				  1.0e-12);
 		TestEqual(*FString::Printf(TEXT("**the line: %s**"), Case.Text), Text, FString(Case.Text));
 	}
 
@@ -208,8 +214,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsKillTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A possessed level 99 player wearing nothing, in a 10-floor Basic dungeon of the empire: its Power Score is more than
- * 0.6 of a tier width above the dungeon's, so the rule cuts. A Boss killed there grants the creature's figure times the
+ * A possessed level 99 player wearing nothing, in a 10-floor Basic dungeon of the empire at the run's tier 1: its Power
+ * Score (990 from its level alone) is more than 1.4 tier widths above the dungeon's, where tier 1's cut begins, so the
+ * rule cuts. A Boss killed there grants the creature's figure times the
  * experience factor, rounded, through the player's own gain, and the loot factor is above the experience factor. The
  * two scores are the floor panel's, and the panel's line is the scores' line and then the rewards'. CONTROL: with the
  * dungeon left, nothing is scored and the same kill grants the whole figure. Prints "GAP KILL".
@@ -297,7 +304,8 @@ bool FCataclysmPowerGapRewardsKillTest::RunTest(const FString&)
 	TestEqual(TEXT("**the dungeon's is its Dungeon Score on this floor**"), DungeonScore,
 			  UCataclysmEnemyScore::DungeonScoreFor(UCataclysmEnemyScore::FloorFor(Mode, Tier)));
 	TestTrue(TEXT("**scored**"), Here.bScored);
-	TestTrue(TEXT("set-up: a level 99 player is more than 0.6 of a width above a 10-floor Basic dungeon, so the rule cuts"),
+	TestTrue(TEXT("set-up: a level 99 player is more than its tier's start of the cut above a 10-floor Basic dungeon, so "
+				  "the rule cuts"),
 			 Here.Experience < 1.0);
 	TestTrue(TEXT("**and loot is cut less than experience**"), Here.Loot > Here.Experience);
 	TestTrue(TEXT("set-up: a Boss is worth something here"), Worth > 0);
@@ -323,7 +331,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsMapLineTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A 22-floor Basic Elite dungeon on a run's first city: with a player's score known, the line the empire map's city
+ * A 22-floor Basic Elite dungeon on a run's first city, a player three tier widths above it: with a player's score
+ * known, the line the empire map's city
  * detail and the city screen show is `DungeonScoreLine`'s and then the rewards at the run's difficulty tier; with none
  * it is `DungeonScoreLine`'s alone; for a dungeon not on the map it is empty. Prints "GAP MAP LINE".
  */
@@ -349,8 +358,9 @@ bool FCataclysmPowerGapRewardsMapLineTest::RunTest(const FString&)
 	Run->Clock->SetResolveDays(961, 9.0f);
 
 	const int32 DungeonScore = UCataclysmEnemyScore::DungeonScoreOf(Run, 961);
-	// A PLAYER TWO WIDTHS ABOVE IT, so the line says both floors whatever the dungeon scores.
-	const int32 PlayerScore = DungeonScore + static_cast<int32>(2.0 * UCataclysmEnemyScore::TierWidth(Run->DifficultyTier));
+	// A PLAYER THREE WIDTHS ABOVE IT, so the line says both floors whatever the dungeon scores: the cut begins at most
+	// 1.4 widths above it (tier 1's start, issue #2853) and reaches its floors one width further.
+	const int32 PlayerScore = DungeonScore + static_cast<int32>(3.0 * UCataclysmEnemyScore::TierWidth(Run->DifficultyTier));
 	const FString Line = UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, 961, PlayerScore);
 	const FString Unknown = UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, 961, INDEX_NONE);
 	const FString Missing = UCataclysmEmpireMapLayout::DungeonScoreAndRewardsLine(Run, 999, PlayerScore);
@@ -362,7 +372,7 @@ bool FCataclysmPowerGapRewardsMapLineTest::RunTest(const FString&)
 			  UCataclysmEmpireMapLayout::DungeonScoreLine(Run, 961, PlayerScore) + TEXT(" ")
 				  + FCataclysmPowerGapRule::RewardsText(
 					  FCataclysmPowerGapRule::RewardsFor(DungeonScore, PlayerScore, Run->DifficultyTier)));
-	TestTrue(TEXT("**two widths above: both floors**"), Line.EndsWith(TEXT(" Rewards: experience 5%, loot 25%.")));
+	TestTrue(TEXT("**three widths above: both floors**"), Line.EndsWith(TEXT(" Rewards: experience 5%, loot 25%.")));
 	TestEqual(TEXT("with no player score, the scores' line alone"), Unknown,
 			  UCataclysmEmpireMapLayout::DungeonScoreLine(Run, 961, INDEX_NONE));
 	TestTrue(TEXT("CONTROL: a dungeon not on the map gives no line"), Missing.IsEmpty());
@@ -431,6 +441,72 @@ bool FCataclysmPowerGapRewardsKillLootTest::RunTest(const FString&)
 	TestFalse(TEXT("CONTROL: outside an empire dungeon, not scored"), Outside.bScored);
 	TestTrue(TEXT("**CONTROL: and the loot quantity handed on unchanged**"), Uncut.LootQuantity == Quantity);
 	TestTrue(TEXT("**CONTROL: and the gold multiplier unchanged**"), Uncut.GoldMultiplier == Gold);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// PG6. The cut begins at each tier's own start: 1.4 tier widths at tier 1, 0.8 at tier 8. Issue #2853.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerGapRewardsStartTest,
+	"Cataclysm.PowerGapRewards.TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's per-tier start of 2026-11-24 (issue #2853), "Per-tier start (Recommended)": the cut begins 1.4, 1.3, 1.1,
+ * 1.0, 0.9, 0.9, 0.8 and 0.8 tier widths below the player at tiers 1 to 8, where it began at 0.6 at every tier. At tier 1
+ * a player 1.4 widths above the dungeon is paid in full and one 1.5 above is cut to 90.5% experience and 92.5% loot; at
+ * tier 8 the same at 0.8 and 0.9. CONTROL: a player one width above a tier 1 dungeon, whom 0.6 cut to 62% and 70%, is
+ * paid in full. A tier outside 1 to 8 is read as the nearest. Each figure is `RULED.multiplier`'s, checked by
+ * `tools/tests/test_power_gap_rewards_port.py`, which reads this table back. Prints "GAP START".
+ */
+bool FCataclysmPowerGapRewardsStartTest::RunTest(const FString&)
+{
+	using namespace CataclysmPowerGapRewardsTest;
+	const double Starts[] = { 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8 };
+	TArray<FString> Said;
+	for (int32 Tier = 1; Tier <= 8; ++Tier)
+	{
+		Said.Add(FString::Printf(TEXT("tier %d %.2f"), Tier, Rule::BandBelow(Tier)));
+		TestEqual(*FString::Printf(TEXT("**tier %d's cut begins %.1f widths below the player**"), Tier, Starts[Tier - 1]),
+				  Rule::BandBelow(Tier), Starts[Tier - 1], 1.0e-12);
+	}
+
+	struct FCase
+	{
+		int32 Tier;
+		double Gap;
+		double Experience;
+		double Loot;
+	};
+	// THE SIMULATION'S FIGURES. tools/tests/test_power_gap_rewards_port.py reads these rows back.
+	const FCase Cases[] = {
+		{ 1, -1.0, 1.0, 1.0 },
+		{ 1, -1.4, 1.0, 1.0 },
+		{ 1, -1.5, 0.905, 0.925 },
+		{ 1, -2.4, 0.05, 0.25 },
+		{ 8, -0.8, 1.0, 1.0 },
+		{ 8, -0.9, 0.905, 0.925 },
+		{ 8, -1.8, 0.05, 0.25 },
+	};
+	for (const FCase& Case : Cases)
+	{
+		const double Experience = Rule::Multiplier(Case.Gap, /*bLoot=*/false, Case.Tier);
+		const double Loot = Rule::Multiplier(Case.Gap, /*bLoot=*/true, Case.Tier);
+		Said.Add(FString::Printf(TEXT("tier %d %+.2f: %.6f %.6f"), Case.Tier, Case.Gap, Experience, Loot));
+		TestEqual(*FString::Printf(TEXT("**at tier %d, %+.2f: experience the simulation's %.4f**"), Case.Tier, Case.Gap,
+								   Case.Experience),
+				  Experience, Case.Experience, 1.0e-9);
+		TestEqual(*FString::Printf(TEXT("**at tier %d, %+.2f: loot the simulation's %.4f**"), Case.Tier, Case.Gap,
+								   Case.Loot),
+				  Loot, Case.Loot, 1.0e-9);
+	}
+	AddInfo(FString::Printf(TEXT("GAP START: %s; tier 0 reads %.2f, tier 9 %.2f"), *FString::Join(Said, TEXT(" | ")),
+							Rule::BandBelow(0), Rule::BandBelow(9)));
+
+	TestEqual(TEXT("a tier below 1 is read as tier 1"), Rule::BandBelow(0), 1.4, 1.0e-12);
+	TestEqual(TEXT("a tier above 8 is read as tier 8"), Rule::BandBelow(9), 0.8, 1.0e-12);
+	TestTrue(TEXT("**CONTROL: the same gap cuts at tier 8 and not at tier 1**"),
+			 Rule::Multiplier(-1.0, false, 8) < 1.0 && Rule::Multiplier(-1.0, false, 1) == 1.0);
 	return true;
 }
 

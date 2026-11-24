@@ -348,7 +348,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		LootQuantity *= CityRewards.LootMore;
 
 		// AND THE GAP BETWEEN THE DUNGEON'S SCORE AND THE PLAYER'S (issue #2824, slice c; rule D and the owner's 25% loot
-		// floor, 2026-11-22): full from 0.6 of a tier width over the dungeon to 0.25 under it, up to 25% more above,
+		// floor, 2026-11-22; the per-tier start of the cut, issue #2853, 2026-11-24): full from the tier's start, 1.4 of
+		// a tier width over the dungeon at tier 1 down to 0.8 at tiers 7 and 8, to 0.25 under it, up to 25% more above,
 		// down to 5% experience and 25% loot below. The loot factor reaches the loot quantity and the gold multiplier
 		// through `KillLootFor`, once the tree's gold multiplier is known below; the experience takes its own factor at
 		// the grants. Both 1 outside an empire dungeon or with nobody playing (`PowerGapRewardsIn`). Asking draws nothing.

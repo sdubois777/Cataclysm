@@ -8,12 +8,26 @@ that moves one of them fails here rather than leaving the proposal describing a 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import io
 
 import pytest
 
+from cataclysm_sim import player_power
+
 with contextlib.redirect_stdout(io.StringIO()):
     import analyse_power_gap_rewards as gaps
+
+#: The cut's start at tiers 1 to 8, ruled by the owner on 2026-11-24 (issue #2853): "Per-tier start (Recommended)".
+PER_TIER_START = (1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8)
+
+
+def curve_character_score(tier: int) -> int:
+    """The character the experience curve produces at the end of a tier: the curve's tier-end level (42, 59, 70 ...)
+    wearing the tier's reference gear, gems and resistances, under the shipped weights. What the per-tier start was
+    sized on."""
+    level = gaps.curve.whole_levels_at_tier_ends()[tier - 1]
+    return player_power.power_score(dataclasses.replace(player_power.reference_character(tier), level=level))
 
 
 def test_the_reference_character_is_about_half_a_width_above_its_own_tiers_dungeon() -> None:
@@ -47,23 +61,69 @@ def test_the_plans_quarter_width_band_costs_the_climb_a_level() -> None:
 def test_rule_d_never_cuts_a_player_at_the_reference_in_any_dungeon_their_tier_spawns() -> None:
     # THE COORDINATING SESSION'S QUESTION OF 2026-11-22: a dungeon's timer forces the player to clear shallow
     # dungeons of their own tier too, so the cut must not reach them there. The lowest Dungeon Score a tier spawns
-    # is 0.48 to 0.49 of a width below the reference; rule D's cut begins at 0.6.
+    # is 0.48 to 0.49 of a width below the reference; rule D's cut began at 0.6, and the ruled per-tier start of
+    # 2026-11-24 begins it at 0.8 or more.
     # THE RULED RULE, for experience and for loot.
     for tier in gaps.TIERS:
         low, high = gaps.spawn_extremes(tier)
         width = gaps.scoring.tier_width(tier)
         for loot in (False, True):
-            assert gaps.RULED.multiplier((low.score - gaps.reference(tier)) / width, loot=loot) == 1.0, tier
-            assert gaps.RULED.multiplier((high.score - gaps.reference(tier)) / width, loot=loot) == 1.0, tier
+            assert gaps.RULED.multiplier((low.score - gaps.reference(tier)) / width, loot=loot, tier=tier) == 1.0, tier
+            assert gaps.RULED.multiplier((high.score - gaps.reference(tier)) / width, loot=loot, tier=tier) == 1.0, tier
+
+
+@pytest.mark.parametrize("tier", list(gaps.TIERS))
+def test_the_per_tier_start_never_cuts_the_curves_character_in_any_dungeon_its_tier_spawns(tier: int) -> None:
+    """THE REASON FOR THE PER-TIER START, issue #2853: the experience curve's character (level 42 at the end of tier 1,
+    59 at tier 2 ...) in its tier's reference gear sits up to 1.22 tier widths above the shallowest dungeon tier 1
+    spawns under the plain weights, so rule D's 0.6 cut a normally levelled player in its own tier. Measured by
+    `sim/measure_drop_supply.py`: the start is that distance plus rule D's 0.1 margin, rounded up to a tenth."""
+    low, high = gaps.spawn_extremes(tier)
+    width = gaps.scoring.tier_width(tier)
+    player = curve_character_score(tier)
+    above = (player - low.score) / width
+    assert gaps.RULED.below_at(tier) >= above + 0.1 - 1e-9, (
+        f"tier {tier}: the curve's character scores {player}, {above:.2f} tier widths above the shallowest dungeon "
+        f"({low.what}); the cut begins at {gaps.RULED.below_at(tier)}, less than that plus rule D's 0.1")
+    for score in (low.score, gaps.dungeon_score(tier), high.score):
+        for loot in (False, True):
+            assert gaps.RULED.multiplier((score - player) / width, loot=loot, tier=tier) == 1.0, (tier, score, loot)
+
+
+@pytest.mark.parametrize("tier", list(gaps.TIERS)[:-1])
+def test_the_next_tiers_finished_character_is_still_cut_in_this_tiers_average_dungeon(tier: int) -> None:
+    """What the rule is for: a character finished in the tier above, coming back, is still cut hard. The proposal
+    measured 5% at every tier but 6, where it is 15%; a fifth is the line."""
+    width = gaps.scoring.tier_width(tier)
+    factor = gaps.RULED.multiplier((gaps.dungeon_score(tier) - curve_character_score(tier + 1)) / width, tier=tier)
+    assert factor <= 0.2, f"tier {tier}: the next tier's finished character keeps {factor:.2f} of its experience"
+
+
+def test_the_per_tier_rule_needs_the_tier() -> None:
+    with pytest.raises(ValueError, match="pass the tier"):
+        gaps.RULED.multiplier(-1.0)
+    with pytest.raises(ValueError, match="outside 1 to 8"):
+        gaps.RULED.multiplier(-1.0, tier=9)
 
 
 def test_the_ruled_rule_has_two_floors_and_one_bonus() -> None:
     # Rule D, ruled by the coordinating session on 2026-11-22, with the owner's loot floor of the same day, verbatim
     # "25% loot floor (Recommended)": experience falls to 5%, loot quantity and the gold multiplier to 25%, over the
-    # same width; the bonus above the band is the same for both.
+    # same width; the bonus above the band is the same for both. The cut's start became per tier on 2026-11-24.
     ruled = gaps.RULED
-    assert (ruled.band, ruled.band_down, ruled.cap_up, ruled.ramp_up, ruled.ramp_down) == (0.25, 0.6, 0.25, 0.5, 1.0)
-    assert ruled.multiplier(-5.0) == pytest.approx(0.05)
-    assert ruled.multiplier(-5.0, loot=True) == pytest.approx(0.25)
-    assert ruled.multiplier(-1.1, loot=True) == pytest.approx(0.625)
-    assert ruled.multiplier(5.0) == ruled.multiplier(5.0, loot=True) == pytest.approx(1.25)
+    assert (ruled.band, ruled.cap_up, ruled.ramp_up, ruled.ramp_down) == (0.25, 0.25, 0.5, 1.0)
+    assert ruled.band_down_by_tier == PER_TIER_START
+    assert [ruled.below_at(tier) for tier in gaps.TIERS] == list(PER_TIER_START)
+    for tier in gaps.TIERS:
+        assert ruled.multiplier(-5.0, tier=tier) == pytest.approx(0.05)
+        assert ruled.multiplier(-5.0, loot=True, tier=tier) == pytest.approx(0.25)
+        assert ruled.multiplier(5.0, tier=tier) == ruled.multiplier(5.0, loot=True, tier=tier) == pytest.approx(1.25)
+    # Half a width past the start, the cut is halfway down its ramp, at tier 1 and at tier 8.
+    assert ruled.multiplier(-1.9, loot=True, tier=1) == pytest.approx(0.625)
+    assert ruled.multiplier(-1.3, loot=True, tier=8) == pytest.approx(0.625)
+    assert ruled.multiplier(-1.4, tier=1) == 1.0 and ruled.multiplier(-0.8, tier=8) == 1.0
+
+
+def test_rule_d_of_2026_11_22_is_kept_as_the_candidate_it_was() -> None:
+    old = next(rule for rule in gaps.RULES if rule.name.startswith("D, loot floor 25%"))
+    assert old.below_at() == 0.6 and old.multiplier(-1.1, loot=True) == pytest.approx(0.625)

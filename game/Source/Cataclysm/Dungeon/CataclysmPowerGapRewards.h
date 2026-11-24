@@ -40,7 +40,8 @@ struct CATACLYSM_API FCataclysmPowerGapKillLoot
 
 /**
  * THE RULE FOR A KILL'S EXPERIENCE AND LOOT BY THE POWER SCORE GAP. Issue #2824, slice c: the coordinating session's
- * rule D and the owner's loot floor, both of 2026-11-22, recorded in `docs/DECISIONS.md`.
+ * rule D and the owner's loot floor, both of 2026-11-22, and the owner's per-tier start of the cut, 2026-11-24 (issue
+ * #2853), recorded in `docs/DECISIONS.md`.
  *
  * `docs/Cataclysm_GDD_v2.md`, section IV, "Power Score": "Dungeons within a close power range provide average exp and
  * loot. Dungeons below the threshold provide less. Dungeons above provide more." The design states the direction; the
@@ -51,18 +52,28 @@ struct CATACLYSM_API FCataclysmPowerGapKillLoot
  * automation test's table with the simulation's figure, so a change on either side fails there.
  *
  *     gap = (Dungeon Score - player's Power Score) / the dungeon's tier width, positive when the dungeon is above
- *     gap >  BandAbove:   1 + BonusCap x min(1, (gap - BandAbove) / BonusRamp)
- *     gap < -BandBelow:   1 - (1 - floor) x min(1, (-gap - BandBelow) / CutRamp), the floor ExperienceFloor or LootFloor
- *     otherwise:          1
+ *     gap >  BandAbove:      1 + BonusCap x min(1, (gap - BandAbove) / BonusRamp)
+ *     gap < -BandBelow(t):   1 - (1 - floor) x min(1, (-gap - BandBelow(t)) / CutRamp), the floor ExperienceFloor or
+ *                            LootFloor, t the dungeon's difficulty tier
+ *     otherwise:             1
  */
 struct CATACLYSM_API FCataclysmPowerGapRule
 {
 	/** The bonus begins this far (in tier widths) above the player: the simulation's `band`. */
 	static constexpr double BandAbove = 0.25;
 
-	/** The cut begins this far below the player: `band_down`. It holds the reference character, which sits 0.48 to 0.50
-	 *  of a width above its own tier's Dungeon Score, with about 0.11 to spare. */
-	static constexpr double BandBelow = 0.6;
+	/**
+	 * How far below the player the cut begins, in tier widths, at this difficulty tier: 1.4, 1.3, 1.1, 1.0, 0.9, 0.9,
+	 * 0.8 and 0.8 at tiers 1 to 8, the simulation's `band_down_by_tier`, held in the definition's `ByTier`. The tier is
+	 * held inside 1 to 8, as a console variable can say anything.
+	 *
+	 * Ruled by the project owner on 2026-11-24 (issue #2853), "Per-tier start (Recommended)", in place of 0.6 at every
+	 * tier: the character the experience curve produces (level 42 at the end of tier 1, in its tier's reference gear)
+	 * sits up to 1.22 tier widths above the shallowest dungeon tier 1 spawns, so 0.6 cut a normally levelled player in
+	 * its own tier. Each start is that distance plus the 0.1 the 0.6 had, rounded up to a tenth; a character finished
+	 * in the tier above is still cut to 5% (15% at tier 6) in this tier's average dungeon.
+	 */
+	static double BandBelow(int32 DifficultyTier);
 
 	/** The most the bonus adds: `cap_up`, Diablo IV's 25% cap. */
 	static constexpr double BonusCap = 0.25;
@@ -79,8 +90,9 @@ struct CATACLYSM_API FCataclysmPowerGapRule
 	/** What loot quantity and the gold multiplier fall to: `loot_floor`, the owner's 25%. */
 	static constexpr double LootFloor = 0.25;
 
-	/** The factor at `Gap`, for experience or (with `bLoot`) for loot. The bonus above the band is the same for both. */
-	static double Multiplier(double Gap, bool bLoot);
+	/** The factor at `Gap` in a dungeon of this difficulty tier, for experience or (with `bLoot`) for loot. The bonus
+	 *  above the band is the same for both; where the cut begins is the tier's (`BandBelow`). */
+	static double Multiplier(double Gap, bool bLoot, int32 DifficultyTier);
 
 	/** `(DungeonScore - PlayerScore) / UCataclysmEnemyScore::TierWidth(DifficultyTier)`. */
 	static double GapOf(int32 DungeonScore, int32 PlayerScore, int32 DifficultyTier);
