@@ -1769,6 +1769,19 @@ public:
 	 * too healthy, a boss, no room in the pool -- leaves an enemy that has been
 	 * hit for 300% and set alight, which is what "if the blow leaves it" says.
 	 *
+	 * AND IT NEVER KILLS A TARGET IT COULD TAKE. Issue #2856, the owner's ruling of
+	 * 2026-11-22: "ok, well it should still take them even if it would kill". A
+	 * target that nothing but the blow's outcome would refuse -- not dead, not a
+	 * boss, not one that cannot be hurt, not already the caster's, and with room
+	 * in the pool -- is held at one health through the blow
+	 * (`ACataclysmCharacterBase::bHeldAliveForATake`), and so is taken.
+	 *
+	 * AND A POOL WITH NO ROOM RELEASES ITS OLDEST FOLLOWERS UNTIL IT HAS SOME. The
+	 * owner's ruling of 2026-11-24, "Replace the oldest" (issue #2856). So room
+	 * that releasing can make counts as room for the hold above as well, and a
+	 * take is refused for room only when releasing every minion and thrall would
+	 * still not make it (`ReleasedToMakeRoom`, `bRefusedForRoom`).
+	 *
 	 * Public so a test can drive it without aiming.
 	 *
 	 * @return whether an enemy was taken
@@ -1781,8 +1794,12 @@ public:
 	 * level's cost factor, then the commander's reductions (`UCataclysmCommand::ReserveFor`). The figure a take or a
 	 * summon stores, and the one `UCataclysmSkillLevels::RepriceReservesOf` re-prices to. Issue #2802. `Commander`, when
 	 * given, is whose reductions apply, for a transient skill priced for a screen that has no avatar (issue #2804).
+	 *
+	 * `Taken`, when given, is the creature a thrall is or would be: Subjugate's figure rises with its rarity, the owner's
+	 * ruling of 2026-11-24, "Reserve grows with rarity" (`UCataclysmCommand::ThrallReserveScaleFor`). Without it, and
+	 * for every skill that does not possess, the figure is a Common's, which is what a screen shows.
 	 */
-	float FervourReserveOfOne(const AActor* Commander = nullptr) const;
+	float FervourReserveOfOne(const AActor* Commander = nullptr, const AActor* Taken = nullptr) const;
 
 	/** Whether the last use took an enemy. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
@@ -1791,13 +1808,23 @@ public:
 	/**
 	 * Whether the last use was refused for want of room in the pool.
 	 *
-	 * SEPARATE FROM `bTookIt` BEING FALSE, which has four causes: nothing where
-	 * the player pointed, a target left too healthy, a boss, and this. A test
-	 * that only asked whether something was taken could not tell the cap working
-	 * from the threshold working.
+	 * SEPARATE FROM `bTookIt` BEING FALSE, which has four kinds of cause: nothing
+	 * where the player pointed, a target left too healthy, one of the reasons
+	 * `UCataclysmCommand::WhySubjugateRefuses` names (a boss, a dead target and
+	 * four more), and this. A test that only asked whether something was taken
+	 * could not tell the cap working from the threshold working.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bRefusedForRoom = false;
+
+	/**
+	 * How many followers the last use released to make room for its thrall. Issue #2856, the owner's ruling of
+	 * 2026-11-24, "Replace the oldest": a take the pool has no room for releases the oldest minion or thrall, one at a
+	 * time, until it fits (`UCataclysmCommand::ReleaseOldestForAThrall`). Nought when there was room, and when none
+	 * could be made, which is still `bRefusedForRoom`. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 ReleasedToMakeRoom = 0;
 
 	/**
 	 * How many are alive, after dropping the ones that expired or died. A dead
