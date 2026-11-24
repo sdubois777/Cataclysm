@@ -151,3 +151,28 @@ def test_a_creatures_waiting_swing_asks_whether_it_died_before_its_blow_lands() 
     assert armed < creature < asked < deferred, (
         f"{function}'s timer must ask whether its creature died during the wait before it runs the blow, and only a "
         "creature (Cast<ACataclysmEnemyCharacter>), so a player's waiting blow keeps the owner's ruling on #1549")
+
+
+DUNGEON_GAME_MODE = SOURCE / "Dungeon" / "CataclysmDungeonGameMode.cpp"
+
+
+@pytest.mark.parametrize("path,function,creature,death", [
+    (ENEMY_MODIFIERS, "int32 UCataclysmEnemyModifiers::TimedStep", "Victim", "Victim->HandleDeath()"),
+    (DUNGEON_GAME_MODE, "void ACataclysmDungeonGameMode::EpidemicEndTheChain", "Creature",
+     "Creature->HandleDeath()"),
+])
+def test_a_rule_that_kills_by_handle_death_passes_over_a_creature_that_cannot_be_hurt(
+        path: pathlib.Path, function: str, creature: str, death: str) -> None:
+    """Infernal Sacrifice and Epidemic's chain end ask `bCannotBeHurt` and `IsBeingMarkedDead` before `HandleDeath`.
+
+    The coordinating session, 2026-11-24: both kill by calling `HandleDeath` directly, which skips the health hold that
+    keeps a creature that cannot be hurt standing, so either could kill the Reaper or an echo.
+    """
+    body = body_of(path, function)
+    killed = position(body, death, function)
+    unhurtable = body.rfind(f"{creature}->bCannotBeHurt", 0, killed)
+    marked = body.rfind(f"UCataclysmSkillEffects::IsBeingMarkedDead({creature})", 0, killed)
+    assert unhurtable != -1, (
+        f"{function} must ask {creature}->bCannotBeHurt before {death}: HandleDeath skips the health hold, so a "
+        "creature that cannot be hurt is killed")
+    assert marked != -1, f"{function} must ask IsBeingMarkedDead({creature}) before {death}"

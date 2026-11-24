@@ -3975,6 +3975,68 @@ CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 }
 
 
+CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeSparesTheUnhurtableTest,
+	"Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. Sacrifice kills its ally by calling `HandleDeath`,
+	// which skips the health hold that keeps a creature that cannot be hurt standing, so a carrier ate the Reaper, an
+	// echo or a bonded elite beside it. Since then it passes over one, as it passes over a dead ally.
+	//
+	// AN EATER, AN ALLY THAT CANNOT BE HURT 1.5 m from it, the nearest, and an ordinary ally 4 m from it, both inside
+	// the 6 m it looks in; stepped through one interval. THE CONTROL: the ordinary ally is eaten, so the rule acted and
+	// took the next nearest. THE CASE: the unhurtable one stands, at its whole health.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Eater =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Unhurtable =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(150.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Ordinary =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-400.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: an eater"), Eater) || !TestNotNull(TEXT("set-up: an unhurtable ally"), Unhurtable)
+		|| !TestNotNull(TEXT("set-up: an ordinary ally"), Ordinary))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Each : {Eater, Unhurtable, Ordinary})
+	{
+		Each->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Each->SetHealth(1000.0f);
+	}
+	Unhurtable->bCannotBeHurt = true;
+	Eater->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+	Eater->SecondsSinceSacrifice = 0.0f;
+
+	// SIX SECONDS AT A QUARTER OF A SECOND A STEP IS TWENTY-FOUR STEPS, the interval.
+	for (int32 Step = 0; Step < 24; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Eater, 0.25f);
+	}
+
+	const UAbilitySystemComponent* Its = Unhurtable->GetAbilitySystemComponent();
+	const float UnhurtableHealth =
+		Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	AddInfo(FString::Printf(TEXT("SACRIFICE AND THE UNHURTABLE: the ordinary ally was eaten %s; the unhurtable one is "
+								 "dead %s, at %.1f health"),
+							UCataclysmSkillEffects::IsDead(Ordinary) ? TEXT("yes") : TEXT("no"),
+							UCataclysmSkillEffects::IsDead(Unhurtable) ? TEXT("yes") : TEXT("no"), UnhurtableHealth));
+
+	TestTrue(TEXT("CONTROL: the rule acted and ate the ordinary ally, the next nearest"),
+			 UCataclysmSkillEffects::IsDead(Ordinary));
+	TestFalse(TEXT("THE ALLY THAT CANNOT BE HURT WAS NOT EATEN, though it stood nearest"),
+			  UCataclysmSkillEffects::IsDead(Unhurtable));
+	TestEqual(TEXT("and it stands at its whole health"), UnhurtableHealth, 1000.0f, 0.01f);
+	return true;
+}
+
+
 CATACLYSM_MODIFIER_TEST(FCataclysmEnemySummonerLevelTest,
 	"Cataclysm.EnemyModifiers.AnEnemySummonersMinionTakesTheTiersReferenceLevel")
 {

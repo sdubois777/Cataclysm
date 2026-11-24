@@ -1125,8 +1125,15 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 			{
 				ACataclysmEnemyCharacter* Victim =
 					Cast<ACataclysmEnemyCharacter>(Ally);
+				// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating
+				// session, 2026-11-24: `HandleDeath` called directly skips the health hold that keeps such a
+				// creature standing (`UCataclysmVitalAttributeSet::PreAttributeChange`), so a creature a rule had made
+				// unhurtable (`bCannotBeHurt`) could be eaten by a carrier beside it. Passed over, as a dead ally is,
+				// and the next nearest is taken. Issue #2874's branch.
 				if (Victim == nullptr
-					|| UCataclysmSkillEffects::IsDead(Victim))
+					|| UCataclysmSkillEffects::IsDead(Victim)
+					|| UCataclysmSkillEffects::IsBeingMarkedDead(Victim)
+					|| Victim->bCannotBeHurt)
 				{
 					continue;
 				}
