@@ -1086,7 +1086,7 @@ bool FCataclysmEmpireTreeNineSavesFilesTest::RunTest(const FString&)
 	}
 	AddInfo(FString::Printf(TEXT("NINE FILES: account v6 %s, %.2f spent, %lld gold, %lld owed; character v13 %s, %.2f "
 								 "spent, %lld owed; run v14 %s, bailed out none %d, bonus none %d, %d bonus clears, bribed "
-								 "%d, %d since the surge; account v7 %s %.2f; character v15 %s %.2f; run v17 %s, %d cities "
+								 "%d, %d since the surge; account v7 %s %.2f; character v16 %s %.2f; run v18 %s, %d cities "
 								 "first %d second %d, %d, %d"),
 							FCataclysmSaveStorage::Describe(OldAccountResult), OldAccount->GoldSpentOnCityUpgrades,
 							OldAccount->Gold, OldAccount->GoldOwed, FCataclysmSaveStorage::Describe(OldCharacterResult),

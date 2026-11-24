@@ -748,7 +748,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	// THE WORN GEAR AND THE BAG, EACH IN ITS SAVED PLACE. The bag replaces the
 	// weapon possession put into it when the creation choice swapped weapons.
 	Equipment->RestoreWornGear(Worn);
-	// THE TWO TABS FIRST (#2849, record version 15), because `RestoreSlots` adds to them any stack a saved gear slot
+	// THE TWO TABS FIRST (#2849, record version 16), because `RestoreSlots` adds to them any stack a saved gear slot
 	// still holds, and `RestoreStacks` empties them before it fills them.
 	Inventory->RestoreStacks(Record.CarriedMaterials, Record.CarriedGems);
 	Inventory->RestoreSlots(Record.CarriedSlots);

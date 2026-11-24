@@ -531,7 +531,7 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 
 	CarriedSlotsFrom(*Inventory, Record.CarriedSlots);
 
-	// AND THE TWO TABS, since record version 15 (#2849): every material stack and every gem stack carried.
+	// AND THE TWO TABS, since record version 16 (#2849): every material stack and every gem stack carried.
 	CarriedStacksFrom(*Inventory, Record.CarriedMaterials, Record.CarriedGems);
 
 	// AND WHAT IS WORN, since 2026-09-24. Recorded on issue #753 as a

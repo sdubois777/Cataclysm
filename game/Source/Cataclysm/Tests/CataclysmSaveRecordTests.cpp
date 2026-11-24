@@ -73,7 +73,7 @@ namespace CataclysmSaveRecordTest
 		Gear.Item.Enchantments.Add(Enchantment);
 		Record->CarriedSlots.Add(Gear);
 
-		// AN EMPTY CELL, where the material stack was until version 15 (issue #2849): a carried slot holds gear only,
+		// AN EMPTY CELL, where the material stack was until version 16 (issue #2849): a carried slot holds gear only,
 		// and the stack is in the materials tab below. Kept so the weapon stays at index 2.
 		Record->CarriedSlots.Add(FCataclysmCarriedSlot());
 
@@ -213,9 +213,11 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			// CHARACTER IS AT v15 SINCE 2026-11-22, when a character's crafting materials and gems
-			// moved out of its 48 carried slots into a tab each (issue #2849); Character_v14.json is a
+			// CHARACTER IS AT v16 SINCE 2026-11-24, when a character's crafting materials and gems
+			// moved out of its 48 carried slots into a tab each (issue #2849); Character_v15.json is a
 			// migration input now.
+			// CHARACTER WAS AT v15 FROM 2026-11-24, when each item came to record the gear level and
+			// the tier it arrived at (issue #2848 slice S2).
 			// CHARACTER WAS AT v14 FROM 2026-11-22, when a Solo Self-Found character came to
 			// count the tier 1 gold it spends on city upgrades (issue #2741 slice 9); it was at
 			// v13 from the same day, when its items' sockets became lists and its slots could
@@ -551,7 +553,7 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 	TestEqual(TEXT("the enchantment's drawback roll came back"),
 		Read->CarriedSlots[0].Item.Enchantments[0].NegativeRoll, 0.625f);
 
-	// THE MATERIALS AND GEMS TABS, version 15 (issue #2849). Until then the material stack was CarriedSlots[1].
+	// THE MATERIALS AND GEMS TABS, version 16 (issue #2849). Until then the material stack was CarriedSlots[1].
 	TestTrue(TEXT("the empty cell came back empty"),
 		Read->CarriedSlots[1].Item.Base.IsNone() && Read->CarriedSlots[1].Material.IsNone() && Read->CarriedSlots[1].Quantity == 0);
 	if (TestEqual(TEXT("one material stack came back"), Read->CarriedMaterials.Num(), 1))

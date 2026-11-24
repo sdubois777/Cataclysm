@@ -254,8 +254,9 @@ bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
  * The committed character file reads into the seed it states, and the seed survives being written out and read back.
  * It read `Character_v7.json` until the character record went to version 8 on 2026-11-18 (issue #2742), and
  * `Character_v8.json` until it went to version 9 the same day (issue #2741 slice 1c), and `Character_v9.json` until it
- * went to version 10 on 2026-11-19 (issue #2764), and `Character_v14.json` until it went to version 15 on 2026-11-22
- * (issue #2849); each states the same seed.
+ * went to version 10 on 2026-11-19 (issue #2764), `Character_v14.json` until it went to version 15 on 2026-11-24
+ * (issue #2848), and `Character_v15.json` until it went to version 16 the same day (issue #2849); each states the same
+ * seed.
  * The file states 975318642, which is not the seed its identifier gives, so a seed worked out again on load cannot pass.
  * Prints "DRAW FILE".
  */
