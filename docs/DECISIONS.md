@@ -1220,6 +1220,231 @@ and end, and the footprint pool. Proved with `tools/prove_guard.py`: removing th
 
 ---
 
+## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24 beside the entry below, which builds and runs it in a later window. Issue
+[#2863](https://github.com/sdubois777/Cataclysm/issues/2863).
+
+### The owner's report, verbatim
+
+"There seems to be skill fx going off under the floor, I only noticed because I got close to an edge and saw
+something. Need to check all current effects and see which are appearing below the ground." Playtesting the main
+checkout at `development` 4d33f5994, 2026-11-23.
+
+### What was found, said first: the code places no player skill effect below a flat floor
+
+Every height in the list below was traced to its origin by reading the code at `development` 4d33f5994; line numbers
+are as of that commit. **No player skill chooses a height below the walking surface on a flat floor.** What the code
+does place below it is narrower: a point taken from `ACataclysmEnemyController::FloorUnder`, which is a creature's own
+capsule bottom moved under its target's X and Y, wherever the target stands higher than the creature (the exit
+stairs, up to 60 cm, are the one raised walking surface a dungeon floor has); the Blood Altar ring, centred on the
+exit cell where the stairs stand; and a walked charge's trail start if the walk descended more than about 96 cm,
+which a flat floor with 60 cm stairs cannot do. Most ground drawings were wrong the other way: 46 of the 68 calls that
+leave a ground zone place it at a capsule centre, or a stored copy of one, so its ring was drawn 45 to 155 cm above
+the floor.
+
+**So what the owner saw is either one of those cases or something this sweep could not read.** Where each Niagara
+system's own emitters and meshes sit relative to the point it is spawned at is authored in the editor; the five
+systems are binary assets, and in a worktree only Git LFS pointers. A system whose geometry reaches below its spawn
+point -- a cylinder centred on its pivot and scaled with the skill's radius, say -- draws under the floor however
+correctly the code places it. The cast burst is the first to look at: it plays on every skill, at the caster's
+capsule centre, and its `Flare` layer is the mesh `SM_VFX_In_Out_Cyl_01`, the pack's cylinder that is not the
+`_Floor_` variant the ground ring uses. **That needs the editor and is not settled here.**
+
+### What changed
+
+- **`CataclysmEffectPlacement`**, new, `game/Source/Cataclysm/AbilitySystem/CataclysmEffectPlacement.h` and `.cpp`:
+  `FloorSurfaceUnder` searches straight down through a point for world-static geometry, from `LookAboveCm` (100)
+  above it to `LookBelowCm` (300) below it, by object type as the charge's floor search does, and refuses a search
+  that starts inside a solid shape; `OnTheFloor` moves the point to `LiftCm` (2) above what it finds, or leaves it
+  where it was asked when there is nothing. No such helper existed: `FloorUnder` answers from a capsule rather than
+  the ground, and the two floor traces in the project (the charge's, the cloth stress spawner's) are private to their
+  callers.
+- **The three things that draw on the ground ask it**, so every caller is placed by one change and a caller added
+  later is placed without knowing: `UCataclysmGroundEffect::PlayFor` puts each copy of a zone's ring on the floor under
+  that copy (so every one of the 68 zone sites below), `ACataclysmTelegraphMarker`'s spawn puts a marker on the floor
+  under its centre (all five marker sites), and `ACataclysmDebrisBurst::Scatter` puts its pieces on the floor under the
+  impact (the Brute's rip crater).
+- **Only the drawing moves.** A zone's actor, its sweep, `UCataclysmGroundEffect::LastStart` and `LastFarEnd`, the
+  point an attack is aimed at and where a shot lands are all where they were. `LastDrawnStart` and `LastDrawnFarEnd`
+  are new, recorded from the same array the spawns read, for the tests.
+- **`docs/Niagara_Conventions.md`**, a rule under section 5A: an effect drawn on the ground is placed through
+  `OnTheFloor`; one that belongs to a body or the air is not.
+
+### Judgements of the writing session
+
+1. **Snap in both directions, not only up.** The issue asked for effects under the floor; most ground rings were
+   floating instead, and a ring at waist height marks the floor no better than one under it. Both are the same fault:
+   nothing asked where the floor was.
+2. **Move the drawing, not the gameplay point.** Moving where a zone sweeps or a lob lands would change what hits what,
+   which is beyond a report about what is seen. On a flat floor the marker and the landing agree within a centimetre,
+   which keeps issue #471's rule that a telegraphed attack arrives where it was marked; on raised ground they now
+   differ in height only, with the warning on the surface the player can see.
+3. **The window: a metre above, three metres below, 2 cm lift.** A metre above clears the stairs' 60 cm and, from the
+   tallest capsule centre (the Gatekeeper's 155.53 cm), still starts inside a dungeon wall's 400 cm height rather than
+   above its top. Three metres below reaches the floor from any capsule centre with room for a body in the air, and
+   no further, so a point out past a floor's edge is not moved onto whatever lies far below. 2 cm is the gap the
+   engine's character movement keeps under a capsule (1.9 to 2.4 cm), where every telegraph marker was already drawn.
+4. **Bodies and the air are left alone.** The cast burst, the swing arc, the hit burst and a projectile are drawn where
+   their body is; they are under the floor only when the body is.
+5. **The Upthrust wall is not changed here, and is reported.** `ACataclysmTerrain::BuildWall` stands its blocks on
+   `Start.Z`, the caster's capsule centre, so the wall's base is about 96 cm above the floor although its comment says
+   it stands on it. It is collision geometry, not only a drawing, so moving it changes play; it is not below the floor.
+
+### Every site that was checked
+
+**The five Niagara spawns.**
+
+| Spawn | Called from | Height | Below a flat floor? |
+| :-- | :-- | :-- | :-- |
+| `UCataclysmCastEffect::PlayFor`, `NS_Cast_Windup` | `CataclysmSkillTemplate.cpp:548` (every skill); `CataclysmEnemyController.cpp:1172` (a quick cast's flare) | the caster's capsule centre | no, unless the caster is; the system's own geometry is unread, see above |
+| `UCataclysmStrikeEffect::PlayAt`, `NS_Strike_Arc` | `CataclysmSkillTemplates.cpp:494` (`Apex`, the cast origin) and `:937` (the planted sword, the caster's capsule centre when planted) | capsule centre, facing flattened | no |
+| `UCataclysmImpactEffect::SpawnAt`, `NS_Impact_Point` | `CataclysmVitalAttributeSet.cpp`, `PlayImpactEffect` | the hit result's impact point, or the struck actor's capsule centre | no: on the struck body |
+| `UCataclysmProjectileEffect::AttachTo`, `NS_Proj_Body` | `CataclysmProjectile.cpp:320` | attached to the projectile: a flat shot flies at its `From` height, a lob ends at its `To` height | a lob's end, only where `To` is a `FloorUnder` point under higher ground (below) |
+| `UCataclysmGroundEffect::PlayFor`, `NS_Impact_Ground` | `CataclysmGroundZone.cpp` `BeginPlay`, `Redraw`, `LastFor` | the zone's location | **changed**: on the floor under each copy |
+
+**Meshes placed for effects.** `ACataclysmTelegraphMarker` (changed), `ACataclysmDebrisBurst` (changed; its one caller,
+`CataclysmBruteCharacter.cpp:808`, the rip crater, is the Brute's capsule bottom), `ACataclysmTerrain`'s Upthrust wall
+(capsule centre, judgement 5). The planted weapon is a scene component and draws nothing. No decal is spawned anywhere.
+
+**Telegraph markers**, all `FloorUnder`, the creature's own capsule bottom, so below only where they lie over ground
+higher than the creature: `CataclysmEnemyController.cpp:1192` (a Strike's circle at its own feet), `:1211` (a lob's
+landing circle), `:1221` (a flat projectile's lane), `:1243` (a charge's lane), `CataclysmEnemyModifiers.cpp:1263`
+(Inferno Charge's lane).
+
+**Projectile fires.** From a player's capsule centre: `CataclysmSkillTemplates.cpp:1477` and `:1549` (aimed at
+`AimedPointWithin`, held at that height, and flat) and `:1850` (the rack's axes, at a creature's capsule centre, flat).
+From a creature's capsule centre to a `FloorUnder` point: the Corrupted Sentinel's Siege Bolt
+(`CataclysmCorruptedSentinelCharacter.cpp:319`, flat) and Brimstone Mortar (`:335`, lobbed), the Succubus's Soulfire
+(`CataclysmSuccubusCharacter.cpp:417`, flat) and the Gatekeeper's Soulfall gout (`CataclysmGatekeeperCharacter.cpp:471`,
+lobbed); from the Brute's hand to one, its Rock Throw (`CataclysmBruteCharacter.cpp:1026`, lobbed). Infernal Rain's
+fireball falls from 15 m above and 6 m beside the player to the player's capsule-centre height
+(`CataclysmDungeonGameMode.cpp:17604`). Only the three lobs end at their `To` height.
+
+**Ground zones, by where their height comes from** (each is drawn by `PlayFor`, so each is now on the floor):
+
+| Height | Sites |
+| :-- | :-- |
+| The player's capsule centre, 96 cm up | `CataclysmDungeonGameMode.cpp` 4723 Wings of the Host, 9247 Swarm of Locusts' swarm, 10185 Funereal Procession, 14322 Divine Wrath, 17637 Singularity Wells, 19082 Edict of Vigil, 19334 Artillery Strike, 19451 Hallowed Groundfall, 19604 Grasping Tentacles, 20406 Judgment Zones, 21147 Anti-Magic Zones, 24287 Necrotic Ground; `CataclysmSkillTemplates.cpp` 213 and 217 a Strike's ground and row zone, 722, 724, 760 and 762 a held Strike's, 857 Buried Fire, 3655 and 3661 a Blink or Swap's start, 3763 a charge's trail, 3767, 3773 and 3774 a move's arrival, 4836 Open the Rift; `CataclysmTimeLockRift.cpp:235` the Time-Lock Rift |
+| A creature's capsule centre, 45 to 155 cm up | `CataclysmDungeonGameMode.cpp` 4440 Plague Harbingers, 4951 Eternal Chorus, 5449 Golden Spires, 5817 Obsidian Sarcophagi, 6143 Portal Unleashing, 9397 Abyssal Rifts, 10022 Quarantine Breach, 11748 Infested Veins, 23427 Withered Ground, 23489 Leech Spores, 23674 Fungal Overgrowth; `CataclysmSkillTemplates.cpp:5733` a row's zone under a cursed target; `CataclysmMinion.cpp:1951` a minion's chaos pool |
+| A stored copy of a capsule centre | `CataclysmDungeonGameMode.cpp` 16331 and 16848 (Plague Harbingers' and Quarantine Breach's patches, loaded from a save), 17666 Infernal Rain's patch; `CataclysmSkillTemplates.cpp` 2099, 2113 and 2117 a projectile's ground, at its launch height |
+| A creature's capsule bottom (`FloorUnder`) | `CataclysmEnemyModifiers.cpp:1210` Inferno Charge's path, `CataclysmGatekeeperCharacter.cpp:501` Soulfall's ground: **below where the target stood higher** |
+| The floor's walking surface | `CataclysmDungeonGameMode.cpp` 6805 Demonic Guide, 6852 Raw Sewage, 8140 Those in the Dark, 9062 Warzone Control Points, 9172 Swarm of Locusts' shelters, 9774 Infection Bloom, 10606, 10791 and 10797 Reality Rifts, 11191 Carrion Feast's altar, 11974 Shadowy Enemies, 12931 War Banner, 14156 Grim Totems, 14204 Void Parasite; 24106 Blood Altar, **whose centre is under the exit stairs** |
+| Other | `CataclysmHellhoundCharacter.cpp:291` Hellrush's lane, from its capsule centre to a `FloorUnder` point (below at the far end only over higher ground); `CataclysmSkillTemplates.cpp` 4133, 4137, 4138 and 4139 a walked charge's trail and row zones, all at the walk's last height (below at the start only if the walk descended more than about 96 cm) |
+
+`UCataclysmSkillTemplate::LeaveAZoneFor` (`CataclysmSkillTemplate.cpp:3761`) is the pass-through every skill's
+ground goes through, with no height of its own.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.EffectPlacement.`, a new group of four** in
+`game/Source/Cataclysm/Tests/CataclysmEffectPlacementTests.cpp`. Each lays a world-static floor 40 cm thick with its
+top at 500 cm, not at the origin.
+
+- `APointIsPutOnTheFloorUnderItFromAboveOrBelow`: a capsule centre comes down to 502, a point 60 cm under the surface
+  comes up to 502, only the height moves; a point past the floor's edge, one further under it than the search looks,
+  and one with no world are each left where they were asked.
+- `AGroundZoneIsDrawnOnTheFloorUnderIt`: a round zone at a capsule centre stays there and asks there, and its ring is
+  drawn at 502; one 60 cm under the surface is drawn at 502; a long zone from under the surface to a capsule centre has
+  both ends drawn at 502; a zone past the edge is drawn where it was asked.
+- `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre`: a circle centred under the surface and a lane at capsule height
+  are each drawn at 502; one past the edge where it was asked.
+- `DebrisIsLeftOnTheFloorUnderTheImpact`: debris left under the surface is put at 502; past the edge, where it was asked.
+
+**No existing test should move.** Every other test of these three runs in a world with no geometry, where
+`OnTheFloor` answers the point it was given. The four test files that build geometry (`CataclysmAbyssalWardenTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmTerrainTests.cpp`) and the
+ones that build a dungeon floor read no marker's or burst's height and no drawn height; they read `LastStart`, which is
+unchanged. That is a reading, not a run.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.EffectPlacement.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmEffectPlacement.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ + LiftCm));` to `return Point;` | all four |
+| `CataclysmGroundEffect.cpp` | `Places.Add(CataclysmEffectPlacement::OnTheFloor(World, Start + Along * Fraction));` to `Places.Add(Start + Along * Fraction);` | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| `CataclysmTelegraphMarker.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, Location), Rotation, SpawnParams);` to `Location, Rotation, SpawnParams);` | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| `CataclysmDebrisBurst.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, At), FRotator::ZeroRotator, SpawnParams);` to `At, FRotator::ZeroRotator, SpawnParams);` | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+
+---
+
+## 2026-11-24 — Damage the Masochist's energy shield absorbs fills Fervour as health lost does, and the shield recharging removes none (#2873)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24, which builds and runs it in a later window. Issue
+[#2873](https://github.com/sdubois777/Cataclysm/issues/2873).
+
+### The rulings, verbatim
+
+- **The project owner, 2026-11-24:** "the massochist doesn't gain fervour with damage to energy shield, and it should."
+- **The coordinating session, 2026-11-24, on the detail the issue left open, recorded as its ruling:** option (a),
+  damage absorbed by the energy shield counts exactly like health lost, at the existing rate (1 Fervour per 1% of
+  maximum HEALTH, so the existing rate and its tree nodes are unchanged), and energy shield recharge does NOT remove
+  Fervour (only healing health does, as now).
+
+### What changed
+
+- **The one line that connects a blow to Fervour moved and reads both pools.** In
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` the call to `UCataclysmFervour::GainFromDamage` sat inside
+  the block that writes health, which runs only when something reaches health, so a blow the shield took whole filled
+  nothing whatever its amount was. It now sits directly after that block and is handed what reached health
+  (`ToHealth`, as before) plus what the shield lost (`Outcome.AbsorbedByShield`), with the hit's tags, so the Masochist's
+  Shared Agony still scales a tick the shield took. A share of an ally's blow still fills nothing (ruled 2026-10-15,
+  R7), its shield share included.
+- **The recharge needed no code, and is now tested.** `UCataclysmRegeneration::TopUp` is where every pool comes back,
+  and it asks `UCataclysmFervour::RemoveForHealing` for the health pool alone, so the shield's own recharge and energy
+  shield leech already removed nothing. Its comment now records the ruling.
+- **The design document**, in three places: the paragraph led by "A generator is a set of rates", the class table's
+  Masochist row, and the paragraph in the class stat lines that said "every point of energy shield is a point of
+  resource the class does not generate", which is now led by "For the Masochist it no longer costs resource
+  generation, since 2026-11-24" and says what a shield still keeps from the class: The Breaking Point converts only
+  what reaches health, and Low Life, The Last Drop and Rock Bottom are measured against health.
+- **The simulation needed nothing.** `sim/cataclysm_sim/` holds the Fervour pool's size and no generator at all:
+  searched for `fervour` and `class_resource`, which appear only as the pool and the flat affix. The Masochist's base
+  energy shield stays at zero in `classes.py`, as the owner did not change it.
+
+### Judgements of the writing session
+
+1. **The shield's figure is the points the shield lost, `Outcome.AbsorbedByShield`**, not the raw damage it stopped.
+   A magic blow's bonus and a defender's "energy shield takes increased damage" make the shield lose more than the
+   raw blow held, as a slashing blow's bonus makes health lose more, and health's half already counts what health
+   lost. The figure on the bar is the figure that fills Fervour.
+2. **The temporary absorb and the mana a row puts first fill nothing.** The owner named the energy shield, and ruled on
+   2026-10-07 that the temporary absorb is separate from it.
+3. **A cost paid from the shield fills nothing.** `cost_paid_from_energy_shield` pays a mana cost from the shield; the
+   ruling is about damage, and the cost generator (`fervour_from_cost`) is health spent.
+4. **A blow The Breaking Point converts whole still fills Fervour for its shield share at once.** The shield took that
+   share before the conversion was asked; the health share still arrives a tick at a time as the bleed takes health.
+5. **No formula was chosen, so no genre research was done.** The rate is the existing one, by ruling.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.Fervour.`, three added (29 before, 32 predicted):**
+
+- `Cataclysm.Fervour.ABlowTheEnergyShieldTakesWholeFillsTheBar`: a real blow through `ApplyHit` on a defender with
+  10,000 health and 10,000 shield; the shield takes it all and health none, and Fervour is the shield's loss over
+  10,000 times 100. A control defender with the same shield and no generator gains nothing.
+- `Cataclysm.Fervour.ABlowSplitBetweenTheShieldAndHealthCountsBothHalves`: a shield of 100 against a blow of about 500;
+  Fervour is the two halves' sum over 10,000 times 100.
+- `Cataclysm.Fervour.TheEnergyShieldRechargingRemovesNoFervour`: `UCataclysmRegeneration::ApplyStep` recharging the
+  shield from nothing, then shield leech through `TopUp`, each leave 50 Fervour at 50; a control through the same step
+  with health regenerating does remove Fervour.
+
+**Python:** `tools/tests/test_class_passive_trees.py::test_the_gdd_counts_energy_shield_damage_as_health_lost_for_the_masochist`,
+new, holds the generator paragraph and the table row to the ruling. `tools/tests/test_a_zero_class_stat_is_not_a_gate.py`'s
+Masochist assertion is rewritten for the new paragraph, as
+`test_it_says_what_a_shield_does_and_no_longer_does_to_a_masochist`.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.Fervour.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);` to `GetOwningAbilitySystemComponent(), HealthLostToTheBlow, AssetTags);` | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| `CataclysmRegeneration.cpp` | `if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())\n\t{\n\t\tUCataclysmFervour::RemoveForHealing(` to the same with `\|\| Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()` added inside the condition | `TheEnergyShieldRechargingRemovesNoFervour` |
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1
