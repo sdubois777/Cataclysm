@@ -2707,7 +2707,6 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				AActor* Striker =
 					Data.EffectSpec.GetContext().GetEffectCauser();
 
-				UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
 				UCataclysmEnemyModifiers::CharmWhoeverStruck(GetOwningActor(),
 															 Striker);
 
@@ -2715,6 +2714,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// per hit that takes health, and a damage-over-time tick caused by the same creature is not a hit.
 				if (!Hit.bIsDamageOverTime)
 				{
+					// AND INFERNAL BRAND, BY THE SAME RULE, since issue #2874: its row says "on hit", and a tick is
+					// not a hit. Ruled by the coordinating session on 2026-11-24. Until then it was called above, for
+					// every blow that took health, ticks included, and a Boss Brute carrying Hellfire Aura branded the
+					// owner four times in three seconds by its burn alone: one rock and four ticks made five stacks, and
+					// the explosion was the blow that killed.
+					UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
 					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
 					// AND VOID'S TOUCH OF NOTHING, by the same rule: a hit that took health. Issue #1722.
 					UCataclysmEnemyModifiers::TouchOfNothingOnHit(Striker, GetOwningActor());

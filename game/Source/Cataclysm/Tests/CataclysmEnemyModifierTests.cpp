@@ -3708,6 +3708,106 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotOnTheDeadTest,
 }
 
 
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotByTicksTest,
+	"Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874, AS THE OWNER MET IT. At 18:51:19 on 2026-11-24 a Boss Brute carrying Infernal Brand and Hellfire Aura
+	// killed the owner with the brand's explosion, and the five stacks were one rock and four ticks of the aura's burn:
+	// the attribute set called `BrandOnHit` for every blow that took health, ticks included. The row says "on hit", and
+	// a tick is not a hit, ruled by the coordinating session on 2026-11-24. Since then only a blow that is not damage
+	// over time brands, as only such a blow builds Withering and Touch of Nothing.
+	//
+	// THE CONTROL: one direct hit from the brander is one brand. THEN THE CASE: the brander's burn, the table's 25 a
+	// tick, run for three seconds on the clock, its ticks taking health. Before the change each tick was a brand, so the
+	// player held four or five, or had burst; after it, the one the hit gave.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	// ITS BRAIN IS TAKEN AWAY, so moving the clock fires no think that swings at anything: only the test's hit and the
+	// burn reach the player.
+	if (AController* Brain = Brander->GetController())
+	{
+		Brain->UnPossess();
+	}
+
+	ACataclysmPlayerCharacter* Player = BrandedPlayerAt(World, FVector(1000.0f, 0.0f, 0.0f), 5000.0f);
+	UCataclysmAbilitySystemComponent* PlayerSystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: a player with its ability system"), PlayerSystem)
+		|| !TestNotNull(TEXT("set-up: the announcer"), Events))
+	{
+		return false;
+	}
+	PlayerSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 0.0f);
+
+	// EVERY BLOW OF THE BRANDER'S ON THE PLAYER, sorted: ticks that took health, and any blow that is not a tick and
+	// sent at least the explosion's 500, which only an explosion does here.
+	int32 TicksThatTookHealth = 0;
+	int32 Explosions = 0;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&TicksThatTookHealth, &Explosions, Player, Brander](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target != Player || Notice.Attacker != Brander)
+			{
+				return;
+			}
+			if (Notice.bDamageOverTime && Notice.DealtToHealth > 0.0f)
+			{
+				++TicksThatTookHealth;
+			}
+			else if (!Notice.bDamageOverTime && Notice.Sent >= 400.0f)
+			{
+				++Explosions;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+
+	// THE CONTROL: ONE HIT, ONE POINT, ONE BRAND.
+	UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, /*Damage=*/1.0f, FCataclysmHitDelivery());
+	const int32 HeldAfterTheHit = UCataclysmStacks::Held(PlayerSystem, ECataclysmStackKind::InfernalBrand);
+
+	// THE CASE: THE BRANDER'S BURN, THREE SECONDS OF IT. Inside the brand's eight-second window, so nothing the hit
+	// gave runs out.
+	if (!TestTrue(TEXT("set-up: the brander's burn is laid on the player"),
+				  UCataclysmSkillEffects::ApplyBurn(Brander, Player, /*HitDamage=*/0.0f,
+													/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 3.1f);
+	const int32 HeldAfterTheBurn = UCataclysmStacks::Held(PlayerSystem, ECataclysmStackKind::InfernalBrand);
+
+	AddInfo(FString::Printf(TEXT("BRAND BY TICKS: one hit left %d brand(s); %d tick(s) took health; %d brand(s) held "
+								 "after the burn; %d explosion(s)"),
+							HeldAfterTheHit, TicksThatTookHealth, HeldAfterTheBurn, Explosions));
+
+	TestEqual(TEXT("CONTROL: one hit that took health is one brand"), HeldAfterTheHit, 1);
+	TestTrue(FString::Printf(TEXT("set-up: at least two of the burn's ticks took health (%d)"), TicksThatTookHealth),
+			 TicksThatTookHealth >= 2);
+	TestEqual(TEXT("NO TICK ADDED A BRAND: the one the hit gave is all the player holds"), HeldAfterTheBurn, 1);
+	TestEqual(TEXT("AND NOTHING BURST"), Explosions, 0);
+	return true;
+}
+
+
 CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 	"Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt")
 {
