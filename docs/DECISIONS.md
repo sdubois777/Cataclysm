@@ -13,9 +13,13 @@ and its entry of 2026-09-25 below ("Abyssal Rifts: one rift a floor opens when t
 superseded by this one.
 
 **THIS CHANGE MOVES THE RUN RECORD TO VERSION 18**, and **another session was moving the run record from 17 to 18 the
-same day**: whichever lands second renumbers its step, its fixture and its defaults to the next number. And it edits
-the design workbook, `docs/All_Things_Cataclysm.xlsx`, one cell, which git cannot merge: only one branch may carry an
-unmerged edit to it at a time.
+same day**: whichever lands second renumbers its step, its fixture and its defaults to the next number. The
+coordinating session said on 2026-11-24 that the selling and dismantling work (`feat/sd-w1`) merges first and takes 17
+to 18, so this branch becomes 18 to 19 when it is rebased. And it edits the design workbook,
+`docs/All_Things_Cataclysm.xlsx`, one cell, which git cannot merge: only one branch may carry an unmerged edit to it at
+a time. **The coordinating session ruled the same day to keep the edit and redo it if another branch's workbook edit
+lands first**: `tools/reapply_abyssal_rifts_row.py` writes that one cell into whatever workbook `development` holds,
+finding the row by its type and name, proves no other cell moved, and regenerates the CSVs.
 
 ### The owner's words, verbatim
 
@@ -49,6 +53,13 @@ A judgement, the wording: the owner's five points in the row's voice, keeping it
 with each rift destroyed", for the magic find below. **`game/Content/Data/DT_DungeonModifiers.uasset` needs the editor
 step** (`tools/run_editor_python.py tools/generate_datatable_assets.py`); until it runs,
 `tools/tests/test_datatable_assets_are_current.py` fails on this CSV's hash, as it must.
+
+**To redo the edit on a later workbook**: `python tools/reapply_abyssal_rifts_row.py` (and `--check` to ask whether the
+workbook holds it). Run on 2026-11-24 in a copy of `origin/development` made with `git archive`: `--check` answered
+"does NOT hold" (exit 1); the run printed "row 56 written: its Description is the #2864 text, and no other cell
+changed", the generator printed "All 34 DataTable CSVs are up to date." on its `--check`, the CSV differed from
+development's by that one row only, and it was byte-identical to this branch's. `tools/tests/test_reapply_abyssal_rifts_row.py`
+holds the script's text to the CSV's and the key's, and runs it on a copy put back to the old text.
 
 ### What the rule does now
 
@@ -204,8 +215,9 @@ In `Cataclysm.SaveLoad.`: `AnAbyssalRiftsHealthAgeAndHuntersComeBackAfterALoad` 
 `ARunFileFromVersion17MigratesItsRiftStateToEachRift` added; `ARulesCreaturesAndCountersComeBackAfterALoad` and
 `AFloorsRuleObjectsAreRebuiltInTheSameOrderByALoad` changed for several rifts (a rift killed in place of one opened).
 
-Python: `tools/tests/test_abyssal_rifts_redesign.py` (new, seven checks of the source, the step and the fixture), and the
-row check in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` now reads the new row's phrases.
+Python: `tools/tests/test_abyssal_rifts_redesign.py` (new, seven checks of the source, the step and the fixture),
+`tools/tests/test_reapply_abyssal_rifts_row.py` (new, two checks of the workbook script), and the row check in
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` now reads the new row's phrases.
 
 **Python guard proofs, run 2026-11-24 with `tools/prove_guard.py`'s `break_and_run` on
 `python -m pytest tools/tests/test_abyssal_rifts_redesign.py`, each PROVED (one named failure with the break in, 7 passed
@@ -217,6 +229,8 @@ with it out):**
 | PG2 | `CataclysmGoldTests.cpp` without `AddTheRunsVersion18Defaults` | `test_every_chain_test_adds_the_new_steps_write` |
 | PG3 | `Hunter->bDiesUnpaid = false;` | `test_a_hunter_hunts_pays_nothing_and_is_sent_as_strong_as_its_rifts_age` |
 | PG4 | `Rift->bCannotBeHurt = true;` after `Rift->SetHealth(Health);` | `test_a_rift_is_a_boss_that_a_blow_can_kill_and_its_death_is_a_success` |
+| PG5 | the script's text says "every 4 seconds" (on `tools/tests/test_reapply_abyssal_rifts_row.py`) | `test_the_new_text_is_the_rows_and_the_keys` |
+| PG6 | the script writes `OLD_TEXT` into the cell (the same command) | `test_it_writes_the_one_cell_on_a_copy_holding_the_old_text` |
 
 **C++ guard proofs planned for the window, none run** (a trailing dot on each prefix):
 
