@@ -442,6 +442,33 @@ class TuningConfig:
     # for the escalating modes.
     surge_on_empty_board: bool = True
 
+    # THE OWNER'S RULING OF 2026-11-23 ON ISSUE #2865, VERBATIM "yes, your rec":
+    #   1. the board counts as empty when no ORDINARY dungeon stands: Quest
+    #      dungeons, the Cataclysm boss dungeon and Fallen City dungeons do not
+    #      count. This fixes the rule of 2026-09-07 above: on day 416 of the
+    #      owner's run a Quest dungeon, and later a Fallen City dungeon, kept the
+    #      board from ever being empty;
+    #   2. a surge fired by an empty board brings the previous surge's dungeon
+    #      count plus 4, and `surge_count_max` does not cap it;
+    #   3. `surge_interval_min` does not brake it;
+    #   4. the +4 is checked in this model before the game changes.
+    #
+    # EACH PART IS ITS OWN SWITCH, AND ALL THREE SHIP AT TODAY'S BEHAVIOUR until
+    # the game side is written: `tools/tests/test_surge_port.py` holds this
+    # model's rule equal to `UCataclysmSurgeScheduler::IsDueOnEmptyBoard`, and the
+    # design document, the model and the game change together (the ruling's
+    # point 4). The measurement for the owner switches them on.
+    #
+    # ORDINARY IS `DungeonType.BASIC`: the Last Stand and the Cataclysm boss
+    # dungeon are both `DungeonType.CATACLYSM` here.
+    empty_board_counts_ordinary_only: bool = False
+    #: Whether an empty-board surge brings the previous surge's count plus
+    #: `empty_board_surge_extra`, uncapped. False keeps `surge_count()`.
+    empty_board_surge_grows: bool = False
+    empty_board_surge_extra: int = 4
+    #: Whether `surge_interval_min` brakes an empty-board surge. True is today's.
+    empty_board_surge_braked: bool = True
+
     # UNKNOWN #3 -- resolve timers.
     # A flat timer table cannot work at one day a floor: a 40-floor dungeon
     # with a 30-day timer is unsavable no matter how well the player plays.

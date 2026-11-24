@@ -768,7 +768,8 @@ class Simulation:
         held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)
         return min(1.0, held)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         cfg = self.cfg
         # Only the exposed frontier can be attacked. Everything behind a
         # standing city is sealed until that city falls.
@@ -788,6 +789,14 @@ class Simulation:
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
         count = max(1, int(round(self.surge_count() * volume)))
+        # AN EMPTY-BOARD SURGE BRINGS THE PREVIOUS SURGE'S COUNT PLUS
+        # `empty_board_surge_extra`, uncapped: the owner's ruling of 2026-11-23,
+        # point 2, on issue #2865. The previous count is what that wave logged,
+        # volume and lethality multiplier included. The first surge of a run has
+        # nothing before it, so it is the opening wave whatever fired it.
+        if (from_empty_board and cfg.empty_board_surge_grows
+                and self.surge_log):
+            count = self.surge_log[-1][2] + cfg.empty_board_surge_extra
         quest_chance = self.quest_chance(volume)
         quest_sieges: dict[str, int] = {}
 
@@ -864,6 +873,14 @@ class Simulation:
         `self.dungeons` and both are something to do, which is the whole
         question this asks.
         """
+        # ONLY AN ORDINARY DUNGEON KEEPS THE BOARD FROM BEING EMPTY, under the
+        # owner's ruling of 2026-11-23 on issue #2865 (point 1): Quest dungeons,
+        # the Cataclysm boss dungeon, the Last Stand and Fallen City dungeons do
+        # not count. Ordinary is `DungeonType.BASIC`. Off, every dungeon counts,
+        # as below.
+        if self.cfg.empty_board_counts_ordinary_only:
+            return not any(d.dtype is DungeonType.BASIC
+                           for d in self.dungeons.values())
         return not self.dungeons
 
     def days_since_last_surge(self) -> float:
@@ -921,11 +938,21 @@ class Simulation:
             return
         if not self.board_is_empty():
             return
-        if self.days_since_last_surge() < cfg.surge_interval_min:
-            return
+        # NO BRAKE WHEN THE RULING OF 2026-11-23 IS ON (issue #2865, point 3):
+        # every surge adds at least one dungeon, so the board is not empty
+        # again until the player has cleared or lost every ordinary one.
+        if cfg.empty_board_surge_braked:
+            if self.days_since_last_surge() < cfg.surge_interval_min:
+                return
 
         before = len(self.surge_log)
-        self.trigger_surge()
+        # AN ORDINARY SURGE, AS THE GAME FIRES ONE, while the ruling's growth is
+        # off (`tools/tests/test_surge_port.py` holds the two equal); with it on,
+        # flagged so `trigger_surge` sizes it from the previous wave.
+        if cfg.empty_board_surge_grows:
+            self.trigger_surge(from_empty_board=True)
+        else:
+            self.trigger_surge()
         if len(self.surge_log) > before:
             self.surges_from_empty_board += 1
 
