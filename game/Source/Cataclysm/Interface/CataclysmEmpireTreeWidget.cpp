@@ -13,6 +13,8 @@
 #include "Empire/CataclysmSurge.h"
 #include "Engine/DataTable.h"
 #include "Interface/CataclysmChoiceButton.h"
+// The dungeons whose timers run out within a respec's days, issue #2857.
+#include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Player/CataclysmEmpireTree.h"
@@ -218,7 +220,12 @@ bool UCataclysmEmpireTreeWidget::PressRespec()
 			}
 		}
 
-		LastRefusal = Refusal;
+		// A RESPEC THE RULES ALLOW SAYS WHICH DUNGEONS' TIMERS RUN OUT WITHIN ITS DAYS, as a forge craft's first press does,
+		// in the line the screen says a refusal in; nothing when none does. Issue #2857.
+		LastRefusal = Refusal.IsEmpty()
+			? UCataclysmEmpireMapLayout::TimersRunningOutText(
+				  UCataclysmGameInstance::EmpireRunFor(Context(), /*bStartIfNone*/ false), RespecDaysNow()).TrimStart()
+			: Refusal;
 		bAwaitingTheSecondRespecPress = Refusal.IsEmpty();
 		RefreshDisplay();
 		return false;
@@ -230,6 +237,11 @@ bool UCataclysmEmpireTreeWidget::PressRespec()
 	int32 Returned = 0;
 	int32 Days = 0;
 	const bool bRespecced = UCataclysmGameInstance::RespecEmpireTree(Context(), Returned, Days, LastRefusal);
+	// AND WHAT ITS DAYS DID, in the same line, when they did anything it names. Issue #2857.
+	if (bRespecced)
+	{
+		LastRefusal = UCataclysmGameInstance::CapitalDaysAccountIn(Context());
+	}
 	RefreshDisplay();
 	return bRespecced;
 }

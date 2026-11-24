@@ -5056,6 +5056,8 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 
 **The merchant buys a carried piece of gear for gold, and a sale costs no day**, the one service that does not cost time, by the owner's choice of 2026-11-22 ("No days"). A piece sells for a number of the tier's gold piles: Everyday 1/16, doubling a rarity rung to Cataclysmic 8, and 10% more for each upgrade level. Affixes and enchantments do not change the price. A worn piece is not sold; take it off first. Until the capital is built, the merchant's screen opens from the empire map's "Merchant" button, under the Forge's. Issue #48; `DECISIONS.md` carries the rulings and the simulation sweep the numbers were chosen on.
 
+**A service that costs days says what they will do before they are spent, and what they did after.** The days pass through the run's own day loop, so a dungeon whose timer runs out inside them resolves and hits its city exactly as it would during a walk. So before the press that spends them, the service names every dungeon whose timer runs out within those days, the city it would hit and the day; and after it, what the days did: the dungeons resolved, the cities hit and by how much, the cities fallen, and any surge, in the same words the capital uses for a walk's days away. Nothing is added when nothing would happen, or nothing did. Built for the forge's crafts and the empire upgrade tree's respec, the two services that cost days today. The owner's ruling of 2026-11-22 on issue #2857, after a playtest in which 45 days spent at the forge resolved six dungeons with nothing saying so, and their absence read as if clearing another dungeon had taken them.
+
   
 
 ## **Storage**

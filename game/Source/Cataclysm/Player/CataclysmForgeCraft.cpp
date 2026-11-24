@@ -1367,9 +1367,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		return ECataclysmForgeResult::Refused;
 	}
 
-	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day.
+	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day; AND THEIR
+	// REPORTS KEPT, with the dungeons standing named before them, since a dungeon the days resolve is gone from the run
+	// after. Until issue #2857 the reports were thrown away here, and the owner saw dungeons gone with nothing saying why.
 	const int32 DayBefore = Run->Day();
-	Run->AdvanceDays(Step.Days);
+	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
+	const TArray<FCataclysmDayReport> TheDays = Run->AdvanceDays(Step.Days);
 
 	// AND THE BUILD THE DOUBLE WEARS, CAPTURED AFTER THE CHANGE, so it holds the changed piece; only when none is held.
 	if (bCrosses && State != nullptr && !State->HoldsConsumptionBuild())
@@ -1385,6 +1388,17 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 			Name, Step.Options.bStabilizerUsed, Step.Options.ShardsUsed, Step.Options.ResidueSaved, Step.Options.DaysSaved,
 			Step.Options.Gold));
 	}
+
+	// AND WHAT THE DAYS DID, in the walk's words after the forge's lead (`FCataclysmPlayLoopLog::AwayAccount`), said
+	// whenever a day passed, whatever it did, so a missing line means the days went unreported. A craft that took no
+	// day -- The Master Tinkerer's critical success -- says none. KEPT FOR THE SCREEN too, which shows it after the press
+	// when the days did something. Issue #2857, the owner's ruling of 2026-11-22.
+	if (Run->Day() > DayBefore)
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::AwayAccount(DayBefore, Run->Day(), TheDays, NamesBeforeTheDays,
+																	  Run, TEXT("at the forge")));
+	}
+	UCataclysmGameInstance::KeepCapitalDays(WorldContext, DayBefore, Run->Day(), TheDays, NamesBeforeTheDays, Run);
 
 	// SAVED: the character record holds the item and the materials, the run record the days, the account record the
 	// gold when it paid.

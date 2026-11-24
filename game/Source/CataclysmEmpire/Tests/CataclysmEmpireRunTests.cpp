@@ -9560,4 +9560,125 @@ bool FCataclysmEmpireRunDaysAwayTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+/**
+ * The forecast a press that spends days in the capital warns with, issue #2857: the dungeons whose timers run out
+ * within those days, soonest first, each on the day it runs out and with the city it would hit; and the days, run, run
+ * those timers out on those days and hit those cities. A Scout Parties bonus dungeon whose timer runs out is not
+ * forecast: it leaves with no consequence. No days, or fewer, forecast nothing. Prints "TIMERS FORECAST".
+ *
+ * THE TIMERS ARE SET BY HAND on the opening wave of seed 2857, so the days are known whatever the seed rolled: two
+ * ordinary dungeons on standing cities due after 2 and 4 days, a third made a bonus dungeon due after 1, and every other
+ * timer pushed to 60.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunTimersForecastTest,
+	"Cataclysm.EmpireRun.TheTimersForecastToRunOutAreTheOnesTheDaysRunOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireRunTimersForecastTest::RunTest(const FString& Parameters)
+{
+	UCataclysmEmpireRun* Run = CataclysmEmpireRunTest::MakeRun(2857);
+	Run->FireOpeningSurge();
+
+	int32 Sooner = INDEX_NONE;
+	int32 Later = INDEX_NONE;
+	int32 Bonus = INDEX_NONE;
+	for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		const FCataclysmCity* City = Run->Map != nullptr ? Run->Map->Find(Dungeon.CityId) : nullptr;
+		if (Dungeon.Type != ECataclysmDungeonType::Basic || Dungeon.bBonus || City == nullptr || City->bFallen)
+		{
+			continue;
+		}
+		if (Sooner == INDEX_NONE)
+		{
+			Sooner = Dungeon.DungeonId;
+		}
+		// ON ANOTHER CITY, so the sooner's hit cannot fell the later's city and take it before its day.
+		else if (Later == INDEX_NONE && Dungeon.CityId != Run->FindDungeon(Sooner)->CityId)
+		{
+			Later = Dungeon.DungeonId;
+		}
+		else if (Bonus == INDEX_NONE && Later != INDEX_NONE)
+		{
+			Bonus = Dungeon.DungeonId;
+			Dungeon.bBonus = true;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: the opening wave stands three ordinary dungeons on standing cities"),
+				  Run->Clock != nullptr && Sooner != INDEX_NONE && Later != INDEX_NONE && Bonus != INDEX_NONE))
+	{
+		return false;
+	}
+	for (FCataclysmDungeonTimer& Timer : Run->Clock->Timers)
+	{
+		Timer.DaysUntilResolve = Timer.DungeonId == Sooner ? 2.0f
+			: Timer.DungeonId == Later					   ? 4.0f
+			: Timer.DungeonId == Bonus					   ? 1.0f
+														   : 60.0f;
+	}
+	const int32 Today = Run->Day();
+	const int32 SoonerCity = Run->FindDungeon(Sooner)->CityId;
+	const int32 LaterCity = Run->FindDungeon(Later)->CityId;
+
+	const TArray<FCataclysmTimerForecast> WithinOne = Run->TimersRunningOutWithin(1);
+	const TArray<FCataclysmTimerForecast> WithinTwo = Run->TimersRunningOutWithin(2);
+	const TArray<FCataclysmTimerForecast> WithinFour = Run->TimersRunningOutWithin(4);
+
+	// THE DAYS THEMSELVES, and the day each timer ran out on and each city was hit on.
+	const TArray<FCataclysmDayReport> Reports = Run->AdvanceDays(4);
+	const auto RanOutOn = [&Reports](int32 DungeonId)
+	{
+		for (const FCataclysmDayReport& Report : Reports)
+		{
+			if (Report.Resolved.Contains(DungeonId))
+			{
+				return Report.Day;
+			}
+		}
+		return static_cast<int32>(INDEX_NONE);
+	};
+	const auto HitOn = [&Reports](int32 CityId, int32 Day)
+	{
+		for (const FCataclysmDayReport& Report : Reports)
+		{
+			if (Report.Day == Day
+				&& Report.Hits.ContainsByPredicate([CityId](const FCataclysmCityHit& Hit) { return Hit.CityId == CityId; }))
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
+	AddInfo(FString::Printf(TEXT("TIMERS FORECAST: day %d; dungeons %d (city %d) due in 2, %d (city %d) in 4, bonus %d in 1; "
+								 "within 1: %d, within 2: %d, within 4: %d; ran out on days %d, %d and %d"),
+							Today, Sooner, SoonerCity, Later, LaterCity, Bonus, WithinOne.Num(), WithinTwo.Num(),
+							WithinFour.Num(), RanOutOn(Sooner), RanOutOn(Later), RanOutOn(Bonus)));
+
+	TestEqual(TEXT("within one day, nothing: the bonus dungeon due then leaves with no consequence"), WithinOne.Num(), 0);
+	if (TestEqual(TEXT("within two days, one timer"), WithinTwo.Num(), 1))
+	{
+		TestEqual(TEXT("the one due after two"), WithinTwo[0].DungeonId, Sooner);
+		TestEqual(TEXT("running out two days on"), WithinTwo[0].Day, Today + 2);
+		TestEqual(TEXT("and hitting the city it stands on"), WithinTwo[0].CityId, SoonerCity);
+	}
+	if (TestEqual(TEXT("within four days, two"), WithinFour.Num(), 2))
+	{
+		TestEqual(TEXT("the sooner first"), WithinFour[0].DungeonId, Sooner);
+		TestEqual(TEXT("then the later"), WithinFour[1].DungeonId, Later);
+		TestEqual(TEXT("running out four days on"), WithinFour[1].Day, Today + 4);
+		TestEqual(TEXT("and hitting its own city"), WithinFour[1].CityId, LaterCity);
+	}
+	TestEqual(TEXT("no days forecast nothing"), Run->TimersRunningOutWithin(0).Num(), 0);
+	TestEqual(TEXT("nor do fewer"), Run->TimersRunningOutWithin(-3).Num(), 0);
+
+	TestEqual(TEXT("the sooner timer ran out on its forecast day"), RanOutOn(Sooner), Today + 2);
+	TestTrue(TEXT("and its city was hit that day"), HitOn(SoonerCity, Today + 2));
+	TestEqual(TEXT("the later on its"), RanOutOn(Later), Today + 4);
+	TestTrue(TEXT("and its city that day"), HitOn(LaterCity, Today + 4));
+	TestEqual(TEXT("CONTROL: the bonus dungeon's timer did run out, on the first day, and was not forecast"),
+			  RanOutOn(Bonus), Today + 1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -237,6 +237,14 @@ The days away are the two numbers after "while away, days": 12 days in the examp
 
   `PLAY LOOP: respecced the empire upgrade tree: 1 point back, 1.0 points banked; it cost 5 days, day 20 to day 25`
 
+  **and then what those 5 days did** (issue #2857):
+
+  `PLAY LOOP: for the respec, days 20 to 25: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+  When a dungeon's timer runs out within the respec's days, the first press says which, the city it hits and the
+  day, under the branch ("Within 5 days, 1 dungeon's timer runs out: ..."), and the second says what the days did
+  ("Meanwhile, days 20 to 25: dungeons resolved: ...").
+
 - **A centre capstone's choice is not reached in one session**: the first, Foundations of the Empire, opens at 25
   points spent in the tree. When it has, click it in the fifth list entry, "The centre", then one of the three options
   the list shows in its place:
@@ -351,6 +359,22 @@ click like any other.
 - **In the log:**
 
   `PLAY LOOP: upgraded Everyday Torc of Warding from +0 to +1 with two +1 stones, 14 left, and 510 gold; residue 52 to 77; it cost 1 day, day 25 to day 26`
+
+  **and then what those days did**, in the words the capital uses for a walk's days away, after every craft that costs
+  a day (issue #2857):
+
+  `PLAY LOOP: at the forge, days 25 to 26: dungeons resolved: none; cities hit: none; cities fallen: none; no surge`
+
+- **When a craft's days run a dungeon's timer out**, its first press says so before you commit, after what it costs:
+  "Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the Timed dungeon on Outpost (-3,0)) hits Outpost (-3,0) on
+  day 28." Nothing is added when no timer runs out. The second press ends with what the days did, "Meanwhile, days 25
+  to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and
+  1200 people; cities fallen: none; no surge.", and the log says the same:
+
+  `PLAY LOOP: at the forge, days 25 to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0)); cities hit: Outpost (-3,0) lost 750 defence and 1200 people; cities fallen: none; no surge`
+
+  A dungeon that leaves the map while you are at the forge has resolved and hit its city in those days; clearing
+  another dungeon never takes it.
 
 - **Click "Combine two +1 stones into one +2".** Two +1 stones become one +2 for 50 gold, and no day passes. A
   combine costs 50 gold at the lowest rung and twice as much for each rung above it.

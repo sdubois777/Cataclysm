@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Days spent in the capital say what they will do before they are spent and what they did after: the forge's crafts and the empire upgrade tree's respec keep their days' reports, say the walk's PLAY LOOP account of them, and warn which dungeons' timers run out (#2857)
+
+**Affects:** `UCataclysmForgeCraft::DoItemCraft` (`game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp` and `.h`);
+`UCataclysmGameInstance::RespecEmpireTree`, and `CapitalDaysAccount`, `KeepCapitalDays` and `CapitalDaysAccountIn`, new
+(`game/Source/Cataclysm/Player/CataclysmGameInstance.h` and `.cpp`); `FCataclysmPlayLoopLog::AwayAccount`, which takes a
+lead, and `DaysDidSomething`, new (`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `.cpp`);
+`UCataclysmEmpireRun::TimersRunningOutWithin` and `FCataclysmTimerForecast`, new
+(`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`); `UCataclysmEmpireMapLayout::TimersRunningOutText`,
+new (`game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.h` and `.cpp`); the forge screen's eight questions and
+eight done messages (`game/Source/Cataclysm/Interface/CataclysmForgeWidget.h` and `.cpp`); the empire tree screen's two
+Respec presses (`game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h` and `.cpp`); `docs/Play_Loop_Checklist.md`,
+steps 12 and 16; `docs/Cataclysm_GDD_v2.md`, Capital Services. Tests: five Unreal tests, new, one in each of
+`game/Source/Cataclysm/Tests/CataclysmForgeTests.cpp`, `CataclysmForgeScreenTests.cpp`, `CataclysmEmpireTreeScreenTests.cpp`
+and `CataclysmPlayLoopTests.cpp` and `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`; one existing Unreal
+test changed (below); `tools/tests/test_days_spent_in_the_capital_are_reported.py`, new;
+`tools/tests/test_the_play_loop_is_logged_at_each_step.py`, two places added. Issue
+[#2857](https://github.com/sdubois777/Cataclysm/issues/2857).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED.** On `fix/forge-days-2857`, cut from `feat/forge-milestones-47-f6` at `48e574d81` (the
+  forge's slice F6, not yet merged into development), because both change `CataclysmForgeCraft.cpp`. Its window comes
+  after F6's.
+- **ONE EXISTING UNREAL TEST CHANGED.** `Cataclysm.ForgeScreen.AnUpgradeTakesTwoPressesAndAnyOtherPressCancels` held
+  the done message to exactly "Raised to +1. It cost 500 gold and 1 day of the run." That scene's run is begun with no
+  opening wave, so its one day can bring a surge, which the message now names. It holds the same words, followed by the
+  account the game instance kept when there is one.
+- **THE RESPEC IS FIXED TOO.** It kept its days' reports only to count them into a `Log` line the PLAY LOOP filter hides,
+  and its screen said nothing of them. It now does what the forge does.
+- **NO SAVE VERSION MOVES.** Nothing new is saved: the account is a screen's message, read straight after the press.
+- **NO GENRE RESEARCH**, because no formula, number or mechanic was chosen: this reports what the existing day loop
+  already does.
+
+### The ruling
+
+Issue #2857, the owner's comment of 2026-11-22, verbatim: "ah right, that makes sense. And yeah those are good calls".
+The owner accepted the three parts: (1) keep the forge's day reports and show them to the player -- the dungeons
+resolved, the cities hit and by how much, the cities fallen, any surge; (2) write the same PLAY LOOP lines the walk's
+summary writes; (3) before an upgrade, the forge screen says which dungeons will resolve within the days it costs.
+
+The cause, from the issue: `DoItemCraft` called `Run->AdvanceDays(Step.Days)` and threw away the
+`TArray<FCataclysmDayReport>` it returned. The days ran correctly -- dungeons resolved, hit their cities, and ordinary
+dungeons left the map -- and nothing said so. The owner, having spent 45 days at the forge, came back from the next walk
+to six dungeons gone and a "while away" summary that, rightly, named none of them.
+
+### What it does
+
+- **After every forge craft that costs a day**, the log says what the days did in the walk's own words, after the
+  craft's line: "PLAY LOOP: at the forge, days 25 to 28: dungeons resolved: 13 (the Timed dungeon on Outpost (-3,0));
+  cities hit: Outpost (-3,0) lost 750 defence and 1200 people; cities fallen: none; no surge". The respec says the same
+  after its line, "for the respec, days 20 to 25: ...". Said whatever the days did.
+- **The screen whose press spent them ends its message with the same account** after "Meanwhile" when the days did
+  anything it names: "Raised to +1. It cost 1,500 gold and 3 days of the run. Meanwhile, days 25 to 28: dungeons
+  resolved: ...". The forge's message line; the empire tree screen's line under the branch.
+- **Before a press that spends days**, its question ends with the dungeons whose timers run out within them: "Press
+  again to upgrade to +1: ... Within 3 days, 1 dungeon's timer runs out: dungeon 13 (the Timed dungeon on Outpost
+  (-3,0)) hits Outpost (-3,0) on day 28." Every forge craft that costs days, and the respec's first press. Nothing is
+  added when no timer runs out.
+
+### Judgements
+
+| # | Question | Judgement | Why |
+| :-- | :-- | :-- | :-- |
+| J1 | Show the account on the forge screen, or add it to the capital's summary | **The forge screen**, in the message line its press already writes; the respec in the tree screen's line | The capital's summary -- the map's `ReturnLine` and the arrival's `CapitalLine` -- is the last walk's, replaced at each walk's end and read on returning from one; days spent at the forge are spent with the forge screen open, and a press's own message is where the player looks. It needs no new label and no generated asset |
+| J2 | When the screen shows it, and when the log says it | The screen **only when the days did something** the account names (`DaysDidSomething`); the log **whenever a day passed** | A screen that says "nothing happened" after every press is noise, and the forge is pressed often. The log is the owner's check: a line said every time means a missing line is a fault, not a quiet day |
+| J3 | The words | `FCataclysmPlayLoopLog::AwayAccount` itself, given a lead: "at the forge", "for the respec", and "Meanwhile" on screen. A walk's words are unchanged | The brief: reuse the summary's text function, not new wording. One builder means the screen, the log and the walk can never name a day's events differently |
+| J4 | The warning's place and words | Last in the first press's question, after the options' text and The Soul Forge's chance; "Within N days, K dungeon's timer runs out: dungeon 13 (name) hits City on day D"; empty when none | The question is where the cost is stated before the second press. The dungeon is named as the PLAY LOOP names it, so the warning, the account and the log agree |
+| J5 | What the forecast counts | The timers standing now: an ordinary dungeon's (hits its own city) and a Quest dungeon's (hits its host). Not a Fallen City's or the Cataclysm's, not a Scout Parties bonus dungeon's, not one on a fallen city, not the dungeon stood in. Each named once, on its first day. The days are the craft's after Tainted Shards; an enchantment craft forecasts its full days though a Master Tinkerer critical success would take none | Read from `ResolveDungeon`, `LetABonusDungeonLeave` and the clock. A surge or a fall inside the days can change what happens; the account after the press says what did. The critical success is a chance, stated in the same question, and the forecast is of what the press may cost |
+| J6 | The empire tree's respec | The same three things, through the same functions | It spends 5, 10 or 15 days in the capital, more than most forge crafts, and its screen said nothing of them |
+| J7 | `Cataclysm.WalkDungeon`'s one day on an empty board | Left as it is, and named in the Python check as the one allowed discard | A console command, and it passes the day only when no dungeon stands, so no timer can run out in it |
+
+### Every place the game spends days, checked
+
+| Where | Reported before | Now |
+| :-- | :-- | :-- |
+| A forge item craft, all eight through `DoItemCraft` | No: the reports were thrown away | Fixed |
+| A stone or gem combine | Costs no day | -- |
+| The empire upgrade tree's respec | Counted into a `Log` line only | Fixed |
+| A city upgrade bought, or rushed | Costs no day: it is built over days that pass anyway, and their finishing is in every account | -- |
+| Bribery, Economic Bailout | Cost no day | -- |
+| A walk's days, a death's days | Yes: the capital's arrival line and the map | -- |
+| `Cataclysm.EmpireAdvance` (console) | Yes, day by day | -- |
+| `Cataclysm.WalkDungeon` (console), on an empty board | No | J7 |
+
+**The class passive tree's reset costs no day in the code.** The design's Capital Services table says the Trainer's
+"Respec class passive skill points, and respec the empire upgrade tree. Both cost days."
+`ACataclysmPlayerState::ResetPassivePoints` passes none, so there is nothing for it to report. Not changed here.
+
+### Registered for the window
+
+| Group | Tests after this change | Added |
+| :-- | :-- | :-- |
+| `Cataclysm.Forge.` | 9 | `AnUpgradeWhoseDaysRunOutATimerSaysWhatResolvedAndTheCityItHit` |
+| `Cataclysm.ForgeScreen.` | 5 | `TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid` |
+| `Cataclysm.EmpireTreeScreen.` | 11 | `ARespecSaysWhichTimersItsDaysRunOutAndThenWhatTheyDid` |
+| `Cataclysm.PlayLoop.` | 13 | `DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` |
+| `Cataclysm.EmpireRun.` | 72 | `TheTimersForecastToRunOutAreTheOnesTheDaysRunOut` |
+
+Counted by the registration's name string in the files on this branch; `Cataclysm.EmpireRun.` includes one test in
+`CataclysmEmpireRunTierTests.cpp` registered through `CATACLYSM_TEST`. No C++ guard proof was run: they are planned for
+the window.
+
+**Three Python guard proofs, 3 of 3 PROVED**, by `tools/prove_guard.py` against
+`tools/tests/test_days_spent_in_the_capital_are_reported.py`, each passing 5 of 5 restored:
+
+| Proof | The break | Failed with the break in |
+| :-- | :-- | :-- |
+| P1 | `DoItemCraft` throws its days' reports away again | `test_no_caller_throws_away_what_the_days_reported`, `test_the_forges_craft_and_the_respec_keep_and_tell_their_days` |
+| P2 | the upgrade's question without `TimersRunningOutIn` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
+| P3 | the upgrade's done message without `WhatTheDaysDid` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
+
+---
+
 ## 2026-11-22 — The forge's two empire milestone options: The Soul Forge raises an upgrade two levels 15% of the time, and The Master Tinkerer makes 5% of enchantment crafts a critical success, its rolls drawn twice with the better kept and no days taken (#47, slice F6)
 
 **Affects:** `tools/generate_datatables.py` (the two options leave `EMPIRE_TREE_REFUSED`, join `EMPIRE_TREE_BUILT` as

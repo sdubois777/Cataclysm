@@ -73,11 +73,26 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * UPGRADES THOSE DAYS FINISHED, since issue #2825, added only when there are any: "; city upgrades finished:
 	 * Outpost (-3,0)".
 	 *
+	 * THE SAME WORDS FOR DAYS SPENT IN THE CAPITAL, after another lead, since issue #2857: a craft at the forge says
+	 * "at the forge, days 97 to 99: dungeons resolved: ..." and the empire upgrade tree's respec "for the respec, days 12
+	 * to 17: ...", each after its own line, and the screen that spent them shows "Meanwhile, days 97 to 99: ..."
+	 * (`UCataclysmGameInstance::KeepCapitalDays`). Until that issue a forge craft's days were run and their reports
+	 * thrown away, so the owner saw dungeons gone with nothing saying why.
+	 *
 	 * @param NamesBefore `NamesStanding` read before the days ran; a dungeon the days both brought and resolved is
 	 *                    named by its identifier alone.
+	 * @param Lead        what the line begins with: "while away" for a walk's days, which every walk says.
 	 */
 	static FString AwayAccount(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Days,
-							   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run);
+							   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run,
+							   const TCHAR* Lead = TEXT("while away"));
+
+	/**
+	 * Whether the days did anything `AwayAccount` names: a dungeon resolved, a city hit or fallen, a surge, or a city
+	 * upgrade finished. The screen that spent days in the capital shows their account only then; the PLAY LOOP line is
+	 * said whatever they did, so a missing line means the days were not reported. Issue #2857.
+	 */
+	static bool DaysDidSomething(const TArray<FCataclysmDayReport>& Days);
 
 	/** The capital, its map opened: the day, the board and the character, and the days away when a walk just ended. */
 	static FString CapitalLine(const UCataclysmEmpireRun* Run, int32 Level, int64 ExperienceIntoLevel,
