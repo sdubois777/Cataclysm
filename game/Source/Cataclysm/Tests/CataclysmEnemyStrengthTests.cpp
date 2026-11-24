@@ -410,8 +410,8 @@ bool FCataclysmEnemyStrengthDamageByRing::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("the Sanctuary's hits 0.13 / 0.05 times as hard"), OnASanctuary.AttackDamage,
-			  OnAnOutpost.AttackDamage * 2.6f, 0.001f);
+	TestEqual(TEXT("the Sanctuary's hits 0.12 / 0.05 times as hard"), OnASanctuary.AttackDamage,
+			  OnAnOutpost.AttackDamage * 2.4f, 0.001f);
 	TestEqual(TEXT("with the same health"), OnASanctuary.Health, OnAnOutpost.Health, 0.001f);
 	TestEqual(TEXT("and the same armour"), OnASanctuary.Armour, OnAnOutpost.Armour, 0.001f);
 	TestEqual(TEXT("and it is worth the same: the score a kill grants does not read the ring"),
@@ -507,8 +507,8 @@ bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("on this floor a Bulwark's Imp hits 0.11 / 0.05 times as hard as an Outpost's"),
-			  AtABulwark.AttackDamage, AtAnOutpost.AttackDamage * 2.2f, 0.001f);
+	TestEqual(TEXT("on this floor a Bulwark's Imp hits 0.10 / 0.05 times as hard as an Outpost's"),
+			  AtABulwark.AttackDamage, AtAnOutpost.AttackDamage * 2.0f, 0.001f);
 
 	// AND A CREATURE PLACED ON THE FLOOR IS BUILT WITH THE BULWARK'S.
 	FActorSpawnParameters SpawnParams;

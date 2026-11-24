@@ -285,7 +285,19 @@ the Pillar 19 clears and the guard's own fixture asks for more than 20; 0 to 16 
 `tools/generate_enemy_strength_fixture.py` (126 of its 973 rows, the three inner rings' tier 1 rows); the figures typed
 in `sim/tests/test_creature_strength.py`, `tools/tests/test_content_relief_port.py`,
 `tools/tests/test_enemy_strength_fixture_is_current.py` and `Cataclysm.EnemyStrength.` (`CataclysmEnemyStrengthTests.cpp`);
-the comments that quote them in `CataclysmPlayerClassStats.h` and `CataclysmGameMode.h`; the design document.
+the comments that quote them in `CataclysmPlayerClassStats.h` and `CataclysmGameMode.h`; the design document. AND THE
+FIGURES DERIVED FROM THEM, which the first whole Python run after the retune found when
+`sim/tests/test_the_corrupted_stalker_fight.py` failed on the Stalker's Bulwark multiplier: the search that listed the
+places above looked for the ring figures and not for products of them. A second search, for every ratio of a ring's
+figure to the Outpost's and every call naming an inner ring, found the rest: the Corrupted Stalker's tier 1 damage
+multiplier, 0.06 times the ring's figure over 0.05, is now 0.12, 0.144 and 0.084 (was 0.132, 0.156 and 0.12) in
+`sim/cataclysm_sim/fight.py`'s docstring, `sim/tests/test_the_corrupted_stalker_fight.py`,
+`UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier`'s comment and
+`Cataclysm.DungeonModifierEffects.` (`CataclysmDungeonModifierEffectsTests.cpp`, the multipliers and a Bulwark Stalker's
+hit 2.0 times an Outpost's, was 2.2); `Cataclysm.EnemyBurn.` (`CataclysmEnemyBurnTests.cpp`, a label); and the two
+ratios in `Cataclysm.EnemyStrength.`, a Sanctuary's hit 2.4 times an Outpost's (was 2.6) and a Bulwark's 2.0 (was 2.2).
+The simulation's control that a Bulwark Stalker's multiplier is more than twice an Outpost's became more than 1.5
+times: the ratio is now exactly 2.
 
 ### Registered for the window
 
@@ -296,12 +308,14 @@ alone first, then the whole suite, with the Python suite in parallel.
   both modules recompile widely. Predicted: succeeds, and the compiled list includes `CataclysmSurge.cpp`,
   `CataclysmEmpireRun.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmPlayerCharacter.cpp`, `CataclysmEmpireRunTests.cpp`,
   `CataclysmDungeonCostsDaysTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEmpireScreenTests.cpp`,
-  `CataclysmPlayLoopTests.cpp` and `CataclysmEnemyStrengthTests.cpp`.
+  `CataclysmPlayLoopTests.cpp`, `CataclysmEnemyStrengthTests.cpp`, `CataclysmEnemyBurnTests.cpp` and
+  `CataclysmDungeonModifierEffectsTests.cpp`.
 - **The groups alone, each with a trailing dot.** The branch adds and removes no Unreal test and renames seven, so each
   count is the same group's count in the newest measured log at the turn. In the newest log in this session's worktree,
   `ow_suite_engine_a3984536.log`, they are: `Cataclysm.EmpireRun.` 71, `Cataclysm.DungeonMode.` 46,
   `Cataclysm.Surge.` 54, `Cataclysm.DeathCost.` 9, `Cataclysm.EmpireScreen.` 16, and for the fall and the retune
-  `Cataclysm.PlayLoop.` and `Cataclysm.EnemyStrength.`, counted from the same log at the turn. Predicted for each: every
+  `Cataclysm.PlayLoop.`, `Cataclysm.EnemyStrength.`, `Cataclysm.EnemyBurn.` and `Cataclysm.DungeonModifierEffects.`,
+  counted from the same log at the turn. Predicted for each: every
   test succeeds, 0 failed, and the saves line shows 0 left behind.
 - **The whole suite.** The base's last measured total plus 0; 0 failed; 0 saves left behind.
 - **Python.** PYTHON_LINE

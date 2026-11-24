@@ -8299,8 +8299,9 @@ public:
 	 * ON THE RING THE DUNGEON WAS ROLLED ON, SINCE ISSUE #2749'S RING SLICE: the table was fitted on an Outpost's damage
 	 * scale, and the result is multiplied by `UCataclysmEnemyScore::DamageScale(Tier, Ring)` over the Outpost's, because
 	 * the Boss it is set beside hits that much harder there and the fit is linear in the Boss's damage. At tier 1: 0.06
-	 * on an Outpost, 0.132 on a Bulwark, 0.156 on a Sanctuary, 0.12 on the Pillar; tiers 2 to 8 are the same on every
-	 * ring. Ruled by the coordinating session on 2026-11-19. `sim/cataclysm_sim/fight.py`'s `damage_multiplier` is the
+	 * on an Outpost, 0.12 on a Bulwark, 0.144 on a Sanctuary, 0.084 on the Pillar (0.132, 0.156 and 0.12 until the ring
+	 * figures were lowered on issue #2865); tiers 2 to 8 are the same on every ring. Ruled by the coordinating session on
+	 * 2026-11-19. `sim/cataclysm_sim/fight.py`'s `damage_multiplier` is the
 	 * same arithmetic.
 	 */
 	static float CorruptedStalkerDamageMultiplier(int32 DifficultyTier,
