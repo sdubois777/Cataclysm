@@ -10369,7 +10369,7 @@ bool FCataclysmLeechSporesSplitTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarPulseTest,
-	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach",
+	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
@@ -10379,7 +10379,9 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 
 	// THE ALTAR ON THE EXIT, FED BY DEATHS THE PLAYER DID NOT CAUSE, PULSING ON ITS
-	// CLOCK AT THE PLAYER ALONE. Issues #1820 and #41.
+	// CLOCK AT THE PLAYER ALONE, WHEREVER THE PLAYER STANDS. Issues #1820 and #41, and
+	// #2855 for the last: until then this test's last pulse found a player just outside
+	// the ring at the stairs and took nothing, and in play no pulse ever found the owner.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -10439,8 +10441,8 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("the ring stands on the exit cell: %.1f cm away"),
 							 FromExit),
 			 FromExit < 1.0f);
-	TestEqual(TEXT("it reaches as far as the figure says"), Ring->RadiusCm,
-			  Effects::BloodAltarReachCm, 0.01f);
+	TestEqual(TEXT("it is drawn as wide as the figure says"), Ring->RadiusCm,
+			  Effects::BloodAltarRingRadiusCm, 0.01f);
 	TestTrue(TEXT("and lasts the floor"), Ring->bLastsTheFloor);
 
 	const auto AltarLine = [Mode]() -> FString
@@ -10555,25 +10557,33 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 			  LostWithVoid, LostToThree, 0.5f);
 	Player.AbilitySystem->SetNumericAttributeBase(Void, VoidWas);
 
-	// OUTSIDE THE REACH, NOTHING. Inclusion is by body, so the player's body is
-	// placed beyond the reach and that is asserted before it is relied on.
+	// OUTSIDE THE RING, THE SAME PULSE. Issue #2855: the ring marks the altar and no
+	// longer bounds a pulse. The player's body is placed wholly beyond the ring, and
+	// that is asserted before it is relied on; the pulse is compared with the one after
+	// three deaths taken at the altar, with the same deaths and the same resistances.
+	// Until #2855 this reading was "a player just outside the reach loses nothing".
 	const float BodyRadius =
 		Player.Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
 	Player.Character->SetActorLocation(
-		Altar + FVector(Effects::BloodAltarReachCm + BodyRadius + 100.0f, 0.0f, 0.0f));
+		Altar + FVector(Effects::BloodAltarRingRadiusCm + BodyRadius + 100.0f, 0.0f, 0.0f));
 	const float BodyEdge =
 		FVector::Dist2D(Player.Character->GetActorLocation(), Altar) - BodyRadius;
 	if (!TestTrue(FString::Printf(
-					  TEXT("the player's body is outside the reach: %.1f cm against "
-						   "%.1f"), BodyEdge, Effects::BloodAltarReachCm),
-				  BodyEdge > Effects::BloodAltarReachCm))
+					  TEXT("the player's body is outside the ring: %.1f cm against "
+						   "%.1f"), BodyEdge, Effects::BloodAltarRingRadiusCm),
+				  BodyEdge > Effects::BloodAltarRingRadiusCm))
 	{
 		return false;
 	}
 	const float BeforeOutside = Player.Read(Health);
 	Beat(Mode, BeatsPerPulse);
-	TestEqual(TEXT("a player just outside the reach loses nothing"),
-			  Player.Read(Health), BeforeOutside, 0.01f);
+	const float LostOutside = BeforeOutside - Player.Read(Health);
+	TestTrue(FString::Printf(TEXT("a player outside the ring still loses health to a pulse: %.1f"),
+							 LostOutside),
+			 LostOutside > 0.0f);
+	TestEqual(FString::Printf(TEXT("as much as at the altar, after the same three deaths: %.1f against %.1f"),
+							  LostOutside, LostToThree),
+			  LostOutside, LostToThree, 0.5f);
 
 	// AND THE STAIRS START IT AGAIN: nothing counted, and one ring, on the new exit.
 	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
@@ -10710,6 +10720,206 @@ bool FCataclysmBloodAltarCeilingTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and a pulse on it"),
 			 Effects::BloodAltarPulseIsDue(Effects::BloodAltarSecondsBetweenPulses));
 
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Every `LogCataclysm` line saying a Blood Altar pulse, printed while it lives. Issue #2855. Named for the altar
+	 * because the unity build joins test files: `CataclysmHitLogTests.cpp` has its own `FHitLogCapture` and
+	 * `CataclysmCharacterLevelTests.cpp` its own `FCapture`.
+	 */
+	struct FBloodAltarPulseLogCapture : public FOutputDevice
+	{
+		FBloodAltarPulseLogCapture() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FBloodAltarPulseLogCapture() override { if (GLog) { GLog->RemoveOutputDevice(this); } }
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.Contains(TEXT("Blood Altar: pulse")))
+			{
+				Lines.Add(Line);
+			}
+		}
+
+		/** The pulse lines printed so far, flushed first. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+
+		TArray<FString> Lines;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarPlayCaseTest,
+	"Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodAltarPlayCaseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE PLAY CASE OF ISSUE #2855. The owner walked four Blood Altar floors on 2026-11-22 and no pulse found them,
+	// and the log said nothing of the altar. Here the player stands at the floor's ENTRANCE, where a floor starts
+	// them, far from the altar at the exit, while creatures die elsewhere; the altar must pulse on its 30 second clock,
+	// take more after more deaths, and say one line for every pulse, the unfed one first.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never calls.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {BloodAltar};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute MaxHealth = Vital::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(MaxHealth, 100000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+	const float Maximum = Player.Read(MaxHealth);
+	if (!TestTrue(FString::Printf(TEXT("the player's maximum health is large: %.0f"), Maximum), Maximum >= 100000.0f))
+	{
+		return false;
+	}
+
+	FBloodAltarPulseLogCapture Capture;
+
+	// THE ALTAR'S RING ON THE FIRST BEAT, AND THE PLAYER AT THE ENTRANCE, WHOLLY OUTSIDE IT. Asserted before it is
+	// relied on, so a floor whose entrance stood by its exit could not pass this test by putting the player at the
+	// altar after all.
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Ring = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("the altar's ring was placed on the first beat"), Ring))
+	{
+		return false;
+	}
+	const FVector Altar = Ring->GetActorLocation();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(Entrance);
+	const float BodyRadius = Player.Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const float BodyEdge = FVector::Dist2D(Player.Character->GetActorLocation(), Altar) - BodyRadius;
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player at the entrance is outside the altar's ring: %.0f cm "
+									   "against %.0f"),
+								  BodyEdge, Effects::BloodAltarRingRadiusCm),
+				  BodyEdge > Effects::BloodAltarRingRadiusCm))
+	{
+		return false;
+	}
+
+	// DEATHS THE PLAYER DID NOT CAUSE, FAR FROM BOTH.
+	int32 Killed = 0;
+	const auto KillCreatures = [this, World, &Entrance, &Killed](int32 HowMany)
+	{
+		for (int32 Index = 0; Index < HowMany; ++Index, ++Killed)
+		{
+			ACataclysmEnemyCharacter* Creature =
+				SpawnCreatureWithHealth(World, Entrance + FVector(0.0f, 3000.0f + 300.0f * Killed, 0.0f), 100.0f);
+			if (!Creature)
+			{
+				AddError(TEXT("set-up: a creature to kill could not be spawned"));
+				return;
+			}
+			UCataclysmSkillEffects::ReduceHealthDirectly(Creature, Creature, 100000.0f);
+			if (!UCataclysmSkillEffects::IsDead(Creature))
+			{
+				AddError(TEXT("set-up: a creature did not die"));
+			}
+		}
+	};
+
+	// ONE PULSE: NOTHING A BEAT BEFORE IT IS DUE, AND ON ITS BEAT WHAT IT TAKES AND ITS LINE. One beat has passed.
+	const int32 BeatsPerPulse = BeatsFor(Effects::BloodAltarSecondsBetweenPulses);
+	struct FBloodAltarPulseReading
+	{
+		float Lost = 0.0f;
+		float LostEarly = 0.0f;
+		int32 LinesEarly = 0;
+		int32 Lines = 0;
+	};
+	const auto NextPulse = [&Player, &Health, &Capture, Mode, BeatsPerPulse](int32 BeatsSoFar)
+	{
+		FBloodAltarPulseReading Reading;
+		const float Before = Player.Read(Health);
+		Beat(Mode, BeatsPerPulse - BeatsSoFar - 1);
+		Reading.LostEarly = Before - Player.Read(Health);
+		Reading.LinesEarly = Capture.Said().Num();
+		Beat(Mode, 1);
+		Reading.Lost = Before - Player.Read(Health);
+		Reading.Lines = Capture.Said().Num();
+		return Reading;
+	};
+
+	// THE FIRST PULSE, UNFED: it takes nothing and still says its line.
+	const FBloodAltarPulseReading Unfed = NextPulse(1);
+	TestEqual(TEXT("before the first pulse is due, no line"), Unfed.LinesEarly, 0);
+	TestEqual(TEXT("the unfed altar's pulse takes nothing"), Unfed.Lost, 0.0f, 0.01f);
+	if (TestEqual(TEXT("and says one line"), Unfed.Lines, 1))
+	{
+		const FString& Line = Capture.Said()[0];
+		TestTrue(FString::Printf(TEXT("which names the floor and no deaths: %s"), *Line),
+				 Line.Contains(TEXT("pulse on floor 1 after 0 death(s) counted")));
+	}
+
+	// TWO DEATHS, THEN THE SECOND PULSE, AT THE ENTRANCE.
+	KillCreatures(2);
+	const FBloodAltarPulseReading AfterTwo = NextPulse(0);
+	TestEqual(TEXT("nothing is taken a beat before the second pulse"), AfterTwo.LostEarly, 0.0f, 0.01f);
+	TestEqual(TEXT("and no second line yet"), AfterTwo.LinesEarly, 1);
+	TestTrue(FString::Printf(TEXT("the second pulse finds the player at the entrance: %.1f"), AfterTwo.Lost),
+			 AfterTwo.Lost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and takes no more than its stated share: %.1f of %.1f"), AfterTwo.Lost,
+							 Effects::BloodAltarPulseDamage(Maximum, 2)),
+			 AfterTwo.Lost <= Effects::BloodAltarPulseDamage(Maximum, 2) + 0.01f);
+	if (TestEqual(TEXT("and says its line"), AfterTwo.Lines, 2))
+	{
+		const FString& Line = Capture.Said()[1];
+		TestTrue(FString::Printf(TEXT("which names two deaths and what it sent: %s"), *Line),
+				 Line.Contains(TEXT("after 2 death(s) counted: sent")));
+	}
+
+	// TWO MORE DEATHS, AND THE THIRD PULSE TAKES MORE.
+	KillCreatures(2);
+	const FBloodAltarPulseReading AfterFour = NextPulse(0);
+	TestEqual(TEXT("nothing is taken a beat before the third pulse"), AfterFour.LostEarly, 0.0f, 0.01f);
+	TestTrue(FString::Printf(TEXT("a pulse after four deaths takes more than after two: %.1f against %.1f"),
+							 AfterFour.Lost, AfterTwo.Lost),
+			 AfterFour.Lost > AfterTwo.Lost + 1.0f);
+	TestTrue(FString::Printf(TEXT("and no more than its stated share: %.1f of %.1f"), AfterFour.Lost,
+							 Effects::BloodAltarPulseDamage(Maximum, 4)),
+			 AfterFour.Lost <= Effects::BloodAltarPulseDamage(Maximum, 4) + 0.01f);
+	if (TestEqual(TEXT("and says its line"), AfterFour.Lines, 3))
+	{
+		const FString& Line = Capture.Said()[2];
+		TestTrue(FString::Printf(TEXT("which names four deaths: %s"), *Line),
+				 Line.Contains(TEXT("after 4 death(s) counted: sent")));
+	}
+	AddInfo(FString::Printf(TEXT("BLOOD ALTAR AT THE ENTRANCE: %.0f cm from the altar; pulses took %.1f, %.1f and "
+								 "%.1f of %.0f after 0, 2 and 4 deaths"),
+							BodyEdge, Unfed.Lost, AfterTwo.Lost, AfterFour.Lost, Maximum));
 	return true;
 }
 

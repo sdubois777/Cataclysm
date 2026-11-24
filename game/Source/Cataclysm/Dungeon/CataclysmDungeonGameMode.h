@@ -1673,8 +1673,10 @@ private:
 	 *
 	 * A PULSE EVERY `BloodAltarSecondsBetweenPulses` FROM THE FLOOR'S START. It takes
 	 * a share of the player's maximum health for each death the altar has counted,
-	 * nothing from an altar nobody has fed, and only from the player, only within
-	 * the altar's reach.
+	 * nothing from an altar nobody has fed, and only from the player, WHEREVER ON THE
+	 * FLOOR THE PLAYER STANDS since issue #2855: until then only within the ring at
+	 * the stairs, which no player in play was standing in when a pulse came. Each
+	 * pulse says one line in the log, "Blood Altar: pulse on floor ...".
 	 */
 	void StepBloodAltar(
 		class ACataclysmPlayerCharacter* Player,
