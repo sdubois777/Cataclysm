@@ -903,8 +903,9 @@ ECataclysmRarity UCataclysmDropRoll::RollRarityAtLeast(const UDataTable* GearRar
 	{
 		// `Lowest` IS ABOVE THE TIER'S CAP: the High Roller's Legendary at tier 1,
 		// whose cap is Masterful. The node's own minimum is given, and nothing
-		// rarer, a judgement recorded with issue #2853. Drawn once all the same,
-		// so the stream moves as it does on every other path here.
+		// rarer: the owner's ruling of 2026-11-24 on issue #2853, "Exception:
+		// exactly Legendary (Recommended)". Drawn once all the same, so the
+		// stream moves as it does on every other path here.
 		Stream.FRand();
 		return Lowest;
 	}

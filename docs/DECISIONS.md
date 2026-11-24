@@ -48,17 +48,20 @@ at or below the cap rolls the same item as before.
 **THE ORDINARY FOUR KEEP THEIR WEIGHTS.** Their shares at tiers 1 to 4 rise only by what the removed rarities held: at
 tier 1 with no magic find, Masterful is 1.06952% against 1.06873% before. Tiers 5 to 8 are unchanged.
 
-### Judgements of this change (not ruled; each can be reversed alone)
+### Three cases the ruling did not name, answered on 2026-11-24
 
-- **Gems follow the cap.** A gem's rarity is rolled by the same `RollRarity` as gear's (`SpawnGemsFor`, and
-  `roll_gem_drops_from_kill` in the simulation), so the cap holds for gems with no separate code. The ruling names gear;
-  exempting gems would need the cap moved off the shared weight.
-- **The High Roller's extra item is exactly Legendary at tiers 1 and 2.** Its node promises "an extra Legendary+ item",
-  and tier 1's cap is Masterful. `RollRarityAtLeast` gives the node's minimum and nothing rarer when the minimum is at or
-  above the cap; at tier 3 and up it rolls from Legendary to the cap. The alternative, Masterful at tier 1, breaks the
-  node's own sentence.
-- **Corrupted Stalker pieces are not rolled** and are not capped: a Stalker wears a written build whose affixes give it
-  Masterful at most, at the reference character's upgrade level.
+They were put to the coordinating session as judgements of this change; the answers are below.
+
+- **The High Roller's extra item is exactly Legendary at tiers 1 and 2. THE OWNER'S RULING of 2026-11-24, the chosen
+  option verbatim: "Exception: exactly Legendary (Recommended)".** Its node promises "an extra Legendary+ item", and tier
+  1's cap is Masterful. `RollRarityAtLeast` gives the node's minimum and nothing rarer when the minimum is at or above the
+  cap; at tier 3 and up it rolls from Legendary to the cap. The alternative, Masterful at tier 1, breaks the node's own
+  sentence.
+- **Gems follow the cap. Confirmed by the coordinating session, 2026-11-24.** A gem's rarity is rolled by the same
+  `RollRarity` as gear's (`SpawnGemsFor`, and `roll_gem_drops_from_kill` in the simulation), so the cap holds for gems
+  with no separate code. Exempting gems would need the cap moved off the shared weight.
+- **Corrupted Stalker pieces are not rolled and are not capped. Confirmed by the coordinating session, 2026-11-24.** A
+  Stalker wears a written build whose affixes give it Masterful at most, at the reference character's upgrade level.
 
 ### Tests
 
