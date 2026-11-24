@@ -3948,6 +3948,9 @@ EMPIRE_TREE_BUILT = {
     "Scaffolding": 6, "Rapid Renovation": 6, "Rapid Funding": 6,
     # Artisan: crafting materials already drop.
     "Scavenger": 5,
+    # The two dismantle nodes, issue #2848 slice S2, ruled by the coordinating session on 2026-11-22. Built outside
+    # #2741's slices, so the number is the issue's.
+    "Salvage Protocol": 2848, "Disassembly Expert": 2848,
 }
 
 #: EVERY NODE AND OPTION THAT CANNOT BE BOUGHT YET, by name, with the key of the
@@ -3979,10 +3982,10 @@ EMPIRE_TREE_REFUSED = {
     "Rough Draft": "crafting", "Tool Maintenance": "crafting",
     "Workshop Upgrades": "crafting", "Limited Knowledge": "crafting",
     "Apprentice Oversight": "crafting", "Industrial Speed": "crafting",
-    "Refining Techniques": "crafting", "Salvage Protocol": "crafting",
+    "Refining Techniques": "crafting",
     "Quality Materials": "crafting", "Forge Upgrades": "crafting",
     "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
-    "Disassembly Expert": "crafting", "Master Craftsman": "crafting",
+    "Master Craftsman": "crafting",
     "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
     "Expanded Station (Smith)": "crafting",
     "Expanded Station (Enchantress)": "crafting",
@@ -4234,6 +4237,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "PopulationRestoreIncrease", "EmpirePointsPerSpendingStep",
     # Slice 9: Economic Bailout, Bribery and Scout Parties.
     "CityBailout", "DungeonBribe", "BonusDungeonChance",
+    # Issue #2848, slice S2: a dismantle's drawn yields.
+    "DismantleMaterialsIncreased", "DismantleMaterialsIncreasedSuperbAndAbove",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4481,6 +4486,12 @@ EMPIRE_TREE_EFFECTS = {
     # city, always Basic, which threatens nothing and pays as any dungeon does
     # (V15 to V19). The rules are in C++ (`UCataclysmEmpireRun::AddBonusDungeon`).
     "Scout Parties": [("BonusDungeonChance", 0.10)],
+    # Issue #2848, slice S2, ruled 2026-11-22. SALVAGE PROTOCOL: "Dismantling items now yields 25% more crafting
+    # materials" at its 10 points, so 2.5% a point (N6). DISASSEMBLY EXPERT: "+20% crafting materials returned when
+    # dismantling Rare and above items", Rare read as Superb (O4); C++ applies it from Superb up. Both raise the drawn
+    # yields, fragments, Dust and base stones, and neither raises the refund of stones spent on upgrades.
+    "Salvage Protocol": [("DismantleMaterialsIncreased", 0.025)],
+    "Disassembly Expert": [("DismantleMaterialsIncreasedSuperbAndAbove", 0.20)],
 }
 
 

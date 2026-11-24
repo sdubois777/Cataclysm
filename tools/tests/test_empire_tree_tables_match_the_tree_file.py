@@ -277,7 +277,8 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
 
 
 def test_a_built_node_names_one_of_the_seven_slices_that_make_it_act() -> None:
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9}
+    # AND ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 2848}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -296,7 +297,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     Slice 9 (2026-11-22) built the 21 of the five the coordinating session ruled
     under the owner's delegation: Civic Pride's 10, which waited on a population
     growth rate, Scout Parties' 8 on bonus dungeons, Bribery's 1 and Economic
-    Bailout's 1 on a fee figure, and Reinvestment's 1 on a cap figure."""
+    Bailout's 1 on a fee figure, and Reinvestment's 1 on a cap figure. Issue
+    #2848's slice S2 (2026-11-22) built 11 of crafting's: Salvage Protocol's 10
+    and Disassembly Expert's 1, which waited on dismantling."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -312,9 +315,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
 
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
-        "slice 7": 17, "slice 9": 21,
+        "slice 7": 17, "slice 9": 21, "slice 2848": 11,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "crafting": 278, "loot chest": 8,
+        "crafting": 267, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }

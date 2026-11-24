@@ -4036,6 +4036,18 @@ Purified Essence halves what has already accumulated.
 
   
 
+**Dismantling a carried piece is not an operation of the table: it destroys the piece and adds nothing.** It is the stated source of Schematic Fragments and Dismantling Dust, at the Forge, instantly: no gold, no days, no residue and no material, by the owner's "No days" asked of selling and dismantling (issue #2848). A dismantle gives:
+
+- the socketed gems, back to the bag;
+- one upgrade stone of each level the piece was raised through, half of the two each level consumed. A piece records the gear level it arrived at, so a Legendary that dropped at +4 refunds nothing for those levels;
+- Schematic Fragments by rarity: 0.06 for Everyday to Masterful, then 0.1, 0.2, 0.4 and 0.8;
+- Dismantling Dust, 0.02 for each socket;
+- base upgrade stones by rarity, by the owner's wish that shattering drops should help farm stones: 0.025 to Masterful, then 0.05, 0.1, 0.2 and 0.4. Each is a material tier's stone, rolled as a material drop rolls one with the player's magic find, and held at the best stone the piece's own tier can drop.
+
+Each fractional yield gives its whole part and one more with the fraction's chance, drawn from the run's seed and the day. Salvage Protocol (2.5% a point) and Disassembly Expert (20% on Superb and above) raise the drawn yields and never the refund. A worn piece and the weapon made at creation are not dismantled.
+
+  
+
 **Ordering the table by CR is deliberate.** The cheapest operations are the ones a
 player repeats — rerolling a value costs 2 — and the ones that change what an item
 fundamentally is cost an order of magnitude more. Changing an enchantment's
@@ -4940,6 +4952,9 @@ The capital houses all NPC services. All services cost time, reinforcing the tim
 | Trainer | Respec class passive skill points, and respec the empire upgrade tree. Both cost days. |
 | Side Quests | Random missions for crafting materials, gear, and gold |
 | Stash | Shared storage. One stash per lethality mode per population, offline and online never sharing one. A Solo Self-Found character opens a private one of its own instead |
+| Merchant | Buys a carried piece of gear for gold. Costs no day |
+
+**The merchant buys a carried piece of gear for gold, and a sale costs no day**, the one service that does not cost time, by the owner's choice of 2026-11-22 ("No days"). A piece sells for a number of the tier's gold piles: Everyday 1/16, doubling a rarity rung to Cataclysmic 8, and 10% more for each upgrade level. Affixes and enchantments do not change the price. A worn piece is not sold; take it off first. Until the capital is built, the merchant's screen opens from the empire map's "Merchant" button, under the Forge's. Issue #48; `DECISIONS.md` carries the rulings and the simulation sweep the numbers were chosen on.
 
   
 

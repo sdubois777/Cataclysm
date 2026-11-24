@@ -2,6 +2,450 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The merchant buys a carried piece of gear for the tier's gold piles by rarity and upgrade level, at no day's cost, from a screen on the empire map (#48, slice S1)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/selling-48-s1`, cut from development
+`5ba9eb311`, by the coordinating session's instruction of 2026-11-22. It is windowed after lf-w1. Issue
+[#48](https://github.com/sdubois777/Cataclysm/issues/48); the Auto-Loot keystone's Auto-Seller applies it later
+(#2846, slice LF3).
+
+### The rulings, 2026-11-22
+
+From `.claude/windows/plan_selling_and_dismantling.md` in the sharp-meitner worktree, sections 5 and 6:
+
+| | Ruled | By |
+| :-- | :-- | :-- |
+| O1 | "Rarity and upgrade level (Recommended)": the price doubles a rarity rung, rises 10% an upgrade level, and is counted in the tier's gold pile; affixes and enchantments do not count | the owner |
+| O2 | "No days (Recommended)": a sale costs no day. **This departs from #48's "Every service costs time"** and from the design's "All services cost time"; the design's services table now names the merchant as the one that does not | the owner |
+| O5 | "Screen from the empire map (Recommended)" | the owner |
+| N1 | Everyday 0.0625 piles, Quality 0.125, Superb 0.25, Masterful 0.5, Legendary 1, Mythical 2, Ascendant 4, Cataclysmic 8 | the coordinating session, a judgement |
+| N2 | x (1 + 0.1 an upgrade level) | the coordinating session, a judgement |
+
+**The sweep N1 was ruled on** (`.claude/windows/sweep_sell_dismantle.py`). It uses the simulation's own drop model with
+the tier gate, magic find 100 and the rarity table's spawn mix, at floor 1. If every gear drop were sold, the sale adds
+**13% of a run's gold at tier 1, 27% at tier 4 and 39% at tier 8**. Deep in a dungeon it adds about half that, because a
+pile there is larger. **The rise across tiers is a known shape, to be tuned in play.** It comes from the owner's
+doubling and the tier gate: at tier 1, 89% of drops are Everyday or Quality; at tier 8, 74% are Superb or Masterful.
+An earlier table at twice N1 gave 25% to 78%, and the plan's first claim about it, "about a third", was wrong by the
+plan's own computation and corrected before ruling.
+
+**The genre research found no sell price** that could be read for Diablo IV, Last Epoch, Path of Exile 2 or
+Torchlight II. Path of Exile 1's vendor recipes pay for what an item carries, and Torchlight II's pet sells at the
+vendor's price with the Barter skill applied (the plan's section 1 has the sources). The price is this game's own
+judgement, anchored on its gold drops, and is labelled as one.
+
+### Judgements of this slice
+
+- **At least one gold, rounded half up**: an Everyday +0 piece at tier 1 is 0.625 gold, and a sale for nothing would
+  read as a refusal.
+- **The tier's pile with no floor's bonus** (the gold table's GoldPerPile through `GoldPileMean` at floor 1), as O1's
+  "the tier's gold pile size" reads. The tier is the empire run's, as the forge's gold is.
+- **The gold is banked first, and only then is the piece taken.** If the piece could not be taken, the gold is taken
+  back, so a sale is all or nothing.
+- **No debt is repaid from a sale.** Global Credit's "Debt repaid from next gold drops" names drops, and a sale is not
+  one.
+- **Only carried pieces are sold.** A worn piece is never listed and cannot be named, because the sale takes a cell of
+  the bag; a material, a gem, an empty cell and a cell outside the bag are refused.
+- **The screen asks first.** The first press of Sell says the price and asks; the second sells. Choosing another piece
+  cancels the question.
+- **The screen opens during a walk, to be read, and a sale there is refused** ("The merchant trades in the capital, not
+  during a walk."), the forge's rule.
+- **The bag is read only through the inventory component's functions** (`ItemAt`, `RemoveItemAt`, `SlotCount`), never
+  its slot array, as the coordinating session asked, so the inventory tabs being planned (#2849) have one place to
+  change.
+
+### What it does
+
+- **`UCataclysmMerchant`** (`game/Source/Cataclysm/Items/CataclysmMerchant.h`, `.cpp`): `SellValueOf`, `PileGoldAt`,
+  `SellValueAt`, `TierIn`, `CarriedPiecesOf`, `RefusalNow` and `Sell`.
+- **`FCataclysmPlayLoopLog::SoldLine`**: "sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held";
+  `docs/Play_Loop_Checklist.md` step 27 (23 on its own branch; window
+  sd-w1 numbered it after the steps already on its base).
+- **`UCataclysmMerchantWidget`** (`game/Source/Cataclysm/Interface/CataclysmMerchantWidget.h`, `.cpp`), the screen:
+  the gold held, a button per carried piece with its price, Sell and Close. Every click goes through `Press`.
+- **`WBP_Merchant`**, written by `make_merchant` in `tools/generate_interface_assets.py`.
+- **The empire map's "Merchant" button**, under the Forge's by the same gap the Forge's sits under the tree's
+  (`UCataclysmEmpireMapLayout::MerchantButtonPosition`). Before writing, a Python copy of the layout arithmetic checked it
+  against every city on the four panels the Forge button's test uses, and found no overlap.
+- **The controller** opens and closes the screen (`ToggleMerchant`) and counts it among the full screens.
+- **`docs/Cataclysm_GDD_v2.md`**: the merchant in the capital's services table, and a paragraph.
+- **No save record moves**: a sale takes an item from the bag and adds gold to a balance, both already saved.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.Merchant.`, 7 tests**, in `CataclysmMerchantTests.cpp`:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| M1 | `ThePriceDoublesByRarityAndRisesTenPercentALevel` | against 10 gold: Everyday +0 1, Superb +0 3 (2.5 half up), Masterful +0 5, Legendary +4 14, Cataclysmic +10 160; against 300: Everyday +0 19, Masterful +3 195; no rarity and no pile give nothing |
+| M2 | `ThePriceIsCountedInTheTiersGoldPile` | tier 1's pile 10, tier 8's 300; a Masterful +0 sells for 5 and 150 |
+| M3 | `ASaleBanksThePriceAndEmptiesTheCell` | only the carried piece is offered, not a worn helm or a material; a Masterful +3 sells for 7, 100 gold becomes 107, the cell is empty, no day passes; the empty cell and a cell outside the bag are refused and nothing more is paid |
+| M4 | `ASaleIsRefusedDuringAWalk` | in a walk the sale is refused with the walk sentence; the piece stays and no gold is paid |
+| M5 | `TheScreenListsCarriedPiecesAndAsksBeforeItSells` | Sell with nothing chosen says to choose first; the first Sell asks and sells nothing; choosing another piece cancels; two presses sell that piece alone; 5 gold held |
+| M6 | `TheMapButtonSitsUnderTheForgeButtonAndCoversNoCity` | the Forge button's test, one button lower: in its column, one button and gap under it, inside every panel, clear of all 25 cities on four panels, the forge's button, the tree's and the boss marker |
+| M7 | `TheMapButtonAsksForTheMerchantAndIsNoCity` | the button asks once for the merchant's screen and not the forge's; a city's button does not |
+
+**Python:**
+- `test_the_merchant_is_wired_in.py`, 4 checks: the sale pays before it takes and takes the gold back if the piece
+  cannot be taken; neither the merchant nor its screen reads the slot array; the price is the tier's pile at floor 1;
+  the map's button and the screen's Close call `ToggleMerchant`, and the controller counts the screen.
+- `test_the_merchant_screen_is_generated_with_its_bindings.py`, 3 checks, the Forge screen's.
+- `test_the_play_loop_is_logged_at_each_step.py` found the new line unquoted in the checklist before step 27 (23 on its own branch) was
+  written.
+- **`test_city_upgrades_cost_gold.py` failed on the first suite run, at `ea97e715f`** ("1 failed, 8169 passed, 10
+  skipped"): it lists every file that spends gold, and the merchant's take-back (`SpendGoldFor` when a paid-for
+  piece cannot be taken) is one. The list now names `CataclysmMerchant.cpp`, with that reason.
+- **M3 no longer sells a material's "cell"**, at the request of the session writing the inventory tabs (#2849):
+  under #2849 `AddMaterial` returns a bool and a material has no cell of the bag, so that assertion would have passed
+  by refusing an empty gear cell. M3's check that `CarriedPiecesOf` offers no material covers it before and after.
+
+**Python suite at `31fabc8a6`**: "8170 passed, 10 skipped in 417.97s"; JUnit 8180 tests, 0 failures, 0 errors, 10
+skipped; ruff "All checks passed!". **Python guard proofs, in a `git archive` copy of `ea97e715f`: 2 of 2
+PROVED**: SP1, the piece taken before the gold is paid, failed `test_a_sale_pays_before_it_takes_the_piece`; SP2,
+the merchant reading the slot array, failed `test_the_bag_is_read_only_through_the_inventory_components_functions`;
+each passed restored.
+
+### Registered for its window, after lf-w1
+
+**Counts are taken at the turn**, from the newest measured whole-suite log of the development the branch is rebased
+onto: the whole suite is that total + 7, with its skipped halves and test saves unchanged (no new test reports a skipped
+half or writes a save).
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| **Editor step** | `tools/generate_interface_assets.py`: commit only `WBP_Merchant.uasset`; every other screen is left alone when it exists |
+| Each group alone, first | `Cataclysm.Merchant.` 7; then, at their counts in the base log, `ForgeScreen.`, `EmpireScreen.`, `Forge.`, `ForgeCosts.`, `PlayLoop.`, `Inventory.` |
+| The whole suite | the base's total + 7, all succeeded |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, each narrowed to `Cataclysm.Merchant.` with its trailing dot. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| MP1 | `UpgradeStep` 0.0 | 7 performed, 5 succeeded, 2 failed: M1 (Legendary +4 14) and M3 (Masterful +3 7) |
+| MP2 | Cataclysmic's 8.0 piles read as 4.0 | 7, 6, 1: M1 |
+| MP3 | `PileGoldAt` reading tier 1 whatever the tier | 7, 6, 1: M2 |
+| MP4 | in `Sell`, `!Bag->RemoveItemAt(CarriedSlot)` read as `!true`, so the gold is paid and the piece stays | 7, 5, 2: M3 (the cell is empty) and M5 (the second piece is gone) |
+| MP5 | in `RefusalNow`, the walk never seen (`false &&`) | 7, 6, 1: M4 |
+| MP6 | in `Press`, the first Sell selling at once (`false && !bAsked`) | 7, 6, 1: M5 |
+| MP7 | `MerchantButtonPosition` at the Forge's own height | 7, 6, 1: M6 |
+| MP8 | the map's click not counted (`++MerchantRequests;` removed) | 7, 6, 1: M7 |
+
+### Added before sd-w1: two checks that catch a name the build would refuse, and two corrections
+
+By the coordinating session's request of 2026-11-22, after loot filter window lf-w1 lost two attempts to names: one the
+header tool refused, then one the compiler refused. Both checks are Python and need no build, so continuous integration,
+which compiles no C++, runs them on every pull request.
+
+- **`tools/tests/test_no_class_and_struct_share_an_engine_name.py`, new.** Unreal Header Tool names a reflected type by
+  its C++ name with the prefix taken off, so `UCataclysmFoo` or `ACataclysmFoo` and `FCataclysmFoo` are one engine name
+  and the build stops ("Class 'UCataclysmLootFilter' shares engine name 'CataclysmLootFilter' with struct
+  'FCataclysmLootFilter'", lf-w1's first attempt). It reads every `UCLASS` and `USTRUCT` declaration under
+  `game/Source` and refuses a name twice. It read 340 declarations against 340 macros in the tree. **Proof UF1, PROVED,**
+  in a `git archive` copy of `07e40686f`: `UCataclysmLootFilter` put back beside `FCataclysmLootFilter` failed it, and
+  restored it passed.
+- **`tools/tests/test_no_two_files_share_an_anonymous_helper.py`, extended to variables and types.** It read functions
+  only, and said so in its docstring. lf-w1's second attempt then stopped on a constant, `RarityCount`, in an anonymous
+  namespace in three files of one unity build (C2374). Two checks now read each anonymous namespace's own top-level
+  declarations -- a variable with an initializer, and a struct, class or enum -- and refuse the same name in two files
+  of one module. On `7249ca58e` it read 92 variables and 15 types and found exactly that one clash. **Proof AN1, PROVED,**
+  in a copy of `07e40686f`: `RarityCount` put back in `CataclysmLootFilterLayout.cpp` failed it, and restored it passed.
+- **Both pass on this branch and on development `4d33f5994` with this branch's merchant files added**: "7 passed".
+- **The merchant screen's anonymous helper `PieceName` is renamed `MerchantScreenPieceName`**, a name no other file uses,
+  for the same reason. Four lines in `CataclysmMerchantWidget.cpp`; no player-facing text changes.
+
+**Two corrections to the loot filter's LF2 entry (#2846), whose note on lf-w1's second attempt is wrong twice:**
+- **`Step` was not a clash.** In `CataclysmForgeCraft.cpp`, `Step` is a local variable inside a function, not an
+  anonymous-namespace helper; the search that named it matched any word inside the namespace's text. Renaming the loot
+  filter's own `Step` was harmless and not needed.
+- **The third `RarityCount` is in `CataclysmItem.cpp`, not `CataclysmDropRoll.cpp`**, as the measurement above found.
+
+---
+
+## 2026-11-22 — The forge dismantles a carried piece: instant and free, it gives back the gems and the stones the piece was raised with, and draws fragments, Dust and stones by rarity; Salvage Protocol and Disassembly Expert built (#2848, slice S2)
+
+**Said first:**
+
+- **WINDOW sd-w2 PASSED** on 2026-11-24, every registered figure matched and 20 of 20 guard proofs PROVED; its
+  section is the last of this entry.
+- **WINDOW sd-w1 FAILED 22 TESTS, ALL ON THIS SLICE'S TWO ITEM FIELDS**, added without a save version against
+  the rule of 2026-11-01. The run record went to 18 and the character record to 15 for the second attempt, sd-w2.
+  The last section of this entry has the measured figures, the ruling and what changed.
+- **NOT COMPILED, NOT RUN IN THE ENGINE** when written. Phase 1 on `feat/dismantling-2848`, cut from slice F5's head `416c70868` on
+  `feat/forge-residue-tools-47-f5b` (D1). It goes through F5's `DoItemCraft`, so it merges after F5's window, and its
+  own window comes after window lf-w1, together with slice S1 if both are ready.
+- **THE ROOM CHECK IS TEMPORARY.** Until issue #2849 lets a full bag refuse a material or gem without losing it, the
+  dismantle counts the new kinds it would bag and refuses before destroying anything (D4). It is one block in
+  `UCataclysmForgeCraft::Dismantle`, opening "REMOVE THIS BLOCK WHEN ISSUE #2849" and closing "END OF THE #2849
+  BLOCK".
+- **F5's base had two duplicated include lines**, the weapon skills include in `CataclysmForgeCraft.cpp` and the
+  `CataclysmDropRoll.h` include in `CataclysmForgeWidget.cpp`. This slice edits both files, so it removes the second copy
+  of each, as the coordinating session ruled.
+- **The DataTable assets are rebuilt in the window's asset step.** `EmpireTreeNodes.csv` and `EmpireTreeEffects.csv`
+  are regenerated here; `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` are not, so
+  `test_datatable_assets_are_current` fails until that step.
+
+### The rulings, the coordinating session, 2026-11-22
+
+From the plan of selling and dismantling, sections 6 to 8, and the rulings on this slice:
+
+- **D1.** Build on F5's head, against `DoItemCraft`'s shared path.
+- **D2.** A dismantle is instant: no gold, no days, no residue. The capital-only refusal and the two-press question
+  stay.
+- **D3.** The player's own magic find at the dismantle chooses the stone's material tier. **A judgement.** Auto-Shatter
+  passes the kill's later.
+- **D4.** Check for room for every new kind first, and refuse before destroying anything: "Make room in the bag
+  first". The check goes when #2849 lands.
+- **D5.** The whole part of a yield is always given, and the fraction as one more with that chance. The draw uses
+  `AffixCraftSeed` with the salt "DISM", the run's day and the item as it stood. The stone's tier and which stone are
+  drawn from the same stream.
+- **The yields.**
+
+  | Yield | Ruled |
+  | :-- | :-- |
+  | Schematic Fragments | 0.06 up to Masterful, then Legendary 0.1, Mythical 0.2, Ascendant 0.4, Cataclysmic 0.8 (N4) |
+  | Dismantling Dust | 0.02 a socket (N5) |
+  | Base upgrade stones | 0.025 up to Masterful, then 0.05, 0.1, 0.2, 0.4 (section 8) |
+  | Gems | every socketed gem, at its rarity |
+  | Refund | one upgrade stone of each level the piece was raised through after it arrived |
+
+- **Salvage Protocol** raises the drawn yields 2.5% a point (N6). **Disassembly Expert** raises them 20% on Superb and
+  above (N7, O4). Neither raises the refund. The fields and the nodes were accepted as proposed, with the asset step
+  for `DT_EmpireTreeNodes`.
+
+**Judgements of this session, all four accepted by the coordinating session on 2026-11-22:**
+
+- **The weapon made at creation is refused**, in the rule and on the screen: "The weapon made at creation is the
+  character's own; the forge does not dismantle it." It cost nothing, so dismantling it would mint fragments and a
+  stone from nothing.
+- **A worn piece is not offered**, and the rule refuses one: "Take the piece off before dismantling it."
+- **The two nodes' increases add**, `1 + Salvage + Disassembly`, as the tree's other increases do.
+- **A piece records where it arrived**, `GearLevelAtDrop` and `TierAtDrop`, so the refund counts only the levels the
+  player paid for. A piece saved before this slice reads -1 and refunds from its rarity's gate. The seed text adds
+  `;AtDrop=level:tier` only when they are not the defaults, so no pinned forge draw moves.
+
+### What it does
+
+- **`UCataclysmForge::DismantleOf`** plans it: refusals, the rarity, the increase, the three expected yields, the refund
+  from `GearLevelAtDrop` (or the rarity's gate) + 1 up to `GearLevel`, and the gems. `DrawDismantle` draws the three
+  yields, the stone's material tier from magic find and each stone held at the piece's tier's cap
+  (`MaxUpgradeStoneOnADrop`).
+- **`UCataclysmForgeCraft::Dismantle`** runs it through `DoItemCraft` with no gold and no days. The draw happens in the
+  change, from the item as it stood; the room check, the removal of the piece and the adds happen after the change,
+  and any failure puts everything back.
+- **The screen** has a "Dismantle this piece (it is destroyed)" button for a carried piece it can take, and asks
+  before acting. The play log writes "dismantled X into Y; no gold and no days, day N". Checklist step 26 says what to
+  see.
+- **The design document** has a dismantling paragraph after the forge's operations table.
+
+### Tests
+
+**A new Unreal group, `Cataclysm.Dismantle.`, 10 tests**, in `CataclysmDismantleTests.cpp`, scene `FDismantleScene`.
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| DM1 | `ADismantleGivesTheGemsTheRefundAndChancesByRarityAndRefusesWhatItCannot` | the plan's yields by rarity, the refund from where the piece arrived, the gems, the question, the refusals |
+| DM2 | `SalvageProtocolAndDisassemblyExpertRaiseTheDrawnYieldsAndNeverTheRefund` | the increase on Masterful, Superb and Quality (Salvage Protocol only); a Masterful helm's three drawn yields x 1.45; the refund unchanged |
+| DM3 | `AFractionalYieldGivesItsWholePartAndOneMoreWithItsChance` | over 4,000 seeds, 2.0 always 2, 0 always 0, and 1.25 only 1 or 2, 2 about a quarter of the time |
+| DM4 | `ABaseStoneIsAMaterialTiersStoneHeldAtThePiecesTierCap` | one base stone on 2,000 seeds: at tier 1 every stone +1 to +3; at tier 8 higher ones come too |
+| DM5 | `TheCraftDestroysTheCarriedPieceAndBagsWhatItGaveForNothing` | the piece gone, the gem and stones bagged, no gold, no days |
+| DM6 | `AFullBagIsRefusedBeforeAnythingIsDestroyed` | "Make room in the bag first.", the piece kept |
+| DM7 | `ADropRecordsTheGearLevelAndTierItArrivedAt` | drops at tier 1 and 8 |
+| DM8 | `TheTwoArtisanNodesAddUpToTheirTexts` | the two nodes' bonuses |
+| DM9 | `TheSeedTextAddsWhereAPieceArrivedOnlyWhenKnown` | the defaults add nothing |
+| DM10 | `TheScreenOffersADismantleOnlyForACarriedPieceItCanTake` | no button for a worn piece or the weapon made at creation |
+
+**Python**: `tools/tests/test_dismantling.py`, 5 shape checks. Three empire tree checks moved with the two nodes:
+`test_empire_tree_effects_match_their_texts.py` (the total at full points, now 117), and
+`test_empire_tree_tables_match_the_tree_file.py` (the built slices, crafting 267, "slice 2848": 11). The play-log
+check gains the dismantle step.
+
+**Python suite at `a7ea1af44`**: "3 failed, 8175 passed, 9 skipped"; JUnit 8187 tests, 3 failures, 0 errors, 9 skipped; ruff "All checks passed!".
+The three failures:
+
+- `test_every_csv_still_hashes_to_what_was_recorded`: the two regenerated empire tree CSVs. Expected; the window's
+  asset step rebuilds their assets.
+- `test_every_pinned_count_matches_the_csv`: `EmpireTreeEffects.csv` has 123 rows, the Unreal check pinned 121. **Not
+  foreseen.** The pin in `CataclysmDataTableTests.cpp` is moved to 123 with its history, in the commit after
+  `a7ea1af44`.
+- `test_no_other_function_pays_takes_puts_back_or_passes_days`: `Dismantle` calls `RemoveMaterial(`. **Not foreseen.**
+  It removes only fragments, Dust and stones it has just added, when a later add fails and it puts everything back;
+  it takes nothing the player paid with. The coordinating session accepted the exception narrowly on 2026-11-22: the
+  check now cuts `Dismantle`'s put-back lambda, `PutEverythingBack`, out of its body before reading the calls, so a
+  `RemoveMaterial(` anywhere else in `Dismantle` still fails it. Proved in a `git archive` copy
+  (`.claude/windows/prove_s2_narrow.py`): a removal placed before the piece is taken failed
+  `test_no_other_function_pays_takes_puts_back_or_passes_days` (1 failed, 7 passed) and passed restored (8 passed).
+
+After those two edits the three files concerned (`test_every_item_craft_goes_through_one_sequence.py`,
+`test_unreal_pinned_row_counts.py`, `test_dismantling.py`) gave "16 passed". The whole suite was not run again.
+
+**Python guard proofs, in a `git archive` copy of `a7ea1af44`, through `tools/prove_guard.break_and_run`
+(`.claude/windows/prove_s2_python.py`): 6 of 6 PROVED.**
+
+| Proof | Break |
+| :-- | :-- |
+| PD1 | the ordinary fragment yield 0.07 |
+| PD2 | the refund raised by the nodes |
+| PD3 | the dismantle charges a day |
+| PD4 | the piece removed before the room check |
+| PD5 | a drop records no tier |
+| PD6 | Disassembly Expert left refused |
+
+### Registered for the window
+
+The base is development after window lf-w1 (and S1 if it shares the window). This slice adds 10 test names and removes
+none. **The whole suite is registered as the base's last measured total plus 10.** Each group below is registered at
+its count in the base's newest engine log, re-taken there.
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the slice compiled |
+| Asset step | `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` rebuilt from the regenerated CSVs; `test_datatable_assets_are_current` passes after it |
+| Each group alone, first | `Cataclysm.Dismantle.` 10; then `Forge.`, `ForgeScreen.`, `ForgeSockets.`, `ForgeGems.`, `ForgeCosts.`, `ForgeAffixes.`, `ForgeAffixChange.`, `ForgeEnchantments.`, `ForgeDamageTypes.`, `ForgeResidueTools.` (5), every `EmpireTree` group, `Data.` (the empire tree effects pinned at 123), `Drop.`, `Creation.`, `Inventory.`, `SaveLoad.`, `SaveRecords.`, `PlayLoop.`, each performed and succeeded at exactly its count |
+| The whole suite | the base's total plus 10, all succeeded, 0 failed; the base's skipped halves; its saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**C++ guard proofs, one per new test, each narrowed to `Cataclysm.Dismantle.` with its trailing dot
+(`.claude/windows/prove_s2_table.py.txt`). Every anchor matches once on `a7ea1af44`. Predicted, not run:**
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| DP1 | the ordinary fragment yield 0.07 | 10 performed, 8 succeeded, 2 failed: DM1, DM2 |
+| DP2 | the refund from +0, ignoring where the piece arrived | 10, 9, 1: DM1 |
+| DP3 | no fraction ever given | 10, 9, 1: DM3 |
+| DP4 | a base stone not held at the tier's cap | 10, 9, 1: DM4 |
+| DP5 | the piece never removed | 10, 9, 1: DM5 |
+| DP6 | no room check | 10, 9, 1: DM6 |
+| DP7 | a drop records tier 1 at every tier | 10, 9, 1: DM7 |
+| DP8 | Salvage Protocol adds nothing | 10, 9, 1: DM8 |
+| DP9 | the seed text always adds the arrival | 10, 9, 1: DM9 |
+| DP10 | the screen offers a worn piece a dismantle | 10, 9, 1: DM10 |
+
+### Window sd-w1 failed on the two new fields, and the records took a version (2026-11-24)
+
+**Window sd-w1** ran this slice with #48 slice S1 on development `4d33f5994` (after lf-w1), branch `feat/sd-w1`,
+tested head `4b375d5c1` (`d4834cb8a` and the editor step's asset commit). Measured:
+
+| Step | Result |
+| :-- | :-- |
+| Build | Succeeded, 60 actions, 53 files compiled |
+| Editor step | exactly `DT_EmpireTreeNodes`, `DT_EmpireTreeEffects`, `WBP_Merchant` and `datatable_asset_sources.json`, committed as `4b375d5c1`; no other asset re-saved |
+| 39 groups alone | 33 passed; 6 failed: `SaveLoad.` (81, 1 failed), `SaveRecords.` (17, 2), `EmpireTree.` (24, 1), `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.` |
+| Whole suite | 5339 performed, 5317 succeeded, 22 failed; 57 skipped halves; 861 test saves written and deleted, 0 left behind |
+| Python, beside it | "8231 passed, 10 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 10 skipped; ruff clean |
+| Proofs | none run: the window runs them only after every count passed |
+
+**ALL 22 FAILURES HAD ONE CAUSE, this slice's.** Each is a test comparing a migrated or committed save file with the
+record field by field, and each named `GearLevelAtDrop` (and `TierAtDrop`) as on one side only, for example
+"the record.Floor.GroundItems[0].Item.GearLevelAtDrop is on the second side only". The two item fields were added
+without a schema version, on `docs/Save_System_Design.md`'s sentence "Adding a field with a sensible default is not a
+version bump". That sentence predates the rule `game/Tests/SaveFixtures/README.md` records:
+
+> "From issue #1472 on, a field added to a record takes a version."
+
+ruled 2026-11-01, once the game could load a save (#753). `EveryFixtureHoldsEveryFieldItsRecordWrites` enforces it.
+
+**THE RULING, the coordinating session, 2026-11-24.** It first ruled a test-side default only, then withdrew that when
+told of the README's rule, and ruled (b): the run record 17 to 18 and the character record 14 to 15, each with a step
+writing `GearLevelAtDrop` -1 and `TierAtDrop` 0, new committed files at the new versions with the two fields at
+values that are not the defaults, the test helpers, README entries in the form of `DifficultyTier`'s, and
+`docs/Save_System_Design.md`'s paragraph corrected to state the 2026-11-01 rule and point to the README, in the same
+change. This slice merges first, so it takes character 15 and run 18; #2849, which also moves the character record,
+renumbers to 16 on its rebase.
+
+**WHAT CHANGED for the second attempt, sd-w2:**
+
+- `CataclysmSaveRecords.cpp`: `CataclysmSaveArrival::WriteWhereEachItemArrived` finds every item by walking the record
+  for an object holding both `GearLevel` and `bMadeAtCreation`, and writes -1 and 0 where a field is missing (a number
+  already there is kept; anything else is refused). The character record's `Migrate_14_to_15` and the run record's
+  `Migrate_17_to_18` call it. `SchemaVersionNow` is 15 and 18, each version's comment saying why.
+- **The account record does not move**: its `Stash` holds the same slot, but nothing fills that stash, so no account
+  file holds an item -- the reason the gems step (#46) gave for leaving it.
+- `Character_v15.json` and `Run_v18.json`: the previous files at the new versions with the two fields on every item
+  (the carried Circlet +4 at tier 2, the ground Circlet +0 at tier 4, the creation greatsword +0 at tier 2, the worn
+  ring +3 at tier 1, and -1 and 0 on the empty slot and the gold pile). The previous files are migration inputs now.
+- `CataclysmSaveFixtures.h`: `AddTheCharactersVersion15Defaults` and `AddTheRunsVersion18Defaults`, added after each
+  test's existing chain (21 places), and every test that read `Run_v17.json` or `Character_v14.json` as the committed
+  file reads the new one, its history comment kept.
+- Two new tests, `Cataclysm.Dismantle.` 12 now:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| DM11 | `ACharacterFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` | `Character_v14.json` migrates, each carried item -1:0, every other field kept; CONTROL `Character_v15.json` read, its Circlet 4:2 |
+| DM12 | `ARunFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` | `Run_v17.json` migrates, each ground item -1:0, every other field kept; CONTROL `Run_v18.json` read, its Circlet 0:4 |
+
+- `game/Tests/SaveFixtures/README.md`: the version step's entry and the two files' rows. `docs/Save_System_Design.md`:
+  the paragraph corrected. `tools/tests/test_empire_tree_on_the_account_record.py` reads `Character_v15.json`.
+- Python, on the change before the window: "8232 passed, 9 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!"..
+
+### Registered for window sd-w2
+
+The base is development `4d33f5994`, unchanged; the base log is lf-w1's (5322 performed, 57 skipped halves, 861 test
+saves). **The whole suite is registered as 5341**: the base's 5322, S1's 7 and this slice's 12, and sd-w1's measured
+5339 plus DM11 and DM12. Skipped halves 57 and test saves 861, as measured in sd-w1 (no new test reports a skipped
+half or writes a save).
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the change compiled |
+| No editor step | the assets were committed in sd-w1 (`4b375d5c1`), and no CSV changes |
+| Each group alone, first | `Dismantle.` 12 and `Merchant.` 7; every group with a test that failed in sd-w1 (`SaveLoad.`, `SaveRecords.`, `EmpireTree.`, `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `CataclysmDraw.`, `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `ConsumptionMark.`, `DeathCost.`, `EarnedBossSave.`, `GemSave.`, `Gold.`, `SkillLevels.`, `Travel.`, `WalkSeed.`, `WinningTheRun.`); and the save groups whose files this change edits (`CityCleanseSave.`, `EmpireTreeCredit.`, `EmpireTreeNineSaves.`, `EmpireTreeProwess.`, `Seeding.`, `ThrallSave.`) -- each at its count in the base log, all passing |
+| The whole suite | 5341, all succeeded, 0 failed; 57 skipped halves; 861 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**The 33 groups that passed alone in sd-w1 and are not listed above are not run alone again**: this change edits save
+code and save tests only, and the whole suite runs every one of their tests. A judgement, stated as one.
+
+**C++ guard proofs**, narrowed to `Cataclysm.Dismantle.` (12) or `Cataclysm.Merchant.` (7): DP1 to DP10 and MP1 to
+MP8 as registered for sd-w1 (each DP now predicting 12 performed and two more succeeded), and:
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| DP11 | in `CataclysmSaveArrival`, a missing `GearLevelAtDrop` written as 0, not -1 | 12 performed, 10 succeeded, 2 failed: DM11, DM12 |
+| DP12 | the run record's chain without `Migrate_17_to_18` | 12, 11, 1: DM12 (`Run_v17.json` is refused) |
+
+### Window sd-w2 passed (2026-11-24)
+
+Window sd-w2 ran this slice and #48 slice S1 on development `4d33f5994`, branch `feat/sd-w1`, tested head `45a0138d9`
+(sd-w1's head `4b375d5c1` and the save version step). Every registered figure matched:
+
+| Step | Measured |
+| :-- | :-- |
+| Build | Succeeded, 52 actions, 49 files compiled |
+| Editor step | none; the assets committed in sd-w1 |
+| 26 groups alone | all passed at their registered counts, 293 tests: `Dismantle.` 12, `Merchant.` 7, `SaveLoad.` 81, `SaveRecords.` 17, `EmpireTree.` 24, and the 21 other save groups |
+| Whole suite | 5341 performed, 5341 succeeded, 0 failed; 57 skipped halves; 861 test saves written and deleted, 0 left behind |
+| Python, beside it | "8231 passed, 10 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Guard proofs | 20 of 20 PROVED, each failing exactly the tests predicted with the break in and passing restored |
+
+The proofs, each narrowed to its group with the trailing dot:
+
+| Proof | Failed with the break in |
+| :-- | :-- |
+| DP1 | DM1 `ADismantleGivesTheGemsTheRefundAndChancesByRarityAndRefusesWhatItCannot`, DM2 `SalvageProtocolAndDisassemblyExpertRaiseTheDrawnYieldsAndNeverTheRefund` |
+| DP2 | DM1 |
+| DP3 | DM3 `AFractionalYieldGivesItsWholePartAndOneMoreWithItsChance` |
+| DP4 | DM4 `ABaseStoneIsAMaterialTiersStoneHeldAtThePiecesTierCap` |
+| DP5 | DM5 `TheCraftDestroysTheCarriedPieceAndBagsWhatItGaveForNothing` |
+| DP6 | DM6 `AFullBagIsRefusedBeforeAnythingIsDestroyed` |
+| DP7 | DM7 `ADropRecordsTheGearLevelAndTierItArrivedAt` |
+| DP8 | DM8 `TheTwoArtisanNodesAddUpToTheirTexts` |
+| DP9 | DM9 `TheSeedTextAddsWhereAPieceArrivedOnlyWhenKnown` |
+| DP10 | DM10 `TheScreenOffersADismantleOnlyForACarriedPieceItCanTake` |
+| DP11 | DM11 `ACharacterFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown`, DM12 `ARunFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` |
+| DP12 | DM12 |
+| MP1 | `ASaleBanksThePriceAndEmptiesTheCell`, `ThePriceDoublesByRarityAndRisesTenPercentALevel` |
+| MP2 | `ThePriceDoublesByRarityAndRisesTenPercentALevel` |
+| MP3 | `ThePriceIsCountedInTheTiersGoldPile` |
+| MP4 | `ASaleBanksThePriceAndEmptiesTheCell`, `TheScreenListsCarriedPiecesAndAsksBeforeItSells` |
+| MP5 | `ASaleIsRefusedDuringAWalk` |
+| MP6 | `TheScreenListsCarriedPiecesAndAsksBeforeItSells` |
+| MP7 | `TheMapButtonSitsUnderTheForgeButtonAndCoversNoCity` |
+| MP8 | `TheMapButtonAsksForTheMerchantAndIsNoCity` |
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

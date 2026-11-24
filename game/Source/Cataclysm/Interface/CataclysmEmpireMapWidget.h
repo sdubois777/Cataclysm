@@ -178,6 +178,12 @@ public:
 	/** How many times the "Forge" button has asked for the forge's screen, for `EmpireTreeRequestCount`'s reason. */
 	int32 ForgeRequestCount() const { return ForgeRequests; }
 
+	/** Presses the "Merchant" button, through the handler the button calls. Issue #48, slice S1. */
+	void ClickMerchantForTests();
+
+	/** How many times the "Merchant" button has asked for the merchant's screen, for the same reason. */
+	int32 MerchantRequestCount() const { return MerchantRequests; }
+
 protected:
 	/**
 	 * Where the cities are drawn: one box per city, placed by lattice
@@ -303,6 +309,16 @@ private:
 
 	/** See `ForgeRequestCount`. */
 	int32 ForgeRequests = 0;
+
+	/** The "Merchant" button under the forge's, made with the cities. Issue #48, slice S1. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> MerchantButton;
+
+	/** Places and labels the "Merchant" button. */
+	void PlaceMerchantButton(float Scale, FVector2D PanelSize);
+
+	/** See `MerchantRequestCount`. */
+	int32 MerchantRequests = 0;
 
 	/** The level's dungeon game mode, or the one a test supplied, or null. */
 	ACataclysmDungeonGameMode* DungeonMode() const;

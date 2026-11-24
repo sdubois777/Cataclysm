@@ -304,6 +304,13 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 									int32 Days, int32 DayFrom, int32 DayTo);
 
 	/**
+	 * A carried piece dismantled at the forge, instantly: "dismantled Masterful Helm of Warding into 1 Schematic Fragment,
+	 * 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb); no gold and no days, day 20". Issue #2848, slice S2. Said by
+	 * `UCataclysmForgeCraft::Dismantle`, after the piece left the bag and what it gave joined it.
+	 */
+	static FString ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day);
+
+	/**
 	 * A weapon's damage type infused or changed at the forge: "infused Quality Sword with Death, drawn, for 450 gold;
 	 * residue 40 to 50; it cost 1 day, day 20 to day 21", "infused Quality Sword with Death, chosen, for 2,250 gold;
 	 * ...", or "changed War on Quality Sword to Death for 450 gold; ...". Issue #47, slice F4. Said by
@@ -338,6 +345,12 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	 * @param ItemName  the name the floor showed for it, `ACataclysmDroppedItem::DisplayName`
 	 */
 	static FString PickedUpLine(const FString& ItemName, int32 GearLevel);
+
+	/**
+	 * A carried piece sold to the merchant: "sold Quality Torc of Warding, +2, for 15 gold; 1,234 gold held". Issue #48,
+	 * slice S1. Said by `UCataclysmMerchant::Sell`, after the gold is banked and the piece taken.
+	 */
+	static FString SoldLine(const FString& ItemName, int32 GearLevel, int64 Gold, int64 Held);
 
 	/**
 	 * The basic attack's hits for the gear a character wears: the plain one and one on each of the run's families,

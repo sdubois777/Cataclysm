@@ -678,6 +678,25 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString ForgeButtonBrief();
 
+	/**
+	 * Where the "Merchant" button's centre sits: under the "Forge" button, by the same gap the forge's sits under the
+	 * tree's. Issue #48, slice S1. `Cataclysm.Merchant.TheMapButtonSitsUnderTheForgeButtonAndCoversNoCity` checks it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D MerchantButtonPosition(float Scale, FVector2D PanelSize);
+
+	/** How big the "Merchant" button is drawn: the forge's size. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FVector2D MerchantButtonSize(float Scale);
+
+	/** What the button says: "Merchant". */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString MerchantButtonText();
+
+	/** What the line under the map says when the cursor is on the button. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
+	static FString MerchantButtonBrief();
+
 	// ----------------------------------------------------------------------
 	// The win of the run before this one -- issue #1324 slice 6e
 	// ----------------------------------------------------------------------

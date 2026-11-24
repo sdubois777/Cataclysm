@@ -381,6 +381,31 @@ public:
 		TFunctionRef<void(const FString& ItemName, int32 DayFrom, int32 DayTo)> SayTheLine,
 		const FCataclysmForgeCraftHooks& Hooks, FString& OutMessage);
 
+	//~ Dismantling a carried piece. Issue #2848, slice S2.
+
+	/**
+	 * What dismantling the item at a target would give now, before the draw: `UCataclysmForge::DismantleOf` with the
+	 * empire tree's Salvage Protocol and Disassembly Expert. REFUSED for a worn piece: only a carried piece is dismantled
+	 * ("Take the piece off before dismantling it.").
+	 */
+	static FCataclysmForgeDismantle DismantlePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * Dismantle the carried piece at a target, through `DoItemCraft`, instantly (D2): no gold, no days, no residue, no
+	 * material. Its yield is drawn from the item as it stood and the run's day, on `AffixCraftSeed` with
+	 * `UCataclysmForge::DismantleSalt` (D5), with the player's own magic find (D3); then the piece leaves the bag and the
+	 * fragments, the Dust, the upgrade stones and the gems join it. A bag with no room for a kind it gives back refuses
+	 * first, "Make room in the bag first.", destroying nothing (D4). `OutDone` holds what was drawn.
+	 */
+	static ECataclysmForgeResult Dismantle(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										   FCataclysmForgeDismantle& OutDone, FString& OutMessage);
+
+	/**
+	 * The new kinds of material and gem `Done` would give that the bag holds no stack of: each needs a free slot of its
+	 * own until issue #2849 moves materials and gems to stores that never refuse.
+	 */
+	static int32 NewKindsADismantleNeeds(const UCataclysmInventoryComponent& Inventory, const FCataclysmForgeDismantle& Done);
+
 private:
 	/**
 	 * THE ONE PLACE A CRAFT'S MATERIALS ARE TAKEN, material by material, recording what was taken so a failure gives back

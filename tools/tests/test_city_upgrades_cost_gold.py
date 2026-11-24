@@ -247,12 +247,15 @@ def test_one_function_charges_and_takes_the_gold_before_the_run_records_the_upgr
     # 2026-11-21); `tools/tests/test_the_forge_charges_the_sheets_costs.py` holds its order -- pay first, give back on
     # every later failure. AND BRIBERY'S FEE SINCE ISSUE #2741 SLICE 9, a fee and not an upgrade's price:
     # `FCataclysmDungeonBribe::Bribe` is the one place that charges it (`tools/tests/test_empire_tree_slice9.py`);
-    # Economic Bailout's fee is paid in `CataclysmGameInstance.cpp`, which this leaves out. Anything else that spends
-    # gold is new and needs the same.
-    assert charging == ["Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "Cataclysm/Player/CataclysmDungeonBribe.cpp",
-                        "Cataclysm/Player/CataclysmForgeCraft.cpp"], (
-        f"gold is spent in {charging}; a city upgrade's purchase, a bribe and the forge's crafts are the places that "
-        "charge")
+    # Economic Bailout's fee is paid in `CataclysmGameInstance.cpp`, which this leaves out. AND THE MERCHANT SINCE
+    # ISSUE #48 SLICE S1, which charges nothing: `UCataclysmMerchant::Sell` pays the player and takes that same gold
+    # back only when the piece then cannot be taken, so a sale is all or nothing
+    # (`tools/tests/test_the_merchant_is_wired_in.py` holds the order). Anything else that spends gold is new and needs
+    # the same.
+    assert charging == ["Cataclysm/Items/CataclysmMerchant.cpp", "Cataclysm/Player/CataclysmCityUpgradePurchase.cpp",
+                        "Cataclysm/Player/CataclysmDungeonBribe.cpp", "Cataclysm/Player/CataclysmForgeCraft.cpp"], (
+        f"gold is spent in {charging}; a city upgrade's purchase, a bribe, the forge's crafts and the merchant's "
+        "take-back are the places that spend it")
     # `Buy` AND, SINCE ISSUE #1265, `Raise` CHARGE THROUGH ONE BODY, `PayAndBuild`, so both are held here.
     buy = body("Cataclysm/Player/CataclysmCityUpgradePurchase.cpp", "ECataclysmCityUpgradeResult PayAndBuild(")
     # THE CREDIT COUNTS AS GOLD HELD for both of the run's questions since issue #2741 slice 6e (D2).

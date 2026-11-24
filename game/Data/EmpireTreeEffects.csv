@@ -120,3 +120,5 @@ keystone_00000044#1,keystone_00000044,0,EmpirePointsPerSpendingStep,0.01,0,,0.3
 keystone_00000047#1,keystone_00000047,0,CityBailout,1.0,0,,0.0
 keystone_00000042#1,keystone_00000042,0,DungeonBribe,1.0,0,,0.0
 basic_expl_t2e#1,basic_expl_t2e,0,BonusDungeonChance,0.1,0,,0.0
+basic_00000055#1,basic_00000055,0,DismantleMaterialsIncreased,0.025,0,,0.0
+keystone_00000056#1,keystone_00000056,0,DismantleMaterialsIncreasedSuperbAndAbove,0.2,0,,0.0

@@ -2773,6 +2773,9 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 	// AND MARKED AS THE CREATION WEAPON, so a later change of only the damage
 	// type finds it and no other weapon (Q-L1).
 	Chosen.bMadeAtCreation = true;
+	// ARRIVED AT +0, at the tier in play (#2848, slice S2).
+	Chosen.GearLevelAtDrop = 0;
+	Chosen.TierAtDrop = ACataclysmGameMode::DifficultyTierIn(GetWorld());
 
 	int32 WeaponsWorn = 0;
 	for (const ECataclysmGearSlot WeaponSlot : UCataclysmGearSlots::WeaponSlots())
@@ -2888,6 +2891,9 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 									: UCataclysmCharacterCreation::DefaultDamageType};
 	// AND MARKED AS THE CREATION WEAPON (Q-L1). See `FCataclysmItem::bMadeAtCreation`.
 	Starting.bMadeAtCreation = true;
+	// ARRIVED AT +0, at the tier in play (#2848, slice S2).
+	Starting.GearLevelAtDrop = 0;
+	Starting.TierAtDrop = ACataclysmGameMode::DifficultyTierIn(GetWorld());
 
 	FCataclysmItem CameOff;
 	FCataclysmItem AlsoCameOff;

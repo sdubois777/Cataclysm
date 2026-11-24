@@ -16,7 +16,6 @@
 // A gold amount as a player reads it, issue #2830.
 #include "Items/CataclysmDroppedItem.h"
 // The affix table, for the affixes a piece can take, issue #47 slice F2.
-#include "Items/CataclysmDropRoll.h"
 // A gem's name in the screen's message, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -123,6 +122,13 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		Options.TaintedShards = FMath::Clamp(Options.TaintedShards, 0, ShardsHeldNow);
 		Options.bChaosStabilizer = Options.bChaosStabilizer && Stabilizers > 0;
 		ShownOptionActions = UCataclysmForgeLayout::OptionActionsFor(*Item, Options, Stabilizers, ShardsHeldNow, Essences);
+		// AND, FOR A CARRIED PIECE, THE DISMANTLE. Issue #2848, slice S2.
+		ShownDismantleActions.Reset();
+		const FString Dismantle = UCataclysmForgeLayout::DismantleLabelFor(*Item, ChosenTarget.bWorn);
+		if (!Dismantle.IsEmpty())
+		{
+			ShownDismantleActions.Add({UCataclysmForgeLayout::DismantleButtonName(), Dismantle});
+		}
 	}
 	else
 	{
@@ -136,6 +142,7 @@ void UCataclysmForgeWidget::RefreshDisplay()
 		AddableAffixes.Reset();
 		ShownDamageTypeActions.Reset();
 		ShownOptionActions.Reset();
+		ShownDismantleActions.Reset();
 	}
 
 	BuildPieceButtons();
@@ -219,6 +226,18 @@ void UCataclysmForgeWidget::BuildActionButtons()
 								 /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
 			AffixWork->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
 			ActionBox->AddChild(AffixWork);
+		}
+	}
+
+	// THE DISMANTLE, two presses. Issue #2848, slice S2.
+	for (const FCataclysmForgeOptionAction& Action : ShownDismantleActions)
+	{
+		if (UCataclysmChoiceButton* Button = CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+		{
+			Button->SetChoice(Action.ButtonName, FText::FromString(Action.Label),
+							  /*bChosen*/ Action.ButtonName == PendingSocketAction, /*bAvailable*/ true);
+			Button->OnChoiceClicked.AddDynamic(this, &UCataclysmForgeWidget::HandleActionClicked);
+			ActionBox->AddChild(Button);
 		}
 	}
 
@@ -702,6 +721,48 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		else
 		{
 			Options.TaintedShards = (FMath::Max(0, Options.TaintedShards) + 1) % (FMath::Max(0, ShardsHeldNow) + 1);
+		}
+		RefreshDisplay();
+		return;
+	}
+
+	// THE DISMANTLE, ASKED ON ITS FIRST PRESS AND DONE ON ITS SECOND: the piece is destroyed. Issue #2848, slice S2.
+	if (bHasChosen && ButtonName == UCataclysmForgeLayout::DismantleButtonName())
+	{
+		const bool bSecondPress = PendingSocketAction == ButtonName;
+		CancelThePendingUpgrade();
+		FString Refusal = UCataclysmForgeCraft::RefusalNow(Context());
+		const FCataclysmForgeDismantle Plan = UCataclysmForgeCraft::DismantlePlanFor(Context(), ChosenTarget);
+		if (Refusal.IsEmpty() && !Plan.bPossible)
+		{
+			Refusal = Plan.Refusal;
+		}
+		if (!Refusal.IsEmpty())
+		{
+			Message = Refusal;
+			RefreshDisplay();
+			return;
+		}
+		if (!bSecondPress)
+		{
+			const ACataclysmPlayerCharacter* Character = UCataclysmForgeCraft::CharacterIn(Context());
+			const FCataclysmItem* Item = Character ? UCataclysmForgeCraft::ItemAt(*Character, ChosenTarget) : nullptr;
+			PendingSocketAction = ButtonName;
+			Message = UCataclysmForge::DismantleQuestion(
+				Plan, Item != nullptr ? UCataclysmForge::NameOf(*Item, UCataclysmItemModifiers::LoadBaseTable(),
+																 UCataclysmDropRoll::LoadAffixTable())
+									  : FString(TEXT("this piece")));
+			RefreshDisplay();
+			return;
+		}
+		FCataclysmForgeDismantle Done;
+		FString Said;
+		const bool bDone = UCataclysmForgeCraft::Dismantle(Context(), ChosenTarget, Done, Said) == ECataclysmForgeResult::Done;
+		Message = bDone ? FString::Printf(TEXT("Dismantled. It gave %s."), *UCataclysmForge::DismantleGiven(Done)) : Said;
+		if (bDone)
+		{
+			// THE PIECE IS GONE, so nothing stays chosen.
+			bHasChosen = false;
 		}
 		RefreshDisplay();
 		return;

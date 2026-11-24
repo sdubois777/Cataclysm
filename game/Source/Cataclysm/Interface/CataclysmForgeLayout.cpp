@@ -527,6 +527,22 @@ TArray<FCataclysmForgeOptionAction> UCataclysmForgeLayout::OptionActionsFor(cons
 	return Out;
 }
 
+FName UCataclysmForgeLayout::DismantleButtonName()
+{
+	return FName(TEXT("Dismantle"));
+}
+
+FString UCataclysmForgeLayout::DismantleLabelFor(const FCataclysmItem& Item, bool bWorn)
+{
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+	if (bWorn || Item.Base.IsNone() || Item.bMadeAtCreation
+		|| !UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Rarity))
+	{
+		return FString();
+	}
+	return TEXT("Dismantle this piece (it is destroyed)");
+}
+
 FString UCataclysmForgeLayout::DamageTypesDetailFor(const FCataclysmItem& Item, int32 MaxTypes)
 {
 	if (Item.Base.IsNone() || MaxTypes <= 0)

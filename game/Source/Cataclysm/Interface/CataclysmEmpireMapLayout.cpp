@@ -739,6 +739,30 @@ FString UCataclysmEmpireMapLayout::ForgeButtonBrief()
 				"into one of the next level. It can be read at any time and used in the capital, not during a walk.");
 }
 
+FVector2D UCataclysmEmpireMapLayout::MerchantButtonPosition(float Scale, FVector2D PanelSize)
+{
+	// THE FORGE'S PLACE, ONE BUTTON AND ONE GAP LOWER, as the forge's is one button and one gap under the tree's.
+	const FVector2D Forge = ForgeButtonPosition(Scale, PanelSize);
+	const FVector2D Size = MerchantButtonSize(Scale);
+	return FVector2D(Forge.X, Forge.Y + ForgeButtonSize(Scale).Y * 0.5 + CataclysmDungeonWalkGapPx * Scale + Size.Y * 0.5);
+}
+
+FVector2D UCataclysmEmpireMapLayout::MerchantButtonSize(float Scale)
+{
+	return ForgeButtonSize(Scale);
+}
+
+FString UCataclysmEmpireMapLayout::MerchantButtonText()
+{
+	return TEXT("Merchant");
+}
+
+FString UCataclysmEmpireMapLayout::MerchantButtonBrief()
+{
+	return TEXT("The merchant: sell a carried piece of gear for gold, by its rarity and upgrade level. It can be read at "
+				"any time and used in the capital, not during a walk. A sale costs no day.");
+}
+
 FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)
 {
 	// NOTHING TO SAY: no run, a run that has not begun, or no win before it. Day 0 is what `Begin` writes, and no run

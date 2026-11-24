@@ -5,7 +5,6 @@
 #include "Cataclysm.h"
 // The damage types designed for each weapon type, issue #47 slice F4.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
-#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -14,6 +13,8 @@
 #include "Engine/World.h"
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
+// The player's magic find, which a dismantle's base stone reads (#2848, slice S2).
+#include "Items/CataclysmDroppedItem.h"
 // A gem's type, name and rarity name, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -21,6 +22,8 @@
 #include "Items/CataclysmWearing.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
+// Salvage Protocol and Disassembly Expert, which a dismantle reads (#2848, slice S2).
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveGather.h"
@@ -1425,6 +1428,209 @@ ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(const UObject* WorldContext,
 	if (Result == ECataclysmForgeResult::Done)
 	{
 		OutDone = Plan;
+	}
+	return Result;
+}
+
+FCataclysmForgeDismantle UCataclysmForgeCraft::DismantlePlanFor(const UObject* WorldContext,
+																const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Target.bWorn && Item != nullptr)
+	{
+		FCataclysmForgeDismantle Worn;
+		Worn.Refusal = TEXT("Take the piece off before dismantling it.");
+		return Worn;
+	}
+	// THE TWO NODES, read where the yield is read, as the dungeon reads the tree at every floor (#2741 slice 5a).
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	return UCataclysmForge::DismantleOf(Item != nullptr ? *Item : FCataclysmItem(), Tree.DismantleMaterialsIncreased,
+										Tree.DismantleMaterialsIncreasedSuperbAndAbove,
+										UCataclysmDropRoll::LoadGearRarityTable());
+}
+
+int32 UCataclysmForgeCraft::NewKindsADismantleNeeds(const UCataclysmInventoryComponent& Inventory,
+													 const FCataclysmForgeDismantle& Done)
+{
+	TSet<FName> Materials;
+	if (Done.Fragments > 0)
+	{
+		Materials.Add(FName(UCataclysmForge::SchematicFragmentsRow));
+	}
+	if (Done.Dust > 0)
+	{
+		Materials.Add(FName(UCataclysmForge::DismantlingDustRow));
+	}
+	for (const FName& Stone : Done.RefundStones)
+	{
+		Materials.Add(Stone);
+	}
+	for (const FName& Stone : Done.BaseStones)
+	{
+		Materials.Add(Stone);
+	}
+	int32 New = 0;
+	for (const FName& Material : Materials)
+	{
+		New += Inventory.SlotOfMaterial(Material) == INDEX_NONE ? 1 : 0;
+	}
+	TSet<TPair<FName, ECataclysmRarity>> Gems;
+	for (const TPair<FName, ECataclysmRarity>& Gem : Done.Gems)
+	{
+		Gems.Add(Gem);
+	}
+	for (const TPair<FName, ECataclysmRarity>& Gem : Gems)
+	{
+		New += Inventory.SlotOfGems(Gem.Key, Gem.Value) == INDEX_NONE ? 1 : 0;
+	}
+	return New;
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													  FCataclysmForgeDismantle& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeDismantle();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeDismantle Plan = DismantlePlanFor(WorldContext, Target);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character != nullptr ? Character->GetInventory() : nullptr;
+	if (Inventory == nullptr)
+	{
+		OutMessage = TEXT("No character is playing, so there is nothing to dismantle.");
+		return ECataclysmForgeResult::Refused;
+	}
+	// D3: THE PLAYER'S OWN MAGIC FIND AT THE DISMANTLE, a judgement; Auto-Shatter will pass the kill's.
+	float MagicFind = 0.0f;
+	float LootQuantity = 0.0f;
+	UCataclysmDropSpawner::LootStatsOf(Character, MagicFind, LootQuantity);
+
+	// INSTANT (D2): no material, no gold, no days, and the residue the piece already carries, which goes with it.
+	FCataclysmForgeCraftStep Step;
+	Step.Target = Target;
+	Step.Gold = 0;
+	Step.Days = 0;
+	if (const FCataclysmItem* Held = ItemAt(*Character, Target))
+	{
+		Step.ResidueAfter = Held->Residue;
+	}
+	Step.ThresholdWords = TEXT("Dismantling");
+	Step.NothingThereRefusal = TEXT("There is nothing there to dismantle.");
+
+	FCataclysmForgeDismantle Done = Plan;
+	FCataclysmItem Dismantled;
+	FCataclysmForgeCraftHooks Hooks;
+	Hooks.AfterRefusal = TEXT("The piece could not be dismantled; nothing changed.");
+	FString* const AfterRefusal = &Hooks.AfterRefusal;
+	Hooks.AfterTheChange = [&Done, &Dismantled, Inventory, &Target, AfterRefusal]() -> bool
+	{
+		// ---- ROOM FOR EVERY NEW KIND, CHECKED BEFORE ANYTHING IS DESTROYED (D4). REMOVE THIS BLOCK WHEN ISSUE #2849
+		// ---- LANDS: its stores of materials and gems never refuse, so the check has nothing left to protect.
+		// The piece's own slot is freed by the dismantle, so it counts as room.
+		if (NewKindsADismantleNeeds(*Inventory, Done) > Inventory->NumFreeSlots() + 1)
+		{
+			*AfterRefusal = TEXT("Make room in the bag first.");
+			return false;
+		}
+		// ---- END OF THE #2849 BLOCK.
+
+		// THE PIECE LEAVES THE BAG, THEN WHAT IT GIVES JOINS IT. Anything that cannot be added puts back what was added
+		// and the piece itself, so nothing is half done.
+		if (!Inventory->RemoveItemAt(Target.CarriedSlot))
+		{
+			return false;
+		}
+		TArray<FName> AddedMaterials;
+		TArray<TPair<FName, ECataclysmRarity>> AddedGems;
+		const auto PutEverythingBack = [&]()
+		{
+			for (const FName& Material : AddedMaterials)
+			{
+				Inventory->RemoveMaterial(Material, 1);
+			}
+			for (const TPair<FName, ECataclysmRarity>& Gem : AddedGems)
+			{
+				Inventory->RemoveGems(Gem.Key, Gem.Value, 1);
+			}
+			Inventory->AddItem(Dismantled);
+		};
+		const auto AddOne = [&](FName Material) -> bool
+		{
+			if (Inventory->AddMaterial(Material, 1) == INDEX_NONE)
+			{
+				return false;
+			}
+			AddedMaterials.Add(Material);
+			return true;
+		};
+		bool bAdded = true;
+		for (int32 Each = 0; bAdded && Each < Done.Fragments; ++Each)
+		{
+			bAdded = AddOne(FName(UCataclysmForge::SchematicFragmentsRow));
+		}
+		for (int32 Each = 0; bAdded && Each < Done.Dust; ++Each)
+		{
+			bAdded = AddOne(FName(UCataclysmForge::DismantlingDustRow));
+		}
+		for (int32 Each = 0; bAdded && Each < Done.RefundStones.Num(); ++Each)
+		{
+			bAdded = AddOne(Done.RefundStones[Each]);
+		}
+		for (int32 Each = 0; bAdded && Each < Done.BaseStones.Num(); ++Each)
+		{
+			bAdded = AddOne(Done.BaseStones[Each]);
+		}
+		for (int32 Each = 0; bAdded && Each < Done.Gems.Num(); ++Each)
+		{
+			bAdded = Inventory->AddGems(Done.Gems[Each].Key, Done.Gems[Each].Value, 1) != INDEX_NONE;
+			if (bAdded)
+			{
+				AddedGems.Add(Done.Gems[Each]);
+			}
+		}
+		if (!bAdded)
+		{
+			PutEverythingBack();
+			UE_LOG(LogCataclysm, Error, TEXT("A dismantle could not add what it gives after the room check passed; the piece "
+											 "and the bag are as they were."));
+			return false;
+		}
+		return true;
+	};
+
+	const ECataclysmForgeResult Result = DoItemCraft(
+		WorldContext, Step, /*bConfirmedPastThreshold=*/false,
+		[&Done, &Dismantled, MagicFind](const FCataclysmItem& Before, FCataclysmItem& Changed, const UCataclysmEmpireRun& Run,
+										 FString& OutRefusal) -> bool
+		{
+			// THE DRAW, FROM THE ITEM AS IT STOOD AND THE DAY BEFORE ANYTHING MOVES (D5), so a reload draws the same.
+			FRandomStream Stream(UCataclysmForge::AffixCraftSeed(Before, UCataclysmForge::DismantleSalt, 0,
+																 Run.WalkSeedMask, Run.Day()));
+			UCataclysmForge::DrawDismantle(Done, UCataclysmDropRoll::LoadMaterialTierTable(), MagicFind,
+										   UCataclysmForge::DismantleStoneTier(Before, Run.DifficultyTier), Stream);
+			Dismantled = Before;
+			Changed = Before;
+			return true;
+		},
+		[&Done](const FString& Name, int32 DayFrom, int32 DayTo)
+		{
+			const FString Given = UCataclysmForge::DismantleGiven(Done);
+			UE_LOG(LogCataclysm, Log, TEXT("The forge dismantled %s into %s; day %d to day %d."), *Name, *Given, DayFrom, DayTo);
+			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeDismantleLine(Name, Given, DayFrom));
+		},
+		Hooks, OutMessage);
+	if (Result == ECataclysmForgeResult::Done)
+	{
+		OutDone = Done;
 	}
 	return Result;
 }
