@@ -167,6 +167,8 @@ which compiles no C++, runs them on every pull request.
 
 **Said first:**
 
+- **WINDOW sd-w2 PASSED** on 2026-11-24, every registered figure matched and 20 of 20 guard proofs PROVED; its
+  section is the last of this entry.
 - **WINDOW sd-w1 FAILED 22 TESTS, ALL ON THIS SLICE'S TWO ITEM FIELDS**, added without a save version against
   the rule of 2026-11-01. The run record went to 18 and the character record to 15 for the second attempt, sd-w2.
   The last section of this entry has the measured figures, the ruling and what changed.
@@ -402,6 +404,45 @@ MP8 as registered for sd-w1 (each DP now predicting 12 performed and two more su
 | :-- | :-- | :-- |
 | DP11 | in `CataclysmSaveArrival`, a missing `GearLevelAtDrop` written as 0, not -1 | 12 performed, 10 succeeded, 2 failed: DM11, DM12 |
 | DP12 | the run record's chain without `Migrate_17_to_18` | 12, 11, 1: DM12 (`Run_v17.json` is refused) |
+
+### Window sd-w2 passed (2026-11-24)
+
+Window sd-w2 ran this slice and #48 slice S1 on development `4d33f5994`, branch `feat/sd-w1`, tested head `45a0138d9`
+(sd-w1's head `4b375d5c1` and the save version step). Every registered figure matched:
+
+| Step | Measured |
+| :-- | :-- |
+| Build | Succeeded, 52 actions, 49 files compiled |
+| Editor step | none; the assets committed in sd-w1 |
+| 26 groups alone | all passed at their registered counts, 293 tests: `Dismantle.` 12, `Merchant.` 7, `SaveLoad.` 81, `SaveRecords.` 17, `EmpireTree.` 24, and the 21 other save groups |
+| Whole suite | 5341 performed, 5341 succeeded, 0 failed; 57 skipped halves; 861 test saves written and deleted, 0 left behind |
+| Python, beside it | "8231 passed, 10 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 10 skipped; ruff "All checks passed!" |
+| Guard proofs | 20 of 20 PROVED, each failing exactly the tests predicted with the break in and passing restored |
+
+The proofs, each narrowed to its group with the trailing dot:
+
+| Proof | Failed with the break in |
+| :-- | :-- |
+| DP1 | DM1 `ADismantleGivesTheGemsTheRefundAndChancesByRarityAndRefusesWhatItCannot`, DM2 `SalvageProtocolAndDisassemblyExpertRaiseTheDrawnYieldsAndNeverTheRefund` |
+| DP2 | DM1 |
+| DP3 | DM3 `AFractionalYieldGivesItsWholePartAndOneMoreWithItsChance` |
+| DP4 | DM4 `ABaseStoneIsAMaterialTiersStoneHeldAtThePiecesTierCap` |
+| DP5 | DM5 `TheCraftDestroysTheCarriedPieceAndBagsWhatItGaveForNothing` |
+| DP6 | DM6 `AFullBagIsRefusedBeforeAnythingIsDestroyed` |
+| DP7 | DM7 `ADropRecordsTheGearLevelAndTierItArrivedAt` |
+| DP8 | DM8 `TheTwoArtisanNodesAddUpToTheirTexts` |
+| DP9 | DM9 `TheSeedTextAddsWhereAPieceArrivedOnlyWhenKnown` |
+| DP10 | DM10 `TheScreenOffersADismantleOnlyForACarriedPieceItCanTake` |
+| DP11 | DM11 `ACharacterFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown`, DM12 `ARunFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` |
+| DP12 | DM12 |
+| MP1 | `ASaleBanksThePriceAndEmptiesTheCell`, `ThePriceDoublesByRarityAndRisesTenPercentALevel` |
+| MP2 | `ThePriceDoublesByRarityAndRisesTenPercentALevel` |
+| MP3 | `ThePriceIsCountedInTheTiersGoldPile` |
+| MP4 | `ASaleBanksThePriceAndEmptiesTheCell`, `TheScreenListsCarriedPiecesAndAsksBeforeItSells` |
+| MP5 | `ASaleIsRefusedDuringAWalk` |
+| MP6 | `TheScreenListsCarriedPiecesAndAsksBeforeItSells` |
+| MP7 | `TheMapButtonSitsUnderTheForgeButtonAndCoversNoCity` |
+| MP8 | `TheMapButtonAsksForTheMerchantAndIsNoCity` |
 
 ---
 
