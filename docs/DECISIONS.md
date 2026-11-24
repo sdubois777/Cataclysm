@@ -67,6 +67,14 @@ Registered, not run. **One new automation test**, predicting `Cataclysm.Command.
 **Not tested:** the re-price at the Herald's figure when Subjugate levels (`RepriceReservesOf`), which needs a player
 state holding skill levels; the line is one call, shown in the diff.
 
+**Tested in this branch's next commit, at the coordinating session's request:**
+`Cataclysm.LevelCosts.AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels`, on the Staff player
+`Cataclysm.LevelCosts.AHeldThrallIsRepricedWhenItsSkillLevels` builds (a possessed player whose state holds skill
+levels). Subjugate takes a Common and a Herald at level 1, 30 and 90; at Subjugate's level 10 the Common, the control,
+holds 30 x 0.72028 and the Herald 90 x 0.72028, 64.8, not a Common's 21.6; the ceiling rises by 120 x (1 - 0.72028).
+Predicting `Cataclysm.LevelCosts.` 4 to 5. Its proof is R4 below. **Judgement 9 was confirmed by the coordinating
+session on 2026-11-24.**
+
 **Guard proofs registered for the window:**
 
 | Proof | Break | Must fail |
@@ -74,6 +82,7 @@ state holding skill levels; the line is one call, shown in the diff.
 | R1 | `FervourReserveFor(Self, Params, SkillTags, this, Target)` to `FervourReserveFor(Self, Params, SkillTags, this, nullptr)` (`CataclysmSkillTemplates.cpp`, `Possess`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
 | R2 | `UCataclysmCommand::ThrallReserveScaleFor(Taken)` to `(Taken ? 1.0f : 1.0f)` (`CataclysmSkillTemplates.cpp`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
 | R3 | `return 1.5f;` to `return 1.0f;` (`CataclysmCommand.cpp`, `ThrallReserveScaleFor`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R4 | `Maker->FervourReserveOfOne(nullptr, Thrall)` to `Maker->FervourReserveOfOne(nullptr, nullptr)` (`Character/CataclysmSkillLevels.cpp`, `RepriceReservesOf`) | `AHeraldThrallIsRepricedAtAHeraldsFigureWhenItsSkillLevels` |
 
 ---
 
