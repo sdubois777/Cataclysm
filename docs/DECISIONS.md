@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-24 — A character continued inside a dungeon stands where it was saved: the dungeon level's start no longer stands it at the floor's entrance after the load put it back (#2858)
+## 2026-11-24 — A character continued inside a dungeon stands where it was saved, and a level's first floor starts for the player once: the dungeon level's start no longer stands it at the entrance, or starts the floor again, after the floor's own start has reached it (#2858)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/resume-position-2858`, from the coordinating
 session's brief of 2026-11-24. Issue [#2858](https://github.com/sdubois777/Cataclysm/issues/2858).
@@ -44,9 +44,11 @@ ran a resume through `StartPlay`: every one called the load after it.
 - `FCataclysmLoadReport::bPutWhereSaved` and `SavedLocation`: set when a placement was found for the character on a
   record that holds a floor. `ACataclysmGameMode::LoadThePendingCharacter` keeps it, and
   `PendingLoadPutTheCharacterWhereSaved` answers it.
-- `ACataclysmDungeonGameMode::StartPlay` stands the character at the entrance only when the load did not put it in its
-  place, and otherwise logs that it left it there and how far that is from the entrance. A hand-over's record, which
-  holds no floor, still leaves the character at the level's start.
+- `ACataclysmDungeonGameMode::StartPlay` asks which pawn stood before its `GoToFloor` ran. After `Super::StartPlay` it
+  starts the first floor for the player -- the entrance, `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and `floor_start` -- only when that `GoToFloor` reached no pawn and no load put the
+  character where it was saved. Otherwise it logs which of the two it was, with how far a loaded character stands from
+  the entrance. A hand-over's record, which holds no floor, leaves the character where `GoToFloor` stood it.
 - **The log lines the issue asked for.** Every run record write logs the trigger that raised it and the place it holds
   ("The run record was written for the clock: the character at X=... on floor N of '...', with M creature(s)
   standing"); the load logs where the character stands just after the put-back, and a timer logs it again a second
@@ -67,11 +69,26 @@ ran a resume through `StartPlay`: every one called the load after it.
   the lines are at most one a frame.
 - **A judgement: the line a second after the load comes from a timer** on the world's timer manager, held by a weak
   pointer to the character, so it is written in play and never in an automation test, whose world is not ticked.
-- **Not changed, reported:** in a launched game the first floor's start reaches the player twice, because `StartPlay`
-  repeats `NoteTheConsumptionDoubleAsAFloorIsEntered`, `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a
-  pawn `GoToFloor` already reached. After a load the repeated `floor_start` comes after the saved health is put back, so
-  "You start every dungeon floor at 30%-50% of your maximum HP" would cap a resumed character's health. Read from the
-  code, not measured; left for the coordinating session.
+- **First reported, then ruled and fixed in the same branch.** In a launched game the first floor's start reached the
+  player twice, because `StartPlay` repeated `NoteTheConsumptionDoubleAsAFloorIsEntered`,
+  `ApplyFloorRulesKeepingHealth` and the `floor_start` event for a pawn `GoToFloor` had already reached; after a load the
+  repeated `floor_start` came after the saved health was put back, so "You start every dungeon floor at 30%-50% of your
+  maximum HP" capped a resumed character. The coordinating session, 2026-11-24, verbatim: "ruled by the coordinating
+  session as a defect, not a design question: the first floor's start must reach the player once, not twice. (1) In a
+  launched game, StartPlay must not repeat NoteTheConsumptionDoubleAsAFloorIsEntered, ApplyFloorRulesKeepingHealth and
+  the floor_start event when GoToFloor already reached the pawn. (2) On a resume (a load that put the character where it
+  was saved), the floor is not newly started: the floor_start event must not fire again after the saved health is put
+  back, so "You start every dungeon floor at 30%-50% of your maximum HP" (health_capped_at) does not cap a resumed
+  character."
+- **A judgement: "reached" means the same pawn stood before `GoToFloor` and after `Super::StartPlay`,** held by a weak
+  pointer, so a pawn destroyed or replaced in between is started here as before. No floor rule is lost by not repeating
+  them: they are held on the ability system (`SetDungeonStatModifiers`), so the stat refresh the character's
+  `BeginPlay` makes when it puts on its starting weapon keeps them.
+- **A judgement: the resume is protected twice, by the reached pawn and by the load's flag.** In a launched game and in
+  every test the pawn the load reaches is the one `GoToFloor` reached, so either answer alone keeps a resume's health;
+  the flag is kept for a pawn that came to stand inside `Super::StartPlay`, which `AGameModeBase` does not do today. So
+  no single-line break of either answer alone fails the resume tests, and their guard proof breaks the line that joins
+  the two.
 
 ### Tests
 
@@ -83,6 +100,14 @@ ran a resume through `StartPlay`: every one called the load after it.
   are the ones saved and that the clock's line and the start's line are each written once.
 - Changed: `Cataclysm.Travel.TheDungeonLevelLoadsTheCharacterExactlyAndEntersThePendingWalk` asserts a hand-over's load
   reports no place put back, so the level's start still stands that character at the entrance.
+- New: `Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce`. The pawn stands before the dungeon level's
+  `StartPlay`, as login leaves it, and nothing is pending: `floor_start` reaches it exactly once, and it stands at the
+  floor's entrance (the CONTROL that the floor's start did reach it).
+- New: `Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth`. Saved on floor 2 wearing the
+  cap on a helm, at 80% of its maximum health; continued through `StartPlay`. It keeps the health it was saved with,
+  and still after a beat, and no `floor_start` reaches it after the load put it back. CONTROLS: the loaded character
+  wears the cap, its saved health is above any share the cap lowers to, and the resumed floor's start did reach it
+  during the load.
 
 ---
 

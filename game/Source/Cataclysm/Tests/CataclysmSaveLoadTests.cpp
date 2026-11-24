@@ -6671,6 +6671,250 @@ bool FCataclysmSaveLoadResumePlaceTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A level's first floor starts for the player once
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** The share of maximum health the worn floor-start cap lowers health to, or -1 when none is worn. */
+	float ResumeCapShareWorn(const UCataclysmAbilitySystemComponent& Abilities)
+	{
+		for (const FCataclysmPoolAction& Action : Abilities.GetPoolActions())
+		{
+			if (Action.bHealthCap)
+			{
+				return Action.Percent;
+			}
+		}
+		return -1.0f;
+	}
+
+	/**
+	 * Wears "You start every dungeon floor at 30%-50% of your maximum HP" on a helm, as the floor-start cap tests in
+	 * `CataclysmDungeonModifierEffectsTests.cpp` wear it, and returns the share it rolled, or -1. Issue #2858.
+	 */
+	float ResumeCapWearTheFloorStartCap(FAutomationTestBase& Test, ACataclysmPlayerCharacter& Character)
+	{
+		UCataclysmEquipmentComponent* Equipment = Character.GetEquipment();
+		UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(Character.GetAbilitySystemComponent());
+		if (!Test.TestNotNull(TEXT("set-up: the player's equipment"), Equipment)
+			|| !Test.TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+		{
+			return -1.0f;
+		}
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(TEXT("Positive_Your_HP_regeneration_continues_at_50_effectiven"));
+		Rolled.Negative = FName(TEXT("Negative_You_start_every_dungeon_floor_at_30_50_of_your"));
+		Helm.Enchantments.Add(Rolled);
+		Helm.EnchantmentCount = 1;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Abilities);
+		return ResumeCapShareWorn(*Abilities);
+	}
+}
+
+/**
+ * A dungeon level's first floor starts for the player once: `floor_start` reaches it one time, not two. The pawn stands
+ * before the level's `StartPlay`, as login leaves it in a launched game (the engine spawns the player before play
+ * begins), and nothing is pending. Until issue #2858 `StartPlay` repeated the floor's start for the player after its
+ * `GoToFloor` had already reached the pawn: the entrance, the Corrupted Double's note, the floor's rules and
+ * `floor_start`, so "You start every dungeon floor at 30%-50% of your maximum HP" capped twice. Ruled a defect by the
+ * coordinating session on 2026-11-24. THE CONTROL is that the floor's start did reach the player: it stands at the
+ * floor's entrance. Prints "FIRST FLOOR START".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelFirstFloorStartsOnceTest,
+	"Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelFirstFloorStartsOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	ACataclysmDungeonGameMode* Mode = Scene.World ? Scene.World->SpawnActor<ACataclysmDungeonGameMode>() : nullptr;
+	if (!TestTrue(TEXT("set-up: the dungeon level's world was built, its pawn standing"), Scene.IsUsable() && Mode))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmAbilitySystemComponent* Abilities =
+		Cast<UCataclysmAbilitySystemComponent>(Scene.Character->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+	{
+		return false;
+	}
+
+	int32 FloorStarts = 0;
+	const FDelegateHandle Listening = Abilities->OnActionEvent.AddLambda([&FloorStarts](FName Event)
+	{
+		FloorStarts += Event == FName(TEXT("floor_start")) ? 1 : 0;
+	});
+	ON_SCOPE_EXIT { Abilities->OnActionEvent.Remove(Listening); };
+
+	Mode->StartPlay();
+
+	const float FromEntrance = Mode->CurrentFloor
+		? FVector::Dist2D(Scene.Character->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+		: -1.0f;
+	AddInfo(FString::Printf(TEXT("FIRST FLOOR START: floor %d started for the player %d time(s); it stands %.1f cm from "
+								 "the floor's entrance"),
+							Mode->FloorNumber, FloorStarts, FromEntrance));
+
+	TestEqual(TEXT("the first floor's start reaches the player once, not twice"), FloorStarts, 1);
+	TestTrue(TEXT("CONTROL: and it did reach the player, who stands at the floor's entrance"),
+			 FromEntrance >= 0.0f && FromEntrance < ResumePlaceToleranceCm);
+	return true;
+}
+
+/**
+ * A character continued inside a dungeon wearing "You start every dungeon floor at 30%-50% of your maximum HP" keeps the
+ * health it was saved with. The resumed floor's own start reaches it during the load, before its place and health are
+ * put back; until issue #2858 the dungeon level's `StartPlay` then raised `floor_start` again, after the health was put
+ * back, and the cap lowered it to 30%-50% of its maximum. Ruled a defect by the coordinating session on 2026-11-24: "On a
+ * resume ... the floor_start event must not fire again after the saved health is put back".
+ *
+ * SAVED on floor 2 wearing the cap on a helm, at 80% of its maximum health; CONTINUED through the dungeon level's own
+ * `StartPlay`, the pawn standing first. It keeps that health, and still after a beat, and no `floor_start` reaches it after
+ * the load put it back. THE CONTROLS: the loaded character wears the cap; its saved health is above any share the cap
+ * lowers to; and the resumed floor's start did reach it, during the load. Prints "RESUME CAP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadResumeCapTest,
+	"Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadResumeCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// 1. SAVED ON FLOOR 2, WEARING THE CAP, ABOVE ITS SHARE.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	float ShareSaved = -1.0f;
+	float MaximumSaved = -1.0f;
+	float SavedHealth = -1.0f;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		ShareSaved = ResumeCapWearTheFloorStartCap(*this, *Scene.Base.Character);
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(FString::Printf(TEXT("set-up: the helm gave a cap between 30 and 50: %.2f"), ShareSaved),
+						 ShareSaved >= 30.0f && ShareSaved <= 50.0f)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+
+		UAbilitySystemComponent* Abilities = Scene.Base.Character->GetAbilitySystemComponent();
+		MaximumSaved = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.8f * MaximumSaved);
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+		const UCataclysmRunSave* Written = Read<UCataclysmRunSave>(Saved.RunSlot());
+		if (!TestNotNull(TEXT("set-up: the run record reads"), Written))
+		{
+			return false;
+		}
+		for (const FCataclysmSavedCharacterPlacement& Placement : Written->Floor.Characters)
+		{
+			if (Placement.CharacterId == Saved.CharacterId)
+			{
+				SavedHealth = Placement.Health;
+			}
+		}
+		if (!TestEqual(TEXT("set-up: the record holds the health it was given"), SavedHealth, 0.8f * MaximumSaved, 0.5f))
+		{
+			return false;
+		}
+	}
+
+	// 2. CONTINUED, AS A LAUNCHED GAME RUNS IT, with every floor start heard and whether the load had put it back yet.
+	FDungeonScene Scene;
+	Scene.Base = MakeScene();
+	if (Scene.Base.World)
+	{
+		Scene.Mode = Scene.Base.World->SpawnActor<ACataclysmDungeonGameMode>();
+	}
+	if (!TestTrue(TEXT("set-up: the continuing dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmAbilitySystemComponent* Abilities =
+		Cast<UCataclysmAbilitySystemComponent>(Scene.Base.Character->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonGameMode* Mode = Scene.Mode;
+	int32 FloorStarts = 0;
+	int32 FloorStartsAfterThePutBack = 0;
+	const FDelegateHandle Listening = Abilities->OnActionEvent.AddLambda(
+		[&FloorStarts, &FloorStartsAfterThePutBack, Mode](FName Event)
+		{
+			if (Event == FName(TEXT("floor_start")))
+			{
+				++FloorStarts;
+				FloorStartsAfterThePutBack += Mode->PendingLoadPutTheCharacterWhereSaved() ? 1 : 0;
+			}
+		});
+	ON_SCOPE_EXIT { Abilities->OnActionEvent.Remove(Listening); };
+
+	Scene.Base.Instance->PendingCharacterId = Saved.CharacterId;
+	Mode->StartPlay();
+
+	const bool bPutBack = Mode->PendingLoadPutTheCharacterWhereSaved();
+	const float ShareWorn = ResumeCapShareWorn(*Abilities);
+	const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Health = HealthOf(*Scene.Base.Character);
+	BeatOnce(*Mode);
+	const float HealthAfterABeat = HealthOf(*Scene.Base.Character);
+
+	AddInfo(FString::Printf(TEXT("RESUME CAP: saved at %.1f of %.1f wearing a %.2f%% cap; after the level's start %.1f of "
+								 "%.1f, a beat later %.1f; the cap worn %.2f%%; %d floor start(s), %d after the load put "
+								 "the character back; put back %s"),
+							SavedHealth, MaximumSaved, ShareSaved, Health, Maximum, HealthAfterABeat, ShareWorn,
+							FloorStarts, FloorStartsAfterThePutBack, bPutBack ? TEXT("yes") : TEXT("NO")));
+
+	TestTrue(TEXT("set-up: the load put the character where it was saved"), bPutBack);
+	TestTrue(TEXT("CONTROL: the loaded character wears the floor-start cap"), ShareWorn >= 30.0f && ShareWorn <= 50.0f);
+	TestTrue(TEXT("CONTROL: its saved health is above any share the cap lowers to"), SavedHealth > 0.5f * Maximum + 1.0f);
+	TestTrue(TEXT("CONTROL: the resumed floor's start reached it during the load"), FloorStarts >= 1);
+	TestEqual(TEXT("no floor start reaches it after the load put it back"), FloorStartsAfterThePutBack, 0);
+	TestEqual(TEXT("it keeps the health it was saved with"), Health, SavedHealth, 0.5f);
+	TestEqual(TEXT("and still after a beat of the floor"), HealthAfterABeat, SavedHealth, 0.5f);
+	return true;
+}
+
 namespace CataclysmSaveLoadTest
 {
 	/** A creature's health as a share of its maximum. */
