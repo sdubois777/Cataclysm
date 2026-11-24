@@ -3105,9 +3105,21 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 *Upgrade level is the reference progression stated in section IV.*
 
-**The gear rarity column is not a cap. Every gear rarity can drop at every difficulty tier.** It says how far up the ladder a drop rolls at full weight. Above that, a rarity is halved once for each further rung, so a Cataclysmic at tier 1 is divided by two six times over and arrives about one drop in 1.5 million rather than never. Going from tier 1 to tier 8 is worth fifty-nine times at the top of the ladder.
+**The gear rarity column is not a cap. Every gear rarity can drop at every difficulty tier up to the cap below.** It says how far up the ladder a drop rolls at full weight. Above that, a rarity is halved once for each further rung, up to two rungs above the column, and nothing higher can drop.
 
 **It was a hard cap until the project owner played it.** Nothing above the column could drop at all, which left difficulty tier 1 producing only Everyday and Quality items. Issues #870 and #886. Diablo II has no hard gate on item quality either: a shallow monster can produce a high-level unique at a much reduced chance rather than never.
+
+**The cap: at most two rarities above the column.** The project owner ruled it on 2026-11-24 (issue #2853, "Hard cap by tier"), after Cataclysmic pieces dropped at tier 1. With no cap, a Cataclysmic there was about one drop in 1.5 million, and one in 38,000 from a Boss, and it arrives at +10. The highest rarity a drop can roll at all is rarity number tier + 3:
+
+| Difficulty tier | Highest gear rarity a drop can roll at all |
+| :-: | :-: |
+| 1 | Masterful |
+| 2 | Legendary |
+| 3 | Mythical |
+| 4 | Ascendant |
+| 5 to 8 | Cataclysmic |
+
+Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, a judgement: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
 
 **Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
 
