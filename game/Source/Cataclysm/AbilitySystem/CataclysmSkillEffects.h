@@ -3174,7 +3174,10 @@ public:
 	static bool ApplyUntargetable(AActor* Instigator, AActor* Target,
 								  float DurationSeconds);
 
-	/** Whether this actor cannot be hit right now. */
+	/**
+	 * Whether this actor cannot be hit right now: it carries the tag above, or it is nobody's target
+	 * (`UCataclysmTargeting::IsNeverATarget`, Demonic Guide's guide, issue #2860).
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsUntargetable(const AActor* Actor);
 

@@ -6746,6 +6746,43 @@ public:
 	static_assert(DemonicGuideWalkShareOfPlayer > 0.0f && DemonicGuideWalkShareOfPlayer < 1.0f,
 		"A guide that walked at the player's own speed or faster could never be caught up with.");
 
+	/**
+	 * THE GUIDE'S FOOTPRINTS: yellow prints on the floor behind it, so a player who has lost sight of it can follow.
+	 * Issue #2862, the owner's request of 2026-11-23: "I also think we should show like yellow footsteps or something
+	 * pointing to where he's gone." The row states nothing; the yellow is the owner's and EVERY FIGURE BELOW IS A
+	 * JUDGEMENT, recorded with its reason in `docs/DECISIONS.md`. Drawn by `ACataclysmGuideFootprints`.
+	 *
+	 * - ONE PRINT EVERY `DemonicGuideFootprintSpacingCm` WALKED, left and right in turn, each
+	 *   `DemonicGuideFootprintSideCm` off the line it walked: 80 cm is one print a beat at the guide's default 320 cm/s.
+	 * - EACH PRINT `DemonicGuideFootprintLengthCm` BY `DemonicGuideFootprintWidthCm`, about a third of the player's
+	 *   width, which reads from the 8 m camera without standing out like a ground effect.
+	 * - `DemonicGuideFootprintColourHex` AT `DemonicGuideFootprintOpacity`, FADING EVENLY TO NOTHING over
+	 *   `DemonicGuideFootprintSeconds`, so the newest print is the brightest and the trail shows which way it went. A
+	 *   saturated yellow, so it is told from Celestial's pale gold ground and from the red of a telegraph.
+	 * - A PRINT AGES ONLY WHILE THE GUIDE IS NOT WAITING. The guide waits exactly when the player has fallen behind,
+	 *   which is when the trail is wanted; a trail that faded while it waited would be gone when it was needed.
+	 * - AT MOST `DemonicGuideFootprintsAtMost` PRINTS, a fixed pool: the oldest is taken for the next. 40 holds the
+	 *   whole lifetime's trail at the guide's default walk; a faster guide's trail is cut short instead of growing.
+	 * - A MOVE OF MORE THAN `DemonicGuideFootprintJumpCm` IN ONE BEAT IS NOT A WALK -- a guide put somewhere -- and the
+	 *   trail starts again where it stands rather than printing the gap. A guide at 640 cm/s covers 160 cm in a beat.
+	 */
+	static constexpr float DemonicGuideFootprintSpacingCm = 80.0f;
+	static constexpr float DemonicGuideFootprintSideCm = 14.0f;
+	static constexpr float DemonicGuideFootprintLengthCm = 32.0f;
+	static constexpr float DemonicGuideFootprintWidthCm = 16.0f;
+	static constexpr float DemonicGuideFootprintSeconds = 10.0f;
+	static constexpr float DemonicGuideFootprintOpacity = 0.9f;
+	static constexpr const TCHAR* DemonicGuideFootprintColourHex = TEXT("FFD800");
+	static constexpr int32 DemonicGuideFootprintsAtMost = 40;
+	static constexpr float DemonicGuideFootprintJumpCm = 600.0f;
+
+	static_assert(DemonicGuideFootprintsAtMost * DemonicGuideFootprintSpacingCm
+					  >= DemonicGuideFootprintSeconds * 400.0f * DemonicGuideWalkShareOfPlayer,
+		"The pool must hold a whole lifetime's trail at the guide's default walk, 0.8 of the player's 400 cm/s.");
+
+	static_assert(DemonicGuideFootprintJumpCm > DemonicGuideFootprintSpacingCm * 2.0f,
+		"A jump shorter than two prints would cut a fast guide's walk into separate trails.");
+
 	static_assert(
 		RawSewageRiversPerFloor > 0 && RawSewageRiversPerHordeArena > 0 && RawSewageSecondsPerStack > 0.0f
 			&& RawSewageMostStacks > 0 && RawSewagePercentPerStack > 0.0f,

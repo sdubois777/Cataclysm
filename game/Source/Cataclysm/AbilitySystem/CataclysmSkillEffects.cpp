@@ -4029,7 +4029,10 @@ bool UCataclysmSkillEffects::ApplyUntargetable(AActor* Instigator,
 
 bool UCataclysmSkillEffects::IsUntargetable(const AActor* Actor)
 {
-	return HasTag(Actor, UntargetableTag());
+	// AND, FOR AS LONG AS IT STANDS, NOBODY'S TARGET: Demonic Guide's guide. Issue #2860. A blow aimed at it directly --
+	// one whose target was chosen before this change reached it, or by a caller that names it -- lands nothing, and no
+	// rider after the blow sees one land. The searches already pass it over (`UCataclysmTargeting::IsNeverATarget`).
+	return HasTag(Actor, UntargetableTag()) || UCataclysmTargeting::IsNeverATarget(Actor);
 }
 
 bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)

@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
+// For the character that is nobody's target. Issue #2860.
+#include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/OverlapResult.h"
@@ -143,6 +145,16 @@ bool UCataclysmTargeting::MatchesAttitude(const AActor* Actor, const AActor* Ins
 		return false;
 	}
 
+	// AND NOBODY'S TARGET IS NEITHER AN ENEMY NOR AN ALLY, whoever asks and whatever their side: Demonic Guide's guide.
+	// Issue #2860, the owner's play-test of 2026-11-23: "My minions are constantly trying to attack him." Here, beside
+	// the dead, so a minion's and a thrall's choice of target (`UCataclysmTargetCandidates`), every skill's search,
+	// the click and the floor rules that sweep as the player -- Epidemic's chain among them -- all pass it over, and
+	// so does a creature's search for allies, which Infernal Sacrifice eats from.
+	if (IsNeverATarget(Actor))
+	{
+		return false;
+	}
+
 	// No instigator means no side to compare against. A hostile search then
 	// returns everything, which is what a hazard belonging to nobody should do;
 	// a friendly search returns nothing, because nothing can be an ally of no
@@ -163,6 +175,12 @@ bool UCataclysmTargeting::IsHostileTo(const AActor* Actor, const AActor* Instiga
 bool UCataclysmTargeting::IsFriendlyTo(const AActor* Actor, const AActor* Instigator)
 {
 	return MatchesAttitude(Actor, Instigator, ETeamAttitude::Friendly);
+}
+
+bool UCataclysmTargeting::IsNeverATarget(const AActor* Actor)
+{
+	const ACataclysmCharacterBase* Character = Cast<ACataclysmCharacterBase>(Actor);
+	return Character && Character->IsNeverATarget();
 }
 
 TArray<AActor*> UCataclysmTargeting::FindEveryoneInLine(
@@ -219,9 +237,11 @@ TArray<AActor*> UCataclysmTargeting::Gather(
 		// TAKING NO SIDE STILL REFUSES SCENERY AND THE DEAD, which is what
 		// MatchesAttitude asks first and what a bare `bEveryone` would have
 		// dropped along with the question of sides.
+		// AND NOBODY'S TARGET, AS `MatchesAttitude` REFUSES IT. Issue #2860: a Hellhound's burning lane does not find
+		// Demonic Guide's guide either.
 		const bool bWanted = bEveryone
 			? (IsValid(Actor) && AbilitySystemOf(Actor) != nullptr
-			   && !UCataclysmSkillEffects::IsDead(Actor))
+			   && !UCataclysmSkillEffects::IsDead(Actor) && !IsNeverATarget(Actor))
 			: MatchesAttitude(Actor, Instigator, Wanted);
 
 		if (!bWanted || Seen.Contains(Actor))

@@ -396,6 +396,78 @@ public:
 	 */
 	virtual bool TakesNoHostileAction() const { return false; }
 
+	/**
+	 * True when this character is nobody's target: no search finds it, on any side, and no blow lands on it. Issue
+	 * #2860.
+	 *
+	 * FALSE HERE, WHICH IS THE ANSWER FOR THE PLAYER AND FOR EVERY CREATURE BUT ONE. Demonic Guide's guide says
+	 * otherwise (`ACataclysmEnemyCharacter::IsNeverATarget`). The owner's play-test of 2026-11-23: "sometimes he
+	 * manages to die. My minions are constantly trying to attack him even though they usually do 0 damage."
+	 *
+	 * WHERE IT IS ASKED. `UCataclysmTargeting::MatchesAttitude` and that file's side-less search refuse it, so it is
+	 * neither an enemy nor an ally of anybody: a minion's or a thrall's choice of target, a skill's search, a click and
+	 * a floor rule's sweep all go through there. `UCataclysmSkillEffects::IsUntargetable` answers true for it, so a
+	 * blow aimed at it directly lands nothing. `ACataclysmEnemyCharacter::HandleDeath` refuses it, so a rule that kills
+	 * by calling the death outright does not kill it either.
+	 *
+	 * NOT `TakesNoHostileAction`, which is what a character does. This is what may be done to it.
+	 */
+	virtual bool IsNeverATarget() const { return false; }
+
+	// ----------------------------------------------------------------------
+	// Which bodies do not block one another. Issue #2861.
+	//
+	// The owner's play-test of 2026-11-23: "He can't walk through my minions, and neither can I, which is annoying.
+	// There shouldn't be collision between player and minions." ("He" is Demonic Guide's guide.)
+	//
+	// THE PLAYER, WHAT THE PLAYER COMMANDS AND THE GUIDE PASS THROUGH ONE ANOTHER, AND EVERY OTHER PAIR IS AS IT WAS:
+	// a creature still blocks all three and all three still block a creature, and two commanded bodies still block
+	// each other. Path of Exile 2 lets a summoner walk through its own minions, and Last Epoch's patch 1.3.3 fixed a
+	// minion blocking the player's movement as a bug; `docs/DECISIONS.md` has the sources.
+	//
+	// BY THE ENGINE'S MASK FILTER, NOT BY A COLLISION CHANNEL, a judgement. A body carries one of the three bits below
+	// as its capsule's mask filter, and ignores the other two when it moves (`UPrimitiveComponent::SetMoveIgnoreMask`):
+	// a moving body skips a body whose mask filter shares a bit with its own move-ignore mask. Every movement sweep the
+	// character movement component makes -- the move, the floor check, the push out of an overlap -- reads that mask.
+	// A channel would mean giving the capsule another object type, and every target search in the game asks for
+	// `ECC_Pawn` by object type (`UCataclysmTargeting::Gather`, `UCataclysmTargetCandidates::CapsuleReachesInto`), so
+	// a minion moved onto another channel would stop being found by the creatures that fight it.
+	// ----------------------------------------------------------------------
+
+	/** The bit the player's capsule carries. */
+	static constexpr uint8 PlayerBodyMaskBit = 1;
+
+	/** The bit a minion's or a thrall's capsule carries: anything on the player's side that is not a player. */
+	static constexpr uint8 CommandedBodyMaskBit = 2;
+
+	/** The bit Demonic Guide's guide's capsule carries. */
+	static constexpr uint8 GuideBodyMaskBit = 4;
+
+	/** All three, which is what a body carrying one of them moves through, less its own. */
+	static constexpr uint8 PassThroughBodyMaskBits = PlayerBodyMaskBit | CommandedBodyMaskBit | GuideBodyMaskBit;
+
+	/**
+	 * Which of the three bits this character's capsule carries, or nought for a body every body blocks.
+	 *
+	 * HERE: `CommandedBodyMaskBit` for a character on the player's side, so a summoned minion and a thrall answer it
+	 * from the side they are on, and nought for every other. `ACataclysmPlayerCharacter` answers `PlayerBodyMaskBit`
+	 * and `ACataclysmEnemyCharacter` answers `GuideBodyMaskBit` for the floor's guide.
+	 */
+	virtual uint8 PassThroughBodyMaskBit() const;
+
+	/** What a body carrying `OwnBit` moves through: the other two of the three, or nothing for a bit of nought. */
+	static uint8 MovesThroughMaskFor(uint8 OwnBit);
+
+	/**
+	 * Writes the capsule's mask filter and move-ignore mask from `PassThroughBodyMaskBit`.
+	 *
+	 * CALLED WHEREVER THE ANSWER CAN CHANGE: at `BeginPlay`, so the player and every creature start right; from
+	 * `SetGenericTeamId`, so a summoned minion takes its summoner's side's body and a thrall changes body with the
+	 * side it is taken to (and back, should anything ever give it back); and by `ACataclysmDungeonGameMode::
+	 * PlaceTheGuide` once it has made a creature the floor's guide.
+	 */
+	void RefreshPassThroughBody();
+
 	/** Hit the given target once. Called by the controller when it is in reach. */
 	virtual void AttackTarget(AActor* Target) {}
 

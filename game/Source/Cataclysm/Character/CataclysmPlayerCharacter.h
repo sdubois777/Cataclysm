@@ -114,6 +114,12 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	/**
+	 * The player's body: `PlayerBodyMaskBit`, so it passes through what it commands and through Demonic Guide's guide,
+	 * and they through it. Issue #2861. See `ACataclysmCharacterBase::RefreshPassThroughBody`.
+	 */
+	virtual uint8 PassThroughBodyMaskBit() const override { return PlayerBodyMaskBit; }
+
+	/**
 	 * Writes a movement speed, stated in metres per second, onto the movement
 	 * component.
 	 *
