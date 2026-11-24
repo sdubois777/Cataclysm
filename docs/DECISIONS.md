@@ -182,6 +182,484 @@ restore what the code and the design already said.
 
 ---
 
+## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24 beside the entry below, which builds and runs it in a later window. Issue
+[#2863](https://github.com/sdubois777/Cataclysm/issues/2863).
+
+### The owner's report, verbatim
+
+"There seems to be skill fx going off under the floor, I only noticed because I got close to an edge and saw
+something. Need to check all current effects and see which are appearing below the ground." Playtesting the main
+checkout at `development` 4d33f5994, 2026-11-23.
+
+### What was found, said first: the code places no player skill effect below a flat floor
+
+Every height in the list below was traced to its origin by reading the code at `development` 4d33f5994; line numbers
+are as of that commit. **No player skill chooses a height below the walking surface on a flat floor.** What the code
+does place below it is narrower: a point taken from `ACataclysmEnemyController::FloorUnder`, which is a creature's own
+capsule bottom moved under its target's X and Y, wherever the target stands higher than the creature (the exit
+stairs, up to 60 cm, are the one raised walking surface a dungeon floor has); the Blood Altar ring, centred on the
+exit cell where the stairs stand; and a walked charge's trail start if the walk descended more than about 96 cm,
+which a flat floor with 60 cm stairs cannot do. Most ground drawings were wrong the other way: 46 of the 68 calls that
+leave a ground zone place it at a capsule centre, or a stored copy of one, so its ring was drawn 45 to 155 cm above
+the floor.
+
+**So what the owner saw is either one of those cases or something this sweep could not read.** Where each Niagara
+system's own emitters and meshes sit relative to the point it is spawned at is authored in the editor; the five
+systems are binary assets, and in a worktree only Git LFS pointers. A system whose geometry reaches below its spawn
+point -- a cylinder centred on its pivot and scaled with the skill's radius, say -- draws under the floor however
+correctly the code places it. The cast burst is the first to look at: it plays on every skill, at the caster's
+capsule centre, and its `Flare` layer is the mesh `SM_VFX_In_Out_Cyl_01`, the pack's cylinder that is not the
+`_Floor_` variant the ground ring uses. **That needs the editor and is not settled here.**
+
+### What changed
+
+- **`CataclysmEffectPlacement`**, new, `game/Source/Cataclysm/AbilitySystem/CataclysmEffectPlacement.h` and `.cpp`:
+  `FloorSurfaceUnder` searches straight down through a point for world-static geometry, from `LookAboveCm` (100)
+  above it to `LookBelowCm` (300) below it, by object type as the charge's floor search does, and refuses a search
+  that starts inside a solid shape; `OnTheFloor` moves the point to `LiftCm` (2) above what it finds, or leaves it
+  where it was asked when there is nothing. No such helper existed: `FloorUnder` answers from a capsule rather than
+  the ground, and the two floor traces in the project (the charge's, the cloth stress spawner's) are private to their
+  callers.
+- **The three things that draw on the ground ask it**, so every caller is placed by one change and a caller added
+  later is placed without knowing: `UCataclysmGroundEffect::PlayFor` puts each copy of a zone's ring on the floor under
+  that copy (so every one of the 68 zone sites below), `ACataclysmTelegraphMarker`'s spawn puts a marker on the floor
+  under its centre (all five marker sites), and `ACataclysmDebrisBurst::Scatter` puts its pieces on the floor under the
+  impact (the Brute's rip crater).
+- **Only the drawing moves.** A zone's actor, its sweep, `UCataclysmGroundEffect::LastStart` and `LastFarEnd`, the
+  point an attack is aimed at and where a shot lands are all where they were. `LastDrawnStart` and `LastDrawnFarEnd`
+  are new, recorded from the same array the spawns read, for the tests.
+- **`docs/Niagara_Conventions.md`**, a rule under section 5A: an effect drawn on the ground is placed through
+  `OnTheFloor`; one that belongs to a body or the air is not.
+
+### Judgements of the writing session
+
+1. **Snap in both directions, not only up.** The issue asked for effects under the floor; most ground rings were
+   floating instead, and a ring at waist height marks the floor no better than one under it. Both are the same fault:
+   nothing asked where the floor was.
+2. **Move the drawing, not the gameplay point.** Moving where a zone sweeps or a lob lands would change what hits what,
+   which is beyond a report about what is seen. On a flat floor the marker and the landing agree within a centimetre,
+   which keeps issue #471's rule that a telegraphed attack arrives where it was marked; on raised ground they now
+   differ in height only, with the warning on the surface the player can see.
+3. **The window: a metre above, three metres below, 2 cm lift.** A metre above clears the stairs' 60 cm and, from the
+   tallest capsule centre (the Gatekeeper's 155.53 cm), still starts inside a dungeon wall's 400 cm height rather than
+   above its top. Three metres below reaches the floor from any capsule centre with room for a body in the air, and
+   no further, so a point out past a floor's edge is not moved onto whatever lies far below. 2 cm is the gap the
+   engine's character movement keeps under a capsule (1.9 to 2.4 cm), where every telegraph marker was already drawn.
+4. **Bodies and the air are left alone.** The cast burst, the swing arc, the hit burst and a projectile are drawn where
+   their body is; they are under the floor only when the body is.
+5. **The Upthrust wall is not changed here, and is reported.** `ACataclysmTerrain::BuildWall` stands its blocks on
+   `Start.Z`, the caster's capsule centre, so the wall's base is about 96 cm above the floor although its comment says
+   it stands on it. It is collision geometry, not only a drawing, so moving it changes play; it is not below the floor.
+
+### Every site that was checked
+
+**The five Niagara spawns.**
+
+| Spawn | Called from | Height | Below a flat floor? |
+| :-- | :-- | :-- | :-- |
+| `UCataclysmCastEffect::PlayFor`, `NS_Cast_Windup` | `CataclysmSkillTemplate.cpp:548` (every skill); `CataclysmEnemyController.cpp:1172` (a quick cast's flare) | the caster's capsule centre | no, unless the caster is; the system's own geometry is unread, see above |
+| `UCataclysmStrikeEffect::PlayAt`, `NS_Strike_Arc` | `CataclysmSkillTemplates.cpp:494` (`Apex`, the cast origin) and `:937` (the planted sword, the caster's capsule centre when planted) | capsule centre, facing flattened | no |
+| `UCataclysmImpactEffect::SpawnAt`, `NS_Impact_Point` | `CataclysmVitalAttributeSet.cpp`, `PlayImpactEffect` | the hit result's impact point, or the struck actor's capsule centre | no: on the struck body |
+| `UCataclysmProjectileEffect::AttachTo`, `NS_Proj_Body` | `CataclysmProjectile.cpp:320` | attached to the projectile: a flat shot flies at its `From` height, a lob ends at its `To` height | a lob's end, only where `To` is a `FloorUnder` point under higher ground (below) |
+| `UCataclysmGroundEffect::PlayFor`, `NS_Impact_Ground` | `CataclysmGroundZone.cpp` `BeginPlay`, `Redraw`, `LastFor` | the zone's location | **changed**: on the floor under each copy |
+
+**Meshes placed for effects.** `ACataclysmTelegraphMarker` (changed), `ACataclysmDebrisBurst` (changed; its one caller,
+`CataclysmBruteCharacter.cpp:808`, the rip crater, is the Brute's capsule bottom), `ACataclysmTerrain`'s Upthrust wall
+(capsule centre, judgement 5). The planted weapon is a scene component and draws nothing. No decal is spawned anywhere.
+
+**Telegraph markers**, all `FloorUnder`, the creature's own capsule bottom, so below only where they lie over ground
+higher than the creature: `CataclysmEnemyController.cpp:1192` (a Strike's circle at its own feet), `:1211` (a lob's
+landing circle), `:1221` (a flat projectile's lane), `:1243` (a charge's lane), `CataclysmEnemyModifiers.cpp:1263`
+(Inferno Charge's lane).
+
+**Projectile fires.** From a player's capsule centre: `CataclysmSkillTemplates.cpp:1477` and `:1549` (aimed at
+`AimedPointWithin`, held at that height, and flat) and `:1850` (the rack's axes, at a creature's capsule centre, flat).
+From a creature's capsule centre to a `FloorUnder` point: the Corrupted Sentinel's Siege Bolt
+(`CataclysmCorruptedSentinelCharacter.cpp:319`, flat) and Brimstone Mortar (`:335`, lobbed), the Succubus's Soulfire
+(`CataclysmSuccubusCharacter.cpp:417`, flat) and the Gatekeeper's Soulfall gout (`CataclysmGatekeeperCharacter.cpp:471`,
+lobbed); from the Brute's hand to one, its Rock Throw (`CataclysmBruteCharacter.cpp:1026`, lobbed). Infernal Rain's
+fireball falls from 15 m above and 6 m beside the player to the player's capsule-centre height
+(`CataclysmDungeonGameMode.cpp:17604`). Only the three lobs end at their `To` height.
+
+**Ground zones, by where their height comes from** (each is drawn by `PlayFor`, so each is now on the floor):
+
+| Height | Sites |
+| :-- | :-- |
+| The player's capsule centre, 96 cm up | `CataclysmDungeonGameMode.cpp` 4723 Wings of the Host, 9247 Swarm of Locusts' swarm, 10185 Funereal Procession, 14322 Divine Wrath, 17637 Singularity Wells, 19082 Edict of Vigil, 19334 Artillery Strike, 19451 Hallowed Groundfall, 19604 Grasping Tentacles, 20406 Judgment Zones, 21147 Anti-Magic Zones, 24287 Necrotic Ground; `CataclysmSkillTemplates.cpp` 213 and 217 a Strike's ground and row zone, 722, 724, 760 and 762 a held Strike's, 857 Buried Fire, 3655 and 3661 a Blink or Swap's start, 3763 a charge's trail, 3767, 3773 and 3774 a move's arrival, 4836 Open the Rift; `CataclysmTimeLockRift.cpp:235` the Time-Lock Rift |
+| A creature's capsule centre, 45 to 155 cm up | `CataclysmDungeonGameMode.cpp` 4440 Plague Harbingers, 4951 Eternal Chorus, 5449 Golden Spires, 5817 Obsidian Sarcophagi, 6143 Portal Unleashing, 9397 Abyssal Rifts, 10022 Quarantine Breach, 11748 Infested Veins, 23427 Withered Ground, 23489 Leech Spores, 23674 Fungal Overgrowth; `CataclysmSkillTemplates.cpp:5733` a row's zone under a cursed target; `CataclysmMinion.cpp:1951` a minion's chaos pool |
+| A stored copy of a capsule centre | `CataclysmDungeonGameMode.cpp` 16331 and 16848 (Plague Harbingers' and Quarantine Breach's patches, loaded from a save), 17666 Infernal Rain's patch; `CataclysmSkillTemplates.cpp` 2099, 2113 and 2117 a projectile's ground, at its launch height |
+| A creature's capsule bottom (`FloorUnder`) | `CataclysmEnemyModifiers.cpp:1210` Inferno Charge's path, `CataclysmGatekeeperCharacter.cpp:501` Soulfall's ground: **below where the target stood higher** |
+| The floor's walking surface | `CataclysmDungeonGameMode.cpp` 6805 Demonic Guide, 6852 Raw Sewage, 8140 Those in the Dark, 9062 Warzone Control Points, 9172 Swarm of Locusts' shelters, 9774 Infection Bloom, 10606, 10791 and 10797 Reality Rifts, 11191 Carrion Feast's altar, 11974 Shadowy Enemies, 12931 War Banner, 14156 Grim Totems, 14204 Void Parasite; 24106 Blood Altar, **whose centre is under the exit stairs** |
+| Other | `CataclysmHellhoundCharacter.cpp:291` Hellrush's lane, from its capsule centre to a `FloorUnder` point (below at the far end only over higher ground); `CataclysmSkillTemplates.cpp` 4133, 4137, 4138 and 4139 a walked charge's trail and row zones, all at the walk's last height (below at the start only if the walk descended more than about 96 cm) |
+
+`UCataclysmSkillTemplate::LeaveAZoneFor` (`CataclysmSkillTemplate.cpp:3761`) is the pass-through every skill's
+ground goes through, with no height of its own.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.EffectPlacement.`, a new group of four** in
+`game/Source/Cataclysm/Tests/CataclysmEffectPlacementTests.cpp`. Each lays a world-static floor 40 cm thick with its
+top at 500 cm, not at the origin.
+
+- `APointIsPutOnTheFloorUnderItFromAboveOrBelow`: a capsule centre comes down to 502, a point 60 cm under the surface
+  comes up to 502, only the height moves; a point past the floor's edge, one further under it than the search looks,
+  and one with no world are each left where they were asked.
+- `AGroundZoneIsDrawnOnTheFloorUnderIt`: a round zone at a capsule centre stays there and asks there, and its ring is
+  drawn at 502; one 60 cm under the surface is drawn at 502; a long zone from under the surface to a capsule centre has
+  both ends drawn at 502; a zone past the edge is drawn where it was asked.
+- `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre`: a circle centred under the surface and a lane at capsule height
+  are each drawn at 502; one past the edge where it was asked.
+- `DebrisIsLeftOnTheFloorUnderTheImpact`: debris left under the surface is put at 502; past the edge, where it was asked.
+
+**No existing test should move.** Every other test of these three runs in a world with no geometry, where
+`OnTheFloor` answers the point it was given. The four test files that build geometry (`CataclysmAbyssalWardenTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmTerrainTests.cpp`) and the
+ones that build a dungeon floor read no marker's or burst's height and no drawn height; they read `LastStart`, which is
+unchanged. That is a reading, not a run.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.EffectPlacement.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmEffectPlacement.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ + LiftCm));` to `return Point;` | all four |
+| `CataclysmGroundEffect.cpp` | `Places.Add(CataclysmEffectPlacement::OnTheFloor(World, Start + Along * Fraction));` to `Places.Add(Start + Along * Fraction);` | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| `CataclysmTelegraphMarker.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, Location), Rotation, SpawnParams);` to `Location, Rotation, SpawnParams);` | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| `CataclysmDebrisBurst.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, At), FRotator::ZeroRotator, SpawnParams);` to `At, FRotator::ZeroRotator, SpawnParams);` | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+
+---
+
+## 2026-11-24 — Damage the Masochist's energy shield absorbs fills Fervour as health lost does, and the shield recharging removes none (#2873)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
+for the coordinating session on 2026-11-24, which builds and runs it in a later window. Issue
+[#2873](https://github.com/sdubois777/Cataclysm/issues/2873).
+
+### The rulings, verbatim
+
+- **The project owner, 2026-11-24:** "the massochist doesn't gain fervour with damage to energy shield, and it should."
+- **The coordinating session, 2026-11-24, on the detail the issue left open, recorded as its ruling:** option (a),
+  damage absorbed by the energy shield counts exactly like health lost, at the existing rate (1 Fervour per 1% of
+  maximum HEALTH, so the existing rate and its tree nodes are unchanged), and energy shield recharge does NOT remove
+  Fervour (only healing health does, as now).
+
+### What changed
+
+- **The one line that connects a blow to Fervour moved and reads both pools.** In
+  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` the call to `UCataclysmFervour::GainFromDamage` sat inside
+  the block that writes health, which runs only when something reaches health, so a blow the shield took whole filled
+  nothing whatever its amount was. It now sits directly after that block and is handed what reached health
+  (`ToHealth`, as before) plus what the shield lost (`Outcome.AbsorbedByShield`), with the hit's tags, so the Masochist's
+  Shared Agony still scales a tick the shield took. A share of an ally's blow still fills nothing (ruled 2026-10-15,
+  R7), its shield share included.
+- **The recharge needed no code, and is now tested.** `UCataclysmRegeneration::TopUp` is where every pool comes back,
+  and it asks `UCataclysmFervour::RemoveForHealing` for the health pool alone, so the shield's own recharge and energy
+  shield leech already removed nothing. Its comment now records the ruling.
+- **The design document**, in three places: the paragraph led by "A generator is a set of rates", the class table's
+  Masochist row, and the paragraph in the class stat lines that said "every point of energy shield is a point of
+  resource the class does not generate", which is now led by "For the Masochist it no longer costs resource
+  generation, since 2026-11-24" and says what a shield still keeps from the class: The Breaking Point converts only
+  what reaches health, and Low Life, The Last Drop and Rock Bottom are measured against health.
+- **The simulation needed nothing.** `sim/cataclysm_sim/` holds the Fervour pool's size and no generator at all:
+  searched for `fervour` and `class_resource`, which appear only as the pool and the flat affix. The Masochist's base
+  energy shield stays at zero in `classes.py`, as the owner did not change it.
+
+### Judgements of the writing session
+
+1. **The shield's figure is the points the shield lost, `Outcome.AbsorbedByShield`**, not the raw damage it stopped.
+   A magic blow's bonus and a defender's "energy shield takes increased damage" make the shield lose more than the
+   raw blow held, as a slashing blow's bonus makes health lose more, and health's half already counts what health
+   lost. The figure on the bar is the figure that fills Fervour.
+2. **The temporary absorb and the mana a row puts first fill nothing.** The owner named the energy shield, and ruled on
+   2026-10-07 that the temporary absorb is separate from it.
+3. **A cost paid from the shield fills nothing.** `cost_paid_from_energy_shield` pays a mana cost from the shield; the
+   ruling is about damage, and the cost generator (`fervour_from_cost`) is health spent.
+4. **A blow The Breaking Point converts whole still fills Fervour for its shield share at once.** The shield took that
+   share before the conversion was asked; the health share still arrives a tick at a time as the bleed takes health.
+5. **No formula was chosen, so no genre research was done.** The rate is the existing one, by ruling.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.Fervour.`, three added (29 before, 32 predicted):**
+
+- `Cataclysm.Fervour.ABlowTheEnergyShieldTakesWholeFillsTheBar`: a real blow through `ApplyHit` on a defender with
+  10,000 health and 10,000 shield; the shield takes it all and health none, and Fervour is the shield's loss over
+  10,000 times 100. A control defender with the same shield and no generator gains nothing.
+- `Cataclysm.Fervour.ABlowSplitBetweenTheShieldAndHealthCountsBothHalves`: a shield of 100 against a blow of about 500;
+  Fervour is the two halves' sum over 10,000 times 100.
+- `Cataclysm.Fervour.TheEnergyShieldRechargingRemovesNoFervour`: `UCataclysmRegeneration::ApplyStep` recharging the
+  shield from nothing, then shield leech through `TopUp`, each leave 50 Fervour at 50; a control through the same step
+  with health regenerating does remove Fervour.
+
+**Python:** `tools/tests/test_class_passive_trees.py::test_the_gdd_counts_energy_shield_damage_as_health_lost_for_the_masochist`,
+new, holds the generator paragraph and the table row to the ruling. `tools/tests/test_a_zero_class_stat_is_not_a_gate.py`'s
+Masochist assertion is rewritten for the new paragraph, as
+`test_it_says_what_a_shield_does_and_no_longer_does_to_a_masochist`.
+
+### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.Fervour.`)
+
+| Break, in | The change | Must fail |
+| :-- | :-- | :-- |
+| `CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);` to `GetOwningAbilitySystemComponent(), HealthLostToTheBlow, AssetTags);` | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| `CataclysmRegeneration.cpp` | `if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())\n\t{\n\t\tUCataclysmFervour::RemoveForHealing(` to the same with `\|\| Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()` added inside the condition | `TheEnergyShieldRechargingRemovesNoFervour` |
+
+---
+
+## 2026-11-24 — Demonic Guide's guide is nobody's target and cannot be killed, the player and what it commands walk through each other and through the guide, and the guide leaves yellow footprints (#2860, #2861, #2862)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/demonic-guide-2860`, by a bug-fix agent working
+for the coordinating session on 2026-11-24. A window compiles it and runs the tests below. Issues
+[#2860](https://github.com/sdubois777/Cataclysm/issues/2860), [#2861](https://github.com/sdubois777/Cataclysm/issues/2861)
+and [#2862](https://github.com/sdubois777/Cataclysm/issues/2862).
+
+### What the owner said, verbatim, from the play-test of 2026-11-23
+
+- #2860: "Demonic Guide: sometimes he manages to die. My minions are constantly trying to attack him even though they
+  usually do 0 damage."
+- #2861: "He can't walk through my minions, and neither can I, which is annoying. There shouldn't be collision between
+  player and minions." ("He" is the guide.)
+- #2862: "I also think we should show like yellow footsteps or something pointing to where he's gone. He's kinda easy
+  to lose track of."
+
+No issue carried a comment, so there is no further ruling; every choice below not in those words is a judgement.
+
+### Why the guide was attacked, and how it could die (#2860)
+
+- **Attacked.** The guide is an Imp on the monsters' side. `UCataclysmTargeting::MatchesAttitude` asked three things
+  of a candidate -- can it hold damage, is it dead, which side -- so a minion's and a thrall's search
+  (`UCataclysmTargetCandidates::NearestHostile`, through `IsHostileTo`) found it as the nearest enemy, and its
+  `bCannotBeHurt` emptied every blow: the owner's "0 damage".
+- **Killed.** `bCannotBeHurt` holds its health at the maximum in `UCataclysmVitalAttributeSet::PreAttributeChange`, so
+  no write to health kills it. But four rules write health to nought and then call `HandleDeath` outright, and
+  `ACataclysmEnemyCharacter::HandleDeath` asked nothing about being unhurtable: Epidemic's chain ending
+  (`ACataclysmDungeonGameMode::EpidemicEndTheChain`, which finds its victims with `FindEnemiesInSphere` as the player),
+  Infernal Sacrifice (`UCataclysmEnemyModifiers::TimedStep`, which eats the nearest of `FindAlliesInSphere`), a drained
+  delayed blow (`UCataclysmDelayedDamage::DrainStep`) and health debt (`UCataclysmHealthDebt`). Which one killed the
+  owner's guide is not known -- no log of that run was read -- and the first two are the ones whose searches could
+  reach it.
+
+### What changed
+
+1. **Nobody's target** (#2860). `ACataclysmCharacterBase::IsNeverATarget`, false for every character but the guide
+   (`ACataclysmEnemyCharacter` answers `bGuidesThePlayerForTheFloorRule`). `UCataclysmTargeting::MatchesAttitude`
+   refuses it beside the dead, so it is neither an enemy nor an ally of anybody, and the side-less search (a
+   Hellhound's lane) refuses it too: every minion, thrall, skill search, click and floor-rule sweep passes it over.
+   `UCataclysmSkillEffects::IsUntargetable` answers true for it, so `ApplyHit` refuses a blow aimed straight at it
+   before anything is sent and no rider sees a landed blow.
+2. **It does not die** (#2860). `ACataclysmEnemyCharacter::HandleDeath` returns before the mark for a character that
+   is nobody's target, and logs that it did, so a rule's outright kill leaves it standing and not marked dead.
+3. **Which bodies block which** (#2861). Three of the engine's six collision mask bits: the player 1, anything else on
+   the player's side (a summoned minion, a deployed machine, a thrall) 2, the guide 4. Each capsule carries its bit as
+   its mask filter and ignores the other two as it moves (`UPrimitiveComponent::SetMoveIgnoreMask`); a creature
+   carries and ignores nothing. `ACataclysmCharacterBase::RefreshPassThroughBody` writes both, at `BeginPlay`, from
+   `SetGenericTeamId` (so a minion takes its summoner's side's body and a thrall changes body when taken, and back if
+   anything ever gives it back), and from `PlaceTheGuide` once the creature is the guide. So: the player, its minions
+   and thralls, and the guide pass through one another; a creature blocks all of them and all of them block a
+   creature; two commanded bodies still block each other.
+4. **Footprints** (#2862). `ACataclysmGuideFootprints`, one actor holding a fixed pool of 40 prints, begun by
+   `PlaceTheGuide`, destroyed by `ForgetTheGuide`, and stepped on the guide's beat by `StepDemonicGuide`. It lays a
+   print every 80 cm the guide walks, left and right in turn, each fading evenly to nothing over 10 seconds, and the
+   oldest print is taken for the next. Drawn with the engine's cylinder squashed to an oval and the telegraph markers'
+   unlit translucent material, `/Game/Effects/M_TelegraphMarker`, so no asset is added.
+5. **The design document** gains "What a minion's body blocks" after "How fast a minion walks".
+
+### Research
+
+- **Path of Exile 2 lets the summoner walk through its own minions, and its minions block each other.** A player's
+  post on the official forum, 2025-01-04 (thread 3680211, Shadoe Wrayth): "I can walk right through my minions, but
+  they cannot walk through each other?" The thread and its neighbours (3619145) are players asking for minion-minion
+  collision to go, with no developer reply.
+- **Last Epoch treats a minion blocking the player as a bug.** Patch 1.3.3's notes, under Items: "Evolution's End: Fixed
+  an issue where the Rift Beast minion would block player movement". In its 2019 alpha it had the collision and players
+  asked for it to go ("Please Remove Minion Collision", forum topic 13844); one, cpurdy, wrote that "in almost every
+  other arpg" a summoner can walk through its minions while they still block the enemy.
+- **A trail of footprints to follow.** The Witcher 3's tracks, which glow under Witcher Senses and are followed to where
+  a creature went, are the nearest shipped mechanic found. No shipped ARPG found publishes a guide's trail, so no
+  figure below is read off a game.
+- **What the research settles:** the player and the player's own minions do not block each other, and minions still
+  block the enemy. **What it does not settle**, and is judged below: minion against minion, the guide's body, the
+  footprints' figures.
+
+### Judgements, each labelled
+
+1. **The guide alone is nobody's target.** The Reaper, an echo, a rift and the floor's other unhurtable objects are
+   found and struck for nothing as their own rulings have them; making them untargetable is not what was asked.
+   Infernal Sacrifice and Epidemic can still call the death of those creatures outright -- see "Not settled" below.
+2. **Nobody's target is no ally either**, so a creature's search for allies passes the guide over as well: Infernal
+   Sacrifice cannot eat it, and the Field Medic's heal and Horde Leader's rally, which it never needed, skip it.
+3. **The death is refused for the guide only, before the mark**, rather than for every creature that cannot be hurt:
+   other rules kill an unhurtable creature on purpose after clearing its flag (Blood Bond's elite), and the guide is
+   destroyed, never killed, when its arena ends.
+4. **The engine's mask filter, not a new collision channel or profile.** A channel would give the capsule another object
+   type, and every target search asks for `ECC_Pawn` by object type (`UCataclysmTargeting::Gather`,
+   `UCataclysmTargetCandidates::CapsuleReachesInto`), so a minion moved onto it would stop being found by the creatures
+   that fight it. The mask filter is the engine's own for exactly this ("Red team", "Blue team" in its declaration),
+   and every sweep the character movement component makes -- the move, the floor check, the push out of an overlap --
+   reads it through `UPrimitiveComponent::InitSweepCollisionParams`.
+5. **Two of the player's minions still block each other**, as Path of Exile 2's do: the owner named the player, and the
+   change is one line (`MovesThroughMaskFor`) should the owner want them through each other too.
+6. **The guide passes through the player as well as the minions**, the coordinating session's reading of #2861.
+7. **A deployed machine is a commanded body**, so the player walks through its own turret and ballista; a creature is
+   still blocked by them.
+8. **Crowd avoidance is unchanged.** The guide and the minions are Detour crowd agents, so the guide still steers round
+   a minion in its way rather than walking a straight line through it; what is gone is the body that stopped it. The
+   owner's play-test is what says whether that is enough.
+9. **The footprints' figures**: a print every 80 cm walked (one a beat at the guide's default 320 cm/s), 14 cm either
+   side of the line walked, 32 by 16 cm (about a third of the player's width, readable from the 8 m camera),
+   `#FFD800` -- a saturated yellow, told from Celestial's pale gold ground and from a telegraph's red -- at 0.9 opacity
+   fading evenly to nothing over 10 seconds, so the newest is the brightest and the trail shows which way it went; a
+   pool of 40, which holds a whole lifetime's trail at the default walk (a faster guide's trail is cut short instead of
+   growing); a move of more than 6 m in one beat starts the trail again rather than printing the gap.
+10. **A print does not age while the guide waits for the player.** The guide waits exactly when the player has fallen
+    15 m behind, which is when the trail is wanted.
+11. **A mesh and the telegraph material, not a decal.** The project holds no deferred decal material, and the issue's
+    brief said not to add binary assets. Without the material the prints draw in the engine's default and do not fade,
+    and the log says so once.
+12. **Stepped on the game mode's beat, not by a tick of its own**, as the guide's walk and its chain are, so an
+    automation test can walk a guide and watch its prints come and go.
+
+### Not settled
+
+- **Infernal Sacrifice and Epidemic can still kill the other creatures that cannot be hurt.** Both call `HandleDeath`
+  outright on what their search finds; the Reaper and an echo are on the monsters' side and can be found. Not changed
+  here, because the issue is the guide's and their rulings are their own.
+
+### Tests
+
+Unreal, 11 new, written and not run:
+
+| Test | What it shows |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` | A minion and a thrall 1.5 m from the guide choose the Imp 6 m beyond it; the player's search and a creature's ally search pass it over; a blow at it is refused. CONTROL: not the guide, it is the minion's choice |
+| `Cataclysm.DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` | A blow of 100,000% is refused before anything is sent; its health stays at the maximum; its death called outright leaves it standing. CONTROL: the blow kills an Imp |
+| `Cataclysm.DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` | Swept both ways against the player and a minion it passes; against an Imp it is stopped, both ways |
+| `Cataclysm.DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` | One print at the first beat, ten more for 8.5 m, at its feet, either side in turn, the newest the brightest; none after 10 s standing |
+| `Cataclysm.DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` | Four prints stay 14 s while it waits; gone 10 s after the player is back |
+| `Cataclysm.DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` | 121 prints laid, never more than 40 shown, one trail actor; a 10 m jump lays one |
+| `Cataclysm.PassThroughBodies.EachBodyCarriesItsBitAndMovesThroughTheOtherTwo` | The player 1/6, a minion 2/5, a creature 0/0 |
+| `Cataclysm.PassThroughBodies.ThePlayerAndItsMinionWalkThroughEachOther` | Both ways. CONTROL: the player is stopped by a creature |
+| `Cataclysm.PassThroughBodies.ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt` | All four sweeps stopped |
+| `Cataclysm.PassThroughBodies.TwoMinionsStillBlockEachOther` | Judgement 5 |
+| `Cataclysm.PassThroughBodies.AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` | Blocks, taken passes both ways (2/5), given back blocks again (0/0) |
+
+Python, `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py`, 9 tests, which continuous integration runs:
+the search's refusal, the guide's override and the blow's refusal, the death guard before the mark, the three bits,
+the block table worked out from the figures for every pair, where the bodies are written, the guide's raising, beat
+and end, and the footprint pool. Proved with `tools/prove_guard.py`: removing the search's refusal fails
+`test_the_search_refuses_nobodys_target_on_every_side`; making the guide's bit the commanded bit fails
+`test_the_three_bits_are_separate_and_fit_the_engines_filter` and
+`test_the_bodies_block_the_pairs_the_issue_names_and_no_others`; disabling the death guard fails
+`test_the_guides_death_called_outright_is_refused_before_the_mark`. Each passed again with the file restored.
+
+---
+
+## 2026-11-24 — A city keeps its share of its maximum when the empire tree moves it, and a fallen city's box opens its screen so its Dungeon City can be walked (#2859, #2866)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `fix/empire-cities-2859`, a bug-fix branch of the
+coordinating session's of 2026-11-24. Nothing was built or run in Unreal; the C++ and its six new Unreal tests were
+written and read, not compiled. The Python was run; what it printed is in the commit message. Issues
+[#2859](https://github.com/sdubois777/Cataclysm/issues/2859) and [#2866](https://github.com/sdubois777/Cataclysm/issues/2866).
+
+### Issue #2859: the owner's ruling
+
+The owner, playtesting on 2026-11-23, verbatim: "When increasing city defenses through the empire tree, it actually
+lowers the total % each city is at. It should maintain the % they were at before buying the upgrades." The issue adds:
+"A city at 80% before the purchase is at 80% of the new, higher maximum after it", and "A respec that lowers the
+maximum should keep the percentage the same way."
+
+**This replaces half of the coordinating session's S1 of 2026-11-18** (the slice 3a entry, "S1, what a changed maximum
+does to what a city holds"): "nothing is written at a buy or a respec" no longer holds. The rest of S1 stands: a READ
+of a city writes nothing and reads what it holds above its maximum as the maximum, a run begun with the tree builds its
+cities full, and a city upgrade raises what its city holds by the rise in its effective maximum. **No genre research
+was done for this**, because the shape is the owner's ruling; the Path of Exile 2 forum posts S1 cited for the opposite
+rule are not weighed against it.
+
+### What it does
+
+- **`UCataclysmEmpireMap::SharesNow` and `KeepShares`** (`FCataclysmCityShares`): every city's maxima with the tree and
+  the share of each it is read as holding, taken before a change; and every city standing before and after put back at
+  that share of its maxima after it. Defence and population both.
+- **`UCataclysmEmpireRun::ChangeTreeBonuses`**, the door for a tree changed in play, keeps the shares around
+  `SetTreeBonuses`, which is unchanged and is now the door for a run being handed its tree as it begins or loads.
+- **`UCataclysmGameInstance::RefreshEmpireTreeBonuses`** (a point bought, an option or extra option chosen, a respec,
+  and Reinvestment's count after a city upgrade's price) goes through `ChangeTreeBonuses`; a load goes through the new
+  **`HandEmpireTreeBonusesToALoadedRun`**, which writes nothing.
+- **`UCataclysmEmpireMap::AddUpgrade`, `Fall` and `Retake`** keep every city's share across The Royal Engineer's
+  Blessing's count moving, and **`UCataclysmEmpireRun::AdvanceDay`** keeps it across the day's turn, when Enduring
+  Foundations reaches an upgrade held ten days.
+
+### Judgements of this change, each labelled
+
+- **J1, a judgement: the rule reaches every place a tree node moves a city's maximum in play, not only the purchase.**
+  The Royal Engineer's Blessing moves every maximum when a city finishes, loses with its fall or regains with its retake
+  a defensive upgrade, and Enduring Foundations moves one on the tenth day an upgrade is held. Left as they were, both
+  would lower a city's percentage with nothing bought, which is the drop the owner reported.
+- **J2, a judgement: a city upgrade's raise of its own city's maximum keeps its rule**, adding what the effective
+  maximum rose by. That rise never lowers the share -- (D + r) / (M + r) is at least D / M -- so the fault is not there,
+  and the share rule would give a damaged city less than it gets now. The brief named city upgrades "if they move the
+  maximum"; this keeps them, and the coordinating session may rule otherwise.
+- **J3, a judgement: a load writes nothing into its cities.** They were saved holding what they held under the tree,
+  and a run rebuilt from its record has had no tree until the load hands it one, so keeping shares there would scale
+  every city by the whole tree. **Not settled:** an account's tree is shared by the characters of one lethality mode,
+  so it can change between a run's save and its load (another character buying a node). The loaded city then holds its
+  saved figure against the new maximum, as under S1. Keeping the share there would need the run record to hold each
+  city's maxima at the save, a record version, and was not done.
+- **J4, a judgement: a maximum has moved when it changes by more than a ten-thousandth of itself.** Only then is a city
+  written, so a city whose maximum did not move keeps exactly what it holds. The smallest move anything makes is a
+  hundredth.
+- **J5, a judgement: a fallen city is left as it is**, and a city just retaken has the share `Retake` gives it.
+
+### The simulation
+
+`sim/` has no fault to fix: its empire tree is a fixed preset for a whole campaign, applied once in
+`world.build_empire` (`EmpireTree.city_health_mult`), so no maximum moves during a campaign, and it has no city
+upgrades (`world.City.upgrades` is a bare count). Nothing in `sim/` changed.
+
+### Issue #2866: why a fallen city could not be retaken
+
+**The fault:** `UCataclysmEmpireMapWidget::PlaceCities` made a fallen city's box unavailable (`bAvailable` was
+`Mark != ECataclysmCityMark::Fallen`, from commit `5ee18f625a` of 2026-08-31, before a fall left a Fallen City dungeon
+on its city). An unavailable `UCataclysmChoiceButton` is disabled and its `Press` returns, so the box could not be
+pressed, and the city screen -- the only place a dungeon standing on a city is walked from -- never opened. Nothing
+else refuses: `FCataclysmWalkFromTheScreen::RefusalFor`, `ACataclysmDungeonGameMode::EnterEmpireDungeon` and
+`ACataclysmCapitalGameMode::TravelToWalk` take a Fallen City dungeon like any other, and `UCataclysmEmpireRun::
+ClearDungeon` retakes the city when it is cleared. The owner's log shows the dungeon standing ("dungeon 52, the Fallen
+City dungeon on Outpost (2,1)") and no Walk pressed for it.
+
+**The fix:** the box is available and dimmed (`UCataclysmChoiceButton::SetDimmed`, issue #2064's state for "read but
+not taken"), from `UCataclysmEmpireMapLayout::CityOpensItsScreen` and `IsCityDimmed`. The line under the map and the
+city screen say how the city is retaken while its Fallen City dungeon stands on it.
+
+- **J6, a judgement: every city's box opens its screen**, an erased one's too, whose screen already says "Erased by the
+  Void. It can never be retaken."
+- **J7, a judgement: the words.** The line under the map: "fallen: walk its Fallen City dungeon to retake it (press the
+  city, then Walk)", "erased by the Void, it can never be retaken", or "fallen" with no such dungeon. The city screen
+  adds "Walk its Fallen City dungeon below to retake it." after "Fallen. Nothing can be built here until it is
+  retaken." A fallen city with no such dungeon reads as before.
+
+### Issue #2866: does a city's fall fire a surge?
+
+**The design**, section VIII, Dungeon Basics: "If a city falls, it becomes a Dungeon City — a staging ground with more
+floors and multiple boss fights, triggering a Surge." **The code** does, with the least interval of 2026-10-12 (the
+entry "The game's surge when a city falls waits for the 25-day least interval", issue #2380):
+`UCataclysmEmpireRun::CityFell` fires one when `UCataclysmSurgeScheduler::IsDueOnCityFall` answers yes, which is
+`bSurgeOnCityFall` (true) and the last surge at least `LeastIntervalDays`, 25, behind.
+
+**What happened in the owner's run**, read from `game/Saved/Logs/Cataclysm-backup-2026.11.23-22.53.02.log` in the main
+checkout, line 215834 and the three lines after it. The walk began on day 416, so the days that ran were 417 to 441,
+and "1 surge brought 8 dungeons" in them: dungeons 44 to 51. Dungeons 45, 47, 48, 49 and 50 resolved, 44 and 51 still
+stand, and 46 is in neither list, which is what a dungeon absorbed by the fall looks like (an inference: the log does
+not name it). Outpost (2,1) fell, and its Fallen City dungeon is 52, made after the surge's eight. **So the surge came
+first, its dungeons felled the city, and the fall came at most 24 days after it: by the least-interval rule the fall
+brought no surge of its own.** A fall surge would have made dungeons numbered after 52 and the summary would say 2
+surges. The fall did not cause the surge the owner saw; the rule worked as written. No surge rule changed here. The
+capital's summary does not say whether a fall brought a surge or was refused one, and the design's line does not name
+the 25-day brake; both are left to the coordinating session, since fix/empty-board-surge-2865 changes surges.
+
+---
+
 ## 2026-11-24 — A death is marked once even when a blow dealt from inside it reaches back to the dying creature; a stack built on hit is refused to a dead target; a creature's death is logged (#2871, #2874)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/drops-and-death-2871`, a bug-fix agent of the
@@ -311,6 +789,215 @@ pins the death line as one of `HandleDeath`'s jobs and lists the two attribute r
 
 No shipped game was researched: no formula or number is chosen here. The fixes restore what the code already said it
 did ("Nothing here is safe to run twice"; "a death is announced once").
+
+---
+
+## 2026-11-24 — Blood Altar's pulse reaches the player anywhere on the floor and every pulse says a line; Thorns of Glass was measured against the owner's death and did what its row says (#2855, #2854)
+
+**Affects:** `UCataclysmDungeonModifierEffects::BloodAltarRingRadiusCm` (was `BloodAltarReachCm`, the same 1000) and the
+accounts of `BloodAltarKey` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`);
+`ACataclysmDungeonGameMode::StepBloodAltar` (`Dungeon/CataclysmDungeonGameMode.cpp`, `.h`). Tests:
+`CataclysmDungeonModifierEffectsTests.cpp` (one renamed and changed, one new), `CataclysmThornsOfGlassTests.cpp` (two new),
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and `tools/tests/test_thorns_of_glass_strikes_back.py` (one
+new each). Thorns of Glass's game code is not changed. Issues
+[#2855](https://github.com/sdubois777/Cataclysm/issues/2855) and
+[#2854](https://github.com/sdubois777/Cataclysm/issues/2854).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED; NO WINDOW YET.** The four Unreal tests below are registered, not run.
+- **BLOOD ALTAR NOW REACHES THE WHOLE FLOOR, WHICH REPLACES THE JUDGEMENT OF 2026-09-16** (the entry "Blood Altar pulses
+  at the player from the exit ...", its table row "Reach | 1000 cm"). It is the coordinating session's brief, not this
+  session's idea; quoted below. The ring at the stairs stays, as wide as before, and now only marks the altar.
+- **THE INTERVAL STAYS 30 SECONDS: THE DESIGN HAS ONE, AND IT IS THE OWNER'S.** The 2026-09-16 entry: "A pulse every 30
+  seconds, counted from the floor's start. This is the project owner's figure, not a judgement." The owner's
+  recollection relayed in the brief, "probably every minute or so? i don't remember the design.", differs from it; the
+  brief says to use about a minute only "If the design gives no interval". **The owner should confirm 30 seconds or say
+  60.** It is one constant, `BloodAltarSecondsBetweenPulses`.
+- **A FLOOR-WIDE PULSE CANNOT BE WALKED AWAY FROM, AND ITS CEILING WAS JUDGED WHEN IT COULD.** At the 60th death a pulse
+  is 30% of maximum health every 30 seconds, about 1% a second on average, the same as Mortal Decay's most
+  (`MortalDecayMostPercentPerSecond`, also a danger-15 row). Not changed; flagged.
+- **THORNS OF GLASS: NO DEVIATION FROM ITS ROW WAS FOUND, SO NO GAME CODE CHANGED.** The owner's death is accounted for
+  by the row as written, the owner's ruling of 2026-11-19 on its interval, and a second modifier on the same Boss
+  ("Thorns of Glass and the owner's death", below). Two Unreal tests reproduce the fight's cadence.
+- **FOUND AND NOT FIXED: INFERNAL SACRIFICE'S BUFF IS ATTACK SPEED, WHERE ITS ROW SAYS DAMAGE.** Its row: "Sacrifice
+  nearby allies to heal yourself and gain temporary damage buffs." `UCataclysmEnemyModifiers` grants its carrier
+  Commander for 8 seconds, whose row is "All nearby allies gain 20% increased movement speed and attack speed." On the
+  owner's Boss that shortened Thorns of Glass's interval from 1.2 seconds to 1.0 for the five seconds that killed the
+  owner. A different row and a different concern; for the coordinating session.
+- **THE ISSUE'S THREE QUESTIONS FOR A RULING ARE ANSWERED BY RULINGS ALREADY MADE**, and this entry recommends no
+  change ("The questions #2854 asks", below).
+
+### The rulings
+
+**The coordinating session's brief of 2026-11-24**, verbatim. On #2855: "find why no pulse happens in play (not built,
+not spawned, timer never started, damage applied to the wrong side, floor-wide reach missing), and fix it to the
+design. If the design gives no interval, use the issue's and the owner's suggestion of about a minute as a judgement and
+say so." And: "Unreal tests: a Thorns of Glass creature retaliates at most once per its attack interval under rapid
+hits and damage over time; the Blood Altar pulses on its interval, damages the player anywhere on the floor, and grows
+with kills." On #2854: "find what made the retaliation lethal (fired more often than once per attack interval, fired per
+tick of an aura or damage over time, used the wrong damage, stacked across creatures, or was correct and simply
+strong), fix any deviation from the row's text, and report what the row does now with numbers."
+
+**The project owner**, relayed in that brief: "probably every minute or so? i don't remember the design."
+
+**Carried, not new.** The owner, 2026-11-19, on Thorns of Glass: "Once per its attack time: It can strike back at most
+once per its own attack interval, so it returns about what its own swings would deal (~40 in the example). Still
+punishes hitting it; can no longer out-damage itself." The owner, 2026-11-18: "When struck, a reflecting creature hits
+back for its own attack damage, sized by its strength like any other hit and reduced by your defences. Your own damage
+no longer matters to it." The coordinating session, 2026-11-18 (B2): "It applies once per direct hit it takes. Damage
+over time does not trigger it, as in Path of Exile."
+
+### Blood Altar: why no pulse found the owner
+
+The rule was built, placed and running. `StepBloodAltar` runs on the quarter-second beat of every floor carrying the
+row; it places the altar's ring on the exit cell on the first beat and pulses every 30 seconds from the floor's start.
+But a pulse dealt damage only when `FindEveryoneInLine` found the player's body inside the ring's 1000 cm around the
+stairs, and a player is inside that ring only on the way down the stairs, for well under one 30 second pulse. The
+owner's floors 1 to 4 took about six minutes (04:26:26 to 04:32:21 in the log of 2026-11-22), so about a dozen pulses
+came and found nobody. And nothing said so: the rule logged nothing at all.
+
+### What Blood Altar does now
+
+- **A pulse every 30 seconds from the floor's start, at the player wherever they stand on the floor**, and at nothing
+  else. 0.5% of the player's maximum health for each creature death counted on the floor, up to 30% at the 60th death,
+  Demonic, dealt from the floor's source as an area hit, so the player's Demonic resistance and defences reduce it. A
+  dead player is not struck again. For the owner's level 10 character with 414 maximum health: 2.07 a death before
+  defences, 124.3 at the ceiling.
+- **Every pulse says one line**, at `Log`, so the play log carries it: "Blood Altar: pulse on floor 2 after 14
+  death(s) counted: sent 29.0, 7.0% of maximum health 414; took 24.8 of health 390.0." An unfed altar's pulse says
+  "... after 0 death(s) counted: sends nothing (maximum health 414)." (Figures illustrative.)
+- **The ring stays on the exit cell, as wide as before** (`BloodAltarRingRadiusCm`, 1000). It marks the altar;
+  nothing reads it to decide who a pulse hits. A judgement of this session: changing how the altar looks is not what
+  either issue asks.
+- **No genre research was done for this**: no formula or number changed. The reach is the brief's, the interval the
+  owner's, and the share and ceiling the 2026-09-16 judgements.
+
+### Thorns of Glass and the owner's death
+
+From `game/Saved/Logs/Cataclysm-backup-2026.11.23-06.08.07.log` in the main checkout, the session of 2026-11-22 at
+development `4d33f5994`, every line naming `CataclysmBruteCharacter_212` between 04:23:30 and 04:23:43 read. A Boss Brute
+carrying Infernal Sacrifice, Perfect Aim, Overpowered and Thorns of Glass; the player's Conflagration is an aura
+("Conflagration in Slot.Aura"), "Radius=10; Interval=1; Burn=1" in `WeaponSkills.csv`, so it hit the Brute once a second
+from up to 10 metres, and its burn ticked between.
+
+| Time (04:23:) | Player's blow on the Brute | Struck back | Seconds since the last strike back |
+| :-- | :-- | :-- | --: |
+| 30.332 | Conflagration | 68, 0 to health | first |
+| 31.336 | Conflagration | no | 1.004 |
+| 31.908 | Compel | 68, 54 to health | 1.575 |
+| 32.336 | Conflagration | no | 0.429 |
+| 33.329 | Conflagration | 73 | 1.422 |
+| 34.335 | Conflagration | no | 1.006 |
+| 34.804 | (the Brute sacrificed `CataclysmGatekeeperCharacter_8`: Commander for 8 seconds) | | |
+| 35.329 | Conflagration | 85 | 2.000 |
+| 36.339 | Conflagration | no | 1.010 |
+| 37.329 | Conflagration | no | 2.000 |
+| 37.927 | Basic Attack | no | 2.598 |
+| 38.327 | Conflagration | 85 | 2.998 |
+| 38.623 | Compel | no | 0.296 |
+| 39.328 | Conflagration | 85 | 1.001 |
+| 39.408 | Basic Attack | no | 0.080 |
+| 40.329 | Conflagration | 80, the killing blow at 80 health | 1.001 |
+
+Read against each cause the brief names:
+
+1. **More often than once per its attack interval: no.** Until the sacrifice every strike back came 1.42 seconds or more
+   after the last, and blows 1.004 and 1.006 seconds after one were refused: a Brute's designed 1.2. After it, strike
+   backs 1.001 seconds apart: an interval of at most 1.001, which is the Brute's 1.2 divided by Commander's 1.2. "Its own
+   attack interval" is `SecondsBetweenAttacks()` at the moment of the hit, buffs included, the definition the
+   2026-11-19 entry gives. The blows refused at 36.339, 37.329 and 37.927, when the interval had passed, are explained
+   if the player's own creatures took those strike backs: Compel says "Everything you command strikes that same enemy
+   at once", the player held a thrall (and two Imps from 04:23:39.2: "1 thralls 28, 2 Imp 19"), and a minion's blow
+   is struck back at the minion and is not logged. The log cannot show those blows, so that part is inference.
+2. **Per tick of an aura or a damage over time: no.** Every strike back answers a logged "HIT OUT" line, which the
+   log never writes for a tick, and the burn's ticks drew none. Conflagration's once-a-second blow is a hit in this
+   game, not a tick: it rolls critical strikes (the log's "critical" on two of them) and is logged as a hit.
+3. **The wrong damage: no.** Each was the Brute's own attack damage, not critical (Overpowered's always-crit does not
+   reach a strike back), after the player's defences: 68, then 73 and 85, rising as Soul Harvest's souls reached the
+   Brute (3 by 33.24, 5 by 34.69; the row gives souls "increased health, damage, and resistances"), then 80 because 80
+   health was left.
+4. **Stacked across creatures: no.** One creature.
+5. **So: correct, and strong.** 85 is 20.5% of 414. A Boss's own blow every second its interval allows, at a player who
+   stood in an aura's reach of it: four strike backs took 335 health in 5 seconds. The Brute swung at the player not
+   once in those thirteen seconds; with Overpowered, its own swing would have been that blow and a critical.
+
+**What the row does now, unchanged, with numbers.** Each hit that lands on a carrier and is not a tick is struck back
+for the carrier's own current attack damage, not critical, through the striker's defences, if at least its current
+attack interval has passed since its last strike back. Against an aura hitting once a second (1.001 seconds apart): a
+Brute (1.2 seconds) strikes back on every second pulse, so 4 of 7 pulses in six seconds; a hasted Brute (1.0) on
+every pulse, 7 of 7; an Abyssal Warden (2.4) on every third pulse; the default creature (1.5) on every second.
+
+### The questions #2854 asks
+
+| Question | Already ruled | Genre |
+| :-- | :-- | :-- |
+| A ranged hit, or a tick? | Any hit, "whatever hits it" (the row, 2026-11-19); never a tick (B2, 2026-11-18) | Path of Exile 2: inherent Thorns answers melee attack hits only, and a passive extends it to "any kind of Hit". Diablo IV, as the design's Retaliation section records: "a flat value that fires on any direct attack, melee or ranged, and never on damage over time" |
+| Its full attack damage, or a share? | Its own attack damage (the owner, 2026-11-18) | Path of Exile 2: Thorns is "a kind of Hit Damage", a figure of the retaliator's own, not a share |
+| Do the player's defences apply? | Yes, "reduced by your defences" (the owner, 2026-11-18), and they do: `ApplyHit` through the player's damage calculation | Path of Exile 2's Spiked Armour notable gives Thorns "50% chance to ignore Enemy Armour", so armour applies to it otherwise |
+
+**RECOMMENDATION: change nothing.** The row did what its sentence and both of the owner's rulings say, and the
+2026-11-19 ruling already cut its rate to its own swings'. **If the owner finds an aura cannot be played near it**, the
+genre's narrower trigger is Path of Exile 2's, melee hits only, and that would be a new ruling and a new sentence, not
+a fix. A judgement of this session, for the owner.
+
+The research, fetched 2026-11-24 by this session and quoted as returned: `poe2db.tw/us/Thorns` read ("Thorns damage is
+a kind of Hit Damage you can deal"; "If you have Thorns damage, you inherently Retaliate against Melee Attack Hits,
+dealing your Thorns damage to the enemy that Hit you"; "Retaliate against all Hits" extends it to "any kind of Hit dealt
+to you by enemies, rather than just Melee Attacks"). `diablo4.wiki.fextralife.com/Thorns` read; it says Thorns
+"Excludes attacks that are entirety damage over time" and does not say melee or ranged. `maxroll.gg/d4/resources/
+thorns-explained` and `poedb.tw/us/Reflect` answered 404. The Diablo IV sentence in the table is the design document's
+own record, not re-fetched.
+
+### The tests
+
+- **`Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`**, renamed from
+  `...WithinReach` and changed: its last reading put the player's body just outside the ring and asserted the pulse took
+  nothing; it now asserts the pulse takes as much as at the altar after the same three deaths (within 0.5). The ring's
+  width is read from `BloodAltarRingRadiusCm`.
+- **`Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`**, new: the play
+  case. The player stands at the floor's entrance, asserted outside the ring first; three pulses at the 30 second
+  clock, each with nothing taken and no line a beat before it; the unfed pulse takes nothing and says "after 0
+  death(s) counted"; after two deaths, and after four, each takes health, no more than its stated share, the second
+  more than the first, and says its count.
+- **`Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`**, new: a
+  carrier given a Brute's 1.2 seconds; seven pulses 1.001 seconds apart, each with quick hits 0.05 and 0.1 seconds
+  after it and a burn tick 0.5 after; pulses 0, 2, 4 and 6 struck back, no quick hit or tick, 4 x 40 lost. Control:
+  every blow landed.
+- **`Cataclysm.ThornsOfGlass.ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`**, new: the same
+  carrier given Commander by itself, as Infernal Sacrifice does, so its interval is 1.0; all seven pulses struck back,
+  no quick hit or tick, 7 x 40 lost.
+- Python, one each: `test_blood_altar_pulses_the_player_anywhere_on_the_floor_and_says_each_pulse` (no reach search in
+  `StepBloodAltar`, both log lines present) and `test_a_tick_never_reaches_the_strike_back_or_its_clock` (the strike
+  back and its clock sit inside the branch a tick never enters, and the clock is asked once).
+
+### Registered before the window
+
+| Group | Base, last measured | After this change | Why |
+| :-- | --: | --: | :-- |
+| `Cataclysm.ThornsOfGlass.` | 9 | 11 | +2 new |
+| `Cataclysm.DungeonModifierEffects.` | 777 | 778 | +1 new, 1 renamed |
+
+The whole suite: the base's last measured total plus 3.
+
+The guard proofs, each a one-place break, run with the prefix named:
+
+- **B1**, prefix `Cataclysm.DungeonModifierEffects.`: in `StepBloodAltar`, the condition
+  `UCataclysmSkillEffects::IsDead(Player)` gains `|| FVector::Dist2D(Player->GetActorLocation(), Ring->GetActorLocation())
+  > Effects::BloodAltarRingRadiusCm`, the old reach back. Must fail exactly
+  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor` and
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **B2**, the same prefix: the unfed line's text `Blood Altar: pulse on floor %d after %d death(s) counted: sends
+  nothing` becomes `Blood Altar: quiet on floor ...`. Must fail exactly
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **T1**, prefix `Cataclysm.ThornsOfGlass.`: in `TakeAStrikeBackIfDue`, `static_cast<double>(SecondsBetweenAttacks())`
+  becomes `static_cast<double>(DesignedSecondsBetweenAttacks())`, an interval without buffs. Must fail exactly
+  `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`.
+- **T2**, prefix `Cataclysm.ThornsOfGlass.`: in `UCataclysmVitalAttributeSet`, the retaliation branch's opening
+  `if (!Hit.bIsDamageOverTime` (the one followed by `&& !AssetTags.HasTag(` and `NoRetaliationTag()`) becomes
+  `if ((true || !Hit.bIsDamageOverTime)`, letting ticks in. Must fail exactly `ADamageOverTimeTickIsNotStruckBack` and
+  `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`; the hasted test passes, because its
+  ticks come half a second after a strike back and are never due.
 
 ---
 
@@ -755,693 +1442,6 @@ The proofs, each narrowed to its group with the trailing dot:
 | MP6 | `TheScreenListsCarriedPiecesAndAsksBeforeItSells` |
 | MP7 | `TheMapButtonSitsUnderTheForgeButtonAndCoversNoCity` |
 | MP8 | `TheMapButtonAsksForTheMerchantAndIsNoCity` |
-
----
-
-## 2026-11-24 — Blood Altar's pulse reaches the player anywhere on the floor and every pulse says a line; Thorns of Glass was measured against the owner's death and did what its row says (#2855, #2854)
-
-**Affects:** `UCataclysmDungeonModifierEffects::BloodAltarRingRadiusCm` (was `BloodAltarReachCm`, the same 1000) and the
-accounts of `BloodAltarKey` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`);
-`ACataclysmDungeonGameMode::StepBloodAltar` (`Dungeon/CataclysmDungeonGameMode.cpp`, `.h`). Tests:
-`CataclysmDungeonModifierEffectsTests.cpp` (one renamed and changed, one new), `CataclysmThornsOfGlassTests.cpp` (two new),
-`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and `tools/tests/test_thorns_of_glass_strikes_back.py` (one
-new each). Thorns of Glass's game code is not changed. Issues
-[#2855](https://github.com/sdubois777/Cataclysm/issues/2855) and
-[#2854](https://github.com/sdubois777/Cataclysm/issues/2854).
-
-### SAID FIRST
-
-- **WRITTEN AND NOT COMPILED; NO WINDOW YET.** The four Unreal tests below are registered, not run.
-- **BLOOD ALTAR NOW REACHES THE WHOLE FLOOR, WHICH REPLACES THE JUDGEMENT OF 2026-09-16** (the entry "Blood Altar pulses
-  at the player from the exit ...", its table row "Reach | 1000 cm"). It is the coordinating session's brief, not this
-  session's idea; quoted below. The ring at the stairs stays, as wide as before, and now only marks the altar.
-- **THE INTERVAL STAYS 30 SECONDS: THE DESIGN HAS ONE, AND IT IS THE OWNER'S.** The 2026-09-16 entry: "A pulse every 30
-  seconds, counted from the floor's start. This is the project owner's figure, not a judgement." The owner's
-  recollection relayed in the brief, "probably every minute or so? i don't remember the design.", differs from it; the
-  brief says to use about a minute only "If the design gives no interval". **The owner should confirm 30 seconds or say
-  60.** It is one constant, `BloodAltarSecondsBetweenPulses`.
-- **A FLOOR-WIDE PULSE CANNOT BE WALKED AWAY FROM, AND ITS CEILING WAS JUDGED WHEN IT COULD.** At the 60th death a pulse
-  is 30% of maximum health every 30 seconds, about 1% a second on average, the same as Mortal Decay's most
-  (`MortalDecayMostPercentPerSecond`, also a danger-15 row). Not changed; flagged.
-- **THORNS OF GLASS: NO DEVIATION FROM ITS ROW WAS FOUND, SO NO GAME CODE CHANGED.** The owner's death is accounted for
-  by the row as written, the owner's ruling of 2026-11-19 on its interval, and a second modifier on the same Boss
-  ("Thorns of Glass and the owner's death", below). Two Unreal tests reproduce the fight's cadence.
-- **FOUND AND NOT FIXED: INFERNAL SACRIFICE'S BUFF IS ATTACK SPEED, WHERE ITS ROW SAYS DAMAGE.** Its row: "Sacrifice
-  nearby allies to heal yourself and gain temporary damage buffs." `UCataclysmEnemyModifiers` grants its carrier
-  Commander for 8 seconds, whose row is "All nearby allies gain 20% increased movement speed and attack speed." On the
-  owner's Boss that shortened Thorns of Glass's interval from 1.2 seconds to 1.0 for the five seconds that killed the
-  owner. A different row and a different concern; for the coordinating session.
-- **THE ISSUE'S THREE QUESTIONS FOR A RULING ARE ANSWERED BY RULINGS ALREADY MADE**, and this entry recommends no
-  change ("The questions #2854 asks", below).
-
-### The rulings
-
-**The coordinating session's brief of 2026-11-24**, verbatim. On #2855: "find why no pulse happens in play (not built,
-not spawned, timer never started, damage applied to the wrong side, floor-wide reach missing), and fix it to the
-design. If the design gives no interval, use the issue's and the owner's suggestion of about a minute as a judgement and
-say so." And: "Unreal tests: a Thorns of Glass creature retaliates at most once per its attack interval under rapid
-hits and damage over time; the Blood Altar pulses on its interval, damages the player anywhere on the floor, and grows
-with kills." On #2854: "find what made the retaliation lethal (fired more often than once per attack interval, fired per
-tick of an aura or damage over time, used the wrong damage, stacked across creatures, or was correct and simply
-strong), fix any deviation from the row's text, and report what the row does now with numbers."
-
-**The project owner**, relayed in that brief: "probably every minute or so? i don't remember the design."
-
-**Carried, not new.** The owner, 2026-11-19, on Thorns of Glass: "Once per its attack time: It can strike back at most
-once per its own attack interval, so it returns about what its own swings would deal (~40 in the example). Still
-punishes hitting it; can no longer out-damage itself." The owner, 2026-11-18: "When struck, a reflecting creature hits
-back for its own attack damage, sized by its strength like any other hit and reduced by your defences. Your own damage
-no longer matters to it." The coordinating session, 2026-11-18 (B2): "It applies once per direct hit it takes. Damage
-over time does not trigger it, as in Path of Exile."
-
-### Blood Altar: why no pulse found the owner
-
-The rule was built, placed and running. `StepBloodAltar` runs on the quarter-second beat of every floor carrying the
-row; it places the altar's ring on the exit cell on the first beat and pulses every 30 seconds from the floor's start.
-But a pulse dealt damage only when `FindEveryoneInLine` found the player's body inside the ring's 1000 cm around the
-stairs, and a player is inside that ring only on the way down the stairs, for well under one 30 second pulse. The
-owner's floors 1 to 4 took about six minutes (04:26:26 to 04:32:21 in the log of 2026-11-22), so about a dozen pulses
-came and found nobody. And nothing said so: the rule logged nothing at all.
-
-### What Blood Altar does now
-
-- **A pulse every 30 seconds from the floor's start, at the player wherever they stand on the floor**, and at nothing
-  else. 0.5% of the player's maximum health for each creature death counted on the floor, up to 30% at the 60th death,
-  Demonic, dealt from the floor's source as an area hit, so the player's Demonic resistance and defences reduce it. A
-  dead player is not struck again. For the owner's level 10 character with 414 maximum health: 2.07 a death before
-  defences, 124.3 at the ceiling.
-- **Every pulse says one line**, at `Log`, so the play log carries it: "Blood Altar: pulse on floor 2 after 14
-  death(s) counted: sent 29.0, 7.0% of maximum health 414; took 24.8 of health 390.0." An unfed altar's pulse says
-  "... after 0 death(s) counted: sends nothing (maximum health 414)." (Figures illustrative.)
-- **The ring stays on the exit cell, as wide as before** (`BloodAltarRingRadiusCm`, 1000). It marks the altar;
-  nothing reads it to decide who a pulse hits. A judgement of this session: changing how the altar looks is not what
-  either issue asks.
-- **No genre research was done for this**: no formula or number changed. The reach is the brief's, the interval the
-  owner's, and the share and ceiling the 2026-09-16 judgements.
-
-### Thorns of Glass and the owner's death
-
-From `game/Saved/Logs/Cataclysm-backup-2026.11.23-06.08.07.log` in the main checkout, the session of 2026-11-22 at
-development `4d33f5994`, every line naming `CataclysmBruteCharacter_212` between 04:23:30 and 04:23:43 read. A Boss Brute
-carrying Infernal Sacrifice, Perfect Aim, Overpowered and Thorns of Glass; the player's Conflagration is an aura
-("Conflagration in Slot.Aura"), "Radius=10; Interval=1; Burn=1" in `WeaponSkills.csv`, so it hit the Brute once a second
-from up to 10 metres, and its burn ticked between.
-
-| Time (04:23:) | Player's blow on the Brute | Struck back | Seconds since the last strike back |
-| :-- | :-- | :-- | --: |
-| 30.332 | Conflagration | 68, 0 to health | first |
-| 31.336 | Conflagration | no | 1.004 |
-| 31.908 | Compel | 68, 54 to health | 1.575 |
-| 32.336 | Conflagration | no | 0.429 |
-| 33.329 | Conflagration | 73 | 1.422 |
-| 34.335 | Conflagration | no | 1.006 |
-| 34.804 | (the Brute sacrificed `CataclysmGatekeeperCharacter_8`: Commander for 8 seconds) | | |
-| 35.329 | Conflagration | 85 | 2.000 |
-| 36.339 | Conflagration | no | 1.010 |
-| 37.329 | Conflagration | no | 2.000 |
-| 37.927 | Basic Attack | no | 2.598 |
-| 38.327 | Conflagration | 85 | 2.998 |
-| 38.623 | Compel | no | 0.296 |
-| 39.328 | Conflagration | 85 | 1.001 |
-| 39.408 | Basic Attack | no | 0.080 |
-| 40.329 | Conflagration | 80, the killing blow at 80 health | 1.001 |
-
-Read against each cause the brief names:
-
-1. **More often than once per its attack interval: no.** Until the sacrifice every strike back came 1.42 seconds or more
-   after the last, and blows 1.004 and 1.006 seconds after one were refused: a Brute's designed 1.2. After it, strike
-   backs 1.001 seconds apart: an interval of at most 1.001, which is the Brute's 1.2 divided by Commander's 1.2. "Its own
-   attack interval" is `SecondsBetweenAttacks()` at the moment of the hit, buffs included, the definition the
-   2026-11-19 entry gives. The blows refused at 36.339, 37.329 and 37.927, when the interval had passed, are explained
-   if the player's own creatures took those strike backs: Compel says "Everything you command strikes that same enemy
-   at once", the player held a thrall (and two Imps from 04:23:39.2: "1 thralls 28, 2 Imp 19"), and a minion's blow
-   is struck back at the minion and is not logged. The log cannot show those blows, so that part is inference.
-2. **Per tick of an aura or a damage over time: no.** Every strike back answers a logged "HIT OUT" line, which the
-   log never writes for a tick, and the burn's ticks drew none. Conflagration's once-a-second blow is a hit in this
-   game, not a tick: it rolls critical strikes (the log's "critical" on two of them) and is logged as a hit.
-3. **The wrong damage: no.** Each was the Brute's own attack damage, not critical (Overpowered's always-crit does not
-   reach a strike back), after the player's defences: 68, then 73 and 85, rising as Soul Harvest's souls reached the
-   Brute (3 by 33.24, 5 by 34.69; the row gives souls "increased health, damage, and resistances"), then 80 because 80
-   health was left.
-4. **Stacked across creatures: no.** One creature.
-5. **So: correct, and strong.** 85 is 20.5% of 414. A Boss's own blow every second its interval allows, at a player who
-   stood in an aura's reach of it: four strike backs took 335 health in 5 seconds. The Brute swung at the player not
-   once in those thirteen seconds; with Overpowered, its own swing would have been that blow and a critical.
-
-**What the row does now, unchanged, with numbers.** Each hit that lands on a carrier and is not a tick is struck back
-for the carrier's own current attack damage, not critical, through the striker's defences, if at least its current
-attack interval has passed since its last strike back. Against an aura hitting once a second (1.001 seconds apart): a
-Brute (1.2 seconds) strikes back on every second pulse, so 4 of 7 pulses in six seconds; a hasted Brute (1.0) on
-every pulse, 7 of 7; an Abyssal Warden (2.4) on every third pulse; the default creature (1.5) on every second.
-
-### The questions #2854 asks
-
-| Question | Already ruled | Genre |
-| :-- | :-- | :-- |
-| A ranged hit, or a tick? | Any hit, "whatever hits it" (the row, 2026-11-19); never a tick (B2, 2026-11-18) | Path of Exile 2: inherent Thorns answers melee attack hits only, and a passive extends it to "any kind of Hit". Diablo IV, as the design's Retaliation section records: "a flat value that fires on any direct attack, melee or ranged, and never on damage over time" |
-| Its full attack damage, or a share? | Its own attack damage (the owner, 2026-11-18) | Path of Exile 2: Thorns is "a kind of Hit Damage", a figure of the retaliator's own, not a share |
-| Do the player's defences apply? | Yes, "reduced by your defences" (the owner, 2026-11-18), and they do: `ApplyHit` through the player's damage calculation | Path of Exile 2's Spiked Armour notable gives Thorns "50% chance to ignore Enemy Armour", so armour applies to it otherwise |
-
-**RECOMMENDATION: change nothing.** The row did what its sentence and both of the owner's rulings say, and the
-2026-11-19 ruling already cut its rate to its own swings'. **If the owner finds an aura cannot be played near it**, the
-genre's narrower trigger is Path of Exile 2's, melee hits only, and that would be a new ruling and a new sentence, not
-a fix. A judgement of this session, for the owner.
-
-The research, fetched 2026-11-24 by this session and quoted as returned: `poe2db.tw/us/Thorns` read ("Thorns damage is
-a kind of Hit Damage you can deal"; "If you have Thorns damage, you inherently Retaliate against Melee Attack Hits,
-dealing your Thorns damage to the enemy that Hit you"; "Retaliate against all Hits" extends it to "any kind of Hit dealt
-to you by enemies, rather than just Melee Attacks"). `diablo4.wiki.fextralife.com/Thorns` read; it says Thorns
-"Excludes attacks that are entirety damage over time" and does not say melee or ranged. `maxroll.gg/d4/resources/
-thorns-explained` and `poedb.tw/us/Reflect` answered 404. The Diablo IV sentence in the table is the design document's
-own record, not re-fetched.
-
-### The tests
-
-- **`Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`**, renamed from
-  `...WithinReach` and changed: its last reading put the player's body just outside the ring and asserted the pulse took
-  nothing; it now asserts the pulse takes as much as at the altar after the same three deaths (within 0.5). The ring's
-  width is read from `BloodAltarRingRadiusCm`.
-- **`Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`**, new: the play
-  case. The player stands at the floor's entrance, asserted outside the ring first; three pulses at the 30 second
-  clock, each with nothing taken and no line a beat before it; the unfed pulse takes nothing and says "after 0
-  death(s) counted"; after two deaths, and after four, each takes health, no more than its stated share, the second
-  more than the first, and says its count.
-- **`Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`**, new: a
-  carrier given a Brute's 1.2 seconds; seven pulses 1.001 seconds apart, each with quick hits 0.05 and 0.1 seconds
-  after it and a burn tick 0.5 after; pulses 0, 2, 4 and 6 struck back, no quick hit or tick, 4 x 40 lost. Control:
-  every blow landed.
-- **`Cataclysm.ThornsOfGlass.ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`**, new: the same
-  carrier given Commander by itself, as Infernal Sacrifice does, so its interval is 1.0; all seven pulses struck back,
-  no quick hit or tick, 7 x 40 lost.
-- Python, one each: `test_blood_altar_pulses_the_player_anywhere_on_the_floor_and_says_each_pulse` (no reach search in
-  `StepBloodAltar`, both log lines present) and `test_a_tick_never_reaches_the_strike_back_or_its_clock` (the strike
-  back and its clock sit inside the branch a tick never enters, and the clock is asked once).
-
-### Registered before the window
-
-| Group | Base, last measured | After this change | Why |
-| :-- | --: | --: | :-- |
-| `Cataclysm.ThornsOfGlass.` | 9 | 11 | +2 new |
-| `Cataclysm.DungeonModifierEffects.` | 777 | 778 | +1 new, 1 renamed |
-
-The whole suite: the base's last measured total plus 3.
-
-The guard proofs, each a one-place break, run with the prefix named:
-
-- **B1**, prefix `Cataclysm.DungeonModifierEffects.`: in `StepBloodAltar`, the condition
-  `UCataclysmSkillEffects::IsDead(Player)` gains `|| FVector::Dist2D(Player->GetActorLocation(), Ring->GetActorLocation())
-  > Effects::BloodAltarRingRadiusCm`, the old reach back. Must fail exactly
-  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor` and
-  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
-- **B2**, the same prefix: the unfed line's text `Blood Altar: pulse on floor %d after %d death(s) counted: sends
-  nothing` becomes `Blood Altar: quiet on floor ...`. Must fail exactly
-  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
-- **T1**, prefix `Cataclysm.ThornsOfGlass.`: in `TakeAStrikeBackIfDue`, `static_cast<double>(SecondsBetweenAttacks())`
-  becomes `static_cast<double>(DesignedSecondsBetweenAttacks())`, an interval without buffs. Must fail exactly
-  `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`.
-- **T2**, prefix `Cataclysm.ThornsOfGlass.`: in `UCataclysmVitalAttributeSet`, the retaliation branch's opening
-  `if (!Hit.bIsDamageOverTime` (the one followed by `&& !AssetTags.HasTag(` and `NoRetaliationTag()`) becomes
-  `if ((true || !Hit.bIsDamageOverTime)`, letting ticks in. Must fail exactly `ADamageOverTimeTickIsNotStruckBack` and
-  `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`; the hasted test passes, because its
-  ticks come half a second after a strike back and are never due.
-
----
-
-## 2026-11-24 — A city keeps its share of its maximum when the empire tree moves it, and a fallen city's box opens its screen so its Dungeon City can be walked (#2859, #2866)
-
-**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `fix/empire-cities-2859`, a bug-fix branch of the
-coordinating session's of 2026-11-24. Nothing was built or run in Unreal; the C++ and its six new Unreal tests were
-written and read, not compiled. The Python was run; what it printed is in the commit message. Issues
-[#2859](https://github.com/sdubois777/Cataclysm/issues/2859) and [#2866](https://github.com/sdubois777/Cataclysm/issues/2866).
-
-### Issue #2859: the owner's ruling
-
-The owner, playtesting on 2026-11-23, verbatim: "When increasing city defenses through the empire tree, it actually
-lowers the total % each city is at. It should maintain the % they were at before buying the upgrades." The issue adds:
-"A city at 80% before the purchase is at 80% of the new, higher maximum after it", and "A respec that lowers the
-maximum should keep the percentage the same way."
-
-**This replaces half of the coordinating session's S1 of 2026-11-18** (the slice 3a entry, "S1, what a changed maximum
-does to what a city holds"): "nothing is written at a buy or a respec" no longer holds. The rest of S1 stands: a READ
-of a city writes nothing and reads what it holds above its maximum as the maximum, a run begun with the tree builds its
-cities full, and a city upgrade raises what its city holds by the rise in its effective maximum. **No genre research
-was done for this**, because the shape is the owner's ruling; the Path of Exile 2 forum posts S1 cited for the opposite
-rule are not weighed against it.
-
-### What it does
-
-- **`UCataclysmEmpireMap::SharesNow` and `KeepShares`** (`FCataclysmCityShares`): every city's maxima with the tree and
-  the share of each it is read as holding, taken before a change; and every city standing before and after put back at
-  that share of its maxima after it. Defence and population both.
-- **`UCataclysmEmpireRun::ChangeTreeBonuses`**, the door for a tree changed in play, keeps the shares around
-  `SetTreeBonuses`, which is unchanged and is now the door for a run being handed its tree as it begins or loads.
-- **`UCataclysmGameInstance::RefreshEmpireTreeBonuses`** (a point bought, an option or extra option chosen, a respec,
-  and Reinvestment's count after a city upgrade's price) goes through `ChangeTreeBonuses`; a load goes through the new
-  **`HandEmpireTreeBonusesToALoadedRun`**, which writes nothing.
-- **`UCataclysmEmpireMap::AddUpgrade`, `Fall` and `Retake`** keep every city's share across The Royal Engineer's
-  Blessing's count moving, and **`UCataclysmEmpireRun::AdvanceDay`** keeps it across the day's turn, when Enduring
-  Foundations reaches an upgrade held ten days.
-
-### Judgements of this change, each labelled
-
-- **J1, a judgement: the rule reaches every place a tree node moves a city's maximum in play, not only the purchase.**
-  The Royal Engineer's Blessing moves every maximum when a city finishes, loses with its fall or regains with its retake
-  a defensive upgrade, and Enduring Foundations moves one on the tenth day an upgrade is held. Left as they were, both
-  would lower a city's percentage with nothing bought, which is the drop the owner reported.
-- **J2, a judgement: a city upgrade's raise of its own city's maximum keeps its rule**, adding what the effective
-  maximum rose by. That rise never lowers the share -- (D + r) / (M + r) is at least D / M -- so the fault is not there,
-  and the share rule would give a damaged city less than it gets now. The brief named city upgrades "if they move the
-  maximum"; this keeps them, and the coordinating session may rule otherwise.
-- **J3, a judgement: a load writes nothing into its cities.** They were saved holding what they held under the tree,
-  and a run rebuilt from its record has had no tree until the load hands it one, so keeping shares there would scale
-  every city by the whole tree. **Not settled:** an account's tree is shared by the characters of one lethality mode,
-  so it can change between a run's save and its load (another character buying a node). The loaded city then holds its
-  saved figure against the new maximum, as under S1. Keeping the share there would need the run record to hold each
-  city's maxima at the save, a record version, and was not done.
-- **J4, a judgement: a maximum has moved when it changes by more than a ten-thousandth of itself.** Only then is a city
-  written, so a city whose maximum did not move keeps exactly what it holds. The smallest move anything makes is a
-  hundredth.
-- **J5, a judgement: a fallen city is left as it is**, and a city just retaken has the share `Retake` gives it.
-
-### The simulation
-
-`sim/` has no fault to fix: its empire tree is a fixed preset for a whole campaign, applied once in
-`world.build_empire` (`EmpireTree.city_health_mult`), so no maximum moves during a campaign, and it has no city
-upgrades (`world.City.upgrades` is a bare count). Nothing in `sim/` changed.
-
-### Issue #2866: why a fallen city could not be retaken
-
-**The fault:** `UCataclysmEmpireMapWidget::PlaceCities` made a fallen city's box unavailable (`bAvailable` was
-`Mark != ECataclysmCityMark::Fallen`, from commit `5ee18f625a` of 2026-08-31, before a fall left a Fallen City dungeon
-on its city). An unavailable `UCataclysmChoiceButton` is disabled and its `Press` returns, so the box could not be
-pressed, and the city screen -- the only place a dungeon standing on a city is walked from -- never opened. Nothing
-else refuses: `FCataclysmWalkFromTheScreen::RefusalFor`, `ACataclysmDungeonGameMode::EnterEmpireDungeon` and
-`ACataclysmCapitalGameMode::TravelToWalk` take a Fallen City dungeon like any other, and `UCataclysmEmpireRun::
-ClearDungeon` retakes the city when it is cleared. The owner's log shows the dungeon standing ("dungeon 52, the Fallen
-City dungeon on Outpost (2,1)") and no Walk pressed for it.
-
-**The fix:** the box is available and dimmed (`UCataclysmChoiceButton::SetDimmed`, issue #2064's state for "read but
-not taken"), from `UCataclysmEmpireMapLayout::CityOpensItsScreen` and `IsCityDimmed`. The line under the map and the
-city screen say how the city is retaken while its Fallen City dungeon stands on it.
-
-- **J6, a judgement: every city's box opens its screen**, an erased one's too, whose screen already says "Erased by the
-  Void. It can never be retaken."
-- **J7, a judgement: the words.** The line under the map: "fallen: walk its Fallen City dungeon to retake it (press the
-  city, then Walk)", "erased by the Void, it can never be retaken", or "fallen" with no such dungeon. The city screen
-  adds "Walk its Fallen City dungeon below to retake it." after "Fallen. Nothing can be built here until it is
-  retaken." A fallen city with no such dungeon reads as before.
-
-### Issue #2866: does a city's fall fire a surge?
-
-**The design**, section VIII, Dungeon Basics: "If a city falls, it becomes a Dungeon City — a staging ground with more
-floors and multiple boss fights, triggering a Surge." **The code** does, with the least interval of 2026-10-12 (the
-entry "The game's surge when a city falls waits for the 25-day least interval", issue #2380):
-`UCataclysmEmpireRun::CityFell` fires one when `UCataclysmSurgeScheduler::IsDueOnCityFall` answers yes, which is
-`bSurgeOnCityFall` (true) and the last surge at least `LeastIntervalDays`, 25, behind.
-
-**What happened in the owner's run**, read from `game/Saved/Logs/Cataclysm-backup-2026.11.23-22.53.02.log` in the main
-checkout, line 215834 and the three lines after it. The walk began on day 416, so the days that ran were 417 to 441,
-and "1 surge brought 8 dungeons" in them: dungeons 44 to 51. Dungeons 45, 47, 48, 49 and 50 resolved, 44 and 51 still
-stand, and 46 is in neither list, which is what a dungeon absorbed by the fall looks like (an inference: the log does
-not name it). Outpost (2,1) fell, and its Fallen City dungeon is 52, made after the surge's eight. **So the surge came
-first, its dungeons felled the city, and the fall came at most 24 days after it: by the least-interval rule the fall
-brought no surge of its own.** A fall surge would have made dungeons numbered after 52 and the summary would say 2
-surges. The fall did not cause the surge the owner saw; the rule worked as written. No surge rule changed here. The
-capital's summary does not say whether a fall brought a surge or was refused one, and the design's line does not name
-the 25-day brake; both are left to the coordinating session, since fix/empty-board-surge-2865 changes surges.
-
----
-
-## 2026-11-24 — Demonic Guide's guide is nobody's target and cannot be killed, the player and what it commands walk through each other and through the guide, and the guide leaves yellow footprints (#2860, #2861, #2862)
-
-**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/demonic-guide-2860`, by a bug-fix agent working
-for the coordinating session on 2026-11-24. A window compiles it and runs the tests below. Issues
-[#2860](https://github.com/sdubois777/Cataclysm/issues/2860), [#2861](https://github.com/sdubois777/Cataclysm/issues/2861)
-and [#2862](https://github.com/sdubois777/Cataclysm/issues/2862).
-
-### What the owner said, verbatim, from the play-test of 2026-11-23
-
-- #2860: "Demonic Guide: sometimes he manages to die. My minions are constantly trying to attack him even though they
-  usually do 0 damage."
-- #2861: "He can't walk through my minions, and neither can I, which is annoying. There shouldn't be collision between
-  player and minions." ("He" is the guide.)
-- #2862: "I also think we should show like yellow footsteps or something pointing to where he's gone. He's kinda easy
-  to lose track of."
-
-No issue carried a comment, so there is no further ruling; every choice below not in those words is a judgement.
-
-### Why the guide was attacked, and how it could die (#2860)
-
-- **Attacked.** The guide is an Imp on the monsters' side. `UCataclysmTargeting::MatchesAttitude` asked three things
-  of a candidate -- can it hold damage, is it dead, which side -- so a minion's and a thrall's search
-  (`UCataclysmTargetCandidates::NearestHostile`, through `IsHostileTo`) found it as the nearest enemy, and its
-  `bCannotBeHurt` emptied every blow: the owner's "0 damage".
-- **Killed.** `bCannotBeHurt` holds its health at the maximum in `UCataclysmVitalAttributeSet::PreAttributeChange`, so
-  no write to health kills it. But four rules write health to nought and then call `HandleDeath` outright, and
-  `ACataclysmEnemyCharacter::HandleDeath` asked nothing about being unhurtable: Epidemic's chain ending
-  (`ACataclysmDungeonGameMode::EpidemicEndTheChain`, which finds its victims with `FindEnemiesInSphere` as the player),
-  Infernal Sacrifice (`UCataclysmEnemyModifiers::TimedStep`, which eats the nearest of `FindAlliesInSphere`), a drained
-  delayed blow (`UCataclysmDelayedDamage::DrainStep`) and health debt (`UCataclysmHealthDebt`). Which one killed the
-  owner's guide is not known -- no log of that run was read -- and the first two are the ones whose searches could
-  reach it.
-
-### What changed
-
-1. **Nobody's target** (#2860). `ACataclysmCharacterBase::IsNeverATarget`, false for every character but the guide
-   (`ACataclysmEnemyCharacter` answers `bGuidesThePlayerForTheFloorRule`). `UCataclysmTargeting::MatchesAttitude`
-   refuses it beside the dead, so it is neither an enemy nor an ally of anybody, and the side-less search (a
-   Hellhound's lane) refuses it too: every minion, thrall, skill search, click and floor-rule sweep passes it over.
-   `UCataclysmSkillEffects::IsUntargetable` answers true for it, so `ApplyHit` refuses a blow aimed straight at it
-   before anything is sent and no rider sees a landed blow.
-2. **It does not die** (#2860). `ACataclysmEnemyCharacter::HandleDeath` returns before the mark for a character that
-   is nobody's target, and logs that it did, so a rule's outright kill leaves it standing and not marked dead.
-3. **Which bodies block which** (#2861). Three of the engine's six collision mask bits: the player 1, anything else on
-   the player's side (a summoned minion, a deployed machine, a thrall) 2, the guide 4. Each capsule carries its bit as
-   its mask filter and ignores the other two as it moves (`UPrimitiveComponent::SetMoveIgnoreMask`); a creature
-   carries and ignores nothing. `ACataclysmCharacterBase::RefreshPassThroughBody` writes both, at `BeginPlay`, from
-   `SetGenericTeamId` (so a minion takes its summoner's side's body and a thrall changes body when taken, and back if
-   anything ever gives it back), and from `PlaceTheGuide` once the creature is the guide. So: the player, its minions
-   and thralls, and the guide pass through one another; a creature blocks all of them and all of them block a
-   creature; two commanded bodies still block each other.
-4. **Footprints** (#2862). `ACataclysmGuideFootprints`, one actor holding a fixed pool of 40 prints, begun by
-   `PlaceTheGuide`, destroyed by `ForgetTheGuide`, and stepped on the guide's beat by `StepDemonicGuide`. It lays a
-   print every 80 cm the guide walks, left and right in turn, each fading evenly to nothing over 10 seconds, and the
-   oldest print is taken for the next. Drawn with the engine's cylinder squashed to an oval and the telegraph markers'
-   unlit translucent material, `/Game/Effects/M_TelegraphMarker`, so no asset is added.
-5. **The design document** gains "What a minion's body blocks" after "How fast a minion walks".
-
-### Research
-
-- **Path of Exile 2 lets the summoner walk through its own minions, and its minions block each other.** A player's
-  post on the official forum, 2025-01-04 (thread 3680211, Shadoe Wrayth): "I can walk right through my minions, but
-  they cannot walk through each other?" The thread and its neighbours (3619145) are players asking for minion-minion
-  collision to go, with no developer reply.
-- **Last Epoch treats a minion blocking the player as a bug.** Patch 1.3.3's notes, under Items: "Evolution's End: Fixed
-  an issue where the Rift Beast minion would block player movement". In its 2019 alpha it had the collision and players
-  asked for it to go ("Please Remove Minion Collision", forum topic 13844); one, cpurdy, wrote that "in almost every
-  other arpg" a summoner can walk through its minions while they still block the enemy.
-- **A trail of footprints to follow.** The Witcher 3's tracks, which glow under Witcher Senses and are followed to where
-  a creature went, are the nearest shipped mechanic found. No shipped ARPG found publishes a guide's trail, so no
-  figure below is read off a game.
-- **What the research settles:** the player and the player's own minions do not block each other, and minions still
-  block the enemy. **What it does not settle**, and is judged below: minion against minion, the guide's body, the
-  footprints' figures.
-
-### Judgements, each labelled
-
-1. **The guide alone is nobody's target.** The Reaper, an echo, a rift and the floor's other unhurtable objects are
-   found and struck for nothing as their own rulings have them; making them untargetable is not what was asked.
-   Infernal Sacrifice and Epidemic can still call the death of those creatures outright -- see "Not settled" below.
-2. **Nobody's target is no ally either**, so a creature's search for allies passes the guide over as well: Infernal
-   Sacrifice cannot eat it, and the Field Medic's heal and Horde Leader's rally, which it never needed, skip it.
-3. **The death is refused for the guide only, before the mark**, rather than for every creature that cannot be hurt:
-   other rules kill an unhurtable creature on purpose after clearing its flag (Blood Bond's elite), and the guide is
-   destroyed, never killed, when its arena ends.
-4. **The engine's mask filter, not a new collision channel or profile.** A channel would give the capsule another object
-   type, and every target search asks for `ECC_Pawn` by object type (`UCataclysmTargeting::Gather`,
-   `UCataclysmTargetCandidates::CapsuleReachesInto`), so a minion moved onto it would stop being found by the creatures
-   that fight it. The mask filter is the engine's own for exactly this ("Red team", "Blue team" in its declaration),
-   and every sweep the character movement component makes -- the move, the floor check, the push out of an overlap --
-   reads it through `UPrimitiveComponent::InitSweepCollisionParams`.
-5. **Two of the player's minions still block each other**, as Path of Exile 2's do: the owner named the player, and the
-   change is one line (`MovesThroughMaskFor`) should the owner want them through each other too.
-6. **The guide passes through the player as well as the minions**, the coordinating session's reading of #2861.
-7. **A deployed machine is a commanded body**, so the player walks through its own turret and ballista; a creature is
-   still blocked by them.
-8. **Crowd avoidance is unchanged.** The guide and the minions are Detour crowd agents, so the guide still steers round
-   a minion in its way rather than walking a straight line through it; what is gone is the body that stopped it. The
-   owner's play-test is what says whether that is enough.
-9. **The footprints' figures**: a print every 80 cm walked (one a beat at the guide's default 320 cm/s), 14 cm either
-   side of the line walked, 32 by 16 cm (about a third of the player's width, readable from the 8 m camera),
-   `#FFD800` -- a saturated yellow, told from Celestial's pale gold ground and from a telegraph's red -- at 0.9 opacity
-   fading evenly to nothing over 10 seconds, so the newest is the brightest and the trail shows which way it went; a
-   pool of 40, which holds a whole lifetime's trail at the default walk (a faster guide's trail is cut short instead of
-   growing); a move of more than 6 m in one beat starts the trail again rather than printing the gap.
-10. **A print does not age while the guide waits for the player.** The guide waits exactly when the player has fallen
-    15 m behind, which is when the trail is wanted.
-11. **A mesh and the telegraph material, not a decal.** The project holds no deferred decal material, and the issue's
-    brief said not to add binary assets. Without the material the prints draw in the engine's default and do not fade,
-    and the log says so once.
-12. **Stepped on the game mode's beat, not by a tick of its own**, as the guide's walk and its chain are, so an
-    automation test can walk a guide and watch its prints come and go.
-
-### Not settled
-
-- **Infernal Sacrifice and Epidemic can still kill the other creatures that cannot be hurt.** Both call `HandleDeath`
-  outright on what their search finds; the Reaper and an echo are on the monsters' side and can be found. Not changed
-  here, because the issue is the guide's and their rulings are their own.
-
-### Tests
-
-Unreal, 11 new, written and not run:
-
-| Test | What it shows |
-|---|---|
-| `Cataclysm.DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` | A minion and a thrall 1.5 m from the guide choose the Imp 6 m beyond it; the player's search and a creature's ally search pass it over; a blow at it is refused. CONTROL: not the guide, it is the minion's choice |
-| `Cataclysm.DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` | A blow of 100,000% is refused before anything is sent; its health stays at the maximum; its death called outright leaves it standing. CONTROL: the blow kills an Imp |
-| `Cataclysm.DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` | Swept both ways against the player and a minion it passes; against an Imp it is stopped, both ways |
-| `Cataclysm.DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` | One print at the first beat, ten more for 8.5 m, at its feet, either side in turn, the newest the brightest; none after 10 s standing |
-| `Cataclysm.DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` | Four prints stay 14 s while it waits; gone 10 s after the player is back |
-| `Cataclysm.DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` | 121 prints laid, never more than 40 shown, one trail actor; a 10 m jump lays one |
-| `Cataclysm.PassThroughBodies.EachBodyCarriesItsBitAndMovesThroughTheOtherTwo` | The player 1/6, a minion 2/5, a creature 0/0 |
-| `Cataclysm.PassThroughBodies.ThePlayerAndItsMinionWalkThroughEachOther` | Both ways. CONTROL: the player is stopped by a creature |
-| `Cataclysm.PassThroughBodies.ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt` | All four sweeps stopped |
-| `Cataclysm.PassThroughBodies.TwoMinionsStillBlockEachOther` | Judgement 5 |
-| `Cataclysm.PassThroughBodies.AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` | Blocks, taken passes both ways (2/5), given back blocks again (0/0) |
-
-Python, `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py`, 9 tests, which continuous integration runs:
-the search's refusal, the guide's override and the blow's refusal, the death guard before the mark, the three bits,
-the block table worked out from the figures for every pair, where the bodies are written, the guide's raising, beat
-and end, and the footprint pool. Proved with `tools/prove_guard.py`: removing the search's refusal fails
-`test_the_search_refuses_nobodys_target_on_every_side`; making the guide's bit the commanded bit fails
-`test_the_three_bits_are_separate_and_fit_the_engines_filter` and
-`test_the_bodies_block_the_pairs_the_issue_names_and_no_others`; disabling the death guard fails
-`test_the_guides_death_called_outright_is_refused_before_the_mark`. Each passed again with the file restored.
-
----
-
-## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
-
-**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
-for the coordinating session on 2026-11-24 beside the entry below, which builds and runs it in a later window. Issue
-[#2863](https://github.com/sdubois777/Cataclysm/issues/2863).
-
-### The owner's report, verbatim
-
-"There seems to be skill fx going off under the floor, I only noticed because I got close to an edge and saw
-something. Need to check all current effects and see which are appearing below the ground." Playtesting the main
-checkout at `development` 4d33f5994, 2026-11-23.
-
-### What was found, said first: the code places no player skill effect below a flat floor
-
-Every height in the list below was traced to its origin by reading the code at `development` 4d33f5994; line numbers
-are as of that commit. **No player skill chooses a height below the walking surface on a flat floor.** What the code
-does place below it is narrower: a point taken from `ACataclysmEnemyController::FloorUnder`, which is a creature's own
-capsule bottom moved under its target's X and Y, wherever the target stands higher than the creature (the exit
-stairs, up to 60 cm, are the one raised walking surface a dungeon floor has); the Blood Altar ring, centred on the
-exit cell where the stairs stand; and a walked charge's trail start if the walk descended more than about 96 cm,
-which a flat floor with 60 cm stairs cannot do. Most ground drawings were wrong the other way: 46 of the 68 calls that
-leave a ground zone place it at a capsule centre, or a stored copy of one, so its ring was drawn 45 to 155 cm above
-the floor.
-
-**So what the owner saw is either one of those cases or something this sweep could not read.** Where each Niagara
-system's own emitters and meshes sit relative to the point it is spawned at is authored in the editor; the five
-systems are binary assets, and in a worktree only Git LFS pointers. A system whose geometry reaches below its spawn
-point -- a cylinder centred on its pivot and scaled with the skill's radius, say -- draws under the floor however
-correctly the code places it. The cast burst is the first to look at: it plays on every skill, at the caster's
-capsule centre, and its `Flare` layer is the mesh `SM_VFX_In_Out_Cyl_01`, the pack's cylinder that is not the
-`_Floor_` variant the ground ring uses. **That needs the editor and is not settled here.**
-
-### What changed
-
-- **`CataclysmEffectPlacement`**, new, `game/Source/Cataclysm/AbilitySystem/CataclysmEffectPlacement.h` and `.cpp`:
-  `FloorSurfaceUnder` searches straight down through a point for world-static geometry, from `LookAboveCm` (100)
-  above it to `LookBelowCm` (300) below it, by object type as the charge's floor search does, and refuses a search
-  that starts inside a solid shape; `OnTheFloor` moves the point to `LiftCm` (2) above what it finds, or leaves it
-  where it was asked when there is nothing. No such helper existed: `FloorUnder` answers from a capsule rather than
-  the ground, and the two floor traces in the project (the charge's, the cloth stress spawner's) are private to their
-  callers.
-- **The three things that draw on the ground ask it**, so every caller is placed by one change and a caller added
-  later is placed without knowing: `UCataclysmGroundEffect::PlayFor` puts each copy of a zone's ring on the floor under
-  that copy (so every one of the 68 zone sites below), `ACataclysmTelegraphMarker`'s spawn puts a marker on the floor
-  under its centre (all five marker sites), and `ACataclysmDebrisBurst::Scatter` puts its pieces on the floor under the
-  impact (the Brute's rip crater).
-- **Only the drawing moves.** A zone's actor, its sweep, `UCataclysmGroundEffect::LastStart` and `LastFarEnd`, the
-  point an attack is aimed at and where a shot lands are all where they were. `LastDrawnStart` and `LastDrawnFarEnd`
-  are new, recorded from the same array the spawns read, for the tests.
-- **`docs/Niagara_Conventions.md`**, a rule under section 5A: an effect drawn on the ground is placed through
-  `OnTheFloor`; one that belongs to a body or the air is not.
-
-### Judgements of the writing session
-
-1. **Snap in both directions, not only up.** The issue asked for effects under the floor; most ground rings were
-   floating instead, and a ring at waist height marks the floor no better than one under it. Both are the same fault:
-   nothing asked where the floor was.
-2. **Move the drawing, not the gameplay point.** Moving where a zone sweeps or a lob lands would change what hits what,
-   which is beyond a report about what is seen. On a flat floor the marker and the landing agree within a centimetre,
-   which keeps issue #471's rule that a telegraphed attack arrives where it was marked; on raised ground they now
-   differ in height only, with the warning on the surface the player can see.
-3. **The window: a metre above, three metres below, 2 cm lift.** A metre above clears the stairs' 60 cm and, from the
-   tallest capsule centre (the Gatekeeper's 155.53 cm), still starts inside a dungeon wall's 400 cm height rather than
-   above its top. Three metres below reaches the floor from any capsule centre with room for a body in the air, and
-   no further, so a point out past a floor's edge is not moved onto whatever lies far below. 2 cm is the gap the
-   engine's character movement keeps under a capsule (1.9 to 2.4 cm), where every telegraph marker was already drawn.
-4. **Bodies and the air are left alone.** The cast burst, the swing arc, the hit burst and a projectile are drawn where
-   their body is; they are under the floor only when the body is.
-5. **The Upthrust wall is not changed here, and is reported.** `ACataclysmTerrain::BuildWall` stands its blocks on
-   `Start.Z`, the caster's capsule centre, so the wall's base is about 96 cm above the floor although its comment says
-   it stands on it. It is collision geometry, not only a drawing, so moving it changes play; it is not below the floor.
-
-### Every site that was checked
-
-**The five Niagara spawns.**
-
-| Spawn | Called from | Height | Below a flat floor? |
-| :-- | :-- | :-- | :-- |
-| `UCataclysmCastEffect::PlayFor`, `NS_Cast_Windup` | `CataclysmSkillTemplate.cpp:548` (every skill); `CataclysmEnemyController.cpp:1172` (a quick cast's flare) | the caster's capsule centre | no, unless the caster is; the system's own geometry is unread, see above |
-| `UCataclysmStrikeEffect::PlayAt`, `NS_Strike_Arc` | `CataclysmSkillTemplates.cpp:494` (`Apex`, the cast origin) and `:937` (the planted sword, the caster's capsule centre when planted) | capsule centre, facing flattened | no |
-| `UCataclysmImpactEffect::SpawnAt`, `NS_Impact_Point` | `CataclysmVitalAttributeSet.cpp`, `PlayImpactEffect` | the hit result's impact point, or the struck actor's capsule centre | no: on the struck body |
-| `UCataclysmProjectileEffect::AttachTo`, `NS_Proj_Body` | `CataclysmProjectile.cpp:320` | attached to the projectile: a flat shot flies at its `From` height, a lob ends at its `To` height | a lob's end, only where `To` is a `FloorUnder` point under higher ground (below) |
-| `UCataclysmGroundEffect::PlayFor`, `NS_Impact_Ground` | `CataclysmGroundZone.cpp` `BeginPlay`, `Redraw`, `LastFor` | the zone's location | **changed**: on the floor under each copy |
-
-**Meshes placed for effects.** `ACataclysmTelegraphMarker` (changed), `ACataclysmDebrisBurst` (changed; its one caller,
-`CataclysmBruteCharacter.cpp:808`, the rip crater, is the Brute's capsule bottom), `ACataclysmTerrain`'s Upthrust wall
-(capsule centre, judgement 5). The planted weapon is a scene component and draws nothing. No decal is spawned anywhere.
-
-**Telegraph markers**, all `FloorUnder`, the creature's own capsule bottom, so below only where they lie over ground
-higher than the creature: `CataclysmEnemyController.cpp:1192` (a Strike's circle at its own feet), `:1211` (a lob's
-landing circle), `:1221` (a flat projectile's lane), `:1243` (a charge's lane), `CataclysmEnemyModifiers.cpp:1263`
-(Inferno Charge's lane).
-
-**Projectile fires.** From a player's capsule centre: `CataclysmSkillTemplates.cpp:1477` and `:1549` (aimed at
-`AimedPointWithin`, held at that height, and flat) and `:1850` (the rack's axes, at a creature's capsule centre, flat).
-From a creature's capsule centre to a `FloorUnder` point: the Corrupted Sentinel's Siege Bolt
-(`CataclysmCorruptedSentinelCharacter.cpp:319`, flat) and Brimstone Mortar (`:335`, lobbed), the Succubus's Soulfire
-(`CataclysmSuccubusCharacter.cpp:417`, flat) and the Gatekeeper's Soulfall gout (`CataclysmGatekeeperCharacter.cpp:471`,
-lobbed); from the Brute's hand to one, its Rock Throw (`CataclysmBruteCharacter.cpp:1026`, lobbed). Infernal Rain's
-fireball falls from 15 m above and 6 m beside the player to the player's capsule-centre height
-(`CataclysmDungeonGameMode.cpp:17604`). Only the three lobs end at their `To` height.
-
-**Ground zones, by where their height comes from** (each is drawn by `PlayFor`, so each is now on the floor):
-
-| Height | Sites |
-| :-- | :-- |
-| The player's capsule centre, 96 cm up | `CataclysmDungeonGameMode.cpp` 4723 Wings of the Host, 9247 Swarm of Locusts' swarm, 10185 Funereal Procession, 14322 Divine Wrath, 17637 Singularity Wells, 19082 Edict of Vigil, 19334 Artillery Strike, 19451 Hallowed Groundfall, 19604 Grasping Tentacles, 20406 Judgment Zones, 21147 Anti-Magic Zones, 24287 Necrotic Ground; `CataclysmSkillTemplates.cpp` 213 and 217 a Strike's ground and row zone, 722, 724, 760 and 762 a held Strike's, 857 Buried Fire, 3655 and 3661 a Blink or Swap's start, 3763 a charge's trail, 3767, 3773 and 3774 a move's arrival, 4836 Open the Rift; `CataclysmTimeLockRift.cpp:235` the Time-Lock Rift |
-| A creature's capsule centre, 45 to 155 cm up | `CataclysmDungeonGameMode.cpp` 4440 Plague Harbingers, 4951 Eternal Chorus, 5449 Golden Spires, 5817 Obsidian Sarcophagi, 6143 Portal Unleashing, 9397 Abyssal Rifts, 10022 Quarantine Breach, 11748 Infested Veins, 23427 Withered Ground, 23489 Leech Spores, 23674 Fungal Overgrowth; `CataclysmSkillTemplates.cpp:5733` a row's zone under a cursed target; `CataclysmMinion.cpp:1951` a minion's chaos pool |
-| A stored copy of a capsule centre | `CataclysmDungeonGameMode.cpp` 16331 and 16848 (Plague Harbingers' and Quarantine Breach's patches, loaded from a save), 17666 Infernal Rain's patch; `CataclysmSkillTemplates.cpp` 2099, 2113 and 2117 a projectile's ground, at its launch height |
-| A creature's capsule bottom (`FloorUnder`) | `CataclysmEnemyModifiers.cpp:1210` Inferno Charge's path, `CataclysmGatekeeperCharacter.cpp:501` Soulfall's ground: **below where the target stood higher** |
-| The floor's walking surface | `CataclysmDungeonGameMode.cpp` 6805 Demonic Guide, 6852 Raw Sewage, 8140 Those in the Dark, 9062 Warzone Control Points, 9172 Swarm of Locusts' shelters, 9774 Infection Bloom, 10606, 10791 and 10797 Reality Rifts, 11191 Carrion Feast's altar, 11974 Shadowy Enemies, 12931 War Banner, 14156 Grim Totems, 14204 Void Parasite; 24106 Blood Altar, **whose centre is under the exit stairs** |
-| Other | `CataclysmHellhoundCharacter.cpp:291` Hellrush's lane, from its capsule centre to a `FloorUnder` point (below at the far end only over higher ground); `CataclysmSkillTemplates.cpp` 4133, 4137, 4138 and 4139 a walked charge's trail and row zones, all at the walk's last height (below at the start only if the walk descended more than about 96 cm) |
-
-`UCataclysmSkillTemplate::LeaveAZoneFor` (`CataclysmSkillTemplate.cpp:3761`) is the pass-through every skill's
-ground goes through, with no height of its own.
-
-### Tests
-
-**Unreal, prefix `Cataclysm.EffectPlacement.`, a new group of four** in
-`game/Source/Cataclysm/Tests/CataclysmEffectPlacementTests.cpp`. Each lays a world-static floor 40 cm thick with its
-top at 500 cm, not at the origin.
-
-- `APointIsPutOnTheFloorUnderItFromAboveOrBelow`: a capsule centre comes down to 502, a point 60 cm under the surface
-  comes up to 502, only the height moves; a point past the floor's edge, one further under it than the search looks,
-  and one with no world are each left where they were asked.
-- `AGroundZoneIsDrawnOnTheFloorUnderIt`: a round zone at a capsule centre stays there and asks there, and its ring is
-  drawn at 502; one 60 cm under the surface is drawn at 502; a long zone from under the surface to a capsule centre has
-  both ends drawn at 502; a zone past the edge is drawn where it was asked.
-- `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre`: a circle centred under the surface and a lane at capsule height
-  are each drawn at 502; one past the edge where it was asked.
-- `DebrisIsLeftOnTheFloorUnderTheImpact`: debris left under the surface is put at 502; past the edge, where it was asked.
-
-**No existing test should move.** Every other test of these three runs in a world with no geometry, where
-`OnTheFloor` answers the point it was given. The four test files that build geometry (`CataclysmAbyssalWardenTests.cpp`,
-`CataclysmDungeonModifierEffectsTests.cpp`, `CataclysmSkillTemplateTests.cpp`, `CataclysmTerrainTests.cpp`) and the
-ones that build a dungeon floor read no marker's or burst's height and no drawn height; they read `LastStart`, which is
-unchanged. That is a reading, not a run.
-
-### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.EffectPlacement.`)
-
-| Break, in | The change | Must fail |
-| :-- | :-- | :-- |
-| `CataclysmEffectPlacement.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ + LiftCm));` to `return Point;` | all four |
-| `CataclysmGroundEffect.cpp` | `Places.Add(CataclysmEffectPlacement::OnTheFloor(World, Start + Along * Fraction));` to `Places.Add(Start + Along * Fraction);` | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
-| `CataclysmTelegraphMarker.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, Location), Rotation, SpawnParams);` to `Location, Rotation, SpawnParams);` | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
-| `CataclysmDebrisBurst.cpp` | `CataclysmEffectPlacement::OnTheFloor(World, At), FRotator::ZeroRotator, SpawnParams);` to `At, FRotator::ZeroRotator, SpawnParams);` | `DebrisIsLeftOnTheFloorUnderTheImpact` |
-
----
-
-## 2026-11-24 — Damage the Masochist's energy shield absorbs fills Fervour as health lost does, and the shield recharging removes none (#2873)
-
-**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
-for the coordinating session on 2026-11-24, which builds and runs it in a later window. Issue
-[#2873](https://github.com/sdubois777/Cataclysm/issues/2873).
-
-### The rulings, verbatim
-
-- **The project owner, 2026-11-24:** "the massochist doesn't gain fervour with damage to energy shield, and it should."
-- **The coordinating session, 2026-11-24, on the detail the issue left open, recorded as its ruling:** option (a),
-  damage absorbed by the energy shield counts exactly like health lost, at the existing rate (1 Fervour per 1% of
-  maximum HEALTH, so the existing rate and its tree nodes are unchanged), and energy shield recharge does NOT remove
-  Fervour (only healing health does, as now).
-
-### What changed
-
-- **The one line that connects a blow to Fervour moved and reads both pools.** In
-  `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` the call to `UCataclysmFervour::GainFromDamage` sat inside
-  the block that writes health, which runs only when something reaches health, so a blow the shield took whole filled
-  nothing whatever its amount was. It now sits directly after that block and is handed what reached health
-  (`ToHealth`, as before) plus what the shield lost (`Outcome.AbsorbedByShield`), with the hit's tags, so the Masochist's
-  Shared Agony still scales a tick the shield took. A share of an ally's blow still fills nothing (ruled 2026-10-15,
-  R7), its shield share included.
-- **The recharge needed no code, and is now tested.** `UCataclysmRegeneration::TopUp` is where every pool comes back,
-  and it asks `UCataclysmFervour::RemoveForHealing` for the health pool alone, so the shield's own recharge and energy
-  shield leech already removed nothing. Its comment now records the ruling.
-- **The design document**, in three places: the paragraph led by "A generator is a set of rates", the class table's
-  Masochist row, and the paragraph in the class stat lines that said "every point of energy shield is a point of
-  resource the class does not generate", which is now led by "For the Masochist it no longer costs resource
-  generation, since 2026-11-24" and says what a shield still keeps from the class: The Breaking Point converts only
-  what reaches health, and Low Life, The Last Drop and Rock Bottom are measured against health.
-- **The simulation needed nothing.** `sim/cataclysm_sim/` holds the Fervour pool's size and no generator at all:
-  searched for `fervour` and `class_resource`, which appear only as the pool and the flat affix. The Masochist's base
-  energy shield stays at zero in `classes.py`, as the owner did not change it.
-
-### Judgements of the writing session
-
-1. **The shield's figure is the points the shield lost, `Outcome.AbsorbedByShield`**, not the raw damage it stopped.
-   A magic blow's bonus and a defender's "energy shield takes increased damage" make the shield lose more than the
-   raw blow held, as a slashing blow's bonus makes health lose more, and health's half already counts what health
-   lost. The figure on the bar is the figure that fills Fervour.
-2. **The temporary absorb and the mana a row puts first fill nothing.** The owner named the energy shield, and ruled on
-   2026-10-07 that the temporary absorb is separate from it.
-3. **A cost paid from the shield fills nothing.** `cost_paid_from_energy_shield` pays a mana cost from the shield; the
-   ruling is about damage, and the cost generator (`fervour_from_cost`) is health spent.
-4. **A blow The Breaking Point converts whole still fills Fervour for its shield share at once.** The shield took that
-   share before the conversion was asked; the health share still arrives a tick at a time as the bleed takes health.
-5. **No formula was chosen, so no genre research was done.** The rate is the existing one, by ruling.
-
-### Tests
-
-**Unreal, prefix `Cataclysm.Fervour.`, three added (29 before, 32 predicted):**
-
-- `Cataclysm.Fervour.ABlowTheEnergyShieldTakesWholeFillsTheBar`: a real blow through `ApplyHit` on a defender with
-  10,000 health and 10,000 shield; the shield takes it all and health none, and Fervour is the shield's loss over
-  10,000 times 100. A control defender with the same shield and no generator gains nothing.
-- `Cataclysm.Fervour.ABlowSplitBetweenTheShieldAndHealthCountsBothHalves`: a shield of 100 against a blow of about 500;
-  Fervour is the two halves' sum over 10,000 times 100.
-- `Cataclysm.Fervour.TheEnergyShieldRechargingRemovesNoFervour`: `UCataclysmRegeneration::ApplyStep` recharging the
-  shield from nothing, then shield leech through `TopUp`, each leave 50 Fervour at 50; a control through the same step
-  with health regenerating does remove Fervour.
-
-**Python:** `tools/tests/test_class_passive_trees.py::test_the_gdd_counts_energy_shield_damage_as_health_lost_for_the_masochist`,
-new, holds the generator paragraph and the table row to the ruling. `tools/tests/test_a_zero_class_stat_is_not_a_gate.py`'s
-Masochist assertion is rewritten for the new paragraph, as
-`test_it_says_what_a_shield_does_and_no_longer_does_to_a_masochist`.
-
-### Guard proofs registered, not run (`prove_cpp_guard`, prefix `Cataclysm.Fervour.`)
-
-| Break, in | The change | Must fail |
-| :-- | :-- | :-- |
-| `CataclysmVitalAttributeSet.cpp` | `GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);` to `GetOwningAbilitySystemComponent(), HealthLostToTheBlow, AssetTags);` | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
-| `CataclysmRegeneration.cpp` | `if (Pool == UCataclysmVitalAttributeSet::GetHealthAttribute())\n\t{\n\t\tUCataclysmFervour::RemoveForHealing(` to the same with `\|\| Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute()` added inside the condition | `TheEnergyShieldRechargingRemovesNoFervour` |
 
 ---
 
