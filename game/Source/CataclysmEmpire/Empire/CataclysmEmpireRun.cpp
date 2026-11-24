@@ -640,13 +640,18 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// here -- issue #43 -- so the condition it would have supplied is asked
 	// directly.
 	//
-	// THROUGH `FireSurge` WITH NO FLAG, exactly as the clock's surge goes. It
-	// moves `NextSurgeDay` on from today and advances the escalation counter:
-	// it is the scheduled wave arriving early, not an extra one.
+	// THROUGH `FireSurge` WITH NO CITY-FALL FLAG, as the clock's surge goes. It moves `NextSurgeDay` on from today and
+	// advances the escalation counter: it is the scheduled wave arriving early, not an extra one.
+	//
+	// ONLY ORDINARY DUNGEONS COUNT, AND THE WAVE IS LARGER, since the owner's rulings on issue #2865: of 2026-11-23,
+	// "The board counts as empty when no ordinary dungeon stands. Quest dungeons, the Cataclysm boss dungeon and Fallen
+	// City dungeons do not count", with no minimum gap (`IsDueOnEmptyBoard`); and of 2026-11-24, chosen option
+	// verbatim "Flat +4, no stacking" (`ExtraDungeonsOnEmptyBoard`). A Scout Parties bonus dungeon is still not
+	// counted (slice 9, V16).
 	if (!Report.bPillarExposed
-		&& Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())) // Not a bonus dungeon: slice 9, V16.
+		&& Surges->IsDueOnEmptyBoard(Today, OrdinaryDungeonCount()))
 	{
-		FireSurge(Today, /* bFromCityFall */ false, Report);
+		FireSurge(Today, /* bFromCityFall */ false, Report, /* bFromEmptyBoard */ true);
 
 		Report.bSurgedOnEmptyBoard = true;
 		++SurgesFromEmptyBoard;
@@ -728,7 +733,7 @@ bool UCataclysmEmpireRun::IsAWalkUnderWay() const
 // ---------------------------------------------------------------------------
 
 void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
-									FCataclysmDayReport& OutReport)
+									FCataclysmDayReport& OutReport, bool bFromEmptyBoard)
 {
 	// HOW MANY DUNGEONS EACH CITY ALREADY HOLDS, because the surge scheduler
 	// needs it for the dungeon cap upgrade and does not own the dungeons. Passed
@@ -794,7 +799,7 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	TArray<FCataclysmDungeon> Wave =
 		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
 						 SiegesStanding,
-						 [this]() { return RollCataclysm(); });
+						 [this]() { return RollCataclysm(); }, bFromEmptyBoard);
 
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -2147,6 +2152,17 @@ int32 UCataclysmEmpireRun::ThreateningDungeonCount() const
 	for (const FCataclysmDungeon& Dungeon : Dungeons)
 	{
 		Count += Dungeon.bBonus ? 0 : 1;
+	}
+	return Count;
+}
+
+int32 UCataclysmEmpireRun::OrdinaryDungeonCount() const
+{
+	// A BASIC DUNGEON THAT IS NOT A BONUS ONE, and nothing else: issue #2865, the owner's ruling of 2026-11-23.
+	int32 Count = 0;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		Count += (Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus) ? 1 : 0;
 	}
 	return Count;
 }

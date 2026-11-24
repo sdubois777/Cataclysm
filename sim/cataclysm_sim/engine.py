@@ -717,8 +717,14 @@ class Simulation:
 
     # -- surges ----------------------------------------------------------
 
-    def surge_count(self) -> int:
+    def surge_count(self, from_empty_board: bool = False) -> int:
         """Dungeons in the next surge.
+
+        AN EMPTY-BOARD SURGE IS THE SCHEDULED SIZE PLUS
+        `empty_board_surge_extra` when `empty_board_surge_larger` is on: the
+        owner's ruling of 2026-11-24 on issue #2865, "Flat +4, no stacking".
+        Added before the cap and the lethality multiplier, which apply to it as
+        to any wave (the coordinating session's judgement of that day).
 
         Grows with the surge index under SWELLING/BOTH, and with the number of
         simultaneous Cataclysms in every mode.
@@ -738,6 +744,8 @@ class Simulation:
                   else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
+        if from_empty_board and cfg.empty_board_surge_larger:
+            n += cfg.empty_board_surge_extra
         n = min(n, float(cfg.surge_count_max))
         return max(1, int(n * cfg.surge_dungeon_multiplier))
 
@@ -788,15 +796,7 @@ class Simulation:
         pats = [PATTERNS.get(t, PATTERN_DEFAULT) for t in self.active_types]
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
-        count = max(1, int(round(self.surge_count() * volume)))
-        # AN EMPTY-BOARD SURGE BRINGS THE PREVIOUS SURGE'S COUNT PLUS
-        # `empty_board_surge_extra`, uncapped: the owner's ruling of 2026-11-23,
-        # point 2, on issue #2865. The previous count is what that wave logged,
-        # volume and lethality multiplier included. The first surge of a run has
-        # nothing before it, so it is the opening wave whatever fired it.
-        if (from_empty_board and cfg.empty_board_surge_grows
-                and self.surge_log):
-            count = self.surge_log[-1][2] + cfg.empty_board_surge_extra
+        count = max(1, int(round(self.surge_count(from_empty_board) * volume)))
         quest_chance = self.quest_chance(volume)
         quest_sieges: dict[str, int] = {}
 
@@ -946,10 +946,10 @@ class Simulation:
                 return
 
         before = len(self.surge_log)
-        # AN ORDINARY SURGE, AS THE GAME FIRES ONE, while the ruling's growth is
-        # off (`tools/tests/test_surge_port.py` holds the two equal); with it on,
-        # flagged so `trigger_surge` sizes it from the previous wave.
-        if cfg.empty_board_surge_grows:
+        # AN ORDINARY SURGE, AS THE GAME FIRES ONE, while the ruling's larger wave
+        # is off (`tools/tests/test_surge_port.py` holds the two equal); with it
+        # on, flagged so `surge_count` adds `empty_board_surge_extra`.
+        if cfg.empty_board_surge_larger:
             self.trigger_surge(from_empty_board=True)
         else:
             self.trigger_surge()

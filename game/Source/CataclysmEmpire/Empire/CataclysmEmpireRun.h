@@ -712,6 +712,15 @@ public:
 	int32 ThreateningDungeonCount() const;
 
 	/**
+	 * The ORDINARY dungeons standing, which are what keep the board from being empty: a Basic dungeon that is not a
+	 * Scout Parties bonus one. A Quest dungeon, the Cataclysm's own dungeon and a Fallen City are not counted. The
+	 * owner's ruling of 2026-11-23 on issue #2865: "The board counts as empty when no ordinary dungeon stands. Quest
+	 * dungeons, the Cataclysm boss dungeon and Fallen City dungeons do not count." `Simulation.board_is_empty` counts
+	 * `DungeonType.BASIC`. A bonus dungeon was already left out of the empty-board count (V16), and still is.
+	 */
+	int32 OrdinaryDungeonCount() const;
+
+	/**
 	 * Removes a Scout Parties bonus dungeon whose timer ran out, or in which the player died, with no damage, no
 	 * detonation and nothing reported as resolved, and answers true; answers false and does nothing for any other
 	 * dungeon. Called before `ResolveDungeon` by the day and by a death (V16). Issue #2741 slice 9.
@@ -2153,8 +2162,9 @@ private:
 	 * @param Today         the day it lands on
 	 * @param bFromCityFall whether a city falling caused it
 	 * @param OutReport     the day's report, to record what arrived
+	 * @param bFromEmptyBoard whether an empty board fired it, which brings `ExtraDungeonsOnEmptyBoard` more (#2865)
 	 */
-	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
+	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport, bool bFromEmptyBoard = false);
 
 	/**
 	 * Which active Cataclysm sent one dungeon of a wave.

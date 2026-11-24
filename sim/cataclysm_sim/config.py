@@ -449,25 +449,35 @@ class TuningConfig:
     #      owner's run a Quest dungeon, and later a Fallen City dungeon, kept the
     #      board from ever being empty;
     #   2. a surge fired by an empty board brings the previous surge's dungeon
-    #      count plus 4, and `surge_count_max` does not cap it;
+    #      count plus 4, and `surge_count_max` does not cap it -- SUPERSEDED by the
+    #      owner's ruling of 2026-11-24, chosen option verbatim "Flat +4, no
+    #      stacking": an empty-board surge always brings the SCHEDULED count plus
+    #      4 (8 + 4 = 12 today), never growing from the previous wave. Measured
+    #      first: previous wave + 4 compounded to waves of 20 to 45 (issue #2865);
     #   3. `surge_interval_min` does not brake it;
     #   4. the +4 is checked in this model before the game changes.
     #
-    # EACH PART IS ITS OWN SWITCH, AND ALL THREE SHIP AT TODAY'S BEHAVIOUR until
-    # the game side is written: `tools/tests/test_surge_port.py` holds this
-    # model's rule equal to `UCataclysmSurgeScheduler::IsDueOnEmptyBoard`, and the
-    # design document, the model and the game change together (the ruling's
-    # point 4). The measurement for the owner switches them on.
+    # EACH PART IS ITS OWN SWITCH, AND ALL THREE SHIP ON, with the game's half
+    # in the same change: `tools/tests/test_surge_port.py` holds this model's
+    # rule equal to `UCataclysmSurgeScheduler::IsDueOnEmptyBoard` and
+    # `ExtraDungeonsOnEmptyBoard`, and the design document, the model and the
+    # game change together (the ruling's point 4). Off, each gives back the rule
+    # of 2026-09-07, which the older tests in
+    # `sim/tests/test_surge_when_the_board_empties.py` still hold.
     #
     # ORDINARY IS `DungeonType.BASIC`: the Last Stand and the Cataclysm boss
     # dungeon are both `DungeonType.CATACLYSM` here.
-    empty_board_counts_ordinary_only: bool = False
-    #: Whether an empty-board surge brings the previous surge's count plus
-    #: `empty_board_surge_extra`, uncapped. False keeps `surge_count()`.
-    empty_board_surge_grows: bool = False
+    empty_board_counts_ordinary_only: bool = True
+    #: Whether an empty-board surge is the scheduled count plus
+    #: `empty_board_surge_extra` (the ruling of 2026-11-24). The cap
+    #: `surge_count_max` and the lethality multiplier then apply as to any wave:
+    #: the coordinating session's judgement of the same day, "apply both after
+    #: the +4, as for any wave". False keeps `surge_count()`.
+    empty_board_surge_larger: bool = True
     empty_board_surge_extra: int = 4
-    #: Whether `surge_interval_min` brakes an empty-board surge. True is today's.
-    empty_board_surge_braked: bool = True
+    #: Whether `surge_interval_min` brakes an empty-board surge. True was the
+    #: rule of 2026-09-07; the ruling of 2026-11-23 removed it.
+    empty_board_surge_braked: bool = False
 
     # UNKNOWN #3 -- resolve timers.
     # A flat timer table cannot work at one day a floor: a 40-floor dungeon

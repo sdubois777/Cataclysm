@@ -229,7 +229,10 @@ def test_a_bonus_dungeon_pays_and_moves_nothing_of_the_empires_pressure() -> Non
         "ResolveDungeon(DungeonId, Report);"), "a death in a bonus dungeon resolves it (V16)"
     assert "bBonus" not in flat(body(code(RUN_CPP), "void UCataclysmEmpireRun::ResolveDungeon(", "the run"))
     run = flat(code(RUN_CPP))
-    assert "Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())" in run, "the empty-board surge counts a bonus dungeon"
+    # ORDINARY DUNGEONS ONLY since issue #2865, which leaves a bonus dungeon out as `ThreateningDungeonCount` did.
+    assert "Surges->IsDueOnEmptyBoard(Today, OrdinaryDungeonCount())" in run, "the empty-board surge counts a bonus dungeon"
+    assert "!Dungeon.bBonus" in body(run, "int32 UCataclysmEmpireRun::OrdinaryDungeonCount(", "the run"), (
+        "the empty-board count no longer leaves out a bonus dungeon")
     assert "if (Standing.bBonus) { continue; }" in run, "a bonus dungeon counts against a city's cap"
     assert "if (Dungeon.CityId != CityId || Dungeon.bBonus) { continue; }" in run, "the scheduled loss counts a bonus dungeon"
 

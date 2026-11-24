@@ -791,15 +791,42 @@ public:
 	 * It is there to ensure pressure remains." Issue #1406 built it in the
 	 * simulation and issue #1414 built it here.
 	 *
-	 * ANY EMPTY BOARD, WHATEVER EMPTIED IT, and every kind of dungeon counts as
-	 * standing: a Quest dungeon, a Fallen City and the dungeon the player is
-	 * inside all keep the board from being empty. `Simulation.board_is_empty`
-	 * is `not self.dungeons` and reads no kind.
+	 * ONLY AN ORDINARY DUNGEON KEEPS THE BOARD FROM BEING EMPTY, SINCE THE OWNER'S
+	 * RULING OF 2026-11-23 on issue #2865, verbatim "yes, your rec": "The board
+	 * counts as empty when no ordinary dungeon stands. Quest dungeons, the
+	 * Cataclysm boss dungeon and Fallen City dungeons do not count." Until then
+	 * every kind counted, and a Quest dungeon or a Fallen City that never leaves
+	 * the board kept it from ever being empty: on day 416 of the owner's run one
+	 * Quest dungeon stood and no surge came. The run counts what stands
+	 * (`UCataclysmEmpireRun::OrdinaryDungeonCount`); `Simulation.board_is_empty`
+	 * asks the same with `empty_board_counts_ordinary_only`.
 	 *
-	 * `LeastIntervalDays` IS THE ONLY BRAKE ON IT, and `IntervalDays` keeps
-	 * running: whichever comes first fires. See `IsDueOnEmptyBoard`.
+	 * NO MINIMUM GAP BRAKES IT, the same ruling: "The 25-day minimum gap
+	 * (LeastIntervalDays) does not apply to a surge fired by an empty board."
+	 * Every wave adds at least one ordinary dungeon, so the board is not empty
+	 * again until the player has cleared or lost all of them. `IntervalDays`
+	 * keeps running: whichever comes first fires. See `IsDueOnEmptyBoard`.
+	 *
+	 * AND IT IS LARGER: see `ExtraDungeonsOnEmptyBoard`.
 	 */
 	static constexpr bool bSurgeOnEmptyBoard = true;
+
+	/**
+	 * How many dungeons more a surge fired by an empty board brings than the
+	 * scheduled one would: the owner's ruling of 2026-11-24 on issue #2865,
+	 * chosen option verbatim "Flat +4, no stacking". The scheduled count plus 4,
+	 * 8 + 4 = 12 today, never grown from the previous wave. It superseded the
+	 * ruling of 2026-11-23, "the previous surge's dungeon count plus 4", after the
+	 * simulation showed that version compounding to waves of 20 to 45.
+	 *
+	 * ADDED BEFORE THE CAP AND THE LETHALITY MULTIPLIER, which then apply to it as
+	 * to any wave: the coordinating session's judgement of 2026-11-24, "apply both
+	 * after the +4, as for any wave". So `MostDungeonsPerSurge` caps it and
+	 * Heretic makes 12 into 15. `Simulation.surge_count(from_empty_board=True)`
+	 * adds `empty_board_surge_extra`, which `tools/tests/test_surge_port.py` holds
+	 * equal.
+	 */
+	static constexpr int32 ExtraDungeonsOnEmptyBoard = 4;
 
 	/**
 	 * What Heretic multiplies a wave by. "Surges spawn 25% more dungeons."
@@ -1530,9 +1557,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	float DungeonMultiplier() const;
 
-	/** How many dungeons the next surge brings. Never fewer than one. */
+	/**
+	 * How many dungeons the next surge brings. Never fewer than one.
+	 *
+	 * @param bFromEmptyBoard  true for a surge an empty board fires, which brings
+	 *                         `ExtraDungeonsOnEmptyBoard` more, before the cap and
+	 *                         the lethality multiplier. Issue #2865.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	int32 DungeonsInNextSurge() const;
+	int32 DungeonsInNextSurge(bool bFromEmptyBoard = false) const;
 
 	/** How many days there will be between this surge and the one after it. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
@@ -1585,9 +1618,11 @@ public:
 	/**
 	 * Whether a surge fires today because nothing stands on the board.
 	 *
-	 * A PORT OF THE THREE REFUSALS AT THE TOP OF
-	 * `Simulation._maybe_surge_on_empty_board`: the rule is on, the board is
-	 * empty, and the last surge is at least `LeastIntervalDays` behind.
+	 * A PORT OF THE REFUSALS AT THE TOP OF
+	 * `Simulation._maybe_surge_on_empty_board`: the rule is on, and no ordinary
+	 * dungeon stands. NO MINIMUM GAP since the owner's ruling of 2026-11-23 on
+	 * issue #2865; until then the last surge had to be `LeastIntervalDays` behind,
+	 * and the model still asks that, but only with `empty_board_surge_braked` on.
 	 *
 	 * A REFUSAL IS A DELAY AND NOT A LOSS. The caller asks again every day, the
 	 * board is still empty tomorrow, and this answers true on the first day the
@@ -1596,11 +1631,16 @@ public:
 	 * IT DECIDES AND DOES NOT ACT, like `IsDue`. The run counts its dungeons and
 	 * passes the number in, because this class does not own them.
 	 *
-	 * @param Day              the day being asked about
-	 * @param DungeonsStanding how many dungeons of any kind are on the map
+	 * @param Day              the day being asked about. Read by nothing since the
+	 *                         minimum gap stopped applying; kept so a caller and a
+	 *                         test say which day they ask about.
+	 * @param OrdinaryDungeonsStanding how many ORDINARY dungeons are on the map,
+	 *                         `UCataclysmEmpireRun::OrdinaryDungeonCount`. A Quest
+	 *                         dungeon, the Cataclysm's own dungeon, a Fallen City
+	 *                         and a Scout Parties bonus dungeon are not counted.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
-	bool IsDueOnEmptyBoard(int32 Day, int32 DungeonsStanding) const;
+	bool IsDueOnEmptyBoard(int32 Day, int32 OrdinaryDungeonsStanding) const;
 
 	/**
 	 * Whether a city falling on this day fires a surge of its own.
@@ -1997,6 +2037,9 @@ public:
 	 *                       which Cataclysms a campaign faces. EMPTY BY
 	 *                       DEFAULT, and then every dungeon is made and left
 	 *                       carrying `None`, as before this was added.
+	 * @param bFromEmptyBoard true for a surge an empty board fired: the wave is
+	 *                       `DungeonsInNextSurge(true)`, `ExtraDungeonsOnEmptyBoard`
+	 *                       larger. Issue #2865.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
@@ -2004,5 +2047,6 @@ public:
 		const TArray<int32>& DungeonsPerCity = TArray<int32>(),
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>(),
 		const TFunction<ECataclysmType()>& DrawCataclysm =
-			TFunction<ECataclysmType()>()) const;
+			TFunction<ECataclysmType()>(),
+		bool bFromEmptyBoard = false) const;
 };
