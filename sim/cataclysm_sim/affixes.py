@@ -1923,6 +1923,41 @@ def max_affix_tier(tier: int) -> int:
     return max(max_affix_tier_on_a_drop(tier), max_affix_tier_by_crafting(tier))
 
 
+#: The lowest difficulty tier at which the all-resistances family can roll on a
+#: DROP. Ruled by the project owner on 2026-11-24, issue #2853, the chosen option
+#: quoted: "No all-resist at tier 1 (Recommended)": the all-resistances family
+#: cannot roll on a difficulty tier 1 drop; single resistances still can.
+#:
+#: WHY. At tier 1 a run faces one Cataclysm, so an all-resistances roll is the
+#: weakest family in combat (3 to 3.6 a type, and only one type attacking) and
+#: the strongest in the Power Score, which reads all eight types: 24 to 29 points
+#: a roll, 58 to 65 per cent of a fresh tier 1 character's resistance points
+#: (`sim/measure_drop_supply.py`). The genre gates it the same way: Path of
+#: Exile's single-resistance suffix starts at item level 1 and its
+#: all-resistances one, "of the Crystal", at item level 12
+#: (pathofexile.com/item-data/mods, read 2026-11-24).
+#:
+#: A DROP ONLY. Crafting is not gated (`max_affix_tier_by_crafting` gates
+#: nothing either), so a tier 1 player can still forge one; and nothing else
+#: about the family moves, its floors (issue #1230) included.
+ALL_RESISTANCES_LOWEST_DROP_TIER = 2
+
+
+def rolls_on_a_drop_at(affix, tier: int) -> bool:
+    """Whether this affix may be drawn for an item that DROPS at this difficulty
+    tier. Every affix may, except the all-resistances family below
+    `ALL_RESISTANCES_LOWEST_DROP_TIER`.
+
+    IT IS ASKED OF THE CANDIDATES AFTER THEY ARE BUILT, so the random stream is
+    drawn exactly as it was: a tier 1 drop differs from before only where the
+    draw would have taken the all-resistances family, and another affix takes
+    the place, as the draw already does for one it cannot use.
+    """
+    if not 1 <= tier <= DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
+    return affix is not ALL_RESISTANCE or tier >= ALL_RESISTANCES_LOWEST_DROP_TIER
+
+
 #: How heavily each affix tier is weighted on a drop, mirroring the Drop Weight
 #: column of the Affix Tiers sheet in `docs/All_Things_Cataclysm.xlsx`.
 #:

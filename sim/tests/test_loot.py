@@ -1008,10 +1008,21 @@ def test_the_ladder_is_the_six_enemy_rarities_the_power_model_has():
     assert len(ENEMY_RARITIES) == 6
 
 
-def test_a_common_kill_drops_the_genre_figure():
-    """0.16, Path of Exile's base chance for an item from a normal monster,
-    taken as the starting point because this design had none."""
-    assert loot.expected_gear_drops("Common") == pytest.approx(0.16)
+def test_a_common_kill_drops_half_the_genre_figure():
+    """0.08: half of 0.16, Path of Exile's base chance for an item from a
+    normal monster, which was the starting point because this design had none.
+    The project owner halved the whole gear column on 2026-11-24, issue #2853,
+    "Halve gear drops (Recommended)"."""
+    assert loot.expected_gear_drops("Common") == pytest.approx(0.08)
+
+
+def test_the_gear_column_is_half_what_it_was_at_every_rarity():
+    """The six figures, stated once, so the column's shape and its halving are
+    both pinned: every rarity alike, so the enemy ladder of 2026-08-18
+    stands. Issue #2853."""
+    before = {"Common": 0.16, "Elite": 0.5, "Legendary": 1.0, "Herald": 2.0,
+              "Boss": 5.0, "Cataclysm Boss": 12.0}
+    assert loot.ENEMY_GEAR_DROPS == {rarity: figure / 2 for rarity, figure in before.items()}
 
 
 def test_a_rarer_enemy_drops_more_and_better():
@@ -1053,7 +1064,7 @@ def test_an_unknown_enemy_rarity_is_rejected():
 
 def test_the_rolled_count_averages_the_expected_one():
     """The fractional part is a probability, so a Common enemy drops nothing
-    most of the time and the mean still comes out at 0.16. Rounding to the
+    most of the time and the mean still comes out at 0.08. Rounding to the
     nearest whole number instead would make it drop nothing ever."""
     rng = random.Random(20260818)
     for rarity in ENEMY_RARITIES:
@@ -1064,21 +1075,22 @@ def test_the_rolled_count_averages_the_expected_one():
 
 
 def test_a_common_kill_usually_drops_nothing_at_all():
-    """0.16 is a rate, not a guarantee, and the shape matters as much as the
+    """0.08 is a rate, not a guarantee, and the shape matters as much as the
     mean: most kills give the player nothing.
 
     THE EXACT SHARE MOVED WHEN THE COUNT BECAME A POISSON DRAW, from 84% empty
-    to 85.2%, and a Common enemy can now occasionally drop two. Issue #725.
+    to 85.2% at the 0.16 of the time, and a Common enemy can now occasionally
+    drop two. Issue #725. At 0.08, since issue #2853, 92.3% are empty.
     """
     rng = random.Random(1)
     rolled = [loot.roll_gear_drop_count("Common", 100.0, rng)
               for _ in range(20000)]
 
-    assert rolled.count(0) / len(rolled) == pytest.approx(0.852, abs=0.02)
+    assert rolled.count(0) / len(rolled) == pytest.approx(0.923, abs=0.02)
 
-    # AND TWO IS POSSIBLE, at about one kill in eighty. Asserted rather than
-    # left to chance, because the old method made two impossible at any rate
-    # below one and this is the difference.
+    # AND TWO IS POSSIBLE, at about one kill in 340 at 0.08 (about 59 of these
+    # 20,000). Asserted rather than left to chance, because the old method made
+    # two impossible at any rate below one and this is the difference.
     assert max(rolled) >= 2
 
 
@@ -1156,8 +1168,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
                 seen += af.RARITIES.index(item.rarity) >= 3
         return seen
 
-    # A Herald adds 150% magic find and drops two items; a Common adds none and
-    # drops 0.16. Comparing shares rather than counts would be confounded by
+    # A Herald adds 150% magic find and drops one item; a Common adds none and
+    # drops 0.08. Comparing shares rather than counts would be confounded by
     # that, so this compares against what the distribution itself predicts.
     plain = loot.rarity_distribution(8, 0.0)
     lucky = loot.rarity_distribution(8, loot.magic_find_from("Herald"))
@@ -1167,7 +1179,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
     # And the roll really uses it: a Herald's drops beat what no-magic-find
     # drops would give over the same number of items.
     heralds = share_above_superb("Herald")
-    expected_without = sum(plain[r] for r in above) * rounds * 2
+    expected_without = (sum(plain[r] for r in above) * rounds
+                        * loot.expected_gear_drops("Herald"))
     assert heralds > expected_without * 1.3, (
         f"a Herald's {rounds * 2} drops gave {heralds} above Superb, and with "
         f"no magic find at all they would give about {expected_without:.0f}")
@@ -1261,9 +1274,11 @@ def test_a_kill_can_drop_for_more_than_one_slot():
 # Crafting materials, on their own roll
 # --------------------------------------------------------------------------
 
-def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
-    """A quarter of the gear rate since 2026-11-22, issue #2829. It was twice
-    the gear rate until 2026-08-23 (issue #850) and the gear rate until #2829.
+def test_a_kill_drops_half_as_many_materials_as_gear():
+    """Half the gear rate since 2026-11-24, when the owner halved the gear
+    column and not this one (issue #2853). A quarter of the gear rate from
+    2026-11-22 (issue #2829); twice the gear rate until 2026-08-23 (issue #850)
+    and the gear rate until #2829.
 
     THE RELATIONSHIP IS ASSERTED RATHER THAN THE SIX FIGURES. What the test
     guards is that the two columns move together deliberately, so a change to
@@ -1271,7 +1286,7 @@ def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
     """
     for rarity in loot.ENEMY_GEAR_DROPS:
         assert loot.expected_material_drops(rarity) == pytest.approx(
-            loot.expected_gear_drops(rarity) / 4)
+            loot.expected_gear_drops(rarity) / 2)
 
 
 def test_the_material_drop_figures_are_what_the_owner_chose():
