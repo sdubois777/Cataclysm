@@ -186,6 +186,16 @@ public:
 	 */
 	static bool IsFriendlyTo(const AActor* Actor, const AActor* Instigator);
 
+	/**
+	 * Whether this actor is nobody's target, which no search here returns on any side: a character answering
+	 * `ACataclysmCharacterBase::IsNeverATarget`, which is Demonic Guide's guide. Issue #2860.
+	 *
+	 * A FOURTH QUESTION BESIDE THE THREE THIS CLASS'S COMMENT NAMES, asked with them in `MatchesAttitude` and in the
+	 * side-less search, so a minion, a thrall, a skill, a click and a floor rule's sweep all pass the guide over
+	 * through one line. False for null and for anything that is not one of this project's characters.
+	 */
+	static bool IsNeverATarget(const AActor* Actor);
+
 	/** The actor's ability system component, or null if it has none. */
 	static UAbilitySystemComponent* AbilitySystemOf(const AActor* Actor);
 

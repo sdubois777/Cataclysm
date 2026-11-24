@@ -2,6 +2,154 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Demonic Guide's guide is nobody's target and cannot be killed, the player and what it commands walk through each other and through the guide, and the guide leaves yellow footprints (#2860, #2861, #2862)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/demonic-guide-2860`, by a bug-fix agent working
+for the coordinating session on 2026-11-24. A window compiles it and runs the tests below. Issues
+[#2860](https://github.com/sdubois777/Cataclysm/issues/2860), [#2861](https://github.com/sdubois777/Cataclysm/issues/2861)
+and [#2862](https://github.com/sdubois777/Cataclysm/issues/2862).
+
+### What the owner said, verbatim, from the play-test of 2026-11-23
+
+- #2860: "Demonic Guide: sometimes he manages to die. My minions are constantly trying to attack him even though they
+  usually do 0 damage."
+- #2861: "He can't walk through my minions, and neither can I, which is annoying. There shouldn't be collision between
+  player and minions." ("He" is the guide.)
+- #2862: "I also think we should show like yellow footsteps or something pointing to where he's gone. He's kinda easy
+  to lose track of."
+
+No issue carried a comment, so there is no further ruling; every choice below not in those words is a judgement.
+
+### Why the guide was attacked, and how it could die (#2860)
+
+- **Attacked.** The guide is an Imp on the monsters' side. `UCataclysmTargeting::MatchesAttitude` asked three things
+  of a candidate -- can it hold damage, is it dead, which side -- so a minion's and a thrall's search
+  (`UCataclysmTargetCandidates::NearestHostile`, through `IsHostileTo`) found it as the nearest enemy, and its
+  `bCannotBeHurt` emptied every blow: the owner's "0 damage".
+- **Killed.** `bCannotBeHurt` holds its health at the maximum in `UCataclysmVitalAttributeSet::PreAttributeChange`, so
+  no write to health kills it. But four rules write health to nought and then call `HandleDeath` outright, and
+  `ACataclysmEnemyCharacter::HandleDeath` asked nothing about being unhurtable: Epidemic's chain ending
+  (`ACataclysmDungeonGameMode::EpidemicEndTheChain`, which finds its victims with `FindEnemiesInSphere` as the player),
+  Infernal Sacrifice (`UCataclysmEnemyModifiers::TimedStep`, which eats the nearest of `FindAlliesInSphere`), a drained
+  delayed blow (`UCataclysmDelayedDamage::DrainStep`) and health debt (`UCataclysmHealthDebt`). Which one killed the
+  owner's guide is not known -- no log of that run was read -- and the first two are the ones whose searches could
+  reach it.
+
+### What changed
+
+1. **Nobody's target** (#2860). `ACataclysmCharacterBase::IsNeverATarget`, false for every character but the guide
+   (`ACataclysmEnemyCharacter` answers `bGuidesThePlayerForTheFloorRule`). `UCataclysmTargeting::MatchesAttitude`
+   refuses it beside the dead, so it is neither an enemy nor an ally of anybody, and the side-less search (a
+   Hellhound's lane) refuses it too: every minion, thrall, skill search, click and floor-rule sweep passes it over.
+   `UCataclysmSkillEffects::IsUntargetable` answers true for it, so `ApplyHit` refuses a blow aimed straight at it
+   before anything is sent and no rider sees a landed blow.
+2. **It does not die** (#2860). `ACataclysmEnemyCharacter::HandleDeath` returns before the mark for a character that
+   is nobody's target, and logs that it did, so a rule's outright kill leaves it standing and not marked dead.
+3. **Which bodies block which** (#2861). Three of the engine's six collision mask bits: the player 1, anything else on
+   the player's side (a summoned minion, a deployed machine, a thrall) 2, the guide 4. Each capsule carries its bit as
+   its mask filter and ignores the other two as it moves (`UPrimitiveComponent::SetMoveIgnoreMask`); a creature
+   carries and ignores nothing. `ACataclysmCharacterBase::RefreshPassThroughBody` writes both, at `BeginPlay`, from
+   `SetGenericTeamId` (so a minion takes its summoner's side's body and a thrall changes body when taken, and back if
+   anything ever gives it back), and from `PlaceTheGuide` once the creature is the guide. So: the player, its minions
+   and thralls, and the guide pass through one another; a creature blocks all of them and all of them block a
+   creature; two commanded bodies still block each other.
+4. **Footprints** (#2862). `ACataclysmGuideFootprints`, one actor holding a fixed pool of 40 prints, begun by
+   `PlaceTheGuide`, destroyed by `ForgetTheGuide`, and stepped on the guide's beat by `StepDemonicGuide`. It lays a
+   print every 80 cm the guide walks, left and right in turn, each fading evenly to nothing over 10 seconds, and the
+   oldest print is taken for the next. Drawn with the engine's cylinder squashed to an oval and the telegraph markers'
+   unlit translucent material, `/Game/Effects/M_TelegraphMarker`, so no asset is added.
+5. **The design document** gains "What a minion's body blocks" after "How fast a minion walks".
+
+### Research
+
+- **Path of Exile 2 lets the summoner walk through its own minions, and its minions block each other.** A player's
+  post on the official forum, 2025-01-04 (thread 3680211, Shadoe Wrayth): "I can walk right through my minions, but
+  they cannot walk through each other?" The thread and its neighbours (3619145) are players asking for minion-minion
+  collision to go, with no developer reply.
+- **Last Epoch treats a minion blocking the player as a bug.** Patch 1.3.3's notes, under Items: "Evolution's End: Fixed
+  an issue where the Rift Beast minion would block player movement". In its 2019 alpha it had the collision and players
+  asked for it to go ("Please Remove Minion Collision", forum topic 13844); one, cpurdy, wrote that "in almost every
+  other arpg" a summoner can walk through its minions while they still block the enemy.
+- **A trail of footprints to follow.** The Witcher 3's tracks, which glow under Witcher Senses and are followed to where
+  a creature went, are the nearest shipped mechanic found. No shipped ARPG found publishes a guide's trail, so no
+  figure below is read off a game.
+- **What the research settles:** the player and the player's own minions do not block each other, and minions still
+  block the enemy. **What it does not settle**, and is judged below: minion against minion, the guide's body, the
+  footprints' figures.
+
+### Judgements, each labelled
+
+1. **The guide alone is nobody's target.** The Reaper, an echo, a rift and the floor's other unhurtable objects are
+   found and struck for nothing as their own rulings have them; making them untargetable is not what was asked.
+   Infernal Sacrifice and Epidemic can still call the death of those creatures outright -- see "Not settled" below.
+2. **Nobody's target is no ally either**, so a creature's search for allies passes the guide over as well: Infernal
+   Sacrifice cannot eat it, and the Field Medic's heal and Horde Leader's rally, which it never needed, skip it.
+3. **The death is refused for the guide only, before the mark**, rather than for every creature that cannot be hurt:
+   other rules kill an unhurtable creature on purpose after clearing its flag (Blood Bond's elite), and the guide is
+   destroyed, never killed, when its arena ends.
+4. **The engine's mask filter, not a new collision channel or profile.** A channel would give the capsule another object
+   type, and every target search asks for `ECC_Pawn` by object type (`UCataclysmTargeting::Gather`,
+   `UCataclysmTargetCandidates::CapsuleReachesInto`), so a minion moved onto it would stop being found by the creatures
+   that fight it. The mask filter is the engine's own for exactly this ("Red team", "Blue team" in its declaration),
+   and every sweep the character movement component makes -- the move, the floor check, the push out of an overlap --
+   reads it through `UPrimitiveComponent::InitSweepCollisionParams`.
+5. **Two of the player's minions still block each other**, as Path of Exile 2's do: the owner named the player, and the
+   change is one line (`MovesThroughMaskFor`) should the owner want them through each other too.
+6. **The guide passes through the player as well as the minions**, the coordinating session's reading of #2861.
+7. **A deployed machine is a commanded body**, so the player walks through its own turret and ballista; a creature is
+   still blocked by them.
+8. **Crowd avoidance is unchanged.** The guide and the minions are Detour crowd agents, so the guide still steers round
+   a minion in its way rather than walking a straight line through it; what is gone is the body that stopped it. The
+   owner's play-test is what says whether that is enough.
+9. **The footprints' figures**: a print every 80 cm walked (one a beat at the guide's default 320 cm/s), 14 cm either
+   side of the line walked, 32 by 16 cm (about a third of the player's width, readable from the 8 m camera),
+   `#FFD800` -- a saturated yellow, told from Celestial's pale gold ground and from a telegraph's red -- at 0.9 opacity
+   fading evenly to nothing over 10 seconds, so the newest is the brightest and the trail shows which way it went; a
+   pool of 40, which holds a whole lifetime's trail at the default walk (a faster guide's trail is cut short instead of
+   growing); a move of more than 6 m in one beat starts the trail again rather than printing the gap.
+10. **A print does not age while the guide waits for the player.** The guide waits exactly when the player has fallen
+    15 m behind, which is when the trail is wanted.
+11. **A mesh and the telegraph material, not a decal.** The project holds no deferred decal material, and the issue's
+    brief said not to add binary assets. Without the material the prints draw in the engine's default and do not fade,
+    and the log says so once.
+12. **Stepped on the game mode's beat, not by a tick of its own**, as the guide's walk and its chain are, so an
+    automation test can walk a guide and watch its prints come and go.
+
+### Not settled
+
+- **Infernal Sacrifice and Epidemic can still kill the other creatures that cannot be hurt.** Both call `HandleDeath`
+  outright on what their search finds; the Reaper and an echo are on the monsters' side and can be found. Not changed
+  here, because the issue is the guide's and their rulings are their own.
+
+### Tests
+
+Unreal, 11 new, written and not run:
+
+| Test | What it shows |
+|---|---|
+| `Cataclysm.DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` | A minion and a thrall 1.5 m from the guide choose the Imp 6 m beyond it; the player's search and a creature's ally search pass it over; a blow at it is refused. CONTROL: not the guide, it is the minion's choice |
+| `Cataclysm.DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` | A blow of 100,000% is refused before anything is sent; its health stays at the maximum; its death called outright leaves it standing. CONTROL: the blow kills an Imp |
+| `Cataclysm.DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` | Swept both ways against the player and a minion it passes; against an Imp it is stopped, both ways |
+| `Cataclysm.DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` | One print at the first beat, ten more for 8.5 m, at its feet, either side in turn, the newest the brightest; none after 10 s standing |
+| `Cataclysm.DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` | Four prints stay 14 s while it waits; gone 10 s after the player is back |
+| `Cataclysm.DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` | 121 prints laid, never more than 40 shown, one trail actor; a 10 m jump lays one |
+| `Cataclysm.PassThroughBodies.EachBodyCarriesItsBitAndMovesThroughTheOtherTwo` | The player 1/6, a minion 2/5, a creature 0/0 |
+| `Cataclysm.PassThroughBodies.ThePlayerAndItsMinionWalkThroughEachOther` | Both ways. CONTROL: the player is stopped by a creature |
+| `Cataclysm.PassThroughBodies.ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt` | All four sweeps stopped |
+| `Cataclysm.PassThroughBodies.TwoMinionsStillBlockEachOther` | Judgement 5 |
+| `Cataclysm.PassThroughBodies.AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` | Blocks, taken passes both ways (2/5), given back blocks again (0/0) |
+
+Python, `tools/tests/test_demonic_guide_is_no_target_and_no_obstacle.py`, 9 tests, which continuous integration runs:
+the search's refusal, the guide's override and the blow's refusal, the death guard before the mark, the three bits,
+the block table worked out from the figures for every pair, where the bodies are written, the guide's raising, beat
+and end, and the footprint pool. Proved with `tools/prove_guard.py`: removing the search's refusal fails
+`test_the_search_refuses_nobodys_target_on_every_side`; making the guide's bit the commanded bit fails
+`test_the_three_bits_are_separate_and_fit_the_engines_filter` and
+`test_the_bodies_block_the_pairs_the_issue_names_and_no_others`; disabling the death guard fails
+`test_the_guides_death_called_outright_is_refused_before_the_mark`. Each passed again with the file restored.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

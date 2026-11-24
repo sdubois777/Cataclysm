@@ -2376,6 +2376,10 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 
 **Every minion the player commands walks at 1.25 times the player's walking speed now.** The project owner's ruling of 2026-11-20 (issue #2793): "Your minions movespeed should be equal to 1.25 of your own. That way they actually keep up." It covers every summoned creature and every thrall, and it is the pace itself rather than a floor: a creature that walks faster on its own, such as a Hellhound or an Imp taken by Subjugate, is slowed to it, and so is a Mote. It follows the player's speed as buffs and slows change it. A thrall's own hastes and slows still apply on top of it. A deployed machine stays where it is put.
 
+### **What a minion's body blocks**
+
+**The player and everything the player commands walk through each other, and a monster still blocks both.** The project owner's play-test of 2026-11-23 (issue #2861): "There shouldn't be collision between player and minions." It covers every summoned minion, every deployed machine and every thrall, and a thrall's body changes with its side: once taken it passes through the player, and were it ever given back it would block the player again. Demonic Guide's guide passes through the player and the player's minions too. A monster blocks every one of them and every one of them blocks a monster, so minions still hold a line. **Two of the player's minions still block each other**, a judgement: Path of Exile 2 keeps that collision while letting the summoner through, and the owner asked about the player alone. `docs/DECISIONS.md` has the sources.
+
 
 
 ### **Which attribute a minion scales from**

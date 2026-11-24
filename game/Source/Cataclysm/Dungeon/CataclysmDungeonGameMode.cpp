@@ -44,6 +44,8 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmHarvestedSoul.h"
+// For the footprints Demonic Guide's guide leaves. Issue #2862.
+#include "Dungeon/CataclysmGuideFootprints.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -6274,8 +6276,14 @@ void ACataclysmDungeonGameMode::ForgetTheGuide()
 	{
 		Chain->Destroy();
 	}
+	// AND ITS FOOTPRINTS, WHICH LAST AS LONG AS IT DOES. Issue #2862.
+	if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+	{
+		Footprints->Destroy();
+	}
 	DemonicGuide = nullptr;
 	DemonicGuideChain = nullptr;
+	DemonicGuideFootprints = nullptr;
 	DemonicGuidePanelKey = -1;
 }
 
@@ -6309,7 +6317,14 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	// AT ITS SHARE OF THE PLAYER'S DEFAULT WALK UNTIL THE FIRST STEP READS THE PLAYER'S OWN. Issue #2790.
 	Guide->SetGuideWalkSpeed(ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
 							 * Effects::DemonicGuideWalkShareOfPlayer);
+	// AND ITS BODY IS THE GUIDE'S NOW THAT IT IS ONE, so the player and what the player commands pass through it and it
+	// through them; a creature still blocks it. Issue #2861. After the flag, which is what the body is read from. It is
+	// nobody's target from the flag on as well (`IsNeverATarget`, issue #2860), which needs no call.
+	Guide->RefreshPassThroughBody();
 	DemonicGuide = Guide;
+
+	// AND THE TRAIL IT LEAVES, empty until the first step prints where it stands. Issue #2862.
+	DemonicGuideFootprints = ACataclysmGuideFootprints::Begin(GetWorld(), Guide->GetActorLocation());
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
 }
@@ -6805,6 +6820,15 @@ void ACataclysmDungeonGameMode::StepDemonicGuide(
 			DemonicGuideChain = ACataclysmGroundZone::SpawnForTheFloor(
 				Source, Where, Where, Effects::DemonicGuideChainCm, 0.0f, /*bAffectsEveryone=*/false,
 				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::DemonicGuideKey));
+		}
+
+		// AND ITS FOOTPRINTS: printed along where it walked since the last beat, at its feet, and aged by this beat
+		// unless it waits for the player. Issue #2862.
+		if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+		{
+			const UCapsuleComponent* Body = Guide->GetCapsuleComponent();
+			const FVector Feet(At.X, At.Y, At.Z - (Body ? Body->GetScaledCapsuleHalfHeight() : 0.0f));
+			Footprints->Step(Feet, Guide->GetActorRotation(), BeatSeconds, bWaits);
 		}
 	}
 

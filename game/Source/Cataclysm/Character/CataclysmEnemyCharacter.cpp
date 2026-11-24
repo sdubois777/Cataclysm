@@ -180,6 +180,17 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 
 void ACataclysmEnemyCharacter::HandleDeath()
 {
+	// NOBODY'S TARGET IS NOBODY'S KILL: Demonic Guide's guide does not die. Issue #2860, the owner's play-test of
+	// 2026-11-23: "sometimes he manages to die." Its health is held at its maximum (`bCannotBeHurt`), so no write to
+	// health reaches here for it; but a rule that kills by calling this outright after writing health to nought --
+	// Epidemic's chain ending, Infernal Sacrifice eating an ally, a drained delayed blow or health debt -- skips that
+	// hold. BEFORE THE MARK, so it is not marked dead either, and every rule that asks `IsDead` still finds it standing.
+	if (IsNeverATarget())
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("%s is the floor's guide and nobody's target; it was not killed."), *GetName());
+		return;
+	}
+
 	if (!UCataclysmSkillEffects::MarkDead(this))
 	{
 		// Already dead. Nothing here is safe to run twice.
