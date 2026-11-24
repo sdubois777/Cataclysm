@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Assembled on `feat/bug-batch-1` from development `6dd62aba6` (#2880
+  merged), as the coordinating session asked on 2026-11-24. Its window comes after the rarity cap window and inv-w1.
+- **27 OF THE 37 NEW UNREAL TESTS HAD NO GUARD PROOF IN THEIR ENTRIES.** The coordinating session ruled that each gets
+  one before the window. The writing agents' planned breaks, passed on in their reports, were checked here against
+  this branch; one was rewritten (G4) and three were written here (GD8 to GD10) for tests no planned break covered.
+- The five branches' own entries, below this one, hold each fix's reasons, rulings and tests.
+
+### What it holds
+
+Merged in this order, `git merge --no-ff`:
+
+| Merge | Branch | Issues |
+| :-- | :-- | :-- |
+| `2bde3bc06` | `fix/creature-combat-2874` at `c371d75d8`, with `fix/drops-and-death-2871` at `472bc1b56` inside it | #2871, #2874, #2876, #2877 |
+| `2e0f8ef8e` | `fix/modifiers-2854` at `83fdb1e61` | #2855, #2854 |
+| `0fcbb55ec` | `fix/empire-cities-2859` at `95534b793` | #2859, #2866 |
+| `282ade7e5` | `fix/demonic-guide-2860` at `6d9815cc1` | #2860, #2861, #2862 |
+| `5d696dc7e` | `fix/masochist-shield-2873` at `a04b611ee` | #2873, #2863 |
+
+- **Only this log conflicted**, at every merge, resolved with `tools/resolve_decisions_log.py`. No code file conflicted,
+  the overlaps named beforehand included (`CataclysmVitalAttributeSet.cpp`, `CataclysmSkillEffects.*`,
+  `CataclysmEnemyCharacter.cpp`, `CataclysmDungeonGameMode.cpp`, `CataclysmDungeonModifierEffectsTests.cpp`).
+- **The resolutions left some of the 2026-11-24 entries below the 2026-11-22 ones**; `b80b1f21a` puts the seven new
+  entries first, newest first by the author date of the branch commit that first wrote each heading, each one's text
+  checked equal to its branch's.
+- **Every file arrived as written**: each of the 70 changed files but this log differs from development by exactly the
+  union of the five branches' changed lines, compared from their base `4d33f5994`.
+- `tools/check_resolved_cpp.py` on the 57 changed C++ files: "57 files read, 0 with complaints".
+- No branch names a save version or a committed save file; they were written at run 17 and character 14, and
+  development is at 18 and 15 since #2880.
+- The engine-name and anonymous-helper checks: "7 passed". **Full Python suite: "8259 passed, 10 skipped"; JUnit 8269
+  tests, 0 failures, 0 errors, 10 skipped.** ruff: "All checks passed!".
+
+### Registered for its window
+
+**The base is window sd-w2's whole-suite engine log** (`sdw2_suite_engine_45a0138d.log`, 5341 performed, 57 skipped
+halves, 861 test saves). The batch adds 38 test names and removes 1 (`...HurtsThePlayerWithinReach`, renamed
+`...AnywhereOnTheFloor`), read from the name literals in the diff, since several files register through their own
+wrapper macros. **The whole suite is registered as 5378**, all succeeded; 57 skipped halves and 861 test saves written
+and deleted, 0 left behind (no added line reports a skipped half or writes a save: a reading).
+
+| Branch | New tests |
+| :-- | --: |
+| creature-combat | 6 |
+| drops-and-death | 4 |
+| modifiers | 3, and 1 renamed |
+| empire-cities | 6 (its entry lists none; counted from the code) |
+| demonic-guide | 11 |
+| masochist-shield | 7 |
+
+**Groups alone, first**, at sd-w2's count plus what the batch adds: `EffectPlacement.` 4 (new), `PassThroughBodies.` 5
+(new), `DungeonModifierEffects.` 785 (777 + 8), `EnemyModifiers.` 61 (57 + 4), `EnemyHitTiming.` 15, `EnemyStrength.` 9,
+`PlayerCopies.` 8, `BuriedWeaponKills.` 4, `HitLog.` 8, `Fervour.` 32, `ThornsOfGlass.` 11, `EmpireTreeCity.` 21,
+`EmpireTreeEvents.` 15, `WalkFromTheScreen.` 6; and with nothing added, `EmpireScreen.` 16, `CityScreen.` 19 and
+`SaveLoad.` 81, because empire-cities changes the map, the city screen's layout and the load code. No editor step: no
+branch changes a CSV or an asset. Python and ruff beside the whole suite.
+
+**35 C++ guard proofs**, in `.claude/windows/prove_bb1_table.py.txt`, every anchor matching once on `b80b1f21a`. Each
+is narrowed to the tests it is for -- a group with its trailing dot, or the tests' full names joined with `+` -- so a
+break that moves other tests of a large group is not read as this proof's. Predicted, not run:
+
+| Proof | Break | Selects | Must fail |
+| :-- | :-- | --: | :-- |
+| EP1 | `OnTheFloor` returns the point asked | 4 | all four `EffectPlacement.` tests |
+| EP2 | a ground zone drawn where asked | 4 | `AGroundZoneIsDrawnOnTheFloorUnderIt` |
+| EP3 | a telegraph marker drawn where asked | 4 | `ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre` |
+| EP4 | debris left where asked | 4 | `DebrisIsLeftOnTheFloorUnderTheImpact` |
+| F1 | Fervour from the health lost only | 32 | `ABlowTheEnergyShieldTakesWholeFillsTheBar`, `ABlowSplitBetweenTheShieldAndHealthCountsBothHalves` |
+| F2 | the shield's recharge removes Fervour | 32 | `TheEnergyShieldRechargingRemovesNoFervour` |
+| B1 | Blood Altar's old reach back | 2 | `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`, `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| B2 | the unfed pulse's line reworded | 2 | `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo` |
+| T1 | Thorns of Glass's interval without buffs | 11 | `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond` |
+| T2 | ticks let into the strike back | 11 | `ADamageOverTimeTickIsNotStruckBack`, `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval` |
+| G1 | `MarkDead` never notes the actor being marked | 1 | `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` |
+| G2 | a death keeps the waiting blow | 1 | `EnemyHitTiming.ACreatureKilledBeforeItsSwingConnectsDealsNothingAfterwards` |
+| G3 | Infernal Brand brands a dead target | 1 | `EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt` |
+| G4 | the death line said at Verbose, not Display | 1 | `HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt` |
+| CC1 | the brand called for every blow, ticks included | 1 | `EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand` |
+| CC2 | the brand's explosion can critically strike | 1 | `EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike` |
+| CC3 | a dead copy's waiting swing still lands | 1 | `PlayerCopies.AStalkerKilledWhileItsSwingWaitsDealsNothing` |
+| CC4 | Infernal Sacrifice eats a creature that cannot be hurt | 1 | `EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt` |
+| CC5 | the chain's end kills a creature that cannot be hurt | 1 | `DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt` |
+| CC6 | a creature's damage scaled by 2 (the measurement's control) | 1 | `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` |
+| GD1 | the search takes the guide | 1 | `DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer` |
+| GD2 | a blow at the guide is not refused | 1 | `DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie` |
+| GD3 | "untargetable" forgets the guide | 2 | both guide tests above |
+| GD4 | the guide's body never refreshed | 1 | `DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt` |
+| GD5 | every capsule ignores nothing | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ThePlayerAndItsMinionWalkThroughEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD6 | a waiting guide's prints told it walks | 1 | `DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade` |
+| GD7 | prints last 100 times as long | 1 | `DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds` |
+| GD8 | a jump read as a walk (100 times the jump) | 1 | `DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted` |
+| GD9 | a creature moves through every pass-through body | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `ACreatureStillBlocksTheMinionAndThePlayerAndTheyBlockIt`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| GD10 | a body moves through its own kind | 5 | `EachBodyCarriesItsBitAndMovesThroughTheOtherTwo`, `TwoMinionsStillBlockEachOther`, `AThrallsBodyFollowsItsSideWhenTakenAndWhenGivenBack` |
+| EC1 | a buy or respec does not keep the shares | 3 | `EmpireTreeCity.ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum`, `ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum`, `ABuyAndARespecInTheCapitalKeepACitysShare` |
+| EC2 | an upgrade does not keep the shares | 1 | `EmpireTreeCity.TheRoyalEngineersCountMovingKeepsEveryCityAtItsShare` |
+| EC3 | a fall does not keep the shares | 1 | the same |
+| EC4 | the day's turn does not keep the shares | 1 | `EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns` |
+| EC5 | a fallen city's box opens nothing | 1 | `WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt` |
+
+**Every proof must also pass every selected test restored.** B1 and B2 were registered by their entry with the whole
+`DungeonModifierEffects.` group (785 tests); they are narrowed to the two Blood Altar tests here so the group does not
+run twice per proof. B1 and T2 are anchored on a longer text than their entry quotes, because the quoted text occurs
+12 and 5 times in its file. **G4 is rewritten**: the planned break gave a one-placeholder format extra arguments, which
+the engine's compile-time format check may refuse.
+
+---
+
 ## 2026-11-24 — The tier 1 Boss Brute killed with its Infernal Brand, not its swing: a brand is built by hits alone and its explosion never critically strikes; a creature killed mid-swing lands nothing; Sacrifice and Epidemic pass over a creature that cannot be hurt (#2874, #2877, #2876)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/creature-combat-2874`, made from
