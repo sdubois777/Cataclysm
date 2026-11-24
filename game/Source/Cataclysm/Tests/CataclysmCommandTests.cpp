@@ -1090,6 +1090,121 @@ bool FCataclysmSubjugateReleasesTheOldestTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeraldReservesItsRarityTest,
+	"Cataclysm.Command.AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's ruling of 2026-11-24, "Reserve grows with rarity": "A thrall's Fervour reserve rises with its rarity, e.g.
+ * Common 30, Elite 45, Legendary 60, Herald 90. A Herald thrall takes most of your pool, so it is a choice between one
+ * monster and an army." With the ruling of the same day for a full pool, "Replace the oldest" (issue #2856).
+ *
+ * THE FIGURES FIRST, off the row's 30 for a Common: a creature of each rung prices at 30, 45, 60 and 90, and the figure
+ * a screen shows, with no creature named, stays a Common's.
+ *
+ * THEN A HERALD TAKEN BY A RITUALIST'S POOL OF 150 HOLDING 90: six imps (10 each) and a Common thrall (30), stamped so the
+ * three oldest are imps and the thrall comes fourth. The Herald needs 90, so 60 must go: the three oldest imps, one at a
+ * time, 90 - 30 + 90 = 150. Releasing the thrall alone would have fitted in one, and the ruling says the oldest. The
+ * Herald is at 50 health against a blow of 300, so it is held through the blow on room its own figure says releasing
+ * can make. It holds back 90 once taken.
+ *
+ * FOLLOWERS 20 METRES OFF and the target 3, for the reason `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` gives.
+ */
+bool FCataclysmHeraldReservesItsRarityTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	FScopedCaster Commander(World, FVector::ZeroVector, RitualistPool);
+	UCataclysmSummonSkill* Take = GrantSkill<UCataclysmSummonSkill>(
+		Commander, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Take)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+	Take->DamagePercentOverride = 300.0f;
+
+	// --- THE FIGURES, RUNG BY RUNG --------------------------------------------
+	TestEqual(TEXT("with no creature named, the figure is a Common's, which is what a screen shows"),
+			  Take->FervourReserveOfOne(), 30.0f, 0.01f);
+	const float Expected[4] = {30.0f, 45.0f, 60.0f, 90.0f};
+	const TCHAR* const Rungs[4] = {TEXT("Common"), TEXT("Elite"), TEXT("Legendary"), TEXT("Herald")};
+	for (int32 Step = 0; Step < 4; ++Step)
+	{
+		FScopedCreature Priced(World, FVector(-40 * M, 10 * M * Step, 0));
+		Priced.Actor->SetRarityStep(Step);
+		TestEqual(FString::Printf(TEXT("a %s thrall reserves %.0f"), Rungs[Step], Expected[Step]),
+				  Take->FervourReserveOfOne(nullptr, Priced.Actor), Expected[Step], 0.01f);
+	}
+
+	// --- A HERALD TAKEN BY A FULL POOL ----------------------------------------
+	const auto SummonFor = [](AActor* Summoner, const FVector& Where, float Since) -> ACataclysmMinion*
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(Summoner, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+														 TEXT("Imp"));
+		if (Made)
+		{
+			Made->ReservedFervour = 10.0f;
+			Made->CommandedSinceSeconds = Since;
+		}
+		return Made;
+	};
+	const float Stamps[6] = {1.0f, 2.0f, 3.0f, 5.0f, 6.0f, 7.0f};
+	TArray<ACataclysmMinion*> Imps;
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		Imps.Add(SummonFor(Commander.Actor, FVector(-20 * M, (Index - 3) * 2 * M, 0), Stamps[Index]));
+	}
+	FScopedCreature Common(World, FVector(-22 * M, 8 * M, 0));
+	FScopedCreature Herald(World, FVector(3 * M, 0, 0));
+	Herald.Actor->SetRarityStep(3);
+	Herald.Actor->SetArmour(0.0f);
+	if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Herald.Actor))
+	{
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+	Herald.SetHealthTo(50.0f);
+	if (!TestEqual(TEXT("set-up: six imps"), Imps.FilterByPredicate([](const ACataclysmMinion* Imp)
+				   { return IsValid(Imp); }).Num(), 6)
+		|| !TestTrue(TEXT("set-up: the commander takes a Common thrall"),
+					 UCataclysmCommand::Subjugate(Commander.Actor, Common.Actor)))
+	{
+		return false;
+	}
+	Common.Actor->ReservedFervour = 30.0f;
+	Common.Actor->CommandedSinceSeconds = 4.0f;
+	if (!TestEqual(TEXT("set-up: 90 is held back"), UCataclysmCommand::ReservedFervourOf(Commander.Actor), 90.0f, 0.01f)
+		|| !TestFalse(TEXT("set-up: a Herald's 90 does not fit beside it in 150"),
+					  UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 90.0f))
+		|| !TestTrue(TEXT("set-up: though a Common's 30 would"),
+					 UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("Subjugate takes the Herald"), Take->Possess());
+	TestEqual(TEXT("releasing three to make its room"), Take->ReleasedToMakeRoom, 3);
+	TestTrue(TEXT("the three oldest, all imps, are gone"),
+			 !IsValid(Imps[0]) && !IsValid(Imps[1]) && !IsValid(Imps[2]));
+	TestTrue(TEXT("the Common thrall taken fourth stays, though releasing it alone would have made room"),
+			 IsValid(Common.Actor));
+	TestTrue(TEXT("and so do the three newer imps"), IsValid(Imps[3]) && IsValid(Imps[4]) && IsValid(Imps[5]));
+	TestFalse(TEXT("the Herald is alive: it was held on the room releasing made"),
+			  UCataclysmSkillEffects::IsDead(Herald.Actor));
+	TestEqual(TEXT("and holds back a Herald's 90"), Herald.Actor->ReservedFervour, 90.0f, 0.01f);
+	TestEqual(TEXT("so the pool holds back 30 + 30 + 90, its whole 150"),
+			  UCataclysmCommand::ReservedFervourOf(Commander.Actor), 150.0f, 0.01f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallScalesWithItsCommanderTest,
 	"Cataclysm.Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

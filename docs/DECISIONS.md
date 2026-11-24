@@ -2,6 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A thrall's Fervour reserve rises with the rarity of the creature taken: Common 30, Elite 45, Legendary 60, Herald 90 (#2856, #2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A third commit on `fix/thralls-2856`, by the coordinating
+session's brief of 2026-11-24, which also confirmed Judgement 1 of the entry below (a released follower is removed,
+not killed). Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand::ThrallReserveScaleFor` (new, `CataclysmCommand.h`, `.cpp`); the reserve helper
+`FervourReserveFor`, `UCataclysmSummonSkill::FervourReserveOfOne` (a creature to price for, optional) and `Possess`,
+which prices its target once and asks every room question with that figure (`CataclysmSkillTemplates.cpp`, `.h`);
+`UCataclysmSkillLevels::RepriceReservesOf`, which re-prices a thrall at its own rarity's figure
+(`Character/CataclysmSkillLevels.cpp`, `.h`); `docs/Cataclysm_GDD_v2.md` (the Fervour reserve paragraphs and
+Subjugate's row); one new automation test.
+
+### The ruling, verbatim
+
+The owner, 2026-11-24, on what keeps rare thralls in check (the entry below shows a taken Herald Brute at 39.8 times a
+summoned Imp's health), the option chosen: **"Reserve grows with rarity (Recommended)"**. The option's text: "A thrall's
+Fervour reserve rises with its rarity, e.g. Common 30, Elite 45, Legendary 60, Herald 90. A Herald thrall takes most of
+your pool, so it is a choice between one monster and an army. Exact figures set by the builder."
+
+### What changes in play
+
+**A thrall reserves its rung's figure:** the row's 30 for a Common, times 1.5 for an Elite (45), 2 for a Legendary (60)
+and 3 for a Herald (90), then the skill's level and the reductions -- Crowned's 5 and the percentages -- as every reserve
+takes them. A boss cannot be taken. Subjugate asks whether its target fits at the target's own figure, releases the
+oldest followers until that figure fits ("Replace the oldest", the entry below), and the thrall holds that figure back
+once taken. A Herald holds back 90 of a Ritualist's 150, so beside it there is room for two Common thralls or six imps.
+When the skill levels, a thrall is re-priced at its own rarity's figure, not a Common's.
+
+**What a screen shows is a Common's figure,** the skill bar's and the assignment screen's "reserves" box: they name no
+creature. The row's description, generated from the design workbook, says "Holding a thrall reserves Fervour, so your
+army is only as large as your pool" and states no figure, so the workbook is not touched.
+
+### Judgement 9, the figures: the ruling's example, kept
+
+**Common 30, Elite 45, Legendary 60, Herald 90**, as multiples of the row's figure so a re-tune of the row carries them:
+1, 1.5, 2 and 3. Kept because they do what the ruling asks and because of what they cost against what they buy:
+
+- **"A Herald thrall takes most of your pool"**: 90 is 60% of the Ritualist's 150, so a Herald is the choice between one
+  monster and an army, as the option says.
+- **Each rung still pays for itself.** By `game/Data/EnemyRarities.csv` a rung multiplies health by 1.85 and damage by
+  1.4, so a creature's power over a Common of its kind -- the square root of health times damage -- is 1.61 at Elite,
+  2.59 at Legendary and 4.17 at Herald, against reserves of 1.5, 2 and 3 times. Taking a rarer creature is still worth its
+  Fervour, which is the point of the skill, and the pool bounds how many.
+- **Not matched to the power exactly**, which would be 48, 78 and 125: a Herald at 125 would leave a Ritualist room for
+  one Common thrall beside it, and taking a rare creature would buy nothing a Common does not.
+
+**The research does not settle a figure.** Path of Exile's Dominating Blow takes a monster at its rarity and reserves
+nothing per Sentinel (the entry below); no game read for this work prices a taken creature by its rarity. So the shape is
+the owner's ruling and the figures are this judgement, on this game's own tables.
+
+### Tests
+
+Registered, not run. **One new automation test**, predicting `Cataclysm.Command.` 30 to 31 (25 before this branch):
+
+- `Cataclysm.Command.AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits`: a creature of each rung prices at 30,
+  45, 60 and 90, and with no creature named the figure is 30; then a pool of 150 holding six imps and a Common thrall
+  (90) takes a Herald at 50 health: it releases the three oldest imps, one at a time, and no more, keeps the Common thrall
+  taken fourth though releasing it alone would have fitted, holds the Herald alive through the blow, and the Herald holds
+  back 90, the pool's whole 150.
+
+**Not tested:** the re-price at the Herald's figure when Subjugate levels (`RepriceReservesOf`), which needs a player
+state holding skill levels; the line is one call, shown in the diff.
+
+**Guard proofs registered for the window:**
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| R1 | `FervourReserveFor(Self, Params, SkillTags, this, Target)` to `FervourReserveFor(Self, Params, SkillTags, this, nullptr)` (`CataclysmSkillTemplates.cpp`, `Possess`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R2 | `UCataclysmCommand::ThrallReserveScaleFor(Taken)` to `(Taken ? 1.0f : 1.0f)` (`CataclysmSkillTemplates.cpp`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+| R3 | `return 1.5f;` to `return 1.0f;` (`CataclysmCommand.cpp`, `ThrallReserveScaleFor`) | `AHeraldTakeReservesNinetyAndReleasesTheOldestUntilItFits` |
+
+---
+
 ## 2026-11-24 — A full pool releases the oldest minion or thrall so Subjugate's take happens (#2856), and a thrall is built from its own kind and rarity at its commander's level, not the floor's (#2868)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A second commit on `fix/thralls-2856`, on top of the entry

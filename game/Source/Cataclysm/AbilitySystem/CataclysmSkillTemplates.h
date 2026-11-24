@@ -1794,8 +1794,12 @@ public:
 	 * level's cost factor, then the commander's reductions (`UCataclysmCommand::ReserveFor`). The figure a take or a
 	 * summon stores, and the one `UCataclysmSkillLevels::RepriceReservesOf` re-prices to. Issue #2802. `Commander`, when
 	 * given, is whose reductions apply, for a transient skill priced for a screen that has no avatar (issue #2804).
+	 *
+	 * `Taken`, when given, is the creature a thrall is or would be: Subjugate's figure rises with its rarity, the owner's
+	 * ruling of 2026-11-24, "Reserve grows with rarity" (`UCataclysmCommand::ThrallReserveScaleFor`). Without it, and
+	 * for every skill that does not possess, the figure is a Common's, which is what a screen shows.
 	 */
-	float FervourReserveOfOne(const AActor* Commander = nullptr) const;
+	float FervourReserveOfOne(const AActor* Commander = nullptr, const AActor* Taken = nullptr) const;
 
 	/** Whether the last use took an enemy. Read by tests. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")

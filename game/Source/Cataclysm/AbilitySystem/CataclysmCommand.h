@@ -400,6 +400,24 @@ public:
 	static TArray<ACataclysmCharacterBase*> ReleasableOldestFirst(const AActor* Commander);
 
 	/**
+	 * What a thrall's stated Fervour reserve is multiplied by for the rarity of the creature taken. The owner's ruling of
+	 * 2026-11-24, "Reserve grows with rarity (Recommended)": "A thrall's Fervour reserve rises with its rarity, e.g.
+	 * Common 30, Elite 45, Legendary 60, Herald 90. A Herald thrall takes most of your pool, so it is a choice between
+	 * one monster and an army. Exact figures set by the builder."
+	 *
+	 * COMMON 1, ELITE 1.5, LEGENDARY 2, HERALD 3, A JUDGEMENT THAT KEEPS THE RULING'S EXAMPLE. Subjugate's row states a
+	 * Common's 30, so these give 30, 45, 60 and 90, and a Herald holds back 60% of the Ritualist's 150. Each rung costs
+	 * less than it is worth: by the rarity table a rung multiplies health by 1.85 and damage by 1.4, so an Elite is
+	 * about 1.6 Commons, a Legendary 2.6 and a Herald 4.2 (the square root of the two multiples, health times damage),
+	 * against 1.5, 2 and 3 here; taking a rarer creature stays worth its cost, and the pool still bounds it. Read in
+	 * `CataclysmCommand.cpp` and `docs/DECISIONS.md`.
+	 *
+	 * A BOSS CANNOT BE TAKEN, so its rungs are never asked; they answer the Herald's figure rather than invent one.
+	 * ONE for anything that is not a creature of the enemy class, which has no rung.
+	 */
+	static float ThrallReserveScaleFor(const AActor* Taken);
+
+	/**
 	 * Whether a thrall reserving `PerThrall` fits now, or would fit once every follower `ReleasableOldestFirst` names
 	 * were released. Issue #2856. What `UCataclysmSummonSkill::Possess` asks before its blow, to know whether the
 	 * target is one it could take.

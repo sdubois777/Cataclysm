@@ -110,11 +110,19 @@ namespace
 	float FervourReserveFor(const AActor* Self,
 							const FCataclysmSkillShapeParams& Params,
 							const FGameplayTagContainer& SkillTags,
-							const UGameplayAbility* Skill)
+							const UGameplayAbility* Skill,
+							const AActor* Taken = nullptr)
 	{
 		// THE SKILL'S LEVEL FIRST, ON ITS STATED FIGURE, AND THE COMMANDER'S REDUCTIONS AFTER. Issue #2802.
+		//
+		// AND A THRALL'S FIGURE RISES WITH THE RARITY OF THE CREATURE TAKEN, ON THE STATED FIGURE TOO, before the
+		// reductions. The owner's ruling of 2026-11-24, "Reserve grows with rarity": the row's figure is a Common's, and
+		// `UCataclysmCommand::ThrallReserveScaleFor` scales it. One for anything else: no creature named, a row that does
+		// not possess, and a creature that is not a designed one.
+		const float ByRarity = Params.bPossess ? UCataclysmCommand::ThrallReserveScaleFor(Taken) : 1.0f;
 		return UCataclysmCommand::ReserveFor(
-			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)), SkillTags);
+			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)) * ByRarity,
+			SkillTags);
 	}
 }
 
@@ -4399,9 +4407,9 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 	return Minion;
 }
 
-float UCataclysmSummonSkill::FervourReserveOfOne(const AActor* Commander) const
+float UCataclysmSummonSkill::FervourReserveOfOne(const AActor* Commander, const AActor* Taken) const
 {
-	return FervourReserveFor(Commander ? Commander : Avatar(), Params, SkillTags, this);
+	return FervourReserveFor(Commander ? Commander : Avatar(), Params, SkillTags, this, Taken);
 }
 
 void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
@@ -4578,6 +4586,12 @@ bool UCataclysmSummonSkill::Possess()
 
 	AActor* Target = Targets[0];
 
+	// WHAT THIS THRALL WOULD RESERVE: THE ROW'S FIGURE FOR A COMMON, RAISED BY THE TARGET'S RARITY. The owner's ruling of
+	// 2026-11-24, "Reserve grows with rarity": "A Herald thrall takes most of your pool, so it is a choice between one
+	// monster and an army." Read once, for the target, before the blow, and used by every question below: whether room
+	// can be made, how much is released to make it, the refusal, and what the thrall holds back once taken.
+	const float ThrallReserve = FervourReserveFor(Self, Params, SkillTags, this, Target);
+
 	// AND A TARGET IT COULD TAKE IS NOT KILLED BY THE BLOW: IT IS TAKEN INSTEAD. Issue #2856, the owner's ruling of
 	// 2026-11-22: "ok, well it should still take them even if it would kill". Asked BEFORE the blow, of everything but
 	// the blow's own outcome -- each reason `UCataclysmCommand::Subjugate` refuses for, and the room in the pool, the
@@ -4599,7 +4613,7 @@ bool UCataclysmSummonSkill::Possess()
 	// is one it could take and is held too.
 	TWeakObjectPtr<ACataclysmCharacterBase> HeldForTheTake;
 	if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None
-		&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))
+		&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, ThrallReserve))
 	{
 		HeldForTheTake = Cast<ACataclysmCharacterBase>(Target);
 	}
@@ -4716,22 +4730,22 @@ bool UCataclysmSummonSkill::Possess()
 	// nothing else would refuse the take -- the threshold was judged above and the command's own reasons are asked here
 	// -- so nothing is released for a take that is then refused; and only when releasing can make room at all
 	// (`UCataclysmCommand::ReleaseOldestForAThrall` asks). Each release logs its own line in the command.
-	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this))
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, ThrallReserve)
 		&& UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None)
 	{
 		ReleasedToMakeRoom = UCataclysmCommand::ReleaseOldestForAThrall(
-			Self, FervourReserveFor(Self, Params, SkillTags, this));
+			Self, ThrallReserve);
 	}
 	if (!UCataclysmCommand::HasRoomForAnotherThrall(
-			Self, FervourReserveFor(Self, Params, SkillTags, this)))
+			Self, ThrallReserve))
 	{
 		bRefusedForRoom = true;
 		const UCataclysmAbilitySystemComponent* Pool =
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
 		UE_LOG(LogCataclysm, Log,
-			TEXT("TAKE REFUSED: '%s' has no room for another thrall at %.0f reserved each, so "
+			TEXT("TAKE REFUSED: '%s' has no room for a thrall reserving %.0f after releasing %d, so "
 				 "'%s' was left where it was: %s, against a maximum of %.0f."),
-			*SkillName, FervourReserveFor(Self, Params, SkillTags, this),
+			*SkillName, ThrallReserve, ReleasedToMakeRoom,
 			*Target->GetName(), *UCataclysmSkillTemplate::ReservedFervourByKindText(Self),
 			Pool ? Pool->MaximumClassResource() : 0.0f);
 		return false;
@@ -4754,12 +4768,12 @@ bool UCataclysmSummonSkill::Possess()
 	if (bTookIt)
 	{
 		UE_LOG(LogCataclysm, Log, TEXT("TAKE: '%s' took '%s', reserving %.0f."), *SkillName, *Target->GetName(),
-			   FervourReserveFor(Self, Params, SkillTags, this));
+			   ThrallReserve);
 		// THE THRALL NOW HOLDS ITS SHARE OF THE POOL BACK, and the spendable
 		// Fervour drops at once. Issue #1160.
 		if (ACataclysmCharacterBase* Thrall = Cast<ACataclysmCharacterBase>(Target))
 		{
-			Thrall->ReservedFervour = FervourReserveFor(Self, Params, SkillTags, this);
+			Thrall->ReservedFervour = ThrallReserve;
 		}
 		// AND THIS SKILL'S ROW AND LEVEL FACTOR, READ ONCE, AT THE TAKE. Issue #2764, slice 2b, by judgement 3 ("Subjugate's
 		// thralls credit Subjugate") and the owner's ruling of 2026-11-19 ("Yes, they scale too"): while it is commanded,

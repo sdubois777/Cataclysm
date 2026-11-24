@@ -880,6 +880,28 @@ TArray<ACataclysmCharacterBase*> UCataclysmCommand::ReleasableOldestFirst(const 
 	return Releasable;
 }
 
+float UCataclysmCommand::ThrallReserveScaleFor(const AActor* Taken)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Taken);
+	if (!Creature)
+	{
+		return 1.0f;
+	}
+	// BY THE RUNG, as `game/Data/EnemyRarities.csv` numbers it: Common 0, Elite 1, Legendary 2, Herald 3. The header
+	// says why these four. A boss's rungs answer the Herald's, never asked since a boss cannot be taken.
+	switch (Creature->RarityStep)
+	{
+	case 0:
+		return 1.0f;
+	case 1:
+		return 1.5f;
+	case 2:
+		return 2.0f;
+	default:
+		return 3.0f;
+	}
+}
+
 bool UCataclysmCommand::RoomCanBeMadeForAThrall(const AActor* Commander, float PerThrall)
 {
 	if (HasRoomForAnotherThrall(Commander, PerThrall))
