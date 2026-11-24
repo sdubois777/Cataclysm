@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
@@ -12,7 +13,9 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -550,6 +553,281 @@ bool FCataclysmTheAimPointIsOnTheFloorItMarks::RunTest(const FString&)
 		TEXT("the marker is drawn at the point the attack is aimed at "
 			 "(%.1f cm apart, in all three axes)"), MarkerToAim),
 		MarkerToAim < 1.0);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// The aim point over raised ground -- issue #2878
+// --------------------------------------------------------------------------
+
+namespace CataclysmTelegraphTest
+{
+	/**
+	 * The walking surface's height in the tests that lay a floor.
+	 *
+	 * NOT ZERO, so nothing that assumes the floor is at the world origin can pass
+	 * by accident. The figure `CataclysmEffectPlacementTests.cpp` builds at.
+	 */
+	constexpr float TelegraphTestFloorTopZ = 500.0f;
+
+	/**
+	 * How far above the surface it stands on a player's capsule centre is: half
+	 * its 192 cm capsule and the 2 cm the engine's character movement keeps under
+	 * a capsule.
+	 */
+	constexpr float TelegraphTestCentreAboveSurfaceCm = 98.0f;
+
+	/**
+	 * Where the exit stairs stand along X: seven metres from the creature at the
+	 * origin, outside the Brute's stomp ring and inside its throw's range, as in
+	 * `WhatIsAimedAtIsWhereTheMarkerIsDrawn`.
+	 */
+	constexpr float TelegraphTestStairsX = 7.0f * M;
+
+	/** The top of the stairs' highest tier: three tiers, each 20 cm above the one outside it. */
+	constexpr float TelegraphTestTopTierZ = TelegraphTestFloorTopZ
+		+ ACataclysmDungeonStairs::TierCount * ACataclysmDungeonStairs::TierRiseCm;
+
+	/** Out past the edge of the floor below, which is 40 metres square. */
+	constexpr float TelegraphTestPastTheEdgeX = 5000.0f;
+
+	/**
+	 * A solid floor 40 metres square and 40 cm thick with its top at
+	 * `TelegraphTestFloorTopZ`, world-static and blocking, as the dungeon's ground
+	 * is and as `CataclysmAbyssalWardenTests.cpp` builds its own.
+	 */
+	static AActor* LayTheTelegraphTestFloor(UWorld* World)
+	{
+		const FVector Middle(0.0f, 0.0f, TelegraphTestFloorTopZ - 20.0f);
+		AActor* Floor = World->SpawnActor<AActor>(Middle, FRotator::ZeroRotator);
+		if (!Floor)
+		{
+			return nullptr;
+		}
+
+		UBoxComponent* Body = NewObject<UBoxComponent>(Floor);
+		Body->InitBoxExtent(FVector(2000.0f, 2000.0f, 20.0f));
+		Body->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Body->SetCollisionObjectType(ECC_WorldStatic);
+		Body->SetCollisionResponseToAllChannels(ECR_Block);
+		Floor->SetRootComponent(Body);
+		Body->RegisterComponent();
+		Floor->SetActorLocationAndRotation(Middle, FRotator::ZeroRotator);
+		return Floor;
+	}
+
+	/**
+	 * The game's own exit stairs, standing on that floor at `TelegraphTestStairsX`:
+	 * the one raised walking surface a dungeon floor has, 60 cm at its top tier.
+	 */
+	static ACataclysmDungeonStairs* RaiseTheTelegraphTestStairs(UWorld* World)
+	{
+		ACataclysmDungeonStairs* Stairs = World->SpawnActor<ACataclysmDungeonStairs>();
+		if (Stairs)
+		{
+			Stairs->PlaceAt(FVector(TelegraphTestStairsX, 0.0f, TelegraphTestFloorTopZ));
+		}
+		return Stairs;
+	}
+
+	/** Stand a character on that floor, or on the stairs, at X: its capsule bottom 2 cm above `SurfaceZ`. */
+	static void TelegraphTestStandOn(ACharacter* Body, float X, float SurfaceZ)
+	{
+		const UCapsuleComponent* Capsule = Body ? Body->GetCapsuleComponent() : nullptr;
+		if (Capsule)
+		{
+			Body->SetActorLocation(FVector(X, 0.0f, SurfaceZ + Capsule->GetScaledCapsuleHalfHeight() + 2.0f));
+		}
+	}
+}
+
+/**
+ * A point over raised ground is brought to that ground's surface, not to the
+ * creature's own feet inside it.
+ *
+ * WHAT THIS GUARDS. Issue #2878. `ACataclysmEnemyController::FloorUnder` was the
+ * creature's capsule bottom moved under the point's X and Y. With the creature on
+ * the floor and its target on the exit stairs' top tier, that put the point 58 cm
+ * inside the stairs, and the point is what a lobbed shot lands on and what a
+ * creature's burning ground is laid at. It now answers the walking surface under
+ * the point, and the creature's feet only where there is none.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmFloorUnderAnswersTheSurfaceUnderThePoint,
+	"Cataclysm.Telegraph.APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorUnderAnswersTheSurfaceUnderThePoint::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestNotNull(TEXT("set-up: a floor"), LayTheTelegraphTestFloor(World))
+		|| !TestNotNull(TEXT("set-up: the exit stairs on it"), RaiseTheTelegraphTestStairs(World)))
+	{
+		return false;
+	}
+
+	// THE STAIRS ARE WHERE THE TEST PUT THEM, measured by the search itself, so
+	// the figures below are about `FloorUnder` and not about the stairs.
+	float MeasuredTopZ = 0.0f;
+	if (!TestTrue(TEXT("set-up: the search for the floor finds the stairs' top tier"),
+				  CataclysmEffectPlacement::FloorSurfaceUnder(
+					  World,
+					  FVector(TelegraphTestStairsX, 0.0f, TelegraphTestTopTierZ + TelegraphTestCentreAboveSurfaceCm),
+					  MeasuredTopZ)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: 60 cm above the floor"), MeasuredTopZ, TelegraphTestTopTierZ, 0.5f);
+
+	// THE CREATURE STANDS ON THE FLOOR.
+	ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+		FVector(0.0f, 0.0f, TelegraphTestFloorTopZ + 200.0f), FRotator::ZeroRotator);
+	const UCapsuleComponent* CreatureCapsule = Creature ? Creature->GetCapsuleComponent() : nullptr;
+	if (!TestNotNull(TEXT("set-up: a creature"), Creature)
+		|| !TestNotNull(TEXT("set-up: with a capsule"), CreatureCapsule))
+	{
+		return false;
+	}
+	TelegraphTestStandOn(Creature, 0.0f, TelegraphTestFloorTopZ);
+	const double CreatureFeetZ =
+		Creature->GetActorLocation().Z - CreatureCapsule->GetScaledCapsuleHalfHeight();
+
+	// A TARGET'S CAPSULE CENTRE ON THE TOP TIER: the case the issue names.
+	const FVector OverTheStairs(TelegraphTestStairsX, 0.0f,
+								TelegraphTestTopTierZ + TelegraphTestCentreAboveSurfaceCm);
+	const FVector OnTheStairs = ACataclysmEnemyController::FloorUnder(Creature, OverTheStairs);
+	AddInfo(FString::Printf(
+		TEXT("FLOORUNDER OVER THE STAIRS: %.1f cm; the top tier is at %.1f and the creature's feet at %.1f"),
+		OnTheStairs.Z, TelegraphTestTopTierZ, CreatureFeetZ));
+
+	TestTrue(FString::Printf(
+		TEXT("a point over the stairs' top tier is on its surface: %.1f cm against %.1f"),
+		OnTheStairs.Z, TelegraphTestTopTierZ),
+		FMath::Abs(OnTheStairs.Z - TelegraphTestTopTierZ) <= 0.5);
+	TestTrue(FString::Printf(
+		TEXT("and not at the creature's own feet inside the stairs: %.1f cm above them"),
+		OnTheStairs.Z - CreatureFeetZ),
+		OnTheStairs.Z - CreatureFeetZ > 50.0);
+	TestTrue(TEXT("and only its height moved"), FVector::Dist2D(OnTheStairs, OverTheStairs) < 0.01);
+
+	// OVER THE OPEN FLOOR, THE FLOOR, which is where the creature's feet nearly
+	// were before: the two differ by the 2 cm a capsule stands clear.
+	const FVector OverTheFloor(-TelegraphTestStairsX, 0.0f,
+							   TelegraphTestFloorTopZ + TelegraphTestCentreAboveSurfaceCm);
+	const double OnTheFloorZ = ACataclysmEnemyController::FloorUnder(Creature, OverTheFloor).Z;
+	TestTrue(FString::Printf(
+		TEXT("a point over the open floor is on its surface: %.1f cm against %.1f"),
+		OnTheFloorZ, TelegraphTestFloorTopZ),
+		FMath::Abs(OnTheFloorZ - TelegraphTestFloorTopZ) <= 0.5);
+
+	// THE CONTROL: no floor under it, so the creature's own feet, as always. Every
+	// test world that builds no geometry lands here, which is why no other test
+	// of an aim point moved.
+	const FVector OverTheVoid(TelegraphTestPastTheEdgeX, 0.0f,
+							  TelegraphTestFloorTopZ + TelegraphTestCentreAboveSurfaceCm);
+	const double OverTheVoidZ = ACataclysmEnemyController::FloorUnder(Creature, OverTheVoid).Z;
+	TestTrue(FString::Printf(
+		TEXT("CONTROL: a point with no floor under it is at the creature's feet: %.2f cm against %.2f"),
+		OverTheVoidZ, CreatureFeetZ),
+		FMath::Abs(OverTheVoidZ - CreatureFeetZ) <= 0.01);
+
+	return true;
+}
+
+/**
+ * The Brute's rock, thrown at a target on the exit stairs, is aimed at the top of
+ * them and marked there.
+ *
+ * WHAT THIS ADDS TO THE TEST ABOVE. That one calls `FloorUnder` directly; this
+ * says the brain reaches it. `WindUpAimedAt` is what the rock is handed as the
+ * point it lands on (`ACataclysmProjectile::Fire` keeps its height as the lob's
+ * landing height), so a rock aimed at the creature's own floor height came down
+ * 58 cm inside the stairs. Issue #2878.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmARockAimedUpTheStairsIsAimedAtTheirTop,
+	"Cataclysm.Telegraph.ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmARockAimedUpTheStairsIsAimedAtTheirTop::RunTest(const FString&)
+{
+	using namespace CataclysmTelegraphTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	if (!TestNotNull(TEXT("set-up: a floor"), LayTheTelegraphTestFloor(World))
+		|| !TestNotNull(TEXT("set-up: the exit stairs on it"), RaiseTheTelegraphTestStairs(World)))
+	{
+		return false;
+	}
+
+	// THE BRUTE ON THE FLOOR AND ITS TARGET ON THE TOP TIER, seven metres apart.
+	ACataclysmBruteCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		FVector(0.0f, 0.0f, TelegraphTestFloorTopZ + 300.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a Brute"), Brute))
+	{
+		return false;
+	}
+	TelegraphTestStandOn(Brute, 0.0f, TelegraphTestFloorTopZ);
+
+	ACataclysmEnemyCharacter* Target = SpawnTarget(
+		World, FVector(TelegraphTestStairsX, 0.0f, TelegraphTestTopTierZ + 300.0f));
+	if (!TestNotNull(TEXT("set-up: something on the stairs for it to attack"), Target))
+	{
+		return false;
+	}
+	TelegraphTestStandOn(Target, TelegraphTestStairsX, TelegraphTestTopTierZ);
+
+	ACataclysmEnemyController* Brain = Cast<ACataclysmEnemyController>(Brute->GetController());
+	if (!TestNotNull(TEXT("set-up: the Brute has a controller"), Brain))
+	{
+		return false;
+	}
+
+	Brain->Think();
+	if (!TestEqual(TEXT("set-up: it starts winding up the rock throw"),
+				   Brain->WindingUpAbility,
+				   static_cast<int32>(ACataclysmBruteCharacter::RockThrowAbility)))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("THE ROCK UP THE STAIRS: aimed at %.1f cm; the top tier is at %.1f and the Brute's floor at %.1f"),
+		Brain->WindUpAimedAt.Z, TelegraphTestTopTierZ, TelegraphTestFloorTopZ));
+
+	TestTrue(FString::Printf(
+		TEXT("the rock is aimed at the top of the stairs the target stands on: %.1f cm against %.1f"),
+		Brain->WindUpAimedAt.Z, TelegraphTestTopTierZ),
+		FMath::Abs(Brain->WindUpAimedAt.Z - TelegraphTestTopTierZ) <= 0.5);
+	TestTrue(TEXT("and still at the target's place"),
+		FVector::Dist2D(Brain->WindUpAimedAt, Target->GetActorLocation()) < 1.0);
+
+	// AND THE CIRCLE IS DRAWN THERE, just above it, so the place marked and the
+	// place the rock comes down agree in height as well as on the map.
+	ACataclysmTelegraphMarker* Marker = OnlyMarker(World);
+	if (TestNotNull(TEXT("a marker appears"), Marker))
+	{
+		const double MarkerAboveAim = Marker->GetActorLocation().Z - Brain->WindUpAimedAt.Z;
+		TestTrue(FString::Printf(
+			TEXT("and the circle is drawn %.0f cm above the point the rock is aimed at: %.2f cm"),
+			CataclysmEffectPlacement::LiftCm, MarkerAboveAim),
+			FMath::Abs(MarkerAboveAim - CataclysmEffectPlacement::LiftCm) <= 0.5);
+	}
 
 	return true;
 }

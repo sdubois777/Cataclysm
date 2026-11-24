@@ -2,6 +2,161 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Skill terrain stands on the floor under its near end, so the Upthrust wall's base is on the floor; and a creature's aim point is the surface under it, not its own feet (#2878)
+
+**WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/upthrust-wall-2878`, made from
+`fix/masochist-shield-2873` (unmerged when this was written; it adds `CataclysmEffectPlacement`, which this change
+calls), written by a bug-fix agent for the coordinating session on 2026-11-24. A later window builds and runs it.
+Issue [#2878](https://github.com/sdubois777/Cataclysm/issues/2878).
+
+### The rulings, verbatim
+
+- **Issue #2878, filed by the agent on #2863 and carrying no comments:** "Place the base on the floor under the point
+  (a downward trace; branch fix/masochist-shield-2873 adds CataclysmEffectPlacement::FloorSurfaceUnder and OnTheFloor
+  for this), keep the wall's height above the floor as designed, and test that its base is within a few centimetres
+  of the floor surface and that it blocks a creature walking into it."
+- **The coordinating session's brief, 2026-11-24:** "Place the base on the floor under the point (use the helper),
+  keep the wall's designed height above the floor, and check every other piece of terrain or collision the skills
+  create (search ACataclysmTerrain and any other spawned blocking geometry) for the same capsule-centre placement; fix
+  them the same way and list them." And, of `ACataclysmEnemyController::FloorUnder`: "if FloorUnder feeds an effect
+  or a placement, make it use the floor surface under the target instead, and say what it feeds."
+
+### What was found
+
+**The wall.** Upthrust's Strike hands `ACataclysmTerrain::Spawn` its `CastOrigin()`, the caster's actor location,
+which is its capsule centre: 98 cm above the floor for a player standing on it. `Spawn` put the actor there and
+`BuildWall` raised the block from that height, so the ridge's base stood about 98 cm above the floor and its top about
+498, while the comment above it said it "stands on the floor". Every creature and the player are 160 cm tall or more,
+so the lower edge still met them; what passed underneath was anything shorter than 98 cm -- a summoned minion is
+90 cm -- and any shot flying lower than that. A shot is stopped by geometry only along the line its centre travels
+(`ACataclysmProjectile::TraceStep`), and a flat shot flies at the height it was fired from: the Succubus's Soulfire,
+fired from its capsule centre about 92 cm up, flew under the ridge Upthrust says "blocks movement and projectiles".
+That is a reading of the code, not something seen in play.
+
+**Every other piece of terrain or collision a skill creates.**
+
+| What | Left by | Height it was handed | Collision | Now |
+| :-- | :-- | :-- | :-- | :-- |
+| Wall | Upthrust, `UCataclysmStrikeSkill`, `LeaveTerrainAlong(Feet, Feet + Ahead * TerrainSizeCm)` in `CataclysmSkillTemplates.cpp` | the caster's capsule centre (`CastOrigin`) | yes, `BlockAll` | on the floor under the near end, 400 cm tall from it |
+| Thicket | the Spear's Thicket, the same Strike call with both ends at `Feet` | the caster's capsule centre | none | on the floor |
+| Pit | Break the World, the same Strike call | the caster's capsule centre | none | on the floor |
+| Pit | Crater, `UCataclysmMovementSkill`, `LeaveTerrainAlong(ArrivedAt, ArrivedAt)` | the caster's actor location on arrival, its capsule centre | none | on the floor |
+| Fissure | Groundbreaker, `UCataclysmSelfBuffSkill::NoteBlowLanded`, `LeaveTerrainAlong(Where, Where)` | the struck creature's actor location from a swing (`CataclysmSkillTemplate.cpp`, `CataclysmSkillTemplates.cpp`), the place a shot or the buried weapon struck from the other two callers | none | on the floor |
+
+**No other actor a skill spawns has collision.** Every class spawned from `AbilitySystem/` and `Character/` was read:
+the ground zone, the planted weapon, the tether and the Reaper's soul have only a scene root; the telegraph marker's
+four meshes, the debris burst's pieces, the projectile's body and the minion's placeholder body are each set to no
+collision; a minion is a character. The only collision profiles the game's source sets are on `ACataclysmTerrain`'s
+blocks and on the dungeon's ground, walls, exit stairs and `ACataclysmFloorObstacle`, which the floor builds on its
+own cells.
+
+**What `FloorUnder` feeds.** It was the creature's own capsule bottom moved under a point's X and Y, so a point over
+ground higher than the creature's -- a target on the exit stairs, 60 cm at the top tier -- was inside that ground. It
+is called from four places:
+
+- `ACataclysmEnemyController::AimPointFor`, under the target's capsule centre (or, for a charge, under the end of the
+  lane ahead). Its answer is `WindUpAimedAt`, and the aim an untelegraphed ability is used at. That point is:
+  - the centre of a lob's landing circle and the far end of a flat shot's or a charge's lane (the marker itself is
+    put on the floor by `OnTheFloor` since #2863);
+  - **the landing height of every lob**: the Brute's Rock Throw, the Corrupted Sentinel's Brimstone Mortar and the
+    Gatekeeper's Soulfall (`ACataclysmProjectile::Fire` keeps a lob's `To.Z` as its landing height; their flight
+    times are measured across the ground and are unchanged);
+  - **where a creature's burning ground is laid**: Soulfall's ground at it, and the far end of the Hellhound's
+    Hellrush lane;
+  - the aim of the two flat shots (the Sentinel's Siege Bolt, the Succubus's Soulfire) and the end of the two charges
+    (Hellrush, the Abyssal Warden's Stampede), all of which read only its X and Y and are unchanged;
+  - the direction of a quick cast's flare, `WindUpAimedAt` minus the creature's location, which tilts by the change in
+    height.
+- `ACataclysmEnemyController::ShowWindUpMarker`, under the creature itself: the centre of a Strike's circle and the
+  near end of every lane.
+- `CataclysmEnemyModifiers.cpp`, Inferno Charge, twice: under the creature and under the player it charges. The two
+  are the drawn lane, the charge (X and Y only) and **the burning path laid between them**.
+
+### What changed
+
+- **`ACataclysmTerrain::Spawn` stands every kind on the floor.** It asks
+  `CataclysmEffectPlacement::FloorSurfaceUnder` for the walking surface under `Start` and spawns the actor there; the
+  far end keeps its offset from the near end. With no surface under `Start` -- every test world that builds no
+  geometry, a point over the void -- the actor is left at `Start`, as before.
+- **`ACataclysmTerrain::BuildWall` raises the block from the actor's own height**, the near end's, rather than the
+  middle's. The base is on the floor and the top is `WallHeightCm`, 400 cm, above it.
+- **`ACataclysmEnemyController::FloorUnder` answers the walking surface under its point**, through the same
+  `FloorSurfaceUnder`, and the creature's capsule bottom only where there is no surface. Over a flat floor every point
+  it gives is about 2 cm lower than before (the gap a capsule keeps); over the stairs it is on their top.
+- **Comments that described the old placement**: `ACataclysmTelegraphMarker`'s spawn and the header of
+  `CataclysmEffectPlacement`, which said the gameplay points were untouched.
+
+### Judgements of the writing session
+
+1. **Every kind of terrain moves, not only the wall.** A judgement, for the brief's "fix them the same way" and so
+   that terrain is where it says it is. The three round kinds decide who is inside them by a flat test, and the sphere
+   their sweep gathers with, now centred on the floor, still reaches every body standing inside its radius above about
+   1.3 m; the smallest the sheet states is a fissure's 2 m. So who they hold does not change.
+2. **The floor under the near end, not under the middle or each end.** A judgement: the near end is where the caster
+   (or the struck creature) stands, so a surface is certainly under it, while under the middle of a ten metre ridge
+   there may be a dungeon wall, a pillar or the void. A wall is one block with one base height.
+3. **On the surface itself, with no lift and no sinking.** A judgement: `OnTheFloor`'s 2 cm lift keeps a flat drawing
+   from fighting the floor for its pixels, and a wall is not a drawing; any gap under it is the fault being fixed.
+4. **`FloorUnder` answers the surface, not the surface plus the capsule's 2 cm.** A judgement: a gameplay point on the
+   ground is the ground, and the marker drawn there adds its own lift.
+5. **The creature's feet remain the answer where no surface is found**, so no test world without geometry sees a
+   different point, and a point over the void is not left without a height.
+6. **The walking test uses a body as short as a summoned minion**, an ordinary creature's capsule resized to the
+   minion's 30 by 45 cm. A judgement: an ordinary creature, 160 cm tall, was stopped by the floating wall's lower edge
+   as well, so only a body shorter than the 98 cm gap tells the fix from the fault.
+7. **"Walking into it" is tested through `UCataclysmMovement::MoveWithoutSticking`**, the movement component's swept
+   move, which is the move the walking physics makes each frame. A test world is never ticked, so the walking physics
+   and the pathfinding that would choose the route are not run.
+8. **No formula or number was chosen**, so no genre research was done.
+
+### Not settled
+
+- **Whether the floating wall was cut out of the navigation mesh** was not looked at. A wall standing on the floor
+  certainly is, since `SetCanEverAffectNavigation(true)` is set on its blocks.
+- **The caster stands inside the first 42 cm of its own ridge**, before and after this change: the ridge begins at the
+  caster's capsule centre and runs forward, so the caster's capsule overlaps its near end. Not changed here, and
+  reported rather than decided.
+
+### Tests
+
+**Unreal, prefix `Cataclysm.Terrain.`, three added (9 before, 12 predicted)**, each on a world-static floor with its
+top at 500 cm:
+
+- `AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt`: a wall raised from 598 cm, a player's capsule centre on that
+  floor, has its block's base within 5 cm of the floor and its top within 5 cm of 400 cm above it; its actor and far
+  end are on the floor, only the height moved and it is still ten metres long. Control: a wall past the floor's edge
+  stands where it was asked.
+- `ARaisedWallStopsACreatureWalkingIntoIt`: an ordinary creature and a minion-height one, each moved six metres
+  through the movement component's swept move. Control first: with no wall both go the whole way. With a wall raised
+  across their way from a capsule centre, both stop with their leading edge within 10 cm of its near face.
+- `APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn`: the pit's actor is on the floor and still round;
+  two creatures standing on the floor that walk in, near the middle and 20 cm inside the rim, are both knocked down.
+
+**Unreal, prefix `Cataclysm.Telegraph.`, two added (14 before, 16 predicted)**, on the same floor with the game's own
+exit stairs on it:
+
+- `APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet`: with the creature on the floor, `FloorUnder`
+  under a capsule centre on the stairs' top tier is at the top tier, 560 cm, and more than 50 cm above the creature's
+  feet; over the open floor it is at 500 cm. Control: past the floor's edge it is the creature's feet.
+- `ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem`: a Brute on the floor winds up its Rock Throw at a
+  target on the top tier; `WindUpAimedAt` is at the top tier, at the target's place, and the circle is drawn `LiftCm`
+  above it.
+
+**No existing test should move.** Every other test that spawns terrain or reaches `FloorUnder` builds no geometry,
+where both answer as before, except the Vesselstep wall test in `CataclysmDungeonModifierEffectsTests.cpp`, which
+raises its wall from the floor's own surface, where the search finds that same surface. That is a reading, not a run.
+
+**Python:** nothing in `sim/` or `tools/` models terrain or an aim point's height, so no Python test was added.
+
+### Guard proofs registered, not run (`prove_cpp_guard`)
+
+| Break, in | The change | Prefix | Must fail |
+| :-- | :-- | :-- | :-- |
+| `CataclysmTerrain.cpp` | `Near.Z = FloorZ;` to `Near.Z = Start.Z;` | `Cataclysm.Terrain.` | `AWallRaisedFromACapsuleCentreStandsOnTheFloorUnderIt`, `ARaisedWallStopsACreatureWalkingIntoIt`, `APitLeftAtACapsuleCentreLiesOnTheFloorAndStillFloorsWhatFallsIn` |
+| `CataclysmEnemyController.cpp` | `return FVector(Point.X, Point.Y, static_cast<double>(SurfaceZ));` to `return FVector(Point.X, Point.Y, Driven->GetActorLocation().Z - Driven->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());` | `Cataclysm.Telegraph.` | `APointOverRaisedGroundIsBroughtToItsSurfaceNotToTheCreaturesFeet`, `ARockThrownAtATargetOnTheStairsIsAimedAtTheirTopNotInsideThem` |
+
+---
+
 ## 2026-11-24 — An effect drawn on the ground is drawn on the floor under it, through one helper, and every effect spawn site was checked (#2863)
 
 **WRITTEN AND NOT COMPILED, AND NOT RUN IN UNREAL.** Branch `fix/masochist-shield-2873`, written by a bug-fix agent
