@@ -2,6 +2,215 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-22 — The carried inventory has three tabs: the 48 slots hold gear, and crafting materials and gems each have a store of their own, one stack per kind, with no limit (#2849)
+
+**Affects:**
+- `game/Source/Cataclysm/Items/CataclysmInventoryComponent.h` and `game/Source/Cataclysm/Items/
+  CataclysmInventoryComponent.cpp`: `ECataclysmInventoryTab`, the material and gem stores, `AddMaterial` and
+  `AddGems` returning bool, `RestoreStacks`; `SlotOfMaterial` and `SlotOfGems` deleted.
+- `game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`'s `TakeInto`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`'s `Combine`, `CombineGems`, `UnsocketPlanFor` and
+  `SocketGem`.
+- `game/Source/Cataclysm/Interface/CataclysmForgeLayout.cpp`'s socket and gem-combine lists.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`'s Forced Tithes check.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`'s `Cataclysm.GrantGem`, `Cataclysm.GrantMaterial`
+  and `Cataclysm.ShowEquipment`.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`,
+  `game/Source/Cataclysm/Save/CataclysmSaveGather.h`, `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and
+  `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`: character record version 16.
+- `game/Source/Cataclysm/Interface/CataclysmInventoryWidget.h`, `game/Source/Cataclysm/Interface/
+  CataclysmInventoryWidget.cpp`, `game/Source/Cataclysm/Interface/CataclysmInventoryScreen.h` and `game/Source/
+  Cataclysm/Interface/CataclysmInventoryScreen.cpp`: the tabs.
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp`'s inventory press.
+- `game/Tests/SaveFixtures/Character_v16.json`, new, and `game/Tests/SaveFixtures/README.md`.
+- `game/Source/Cataclysm/Tests/CataclysmInventoryTabsTests.cpp`, new; `game/Source/Cataclysm/Tests/
+  CataclysmSaveFixtures.h`; twenty-one other test files.
+- `tools/tests/test_inventory_tabs.py`, new, and four Python checks that read moved code.
+- Dismantling's room check, removed at the rebase: `game/Source/Cataclysm/Player/CataclysmForgeCraft.h`,
+  `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`, `game/Source/Cataclysm/Tests/CataclysmDismantleTests.cpp`,
+  `tools/tests/test_dismantling.py` and `docs/Play_Loop_Checklist.md`.
+- `docs/Cataclysm_GDD_v2.md`, Storage.
+
+Issue [#2849](https://github.com/sdubois777/Cataclysm/issues/2849).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **REBASED ON 2026-11-24 ONTO THE SELLING AND DISMANTLING WINDOW (sd-w2, #48 S1 and #2848 S2, PR #2880), WHICH TOOK
+  CHARACTER RECORD 15** (where each item arrived). As the coordinating session directed the same day, this change's
+  step moved from 14 to 15 to **15 to 16**: `Migrate_15_to_16`, `AddTheCharactersVersion16Defaults`, and
+  `Character_v16.json` built from sd-w2's `Character_v15.json`. The five commits of `feat/inventory-tabs-2849` were
+  applied as one change on `feat/inv-w1`. In every place both had added a line, sd-w2's version 15 line comes first
+  and this change's 16 after it. Every reader of the committed character file reads `Character_v16.json`, sd-w2's
+  DM11 included.
+- **NO WAY TO DROP A STACK, AND THAT IS A REVISED RULING (Q9).** Q9 first said a stack could still be dropped from its
+  tab. It was revised the same day, derived, by the coordinating session. A dropped material or gem is collected
+  straight back: `UCataclysmDropPickup::ComesAutomatically` takes every non-infested material and gem within 15 m, and
+  a drop lands well inside that. Dropping a stack used to free one of the 48 slots; under #2849 it frees nothing.
+  - So neither tab has a drop gesture, and no drop function is added (the coordinating session: "Code wired to no
+    input is code nothing uses").
+  - The three tests that dropped a stack through `DropCarried` now assert that it cannot be (below).
+  - A "discard" action is a separate ruling, if the owner wants one.
+- **THE CHAIN TESTS CANNOT SEE A FAULT IN `Migrate_15_to_16`.** Their expected record comes from
+  `AddTheCharactersVersion16Defaults`, a copy of the step, so a fault in the step would be copied into the
+  expectation. What does see a fault:
+  - `AVersion14RecordsStacksMoveIntoTheTabsAndItsGearKeepsItsCell`, against fixed figures from the file;
+  - the Python check `test_the_version_16_file_is_version_15_with_its_stack_moved_and_a_gem`;
+  - proof T2.
+- **THE STASH IS UNCHANGED** (Q8): `Stash` and `PrivateStash` still hold stacks in their slots; issue #529.
+- **THE GEMS TAB PAGES, the coordinating session's addition the same day.** 28 gems at 8 rarities is 224 stacks,
+  reachable in play, and the first version's tab grew a row of twelve at a time, past the bottom of the screen, hiding
+  gems. The screen code has no scroll box, so the tab pages: as many rows of twelve a page as the materials tab uses
+  (27 materials, 3 rows, 36 stacks), with "Previous", "Page N of M" and "Next" under it, on the gems tab only.
+- **UNITY-BUILD NAMES, checked by script** (`.claude/windows/unity_name_check.py`, the coordinating session's three
+  rules after two failed loot filter builds): no file-local function, variable or type in the 34 changed .cpp files is
+  also file-local in another .cpp of its module; no UCLASS U<X> and USTRUCT F<X> share <X> (155 and 108 in
+  `Cataclysm`, 7 and 12 in `CataclysmEmpire`); no type is named `FScene`. **NOTHING TO RENAME**, run again on
+  `feat/inv-w1` against development 6dd62aba6. Its control: a planted
+  file with a file-local `constexpr int InkColour` and a `struct FScene` was reported, 3 findings, and removed.
+- **Dismantling (#2848, slice S2) merged first, and this change adapted it**, as agreed with the empire tree session
+  on 2026-11-22: its room check (`NewKindsADismantleNeeds`, D4) and its "Make room in the bag first." block are
+  removed, the two `INDEX_NONE` compares read the bool returns, its full-bag test DM6 is turned over and renamed
+  `AFullGearTabStillDismantlesAndTakesWhatItGivesBack`, and its checklist bullet and Python assert go. Its DM11 reads
+  `Character_v16.json` as the committed file, and its expected record takes version 15's and 16's defaults. S2's own
+  entry's "THE ROOM CHECK IS TEMPORARY" and D4 stay as history.
+
+### The ruling
+
+The project owner, 2026-11-22, on issue #2849: "I think we need to add tabs to the inventory. One for crafting
+materials and one for gems. Otherwise you wont be able to carry any loot". Then, of the shape (Q1), verbatim: **"One
+cell per kind, no limit (Recommended)"**. The option as it was put to the owner: "The materials tab always shows all 27
+materials (by tier) with how many you hold; the gems tab lists the gem stacks you hold, sorted by gem then rarity.
+Neither ever fills up or refuses a pickup. Diablo IV's Materials and Socketables tabs work this way. The 48-slot bag
+then holds gear only."
+
+The coordinating session, the same day, as recommended:
+- Q2: each tab takes only its own kind.
+- Q7: the gems tab shows the stacks held, sorted by gem then rarity.
+- Q8: the stash stays out, left to #529.
+- Q3, Q4 and Q10 are derived: the migration, pickup never refused, and the design text.
+- `AddMaterial` and `AddGems` return bool.
+- `UnsocketPlanFor`'s room check is fixed.
+- Q9 as revised above.
+
+| Game | Where materials and gems are kept | Source |
+| :-- | :-- | :-- |
+| Diablo IV | in the character's inventory, a Materials tab and a Socketables tab (gems) beside the gear | blizzardwatch.com, 2023-10-05 and 2024-10-07 |
+| Path of Exile | in town, Currency and Essence stash tabs, one cell per kind, 5000 each | maxroll.gg/poe/getting-started/stash-tabs-explained; poedb.tw/us/Currency_Stash_Tab |
+| Last Epoch | outside bag and stash, straight on pickup, a switch per kind | forum.lastepoch.com/t/shard-and-stash/19477; maxroll.gg's Season 2 notes |
+
+The research was done by an agent. poewiki.net and poe2wiki.net refused every fetch, the fandom wikis returned 402,
+and icy-veins.com returned 403. No page read gives Diablo IV's gem stack cap, or what any game does at a cap.
+
+### What it does
+
+| Where | Before | Now |
+| :-- | :-- | :-- |
+| The 48 slots | gear, material stacks and gem stacks | gear only; `NumItems`, `NumFreeSlots`, `IsFull` and `FirstFreeSlot` count gear |
+| A material or gem | took a slot when no stack of it was carried, refused when the bag was full | goes to its tab's stack; never refused for room |
+| Pickup | a full bag left a new material or gem on the floor | taken whatever the gear tab holds |
+| The forge | a stone combine, a gem combine or an unsocket refused for want of a cell | no room asked; the unsocket's check had assumed the last Dismantling Dust freed a cell |
+| Forced Tithes | the largest stack in slot order | the largest in the materials tab's order (first carried) |
+| Character record | version 15, stacks in `CarriedSlots` | version 16, `CarriedMaterials` and `CarriedGems`. `Migrate_15_to_16` moves each stack, sums one kind, and blanks its cell so every piece of gear keeps its cell |
+| The screen | one grid and the line "Carried n / 48" | the same line is the gear tab's name, with "Materials (n)" and "Gems (n)" beside it in one line, so the panel is no taller. A press on a name shows that tab's grid. The materials tab: all 27 materials by tier, each with its count (0 included). The gems tab: the stacks held, by gem then rarity, 36 a page, with "Previous", "Page N of M" and "Next" |
+
+### Tests
+
+`Cataclysm.InventoryTabs.`, a new group of seven:
+
+| Test | What it checks |
+| :-- | :-- |
+| `AFullGearTabStillCollectsMaterialsAndGems` | the issue's "done when": 48 gear slots full, a Corrupted Mote drop and a Superb Of The Viper drop both taken; CONTROL: a gear drop refused and left lying |
+| `AStackTakesNoGearSlotAndTheGemsAreSortedByGemThenRarity` | stacks use no gear slot; gear still goes to slot 0; the gems tab is Quality Of Life, Everyday Of The Viper, Superb Of The Viper; each add raises the change count; a stack taken to nought leaves |
+| `AVersion14RecordsStacksMoveIntoTheTabsAndItsGearKeepsItsCell` | `Character_v14.json` migrated, through both steps: the Circlet in slot 0, slot 1 blank and kept, 12 Whispering Ash in the materials tab; with three more slots, 17 Ash as one stack, 2 Superb Viper, the empty stack dropped, five slots kept |
+| `RestoringPutsBothTabsBackAndAStackInASavedSlotGoesToItsTab` | gathered and restored, the piece, 4 Mote and 2 Quality Of Life come back; a saved slot holding 6 Ash puts them in the materials tab and leaves the slot empty |
+| `TheForgeCombinesAndUnsocketsWithEveryGearSlotFull` | every gear slot full: two +1 stones combine, two Everyday Of Life combine, and unsocketing the Viper with one Dust is offered |
+| `TheScreenNamesTheTabsAndShowsEveryMaterialByTier` | "Materials (12)", "Gems (3)"; all 27 materials, by tier; the Corrupted Mote named; nought says "0"; the shown tab's colour differs |
+| `TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses` | 200 stacks, Gem_000 to Gem_199: 36 a page, 6 pages; page 2 begins at place 36, Gem_036, the 37th; the last page holds 20; "Page 2 of 6"; pages 0 and 9 held to 1 and 6; an empty tab is one page |
+
+**Existing tests rewritten to the ruling.** Four are renamed, because their names now state the opposite:
+
+| Old name | New name |
+| :-- | :-- |
+| GemStacks `AFullBagRefusesANewGemAndStillStacksACarriedOne` | `AFullGearTabStillTakesANewGemAndStacksACarriedOne` |
+| GemStacks `AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses` | `AGemStackCannotBeDroppedFromACarriedSlotAndStaysCarried` |
+| DropPickup `DroppingACraftingMaterialDropsTheWholeStack` | `ACraftingMaterialStackCannotBeDroppedAndStaysCarried` |
+| GemDrops `AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` | `AGemDropIsSavedAndRestoredAndACarriedStackCannotBeDropped` |
+
+The rest keep their names and change their expectations:
+- Inventory's `CraftingMaterialsStackIntoOneSlot`, `GearDoesNotStackAndAMaterialSlotHoldsNoItem`,
+  `AFullBagStillTakesMoreOfAMaterialItCarries` (now also a new material) and `RemovingAMaterialTakesThatManyOrNone`;
+- GemStacks' `GemsStackByGemAndRarity` and `ACarriedGemStackSurvivesASaveAndALoad`;
+- the HeldItem fixture;
+- Drop's `PickingUpAMaterialStacksItInTheInventory` (a full gear tab now takes a new material);
+- the two GemCombine set-ups, GemEnchantments' set-up, and Wearing's `SomethingThatFitsNoSlotStaysInTheBag`.
+
+**The save tests:**
+- every reader of the committed character file reads `Character_v16.json`;
+- every chain test adds `AddTheCharactersVersion16Defaults` after the version 15 one (sd-w2's): CataclysmDraw,
+  ConsumptionDouble, ConsumptionMark, EmpireTreeOwn, GemSave, Gold, SaveRecords and SkillLevels; and Dismantle's
+  DM11 passes both on as one function.
+
+Python:
+- `test_inventory_tabs.py`, nine checks. Its chain check counts version 15's calls in any form, so DM11's counts;
+- `test_gems_are_carried_in_stacks.py`, `test_the_forge_combines_gems.py`,
+  `test_the_inventory_screen_draws_the_designed_grid.py` and `test_empire_tree_on_the_account_record.py` follow the
+  moved code. The screen check still finds no `Collapsed` or `Hidden` anywhere except `ShowTab` and `RefreshStacks`.
+- `test_dismantling.py` loses its room asserts;
+- `test_the_cleanse_city_upgrade.py`'s run record check reads inside the run record's namespace.
+
+### Registered for the window
+
+**The counts are read from the newest measured whole-suite engine log**: sd-w2's, `sdw2_suite_engine_45a0138d.log`
+("5341 tests performed, 5341 succeeded, 0 failed. 57 skipped part of what they check", 861 test saves). **They are
+taken again from the rarity cap window's log (#2853)**, which runs before this window, at the second rebase.
+
+- **The whole suite: 5348**, the base's 5341 + 7, the new group. No test was removed. Five were renamed (four here, and
+  DM6), and their old names will not appear in the log. **57 skipped halves and 861 test saves**, unchanged.
+- **The character record moves: 15 to 16.** No editor step. No asset.
+- **Groups alone, first:**
+  - `InventoryTabs.` 7 (new);
+  - the groups whose tests changed: `Inventory.`, `GemStacks.`, `HeldItem.`, `DropPickup.`, `Drop.`, `GemCombine.`,
+    `GemDrops.`, `GemEnchantments.`, `Wearing.`, `SaveRecords.`, `GemSave.`, `Gold.`, `EmpireTree.`,
+    `EmpireTreeCredit.`, `EmpireTreeProwess.`, `EmpireTreeRestores.`, `CataclysmDraw.`, `ConsumptionDouble.`,
+    `ConsumptionMark.`, `SkillLevels.`;
+  - and the forge's and the screen's (`Forge.`, `ForgeGems.`, `ForgeSockets.`, `ForgeCosts.`, `InventoryScreen.`);
+  - and `SaveLoad.`, `Dismantle.` and `Merchant.`, and every `EmpireTree` group in the base's log;
+  - 45 groups, 469 tests, each count read from the base's log, the new group at 7.
+  - Each with its trailing dot.
+- **Python, alongside the whole Unreal suite:** no failure, no error. Before the window, on `feat/inv-w1` at
+  `2035bb334`: "8241 passed, 9 skipped in 373.96s", JUnit 8250 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!". **The run before it, at `2997caea1`, FAILED ONE CHECK**:
+  "1 failed, 8240 passed, 9 skipped in 373.96s", `test_the_cleanse_city_upgrade.py::test_the_run_record_step_and_field`.
+  It found `bool Migrate_15_to_16(` by its first place in the file, which is now the character record's. It and this
+  change's own record check now read inside their own record's namespace (T6 and T2 below). On
+  `feat/inventory-tabs-2849` at `9e06377ec`, before the rebase: "8213 passed, 10 skipped in 396.48s", JUnit 8223 tests,
+  0 failures, 0 errors.
+- **Six Python guard proofs, PROVED**, run with `tools/prove_guard.py` in an extracted copy of `2035bb334` on
+  2026-11-24: T1 to T5 narrowed to `tools/tests/test_inventory_tabs.py` (nine checks), T6 to
+  `tools/tests/test_the_cleanse_city_upgrade.py` (six). T1 to T4 had been PROVED before the rebase too, in copies of
+  `7dc161444` and `9e06377ec`. T5 is new, for the chain check's wider count, and T6 for the run record check:
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| T1 | the unsocket asks for a free gear slot again (`&& Inventory->NumFreeSlots() > 0`) | "PROVED: 1 failed, 8 passed in 0.21s \| restored: 9 passed in 0.16s" | `test_the_forge_asks_no_gear_slot_for_a_stack` |
+| T2 | `Migrate_15_to_16` leaves the moved stack's quantity in its cell | "PROVED: 1 failed, 8 passed in 1.99s \| restored: 9 passed in 0.17s" | `test_the_record_is_at_sixteen_and_its_step_moves_and_blanks` |
+| T3 | the save restores the slots before the tabs | "PROVED: 1 failed, 8 passed in 0.21s \| restored: 9 passed in 0.18s" | `test_the_save_gathers_and_restores_both_tabs_the_tabs_first` |
+| T4 | the gems tab shows page 1's stacks whatever the page (`GemStacks[Start + Index]` written `GemStacks[Index]`) | "PROVED: 1 failed, 8 passed in 0.22s \| restored: 9 passed in 0.24s" | `test_the_gems_tab_pages_rather_than_running_off_the_screen` |
+| T5 | Dismantle's DM11 drops the version 16 step from its expected record | "PROVED: 1 failed, 8 passed in 0.17s \| restored: 9 passed in 0.17s" | `test_every_chain_test_adds_version_16s_writes_after_version_15s` |
+| T6 | the run record's `Migrate_15_to_16` writes the cleanse as bought (`false` written `true`) | "PROVED: 1 failed, 5 passed in 0.31s \| restored: 6 passed in 0.22s" | `test_the_run_record_step_and_field` |
+
+- **Five Unreal guard proofs**, each narrowed to `Cataclysm.InventoryTabs.` (7), as `.claude/windows/prove_inv_table.py.txt` holds them:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| C1 | `CataclysmInventoryComponent.cpp` | `AddMaterial` refuses a new material when the gear tab is full: before `PutMaterial(Material, Quantity);` in `AddMaterial`, `if (IsFull() && StackOfMaterial(Material) == INDEX_NONE) { return false; }` | 5 succeeded, 2 failed: `AFullGearTabStillCollectsMaterialsAndGems`, `TheForgeCombinesAndUnsocketsWithEveryGearSlotFull` (its set-up adds the stones after the gear) |
+| C2 | `CataclysmSaveRecords.cpp` | `Migrate_15_to_16` leaves the material's name in its cell: `Slot->SetStringField(TEXT("Material"), TEXT("None"));` removed | 6, 1: `AVersion14RecordsStacksMoveIntoTheTabsAndItsGearKeepsItsCell` |
+| C3 | `CataclysmForgeCraft.cpp` | the unsocket's room check as it was, without the Dust: `const bool bRoom = From != nullptr;` written `const bool bRoom = From != nullptr && (Inventory->CountOfGems(From->Gem, From->GemRarity) > 0 \|\| Inventory->NumFreeSlots() > 0);` | 6, 1: `TheForgeCombinesAndUnsocketsWithEveryGearSlotFull` |
+| C4 | `CataclysmInventoryComponent.cpp` | `RestoreSlots` drops a stack it finds in a saved slot: `PutMaterial(From.Material, From.Quantity);` removed | 6, 1: `RestoringPutsBothTabsBackAndAStackInASavedSlotGoesToItsTab` |
+| C5 | `CataclysmInventoryScreen.cpp` | a page starts one page late: `return (FMath::Max(1, Page) - 1) * FMath::Max(1, PerPage);` written `return FMath::Max(1, Page) * FMath::Max(1, PerPage);` | 6, 1: `TheGemsTabPagesItsStacksAsManyRowsAPageAsTheMaterialsTabUses` |
+
+---
+
 ## 2026-11-24 — A hard cap on how rare a drop can roll: rarity number tier + 3, so tier 1 drops nothing above Masterful (#2853)
 
 **WINDOW rc-w1 PASSED, 2026-11-24**, on `fix/rarity-cap-2853-2` at `5e8be4680`, rebased onto development `6dd62aba6`;
