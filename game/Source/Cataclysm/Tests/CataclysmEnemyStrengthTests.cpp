@@ -556,8 +556,8 @@ namespace CataclysmEnemyStrengthTest
 	/**
 	 * The design's hit for the owner's Boss Brute of 2026-11-24, before mitigation: `enemy_stats.strength_on_floor(
 	 * "Boss", 1, "Basic", "Timed", 10, 6, kind="Brute", ring="Outpost").damage_per_hit`, floor 6 of a 10-floor Timed
-	 * dungeon on an Outpost at tier 1 with no modifier score. `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_
-	 * creature_lands_nothing.py` holds this figure to the simulation's. Issue #2874.
+	 * dungeon on an Outpost at tier 1 with no modifier score. Issue #2874. Held to the simulation's figure by
+	 * `tools/tests/test_a_brand_is_built_by_hits_and_a_dead_creature_lands_nothing.py`.
 	 */
 	constexpr double OutpostBossBruteDesignHit = 72.3205;
 
