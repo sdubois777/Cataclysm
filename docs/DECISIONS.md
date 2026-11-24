@@ -113,6 +113,12 @@ the window.
 | P2 | the upgrade's question without `TimersRunningOutIn` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
 | P3 | the upgrade's done message without `WhatTheDaysDid` | `test_every_forge_question_warns_and_every_forge_craft_done_says_what_its_days_did` |
 
+**The Python suite at `2525592c4`: 8,217 passed, 1 failed, 9 skipped in 368.02 s**; JUnit 8,227 tests, 1 failure, 0
+errors, 9 skipped. The one failure is slice F6's, inherited from the branch this was cut from:
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `EmpireTreeEffects.csv` and `EmpireTreeNodes.csv`, which F6's editor step clears. `ruff check .`: all checks
+passed.
+
 ---
 
 ## 2026-11-22 — The forge's two empire milestone options: The Soul Forge raises an upgrade two levels 15% of the time, and The Master Tinkerer makes 5% of enchantment crafts a critical success, its rolls drawn twice with the better kept and no days taken (#47, slice F6)
