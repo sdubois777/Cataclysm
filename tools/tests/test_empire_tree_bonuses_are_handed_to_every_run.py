@@ -15,8 +15,9 @@ a comment does not count:
                   `BeginForCharacter`, so the cities are built full (S1)
   the map         `BeginForCharacter` gives the map the tree before `Build`
   a load          the loaded run is handed its character's tree once it is the
-                  game's
-  buy and choose  each hands the changed tree over after the change
+                  game's, through the door that writes nothing into its cities
+  buy and choose  each hands the changed tree over after the change, through
+                  the door that keeps every city's share (issue #2859)
   respec          hands it over after the points come back and BEFORE the days
                   pass, so they pass without the tree
 """
@@ -70,15 +71,40 @@ def test_a_loaded_run_is_handed_its_characters_tree() -> None:
     text = without_comments(SAVE_LOAD.read_text(encoding="utf-8")).replace("\r\n", "\n")
     installed = text.find("Instance->EmpireRun = RestoredEmpire;")
     assert installed >= 0, "CataclysmSaveLoad.cpp no longer installs the restored run where this expects"
-    handed = text.find("UCataclysmGameInstance::RefreshEmpireTreeBonuses(&World);", installed)
+    # THROUGH THE LOAD'S OWN DOOR SINCE ISSUE #2859, which writes nothing into the cities; a change in play keeps each
+    # city's share instead, and doing that to a loaded run would scale its saved cities by the whole tree.
+    handed = text.find("UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(&World);", installed)
     assert handed >= 0 and handed - installed < 400, (
         "the loaded run is not handed its character's tree straight after it becomes the game's")
+    assert "RefreshEmpireTreeBonuses(" not in text, (
+        "a load hands its run the tree through the door for a change in play, which keeps each city's share and so "
+        "scales the cities the record saved by the whole tree")
+
+
+def test_a_change_in_play_keeps_each_citys_share_and_a_load_writes_nothing() -> None:
+    """Issue #2859: the owner, "It should maintain the % they were at before buying the upgrades"."""
+    change = body_of(GAME_INSTANCE, "void UCataclysmGameInstance::RefreshEmpireTreeBonuses(")
+    assert "Run->ChangeTreeBonuses(EmpireTreeBonusesFor(WorldContext));" in change, (
+        "a tree changed in play is not handed over through ChangeTreeBonuses, so the cities do not keep their shares")
+    assert "SetTreeBonuses(" not in change, "a tree changed in play is handed over without keeping the cities' shares"
+    loaded = body_of(GAME_INSTANCE, "void UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(")
+    assert "Run->SetTreeBonuses(EmpireTreeBonusesFor(WorldContext));" in loaded, (
+        "a loaded run is not handed its tree through SetTreeBonuses, which writes nothing into its cities")
+    assert "ChangeTreeBonuses(" not in loaded, "a loaded run's saved cities are scaled by the whole tree"
+    run = body_of(EMPIRE_RUN, "void UCataclysmEmpireRun::ChangeTreeBonuses(")
+    taken = run.find("const FCataclysmCityShares Before = Map->SharesNow();")
+    handed = run.find("SetTreeBonuses(Bonuses);", taken)
+    kept = run.find("Map->KeepShares(Before);", handed)
+    assert -1 < taken < handed < kept, (
+        "ChangeTreeBonuses must take every city's share before the tree changes and put every city back at it after")
 
 
 def test_a_point_bought_and_an_option_chosen_hand_the_tree_over() -> None:
     for signature, change in (("UCataclysmGameInstance::BuyEmpireTreePoint(", "UCataclysmEmpireTree::Spend("),
                               ("UCataclysmGameInstance::ChooseEmpireTreeOption(",
-                               "UCataclysmEmpireTree::ChooseOption(")):
+                               "UCataclysmEmpireTree::ChooseOption("),
+                              ("UCataclysmGameInstance::ChooseEmpireTreeExtraOption(",
+                               "UCataclysmEmpireTree::ChooseExtraOption(")):
         body = body_of(GAME_INSTANCE, signature)
         changed = body.find(change)
         handed = body.find("RefreshEmpireTreeBonuses(WorldContext);")

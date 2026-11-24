@@ -491,8 +491,11 @@ bool FCataclysmEmpireTreeCityBegunTest::RunTest(const FString&)
 }
 
 /**
- * The coordinating session's S1: a point bought mid-run raises the maximum and leaves what a city holds where it is. A
- * full Outpost reads "1000 of 1050" on its screen and 96% on the map after one point of Foundation. Prints "RAISED".
+ * The coordinating session's S1, AS THE DOOR A LOAD USES: `SetTreeBonuses` raises the maximum and leaves what a city
+ * holds where it is, so a full Outpost reads "1000 of 1050" on its screen and 96% on the map after a tree with one point
+ * of Foundation is handed over. Until issue #2859 this was also what a point bought mid-run did; a point bought now goes
+ * through `ChangeTreeBonuses`, which keeps the share (`ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum`), and
+ * `SetTreeBonuses` is the door for a run being handed its tree as it begins or loads. Prints "RAISED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityRaisedTest,
 	"Cataclysm.EmpireTreeCity.ARaisedMaximumLeavesWhatACityHolds",
@@ -523,9 +526,11 @@ bool FCataclysmEmpireTreeCityRaisedTest::RunTest(const FString&)
 }
 
 /**
- * A lowered maximum -- a respec -- is read as the smaller of the two, and nothing is written: a city built full at 1500
- * reads 1000 of 1000 once the tree is gone, and a hit of 100 then leaves 900, not 1400, and the day's record says 100
- * was taken. Prints "LOWERED".
+ * A lowered maximum handed over through `SetTreeBonuses`, THE DOOR A LOAD USES, is read as the smaller of the two, and
+ * nothing is written: a city built full at 1500 reads 1000 of 1000 once the tree is gone, and a hit of 100 then leaves
+ * 900, not 1400, and the day's record says 100 was taken. That is a run loaded under a smaller tree than it was saved
+ * under. A respec in play goes through `ChangeTreeBonuses` since issue #2859 and writes the share instead
+ * (`ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum`). Prints "LOWERED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityLoweredTest,
 	"Cataclysm.EmpireTreeCity.ALoweredMaximumIsReadAsTheSmallerAndAHitStartsThere",
@@ -562,6 +567,338 @@ bool FCataclysmEmpireTreeCityLoweredTest::RunTest(const FString&)
 	TestEqual(TEXT("it is read as 1000"), Read, 1000.0f, 0.01f);
 	TestTrue(TEXT("a hit of 100 leaves 900"), After != nullptr && FMath::IsNearlyEqual(After->Defence, 900.0f, 0.5f));
 	TestEqual(TEXT("and the record says 100 was taken"), Lost, 100.0f, 0.5f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A city keeps its share when the tree moves its maximum in play -- issue #2859
+// ---------------------------------------------------------------------------
+
+/**
+ * Issue #2859, the owner's ruling of 2026-11-23, verbatim: "It should maintain the % they were at before buying the
+ * upgrades." A point of Foundation and one of Metropolitan Growth bought in play, through `ChangeTreeBonuses`, the door
+ * the game instance's buy uses: an Outpost at 800 of 1000 defence and 3000 of 5000 people holds 840 of 1050 and 3450 of
+ * 5750 -- still 80% and 60% -- and its screen says 80%; a Bulwark at 1500 of 3000 holds 1575 of 3150 and the map says
+ * "Bulwark 50%". CONTROLS: a fallen Outpost is left as it was; and the door a load uses, `SetTreeBonuses`, handed a larger
+ * tree afterwards, writes nothing. Prints "KEPT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityKeptTest,
+	"Cataclysm.EmpireTreeCity.ABoughtNodeKeepsEveryCityAtItsShareOfTheRaisedMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeCityKeptTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeCityTest;
+
+	UCataclysmEmpireRun* Run = QuietRun(2741);
+	FCataclysmCity* Outpost = FirstOf(*Run, ECataclysmCityTier::Outpost);
+	FCataclysmCity* Bulwark = FirstOf(*Run, ECataclysmCityTier::Bulwark);
+	if (!TestNotNull(TEXT("set-up: an Outpost"), Outpost) || !TestNotNull(TEXT("set-up: a Bulwark"), Bulwark))
+	{
+		return false;
+	}
+	const int32 OutpostId = Outpost->CityId;
+	const int32 BulwarkId = Bulwark->CityId;
+
+	// A SECOND OUTPOST, FALLEN, for the control.
+	int32 FallenId = INDEX_NONE;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (City.Tier == ECataclysmCityTier::Outpost && City.CityId != OutpostId && !City.bFallen)
+		{
+			FallenId = City.CityId;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: a second Outpost falls"), FallenId != INDEX_NONE && Run->Map->Fall(FallenId)))
+	{
+		return false;
+	}
+	const float FallenPeople = Run->Map->Find(FallenId)->Population;
+
+	// 80% AND 60% OF AN OUTPOST'S 1000 AND 5000; HALF OF A BULWARK'S 3000. Set by hand, whatever day 1 did.
+	Outpost->Defence = 800.0f;
+	Outpost->Population = 3000.0f;
+	Bulwark->Defence = 1500.0f;
+
+	FCataclysmPassiveAllocation Tree = Holding(Foundation, 1);
+	Tree.Add(MetropolitanGrowth, 1);
+	Run->ChangeTreeBonuses(BonusesOf(Tree));
+
+	const FCataclysmCity& OutpostNow = *Run->Map->Find(OutpostId);
+	const FCataclysmCity& BulwarkNow = *Run->Map->Find(BulwarkId);
+	const FCataclysmCity& FallenNow = *Run->Map->Find(FallenId);
+	const float OutpostMax = Run->Map->EffectiveMaxDefence(OutpostNow);
+	const float OutpostHeld = Run->Map->DefenceOf(OutpostNow);
+	const float PeopleMax = Run->Map->EffectiveMaxPopulation(OutpostNow);
+	const float People = Run->Map->PopulationOf(OutpostNow);
+	const float BulwarkHeld = Run->Map->DefenceOf(BulwarkNow);
+	const FString Screen = UCataclysmCityScreenLayout::StatusTextFor(Run, OutpostId);
+	const FString Label = UCataclysmEmpireMapLayout::CityLabel(Run->Map, BulwarkId);
+
+	// THE CONTROL OF THE LOAD'S DOOR: a larger tree handed over through `SetTreeBonuses` writes nothing.
+	Run->SetTreeBonuses(BonusesOf(Holding(Foundation, 10)));
+	const float StoredAfterTheLoadsDoor = Run->Map->Find(OutpostId)->Defence;
+
+	AddInfo(FString::Printf(TEXT("KEPT: Outpost %.1f of %.1f, people %.1f of %.1f, \"%s\"; Bulwark %.1f, \"%s\"; fallen "
+								 "%.1f defence, %.1f people (%.1f before); after the load's door the Outpost stores %.1f"),
+							OutpostHeld, OutpostMax, People, PeopleMax, *Screen, BulwarkHeld, *Label, FallenNow.Defence,
+							FallenNow.Population, FallenPeople, StoredAfterTheLoadsDoor));
+	TestEqual(TEXT("the Outpost's maximum rose to 1050"), OutpostMax, 1050.0f, 0.01f);
+	TestEqual(TEXT("and it holds 80% of it, 840, where it held 80% of 1000"), OutpostHeld, 840.0f, 0.05f);
+	TestEqual(TEXT("its people's maximum rose to 5750"), PeopleMax, 5750.0f, 0.01f);
+	TestEqual(TEXT("and it holds 60% of it, 3450, where it held 60% of 5000"), People, 3450.0f, 0.05f);
+	TestTrue(TEXT("its screen says 840 of 1050, 80%"), Screen.Contains(TEXT("defence 840 of 1050 (80%)")));
+	TestEqual(TEXT("the Bulwark holds half of 3150"), BulwarkHeld, 1575.0f, 0.05f);
+	TestEqual(TEXT("and the map says it is at 50%"), Label, FString(TEXT("Bulwark 50%")));
+	TestEqual(TEXT("CONTROL: the fallen Outpost holds no defence"), FallenNow.Defence, 0.0f);
+	TestEqual(TEXT("CONTROL: and its people are as they were"), FallenNow.Population, FallenPeople);
+	TestEqual(TEXT("CONTROL: the door a load uses writes nothing: the Outpost still stores 840"), StoredAfterTheLoadsDoor,
+			  840.0f, 0.05f);
+	return true;
+}
+
+/**
+ * Issue #2859, a respec in play: "A respec that lowers the maximum should keep the percentage the same way." Foundation
+ * in full raised an Outpost's maximum to 1500 and it holds 1200, 80%; the respec, through `ChangeTreeBonuses`, puts it
+ * at 800 of 1000, 80% and not the 1000 of 1000 the smaller-of-the-two read gave, and a hit of 100 then leaves 700.
+ * Prints "RESPEC KEPT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityRespecKeptTest,
+	"Cataclysm.EmpireTreeCity.ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeCityRespecKeptTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeCityTest;
+
+	UCataclysmEmpireRun* Run = QuietRun(2741, BonusesOf(Holding(Foundation, 10)));
+	FCataclysmCity* Outpost = FirstOf(*Run, ECataclysmCityTier::Outpost);
+	if (!TestNotNull(TEXT("set-up: an Outpost"), Outpost))
+	{
+		return false;
+	}
+	const int32 OutpostId = Outpost->CityId;
+	if (!TestEqual(TEXT("set-up: Foundation in full raises an Outpost to 1500"), Run->Map->EffectiveMaxDefence(*Outpost),
+				   1500.0f, 0.01f))
+	{
+		return false;
+	}
+	Outpost->Defence = 1200.0f;
+
+	Run->ChangeTreeBonuses(FCataclysmEmpireTreeBonuses());
+	const FCataclysmCity& Respecced = *Run->Map->Find(OutpostId);
+	const float Max = Run->Map->EffectiveMaxDefence(Respecced);
+	const float Stored = Respecced.Defence;
+	const FString Label = UCataclysmEmpireMapLayout::CityLabel(Run->Map, OutpostId);
+
+	Place(*Run, 9002, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, Respecced, 1.0f);
+	Run->Dungeons.Last().DefenceDamage = 100.0f / Run->Dungeons.Last().BiteScale(); // A hit of exactly 100.
+	const FCataclysmDayReport Report = Run->AdvanceDay();
+	float Lost = 0.0f;
+	float People = 0.0f;
+	TakenBy(Report, OutpostId, ECataclysmCityHitKind::Ordinary, Lost, People);
+	const FCataclysmCity* After = Run->Map->Find(OutpostId);
+
+	AddInfo(FString::Printf(TEXT("RESPEC KEPT: %.1f of %.1f, \"%s\"; after a hit of %.1f, %.1f"), Stored, Max, *Label,
+							Lost, After ? After->Defence : -1.0f));
+	TestEqual(TEXT("the maximum fell to 1000"), Max, 1000.0f, 0.01f);
+	TestEqual(TEXT("and the Outpost stores 80% of it, 800, where it held 80% of 1500"), Stored, 800.0f, 0.05f);
+	TestEqual(TEXT("and the map says it is at 80%"), Label, FString(TEXT("Outpost 80%")));
+	TestEqual(TEXT("set-up: the hit took 100"), Lost, 100.0f, 0.5f);
+	TestTrue(TEXT("so a hit of 100 leaves 700"), After != nullptr && FMath::IsNearlyEqual(After->Defence, 700.0f, 0.5f));
+	return true;
+}
+
+/**
+ * Issue #2859, a node whose condition moves the maximum later: The Royal Engineer's Blessing, +2% to every city for each
+ * standing city holding a defensive upgrade, on top of Foundation's +50%. Every city at 80%: a Bulwark finishing a 25%
+ * resistance raises every maximum by a fiftieth of the base and the Pillar holds 80% of 30,400; the Bulwark falling
+ * lowers them again and the Pillar holds 80% of 30,000; retaken, the Pillar is back at 80% of 30,400 and the Bulwark at
+ * the retake's half. An Outpost then finishing a 20% raise of its own maximum keeps its own rule, the rise on top, and
+ * ends above 80% -- 1540 of 1848 -- while the Pillar is at 80% of 30,800. CONTROL: without the Blessing, none of the four
+ * moves the Pillar's maximum and nothing is written to it. Prints "ENGINEER KEPT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityEngineerKeptTest,
+	"Cataclysm.EmpireTreeCity.TheRoyalEngineersCountMovingKeepsEveryCityAtItsShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeCityEngineerKeptTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeCityTest;
+
+	FCataclysmPassiveAllocation WithEngineer = Holding(Foundation, 10);
+	WithEngineer.Add(RoyalEngineer, 1);
+
+	float PillarStoredWithout = 0.0f;
+	float PillarStoredWithoutAtTheEnd = 0.0f;
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		// THE BLESSING FIRST, THEN THE CONTROL WITHOUT IT.
+		const bool bEngineer = Pass == 0;
+		UCataclysmEmpireMap* Map = NewObject<UCataclysmEmpireMap>();
+		Map->TreeBonuses = BonusesOf(bEngineer ? WithEngineer : Holding(Foundation, 10));
+		Map->Build();
+		for (FCataclysmCity& City : Map->Cities)
+		{
+			City.Defence = 0.8f * Map->EffectiveMaxDefence(City);
+		}
+		int32 BulwarkId = INDEX_NONE;
+		int32 OutpostId = INDEX_NONE;
+		for (const FCataclysmCity& City : Map->Cities)
+		{
+			if (City.Tier == ECataclysmCityTier::Bulwark && BulwarkId == INDEX_NONE)
+			{
+				BulwarkId = City.CityId;
+			}
+			if (City.Tier == ECataclysmCityTier::Outpost && OutpostId == INDEX_NONE)
+			{
+				OutpostId = City.CityId;
+			}
+		}
+		const int32 PillarId = Map->PillarId;
+		if (!TestTrue(TEXT("set-up: a Bulwark, an Outpost and the Pillar"),
+					  BulwarkId != INDEX_NONE && OutpostId != INDEX_NONE && Map->Find(PillarId) != nullptr))
+		{
+			return false;
+		}
+		const auto ShareOf = [Map](int32 CityId)
+		{
+			const FCataclysmCity* City = Map->Find(CityId);
+			return City != nullptr ? Map->DefenceFractionOf(*City) : -1.0f;
+		};
+		const auto MaxOf = [Map](int32 CityId)
+		{
+			const FCataclysmCity* City = Map->Find(CityId);
+			return City != nullptr ? Map->EffectiveMaxDefence(*City) : -1.0f;
+		};
+
+		const float PillarStoredBefore = Map->Find(PillarId)->Defence;
+
+		FCataclysmCityUpgrade Resist;
+		Resist.Effect = ECataclysmCityUpgradeEffect::ResistDefenceLoss;
+		Resist.Value = 0.25f;
+		Map->AddUpgrade(BulwarkId, Resist);
+		const float MaxAfterTheResist = MaxOf(PillarId);
+		const float ShareAfterTheResist = ShareOf(PillarId);
+		const float BulwarkShareAfterTheResist = ShareOf(BulwarkId);
+
+		Map->Fall(BulwarkId);
+		const float MaxAfterTheFall = MaxOf(PillarId);
+		const float ShareAfterTheFall = ShareOf(PillarId);
+
+		Map->Retake(BulwarkId);
+		const float MaxAfterTheRetake = MaxOf(PillarId);
+		const float ShareAfterTheRetake = ShareOf(PillarId);
+		const float BulwarkShareAfterTheRetake = ShareOf(BulwarkId);
+
+		FCataclysmCityUpgrade Raise;
+		Raise.Effect = ECataclysmCityUpgradeEffect::MaxDefence;
+		Raise.Value = 0.2f;
+		Map->AddUpgrade(OutpostId, Raise);
+		const float MaxAfterTheRaise = MaxOf(PillarId);
+		const float ShareAfterTheRaise = ShareOf(PillarId);
+		const float OutpostHeld = Map->DefenceOf(*Map->Find(OutpostId));
+		const float OutpostMax = MaxOf(OutpostId);
+
+		AddInfo(FString::Printf(TEXT("ENGINEER KEPT (%s): Pillar %.1f at %.4f after the resistance, %.1f at %.4f after the "
+									 "fall, %.1f at %.4f after the retake, %.1f at %.4f after the raise; Bulwark %.4f then "
+									 "%.4f; Outpost %.1f of %.1f"),
+								bEngineer ? TEXT("with the Blessing") : TEXT("without"), MaxAfterTheResist,
+								ShareAfterTheResist, MaxAfterTheFall, ShareAfterTheFall, MaxAfterTheRetake,
+								ShareAfterTheRetake, MaxAfterTheRaise, ShareAfterTheRaise, BulwarkShareAfterTheResist,
+								BulwarkShareAfterTheRetake, OutpostHeld, OutpostMax));
+
+		if (bEngineer)
+		{
+			TestEqual(TEXT("the resistance raises the Pillar's maximum to 30,400"), MaxAfterTheResist, 30400.0f, 0.5f);
+			TestEqual(TEXT("and the Pillar is still at 80%"), ShareAfterTheResist, 0.8f, 0.0005f);
+			TestEqual(TEXT("and so is the Bulwark that finished it"), BulwarkShareAfterTheResist, 0.8f, 0.0005f);
+			TestEqual(TEXT("the Bulwark's fall lowers the Pillar's maximum to 30,000"), MaxAfterTheFall, 30000.0f, 0.5f);
+			TestEqual(TEXT("and the Pillar is still at 80%"), ShareAfterTheFall, 0.8f, 0.0005f);
+			TestEqual(TEXT("the retake raises it to 30,400 again"), MaxAfterTheRetake, 30400.0f, 0.5f);
+			TestEqual(TEXT("and the Pillar is still at 80%"), ShareAfterTheRetake, 0.8f, 0.0005f);
+			TestEqual(TEXT("while the Bulwark comes back at the retake's half"), BulwarkShareAfterTheRetake, 0.5f,
+					  0.0005f);
+			TestEqual(TEXT("the Outpost's raise makes two defended cities: the Pillar's maximum is 30,800"),
+					  MaxAfterTheRaise, 30800.0f, 0.5f);
+			TestEqual(TEXT("and the Pillar is still at 80%"), ShareAfterTheRaise, 0.8f, 0.0005f);
+			TestEqual(TEXT("the Outpost's own maximum is 1200 x 1.54"), OutpostMax, 1848.0f, 0.5f);
+			TestEqual(TEXT("and it holds 80% of 1540 and the 308 its raise added: 1540"), OutpostHeld, 1540.0f, 0.5f);
+		}
+		else
+		{
+			PillarStoredWithout = PillarStoredBefore;
+			PillarStoredWithoutAtTheEnd = Map->Find(PillarId)->Defence;
+			TestEqual(TEXT("CONTROL: without the Blessing the Pillar's maximum never moves"), MaxAfterTheRaise, 30000.0f,
+					  0.5f);
+		}
+	}
+	TestEqual(TEXT("CONTROL: and nothing is written to the Pillar: it stores what it stored"), PillarStoredWithoutAtTheEnd,
+			  PillarStoredWithout);
+	return true;
+}
+
+/**
+ * Issue #2859, through the game instance, as the tree's screen buys and respecs in the capital. The Pillar -- which no
+ * dungeon reaches while every Sanctuary stands -- at 16,000 of 20,000, 80%: a point of Foundation bought puts it at
+ * 16,800 of 21,000, and the respec, with its five days, at 16,000 of 20,000 again. Prints "KEPT THROUGH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCityKeptThroughTest,
+	"Cataclysm.EmpireTreeCity.ABuyAndARespecInTheCapitalKeepACitysShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeCityKeptThroughTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeCityTest;
+
+	FCityTreeScene Scene = MakeScene();
+	ON_SCOPE_EXIT
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	UCataclysmAccountSave* Account = Scene.Account();
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()) || !TestNotNull(TEXT("set-up: its account"), Account))
+	{
+		return false;
+	}
+	Scene.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static, /*LethalityRung*/ 0, /*DifficultyTier*/ 1);
+	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(Scene.World, false);
+	FCataclysmCity* Pillar = Run != nullptr && Run->Map != nullptr ? Run->Map->FindMutable(Run->Map->PillarId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a run with its Pillar"), Pillar)
+		|| !TestEqual(TEXT("set-up: the Pillar's maximum is 20,000"), Run->Map->EffectiveMaxDefence(*Pillar), 20000.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	const int32 PillarId = Pillar->CityId;
+	Pillar->Defence = 16000.0f;
+	Account->EmpireUpgradePoints = 1.0;
+	// FOUNDATION OPENS AT 2 POINTS OF URBAN PLANNING, as the test above says; Urban Planning does not reach the Pillar.
+	Account->EmpireTree.Add(UrbanPlanning, 2);
+
+	FString Reason;
+	const bool bBought = UCataclysmGameInstance::BuyEmpireTreePoint(Scene.World, Foundation, Reason);
+	const float BoughtMax = Run->Map->EffectiveMaxDefence(*Run->Map->Find(PillarId));
+	const float BoughtHeld = Run->Map->DefenceOf(*Run->Map->Find(PillarId));
+	int32 Returned = 0;
+	int32 Days = 0;
+	const bool bRespecced = UCataclysmGameInstance::RespecEmpireTree(Scene.World, Returned, Days, Reason);
+	const float RespeccedMax = Run->Map->EffectiveMaxDefence(*Run->Map->Find(PillarId));
+	const float RespeccedHeld = Run->Map->DefenceOf(*Run->Map->Find(PillarId));
+
+	AddInfo(FString::Printf(TEXT("KEPT THROUGH: bought %s, %.1f of %.1f; respecced %s (%d days), %.1f of %.1f"),
+							bBought ? TEXT("yes") : TEXT("no"), BoughtHeld, BoughtMax, bRespecced ? TEXT("yes") : TEXT("no"),
+							Days, RespeccedHeld, RespeccedMax));
+	TestTrue(TEXT("the point was bought"), bBought);
+	TestEqual(TEXT("the Pillar's maximum rose to 21,000"), BoughtMax, 21000.0f, 0.01f);
+	TestEqual(TEXT("and it holds 80% of it, 16,800"), BoughtHeld, 16800.0f, 0.5f);
+	TestTrue(TEXT("the respec was made"), bRespecced);
+	TestEqual(TEXT("the Pillar's maximum fell to 20,000"), RespeccedMax, 20000.0f, 0.01f);
+	TestEqual(TEXT("and it holds 80% of it, 16,000, after the respec's days"), RespeccedHeld, 16000.0f, 0.5f);
 	return true;
 }
 

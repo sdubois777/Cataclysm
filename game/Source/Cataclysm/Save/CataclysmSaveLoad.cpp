@@ -285,7 +285,9 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 
 		// AND THE EMPIRE UPGRADE TREE THE LOADED CHARACTER HOLDS, which the saved run does not: its cities and timers were
 		// saved as the tree's base. The character went back above, so its tree is the one read. Issue #2741 slice 3a.
-		UCataclysmGameInstance::RefreshEmpireTreeBonuses(&World);
+		// WRITING NOTHING INTO THE CITIES, which a tree changed in play does (issue #2859): they were saved holding what
+		// they held under it.
+		UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(&World);
 		if (ACataclysmPlayerState* State = Character.GetPlayerState<ACataclysmPlayerState>())
 		{
 			State->RestoreRunKills(SavedRun->RunKills);

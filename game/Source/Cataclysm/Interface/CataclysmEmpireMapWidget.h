@@ -39,6 +39,10 @@ class UTextBlock;
  * spends its upgrade slots there. This asks the player controller to open it,
  * because the controller owns every screen in this project. Issue #42.
  *
+ * A FALLEN CITY'S BOX OPENS ITS SCREEN TOO, drawn dimmed, since issue #2866:
+ * the Fallen City dungeon standing on it is walked from there, which is how a
+ * fallen city is retaken. `UCataclysmEmpireMapLayout::CityOpensItsScreen`.
+ *
  * THE CATACLYSM BOSS DUNGEON HAS A BOX OF ITS OWN, because it stands on no city
  * (the project owner, 2026-11-02, verbatim: "On no city (Recommended)"). Once
  * the run has opened it, one more choice button sits in the map panel's top

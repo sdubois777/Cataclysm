@@ -411,6 +411,135 @@ bool FCataclysmWalkFromTheScreenBossPressTest::RunTest(const FString& Parameters
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkFromTheScreenFallenCityTest,
+	"Cataclysm.WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2866, the owner: "I'm unable to take it back, it won't let me attack it." A fresh run (day 0) whose first Outpost
+ * falls to an ordinary dungeon's resolve, through the run, so its Fallen City dungeon is made as play makes it. The map's
+ * box for the fallen city opens its screen and is drawn dimmed (`CityOpensItsScreen`, `IsCityDimmed`), and a click on it
+ * is a click on that city; the line under the map and the city's screen both say how it is retaken; the screen lists the
+ * Fallen City dungeon with a Walk under it; and that Walk, in a dungeon level, enters it -- the game mode walks it, as
+ * deep as it is, on its floor 1, with no refusal. Until the fix a fallen city's box was unavailable and could not be
+ * pressed. CONTROLS: a standing Outpost's box opens its screen undimmed, with no fallen words; no map and no such city
+ * open nothing. Prints "WALK FALLEN".
+ */
+bool FCataclysmWalkFromTheScreenFallenCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmWalkFromTheScreenTest;
+
+	FWalkWorld Scene = MakeWalkWorld();
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Scene.Mode))
+	{
+		return false;
+	}
+
+	UCataclysmEmpireRun* Run = MakeWalkRun();
+
+	// TWO OUTPOSTS: the first to fall, the second standing as the control.
+	int32 CityId = INDEX_NONE;
+	int32 StandingId = INDEX_NONE;
+	for (const FCataclysmCity& City : Run->Map->Cities)
+	{
+		if (City.Tier != ECataclysmCityTier::Outpost)
+		{
+			continue;
+		}
+		if (CityId == INDEX_NONE)
+		{
+			CityId = City.CityId;
+		}
+		else if (StandingId == INDEX_NONE)
+		{
+			StandingId = City.CityId;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: two Outposts"), CityId != INDEX_NONE && StandingId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// AN ORDINARY DUNGEON WHOSE HIT IS FAR MORE THAN ANY OUTPOST HOLDS, resolved at once through the run, so the city
+	// falls the way play fells one and `CityFell` leaves its Fallen City dungeon on it.
+	PlaceWalkDungeon(*Run, CityId, /* DungeonId */ 800, /* Floors */ 12, /* ResolveDays */ 9.0f);
+	Run->Dungeons.Last().DefenceDamage = 1.0e7f;
+	const FCataclysmDayReport Fell = Run->ResolveDungeonOnDeath(800);
+	const FCataclysmCity* Fallen = Run->Map->Find(CityId);
+	if (!TestTrue(TEXT("set-up: the resolve felled the Outpost"),
+				  Fallen != nullptr && Fallen->bFallen && Fell.Fallen.Contains(CityId)))
+	{
+		return false;
+	}
+	const int32 FallenCityDungeonId = UCataclysmEmpireMapLayout::FallenCityDungeonOn(Run, CityId);
+	const FCataclysmDungeon* FallenCityDungeon = Run->FindDungeon(FallenCityDungeonId);
+	if (!TestNotNull(TEXT("set-up: the fall left a Fallen City dungeon on it"), FallenCityDungeon)
+		|| !TestEqual(TEXT("set-up: of the Fallen City kind"), FallenCityDungeon->Type, ECataclysmDungeonType::FallenCity))
+	{
+		return false;
+	}
+	const int32 FallenFloors = FallenCityDungeon->Floors;
+
+	// ---- the map ---------------------------------------------------------------
+	const bool bOpens = UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, CityId);
+	const bool bDimmed = UCataclysmEmpireMapLayout::IsCityDimmed(Run->Map, CityId);
+	const FString Detail = UCataclysmEmpireMapLayout::FallenCityDetail(Run, CityId);
+
+	UCataclysmEmpireMapWidget* Map = NewObject<UCataclysmEmpireMapWidget>();
+	Map->SetRunForTests(Run);
+	Map->SetDungeonModeForTests(Scene.Mode);
+	Map->Refresh();
+	Map->ClickCityForTests(CityId);
+
+	// ---- the city screen it opens ----------------------------------------------
+	UCataclysmCityScreenWidget* Screen = NewObject<UCataclysmCityScreenWidget>();
+	Screen->SetRunForTests(Run);
+	Screen->SetDungeonModeForTests(Scene.Mode);
+	Screen->SetCity(CityId);
+	const FString Status = UCataclysmCityScreenLayout::StatusTextFor(Run, CityId);
+	const TArray<int32> Ids = UCataclysmCityScreenLayout::DungeonIdsFor(Run, CityId);
+
+	Scene.Mode->SetEmpireRunForTests(Run);
+	Screen->ClickWalkForTests(FallenCityDungeonId);
+
+	AddInfo(FString::Printf(TEXT("WALK FALLEN: city %d fell, Fallen City dungeon %d of %d floors; opens %d, dimmed %d, "
+								 "clicked %d; \"%s\"; \"%s\"; %d on its screen; walking %d, %d floors, floor %d, refusal "
+								 "\"%s\""),
+							CityId, FallenCityDungeonId, FallenFloors, bOpens, bDimmed, Map->LastClickedCityId(), *Detail,
+							*Status, Ids.Num(), Scene.Mode->EmpireDungeonId, Scene.Mode->TotalFloors,
+							Scene.Mode->FloorNumber, *Screen->LastRefusal()));
+
+	TestTrue(TEXT("the fallen city's box opens its screen"), bOpens);
+	TestTrue(TEXT("and is drawn dimmed"), bDimmed);
+	TestEqual(TEXT("a click on it is a click on that city"), Map->LastClickedCityId(), CityId);
+	TestEqual(TEXT("the line under the map says how it is retaken"), Detail,
+			  FString(TEXT("fallen: walk its Fallen City dungeon to retake it (press the city, then Walk)")));
+	TestTrue(TEXT("and so does its screen"), Status.Contains(TEXT("Walk its Fallen City dungeon below to retake it.")));
+	TestTrue(TEXT("which offers a Walk for its Fallen City dungeon"), Ids.Contains(FallenCityDungeonId));
+	TestEqual(TEXT("pressing it enters the Fallen City dungeon"), Scene.Mode->EmpireDungeonId, FallenCityDungeonId);
+	TestEqual(TEXT("with no refusal shown"), Screen->LastRefusal(), FString());
+	TestEqual(TEXT("as deep as it is"), Scene.Mode->TotalFloors, FallenFloors);
+	TestEqual(TEXT("with the player on its floor 1"), Scene.Mode->FloorNumber, 1);
+
+	// THE CONTROLS.
+	TestTrue(TEXT("CONTROL: a standing Outpost's box opens its screen too"),
+			 UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, StandingId));
+	TestFalse(TEXT("CONTROL: undimmed"), UCataclysmEmpireMapLayout::IsCityDimmed(Run->Map, StandingId));
+	TestEqual(TEXT("CONTROL: with no fallen words"), UCataclysmEmpireMapLayout::FallenCityDetail(Run, StandingId),
+			  FString());
+	TestEqual(TEXT("CONTROL: and no Fallen City dungeon stands on it"),
+			  UCataclysmEmpireMapLayout::FallenCityDungeonOn(Run, StandingId), static_cast<int32>(INDEX_NONE));
+	TestFalse(TEXT("CONTROL: no map opens nothing"), UCataclysmEmpireMapLayout::CityOpensItsScreen(nullptr, CityId));
+	TestFalse(TEXT("CONTROL: nor does a city that is not on the map"),
+			  UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, 999));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWalkFromTheScreenRefusalTest,
 	"Cataclysm.WalkFromTheScreen.ARefusedWalkIsShownAndEntersNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
