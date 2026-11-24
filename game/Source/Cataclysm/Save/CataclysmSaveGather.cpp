@@ -314,6 +314,14 @@ void FCataclysmSaveGather::CarriedSlotsFrom(
 	OutSlots = Inventory.GetSlots();
 }
 
+void FCataclysmSaveGather::CarriedStacksFrom(const UCataclysmInventoryComponent& Inventory,
+											  TArray<FCataclysmCarriedSlot>& OutMaterials,
+											  TArray<FCataclysmCarriedSlot>& OutGems)
+{
+	OutMaterials = Inventory.GetMaterialStacks();
+	OutGems = Inventory.GetGemStacks();
+}
+
 void FCataclysmSaveGather::WornGearFrom(const UCataclysmEquipmentComponent& Equipment,
 										TArray<FCataclysmWornItem>& OutWorn)
 {
@@ -522,6 +530,9 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 	}
 
 	CarriedSlotsFrom(*Inventory, Record.CarriedSlots);
+
+	// AND THE TWO TABS, since record version 15 (#2849): every material stack and every gem stack carried.
+	CarriedStacksFrom(*Inventory, Record.CarriedMaterials, Record.CarriedGems);
 
 	// AND WHAT IS WORN, since 2026-09-24. Recorded on issue #753 as a
 	// precondition for loading: the record had no field for it. WRITTEN ONLY

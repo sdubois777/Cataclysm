@@ -84,7 +84,8 @@ def test_the_craft_passes_no_day_logs_saves_and_puts_back() -> None:
         "CombineGems says no PLAY LOOP line")
     assert "UCataclysmSaveWriter::NoteTriggerIn(ForgeWorldOf(WorldContext), ECataclysmSaveTrigger::ForgeCrafted);" in craft, (
         "CombineGems does not save")
-    failed = craft.find("if (Inventory->AddGems(Gem, Plan.Into, 1) == INDEX_NONE) {")
+    # `AddGems` answers whether it added since issue #2849, and never refuses for room; the put-back stays for a refusal.
+    failed = craft.find("if (!Inventory->AddGems(Gem, Plan.Into, 1)) {")
     assert failed != -1 and "Inventory->AddGems(Gem, Plan.From, Plan.GemsNeeded);" in craft[failed:failed + 160], (
         "CombineGems does not put the two gems back when the made one has nowhere to go")
 

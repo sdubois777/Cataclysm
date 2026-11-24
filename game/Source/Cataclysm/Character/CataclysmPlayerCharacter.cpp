@@ -3367,14 +3367,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
 				return;
 			}
 			const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(RarityStep - 1);
-			const int32 Cell = Character->GetInventory()->AddGems(Gem, Rarity, Count);
-			if (Cell == INDEX_NONE)
+			// THE GEMS TAB NEVER REFUSES FOR ROOM (#2849): one stack per gem and rarity, no limit.
+			if (!Character->GetInventory()->AddGems(Gem, Rarity, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
-					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
+			Ar.Logf(TEXT("%d %s (%s) in the gems tab: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
+					*UCataclysmGems::RarityName(Rarity), Character->GetInventory()->CountOfGems(Gem, Rarity));
 		}));
 
 // ---------------------------------------------------------------------------
@@ -3421,14 +3421,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantMaterial(
 				Ar.Log(TEXT("The count is at least 1."));
 				return;
 			}
-			const int32 Cell = Character->GetInventory()->AddMaterial(Material, Count);
-			if (Cell == INDEX_NONE)
+			// THE MATERIALS TAB NEVER REFUSES FOR ROOM (#2849): one stack per material, no limit.
+			if (!Character->GetInventory()->AddMaterial(Material, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s in cell %d: %d carried."), Count,
-					*UCataclysmDropRoll::MaterialNameOf(Materials, Material), Cell,
+			Ar.Logf(TEXT("%d %s in the materials tab: %d carried."), Count,
+					*UCataclysmDropRoll::MaterialNameOf(Materials, Material),
 					Character->GetInventory()->CountOfMaterial(Material));
 		}));
 
@@ -3466,6 +3466,19 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 				{
 					Ar.Logf(TEXT("  %2d  %s"), Index, *Item->Base.ToString());
 				}
+			}
+
+			// AND THE TWO STORES, which have no slot numbers (#2849).
+			Ar.Log(TEXT("--- materials ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetMaterialStacks())
+			{
+				Ar.Logf(TEXT("  %s x%d"), *Stack.Material.ToString(), Stack.Quantity);
+			}
+			Ar.Log(TEXT("--- gems ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetGemStacks())
+			{
+				Ar.Logf(TEXT("  %s (%s) x%d"), *Stack.Gem.ToString(), *UCataclysmGems::RarityName(Stack.GemRarity),
+						Stack.Quantity);
 			}
 
 			Ar.Logf(TEXT("Weapon type in hand: %s"),

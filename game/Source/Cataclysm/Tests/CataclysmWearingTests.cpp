@@ -276,22 +276,30 @@ bool FCataclysmWearingRefusesWhatCannotBeWorn::RunTest(const FString& Parameters
 	TestEqual(TEXT("it is still carried"), Character.Inventory->NumItems(), 1);
 	TestEqual(TEXT("and nothing is worn"), Character.Equipment->NumEquipped(), 0);
 
-	// AN EMPTY SLOT AND A MATERIAL BOTH ANSWER "NOTHING TO WEAR". ItemAt gives
-	// nothing for a material rather than an item with no base, so both arrive at
-	// the same answer and neither disturbs anything.
-	Character.Inventory->AddMaterial(FName(TEXT("Material_Aetherial_Shard")), 3);
+	// AN EMPTY SLOT ANSWERS "NOTHING TO WEAR", and so does slot 1, where a stack
+	// of materials went until issue #2849: since then the stack is in the
+	// materials tab and in no slot at all, so nothing a slot is asked can reach
+	// it. Neither disturbs anything, the stack included.
+	const FName Shard(TEXT("Material_Aetherial_Shard"));
+	if (!TestTrue(TEXT("set-up: three shards are carried"),
+			Character.Inventory->AddMaterial(Shard, 3)))
+	{
+		return false;
+	}
 	const int32 WithMaterial = Character.Everything();
 
 	TestTrue(TEXT("an empty slot holds nothing to wear"),
 		UCataclysmWearing::WearFromCarried(Character.Inventory,
 										   Character.Equipment, 40, Went)
 			== ECataclysmWearResult::NothingToWear);
-	TestTrue(TEXT("and neither does a stack of materials"),
+	TestTrue(TEXT("nor does slot 1, where the stack went before the materials tab"),
 		UCataclysmWearing::WearFromCarried(Character.Inventory,
 										   Character.Equipment, 1, Went)
 			== ECataclysmWearResult::NothingToWear);
 	TestEqual(TEXT("and neither disturbed anything"),
 		Character.Everything(), WithMaterial);
+	TestEqual(TEXT("the three shards are still carried"),
+		Character.Inventory->CountOfMaterial(Shard), 3);
 
 	return true;
 }

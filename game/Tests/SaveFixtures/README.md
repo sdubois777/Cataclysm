@@ -688,6 +688,19 @@ followed, ruled 2026-11-01:
   through the whole chain adds what the steps write through
   `CataclysmSaveFixtures::AddTheAccountsVersion7Defaults`,
   `AddTheCharactersVersion14Defaults` and `AddTheRunsVersion15Defaults`.
+- **The character record went to version 16 on 2026-11-24**, for the inventory's
+  tabs (issue #2849; the owner: "One cell per kind, no limit (Recommended)"). The
+  48 carried slots hold gear only, and the carried crafting materials and gems are
+  two lists of their own, `CarriedMaterials` and `CarriedGems`, each entry a
+  carried slot holding one stack. `Migrate_15_to_16` moves each stack out of
+  `CarriedSlots` into its list and blanks its cell, which stays, so every piece of
+  gear keeps its cell. `Character_v16.json` is `Character_v15.json` at version 16
+  with its 12 Whispering Ash moved from its second carried slot, now blank, into
+  `CarriedMaterials`, and with 3 Superb Of The Viper in `CarriedGems`: a figure
+  and not the default, for the reason below. `Character_v15.json` is now a
+  migration input; every test that read it as the committed file reads the new
+  one, and every test that runs an older file through the chain adds what the
+  step writes through `AddTheCharactersVersion16Defaults`.
 - **The run record went to version 16 on 2026-11-22**, for the cleanse city
   upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
   `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
@@ -955,6 +968,7 @@ followed, ruled 2026-11-01:
 | `Character_v13.json` | The same character at version 13: version 12's contents, with each socket count as a list of sockets -- its carried piece's Attack holding Of The Viper at Quality and Defense, its worn greatsword's Attack, Defense and Utility, its held build's three of type Any -- and no gem in either carried slot |
 | `Character_v14.json` | The same character at version 14: version 13's contents, plus 50000.25 tier 1 gold spent on city upgrades |
 | `Character_v15.json` | The same character at version 15: version 14's contents, plus where each item arrived -- the creation greatsword +0 at tier 2, the carried Circlet +4 at tier 2, the empty slot not known, the worn ring +3 at tier 1 |
+| `Character_v16.json` | The same character at version 16: version 15's contents, with its 12 Whispering Ash in `CarriedMaterials` and its second carried slot blank, plus 3 Superb Of The Viper in `CarriedGems` |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |

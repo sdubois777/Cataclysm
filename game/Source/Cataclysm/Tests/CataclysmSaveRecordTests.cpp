@@ -73,10 +73,21 @@ namespace CataclysmSaveRecordTest
 		Gear.Item.Enchantments.Add(Enchantment);
 		Record->CarriedSlots.Add(Gear);
 
+		// AN EMPTY CELL, where the material stack was until version 15 (issue #2849): a carried slot holds gear only,
+		// and the stack is in the materials tab below. Kept so the weapon stays at index 2.
+		Record->CarriedSlots.Add(FCataclysmCarriedSlot());
+
+		// THE TWO TABS, one stack each, the gem at Superb rather than the Everyday default so a rarity that did not
+		// reach the file would come back as Everyday and be noticed.
 		FCataclysmCarriedSlot Material;
 		Material.Material = FName(TEXT("Whispering_Ash"));
 		Material.Quantity = 12;
-		Record->CarriedSlots.Add(Material);
+		Record->CarriedMaterials.Add(Material);
+		FCataclysmCarriedSlot Gem;
+		Gem.Gem = FName(TEXT("Gem_Of_The_Viper"));
+		Gem.GemRarity = ECataclysmRarity::Superb;
+		Gem.Quantity = 3;
+		Record->CarriedGems.Add(Gem);
 
 		// A WEAPON, BECAUSE ONLY A WEAPON CARRIES DAMAGE TYPES. The gear above
 		// is a Circlet and every item in the committed fixtures is one, so
@@ -202,13 +213,16 @@ namespace CataclysmSaveRecordTest
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			// CHARACTER IS AT v14 SINCE 2026-11-22, when a Solo Self-Found character came to
+			// CHARACTER IS AT v15 SINCE 2026-11-22, when a character's crafting materials and gems
+			// moved out of its 48 carried slots into a tab each (issue #2849); Character_v14.json is a
+			// migration input now.
+			// CHARACTER WAS AT v14 FROM 2026-11-22, when a Solo Self-Found character came to
 			// count the tier 1 gold it spends on city upgrades (issue #2741 slice 9); it was at
 			// v13 from the same day, when its items' sockets became lists and its slots could
 			// hold a gem (issue #46), and at v12 from 2026-11-21, when its allocations came to
 			// hold Imperial Prowess's extra option (slice 8); Character_v13.json and the older
 			// files are migration inputs now.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v15.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v16.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v18.json") },
 		};
 	}
@@ -537,9 +551,22 @@ bool FCataclysmSaveRoundTripKeepsEveryField::RunTest(const FString&)
 	TestEqual(TEXT("the enchantment's drawback roll came back"),
 		Read->CarriedSlots[0].Item.Enchantments[0].NegativeRoll, 0.625f);
 
-	TestEqual(TEXT("the material's name came back"), Read->CarriedSlots[1].Material,
-		FName(TEXT("Whispering_Ash")));
-	TestEqual(TEXT("the material's count came back"), Read->CarriedSlots[1].Quantity, 12);
+	// THE MATERIALS AND GEMS TABS, version 15 (issue #2849). Until then the material stack was CarriedSlots[1].
+	TestTrue(TEXT("the empty cell came back empty"),
+		Read->CarriedSlots[1].Item.Base.IsNone() && Read->CarriedSlots[1].Material.IsNone() && Read->CarriedSlots[1].Quantity == 0);
+	if (TestEqual(TEXT("one material stack came back"), Read->CarriedMaterials.Num(), 1))
+	{
+		TestEqual(TEXT("the material's name came back"), Read->CarriedMaterials[0].Material,
+			FName(TEXT("Whispering_Ash")));
+		TestEqual(TEXT("the material's count came back"), Read->CarriedMaterials[0].Quantity, 12);
+	}
+	if (TestEqual(TEXT("one gem stack came back"), Read->CarriedGems.Num(), 1))
+	{
+		TestEqual(TEXT("the gem's name came back"), Read->CarriedGems[0].Gem, FName(TEXT("Gem_Of_The_Viper")));
+		TestEqual(TEXT("the gem's rarity came back"), static_cast<int32>(Read->CarriedGems[0].GemRarity),
+			static_cast<int32>(ECataclysmRarity::Superb));
+		TestEqual(TEXT("the gem's count came back"), Read->CarriedGems[0].Quantity, 3);
+	}
 
 	// THE WEAPON'S DAMAGE TYPES, IN ORDER. A list that came back reordered
 	// would still hold the same types and would still be wrong, because the
@@ -652,7 +679,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v15.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -665,12 +692,12 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v15.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v16.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// THE CURRENT VERSION SINCE `Character_v15.json` BECAME THE COMMITTED FILE (issue #2848); it was 14 from issue #2741 slice 9, 13 from issue #46,
+	// THE CURRENT VERSION SINCE `Character_v16.json` BECAME THE COMMITTED FILE (issue #2849); it was 15 from issue #2848, 14 from issue #2741 slice 9, 13 from issue #46,
 	// the gems window, 12 from issue #2741 slice 8, 11 from issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then. Read from the record rather
 	// than written here, because gems slice G2 also moves the character record and the second to merge renumbers.
 	TestEqual(TEXT("it says it is the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
@@ -746,7 +773,24 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		TestEqual(TEXT("the positive roll"), Enchantment.PositiveRoll, 0.5f);
 		TestEqual(TEXT("the negative roll"), Enchantment.NegativeRoll, 0.125f);
 	}
-	TestEqual(TEXT("the material stack"), Read->CarriedSlots[1].Quantity, 12);
+	// THE MATERIAL STACK IS IN ITS OWN TAB SINCE VERSION 15 (issue #2849), and the cell it held until then is blank:
+	// `CarriedSlots[1]` held 12 Whispering_Ash through version 14. Its gem, 3 Gem_Of_The_Viper at Superb and not the
+	// Everyday default, is read too, so a reader that dropped either list cannot pass.
+	TestTrue(TEXT("the cell the material stack left is blank"),
+		Read->CarriedSlots[1].Material.IsNone() && Read->CarriedSlots[1].Quantity == 0
+		&& Read->CarriedSlots[1].Item.Base.IsNone());
+	if (TestEqual(TEXT("one material stack"), Read->CarriedMaterials.Num(), 1))
+	{
+		TestEqual(TEXT("the material stack's material"), Read->CarriedMaterials[0].Material, FName(TEXT("Whispering_Ash")));
+		TestEqual(TEXT("the material stack"), Read->CarriedMaterials[0].Quantity, 12);
+	}
+	if (TestEqual(TEXT("one gem stack"), Read->CarriedGems.Num(), 1))
+	{
+		TestEqual(TEXT("the gem stack's gem"), Read->CarriedGems[0].Gem, FName(TEXT("Gem_Of_The_Viper")));
+		TestEqual(TEXT("at Superb"), static_cast<int32>(Read->CarriedGems[0].GemRarity),
+			static_cast<int32>(ECataclysmRarity::Superb));
+		TestEqual(TEXT("the gem stack"), Read->CarriedGems[0].Quantity, 3);
+	}
 
 	// THE PRIVATE STASH IS EMPTY BECAUSE THIS CHARACTER IS NOT SOLO SELF-FOUND,
 	// which is the design's rule rather than an accident of the fixture: an
@@ -928,6 +972,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1475,7 +1520,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v15.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1487,7 +1532,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v15.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v16.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

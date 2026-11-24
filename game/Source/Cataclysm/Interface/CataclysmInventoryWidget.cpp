@@ -225,7 +225,23 @@ void UCataclysmInventoryWidget::BuildTree()
 		USizeBox::StaticClass(), TEXT("HeaderBand"));
 	HeaderBand->SetHeightOverride(FScreen::HeaderHeightPx
 								  - FScreen::HeaderRulePx - FScreen::CellGapPx);
-	HeaderBand->SetContent(Header);
+	// THE THREE TABS IN THE HEADER LINE, issue #2849: the gear tab's name is this line, and the materials and gems tabs'
+	// names stand beside it, so the panel is no taller than CellSizeFor reserved. The controller asks TabUnderCursor.
+	UHorizontalBox* Tabs = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Tabs"));
+	UHorizontalBoxSlot* GearTabSlot = Tabs->AddChildToHorizontalBox(Header);
+	GearTabSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	GearTabSlot->SetVerticalAlignment(VAlign_Center);
+	MaterialsTab = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("MaterialsTab"));
+	GemsTab = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GemsTab"));
+	for (UTextBlock* Tab : {MaterialsTab.Get(), GemsTab.Get()})
+	{
+		Tab->SetFontSize(static_cast<float>(FScreen::HeaderFontPx));
+		Tab->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(false)));
+		UHorizontalBoxSlot* TabSlot = Tabs->AddChildToHorizontalBox(Tab);
+		TabSlot->SetPadding(FMargin(FScreen::CellGapPx * 4.0f, 0.0f, 0.0f, 0.0f));
+		TabSlot->SetVerticalAlignment(VAlign_Center);
+	}
+	HeaderBand->SetContent(Tabs);
 
 	UVerticalBoxSlot* HeaderSlot = Column->AddChildToVerticalBox(HeaderBand);
 	HeaderSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -247,6 +263,7 @@ void UCataclysmInventoryWidget::BuildTree()
 
 	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(
 		UUniformGridPanel::StaticClass(), TEXT("Grid"));
+	GearGrid = Grid;
 
 	// HALF THE GAP ON EVERY SIDE OF EVERY CELL, which puts a whole gap between
 	// two of them. It also puts half a gap around the outside of the grid, on
@@ -266,6 +283,52 @@ void UCataclysmInventoryWidget::BuildTree()
 				  /*Column=*/SlotIndex % UCataclysmInventoryComponent::Columns,
 				  Cells);
 	}
+
+	// THE MATERIALS TAB AND THE GEMS TAB, issue #2849: a grid each under the same header, hidden until chosen. The
+	// materials tab has one cell per crafting material, held or not, by tier; the gems tab starts with none and grows
+	// a row at a time in RefreshStacks.
+	MaterialGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("MaterialGrid"));
+	MaterialGrid->SetSlotPadding(FMargin(FScreen::CellGapPx * 0.5f));
+	Column->AddChildToVerticalBox(MaterialGrid);
+	MaterialOrder = FScreen::MaterialTabOrder(UCataclysmDropRoll::LoadCraftingMaterialTable());
+	MaterialCells.Reset();
+	for (int32 Index = 0; Index < MaterialOrder.Num(); ++Index)
+	{
+		BuildCell(MaterialGrid, Index / UCataclysmInventoryComponent::Columns,
+				  Index % UCataclysmInventoryComponent::Columns, MaterialCells);
+	}
+	GemGrid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass(), TEXT("GemGrid"));
+	GemGrid->SetSlotPadding(FMargin(FScreen::CellGapPx * 0.5f));
+	Column->AddChildToVerticalBox(GemGrid);
+	GemCells.Reset();
+	// ONE PAGE OF CELLS, as many rows as the materials tab uses, so the gems tab is never taller than it (the
+	// coordinating session, 2026-11-22: a tab running off the screen would hide gems).
+	const int32 PerPage = FScreen::GemStacksPerPage(MaterialOrder.Num());
+	for (int32 Index = 0; Index < PerPage; ++Index)
+	{
+		BuildCell(GemGrid, Index / UCataclysmInventoryComponent::Columns,
+				  Index % UCataclysmInventoryComponent::Columns, GemCells);
+	}
+	// THE PAGER: "Previous", "Page N of M", "Next", in the header's ink and size. The controller asks
+	// GemPagerUnderCursor, as it asks TabUnderCursor.
+	UHorizontalBox* Pager = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("GemPager"));
+	GemPrevious = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GemPrevious"));
+	GemPageLine = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GemPageLine"));
+	GemNext = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GemNext"));
+	GemPrevious->SetText(FText::FromString(TEXT("Previous")));
+	GemNext->SetText(FText::FromString(TEXT("Next")));
+	for (UTextBlock* Word : {GemPrevious.Get(), GemPageLine.Get(), GemNext.Get()})
+	{
+		Word->SetFontSize(static_cast<float>(FScreen::HeaderFontPx));
+		Word->SetColorAndOpacity(FSlateColor(InkColour()));
+		UHorizontalBoxSlot* WordSlot = Pager->AddChildToHorizontalBox(Word);
+		WordSlot->SetPadding(FMargin(FScreen::CellGapPx * 2.0f, FScreen::CellGapPx, FScreen::CellGapPx * 2.0f, 0.0f));
+		WordSlot->SetVerticalAlignment(VAlign_Center);
+	}
+	UVerticalBoxSlot* PagerSlot = Column->AddChildToVerticalBox(Pager);
+	PagerSlot->SetHorizontalAlignment(HAlign_Center);
+	GemPager = Pager;
+	ShowTab(ECataclysmInventoryTab::Gear);
 
 	// THE ITEM ON THE CURSOR, issue #878: one more cell, the same widgets a grid
 	// cell is, added to the root LAST so it is drawn over the panel. Pinned to
@@ -622,6 +685,202 @@ void UCataclysmInventoryWidget::Refresh(
 
 	RefreshHeldItem(Inventory, Bases, Rarities, Materials, Tiers, bResized,
 					CellPx, LabelFontPx, QuantityFontPx);
+
+	// THE MATERIALS TAB AND THE GEMS TAB, and their names. Issue #2849.
+	RefreshStacks(Inventory, Rarities, Materials, Tiers, Bases, Affixes, PositiveEnchantments, NegativeEnchantments,
+				  bResized, CellPx, LabelFontPx, QuantityFontPx, bContentsChanged);
+}
+
+void UCataclysmInventoryWidget::RefreshStacks(
+	const UCataclysmInventoryComponent* Inventory, const UDataTable* Rarities, const UDataTable* Materials,
+	const UDataTable* Tiers, const UDataTable* Bases, const UDataTable* Affixes,
+	const UDataTable* PositiveEnchantments, const UDataTable* NegativeEnchantments, bool bResized, float CellPx,
+	float LabelFontPx, float QuantityFontPx, bool bContentsChanged)
+{
+	const TArray<FCataclysmCarriedSlot> NoStacks;
+	const TArray<FCataclysmCarriedSlot>& MaterialStacks = Inventory ? Inventory->GetMaterialStacks() : NoStacks;
+	const TArray<FCataclysmCarriedSlot>& GemStacks = Inventory ? Inventory->GetGemStacks() : NoStacks;
+
+	if (MaterialsTab)
+	{
+		MaterialsTab->SetText(FText::FromString(FScreen::TabNameFor(ECataclysmInventoryTab::Materials,
+																	 MaterialStacks.Num())));
+	}
+	if (GemsTab)
+	{
+		GemsTab->SetText(FText::FromString(FScreen::TabNameFor(ECataclysmInventoryTab::Gems, GemStacks.Num())));
+	}
+
+	// EVERY MATERIAL, HELD OR NOT, with how many are held: a held one drawn as its stack is, one held at nought in the
+	// empty cell's colour, with its name and a 0 written over what the stack's functions leave blank.
+	for (int32 Index = 0; Index < MaterialCells.Num() && Index < MaterialOrder.Num(); ++Index)
+	{
+		const FCataclysmInventoryCellWidgets& Widgets = MaterialCells[Index];
+		FCataclysmCarriedSlot Stack;
+		Stack.Material = MaterialOrder[Index];
+		Stack.Quantity = Inventory ? Inventory->CountOfMaterial(Stack.Material) : 0;
+		WriteStackCell(Widgets, Stack, Rarities, Materials, Tiers, Bases, Affixes, PositiveEnchantments,
+					   NegativeEnchantments, bResized, CellPx, LabelFontPx, QuantityFontPx, bContentsChanged);
+		Widgets.Label->SetText(FText::FromString(FScreen::MaterialTabLabelFor(Stack.Material, Materials)));
+		Widgets.Quantity->SetText(FText::FromString(FScreen::MaterialTabCountFor(Stack.Quantity)));
+	}
+
+	// THE GEMS TAB SHOWS ONE PAGE: the page held to the pages there are, since stacks spent can leave fewer. A page
+	// turned redraws its tool tips, because its cells now hold other stacks.
+	const int32 PerPage = FMath::Max(1, GemCells.Num());
+	const int32 Pages = FScreen::GemPageCount(GemStacks.Num(), PerPage);
+	const int32 Page = FScreen::ClampGemPage(GemPage, Pages);
+	const bool bPageMoved = Page != LastGemPageDrawn;
+	GemPage = Page;
+	LastGemPageDrawn = Page;
+	const int32 Start = FScreen::GemPageStart(Page, PerPage);
+	for (int32 Index = 0; Index < GemCells.Num(); ++Index)
+	{
+		const FCataclysmInventoryCellWidgets& Widgets = GemCells[Index];
+		const bool bHeld = GemStacks.IsValidIndex(Start + Index);
+		Widgets.Size->SetVisibility(bHeld ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+		WriteStackCell(Widgets, bHeld ? GemStacks[Start + Index] : FCataclysmCarriedSlot(), Rarities, Materials, Tiers,
+					   Bases, Affixes, PositiveEnchantments, NegativeEnchantments, bResized, CellPx, LabelFontPx,
+					   QuantityFontPx, bContentsChanged || bPageMoved);
+	}
+	if (GemPageLine)
+	{
+		GemPageLine->SetText(FText::FromString(FScreen::GemPageText(Page, Pages)));
+	}
+	if (GemPrevious)
+	{
+		GemPrevious->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(Page > 1)));
+	}
+	if (GemNext)
+	{
+		GemNext->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(Page < Pages)));
+	}
+}
+
+bool UCataclysmInventoryWidget::GemPagerUnderCursor(const FVector2D& ViewportPoint, int32& OutStep) const
+{
+	if (Shown != ECataclysmInventoryTab::Gems)
+	{
+		return false;
+	}
+	FVector2D Absolute = FVector2D::ZeroVector;
+	USlateBlueprintLibrary::ScreenToWidgetAbsolute(const_cast<UCataclysmInventoryWidget*>(this), ViewportPoint,
+												   Absolute, /*bIncludeWindowPosition=*/false);
+	const TPair<const UTextBlock*, int32> Words[] = {{GemPrevious.Get(), -1}, {GemNext.Get(), 1}};
+	for (const TPair<const UTextBlock*, int32>& Word : Words)
+	{
+		if (Word.Key == nullptr)
+		{
+			continue;
+		}
+		const FGeometry& Geometry = Word.Key->GetCachedGeometry();
+		if (!FVector2D(Geometry.GetLocalSize()).IsNearlyZero() && Geometry.IsUnderLocation(Absolute))
+		{
+			OutStep = Word.Value;
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmInventoryWidget::TurnGemPage(int32 Step)
+{
+	// HELD TO THE PAGES THERE ARE AT THE NEXT REFRESH, which is where the count of stacks is read.
+	GemPage = FMath::Max(1, GemPage + Step);
+}
+
+void UCataclysmInventoryWidget::WriteStackCell(
+	const FCataclysmInventoryCellWidgets& Widgets, const FCataclysmCarriedSlot& Stack, const UDataTable* Rarities,
+	const UDataTable* Materials, const UDataTable* Tiers, const UDataTable* Bases, const UDataTable* Affixes,
+	const UDataTable* PositiveEnchantments, const UDataTable* NegativeEnchantments, bool bResized, float CellPx,
+	float LabelFontPx, float QuantityFontPx, bool bToolTip)
+{
+	if (bResized)
+	{
+		Widgets.Size->SetWidthOverride(CellPx);
+		Widgets.Size->SetHeightOverride(CellPx);
+		Widgets.Label->SetFontSize(LabelFontPx);
+		Widgets.Quantity->SetFontSize(QuantityFontPx);
+	}
+	// THE SAME COLOUR, FRAME AND WORDS A STACK HAD IN A CARRIED SLOT, through the same functions.
+	Widgets.Frame->SetBrush(FSlateColorBrush(FScreen::ColourFor(Stack, Rarities, Materials, Tiers)));
+	Widgets.Frame->SetPadding(FMargin(static_cast<float>(FScreen::BorderThicknessFor(Stack, Materials))));
+	Widgets.Label->SetText(FText::FromString(FScreen::LabelFor(Stack, Bases, Materials)));
+	Widgets.Quantity->SetText(FText::FromString(FScreen::QuantityTextFor(Stack)));
+	if (bToolTip)
+	{
+		// A STACK'S OWN TEXT, as a material's or gem's cell had it: nothing to compare with what is worn.
+		FString Left;
+		FString Right;
+		UCataclysmItemComparison::TooltipColumnsFor(Stack, nullptr, nullptr, nullptr, nullptr, Bases, Affixes,
+													 Materials, PositiveEnchantments, NegativeEnchantments, Left,
+													 Right);
+		Widgets.Frame->SetToolTip(nullptr);
+		Widgets.Frame->SetToolTipText(FText::FromString(Left));
+	}
+}
+
+void UCataclysmInventoryWidget::ShowTab(ECataclysmInventoryTab Tab)
+{
+	Shown = Tab;
+	if (GearGrid)
+	{
+		GearGrid->SetVisibility(Tab == ECataclysmInventoryTab::Gear ? ESlateVisibility::Visible
+																	 : ESlateVisibility::Collapsed);
+	}
+	if (MaterialGrid)
+	{
+		MaterialGrid->SetVisibility(Tab == ECataclysmInventoryTab::Materials ? ESlateVisibility::Visible
+																			  : ESlateVisibility::Collapsed);
+	}
+	if (GemGrid)
+	{
+		GemGrid->SetVisibility(Tab == ECataclysmInventoryTab::Gems ? ESlateVisibility::Visible
+																	: ESlateVisibility::Collapsed);
+	}
+	if (GemPager)
+	{
+		GemPager->SetVisibility(Tab == ECataclysmInventoryTab::Gems ? ESlateVisibility::Visible
+																	 : ESlateVisibility::Collapsed);
+	}
+	if (Header)
+	{
+		Header->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(Tab == ECataclysmInventoryTab::Gear)));
+	}
+	if (MaterialsTab)
+	{
+		MaterialsTab->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(Tab == ECataclysmInventoryTab::Materials)));
+	}
+	if (GemsTab)
+	{
+		GemsTab->SetColorAndOpacity(FSlateColor(FScreen::TabColourFor(Tab == ECataclysmInventoryTab::Gems)));
+	}
+}
+
+bool UCataclysmInventoryWidget::TabUnderCursor(const FVector2D& ViewportPoint, ECataclysmInventoryTab& OutTab) const
+{
+	FVector2D Absolute = FVector2D::ZeroVector;
+	USlateBlueprintLibrary::ScreenToWidgetAbsolute(const_cast<UCataclysmInventoryWidget*>(this), ViewportPoint,
+												   Absolute, /*bIncludeWindowPosition=*/false);
+	const TPair<const UTextBlock*, ECataclysmInventoryTab> Names[] = {
+		{Header.Get(), ECataclysmInventoryTab::Gear},
+		{MaterialsTab.Get(), ECataclysmInventoryTab::Materials},
+		{GemsTab.Get(), ECataclysmInventoryTab::Gems},
+	};
+	for (const TPair<const UTextBlock*, ECataclysmInventoryTab>& Name : Names)
+	{
+		if (Name.Key == nullptr)
+		{
+			continue;
+		}
+		const FGeometry& Geometry = Name.Key->GetCachedGeometry();
+		if (!FVector2D(Geometry.GetLocalSize()).IsNearlyZero() && Geometry.IsUnderLocation(Absolute))
+		{
+			OutTab = Name.Value;
+			return true;
+		}
+	}
+	return false;
 }
 
 void UCataclysmInventoryWidget::RefreshHeldItem(
@@ -817,7 +1076,8 @@ void UCataclysmInventoryWidget::RefreshGear(
 int32 UCataclysmInventoryWidget::CarriedSlotUnderCursor(
 	const FVector2D& ViewportPoint) const
 {
-	return IndexOfCellUnderCursor(Cells, ViewportPoint);
+	// THE GEAR TAB'S CELLS ONLY WHILE IT IS SHOWN (#2849): a hidden grid keeps the geometry it was last painted with.
+	return Shown == ECataclysmInventoryTab::Gear ? IndexOfCellUnderCursor(Cells, ViewportPoint) : INDEX_NONE;
 }
 
 ECataclysmGearSlot UCataclysmInventoryWidget::GearSlotUnderCursor(
