@@ -55,6 +55,8 @@
 #include "Character/CataclysmCharacterBase.h"
 // For a ground zone's skill row and level factor, read when it is laid. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
+// For where the player's cursor points, an enemy under it before the floor. Issue #2870.
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 // For the Angelic Wardens a payment under the Edict of Abstinence wakes. 2026-10-23, G7c.
 #include "Dungeon/CataclysmDungeonGameMode.h"
@@ -2356,6 +2358,17 @@ FVector UCataclysmSkillTemplate::AimPoint() const
 		return Fallback;
 	}
 
+	// THE GAME'S OWN CONTROLLER SAYS WHERE ITS CURSOR POINTS, and an enemy under it is aimed at itself rather than at
+	// the floor behind it. Issue #2870: the visibility trace passes through every creature, so a cursor on a creature's
+	// body aimed at the ground beyond its feet, and a narrow swing at a creature beside the character went past it.
+	// See `ACataclysmPlayerController::AimPointUnderCursor`.
+	if (const ACataclysmPlayerController* Cataclysm = Cast<ACataclysmPlayerController>(Controller))
+	{
+		FVector UnderCursor;
+		return Cataclysm->AimPointUnderCursor(UnderCursor) ? UnderCursor : Fallback;
+	}
+
+	// ANY OTHER PLAYER CONTROLLER, which nothing in the game is: the floor trace alone, as before.
 	FHitResult Hit;
 	if (Controller->GetHitResultUnderCursor(ECollisionChannel::ECC_Visibility,
 											/*bTraceComplex=*/true, Hit))

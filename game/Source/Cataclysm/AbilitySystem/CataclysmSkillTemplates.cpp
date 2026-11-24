@@ -2068,21 +2068,24 @@ int32 UCataclysmProjectileSkill::BuryInStruck(const TArray<AActor*>& Struck)
 		// finishes, after a skill trap that cast it is used up, and only the identity still names that trap (ruled
 		// 2026-10-21, #2462).
 		// AND THE SKILL'S ROW, read now, while the skill is there, for every later leap. Issue #2764, slice 2a.
-		if (UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
-										   GetDamagePercent(), SkillTags,
-										   Params.bBurns, FreeRepeatCastBy,
-										   UCataclysmSkillLevels::RowThatLevels(this)))
+		UCataclysmBuriedWeapon* Left = UCataclysmBuriedWeapon::BuryIn(Target, Self, Params.OnDeathRangeCm,
+																	  GetDamagePercent(), SkillTags,
+																	  Params.bBurns, FreeRepeatCastBy,
+																	  UCataclysmSkillLevels::RowThatLevels(this));
+		if (!Left)
 		{
-			++Buried;
+			continue;
 		}
-	}
+		++Buried;
 
-	if (Buried > 0)
-	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' left its weapon in %d enemies, reaching %.0fcm for the "
-				 "next."),
-			*SkillName, Buried, Params.OnDeathRangeCm);
+		// AND THE SKILL'S NAME, FOR THE LINES EACH LEAP WRITES, AND THE WEAPON DRAWN IN WHAT IT STRUCK, its blade
+		// toward the creature from where the use was cast. Issue #2872: "nothing shows the axe leaping".
+		Left->SkillName = SkillName;
+		Left->DrawIn(CastOrigin());
+		UE_LOG(LogCataclysm, Display,
+			TEXT("%s%s's weapon is buried in %s; when that one dies it leaps to the nearest living enemy within %.1f m%s."),
+			UCataclysmBuriedWeapon::LogPrefix, *SkillName, *GetNameSafe(Target), Params.OnDeathRangeCm / 100.0f,
+			Left->DrawnWeapon ? TEXT(", drawn in it") : TEXT(" (no mesh loaded, so nothing is drawn)"));
 	}
 
 	return Buried;

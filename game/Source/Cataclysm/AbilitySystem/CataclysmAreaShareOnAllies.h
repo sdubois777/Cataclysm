@@ -61,8 +61,9 @@ public:
 	static float PercentHeldFor(const UAbilitySystemComponent* AbilitySystem, const FGameplayTagContainer& SkillTags);
 
 	/**
-	 * Every ally of `Wearer` whose location is inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with
-	 * the same arguments, nearest first and with no limit. The wearer and the dead are left out.
+	 * Every ally of `Wearer` inside the cone `UCataclysmTargeting::FindEnemiesInCone` searches with the same arguments,
+	 * by the same test, `UCataclysmTargeting::IsActorInCone` (its body overlapping the cone's angle since issue
+	 * #2870), nearest first and with no limit. The wearer and the dead are left out.
 	 */
 	static TArray<AActor*> AlliesInCone(const UWorld* World, const AActor* Wearer, const FVector& Apex,
 										const FVector& Forward, float RadiusCm, float AngleDegrees);

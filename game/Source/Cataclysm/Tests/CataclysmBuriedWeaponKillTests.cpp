@@ -489,6 +489,9 @@ CATACLYSM_TEST(FCataclysmLeapKillTrapExplosionTest,
 	// THE CONTROL's and THE ROW's are of 50 health, which the leap kills; each has a bystander of 50,000 3 m south of the
 	// dead, inside the 4 m. THE ROW holds "Enemies killed by traps explode" at 50; and a brittle bystander of 10 health 3 m
 	// north of the dead, which the explosion kills, with a third 3 m beyond it and 6 m from the dead.
+	// AND EACH HAS A CATCHER OF 50,000 1 M EAST OF THE DEAD, 5 m from the host. Issue #2872: an axe whose leap kills its
+	// new host now tears free of it and goes on to the nearest living enemy within 10 m, which without the catcher would
+	// be the bystander 3 m south, struck by the axe as well as by the explosion this test reads. The catcher is nearer.
 	FLeapKillWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -532,6 +535,7 @@ CATACLYSM_TEST(FCataclysmLeapKillTrapExplosionTest,
 	const FVector InsideAt(4.0f * M, 47.0f * M, 0.0f);
 	const FVector BrittleAt(4.0f * M, 53.0f * M, 0.0f);
 	const FVector BeyondAt(4.0f * M, 56.0f * M, 0.0f);
+	const FVector CatcherAt(5.0f * M, 50.0f * M, 0.0f);
 	ACataclysmEnemyCharacter* MeasureSetter = LeapKillEnemy(World, Home[0] + SetterAt);
 	ACataclysmEnemyCharacter* PlainSetter = LeapKillEnemy(World, Home[1] + SetterAt);
 	ACataclysmEnemyCharacter* RowSetter = LeapKillEnemy(World, Home[2] + SetterAt);
@@ -545,8 +549,11 @@ CATACLYSM_TEST(FCataclysmLeapKillTrapExplosionTest,
 	ACataclysmEnemyCharacter* RowInside = LeapKillEnemy(World, Home[2] + InsideAt);
 	ACataclysmEnemyCharacter* RowBrittle = LeapKillEnemy(World, Home[2] + BrittleAt, Brittle);
 	ACataclysmEnemyCharacter* RowBeyond = LeapKillEnemy(World, Home[2] + BeyondAt);
+	ACataclysmEnemyCharacter* PlainCatcher = LeapKillEnemy(World, Home[1] + CatcherAt);
+	ACataclysmEnemyCharacter* RowCatcher = LeapKillEnemy(World, Home[2] + CatcherAt);
 	const TArray<ACataclysmEnemyCharacter*> Made = {MeasureSetter, PlainSetter, RowSetter, MeasureHost, MeasureNext,
-		PlainHost, PlainDoomed, PlainInside, RowHost, RowDoomed, RowInside, RowBrittle, RowBeyond};
+		PlainHost, PlainDoomed, PlainInside, RowHost, RowDoomed, RowInside, RowBrittle, RowBeyond, PlainCatcher,
+		RowCatcher};
 	for (int32 Index = 0; Index < Made.Num(); ++Index)
 	{
 		if (!TestNotNull(*FString::Printf(TEXT("set-up: creature %d"), Index), Made[Index]))
@@ -604,6 +611,9 @@ CATACLYSM_TEST(FCataclysmLeapKillTrapExplosionTest,
 	TestEqual(TEXT("set-up: and raised kill once on the control"), PlainKills.Count, 1);
 	TestEqual(TEXT("control: with no row its bystander 3 m from the dead is untouched"),
 		LeapKillTakenFrom(PlainInside), 0.0f, 0.001f);
+	TestTrue(*FString::Printf(TEXT("set-up: and the axe tore free of the dead and struck the catcher 1 m east, the "
+								   "nearest living enemy to it (#2872): %.2f"), LeapKillTakenFrom(PlainCatcher)),
+		LeapKillTakenFrom(PlainCatcher) > 0.0f);
 
 	// THE ROW: THE LEAP'S KILL CARRIES THE TRAP'S CAST'S TAGS, `Type.Trap` AMONG THEM, SO THE DEAD EXPLODES.
 	TestTrue(TEXT("set-up: the row's axe leaps"), UCataclysmBuriedWeapon::LeapFromDying(RowHost));

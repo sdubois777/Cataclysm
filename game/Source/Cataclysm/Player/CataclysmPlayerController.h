@@ -694,6 +694,50 @@ public:
 	void PressOnAnEnemyForTest(AActor* Enemy) { PressOnAnEnemy(Enemy); }
 	void ReleaseTheButtonForTest() { Input_MoveToCursorReleased(); }
 
+	/**
+	 * Where a skill this player uses is aimed: the point under the cursor. False when the cursor points at nothing in
+	 * the world, and then `UCataclysmSkillTemplate::AimPoint` falls back to the character, whose facing aims the use.
+	 * Issue #2870.
+	 *
+	 * AN ENEMY UNDER THE CURSOR IS AIMED AT ITSELF, at its location, before the floor is asked. WHAT IT FIXES: the floor
+	 * trace is on the visibility channel, and the engine's stock `Pawn` and `CharacterMesh` profiles both ignore it, so
+	 * a cursor resting on a creature's body passes through it and lands on the floor BEHIND it. The camera looks down at
+	 * sixty degrees (`ACataclysmPlayerCharacter`'s boom), so a cursor on a creature's body a metre above the floor lands
+	 * about 0.58 m (one metre over the tangent of sixty degrees) beyond its feet, up the screen. For a creature a metre
+	 * to the character's left or right on screen that turns the aim about thirty degrees off it, outside the 22.5
+	 * either side of the Whip's 45 degree swing; the same creature three metres away is off by about eleven, inside.
+	 * That is the owner's "it only hits them if they're on the edge" from the aim's side, beside the cone's own.
+	 *
+	 * THE SAME TEST THE CLICK ATTACK USES, `EnemyUnderCursor` (the pawn channel, a living hostile that is not hidden),
+	 * so a press with the cursor on an enemy aims where a click on it would, which ruling P7-b of 2026-10-16 already
+	 * gives the click. An ally, a corpse or the player's own body under the cursor is not an
+	 * enemy, and the floor is asked as before.
+	 *
+	 * NOTHING ELSE CHANGES: no auto-target, no nearest enemy, no lock. With no enemy under the cursor the floor point
+	 * is the aim, as it always was, and the character's facing is used only when the cursor points at nothing.
+	 */
+	bool AimPointUnderCursor(FVector& OutPoint) const;
+
+	/**
+	 * What the cursor is over, given by hand for automation tests, which have no cursor to trace: an enemy (or null),
+	 * and the floor point the visibility trace would answer. While given, `AimPointUnderCursor` reads these instead of
+	 * tracing, and runs its own choice between them unchanged. `ForgetCursorForTest` returns it to tracing. Nothing in
+	 * the game calls these. Issue #2870.
+	 */
+	void PointCursorForTest(AActor* Enemy, const FVector& FloorPoint)
+	{
+		bCursorGivenForTest = true;
+		CursorEnemyForTest = Enemy;
+		CursorFloorForTest = FloorPoint;
+	}
+	void ForgetCursorForTest() { bCursorGivenForTest = false; CursorEnemyForTest.Reset(); }
+
+private:
+	/** What `PointCursorForTest` gave, read by `AimPointUnderCursor` while `bCursorGivenForTest` is set. */
+	bool bCursorGivenForTest = false;
+	TWeakObjectPtr<AActor> CursorEnemyForTest;
+	FVector CursorFloorForTest = FVector::ZeroVector;
+
 private:
 	/**
 	 * What a press of the left button on the world does once it knows the enemy under the cursor, or null for the

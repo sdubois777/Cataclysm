@@ -2119,6 +2119,38 @@ AActor* ACataclysmPlayerController::EnemyUnderCursor() const
 	return IsClickableEnemy(Found, ControlledPawn) ? Found : nullptr;
 }
 
+bool ACataclysmPlayerController::AimPointUnderCursor(FVector& OutPoint) const
+{
+	// AN ENEMY UNDER THE CURSOR FIRST, by the click's own test. Issue #2870: the floor trace below passes through every
+	// creature and lands behind it, so the body the player is pointing at is asked for before the floor is. Given by
+	// hand in an automation test, it is asked the same question `EnemyUnderCursor` asks of what its trace found.
+	AActor* Enemy = bCursorGivenForTest
+		? (IsClickableEnemy(CursorEnemyForTest.Get(), GetPawn()) ? CursorEnemyForTest.Get() : nullptr)
+		: EnemyUnderCursor();
+	if (Enemy)
+	{
+		OutPoint = Enemy->GetActorLocation();
+		return true;
+	}
+
+	if (bCursorGivenForTest)
+	{
+		OutPoint = CursorFloorForTest;
+		return true;
+	}
+
+	// AND OTHERWISE THE FLOOR, THE TRACE THE AIM HAS ALWAYS MADE: visibility, against complex collision, the same as
+	// `UpdateCachedDestination` places a move order with. Nothing under the cursor is the sky or the space past the
+	// floor's edge, and the caller falls back to the character.
+	FHitResult Hit;
+	if (GetHitResultUnderCursor(ECollisionChannel::ECC_Visibility, /*bTraceComplex=*/true, Hit))
+	{
+		OutPoint = Hit.Location;
+		return true;
+	}
+	return false;
+}
+
 bool ACataclysmPlayerController::IsClickableEnemy(const AActor* Found, const AActor* ControlledPawn)
 {
 	if (!IsValid(Found) || Found == ControlledPawn)

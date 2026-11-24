@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmBuriedWeapon.generated.h"
 
+class UStaticMeshComponent;
+
 /**
  * A weapon left in a creature, which tears free when it dies and buries itself
  * in the next one.
@@ -32,6 +34,23 @@
  *
  * ONE PER ACTOR, REFRESHED RATHER THAN ADDED TO, the same shape as the
  * one-stack rule the design states for ailments and damage over time.
+ *
+ * WHAT ISSUE #2872 CHANGED. The owner, playtesting on 2026-11-24: "I don't
+ * think the axe skill, Harrower, is actually working." The leap was built and
+ * ran in play -- the log's "HIT OUT: ranged attack" lines with Harrower's own
+ * sent figure are its blows, named so because a leap carries no skill object
+ * (ruled 2026-10-22, #2465) -- but three things hid it or cut it short:
+ *
+ * - ITS ONLY LINE WAS VERBOSE, which the log never prints. Each burial, each
+ *   leap and each stop now says so at Display, under `LogPrefix`.
+ * - NOTHING WAS DRAWN. The axe is now drawn in the creature it is buried in,
+ *   when the weapon's mesh loads (`DrawnWeapon`), and leaves the body it tears
+ *   out of.
+ * - A LEAP THAT KILLED ITS NEW HOST ENDED THE CHAIN. The new host's death was
+ *   recorded inside the leap's own blow, before the axe was in it, so nothing
+ *   tore free and the axe stayed in a corpse. With Harrower's blow against an
+ *   ordinary creature that was most leaps. Now the axe tears free of a host its
+ *   own leap killed and goes on, "until nothing is left in reach".
  */
 UCLASS(ClassGroup = (Cataclysm), meta = (BlueprintSpawnableComponent))
 class CATACLYSM_API UCataclysmBuriedWeapon : public UActorComponent
@@ -75,9 +94,64 @@ public:
 	 * IT RUNS BEFORE THE DEATH IS RECORDED, so the dying creature is still an
 	 * ordinary target to the search and is excluded by name instead.
 	 *
+	 * AND IT GOES ON FROM A HOST ITS OWN BLOW KILLED. Issue #2872. That host's
+	 * death is recorded inside the blow, before the axe is in it, so it tears
+	 * nothing free itself; this goes on from it at once, to the nearest living
+	 * enemy within reach of it, until a host survives the blow or nothing is in
+	 * reach. Every creature whose death is tearing this axe free at the moment is
+	 * left out of every search, by name, because none of them is recorded dead
+	 * yet; and a death already tearing an axe free is not torn again, which is
+	 * what stops a second axe in a host this one killed leaping back into a
+	 * creature still dying further up the same chain.
+	 *
+	 * WHERE IT STOPS, it stays: in the last body it reached, drawn there, and
+	 * destroyed with it. A leap takes it out of the body it left.
+	 *
 	 * @return whether it found a new host
 	 */
 	static bool LeapFromDying(AActor* Dying);
+
+	/**
+	 * What every line this writes to the log begins with, at Display. Issue #2872:
+	 * "BURIED WEAPON: Harrower's weapon tore free of ... and struck ...". One line
+	 * when it is buried by a throw, one for each leap, and one where it stops.
+	 */
+	static const TCHAR* const LogPrefix;
+
+	/**
+	 * The item base whose mesh draws a weapon thrown by a skill with these tags:
+	 * `Weapon_` and the last part of its `Item.Weapon.` tag, so Harrower's
+	 * `Item.Weapon.Axe` is `Weapon_Axe`, the row `DT_WeaponMeshes` draws the Axe
+	 * in the hand with. None when no such tag is held. Issue #2872.
+	 */
+	static FName WeaponBaseFor(const FGameplayTagContainer& InSkillTags);
+
+	/**
+	 * Draw the weapon in the creature it is buried in, its blade toward the
+	 * creature's middle from `CameFrom`, where the throw or the leap came from.
+	 * Issue #2872.
+	 *
+	 * ONLY WHEN THE MESH LOADS: `UCataclysmWeaponMeshes::MeshFor` the base
+	 * `WeaponBaseFor` names, which is third-party art absent from every worktree
+	 * (`game/docs/weapon-source-assets.md`). Without it nothing is drawn and the
+	 * axe works the same. NO COLLISION, so the cursor, a shot and a body pass it.
+	 * A second burial in the same creature moves the drawn weapon rather than
+	 * drawing another.
+	 *
+	 * @return whether a weapon is drawn
+	 */
+	bool DrawIn(const FVector& CameFrom);
+
+	/** The weapon drawn in the creature, or null when no mesh loaded. Read by tests. */
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> DrawnWeapon;
+
+	/**
+	 * The name of the skill that threw it, captured when it was thrown, for the
+	 * log lines. Issue #2872. Empty for a weapon buried by anything but a skill.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Buried Weapon")
+	FString SkillName;
 
 	/** How far it reaches for its next host, in centimetres. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Buried Weapon")
