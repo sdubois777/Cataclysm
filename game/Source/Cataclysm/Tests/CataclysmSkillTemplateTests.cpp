@@ -2746,6 +2746,12 @@ bool FCataclysmAuraDrainTest::RunTest(const FString&)
 		return false;
 	}
 
+	// ITS OWN 10% A SECOND, as its row states it (issue #2869). An aura stating no
+	// damage deals none since issue #2875, so without a figure the pulse below
+	// would hurt nothing and "burned an enemy inside it" would read a burn whose
+	// first tick is a second away.
+	Aura->DamagePercentOverride = 10.0f;
+
 	TestTrue(TEXT("It activates"), Activate(Caster, Aura));
 	TestTrue(TEXT("And is held"), Aura->IsHeld());
 
@@ -11592,7 +11598,9 @@ bool FCataclysmAuraShredsInsideTest::RunTest(const FString&)
 	Outside.Set(UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
 				70.0f);
 
-	// Conflagration's own row as the sheet now states it.
+	// Conflagration's own row as the sheet stated it before 2026-11-24, when #2869
+	// made its ring 4 m; this test's actors are placed for the 10 m written here,
+	// and `Cataclysm.AuraDamage.` reads the row itself.
 	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Aura,
 		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; "
@@ -11838,6 +11846,11 @@ bool FCataclysmAuraWithoutTheseGivesNeitherTest::RunTest(const FString&)
 		AddError(TEXT("Could not grant the pyre."));
 		return false;
 	}
+
+	// AND ITS ROW'S 66.67% A PULSE, the Ultimate's 400% spread over its six
+	// pulses, ruled 2026-11-24 on issue #2875: an aura stating no damage deals
+	// none, so the pyre's figure is written on its row.
+	Pyre->DamagePercentOverride = 66.67f;
 
 	const float EnemyBefore = Enemy.Health();
 
@@ -34095,7 +34108,10 @@ namespace CataclysmAuraEffectTest
 {
 	using namespace CataclysmSkillTest;
 
-	/** Conflagration's row and tags, as `game/Data/WeaponSkills.csv` states them. */
+	/**
+	 * Conflagration's row and tags, as `game/Data/WeaponSkills.csv` stated them before 2026-11-24, when #2869 made its
+	 * ring 4 m. The actors here are placed for the 10 m written below; `Cataclysm.AuraDamage.` reads the row itself.
+	 */
 	const TCHAR* const AuraEffectConflagrationParams =
 		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
 	const TCHAR* const AuraEffectConflagrationTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Aura");
@@ -34706,7 +34722,10 @@ namespace CataclysmBuffPotencyTest
 	const TCHAR* const BuffPotencyBurningWrathParams =
 		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning");
 
-	/** Conflagration's row and tags, as `game/Data/WeaponSkills.csv` states them. */
+	/**
+	 * Conflagration's row and tags, as `game/Data/WeaponSkills.csv` stated them before 2026-11-24, when #2869 made its
+	 * ring 4 m. The actors here are placed for the 10 m written below; `Cataclysm.AuraDamage.` reads the row itself.
+	 */
 	const TCHAR* const BuffPotencyConflagrationParams =
 		TEXT("Radius=10; Interval=1; Burn=1; Effect=Shred; EffectMagnitude=15; AllyIncreasedDamage=8");
 	const TCHAR* const BuffPotencyConflagrationTags = TEXT("Element.Demonic, Type.AOE.Aura, Slot.Aura");
