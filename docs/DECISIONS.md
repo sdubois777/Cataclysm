@@ -132,6 +132,8 @@ pins the death line as one of `HandleDeath`'s jobs and lists the two attribute r
 No shipped game was researched: no formula or number is chosen here. The fixes restore what the code already said it
 did ("Nothing here is safe to run twice"; "a death is announced once").
 
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

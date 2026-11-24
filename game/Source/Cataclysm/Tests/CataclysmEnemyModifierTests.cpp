@@ -3592,8 +3592,9 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandTagEndsTest,
 namespace CataclysmEnemyModifierTest
 {
 	/**
-	 * A player for a brander to strike, `Where`, every blow reaching its health: no evasion, block, armour or energy
-	 * shield, and `Health` of health. Named for the brand-on-the-dead test, issue #2874.
+	 * A player for a brander to strike, `Where`, every blow reaching its health: no evasion, block, armour, damage
+	 * reduction or energy shield, as `FBareTarget` above holds them, and `Health` of health. Named for the
+	 * brand-on-the-dead test, issue #2874.
 	 */
 	ACataclysmPlayerCharacter* BrandedPlayerAt(UWorld* World, const FVector& Where, float Health)
 	{
@@ -3607,6 +3608,7 @@ namespace CataclysmEnemyModifierTest
 		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
 		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
 		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
 		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
 		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
