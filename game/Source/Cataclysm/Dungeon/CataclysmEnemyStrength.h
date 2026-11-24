@@ -82,4 +82,43 @@ public:
 								   const FCataclysmScoredFloor& Floor,
 								   int32 RarityStep,
 								   FCataclysmStartingFigures& Out);
+
+	/**
+	 * The Starting figures of a creature taken as a thrall by a commander of `CommanderLevel`: what a summoned Imp
+	 * has at that level, times this creature's kind's multiple of an Imp. Before its rarity's scale, which the creature
+	 * applies itself, as it does to `StartingFiguresFor`'s. Issue #2868.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-24: "Shouldn't minions scale based off your stats? Like not 1 for 1, but if A has
+	 * 100 health, and B has 500 health, and minion health scales at like 2x per your level, A would have 200 health and
+	 * B would have 1000 health." Read by the coordinating session: every minion, summoned or taken, has the base of its
+	 * own type and rarity times one factor that grows with the summoner's level, and a taken creature's floor-tier
+	 * scaling is replaced by it, so it is not scaled twice.
+	 *
+	 * THE FACTOR IS THE ONE A SUMMONED IMP ALREADY HAS, A JUDGEMENT: `Base + PerLevel x Level` of the Imp row of
+	 * `game/Data/MinionTypes.csv`, which is the Imp's own base times `1 + (PerLevel / Base) x Level`. So a taken
+	 * creature keeps its ratio to a summoned Imp at every level: a taken Common Imp is a summoned Imp, and anything else
+	 * is the multiple `game/Data/EnemyArchetypes.csv` makes it of an Imp, for health and for damage apart.
+	 *
+	 *     health = Imp health at the level  x  the kind's HealthShare / the Imp's HealthShare
+	 *     damage = Imp damage at the level  x  the kind's DamageShare / the Imp's DamageShare
+	 *     armour = that health  x  (Common's ArmorPerScore x the kind's ArmorShare)
+	 *                           /  (Common's HealthPerScore x the kind's HealthShare)
+	 *
+	 * ARMOUR KEEPS THE PROPORTION TO HEALTH THE DESIGN GIVES THE KIND, a judgement: the Imp states no armour, so there
+	 * is no Imp figure to take a multiple of, and armour has to stay in step with what the creature's health became.
+	 *
+	 * @param CommanderLevel  `ACataclysmMinion::LevelOfSummonerFor` of the commander
+	 * @return false, leaving `Out` untouched, when a table is missing, when either has no row for this archetype, for the
+	 *         Imp archetype or for Common, when the minion type table has no Imp row, or when the Imp archetype states
+	 *         no health or damage share; the caller then keeps the creature's own figures
+	 */
+	static bool ThrallFiguresFor(const UDataTable* EnemyRarityTable,
+								 const UDataTable* EnemyArchetypeTable,
+								 const UDataTable* MinionTypeTable,
+								 FName ArchetypeRow,
+								 int32 CommanderLevel,
+								 FCataclysmStartingFigures& Out);
+
+	/** The row of `game/Data/EnemyArchetypes.csv` and of `game/Data/MinionTypes.csv` a thrall is measured against. */
+	static const TCHAR* ThrallMeasuredAgainst;
 };

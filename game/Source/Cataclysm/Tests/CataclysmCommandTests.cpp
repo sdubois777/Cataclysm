@@ -32,6 +32,14 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPlayerClassStats.h"
+// A taken Brute and a taken Imp, built from their kinds at the commander's level, and the tables they are built from.
+// Issue #2868.
+#include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Character/CataclysmImpCharacter.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
+#include "Engine/DataTable.h"
+#include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
@@ -948,6 +956,295 @@ bool FCataclysmSubjugateRefusalNamesEveryReasonTest::RunTest(const FString&)
 	// THE CASE THE OWNER'S LOG SHOWED, STATED ON ITS OWN: a dead creature is refused as dead, and the text says so.
 	const FString CorpseText = UCataclysmCommand::SubjugateRefusalsText(Commander.Actor, Corpse.Actor);
 	TestTrue(TEXT("a dead creature's refusal names dead"), CorpseText.Contains(TEXT("dead yes")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateReleasesTheOldestTest,
+	"Cataclysm.Command.AFullPoolReleasesTheOldestMinionAndTakesTheTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2856, the owner's ruling of 2026-11-24 for a take the Fervour pool has no room for, "Replace the oldest": "the
+ * oldest minion (an Imp or thrall) is released to make room, and the take happens".
+ *
+ * THE CONTROL FIRST: a pool that could not hold the thrall even with everything released (25, against a thrall's 30)
+ * releases nothing, refuses the take for room, and its imp stays; and with nothing to make room, the target is not held
+ * through the blow, which kills it.
+ *
+ * THEN A FULL POOL OF 75 HOLDING, OLDEST FIRST: a Bolt Turret (5, a machine), a thrall (30), and two imps (10 each), 55
+ * in all, so a thrall of 30 needs 85. The oldest a take may release is the thrall, not the older turret, and releasing
+ * it leaves 25 + 30 = 55, so one release is enough; releasing the cheaper newest imp would have fitted too, and is not
+ * what the ruling says. The target is at 50 health against a blow of 300, so the hold at one health has to apply to a
+ * take that only releasing makes room for.
+ *
+ * THE STAMPS ARE WRITTEN, NOT WAITED FOR: `CommandedSinceSeconds` is what "oldest" reads, and the four are given 0.5, 1,
+ * 2 and 3 seconds so the order is the test's and not the spawn order's. Each follower's reserve is written as its
+ * skill would write it.
+ *
+ * THE FOLLOWERS STAND 20 METRES OFF, beyond the row's range of 15, and the target 3 metres off: the commander is a bare
+ * actor with no team, so its summoned followers have none either and would read as enemies to its search.
+ * `ThingsCommandedBy`, which the release reads, has no range.
+ */
+bool FCataclysmSubjugateReleasesTheOldestTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+	const auto WoundSoEveryBlowLands = [](FScopedCreature& Creature, float Health)
+	{
+		Creature.Actor->SetArmour(0.0f);
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature.Actor))
+		{
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+		Creature.SetHealthTo(Health);
+	};
+	const auto SummonFor = [](AActor* Commander, const FVector& Where, const TCHAR* Type, float Reserve,
+								   float Since) -> ACataclysmMinion*
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(Commander, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+														 FString(Type));
+		if (Made)
+		{
+			Made->ReservedFervour = Reserve;
+			Made->CommandedSinceSeconds = Since;
+		}
+		return Made;
+	};
+
+	// --- THE CONTROL: NO ROOM CAN BE MADE, SO NOTHING IS RELEASED -----------
+	FScopedCaster Cramped(World, FVector::ZeroVector, /*Pool=*/25.0f);
+	ACataclysmMinion* CrampedImp = SummonFor(Cramped.Actor, FVector(-20 * M, 0, 0), TEXT("Imp"), 10.0f, 1.0f);
+	FScopedCreature Doomed(World, FVector(3 * M, 0, 0));
+	WoundSoEveryBlowLands(Doomed, 50.0f);
+	UCataclysmSummonSkill* CrampedTry = GrantSkill<UCataclysmSummonSkill>(
+		Cramped, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!TestNotNull(TEXT("set-up: an imp for the control caster"), CrampedImp) || !CrampedTry)
+	{
+		AddError(TEXT("Could not set up the control."));
+		return false;
+	}
+	CrampedTry->DamagePercentOverride = 300.0f;
+	TestFalse(TEXT("control: no room can be made in a pool of 25 for a thrall of 30"),
+			  UCataclysmCommand::RoomCanBeMadeForAThrall(Cramped.Actor, 30.0f));
+	TestFalse(TEXT("control: so the take is refused"), CrampedTry->Possess());
+	TestTrue(TEXT("control: for want of room"), CrampedTry->bRefusedForRoom);
+	TestEqual(TEXT("control: and nothing is released for it"), CrampedTry->ReleasedToMakeRoom, 0);
+	TestTrue(TEXT("control: so the imp stays"), IsValid(CrampedImp));
+	TestTrue(TEXT("control: and the target, not held, is killed by the blow"),
+			 UCataclysmSkillEffects::IsDead(Doomed.Actor));
+
+	// --- A FULL POOL: THE OLDEST MINION OR THRALL GOES, AND THE TAKE HAPPENS ---
+	FScopedCaster Commander(World, FVector(0, 100 * M, 0), /*Pool=*/75.0f);
+	ACataclysmMinion* Turret = SummonFor(Commander.Actor, FVector(-20 * M, 100 * M, 0), TEXT("BoltTurret"), 5.0f, 0.5f);
+	FScopedCreature OldThrall(World, FVector(-20 * M, 105 * M, 0));
+	ACataclysmMinion* OlderImp = SummonFor(Commander.Actor, FVector(-20 * M, 95 * M, 0), TEXT("Imp"), 10.0f, 2.0f);
+	ACataclysmMinion* NewestImp = SummonFor(Commander.Actor, FVector(-22 * M, 100 * M, 0), TEXT("Imp"), 10.0f, 3.0f);
+	FScopedCreature Target(World, FVector(3 * M, 100 * M, 0));
+	WoundSoEveryBlowLands(Target, 50.0f);
+	if (!TestNotNull(TEXT("set-up: a turret"), Turret) || !TestNotNull(TEXT("set-up: an older imp"), OlderImp)
+		|| !TestNotNull(TEXT("set-up: the newest imp"), NewestImp)
+		|| !TestTrue(TEXT("set-up: the commander takes its first thrall"),
+					 UCataclysmCommand::Subjugate(Commander.Actor, OldThrall.Actor))
+		|| !TestTrue(TEXT("set-up: the turret is a machine"), Turret->bIsMachine))
+	{
+		return false;
+	}
+	OldThrall.Actor->ReservedFervour = 30.0f;
+	OldThrall.Actor->CommandedSinceSeconds = 1.0f;
+	if (!TestEqual(TEXT("set-up: 55 is held back"), UCataclysmCommand::ReservedFervourOf(Commander.Actor), 55.0f, 0.01f)
+		|| !TestFalse(TEXT("set-up: a thrall of 30 does not fit beside it in 75"),
+					  UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f))
+		|| !TestTrue(TEXT("set-up: but releasing can make room"),
+					 UCataclysmCommand::RoomCanBeMadeForAThrall(Commander.Actor, 30.0f)))
+	{
+		return false;
+	}
+	UCataclysmSummonSkill* Take = GrantSkill<UCataclysmSummonSkill>(
+		Commander, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Take)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+	Take->DamagePercentOverride = 300.0f;
+
+	TestTrue(TEXT("a full pool's take happens"), Take->Possess());
+	TestFalse(TEXT("and is not refused for room"), Take->bRefusedForRoom);
+	TestEqual(TEXT("one follower was released to make the room"), Take->ReleasedToMakeRoom, 1);
+	TestFalse(TEXT("the oldest a take may release, the thrall taken first, is gone"), IsValid(OldThrall.Actor));
+	TestTrue(TEXT("the older turret stays: a machine is not released"), IsValid(Turret));
+	TestTrue(TEXT("and both imps stay, though the newest alone would have made room"),
+			 IsValid(OlderImp) && IsValid(NewestImp));
+	TestTrue(TEXT("the target is taken"), UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Contains(Target.Actor));
+	TestFalse(TEXT("and alive: the hold applied to a take that releasing made room for"),
+			  UCataclysmSkillEffects::IsDead(Target.Actor));
+	TestEqual(TEXT("so the pool holds back 5 + 10 + 10 + 30"), UCataclysmCommand::ReservedFervourOf(Commander.Actor),
+			  55.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallScalesWithItsCommanderTest,
+	"Cataclysm.Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2868, the owner's ruling of 2026-11-24: "Shouldn't minions scale based off your stats? Like not 1 for 1, but
+ * if A has 100 health, and B has 500 health, and minion health scales at like 2x per your level, A would have 200
+ * health and B would have 1000 health." At the take, a creature of a designed kind is built again: a summoned Imp's
+ * figures at its commander's level, times its kind's multiple of an Imp, times its rarity's scale.
+ *
+ * AT TWO COMMANDER LEVELS, 10 AND 30, a Herald Brute taken from figures nothing like its kind's (as a deep floor would
+ * have given it) has the same multiple of the summoned Imp at each: the Brute's health and damage shares over the
+ * Imp's, times the Herald's scale from Common, read from the tables, health and damage apart. So it follows the factor
+ * a summoned Imp follows, and keeps its ratio to one.
+ *
+ * AND THE ANCHOR: a taken Common Imp is a summoned Imp, health and blow. THE CONTROL: a creature of no designed kind,
+ * the sandbox's training dummy, keeps its own figures, as every thrall did before.
+ *
+ * THE LEVEL IS `Cataclysm.PlayerLevel`, which is the level a bare commander summons and takes at
+ * (`UCataclysmPlayerClassStats::ChosenLevel`), set through the console variable and put back, as
+ * `Cataclysm.PlayerStats.TheChosenLevelStaysInsideTheDesignedRange` sets it.
+ */
+bool FCataclysmThrallScalesWithItsCommanderTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	IConsoleVariable* LevelVariable = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.PlayerLevel"));
+	if (!TestNotNull(TEXT("set-up: the level console variable"), LevelVariable))
+	{
+		return false;
+	}
+	const int32 Restore = LevelVariable->GetInt();
+	ON_SCOPE_EXIT { LevelVariable->Set(Restore, ECVF_SetByConsole); };
+
+	// THE EXPECTED MULTIPLES, FROM THE TABLES THE GAME BUILDS FROM.
+	const UDataTable* Kinds = UCataclysmEnemyStrength::LoadEnemyArchetypeTable();
+	const FCataclysmEnemyArchetypeRow* Brute = Kinds
+		? Kinds->FindRow<FCataclysmEnemyArchetypeRow>(FName(TEXT("Brute")), TEXT("ThrallScalesTest"), false)
+		: nullptr;
+	const FCataclysmEnemyArchetypeRow* ImpKind = Kinds
+		? Kinds->FindRow<FCataclysmEnemyArchetypeRow>(FName(TEXT("Imp")), TEXT("ThrallScalesTest"), false)
+		: nullptr;
+	float HeraldHealthScale = 0.0f;
+	float HeraldDamageScale = 0.0f;
+	float HeraldArmourScale = 0.0f;
+	constexpr int32 HeraldStep = 3;
+	if (!TestNotNull(TEXT("set-up: the Brute's archetype row"), Brute)
+		|| !TestNotNull(TEXT("set-up: the Imp's archetype row"), ImpKind)
+		|| !TestTrue(TEXT("set-up: the Herald's scale from Common"),
+					 UCataclysmEnemyRarity::ScalingFromCommon(UCataclysmEnemyRarity::LoadEnemyRarityTable(),
+															  HeraldStep, HeraldHealthScale, HeraldDamageScale,
+															  HeraldArmourScale)))
+	{
+		return false;
+	}
+	const float HealthMultiple = Brute->HealthShare / ImpKind->HealthShare * HeraldHealthScale;
+	const float DamageMultiple = Brute->DamageShare / ImpKind->DamageShare * HeraldDamageScale;
+
+	const auto Read = [](const AActor* Creature, const FGameplayAttribute& Attribute)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		return System ? System->GetNumericAttribute(Attribute) : 0.0f;
+	};
+	FActorSpawnParameters Anywhere;
+	Anywhere.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	float HeraldHealthAt[2] = {0.0f, 0.0f};
+	float ImpHealthAt[2] = {0.0f, 0.0f};
+	const int32 Levels[2] = {10, 30};
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		const int32 Level = Levels[Index];
+		LevelVariable->Set(Level, ECVF_SetByConsole);
+
+		ACataclysmBruteCharacter* Herald = World->SpawnActor<ACataclysmBruteCharacter>(
+			FVector(5 * M, 10 * M * Index, 0), FRotator::ZeroRotator, Anywhere);
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Commander.Actor, FVector(-5 * M, 10 * M * Index, 0),
+														/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (!TestNotNull(TEXT("set-up: a Brute"), Herald) || !TestNotNull(TEXT("set-up: a summoned Imp"), Imp))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Herald)) { Herald->Destroy(); } if (IsValid(Imp)) { Imp->Destroy(); } };
+
+		// A HERALD, WITH FIGURES NOTHING LIKE ITS KIND'S, AS A DEEP FLOOR WOULD HAVE GIVEN IT.
+		Herald->SetRarityStep(HeraldStep);
+		Herald->SetHealth(123456.0f);
+		Herald->SetAttackDamage(789.0f);
+		Herald->SetArmour(4321.0f);
+		if (!TestTrue(FString::Printf(TEXT("level %d: the commander takes the Herald"), Level),
+					  UCataclysmCommand::Subjugate(Commander.Actor, Herald)))
+		{
+			return false;
+		}
+
+		const float HeraldHealth = Read(Herald, UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float HeraldDamage = Read(Herald, UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+		const float ImpHealth = Read(Imp, UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		const float ImpDamage = Imp->OwnDamagePerHit;
+		if (!TestTrue(FString::Printf(TEXT("level %d: the summoned Imp has health and a blow"), Level),
+					  ImpHealth > 0.0f && ImpDamage > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("level %d: the Herald Brute's health is its kind's multiple of the Imp's"), Level),
+				  HeraldHealth / ImpHealth, HealthMultiple, HealthMultiple * 0.001f);
+		TestEqual(FString::Printf(TEXT("level %d: and its attack damage is its kind's multiple of the Imp's blow"),
+								  Level),
+				  HeraldDamage / ImpDamage, DamageMultiple, DamageMultiple * 0.001f);
+		TestFalse(FString::Printf(TEXT("level %d: the floor's figures are gone"), Level),
+				  FMath::IsNearlyEqual(HeraldHealth, 123456.0f * HeraldHealthScale, 1.0f));
+		HeraldHealthAt[Index] = HeraldHealth;
+		ImpHealthAt[Index] = ImpHealth;
+	}
+	TestTrue(TEXT("the commander's level raised both"), HeraldHealthAt[1] > HeraldHealthAt[0]
+			 && ImpHealthAt[1] > ImpHealthAt[0]);
+	TestEqual(TEXT("by the same factor: the Herald kept its ratio to the Imp"),
+			  HeraldHealthAt[1] / HeraldHealthAt[0], ImpHealthAt[1] / ImpHealthAt[0], 0.001f);
+
+	// THE ANCHOR: A TAKEN COMMON IMP IS A SUMMONED IMP.
+	LevelVariable->Set(10, ECVF_SetByConsole);
+	ACataclysmImpCharacter* CommonImp = World->SpawnActor<ACataclysmImpCharacter>(
+		FVector(5 * M, 40 * M, 0), FRotator::ZeroRotator, Anywhere);
+	ACataclysmMinion* Summoned = ACataclysmMinion::Spawn(Commander.Actor, FVector(-5 * M, 40 * M, 0),
+														 /*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: a creature Imp"), CommonImp) || !TestNotNull(TEXT("set-up: a summoned Imp"), Summoned))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(CommonImp)) { CommonImp->Destroy(); } if (IsValid(Summoned)) { Summoned->Destroy(); } };
+	CommonImp->SetHealth(77.0f);
+	CommonImp->SetAttackDamage(3.0f);
+	if (!TestTrue(TEXT("the commander takes a Common Imp"), UCataclysmCommand::Subjugate(Commander.Actor, CommonImp)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a taken Common Imp has a summoned Imp's health"),
+			  Read(CommonImp, UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			  Read(Summoned, UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), 0.01f);
+	TestEqual(TEXT("and its blow"), Read(CommonImp, UCataclysmCombatAttributeSet::GetAttackDamageAttribute()),
+			  Summoned->OwnDamagePerHit, 0.01f);
+
+	// THE CONTROL: NO DESIGNED KIND, ITS OWN FIGURES.
+	FScopedCreature Dummy(World, FVector(5 * M, 50 * M, 0), ECataclysmTeam::Monsters, /*Health=*/1000.0f);
+	if (!TestTrue(TEXT("control: the commander takes a training dummy"),
+				  UCataclysmCommand::Subjugate(Commander.Actor, Dummy.Actor)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a creature of no designed kind keeps its own maximum"),
+			  Read(Dummy.Actor, UCataclysmVitalAttributeSet::GetMaxHealthAttribute()), 1000.0f, 0.01f);
 	return true;
 }
 

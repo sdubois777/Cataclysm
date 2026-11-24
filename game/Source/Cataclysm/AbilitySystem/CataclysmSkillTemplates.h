@@ -1776,6 +1776,12 @@ public:
 	 * in the pool -- is held at one health through the blow
 	 * (`ACataclysmCharacterBase::bHeldAliveForATake`), and so is taken.
 	 *
+	 * AND A POOL WITH NO ROOM RELEASES ITS OLDEST FOLLOWERS UNTIL IT HAS SOME. The
+	 * owner's ruling of 2026-11-24, "Replace the oldest" (issue #2856). So room
+	 * that releasing can make counts as room for the hold above as well, and a
+	 * take is refused for room only when releasing every minion and thrall would
+	 * still not make it (`ReleasedToMakeRoom`, `bRefusedForRoom`).
+	 *
 	 * Public so a test can drive it without aiming.
 	 *
 	 * @return whether an enemy was taken
@@ -1806,6 +1812,15 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bRefusedForRoom = false;
+
+	/**
+	 * How many followers the last use released to make room for its thrall. Issue #2856, the owner's ruling of
+	 * 2026-11-24, "Replace the oldest": a take the pool has no room for releases the oldest minion or thrall, one at a
+	 * time, until it fits (`UCataclysmCommand::ReleaseOldestForAThrall`). Nought when there was room, and when none
+	 * could be made, which is still `bRefusedForRoom`. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 ReleasedToMakeRoom = 0;
 
 	/**
 	 * How many are alive, after dropping the ones that expired or died. A dead

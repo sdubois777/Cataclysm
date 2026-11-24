@@ -17,6 +17,9 @@
 #include "Character/CataclysmEnemyCharacter.h"
 // A creature taken leaves the floor's list of enemies. Issue #2797.
 #include "Dungeon/CataclysmDungeonGameMode.h"
+// A thrall's figures are built from its kind and its commander's level at the take. Issue #2868.
+#include "Character/CataclysmEnemyRarity.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
 // The line of sight `ThingsCommandedInSightOf` traces. Issue #2792.
 #include "CollisionQueryParams.h"
 #include "Engine/World.h"
@@ -854,6 +857,92 @@ bool UCataclysmCommand::HasRoomForAnotherThrall(const AActor* Commander,
 	return HasRoomToReserve(Commander, PerThrall * (bWouldBeChosen ? 2.0f : 1.0f));
 }
 
+TArray<ACataclysmCharacterBase*> UCataclysmCommand::ReleasableOldestFirst(const AActor* Commander)
+{
+	TArray<ACataclysmCharacterBase*> Releasable;
+	for (AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (Body && !(Minion && Minion->bIsMachine))
+		{
+			Releasable.Add(Body);
+		}
+	}
+
+	// OLDEST FIRST, BY THE STAMP; NEVER STAMPED IS NEWEST. A stable sort, so a tie keeps `ThingsCommandedBy`'s order.
+	Releasable.StableSort([](const ACataclysmCharacterBase& A, const ACataclysmCharacterBase& B)
+	{
+		const float AFrom = A.CommandedSinceSeconds >= 0.0f ? A.CommandedSinceSeconds : TNumericLimits<float>::Max();
+		const float BFrom = B.CommandedSinceSeconds >= 0.0f ? B.CommandedSinceSeconds : TNumericLimits<float>::Max();
+		return AFrom < BFrom;
+	});
+	return Releasable;
+}
+
+bool UCataclysmCommand::RoomCanBeMadeForAThrall(const AActor* Commander, float PerThrall)
+{
+	if (HasRoomForAnotherThrall(Commander, PerThrall))
+	{
+		return true;
+	}
+	const UCataclysmAbilitySystemComponent* Pool =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Pool)
+	{
+		return false;
+	}
+
+	// WHAT STAYS WHEN EVERY RELEASABLE FOLLOWER IS GONE: the machines' reserves, each once, since none is ever chosen.
+	const TArray<ACataclysmCharacterBase*> Releasable = ReleasableOldestFirst(Commander);
+	float Staying = 0.0f;
+	for (AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		if (Body && !Releasable.Contains(Body))
+		{
+			Staying += Body->ReservedFervour;
+		}
+	}
+
+	// AND THE NEW THRALL, TWICE WHILE A SECOND SELF IS HELD, because nothing is left to be chosen before it. Held is
+	// what `UCataclysmSecondSelf` answers either way: a chosen follower, or a share owed to the next one taken.
+	const bool bHoldsSecondSelf = UCataclysmSecondSelf::Chosen(Commander) != nullptr
+		|| UCataclysmSecondSelf::ExtraThrallShares(Commander) > 0;
+	return Staying + PerThrall * (bHoldsSecondSelf ? 2.0f : 1.0f) <= Pool->MaximumClassResource();
+}
+
+int32 UCataclysmCommand::ReleaseOldestForAThrall(const AActor* Commander, float PerThrall)
+{
+	if (!IsValid(Commander) || HasRoomForAnotherThrall(Commander, PerThrall)
+		|| !RoomCanBeMadeForAThrall(Commander, PerThrall))
+	{
+		return 0;
+	}
+
+	int32 Released = 0;
+	for (ACataclysmCharacterBase* Oldest : ReleasableOldestFirst(Commander))
+	{
+		if (HasRoomForAnotherThrall(Commander, PerThrall))
+		{
+			break;
+		}
+		if (!IsValid(Oldest))
+		{
+			continue;
+		}
+		// SAID BEFORE IT GOES, with what it held and since when, so a play log shows which follower made the room.
+		UE_LOG(LogCataclysm, Log,
+			TEXT("RELEASED: '%s' released '%s', which held %.0f Fervour back and was commanded from %.1f s, to make room "
+				 "for a thrall reserving %.0f."),
+			*Commander->GetName(), *Oldest->GetName(), Oldest->ReservedFervour, Oldest->CommandedSinceSeconds,
+			PerThrall);
+		Oldest->Destroy();
+		++Released;
+	}
+	return Released;
+}
+
 float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
 {
 	float Reserved = 0.0f;
@@ -1132,6 +1221,36 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// tags, so a minion_health row requiring a tag does not reach a thrall. Not ruled either way.
 	if (ACataclysmEnemyCharacter* AsCreature = Cast<ACataclysmEnemyCharacter>(Taken))
 	{
+		// AND FIRST ITS OWN FIGURES ARE BUILT AGAIN, FROM ITS KIND AND ITS COMMANDER'S LEVEL AND NOT FROM THE FLOOR.
+		// Issue #2868, the owner's ruling of 2026-11-24: "Shouldn't minions scale based off your stats? Like not 1 for
+		// 1, but if A has 100 health, and B has 500 health, and minion health scales at like 2x per your level, A would
+		// have 200 health and B would have 1000 health." `UCataclysmEnemyStrength::ThrallFiguresFor` has the arithmetic:
+		// a summoned Imp's figures at the commander's level times the kind's multiple of an Imp. The creature still
+		// applies its rarity's scale and the modifiers it carries itself, so a taken Herald is a Herald's multiple of a
+		// Common of its kind, and the minion health below multiplies the result.
+		//
+		// SET AS ITS STARTING FIGURES, through the three setters the dungeon builds a creature with, so a rung raised
+		// later scales these and a save keeps them. FIXED AT THE TAKE, as a summoned minion's are at its summoning.
+		//
+		// A CREATURE OF NO DESIGNED KIND KEEPS ITS OWN FIGURES: the sandbox's training dummy, which the tests take, has
+		// no archetype row, and a missing table leaves every creature as it was.
+		FCataclysmStartingFigures AsAMinion;
+		if (!AsCreature->ArchetypeRow.IsNone()
+			&& UCataclysmEnemyStrength::ThrallFiguresFor(
+				UCataclysmEnemyRarity::LoadEnemyRarityTable(), UCataclysmEnemyStrength::LoadEnemyArchetypeTable(),
+				ACataclysmMinion::LoadTypeTable(), AsCreature->ArchetypeRow,
+				ACataclysmMinion::LevelOfSummonerFor(Commander), AsAMinion))
+		{
+			AsCreature->SetHealth(AsAMinion.Health);
+			AsCreature->SetAttackDamage(AsAMinion.AttackDamage);
+			AsCreature->SetArmour(AsAMinion.Armour);
+			UE_LOG(LogCataclysm, Log,
+				TEXT("'%s' takes '%s' as a minion of level %d: %.0f health, %.1f attack damage and %.0f armour before "
+					 "its rarity and modifiers."),
+				*Commander->GetName(), *AsCreature->GetName(), ACataclysmMinion::LevelOfSummonerFor(Commander),
+				AsAMinion.Health, AsAMinion.AttackDamage, AsAMinion.Armour);
+		}
+
 		AsCreature->SetCommanderHealthMultiplier(SummonerMultiplierFor(
 			Commander, TEXT("minion_health"), FGameplayTagContainer()));
 	}

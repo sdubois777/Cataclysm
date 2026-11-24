@@ -4511,6 +4511,7 @@ bool UCataclysmSummonSkill::Possess()
 {
 	bTookIt = false;
 	bRefusedForRoom = false;
+	ReleasedToMakeRoom = 0;
 
 	AActor* Self = Avatar();
 	if (!Self)
@@ -4588,13 +4589,17 @@ bool UCataclysmSummonSkill::Possess()
 	// decided before the damage. The blow's outcome is resolved inside the target's own attribute set -- evasion, block,
 	// armour, every shield -- and cannot be known before it lands, while a hold at one is the shape the sigil already
 	// uses. So the blow still lands in full on everything else: a boss, a creature already ours, a dead one, and every
-	// target when the pool has no room, which the blow may kill as before.
+	// target when the pool has no room and releasing cannot make any, which the blow may kill as before.
 	//
 	// AROUND THE BLOW AND ONLY THE BLOW, and everything it sets off before it returns: a burn's first tick, a row's
 	// answer to the hit. A weak pointer, so a target something else removed during the blow is not written to.
+	//
+	// ROOM THAT RELEASING THE OLDEST CAN MAKE COUNTS AS ROOM, since the owner's ruling of 2026-11-24, "Replace the
+	// oldest": a pool with no room no longer refuses a take that releasing can make room for (below), so such a target
+	// is one it could take and is held too.
 	TWeakObjectPtr<ACataclysmCharacterBase> HeldForTheTake;
 	if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None
-		&& UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))
+		&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))
 	{
 		HeldForTheTake = Cast<ACataclysmCharacterBase>(Target);
 	}
@@ -4705,6 +4710,18 @@ bool UCataclysmSummonSkill::Possess()
 	// your army is only as large as your pool." Asked before the taking rather
 	// than after, so a refusal leaves the creature exactly as the blow left it
 	// rather than taking it and giving it back.
+	//
+	// AND WHEN IT HAS NONE, THE OLDEST IS RELEASED TO MAKE IT. Issue #2856, the owner's ruling of 2026-11-24, "Replace
+	// the oldest": "the oldest minion (an Imp or thrall) is released to make room, and the take happens". Only once
+	// nothing else would refuse the take -- the threshold was judged above and the command's own reasons are asked here
+	// -- so nothing is released for a take that is then refused; and only when releasing can make room at all
+	// (`UCataclysmCommand::ReleaseOldestForAThrall` asks). Each release logs its own line in the command.
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this))
+		&& UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None)
+	{
+		ReleasedToMakeRoom = UCataclysmCommand::ReleaseOldestForAThrall(
+			Self, FervourReserveFor(Self, Params, SkillTags, this));
+	}
 	if (!UCataclysmCommand::HasRoomForAnotherThrall(
 			Self, FervourReserveFor(Self, Params, SkillTags, this)))
 	{

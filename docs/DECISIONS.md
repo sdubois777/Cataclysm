@@ -2,6 +2,171 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A full pool releases the oldest minion or thrall so Subjugate's take happens (#2856), and a thrall is built from its own kind and rarity at its commander's level, not the floor's (#2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** A second commit on `fix/thralls-2856`, on top of the entry
+below, by the coordinating session's brief of 2026-11-24 carrying the owner's two rulings of that day. Issues
+[#2856](https://github.com/sdubois777/Cataclysm/issues/2856) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand::ReleasableOldestFirst`, `RoomCanBeMadeForAThrall` and `ReleaseOldestForAThrall`
+(new), and `Subjugate`, which now builds a thrall's figures (`CataclysmCommand.h`, `.cpp`);
+`UCataclysmSummonSkill::Possess` and `ReleasedToMakeRoom` (`CataclysmSkillTemplates.cpp`, `.h`);
+`UCataclysmEnemyStrength::ThrallFiguresFor` and `ThrallMeasuredAgainst` (`Dungeon/CataclysmEnemyStrength.h`, `.cpp`);
+`ACataclysmMinion::LevelOfSummonerFor` and `TypeFiguresAtLevel` (`CataclysmMinion.h`, `.cpp`); `docs/Cataclysm_GDD_v2.md`
+(the reserve paragraph, Subjugate's row, and a new paragraph after "The summoner's level is the floor"); two new
+automation tests.
+
+### The rulings, verbatim
+
+- **#2856, the owner, 2026-11-24, the option chosen for a take the pool has no room for:** "Replace the oldest". The
+  option's text: "the oldest minion (an Imp or thrall) is released to make room, and the take happens". The brief:
+  "Released means it stops being the player's: decide whether it dies or reverts to an enemy, as a judgement
+  (recommended: it dies, so no surprise enemy appears beside the player), and log the release."
+- **#2868, the owner, 2026-11-24:** "Shouldn't minions scale based off your stats? Like not 1 for 1, but if A has 100
+  health, and B has 500 health, and minion health scales at like 2x per your level, A would have 200 health and B
+  would have 1000 health. That's how I envision the scaling I think. Same with damage and such, but obviously more
+  thought out and balanced than that". **The coordinating session's reading, recorded on #2868:** "every minion,
+  summoned or taken, has the base of its own type and rarity, multiplied by one factor that grows with the summoner's
+  level (and the summoner's minion modifiers on top, as now) ... A taken creature's floor-tier scaling is replaced by
+  the summoner's level factor, so a thrall is not scaled twice." **This build follows that reading** and asks the
+  coordinating session to confirm it, as it asked.
+
+### #2856: a full pool releases the oldest
+
+**What changes in play.** When Subjugate would take a creature and the Fervour pool has no room for the thrall, the
+oldest minion or thrall the player holds is released, then the next oldest if that is not enough, until the thrall
+fits, and the take happens. Such a target is held at one health through the blow too (the entry below), because a take
+releasing can make room for is a take that will happen. When releasing every minion and thrall would still not make
+room, nothing is released and the take is refused for room, as before.
+
+**Judgement 1, what "released" is: it leaves the world, as a follower does when its commander leaves the dungeon
+(`ACataclysmDungeonGameMode::EndEveryPlayersFollowers`) or as a summoned minion does when its time runs out.** It does
+not turn back into an enemy, which was the brief's reason to recommend a death. It does not die either, and that is the
+departure from the recommendation: a death sets off what this game hangs on a minion's death -- Every One Bursts'
+explosion, Press-Ganged and Rekindled summoning a replacement into the room the release just made, the Ritualist's 5
+Fervour for losing a minion, a Soul for Reaper's Embrace, a Tyrant's Minion -- and a release made to fit a thrall should
+pay the player nothing and must not refill the pool it emptied. Each release is logged at `Log`: "RELEASED: '<player>'
+released '<follower>', which held <n> Fervour back and was commanded from <t> s, to make room for a thrall reserving
+<n>."
+
+**Judgement 2, oldest is `CommandedSinceSeconds`**, the stamp a summoning and a take both write, which is what A Second
+Self already reads as "held longest"; a follower never stamped counts as the newest, as there; a tie goes to the nearer.
+
+**Judgement 3, a deployable machine is never released.** The ruling names "an Imp or thrall". A turret, a ballista or a
+trap is placed for a fight, and A Second Self chooses among the same followers (`ACataclysmMinion::bIsMachine`).
+
+**Judgement 4, releases stop as soon as the thrall fits, one at a time,** each followed by `HasRoomForAnotherThrall`,
+so A Second Self's double count, which moves to the next oldest when the oldest goes, is counted the way that function
+counts it. The oldest goes even when a newer, cheaper one would have made room: the ruling says the oldest.
+
+**Judgement 5, nothing is released for a take that will not happen.** The release is made after the health threshold
+has been judged and only when none of `Subjugate`'s refusals holds; and `RoomCanBeMadeForAThrall` first asks whether
+releasing every releasable follower would make room -- the machines' reserves staying, and the new thrall counting
+twice while A Second Self is held, since nothing would be left to be chosen before it.
+
+### #2868: a thrall's figures from its kind and its commander's level
+
+**How summoned minions rise with level today, read 2026-11-24:** `ACataclysmMinion::Spawn` gives each minion
+`Base + PerLevel x Level` of its row of `game/Data/MinionTypes.csv`, at its summoner's level, fixed at the summoning.
+That is the type's own base times `1 + (PerLevel / Base) x Level`: one factor per stat growing with the level, which is
+the owner's model. Every creature row climbs 0.45 of its base health a level; damage climbs 1.0 of its base (0.9 for the
+Mote).
+
+**So the factor is reused, Judgement 6:** a thrall is a summoned Imp's health and blow at its commander's level, times
+the multiple `game/Data/EnemyArchetypes.csv` makes its kind of an Imp (health shares and damage shares apart), times its
+rarity's scale from Common (`UCataclysmEnemyRarity::ScalingFromCommon`) and the modifiers it carries, as every creature
+applies them, and then its commander's minion health, as before. A taken Common Imp is a summoned Imp, and every thrall
+keeps its ratio to a summoned Imp at every level. The option not taken: a new curve for thralls alone, which would make
+an Imp and a taken creature grow apart.
+
+**Judgement 7, armour keeps the proportion to health the kind has on a floor:** `health x (Common's ArmorPerScore x the
+kind's ArmorShare) / (Common's HealthPerScore x the kind's HealthShare)`. The Imp states no armour, so there is no Imp
+figure to multiply, and a floor's armour beside a level's health would be the double scaling the reading forbids.
+
+**Judgement 8, the rarity is its scale from Common and no more.** On a floor a rarer creature also scores higher, so
+rarity reaches it twice; the reading says "the base of its own type and rarity", and the rarity's own scale is what the
+creature applies to whatever figures it is given.
+
+**Fixed at the take**, through the creature's three Starting setters, so a rung raised later scales them and a save
+keeps them. A creature with no archetype row -- the sandbox's training dummy, which most thrall tests take -- or a missing
+table keeps its own figures. **Summoned minions are not changed.** The Warzone's allied soldiers, taken with
+`Subjugate`, are built this way too.
+
+**The research, fetched 2026-11-24:**
+
+- **Path of Exile, Raise Spectre** ([poedb](https://poedb.tw/us/Raise_Spectre)): "Raised Spectres are Level (28—70)",
+  from the gem, and the community section: "the level of a Spectre is now based on the level of the Raise Spectre skill
+  gem"; spectres are "the normal version of that monster type". A taken creature's level comes from the player's
+  investment and not from the area: the reading's replacement of the floor tier.
+- **Path of Exile, Dominating Blow** ([poedb](https://poedb.tw/us/Dominating_Blow)): the Sentinel keeps "the same
+  rarity, prefix and suffix modifiers", and "Sentinel stats scale heavily with the gem level". Rarity kept, level from
+  the player.
+- **Last Epoch**, patch notes ([forum](https://forum.lastepoch.com/t/last-epoch-beneath-ancient-skies-patch-notes/78635/3)):
+  "You now gain 0.8% minion power per character level (from 0.6%)", "at level 100 your minions deal 60% more damage and
+  take 60% less damage". One multiplier from the character's level over every minion.
+- **Diablo 4**: no page this tool could read stated how minions scale with level (maxroll's resource page answered 404);
+  community posts say minions inherit a share of the Necromancer's stats, which is not a level factor and was not
+  verified. Not used.
+
+**What the research settles:** a taken or raised creature in the genre takes its level, and so its figures, from the
+player and not from where it was found, and keeps its rarity where it is taken (Dominating Blow). **What it does not
+settle, and is Judgement 6:** the curve. This game already has one for its minions, tuned so that three imps out-damage
+their summoner's basic attack at every tier (`tools/tests/test_minion_stat_blocks.py`), and a thrall reuses it.
+
+**The comparison, from the tables as they stand** (a summoned Imp's attack interval is 1.0 s; an enemy Imp's 0.9 s and
+a Brute's 1.2 s, which a thrall keeps; armour after the rarity's scale; no minion modifier):
+
+| Level | Summoned Imp | Taken Common Imp | Taken Common Brute | Taken Herald Brute | Taken Herald Imp |
+| :-: | :-- | :-- | :-- | :-- | :-- |
+| 1 | 290 health, 21.0 a hit, 21.0 a second | 290 health, 21.0 a hit, 23.3 a second | 1,823 health, 81.7 a hit, 68.1 a second, 497 armour | 11,542 health, 224.1 a hit, 186.7 a second, 1,223 armour | 1,836 health, 57.6 a hit, 64.0 a second |
+| 10 | 1,100 health, 115.5 a hit, 115.5 a second | 1,100 health, 115.5 a hit, 128.3 a second | 6,914 health, 449.2 a hit, 374.3 a second, 1,886 armour | 43,779 health, 1,232.5 a hit, 1,027.1 a second, 4,640 armour | 6,965 health, 316.9 a hit, 352.1 a second |
+| 50 | 4,700 health, 535.5 a hit, 535.5 a second | 4,700 health, 535.5 a hit, 595.0 a second | 29,543 health, 2,082.5 a hit, 1,735.4 a second, 8,057 armour | 187,054 health, 5,714.4 a hit, 4,762.0 a second, 19,824 armour | 29,759 health, 1,469.4 a hit, 1,632.7 a second |
+
+The multiples, the same at every level: a Common Brute 6.29 times an Imp's health and 3.89 times its blow; a Herald
+Brute 39.8 and 10.7; a Herald Imp 6.33 and 2.74. **For the owner, a balance question this does not settle:** a thrall
+reserves 30 Fervour and an imp 10, so a taken Common Brute is about three imps' damage a second in one body of six
+imps' health, and a taken Herald Brute nine imps' damage a second and forty imps' health, for the reserve of three. That
+is the design's own size for a Herald, which is one creature in 25. Before this change a taken Herald Brute kept the
+floor's figures, 3,232 health and 72 a hit on the last floor of a tier 1 dungeon, which is why the owner's level-10 imps
+out-hit one.
+
+**The simulation does not model minions or thralls** (`sim/cataclysm_sim` has the minion affixes and no minion stat
+block), so nothing there moves.
+
+### Tests
+
+Registered, not run. **Two new automation tests**, predicting `Cataclysm.Command.` 28 to 30 (25 before this branch):
+
+- `Cataclysm.Command.AFullPoolReleasesTheOldestMinionAndTakesTheTarget`: the control first, a pool of 25 that cannot
+  hold a thrall of 30 even emptied releases nothing, refuses for room, keeps its imp, and its target is killed by the
+  unheld blow; then a pool of 75 holding a turret, a thrall and two imps (55) releases exactly the thrall, the oldest a
+  take may release, keeps the older turret and both imps, and takes a target at 50 health alive.
+- `Cataclysm.Command.ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel`: at commander levels 10 and 30, a
+  Herald Brute taken from figures nothing like its kind's has, to the summoned Imp of the same level, the Brute's share
+  ratio times the Herald's scale, health and damage apart, read from the tables, so both rise by the same factor; a taken
+  Common Imp has a summoned Imp's health and blow; and a training dummy keeps its own maximum.
+
+**Guard proofs registered for the window:**
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| O1 | `Oldest->Destroy();` to `(void)Oldest;` (`CataclysmCommand.cpp`) | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O2 | `return AFrom < BFrom;` to `return AFrom > BFrom;` | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O3 | `if (Body && !(Minion && Minion->bIsMachine))` to `if (Body && !(Minion && false))` | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| O4 | `&& UCataclysmCommand::RoomCanBeMadeForAThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))` to `&& UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))` (`CataclysmSkillTemplates.cpp`) | `AFullPoolReleasesTheOldestMinionAndTakesTheTarget` |
+| L1 | `AsCreature->SetHealth(AsAMinion.Health);` to `(void)AsAMinion.Health;` (`CataclysmCommand.cpp`) | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L2 | `ACataclysmMinion::LevelOfSummonerFor(Commander), AsAMinion))` to `1, AsAMinion))` | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+| L3 | `ImpHealth * Kind->HealthShare / ImpKind->HealthShare` to `ImpHealth` (`CataclysmEnemyStrength.cpp`) | `ATakenHeraldIsItsKindsMultipleOfAnImpAtItsCommandersLevel` |
+
+**Regressions to read in the window:** every test that takes a creature of a designed kind now sees that creature's
+figures rebuilt at the take. A read of the take sites on 2026-11-24 found the ones that read figures after a take read
+a training dummy or a relative change; the groups to read are `Cataclysm.DungeonModifierEffects.`,
+`Cataclysm.Gatekeeper.`, `Cataclysm.MinionFollowSpeed.`, `Cataclysm.EnemyBehaviour.`, `Cataclysm.SkillCost.`,
+`Cataclysm.DungeonGameMode.` and `Cataclysm.ReachAgainstACreature.`.
+
+---
+
 ## 2026-11-24 — Subjugate takes a creature its blow would have killed, its refusal line names every reason including "dead", and a taken Gatekeeper's Imps wear the green bar (#2856, #2867); a thrall's minion scaling is as designed and goes to the owner (#2868)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/thralls-2856`, from development `4d33f5994`, by

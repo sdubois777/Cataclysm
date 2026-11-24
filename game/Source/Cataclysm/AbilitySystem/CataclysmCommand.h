@@ -386,6 +386,46 @@ public:
 										float PerThrall);
 
 	/**
+	 * What this commander may release to make room for a thrall, oldest first: every minion and thrall it commands,
+	 * and no deployable machine. Issue #2856, the owner's ruling of 2026-11-24 for a take the pool has no room for,
+	 * "Replace the oldest": "the oldest minion (an Imp or thrall) is released to make room, and the take happens".
+	 *
+	 * OLDEST BY `ACataclysmCharacterBase::CommandedSinceSeconds`, when it was summoned or taken, whichever kind it is;
+	 * one never stamped counts as the newest, as A Second Self counts it. A tie goes to the nearer, since
+	 * `ThingsCommandedBy` answers nearest first and the sort keeps that order.
+	 *
+	 * NOT A MACHINE, A JUDGEMENT: the ruling names an Imp or a thrall, and a turret, a ballista or a trap is placed
+	 * where it stands for a fight; A Second Self chooses among the same followers (`ACataclysmMinion::bIsMachine`).
+	 */
+	static TArray<ACataclysmCharacterBase*> ReleasableOldestFirst(const AActor* Commander);
+
+	/**
+	 * Whether a thrall reserving `PerThrall` fits now, or would fit once every follower `ReleasableOldestFirst` names
+	 * were released. Issue #2856. What `UCataclysmSummonSkill::Possess` asks before its blow, to know whether the
+	 * target is one it could take.
+	 *
+	 * WHAT STAYS IS THE MACHINES, which A Second Self never chooses, so with every releasable follower gone nothing is
+	 * chosen and the new thrall would be, counting twice while the passive is held, as `HasRoomForAnotherThrall` counts
+	 * it. When even that does not fit, nothing is released for a take that could not happen.
+	 */
+	static bool RoomCanBeMadeForAThrall(const AActor* Commander, float PerThrall);
+
+	/**
+	 * Release this commander's followers, oldest first, until a thrall reserving `PerThrall` fits. Issue #2856,
+	 * "Replace the oldest". Answers how many were released: none when there is room already, or when
+	 * `RoomCanBeMadeForAThrall` says none can be made.
+	 *
+	 * RELEASED MEANS GONE, A JUDGEMENT: the follower leaves the world as it does when its commander leaves the dungeon
+	 * (`ACataclysmDungeonGameMode::EndEveryPlayersFollowers`) or a summoned minion's time runs out. It does not die, so
+	 * nothing a death sets off answers it -- no explosion, no replacement, no Fervour for losing a minion, no soul, no
+	 * loot -- and it does not turn back into an enemy beside the player. Each release is logged at `Log`, "RELEASED:".
+	 *
+	 * ONE AT A TIME, ASKING `HasRoomForAnotherThrall` AFTER EACH, so A Second Self's double count, which moves to the
+	 * next oldest when the oldest goes, is counted as that function counts it.
+	 */
+	static int32 ReleaseOldestForAThrall(const AActor* Commander, float PerThrall);
+
+	/**
 	 * The Fervour everything this character commands holds back from its pool.
 	 * Issues #1160 and #1934.
 	 *
