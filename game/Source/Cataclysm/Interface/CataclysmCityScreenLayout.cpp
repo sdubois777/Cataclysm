@@ -8,6 +8,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Interface/CataclysmEmpireMapLayout.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmGameInstance.h"
@@ -60,6 +61,13 @@ FString UCataclysmCityScreenLayout::StatusTextFor(const UCataclysmEmpireRun* Run
 
 		FString Fallen =
 			TEXT("Fallen. Nothing can be built here until it is retaken.");
+
+		// AND HOW IT IS RETAKEN, while its Fallen City dungeon stands on it: walking and clearing that dungeon is the
+		// retake, and its Walk button is in the list below. Issue #2866.
+		if (UCataclysmEmpireMapLayout::FallenCityDungeonOn(Run, CityId) != INDEX_NONE)
+		{
+			Fallen += TEXT(" Walk its Fallen City dungeon below to retake it.");
+		}
 
 		// AND WHAT RETAKING CLEARS, when the Void had begun on it. A city that
 		// fell with fewer than ten stacks keeps them until it is retaken, and

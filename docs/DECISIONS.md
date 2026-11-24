@@ -967,6 +967,111 @@ The guard proofs, each a one-place break, run with the prefix named:
 
 ---
 
+## 2026-11-24 — A city keeps its share of its maximum when the empire tree moves it, and a fallen city's box opens its screen so its Dungeon City can be walked (#2859, #2866)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `fix/empire-cities-2859`, a bug-fix branch of the
+coordinating session's of 2026-11-24. Nothing was built or run in Unreal; the C++ and its six new Unreal tests were
+written and read, not compiled. The Python was run; what it printed is in the commit message. Issues
+[#2859](https://github.com/sdubois777/Cataclysm/issues/2859) and [#2866](https://github.com/sdubois777/Cataclysm/issues/2866).
+
+### Issue #2859: the owner's ruling
+
+The owner, playtesting on 2026-11-23, verbatim: "When increasing city defenses through the empire tree, it actually
+lowers the total % each city is at. It should maintain the % they were at before buying the upgrades." The issue adds:
+"A city at 80% before the purchase is at 80% of the new, higher maximum after it", and "A respec that lowers the
+maximum should keep the percentage the same way."
+
+**This replaces half of the coordinating session's S1 of 2026-11-18** (the slice 3a entry, "S1, what a changed maximum
+does to what a city holds"): "nothing is written at a buy or a respec" no longer holds. The rest of S1 stands: a READ
+of a city writes nothing and reads what it holds above its maximum as the maximum, a run begun with the tree builds its
+cities full, and a city upgrade raises what its city holds by the rise in its effective maximum. **No genre research
+was done for this**, because the shape is the owner's ruling; the Path of Exile 2 forum posts S1 cited for the opposite
+rule are not weighed against it.
+
+### What it does
+
+- **`UCataclysmEmpireMap::SharesNow` and `KeepShares`** (`FCataclysmCityShares`): every city's maxima with the tree and
+  the share of each it is read as holding, taken before a change; and every city standing before and after put back at
+  that share of its maxima after it. Defence and population both.
+- **`UCataclysmEmpireRun::ChangeTreeBonuses`**, the door for a tree changed in play, keeps the shares around
+  `SetTreeBonuses`, which is unchanged and is now the door for a run being handed its tree as it begins or loads.
+- **`UCataclysmGameInstance::RefreshEmpireTreeBonuses`** (a point bought, an option or extra option chosen, a respec,
+  and Reinvestment's count after a city upgrade's price) goes through `ChangeTreeBonuses`; a load goes through the new
+  **`HandEmpireTreeBonusesToALoadedRun`**, which writes nothing.
+- **`UCataclysmEmpireMap::AddUpgrade`, `Fall` and `Retake`** keep every city's share across The Royal Engineer's
+  Blessing's count moving, and **`UCataclysmEmpireRun::AdvanceDay`** keeps it across the day's turn, when Enduring
+  Foundations reaches an upgrade held ten days.
+
+### Judgements of this change, each labelled
+
+- **J1, a judgement: the rule reaches every place a tree node moves a city's maximum in play, not only the purchase.**
+  The Royal Engineer's Blessing moves every maximum when a city finishes, loses with its fall or regains with its retake
+  a defensive upgrade, and Enduring Foundations moves one on the tenth day an upgrade is held. Left as they were, both
+  would lower a city's percentage with nothing bought, which is the drop the owner reported.
+- **J2, a judgement: a city upgrade's raise of its own city's maximum keeps its rule**, adding what the effective
+  maximum rose by. That rise never lowers the share -- (D + r) / (M + r) is at least D / M -- so the fault is not there,
+  and the share rule would give a damaged city less than it gets now. The brief named city upgrades "if they move the
+  maximum"; this keeps them, and the coordinating session may rule otherwise.
+- **J3, a judgement: a load writes nothing into its cities.** They were saved holding what they held under the tree,
+  and a run rebuilt from its record has had no tree until the load hands it one, so keeping shares there would scale
+  every city by the whole tree. **Not settled:** an account's tree is shared by the characters of one lethality mode,
+  so it can change between a run's save and its load (another character buying a node). The loaded city then holds its
+  saved figure against the new maximum, as under S1. Keeping the share there would need the run record to hold each
+  city's maxima at the save, a record version, and was not done.
+- **J4, a judgement: a maximum has moved when it changes by more than a ten-thousandth of itself.** Only then is a city
+  written, so a city whose maximum did not move keeps exactly what it holds. The smallest move anything makes is a
+  hundredth.
+- **J5, a judgement: a fallen city is left as it is**, and a city just retaken has the share `Retake` gives it.
+
+### The simulation
+
+`sim/` has no fault to fix: its empire tree is a fixed preset for a whole campaign, applied once in
+`world.build_empire` (`EmpireTree.city_health_mult`), so no maximum moves during a campaign, and it has no city
+upgrades (`world.City.upgrades` is a bare count). Nothing in `sim/` changed.
+
+### Issue #2866: why a fallen city could not be retaken
+
+**The fault:** `UCataclysmEmpireMapWidget::PlaceCities` made a fallen city's box unavailable (`bAvailable` was
+`Mark != ECataclysmCityMark::Fallen`, from commit `5ee18f625a` of 2026-08-31, before a fall left a Fallen City dungeon
+on its city). An unavailable `UCataclysmChoiceButton` is disabled and its `Press` returns, so the box could not be
+pressed, and the city screen -- the only place a dungeon standing on a city is walked from -- never opened. Nothing
+else refuses: `FCataclysmWalkFromTheScreen::RefusalFor`, `ACataclysmDungeonGameMode::EnterEmpireDungeon` and
+`ACataclysmCapitalGameMode::TravelToWalk` take a Fallen City dungeon like any other, and `UCataclysmEmpireRun::
+ClearDungeon` retakes the city when it is cleared. The owner's log shows the dungeon standing ("dungeon 52, the Fallen
+City dungeon on Outpost (2,1)") and no Walk pressed for it.
+
+**The fix:** the box is available and dimmed (`UCataclysmChoiceButton::SetDimmed`, issue #2064's state for "read but
+not taken"), from `UCataclysmEmpireMapLayout::CityOpensItsScreen` and `IsCityDimmed`. The line under the map and the
+city screen say how the city is retaken while its Fallen City dungeon stands on it.
+
+- **J6, a judgement: every city's box opens its screen**, an erased one's too, whose screen already says "Erased by the
+  Void. It can never be retaken."
+- **J7, a judgement: the words.** The line under the map: "fallen: walk its Fallen City dungeon to retake it (press the
+  city, then Walk)", "erased by the Void, it can never be retaken", or "fallen" with no such dungeon. The city screen
+  adds "Walk its Fallen City dungeon below to retake it." after "Fallen. Nothing can be built here until it is
+  retaken." A fallen city with no such dungeon reads as before.
+
+### Issue #2866: does a city's fall fire a surge?
+
+**The design**, section VIII, Dungeon Basics: "If a city falls, it becomes a Dungeon City — a staging ground with more
+floors and multiple boss fights, triggering a Surge." **The code** does, with the least interval of 2026-10-12 (the
+entry "The game's surge when a city falls waits for the 25-day least interval", issue #2380):
+`UCataclysmEmpireRun::CityFell` fires one when `UCataclysmSurgeScheduler::IsDueOnCityFall` answers yes, which is
+`bSurgeOnCityFall` (true) and the last surge at least `LeastIntervalDays`, 25, behind.
+
+**What happened in the owner's run**, read from `game/Saved/Logs/Cataclysm-backup-2026.11.23-22.53.02.log` in the main
+checkout, line 215834 and the three lines after it. The walk began on day 416, so the days that ran were 417 to 441,
+and "1 surge brought 8 dungeons" in them: dungeons 44 to 51. Dungeons 45, 47, 48, 49 and 50 resolved, 44 and 51 still
+stand, and 46 is in neither list, which is what a dungeon absorbed by the fall looks like (an inference: the log does
+not name it). Outpost (2,1) fell, and its Fallen City dungeon is 52, made after the surge's eight. **So the surge came
+first, its dungeons felled the city, and the fall came at most 24 days after it: by the least-interval rule the fall
+brought no surge of its own.** A fall surge would have made dungeons numbered after 52 and the summary would say 2
+surges. The fall did not cause the surge the owner saw; the rule worked as written. No surge rule changed here. The
+capital's summary does not say whether a fall brought a surge or was refused one, and the design's line does not name
+the 25-day brake; both are left to the coordinating session, since fix/empty-board-surge-2865 changes surges.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

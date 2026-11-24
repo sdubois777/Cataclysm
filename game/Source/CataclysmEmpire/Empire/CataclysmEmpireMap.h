@@ -65,6 +65,11 @@ struct CATACLYSMEMPIRE_API FCataclysmTreeDamageFactors
  * the tree's base: the coordinating session's ruling Q10 of 2026-11-18, under the owner's delegation. A bought node acts
  * at once, and a respec takes it away at once.
  *
+ * AND A CITY KEEPS ITS SHARE WHEN THE TREE MOVES ITS MAXIMUM, since issue #2859: a node bought or respecced in play
+ * puts every standing city at the share of its new maxima that it held of the old (`UCataclysmEmpireMap::KeepShares`,
+ * through `UCataclysmEmpireRun::ChangeTreeBonuses`). The owner, 2026-11-23: "It should maintain the % they were at
+ * before buying the upgrades."
+ *
  * HOW THE NODES COMBINE, each a judgement of 2026-11-18 (S5) recorded in `docs/DECISIONS.md`: the maximum-defence and
  * base-population increases are summed, as the simulation's `city_health_mult` sums six of them; each damage reduction
  * is a factor, compounded per point as its text says "multiplicative" and as the simulation's `city_damage_mult`
@@ -762,6 +767,28 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 };
 
 /**
+ * What every city holds as a share of its maxima with the empire upgrade tree, taken before something moves those maxima,
+ * so `UCataclysmEmpireMap::KeepShares` can put every standing city back at the same share of the maxima after it. Issue
+ * #2859: the owner, "It should maintain the % they were at before buying the upgrades."
+ *
+ * ONE ENTRY PER CITY, IN `UCataclysmEmpireMap::Cities` ORDER. Not saved and not a `USTRUCT`: it lives for the length of
+ * one change and no further.
+ */
+struct FCataclysmCityShares
+{
+	/** Whether the city was standing when the shares were taken. A city fallen then holds no share to keep. */
+	TArray<bool> bStanding;
+
+	/** The maximum defence with the tree, and what the city was read as holding of it, 0 to 1. */
+	TArray<float> DefenceMax;
+	TArray<float> DefenceShare;
+
+	/** The same two for population. */
+	TArray<float> PopulationMax;
+	TArray<float> PopulationShare;
+};
+
+/**
  * The empire map: 25 cities in a diamond, and the lanes the Cataclysm comes
  * down.
  *
@@ -1112,11 +1139,14 @@ public:
 	/**
 	 * A city's defence as the game reads it: what it holds, and never more than its maximum.
 	 *
-	 * A RAISED MAXIMUM LEAVES WHAT A CITY HOLDS WHERE IT IS, AND A LOWERED ONE IS READ AS THE SMALLER OF THE TWO. The
-	 * coordinating session's S1 of 2026-11-18, a judgement for the owner, matching this game's rule for a player's
-	 * health in `CataclysmVitalAttributeSet.cpp` (raising the maximum raises nothing; a lowered one brings health down
-	 * to it). So a point bought mid-run makes a full Outpost read "1000 of 1050", and a respec writes nothing: the
-	 * smaller of the two is read until a hit writes it.
+	 * A READ WRITES NOTHING, AND WHAT A CITY HOLDS ABOVE ITS MAXIMUM IS READ AS THE MAXIMUM. That is the
+	 * coordinating session's S1 of 2026-11-18, and it is still what a READ does. What it no longer is, since issue
+	 * #2859, is what a change in play does: a point bought, an option chosen, a respec, The Royal Engineer's Blessing's
+	 * count moving and Enduring Foundations' tenth day each put every standing city back at the share of its maximum it
+	 * held before (`KeepShares`), by the owner's ruling of 2026-11-23, verbatim: "It should maintain the % they were at
+	 * before buying the upgrades." So a full Outpost reads "1050 of 1050" after a point of Foundation, not "1000 of
+	 * 1050". The smaller of the two is still what a run LOADED under a smaller tree than it was saved under reads, until
+	 * a hit writes it, because a load writes nothing into its cities (`UCataclysmEmpireRun::SetTreeBonuses`).
 	 */
 	float DefenceOf(const FCataclysmCity& City) const;
 
@@ -1131,6 +1161,32 @@ public:
 
 	/** Whether an upgrade raises maximum defence or resists defence loss: the reading of "defensive upgrade" (S5). */
 	static bool IsADefensiveUpgrade(const FCataclysmCityUpgrade& Upgrade);
+
+	// ----------------------------------------------------------------------
+	// A city keeps its share when a maximum moves -- issue #2859
+	// ----------------------------------------------------------------------
+
+	/** Every city's maxima with the tree and the share of each it is read as holding, now. See `FCataclysmCityShares`. */
+	FCataclysmCityShares SharesNow() const;
+
+	/**
+	 * Puts every city that was standing when `Before` was taken, and stands now, back at the share of its maxima it held
+	 * then: its defence `Before`'s share of its maximum defence now, and its people the same. The owner, 2026-11-23,
+	 * verbatim: "It should maintain the % they were at before buying the upgrades." Issue #2859.
+	 *
+	 * ONLY A MAXIMUM THAT MOVED IS WRITTEN, by more than a ten-thousandth of itself, so a city whose maxima did not move
+	 * keeps exactly what it holds -- a figure a load put back above a lowered maximum included, which `DefenceOf` reads
+	 * as the smaller of the two.
+	 *
+	 * NOT A CITY FALLEN THEN OR NOW: one that has just fallen holds nothing, and one just retaken has the share `Retake`
+	 * gives it.
+	 *
+	 * CALLED WHEREVER A MAXIMUM MOVES IN PLAY: `UCataclysmEmpireRun::ChangeTreeBonuses` (a point bought, an option chosen,
+	 * a respec), `AddUpgrade`, `Fall` and `Retake` (The Royal Engineer's Blessing's count), and the day's turn in
+	 * `UCataclysmEmpireRun::AdvanceDay` (Enduring Foundations). NOT by a load or a run's begin, whose cities are written
+	 * as they are.
+	 */
+	void KeepShares(const FCataclysmCityShares& Before);
 
 	// ----------------------------------------------------------------------
 	// Enduring Foundations -- issue #2741 slice 3b
@@ -1319,6 +1375,15 @@ public:
 	 * would make an untouched city read as 83% damaged. THE FIGURE IS WHAT THE
 	 * MAXIMUM WITH THE EMPIRE UPGRADE TREE ROSE BY, for the same reason: a full
 	 * city under the tree is full at its effective maximum. Issue #2741 slice 3a.
+	 * KEPT WHEN ISSUE #2859 MADE THE TREE KEEP A CITY'S SHARE, a judgement: the
+	 * rise never lowers the city's share -- (D + r) / (M + r) is at least D / M --
+	 * so the fault the owner reported is not here, and the share rule would give
+	 * a damaged city less than it gets now.
+	 *
+	 * AND EVERY CITY KEEPS ITS SHARE OF A MAXIMUM THE BLESSING MOVES, since issue
+	 * #2859: recording a defensive upgrade can make this city one The Royal
+	 * Engineer's Blessing counts, which raises every city's maximum, and each is
+	 * put back at its share of it (`KeepShares`) before this city's own raise.
 	 *
 	 * @return false only when there is no such city.
 	 */
@@ -1365,6 +1430,10 @@ public:
 	/**
 	 * A city falls: its defence is gone and its lane opens.
 	 *
+	 * AND EVERY OTHER CITY KEEPS ITS SHARE OF ITS MAXIMUM, since issue #2859: a
+	 * city holding a defensive upgrade leaves The Royal Engineer's Blessing's
+	 * count when it falls, which lowers every city's maximum (`KeepShares`).
+	 *
 	 * @return whether it fell now. False if it had already fallen or does not
 	 *         exist.
 	 */
@@ -1380,6 +1449,10 @@ public:
 	 * AND WITH NO VOID STACKS, since 2026-10-22: retaking a city clears them, as
 	 * `Simulation._retake` does, ruled by the coordinating session on
 	 * 2026-10-16. An erased city cannot be retaken, so its stacks stay.
+	 *
+	 * AND EVERY OTHER CITY KEEPS ITS SHARE OF ITS MAXIMUM, since issue #2859, for
+	 * `Fall`'s reason the other way: a city holding a defensive upgrade is counted
+	 * by The Royal Engineer's Blessing again once it stands (`KeepShares`).
 	 *
 	 * @return whether it was retaken. False if it was not fallen, does not
 	 *         exist, or was erased rather than merely lost.

@@ -4217,7 +4217,7 @@ Whether anyone is actually consumed is decided by the party rule in section VIII
   - Every dungeon has a boss on the final floor.
   - If a dungeon resolves undefeated, its listed consequence occurs (usually city damage or population loss). An ordinary dungeon hits its city once and then leaves the map.
   - If a city falls, it becomes a Dungeon City — a staging ground with more floors and multiple boss fights, triggering a Surge.
-  - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary).
+  - Dungeon Cities can be retaken. Floor count equals the number of dungeons that were in the city when it fell (minimum 20/40/60 for Outpost/Bulwark/Sanctuary). **It is retaken by walking it like any other dungeon:** a fallen city's box on the empire map is drawn dim and still opens its city screen, which lists its Dungeon City with a Walk button, and clearing it takes the city back. Until issue #2866 the box could not be pressed, so a fallen city could not be retaken from the map.
   - A Dungeon City holds **one boss per dungeon that was standing on the city when it fell and was absorbed by it** (a Quest dungeon moves away instead and is not counted), which is the same count its floors are taken from. This is the one exception to "Every dungeon has a boss on the final floor" above; the final floor still carries one of them. Losing a heavily besieged city is therefore worse than losing a quiet one.
   - **A retaken city comes back with half its maximum Defense and half its maximum Population.** Its purchased upgrades survive the loss, and it can fall again -- retaking does not make a city permanently safe. The Tier 4 empire keystone that restores a reclaimed city to 75% instead of 50% is improving on this rule.
   - Dying costs 5 days (modified by difficulty setting) and respawns the player at the capital.
@@ -4868,6 +4868,21 @@ tuning value and is not fixed here. A respec moves an allocation inside one tree
 it is not a route between trees, because the points are scoped to the lethality
 mode that earned them and moving where they sit does not change which mode that
 was.
+
+**A city keeps its share of its maximum when the tree moves the maximum.** The
+project owner, 2026-11-23, verbatim: "When increasing city defenses through the
+empire tree, it actually lowers the total % each city is at. It should maintain
+the % they were at before buying the upgrades." A point bought, an option chosen
+or a respec puts every standing city at the share of its new maximum defence and
+maximum population that it held of the old: an Outpost at 80% of 1,000 defence
+holds 80% of 1,050 after a point of Foundation, and 80% of 1,000 again after a
+respec. The same holds when a node's own condition moves the maximum later --
+The Royal Engineer's Blessing as cities gain, lose or regain a defensive
+upgrade, and Enduring Foundations on the day a city upgrade has been held ten
+days. A city upgrade that raises its own city's maximum is unchanged: it adds
+what the maximum rose by, which never lowers the share. A run that is loaded is
+not rescaled: its cities were saved holding what they held. Issue #2859;
+`docs/DECISIONS.md` has the judgements.
 
 **The four tier-milestone capstones belong to the tree, not to the character.**
 `Empire_Development_Tree_Final.json` holds four decision capstones — Foundations
