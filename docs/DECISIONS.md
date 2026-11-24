@@ -2,6 +2,215 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Blood Altar's pulse reaches the player anywhere on the floor and every pulse says a line; Thorns of Glass was measured against the owner's death and did what its row says (#2855, #2854)
+
+**Affects:** `UCataclysmDungeonModifierEffects::BloodAltarRingRadiusCm` (was `BloodAltarReachCm`, the same 1000) and the
+accounts of `BloodAltarKey` (`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`);
+`ACataclysmDungeonGameMode::StepBloodAltar` (`Dungeon/CataclysmDungeonGameMode.cpp`, `.h`). Tests:
+`CataclysmDungeonModifierEffectsTests.cpp` (one renamed and changed, one new), `CataclysmThornsOfGlassTests.cpp` (two new),
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and `tools/tests/test_thorns_of_glass_strikes_back.py` (one
+new each). Thorns of Glass's game code is not changed. Issues
+[#2855](https://github.com/sdubois777/Cataclysm/issues/2855) and
+[#2854](https://github.com/sdubois777/Cataclysm/issues/2854).
+
+### SAID FIRST
+
+- **WRITTEN AND NOT COMPILED; NO WINDOW YET.** The four Unreal tests below are registered, not run.
+- **BLOOD ALTAR NOW REACHES THE WHOLE FLOOR, WHICH REPLACES THE JUDGEMENT OF 2026-09-16** (the entry "Blood Altar pulses
+  at the player from the exit ...", its table row "Reach | 1000 cm"). It is the coordinating session's brief, not this
+  session's idea; quoted below. The ring at the stairs stays, as wide as before, and now only marks the altar.
+- **THE INTERVAL STAYS 30 SECONDS: THE DESIGN HAS ONE, AND IT IS THE OWNER'S.** The 2026-09-16 entry: "A pulse every 30
+  seconds, counted from the floor's start. This is the project owner's figure, not a judgement." The owner's
+  recollection relayed in the brief, "probably every minute or so? i don't remember the design.", differs from it; the
+  brief says to use about a minute only "If the design gives no interval". **The owner should confirm 30 seconds or say
+  60.** It is one constant, `BloodAltarSecondsBetweenPulses`.
+- **A FLOOR-WIDE PULSE CANNOT BE WALKED AWAY FROM, AND ITS CEILING WAS JUDGED WHEN IT COULD.** At the 60th death a pulse
+  is 30% of maximum health every 30 seconds, about 1% a second on average, the same as Mortal Decay's most
+  (`MortalDecayMostPercentPerSecond`, also a danger-15 row). Not changed; flagged.
+- **THORNS OF GLASS: NO DEVIATION FROM ITS ROW WAS FOUND, SO NO GAME CODE CHANGED.** The owner's death is accounted for
+  by the row as written, the owner's ruling of 2026-11-19 on its interval, and a second modifier on the same Boss
+  ("Thorns of Glass and the owner's death", below). Two Unreal tests reproduce the fight's cadence.
+- **FOUND AND NOT FIXED: INFERNAL SACRIFICE'S BUFF IS ATTACK SPEED, WHERE ITS ROW SAYS DAMAGE.** Its row: "Sacrifice
+  nearby allies to heal yourself and gain temporary damage buffs." `UCataclysmEnemyModifiers` grants its carrier
+  Commander for 8 seconds, whose row is "All nearby allies gain 20% increased movement speed and attack speed." On the
+  owner's Boss that shortened Thorns of Glass's interval from 1.2 seconds to 1.0 for the five seconds that killed the
+  owner. A different row and a different concern; for the coordinating session.
+- **THE ISSUE'S THREE QUESTIONS FOR A RULING ARE ANSWERED BY RULINGS ALREADY MADE**, and this entry recommends no
+  change ("The questions #2854 asks", below).
+
+### The rulings
+
+**The coordinating session's brief of 2026-11-24**, verbatim. On #2855: "find why no pulse happens in play (not built,
+not spawned, timer never started, damage applied to the wrong side, floor-wide reach missing), and fix it to the
+design. If the design gives no interval, use the issue's and the owner's suggestion of about a minute as a judgement and
+say so." And: "Unreal tests: a Thorns of Glass creature retaliates at most once per its attack interval under rapid
+hits and damage over time; the Blood Altar pulses on its interval, damages the player anywhere on the floor, and grows
+with kills." On #2854: "find what made the retaliation lethal (fired more often than once per attack interval, fired per
+tick of an aura or damage over time, used the wrong damage, stacked across creatures, or was correct and simply
+strong), fix any deviation from the row's text, and report what the row does now with numbers."
+
+**The project owner**, relayed in that brief: "probably every minute or so? i don't remember the design."
+
+**Carried, not new.** The owner, 2026-11-19, on Thorns of Glass: "Once per its attack time: It can strike back at most
+once per its own attack interval, so it returns about what its own swings would deal (~40 in the example). Still
+punishes hitting it; can no longer out-damage itself." The owner, 2026-11-18: "When struck, a reflecting creature hits
+back for its own attack damage, sized by its strength like any other hit and reduced by your defences. Your own damage
+no longer matters to it." The coordinating session, 2026-11-18 (B2): "It applies once per direct hit it takes. Damage
+over time does not trigger it, as in Path of Exile."
+
+### Blood Altar: why no pulse found the owner
+
+The rule was built, placed and running. `StepBloodAltar` runs on the quarter-second beat of every floor carrying the
+row; it places the altar's ring on the exit cell on the first beat and pulses every 30 seconds from the floor's start.
+But a pulse dealt damage only when `FindEveryoneInLine` found the player's body inside the ring's 1000 cm around the
+stairs, and a player is inside that ring only on the way down the stairs, for well under one 30 second pulse. The
+owner's floors 1 to 4 took about six minutes (04:26:26 to 04:32:21 in the log of 2026-11-22), so about a dozen pulses
+came and found nobody. And nothing said so: the rule logged nothing at all.
+
+### What Blood Altar does now
+
+- **A pulse every 30 seconds from the floor's start, at the player wherever they stand on the floor**, and at nothing
+  else. 0.5% of the player's maximum health for each creature death counted on the floor, up to 30% at the 60th death,
+  Demonic, dealt from the floor's source as an area hit, so the player's Demonic resistance and defences reduce it. A
+  dead player is not struck again. For the owner's level 10 character with 414 maximum health: 2.07 a death before
+  defences, 124.3 at the ceiling.
+- **Every pulse says one line**, at `Log`, so the play log carries it: "Blood Altar: pulse on floor 2 after 14
+  death(s) counted: sent 29.0, 7.0% of maximum health 414; took 24.8 of health 390.0." An unfed altar's pulse says
+  "... after 0 death(s) counted: sends nothing (maximum health 414)." (Figures illustrative.)
+- **The ring stays on the exit cell, as wide as before** (`BloodAltarRingRadiusCm`, 1000). It marks the altar;
+  nothing reads it to decide who a pulse hits. A judgement of this session: changing how the altar looks is not what
+  either issue asks.
+- **No genre research was done for this**: no formula or number changed. The reach is the brief's, the interval the
+  owner's, and the share and ceiling the 2026-09-16 judgements.
+
+### Thorns of Glass and the owner's death
+
+From `game/Saved/Logs/Cataclysm-backup-2026.11.23-06.08.07.log` in the main checkout, the session of 2026-11-22 at
+development `4d33f5994`, every line naming `CataclysmBruteCharacter_212` between 04:23:30 and 04:23:43 read. A Boss Brute
+carrying Infernal Sacrifice, Perfect Aim, Overpowered and Thorns of Glass; the player's Conflagration is an aura
+("Conflagration in Slot.Aura"), "Radius=10; Interval=1; Burn=1" in `WeaponSkills.csv`, so it hit the Brute once a second
+from up to 10 metres, and its burn ticked between.
+
+| Time (04:23:) | Player's blow on the Brute | Struck back | Seconds since the last strike back |
+| :-- | :-- | :-- | --: |
+| 30.332 | Conflagration | 68, 0 to health | first |
+| 31.336 | Conflagration | no | 1.004 |
+| 31.908 | Compel | 68, 54 to health | 1.575 |
+| 32.336 | Conflagration | no | 0.429 |
+| 33.329 | Conflagration | 73 | 1.422 |
+| 34.335 | Conflagration | no | 1.006 |
+| 34.804 | (the Brute sacrificed `CataclysmGatekeeperCharacter_8`: Commander for 8 seconds) | | |
+| 35.329 | Conflagration | 85 | 2.000 |
+| 36.339 | Conflagration | no | 1.010 |
+| 37.329 | Conflagration | no | 2.000 |
+| 37.927 | Basic Attack | no | 2.598 |
+| 38.327 | Conflagration | 85 | 2.998 |
+| 38.623 | Compel | no | 0.296 |
+| 39.328 | Conflagration | 85 | 1.001 |
+| 39.408 | Basic Attack | no | 0.080 |
+| 40.329 | Conflagration | 80, the killing blow at 80 health | 1.001 |
+
+Read against each cause the brief names:
+
+1. **More often than once per its attack interval: no.** Until the sacrifice every strike back came 1.42 seconds or more
+   after the last, and blows 1.004 and 1.006 seconds after one were refused: a Brute's designed 1.2. After it, strike
+   backs 1.001 seconds apart: an interval of at most 1.001, which is the Brute's 1.2 divided by Commander's 1.2. "Its own
+   attack interval" is `SecondsBetweenAttacks()` at the moment of the hit, buffs included, the definition the
+   2026-11-19 entry gives. The blows refused at 36.339, 37.329 and 37.927, when the interval had passed, are explained
+   if the player's own creatures took those strike backs: Compel says "Everything you command strikes that same enemy
+   at once", the player held a thrall (and two Imps from 04:23:39.2: "1 thralls 28, 2 Imp 19"), and a minion's blow
+   is struck back at the minion and is not logged. The log cannot show those blows, so that part is inference.
+2. **Per tick of an aura or a damage over time: no.** Every strike back answers a logged "HIT OUT" line, which the
+   log never writes for a tick, and the burn's ticks drew none. Conflagration's once-a-second blow is a hit in this
+   game, not a tick: it rolls critical strikes (the log's "critical" on two of them) and is logged as a hit.
+3. **The wrong damage: no.** Each was the Brute's own attack damage, not critical (Overpowered's always-crit does not
+   reach a strike back), after the player's defences: 68, then 73 and 85, rising as Soul Harvest's souls reached the
+   Brute (3 by 33.24, 5 by 34.69; the row gives souls "increased health, damage, and resistances"), then 80 because 80
+   health was left.
+4. **Stacked across creatures: no.** One creature.
+5. **So: correct, and strong.** 85 is 20.5% of 414. A Boss's own blow every second its interval allows, at a player who
+   stood in an aura's reach of it: four strike backs took 335 health in 5 seconds. The Brute swung at the player not
+   once in those thirteen seconds; with Overpowered, its own swing would have been that blow and a critical.
+
+**What the row does now, unchanged, with numbers.** Each hit that lands on a carrier and is not a tick is struck back
+for the carrier's own current attack damage, not critical, through the striker's defences, if at least its current
+attack interval has passed since its last strike back. Against an aura hitting once a second (1.001 seconds apart): a
+Brute (1.2 seconds) strikes back on every second pulse, so 4 of 7 pulses in six seconds; a hasted Brute (1.0) on
+every pulse, 7 of 7; an Abyssal Warden (2.4) on every third pulse; the default creature (1.5) on every second.
+
+### The questions #2854 asks
+
+| Question | Already ruled | Genre |
+| :-- | :-- | :-- |
+| A ranged hit, or a tick? | Any hit, "whatever hits it" (the row, 2026-11-19); never a tick (B2, 2026-11-18) | Path of Exile 2: inherent Thorns answers melee attack hits only, and a passive extends it to "any kind of Hit". Diablo IV, as the design's Retaliation section records: "a flat value that fires on any direct attack, melee or ranged, and never on damage over time" |
+| Its full attack damage, or a share? | Its own attack damage (the owner, 2026-11-18) | Path of Exile 2: Thorns is "a kind of Hit Damage", a figure of the retaliator's own, not a share |
+| Do the player's defences apply? | Yes, "reduced by your defences" (the owner, 2026-11-18), and they do: `ApplyHit` through the player's damage calculation | Path of Exile 2's Spiked Armour notable gives Thorns "50% chance to ignore Enemy Armour", so armour applies to it otherwise |
+
+**RECOMMENDATION: change nothing.** The row did what its sentence and both of the owner's rulings say, and the
+2026-11-19 ruling already cut its rate to its own swings'. **If the owner finds an aura cannot be played near it**, the
+genre's narrower trigger is Path of Exile 2's, melee hits only, and that would be a new ruling and a new sentence, not
+a fix. A judgement of this session, for the owner.
+
+The research, fetched 2026-11-24 by this session and quoted as returned: `poe2db.tw/us/Thorns` read ("Thorns damage is
+a kind of Hit Damage you can deal"; "If you have Thorns damage, you inherently Retaliate against Melee Attack Hits,
+dealing your Thorns damage to the enemy that Hit you"; "Retaliate against all Hits" extends it to "any kind of Hit dealt
+to you by enemies, rather than just Melee Attacks"). `diablo4.wiki.fextralife.com/Thorns` read; it says Thorns
+"Excludes attacks that are entirety damage over time" and does not say melee or ranged. `maxroll.gg/d4/resources/
+thorns-explained` and `poedb.tw/us/Reflect` answered 404. The Diablo IV sentence in the table is the design document's
+own record, not re-fetched.
+
+### The tests
+
+- **`Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor`**, renamed from
+  `...WithinReach` and changed: its last reading put the player's body just outside the ring and asserted the pulse took
+  nothing; it now asserts the pulse takes as much as at the altar after the same three deaths (within 0.5). The ring's
+  width is read from `BloodAltarRingRadiusCm`.
+- **`Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`**, new: the play
+  case. The player stands at the floor's entrance, asserted outside the ring first; three pulses at the 30 second
+  clock, each with nothing taken and no line a beat before it; the unfed pulse takes nothing and says "after 0
+  death(s) counted"; after two deaths, and after four, each takes health, no more than its stated share, the second
+  more than the first, and says its count.
+- **`Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`**, new: a
+  carrier given a Brute's 1.2 seconds; seven pulses 1.001 seconds apart, each with quick hits 0.05 and 0.1 seconds
+  after it and a burn tick 0.5 after; pulses 0, 2, 4 and 6 struck back, no quick hit or tick, 4 x 40 lost. Control:
+  every blow landed.
+- **`Cataclysm.ThornsOfGlass.ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`**, new: the same
+  carrier given Commander by itself, as Infernal Sacrifice does, so its interval is 1.0; all seven pulses struck back,
+  no quick hit or tick, 7 x 40 lost.
+- Python, one each: `test_blood_altar_pulses_the_player_anywhere_on_the_floor_and_says_each_pulse` (no reach search in
+  `StepBloodAltar`, both log lines present) and `test_a_tick_never_reaches_the_strike_back_or_its_clock` (the strike
+  back and its clock sit inside the branch a tick never enters, and the clock is asked once).
+
+### Registered before the window
+
+| Group | Base, last measured | After this change | Why |
+| :-- | --: | --: | :-- |
+| `Cataclysm.ThornsOfGlass.` | 9 | 11 | +2 new |
+| `Cataclysm.DungeonModifierEffects.` | 777 | 778 | +1 new, 1 renamed |
+
+The whole suite: the base's last measured total plus 3.
+
+The guard proofs, each a one-place break, run with the prefix named:
+
+- **B1**, prefix `Cataclysm.DungeonModifierEffects.`: in `StepBloodAltar`, the condition
+  `UCataclysmSkillEffects::IsDead(Player)` gains `|| FVector::Dist2D(Player->GetActorLocation(), Ring->GetActorLocation())
+  > Effects::BloodAltarRingRadiusCm`, the old reach back. Must fail exactly
+  `ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor` and
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **B2**, the same prefix: the unfed line's text `Blood Altar: pulse on floor %d after %d death(s) counted: sends
+  nothing` becomes `Blood Altar: quiet on floor ...`. Must fail exactly
+  `ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo`.
+- **T1**, prefix `Cataclysm.ThornsOfGlass.`: in `TakeAStrikeBackIfDue`, `static_cast<double>(SecondsBetweenAttacks())`
+  becomes `static_cast<double>(DesignedSecondsBetweenAttacks())`, an interval without buffs. Must fail exactly
+  `ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond`.
+- **T2**, prefix `Cataclysm.ThornsOfGlass.`: in `UCataclysmVitalAttributeSet`, the retaliation branch's opening
+  `if (!Hit.bIsDamageOverTime` (the one followed by `&& !AssetTags.HasTag(` and `NoRetaliationTag()`) becomes
+  `if ((true || !Hit.bIsDamageOverTime)`, letting ticks in. Must fail exactly `ADamageOverTimeTickIsNotStruckBack` and
+  `AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval`; the hasted test passes, because its
+  ticks come half a second after a strike back and are never due.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1
@@ -144971,6 +145180,9 @@ the owner by that session.
 | Reach | **1000 cm**, drawn as a ring lasting the floor | The stairs stand at the centre, so no player leaves the floor without entering it |
 | A warning before a pulse | **None but the ring** | The altar never moves. Artillery Strike needed a separate warning because its circle appears somewhere new each time |
 | The count | **Resets with each floor, stops at 60, and shows on the floor panel as "N of 60"** | A death past the ceiling changes nothing a pulse does. The panel shows only counts, for every row, so it shows no damage figure for this one either |
+
+**The reach changed on 2026-11-24, issue [#2855](https://github.com/sdubois777/Cataclysm/issues/2855)** (the entry of that date): a pulse reaches the player
+anywhere on the floor, and the ring at the stairs only marks the altar. In play no pulse had found the owner.
 
 ### How a pulse is dealt
 

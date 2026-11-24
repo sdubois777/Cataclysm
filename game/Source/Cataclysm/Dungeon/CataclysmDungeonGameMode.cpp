@@ -24097,14 +24097,15 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 		return;
 	}
 
-	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL. Drawn as its row's type, so its
-	// colour is its own rather than whatever the shared source was last typed as.
+	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL AND MARKED BY A RING. Drawn as its
+	// row's type, so its colour is its own rather than whatever the shared source was
+	// last typed as. THE RING IS A MARK, NOT A REACH, since issue #2855: see below.
 	ACataclysmGroundZone* Ring = BloodAltarRing.Get();
 	if (!Ring)
 	{
 		const FVector Altar = CurrentFloor->ExitWorld();
 		Ring = ACataclysmGroundZone::SpawnForTheFloor(
-			Source, Altar, Altar, Effects::BloodAltarReachCm, 0.0f,
+			Source, Altar, Altar, Effects::BloodAltarRingRadiusCm, 0.0f,
 			/*bAffectsEveryone=*/false, FName(*Row->CataclysmType));
 		if (!Ring)
 		{
@@ -24120,23 +24121,37 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	}
 	BloodAltarSecondsSinceLastPulse = 0.0f;
 
-	// THE PLAYER, FOUND THE WAY ARTILLERY STRIKE FINDS WHO IS UNDER ITS SHELL, so
-	// "within reach" is measured to a body, as every area rule measures it. Anyone
-	// else the search finds is left alone.
-	const FVector Where = Ring->GetActorLocation();
-	const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
-		World, Source, Where, Where, Effects::BloodAltarReachCm);
-	if (!Inside.Contains(Player))
+	// THE PLAYER, WHEREVER ON THE FLOOR THEY STAND. Issue #2855: "The altar sends out
+	// damaging pulses", and the coordinating session's brief of 2026-11-24 asks for a
+	// pulse that "damages the player anywhere on the floor". Until then a pulse asked
+	// whether the player's body was inside the ring at the stairs, and in play it never
+	// was: the owner walked four Blood Altar floors on 2026-11-22, about six minutes,
+	// and no pulse found them, because a player reaches the stairs and goes down them
+	// well inside one 30 second pulse. Still the player's pawn alone: a pulse that
+	// struck creatures could kill them, and each death would feed the next pulse.
+	//
+	// A DEAD PLAYER IS NOT STRUCK AGAIN, and says no line: the beat can come between a
+	// killing blow and the walk ending.
+	if (UCataclysmSkillEffects::IsDead(Player))
 	{
 		return;
 	}
 
-	const float Damage = Effects::BloodAltarPulseDamage(
-		AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
-		BloodAltarDeaths);
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float MaximumHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Damage = Effects::BloodAltarPulseDamage(MaximumHealth, BloodAltarDeaths);
+
+	// EVERY PULSE SAYS ONE LINE, an unfed altar's included, so a play log shows the
+	// altar's clock running whether or not it has anything to send. Issue #2855: the
+	// owner's log had "no line ... mentions the altar or a pulse", and could not say
+	// whether the rule pulsed at all.
 	if (Damage <= 0.0f)
 	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sends nothing (maximum health "
+					"%.0f)."),
+			   FloorNumber, BloodAltarDeaths, MaximumHealth);
 		return;
 	}
 
@@ -24145,7 +24160,19 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
 	Delivery.DamageType = FName(*Row->CataclysmType);
+	const float HealthBefore = AbilitySystem->GetNumericAttribute(HealthAttribute);
 	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
+
+	// WHAT IT SENT AND WHAT HEALTH LOST, measured rather than assumed: the player's
+	// Demonic resistance and other defences take their share, and an energy shield
+	// may take some before health does.
+	const float HealthTaken =
+		FMath::Max(0.0f, HealthBefore - AbilitySystem->GetNumericAttribute(HealthAttribute));
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sent %.1f, %.1f%% of maximum "
+				"health %.0f; took %.1f of health %.1f."),
+		   FloorNumber, BloodAltarDeaths, Damage, Damage / MaximumHealth * 100.0f, MaximumHealth,
+		   HealthTaken, HealthBefore);
 }
 
 void ACataclysmDungeonGameMode::StepNecroticGround(
