@@ -21418,7 +21418,7 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 		// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating session,
 		// 2026-11-24: the health written to nought below is held at the maximum for a creature that cannot be hurt
 		// (`UCataclysmVitalAttributeSet::PreAttributeChange`), and the `HandleDeath` after it killed it anyway, so a
-		// chain ended beside the Reaper or an echo killed it. Divine Wrath's beam passes such a creature too.
+		// chain ended beside the Reaper or an echo could kill it. Divine Wrath's beam passes such a creature too.
 		if (UCataclysmSkillEffects::IsBeingMarkedDead(Creature) || Creature->bCannotBeHurt)
 		{
 			continue;

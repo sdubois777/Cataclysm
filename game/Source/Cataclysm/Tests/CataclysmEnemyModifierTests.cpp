@@ -3981,8 +3981,8 @@ CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeSparesTheUnhurtableTest,
 	using namespace CataclysmEnemyModifierTest;
 
 	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. Sacrifice kills its ally by calling `HandleDeath`,
-	// which skips the health hold that keeps a creature that cannot be hurt standing, so a carrier ate the Reaper, an
-	// echo or a bonded elite beside it. Since then it passes over one, as it passes over a dead ally.
+	// which skips the health hold that keeps a creature that cannot be hurt standing, so a carrier could eat any creature
+	// a rule had made unhurtable. Since then it passes over one, as it passes over a dead ally.
 	//
 	// AN EATER, AN ALLY THAT CANNOT BE HURT 1.5 m from it, the nearest, and an ordinary ally 4 m from it, both inside
 	// the 6 m it looks in; stepped through one interval. THE CONTROL: the ordinary ally is eaten, so the rule acted and

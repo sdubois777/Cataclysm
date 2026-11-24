@@ -16433,7 +16433,7 @@ bool FCataclysmEpidemicSparesTheUnhurtableTest::RunTest(const FString& Parameter
 
 	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. The chain's end writes each creature's health to
 	// nought and calls `HandleDeath`; the write is held at the maximum for a creature that cannot be hurt and the
-	// `HandleDeath` killed it anyway, so a chain ended beside the Reaper or an echo killed it. Since then the chain's end
+	// `HandleDeath` killed it anyway, so a chain ended beside the Reaper or an echo could kill it. Since then the chain's end
 	// passes over one.
 	//
 	// THE LINE OF `AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord`, and beside its fifth kill, 3 m off the line,
