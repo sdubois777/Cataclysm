@@ -212,6 +212,89 @@ namespace CataclysmSaveGems
 	}
 }
 
+/**
+ * WHERE EACH ITEM ARRIVED, WRITTEN OUT: issue #2848 slice S2 (dismantling), ruled by the coordinating session on
+ * 2026-11-24. An item records the gear level and the difficulty tier it arrived at (`FCataclysmItem::GearLevelAtDrop`,
+ * `TierAtDrop`), so a dismantle refunds only the upgrade levels the player paid for. A file written before the fields
+ * existed cannot say where its items arrived: -1 and 0, the fields' own defaults, which the forge reads as "not
+ * known": `UCataclysmForge::DismantleOf` refunds from the rarity's gate, and `DismantleStoneTier` caps a stone at
+ * the run's tier. Used by the character record's `Migrate_14_to_15` and the
+ * run record's `Migrate_17_to_18`.
+ *
+ * EVERY ITEM IS FOUND BY WALKING THE WHOLE RECORD for an object holding both `GearLevel` and `bMadeAtCreation`, because
+ * `FCataclysmItem` is the only saved struct with both and an item is held in several places (carried, stashed, worn, in
+ * the held build, on the ground), as `CataclysmSaveGems` walks for `Sockets`. A key already holding a number is kept,
+ * and one holding anything else is refused rather than read as the default.
+ *
+ * THE ACCOUNT RECORD DOES NOT MOVE, for `CataclysmSaveGems`'s reason: its `Stash` is a list of the same slot, but
+ * nothing fills that stash (the game has no stash yet, `UCataclysmAccountSave::Stash`), so no account file holds an
+ * item to write.
+ */
+namespace CataclysmSaveArrival
+{
+	bool WriteWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value, FString& OutError);
+
+	/** One field written out as "not known": kept when it already holds a number, refused otherwise. */
+	bool WriteUnknownArrivalField(const TSharedRef<FJsonObject>& Item, const TCHAR* Key, double NotKnown,
+								  FString& OutError)
+	{
+		const TSharedPtr<FJsonValue> Held = Item->TryGetField(Key);
+		if (Held.IsValid() && Held->Type != EJson::Number)
+		{
+			OutError = FString::Printf(TEXT("an item's %s holds something that is not a number"), Key);
+			return false;
+		}
+		if (!Held.IsValid())
+		{
+			Item->SetNumberField(Key, NotKnown); // A migration's: where an older file's item arrived is not known.
+		}
+		return true;
+	}
+
+	bool WriteWhereEachItemArrived(const TSharedRef<FJsonObject>& Object, FString& OutError)
+	{
+		if (Object->HasField(TEXT("GearLevel")) && Object->HasField(TEXT("bMadeAtCreation"))
+			&& (!WriteUnknownArrivalField(Object, TEXT("GearLevelAtDrop"), -1.0, OutError)
+				|| !WriteUnknownArrivalField(Object, TEXT("TierAtDrop"), 0.0, OutError)))
+		{
+			return false;
+		}
+		// `auto`: the map's key type is `FString` or `UE::FSharedString` by the engine's JSON storage setting.
+		for (const auto& Field : Object->Values)
+		{
+			if (!WriteWhereEachItemArrived(Field.Value, OutError))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool WriteWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value, FString& OutError)
+	{
+		if (!Value.IsValid())
+		{
+			return true;
+		}
+		if (Value->Type == EJson::Object)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			return !Object.IsValid() || WriteWhereEachItemArrived(Object.ToSharedRef(), OutError);
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				if (!WriteWhereEachItemArrived(Entry, OutError))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
 namespace CataclysmCharacterSaveMigration
 {
 	/**
@@ -639,6 +722,17 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before an item recorded where it arrived (issue #2848 slice S2, ruled 2026-11-24): every
+	 * carried, stashed and worn item, and every item of the held build, is written as not known, -1 and 0.
+	 * `CataclysmSaveArrival` says what is written and refused.
+	 */
+	bool Migrate_14_to_15(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -659,6 +753,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
+		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 	};
 }
 
@@ -1107,6 +1202,16 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before an item recorded where it arrived (issue #2848 slice S2, ruled 2026-11-24): every item on the
+	 * floor's ground is written as not known, -1 and 0. `CataclysmSaveArrival` says what is written and refused.
+	 */
+	bool Migrate_17_to_18(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1125,6 +1230,7 @@ namespace CataclysmRunSaveMigration
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
+		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 	};
 }
 

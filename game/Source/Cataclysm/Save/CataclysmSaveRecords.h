@@ -1370,6 +1370,12 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 15 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2), so a dismantle refunds only the upgrade
+	 * levels the player paid for. `Migrate_14_to_15` writes -1 and 0, "not known", on every item: nothing recorded it
+	 * before. A VERSION AND NOT A DEFAULT, ruled by the coordinating session on 2026-11-24, by
+	 * `game/Tests/SaveFixtures/README.md`: from issue #1472 on, a field added to a record takes a version.
+	 *
 	 * 14 SINCE 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
 	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
 	 * writes 0: the count starts at this build (V5).
@@ -1426,7 +1432,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 14;
+	static constexpr int32 SchemaVersionNow = 15;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1920,12 +1926,17 @@ public:
 	 * `WeaponSkills.csv` that takes a creature) and 1, the factor at level 1, since the level at the take was not
 	 * recorded; and None and 1 on every other creature. Ruled by the coordinating session on 2026-11-22 (Q1).
 	 *
+	 * 18 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2). `Migrate_17_to_18` writes -1 and 0,
+	 * "not known", on every ground item: nothing recorded it before. A version and not a default, ruled by the
+	 * coordinating session on 2026-11-24, as the character record's 15.
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 17;
+	static constexpr int32 SchemaVersionNow = 18;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

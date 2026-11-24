@@ -577,6 +577,74 @@ namespace CataclysmSaveFixtures
 		}
 	}
 
+	/**
+	 * Every item the JSON value holds, at any depth, written as arrived at a place not known: `GearLevelAtDrop` -1 and
+	 * `TierAtDrop` 0, what `CataclysmSaveArrival::WriteWhereEachItemArrived` writes. An item is an object holding both
+	 * `GearLevel` and `bMadeAtCreation`. A key already present is kept. Issue #2848 slice S2. Used by the character
+	 * record's version 15 defaults and the run record's version 18.
+	 */
+	inline void AddWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid())
+		{
+			return;
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				AddWhereEachItemArrived(Entry);
+			}
+			return;
+		}
+		if (Value->Type != EJson::Object || !Value->AsObject().IsValid())
+		{
+			return;
+		}
+		const TSharedPtr<FJsonObject> Holder = Value->AsObject();
+		if (Holder->HasField(TEXT("GearLevel")) && Holder->HasField(TEXT("bMadeAtCreation")))
+		{
+			if (!Holder->HasField(TEXT("GearLevelAtDrop")))
+			{
+				Holder->SetNumberField(TEXT("GearLevelAtDrop"), -1.0);
+			}
+			if (!Holder->HasField(TEXT("TierAtDrop")))
+			{
+				Holder->SetNumberField(TEXT("TierAtDrop"), 0.0);
+			}
+		}
+		for (const auto& Field : Holder->Values) // `auto`: the key type follows the engine's JSON storage setting.
+		{
+			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the character record's newest step writes into a character file written before it: every item as arrived at
+	 * a place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
+	 * 15. ONE COPY, for every test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion15Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the run record's newest step writes into a run file written before it: every ground item as arrived at a
+	 * place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
+	 * 18. ONE COPY.
+	 */
+	inline void AddTheRunsVersion18Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
 	inline TSharedPtr<FJsonObject> Parse(const FString& Text)
 	{
 		TSharedPtr<FJsonObject> Parsed;

@@ -167,7 +167,10 @@ which compiles no C++, runs them on every pull request.
 
 **Said first:**
 
-- **NOT COMPILED, NOT RUN IN THE ENGINE.** Phase 1 on `feat/dismantling-2848`, cut from slice F5's head `416c70868` on
+- **WINDOW sd-w1 FAILED 22 TESTS, ALL ON THIS SLICE'S TWO ITEM FIELDS**, added without a save version against
+  the rule of 2026-11-01. The run record went to 18 and the character record to 15 for the second attempt, sd-w2.
+  The last section of this entry has the measured figures, the ruling and what changed.
+- **NOT COMPILED, NOT RUN IN THE ENGINE** when written. Phase 1 on `feat/dismantling-2848`, cut from slice F5's head `416c70868` on
   `feat/forge-residue-tools-47-f5b` (D1). It goes through F5's `DoItemCraft`, so it merges after F5's window, and its
   own window comes after window lf-w1, together with slice S1 if both are ready.
 - **THE ROOM CHECK IS TEMPORARY.** Until issue #2849 lets a full bag refuse a material or gem without losing it, the
@@ -316,6 +319,89 @@ its count in the base's newest engine log, re-taken there.
 | DP8 | Salvage Protocol adds nothing | 10, 9, 1: DM8 |
 | DP9 | the seed text always adds the arrival | 10, 9, 1: DM9 |
 | DP10 | the screen offers a worn piece a dismantle | 10, 9, 1: DM10 |
+
+### Window sd-w1 failed on the two new fields, and the records took a version (2026-11-24)
+
+**Window sd-w1** ran this slice with #48 slice S1 on development `4d33f5994` (after lf-w1), branch `feat/sd-w1`,
+tested head `4b375d5c1` (`d4834cb8a` and the editor step's asset commit). Measured:
+
+| Step | Result |
+| :-- | :-- |
+| Build | Succeeded, 60 actions, 53 files compiled |
+| Editor step | exactly `DT_EmpireTreeNodes`, `DT_EmpireTreeEffects`, `WBP_Merchant` and `datatable_asset_sources.json`, committed as `4b375d5c1`; no other asset re-saved |
+| 39 groups alone | 33 passed; 6 failed: `SaveLoad.` (81, 1 failed), `SaveRecords.` (17, 2), `EmpireTree.` (24, 1), `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.` |
+| Whole suite | 5339 performed, 5317 succeeded, 22 failed; 57 skipped halves; 861 test saves written and deleted, 0 left behind |
+| Python, beside it | "8231 passed, 10 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 10 skipped; ruff clean |
+| Proofs | none run: the window runs them only after every count passed |
+
+**ALL 22 FAILURES HAD ONE CAUSE, this slice's.** Each is a test comparing a migrated or committed save file with the
+record field by field, and each named `GearLevelAtDrop` (and `TierAtDrop`) as on one side only, for example
+"the record.Floor.GroundItems[0].Item.GearLevelAtDrop is on the second side only". The two item fields were added
+without a schema version, on `docs/Save_System_Design.md`'s sentence "Adding a field with a sensible default is not a
+version bump". That sentence predates the rule `game/Tests/SaveFixtures/README.md` records:
+
+> "From issue #1472 on, a field added to a record takes a version."
+
+ruled 2026-11-01, once the game could load a save (#753). `EveryFixtureHoldsEveryFieldItsRecordWrites` enforces it.
+
+**THE RULING, the coordinating session, 2026-11-24.** It first ruled a test-side default only, then withdrew that when
+told of the README's rule, and ruled (b): the run record 17 to 18 and the character record 14 to 15, each with a step
+writing `GearLevelAtDrop` -1 and `TierAtDrop` 0, new committed files at the new versions with the two fields at
+values that are not the defaults, the test helpers, README entries in the form of `DifficultyTier`'s, and
+`docs/Save_System_Design.md`'s paragraph corrected to state the 2026-11-01 rule and point to the README, in the same
+change. This slice merges first, so it takes character 15 and run 18; #2849, which also moves the character record,
+renumbers to 16 on its rebase.
+
+**WHAT CHANGED for the second attempt, sd-w2:**
+
+- `CataclysmSaveRecords.cpp`: `CataclysmSaveArrival::WriteWhereEachItemArrived` finds every item by walking the record
+  for an object holding both `GearLevel` and `bMadeAtCreation`, and writes -1 and 0 where a field is missing (a number
+  already there is kept; anything else is refused). The character record's `Migrate_14_to_15` and the run record's
+  `Migrate_17_to_18` call it. `SchemaVersionNow` is 15 and 18, each version's comment saying why.
+- **The account record does not move**: its `Stash` holds the same slot, but nothing fills that stash, so no account
+  file holds an item -- the reason the gems step (#46) gave for leaving it.
+- `Character_v15.json` and `Run_v18.json`: the previous files at the new versions with the two fields on every item
+  (the carried Circlet +4 at tier 2, the ground Circlet +0 at tier 4, the creation greatsword +0 at tier 2, the worn
+  ring +3 at tier 1, and -1 and 0 on the empty slot and the gold pile). The previous files are migration inputs now.
+- `CataclysmSaveFixtures.h`: `AddTheCharactersVersion15Defaults` and `AddTheRunsVersion18Defaults`, added after each
+  test's existing chain (21 places), and every test that read `Run_v17.json` or `Character_v14.json` as the committed
+  file reads the new one, its history comment kept.
+- Two new tests, `Cataclysm.Dismantle.` 12 now:
+
+| # | Test | What it shows |
+| :-- | :-- | :-- |
+| DM11 | `ACharacterFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` | `Character_v14.json` migrates, each carried item -1:0, every other field kept; CONTROL `Character_v15.json` read, its Circlet 4:2 |
+| DM12 | `ARunFileFromBeforeItemsRecordedWhereTheyArrivedMigratesToNotKnown` | `Run_v17.json` migrates, each ground item -1:0, every other field kept; CONTROL `Run_v18.json` read, its Circlet 0:4 |
+
+- `game/Tests/SaveFixtures/README.md`: the version step's entry and the two files' rows. `docs/Save_System_Design.md`:
+  the paragraph corrected. `tools/tests/test_empire_tree_on_the_account_record.py` reads `Character_v15.json`.
+- Python, on the change before the window: "8232 passed, 9 skipped"; JUnit 8241 tests, 0 failures, 0 errors, 9 skipped; ruff "All checks passed!"..
+
+### Registered for window sd-w2
+
+The base is development `4d33f5994`, unchanged; the base log is lf-w1's (5322 performed, 57 skipped halves, 861 test
+saves). **The whole suite is registered as 5341**: the base's 5322, S1's 7 and this slice's 12, and sd-w1's measured
+5339 plus DM11 and DM12. Skipped halves 57 and test saves 861, as measured in sd-w1 (no new test reports a skipped
+half or writes a save).
+
+| Step | Registered |
+| :-- | :-- |
+| One build | the change compiled |
+| No editor step | the assets were committed in sd-w1 (`4b375d5c1`), and no CSV changes |
+| Each group alone, first | `Dismantle.` 12 and `Merchant.` 7; every group with a test that failed in sd-w1 (`SaveLoad.`, `SaveRecords.`, `EmpireTree.`, `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `CataclysmDraw.`, `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `ConsumptionMark.`, `DeathCost.`, `EarnedBossSave.`, `GemSave.`, `Gold.`, `SkillLevels.`, `Travel.`, `WalkSeed.`, `WinningTheRun.`); and the save groups whose files this change edits (`CityCleanseSave.`, `EmpireTreeCredit.`, `EmpireTreeNineSaves.`, `EmpireTreeProwess.`, `Seeding.`, `ThrallSave.`) -- each at its count in the base log, all passing |
+| The whole suite | 5341, all succeeded, 0 failed; 57 skipped halves; 861 saves written and deleted, 0 left behind |
+| Python beside it | every test passing, the JUnit file agreeing; ruff clean |
+
+**The 33 groups that passed alone in sd-w1 and are not listed above are not run alone again**: this change edits save
+code and save tests only, and the whole suite runs every one of their tests. A judgement, stated as one.
+
+**C++ guard proofs**, narrowed to `Cataclysm.Dismantle.` (12) or `Cataclysm.Merchant.` (7): DP1 to DP10 and MP1 to
+MP8 as registered for sd-w1 (each DP now predicting 12 performed and two more succeeded), and:
+
+| Proof | Break | Predicted |
+| :-- | :-- | :-- |
+| DP11 | in `CataclysmSaveArrival`, a missing `GearLevelAtDrop` written as 0, not -1 | 12 performed, 10 succeeded, 2 failed: DM11, DM12 |
+| DP12 | the run record's chain without `Migrate_17_to_18` | 12, 11, 1: DM12 (`Run_v17.json` is refused) |
 
 ---
 

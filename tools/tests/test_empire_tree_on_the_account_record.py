@@ -11,8 +11,9 @@ read as text are checked here as well.
 
 SLICE 1C (the same issue) gave a Solo Self-Found character its own bank and tree,
 on its character record at version 9 (the owner's reversal of C8, 2026-11-18), so
-`Character_v13.json`, the committed character file since issue #46 (`Character_v12.json` from issue #2741 slice 8), is checked the same way as
-`Account_v6.json`.
+`Character_v15.json`, the committed character file since issue #2848 (`Character_v14.json` from issue #2741 slice 9,
+`Character_v13.json` from issue #46, `Character_v12.json` from issue #2741 slice 8), is checked the same way as the
+account file.
 
 WHAT EACH CHECK HOLDS, and what would go wrong without it:
 
@@ -53,10 +54,10 @@ EDGES_CSV = REPO_ROOT / "game" / "Data" / "EmpireTreeEdges.csv"
 RECORDS_H = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveRecords.h"
 GAME_INSTANCE = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player" / "CataclysmGameInstance.cpp"
 TRIGGERS = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveTriggers.cpp"
-# `Account_v7.json` AND `Character_v14.json` SINCE ISSUE #2741 SLICE 9, `Account_v6.json` and `Character_v13.json` from
-# issue #46 and slice 8.
+# `Account_v7.json` SINCE ISSUE #2741 SLICE 9 AND `Character_v15.json` SINCE ISSUE #2848 (`Character_v14.json` from slice
+# 9), `Account_v6.json` and `Character_v13.json` from issue #46 and slice 8.
 ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v7.json"
-CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v14.json"
+CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v15.json"
 
 #: `class CATACLYSM_API UCataclysmAccountSave ... SchemaVersionNow = 7;` (6 until issue #2741 slice 9, 5 until slice 8,
 #: 4 until slice 6e)
@@ -64,7 +65,8 @@ ACCOUNT_VERSION = re.compile(
     r"class\s+CATACLYSM_API\s+UCataclysmAccountSave\s*:.*?static\s+constexpr\s+int32\s+SchemaVersionNow\s*=\s*(\d+)\s*;",
     re.DOTALL)
 
-#: `class CATACLYSM_API UCataclysmCharacterSave ... SchemaVersionNow = 14;` (13 until issue #2741 slice 9, 12 until
+#: `class CATACLYSM_API UCataclysmCharacterSave ... SchemaVersionNow = 15;` (14 until issue #2848, 13 until issue #2741
+#: slice 9, 12 until
 #: issue #46, 11 until slice 8, 10 until slice 6e, 9 until issue #2764)
 CHARACTER_VERSION = re.compile(
     r"class\s+CATACLYSM_API\s+UCataclysmCharacterSave\s*:.*?static\s+constexpr\s+int32\s+SchemaVersionNow\s*=\s*(\d+)\s*;",
@@ -226,7 +228,7 @@ def test_the_record_that_holds_the_tree_is_the_one_written():
 
 
 def test_the_committed_character_file_holds_its_own_tree_at_the_records_version(node_rows, edges_into):
-    """`Character_v14.json` (`Character_v13.json` until issue #2741 slice 9, `Character_v12.json` until issue #46,
+    """`Character_v15.json` (`Character_v14.json` until issue #2848, `Character_v13.json` until issue #2741 slice 9, `Character_v12.json` until issue #46,
     `Character_v11.json` until issue #2741 slice 8, `Character_v10.json` until slice 6e,
     `Character_v9.json` until issue #2764):
     at the character record's version, with
