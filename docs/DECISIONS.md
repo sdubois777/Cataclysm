@@ -318,7 +318,25 @@ alone first, then the whole suite, with the Python suite in parallel.
   counted from the same log at the turn. Predicted for each: every
   test succeeds, 0 failed, and the saves line shows 0 left behind.
 - **The whole suite.** The base's last measured total plus 0; 0 failed; 0 saves left behind.
-- **Python.** PYTHON_LINE
+- **Python, run on `d3d810805`** with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8243 passed,
+  10 skipped in 427.01s`; the JUnit file agrees, 8,253 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`:
+  `All checks passed!`. The run before it, on `d99df41ea`, failed one test, which is how the Stalker's derived figures
+  were found (the retune section above). Predicted for the window: the same, run on the rebased head.
+- **Python guard proofs, run** with `tools/prove_guard.break_and_run` in `git archive` copies of the branch, each
+  `PROVED` (failed with the break in, passed with it out):
+  - PP1, `n += cfg.empty_board_surge_extra` becomes `n += 0`: 6 named failures, five in
+    `sim/tests/test_the_empty_board_ruling_of_2026_11_23.py` and `test_both_bring_the_scheduled_count_plus_four`.
+  - PP2, `board_is_empty` counts every dungeon: 5, the Quest, Fallen City and Cataclysm cases of
+    `test_a_dungeon_that_is_not_ordinary_leaves_the_board_empty` and two of `tools/tests/test_surge_port.py`.
+  - PP3, `empty_board_surge_braked` ships on: 2, `test_all_three_ship_as_ruled` and
+    `test_neither_half_brakes_an_empty_board_surge`.
+  - PP4, `city_fall_surge_braked` ships on: 6, five in `sim/tests/test_a_city_fall_always_fires_a_surge.py` and
+    `test_every_fall_fires_a_surge_in_both`.
+  - PP5, the game's `IsDueOnCityFall` asks the gap again: 1, `test_every_fall_fires_a_surge_in_both`.
+  - PP6, the ring figures of 2026-11-19 back in both halves: 5, the two pinned figures of
+    `sim/tests/test_creature_strength.py`, `test_every_rings_tier_one_figure_matches`, and the survival guard on the
+    Bulwark and on the Pillar (on seeds 0 to 16 the Sanctuary's 0.13 passes; its one failing clear is in seeds 60 to
+    119).
 - **C++ guard proofs**, each `prove_cpp_guard` with `test_prefix="Cataclysm.EmpireRun."`, run alone, never while the
   Python suite runs. Predicted `named_failures`, exactly:
 
