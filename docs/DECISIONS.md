@@ -160,6 +160,17 @@ with the model's (the shares were compared before), checks each weight function 
 tooltip reads them, and adds `TestTheDesignDocument`, which recomputes section IV's weight table, shares, piece table,
 "11 times", reference table and tier 8 gear table from the model.
 
+**The Python suite, on `e16766979`:** "8268 passed, 9 skipped in 345.14s (0:05:45)"; JUnit 8277 tests, 0 failures, 0
+errors, 9 skipped. ruff: "All checks passed!".
+
+**Python guard proofs, in a `git archive` copy of `e16766979`, each PROVED** (failed with the break in, passed restored):
+
+| Proof | Break | Failed |
+| :-- | :-- | :-- |
+| PY1 | `LEVEL_WEIGHT = 10.0` read as `= 6.327` in `player_power.py` | 18: seven in `test_player_power.py` (the ruled numbers, the owner's list, level six, the proposal's eight scores, the band, both share tests) and eleven in `test_power_score_port.py` (the model against the header, the document's Level Weight row, both share sentences, the reference table, the six tier 8 gear rows) |
+| PY2 | `PointsPerGearRarityStep = 2.0f` read as `= 3.0f` in the header | 2: the header against the model, and the ruled numbers |
+| PY3 | the document's tier 8 shares sentence read as 10/50/30/10 | 1: the document's tier 8 shares |
+
 **Unreal, registered** (none run; no window yet):
 
 | Group | Test | |
