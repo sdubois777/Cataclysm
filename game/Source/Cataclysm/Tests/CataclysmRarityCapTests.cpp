@@ -204,9 +204,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityCapHighRollerTest,
 
 /**
  * RC4. The High Roller's extra item, rolled from Legendary up (`RollRarityAtLeast`). At tiers 1 and 2 it is exactly
- * Legendary: the node's own minimum, one rung above tier 1's cap of Masterful, and nothing rarer (a judgement recorded
- * with issue #2853). At tier 3 it is Legendary or Mythical, both seen, nothing above the cap. Fails if the cap does not
- * reach the High Roller's roll, or if it removes the node's minimum.
+ * Legendary: the node's own minimum, one rung above tier 1's cap of Masterful, and nothing rarer (the owner's ruling
+ * of 2026-11-24 on issue #2853, "Exception: exactly Legendary (Recommended)"). At tier 3 it is Legendary or Mythical,
+ * both seen, nothing above the cap. Fails if the cap does not reach the High Roller's roll, or if it removes the node's
+ * minimum.
  */
 bool FCataclysmRarityCapHighRollerTest::RunTest(const FString&)
 {

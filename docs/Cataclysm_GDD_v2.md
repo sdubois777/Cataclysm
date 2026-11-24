@@ -3119,7 +3119,7 @@ Seven tiers do nothing for progression unless something says which of them a dro
 | 4 | Ascendant |
 | 5 to 8 | Cataclysmic |
 
-Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, a judgement: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
+Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, which the project owner ruled the same day: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
 
 **Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
 
