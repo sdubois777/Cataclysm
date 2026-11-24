@@ -284,6 +284,17 @@ public:
 	bool bIsSecondSelf = false;
 
 	/**
+	 * Whether no blow may kill this character just now, because Subjugate is taking it. Issue #2856, the owner's
+	 * ruling of 2026-11-22: "ok, well it should still take them even if it would kill".
+	 *
+	 * SET ONLY AROUND SUBJUGATE'S OWN BLOW, AND ONLY ON A TARGET IT COULD TAKE: `UCataclysmSummonSkill::Possess` sets
+	 * it before the blow and clears it after, when nothing would refuse the take but the blow's own outcome. Read by
+	 * `UCataclysmCommand::IsHeldAliveForATake`, which `UCataclysmVitalAttributeSet` asks where it holds a creature in
+	 * a friendly Unholy Sigil at one health. False at every other moment, so nothing else is ever held by it.
+	 */
+	bool bHeldAliveForATake = false;
+
+	/**
 	 * How far it actually notices a target, once its floor's multiplier is
 	 * applied. This is what the controller asks, and `SightRadiusCm` is the
 	 * creature's own figure that it scales.

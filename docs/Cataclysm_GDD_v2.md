@@ -2296,7 +2296,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Fist / Ultimate | Living Pyre | Burn for 6s, immune to stun, slow and knockback. Enemies within 4m set alight. Each hit taken raises pyre damage 8% and returns 25% of it as health. |
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Each reserves 10 Fervour while it is out, and as many stand as the pool holds. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
-| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). Each thrall reserves 30 Fervour. Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
+| Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. The blow never kills a target Subjugate could take -- one that is not a boss, not unable to be hurt, not already the player's, with room in the Fervour pool for it: a blow that would kill it leaves it at 1 health, below half, so it is taken (the owner's ruling of 2026-11-22, issue #2856: "ok, well it should still take them even if it would kill"). Anything else the blow can kill as before. Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). Each thrall reserves 30 Fervour. Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
 | All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
 
   
@@ -7184,7 +7184,10 @@ whose health is on the frame instead. **A creature the player commands, a thrall
 or a summoned minion, has its bar filled green, `#3FA34D`**, so the player can
 see which are theirs; every other creature's is the health red. The owner ruled
 it for a thrall on 2026-09-13, and it was extended to every follower on
-2026-10-02. **Path of Exile does the same** even when
+2026-10-02. **A creature commanded through one of the player's own is green
+too**, such as the Imps a taken Gatekeeper calls, which follow the Gatekeeper;
+and so are those Imps once the Gatekeeper is gone, because they stay on the
+player's side (issue #2867). A creature anybody else commands stays red. **Path of Exile does the same** even when
 its own "Show Mini Life Bars on Enemies" setting is switched on: a bar appears
 after an enemy has been damaged or moused over, and not before. Diablo 4 makes
 showing one always a state the player has to choose rather than the only

@@ -702,6 +702,255 @@ bool FCataclysmSubjugateRefusesABossTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateTakesWhatItsBlowWouldKillTest,
+	"Cataclysm.Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2856, the owner's ruling of 2026-11-22: "ok, well it should still take them even if it would kill". A target
+ * Subjugate could otherwise take -- not a boss, not one that cannot be hurt, not already the caster's, with room in the
+ * pool -- is held at one health through the blow, and so is taken rather than killed.
+ *
+ * THE CONTROL FIRST, AND IT IS WHAT MAKES THE SECOND HALF MEAN ANYTHING: the same blow, from a caster whose pool has no
+ * room for the thrall, kills an identical creature at the same health. So the blow is one that kills, and what spares
+ * the second creature is the take and nothing about the blow. The no-room caster is the control rather than a boss
+ * because room is the one condition a caster changes: `Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake`
+ * reads the boss.
+ *
+ * `Possess` IS CALLED DIRECTLY, as `Cataclysm.SkillLevelSources.` calls it, so the pool of 25 the control needs is not
+ * also asked for the cast's cost. THE BLOW IS 300% OF THE CASTER'S 100, Subjugate's own figure, set on the skill so
+ * the slot's table is not read; and every blow lands, with the creature's armour, evasion and block at nought, so the
+ * control cannot pass by a miss.
+ */
+bool FCataclysmSubjugateTakesWhatItsBlowWouldKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+	constexpr float SubjugatesBlowPercent = 300.0f;
+	constexpr float HealthTheBlowEmpties = 50.0f;      // of the creature's 1000, against a blow of 300
+	constexpr float PoolWithNoRoomForThirty = 25.0f;
+
+	// EVERY BLOW LANDS, AND THEN THE HEALTH: `SetArmour` writes the creature's starting figures again.
+	const auto WoundSoEveryBlowLands = [](FScopedCreature& Creature, float Health)
+	{
+		Creature.Actor->SetArmour(0.0f);
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature.Actor))
+		{
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+		Creature.SetHealthTo(Health);
+	};
+	const auto MaximumHealthOf = [](const AActor* Creature)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		return System ? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	};
+
+	// --- THE CONTROL: NO ROOM, SO NOTHING HOLDS IT, AND THE BLOW KILLS -----
+	FScopedCaster Cramped(World, FVector::ZeroVector, PoolWithNoRoomForThirty);
+	FScopedCreature Doomed(World, FVector(3 * M, 0, 0));
+	WoundSoEveryBlowLands(Doomed, HealthTheBlowEmpties);
+	UCataclysmSummonSkill* CrampedTry = GrantSkill<UCataclysmSummonSkill>(
+		Cramped, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!CrampedTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the caster with no room."));
+		return false;
+	}
+	CrampedTry->DamagePercentOverride = SubjugatesBlowPercent;
+
+	TestFalse(TEXT("control: a caster whose pool has no room takes nothing"), CrampedTry->Possess());
+	TestTrue(TEXT("control: refused for the room, so the creature was not held through the blow"),
+			 CrampedTry->bRefusedForRoom);
+	TestTrue(TEXT("control: and the same blow kills an identical creature at the same health, so it is a blow that "
+				  "kills"),
+			 UCataclysmSkillEffects::IsDead(Doomed.Actor));
+
+	// --- WITH ROOM: TAKEN INSTEAD OF KILLED ---------------------------------
+	FScopedCaster Commander(World, FVector(0, 30 * M, 0));
+	FScopedCreature Spared(World, FVector(3 * M, 30 * M, 0));
+	WoundSoEveryBlowLands(Spared, HealthTheBlowEmpties);
+	UCataclysmSummonSkill* Take = GrantSkill<UCataclysmSummonSkill>(
+		Commander, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Take)
+	{
+		AddError(TEXT("Could not grant Subjugate to the caster with room."));
+		return false;
+	}
+	Take->DamagePercentOverride = SubjugatesBlowPercent;
+
+	TestTrue(TEXT("Subjugate takes the creature its blow would have killed"), Take->Possess());
+	TestTrue(TEXT("and says so"), Take->bTookIt);
+	TestFalse(TEXT("it is alive"), UCataclysmSkillEffects::IsDead(Spared.Actor));
+	TestEqual(TEXT("and at full health, as every thrall is at the take"), Spared.Health(),
+			  MaximumHealthOf(Spared.Actor), 0.01f);
+	TestTrue(TEXT("and the caster commands it"),
+			 UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Contains(Spared.Actor));
+	TestFalse(TEXT("and nothing holds it alive once the cast is over"), Spared.Actor->bHeldAliveForATake);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateBlowStillKillsABossTest,
+	"Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2856: the hold that spares a creature Subjugate's blow would kill is for a creature it could take, and a boss
+ * is not one -- "Bosses cannot be taken". So the same blow that `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` stops at
+ * one health still kills a boss, and the boss is refused, by a caster with room for a thrall.
+ *
+ * THE RARITY FIRST, THEN THE ARMOUR, EVASION AND BLOCK, THEN THE HEALTH, as `Cataclysm.SkillLevelSources.` makes its
+ * bosses: a rarity writes the creature's starting figures again.
+ */
+bool FCataclysmSubjugateBlowStillKillsABossTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	FScopedCreature Boss(World, FVector(3 * M, 0, 0));
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Boss.Actor->SetArmour(0.0f);
+	if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Boss.Actor))
+	{
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		System->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+	Boss.SetHealthTo(50.0f);
+	if (!TestTrue(TEXT("set-up: the creature is a boss"), Boss.Actor->IsBoss())
+		|| !TestTrue(TEXT("set-up: and the caster has room for a thrall"),
+					 UCataclysmCommand::HasRoomForAnotherThrall(Commander.Actor, 30.0f)))
+	{
+		return false;
+	}
+
+	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+		Commander, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Subjugate."));
+		return false;
+	}
+	Skill->DamagePercentOverride = 300.0f;
+
+	TestFalse(TEXT("Subjugate does not take a boss"), Skill->Possess());
+	TestFalse(TEXT("and not for want of room"), Skill->bRefusedForRoom);
+	TestTrue(TEXT("its blow killed the boss: nothing held a creature it cannot take"),
+			 UCataclysmSkillEffects::IsDead(Boss.Actor));
+	TestEqual(TEXT("so the caster commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Commander.Actor).Num(), 0);
+	TestFalse(TEXT("and nothing is left held alive"), Boss.Actor->bHeldAliveForATake);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateRefusalNamesEveryReasonTest,
+	"Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #2856: the play log's "TAKE REFUSED" line for the command's own refusal printed "boss no, cannot be hurt no,
+ * already on its side no" for a creature the blow had killed, because it named three of the reasons
+ * `UCataclysmCommand::Subjugate` refuses for and not the one that held. It now prints the reason
+ * `UCataclysmCommand::WhySubjugateRefuses` gives, which `Subjugate` refuses by, and every reason with "yes" or "no"
+ * (`UCataclysmCommand::SubjugateRefusalsText`). No automation test reads the log, so the two functions the line prints
+ * are what is tested; `tools/tests/test_a_refused_press_and_a_take_say_why.py` checks the line prints them.
+ *
+ * EVERY REASON IS MADE TO HOLD ONCE, and for each `Subjugate` refuses, the reason named is that one, and the text says
+ * "yes" for it: so no refusal prints "no" for every reason. A creature that can be taken is the control: no reason,
+ * and no "yes".
+ */
+bool FCataclysmSubjugateRefusalNamesEveryReasonTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	FScopedCreature Living(World, FVector(3 * M, 0, 0));
+	FScopedCreature Corpse(World, FVector(5 * M, 0, 0));
+	FScopedCreature Boss(World, FVector(7 * M, 0, 0));
+	FScopedCreature Unhurtable(World, FVector(9 * M, 0, 0));
+	FScopedCreature Ours(World, FVector(11 * M, 0, 0));
+	AActor* NotACharacter = World->SpawnActor<AActor>(FVector(13 * M, 0, 0), FRotator::ZeroRotator);
+	ON_SCOPE_EXIT { if (IsValid(NotACharacter)) { NotACharacter->Destroy(); } };
+
+	Corpse.SetHealthTo(0.0f);
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Unhurtable.Actor->bCannotBeHurt = true;
+	if (!TestNotNull(TEXT("set-up: an actor that is not a character"), NotACharacter)
+		|| !TestTrue(TEXT("set-up: the corpse is dead"), UCataclysmSkillEffects::IsDead(Corpse.Actor))
+		|| !TestTrue(TEXT("set-up: one creature is already the commander's"),
+					 UCataclysmCommand::Subjugate(Commander.Actor, Ours.Actor)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: NOTHING REFUSES, AND NOTHING SAYS YES.
+	TestTrue(TEXT("control: nothing refuses a living creature on the other side"),
+			 UCataclysmCommand::WhySubjugateRefuses(Commander.Actor, Living.Actor) == ECataclysmSubjugateRefusal::None);
+	const FString LivingText = UCataclysmCommand::SubjugateRefusalsText(Commander.Actor, Living.Actor);
+	TestFalse(TEXT("control: and its text says yes to nothing"), LivingText.Contains(TEXT("yes")));
+	TestTrue(TEXT("control: and no to dead"), LivingText.Contains(TEXT("dead no")));
+
+	// EVERY REASON, EACH MADE TO HOLD ONCE.
+	struct FRefusedCase
+	{
+		const TCHAR* What;
+		AActor* Enemy;
+		ECataclysmSubjugateRefusal Expected;
+	};
+	const FRefusedCase Cases[] = {
+		{ TEXT("no creature at all"), nullptr, ECataclysmSubjugateRefusal::NothingToTake },
+		{ TEXT("an actor that is not a character"), NotACharacter, ECataclysmSubjugateRefusal::NotACharacter },
+		{ TEXT("a dead creature"), Corpse.Actor, ECataclysmSubjugateRefusal::Dead },
+		{ TEXT("a boss"), Boss.Actor, ECataclysmSubjugateRefusal::Boss },
+		{ TEXT("a creature that cannot be hurt"), Unhurtable.Actor, ECataclysmSubjugateRefusal::CannotBeHurt },
+		{ TEXT("a creature already the commander's"), Ours.Actor, ECataclysmSubjugateRefusal::AlreadyOnItsSide },
+	};
+	TestEqual(TEXT("every reason on the list is made to hold once"), static_cast<int32>(UE_ARRAY_COUNT(Cases)),
+			  static_cast<int32>(ECataclysmSubjugateRefusal::Count) - 1);
+
+	for (const FRefusedCase& Case : Cases)
+	{
+		const FString Named(UCataclysmCommand::SubjugateRefusalName(Case.Expected));
+		const FString Text = UCataclysmCommand::SubjugateRefusalsText(Commander.Actor, Case.Enemy);
+		TestFalse(FString::Printf(TEXT("%s is not taken"), Case.What),
+				  UCataclysmCommand::Subjugate(Commander.Actor, Case.Enemy));
+		TestTrue(FString::Printf(TEXT("%s is refused as %s"), Case.What, *Named),
+				 UCataclysmCommand::WhySubjugateRefuses(Commander.Actor, Case.Enemy) == Case.Expected);
+		TestTrue(FString::Printf(TEXT("and the text says yes to %s for %s: %s"), *Named, Case.What, *Text),
+				 Text.Contains(Named + TEXT(" yes")));
+
+		// AND EVERY REASON IS NAMED IN EVERY REFUSAL'S TEXT, with its answer.
+		for (int32 Raw = static_cast<int32>(ECataclysmSubjugateRefusal::None) + 1;
+			 Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count); ++Raw)
+		{
+			const FString Reason(UCataclysmCommand::SubjugateRefusalName(static_cast<ECataclysmSubjugateRefusal>(Raw)));
+			TestTrue(FString::Printf(TEXT("the text for %s names %s"), Case.What, *Reason),
+					 Text.Contains(Reason + TEXT(" yes")) || Text.Contains(Reason + TEXT(" no")));
+		}
+	}
+
+	// THE CASE THE OWNER'S LOG SHOWED, STATED ON ITS OWN: a dead creature is refused as dead, and the text says so.
+	const FString CorpseText = UCataclysmCommand::SubjugateRefusalsText(Commander.Actor, Corpse.Actor);
+	TestTrue(TEXT("a dead creature's refusal names dead"), CorpseText.Contains(TEXT("dead yes")));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallCapIsThePoolTest,
 	"Cataclysm.Command.TheArmyIsOnlyAsLargeAsTheResourcePool",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

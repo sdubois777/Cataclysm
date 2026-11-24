@@ -2,6 +2,190 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Subjugate takes a creature its blow would have killed, its refusal line names every reason including "dead", and a taken Gatekeeper's Imps wear the green bar (#2856, #2867); a thrall's minion scaling is as designed and goes to the owner (#2868)
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/thralls-2856`, from development `4d33f5994`, by
+the coordinating session's brief of 2026-11-24. Nothing below has been built or run in Unreal; the counts and proofs
+are registered for the window, not measured. Issues [#2856](https://github.com/sdubois777/Cataclysm/issues/2856),
+[#2867](https://github.com/sdubois777/Cataclysm/issues/2867) and
+[#2868](https://github.com/sdubois777/Cataclysm/issues/2868).
+
+**Affects:** `UCataclysmCommand` (`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`, `.cpp`: the list
+`ECataclysmSubjugateRefusal`, `WhySubjugateRefuses`, `SubjugateRefusalHolds`, `SubjugateRefusalName`,
+`SubjugateRefusalsText`, `IsHeldAliveForATake` and `TopCommanderOf`, all new, and `Subjugate`, which now refuses by
+the list); `ACataclysmCharacterBase::bHeldAliveForATake` (new); `UCataclysmSummonSkill::Possess` and its header
+(`CataclysmSkillTemplates.cpp`, `.h`); `UCataclysmVitalAttributeSet::PreAttributeChange` and its damage branch
+(`CataclysmVitalAttributeSet.cpp`); `UCataclysmCombatOverlay::HealthFillHexFor` (`CataclysmCombatOverlay.cpp`, `.h`);
+`docs/Cataclysm_GDD_v2.md` (Subjugate's row and the health bar paragraph); four new automation tests and one new
+Python test.
+
+### The rulings and reports it carries, verbatim
+
+- **#2856, the owner, 2026-11-22:** "ok, well it should still take them even if it would kill". The report before it,
+  the owner the same day: "just did it again with over 50 fervour. It's just killing them". The issue's first report:
+  "subjugate has stopped taking enemies, it's just killing them now".
+- **#2867, the owner's playtest of 2026-11-23:** "The Gatekeeper's minions when subjugated appear with red healthbars,
+  making it seem like they're enemies."
+- **#2868, the same playtest:** "verify subjugated minions are getting the minion scaling from my character, it doesn't
+  seem like they are. My imps are hitting harder than a Herald."
+- **Standing:** the owner's of 2026-09-13, "turn their healthbar green so you know it's yours"; and #2791's rulings of
+  2026-11-20 by the coordinating session, that a taken Gatekeeper's Imps follow the Gatekeeper and not the player, and
+  "stay on its commander's side after it dies, until they are killed".
+
+### #2856: taken instead of killed
+
+**What changes in play.** When Subjugate's blow would kill a target it could otherwise take -- not dead, not a boss,
+not one that cannot be hurt, not already the caster's, and with room in the Fervour pool for the thrall -- the blow
+leaves it at 1 health instead. One health is below the row's half (and below Dominion's 65%), so the take goes
+ahead, and the take restores it to full as before. The half-health condition is unchanged: a blow that leaves a
+creature above the threshold still takes nothing. Anything the take would refuse anyway is not spared: a boss, a
+creature already the caster's, and every target when the pool has no room can still be killed by the blow.
+
+**How it is built.** `Possess` asks `UCataclysmCommand::WhySubjugateRefuses` and `HasRoomForAnotherThrall` before
+its blow -- the same two questions it asks after -- and when neither refuses, sets the target's
+`bHeldAliveForATake` for the length of `HitTargets` and clears it after. `UCataclysmVitalAttributeSet` holds such a
+target at one health exactly where it holds a creature in a friendly Unholy Sigil (issue #1559): in
+`PreAttributeChange`, so every write that would empty health -- a blow, a tick, an execute's direct loss -- leaves
+one point; and in the damage branch, so the blow is announced as not lethal and the health base is written back to
+the point held.
+
+**Judgement 1, how to build the ruling: a hold at one health during the blow, not a take decided before the
+damage.** The ruling left it open ("for example, the hit could stop at 1 health on a target that can be taken, or
+the take could be decided before the hit lands"). The hold was chosen because a blow's outcome is resolved inside the
+target's own attribute set -- evasion, block, armour, energy shield, the saves -- and cannot be known before it
+lands, so deciding first would have to take creatures the blow never reached; and because the hold is the shape the
+sigil already uses, at the same two places, so no new kind of rule enters the damage path. The option not taken:
+take the target before the blow and skip or soften the blow. It would also have changed what the blow does to a
+target that is then refused, which the ruling did not ask for.
+
+**Judgement 2, what the hold covers: everything the blow sets off before `HitTargets` returns** -- a burn's first
+tick if it fires on application, a row's answer to the hit, an execute the hit asks for. The ruling says the hit
+"must not kill it first", and those are the hit's. Nothing after the call is held: the take then heals the creature
+to full.
+
+**Judgement 3, the threshold is not pre-judged.** It depends on the blow, so it is judged after it, as before. One
+health passes it for any creature whose maximum is above two at the row's 50%.
+
+**The genre agrees that a kill need not stop a take**, re-fetched 2026-11-24. Path of Exile's Dominating Blow
+([poedb](https://poedb.tw/us/Dominating_Blow)): "If a non-unique enemy dies while affected by the debuff", "a
+Sentinel of Dominance with the same rarity, prefix and suffix modifiers will be summoned"; unique enemies are
+excluded. Diablo 2's Conversion ([diablo2.io](https://diablo2.io/skills/conversion-t4033.html)) takes the monster
+alive: a successful attack "has a chance to convert the target to fight evil", and it "will not work on Super Unique
+Monsters, Champions, and Bosses". **What the research settles:** a take survives the target's death in one shipped
+game, and bosses are excluded in both. **What it does not settle, and is Judgement 1:** Path of Exile raises a copy
+from the corpse, and this game keeps the creature itself, because Subjugate's row says it "keeps its own abilities"
+and is "restored to full health"; holding it at one point is how it stays the same creature.
+
+### #2856: the refusal line names every reason, "dead" among them
+
+**What was wrong.** The play log's line for the command's own refusal asked three of `Subjugate`'s six reasons
+again for itself -- boss, cannot be hurt, already on its side -- so the owner's log of 2026-11-22 read "TAKE REFUSED:
+'Subjugate' could not take 'CataclysmBruteCharacter_258': boss no, cannot be hurt no, already on its side no." for a
+creature the blow had killed.
+
+**What it prints now.** "TAKE REFUSED: '<skill>' could not take '<creature>', refused as <reason>: nothing to take
+no, not a character no, dead yes, boss no, cannot be hurt no, already on its side no." Both halves come from the list
+`ECataclysmSubjugateRefusal`: the reason is `WhySubjugateRefuses`, which `Subjugate` itself now refuses by, and the
+list is every reason asked by `SubjugateRefusalHolds`. So a refusal always prints a "yes", and a reason added to the
+list is printed without anybody editing the line. The order of the reasons is the order `Subjugate` asked them in.
+
+### #2856: the no-room refusal is still silent to the player, and nothing was built for it
+
+The issue's body asks three questions for a ruling: (1) show the refusal on screen, "at least 'No room: imps reserve
+80 of 104 Fervour'"; (2) refuse the press before the blow when no thrall would fit; (3) displace the oldest imp. Its
+recommendation of (1) is the filing session's, not the owner's, and no comment on the issue rules on any of the
+three. **So nothing was built for them**, by the brief ("do it if it is stated"). The play log line is unchanged.
+
+### #2867: the bar follows the top of the chain of command
+
+**The cause.** `HealthFillHexFor` was green only when `UCataclysmCommand::CommanderOf(creature)` was the local
+player. A taken Gatekeeper's Imps answer the Gatekeeper there (#2791), so every Imp a taken Gatekeeper called wore
+the enemy red. A thrall the player takes directly, Gatekeeper's Imps included, was already green: its owner is the
+player.
+
+**What it does now.** It climbs the chain with `UCataclysmCommand::TopCommanderOf` -- each step `CommanderOf`, at most
+eight -- and is green when the local player is at the top. Every creature the game makes a commander for was checked:
+a thrall (owner, set by `Subjugate`, the Warzone's allies and a load), a summoned minion (`Summoner`), and a taken
+Gatekeeper's Imps (owner, the Gatekeeper); no other code names a commander.
+
+**Judgement 4, an Imp whose taken Gatekeeper is gone stays green.** Once the Gatekeeper's body is destroyed its Imps'
+chain stops at nobody: the owner is a destroyed actor, and later nothing. They still fight on the player's side,
+ruled for #2791, so a creature that answers to nobody still here is green when it is on the local player's side
+(`UCataclysmTeams::ShareSideIgnoringMadness`). Every ordinary creature answers to nobody and is on the Monsters side,
+so it stays red. **A creature at the top of whose chain stands somebody else stays red**, as another commander's
+thrall always was: the green says "yours", not "on your side". The option not taken: the side alone, which would
+turn another player's creatures green if co-op is ever built.
+
+### #2868: what the design says, and what the code does -- for the owner to rule
+
+**Nothing was changed.** The design gives a thrall its commander's minion modifiers and keeps its own base figures,
+and the code does both. Quoted:
+
+- The owner, 2026-09-13 (entry "A subjugated enemy is a minion, is healed to full when taken, and says so in its own
+  description"): the enemy you take over "should be considered a minion".
+- The entry of 2026-10-02, "A subjugated enemy takes its commander's minion damage and minion health, as the owner
+  ruled it should": "A thrall's blow is multiplied by its commander's minion damage, read at the blow and against its
+  target", and "A thrall's maximum health is multiplied by its commander's minion health when it is taken".
+- Issue #340, ruled 2026-11-02 by the coordinating session: a thrall is asked as a `Minion.Creature`, so its
+  commander's Spirit reaches its blow through `game/Data/MinionScaling.csv`, as it reaches an imp's.
+- `docs/Cataclysm_GDD_v2.md`, the minion channels: "A minion reaches its summoner through exactly three channels" --
+  its side; "Its base health and base damage | The type's own base, raised by the summoner's **level**"; and increased
+  damage from one primary attribute. Subjugate's row in `game/Data/WeaponSkills.csv`: a thrall "keeps its own
+  abilities".
+- The owner's "minions update live rather than snapshotting", recorded on 2026-09-13 "and not built".
+
+**What the code does.** A thrall's blows through `UCataclysmSkillEffects::ApplyHit` are multiplied by
+`UCataclysmCommand::ThrallDamageMultiplierAgainst`, its commander's `minion_damage` asked as `Minion.Creature`; its
+maximum health by `minion_health` once, at the take; its attack interval by `minion_attack_speed`
+(`AttackIntervalScaleFor`); its blows on creatures by Subjugate's level factor (#2764). **What it does not get:** the
+summoner's level on its base figures, which stay the creature's own (archetype, rarity, the floor's tier), because the
+design states that channel for a minion TYPE's base and a thrall has no type; minion damage on what does not pass
+through `ApplyHit` (burning ground, its damage over time, Infernal Brand, retaliation, Shared Ruin, Chorus), listed in
+the 2026-10-02 entry; and later changes to minion health, which is fixed at the take. A summoned Imp's base IS raised
+by the player's level, so an Imp at a high character level can out-hit a thrall taken on a low tier even with the same
+minion modifiers. **Whether a thrall's base should also follow its commander's level is a design question for the
+owner.**
+
+### Tests
+
+Registered, not run. **Four new automation tests**, predicting `Cataclysm.Command.` 25 to 28 and
+`Cataclysm.Gatekeeper.` 14 to 15:
+
+- `Cataclysm.Command.SubjugateTakesAnEnemyItsBlowWouldHaveKilled`: the control first, a caster with no room whose
+  300% blow kills a creature at 50 of 1,000 health; then a caster with room takes an identical creature, alive, at its
+  full maximum, commanded, and not left held.
+- `Cataclysm.Command.SubjugatesBlowStillKillsABossItCannotTake`: the same blow kills a boss at 50 health from a caster
+  with room, and takes nothing.
+- `Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem`: each of the six reasons made to hold once; each is
+  refused, named, and says "yes" for itself, every reason is named in every text, a dead creature's says "dead yes";
+  and a creature that can be taken names none and says "yes" to nothing.
+- `Cataclysm.Gatekeeper.ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain`: a free Gatekeeper's
+  Imps red; the taken Gatekeeper and its Imps green to its commander; another commander's Gatekeeper's Imps red to it
+  and green to theirs; and the Imps of the taken Gatekeeper still green after it is destroyed.
+
+**One new Python test**, `test_the_commands_refusal_line_names_every_reason_it_can_refuse_for` in
+`tools/tests/test_a_refused_press_and_a_take_say_why.py`: the line prints the reason and the list, `Subjugate` refuses
+by `WhySubjugateRefuses`, and every reason on the list is asked and named. **Proved** with `tools/prove_guard.py`,
+the list in the line replaced by a fixed "boss no": `PROVED: 1 failed, 4 passed | restored: 5 passed`, the failure
+being that test.
+
+**Guard proofs registered for the window**, each with the test it must fail:
+
+| Proof | Break | Must fail |
+| :-- | :-- | :-- |
+| H1 | `Held->bHeldAliveForATake = true;` to `= false;` (`CataclysmSkillTemplates.cpp`) | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H2 | `IsHeldAliveForATake(CataclysmDefendingBody(*this)))` to `IsHeldAliveForATake(nullptr))` in `PreAttributeChange` | `SubjugateTakesAnEnemyItsBlowWouldHaveKilled` |
+| H3 | `if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None` to `if (true` | `SubjugatesBlowStillKillsABossItCannotTake` |
+| R1 | `return Character && UCataclysmSkillEffects::IsDead(Character);` to `return false;` | `ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` |
+| B1 | `UCataclysmCommand::TopCommanderOf(Creature))` to `UCataclysmCommand::CommanderOf(Creature))` in `HealthFillHexFor` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` |
+| B2 | `return UCataclysmTeams::ShareSideIgnoringMadness(Creature, LocalPlayerPawn)` to `return false` | `ATakenGatekeepersImpsWearTheGreenBarOfTheCommanderAtTheTopOfTheirChain` (the destroyed Gatekeeper's Imps only) |
+
+**Regressions to read in the window:** `Cataclysm.Overlay.ACreatureThePlayerCommandsHasAGreenHealthBar`, every
+`Cataclysm.Command.` Subjugate test, `Cataclysm.Gatekeeper.ATakenGatekeepersImpsFightForItsCommanderAndAFreeOnesDoNot`,
+and the `Cataclysm.SkillLevelSources.` and `Cataclysm.LevelCosts.` tests that call `Possess`.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

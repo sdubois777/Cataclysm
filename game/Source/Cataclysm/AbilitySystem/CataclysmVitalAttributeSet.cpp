@@ -272,6 +272,18 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 			{
 				NewValue = FMath::Min(1.0f, GetHealth());
 			}
+
+			// AND A CREATURE SUBJUGATE IS TAKING CANNOT BE KILLED, HELD THE SAME WAY. Issue #2856, the owner's ruling of
+			// 2026-11-22: "ok, well it should still take them even if it would kill". `UCataclysmSummonSkill::Possess`
+			// marks its target around its own blow, and only a target nothing but the blow's outcome would refuse; at
+			// one health that target is below any threshold the skill states, so it is taken. ANY CHARACTER, NOT ONLY A
+			// CREATURE, because `UCataclysmCommand::Subjugate` takes any character; ASKED OF THE BODY THE SET BELONGS
+			// TO, which for a creature is the same actor the sigil is asked about.
+			if (NewValue <= 0.0f && GetHealth() > 0.0f
+				&& UCataclysmCommand::IsHeldAliveForATake(CataclysmDefendingBody(*this)))
+			{
+				NewValue = FMath::Min(1.0f, GetHealth());
+			}
 		}
 	}
 	else
@@ -2196,6 +2208,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			const bool bHeldBySigil = bWouldKill
 				&& UCataclysmEnemyModifiers::IsProtectedBySigil(GetOwningActor());
 
+			// AND ONE SUBJUGATE IS TAKING, the same way and for the same two readers. Issue #2856: `PreAttributeChange`
+			// holds it at one health while `UCataclysmSummonSkill::Possess` marks it, so its blow is not a death.
+			const bool bHeldForATake = bWouldKill
+				&& UCataclysmCommand::IsHeldAliveForATake(CataclysmDefendingBody(*this));
+			const bool bHeldAlive = bHeldBySigil || bHeldForATake;
+
 			// ANNOUNCED HERE, WHERE THE BLOW'S WHOLE OUTCOME IS KNOWN, AND BEFORE
 			// HEALTH IS WRITTEN. Issue #41, slice 4. Every resolved blow reaches
 			// this line, evaded and blocked ones included. The death the write
@@ -2218,7 +2236,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Executable ? Executable->TakeCullAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
-				/*bLethal=*/bWouldKill && !bHeldBySigil, bFirstFromAttacker);
+				/*bLethal=*/bWouldKill && !bHeldAlive, bFirstFromAttacker);
 			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedByThisHit =
 				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			const UCataclysmAbilitySystemComponent::FExecuteAsked CullByThisHit =
@@ -2252,8 +2270,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// `PreAttributeChange` holds the current value at one; the base is
 				// held only to its plain bounds by `PreAttributeBaseChange` (issue
 				// #1096), which here leaves it at zero, and the next gain would add
-				// to that. The same write-back the health branch below makes.
-				if (bHeldBySigil)
+				// to that. The same write-back the health branch below makes. AND
+				// WHERE A TAKE HELD IT, issue #2856, for the same reason.
+				if (bHeldAlive)
 				{
 					SetHealth(GetHealth());
 				}

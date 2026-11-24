@@ -1769,6 +1769,13 @@ public:
 	 * too healthy, a boss, no room in the pool -- leaves an enemy that has been
 	 * hit for 300% and set alight, which is what "if the blow leaves it" says.
 	 *
+	 * AND IT NEVER KILLS A TARGET IT COULD TAKE. Issue #2856, the owner's ruling of
+	 * 2026-11-22: "ok, well it should still take them even if it would kill". A
+	 * target that nothing but the blow's outcome would refuse -- not dead, not a
+	 * boss, not one that cannot be hurt, not already the caster's, and with room
+	 * in the pool -- is held at one health through the blow
+	 * (`ACataclysmCharacterBase::bHeldAliveForATake`), and so is taken.
+	 *
 	 * Public so a test can drive it without aiming.
 	 *
 	 * @return whether an enemy was taken
@@ -1791,10 +1798,11 @@ public:
 	/**
 	 * Whether the last use was refused for want of room in the pool.
 	 *
-	 * SEPARATE FROM `bTookIt` BEING FALSE, which has four causes: nothing where
-	 * the player pointed, a target left too healthy, a boss, and this. A test
-	 * that only asked whether something was taken could not tell the cap working
-	 * from the threshold working.
+	 * SEPARATE FROM `bTookIt` BEING FALSE, which has four kinds of cause: nothing
+	 * where the player pointed, a target left too healthy, one of the reasons
+	 * `UCataclysmCommand::WhySubjugateRefuses` names (a boss, a dead target and
+	 * four more), and this. A test that only asked whether something was taken
+	 * could not tell the cap working from the threshold working.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bRefusedForRoom = false;

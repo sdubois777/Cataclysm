@@ -171,8 +171,14 @@ public:
 	 * 2026-10-02 under the owner's delegation: the owner said it of a thrall, and the
 	 * reason he gave, "so you know it's yours", holds for a summoned minion too.
 	 *
-	 * ASKED BY `UCataclysmCommand::CommanderOf`, which answers a thrall's owner and a
-	 * minion's summoner.
+	 * ASKED BY `UCataclysmCommand::TopCommanderOf`, THE TOP OF ITS CHAIN OF COMMAND, since
+	 * issue #2867: a taken Gatekeeper's Imps follow the Gatekeeper and the player one step
+	 * further up, and asking `CommanderOf` alone, one step, left them red. Each step is
+	 * `CommanderOf`, which answers a thrall's owner and a minion's summoner.
+	 *
+	 * AND A CREATURE THAT ANSWERS TO NOBODY STILL HERE IS GREEN WHEN IT IS ON THE LOCAL
+	 * PLAYER'S SIDE, a judgement of issue #2867: a taken Gatekeeper's Imps once the
+	 * Gatekeeper is gone. Another commander's creatures stay red to this player.
 	 */
 	static const TCHAR* HealthFillHexFor(const AActor* Creature, const AActor* LocalPlayerPawn);
 

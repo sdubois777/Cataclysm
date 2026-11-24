@@ -288,6 +288,33 @@ AActor* UCataclysmCommand::CommanderOf(const AActor* Follower)
 	return Owner;
 }
 
+AActor* UCataclysmCommand::TopCommanderOf(const AActor* Follower)
+{
+	// UP THE CHAIN ONE `CommanderOf` AT A TIME, the question every other reader of command asks, so a thrall's owner and
+	// a minion's summoner are each one step and nothing new decides who commands whom.
+	AActor* Top = nullptr;
+	const AActor* At = Follower;
+	for (int32 Link = 0; Link < MostLinksOfCommand; ++Link)
+	{
+		AActor* Above = CommanderOf(At);
+		if (!Above)
+		{
+			// `At` ANSWERS TO NOBODY, so it is the top: null when `At` is the follower itself.
+			return Top;
+		}
+		if (!IsValid(Above))
+		{
+			// A COMMANDER THAT HAS BEEN DESTROYED: the chain stops at nobody who is still here. See the header.
+			return nullptr;
+		}
+		Top = Above;
+		At = Above;
+	}
+
+	// LONGER THAN ANY CHAIN THE GAME MAKES, which only a loop could be. Nobody stands at the top of a loop.
+	return nullptr;
+}
+
 float UCataclysmCommand::CommandedWalkSpeedCmPerSecond(const AActor* Follower)
 {
 	// A DEPLOYED GADGET NEVER WALKS, COMMANDED OR NOT. A turret, a ballista and a trap stay where they are put, and
@@ -932,59 +959,136 @@ void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacter
 	ClampFervourToSpendable(Commander);
 }
 
-bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
+bool UCataclysmCommand::SubjugateRefusalHolds(ECataclysmSubjugateRefusal Reason, const AActor* Commander,
+											  const AActor* Enemy)
 {
-	if (!IsValid(Commander) || !IsValid(Enemy) || Commander == Enemy)
-	{
-		return false;
-	}
+	// EACH REASON IS ASKED ON ITS OWN, so the log line can say "yes" or "no" for every one. The ones after the first two
+	// are about a creature, so each answers no for a pair the first two already refuse.
+	const bool bAPair = IsValid(Commander) && IsValid(Enemy) && Commander != Enemy;
+	const ACataclysmCharacterBase* Character = bAPair ? Cast<const ACataclysmCharacterBase>(Enemy) : nullptr;
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Character);
 
-	ACataclysmCharacterBase* Taken = Cast<ACataclysmCharacterBase>(Enemy);
-	if (!Taken)
+	switch (Reason)
 	{
+	case ECataclysmSubjugateRefusal::NothingToTake:
+		return !bAPair;
+
+	case ECataclysmSubjugateRefusal::NotACharacter:
 		// Only a character can be taken. A patch of burning ground, a projectile
 		// and a piece of terrain are all actors and none of them fights for
 		// anybody.
-		return false;
-	}
+		return bAPair && !Character;
 
-	if (UCataclysmSkillEffects::IsDead(Taken))
-	{
+	case ECataclysmSubjugateRefusal::Dead:
 		// A corpse does not fight for you. The skill's own threshold leaves the
 		// target alive by design -- below half health, not below none -- so this
-		// is the case where the blow killed outright.
-		return false;
-	}
+		// is the case where something killed it before the take. Since issue #2856
+		// Subjugate's own blow cannot be that something for a creature it could take:
+		// `UCataclysmSummonSkill::Possess` holds such a creature at one health.
+		return Character && UCataclysmSkillEffects::IsDead(Character);
 
-	// "BOSSES CANNOT BE TAKEN", which the row states outright. Read off the
-	// rarity the spawner set, the same way `UCataclysmSkillEffects::ApplyStun`
-	// reads boss immunity, so the two cannot drift apart.
-	if (const ACataclysmEnemyCharacter* AsEnemy =
-			Cast<ACataclysmEnemyCharacter>(Taken))
-	{
-		if (AsEnemy->IsBoss())
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' is a boss and cannot be taken."), *Taken->GetName());
-			return false;
-		}
+	case ECataclysmSubjugateRefusal::Boss:
+		// "BOSSES CANNOT BE TAKEN", which the row states outright. Read off the
+		// rarity the spawner set, the same way `UCataclysmSkillEffects::ApplyStun`
+		// reads boss immunity, so the two cannot drift apart.
+		return Creature && Creature->IsBoss();
 
+	case ECataclysmSubjugateRefusal::CannotBeHurt:
 		// AND NOTHING THAT CANNOT BE HURT: The Reaper. Issues #1820 and #41, ruled by the
 		// coordinating session under the owner's delegation, 2026-09-24. A thrall that
 		// cannot die would be an ally nothing can remove, and Sacrificial Ward, which ends
 		// a minion by writing its health, would reach it past the check that keeps it
 		// alive.
-		if (AsEnemy->bCannotBeHurt)
+		return Creature && Creature->bCannotBeHurt;
+
+	case ECataclysmSubjugateRefusal::AlreadyOnItsSide:
+		// ALREADY OURS. Taking something twice would reserve a second 30 Fervour for
+		// one creature, so the caller has to be told nothing happened.
+		return Character && UCataclysmTargeting::IsFriendlyTo(Character, Commander);
+
+	default:
+		return false;
+	}
+}
+
+ECataclysmSubjugateRefusal UCataclysmCommand::WhySubjugateRefuses(const AActor* Commander, const AActor* Enemy)
+{
+	// IN THE ORDER OF THE LIST, which is the order `Subjugate` asked them in before issue #2856 gathered them here.
+	for (int32 Raw = static_cast<int32>(ECataclysmSubjugateRefusal::None) + 1;
+		 Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count); ++Raw)
+	{
+		const ECataclysmSubjugateRefusal Reason = static_cast<ECataclysmSubjugateRefusal>(Raw);
+		if (SubjugateRefusalHolds(Reason, Commander, Enemy))
 		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' cannot be hurt and cannot be taken."), *Taken->GetName());
-			return false;
+			return Reason;
 		}
 	}
+	return ECataclysmSubjugateRefusal::None;
+}
 
-	// ALREADY OURS. Taking something twice would reserve a second 30 Fervour for
-	// one creature, so the caller has to be told nothing happened.
-	if (UCataclysmTargeting::IsFriendlyTo(Taken, Commander))
+const TCHAR* UCataclysmCommand::SubjugateRefusalName(ECataclysmSubjugateRefusal Reason)
+{
+	switch (Reason)
+	{
+	case ECataclysmSubjugateRefusal::None:
+		return TEXT("nothing refuses");
+	case ECataclysmSubjugateRefusal::NothingToTake:
+		return TEXT("nothing to take");
+	case ECataclysmSubjugateRefusal::NotACharacter:
+		return TEXT("not a character");
+	case ECataclysmSubjugateRefusal::Dead:
+		return TEXT("dead");
+	case ECataclysmSubjugateRefusal::Boss:
+		return TEXT("boss");
+	case ECataclysmSubjugateRefusal::CannotBeHurt:
+		return TEXT("cannot be hurt");
+	case ECataclysmSubjugateRefusal::AlreadyOnItsSide:
+		return TEXT("already on its side");
+	default:
+		return TEXT("");
+	}
+}
+
+FString UCataclysmCommand::SubjugateRefusalsText(const AActor* Commander, const AActor* Enemy)
+{
+	// EVERY REASON ON THE LIST, BY THE SAME WALK `WhySubjugateRefuses` MAKES, so a reason added to the list is printed
+	// without anybody remembering this line. Issue #2856.
+	FString Text;
+	for (int32 Raw = static_cast<int32>(ECataclysmSubjugateRefusal::None) + 1;
+		 Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count); ++Raw)
+	{
+		const ECataclysmSubjugateRefusal Reason = static_cast<ECataclysmSubjugateRefusal>(Raw);
+		if (!Text.IsEmpty())
+		{
+			Text += TEXT(", ");
+		}
+		Text += FString::Printf(TEXT("%s %s"), SubjugateRefusalName(Reason),
+								SubjugateRefusalHolds(Reason, Commander, Enemy) ? TEXT("yes") : TEXT("no"));
+	}
+	return Text;
+}
+
+bool UCataclysmCommand::IsHeldAliveForATake(const AActor* Creature)
+{
+	const ACataclysmCharacterBase* Character = Cast<const ACataclysmCharacterBase>(Creature);
+	return Character && Character->bHeldAliveForATake;
+}
+
+bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
+{
+	// EVERY REFUSAL IS ONE OF `WhySubjugateRefuses`'S, which carries each reason's own comment. Issue #2856: the play
+	// log reports a refusal from the same answer, so it can no longer print a refusal whose every reason reads "no".
+	const ECataclysmSubjugateRefusal Refusal = WhySubjugateRefuses(Commander, Enemy);
+	if (Refusal != ECataclysmSubjugateRefusal::None)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' cannot be taken: %s."), *GetNameSafe(Enemy),
+			   SubjugateRefusalName(Refusal));
+		return false;
+	}
+
+	// A CHARACTER, WHICH NOTHING REFUSING HAS ESTABLISHED: `NotACharacter` holds for anything else.
+	ACataclysmCharacterBase* Taken = Cast<ACataclysmCharacterBase>(Enemy);
+	if (!Taken)
 	{
 		return false;
 	}

@@ -4577,12 +4577,43 @@ bool UCataclysmSummonSkill::Possess()
 
 	AActor* Target = Targets[0];
 
+	// AND A TARGET IT COULD TAKE IS NOT KILLED BY THE BLOW: IT IS TAKEN INSTEAD. Issue #2856, the owner's ruling of
+	// 2026-11-22: "ok, well it should still take them even if it would kill". Asked BEFORE the blow, of everything but
+	// the blow's own outcome -- each reason `UCataclysmCommand::Subjugate` refuses for, and the room in the pool, the
+	// same two questions asked again below -- and when nothing refuses, the target is held alive for the blow: a write
+	// that would empty its health leaves one point (`UCataclysmVitalAttributeSet::PreAttributeChange`, beside the
+	// Unholy Sigil's hold). One point is under the health threshold, so the judgement below takes it.
+	//
+	// A JUDGEMENT, OF HOW TO BUILD THE RULING: the blow stops at one health on such a target, rather than the take being
+	// decided before the damage. The blow's outcome is resolved inside the target's own attribute set -- evasion, block,
+	// armour, every shield -- and cannot be known before it lands, while a hold at one is the shape the sigil already
+	// uses. So the blow still lands in full on everything else: a boss, a creature already ours, a dead one, and every
+	// target when the pool has no room, which the blow may kill as before.
+	//
+	// AROUND THE BLOW AND ONLY THE BLOW, and everything it sets off before it returns: a burn's first tick, a row's
+	// answer to the hit. A weak pointer, so a target something else removed during the blow is not written to.
+	TWeakObjectPtr<ACataclysmCharacterBase> HeldForTheTake;
+	if (UCataclysmCommand::WhySubjugateRefuses(Self, Target) == ECataclysmSubjugateRefusal::None
+		&& UCataclysmCommand::HasRoomForAnotherThrall(Self, FervourReserveFor(Self, Params, SkillTags, this)))
+	{
+		HeldForTheTake = Cast<ACataclysmCharacterBase>(Target);
+	}
+	if (ACataclysmCharacterBase* Held = HeldForTheTake.Get())
+	{
+		Held->bHeldAliveForATake = true;
+	}
+
 	// THE BLOW FIRST, AND EVERYTHING ABOUT WHETHER IT CAN BE TAKEN IS JUDGED
 	// AFTER IT. "If the BLOW LEAVES IT below half health you take it
 	// permanently": the health that matters is what is left when the damage has
 	// landed, not what it had when the skill was pressed. `HitTargets` also
 	// carries the row's `Burn=1`, so "setting it alight" comes with it.
 	HitTargets(Targets);
+
+	if (ACataclysmCharacterBase* Held = HeldForTheTake.Get())
+	{
+		Held->bHeldAliveForATake = false;
+	}
 
 	// THE THRESHOLD IS A SHARE OF MAXIMUM HEALTH, the same reading the stun's
 	// threshold takes and for the same reason: what matters is whether the blow
@@ -4694,12 +4725,14 @@ bool UCataclysmSummonSkill::Possess()
 	{
 		// THE COMMAND'S OWN REFUSAL, NAMED BY WHICH OF ITS REASONS HOLDS. Issue #2801. Asked here rather than inside
 		// `UCataclysmCommand::Subjugate`, which answers only true or false; the health and the room were judged above.
-		const ACataclysmEnemyCharacter* AsEnemy = Cast<ACataclysmEnemyCharacter>(Target);
+		// EVERY REASON IT CAN REFUSE FOR, AND THE ONE IT DID, since issue #2856: this line named three of the six by
+		// asking them again for itself, so a creature the blow had killed printed "no" for all three and its real reason
+		// nowhere. Both now come from `UCataclysmCommand::WhySubjugateRefuses`'s list, which `Subjugate` refuses by.
 		UE_LOG(LogCataclysm, Log,
-			TEXT("TAKE REFUSED: '%s' could not take '%s': boss %s, cannot be hurt %s, already on its side %s."),
-			*SkillName, *Target->GetName(), AsEnemy && AsEnemy->IsBoss() ? TEXT("yes") : TEXT("no"),
-			AsEnemy && AsEnemy->bCannotBeHurt ? TEXT("yes") : TEXT("no"),
-			UCataclysmTargeting::IsFriendlyTo(Target, Self) ? TEXT("yes") : TEXT("no"));
+			TEXT("TAKE REFUSED: '%s' could not take '%s', refused as %s: %s."),
+			*SkillName, *Target->GetName(),
+			UCataclysmCommand::SubjugateRefusalName(UCataclysmCommand::WhySubjugateRefuses(Self, Target)),
+			*UCataclysmCommand::SubjugateRefusalsText(Self, Target));
 	}
 	if (bTookIt)
 	{
