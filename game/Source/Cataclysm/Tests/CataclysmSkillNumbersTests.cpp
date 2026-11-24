@@ -35,6 +35,11 @@
  *   anything before a number is written. A fallback that quietly answered zero
  *   would make every skill in the game deal no damage, and the only thing that
  *   would notice is play.
+ *
+ *   **Except an aura, which deals none.** Ruled by the owner on 2026-11-24,
+ *   issue #2875: an aura deals damage only if its description says so, so an
+ *   aura stating no figure answers nought on any key, and the slot's figure is
+ *   still what a skill of any other shape stating nothing takes.
  */
 namespace CataclysmSkillNumbersTest
 {
@@ -53,6 +58,15 @@ namespace CataclysmSkillNumbersTest
 		const FCataclysmSkillSlotNumbers Numbers = UCataclysmSkillSlots::NumbersFor(
 			UCataclysmSkillSlots::LoadGeneratedTable(), Slot);
 		return Numbers.bFound ? Numbers.DamagePercent : -1.0f;
+	}
+
+	/** An aura in a named slot, stating nothing. Issue #2875. */
+	UCataclysmAuraSkill* MakeAuraIn(ECataclysmAbilitySlot Slot)
+	{
+		UCataclysmAuraSkill* Skill =
+			NewObject<UCataclysmAuraSkill>(GetTransientPackage());
+		Skill->Slot = Slot;
+		return Skill;
 	}
 }
 
@@ -135,6 +149,59 @@ bool FCataclysmSkillKeepsItsOwnNumbers::RunTest(const FString& Parameters)
 	Instant->CooldownOverride = 0.0f;
 	TestEqual(TEXT("a skill stating no cooldown waits for nothing"),
 		Instant->GetBaseCooldown(), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillNumbersAuraStatingNothingTest,
+	"Cataclysm.SkillNumbers.AnAuraStatingNoDamageDealsNoneOnAnyKeyAndKeepsAFigureItStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled by the owner on 2026-11-24, issue #2875, "No damage unless stated (Recommended)": an aura deals damage only if
+ * its description says so. An aura stating no figure answers nought in the Aura slot, and in the Ultimate slot, Living
+ * Pyre's. One stating a figure keeps it: Conflagration's 10 (#2869) and Living Pyre's 400.
+ *
+ * THE CONTROL is a strike stating nothing in the Aura slot. It takes the slot's figure, which is above nought, so the
+ * nought an aura answers is the aura's rule and not the slot's number.
+ */
+bool FCataclysmSkillNumbersAuraStatingNothingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillNumbersTest;
+
+	const float AuraSlotFigure = SlotDamagePercent(ECataclysmAbilitySlot::Aura);
+	if (!TestTrue(FString::Printf(TEXT("control: the Aura slot's own figure is above nought (%.1f)"),
+								  AuraSlotFigure),
+				  AuraSlotFigure > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Strike = MakeSkillIn(ECataclysmAbilitySlot::Aura);
+	TestEqual(TEXT("control: a strike stating nothing in the Aura slot takes the slot's figure"),
+		Strike->GetDamagePercent(), AuraSlotFigure, 0.01f);
+
+	UCataclysmAuraSkill* Silent = MakeAuraIn(ECataclysmAbilitySlot::Aura);
+	TestEqual(TEXT("an aura states nothing by default"),
+		Silent->DamagePercentOverride, -1.0f);
+	TestEqual(TEXT("and an aura stating nothing in the Aura slot deals nothing, not the slot's figure"),
+		Silent->GetDamagePercent(), 0.0f, 0.0f);
+
+	UCataclysmAuraSkill* SilentUltimate = MakeAuraIn(ECataclysmAbilitySlot::Ultimate);
+	TestTrue(TEXT("control: the Ultimate slot's own figure is above nought"),
+		SlotDamagePercent(ECataclysmAbilitySlot::Ultimate) > 0.0f);
+	TestEqual(TEXT("nor in the Ultimate slot, which is Living Pyre's"),
+		SilentUltimate->GetDamagePercent(), 0.0f, 0.0f);
+
+	UCataclysmAuraSkill* Stated = MakeAuraIn(ECataclysmAbilitySlot::Aura);
+	Stated->DamagePercentOverride = 10.0f;
+	TestEqual(TEXT("an aura stating 10, Conflagration's figure, deals 10"),
+		Stated->GetDamagePercent(), 10.0f, 0.01f);
+
+	UCataclysmAuraSkill* StatedUltimate = MakeAuraIn(ECataclysmAbilitySlot::Ultimate);
+	StatedUltimate->DamagePercentOverride = 400.0f;
+	TestEqual(TEXT("and one stating 400 in the Ultimate slot, Living Pyre's figure, deals 400"),
+		StatedUltimate->GetDamagePercent(), 400.0f, 0.01f);
 
 	return true;
 }

@@ -5145,9 +5145,15 @@ int32 UCataclysmAuraSkill::Pulse()
 		}
 	}
 
-	// A ring around the caster, following them. The Aura slot's damage is 25%
-	// of weapon damage PER SECOND, which the Skill Slots sheet says explicitly,
-	// so a pulse is worth that much of a second.
+	// A ring around the caster, following them. An aura's damage is a figure
+	// PER SECOND, which the Skill Slots sheet says explicitly, so a pulse is
+	// worth that much of a second.
+	//
+	// THE FIGURE IS THE ROW'S OWN AND NOUGHT WHEN IT STATES NONE, ruled
+	// 2026-11-24 (issue #2875): Conflagration states 10% a second (#2869), and
+	// an aura whose sentence names no damage deals none. Such a pulse is still
+	// dealt, at nought, because the burn, the ailment, the shove and the pull a
+	// row states ride a landed blow in `HitTargets`, whether or not it hurt.
 	const TArray<AActor*> Inside = UCataclysmTargeting::FindEnemiesInSphere(
 		GetWorld(), Self, Self->GetActorLocation(), ScaledRadiusCm());
 

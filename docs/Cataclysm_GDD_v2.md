@@ -661,7 +661,7 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 | Basic Attack | 100% | fixed | Free, and on the left mouse button. It is weapon damage. |
 | Movement | 100% | 75–150% | Some also deal damage, so an ordinary hit is the right middle. |
 | Support | 0% | 0–100% | Buffs, shields, stances, curses and banners usually deal none. |
-| Aura | 25% per second | 15–40% | Persistent and toggled, draining resource while active. |
+| Aura | 25% per second | 10–40% | Persistent and toggled, draining resource while active. An aura deals damage only when it states a figure. |
 | Special | 150% | 100–250% | Traps, deployables, grenades and pets. The most varied slot. |
 | Heavy Attack | 250% | 175–350% | The primary damage button, on a moderate cooldown. |
 | Ultimate | 400% | 300–500% | Long cooldown, reserved for critical moments. |
@@ -681,6 +681,10 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
   
 
 **EVERY FIGURE ABOVE IS THE SKILL AT LEVEL 1.** A skill levels as it is used ("What a Skill Levels", section V), and each level multiplies its percentage by 1.0567, so at level 20 it deals 2.85 times its figure: a Heavy Attack's 250% is 712%, an Ultimate's 400% is 1,140%, and at tier 8 they hit for 11,974 and 19,160. **The Basic Attack does not level**, so it stays 100% of weapon damage, which is why the Damage Target and every affix fitted to it do not move. The owner accepted that end-game rise for skills on 2026-11-19 (issue #2764).
+
+  
+
+**AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Six auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason and Gnawing Want. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. Living Pyre, an aura made for the Ultimate key, states the 400% a pulse it dealt before the rule, carried unchanged until the owner rules on its figure.
 
   
 
@@ -2297,7 +2301,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Each reserves 10 Fervour while it is out, and as many stand as the pool holds. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
 | Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). Each thrall reserves 30 Fervour. Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
-| All / Aura | Conflagration | Hellfire aura in 10m. Enemies burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
+| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
 
   
 
@@ -2319,7 +2323,7 @@ The full weapon-and-damage-type matrix is 398 rows. Building each skill by hand 
 | Movement | Moves the caster. A leap hits where it lands, a charge hits everything on the way, a blink hits at both ends and nothing between. | Mode, Range, Radius |
 | Summon | Spawns minions that fight for the caster. They walk to the enemy. With a duration and an interval it spawns over time and collapses at the end, which is what a rift is. | Range, Radius, Count, MaxActive, Duration, Interval, Minions |
 | Deployable | Places machines that stay where they are put. A turret, a ballista, a spike trap. `HealthPercent` raises what it deploys above that type's own health, which is how Iron Fortress gives its gadgets 50% more. | Range, Radius, Count, MaxActive, Duration, Interval, Minions, HealthPercent |
-| Aura | A radius around the caster. Held as a toggle when it has no duration, and timed when it has one. | Radius, Duration, Interval |
+| Aura | A radius around the caster. Held as a toggle when it has no duration, and timed when it has one. It deals damage only when its row states a Damage Percent. | Radius, Duration, Interval |
 | Debuff | Applies a named effect to enemies within range, nearest the cursor first, without necessarily damaging them. | Range, Radius, MaxTargets, Duration |
 
   
