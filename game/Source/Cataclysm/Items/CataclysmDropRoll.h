@@ -605,6 +605,26 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
 	static int32 MaxAffixTierOnADrop(int32 DifficultyTier);
 
+	/**
+	 * The lowest difficulty tier at which the all-resistances family can roll on a DROP:
+	 * `affixes.ALL_RESISTANCES_LOWEST_DROP_TIER`. Ruled by the project owner on 2026-11-24, issue #2853, "No
+	 * all-resist at tier 1 (Recommended)": the all-resistances family cannot roll on a difficulty tier 1 drop; single
+	 * resistances still can. A tier 1 run faces one Cataclysm, so the family is the weakest in combat there and the
+	 * strongest in the Power Score, which reads all eight types; Path of Exile gates its own all-resistances suffix the
+	 * same way, to item level 12. Crafting is not gated.
+	 */
+	static constexpr int32 AllResistancesLowestDropTier = 2;
+
+	/**
+	 * Whether this affix row may be drawn for an item that DROPS at this difficulty tier: every row may, except the
+	 * all-resistances family -- the resistance family covering every damage type, by the convention `CandidatesFor`
+	 * reads -- below `AllResistancesLowestDropTier`. `affixes.rolls_on_a_drop_at`. `RollItem` asks it of the
+	 * candidates after they are built, so their damage types are drawn from the stream as before.
+	 *
+	 * NOT A UFUNCTION, because it takes a row struct.
+	 */
+	static bool RollsOnADropAt(const FCataclysmAffixRow& Row, int32 DifficultyTier);
+
 
 
 	// -----------------------------------------------------------------------
@@ -1139,17 +1159,37 @@ public:
 									   FName EnemyRarity, float LootQuantity);
 
 	/**
-	 * The same, for gems, which drop on a roll of their own: `FCataclysmEnemyDropRow::GemDrops`. Issue #46, slice G5.
+	 * The same, for gems, which drop on a roll of their own: `FCataclysmEnemyDropRow::GemDrops` times
+	 * `GemDropShareAt(DifficultyTier)`. Issue #46, slice G5; the tier since issue #2853.
 	 *
 	 * LOOT QUANTITY RAISES IT, as it raises gear and materials: a gem is loot, and the design's loot quantity
-	 * sources are increases to how much drops. The column is the gear column times the share
-	 * `sim/analyse_gem_drops.py` measured (`loot.GEM_DROPS_PER_GEAR_DROP`).
-	 *
-	 * IT READS `GemDrops`, which the Enemy Drops sheet's Gem Drops column gives in slice G5's workbook stage. This
-	 * branch does not compile until it is rebased onto that stage.
+	 * sources are increases to how much drops. The column is tier 8's: the gear column times the share
+	 * `sim/analyse_gem_drops.py` measured (`loot.GEM_DROPS_PER_GEAR_DROP`, 0.0136 of the halved gear column, which is
+	 * the 0.0068 of the column before it halved, so a tier 8 kill drops what it did). `loot.expected_gem_drops`.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
-	static float ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity);
+	static float ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity,
+								  int32 DifficultyTier);
+
+	/**
+	 * What each difficulty tier below 8 drops of the gem rate of the tier above it: `loot.GEM_DROP_SHARE_A_TIER_DOWN`.
+	 *
+	 * RULED BY THE PROJECT OWNER ON 2026-11-24, issue #2853, "Milder: tier 1 gets 1/8 (Recommended)": the gem rate
+	 * scales by tier, less steeply than halving per tier, so tier 1 gets about an eighth of the rate every tier had
+	 * (roughly one gem an Outpost dungeon) and tier 8 keeps it. Three quarters a tier is the judgement, measured by
+	 * `sim/measure_drop_supply.py`: 0.75 to the 7th is 13.3% at tier 1, and every tier stays above what a full clear of
+	 * it needs to fill its reference character.
+	 */
+	static constexpr float GemDropShareATierDown = 0.75f;
+
+	/**
+	 * The share of the Gem Drops column a kill at this difficulty tier drops: 1 at tier 8 and `GemDropShareATierDown` of
+	 * the tier above's below it, so 0.1335 at tier 1. MULTIPLIED OUT, as `loot.gem_drop_share` multiplies it, so the
+	 * two hold the same exact figure (3 to the k over 4 to the k is exact in a float). The tier is held inside 1 to 8, as
+	 * a console variable can say anything.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Drop")
+	static float GemDropShareAt(int32 DifficultyTier);
 
 	/**
 	 * The magic find a kill of this rarity adds to its own drops.

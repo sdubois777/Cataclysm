@@ -1161,8 +1161,8 @@ public:
 	// WHAT RARITY CHANGES HERE, AND IT IS NOT THE STAT BLOCK. Health, armour and
 	// attack damage come from the settings above and are untouched by these. What
 	// rarity decides is what a kill gives and whether the creature can be stunned:
-	// `game/Data/EnemyDrops.csv` gives a Common 0.16 gear drops and a Boss exactly
-	// 5, a Boss adds 300% magic find to its own drops and a Cataclysm Boss 500%,
+	// `game/Data/EnemyDrops.csv` gives a Common 0.08 gear drops and a Boss 2.5 on
+	// average, a Boss adds 300% magic find to its own drops and a Cataclysm Boss 500%,
 	// and the design's rule that a boss cannot be stunned at all is
 	// `RarityStep >= FirstBossRarityStep`. See the longer note beside the stat
 	// figures above for why that mixture is acceptable in a sandbox and not in a

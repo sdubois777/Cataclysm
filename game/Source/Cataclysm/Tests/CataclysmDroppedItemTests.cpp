@@ -77,8 +77,10 @@ bool FCataclysmDropScatterTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("one drop lands on the corpse"),
 		FSpawner::ScatterOffset(0, 1), FVector::ZeroVector);
 
-	// A CATACLYSM BOSS DROPS TWELVE, and twelve names drawn at one position
-	// would be one unreadable stack. This is the case the spread exists for.
+	// TWELVE: A CATACLYSM BOSS DROPS SIX GEAR ITEMS AND THREE MATERIALS ON
+	// AVERAGE (twelve gear before issue #2853), a Poisson draw that often gives
+	// more, and that many names drawn at one position would be one unreadable
+	// stack. This is the case the spread exists for.
 	constexpr int32 Twelve = 12;
 	TArray<FVector> Places;
 	for (int32 Index = 0; Index < Twelve; ++Index)
@@ -251,8 +253,11 @@ bool FCataclysmDropsReachTheFloorTest::RunTest(const FString& Parameters)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// A BOSS, BECAUSE ITS RATE OF 5 MAKES AN EMPTY KILL VANISHINGLY RARE. Step 4
-	// is Boss; a Common enemy at 0.16 would give nothing on most seeds.
+	// A BOSS, BECAUSE ITS RATE MAKES AN EMPTY KILL RARE. Step 4 is Boss; a Common
+	// enemy at 0.08 would give nothing on most seeds. Its gear rate is 2.5 since
+	// the owner halved the gear column (issue #2853), 5 before, so a Boss kill
+	// with no gear and no materials is about one in forty; this seed's draws
+	// give three items and a material at 2.5 as at 5.
 	//
 	// HOW MANY IS NOT ASSERTED, AND USED TO BE. Until issue #725 the count was
 	// the whole part of the rate plus a fractional chance, so a Boss dropped
@@ -916,8 +921,10 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 	ON_SCOPE_EXIT { TierVariable->Set(Previous, ECVF_SetByConsole); };
 
 	// THE MEAN RARITY OVER SEVERAL KILLS, AND IT WAS THE BEST UNTIL 2026-09-04.
-	// A Cataclysm Boss drops twelve items a kill, so eight kills is about a
-	// hundred drops and the mean of a hundred draws barely moves.
+	// A Cataclysm Boss drops six items a kill since the owner halved the gear
+	// column (issue #2853; twelve before, and eight kills then), so sixteen
+	// kills is about a hundred drops and the mean of a hundred draws barely
+	// moves.
 	//
 	// WHY THE BEST WAS THE WRONG STATISTIC. The maximum of a small sample is the
 	// noisiest one there is, and this test read it from a fixed seed. Moving the
@@ -951,7 +958,7 @@ bool FCataclysmDropsUseTheTierBeingPlayed::RunTest(const FString& Parameters)
 		FRandomStream Stream(/*InSeed=*/20260823);
 		constexpr int32 CataclysmBossStep = 5;
 
-		for (int32 Kill = 0; Kill < 8; ++Kill)
+		for (int32 Kill = 0; Kill < 16; ++Kill)
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, CataclysmBossStep, /*MagicFind=*/0.0f,
@@ -1329,11 +1336,12 @@ bool FCataclysmPlayerLootStatsTest::RunTest(const FString& Parameters)
  * cares about. It is the same separation Cataclysm.Drop.
  * KillingAnEnemyIsWhatPutsLootOnTheFloor exists for.
  *
- * SIX BOSSES AT EACH SETTING, AND THE MARGIN IS WHAT MAKES IT SAFE. A Boss
- * averages five gear drops, the count is a Poisson draw, and loot quantity
- * multiplies the mean. Six kills average 30 items at the 100% baseline and 120
- * at 400%, so the two distributions do not overlap in any run this project will
- * ever see. Asserting a ratio instead would flap.
+ * TWELVE BOSSES AT EACH SETTING, AND THE MARGIN IS WHAT MAKES IT SAFE. A Boss
+ * averages 2.5 gear drops since the owner halved the gear column (issue #2853;
+ * five, and six kills, before), the count is a Poisson draw, and loot quantity
+ * multiplies the mean. Twelve kills average 30 gear items at the 100% baseline
+ * and 120 at 400%, so the two distributions do not overlap in any run this
+ * project will ever see. Asserting a ratio instead would flap.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLootQuantityChangesWhatAKillDrops,
 	"Cataclysm.Drop.LootQuantityOnThePlayerChangesWhatAKillDrops",
@@ -1362,9 +1370,9 @@ bool FCataclysmLootQuantityChangesWhatAKillDrops::RunTest(const FString& Paramet
 	// A BOSS, BECAUSE ITS DROP RATE IS A WHOLE NUMBER rather than a fraction
 	// that has to land one way. The same choice the neighbouring kill test makes.
 	constexpr int32 BossStep = 4;
-	constexpr int32 Kills = 6;
+	constexpr int32 Kills = 12;
 
-	const auto KillSixBosses = [&](float LootQuantity)
+	const auto KillTheBosses = [&](float LootQuantity)
 	{
 		AbilitySystem->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetLootQuantityAttribute(),
@@ -1388,23 +1396,23 @@ bool FCataclysmLootQuantityChangesWhatAKillDrops::RunTest(const FString& Paramet
 	};
 
 	const int32 AtBaseline =
-		KillSixBosses(UCataclysmDropRoll::BaselineLootQuantity);
-	const int32 AtFourTimes = KillSixBosses(400.0f);
+		KillTheBosses(UCataclysmDropRoll::BaselineLootQuantity);
+	const int32 AtFourTimes = KillTheBosses(400.0f);
 
 	// THE BASELINE RUN HAS TO HAVE DROPPED SOMETHING, or the comparison below
 	// would be satisfied by a kill path that dropped nothing at all.
 	TestTrue(FString::Printf(
-		TEXT("six Bosses at the baseline dropped something (%d)"), AtBaseline),
+		TEXT("twelve Bosses at the baseline dropped something (%d)"), AtBaseline),
 		AtBaseline > 0);
 
-	// TWICE AS MANY, NOT MERELY MORE. Six Boss kills average 30 items at the
-	// baseline and 120 at 400%, so a margin of two is far inside what the
+	// TWICE AS MANY, NOT MERELY MORE. Twelve Boss kills average 30 gear items at
+	// the baseline and 120 at 400%, so a margin of two is far inside what the
 	// feature produces and far outside what chance does. "More" is not enough:
 	// the first version of this test asserted it and passed while a kill was
 	// still using the baseline for both runs, because thirty Poisson draws
 	// out-number another thirty about half the time.
 	TestTrue(FString::Printf(
-		TEXT("and six at 400%% loot quantity dropped more than twice as many: "
+		TEXT("and twelve at 400%% loot quantity dropped more than twice as many: "
 			 "%d against %d"), AtFourTimes, AtBaseline),
 		AtFourTimes > AtBaseline * 2);
 

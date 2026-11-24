@@ -25,7 +25,8 @@
  *
  * Ruled by the coordinating session on 2026-11-21 (the plan's section 3d): a Gem Drops column on the Enemy Drops sheet,
  * measured in the simulation; the gear's rarity roll and tier gate; which gem evenly among the 28. The rate is
- * `sim/analyse_gem_drops.py`'s: the gear column times 0.0068.
+ * `sim/analyse_gem_drops.py`'s: the gear column times 0.0136 at tier 8 (0.0068 of the gear column before it halved,
+ * issue #2853), and three quarters of the tier above's below it, ruled by the owner on 2026-11-24 (issue #2853).
  *
  * A WORLD BUILT BY A TEST HAS NO GAME MODE, so the difficulty tier is 1 there. The names are read from the generated
  * `DT_Gems`, the rates from `DT_EnemyDrops`.
@@ -35,8 +36,11 @@ namespace CataclysmGemDropsTest
 	const FName Viper(TEXT("Gem_Of_The_Viper"));
 	const FName Life(TEXT("Gem_Of_Life"));
 
-	/** The share of a gear drop a gem is, as `loot.GEM_DROPS_PER_GEAR_DROP` holds it. */
-	constexpr float GemsPerGearDrop = 0.0068f;
+	/** The share of a gear drop a gem is at tier 8, as `loot.GEM_DROPS_PER_GEAR_DROP` holds it. */
+	constexpr float GemsPerGearDrop = 0.0136f;
+
+	/** The share of tier 8's gems a tier 1 kill drops, `loot.gem_drop_share(1)`: 0.75 to the 7th, 2187 / 16384. */
+	constexpr float TierOneShare = 0.13348388671875f;
 
 	/** Every gem drop lying in the world. */
 	TArray<ACataclysmDroppedItem*> GemDropsIn(UWorld* World)
@@ -61,6 +65,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemDropsRateTest,
 	"Cataclysm.GemDrops.TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+/**
+ * At difficulty tier 8, whose share of the column is all of it (issue #2853): each rung's gems are its gear drops times
+ * `GemsPerGearDrop`, each rung more than the one below, and twice the loot quantity doubles them.
+ */
 bool FCataclysmGemDropsRateTest::RunTest(const FString&)
 {
 	using namespace CataclysmGemDropsTest;
@@ -79,7 +87,7 @@ bool FCataclysmGemDropsRateTest::RunTest(const FString&)
 		{
 			return false;
 		}
-		const float Gems = UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 100.0f);
+		const float Gems = UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 100.0f, 8);
 		const float Gear = UCataclysmDropRoll::ExpectedGearDrops(Drops, Rarity, 100.0f);
 		Table += FString::Printf(TEXT(" %s %.6f (gear %.2f);"), *Rarity.ToString(), Gems, Gear);
 
@@ -88,16 +96,17 @@ bool FCataclysmGemDropsRateTest::RunTest(const FString&)
 				  Gems, Gear * GemsPerGearDrop, 1e-6f);
 		TestTrue(FString::Printf(TEXT("a %s drops more gems than the rung below"), *Rarity.ToString()), Gems > Below);
 		TestEqual(FString::Printf(TEXT("twice the loot quantity doubles a %s's gems"), *Rarity.ToString()),
-				  UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 200.0f), 2.0f * Gems, 1e-6f);
+				  UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 200.0f, 8), 2.0f * Gems, 1e-6f);
 		Below = Gems;
 	}
 	AddInfo(FString::Printf(TEXT("GEM DROPS:%s"), *Table));
 
-	TestEqual(TEXT("a Cataclysm Boss drops 0.0816 gems, the measurement's 12 x 0.0068"),
-			  UCataclysmDropRoll::ExpectedGemDrops(Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), 100.0f),
+	TestEqual(TEXT("a Cataclysm Boss drops 0.0816 gems at tier 8, the measurement's 6 x 0.0136, as it did before the gear "
+				   "column halved"),
+			  UCataclysmDropRoll::ExpectedGemDrops(Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), 100.0f, 8),
 			  0.0816f, 1e-6f);
 	TestEqual(TEXT("no loot quantity, no gems"),
-			  UCataclysmDropRoll::ExpectedGemDrops(Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), 0.0f),
+			  UCataclysmDropRoll::ExpectedGemDrops(Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), 0.0f, 8),
 			  0.0f);
 	return true;
 }
@@ -177,7 +186,8 @@ bool FCataclysmGemDropsFloorTest::RunTest(const FString&)
 	TestEqual(TEXT("CONTROL: a Cataclysm Boss with no loot quantity drops no gems"),
 			  UCataclysmDropSpawner::SpawnGemsFor(World, 5, 0.0f, 0.0f, Corpse, FRandomStream(46)), 0);
 
-	// A CATACLYSM BOSS AT 1,000 TIMES THE LOOT QUANTITY: about 82 gems expected, so none would be a fault, not luck.
+	// A CATACLYSM BOSS AT 1,000 TIMES THE LOOT QUANTITY: about 11 gems expected at tier 1's share (82 at tier 8's), so
+	// none would be a fault, not luck.
 	const int32 Placed = UCataclysmDropSpawner::SpawnGemsFor(World, 5, 0.0f, 100000.0f, Corpse, FRandomStream(46));
 	const TArray<ACataclysmDroppedItem*> Found = GemDropsIn(World);
 	if (!TestTrue(TEXT("the kill placed gems"), Placed > 0) || !TestEqual(TEXT("each placed gem lies there"),
@@ -296,6 +306,86 @@ bool FCataclysmGemDropsSaveTest::RunTest(const FString&)
 		}
 	}
 	TestEqual(TEXT("one drop of them lies where it was put"), ViperDrops, 1);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// GD5. A tier 1 kill drops three quarters to the seventh of tier 8's gems: about an eighth. Issue #2853.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemDropsTierShareTest,
+	"Cataclysm.GemDrops.ATierOneKillDropsAboutAnEighthOfTierEightsGems",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's ruling of 2026-11-24 (issue #2853), "Milder: tier 1 gets 1/8 (Recommended)", with three quarters a tier
+ * as the judgement: the share of the Gem Drops column a kill drops is 1 at tier 8 and three quarters of the tier above's
+ * below it, so 2187 / 16384 (13.3%) at tier 1, `loot.gem_drop_share`. Read three ways: the share at every tier; the
+ * expected gems of every rung at tier 1 against tier 8; and the gems twenty Cataclysm Bosses actually lay on the floor
+ * of a test world, whose tier is 1, at 1,000 times the loot quantity: about 218 expected, against about 1,632 if the
+ * spawner read tier 8's rate. A tier outside 1 to 8 is read as the nearest. Prints "GEM TIER SHARE".
+ */
+bool FCataclysmGemDropsTierShareTest::RunTest(const FString&)
+{
+	using namespace CataclysmGemDropsTest;
+	const UDataTable* Drops = UCataclysmDropRoll::LoadEnemyDropTable();
+	if (!TestNotNull(TEXT("set-up: the enemy drop table"), Drops))
+	{
+		return false;
+	}
+
+	// THE SHARE AT EVERY TIER, three quarters of the tier above's.
+	TArray<FString> Shares;
+	float Expected = 1.0f;
+	for (int32 Tier = 8; Tier >= 1; --Tier)
+	{
+		const float Share = UCataclysmDropRoll::GemDropShareAt(Tier);
+		Shares.Add(FString::Printf(TEXT("tier %d %.6f"), Tier, Share));
+		TestTrue(*FString::Printf(TEXT("**tier %d drops %.6f of tier 8's gems, exactly**"), Tier, Expected),
+				 Share == Expected);
+		Expected *= 0.75f;
+	}
+	TestTrue(TEXT("**tier 1's share is 2187 / 16384, about an eighth**"),
+			 UCataclysmDropRoll::GemDropShareAt(1) == TierOneShare && TierOneShare >= 0.125f && TierOneShare < 1.0f / 7.0f);
+	TestTrue(TEXT("a tier below 1 is read as tier 1"), UCataclysmDropRoll::GemDropShareAt(0) == TierOneShare);
+	TestTrue(TEXT("a tier above 8 is read as tier 8"), UCataclysmDropRoll::GemDropShareAt(9) == 1.0f);
+
+	// EVERY RUNG'S EXPECTED GEMS AT TIER 1, the column times the share.
+	for (int32 Step = 0; Step <= 5; ++Step)
+	{
+		const FName Rarity = UCataclysmDropSpawner::EnemyRarityForStep(Drops, Step);
+		const float AtEight = UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 100.0f, 8);
+		TestEqual(*FString::Printf(TEXT("**a %s at tier 1 drops tier 8's gems times 2187 / 16384**"), *Rarity.ToString()),
+				  UCataclysmDropRoll::ExpectedGemDrops(Drops, Rarity, 100.0f, 1), AtEight * TierOneShare, 1e-7f);
+	}
+
+	// THE SPAWNER READS THE TIER BEING PLAYED: twenty Cataclysm Bosses in a test world, tier 1, at 1,000 times the loot
+	// quantity, each from a stream of its own.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	constexpr int32 Kills = 20;
+	constexpr float LootQuantity = 100000.0f;
+	int32 Placed = 0;
+	for (int32 Kill = 0; Kill < Kills; ++Kill)
+	{
+		Placed += UCataclysmDropSpawner::SpawnGemsFor(World, 5, 0.0f, LootQuantity,
+													  FVector(600.0f * static_cast<float>(Kill), 0.0f, 0.0f),
+													  FRandomStream(2853 + Kill));
+	}
+	const float AtTierOne = Kills * UCataclysmDropRoll::ExpectedGemDrops(
+		Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), LootQuantity, 1);
+	const float AtTierEight = Kills * UCataclysmDropRoll::ExpectedGemDrops(
+		Drops, UCataclysmDropSpawner::EnemyRarityForStep(Drops, 5), LootQuantity, 8);
+	AddInfo(FString::Printf(TEXT("GEM TIER SHARE: %s; %d Cataclysm Bosses placed %d gems, %.1f expected at tier 1's share "
+								 "and %.1f at tier 8's"),
+							*FString::Join(Shares, TEXT(", ")), Kills, Placed, AtTierOne, AtTierEight));
+	TestTrue(TEXT("set-up: tier 1's expectation is about 218"), AtTierOne > 200.0f && AtTierOne < 236.0f);
+	// A QUARTER EITHER SIDE: about 3.7 standard deviations of a Poisson count of 218, and nowhere near 1,632.
+	TestTrue(TEXT("**the gems placed are tier 1's share of the column, not tier 8's**"),
+			 Placed > 0.75f * AtTierOne && Placed < 1.25f * AtTierOne);
 	return true;
 }
 

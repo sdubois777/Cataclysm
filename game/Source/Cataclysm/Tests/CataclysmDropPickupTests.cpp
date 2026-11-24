@@ -899,8 +899,9 @@ bool FCataclysmNameSeparationCrowdTest::RunTest(const FString&)
 
 	constexpr float Gap = 4.0f;
 
-	// TWELVE, WHICH IS WHAT A CATACLYSM BOSS DROPS. Each one five pixels below
-	// the last and twenty tall, so every one overlaps its neighbours.
+	// TWELVE, WHICH IS WHAT A CATACLYSM BOSS DROPS IN GOLD PILES ALONE, its six
+	// gear items and three materials besides. Each one five pixels below the
+	// last and twenty tall, so every one overlaps its neighbours.
 	TArray<FBox2D> Crowd;
 	for (int32 Index = 0; Index < 12; ++Index)
 	{

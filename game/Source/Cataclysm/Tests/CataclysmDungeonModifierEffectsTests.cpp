@@ -41827,7 +41827,8 @@ bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("the box went"), Mode->PandorasBoxesNow().Num(), 2);
-	// A BOSS'S KILL GIVES FIVE ITEMS ON AVERAGE, DRAWN, ON A STREAM SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
+	// A BOSS'S KILL GIVES 2.5 GEAR ITEMS AND 1.25 MATERIALS ON AVERAGE (5 GEAR BEFORE ISSUE #2853), DRAWN, ON A STREAM
+	// SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
 	TestTrue(FString::Printf(TEXT("it gave drops: %d"), Mode->PandorasBoxLastRewardDrops()),
 			 Mode->PandorasBoxLastRewardDrops() > 0);
 	TestEqual(TEXT("and they lie in the world"), DropsInTheWorld(World) - Before, Mode->PandorasBoxLastRewardDrops());
@@ -63870,7 +63871,7 @@ bool FCataclysmCorruptedStalkerMaterialsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and its death rolls no random gear"), Stalker->RandomGearDropsGiven(), 0);
 
 	// THE DEATH STREAM CANNOT BE PINNED (seeded from the creature and the clock), so bounds: every gear item on the
-	// floor is one it wore, and materials came. The Boss row's mean is five, a Poisson draw.
+	// floor is one it wore, and materials came. The Boss row's mean is 2.5 gear and 1.25 materials, a Poisson draw.
 	TSet<FName> Worn;
 	for (const FCataclysmItem& Piece : Stalker->WornPieces())
 	{

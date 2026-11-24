@@ -251,8 +251,10 @@ bool FCataclysmGoldPileSizeTest::RunTest(const FString&)
 
 /**
  * A kill's piles follow the gear ladder, the ruling's "as gear and materials drop today", and no loot quantity moves
- * them: the expected piles of every rung equal its expected gear at the baseline, and stay there when loot quantity is
- * quadrupled while the gear does not. Prints "LADDER".
+ * them: the expected piles of every rung are twice its expected gear at the baseline, and stay there when loot quantity
+ * is quadrupled while the gear does not. TWICE SINCE 2026-11-24, when the owner halved the gear column and the gold
+ * column did not move (issue #2853): the piles are the gear ladder of 2026-11-18, its shape and its figures. Prints
+ * "LADDER".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldLadderTest,
 	"Cataclysm.Gold.AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem",
@@ -281,7 +283,8 @@ bool FCataclysmGoldLadderTest::RunTest(const FString&)
 		const float GearFourTimes = UCataclysmDropRoll::ExpectedGearDrops(Drops, Rarity, 400.0f);
 		Lines.Add(FString::Printf(TEXT("%s %g piles, %g gear, %g gear at 400%%"), *Rarity.ToString(), Piles, Gear,
 								  GearFourTimes));
-		TestEqual(*FString::Printf(TEXT("%s: its piles are its gear"), *Rarity.ToString()), Piles, Gear);
+		TestEqual(*FString::Printf(TEXT("%s: its piles are twice its gear, the ladder of 2026-11-18"), *Rarity.ToString()),
+				  Piles, 2.0f * Gear);
 		TestTrue(*FString::Printf(TEXT("%s: CONTROL: loot quantity does move its gear"), *Rarity.ToString()),
 				 GearFourTimes > Gear);
 	}
