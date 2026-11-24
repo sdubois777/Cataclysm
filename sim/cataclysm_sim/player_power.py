@@ -7,27 +7,36 @@ player's score gives average rewards, below it gives less, above it gives more.
 
 WHAT THIS IS. `docs/Cataclysm_GDD_v2.md` names the inputs to Power Score --
 level, gear level, gem quality, socket count, gear quality and resistances --
-but never gives a formula. This module proposes one. Unlike `scoring.py`, which
-is a port of an authoritative file in another repository and must never be
+and its section IV gives the formula this module implements. Unlike `scoring.py`,
+which is a port of an authoritative file in another repository and must never be
 hand-edited, this file is an original and the numbers in it are open to change.
+The game's copy is `UCataclysmPowerScore` in
+`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`.
 
-HOW IT IS CALIBRATED. `scoring.PLAYER_MAX_SCORES` fixes the score a player is
-expected to have reached at the end of each of the eight difficulty tiers, from
-385 at tier 1 to 6327 at tier 8. Those anchors are authoritative. The weights
-below are derived from them rather than chosen: given the reference character
-defined in `reference_character()`, the formula lands on 6327 exactly at tier 8
-and on 384 against an anchor of 385 at tier 1, and within 5.3% of the six in
-between. The two end tiers are pinned in the underlying arithmetic; tier 1 comes
-out one point low only because the reference character's level and filled socket
-count are whole numbers, so tier 1 rounds to level 12 and 6 gems rather than the
-12.5 and 5.625 the continuous curve asks for.
+THE WEIGHTS ARE FIVE PLAIN NUMBERS, RULED BY THE PROJECT OWNER ON 2026-11-24
+(issue #2853, "Adopt, and look at drop supply (Recommended)"): 10 points a level,
+2 points a rarity step of a gear piece with each upgrade level adding the piece's
++0 worth again (a piece is 2 x rarity x (1 + upgrade level)), 5 points a gem
+rarity step in a filled socket, and 1 point a resistance percent up to the cap.
+The owner's reason, 2026-11-24: "why would I think a level is worth 6.3 points?
+It would make sense as 1, 2, 5, 10, 25, 50, 100, but 6.3 makes no sense at all."
 
-WHY IT IS NOT EXACT IN THE MIDDLE. The anchors are not smooth. Tier 5 is 1107
-points wide where the surrounding trend is about 790, and tier 6 is narrower
-than tier 5. Any character whose gear and level advance smoothly with the
-difficulty tier produces a smooth curve, so it cannot pass through a kink. The
-entire residual sits at the tier 4 / tier 5 boundary. See issue #7, which
-records the same anomaly from the enemy side.
+UNTIL THAT RULING THE WEIGHTS WERE DERIVED, NOT CHOSEN: four shares (10% level,
+50% gear, 30% gems, 10% resistances of a finished character) and the tier 1 and
+tier 8 anchors were solved for five weights (6.327 a level, 6.2330 a rarity
+step, an upgrade factor of 0.2525, 5.2725 a gem rarity step and 1.1298 a
+resistance percent), and the reference character landed exactly on every anchor
+above tier 1. Now THE SHARES FALL OUT of the weights instead: 15% level, 49%
+gear, 28% gems and 9% resistances at tier 8 (`shares_of`).
+
+HOW NEAR THE ANCHORS IT LANDS. `scoring.PLAYER_MAX_SCORES` fixes the score a
+player is expected to have reached at the end of each of the eight difficulty
+tiers, from 385 at tier 1 to 6327 at tier 8. Those anchors are authoritative
+and did not move. The reference character of `reference_character()` lands
+near them rather than on them: from 364 against 385 at tier 1 (-5.5%) to 6528
+against 6327 at tier 8 (+3.2%), every tier within 6%. `anchor_report` prints
+the eight; the proposal measured them on branch
+`proposal/power-score-shares-2853` before the owner ruled.
 """
 
 from __future__ import annotations
@@ -96,31 +105,55 @@ RESISTANCE_COUNT = 8
 RESISTANCE_CAP = damage.RESISTANCE_CAP
 
 # --------------------------------------------------------------------------
-# The design decision: what share of Power Score each bucket supplies
+# The design decision: what each thing the score reads is worth
 # --------------------------------------------------------------------------
 
-# These four shares are the only free choice in this module. They say what a
-# fully finished character -- level 100, eighteen Cataclysmic pieces at +10,
-# forty-five Cataclysmic gems, all eight resistances capped -- draws from each
-# source.
+# FIVE PLAIN NUMBERS, ruled by the project owner on 2026-11-24 (issue #2853):
+# "Adopt, and look at drop supply (Recommended)". Each is a number a player can
+# read and add up, which was the owner's direction: "It would make sense as 1, 2,
+# 5, 10, 25, 50, 100, but 6.3 makes no sense at all."
 #
-# They are a design decision, not a fit. Worst-case anchor error stays between
-# 5.29% and 5.35% across allocations as different as 8/60/24/8 and 18/50/22/10,
-# because the residual is the anchor kink described in the module docstring and
-# no reallocation touches it.
-#
-# What the shares do change is what the player chases, and what one gear upgrade
-# is worth. That second effect is the real constraint. Raising the level share
-# to 18% forces a +10 piece to be worth 11.9x the same piece at +0, because gear
-# then has to supply the same curvature from a smaller share. The values below
-# put a +10 piece at 3.5x, which is the reason they were chosen over the
-# alternatives rather than any improvement in anchor fit.
-SHARE_LEVEL = 0.10
-SHARE_GEAR = 0.50
-SHARE_GEMS = 0.30
-SHARE_RESISTANCES = 0.10
+# They are chosen, and the shares a finished character draws from each source
+# fall out of them (`shares_of`): 15% level, 49% gear, 28% gems and 9%
+# resistances at tier 8, against the 10/50/30/10 the weights used to be derived
+# from. Floats, so `affixes.POWER_SCORE_UPGRADE_FACTOR` is this very object and
+# `sim/tests/test_affixes.py` can tell it from a retyped copy.
 
-assert abs(SHARE_LEVEL + SHARE_GEAR + SHARE_GEMS + SHARE_RESISTANCES - 1.0) < 1e-9
+#: Points for each character level. Was 6.327 (10% of tier 8's 6,327 over 100
+#: levels); a level 6 character's level part is 60.
+LEVEL_WEIGHT = 10.0
+
+#: Points for each rarity step of a gear piece at +0 (Everyday is 1, Cataclysmic
+#: 8): an Everyday +0 piece is 2, a Masterful +0 piece 8.
+GEAR_WEIGHT = 2.0
+
+#: What each upgrade level adds, as a multiple of the piece's +0 worth: 1, so a
+#: piece at +k is worth (1 + k) times itself at +0 and a +10 piece 11 times. Put
+#: in a player's terms: each upgrade level adds another GEAR_WEIGHT for every
+#: rarity step, so a Masterful piece gains 8 a level.
+#:
+#: WHY UPGRADE LEVEL STILL MULTIPLIES RARITY rather than adding to it, a judgement
+#: the eight anchors force: they grow 16.4 times from tier 1 to tier 8, so about
+#: 59% of the tier 8 anchor has to come from terms where two rising things
+#: multiply. With gear additive only gems do, and every additive set within 5% of
+#: the anchors puts 58 to 61% of the tier 8 score on gems.
+UPGRADE_FACTOR = 1.0
+
+#: Points for each rarity step of a socketed gem: an Everyday gem is 5, a
+#: Cataclysmic one 40. Socket count has no weight of its own.
+GEM_WEIGHT = 5.0
+
+#: Points for each resistance percent, each of the eight counted up to the cap.
+RESISTANCE_WEIGHT = 1.0
+
+#: The five, under the keys every caller reads.
+WEIGHTS: dict[str, float] = {
+    "level": LEVEL_WEIGHT,
+    "gear": GEAR_WEIGHT,
+    "upgrade_factor": UPGRADE_FACTOR,
+    "gem": GEM_WEIGHT,
+    "resistance": RESISTANCE_WEIGHT,
+}
 
 
 def _check_every_loadout_fills_both_hands_with_the_same_sockets() -> None:
@@ -139,79 +172,6 @@ def _check_every_loadout_fills_both_hands_with_the_same_sockets() -> None:
 
 
 _check_every_loadout_fills_both_hands_with_the_same_sockets()
-
-
-# --------------------------------------------------------------------------
-# Deriving the weights from the anchors
-# --------------------------------------------------------------------------
-
-def _curve_coefficients() -> tuple[float, float]:
-    """The quadratic through the tier 1 and tier 8 anchors, with no constant.
-
-    The reference character's score works out to `a * tier^2 + b * tier`. It is
-    quadratic for one structural reason: gear rarity and gear upgrade level both
-    rise with the tier and multiply each other, and gem rarity rises with the
-    tier while the number of gems the player has filled rises with it too.
-    Everything else -- level, resistances -- is linear.
-
-    Pinning both ends rather than least-squares fitting all eight is deliberate.
-    Tier 1 and tier 8 are the two anchors that have to be exact: tier 1 is where
-    a new character is measured and tier 8 is the end of the game.
-    """
-    t1 = scoring.PLAYER_MAX_SCORES[1]
-    t8 = scoring.PLAYER_MAX_SCORES[8]
-    # a + b = t1  and  64a + 8b = t8
-    a = (t8 - 8 * t1) / 56.0
-    b = t1 - a
-    return a, b
-
-
-def _derive_weights() -> dict[str, float]:
-    """Turn the four shares and the two anchors into the five weights."""
-    a, _ = _curve_coefficients()
-    t8 = scoring.PLAYER_MAX_SCORES[8]
-
-    # Level, gems and resistances are pinned by their tier 8 totals alone.
-    w_level = SHARE_LEVEL * t8 / MAX_LEVEL
-    w_gem = SHARE_GEMS * t8 / (TOTAL_SOCKETS * MAX_RARITY)
-    w_resist = SHARE_RESISTANCES * t8 / (RESISTANCE_COUNT * RESISTANCE_CAP)
-
-    # Curvature comes from two places: gems, where rarity and the number of
-    # filled sockets both climb, and gear, where rarity and upgrade level both
-    # climb. Gems take whatever their share implies; gear supplies the rest.
-    a_from_gems = (TOTAL_SOCKETS / MAX_RARITY) * w_gem
-    a_from_gear = a - a_from_gems
-    if a_from_gear <= 0:
-        raise ValueError(
-            f"SHARE_GEMS={SHARE_GEMS} leaves no curvature for gear. "
-            "Lower it, or gear cannot reach the tier 8 anchor.")
-
-    # a_from_gear = GEAR_PIECES * w_gear * upgrade_factor
-    w_gear_times_factor = a_from_gear / GEAR_PIECES
-
-    # Gear at tier 8 is 18 pieces of rarity 8 at +10:
-    #   SHARE_GEAR * t8 = 18 * 8 * w_gear * (1 + 10 * upgrade_factor)
-    gear_t8 = SHARE_GEAR * t8
-    w_gear = ((gear_t8 - GEAR_PIECES * MAX_RARITY * MAX_UPGRADE
-               * w_gear_times_factor)
-              / (GEAR_PIECES * MAX_RARITY))
-    if w_gear <= 0:
-        raise ValueError(
-            f"SHARE_GEAR={SHARE_GEAR} is too small to carry the curvature "
-            "left over from gems. Raise it or lower SHARE_GEMS.")
-
-    return {
-        "level": w_level,
-        "gear": w_gear,
-        # How much one +1 upgrade adds, as a fraction of the piece's
-        # unupgraded contribution. At 0.25 a +10 piece is 3.5x a +0 piece.
-        "upgrade_factor": w_gear_times_factor / w_gear,
-        "gem": w_gem,
-        "resistance": w_resist,
-    }
-
-
-WEIGHTS = _derive_weights()
 
 
 # --------------------------------------------------------------------------
@@ -300,6 +260,23 @@ def power_score(c: Character) -> int:
     return math.floor(total + 0.5)
 
 
+def shares_of(c: Character) -> dict[str, float]:
+    """What fraction of the unrounded score each of the four sources supplies.
+
+    AN OUTCOME OF THE WEIGHTS SINCE 2026-11-24, NOT AN INPUT. Before the owner's
+    ruling on issue #2853 the four shares were chosen (10/50/30/10) and the
+    weights derived from them; now the weights are chosen and this says what
+    shares they give. For the finished tier 8 character it is about 15% level,
+    49% gear, 28% gems and 9% resistances.
+    """
+    terms = {"level": level_term(c), "gear": gear_term(c),
+             "gems": gem_term(c), "resistances": resistance_term(c)}
+    total = sum(terms.values())
+    if total <= 0:
+        raise ValueError("a character that scores nothing has no shares")
+    return {name: value / total for name, value in terms.items()}
+
+
 # --------------------------------------------------------------------------
 # The reference character
 # --------------------------------------------------------------------------
@@ -354,22 +331,17 @@ def anchor_report() -> list[tuple[int, int, float, float]]:
 
 
 if __name__ == "__main__":
-    a, b = _curve_coefficients()
-    print("Power Score -- proposed formula")
+    print("Power Score -- the owner's plain weights of 2026-11-24 (#2853)")
     print()
-    print(f"  curve through the tier 1 and tier 8 anchors: "
-          f"{a:.3f}*T^2 + {b:.3f}*T")
-    print()
-    print("  weights derived from the shares and the anchors:")
+    print("  the five weights:")
     for name, value in WEIGHTS.items():
-        print(f"    {name:<16} {value:.4f}")
+        print(f"    {name:<16} {value:g}")
     up = WEIGHTS["upgrade_factor"]
-    print(f"    -> a +{MAX_UPGRADE} piece is {1 + up * MAX_UPGRADE:.2f}x "
+    print(f"    -> a +{MAX_UPGRADE} piece is {1 + up * MAX_UPGRADE:g}x "
           f"the same piece at +0")
     print()
-    print("  contribution shares at level 100 with everything maxed:")
-    for name, share in (("level", SHARE_LEVEL), ("gear", SHARE_GEAR),
-                        ("gems", SHARE_GEMS), ("resistances", SHARE_RESISTANCES)):
+    print("  the shares they give the finished tier 8 character:")
+    for name, share in shares_of(reference_character(8)).items():
         print(f"    {name:<16} {share:.0%}")
     print()
     print("  the reference character against the fixed anchors:")
@@ -378,8 +350,8 @@ if __name__ == "__main__":
     for tier, predicted, anchor, pct in anchor_report():
         worst = max(worst, abs(pct))
         print(f"    T{tier}     {predicted:>7}   {anchor:>6}   {pct:>+6.1f}%")
-    print(f"    worst error {worst:.1f}%. Tier 8 is exact; tier 1 is one point")
-    print("    low because level and socket count round to whole numbers.")
+    print(f"    worst error {worst:.1f}%. The weights are chosen, not fitted, so")
+    print("    the character lands near the anchors rather than on them.")
     print()
     print("  what the reference character looks like:")
     print("    tier  level  gear         upgrade  gems  resist")

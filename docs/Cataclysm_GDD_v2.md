@@ -975,13 +975,36 @@ Power Score = (Level Weight × Character Level) + (Gear Weight × Σ over equipp
 
   
 
-| Weight | Value |
-| :-: | :-: |
-| Level Weight | 6.3270 |
-| Gear Weight | 6.2330 |
-| Upgrade Factor | 0.2525 |
-| Gem Weight | 5.2725 |
-| Resistance Weight | 1.1298 |
+| Weight | Value | As a player reads it |
+| :-: | :-: | :-- |
+| Level Weight | 10 | 10 points a level |
+| Gear Weight | 2 | 2 points a rarity step of a piece at +0 |
+| Upgrade Factor | 1 | each upgrade level adds the piece's +0 worth again: 2 more points a rarity step |
+| Gem Weight | 5 | 5 points a rarity step of a socketed gem |
+| Resistance Weight | 1 | 1 point a resistance percent, up to 70 |
+
+  
+
+**The five weights are plain numbers, chosen so a player can add the score up.** Decided by the project owner on 2026-11-24 (#2853), "Adopt, and look at drop supply (Recommended)", after asking why a level was worth 6.3 points: "It would make sense as 1, 2, 5, 10, 25, 50, 100, but 6.3 makes no sense at all." So a gear piece scores 2 × its rarity × (1 + its gear level), a gem 5 × its rarity, and a level 10. Until then the five were derived from chosen shares and the tier 1 and tier 8 anchors, and were 6.3270, 6.2330, 0.2525, 5.2725 and 1.1298.
+
+  
+
+| Piece | Power Score |
+| :-- | :-: |
+| Everyday +0 | 2 |
+| Masterful +0, the best a tier 1 drop can be | 8 |
+| Everyday +3, the tier 1 reference character's | 8 |
+| Legendary +4, at its gate | 50 |
+| Mythical +6, at its gate | 84 |
+| Cataclysmic +10 | 176 |
+
+  
+
+A fresh Masterful drop counts the same as the tier 1 reference's Everyday +3, which is the lowest a rarity step can be worth without wearing the rarer piece ever lowering the score.
+
+  
+
+The character sheet shows the score on its status line and, on hover, each of the four terms beside the weight it comes from, so a player can see where every point came from: "From level: 60 (10 a level)" for a level 6 character.
 
   
 
@@ -994,7 +1017,7 @@ Four rules follow from the formula:
   
 
   - **Socket count has no weight of its own.** It is the number of terms in the gem sum, so filling a socket is what a socket contributes.
-  - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 3.52 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier.
+  - **Gear upgrade level multiplies gear rarity rather than adding to it.** A +10 Cataclysmic piece is worth 11 times the same piece at +0, and eight times what a +10 Everyday piece is worth. This is the only place two inputs multiply, and it is what makes the power curve rise faster than the difficulty tier. The tier anchors grow sixteen-fold from tier 1 to tier 8, so most of the tier 8 score has to come from terms where two rising things multiply; with upgrade level added rather than multiplied, every set of plain weights near the anchors puts about 60% of the tier 8 score on gems.
   - **What the hands hold counts as one equipped piece**, whatever the loadout, the same way every loadout gives the same six sockets. A two-handed weapon, two one-handed weapons and a single one-handed weapon all count once. No loadout may be worth free Power Score.
   - **Resistance above the 70% cap adds no Power Score.** Over-capping remains legal and useful, because enemy penetration reduces effective resistance, but it is headroom against penetration rather than power.
 
@@ -1004,13 +1027,13 @@ Eighteen equipped pieces carry a rarity and an upgrade level: seven armor pieces
 
   
 
-At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gems and all eight resistances capped, the four terms contribute 10% from level, 50% from gear, 30% from gems and 10% from resistances.
+At level 100 with eighteen Cataclysmic pieces at +10, forty-five Cataclysmic gems and all eight resistances capped, the four terms contribute 15% from level, 49% from gear, 28% from gems and 9% from resistances. **The shares fall out of the weights rather than being chosen.** Until 2026-11-24 they were the input, 10%, 50%, 30% and 10%, and the weights were solved from them. The finished tier 1 character draws 33% from level, 40% from gear, 8% from gems and 19% from resistances, against 20%, 51%, 8% and 21% before: the owner's direction was more of the score from level and less from gear.
 
   
 
 ### **Expected Character by Tier**
 
-Power Score is calibrated against the tier ranges in section XII using the reference character below, which is the **ceiling** at the end of each difficulty tier: the best gear that tier can produce, fully upgraded, with every socket filled. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
+Power Score is checked against the tier ranges in section XII using the reference character below, which is the **ceiling** at the end of each difficulty tier: the best gear that tier can produce, fully upgraded, with every socket filled. It is a calibration reference, not a requirement. Actual leveling is player-driven, because one player may clear a hundred dungeons in a tier where another clears forty.
 
   
 
@@ -1020,29 +1043,29 @@ Power Score is calibrated against the tier ranges in section XII using the refer
 
 | Gear on every piece at tier 8 | Power Score | Against the anchor |
 | :-- | :-: | :-: |
-| Cataclysmic | 6,327 | 100% |
-| Ascendant | 5,932 | 94% |
-| Mythical | 5,536 | 88% |
-| Legendary | 5,141 | 81% |
-| Masterful | 4,745 | 75% |
-| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical and 5 Legendary | 5,690 | 90% |
+| Cataclysmic | 6,528 | 103% |
+| Ascendant | 6,132 | 97% |
+| Mythical | 5,736 | 91% |
+| Legendary | 5,340 | 84% |
+| Masterful | 4,944 | 78% |
+| A mix of 4 Cataclysmic, 4 Ascendant, 5 Mythical and 5 Legendary | 5,890 | 93% |
 
   
 
-So chasing Cataclysmic gear is what pushes a character toward the maximum Power Score, and the anchors describe that ceiling rather than a typical build. **This matters when reading any statement about what a tier 8 character has.** The affix values in section VI were fitted against 72 regular affix slots, which is a full set of Masterful gear; the character sitting exactly on the tier 8 anchor has none of them.
+So chasing Cataclysmic gear is what pushes a character toward the maximum Power Score, and the anchors describe that ceiling rather than a typical build. **This matters when reading any statement about what a tier 8 character has.** The affix values in section VI were fitted against 72 regular affix slots, which is a full set of Masterful gear; the tier 8 reference character, at the anchor, has none of them.
 
   
 
-| Tier | Level | Gear Rarity | Gear Level | Gems Filled | Each Resistance |
-| :-: | :-: | :-: | :-: | :-: | :-: |
-| T1 | 12 | Everyday | +3 | 6 | 8.8% |
-| T2 | 25 | Quality | +4 | 11 | 17.5% |
-| T3 | 38 | Superb | +5 | 17 | 26.2% |
-| T4 | 50 | Masterful | +6 | 22 | 35.0% |
-| T5 | 62 | Legendary | +7 | 28 | 43.8% |
-| T6 | 75 | Mythical | +8 | 34 | 52.5% |
-| T7 | 88 | Ascendant | +9 | 39 | 61.2% |
-| T8 | 100 | Cataclysmic | +10 | 45 | 70.0% |
+| Tier | Level | Gear Rarity | Gear Level | Gems Filled | Each Resistance | Power Score | The tier's anchor |
+| :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| T1 | 12 | Everyday | +3 | 6 | 8.8% | 364 | 385 (-5.5%) |
+| T2 | 25 | Quality | +4 | 11 | 17.5% | 860 | 883 (-2.6%) |
+| T3 | 38 | Superb | +5 | 17 | 26.2% | 1,493 | 1,508 (-1.0%) |
+| T4 | 50 | Masterful | +6 | 22 | 35.0% | 2,228 | 2,225 (+0.1%) |
+| T5 | 62 | Legendary | +7 | 28 | 43.8% | 3,110 | 3,078 (+1.0%) |
+| T6 | 75 | Mythical | +8 | 34 | 52.5% | 4,134 | 4,057 (+1.9%) |
+| T7 | 88 | Ascendant | +9 | 39 | 61.2% | 5,255 | 5,120 (+2.6%) |
+| T8 | 100 | Cataclysmic | +10 | 45 | 70.0% | 6,528 | 6,327 (+3.2%) |
 
   
 
@@ -1050,7 +1073,7 @@ The reference character wears gear and gems of the tier's own rarity, Everyday a
 
   
 
-This reference character scores 6,327 at tier 8, landing exactly on the tier 8 anchor, and 384 against the tier 1 anchor of 385. **The six tiers in between land exactly on their anchors**, because on 2026-08-05 those six anchors were reset to what this formula predicts. Before that they were 871, 1,457, 2,144, 3,251, 4,166 and 5,209, and the six tiers in between were within 5.3% rather than exact. Tiers 1 and 8 were deliberately left alone: the formula's weights are solved from those two anchors and nothing else, so moving either one would shift every prediction. Issue #7.
+**This reference character lands near every anchor rather than on it**, from 364 against 385 at tier 1 (-5.5%) to 6,528 against 6,327 at tier 8 (+3.2%), as the table shows. The weights are chosen plain numbers rather than solved from the anchors, so nothing pins a tier exactly; the owner ruled on that band on 2026-11-24 (#2853). The anchors themselves did not move: they are the Enemy Score model's tier ranges in section XII. Until 2026-11-24 the weights were solved from the tier 1 and tier 8 anchors, the reference character scored 6,327 at tier 8 and 384 at tier 1, and the six tiers between landed exactly on theirs, because on 2026-08-05 those six anchors were reset to what that formula predicted (issue #7).
 
   
 
@@ -1485,7 +1508,7 @@ Both were eased on 2026-09-03. The tier ladder spanned 7 and the gear ladder 3.5
 
 **The tier ladder rises by a constant ratio rather than in even steps**, so the step from tier 6 to tier 7 is worth more than the step from tier 1 to tier 2. That keeps the later tiers the ones worth crafting for, and it is also what keeps a perfect roll from ever beating a roll two tiers above it.
 
-**Gear upgrade level no longer uses the Power Score's upgrade weight.** How much an upgrade is worth to a rating and how much it multiplies the numbers on an item are different questions; section IV still multiplies gear rarity by 3.52 for scoring.
+**Gear upgrade level no longer uses the Power Score's upgrade weight.** How much an upgrade is worth to a rating and how much it multiplies the numbers on an item are different questions; for scoring, section IV counts a +10 piece as 11 times the same piece at +0 (3.52 times until 2026-11-24).
 
   
 
@@ -7065,7 +7088,7 @@ The opening takes 922,836 off the climb, 0.013% of it, and moves no figure below
 | Entering tier | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | :-- | --: | --: | --: | --: | --: | --: | --: |
 | at character level | 42 | 59 | 70 | 79 | 85 | 91 | 95 |
-| share of the tier's starting power carried in from level alone | 69% | 42% | 29% | 22% | 17% | 14% | 12% |
+| share of the tier's starting power carried in from level alone | 109% | 67% | 46% | 36% | 28% | 22% | 19% |
 
   
 

@@ -83,26 +83,33 @@ struct CATACLYSM_API FCataclysmPowerBreakdown
  * less, above it gives more. Overwhelm reads the same comparison, stripping
  * mitigation from a player fighting above their score.
  *
- * THE WEIGHTS ARE DERIVED, NOT COPIED. Five weights turn a character into a
- * score, and every one of them falls out of two anchors and four shares:
+ * THE WEIGHTS ARE FIVE PLAIN NUMBERS, ruled by the project owner on 2026-11-24
+ * (issue #2853, "Adopt, and look at drop supply (Recommended)"): 10 points a
+ * level, 2 points a rarity step of a gear piece with each upgrade level adding
+ * the piece's +0 worth again (a piece is 2 x rarity x (1 + gear level)), 5 points
+ * a gem rarity step, and 1 point a resistance percent up to the cap. The owner
+ * asked for numbers a player can add up: "why would I think a level is worth 6.3
+ * points?"
+ *
+ * UNTIL THAT RULING THEY WERE DERIVED, from two anchors and four shares (10%
+ * level, 50% gear, 30% gems, 10% resistances of a finished character), and were
+ * 6.327, 6.233, 0.2525, 5.2725 and 1.1298. NOW THE SHARES FALL OUT of the
+ * weights: 15% level, 49% gear, 28% gems and 9% resistances at tier 8.
  *
  *   THE ANCHORS are the score a player is expected to have reached at the end of
  *   each of the eight difficulty tiers, 385 at tier 1 through 6,327 at tier 8.
- *   They come from the enemy scoring model and are authoritative.
+ *   They come from the enemy scoring model, are authoritative, and did not move.
+ *   The reference character lands near them rather than on them: 364 at tier 1
+ *   (-5.5%) to 6,528 at tier 8 (+3.2%).
  *
- *   THE SHARES say what a finished character draws from each of the four
- *   sources: 10% from level, 50% from gear, 30% from gems, 10% from
- *   resistances. These are the only free choice in the whole model.
- *
- * Deriving rather than pasting the five numbers matters: changing a share here
- * and not in the Python model produces a visible test failure, where two copied
- * lists of five constants would quietly disagree. It also keeps the REASON the
- * weights are what they are in the code.
+ * The five are written out here and in `sim/cataclysm_sim/player_power.py`, and
+ * `tools/tests/test_power_score_port.py` reads these literals back and compares
+ * them with the model's, so the two cannot part silently.
  *
  * WHAT THE ANCHORS DESCRIBE. The ceiling a tier can produce, not a typical
- * build. A character sitting exactly on the tier 8 anchor has eighteen
- * Cataclysmic pieces, which means 72 enchantments and no regular affixes at all.
- * A build that keeps ordinary stats scores less, and that is the design working.
+ * build. The tier 8 reference character has eighteen Cataclysmic pieces, which
+ * means 72 enchantments and no regular affixes at all. A build that keeps
+ * ordinary stats scores less, and that is the design working.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmPowerScore : public UObject
@@ -136,11 +143,23 @@ public:
 	 */
 	static constexpr float ResistanceCap = 70.0f;
 
-	// The four shares. The only free choice in this model.
-	static constexpr float ShareLevel = 0.10f;
-	static constexpr float ShareGear = 0.50f;
-	static constexpr float ShareGems = 0.30f;
-	static constexpr float ShareResistances = 0.10f;
+	// THE FIVE WEIGHTS, the owner's plain numbers of 2026-11-24 (issue #2853). `LevelWeight()` and the four functions
+	// below return these; `tools/tests/test_power_score_port.py` holds them to `player_power.WEIGHTS`.
+
+	/** Points for each character level: a level 6 character's level part is 60. */
+	static constexpr float PointsPerLevel = 10.0f;
+
+	/** Points for each rarity step of a gear piece at +0: an Everyday +0 piece is 2, a Masterful +0 piece 8. */
+	static constexpr float PointsPerGearRarityStep = 2.0f;
+
+	/** What each upgrade level adds, as a multiple of the piece's +0 worth: a piece at +k is (1 + k) times itself. */
+	static constexpr float UpgradeFactorPerGearLevel = 1.0f;
+
+	/** Points for each rarity step of a socketed gem. */
+	static constexpr float PointsPerGemRarityStep = 5.0f;
+
+	/** Points for each resistance percent, each of the eight counted up to `ResistanceCap`. */
+	static constexpr float PointsPerResistancePercent = 1.0f;
 
 	/**
 	 * The score a player is expected to have reached at the end of each
@@ -161,13 +180,14 @@ public:
 	static float GearWeight();
 
 	/**
-	 * How much one upgrade level adds, as a fraction of the piece's unupgraded
-	 * contribution. At about 0.252 a +10 piece is worth 3.52 times a +0 one.
+	 * How much one upgrade level adds, as a multiple of the piece's unupgraded
+	 * contribution. At 1 a +10 piece is worth 11 times a +0 one (3.52 times until
+	 * 2026-11-24).
 	 *
 	 * UPGRADE LEVEL MULTIPLIES RARITY RATHER THAN ADDING TO IT, which is the
-	 * only reason the score curve bends. It is also the same factor gear upgrade
-	 * level uses to multiply every affix on a piece, rather than a second copy
-	 * of it.
+	 * only reason the score curve bends. It is NOT the factor gear upgrade level
+	 * multiplies an item's affixes by: that is `UCataclysmItemValues::
+	 * GearLevelFactor`, 0.15, since 2026-09-03 (issue #1179).
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Power")
 	static float UpgradeFactor();
