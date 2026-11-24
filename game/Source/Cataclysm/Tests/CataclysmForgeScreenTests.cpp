@@ -223,7 +223,12 @@ bool FCataclysmForgeScreenTwoPressesTest::RunTest(const FString&)
 	Screen->ClickUpgradeForTests();
 	const FString Done = Screen->MessageText();
 	TestEqual(TEXT("two presses in a row raise the gloves"), Bag->ItemAt(Gloves)->GearLevel, 1);
-	TestEqual(TEXT("and say what it cost"), Done, FString(TEXT("Raised to +1. It cost 500 gold and 1 day of the run.")));
+	// THEN WHAT ITS DAY DID, when it did anything (#2857): this scene's board starts empty, and an empty board can bring
+	// a surge. `Cataclysm.ForgeScreen.TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid` holds those words.
+	const FString Account = UCataclysmGameInstance::CapitalDaysAccountIn(Scene.World);
+	TestEqual(TEXT("and say what it cost"), Done,
+			  FString(TEXT("Raised to +1. It cost 500 gold and 1 day of the run."))
+				  + (Account.IsEmpty() ? FString() : TEXT(" ") + Account));
 	TestEqual(TEXT("a day passed"), Scene.Run->Day(), DayBefore + 1);
 	TestTrue(TEXT("the detail now reads +1"), Screen->DetailText().Contains(TEXT(", +1, residue 75.")));
 
@@ -237,6 +242,123 @@ bool FCataclysmForgeScreenTwoPressesTest::RunTest(const FString&)
 			  FString(UCataclysmForgeCraft::WalkRefusal));
 	TestEqual(TEXT("and a second press raises nothing"), Bag->ItemAt(Boots)->GearLevel, 0);
 	AddInfo(FString::Printf(TEXT("TWO PRESSES: asked '%s'; done '%s'; in a walk '%s'"), *Asked, *Done, *InTheWalk));
+	return true;
+}
+
+namespace CataclysmForgeScreenTest
+{
+	/**
+	 * The run's opening wave fired, ONE ORDINARY DUNGEON on a standing city -- not a bonus dungeon, and not a Void
+	 * dungeon, whose hit takes no defence -- set to run out after `Days` days, and every other timer pushed to 60. The
+	 * dungeon, or INDEX_NONE when the wave stood none. Issue #2857.
+	 */
+	int32 ScreenDungeonDueIn(UCataclysmEmpireRun& Run, float Days)
+	{
+		Run.FireOpeningSurge();
+		int32 Due = INDEX_NONE;
+		for (const FCataclysmDungeon& Dungeon : Run.Dungeons)
+		{
+			const FCataclysmCity* City = Run.Map != nullptr ? Run.Map->Find(Dungeon.CityId) : nullptr;
+			if (Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus && !Dungeon.AddsVoidStacks()
+				&& City != nullptr && !City->bFallen)
+			{
+				Due = Dungeon.DungeonId;
+				break;
+			}
+		}
+		if (Due != INDEX_NONE && Run.Clock != nullptr)
+		{
+			for (FCataclysmDungeonTimer& Timer : Run.Clock->Timers)
+			{
+				Timer.DaysUntilResolve = Timer.DungeonId == Due ? Days : 60.0f;
+			}
+		}
+		return Due;
+	}
+}
+
+/**
+ * Issue #2857, the owner's ruling of 2026-11-22. Before an upgrade, the first press says which dungeons' timers run out
+ * within the days it costs, the city each would hit and the day; an upgrade that ends before any timer asks the plain
+ * question. The press that does it then says what its days did: the dungeon resolved and the city it hit. One ordinary
+ * dungeon is due in three days and every other timer in 60; the gloves' upgrade costs one day and the boots', carrying
+ * 250 residue, three. Prints "FORGE TIMERS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForgeScreenTimersTest,
+	"Cataclysm.ForgeScreen.TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmForgeScreenTimersTest::RunTest(const FString&)
+{
+	using namespace CataclysmForgeScreenTest;
+
+	FScreenScene Scene = MakeScene();
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const int32 Due = ScreenDungeonDueIn(*Scene.Run, 3.0f);
+	const FCataclysmDungeon* Dungeon = Due != INDEX_NONE ? Scene.Run->FindDungeon(Due) : nullptr;
+	const FCataclysmCity* City = Dungeon != nullptr ? Scene.Run->Map->Find(Dungeon->CityId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the opening wave stood an ordinary dungeon on a standing city"), City))
+	{
+		return false;
+	}
+	const FString DueName = Scene.Run->NameOfDungeon(Due);
+	const FString CityName = City->Name;
+	const int32 Today = Scene.Run->Day();
+
+	UCataclysmInventoryComponent* Bag = Scene.Character->GetInventory();
+	const int32 Gloves = Bag->AddItem(PlainOf(TEXT("Gloves_Handwraps"), 0, 0.0f));
+	const int32 Boots = Bag->AddItem(PlainOf(TEXT("Boots_Treads"), 0, 250.0f));
+	Bag->AddMaterial(UCataclysmForge::StoneFor(1), 4);
+	UCataclysmForgeWidget* Screen = MakeScreen(Scene);
+	if (!TestNotNull(TEXT("set-up: the screen"), Screen))
+	{
+		return false;
+	}
+
+	// AN UPGRADE THAT ENDS BEFORE ANY TIMER: one day, and the plain question.
+	Screen->ClickPieceForTests(UCataclysmForgeLayout::ButtonNameFor(FCataclysmForgeTarget::Carried(Gloves)));
+	Screen->ClickUpgradeForTests();
+	const FString Short = Screen->MessageText();
+	const FCataclysmForgeUpgrade ShortPlan = UCataclysmForgeCraft::PlanFor(Scene.World, FCataclysmForgeTarget::Carried(Gloves));
+
+	// AN UPGRADE WHOSE THREE DAYS RUN THE DUNGEON'S TIMER OUT: the question names it.
+	Screen->ClickPieceForTests(UCataclysmForgeLayout::ButtonNameFor(FCataclysmForgeTarget::Carried(Boots)));
+	Screen->ClickUpgradeForTests();
+	const FString Warned = Screen->MessageText();
+	const int32 DayAfterAsking = Scene.Run->Day();
+
+	// AND THE PRESS THAT DOES IT SAYS WHAT THE DAYS DID.
+	Screen->ClickUpgradeForTests();
+	const FString Done = Screen->MessageText();
+
+	const FString Warning = FString::Printf(TEXT(" Within 3 days, 1 dungeon's timer runs out: dungeon %d (%s) hits %s on day %d."),
+											Due, *DueName, *CityName, Today + 3);
+	AddInfo(FString::Printf(TEXT("FORGE TIMERS: dungeon %d (%s) due in 3 on %s; one day: '%s'; three days: '%s'; done: '%s'"),
+							Due, *DueName, *CityName, *Short, *Warned, *Done));
+
+	TestEqual(TEXT("set-up: the gloves' upgrade costs one day"), ShortPlan.Days, 1);
+	TestEqual(TEXT("an upgrade that ends before any timer asks the plain question, naming no dungeon"), Short,
+			  UCataclysmForge::UpgradeQuestion(ShortPlan));
+	TestTrue(TEXT("an upgrade whose days run a timer out asks the question"),
+			 Warned.StartsWith(TEXT("Press again to upgrade to +1")));
+	TestTrue(TEXT("and ends naming the dungeon, the city it hits and the day"), Warned.EndsWith(Warning));
+	TestEqual(TEXT("asking passes no day"), DayAfterAsking, Today);
+	TestEqual(TEXT("the second press raises the boots"), Bag->ItemAt(Boots)->GearLevel, 1);
+	TestTrue(TEXT("and says what it cost"), Done.StartsWith(TEXT("Raised to +1. It cost ")));
+	TestTrue(TEXT("then what the days did: the dungeon resolved, by its number and name, which only that part says"),
+			 Done.Contains(FString::Printf(TEXT(" Meanwhile, days %d to %d: dungeons resolved: "), Today, Today + 3))
+				 && Done.Contains(FString::Printf(TEXT("%d (%s)"), Due, *DueName)));
+	TestTrue(TEXT("and the city it hit"), Done.Contains(FString::Printf(TEXT("%s lost "), *CityName)));
+	TestNull(TEXT("CONTROL: the dungeon is gone from the run"), Scene.Run->FindDungeon(Due));
 	return true;
 }
 

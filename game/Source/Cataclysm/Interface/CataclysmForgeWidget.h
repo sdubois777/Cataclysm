@@ -29,6 +29,11 @@ class UTextBlock;
  * that question instead on the second press, and a third does it (ruling e). A Combine is one press: it changes no item
  * and costs no day.
  *
+ * EVERY CRAFT THAT COSTS DAYS SAYS WHAT THEY WILL DO AND WHAT THEY DID, issue #2857, the owner's ruling of 2026-11-22:
+ * its first press ends with the dungeons whose timers run out within its days, the city each would hit and the day; the
+ * press that does it ends with what the days did when they did anything -- the dungeons resolved, the cities hit and by
+ * how much, the cities fallen, any surge. Nothing is added when there is nothing to say.
+ *
  * EVERY FUNCTION WORKS WITH NO WIDGETS AT ALL, for the class tree screen's reason: the automation command passes
  * `-nullrhi`, so a test can make this class but not its Blueprint, and every bound pointer is null in a test.
  */
@@ -156,6 +161,18 @@ private:
 
 	/** The world context crafts are done in: the test's, or this widget's own. */
 	const UObject* Context() const;
+
+	/**
+	 * A first press's warning: the dungeons whose timers run out within the days the craft would spend, the city each
+	 * would hit and the day (`UCataclysmEmpireMapLayout::TimersRunningOutText`); empty when none does. Issue #2857.
+	 */
+	FString TimersRunningOutIn(int32 Days) const;
+
+	/**
+	 * A craft's message's last part: what the days it spent did, after a space (`UCataclysmGameInstance::
+	 * CapitalDaysAccount`); empty when they did nothing it names, or none passed. Issue #2857.
+	 */
+	FString WhatTheDaysDid() const;
 
 	void BuildPieceButtons();
 	void BuildActionButtons();

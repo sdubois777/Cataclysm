@@ -125,13 +125,20 @@ TMap<int32, FString> FCataclysmPlayLoopLog::NamesStanding(const UCataclysmEmpire
 }
 
 FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TArray<FCataclysmDayReport>& Days,
-										   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run)
+										   const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run,
+										   const TCHAR* Lead)
 {
 	using namespace CataclysmPlayLoopLog;
 
+	// THE LEAD, "while away" for a walk's days, a craft's or a respec's for days spent in the capital. Issue #2857.
+	if (Lead == nullptr)
+	{
+		Lead = TEXT("while away");
+	}
+
 	if (ToDay <= FromDay && Days.IsEmpty())
 	{
-		return TEXT("while away: no day passed");
+		return FString::Printf(TEXT("%s: no day passed"), Lead);
 	}
 
 	// EACH DUNGEON ONCE, IN THE ORDER THE DAYS RESOLVED THEM.
@@ -199,11 +206,26 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 		? FString()
 		: FString::Printf(TEXT("; city upgrades finished: %s"), *FString::Join(FinishedParts, TEXT(", ")));
 
-	return FString::Printf(TEXT("while away, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s%s"),
-						   FromDay, ToDay, ResolvedParts.IsEmpty() ? TEXT("none") : *FString::Join(ResolvedParts, TEXT(", ")),
+	return FString::Printf(TEXT("%s, days %d to %d: dungeons resolved: %s; cities hit: %s; cities fallen: %s; %s%s"),
+						   Lead, FromDay, ToDay,
+						   ResolvedParts.IsEmpty() ? TEXT("none") : *FString::Join(ResolvedParts, TEXT(", ")),
 						   HitParts.IsEmpty() ? TEXT("none") : *FString::Join(HitParts, TEXT(", ")),
 						   FallenParts.IsEmpty() ? TEXT("none") : *FString::Join(FallenParts, TEXT(", ")), *SurgeText,
 						   *FinishedText);
+}
+
+bool FCataclysmPlayLoopLog::DaysDidSomething(const TArray<FCataclysmDayReport>& Days)
+{
+	// WHAT `AwayAccount` NAMES, asked of the same fields it reads.
+	for (const FCataclysmDayReport& Day : Days)
+	{
+		if (!Day.Resolved.IsEmpty() || !Day.Hits.IsEmpty() || !Day.Fallen.IsEmpty() || Day.bSurged
+			|| !Day.UpgradesFinishedOn.IsEmpty())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 FString FCataclysmPlayLoopLog::CapitalLine(const UCataclysmEmpireRun* Run, int32 Level, int64 ExperienceIntoLevel,

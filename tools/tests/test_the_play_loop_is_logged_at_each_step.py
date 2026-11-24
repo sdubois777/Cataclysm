@@ -10,11 +10,12 @@ issue #2741 slice 2's; the fourteenth to twentieth, the character's build -- a p
 tree reset, attribute points spent and reset, a skill chosen and a choice forgotten -- are issue #2763's; the
 twenty-first and twenty-second, the forge's upgrade and combine, are the owner's ruling of 2026-11-19; the
 twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the coordinating session's ruling of
-2026-11-19; the twenty-fifth, a skill level gained, is issue #2764's.
+2026-11-19; the twenty-fifth, a skill level gained, is issue #2764's. The thirty-fourth and thirty-fifth, what days spent
+at the forge and on a respec did, are issue #2857's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the thirty-three places says its builder's line;
+  1. each of the thirty-five places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -38,7 +39,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The thirty-three places, by file and signature, and the builder each one says.
+#: The thirty-five places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -97,6 +98,11 @@ STEPS = [
     # A SKILL LEVEL GAINED, issue #2764: said by the player state for every skill whose level rose, after a kill's
     # share or a character level that let a skill's kept experience through.
     ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::SaySkillLevelsGained(", "SkillLevelLine"),
+    # WHAT DAYS SPENT IN THE CAPITAL DID, issue #2857: the walk's account of its days away, after the forge's lead and
+    # the respec's, said by the one craft sequence and by the respec after their own lines. Until then the forge threw
+    # its days' reports away, and the owner saw dungeons gone with nothing saying why.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(", "AwayAccount"),
+    ("Player/CataclysmGameInstance.cpp", "bool UCataclysmGameInstance::RespecEmpireTree(", "AwayAccount"),
 ]
 
 #: What must come before each place's line, whitespace aside: the step it reports.
