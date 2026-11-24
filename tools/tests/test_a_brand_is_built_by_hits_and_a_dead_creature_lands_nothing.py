@@ -130,3 +130,24 @@ def test_the_melee_critical_measurements_design_hit_is_the_simulations() -> None
         f"the Unreal measurement says {found.group(1)} and the simulation {model.damage_per_hit:.4f} for a tier 1 "
         "Outpost Boss Brute's hit on floor 6 of a 10-floor Timed dungeon")
     assert model.crit_multiplier == 200.0, "the measurement's critical is the Brute's 200%; the model's moved"
+
+
+SKILL_TEMPLATE = SOURCE / "AbilitySystem" / "CataclysmSkillTemplate.cpp"
+
+
+def test_a_creatures_waiting_swing_asks_whether_it_died_before_its_blow_lands() -> None:
+    """The timer `WhenTheSwingConnects` arms asks whether a CREATURE avatar is dead before it runs the blow.
+
+    Issue #2877: the Corrupted Stalker's weapon-kit blows wait on `UCataclysmSkillTemplate::SwingTimer`, which nothing
+    cleared at a creature's death. A creature only: a player's waiting blow is left as the owner answered #1549.
+    """
+    function = "void UCataclysmSkillTemplate::WhenTheSwingConnects"
+    body = body_of(SKILL_TEMPLATE, function)
+    armed = position(body, "SetTimer(", function)
+    creature = position(body, "Cast<ACataclysmEnemyCharacter>(Avatar())", function)
+    asked = position(body, "UCataclysmSkillEffects::IsDead(Creature)", function)
+    deferred = body.find("Blow();", armed)
+    assert deferred != -1, f"{function} no longer runs the blow from the timer it arms"
+    assert armed < creature < asked < deferred, (
+        f"{function}'s timer must ask whether its creature died during the wait before it runs the blow, and only a "
+        "creature (Cast<ACataclysmEnemyCharacter>), so a player's waiting blow keeps the owner's ruling on #1549")
