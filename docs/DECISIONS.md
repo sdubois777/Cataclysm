@@ -2,6 +2,90 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A hard cap on how rare a drop can roll: rarity number tier + 3, so tier 1 drops nothing above Masterful (#2853)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `fix/rarity-cap-2853`, from development `4d33f5994`. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
+
+### Why
+
+The owner found a Cataclysmic Kilt +10 on 2026-11-23 and a Cataclysmic Staff +10 on 2026-11-24, both at difficulty tier
+1, and Legendary and Mythical pieces beside them. Since the owner's ruling of 2026-08-23 no rarity was forbidden at any
+tier: a rarity above the tier's own reach was halved once per rung. At tier 1 a Cataclysmic was one drop in 1.5 million
+with no magic find and one in 38,000 from a Boss. A drop arrives at its rarity's upgrade gate (+4, +6, +10), so one such
+piece outweighed a tier 1 character's whole reference gear in the Power Score. The investigation is on the issue
+(comment 7144136235). It found no fault in the roll; whether two Cataclysmic pieces in two days were chance is what this
+change's seeded count (RC5 below) settles in the window.
+
+### The ruling
+
+**The owner, 2026-11-24, "Hard cap by tier (Recommended)"** (issue comment 7144154769), as the coordinating session
+stated it: "a tier can drop at most two rarities above its normal reach, so the highest droppable rarity is number tier
++ 3 (tier 1 Masterful, tier 2 Legendary, tier 3 Mythical ...). Everyday, Quality, Superb and Masterful keep their current
+chances; the halving per rung stays below the cap."
+
+| Difficulty tier | 1 | 2 | 3 | 4 | 5 to 8 |
+| :-- | :-: | :-: | :-: | :-: | :-: |
+| Highest rarity a drop can roll | Masterful | Legendary | Mythical | Ascendant | Cataclysmic |
+
+### What changed
+
+- **The game** (`Items/CataclysmDropRoll.h` and `.cpp`): `RaritiesAboveTheReachThatDrop = 2` and
+  `HighestDroppableRarity(Tier)`; `DropWeightAt` answers 0 for a rarity above it. One place, on the weight, so every roll
+  that reads weights follows it: `RollRarity`, `RarityDistribution`, `RollRarityAtLeast`, and through them `RollItem`,
+  `SpawnDropsFor` (kills, the empire tree's extra drops, the Infested Hoard's drop and the four reward rooms) and
+  `SpawnGemsFor`.
+- **The simulation** (`sim/cataclysm_sim/loot.py`): `DROP_RARITIES_ABOVE_THE_REACH = 2`, `highest_droppable_rarity`,
+  and the same zero in `drop_weight`. Its import-time check "every rarity drops at every tier" became "every rarity up to
+  the cap drops and none above it", at magic find up to 1,000,000.
+- **The design document**, section VII: a table of the cap beside the reach table, and the paragraph that said a tier 1
+  Cataclysmic was one in 1.5 million.
+
+**SEEDS DO NOT MOVE BELOW THE CAP.** The cascade still takes one draw per rung from the top; a rung above the cap has a
+step chance of 0, so its draw always fails, and the step chances at or below the cap are unchanged. A seed whose drop was
+at or below the cap rolls the same item as before.
+
+**THE ORDINARY FOUR KEEP THEIR WEIGHTS.** Their shares at tiers 1 to 4 rise only by what the removed rarities held: at
+tier 1 with no magic find, Masterful is 1.06952% against 1.06873% before. Tiers 5 to 8 are unchanged.
+
+### Judgements of this change (not ruled; each can be reversed alone)
+
+- **Gems follow the cap.** A gem's rarity is rolled by the same `RollRarity` as gear's (`SpawnGemsFor`, and
+  `roll_gem_drops_from_kill` in the simulation), so the cap holds for gems with no separate code. The ruling names gear;
+  exempting gems would need the cap moved off the shared weight.
+- **The High Roller's extra item is exactly Legendary at tiers 1 and 2.** Its node promises "an extra Legendary+ item",
+  and tier 1's cap is Masterful. `RollRarityAtLeast` gives the node's minimum and nothing rarer when the minimum is at or
+  above the cap; at tier 3 and up it rolls from Legendary to the cap. The alternative, Masterful at tier 1, breaks the
+  node's own sentence.
+- **Corrupted Stalker pieces are not rolled** and are not capped: a Stalker wears a written build whose affixes give it
+  Masterful at most, at the reference character's upgrade level.
+
+### Tests
+
+**Python** (run in this change): `sim/tests/test_loot.py` rewrites five tests that said every rarity drops at every
+tier, and adds four: the cap at every tier written out, nothing above the cap at any magic find (shares and 2,000 rolls a
+tier), the ordinary four's weights, and Masterful's tier 1 share. `tools/tests/test_gear_rarity_gate_is_stated_everywhere.py`
+adds two: the engine's `RaritiesAboveTheReachThatDrop` equals the model's, and the design document's cap table matches
+`highest_droppable_rarity`.
+
+**Unreal, registered, new group `Cataclysm.RarityCap.`, 6 tests:**
+
+| | Test | What it checks |
+| :-- | :-- | :-- |
+| RC1 | `TheRarestATierCanDropIsRarityNumberTierPlusThree` | the cap at tiers 1 to 8, written out |
+| RC2 | `NothingAboveTheCapDropsAtAnyMagicFind` | tiers 1, 2, 8 at 0%, 300%, 5,000,000%: shares 0 above, above 0 at or below; 20,000 rolls each, none above; the cap itself rolled at the highest magic find |
+| RC3 | `TheSharesMatchTheModelAtTiersOneTwoAndEight` | the model's printed shares at tier 1 (0% and 300%), tier 2 and tier 8 |
+| RC4 | `TheHighRollersItemIsExactlyLegendaryWhereTheCapIsBelowIt` | tiers 1 and 2 all Legendary; tier 3 Legendary and Mythical, nothing else |
+| RC5 | `ATierOneItemRollCountsTheModelsShares` | **the seeded count**: 50,000 whole items through `RollItem` at tier 1 at 0% and at 300%, each item's rarity read back from what it carries, every rung within five standard deviations of `RarityDistribution`, none above Masterful; counts printed |
+| RC6 | `AKillAtTierOneDropsNothingAboveMasterful` | the live path: 20 Cataclysm Boss kills through `SpawnDropsFor` and `SpawnGemsFor` at tier 1, nothing above Masterful and Masterful present; the same at tier 8 drops above Masterful |
+
+**Changed:** `Cataclysm.Drop.TheRarityCascadeMatchesTheModel` (tier 1's shares above Masterful are 0, and the "shaped
+as the table says" loop stops at the cap); `Cataclysm.ExtraDamageTypes.AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`
+searches tier 2 instead of tier 1, the lowest tier that drops an enchanted weapon now;
+`Cataclysm.ExtraDamageTypes.WithoutTheSentenceASeedGivesTheSameItem` adds tier 2 to tiers 1 and 8.
+
+---
+
 ## 2026-11-22 — The loot filter screen and its preferences file: a player keeps ten filters of their own, and the three built-ins can be used and copied but never changed (#2846, slice LF2)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/loot-filter-2846-lf1`, on top of slice LF1

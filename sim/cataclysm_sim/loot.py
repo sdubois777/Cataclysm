@@ -86,18 +86,19 @@ from . import player_power
 #:
 #: IT USED TO BE A HARD CAP AND IS NOW WHERE A PENALTY STARTS. The project owner
 #: played the capped version on 2026-08-23 and said it was too strict: at
-#: difficulty tier 1 only Everyday and Quality could drop at all. Every rarity now
-#: drops at every tier, and `RARITY_PENALTY_ABOVE_THE_TIER` is what keeps the ones
-#: far above the tier rare instead of forbidden.
+#: difficulty tier 1 only Everyday and Quality could drop at all. Rarities above it
+#: now drop, made rarer by `RARITY_PENALTY_ABOVE_THE_TIER`, up to a cap two rungs
+#: higher that the owner ruled on 2026-11-24 (`DROP_RARITIES_ABOVE_THE_REACH`).
 DROP_RARITIES_ABOVE_DIFFICULTY = 1
 
 #: What a rarity's weight is divided by for each rung it sits above the tier's
 #: own reach.
 #:
-#: EVERY RARITY DROPS AT EVERY DIFFICULTY TIER, which is what the project owner
-#: asked for on 2026-08-23 after playing the capped version. Nothing is forbidden;
-#: a Cataclysmic at tier 1 is divided by 2 six times over, so it is one drop in
-#: 1.5 million rather than impossible.
+#: BELOW `highest_droppable_rarity` ONLY, since the owner's cap of 2026-11-24
+#: (issue #2853). The owner asked on 2026-08-23 for every rarity to drop at every
+#: tier; on 2026-11-24, after Cataclysmic pieces dropped at tier 1, ruled "Hard cap
+#: by tier": at most `DROP_RARITIES_ABOVE_THE_REACH` rungs above the tier's own
+#: reach. This penalty still applies to those rungs.
 #:
 #: DIABLO II'S SHAPE, AND THE RESEARCH FOR #886 IS WHERE IT CAME FROM. It has no
 #: hard gate on quality either: its chance improves by
@@ -106,13 +107,28 @@ DROP_RARITIES_ABOVE_DIFFICULTY = 1
 #: carries the sources.
 #:
 #: 2 RATHER THAN SOMETHING STEEPER, chosen by the project owner from measured
-#: candidates. At tier 1 it puts Superb at one drop in 19, Legendary at one in
-#: 1,497 and Cataclysmic at one in 1.5 million, and going from tier 1 to tier 8
-#: is worth 59 times at the top of the ladder.
+#: candidates. At tier 1 it puts Superb at one drop in 19, and Legendary and above
+#: cannot drop there since the cap.
 #:
 #: IT IS ZERO STEPS AT TIERS 7 AND 8, so both are a division by one and every
 #: figure the 2026-08-18 decision set survives untouched.
 RARITY_PENALTY_ABOVE_THE_TIER = 2.0
+
+#: How many rungs above the tier's own reach a drop can roll at all.
+#:
+#: THE OWNER'S RULING OF 2026-11-24 ON ISSUE #2853, "Hard cap by tier
+#: (Recommended)": "a tier can drop at most two rarities above its normal reach,
+#: so the highest droppable rarity is number tier + 3 (tier 1 Masterful, tier 2
+#: Legendary, tier 3 Mythical ...). Everyday, Quality, Superb and Masterful keep
+#: their current chances; the halving per rung stays below the cap." The reason:
+#: Legendary, Mythical and Cataclysmic pieces arriving at tier 1 at their upgrade
+#: gate (+4, +6, +10) put a character far above every tier 1 dungeon.
+#:
+#: THE CAP IS ON THE WEIGHT, NOT A SEPARATE CHECK: `drop_weight` is 0 above it, so
+#: the cascade, the exact distribution and every caller agree without each
+#: knowing the rule. It never touches Everyday to Masterful, whose rung is at or
+#: below the cap at every tier. Tiers 5 to 8 reach Cataclysmic and are unchanged.
+DROP_RARITIES_ABOVE_THE_REACH = 2
 
 #: How heavily each rarity is weighted on a drop, mirroring the Drop Weight
 #: column of the Gear Rarity sheet in `docs/All_Things_Cataclysm.xlsx`.
@@ -554,6 +570,11 @@ def drop_weight(rarity: str, tier: int, magic_find: float = 0.0) -> float:
         raise ValueError(f"{rarity!r} is not a rarity; expected one of "
                          f"{list(af.RARITIES)}")
 
+    # ABOVE THE CAP, NOTHING (issue #2853). Asked after the name check above, so a
+    # misspelt rarity is still refused rather than weighed at nothing.
+    if rarity_index(rarity) > rarity_index(highest_droppable_rarity(tier)):
+        return 0.0
+
     return (_shaped_weight(rarity, tier)
             * magic_find_multiplier(rarity, magic_find)
             / penalty_above_the_tier(rarity, tier))
@@ -596,6 +617,19 @@ def highest_unpenalised_rarity(tier: int) -> str:
         raise ValueError(f"tier {tier} is outside 1 to {af.DIFFICULTY_TIERS}")
     return rarity_at_index(
         min(len(af.RARITIES), tier + DROP_RARITIES_ABOVE_DIFFICULTY))
+
+
+def highest_droppable_rarity(tier: int) -> str:
+    """The rarest gear a drop can roll at a difficulty tier: rarity number tier + 3.
+
+    The owner's cap of 2026-11-24 (issue #2853): `DROP_RARITIES_ABOVE_THE_REACH`
+    rungs above `highest_unpenalised_rarity`, stopping at Cataclysmic. Tier 1
+    Masterful, tier 2 Legendary, tier 3 Mythical, tier 4 Ascendant, tiers 5 to 8
+    Cataclysmic.
+    """
+    reach = rarity_index(highest_unpenalised_rarity(tier))
+    return rarity_at_index(min(len(af.RARITIES),
+                               reach + DROP_RARITIES_ABOVE_THE_REACH))
 
 
 def rungs_above_the_tier(rarity: str, tier: int) -> int:
@@ -734,11 +768,10 @@ def rarity_distribution(tier: int, magic_find: float = 0.0) -> dict[str, float]:
     thousand rolls and then arguing about noise. `roll_rarity` draws from exactly
     this distribution, and a test compares the two.
 
-    EVERY RARITY CARRIES A SHARE ABOVE ZERO AT EVERY TIER, since the project
-    owner removed the cap on 2026-08-23. It used to walk only as far as the
-    cap and leave everything above it at zero; now it walks the whole ladder
-    and being far above the tier makes a rarity rare rather than impossible.
-    See `RARITY_PENALTY_ABOVE_THE_TIER`.
+    A RARITY ABOVE `highest_droppable_rarity` HAS A SHARE OF ZERO, since the
+    owner's cap of 2026-11-24 (issue #2853): its weight is zero, so the cascade
+    never stops on it. Below the cap, being above the tier makes a rarity rarer
+    rather than impossible; see `RARITY_PENALTY_ABOVE_THE_TIER`.
     """
     out = {rarity: 0.0 for rarity in af.RARITIES}
     left = 1.0
@@ -761,8 +794,9 @@ def roll_rarity(tier: int, magic_find: float, rng) -> str:
     Written that way on purpose: the test that the two agree is what proves the
     exact distribution above describes what actually happens.
 
-    WALKS THE WHOLE LADDER, since the cap was removed on 2026-08-23. Every
-    rung is reachable at every difficulty tier.
+    WALKS THE WHOLE LADDER. A rung above `highest_droppable_rarity` has a step
+    chance of zero (issue #2853), so it is walked past and never stopped on; no
+    draw is skipped, so a seed below the cap rolls what it rolled before.
     """
     for index in range(len(af.RARITIES), 1, -1):
         if rng.random() < rarity_step_chance(index, tier, magic_find):
@@ -1661,7 +1695,8 @@ def _check_the_distribution_matches_the_weights() -> None:
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
         spread = rarity_distribution(tier)
-        # EVERY RUNG, since the cap went on 2026-08-23.
+        # EVERY RUNG, the ones above `highest_droppable_rarity` included: their
+        # weight is zero, so they are expected at zero (issue #2853).
         reachable = len(af.RARITIES)
         total = sum(drop_weight(rarity_at_index(rung), tier)
                     for rung in range(1, reachable + 1))
@@ -1778,7 +1813,10 @@ def _check_no_magic_find_can_wipe_out_a_rarity() -> None:
     the step chances is what this notices.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        reachable = len(af.RARITIES)
+        # UP TO THE CAP (issue #2853). Above it a share of zero is the rule, not
+        # magic find wiping a rarity out;
+        # `_check_every_rarity_up_to_the_cap_drops_and_none_above_it` holds that.
+        reachable = rarity_index(highest_droppable_rarity(tier))
 
         for magic_find in (0.0, 300.0, 500.0, 5_000.0, 1_000_000.0):
             spread = rarity_distribution(tier, magic_find)
@@ -1832,8 +1870,9 @@ def _check_magic_find_only_ever_moves_the_mix_upward() -> None:
     every rarity would still drop and every distribution would still sum to one.
     """
     weakest = af.RARITIES[0]
-    best = af.RARITIES[-1]
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        # THE RAREST THIS TIER CAN DROP, since the cap of issue #2853.
+        best = highest_droppable_rarity(tier)
 
         plain = rarity_distribution(tier, 0.0)
         lucky = rarity_distribution(tier, 300.0)
@@ -1875,29 +1914,42 @@ def _check_a_deeper_tier_never_drops_more_of_the_weakest() -> None:
                 "deeper drops more of the weakest thing rather than less")
 
 
-def _check_every_rarity_drops_at_every_difficulty_tier() -> None:
-    """What the project owner asked for on 2026-08-23, checked directly.
+def _check_every_rarity_up_to_the_cap_drops_and_none_above_it() -> None:
+    """The owner's two rulings on how high a drop can roll, checked directly.
 
-    THIS REPLACED A CHECK THAT SAID THE OPPOSITE. It was
-    `_check_nothing_drops_above_the_tier_cap`, and it held that a rarity above
-    the tier's cap carried a share of exactly zero however much magic find was
-    applied. The cap is gone: at difficulty tier 1 only Everyday and Quality
-    could drop, and the project owner played that and said it was too strict.
+    UP TO THE CAP, EVERY RARITY DROPS: the owner's request of 2026-08-23, after
+    playing a cap at the tier's own reach, under which tier 1 dropped only
+    Everyday and Quality. This check said "every rarity at every tier" until
+    issue #2853.
 
-    WITH AND WITHOUT MAGIC FIND, because they act on the same weights and could
-    in principle cancel. They do not: the penalty divides and magic find
-    multiplies, and neither can reach zero.
+    ABOVE THE CAP, NOTHING, HOWEVER MUCH MAGIC FIND: the owner's "Hard cap by
+    tier" of 2026-11-24 (issue #2853), `DROP_RARITIES_ABOVE_THE_REACH`. Magic find
+    multiplies a weight, and a weight of zero stays zero; checked at magic find
+    no character reaches, because that is where a cap made of a penalty would
+    leak.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
-        for magic_find in (0.0, 300.0, 5_000.0):
+        cap = rarity_index(highest_droppable_rarity(tier))
+        if cap < ORDINARY_RARITIES:
+            raise AssertionError(
+                f"difficulty tier {tier} cannot drop {rarity_at_index(ORDINARY_RARITIES)}: "
+                "the cap is not allowed to take away an ordinary rarity")
+
+        for magic_find in (0.0, 300.0, 5_000.0, 1_000_000.0):
             spread = rarity_distribution(tier, magic_find)
 
             for rarity in af.RARITIES:
-                if spread[rarity] <= 0.0:
+                above = rarity_index(rarity) > cap
+                if above and spread[rarity] != 0.0:
+                    raise AssertionError(
+                        f"{rarity} drops at difficulty tier {tier} with "
+                        f"{magic_find}% magic find, above the tier's cap of "
+                        f"{rarity_at_index(cap)}")
+                if not above and spread[rarity] <= 0.0:
                     raise AssertionError(
                         f"{rarity} never drops at difficulty tier {tier} with "
-                        f"{magic_find}% magic find. Every rarity is meant to "
-                        "drop at every tier")
+                        f"{magic_find}% magic find, though it is at or below "
+                        f"the tier's cap of {rarity_at_index(cap)}")
 
 
 def _check_going_above_the_tier_costs_something() -> None:
@@ -2074,7 +2126,7 @@ _check_a_deeper_tier_never_drops_more_of_the_weakest()
 _check_no_magic_find_can_wipe_out_a_rarity()
 _check_magic_find_never_passes_its_ceiling()
 _check_magic_find_only_ever_moves_the_mix_upward()
-_check_every_rarity_drops_at_every_difficulty_tier()
+_check_every_rarity_up_to_the_cap_drops_and_none_above_it()
 _check_going_above_the_tier_costs_something()
 _check_a_distribution_always_sums_to_one()
 _check_every_enemy_rarity_has_a_drop_rate()
