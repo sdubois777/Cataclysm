@@ -2,22 +2,29 @@
 
 `tools/affix_range_proposal.py` is a PROPOSAL for the project owner's ruling of
 2026-11-24 ("I really hate decimals ... each affix tier should have it's own
-range ... something a PLAYER finds reasonable"). Nothing in the game reads it.
-These tests hold three things:
+range ... something a PLAYER finds reasonable"), redone under the owner's
+rulings on issue #2883: upgrades multiply every affix, tiers never overlap,
+the small stats move to fewer slots, and flat damage keeps six reference slots
+and grows with upgrades. Nothing in the game reads it. These tests hold three
+things:
 
   1. the proposed table obeys the rule it states: whole numbers, seven
-     contiguous non-overlapping tiers of at least two values, separate at every
-     upgrade level and on a two-handed weapon, every slot still fillable;
-  2. the checks that say so can fail, shown by breaking a table on purpose;
+     contiguous non-overlapping tiers of at least two values, and at every
+     upgrade level from +0 to +10, one- and two-handed, no decimal, no number
+     shown twice, every tier above the one below;
+  2. the checks that say so can fail, shown by breaking a table, or the
+     rounding, on purpose;
   3. the apply step writes a copy and refuses the real design workbook, which
      other branches hold unmerged edits to.
 """
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import hashlib
 import shutil
+from fractions import Fraction
 
 import pytest
 
@@ -51,14 +58,51 @@ def test_today_the_owners_example_is_a_tier_1_increase_on_a_fresh_drop(rows):
 
 
 def test_today_every_affix_shows_a_decimal_somewhere_and_overlaps(rows):
-    """The measurement the proposal answers. Every one of the 73 single-stat,
-    resistance and ailment affixes shows a decimal at some tier and upgrade
-    level, and every one has adjacent tiers that overlap at +0, by design (the
-    design document's "Bands overlap between adjacent tiers")."""
+    """Every one of the 73 single-stat, resistance and ailment affixes shows a
+    decimal at some tier and upgrade level, and every one has adjacent tiers
+    that overlap at +0, by design (the design document's "Bands overlap
+    between adjacent tiers")."""
     today = p.today(rows)
     assert len(today) == 73
     assert all(a.has_decimal for a in today)
     assert all(a.overlaps >= 1 for a in today)
+
+
+# ---------------------------------------------------------------------------
+# The upgrade step
+# ---------------------------------------------------------------------------
+
+def test_an_upgrade_rounds_exactly_and_a_half_goes_up():
+    """10 x 1.15 is 11.5, which a double holds as 11.499999999999998 and a
+    naive round would send to 11."""
+    assert p.upgraded(10, 1) == 12
+    assert p.upgraded(1, 10) == 3          # 2.5
+    assert p.upgraded(21, 10) == 53        # 52.5
+    assert p.upgraded(48, 10) == 120
+    assert p.upgraded(7, 3, two_handed=True) == 20   # 7 x 1.45 x 2 = 20.3
+
+
+def test_every_upgrade_level_is_the_plus_zero_number_times_its_multiplier():
+    """Rounded once from the +0 number, never from the level below."""
+    for base in range(1, 401):
+        for level in p.LEVELS:
+            for hands in (1, 2):
+                exact = Fraction(base * (100 + 15 * level) * hands, 100)
+                expected = int(exact + Fraction(1, 2))   # floor(x + 1/2), x > 0
+                assert p.upgraded(base, level, two_handed=hands == 2) == expected
+
+
+def test_a_whole_number_below_seven_is_the_only_kind_an_upgrade_can_leave_unchanged(table):
+    """One upgrade adds 0.15 of the +0 number, which is under one only below
+    seven. Information for decision D7, and held here so the claim in the
+    proposal cannot drift from the table."""
+    steps = p.unchanged_steps(table)
+    assert steps and max(steps) < 7
+    numbers = {v for a in _live(table) for lo, hi in a.tiers for v in range(lo, hi + 1)}
+    for v in numbers:
+        if v >= 7:
+            shown = [p.upgraded(v, g) for g in p.LEVELS]
+            assert len(set(shown)) == len(shown), v
 
 
 # ---------------------------------------------------------------------------
@@ -79,71 +123,80 @@ def test_every_live_affix_has_seven_whole_contiguous_tiers_of_two_or_more(table)
                 assert low == affix.tiers[k - 1][1] + 1, (affix.name, k + 1)
 
 
-def test_every_value_any_roll_can_produce_is_whole(table):
+def test_no_number_is_shown_twice_at_any_upgrade_level(table):
     for affix in _live(table):
-        for tier in p.TIERS:
-            for level in (0, 3, 7, 10):
-                for roll in (0.0, 0.37, 0.5, 0.99, 1.0):
-                    v = p.value(affix, tier, roll, level, two_handed=True)
-                    assert isinstance(v, int), affix.name
+        for level in p.LEVELS:
+            for two_handed in (False, True):
+                every = [n for k in p.TIERS
+                         for n in p.shown(affix, k, level, two_handed)]
+                assert len(every) == len(set(every)), (affix.name, level, two_handed)
+                assert every == sorted(every), (affix.name, level, two_handed)
+                assert all(isinstance(n, int) for n in every)
 
 
-def test_an_amount_scales_with_upgrades_and_a_percentage_does_not(table):
-    health = table["Flat maximum health"]
-    damage = table["Increased damage"]
-    assert health.amount and not damage.amount
-    assert p.value(health, 7, 1.0, 10) == 120
-    assert p.value(health, 7, 1.0, 0) == 48
-    assert p.value(damage, 7, 1.0, 10) == p.value(damage, 7, 1.0, 0) == 125
+def test_every_affix_grows_with_upgrades(table):
+    """The owner's ruling on issue #2883: "upgrade everything"."""
+    for affix in _live(table):
+        assert affix.top == p.upgraded(affix.tiers[-1][1], 10)
+        assert p.value(affix, 7, 1.0, 10) > p.value(affix, 7, 1.0, 0), affix.name
 
 
-def test_the_rules_the_proposal_keeps_exactly(table):
-    """The endgame figures `docs/Cataclysm_GDD_v2.md` derives, unmoved."""
-    assert table["Increased damage"].top == 125
-    assert table["Increased spell damage"].top == 125
-    assert table["Increased minion damage"].top == 125
+def test_the_figures_the_proposal_keeps(table):
+    """The endgame figures `docs/Cataclysm_GDD_v2.md` derives that have room
+    already, unmoved."""
+    for name in ("Increased damage", "Increased spell damage", "Increased minion damage"):
+        assert table[name].top == 125
     for cataclysm in ("War", "Demonic", "Death", "Pestilence", "Famine",
                       "Celestial", "Chaos", "Void"):
         assert table[f"Increased damage against {cataclysm} enemies"].top == 400
-    for lever in ("Increased damage over time",
-                  "Increased damage over time frequency",
-                  "Increased damage over time duration"):
-        assert table[lever].top == 52
-    assert table["Single resistance"].top == 40
-    assert table["Two resistances"].top == 28
-    assert table["Increased movement speed"].top == 35
     assert table["Flat maximum health"].top == 120
     assert table["Flat armor"].top == 250
+    assert table["Flat maximum energy shield"].top == 50
 
 
-def test_an_ailment_chance_is_still_five_above_its_gem(table, rows):
-    """"Each of these is five points above the gem that applies the same
-    effect." The tops are the ones today, so the rule survives."""
-    for row in rows:
-        if row["AffixKind"] == "Ailment":
-            assert table[row["AffixName"]].top == round(float(row["TopValue"]))
+def test_flat_damage_grows_with_upgrades_on_the_owners_six_slots(table):
+    """"keep the 6 slots and upgrade the damage": flat damage is an ordinary
+    upgraded ladder, and the reference build still spends six slots on it."""
+    from cataclysm_sim import affixes as af
+    damage = table["Flat damage"]
+    assert damage.tiers[-1][1] == 15 and damage.top == 38
+    assert af.REFERENCE_FLAT_DAMAGE_AFFIXES == 6
 
 
-def test_a_raise_is_only_ever_to_the_smallest_top_with_room(table, rows):
-    """Where a top moved without a stated reason, it moved to exactly the
-    fourteen-value minimum and no further."""
-    by_name = {r["AffixName"]: r for r in rows}
+def test_a_raise_is_only_to_the_smallest_top_with_room_or_a_rounding(table, rows):
+    """Where a top moved without a stated reason, the ladder is exactly the
+    fourteen-value minimum, or the move is the nearest whole +0 number."""
     for affix in _live(table):
-        if affix.raised and affix.name not in p.OVERRIDES:
-            low, high = affix.tiers[0][0], affix.tiers[-1][1]
-            assert high - low + 1 == p.MIN_LADDER_VALUES, affix.name
-            assert by_name[affix.name]
-
-
-def test_a_narrowed_stat_holds_its_ceiling_within_a_fifth(table):
-    """The movement-speed rule: the top and the slot list move together, so
-    the most a character can carry from the stat does not run away."""
-    for affix in _live(table):
-        if affix.slots == affix.old_slots:
+        if not affix.raised or affix.name in p.OVERRIDES:
             continue
-        before = round(affix.old_top) * affix.old_pieces()
+        low, high = affix.tiers[0][0], affix.tiers[-1][1]
+        assert (high - low + 1 == p.MIN_LADDER_VALUES
+                or abs(affix.top - affix.old_top) <= 1), affix.name
+
+
+def test_a_narrowed_stat_stays_near_its_ceiling(table):
+    """The owner's ruling "Fewer slots": the top and the slot list move
+    together. The piece count is the one whose ceiling is nearest today's,
+    rounded down where a cap is close (damage reduction, evasion)."""
+    narrowed = [a for a in _live(table) if a.slots != a.old_slots]
+    assert len(narrowed) == 12
+    for affix in narrowed:
+        before = affix.old_top * affix.old_pieces()
         after = affix.top * affix.pieces()
-        assert 0.75 <= after / before <= 1.2, (affix.name, before, after)
+        assert 0.6 <= after / before <= 1.3, (affix.name, before, after)
+
+
+def test_an_ailment_affix_never_beats_its_gem_on_one_hand(table, rows):
+    """"The gem stays the stronger source." Held one-handed; on a two-handed
+    weapon two gems (madness, withering, 60%) fall below a doubled affix, which
+    the proposal states as a rule that moves."""
+    path = p.REPO_ROOT / "game" / "Data" / "Gems.csv"
+    with open(path, newline="", encoding="utf-8") as handle:
+        gems = {r["GemName"]: r for r in csv.DictReader(handle)}
+    for row in rows:
+        if row["AffixKind"] == "Ailment" and row["Gem"] in gems:
+            best_gem = round(float(gems[row["Gem"]]["Cataclysmic"]) * 100)
+            assert table[row["AffixName"]].top < best_gem, row["AffixName"]
 
 
 def test_two_retired_affixes_name_live_ones_and_no_hybrid_uses_them(table):
@@ -155,6 +208,7 @@ def test_two_retired_affixes_name_live_ones_and_no_hybrid_uses_them(table):
     for hybrid in table.values():
         if hybrid.kind == "Hybrid":
             assert not set(hybrid.hybrid_parts or ()) & set(retired)
+            assert hybrid.slots, hybrid.name
 
 
 # ---------------------------------------------------------------------------
@@ -181,9 +235,44 @@ def test_the_check_fires_on_a_single_value_tier(table, rows):
     assert any("holds one value" in line for line in found)
 
 
+def test_the_check_fires_when_an_upgrade_level_repeats_a_number(table, rows, monkeypatch):
+    """A rounding that loses ground (nine tenths, rounded down) makes two +0
+    numbers show the same thing, and the per-level check names it."""
+    monkeypatch.setattr(p, "upgraded",
+                        lambda base, level, two_handed=False: (base * 9) // 10)
+    found = p.problems(table, rows)
+    assert any("a number repeats at +0" in line for line in found)
+    assert any("reaches" in line and "at +0" in line for line in found)
+
+
+def test_the_check_fires_when_an_upgrade_lowers_a_roll(table, rows, monkeypatch):
+    """A rounding that falls as the level rises would take a roll down."""
+    monkeypatch.setattr(p, "upgraded",
+                        lambda base, level, two_handed=False:
+                        base * 3 - (level % 2) * base)
+    found = p.problems(table, rows)
+    assert any("an upgrade lowers a roll" in line for line in found)
+
+
+def test_every_number_a_range_shows_can_roll_and_upgrading_never_lowers_one(table):
+    """The roll is a position in the range at the piece's level, so a tooltip's
+    range never shows a number that cannot occur."""
+    for affix in _live(table):
+        for tier in p.TIERS:
+            for level in (0, 1, 5, 10):
+                low, high = p.tier_range(affix, tier, level)
+                count = high - low + 1
+                hit = {p.value(affix, tier, (i + 0.5) / count, level)
+                       for i in range(count)}
+                assert hit == set(range(low, high + 1)), (affix.name, tier, level)
+            for roll in (0.0, 0.3, 0.6, 1.0):
+                seen = [p.value(affix, tier, roll, g) for g in p.LEVELS]
+                assert seen == sorted(seen), (affix.name, tier, roll)
+
+
 def test_the_check_fires_when_a_hybrid_rolls_where_a_half_cannot(table, rows):
     found = p.problems(_with(table, "Armor and evasion",
-                             slots=("Boots", "Chest", "Head", "Ring")), rows)
+                             slots=("Boots", "Chest", "Head")), rows)
     assert any("Armor and evasion: rolls where" in line for line in found)
 
 
@@ -226,9 +315,9 @@ def test_the_ladder_refuses_fewer_than_fourteen_values():
 
 
 def test_the_ladder_starts_tier_seven_at_three_quarters_of_the_top():
-    tiers = p.ladder(18, 125)
-    assert tiers[-1] == (95, 125)
-    assert tiers[0][0] == 18
+    tiers = p.ladder(13, 50)
+    assert tiers[-1] == (38, 50)
+    assert tiers[0][0] == 13
 
 
 def test_a_hybrid_half_is_its_own_affix_two_tiers_down(table):
@@ -253,8 +342,15 @@ def test_todays_seventy_percent_rule_would_break_the_new_rules(table):
 def test_every_implicit_is_whole_and_at_least_one():
     for implicit in p.implicit_proposal():
         assert isinstance(implicit.at_zero, int) and implicit.at_zero >= 1
-        for level in range(11):
+        for level in p.LEVELS:
             assert isinstance(implicit.at(level), int)
+
+
+def test_the_levels_table_shows_every_live_affix_once(table):
+    text = p.levels_markdown()
+    for affix in _live(table):
+        assert text.count(affix.name) >= 1, affix.name
+    assert text.count("| +10 |") == len(p._ladder_letters(table))
 
 
 def test_the_simulation_is_restored_after_it_is_measured():
@@ -267,7 +363,7 @@ def test_the_simulation_is_restored_after_it_is_measured():
     assert af.FLAT_DAMAGE.value_at(3, 0.5, 4) == before
 
 
-def test_the_measurement_keeps_the_damage_target(table):
+def test_the_measurement_keeps_the_damage_target():
     """The target is read off enemy health, which no affix moves."""
     figures = p.measure()
     target = figures["damage target at tier 8"]
@@ -323,7 +419,7 @@ def test_apply_writes_the_table_into_a_copy(workbook_copy, tmp_path, table):
     sheet = book["Affixes"]
     rows = list(sheet.iter_rows(values_only=True))
     headers = list(rows[0])
-    for column in (*p.TIER_COLUMNS, p.SCALES_COLUMN):
+    for column in p.TIER_COLUMNS:
         assert column in headers
     index = {h: i for i, h in enumerate(headers)}
     seen = set()
