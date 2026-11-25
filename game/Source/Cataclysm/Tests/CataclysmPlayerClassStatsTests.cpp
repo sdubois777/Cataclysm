@@ -413,8 +413,10 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ravager's Long Hold capstone option, as a flat percentage of "
 			  "maximum health a kill restores without spending Fervour")},
 		{TEXT("fervour_on_enemy_death_nearby"),
-		 TEXT("the Ritualist's Fed by the Fallen capstone option, as a flat "
-			  "count of Fervour for an enemy dying within ten metres")},
+		 TEXT("the Masochist's Gorge and the Ravager's Swing Through since the "
+			  "demonic tree rework of 2026-11-24 (the Ritualist's Fed by the Fallen "
+			  "until then), as a flat count of Fervour for an enemy dying within ten "
+			  "metres")},
 		{TEXT("fervour_decay_grace_metres"),
 		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
 			  "as flat distances that sum to the eight that keystone names")},
