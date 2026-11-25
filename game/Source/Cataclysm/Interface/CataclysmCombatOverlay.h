@@ -762,6 +762,12 @@ public:
 	static FString PortalTextFor(const AActor* Actor);
 
 	/**
+	 * "Cursed Abomination" under the health bar of an Abomination lair's boss, or empty. Issue #51 slice B5: the
+	 * design's words, so it is told apart from Portal Unleashing's "Abomination" (L5).
+	 */
+	static FString CursedAbominationTextFor(const AActor* Actor);
+
+	/**
 	 * "Carcass" under the health bar of a Carrion Feast carcass, and "Feeder" under the bar of a creature one became,
 	 * or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it says what the creature is.
 	 */

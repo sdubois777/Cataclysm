@@ -2046,8 +2046,13 @@ public:
 	 * it first moves), and each city the Cataclysm whose hit felled it (`FCataclysmCity::FellTo`), which decides
 	 * whether a fall was to War. `Migrate_20_to_21` writes `INDEX_NONE` into every dungeon -- growth then counts from
 	 * `SpawnedDay`, as it did -- and `None` into every city: what felled a city before was not recorded.
+	 *
+	 * 22 SINCE 2026-11-25. Issue #51 slice B5, the Death quest: an Abomination lair's boss grows with the cities fallen
+	 * when the lair appeared, so each dungeon carries that count (`FCataclysmDungeon::CitiesFallenBefore`, 0 for a
+	 * dungeon that is not a lair). `Migrate_21_to_22` writes 0 into every dungeon: no version 21 run recorded it, and a
+	 * lair loaded from one has an Abomination of the base strength.
 	 */
-	static constexpr int32 SchemaVersionNow = 21;
+	static constexpr int32 SchemaVersionNow = 22;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

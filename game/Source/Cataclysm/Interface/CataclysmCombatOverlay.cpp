@@ -871,6 +871,14 @@ FString UCataclysmCombatOverlay::PortalTextFor(const AActor* Actor)
 	return Enemy && Enemy->bIsAnAbomination ? FString(TEXT("Abomination")) : FString();
 }
 
+FString UCataclysmCombatOverlay::CursedAbominationTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsTheCursedAbomination && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Cursed Abomination"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::RiftTextFor(const AActor* Actor)
 {
 	return Actor && Actor->IsA<ACataclysmRiftCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
@@ -1011,7 +1019,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), SealBearerTextFor(Actor), RisenTextFor(Actor), GuideTextFor(Actor),
 		  ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
-		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CarcassTextFor(Actor), RiftTextFor(Actor), RiftAltarTextFor(Actor),
+		  SarcophagusTextFor(Actor), PortalTextFor(Actor), CursedAbominationTextFor(Actor), CarcassTextFor(Actor),
+		  RiftTextFor(Actor), RiftAltarTextFor(Actor),
 		  InfectionBloomTextFor(Actor), PlaguebearerTextFor(Actor), MoraleBreakTextFor(Actor),
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
 		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),

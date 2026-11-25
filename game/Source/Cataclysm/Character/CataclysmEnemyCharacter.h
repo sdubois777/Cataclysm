@@ -1704,6 +1704,23 @@ public:
 	bool bIsAnAbomination = false;
 
 	/**
+	 * Whether this creature is an Abomination lair's Cursed Abomination: the Gatekeeper on the last wave of a Quest
+	 * dungeon Death sent. Issue #51 slice B5. It puts "Cursed Abomination" under the health bar, which tells it apart
+	 * from Portal Unleashing's "Abomination" (`bIsAnAbomination`) and the Necromancer's vow (L5, the coordinating
+	 * session, 2026-11-25). A STAND-IN on the Gatekeeper until a Death creature exists (L4; issue #29). Set by
+	 * `ACataclysmDungeonGameMode::MakeTheCursedAbomination`, again on a load. Permanent.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsTheCursedAbomination = false;
+
+	/**
+	 * What the Cursed Abomination's random gear drops are multiplied by: its lair's `AbominationMultiplier`, the step
+	 * its health and damage took (L6). 1 for every other creature. Gold is not multiplied. Set with the flag, again on
+	 * a load from the bound dungeon, so it is not saved. Issue #51 slice B5.
+	 */
+	float AbominationGearMore = 1.0f;
+
+	/**
 	 * Whether a Carrion Feast carcass became this creature. Issues #1820 and #41. It puts "Feeder" under the health
 	 * bar. A flag on a creature of the floor's own kinds, as `bIsAnAbomination` is, for the same reason.
 	 */

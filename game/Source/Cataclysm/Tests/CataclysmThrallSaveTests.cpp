@@ -161,7 +161,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallSaveMigrationTest,
 /**
  * `Run_v16.json`, written before the two fields, migrates: its thrall, the Abyssal Warden the player commands, is given
  * Subjugate's row and a factor of 1 (the ruling's Q1), and the Brute beside it, which no one commands, None and 1.
- * CONTROL: `Run_v21.json` is read, not migrated, and states its thrall's row and a factor of 1.5, not the defaults, so
+ * CONTROL: `Run_v22.json` is read, not migrated, and states its thrall's row and a factor of 1.5, not the defaults, so
  * the fields are read from the file. Prints "THRALL FILES".
  */
 bool FCataclysmThrallSaveMigrationTest::RunTest(const FString&)
@@ -170,18 +170,18 @@ bool FCataclysmThrallSaveMigrationTest::RunTest(const FString&)
 	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
 	const UCataclysmRunSave* Old = ReadRunFixture(*this, TEXT("Run_v16.json"), OldResult);
-	const UCataclysmRunSave* Committed = ReadRunFixture(*this, TEXT("Run_v21.json"), NewResult);
+	const UCataclysmRunSave* Committed = ReadRunFixture(*this, TEXT("Run_v22.json"), NewResult);
 	const FCataclysmSavedCreature* OldThrall = CreatureOf(Old, TEXT("AbyssalWarden"));
 	const FCataclysmSavedCreature* OldBrute = CreatureOf(Old, TEXT("Brute"));
 	const FCataclysmSavedCreature* NewThrall = CreatureOf(Committed, TEXT("AbyssalWarden"));
 	const FCataclysmSavedCreature* NewBrute = CreatureOf(Committed, TEXT("Brute"));
-	AddInfo(FString::Printf(TEXT("THRALL FILES: Run_v16.json %s: %s | %s; Run_v21.json %s: %s | %s"),
+	AddInfo(FString::Printf(TEXT("THRALL FILES: Run_v16.json %s: %s | %s; Run_v22.json %s: %s | %s"),
 							FCataclysmSaveStorage::Describe(OldResult), *Described(OldThrall), *Described(OldBrute),
 							FCataclysmSaveStorage::Describe(NewResult), *Described(NewThrall), *Described(NewBrute)));
 
-	if (!TestNotNull(TEXT("Run_v16.json loads"), Old) || !TestNotNull(TEXT("Run_v21.json loads"), Committed)
+	if (!TestNotNull(TEXT("Run_v16.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Committed)
 		|| !TestNotNull(TEXT("set-up: Run_v16.json holds its thrall"), OldThrall)
-		|| !TestNotNull(TEXT("set-up: and its Brute"), OldBrute) || !TestNotNull(TEXT("set-up: Run_v21.json its thrall"), NewThrall)
+		|| !TestNotNull(TEXT("set-up: and its Brute"), OldBrute) || !TestNotNull(TEXT("set-up: Run_v22.json its thrall"), NewThrall)
 		|| !TestNotNull(TEXT("set-up: and its Brute"), NewBrute))
 	{
 		return false;
@@ -193,7 +193,7 @@ bool FCataclysmThrallSaveMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("**and Subjugate's factor at level 1**"), OldThrall->TakenLevelFactorOnCreatures, 1.0f);
 	TestTrue(TEXT("the Brute no one commands is given no skill"), OldBrute->TakenBySkillRow.IsNone());
 	TestEqual(TEXT("and a factor of 1"), OldBrute->TakenLevelFactorOnCreatures, 1.0f);
-	TestEqual(TEXT("CONTROL: Run_v21.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Run_v22.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: its thrall's row as it states"), NewThrall->TakenBySkillRow, Subjugate);
 	TestEqual(TEXT("CONTROL: and its factor as it states, 1.5, not the default"), NewThrall->TakenLevelFactorOnCreatures,

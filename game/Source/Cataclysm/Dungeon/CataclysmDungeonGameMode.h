@@ -2731,6 +2731,12 @@ public:
 	bool IsARift() const;
 
 	/**
+	 * Whether the dungeon being walked is an Abomination lair: `FCataclysmDungeon::IsALair`, a Quest dungeon Death sent.
+	 * False with nothing bound. Read off the bound dungeon, as `IsARift` is. Issue #51 slice B5.
+	 */
+	bool IsALair() const;
+
+	/**
 	 * How many of the Rift's altars this floor holds by the ruling, `FCataclysmDungeonFloorRules::RiftAltarsOnFloor`
 	 * for the bound dungeon's floors and the floor being walked; nought outside a Rift and on the dark floor a fall leads
 	 * to, which carries the number of the floor its stairs lead to and is not that floor.
@@ -3856,6 +3862,14 @@ private:
 
 	/** Records `Boss` as the boss of a Rift's last floor, the one `RiftBossNow` answers. Issue #51 slice B1. */
 	void NoteTheRiftBoss(ACataclysmEnemyCharacter* Boss);
+
+	/**
+	 * Makes `Boss`, the Gatekeeper on a lair's last wave, its Cursed Abomination: the flag, its gear's step, and, when
+	 * `bScale`, its health and damage times the lair's `AbominationMultiplier` -- through its starting health and its
+	 * placed damage multiplier, which a save keeps, as an Abyssal Rift's hunter is made stronger. A load passes false,
+	 * since the record already carries both. Issue #51 slice B5.
+	 */
+	void MakeTheCursedAbomination(ACataclysmEnemyCharacter* Boss, bool bScale);
 
 	/** Forgets the Rift's boss, as a floor is populated and as the dungeon is left. */
 	void ForgetTheRiftBoss();

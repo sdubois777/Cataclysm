@@ -705,7 +705,7 @@ bool FCataclysmWarQuestSiegesSaveTest::RunTest(const FString& Parameters)
 
 /**
  * `Run_v20.json`, written before the step, migrates to version 21 with every dungeon's `ArrivedDay` -1 and every
- * city's `FellTo` None, every other field kept. CONTROL: `Run_v21.json` is read, not migrated, and its fallen city
+ * city's `FellTo` None, every other field kept. CONTROL: `Run_v22.json` is read, not migrated, and its fallen city
  * records Demonic, not the default. Prints "VERSION 21".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarQuestSiegesMigrationTest,
@@ -718,7 +718,7 @@ bool FCataclysmWarQuestSiegesMigrationTest::RunTest(const FString& Parameters)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -731,7 +731,7 @@ bool FCataclysmWarQuestSiegesMigrationTest::RunTest(const FString& Parameters)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), CurrentResult, Message));
-	if (!TestNotNull(TEXT("Run_v20.json loads"), Old) || !TestNotNull(TEXT("Run_v21.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v20.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Current))
 	{
 		AddError(Message);
 		return false;
@@ -741,6 +741,7 @@ bool FCataclysmWarQuestSiegesMigrationTest::RunTest(const FString& Parameters)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -760,7 +761,7 @@ bool FCataclysmWarQuestSiegesMigrationTest::RunTest(const FString& Parameters)
 	const FCataclysmCity* CurrentFallen = Current->Cities.FindByPredicate(
 		[](const FCataclysmCity& City) { return City.bFallen; });
 
-	AddInfo(FString::Printf(TEXT("VERSION 21: Run_v20.json %s, unmoved %s, no feller %s; Run_v21.json %s, its fallen "
+	AddInfo(FString::Printf(TEXT("VERSION 21: Run_v20.json %s, unmoved %s, no feller %s; Run_v22.json %s, its fallen "
 								 "city felled by %s; the rest %s"),
 							FCataclysmSaveStorage::Describe(Result), bAllUnmoved ? TEXT("yes") : TEXT("NO"),
 							bNoFeller ? TEXT("yes") : TEXT("NO"), FCataclysmSaveStorage::Describe(CurrentResult),
@@ -773,9 +774,9 @@ bool FCataclysmWarQuestSiegesMigrationTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("every dungeon has no arrival"), bAllUnmoved);
 	TestTrue(TEXT("every city was felled by nobody"), bNoFeller);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v21.json is read, not migrated"), static_cast<int32>(CurrentResult),
+	TestEqual(TEXT("CONTROL: Run_v22.json is read, not migrated"), static_cast<int32>(CurrentResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-	if (TestNotNull(TEXT("CONTROL: Run_v21.json has a fallen city"), CurrentFallen))
+	if (TestNotNull(TEXT("CONTROL: Run_v22.json has a fallen city"), CurrentFallen))
 	{
 		TestEqual(TEXT("CONTROL: and it records Demonic"), static_cast<int32>(CurrentFallen->FellTo),
 				  static_cast<int32>(ECataclysmType::Demonic));
