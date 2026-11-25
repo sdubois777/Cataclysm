@@ -73,7 +73,8 @@ new CSV, not run in Unreal: every tree's mark scale is 1.000 with no overlapping
 - **Groups alone, grown** (counts from the newest whole-suite log): `Ailments.` 23 to 24, `MasochistCostRows.` 5 to 6,
   `Player.` 20 to 21. **Rewritten, same count:** `Passives.` 161, `MasochistRows.` 9, `MasochistHealingRows.` 5,
   `Fervour.` 32, `DeathRewards.` 4, `MinionDeath.` 18, `FervourRows.` 4, `PartialClauses.` 5, `ReachRows.` 5,
-  `StatExemption.` 37, `Command.` 31.
+  `StatExemption.` 37, `Command.` 31. **The tree screen entry's three, missed from the first list:**
+  `EmpireTreeScreen.` 11, `EmpireScreen.` 16 and `Creation.` 17, which share its layout constants and choice button.
 - **The whole suite: 5587.** The newest whole-suite log is the Rifts' first window on b80da905a: "5520 tests
   performed", and `unreal_build.declared_tests` counts 5520 declared there. Development at db7427d7a, with the Rifts
   merged, declares 5522: the Rifts' second window, which ran no whole suite, added
@@ -99,7 +100,7 @@ change's central rule, and three for the tree screen.
 | TB7 | Ritualist 2 | `CataclysmPlayerCharacter.cpp`: `&& (Notice.Killer == this \|\| UCataclysmCommand::CommanderOf(Notice.Killer) == this))` -> `&& Notice.Killer == this)` | `Swarm.AKillByOneOfYourMinionsSummonsAnotherAndAFullPoolNone` |
 | TB8 | Ritualist 3 | `CataclysmPassiveTree.cpp`: `Modifier.ScaleMaxSteps = FMath::Max(0, Effect->ScaleMaxSteps);` -> `Modifier.ScaleMaxSteps = 0;` | `PassiveScaleCap.ARowsCapReachesItsModifierAndStopsTheScaleAtTwentyMinions` |
 | PMK1 | tree screen | a keystone's mark 28 | 4 performed, 2 failed: PM1, PM3 |
-| PMK3 | tree screen | a pair needs its marks' whole sizes, not half | 4 performed, 1 failed: PM2 (every real tree still draws at 1) |
+| PMK3 | tree screen | a pair needs its marks' whole sizes, not half | 4 performed, 2 failed: PM2 and PM3 (see below) |
 | PMK5 | tree screen | an unspent mark says "0/1" | 4 performed, 1 failed: PM4 |
 
 **TB3, the Ironhide break, touches a line a Python test reads as text, so it does not run beside the Python suite**
@@ -111,6 +112,13 @@ for this set; TB4 is Relentless keeping attack speed, the rule the Relentless ru
 TB5 is that ruling's only break; TB6 is "your curse", the condition the Ritualist 1 rows are written against; TB7 is
 The Swarm counting a minion's kill as the commander's; TB8 is the cap on a passive row, the new column Ritualist 3
 teaches the generator and the game. PMK1, PMK3 and PMK5 between them fail all four tree screen tests.
+
+**PMK3'S PREDICTION IS NOT THE TREE SCREEN ENTRY'S, BECAUSE OF THE EMBLEM POSITIONS.** That entry predicted PM2 alone,
+since every real tree then still drew at 1 with the break in (its raw scale 1.25 to 1.56). Computed in Python from
+`MarkScaleFor`'s rule on this branch's `PassiveNodes.csv`, the break leaves the Masochist tree at 0.839 and the
+Saboteur at 0.912; the others stay above 1. PM3 shows the Masochist tree and places the hovered name by the mark's
+size times that scale (`NodeNameCaptionPositionForTests`), while it expects the unscaled size, so it fails as well.
+PM1 and PM4 read no scale. PMK1 and PMK5 cannot lower a scale, so their predictions stand.
 
 **Dropped, by the same ruling, and not run:** the rework entry's other thirteen (Vessel of Plagues and Stigmata in
 Masochist 1; Unstable Aura and Reprisal Wave in Masochist 2; Thronged and Stoked in Ravager 1; Deeper Hurt and Second
