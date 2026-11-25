@@ -340,7 +340,12 @@ float UCataclysmCommand::CommandedWalkSpeedCmPerSecond(const AActor* Follower)
 		return 0.0f;
 	}
 
-	return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander;
+	// AND RAISED BY THE COMMANDER'S `minion_movement_speed`, Hasty Dead (the Death trees' slice C6d1, 2026-11-25): one plus
+	// its increases, times its more rows, with the follower's own tags, as every minion stat is read.
+	const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Follower);
+	return Movement->MaxWalkSpeed * CommandedWalkSpeedShareOfCommander
+		* SummonerMultiplierFor(Commander, TEXT("minion_movement_speed"),
+								Minion ? Minion->TypeTags : ThrallMinionTags());
 }
 
 FGameplayTag UCataclysmCommand::QuarryTag()

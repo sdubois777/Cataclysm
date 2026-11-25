@@ -557,8 +557,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// the Shadow 109. AND 623 FOR SLICE C6b3: Opening Found (two), Read the Blow and Hunting Ground, the Shadow 113;
 	// Reaper's Due (two), Tear Loose and Vigil Over the Strong, the Soul Collector 127. AND 629 FOR SLICE C6b4:
 	// Festering (five) and Twice Answered, the Shadow 119. AND 636 FOR SLICE C6c: Miser's Grip, Soulbound (two),
-	// Overflow (two) and Unbroken Chain (two), the Soul Collector 134.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        636)
+	// Overflow (two) and Unbroken Chain (two), the Soul Collector 134. AND 649 FOR SLICE C6d1: Gravekeeper's Hide (two),
+	// Shielding Ranks, Steadfast Among Them (two), Ringed in Bone (two), Cold Hands, Grave Cold (two), Hasty Dead
+	// (two) and Grave Pact, the Necromancer 32.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        649)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

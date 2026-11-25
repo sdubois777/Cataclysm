@@ -8148,6 +8148,32 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo` for "Slow", the one function every slow check goes
+	 * through. The Death trees' slice C6d1 (2026-11-25), shipped under `minions_in_reach_at_least` (Ringed in Bone); a
+	 * health condition stands for it here, as for every conditioned probe: this measures the ask. A flag: any value
+	 * above 0 makes the character immune.
+	 */
+	void ProbeConditionedImmuneToSlow(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_slow"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_slow at full health: a slow takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Slow")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_slow is asked for, so below half health a slow does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Slow")));
+		Test.TestFalse(TEXT("and it is immunity to slows only: a stun still takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
+	/**
 	 * `fervour_per_critical_strike`, read by `UCataclysmFervour::GainOnCriticalStrike`. The Death trees' slice C4d1
 	 * (2026-11-25), shipped under `target_rarity_at_least` (Telling Blows). A health condition stands for it here, as
 	 * for `fervour_per_kill` above: this measures the ask. With no character struck in hand.
@@ -12974,6 +13000,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
 			// AND THE SLICE C4d3's WEARER OF THE DEAD (2026-11-25): Titanic Resolve's maximum health.
 			{TEXT("max_health"), &ProbeConditionedMaxHealth},
+			// AND THE SLICE C6d1's RINGED IN BONE (2026-11-25).
+			{TEXT("immune_to_slow"), &ProbeConditionedImmuneToSlow},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -13485,8 +13513,10 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 
 	// TWENTY-FIVE SINCE 2026-11-24, when the Masochist tree rework stated
 	// `fervour_lost_to_healing` under a condition (Threadbare). TWENTY-EIGHT THE
-	// SAME DAY, for the Death classes' kill generator's three stats.
-	if (!TestEqual(TEXT("the twenty-eight probes are all here"), ConditionedProbes().Num(), 28))
+	// SAME DAY, for the Death classes' kill generator's three stats. THIRTY-SEVEN ON 2026-11-25: the Death trees' slices
+	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
+	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
+	if (!TestEqual(TEXT("the thirty-seven probes are all here"), ConditionedProbes().Num(), 37))
 	{
 		return false;
 	}

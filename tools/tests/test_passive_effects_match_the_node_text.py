@@ -745,7 +745,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 636 THE SAME DAY, for slice C6c: Miser's Grip, Soulbound (two),
 #: Overflow (two) and Unbroken Chain (two, at 4 and 8 points).
-AUTHORED_ROWS = 636
+#:
+#: AND TO 649 THE SAME DAY, for slice C6d1: Gravekeeper's Hide (two), Shielding
+#: Ranks, Steadfast Among Them (two), Ringed in Bone (two), Cold Hands, Grave
+#: Cold (two), Hasty Dead (two) and Grave Pact.
+AUTHORED_ROWS = 649
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1226,7 +1230,11 @@ AUTHORED_ROWS = 636
 #:
 #: AND TO 378 THE SAME DAY, for slice C6c's Miser's Grip, Soulbound, Overflow
 #: and Unbroken Chain.
-AUTHORED_NODES = 378
+#:
+#: AND TO 386 THE SAME DAY, for slice C6d1's Gravekeeper's Hide, Shielding
+#: Ranks, Steadfast Among Them, Ringed in Bone, Cold Hands, Grave Cold, Hasty
+#: Dead and Grave Pact.
+AUTHORED_NODES = 386
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1908,6 +1916,15 @@ CONDITION_WORDS = {
     # Unbroken Chain lengthens (the Death trees' slice C6c, 2026-11-25).
     "kill_chain_within_seconds": ("of each other", "{value:g} second"),
     "target_struck_by_your_movement_skill_within_seconds": ("your movement skill hits", "{value:g} second"),
+    # THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25): Gravekeeper's Hide's
+    # "while three or more of your minions are within 6 metres of you", and
+    # Shielding Ranks', Steadfast Among Them's and Ringed in Bone's "five or
+    # more", the count written in words as for `enemies_in_reach_at_least`
+    # above; Grave Cold's "enemies that have Necrosis".
+    "minions_in_reach_at_least": ("of your minions are within",
+                                  {3.0: "three or more of your minions",
+                                   5.0: "five or more of your minions"}),
+    "target_carries_necrosis": ("that have necrosis", None),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -3119,6 +3136,11 @@ VALUE_IN_WORDS = {
     # resistance and is resolved somewhere else entirely.
     ("Ravager_keystone_spine_003", "crowd_control_resistance"):
         ("cannot be stunned", 100.0),
+    # AND RINGED IN BONE'S, the same words under five or more minions within 6
+    # metres (the Death trees' slice C6d1, 2026-11-25). Its slow is the flag
+    # `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo`.
+    ("Necromancer_keystone_gr_kC", "crowd_control_resistance"):
+        ("cannot be stunned", 100.0),
 
     # AND THE FIRST ONSLAUGHT'S SECOND OPTION, NEVER LETS GO. Issue #1515.
     # "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
@@ -3174,6 +3196,8 @@ VALUE_IN_WORDS = {
     ("Ritualist_basic_spine_000", "curse_death_raises_imp"):
         ("rises as a lesser imp that fights for you", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
+        ("slowed", 1.0),
+    ("Necromancer_keystone_gr_kC", "immune_to_slow"):
         ("slowed", 1.0),
 
     # FIFTY IS "HALF", by the arithmetic the resistance already uses:
@@ -3357,6 +3381,9 @@ SIZED_BY_THE_AMOUNT_ROWS = 5
 #: An action row's number stated in words, by node and action, as
 #: `VALUE_IN_WORDS` holds a stat's.
 ACTION_VALUE_IN_WORDS = {
+    # GRAVE COLD, the Death trees' slice C6d1 (2026-11-25): "Every hit your
+    # minions land inflicts Necrosis", a 100% chance on `minion_hit`.
+    ("Necromancer_keystone_spine_002", "apply_status"): ("every hit your minions land inflicts necrosis", 100.0),
     # SECOND WIND: "Reaching a full bar refills your health and mana", 100% of
     # each maximum.
     ("SoulCollector_capstone_50", "health"): ("refills your health", 100.0),

@@ -5614,6 +5614,13 @@ CONDITIONS = {
     # (2026-11-25), as ruled. NOT NAMED `seconds_after_...`, which would name an
     # action event the game does not raise. The value is the seconds.
     "kill_chain_within_seconds": (0.0, 60.0, "a number of seconds"),
+    # THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25), as ruled. "While
+    # three (or five) or more of your minions are within 6 metres of you" is
+    # `minions_in_reach_at_least`, the value the count, the radius the row's
+    # Reach Metres. "Enemies that have Necrosis" is `target_carries_necrosis`, a
+    # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
+    "minions_in_reach_at_least": (1.0, 20.0, "a number of minions"),
+    "target_carries_necrosis": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6291,7 +6298,9 @@ PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
 PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
                                  "crippled_enemies_in_reach",
                                  # AND THE DEATH TREES' SLICE C6b3'S TWO.
-                                 "enemy_of_rarity_in_reach", "no_enemy_in_reach"})
+                                 "enemy_of_rarity_in_reach", "no_enemy_in_reach",
+                                 # AND SLICE C6d1'S OWN MINIONS.
+                                 "minions_in_reach_at_least"})
 
 
 def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
@@ -6726,7 +6735,9 @@ def passive_effects(book) -> list[dict]:
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
                           "crippled_enemies_in_reach",
                           # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
-                          "enemy_of_rarity_in_reach", "no_enemy_in_reach"}
+                          "enemy_of_rarity_in_reach", "no_enemy_in_reach",
+                          # AND SLICE C6d1'S OWN MINIONS.
+                          "minions_in_reach_at_least"}
         # AND GRIM WAKE'S CONDITION, whose radius is around the body of a kill
         # rather than around the character, read at the kill from this column.
         # The Death trees' slice C4c2 (2026-11-25).
@@ -7022,6 +7033,7 @@ HIT_FIRED_EVENTS = (
     "block",
     "dodge",
     "deployable_hit",
+    "minion_hit",
     "retaliation_dealt",
     # A BLOW BREAKING THE ENERGY SHIELD. Issue #1833 group D part 3, ruled
     # 2026-10-01: a hit causes it, so it takes the default.
@@ -7196,6 +7208,7 @@ APPLY_STATUS_EVENTS = (
     "critical_strike",
     "retaliation_dealt",
     "deployable_hit",
+    "minion_hit",
 )
 
 #: The statuses `apply_status` may name: every ailment
@@ -7659,6 +7672,10 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # moves it to `STRIKE_TARGET_EVENTS`, whose eight a merged test pins.
     "trap_placed",
     "trap_triggered",
+    # The Death trees' slice C6d1 (2026-11-25). `minion_hit` carries the enemy a
+    # minion's blow landed on; Cold Hands and Grave Cold apply Necrosis to it,
+    # and NO STRIKE ON IT IS RULED, as for `trap_triggered` above.
+    "minion_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7953,6 +7970,12 @@ ACTION_ONLY_EVENTS = (
     # Ruled 2026-10-19 (M5, T13), for the rows of later layers on a trap's
     # trigger. Clockless, as the one above; in no narrower list yet.
     "trap_triggered",
+    # A MINION'S LANDED BLOW, raised once on its summoner (an imp's in
+    # `ACataclysmMinion`, a thrall's in `UCataclysmSkillEffects::ApplyHit`), with
+    # the minion's tags and the enemy struck. The Death trees' slice C6d1
+    # (2026-11-25), as ruled, for Cold Hands and Grave Cold. Not a machine's,
+    # which is `deployable_hit`.
+    "minion_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -11256,6 +11279,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_carries_your_poison",
     "target_beyond_metres",
     "target_struck_by_your_movement_skill_within_seconds",
+    "target_carries_necrosis",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",
@@ -11355,6 +11379,8 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # included), and when a modifier is worn; `ProbeConditionedMaxHealth`
     # measures that.
     "max_health": ASKER_PASSES_NOTHING_MORE,
+    # The Death trees' slice C6d1 (2026-11-25): Ringed in Bone. Read by UCataclysmSkillTemplate::IsImmuneTo.
+    "immune_to_slow": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

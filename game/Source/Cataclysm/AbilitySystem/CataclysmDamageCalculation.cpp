@@ -12,6 +12,8 @@
 // For the share of its summoner's armour and resistances a minion takes: who
 // the minion is, whose it is, and whether that character still lives.
 #include "AbilitySystem/CataclysmMinion.h"
+// For a commanded defender's damage taken from its commander, Grave Pact. The Death trees' slice C6d1.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -338,6 +340,24 @@ namespace
 			Inherited.Percent = FMath::Min(Percent, 100.0f);
 		}
 		return Inherited;
+	}
+
+	/**
+	 * What a commanded defender takes of a blow, from its commander's `minion_damage_taken`: Grave Pact, "Your minions
+	 * take 30% less damage", the Death trees' slice C6d1 (2026-11-25). One plus its increases, times its more rows, with
+	 * the follower's own tags, as every minion stat is read; 1 for anything nobody commands.
+	 */
+	float MinionDamageTakenFactor(const UAbilitySystemComponent* Defender)
+	{
+		const AActor* Body = Defender ? Defender->GetAvatarActor() : nullptr;
+		const AActor* Commander = Body ? UCataclysmCommand::CommanderOf(Body) : nullptr;
+		if (!IsValid(Commander))
+		{
+			return 1.0f;
+		}
+		const ACataclysmMinion* Minion = Cast<const ACataclysmMinion>(Body);
+		return FMath::Max(0.0f, UCataclysmCommand::SummonerMultiplierFor(
+			Commander, TEXT("minion_damage_taken"), Minion ? Minion->TypeTags : UCataclysmCommand::ThrallMinionTags()));
 	}
 
 	/**
@@ -1220,7 +1240,9 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			DefenderStat(Defender, DamageTakenStat,
 						 Combat->GetDamageTaken(), BlowOf(Hit))
 			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
-				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
+				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f
+			// AND A COMMANDED DEFENDER'S SHARE FROM ITS COMMANDER, Grave Pact (the Death trees' slice C6d1).
+			* MinionDamageTakenFactor(Defender);
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS

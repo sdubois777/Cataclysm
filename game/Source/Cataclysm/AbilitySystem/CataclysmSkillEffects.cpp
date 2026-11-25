@@ -1447,6 +1447,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 						  /*DealtBy=*/Instigator, /*Skill=*/nullptr, /*SkillTagsWithNoSkill=*/nullptr,
 						  /*SkillRowWithNoSkill=*/Thrall->TakenBySkillRow,
 						  /*LevelFactor=*/CataclysmSkillEffectsLevels::ThrallsLevelFactor(Instigator, Target));
+				// AND A THRALL'S LANDED BLOW IS A MINION'S HIT TO ITS COMMANDER, `minion_hit`, once (the Death trees' slice
+				// C6d1, 2026-11-25), as an imp's is in `ACataclysmMinion`.
+				if (UCataclysmAbilitySystemComponent* Commanders = Cast<UCataclysmAbilitySystemComponent>(
+						UCataclysmTargeting::AbilitySystemOf(UCataclysmCommand::CommanderOf(Instigator))))
+				{
+					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, 0.0f, /*bLanded=*/true, Target);
+				}
 			}
 		}
 		return bDealt ? Sent : 0.0f;

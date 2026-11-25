@@ -635,3 +635,16 @@ SoulCollector_keystone_a_kA#1,SoulCollector_keystone_a_kA,fervour_overflow_attac
 SoulCollector_keystone_a_kA#2,SoulCollector_keystone_a_kA,attack_speed,increased,1.0,,,0.0,fervour_overflow_stacks,1.0,0,-1.0,0,30,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_a1#1,SoulCollector_basic_b_a1,kill_chain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 SoulCollector_basic_b_a1#2,SoulCollector_basic_b_a1,kill_chain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_spine_005#1,Necromancer_basic_spine_005,max_health,increased,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_spine_005#2,Necromancer_basic_spine_005,armor,increased,1.0,,minions_in_reach_at_least,3.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_a0#1,Necromancer_basic_gr_a0,damage_reduction,increased,1.0,,minions_in_reach_at_least,5.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_c0#1,Necromancer_basic_gr_c0,crowd_control_resistance,increased,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_c0#2,Necromancer_basic_gr_c0,crowd_control_resistance,increased,2.0,,minions_in_reach_at_least,5.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_keystone_gr_kC#1,Necromancer_keystone_gr_kC,crowd_control_resistance,flat,100.0,,minions_in_reach_at_least,5.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_keystone_gr_kC#2,Necromancer_keystone_gr_kC,immune_to_slow,flat,1.0,,minions_in_reach_at_least,5.0,,0.0,0,6.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_spine_004#1,Necromancer_basic_spine_004,,,4.0,,,0.0,,0.0,0,-1.0,0,0,apply_status,minion_hit,,0.0,0.0,0.0,0,,0.0,0.0,0.0,Necrosis,0.0,0,0.0
+Necromancer_keystone_spine_002#1,Necromancer_keystone_spine_002,,,100.0,,,0.0,,0.0,0,-1.0,0,0,apply_status,minion_hit,,0.0,0.0,0.0,0,,0.0,0.0,0.0,Necrosis,0.0,0,0.0
+Necromancer_keystone_spine_002#2,Necromancer_keystone_spine_002,minion_damage,more,15.0,,target_carries_necrosis,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_ch_b0#1,Necromancer_basic_ch_b0,minion_attack_speed,increased,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_ch_b0#2,Necromancer_basic_ch_b0,minion_movement_speed,increased,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_keystone_lg_kC#1,Necromancer_keystone_lg_kC,minion_damage_taken,more,-30.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

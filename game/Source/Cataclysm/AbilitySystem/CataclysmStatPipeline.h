@@ -2044,6 +2044,25 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	KillChainWithinSeconds
 		UMETA(DisplayName = "Kill Chain Within Seconds"),
+
+	/**
+	 * At least `ConditionValue` of the character's own followers stand within the row's own `ReachMetres` of it: its
+	 * minions, imps and thralls, whatever `UCataclysmCommand::ThingsCommandedBy` finds. The Necromancer's Gravekeeper's
+	 * Hide ("while three or more of your minions are within 6 metres of you"), Shielding Ranks, Steadfast Among Them
+	 * and Ringed in Bone ("five or more"). The Death trees' slice C6d1 (2026-11-25), as ruled. Read from
+	 * `OwnMinionDistancesMetres`, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row
+	 * asks; a value below one refuses, as `EnemiesInReachAtLeast`'s does. IT TAKES A VALUE: the count.
+	 */
+	MinionsInReachAtLeast
+		UMETA(DisplayName = "Minions In Reach At Least"),
+
+	/**
+	 * The character struck carries Necrosis: Grave Cold, "your minions deal 15% more damage to enemies that have
+	 * Necrosis". The Death trees' slice C6d1 (2026-11-25), as ruled. Necrosis from anyone, as the sentence says. Filled
+	 * by `WithTargetState` only when a row asks. IT TAKES NO VALUE.
+	 */
+	TargetCarriesNecrosis
+		UMETA(DisplayName = "Target Carries Necrosis"),
 };
 
 /**
@@ -3166,6 +3185,17 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float KillChainSeconds = 0.0f;
+
+	/**
+	 * The distance, in metres, to each of the character's own followers within the widest reach a
+	 * `MinionsInReachAtLeast` row asks about. The Death trees' slice C6d1 (2026-11-25). Filled only when such a row asks.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> OwnMinionDistancesMetres;
+
+	/** Whether the character struck carries Necrosis. The Death trees' slice C6d1. See `TargetCarriesNecrosis`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesNecrosis = false;
 
 	/**
 	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
@@ -5721,7 +5751,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a ninety-ninth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-first, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5738,7 +5768,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-FIVE OF THE NINETY-EIGHT COMPARE NOTHING. They are the case labels
+	 * FORTY-SIX OF THE HUNDRED COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

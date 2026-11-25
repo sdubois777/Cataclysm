@@ -495,6 +495,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("cripple_and_weaken_duration"),
 		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// And the Necromancer's Hasty Dead, Grave Pact and Ringed in Bone, the Death trees' slice C6d1: a commanded
+		// follower's walk speed (UCataclysmCommand), what a commanded defender takes of a blow
+		// (UCataclysmDamageCalculation), and whether the character is immune to slows
+		// (UCataclysmSkillTemplate::IsImmuneTo). No attribute and no base.
+		TEXT("minion_movement_speed"),
+		TEXT("minion_damage_taken"),
+		TEXT("immune_to_slow"),
 		// Whether a minion explodes when it dies, read by
 		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
 		TEXT("minion_explodes_on_death"),

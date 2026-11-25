@@ -175,6 +175,8 @@ namespace
 		{ TEXT("enemy_of_rarity_in_reach"), ECataclysmStatCondition::EnemyOfRarityInReach },
 		{ TEXT("no_enemy_in_reach"), ECataclysmStatCondition::NoEnemyInReach },
 		{ TEXT("kill_chain_within_seconds"), ECataclysmStatCondition::KillChainWithinSeconds },
+		{ TEXT("minions_in_reach_at_least"), ECataclysmStatCondition::MinionsInReachAtLeast },
+		{ TEXT("target_carries_necrosis"), ECataclysmStatCondition::TargetCarriesNecrosis },
 	};
 
 	struct FNamedStatScale
@@ -405,8 +407,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetAtFullHealth:
 	case ECataclysmStatCondition::TargetCarriesYourPoison:
 	case ECataclysmStatCondition::NoEnemyInReach:
+	case ECataclysmStatCondition::TargetCarriesNecrosis:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the forty-five says
+		// nothing for a number to be compared against. Each of the forty-six says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -577,6 +580,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::EnemiesInReachAtLeast:
 	case C::EnemyOfRarityInReach:
 	case C::NoEnemyInReach:
+	case C::MinionsInReachAtLeast:
 		return EOn::Surroundings;
 
 	// THE LAST LABEL OF THIS GROUP, `OpponentFirstStruckByYouSecondsAgo`, IS A
@@ -651,6 +655,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesYourPoisonOrBleed:
 	case C::TargetCarriesYourPoison:
 	case C::TargetStruckFromBehind:
+	case C::TargetCarriesNecrosis:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
@@ -1521,6 +1526,26 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// THE SAME CLOCK, ITS WINDOW LENGTHENED BY THE CHAIN'S EXTRA SECONDS (the Death trees' slice C6c, 2026-11-25).
 		return State.SecondsSinceOwnKill >= 0.0f
 			&& State.SecondsSinceOwnKill <= Value + FMath::Max(0.0f, State.KillChainSeconds);
+
+	// THE TWO OF THE DEATH TREES' SLICE C6d1 (2026-11-25).
+	case ECataclysmStatCondition::MinionsInReachAtLeast:
+	{
+		// AT LEAST `Value` OF THE CHARACTER'S OWN FOLLOWERS WITHIN THE ROW'S REACH. Below one refuses, and a row with no
+		// reach counts nobody, as `EnemiesInReachAtLeast` does.
+		if (Value < 1.0f || ReachMetres <= 0.0f)
+		{
+			return false;
+		}
+		int32 Near = 0;
+		for (const float Metres : State.OwnMinionDistancesMetres)
+		{
+			Near += Metres <= ReachMetres ? 1 : 0;
+		}
+		return static_cast<float>(Near) >= Value;
+	}
+
+	case ECataclysmStatCondition::TargetCarriesNecrosis:
+		return State.bTargetCarriesNecrosis;
 
 	case ECataclysmStatCondition::TargetInYourSiphon:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`, as `TargetStandsInYourZone` is. The Death trees' slice C2

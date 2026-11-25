@@ -1607,6 +1607,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// AND THE WIDEST REACH AN `EnemyOfRarityInReach` ROW ASKS ABOUT, walked with the bodies so each can be asked its
 	// rung, as the crippled walk is. The Death trees' slice C6b3 (2026-11-25).
 	float WidestRarity = -1.0f;
+	// AND THE WIDEST REACH A `MinionsInReachAtLeast` ROW ASKS ABOUT, walked over the character's own followers. The Death
+	// trees' slice C6d1 (2026-11-25).
+	float WidestMinions = -1.0f;
 	// AND WHETHER A ROW SCALES BY INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless. Filled
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
@@ -1644,6 +1647,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 			else if (Asked == ECataclysmStatCondition::EnemyOfRarityInReach)
 			{
 				WidestRarity = FMath::Max(WidestRarity, Modifier.ReachMetres);
+			}
+			else if (Asked == ECataclysmStatCondition::MinionsInReachAtLeast)
+			{
+				WidestMinions = FMath::Max(WidestMinions, Modifier.ReachMetres);
 			}
 		}
 	}
@@ -1686,7 +1693,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// character whose only nearby-enemy row is a crippled one would return
 	// here with the crippled list empty, and Grinding Halt would grant nothing
 	// with nothing reporting why.
-	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f)
+	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f && WidestMinions <= 0.0f)
 	{
 		return State;
 	}
@@ -1768,6 +1775,21 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		}
 	}
 
+	// AND THE CHARACTER'S OWN FOLLOWERS WITHIN THE WIDEST REACH A ROW ASKS ABOUT, for `MinionsInReachAtLeast`. The Death
+	// trees' slice C6d1 (2026-11-25). `UCataclysmCommand::ThingsCommandedBy` is the one list of a commander's minions,
+	// imps and thralls.
+	if (WidestMinions > 0.0f)
+	{
+		const FVector From = Character->GetActorLocation();
+		for (const AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Character, WidestMinions * 100.0f))
+		{
+			if (IsValid(Follower))
+			{
+				State.OwnMinionDistancesMetres.Add(FVector::Dist(From, Follower->GetActorLocation()) / 100.0f);
+			}
+		}
+	}
+
 	return State;
 }
 
@@ -1804,6 +1826,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsNearKill = false;
 	bool bWantsBehind = false;
 	bool bWantsMovementSkillHit = false;
+	bool bWantsNecrosis = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1857,6 +1880,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND WHETHER THE ASKER'S MOVEMENT SKILL STRUCK THE TARGET, Glancing Cuts, the Death trees' slice C6b2.
 			case ECataclysmStatCondition::TargetStruckByYourMovementSkillWithinSeconds:
 				bWantsMovementSkillHit = true;
+				break;
+			// AND WHETHER THE TARGET CARRIES NECROSIS, Grave Cold, the Death trees' slice C6d1.
+			case ECataclysmStatCondition::TargetCarriesNecrosis:
+				bWantsNecrosis = true;
 				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
@@ -1916,7 +1943,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// to the declarations.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
 			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind && bWantsMovementSkillHit
-			&& bWantsRarity)
+			&& bWantsRarity && bWantsNecrosis)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1931,7 +1958,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
 			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind && !bWantsMovementSkillHit
-			&& !bWantsRarity))
+			&& !bWantsRarity && !bWantsNecrosis))
 	{
 		return State;
 	}
@@ -1953,6 +1980,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		{
 			State.SecondsSinceNearYourKill = Marked->SecondsSinceNearKillBy(State.AskingAbilitySystem);
 		}
+	}
+
+	// AND WHETHER IT CARRIES NECROSIS, from anyone (the Death trees' slice C6d1, 2026-11-25).
+	if (bWantsNecrosis)
+	{
+		const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
+		const UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(Target);
+		State.bTargetCarriesNecrosis = Necrosis.IsValid() && Carrier && Carrier->HasMatchingGameplayTag(Necrosis);
 	}
 
 	// AND HOW LONG AGO THE ASKER'S MOVEMENT SKILL STRUCK IT, from the record kept on it (the Death trees' slice C6b2).

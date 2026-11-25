@@ -756,6 +756,32 @@ NODES: tuple[Node, ...] = (
           R("attack_speed", "increased", 1, scale="fervour_overflow_stacks", step=1, cap=30))),
     Node(SC + "basic_b_a1", "Unbroken Chain",
          tuple(R("kill_chain_seconds", "flat", 1, min_points=points) for points in (4, 8))),
+
+    # ---- SLICE C6d1 (2026-11-25): THE NECROMANCER'S MINIONS AROUND HIM AND THEIR
+    # BLOWS, as ruled. Four nodes read how many of your own minions stand within 6
+    # metres (`minions_in_reach_at_least`); Cold Hands and Grave Cold act on each
+    # landed minion blow (`minion_hit`), with no wait between, and Grave Cold's
+    # minions deal more to an enemy carrying Necrosis; Hasty Dead and Grave Pact are
+    # new minion stats read from the summoner.
+    Node(NE + "basic_spine_005", "Gravekeeper's Hide",
+         (R("max_health", "increased", 1),
+          R("armor", "increased", 1, cond="minions_in_reach_at_least", cond_value=3, reach=6))),
+    Node(NE + "basic_gr_a0", "Shielding Ranks",
+         (R("damage_reduction", "increased", 1, cond="minions_in_reach_at_least", cond_value=5, reach=6),)),
+    Node(NE + "basic_gr_c0", "Steadfast Among Them",
+         (R("crowd_control_resistance", "increased", 2),
+          R("crowd_control_resistance", "increased", 2, cond="minions_in_reach_at_least", cond_value=5, reach=6))),
+    Node(NE + "keystone_gr_kC", "Ringed in Bone",
+         (R("crowd_control_resistance", "flat", 100, cond="minions_in_reach_at_least", cond_value=5, reach=6),
+          R("immune_to_slow", "flat", 1, cond="minions_in_reach_at_least", cond_value=5, reach=6))),
+    Node(NE + "basic_spine_004", "Cold Hands",
+         (A("apply_status", 4, event="minion_hit", ailment="Necrosis", trigger_cooldown=0),)),
+    Node(NE + "keystone_spine_002", "Grave Cold",
+         (A("apply_status", 100, event="minion_hit", ailment="Necrosis", trigger_cooldown=0),
+          R("minion_damage", "more", 15, cond="target_carries_necrosis"))),
+    Node(NE + "basic_ch_b0", "Hasty Dead",
+         (R("minion_attack_speed", "increased", 2), R("minion_movement_speed", "increased", 2))),
+    Node(NE + "keystone_lg_kC", "Grave Pact", (R("minion_damage_taken", "more", -30),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

@@ -1335,3 +1335,47 @@ def test_a_used_up_traps_shot_landing_and_held_back_swing_look_for_its_wearer_by
     minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
     assert re.search(r"WearerInSphere\(\s*GetWorld\(\), Summoner\.Get\(\), this, GetActorLocation\(\),\s*"
                      r"ExplosionRadiusCm \* UCataclysmSecondSelf::AreaMultiplierFor\(this\)\)\)", minion)
+
+
+def test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander() -> None:
+    """The Death trees' slice C6d1 (2026-11-25), as ruled (P2): Cold Hands and
+    Grave Cold act on `minion_hit`, raised ONCE for each blow on the summoner
+    with the enemy struck. A summoned minion's swing raises it in
+    `ACataclysmMinion::AttackTarget` beside a machine's `deployable_hit`, as the
+    branch for every other minion, landed only when not evaded and not refused;
+    a thrall's landed blow raises it on its commander in `ApplyHit`'s thrall
+    branch. Read from the code with comments taken out."""
+    minion = code_without_comments(SOURCE.parent / "CataclysmMinion.cpp")
+    assert re.search(r"else if \(OwnDamagePerHit > 0\.0f\)\s*\{\s*if \(UCataclysmAbilitySystemComponent\* Theirs =\s*"
+                     r"Cast<UCataclysmAbilitySystemComponent>\(UCataclysmTargeting::AbilitySystemOf\(Summoner\)\)\)\s*"
+                     r"\{\s*Theirs->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &TypeTags, 0\.0f,\s*"
+                     r"!Resolved\.bEvaded && !Resolved\.bRefusedByImmunityToAttacker, Target\);",
+                     minion)
+    assert minion.count('"minion_hit"') == 1
+    effects = code_without_comments(SOURCE.parent / "CataclysmSkillEffects.cpp")
+    assert re.search(r"UCataclysmTargeting::AbilitySystemOf\(UCataclysmCommand::CommanderOf\(Instigator\)\)\)\)\s*\{\s*"
+                     r"Commanders->ActOnEvent\(FName\(TEXT\(\"minion_hit\"\)\), &SkillTags, 0\.0f,\s*true, "
+                     r"Target\);", effects)
+    assert effects.count('"minion_hit"') == 1
+
+
+def test_the_minion_stats_of_the_slice_are_read_where_they_act() -> None:
+    """The Death trees' slice C6d1 (2026-11-25): Ringed in Bone's
+    `immune_to_slow` is read inside `UCataclysmSkillTemplate::IsImmuneTo` for
+    Slow, the one function every slow check goes through, with the character's
+    own state; Grave Pact's `minion_damage_taken` multiplies a commanded
+    defender's damage taken; Hasty Dead's `minion_movement_speed` multiplies a
+    follower's walk. Read from the code with comments taken out."""
+    template = code_without_comments(SOURCE.parent / "CataclysmSkillTemplate.cpp")
+    start = template.index("bool UCataclysmSkillTemplate::IsImmuneTo(")
+    body = template[start:template.index("\n}\n", start)]
+    assert re.search(r"Effect\.Equals\(TEXT\(\"Slow\"\), ESearchCase::IgnoreCase\)\s*&& Cataclysm->StatForSkill\("
+                     r"FName\(TEXT\(\"immune_to_slow\"\)\), FGameplayTagContainer\(\), 0\.0f\) > 0\.0f\)\s*\{\s*"
+                     r"return true;", body)
+    calculation = code_without_comments(SOURCE.parent / "CataclysmDamageCalculation.cpp")
+    assert re.search(r"\* MinionDamageTakenFactor\(Defender\);\s*Damage \*= DamageTakenFactor;", calculation)
+    assert 'SummonerMultiplierFor(\n\t\t\tCommander, TEXT("minion_damage_taken")' in calculation \
+        or re.search(r'SummonerMultiplierFor\(\s*Commander, TEXT\("minion_damage_taken"\)', calculation)
+    command = code_without_comments(SOURCE.parent / "CataclysmCommand.cpp")
+    assert re.search(r"return Movement->MaxWalkSpeed \* CommandedWalkSpeedShareOfCommander\s*\* SummonerMultiplierFor\("
+                     r"Commander, TEXT\(\"minion_movement_speed\"\),", command)

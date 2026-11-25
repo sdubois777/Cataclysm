@@ -1368,6 +1368,15 @@ bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 		{
 			return true;
 		}
+		// AND A ROW THAT MAKES THE CHARACTER IMMUNE TO SLOWS, `immune_to_slow`: Ringed in Bone, "you cannot be ...
+		// slowed" while five or more of your minions are within 6 metres. The Death trees' slice C6d1 (2026-11-25), as
+		// ruled (a): read HERE, the one function every slow check goes through, bundle 1's player movement refresh
+		// included. With its conditions judged; nothing that lookup reaches asks this function, so it cannot recurse.
+		if (Effect.Equals(TEXT("Slow"), ESearchCase::IgnoreCase)
+			&& Cataclysm->StatForSkill(FName(TEXT("immune_to_slow")), FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return true;
+		}
 	}
 
 	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())

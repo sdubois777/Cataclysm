@@ -1780,6 +1780,18 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 							   Target);
 		}
 	}
+	// ANY OTHER MINION'S BLOW IS ANNOUNCED TO ITS SUMMONER as `minion_hit`, ONCE, with the minion's tags and the enemy
+	// struck, landed only when it was not evaded and not refused as immune to its attacker: Cold Hands and Grave Cold,
+	// the Death trees' slice C6d1 (2026-11-25), as ruled. Once per landed blow whatever Conduit does with `hit_dealt`.
+	else if (OwnDamagePerHit > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, 0.0f,
+							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
+		}
+	}
 
 	if (bBurnsWhatItHits && !Resolved.bEvaded)
 	{

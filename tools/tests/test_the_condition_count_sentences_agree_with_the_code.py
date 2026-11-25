@@ -53,8 +53,14 @@ ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
 
 
 def number_word(word: str) -> int:
-    """'sixteen' -> 16, 'thirty-eight' -> 38, case-insensitive."""
+    """'sixteen' -> 16, 'thirty-eight' -> 38, 'hundred' -> 100, 'hundred-and-six' -> 106, case-insensitive.
+
+    THE HUNDREDS SINCE THE DEATH TREES' SLICE C6d1 (2026-11-25), when the conditions reached a hundred."""
     word = word.lower()
+    if word == "hundred":
+        return 100
+    if word.startswith("hundred-and-"):
+        return 100 + number_word(word[len("hundred-and-"):])
     if word in UNITS:
         return UNITS.index(word)
     tens, _, units = word.partition("-")
@@ -65,6 +71,10 @@ def number_word(word: str) -> int:
 def ordinal_word(word: str) -> int:
     """'thirty-ninth' -> 39, 'twentieth' -> 20, 'ninth' -> 9."""
     word = word.lower()
+    if word == "hundredth":
+        return 100
+    if word.startswith("hundred-and-"):
+        return 100 + ordinal_word(word[len("hundred-and-"):])
     if word in ORDINALS:
         return ORDINALS[word]
     if word.endswith("ieth"):
@@ -74,10 +84,10 @@ def ordinal_word(word: str) -> int:
     return TENS[tens] + ORDINALS[units]
 
 
-HEADER_SENTENCE = re.compile(r"([A-Z]+(?:-[A-Z]+)?) OF THE ([A-Z]+(?:-[A-Z]+)?) COMPARE NOTHING")
+HEADER_SENTENCE = re.compile(r"([A-Z]+(?:-[A-Z]+)*) OF THE ([A-Z]+(?:-[A-Z]+)*) COMPARE NOTHING")
 #: "a" or "an": "adds an eightieth" since the Death trees' slice C3a (2026-11-25).
-ORDINAL_SENTENCE = re.compile(r"adds an? ([a-z]+(?:-[a-z]+)?),")
-SWITCH_SENTENCE = re.compile(r"Each of the ([a-z]+(?:-[a-z]+)?) says")
+ORDINAL_SENTENCE = re.compile(r"adds an? ([a-z]+(?:-[a-z]+)*),")
+SWITCH_SENTENCE = re.compile(r"Each of the ([a-z]+(?:-[a-z]+)*) says")
 
 
 def test_the_header_count_sentence_states_the_two_counts_the_code_holds(request) -> None:
