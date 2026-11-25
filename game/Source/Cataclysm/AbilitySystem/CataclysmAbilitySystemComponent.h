@@ -4023,22 +4023,23 @@ public:
 	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
-	 * This character set off `Trap`, a skill trap of the player whose ability system is `TrapsPlayer`. The Saboteur's
-	 * device conditions, 2026-11-25, for Ambush: "+5% trap damage per point against enemies that have not yet triggered
-	 * one of your traps". ONLY THE FIRST IS KEPT, per player, and nothing clears it. Called by
+	 * This character set off `Trap`, a skill trap of the player whose ability system is `TrapsPlayer`, for the
+	 * `Triggering`th time that trap has gone off (`ACataclysmMinion::SkillTrapTriggersMade`). The Saboteur's device
+	 * conditions, 2026-11-25, for Ambush: "+5% trap damage per point against enemies that have not yet triggered one of
+	 * your traps". ONLY THE FIRST IS KEPT, per player, and nothing clears it. Called by
 	 * `ACataclysmMinion::TriggerSkillTrap` for the enemy that set the trap off, once its cast has started.
 	 */
-	void NoteTriggeredATrapOf(const UAbilitySystemComponent* TrapsPlayer, const AActor* Trap);
+	void NoteTriggeredATrapOf(const UAbilitySystemComponent* TrapsPlayer, const AActor* Trap, int32 Triggering);
 
 	/**
-	 * Whether this character has set off a skill trap of `TrapsPlayer`'s other than `Trap`. False with no record, and
-	 * false when the trap it set off first is `Trap` itself, so that trap's own blows on it, a late one included, still
-	 * find it "not yet triggered" (the coordinating session's ruling of 2026-11-25: an enemy's first trap counts as not
-	 * yet triggered). A TRAP THAT REARMS AND IS SET OFF AGAIN BY THE SAME ENEMY is still its first, a judgement: the
-	 * record names the trap and not the trigger.
+	 * Whether this character has set off a skill trap of `TrapsPlayer`'s before the triggering whose blow it is taking:
+	 * `Trap`'s `Triggering`th. False with no record, and false when the first triggering it set off is that one, so all
+	 * of that triggering's blows on it, a late one included, find it "not yet triggered". THE TRIGGERING AND NOT THE
+	 * TRAP, the coordinating session's ruling of 2026-11-25: a trap that rearms and is set off again by the same enemy is
+	 * not that enemy's first, because by then it has triggered one of your traps.
 	 */
-	bool TriggeredATrapOfOtherThan(const UAbilitySystemComponent* TrapsPlayer,
-								   const TWeakObjectPtr<const AActor>& Trap) const;
+	bool TriggeredATrapOfOtherThan(const UAbilitySystemComponent* TrapsPlayer, const TWeakObjectPtr<const AActor>& Trap,
+								   int32 Triggering) const;
 
 	/**
 	 * Rendering Blows, the Ravager's `Ravager_capstone_50` option 1. Issue
@@ -4851,7 +4852,8 @@ public:
 	 */
 	void TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target, float& OutIncreases,
 							  float& OutMore,
-							  TWeakObjectPtr<const AActor> BlowsTrap = TWeakObjectPtr<const AActor>()) const;
+							  TWeakObjectPtr<const AActor> BlowsTrap = TWeakObjectPtr<const AActor>(),
+							  int32 BlowsTriggering = 0) const;
 
 	/**
 	 * Whether this character's Fervour has no room to reserve another skill trap: at least one slot is converted into a
@@ -4972,6 +4974,12 @@ public:
 		 */
 		TWeakObjectPtr<AActor> TriggeringEnemy;
 		bool bGaveItsEnemysHealthShare = false;
+		/**
+		 * AND WHICH OF ITS TRIGGERINGS USED IT UP (`ACataclysmMinion::SkillTrapTriggersMade`), so a late blow of its cast
+		 * names that triggering for Ambush's `TargetNotYetTriggeredYourTrap`. The Saboteur's device conditions,
+		 * 2026-11-25.
+		 */
+		int32 Triggering = 0;
 	};
 	TArray<FSpentSkillTrap> SpentSkillTraps;
 
@@ -5819,17 +5827,26 @@ protected:
 	 */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> FirstStruckBy;
 
-	/**
-	 * The first skill trap of each player's this character set off, by that player's ability system. The Saboteur's
-	 * device conditions, 2026-11-25. See `NoteTriggeredATrapOf`.
-	 */
-	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, TWeakObjectPtr<const AActor>> FirstTrapTriggeredOf;
+	/** A triggering of a skill trap: the trap, and which of its triggerings, counted from one. */
+	struct FTrapTriggering
+	{
+		TWeakObjectPtr<const AActor> Trap;
+		int32 Triggering = 0;
+	};
 
 	/**
-	 * The trap whose blow `TrapDamageNamingTrap` is pricing, while it prices it, and none at every other time. Read by
-	 * `WithTargetState` for `TargetNotYetTriggeredYourTrap`. The Saboteur's device conditions, 2026-11-25.
+	 * The first triggering of a skill trap of each player's this character set off, by that player's ability system.
+	 * The Saboteur's device conditions, 2026-11-25. See `NoteTriggeredATrapOf`.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, FTrapTriggering> FirstTrapTriggeredOf;
+
+	/**
+	 * The trap whose blow `TrapDamageNamingTrap` is pricing, and which of its triggerings the blow is of, while it prices
+	 * it; none and nought at every other time. Read by `WithTargetState` for `TargetNotYetTriggeredYourTrap`. The
+	 * Saboteur's device conditions, 2026-11-25.
 	 */
 	mutable TWeakObjectPtr<const AActor> TrapWhoseBlowIsPriced;
+	mutable int32 TrapTriggeringWhoseBlowIsPriced = 0;
 
 	/** When one of this character's gadgets last took a landed blow, in world seconds, or -1. See `NoteGadgetStruck`. */
 	float LastGadgetStruckAtSeconds = -1.0f;

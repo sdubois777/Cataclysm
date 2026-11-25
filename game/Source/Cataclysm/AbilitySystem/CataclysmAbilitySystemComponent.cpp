@@ -1843,7 +1843,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
 		{
 			State.bTargetTriggeredAnotherTrapOfYours = Struck->TriggeredATrapOfOtherThan(
-				State.AskingAbilitySystem, Asker ? Asker->TrapWhoseBlowIsPriced : TWeakObjectPtr<const AActor>());
+				State.AskingAbilitySystem, Asker ? Asker->TrapWhoseBlowIsPriced : TWeakObjectPtr<const AActor>(),
+				Asker ? Asker->TrapTriggeringWhoseBlowIsPriced : 0);
 			State.bTargetTrapHistoryKnown = true;
 		}
 	}
@@ -3363,22 +3364,27 @@ float UCataclysmAbilitySystemComponent::SecondsSinceGadgetStruck() const
 }
 
 void UCataclysmAbilitySystemComponent::NoteTriggeredATrapOf(const UAbilitySystemComponent* TrapsPlayer,
-														   const AActor* Trap)
+														   const AActor* Trap, int32 Triggering)
 {
-	// THE FIRST ONLY: a later trap of the same player's leaves the record naming the first.
+	// THE FIRST ONLY: a later triggering, of another trap or of the same one rearmed, leaves the record naming the first.
 	if (TrapsPlayer && Trap && !FirstTrapTriggeredOf.Contains(TrapsPlayer))
 	{
-		FirstTrapTriggeredOf.Add(TrapsPlayer, Trap);
+		FTrapTriggering First;
+		First.Trap = Trap;
+		First.Triggering = Triggering;
+		FirstTrapTriggeredOf.Add(TrapsPlayer, First);
 	}
 }
 
 bool UCataclysmAbilitySystemComponent::TriggeredATrapOfOtherThan(const UAbilitySystemComponent* TrapsPlayer,
-																 const TWeakObjectPtr<const AActor>& Trap) const
+																 const TWeakObjectPtr<const AActor>& Trap,
+																 int32 Triggering) const
 {
-	// COMPARED BY IDENTITY, which a weak pointer keeps after its trap is used up and gone, so a late blow of the first
-	// trap is still that trap's.
-	const TWeakObjectPtr<const AActor>* First = TrapsPlayer ? FirstTrapTriggeredOf.Find(TrapsPlayer) : nullptr;
-	return First && *First != Trap;
+	// THE TRAP COMPARED BY IDENTITY, which a weak pointer keeps after its trap is used up and gone, AND THE TRIGGERING BY
+	// ITS COUNT, so every blow of the first triggering, a late one included, is that triggering's, and a second
+	// triggering of the same trap is not (the coordinating session's ruling of 2026-11-25).
+	const FTrapTriggering* First = TrapsPlayer ? FirstTrapTriggeredOf.Find(TrapsPlayer) : nullptr;
+	return First && !(First->Trap == Trap && First->Triggering == Triggering);
 }
 
 bool UCataclysmAbilitySystemComponent::HasNoRoomForATrap() const
@@ -9131,13 +9137,15 @@ void UCataclysmAbilitySystemComponent::ReleaseOfASkillTrapSlot(const FGameplayTa
 
 void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target,
 															 float& OutIncreases, float& OutMore,
-															 TWeakObjectPtr<const AActor> BlowsTrap) const
+															 TWeakObjectPtr<const AActor> BlowsTrap,
+															 int32 BlowsTriggering) const
 {
 	OutIncreases = 0.0f;
 	OutMore = 1.0f;
-	// THE TRAP WHOSE BLOW THIS IS, held while the rows are judged and put back after, for Ambush's
-	// `TargetNotYetTriggeredYourTrap` (the Saboteur's device conditions, 2026-11-25).
+	// THE TRAP WHOSE BLOW THIS IS, AND WHICH OF ITS TRIGGERINGS, held while the rows are judged and put back after, for
+	// Ambush's `TargetNotYetTriggeredYourTrap` (the Saboteur's device conditions, 2026-11-25).
 	TGuardValue<TWeakObjectPtr<const AActor>> PricingItsBlow(TrapWhoseBlowIsPriced, BlowsTrap);
+	TGuardValue<int32> PricingItsTriggering(TrapTriggeringWhoseBlowIsPriced, BlowsTriggering);
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(TEXT("minion_damage")));
 	const FGameplayTag Trap = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	if (!Inputs || !Trap.IsValid())
@@ -9278,6 +9286,7 @@ void UCataclysmAbilitySystemComponent::NoteSkillTrapSpent(AActor* Trap, const FG
 	{
 		Kept.TriggeringEnemy = AsTrap->SkillTrapTriggeringEnemy;
 		Kept.bGaveItsEnemysHealthShare = AsTrap->bSkillTrapGaveItsEnemysHealthShare;
+		Kept.Triggering = AsTrap->SkillTrapTriggersMade;
 	}
 }
 

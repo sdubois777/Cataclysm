@@ -5423,7 +5423,8 @@ CONDITIONS = {
     "own_gadget_within_metres": (0.0, 100.0, "a distance in metres"),
     # "against enemies that have not yet triggered one of your traps" (Ambush)
     # is `target_not_yet_triggered_your_trap`: the enemy struck has set off no
-    # skill trap of the wearer's other than the one whose blow it is taking.
+    # skill trap of the wearer's before the triggering whose blow it is taking
+    # (a rearmed trap set off again by the same enemy is not its first).
     # IT TAKES NO VALUE. A fact of the target in hand, so it is one of
     # `CONDITIONS_OF_A_HIT_DEALT`.
     "target_not_yet_triggered_your_trap": None,

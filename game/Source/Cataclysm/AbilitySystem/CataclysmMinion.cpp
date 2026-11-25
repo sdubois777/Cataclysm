@@ -2934,16 +2934,18 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	}
 	++SkillTrapTriggersMade;
 
-	// AND THE ENEMY THAT SET IT OFF REMEMBERS IT, the first trap of this player's it set off and no later one. The
-	// Saboteur's device conditions, 2026-11-25, for Ambush's `target_not_yet_triggered_your_trap`. Written once the cast
-	// has started; the blows of this trap on that enemy, a late one included, are still judged "not yet triggered",
-	// because the condition sets this trap aside (`TriggeredATrapOfOtherThan`).
+	// AND THE ENEMY THAT SET IT OFF REMEMBERS IT, the first triggering of this player's traps it set off and no later
+	// one: this trap and this triggering's count. The Saboteur's device conditions, 2026-11-25, for Ambush's
+	// `target_not_yet_triggered_your_trap`. Written once the cast has started; this triggering's blows on that enemy, a
+	// late one included, are still judged "not yet triggered", because the condition sets this triggering aside
+	// (`TriggeredATrapOfOtherThan`). A LATER TRIGGERING OF THIS SAME TRAP, rearmed, is not set aside: the coordinating
+	// session's ruling of that day.
 	if (Enemy)
 	{
 		if (UCataclysmAbilitySystemComponent* EnemysOwn =
 				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Enemy)))
 		{
-			EnemysOwn->NoteTriggeredATrapOf(Theirs, this);
+			EnemysOwn->NoteTriggeredATrapOf(Theirs, this, SkillTrapTriggersMade);
 		}
 	}
 

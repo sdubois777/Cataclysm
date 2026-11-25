@@ -212,14 +212,18 @@ namespace CataclysmSaboteurDeviceTest
 		return Made;
 	}
 
-	/** The increases of trap damage a trap's blow on `Target` takes, as `ApplyHit` asks them, for `Trap`'s blow. */
-	float SaboteurDeviceTrapIncreases(const FSaboteurDevicePlayer& Player, const AActor* Target, const AActor* Trap)
+	/**
+	 * The increases of trap damage a blow of standing `Trap` on `Target` takes, as `ApplyHit` asks them: naming the trap
+	 * and its triggering now (`SkillTrapTriggersMade`).
+	 */
+	float SaboteurDeviceTrapIncreases(const FSaboteurDevicePlayer& Player, const AActor* Target, const ACataclysmMinion* Trap)
 	{
 		FGameplayTagContainer TrapTags;
 		TrapTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap"))));
 		float Increases = 0.0f;
 		float More = 1.0f;
-		Player.System->TrapDamageNamingTrap(TrapTags, Target, Increases, More, TWeakObjectPtr<const AActor>(Trap));
+		Player.System->TrapDamageNamingTrap(TrapTags, Target, Increases, More, TWeakObjectPtr<const AActor>(Trap),
+											Trap ? Trap->SkillTrapTriggersMade : 0);
 		return Increases;
 	}
 }
@@ -409,11 +413,13 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceAmbushTest,
 {
 	using namespace CataclysmSaboteurDeviceTest;
 	// AMBUSH'S ROW BY HAND: 5% increased `minion_damage` on `Type.Trap` under `target_not_yet_triggered_your_trap`, read as
-	// `ApplyHit` reads a trap's blow (`TrapDamageNamingTrap`, naming the blow's trap). Two traps, A and B, and two
-	// enemies. THE CONTROL: before anything is set off, A's blow on the first enemy takes the 5%. Then the first enemy
-	// sets A off FOR REAL (`TriggerSkillTrap`, which writes the record): A's own blows on it still take the 5% (the
-	// ruling: its first trap counts as not yet triggered), B's blow on it takes nothing, and B's blow on the second enemy,
-	// which set nothing off, still takes the 5%.
+	// `ApplyHit` reads a trap's blow (`TrapDamageNamingTrap`, naming the blow's trap and triggering). Two traps, A and B,
+	// that always rearm (`trap_rearm_chance` 100), so both stand after going off, and two enemies. THE CONTROL: before
+	// anything is set off, A's blow on the first enemy takes the 5%. Then the first enemy sets A off FOR REAL
+	// (`TriggerSkillTrap`, which writes the record): that triggering's blows on it still take the 5% (the ruling: its
+	// first triggering counts as not yet triggered), B's blow on it takes nothing, and B's blow on the second enemy, which
+	// set nothing off, still takes the 5%. AND THE RULING ON A REARMED TRAP: when the first enemy sets A off a second
+	// time, that triggering's blows on it take nothing, since by then it has triggered one of your traps.
 	FSaboteurDeviceWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -428,7 +434,9 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceAmbushTest,
 	Player.Pool(100.0f, 50.0f);
 	SaboteurDeviceHolds(Player, {SaboteurDeviceOn(TEXT("minion_damage"),
 												  SaboteurDeviceRow(5.0f, ECataclysmStatBucket::Increased, TEXT("Type.Trap"),
-																	ECataclysmStatCondition::TargetNotYetTriggeredYourTrap))});
+																	ECataclysmStatCondition::TargetNotYetTriggeredYourTrap)),
+								 SaboteurDeviceOn(ACataclysmMinion::TrapRearmChanceStat,
+												  SaboteurDeviceRow(100.0f, ECataclysmStatBucket::Flat, TEXT("Type.Trap")))});
 	ACataclysmMinion* TrapA = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
 															   FVector(10.0f * SaboteurDeviceMetre, 0.0f, 0.0f));
 	ACataclysmMinion* TrapB = ACataclysmMinion::PlaceSkillTrap(Player.Character, ECataclysmAbilitySlot::Heavy,
@@ -453,6 +461,20 @@ CATACLYSM_SABOTEUR_DEVICE_TEST(FCataclysmSaboteurDeviceAmbushTest,
 			  SaboteurDeviceTrapIncreases(Player, First, TrapB), 0.0f, 0.0001f);
 	TestEqual(TEXT("B's blow on the second enemy, which set nothing off, still takes 5%"),
 			  SaboteurDeviceTrapIncreases(Player, Second, TrapB), 0.05f, 0.0001f);
+
+	// THE SECOND TRIGGERING OF THE SAME TRAP BY THE SAME ENEMY, once A has rearmed.
+	if (!TestTrue(TEXT("set-up: trap A rearmed and still stands"), IsValid(TrapA) && !TrapA->IsActorBeingDestroyed()))
+	{
+		return false;
+	}
+	Scope.World->TimeSeconds += 1.25f;
+	if (!TestTrue(TEXT("set-up: the first enemy sets trap A off a second time"), TrapA->TriggerSkillTrap(First)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: trap A has gone off twice"), TrapA->SkillTrapTriggersMade, 2);
+	TestEqual(TEXT("A's second triggering's blow on that enemy takes nothing: it has triggered one of your traps"),
+			  SaboteurDeviceTrapIncreases(Player, First, TrapA), 0.0f, 0.0001f);
 	return true;
 }
 

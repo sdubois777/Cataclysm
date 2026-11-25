@@ -1231,12 +1231,17 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	float TrapMore = 1.0f;
 	if (TrapsPlayer)
 	{
-		// AND WHICH TRAP'S BLOW IT IS, the trap standing or the used-up one the blow names, for Ambush (the Saboteur's
-		// device conditions, 2026-11-25): an enemy's first trap counts as "not yet triggered" on its own blows.
+		// AND WHICH TRAP'S BLOW IT IS, AND OF WHICH OF ITS TRIGGERINGS, the trap standing (its count now) or the used-up
+		// one the blow names (the count it was used up at), for Ambush (the Saboteur's device conditions, 2026-11-25): an
+		// enemy's first triggering counts as "not yet triggered" on its own blows. A LATE BLOW OF A STANDING TRAP'S
+		// EARLIER TRIGGERING, landing after the trap rearmed and went off again, is read as the later triggering's: the
+		// blow carries its trap and not its triggering.
 		const TWeakObjectPtr<const AActor> BlowsTrap = SkillTrap
 			? TWeakObjectPtr<const AActor>(SkillTrap)
 			: TWeakObjectPtr<const AActor>(NamedCastBy);
-		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore, BlowsTrap);
+		const int32 BlowsTriggering = SkillTrap ? SkillTrap->SkillTrapTriggersMade : SpentTrap.Triggering;
+		TrapsPlayer->TrapDamageNamingTrap(SkillTags, AilmentTarget, TrapIncreases, TrapMore, BlowsTrap,
+										  BlowsTriggering);
 	}
 	// AND A BLOW OF A TRAP'S CAST ON THE ENEMY THAT SET THAT TRIGGER OFF (traps layer 4, ruled 2026-10-21, F4 to F7), of a
 	// trap standing or used up, a late blow included, and no other enemy the cast strikes: "Traps deal 100%-200%

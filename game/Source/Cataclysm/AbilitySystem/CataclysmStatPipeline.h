@@ -1799,15 +1799,16 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Own Gadget Within Metres"),
 
 	/**
-	 * The enemy struck has not set off a skill trap of the asker's, other than the trap whose blow this is. The
+	 * The enemy struck has not set off a skill trap of the asker's before the triggering whose blow this is. The
 	 * Saboteur's device conditions, 2026-11-25: Ambush, "+5% trap damage per point against enemies that have not yet
-	 * triggered one of your traps". The coordinating session's ruling of that day: an enemy's first trap counts as not
-	 * yet triggered, and an enemy caught in a blast it did not set off keeps the bonus.
+	 * triggered one of your traps". The coordinating session's rulings of that day: an enemy's first triggering counts as
+	 * not yet triggered, an enemy caught in a blast it did not set off keeps the bonus, and a rearmed trap set off again
+	 * by the same enemy is not that enemy's first.
 	 *
-	 * THE ENEMY KEEPS THE RECORD, the first skill trap of each player's it set off
+	 * THE ENEMY KEEPS THE RECORD, the first triggering of each player's skill traps it set off, as the trap and its count
 	 * (`UCataclysmAbilitySystemComponent::NoteTriggeredATrapOf`, written by `ACataclysmMinion::TriggerSkillTrap`), and
-	 * the blow names its trap (`TrapDamageNamingTrap`), so that trap's own blows on it, a late one included, still find
-	 * it "not yet triggered". A lookup with no target in hand refuses.
+	 * the blow names its trap and triggering (`TrapDamageNamingTrap`), so that triggering's own blows on it, a late one
+	 * included, still find it "not yet triggered". A lookup with no target in hand refuses.
 	 *
 	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
 	 */

@@ -61,6 +61,11 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the surve
 - **Overwhelming Presence:** "doubled" is a true doubling: a "more" read on `trap_trigger_radius`, and the node 100% more.
 - **Razor Instincts:** one `device_placed` event raised beside `trap_placed` and `gadget_placed`, the node one row on it,
   and an Unreal test that one placing gives one stack (3%, not 6%).
+- **AND ON THE BRANCH'S FIRST REVIEW, THE SAME DAY**, judgement 4's second half overruled: "A rearmed trap that the same
+  enemy sets off a second time is not that enemy's first. The node says 'enemies that have not yet triggered one of
+  your traps', and after the first time it has. Set aside the triggering (that cast of the trap), not the trap itself,
+  so the first triggering's blows all count, a late shot included, and a later triggering of the same trap by the same
+  enemy does not." Judgements 1, 2, 4's first half and 5 accepted, and the radius read's change.
 
 ### WHAT WAS BUILT, AND THE JUDGEMENTS
 
@@ -77,11 +82,15 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the surve
 3. **`own_gadget_within_metres`** (Sentry Network, 15): the nearest gadget the wearer commands, in metres from the wearer.
    It compares a number; with no gadget the reading is -1 and the condition refuses.
 4. **`target_not_yet_triggered_your_trap`** (Ambush): the struck enemy has set off no skill trap of the asker's other than
-   the one whose blow this is. It compares nothing; with no target or no record read it refuses. The enemy keeps the first
-   trap of each player's it set off; the blow names its trap. **Judgement on the ruling's "after that trap's blows land":
-   the record is written when the trap's cast starts, and the condition sets that trap aside**, so all its blows, a late
-   shot included, still count as the first trap's. **Judgement: a trap that rearms and is set off again by the same enemy
-   is still its first**, because the record names the trap and not the trigger.
+   the triggering whose blow this is. It compares nothing; with no target or no record read it refuses. The enemy keeps
+   the first triggering of each player's traps it set off, as the trap and its count (`SkillTrapTriggersMade`); the blow
+   names its trap and triggering (a used-up trap's kept record carries the count it was used up at). **Judgement on the
+   ruling's "after that trap's blows land": the record is written when the trap's cast starts, and the condition sets
+   that triggering aside**, so all its blows, a late shot included, still count as the first's. **A rearmed trap set
+   off again by the same enemy is not its first: the ruling, which overruled this entry's first judgement that it was.**
+   ONE CASE IS READ WRONG, and it is said here: a late blow of a standing trap's earlier triggering that lands after the
+   trap rearmed and went off again is read as the later triggering's, because a blow carries its trap and not its
+   triggering. Rearming takes the arming time, so only a blow in flight that long is affected.
 5. **`seconds_after_gadget_struck`** (Overcautious, 2): within that many seconds of a gadget the wearer commands taking a
    landed blow that is not a tick. It compares a number; never struck reads -1 and refuses.
 6. **`no_room_for_a_trap`** (Overwhelming Presence): at least one slot converted into a skill trap, and none could reserve
@@ -127,7 +136,7 @@ failed with the break in, and all 27 passed with it restored. Each break is to `
 | `Cataclysm.SaboteurDevices.TwoRowsOnOneStackKeyEachCountTheOneStack` | two hand rows on one key, granted on `trap_placed` and `gadget_placed`: one trap placed, one stack and 6 (measures why the node is one row) |
 | `Cataclysm.SaboteurDevices.SentryNetworkHoldsWithinFifteenMetresOfAGadget` | the generated row: a gadget 20 m away, nothing (control); moved to 5 m, 2 |
 | `Cataclysm.SaboteurDevices.OvercautiousHoldsForTwoSecondsAfterAGadgetIsStruck` | the generated row: not struck, and a tick, nothing (controls); a landed blow, 4; held at 1.9 s, gone at 2.1 |
-| `Cataclysm.SaboteurDevices.AmbushCountsAnEnemysFirstTrapAndNoLaterOne` | 5% before anything (control); after the enemy sets trap A off for real, A's blow 5%, B's nothing, B's on a second enemy 5% |
+| `Cataclysm.SaboteurDevices.AmbushCountsAnEnemysFirstTrapAndNoLaterOne` | 5% before anything (control); after the enemy sets trap A off for real, A's blow 5%, B's nothing, B's on a second enemy 5%; A rearmed and set off again by the same enemy, nothing |
 | `Cataclysm.SaboteurDevices.OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom` | room: 450 cm and a "more" of 1 (control); no room: 900 cm and 1.5; no trap slot: 450 again (control) |
 
 Predicted counts: `Cataclysm.SaboteurDevices.` 6; `Cataclysm.StatExemption.` the same count, one more scaled probe;
@@ -136,8 +145,9 @@ Predicted counts: `Cataclysm.SaboteurDevices.` 6; `Cataclysm.StatExemption.` the
 **Planned C++ guard proofs** (one per mechanism; not run):
 1. The trap room: in `CataclysmAbilitySystemComponent.cpp`, `HasNoRoomForATrap`'s `return bAnyTrapSlot;` becomes
    `return false;`. Must fail `OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom`.
-2. The enemy's record: in `CataclysmMinion.cpp`, `EnemysOwn->NoteTriggeredATrapOf(Theirs, this);` becomes
-   `EnemysOwn->NoteTriggeredATrapOf(Theirs, nullptr);`. Must fail `AmbushCountsAnEnemysFirstTrapAndNoLaterOne`.
+2. The enemy's record: in `CataclysmMinion.cpp`, `EnemysOwn->NoteTriggeredATrapOf(Theirs, this, SkillTrapTriggersMade);`
+   becomes `EnemysOwn->NoteTriggeredATrapOf(Theirs, nullptr, SkillTrapTriggersMade);`. Must fail
+   `AmbushCountsAnEnemysFirstTrapAndNoLaterOne`.
 3. The placing event: in `CataclysmMinion.cpp`, `PlaceSkillTrap`'s `FName(TEXT("device_placed")), &TrapTags` becomes
    `FName(TEXT("gadget_struck")), &TrapTags`. Must fail `RazorInstinctsOnePlacingGrantsOneStackOfThree`.
 
