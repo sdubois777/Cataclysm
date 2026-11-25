@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A Boss fight fills the bar without kills: Patient Blade and Death by Inches (Death trees, slice C4d2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `BossTicksPayAKillEverySecondsStat`,
+  `BossHitsCountedAsAKillEveryStat`, `PayForABossTick`, `CountAHitOnABoss`, `CreditAKillWithoutADeath`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteBossTickPaid`,
+  `SecondsSinceBossTickPaid`, `CountBossHit`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the hit handler pays for a Boss tick before ticks are
+  dropped, and counts a landed hit on a Boss after the hit's rows.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmBossFervourTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (two
+  probes, each in two tables) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two),
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception), `test_dot_damage_on_a_moving_target_rows.py`,
+  `test_every_conditioned_stat_has_an_asker.py`, `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (584 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **PATIENT BLADE'S CLOCK ALLOWS A THOUSANDTH OF A SECOND.** A payment is refused while the last was less than its seconds
+  less 0.001 ago, so a tick a frame's rounding puts a hair early, at 1.9999 seconds, still pays. A judgement; the ruling
+  says "once every 2 seconds".
+- **PATIENT BLADE'S CLOCK MOVES ON A PAYMENT OF NOTHING.** A tick on a Boss while the bar is full pays nothing and still
+  starts the 2 seconds. A judgement, the simpler reading of "once every 2 seconds".
+- **A KILL CREDITED BY DEATH BY INCHES RAISES `kill` WITH NO KILLING SKILL'S TAGS**, so a `kill` row scoped to a skill tag
+  does not act on it. A judgement: the kill was made by a count of hits, not by one skill.
+
+### What each reads
+
+- **PATIENT BLADE (Q6):** a stat, `boss_ticks_pay_a_kill_every_seconds`, at 2 under `target_is_boss`, asked against the
+  creature ticked. For each tick of the character's own damage over time, a minion's left out, the hit handler calls
+  `UCataclysmFervour::PayForABossTick` before ticks are dropped. It pays one own kill's Fervour of that creature
+  (`GainOnOwnKill`, so the Shadow's 25 for Elite or stronger) unless the character's last such payment was under 2
+  seconds ago. Fervour only: no kill is raised, no stamp is set. One clock per character, as ruled.
+- **DEATH BY INCHES (Q7):** a stat, `boss_hits_counted_as_a_kill_every`, at 10 under `target_is_boss`, asked against the
+  creature struck. After a landed hit's rows, a minion's hit left out, the hit handler calls
+  `UCataclysmFervour::CountAHitOnABoss`: the count is kept per creature on the character and never reset (a), and at
+  every 10th, a creature not already dead, `CreditAKillWithoutADeath` credits a kill of it (b). That gives back what
+  decay took (Reclaimed), pays the kill's Fervour, sets the stamp (the hold before decay and `seconds_after_kill`), marks
+  Grim Wake's enemies, and raises `kill` to every row with the Boss as its target and its maximum health as its amount
+  (c). It leaves out everything that needs a body (c): the overkill explosion, The Ferryman's burst and Passed On, whose
+  shares the rows record are taken and dropped; `afflicted_death`; risen imps; the corpse; and the player state's and
+  weapon's kill tallies, because nothing died. The Boss is the slain creature, so "an Elite or stronger enemy" is met by
+  its own rung.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Patient Blade (Shadow keystone) | boss_ticks_pay_a_kill_every_seconds, flat, 2, cond=target_is_boss |
+| Death by Inches (Shadow keystone) | boss_hits_counted_as_a_kill_every, flat, 10, cond=target_is_boss |
+
+`PassiveEffects.csv` 582 to 584; the Shadow 84 rows. The pins: rows 584, nodes 354.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4d plan, Q6 and Q7 (a) to (d), recorded in the slice C4d1
+entry. Nothing new was asked for this slice.
+
+### Research
+
+None new. Both shapes come from the nodes' sentences and the rulings; the slice C4d1 entry's reading covers critical
+strikes and executes, not ticks or hits counted as kills.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.BossFervour.` | new: `PatientBladePaysAKillForABossTickOnceEveryTwoSeconds`, `PatientBladePaysThroughTheRealTicksOfAPlayersDamageOverTime`, `DeathByInchesCountsEveryTenthHitOnOneBossAsAKill`, `DeathByInchesCountsThroughTheRealHitHandler`, `TheTwoNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | the conditioned probe and the read probe each run two new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 584 | unchanged |
+
+The two through the real hit handler build the scene `Cataclysm.Swarm.` builds. Each new test has a control: a tick on a
+Common creature, and a second tick inside the 2 seconds; ten hits on a Common creature, and a hit on a second Boss whose
+count is its own; nine blows that credit nothing.
+
+A figure that may be wrong: the real-tick test expects the first tick of a one-second damage over time at 1.05 seconds
+and none between 1.05 and 2.05 that pays, which assumes the ticks fall at 1, 2 and 3 seconds after it is laid.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmFervour.cpp`, `PayForABossTick`: `if (Since >= 0.0f && Since + 1.0e-3f < Every)` becomes `if (false)`.
+   Prefix `Cataclysm.BossFervour.`; must fail `PatientBladePaysAKillForABossTickOnceEveryTwoSeconds` (a second tick at
+   once pays 5).
+2. `CataclysmFervour.cpp`, `CountAHitOnABoss`: `CountBossHit(Struck) % Nth != 0` becomes `CountBossHit(Struck) % 1 != 0`.
+   Prefix `Cataclysm.BossFervour.`; must fail `DeathByInchesCountsEveryTenthHitOnOneBossAsAKill`.
+3. `CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::PayForABossTick(GetAbilitySystemComponent(), Notice.Target);`
+   removed. Prefix `Cataclysm.BossFervour.`; must fail `PatientBladePaysThroughTheRealTicksOfAPlayersDamageOverTime`.
+
+### What was run
+
+SUITE_FIGURES_C4D2
+
+PYTHON_PROOFS_C4D2
+
+---
+
 ## 2026-11-25 — Critical strikes, executes and kills that speed the next: Telling Blows, Reaper's Edge, Relentless and Chain Execution (Death trees, slice C4d1)
 
 **Affects:**
