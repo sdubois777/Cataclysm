@@ -5416,6 +5416,25 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
     # satisfies.
     "target_carries_your_curse": None,
+
+    # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
+    # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
+    # "Elite or stronger" is `target_rarity_at_least` 1, and the Soul Collector's
+    # "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a
+    # Herald" is one `target_rarity_is` row a rung, with "15 for a Boss" at least
+    # 4. The rung the spawner set (`ACataclysmEnemyCharacter::RarityStep`), read
+    # by `WithTargetState` as `target_is_boss` is, so both are
+    # `CONDITIONS_OF_A_HIT_DEALT`. Anything that is not a creature has no rung and
+    # refuses.
+    "target_rarity_at_least": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+    "target_rarity_is": (0.0, 5.0, "a rarity rung, 0 Common to 5 Cataclysm Boss"),
+
+    # "For 4 seconds after you kill" is `seconds_after_kill` with 4: Between the
+    # Dead, Killing Pace and Light Feet, the Death trees of 2026-11-24. Stamped
+    # at a kill credited to the character (`UCataclysmFervour::NoteOwnKill`), the
+    # stamp the Death classes' decay grace is measured from. The wearer's own
+    # clock, so any asker judges it.
+    "seconds_after_kill": (0.0, 60.0, "a number of seconds"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -10683,6 +10702,8 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_is_silenced",
     "target_is_moving",
     "target_carries_your_curse",
+    "target_rarity_at_least",
+    "target_rarity_is",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -10741,6 +10762,14 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "minion_damage": ASKER_PASSES_A_HIT_DEALT,
     "penetration": ASKER_PASSES_A_HIT_DEALT,
     "spell_damage": ASKER_PASSES_A_HIT_DEALT,
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. Fervour a kill pays and the
+    # decay's grace are asked at the kill with the slain creature as the target
+    # (`UCataclysmFervour::GainOnOwnKill` and `NoteOwnKill`), so a rarity row is
+    # judged; the decay's rate with the wearer's state alone
+    # (`UCataclysmFervour::KillDecayStep`).
+    "fervour_per_kill": ASKER_PASSES_A_HIT_DEALT,
+    "fervour_kill_decay_grace_seconds": ASKER_PASSES_A_HIT_DEALT,
+    "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
@@ -10824,6 +10853,19 @@ CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS: dict[str, frozenset[str]] = {
         "metres_moved_before_attack",
         "skill_health_cost_above",
     }),
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24: asked at a kill with the
+    # slain creature and nothing else (`UCataclysmFervour::GainOnOwnKill` and
+    # `NoteOwnKill`). A kill is no blow being priced, so the blow's own facts --
+    # how many it struck, how far its user moved, what its skill cost, the
+    # target's distance and its stagger -- are never handed over there.
+    **{stat: frozenset({
+        "enemies_hit_at_least",
+        "enemies_hit_at_most",
+        "metres_moved_before_attack",
+        "skill_health_cost_above",
+        "target_within_metres",
+        "target_is_staggered",
+    }) for stat in ("fervour_per_kill", "fervour_kill_decay_grace_seconds")},
 }
 
 

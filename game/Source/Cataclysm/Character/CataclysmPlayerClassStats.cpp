@@ -1091,6 +1091,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// applied passes on when its carrier dies, read by
 		// UCataclysmDebuffs::PassCrippleAndWeakenOnDeath from the enemy's death.
 		TEXT("cripple_and_weaken_spread_on_death_metres"),
+		// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. Fervour a kill pays, asked by
+		// UCataclysmFervour::GainOnOwnKill with the slain creature as the target, so
+		// a row can be tiered by its rarity rung; the decay after the last kill, a
+		// rate asked by UCataclysmFervour::KillDecayStep; and that decay's grace,
+		// asked at the kill by UCataclysmFervour::NoteOwnKill with the slain
+		// creature as the target. None has a gameplay attribute: each is read only
+		// through the pipeline, at the moment it is needed.
+		TEXT("fervour_per_kill"),
+		TEXT("fervour_kill_decay_per_second"),
+		TEXT("fervour_kill_decay_grace_seconds"),
 	};
 	return Stats;
 }

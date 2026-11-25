@@ -7494,6 +7494,98 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_per_kill`, read by `UCataclysmFervour::GainOnOwnKill`. The Death trees of 2026-11-24, shipped under
+	 * `target_rarity_is` and `target_rarity_at_least`. A health condition stands for them here, as it does for every
+	 * conditioned probe: each is judged against the state the asker hands over, so this measures the ask. With no
+	 * slain creature in hand, which the health condition does not need.
+	 */
+	void ProbeConditionedFervourPerKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::PerKillStat, ECataclysmStatBucket::Flat, 10.0f, 0.0f);
+		Test.TestEqual(TEXT("fervour_per_kill at full health: a kill pays nothing"),
+					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("fervour_per_kill is asked for, so below half health a kill pays its 10"),
+					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 10.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_kill_decay_per_second`, read by `UCataclysmFervour::KillDecayStep`. The Death trees of 2026-11-24,
+	 * shipped under `seconds_after_striking_a_boss` (Siege of One). A character that has never killed is not held, so
+	 * the decay runs at once.
+	 */
+	void ProbeConditionedFervourKillDecayPerSecond(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmFervour::KillDecayPerSecondStat, ECataclysmStatBucket::Flat, 10.0f,
+							 0.0f);
+		Test.TestEqual(TEXT("fervour_kill_decay_per_second at full health: a second of the decay takes nothing"),
+					   UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("fervour_kill_decay_per_second is asked for, so below half health a second takes 10"),
+					   UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f), -10.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_kill_decay_grace_seconds`, read by `UCataclysmFervour::NoteOwnKill` at the kill. The Death trees of
+	 * 2026-11-24, shipped under `target_rarity_is` and `target_rarity_at_least`. The decay is given a plain rate of 10
+	 * and the grace the condition; the decay after the kill shows whether the grace was asked for.
+	 */
+	void ProbeConditionedFervourKillDecayGraceSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+
+		FCataclysmStatModifier Rate;
+		Rate.Bucket = ECataclysmStatBucket::Flat;
+		Rate.Source = ECataclysmModifierSource::Enchantment;
+		Rate.Value = 10.0f;
+		FCataclysmStatModifier Grace = Rate;
+		Grace.Value = 5.0f;
+		Grace.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Grace.ConditionValue = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmFervour::KillDecayPerSecondStat)).Modifiers = {Rate};
+		Inputs.FindOrAdd(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Modifiers = {Grace};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+		UCataclysmFervour::NoteOwnKill(Fighter.AbilitySystem, nullptr);
+		Test.TestEqual(TEXT("fervour_kill_decay_grace_seconds at full health: the kill holds nothing, so a second of "
+							"the decay takes 10"),
+					   UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f), -10.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		UCataclysmFervour::NoteOwnKill(Fighter.AbilitySystem, nullptr);
+		Test.TestEqual(TEXT("fervour_kill_decay_grace_seconds is asked for, so below half health the kill holds the "
+							"decay for 5 seconds and a second takes nothing"),
+					   UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f), 0.0f, 0.001f);
+	}
+
+	/**
 	 * `health_cost_suppressed`, read by `UCataclysmSkillTemplate::HealthCostIsSuppressed`.
 	 * Shipped under `health_below` 20 (`Masochist_capstone_200`). A class
 	 * resource set first, which holds the flag's attribute; without it the
@@ -11522,6 +11614,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("debuffs_do_not_expire"),    &ProbeConditionedDebuffsDoNotExpire},
 			{TEXT("fervour_loss_suppressed"),  &ProbeConditionedFervourLossSuppressed},
 			{TEXT("fervour_per_cast"),         &ProbeConditionedFervourPerCast},
+			// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24.
+			{TEXT("fervour_per_kill"),         &ProbeConditionedFervourPerKill},
+			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
+			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("health_cost_suppressed"),   &ProbeConditionedHealthCostSuppressed},
 			{TEXT("movement_speed_reduction_suppressed"), &ProbeConditionedMovementSpeedReductionSuppressed},
 			{TEXT("nova_damage_of_missing_health"), &ProbeConditionedNovaDamageOfMissingHealth},
@@ -11598,6 +11694,11 @@ namespace CataclysmStatExemptionTest
 			{TEXT("nova_damage_of_weapon_damage"), &ProbeNovaDamageOfWeaponDamage},
 			{TEXT("carnage_stack_seconds"), &ProbeCarnageStackSeconds},
 			{TEXT("curse_death_raises_imp"), &ProbeCurseDeathRaisesImp},
+			// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24: each read only through the pipeline, so its conditioned
+			// probe is also the observation that its reader reads it.
+			{TEXT("fervour_per_kill"), &ProbeConditionedFervourPerKill},
+			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
+			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},
 			{TEXT("potion_kill_charges_less_percent"), &ProbePotionKillChargesLess},
 			{TEXT("potion_heal_less_percent_per_drink"), &ProbePotionHealLessPerDrink},
@@ -11985,8 +12086,9 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	using namespace CataclysmStatExemptionTest;
 
 	// TWENTY-FIVE SINCE 2026-11-24, when the Masochist tree rework stated
-	// `fervour_lost_to_healing` under a condition (Threadbare).
-	if (!TestEqual(TEXT("the twenty-five probes are all here"), ConditionedProbes().Num(), 25))
+	// `fervour_lost_to_healing` under a condition (Threadbare). TWENTY-EIGHT THE
+	// SAME DAY, for the Death classes' kill generator's three stats.
+	if (!TestEqual(TEXT("the twenty-eight probes are all here"), ConditionedProbes().Num(), 28))
 	{
 		return false;
 	}

@@ -247,8 +247,14 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: the coordinating session kept on "more" on 2026-11-24 as the class's own
 #: Fervour rule. The other 21 are ordinary English,
 #: "10 or more Fervour", "one more charge", "more than 4 metres".
-STRINGS_CONTAINING_THE_WORD = 93
-STRINGS_USING_IT_AS_A_MAGNITUDE = 45
+#:
+#: AND TO 95 AND 47 THE SAME DAY, for the Death classes' kill generator (slice
+#: B): two keystones were reworded so their rows' buckets are in their words,
+#: Hungry for the Strong ("100% more Fervour", which said "double") and Hoarder
+#: ("50% less Fervour to decay", which said "half as fast"). Both are keystones,
+#: so the count of nodes relying on the widened rule does not move.
+STRINGS_CONTAINING_THE_WORD = 95
+STRINGS_USING_IT_AS_A_MAGNITUDE = 47
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.

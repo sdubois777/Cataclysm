@@ -1426,6 +1426,14 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
+
+			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The stamp first, for every character: the clock a
+			// row under `seconds_after_kill` reads, and the grace before the decay after a kill, asked against the
+			// slain creature. Then the Fervour this kill pays by the slain creature's rarity rung, nought for a
+			// character without a Death starting node. ON EVERY KILL CREDITED HERE, its damage over time's and a
+			// row's included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.
+			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
+			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes

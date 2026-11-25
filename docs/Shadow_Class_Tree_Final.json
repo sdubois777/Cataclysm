@@ -265,7 +265,7 @@
       "data": {
         "kind": "keystone",
         "name": "Momentum",
-        "description": "Fervour drains 6 seconds after your last kill instead of 4.",
+        "description": "Fervour begins to drain 2 seconds later after your last kill: 6 seconds rather than 4.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

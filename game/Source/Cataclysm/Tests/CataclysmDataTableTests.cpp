@@ -518,8 +518,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// replaced per-point values below 1, one row per step.
 	// AND 427 SINCE 2026-11-24, for the three Death trees' first 63 rows on 49
 	// nodes beside the rework's: 17 the Soul Collector's, 9 the Necromancer's,
-	// 37 the Shadow's.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        427)
+	// 37 the Shadow's. AND 459 THE SAME DAY, for the Death classes' kill
+	// generator: 32 rows, the Soul Collector 34 in all and the Shadow 52.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        459)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -1346,6 +1346,22 @@ CATACLYSM_TEST(FCataclysmGenerationRateScalesEnemyDeathNearbyTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmGenerationRateScalesOwnKillTest,
+	"Cataclysm.Fervour.GenerationRateScalesGainOnOwnKill")
+{
+	using namespace CataclysmGenerationRateTest;
+
+	// THE DEATH CLASSES' KILL GENERATOR, 2026-11-24: a flat 10 for a kill, with no rung condition and no creature in
+	// hand. The rows that tier it by rarity are the generator's data; the scale is this file's question.
+	ExpectAGainIsScaled(*this, TEXT("GainOnOwnKill"), 10.0f,
+		[](const FScopedCharacter&, FStatLines& Stats) { Carry(Stats, UCataclysmFervour::PerKillStat, 10.0f); },
+		[](const FScopedCharacter& Character)
+		{
+			return UCataclysmFervour::GainOnOwnKill(Character.AbilitySystem, nullptr);
+		});
+	return true;
+}
+
 CATACLYSM_TEST(FCataclysmGenerationRateLeavesALossTest,
 	"Cataclysm.Fervour.GenerationRateDoesNotScaleWhatHealingRemovesOrWhatIsSpent")
 {

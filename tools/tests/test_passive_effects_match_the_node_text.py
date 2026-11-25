@@ -663,7 +663,16 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: Through's four steps and Untouched's three). Six "damage" sentences are two
 #: rows each, one on attack damage and one on spell damage, and so is Restless
 #: Host, which raises minion damage and minion health.
-AUTHORED_ROWS = 427
+#:
+#: AND TO 459 THE SAME DAY, for the Death classes' kill generator (slice B): 32
+#: rows on 16 more nodes and on the two starting nodes. The Soul Collector's
+#: starting node gains eight (five rungs of Fervour a kill, the decay, two
+#: graces) and the Shadow's four; Tithe of the Dead, Reaper's Share, Hungry for
+#: the Strong, Grave Patience (two steps), Cold Storage, Hoarder, Slow Exhale,
+#: Momentum, Siege of One, Quarry, Big Game, Hunter's Eye, Between the Dead,
+#: Killing Pace (two), Light Feet (two). Measured then: the Soul Collector 34
+#: rows on 21 nodes, the Necromancer 9 on 8, the Shadow 52 on 36.
+AUTHORED_ROWS = 459
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1081,7 +1090,11 @@ AUTHORED_ROWS = 427
 #: Collector 14 (three of them capstones, for one option each), the Necromancer
 #: 8 and the Shadow 27 (two capstones). Measured then: the Soul Collector is 14
 #: of its 73, the Necromancer 8 of its 72 and the Shadow 27 of its 74.
-AUTHORED_NODES = 275
+#:
+#: AND TO 291 THE SAME DAY, for the kill generator's sixteen nodes besides the
+#: two starting nodes, which already counted: the Soul Collector 21 of its 73,
+#: the Necromancer 8 of its 72 and the Shadow 36 of its 74.
+AUTHORED_NODES = 291
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1679,6 +1692,25 @@ CONDITION_WORDS = {
     "target_health_below": ("against enemies below",
                             {30.0: "30%", 35.0: "35%",
                              50.0: ("half health", "50%")}),
+
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). The slain or
+    # struck creature's rarity rung, written as words: the Soul Collector's
+    # schedule "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8
+    # for a Herald and 15 for a Boss", one row a rung, and "Elite or stronger" or
+    # "Elite and stronger" for rung 1 and up.
+    "target_rarity_is": (("each enemy you kill", "for an elite", "for a legendary",
+                          "for a herald"),
+                         {0.0: "each enemy you kill", 1.0: "for an elite",
+                          2.0: "for a legendary", 3.0: "for a herald"}),
+    "target_rarity_at_least": (("elite or stronger", "elite and stronger", "for a boss"),
+                               {1.0: ("elite or stronger", "elite and stronger"),
+                                4.0: "for a boss"}),
+    # And the Shadow's Siege of One, "While you have hit a Boss in the last 2
+    # seconds", the first passive row on this predicate.
+    "seconds_after_striking_a_boss": ("hit a boss in the last", "{value:g} second"),
+    # And the window after a kill: Between the Dead and Killing Pace, "for 4
+    # seconds after you kill", and Light Feet, "for 4 seconds after a kill".
+    "seconds_after_kill": (("after you kill", "after a kill"), "{value:g} second"),
 
     # THREE PREDICATES NO TREE USED BEFORE THE DEATH TREES OF 2026-11-24.
     #
@@ -2374,6 +2406,19 @@ VALUE_FORMS = {
     # dies ..., per point", the Ravager's Swing Through, "1 Fervour per point whenever",
     # and the Necromancer's starting node, "1 each time an enemy dies within 10 metres
     # of you", whose sentence holds "10" for the radius as well.
+    # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). Each with the
+    # words around its number, because one sentence holds all of them: the Soul
+    # Collector's "...: 1 for each enemy you kill, 3 for an Elite, ... and 15 for a
+    # Boss", "decays at 5 per second once 4 seconds have passed", "for 8 seconds
+    # rather than 4"; the Shadow's "drains at 10 per second"; Momentum's "2
+    # seconds later" and Grave Patience's "1 second later".
+    "fervour_per_kill": (": {value:g} for", ", {value:g} for", "and {value:g} for"),
+    "fervour_kill_decay_per_second": ("decays at {value:g} per second",
+                                      "drains at {value:g} per second"),
+    "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
+                                         "for {value:g} seconds rather than",
+                                         "{value:g} second later",
+                                         "{value:g} seconds later"),
     "fervour_on_enemy_death_nearby": ("{value:g} Fervour whenever",
                                       "{value:g} Fervour per point whenever",
                                       "{value:g} each time an enemy dies"),

@@ -127,6 +127,17 @@ SH = "Shadow_"
 #: Fervour held, as the rows that scale with it name it.
 HELD = "class_resource_held"
 
+#: The Death classes' kill generator, slice B (2026-11-24): Fervour a kill pays,
+#: the decay after the last kill, and that decay's grace.
+PER_KILL = "fervour_per_kill"
+DECAY = "fervour_kill_decay_per_second"
+GRACE = "fervour_kill_decay_grace_seconds"
+
+#: The two rarity conditions, by rung: 0 Common, 1 Elite, 2 Legendary, 3 Herald,
+#: 4 Boss, 5 Cataclysm Boss.
+RUNG_IS = "target_rarity_is"
+RUNG_AT_LEAST = "target_rarity_at_least"
+
 #: The Death rows that are data today: a stat, a condition and a scale the game
 #: already has. The survey of 2026-11-24 (plan section 4.1, group (a)) found 46
 #: such entries, and all 46 are here. Untouched and Through and Through say "for
@@ -134,10 +145,29 @@ HELD = "class_resource_held"
 #: `Min Points`, the Demonic tree rework's shape.
 NODES: tuple[Node, ...] = (
     # ---------------------------------------------------------------- Soul Collector
-    # THE STARTING NODE'S DAMAGE HALF, "You deal 1% more damage for every 2
-    # Fervour you hold". Its Fervour per kill and its decay are the next slice.
-    Node(SC + "basic_spine_000", "Fervour", damage("more", 1, scale=HELD, step=2)),
+    # THE STARTING NODE, WHOLE (slice B): "1 for each enemy you kill, 3 for an
+    # Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss", one row a rung
+    # with a Cataclysm Boss paid as a Boss (a judgement); "1% more damage for
+    # every 2 Fervour you hold"; "decays at 5 per second once 4 seconds have
+    # passed since your last kill", "for 8 seconds rather than 4" after an Elite
+    # or stronger kill.
+    Node(SC + "basic_spine_000", "Fervour",
+         damage("more", 1, scale=HELD, step=2)
+         + (R(PER_KILL, "flat", 1, cond=RUNG_IS, cond_value=0),
+            R(PER_KILL, "flat", 3, cond=RUNG_IS, cond_value=1),
+            R(PER_KILL, "flat", 5, cond=RUNG_IS, cond_value=2),
+            R(PER_KILL, "flat", 8, cond=RUNG_IS, cond_value=3),
+            R(PER_KILL, "flat", 15, cond=RUNG_AT_LEAST, cond_value=4),
+            R(DECAY, "flat", 5),
+            R(GRACE, "flat", 4, cond=RUNG_IS, cond_value=0),
+            R(GRACE, "flat", 8, cond=RUNG_AT_LEAST, cond_value=1))),
+    Node(SC + "basic_spine_001", "Tithe of the Dead", (R(PER_KILL, "increased", 2),)),
     Node(SC + "basic_spine_003", "Weight of Souls", damage("increased", 1, scale=HELD, step=50)),
+    # GRAVE PATIENCE, "1 second later after a kill for every 5 points".
+    Node(SC + "basic_spine_004", "Grave Patience",
+         tuple(R(GRACE, "flat", 1, min_points=points) for points in (5, 10))),
+    Node(SC + "basic_spine_005", "Between the Dead",
+         (R("movement_speed", "increased", 1, cond="seconds_after_kill", cond_value=4),)),
     Node(SC + "basic_spine_006", "Pale Ward",
          (R("damage_reduction", "increased", 1, scale=HELD, step=100),)),
     Node(SC + "basic_spine_008", "Deep Urn", (R("class_resource", "increased", 2),)),
@@ -152,6 +182,11 @@ NODES: tuple[Node, ...] = (
             cond="class_resource_points_at_least", cond_value=50),)),
     Node(SC + "basic_a_a2", "Full Measure",
          damage("increased", 2, cond="class_resource_at_maximum")),
+    Node(SC + "basic_a_b2", "Cold Storage", (R(DECAY, "increased", -5),)),
+    Node(SC + "keystone_a_kB", "Hoarder", (R(DECAY, "more", -50),)),
+    Node(SC + "basic_b_b0", "Quarry", damage("increased", 2, cond=RUNG_AT_LEAST, cond_value=1)),
+    Node(SC + "keystone_b_kB", "Hungry for the Strong",
+         (R(PER_KILL, "more", 100, cond=RUNG_AT_LEAST, cond_value=1),)),
     Node(SC + "basic_a_b0", "Hoarded Life",
          (R("health_regen", "increased", 1, scale=HELD, step=20),)),
     # "ENEMIES WITHIN 6 METRES DEAL 1% LESS DAMAGE" IS DAMAGE TO YOU from an enemy
@@ -193,6 +228,22 @@ NODES: tuple[Node, ...] = (
          (R("fervour_on_enemy_death_nearby", "increased", 3),)),
 
     # ---------------------------------------------------------------- Shadow
+    # THE STARTING NODE'S KILL HALF (slice B): "10 for each enemy you kill, 25
+    # for each Elite or stronger enemy you kill", "drains at 10 per second once 4
+    # seconds have passed since your last kill". Its "2 for each critical strike
+    # you land" is not built: the War trees' Berserker needs the same stat.
+    Node(SH + "basic_spine_000", "Fervour",
+         (R(PER_KILL, "flat", 10, cond=RUNG_IS, cond_value=0),
+          R(PER_KILL, "flat", 25, cond=RUNG_AT_LEAST, cond_value=1),
+          R(DECAY, "flat", 10),
+          R(GRACE, "flat", 4))),
+    Node(SH + "basic_spine_001", "Big Game", damage("increased", 2, cond=RUNG_AT_LEAST, cond_value=1)),
+    Node(SH + "basic_spine_003", "Killing Pace",
+         (R("attack_speed", "increased", 1, cond="seconds_after_kill", cond_value=4),
+          R("movement_speed", "increased", 1, cond="seconds_after_kill", cond_value=4))),
+    Node(SH + "basic_spine_004", "Reaper's Share", (R(PER_KILL, "increased", 2),)),
+    Node(SH + "basic_spine_006", "Slow Exhale", (R(DECAY, "increased", -5),)),
+    Node(SH + "keystone_spine_001", "Momentum", (R(GRACE, "flat", 2),)),
     Node(SH + "basic_spine_002", "Quick Recovery",
          (R("cooldown_reduction", "flat", 3, tags="Slot.Movement"),)),
     Node(SH + "basic_spine_005", "Held Breath", damage("increased", 1, scale=HELD, step=20)),
@@ -213,10 +264,21 @@ NODES: tuple[Node, ...] = (
     Node(SH + "basic_b_stem2", "Read the Giant", damage("increased", 3, cond="target_is_boss")),
     Node(SH + "basic_b_a0", "Open the Throat",
          (R("crit_multiplier", "increased", 3, cond="target_health_below", cond_value=50),)),
+    # HUNTER'S EYE'S FIRST HALF, against Elite and stronger enemies; its second
+    # half, "against the enemy Deathmark marked", waits for the mark.
+    Node(SH + "basic_b_b2", "Hunter's Eye",
+         (R("crit_chance", "increased", 2, cond=RUNG_AT_LEAST, cond_value=1),)),
+    Node(SH + "basic_b_c1", "Siege of One",
+         (R(DECAY, "increased", -8, cond="seconds_after_striking_a_boss", cond_value=2),)),
     Node(SH + "basic_b_a2", "Last Breath",
          damage("increased", 3, cond="target_health_below", cond_value=30)),
     Node(SH + "keystone_b_kA", "Executioner",
          damage("more", 100, cond="target_health_below", cond_value=30)),
+    # LIGHT FEET, "+1% increased Movement Speed per point, doubled for 4 seconds
+    # after a kill": the same amount again inside the window.
+    Node(SH + "basic_c_stem0", "Light Feet",
+         (R("movement_speed", "increased", 1),
+          R("movement_speed", "increased", 1, cond="seconds_after_kill", cond_value=4))),
     Node(SH + "basic_c_a0", "Cutting Path", damage("increased", 4, tags="Slot.Movement")),
     Node(SH + "basic_c_a2", "Blade on Arrival",
          (R("crit_chance", "increased", 3, tags="Slot.Movement"),)),

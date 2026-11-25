@@ -595,7 +595,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hoarder",
-        "description": "Fervour decays half as fast.",
+        "description": "You lose 50% less Fervour to decay.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -903,7 +903,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hungry for the Strong",
-        "description": "Elite and stronger creatures give double Fervour.",
+        "description": "Elite and stronger creatures give 100% more Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

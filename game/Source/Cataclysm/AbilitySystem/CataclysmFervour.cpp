@@ -47,6 +47,9 @@ const TCHAR* UCataclysmFervour::HealthRestoredOnFullStat =
 	TEXT("health_restored_on_fervour_full");
 const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
 	TEXT("fervour_on_enemy_death_nearby");
+const TCHAR* UCataclysmFervour::PerKillStat = TEXT("fervour_per_kill");
+const TCHAR* UCataclysmFervour::KillDecayPerSecondStat = TEXT("fervour_kill_decay_per_second");
+const TCHAR* UCataclysmFervour::KillDecayGraceSecondsStat = TEXT("fervour_kill_decay_grace_seconds");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -1092,4 +1095,117 @@ float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* Ability
 
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+void UCataclysmFervour::NoteOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	// THE GRACE IS ASKED AGAINST THE SLAIN CREATURE, so a row under `target_rarity_at_least` can lengthen it for an
+	// Elite. Nought for a character with no grace row, which holds the decay until now: nothing.
+	const float Grace = Cataclysm->StatForSkill(
+		FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f,
+		false, Slain);
+	Cataclysm->NoteOwnKill(Grace);
+}
+
+float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// ASKED AGAINST THE SLAIN CREATURE, so its rarity rung can pick the row. NO TAGS: the generator pays for the kill,
+	// not for the skill that made it. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
+	const float PerKill = Cataclysm->StatForSkill(
+		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
+	if (PerKill <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// SCALED BY HOW FAST THE CLASS RESOURCE GENERATES, AND CLAMPED BEFORE IT IS WRITTEN, the shape of
+	// `GainOnEnemyDeathNearby` above.
+	const float Change =
+		FMath::Clamp(Before + UCataclysmAbilitySystemComponent::ClassResourceGainScaled(AbilitySystem, PerKill),
+					 0.0f, Resource->MaximumClassResourceAsked())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, float SecondsInStep)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// NOR A CREATURE HOLDING A PLAYER BUILD, for the reason `DecayStep` gives: the Corrupted Stalker is raised with its
+	// Ultimate's Fervour and must not lose it on the walk to the player. Issue #1308.
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Cataclysm->GetAvatarActor());
+		Enemy && Enemy->bHoldsAPlayerBuild)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource = Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>();
+	if (!Resource)
+	{
+		// No class resource set means no pool to drain, which is every enemy.
+		return 0.0f;
+	}
+
+	// THE RATE FIRST, THE CHEAPEST QUESTION AND THE ONE THAT REFUSES EVERY CHARACTER WITHOUT A DEATH STARTING NODE.
+	// Asked with the character's own state, so a row under `seconds_after_striking_a_boss` (Siege of One) is judged.
+	const float PerSecond = Cataclysm->StatForSkill(FName(KillDecayPerSecondStat), FGameplayTagContainer(), 0.0f);
+	if (PerSecond <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	if (Before <= 0.0f || Cataclysm->KillDecayIsHeld())
+	{
+		// AN EMPTY POOL, OR THE GRACE AFTER THE LAST KILL NOT YET RUN OUT.
+		return 0.0f;
+	}
+
+	// CLAMPED BEFORE IT IS WRITTEN, as `DecayStep` is and for its reason.
+	const float Change =
+		FMath::Clamp(Before - PerSecond * SecondsInStep, 0.0f, Resource->MaximumClassResourceAsked()) - Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return Cataclysm->GetNumericAttribute(Pool) - Before;
 }

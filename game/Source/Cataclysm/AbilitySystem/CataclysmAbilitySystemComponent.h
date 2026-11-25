@@ -3973,6 +3973,28 @@ public:
 	float SecondsSinceStruckABoss() const;
 
 	/**
+	 * Record that this character has just killed an enemy, and that the Death classes' decay after a kill waits
+	 * `GraceSeconds` from now. The Death trees of 2026-11-24.
+	 *
+	 * CALLED BY `UCataclysmFervour::NoteOwnKill`, from `ACataclysmPlayerCharacter::OnSomethingDied` for a death credited
+	 * to this character, so the clock `seconds_after_kill` reads and the decay's grace are stamped by the same kill.
+	 *
+	 * THE HOLD NEVER SHORTENS. A Soul Collector's Elite kill holds the decay off for 8 seconds; a common kill a second
+	 * later gives 4 from then, which ends sooner, so the hold stays where the Elite kill put it. A judgement: "holds off
+	 * the decay for 8 seconds rather than 4" would be broken by the next ordinary kill otherwise.
+	 */
+	void NoteOwnKill(float GraceSeconds);
+
+	/** How long ago this character last killed an enemy, in seconds, or -1 if it never has. */
+	float SecondsSinceOwnKill() const;
+
+	/**
+	 * Whether the decay after the last kill is still held off: true until the time the last kill's grace ran to, and
+	 * false for a character that has never killed, whose Fervour came from somewhere else and decays at once.
+	 */
+	bool KillDecayIsHeld() const;
+
+	/**
 	 * Record that a blow of `Striker`'s got through to THIS character, and
 	 * whether it was a critical strike. Issue #1815, "your first hit against
 	 * each enemy".
@@ -5634,6 +5656,15 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastStruckABossAtSeconds = -1.0f;
+
+	/** When this character last killed an enemy, in world seconds. Negative means never. The Death trees, 2026-11-24. */
+	float LastOwnKillAtSeconds = -1.0f;
+
+	/**
+	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a
+	 * character that has never killed. See `NoteOwnKill`.
+	 */
+	float KillDecayHeldUntilSeconds = -1.0f;
 
 	/**
 	 * The combat clock, in world seconds. Issue #1815. Negative means none since

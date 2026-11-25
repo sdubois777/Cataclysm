@@ -262,6 +262,12 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// holding the starting node, with Fervour in hand, out of contact for
 		// three seconds, gets anything else.
 		UCataclysmFervour::DecayStep(this, UCataclysmRegeneration::StepSeconds);
+
+		// AND THE DEATH CLASSES' DECAY AFTER THE LAST KILL, 2026-11-24: the Soul Collector's 5 a second and the
+		// Shadow's 10, once the grace after the last kill has run out. A rule of its own beside the Ravager's, for
+		// the reason `UCataclysmFervour::KillDecayPerSecondStat` gives. Nought for every character without one of
+		// those starting nodes, and its return value is dropped as every call above it is.
+		UCataclysmFervour::KillDecayStep(UCataclysmTargeting::AbilitySystemOf(this), UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.

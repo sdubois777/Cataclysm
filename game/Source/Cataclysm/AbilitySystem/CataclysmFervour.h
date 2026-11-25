@@ -9,6 +9,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmFervour.generated.h"
 
+class AActor;
 class UAbilitySystemComponent;
 class ACataclysmCharacterBase;
 
@@ -635,6 +636,82 @@ public:
 	 */
 	static float GainOnEnemyDeathNearby(UAbilitySystemComponent* AbilitySystem,
 										float MetresAway);
+
+	//~ The Death classes' kill generator, 2026-11-24: Fervour for each enemy this character kills, by the slain
+	//~ creature's rarity rung, and the decay that starts a grace after the last kill.
+
+	/**
+	 * Fervour one kill pays: `fervour_per_kill`. The Soul Collector's starting node, "1 for each enemy you kill, 3 for
+	 * an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss", and the Shadow's, "10 for each enemy you kill, 25
+	 * for each Elite or stronger enemy you kill", are flat rows tiered by `target_rarity_is` and
+	 * `target_rarity_at_least`, ASKED WITH THE SLAIN CREATURE AS THE TARGET, so the rung is read where it is needed.
+	 */
+	static const TCHAR* PerKillStat;
+
+	/**
+	 * Fervour a second the Death classes' decay takes once the grace after the last kill has run out:
+	 * `fervour_kill_decay_per_second`. The Soul Collector's 5 and the Shadow's 10.
+	 *
+	 * NOT THE RAVAGER'S `DecayPerSecondStat`. That one decays once nothing is in reach, and a Soul Collector holding it
+	 * would be drained by `DecayStep` whenever it stood alone for three seconds as well as by this. Two rules, two
+	 * stats, and a multiclassed character holding both loses Fervour to each when each says so.
+	 */
+	static const TCHAR* KillDecayPerSecondStat;
+
+	/**
+	 * Seconds after a kill before that decay starts: `fervour_kill_decay_grace_seconds`, ASKED AT THE KILL WITH THE
+	 * SLAIN CREATURE AS THE TARGET, so "killing an Elite or stronger creature holds off the decay for 8 seconds rather
+	 * than 4" is a row under `target_rarity_at_least`, and the Shadow's Momentum ("2 seconds later") a flat row beside.
+	 */
+	static const TCHAR* KillDecayGraceSecondsStat;
+
+	/**
+	 * Stamp a kill this character made: the clock `seconds_after_kill` reads, and the time the decay after a kill is
+	 * held off until (`UCataclysmAbilitySystemComponent::NoteOwnKill`), with the grace asked against `Slain`.
+	 *
+	 * FOR EVERY KILL OF EVERY CHARACTER, whatever its tree: a row under `seconds_after_kill` needs the clock whether or
+	 * not the character has the generator, and a character with no grace row is held until now, which holds nothing.
+	 *
+	 * CALLED FROM `ACataclysmPlayerCharacter::OnSomethingDied` FOR A DEATH CREDITED TO THIS CHARACTER, before
+	 * `GainOnOwnKill`. Nothing for an ability system that is not this game's.
+	 */
+	static void NoteOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
+
+	/**
+	 * Pay the Fervour one kill of `Slain` is worth, and answer what arrived.
+	 *
+	 * THE CLASS GENERATOR, AND NOT A SKILL'S `KillFervour`. It pays on every kill credited to this character, its damage
+	 * over time's included (the ruling of 2026-09-14); a skill whose row states `KillFervour` pays its own figure on top
+	 * when that skill's blow made the kill (the Death skills branch, #2885). One death, one payment from each.
+	 *
+	 * SCALED BY THE GENERATION RATE AND CLAMPED AT THE MAXIMUM, the rule every gain in this file follows. No reservation
+	 * is read or changed.
+	 *
+	 * @return the Fervour that arrived: nought for a character without the rows, for a creature no row's rung matches,
+	 *         for a full bar and for an ability system with no class resource attribute set
+	 */
+	static float GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
+
+	/**
+	 * Take away the Fervour a step this long costs once the grace after the last kill has run out, and answer what left.
+	 * The Soul Collector's "Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you
+	 * kill again" and the Shadow's "drains at 10 per second".
+	 *
+	 * ITS OWN FUNCTION, BESIDE `DecayStep` AND NOT INSIDE IT, for the reason `KillDecayPerSecondStat` gives.
+	 *
+	 * A CHARACTER THAT HAS NEVER KILLED IS NOT HELD, so Fervour it holds from another source decays at once. "Once 4
+	 * seconds have passed since your last kill" has no last kill to count from, and holding for ever would make a
+	 * multiclassed Soul Collector's other generator a bar that never empties.
+	 *
+	 * IT DOES NOT ASK WHETHER A RUNNING SELF BUFF HOLDS FERVOUR. The Death skills branch (#2885) adds
+	 * `UCataclysmSkillTemplate::ARunningBuffHoldsFervour` for Cold Blood; whichever of that branch and this one lands
+	 * second adds that one call here, with its test, as it does to `DecayStep`. Ruled by the coordinating session on
+	 * 2026-11-24.
+	 *
+	 * @return how much Fervour really left, which is zero for a character with no rate, an empty pool, a hold not yet
+	 *         run out, and a creature holding a player build
+	 */
+	static float KillDecayStep(UAbilitySystemComponent* AbilitySystem, float SecondsInStep);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

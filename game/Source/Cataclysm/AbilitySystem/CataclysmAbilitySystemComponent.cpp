@@ -1000,6 +1000,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
+	State.SecondsSinceOwnKill = SecondsSinceOwnKill();
 	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
 	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
@@ -1642,6 +1643,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
+	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1701,6 +1703,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetCarriesYourCurse:
 				bWantsYourCurse = true;
 				break;
+			// AND THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: "Elite or stronger", and the Soul
+			// Collector's Fervour a kill by the slain creature's rung.
+			case ECataclysmStatCondition::TargetRarityAtLeast:
+			case ECataclysmStatCondition::TargetRarityIs:
+				bWantsRarity = true;
+				break;
 			default:
 				break;
 			}
@@ -1716,7 +1724,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		}
 
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSilence
-			&& bWantsMoving && bWantsYourCurse)
+			&& bWantsMoving && bWantsYourCurse && bWantsRarity)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1730,7 +1738,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// lookup with no row asking has no condition to answer.
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSilence
-			&& !bWantsMoving && !bWantsYourCurse))
+			&& !bWantsMoving && !bWantsYourCurse && !bWantsRarity))
 	{
 		return State;
 	}
@@ -1742,6 +1750,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	{
 		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
 			Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: the rung the spawner set, as `IsBoss` reads it below.
+	// ANYTHING THAT IS NOT A CREATURE LEAVES -1, which both rarity conditions refuse.
+	if (bWantsRarity)
+	{
+		if (const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Target))
+		{
+			State.TargetRarityStep = Creature->RarityStep;
+		}
 	}
 
 	// WHETHER THE TARGET IS SILENCED NOW. Ruled 2026-10-17. Its tag, read through `UCataclysmSilence`, the one place
@@ -3795,6 +3813,46 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteOwnKill(float GraceSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK, NO STAMP, as every other clock on this component does.
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	LastOwnKillAtSeconds = Now;
+
+	// THE HOLD NEVER SHORTENS: see the header. A grace of nothing still holds until now, which is "decays from now".
+	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceOwnKill() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastOwnKillAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastOwnKillAtSeconds);
+}
+
+bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO DECAY, the reading `OutOfContactFor` takes and for its reason: a character whose world is
+		// gone would otherwise be judged out of every grace for ever.
+		return true;
+	}
+
+	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::RendPercentStat =

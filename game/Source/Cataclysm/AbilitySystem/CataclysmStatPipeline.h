@@ -1748,6 +1748,43 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesYourCurse
 		UMETA(DisplayName = "Target Carries Your Curse"),
+
+	/**
+	 * The target is a creature whose rarity rung is `ConditionValue` or higher: 0 Common, 1 Elite, 2 Legendary,
+	 * 3 Herald, 4 Boss, 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`). The Death trees of 2026-11-24: "Elite or
+	 * stronger" is 1 (the Shadow's 25 Fervour a kill, Quarry, Big Game, Hungry for the Strong) and "a Boss" in the Soul
+	 * Collector's kill schedule is 4, a Cataclysm Boss included.
+	 *
+	 * THE RUNG THE SPAWNER SET, `ACataclysmEnemyCharacter::RarityStep`, the same reading `TargetIsBoss` takes through
+	 * `IsBoss`. Not `RarityStepItPaysAs`, which is what a kill is rewarded as rather than what the creature is.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`. ANYTHING THAT IS NOT A CREATURE HAS NO RUNG and refuses, as an
+	 * unread target does: `TargetRarityStep` stays -1.
+	 */
+	TargetRarityAtLeast
+		UMETA(DisplayName = "Target Rarity At Least"),
+
+	/**
+	 * The target is a creature whose rarity rung is exactly `ConditionValue`. The Death trees of 2026-11-24: the Soul
+	 * Collector's kill schedule pays "1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald",
+	 * one row a rung, and "15 for a Boss" with `TargetRarityAtLeast` above. Read as that one is, and -1 refuses.
+	 */
+	TargetRarityIs
+		UMETA(DisplayName = "Target Rarity Is"),
+
+	/**
+	 * At or within `ConditionValue` seconds since this character last killed an enemy. The Death trees of 2026-11-24:
+	 * the Soul Collector's Between the Dead and the Shadow's Killing Pace and Light Feet, "for 4 seconds after you
+	 * kill".
+	 *
+	 * A KILL IS ONE `ACataclysmPlayerCharacter::OnSomethingDied` CREDITS TO THIS CHARACTER, its damage over time's
+	 * included (the ruling of 2026-09-14), stamped by `UCataclysmFervour::NoteOwnKill`. The same stamp starts the
+	 * Death classes' decay grace, so the two cannot disagree about when the last kill was.
+	 *
+	 * A CHARACTER THAT HAS NEVER KILLED READS -1 AND REFUSES, as every clock's "never" does.
+	 */
+	WithinSecondsOfKill
+		UMETA(DisplayName = "Within Seconds Of Kill"),
 };
 
 /**
@@ -2788,6 +2825,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float SecondsSinceStruckABoss = -1.0f;
 
 	/**
+	 * Seconds since the character last killed an enemy. The Death trees of 2026-11-24. Negative means neither known
+	 * nor ever, as above. Stamped by `UCataclysmFervour::NoteOwnKill`; see
+	 * `ECataclysmStatCondition::WithinSecondsOfKill`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceOwnKill = -1.0f;
+
+	/**
 	 * Seconds since the character last used the skill in its Support slot. Negative means neither known
 	 * nor ever, as above.
 	 */
@@ -3367,6 +3412,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesYourCurse = false;
+
+	/**
+	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
+	 * trees of 2026-11-24. Filled by `WithTargetState` only when some modifier in the lookup asks; see
+	 * `ECataclysmStatCondition::TargetRarityAtLeast`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 TargetRarityStep = -1;
 
 	/**
 	 * Whether the character being hit is a boss. Issue #1815.
@@ -5083,7 +5136,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-fifth, which is the drift that put the passive tree eight
+	 * adds a seventy-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5092,7 +5145,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-FIVE OF THE SEVENTY-FOUR COMPARE NOTHING. They are the case labels
+	 * THIRTY-FIVE OF THE SEVENTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

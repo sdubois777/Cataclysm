@@ -150,6 +150,9 @@ namespace
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
 		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
 		{ TEXT("target_carries_your_curse"),    ECataclysmStatCondition::TargetCarriesYourCurse },
+		{ TEXT("target_rarity_at_least"),       ECataclysmStatCondition::TargetRarityAtLeast },
+		{ TEXT("target_rarity_is"),             ECataclysmStatCondition::TargetRarityIs },
+		{ TEXT("seconds_after_kill"),           ECataclysmStatCondition::WithinSecondsOfKill },
 	};
 
 	struct FNamedStatScale
@@ -459,6 +462,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// a channelled skill begins, which is announced, and closes when its seconds
 	// run out, which nothing announces; the closing edge is what puts it here.
 	case C::ChannellingForUnderSeconds:
+	// AND THE WINDOW AFTER A KILL, the Death trees of 2026-11-24: it opens at a kill and closes when its seconds run
+	// out, which nothing announces.
+	case C::WithinSecondsOfKill:
 		return EOn::Time;
 
 	// WHETHER THE CHARACTER IS CHANNELLING AT ALL. Ruled 2026-10-08. Both of its
@@ -528,6 +534,12 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
 	// target in hand, after `TargetIsMoving`.
 	case C::TargetCarriesYourCurse:
+		return EOn::TheBlowOrSkill;
+
+	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
+	// `TargetCarriesYourCurse`.
+	case C::TargetRarityAtLeast:
+	case C::TargetRarityIs:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -1257,6 +1269,23 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`. The demonic tree rework of
 		// 2026-11-24. False is also "no target in hand", "no asker" and "nothing asked", and all refuse together.
 		return State.bTargetCarriesYourCurse;
+
+	case ECataclysmStatCondition::TargetRarityAtLeast:
+		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",
+		// "no target in hand" and "nothing asked", and all refuse together; the rung compared is a whole number.
+		return State.TargetRarityStep >= 0
+			&& State.TargetRarityStep >= FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::TargetRarityIs:
+		// THE SAME READING, EXACTLY ONE RUNG. The Death trees of 2026-11-24.
+		return State.TargetRarityStep >= 0
+			&& State.TargetRarityStep == FMath::RoundToInt(Value);
+
+	case ECataclysmStatCondition::WithinSecondsOfKill:
+		// THE SAME TWO RULES AS EVERY CLOCK: never killed reads -1 and refuses, and "within" is inclusive. The Death
+		// trees of 2026-11-24.
+		return State.SecondsSinceOwnKill >= 0.0f
+			&& State.SecondsSinceOwnKill <= Value;
 
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
