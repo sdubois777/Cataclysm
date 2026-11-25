@@ -1748,6 +1748,44 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesYourCurse
 		UMETA(DisplayName = "Target Carries Your Curse"),
+
+	/**
+	 * The character holds two items in its weapon slots. The Berserker's states, `plan_death_and_war.md` slice B29,
+	 * 2026-11-25: "Dual wield only", which sixteen Berserker nodes and options say, Frenzy first.
+	 *
+	 * A WEAPON AND A SHIELD COUNT, by the design document's own sentence (Dual Wielding): "A character holding a weapon
+	 * and a Shield is dual wielding". A two-handed weapon is stored once, in the first slot, so it is one item and does
+	 * not count; two two-handed weapons held under Both Hands Full are two items, and do.
+	 *
+	 * AN UNKNOWN READING REFUSES: no equipment component (every enemy) leaves it at -1.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	DualWielding
+		UMETA(DisplayName = "Dual Wielding"),
+
+	/**
+	 * The character is in the Berserker's Wrath. The Berserker's states, 2026-11-25: Wrath, "Two-handed weapons only.
+	 * When you reach maximum Fervour, enter a state of Wrath. ... Wrath ends when Fervour reaches 0." Rows the Wrath
+	 * node grants, and every "While in Wrath" of the tree, are stated under it.
+	 *
+	 * READ OFF THE ABILITY SYSTEM COMPONENT, which holds the state `FCataclysmBerserkerStates` judges. False is "not in
+	 * Wrath", which every enemy is.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	InWrath
+		UMETA(DisplayName = "In Wrath"),
+
+	/**
+	 * The character is in the Berserker's Frenzy. The Berserker's states, 2026-11-25: Frenzy, "Dual wield only. When you
+	 * reach maximum Fervour, enter a state of Frenzy. ... Frenzy ends when Fervour reaches 0." The same reading as
+	 * `InWrath`, for the other state.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	InFrenzy
+		UMETA(DisplayName = "In Frenzy"),
 };
 
 /**
@@ -2968,6 +3006,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	int32 WeaponHands = -1;
 
 	/**
+	 * How many items the character holds in its weapon slots: 0, 1 or 2, or -1 with no equipment component, which is
+	 * every enemy. Read by `DualWielding`. The Berserker's states, 2026-11-25.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 WeaponsWorn = -1;
+
+	/**
 	 * How much maximum health the character has. Issue #1515.
 	 *
 	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
@@ -3053,6 +3098,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bIsChannelling = false;
+
+	/**
+	 * Whether the character is in the Berserker's Wrath, or its Frenzy. Read by `InWrath` and `InFrenzy`. The
+	 * Berserker's states, 2026-11-25. Never both: a character holds one state at a time.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bInWrath = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bInFrenzy = false;
 
 	/**
 	 * How long the character has been channelling, in seconds, or negative
@@ -5083,7 +5137,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-fifth, which is the drift that put the passive tree eight
+	 * adds a seventy-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5092,7 +5146,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-FIVE OF THE SEVENTY-FOUR COMPARE NOTHING. They are the case labels
+	 * THIRTY-EIGHT OF THE SEVENTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

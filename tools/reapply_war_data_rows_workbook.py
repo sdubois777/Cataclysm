@@ -198,8 +198,12 @@ def _multiset(rows) -> collections.Counter:
     return collections.Counter(row.key() for row in rows)
 
 
-def plan(sheet) -> tuple[list[str], bool, list[dict[str, object]], list[str]]:
-    """The header, whether `Per Point From` must be added, the rows to append, and the report."""
+def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], bool, list[dict[str, object]], list[str]]:
+    """The header, whether `Per Point From` must be added, the rows to append, and the report.
+
+    `nodes` is a list in the shape of `NODES`, which it defaults to; a later War slice's script passes its own
+    (`tools/reapply_war_berserker_states_workbook.py`), and `label` names that slice in a refusal."""
+    nodes = NODES if nodes is None else nodes
     header = [helpers._text(cell.value) for cell in sheet[1]]
     while header and header[-1] is None:
         header.pop()
@@ -217,7 +221,7 @@ def plan(sheet) -> tuple[list[str], bool, list[dict[str, object]], list[str]]:
 
     append: list[dict[str, object]] = []
     report: list[str] = []
-    for node, label, wanted in NODES:
+    for node, name_label, wanted in nodes:
         groups: dict[int, list[Row]] = {}
         for row in wanted:
             groups.setdefault(int(row.option or 0), []).append(row)
@@ -228,21 +232,21 @@ def plan(sheet) -> tuple[list[str], bool, list[dict[str, object]], list[str]]:
                 report.append(f"{where}: already holds its {len(rows)} row(s); left alone")
                 continue
             if current:
-                raise ReapplyError(f"{where} holds {[row.key() for row in current]}, which are not the rows slice D "
+                raise ReapplyError(f"{where} holds {[row.key() for row in current]}, which are not the rows {label} "
                                    f"writes; somebody has written it since. Nothing was written")
             for row in rows:
-                append.append(cells_from_row(node, label, row))
+                append.append(cells_from_row(node, name_label, row))
                 report.append(f"{where}: + {row.stat} {row.kind} {row.value:g}")
     add_column = PER_POINT_FROM not in header and any(cells.get(PER_POINT_FROM) for cells in append)
     return header, add_column, append, report
 
 
-def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False) -> list[str]:
-    """Append the rows the workbook at `path` lacks; return the report."""
+def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, label: str = "slice D") -> list[str]:
+    """Append the rows the workbook at `path` lacks; return the report. `nodes` and `label` as `plan` takes them."""
     book = openpyxl.load_workbook(path)
     helpers.refuse_what_a_save_would_lose(book)
     sheet = book[SHEET]
-    header, add_column, append, report = plan(sheet)
+    header, add_column, append, report = plan(sheet, nodes, label)
     if not append:
         return report + ["every row is already written; nothing written"]
     if add_column:
@@ -271,14 +275,15 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False) -> list[str]:
             if where[0] <= last and not (where[0] == 1 and add_column and where[1] == len(header))}
     if kept != before:
         raise ReapplyError(f"a row above the appended ones changed on saving in {SHEET!r}")
-    _, _, still_missing, _ = plan(after[SHEET])
+    _, _, still_missing, _ = plan(after[SHEET], nodes, label)
     if still_missing:
         raise ReapplyError(f"{SHEET!r} did not read back with the rows written")
     return report + [f"wrote {len(append)} row(s) after sheet row {last}; no other row or sheet changed"]
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", description: str | None = None) -> int:
+    """The command line. A later War slice's script calls this with its own `nodes`, `label` and description."""
+    parser = argparse.ArgumentParser(description=description or __doc__.splitlines()[0])
     parser.add_argument("--workbook", type=pathlib.Path, default=WORKBOOK)
     parser.add_argument("--check", action="store_true",
                         help="report what would change and write nothing; exit 1 if anything would")
@@ -286,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="write the rows without regenerating the CSVs")
     args = parser.parse_args(argv)
     try:
-        report = apply(args.workbook, check_only=args.check)
+        report = apply(args.workbook, check_only=args.check, nodes=nodes, label=label)
     except ReapplyError as error:
         print(f"Refused: {error}", file=sys.stderr)
         return 2

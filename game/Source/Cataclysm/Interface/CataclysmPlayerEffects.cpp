@@ -3,6 +3,7 @@
 #include "Interface/CataclysmPlayerEffects.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -296,6 +297,10 @@ TArray<FCataclysmPlayerEffect> UCataclysmPlayerEffects::EntriesFor(const AActor*
 	AddText(Buffs, Overlay::HeldBuffTextFor(Actor), false, AbilitySystem, nullptr);
 	AddText(Buffs, Overlay::DamageTypeImmunityTextFor(Actor), false, AbilitySystem, nullptr);
 	AddText(Buffs, Overlay::KeptStacksTextFor(Actor), false, AbilitySystem, nullptr);
+	// THE BERSERKER'S STATE, OR BERSERKING READY: Wrath and Frenzy are states the player is in until the pool empties,
+	// and Berserking waits for the next melee attack. The Berserker's states, 2026-11-25; the owner's rule of 2026-08-24
+	// that a system must be seen in game.
+	AddText(Buffs, FCataclysmBerserkerStates::StateTextFor(Actor), false, AbilitySystem, nullptr);
 	if (NihilMore > 0.0f)
 	{
 		FCataclysmPlayerEffect Reward;

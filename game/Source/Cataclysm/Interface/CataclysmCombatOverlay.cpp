@@ -10,6 +10,7 @@
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSilence.h"
@@ -1168,7 +1169,11 @@ bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
 	// OR ANYTHING RESERVED, since issue #2787. A character with no generator can
 	// hold a skill gadget, a skill trap or a set bonus's minion, each of which
 	// reserves, and the player must be able to see that part of the pool held.
-	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && ReservedFervourOf(Actor) <= 0.0f)
+	//
+	// OR A WAR FERVOUR RATE, since 2026-11-25: the War classes' rates have no attribute, so `HasAGenerator` cannot see
+	// them, and a Bulwark, Berserker or Saboteur holding its starting node drew no bar. `FCataclysmWarFervour::HasARate`.
+	if (!UCataclysmFervour::HasAGenerator(AbilitySystem) && !FCataclysmWarFervour::HasARate(AbilitySystem)
+		&& ReservedFervourOf(Actor) <= 0.0f)
 	{
 		return false;
 	}

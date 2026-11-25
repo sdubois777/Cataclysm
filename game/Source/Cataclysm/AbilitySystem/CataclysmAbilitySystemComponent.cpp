@@ -1405,7 +1405,22 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		{
 			State.WeaponHands = Slots->GetEquippedWeaponHands();
 		}
+
+		// AND HOW MANY ITEMS ITS TWO WEAPON SLOTS HOLD, for `dual_wielding`. The Berserker's states, 2026-11-25. Off
+		// the avatar's equipment, which every player has and no enemy does; without it the reading stays -1 and the
+		// condition refuses. The two slots asked by name rather than `WornWeapons`, which copies both items, because
+		// this runs on every stat a character asks for.
+		if (const UCataclysmEquipmentComponent* Equipment =
+				Avatar->FindComponentByClass<UCataclysmEquipmentComponent>())
+		{
+			State.WeaponsWorn = (Equipment->EquippedAt(ECataclysmGearSlot::Weapon1) ? 1 : 0)
+				+ (Equipment->EquippedAt(ECataclysmGearSlot::Weapon2) ? 1 : 0);
+		}
 	}
+
+	// AND THE BERSERKER'S STATE, for `in_wrath` and `in_frenzy`. The Berserker's states, 2026-11-25.
+	State.bInWrath = HeldBerserkerState == ECataclysmBerserkerState::Wrath;
+	State.bInFrenzy = HeldBerserkerState == ECataclysmBerserkerState::Frenzy;
 
 	// AND HOW FAR IT MOVED BEFORE THE BLOW IN HAND, which is the third reading
 	// here that is not a state of the character. Passed through unchanged,

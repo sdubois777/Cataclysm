@@ -127,6 +127,20 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnActionEvent, FName);
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnChannellingChanged, bool);
 
 /**
+ * The state the Berserker's Wrath or Frenzy holds a character in, or none. The Berserker's states,
+ * `plan_death_and_war.md` slice B29, 2026-11-25. `FCataclysmBerserkerStates` decides when one begins and ends; the
+ * ability system component only holds it, so `CurrentConditions` can read it for `in_wrath` and `in_frenzy`.
+ *
+ * NOT A UENUM: nothing reflected reads it, and it is never saved. A state is a thing that happens in a fight.
+ */
+enum class ECataclysmBerserkerState : uint8
+{
+	None,
+	Wrath,
+	Frenzy,
+};
+
+/**
  * The project's ability system component.
  *
  * Exists as a subclass from the start so that behaviour common to every actor
@@ -4525,6 +4539,34 @@ public:
 	 */
 	FCataclysmOnChannellingChanged OnChannellingChanged;
 
+	//~ The Berserker's states. `plan_death_and_war.md` slice B29, 2026-11-25.
+
+	/**
+	 * The state the Berserker's Wrath or Frenzy holds this character in. READ BY `CurrentConditions`, which is where
+	 * `in_wrath` and `in_frenzy` get it; the heads-up display and a test may ask directly.
+	 */
+	ECataclysmBerserkerState BerserkerState() const { return HeldBerserkerState; }
+
+	/**
+	 * Put this character in a state, or out of one. WRITTEN ONLY BY `FCataclysmBerserkerStates`, which judges when a
+	 * state begins and ends; this records the answer. Entering a state disarms Berserking, which fires only outside
+	 * Wrath and Frenzy (the owner's answer to Q21, 2026-11-24).
+	 */
+	void SetBerserkerState(ECataclysmBerserkerState State)
+	{
+		HeldBerserkerState = State;
+		if (State != ECataclysmBerserkerState::None)
+		{
+			bBerserkingArmed = false;
+		}
+	}
+
+	/** Whether Berserking waits for this character's next melee attack. */
+	bool IsBerserkingArmed() const { return bBerserkingArmed; }
+
+	/** Arm or disarm Berserking. Written only by `FCataclysmBerserkerStates`, as the state is. */
+	void SetBerserkingArmed(bool bArmed) { bBerserkingArmed = bArmed; }
+
 	/**
 	 * What the last blow aimed at this character resolved to.
 	 *
@@ -5528,6 +5570,14 @@ protected:
 	 * nought to one and cleared when it returns to nought.
 	 */
 	float ChannellingSinceSeconds = -1.0f;
+
+	/**
+	 * The Berserker's state, and whether Berserking is armed. The Berserker's states, 2026-11-25. Not replicated and
+	 * not saved, as the channelling count above is not: the conditions that read them are judged on the server, and a
+	 * state lasts no longer than a fight.
+	 */
+	ECataclysmBerserkerState HeldBerserkerState = ECataclysmBerserkerState::None;
+	bool bBerserkingArmed = false;
 
 	/** Whether this character has the pool: a maximum above nought. */
 	bool HasLeechPool(ECataclysmLeechPool LeechPool) const;

@@ -437,6 +437,26 @@ INVENTORY = {
      'FName(OutOfCombatDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
         'the War decay, asked on a timer with no blow, target or skill in '
         'hand',
+    # THE BERSERKER'S STATES, 2026-11-25.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(WrathOnFullFervourStat), NoTags, 0.0f'):
+        "whether a full pool begins Wrath, asked when the pool moves and on "
+        'a timer, with no blow or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(FrenzyOnFullFervourStat), NoTags, 0.0f'):
+        "whether a full pool begins Frenzy, asked as Wrath's flag is",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingDamagePerFervourStat), '
+     'FGameplayTagContainer(UCataclysmDamageCalculation::MeleeTag()), 0.0f'):
+        'whether the character holds Berserking at all, asked with the '
+        'melee tag its row is scoped to and no blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingDamagePerFervourStat), SkillTags, 0.0f'):
+        "Berserking's damage for each point consumed, asked as an attack "
+        "begins with the attack's tags; no blow is resolved yet",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(DrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        'the drain, asked on a timer with no blow, target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '

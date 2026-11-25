@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For the Bulwark's and the Berserker's Fervour decay out of combat. Slice C of plan_death_and_war.md, 2026-11-24.
 #include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 #include "AbilitySystem/CataclysmDelayedDamage.h"
 // For Brute's Heart's Ground Pound, which fires by itself. Ruled 2026-10-17.
 #include "AbilitySystem/CataclysmGroundPound.h"
@@ -271,6 +272,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 		// meets both rules. After the gain and inside the same guard, for the reasons given above. Its return value is
 		// dropped too.
 		FCataclysmWarFervour::OutOfCombatDecayStep(this, UCataclysmRegeneration::StepSeconds);
+
+		// AND A DRAIN, WHICH WAITS FOR NOTHING, then the Berserker's state judged again. The Berserker's states,
+		// 2026-11-25: "Fervour drains at 5 per second" while in Wrath, 8 in Frenzy, each a row under its state. After both
+		// decays and inside the same guard; its return value is dropped too.
+		FCataclysmBerserkerStates::DrainStep(this, UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.

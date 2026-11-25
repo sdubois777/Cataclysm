@@ -420,3 +420,11 @@ Saboteur_keystone_gadget_deep_002#3,Saboteur_keystone_gadget_deep_002,evasion,fl
 Saboteur_keystone_gadget_deep_002#4,Saboteur_keystone_gadget_deep_002,class_resource,flat,15.0,,,0.0,gadgets_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_mid_001#1,Saboteur_basic_gadget_mid_001,movement_speed,increased,2.0,,,0.0,gadgets_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_trap_qty_003#1,Saboteur_basic_trap_qty_003,evasion,flat,5.0,,,0.0,traps_active,1.0,0,-1.0,0,5,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_twoh_001#1,Berserker_twoh_001,wrath_on_full_fervour,flat,1.0,,wielding_two_handed_weapon,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_twoh_001#2,Berserker_twoh_001,attack_damage,increased,15.0,Type.Melee,in_wrath,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_twoh_001#3,Berserker_twoh_001,fervour_drain_per_second,flat,5.0,,in_wrath,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_dw_001#1,Berserker_dw_001,frenzy_on_full_fervour,flat,1.0,,dual_wielding,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_dw_001#2,Berserker_dw_001,attack_speed,increased,20.0,,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_dw_001#3,Berserker_dw_001,fervour_per_hit_dealt,flat,2.0,Type.Melee,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_dw_001#4,Berserker_dw_001,fervour_drain_per_second,flat,8.0,,in_frenzy,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Berserker_trunk_009#1,Berserker_trunk_009,berserking_damage_per_fervour,flat,10.0,Type.Melee,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

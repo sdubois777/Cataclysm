@@ -3536,7 +3536,12 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_is_moving")
 			// THE DEMONIC TREE REWORK OF 2026-11-24, "ENEMIES CARRYING YOUR CURSE": the character struck carries a
 			// curse the asker laid. It names a state, so it compares nothing.
-			|| Name == TEXT("target_carries_your_curse");
+			|| Name == TEXT("target_carries_your_curse")
+			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
+			// a state, so each compares nothing.
+			|| Name == TEXT("dual_wielding")
+			|| Name == TEXT("in_wrath")
+			|| Name == TEXT("in_frenzy");
 	}
 }
 

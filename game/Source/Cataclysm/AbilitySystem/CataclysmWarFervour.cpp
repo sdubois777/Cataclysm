@@ -15,7 +15,41 @@ const TCHAR* FCataclysmWarFervour::PerTrapPlacedStat = TEXT("fervour_per_trap_pl
 const TCHAR* FCataclysmWarFervour::PerGadgetPlacedStat = TEXT("fervour_per_gadget_placed");
 const TCHAR* FCataclysmWarFervour::PerTrapTriggeredStat = TEXT("fervour_per_trap_triggered");
 const TCHAR* FCataclysmWarFervour::PerDeviceHitStat = TEXT("fervour_per_device_hit");
+const TCHAR* FCataclysmWarFervour::PerHitDealtStat = TEXT("fervour_per_hit_dealt");
 const TCHAR* FCataclysmWarFervour::OutOfCombatDecayPerSecondStat = TEXT("fervour_decay_out_of_combat_per_second");
+
+const TArray<const TCHAR*>& FCataclysmWarFervour::GainStats()
+{
+	static const TArray<const TCHAR*> Stats = {PerHitTakenStat,		 PerBlockStat,		  PerCriticalStrikeStat,
+											   PerTrapPlacedStat,	 PerGadgetPlacedStat, PerTrapTriggeredStat,
+											   PerDeviceHitStat,	 PerHitDealtStat};
+	return Stats;
+}
+
+bool FCataclysmWarFervour::HasARate(const UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return false;
+	}
+	// ANY ROW AT ALL, for the reason `UCataclysmFervour::HasAGenerator` gives for its attributes: a rate that applies only
+	// to melee blows, or only in Frenzy, still makes this a character that can fill its pool.
+	for (const TCHAR* Stat : GainStats())
+	{
+		if (const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(FName(Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Value > 0.0f)
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
 
 float FCataclysmWarFervour::GainByRate(UAbilitySystemComponent* AbilitySystem, const TCHAR* Stat,
 									   const FGameplayTagContainer& Tags)
@@ -100,6 +134,12 @@ float FCataclysmWarFervour::GainOnDeviceHit(UAbilitySystemComponent* AbilitySyst
 											const FGameplayTagContainer& DeviceTags)
 {
 	return GainByRate(AbilitySystem, PerDeviceHitStat, DeviceTags);
+}
+
+float FCataclysmWarFervour::GainOnHitDealt(UAbilitySystemComponent* AbilitySystem,
+										   const FGameplayTagContainer& SkillTags)
+{
+	return GainByRate(AbilitySystem, PerHitDealtStat, SkillTags);
 }
 
 float FCataclysmWarFervour::OutOfCombatDecayStep(ACataclysmCharacterBase* Character, float SecondsInStep)

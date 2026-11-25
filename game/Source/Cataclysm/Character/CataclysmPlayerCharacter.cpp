@@ -21,6 +21,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For the Berserker's Fervour on a critical strike. Slice C of plan_death_and_war.md, 2026-11-24.
 #include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 // For the Cataclysm.ShowDebt console command. Issue #1100.
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmLowHealthRelief.h"
@@ -1031,6 +1032,11 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	//
 	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because for the refresh
 	// neither says anything beyond "ask again".
+	//
+	// AND THE BERSERKER'S STATE BEFORE IT, the moment the pool fills or empties: Wrath and Frenzy begin at a full pool
+	// and end at an empty one, and Berserking arms at a full one. First, so a speed row under `in_frenzy` reads the
+	// state this change made. The Berserker's states, 2026-11-25.
+	FCataclysmBerserkerStates::Judge(Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()));
 	RefreshMovementSpeed();
 
 	// AND THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815. "When your
@@ -1235,6 +1241,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+
+	// AND FERVOUR FOR A BLOW THIS CHARACTER LANDED ITSELF: the Berserker's Frenzy, "all melee hits generate 2 additional
+	// Fervour", a row scoped to melee under `in_frenzy`, read with the blow's skill tags. NOT A MINION'S BLOW, for the
+	// reason the cull above gives: Conduit credits one here, and the minion dealt it. The Berserker's states, 2026-11-25.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		FCataclysmWarFervour::GainOnHitDealt(Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+	}
 
 	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.
 	// Issue #1833 group E part 1, ruled 2026-10-01: "Your first hit against each

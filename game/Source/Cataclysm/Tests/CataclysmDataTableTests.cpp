@@ -513,7 +513,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// plan_death_and_war.md): nine rows on the three War starting nodes.
 	// AND 421 SINCE 2026-11-25, for slice D of plan_death_and_war.md: forty-eight
 	// rows on thirty War nodes that had none, every one data alone.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        421)
+	// AND 429 SINCE 2026-11-25, for the Berserker's states: eight rows on Wrath,
+	// Frenzy and Berserking.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        429)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

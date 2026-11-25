@@ -664,7 +664,11 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #: rows on thirty War nodes that had none, every one data alone, seven of them the
 #: spell damage half of a plain "damage". Written by
 #: `tools/reapply_war_data_rows_workbook.py`, which lists them.
-AUTHORED_ROWS = 421
+#:
+#: AND TO 429 ON 2026-11-25, for the Berserker's states (slice B29): eight rows
+#: on Wrath, Frenzy and Berserking, which had none
+#: (`tools/reapply_war_berserker_states_workbook.py`).
+AUTHORED_ROWS = 429
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1086,7 +1090,9 @@ AUTHORED_ROWS = 421
 #: `plan_death_and_war.md` gave rows, none of which had one -- sixteen Bulwark
 #: (fifteen nodes and its Second Oath), seven Berserker (four nodes and its three
 #: Oaths) and seven Saboteur.
-AUTHORED_NODES = 259
+#:
+#: AND TO 262 ON 2026-11-25: Wrath, Frenzy and Berserking, the Berserker's states.
+AUTHORED_NODES = 262
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1642,6 +1648,12 @@ CONDITION_WORDS = {
     # TWO HANDS, `Ravager_basic_b_b0`: "Two-handed weapons only." Issue #1515.
     # The equipped weapon's base row takes two hands.
     "wielding_two_handed_weapon": ("two-handed weapons only", None),
+
+    # THE BERSERKER'S STATES, 2026-11-25. Frenzy's "Dual wield only", and the
+    # two states' own "While in Wrath" and "While in Frenzy".
+    "dual_wielding": ("dual wield only", None),
+    "in_wrath": ("while in wrath", None),
+    "in_frenzy": ("while in frenzy", None),
 
     # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
     # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
@@ -2463,6 +2475,12 @@ VALUE_FORMS = {
     "fervour_per_gadget_placed": "{value:g} for each gadget placed",
     "fervour_per_trap_triggered": "{value:g} each time a trap triggers",
     "fervour_per_device_hit": "{value:g} for each blow one of them lands",
+    # THE BERSERKER'S STATES, 2026-11-25. Wrath's and Frenzy's "Fervour drains
+    # at 5 per second" and "at 8 per second"; Frenzy's "all melee hits generate
+    # 2 additional Fervour"; Berserking's "+10% bonus damage per point".
+    "fervour_drain_per_second": "drains at {value:g} per second",
+    "fervour_per_hit_dealt": "generate {value:g} additional Fervour",
+    "berserking_damage_per_fervour": "{value:g}% bonus damage",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2491,6 +2509,10 @@ VALUE_IN_WORDS = {
     # incoming damage is reduced by your current life leech percentage" is 1
     # damage reduction for every 1% of leech, the 1 stated by "percentage".
     ("Berserker_capstone_25", "damage_reduction"): ("reduced by your current life leech percentage", 1.0),
+    # THE BERSERKER'S STATES, 2026-11-25: the two flags a full pool begins its
+    # state by, each 1, stated as "enter a state of Wrath" and "of Frenzy".
+    ("Berserker_twoh_001", "wrath_on_full_fervour"): ("enter a state of wrath", 1.0),
+    ("Berserker_dw_001", "frenzy_on_full_fervour"): ("enter a state of frenzy", 1.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
     # of your Armor value" is 1 maximum health for every 10 armour, a share of
     # another stat. Its other max_health row, "+2% Maximum HP per point", is an

@@ -1110,6 +1110,18 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// The Bulwark's and the Berserker's decay, Fervour a second once out of combat, read by
 		// FCataclysmWarFervour::OutOfCombatDecayStep from ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_decay_out_of_combat_per_second"),
+		// THE BERSERKER'S STATES, 2026-11-25 (`plan_death_and_war.md` slice B29). Fervour per blow the character lands
+		// itself, read with the blow's skill tags in ACataclysmPlayerCharacter::OnSomethingWasHit (Frenzy's "all melee
+		// hits generate 2 additional Fervour").
+		TEXT("fervour_per_hit_dealt"),
+		// The two flags that let a full pool begin Wrath or Frenzy, and Berserking's increased damage for each point of
+		// Fervour it consumes, read by FCataclysmBerserkerStates::Judge and ::SpendBerserking.
+		TEXT("wrath_on_full_fervour"),
+		TEXT("frenzy_on_full_fervour"),
+		TEXT("berserking_damage_per_fervour"),
+		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
+		// ACataclysmCharacterBase::RegenerationStep.
+		TEXT("fervour_drain_per_second"),
 	};
 	return Stats;
 }

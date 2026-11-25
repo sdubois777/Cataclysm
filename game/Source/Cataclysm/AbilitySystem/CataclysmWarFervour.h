@@ -57,6 +57,12 @@ public:
 	/** Fervour for each landed blow one of the character's traps, gadgets or machines deals. The Saboteur's. */
 	static const TCHAR* PerDeviceHitStat;
 
+	/**
+	 * Fervour for each blow the character itself lands. The Berserker's Frenzy, "all melee hits generate 2 additional
+	 * Fervour", as a row scoped to `Type.Melee` and stated under `in_frenzy`. The Berserker's states, 2026-11-25.
+	 */
+	static const TCHAR* PerHitDealtStat;
+
 	/** How much Fervour leaves a second once the character has been out of combat for `CombatLapseSeconds`. The
 	 *  Bulwark's 5 and the Berserker's 10. */
 	static const TCHAR* OutOfCombatDecayPerSecondStat;
@@ -69,6 +75,18 @@ public:
 	// pulled to the most recent gadget"). Clockless: placing is something the player DID, as `trap_placed` is. Written
 	// as a literal at each call, `FName(TEXT("gadget_placed"))`, which `tools/tests/test_pool_action_names_match_the_engine.py`
 	// reads to hold every fired event to the generator's list.
+
+	/** Every gain stat above, in one list. */
+	static const TArray<const TCHAR*>& GainStats();
+
+	/**
+	 * Whether the character holds any row granting one of `GainStats`, whatever its tags or condition: a War Fervour
+	 * generator. For the Fervour bar, which `UCataclysmCombatOverlay::FervourOf` draws only for a character with a
+	 * generator. FOUND 2026-11-25 with the Berserker's states: `UCataclysmFervour::HasAGenerator` asks attributes, and
+	 * none of these stats has one, so a War character holding its starting node drew no bar. Here and not in
+	 * `UCataclysmFervour`, which the Death trees session is editing (the coordinating session's request of 2026-11-24).
+	 */
+	static bool HasARate(const UAbilitySystemComponent* AbilitySystem);
 
 	/** The Bulwark's gain on a hit taken. Call it for a blow that landed and was not a damage over time tick. */
 	static float GainOnHitTaken(UAbilitySystemComponent* AbilitySystem);
@@ -91,6 +109,13 @@ public:
 
 	/** The Saboteur's gain on a landed blow by one of its traps, gadgets or machines, read with that blow's tags. */
 	static float GainOnDeviceHit(UAbilitySystemComponent* AbilitySystem, const FGameplayTagContainer& DeviceTags);
+
+	/**
+	 * The gain on a blow the character itself landed, read with the blow's skill tags, so a row scoped to melee adds
+	 * only to a melee blow. Called where `hit_dealt` is raised, `ACataclysmPlayerCharacter::OnSomethingWasHit`, which
+	 * refuses damage over time ticks, evaded blows and blows dealt by anyone else first. The Berserker's states.
+	 */
+	static float GainOnHitDealt(UAbilitySystemComponent* AbilitySystem, const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * One step of the Bulwark's and the Berserker's decay: `OutOfCombatDecayPerSecondStat` times the step, once

@@ -18,6 +18,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For the War classes' Fervour rates and decay. Slice C of plan_death_and_war.md, 2026-11-24.
 #include "AbilitySystem/CataclysmWarFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmGroundPound.h"
 #include "AbilitySystem/CataclysmPotions.h"
@@ -11611,6 +11612,106 @@ namespace CataclysmStatExemptionTest
 					   45.0f, 0.001f);
 	}
 
+	/**
+	 * `wrath_on_full_fervour` and `frenzy_on_full_fervour`, read by `FCataclysmBerserkerStates::Judge`. The Berserker's
+	 * states, 2026-11-25. A holder at a full pool enters no state without the flag and the flag's own state with it.
+	 */
+	void ProbeBerserkerStateFlag(FAutomationTestBase& Test, const TCHAR* Stat, ECataclysmBerserkerState Expected)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		const UCataclysmClassResourceAttributeSet* Resource =
+			System ? System->GetSet<UCataclysmClassResourceAttributeSet>() : nullptr;
+		if (!System || !Test.TestNotNull(TEXT("set-up: the holder has a class resource"), Resource))
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		System->SetNumericAttributeBase(Pool, Resource->MaximumClassResourceAsked());
+		FCataclysmBerserkerStates::Judge(System);
+		const ECataclysmBerserkerState Plain = System->BerserkerState();
+		GrantFlat(Holder, Stat, 1.0f);
+		System->SetNumericAttributeBase(Pool, Resource->MaximumClassResourceAsked());
+		FCataclysmBerserkerStates::Judge(System);
+		Test.TestTrue(*FString::Printf(TEXT("%s: control, a full pool begins no state without it"), Stat),
+					  Plain == ECataclysmBerserkerState::None);
+		Test.TestTrue(*FString::Printf(TEXT("%s: with it a full pool begins its state, so Judge really reads it"), Stat),
+					  System->BerserkerState() == Expected);
+	}
+
+	/**
+	 * `fervour_drain_per_second`, read by `FCataclysmBerserkerStates::DrainStep`. A holder keeps 50 without it and loses 5
+	 * in a second with 5 of it, in combat or out: a drain waits for nothing.
+	 */
+	void ProbeBerserkerDrain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmBerserkerStates::DrainStep(Holder, 1.0f);
+		const float Plain = System->GetNumericAttribute(Pool);
+		GrantFlat(Holder, FCataclysmBerserkerStates::DrainPerSecondStat, 5.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		FCataclysmBerserkerStates::DrainStep(Holder, 1.0f);
+		const float Held = System->GetNumericAttribute(Pool);
+		Test.TestEqual(TEXT("fervour_drain_per_second: control, the bar keeps 50 without it"), Plain, 50.0f, 0.001f);
+		Test.TestEqual(TEXT("and loses 5 in a second with 5 of it, so DrainStep really reads it"), Held, 45.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_damage_per_fervour`, read by `FCataclysmBerserkerStates::SpendBerserking`. An armed holder with 40
+	 * Fervour spends nothing without it, and with 10 of it spends all 40 for 400% increased damage.
+	 */
+	void ProbeBerserkingSpend(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Plain = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		const float KeptWithout = System->GetNumericAttribute(Pool);
+		GrantFlat(Holder, FCataclysmBerserkerStates::BerserkingDamagePerFervourStat, 10.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Held = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_damage_per_fervour: control, nothing is bought without it"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and nothing is spent"), KeptWithout, 40.0f, 0.001f);
+		Test.TestEqual(TEXT("with 10 of it the 40 held buy 400%, so SpendBerserking really reads it"), Held, 400.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and the whole pool is consumed"), System->GetNumericAttribute(Pool), 0.0f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -11871,6 +11972,19 @@ namespace CataclysmStatExemptionTest
 					[](UAbilitySystemComponent* System)
 					{ return FCataclysmWarFervour::GainOnDeviceHit(System, FGameplayTagContainer()); }); }},
 			{TEXT("fervour_decay_out_of_combat_per_second"), &ProbeWarFervourDecay},
+			// THE BERSERKER'S STATES, 2026-11-25.
+			{TEXT("fervour_per_hit_dealt"), [](FAutomationTestBase& Test)
+				{ ProbeWarFervourGain(Test, FCataclysmWarFervour::PerHitDealtStat,
+					[](UAbilitySystemComponent* System)
+					{ return FCataclysmWarFervour::GainOnHitDealt(System, FGameplayTagContainer()); }); }},
+			{TEXT("wrath_on_full_fervour"), [](FAutomationTestBase& Test)
+				{ ProbeBerserkerStateFlag(Test, FCataclysmBerserkerStates::WrathOnFullFervourStat,
+										  ECataclysmBerserkerState::Wrath); }},
+			{TEXT("frenzy_on_full_fervour"), [](FAutomationTestBase& Test)
+				{ ProbeBerserkerStateFlag(Test, FCataclysmBerserkerStates::FrenzyOnFullFervourStat,
+										  ECataclysmBerserkerState::Frenzy); }},
+			{TEXT("fervour_drain_per_second"), &ProbeBerserkerDrain},
+			{TEXT("berserking_damage_per_fervour"), &ProbeBerserkingSpend},
 		};
 		return Made;
 	}

@@ -150,6 +150,9 @@ namespace
 		{ TEXT("target_is_silenced"),           ECataclysmStatCondition::TargetIsSilenced },
 		{ TEXT("target_is_moving"),             ECataclysmStatCondition::TargetIsMoving },
 		{ TEXT("target_carries_your_curse"),    ECataclysmStatCondition::TargetCarriesYourCurse },
+		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
+		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
+		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 	};
 
 	struct FNamedStatScale
@@ -318,8 +321,11 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsSilenced:
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
+	case ECataclysmStatCondition::DualWielding:
+	case ECataclysmStatCondition::InWrath:
+	case ECataclysmStatCondition::InFrenzy:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-five says
+		// nothing for a number to be compared against. Each of the thirty-eight says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -424,7 +430,16 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// that leaves speed alone does not do. Classed here, the reader re-asks as
 	// time passes, which is the answer this category gives.
 	case C::WieldingTwoHandedWeapon:
+	// AND HOW MANY ITEMS THE WEAPON SLOTS HOLD, for the same reason: a weapon swap. The Berserker's states, 2026-11-25.
+	case C::DualWielding:
 		return EOn::OtherAttributes;
+
+	// THE BERSERKER'S STATES BEGIN AT A FULL POOL AND END AT AN EMPTY ONE, so they move when the class resource moves.
+	// 2026-11-25. `ACataclysmPlayerCharacter::OnClassResourceChanged` judges the state before it works out the walking
+	// speed again, so a speed row under either reads the new state.
+	case C::InWrath:
+	case C::InFrenzy:
+		return EOn::ClassResource;
 
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
 	// something has or has not happened. Bleeding is here too: it ends when
@@ -952,6 +967,18 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// An unknown reading is -1, so a missing weapon, table or row refuses
 		// rather than being guessed either way.
 		return State.WeaponHands == 2;
+
+	case ECataclysmStatCondition::DualWielding:
+		// TWO ITEMS IN THE WEAPON SLOTS, a shield among them. The Berserker's states, 2026-11-25. -1 is "no equipment"
+		// and refuses.
+		return State.WeaponsWorn == 2;
+
+	case ECataclysmStatCondition::InWrath:
+		// THE STATE THE ABILITY SYSTEM COMPONENT HOLDS. The Berserker's states, 2026-11-25.
+		return State.bInWrath;
+
+	case ECataclysmStatCondition::InFrenzy:
+		return State.bInFrenzy;
 
 	case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 		// Issue #1515. Known first, as above, then the two rules of every

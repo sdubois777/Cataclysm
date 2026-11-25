@@ -166,7 +166,11 @@ def test_the_generated_csv_holds_the_rows():
 
 
 def _values(sheet) -> list[tuple]:
-    return [tuple(cell.value for cell in row) for row in sheet.iter_rows()]
+    """The header, then every other row in sorted order. SORTED SINCE 2026-11-25: a later slice's rows (the Berserker's
+    states) now follow slice D's in the repository's sheet, and the script appends slice D's at the end, so the two
+    sheets hold the same rows in a different order. Every cell is still compared."""
+    rows = [tuple(cell.value for cell in row) for row in sheet.iter_rows()]
+    return [rows[0], *sorted(rows[1:], key=repr)]
 
 
 def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
@@ -187,8 +191,8 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 
 
 def test_the_row_script_reproduces_the_sheet_and_then_does_nothing(tmp_path):
-    """Run on a workbook without them, the script appends the 48 rows and the column, and the sheet it writes is
-    the repository's sheet value for value; run again, it writes nothing."""
+    """Run on a workbook without them, the script appends the 48 rows and the column, and the sheet it writes holds
+    the repository's sheet's rows value for value (`_values`); run again, it writes nothing."""
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
     assert sum(1 for line in first if ": + " in line) == 48, first

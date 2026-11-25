@@ -5337,6 +5337,19 @@ CONDITIONS = {
     # IT TAKES NO VALUE: it names a state rather than comparing a number.
     "wielding_two_handed_weapon": None,
 
+    # "Dual wield only" is `dual_wielding`: two items in the weapon slots, a
+    # weapon and a Shield among them (the design document's Dual Wielding: "A
+    # character holding a weapon and a Shield is dual wielding"). The
+    # Berserker's states, 2026-11-25, for Frenzy and the fifteen other Berserker
+    # entries that say it. No equipment, which is every enemy, refuses.
+    #
+    # "While in Wrath" and "While in Frenzy" are `in_wrath` and `in_frenzy`: the
+    # state `FCataclysmBerserkerStates` begins at a full pool and ends at an
+    # empty one. Each takes no value: it names a state.
+    "dual_wielding": None,
+    "in_wrath": None,
+    "in_frenzy": None,
+
     # "Enemies that survive more than 5 seconds after first being hit gain
     # 20%-40% increased damage" is `opponent_first_struck_by_you_seconds_ago`
     # with 5, on a `damage_taken` row. Ruled 2026-10-12 under the owner's
@@ -10742,6 +10755,16 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
+    # THE BERSERKER'S STATES, 2026-11-25. The two flags `FCataclysmBerserkerStates::Judge`
+    # asks with no tags, each stated under its weapon rule; the drain
+    # `DrainStep` asks with no tags, stated under a state; and the Fervour per
+    # blow `FCataclysmWarFervour::GainOnHitDealt` asks with the blow's skill tags
+    # and no blow record. Each is probed in `CataclysmStatExemptionTests.cpp`'s
+    # table of stats with no attribute.
+    "wrath_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
+    "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
+    "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_hit_dealt": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
     # cannot move while channeling any skill". Its probe is `ProbeCannotWalk`,

@@ -18,6 +18,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 // For the share of a point-blank skill's blow struck at the allies inside its area. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
@@ -2300,6 +2301,15 @@ bool UCataclysmSkillTemplate::BeginAttackOn(const TArray<AActor*>& Targets)
 	// that struck one enemy, or by one the character cannot pay for.
 	AttackIncreasedDamageBoughtPercent =
 		UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
+			GetAbilitySystemComponentFromActorInfo(), SkillTags,
+			AttackEnemiesStruckTogether);
+
+	// AND BERSERKING'S SPEND, ONCE FOR THE WHOLE ATTACK, INTO THE SAME SUM: "your next melee attack consumes all Fervour.
+	// For each point of Fervour consumed that attack deals +10% bonus damage per point invested." Nothing for a
+	// character with Berserking not armed, an attack its melee-scoped row does not reach, or one that struck nobody.
+	// The Berserker's states, 2026-11-25.
+	AttackIncreasedDamageBoughtPercent +=
+		FCataclysmBerserkerStates::SpendBerserking(
 			GetAbilitySystemComponentFromActorInfo(), SkillTags,
 			AttackEnemiesStruckTogether);
 	return true;

@@ -2,6 +2,148 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Berserker's states: Wrath and Frenzy begin at a full Fervour pool and end at an empty one, Berserking spends the whole pool on the next melee attack, and a War character's Fervour bar is drawn (slice B29, with R29's rename)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.h` and `.cpp`, new: `FCataclysmBerserkerStates`, which
+  judges when a state begins and ends (`Judge`), drains the pool (`DrainStep`), and spends it for Berserking
+  (`SpendBerserking`).
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: `ECataclysmBerserkerState`, the held state and whether Berserking is
+  armed, and the two readings filled in `CurrentConditions`.
+- `CataclysmStatPipeline.h` and `.cpp`: three conditions, `dual_wielding`, `in_wrath` and `in_frenzy`, and their
+  readings `WeaponsWorn`, `bInWrath` and `bInFrenzy`.
+- The call sites, one each: `ACataclysmPlayerCharacter::OnClassResourceChanged` (the state judged when the pool moves,
+  before the walking speed), `OnSomethingWasHit` (Fervour per blow landed), `ACataclysmCharacterBase::RegenerationStep`
+  (the drain), `UCataclysmSkillTemplate::BeginAttackOn` (Berserking's spend, into the increased damage Bought With Ruin
+  buys), `UCataclysmPlayerEffects::EntriesFor` (the state shown) and `UCataclysmCombatOverlay::FervourOf` (the bar).
+- `CataclysmWarFervour.h` and `.cpp`: `fervour_per_hit_dealt` and `GainOnHitDealt`; `GainStats` and `HasARate`.
+- Five stats in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, each with a probe in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`; four in `CONDITIONED_STATS_WITH_AN_ASKER`.
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: eight rows (`tools/reapply_war_berserker_states_workbook.py`, new,
+  on slice D's machinery, whose `plan`, `apply` and `main` now take a list of nodes). `game/Data/PassiveEffects.csv`
+  (429 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- R29: `docs/Bulwark_Class_Tree_Final.json`, the basic node `basic_tw_stem_004` renamed from Wrath Incarnate to
+  Outnumbered (`tools/apply_outnumbered_rename_2026_11_25.py`, new); `PassiveNodes.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmBerserkerStatesTests.cpp`, new: seven tests in `Cataclysm.BerserkerStates.`.
+- Python: `tools/tests/test_war_berserker_states_scripts.py` and `tools/tests/test_outnumbered_rename.py`, new;
+  `test_passive_effects_match_the_node_text.py` (the words, 429 rows, 262 nodes), `test_war_data_rows_scripts.py`
+  (compares sorted rows), `test_stat_lookups_hand_over_what_they_should.py` (the five new lookups, each with its reason), `CataclysmDataTableTests.cpp` (the pin, 429), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** The C++ was read as the compiler. A window has to compile it,
+  rebuild the two DataTable assets, and run `Cataclysm.BerserkerStates.` (seven tests, trailing dot),
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` (five more probes), `Cataclysm.Passives.` (the
+  condition-name copy in `ComparesNothing`) and `Cataclysm.Data.` (the pin, 429).
+- **A FAULT OF SLICE C, FIXED HERE: NO WAR CHARACTER DREW A FERVOUR BAR.** `UCataclysmCombatOverlay::FervourOf` draws the
+  bar only for a character `UCataclysmFervour::HasAGenerator` says has a generator, and that function asks attributes;
+  every War rate is a stat with no attribute. `FCataclysmWarFervour::HasARate` now answers for them, called beside it,
+  so the War work stays out of `CataclysmFervour.cpp` as the coordinating session asked.
+- **BERSERKING'S NUMBER IS LARGE AND IT IS THE DESIGN'S.** 10% a point for each Fervour consumed: at one point a full pool
+  of 100 is 1,000% increased damage on one attack, and at its ten points 10,000%. Built as written; a figure to watch in
+  play.
+- **NOT IN THIS SLICE:** the nodes that ride on the states (Hair-Trigger, Cut and Run, Titan's Grip, Warmonger and the
+  rest of the Frenzy and Wrath riders), the second-condition columns the workbook still lacks, Bloodied's "Berserking
+  triggers on every melee hit" and Berserker's Rage's "no longer drain".
+- **NO WEAPON PLUS SHIELD WAS TESTED**: the item bases table holds no shield yet, so `dual_wielding` with a shield is the
+  design document's sentence, not a measurement.
+
+### WHAT WAS RULED
+
+- Q21, the owner's answer of 2026-11-24 ("Your recommendations work for all of those death/war questions"): Berserking
+  fires only outside Wrath and Frenzy.
+- R29, the War rulings the owner accepted on 2026-11-24 ("I'll go with your recommendations on the war rulings"): the
+  basic node is renamed Outnumbered; the Final Oath's option keeps the name. The coordinating session asked for it in
+  this branch.
+- The coordinating session, 2026-11-25: the War nodes that need a mechanism, grouped by mechanism, on a new branch. The
+  Berserker's states were the group the War survey found the most entries waiting on: the dual-wield condition 25, a
+  Fervour spend or drain 18, Frenzy 16, Wrath 7, Berserking 3.
+
+### GENRE RESEARCH
+
+A state that drains its resource each second and ends when the resource runs out is Path of Exile's: Berserk spends Rage
+each second while its buff holds ([poedb.tw/us/Berserk](https://poedb.tw/us/Berserk)), and Rage Vortex of Berserking
+"ends if you run out" of Rage ([poedb.tw/us/Rage_Vortex_of_Berserking](https://poedb.tw/us/Rage_Vortex_of_Berserking)).
+Diablo IV's Berserking is a timed buff instead ([maxroll.gg](https://maxroll.gg/d4/resources/barbarian-class-overview)),
+which the design's sentences do not take. **The research settles only the shape** (drain while held, end at empty); every
+number is the design's sentence, and the order and edges below are judgements.
+
+### THE THREE CONDITIONS
+
+- **`dual_wielding`**: two items in the weapon slots. A weapon and a Shield count, by the design document's Dual Wielding
+  sentence "A character holding a weapon and a Shield is dual wielding"; a two-handed weapon is stored once and is one
+  item; two under Both Hands Full are two. **Unknown refuses**: no equipment component, which is every enemy, reads -1.
+  Compares no number.
+- **`in_wrath`** and **`in_frenzy`**: the state `FCataclysmBerserkerStates` holds the character in. False is "not in it",
+  which every enemy is. Compare no number. Classed as depending on the class resource, since a state moves only when the
+  pool does or a regeneration step runs.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **A state begins at a full pool** (at or above `MaximumClassResourceAsked`, above nought) when its flag row holds:
+   Wrath's `wrath_on_full_fervour` under `wielding_two_handed_weapon`, Frenzy's `frenzy_on_full_fervour` under
+   `dual_wielding`. So "Two-handed weapons only" and "Dual wield only" are the flags' own conditions, and every bonus of
+   the state is a row under `in_wrath` or `in_frenzy`. **A judgement:** "when you reach maximum Fervour" is read as being
+   at the maximum when asked; the pool's change notice asks the moment it fills, and the regeneration step four times a
+   second after that.
+2. **A state ends** at an empty pool, as each sentence says, **and when its flag no longer holds** (a weapon swap). The
+   second is a judgement.
+3. **Wrath is asked before Frenzy.** Only a character under Both Hands Full meets both weapon rules. A judgement for a fixed
+   order, not a design statement.
+4. **The drain is a stat, `fervour_drain_per_second`**, taken every regeneration step from any row granting it, under any
+   condition; not scaled by generation, and not gated on combat. Wrath's 5 and Frenzy's 8 are rows under their states,
+   and the riders that drain more while a bonus is held can be rows too.
+5. **Frenzy's "all melee hits generate 2 additional Fervour"** is `fervour_per_hit_dealt` 2 on `Type.Melee` under
+   `in_frenzy`, paid where `hit_dealt` is raised, for a blow the character landed itself (not a minion's, which Conduit
+   also credits there). A judgement on the minion.
+6. **Berserking arms at a full pool** for a character in neither state holding its row, and stays armed when the pool then
+   falls; **it fires on the next attack whose skill tags reach the row** (`Type.Melee`) **and that struck at least one
+   enemy**, consumes the whole pool, and adds 10 a point times the Fervour consumed to that attack's increased damage,
+   on the sum Bought With Ruin uses. Three judgements: armed until used, a swing at the air spends nothing, and "+10%
+   bonus damage" is an increase.
+7. **"Your melee attacks deal +15% damage"** is `attack_damage` increased on `Type.Melee`: it names attacks, as the
+   Ravager's "your attacks deal 20% more damage" does, so the owner's 2026-08-25 rule that plain "damage" is attack and
+   spell damage does not reach it.
+8. **The player sees the state**: "Wrath", "Frenzy" or "Berserking ready" in the list of what affects the player, the
+   owner's rule of 2026-08-24 that a system must be seen in game.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Both reported `proved` True:
+a named test failed with the break in, and everything passed with it restored.
+
+| Break | Command | Named failures |
+|---|---|---|
+| Wrath's drain, `Berserker_twoh_001#3` in `PassiveEffects.csv`, 5.0 to 6.0 | `test_passive_effects_match_the_node_text.py` | `test_every_value_appears_in_the_nodes_own_description` |
+| Frenzy's flag stated under `in_frenzy` rather than `dual_wielding` in the rows script | `test_war_berserker_states_scripts.py` | `test_each_state_begins_under_its_weapon_rule_and_its_bonuses_hold_only_in_it`, `test_the_workbook_holds_the_rows`, `test_the_generated_csv_holds_the_rows` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.BerserkerStates.TheThreeConditionsReadTheWeaponSlotsAndTheHeldState` | the three judged; an enemy's count -1; a held state in the reading; a player's sword 1, sword and axe 2, greataxe 1 |
+| `Cataclysm.BerserkerStates.AFullPoolBeginsWrathItsDrainEmptiesThePoolAndAnEmptyPoolEndsIt` | 99 begins nothing and drains nothing; 100 begins Wrath; 5 a second; empty ends it; refilled begins it; flag gone ends it; the two-handed flag never holds with no weapon |
+| `Cataclysm.BerserkerStates.FrenzyBeginsAsWrathDoesAndEitherStateDisarmsBerserking` | Frenzy at full; Wrath first with both; Berserking armed at full and kept below it; a state disarms it; losing the row disarms it |
+| `Cataclysm.BerserkerStates.BerserkingConsumesThePoolOnTheNextMeleeAttackThatStrikesSomebody` | not melee: nothing (control); struck nobody: nothing; struck two: 1,000% and an empty pool; the next: nothing; in Wrath: nothing |
+| `Cataclysm.BerserkerStates.InFrenzyARealMeleeHitNoticeGainsTwoFervour` | outside Frenzy 0 (control); in Frenzy 2; not melee 0 |
+| `Cataclysm.BerserkerStates.AWarRateDrawsTheFervourBarAndTheListNamesTheState` | no rate no bar (control); a War rate draws it; the list names each state |
+| `Cataclysm.BerserkerStates.WrathFrenzyAndBerserkingGrantTheirRowsFromTheGeneratedTable` | the eight rows, after the editor step |
+
+Predicted counts: `Cataclysm.BerserkerStates.` 7. `Cataclysm.StatExemption.` unchanged in number; its keeper test runs
+five more probes.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. The state's end at an empty pool: in `CataclysmBerserkerStates.cpp`, `(Now == ECataclysmBerserkerState::Wrath && (Held
+   <= 0.0f || !bWrathAllowed))` becomes `(Now == ECataclysmBerserkerState::Wrath && (Held < -1.0f || !bWrathAllowed))`.
+   Must fail `AFullPoolBeginsWrathItsDrainEmptiesThePoolAndAnEmptyPoolEndsIt`.
+2. Berserking's melee scope: in `SpendBerserking`, `StatForSkill(FName(BerserkingDamagePerFervourStat), SkillTags, 0.0f)`
+   becomes `StatForSkill(FName(BerserkingDamagePerFervourStat), FGameplayTagContainer(UCataclysmDamageCalculation::MeleeTag()), 0.0f)`.
+   Must fail `BerserkingConsumesThePoolOnTheNextMeleeAttackThatStrikesSomebody` (the non-melee control spends).
+3. The War bar: in `CataclysmCombatOverlay.cpp`, `!FCataclysmWarFervour::HasARate(AbilitySystem)` becomes `true`. Must
+   fail `AWarRateDrawsTheFervourBarAndTheListNamesTheState`.
+
+---
+
 ## 2026-11-25 — Thirty War nodes given their rows with no new code: the War survey's twenty-three data-only nodes and options, and the eight rulings the owner accepted whose sentence is a row (slice D)
 
 **Affects:**
