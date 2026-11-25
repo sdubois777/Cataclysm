@@ -1805,6 +1805,20 @@ public:
 	static const TCHAR* FrenzyChainAction;
 
 	/**
+	 * Baited's taunt. The War vow options' fourth slice, V4a, 2026-11-25: "When one of your traps arms, every enemy
+	 * within 8 metres of it is drawn to it ... for 4 seconds or until the trap goes off". On `trap_armed` only: every
+	 * enemy within the row's Event Value in metres of the trap is taunted by the trap for the row's value in seconds,
+	 * through `UCataclysmTaunt::ApplyTaunt` with all its refusals. See `TauntEnemiesNearTrap`.
+	 */
+	static const TCHAR* TauntEnemiesNearTrapAction;
+
+	/**
+	 * Trail of Wire. V4a, 2026-11-25: "Each time you use your movement skill, the last trap you placed is placed again
+	 * where the movement began, armed at once." On `movement_skill` only. See `QueueLastTrapPlacedAgain`.
+	 */
+	static const TCHAR* PlaceLastTrapAgainAction;
+
+	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
 	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
 	 * `FCataclysmPoolAction::bRepeatSkill`.
@@ -4206,6 +4220,28 @@ public:
 	 */
 	int32 ChainFromStruck(const FCataclysmPoolAction& Action, const AActor* Struck);
 
+	/**
+	 * Baited's taunt from `Trap`: every enemy within `Action.EventValue` metres of it taunted by it for `Action.Percent`
+	 * seconds, through `UCataclysmTaunt::ApplyTaunt`, which keeps its refusals (bosses, a running taunt by another,
+	 * `Immune=Taunt`, the health ceiling, crowd-control resistance). Returns how many were taunted. V4a, 2026-11-25.
+	 */
+	int32 TauntEnemiesNearTrap(const FCataclysmPoolAction& Action, AActor* Trap);
+
+	/** The skill-trap slot this character last placed a skill trap from, for Trail of Wire. Called at each placing. */
+	void NoteSkillTrapPlaced(ECataclysmAbilitySlot Slot) { LastSkillTrapSlotPlaced = Slot; }
+
+	/** The skill-trap slot last placed from, or `None` before any and after a death. */
+	ECataclysmAbilitySlot LastSkillTrapSlotPlacedFrom() const { return LastSkillTrapSlotPlaced; }
+
+	/**
+	 * Trail of Wire: place a trap from the last slot placed from again where the avatar stands now, which is where the
+	 * movement begins (`movement_skill` is raised before the dash moves it), armed at once. ON THE NEXT TICK, through the
+	 * ordinary placement (`ACataclysmMinion::PlaceSkillTrap`): it reserves its Fervour and is refused when the pool
+	 * cannot hold it, and it raises `trap_placed` and `device_placed`, which a row's action could not raise at depth
+	 * one (ruled 2026-11-25). Returns whether a placing was queued: false before any trap was placed.
+	 */
+	bool QueueLastTrapPlacedAgain();
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
@@ -5787,6 +5823,9 @@ protected:
 
 	/** See `SetAttackBeingAnnouncedSent`. V3b, 2026-11-25. */
 	float AttackBeingAnnouncedSent = 0.0f;
+
+	/** See `LastSkillTrapSlotPlacedFrom`. V4a, 2026-11-25. */
+	ECataclysmAbilitySlot LastSkillTrapSlotPlaced = ECataclysmAbilitySlot::None;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

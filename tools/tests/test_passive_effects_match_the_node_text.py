@@ -724,7 +724,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 574 THE SAME DAY: four rows of V3b (`tools/reapply_war_vows_v3b_workbook.py`): Colossus Eternal's flag, save
 #: and bonus from current health, and Thousand Deaths' chain.
-AUTHORED_ROWS = 574
+#:
+#: AND TO 576 THE SAME DAY: two rows of V4a (`tools/reapply_war_vows_v4a_workbook.py`): Baited's taunt and Trail of
+#: Wire.
+AUTHORED_ROWS = 576
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1167,7 +1170,9 @@ AUTHORED_ROWS = 574
 #: AND TO 318 THE SAME DAY: Absorb and Return, with the third slice, V3a. Its
 #: other option rows (Thornwall, Wrath Incarnate's pulse, Eternal Hunger's) are
 #: on capstones already counted.
-AUTHORED_NODES = 318
+#: AND TO 320 THE SAME DAY: the Saboteur's First and Second Oaths, with V4a's
+#: Baited and Trail of Wire, the first rows on either capstone.
+AUTHORED_NODES = 320
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1279,7 +1284,9 @@ AUTHORED_NODES = 318
 #: Eternal Hunger's two are rows on options already counted.
 #: AND TO 60 THE SAME DAY: V3b -- Thousand Deaths (Berserker). Its capstone already had a row. Colossus Eternal's three
 #: are rows on an option already counted. Every Berserker and Bulwark option has a row from here.
-AUTHORED_OPTIONS = 60
+#: AND TO 62 THE SAME DAY: V4a -- Baited and Trail of Wire (Saboteur), the first rows on their capstones, which move
+#: `AUTHORED_NODES` too.
+AUTHORED_OPTIONS = 62
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2887,6 +2894,10 @@ VALUE_IN_WORDS = {
     ("Bulwark_capstone_200", "healing_received"): ("the healing you receive are doubled", 100.0),
     # AND ITS "your increases to Maximum HP count twice", a flag (V3b, 2026-11-25).
     ("Bulwark_capstone_200", "max_health_increases_count_twice"): ("your increases to maximum hp count twice", 1.0),
+    # BAITED AND TRAIL OF WIRE, the Saboteur's First and Second Oaths (V4a, 2026-11-25): action rows, keyed by their
+    # empty stat and condition. Baited's value is the taunt's seconds; Trail of Wire's is 100, always.
+    ("Saboteur_capstone_25", "", ""): ("for 4 seconds", 4.0),
+    ("Saboteur_capstone_50", "", ""): ("the last trap you placed is placed again", 100.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

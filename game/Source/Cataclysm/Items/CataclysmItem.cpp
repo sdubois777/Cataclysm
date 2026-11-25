@@ -1642,6 +1642,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bFrenzyChain = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::FrenzyChainAction,
 						ESearchCase::IgnoreCase);
+					// AND BAITED'S TAUNT AND TRAIL OF WIRE'S PLACING. V4a, 2026-11-25.
+					Action.bTauntNearTrap = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction,
+						ESearchCase::IgnoreCase);
+					Action.bPlaceLastTrapAgain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

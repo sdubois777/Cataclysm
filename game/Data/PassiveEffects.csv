@@ -573,3 +573,5 @@ Bulwark_capstone_200#5,Bulwark_capstone_200,max_health_increases_count_twice,fla
 Bulwark_capstone_200#6,Bulwark_capstone_200,lethal_hit_survived_above_health,flat,50.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_200#7,Bulwark_capstone_200,attack_damage,flat,2.0,,health_above,75.0,current_health,100.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_capstone_200#7,Berserker_capstone_200,,,60.0,,in_frenzy,0.0,,0.0,2,-1.0,0,0,frenzy_chain,hit_dealt,,0.0,0.0,0.0,0,dual_wielding,0.0,0.0,5.0,,0.0,0,0
+Saboteur_capstone_25#1,Saboteur_capstone_25,,,4.0,,,0.0,,0.0,1,-1.0,0,0,taunt_enemies_near_trap,trap_armed,,0.0,0.0,0.0,0,,0.0,0.0,8.0,,0.0,0,0
+Saboteur_capstone_50#1,Saboteur_capstone_50,,,100.0,,,0.0,,0.0,1,-1.0,0,0,place_last_trap_again,movement_skill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

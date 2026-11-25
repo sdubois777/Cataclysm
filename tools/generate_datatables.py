@@ -7468,6 +7468,8 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # The Saboteur's device conditions, 2026-11-25. `device_placed` carries the
     # wearer's own trap or gadget.
     "device_placed",
+    # V4a, 2026-11-25. `trap_armed` carries the wearer's own trap.
+    "trap_armed",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7611,6 +7613,29 @@ FRENZY_CHAIN_ACTION = "frenzy_chain"
 FRENZY_CHAIN_EVENTS = ("hit_dealt",)
 MAX_FRENZY_CHAIN_METRES = 20.0
 MAX_FRENZY_CHAIN_PERCENT = 1000.0
+
+#: The action that TAUNTS EVERY ENEMY within its Event Value in metres of the
+#: trap its event names, for its value in seconds, through the engine's taunt
+#: with all its refusals. The War vow options' fourth slice, V4a, 2026-11-25:
+#: Baited, "When one of your traps arms, every enemy within 8 metres of it is
+#: drawn to it: it goes for the trap instead of whatever it was attacking, for 4
+#: seconds or until the trap goes off". ON `trap_armed` ONLY.
+#: `UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction` holds the
+#: same name.
+TAUNT_NEAR_TRAP_ACTION = "taunt_enemies_near_trap"
+TAUNT_NEAR_TRAP_EVENTS = ("trap_armed",)
+MAX_TAUNT_NEAR_TRAP_METRES = 20.0
+MAX_TAUNT_NEAR_TRAP_SECONDS = 30.0
+
+#: The action that PLACES THE LAST SKILL TRAP AGAIN where the movement began,
+#: armed at once, through the ordinary placement. V4a, 2026-11-25: Trail of
+#: Wire, "Each time you use your movement skill, the last trap you placed is
+#: placed again where the movement began, armed at once". ON `movement_skill`
+#: ONLY. ITS VALUE IS 100, always, as a cooldown reset's is: the sentence states
+#: no chance. `UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction` holds
+#: the same name.
+PLACE_LAST_TRAP_AGAIN_ACTION = "place_last_trap_again"
+PLACE_LAST_TRAP_AGAIN_EVENTS = ("movement_skill",)
 
 #: The events a temporary absorb may be granted on: the clock, and no other
 #: until a sentence asks for one. The clock counts only while the wearer is in
@@ -7788,6 +7813,13 @@ ACTION_ONLY_EVENTS = (
     # ("the 10% fixed in the engine"): Wrath Incarnate's pulse is a
     # `retaliation_pulse` row on it. Clockless.
     "big_hit_taken",
+    # A TRAP OF THE WEARER'S ARMED: a skill trap at its arming time, at its step,
+    # by an arming action or at an arming time of nought, and a War machine trap
+    # when it is placed. Raised by `ACataclysmMinion::AnnounceTrapArmed` with the
+    # trap's tags, naming the trap, at depth nought. The War vow options' fourth
+    # slice, V4a, ruled 2026-11-25: Baited's taunt is a
+    # `taunt_enemies_near_trap` row on it. Clockless.
+    "trap_armed",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -7954,6 +7986,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     if action == FRENZY_CHAIN_ACTION:
         _check_frenzy_chain_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
+        return
+    if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION):
+        _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
+                          headers)
         return
     if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
         _check_kept_stacks_repeat_skill_action(index, who, action, event,
@@ -8408,6 +8444,32 @@ def _check_frenzy_chain_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} chains an attack and "
                 f"states {column} {written!r}. Its value is a share of what the "
                 f"attack sent and nothing else, so the column must be empty.")
+
+
+def _check_v4a_action(index: int, who: str, action: str, event: str,
+                      fraction_of: str, kind: str, raw,
+                      headers: dict[str, int]) -> None:
+    """Everything a Baited taunt row or a Trail of Wire row must say, and
+    everything it must not. The War vow options' fourth slice, V4a, 2026-11-25.
+    Each on its one event; the radius, the seconds and the value are checked
+    where they are read. A fraction, a value kind and a scale each mean nothing
+    here, so each is refused rather than dropped.
+    """
+    events = (TAUNT_NEAR_TRAP_EVENTS if action == TAUNT_NEAR_TRAP_ACTION
+              else PLACE_LAST_TRAP_AGAIN_EVENTS)
+    if event not in events:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts as {action} on the "
+            f"event {event or '(none)'!r}. It is ruled on {', '.join(events)} "
+            f"only.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts as {action} and "
+                f"states {column} {written!r}, which means nothing to it, so the "
+                f"column must be empty.")
 
 
 def _check_strike_target_action(index: int, who: str, action: str, event: str,
@@ -8954,6 +9016,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != TEMPORARY_ABSORB_ACTION \
                 and action != RETALIATION_PULSE_ACTION \
                 and action != FRENZY_CHAIN_ACTION \
+                and action != TAUNT_NEAR_TRAP_ACTION \
+                and action != PLACE_LAST_TRAP_AGAIN_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9305,6 +9369,22 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} pays a retaliation "
                 f"pulse of {low:g} to {high:g} per cent. It is above 0 and up "
                 f"to {MAX_RETALIATION_PULSE_PERCENT:g}.")
+
+    # BAITED'S VALUE IS THE TAUNT'S SECONDS, above 0 and up to the bound; TRAIL
+    # OF WIRE'S IS 100, always. V4a, 2026-11-25.
+    if action == TAUNT_NEAR_TRAP_ACTION:
+        if not (0 < low <= MAX_TAUNT_NEAR_TRAP_SECONDS
+                and 0 < high <= MAX_TAUNT_NEAR_TRAP_SECONDS):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts for {low:g} to "
+                f"{high:g} seconds. It is above 0 and up to "
+                f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
+    if action == PLACE_LAST_TRAP_AGAIN_ACTION:
+        if not (low == 100 and high == 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} places the last trap "
+                f"again with the value {low:g} to {high:g}. It is 100, always: "
+                f"the sentence states no chance.")
 
     # A FRENZY CHAIN'S VALUE IS A SHARE OF WHAT THE ATTACK SENT, above 0 and up
     # to the bound. V3b, 2026-11-25.
@@ -10001,6 +10081,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == TAUNT_NEAR_TRAP_ACTION:
+        # OR THE RADIUS OF BAITED'S TAUNT, in metres around the trap, required.
+        # V4a, 2026-11-25. See `TAUNT_NEAR_TRAP_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts the enemies "
+                f"near a trap and states no Event Value. It is the radius in "
+                f"metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_TAUNT_NEAR_TRAP_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} taunts within "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_TAUNT_NEAR_TRAP_METRES:g}.")
     elif action == FRENZY_CHAIN_ACTION:
         # OR THE RADIUS OF A FRENZY CHAIN, in metres around the enemy struck,
         # required. V3b, 2026-11-25. See `FRENZY_CHAIN_ACTION`.

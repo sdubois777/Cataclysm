@@ -65,6 +65,20 @@ namespace
 	}
 }
 
+int32 UCataclysmTaunt::EndTauntsBy(const AActor* Taunter)
+{
+	int32 Ended = 0;
+	for (auto It = TauntsHeld().CreateIterator(); It; ++It)
+	{
+		if (It.Value().Taunter.Get() == Taunter)
+		{
+			It.RemoveCurrent();
+			++Ended;
+		}
+	}
+	return Ended;
+}
+
 bool UCataclysmTaunt::ApplyTaunt(AActor* Taunter, AActor* Target, float Seconds)
 {
 	if (!Cast<ACataclysmCharacterBase>(Target) || !IsValid(Taunter) || Seconds <= 0.0f

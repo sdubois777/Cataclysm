@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fourth slice, first half (V4a): Baited draws enemies to a trap that arms, and Trail of Wire places the last trap again where the movement began
+
+**Affects:**
+- `tools/reapply_war_vows_v4a_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`: the first rows
+  on the Saboteur's First and Second Oaths. The generated table: `game/Data/PassiveEffects.csv` (576 rows).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an event, `trap_armed`, which names the wearer's own trap and so may carry no strike;
+  - an action, `taunt_enemies_near_trap`, on `trap_armed` only: its radius is in Event Value (above 0, up to 20), its
+    seconds are the value (above 0, up to 30);
+  - an action, `place_last_trap_again`, on `movement_skill` only, value 100;
+  - neither action takes a fraction, a value kind or a scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `AnnounceTrapArmed` raises `trap_armed` with the trap's tags, naming the trap, at depth nought: from inside a
+      row's action it waits for the next tick;
+    - it is raised where a skill trap becomes armed: at an arming time of nought, at its timer, at its step, and by
+      `ArmSkillTrapsNear`;
+    - a trap that goes off ends its taunts, before it rearms or is used up;
+    - `PlaceSkillTrap` records the slot placed from.
+  - `CataclysmSkillTemplates.cpp`: a War machine trap announces itself armed when it is placed.
+  - `CataclysmTaunt.h` and `.cpp`: `UCataclysmTaunt::EndTauntsBy`.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - the two action names, and the two actions in `ActOnEvent`;
+    - `TauntEnemiesNearTrap`;
+    - `NoteSkillTrapPlaced`, `LastSkillTrapSlotPlacedFrom` and `QueueLastTrapPlacedAgain`;
+    - the record clears at death.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bTauntNearTrap` and `bPlaceLastTrapAgain`.
+  - `CataclysmItem.cpp`: the builder sets both.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV4aTests.cpp` (new, three tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 576.
+  - Python:
+    - `tools/tests/test_war_vows_v4a_scripts.py` (new, fifteen).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the two names.
+    - `test_passive_effects_match_the_node_text.py`: 576 rows, 320 authored nodes, 62 authored options, and the two
+      action rows' words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2), as ruled on
+  2026-11-25:
+  - `Cataclysm.WarVowsV4a.`: three tests, new.
+  - `Cataclysm.Data.` (576), its count unchanged.
+  - The neighbouring groups, counts unchanged: `Cataclysm.SaboteurTrapTiming.` (the arming paths), `Cataclysm.Traps.`
+    (placement, the set-off and the rearm), `Cataclysm.SaboteurDevices.`, and the taunt's other users,
+    `Cataclysm.SetBonus.` (the Brute's and the Warlord's six-pieces) and `Cataclysm.Enchantments.`.
+- **TRAIL OF WIRE REPEATS SKILL TRAPS ONLY, A KNOWN LIMIT AND NOT NEW WORK** (ruled 2026-11-25, Q4). A War machine
+  trap is placed by casting its skill, which the engine cannot place again. So when the last trap placed was a War
+  trap, the movement skill places the last SKILL trap again, or nothing if none was placed.
+- **THE WAR TRAP'S "ARMED WHEN PLACED" HAS NO UNREAL TEST.** It is one call where a deployable skill places a machine
+  that is a trap. Placing one needs the deployable skill granted and cast, which the three new tests do not do.
+- **A TAUNTED ENEMY MAY DESTROY THE TRAP** (it has 40 health) before it goes off, which also ends the taunt. Noted in
+  the rulings, not a question.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V4, 2026-11-25, "every recommendation as written":
+- Q1: `trap_armed` at every arming path; a War machine trap counts as armed when placed.
+- Q2: the taunt through `UCataclysmTaunt::ApplyTaunt` with all its refusals kept: bosses, a running taunt by another,
+  `Immune=Taunt`, the health ceiling, and crowd-control resistance.
+- Q3: `EndTauntsBy` when the trap goes off.
+- Q4: skill traps only for Trail of Wire, "record it in the entry as a known limit of Trail of Wire, not as new work".
+- Q5: the ordinary placement, its reserve and events included.
+- Q6: "where the movement began" is where the player stands when the movement skill commits; Recall's first press
+  places nothing.
+
+### JUDGEMENTS
+
+- **An arming inside a row's action is announced on the next tick.** `ActOnEvent` acts at depth one, so a `trap_armed`
+  raised from `arm_traps_nearby`, or from Trail of Wire's copy, would be dropped. Waiting a tick keeps every arming
+  announced, as ruled.
+- **Trail of Wire's copy is placed on the next tick**, at the place taken when the movement skill was announced, for the
+  same reason. Its `trap_placed` and `device_placed` are then raised at depth nought, as Q5 requires.
+- **A copy the placement armed already (Hair Trigger) is not armed a second time**, so it is announced once.
+- **A trap that rearms is announced again when it arms again**: "when one of your traps arms".
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 80 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmAbilitySystemComponent.cpp` without `#include "AbilitySystem/CataclysmTaunt.h"` failed,
+  naming `UCataclysmTaunt` on line 6163.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Baited allowed on `trap_placed` | `pytest tools/tests/test_war_vows_v4a_scripts.py` | `test_baited_on_an_event_other_than_a_trap_arming_is_refused`, `test_the_names_are_the_generators` |
+| Trail of Wire's value of 100 not checked | the same | `test_trail_of_wire_with_a_value_other_than_100_is_refused` |
+| Baited given the default fraction of maximum | the same | `test_the_control_baited_is_read_with_its_radius_and_no_fraction` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV4a.ATrapThatArmsDrawsEveryEnemyWithinEightMetresToIt` | a trap with an arming time placed 30 m away has not armed, and the creature beside it is not taunted (the control); an instant trap placed 2 m east draws the creatures 3 and 7 m from it, for 4 s, and not the one 11 m from it; ending its taunts frees both |
+| `Cataclysm.WarVowsV4a.TheMovementSkillPlacesTheLastTrapAgainWhereTheMovementBeganArmed` | before any trap, the movement skill places none (the control); after a Heavy trap, it places a second, on the next tick, where the movement began and not where the player ended, from the Heavy slot, armed although the first is not (the control); a death clears the record |
+| `Cataclysm.WarVowsV4a.AWarPlayerTakingTheOptionsIsHandedTheirActions` | through `SetPassiveAllocation`: Baited's taunt (4 s, 8 m, on `trap_armed`) and Trail of Wire's placing; the third options hand over neither (the controls) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: `BeginSkillTrapArming` does not announce an arming time of nought (`AnnounceTrapArmed();` taken out of its `if (bSkillTrapArmed)`) | `Cataclysm.WarVowsV4a.` | `ATrapThatArmsDrawsEveryEnemyWithinEightMetresToIt` |
+
+**Dropped under that ruling:** a proof that Trail of Wire's copy is placed where the movement began (the location taken
+at the event replaced by the avatar's location on the next tick), which would fail
+`TheMovementSkillPlacesTheLastTrapAgainWhereTheMovementBeganArmed`.
+
+---
+
 ## 2026-11-25 — The War vow options' third slice, second half (V3b): Colossus Eternal's increases to maximum health counted twice, its save above half health and its bonus from current health; Thousand Deaths' chain
 
 **Affects:**

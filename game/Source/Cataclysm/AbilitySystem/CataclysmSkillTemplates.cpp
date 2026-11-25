@@ -4248,6 +4248,9 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 			if (Machine->IsTrap())
 			{
 				FCataclysmWarFervour::GainOnTrapPlaced(Theirs, MachineTags);
+				// AND ARMED AS IT IS PLACED, for `trap_armed`: a War trap has no arming step (Baited, V4a, ruled
+				// 2026-11-25).
+				Machine->AnnounceTrapArmed();
 			}
 			else
 			{

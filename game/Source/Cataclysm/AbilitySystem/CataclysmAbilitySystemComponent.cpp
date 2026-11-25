@@ -61,6 +61,7 @@
 #include "Engine/World.h"
 #include "GameplayTagContainer.h"
 #include "TimerManager.h"
+#include "AbilitySystem/CataclysmTaunt.h"
 // For the one spelling of "attack_damage" that ApplyTo records the stat under.
 // Issue #958.
 #include "Items/CataclysmItem.h"
@@ -3173,6 +3174,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// AND ETERNAL HUNGER'S PART OF IT, with it (V3a, 2026-11-25).
 	LeechAbsorb = 0.0f;
 	LastLeechHealedAtSeconds = -1.0f;
+	// AND TRAIL OF WIRE'S LAST TRAP, ruled 2026-11-25: the record clears at death (V4a).
+	LastSkillTrapSlotPlaced = ECataclysmAbilitySlot::None;
 
 	// AND THE RESISTANCE A ROW WAS HOLDING AT NOUGHT. Ruled 2026-10-12. A judgement by the writing session: the hold
 	// is a temporary thing laid on the character, and this function removes what is temporary. The revived
@@ -5111,6 +5114,10 @@ const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
 	TEXT("frenzy_chain");
+const TCHAR* UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction =
+	TEXT("taunt_enemies_near_trap");
+const TCHAR* UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction =
+	TEXT("place_last_trap_again");
 
 namespace
 {
@@ -6140,6 +6147,55 @@ void UCataclysmAbilitySystemComponent::DecayLeechAbsorb(float Seconds)
 								  GetNumericAttribute(MaxHealthAttribute) * PercentPerSecond / 100.0f * Seconds);
 	LeechAbsorb -= Lost;
 	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - Lost);
+}
+
+int32 UCataclysmAbilitySystemComponent::TauntEnemiesNearTrap(const FCataclysmPoolAction& Action, AActor* Trap)
+{
+	AActor* Self = GetAvatarActor();
+	UWorld* World = GetWorld();
+	if (!Self || !World || !IsValid(Trap) || Action.Percent <= 0.0f || Action.EventValue <= 0.0f)
+	{
+		return 0;
+	}
+	int32 Taunted = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(World, Self, Trap->GetActorLocation(),
+																	Action.EventValue * 100.0f))
+	{
+		Taunted += UCataclysmTaunt::ApplyTaunt(Trap, Enemy, Action.Percent) ? 1 : 0;
+	}
+	return Taunted;
+}
+
+bool UCataclysmAbilitySystemComponent::QueueLastTrapPlacedAgain()
+{
+	AActor* const Avatar = GetAvatarActor();
+	UWorld* const World = GetWorld();
+	const ECataclysmAbilitySlot Slot = LastSkillTrapSlotPlaced;
+	if (!Avatar || !World || Slot == ECataclysmAbilitySlot::None)
+	{
+		return false;
+	}
+	// WHERE THE MOVEMENT BEGAN, taken now, before the dash has moved the avatar.
+	const FVector Where = Avatar->GetActorLocation();
+	const TWeakObjectPtr<AActor> Placer(Avatar);
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [Placer, Slot, Where]()
+	{
+		AActor* const Player = Placer.Get();
+		if (!Player || UCataclysmSkillEffects::IsDead(Player))
+		{
+			return;
+		}
+		// THE ORDINARY PLACEMENT, AND THEN ARMED AT ONCE: an arming time of nought arms it now and says so. A trap the
+		// placement armed already (Hair Trigger) is left as it is, so it is not announced twice.
+		if (ACataclysmMinion* Placed = ACataclysmMinion::PlaceSkillTrap(Player, Slot, Where))
+		{
+			if (!Placed->bSkillTrapArmed)
+			{
+				Placed->BeginSkillTrapArming(0.0f);
+			}
+		}
+	}));
+	return true;
 }
 
 int32 UCataclysmAbilitySystemComponent::ChainFromStruck(const FCataclysmPoolAction& Action, const AActor* Struck)
@@ -7713,6 +7769,27 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// BAITED'S TAUNT, V4a (2026-11-25): landed only, on an event naming the trap, with the row's trigger cooldown.
+		if (Action.bTauntNearTrap)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action))
+			{
+				if (TauntEnemiesNearTrap(Action, const_cast<AActor*>(EventTarget)) > 0)
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// TRAIL OF WIRE, V4a (2026-11-25): the last trap placed again, queued for the next tick.
+		if (Action.bPlaceLastTrapAgain)
+		{
+			if (bLanded && TriggerReady(Action) && QueueLastTrapPlacedAgain())
+			{
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}

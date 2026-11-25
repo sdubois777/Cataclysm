@@ -4985,6 +4985,20 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bFrenzyChain = false;
 
 	/**
+	 * Set, this action TAUNTS EVERY ENEMY within `EventValue` metres of the trap its event names, for `Percent` seconds:
+	 * Baited, V4a, 2026-11-25. On `trap_armed` only. See `UCataclysmAbilitySystemComponent::TauntEnemiesNearTrap`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTauntNearTrap = false;
+
+	/**
+	 * Set, this action PLACES THE LAST TRAP AGAIN where the movement began, armed at once: Trail of Wire, V4a,
+	 * 2026-11-25. On `movement_skill` only. See `UCataclysmAbilitySystemComponent::QueueLastTrapPlacedAgain`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlaceLastTrapAgain = false;
+
+	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
 	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague

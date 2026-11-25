@@ -1314,6 +1314,15 @@ public:
 	/** The arming timer's call: arm this trap, then run its step. See `BeginSkillTrapArming`. */
 	void SkillTrapArmingTimeReached();
 
+	/**
+	 * Tell this trap's player it has armed: `trap_armed`, with the trap's tags, naming the trap. The War vow options'
+	 * fourth slice, V4a, 2026-11-25, ruled: raised wherever a skill trap becomes armed (its timer, its step, an arming
+	 * action and an arming time of nought), and by a War machine trap when it is placed, since it has no arming step.
+	 * RAISED AT DEPTH NOUGHT: an arming inside a row's action (`arm_traps_nearby`, Trail of Wire's copy) would be dropped
+	 * by `ActOnEvent`'s depth of one, so it waits for the next tick then. Nothing for a trap with no player.
+	 */
+	void AnnounceTrapArmed();
+
 	/** The one-shot timer `BeginSkillTrapArming` sets. */
 	FTimerHandle SkillTrapArmingTimer;
 

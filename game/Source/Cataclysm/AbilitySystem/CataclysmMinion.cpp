@@ -2785,6 +2785,11 @@ void ACataclysmMinion::BeginSkillTrapArming(float Seconds)
 	SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + FMath::Max(0.0f, Seconds);
 	bSkillTrapArmed = Seconds <= 0.0f;
 	ShowSkillTrapTint();
+	// ARMED NOW, AND SAID SO (V4a, 2026-11-25): an arming time of nought is an arming.
+	if (bSkillTrapArmed)
+	{
+		AnnounceTrapArmed();
+	}
 	if (!World)
 	{
 		return;
@@ -2815,8 +2820,31 @@ void ACataclysmMinion::SkillTrapArmingTimeReached()
 		bSkillTrapArmed = true;
 		SkillTrapArmsAtAgeSeconds = FMath::Min(SkillTrapArmsAtAgeSeconds, GetGameTimeSinceCreation());
 		ShowSkillTrapTint();
+		AnnounceTrapArmed();
 	}
 	StepSkillTrap();
+}
+
+void ACataclysmMinion::AnnounceTrapArmed()
+{
+	AActor* const Player = Summoner.Get();
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	if (!Theirs || !IsTrap() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	if (Theirs->IsActingOnAnEvent())
+	{
+		if (UWorld* const World = GetWorld())
+		{
+			World->GetTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateWeakLambda(this, [this]() { AnnounceTrapArmed(); }));
+		}
+		return;
+	}
+	const FGameplayTagContainer TrapTags = TypeTags;
+	Theirs->ActOnEvent(FName(TEXT("trap_armed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
 }
 
 float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
@@ -2917,6 +2945,8 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player)))
 	{
 		const FGameplayTagContainer TrapTags = Placed->TypeTags;
+		// AND WHICH SLOT IT CAME FROM, for Trail of Wire's "the last trap you placed" (V4a, 2026-11-25).
+		Theirs->NoteSkillTrapPlaced(Slot);
 		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
 		// AND `device_placed`, BESIDE IT: placing a trap or a gadget, one event for either. The Saboteur's device
 		// conditions, 2026-11-25 (the coordinating session's ruling), for Razor Instincts, "+3% evasion chance per point
@@ -2976,6 +3006,7 @@ bool ACataclysmMinion::StepSkillTrap()
 		}
 		bSkillTrapArmed = true;
 		ShowSkillTrapTint();
+		AnnounceTrapArmed();
 	}
 
 	// A TRAP THAT CANNOT ACT, OF A PLAYER GONE OR DEAD, OR WHOSE SLOT IS NO LONGER CONVERTED, WAITS ARMED, as a skill
@@ -3073,6 +3104,10 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// AND THE SABOTEUR'S FERVOUR FOR THE TRIGGER, once per trigger as the event is. Nought for every character without
 	// `fervour_per_trap_triggered`. Slice C, 2026-11-24.
 	FCataclysmWarFervour::GainOnTrapTriggered(Theirs, TrapTags);
+
+	// AND THE TAUNTS IT HOLDS END, "until the trap goes off" (Baited, V4a, ruled 2026-11-25): a trap that rearms below is
+	// not destroyed, so its taunts would otherwise run on. A used-up trap's would end by themselves.
+	UCataclysmTaunt::EndTauntsBy(this);
 
 	// OR IT REARMS, "Triggered traps have a 25%-50% chance to reset and rearm instead of being consumed" (traps layer 4,
 	// F1 to F3): ROLLED AT EVERY TRIGGER, after the event above, which is raised at every trigger. A trap that passes
@@ -3316,11 +3351,13 @@ int32 ACataclysmMinion::ArmSkillTrapsNear(const AActor* Player, const FVector& P
 	}
 	for (ACataclysmMinion* Each : Unarmed)
 	{
-		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Nothing else of it is touched: no event, its life span and
-		// the cap as they were.
+		// AS IF ITS ARMING TIME HAD PASSED, AND DRAWN ARMED (H2). Its life span and the cap as they were. AND `trap_armed`
+		// SINCE V4a (2026-11-25), ruled "at every arming path": raised on the next tick, since this runs inside a row's
+		// action.
 		Each->bSkillTrapArmed = true;
 		Each->SkillTrapArmsAtAgeSeconds = FMath::Min(Each->SkillTrapArmsAtAgeSeconds, Each->GetGameTimeSinceCreation());
 		Each->ShowSkillTrapTint();
+		Each->AnnounceTrapArmed();
 	}
 	return Unarmed.Num();
 }
