@@ -538,8 +538,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Count (two) and Long Shadow; the Soul Collector 95. AND 549 FOR SLICE C3e:
 	// Empty Hands and Chained Souls; the Soul Collector 97. AND 560 FOR SLICE C4a:
 	// Soul Tide, Gleaning and Thinning the Herd, the Soul Collector 100; the Shadow's
-	// Death's Patience, Flicker, Clean Kill (four) and Hunting Leap (two), the Shadow 77.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        560)
+	// Death's Patience, Flicker, Clean Kill (four) and Hunting Leap (two), the Shadow 77. AND
+	// 564 FOR SLICE C4b1: Any Fuel, Borrowed Time (two) and Kindred Fires, the Soul Collector 104.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        564)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

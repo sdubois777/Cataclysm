@@ -1,0 +1,150 @@
+"""Every gain to the class resource pool goes through `UCataclysmFervour::RaisePool`.
+
+WHY THIS EXISTS. The Soul Collector's Kindred Fires and Borrowed Time act on every gain of Fervour (the Death trees'
+slice C4b1, 2026-11-25), and a gain that writes the pool by itself is one they never hear of. There is no hook on the
+attribute that could hear it instead: `UAbilitySystemComponent::ApplyModToAttribute` reaches the pool through
+`FActiveGameplayEffectsContainer::ApplyModToAttribute`, which only calls `SetAttributeBaseValue`, so the attribute
+set's `PostGameplayEffectExecute` never runs; and the hooks that do run also see `SetNumericAttributeBase`, which the
+coordinating session ruled is no gain (read in the UE 5.8 source on 2026-11-25). So every gain calls the helper, and
+this check is what keeps a new one from skipping it: the War session's Fervour sources and the Death skills' kill
+Fervour add gain paths when they merge.
+
+WHAT IS ASSERTED. Every `ApplyModToAttribute` call outside the tests, counted by file and the function it sits in, is
+in `INVENTORY` with the reason it is not a gain to the pool, and nothing listed has gone; and each function that gains
+the pool calls `RaisePool`. A new call fails until it is listed, which is the point: listing it means saying why it is
+not a gain. Read from the source with comments and strings removed, because continuous integration compiles no C++.
+"""
+
+from __future__ import annotations
+
+import collections
+import pathlib
+import re
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SOURCE = ROOT / "game" / "Source"
+
+#: A function definition at the start of a line: a return type, then `Class::Name(`.
+DEFINITION = re.compile(r"^[A-Za-z_][\w:<>,\*&\s]*?\b((?:[A-Za-z_]\w*::)+~?[A-Za-z_]\w*)\s*\(")
+CALL = re.compile(r"\bApplyModToAttribute\s*\(")
+
+FERVOUR = "game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp"
+ASC = "game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp"
+
+#: Every `ApplyModToAttribute` call outside the tests: (file, function) -> (how many, why it is not a gain to the pool).
+INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
+    (FERVOUR, "UCataclysmFervour::RaisePool"): (1, "the helper itself: the one positive write to the pool"),
+    (FERVOUR, "UCataclysmFervour::Move"): (1, "the loss branch only; its gain branch calls RaisePool"),
+    (FERVOUR, "UCataclysmFervour::DecayStep"): (1, "the Ravager's decay out of contact, a negative change"),
+    (FERVOUR, "UCataclysmFervour::KillDecayStep"): (1, "the Death classes' decay after a kill, a negative change"),
+    (FERVOUR, "UCataclysmFervour::RestoreHealthOnKill"): (1, "Wrung Out's spend of Fervour, a negative change"),
+    (FERVOUR, "UCataclysmFervour::BuyDamageForEnemiesStruckTogether"): (1, "a spend of Fervour, a negative change"),
+    (ASC, "UCataclysmAbilitySystemComponent::TakeFervourForLethalSave"): (1, "Phylactery's spend, a negative change"),
+    (ASC, "UCataclysmAbilitySystemComponent::ApplyPoolAction"): (
+        1, "a row's drain of any pool, floored, a negative change; its gain branch goes through TopUp"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp", "UCataclysmRegeneration::TopUp"): (
+        1, "a top-up of a pool other than the class resource; the class resource goes through RaisePool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp", "UCataclysmGameplayAbility::ApplyCost"): (
+        2, "a skill's Fervour cost and its charged Fervour, both negative changes"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp", "UCataclysmGameplayAbility::ApplyCooldown"): (
+        1, "Fervour borrowed for a cooldown, a negative change"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp", "UCataclysmAuraSkill::Pulse"): (
+        1, "an aura's charged Fervour, a negative change"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp", "UCataclysmDelayedDamage::DrainStep"): (
+        1, "health, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp", "UCataclysmHealthDebt::Defer"): (
+        1, "the health owed, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp", "UCataclysmHealthDebt::DrainIfDue"): (
+        1, "health, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp",
+     "UCataclysmHealthDebt::DrainWhileDebtExceedsHealth"): (1, "health, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::StepNoDamageAndDrain"): (
+        1, "a minion's health, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::PayHealthCost"): (
+        1, "health, not the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::PayManaOnHitTo"): (
+        1, "mana, not the pool"),
+    ("game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::StepSufferingAura"): (
+        1, "mana, not the pool"),
+}
+
+#: Every function that gains the pool, each of which has to call `RaisePool`.
+GAINS = (
+    (FERVOUR, "UCataclysmFervour::Move"),
+    (FERVOUR, "UCataclysmFervour::GainPerSecondStep"),
+    (FERVOUR, "UCataclysmFervour::GainForCast"),
+    (FERVOUR, "UCataclysmFervour::GainOnDroppingLow"),
+    (FERVOUR, "UCataclysmFervour::GainForEnemiesHit"),
+    (FERVOUR, "UCataclysmFervour::GainOnMinionDeath"),
+    (FERVOUR, "UCataclysmFervour::GainOnEnemyDeathNearby"),
+    (FERVOUR, "UCataclysmFervour::GainOnOwnKill"),
+    (ASC, "UCataclysmAbilitySystemComponent::ReturnFervourDue"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp", "UCataclysmRegeneration::TopUp"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::FervourOnce"),
+)
+
+
+def code_only(text: str) -> str:
+    """Comments and string contents removed, keeping every line where it was."""
+    text = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
+    text = re.sub(r"//[^\n]*", "", text)
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
+
+
+def bodies() -> dict[tuple[str, str], str]:
+    """The code of each function in every .cpp outside the tests, keyed by (file, Class::Name)."""
+    found: dict[tuple[str, str], list[str]] = collections.defaultdict(list)
+    for path in sorted(SOURCE.rglob("*.cpp")):
+        relative = path.relative_to(ROOT).as_posix()
+        if "/Tests/" in relative:
+            continue
+        function = ""
+        for line in code_only(path.read_text(encoding="utf-8", errors="replace")).splitlines():
+            match = DEFINITION.match(line)
+            if match:
+                function = match.group(1)
+            found[(relative, function)].append(line)
+    return {key: "\n".join(lines) for key, lines in found.items()}
+
+
+def call_sites() -> collections.Counter:
+    return collections.Counter({key: len(CALL.findall(body)) for key, body in bodies().items()
+                                if CALL.search(body)})
+
+
+def test_every_call_site_is_in_the_inventory():
+    found = call_sites()
+    unlisted = sorted((key, count) for key, count in found.items()
+                      if key not in INVENTORY or INVENTORY[key][0] != count)
+    assert not unlisted, (
+        "these ApplyModToAttribute calls are not in INVENTORY, or not as many as it says:\n"
+        + "\n".join(f"  {path}  {function}: {count}" for (path, function), count in unlisted)
+        + "\n\nA positive change to the class resource pool must go through UCataclysmFervour::RaisePool, or "
+          "Kindred Fires and Borrowed Time never hear of it. Anything else: list it with why it is not a gain. "
+          f"Scope: {sum(found.values())} calls in {len(found)} functions, every .cpp under game/Source but the tests.")
+
+
+def test_the_inventory_holds_no_call_site_that_has_gone():
+    found = call_sites()
+    gone = sorted(key for key in INVENTORY if key not in found)
+    assert not gone, f"listed in INVENTORY and no longer in the source: {gone}"
+
+
+def test_every_gain_to_the_pool_calls_the_helper():
+    every = bodies()
+    missing = [key for key in GAINS if key not in every]
+    assert not missing, f"these gain functions were not found by name: {missing}"
+    skipping = [key for key in GAINS if "RaisePool(" not in every[key]]
+    assert not skipping, f"these functions gain the pool without UCataclysmFervour::RaisePool: {skipping}"
+
+
+def test_the_kill_payment_is_marked_for_its_whole_length():
+    """Any Fuel and Borrowed Time tell a kill's payment apart by the marker GainOnOwnKill opens."""
+    body = bodies()[(FERVOUR, "UCataclysmFervour::GainOnOwnKill")]
+    opened = body.find("BeginKillPayment()")
+    closed = body.find("EndKillPayment()")
+    paid = body.find("RaisePool(")
+    assert 0 <= opened < paid and 0 <= closed, (
+        "GainOnOwnKill must open the kill-payment marker before it pays and close it on the way out")
+    assert re.search(r"ON_SCOPE_EXIT\s*\{\s*Paying->EndKillPayment\(\);\s*\}", body), (
+        "the marker must be closed on every way out of GainOnOwnKill, by ON_SCOPE_EXIT")

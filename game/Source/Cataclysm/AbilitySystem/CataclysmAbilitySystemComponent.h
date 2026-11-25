@@ -4151,6 +4151,50 @@ public:
 	bool KillDecayIsHeld() const;
 
 	/**
+	 * The grace the last kill set, in seconds: the full length of the hold it began. -1 for a character that has never
+	 * killed. Recorded by `NoteOwnKill`. The Death trees' slice C4b1 (2026-11-25), for Kindred Fires and Borrowed Time,
+	 * whose "full length" it is, as ruled.
+	 */
+	float LastKillGraceSeconds() const { return LastKillDecayGraceSeconds; }
+
+	/**
+	 * Hold the decay off from now for `Seconds`, as a kill does: Kindred Fires, "the time before your Fervour begins to
+	 * decay starts again". THE HOLD NEVER SHORTENS, as `NoteOwnKill` says: a hold already running longer is kept. The
+	 * Death trees' slice C4b1 (2026-11-25).
+	 */
+	void RestartKillDecayHold(float Seconds);
+
+	/**
+	 * Lengthen a hold that is still running by `Seconds`, never past now plus `FullLengthSeconds` and never shortening
+	 * it: Borrowed Time, "the time before your Fervour begins to decay is extended by 1 second for every 3 points, never
+	 * past its full length". A hold that has ended, or never began, is not extended, as ruled: once decay has begun
+	 * there is no time before it left to lengthen. The Death trees' slice C4b1 (2026-11-25).
+	 */
+	void ExtendKillDecayHold(float Seconds, float FullLengthSeconds);
+
+	/**
+	 * Mark the start and the end of paying a kill's Fervour (`UCataclysmFervour::GainOnOwnKill`). The Death trees' slice
+	 * C4b1 (2026-11-25). While one is open, a gain is a kill's payment: Any Fuel's condition
+	 * (`ECataclysmStatCondition::FervourGainNotFromAKill`) refuses and Borrowed Time does not extend the hold. COUNTED
+	 * RATHER THAN A FLAG, so a payment made inside another leaves the outer one marked. A skill's own kill Fervour must
+	 * open one too when it lands, as the coordinating session ruled.
+	 */
+	void BeginKillPayment() { ++KillPaymentsOpen; }
+	void EndKillPayment() { KillPaymentsOpen = FMath::Max(0, KillPaymentsOpen - 1); }
+
+	/** Whether a kill's Fervour is being paid now. See `BeginKillPayment`. */
+	bool IsPayingForAKill() const { return KillPaymentsOpen > 0; }
+
+	/**
+	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
+	 * hand, so a row under `target_rarity_is` or `target_rarity_at_least` can be judged. The Death trees' slice C4b1
+	 * (2026-11-25): before any kill, the full length of the decay hold is a common kill's grace, as ruled, and the grace
+	 * rows are written against the slain creature's rung. Everything else is read as `StatForSkill` reads it with no
+	 * tags and no target. `Fallback` when the stat has no line.
+	 */
+	float StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const;
+
+	/**
 	 * One enemy in this character's Siphon (the Death trees' slice C2, 2026-11-25): when it entered, and when it was
 	 * last within the Siphon's radius, both in world seconds. Kept by `FCataclysmSiphon::Step`.
 	 */
@@ -5872,6 +5916,12 @@ protected:
 	 * character that has never killed. See `NoteOwnKill`.
 	 */
 	float KillDecayHeldUntilSeconds = -1.0f;
+
+	/** The grace the last kill set, in seconds; -1 before any kill. See `LastKillGraceSeconds`. */
+	float LastKillDecayGraceSeconds = -1.0f;
+
+	/** How many kill payments are open. See `BeginKillPayment`. */
+	int32 KillPaymentsOpen = 0;
 
 	/** Who is in this character's Siphon. See `SiphonMembers`. The Death trees' slice C2, 2026-11-25. */
 	TMap<TWeakObjectPtr<AActor>, FSiphonMember> SiphonMemberRecord;

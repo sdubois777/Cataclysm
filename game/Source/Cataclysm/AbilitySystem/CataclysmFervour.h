@@ -722,6 +722,47 @@ public:
 	static float GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
 
 	/**
+	 * Add `Change` to the class resource pool and answer how much it rose. THE ONE WAY A GAIN REACHES THE POOL: every
+	 * function here that fills it, Cinders Kept's return (`UCataclysmAbilitySystemComponent::ReturnFervourDue`), the
+	 * Siphon, and a class resource top-up through `UCataclysmRegeneration::TopUp` call this rather than
+	 * `ApplyModToAttribute`, and `tools/tests/test_every_gain_to_the_pool_goes_through_raise_pool.py` fails on any
+	 * other positive write. The Death trees' slice C4b1 (2026-11-25), as ruled.
+	 *
+	 * WHY A HELPER AND NOT A HOOK ON THE ATTRIBUTE. `UAbilitySystemComponent::ApplyModToAttribute` reaches the pool
+	 * through `FActiveGameplayEffectsContainer::ApplyModToAttribute`, which only calls `SetAttributeBaseValue`: the
+	 * attribute set's `PostGameplayEffectExecute` never runs, and the hooks that do run see `SetNumericAttributeBase`
+	 * too, which a loaded save and a creature raised holding Fervour use and which the coordinating session ruled is no
+	 * gain (read in the UE 5.8 source on 2026-11-25).
+	 *
+	 * CLAMPED AT THE MAXIMUM, here as well as by every caller, as every gain was before this: what does not fit is lost.
+	 * A rise is then handed to Kindred Fires and Borrowed Time. Nought, and nothing written, for a change of nought or
+	 * less, a full bar, or an ability system with no class resource set.
+	 */
+	static float RaisePool(UAbilitySystemComponent* AbilitySystem, float Change);
+
+	/**
+	 * The stat that makes every gain hold off decay as a kill does: the Soul Collector's Kindred Fires, "Fervour you gain
+	 * from any source, not only a kill, holds off decay as a kill does: the time before your Fervour begins to decay
+	 * starts again". Above nought, a rise of the pool restarts the hold at its full length (`KillDecayHoldFullSeconds`).
+	 * The Death trees' slice C4b1 (2026-11-25). No attribute and no base.
+	 */
+	static const TCHAR* HoldRestartedByAnyGainStat;
+
+	/**
+	 * The seconds a gain that is not a kill's payment lengthens a running hold by: the Soul Collector's Borrowed Time,
+	 * "extended by 1 second for every 3 points, never past its full length", a row at 3 points and one at 6. The Death
+	 * trees' slice C4b1 (2026-11-25). No attribute and no base.
+	 */
+	static const TCHAR* HoldExtendedOnGainSecondsStat;
+
+	/**
+	 * The full length of the hold before decay, in seconds, as ruled: the grace the last kill set, and before any kill
+	 * a common kill's grace (`KillDecayGraceSecondsStat` asked as if against rung 0). The Death trees' slice C4b1
+	 * (2026-11-25). Nought for an ability system that is not this game's.
+	 */
+	static float KillDecayHoldFullSeconds(const UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Take away the Fervour a step this long costs once the grace after the last kill has run out, and answer what left.
 	 * The Soul Collector's "Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you
 	 * kill again" and the Shadow's "drains at 10 per second".
@@ -823,6 +864,12 @@ public:
 	static bool HasAGenerator(const UAbilitySystemComponent* AbilitySystem);
 
 private:
+	/**
+	 * What a rise of the pool does to the hold before decay: Kindred Fires restarts it for any rise; otherwise Borrowed
+	 * Time lengthens a running hold for a rise that is not a kill's payment. Called by `RaisePool` only.
+	 */
+	static void AfterPoolRose(UAbilitySystemComponent* AbilitySystem, float Rise);
+
 	/** The three stat names above, and the attribute each drives. Built once. */
 	static const TMap<FString, FGameplayAttribute>& RateAttributes();
 

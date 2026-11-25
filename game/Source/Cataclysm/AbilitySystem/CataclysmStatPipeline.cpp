@@ -158,6 +158,7 @@ namespace
 		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
 		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
 		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
+		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
 	};
 
 	struct FNamedStatScale
@@ -378,8 +379,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
 	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+	case ECataclysmStatCondition::FervourGainNotFromAKill:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-seven says
+		// nothing for a number to be compared against. Each of the thirty-eight says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -603,6 +605,12 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK OR SLAIN CREATURE CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a: a fact of the
 	// target in hand, as the curse above is.
 	case C::TargetCarriesYourPoisonOrBleed:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
+	// in hand, as a skill's kind is of the skill. It changes only while a kill is being paid for, and nothing outside
+	// a gain asks it.
+	case C::FervourGainNotFromAKill:
 		return EOn::TheBlowOrSkill;
 
 	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
@@ -1356,6 +1364,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`, as the curse above is. The Death
 		// trees' slice C4a (2026-11-25).
 		return State.bTargetCarriesYourPoisonOrBleed;
+
+	case ECataclysmStatCondition::FervourGainNotFromAKill:
+		// FILLED BY `CurrentConditions` FROM THE KILL-PAYMENT MARKER, the Death trees' slice C4b1 (2026-11-25): true
+		// unless a kill's Fervour is being paid. A state with no asker in hand stays false and refuses.
+		return State.bFervourGainNotFromAKill;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

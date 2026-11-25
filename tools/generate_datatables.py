@@ -5420,6 +5420,14 @@ CONDITIONS = {
     # as the curse above. IT TAKES NO VALUE, and it is one of
     # `CONDITIONS_OF_A_HIT_DEALT`, a fact of the target in hand.
     "target_carries_your_poison_or_bleed": None,
+    # "Fervour gained from sources other than kills" is
+    # `fervour_gain_not_from_a_kill`: the Soul Collector's Any Fuel, the Death
+    # trees' slice C4b1 (2026-11-25), a row on `class_resource_generation`, the
+    # rate every gain is scaled by. It holds unless a kill's Fervour is being paid
+    # (`UCataclysmAbilitySystemComponent::IsPayingForAKill`). IT TAKES NO VALUE. A
+    # fact of the gain in hand, read by `CurrentConditions`, so not one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "fervour_gain_not_from_a_kill": None,
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -10939,6 +10947,12 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # `UCataclysmAbilitySystemComponent::IncreasesForStat`, with the wearer's state.
     # Probed by `ProbeConditionedSkillRange`.
     "skill_range": ASKER_PASSES_NOTHING_MORE,
+    # AND THE RATE EVERY GAIN OF THE CLASS RESOURCE IS SCALED BY, the Death trees'
+    # slice C4b1, for the Soul Collector's Any Fuel under
+    # `fervour_gain_not_from_a_kill`: asked with no tags by
+    # `UCataclysmAbilitySystemComponent::ClassResourceGainScaled`, with the
+    # wearer's state. Probed by `ProbeConditionedClassResourceGeneration`.
+    "class_resource_generation": ASKER_PASSES_NOTHING_MORE,
     "cooldowns_recover_faster_percent": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by

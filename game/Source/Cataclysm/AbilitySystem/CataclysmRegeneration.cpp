@@ -4,6 +4,7 @@
 // For asking the pipeline what a rate is worth, rather than reading the
 // gameplay attribute it was folded into. Issue #1038.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the Necrosis tag, whose carrier is healed by nothing. Issue #920.
 #include "AbilitySystem/CataclysmDebuffs.h"
@@ -329,7 +330,16 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	}
 
 	const float Restored = FMath::Min(Gain, Ceiling - Current);
-	AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
+	// THE CLASS RESOURCE THROUGH THE ONE HELPER EVERY GAIN TO IT TAKES, so Kindred Fires and Borrowed Time see a row's
+	// gain (the Death trees' slice C4b1, 2026-11-25); every other pool as before.
+	if (Pool == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+	{
+		UCataclysmFervour::RaisePool(&AbilitySystem, Restored);
+	}
+	else
+	{
+		AbilitySystem.ApplyModToAttribute(Pool, EGameplayModOp::Additive, Restored);
+	}
 
 	// AND HEALTH COMING BACK EMPTIES FERVOUR. Issue #954. The Masochist's
 	// starting node states it: "healing removes Fervour at the same rate, 1 per

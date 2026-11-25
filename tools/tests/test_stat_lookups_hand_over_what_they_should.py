@@ -421,6 +421,16 @@ INVENTORY = {
         "Clean Kill's share of maximum health on a kill by a critical strike, "
         "asked with no tags because it is for the kill and not a skill; no "
         "attribute, so nought is the fallback. The Death trees' slice C4a",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f'):
+        "Kindred Fires' switch, asked on each rise of the pool with no tags "
+        "because it is for the gain and not a skill; no attribute, so nought is "
+        "the fallback. The Death trees' slice C4b1",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Borrowed Time's seconds, asked on a rise that is not a kill's payment, "
+        "with no tags for the same reason; no attribute, so nought is the "
+        "fallback. The Death trees' slice C4b1",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

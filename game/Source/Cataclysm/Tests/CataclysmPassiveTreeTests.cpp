@@ -3552,7 +3552,10 @@ namespace CataclysmPassiveConditionTest
 			// THE DEATH TREES' SLICE C4a (2026-11-25), DEATH'S PATIENCE'S "AN ENEMY THAT CARRIES YOUR POISON OR BLEED":
 			// the character struck carries a Poison or a Bleed the asker applied. It names a state, so it compares
 			// nothing.
-			|| Name == TEXT("target_carries_your_poison_or_bleed");
+			|| Name == TEXT("target_carries_your_poison_or_bleed")
+			// THE DEATH TREES' SLICE C4b1 (2026-11-25), ANY FUEL'S "FERVOUR GAINED FROM SOURCES OTHER THAN KILLS": the
+			// gain being sized is not a kill's payment. It names a state, so it compares nothing.
+			|| Name == TEXT("fervour_gain_not_from_a_kill");
 	}
 }
 

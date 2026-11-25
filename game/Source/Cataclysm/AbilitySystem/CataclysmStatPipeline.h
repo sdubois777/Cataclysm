@@ -1856,6 +1856,21 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesYourPoisonOrBleed
 		UMETA(DisplayName = "Target Carries Your Poison Or Bleed"),
+
+	/**
+	 * The class resource being gained is not a kill's payment: the Soul Collector's Any Fuel, "+2% increased Fervour
+	 * gained from sources other than kills per point". The Death trees' slice C4b1 (2026-11-25), as ruled: Any Fuel is a
+	 * row on `class_resource_generation`, the rate every gain is scaled by, under this condition, so its increase adds
+	 * to the rate's other increases.
+	 *
+	 * READ FROM THE KILL-PAYMENT MARKER: `UCataclysmAbilitySystemComponent::IsPayingForAKill`, set while a kill's
+	 * Fervour is paid (`UCataclysmFervour::GainOnOwnKill`). It holds whenever no kill is being paid for, so it is
+	 * meaningful only on the rate a gain asks.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	FervourGainNotFromAKill
+		UMETA(DisplayName = "Fervour Gain Not From A Kill"),
 };
 
 /**
@@ -3584,6 +3599,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesYourPoisonOrBleed = false;
+
+	/**
+	 * Whether the class resource being gained is not a kill's payment. The Death trees' slice C4b1 (2026-11-25). Filled
+	 * by `UCataclysmAbilitySystemComponent::CurrentConditions` as the opposite of `IsPayingForAKill`; false in a state
+	 * nobody filled, which refuses. See `ECataclysmStatCondition::FervourGainNotFromAKill`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFervourGainNotFromAKill = false;
 
 	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
@@ -5327,7 +5350,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-third, which is the drift that put the passive tree eight
+	 * adds an eighty-fourth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5344,7 +5367,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-SEVEN OF THE EIGHTY-TWO COMPARE NOTHING. They are the case labels
+	 * THIRTY-EIGHT OF THE EIGHTY-THREE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

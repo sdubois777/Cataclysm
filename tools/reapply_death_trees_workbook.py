@@ -553,6 +553,18 @@ NODES: tuple[Node, ...] = (
     Node(SH + "basic_c_stem2", "Hunting Leap",
          (R("skill_range", "increased", 3, tags="Slot.Movement"),
           R("skill_range", "increased", 3, tags="Slot.Movement", cond="seconds_after_kill", cond_value=2))),
+
+    # ---- SLICE C4b1 (2026-11-25): FERVOUR FROM OTHER SOURCES AND THE HOLD BEFORE
+    # DECAY. Every gain reaches the pool through `UCataclysmFervour::RaisePool`;
+    # Any Fuel is a row on the rate every gain is scaled by, under
+    # `fervour_gain_not_from_a_kill`; Kindred Fires restarts the hold on any rise;
+    # Borrowed Time lengthens a running hold on a rise that is not a kill's, a row
+    # at each third point.
+    Node(SC + "basic_b_c0", "Any Fuel",
+         (R("class_resource_generation", "increased", 2, cond="fervour_gain_not_from_a_kill"),)),
+    Node(SC + "basic_b_c1", "Borrowed Time",
+         tuple(R("fervour_hold_extended_on_gain_seconds", "flat", 1, min_points=points) for points in (3, 6))),
+    Node(SC + "keystone_b_kC", "Kindred Fires", (R("fervour_hold_restarted_by_any_gain", "flat", 1),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

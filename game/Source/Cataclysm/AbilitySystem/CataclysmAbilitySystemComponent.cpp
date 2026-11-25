@@ -26,6 +26,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmFervour.h"
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -1001,6 +1002,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
 	State.SecondsSinceOwnKill = SecondsSinceOwnKill();
+
+	// AND WHETHER A GAIN BEING SIZED NOW IS NOT A KILL'S PAYMENT, for Any Fuel's `fervour_gain_not_from_a_kill`. The
+	// Death trees' slice C4b1 (2026-11-25).
+	State.bFervourGainNotFromAKill = !IsPayingForAKill();
 
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
@@ -3890,6 +3895,10 @@ void UCataclysmAbilitySystemComponent::NoteOwnKill(float GraceSeconds)
 
 	// THE HOLD NEVER SHORTENS: see the header. A grace of nothing still holds until now, which is "decays from now".
 	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));
+
+	// AND THE LENGTH OF THE HOLD THIS KILL BEGAN, the full length Kindred Fires restarts and Borrowed Time is capped at.
+	// The Death trees' slice C4b1 (2026-11-25).
+	LastKillDecayGraceSeconds = FMath::Max(0.0f, GraceSeconds);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceOwnKill() const
@@ -3914,6 +3923,42 @@ bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
 	}
 
 	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::RestartKillDecayHold(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	KillDecayHeldUntilSeconds =
+		FMath::Max(KillDecayHeldUntilSeconds, World->GetTimeSeconds() + FMath::Max(0.0f, Seconds));
+}
+
+void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float FullLengthSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f || !KillDecayIsHeld())
+	{
+		return;
+	}
+	const float Capped = FMath::Min(KillDecayHeldUntilSeconds + Seconds,
+									World->GetTimeSeconds() + FMath::Max(0.0f, FullLengthSeconds));
+	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Capped);
+}
+
+float UCataclysmAbilitySystemComponent::StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		return Fallback;
+	}
+	FCataclysmStatConditions State = WithEnemiesInReach(
+		Inputs->Modifiers, WithTargetState(Inputs->Modifiers, /*Target=*/nullptr, CurrentConditions()));
+	State.TargetRarityStep = RarityStep;
+	return UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(), State).Final;
 }
 
 void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGameplayTagContainer* SpendingTags,
@@ -4081,7 +4126,9 @@ float UCataclysmAbilitySystemComponent::ReturnFervourDue()
 	{
 		return 0.0f;
 	}
-	ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	// A GAIN, THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES, so Kindred Fires and Borrowed Time see it (the Death
+	// trees' slice C4b1, as ruled: Cinders Kept's return is a gain).
+	UCataclysmFervour::RaisePool(this, Change);
 	return GetNumericAttribute(Pool) - Before;
 }
 

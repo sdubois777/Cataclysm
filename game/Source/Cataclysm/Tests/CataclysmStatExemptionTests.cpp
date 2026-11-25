@@ -7590,6 +7590,32 @@ namespace CataclysmStatExemptionTest
 					   Fighter.AbilitySystem->IncreasesForStat(Range, FGameplayTagContainer()), 0.5f, 0.001f);
 	}
 
+	/**
+	 * `class_resource_generation`, read by `UCataclysmAbilitySystemComponent::ClassResourceGainScaled` with the
+	 * character's state: the Soul Collector's Any Fuel under `fervour_gain_not_from_a_kill` (the Death trees' slice
+	 * C4b1, 2026-11-25). Conditioned here below half health, on the rate's base of 100: a gain of 10 is 10 at full health
+	 * and 15 below half.
+	 */
+	void ProbeConditionedClassResourceGeneration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, TEXT("class_resource_generation"), ECataclysmStatBucket::Increased, 50.0f,
+							 UCataclysmAbilitySystemComponent::NormalClassResourceGeneration);
+		Test.TestEqual(TEXT("class_resource_generation at full health: a gain of 10 stays 10"),
+					   UCataclysmAbilitySystemComponent::ClassResourceGainScaled(Fighter.AbilitySystem, 10.0f), 10.0f,
+					   0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("class_resource_generation is asked with the state, so below half health 15"),
+					   UCataclysmAbilitySystemComponent::ClassResourceGainScaled(Fighter.AbilitySystem, 10.0f), 15.0f,
+					   0.001f);
+	}
+
 	/** `cooldown_reduction`, read by `UCataclysmGameplayAbility::CooldownAfterReduction`. */
 	void ProbeConditionedCooldownReduction(FAutomationTestBase& Test)
 	{
@@ -12153,6 +12179,74 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmFervour::RestoreHealthOnCriticalKill(Fighter.AbilitySystem), Maximum * 0.04f, 0.01f);
 	}
 
+	/** A fighter with an empty Fervour pool of 100, for the two probes on the hold before decay below. */
+	void GiveFervourPool(FScopedFighter& Fighter)
+	{
+		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+	}
+
+	/**
+	 * `fervour_hold_restarted_by_any_gain`, read by `UCataclysmFervour::AfterPoolRose` on a rise of the pool: the Soul
+	 * Collector's Kindred Fires, the Death trees' slice C4b1 (2026-11-25). ONE FIGHTER that has never killed, with a
+	 * grace of 4 seconds. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a gain leaves decay unheld.
+	 * Granted, the same gain holds it.
+	 */
+	void ProbeHoldRestartedByAnyGain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayGraceSecondsStat), 4.0f}});
+		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
+		Test.TestFalse(TEXT("control: with no fervour_hold_restarted_by_any_gain a gain holds nothing"),
+					   Fighter.AbilitySystem->KillDecayIsHeld());
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayGraceSecondsStat), 4.0f},
+								   {FName(UCataclysmFervour::HoldRestartedByAnyGainStat), 1.0f}});
+		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
+		Test.TestTrue(TEXT("with it, the same gain holds decay off, so AfterPoolRose really reads it"),
+					  Fighter.AbilitySystem->KillDecayIsHeld());
+	}
+
+	/**
+	 * `fervour_hold_extended_on_gain_seconds`, read by `UCataclysmFervour::AfterPoolRose` on a rise that is not a kill's
+	 * payment: the Soul Collector's Borrowed Time, the Death trees' slice C4b1 (2026-11-25). ONE FIGHTER whose kill 3
+	 * seconds ago held decay off for 4, given a gain, then 1.5 seconds more. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: the hold has run out. Granted at 2, it is still held.
+	 */
+	void ProbeHoldExtendedOnGainSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveFervourPool(Fighter);
+		const auto HeldAfterAGain = [&Fighter, World]()
+		{
+			Fighter.AbilitySystem->NoteOwnKill(/*GraceSeconds=*/4.0f);
+			CataclysmTestWorld::RunClock(World, 3.0f);
+			UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
+			CataclysmTestWorld::RunClock(World, 1.5f);
+			return Fighter.AbilitySystem->KillDecayIsHeld();
+		};
+		Test.TestFalse(TEXT("control: with no fervour_hold_extended_on_gain_seconds the hold has run out"),
+					   HeldAfterAGain());
+		GrantFlat(Fighter.Actor, UCataclysmFervour::HoldExtendedOnGainSecondsStat, 2.0f);
+		Test.TestTrue(TEXT("with it at 2, the hold is still running, so AfterPoolRose really reads it"),
+					  HeldAfterAGain());
+	}
+
 	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
@@ -12364,6 +12458,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("projectile_count"),         &ProbeConditionedProjectileCount},
 			// AND THE SLICE C4a's HUNTING LEAP (2026-11-25).
 			{TEXT("skill_range"),              &ProbeConditionedSkillRange},
+			// AND THE SLICE C4b1's ANY FUEL (2026-11-25).
+			{TEXT("class_resource_generation"), &ProbeConditionedClassResourceGeneration},
 			{TEXT("cooldowns_recover_faster_percent"), &ProbeConditionedCooldownsRecoverFaster},
 			{TEXT("cooldown_skip_chance"),     &ProbeConditionedCooldownSkipChance},
 			{TEXT("debuffs_do_not_expire"),    &ProbeConditionedDebuffsDoNotExpire},
@@ -12652,6 +12748,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
 			{TEXT("fervour_per_kill_extra_chance"), &ProbeFervourPerKillExtraChance},
 			{TEXT("health_restored_on_critical_kill"), &ProbeHealthRestoredOnCriticalKill},
+			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
+			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
+			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
 		};
 		return Made;
 	}

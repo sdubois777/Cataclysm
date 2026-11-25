@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -274,7 +275,8 @@ float FCataclysmSiphon::FervourOnce(UAbilitySystemComponent* Holder)
 	{
 		return 0.0f;
 	}
-	Holder->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	// THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES (the Death trees' slice C4b1, 2026-11-25).
+	UCataclysmFervour::RaisePool(Holder, Change);
 	return Holder->GetNumericAttribute(Pool) - Before;
 }
 

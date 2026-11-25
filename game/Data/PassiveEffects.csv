@@ -559,3 +559,7 @@ Shadow_basic_b_a1#3,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,
 Shadow_basic_b_a1#4,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_c_stem2#1,Shadow_basic_c_stem2,skill_range,increased,3.0,Slot.Movement,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_c_stem2#2,Shadow_basic_c_stem2,skill_range,increased,3.0,Slot.Movement,seconds_after_kill,2.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_c0#1,SoulCollector_basic_b_c0,class_resource_generation,increased,2.0,,fervour_gain_not_from_a_kill,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_c1#1,SoulCollector_basic_b_c1,fervour_hold_extended_on_gain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,3,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_c1#2,SoulCollector_basic_b_c1,fervour_hold_extended_on_gain_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_b_kC#1,SoulCollector_keystone_b_kC,fervour_hold_restarted_by_any_gain,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

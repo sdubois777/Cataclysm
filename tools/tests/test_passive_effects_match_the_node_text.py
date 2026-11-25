@@ -705,7 +705,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 560 THE SAME DAY, for slice C4a: Soul Tide, Gleaning, Thinning the
 #: Herd, and the Shadow's Death's Patience, Flicker, Clean Kill (four, one at each
 #: second point) and Hunting Leap (two).
-AUTHORED_ROWS = 560
+#:
+#: AND TO 564 THE SAME DAY, for slice C4b1: Any Fuel, Borrowed Time (two, one at
+#: each third point) and Kindred Fires. The Soul Collector 104 rows.
+AUTHORED_ROWS = 564
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1153,7 +1156,10 @@ AUTHORED_ROWS = 560
 #: AND TO 341 THE SAME DAY, for slice C4a's Gleaning, Thinning the Herd, Death's
 #: Patience, Flicker, Clean Kill and Hunting Leap. Soul Tide is an option of a
 #: capstone already counted.
-AUTHORED_NODES = 341
+#:
+#: AND TO 344 THE SAME DAY, for slice C4b1's Any Fuel, Borrowed Time and Kindred
+#: Fires.
+AUTHORED_NODES = 344
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1615,6 +1621,9 @@ CONDITION_WORDS = {
     # DEATH'S PATIENCE, the Death trees' slice C4a (2026-11-25): "an enemy that
     # carries your Poison or Bleed".
     "target_carries_your_poison_or_bleed": ("carries your poison or bleed", None),
+    # ANY FUEL, the Death trees' slice C4b1 (2026-11-25): "Fervour gained from
+    # sources other than kills".
+    "fervour_gain_not_from_a_kill": ("from sources other than kills", None),
     # THE CHARACTER STRUCK IS IN THE ASKER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
     # damage from you". No value.
@@ -2547,6 +2556,9 @@ VALUE_FORMS = {
     # Fervour", and Clean Kill's "restores 1% of your Maximum Health".
     "fervour_per_kill_extra_chance": ("{value:g}% chance per point to give 1 extra Fervour",),
     "health_restored_on_critical_kill": ("restores {value:g}% of your Maximum Health",),
+    # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
+    # 3 points".
+    "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
     # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
@@ -2933,6 +2945,11 @@ VALUE_IN_WORDS = {
     # it names no number because the rule is not a quantity.
     ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
         ("count as yours", 1.0),
+
+    # KINDRED FIRES, the Death trees' slice C4b1 (2026-11-25): "Fervour you gain
+    # from any source ... holds off decay as a kill does", a switch of 1.
+    ("SoulCollector_keystone_b_kC", "fervour_hold_restarted_by_any_gain"):
+        ("holds off decay as a kill does", 1.0),
 
     # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path
     # asks whether the stat stands above zero. The sentence's digits belong to

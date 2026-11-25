@@ -1140,6 +1140,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And the Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
 		// UCataclysmFervour::RestoreHealthOnCriticalKill. No attribute and no base.
 		TEXT("health_restored_on_critical_kill"),
+		// And the Soul Collector's Kindred Fires and Borrowed Time, the Death trees' slice C4b1: whether any gain
+		// restarts the hold before decay, and the seconds a gain that is not a kill's lengthens it by. Read by
+		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
+		TEXT("fervour_hold_restarted_by_any_gain"),
+		TEXT("fervour_hold_extended_on_gain_seconds"),
 	};
 	return Stats;
 }

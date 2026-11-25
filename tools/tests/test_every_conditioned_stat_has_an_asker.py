@@ -101,8 +101,9 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # 30 ON 2026-11-25, for the Soul Collector vows' clauses under a Fervour
     # threshold (the Death trees' slice C3d): `projectile_count` and
     # `cooldowns_recover_faster_percent`.
-    # 31 THE SAME DAY, for slice C4a's Hunting Leap: `skill_range`.
-    assert sizes["ConditionedProbes"] == 31, sizes
+    # 31 THE SAME DAY, for slice C4a's Hunting Leap: `skill_range`. 32 THE SAME
+    # DAY, for slice C4b1's Any Fuel: `class_resource_generation`.
+    assert sizes["ConditionedProbes"] == 32, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes
