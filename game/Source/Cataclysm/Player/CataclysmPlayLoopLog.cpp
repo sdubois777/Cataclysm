@@ -393,6 +393,13 @@ FString FCataclysmPlayLoopLog::SkillChosenLine(const FString& Skill, const FStri
 	return FString::Printf(TEXT("put %s in the %s slot"), *Skill, *Slot);
 }
 
+FString FCataclysmPlayLoopLog::SkillsAddedLine(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	const FString Who = Weapon.IsEmpty() ? FString(TEXT("the weapons")) : FString::Printf(TEXT("the %s"), *Weapon);
+	return FString::Printf(TEXT("%s added %d skill%s to the pool on no key, and %d not built yet"), *Who, Built,
+						   Built == 1 ? TEXT("") : TEXT("s"), NotBuilt);
+}
+
 FString FCataclysmPlayLoopLog::SkillForgottenLine(const FString& Slot)
 {
 	return FString::Printf(TEXT("forgot the %s slot's skill choice: it shows its default again"), *Slot);

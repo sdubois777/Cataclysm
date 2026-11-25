@@ -65,6 +65,10 @@ STEPS = [
     ("Player/CataclysmPlayerState.cpp", "void ACataclysmPlayerState::ResetAttributePoints()", "AttributeResetLine"),
     ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ChooseSkill(", "SkillChosenLine"),
     ("Player/CataclysmPlayerState.cpp", "bool ACataclysmPlayerState::ForgetSkillChoice(", "SkillForgottenLine"),
+    # AND WHAT A CHANGE OF GEAR ADDED TO THE SKILL POOL ON NO KEY, issue #837 slice 2: said beside the notice the pawn
+    # posts, and never for a load.
+    ("Character/CataclysmPlayerCharacter.cpp", "void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(",
+     "SkillsAddedLine"),
     # THE FORGE, ruled 2026-11-19: an item raised a level, and two stones combined into one of the next.
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(", "ForgeUpgradeLine"),
     ("Player/CataclysmForgeCraft.cpp", "bool UCataclysmForgeCraft::Combine(", "ForgeCombineLine"),

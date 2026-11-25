@@ -316,6 +316,21 @@ public:
 	 */
 	static int32 BoxUnder(const FVector2D& Point, int32 Count, float ViewportWidth, float ViewportHeight);
 
+	/**
+	 * The key of the box a point lies in, `BasicAttack` included, or `None` for a point in no box. Issue #837 slice 2,
+	 * the owner's Q3 of 2026-11-24: a click on a skill box opens the skill screen with that key selected, as Diablo II
+	 * and Last Epoch open their choice from the bar. `BoxUnder` decides which box.
+	 */
+	static ECataclysmAbilitySlot KeyUnder(const TArray<FCataclysmSkillBarSlot>& Slots, const FVector2D& Point,
+										  float ViewportWidth, float ViewportHeight);
+
+	/**
+	 * The line drawn beside the bar naming the key that opens the skill screen. Issue #837 slice 2 (the owner's Q3):
+	 * the plan found no on-screen text naming K, and the owner's logs held no skill chosen in five days. K is the key
+	 * `tools/generate_input_assets.py` binds to `IA_ToggleSkillAssignment`, which a Python check holds this to.
+	 */
+	static const TCHAR* OpenScreenHint;
+
 	/** How many characters a pop-up line holds before it wraps. Issue #1193, ruled 2026-11-01: a fixed width. */
 	static constexpr int32 PopupWrapChars = 48;
 

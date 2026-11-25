@@ -404,6 +404,12 @@ public:
 	void AnnounceRestored();
 
 	/**
+	 * Whether the announcement under way is a restore's (`AnnounceRestored`), so a listener can tell a load from the
+	 * player changing gear. Issue #837 slice 2: the skill pool's notice is not posted for a load.
+	 */
+	bool IsAnnouncingARestore() const { return bAnnouncingARestore; }
+
+	/**
 	 * One kill by the wearer: each worn weapon's `FCataclysmItem::Kills` rises
 	 * by one. Issue #1833, the kill counter; ruled 2026-09-25 under the owner's
 	 * delegation, since both weapons' damage is in every blow.
@@ -689,6 +695,9 @@ private:
 	 * drawing gear that is no longer worn, and nothing would fail.
 	 */
 	void AnnounceChange();
+
+	/** See `IsAnnouncingARestore`. True only inside `AnnounceRestored`. */
+	bool bAnnouncingARestore = false;
 
 	/**
 	 * The count ChangeCount answers with. Starts at zero, only ever rises.

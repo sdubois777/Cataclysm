@@ -293,6 +293,13 @@ until then they waited for the next item, death or trip to be written, and stopp
 
   `PLAY LOOP: forgot the Heavy slot's skill choice: it shows its default again`
 
+- **Put a second weapon on** from the bag beside the one worn, of a type not worn yet (since issue #837 slice 2). The
+  keys stay as they were; a notice says what the weapon added: "The Fist adds 5 skills to your pool. Press K, or click
+  a skill box, to choose." **Click a skill box** on the bar: the skill screen opens with that key selected.
+- **In the log:**
+
+  `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`
+
 - **A reset** gives the points back, and has a line of its own. Only the console resets, with
   `Cataclysm.ResetPassivePoints` and `Cataclysm.ResetAttributePoints`; **skip them here**, so step 15 has the points
   to show:

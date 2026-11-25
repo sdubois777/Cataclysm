@@ -17,6 +17,8 @@
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
+#include "Interface/CataclysmSkillBar.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Interface/CataclysmLootFilterWidget.h"
 #include "Interface/CataclysmMerchantWidget.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -1153,6 +1155,34 @@ void ACataclysmPlayerController::ToggleSkillAssignment()
 	SkillAssignmentScreen->AddToViewport();
 }
 
+ECataclysmAbilitySlot ACataclysmPlayerController::SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const
+{
+	// NO BAR, NO BOX: the bar can be switched off, and a pawn with no slots draws none.
+	if (!UCataclysmSkillBar::Enabled() || Viewport.X <= 0.0f || Viewport.Y <= 0.0f)
+	{
+		return ECataclysmAbilitySlot::None;
+	}
+	return UCataclysmSkillBar::KeyUnder(UCataclysmSkillBar::Read(GetPawn()), Point, Viewport.X, Viewport.Y);
+}
+
+bool ACataclysmPlayerController::OpenSkillAssignmentOn(ECataclysmAbilitySlot Key)
+{
+	// OPENED IF CLOSED, NEVER CLOSED: a second click on the bar with the screen open selects that key instead.
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		ToggleSkillAssignment();
+	}
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		return false;
+	}
+	if (UCataclysmWeaponSkills::IsChoosableSlot(Key))
+	{
+		SkillAssignmentScreen->SelectSlot(Key);
+	}
+	return true;
+}
+
 void ACataclysmPlayerController::Input_ToggleLootFilterScreen()
 {
 	ToggleLootFilterScreen();
@@ -1708,6 +1738,26 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	// anything drawn on the canvas, so without this a click on a grid cell would
 	// send the character to whatever piece of floor lies behind the panel.
 	// Issue #731.
+	// A PRESS ON A SKILL BOX OPENS THE SKILL SCREEN WITH THAT KEY SELECTED, AND IS NEITHER A MOVE NOR A SWING. Issue
+	// #837 slice 2, the owner's Q3 of 2026-11-24. Asked first: the bar is drawn by the heads-up display, so the
+	// interface test below does not see it.
+	{
+		float MouseX = 0.0f;
+		float MouseY = 0.0f;
+		int32 ViewportX = 0;
+		int32 ViewportY = 0;
+		GetViewportSize(ViewportX, ViewportY);
+		const ECataclysmAbilitySlot Box = GetMousePosition(MouseX, MouseY)
+			? SkillBoxKeyAt(FVector2D(MouseX, MouseY), FVector2D(ViewportX, ViewportY))
+			: ECataclysmAbilitySlot::None;
+		if (Box != ECataclysmAbilitySlot::None)
+		{
+			bPressBeganOnInterface = true;
+			OpenSkillAssignmentOn(Box);
+			return;
+		}
+	}
+
 	bPressBeganOnInterface = CursorIsOverInterface();
 	if (bPressBeganOnInterface)
 	{

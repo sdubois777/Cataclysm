@@ -2,6 +2,87 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
+
+**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, after slice 1 (the entry below). Issue
+[#837](https://github.com/sdubois777/Cataclysm/issues/837).
+
+### Why
+
+The plan found that the skill screen on K worked and that nothing on screen named it: the owner's logs of 2026-11-20
+to 11-24 held 62 passive and attribute point lines and no skill chosen. After slice 1 a new weapon's skills wait in the
+pool, so the player has to be told they are there and where to choose them.
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605: "Approve all three (Recommended)".** For this slice: Q2, a skill
+that is not built yet is marked "not built yet" on K and can still be chosen; Q3, clicking a skill box on the bar opens
+the skill screen with that key selected, the click doing nothing else, with "K: skills" written by the bar (as Diablo
+II and Last Epoch open their choice from the bar); Q4, a notice for about six seconds and a PLAY LOOP line say what a
+new weapon added, "The Fist adds 5 skills to your pool. Press K, or click a skill box, to choose."
+
+### What changed
+
+- **The click.** `ACataclysmPlayerController::Input_MoveToCursorStarted` asks first whether the press is on a skill box
+  (`SkillBoxKeyAt`, through `UCataclysmSkillBar::KeyUnder`); if so it opens the screen with that key selected
+  (`OpenSkillAssignmentOn`: opened if closed and never closed, the key selected when it is one of the six) and returns,
+  so the press is neither a move nor a swing.
+- **"K: skills"** (`UCataclysmSkillBar::OpenScreenHint`), drawn by the heads-up display above the bar's first box.
+- **The notice.** `ACataclysmPlayerCharacter::OnEquipmentChanged` notes the pool before its fill and, after it, counts
+  the pool skills that are new and on no key (`NoteSkillsAddedToThePool`): when there are any it posts the notice for
+  `SkillPoolNoticeSeconds` (6) and says `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`.
+  The heads-up display draws it (`DrawSkillPoolNotice`).
+- **"not built yet"** on a pool skill's button on the skill screen (`NotBuiltYetMark`).
+- **The design document's two controls tables** (the `LMB` rows) and **`docs/Play_Loop_Checklist.md`** (a step and its
+  line).
+
+### Judgements of this change
+
+1. **Not for a load.** A load's one announcement comes through the same handler as a change of gear, so the equipment
+   component says when the announcement is a restore's (`IsAnnouncingARestore`, true only inside `AnnounceRestored`)
+   and no notice is posted then: what a loaded character carries is not news.
+2. **The weapon is named when the change added exactly one weapon type**, else "Your weapons"; the skills that do
+   something are counted first and the ones not built yet after them.
+3. **"K: skills" sits above the first box, at the bar's left edge**: each box's name is drawn under it, and the locked
+   notice is centred above the bar.
+4. **The click's two halves are tested apart.** Which key a point is over is a plain function and a controller
+   function the automation tests call; that the press asks it first and goes no further is read out of the controller
+   by a Python check, because a test world has no viewport to press in and no screen to open.
+
+### Tests
+
+**Unreal, registered** (none run): `Cataclysm.SkillBar.` gains four in a new file, `CataclysmSkillBarClickTests.cpp`:
+`AClickOnABoxNamesThatBoxesKey`, `AClickBetweenOrOffTheBoxesNamesNoKey` (the control),
+`TheControllerNamesTheKeyOfTheBoxUnderAPoint` and `TheBarNamesTheKeyThatOpensTheScreen`. `Cataclysm.SkillDefaults.`
+gains four: `AWeaponThatAddsSkillsOnNoKeySaysSo` (the words, and their going after six seconds),
+`AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing` and `ALoadSaysNothing`. `Cataclysm.SkillChoiceScreen.` gains
+`APlaceholderIsMarkedNotBuiltYet`. Nine in all.
+
+**Python**: `tools/tests/test_a_skill_box_opens_the_skill_screen.py`, five checks, new;
+`test_the_play_loop_is_logged_at_each_step.py` lists the new line, and the checklist quotes it.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (a tree written
+through a temporary index file, so the branch's own index was not touched), each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PQ1 | the `return;` after `OpenSkillAssignmentOn(Box);` removed | `test_a_press_on_a_skill_box_is_asked_first_and_goes_no_further` |
+| PQ2 | the keyboard scheme's `IA_ToggleSkillAssignment` on J instead of K | `test_k_opens_the_skill_screen_and_the_bar_says_so` |
+| PQ3 | the notice's `!(Equipment && Equipment->IsAnnouncingARestore())` removed | `test_a_change_of_gear_tells_and_a_load_does_not` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SQ1 | `KeyUnder`'s `Slots[Box].Slot` read as the next box's (`Slots.IsValidIndex(Box + 1) ? Slots[Box + 1].Slot`) | `Cataclysm.SkillBar.` | `AClickOnABoxNamesThatBoxesKey`, `TheControllerNamesTheKeyOfTheBoxUnderAPoint` |
+| SQ2 | `if (Built + NotBuilt == 0)` read as `if (Built + NotBuilt < 0)` | `Cataclysm.SkillDefaults.` | `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing`, and the control of `AWeaponThatAddsSkillsOnNoKeySaysSo` |
+| SQ3 | `if (!UCataclysmWeaponSkills::IsBuilt(Skill))` in `DescribePoolButton` read as `if (false)` | `Cataclysm.SkillChoiceScreen.` | `APlaceholderIsMarkedNotBuiltYet` |
+
+**Registration moves by nine:** `Cataclysm.SkillDefaults.` 18 (14 + 4), `Cataclysm.SkillBar.` alone (22 in window
+rc-w1's log, + 4 = 26), `Cataclysm.SkillChoiceScreen.` 9 (8 + 1); the whole suite slice 1's 5369 + 9 = 5378.
+
+---
+
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
 
 **WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, from development `5f302b0a7`. Issue

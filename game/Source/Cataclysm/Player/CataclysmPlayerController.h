@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmPlayerController.generated.h"
 
+enum class ECataclysmAbilitySlot : uint8;
+
 class ACataclysmDroppedItem;
 class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
@@ -477,6 +479,19 @@ public:
 	 * Cataclysm.ChooseSkills"). It does not pause the game and opens anywhere, a dungeon included (ruled Q2).
 	 */
 	void ToggleSkillAssignment();
+
+	/**
+	 * The key of the skill box on the player's bar under a point of the screen, or `None`. Issue #837 slice 2, the owner's
+	 * Q3: a left press over a box opens the skill screen with that key selected and is neither a move nor a swing
+	 * (`Input_MoveToCursorStarted` asks this first). The viewport is the caller's, so a test can ask without one.
+	 */
+	ECataclysmAbilitySlot SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const;
+
+	/**
+	 * Opens the skill screen if it is closed, never closing it, and selects `Key` when it is one of the six (the basic
+	 * attack's box opens the screen with nothing selected). Issue #837 slice 2. Whether the screen is open after.
+	 */
+	bool OpenSkillAssignmentOn(ECataclysmAbilitySlot Key);
 
 	/**
 	 * Opens and closes the loot filter screen. Issue #2846, slice LF2. The skill-choice screen's shape, and public for

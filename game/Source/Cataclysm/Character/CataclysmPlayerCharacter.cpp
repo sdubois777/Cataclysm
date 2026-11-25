@@ -41,6 +41,7 @@
 // For the slain enemy's maximum health, which the kill event carries.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
@@ -2360,6 +2361,100 @@ bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 	return UCataclysmSkillEffects::IsDead(this);
 }
 
+bool ACataclysmPlayerCharacter::SkillPoolNoticeIsUpAt(float WorldSeconds) const
+{
+	// UP FROM THE MOMENT IT WAS POSTED UNTIL `SkillPoolNoticeSeconds` AFTER IT, both ends included, as the death cost's.
+	if (SkillPoolNoticePostedAt < 0.0f || SkillPoolNotice.IsEmpty())
+	{
+		return false;
+	}
+	const float Since = WorldSeconds - SkillPoolNoticePostedAt;
+	return Since >= 0.0f && Since <= SkillPoolNoticeSeconds;
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeAt(float WorldSeconds) const
+{
+	return SkillPoolNoticeIsUpAt(WorldSeconds) ? SkillPoolNotice : FString();
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeFor(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	// THE WEAPON NAMED WHEN ONE WAS ADDED, "The Fist adds"; else "Your weapons add". The skills that do something are
+	// counted first, and the ones that are not built yet after them, so the count a player can use is the one read.
+	const FString Who =
+		Weapon.IsEmpty() ? FString(TEXT("Your weapons add")) : FString::Printf(TEXT("The %s adds"), *Weapon);
+	const auto Skills = [](int32 Count)
+	{
+		return FString::Printf(TEXT("%d skill%s"), Count, Count == 1 ? TEXT("") : TEXT("s"));
+	};
+	FString What;
+	if (Built > 0 && NotBuilt > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool, and %d not built yet"), *Skills(Built), NotBuilt);
+	}
+	else if (Built > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool"), *Skills(Built));
+	}
+	else
+	{
+		What = FString::Printf(TEXT("%s not built yet to your pool"), *Skills(NotBuilt));
+	}
+	return FString::Printf(TEXT("%s %s. Press K, or click a skill box, to choose."), *Who, *What);
+}
+
+void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(const TArray<FCataclysmWeaponSkill>& PoolBefore,
+														 const TArray<FString>& TypesBefore)
+{
+	// NEW TO THE POOL AND ON NO KEY: a skill the change put on a key needs no telling, and one already in the pool was
+	// told of before. Rows, not names, since two weapons can make skills of one name.
+	TSet<FName> Before;
+	for (const FCataclysmWeaponSkill& Skill : PoolBefore)
+	{
+		Before.Add(Skill.RowName);
+	}
+	TSet<FName> OnKeys;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetAvailableSkills())
+	{
+		OnKeys.Add(Skill.RowName);
+	}
+	int32 Built = 0;
+	int32 NotBuilt = 0;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetSkillPool())
+	{
+		if (Skill.RowName.IsNone() || Before.Contains(Skill.RowName) || OnKeys.Contains(Skill.RowName))
+		{
+			continue;
+		}
+		if (UCataclysmWeaponSkills::IsBuilt(Skill))
+		{
+			++Built;
+		}
+		else
+		{
+			++NotBuilt;
+		}
+	}
+	if (Built + NotBuilt == 0)
+	{
+		return;
+	}
+
+	// THE WEAPON NAMED ONLY WHEN THE CHANGE ADDED EXACTLY ONE WEAPON TYPE.
+	TArray<FString> Added;
+	for (const FString& Type : WeaponSlots->GetWornWeaponTypes())
+	{
+		if (!TypesBefore.Contains(Type))
+		{
+			Added.AddUnique(Type);
+		}
+	}
+	const FString Weapon = Added.Num() == 1 ? Added[0] : FString();
+	SkillPoolNotice = SkillPoolNoticeFor(Weapon, Built, NotBuilt);
+	SkillPoolNoticePostedAt = GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds()) : 0.0f;
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillsAddedLine(Weapon, Built, NotBuilt));
+}
+
 bool ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt(float WorldSeconds) const
 {
 	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
@@ -2585,7 +2680,18 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// takes back everything it granted before it grants again, so calling it
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
+	//
+	// AND WHAT THE CHANGE ADDED TO THE POOL ON NO KEY IS SAID, since issue #837 slice 2 (the owner's Q4 of 2026-11-24):
+	// slice 1 leaves the keys as they are, so a new weapon's skills wait in the pool, and the player is told where to
+	// choose them. NOT FOR A LOAD, whose one announcement comes here too: what a loaded character carries is not news.
+	const TArray<FCataclysmWeaponSkill> PoolBefore =
+		WeaponSlots ? WeaponSlots->GetSkillPool() : TArray<FCataclysmWeaponSkill>();
+	const TArray<FString> TypesBefore = WeaponSlots ? WeaponSlots->GetWornWeaponTypes() : TArray<FString>();
 	FillAbilitySlotsFromWornWeapon();
+	if (WeaponSlots && !(Equipment && Equipment->IsAnnouncingARestore()))
+	{
+		NoteSkillsAddedToThePool(PoolBefore, TypesBefore);
+	}
 
 	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
 	// could equip a Greataxe and see nothing change at all.

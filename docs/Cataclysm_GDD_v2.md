@@ -205,7 +205,7 @@ The following are default controls. Players with multiple damage types can map m
 
 | Input | Action |
 | :-: | :-: |
-| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. |
+| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -239,7 +239,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | Input | Action |
 | :-: | :-: |
 | WASD | Directional movement |
-| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. |
+| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |

@@ -678,6 +678,9 @@ void UCataclysmEquipmentComponent::RestoreWornGear(const TArray<TPair<ECataclysm
 
 void UCataclysmEquipmentComponent::AnnounceRestored()
 {
+	// SAID TO BE A RESTORE FOR THE LENGTH OF THE ANNOUNCEMENT, so a listener can tell a load from a change of gear
+	// (issue #837 slice 2). Put back afterwards whatever happens inside.
+	TGuardValue<bool> Restoring(bAnnouncingARestore, true);
 	AnnounceChange();
 }
 

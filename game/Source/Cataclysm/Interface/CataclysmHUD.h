@@ -186,6 +186,12 @@ private:
 	 */
 	void DrawDeathCostNotice();
 
+	/**
+	 * The notice saying what a new weapon added to the skill pool, while `ACataclysmPlayerCharacter::SkillPoolNoticeIsUpAt`
+	 * says it is up. Issue #837 slice 2. One line, centred, shrunk to fit; above the death cost's, which it never meets.
+	 */
+	void DrawSkillPoolNotice();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
@@ -498,6 +504,14 @@ private:
 	static constexpr float DeathCostNoticeTopShare = 0.3f;
 	static constexpr float DeathCostNoticeWidthShare = 0.9f;
 	static constexpr float DeathCostNoticeLineGapPx = 4.0f;
+
+	/** The skill pool's notice: its text size, how far down the screen its top sits, and the widest it may be. #837. */
+	static constexpr float SkillPoolNoticeScale = 1.0f;
+	static constexpr float SkillPoolNoticeTopShare = 0.22f;
+	static constexpr float SkillPoolNoticeWidthShare = 0.9f;
+
+	/** How far above the first skill box "K: skills" sits. Issue #837 slice 2. */
+	static constexpr float SkillBarHintGapPx = 6.0f;
 
 public:
 	/**

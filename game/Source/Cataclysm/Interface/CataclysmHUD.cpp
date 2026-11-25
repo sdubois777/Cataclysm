@@ -115,6 +115,7 @@ void ACataclysmHUD::DrawHUD()
 
 	// WHAT THE LAST DEATH COST, for a few seconds after standing back up. Issue #41, 2026-11-02.
 	DrawDeathCostNotice();
+	DrawSkillPoolNotice();
 
 	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
 	// behind it and covers a strip of the screen; a damage number or a drop
@@ -363,6 +364,28 @@ void ACataclysmHUD::DrawPlayerPool(float Top, float Current, float Maximum,
 	DrawTextCentred(
 		UCataclysmCombatOverlay::PoolTextFor(Current, Maximum),
 		FLinearColor::White, Left + PlayerBarWidthPx * 0.5f, Top + 2.0f, 1.0f);
+}
+
+void ACataclysmHUD::DrawSkillPoolNotice()
+{
+	// NOTHING HERE DECIDES ANYTHING: whether the notice is up and what it says is the pawn's
+	// (`SkillPoolNoticeIsUpAt`, `SkillPoolNoticeAt`). Issue #837 slice 2.
+	const ACataclysmPlayerCharacter* Player = Cast<ACataclysmPlayerCharacter>(GetOwningPawn());
+	const UWorld* World = GetWorld();
+	if (Player == nullptr || World == nullptr || Canvas == nullptr)
+	{
+		return;
+	}
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	if (!Player->SkillPoolNoticeIsUpAt(Now))
+	{
+		return;
+	}
+	const FString Notice = Player->SkillPoolNoticeAt(Now);
+	const float Widest = static_cast<float>(MeasureTextCentred(Notice, 0.0f, 0.0f, SkillPoolNoticeScale).GetSize().X);
+	const float Room = static_cast<float>(Canvas->SizeX) * SkillPoolNoticeWidthShare;
+	const float Scale = (Widest > Room && Widest > 0.0f) ? SkillPoolNoticeScale * Room / Widest : SkillPoolNoticeScale;
+	DrawTextCentred(Notice, FLinearColor::White, Canvas->SizeX * 0.5f, Canvas->SizeY * SkillPoolNoticeTopShare, Scale);
 }
 
 void ACataclysmHUD::DrawDeathCostNotice()
@@ -777,6 +800,16 @@ void ACataclysmHUD::DrawSkillBar()
 							First.Y - SkillBarLockedNoticeGapPx * Gaps,
 							SkillBarNextUseScale);
 		}
+	}
+
+	// AND THE KEY THAT OPENS THE SKILL SCREEN, above the first box and level with the bar's left edge. Issue #837 slice
+	// 2, the owner's Q3. Above, because each box's name is drawn under it; at the left edge, because the locked notice
+	// is centred above the bar.
+	{
+		const FVector2D FirstBox = UCataclysmSkillBar::BoxOriginFor(0, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+		const FBox2D Hint = MeasureTextCentred(UCataclysmSkillBar::OpenScreenHint, 0.0f, 0.0f, SkillBarNameScale);
+		DrawOutlinedText(UCataclysmSkillBar::OpenScreenHint, FLinearColor::White, FirstBox.X,
+						 FirstBox.Y - BarBackingInsetPx - SkillBarHintGapPx - Hint.GetSize().Y, SkillBarNameScale);
 	}
 
 	// AND, WHILE THE CURSOR IS OVER A BOX, WHAT THAT SKILL IS AND DOES. Issue #1193. The cursor is shown throughout

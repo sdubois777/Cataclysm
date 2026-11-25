@@ -852,4 +852,146 @@ bool FCataclysmSkillDefaultsDoubleTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// SN1 to SN4 (slice 2). What a new weapon added to the pool is said once, and nothing else says it.
+// ---------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsNoticeTest,
+	"Cataclysm.SkillDefaults.AWeaponThatAddsSkillsOnNoKeySaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #837 slice 2, the owner's Q4 of 2026-11-24: a Demonic Axe alone, then a Demonic Fist; the Fist's five skills go
+ * on no key (slice 1), so the notice is up, "The Fist adds 5 skills to your pool. Press K, or click a skill box, to
+ * choose.", and gone `SkillPoolNoticeSeconds` later. CONTROL: after the Axe alone, which put its skills on keys, nothing
+ * was posted. The words for skills not built yet are read from `SkillPoolNoticeFor`.
+ */
+bool FCataclysmSkillDefaultsNoticeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillDefaultsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
+	if (!Carrier.IsComplete()
+		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {Demonic}), ECataclysmGearSlot::Weapon2))
+	{
+		return false;
+	}
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	TestFalse(TEXT("control: the Axe alone put its skills on keys and said nothing"),
+			  Carrier.Character->SkillPoolNoticeIsUpAt(Now));
+	if (!WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Fist"), {Demonic}), ECataclysmGearSlot::Weapon1))
+	{
+		return false;
+	}
+	const FString Notice = Carrier.Character->SkillPoolNoticeAt(Now);
+	AddInfo(FString::Printf(TEXT("SKILL NOTICE: %s"), *Notice));
+	TestEqual(TEXT("**the notice names the Fist and its five skills**"), Notice,
+			  FString(TEXT("The Fist adds 5 skills to your pool. Press K, or click a skill box, to choose.")));
+	TestFalse(TEXT("and it is gone after its seconds"),
+			  Carrier.Character->SkillPoolNoticeIsUpAt(Now + ACataclysmPlayerCharacter::SkillPoolNoticeSeconds + 0.5f));
+	TestEqual(TEXT("the words for skills not built yet beside built ones"),
+			  ACataclysmPlayerCharacter::SkillPoolNoticeFor(TEXT("Axe"), 1, 4),
+			  FString(TEXT("The Axe adds 1 skill to your pool, and 4 not built yet. Press K, or click a skill box, to "
+						   "choose.")));
+	TestEqual(TEXT("and for weapons that added only skills not built yet"),
+			  ACataclysmPlayerCharacter::SkillPoolNoticeFor(FString(), 0, 5),
+			  FString(TEXT("Your weapons add 5 skills not built yet to your pool. Press K, or click a skill box, to "
+						   "choose.")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsArmourNoticeTest,
+	"Cataclysm.SkillDefaults.AChangeOfArmourSaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** A helm put on beside a Demonic Axe adds nothing to the pool and posts nothing. CONTROL: the Fist after it does. */
+bool FCataclysmSkillDefaultsArmourNoticeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillDefaultsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	if (!Carrier.IsComplete()
+		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {Demonic}), ECataclysmGearSlot::Weapon2)
+		|| !WearIn(*this, Carrier, Helm, ECataclysmGearSlot::Head))
+	{
+		return false;
+	}
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	TestFalse(TEXT("**a helm says nothing**"), Carrier.Character->SkillPoolNoticeIsUpAt(Now));
+	if (!WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Fist"), {Demonic}), ECataclysmGearSlot::Weapon1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: the Fist after it does"), Carrier.Character->SkillPoolNoticeIsUpAt(Now));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsPairNoticeTest,
+	"Cataclysm.SkillDefaults.AMatchedPairSaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The design's "A MATCHED PAIR OF WEAPONS CHANGES NOTHING HERE": a second Demonic Axe beside the first adds nothing to
+ * the pool and posts nothing.
+ */
+bool FCataclysmSkillDefaultsPairNoticeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillDefaultsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
+	if (!Carrier.IsComplete()
+		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {Demonic}), ECataclysmGearSlot::Weapon2)
+		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {Demonic}), ECataclysmGearSlot::Weapon1))
+	{
+		return false;
+	}
+	TestFalse(TEXT("**a matched pair says nothing**"),
+			  Carrier.Character->SkillPoolNoticeIsUpAt(static_cast<float>(World->GetTimeSeconds())));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsLoadNoticeTest,
+	"Cataclysm.SkillDefaults.ALoadSaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character with an Axe and a Fist, gathered and loaded into a second player that began with the Greataxe: the load
+ * fills the keys and posts no notice (`IsAnnouncingARestore`). CONTROL: the first player posted one when it put the
+ * Fist on.
+ */
+bool FCataclysmSkillDefaultsLoadNoticeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillDefaultsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
+	const FDefaultsCarrier Fresh = SpawnDefaultsCarrier(*this, World, FVector(2000.0f, 0.0f, 0.0f));
+	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+	if (!Carrier.IsComplete() || !Fresh.IsComplete() || !AxeThenFist(*this, Carrier)
+		|| !TestTrue(TEXT("set-up: the record is gathered"), FCataclysmSaveGather::CharacterFrom(*Carrier.Character, *Record)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: putting the Fist on posted the notice"), Carrier.Character->SkillPoolNoticePostedAtSeconds() >= 0.0f);
+	int32 Refused = 0;
+	FString Why;
+	if (!TestTrue(TEXT("set-up: the record loads into the second player"),
+				  FCataclysmSaveApply::CharacterInto(*Record, *Fresh.Character, Refused, Why)))
+	{
+		AddError(Why);
+		return false;
+	}
+	TestTrue(TEXT("set-up: the loaded keys are the Axe's"), EveryWeaponKeyIs(RowsOnKeys(Fresh.Slots), TEXT("Demonic_Axe_")));
+	TestTrue(TEXT("**the load posted no notice**"), Fresh.Character->SkillPoolNoticePostedAtSeconds() < 0.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
