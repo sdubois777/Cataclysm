@@ -180,7 +180,12 @@ bool FCataclysmPlayLoopAwayTest::RunTest(const FString&)
 		{
 			Fallen.AddUnique(CityId);
 		}
-		Surges += Day.bSurged ? 1 : 0;
+		// EACH SURGE, NOT EACH DAY THAT HAD ONE: since issue #2865 every city that falls fires its own, so a day can
+		// hold several. A day with one counts one either way, so this reads the same as before on such a day.
+		Surges += Day.Surges;
+		TestTrue(FString::Printf(TEXT("day %d: a day that surged counts at least one surge, and one that did not none"),
+								 Day.Day),
+				 Day.bSurged ? Day.Surges >= 1 : Day.Surges == 0);
 		SurgeDungeons += Day.SurgeDungeons;
 	}
 	TestTrue(TEXT("CONTROL: the days resolved a dungeon"), Resolved.Num() > 0);

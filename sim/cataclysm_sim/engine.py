@@ -717,8 +717,14 @@ class Simulation:
 
     # -- surges ----------------------------------------------------------
 
-    def surge_count(self) -> int:
+    def surge_count(self, from_empty_board: bool = False) -> int:
         """Dungeons in the next surge.
+
+        AN EMPTY-BOARD SURGE IS THE SCHEDULED SIZE PLUS
+        `empty_board_surge_extra` when `empty_board_surge_larger` is on: the
+        owner's ruling of 2026-11-24 on issue #2865, "Flat +4, no stacking".
+        Added before the cap and the lethality multiplier, which apply to it as
+        to any wave (the coordinating session's judgement of that day).
 
         Grows with the surge index under SWELLING/BOTH, and with the number of
         simultaneous Cataclysms in every mode.
@@ -738,6 +744,8 @@ class Simulation:
                   else cfg.surge_dungeon_count)
         if cfg.surge_mode in (SurgeMode.SWELLING, SurgeMode.BOTH):
             n += cfg.surge_count_growth * self.surge_index
+        if from_empty_board and cfg.empty_board_surge_larger:
+            n += cfg.empty_board_surge_extra
         n = min(n, float(cfg.surge_count_max))
         return max(1, int(n * cfg.surge_dungeon_multiplier))
 
@@ -768,7 +776,8 @@ class Simulation:
         held = cfg.quest_dungeon_chance * max(1.0, len(self.active_types) / volume)
         return min(1.0, held)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         cfg = self.cfg
         # Only the exposed frontier can be attacked. Everything behind a
         # standing city is sealed until that city falls.
@@ -787,7 +796,7 @@ class Simulation:
         pats = [PATTERNS.get(t, PATTERN_DEFAULT) for t in self.active_types]
         cmults = [p.count_mult for p in pats]
         volume = sum(cmults) ** cfg.cataclysm_volume_exponent
-        count = max(1, int(round(self.surge_count() * volume)))
+        count = max(1, int(round(self.surge_count(from_empty_board) * volume)))
         quest_chance = self.quest_chance(volume)
         quest_sieges: dict[str, int] = {}
 
@@ -864,6 +873,14 @@ class Simulation:
         `self.dungeons` and both are something to do, which is the whole
         question this asks.
         """
+        # ONLY AN ORDINARY DUNGEON KEEPS THE BOARD FROM BEING EMPTY, under the
+        # owner's ruling of 2026-11-23 on issue #2865 (point 1): Quest dungeons,
+        # the Cataclysm boss dungeon, the Last Stand and Fallen City dungeons do
+        # not count. Ordinary is `DungeonType.BASIC`. Off, every dungeon counts,
+        # as below.
+        if self.cfg.empty_board_counts_ordinary_only:
+            return not any(d.dtype is DungeonType.BASIC
+                           for d in self.dungeons.values())
         return not self.dungeons
 
     def days_since_last_surge(self) -> float:
@@ -921,11 +938,21 @@ class Simulation:
             return
         if not self.board_is_empty():
             return
-        if self.days_since_last_surge() < cfg.surge_interval_min:
-            return
+        # NO BRAKE WHEN THE RULING OF 2026-11-23 IS ON (issue #2865, point 3):
+        # every surge adds at least one dungeon, so the board is not empty
+        # again until the player has cleared or lost every ordinary one.
+        if cfg.empty_board_surge_braked:
+            if self.days_since_last_surge() < cfg.surge_interval_min:
+                return
 
         before = len(self.surge_log)
-        self.trigger_surge()
+        # AN ORDINARY SURGE, AS THE GAME FIRES ONE, while the ruling's larger wave
+        # is off (`tools/tests/test_surge_port.py` holds the two equal); with it
+        # on, flagged so `surge_count` adds `empty_board_surge_extra`.
+        if cfg.empty_board_surge_larger:
+            self.trigger_surge(from_empty_board=True)
+        else:
+            self.trigger_surge()
         if len(self.surge_log) > before:
             self.surges_from_empty_board += 1
 
@@ -1440,20 +1467,22 @@ class Simulation:
             finally:
                 self.making_floors = None
 
-        # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
-        # #1432, ruled 2026-09-14. The scheduled wave spaces itself by
-        # `surge_gap()` and the board-empty trigger refuses inside
-        # `surge_interval_min`; this trigger had no spacing at all, so a fall the
-        # day after a surge landed a whole second wave and two cities falling on
-        # one day landed two. At difficulty tier 4 that was 89% of every surge
-        # that fired, 82% of them inside the 25-day floor. The fall itself still
-        # stands -- the Fallen City dungeon, the lane opening -- and the
-        # scheduled clock is untouched; only the extra wave is withheld when the
-        # last one landed less than `surge_interval_min` days ago. A braked
-        # fall is not retried later: the fall is a moment, not a standing state
-        # like an empty board, and the scheduled wave still comes.
-        if (cfg.surge_on_city_fall
-                and self.days_since_last_surge() >= cfg.surge_interval_min):
+        # EVERY FALL FIRES A SURGE, WHATEVER THE GAP SINCE THE LAST ONE. The
+        # owner's ruling of 2026-11-24 on issue #2865, verbatim: "surges from
+        # cities falling should happen regardless". So a fall the day after a
+        # surge lands a second wave, and two cities falling on one day land two.
+        #
+        # FROM ISSUE #1432 (RULED 2026-09-14) UNTIL THEN a fall respected the
+        # minimum gap: at difficulty tier 4 with no tree the fall trigger had
+        # been 89% of every surge that fired, 82% of them inside the 25-day
+        # floor. `city_fall_surge_braked` gives that rule back. A braked fall
+        # was not retried later: the fall is a moment, not a standing state like
+        # an empty board. The fall itself stands either way -- the Fallen City
+        # dungeon, the lane opening.
+        if cfg.surge_on_city_fall:
+            if (cfg.city_fall_surge_braked
+                    and self.days_since_last_surge() < cfg.surge_interval_min):
+                return
             self.trigger_surge(from_city_fall=True)
 
     def _quest_refuge(self, d: Dungeon, fallen: City) -> City | None:

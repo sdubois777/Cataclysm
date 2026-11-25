@@ -4298,6 +4298,499 @@ and the `Cataclysm.SkillLevelSources.` and `Cataclysm.LevelCosts.` tests that ca
 
 ---
 
+## 2026-11-24 — Surges come sooner: an empty board brings the next one at once and 4 dungeons larger, every city's fall brings one whatever the gap, and tier 1 damage on Bulwark, Sanctuary and Pillar dungeons is lowered to match (#2865)
+
+**Affects:** `UCataclysmSurgeScheduler::ExtraDungeonsOnEmptyBoard`, new, `DungeonsInNextSurge(bFromEmptyBoard)`,
+`RollWave(..., bFromEmptyBoard)` and `IsDueOnEmptyBoard` (`game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and
+`.cpp`); `UCataclysmEmpireRun::OrdinaryDungeonCount`, new, `FireSurge(..., bFromEmptyBoard)` and `AdvanceDay`'s
+empty-board check (`game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `.cpp`);
+`TuningConfig.empty_board_counts_ordinary_only`, `empty_board_surge_larger`, `empty_board_surge_extra` and
+`empty_board_surge_braked`, new (`sim/cataclysm_sim/config.py`), and `Simulation.surge_count`, `trigger_surge`,
+`board_is_empty` and `_maybe_surge_on_empty_board` (`sim/cataclysm_sim/engine.py`); the design document's "The Surge".
+THE FALL: `UCataclysmSurgeScheduler::IsDueOnCityFall` and the comments of `CityFell`; `FCataclysmDayReport::Surges`, new,
+counted in `FireSurge` and read by `UCataclysmEmpireRun`'s days-away summary, `FCataclysmPlayLoopLog::AwayAccount`
+(`game/Source/Cataclysm/Player/CataclysmPlayLoopLog.cpp`) and the day line in
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`; `TuningConfig.city_fall_surge_braked`, new, and
+`Simulation._fall`; the overrides of `Simulation.trigger_surge` in `sim/analyse_board_empty_surge.py`,
+`sim/analyse_surge_cadence.py` and `sim/analyse_tier_throughput.py`. THE RETUNE:
+`enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING` (`sim/cataclysm_sim/enemy_stats.py`) and
+`UCataclysmEnemyScore::DamageScaleAtFirstTierOnABulwark`, `DamageScaleAtFirstTierOnASanctuary` and
+`DamageScaleAtFirstTierOnThePillar`
+(`game/Source/Cataclysm/Dungeon/CataclysmEnemyScore.h`); `game/Tests/EnemyStrength/ExpectedFigures.csv`, regenerated;
+`sim/analyse_opening.py`'s `RING_SCALES`. `sim/cataclysm_sim/policies.py`'s Siege figures, re-measured.
+Tests: six `Cataclysm.EmpireRun.` tests rewritten for the new rule, three of them renamed, and seven others held to the
+run they were written for, in `game/Source/CataclysmEmpire/Tests/CataclysmEmpireRunTests.cpp`; three
+`Cataclysm.DungeonMode.` tests held the same way in `game/Source/Cataclysm/Tests/CataclysmDungeonCostsDaysTests.cpp`;
+`sim/tests/test_the_empty_board_ruling_of_2026_11_23.py`, new; `sim/tests/test_surge_when_the_board_empties.py`,
+`tools/tests/test_surge_port.py` and `tools/tests/test_empire_tree_slice9.py`. For the fall: four more
+`Cataclysm.EmpireRun.` tests rewritten, three of them renamed, three made to read rolls they could not before, the
+expectation of `Cataclysm.PlayLoop.TheDaysAwayNameWhatResolvedWhatEachCityLostWhatFellAndTheSurges`,
+`sim/tests/test_a_city_fall_always_fires_a_surge.py`, new, `sim/tests/test_a_city_fall_respects_the_minimum_surge_gap.py`
+and `tools/tests/test_surge_port.py`. For the retune: `Cataclysm.EnemyStrength.` figures, `sim/tests/test_creature_strength.py`,
+`tools/tests/test_content_relief_port.py`, `tools/tests/test_enemy_strength_fixture_is_current.py` and
+`tools/tests/test_the_starting_character_survives_a_pack.py`'s seeds. Issue [#2865](https://github.com/sdubois777/Cataclysm/issues/2865).
+
+### SAID FIRST
+
+- **RUN AND PASSED IN THREE WINDOWS, 2865-w1 TO 2865-w3 (2026-11-25)**, recorded at the end of this entry. w1's whole
+  suite performed 5474 and failed three, each a test fault fixed in its test file; w2 ran the two groups those are in,
+  71 of 71 and 10 of 10, and observed the fallen-city case the third fix counts; w3 PROVED P1, P5 and P6 on the same
+  head after P1's restored half in w2 ended with no result. On
+  `fix/empty-board-surge-2865`, cut from development `4d33f5994`, and since
+  2026-11-25 on `fix/empty-board-surge-2865-2`, which merges development `eb34af972` and then `be7ffb06e` into it by
+  the coordinating session's instructions of that day: the inventory tabs (#2887), bug batches 1 and 2 (#2889), the Power Score and drop
+  supply of issue #2853 (#2890) and skill selection (#2891). A merge and not a rebase, so the pushed branch is untouched.
+- **THE MEASUREMENTS AND THE RETUNE WERE PROVISIONAL UNTIL 2026-11-25.** The gear drop rarity fix (issue #2853) was not in, so the
+  simulated player's power is not yet what the game will give once drops are fixed. **When #2853 lands, run
+  `sim/analyse_opening.py` section 5 again** (the commands are in the retune section below) and move the Bulwark,
+  Sanctuary and Pillar figures to what it then finds; the coordinating session ruled the retune provisional on that condition.
+  **RUN AGAIN ON 2026-11-25 WITH #2853 MERGED IN: NOTHING MOVED.** On both seed sets every clear count, and every lost
+  and under-10% count at every scale, is what it was before the merge (the retune section below). Read from the code,
+  the reason: the fit's character holds no gear but the gear-level-0 Greataxe and takes its level from the experience
+  it banks, and neither the campaigns nor the walk that fights each clear again loads `sim/cataclysm_sim/player_power.py`,
+  `loot.py` or `affixes.py`, the model files #2853 changed. **So this measurement cannot see gear drops**, and running
+  it again after #2853 could not have moved it. **The coordinating session ruled on 2026-11-25 that they are no longer
+  provisional: Bulwark 0.10, Sanctuary 0.12 and Pillar 0.07 stand as measured, as play-test points like every other
+  tuned figure**, since #2853 only lowered how much gear a tier 1 player finds, which moves a real character nearer the
+  fit's gearless one and not further from it.
+- **EVERY CITY'S FALL NOW BRINGS A SURGE, and it costs a player with no empire tree about 2.7 more cities and 5 points
+  of win rate at tier 1** (below). The owner ruled it on 2026-11-24; the coordinating session passed the tier 4 figures
+  to the owner as information the same day.
+- **THE 25-DAY BRAKE WAS A GUARANTEE MANY TESTS RELIED ON.** Under the rule of 2026-09-07 no empty-board surge could come
+  within 25 days of the last surge, so a test could empty the board and pass a few days quietly. Now a board left with no
+  ordinary dungeon brings a wave the next day. By the coordinating session's ruling (a) of 2026-11-24 every Unreal test
+  that advances an empire run (157 in 34 files) was read and each affected one was changed in its test file only, so no
+  rule the game no longer ships stays inside the game for them. The sweep, test by test, is below.
+
+### The rulings
+
+- **The owner, 2026-11-23**, on the coordinating session's proposal, verbatim "yes, your rec":
+  1. "The board counts as empty when no ordinary dungeon stands. Quest dungeons, the Cataclysm boss dungeon and Fallen
+     City dungeons do not count." This fixes the rule of 2026-09-07 ("Anytime there are no longer dungeons on the
+     board, a surge happens"): on day 416 of the owner's run one Quest dungeon stood and no surge came, and later a
+     Fallen City dungeon did the same. The owner, the same day: "ah, then it should be working right now, but it doesn't
+     because it's counting the fallen city dungeon".
+  2. "A surge fired because the board emptied brings the previous surge's dungeon count plus 4." Superseded below.
+  3. "The 25-day minimum gap (LeastIntervalDays) does not apply to a surge fired by an empty board."
+  4. The +4 checked in the simulation before the game changes.
+- **The owner, 2026-11-24**, after the measurement showed point 2 compounding, chosen option verbatim "Flat +4, no
+  stacking": an empty-board surge always brings the scheduled count plus 4, 12 today, never growing from the previous
+  wave.
+- **The coordinating session's judgement, 2026-11-24**: the cap `MostDungeonsPerSurge` (14) and the lethality
+  multiplier apply after the +4, "as for any wave". So Heretic's empty-board wave is (8 + 4) x 1.25 = 15, and an
+  empty-board surge at the opening index would be 12 + 4 held at 14. This narrows point 2 of 2026-11-23, which said the
+  cap does not apply; that point was superseded with the size.
+- **The coordinating session's ruling (a), 2026-11-24**, on the tests: sweep every test that advances a run and fix
+  each affected one in its test file.
+
+**Ordinary** is `ECataclysmDungeonType::Basic` and not a Scout Parties bonus dungeon in the game, which already left a
+bonus dungeon out of the empty-board count (slice 9, V16); `DungeonType.BASIC` in the simulation, which has no bonus
+dungeon. The Last Stand and the Cataclysm boss dungeon are both `DungeonType.CATACLYSM` there.
+
+### The fall's surge: the ruling of 2026-11-24
+
+- **The owner, 2026-11-24**, relayed by the coordinating session and recorded on issue #2865, verbatim: "surges from
+  cities falling should happen regardless". The owner's case: Outpost (2,1) fell at most 24 days after the previous
+  surge and fired none (issue #2866).
+- **What it reverses.** The simulation refused a fall's surge inside `surge_interval_min` (25 days) from issue #1432,
+  ruled 2026-09-14 under the owner's delegation ("yes, the city-fall surge respects surge_interval_min like the
+  empty-board trigger"), and the game copied it on issue #2380 (2026-10-12, a judgement by the coordinating session
+  under the same delegation). The design document never had the gap: "A Surge is triggered at run start and recurs
+  after a fixed number of days or when a city falls", and "If a city falls, it becomes a Dungeon City ... triggering a
+  Surge".
+- **The coordinating session's rulings the same day:** (1) the literal reading stands: every fall fires its own surge,
+  so two falls on one day bring two waves and a fall on the scheduled surge's day adds one; `FCataclysmDayReport::Surges`
+  and the days-away summary counting surges rather than days are approved. (2) `bCityFallAdvancesEscalation` is
+  unchanged: a fall's surge still advances the escalation counter. (3) The tier 1 damage scales for the Bulwark and
+  Pillar rings are lowered on this branch (below), provisional until issue #2853 lands.
+
+| World | A fall's surge | Surges from falls a campaign | Cities lost of 25 | Won | Days a campaign |
+| :-- | :-- | --: | --: | --: | --: |
+| No tree, tier 1 | waits 25 days | 2.80 | 7.73 | 44.0% | 461 |
+| No tree, tier 1 | **every fall** | **10.58** | **10.44** | **39.1%** | **457** |
+| Architect, tier 1 | waits 25 days | 0.42 | 0.67 | 48.4% | 450 |
+| Architect, tier 1 | **every fall** | **0.87** | **0.87** | **48.9%** | **450** |
+| No tree, tier 4 | waits 25 days | 6.98 | 21.75 | 23.2% | 473 |
+| No tree, tier 4 | **every fall** | **22.87** | **23.80** | **19.7%** | **347** |
+
+`.claude/windows/measure_fall_2865.py` in the session's worktree, the same settings as the table above and the
+empty-board rule as it ships on this branch in both rows; 2,000 campaigns a cell in two disjoint blocks of 1,000, the
+block-to-block difference at most 0.19 cities and 2.3 win points. Tier 4 was added because issue #1432 brought the gap
+in for tier 4, where the fall trigger had been 89% of every surge.
+
+### The measurement of the empty-board rule
+
+`.claude/windows/measure_empty_board_2865.py` in the session's worktree, settings copied from
+`sim/analyse_board_empty_surge.py`'s `base_config`: difficulty tier 1, the `triage` policy, static surges (opening 12,
+then 8 every 90 days, cap 14), resolve floor ratio 2.0. 2,000 campaigns a cell in two disjoint blocks of 1,000; the
+block-to-block difference was at most 0.14 cities and 1.8 win points.
+
+| World | Rule | Empty-board surges a campaign | Their mean size | Largest wave | Cities lost of 25 | Won |
+| :-- | :-- | --: | --: | --: | --: | --: |
+| No tree | 2026-09-07 | 4.81 | 7.8 | 12.0 | 3.51 | 44.5% |
+| No tree | only ordinary count | 9.17 | 8.0 | 12.0 | 5.72 | 44.1% |
+| No tree | 2026-11-23 (previous wave + 4) | 5.53 | 19.7 | 26.5 | 11.27 | 41.0% |
+| No tree | **2026-11-24 (flat + 4)** | **7.24** | **12.0** | **12.0** | **7.73** | **44.0%** |
+| Architect | 2026-09-07 | 6.02 | 7.7 | 12.0 | 0.44 | 48.4% |
+| Architect | 2026-11-23 (previous wave + 4) | 8.36 | 32.6 | 44.9 | 0.83 | 47.7% |
+| Architect | **2026-11-24 (flat + 4)** | **9.39** | **11.6** | **12.0** | **0.67** | **48.4%** |
+| Explorer | 2026-09-07 | 0.08 | 7.2 | 12.0 | 0.83 | 68.2% |
+| Explorer | **2026-11-24 (flat + 4)** | **0.13** | **10.7** | **12.0** | **0.85** | **68.0%** |
+
+With no tree, the same rule at + 0 loses 5.81 cities, so of the 4.2 cities the ruling adds, about 2.2 come from counting
+only ordinary dungeons and about 1.9 from the + 4; removing the brake adds almost nothing on its own. A player in the
+Explorer tree almost never empties the board and is not affected.
+
+### What it does
+
+- **The game.** `AdvanceDay` asks `IsDueOnEmptyBoard(Today, OrdinaryDungeonCount())` last in the day, as before, and
+  fires `FireSurge(Today, false, Report, true)`. `IsDueOnEmptyBoard` is the flag and no ordinary dungeon standing, with
+  no least interval. `DungeonsInNextSurge(true)` adds `ExtraDungeonsOnEmptyBoard` (4) before the cap and the multiplier,
+  and `RollWave` sizes its wave with it. The clock's surge and a city's fall keep `DungeonsInNextSurge()`.
+- **The simulation.** The four `TuningConfig` fields carry the three parts and the 4; all ship on. Off, each gives back
+  the rule of 2026-09-07, which `sim/tests/test_surge_when_the_board_empties.py` still holds with them set off.
+- **A city's fall, in the game.** `IsDueOnCityFall` returns `bSurgeOnCityFall` alone, the day taken and not read, so
+  `CityFell` fires `FireSurge(Day, true, Report)` for every fall, after the fall's absorbing, Quest moves and Dungeon
+  City. `FireSurge` counts each surge on the report's new `Surges`, and the three readers that counted a day with a
+  surge as one now add `Surges`, because a day can hold several.
+- **A city's fall, in the simulation.** `Simulation._fall` fires `trigger_surge(from_city_fall=True)` for every fall;
+  with `city_fall_surge_braked` on it gives back the rule of issue #1432. It ships off.
+- **The design document**, "The Surge", gains a paragraph with the three empty-board rulings and their measurement, and
+  one with the fall ruling and its measurement.
+- **The Siege figures in `policies.siege_daily_damage`'s docstring**, which
+  `sim/tests/test_the_siege_prose_in_policies_is_true.py` checks, re-measured over 10,000 campaigns by that test's
+  method (`.claude/windows/siege_mix_2865.py`): 96,875 Sieges at 70 / 25 / 5 / 0 (Basic / Quest / Fallen City /
+  Cataclysm), 9.69 a campaign, against 64,191 at 70 / 24 / 5 / 1 and 6.42 on 2026-10-18. The Cataclysm share is nought
+  because a Cataclysm dungeon cannot roll a Siege since 2026-11-02.
+
+### Tests
+
+**Unreal, the rule itself.** The six empty-board tests in `CataclysmEmpireRunTests.cpp`, written for issue #1414 and
+slice 9, now hold the new rule:
+
+| Test (`Cataclysm.EmpireRun.`) | What it holds |
+| :-- | :-- |
+| `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons`, renamed from `TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed` | The scheduler alone: due on day 1, on the day of a surge and the day after it with no ordinary dungeon standing, and not with one. The empty board's wave is 14 at the opening index (12 + 4 held at the cap), 12 later, 15 at Heretic; the clock's is 12, 8 and 10. |
+| `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay` | The wave after the clear is 12, and 12 stand. |
+| `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, renamed from `ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed` | Day 2, one day after the last surge, surges with 12. CONTROL: one ordinary dungeon standing, no surge. |
+| `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes` | Empty-board waves on days 2 and 3 move the clock to 92 and 93; an ordinary dungeon then keeps the board through day 92; the clock's 8 come on day 93. |
+| `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, renamed from `EveryKindOfDungeonKeepsTheBoardFromBeingEmpty` | An ordinary dungeon holds the board; a Quest dungeon, a Fallen City, a Cataclysm dungeon and a Scout Parties bonus dungeon alone each leave it empty, and day 2 surges with 12. |
+| `AnEmptyBoardFiresNothingOnceThePillarCanBeReached` | Days 2 to 15 and not 2 to 40, because the control's wave now comes on day 2; the control asserts that day. |
+
+**Python.** `sim/tests/test_the_empty_board_ruling_of_2026_11_23.py`, 13 test functions and 17 collected: only an
+ordinary dungeon keeps the board full; the wave is the scheduled count plus 4, never grown from the previous wave, with
+the cap and the lethality multiplier after the 4; no minimum gap; and the three parts ship on. Each has a control with
+its switch off. `sim/tests/test_surge_when_the_board_empties.py` sets the switches off and keeps the tests of the rule of
+2026-09-07. `tools/tests/test_surge_port.py` loses `test_the_brake_is_the_gap_the_game_already_carries` and gains
+`test_neither_half_brakes_an_empty_board_surge`, `test_both_count_only_ordinary_dungeons` and
+`test_both_bring_the_scheduled_count_plus_four`, each reading the game and the simulation side by side.
+`tools/tests/test_empire_tree_slice9.py` reads the new `AdvanceDay` call and `!Dungeon.bBonus` in
+`OrdinaryDungeonCount`.
+
+**Unreal, the fall.** In `CataclysmEmpireRunTests.cpp`:
+
+| Test (`Cataclysm.EmpireRun.`) | What it holds |
+| :-- | :-- |
+| `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge`, renamed from `TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed` | Due on day 1, 24 days after a surge, the day of a surge and the day after, and 24 days after a fall's surge, each with the days since the last surge asserted. CONTROL: the empty-board rule with one dungeon standing answers no. |
+| `ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave`, renamed from `ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` | The owner's case: a fall on day 25, 24 days after the last surge, brings one wave of 8; the counter advances, the clock moves to day 115, and everything else a fall does still happens. CONTROL: the same run to day 25 with no fall has no surge. |
+| `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` | The day-26 fall as before, and the day-25 fall now brings the same one wave. |
+| `TwoCitiesFallingOnOneDayBringTwoWaves`, renamed from `TwoCitiesFallingOnOneDayBringOneWave` | Two falls on day 26 fire two surges: 3 in the run, `Surges` 2 on the report, 16 dungeons in the waves and 18 arrived; the same falls 25 days apart fire as many. |
+| `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind` | A death on day 1 that fells its city brings a wave of 8, though the opening wave came the same day. |
+| `AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest` | The erasure brings a wave of 8, no empty-board wave follows, and the map holds the dungeon on the Pillar and the wave. |
+| `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity`, renamed from `...AndMayFireASurge` | On every fall day of an unattended run, exactly one surge for each city that fell and one more when the clock's was due, on the scheduler and on the report. |
+
+**Python, the fall.** `sim/tests/test_a_city_fall_always_fires_a_surge.py`, 9 tests: the ruling ships; a fall 1 day
+and 24 days after a surge fires one; two falls on one day fire two; escalation still advances; each with a control with
+`city_fall_surge_braked` on. `sim/tests/test_a_city_fall_respects_the_minimum_surge_gap.py` keeps the rule of issue
+#1432 with the switch on. `tools/tests/test_surge_port.py`'s `test_a_fall_asks_the_flag_and_the_least_interval_in_both`
+becomes `test_every_fall_fires_a_surge_in_both`.
+
+### The sweep of the tests that advance a run
+
+**Every verdict below comes from reading the code. Nothing was compiled or run**; the window is what confirms the NOT
+AFFECTED verdicts. Three read-only agents read the tests, and this session read every test it changed. The full record,
+test by test, is `.claude/windows/sweep_2865.md` in the session's worktree.
+
+**The fix where one was needed is to hold the board**: one ordinary dungeon with a timer that never runs out, on the
+Pillar. A wave never targets the Pillar (`UCataclysmEmpireMap::ExposedCities` leaves it out), it does not fall in these
+tests and the holder takes no random draw, so the run is otherwise the one the test was written against. In
+`CataclysmEmpireRunTests.cpp` it is the new helper `HoldTheBoard`, called before any pointer into the dungeons is taken.
+
+| File | Test | Verdict | What changed in the test |
+| :-- | :-- | :-- | :-- |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` | AFFECTED: the day-25 fall left only a Fallen City, so a wave of 12 would land | Held, in the helper `FellTheFirstOutpostOn`; dungeons standing after the fall 1 -> 2 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave` | AFFECTED, through its control | The same helper; dungeons standing after the wave 9 -> 10 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AnOrdinaryDungeonHitsItsCityOnceAndIsGone` | AFFECTED: after the hit only a Quest and a Fallen City stood | Held; the control count 2 -> 3 |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest` | AFFECTED: the erasure left nothing | Held; "nothing is left on the map" becomes nothing on the erased city, and one dungeon on the whole map |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge` | UNCERTAIN: a fall day that also empties the board would surge | Held from day 1; no count moves |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.ADeathMakesAnOrdinaryDungeonHitItsCityOnceAndLeaveTheMap` | UNCERTAIN: a Siege of the day-2 wave could bite the watched city | Held for the five days charged |
+| `CataclysmEmpireRunTests.cpp` | `Cataclysm.EmpireRun.AQuestDungeonThatIsNotAHollowNeitherShrinksNorAddsStacks` | UNCERTAIN: the same | Held before the Horde is placed |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.ADeathInAQuestDungeonOrADungeonCityCostsTheDaysAndResolvesNothing` | UNCERTAIN, likely: any Siege in the day-2 wave fails its control | Held, in `RunOneCase` |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.ADeathInAnOrdinaryDungeonHitsItsCityOnceAndTheDungeonLeavesTheMap` | UNCERTAIN: a Siege on the watched city | Held |
+| `CataclysmDungeonCostsDaysTests.cpp` | `Cataclysm.DungeonMode.OnHereticADeathInAThreeFloorDungeonHitsItsCityOnceAndNothingMoreLandsInTheDaysCharged` | UNCERTAIN: the same | Held, in `DieIn` |
+
+**Left as it is, UNCERTAIN:** `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself`, 200 unattended days on
+seed 1. The rule changes which cities fall, and the test needs falls to check, so holding the board would defeat it.
+If it fails in the window the failure is read before anything is changed.
+
+**Comments only:** `MakeEmptyRun`'s, the idle player's in
+`Cataclysm.EmpireRun.ClearingADungeonCountsItAndOnlyTheRightKindsCountTwice`, four section headers in
+`CataclysmEmpireRunTests.cpp` that said no wave lands while their tests run, the death scene's in
+`game/Source/Cataclysm/Tests/CataclysmDeathCostTests.cpp`, and one in
+`game/Source/Cataclysm/Tests/CataclysmEmpireScreenTests.cpp`. Each said no wave could come before day 26.
+
+**Read and NOT AFFECTED:** 67 more of the 81 tests in `CataclysmEmpireRunTests.cpp`, which includes the
+`Cataclysm.EarnedBoss.`, `Cataclysm.BossClearedWins.` and `Cataclysm.EmpirePoints.` tests in that file; the other tests
+in the other 33 files. The readers named 23 in `CataclysmEmpireRunTests.cpp` and 25 in the other files where a wave of
+12 now lands at the end of day 2 or 3, after everything the test reads, and 16 long runs whose later rolls change while
+what they assert holds for any roll; the rest keep an ordinary dungeon standing.
+
+### The second sweep: every fall fires a surge
+
+By three read-only agents, on the coordinating session's instruction; every verdict by reading. Beside the tests in the
+table above, three were changed so a roll the new rule makes possible cannot fail them:
+`Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself` counts a dungeon that arrived and was absorbed the same
+day, and skips its two counts, saying so, on a day more than one city fell with such a dungeon;
+`Cataclysm.EmpireRun.AQuestDungeonMovesToAnAdjacentCity` exempts and counts a neighbour besieged by a Siege that
+arrived that day, as it exempts one opened by the day's falls; and
+`Cataclysm.PlayLoop.TheDaysAwayNameWhatResolvedWhatEachCityLostWhatFellAndTheSurges` sums `Surges`. Comments that said
+a fall inside 25 days brings no wave were corrected in `CataclysmEmpireRunTests.cpp` and
+`CataclysmDeathCostTests.cpp`. Outside `CataclysmEmpireRunTests.cpp` no assertion changes by reading;
+`Cataclysm.Surge.NoDungeonACampaignMakesComesOutWithoutASubType`, `Cataclysm.Surge.ACampaignActuallyLandsQuestDungeons`
+and `Cataclysm.SaveWriter.ASavedScheduleRollsTheSameNextWave` depend on rolls and are far from their limits.
+
+### The third sweep, 2026-11-25: what development added before the merge
+
+Every Unreal test file development changed between `4d33f5994` and `eb34af972` (78 files) was searched for a call that
+passes an empire day, kills the player in a run or fells a city through the run (`AdvanceDay`, `AdvanceDays`,
+`ResolveDungeonOnDeath`, `CityFell`, `EndTheDungeon`, `LeaveEmpireDungeon`, `Clock->Day`), and for the ring figures
+and their products (`DamageScale(`, `damage_scale(`, `0.132`, `0.156`, `times as hard`, `/ 0.05`). Three new tests
+reach the rule, each read in full; none of the ring searches found anything.
+
+| Test | Why the rule reaches it | Verdict |
+| :-- | :-- | :-- |
+| `Cataclysm.EmpireTreeCity.ARespecKeepsEveryCityAtItsShareOfTheLoweredMaximum` | Its dungeon (9002) resolves on the day it passes and leaves the board empty, so a wave of 12 now lands at the end of that day | NOT AFFECTED: it reads the hit in the day's report and the Outpost's defence; a landing writes no defence (`FireSurge` adds dungeons and records the surge) and comes after both |
+| `Cataclysm.EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns` | `QuietRun` empties the board, so the day it turns brings a wave at its end | NOT AFFECTED: it reads the maximum and the stored defence, which `KeepShares` writes before the timers move; the wave lands last |
+| `Cataclysm.WalkFromTheScreen.AFallenCityOpensItsScreenAndItsFallenCityDungeonIsWalkedFromIt` | Its Outpost falls through `ResolveDungeonOnDeath`, so the fall now fires a surge of 8 | NOT AFFECTED: it reads the fallen city's box, text, screen and the walk of its Fallen City dungeon; a wave lands only on standing cities |
+
+`Cataclysm.EmpireTreeCity.`, `Cataclysm.EmpireTreeEvents.` and `Cataclysm.WalkFromTheScreen.` join the groups run
+alone. Skill selection (#2891) changes no simulation, surge, empire run or ring file and adds no test that passes a day.
+The C++ files both sides changed (`CataclysmEmpireRun.cpp` and `.h`, `CataclysmPlayerCharacter.cpp`,
+`CataclysmGameMode.h`, `CataclysmPlayLoopLog.cpp`, `CataclysmDungeonModifierEffects.h`) merged without a conflict, in
+regions apart from this branch's.
+
+### The tier 1 ring damage scales, found again: Bulwark 0.10, Sanctuary 0.12, Pillar 0.07
+
+**A CONSEQUENCE OF THE SURGE RULINGS, AND PROVISIONAL.** With both surge rulings in, more waves come, the tier 1
+campaigns reach the inner rings at lower levels, and three Python guards failed that pass on the base `4d33f5994`:
+`tools/tests/test_the_starting_character_survives_a_pack.py` on the Bulwark (2 clears of seed 1, a 21-floor Basic
+Elite entered at level 7) and the Pillar (1, a 184-floor Cataclysm dungeon entered at level 18), and the section-five
+check of `sim/tests/test_analysis_scripts.py`. The coordinating session ruled on 2026-11-24 to find the figures again by
+the rule that chose them on 2026-11-19 (issue #2749): the largest step of 0.01 at which every dungeon of the ring that
+the tier 1 campaigns clear, walked again from the level the character held when it entered, is won with at least 10%
+of its health left, fitted on seeds 0 to 59 of every policy and checked on seeds 60 to 119. **When the gear drop rarity
+fix (issue #2853) lands, run it again**:
+
+    CATACLYSM_OPENING_CAMPAIGNS=60 CATACLYSM_OPENING_CAMPAIGNS_FROM=0 python -u sim/analyse_opening.py
+    CATACLYSM_OPENING_CAMPAIGNS=60 CATACLYSM_OPENING_CAMPAIGNS_FROM=60 python -u sim/analyse_opening.py
+
+`sim/analyse_opening.py`'s `RING_SCALES` gained steps of 0.01 from 0.05 up on the Bulwark and the Pillar, and 0.11 on
+the Sanctuary, so the largest passing step could be found below the old figures. Lost / won under 10% health:
+
+| Ring | Clears, fit / check | 0.07 | 0.08 | 0.10 | 0.11 | 0.12 | 0.13 | Ruled |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| Outpost | 7,584 / 7,650 | | | | | | | **0.05**, unchanged; 0 / 0 on both |
+| Bulwark | 3,188 / 3,467 | 0 / 0, 0 / 0 | 0 / 0, 0 / 0 | **0 / 0, 0 / 0** | 0 / 3, 0 / 17 | 3 / 23, 23 / 32 | | **0.10**, from 0.11 |
+| Sanctuary | 4,314 / 4,165 | | | 0 / 0, 0 / 0 | 0 / 0, 0 / 0 | **0 / 0, 0 / 0** | 0 / 0, 0 / 1 | **0.12**, from 0.13 |
+| Pillar | 85 / 94 | **0 / 0, 0 / 0** | 0 / 1, 0 / 0 | 3 / 0, 0 / 0 | 3 / 0, 0 / 0 | 3 / 1, 0 / 1 | 4 / 15, 1 / 13 | **0.07**, from 0.10 |
+
+Each cell is the fit, then the check. The Sanctuary's 0.13 passes the fit and leaves one check clear under 10%, so it
+fails the rule; the coordinating session ruled it down with the other two. The Pillar's figure is bound by the fit:
+the check alone would allow 0.11. The Pillar is still the one exception to "rises by ring".
+
+**Run again on 2026-11-25 on the merge of development `eb34af972`** (the Power Score and drop supply of issue #2853
+in), by the same two commands in a `git archive` copy of the merge: 15,171 clears on seeds 0 to 59 and 15,376 on 60
+to 119, as before, and every cell of the table above the same. The figures stay 0.10, 0.12 and 0.07, so nothing
+derived from them moves (the Stalker's multipliers and the hit ratios below).
+
+**The guard walks seeds 0 to 16, from 0 to 14**, ruled the same day: with campaigns ending sooner, seeds 0 to 14 gave
+the Pillar 19 clears and the guard's own fixture asks for more than 20; 0 to 16 is the fewest that give more (23).
+`.claude/windows/guard_seeds_2865.py` counted them seed by seed.
+
+**Changed together:** `enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING`; `UCataclysmEnemyScore::DamageScaleAtFirstTierOnABulwark`,
+`...OnASanctuary` and `...OnThePillar`; `game/Tests/EnemyStrength/ExpectedFigures.csv`, regenerated with
+`tools/generate_enemy_strength_fixture.py` (126 of its 973 rows, the three inner rings' tier 1 rows); the figures typed
+in `sim/tests/test_creature_strength.py`, `tools/tests/test_content_relief_port.py`,
+`tools/tests/test_enemy_strength_fixture_is_current.py` and `Cataclysm.EnemyStrength.` (`CataclysmEnemyStrengthTests.cpp`);
+the comments that quote them in `CataclysmPlayerClassStats.h` and `CataclysmGameMode.h`; the design document. AND THE
+FIGURES DERIVED FROM THEM, which the first whole Python run after the retune found when
+`sim/tests/test_the_corrupted_stalker_fight.py` failed on the Stalker's Bulwark multiplier: the search that listed the
+places above looked for the ring figures and not for products of them. A second search, for every ratio of a ring's
+figure to the Outpost's and every call naming an inner ring, found the rest: the Corrupted Stalker's tier 1 damage
+multiplier, 0.06 times the ring's figure over 0.05, is now 0.12, 0.144 and 0.084 (was 0.132, 0.156 and 0.12) in
+`sim/cataclysm_sim/fight.py`'s docstring, `sim/tests/test_the_corrupted_stalker_fight.py`,
+`UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier`'s comment and
+`Cataclysm.DungeonModifierEffects.` (`CataclysmDungeonModifierEffectsTests.cpp`, the multipliers and a Bulwark Stalker's
+hit 2.0 times an Outpost's, was 2.2); `Cataclysm.EnemyBurn.` (`CataclysmEnemyBurnTests.cpp`, a label); and the two
+ratios in `Cataclysm.EnemyStrength.`, a Sanctuary's hit 2.4 times an Outpost's (was 2.6) and a Bulwark's 2.0 (was 2.2).
+The simulation's control that a Bulwark Stalker's multiplier is more than twice an Outpost's became more than 1.5
+times: the ratio is now exactly 2.
+
+### Registered for the window
+
+**Nothing here has run.** Registered from the sweep, by the procedure of 2026-11-21: the groups the change moves run
+alone first, then the whole suite, with the Python suite in parallel.
+
+- **The build.** The engine change is in `CataclysmSurge.h`, `CataclysmEmpireRun.h` and `CataclysmEnemyScore.h`, so
+  both modules recompile widely. Predicted: succeeds, and the compiled list includes `CataclysmSurge.cpp`,
+  `CataclysmEmpireRun.cpp`, `CataclysmPlayLoopLog.cpp`, `CataclysmPlayerCharacter.cpp`, `CataclysmEmpireRunTests.cpp`,
+  `CataclysmDungeonCostsDaysTests.cpp`, `CataclysmDeathCostTests.cpp`, `CataclysmEmpireScreenTests.cpp`,
+  `CataclysmPlayLoopTests.cpp`, `CataclysmEnemyStrengthTests.cpp`, `CataclysmEnemyBurnTests.cpp` and
+  `CataclysmDungeonModifierEffectsTests.cpp`.
+- **The groups alone, each with a trailing dot.** The branch adds and removes no Unreal test and renames seven, so each
+  count is the same group's count in the newest whole-suite log, window ss2-w1's `ss2_suite_engine_56360b4d.log` in
+  the sharp-meitner worktree: 5474 performed on `56360b4d6`, which differs from `eb34af972` only in
+  `docs/DECISIONS.md` and the test fault fixed in `CataclysmSkillPoolTests.cpp`, which adds no test. Counted with
+  `grep -F` on its `Test Completed.` lines: `Cataclysm.EmpireRun.` 71, `Cataclysm.DungeonMode.` 46, `Cataclysm.Surge.`
+  54, `Cataclysm.DeathCost.` 9, `Cataclysm.EmpireScreen.` 16, `Cataclysm.PlayLoop.` 12, `Cataclysm.EnemyStrength.` 9,
+  `Cataclysm.EnemyBurn.` 4, `Cataclysm.DungeonModifierEffects.` 785, and from the third sweep
+  `Cataclysm.EmpireTreeCity.` 21, `Cataclysm.EmpireTreeEvents.` 15 and `Cataclysm.WalkFromTheScreen.` 6. Predicted for
+  each: every test succeeds, 0 failed, and the saves line shows 0 left behind.
+- **The whole suite.** 5474 performed (ss2-w1's 5474 plus 0), 5474 succeeded, 0 failed; 0 saves left behind.
+- **Python, run on `d3d810805`** with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8243 passed,
+  10 skipped in 427.01s`; the JUnit file agrees, 8,253 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`:
+  `All checks passed!`. The run before it, on `d99df41ea`, failed one test, which is how the Stalker's derived figures
+  were found (the retune section above).
+- **Python, run on the merge of development `eb34af972`** (`2a346e335`), all but this line, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8502 passed, 10 skipped in 422.68s`; the JUnit file agrees, 8,512
+  tests, 0 failures, 0 errors, 10 skipped. Development `be7ffb06e` was merged after it, and changes one bullet of
+  another entry in this log and nothing else; the tests that read this log were run again on the final head. A trial
+  merge of development `cf760f169` (before skill selection) gave `8485 passed, 10 skipped in 471.65s`, the JUnit file
+  agreeing.
+- **Python guard proofs, run** with `tools/prove_guard.break_and_run` in `git archive` copies of the branch, before
+  the merge of 2026-11-25, which changes none of the files they break and none of the tests they name; each `PROVED`
+  (failed with the break in, passed with it out):
+  - PP1, `n += cfg.empty_board_surge_extra` becomes `n += 0`: 6 named failures, five in
+    `sim/tests/test_the_empty_board_ruling_of_2026_11_23.py` and `test_both_bring_the_scheduled_count_plus_four`.
+  - PP2, `board_is_empty` counts every dungeon: 5, the Quest, Fallen City and Cataclysm cases of
+    `test_a_dungeon_that_is_not_ordinary_leaves_the_board_empty` and two of `tools/tests/test_surge_port.py`.
+  - PP3, `empty_board_surge_braked` ships on: 2, `test_all_three_ship_as_ruled` and
+    `test_neither_half_brakes_an_empty_board_surge`.
+  - PP4, `city_fall_surge_braked` ships on: 6, five in `sim/tests/test_a_city_fall_always_fires_a_surge.py` and
+    `test_every_fall_fires_a_surge_in_both`.
+  - PP5, the game's `IsDueOnCityFall` asks the gap again: 1, `test_every_fall_fires_a_surge_in_both`.
+  - PP6, the ring figures of 2026-11-19 back in both halves: 5, the two pinned figures of
+    `sim/tests/test_creature_strength.py`, `test_every_rings_tier_one_figure_matches`, and the survival guard on the
+    Bulwark and on the Pillar (on seeds 0 to 16 the Sanctuary's 0.13 passes; its one failing clear is in seeds 60 to
+    119).
+- **C++ guard proofs**, each `prove_cpp_guard` with `test_prefix="Cataclysm.EmpireRun."`, run alone, never while the
+  Python suite runs. **Three run**, by the coordinating session's limit of 2026-11-25 of three a change: **P1, P5 and
+  P6**, one for each of the owner's rulings that reaches the game (no minimum gap; the + 4 in the wave; every fall
+  brings a surge). P2, P3 and P4 are registered and not run; P4's rule, that only an ordinary dungeon keeps the board,
+  is held in Python by PP2. Predicted `named_failures`, exactly:
+
+| # | Break | Proves | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| P1 | `IsDueOnEmptyBoard` asks the least interval again: `&& DaysSinceLastSurge(Day) >= LeastIntervalDays` added before `&& OrdinaryDungeonsStanding <= 0;` | no minimum gap | `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons`, `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, `AnEmptyBoardFiresNothingOnceThePillarCanBeReached`. Not `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`: its clear is 30 days after the last surge. |
+| P2 | `Count += static_cast<float>(ExtraDungeonsOnEmptyBoard);` becomes `Count += 0.0f;` | the + 4 in the scheduler | `TheSchedulerAnswers...`, `ClearingTheLastDungeon...`, `ABoardEmptiedTheDayAfter...`, `AnEmptyBoardSurgeMovesTheClockOn...`, `OnlyAnOrdinaryDungeon...` |
+| P3 | The cap moved above the + 4 in `DungeonsInNextSurge` | the cap after the + 4 | `TheSchedulerAnswers...` alone: the opening index reads 16 and not 14 |
+| P4 | `OrdinaryDungeonCount` counts every dungeon: `(Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus) ? 1 : 0` becomes `1` | only an ordinary dungeon counts | `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty` alone |
+| P5 | `AdvanceDay` fires the empty board's wave with `/* bFromEmptyBoard */ false` | the + 4 reaches the wave | `ClearingTheLastDungeon...`, `ABoardEmptiedTheDayAfter...`, `AnEmptyBoardSurgeMovesTheClockOn...`, `OnlyAnOrdinaryDungeon...`. Not the scheduler test. |
+| P6 | `IsDueOnCityFall` asks the gap again: `return bSurgeOnCityFall;` becomes `return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;` | every fall fires a surge | `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge`, `ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave`, `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, `TwoCitiesFallingOnOneDayBringTwoWaves`, `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`, `AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest`; and `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity` if any of its first three fall days is within 25 days of a surge, which cannot be read. |
+
+Four builds a proof, so twelve for P1, P5 and P6.
+
+### Window 2865-w1, 2026-11-25, on `62612be63`: THREE TESTS FAILED, EACH A TEST FAULT
+
+Run by `.claude/windows/run_2865_w1.py` in this branch's worktree (its output `2865_run.out`, the whole suite's engine
+log `2865_suite_engine_62612be6.log`), under lock 2865-w1, released when it ended.
+
+- **The build:** `Build: Succeeded - 76 actions, 69 files compiled`.
+- **The groups alone: 11 of 12 passed.** `Cataclysm.EmpireRun.`: 71 performed, 69 succeeded, 2 failed (the first and
+  third below). Each other group performed its registered count, every one succeeding: `Cataclysm.DungeonMode.` 46,
+  `Cataclysm.Surge.` 54, `Cataclysm.DeathCost.` 9, `Cataclysm.EmpireScreen.` 16, `Cataclysm.PlayLoop.` 12,
+  `Cataclysm.EnemyStrength.` 9, `Cataclysm.EnemyBurn.` 4, `Cataclysm.EmpireTreeCity.` 21, `Cataclysm.EmpireTreeEvents.`
+  15, `Cataclysm.WalkFromTheScreen.` 6 and `Cataclysm.DungeonModifierEffects.` 785.
+- **The whole suite:** `5474 tests performed, 5471 succeeded, 3 failed`, the three below; declared 5474 at `62612be63`,
+  gap 0; 58 skipped halves, as registered; `Test saves: 874 written and deleted, 0 left behind`, as registered.
+- **Python, alongside, on `62612be63`:** `8502 passed, 10 skipped in 433.85s`; the JUnit file agrees, 8,512 tests,
+  0 failures, 0 errors, 10 skipped. Ruff: `All checks passed!`.
+- **The proofs did not run:** the runner stops before them when anything has failed.
+- **The three tests the third sweep read** passed and printed: `RESPEC KEPT: 800.0 of 1000.0, "Outpost 80%"; after a
+  hit of 100.0, 700.0`; `ENDURING KEPT: with the node 2880.0 of 3600.0, then 2976.0 of 3720.0; without 2880.0 of
+  3600.0, then 2880.0 of 3600.0`; and `WALK FALLEN`, a fallen Outpost's Fallen City dungeon of 20 floors walked from
+  its screen on floor 1 with no refusal.
+
+**The three failures, each a test fault, each fixed in its test file only**, by the coordinating session's approval of
+2026-11-25. No game rule was found wrong.
+
+| Test | Failed with | Why | Fixed |
+| :-- | :-- | :-- | :-- |
+| `Cataclysm.EmpireRun.TheDaysAwayAreTotalledFromTheDaysOwnReports` | "Expected 'one surge' to be 1, but it was 0" | Its day report is built by hand and sets `bSurged` and not `Surges`, which `NoteDaysAway` counts since this branch, because a day can hold several surges. `FireSurge` sets both | `Second.Surges = 1;` |
+| `Cataclysm.Travel.TheMapsReturnLineSaysWhatTheWalksEndDid` | its return line without "; a surge brought 6 dungeons" | The same, in its own report built by hand | `Day.Surges = 1;` |
+| `Cataclysm.EmpireRun.AFallenCityBecomesADungeonStandingOnItself` | "Expected 'and one boss per dungeon that was standing and was absorbed, and at least one' to be 2, but it was 1" | **Read from the code; the run printed nothing about that day.** The test counted every ordinary dungeon standing on the city when the day began. One whose hit does not fell its city leaves the map (`ResolveDungeon`), so when a second fells the city later the same day the first is not absorbed, and the Dungeon City's bosses are what was absorbed. With more waves this run reaches such a day | The count is less the dungeons that stood there and are in the day's `Resolved` and not in its `Absorbed`, by id. An AddInfo line, `FALL: day ..., ...: N stood when the day began, N hit and left before the fall, N arrived that day and were absorbed; N bosses`, is printed for every fall checked, so a run shows the case rather than this reading |
+
+**The sweeps missed the first two:** they searched for tests that advance a run, and these two call `NoteDaysAway` with
+reports built by hand. A search of the game's tests for `bSurged =` finds exactly these two.
+
+### Registered for window 2865-w2
+
+**Nothing here has run.** By the coordinating session's approval of 2026-11-25. Only test files changed after w1's whole
+suite, so by the narrowed re-run rule there is no second whole suite: w1's stands for every other test.
+
+- **The build.** Predicted: succeeds, compiling what includes `CataclysmEmpireRunTests.cpp` and
+  `CataclysmSaveLoadTests.cpp`, and nothing of the game's own code.
+- **`Cataclysm.EmpireRun.` alone:** 71 performed, 71 succeeded, 0 failed. Every `FALL:` line whose "hit and left" is
+  not 0 is quoted in the record; if no such fall occurs, the record says so, because the third fix is then unobserved.
+- **`Cataclysm.Travel.` alone:** 10 performed, 10 succeeded, 0 failed (10 in window ss2-w1's log; 9 of 10 passed in w1).
+- **Then the C++ proofs P1, P5 and P6**, as registered in the table above, with `test_prefix="Cataclysm.EmpireRun."`.
+- **Python, run on the head with these fixes** (`0620eb673`), all but this line, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `8502 passed, 10 skipped in 419.39s`; the JUnit file agrees, 8,512
+  tests, 0 failures, 0 errors, 10 skipped. Ruff: `All checks passed!`.
+
+### Window 2865-w2, 2026-11-25, on `033314a80`: the three tests pass; P1's restored half ended with no result
+
+Run by `.claude/windows/run_2865_w2.py` (its output `2865w2_run.out`), under lock 2865-w2, released when it ended.
+
+- **The build:** `Build: Succeeded - 7 actions, 2 files compiled: CataclysmEmpireRunTests.cpp, Module.Cataclysm.51.cpp`
+  (the unity file that holds `CataclysmSaveLoadTests.cpp`).
+- **`Cataclysm.EmpireRun.` alone:** 71 performed, 71 succeeded, 0 failed. **The fallen-city case is observed**, not only
+  read: `FALL: day 52, Outpost (-1,2): 2 stood when the day began, 1 hit and left before the fall, 0 arrived that day
+  and were absorbed; 1 bosses`. Its other two falls checked show none hit and left: day 235, Outpost (-1,-2), 0 stood,
+  1 boss; day 238, Bulwark (0,2), 2 stood, 2 bosses.
+- **`Cataclysm.Travel.` alone:** 10 performed, 10 succeeded, 0 failed.
+- **P1, NO MEASUREMENT.** With the break in: 71 performed, 66 succeeded, 5 failed, exactly the five registered. With it
+  restored, the editor process stopped after 69 tests, every one a success, at 11:09:20 UTC: no `Sending RunTest`
+  line for the next test, no `Engine exit requested`, no error or fatal line, no crash folder in `game/Saved/Crashes`
+  and no Windows Application or System event between 04:08:30 and 04:10:30 local. The two tests it did not reach,
+  `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge` and `TwoCitiesFallingOnOneDayBringTwoWaves`,
+  passed in P1's broken half, in the group alone and in w1's whole suite. Why the process ended was not established.
+  The runner stops at a proof that gives no verdict, so P5 and P6 did not run. Logs: `2865w2_P1_033314a8.log`,
+  `2865w2_P1_run1_EmpireRun.log`, `2865w2_P1_run2_EmpireRun.log`.
+- **The coordinating session's ruling of 2026-11-25:** run P1 again whole, and not accept its broken half alone. The
+  precedent is in the bug batches entry above: in window bb12-w3b proof EP3's restored half "ends inside the fourth
+  test with no completion line, no error and no crash report", and window bb12-w3c, on the same head, proved it.
+
+### Window 2865-w3, 2026-11-25, on `033314a80`, nothing changed: P1, P5 AND P6 PROVED
+
+Run by `.claude/windows/run_2865_w3.py` (its output `2865w3_run.out`), under lock 2865-w3, released when it ended. The
+build: `Succeeded - target already up to date, 0 actions, nothing compiled`. Each proof `prove_cpp_guard` with
+`test_prefix="Cataclysm.EmpireRun."`; the source hash and tree the same before and after each; neither half crashed.
+Each failed exactly the tests registered for it, and restored, 71 performed and 71 succeeded:
+
+| # | With the break in | Failed, `named_failures` |
+| :-- | :-- | :-- |
+| P1 | 71 performed, 66 succeeded, 5 failed | `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardFiresNothingOnceThePillarCanBeReached`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`, `TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons` |
+| P5 | 71 performed, 67 succeeded, 4 failed | `ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce`, `AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes`, `ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`, `OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty` |
+| P6 | 71 performed, 64 succeeded, 7 failed | `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity`, `ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`, `ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave`, `ADeathWhoseResolveFellsTheCityAbsorbsTheDungeonAndLeavesNoTimerBehind`, `AVoidDungeonThatBringsItsCityToTenStacksErasesItAndTheFallAbsorbsTheRest`, `TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge`, `TwoCitiesFallingOnOneDayBringTwoWaves` |
+
+P6's seventh, `ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity`, was registered as failing only if
+one of its first three fall days is within 25 days of a surge, which could not be read; it failed, so one is. P2, P3
+and P4 were registered and not run, by the coordinating session's limit of three a change. Logs: `2865w3_P1_033314a8.log`,
+`2865w3_P5_033314a8.log`, `2865w3_P6_033314a8.log` and each half's engine log, `2865_P<n>_run<half>_EmpireRun.log`.
+
+---
+
 ## 2026-11-24 — A death is marked once even when a blow dealt from inside it reaches back to the dying creature; a stack built on hit is refused to a dead target; a creature's death is logged (#2871, #2874)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Branch `fix/drops-and-death-2871`, a bug-fix agent of the

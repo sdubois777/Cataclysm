@@ -107,7 +107,12 @@ struct CATACLYSMEMPIRE_API FCataclysmDaysAway
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<int32> Fallen;
 
-	/** How many of those days a surge fired on: at most one a day, since a fall's surge waits 25 days on the last. */
+	/**
+	 * How many surges fired in those days. A day can hold more than one since issue #2865, when every city's fall
+	 * began to fire its own (the owner's ruling of 2026-11-24); until then this counted the days a surge fired on,
+	 * which was the same number, because a fall's surge waited 25 days on the last. Totalled from
+	 * `FCataclysmDayReport::Surges`.
+	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 Surges = 0;
 
@@ -357,6 +362,17 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 SurgeDungeons = 0;
+
+	/**
+	 * How many surges fired today. `bSurged` says only whether one did.
+	 *
+	 * MORE THAN ONE A DAY SINCE ISSUE #2865: the owner ruled on 2026-11-24 that "surges from cities falling should
+	 * happen regardless", so each city that falls fires its own, and on a day the clock also surged that is one more.
+	 * Until then a fall's surge waited 25 days on the last, and a day held at most one. The days-away summary and the
+	 * play loop's log count surges from this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 Surges = 0;
 
 	/**
 	 * The cities on which a city upgrade was finished today, one entry per upgrade. Issue #2825: the capital's account
@@ -741,6 +757,15 @@ public:
 	 * consequence". The empty-board surge counts these (V16). Issue #2741 slice 9.
 	 */
 	int32 ThreateningDungeonCount() const;
+
+	/**
+	 * The ORDINARY dungeons standing, which are what keep the board from being empty: a Basic dungeon that is not a
+	 * Scout Parties bonus one. A Quest dungeon, the Cataclysm's own dungeon and a Fallen City are not counted. The
+	 * owner's ruling of 2026-11-23 on issue #2865: "The board counts as empty when no ordinary dungeon stands. Quest
+	 * dungeons, the Cataclysm boss dungeon and Fallen City dungeons do not count." `Simulation.board_is_empty` counts
+	 * `DungeonType.BASIC`. A bonus dungeon was already left out of the empty-board count (V16), and still is.
+	 */
+	int32 OrdinaryDungeonCount() const;
 
 	/**
 	 * Removes a Scout Parties bonus dungeon whose timer ran out, or in which the player died, with no damage, no
@@ -2208,8 +2233,9 @@ private:
 	 * @param Today         the day it lands on
 	 * @param bFromCityFall whether a city falling caused it
 	 * @param OutReport     the day's report, to record what arrived
+	 * @param bFromEmptyBoard whether an empty board fired it, which brings `ExtraDungeonsOnEmptyBoard` more (#2865)
 	 */
-	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport);
+	void FireSurge(int32 Today, bool bFromCityFall, FCataclysmDayReport& OutReport, bool bFromEmptyBoard = false);
 
 	/**
 	 * Which active Cataclysm sent one dungeon of a wave.
@@ -2386,9 +2412,9 @@ private:
 	/**
 	 * A city fell: its ordinary dungeons are absorbed into the one it becomes,
 	 * its Quest dungeons move, and its fall fires a surge when
-	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due. A fall
-	 * inside the least interval fires none and is not asked about again. Issue
-	 * #2380.
+	 * `UCataclysmSurgeScheduler::IsDueOnCityFall` says one is due, which since
+	 * the owner's ruling of 2026-11-24 (issue #2865) is every fall. From issue
+	 * #2380 until then a fall inside the least interval fired none.
 	 *
 	 * **A QUEST DUNGEON IS NOT ABSORBED**, since 2026-10-21, following the
 	 * simulation's rule of 2026-10-16. Each one standing on the city moves at

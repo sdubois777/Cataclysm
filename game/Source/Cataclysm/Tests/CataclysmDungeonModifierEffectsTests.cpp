@@ -63307,15 +63307,16 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
-	// TYPED, so a moved constant fails here: 0.06 times 0.11, 0.13 and 0.10 over 0.05.
+	// TYPED, so a moved constant fails here: 0.06 times 0.10, 0.12 and 0.07 over 0.05, since issue #2865 lowered the
+	// ring figures (0.11, 0.13 and 0.10 until then, giving 0.132, 0.156 and 0.12).
 	TestEqual(TEXT("an Outpost's at tier 1 is the table's 0.06"),
 			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Outpost), 0.06f, 0.0001f);
-	TestEqual(TEXT("a Bulwark's at tier 1 is 0.132"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.132f, 0.0001f);
-	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.156"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.156f, 0.0001f);
-	TestEqual(TEXT("the Pillar's at tier 1 is 0.12"),
-			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.12f, 0.0001f);
+	TestEqual(TEXT("a Bulwark's at tier 1 is 0.12"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark), 0.12f, 0.0001f);
+	TestEqual(TEXT("a Sanctuary's at tier 1 is 0.144"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Sanctuary), 0.144f, 0.0001f);
+	TestEqual(TEXT("the Pillar's at tier 1 is 0.084"),
+			  Effects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Pillar), 0.084f, 0.0001f);
 	for (int32 Tier = 2; Tier <= 8; ++Tier)
 	{
 		TestEqual(FString::Printf(TEXT("tier %d: a Sanctuary's is an Outpost's"), Tier),
@@ -63343,8 +63344,8 @@ bool FCataclysmCorruptedStalkerRingTest::RunTest(const FString& Parameters)
 	const float OutpostDamage = StalkerRead(OnAnOutpost, Combat::GetAttackDamageAttribute());
 	TestTrue(FString::Printf(TEXT("set-up: the Outpost's Stalker has an attack damage: %.2f"), OutpostDamage),
 			 OutpostDamage > 0.0f);
-	TestEqual(TEXT("the Bulwark's Stalker hits 0.11 / 0.05 times as hard"),
-			  StalkerRead(OnABulwark, Combat::GetAttackDamageAttribute()), OutpostDamage * 2.2f, 0.01f);
+	TestEqual(TEXT("the Bulwark's Stalker hits 0.10 / 0.05 times as hard"),
+			  StalkerRead(OnABulwark, Combat::GetAttackDamageAttribute()), OutpostDamage * 2.0f, 0.01f);
 	TestEqual(TEXT("and has the same maximum health, which the ring does not move"),
 			  StalkerRead(OnABulwark, Vital::GetMaxHealthAttribute()),
 			  StalkerRead(OnAnOutpost, Vital::GetMaxHealthAttribute()), 0.5f);

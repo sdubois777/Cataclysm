@@ -391,14 +391,15 @@ bool FCataclysmEnemyStrengthDamageByRing::RunTest(const FString& Parameters)
 	using namespace CataclysmEnemyStrengthTest;
 
 	// ISSUE #2749'S RING SLICE. The project owner, 2026-11-19, "Rise by city ring"; the figures are the coordinating
-	// session's of the same day. Typed, so a moved constant fails here.
+	// session's of the same day, lowered by the same rule on 2026-11-24 after the surge rulings of issue #2865 (they were
+	// 0.11, 0.13 and 0.10). Typed, so a moved constant fails here.
 	TestEqual(TEXT("an Outpost's at tier 1 is a twentieth"),
 			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Outpost), 0.05, 1e-9);
-	TestEqual(TEXT("a Bulwark's is 0.11"), UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Bulwark), 0.11, 1e-9);
-	TestEqual(TEXT("a Sanctuary's is 0.13"),
-			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Sanctuary), 0.13, 1e-9);
-	TestEqual(TEXT("the Pillar's, where only the boss dungeon stands, is 0.10"),
-			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Pillar), 0.10, 1e-9);
+	TestEqual(TEXT("a Bulwark's is 0.10"), UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Bulwark), 0.10, 1e-9);
+	TestEqual(TEXT("a Sanctuary's is 0.12"),
+			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Sanctuary), 0.12, 1e-9);
+	TestEqual(TEXT("the Pillar's, where only the boss dungeon stands, is 0.07"),
+			  UCataclysmEnemyScore::DamageScale(1, ECataclysmCityTier::Pillar), 0.07, 1e-9);
 	TestEqual(TEXT("with no ring named, an Outpost's"), UCataclysmEnemyScore::DamageScale(1), 0.05, 1e-9);
 	for (int32 Tier = 2; Tier <= 8; ++Tier)
 	{
@@ -423,8 +424,8 @@ bool FCataclysmEnemyStrengthDamageByRing::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("the Sanctuary's hits 0.13 / 0.05 times as hard"), OnASanctuary.AttackDamage,
-			  OnAnOutpost.AttackDamage * 2.6f, 0.001f);
+	TestEqual(TEXT("the Sanctuary's hits 0.12 / 0.05 times as hard"), OnASanctuary.AttackDamage,
+			  OnAnOutpost.AttackDamage * 2.4f, 0.001f);
 	TestEqual(TEXT("with the same health"), OnASanctuary.Health, OnAnOutpost.Health, 0.001f);
 	TestEqual(TEXT("and the same armour"), OnASanctuary.Armour, OnAnOutpost.Armour, 0.001f);
 	TestEqual(TEXT("and it is worth the same: the score a kill grants does not read the ring"),
@@ -520,8 +521,8 @@ bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("on this floor a Bulwark's Imp hits 0.11 / 0.05 times as hard as an Outpost's"),
-			  AtABulwark.AttackDamage, AtAnOutpost.AttackDamage * 2.2f, 0.001f);
+	TestEqual(TEXT("on this floor a Bulwark's Imp hits 0.10 / 0.05 times as hard as an Outpost's"),
+			  AtABulwark.AttackDamage, AtAnOutpost.AttackDamage * 2.0f, 0.001f);
 
 	// AND A CREATURE PLACED ON THE FLOOR IS BUILT WITH THE BULWARK'S.
 	FActorSpawnParameters SpawnParams;

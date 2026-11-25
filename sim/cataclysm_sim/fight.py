@@ -101,8 +101,9 @@ def damage_multiplier(tier: int, ring=es.DEFAULT_RING) -> float:
     damage scale, times that ring's damage scale over an Outpost's at the same tier. ISSUE #2749'S RING SLICE, ruled by
     the coordinating session on 2026-11-19: the Stalker is as dangerous as a Boss on the same floor, a Boss's damage is
     multiplied by `enemy_stats.damage_scale(tier, ring)`, and the fit is linear in the Boss's damage, so the ratio
-    carries the fit to every ring with no second table. At tier 1: 0.06 on an Outpost, 0.132 on a Bulwark, 0.156 on a
-    Sanctuary, 0.12 on the Pillar; tiers 2 to 8 are the same on every ring, as their damage scale is. The game's copy is
+    carries the fit to every ring with no second table. At tier 1: 0.06 on an Outpost, 0.12 on a Bulwark, 0.144 on a
+    Sanctuary, 0.084 on the Pillar (0.132, 0.156 and 0.12 until issue #2865 lowered the ring figures); tiers 2 to 8 are
+    the same on every ring, as their damage scale is. The game's copy is
     `UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(Tier, Ring)`."""
     held = min(max(tier, 1), 8)
     return (DAMAGE_MULTIPLIERS[held - 1] * es.damage_scale(held, ring)

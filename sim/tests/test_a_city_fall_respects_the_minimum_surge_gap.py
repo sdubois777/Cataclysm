@@ -1,7 +1,13 @@
 """A city falling fires a surge only when the last one is `surge_interval_min`
-days behind, like the other two triggers.
+days behind, like the other two triggers -- WITH `city_fall_surge_braked` ON.
 
-WHY THIS EXISTS. Issue #1432. `Simulation.trigger_surge` is reached from three
+THAT IS NO LONGER THE RULE THAT SHIPS. The owner ruled on 2026-11-24, verbatim:
+"surges from cities falling should happen regardless" (issue #2865), and
+`city_fall_surge_braked` ships off. These tests keep the earlier rule working
+behind its switch, so it can still be measured.
+`test_a_city_fall_always_fires_a_surge.py` holds the rule that ships.
+
+WHY THIS EXISTED. Issue #1432. `Simulation.trigger_surge` is reached from three
 places: the scheduled clock, which spaces itself by `surge_gap()`; the
 board-empty trigger, which refuses inside `surge_interval_min`; and a city
 falling, which had no spacing at all. At difficulty tier 4 with no empire tree
@@ -37,7 +43,8 @@ def a_standing_city(sim: Simulation):
 def with_a_surge(since: float, **overrides) -> Simulation:
     """A simulation whose last surge landed `since` days before today, with the
     scheduled clock pushed out of the way so only the fall can fire one."""
-    cfg = dataclasses.replace(TuningConfig(), **{"surge_on_city_fall": True, **overrides})
+    cfg = dataclasses.replace(
+        TuningConfig(), **{"surge_on_city_fall": True, "city_fall_surge_braked": True, **overrides})
     sim = Simulation(cfg, seed=1)
     sim.day = 1000
     sim.next_surge_day = 1e9

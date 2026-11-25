@@ -103,10 +103,11 @@ class _Watched(Simulation):
         self._log, self._in_wave = log, False
         super().__init__(cfg, seed=seed)
 
-    def trigger_surge(self, from_city_fall: bool = False) -> None:
+    def trigger_surge(self, from_city_fall: bool = False,
+                      from_empty_board: bool = False) -> None:
         self._in_wave = True
         try:
-            super().trigger_surge(from_city_fall)
+            super().trigger_surge(from_city_fall, from_empty_board)
         finally:
             self._in_wave = False
 

@@ -11693,6 +11693,7 @@ bool FCataclysmTravelReturnLineTest::RunTest(const FString&)
 				AHit(Ids[4], 10.0f, 50.0f, false)};
 	Day.Fallen = {Ids[0], Ids[1]};
 	Day.bSurged = true;
+	Day.Surges = 1; // As `FireSurge` writes it: the days away count this since issue #2865, a day can hold several.
 	Day.SurgeDungeons = 6;
 	Run->NoteClear(9, TEXT("the dungeon on a city"), 4);
 	Run->NoteDaysAway(5, 9, Reports, /*bEndedInAClear*/ true);
