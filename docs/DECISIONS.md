@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The empire tree's three forge material nodes act: Material Conservation and Resource Management keep a craft's materials on a draw, by tier, and Tempting Fate returns them all on an item above 500 residue (#47, slice F6b)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: three effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: three
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeKeeping`, `KeepingOn`, `KeptText`, three salts, `TemptingFateResidueAbove`,
+  `MaterialConservationHighestTier`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `KeepingFor`, `KeptTextFor`, and the keeping in `DoItemCraft`.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the eight priced questions.
+- `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.cpp`:
+  `ForgeMaterialsKeptLine`.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeMaterialNodesTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_material_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`, `tools/tests/test_forge_gold_nodes.py` and
+  `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
+- `docs/Play_Loop_Checklist.md` step 30.
+
+Issue [#47](https://github.com/sdubois777/Cataclysm/issues/47), which closes when this slice merges (the coordinating
+session's ruling of 2026-11-25). On `feat/forge-material-nodes-f6b`, from development `4a961ce84` (#47 slices F6 and F6a
+and #2857 merged, PR #2895).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **MOST OF THE QUESTIONS WERE RULED BEFORE THIS SLICE WAS WRITTEN**: Q11 to Q17 on 2026-11-22, in the F6 plan, and F5's
+  tier list. Five new ones, N1 to N5, were ruled on 2026-11-25 as recommended.
+- **GENRE RESEARCH, BY WEB SEARCH SUMMARIES ONLY, NOT BY READING THE PAGES** (recorded as the coordinating session asked):
+  Last Epoch's Glyph of Hope gives "a 25% chance to prevent the Forging Potential cost of a craft" (the search's summary
+  of Sportskeeda and Icy Veins), one glyph a craft, rolled at the craft and shown to the player only as its chance. No
+  Path of Exile atlas passive of the shape was found. So the genre supports one roll a craft (Q12). Showing the outcome
+  in the question before the press (Q13) is this project's rule, as F6a's Forge Upgrades is, because the draw is seeded
+  by the item and the day; the genre shows the chance.
+- **NO SAVE VERSION MOVES.** Each draw is the item's and the day's; nothing is counted.
+
+### The rulings
+
+The coordinating session, 2026-11-22 (the F6 plan's questions, "ruled as the table recommends"):
+
+| Q | Ruled | Kind |
+| :-- | :-- | :-- |
+| Q11 | the material nodes never act on the combines: a kept stone would make stones from nothing | derived |
+| Q12 | one roll for the craft: all of a node's materials kept, or all taken | judgement |
+| Q13 | drawn from a seed of the item and the day, as Forge Upgrades, and shown in the question | copies Q10 |
+| Q14 | "Rare" is tier 3 and above, so the two chance nodes cover every material once | judgement |
+| Q15 | Tempting Fate reads the item's residue before the craft | judgement |
+| Q16 | the draws are independent; a material is kept if any node covering it lands | judgement |
+| Q17 | the option materials (a Chaos Stabilizer, Tainted Shards) count, by their tier | judgement |
+
+The coordinating session, 2026-11-25, as recommended:
+
+| N | Ruled | Kind |
+| :-- | :-- | :-- |
+| N1 | the craft takes every material as before and puts the kept ones back once it can no longer fail, before its days pass, so no failure path changes | judgement |
+| N2 | a gem is not a crafting material; the Jeweler's Setting Agent is | judgement |
+| N3 | the cleanse counts | judgement |
+| N4 | the question names what the tree will keep, a PLAY LOOP line what it kept, the done message adds nothing, and Tempting Fate's return names it alone | judgement |
+| N5 | "above 500" is more than 500 | derived |
+
+"(Boss drops, Essence)", in `docs/Empire_Skill_Tree_Keystones.md`'s Resource Management, agrees with Q14: the materials
+that drop from bosses and elites (Aetherial Shard, Chaos Stabilizer) are tier 3, and both essences are tier 5.
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Material Conservation (10 points) | "2% chance per point to not consume T2 and below crafting materials." | `LowTierMaterialKeptChance`, 0.02 a point, to 20%: the craft's tier 1 and 2 materials |
+| Resource Management (20) | "+1% chance per point to not consume Rare materials when crafting." | `RareMaterialKeptChance`, 0.01 a point, to 20%: its tier 3 to 5 materials |
+| Tempting Fate (1) | "While your item's CR is above 500, all crafting actions on that item have a 15% chance to return all crafting materials used." | `HighResidueMaterialsReturnedChance`, 0.15: every material, on an item above 500 residue |
+
+- **The draws**: `UCataclysmForge::KeepingOn`, each chance on its own seed (`AffixCraftSeed` with the salts "FMCN",
+  "FRMG" and "FTMF", as `ForgeUpgradesSeed`), Tempting Fate's only when `Item.Residue > TemptingFateResidueAbove`.
+- **The keeping**: in `UCataclysmForgeCraft::DoItemCraft`, after the hooks' after and before the days, from the item as it
+  stood and the day: `Keeping.KeptOf(Taken)` goes back in the bag. Every craft that runs the sequence keeps by it
+  (the upgrade, the socketing, the socket work, the affix crafts, the damage type crafts, the enchantment crafts, the
+  cleanse); the dismantle takes no material; the combines do not run it.
+- **The words**: each of the forge screen's eight priced questions ends, when anything will be kept, "The empire tree
+  keeps 2 Upgrade Stone +3 (Material Conservation)." After the craft's own line and its options':
+  `the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm`.
+
+### Tests
+
+`Cataclysm.ForgeMaterialNodes.`, a new group of seven:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheThreeNodesGiveTheirChances` | through the generated tables: 20% at 10 points and 6% at 3, 20% at 20, 15%; CONTROL none held |
+| `EachNodeKeepsItsOwnTiersAndTheWordsNameIt` | stones +3 and a Mote (tiers 2, 1) Material Conservation's, the Stabilizer (3) Resource Management's, all three Tempting Fate's named alone; a Primal Spark (5) Resource Management's; a name not in the table neither's; the question's and the line's words; CONTROL no draw |
+| `TheDrawsAreTheItemsAndTheDaysAndEachIsItsOwn` | at a chance of 1 the two land, Tempting Fate at 500.5 and not at 500; nought never; the same item and day the same draw; over 40 days each lands on some, and Material Conservation's and Resource Management's differ on some |
+| `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo` | in a world at 10 points: the +2 to +3 upgrade done, both stones back, the question naming them; CONTROL a draw that misses takes them and names nothing |
+| `TemptingFateReturnsEveryMaterialAboveFiveHundredTheOptionsToo` | in a world: at 501 residue both stones and the Stabilizer back; CONTROL at 400 nothing back |
+| `ACombineKeepsNothingWhateverTheTreeHolds` | all three held: ten combines of two +1 stones, on ten days, leave no +1 stone and make ten +2 |
+| `TheCleanseWithResourceManagementKeepsItsEssence` | in a world at 20 points: residue 300 to 150 and the Purified Essence back; CONTROL a draw that misses takes it |
+
+Python: `tools/tests/test_forge_material_nodes.py`, six checks (the list at its top). The two tree checks count 127 built
+nodes and slice 12's 31 points, and "crafting" falls from 242 to 211; `CataclysmDataTableTests.cpp` pins 133 effect rows;
+the play loop check names the fortieth place; checklist step 30. **F6a's check of its five effect kinds pinned them as
+the last five of the list; it now finds them together wherever they stand**, since this slice adds three after them.
+The play loop check's text said "thirty-five places" while its list held 39; it now says forty, the list's count with
+this slice's line.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `b6f120066`, each narrowed to
+`tools/tests/test_forge_material_nodes.py` (six checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| PM1 | `DoItemCraft`'s `GiveMaterialsBack(Inventory, Kept);` removed | "PROVED: 1 failed, 5 passed in 1.10s \| restored: 6 passed in 0.96s" | `test_the_sequence_keeps_once_after_its_last_failure_and_before_its_days` |
+| PM2 | Tempting Fate's `Item.Residue > TemptingFateResidueAbove` read as `>=` | "PROVED: 1 failed, 5 passed in 0.98s \| restored: 6 passed in 0.97s" | `test_the_draws_have_their_own_salts_and_fate_reads_more_than_five_hundred` |
+| PM3 | the cleanse question without `KeptTextFor` | "PROVED: 1 failed, 5 passed in 1.01s \| restored: 6 passed in 0.97s" | `test_every_priced_question_names_what_the_tree_will_keep` |
+
+**The whole Python suite at `b6f120066`:** "1 failed, 8529 passed, 10 skipped in 449.37s"; JUnit 8540 tests, 1
+failure, 0 errors, 10 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree
+CSVs, whose assets the window's editor step rebuilds. The tenth skip is `test_run_editor_python.py`'s check for a
+checkout with no compiled modules: this worktree holds window forge-f6-w1's builds.
+
+**For the window**, registered from window forge-f6-w1's whole-suite engine log, `forge_suite_engine_88c917b0.log` in
+the worktree `C:/forgew1` (5493 performed, 58 skipped halves, "874 written and deleted, 0 left behind"). **The Rifts
+window runs first; this is registered again from the newest whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects` and records them in
+  `game/Data/datatable_asset_sources.json`.
+- **The whole suite: 5500 performed** (5493 + this slice's 7 in `Cataclysm.ForgeMaterialNodes.`, none removed); **58
+  skipped halves** (no `ReportSkippedHalf` call added); **874 test saves** and whatever the 7 new tests write, recorded
+  either way.
+- **No save record moves.**
+- **Groups alone, 18, 145 tests**, each counted in the base log and checked against the name strings on development and
+  on the branch: `ForgeMaterialNodes.` 7 (new), `Forge.` 9, `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3,
+  `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.` 4, `ForgeGoldNodes.` 8, `ForgeMilestones.` 6,
+  `ForgeResidueTools.` 5, `ForgeScreen.` 5, `ForgeSockets.` 6, `Dismantle.` 12, `Data.` 7, `EmpireTree.` 24,
+  `PlayLoop.` 13, `InventoryTabs.` 7: every forge group, since every item craft runs the changed sequence and every
+  priced question changed, and the groups of the tables and the play log.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeMaterialNodes.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| MF1 | `CataclysmForge.cpp` | `NodeFor`'s `Tier <= UCataclysmForge::MaterialConservationHighestTier` read as `<` | `EachNodeKeepsItsOwnTiersAndTheWordsNameIt`, `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo` |
+| MF2 | `CataclysmForge.cpp` | `Item.Residue > TemptingFateResidueAbove` read as `>=` | `TheDrawsAreTheItemsAndTheDaysAndEachIsItsOwn` |
+| MF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `GiveMaterialsBack(Inventory, Kept);` removed | `AnUpgradeWhoseDrawLandsKeepsItsStonesAndTheQuestionSaidSo`, `TemptingFateReturnsEveryMaterialAboveFiveHundredTheOptionsToo`, `TheCleanseWithResourceManagementKeepsItsEssence` |
+
+---
+
 ## 2026-11-24 — The empire tree's five forge gold nodes act: Workshop Upgrades, Apprentice Oversight, Architectural Synergy and Treasury Synergy take a share off every forge price, held at 75%, and Forge Upgrades a tenth more on a draw (#47, slice F6a)
 
 **Affects:**
