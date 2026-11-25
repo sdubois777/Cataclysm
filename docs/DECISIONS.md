@@ -2,13 +2,19 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-24 — Bug batches 1 and 2 and the creation skill count, one window on development after the inventory tabs: 68 new tests registered, and 42 guard proofs kept under the owner's budget of three a change
+## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
 
 **Said first:**
 
-- **NOT COMPILED, NOT RUN IN THE ENGINE** when this entry was written. `feat/bug-batches-1-2` is built on development
+- **RUN AND PASSED, IN FOUR WINDOWS AND A CONTINUATION** (below). `feat/bug-batches-1-2` is built on development
   `5f302b0a7` (the inventory tabs, #2887), as the coordinating session ruled on 2026-11-24: bug batches 1 and 2 run as
-  one window with one pull request, and `fix/creation-skill-count` was added to it.
+  one window with one pull request, and `fix/creation-skill-count` was added to it. Window bb12-w1's whole suite
+  performed 5422 and failed 3, all three test faults, corrected in two test files with **no game code changed after
+  it**; the narrowed windows after it passed `WhipAim.` 3 of 3 and `Gold.` 13 of 13, and proved all 42 guard proofs.
+- **AN OPEN QUESTION, NOT RESOLVED, TRACED AS A TASK OF ITS OWN**: with the player controller in the abilities' actor
+  info in a test world, the whip's strike spec keeps an active count of 1 after its swing, the ability object
+  reporting itself ended, no timer pending and a montage still on the mesh. The `WhipAim.` tests log it and remove the
+  strikes before their world is destroyed. See the windows below.
 - **Built from merges, not a rebase**: one merge of `feat/bug-batch-2` (which holds `feat/bug-batch-1` and its ten fix
   branches), a commit putting the new decisions entries first, then one merge of `fix/creation-skill-count`. Neither
   batch branch is changed; no history was rewritten.
@@ -17,9 +23,9 @@ Decisions made outside the Google Drive documents, newest first.
 - **The guard proofs are trimmed to the owner's rule of 2026-09-14**, at most three per change and one per mechanism
   the change adds: 42 of the 67 the branches registered. The dropped ones and why are below. Their tests still run in
   the whole suite and in their groups alone.
-- **A RISK, A READING AND NOT A RUN, carried from batch 2's entry**: weapon-skills (#2872) chains a leap from inside a
-  dying creature's hooks, and was written before drops-and-death's `MarkDead` refused a death already being marked.
-  `BuriedWeaponKills.` runs alone to show the two together.
+- **A RISK carried from batch 2's entry, ANSWERED**: weapon-skills (#2872) chains a leap from inside a dying creature's
+  hooks, and was written before drops-and-death's `MarkDead` refused a death already being marked. `BuriedWeaponKills.`
+  passed alone, 4 of 4, in window bb12-w1, and in its whole suite.
 
 ### What it holds
 
@@ -28,6 +34,12 @@ Decisions made outside the Google Drive documents, newest first.
 | `53a49e66c` | One merge of `feat/bug-batch-2` at `632a43022`, which holds `feat/bug-batch-1` at `3720e7d77`: bug batch 1's five fix branches (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863) and bug batch 2's five (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878) |
 | `24bf708f8` | This log's 16 new entries first, newest first by the author date of the commit that first wrote each heading, each checked equal to its text on `feat/bug-batch-2`; development's 1276 entries after them in their own order |
 | `9633c15d7` | One merge of `fix/creation-skill-count` at `2749670ee`; its entry goes first, as the newest (first written 2026-11-24 17:42) |
+| `a9d359bdc` | This entry, registered before the windows |
+| `75633311e` | Window bb12-w1's editor step: `DT_SkillSlots`, `DT_WeaponSkills` and `datatable_asset_sources.json` |
+| `3a10c7776` | The `WhipAim.` rig's player state owned by its controller, so a skill's aim reads the cursor |
+| `1d06645bb` | The gold test's bosses 100 m apart, each kill's piles checked against its own corpse |
+| `5cc1a6be5` | Each `WhipAim.` test waits up to 3 s for every strike to end and asserts it (window bb12-w3's check) |
+| `de3ecd2dd` | That check made a logged observation, then each strike removed with `ClearAbility`, as ruled |
 
 ### What the inventory tabs moved, swept
 
@@ -71,7 +83,7 @@ from that tree by the gem names inside one inventory test (fixed after that run,
 log, and declares the same 5354 tests (`tools/unreal_build.py`'s `declared_tests`).
 
 **The whole suite is registered as 5422**: 5354 and 68 (bug batch 1 37 net, bug batch 2 28, the creation skill count 3),
-all succeeded; **58 skipped halves, the base's 57 and one new (a reading of the code, not a run)**: `HarrowerLeaps.AThrownAxeLeapsToASecondEnemyThenAThirdAndStopsWhenNoneIsInReach`
+all succeeded; **58 skipped halves, the base's 57 and one new (a reading of the code when registered; window bb12-w1's whole suite reported exactly these 58)**: `HarrowerLeaps.AThrownAxeLeapsToASecondEnemyThenAThirdAndStopsWhenNoneIsInReach`
 reports one when the axe's mesh does not load, which is every run without `game/Content/Medieval_Weapons/` (gitignored,
 so absent from every worktree; `UCataclysmBuriedWeapon` draws the axe through `UCataclysmWeaponMeshes::MeshFor`). **Batch 2's
 entry registered 57 and missed it.** No other new test reaches a skipped half: the three other files holding new tests
@@ -128,6 +140,73 @@ registered by batch 1 because it changes their code.
 
 **Editor step**: `tools/run_editor_python.py tools/generate_datatable_assets.py`, committing `DT_SkillSlots`,
 `DT_WeaponSkills` and `datatable_asset_sources.json` only. Python and ruff run beside the whole suite.
+
+### The windows: five runs, three test faults, no game code changed after the first
+
+**Window bb12-w1** (tested head `75633311`, after its editor step committed `DT_SkillSlots`, `DT_WeaponSkills` and
+`datatable_asset_sources.json`): build "Succeeded - 74 actions, 67 files compiled"; 32 of the 33 groups alone passed at
+their registered counts; **the whole suite "5422 tests performed, 5419 succeeded, 3 failed"**, declared 5422, gap 0;
+**58 skipped halves**, inv-w1's 57 names and `HarrowerLeaps.AThrownAxeLeapsToASecondEnemyThenAThirdAndStopsWhenNoneIsInReach`;
+test saves "874 written and deleted, 0 left behind"; Python "8290 passed, 10 skipped" (JUnit 8300, 0 failures, 0
+errors, 10 skipped); ruff clean. It stopped before the proofs. **The three failures were test faults:**
+
+1. **`WhipAim.ASwingGoesTowardTheCursorAndNotTheWayTheCharacterWalks` and
+   `WhipAim.ACursorOnAnEnemyAimsAtTheEnemyAndNotAtTheFloorBehindIt`** (the weapon-skills branch, #2870). The test rig
+   spawned the player state with no owner and called `SetPlayerState`, which sets none. The abilities' actor info finds
+   the player controller only through the player state's owner (`FGameplayAbilityActorInfo::InitFromActor`), so
+   `UCataclysmSkillTemplate::AimPoint` (`CataclysmSkillTemplate.cpp`, the read of `Info->PlayerController`) had no
+   controller and never asked where the cursor was. In the game `AController::InitPlayerState` spawns the player state
+   owned by its controller. Corrected in `3a10c7776`: the rig spawns the controller first and the player state owned
+   by it, and checks the actor info holds that controller. **This also means W4 had no valid failing half in window 1**:
+   both of its tests failed without the break; window bb12-w3c is where W4 is proved.
+2. **`Gold.KillingCreaturesPutsNamedGoldPilesOnTheFloor`** (development's own test), "none lies where the kill's lone
+   item would": 1 where 0 was expected. The test killed three bosses 6 m apart and counted every pile within 25 cm of
+   every corpse. A kill's gold lies on a ring of radius 25 cm x (piles + 1) (`GoldScatterOffset`), and an odd count puts
+   one pile straight behind, so a boss that rolled exactly 23 piles put one on the corpse before it (checked for every
+   count from 1 to 79: only 23, and 47 for the third boss onto the first). The count is a Poisson roll of mean 12
+   (`EnemyDrops.csv`, `Cataclysm_Boss` `GoldDrops` 12.0), seeded from the creature's object identity and the clock, so
+   about 0.3% of draws, fixed for a given tree and test order: identical heads drew identical totals in earlier windows,
+   and the batches' added tests moved this tree onto a failing draw. Corrected in `1d06645bb`: the bosses stand 100 m
+   apart (a ring would need 399 piles to reach a neighbour) and each kill's piles are checked against its own corpse.
+
+**Window bb12-w2** (`1d06645bb`, build, `WhipAim.` and `Gold.` alone, no whole suite as ruled): **`Gold.` 13 of 13**.
+**`WhipAim.` 0 of 3**: every assertion passed, the cursor swings striking the enemies the tests expect, and each test
+failed on the engine's ensure as its world was destroyed, "Default__CataclysmStrikeSkill was still active"
+(`UAbilitySystemComponent::ClearAllAbilities`, `AbilitySystemComponent_Abilities.cpp` line 469 in the build, under
+`AbilitySystem.EnsureAbilitiesEndGracefully`).
+
+**Window bb12-w3** (`5cc1a6be5`, build and `WhipAim.` alone): each test ran the clock after its last check until every
+strike spec stopped counting as active, at most 3 s. **All seven rigs (two, two and three) were "STILL ACTIVE after 3.0 s"**, each with the
+spec's active count 1, the ability object reporting itself not active, no swing timer pending, no montage on the ability
+system and a montage still on the mesh. So it was not the world destroyed mid-swing. **NOT RESOLVED, AND TRACED AS A
+TASK OF ITS OWN** (the coordinating session, 2026-11-24): the stuck count appears whenever the actor info holds the
+player controller, which no test had until this rig; the owner swings many times in a row in the game, which
+`UCataclysmBasicAttack::Swing` would refuse while the spec counted as active, so the game very likely takes a path the
+test world does not.
+
+**As ruled, `de3ecd2dd`**: the swing-end check is a logged observation ("SWING END OBSERVED: rig N ActiveCount A,
+ability active B, after X s"), and each rig's strike is then removed with the ability system's `ClearAbility`. **Not
+`CancelAllAbilities`, which the ruling allowed**: a cancel reaches an instanced ability through
+`UGameplayAbility::EndAbility`, whose `IsEndAbilityValid` (`GameplayAbility.cpp:775`) refuses once the ability object
+reports itself not active, so the count would stay at 1; `ClearAbility` removes the spec itself, and the graceful-end
+ensure is only in `ClearAllAbilities`. The coordinating session accepted the substitution on 2026-11-24.
+
+**Window bb12-w3b** (`de3ecd2dd`): build "Succeeded - 4 actions, 1 file compiled"; **`WhipAim.` 3 of 3, with no
+ensure in its engine log**, all seven rigs logging "SWING END OBSERVED: rig N ActiveCount 1, ability active no, after
+3.0 s (the spec still active)". **EP1 and EP2 PROVED.** It stopped at EP3: the broken half failed exactly
+`ATelegraphMarkerIsDrawnOnTheFloorUnderItsCentre`, and the restored half's engine log ends inside the fourth test with
+no completion line, no error and no crash report, so the run never said how many tests it performed. A log tail lost
+as the engine exited is the reading; it is not shown. The source was restored exactly (hash and tree the same).
+**Window bb12-w3c**, its continuation on the same head: `WhipAim.` 3 of 3 again, then **EP3 to CS2, 40 of 40 PROVED**.
+
+**All 42 proofs PROVED, each failing exactly the tests registered for it and passing restored**
+(`.claude/windows/check_bb12_proofs.py`: "CHECK: 42 of 42 as registered"). W4 failed both cursor tests; CS1 the four
+creation tests and CS2 `AWrittenSkillWithNoShapeIsSaidToDoNothingYet` alone; RP1 the first-floor test only.
+
+**No game code changed after window 1's tested head**: `git diff 75633311 de3ecd2dd` touches
+`CataclysmWhipAimTests.cpp` and `CataclysmGoldTests.cpp` only; this log's results are committed after the windows. So window 1's whole suite stands for every
+other test, window 2's `Gold.` run for that group, and windows bb12-w3b's and bb12-w3c's `WhipAim.` runs and proofs for the
+rest.
 
 ### The 42 guard proofs, and the 25 dropped
 
