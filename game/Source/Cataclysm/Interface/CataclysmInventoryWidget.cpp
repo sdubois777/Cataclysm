@@ -263,7 +263,7 @@ void UCataclysmInventoryWidget::BuildTree()
 
 	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(
 		UUniformGridPanel::StaticClass(), TEXT("Grid"));
-	GearGrid = Grid;
+	CarriedGearGrid = Grid;
 
 	// HALF THE GAP ON EVERY SIDE OF EVERY CELL, which puts a whole gap between
 	// two of them. It also puts half a gap around the outside of the grid, on
@@ -823,9 +823,9 @@ void UCataclysmInventoryWidget::WriteStackCell(
 void UCataclysmInventoryWidget::ShowTab(ECataclysmInventoryTab Tab)
 {
 	Shown = Tab;
-	if (GearGrid)
+	if (CarriedGearGrid)
 	{
-		GearGrid->SetVisibility(Tab == ECataclysmInventoryTab::Gear ? ESlateVisibility::Visible
+		CarriedGearGrid->SetVisibility(Tab == ECataclysmInventoryTab::Gear ? ESlateVisibility::Visible
 																	 : ESlateVisibility::Collapsed);
 	}
 	if (MaterialGrid)

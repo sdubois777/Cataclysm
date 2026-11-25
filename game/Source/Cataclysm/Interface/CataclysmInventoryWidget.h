@@ -375,9 +375,13 @@ private:
 	UPROPERTY()
 	TObjectPtr<UTextBlock> GemsTab = nullptr;
 
-	/** The three grids, one shown at a time. `GearGrid` holds `Cells`. */
+	/**
+	 * The three grids, one shown at a time. `CarriedGearGrid` holds `Cells`. NOT `GearGrid`: that is the name of the
+	 * worn-gear panel's local grid in `BuildGearPanel`'s body, and a member of the same name is hidden by it, which the
+	 * build refuses (C4458; window inv-w1's first build, 2026-11-24).
+	 */
 	UPROPERTY()
-	TObjectPtr<UUniformGridPanel> GearGrid = nullptr;
+	TObjectPtr<UUniformGridPanel> CarriedGearGrid = nullptr;
 
 	UPROPERTY()
 	TObjectPtr<UUniformGridPanel> MaterialGrid = nullptr;
