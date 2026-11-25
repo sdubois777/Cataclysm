@@ -45,7 +45,12 @@ none.
 
 ### What was run
 
-MISSING_FIGURES
+**The whole Python suite on `3aa5e635f`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8520 passed, 9 skipped in 378.39s
+(0:06:18)". The JUnit file agrees: tests 8530, failures 1, errors 0, skipped 9, so 8520 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+the Death line's tables not yet rebuilt as assets, which the editor step clears. `python -m ruff check .`: "All checks
+passed!"
 
 **One Python guard proof**, `proved`, with `break_and_run` in a `git archive` copy of `02099f695`: Death's Patience's
 row with its condition removed, slice C4a's break, fails
