@@ -15286,7 +15286,7 @@ bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
 	return true;
 }
 
-/ ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
+// ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
 
 namespace CataclysmDeathRewardsTest
 {
