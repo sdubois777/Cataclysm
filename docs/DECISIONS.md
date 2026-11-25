@@ -100,7 +100,16 @@ The coordinating session's rulings on V5, 2026-11-25, "every recommendation as w
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+On `2ddcaea39df59f475748a1214ee998b6156a4674`, 2026-11-25, `python -u -m pytest --junit-xml=<outside the repository>`.
+The count line read **1 failed, 8654 passed, 9 skipped in 722.69s**, and the JUnit file `tests="8664" failures="1"
+errors="0" skipped="9"`, which is 8,654 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+
+**THE FIRST RUN, on the code commit `0dac7c505c7b49d3d9fc3ac04d57efa944b93d3a`, failed one more**:
+`test_console_variables_in_tests_are_written_at_console_priority.py`. Lightning Rod's test pinned its roll at code
+priority (`ECVF_SetByCode`), which a variable written earlier at console priority silently overrides (issue #1470).
+Corrected in `2ddcaea39df59f475748a1214ee998b6156a4674` to `ECVF_SetByConsole`. That run read 2 failed, 8653 passed, 9 skipped.
 
 ### INCLUDE AUDIT
 
