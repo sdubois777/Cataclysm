@@ -97,6 +97,23 @@ const TCHAR* UCataclysmStacks::CarnageFromDamageTakenStat =
 const TCHAR* UCataclysmStacks::CarnageHasNoMaximumStat =
 	TEXT("carnage_has_no_maximum");
 
+const TCHAR* UCataclysmStacks::CarnageStackSecondsStat =
+	TEXT("carnage_stack_seconds");
+
+float UCataclysmStacks::CarnageExtraSeconds(
+	const UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	// A FALLBACK OF NOUGHT: the stat has no gameplay attribute, so nothing
+	// recorded for it is no Carnivore. NO TAGS: a stack is no skill.
+	return FMath::Max(0.0f, AbilitySystem->StatForSkill(
+		FName(CarnageStackSecondsStat), FGameplayTagContainer(), 0.0f));
+}
+
 bool UCataclysmStacks::CarnageFromDamageTaken(
 	const UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -342,12 +359,16 @@ bool UCataclysmStacks::NoteDamageTaken(
 	//
 	// THROUGH `CapForOn` AND NOT `CapFor`, which is the option's second clause
 	// doing its work: Carnage has no maximum for this character.
+	//
+	// AND FOR AS MUCH LONGER AS CARNIVORE'S FERVOUR CLAUSE SAYS, decided now.
+	// See `CarnageExtraSeconds`.
 	if (CarnageFromDamageTaken(AbilitySystem))
 	{
 		AbilitySystem->GrantStack(
 			ECataclysmStackKind::Carnage,
 			WindowSecondsFor(ECataclysmStackKind::Carnage),
-			CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
+			CapForOn(AbilitySystem, ECataclysmStackKind::Carnage),
+			CarnageExtraSeconds(AbilitySystem));
 
 		UE_LOG(LogCataclysm, Verbose,
 			   TEXT("A hit taken granted a Carnage stack, now %d."),
@@ -415,11 +436,13 @@ bool UCataclysmStacks::NoteEnemyKilled(AActor* Killer)
 	// THROUGH `CapForOn` AND NOT `CapFor`, since issue #1071. Carnivore says
 	// Carnage has no maximum, and it says so about the stack rather than about
 	// one way of earning it, so a kill-granted stack has to obey the same
-	// answer a hit-granted one does.
+	// answer a hit-granted one does. AND SO MUST ITS LONGER LIFE, Carnivore's
+	// "each stack lasts 1 second longer for every 10 Fervour you hold".
 	AbilitySystem->GrantStack(
 		ECataclysmStackKind::Carnage,
 		WindowSecondsFor(ECataclysmStackKind::Carnage),
-		CapForOn(AbilitySystem, ECataclysmStackKind::Carnage));
+		CapForOn(AbilitySystem, ECataclysmStackKind::Carnage),
+		CarnageExtraSeconds(AbilitySystem));
 
 	UE_LOG(LogCataclysm, Verbose,
 		   TEXT("%s gained a Carnage stack for a kill, now %d."),

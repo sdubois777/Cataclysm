@@ -10170,6 +10170,17 @@ STATS_WITH_AN_ASKER = frozenset({
     # `StatForSkill` when a blow or a tick would kill;
     # `ProbeScaledLethalHitReprieveEvery` measures that.
     "lethal_hit_reprieve_every_seconds",
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK THE PROJECT OWNER APPROVED
+    # THAT DAY, two vow clauses scaled by the Fervour held. Reprisal Wave's
+    # "and 1 metre further for every 25 Fervour you hold": `retaliation_radius_metres`
+    # has been asked through `StatForSkill` by `UCataclysmRetaliation::RadiusMetresFor`
+    # since issue #1047, and `ProbeScaledRetaliationRadius` measures it with the
+    # scale the row carries. Carnivore's "each stack lasts 1 second longer for
+    # every 10 Fervour you hold": `carnage_stack_seconds` is asked by
+    # `UCataclysmStacks::CarnageExtraSeconds` when a Carnage stack is granted, and
+    # `ProbeCarnageStackSeconds` measures it.
+    "retaliation_radius_metres",
+    "carnage_stack_seconds",
 })
 
 
@@ -10353,6 +10364,15 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "movement_speed": ASKER_PASSES_NOTHING_MORE,
     "movement_speed_reduction_suppressed": ASKER_PASSES_NOTHING_MORE,
     "nova_damage_of_missing_health": ASKER_PASSES_NOTHING_MORE,
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK. Unstable Aura's share of
+    # weapon damage, under `health_at_or_below` 50, asked by `UCataclysmNova::Step`
+    # with the wearer's state and no tags (its probe is in `Probes`). And
+    # Threadbare's "Fervour removed by your health regeneration is reduced",
+    # under the same condition: `UCataclysmFervour::RateFor` asks the removal
+    # rate through `StatForSkill` with the healing's tags on every heal
+    # (`ProbeConditionedFervourLostToHealing`).
+    "nova_damage_of_weapon_damage": ASKER_PASSES_NOTHING_MORE,
+    "fervour_lost_to_healing": ASKER_PASSES_NOTHING_MORE,
     "retaliation": ASKER_PASSES_NOTHING_MORE,
     "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
     "skill_cost_paid_from_health": ASKER_PASSES_NOTHING_MORE,

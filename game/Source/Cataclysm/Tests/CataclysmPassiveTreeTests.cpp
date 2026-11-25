@@ -4171,12 +4171,16 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 		return false;
 	}
 
-	// A MASOCHIST NODE WORTH 3% ARMOUR PER POINT, on the Demonic tree the
-	// character reaches by default.
+	// A DEMONIC NODE WORTH 2% ARMOUR PER POINT, on the Demonic tree the
+	// character reaches by default: the Ravager's Hardened.
+	//
+	// IT WAS THE MASOCHIST'S IRON HIDE, 3% A POINT, UNTIL THE TREE REWORK THE
+	// PROJECT OWNER APPROVED ON 2026-11-24 made that node Provoked, melee damage
+	// after being hit, and left the Masochist tree no node granting armour alone.
 	//
 	// ASKED BY NODE AND NOT BY ROW NAME, which stopped being the same string on
 	// issue #953 when a node gained the right to several effect rows.
-	const FName Node(TEXT("Masochist_basic_fc_stem0"));
+	const FName Node(TEXT("Ravager_basic_a_stem1"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
 	if (!TestEqual(TEXT("that node has one authored effect"), Effects.Num(), 1))
@@ -4189,7 +4193,7 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 		UCataclysmCombatAttributeSet::GetArmorAttribute());
 
 	FCataclysmPassiveAllocation Allocation;
-	Allocation.Add(Node, 10);
+	Allocation.Add(Node, 6);
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 
 	// THE ONE REAL ENTRY POINT. Nothing calls the passive tree directly here:
@@ -4200,16 +4204,16 @@ bool FCataclysmPassiveReachesTheCharactersArmourTest::RunTest(const FString&)
 	const float After = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetArmorAttribute());
 
-	// THIRTY PER CENT MORE ARMOUR, from ten points worth three per cent each.
+	// TWELVE PER CENT MORE ARMOUR, from six points worth two per cent each.
 	// Asserted as a relationship rather than as a figure, because the base comes
 	// from the class stat line at the character's level and pinning it here
 	// would make this test fail whenever either is tuned.
 	TestTrue(*FString::Printf(TEXT("armour rose from %.1f to %.1f"), Before, After),
 			 After > Before);
 	TestTrue(*FString::Printf(
-				 TEXT("by about thirty per cent: %.1f against %.1f expected"),
-				 After, Before * 1.30f),
-			 FMath::IsNearlyEqual(After, Before * 1.30f, Before * 0.02f));
+				 TEXT("by about twelve per cent: %.1f against %.1f expected"),
+				 After, Before * 1.12f),
+			 FMath::IsNearlyEqual(After, Before * 1.12f, Before * 0.02f));
 
 	return true;
 }
@@ -4232,8 +4236,11 @@ bool FCataclysmPassiveGivesTheMasochistLifeLeechTest::RunTest(const FString&)
 	// from play: "I should be getting life leech or something I thought, but it
 	// seems like I have no healing."
 	//
-	// BRUTAL DETERMINATION IS NOW THE SOURCE, a flat 0.4% a point, and Undying
-	// Hunger increases what it supplies. This test is the end-to-end statement:
+	// BRUTAL DETERMINATION IS NOW THE SOURCE, and Undying Hunger increases what it
+	// supplies. It was a flat 0.4% a point; since the tree rework the project
+	// owner approved on 2026-11-24 it is "+1% Life Leech for every 2 points",
+	// five flat rows of 1 from 2, 4, 6, 8 and 10 points, so a whole 1% arrives
+	// every second point and ten points give 5%. This test is the end-to-end statement:
 	// a point spent on a real character, through the real pipeline, reaching an
 	// attribute that was zero and could not have been anything else.
 	//
@@ -4290,18 +4297,27 @@ bool FCataclysmPassiveGivesTheMasochistLifeLeechTest::RunTest(const FString&)
 	const FName Node(TEXT("Masochist_basic_spine_004"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
-	if (!TestEqual(TEXT("Brutal Determination grants one row"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Brutal Determination grants five rows, one for every 2 points"),
+				   Effects.Num(), 5))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is life leech"), Effects[0]->Stat,
-			  FString(TEXT("life_leech")));
+	TArray<int32> FromPoints;
+	for (const FCataclysmPassiveEffectRow* Effect : Effects)
+	{
+		TestEqual(TEXT("each is life leech"), Effect->Stat, FString(TEXT("life_leech")));
 
-	// THE BUCKET IS THE WHOLE POINT OF THE FIX AND IS ASSERTED, rather than left
-	// for the arithmetic below to imply. An `increased` row here would be worth
-	// nothing, and this test would then be measuring the wrong thing quietly.
-	TestEqual(TEXT("supplying a base rather than increasing one"),
-			  Effects[0]->ValueKind, FString(TEXT("flat")));
+		// THE BUCKET IS THE WHOLE POINT OF THE FIX AND IS ASSERTED, rather than
+		// left for the arithmetic below to imply. An `increased` row here would
+		// be worth nothing, and this test would then be measuring the wrong
+		// thing quietly.
+		TestEqual(TEXT("supplying a base rather than increasing one"),
+				  Effect->ValueKind, FString(TEXT("flat")));
+		TestEqual(TEXT("a whole 1%"), Effect->ValuePerPoint, 1.0f, 0.001f);
+		FromPoints.Add(Effect->MinPoints);
+	}
+	FromPoints.Sort();
+	TestEqual(TEXT("from 2, 4, 6, 8 and 10 points"), FromPoints, TArray<int32>({2, 4, 6, 8, 10}));
 
 	const FGameplayAttribute Leech = Vital::GetLifeLeechAttribute();
 
@@ -4311,6 +4327,13 @@ bool FCataclysmPassiveGivesTheMasochistLifeLeechTest::RunTest(const FString&)
 	const float Before = AbilitySystem->GetNumericAttribute(Leech);
 	TestEqual(TEXT("a Masochist starts with no life leech at all"), Before, 0.0f,
 			  0.001f);
+
+	// FIVE POINTS FIRST: the rows from 2 and 4 points, and not the one from 6.
+	FCataclysmPassiveAllocation Partway;
+	Partway.Add(Node, 5);
+	State->SetPassiveAllocation(Partway, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+	TestEqual(TEXT("five points give two per cent"), AbilitySystem->GetNumericAttribute(Leech), 2.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 10);
@@ -4323,23 +4346,31 @@ bool FCataclysmPassiveGivesTheMasochistLifeLeechTest::RunTest(const FString&)
 
 	const float After = AbilitySystem->GetNumericAttribute(Leech);
 
-	// FOUR PER CENT, FROM TEN POINTS WORTH FOUR TENTHS EACH. Pinned as a figure
+	// FIVE PER CENT, FROM TEN POINTS: one for every two. Pinned as a figure
 	// rather than as a relationship, unlike the armour test above, and the
 	// difference is the point: armour has a class base that tuning moves, and
 	// this stat has none, so the whole of what is here came from the node.
-	TestEqual(*FString::Printf(TEXT("ten points give four per cent: %.2f"), After),
-			  After, 4.0f, 0.001f);
+	TestEqual(*FString::Printf(TEXT("ten points give five per cent: %.2f"), After),
+			  After, 5.0f, 0.001f);
 
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFervourTradeKeystoneTest,
-	"Cataclysm.Passives.AKeystoneMultipliesOneFervourSourceAndDividesTheOther",
+	"Cataclysm.Passives.AFervourKeystoneMultipliesItsOwnSourceAndLeavesTheOtherAlone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Flesh Craver and Blood Tithe, the two keystones that trade one of the two ways
- * Fervour is gained against the other. Issue #978.
+ * Flesh Craver and Blood Tithe, the two keystones that each multiply one of the
+ * two ways Fervour is gained. Issue #978.
+ *
+ * THEY WERE TRADES UNTIL THE TREE REWORK THE PROJECT OWNER APPROVED ON
+ * 2026-11-24, and this test was named for that: "AKeystoneMultipliesOneFervour
+ * SourceAndDividesTheOther". Each gave 30% more of one source and 50% less of
+ * the other. The owner's rule of that day makes keystones upgrades by default,
+ * and both lost their "50% less" row: Flesh Craver is "You gain 30% more Fervour
+ * from health lost to damage" and Blood Tithe "You gain 30% more Fervour from
+ * health spent as an ability cost", one `more` row each.
  *
  * THE FIRST KEYSTONES IN THE PROJECT THAT GRANT ANYTHING. Every authored passive
  * effect before these two was on a basic node.
@@ -4414,9 +4445,9 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 	{
 		const TArray<const FCataclysmPassiveEffectRow*> Effects =
 			UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
-		if (!TestEqual(*FString::Printf(TEXT("%s grants two stats"),
+		if (!TestEqual(*FString::Printf(TEXT("%s grants one stat, its own source"),
 										*Node.ToString()),
-					   Effects.Num(), 2))
+					   Effects.Num(), 1))
 		{
 			return false;
 		}
@@ -4459,13 +4490,12 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 	TestEqual(TEXT("and a rate of one from a health cost"), Plain.Value, 1.0f,
 			  0.001f);
 
-	// FLESH CRAVER: "You gain 30% more Fervour from health lost to damage, and
-	// 50% less Fervour from health spent as an ability cost."
+	// FLESH CRAVER: "You gain 30% more Fervour from health lost to damage."
 	const TPair<float, float> Craver =
 		RatesAfterSpending({{Start, 1}, {FleshCraver, 1}});
 	TestEqual(TEXT("Flesh Craver multiplies the damage rate by 1.30"),
 			  Craver.Key, 1.30f, 0.001f);
-	TestEqual(TEXT("and halves the cost rate"), Craver.Value, 0.50f, 0.001f);
+	TestEqual(TEXT("and leaves the cost rate at one"), Craver.Value, 1.0f, 0.001f);
 
 	// AND IT MULTIPLIES RATHER THAN JOINING THE SUM, WHICH NEEDS A SECOND
 	// MODIFIER ON THE SAME STAT BEFORE THE TWO CAN DIFFER AT ALL.
@@ -4477,23 +4507,24 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 	// failure being invisible on the character nobody tests on, so the test has
 	// to build the character it is visible on.
 	//
-	// Open Wounds is "+2% increased Fervour gained from health lost to damage
-	// per point" and holds eight points, so it is +16% in the increases bracket:
+	// Open Wounds is "+5% increased Fervour gained from health lost to damage
+	// per point" since 2026-11-24 and holds eight points, so it is +40% in the
+	// increases bracket:
 	//
-	//     as a multiplier   1 x 1.16 x 1.30       = 1.508
-	//     as an increase    1 x (1 + 0.16 + 0.30) = 1.46
+	//     as a multiplier   1 x 1.40 x 1.30       = 1.82
+	//     as an increase    1 x (1 + 0.40 + 0.30) = 1.70
 	const FName OpenWounds(TEXT("Masochist_basic_spine_006"));
 	const TPair<float, float> Stacked =
 		RatesAfterSpending({{Start, 1}, {OpenWounds, 8}, {FleshCraver, 1}});
 	TestEqual(TEXT("the keystone multiplies the increases bracket rather than "
 				   "joining it"),
-			  Stacked.Key, 1.508f, 0.001f);
+			  Stacked.Key, 1.82f, 0.001f);
 
-	// BLOOD TITHE IS THE MIRROR OF IT, and asserting both is what shows the two
-	// rows on a node are not being applied to whichever stat comes first.
+	// BLOOD TITHE IS THE MIRROR OF IT, and asserting both is what shows each
+	// keystone's row reaches its own source and not whichever stat comes first.
 	const TPair<float, float> Tithe =
 		RatesAfterSpending({{Start, 1}, {BloodTithe, 1}});
-	TestEqual(TEXT("Blood Tithe halves the damage rate"), Tithe.Key, 0.50f,
+	TestEqual(TEXT("Blood Tithe leaves the damage rate at one"), Tithe.Key, 1.0f,
 			  0.001f);
 	TestEqual(TEXT("and multiplies the cost rate by 1.30"), Tithe.Value, 1.30f,
 			  0.001f);
@@ -4504,7 +4535,7 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 	// as working and grants nothing.
 	//
 	// 100 OF 500 MAXIMUM HEALTH IS 20% OF THE CHARACTER, so at a rate of 1 that
-	// is 20 Fervour and at Blood Tithe's halved rate it is 10.
+	// is 20 Fervour, and at Blood Tithe's multiplied cost rate it is 26.
 	AbilitySystem->SetNumericAttributeBase(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
 	AbilitySystem->SetNumericAttributeBase(
@@ -4513,11 +4544,14 @@ bool FCataclysmPassiveFervourTradeKeystoneTest::RunTest(const FString&)
 		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
 		100.0f);
 
-	TestEqual(TEXT("under Blood Tithe a fifth of the character's health lost "
-				   "grants half of the twenty it would otherwise"),
+	TestEqual(TEXT("under Blood Tithe a fifth of the character's health spent "
+				   "as a cost grants 30% more than twenty"),
+			  UCataclysmFervour::GainFromHealthCost(AbilitySystem, 100.0f),
+			  26.0f, 0.001f);
+	TestEqual(TEXT("and a fifth lost to damage still grants the whole twenty"),
 			  UCataclysmFervour::GainFromDamage(AbilitySystem, 100.0f,
 												FGameplayTagContainer()),
-			  10.0f, 0.001f);
+			  20.0f, 0.001f);
 
 	return true;
 }
@@ -5116,29 +5150,24 @@ bool FCataclysmPassiveRealTreesFitTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveThirstForPainOnARealCharacterTest,
-	"Cataclysm.Passives.ThirstForPainSpeedsUpARealCharactersSwingWhileItBleeds",
+	"Cataclysm.Passives.ThirstForPainSpeedsUpARealCharactersSwingForEachStackOfBloodlust",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Thirst for Pain on a real character, bleeding for real. Issue #962.
+ * Thirst for Pain on a real character, holding real stacks of Bloodlust.
  *
- * "While you are Bleeding, +2% increased Attack Speed per point."
+ * "+1% increased Attack Speed per point for each stack of Bloodlust you have."
  *
- * WHAT THIS PROVES THAT THE OTHER TESTS DO NOT, AND WHY IT WAS MISSING. The
- * tests written with this node measured the pieces: that the counter counts, that
- * the pipeline's arithmetic is right, that the two new names reach the right
- * enumerators in a fixture table. None of them ran the whole chain on a real
- * character with the real authored numbers, so every one of them could have
- * passed against a build where spending the point changed nothing a player would
- * feel. This is the shape
- * `ReciprocityGrowsWithTheFervourARealCharacterHolds` already uses and it should
- * have been written at the same time.
+ * IT READ "While you are Bleeding, +2% increased Attack Speed per point" UNTIL
+ * THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24, and this test was
+ * `ThirstForPainSpeedsUpARealCharactersSwingWhileItBleeds`. The audit found the
+ * Flesh Craver limb had no source of Bleeding, so the node now reads the stacks
+ * Blood Offering, its parent, supplies: one for each hit taken, up to five.
  *
- * THE BLEED IS APPLIED AS A GAMEPLAY EFFECT, not by setting a flag. The chain
- * being checked is: a real effect grants a real tag, `UCataclysmDebuffs` reads
- * that tag off the ability system, `CurrentConditions` puts it in the state,
- * `ConditionHolds` judges it, and `UCataclysmBasicAttack` asks for attack speed
- * through `StatForSkill`. Anything short of a real effect skips part of it.
+ * THE STACKS ARE GRANTED THE WAY A HIT TAKEN GRANTS THEM, through
+ * `UCataclysmStacks::NoteDamageTaken`, and read where the game reads them:
+ * `CurrentConditions` counts them, the pipeline scales the row by the count, and
+ * `UCataclysmBasicAttack` asks for attack speed through `StatForSkill`.
  *
  * THE SWING TIME AND NOT THE STAT, because the swing time is what a player
  * experiences. A faster attack speed is a SHORTER gap between swings, so the
@@ -5186,12 +5215,10 @@ bool FCataclysmPassiveThirstForPainOnARealCharacterTest::RunTest(const FString&)
 
 	const FName Node(TEXT("Masochist_basic_fc_a2"));
 
-	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A condition
-	// column silently emptied would leave an unconditional +16% attack speed,
-	// and the "faster while bleeding" assertion below would still find a bigger
-	// number -- it would simply also be bigger when not bleeding, which the
-	// second half catches. Checking the row as well says which of the two went
-	// wrong.
+	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A scale
+	// column silently emptied would leave a plain +8% attack speed, and the
+	// "faster with stacks" assertion below would still find a bigger number -- it
+	// would simply also be bigger with no stacks, which the first half catches.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
 	if (!TestEqual(TEXT("Thirst for Pain grants one stat"), Effects.Num(), 1))
@@ -5200,12 +5227,13 @@ bool FCataclysmPassiveThirstForPainOnARealCharacterTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("and it is attack speed"), Effects[0]->Stat,
 			  FString(TEXT("attack_speed")));
-	TestEqual(TEXT("only while the character is bleeding"),
-			  Effects[0]->Condition, FString(TEXT("while_bleeding")));
-	TestEqual(TEXT("two percent a point"), Effects[0]->ValuePerPoint, 2.0f);
+	TestEqual(TEXT("for each stack of Bloodlust"),
+			  Effects[0]->Scale, FString(TEXT("bloodlust_stacks")));
+	TestTrue(TEXT("with no condition"), Effects[0]->Condition.IsEmpty());
+	TestEqual(TEXT("one percent a point"), Effects[0]->ValuePerPoint, 1.0f);
 
 	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure below is what
-	// a player who committed to it actually gets.
+	// a player who committed to it actually gets: 8% a stack.
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 8);
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
@@ -5219,56 +5247,42 @@ bool FCataclysmPassiveThirstForPainOnARealCharacterTest::RunTest(const FString&)
 		return false;
 	}
 
-	// NOT BLEEDING YET, SO NOTHING HAS CHANGED. This is the half that catches a
-	// condition dropped on the way, which would make the node an unconditional
-	// bonus -- silently, and in the player's favour.
-	TestEqual(TEXT("an unhurt character carries no debuff"),
-			  UCataclysmDebuffs::CountOn(AbilitySystem), 0);
-	TestFalse(TEXT("and is not Bleeding"),
-			  UCataclysmDebuffs::IsBleeding(AbilitySystem));
+	// NO STACK YET, SO NOTHING HAS CHANGED.
+	TestEqual(TEXT("an unhurt character holds no Bloodlust"),
+			  UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::Bloodlust), 0);
 
-	// NOW MAKE IT BLEED, THROUGH A REAL GAMEPLAY EFFECT.
-	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
-	if (!TestTrue(TEXT("the vocabulary has Keyword.DoT.Bleed"), Bleed.IsValid()))
+	// THREE HITS TAKEN, THREE STACKS.
+	for (int32 Hit = 0; Hit < 3; ++Hit)
+	{
+		UCataclysmStacks::NoteDamageTaken(AbilitySystem);
+	}
+	if (!TestEqual(TEXT("set-up: three hits taken are three stacks"),
+				   UCataclysmStacks::Held(AbilitySystem, ECataclysmStackKind::Bloodlust), 3))
 	{
 		return false;
 	}
-	if (!TestTrue(TEXT("a bleed can be put on the character"),
-				  UCataclysmSkillEffects::ApplyTagForDuration(
-					  Character, Character, Bleed, 30.0f)))
-	{
-		return false;
-	}
-	TestTrue(TEXT("the character is Bleeding"),
-			 UCataclysmDebuffs::IsBleeding(AbilitySystem));
 
-	const float Bleeding = UCataclysmBasicAttack::SecondsBetweenSwingsFor(
+	const float Stacked = UCataclysmBasicAttack::SecondsBetweenSwingsFor(
 		AbilitySystem);
 
-	// SIXTEEN PERCENT INCREASED ATTACK SPEED IS A SHORTER GAP, NOT A LONGER ONE.
-	// The pipeline sums increases, so the rate is multiplied by 1.16 and the gap
-	// is divided by it.
-	TestEqual(TEXT("eight points make a bleeding character swing 16% faster"),
-			  Bleeding, Unhurt / 1.16f, Unhurt * 0.001f);
+	// TWENTY-FOUR PERCENT INCREASED ATTACK SPEED IS A SHORTER GAP. The pipeline
+	// sums increases, so the rate is multiplied by 1.24 and the gap is divided
+	// by it.
+	TestEqual(TEXT("eight points and three stacks make the character swing 24% faster"),
+			  Stacked, Unhurt / 1.24f, Unhurt * 0.001f);
 	TestTrue(TEXT("which is a strictly shorter gap between swings"),
-			 Bleeding < Unhurt);
+			 Stacked < Unhurt);
 
-	// AND IT GOES AWAY AGAIN WHEN THE BLEED DOES. Without this the test would
-	// pass against a build that turned the bonus on permanently the first time
-	// the character was ever hurt.
-	const int32 Removed =
-		UCataclysmSkillEffects::RemoveEffectsGranting(Character, Bleed);
-	TestEqual(TEXT("the bleed was removed"), Removed, 1);
-	TestFalse(TEXT("the character is no longer Bleeding"),
-			  UCataclysmDebuffs::IsBleeding(AbilitySystem));
-	TestEqual(TEXT("and the swing is back where it started"),
+	// AND IT GOES AWAY AGAIN WITH THE STACKS. Without this the test would pass
+	// against a build that turned the bonus on permanently.
+	AbilitySystem->ClearStacks(ECataclysmStackKind::Bloodlust);
+	TestEqual(TEXT("and with the stacks gone the swing is back where it started"),
 			  UCataclysmBasicAttack::SecondsBetweenSwingsFor(AbilitySystem),
 			  Unhurt, Unhurt * 0.001f);
 
 	// AND THE GAMEPLAY ATTRIBUTE NEVER MOVED, which is why the swing has to ask
-	// rather than read. A conditional bonus is never folded into an attribute --
-	// it would be stale the moment the bleed ended -- so a build that folded it
-	// in one day should be a deliberate change rather than an accident.
+	// rather than read. A scaled bonus is never folded into an attribute -- it
+	// would be stale the moment a stack lapsed.
 	TestEqual(TEXT("the attack speed attribute is untouched throughout"),
 			  UCataclysmBasicAttack::SecondsBetweenSwings(
 				  AbilitySystem->GetNumericAttribute(
@@ -5572,8 +5586,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBreakingPointOnARealCharacterT
  * The Breaking Point on a real character, hurt for real. Issue #1025.
  *
  * "Dropping below 50% health converts all damage you take into Bleeding over 5
- * seconds. The conversion lasts 3 seconds, increased by 5% per point, and cannot
- * happen more than once every 10 seconds."
+ * seconds. The conversion lasts 3 seconds, and 1 second longer for every 2
+ * points, and cannot happen more than once every 10 seconds."
+ *
+ * THE SECOND SENTENCE READ "increased by 5% per point" UNTIL THE TREE REWORK THE
+ * PROJECT OWNER APPROVED ON 2026-11-24, which made it 4.2 seconds at full points,
+ * a decimal a player sees. It is now four flat rows of 1 second, from 2, 4, 6 and
+ * 8 points, on the same 3 second base: 7 seconds at full points.
  *
  * WHAT IT CAUGHT, WHICH IS WHY IT IS WORTH THE SPAWN. The window resolved to
  * ZERO on every real character, so the node converted nothing at all, and
@@ -5594,7 +5613,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBreakingPointOnARealCharacterT
  * stat whether or not a modifier touches it, so an unspent character reading 3
  * seconds is what says the base reached a character at all.
  *
- * AND THE WHOLE CHAIN AFTER IT: eight points make it 4.2 seconds, dropping below
+ * AND THE WHOLE CHAIN AFTER IT: eight points make it 7 seconds, dropping below
  * half health opens a window of exactly that length, and the character really is
  * converting. Reading the stat alone would prove the arithmetic and skip the part
  * that turns it into a window a player experiences.
@@ -5646,31 +5665,28 @@ bool FCataclysmPassiveBreakingPointOnARealCharacterTest::RunTest(const FString&)
 	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. The node
 	// grants two stats and they answer different questions: a flag saying the
 	// rule applies at all, and a duration saying how long one turn of it lasts.
-	// A build that lost the second row would still switch the rule on, and the
-	// window assertions below would then be measuring a base nobody increased.
+	// A build that lost the duration rows would still switch the rule on, and the
+	// window assertions below would then be measuring a base nobody lengthened.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
-	if (!TestEqual(TEXT("The Breaking Point grants two stats"),
-				   Effects.Num(), 2))
+	if (!TestEqual(TEXT("The Breaking Point grants its flag and four window rows"),
+				   Effects.Num(), 5))
 	{
 		return false;
 	}
 
-	const FCataclysmPassiveEffectRow* WindowRow = nullptr;
+	TArray<int32> WindowFromPoints;
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
 		if (Row->Stat == FString(Conversion::WindowStat))
 		{
-			WindowRow = Row;
+			TestEqual(TEXT("each window row is flat"), Row->ValueKind, FString(TEXT("flat")));
+			TestEqual(TEXT("of one second"), Row->ValuePerPoint, 1.0f);
+			WindowFromPoints.Add(Row->MinPoints);
 		}
 	}
-	if (!TestNotNull(TEXT("one of them is the conversion window"), WindowRow))
-	{
-		return false;
-	}
-	TestEqual(TEXT("and it is an increase"), WindowRow->ValueKind,
-			  FString(TEXT("increased")));
-	TestEqual(TEXT("of five percent a point"), WindowRow->ValuePerPoint, 5.0f);
+	WindowFromPoints.Sort();
+	TestEqual(TEXT("from 2, 4, 6 and 8 points"), WindowFromPoints, TArray<int32>({2, 4, 6, 8}));
 
 	const FGameplayAttribute WindowAttribute =
 		Resource::GetDamageToBleedingWindowAttribute();
@@ -5690,16 +5706,24 @@ bool FCataclysmPassiveBreakingPointOnARealCharacterTest::RunTest(const FString&)
 				  Resource::GetDamageToBleedingOnLowHealthAttribute()),
 			  0.0f, 0.001f);
 
+	// THREE POINTS FIRST: the row from 2 points and not the one from 4.
+	FCataclysmPassiveAllocation Partway;
+	Partway.Add(Node, 3);
+	State->SetPassiveAllocation(Partway, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+	TestEqual(TEXT("three points make the window 4 seconds"),
+			  AbilitySystem->GetNumericAttribute(WindowAttribute), 4.0f, 0.001f);
+
 	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure below is what
-	// a player who committed to it actually gets. `docs/Cataclysm_GDD_v2.md` and
-	// the header both quote 4.2 seconds for exactly this case.
+	// a player who committed to it actually gets: 3 seconds and 1 for every 2
+	// points, 7.
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 8);
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	TestEqual(TEXT("eight points make the window 4.2 seconds"),
-			  AbilitySystem->GetNumericAttribute(WindowAttribute), 4.2f, 0.001f);
+	TestEqual(TEXT("eight points make the window 7 seconds"),
+			  AbilitySystem->GetNumericAttribute(WindowAttribute), 7.0f, 0.001f);
 	TestTrue(TEXT("and the rule is now on"),
 			 AbilitySystem->GetNumericAttribute(
 				 Resource::GetDamageToBleedingOnLowHealthAttribute()) > 0.0f);
@@ -5733,8 +5757,8 @@ bool FCataclysmPassiveBreakingPointOnARealCharacterTest::RunTest(const FString&)
 	// choose between its float and double overloads.
 	const float Remaining = static_cast<float>(
 		AbilitySystem->DamageConversionEndsAt() - World->GetTimeSeconds());
-	TestEqual(TEXT("and it runs for the full 4.2 seconds"),
-			  Remaining, 4.2f, 0.01f);
+	TestEqual(TEXT("and it runs for the full 7 seconds"),
+			  Remaining, 7.0f, 0.01f);
 
 	return true;
 }
@@ -5779,7 +5803,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEchoesOfAgonyOnARealCharacterT
 /**
  * Echoes of Agony on a real character, bleeding for real. Issue #1026.
  *
- * "Damage taken from damage over time effects is reduced by 1% per point."
+ * "Damage taken from damage over time effects is reduced by 2% per point."
+ * One per cent a point until the tree rework the project owner approved on
+ * 2026-11-24.
  *
  * THE SECOND HALF IS THE ONE THAT CAN FAIL QUIETLY. A build reading the stat for
  * every hit rather than only for a damage over time one would soften the
@@ -5841,7 +5867,7 @@ bool FCataclysmPassiveEchoesOfAgonyOnARealCharacterTest::RunTest(const FString&)
 			  FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat));
 	TestEqual(TEXT("as an increase"), Effects[0]->ValueKind,
 			  FString(TEXT("increased")));
-	TestEqual(TEXT("of minus one a point"), Effects[0]->ValuePerPoint, -1.0f);
+	TestEqual(TEXT("of minus two a point"), Effects[0]->ValuePerPoint, -2.0f);
 
 	// WHAT A HIT COSTS BEFORE ANY POINT IS SPENT. Measured rather than assumed,
 	// because a Masochist carries class armour and the figure below is what is
@@ -5871,15 +5897,15 @@ bool FCataclysmPassiveEchoesOfAgonyOnARealCharacterTest::RunTest(const FString&)
 	}
 
 	// TEN POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so the figure is what a player
-	// who committed to it gets: a tenth less from anything spread over time.
+	// who committed to it gets: a fifth less from anything spread over time.
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 10);
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	TestEqual(TEXT("ten points take a tenth off a damage over time tick"),
+	TestEqual(TEXT("ten points take a fifth off a damage over time tick"),
 			  DamageAHitDeals(AbilitySystem, 400.0f, true),
-			  TickBefore * 0.90f, TickBefore * 0.001f);
+			  TickBefore * 0.80f, TickBefore * 0.001f);
 
 	// AND A DIRECT HIT IS UNTOUCHED. Without this the test would pass against a
 	// build that softened every blow the character ever took.
@@ -5891,22 +5917,25 @@ bool FCataclysmPassiveEchoesOfAgonyOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCommunionOfPainOnARealCharacterTest,
-	"Cataclysm.Passives.CommunionOfPainCutsBothWaysForARealCharacterAtFullFervour",
+	"Cataclysm.Passives.CommunionOfPainRaisesARealCharactersDamageFromAHundredFervour",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Communion of Pain on a real character, at a real full bar. Issue #1026.
+ * Communion of Pain on a real character, at a real hundred Fervour. Issue #1026.
  *
+ * "While you have 100 or more Fervour, you deal 20% more damage."
+ *
+ * IT WAS A TRADE UNTIL THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24,
+ * and this test was `CommunionOfPainCutsBothWaysForARealCharacterAtFullFervour`:
  * "While your Fervour is at maximum you deal 20% more damage and take 20% more
- * damage."
+ * damage". The damage taken row is gone, and the condition moved from "at
+ * maximum" to "100 or more", so the maximum-Fervour nodes no longer push the
+ * bonus out of reach.
  *
- * BOTH CLAUSES, BECAUSE THE NODE IS A TRADE. A build that granted the damage and
- * dropped the cost would be strictly better than the sentence, and one that did
- * the reverse strictly worse. Each is measured.
- *
- * AND WITH THE BAR SHORT OF FULL, which is the half that catches a condition
- * dropped on the way. Without it the node would be an unconditional bonus and an
- * unconditional penalty, and nothing at run time would say so.
+ * SO THREE THINGS ARE MEASURED. The damage at 100 against 0; the damage taken,
+ * which no longer moves; and the bonus holding at 100 on a bar whose maximum is
+ * larger, which "at maximum" would have refused. And 99 holds nothing, the half
+ * that catches a condition dropped on the way.
  */
 bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString&)
 {
@@ -5950,29 +5979,29 @@ bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString
 
 	const FName Node(TEXT("Masochist_keystone_spine_001"));
 
-	// THREE ROWS, AND ALL THREE CARRY THE CONDITION. "Increased damage" is two
-	// stats in this project because a character deals attack damage and spell
-	// damage, and the third is what the second clause costs.
+	// TWO ROWS, AND BOTH CARRY THE CONDITION. "Damage" is two stats in this
+	// project because a character deals attack damage and spell damage.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
-	if (!TestEqual(TEXT("Communion of Pain grants three stats"),
-				   Effects.Num(), 3))
+	if (!TestEqual(TEXT("Communion of Pain grants two stats"),
+				   Effects.Num(), 2))
 	{
 		return false;
 	}
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
+		TestTrue(*FString::Printf(TEXT("%s is a damage stat"), *Row->Stat),
+				 Row->Stat == TEXT("attack_damage") || Row->Stat == TEXT("spell_damage"));
 		TestEqual(*FString::Printf(TEXT("%s multiplies"), *Row->Stat),
 				  Row->ValueKind, FString(TEXT("more")));
 		TestEqual(*FString::Printf(TEXT("%s is worth twenty"), *Row->Stat),
 				  Row->ValuePerPoint, 20.0f);
-		TestEqual(*FString::Printf(TEXT("%s applies only at full Fervour"),
-								   *Row->Stat),
-				  Row->Condition, FString(TEXT("class_resource_at_maximum")));
+		TestEqual(*FString::Printf(TEXT("%s applies from 100 Fervour"), *Row->Stat),
+				  Row->Condition, FString(TEXT("class_resource_points_at_least")));
+		TestEqual(*FString::Printf(TEXT("%s compares against 100"), *Row->Stat),
+				  Row->ConditionValue, 100.0f);
 	}
 
-	// A KEYSTONE HOLDS ONE POINT. Reading it off the node table rather than
-	// writing 1 here, because a node's maximum is authored data.
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 1);
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
@@ -5988,18 +6017,9 @@ bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString
 				UCataclysmCombatAttributeSet::GetAttackDamageAttribute()));
 	};
 
-	// THE BAR IS EMPTY TO BEGIN WITH. A Masochist generates Fervour from damage
-	// taken and from health spent, and this character has done neither.
-	const float Maximum =
-		AbilitySystem->GetNumericAttribute(Resource::GetMaxClassResourceAttribute());
-	if (!TestTrue(TEXT("the class resource has a maximum above nothing"),
-				  Maximum > 0.0f))
-	{
-		return false;
-	}
+	// THE BAR IS EMPTY TO BEGIN WITH.
 	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
 										   0.0f);
-
 	const float DamageEmpty = AttackDamage();
 	const float TakenEmpty = DamageAHitDeals(AbilitySystem, 400.0f, false);
 	if (!TestTrue(TEXT("the character swings for something and takes something"),
@@ -6008,41 +6028,24 @@ bool FCataclysmPassiveCommunionOfPainOnARealCharacterTest::RunTest(const FString
 		return false;
 	}
 
-	// AND THE AMPLIFIED BLOW IS STILL SMALLER THAN THE HEALTH IT LANDS ON.
-	// `Resolve` finishes with `DealtToHealth = Min(Damage, Health)`, so a blow
-	// larger than the character reports the character and the fifth this node
-	// adds would be invisible. The figure checked is the one AFTER the increase,
-	// because that is the larger of the two.
-	const float Health = AbilitySystem->GetNumericAttribute(
-		UCataclysmVitalAttributeSet::GetHealthAttribute());
-	if (!TestTrue(*FString::Printf(
-			TEXT("a fifth more than the hit (%.1f) is still under the health it "
-				 "lands on (%.1f)"), TakenEmpty * 1.20f, Health),
-			TakenEmpty * 1.20f < Health))
-	{
-		return false;
-	}
-
-	// NOW FILL THE BAR.
+	// A HUNDRED FERVOUR, ON A BAR WHOSE MAXIMUM IS RAISED ABOVE IT, as Scar Tissue
+	// raises it. "At maximum" would refuse this; "100 or more" does not.
+	AbilitySystem->SetNumericAttributeBase(Resource::GetMaxClassResourceAttribute(),
+										   140.0f);
 	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
-										   Maximum);
+										   100.0f);
 
-	TestEqual(TEXT("at full Fervour the character deals a fifth more"),
+	TestEqual(TEXT("at 100 Fervour, on a bar that is not full, the character deals a fifth more"),
 			  AttackDamage(), DamageEmpty * 1.20f, DamageEmpty * 0.001f);
-	TestEqual(TEXT("and takes a fifth more"),
-			  DamageAHitDeals(AbilitySystem, 400.0f, false),
-			  TakenEmpty * 1.20f, TakenEmpty * 0.001f);
-
-	// AND ONE POINT SHORT OF FULL IS NOTHING AT ALL. This is the half that
-	// catches a condition dropped on the way, and it also says the comparison is
-	// "at maximum" rather than "near it".
-	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
-										   Maximum - 1.0f);
-	TestEqual(TEXT("one point short of full, the damage is back where it was"),
-			  AttackDamage(), DamageEmpty, DamageEmpty * 0.001f);
-	TestEqual(TEXT("and so is the damage taken"),
+	TestEqual(TEXT("and takes exactly what it took, since the keystone has no drawback now"),
 			  DamageAHitDeals(AbilitySystem, 400.0f, false),
 			  TakenEmpty, TakenEmpty * 0.001f);
+
+	// AND ONE POINT SHORT OF A HUNDRED IS NOTHING AT ALL.
+	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
+										   99.0f);
+	TestEqual(TEXT("at 99 Fervour the damage is back where it was"),
+			  AttackDamage(), DamageEmpty, DamageEmpty * 0.001f);
 
 	return true;
 }
@@ -6108,15 +6111,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCommunionOfPainAttackOnARealCh
 /**
  * Communion of Pain's "you deal 20% more damage", delivered by a real attack.
  *
- * `CommunionOfPainCutsBothWaysForARealCharacterAtFullFervour` above reads the
+ * `CommunionOfPainRaisesARealCharactersDamageFromAHundredFervour` above reads the
  * damage through `StatForSkill`, which runs the stat pipeline over every
  * modifier and so reports the fifth whether or not a hit ever carries it. A hit
  * worked out only the increases again, not the "more" multipliers, so that test
  * passed while an attack at full Fervour dealt exactly what one a point short of
  * full did. This one lands the attack.
  *
- * ONE POINT SHORT OF FULL IS THE COMPARISON, as in the test above, because it is
- * the closest state in which the condition does not hold.
+ * 99 FERVOUR IS THE COMPARISON, as in the test above, because it is the closest
+ * state in which the condition does not hold. "While you have 100 or more
+ * Fervour" since the tree rework the project owner approved on 2026-11-24; it
+ * was "at maximum", and a Masochist's maximum with no node raising it is 100,
+ * so the two readings this test takes did not move.
  */
 bool FCataclysmPassiveCommunionOfPainAttackOnARealCharacterTest::RunTest(const FString&)
 {
@@ -6182,18 +6188,18 @@ bool FCataclysmPassiveCommunionOfPainAttackOnARealCharacterTest::RunTest(const F
 
 	const float Maximum =
 		AbilitySystem->GetNumericAttribute(Resource::GetMaxClassResourceAttribute());
-	if (!TestTrue(TEXT("the class resource has a maximum above one"),
-				  Maximum > 1.0f))
+	if (!TestTrue(TEXT("the class resource can hold a hundred"),
+				  Maximum >= 100.0f))
 	{
 		return false;
 	}
 
 	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
-										   Maximum - 1.0f);
+										   99.0f);
 	const float ShortOfFull = AttackLands();
 
 	AbilitySystem->SetNumericAttributeBase(Resource::GetClassResourceAttribute(),
-										   Maximum);
+										   100.0f);
 	const float AtFull = AttackLands();
 
 	if (!TestTrue(FString::Printf(TEXT("both attacks landed (%.1f, %.1f)"),
@@ -6204,7 +6210,7 @@ bool FCataclysmPassiveCommunionOfPainAttackOnARealCharacterTest::RunTest(const F
 	}
 
 	TestEqual(FString::Printf(
-		TEXT("at full Fervour the attack deals a fifth more, and dealt %.3f times"),
+		TEXT("at 100 Fervour the attack deals a fifth more, and dealt %.3f times"),
 		AtFull / ShortOfFull),
 		AtFull / ShortOfFull, 1.20f, 0.001f);
 
@@ -6372,48 +6378,31 @@ bool FCataclysmPassiveTheEdgeOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveMutilationMasteryOnARealCharacterTest,
-	"Cataclysm.Passives.MutilationMasteryGivesARealMasochistFortyPercent",
+	"Cataclysm.Passives.RavenousGrowsARealMasochistsMeleeDamageWithItsLifeLeech",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Mutilation Mastery on a real character. Issue #1032.
+ * Ravenous on a real character. `Masochist_basic_fc_b2`, which was Mutilation
+ * Mastery -- "Your melee critical strikes have a 5% chance per point to apply
+ * Bleeding" -- until the tree rework the project owner approved on 2026-11-24,
+ * and this test was `MutilationMasteryGivesARealMasochistFortyPercent`. The audit
+ * measured that node at about 2% of hits bleeding, on a bleed that ticks only on
+ * a moving target.
  *
- * "Your melee critical strikes have a 5% chance per point to apply Bleeding."
- * Eight points, so 40% at most.
+ * "+1% increased melee damage per point for every 2% of Life Leech you have."
+ * Eight points, scaled by `life_leech` in steps of 2, scoped to `Type.Melee`.
  *
- * WHAT THIS TEST COVERS AND WHAT IT DOES NOT, stated plainly because the two
- * halves of this node cannot be joined in one test:
+ * THE LEECH IS REAL TOO: Brutal Determination at ten points, "+1% Life Leech for
+ * every 2 points", gives this Masochist 5%, which is two whole steps of 2. So
+ * eight points of Ravenous add 16 to the melee increases, and nothing to a hit
+ * that is not melee.
  *
- *   COVERED HERE. That the workbook row reaches a real spawned Masochist and
- *   lands on `BleedOnCritChance` as a flat 5 a point, so eight points read 40.
- *   That is the whole chain from `docs/All_Things_Cataclysm.xlsx` through
- *   `game/Data/PassiveEffects.csv`, the generated asset,
- *   `UCataclysmPlayerClassStats::StatToAttribute` and
- *   `UCataclysmPassiveTree::AccumulateInto` onto a character's attribute.
- *
- *   COVERED IN `CataclysmMeleeBleedTests.cpp`. That a melee critical strike
- *   reads THAT SAME attribute off the attacker and applies Bleeding, and that
- *   dropping any one of melee, critical or damage-that-reached-health applies
- *   nothing. Those tests drive the attribute to 100 and to 0.
- *
- *   COVERED NOWHERE, AND IT CANNOT BE. That a chance of 40 makes a bleed happen
- *   about 40% of the time. The roll is `FMath::FRandRange` inside
- *   `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` with no injection
- *   point, unlike the evasion, block and critical strike rolls, which
- *   `UCataclysmDamageCalculation::Resolve` takes as parameters. A test of it
- *   would have to be statistical. Issue #1034 is the same gap on the blunt
- *   weapon stun rule, which this copies.
- *
- * THE READING BEFORE ANY POINT IS SPENT IS HALF THE POINT. `ApplyTo` writes the
- * attribute for every mapped stat whether or not a modifier touches it, so a
- * Masochist that has spent nothing reading zero is what says the node -- rather
- * than a base somewhere -- is the source. Every class starts at zero and no
- * affix grants this.
+ * `bleed_on_crit_chance` STILL READS, for anything else that grants it, in
+ * `CataclysmMeleeBleedTests.cpp`; no row of this tree grants it now.
  */
 bool FCataclysmPassiveMutilationMasteryOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
-	using Combat = UCataclysmCombatAttributeSet;
 
 	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
 	if (!TestTrue(TEXT("the class console variable exists"),
@@ -6451,70 +6440,69 @@ bool FCataclysmPassiveMutilationMasteryOnARealCharacterTest::RunTest(const FStri
 	}
 
 	const FName Node(TEXT("Masochist_basic_fc_b2"));
+	const FName BrutalDetermination(TEXT("Masochist_basic_spine_004"));
 
-	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. A row that
-	// had become an increase rather than a flat amount would multiply a base of
-	// zero and grant nothing, and the assertion further down would then be
-	// reading the same zero it started from without saying why.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
-	if (!TestEqual(TEXT("Mutilation Mastery grants one stat"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Ravenous grants one stat"), Effects.Num(), 1))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the chance to bleed on a critical strike"),
-			  Effects[0]->Stat, FString(TEXT("bleed_on_crit_chance")));
-	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
-			  FString(TEXT("flat")));
-	TestEqual(TEXT("of five a point"), Effects[0]->ValuePerPoint, 5.0f);
+	TestEqual(TEXT("and it is attack damage"), Effects[0]->Stat, FString(TEXT("attack_damage")));
+	TestEqual(TEXT("as an increase"), Effects[0]->ValueKind, FString(TEXT("increased")));
+	TestEqual(TEXT("of one a point"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for every"), Effects[0]->Scale, FString(TEXT("life_leech")));
+	TestEqual(TEXT("2% of life leech"), Effects[0]->ScaleStep, 2.0f);
+	TestEqual(TEXT("on melee alone"), Effects[0]->RequiredTags, FString(TEXT("Type.Melee")));
 
-	// AND IT CARRIES NO CONDITION, which is what makes reading the attribute
-	// straight -- rather than asking `UCataclysmStatPipeline` for it -- correct
-	// in `UCataclysmVitalAttributeSet`. A conditional row is never folded into
-	// an attribute, so the day this row grows a condition the read there has to
-	// change or the node silently stops working. Issue #1022 is that shape.
-	TestEqual(TEXT("and no condition, which is what lets the rule read the "
-				   "attribute directly"),
-			  Effects[0]->Condition, FString());
-
-	const FGameplayAttribute Chance = Combat::GetBleedOnCritChanceAttribute();
-
-	// NOTHING SPENT, NOTHING GRANTED. This is the reading for every character in
-	// the game except a Masochist who bought this node.
-	Equipment->RefreshAttributes(AbilitySystem);
-	TestEqual(TEXT("an unspent Masochist has no chance to bleed on a critical "
-				   "strike"),
-			  AbilitySystem->GetNumericAttribute(Chance), 0.0f, 0.001f);
-
-	// ONE POINT FIRST, so the figure below is the row being applied per point
-	// rather than a fixed amount granted for owning the node at all.
+	const FGameplayTag Melee = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")),
+																/*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the vocabulary has Type.Melee"), Melee.IsValid()))
 	{
-		FCataclysmPassiveAllocation OnePoint;
-		OnePoint.Add(Node, 1);
-		State->SetPassiveAllocation(OnePoint, TArray<FName>());
-		Equipment->RefreshAttributes(AbilitySystem);
-		TestEqual(TEXT("one point is worth five percent"),
-				  AbilitySystem->GetNumericAttribute(Chance), 5.0f, 0.001f);
+		return false;
 	}
+	FGameplayTagContainer MeleeHit;
+	MeleeHit.AddTag(Melee);
 
-	// EIGHT POINTS, WHICH IS THE NODE'S OWN MAXIMUM, so 40 is what a player who
-	// committed to it actually gets. The node text and the attribute's own
-	// header both quote 40 for exactly this case.
-	FCataclysmPassiveAllocation Allocation;
-	Allocation.Add(Node, 8);
-	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	const auto IncreasesFor = [&](const FGameplayTagContainer& Tags)
+	{
+		FCataclysmStatBreakdown Breakdown;
+		return AbilitySystem->StatBreakdownForSkill(FName(TEXT("attack_damage")), Tags, Breakdown)
+			? Breakdown.SumOfIncreases : 0.0f;
+	};
+
+	// THE LEECH ALONE FIRST, which is what Ravenous is measured against.
+	FCataclysmPassiveAllocation LeechOnly;
+	LeechOnly.Add(BrutalDetermination, 10);
+	State->SetPassiveAllocation(LeechOnly, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+	if (!TestEqual(TEXT("set-up: ten points of Brutal Determination are 5% life leech"),
+				   AbilitySystem->GetNumericAttribute(UCataclysmVitalAttributeSet::GetLifeLeechAttribute()),
+				   5.0f, 0.001f))
+	{
+		return false;
+	}
+	const float MeleeBefore = IncreasesFor(MeleeHit);
+	const float OtherBefore = IncreasesFor(FGameplayTagContainer());
+
+	FCataclysmPassiveAllocation Both;
+	Both.Add(BrutalDetermination, 10);
+	Both.Add(Node, 8);
+	State->SetPassiveAllocation(Both, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	TestEqual(TEXT("eight points make it forty percent"),
-			  AbilitySystem->GetNumericAttribute(Chance), 40.0f, 0.001f);
+	TestEqual(TEXT("eight points and two whole steps of 2% leech add 16 to the melee increases"),
+			  IncreasesFor(MeleeHit) - MeleeBefore, 16.0f, 0.001f);
+	TestEqual(TEXT("and nothing to a hit that is not melee"),
+			  IncreasesFor(FGameplayTagContainer()) - OtherBefore, 0.0f, 0.001f);
 
-	// AND TAKING THE POINTS BACK TAKES THE CHANCE WITH THEM. Without this the
-	// test would pass against a build that granted the chance once and never
-	// recomputed it, which is what a refund or a respec would find.
-	State->SetPassiveAllocation(FCataclysmPassiveAllocation(), TArray<FName>());
+	// AND WITH NO LEECH, NOTHING: the node is worth what the leech makes it.
+	FCataclysmPassiveAllocation NoLeech;
+	NoLeech.Add(Node, 8);
+	State->SetPassiveAllocation(NoLeech, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
-	TestEqual(TEXT("and giving the points back takes it away again"),
-			  AbilitySystem->GetNumericAttribute(Chance), 0.0f, 0.001f);
+	TestEqual(TEXT("with no life leech Ravenous adds nothing"),
+			  IncreasesFor(MeleeHit), MeleeBefore, 0.001f);
 
 	return true;
 }
@@ -6915,8 +6903,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDoctrineMadeFleshOnARealCharac
 /**
  * The Third Vow's third option on a real character. Issue #1040.
  *
- * "Each debuff on you grants 1% more damage and reduces the damage that debuff
+ * "Each debuff on you grants 3% more damage and reduces the damage that debuff
  * deals to you by 10%."
+ *
+ * 3% SINCE THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24; it was 1%,
+ * which the audit of that day found was worth almost nothing at a 100 point
+ * gate.
  *
  * BOTH CLAUSES, AND THEY ARE SHAPED DIFFERENTLY ON PURPOSE. The first grows with
  * how many debuffs are carried; the second does NOT. "That debuff" is each
@@ -6925,7 +6917,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDoctrineMadeFleshOnARealCharac
  * the second clause as well would be several times stronger than the sentence.
  *
  * THE FIRST CLAUSE MULTIPLIES AND THE SECOND ADDS, which is the reading the
- * words give. "1% more damage" is its own multiplier; "reduced by 10%" joins the
+ * words give. "3% more damage" is its own multiplier; "reduced by 10%" joins the
  * additive sum, which is what Echoes of Agony's identical wording does.
  */
 bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FString&)
@@ -7002,8 +6994,8 @@ bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FStri
 		}
 		TestEqual(*FString::Printf(TEXT("%s is its own multiplier"), *Row->Stat),
 				  Row->ValueKind, FString(TEXT("more")));
-		TestEqual(*FString::Printf(TEXT("%s is one percent a debuff"), *Row->Stat),
-				  Row->ValuePerPoint, 1.0f);
+		TestEqual(*FString::Printf(TEXT("%s is three percent a debuff"), *Row->Stat),
+				  Row->ValuePerPoint, 3.0f);
 		TestEqual(*FString::Printf(TEXT("%s counts debuffs"), *Row->Stat),
 				  Row->Scale, FString(TEXT("debuffs_carried")));
 		++PerDebuff;
@@ -7048,8 +7040,8 @@ bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FStri
 	// THE BASELINE IS NOT A HUNDRED, AND THE FIRST VERSION OF THIS TEST ASSUMED
 	// IT WAS AND FAILED. Reaching the 100 points this capstone opens at spends
 	// all ten points of Echoes of Agony, which is "Damage taken from damage over
-	// time effects is reduced by 1% per point" -- so this reading is already 90
-	// before the option grants anything. What this option adds is measured
+	// time effects is reduced by 2% per point" since 2026-11-24 -- so this reading
+	// is already 80 before the option grants anything. What this option adds is measured
 	// against whatever the tree left here, not against a clean 100.
 	//
 	// IT IS STILL BELOW A HUNDRED, which is worth asserting: a reading at or
@@ -7111,8 +7103,8 @@ bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FStri
 	{
 		return false;
 	}
-	TestEqual(TEXT("carrying one debuff is one percent more damage"),
-			  AttackDamage(), NoDebuffs * 1.01f, NoDebuffs * 0.001f);
+	TestEqual(TEXT("carrying one debuff is three percent more damage"),
+			  AttackDamage(), NoDebuffs * 1.03f, NoDebuffs * 0.001f);
 
 	if (!TestTrue(TEXT("a burn can be put on it as well"),
 				  UCataclysmSkillEffects::ApplyTagForDuration(
@@ -7120,9 +7112,9 @@ bool FCataclysmPassiveDoctrineMadeFleshOnARealCharacterTest::RunTest(const FStri
 	{
 		return false;
 	}
-	TestEqual(TEXT("and carrying two debuffs is two percent, not one percent "
+	TestEqual(TEXT("and carrying two debuffs is six percent, not three percent "
 				   "twice over"),
-			  AttackDamage(), NoDebuffs * 1.02f, NoDebuffs * 0.001f);
+			  AttackDamage(), NoDebuffs * 1.06f, NoDebuffs * 0.001f);
 
 	// AND IT GOES AWAY AGAIN WHEN THE DEBUFFS DO. Without this the option would
 	// pass against a build that turned the bonus on the first time the character
@@ -7297,6 +7289,12 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 	// separates a working build from one where this row is dropped. The
 	// character is hurt first, because a full health bar cannot go up and every
 	// reading would be zero.
+	//
+	// TO 45% AND NOT TO HALF, SINCE THE TREE REWORK OF 2026-11-24. Willing Flesh,
+	// filled on the way to 25 points, now grows with health missing in whole
+	// steps of 10%, so a reading taken at exactly half health and one taken a
+	// step of regeneration later fall either side of a step and differ. At 45%
+	// the step and the readings around it all count five steps of 10% missing.
 	const float Maximum =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
 	if (!TestTrue(TEXT("the character has some maximum health"), Maximum > 0.0f))
@@ -7306,7 +7304,7 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 	const auto OneStepOfRegeneration = [&]() -> float
 	{
 		AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
-											   Maximum * 0.5f);
+											   Maximum * 0.45f);
 		const float Before =
 			AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
 		UCataclysmRegeneration::ApplyStep(
@@ -7322,9 +7320,9 @@ bool FCataclysmPassiveStigmaticOnARealCharacterTest::RunTest(const FString&)
 	// AND THE ADDITIVE SUM ON EACH STAT, because a row worth 4 does not multiply
 	// the result by 1.04. It adds 4 to whatever the rest of the tree already
 	// put in the sum, so the result moves by (100 + S + 4) / (100 + S). Filling
-	// this tree to 25 points leaves 12 percentage points on the health
-	// regeneration, and the first version of this test asserted a flat 1.04 and
-	// failed by exactly that much.
+	// this tree to 25 points leaves Willing Flesh's percentage points on the
+	// health regeneration, and the first version of this test asserted a flat
+	// 1.04 and failed by exactly that much.
 	const float DamageIncreasesWithNone =
 		IncreasesOn(AbilitySystem, TEXT("attack_damage"));
 	const float RegenIncreasesWithNone =
@@ -7689,41 +7687,33 @@ bool FCataclysmPassiveVesselUnbrokenOnARealCharacterTest::RunTest(const FString&
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveGluttonOnARealCharacterTest,
-	"Cataclysm.Passives.GluttonGrowsRetaliationWithLifeLeechOnARealCharacter",
+	"Cataclysm.Passives.GluttonMultipliesARealCharactersDamageForEveryTenFervourHeld",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The Third Vow's second option on a real character. Issue #1045.
  *
- * "Your retaliation damage is increased by 1% for every 1% of life leech you
- * have."
+ * "You deal 1% more damage for every 10 Fervour you hold."
  *
- * ONE STAT'S VALUE DECIDING ANOTHER STAT'S SIZE, which no node did before this.
- * Every scale written until now reads a STATE -- where health is, what is owed,
- * how full the pool is, how many things are on the character -- and all of those
- * change from moment to moment. Life leech changes only when the character's
- * gear or passive points change, so this is a bonus that grows with an
- * investment rather than with a situation.
+ * A NEW OPTION UNDER AN OLD NAME, by the tree rework the project owner approved
+ * on 2026-11-24. Glutton was "Your retaliation damage is increased by 1% for
+ * every 1% of life leech you have", which the audit of that day measured at 5%
+ * retaliation with the tree's leech, at a 100 point gate, and this test was
+ * `GluttonGrowsRetaliationWithLifeLeechOnARealCharacter`. Column B of the vows
+ * now scales with the class's core count, which the owner ruled is Fervour held.
  *
- * THE SUM IS READ RATHER THAN A RATIO ASSUMED. The row lands in the increases
- * bucket, which is a sum: 20 points of leech add 20 percentage points to
- * whatever the rest of the tree already put there, so the final figure moves by
- * (100 + S + 20) / (100 + S) and not by 1.20. Filling this tree to 100 points
- * spends points in nodes that increase retaliation, so S is not zero.
- *
- * THE CROSS-CHECK AGAINST THE OTHER TWO OPTIONS USES DAMAGE OVER TIME AND NOT
- * DAMAGE, deliberately. Deficit, this capstone's first option, increases damage
- * with health missing -- and so does `Masochist_basic_fc_a0`, which is spent
- * while filling the tree, so a reading of damage at low health cannot tell the
- * two apart. Doctrine Made Flesh, the third option, softens damage over time by
- * a flat ten, and the only other node touching that stat contributes a constant.
- * So that reading isolates cleanly and this one does not.
+ * MEASURED AS A RATIO BEFORE AND AFTER THE CHOICE, AT EACH FERVOUR READING. The
+ * filled tree carries its own Fervour-scaled damage (Gathered Pain) and its own
+ * "more" at 100 Fervour (Communion of Pain), so an absolute figure would be
+ * measuring them too. Each is the same before and after the choice, so the
+ * ratio of the two multipliers isolates the option: 1.05 at 50 Fervour, 1.09 at
+ * 99 -- whole steps of 10, rounded down -- and exactly 1 at none.
  */
 bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
 	using Combat = UCataclysmCombatAttributeSet;
-	using Vital = UCataclysmVitalAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
 
 	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
 	if (!TestTrue(TEXT("the class console variable exists"),
@@ -7764,10 +7754,9 @@ bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 
 	const FName Node(TEXT("Masochist_capstone_100"));
 
-	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row,
-	// which is what separates this option from the other two on the same
-	// capstone: those each write two, because "damage" is attack damage and
-	// spell damage, and retaliation is a single stat.
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent: two,
+	// because "damage" is attack damage and spell damage, each a "more" of 1 for
+	// every 10 Fervour held.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
 	TArray<const FCataclysmPassiveEffectRow*> Mine;
@@ -7778,19 +7767,23 @@ bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 			Mine.Add(Row);
 		}
 	}
-	if (!TestEqual(TEXT("Glutton grants one row"), Mine.Num(), 1))
+	if (!TestEqual(TEXT("Glutton grants two rows"), Mine.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is retaliation"), Mine[0]->Stat,
-			  FString(TEXT("retaliation")));
-	TestEqual(TEXT("joining the additive sum"), Mine[0]->ValueKind,
-			  FString(TEXT("increased")));
-	TestEqual(TEXT("one percent a step"), Mine[0]->ValuePerPoint, 1.0f);
-	TestEqual(TEXT("scaled by life leech"), Mine[0]->Scale,
-			  FString(TEXT("life_leech")));
-	TestEqual(TEXT("a step for every one percent of it"), Mine[0]->ScaleStep,
-			  1.0f);
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		TestTrue(*FString::Printf(TEXT("%s is a damage stat"), *Row->Stat),
+				 Row->Stat == TEXT("attack_damage") || Row->Stat == TEXT("spell_damage"));
+		TestEqual(*FString::Printf(TEXT("%s multiplies"), *Row->Stat), Row->ValueKind,
+				  FString(TEXT("more")));
+		TestEqual(*FString::Printf(TEXT("%s is one percent a step"), *Row->Stat),
+				  Row->ValuePerPoint, 1.0f);
+		TestEqual(*FString::Printf(TEXT("%s scales by the Fervour held"), *Row->Stat),
+				  Row->Scale, FString(TEXT("class_resource_held")));
+		TestEqual(*FString::Printf(TEXT("%s steps every 10"), *Row->Stat),
+				  Row->ScaleStep, 10.0f);
+	}
 
 	FCataclysmPassiveAllocation Allocation;
 	int32 Filled = 0;
@@ -7806,11 +7799,18 @@ bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	// READ BEFORE THE CHOICE IS MADE, for the cross-check further down. This is
-	// whatever the filled tree left on the stat, which is NOT 100: Echoes of
-	// Agony is spent on the way to 100 points.
+	// READ BEFORE THE CHOICE IS MADE, for the cross-check further down.
 	const float SofteningBefore = AbilitySystem->GetNumericAttribute(
 		Combat::GetDamageOverTimeTakenAttribute());
+
+	const FGameplayAttribute Pool = Resource::GetClassResourceAttribute();
+	const TArray<float> Holdings = {0.0f, 50.0f, 99.0f};
+	TArray<float> Before;
+	for (const float Held : Holdings)
+	{
+		AbilitySystem->SetNumericAttributeBase(Pool, Held);
+		Before.Add(MoreMultiplierOn(AbilitySystem, TEXT("attack_damage")));
+	}
 
 	FString Refusal;
 	if (!TestTrue(TEXT("the second option can be chosen"),
@@ -7821,66 +7821,15 @@ bool FCataclysmPassiveGluttonOnARealCharacterTest::RunTest(const FString&)
 	}
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	const FGameplayAttribute Leech = Vital::GetLifeLeechAttribute();
-	const auto Retaliation = [&]
+	const TArray<float> Expected = {1.00f, 1.05f, 1.09f};
+	for (int32 Index = 0; Index < Holdings.Num(); ++Index)
 	{
-		return AbilitySystem->StatForSkill(
-			FName(TEXT("retaliation")), FGameplayTagContainer(),
-			AbilitySystem->GetNumericAttribute(
-				Combat::GetRetaliationAttribute()));
-	};
-
-	// NO LEECH AT ALL FIRST, so the option is worth nothing and this is a clean
-	// baseline. Written rather than assumed: filling the tree spends points in
-	// Undying Hunger, which increases life leech, so the character does not
-	// start at zero.
-	AbilitySystem->SetNumericAttributeBase(Leech, 0.0f);
-	const float IncreasesWithNoLeech =
-		IncreasesOn(AbilitySystem, TEXT("retaliation"));
-	const float WithNoLeech = Retaliation();
-	if (!TestTrue(*FString::Printf(
-			TEXT("the character retaliates for something to begin with (%.2f)"),
-			WithNoLeech), WithNoLeech > 0.0f))
-	{
-		// A BASELINE OF ZERO WOULD MAKE EVERY RATIO BELOW MEANINGLESS.
-		return false;
+		AbilitySystem->SetNumericAttributeBase(Pool, Holdings[Index]);
+		const float After = MoreMultiplierOn(AbilitySystem, TEXT("attack_damage"));
+		TestEqual(*FString::Printf(TEXT("at %.0f Fervour the option multiplies damage by %.2f"),
+								   Holdings[Index], Expected[Index]),
+				  Before[Index] > 0.0f ? After / Before[Index] : -1.0f, Expected[Index], 0.0001f);
 	}
-
-	// TWENTY PER CENT OF LIFE LEECH IS TWENTY STEPS OF ONE, so the sum of
-	// increases on retaliation grows by exactly 20 percentage points.
-	AbilitySystem->SetNumericAttributeBase(Leech, 20.0f);
-	const float IncreasesAtTwenty =
-		IncreasesOn(AbilitySystem, TEXT("retaliation"));
-	TestEqual(TEXT("twenty percent of life leech adds twenty points of "
-				   "increased retaliation"),
-			  IncreasesAtTwenty - IncreasesWithNoLeech, 20.0f, 0.01f);
-
-	// AND IT REACHES THE FIGURE THE GAME ITSELF ASKS FOR when a character
-	// strikes back, which is the half that says the row is not merely present in
-	// the pipeline's own bookkeeping.
-	TestEqual(TEXT("and the retaliation a real strike back would use rises by "
-				   "exactly that"),
-			  Retaliation(),
-			  WithNoLeech * (100.0f + IncreasesAtTwenty)
-				  / (100.0f + IncreasesWithNoLeech),
-			  WithNoLeech * 0.001f);
-
-	// TWICE THE LEECH IS TWICE THE BONUS, which is what says the row counts the
-	// leech rather than noticing that some exists.
-	AbilitySystem->SetNumericAttributeBase(Leech, 40.0f);
-	TestEqual(TEXT("forty percent of it adds forty points"),
-			  IncreasesOn(AbilitySystem, TEXT("retaliation"))
-				  - IncreasesWithNoLeech,
-			  40.0f, 0.01f);
-
-	// AND HALF A STEP COUNTS FOR NOTHING, because steps are whole and rounded
-	// down. Every scale follows that rule and this is a place it can be seen:
-	// 20.5% of leech is twenty whole steps, not twenty and a half.
-	AbilitySystem->SetNumericAttributeBase(Leech, 20.5f);
-	TestEqual(TEXT("and twenty and a half percent is twenty whole steps"),
-			  IncreasesOn(AbilitySystem, TEXT("retaliation"))
-				  - IncreasesWithNoLeech,
-			  20.0f, 0.01f);
 
 	// AND THE OPTION THE PLAYER DID NOT PICK GRANTED NOTHING. Doctrine Made
 	// Flesh is the third option of this same capstone and softens damage over
@@ -7903,7 +7852,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReprisalWaveOnARealCharacterTe
  * The First Vow's second option on a real character. Issue #1047.
  *
  * "Your retaliation damage strikes every enemy within 4 metres, not only the one
- * that hit you."
+ * that hit you, and 1 metre further for every 25 Fervour you hold."
+ *
+ * THE LAST CLAUSE IS THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24,
+ * which gives column B of the vows a scaling with the Fervour held. It is a
+ * second row, a flat 1 scaled by `class_resource_held` in steps of 25, and its
+ * reach on enemies is `Cataclysm.ReprisalWave.*`.
  *
  * WHAT THIS CHECKS AND WHAT IT DOES NOT. It checks that the authored row reaches
  * a character built the way the game builds one, that it carries the four the
@@ -7916,10 +7870,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReprisalWaveOnARealCharacterTe
  * moment the point was spent, so the radius would already be 4 before any option
  * was picked. It is zero, which is what says the column is honoured.
  *
- * NO SUM TO READ, unlike the four capstone tests above it. This row is a FLAT
- * modifier on a stat nothing else in the tree touches, so the attribute holds
- * exactly what the row grants and there is no bucket to subtract a baseline
- * from.
+ * NO SUM TO READ, unlike the four capstone tests above it. Both rows are FLAT
+ * modifiers on a stat nothing else in the tree touches, so the radius is exactly
+ * what the rows grant and there is no bucket to subtract a baseline from.
  */
 bool FCataclysmPassiveReprisalWaveOnARealCharacterTest::RunTest(const FString&)
 {
@@ -7965,9 +7918,9 @@ bool FCataclysmPassiveReprisalWaveOnARealCharacterTest::RunTest(const FString&)
 
 	const FName Node(TEXT("Masochist_capstone_25"));
 
-	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row:
-	// everything the option changes is about retaliation, which the passive
-	// effects sheet spells as one stat.
+	// WHAT THE ROWS ARE AUTHORED AS, checked before anything is spent. TWO rows,
+	// both on the retaliation radius: the four metres, and one more for every 25
+	// Fervour held.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
 	TArray<const FCataclysmPassiveEffectRow*> Mine;
@@ -7978,20 +7931,40 @@ bool FCataclysmPassiveReprisalWaveOnARealCharacterTest::RunTest(const FString&)
 			Mine.Add(Row);
 		}
 	}
-	if (!TestEqual(TEXT("Reprisal Wave grants one row"), Mine.Num(), 1))
+	if (!TestEqual(TEXT("Reprisal Wave grants two rows"), Mine.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the retaliation radius"), Mine[0]->Stat,
-			  FString(UCataclysmRetaliation::RadiusMetresStat));
-	TestEqual(TEXT("as a flat amount"), Mine[0]->ValueKind,
-			  FString(TEXT("flat")));
+	const FCataclysmPassiveEffectRow* Four = nullptr;
+	const FCataclysmPassiveEffectRow* Further = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Mine)
+	{
+		TestEqual(TEXT("each is the retaliation radius"), Row->Stat,
+				  FString(UCataclysmRetaliation::RadiusMetresStat));
+		TestEqual(TEXT("as a flat amount"), Row->ValueKind, FString(TEXT("flat")));
+		if (Row->Scale.IsEmpty())
+		{
+			Four = Row;
+		}
+		else
+		{
+			Further = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("one row is plain"), Four)
+		|| !TestNotNull(TEXT("and one is scaled"), Further))
+	{
+		return false;
+	}
 
 	// FOUR, WHICH IS THE NUMBER IN THE NODE'S OWN SENTENCE. The sheet carries
 	// metres rather than the centimetres Unreal measures in, so that
 	// `test_every_value_appears_in_the_nodes_own_description` can tie the two
 	// together. The one conversion is in `UCataclysmRetaliation`.
-	TestEqual(TEXT("of four metres"), Mine[0]->ValuePerPoint, 4.0f);
+	TestEqual(TEXT("of four metres"), Four->ValuePerPoint, 4.0f);
+	TestEqual(TEXT("and one metre more"), Further->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for every"), Further->Scale, FString(TEXT("class_resource_held")));
+	TestEqual(TEXT("25 Fervour held"), Further->ScaleStep, 25.0f);
 
 	FCataclysmPassiveAllocation Allocation;
 	int32 Filled = 0;
@@ -8027,16 +8000,24 @@ bool FCataclysmPassiveReprisalWaveOnARealCharacterTest::RunTest(const FString&)
 	// AND THE GAME'S OWN READER ANSWERS WITH THE FOUR, which is the half that
 	// says the row is not merely sitting in the pipeline's bookkeeping. It asks
 	// for the stat rather than reading the attribute, so this covers the route
-	// the retaliation code really takes.
-	TestEqual(TEXT("and now it reaches four metres"),
+	// the retaliation code really takes. On an empty pool the second row adds
+	// nothing.
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	AbilitySystem->SetNumericAttributeBase(Pool, 0.0f);
+	TestEqual(TEXT("and now it reaches four metres on an empty pool"),
 			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 4.0f,
 			  0.001f);
 
-	// AND THE ATTRIBUTE HOLDS IT TOO, because this row carries no condition and
-	// no scale. A conditional row would be judged at the moment of the call and
-	// would never be folded in, so the two answers agreeing is a statement about
-	// this row rather than about every row.
-	TestEqual(TEXT("and the attribute holds it, the row carrying no condition"),
+	// AND A METRE FURTHER FOR EVERY 25 FERVOUR: 8 metres at 100.
+	AbilitySystem->SetNumericAttributeBase(Pool, 100.0f);
+	TestEqual(TEXT("and eight metres at 100 Fervour"),
+			  UCataclysmRetaliation::RadiusMetresFor(AbilitySystem), 8.0f,
+			  0.001f);
+
+	// AND THE ATTRIBUTE HOLDS ONLY THE PLAIN ROW'S FOUR, because a scaled row is
+	// never folded in: it would be stale the moment the pool moved. That is why
+	// the reader has to ask rather than read.
+	TestEqual(TEXT("and the attribute holds the four alone, the scaled row being asked for"),
 			  AbilitySystem->GetNumericAttribute(
 				  Combat::GetRetaliationRadiusMetresAttribute()),
 			  4.0f, 0.001f);
@@ -8058,7 +8039,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFeedingWoundOnARealCharacterTe
  * The Second Vow's second option on a real character. Issue #1048.
  *
  * "Your life leech applies to your retaliation damage as well as to your
- * attacks."
+ * attacks, and your Life Leech is increased by 1% for every 2 Fervour you hold."
+ *
+ * THE SECOND CLAUSE IS THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24,
+ * which gives column B of the vows a scaling with the Fervour held: an
+ * `increased` life leech row scaled by `class_resource_held` in steps of 2, so
+ * +50% at a full 100.
  *
  * THE FIRST OPTION OF THAT CAPSTONE TO BE AUTHORED AT ALL, so this is what takes
  * `Masochist_capstone_50` out of the list of Masochist nodes that do nothing.
@@ -8133,18 +8119,39 @@ bool FCataclysmPassiveFeedingWoundOnARealCharacterTest::RunTest(const FString&)
 			Effects.Add(Row);
 		}
 	}
-	if (!TestEqual(TEXT("Feeding Wound grants one row"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Feeding Wound grants two rows"), Effects.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the retaliation leech flag"), Effects[0]->Stat,
-			  FString(UCataclysmRetaliation::LeechesStat));
-	TestEqual(TEXT("as a flat amount"), Effects[0]->ValueKind,
-			  FString(TEXT("flat")));
+	const FCataclysmPassiveEffectRow* Flag = nullptr;
+	const FCataclysmPassiveEffectRow* PerFervour = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row->Stat == FString(UCataclysmRetaliation::LeechesStat))
+		{
+			Flag = Row;
+		}
+		else if (Row->Stat == FString(TEXT("life_leech")))
+		{
+			PerFervour = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("one is the retaliation leech flag"), Flag)
+		|| !TestNotNull(TEXT("and one is life leech"), PerFervour))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the flag is a flat amount"), Flag->ValueKind, FString(TEXT("flat")));
 
-	// ONE, MEANING ON. There is no magnitude to write: the sentence says where
-	// the character's life leech now applies, not how much of it there is.
-	TestEqual(TEXT("of one, which means on"), Effects[0]->ValuePerPoint, 1.0f);
+	// ONE, MEANING ON. There is no magnitude to write: the first clause says
+	// where the character's life leech now applies, not how much of it there is.
+	TestEqual(TEXT("of one, which means on"), Flag->ValuePerPoint, 1.0f);
+
+	TestEqual(TEXT("the second clause increases life leech"), PerFervour->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("by one percent a step"), PerFervour->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for every"), PerFervour->Scale, FString(TEXT("class_resource_held")));
+	TestEqual(TEXT("2 Fervour held"), PerFervour->ScaleStep, 2.0f);
 
 	FCataclysmPassiveAllocation Allocation;
 	int32 Filled = 0;
@@ -8181,6 +8188,19 @@ bool FCataclysmPassiveFeedingWoundOnARealCharacterTest::RunTest(const FString&)
 				  Combat::GetRetaliationLeechesAttribute()),
 			  1.0f, 0.001f);
 
+	// AND THE SECOND CLAUSE: 50 points of increased life leech at 100 Fervour, 25
+	// at 50, none on an empty pool. Read as the additive sum, against the empty
+	// pool, so whatever else the filled tree put on the stat is subtracted.
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	AbilitySystem->SetNumericAttributeBase(Pool, 0.0f);
+	const float Empty = IncreasesOn(AbilitySystem, TEXT("life_leech"));
+	AbilitySystem->SetNumericAttributeBase(Pool, 50.0f);
+	TestEqual(TEXT("50 Fervour held adds 25 points of increased life leech"),
+			  IncreasesOn(AbilitySystem, TEXT("life_leech")) - Empty, 25.0f, 0.01f);
+	AbilitySystem->SetNumericAttributeBase(Pool, 100.0f);
+	TestEqual(TEXT("and 100 adds 50"),
+			  IncreasesOn(AbilitySystem, TEXT("life_leech")) - Empty, 50.0f, 0.01f);
+
 	// HOW MUCH LIFE LEECH THE CHARACTER HAS IS DELIBERATELY NOT ASSERTED HERE,
 	// and an earlier draft of this test did assert it had some. That was wrong:
 	// the Masochist's class line grants none, and filling the tree to fifty
@@ -8214,29 +8234,26 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnstableAuraOnARealCharacterTe
 /**
  * Unstable Aura on a real character. Issue #1050.
  *
- * "While at or below 10% health, you release a nova every 5 seconds dealing
- * damage equal to 1% of your missing health per point to enemies within 6
- * metres."
+ * "While you are at or below 50% health, you release a nova every 3 seconds
+ * dealing 10% of your weapon damage per point to enemies within 6 metres."
  *
- * THE LAST MASOCHIST NODE THAT DID NOTHING AND WAS NEITHER BLOCKED NOR
- * UNDECIDED. The six that remain need a way to put a debuff on an ENEMY (issues
- * #742 and #674), a reading answered (#1033), a cap on unique debuffs that no
- * document decides, or a comparison between the character's debuffs and an
- * enemy's.
+ * REWORKED BY THE PROJECT OWNER'S APPROVAL OF 2026-11-24. It read "While at or
+ * below 10% health, you release a nova every 5 seconds dealing damage equal to
+ * 1% of your missing health per point", and its row was
+ * `nova_damage_of_missing_health`. The row is now `nova_damage_of_weapon_damage`,
+ * a flat 10 a point under `health_at_or_below` 50.
  *
- * IT IS A BASIC NODE AND NOT A CAPSTONE, so unlike the five capstone option
- * tests above it there is no threshold to fill to and no option to choose. Eight
- * points are spent on it directly.
+ * IT IS A BASIC NODE AND NOT A CAPSTONE, so there is no threshold to fill to and
+ * no option to choose. Eight points are spent on it directly.
  *
  * WHAT IS READ IS WHAT ONE NOVA IS WORTH, not an entry in the pipeline's
  * bookkeeping. `UCataclysmNova::Step` is the function the per-character timer
- * really calls, and it asks for the stat rather than reading the attribute,
- * so this covers the route the game itself takes.
+ * really calls, and it asks for the stat, so this covers the route the game
+ * itself takes. The interval and the reach are `Cataclysm.UnstableAura.*`.
  */
 bool FCataclysmPassiveUnstableAuraOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
-	using Combat = UCataclysmCombatAttributeSet;
 	using Vital = UCataclysmVitalAttributeSet;
 
 	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
@@ -8278,7 +8295,7 @@ bool FCataclysmPassiveUnstableAuraOnARealCharacterTest::RunTest(const FString&)
 
 	// WHAT THE ROW IS AUTHORED AS, checked before anything is spent. ONE row:
 	// the per-point share is the only magnitude the sheet carries, because the
-	// 5 seconds and the 6 metres are constants of the mechanic on
+	// 3 seconds and the 6 metres are constants of the mechanic on
 	// `UCataclysmNova`, the way The Breaking Point's are.
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
@@ -8286,14 +8303,14 @@ bool FCataclysmPassiveUnstableAuraOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the nova stat"), Effects[0]->Stat,
-			  FString(UCataclysmNova::DamageStat));
+	TestEqual(TEXT("and it is the weapon damage nova stat"), Effects[0]->Stat,
+			  FString(UCataclysmNova::WeaponDamageStat));
 	TestEqual(TEXT("as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of one per cent a point"), Effects[0]->ValuePerPoint, 1.0f);
-	TestEqual(TEXT("only at or below a tenth of health"), Effects[0]->Condition,
+	TestEqual(TEXT("of ten per cent a point"), Effects[0]->ValuePerPoint, 10.0f);
+	TestEqual(TEXT("only at or below half health"), Effects[0]->Condition,
 			  FString(TEXT("health_at_or_below")));
-	TestEqual(TEXT("which is ten"), Effects[0]->ConditionValue, 10.0f);
+	TestEqual(TEXT("which is fifty"), Effects[0]->ConditionValue, 50.0f);
 
 	// EIGHT POINTS, WHICH IS THE WHOLE NODE.
 	FCataclysmPassiveAllocation Allocation;
@@ -8301,39 +8318,29 @@ bool FCataclysmPassiveUnstableAuraOnARealCharacterTest::RunTest(const FString&)
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	// THE ATTRIBUTE IS STILL ZERO, and that is the point of asking for the stat
-	// rather than reading it. The row carries a condition, so
-	// `UCataclysmPlayerClassStats::ApplyTo` refuses it and never folds it in.
-	TestEqual(TEXT("the gameplay attribute stays at zero, the row being "
-				   "conditional"),
-			  AbilitySystem->GetNumericAttribute(
-				  Combat::GetNovaDamageOfMissingHealthAttribute()),
-			  0.0f, 0.001f);
-
 	const float MaxHealth =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	if (!TestTrue(*FString::Printf(TEXT("the character has health (%.1f)"),
-								   MaxHealth), MaxHealth > 0.0f))
+	const float WeaponDamage = UCataclysmSkillEffects::WeaponDamageOf(AbilitySystem);
+	if (!TestTrue(*FString::Printf(TEXT("the character has health (%.1f) and weapon damage (%.1f)"),
+								   MaxHealth, WeaponDamage),
+				  MaxHealth > 0.0f && WeaponDamage > 0.0f))
 	{
 		return false;
 	}
 
-	// AT FULL HEALTH IT RELEASES NOTHING, asserted first so the reading below is
-	// evidence of the node rather than of anything else on the step.
+	// ABOVE HALF HEALTH IT RELEASES NOTHING, asserted first so the reading below
+	// is evidence of the node rather than of anything else on the step.
 	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
-										   MaxHealth);
-	TestEqual(TEXT("a character at full health releases no nova"),
+										   MaxHealth * 0.6f);
+	TestEqual(TEXT("a character at three fifths of its health releases no nova"),
 			  UCataclysmNova::Step(Character), 0.0f, 0.001f);
 
-	// AND AT A TWENTIETH OF ITS HEALTH IT DOES. Five per cent is at or below the
-	// node's ten, and 95% of the bar is missing, so eight points deal 8% of that.
-	const float Fifth = MaxHealth * 0.05f;
-	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Fifth);
-
-	TestEqual(TEXT("and one at five per cent releases eight per cent of what "
-				   "it is missing"),
-			  UCataclysmNova::Step(Character),
-			  (MaxHealth - Fifth) * 8.0f / 100.0f, MaxHealth * 0.001f);
+	// AND AT TWO FIFTHS IT DOES: eight points are 80% of its weapon damage.
+	AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   MaxHealth * 0.4f);
+	TestEqual(TEXT("and one at two fifths releases 80% of its weapon damage"),
+			  UCataclysmNova::Step(Character), WeaponDamage * 0.8f,
+			  WeaponDamage * 0.001f);
 
 	return true;
 }
@@ -8536,15 +8543,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSymphonyOfPainOnARealCharacter
 /**
  * Symphony of Pain on a real character. Issue #1033.
  *
- * "Debuffs on you last 2% longer per point, and their effect on you is reduced
- * by 1% per point."
+ * "Debuffs on you last 5% longer per point, and the damage they deal you is
+ * reduced by 2% per point."
+ *
+ * 5% AND 2% SINCE THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24; they
+ * were 2% and 1%, and the second clause now names the damage, which is the
+ * owner's reading of 2026-08-28 written into the sentence.
  *
  * WHAT "THEIR EFFECT" MEANS WAS A READING AND THE PROJECT OWNER SETTLED IT on
  * 2026-08-28: it means the DAMAGE a lasting harmful effect deals. Reading it as
  * everything such an effect does would shorten its duration and contradict the
  * first half of the same sentence. The owner accepted the consequence, which is
  * that a stun is a pure downside for this node: a character with all eight
- * points is stunned 16% longer and gets nothing back for it.
+ * points is stunned 40% longer and gets nothing back for it.
  *
  * IT WAS ON THE BLOCKED LIST UNTIL THAT ANSWER, and it needed a stat that did
  * not exist: how long a lasting harmful effect applied TO this character runs.
@@ -8614,15 +8625,15 @@ bool FCataclysmPassiveSymphonyOfPainOnARealCharacterTest::RunTest(const FString&
 		if (Row->Stat == FString(UCataclysmDebuffs::DurationStat))
 		{
 			bHasDuration = true;
-			TestEqual(TEXT("two per cent longer a point"), Row->ValuePerPoint,
-					  2.0f);
+			TestEqual(TEXT("five per cent longer a point"), Row->ValuePerPoint,
+					  5.0f);
 		}
 		else if (Row->Stat
 				 == FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat))
 		{
 			bHasSoftening = true;
-			TestEqual(TEXT("and one per cent less damage a point"),
-					  Row->ValuePerPoint, -1.0f);
+			TestEqual(TEXT("and two per cent less damage a point"),
+					  Row->ValuePerPoint, -2.0f);
 		}
 	}
 	TestTrue(TEXT("one row lengthens the effect"), bHasDuration);
@@ -8642,52 +8653,52 @@ bool FCataclysmPassiveSymphonyOfPainOnARealCharacterTest::RunTest(const FString&
 	State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Equipment->RefreshAttributes(AbilitySystem);
 
-	// EIGHT POINTS AT TWO PER CENT IS SIXTEEN POINTS OF INCREASE, and one per
-	// cent a point the other way is eight off the damage.
-	TestEqual(TEXT("eight points add sixteen points of increased duration"),
+	// EIGHT POINTS AT FIVE PER CENT IS FORTY POINTS OF INCREASE, and two per
+	// cent a point the other way is sixteen off the damage.
+	TestEqual(TEXT("eight points add forty points of increased duration"),
 			  IncreasesOn(AbilitySystem, UCataclysmDebuffs::DurationStat)
-				  - LengthBefore, 16.0f, 0.01f);
-	TestEqual(TEXT("and take eight points off the damage over time taken"),
+				  - LengthBefore, 40.0f, 0.01f);
+	TestEqual(TEXT("and take sixteen points off the damage over time taken"),
 			  IncreasesOn(AbilitySystem,
 						  UCataclysmDamageCalculation::DamageOverTimeTakenStat)
-				  - SofteningBefore, -8.0f, 0.01f);
+				  - SofteningBefore, -16.0f, 0.01f);
 
 	// AND THE GAME'S OWN READER ANSWERS WITH IT, which is the half that says the
 	// rows are not merely sitting in the pipeline's bookkeeping. Neither row
 	// carries a condition, so both are folded into their attributes and a ten
-	// second effect really runs for 11.6.
-	TestEqual(TEXT("and a ten second effect on this character runs for 11.6"),
-			  UCataclysmDebuffs::DurationOn(AbilitySystem, 10.0f), 11.6f, 0.01f);
+	// second effect really runs for 14.
+	TestEqual(TEXT("and a ten second effect on this character runs for 14"),
+			  UCataclysmDebuffs::DurationOn(AbilitySystem, 10.0f), 14.0f, 0.01f);
 	TestEqual(TEXT("and the attribute holds it, the row carrying no condition"),
 			  AbilitySystem->GetNumericAttribute(
 				  Combat::GetDebuffDurationTakenAttribute()),
-			  116.0f, 0.01f);
+			  140.0f, 0.01f);
 
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest,
-	"Cataclysm.Passives.VesselOfPlaguesLengthensDebuffsAndWorsensThemOnARealCharacter",
+	"Cataclysm.Passives.VesselOfPlaguesLengthensDebuffsAndCountsEachTwiceOnARealCharacter",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * Vessel of Plagues on a real character. Issue #1033.
  *
- * "Debuffs on you last 50% longer, and debuffs on you deal 50% more damage to
- * you."
+ * "Debuffs on you last 50% longer, and each debuff on you counts twice for
+ * everything that counts the debuffs on you."
  *
- * THE NODE WAS REWORDED ON 2026-08-28 AND THIS IS WHY. Its first half read "You
- * can carry twice as many unique debuffs", and nothing in the game limits how
- * many DIFFERENT harmful effects a character may carry, so that half doubled
- * nothing. The project owner decided the number is deliberately unlimited --
- * which is what Path of Exile, Diablo IV and Last Epoch all do -- and chose this
- * replacement. `docs/DECISIONS.md` carries it.
+ * REWORKED BY THE PROJECT OWNER'S APPROVAL OF 2026-11-24, and this test was
+ * `VesselOfPlaguesLengthensDebuffsAndWorsensThemOnARealCharacter`. The second
+ * half read "debuffs on you deal 50% more damage to you", a drawback, and the
+ * owner's rule of that day makes keystones upgrades by default. The new half is
+ * `debuffs_carried_count_twice`, a flat 1, read where the pipeline's count of
+ * debuffs carried is built; `Cataclysm.VesselOfPlagues.*` measures what it does
+ * to the nodes that count.
  *
- * ITS TWO HALVES SIT IN DIFFERENT BUCKETS, and the node's own words decide
- * which. "50% more damage" uses the word this tree reserves for the
- * multiplicative bucket; "50% longer" says neither "more" nor "multiplicative",
- * so it joins the sum. That is why one is read with `IncreasesOn` and the other
- * with `MoreMultiplierOn`.
+ * THE FIRST HALF WAS REWORDED ON 2026-08-28 AND THIS IS WHY. It read "You can
+ * carry twice as many unique debuffs", and nothing in the game limits how many
+ * DIFFERENT harmful effects a character may carry. The project owner decided the
+ * number is deliberately unlimited and chose the duration instead.
  */
 bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString&)
 {
@@ -8739,33 +8750,40 @@ bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString
 	}
 
 	bool bHasDuration = false;
-	bool bHasWorsening = false;
+	bool bHasCountTwice = false;
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
-		TestEqual(*FString::Printf(TEXT("%s is fifty"), *Row->Stat),
-				  Row->ValuePerPoint, 50.0f);
-
 		if (Row->Stat == FString(UCataclysmDebuffs::DurationStat))
 		{
 			bHasDuration = true;
-			TestEqual(TEXT("the length joins the additive sum"), Row->ValueKind,
+			TestEqual(TEXT("the length is fifty"), Row->ValuePerPoint, 50.0f);
+			TestEqual(TEXT("and joins the additive sum"), Row->ValueKind,
 					  FString(TEXT("increased")));
 		}
-		else if (Row->Stat
-				 == FString(UCataclysmDamageCalculation::DamageOverTimeTakenStat))
+		else if (Row->Stat == FString(UCataclysmDebuffs::CountTwiceStat))
 		{
-			bHasWorsening = true;
-			TestEqual(TEXT("and the damage multiplies"), Row->ValueKind,
-					  FString(TEXT("more")));
+			bHasCountTwice = true;
+			TestEqual(TEXT("the switch is flat"), Row->ValueKind, FString(TEXT("flat")));
+			TestEqual(TEXT("of one, meaning on"), Row->ValuePerPoint, 1.0f);
 		}
 	}
 	TestTrue(TEXT("one row lengthens the effect"), bHasDuration);
-	TestTrue(TEXT("and one worsens its damage"), bHasWorsening);
+	TestTrue(TEXT("and one counts each debuff twice"), bHasCountTwice);
 
 	const float LengthBefore = IncreasesOn(AbilitySystem,
 										   UCataclysmDebuffs::DurationStat);
 	const float WorseningBefore = MoreMultiplierOn(
 		AbilitySystem, UCataclysmDamageCalculation::DamageOverTimeTakenStat);
+
+	// ONE DEBUFF CARRIED, so the count has something to double.
+	if (!TestTrue(TEXT("set-up: a bleed is put on the character"),
+				  UCataclysmSkillEffects::ApplyTagForDuration(
+					  Character, Character, UCataclysmDebuffs::BleedTag(), 30.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("before the point the nodes count one"),
+			  UCataclysmDebuffs::CountCarriedOn(AbilitySystem), 1);
 
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 1);
@@ -8776,15 +8794,18 @@ bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString
 			  IncreasesOn(AbilitySystem, UCataclysmDebuffs::DurationStat)
 				  - LengthBefore, 50.0f, 0.01f);
 
-	// A RATIO WHERE THE READING ABOVE IS A SUM, which is why the two assertions
-	// are written differently. A More multiplier multiplies whatever the rest of
-	// the tree contributed, so the ratio between the reading before and after
-	// isolates the row.
-	TestEqual(TEXT("and multiplies the damage they deal by one and a half"),
-			  MoreMultiplierOn(
-				  AbilitySystem,
-				  UCataclysmDamageCalculation::DamageOverTimeTakenStat),
-			  WorseningBefore * 1.5f, 0.001f);
+	// AND THE COUNT DOUBLES, while the plain count of distinct debuffs does not.
+	TestEqual(TEXT("and the nodes count the one bleed twice"),
+			  UCataclysmDebuffs::CountCarriedOn(AbilitySystem), 2);
+	TestEqual(TEXT("while it is still one distinct debuff"),
+			  UCataclysmDebuffs::CountOn(AbilitySystem), 1);
+
+	// AND THE OLD DRAWBACK IS GONE: what a debuff deals to this character is not
+	// multiplied.
+	TestEqual(TEXT("and the damage debuffs deal is not worsened any more"),
+			  MoreMultiplierOn(AbilitySystem,
+							   UCataclysmDamageCalculation::DamageOverTimeTakenStat),
+			  WorseningBefore, 0.001f);
 
 	// AND THE GAME'S OWN READER ANSWERS WITH THE LENGTH, which is the half that
 	// says the row is not merely present in the pipeline's bookkeeping.
@@ -8797,7 +8818,6 @@ bool FCataclysmPassiveVesselOfPlaguesOnARealCharacterTest::RunTest(const FString
 
 	return true;
 }
-
 
 // ---------------------------------------------------------------------------
 // A spent point reaching the character with nothing else touched
@@ -8833,9 +8853,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpendingRefreshesTheStatLineTe
  * through the player state and the second half through the screen, so a fix
  * placed in only one of the two callers fails one half or the other.
  *
- * TWO STATS FROM ONE NODE, AND THAT IS NOT DECORATION. Pain Tolerance grants
- * maximum health AND armour, so a repair that somehow reached only the stat the
- * owner happened to name is caught here.
+ * ONE STAT FROM THE NODE SINCE 2026-11-24. Pain Tolerance granted maximum health
+ * AND armour, and this test read both, so that a repair reaching only the stat
+ * the owner happened to name would be caught here. The tree rework the project
+ * owner approved that day dropped its armour half ("+1% increased Maximum Health
+ * per point"), and no node a few points from the Masochist root grants two
+ * plain stats now, so the second reading went with it.
  *
  * READ AS A SUM AND NOT AS A MULTIPLIER. The increases bucket adds: ten points
  * worth 1% each do not multiply maximum health by 1.10, they add 10 to whatever
@@ -8889,39 +8912,20 @@ bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 	// below would be wrong while still passing.
 	const TArray<const FCataclysmPassiveEffectRow*> Rows =
 		UCataclysmPassiveTree::EffectsFor(EffectTable, PainTolerance);
-	if (!TestEqual(TEXT("Pain Tolerance has two authored effects"), Rows.Num(), 2))
+	if (!TestEqual(TEXT("Pain Tolerance has one authored effect"), Rows.Num(), 1))
 	{
 		return false;
 	}
-	float HealthPerPoint = 0.0f;
-	float ArmourPerPoint = 0.0f;
-	for (const FCataclysmPassiveEffectRow* Row : Rows)
-	{
-		if (Row->Stat == TEXT("max_health"))
-		{
-			HealthPerPoint = Row->ValuePerPoint;
-			TestEqual(TEXT("and the health one is an increase"), Row->ValueKind,
-					  FString(TEXT("increased")));
-		}
-		else if (Row->Stat == TEXT("armor"))
-		{
-			ArmourPerPoint = Row->ValuePerPoint;
-			TestEqual(TEXT("and so is the armour one"), Row->ValueKind,
-					  FString(TEXT("increased")));
-		}
-	}
-	if (!TestTrue(TEXT("one of the two is maximum health"), HealthPerPoint > 0.0f)
-		|| !TestTrue(TEXT("and the other is armour"), ArmourPerPoint > 0.0f))
+	const float HealthPerPoint = Rows[0]->Stat == TEXT("max_health") ? Rows[0]->ValuePerPoint : 0.0f;
+	TestEqual(TEXT("and it is an increase"), Rows[0]->ValueKind, FString(TEXT("increased")));
+	if (!TestTrue(TEXT("it is maximum health"), HealthPerPoint > 0.0f))
 	{
 		return false;
 	}
 
 	const float HealthBefore =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	const float ArmourBefore =
-		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
 	const float HealthSumBefore = IncreasesOn(AbilitySystem, TEXT("max_health"));
-	const float ArmourSumBefore = IncreasesOn(AbilitySystem, TEXT("armor"));
 
 	// THE CHARACTER IS STANDING ON A REAL STAT LINE BEFORE ANYTHING IS SPENT.
 	// `UCataclysmVitalAttributeSet`'s constructor writes a placeholder 100, and
@@ -8931,17 +8935,6 @@ bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 					  TEXT("maximum health is off the class line, not the "
 						   "placeholder 100: %.1f"), HealthBefore),
 				  HealthBefore > 100.0f))
-	{
-		return false;
-	}
-
-	// AND IT HAS ARMOUR TO MULTIPLY. A class line stating no armour would make
-	// the armour half of this test compare zero against zero and pass on
-	// nothing, which is the shape of a check that cannot fail.
-	if (!TestTrue(*FString::Printf(
-					  TEXT("and it starts with some armour to increase: %.1f"),
-					  ArmourBefore),
-				  ArmourBefore > 0.0f))
 	{
 		return false;
 	}
@@ -8977,10 +8970,7 @@ bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 
 	const float HealthAfter =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	const float ArmourAfter =
-		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
 	const float HealthSumAfter = IncreasesOn(AbilitySystem, TEXT("max_health"));
-	const float ArmourSumAfter = IncreasesOn(AbilitySystem, TEXT("armor"));
 
 	// THE HEADLINE, IN THE OWNER'S OWN TERMS: the number on the screen went up.
 	TestTrue(*FString::Printf(
@@ -8998,19 +8988,6 @@ bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 			  HealthBefore * (100.0f + HealthExpectedSum)
 				  / (100.0f + HealthSumBefore),
 			  FMath::Max(HealthBefore * 0.001f, 0.01f));
-
-	// THE SECOND STAT ON THE SAME NODE, so a repair that reached only the one
-	// the owner named would fail here.
-	const float ArmourExpectedSum = ArmourSumBefore + ArmourPerPoint * Points;
-	TestTrue(*FString::Printf(TEXT("armour rose from %.1f to %.1f"), ArmourBefore,
-							  ArmourAfter),
-			 ArmourAfter > ArmourBefore);
-	TestEqual(TEXT("the sum of increases on armour grew by five"), ArmourSumAfter,
-			  ArmourExpectedSum, 0.01f);
-	TestEqual(TEXT("and the armour attribute followed that sum"), ArmourAfter,
-			  ArmourBefore * (100.0f + ArmourExpectedSum)
-				  / (100.0f + ArmourSumBefore),
-			  FMath::Max(ArmourBefore * 0.001f, 0.01f));
 
 	// THE CHARACTER IS NOT HEALED BY SPENDING, WHICH IS THE RULE ALREADY IN
 	// FORCE FOR ATTRIBUTE POINTS. `Cataclysm.SpendAttributePoint`'s own comment
@@ -9321,12 +9298,13 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 
 	// WHAT THE SHEET SAYS PAIN TOLERANCE IS WORTH, READ OUT OF THE REAL TABLE.
 	// The root holds one point and opens Pain Tolerance, which grants increased
-	// maximum health and increased armour.
+	// maximum health. IT GRANTED INCREASED ARMOUR AS WELL, and this test read
+	// both, until the tree rework the project owner approved on 2026-11-24
+	// dropped that half.
 	const FName Root(TEXT("Masochist_basic_spine_000"));
 	const FName PainTolerance(TEXT("Masochist_basic_spine_001"));
 
 	float HealthPerPoint = 0.0f;
-	float ArmourPerPoint = 0.0f;
 	for (const FCataclysmPassiveEffectRow* Row :
 		 UCataclysmPassiveTree::EffectsFor(EffectTable, PainTolerance))
 	{
@@ -9334,14 +9312,9 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 		{
 			HealthPerPoint = Row->ValuePerPoint;
 		}
-		else if (Row->Stat == TEXT("armor"))
-		{
-			ArmourPerPoint = Row->ValuePerPoint;
-		}
 	}
 	if (!TestTrue(TEXT("Pain Tolerance grants increased maximum health"),
-				  HealthPerPoint > 0.0f)
-		|| !TestTrue(TEXT("and increased armour"), ArmourPerPoint > 0.0f))
+				  HealthPerPoint > 0.0f))
 	{
 		return false;
 	}
@@ -9360,11 +9333,8 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 	}
 
 	const float HealthSumBare = IncreasesOn(AbilitySystem, TEXT("max_health"));
-	const float ArmourSumBare = IncreasesOn(AbilitySystem, TEXT("armor"));
 	const float HealthBare =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	const float ArmourBare =
-		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
 
 	// A REAL STAT LINE UNDERNEATH, NOT THE PLACEHOLDER.
 	// `UCataclysmVitalAttributeSet`'s constructor writes 100, and a test that
@@ -9372,11 +9342,7 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 	if (!TestTrue(*FString::Printf(
 					  TEXT("maximum health is off the class line, not the "
 						   "placeholder 100: %.1f"), HealthBare),
-				  HealthBare > 100.0f)
-		|| !TestTrue(*FString::Printf(
-						 TEXT("and there is armour to increase: %.1f"),
-						 ArmourBare),
-					 ArmourBare > 0.0f))
+				  HealthBare > 100.0f))
 	{
 		return false;
 	}
@@ -9401,7 +9367,6 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 	}
 
 	const float HealthSumSpent = IncreasesOn(AbilitySystem, TEXT("max_health"));
-	const float ArmourSumSpent = IncreasesOn(AbilitySystem, TEXT("armor"));
 	const float HealthSpent =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
 
@@ -9414,11 +9379,6 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 				 TEXT("and maximum health rose with it, from %.1f to %.1f"),
 				 HealthBare, HealthSpent),
 			 HealthSpent > HealthBare);
-
-	// THE SECOND STAT ON THE SAME NODE, so a repair that somehow reached only
-	// maximum health is caught by the armour assertions further down.
-	TestEqual(TEXT("and the sum of increases on armour rose by its own amount"),
-			  ArmourSumSpent, ArmourSumBare + ArmourPerPoint * Points, 0.01f);
 
 	// -------------------------------------------------------------------
 	// War, chosen through `ChooseAtCreation`, with the weapon type unchanged
@@ -9438,21 +9398,15 @@ bool FCataclysmPassiveDamageTypeChangeRefreshesTest::RunTest(const FString&)
 	// point, no level, and above all no call to `RefreshAttributes`.
 
 	const float HealthSumAsWar = IncreasesOn(AbilitySystem, TEXT("max_health"));
-	const float ArmourSumAsWar = IncreasesOn(AbilitySystem, TEXT("armor"));
 	const float HealthAsWar =
 		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
-	const float ArmourAsWar =
-		AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute());
 
 	// THE HEADLINE: a tree War cannot reach stops being worth anything, and the
 	// character's own stats say so without anything else being touched.
 	TestEqual(TEXT("the Masochist tree's increases came off maximum health"),
 			  HealthSumAsWar, HealthSumBare, 0.01f);
-	TestEqual(TEXT("and off armour"), ArmourSumAsWar, ArmourSumBare, 0.01f);
 	TestEqual(TEXT("so maximum health is back where it started"), HealthAsWar,
 			  HealthBare, FMath::Max(HealthBare * 0.001f, 0.01f));
-	TestEqual(TEXT("and so is armour"), ArmourAsWar, ArmourBare,
-			  FMath::Max(ArmourBare * 0.001f, 0.01f));
 
 	// AND THE POINTS ARE STILL SPENT. Dormant is not refunded, which is the
 	// other half of the 2026-08-25 decision.
@@ -11321,7 +11275,13 @@ namespace CataclysmPlainRowTest
 	 * checked instead by
 	 * `Cataclysm.Passives.TheRavagersOnMeleeHitChancesRollOnAMeleeBlowAndNotOnASpell`.
 	 */
-	constexpr int32 FewestMasochist = 59;
+	//
+	// THE MASOCHIST'S FELL TO 35 ON 2026-11-24, ON PURPOSE. The tree rework the
+	// project owner approved that day gave many of its plain rows a condition, a
+	// scale or a Min Points ("for every 2 points"), each of which this test
+	// skips by `IsPlain`. Counted from the reworked rows by the same rule: the
+	// Masochist's plain rows are 35. Those rows are checked by their own tests.
+	constexpr int32 FewestMasochist = 35;
 	constexpr int32 FewestRavager = 51;
 	constexpr int32 FewestRitualist = 63;
 
@@ -18186,12 +18146,17 @@ namespace CataclysmDebuffRowTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBattleScarredTest,
-	"Cataclysm.MasochistRows.BattleScarredRaisesARealMasochistsArmourForEachUniqueDebuff",
+	"Cataclysm.MasochistRows.BattleScarredGivesARealMasochistLifeLeechAtOrBelowHalfHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_basic_fc_b0` Battle-Scarred: "+2% increased Armor per point for each
- *  unique debuff on you." Eight points, 16% a debuff. Armour read on a figure of
- *  100 through `StatAppliedTo`, with the character's conditions in hand. */
+/** `Masochist_basic_fc_b0` Battle-Scarred: "While you are at or below 50% health,
+ *  +1% Life Leech for every 2 points." Four flat rows of 1, from 2, 4, 6 and 8
+ *  points, under `health_at_or_below` 50. It was "+2% increased Armor per point
+ *  for each unique debuff on you" until the tree rework the project owner
+ *  approved on 2026-11-24, and this test was
+ *  `BattleScarredRaisesARealMasochistsArmourForEachUniqueDebuff`. Life leech is
+ *  read through `StatForSkill`, which judges the condition; a Masochist has no
+ *  leech of its own, so what is read is the node. */
 bool FCataclysmBattleScarredTest::RunTest(const FString&)
 {
 	using namespace CataclysmDebuffRowTest;
@@ -18208,46 +18173,46 @@ bool FCataclysmBattleScarredTest::RunTest(const FString&)
 		return false;
 	}
 
-	Take(Player, TEXT("Masochist_basic_fc_b0"), 8);
-	const float Others = PlainIncreases(Player, TEXT("armor"));
-	const auto Armour = [&Player]()
+	using Vital = UCataclysmVitalAttributeSet;
+	const auto Leech = [&Player]()
 	{
-		return Player.AbilitySystem->StatAppliedTo(FName(TEXT("armor")),
-												   FGameplayTagContainer(), 100.0f);
+		return Player.AbilitySystem->StatForSkill(FName(TEXT("life_leech")), FGameplayTagContainer(), 0.0f);
+	};
+	const auto AtHealthShare = [&Player](float Share)
+	{
+		const float Maximum = Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum * Share);
 	};
 
-	if (!Counted(*this, Player, 0))
-	{
-		return false;
-	}
-	const float Clean = Armour();
+	Take(Player, TEXT("Masochist_basic_fc_b0"), 8);
+	AtHealthShare(1.0f);
+	const float Whole = Leech();
+	TestEqual(TEXT("at full health the node gives nothing"), Whole, 0.0f, 0.001f);
 
-	if (!TestTrue(TEXT("Crippled"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
-		|| !TestTrue(TEXT("and Crippled again"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
-		|| !Counted(*this, Player, 1))
-	{
-		return false;
-	}
-	TestEqual(TEXT("one unique debuff, carried twice: 16% more increased armour"),
-			  Armour() / Clean, Ratio(Others, 16.0f), 0.0001f);
+	AtHealthShare(0.5f);
+	TestEqual(TEXT("at half health, eight points give 4% life leech"), Leech() - Whole, 4.0f, 0.001f);
 
-	if (!TestTrue(TEXT("Weakened"), Carry(Player, UCataclysmDebuffs::WeakenTag()))
-		|| !Counted(*this, Player, 2))
-	{
-		return false;
-	}
-	TestEqual(TEXT("two unique debuffs: 32%"), Armour() / Clean, Ratio(Others, 32.0f),
-			  0.0001f);
+	// ONE STEP SHORT: five points are the rows from 2 and 4.
+	Take(Player, TEXT("Masochist_basic_fc_b0"), 5);
+	AtHealthShare(0.5f);
+	TestEqual(TEXT("and five points give 2%"), Leech() - Whole, 2.0f, 0.001f);
+
+	AtHealthShare(0.51f);
+	TestEqual(TEXT("and just above half health, nothing"), Leech(), Whole, 0.001f);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnduranceInSufferingTest,
-	"Cataclysm.MasochistRows.EnduranceInSufferingRaisesARealMasochistsDamageAndReductionForEachDebuff",
+	"Cataclysm.MasochistRows.EnduranceInSufferingRaisesARealMasochistsDamageForEachDebuff",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_basic_fl_a0` Endurance in Suffering: "For each unique debuff on you,
- *  +1% increased damage and +0.5% increased Damage Reduction per point." Eight
- *  points and two debuffs: 16% attack and spell damage, 8% damage reduction. */
+/** `Masochist_basic_fl_a0` Endurance in Suffering: "+2% increased damage per point
+ *  for each debuff on you." Eight points and two debuffs: 32% attack and spell
+ *  damage. It read "For each unique debuff on you, +1% increased damage and +0.5%
+ *  increased Damage Reduction per point" until the tree rework the project owner
+ *  approved on 2026-11-24, and this test was
+ *  `EnduranceInSufferingRaisesARealMasochistsDamageAndReductionForEachDebuff`; the
+ *  damage reduction half is gone, and is read here to stay where it was. */
 bool FCataclysmEnduranceInSufferingTest::RunTest(const FString&)
 {
 	using namespace CataclysmDebuffRowTest;
@@ -18266,7 +18231,6 @@ bool FCataclysmEnduranceInSufferingTest::RunTest(const FString&)
 
 	Take(Player, TEXT("Masochist_basic_fl_a0"), 8);
 	const float SpellOthers = PlainIncreases(Player, TEXT("spell_damage"));
-	const float ReductionOthers = PlainIncreases(Player, TEXT("damage_reduction"));
 	struct FReading
 	{
 		float Attack;
@@ -18295,12 +18259,11 @@ bool FCataclysmEnduranceInSufferingTest::RunTest(const FString&)
 		return false;
 	}
 	const FReading Two = Read();
-	TestEqual(TEXT("two debuffs: 16% more increased attack damage"),
-			  Two.Attack - Clean.Attack, 0.16f, 0.0001f);
-	TestEqual(TEXT("16% more increased spell damage"), Two.Spell / Clean.Spell,
-			  Ratio(SpellOthers, 16.0f), 0.0001f);
-	TestEqual(TEXT("and 8% more increased damage reduction"),
-			  Two.Reduction / Clean.Reduction, Ratio(ReductionOthers, 8.0f), 0.0001f);
+	TestEqual(TEXT("two debuffs: 32% more increased attack damage"),
+			  Two.Attack - Clean.Attack, 0.32f, 0.0001f);
+	TestEqual(TEXT("32% more increased spell damage"), Two.Spell / Clean.Spell,
+			  Ratio(SpellOthers, 32.0f), 0.0001f);
+	TestEqual(TEXT("and damage reduction where it was"), Two.Reduction, Clean.Reduction, 0.0001f);
 	return true;
 }
 
@@ -18359,13 +18322,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWoundChannelingTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Masochist_basic_fl_a1` Wound Channeling: "Damage from debuffs on you is
- * increased by 1% per point, and you deal 1% increased damage per point to
- * enemies carrying a debuff you also carry." Eight points, 8% each way.
+ * `Masochist_basic_fl_a1` Wound Channeling: "You deal 3% increased damage per
+ * point to enemies carrying a debuff you also carry." Eight points, 24%.
  *
- * BOTH HALVES THROUGH REAL DAMAGE. A tick from a creature on the Masochist,
- * with the points against without; and a real blow from a Bleeding Masochist on
- * a Bleeding creature against the same blow on a clean one. The blow's share is
+ * IT ALSO READ "Damage from debuffs on you is increased by 1% per point" UNTIL
+ * THE TREE REWORK THE PROJECT OWNER APPROVED ON 2026-11-24, a hidden drawback the
+ * rework dropped, and its other half was 1% a point.
+ *
+ * BOTH THROUGH REAL DAMAGE. A tick from a creature on the Masochist, with the
+ * points against without, which must now be the same; and a real blow from a
+ * Bleeding Masochist on a Bleeding creature against the same blow on a clean one. The blow's share is
  * read against the attack damage increases the blow already carries, since the
  * shared-debuff bonus joins that same sum (`CataclysmSkillEffects.cpp`).
  */
@@ -18412,12 +18378,8 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 		return Resolved.DealtToHealth;
 	};
 
-	// THE FIRST HALF: A TICK ON THE MASOCHIST.
-	// THE OTHER INCREASES ARE READ BEFORE THE POINTS ARE SPENT. Wound Channeling's
-	// own row is unconditional and fixed, so `PlainIncreases` read after the eight
-	// points counted its +8% as an "other" increase too, and expected 1.0741.
+	// THE DROPPED HALF: A TICK ON THE MASOCHIST IS NOT WORSENED.
 	Take(Player, TEXT("Masochist_basic_fl_a1"), 0);
-	const float TickOthers = PlainIncreases(Player, TEXT("damage_over_time_taken"));
 	const float TickWithout = Tick();
 	Take(Player, TEXT("Masochist_basic_fl_a1"), 8);
 	const float TickWith = Tick();
@@ -18426,8 +18388,8 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("a tick on the Masochist is 8% more increased"), TickWith / TickWithout,
-			  Ratio(TickOthers, 8.0f), 0.001f);
+	TestEqual(TEXT("a tick on the Masochist is what it was without the points"), TickWith / TickWithout,
+			  1.0f, 0.001f);
 
 	// THE SECOND HALF: A BLOW ON A CREATURE SHARING A DEBUFF.
 	const FGameplayTag Bleed = FGameplayTag::RequestGameplayTag(
@@ -18480,8 +18442,8 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("a blow on a creature sharing a debuff is 8% more increased"),
-			  OnSharing / OnClean, (1.0f + Increases + 0.08f) / (1.0f + Increases), 0.001f);
+	TestEqual(TEXT("a blow on a creature sharing a debuff is 24% more increased"),
+			  OnSharing / OnClean, (1.0f + Increases + 0.24f) / (1.0f + Increases), 0.001f);
 	return true;
 }
 
@@ -18792,11 +18754,14 @@ bool FCataclysmLivingOnTheEdgeTest::RunTest(const FString&)
 	return true;
 }
 
-/** `Masochist_basic_ll_a1` Last Stand: "While at or below 20% health, +3%
- *  increased Critical Strike Chance per point." Eight points, 24%, read on a
- *  figure of 100 the way a hit asks for the stat. */
+/** `Masochist_basic_ll_a1` Last Stand: "While you are at or below 35% health, +1%
+ *  Damage Reduction per point." Eight points, 8 points of damage reduction, flat.
+ *  It read "While at or below 20% health, +3% increased Critical Strike Chance per
+ *  point" until the tree rework the project owner approved on 2026-11-24, and this
+ *  test was `LastStandRaisesARealMasochistsCritChanceAtOrBelowTwentyPercent`. Read
+ *  as the flat sum of the stat's own line, with the character's state in hand. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastStandTest,
-	"Cataclysm.MasochistRows.LastStandRaisesARealMasochistsCritChanceAtOrBelowTwentyPercent",
+	"Cataclysm.MasochistRows.LastStandGivesARealMasochistDamageReductionAtOrBelowThirtyFivePercent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmLastStandTest::RunTest(const FString&)
@@ -18816,37 +18781,41 @@ bool FCataclysmLastStandTest::RunTest(const FString&)
 	}
 
 	Take(Player, TEXT("Masochist_basic_ll_a1"), 8);
-	const float Others = PlainIncreases(Player, TEXT("crit_chance"));
-	const auto Crit = [&Player]()
+	const auto FlatReduction = [&Player]()
 	{
-		return Player.AbilitySystem->StatAppliedTo(FName(TEXT("crit_chance")),
-												   FGameplayTagContainer(), 100.0f);
+		FCataclysmStatBreakdown Breakdown;
+		return Player.AbilitySystem->StatBreakdownForSkill(FName(TEXT("damage_reduction")),
+														   FGameplayTagContainer(), Breakdown)
+			? Breakdown.Flat : 0.0f;
 	};
 
-	if (!TestEqual(TEXT("health held at 21%"), HoldHealth(Player, 21.0f), 21.0f, 0.01f))
+	if (!TestEqual(TEXT("health held at 36%"), HoldHealth(Player, 36.0f), 36.0f, 0.01f))
 	{
 		return false;
 	}
-	const float Above = Crit();
-	if (!TestEqual(TEXT("health held at exactly 20%"), HoldHealth(Player, 20.0f), 20.0f,
+	const float Above = FlatReduction();
+	if (!TestEqual(TEXT("health held at exactly 35%"), HoldHealth(Player, 35.0f), 35.0f,
 				   0.01f))
 	{
 		return false;
 	}
-	if (!AtOrBelowExactly(*this, Player, 20.0f))
+	if (!AtOrBelowExactly(*this, Player, 35.0f))
 	{
 		return false;
 	}
-	TestEqual(TEXT("at 20%: 24% more increased critical strike chance than at 21%"),
-			  Crit() / Above, Ratio(Others, 24.0f), 0.0001f);
+	TestEqual(TEXT("at 35%: 8 points more damage reduction than at 36%"),
+			  FlatReduction() - Above, 8.0f, 0.001f);
 	return true;
 }
 
-/** `Masochist_basic_ll_a2` The Catalyst: "While at or below 5% health, your
- *  skills have a 5% chance per point not to go on cooldown." Eight points, 40,
- *  read the way `CataclysmGameplayAbility.cpp` asks for it before a cooldown. */
+/** `Masochist_basic_ll_a2` The Catalyst: "While you are at or below 35% health,
+ *  your skills have a 4% chance per point not to go on cooldown." Eight points,
+ *  32, read the way `CataclysmGameplayAbility.cpp` asks for it before a cooldown.
+ *  It read "While at or below 5% health ... a 5% chance per point" until the tree
+ *  rework the project owner approved on 2026-11-24, and this test was
+ *  `TheCatalystGivesARealMasochistItsCooldownSkipChanceAtOrBelowFivePercent`. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTheCatalystTest,
-	"Cataclysm.MasochistRows.TheCatalystGivesARealMasochistItsCooldownSkipChanceAtOrBelowFivePercent",
+	"Cataclysm.MasochistRows.TheCatalystGivesARealMasochistItsCooldownSkipChanceAtOrBelowThirtyFivePercent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmTheCatalystTest::RunTest(const FString&)
@@ -18872,29 +18841,31 @@ bool FCataclysmTheCatalystTest::RunTest(const FString&)
 												  FGameplayTagContainer(), 0.0f);
 	};
 
-	if (!TestEqual(TEXT("health held at 6%"), HoldHealth(Player, 6.0f), 6.0f, 0.01f))
+	if (!TestEqual(TEXT("health held at 36%"), HoldHealth(Player, 36.0f), 36.0f, 0.01f))
 	{
 		return false;
 	}
-	TestEqual(TEXT("at 6%: no chance"), Chance(), 0.0f, 0.001f);
-	if (!TestEqual(TEXT("health held at exactly 5%"), HoldHealth(Player, 5.0f), 5.0f,
+	TestEqual(TEXT("at 36%: no chance"), Chance(), 0.0f, 0.001f);
+	if (!TestEqual(TEXT("health held at exactly 35%"), HoldHealth(Player, 35.0f), 35.0f,
 				   0.01f))
 	{
 		return false;
 	}
-	if (!AtOrBelowExactly(*this, Player, 5.0f))
+	if (!AtOrBelowExactly(*this, Player, 35.0f))
 	{
 		return false;
 	}
-	TestEqual(TEXT("at 5%: a 40% chance"), Chance(), 40.0f, 0.001f);
+	TestEqual(TEXT("at 35%: a 32% chance"), Chance(), 32.0f, 0.001f);
 	return true;
 }
 
-/** `Masochist_basic_ll_b0` Desperate Measures: "While at or below 50% health, +1%
- *  increased Movement Speed per point." Eight points, 8%, read off the movement
- *  component the character walks at. */
+/** `Masochist_basic_ll_b0` Desperate Measures: "While you are at or below 50%
+ *  health, +3% increased Attack Speed per point." Eight points, 24%, read off the
+ *  gap between the character's swings. It read "+1% increased Movement Speed per
+ *  point" until the tree rework the project owner approved on 2026-11-24, and this
+ *  test was `DesperateMeasuresQuickensARealMasochistAtOrBelowHalfHealth`. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresTest,
-	"Cataclysm.MasochistRows.DesperateMeasuresQuickensARealMasochistAtOrBelowHalfHealth",
+	"Cataclysm.MasochistRows.DesperateMeasuresSpeedsARealMasochistsSwingAtOrBelowHalfHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDesperateMeasuresTest::RunTest(const FString&)
@@ -18914,19 +18885,18 @@ bool FCataclysmDesperateMeasuresTest::RunTest(const FString&)
 	}
 
 	Take(Player, TEXT("Masochist_basic_ll_b0"), 8);
-	const float Others = PlainIncreases(Player, TEXT("movement_speed"));
-	const auto Walk = [&Player]()
+	const float Others = PlainIncreases(Player, TEXT("attack_speed"));
+	const auto Gap = [&Player]()
 	{
-		Player.Character->RefreshMovementSpeed();
-		return Player.Character->GetCharacterMovement()->MaxWalkSpeed;
+		return UCataclysmBasicAttack::SecondsBetweenSwingsFor(Player.AbilitySystem);
 	};
 
 	if (!TestEqual(TEXT("health held at 51%"), HoldHealth(Player, 51.0f), 51.0f, 0.01f))
 	{
 		return false;
 	}
-	const float Above = Walk();
-	if (!TestTrue(TEXT("the Masochist walks at a speed"), Above > 0.0f)
+	const float Above = Gap();
+	if (!TestTrue(TEXT("the Masochist swings at all"), Above > 0.0f)
 		|| !TestEqual(TEXT("health held at exactly 50%"), HoldHealth(Player, 50.0f), 50.0f,
 					  0.01f))
 	{
@@ -18936,8 +18906,8 @@ bool FCataclysmDesperateMeasuresTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("at 50%: 8% more increased movement speed than at 51%"),
-			  Walk() / Above, Ratio(Others, 8.0f), 0.0001f);
+	TestEqual(TEXT("at 50%: 24% more increased attack speed than at 51%, a shorter gap"),
+			  Above / Gap(), Ratio(Others, 24.0f), 0.0001f);
 	return true;
 }
 
@@ -20747,7 +20717,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTormentAroundAPlayerTest,
  * carry." Searched for around the defender, which for a player is the character
  * and not the player state at the world's origin.
  *
- * THE CHANCE IS GIVEN AS 100, NOT THE ROW'S 1% A POINT, for the reason
+ * THE CHANCE IS GIVEN AS 100, NOT THE ROW'S 5% A POINT (1% until the tree
+ * rework of 2026-11-24), for the reason
  * `Cataclysm.Contagion.ARealDamageOverTimeTickSpreadsWithoutAnybodyCallingIt`
  * gives: nothing passes a pinned roll through a real tick. What is under test
  * is where the search is made. TWO BYSTANDERS SAY WHERE: one 2 metres from the
@@ -21518,14 +21489,17 @@ namespace CataclysmHealingRowTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCataclysmicResonanceTest,
-	"Cataclysm.MasochistHealingRows.CataclysmicResonanceRaisesARealMasochistsDamageForFiveSecondsAfterAForeignHit",
+	"Cataclysm.MasochistHealingRows.GatheredPainRaisesARealMasochistsDamageForEveryTwentyFiveFervourHeld",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_basic_spine_003` Cataclysmic Resonance: "+1% increased damage per
- *  point for 5 seconds after you take damage of a Cataclysm type other than
- *  Demonic." Twelve points. A real Void hit from a creature opens the window:
- *  attack and spell damage are 12% more increased, and 5.5 seconds later
- *  nothing. */
+/** `Masochist_basic_spine_003` Gathered Pain: "+1% increased damage per point for
+ *  every full 25 Fervour you hold." Twelve points: 12% at 25 Fervour, 24% at 50,
+ *  48% at 100, on attack and spell damage, and nothing below 25. It was
+ *  Cataclysmic Resonance, "+1% increased damage per point for 5 seconds after you
+ *  take damage of a Cataclysm type other than Demonic", until the tree rework the
+ *  project owner approved on 2026-11-24, and this test was
+ *  `CataclysmicResonanceRaisesARealMasochistsDamageForFiveSecondsAfterAForeignHit`;
+ *  the audit found every creature archetype Demonic. */
 bool FCataclysmCataclysmicResonanceTest::RunTest(const FString&)
 {
 	using namespace CataclysmHealingRowTest;
@@ -21541,64 +21515,41 @@ bool FCataclysmCataclysmicResonanceTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	ACataclysmEnemyCharacter* Creature = SpawnHostile(
-		World, Player.Character->GetActorLocation() + FVector(6.0f * M, 0.0f, 0.0f));
-	if (!TestNotNull(TEXT("a creature to hit the Masochist"), Creature))
-	{
-		return false;
-	}
-	Creature->DamageType = FName(TEXT("Void"));
 
 	Hold(Player, {{FName(TEXT("Masochist_basic_spine_003")), 12}});
-	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
-												  1'000'000.0f);
-	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
-												  1'000'000.0f);
-	const auto Read = [&Player]()
+	const auto ReadAt = [&Player](float Fervour)
 	{
+		Stand(Player, 1.0f, Fervour);
 		return TPair<float, float>(
 			Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer()),
 			SpellIncreases(Player));
 	};
-	const TPair<float, float> Clean = Read();
-
-	FCataclysmHitDelivery Blow;
-	Blow.bCannotCriticallyStrike = true;
-	FCataclysmDamageResult Resolved;
-	UCataclysmSkillEffects::ApplyDirectDamage(Creature, Player.Character, 10.0f, Blow,
-											  &Resolved);
-	if (!TestTrue(TEXT("set-up: the Void hit reached the Masochist's health"),
-				  Resolved.DealtToHealth > 0.0f)
-		|| !TestTrue(TEXT("set-up: the hit was recorded as foreign damage"),
-					 Player.AbilitySystem->SecondsSinceForeignDamageTaken() >= 0.0f))
-	{
-		return false;
-	}
-	const TPair<float, float> Open = Read();
-	TestEqual(TEXT("inside the window: 12% more increased attack damage"),
-			  Open.Key - Clean.Key, 0.12f, 0.0001f);
-	TestEqual(TEXT("and 12% more increased spell damage"), Open.Value - Clean.Value,
-			  12.0f, 0.001f);
-
-	CataclysmTestWorld::RunClock(World, 5.5f);
-	const TPair<float, float> Shut = Read();
-	TestEqual(TEXT("5.5 seconds later: nothing on attack damage"), Shut.Key - Clean.Key,
-			  0.0f, 0.0001f);
-	TestEqual(TEXT("and nothing on spell damage"), Shut.Value - Clean.Value, 0.0f,
-			  0.001f);
+	const TPair<float, float> Empty = ReadAt(0.0f);
+	const TPair<float, float> Short = ReadAt(24.0f);
+	TestEqual(TEXT("24 Fervour is no full 25: nothing on attack damage"), Short.Key - Empty.Key, 0.0f,
+			  0.0001f);
+	const TPair<float, float> Fifty = ReadAt(50.0f);
+	TestEqual(TEXT("50 Fervour: 24% more increased attack damage"), Fifty.Key - Empty.Key, 0.24f,
+			  0.0001f);
+	TestEqual(TEXT("and 24% more increased spell damage"), Fifty.Value - Empty.Value, 24.0f, 0.001f);
+	const TPair<float, float> Full = ReadAt(100.0f);
+	TestEqual(TEXT("100 Fervour: 48% on attack damage"), Full.Key - Empty.Key, 0.48f, 0.0001f);
+	TestEqual(TEXT("and 48% on spell damage"), Full.Value - Empty.Value, 48.0f, 0.001f);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSanguineLedgerTest,
-	"Cataclysm.MasochistHealingRows.SanguineLedgerHalvesARealMasochistsRegenerationAndItRemovesNoFervour",
+	"Cataclysm.MasochistHealingRows.SanguineLedgerKeepsARealMasochistsFervourAtFiftyThroughHealing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_keystone_spine_002` Sanguine Ledger: "Health regeneration no longer
- *  removes Fervour, but your Health Regeneration is reduced by 50%
- *  (multiplicative)." One second of real regeneration on a Masochist at half
- *  health holding the Fervour node: without the keystone it restores health and
- *  removes 1 Fervour for each 1% restored; with it, half the health and no
- *  Fervour. */
+/** `Masochist_keystone_spine_002` Sanguine Ledger: "Healing never takes your
+ *  Fervour below 50." Real regeneration on a Masochist at half health holding the
+ *  Fervour node and 55 Fervour: without the keystone each 1% restored removes 1,
+ *  down past 50; with it the pool stops at 50, and the health restored is the
+ *  same. It read "Health regeneration no longer removes Fervour, but your Health
+ *  Regeneration is reduced by 50% (multiplicative)" until the tree rework the
+ *  project owner approved on 2026-11-24, and this test was
+ *  `SanguineLedgerHalvesARealMasochistsRegenerationAndItRemovesNoFervour`. */
 bool FCataclysmSanguineLedgerTest::RunTest(const FString&)
 {
 	using namespace CataclysmHealingRowTest;
@@ -21615,35 +21566,41 @@ bool FCataclysmSanguineLedgerTest::RunTest(const FString&)
 		return false;
 	}
 
-	const auto Regenerate = [&Player](float& OutHealed, float& OutFervourLost)
+	// A STEP LONG ENOUGH TO RESTORE MORE THAN 5% OF THE BAR, so that without the
+	// keystone the pool falls below 50 and with it the floor is what stops it.
+	// Measured as set-up rather than assumed: the class line's regeneration is
+	// data and could move.
+	const auto Regenerate = [&Player](float Seconds, float& OutHealed, float& OutFervourLeft)
 	{
-		Stand(Player, 0.5f, 50.0f);
+		Stand(Player, 0.5f, 55.0f);
 		const float Before = HealthOf(Player);
-		UCataclysmRegeneration::ApplyStep(Player.Character, 1.0f, 100.0f);
+		UCataclysmRegeneration::ApplyStep(Player.Character, Seconds, 100.0f);
 		OutHealed = HealthOf(Player) - Before;
-		OutFervourLost = 50.0f - FervourOf(Player);
+		OutFervourLeft = FervourOf(Player);
 	};
 
 	Hold(Player, {{FName(FervourNode), 1}});
 	float HealedWithout = 0.0f;
-	float LostWithout = 0.0f;
-	Regenerate(HealedWithout, LostWithout);
-	if (!TestTrue(TEXT("set-up: a second of regeneration restored health"),
-				  HealedWithout > 0.0f))
+	float LeftWithout = 0.0f;
+	Regenerate(10.0f, HealedWithout, LeftWithout);
+	const float PercentRestored = HealedWithout / MaxHealthOf(Player) * 100.0f;
+	if (!TestTrue(*FString::Printf(TEXT("set-up: ten seconds of regeneration restored more than 5%% of the "
+										"bar (%.2f%%)"), PercentRestored),
+				  PercentRestored > 5.0f))
 	{
 		return false;
 	}
 	TestEqual(TEXT("without the keystone: 1 Fervour removed for each 1% restored"),
-			  LostWithout, HealedWithout / MaxHealthOf(Player) * 100.0f, 0.001f);
+			  55.0f - LeftWithout, FMath::Min(PercentRestored, 55.0f), 0.01f);
 
 	Hold(Player, {{FName(FervourNode), 1},
 				  {FName(TEXT("Masochist_keystone_spine_002")), 1}});
 	float HealedWith = 0.0f;
-	float LostWith = 0.0f;
-	Regenerate(HealedWith, LostWith);
-	TestEqual(TEXT("with it: regeneration restores half as much"),
-			  HealedWith / HealedWithout, 0.5f, 0.0001f);
-	TestEqual(TEXT("and removes no Fervour"), LostWith, 0.0f, 0.001f);
+	float LeftWith = 0.0f;
+	Regenerate(10.0f, HealedWith, LeftWith);
+	TestEqual(TEXT("with it: the pool stops at 50"), LeftWith, 50.0f, 0.01f);
+	TestEqual(TEXT("and regeneration restores what it did, the keystone costing nothing now"),
+			  HealedWith, HealedWithout, FMath::Max(HealedWithout * 0.001f, 0.01f));
 	return true;
 }
 
@@ -21718,10 +21675,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedAgonyTest,
 	"Cataclysm.MasochistHealingRows.SharedAgonyRaisesTheFervourARealMasochistGainsFromDamageOverTime",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_basic_fl_c0` Shared Agony: "+2% increased Fervour gained from
- *  health lost to damage over time per point." Eight points, 16%. The Fervour a
- *  real tick gains for each 1% of health it took, against a real hit's, on a
- *  Masochist holding the Fervour node. */
+/** `Masochist_basic_fl_c0` Shared Agony: "+5% increased Fervour gained from
+ *  health lost to damage over time per point." Eight points, 40% (16% until the
+ *  tree rework the project owner approved on 2026-11-24). The Fervour a real tick
+ *  gains for each 1% of health it took, against a real hit's, on a Masochist
+ *  holding the Fervour node. */
 bool FCataclysmSharedAgonyTest::RunTest(const FString&)
 {
 	using namespace CataclysmHealingRowTest;
@@ -21791,8 +21749,8 @@ bool FCataclysmSharedAgonyTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("a tick gains 16% more increased Fervour than a hit, for the same health"),
-			  FromTick / FromHit, (1.0f + (Others + 16.0f) / 100.0f) / (1.0f + Others / 100.0f),
+	TestEqual(TEXT("a tick gains 40% more increased Fervour than a hit, for the same health"),
+			  FromTick / FromHit, (1.0f + (Others + 40.0f) / 100.0f) / (1.0f + Others / 100.0f),
 			  0.001f);
 	return true;
 }
@@ -22077,13 +22035,16 @@ bool FCataclysmBloodRushRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrandTitheRowTest,
-	"Cataclysm.MasochistCostRows.GrandTitheRaisesARealMasochistsDamageOnASkillCostingAboveTenPercent",
+	"Cataclysm.MasochistCostRows.GrandTitheRaisesARealMasochistsDamageOnASkillCostingAboveTwoPercent",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_basic_bt_b2` Grand Tithe: "A skill whose health cost is above 10%
- *  of your maximum health deals 4% increased damage per point." Six points, 24%.
- *  Read with the skill's cost in hand, as a blow passes it: nothing at no cost
- *  in hand, nothing at exactly 10%, 24% at 12%. */
+/** `Masochist_basic_bt_b2` Grand Tithe: "A skill whose health cost is above 2% of
+ *  your maximum health deals 4% increased damage per point." Six points, 24%. The
+ *  threshold was 10% until the passive order fixes the project owner approved on
+ *  2026-11-24, and this test was
+ *  `GrandTitheRaisesARealMasochistsDamageOnASkillCostingAboveTenPercent`. Read with
+ *  the skill's cost in hand, as a blow passes it: nothing at no cost in hand,
+ *  nothing at exactly 2%, 24% at 3%. */
 bool FCataclysmGrandTitheRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmCostRowTest;
@@ -22109,34 +22070,30 @@ bool FCataclysmGrandTitheRowTest::RunTest(const FString&)
 			SpellLine(Player, CostPercent).SumOfIncreases);
 	};
 	const TPair<float, float> NoSkill = Read(-1.0f);
-	const TPair<float, float> Ten = Read(10.0f);
-	const TPair<float, float> Twelve = Read(12.0f);
-	TestEqual(TEXT("a cost of exactly 10% is not above it: nothing"),
-			  Ten.Key - NoSkill.Key, 0.0f, 0.0001f);
-	TestEqual(TEXT("a cost of 12%: 24% more increased attack damage"),
-			  Twelve.Key - NoSkill.Key, 0.24f, 0.0001f);
-	TestEqual(TEXT("and 24% more increased spell damage"), Twelve.Value - NoSkill.Value,
+	const TPair<float, float> Two = Read(2.0f);
+	const TPair<float, float> Three = Read(3.0f);
+	TestEqual(TEXT("a cost of exactly 2% is not above it: nothing"),
+			  Two.Key - NoSkill.Key, 0.0f, 0.0001f);
+	TestEqual(TEXT("a cost of 3%: 24% more increased attack damage"),
+			  Three.Key - NoSkill.Key, 0.24f, 0.0001f);
+	TestEqual(TEXT("and 24% more increased spell damage"), Three.Value - NoSkill.Value,
 			  24.0f, 0.001f);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExsanguinateRowTest,
-	"Cataclysm.MasochistCostRows.ExsanguinateAddsACostOfCurrentHealthAndMultipliesARealMasochistsDamage",
+	"Cataclysm.MasochistCostRows.ExsanguinateMultipliesARealMasochistsDamageOnASkillThatCostsHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Masochist_keystone_bt_kB` Exsanguinate: "Every skill costs an additional 15%
- *  of your current health, and every skill deals 40% more damage." The 15 is
- *  asked the way `UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent`, the
- *  function the cost code calls, asks it; the damage is 1.4x more on attack and
- *  spell.
- *
- *  ATTACK DAMAGE IS READ AS A BLOW MULTIPLIES IT. `UCataclysmSkillEffects::ApplyHit`
- *  takes `WeaponDamageOf(Source) / (1 + Folded) * MoreForSkill(...)`, and the 40% is
- *  an unconditional "more" row, which is folded into the AttackDamage attribute
- *  that `WeaponDamageOf` reads; `MoreForSkill`, which is `AttackDamageMoreForSkill`,
- *  returns only what was not folded, so it alone reads 1.0 here, which is what
- *  this test first read. The keystone adds no increases, so `Folded` does not
- *  change and the product of the other two is the blow's ratio. */
+/** `Masochist_keystone_bt_kB` Exsanguinate: "A skill that costs health deals 30%
+ *  more damage." It read "Every skill costs an additional 15% of your current
+ *  health, and every skill deals 40% more damage" until the tree rework the
+ *  project owner approved on 2026-11-24, and this test was
+ *  `ExsanguinateAddsACostOfCurrentHealthAndMultipliesARealMasochistsDamage`. The
+ *  added cost is gone; the multiplier is a `more` 30 under `skill_health_cost_above`
+ *  0, so it is NOT folded into the attack damage attribute and is read with the
+ *  skill's cost in hand: 1.3 at a cost of 1%, nothing at no cost and at a cost of
+ *  exactly 0. */
 bool FCataclysmExsanguinateRowTest::RunTest(const FString&)
 {
 	using namespace CataclysmCostRowTest;
@@ -22153,15 +22110,12 @@ bool FCataclysmExsanguinateRowTest::RunTest(const FString&)
 		return false;
 	}
 
-	const auto Read = [&Player]()
+	const auto Read = [&Player](float CostPercent)
 	{
 		return TPair<float, float>(
-			UCataclysmSkillEffects::WeaponDamageOf(Player.AbilitySystem)
-				* Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()),
-			SpellLine(Player).MoreMultiplier);
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer(), CostPercent),
+			SpellLine(Player, CostPercent).MoreMultiplier);
 	};
-	// ASKED AS `AddedHealthCostOfCurrentPercent` ASKS IT, which is protected: the
-	// stat through `StatForSkill`, with the attribute as the fallback.
 	const auto AddedOfCurrent = [&Player]()
 	{
 		return Player.AbilitySystem->StatForSkill(
@@ -22169,19 +22123,18 @@ bool FCataclysmExsanguinateRowTest::RunTest(const FString&)
 			Player.AbilitySystem->GetNumericAttribute(
 				Resource::GetAddedHealthCostOfCurrentAttribute()));
 	};
-	Hold(Player, {});
-	TestEqual(TEXT("without the keystone a skill adds no cost of current health"),
-			  AddedOfCurrent(),
-			  0.0f, 0.001f);
-	const TPair<float, float> Without = Read();
 
 	Hold(Player, {{FName(TEXT("Masochist_keystone_bt_kB")), 1}});
-	TestEqual(TEXT("with it every skill costs an added 15% of current health"),
-			  AddedOfCurrent(),
-			  15.0f, 0.001f);
-	const TPair<float, float> With = Read();
-	TestEqual(TEXT("attack damage 40% more"), With.Key / Without.Key, 1.4f, 0.0001f);
-	TestEqual(TEXT("spell damage 40% more"), With.Value / Without.Value, 1.4f, 0.0001f);
+	TestEqual(TEXT("the keystone adds no cost of current health now"), AddedOfCurrent(), 0.0f,
+			  0.001f);
+	const TPair<float, float> NoSkill = Read(-1.0f);
+	const TPair<float, float> Free = Read(0.0f);
+	const TPair<float, float> Costly = Read(1.0f);
+	TestEqual(TEXT("a skill costing no health is not multiplied"), Free.Key / NoSkill.Key, 1.0f,
+			  0.0001f);
+	TestEqual(TEXT("a skill costing 1% of health: attack damage 30% more"), Costly.Key / NoSkill.Key,
+			  1.3f, 0.0001f);
+	TestEqual(TEXT("and spell damage 30% more"), Costly.Value / NoSkill.Value, 1.3f, 0.0001f);
 	return true;
 }
 
@@ -23045,8 +22998,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCarnivoreTest,
 
 /**
  * `Masochist_capstone_200` option 2, Carnivore: "Every hit you take grants a
- * stack of Carnage. Carnage has no maximum stacks. Each stack gives 2% more
- * damage." Rows #7 to #10.
+ * stack of Carnage. Carnage has no maximum, each stack grants 2% more damage,
+ * and each stack lasts 1 second longer for every 10 Fervour you hold." The last
+ * clause is the tree rework the project owner approved on 2026-11-24, a fifth
+ * row on `carnage_stack_seconds`; how long a stack lasts is
+ * `Cataclysm.Carnivore.*`. This test reads the first three clauses.
  *
  * The tree is filled to 200 with BASIC nodes only, because every Masochist
  * "more" row outside this option is on a keystone or a capstone. The attack and

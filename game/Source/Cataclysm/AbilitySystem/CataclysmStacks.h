@@ -200,6 +200,28 @@ public:
 	static const TCHAR* CarnageHasNoMaximumStat;
 
 	/**
+	 * Seconds a Carnage count lasts beyond its 8. Carnivore, as the project
+	 * owner approved on 2026-11-24: "each stack lasts 1 second longer for every
+	 * 10 Fervour you hold." Its row is a flat 1 scaled by `class_resource_held`
+	 * in steps of 10, so the figure is the Fervour held when the stack arrives.
+	 * A stat with no gameplay attribute, read only by `CarnageExtraSeconds`.
+	 */
+	static const TCHAR* CarnageStackSecondsStat;
+
+	/**
+	 * How much longer than its 8 seconds a Carnage stack granted now lasts, for
+	 * this character: `CarnageStackSecondsStat` asked through the pipeline with
+	 * the character's state in hand, floored at nought. Nought for everybody
+	 * without Carnivore.
+	 *
+	 * ASKED WHEN A STACK IS GRANTED AND NOWHERE ELSE, and handed to
+	 * `UCataclysmAbilitySystemComponent::GrantStack`, which keeps it with the
+	 * count. `Held` cannot ask: it is read from inside `CurrentConditions`, the
+	 * state this stat's scale is judged against.
+	 */
+	static float CarnageExtraSeconds(const UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * The cap used for a character whose stacks have no maximum. Issue #1071.
 	 *
 	 * THE LARGEST INT32 RATHER THAN A SPECIAL CASE INSIDE `GrantStack`, and it
