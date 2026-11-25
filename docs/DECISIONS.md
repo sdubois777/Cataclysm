@@ -242,7 +242,8 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ## 2026-11-24 — The Cataclysm Boss always drops one piece of the next tier's best rarity, beside its ordinary drops (#2853)
 
-**WRITTEN AND NOT COMPILED; IN THE WINDOW OF THE TWO ENTRIES BELOW.** On `feat/score-and-drops-2853`, by the
+**WRITTEN AND NOT COMPILED; IN THE WINDOW OF THE DROP SUPPLY AND POWER SCORE ENTRIES BELOW.** On
+`feat/score-and-drops-2853`, by the
 coordinating session's instruction of 2026-11-24, as one change before that branch's window. Issue
 [#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
 
@@ -310,7 +311,8 @@ create` `5011d01f5`, which changes no stash), each PROVED (failed with the break
 
 **The window's registration moves by three**: `Cataclysm.RarityCap.` alone 9 (6 + 3), and `Cataclysm.BossFloor.` 5 and
 `Cataclysm.WinningTheRun.` 11 alone (each kills the Cataclysm Boss through the death site; neither counts drops),
-counted in rc-w1's log; the whole suite three more than the count registered below. **C++ guard proofs, at most three**:
+counted in rc-w1's log and the same in bb12-w1's; the whole suite registered below, 5432, includes these three.
+**C++ guard proofs, at most three**:
 
 | Proof | Break | Prefix | Predicted to fail |
 | :-- | :-- | :-- | :-- |
@@ -534,13 +536,16 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ## 2026-11-24 — Drop supply at tier 1: half the gear, gems scaled by tier, no all-resistances on a tier 1 drop, and the gap rule's cut starting at a per-tier width (#2853)
 
-**ONE WINDOW WITH THE ENTRY BELOW, ON `feat/score-and-drops-2853`; NOT COMPILED; THE WORKBOOK WRITTEN.** Written on
-`feat/drop-supply-2853`, made from `feat/power-score-weights-2853` at `0799b7b27`. Both branches' commits were replayed
-onto development `5cdd6bdc4` (the rarity cap, merged as #2886) as `feat/score-and-drops-2853`, which writes the workbook
-and holds the window's registration: "One window for both", at the end of this entry. Issue
+**ONE WINDOW WITH THE POWER SCORE ENTRY BELOW, ON `feat/score-and-drops-2853-2`; NOT COMPILED; THE WORKBOOK
+WRITTEN.** Written on `feat/drop-supply-2853`, made from `feat/power-score-weights-2853` at `0799b7b27`. Both branches'
+commits were replayed onto development `5cdd6bdc4` (the rarity cap, merged as #2886) as `feat/score-and-drops-2853`,
+which writes the workbook and holds the window's registration: "One window for both", at the end of this entry. That
+branch was rebuilt on development `9acbb3528` (the bug batches, #2889) as `feat/score-and-drops-2853-2`, with the
+workbook written again on development's, and re-registered; the registration says how. Since that rebuild bug batch 1's
+entry stands between this entry and the Power Score entry, by the dates that order the log. Issue
 [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the drop supply half of the owner's "Adopt, and look at
-drop supply (Recommended)" (the entry below). Until the window's editor step rebuilds `DT_EnemyDrops`, one Python test
-fails and says so.
+drop supply (Recommended)" (the Power Score entry below). Until the window's editor step rebuilds `DT_EnemyDrops`, one
+Python test fails and says so.
 
 ### Why
 
@@ -807,7 +812,7 @@ Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm
 ### One window for both, on `feat/score-and-drops-2853` (2026-11-24)
 
 By the coordinating session's instruction of 2026-11-24: one window for the rest of #2853, the plain Power Score weights
-(the entry below) and this drop supply. Prepared only: nothing compiled, no editor, no pull request.
+(the Power Score entry below) and this drop supply. Prepared only: nothing compiled, no editor, no pull request.
 
 **The branch.** Made from development `5cdd6bdc4`. `git rebase --onto origin/development e36bbf4bb` replayed the eight
 commits above the old rarity cap (the two of `feat/power-score-weights-2853`, the six of `feat/drop-supply-2853`) with
@@ -844,23 +849,55 @@ half was a `git archive` copy of `0436874b3` with the cell set by openpyxl, foun
 a second, untouched copy; each ran the six test files that read the Enemy Drops sheet. PYG3 is `prove_guard` in that
 untouched copy, and replaces the planned C++ proof CG3: a Python test reads that call as text.
 
-**THE WINDOW'S REGISTRATION** (`.claude/windows/register_score_and_drops.md` in the sharp-meitner worktree). Base:
-window rc-w1 on `5e8be4680`, whose game files are development `5cdd6bdc4`'s: 5347 performed, 57 skipped halves, 861
-saves. If inv-w1 lands first, it is re-registered from that window's log.
+**THE WINDOW'S REGISTRATION** (`.claude/windows/register_score_and_drops.md` in the sharp-meitner worktree),
+**re-registered on the rebuild onto development `9acbb3528`**. It was first registered on window rc-w1's log (5347
+performed, 57 skipped halves, 861 saves). The base now is window bb12-w1's whole suite on `75633311e`, the bug batches
+on development after the inventory tabs (`bb12_suite_engine_75633311.log` in the laughing-curran worktree): "5422 tests
+performed, 5419 succeeded, 3 failed", the three test faults corrected on development with no game code changed (the
+bug batches' entry); "58 skipped part of what they check"; "874 written and deleted, 0 left behind"; "Declared: 5422
+tests".
+
+- **The rebuild**, `git rebase --onto origin/development 5cdd6bdc4`: eleven commits replayed, with conflicts in this log
+  and the workbook only. This branch's three entries go among development's by the author date of the commit that
+  first wrote each (16:03, 17:03 and 20:05 on 2026-11-24), and every replayed commit's log was checked equal to
+  development's with that commit's own entries placed so. The workbook is development's with
+  `tools/apply_halved_gear_drops.py` run on it. Compared cell by cell (openpyxl, every non-empty cell of every sheet):
+  against development's, exactly the seven Enemy Drops cells differ (C2 to C7 halved, and H2, the Common row's note);
+  against the old branch's, exactly the bug batches' six (Skill Slots C6 and J6, Weapon Skills E398, H398, J188 and
+  J398), so those are kept. The 34 CSVs the script regenerates are the ones committed. Every other file's own change,
+  its added and removed lines against its base, is the old branch's.
+- **What the bug batches add that this branch reaches**, found from the batches' added test lines that name a drop, a
+  drop spawner, the score or the Overwhelm. Two tests:
+  - `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` kills a host paying as a
+    Cataclysm Boss and reads each piece of gear on the floor (8 in bb12-w1). It asks for more than none and for no two
+    to be one item. The Boss's piece is one more draw, at a rarity no ordinary drop at tiers 1 to 3 can have, so the
+    test is predicted to pass.
+  - `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` reads
+    `OverwhelmPointsAgainst`, which the weights move. In bb12-w1 its 27.92 points already took all of the character's
+    armour, and the character held no resistance, so a larger figure lands the same 139.94 (60.8% of 230 health) and a
+    smaller one lands less; predicted to pass.
+
+  The batches' gold test counts gold piles only, which this branch does not move. Both groups are added below.
+- **Three comments corrected on the rebuild** that stated the old gear column: the leap test's constant and set-up said
+  a Cataclysm Boss's kill drops twelve and a dozen pieces of gear (six now, and the piece), and the trick-or-treat test
+  said 15 drops at that rung (9 now, and the piece, which is marked as the raised creature's, so something always
+  falls).
 
 - **The editor step**, after the build: `python tools/run_editor_python.py tools/generate_datatable_assets.py`, which
   runs from a worktree once its own editor target is built. Kept: `game/Content/Data/DT_EnemyDrops.uasset` and
   `game/Data/datatable_asset_sources.json` (EnemyDrops' hash); anything else it rewrites is restored. Committed alone;
   the tested head becomes that commit.
-- **The whole suite: 5354 performed** (5347 + 7: eleven names added, four of them renames of names removed), 5354
-  succeeded; **57 skipped halves; 861 saves** written and deleted, 0 left behind. No test this branch adds or changes
-  reports a skipped half or writes a save.
-- **Groups alone**, counted in rc-w1's whole-suite log with a literal match, plus the tests added by name:
+- **The whole suite: 5432 performed** (5422 + 10: fourteen names added, four of them renames of names removed, the
+  Cataclysm Boss entry's three among them), 5432 succeeded; **58 skipped halves; 874 saves** written and deleted, 0
+  left behind; declared 5432. No test this branch adds or changes reports a skipped half or writes a save.
+- **Groups alone**, counted in bb12-w1's whole-suite log with a literal match (every group registered before has the
+  count it had in rc-w1's), plus the tests added by name:
   `Cataclysm.Drop.` 32, `DropPickup.` 20, `Item.` 13, `GemDrops.` 5, `Gold.` 13, `PowerGapRewards.` 6, `PowerScore.` 5,
-  `PowerScoreLive.` 10, `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `RarityCap.` 6, `Dismantle.` 12,
+  `PowerScoreLive.` 10, `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `RarityCap.` 9, `Dismantle.` 12,
   `EmpireTreeDrops.` 13, `CityDungeonRewards.` 5, `ConsumptionDouble.` 15, `SaveApply.` 24, `Data.` 7,
-  `ExtraDamageTypes.` 6, `Enchantments.` 366, and six `Cataclysm.DungeonModifierEffects.` tests by full name (the group
-  holds 777, and the branch changes two comments in its file): `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`,
+  `ExtraDamageTypes.` 6, `Enchantments.` 366, `BossFloor.` 5, `WinningTheRun.` 11, `BuriedWeaponKills.` 4,
+  `EnemyStrength.` 9, and six `Cataclysm.DungeonModifierEffects.` tests by full name (the group holds 785, and the
+  branch changes three comments in its file): `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`,
   `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`,
   `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`,
   `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`,
@@ -869,7 +906,7 @@ saves. If inv-w1 lands first, it is re-registered from that window's log.
   functions and constants either change moves (the score's weights and terms, the kill drop and gem spawners, the gap
   rule, `RollItem`), every group in a test file either branch changed, and the groups both entries registered.
 - **C++ guard proofs**, only if every group passes; at most three a change (the owner's rule of 2026-09-14). Each anchor
-  occurs once on the branch.
+  occurs once in the file it breaks, checked again on the rebuild.
 
 | Proof | Change | Break | Prefix | Predicted to fail |
 | :-- | :-- | :-- | :-- | :-- |
@@ -1000,10 +1037,10 @@ the engine's compile-time format check may refuse.
 
 ## 2026-11-24 — The player's Power Score counts in plain numbers: 10 a level, 2 x rarity x (1 + gear level) a piece, 5 a gem rarity step, 1 a resistance percent (#2853)
 
-**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853` (the entry above); NOT COMPILED.** Written on
-`feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since merged as
-#2886. Issue
-[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is the entry below.
+**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853-2` (the drop supply entry above); NOT COMPILED.**
+Written on `feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since
+merged as #2886. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is an entry further below.
 
 ### Why
 

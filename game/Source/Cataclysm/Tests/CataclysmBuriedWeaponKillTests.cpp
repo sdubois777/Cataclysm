@@ -63,7 +63,10 @@ namespace CataclysmLeapKillTest
 	/** The health of an enemy one blow kills. */
 	constexpr float LeapKillDoomedHealth = 50.0f;
 
-	/** The Cataclysm Boss rung, whose kill drops twelve pieces of gear on average (`game/Data/EnemyDrops.csv`). */
+	/**
+	 * The Cataclysm Boss rung, whose kill drops six pieces of gear on average (`game/Data/EnemyDrops.csv`; twelve until
+	 * the owner halved the gear column, issue #2853) and one piece of the next tier's best rarity besides (#2853).
+	 */
 	constexpr int32 LeapKillDropsAsACataclysmBoss = 5;
 
 	/** A world for one test, destroyed when the test ends. */
@@ -841,9 +844,10 @@ CATACLYSM_TEST(FCataclysmSkillLevelSourcesLeapTest,
  *
  * THE SET-UP. One Axe player at the origin. THE MEASURE first: an axe buried in a host 20 m north leaps at an enemy of
  * 50,000 health 4 m east of it, and what that enemy lost is one leap, `Leap`. THEN THE CASE, 60 m north: a host of 50
- * health that pays as a Cataclysm Boss, so its kill drops a dozen pieces of gear on average, with an axe buried in it;
- * and 3 m east of it, inside the leap's 10 m and the bond's 6 m, a bonded ally carrying Sacrificial Bond, of one and a
- * quarter leaps' health. The player's own blow kills the host, through the health write and `HandleDeath`.
+ * health that pays as a Cataclysm Boss, so its kill drops six pieces of gear on average and one piece of the next tier's
+ * best rarity besides (issue #2853), with an axe buried in it; and 3 m east of it, inside the leap's 10 m and the bond's
+ * 6 m, a bonded ally carrying Sacrificial Bond, of one and a quarter leaps' health. The player's own blow kills the host,
+ * through the health write and `HandleDeath`.
  *
  * WHAT IS TRUE NOW. The host's death is announced once and pays once: no two pieces of gear on the floor are one item.
  * The axe leaps once: the bonded ally keeps half of one leap, the dying host's share being the other half, and lives.
