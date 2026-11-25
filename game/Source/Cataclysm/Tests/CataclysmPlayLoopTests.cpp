@@ -282,7 +282,16 @@ bool FCataclysmPlayLoopCapitalDaysTextTest::RunTest(const FString&)
 	})));
 	TestTrue(TEXT("a city fallen"),
 			 Log::DaysDidSomething(OneDayWith([CityId](FCataclysmDayReport& Day) { Day.Fallen.Add(CityId); })));
-	TestTrue(TEXT("a surge"), Log::DaysDidSomething(OneDayWith([](FCataclysmDayReport& Day) { Day.bSurged = true; })));
+	// A SURGE AS `FireSurge` WRITES IT: the flag and the count, which `AwayAccount` reads since issue #2865.
+	const TArray<FCataclysmDayReport> SurgeDay = OneDayWith([](FCataclysmDayReport& Day)
+	{
+		Day.bSurged = true;
+		Day.Surges = 1;
+		Day.SurgeDungeons = 6;
+	});
+	TestTrue(TEXT("a surge"), Log::DaysDidSomething(SurgeDay));
+	TestTrue(TEXT("and the account names it"),
+			 Log::AwayAccount(4, 5, SurgeDay, {}, Run, TEXT("at the forge")).EndsWith(TEXT("1 surge brought 6 dungeons")));
 	TestTrue(TEXT("a city upgrade finished"),
 			 Log::DaysDidSomething(OneDayWith([CityId](FCataclysmDayReport& Day) { Day.UpgradesFinishedOn.Add(CityId); })));
 	return true;

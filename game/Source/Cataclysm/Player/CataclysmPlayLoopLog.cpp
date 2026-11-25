@@ -217,10 +217,11 @@ FString FCataclysmPlayLoopLog::AwayAccount(int32 FromDay, int32 ToDay, const TAr
 
 bool FCataclysmPlayLoopLog::DaysDidSomething(const TArray<FCataclysmDayReport>& Days)
 {
-	// WHAT `AwayAccount` NAMES, asked of the same fields it reads.
+	// WHAT `AwayAccount` NAMES, asked of the same fields it reads: a surge is `Surges`, which it counts since issue #2865
+	// (a day can hold several), and not `bSurged`.
 	for (const FCataclysmDayReport& Day : Days)
 	{
-		if (!Day.Resolved.IsEmpty() || !Day.Hits.IsEmpty() || !Day.Fallen.IsEmpty() || Day.bSurged
+		if (!Day.Resolved.IsEmpty() || !Day.Hits.IsEmpty() || !Day.Fallen.IsEmpty() || Day.Surges > 0
 			|| !Day.UpgradesFinishedOn.IsEmpty())
 		{
 			return true;
