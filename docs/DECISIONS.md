@@ -429,6 +429,31 @@ the keys whichever type comes first. L2-G2's failure in test 8's control is unto
 `Cataclysm.SkillPool.` alone (11, all succeeding), the whole suite (5474, all succeeding, 58 skipped halves, 874
 saves), Python alongside, then the twelve guard proofs.
 
+### Window ss2-w2, 2026-11-25, on `ae5932f29`: THE CORRECTED CONTROL FAILED ON ORDER
+
+**NOT PASSED. No guard proof was run.** The coordinating session narrowed it, as for inv-w1, since only one test's
+control changed and no game code: the build, `Cataclysm.SkillPool.` alone, then the twelve guard proofs, with no
+second whole suite (ss2-w1's stands for every other test) and Python run off the machine first. Under the lock
+`ss2-w2`.
+
+- **Python**, on `ae5932f29` before the window: "8474 passed, 10 skipped in 345.79s"; JUnit 8484 tests, 0 failures,
+  0 errors. ruff: "All checks passed!".
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp".
+- **`Cataclysm.SkillPool.` alone**: "11 tests performed, 10 succeeded, 1 failed", the same test. Its new set-up check
+  (none of the War Greataxe's six built) and its "not the War Greataxe's six" check passed. The new control failed:
+  "Expected 'control: so the keys hold the Demonic Greataxe's built six (Q2)' to be "Burning Wrath, Molten Cleave,
+  Pyroclasm, Infernal Plunge, Emberhurl, Conflagration", but it was "Molten Cleave, Infernal Plunge, Emberhurl,
+  Burning Wrath, Pyroclasm, Conflagration"". **The same six skills, in another order.** I compared two joined lists,
+  the keys' and `SkillsFor`'s, as the test's other checks do, and did not check that this fill hands the skills back
+  in the table's order; it does not. Each skill carries its own key, so the order is not a rule.
+
+**THE SECOND CORRECTION**, in the same lines: the two are compared as sets, each list of names sorted before joining,
+and the "not the War Greataxe's six" check likewise; the War Greataxe's joined list, no longer read, is removed. No
+game code changed.
+
+**FOR A THIRD WINDOW**, at the coordinating session's word: as ss2-w2, the build, `Cataclysm.SkillPool.` alone (11,
+all succeeding), then the twelve guard proofs, with Python off the machine first.
+
 ---
 
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)

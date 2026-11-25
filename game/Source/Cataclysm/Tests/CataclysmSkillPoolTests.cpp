@@ -449,7 +449,6 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	}
 	const auto HeldSix = [&Carrier]() { return SkillNamesOf(WithoutTheBasic(Carrier.Slots->GetAvailableSkills())); };
 	const FString DemonicAxe = SkillNamesOf(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic")));
-	const FString WarAxe = SkillNamesOf(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
 
 	// THE CONTROL: CREATED WAR, and the weapon lists War first, so either order gives War first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), War);
@@ -470,8 +469,25 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 		bAnyWarAxeSkillBuilt = bAnyWarAxeSkillBuilt || UCataclysmWeaponSkills::IsBuilt(Skill);
 	}
 	TestFalse(TEXT("set-up: none of the War Greataxe's six is built yet"), bAnyWarAxeSkillBuilt);
-	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldSix(), DemonicAxe);
-	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldSix() != WarAxe);
+	// AS A SET, NOT A LIST: each skill carries its own key, and the order the slots hand them back in is not a rule.
+	// Here they came back as "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath, Pyroclasm, Conflagration"
+	// (window ss2-w2), and `SkillsFor` lists the same six in another order; ss2-w2 failed on comparing them as lists.
+	const auto NamesInAnyOrder = [](const TArray<FCataclysmWeaponSkill>& Skills)
+	{
+		TArray<FString> Names;
+		for (const FCataclysmWeaponSkill& Skill : Skills)
+		{
+			Names.Add(Skill.Name);
+		}
+		Names.Sort();
+		return FString::Join(Names, TEXT(", "));
+	};
+	const FString HeldInAnyOrder = NamesInAnyOrder(WithoutTheBasic(Carrier.Slots->GetAvailableSkills()));
+	TestEqual(TEXT("control: so the keys hold the Demonic Greataxe's built six (Q2)"), HeldInAnyOrder,
+			  NamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic"))));
+	const FString WarAxeInAnyOrder =
+		NamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
+	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldInAnyOrder != WarAxeInAnyOrder);
 
 	// CREATED DEMONIC, the same weapon put on again: it lists War first and the creation type still goes first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), Demonic);
