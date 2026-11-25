@@ -2,6 +2,183 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A kill's Fervour asked before the kill clock, a full bar judged less the reserve on every class, and sixteen Death nodes and options as rows with the passive row port's columns (Death trees, slice C1)
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill block asks `UCataclysmFervour::GainOnOwnKill`
+  before `NoteOwnKill`; the full-bar crossing in `OnClassResourceChanged` judges against the maximum less the reserve.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` (the order, in the two declarations' comments).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: `FCataclysmStatConditions::ClassResourceReserved`
+  and `ClassResourceAtMaximum`'s rule.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (`CurrentConditions` fills the reserve) and
+  `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (`ReservedFervourAmong`).
+- `game/Source/Cataclysm/Tests/CataclysmClassKillFervourTests.cpp` (1 test), `CataclysmKindReservesTests.cpp` (2 tests),
+  `CataclysmDataTableTests.cpp` (PassiveEffects 498).
+- `tools/generate_datatables.py`: `refuse_a_kill_clock_on_a_kill_action`, and `OPTIONAL_COLUMNS` emptied.
+- `tools/reapply_death_trees_workbook.py` (action rows, the cap, the port's columns), `docs/All_Things_Cataclysm.xlsx`
+  (Passive Effects 498 rows and 28 columns), `game/Data/PassiveEffects.csv`, `docs/README.md`.
+- Tests: `tools/tests/test_kill_clock_reads_the_previous_kill.py` and
+  `tools/tests/test_a_full_bar_is_the_maximum_less_the_reserve.py`, new; `test_passive_effects_match_the_node_text.py`,
+  `test_reapply_death_trees_workbook.py`, `test_generate_datatables.py`, `test_passive_rows_carry_the_action_columns.py`
+  and `test_reapply_demonic_tree_rework_workbook.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects` in the editor
+  step, and run the groups under "Unreal tests".
+- **THE FULL-BAR RULE CHANGES PLAY FOR EVERY CLASS THAT HOLDS FERVOUR BACK**, not only the Death classes: nine shipped
+  rows read a full bar (Ravager `basic_d_a1`, the Soul Collector's Full Measure and Second Wind, and four enchantments,
+  "When your class resource is full ..."), and so does the Ravager's Second Wind heal on the crossing. Each now holds
+  for a character with a minion, thrall or machine out once its Fervour reaches the maximum less what they hold back.
+  Until now none of them could, for such a character.
+- **NO UNREAL TEST RUNS A REAL DEATH ACTION ROW.** Second Wind, Envenom's Poison, Bide, Death Sentence's execute, Kill
+  Chain's stacks and Wearing Cut's hits in a row are built by the passive row port's copy and builder, whose tests
+  (`Cataclysm.PassiveRowPort.`) use tables of their own. The generator and the node-text checks hold these rows to
+  their sentences; the engine has not run them from `DT_PassiveEffects`.
+- **NOT BUILT HERE:** Burnt Offering (its event, `resource_consumed`, also fires for a next-use charge spent; it waits
+  for C3's record of Fervour spent), and the 28 items the inventory found partly writable today, each of which waits for
+  the slice that builds its other half rather than shipping half a node.
+- **THE WORKBOOK CANNOT BE MERGED.** It is one run of `tools/reapply_death_trees_workbook.py` on
+  `feat/passive-row-port`'s (144bfbeb2), which holds no Death rows; every other sheet is unchanged. A branch that
+  merges beside this one and edits the Passive Effects sheet rebuilds it with both re-apply scripts.
+- **THIS BRANCH SITS ON `feat/death-trees-b`** (d50c26c6b), which sits on the passive row port and the Demonic tree rework
+  and carries slices A and B.
+
+### Rulings of the coordinating session, 2026-11-25, under the owner's delegation
+
+On the slice C plan, accepted in the order C1 to C6, each its own stacked branch:
+1. **A full bar with a reserve**: fix it in C1 for every class. "Full" (the full-bar crossing and
+   `class_resource_at_maximum`) compares against the maximum less what minions and thralls hold back. Test it on a
+   Ritualist with imps and on a Death class, with a control without minions, and sweep the tests that pin "full".
+2. **The kill clock**: ask the payment before the stamp, so `seconds_after_kill` reads the time since the previous
+   kill; and refuse `seconds_after_kill` on an action row hung on the `kill` event.
+3. **The Siphon** (C2): once a second, and "deals reduced damage" through `UCataclysmDebuffs::DealLessPercentOn`.
+4. **The 40 Fervour threshold** (C3): build the extra projectile half; the chain half waits for the first chaining skill,
+   and the node's text check says so.
+5. **Soul Fuel** (C3): the owner did not answer the Death weapon skills draft's open question 4. Ruled: Soul Fuel skips
+   Cold Blood and Requiem. Cold Blood's purpose is holding Fervour, and Requiem already spends all of it.
+6. **Remains** go fifth, after `feat/death-skills-2885` merges; and `feat/war-fervour-sources` is not merged now: the
+   Shadow's "2 for each critical strike" is written on its `fervour_per_critical_strike` when the branches meet.
+
+### The kill clock
+
+Slice B stamped the kill clock before asking the kill's Fervour, so `seconds_after_kill` on `fervour_per_kill` read nought
+at every kill and always held: a row written as "kills within 2 seconds of each other" would have paid on every kill, and
+the generator accepted it. The payment is now asked first. The grace is asked inside the stamp before the clock moves,
+so a grace row under the condition reads the previous kill too. The first kill of all, with no previous one, matches no
+such row. An action row on the `kill` event acts after the stamp, where the window still always holds, so the generator
+refuses `seconds_after_kill` on one, in either condition column and on both sheets.
+
+### A full bar is the maximum less the reserve
+
+Every gain stops at the maximum less what minions, thralls and machines hold back
+(`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`), but `class_resource_at_maximum` and the crossing
+compared against the gross maximum, so a character with anything out was never full. Both now judge against the
+maximum less the reserve. **Judgements**, each with its reason:
+- **A reserve taking the whole pool refuses**, as a maximum of nothing does: a bar that can hold nothing is not full.
+- **The crossing reads the reserve once, now, for both sides.** A reservation starting cuts the pool to what is left
+  (`UCataclysmCommand::ClampFervourToSpendable`), and a bar full before it is full after it, so no crossing is reported.
+- **`class_resource_above` stays on the gross maximum**; the ruling covers "full" only.
+- **The reserve is summed from the list `CurrentConditions` already walks** to count minions
+  (`UCataclysmCommand::ReservedFervourAmong`, which `ReservedFervourOf` now answers from), so the world is not walked twice.
+The sweep found no existing Unreal test that holds a reserve and checks fullness.
+
+### The rows
+
+Thirty-nine rows on sixteen nodes and options, each put through the generator first:
+
+| Tree | Node | Rows |
+|---|---|---|
+| Soul Collector | Last Breath | health_restored_on_kill_at_no_cost, flat, 1, at 2, 4 and 6 points |
+| Soul Collector | Gathered Weight | area_of_effect, increased, 1, scale=class_resource_held, step=40 |
+| Soul Collector | Kill Chain | attack_damage and spell_damage, increased, 1, scale=own_stacks, step=1, cap=10, event=kill, stack_seconds=2, at 2, 4, 6 and 8 points |
+| Soul Collector | Second Wind (vow at 50, option 1) | action=health and action=mana, 100, fraction_of=maximum, event=resource_full, trigger_cooldown=60 |
+| Necromancer | Massed Dead | minion_damage, increased, 1, scale=minions_held, step=5, cap=5 |
+| Necromancer | Cheap Bones | minion_reserve_percent_less, flat, 4 |
+| Necromancer | Strength in Numbers (vow at 25, option 3) | attack_damage and spell_damage, more, 1; damage_taken, more, -1; each scale=minions_held, step=1, cap=20 |
+| Necromancer | Gathering Dark (vow at 50, option 3) | area_of_effect, increased, 2, scale=minions_held, step=1 |
+| Necromancer | Among the Dead | max_health, increased, 1; armor, increased, 1, scale=minions_held, step=5, cap=4 |
+| Necromancer | Carapace | max_health, increased, 2, scale=minions_held, step=10, cap=1 |
+| Necromancer | Bone Armour | damage_taken, more, -1, scale=minions_held, step=1, cap=20 |
+| Shadow | Envenom | bleed_on_crit_chance, flat, 6; action=apply_status, 6, event=critical_strike, ailment=Poison |
+| Shadow | Bide | action=apply_status, 3, event=hit_dealt, ailment=Poison, cond=target_is_boss |
+| Shadow | Wearing Cut | attack_damage and spell_damage, increased, 1, scale=consecutive_hits, step=1, cap=10, event=hit_dealt, at 2, 4, 6 and 8 points |
+| Shadow | Quick Kill | fervour_per_kill, flat, 1, cond=seconds_after_movement_skill, cond_value=2 |
+| Shadow | Death Sentence (vow at 200, option 2) | action=execute_target, 100, event=hit_dealt, cond=target_health_below 15; attack_damage and spell_damage, more, 100, cond=target_health_below 15, cond2=target_rarity_at_least 4 |
+
+**What the engine does with them, read from the code:** a kill grants Kill Chain one stack and restarts the one window
+all its stacks share (`GrantOwnStack`), so they lapse together 2 seconds after the last kill, which is the chain; the
+four rows of a stat share one stack, granted once an event (`StackedThisEvent`), and Wearing Cut's hits in a row the
+same way. `apply_status`'s value is a chance, and it applies Poison through `UCataclysmAilments::Apply` at its ordinary
+size. `execute_target`'s value is a chance, and it never takes a Boss or a Cataclysm Boss (`CanBeExecuted`).
+
+**Judgements:** Gathering Dark's "gain 2% area" is the increased bucket, as every other "+N% area" in the trees is;
+Carapace's "while you have 10 or more minions" is a count in steps of 10 capped at one step, because no condition counts
+minions held.
+
+**The workbook gains the port's fourteen columns** (the thirteen action columns and Per Point From) after its last one,
+added by the re-apply script, as the port's entry asked of the first slice writing such a row; they leave the generator's
+`OPTIONAL_COLUMNS`, which `test_required_workbook_columns.py` requires once the workbook has them, and every hand-built
+Passive Effects test sheet appends them. The Demonic rework's cap-column test now compares by column name and leaves the
+Death rows out: its put-back column lands after the port's, and deleting it takes the Death rows' caps, which that script
+does not write.
+
+**The node-text checks** now know an action row (no stat, no bucket; its number by its action or in words), the scales
+`own_stacks` and `consecutive_hits`, a minions step written "for every 5 minions" or "10 or more minions", and the words
+the rows use.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.ClassKillFervour.` | new: `AKillsFervourUnderSecondsAfterAKillReadsThePreviousKill` | slice B's 7 plus 1: 8 |
+| `Cataclysm.KindReserves.` | new: `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve`, `FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut` | the base's count plus 2 |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 498 | unchanged |
+
+Each new test has a control: the first kill of all and a kill 3 seconds later; a player with nothing held back at 95
+and at 100; the same Soul Collector below the top.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmPlayerCharacter.cpp`, the kill block: `GainOnOwnKill` and `NoteOwnKill` swapped back. Prefix
+   `Cataclysm.ClassKillFervour.`; must fail `AKillsFervourUnderSecondsAfterAKillReadsThePreviousKill`.
+2. `CataclysmStatPipeline.cpp`, `ConditionHolds`, `ClassResourceAtMaximum`:
+   `State.ClassResourceMaximum - FMath::Max(0.0f, State.ClassResourceReserved);` becomes `State.ClassResourceMaximum;`.
+   Prefix `Cataclysm.KindReserves.`; must fail `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve` and
+   `FullMeasureCountsAFullBarForASoulCollectorWithAMinionOut`.
+3. `CataclysmPlayerCharacter.cpp`, `OnClassResourceChanged`:
+   `const float Reserved = FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(this));` becomes
+   `const float Reserved = 0.0f;`. Prefix `Cataclysm.KindReserves.`; must fail
+   `AnImpOutLeavesTheBarFullAtTheMaximumLessItsReserve` ("and reaching it opened the window again").
+
+### What was run
+
+**The whole Python suite on `c34e294ff`**, `python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed,
+8468 passed, 9 skipped in 391.85s (0:06:31)". The JUnit file agrees: tests 8478, failures 1, errors 0, skipped 9, so
+8468 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 10 C++ files this slice changed: "10 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  each of the three new test classes is named in one file only.
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c34e294ff`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The refusal's comparison with `KILL_CLOCK` changed to a clock that does not exist | `test_kill_clock_reads_the_previous_kill.py::test_an_action_on_a_kill_under_the_kill_clock_is_refused` and `::test_the_second_condition_column_is_refused_the_same_way` |
+| The kill block's two calls swapped back | `test_kill_clock_reads_the_previous_kill.py::test_the_kill_handler_asks_the_payment_before_the_stamp` |
+| `ClassResourceAtMaximum`'s `- FMath::Max(0.0f, State.ClassResourceReserved)` removed | `test_a_full_bar_is_the_maximum_less_the_reserve.py::test_the_condition_judges_a_full_bar_against_the_reserve` |
+| Second Wind's health row 100 to 50 in `PassiveEffects.csv` | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The re-apply script's missing columns read as none | `test_reapply_death_trees_workbook.py::test_the_port_columns_are_added_when_the_sheet_lacks_them` |
+
+---
+
 ## 2026-11-24 — The Death classes' kill generator: Fervour for each kill by the slain creature's rarity, the decay after the last kill, and a window after a kill (Death trees, slice B)
 
 **Affects:**
