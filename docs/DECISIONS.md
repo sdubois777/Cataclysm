@@ -96,9 +96,29 @@ and none between 1.05 and 2.05 that pays, which assumes the ticks fall at 1, 2 a
 
 ### What was run
 
-SUITE_FIGURES_C4D2
+**The whole Python suite on `de420ab62`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8549 passed, 9 skipped in 473.34s
+(0:07:53)". The JUnit file agrees: tests 8559, failures 1, errors 0, skipped 9, so 8549 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one and nothing else.
 
-PYTHON_PROOFS_C4D2
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`cf5209ce0`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The hit handler no longer paying for a Boss tick | `test_charge_and_placed_action_names_match_the_engine.py::test_patient_blade_pays_a_kill_for_a_boss_tick_once_every_its_seconds` |
+| Patient Blade's clock never refusing | the same test |
+| A kill without a death keeping The Ferryman's share | `test_charge_and_placed_action_names_match_the_engine.py::test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_death` |
+| Every hit on a Boss counted as a kill | the same test |
+| Patient Blade's row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows` |
+| Death by Inches every 5th hit rather than every 10th | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
