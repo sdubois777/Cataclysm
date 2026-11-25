@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmCharacterCreation.h"
+// For the skills a pairing gives and whether each has a template to run it.
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmItem.h"
 #include "Engine/DataTable.h"
@@ -49,6 +51,69 @@ namespace
 		const FName Type(*Row.WeaponType);
 		return !Type.IsNone() &&
 			   Type != UCataclysmCharacterCreation::WeaponIndependent;
+	}
+
+	/**
+	 * The written skills a character choosing this pairing is given, one per
+	 * slot.
+	 *
+	 * `UCataclysmWeaponSkills::SkillsFor` RATHER THAN A COUNT OF ROWS, because
+	 * it is what the weapon slots grant from: one weapon type with one damage
+	 * type is `PoolFor` exactly, and `PoolFor` is what
+	 * `UCataclysmWeaponSlotsComponent` reads. So the Aura on the `All` row is
+	 * counted, as it is given, and it is not counted for a weapon with no
+	 * written skill of its own, as it is not given there either.
+	 */
+	TArray<FCataclysmWeaponSkill> CreationSkillsOf(const UDataTable* Table,
+												   FName WeaponType,
+												   FName DamageType)
+	{
+		if (!Table || WeaponType.IsNone() || DamageType.IsNone())
+		{
+			return TArray<FCataclysmWeaponSkill>();
+		}
+
+		TArray<FCataclysmWeaponSkill> Given = UCataclysmWeaponSkills::SkillsFor(
+			Table, WeaponType.ToString(), DamageType.ToString());
+		return Given;
+	}
+
+	/**
+	 * How many of these skills do anything.
+	 *
+	 * THE WEAPON SLOTS' OWN TEST. `UCataclysmWeaponSlotsComponent` grants the
+	 * class `UCataclysmWeaponSkills::TemplateFor` names, and the placeholder
+	 * `UCataclysmUndesignedSkill`, which does nothing, when it names none.
+	 */
+	int32 CreationSkillsThatWork(const TArray<FCataclysmWeaponSkill>& Given)
+	{
+		int32 Working = 0;
+		for (const FCataclysmWeaponSkill& Skill : Given)
+		{
+			if (UCataclysmWeaponSkills::TemplateFor(Skill.Shape).Get() != nullptr)
+			{
+				++Working;
+			}
+		}
+		return Working;
+	}
+
+	/**
+	 * How many skills a pairing can give: one per key a weapon skill may sit
+	 * on, which is six. Counted off the slot list rather than written, so the
+	 * line cannot say "of 6" beside a seventh key.
+	 */
+	int32 CreationSkillSlotCount()
+	{
+		int32 Count = 0;
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			if (UCataclysmWeaponSkills::IsChoosableSlot(Slot))
+			{
+				++Count;
+			}
+		}
+		return Count;
 	}
 }
 
@@ -180,23 +245,18 @@ bool UCataclysmCharacterCreation::IsLegalChoice(
 int32 UCataclysmCharacterCreation::DesignedSkillCount(
 	const UDataTable* WeaponSkillTable, FName WeaponType, FName DamageType)
 {
-	if (WeaponType.IsNone() || DamageType.IsNone())
-	{
-		return 0;
-	}
+	// THE SKILLS GIVEN, AND NOT THE ROWS THAT NAME THE WEAPON. This matched rows
+	// whose WeaponType was the weapon's until the owner's report of 2026-11-24,
+	// which left out the Aura on the `All` row: every Demonic weapon read "5 of
+	// 6 skills designed" while the character was given all six.
+	return CreationSkillsOf(WeaponSkillTable, WeaponType, DamageType).Num();
+}
 
-	int32 Designed = 0;
-	ForEachSkillRow(WeaponSkillTable, [&](const FCataclysmWeaponSkillRow& Row)
-	{
-		if (FName(*Row.WeaponType) == WeaponType &&
-			FName(*Row.DamageType) == DamageType &&
-			!Row.SkillName.IsEmpty())
-		{
-			++Designed;
-		}
-	});
-
-	return Designed;
+int32 UCataclysmCharacterCreation::WorkingSkillCount(
+	const UDataTable* WeaponSkillTable, FName WeaponType, FName DamageType)
+{
+	return CreationSkillsThatWork(
+		CreationSkillsOf(WeaponSkillTable, WeaponType, DamageType));
 }
 
 const TMap<FName, TArray<FName>>& UCataclysmCharacterCreation::ClassesByDamageType()
@@ -279,24 +339,52 @@ FString UCataclysmCharacterCreation::SummaryFor(
 		return FString();
 	}
 
-	const int32 Designed = DesignedSkillCount(WeaponSkillTable,
-											  Choice.WeaponType,
-											  Choice.DamageType);
+	// READ ONCE, so the counts below are of the same skills.
+	const TArray<FCataclysmWeaponSkill> Given =
+		CreationSkillsOf(WeaponSkillTable, Choice.WeaponType, Choice.DamageType);
 
-	// THE SKILL COUNT IS PART OF THE SUMMARY AND NOT A FOOTNOTE. Six of the 390
-	// legal pairings out of seven have no skill written at all, so a player
-	// picking one gets a character that cannot do anything, and finding that out
-	// after confirming is the worst moment to find it out. Issues #62 and #836.
-	if (Designed == 0)
+	// THE SKILL COUNT IS PART OF THE SUMMARY AND NOT A FOOTNOTE. Most legal
+	// pairings have no skill written at all, so a player picking one gets a
+	// character that cannot do anything, and finding that out after confirming
+	// is the worst moment to find it out. Issues #62 and #836.
+	if (Given.Num() == 0)
 	{
 		return FString::Printf(
 			TEXT("%s, %s    no skills are designed for this pairing yet"),
 			*Choice.DamageType.ToString(), *Choice.WeaponType.ToString());
 	}
 
-	return FString::Printf(TEXT("%s, %s    %d of 6 skills designed"),
-						   *Choice.DamageType.ToString(),
-						   *Choice.WeaponType.ToString(), Designed);
+	const int32 Working = CreationSkillsThatWork(Given);
+	const int32 Slots = CreationSkillSlotCount();
+	const int32 DesignedOnly = Given.Num() - Working;
+	const int32 NotDesigned = FMath::Max(0, Slots - Given.Num());
+
+	// HOW MANY WORK, AND NOT HOW MANY ARE WRITTEN, LEADS. This said "%d of 6
+	// skills designed" until 2026-11-24, which counted a skill granted as the
+	// placeholder the same as one that runs: every War weapon read "5 of 6
+	// skills designed", and no War character could use more than two of them.
+	FString Line = FString::Printf(TEXT("%s, %s    %d of %d skills work"),
+								   *Choice.DamageType.ToString(),
+								   *Choice.WeaponType.ToString(), Working, Slots);
+
+	// "MORE" ONLY AFTER A SKILL THAT WORKS, so none working reads "0 of 6
+	// skills work; 6 are designed" rather than "6 more".
+	if (DesignedOnly > 0)
+	{
+		const TCHAR* IsOrAre = DesignedOnly == 1 ? TEXT("is") : TEXT("are");
+		const TCHAR* DoesOrDo = DesignedOnly == 1 ? TEXT("does") : TEXT("do");
+		const TCHAR* More = Working > 0 ? TEXT("more ") : TEXT("");
+		Line += FString::Printf(TEXT("; %d %s%s designed and %s nothing yet"),
+								DesignedOnly, More, IsOrAre, DoesOrDo);
+	}
+
+	if (NotDesigned > 0)
+	{
+		Line += FString::Printf(TEXT("; %d %s not designed yet"), NotDesigned,
+								NotDesigned == 1 ? TEXT("is") : TEXT("are"));
+	}
+
+	return Line;
 }
 
 FString UCataclysmCharacterCreation::UnlockedClassesFor(
