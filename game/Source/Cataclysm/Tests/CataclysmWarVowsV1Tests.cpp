@@ -186,12 +186,15 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1StatRowsTest,
 // ---------------------------------------------------------------------------
 
 CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1CopiedRowsTest,
-	"Cataclysm.WarVowsV1.UnstoppableAndTheHealthOathsAreCopiedForTheBuilderOnlyWhenTaken")
+	"Cataclysm.WarVowsV1.UnstoppableIsAModifierAndTheHealthOathsAreCopiedForTheBuilderOnlyWhenTaken")
 {
 	using namespace CataclysmWarVowsV1Test;
-	// A ROW WITH A SECOND CONDITION OR AN ACTION IS COPIED FOR THE ENCHANTMENT BUILDER. Unstoppable's two flags, above
-	// 75% Fervour with two hands; Shield Oath's 2% of maximum health on a block; Flesh Oath's 1% of current health every
-	// second. THE CONTROLS: the same capstones' third options copy none of them.
+	// UNSTOPPABLE'S TWO FLAGS ARE STAT ROWS WITH A SECOND CONDITION, which `ModifiersFor` makes into modifiers, above
+	// 75% Fervour with two hands, and `EnchantmentRowsFor` does not copy: only a row with an action or an own-stack scale
+	// is an enchantment row (`UCataclysmPassiveTree::IsBuiltAsAnEnchantmentRow`). CORRECTED ON 2026-11-25 BEFORE ANY
+	// WINDOW RAN IT: this test was written looking for the flags among the copies, and would have failed.
+	// A ROW WITH AN ACTION IS COPIED FOR THE ENCHANTMENT BUILDER: Shield Oath's 2% of maximum health on a block; Flesh
+	// Oath's 1% of current health every second. THE CONTROLS: the same capstones' third options grant and copy none.
 	const UDataTable* Nodes = UCataclysmPassiveTree::LoadNodeTable();
 	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
 	if (!TestNotNull(TEXT("set-up: the node table loads"), Nodes)
@@ -204,18 +207,26 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1CopiedRowsTest,
 		return WarVowsV1Copies(Nodes, Effects, Node, Option, StatOrAction);
 	};
 
+	const auto Granted = [&](int32 Option, const TCHAR* Flag)
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> All = UCataclysmPassiveTree::ModifiersFor(
+			WarVowsV1Taking(TEXT("Berserker_capstone_50"), Option), Nodes, Effects, {FName(TEXT("War"))});
+		const TArray<FCataclysmStatModifier>* Rows = All.Find(FName(Flag));
+		return Rows ? *Rows : TArray<FCataclysmStatModifier>();
+	};
 	for (const TCHAR* Flag : {TEXT("movement_speed_reduction_suppressed"), TEXT("knockback_suppressed")})
 	{
-		const TArray<FCataclysmEnchantmentEffectRow> Taken = Copies(TEXT("Berserker_capstone_50"), 1, Flag);
-		if (TestEqual(*FString::Printf(TEXT("Unstoppable copies %s once"), Flag), Taken.Num(), 1))
+		const TArray<FCataclysmStatModifier> Taken = Granted(1, Flag);
+		if (TestEqual(*FString::Printf(TEXT("Unstoppable grants %s once"), Flag), Taken.Num(), 1))
 		{
-			TestEqual(TEXT("as a flag of 1"), Taken[0].ValueLow, 1.0f, 0.001f);
-			TestEqual(TEXT("above"), Taken[0].Condition, FString(TEXT("class_resource_above")));
+			TestEqual(TEXT("as a flag of 1"), Taken[0].Value, 1.0f, 0.001f);
+			TestTrue(TEXT("above"), Taken[0].Condition == ECataclysmStatCondition::ClassResourceAbovePercent);
 			TestEqual(TEXT("75% Fervour"), Taken[0].ConditionValue, 75.0f, 0.001f);
-			TestEqual(TEXT("with two hands"), Taken[0].Condition2, FString(TEXT("wielding_two_handed_weapon")));
+			TestTrue(TEXT("with two hands"), Taken[0].Condition2 == ECataclysmStatCondition::WieldingTwoHandedWeapon);
 		}
-		TestEqual(*FString::Printf(TEXT("control: Thrill of the Hunt copies no %s"), Flag),
-				  Copies(TEXT("Berserker_capstone_50"), 3, Flag).Num(), 0);
+		TestEqual(*FString::Printf(TEXT("and copies no %s for the builder"), Flag),
+				  Copies(TEXT("Berserker_capstone_50"), 1, Flag).Num(), 0);
+		TestEqual(*FString::Printf(TEXT("control: Thrill of the Hunt grants no %s"), Flag), Granted(3, Flag).Num(), 0);
 	}
 
 	const TArray<FCataclysmEnchantmentEffectRow> Shield = Copies(TEXT("Bulwark_capstone_25"), 1, TEXT("health"));

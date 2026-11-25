@@ -438,10 +438,11 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aPinTest,
 	"Cataclysm.WarVowsV2a.UnstoppableRefusesAPinOnlyWhileItsConditionHolds")
 {
 	using namespace CataclysmWarVowsV2aTest;
-	// THE GENERATED ROW: Unstoppable copies `pin_suppressed` for the enchantment builder, a flag of 1 above 75% Fervour
-	// with two hands; Thrill of the Hunt copies none. AND THE ENGINE: a creature holding the flag above 75% Fervour is
-	// not pinned at 100 Fervour, and is pinned once it drops to 50 (THE CONTROL, the same creature with the condition
-	// no longer holding).
+	// THE GENERATED ROW: Unstoppable grants `pin_suppressed` through `ModifiersFor`, a flag of 1 above 75% Fervour with
+	// two hands; Thrill of the Hunt grants none. A stat row with a second condition is a modifier, not an enchantment
+	// copy (`IsBuiltAsAnEnchantmentRow`): CORRECTED ON 2026-11-25 BEFORE ANY WINDOW RAN IT, as the first slice's test
+	// was. AND THE ENGINE: a creature holding the flag above 75% Fervour is not pinned at 100 Fervour, and is pinned once
+	// it drops to 50 (THE CONTROL, the same creature with the condition no longer holding).
 	const UDataTable* Nodes = UCataclysmPassiveTree::LoadNodeTable();
 	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
 	if (!TestNotNull(TEXT("set-up: the node table loads"), Nodes)
@@ -450,28 +451,22 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aPinTest,
 	{
 		return false;
 	}
-	const auto Copies = [&](int32 Option)
+	const auto Granted = [&](int32 Option)
 	{
-		TArray<FCataclysmEnchantmentEffectRow> Found;
-		for (const FCataclysmEnchantmentEffectRow& Row : UCataclysmPassiveTree::EnchantmentRowsFor(
-				 WarVowsV2aTaking(TEXT("Berserker_capstone_50"), Option), Nodes, Effects, {FName(TEXT("War"))}))
-		{
-			if (Row.Stat == TEXT("pin_suppressed"))
-			{
-				Found.Add(Row);
-			}
-		}
-		return Found;
+		const TMap<FName, TArray<FCataclysmStatModifier>> All = UCataclysmPassiveTree::ModifiersFor(
+			WarVowsV2aTaking(TEXT("Berserker_capstone_50"), Option), Nodes, Effects, {FName(TEXT("War"))});
+		const TArray<FCataclysmStatModifier>* Rows = All.Find(FName(UCataclysmSkillEffects::PinSuppressedStat));
+		return Rows ? *Rows : TArray<FCataclysmStatModifier>();
 	};
-	const TArray<FCataclysmEnchantmentEffectRow> Taken = Copies(1);
-	if (TestEqual(TEXT("Unstoppable copies pin_suppressed once"), Taken.Num(), 1))
+	const TArray<FCataclysmStatModifier> Taken = Granted(1);
+	if (TestEqual(TEXT("Unstoppable grants pin_suppressed once"), Taken.Num(), 1))
 	{
-		TestEqual(TEXT("as a flag of 1"), Taken[0].ValueLow, 1.0f, 0.001f);
-		TestEqual(TEXT("above"), Taken[0].Condition, FString(TEXT("class_resource_above")));
+		TestEqual(TEXT("as a flag of 1"), Taken[0].Value, 1.0f, 0.001f);
+		TestTrue(TEXT("above"), Taken[0].Condition == ECataclysmStatCondition::ClassResourceAbovePercent);
 		TestEqual(TEXT("75% Fervour"), Taken[0].ConditionValue, 75.0f, 0.001f);
-		TestEqual(TEXT("with two hands"), Taken[0].Condition2, FString(TEXT("wielding_two_handed_weapon")));
+		TestTrue(TEXT("with two hands"), Taken[0].Condition2 == ECataclysmStatCondition::WieldingTwoHandedWeapon);
 	}
-	TestEqual(TEXT("control: Thrill of the Hunt copies none"), Copies(3).Num(), 0);
+	TestEqual(TEXT("control: Thrill of the Hunt grants none"), Granted(3).Num(), 0);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
