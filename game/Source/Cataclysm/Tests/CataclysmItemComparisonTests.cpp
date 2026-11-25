@@ -304,7 +304,16 @@ bool FCataclysmItemComparisonHelmAgainstHelm::RunTest(const FString& Parameters)
 	Control.Wear(Worn);
 	Control.Wear(Hovered);
 	const float HealthWith = Control.RefreshedMaxHealth();
-	const float AffixWorth = UCataclysmItemValues::AffixValue(120.0f, 0.0f, UCataclysmItemValues::MaxAffixTier, 1.0f, 10);
+	// THE AFFIX ROW'S OWN TIER 7 TOP AT +10, read from the table since issue #2883 (48 at +0, 120 at +10 today).
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	const FCataclysmAffixRow* HealthRow = AffixTable
+		? AffixTable->FindRow<FCataclysmAffixRow>(FName(HealthAffix), TEXT("ItemComparisonTests"), false)
+		: nullptr;
+	if (!TestNotNull(TEXT("set-up: the flat health affix row"), HealthRow))
+	{
+		return false;
+	}
+	const float AffixWorth = UCataclysmItemValues::AffixValue(*HealthRow, UCataclysmItemValues::MaxAffixTier, 1.0f, 10);
 	TestEqual(TEXT("CONTROL: really wearing it raises maximum health by exactly the affix's value"),
 			  HealthWith - HealthNow, AffixWorth, 0.01f);
 

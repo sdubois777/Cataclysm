@@ -1865,7 +1865,7 @@ bool FCataclysmCritChanceAffixesScaleTheSkillBase::RunTest(const FString& Parame
 	}
 
 	const float Increase = UCataclysmItemValues::AffixValue(
-		Row->TopValue, Row->Floor, UCataclysmItemValues::MaxAffixTier,
+		*Row, UCataclysmItemValues::MaxAffixTier,
 		/*Roll=*/1.0f, UCataclysmItemValues::MaxGearLevel,
 		/*bTwoHanded=*/false);
 
