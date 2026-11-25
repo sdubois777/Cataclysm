@@ -156,6 +156,7 @@ namespace
 		{ TEXT("target_in_your_siphon"),        ECataclysmStatCondition::TargetInYourSiphon },
 		{ TEXT("seconds_after_fervour_spent"),  ECataclysmStatCondition::WithinSecondsOfFervourSpent },
 		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
+		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
 	};
 
 	struct FNamedStatScale
@@ -284,6 +285,13 @@ void UCataclysmStatPipeline::AllConditionNames(TArray<FString>& OutNames)
 	{
 		OutNames.Add(Each.Name);
 	}
+}
+
+float UCataclysmStatPipeline::FervourHeldCounted(const FCataclysmStatConditions& State)
+{
+	return State.ClassResourceHeld < 0.0f
+		? State.ClassResourceHeld
+		: State.ClassResourceHeld + FMath::Max(0.0f, State.ClassResourceCountedAsHeld);
 }
 
 int32 CataclysmFervourThresholds::Count()
@@ -460,6 +468,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::ClassResourceAtMaximum:
 	case C::ClassResourceAbovePercent:
 	case C::ClassResourcePointsAtLeast:
+	case C::ClassResourcePointsBelow:
 		return EOn::ClassResource;
 
 	case C::EnergyShieldAtMaximum:
@@ -1407,9 +1416,12 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// A SHARE AND NOT A COUNT OF POINTS, unlike the scale that reads the
 		// same pool. Classes do not share a maximum, so "above 75%" is the only
 		// way to mean the same thing for each of them.
+		//
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e). The guard still
+		// reads the pool, so an unknown reading refuses.
 		return State.ClassResourceHeld >= 0.0f
 			&& State.ClassResourceMaximum > 0.0f
-			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
+			&& (UCataclysmStatPipeline::FervourHeldCounted(State) / State.ClassResourceMaximum) * 100.0f
 				   > Value;
 
 	case ECataclysmStatCondition::ClassResourcePointsAtLeast:
@@ -1427,8 +1439,15 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// the game -- leaves the reading at -1, and without this guard a
 		// threshold of zero written by a sheet would hand all of them a bonus
 		// meant for a Ravager.
+		//
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e).
 		return State.ClassResourceHeld >= 0.0f
-			&& State.ClassResourceHeld >= Value;
+			&& UCataclysmStatPipeline::FervourHeldCounted(State) >= Value;
+
+	case ECataclysmStatCondition::ClassResourcePointsBelow:
+		// STRICTLY BELOW, the Fervour counted as held, and an unknown reading refuses. See the header.
+		return State.ClassResourceHeld >= 0.0f
+			&& UCataclysmStatPipeline::FervourHeldCounted(State) < Value;
 
 	case ECataclysmStatCondition::EnergyShieldAboveZero:
 		// NO THRESHOLD, SO `Value` IS NOT READ. Issue #1981. "You take 10%-20%
@@ -1569,8 +1588,9 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		// WHOLE STEPS, ROUNDED DOWN, the same rule as the reading above. The
 		// design's own node uses a step of 1, where rounding cannot show, so the
 		// rule is read off the other scale rather than off this node's words.
+		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e).
 		const float Steps =
-			FMath::FloorToFloat(State.ClassResourceHeld / Modifier.ScaleStep);
+			FMath::FloorToFloat(UCataclysmStatPipeline::FervourHeldCounted(State) / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 

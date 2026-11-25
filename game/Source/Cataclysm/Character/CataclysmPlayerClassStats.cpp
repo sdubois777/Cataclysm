@@ -1131,6 +1131,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_threshold_reduction"),
 		TEXT("fervour_threshold_linger_seconds"),
 		TEXT("cooldowns_recover_faster_percent"),
+		// The Death trees' slice C3e: Chained Souls' share of what followers hold back counted as Fervour held, read with
+		// no reading while the conditions are filled. No attribute and no base.
+		TEXT("reserved_fervour_counts_as_held_percent"),
 	};
 	return Stats;
 }

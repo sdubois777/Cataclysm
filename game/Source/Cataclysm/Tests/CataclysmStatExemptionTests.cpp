@@ -12012,6 +12012,31 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `reserved_fervour_counts_as_held_percent`, read with no reading by
+	 * `UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld`, which the conditions fill and Long Shadow's record
+	 * ask: Chained Souls, the Death trees' slice C3e (2026-11-25). ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE THE
+	 * STAT IS GRANTED: 20 held back counts as nothing held. Granted at a flat 48, as 9.6.
+	 *
+	 * WHAT THIS DOES NOT REACH. The readings that add the share: `Cataclysm.FervourCounted.`.
+	 */
+	void ProbeReservedFervourCountsAsHeld(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestEqual(TEXT("control: with no reserved_fervour_counts_as_held_percent 20 held back counts as nothing"),
+					   Fighter.AbilitySystem->ReservedFervourCountedAsHeld(20.0f), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::ReservedFervourCountsAsHeldPercentStat, 48.0f);
+		Test.TestEqual(TEXT("with it at 48, as 9.6, so ReservedFervourCountedAsHeld really reads it"),
+					   Fighter.AbilitySystem->ReservedFervourCountedAsHeld(20.0f), 9.6f, 0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12505,6 +12530,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_threshold_reduction"), &ProbeFervourThresholdReduction},
 			{TEXT("fervour_threshold_linger_seconds"), &ProbeFervourThresholdLinger},
 			{TEXT("cooldowns_recover_faster_percent"), &ProbeCooldownsRecoverFaster},
+			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
 		};
 		return Made;
 	}

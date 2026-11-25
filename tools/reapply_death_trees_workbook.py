@@ -526,6 +526,13 @@ NODES: tuple[Node, ...] = (
     Node(SC + "basic_a_c0", "Generous Count", (R("fervour_threshold_reduction", "flat", 1),)),
     Node(SC + "basic_a_c1", "Steady Count", damage("increased", 1, scale="fervour_thresholds_reached", step=1)),
     Node(SC + "keystone_a_kC", "Long Shadow", (R("fervour_threshold_linger_seconds", "flat", 5),)),
+
+    # ---- SLICE C3e (2026-11-25): EMPTY HANDS AND CHAINED SOULS. Empty Hands reads
+    # the Fervour counted as held, which Chained Souls raises by its share of what
+    # followers hold back; the full bar and Phylactery's spend read the pool alone.
+    Node(SC + "basic_b_stem1", "Empty Hands",
+         (R("attack_speed", "increased", 2, cond="class_resource_points_below", cond_value=20),)),
+    Node(SC + "basic_a_stem2", "Chained Souls", (R("reserved_fervour_counts_as_held_percent", "flat", 8),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

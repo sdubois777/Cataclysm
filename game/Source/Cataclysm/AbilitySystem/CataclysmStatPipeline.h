@@ -1828,6 +1828,18 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	FervourThresholdReached
 		UMETA(DisplayName = "Fervour Threshold Reached"),
+
+	/**
+	 * Fewer than `ConditionValue` points of the class resource are held: the Soul Collector's Empty Hands, "+2%
+	 * increased Attack Speed per point while you hold fewer than 20 Fervour". The Death trees' slice C3e (2026-11-25).
+	 *
+	 * STRICTLY BELOW, the opposite of `ClassResourcePointsAtLeast`, so at exactly 20 this refuses and that holds.
+	 * READS THE FERVOUR COUNTED AS HELD (`UCataclysmStatPipeline::FervourHeldCounted`), Chained Souls' share of what
+	 * followers hold back included, as every reading of the amount held does. AN UNKNOWN READING (-1, every enemy)
+	 * REFUSES, or every creature without a bar would hold "fewer than 20".
+	 */
+	ClassResourcePointsBelow
+		UMETA(DisplayName = "Class Resource Points Below"),
 };
 
 /**
@@ -3032,6 +3044,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceReserved = 0.0f;
+
+	/**
+	 * Fervour COUNTED AS HELD beside the pool: Chained Souls' share of what this character's minions, gadgets and traps
+	 * hold back (`ClassResourceReserved`), "8% per point ... counts as Fervour you hold, for everything that counts
+	 * Fervour held". The Death trees' slice C3e (2026-11-25). Every reading of the amount held adds it, through
+	 * `UCataclysmStatPipeline::FervourHeldCounted`; whether the bar is FULL does not, nor what Phylactery spends, both
+	 * ruled by the coordinating session on 2026-11-25. NOUGHT BY DEFAULT.
+	 */
+	float ClassResourceCountedAsHeld = 0.0f;
 
 	/**
 	 * How much health the character owes, as a percentage of its maximum.
@@ -5282,16 +5303,24 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-first, which is the drift that put the passive tree eight
+	 * adds an eighty-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
 
 	/**
+	 * The Fervour a reading of the amount held counts: the pool, and Chained Souls' share of what followers hold back
+	 * (`FCataclysmStatConditions::ClassResourceCountedAsHeld`). The Death trees' slice C3e (2026-11-25). An unknown
+	 * pool (-1) stays unknown. Read by every condition and scale on the amount held and by the Fervour thresholds; NOT
+	 * by `ClassResourceAtMaximum`, which asks whether the bar itself is full.
+	 */
+	static float FervourHeldCounted(const FCataclysmStatConditions& State);
+
+	/**
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-SIX OF THE EIGHTY COMPARE NOTHING. They are the case labels
+	 * THIRTY-SIX OF THE EIGHTY-ONE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

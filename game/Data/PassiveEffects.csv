@@ -546,3 +546,5 @@ SoulCollector_basic_a_c0#1,SoulCollector_basic_a_c0,fervour_threshold_reduction,
 SoulCollector_basic_a_c1#1,SoulCollector_basic_a_c1,attack_damage,increased,1.0,,,0.0,fervour_thresholds_reached,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_a_c1#2,SoulCollector_basic_a_c1,spell_damage,increased,1.0,,,0.0,fervour_thresholds_reached,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_keystone_a_kC#1,SoulCollector_keystone_a_kC,fervour_threshold_linger_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_stem1#1,SoulCollector_basic_b_stem1,attack_speed,increased,2.0,,class_resource_points_below,20.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_a_stem2#1,SoulCollector_basic_a_stem2,reserved_fervour_counts_as_held_percent,flat,8.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

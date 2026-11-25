@@ -5446,6 +5446,12 @@ CONDITIONS = {
     # "N or more Fervour". Worked out once a conditions fill by
     # `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`.
     "fervour_threshold_reached": (20.0, 100.0, "the figure of a Fervour threshold"),
+    # "while you hold fewer than 20 Fervour" is `class_resource_points_below`
+    # with 20: the Soul Collector's Empty Hands, the Death trees' slice C3e
+    # (2026-11-25). Strictly below, the opposite of
+    # `class_resource_points_at_least`, and on the same Fervour counted as held
+    # (Chained Souls' share included); the same wide bound, for its reason.
+    "class_resource_points_below": (0.0, 1000.0, "a count of class resource points"),
 }
 
 #: The figures of the Soul Collector's four Fervour thresholds, in order: "while

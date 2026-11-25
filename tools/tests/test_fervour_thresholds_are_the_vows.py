@@ -105,8 +105,10 @@ def test_only_a_capstone_whose_sentence_states_a_clause_may_carry_a_row_with_no_
 def test_the_engine_works_the_answer_out_once_and_keeps_long_shadows_record():
     asc = read("AbilitySystem/CataclysmAbilitySystemComponent.cpp")
     fill = body_of(asc, "FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(")
-    assert "State.FervourThresholdsReached = FervourThresholdsReachedFor(State.ClassResourceHeld, State.ClassPointsSpent)" \
-        in fill, "the conditions fill does not work the thresholds out"
+    # SINCE SLICE C3e, ON THE FERVOUR COUNTED AS HELD: Chained Souls' share counts for the thresholds too.
+    assert re.search(r"State\.FervourThresholdsReached\s*=\s*FervourThresholdsReachedFor\(\s*"
+                     r"UCataclysmStatPipeline::FervourHeldCounted\(State\),\s*State\.ClassPointsSpent\)", fill), (
+        "the conditions fill does not work the thresholds out on the Fervour counted as held")
     reached = body_of(asc, "int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(")
     # READ WITH NO READING: asking either through the pipeline here would fill the conditions again.
     assert "StatForSkill(" not in reached and reached.count("StatWithNoReading(") == 2, (

@@ -698,7 +698,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 547 THE SAME DAY, for slice C3d: the four Soul Collector vows'
 #: threshold clauses, Generous Count, Steady Count (two) and Long Shadow. The
 #: Soul Collector 95 rows on 50 nodes.
-AUTHORED_ROWS = 547
+#:
+#: AND TO 549 THE SAME DAY, for slice C3e: Empty Hands and Chained Souls. The
+#: Soul Collector 97 rows on 52 nodes.
+AUTHORED_ROWS = 549
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1139,7 +1142,10 @@ AUTHORED_ROWS = 547
 #: AND TO 333 THE SAME DAY, for slice C3d: Generous Count, Steady Count, Long
 #: Shadow and The Final Vow, whose threshold clause is its first row. The other
 #: three vows were counted for an option already. The Soul Collector 50 of its 73.
-AUTHORED_NODES = 333
+#:
+#: AND TO 335 THE SAME DAY, for slice C3e's Empty Hands and Chained Souls: the
+#: Soul Collector 52 of its 73.
+AUTHORED_NODES = 335
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1564,6 +1570,9 @@ CONDITION_WORDS = {
     # A SOUL COLLECTOR VOW'S FERVOUR THRESHOLD, the Death trees' slice C3d
     # (2026-11-25): "while you hold 20 or more Fervour", the same words.
     "fervour_threshold_reached": ("or more fervour", "{value:g}"),
+    # EMPTY HANDS, the Death trees' slice C3e (2026-11-25): "while you hold
+    # fewer than 20 Fervour".
+    "class_resource_points_below": ("fewer than", "{value:g} fervour"),
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
@@ -2533,6 +2542,8 @@ VALUE_FORMS = {
     # point" and Long Shadow's "stays in effect for 5 seconds".
     "fervour_threshold_reduction": ("reached {value:g} Fervour sooner per point",),
     "fervour_threshold_linger_seconds": ("stays in effect for {value:g} seconds",),
+    # CHAINED SOULS, slice C3e: "8% per point of the Fervour your minions ...".
+    "reserved_fervour_counts_as_held_percent": ("{value:g}% per point of the Fervour your minions",),
     "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",

@@ -1476,9 +1476,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// strike-history fill in `WithTargetState` reads it.
 	State.AskingAbilitySystem = this;
 
-	// AND THE SOUL COLLECTOR'S FERVOUR THRESHOLDS REACHED, worked out once from the Fervour held and the points spent,
-	// both filled above. The Death trees' slice C3d (2026-11-25).
-	State.FervourThresholdsReached = FervourThresholdsReachedFor(State.ClassResourceHeld, State.ClassPointsSpent);
+	// AND CHAINED SOULS' SHARE OF WHAT FOLLOWERS HOLD BACK, counted as held, from the reserve filled above (the Death
+	// trees' slice C3e, 2026-11-25).
+	State.ClassResourceCountedAsHeld = ReservedFervourCountedAsHeld(State.ClassResourceReserved);
+
+	// AND THE SOUL COLLECTOR'S FERVOUR THRESHOLDS REACHED, worked out once from the Fervour counted as held and the points
+	// spent, all filled above. The Death trees' slices C3d and C3e (2026-11-25).
+	State.FervourThresholdsReached =
+		FervourThresholdsReachedFor(UCataclysmStatPipeline::FervourHeldCounted(State), State.ClassPointsSpent);
 
 	return State;
 }
@@ -3933,6 +3938,14 @@ const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat
 	TEXT("fervour_threshold_linger_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat =
 	TEXT("cooldowns_recover_faster_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::ReservedFervourCountsAsHeldPercentStat =
+	TEXT("reserved_fervour_counts_as_held_percent");
+
+float UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld(float Reserved) const
+{
+	const float Percent = StatWithNoReading(FName(ReservedFervourCountsAsHeldPercentStat));
+	return Reserved > 0.0f && Percent > 0.0f ? Reserved * Percent / 100.0f : 0.0f;
+}
 
 float UCataclysmAbilitySystemComponent::StatWithNoReading(FName Stat) const
 {
@@ -3985,9 +3998,14 @@ void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(float Held)
 	{
 		FervourThresholdLastHeldAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
 	}
+	// AND CHAINED SOULS' SHARE, so the record counts what the thresholds count (the Death trees' slice C3e). Nought, and
+	// no search for followers, for a character without the node.
+	const float Counted = Held + (StatWithNoReading(FName(ReservedFervourCountsAsHeldPercentStat)) > 0.0f
+		? ReservedFervourCountedAsHeld(UCataclysmCommand::ReservedFervourOf(GetAvatarActor()))
+		: 0.0f);
 	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
 	{
-		if (Held >= CataclysmFervourThresholds::Figure(Index) - Reduction)
+		if (Counted >= CataclysmFervourThresholds::Figure(Index) - Reduction)
 		{
 			FervourThresholdLastHeldAtSeconds[Index] = World->GetTimeSeconds();
 		}

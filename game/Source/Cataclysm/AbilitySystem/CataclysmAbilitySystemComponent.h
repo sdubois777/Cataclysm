@@ -4090,6 +4090,16 @@ public:
 	static const TCHAR* CooldownsRecoverFasterPercentStat;
 
 	/**
+	 * The stat holding the share, in per cent, of what this character's minions, gadgets and traps hold back that counts
+	 * as Fervour held: Chained Souls, "8% per point". The Death trees' slice C3e (2026-11-25). Read with no reading
+	 * (`StatWithNoReading`), because it is asked while the conditions are filled. No attribute and no base.
+	 */
+	static const TCHAR* ReservedFervourCountsAsHeldPercentStat;
+
+	/** Chained Souls' share of `Reserved` Fervour held back, counted as held: nought without the node. */
+	float ReservedFervourCountedAsHeld(float Reserved) const;
+
+	/**
 	 * Which of the four Fervour thresholds are reached by a character holding `Held` Fervour with `PointsSpent` passive
 	 * points spent: one bit each, bit 0 the threshold at 20. A threshold is reached when it is OPEN (its points spent)
 	 * and either `Held` reaches its figure less `FervourThresholdReductionStat`, or `FervourThresholdLingerSecondsStat`
