@@ -225,8 +225,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmExtraDamageTypesRoundedCountTest,
 
 /**
  * The count is the row's figure at the item's own roll, rounded (Q-D2), and a weapon drawn with the sentence holds it,
- * at tier 1 as at any tier (the owner's ruling). Fails if the row is not read, the roll not used, the rounding not
- * applied, the top-up missing, or a tier capping it.
+ * at a low tier as at any tier (the owner's ruling; tier 2, the lowest with an enchanted weapon since issue #2853).
+ * Fails if the row is not read, the roll not used, the rounding not applied, the top-up missing, or a tier capping it.
  */
 bool FCataclysmExtraDamageTypesRoundedCountTest::RunTest(const FString&)
 {
@@ -266,8 +266,10 @@ bool FCataclysmExtraDamageTypesRoundedCountTest::RunTest(const FString&)
 				 AllDesignedAndDistinct(Types, Designed));
 	}
 
-	// AND A WHOLE DROP AT TIER 1. The same seed rolled with the row and without it: the first is the second with types
-	// added, never fewer, to the count its own roll asks for, capped by the base and the designed types.
+	// AND A WHOLE DROP AT TIER 2, THE LOWEST TIER AN ENCHANTED WEAPON DROPS AT. It was tier 1 until issue #2853, whose
+	// cap stops tier 1 at Masterful, and Masterful carries no enchantment. The same seed rolled with the row and without
+	// it: the first is the second with types added, never fewer, to the count its own roll asks for, capped by the base
+	// and the designed types.
 	UDataTable* Positive = PositivesHoldingTheSentence(Tables.Positive);
 	if (!TestNotNull(TEXT("set-up: the sentence is in the real positive table"), Positive))
 	{
@@ -278,7 +280,7 @@ bool FCataclysmExtraDamageTypesRoundedCountTest::RunTest(const FString&)
 	{
 		FCataclysmItem With;
 		FCataclysmItem Without;
-		if (!Roll(Tables, Positive, Seed, 1, Effects, With) || !Roll(Tables, Positive, Seed, 1, nullptr, Without))
+		if (!Roll(Tables, Positive, Seed, 2, Effects, With) || !Roll(Tables, Positive, Seed, 2, nullptr, Without))
 		{
 			AddError(FString::Printf(TEXT("seed %d failed to roll a weapon"), Seed));
 			return false;
@@ -417,7 +419,8 @@ bool FCataclysmExtraDamageTypesSameSeedTest::RunTest(const FString&)
 	int32 Compared = 0;
 	int32 Different = 0;
 	int32 WithEnchantments = 0;
-	for (int32 Tier : {1, 8})
+	// TIER 2 ADDED WITH ISSUE #2853: tier 1 drops no enchanted weapon since its cap, so tier 2 is the lowest that does.
+	for (int32 Tier : {1, 2, 8})
 	{
 		for (int32 Seed = 1; Seed <= 300; ++Seed)
 		{

@@ -2310,6 +2310,186 @@ The guard proofs, each a one-place break, run with the prefix named:
 
 ---
 
+## 2026-11-24 — A hard cap on how rare a drop can roll: rarity number tier + 3, so tier 1 drops nothing above Masterful (#2853)
+
+**WINDOW rc-w1 PASSED, 2026-11-24**, on `fix/rarity-cap-2853-2` at `5e8be4680`, rebased onto development `6dd62aba6`;
+first written on `fix/rarity-cap-2853` from `4d33f5994`. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
+
+### Why
+
+The owner found a Cataclysmic Kilt +10 on 2026-11-23 and a Cataclysmic Staff +10 on 2026-11-24, both at difficulty tier
+1, and Legendary and Mythical pieces beside them. Since the owner's ruling of 2026-08-23 no rarity was forbidden at any
+tier: a rarity above the tier's own reach was halved once per rung. At tier 1 a Cataclysmic was one drop in 1.5 million
+with no magic find and one in 38,000 from a Boss. A drop arrives at its rarity's upgrade gate (+4, +6, +10), so one such
+piece outweighed a tier 1 character's whole reference gear in the Power Score. The investigation is on the issue
+(comment 7144136235). It found no fault in the roll. The seeded count (RC5 below) measured in the window that the
+whole-item roll at tier 1 matches the model; it cannot say whether two Cataclysmic pieces in two days were chance.
+
+### The ruling
+
+**The owner, 2026-11-24, "Hard cap by tier (Recommended)"** (issue comment 7144154769), as the coordinating session
+stated it: "a tier can drop at most two rarities above its normal reach, so the highest droppable rarity is number tier
++ 3 (tier 1 Masterful, tier 2 Legendary, tier 3 Mythical ...). Everyday, Quality, Superb and Masterful keep their current
+chances; the halving per rung stays below the cap."
+
+| Difficulty tier | 1 | 2 | 3 | 4 | 5 to 8 |
+| :-- | :-: | :-: | :-: | :-: | :-: |
+| Highest rarity a drop can roll | Masterful | Legendary | Mythical | Ascendant | Cataclysmic |
+
+### What changed
+
+- **The game** (`Items/CataclysmDropRoll.h` and `.cpp`): `RaritiesAboveTheReachThatDrop = 2` and
+  `HighestDroppableRarity(Tier)`; `DropWeightAt` answers 0 for a rarity above it. One place, on the weight, so every roll
+  that reads weights follows it: `RollRarity`, `RarityDistribution`, `RollRarityAtLeast`, and through them `RollItem`,
+  `SpawnDropsFor` (kills, the empire tree's extra drops, the Infested Hoard's drop and the four reward rooms) and
+  `SpawnGemsFor`.
+- **The simulation** (`sim/cataclysm_sim/loot.py`): `DROP_RARITIES_ABOVE_THE_REACH = 2`, `highest_droppable_rarity`,
+  and the same zero in `drop_weight`. Its import-time check "every rarity drops at every tier" became "every rarity up to
+  the cap drops and none above it", at magic find up to 1,000,000.
+- **The design document**, section VII: a table of the cap beside the reach table, and the paragraph that said a tier 1
+  Cataclysmic was one in 1.5 million.
+
+**SEEDS DO NOT MOVE BELOW THE CAP.** The cascade still takes one draw per rung from the top; a rung above the cap has a
+step chance of 0, so its draw always fails, and the step chances at or below the cap are unchanged. A seed whose drop was
+at or below the cap rolls the same item as before.
+
+**THE ORDINARY FOUR KEEP THEIR WEIGHTS.** Their shares at tiers 1 to 4 rise only by what the removed rarities held: at
+tier 1 with no magic find, Masterful is 1.06952% against 1.06873% before. Tiers 5 to 8 are unchanged.
+
+### Three cases the ruling did not name, answered on 2026-11-24
+
+They were put to the coordinating session as judgements of this change; the answers are below.
+
+- **The High Roller's extra item is exactly Legendary at tiers 1 and 2. THE OWNER'S RULING of 2026-11-24, the chosen
+  option verbatim: "Exception: exactly Legendary (Recommended)".** Its node promises "an extra Legendary+ item", and tier
+  1's cap is Masterful. `RollRarityAtLeast` gives the node's minimum and nothing rarer when the minimum is at or above the
+  cap; at tier 3 and up it rolls from Legendary to the cap. The alternative, Masterful at tier 1, breaks the node's own
+  sentence.
+- **Gems follow the cap. Confirmed by the coordinating session, 2026-11-24.** A gem's rarity is rolled by the same
+  `RollRarity` as gear's (`SpawnGemsFor`, and `roll_gem_drops_from_kill` in the simulation), so the cap holds for gems
+  with no separate code. Exempting gems would need the cap moved off the shared weight.
+- **Corrupted Stalker pieces are not rolled and are not capped. Confirmed by the coordinating session, 2026-11-24.** A
+  Stalker wears a written build whose affixes give it Masterful at most, at the reference character's upgrade level.
+
+### Tests
+
+**Python** (run in this change): `sim/tests/test_loot.py` rewrites five tests that said every rarity drops at every
+tier, and adds four: the cap at every tier written out, nothing above the cap at any magic find (shares and 2,000 rolls a
+tier), the ordinary four's weights, and Masterful's tier 1 share. `tools/tests/test_gear_rarity_gate_is_stated_everywhere.py`
+adds two: the engine's `RaritiesAboveTheReachThatDrop` equals the model's, and the design document's cap table matches
+`highest_droppable_rarity`.
+
+**The Python suite, on `30355619d`:** "8227 passed, 10 skipped in 444.37s"; JUnit 8237 tests, 0 failures, 0 errors.
+ruff: "All checks passed!".
+
+**Python guard proofs, in a `git archive` copy of `30355619d`, each PROVED** (failed with the break in, passed restored):
+
+| Proof | Break | Failed |
+| :-- | :-- | :-- |
+| PP1 | `DROP_RARITIES_ABOVE_THE_REACH = 2` read as `= 3` | the cap written out at tiers 1 to 4; the ordinary four's weights (Masterful's tier 1 share, **not predicted**: the share moves when the cap does); the distribution's keys; the engine constant; the document's cap table. 8 tests |
+| PP2b | the cap line in `drop_weight` and the import-time check that holds it both disabled | nothing above the cap; the ordinary four's weights; the distribution's keys; tier 1 is the sheet untouched; a Boss's spread. 5 tests |
+| PP3 | the design document's `\| 2 \| Legendary \|` read as `\| 2 \| Mythical \|` | the document's cap table. 1 test |
+
+PP2, the cap line alone, was not run: the module's import-time check would stop the import, which measures nothing.
+
+**Unreal, registered, new group `Cataclysm.RarityCap.`, 6 tests:**
+
+| | Test | What it checks |
+| :-- | :-- | :-- |
+| RC1 | `TheRarestATierCanDropIsRarityNumberTierPlusThree` | the cap at tiers 1 to 8, written out |
+| RC2 | `NothingAboveTheCapDropsAtAnyMagicFind` | tiers 1, 2, 8 at 0%, 300%, 5,000,000%: shares 0 above, above 0 at or below; 20,000 rolls each, none above; the cap itself rolled at the highest magic find |
+| RC3 | `TheSharesMatchTheModelAtTiersOneTwoAndEight` | the model's printed shares at tier 1 (0% and 300%), tier 2 and tier 8 |
+| RC4 | `TheHighRollersItemIsExactlyLegendaryWhereTheCapIsBelowIt` | tiers 1 and 2 all Legendary; tier 3 Legendary and Mythical, nothing else |
+| RC5 | `ATierOneItemRollCountsTheModelsShares` | **the seeded count**: 50,000 whole items through `RollItem` at tier 1 at 0% and at 300%, each item's rarity read back from what it carries, every rung within five standard deviations of `RarityDistribution`, none above Masterful; counts printed |
+| RC6 | `AKillAtTierOneDropsNothingAboveMasterful` | the live path: 20 Cataclysm Boss kills through `SpawnDropsFor` and `SpawnGemsFor` at tier 1, nothing above Masterful and Masterful present; the same at tier 8 drops above Masterful |
+
+**Changed:** `Cataclysm.Drop.TheRarityCascadeMatchesTheModel` (tier 1's shares above Masterful are 0, and the "shaped
+as the table says" loop stops at the cap); `Cataclysm.ExtraDamageTypes.AWeaponDrawnWithTheSentenceHoldsTheRoundedCount`
+searches tier 2 instead of tier 1, the lowest tier that drops an enchanted weapon now;
+`Cataclysm.ExtraDamageTypes.WithoutTheSentenceASeedGivesTheSameItem` adds tier 2 to tiers 1 and 8.
+
+### Window rc-w1, 2026-11-24, on `5e8be4680`
+
+On `fix/rarity-cap-2853-2`, the three commits rebased onto development `6dd62aba6` after #2880 (selling and dismantling)
+merged; a new name, no force push. One conflict, the top of this file, resolved with `tools/resolve_decisions_log.py`.
+Registered from window sd-w2's measured whole-suite log (5341 performed, 57 skipped halves, 861 saves) plus the six
+RarityCap tests. The scripts are `.claude/windows/*_rc.py` in the sharp-meitner worktree.
+
+**Builds**, under lock `rarity-cap-compile`: the branch, "Succeeded - 57 actions, 52 files compiled"; each changed file
+alone, "8 files compiled: CataclysmDropRoll.cpp, CataclysmDropRollTests.cpp, CataclysmExtraDamageTypesTests.cpp,
+CataclysmRarityCapTests.cpp" and four unity files; the unity files again, 4 compiled. 0 compiler warning or error lines in
+any of the three.
+
+**Groups alone**, under lock `rc-w1`:
+
+| Group | Result |
+| :-- | :-- |
+| `Cataclysm.RarityCap.` | 6 performed, 6 succeeded |
+| `Cataclysm.Drop.` | **first run: "Tests: unknown tests performed, 29 succeeded, 0 failed", exit 1**; second run: 30 performed, 30 succeeded |
+| `Cataclysm.ExtraDamageTypes.` | 6 performed, 6 succeeded |
+| `Cataclysm.EmpireTreeDrops.` | 13 performed, 13 succeeded |
+| `Cataclysm.GemDrops.` | 4 performed, 4 succeeded |
+| `Cataclysm.Dismantle.` | 12 performed, 12 succeeded |
+| `Cataclysm.Item.` | 13 performed, 13 succeeded |
+| `Cataclysm.Enchantments.` | 366 performed, 366 succeeded |
+
+**THE FIRST `Cataclysm.Drop.` RUN LOST ITS LAST TEST'S RESULT AT EXIT**, the known loss of a narrow run's last lines
+(#2677). `TheRarityCascadeMatchesTheModel`, the test this change edited, is that group's last test, and the run's engine
+log ends at its start: "[2026.11.24-23.29.17:918][669]LogAutomationWorker: Received RunTests
+TheRarityCascadeMatchesTheModel from 47F0DC6848025141A018E1A74CFFFA7C", with no result, no "Test saves:" line and no exit
+line. No crash folder was written and Windows logged no application event between 16:28 and 16:31. By the coordinating
+session's ruling of 2026-11-24 the group was run alone once more after the whole suite passed, under lock `rc-w1b`:
+"Tests: 30 tests performed, 30 succeeded, 0 failed", exit 0, 30 `Result={Success}` lines in its engine log, the last
+line of which is the save summary. **The second run is what passed.** The whole suite had already shown the test pass:
+"Test Completed. Result={Success} Name={TheRarityCascadeMatchesTheModel}".
+
+**The whole suite**: "Tests: 5347 tests performed, 5347 succeeded, 0 failed. 57 skipped part of what they check";
+"Test saves: 861 written and deleted, 0 left behind"; "Declared: 5347 tests in the tree at 5e8be4680; 5347 performed, gap
+0". Each figure is the registered one. Peak memory: "peak_used_virtual_mb=9159".
+
+**Python**, alongside the whole suite: "8243 passed, 10 skipped in 367.06s"; JUnit 8253 tests, 0 failures, 0 errors.
+ruff: "All checks passed!".
+
+**What the new tests measured**, quoted from the whole suite's log:
+
+- RC5, the seeded count, 50,000 whole items through `RollItem` at tier 1, rarity read back from each item, counts
+  Everyday to Cataclysmic: at 0% magic find "33481 13365 2620 534 0 0 0 0 (expected 33422 13369 2674 535)"; at 300%
+  "24351 17329 6151 2169 0 0 0 0 (expected 24429 17289 6118 2165)". Each rung is within five standard deviations of
+  `RarityDistribution`, and nothing is above Masterful. **What this shows is that no fault sits between the roll and the
+  finished item at tier 1; it cannot say whether the two Cataclysmic pieces found before the cap were chance.**
+- RC6, the live path, 20 Cataclysm Boss kills at magic find 100,000: "best at tier 1 3 (260 Masterful), best at tier 8
+  7". At tier 1 the rarest thing on the floor was rung 3, Masterful (260 of them); at tier 8 it was rung 7,
+  Cataclysmic.
+
+**A CONSEQUENCE OF THE CAP IN ANOTHER CHANGE'S TEST.** `Cataclysm.Dismantle.ADropRecordsTheGearLevelAndTierItArrivedAt`
+(#2848, sd-w1) rolls 100 drops at tier 1 and 100 at tier 8 with no magic find and needs some to arrive above +0, which
+only Legendary and rarer do. In sd-w2 it printed "DROPS RECORD: 200 rolled, 0 wrong, 2 above +0"; here "200 rolled, 0
+wrong, 1 above +0", alone and in the suite. One of the two was a tier 1 drop the cap removed. The test passed and was not
+changed. The registration gave that count falling to 1 a chance of 0.194 and both being removed, which would have failed
+the test, 0.012; the coordinating session had approved in advance counting tier 8's drops alone if it failed.
+
+**Unreal guard proofs**, under lock `rc-w1b`, each narrowed to `Cataclysm.RarityCap.`:
+
+| Proof | Break | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| RP1 | `DropWeightAt`'s cap line read as `if (false && Rung > ...)` | RC2, RC3, RC4, RC5, RC6: 6 performed, 1 succeeded, 5 failed, as predicted (RC1 reads only the function) | 6 of 6 |
+| RP2 | `RaritiesAboveTheReachThatDrop = 2` read as `= 3` | RC1, RC3, RC4, RC6: 4 failed, as predicted; RC2 and RC5 read the cap from the function and passed | 6 of 6 |
+| RP3 | the High Roller's capped path `return Lowest;` read as `return HighestDroppableRarity(DifficultyTier);` | RC4: 1 failed, as predicted | 6 of 6 |
+| RP4 | `RollItem`'s `EnchantmentsFor(Rarity)` read as giving a Masterful item Legendary's enchantments | RC5: 1 failed. **RC6 was predicted to fail and passed** | 6 of 6 |
+
+Each PROVED by `prove_cpp_guard`: a named test failed with the break in, and all six passed restored, neither half
+crashed, and the source hash was the same before and after.
+
+**Why RC6 did not notice RP4.** The broken Masterful items carried Legendary's enchantment count, and
+`RarityOfItem` could not read a rarity from them at all, rather than reading them as Legendary. RC5 counts every item
+and failed: "RARITY COUNT, tier 1, 0% magic find, 49484 items: 33431 13408 2645 0 0 0 0 0", with no Masterful and 516
+items unread. RC6 skips a drop it cannot read, so its tier 1 floor still showed Masterful as the rarest ("best at tier 1
+3 (145 Masterful)", against 260 restored) and it passed. RC6 guards the cap on the live path; a fault between the roll
+and the finished item is RC5's to see, and RC5 saw it.
+
+---
+
 ## 2026-11-22 — The merchant buys a carried piece of gear for the tier's gold piles by rarity and upgrade level, at no day's cost, from a screen on the empire map (#48, slice S1)
 
 **WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** Phase 1 on `feat/selling-48-s1`, cut from development

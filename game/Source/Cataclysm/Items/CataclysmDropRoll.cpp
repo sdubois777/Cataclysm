@@ -273,6 +273,13 @@ ECataclysmRarity UCataclysmDropRoll::HighestUnpenalisedRarity(
 	return RarityAt(Tier - 1 + RaritiesAboveDifficulty);
 }
 
+ECataclysmRarity UCataclysmDropRoll::HighestDroppableRarity(int32 DifficultyTier)
+{
+	// TWO RUNGS ABOVE THE TIER'S OWN REACH, STOPPING AT THE TOP. Issue #2853.
+	const int32 Reach = LadderIndex(HighestUnpenalisedRarity(DifficultyTier));
+	return RarityAt(FMath::Min(RarityCount - 1, Reach + RaritiesAboveTheReachThatDrop));
+}
+
 float UCataclysmDropRoll::PenaltyAboveTheTier(ECataclysmRarity Rarity,
 											  int32 DifficultyTier)
 {
@@ -373,7 +380,15 @@ float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 		return 0.0f;
 	}
 
+	// ABOVE THE CAP, NOTHING (issue #2853). On the weight, so every roll that
+	// reads weights follows it: the cascade stops on a rung with chance weight
+	// over the weight at or below it, and a weight of 0 is never stopped on.
 	const int32 Rung = LadderIndex(Rarity);
+	if (Rung > LadderIndex(HighestDroppableRarity(DifficultyTier)))
+	{
+		return 0.0f;
+	}
+
 	const float Change = OrdinaryFallAt(DifficultyTier) / OrdinaryFallAtTierOne;
 	// MAGIC FIND MULTIPLIES AND THE ABOVE-THE-TIER PENALTY DIVIDES. Neither
 	// touches OrdinaryWeightTotal below, which is the shaped weight only, so
@@ -828,7 +843,8 @@ void UCataclysmDropRoll::RarityDistribution(const UDataTable* GearRarityTable,
 {
 	OutShares.Init(0.0f, RarityCount);
 
-	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
+	// THE WHOLE LADDER. A rung above HighestDroppableRarity has a step chance of
+	// 0 (issue #2853), so its share is 0 and everything passes through it.
 	float Left = 1.0f;
 	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
@@ -848,7 +864,9 @@ ECataclysmRarity UCataclysmDropRoll::RollRarity(const UDataTable* GearRarityTabl
 												float MagicFind,
 												FRandomStream& Stream)
 {
-	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
+	// THE WHOLE LADDER, ONE DRAW A RUNG. A rung above HighestDroppableRarity has
+	// a step chance of 0 (issue #2853): its draw is still taken and always fails,
+	// so a seed whose drop was at or below the cap rolls what it rolled before.
 	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
 		if (Stream.FRand() < RarityStepChance(GearRarityTable, RarityAt(Rung),
@@ -883,6 +901,12 @@ ECataclysmRarity UCataclysmDropRoll::RollRarityAtLeast(const UDataTable* GearRar
 	}
 	if (Reachable <= 0.0f)
 	{
+		// `Lowest` IS ABOVE THE TIER'S CAP: the High Roller's Legendary at tier 1,
+		// whose cap is Masterful. The node's own minimum is given, and nothing
+		// rarer: the owner's ruling of 2026-11-24 on issue #2853, "Exception:
+		// exactly Legendary (Recommended)". Drawn once all the same, so the
+		// stream moves as it does on every other path here.
+		Stream.FRand();
 		return Lowest;
 	}
 
