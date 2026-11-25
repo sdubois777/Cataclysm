@@ -101,7 +101,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "bca9b368275f616d7e433948a29fbe9c1f50285a117fea677daea67e534c9e3c"
+      "csv_sha256": "3d0a4f8857a37d4d000ad93b836ad4961e1066d8d75078d257ec3441b28aecda"
     },
     {
       "asset": "DT_EnemyModifiers",
