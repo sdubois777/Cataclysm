@@ -149,6 +149,10 @@ class Dungeon:
     #: The day this dungeon reached the city it stands on now. None until it
     #: first moves, and then `spawned_day` is that day.
     arrived_day: int | None = None
+    #: The depth whose floors this dungeon's enemies are, when it is not its
+    #: own: a short Rift's rolled depth (`TuningConfig.rift_floors`, issue #51).
+    #: 0, for every other dungeon, means its own `floors`.
+    strength_floors: int = 0
 
     def days_on_its_city(self, day: int) -> int:
         """Days this dungeon has stood on the city it stands on now.
@@ -333,6 +337,9 @@ class Simulation:
         self.rifts_opened = 0
         self.rift_spawns = 0
         self.surges_from_rift_deaths = 0
+        #: The last dungeon each Rift sent, by the Rift's id, for
+        #: `rift_one_sent_at_a_time`.
+        self.rift_sent: dict[int, int] = {}
         #: A death in a Rift whose surge has not landed yet: it lands after the
         #: walk's days have run, on the day of the death. See
         #: `_surge_for_a_rift_death`.
@@ -468,6 +475,14 @@ class Simulation:
         n_mods = cfg.modifiers_per_tier * cfg.tier
         if subtype == "Sacrificial":
             n_mods *= cfg.sacrificial_modifier_multiplier
+        # A RIFT CARRIES `rift_modifiers` WHEN SET, whatever the tier: the
+        # owner, 2026-11-24, issue #51, "Rifts always have 8 dungeon modifiers.
+        # Keep it spicy". Drawn as any dungeon's are, so fewer only if the pool
+        # holds fewer, which no pool does (the smallest column is 12).
+        a_rift = (cfg.demonic_rifts and dtype is DungeonType.QUEST
+                  and source == "Demonic")
+        if a_rift and cfg.rift_modifiers > 0:
+            n_mods = cfg.rift_modifiers
         pool = self.modifier_pool
         picked: list[tuple[str, float]] = []
         if pool and n_mods > 0:
@@ -500,6 +515,25 @@ class Simulation:
             # and do not detonate.
             resolve = cfg.fallen_city_resolve_days
 
+        # A SHORT RIFT, with `TuningConfig.rift_floors` set: the owner's proposal
+        # of 2026-11-24 on issue #51, unruled and kept for measurement. Rolled
+        # as above, then given exactly `rift_floors` floors whatever the tree
+        # adds; the rolled depth stays as `strength_floors`, whose enemies it
+        # fights (or, with `rift_strength_from_quest_depth` off, its own 4
+        # floors' enemies). Its timer is the rolled depth's unless
+        # `rift_timer_from_quest_depth` is off, which takes its own floors with
+        # the same variation. NO DRAW IS ADDED, so the stream does not move.
+        # THE TREE ADDS NOTHING TO IT: `tree_floors` is set to 0 below.
+        strength = 0
+        shortened = a_rift and cfg.rift_floors > 0
+        if shortened:
+            if cfg.rift_strength_from_quest_depth:
+                strength = floors
+            if not cfg.rift_timer_from_quest_depth:
+                short = cfg.resolve_base_days + cfg.rift_floors * cfg.resolve_floor_ratio
+                resolve = short * jitter + cfg.tree.resolve_bonus_days
+            floors = cfg.rift_floors
+
         d = Dungeon(
             did=self._next_did,
             dtype=dtype,
@@ -518,7 +552,10 @@ class Simulation:
             modifier_names=tuple(n for n, _ in picked),
             modifier_score=mod_score,
             power_scale=1.0 + cfg.dungeon_power_escalation_per_100_days * (self.day / 100.0),
+            strength_floors=strength,
         )
+        if shortened:
+            d.tree_floors = 0
         if subtype == "Hollow":
             d.hollow_from = natural
         self._next_did += 1
@@ -598,8 +635,9 @@ class Simulation:
         including its modifiers, less the content relief at tier 2 and up
         (`TuningConfig.content_relief`), the same relief `death_chance` gives."""
         cfg = self.cfg
+        # A SHORT RIFT IS AS HARD AS THE DEPTH IT WAS ROLLED AT (issue #51).
         base = scoring.dungeon_score(cfg.tier, SCORING_TYPE[d.dtype], d.subtype,
-                                     d.floors, d.modifier_score)
+                                     d.strength_floors or d.floors, d.modifier_score)
         return (base - cfg.content_relief() * self.tier_width) * d.power_scale
 
     def death_chance(self, d: Dungeon) -> float:
@@ -639,6 +677,7 @@ class Simulation:
                              if d.subtype == "Ascendant" else 0.0),
             extra_cap=(cfg.ascendant_extra_modifiers_cap
                        if d.subtype == "Ascendant" else 0),
+            strength_floors=d.strength_floors,
         )
 
     def average_modifier_score(self) -> float:
@@ -1022,6 +1061,11 @@ class Simulation:
             age = self.day - d.spawned_day
             if age <= 0 or age % every:
                 continue
+            # ONE OF ITS DUNGEONS AT A TIME, with `rift_one_sent_at_a_time` on
+            # (unruled, for measurement): the day is skipped, not deferred.
+            if (cfg.rift_one_sent_at_a_time
+                    and self.rift_sent.get(d.did) in self.dungeons):
+                continue
             host = self.empire.cities.get(d.city_id)
             if host is None:
                 continue
@@ -1037,6 +1081,7 @@ class Simulation:
             finally:
                 self.making_for = ""
             sent.source = "Demonic"
+            self.rift_sent[d.did] = sent.did
             self.rift_spawns += 1
 
     def _surge_for_a_rift_death(self) -> None:

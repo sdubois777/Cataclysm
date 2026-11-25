@@ -790,6 +790,35 @@ class TuningConfig:
     rift_spawn_every_days: int = 5
     #: Whether a death in a Rift brings an ordinary surge at once.
     rift_death_brings_surge: bool = True
+    #: UNRULED, FOR MEASUREMENT. The owner proposed on 2026-11-24, verbatim:
+    #: "Rift are quest dungeons yes, but we determined they have 4 pillars the
+    #: player needs to destroy. So... let's make them 4 floors? Is that
+    #: reasonable? Their difficulty would need to be increased a decent amount,
+    #: but that seems fair to me." With this above 0 a Rift is made as any
+    #: Demonic Quest dungeon (depth rolled for its city) and then given exactly
+    #: this many floors, whatever the empire tree adds; the rolled depth is kept
+    #: as `Dungeon.strength_floors`, whose floors its enemies are
+    #: (`combat.death_chance`). Its walk and its reward are these floors. 0, the
+    #: default, keeps a Rift as deep as any Quest dungeon.
+    rift_floors: int = 0
+    #: With `rift_floors` set, whether the Rift's quest timer is the one its
+    #: rolled depth gives (True) or the one its own floors give (False). Quest
+    #: timers scale with depth (the owner, 2026-10-16), so a short Rift's own
+    #: timer runs out, and hits its city, far more often.
+    rift_timer_from_quest_depth: bool = True
+    #: With `rift_floors` set, whether the Rift's floors fight the enemies of
+    #: its rolled depth (True: floor i fights floor ceil(i x depth / floors)) or
+    #: their own, as a plain dungeon of that many floors (False).
+    rift_strength_from_quest_depth: bool = True
+    #: How many dungeon modifiers a Rift carries; 0 carries what any dungeon of
+    #: the tier does (one a tier). The owner, 2026-11-24, verbatim: "Also, I
+    #: think we should make it so Rifts always have 8 dungeon modifiers. Keep it
+    #: spicy". Kept at 0 here until the form is chosen and measured.
+    rift_modifiers: int = 0
+    #: UNRULED, FOR MEASUREMENT: a Rift sends only while none of the dungeons
+    #: it sent still stands. Recommended to the owner on 2026-11-24 against the
+    #: board filling up under the 5-day spawn. False sends on every 5th day.
+    rift_one_sent_at_a_time: bool = False
 
     # --- the Siege sub-type ----------------------------------------------
     #
