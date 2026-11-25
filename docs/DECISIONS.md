@@ -2,6 +2,244 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The Death weapon skills, slice DS3: nine more rows working; Fervour paid for a kill, scaling by the Fervour held, a buff holding Fervour from decay, a flicker its deaths lengthen, and a curse under which the dying rise (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS2 (`4849df2ad`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N6, N7, N8, `cce887883`), change B (N10, N5,
+  `c2bfcb68e`) and change C (the rows, the data and the row tests, `7f52f4c10`), and a fourth, `b843c1000`, renaming
+  a local and three parameters that shared a name with a member of their class, a precaution against the shadowing
+  warning a build treats as an error. Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **SOUL SNARE IS NOT WRITTEN WHOLE: IT WAITS ON N12 AS WELL AS N5, found while building N5.** Its sentence reads its
+  wisp from Grave Mouth's row ("the same wisp Grave Mouth tears free"), and Grave Mouth has no shape until N12 is built,
+  nor the `Wisp` a Minion Types row. The engine reads what rises from the Summon row raising the kind, and the generator
+  refuses a `RisesAs` no Death Summon row raises (`validate_risen_kinds`), so Soul Snare cannot be shaped before Grave
+  Mouth. N12 was not in this slice's list and is not built. The script now says `needs=('N5', 'N12')`.
+- **`RisesAs=Husk` IS ADDED TO DEATH RATTLE'S APPROVED CELL -- a judgement, worth a look.** The draft wrote `OnDeath=Rise`
+  alone and named the husk only in the sentence ("the same husk Shallow Graves raises"); its N5 says "a minion read from
+  a named skill's row" without saying where the name is written. The key names the kind in the data, so the engine reads
+  the husk from the one Death Summon row raising it -- Shallow Graves: its 8 s, its 3 Fervour, its 4 m, its taunt -- and
+  the generator can refuse a kind nothing raises. Soul Snare's waiting cell gains `RisesAs=Wisp` the same way. No figure
+  and no sentence changed.
+- **A KILL IS A BLOW'S, NOT A TICK'S -- a judgement.** `KillFervour` on a row whose sentence says "every enemy it kills"
+  (Grim Swath, Last Toll, Pale Rider, Restless Spirits) pays for a death whose killing blow was the skill's own, not a
+  tick of the Necrosis it laid: that kill is the ailment's. The rows whose sentences reach past the blow -- Death Warrant
+  ("if it dies while the warrant holds"), Hungering Soul ("every host it leaves dead"), Danse Macabre ("every enemy that
+  dies during the dance") -- are paid through their marks, whoever dealt the death. One death pays one skill once: the
+  blow's payment steps aside for a mark of the same skill's that will pay.
+- **"EVERY ENEMY THAT DIES DURING THE DANCE" IS EVERY DEATH THE CHARACTER IS TOLD OF -- a judgement on the precedent the
+  draft names.** N10's precedent is Butcher's Heat, which counts every death `UCataclysmSkillTemplate::NoteKill` is told
+  of from `ACataclysmEnemyCharacter::HandleDeath` (the watching player's, whoever dealt it). Danse Macabre counts the
+  same and pays its 5 Fervour for each, its ceiling capping the time and not the Fervour: a minion's kill during the
+  dance lengthens it too.
+- **HUNGERING SOUL'S SOUL GIVES EACH HOST ITS NECROSIS -- found while completing the row, built with N6.** "It lodges in
+  it, giving it Necrosis, and when its host dies it tears free and flies into the nearest living enemy ... again and
+  again": a leap's blow laid no ailment (`UCataclysmBuriedWeapon::LeapFromDying` carried Harrower's burn and nothing
+  else), so after the first host the soul gave none. The buried weapon now carries the throwing row's `Ailment` and lays
+  it on each new host its leap's blow lands on, as it sets each alight for Harrower. Harrower states no `Ailment` and is
+  unchanged. A Hungering Soul whose own impact kills its first target is paid as that blow's kill; the soul is then
+  buried in the body and goes no further, which is Harrower's existing behaviour for a killing throw and is not changed
+  here.
+- **A DETONATION IS STILL AN EXPLOSION AND NOT A DEATH**, DS2's judgement, kept: no row of this slice says otherwise.
+  `KillFervour`, a rising curse and a flicker's count all hear deaths, and `ACataclysmMinion::Explode` raises none.
+  **When the Necromancer tree lands, its Last Breath ("popping a Fervour battery") must count explosions explicitly**,
+  as the coordinating session's brief for this slice says.
+- **N8 IS BUILT AGAINST THE ONE DECAY THAT EXISTS.** Cold Blood's `HoldsFervour=1` stops `UCataclysmFervour::DecayStep`,
+  the Ravager's decay out of contact. The Soul Collector's and the Shadow's decay from the last kill is not built (the
+  draft's N8 note says N8 "lands with it"); whoever builds it must ask
+  `UCataclysmSkillTemplate::ARunningBuffHoldsFervour`, as `DecayStep` now does. Built now because it was small and makes
+  "your Fervour does not decay" true of every decay there is.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json` (this slice changes
+  `WeaponSkills.csv` alone; DS1 and DS2 changed `MinionTypes.csv`, and bug batch 2 `SkillSlots.csv`). Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming those three CSVs, and every test reading the table
+  reads a stale one: the nine row tests, the two counting tests and the rising curse's mechanism test (which reads
+  Shallow Graves and the Husk, DS1's) fail at their set-up lines, which say so.
+
+**Affects:** `tools/generate_datatables.py` (`SCALING_SOURCES`, `ON_DEATHS`, `TEXT_PARAMS`, `SHAPE_PARAMS`,
+`check_kill_fervour_and_fervour_scaling`, `check_a_lengthened_flicker`, `check_a_rising_curse`, `validate_risen_kinds`)
+and its copy in `sim/cataclysm_sim/enemy_abilities.py`; `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and
+`.cpp` (`KillFervour`, `bHoldsFervour`, `MaxDuration`, `RisesAs`); `CataclysmKillFervour.h` and `.cpp` (new);
+`CataclysmRisingCurse.h` and `.cpp` (new); `CataclysmFervour.h` and `.cpp` (`GainStated`, and `DecayStep`'s hold);
+`CataclysmSkillEffects.cpp` (`MarkDead`); `CataclysmCurseSpread.h` and `.cpp`; `CataclysmBuriedWeapon.h` and `.cpp`;
+`CataclysmSkillTemplate.h` and `.cpp` (`FervourHeldBy`, `ARunningBuffHoldsFervour`, `NoteKill`, `ScalingUnits`,
+`ApplyNamedEffectsTo`); `CataclysmSkillTemplates.h` and `.cpp` (the self buff's Fervour, the flicker's deaths and fresh
+circle, `BuryInStruck`); `Character/CataclysmEnemyCharacter.cpp` (`HandleDeath`); `CataclysmUndesignedSkill.h` (the
+counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits; `game/Data/WeaponSkills.csv`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS3, 2026-11-24: "Keep DS2's judgement that a detonation is an explosion
+  and not a death unless a row here says otherwise; note in your entry that when the Necromancer tree lands, its Last
+  Breath ("popping a Fervour battery") must count explosions explicitly." No owner ruling is new to this slice; the
+  rows are the 40 the owner approved on 2026-11-24, quoted in DS1's entry below.
+
+### The rows
+
+**Nine more written whole**, 31 of the 45 in all, each as approved but for Death Rattle's `RisesAs=Husk`:
+
+| Row | Needs |
+| :-- | :-- |
+| Cold Blood (Sword Support) | N7, N8 |
+| Danse Macabre (Sword Ultimate) | N6, N10 |
+| Death Warrant (Sword Special) | N6 |
+| Death Rattle (Greataxe Support) | N5, C3 |
+| Grim Swath (Greataxe Heavy) | N6, N7 |
+| Hungering Soul (Wand Heavy) | N6 |
+| Restless Spirits (Wand Special) | N6 |
+| Last Toll (Whip Ultimate) | N6 |
+| Pale Rider (Spear Ultimate) | N6, N22 |
+
+**14 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N9 | Mercy Stroke |
+| N12 | Grave Mouth; Soul Snare (N5 built; its wisp is Grave Mouth's) |
+| N13 | Requiem |
+| N14 (burst on death) | Gravetouch |
+| N15 | Quietus |
+| N17 | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 | Wraithwalk |
+| N19 | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The workbook cells**, 18: on Weapon Skills, the Shape and Shape Params of the nine rows. No Minion Types row is new.
+Run a second time the script writes nothing ("0 cells to write; nothing written"), and `generate_datatables.py --check`
+says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N6, `KillFervour=N` on a Strike, a Projectile, a Movement or a Debuff.** Four routes, one payment a death for one
+  skill, every one through `UCataclysmFervour::GainStated` (the row's figure, scaled by how fast the class resource
+  generates and clamped, as every gain is):
+  - a kill by the skill's own blow, from `UCataclysmSkillEffects::MarkDead` before its hooks
+    (`UCataclysmKillFervour::PayForTheKillingBlow`): the last blow on record was lethal (`KillingBlowDamage`), a blow
+    and not a tick, not a point-blank share on an ally, a skill's stating `KillFervour`; its caster is here and was the
+    dying creature's enemy; and no mark of the same skill's on the creature pays for the death;
+  - a death while a paying curse holds (`UCataclysmCurseSpread::SpreadFromDying`): the mark `OnDeath=SpreadDebuff`
+    leaves carries the figure and the curses laid, and "holds" is the dying creature still carrying one of them laid by
+    that caster (`CarriesACurseLaidBy`); the mark passed to the next holder carries them on, so each holder in the chain
+    pays (Death Warrant). The generator refuses `KillFervour` on a Debuff without `OnDeath=SpreadDebuff`;
+  - a host a buried weapon leaves dead (`UCataclysmBuriedWeapon::LeapFromDying`): the host it tears free of, whoever
+    killed it, and each host its leap's own blow kills (Hungering Soul);
+  - a death while a flicker counting deaths runs (change B).
+- **N7, `ScalingSource=Fervour`.** What is held now (`UCataclysmSkillTemplate::FervourHeldBy`): read at the blow for a
+  Strike (`ScalingUnits`; Grim Swath, 1% more a 2 Fervour to its 350% ceiling), and for a self buff in whole points,
+  put back each time the pool crosses one (`ScalingCount`, `FervourChanged`, bound to the pool's change while the buff
+  runs; Cold Blood). **Judgements:** the buff's count is whole points, its other counts being whole; the strike reads
+  after the use's own Fervour cost is paid. The generator refuses it on any other shape.
+- **N8, `HoldsFervour=1` on a self buff.** `DecayStep` takes nothing while a buff stating it runs.
+
+**Change B.**
+
+- **N10, a flicker its deaths lengthen.** `Mode=Flicker; ScalingSource=Kill` with `DurationPer` and `MaxDuration`.
+  `NoteKill` tells it as it tells Butcher's Heat; `UCataclysmMovementSkill::NoteADeathWhileItRuns` pays its
+  `KillFervour` (N6) and lengthens the stop timer and, for `Untargetable=1`, the untargetability by `DurationPer`, to
+  `MaxDuration` in all. Once a lap finds nobody standing, `FlickerOnce` gathers a fresh circle within its range of where
+  the caster now stands and goes on (**a judgement**: once a circle is spent, not at each death, so a pack is finished
+  before the next; every other flicker keeps its one circle). The generator refuses `DurationPer` on any other move and
+  `MaxDuration` with nothing to cap or below the move's own `Duration`.
+- **N5, `OnDeath=Rise; RisesAs=<kind>` on a Debuff.** `ApplyNamedEffectsTo` marks the cursed creature
+  (`UCataclysmRisingCurse`) with the kind and every figure of the one Summon row of the curse's damage type raising it.
+  A creature dying while the curse holds rises, where it fell, for its curser, from `ACataclysmEnemyCharacter::
+  HandleDeath` beside the Ritualist's risen imp, if the curser's pool holds the row's reserve (issue #2787): lasting the
+  row's `Duration`, its explosion and its taunt (C3) at the row's `Radius`. The generator refuses either key without the
+  other, `OnDeath=Rise` off a Debuff or with no `Effect`, and (`validate_risen_kinds`) a kind the Minion Types sheet
+  lacks or no single Summon row of the damage type raises with a `Duration`.
+
+### Research
+
+No formula is new; each shape is the approved draft's, with its sources (Path of Exile's minion skills, Diablo IV's
+Book of the Dead, Army of the Dead and Reap; the draft's research table), which were not fetched again for this slice.
+The draft names this game's own precedents for each piece -- the class generators (N6), the eleven scaling sources
+(N7), the enchantment that stops the Ravager's decay (N8), Butcher's Heat (N10) and the Ritualist's risen imp (N5) --
+and says Cold Blood had no shipped precedent found. What the precedents do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Eighteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **46 performed, 46 succeeded** (DS1's 14, DS2's
+14 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AStrikeStatingKillFervourPaysItForEachEnemyItsBlowKillsAndNothingForOneLeftStanding` | A, N6 | 2 kills pay 4, the one standing nothing; control: no key, nothing |
+| `ADeathWhileAPayingCurseHoldsPaysItsCasterAndTheCursePassedOnPaysAgain` | A, N6 | 10, the curse passes, 10 more; control: cleansed, nothing |
+| `ASoulStatingKillFervourPaysForEachHostItLeavesDeadAndGivesEachNewHostItsAilment` | A, N6 | 2 a host, Necrosis on the next; control: Harrower's shape, neither |
+| `AStrikeScalingByFervourDealsMoreForEachPointHeldUpToItsCeiling` | A, N7 | 1.5 at 100, 1.6 at 150 under a 320 ceiling; control: no scaling |
+| `ASelfBuffScalingByFervourGrantsMoreDamageForWhatIsHeldAndFollowsItWhileItRuns` | A, N7 | 25 at 100, 10 at 40, nothing once cancelled; control: `Burning` |
+| `ASelfBuffThatHoldsFervourStopsItsDecayAndTheDecayReturnsWhenItEnds` | A, N8 | 5 taken, then nothing, then 5; the first step the control |
+| `AFlickerItsDeathsLengthenGainsHalfASecondAndItsFervourForEachDeathToItsCeiling` | B, N10, N6 | 4, 4.5, 5, 5; 5 Fervour each; control: a plain flicker |
+| `AFlickerItsDeathsLengthenGathersAFreshCircleOnceItsFirstHasFallen` | B, N10 | a fresh circle, a second arrival; control: a plain flicker stands |
+| `ACreatureDyingUnderARisingCurseRisesAsItsKindReadFromTheRowThatRaisesIt` | B, N5 | a husk, 8 s, 3, taunting 4 m; controls: cleansed; no rise |
+| `DeathWarrantCripplesOneEnemyTenSecondsAndItsDeathPaysTenAndPassesTheWarrant` | C, row | 30 for 10 s on one; 10 paid; passed; control: the other untouched |
+| `HungeringSoulLodgesWithNecrosisAndLeapsEightMetresOnItsHostsDeathPayingTwo` | C, row | Necrosis, 2 paid, leaps 6 m; control: 15 m off, nothing |
+| `RestlessSpiritsFlyAtTheNearestWithNecrosisAndAKillPaysOne` | C, row | a kill pays 1; Necrosis on the next; control: no more paid |
+| `LastTollDragsTheTwelveMetreRingInWithNecrosisAndPaysFiveForEachKill` | C, row | 10 for two kills; dragged, Necrosis; control: 13 m untouched |
+| `PaleRiderCripplesWhatItRunsThroughByFiftyAndAKillPaysFive` | C, row | 50 spent, 5 paid; 50 for 4 s; control: 5 m off the path |
+| `DanseMacabreDancesFourSecondsAndEachDeathPaysFiveAndAddsHalfASecondToEight` | C, row | 4 s to 8; 9 deaths pay 45; control: the ninth adds no time |
+| `GrimSwathMowsHalfAgainAsHardAtAHundredFervourToItsCeilingAndAKillPaysTwo` | C, row | 1.5 and 1.75; a kill pays 2; control: the swing at none |
+| `ColdBloodGrantsAPercentMoreForEachFourFervourHeldForSixSecondsAndHoldsItFromDecay` | C, row | 6 s, 25%, no decay; control: decay before it |
+| `DeathRattleCripplesWithinTwelveMetresByTwentyAndTheRattledDeadRiseAsHusks` | C, row | 20 for 8 s on two; one husk, 8 s, 3, 4 m; control: 13 m |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 31 rows (from 22) and the nine rows' DS3 keys; `Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder`
+reads 14 waiting (from 23) and 37 of 51 shaped (from 28). No DataTable pin moves: no row is added to either table.
+**The whole suite is registered as 5458**: slice DS2's registered 5440 and these 18; a prediction, the run is the
+figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B two; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N6 | `CataclysmKillFervour.cpp` | `if (!Skill \|\| Skill->Params.KillFervour <= 0.0f)` becomes `if (true \|\| !Skill \|\| Skill->Params.KillFervour <= 0.0f)` | `AStrikeStatingKillFervourPays...`, `RestlessSpiritsFly...`, `LastTollDrags...`, `PaleRiderCripples...`, `GrimSwathMows...` |
+| G2, N7 | `CataclysmSkillTemplate.cpp` | `return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(` (in `FervourHeldBy`) becomes `return 0.0f * FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(` | `AStrikeScalingByFervour...`, `ASelfBuffScalingByFervour...`, `GrimSwathMows...`, `ColdBloodGrants...` |
+| G3, N8 | `CataclysmFervour.cpp` | `if (UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))` becomes `if (false && UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Character))` | `ASelfBuffThatHoldsFervour...`, `ColdBloodGrants...` |
+| G4, N10 | `CataclysmSkillTemplates.cpp` | `const float Added = FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);` becomes `const float Added = 0.0f * FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);` | `AFlickerItsDeathsLengthenGains...`, `DanseMacabreDances...` (not the fresh-circle test, which this break leaves working) |
+| G5, N5 | `CataclysmRisingCurse.cpp` | `if (!UCataclysmKillFervour::CarriesACurseLaidBy(Dying, Mark->Curses, Curser))` becomes `if (true \|\| !UCataclysmKillFervour::CarriesACurseLaidBy(Dying, Mark->Curses, Curser))` | `ACreatureDyingUnderARisingCurse...`, `DeathRattleCripples...` |
+
+**Python checks moved with the rows:** the script's built rows 22 to 31 and what each waiting row waits on
+(`test_reapply_death_skills_workbook.py`); the undesigned count 77 of 198 to 68 (`CataclysmUndesignedSkill.h`); a
+rising curse names its kind in `RisesAs` and is a Debuff (`test_minion_skill_shapes.py`, three checks widened, one
+added); the death hook pinned (`test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`). **New:** in
+`test_death_skill_shape_keys.py`, each new key accepted on its rows' cells and refused where it would do nothing, and
+`validate_risen_kinds` on hand-built tables; in the script's tests, a rising curse waiting with the row its kind is
+read from.
+
+### What was run, on `b843c1000`
+
+- **Full Python suite: "1 failed, 8371 passed, 9 skipped in 359.75s"; JUnit 8381 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the twenty changed and new C++ files: "20 files read, 0 with complaints". The
+  engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells
+  to write; nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Ten Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `7f52f4c10`** (the rename
+  after it touched no Python), each failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N6 | the Debuff-without-`OnDeath=SpreadDebuff` refusal made `if False and ...` | `test_a_curse_paying_kill_fervour_without_marking_the_death_is_refused` |
+| P2, N6 | the below-nought refusal made `if False and ...` | `test_kill_fervour_below_nought_is_refused` |
+| P3, N7 | the `ScalingSource=Fervour` shape refusal made `if False and ...` | the three `test_scaling_by_the_fervour_held_on_a_shape_that_does_not_read_it_is_refused` |
+| P4, N10 | the refusal of `DurationPer` off a flicker counting kills made `if False and ...` | two `test_a_lengthening_a_move_would_not_read_is_refused` |
+| P5, N10 | the nothing-to-cap refusal made `if False and ...` | its `test_a_lengthening_a_move_would_not_read_is_refused` case |
+| P6, N10 | the ceiling-below-`Duration` refusal made `if False and ...` | its `test_a_lengthening_a_move_would_not_read_is_refused` case |
+| P7, N5 | the off-a-Debuff refusal made `if False and ...` | its `test_a_rising_curse_that_could_raise_nothing_is_refused` case |
+| P8, N5 | the `RisesAs`-without-`OnDeath=Rise` refusal made `if False and ...` | its `test_a_rising_curse_that_could_raise_nothing_is_refused` case |
+| P9, N5 | `validate_risen_kinds`' one-row rule made `if False and ...` | the four `test_a_risen_kind_no_single_summon_row_of_its_damage_type_raises_is_refused` |
+| P10, the rows | `BUILT` without N5 in the script | six checks of `test_reapply_death_skills_workbook.py` (the committed workbook and table among them) and two of `test_minion_skill_shapes.py` |
+
+---
+
 ## 2026-11-24 — The Death weapon skills, slice DS2: ten more rows working; Bleed on a skill row, permanent raises that strike as they rise, a skill that explodes its caster's minions, a strike that commands, minions that lay their row's effect; four ranges brought to 14 m (#2885)
 
 **Said first:**
