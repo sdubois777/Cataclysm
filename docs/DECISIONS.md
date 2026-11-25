@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Death's eleven enemy modifiers, written ahead of their window: what each does, every figure the rows leave open, and eight questions for the owner
+
+**WRITTEN AND NOT COMPILED, AND IT HAS NO WINDOW YET.** On `feat/death-enemy-modifiers`, cut from `feat/bug-batch-2`
+(`632a43022`, which carries batch 1) with development `5cdd6bdc4` merged in, as the coordinating session asked, so it
+moves with the two bug batches; its own commits sit on top of that merge to be cherry-picked. The owner approved the
+work on 2026-11-24: "yes, write the Death enemy modifiers ahead". The rows are `game/Data/EnemyModifiers.csv`, generated
+from the design workbook's Enemy Modifiers sheet; neither was edited. Measured on development `6dd62aba6` before this:
+none of the eleven was built.
+
+### Said first
+
+- **Nothing here has been compiled or run in the engine.** Eleven automation tests are registered below, with a guard
+  proof for each, in four changes of at most three proofs.
+- **Two of the eleven have no status row, so no tag a player's status bar could show**: Mortal Reminder and Lingering
+  Decay. The design workbook's Debuffs sheet has no row for either, and this change was not to edit the workbook. Both
+  work and both are named on the status line this change adds (below), from state the code keeps rather than from a
+  tag. Q6 asks for the two rows.
+- **Haunting's debuff row is still "(planned)" with no figures** (`Debuff_Haunting`: "A debuff applied by a spectral copy
+  of an enemy that reduces all of a player's resistances"). Built from the sentence, with figures named in code; Q5.
+- **Undying Will's damage increase is not saved.** It is a rule's part of the creature's damage (#2723), and those parts
+  are not written to a save, so a save and load mid-fight brings the risen creature back without the 50%. Q7.
+- **The four "changes" are proof groups on one branch.** The eleven share files and functions, so they were written as
+  one change; the window may run the four groups below one after another.
+
+### The rows, what each does in play, and where
+
+| Row | In play | Built in |
+|---|---|---|
+| Grave Touch: "Deal more damage to players with less than 50% health." | A hit from it on a character below half its maximum health deals 50% more. A tick is not a hit. | `UCataclysmVitalAttributeSet`, the attacker's block beside Perfect Aim; `UCataclysmEnemyModifiers::GraveTouchMultiplier` |
+| Soul Eater: "Completely ignores player energy shields." | Every blow it causes, ticks included, passes the energy shield by to health. | `FCataclysmIncomingHit::bIgnoresEnergyShield`, step 8 of `UCataclysmDamageCalculation::Resolve` |
+| Mortal Reminder: "Attacks apply a debuff that prevents the player from being healed above their current HP for 4 seconds." | A hit that takes health sets a ceiling at the health it left for 4 seconds; a later hit sets it again, lower. Every heal of health stops there. | `MortalReminderOnHit`; the ceiling in `UCataclysmRegeneration::HealthHealingCeiling`, which every heal asks |
+| Spectral Shift: "Phase in and out of existence, becoming immune to damage." | Out of existence 5 seconds in every 15: no damage of any kind reaches it, as a shrouded creature's, and it goes on acting. "Phased" under its bar. | `TimedStep`; `ACataclysmEnemyCharacter::TakesNoDamage` and the health hold in `PreAttributeChange` |
+| Shadow Step: "Become invisible when not attacking." | Hidden, as the vision system hides a creature beyond sight (not drawn, no bar, not clickable, still struck by what reaches it), except from the moment an attack begins until a second after it ends. Never a creature that takes no hostile action. | `TimedStep`; the brain reveals it where it orders a swing and where an ability begins; shown again at its death |
+| Soul Tether: "Transfer a portion damage taken to the player as health degeneration over time." | A tenth of the health it loses to a blow, ticks included, is laid on whoever struck as damage over time across 4 seconds, added to what an earlier tether still owes. | `TetherOnHealthLost`, from the attribute set's on-hit block |
+| Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them." | Every 5 seconds it leaves a 3 metre zone at its feet that lasts 10 seconds; a character of the players' side standing in one has every heal of health cut by half, added to the other healing cuts and capped at 100. | `TimedStep`; `ACataclysmGroundZone::HealingLessPercentInside`; `UCataclysmRegeneration::TopUp` |
+| Final Curse: "Upon death, curse the player for 5 seconds, causing them to take damage when using abilities." | At its death the player is given Final Curse for 5 seconds; each skill used meanwhile, every slot but the basic attack, costs 5% of maximum health as Death damage. | `NoteDeathOfACarrier` from `HandleDeath`; `FinalCurseOnSkillUse` from `UCataclysmCombatEvents::NoteSkillUsed` |
+| Funeral Pyre: "Summon deadly bone pyres when hit that explode if not destroyed quickly." | Struck, it raises a bone pyre at the striker's feet, at most one every 8 seconds; the pyre holds a tenth of the creature's maximum health and explodes 3 seconds later for three of the creature's hits on everyone of the player's side within 3 metres, unless broken first. | `PyreWhenStruck`, `PyreStep`; the new `ACataclysmBonePyreCharacter`, a floor source |
+| Undying Will: "Enemies resurrect after death with reduced health but increased damage output." | Once, at once, where it fell: a creature of its kind and rung, with half its maximum health and 50% increased damage, whose own death pays nothing. Never the floor's Cataclysm Boss. | `ACataclysmDungeonGameMode::NoteDeathForUndyingWill`; `MakeUndyingWillRisen` |
+| Haunting: "A spectral copy of this enemy is created on death", with `Debuff_Haunting`. | A Common of its kind at half health where it fell, paying nothing; its hits cut each of the target's resistances by 25, never below nought, for 5 seconds, one application at a time. | `ACataclysmDungeonGameMode::NoteDeathForHaunting`; `MakeSpectralCopy`; `HauntOnHit` |
+
+Every one a medic or other creature that takes no hostile action would make harmful does nothing for it (Shadow Step,
+Lingering Decay, Final Curse, Funeral Pyre, Soul Tether), the rule of #1680. Each hit-applied effect refuses a target
+already dead, as Infernal Brand's does (#2874). The status line gains the words "Bone Pyre", "Spectral", "Undying",
+"Phased", "Final Curse", "Soul Tether", "Haunted", "Recovery capped" and "Decaying"
+(`UCataclysmCombatOverlay::DeathModifierTextFor`), so each effect a player cannot otherwise see is named.
+
+### The figures the rows leave open, and where each came from
+
+Researched 2026-11-24, every page fetched in this session and quoted from it:
+
+| Figure | Value | Source, or "a judgement" |
+|---|---|---|
+| Grave Touch's "more" | 50% | **A judgement**, below Path of Exile's Executioner monster modifier, "hit damage +% per 10% missing enemy life [15]", which is 75% at the row's line (poedb.tw/us/Archnemesis). Hits only, as Executioner's "hit damage" |
+| Mortal Reminder's shape | ceiling at current health | The row; Path of Exile 2's Hinder Aura monster modifier, "Prevents Recovery Above 50%" (poe2db.tw/us/Monster_Modifiers) |
+| Soul Eater's shape | the shield takes nothing | Path of Exile: "Chaos damage ignores energy shield, reducing life directly" (poedb.tw/us/Damage) |
+| Spectral Shift out | 5 s | Diablo III's Shielding elite affix, "5 sec duration" (maxroll.gg/d3/resources/elite-affixes); Diablo IV's Shielded, "The caster becomes Immune for a few seconds" (maxroll.gg/d4/resources/elites-affixes) |
+| Spectral Shift interval | 15 s | **A judgement**: hittable two thirds of the time |
+| Shadow Step's linger | 1 s after an attack ends | **A judgement**. Diablo IV's Veiled, "Enemy becomes invisible for a few seconds", is the nearest affix; invisibility is the vision system's own rule (`ACataclysmDungeonGameMode`, Fog of War) |
+| Soul Tether's portion | 10% of health lost | **A judgement**, of the health lost and never the blow, after the owner's Thorns of Glass ruling of 2026-11-18: "Your own damage no longer matters to it" |
+| Soul Tether's length | 4 s | Path of Exile's Corrupter monster modifier, "Corrupted Blood lasts for 4 seconds" (poedb.tw/us/Archnemesis) |
+| Lingering Decay's cut, interval, radius | 50%, 5 s, 3 m | This game's Necrotic Ground (`NecroticGroundHealingLessPercent`, `NecroticGroundSecondsBetweenPatches`, `NecroticGroundPatchRadiusCm`); Starving Aura's 50 too |
+| Lingering Decay's zone life | 10 s | **A judgement**: two zones from one creature at once. Diablo III's Poison Enchanted ground "lasts for 6 sec" (Maxroll) |
+| Final Curse's cost | 5% of maximum health per skill | Echo Chamber's self hit, sized from maximum health by the coordinating session on 2026-11-18 so "a small amount" holds at every level; Diablo II's Iron Maiden is the shape, a curse "condemning them to receive whatever pains they inflict upon others" (classic.battle.net) |
+| Funeral Pyre's fuse and cooldown | 3 s, 8 s | Diablo IV's Frozen: "Deals cold damage upon explosion after 3 seconds", cooldown 8 seconds (diablo4.wiki.fextralife.com/Elites); Diablo III's Frozen orbs take "4 sec to explode" |
+| Funeral Pyre's placing | at the striker's feet | Path of Exile's Crystal-skinned: "Fires crystals under Players when they hit you" (poedb.tw/us/Archnemesis) |
+| Funeral Pyre's blast, radius, health | 3 hits, 3 m, 10% | **Judgements**: below Infernal Brand's 5 hits, because a pyre can be walked from or broken |
+| Undying Will's health | 50% | Divine Resurgence's figure in this game |
+| Undying Will's damage | 50% increased | **A judgement**, in the increased bucket the row's word names |
+| Haunting's copy | a Common at half health | Diablo IV's Splitter: "Splits into 2 non-Elite mobs of the same type as the Elite on death" (Maxroll); Diablo III's Illusionist images "have 5% of normal life" (Maxroll) |
+| Haunting's cut and length | 25 resistance, 5 s | Abyssal Aura's 25, and Battle Cry's "for 5 seconds", the two figures the status table already gives a resistance debuff |
+
+### Questions for the owner, each with the answer built
+
+- **Q1, Soul Tether**: does "transfer" move a share of the blow off the creature, or copy it? **Built: a copy**; the
+  creature takes the whole blow, and the player is sent a tenth of the health it lost. Moving it would make it a second
+  Sacrificial Bond as well as a reflection.
+- **Q2, Lingering Decay**: zones left as it moves, or one zone where it dies? **Built: as it moves**, every 5 seconds,
+  because "leave behind" reads as a trail and a zone at death would be one the player has already left.
+- **Q3, Spectral Shift**: while out of existence, does it vanish and stop acting? **Built: no**; it stays drawn with
+  "Phased" under its bar and goes on fighting, as Diablo III's and IV's shielded elites do, because a creature the
+  player cannot see cannot be read for when it comes back.
+- **Q4, Final Curse**: is the basic attack an ability? **Built: no**; every other slot is. And it curses the player
+  wherever they stand and whoever killed it.
+- **Q5, Haunting**: the copy as a Common at half health, and its debuff at 25 resistance for 5 seconds, never below
+  nought. **Recommended and built**; the workbook's `Debuff_Haunting` row could carry these figures when it is next
+  edited.
+- **Q6, two missing status rows**: add Debuffs rows for Mortal Reminder and Lingering Decay, so they have tags and show
+  as statuses. **Recommended**; until then the status line's words are the only display.
+- **Q7, Undying Will**: its 50% is lost across a save and load, and the risen creature's modifiers are drawn afresh
+  for its rung, as Divine Resurgence's are, rather than its own. **Recommended: accept both for now**; saving rule
+  parts is its own change.
+- **Q8, Undying Will on the floor's Cataclysm Boss**: **built: it never rises**, because its death opens the stairs and
+  a new creature risen in its place is not the one the seal reads. Any other Boss rises like any creature.
+
+### Tests registered, and the guard proofs
+
+New file `game/Source/Cataclysm/Tests/CataclysmDeathModifierTests.cpp`, group `Cataclysm.DeathModifiers.`: **0 to 11**.
+`Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eleven rows too; that group's count does
+not move. Whole suite: the base's last measured total plus 11.
+
+One proof per modifier, each a single-line break that still compiles, prefix `Cataclysm.DeathModifiers.`, and each must
+fail exactly the one test named:
+
+| Change | Proof | Break | Must fail |
+|---|---|---|---|
+| 1, the blow | GT | `CataclysmEnemyModifiers.h`: `GraveTouchDamageMultiplier = 1.5f;` to `= 1.0f;` | `GraveTouchHitsHalfAgainHarderBelowHalfHealthAndNoTickIsChanged` |
+| 1 | SE | `CataclysmDamageCalculation.cpp`: `const float ShieldShare = Hit.bIgnoresEnergyShield` to `const float ShieldShare = false` | `SoulEaterPassesTheEnergyShieldByToHealth` |
+| 1 | MR | `CataclysmRegeneration.cpp`: `Ceiling = FMath::Min(Ceiling, Reminded);` to `Ceiling = FMath::Max(Ceiling, Reminded);` | `MortalReminderHoldsHealingToTheHealthAHitLeftForFourSeconds` |
+| 2, the creature's clocks | SS | `CataclysmEnemyModifiers.cpp`: `Enemy->SpectralShiftSecondsLeft = SpectralShiftOutSeconds;` to `Enemy->SpectralShiftSecondsLeft = 0.0f;` | `SpectralShiftTakesItOutOfExistenceForFiveSecondsInEveryFifteen` |
+| 2 | SH | `CataclysmEnemyModifiers.cpp`: `Stepping->SetActorHiddenInGame(true);` to `Stepping->SetActorHiddenInGame(false);` | `ShadowStepHidesTheCreatureUntilItAttacksAndForASecondAfter` |
+| 2 | ST | `CataclysmEnemyModifiers.h`: `SoulTetherShareOfHealthLost = 0.1f;` to `= 0.2f;` | `SoulTetherSendsATenthOfTheHealthItLostBackOverFourSeconds` |
+| 3, a death | FC | `CataclysmCombatEvents.cpp`: `FinalCurseOnSkillUse(User, Slot == ECataclysmAbilitySlot::BasicAttack);` to `FinalCurseOnSkillUse(User, true);` | `FinalCurseMakesEachSkillCostFivePercentForFiveSecondsAfterTheDeath` |
+| 3 | UW | `CataclysmEnemyModifiers.cpp`: `Part.IncreasedPercent = UndyingWillDamageIncreasedPercent;` to `Part.IncreasedPercent = 0.0f;` | `UndyingWillRaisesItOnceAtHalfHealthWithFiftyPercentIncreasedDamage` |
+| 3 | HA | `CataclysmEnemyModifiers.cpp`: `Modifier.ModifierMagnitude = FScalableFloat(-Taken);` to `Modifier.ModifierMagnitude = FScalableFloat(Taken);` | `HauntingLeavesACommonCopyAtHalfHealthWhoseHitsCutEveryResistance` |
+| 4, the floor | LD | `CataclysmRegeneration.cpp`: `+ UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(AbilitySystem.GetAvatarActor()),` to `+ 0.0f,` | `LingeringDecayLeavesAZoneEveryFiveSecondsThatHalvesHealingInside` |
+| 4 | FP | `CataclysmEnemyModifiers.cpp`: `Pyre->PyreExplosionDamage = FMath::Max(0.0f, AttackDamage) * FuneralPyreExplosionHits;` to `Pyre->PyreExplosionDamage = 0.0f;` | `FuneralPyreRaisesAPyreAtTheStrikerThatExplodesInThreeSecondsUnlessBroken` |
+
+No proof was run: this change has had no window.
+
+---
+
 ## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
 
 **Said first:**
