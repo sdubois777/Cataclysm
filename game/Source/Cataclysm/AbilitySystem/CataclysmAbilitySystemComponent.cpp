@@ -2128,6 +2128,27 @@ void UCataclysmAbilitySystemComponent::NoteMinionReplaced(bool bForExplosion,
 	NextAllowed = World->GetTimeSeconds() + IntervalSeconds;
 }
 
+bool UCataclysmAbilitySystemComponent::MayRenewMinionLifetime() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	return MinionLifetimeRenewalNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= MinionLifetimeRenewalNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionLifetimeRenewed(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+	MinionLifetimeRenewalNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
+}
+
 const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat =
 	TEXT("lethal_hit_survived_every_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat =

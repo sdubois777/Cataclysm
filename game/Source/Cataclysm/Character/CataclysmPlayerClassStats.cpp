@@ -1041,6 +1041,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmRegeneration::GiveShieldOnMinionDeath. Flat. No gameplay attribute and no base.
 		TEXT("curse_death_extra_imps"),
 		TEXT("energy_shield_on_minion_death_percent"),
+		// And two more of the same rework, each read off the summoner with no tags: Rekindled's seconds between two
+		// lifetimes renewed, read by ACataclysmMinion::RenewLifetimeIfRekindled when a minion's time runs out, above
+		// nought meaning the keystone is held; and The Swarm's flag by which a kill of the summoner's or of one of its
+		// minions summons a minion where the enemy fell, read by UCataclysmSummonSkill::SummonAtAKillFor. Flat. No
+		// gameplay attribute and no base.
+		TEXT("minion_lifetime_renewed_every_seconds"),
+		TEXT("kill_summons_minion_where_it_fell"),
 	};
 	return Stats;
 }

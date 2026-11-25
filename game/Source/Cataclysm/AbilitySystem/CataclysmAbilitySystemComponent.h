@@ -3042,6 +3042,16 @@ public:
 	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
 
 	/**
+	 * Whether Rekindled may keep a minion of this character's whose time has run out, now. The demonic tree rework of
+	 * 2026-11-24: "no more than once every 5 seconds". The shape `MayReplaceMinion` has: never renewed is allowed, and
+	 * no world means no clock and so no renewal. A clock of its own, so Press-Ganged's wait does not decide it.
+	 */
+	bool MayRenewMinionLifetime() const;
+
+	/** Record that a minion's lifetime was renewed, so the next waits `IntervalSeconds`. */
+	void NoteMinionLifetimeRenewed(float IntervalSeconds);
+
+	/**
 	 * The waits running for minions this character lost and will summon again.
 	 * Issue #1833 group E part 4b. Written by
 	 * `UCataclysmSummonSkill::ScheduleResummon`, and public so tests can count
@@ -5827,6 +5837,9 @@ protected:
 
 	/** When Rekindled may next replace a minion that exploded. -1 is never yet. */
 	float MinionExplosionReplacementNextAllowedSeconds = -1.0f;
+
+	/** When Rekindled may next keep a minion whose time ran out (the rework of 2026-11-24). -1 is never yet. */
+	float MinionLifetimeRenewalNextAllowedSeconds = -1.0f;
 
 	/** When Nothing Stops It may next save this character. -1 is never yet. */
 	float LethalHitSurvivalNextAllowedSeconds = -1.0f;
