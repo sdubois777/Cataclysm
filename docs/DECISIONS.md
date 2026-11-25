@@ -128,6 +128,18 @@ passed"). `python -m ruff check .`: "All checks passed!". `python tools/check_re
 0 with complaints". `python tools/generate_datatables.py --check` after the generator's move and before the new
 columns: "All 34 DataTable CSVs are up to date".
 
+**Two Python guard proofs**, `tools/prove_guard.py` `break_and_run` in a `git archive` copy of `cb92ec18d`, each
+running `tools/tests/test_passive_rows_carry_the_action_columns.py`:
+1. The refusal names the Passive Effects sheet: `"Enchantment Effects row", "Passive Effects row", 1)` in
+   `_passive_action_row` made `"Enchantment Effects row", "Enchantment Effects row", 1)`. "PROVED: 2 failed, 24 passed |
+   restored: 26 passed"; named: `test_a_refusal_names_the_passive_sheet`, `test_an_own_stack_row_with_no_event_is_refused`.
+2. The routing: `_passive_row_is_action_shaped`'s first test made `if False:`. "PROVED: 7 failed, 19 passed | restored: 26
+   passed"; named: `test_an_action_row_is_read_by_the_enchantment_rules`, `test_a_refusal_names_the_passive_sheet`,
+   `test_the_control_the_same_pool_is_accepted`, `test_a_second_condition_is_kept_on_a_stat_row`,
+   `test_an_action_row_may_not_count_enemies_in_a_radius`,
+   `test_two_rows_of_one_node_sharing_an_action_and_event_are_refused`,
+   `test_two_options_of_one_oath_may_share_an_action_and_event`.
+
 ---
 
 ## 2026-11-24 — The three Demonic passive trees reworked as their audits proposed: the Masochist, the Ravager and the Ritualist, in words, rows and code
