@@ -348,6 +348,16 @@ public:
 	static float ReservedFervourOf(const AActor* Commander);
 
 	/**
+	 * `ReservedFervourOf`, from a list of what `Commander` commands that the caller has already walked
+	 * (`ThingsCommandedBy(Commander)`). The one sum both answer from, so the two cannot disagree.
+	 *
+	 * FOR A CALLER THAT HAS THE LIST IN HAND: `UCataclysmAbilitySystemComponent::CurrentConditions` walks it on every
+	 * call to count minions, and asks this for the reserve a full bar is judged against (ruled 2026-11-25, the Death
+	 * trees' slice C), so the world is not walked twice.
+	 */
+	static float ReservedFervourAmong(const AActor* Commander, const TArray<AActor*>& Commanded);
+
+	/**
 	 * Whether a new follower reserving `NewReserve` fits in this character's
 	 * pool. Issue #1934, ruling R1, and since issue #2787 the only limit on how
 	 * many of a kind stand: the owner's ruling of 2026-11-20 removed every count

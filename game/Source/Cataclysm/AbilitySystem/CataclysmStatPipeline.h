@@ -550,6 +550,9 @@ enum class ECataclysmStatCondition : uint8
 	 * NO CLASS RESOURCE MEANS NO, which is every enemy in the game. A bonus that
 	 * asks about a bar the character does not have is correctly worth nothing to
 	 * it, and that is the right answer rather than a fault.
+	 *
+	 * THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK (`FCataclysmStatConditions::ClassResourceReserved`), ruled
+	 * 2026-11-25 (the Death trees' slice C), because every gain stops there.
 	 */
 	ClassResourceAtMaximum
 		UMETA(DisplayName = "Class Resource At Maximum"),
@@ -2905,6 +2908,21 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ClassResourceMaximum = -1.0f;
+
+	/**
+	 * What the character's minions, thralls and machines hold back of that pool (`UCataclysmCommand::
+	 * ReservedFervourOf`). Ruled by the coordinating session on 2026-11-25 (the Death trees' slice C).
+	 *
+	 * WHAT A FULL BAR IS JUDGED AGAINST. Every gain stops at the maximum less this
+	 * (`UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked`), so a character with a minion out could never
+	 * reach the gross maximum, and `ClassResourceAtMaximum` and the full-bar crossing never held for it: a Ritualist
+	 * with an imp out, or a Necromancer with any minion, was never "full". Both now compare against the maximum less
+	 * this. `ClassResourceAbovePercent` is left on the gross maximum; the ruling covers "full" only.
+	 *
+	 * NOUGHT BY DEFAULT, which is a character holding nothing back.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ClassResourceReserved = 0.0f;
 
 	/**
 	 * How much health the character owes, as a percentage of its maximum.

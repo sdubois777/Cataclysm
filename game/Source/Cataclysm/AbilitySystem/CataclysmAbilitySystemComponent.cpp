@@ -1276,6 +1276,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	const TArray<AActor*> Commanded = UCataclysmCommand::ThingsCommandedBy(GetAvatarActor());
 	State.MinionsHeld = Commanded.Num();
 
+	// AND WHAT THEY HOLD BACK OF THE CLASS RESOURCE, from the same list, for
+	// the full bar `ClassResourceAtMaximum` judges against the maximum less it.
+	// Ruled 2026-11-25 (the Death trees' slice C).
+	State.ClassResourceReserved = UCataclysmCommand::ReservedFervourAmong(GetAvatarActor(), Commanded);
+
 	// AND HOW MANY OF THEM ARE DEPLOYABLE MACHINES. Issue #1833, deployable
 	// Part 3: "Each active gadget increases your evasion chance by 5%-10%".
 	for (const AActor* Each : Commanded)

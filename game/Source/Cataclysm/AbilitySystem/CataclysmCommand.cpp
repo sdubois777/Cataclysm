@@ -829,8 +829,13 @@ bool UCataclysmCommand::HasRoomForAnotherThrall(const AActor* Commander,
 
 float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
 {
+	return ReservedFervourAmong(Commander, ThingsCommandedBy(Commander));
+}
+
+float UCataclysmCommand::ReservedFervourAmong(const AActor* Commander, const TArray<AActor*>& Commanded)
+{
 	float Reserved = 0.0f;
-	for (const AActor* Follower : ThingsCommandedBy(Commander))
+	for (const AActor* Follower : Commanded)
 	{
 		if (const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower))
 		{

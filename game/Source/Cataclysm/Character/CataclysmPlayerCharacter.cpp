@@ -1079,9 +1079,20 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	// stamp did not apply the same rule the window and the condition would
 	// disagree, and every character with no class resource would be handed a
 	// bonus written for a full one.
-	const auto IsFull = [](float Held, float Maximum)
+	//
+	// AND THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK, as that predicate
+	// now judges it. Ruled by the coordinating session on 2026-11-25 (the Death
+	// trees' slice C): every gain stops at the maximum less the reserve, so a
+	// character with a minion out never reached the gross maximum, never
+	// crossed into "full", and never opened this window. The reserve is read
+	// once, now, for both sides: a reservation starting cuts the pool to what
+	// is left (`UCataclysmCommand::ClampFervourToSpendable`), and a bar full
+	// before it is full after it, so no crossing is reported for that.
+	const float Reserved = FMath::Max(0.0f, UCataclysmCommand::ReservedFervourOf(this));
+	const auto IsFull = [Reserved](float Held, float Maximum)
 	{
-		return Maximum > 0.0f && Held >= Maximum;
+		const float Fillable = Maximum - Reserved;
+		return Maximum > 0.0f && Fillable > 0.0f && Held >= Fillable;
 	};
 
 	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))

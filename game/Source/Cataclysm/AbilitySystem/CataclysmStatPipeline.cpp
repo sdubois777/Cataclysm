@@ -811,9 +811,22 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// A MAXIMUM OF NOTHING REFUSES TOO. A pool that cannot hold anything is
 		// not at its maximum in any sense a node means, and answering yes would
 		// give the bonus to a character that has never generated a point.
-		return State.ClassResourceHeld >= 0.0f
-			&& State.ClassResourceMaximum > 0.0f
-			&& State.ClassResourceHeld >= State.ClassResourceMaximum;
+		//
+		// AND THE TOP IS THE MAXIMUM LESS WHAT MINIONS HOLD BACK. Ruled by the
+		// coordinating session on 2026-11-25 (the Death trees' slice C). Every
+		// gain stops there, so a character with a minion out never reached the
+		// gross maximum and this never held for it. A reserve taking the whole
+		// pool leaves nothing to fill, which refuses, as a maximum of nothing
+		// does. The full-bar crossing in `ACataclysmPlayerCharacter::
+		// OnClassResourceChanged` applies the same rule.
+		{
+			const float Fillable =
+				State.ClassResourceMaximum - FMath::Max(0.0f, State.ClassResourceReserved);
+			return State.ClassResourceHeld >= 0.0f
+				&& State.ClassResourceMaximum > 0.0f
+				&& Fillable > 0.0f
+				&& State.ClassResourceHeld >= Fillable;
+		}
 
 	case ECataclysmStatCondition::EnergyShieldAtMaximum:
 		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
