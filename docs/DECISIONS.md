@@ -103,7 +103,12 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the surve
 
 ### THE PYTHON SUITE
 
-Run on `1d97ba1d2bd990cc9dabbb325996dde3586aabe6`, with nothing in the worktree changing during the run:
+**AFTER THE RULING ON A REARMED TRAP**, run on `365f0b949d47b54751c9b0b106d20ec235341a27`, with nothing in the worktree
+changing during the run: **1 failed, 8452 passed, 9 skipped in 403.69s**, and the JUnit file `tests="8462" failures="1"
+errors="0" skipped="9"`, which is 8,452 passed: the two agree. The one failure is the asset check below. Ruff: all
+checks passed; `check_resolved_cpp.py` on the twelve C++ files this branch changes: 0 with complaints.
+
+Before that ruling, run on `1d97ba1d2bd990cc9dabbb325996dde3586aabe6`, with nothing in the worktree changing during the run:
 `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
 **1 failed, 8452 passed, 9 skipped in 402.79s**, and the JUnit file `tests="8462" failures="1" errors="0"
 skipped="9"`, which is 8,452 passed: the two agree. The one failure is
