@@ -816,6 +816,18 @@ public:
 	 */
 	float TimesSizedByFervourHeld() const;
 
+	/** Patient Blade's clock: record a payment for a Boss tick now. The Death trees' slice C4d2 (2026-11-25). */
+	void NoteBossTickPaid();
+
+	/** How long ago the last payment for a Boss tick was made, in seconds, or -1 if none has been. */
+	float SecondsSinceBossTickPaid() const;
+
+	/**
+	 * Death by Inches' count: add one landed hit on `Boss` and answer the count, kept per creature and never reset, as
+	 * ruled. The Death trees' slice C4d2 (2026-11-25).
+	 */
+	int32 CountBossHit(const AActor* Boss);
+
 	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
 	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
@@ -6412,6 +6424,12 @@ protected:
 
 	/** When the Chain Execution charge runs out, in world seconds; -1 for none. See `HoldsNextHitCritical`. */
 	float NextHitCriticalUntilSeconds = -1.0f;
+
+	/** When the last Boss tick was paid for, in world seconds; -1 for never. See `NoteBossTickPaid`. */
+	float BossTickPaidAtSeconds = -1.0f;
+
+	/** Landed hits on each Boss, for Death by Inches. See `CountBossHit`. */
+	TMap<TWeakObjectPtr<const AActor>, int32> BossHitsCounted;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

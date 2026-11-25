@@ -1162,6 +1162,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// strike chance and an evaded blow is never reported critical, so nothing
 	// refused here carries `bCritical`. It is refused all the same, so that the
 	// rule does not rest on either of those staying true.
+	// A TICK OF THE CHARACTER'S OWN DAMAGE OVER TIME ON A BOSS PAYS A KILL'S FERVOUR, at most once every so many
+	// seconds: Patient Blade, the Death trees' slice C4d2 (2026-11-25). Here, before ticks are dropped below; a minion's
+	// tick is left out.
+	if (Notice.bDamageOverTime && !Notice.bEvaded && !Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::PayForABossTick(GetAbilitySystemComponent(), Notice.Target);
+	}
+
 	if (Notice.bDamageOverTime || Notice.bEvaded)
 	{
 		return;
@@ -1279,6 +1287,14 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags,
 						   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 						   Notice.Target);
+	}
+
+	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
+	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is
+	// left out, as the cull leaves it.
+	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
+	{
+		UCataclysmFervour::CountAHitOnABoss(Acting, Notice.Target);
 	}
 }
 

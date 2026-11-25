@@ -103,8 +103,10 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # `cooldowns_recover_faster_percent`.
     # 31 THE SAME DAY, for slice C4a's Hunting Leap: `skill_range`. 32 THE SAME
     # DAY, for slice C4b1's Any Fuel: `class_resource_generation`. 33 THE SAME
-    # DAY, for slice C4d1's Telling Blows: `fervour_per_critical_strike`.
-    assert sizes["ConditionedProbes"] == 33, sizes
+    # DAY, for slice C4d1's Telling Blows: `fervour_per_critical_strike`. 35
+    # THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches:
+    # `boss_ticks_pay_a_kill_every_seconds` and `boss_hits_counted_as_a_kill_every`.
+    assert sizes["ConditionedProbes"] == 35, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

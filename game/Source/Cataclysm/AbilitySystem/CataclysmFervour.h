@@ -845,6 +845,47 @@ public:
 	 */
 	static float GainOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Struck);
 
+	/**
+	 * The seconds between two payments of an own kill's Fervour for a tick of the character's damage over time on a
+	 * Boss: the Shadow's Patient Blade, "Against a Boss, your damage over time ticks also count as kills for filling
+	 * Fervour, once every 2 seconds". Its row is under `target_is_boss`, asked against the character ticked. The Death
+	 * trees' slice C4d2 (2026-11-25), as ruled: Fervour only, one clock per character.
+	 */
+	static const TCHAR* BossTicksPayAKillEverySecondsStat;
+
+	/**
+	 * Every how many landed hits on one Boss count as a kill of it: the Shadow's Death by Inches, "Against a Boss, every
+	 * 10th hit you land counts as killing an Elite or stronger enemy, for Fervour and for everything else that happens
+	 * when you kill". Its row is under `target_is_boss`, asked against the character struck. The Death trees' slice C4d2
+	 * (2026-11-25), as ruled: the count is kept per Boss and never reset.
+	 */
+	static const TCHAR* BossHitsCountedAsAKillEveryStat;
+
+	/**
+	 * Patient Blade: for a tick of the character's damage over time on `Ticked`, pay one own kill's Fervour of it
+	 * (`GainOnOwnKill`), unless the character's last such payment was less than the stat's seconds ago. Nothing for a
+	 * character without the stat or a creature that is not a Boss (the row's condition). Answers what was added. Fervour
+	 * only: no kill is raised and nothing else a kill does happens.
+	 */
+	static float PayForABossTick(UAbilitySystemComponent* AbilitySystem, const AActor* Ticked);
+
+	/**
+	 * Death by Inches: count a landed hit of the character's on `Struck`, and at every Nth, N the stat, credit a kill of
+	 * it without its death (`CreditAKillWithoutADeath`). Nothing for a character without the stat, a creature that is not
+	 * a Boss, or one already dead. Answers whether a kill was credited.
+	 */
+	static bool CountAHitOnABoss(UAbilitySystemComponent* AbilitySystem, AActor* Struck);
+
+	/**
+	 * Credit the character with a kill of `Slain` that has not died, as ruled for Death by Inches (Q7): decay given back
+	 * (Reclaimed), the kill's Fervour, the stamp (the hold before decay and `seconds_after_kill`), Grim Wake's marks, and
+	 * `kill` raised to every row with `Slain` as its target and its maximum health as its amount. LEFT OUT, because each
+	 * needs a body: the overkill explosion, The Ferryman's burst and Passed On (the shares the rows record are taken and
+	 * dropped), `afflicted_death`, risen imps, the corpse; and the player state's and weapon's kill tallies, because
+	 * nothing died. The Death trees' slice C4d2 (2026-11-25).
+	 */
+	static void CreditAKillWithoutADeath(UAbilitySystemComponent* AbilitySystem, AActor* Slain);
+
 	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
 	static FString SoulCollectorRowKeyPrefix();
 

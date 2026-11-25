@@ -4000,6 +4000,29 @@ float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySys
 	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
 }
 
+void UCataclysmAbilitySystemComponent::NoteBossTickPaid()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		BossTickPaidAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceBossTickPaid() const
+{
+	const UWorld* World = GetWorld();
+	return World && BossTickPaidAtSeconds >= 0.0f ? World->GetTimeSeconds() - BossTickPaidAtSeconds : -1.0f;
+}
+
+int32 UCataclysmAbilitySystemComponent::CountBossHit(const AActor* Boss)
+{
+	if (!Boss)
+	{
+		return 0;
+	}
+	return ++BossHitsCounted.FindOrAdd(Boss);
+}
+
 bool UCataclysmAbilitySystemComponent::HoldsNextHitCritical() const
 {
 	const UWorld* World = GetWorld();

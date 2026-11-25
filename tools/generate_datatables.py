@@ -11010,6 +11010,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # struck as the target (`UCataclysmFervour::GainOnCriticalStrike`), so
     # Telling Blows' rarity row is judged. The Death trees' slice C4d1.
     "fervour_per_critical_strike": ASKER_PASSES_A_HIT_DEALT,
+    # AND PATIENT BLADE'S AND DEATH BY INCHES', each asked with the Boss as the
+    # target (`UCataclysmFervour::PayForABossTick` and `CountAHitOnABoss`), so
+    # their `target_is_boss` is judged. The Death trees' slice C4d2.
+    "boss_ticks_pay_a_kill_every_seconds": ASKER_PASSES_A_HIT_DEALT,
+    "boss_hits_counted_as_a_kill_every": ASKER_PASSES_A_HIT_DEALT,
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
@@ -11128,7 +11133,11 @@ CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS: dict[str, frozenset[str]] = {
     }) for stat in ("fervour_per_kill", "fervour_kill_decay_grace_seconds",
                     # AND THE FERVOUR A CRITICAL STRIKE PAYS, asked with the
                     # character struck and nothing else (slice C4d1).
-                    "fervour_per_critical_strike")},
+                    "fervour_per_critical_strike",
+                    # AND PATIENT BLADE'S AND DEATH BY INCHES', asked with the
+                    # Boss and nothing else (slice C4d2).
+                    "boss_ticks_pay_a_kill_every_seconds",
+                    "boss_hits_counted_as_a_kill_every")},
 }
 
 

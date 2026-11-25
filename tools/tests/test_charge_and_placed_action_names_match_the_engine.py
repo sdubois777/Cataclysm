@@ -846,6 +846,56 @@ def test_chain_execution_makes_the_next_landed_hit_critical_and_is_used_by_it() 
     assert calc.index("bEvaded = true") < certain
 
 
+def test_patient_blade_pays_a_kill_for_a_boss_tick_once_every_its_seconds() -> None:
+    """The Death trees' slice C4d2 (2026-11-25), as ruled (Q6): Fervour only,
+    one clock per character. The hit handler pays a tick of the character's own
+    damage over time, not a minion's, before ticks are dropped; the payment asks
+    the stat against the creature ticked, refuses inside the seconds, notes the
+    clock and pays one own kill's Fervour, and raises no kill. Read from the
+    code with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"if \(Notice\.bDamageOverTime && !Notice\.bEvaded && !Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*"
+                     r"\{\s*UCataclysmFervour::PayForABossTick\(GetAbilitySystemComponent\(\), Notice\.Target\);\s*\}\s*"
+                     r"if \(Notice\.bDamageOverTime \|\| Notice\.bEvaded\)", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("float UCataclysmFervour::PayForABossTick(")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    assert re.search(r"FName\(BossTicksPayAKillEverySecondsStat\),[^;]*false, Ticked\);", body)
+    assert re.search(r"if \(Since >= 0\.0f && Since \+ 1\.0e-3f < Every\)\s*\{\s*return 0\.0f;", body)
+    assert re.search(r"Cataclysm->NoteBossTickPaid\(\);\s*return GainOnOwnKill\(AbilitySystem, Ticked\);", body)
+    assert "ActOnEvent" not in body and "NoteOwnKill" not in body
+
+
+def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_death() -> None:
+    """The Death trees' slice C4d2 (2026-11-25), as ruled (Q7). The hit handler
+    counts each landed hit of the character's own, after the hit's rows; the
+    count is kept per creature; at every Nth a kill is credited without a
+    death, in the kill handler's order, with `kill` raised against the Boss;
+    and the shares that need a body are taken and dropped. Read from the code
+    with comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"critical_strike\"\)\)[^;]*;\s*\}\s*"
+                     r"if \(!Cast<ACataclysmMinion>\(Notice\.DealtBy\)\)\s*\{\s*"
+                     r"UCataclysmFervour::CountAHitOnABoss\(Acting, Notice\.Target\);", player)
+    engine = code_without_comments(SOURCE)
+    assert "return ++BossHitsCounted.FindOrAdd(Boss);" in engine
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    count = fervour[fervour.index("bool UCataclysmFervour::CountAHitOnABoss("):]
+    count = count[:count.index("\n}\n")]
+    assert "UCataclysmSkillEffects::IsDead(Struck)" in count
+    assert re.search(r"if \(Cataclysm->CountBossHit\(Struck\) % Nth != 0\)", count)
+    credit = fervour[fervour.index("void UCataclysmFervour::CreditAKillWithoutADeath("):]
+    credit = credit[:credit.index("\n}\n")]
+    assert re.search(r"GiveBackDecayOnKill\(AbilitySystem\);\s*GainOnOwnKill\(AbilitySystem, Slain\);\s*"
+                     r"NoteOwnKill\(AbilitySystem, Slain\);\s*MarkNearAKill\(AbilitySystem, Slain,", credit)
+    assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"kill\"\)\), nullptr, SlainMaximum, true, Slain\);", credit)
+    for taken in ("TakePendingOverkillExplosionSharePercent", "TakePendingOverkillExplosionRadiusCm",
+                  "TakePendingSlainBurstSharePercent", "TakePendingKillingBlowExplosionSharePercent"):
+        assert f"Acting->{taken}();" in credit, taken
+    for left_out in ("MarkDead", "ExplodeForOverkill", "BurstTheSlain", "AnnounceAfflictedDeath", "NoteDeath"):
+        assert left_out not in credit, left_out
+
+
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:
     """The Death trees' slice C4c2 (2026-11-25), as ruled (Q7). The generator's
     name is the engine's, on `afflicted_death` only; the item recognises the

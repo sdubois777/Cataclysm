@@ -628,6 +628,16 @@ NODES: tuple[Node, ...] = (
          (A("cooldown_reduce_all", 1, event="kill", fraction_of="for_each_hundred_class_resource_held"),),
          option=3),
     Node(SH + "capstone_100", "Chain Execution", (A("next_hit_critical", 2, event="kill"),), option=2),
+
+    # ---- SLICE C4d2 (2026-11-25): A BOSS FIGHT FILLS THE BAR WITHOUT KILLS.
+    # Patient Blade pays one kill's Fervour of a Boss for a tick of your damage
+    # over time on it, once every 2 seconds; Death by Inches counts every 10th
+    # hit you land on one Boss as a kill of it, everything that needs a body
+    # left out.
+    Node(SH + "keystone_a_kC", "Patient Blade",
+         (R("boss_ticks_pay_a_kill_every_seconds", "flat", 2, cond="target_is_boss"),)),
+    Node(SH + "keystone_b_kC", "Death by Inches",
+         (R("boss_hits_counted_as_a_kill_every", "flat", 10, cond="target_is_boss"),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

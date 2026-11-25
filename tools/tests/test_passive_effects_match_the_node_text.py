@@ -721,7 +721,9 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 582 THE SAME DAY, for slice C4d1: the Shadow's starting node's "2 for
 #: each critical strike you land", Telling Blows, Reaper's Edge (two: the
 #: execute and the doubled payment), Relentless and Chain Execution.
-AUTHORED_ROWS = 582
+#:
+#: AND TO 584 THE SAME DAY, for slice C4d2: Patient Blade and Death by Inches.
+AUTHORED_ROWS = 584
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1183,7 +1185,9 @@ AUTHORED_ROWS = 582
 #: AND TO 352 THE SAME DAY, for slice C4d1: Telling Blows, and the Shadow's
 #: 100 vow (`Shadow_capstone_100`), which had no row until Relentless and Chain
 #: Execution. Reaper's Edge is an option of a capstone already counted.
-AUTHORED_NODES = 352
+#:
+#: AND TO 354 THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches.
+AUTHORED_NODES = 354
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2608,6 +2612,10 @@ VALUE_FORMS = {
     # each critical strike".
     "fervour_per_critical_strike": ("and {value:g} for each critical strike",
                                     "+{value:g} Fervour per point for each critical strike"),
+    # SLICE C4d2 (2026-11-25): Patient Blade's "once every 2 seconds", and Death
+    # by Inches' "every 10th hit you land".
+    "boss_ticks_pay_a_kill_every_seconds": ("once every {value:g} seconds",),
+    "boss_hits_counted_as_a_kill_every": ("every {value:g}th hit",),
     # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
     # 3 points".
     "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),

@@ -55,6 +55,9 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Shadow_keystone_b_kC", "0", "target_rarity_at_least"):
+        "Death by Inches' 'counts as killing an Elite or stronger enemy' is met by the Boss's own rung, the kill "
+        "credited against the Boss itself, as ruled (Q7 b) in the Death trees' slice C4d2",
     ("SoulCollector_basic_b_a0", "0", "seconds_after_kill"):
         "Kill Chain's 'within 2 seconds of each other' is its stacks' 2-second life (own_stacks, StackSeconds 2)",
     ("SoulCollector_basic_spine_004", "0", "seconds_after_kill"):

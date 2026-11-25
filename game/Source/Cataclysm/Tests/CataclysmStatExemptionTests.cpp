@@ -8035,6 +8035,76 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * The lines the two Boss probes below give: `Stat` at `Value` under the health condition every conditioned probe
+	 * stands on, and 10 Fervour a kill unconditioned, so a credited kill shows as a payment.
+	 */
+	void BossProbeLines(FScopedFighter& Fighter, const TCHAR* Stat, float Value)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = Value;
+		Row.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Row.ConditionValue = 50.0f;
+		FCataclysmStatModifier Pay;
+		Pay.Bucket = ECataclysmStatBucket::Flat;
+		Pay.Source = ECataclysmModifierSource::Enchantment;
+		Pay.Value = 10.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(Stat)).Modifiers = {Row};
+		Inputs.FindOrAdd(FName(UCataclysmFervour::PerKillStat)).Modifiers = {Pay};
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * `boss_ticks_pay_a_kill_every_seconds`, read by `UCataclysmFervour::PayForABossTick`. The Death trees' slice C4d2
+	 * (2026-11-25), shipped under `target_is_boss` (Patient Blade); a health condition stands for it, as for every
+	 * conditioned probe. Against a plain actor, which the health condition does not look at.
+	 */
+	void ProbeConditionedBossTicksPayAKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		const AActor* Ticked = World->SpawnActor<AActor>();
+		BossProbeLines(Fighter, UCataclysmFervour::BossTicksPayAKillEverySecondsStat, 2.0f);
+		Test.TestEqual(TEXT("boss_ticks_pay_a_kill_every_seconds at full health: a tick pays nothing"),
+					   UCataclysmFervour::PayForABossTick(Fighter.AbilitySystem, Ticked), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("boss_ticks_pay_a_kill_every_seconds is asked for, so below half health a tick pays a kill"),
+					   UCataclysmFervour::PayForABossTick(Fighter.AbilitySystem, Ticked), 10.0f, 0.001f);
+	}
+
+	/**
+	 * `boss_hits_counted_as_a_kill_every`, read by `UCataclysmFervour::CountAHitOnABoss`. The Death trees' slice C4d2
+	 * (2026-11-25), shipped under `target_is_boss` (Death by Inches); a health condition stands for it. At 1, every hit
+	 * counted is a kill.
+	 */
+	void ProbeConditionedBossHitsCountedAsAKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Fighter);
+		AActor* Struck = World->SpawnActor<AActor>();
+		BossProbeLines(Fighter, UCataclysmFervour::BossHitsCountedAsAKillEveryStat, 1.0f);
+		Test.TestFalse(TEXT("boss_hits_counted_as_a_kill_every at full health: a hit counts as no kill"),
+					   UCataclysmFervour::CountAHitOnABoss(Fighter.AbilitySystem, Struck));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("boss_hits_counted_as_a_kill_every is asked for, so below half health a hit is a kill"),
+					  UCataclysmFervour::CountAHitOnABoss(Fighter.AbilitySystem, Struck));
+	}
+
+	/**
 	 * `fervour_kill_decay_per_second`, read by `UCataclysmFervour::KillDecayStep`. The Death trees of 2026-11-24,
 	 * shipped under `seconds_after_striking_a_boss` (Siege of One). A character that has never killed is not held, so
 	 * the decay runs at once.
@@ -12621,6 +12691,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_kill"),         &ProbeConditionedFervourPerKill},
 			// AND THE SLICE C4d1's TELLING BLOWS (2026-11-25).
 			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
+			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
+			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
+			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
 			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
 			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("health_cost_suppressed"),   &ProbeConditionedHealthCostSuppressed},
@@ -12704,6 +12777,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_kill"), &ProbeConditionedFervourPerKill},
 			// AND THE DEATH TREES' SLICE C4d1 (2026-11-25): the Fervour a critical strike pays, the same way.
 			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
+			// AND THE DEATH TREES' SLICE C4d2 (2026-11-25): Patient Blade's and Death by Inches', the same way.
+			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
+			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
 			{TEXT("fervour_kill_decay_per_second"), &ProbeConditionedFervourKillDecayPerSecond},
 			{TEXT("fervour_kill_decay_grace_seconds"), &ProbeConditionedFervourKillDecayGraceSeconds},
 			{TEXT("melee_arc_full_circle"), &ProbeMeleeArcFullCircle},

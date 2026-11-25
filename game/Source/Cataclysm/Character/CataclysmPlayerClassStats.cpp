@@ -1149,6 +1149,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.
 		TEXT("fervour_per_critical_strike"),
+		// And the Shadow's Patient Blade and Death by Inches, the Death trees' slice C4d2: the seconds between Boss tick
+		// payments, and every how many hits on a Boss count as a kill. Read by UCataclysmFervour against the Boss. No
+		// attribute and no base.
+		TEXT("boss_ticks_pay_a_kill_every_seconds"),
+		TEXT("boss_hits_counted_as_a_kill_every"),
 		// And the Soul Collector's Reclaimed, Claimed and Death's Toll, the Death trees' slice C4b2: the seconds of decay
 		// a kill gives back, the seconds after a hit within which a death pays its Fervour, and the switch that makes a
 		// follower's kill this character's. Read by UCataclysmFervour. No attribute and no base.

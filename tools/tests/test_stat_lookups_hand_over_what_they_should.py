@@ -1285,6 +1285,16 @@ INVENTORY = {
         "2026-11-24), asked when the Fervour pool becomes full; a crossing "
         "of the pool is not a blow and no skill is in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Ticked'):
+        "Patient Blade's seconds between Boss tick payments (the Death trees' "
+        "slice C4d2, 2026-11-25), asked in PayForABossTick with the creature "
+        "ticked so the row's target_is_boss is judged; a tick is no blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "Death by Inches' count of hits a kill (the Death trees' slice C4d2, "
+        "2026-11-25), asked in CountAHitOnABoss with the creature struck so the "
+        "row's target_is_boss is judged; it counts the hit, it does not price it",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
         "the Fervour a landed critical strike pays (the Death trees' slice "
         "C4d1, 2026-11-25), asked in GainOnCriticalStrike with the character "
@@ -1342,6 +1352,16 @@ INVENTORY = {
 #: in `tools/generate_datatables.py` says, so no such row can ship and grant
 #: nothing.
 TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Ticked'):
+        "asked at a tick: the creature is handed over for whether it is a "
+        "Boss, and the generator refuses a row on this stat asking the distance "
+        "or the stagger (slice C4d2)",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
+        "asked after a landed hit to count it: the creature is handed over for "
+        "whether it is a Boss, and the generator refuses a row on this stat "
+        "asking the distance or the stagger (slice C4d2)",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(PerCriticalStrikeStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Struck'):
         "asked after a landed critical strike: the character struck is handed "

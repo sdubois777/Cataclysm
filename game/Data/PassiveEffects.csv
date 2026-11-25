@@ -581,3 +581,5 @@ SoulCollector_capstone_100#4,SoulCollector_capstone_100,,,100.0,,target_health_b
 SoulCollector_capstone_100#5,SoulCollector_capstone_100,fervour_per_kill,more,100.0,,kill_was_an_execute,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_capstone_100#1,Shadow_capstone_100,,,1.0,,,0.0,,0.0,3,-1.0,0,0,cooldown_reduce_all,kill,for_each_hundred_class_resource_held,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_capstone_100#2,Shadow_capstone_100,,,2.0,,,0.0,,0.0,2,-1.0,0,0,next_hit_critical,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_keystone_a_kC#1,Shadow_keystone_a_kC,boss_ticks_pay_a_kill_every_seconds,flat,2.0,,target_is_boss,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_keystone_b_kC#1,Shadow_keystone_b_kC,boss_hits_counted_as_a_kill_every,flat,10.0,,target_is_boss,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

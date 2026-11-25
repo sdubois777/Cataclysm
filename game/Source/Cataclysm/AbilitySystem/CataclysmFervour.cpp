@@ -62,6 +62,8 @@ const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_gi
 const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
 const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
 const TCHAR* UCataclysmFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
+const TCHAR* UCataclysmFervour::BossTicksPayAKillEverySecondsStat = TEXT("boss_ticks_pay_a_kill_every_seconds");
+const TCHAR* UCataclysmFervour::BossHitsCountedAsAKillEveryStat = TEXT("boss_hits_counted_as_a_kill_every");
 
 FString UCataclysmFervour::SoulCollectorRowKeyPrefix()
 {
@@ -1500,6 +1502,81 @@ float UCataclysmFervour::GainOnCriticalStrike(UAbilitySystemComponent* AbilitySy
 	}
 	RaisePool(AbilitySystem, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::PayForABossTick(UAbilitySystemComponent* AbilitySystem, const AActor* Ticked)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Ticked)
+	{
+		return 0.0f;
+	}
+	// ASKED AGAINST THE CHARACTER TICKED, so the row's `target_is_boss` is judged on it. No tags and no blow: a tick is
+	// not a blow being priced.
+	const float Every = Cataclysm->StatForSkill(
+		FName(BossTicksPayAKillEverySecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f,
+		-1.0f, false, Ticked);
+	if (Every <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// ONE CLOCK FOR THE CHARACTER, as ruled, inclusive of its seconds less a thousandth, so a tick landing on the second
+	// a frame's rounding puts a hair early still pays.
+	const float Since = Cataclysm->SecondsSinceBossTickPaid();
+	if (Since >= 0.0f && Since + 1.0e-3f < Every)
+	{
+		return 0.0f;
+	}
+	Cataclysm->NoteBossTickPaid();
+	return GainOnOwnKill(AbilitySystem, Ticked);
+}
+
+bool UCataclysmFervour::CountAHitOnABoss(UAbilitySystemComponent* AbilitySystem, AActor* Struck)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm || !Struck || UCataclysmSkillEffects::IsDead(Struck))
+	{
+		return false;
+	}
+	const float Every = Cataclysm->StatForSkill(
+		FName(BossHitsCountedAsAKillEveryStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f,
+		-1.0f, false, Struck);
+	const int32 Nth = FMath::RoundToInt(Every);
+	if (Nth < 1)
+	{
+		return false;
+	}
+	if (Cataclysm->CountBossHit(Struck) % Nth != 0)
+	{
+		return false;
+	}
+	CreditAKillWithoutADeath(AbilitySystem, Struck);
+	return true;
+}
+
+void UCataclysmFervour::CreditAKillWithoutADeath(UAbilitySystemComponent* AbilitySystem, AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Acting = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Acting || !Slain)
+	{
+		return;
+	}
+	// IN THE KILL HANDLER'S ORDER: what decay took given back, the payment, then the stamp, then the marks.
+	GiveBackDecayOnKill(AbilitySystem);
+	GainOnOwnKill(AbilitySystem, Slain);
+	NoteOwnKill(AbilitySystem, Slain);
+	MarkNearAKill(AbilitySystem, Slain, Slain->GetActorLocation());
+
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Slain);
+	const float SlainMaximum =
+		Theirs ? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+	Acting->ActOnEvent(FName(TEXT("kill")), nullptr, SlainMaximum, /*bLanded=*/true, Slain);
+
+	// WHAT NEEDS A BODY IS DROPPED: the explosions and the burst a real kill's handler makes from these shares.
+	Acting->TakePendingOverkillExplosionSharePercent();
+	Acting->TakePendingOverkillExplosionRadiusCm();
+	Acting->TakePendingSlainBurstSharePercent();
+	Acting->TakePendingKillingBlowExplosionSharePercent();
 }
 
 float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, float SecondsInStep)
