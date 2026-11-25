@@ -17,6 +17,13 @@ And the owner's rulings on the first version of this proposal, issue #2883,
     small      "Fewer slots (Recommended)"
     damage     "It's fine, keep the 6 slots and upgrade the damage. We'll fix it
                with the enemy balance audit like for the first question."
+    D5         "Keep them, but make the ranges like 1-2, 3-4, etc. And lower the
+               amount of slots they can roll on. Maybe flat crit only rolls on
+               weapons and gloves, and flat mana regen only rolls on belts and
+               ammys."
+    D7         "% increases definitely need to be significantly higher than 1%.
+               ... more should be the lowest, increased should be the highest,
+               and flat should be in the middle in most cases."
 
 This module does five things and changes nothing in the game:
 
@@ -167,7 +174,10 @@ def number_kind(row: dict[str, str]) -> str:
     """What the affix's number measures: an "amount" (a Stat row that is flat
     and whose Percent column says no), an "increase", or percentage "points"
     (every other row: flat percentages, resistances, ailment chances)."""
-    if row["AffixKind"] == "Stat" and row["ValueKind"] == "increased":
+    if row["AffixKind"] == "Stat" and (row["ValueKind"] == "increased"
+                                       or row["AffixName"].startswith("Increased")):
+        # The eight "Increased damage against ..." rows are `flat` in the sheet
+        # because they add into the increases bucket; they read as increases.
         return "increase"
     if row["AffixKind"] == "Stat" and row["ValueKind"] == "flat" and not is_percent(row):
         return "amount"
@@ -236,72 +246,81 @@ def today(rows: list[dict[str, str]] | None = None) -> list[TodayAffix]:
 # The proposal
 # ---------------------------------------------------------------------------
 
-#: The least a tier 1 roll may be at +0, by what the number measures. A
-#: judgement (decision D7), from the genre's own lowest tiers (Path of Exile:
-#: increased attack speed 5-7, all resistances 3-5, item rarity 6-10) and from
-#: the floors the owner approved on 2026-09-04 (resistances 10, 7 and 3; leech,
-#: damage reduction, penetration and evasion 1).
-MIN_START = {"increase": 3, "points": 1, "amount": 2}
+#: The least a tier 1 roll may be at +0, by what the number measures.
+#:
+#: THE OWNER'S RULING D7 (issue #2883, 2026-11-24): "% increases definitely need
+#: to be significantly higher than 1%. That's dumb, and virtually useless across
+#: all stats. ... more should be the lowest, increased should be the highest, and
+#: flat should be in the middle in most cases." No affix grants "more" (the
+#: design refuses it on a rolled affix), so among affixes the order is: an
+#: increase starts highest, a flat percentage in the middle, and an amount --
+#: health, armour, damage, regeneration -- keeps today's bottom, since it is on
+#: its own scale. The three numbers are a judgement: 8 and 5 give an increase
+#: 8-9% and a flat percentage 5-6 on a fresh drop (20-23% and 13-15 at +10),
+#: against Path of Exile's lowest tiers of 5-7 (attack speed), 6-10 (rarity) and
+#: 3-5 (all resistances). The owner's 2026-09-04 floors still apply where higher
+#: (single resistance 10, two resistances 7, movement speed 9).
+MIN_START = {"increase": 8, "points": 5, "amount": 2}
 
 
 @dataclasses.dataclass(frozen=True)
 class Override:
-    """A stat whose scale or slots the rule alone cannot settle."""
+    """A stat whose start or slots the rule alone cannot settle."""
 
-    top: int | None = None              # a new top at +10
+    start: int | None = None            # tier 1's bottom at +0, in the owner's words
     slots: tuple[str, ...] | None = None
-    retired_into: str | None = None
+    retired_into: str | None = None     # the mechanism stays; nothing is retired
     why: str = ""
 
 
-#: Each one is a judgement, and the proposal document says why. THE SLOT LISTS
-#: ARE THE OWNER'S RULING "Fewer slots" (issue #2883): the top rises to what
-#: seven whole ranges need, and the slot list narrows to the piece count whose
-#: ceiling is nearest today's, rounding down where a cap is close. The pieces
-#: chosen keep every hybrid that uses one of these stats able to roll somewhere.
+#: Each one is the owner's ruling or a judgement under it, and the proposal
+#: document says which. THE SMALL STATS' SLOT LISTS ARE THE RULING "Fewer slots"
+#: (issue #2883): the top rises to what seven whole ranges need, and the slot
+#: list narrows to the piece count whose ceiling is nearest today's, rounding
+#: down where a cap is close. The pieces chosen keep every hybrid that uses one
+#: of these stats able to roll somewhere.
 OVERRIDES: dict[str, Override] = {
-    # Retired (D5). A flat crit chance affix would be 33-35 points at +10;
-    # every skill has a 5% base and four implicits add flat crit, so the
-    # increase is the natural affix, and the one Path of Exile uses on gear.
+    # THE OWNER'S RULING D5, verbatim: "Keep them, but make the ranges like 1-2,
+    # 3-4, etc. And lower the amount of slots they can roll on. Maybe flat crit
+    # only rolls on weapons and gloves, and flat mana regen only rolls on belts
+    # and ammys." Both start at 1: the one exception to the D7 starts, because
+    # the owner named these ranges.
     "Flat critical strike chance": Override(
-        retired_into="Increased critical strike chance",
-        why="retired: as whole numbers it would be 33-35 points of crit a piece "
-            "at +10; folded into the increase, which reads the skill's base"),
-    "Increased critical strike chance": Override(
-        top=100,
-        why="absorbs the flat affix: 100% increased is 5 points at the 5% "
-            "default base, the old flat affix's top"),
+        start=1, slots=("Weapon", "Gloves"),
+        why="the owner's D5: 1-2, 3-4 ... on weapons and gloves; two pieces "
+            "(70) instead of twelve (60)"),
     "Flat mana regeneration": Override(
-        retired_into="Increased mana regeneration",
-        why="retired: 0.65 a second would have to become 35, a twentieth of a "
-            "level 100 pool a second; every class has a base for the increase"),
+        start=1, slots=("Belt", "Necklace"),
+        why="the owner's D5: 1-2, 3-4 ... on belts and amulets; two pieces "
+            "(70 a second) instead of twelve (7.8)"),
     "Flat evasion": Override(
         slots=("Chest",),
-        why="one piece (35) instead of fourteen (56): two would be 70, past "
-            "evasion's soft cap of 60 before implicits"),
+        why="one piece (45) instead of fourteen (56): two would be 90, past "
+            "evasion's soft cap of 60"),
     "Flat block chance": Override(
-        slots=("Shoulders", "Belt"),
-        why="two pieces instead of fourteen: 70 either way"),
+        slots=("Belt",),
+        why="one piece (45) instead of fourteen (70): two would be 90, and with "
+            "a Shield's 13 every hit would be blocked"),
     "Flat damage reduction": Override(
         slots=("Pants",),
-        why="one piece (35) instead of fourteen (56): two would be 70 against "
-            "a cap of 75, from gear alone"),
+        why="one piece (45) instead of fourteen (56): two would be 90 against "
+            "a cap of 75"),
     "Flat retaliation": Override(
-        slots=("Head", "Shoulders"),
-        why="two pieces (70) instead of fourteen (56)"),
+        slots=("Shoulders",),
+        why="one piece (45) instead of fourteen (56)"),
     "Flat crowd control resistance": Override(
         slots=("Belt", "Boots"),
-        why="two pieces instead of fourteen: 70 either way"),
+        why="two pieces (90) instead of fourteen (70); immunity is 100"),
     "Flat life leech": Override(
         slots=("Weapon",),
-        why="the weapon only: 35, or 70 two-handed or with an offhand, "
+        why="the weapon only: 45, or 90 two-handed or with an offhand, "
             "instead of twelve pieces (48)"),
     "Flat mana leech": Override(slots=("Weapon",), why="as life leech"),
     "Flat energy shield leech": Override(slots=("Weapon",), why="as life leech"),
     "Flat penetration": Override(
         slots=("Weapon",),
-        why="the weapon only: 35 is the most any enemy resists, so more is "
-            "wasted; 70 two-handed or with an offhand"),
+        why="the weapon only (45); 35 is the most any enemy resists, so the "
+            "rest is wasted"),
     "Flat maximum class resource": Override(
         slots=("Necklace", "Relic"),
         why="two pieces (76) instead of eleven (77)"),
@@ -407,8 +426,8 @@ def propose_row(row: dict[str, str]) -> ProposedAffix:
     """One non-hybrid affix under the rule."""
     override = OVERRIDES.get(row["AffixName"], Override())
     old_top = float(row["TopValue"])
-    top = float(override.top) if override.top is not None else old_top
-    start = _start(row, top)
+    top = old_top
+    start = override.start if override.start is not None else _start(row, top)
     high = round_half_up(top / gear_multiplier(MAX_GEAR_LEVEL))
     note = override.why
     if high - start + 1 < MIN_LADDER_VALUES:
@@ -822,6 +841,42 @@ def measure() -> dict[str, dict]:
     return {key: {"today": before[key], "proposed": after[key]} for key in before}
 
 
+def scale_order(rows: list[dict[str, str]] | None = None) -> list[dict[str, object]]:
+    """Every stat that has both a flat and an increased affix, and whether the
+    increased one's numbers sit above the flat one's.
+
+    THE OWNER'S RULING D7: "more should be the lowest, increased should be the
+    highest, and flat should be in the middle in most cases." No affix grants
+    more, so what can be checked is increased above flat, stat by stat, on both
+    tier 1's start and tier 7's top. A pair where it fails is an exception, and
+    the proposal says why.
+    """
+    rows = rows if rows is not None else read_affix_rows()
+    table = proposal(rows)
+    by_stat: dict[str, dict[str, ProposedAffix]] = {}
+    for row in rows:
+        if row["AffixKind"] != "Stat" or not row["Stat"]:
+            continue
+        affix = table[row["AffixName"]]
+        if affix.retired:
+            continue
+        side = "increased" if row["ValueKind"] == "increased" else "flat"
+        by_stat.setdefault(row["Stat"], {})[side] = affix
+    out = []
+    for stat, pair in sorted(by_stat.items()):
+        if len(pair) < 2:
+            continue
+        flat, inc = pair["flat"], pair["increased"]
+        out.append({
+            "stat": stat, "flat": flat.name, "flat start": flat.tiers[0][0],
+            "flat top": flat.top, "increased": inc.name,
+            "increased start": inc.tiers[0][0], "increased top": inc.top,
+            "ordered": inc.tiers[0][0] > flat.tiers[0][0] and inc.top > flat.top,
+            "flat is an amount": flat.number == "amount",
+        })
+    return out
+
+
 def headline(rows: list[dict[str, str]] | None = None) -> dict[str, object]:
     """The before-and-after counts the report leads with."""
     rows = rows if rows is not None else read_affix_rows()
@@ -1051,6 +1106,19 @@ def levels_markdown() -> str:
     return "\n".join(out)
 
 
+def order_markdown() -> str:
+    lines = ["| Stat | Flat affix: T1 start at +0, top at +10 | Increased affix: T1 start "
+             "at +0, top at +10 | Increased above flat? |",
+             "| :-- | --: | --: | :-: |"]
+    for r in scale_order():
+        verdict = "yes" if r["ordered"] else (
+            "no: the flat one is an amount on its own scale" if r["flat is an amount"]
+            else "no")
+        lines.append(f"| {r['stat']} | {r['flat start']}, {r['flat top']} | "
+                     f"{r['increased start']}%, {r['increased top']}% | {verdict} |")
+    return "\n".join(lines)
+
+
 def hybrid_markdown() -> str:
     table = proposal()
     shares = hybrid_shares(table)
@@ -1108,6 +1176,8 @@ def main(argv: list[str] | None = None) -> int:
         print(inventory_markdown())
     elif args.command == "table":
         print(table_markdown())
+        print()
+        print(order_markdown())
         print()
         print(hybrid_markdown())
         print()
