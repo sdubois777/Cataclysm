@@ -2,6 +2,174 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The empire tree's five forge gold nodes act: Workshop Upgrades, Apprentice Oversight, Architectural Synergy and Treasury Synergy take a share off every forge price, held at 75%, and Forge Upgrades a tenth more on a draw (#47, slice F6a)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: five
+  bonus fields, `CraftGoldFactorFor`, `CraftGoldFromSpendingFor`, four constants, five switch cases.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: five effect kinds.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgePricing`, Forge Upgrades' salt, seeds and draw, `DiscountText`, and a trailing pricing parameter on
+  the 14 plans with a price and on `OptionsOn`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `PricingFor`, `CombinePricingFor`, the count, and the pricing passed on every plan and options call.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the options calls and the eight priced questions.
+- `game/Source/Cataclysm/Player/CataclysmGameInstance.h`, `game/Source/Cataclysm/Player/CataclysmGameInstance.cpp` and
+  `game/Source/Cataclysm/Player/CataclysmPlayerState.h`: Treasury Synergy's count.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`,
+  `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`: the
+  account record version 8, the character record version 18.
+- `game/Tests/SaveFixtures/Account_v8.json`, new, and `game/Tests/SaveFixtures/README.md`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeGoldNodesTests.cpp`, new; `game/Source/Cataclysm/Tests/
+  CataclysmSaveFixtures.h`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`; seven test files that read the
+  committed account file.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `tools/tests/test_forge_gold_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py` and `tools/tests/test_empire_tree_on_the_account_record.py`.
+- `docs/Play_Loop_Checklist.md` step 29.
+
+Issue [#47](https://github.com/sdubois777/Cataclysm/issues/47). Written on `feat/forge-gold-nodes-f6a`, on top of
+`feat/forge-w1` (#47 slice F6, the forge's two milestone options, and #2857, the capital's days, rebased onto
+development `5f302b0a7`).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **THE CHARACTER RECORD STEP IS WRITTEN 17 TO 18, AHEAD OF 17.** The coordinating session's direction of 2026-11-24:
+  the skill selection slice (the level-1 session's, approved by the owner that day) takes 16 to 17 and lands first, so
+  this slice writes `Migrate_17_to_18` and `SchemaVersionNow = 18`. **Until skill selection is on this branch, the
+  character record names version 18 with no step from 16**: an older character file cannot migrate, and the character
+  tests and Python checks that read the record's version fail (listed under "Registered"). The character's version 18
+  files (`Character_v18.json`, `AddTheCharactersVersion18Defaults` and the chain calls) are made when 17's are here to
+  build on. The account record has no such gap: 7 to 8, done whole.
+- **THE PRICING IS A FACTOR FOR EACH MATERIAL TIER, AND THE CRAFT CODE DRAWS FORGE UPGRADES, NOT THE PLAN.** The plan of
+  2026-11-24 put the tree's bonuses, the walk-seed mask and the day in `FCataclysmForgePricing` and drew Forge Upgrades
+  inside `Apply`. As written, `UCataclysmForgeCraft::PricingFor` draws it once for the craft from the item and the day
+  and asks the tree for each tier's factor; the plan only multiplies. Two reasons: the forge's item code does not include
+  the empire tree (The Soul Forge's chance is passed in the same way), and one draw for the craft is exactly ruling B's
+  "one Forge Upgrades roll per craft", the options taking the same pricing.
+- **NO GENRE RESEARCH WAS DONE FOR THESE FIVE.** The F6 plan of 2026-11-22 said so before the rulings. Q1, Q5, Q7 and Q9
+  copy this project's own rulings (P1 and Reinvestment's V2 to V20, and Scaffolding's place after the cap); Q2, Q3, Q6,
+  Q8 and Q10 are judgements, as labelled below.
+
+### The rulings
+
+The coordinating session, 2026-11-22, Q1 to Q10 as the F6 plan recommended:
+
+| Q | Ruled | Kind |
+| :-- | :-- | :-- |
+| Q1 | the reductions add, held at 75% | copies P1 (a city upgrade's price) |
+| Q2 | combines count as "crafting actions", for gold | judgement |
+| Q3 | a craft's tier is its material's: Apprentice Oversight on tiers 1 and 2; a gem combine has no material | judgement |
+| Q4 | **OVERRULED BY THE OWNER**: Architectural Synergy's cap is 30%, not 10% (below) | the owner's |
+| Q5 | Treasury Synergy counts tier 1 gold spent at the forge across runs, on the account or a Solo Self-Found character's record, the price charged, a refused craft not, from the first craft whether the node is held or not | copies Reinvestment's V2, V4, V5, V20 |
+| Q6 | "projects" are every forge operation with a gold price | judgement |
+| Q7 | Treasury Synergy's 30% is its own, inside the 75% | copies V3 |
+| Q8 | Forge Upgrades' "cost" is gold only | judgement |
+| Q9 | Forge Upgrades is x0.9 after the 75% cap | copies Scaffolding's place in `UpgradePriceFactorFor` |
+| Q10 | Forge Upgrades is drawn in the plan, seeded by the item and the day (a combine by its rung and the day) | copies `AddedSocketSeed`; judgement |
+
+**Q4, the owner, 2026-11-22, verbatim.** The owner's question: "you changed architectural synergy from 310% to 10%?
+Feels a bit heavy handed doesn't it?" The option as put to the owner: "The same maximum as Treasury Synergy,
+Reinvestment and Veteran's Edge. At full points it is reached after 30 Treasury points, so Treasury investment matters
+for longer. With the other three Forge discounts maxed, the 75% total limit is what caps you." The owner's choice:
+"30% (Recommended)". Why 10% was wrong: at full node points (10) it was reached after 10 Treasury points, so the node's
+own scaling stopped mattering; keeping the total under 75% was never this cap's job, because P1 holds every forge gold
+discount together at 75%. The four discounts now total 12 + 20 + 30 + 30 = 92% before P1 holds them at 75%.
+
+**"Per point" confirmed as built, the owner, 2026-11-22, verbatim.** The owner's question: "doesn't it give -1% per 10
+points spent? So you'd need much more than 30 points to reach the cap". The two readings shown: A, as built in
+`TotalFor`, the bonus multiplied by the node's own points, then by the whole steps of the other branch, then capped; B,
+no multiplier by the node's points. The owner's answer: "Ooh I see, you need full points invested into it to get that.
+That's fine". So reading A stands: at 10 node points 30% is reached after 30 Treasury points; at 1 point it takes 300.
+
+**The coordinating session, 2026-11-24:**
+- **A, accepted:** the pricing struct is a trailing parameter with a default of no discount, with a Python check that
+  every call in `CataclysmForgeCraft.cpp` passes the character's pricing. This supersedes the plan's earlier "in place of
+  `DifficultyTier`". The reason: about 150 test calls to the plan functions stay unchanged. The check also covers the
+  forge screen's options calls.
+- **B, accepted as a JUDGEMENT:** F5's option gold (Chaos Stabilizer, Tainted Shards) is discounted at the tier of the
+  material it pays for (3 and 2), with one Forge Upgrades roll per craft.
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Workshop Upgrades (8 points) | "-1.5% Gold cost for all crafting actions per point." | `CraftGoldReduced`, 0.015 a point, up to 12% |
+| Apprentice Oversight (1) | "Reduces the Gold cost of all Tier 1 and Tier 2 crafts by 20%." | `LowTierCraftGoldReduced`, 0.20 on a tier 1 or 2 material |
+| Architectural Synergy (10) | "-1% crafting Gold cost per 10 points invested in the Treasury branch per point." | `CraftGoldReducedPerBranchStep`, 0.01, step 10 Treasury, cap 0.30, added to Workshop's |
+| Treasury Synergy (1) | "For every 50,000 Gold spent on crafting, gain a permanent 1% discount on all future projects (Cap 30%)." | `CraftGoldReducedPerSpendingStep`, 0.01 a step of 50,000 tier 1 gold, cap 0.30 |
+| Forge Upgrades (5) | "1% chance per point to reduce the cost of a craft in the forge by 10%." | `CraftGoldTenthOffChance`, 0.01 a point, x0.9 when drawn |
+
+- **The price:** `(1 - min(75%, Workshop + Architectural + Oversight if tier 1 or 2 + Treasury)) x 0.9 if Forge
+  Upgrades lands`, rounded, never below 1 gold. It is applied in each plan after the price is worked out and before the
+  gold refusal, so a character holding the discounted price is not refused.
+- **The options:** a Chaos Stabilizer's gold at tier 3's factor, a Tainted Shard's at tier 2's.
+- **The screen:** each of the eight priced questions names the discounted price and ends "The empire tree's forge nodes
+  take N% off its gold.", and "Forge Upgrades' tenth is in it." when the draw landed. The dismantle has no price.
+- **The count:** each done craft's gold over its run's gold scale, unrounded, after the craft is done and before its
+  save; `AccountChanged` saves the account's, the craft's own trigger a Solo Self-Found character's.
+
+### Tests
+
+`Cataclysm.ForgeGoldNodes.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheFiveNodesGiveTheirFiguresAndArchitecturalSynergyStopsAtThirtyPercent` | through the generated tables: 12% + 30% at three Treasury steps, 20%, 1% a step with a 30% cap, 5%; Architectural Synergy 10% at one step, 30% at four, 3% at 1 point and three steps (reading A); CONTROL none held |
+| `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` | 0.88; Oversight 0.80 on tiers 1 and 2, nothing on 3 or no material; all four 0.25; with the tenth 0.225; tier 3 0.28; the tenth alone 0.90; CONTROL 1 |
+| `TreasurySynergyGivesOnePercentForEachFiftyThousandUpToThirty` | 49,999.99 nothing, 50,000 1%, 1,499,999 29%, 1,500,000 30%, 9,000,000 30%; CONTROL without the node |
+| `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt` | a +0 to +1 upgrade (tier 1 stone) at four fifths, not refused holding exactly that; CONTROL refused without the pricing; a tier 3 stone's at full |
+| `AnOptionsGoldIsDiscountedAtItsOwnMaterialsTier` | the Stabilizer at tier 3's 0.8, the Shard at tier 2's 0.5; CONTROL at full |
+| `ForgeUpgradesDrawsOnceForAnItemOnADay` | same item and day, same seed; another day, another; 1 lands, 0 does not; at 0.5 some of 40 days land |
+| `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` | in a world: 4,500 at full, 3,060 with Workshop Upgrades and Apprentice Oversight, the count rising by the price paid; a refused upgrade counts and charges nothing; Forge Upgrades 4,050 when drawn, 4,500 when not |
+| `AnOlderAccountStartsTheForgeCountAtNothingAndTheCommittedOneReadsIt` | `Account_v7.json` migrates to 0 keeping its 75,000.5; `Account_v8.json` is read with 62,500.25 |
+
+Python: `tools/tests/test_forge_gold_nodes.py`, eight checks (the list at its top). The two tree checks count 124 built
+nodes and two more caps and pin the 25 points built in slice 11; `test_empire_tree_on_the_account_record.py` reads
+`Account_v8.json`. Every test that read `Account_v7.json` as the committed file reads `Account_v8.json`, and the three
+chain tests add `AddTheAccountsVersion8Defaults`.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `29c13a0ce`, each narrowed to
+`tools/tests/test_forge_gold_nodes.py` (eight checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| P1 | a plan's `Out.Gold = Pricing.Apply(Out.Gold, Out.Material);` removed (the first: `SocketGemOf`) | "PROVED: 1 failed, 7 passed in 1.08s \| restored: 8 passed in 1.00s" | `test_every_plan_applies_the_pricing_after_its_price_and_before_its_refusal` |
+| P2 | a forge screen options call without the pricing | "PROVED: 1 failed, 7 passed in 0.99s \| restored: 8 passed in 0.98s" | `test_every_plan_and_options_call_the_game_makes_passes_a_pricing` |
+| P3 | the stone combine's count removed | "PROVED: 1 failed, 7 passed in 0.99s \| restored: 8 passed in 0.95s" | `test_the_count_is_added_once_a_craft_is_done` |
+| P4 | the reductions held at 100%, not 75% | "PROVED: 1 failed, 7 passed in 0.97s \| restored: 8 passed in 0.96s" | `test_the_factor_holds_the_reductions_at_three_quarters_and_takes_the_tenth_after` |
+| P5 | a Tainted Shard's gold priced at the Chaos Stabilizer's tier | "PROVED: 1 failed, 7 passed in 1.02s \| restored: 8 passed in 0.96s" | `test_an_options_gold_is_discounted_at_its_own_material` |
+
+**The whole Python suite at `29c13a0ce`:** "4 failed, 8270 passed, 9 skipped in 458.98s"; JUnit 8283 tests, 4 failures,
+0 errors, 9 skipped; ruff "All checks passed!". **EVERY FAILURE IS EXPECTED, AND NONE IS A FIGURE OF THIS SLICE:**
+- `test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`: the two empire tree CSVs,
+  whose assets the window's editor step rebuilds (F6 alone already fails it the same way);
+- three that read the character record's version, which stays inconsistent until skill selection's 17 is here:
+  `test_empire_tree_on_the_account_record.py`'s `test_the_committed_character_file_holds_its_own_tree_at_the_records_version`
+  ("Character_v16.json is at version 16 and the character record at 18"), `test_inventory_tabs.py`'s
+  `test_the_record_is_at_sixteen_and_its_step_moves_and_blanks` (#2849's pin of 16), and
+  `test_save_migrations_are_single_steps.py`'s `test_every_schema_version_has_a_committed_example_file` ("there is no
+  Character_v17.json").
+
+**For the window.** **THIS SLICE IS NOT READY FOR A WINDOW UNTIL SKILL SELECTION'S CHARACTER STEP 16 TO 17 IS ON ITS
+BRANCH**: before that, every character save test that migrates a file fails. Then it is rebased onto it, its
+character files are made (`Character_v18.json` from `Character_v17.json`, `AddTheCharactersVersion18Defaults` after
+each version 17 call), and it rides in the forge window with #47 slice F6 and #2857 if that window has not run:
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, which F6 already needs.
+- **`Cataclysm.ForgeGoldNodes.` alone: 8.** The whole suite gains 8.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeGoldNodes.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| CF1 | `CataclysmEmpireTree.cpp` | `FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap)` read as `FMath::Clamp(Reduced, 0.0f, 1.0f)` | 7, 1: `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` |
+| CF2 | `CataclysmForge.cpp` | `UpgradeOf`'s `Out.Gold = Pricing.Apply(Out.Gold, Out.Stone);` removed | 6, 2: `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt`, `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+| CF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `CountTheForgeGold(WorldContext, Step.Gold);` removed | 7, 1: `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+
+---
+
 ## 2026-11-24 — Days spent in the capital say what they will do before they are spent and what they did after: the forge's crafts and the empire upgrade tree's respec keep their days' reports, say the walk's PLAY LOOP account of them, and warn which dungeons' timers run out (#2857)
 
 **Affects:** `UCataclysmForgeCraft::DoItemCraft` (`game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp` and `.h`);
