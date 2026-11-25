@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A Poison that lasts, and an evasion answered twice: Festering and Twice Answered (Death trees, slice C6b4)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the scale `seconds_poisoned_by_you`
+  (`PerSecondPoisonedByYou`) and `FCataclysmPoolAction::bNextHitCriticalTwice`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the critical strike charge holds
+  a count (`NextHitCriticalCharges`, `NextHitCriticalChargesHeld`); `ActOnEvent` rolls a doubled evasion before the
+  event's rows act; the Poison record (`NotePoisonBeganBy`, `SecondsPoisonedBy`, `SecondsPoisonedByAsker`); the roll of
+  every Chance Percent row shared (`ChancePercentComesUp`); the action name `CriticalTwiceOnEvasionAction`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`: `ApplyDamageOverTime` starts the record when a Poison
+  begins on a creature carrying none of the applier's.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: the new action onto a pool action.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmPoisonAndCritsTests.cpp`, new (8); `CataclysmStatExemptionTests.cpp`
+  (`ProbeScaledDotDamage`, and two declarations ahead of the scaled probe table); `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (one, and the action name),
+  `test_every_scaled_stat_has_an_asker.py` (one), `test_passive_rows_carry_the_action_columns.py` (three new, two
+  changed), `test_passive_effects_match_the_node_text.py` and
+  `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (629 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **A FAULT IN SLICE C6a, FOUND HERE AND FIXED: ITS C++ WOULD NOT HAVE COMPILED.** `ProbeScaledProjectileCount` was named
+  in `ScaledProbes()` in `CataclysmStatExemptionTests.cpp` about 1,300 lines before its definition, with no declaration
+  above. Continuous integration compiles no C++ and no window had compiled C6a. Both it and this slice's
+  `ProbeScaledDotDamage` are now declared ahead of the table, and
+  `tools/tests/test_every_scaled_stat_has_an_asker.py::test_every_probe_a_table_names_is_declared_above_the_table`
+  holds every probe table to that, as text.
+- **TWICE ANSWERED, AS RULED (a).** "Each evasion has a 5% chance per point to give you two critical strikes rather than
+  one" is a new action, `next_hit_critical_twice`, on `dodge`, its value the count 2, its chance the Chance Percent
+  column at 5 a point. The generator now accepts Chance Percent on class resource rows and this action, and refuses it
+  everywhere else. The critical strike charge holds a count: a grant sets it to the larger of what it held and 1, or 2
+  when this evasion was doubled, and refreshes the time as before, never reaching 3; a use takes one, and the time is
+  cleared only when none is left. Only an evasion's charge is doubled, so Brim's full bar charge stays at 1. An
+  evasion that grants no charge is given nothing.
+- **THE DOUBLING IS ROLLED BEFORE THE EVENT'S ROWS ACT**, as ruled, so the result is the same whichever of the charge
+  row and the doubling row comes first in the table. The doubling row starts no wait of its own, a judgement: it only
+  changes the charge the same evasion grants, and that charge row keeps its own wait.
+- **THE ROLL IS THE ONE EVERY CHANCE PERCENT ROW MAKES**, pinned by the console variable `Cataclysm.ClassResourceChanceRoll`,
+  which keeps the name slice C6b3 gave it.
+- **FESTERING'S "WITHOUT A BREAK" IS A RECORD ON THE CREATURE**, a judgement on how the sentence is measured: when a
+  Poison of an applier's begins on a creature carrying none of that applier's, the time starts again; a Poison laid while
+  another of the applier's runs continues it; and a creature carrying none of it reads as not poisoned, so a break
+  followed by nothing reads 0 until the next Poison starts the time again. Whole seconds, up to 10, at every 2nd point as
+  the owner's rule for "for every 2 points" writes it: five rows from 2, 4, 6, 8 and 10 points.
+- **`dot_damage` IS NOW A STAT ASKED WITH A SCALE.** Each tick asks it with the creature it lands on and with no target
+  and takes the ratio (`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`); with no target the scale counts none,
+  so the ratio carries the seconds. `ProbeScaledDotDamage` measures that with a real Poison on a real creature.
+
+### What each reads
+
+- **FESTERING (the Shadow, basic, 10 points):** Poison damage (`dot_damage` on `Keyword.DoT.Poison`) 1% increased for
+  each whole second the creature has stayed poisoned by you, at most 10, from each of 2, 4, 6, 8 and 10 points.
+- **TWICE ANSWERED (the Shadow, basic, 8 points):** on each evasion, a 5% chance a point that the critical strike charge
+  the evasion grants holds two.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Festering (Shadow basic) | dot_damage, increased, 1, tags Keyword.DoT.Poison, scale seconds_poisoned_by_you, step 1, at most 10; one from each of 2, 4, 6, 8 and 10 points |
+| Twice Answered (Shadow basic) | next_hit_critical_twice, 2, on dodge, chance 5 |
+
+`PassiveEffects.csv` 623 to 629; the Shadow 119 rows. The pins: rows 629, nodes 374, options 55 (unchanged). The scale
+sources named by a row: 44.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on Twice Answered: (a), the new action with the Chance Percent column; the charge
+a count of at most 2, a grant taking the larger, a use taking one; only an evasion doubled; the roll before the rows act;
+and the three tests asked for (two critical strikes then none, a full bar's charge at 1, the table's order reversed).
+
+### Research
+
+None new. The count extends slice C4d1's Chain Execution charge, used up by the hit it makes critical; the Poison
+record copies the shape of Grim Wake's record kept on the creature.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.PoisonAndCrits.` | new: `ADoubledEvasionGivesTwoCriticalStrikesThenNoMore`, `AFullBarsChargeIsNeverDoubled`, `TheTablesOrderDoesNotChangeADoubledEvasion`, `AnEvasionThatGrantsNoChargeIsGivenNothing`, `FesteringTimesAPoisonWithoutABreak`, `FesteringRaisesPoisonDamageBySecondsUpToTen`, `TwiceAnsweredsChanceFollowsThePoints`, `TheTwoNodesRowsAreTheirSentences` | 8 |
+| `Cataclysm.StatExemption.` | the scaled probe runs one new probe, `dot_damage` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 629 | unchanged |
+
+Each new test has a control: the roll failing; an evasion's charge beside the full bar's; a later evasion not doubled; a
+charge granted by nothing; another applier's record; a creature never poisoned; Twice Answered at 1 point.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ActOnEvent`: `bCriticalStrikesTwice ? 2 : 1` made `bCriticalStrikesTwice ? 1 : 1`. Prefix `Cataclysm.PoisonAndCrits.`;
+must fail `ADoubledEvasionGivesTwoCriticalStrikesThenNoMore`, `AFullBarsChargeIsNeverDoubled` (its control) and
+`TheTablesOrderDoesNotChangeADoubledEvasion`.
+
+### What was run
+
+SUITE_FIGURES_C6B4
+
+PYTHON_PROOFS_C6B4
+
+---
+
 ## 2026-11-25 — Fervour on evasions and on hits on the strong, a chance on a class resource row, and decay held by who is near (Death trees, slice C6b3)
 
 **Affects:**
