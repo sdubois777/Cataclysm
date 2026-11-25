@@ -353,8 +353,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionLossHitTakenRowTest,
 
 /**
  * As ruled (Q2), an existing `hit_taken` row is unchanged: the drawback "Every hit you take deals an additional 5% of
- * your maximum health", a `health` action of -5% of maximum on `hit_taken`. `hit_taken` still carries an amount of
- * nought, so a hit that took 50% of maximum health costs 500 of 10,000 as one that took 1% does.
+ * your maximum health", a `health` action of -5% of maximum on `hit_taken`. `hit_taken` now carries the share the hit
+ * took as its amount, and this row takes a share of the maximum, so a hit that took 50% of maximum health costs 500
+ * of 10,000 as one that took 1% does.
  */
 bool FCataclysmMinionLossHitTakenRowTest::RunTest(const FString&)
 {

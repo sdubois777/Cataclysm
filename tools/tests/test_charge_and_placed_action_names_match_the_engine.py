@@ -1433,14 +1433,14 @@ def test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first
 
 def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_still_carries_nought() -> None:
     """The Death trees' slice C6d2 (2026-11-25), as ruled (Q2). `NoteHitTaken`
-    holds the share of maximum health the hit took only while it raises
-    `hit_taken`, which still carries an amount of nought; an own-stack row's
-    event condition goes on its grant and comes off its stat. Read from the code
-    with comments taken out."""
+    holds the share of maximum health the hit took while it raises `hit_taken`,
+    which carries the same share as its amount (nought when unknown); an
+    own-stack row's event condition goes on its grant and comes off its stat.
+    Read from the code with comments taken out."""
     engine = code_without_comments(SOURCE)
     assert re.search(r"TGuardValue<float> SaysHowMuchItTook\(HitBeingAnnouncedPercentOfMaxHealth, "
-                     r"PercentOfMaxHealthLost\);\s*ActOnEvent\(FName\(TEXT\(\"hit_taken\"\)\), nullptr, 0\.0f, "
-                     r"bLanded\);", engine)
+                     r"PercentOfMaxHealthLost\);\s*ActOnEvent\(FName\(TEXT\(\"hit_taken\"\)\), nullptr, "
+                     r"FMath::Max\(0\.0f, PercentOfMaxHealthLost\), bLanded\);", engine)
     assert "State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;" in engine
     item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
     assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Out\.Condition\)\)\s*\{\s*Out\.Condition = "

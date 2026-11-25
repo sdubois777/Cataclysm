@@ -3799,9 +3799,12 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	// on a tick: `TeleportRandomlyAction`, 2026-10-12. The event itself carries no such fact. Put back when this
 	// call returns, so it reads false at every other time.
 	TGuardValue<bool> SaysWhetherATick(bHitBeingAnnouncedIsATick, bDamageOverTime);
-	// AND HOW MUCH OF MAXIMUM HEALTH IT TOOK, for Avenging Dead (the Death trees' slice C6d2), held only while announced.
+	// AND HOW MUCH OF MAXIMUM HEALTH IT TOOK, for Avenging Dead (the Death trees' slice C6d2), as ruled (Q2): held while
+	// announced, for the condition, and carried as the event's amount, nought when unknown. No row on `hit_taken` read
+	// the amount before (it was nought): its pool actions take a share of the maximum, its own stacks count, and its
+	// status lands on the wearer, none of them sized by the amount.
 	TGuardValue<float> SaysHowMuchItTook(HitBeingAnnouncedPercentOfMaxHealth, PercentOfMaxHealthLost);
-	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
+	ActOnEvent(FName(TEXT("hit_taken")), nullptr, FMath::Max(0.0f, PercentOfMaxHealthLost), bLanded);
 
 	// AND A LANDED BLOW THAT IS NOT A TICK MAY SUMMON A WARHOUND, Warlord's Will's six-piece. Ruled 2026-10-18 (Q4):
 	// "10% per blow taken through hit_taken with its 0.25 s trigger cooldown; damage-over-time ticks do not count". The
