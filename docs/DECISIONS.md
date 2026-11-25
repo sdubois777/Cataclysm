@@ -73,6 +73,16 @@ Decisions made outside the Google Drive documents, newest first.
 6. **"At least 50 Fervour" and "above 75 Fervour" are `class_resource_points_at_least`**, the only points condition, as
    the War riders' Steeled Resolve was.
 
+### THE PYTHON SUITE
+
+Run on `eaec990f55dc985b025c7fffbb27311eddedf746`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8422 passed, 9 skipped in 381.09s**, and the JUnit file `tests="8432" failures="1" errors="0"
+skipped="9"`, which is 8,422 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 13 files read, 0 with complaints.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
