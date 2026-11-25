@@ -397,19 +397,18 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 		return BankGold(Holder ? Holder->GetWorld() : nullptr, { Drop }) > 0;
 	}
 
-	// A MATERIAL GOES ONTO A STACK AND A PIECE OF GEAR TAKES A SLOT. Both can
-	// fail for the same reason -- no free slot -- and both leave the drop where
-	// it is when they do. A GEM GOES ONTO THE STACK OF ITS GEM AND RARITY, as a
-	// material does (issue #46, slice G5), and fails the same way.
-	const int32 Slot = Drop->IsMaterial()
+	// A PIECE OF GEAR TAKES A GEAR SLOT, and can fail for want of one, leaving the drop where it is. A MATERIAL GOES TO
+	// THE MATERIALS TAB AND A GEM TO THE GEMS TAB, onto the stack of its kind (a gem's of its gem and rarity, issue #46,
+	// slice G5), and since #2849 neither is ever refused for room: a full gear tab does not stop them.
+	const bool bTaken = Drop->IsMaterial()
 		? Inventory->AddMaterial(Drop->Material, Drop->MaterialQuantity)
 		: Drop->IsGem()
 			? Inventory->AddGems(Drop->Gem, Drop->GemRarity, Drop->GemQuantity)
-			: Inventory->AddItem(Drop->Item);
+			: Inventory->AddItem(Drop->Item) != INDEX_NONE;
 
-	if (Slot == INDEX_NONE)
+	if (!bTaken)
 	{
-		// NO ROOM. The drop is untouched and stays where it is.
+		// NO ROOM FOR GEAR, or a stack of nothing. The drop is untouched and stays where it is.
 		return false;
 	}
 

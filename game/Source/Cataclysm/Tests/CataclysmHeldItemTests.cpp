@@ -33,6 +33,7 @@ namespace CataclysmHeldItemTest
 
 	const TCHAR* HeldHelmBase = TEXT("Head_Helm");
 	const TCHAR* HeldBootsBase = TEXT("Boots_Sabatons");
+	const TCHAR* HeldGlovesBase = TEXT("Gloves_Gauntlets");
 	const TCHAR* HeldMoteMaterial = TEXT("Material_Corrupted_Mote");
 
 	/** A gear item of a base, with nothing else on it but an upgrade level to tell it apart. */
@@ -59,12 +60,15 @@ namespace CataclysmHeldItemTest
 	}
 
 	/**
-	 * A fresh bag holding a helm, a pair of boots and a stack of five motes.
+	 * A fresh bag holding a helm, a pair of boots and a pair of gauntlets, and a stack of five
+	 * motes in its materials tab.
 	 *
 	 * A FRESH COMPONENT HAS 48 EMPTY SLOTS AND HOLDS NOTHING: its constructor sets the 48,
-	 * and `Held` starts at INDEX_NONE. AddItem and AddMaterial take the lowest free slot,
-	 * so the three land in 0, 1 and 2 -- which each test asserts as set-up rather than
-	 * assuming.
+	 * and `Held` starts at INDEX_NONE. AddItem takes the lowest free slot, so the three pieces
+	 * land in 0, 1 and 2 -- which each test asserts as set-up rather than assuming. THE MOTES
+	 * TAKE NO CELL: since issue #2849 a material stack is in the materials tab, not in one of
+	 * the 48, so the gauntlets are the third cell where the motes were until then, and the
+	 * set-up checks that the motes did not land in slot 3.
 	 */
 	struct FHeldItemBag
 	{
@@ -73,14 +77,17 @@ namespace CataclysmHeldItemTest
 		{
 			Helm = Inventory->AddItem(ItemOfBase(HeldHelmBase));
 			Boots = Inventory->AddItem(ItemOfBase(HeldBootsBase));
-			Mote = Inventory->AddMaterial(FName(HeldMoteMaterial), 5);
+			bMotes = Inventory->AddMaterial(FName(HeldMoteMaterial), 5);
+			Gloves = Inventory->AddItem(ItemOfBase(HeldGlovesBase));
 		}
 
-		/** Whether the three landed where a fresh bag puts them, and nothing is held. */
+		/** Whether the three pieces landed where a fresh bag puts them, the motes are carried and
+		 *  took no cell, and nothing is held. */
 		bool IsAsExpected() const
 		{
-			return Helm == 0 && Boots == 1 && Mote == 2 && !Inventory->IsHolding()
-				&& UCataclysmInventoryComponent::SlotIsEmpty(Inventory->GetSlots()[3]);
+			return Helm == 0 && Boots == 1 && Gloves == 2 && bMotes
+				&& Inventory->CountOfMaterial(FName(HeldMoteMaterial)) == 5 && Inventory->NumItems() == 3
+				&& !Inventory->IsHolding() && UCataclysmInventoryComponent::SlotIsEmpty(Inventory->GetSlots()[3]);
 		}
 
 		/** How many of the 48 cells look lifted. */
@@ -89,7 +96,8 @@ namespace CataclysmHeldItemTest
 		UCataclysmInventoryComponent* Inventory = nullptr;
 		int32 Helm = INDEX_NONE;
 		int32 Boots = INDEX_NONE;
-		int32 Mote = INDEX_NONE;
+		int32 Gloves = INDEX_NONE;
+		bool bMotes = false;
 	};
 
 	/** The first empty slot in a fresh FHeldItemBag. */
@@ -104,8 +112,9 @@ namespace CataclysmHeldItemTest
  * Nothing is drawn under the cursor unless something is held and its slot holds something.
  *
  * THE LAST CASE IS THE ONE THAT CAN GO WRONG IN PLAY. The hold is a slot number, and a slot
- * can be emptied without the hold being let go of: a stack of a material spent to nothing,
- * the bag emptied whole or restored. An empty frame following the mouse would then say the
+ * can be emptied without the hold being let go of: the bag emptied whole or restored (a
+ * stack of a material spent to nothing did it too, until issue #2849 took the stacks out of
+ * the 48 slots). An empty frame following the mouse would then say the
  * player is holding something they are not. The test empties the slot directly. Wearing the
  * held item does not reach this state: it lets go (WearingTheHeldItemLetsGoOfIt, below).
  */
@@ -121,8 +130,9 @@ bool FCataclysmHeldItemNothingDrawnTest::RunTest(const FString&)
 		FScreen::HeldSlotToDraw(nullptr), static_cast<int32>(INDEX_NONE));
 
 	FHeldItemBag Bag;
-	if (!TestTrue(TEXT("set-up: a fresh bag holds the helm, the boots and the motes in "
-					   "slots 0, 1 and 2, the next slot empty and nothing held"),
+	if (!TestTrue(TEXT("set-up: a fresh bag holds the helm, the boots and the gauntlets in "
+					   "slots 0, 1 and 2, the motes in its materials tab, the next slot empty "
+					   "and nothing held"),
 			Bag.IsAsExpected()))
 	{
 		return false;
@@ -179,8 +189,9 @@ bool FCataclysmHeldItemLiftedLookTest::RunTest(const FString&)
 	using namespace CataclysmHeldItemTest;
 
 	FHeldItemBag Bag;
-	if (!TestTrue(TEXT("set-up: a fresh bag holds the helm, the boots and the motes in "
-					   "slots 0, 1 and 2, the next slot empty and nothing held"),
+	if (!TestTrue(TEXT("set-up: a fresh bag holds the helm, the boots and the gauntlets in "
+					   "slots 0, 1 and 2, the motes in its materials tab, the next slot empty "
+					   "and nothing held"),
 			Bag.IsAsExpected()))
 	{
 		return false;
@@ -200,8 +211,8 @@ bool FCataclysmHeldItemLiftedLookTest::RunTest(const FString&)
 	TestEqual(TEXT("exactly one cell looks lifted"), Bag.LiftedCells(), 1);
 	TestTrue(TEXT("CONTROL: the helm beside it still looks full"),
 		FScreen::CellLookFor(Bag.Inventory, Bag.Helm) == ECataclysmCellLook::Full);
-	TestTrue(TEXT("CONTROL: the stack of motes still looks full"),
-		FScreen::CellLookFor(Bag.Inventory, Bag.Mote) == ECataclysmCellLook::Full);
+	TestTrue(TEXT("CONTROL: the gauntlets still look full"),
+		FScreen::CellLookFor(Bag.Inventory, Bag.Gloves) == ECataclysmCellLook::Full);
 	TestTrue(TEXT("an empty slot still looks empty while something is held"),
 		FScreen::CellLookFor(Bag.Inventory, HeldEmptySlot) == ECataclysmCellLook::Empty);
 

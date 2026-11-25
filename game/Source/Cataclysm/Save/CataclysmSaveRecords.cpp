@@ -733,6 +733,120 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A record written before the inventory had tabs: its material and gem stacks lie in `CarriedSlots`. Issue #2849,
+	 * ruled 2026-11-22 (the owner: "One cell per kind, no limit (Recommended)"): the 48 slots hold gear only, and each
+	 * stack moves to `CarriedMaterials` or `CarriedGems`. Its cell is BLANKED, not removed, so `CarriedSlots` keeps its
+	 * length and every piece of gear keeps its cell. Two stacks of one kind are added together, in the order first met;
+	 * the inventory sorts the gems when it is restored. A stack of nought is dropped, as `RestoreSlots` would drop it.
+	 * Lists the record already holds are added to; one that is not a list, or an entry that is not an object, is
+	 * refused.
+	 */
+	bool Migrate_15_to_16(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		TArray<TSharedPtr<FJsonValue>> Materials;
+		TArray<TSharedPtr<FJsonValue>> Gems;
+		for (const TCHAR* Key : {TEXT("CarriedMaterials"), TEXT("CarriedGems")})
+		{
+			if (!Record->HasField(Key))
+			{
+				continue;
+			}
+			const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+			if (!Record->TryGetArrayField(Key, Held) || Held == nullptr)
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a list"), Key);
+				return false;
+			}
+			(FCString::Strcmp(Key, TEXT("CarriedMaterials")) == 0 ? Materials : Gems) = *Held;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
+		if (Record->HasField(TEXT("CarriedSlots")))
+		{
+			if (!Record->TryGetArrayField(TEXT("CarriedSlots"), Slots) || Slots == nullptr)
+			{
+				OutError = TEXT("CarriedSlots holds something that is not a list");
+				return false;
+			}
+			for (const TSharedPtr<FJsonValue>& Entry : *Slots)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (!Entry.IsValid() || !Entry->TryGetObject(Object) || Object == nullptr || !Object->IsValid())
+				{
+					OutError = TEXT("CarriedSlots holds an entry that is not an object");
+					return false;
+				}
+				const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+
+				// GEAR STAYS. A slot whose item has a base is a piece of gear, whatever else it holds.
+				FString Base = TEXT("None");
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Slot->TryGetObjectField(TEXT("Item"), Item) && Item != nullptr && Item->IsValid())
+				{
+					(*Item)->TryGetStringField(TEXT("Base"), Base);
+				}
+				FString Material = TEXT("None");
+				FString Gem = TEXT("None");
+				FString Rarity = TEXT("Everyday");
+				double Quantity = 0.0;
+				Slot->TryGetStringField(TEXT("Material"), Material);
+				Slot->TryGetStringField(TEXT("Gem"), Gem);
+				Slot->TryGetStringField(TEXT("GemRarity"), Rarity);
+				Slot->TryGetNumberField(TEXT("Quantity"), Quantity);
+				const bool bMaterial = Material != TEXT("None") && !Material.IsEmpty();
+				const bool bGem = !bMaterial && Gem != TEXT("None") && !Gem.IsEmpty();
+				if (Base != TEXT("None") || (!bMaterial && !bGem))
+				{
+					continue;
+				}
+
+				if (Quantity > 0.0)
+				{
+					TArray<TSharedPtr<FJsonValue>>& Into = bMaterial ? Materials : Gems;
+					bool bJoined = false;
+					for (const TSharedPtr<FJsonValue>& Existing : Into)
+					{
+						const TSharedPtr<FJsonObject>* Stack = nullptr;
+						if (!Existing.IsValid() || !Existing->TryGetObject(Stack) || Stack == nullptr || !Stack->IsValid())
+						{
+							continue;
+						}
+						FString Name;
+						FString StackRarity = TEXT("Everyday");
+						(*Stack)->TryGetStringField(bMaterial ? TEXT("Material") : TEXT("Gem"), Name);
+						(*Stack)->TryGetStringField(TEXT("GemRarity"), StackRarity);
+						if (Name == (bMaterial ? Material : Gem) && (bMaterial || StackRarity == Rarity))
+						{
+							double Was = 0.0;
+							(*Stack)->TryGetNumberField(TEXT("Quantity"), Was);
+							(*Stack)->SetNumberField(TEXT("Quantity"), Was + Quantity);
+							bJoined = true;
+							break;
+						}
+					}
+					if (!bJoined)
+					{
+						// THE STACK'S OWN OBJECT, COPIED, so its entry has every field a carried slot writes.
+						const TSharedRef<FJsonObject> Copy = MakeShared<FJsonObject>();
+						Copy->Values = Slot->Values;
+						Into.Add(MakeShared<FJsonValueObject>(Copy));
+					}
+				}
+
+				// BLANKED, NOT REMOVED: the cell stays, empty.
+				Slot->SetStringField(TEXT("Material"), TEXT("None")); // A migration's: the stack moved to its tab.
+				Slot->SetStringField(TEXT("Gem"), TEXT("None"));
+				Slot->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				Slot->SetNumberField(TEXT("Quantity"), 0.0);
+			}
+		}
+		Record->SetArrayField(TEXT("CarriedMaterials"), Materials); // A migration's: the materials tab, written out.
+		Record->SetArrayField(TEXT("CarriedGems"), Gems);
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -754,6 +868,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
+		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 	};
 }
 

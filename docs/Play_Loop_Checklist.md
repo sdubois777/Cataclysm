@@ -617,8 +617,6 @@ material, and it destroys the piece.
 - **A piece that dropped at +4** (a Legendary) refunds nothing for those four levels: no stone was spent on them.
 - **Salvage Protocol and Disassembly Expert** (the empire tree's Artisan branch) raise the drawn yields: 2.5% a point,
   and 20% more on Superb and above. They never raise the refund.
-- **A full bag** with no stack of something the piece gives back refuses first, "Make room in the bag first.", and
-  destroys nothing.
 
 ### 27. Sell a carried piece to the merchant
 

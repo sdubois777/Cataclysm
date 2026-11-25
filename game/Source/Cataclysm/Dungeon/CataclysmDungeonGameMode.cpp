@@ -13183,7 +13183,8 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 
 	if (ChoiceKey == FName(Effects::ForcedTithesPayMaterials))
 	{
-		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN SLOT ORDER.
+		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN THE MATERIALS TAB'S ORDER, which is the order first carried.
+		// Read from the materials tab since #2849; until then from the 48 slots, in slot order.
 		const UCataclysmInventoryComponent* Inventory = Player->GetInventory();
 		if (!Inventory)
 		{
@@ -13191,7 +13192,7 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 		}
 		FName Most;
 		int32 MostCount = 0;
-		for (const FCataclysmCarriedSlot& Slot : Inventory->GetSlots())
+		for (const FCataclysmCarriedSlot& Slot : Inventory->GetMaterialStacks())
 		{
 			if (!Slot.Material.IsNone() && Slot.Quantity > MostCount)
 			{

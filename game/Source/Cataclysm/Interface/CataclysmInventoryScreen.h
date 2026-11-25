@@ -9,6 +9,7 @@
 struct FCataclysmCarriedSlot;
 class UCataclysmInventoryComponent;
 class UDataTable;
+enum class ECataclysmInventoryTab : uint8;
 
 /**
  * How one carried cell is drawn. Issue #878.
@@ -309,6 +310,53 @@ public:
 	static FString HeaderTextFor(int32 Used, int32 Capacity,
 								 const FString& HeldName = FString(),
 								 const FString& Gold = FString());
+
+	//~ The materials tab and the gems tab. Issue #2849, the owner's ruling of 2026-11-22: "One cell per kind, no limit
+	//~ (Recommended)". The header line above is the gear tab's name; these two names stand beside it.
+
+	/**
+	 * The name of the materials tab or the gems tab with how many kinds it holds: "Materials (12)", "Gems (3)". Empty
+	 * for the gear tab, whose name is `HeaderTextFor`'s line.
+	 */
+	static FString TabNameFor(ECataclysmInventoryTab Tab, int32 KindsHeld);
+
+	/** A tab's name in ink when it is the tab shown, and in the empty cell's colour when it is not. */
+	static FLinearColor TabColourFor(bool bShown);
+
+	/**
+	 * Every crafting material the materials tab shows, one cell each, held or not: the table's rows by tier, lowest
+	 * first, and within a tier in the table's own order. Q1 of #2849: the tab "always shows all 27 materials (by
+	 * tier)". Empty for no table.
+	 */
+	static TArray<FName> MaterialTabOrder(const UDataTable* CraftingMaterialTable);
+
+	/** What a material's cell says: its name, whether any is held or not. */
+	static FString MaterialTabLabelFor(FName Material, const UDataTable* CraftingMaterialTable);
+
+	/** How many of a material the cell says are held, nought included: "0", "1", "34". */
+	static FString MaterialTabCountFor(int32 Held);
+
+	//~ The gems tab's pages. The coordinating session, 2026-11-22: 28 gems at 8 rarities is 224 stacks, which is
+	//~ reachable in play, and a tab whose bottom rows ran off the screen would hide gems. The screen code has no scroll
+	//~ box, so the tab pages: "Previous", "Page N of M", "Next".
+
+	/**
+	 * How many gem stacks one page shows: rows of twelve, as many rows as the materials tab uses for `MaterialKinds`
+	 * materials, so the gems tab is never taller than the materials tab. 27 materials use 3 rows: 36 stacks a page.
+	 */
+	static int32 GemStacksPerPage(int32 MaterialKinds);
+
+	/** How many pages `Stacks` gem stacks fill at `PerPage` a page: at least 1, so an empty tab is page 1 of 1. */
+	static int32 GemPageCount(int32 Stacks, int32 PerPage);
+
+	/** `Page` held inside 1 to `Pages`: a page past the last, as when stacks are spent, shows the last. */
+	static int32 ClampGemPage(int32 Page, int32 Pages);
+
+	/** The place in the gems tab of the first stack page `Page` shows: page 1 starts at 0. */
+	static int32 GemPageStart(int32 Page, int32 PerPage);
+
+	/** "Page 2 of 6". */
+	static FString GemPageText(int32 Page, int32 Pages);
 
 	//~ What is on the cursor. Issue #878.
 

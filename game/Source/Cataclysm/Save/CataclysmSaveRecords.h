@@ -1370,13 +1370,18 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 15 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * 16 SINCE 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
+	 * are two lists of their own, `CarriedMaterials` and `CarriedGems`, one stack per material and one per gem and
+	 * rarity. `Migrate_15_to_16` moves each stack out of `CarriedSlots` into its list and blanks its cell, so every
+	 * piece of gear keeps its cell. The owner's ruling of that day: "One cell per kind, no limit (Recommended)".
+	 *
+	 * 15 FROM 2026-11-24. An item records the gear level and the difficulty tier it arrived at
 	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2), so a dismantle refunds only the upgrade
 	 * levels the player paid for. `Migrate_14_to_15` writes -1 and 0, "not known", on every item: nothing recorded it
 	 * before. A VERSION AND NOT A DEFAULT, ruled by the coordinating session on 2026-11-24, by
 	 * `game/Tests/SaveFixtures/README.md`: from issue #1472 on, a field added to a record takes a version.
 	 *
-	 * 14 SINCE 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
+	 * 14 FROM 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
 	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
 	 * writes 0: the count starts at this build (V5).
 	 *
@@ -1432,7 +1437,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 15;
+	static constexpr int32 SchemaVersionNow = 16;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1725,6 +1730,20 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmCarriedSlot> CarriedSlots;
+
+	/**
+	 * The carried crafting materials, the materials tab: one entry per material, its `Material` and `Quantity` set.
+	 * Version 16, issue #2849. `UCataclysmInventoryComponent::GetMaterialStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedMaterials;
+
+	/**
+	 * The carried gems, the gems tab: one entry per gem and rarity, its `Gem`, `GemRarity` and `Quantity` set. Version
+	 * 15, issue #2849. `UCataclysmInventoryComponent::GetGemStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedGems;
 
 	/**
 	 * What the character is wearing: one entry per occupied slot, each naming

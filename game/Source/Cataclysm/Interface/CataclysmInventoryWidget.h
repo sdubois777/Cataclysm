@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "CataclysmInventoryWidget.generated.h"
 
 class ACataclysmComparisonStandIn;
@@ -143,6 +144,31 @@ public:
 	int32 CarriedSlotUnderCursor(const FVector2D& ViewportPoint) const;
 
 	/**
+	 * Which of the three tab names in the header the cursor is over. Issue #2849. False when it is over none; the
+	 * controller then asks the cells, as before.
+	 */
+	bool TabUnderCursor(const FVector2D& ViewportPoint, ECataclysmInventoryTab& OutTab) const;
+
+	/** Shows one tab's grid and hides the other two. Issue #2849. The gear tab is shown when the screen is first built. */
+	void ShowTab(ECataclysmInventoryTab Tab);
+
+	/** The tab whose grid is shown. */
+	ECataclysmInventoryTab ShownTab() const { return Shown; }
+
+	/**
+	 * Whether the cursor is over the gems tab's "Previous" (-1) or "Next" (+1). False on any other tab, and over
+	 * anything else. The coordinating session's ruling of 2026-11-22: the gems tab pages rather than running off the
+	 * screen.
+	 */
+	bool GemPagerUnderCursor(const FVector2D& ViewportPoint, int32& OutStep) const;
+
+	/** Turns the gems tab `Step` pages on (-1 back), held to its first and last page at the next refresh. */
+	void TurnGemPage(int32 Step);
+
+	/** The gems tab's page shown, from 1. */
+	int32 ShownGemPage() const { return GemPage; }
+
+	/**
 	 * Which worn gear slot the cursor is over, or ECataclysmGearSlot::Count.
 	 */
 	ECataclysmGearSlot GearSlotUnderCursor(const FVector2D& ViewportPoint) const;
@@ -263,6 +289,26 @@ private:
 	void BuildGearPanel(UVerticalBox* Into);
 
 	/**
+	 * Fills the materials tab and the gems tab, and the two tab names. Called from Refresh. Issue #2849.
+	 *
+	 * THE GEMS TAB PAGES: one page of cells, `UCataclysmInventoryScreen::GemStacksPerPage`, built once, showing the
+	 * stacks of the page shown; the cells past the last stack are hidden. The materials tab has one cell per crafting
+	 * material, built once.
+	 */
+	void RefreshStacks(const UCataclysmInventoryComponent* Inventory, const UDataTable* Rarities,
+					   const UDataTable* Materials, const UDataTable* Tiers, const UDataTable* Bases,
+					   const UDataTable* Affixes, const UDataTable* PositiveEnchantments,
+					   const UDataTable* NegativeEnchantments, bool bResized, float CellPx, float LabelFontPx,
+					   float QuantityFontPx, bool bContentsChanged);
+
+	/** Writes one stack's cell: its frame, name, count and tool tip. The tool tip only when `bToolTip`. */
+	void WriteStackCell(const FCataclysmInventoryCellWidgets& Widgets, const FCataclysmCarriedSlot& Stack,
+						const UDataTable* Rarities, const UDataTable* Materials, const UDataTable* Tiers,
+						const UDataTable* Bases, const UDataTable* Affixes, const UDataTable* PositiveEnchantments,
+						const UDataTable* NegativeEnchantments, bool bResized, float CellPx, float LabelFontPx,
+						float QuantityFontPx, bool bToolTip);
+
+	/**
 	 * Fills the panel of worn gear. Called from Refresh.
 	 *
 	 * @param bWornChanged  whether what is worn has changed since the last
@@ -318,6 +364,63 @@ private:
 	/** The line above the panel of worn gear. */
 	UPROPERTY()
 	TObjectPtr<UTextBlock> GearHeader = nullptr;
+
+	/**
+	 * THE THREE TABS, issue #2849, the owner's ruling of 2026-11-22. `Header` is the gear tab's name (it still says how
+	 * many of the 48 are used); these are the other two, beside it in the same line, so the panel is no taller.
+	 */
+	UPROPERTY()
+	TObjectPtr<UTextBlock> MaterialsTab = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> GemsTab = nullptr;
+
+	/**
+	 * The three grids, one shown at a time. `CarriedGearGrid` holds `Cells`. NOT `GearGrid`: that is the name of the
+	 * worn-gear panel's local grid in `BuildGearPanel`'s body, and a member of the same name is hidden by it, which the
+	 * build refuses (C4458; window inv-w1's first build, 2026-11-24).
+	 */
+	UPROPERTY()
+	TObjectPtr<UUniformGridPanel> CarriedGearGrid = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UUniformGridPanel> MaterialGrid = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UUniformGridPanel> GemGrid = nullptr;
+
+	/** One cell per crafting material, in `MaterialOrder`'s order. */
+	UPROPERTY()
+	TArray<FCataclysmInventoryCellWidgets> MaterialCells;
+
+	/** The materials, by tier, that `MaterialCells` show: `UCataclysmInventoryScreen::MaterialTabOrder`. */
+	TArray<FName> MaterialOrder;
+
+	/** The gems tab's cells: one page of them, `UCataclysmInventoryScreen::GemStacksPerPage` long. */
+	UPROPERTY()
+	TArray<FCataclysmInventoryCellWidgets> GemCells;
+
+	/** The gems tab's pager under its grid: "Previous", "Page N of M", "Next". Shown only on the gems tab. */
+	UPROPERTY()
+	TObjectPtr<UWidget> GemPager = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> GemPrevious = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> GemPageLine = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> GemNext = nullptr;
+
+	/** The gems tab's page shown, from 1. */
+	int32 GemPage = 1;
+
+	/** The page last drawn, so a page turned redraws its cells' tool tips once and not every frame. */
+	int32 LastGemPageDrawn = 0;
+
+	/** The tab whose grid is shown. */
+	ECataclysmInventoryTab Shown = ECataclysmInventoryTab::Gear;
 
 	/**
 	 * The cell size the widgets were last set to.

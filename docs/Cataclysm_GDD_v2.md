@@ -3105,9 +3105,21 @@ Seven tiers do nothing for progression unless something says which of them a dro
 
 *Upgrade level is the reference progression stated in section IV.*
 
-**The gear rarity column is not a cap. Every gear rarity can drop at every difficulty tier.** It says how far up the ladder a drop rolls at full weight. Above that, a rarity is halved once for each further rung, so a Cataclysmic at tier 1 is divided by two six times over and arrives about one drop in 1.5 million rather than never. Going from tier 1 to tier 8 is worth fifty-nine times at the top of the ladder.
+**The gear rarity column is not a cap. Every gear rarity can drop at every difficulty tier up to the cap below.** It says how far up the ladder a drop rolls at full weight. Above that, a rarity is halved once for each further rung, up to two rungs above the column, and nothing higher can drop.
 
 **It was a hard cap until the project owner played it.** Nothing above the column could drop at all, which left difficulty tier 1 producing only Everyday and Quality items. Issues #870 and #886. Diablo II has no hard gate on item quality either: a shallow monster can produce a high-level unique at a much reduced chance rather than never.
+
+**The cap: at most two rarities above the column.** The project owner ruled it on 2026-11-24 (issue #2853, "Hard cap by tier"), after Cataclysmic pieces dropped at tier 1. With no cap, a Cataclysmic there was about one drop in 1.5 million, and one in 38,000 from a Boss, and it arrives at +10. The highest rarity a drop can roll at all is rarity number tier + 3:
+
+| Difficulty tier | Highest gear rarity a drop can roll at all |
+| :-: | :-: |
+| 1 | Masterful |
+| 2 | Legendary |
+| 3 | Mythical |
+| 4 | Ascendant |
+| 5 to 8 | Cataclysmic |
+
+Everyday, Quality, Superb and Masterful keep their chances: no tier's cap is below Masterful, and the halving per rung still applies below the cap. Magic find cannot lift a drop past the cap. A gem's rarity is rolled the same way as gear's, so the same cap holds for gems. One exception, which the project owner ruled the same day: the High Roller's extra item, which its node promises at Legendary or rarer, is exactly Legendary at tiers 1 and 2, one rung above tier 1's cap; at tier 3 and up it rolls from Legendary to the cap.
 
 **Why the unpenalised reach is one above the tier rather than level with it.** The same reason the affix tier column gives: with it sitting exactly on the tier, the best thing a dungeon produces at full weight is something the player can already make, so the only reason to run one is quantity. The eighth rarity and the eighth tier both being the last means tiers 7 and 8 are unpenalised the whole way up, exactly as affix tiers 6, 7 and 8 all reach T7.
 
@@ -4970,6 +4982,18 @@ opens is its own rather than the account's.
 
 **The carried inventory is 48 slots, four rows of twelve, and nothing increases
 it.** One item takes one slot whatever it is, the same rule the stash uses.
+
+**Since 2026-11-22 the 48 slots are for gear, and crafting materials and gems are
+carried in two tabs of their own.** The project owner: "I think we need to add tabs
+to the inventory. One for crafting materials and one for gems. Otherwise you wont be
+able to carry any loot", and then, of their shape, "One cell per kind, no limit
+(Recommended)". The materials tab shows every crafting material, by tier, with how
+many are carried; the gems tab shows each stack of a gem at a rarity that is carried.
+Neither fills and neither refuses a pickup, so a material or a gem never takes one of
+the 48 slots. Diablo IV's Materials and Socketables tabs work this way. Issue #2849.
+**The pressure described below is therefore a pressure on gear**: what fills the
+bag partway down a dungeon is pieces of gear, and a full bag still leaves gear on the
+floor.
 
   
 

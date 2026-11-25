@@ -290,6 +290,19 @@ def test_the_cells_can_be_hovered_but_the_widget_does_not_eat_the_click() -> Non
     # THE OPPOSITE MISTAKE, AND IT IS NOT CAUGHT BY THE CHECK ABOVE, because
     # SelfHitTestInvisible could be set on one widget while the tree's root was
     # set to something that swallows the whole subtree.
+    #
+    # SINCE ISSUE #2849 TWO FUNCTIONS HIDE ON PURPOSE, and only they: `ShowTab` collapses the two tabs' grids that are
+    # not shown, and `RefreshStacks` hides the gems tab's cells past its last stack. Neither touches the root. Their
+    # bodies are taken out before the search, so anything else that hides is still caught.
+    for allowed in ("void UCataclysmInventoryWidget::ShowTab(", "void UCataclysmInventoryWidget::RefreshStacks("):
+        start = text.index(allowed)
+        opening = text.index("{", start)
+        depth = 0
+        for index in range(opening, len(text)):
+            depth += {"{": 1, "}": -1}.get(text[index], 0)
+            if depth == 0:
+                text = text[:start] + text[index + 1:]
+                break
     for swallowing in ("ESlateVisibility::HitTestInvisible",
                        "ESlateVisibility::Collapsed",
                        "ESlateVisibility::Hidden"):

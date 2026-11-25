@@ -512,6 +512,106 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the character record's `Migrate_15_to_16` writes into a character file written before version 16: each
+	 * crafting material and gem stack moved out of `CarriedSlots` into `CarriedMaterials` or `CarriedGems`, the same
+	 * kind summed into the stack first met, in the order first met (THE MIGRATION DOES NOT SORT), and the cell it left
+	 * BLANKED rather than removed -- Material "None", Gem "None", GemRarity "Everyday", Quantity 0 -- so `CarriedSlots`
+	 * keeps its length. A stack holding 0 or fewer is not moved, and its cell is blanked all the same. A slot whose item
+	 * has a base is gear and is left alone. Both lists are written, empty when nothing moved. Issue #2849. THE CHARACTER
+	 * RECORD'S 15. ONE COPY, for every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion14Defaults`, since the stacks it copies carry the gem fields version 13 added.
+	 */
+	inline void AddTheCharactersVersion16Defaults(FJsonObject& Expected)
+	{
+		TArray<TSharedPtr<FJsonValue>> Materials;
+		TArray<TSharedPtr<FJsonValue>> Gems;
+		const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedMaterials"), Held) && Held)
+		{
+			Materials = *Held;
+		}
+		Held = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedGems"), Held) && Held)
+		{
+			Gems = *Held;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedSlots"), Slots) && Slots)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Slots)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (!Entry.IsValid() || !Entry->TryGetObject(Object) || !Object || !Object->IsValid())
+				{
+					continue;
+				}
+				const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+
+				FString Base = TEXT("None");
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Slot->TryGetObjectField(TEXT("Item"), Item) && Item && Item->IsValid())
+				{
+					(*Item)->TryGetStringField(TEXT("Base"), Base);
+				}
+				FString Material = TEXT("None");
+				FString Gem = TEXT("None");
+				FString Rarity = TEXT("Everyday");
+				double Quantity = 0.0;
+				Slot->TryGetStringField(TEXT("Material"), Material);
+				Slot->TryGetStringField(TEXT("Gem"), Gem);
+				Slot->TryGetStringField(TEXT("GemRarity"), Rarity);
+				Slot->TryGetNumberField(TEXT("Quantity"), Quantity);
+				const bool bMaterial = Material != TEXT("None") && !Material.IsEmpty();
+				const bool bGem = !bMaterial && Gem != TEXT("None") && !Gem.IsEmpty();
+				if (Base != TEXT("None") || (!bMaterial && !bGem))
+				{
+					continue;
+				}
+
+				if (Quantity > 0.0)
+				{
+					TArray<TSharedPtr<FJsonValue>>& Into = bMaterial ? Materials : Gems;
+					bool bJoined = false;
+					for (const TSharedPtr<FJsonValue>& Existing : Into)
+					{
+						const TSharedPtr<FJsonObject>* Stack = nullptr;
+						if (!Existing.IsValid() || !Existing->TryGetObject(Stack) || !Stack || !Stack->IsValid())
+						{
+							continue;
+						}
+						FString Name;
+						FString StackRarity = TEXT("Everyday");
+						(*Stack)->TryGetStringField(bMaterial ? TEXT("Material") : TEXT("Gem"), Name);
+						(*Stack)->TryGetStringField(TEXT("GemRarity"), StackRarity);
+						if (Name == (bMaterial ? Material : Gem) && (bMaterial || StackRarity == Rarity))
+						{
+							double Was = 0.0;
+							(*Stack)->TryGetNumberField(TEXT("Quantity"), Was);
+							(*Stack)->SetNumberField(TEXT("Quantity"), Was + Quantity);
+							bJoined = true;
+							break;
+						}
+					}
+					if (!bJoined)
+					{
+						const TSharedRef<FJsonObject> Copy = MakeShared<FJsonObject>();
+						Copy->Values = Slot->Values;
+						Into.Add(MakeShared<FJsonValueObject>(Copy));
+					}
+				}
+
+				Slot->SetStringField(TEXT("Material"), TEXT("None"));
+				Slot->SetStringField(TEXT("Gem"), TEXT("None"));
+				Slot->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				Slot->SetNumberField(TEXT("Quantity"), 0.0);
+			}
+		}
+		Expected.SetArrayField(TEXT("CarriedMaterials"), Materials);
+		Expected.SetArrayField(TEXT("CarriedGems"), Gems);
+	}
+
+	/**
 	 * What the run record's newest step writes into a run file written before it: no city bailed out, no dungeon a bonus
 	 * one, no bonus dungeon cleared and no bribe made (`bBailedOut`, `bBonus`, `BonusDungeonsCleared`,
 	 * `bBribedThisSurge`). Issue #2741 slice 9. NAMED FOR THE VERSION IT REACHES, 15, after the gems window's

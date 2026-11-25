@@ -729,7 +729,9 @@ bool FCataclysmMaterialDropsReachTheFloorTest::RunTest(const FString& Parameters
 }
 
 /**
- * Picking up a material stacks it, and a full bag leaves it on the floor.
+ * Picking up a material stacks it, and a full gear tab still takes it: since issue
+ * #2849 a material goes to the materials tab, which has no limit. Until then a full
+ * bag left a material it was not carrying on the floor.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialPickupTest,
 	"Cataclysm.Drop.PickingUpAMaterialStacksItInTheInventory",
@@ -776,9 +778,10 @@ bool FCataclysmMaterialPickupTest::RunTest(const FString& Parameters)
 	}
 
 	TestEqual(TEXT("three are carried"), Inventory->CountOfMaterial(Mote), 3);
-	TestEqual(TEXT("in one slot"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("in one stack"), Inventory->GetMaterialStacks().Num(), 1);
+	TestEqual(TEXT("taking no gear slot"), Inventory->NumItems(), 0);
 
-	// A FULL BAG LEAVES A MATERIAL IT IS NOT CARRYING ON THE FLOOR.
+	// A FULL GEAR TAB STILL TAKES A MATERIAL IT IS NOT CARRYING.
 	Inventory->RemoveEverything();
 	for (int32 N = 0; N < UCataclysmInventoryComponent::SlotCount; ++N)
 	{
@@ -786,23 +789,29 @@ bool FCataclysmMaterialPickupTest::RunTest(const FString& Parameters)
 		Filler.Base = FName(*FString::Printf(TEXT("Filler%d"), N));
 		Inventory->AddItem(Filler);
 	}
-
-	ACataclysmDroppedItem* Refused = World->SpawnActor<ACataclysmDroppedItem>(
-		FVector(700.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
-	if (!TestNotNull(TEXT("a drop for the full bag"), Refused))
+	if (!TestTrue(TEXT("set-up: the gear tab is full"), Inventory->IsFull())
+		|| !TestEqual(TEXT("set-up: and no material is carried"), Inventory->CountOfMaterial(Mote), 0))
 	{
 		return false;
 	}
-	Refused->Material = Mote;
-	Refused->MaterialQuantity = 1;
-	Refused->MaterialTier = 1;
-	Refused->DisplayName = TEXT("Corrupted Mote");
 
-	TestFalse(TEXT("a full bag cannot take a new material"),
-		UCataclysmDropPickup::TakeInto(Inventory, Refused));
-	TestTrue(TEXT("so it stays on the floor"), IsValid(Refused));
-	TestEqual(TEXT("and none of it is carried"),
-		Inventory->CountOfMaterial(Mote), 0);
+	ACataclysmDroppedItem* Taken = World->SpawnActor<ACataclysmDroppedItem>(
+		FVector(700.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a drop for the full gear tab"), Taken))
+	{
+		return false;
+	}
+	Taken->Material = Mote;
+	Taken->MaterialQuantity = 1;
+	Taken->MaterialTier = 1;
+	Taken->DisplayName = TEXT("Corrupted Mote");
+
+	TestTrue(TEXT("a full gear tab still takes a new material"),
+		UCataclysmDropPickup::TakeInto(Inventory, Taken));
+	TestFalse(TEXT("so it leaves the floor"), IsValid(Taken));
+	TestEqual(TEXT("and one of it is carried"),
+		Inventory->CountOfMaterial(Mote), 1);
+	TestTrue(TEXT("and the gear tab is still full"), Inventory->IsFull());
 
 	return true;
 }
