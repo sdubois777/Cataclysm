@@ -181,6 +181,7 @@ namespace
 		{ TEXT("minion_death_in_reach_within_seconds"), ECataclysmStatCondition::MinionDeathInReachWithinSeconds },
 		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
 		{ TEXT("minion_within_metres_of_you"), ECataclysmStatCondition::MinionWithinMetresOfYou },
+		{ TEXT("target_marked_by_you"), ECataclysmStatCondition::TargetMarkedByYou },
 	};
 
 	struct FNamedStatScale
@@ -417,8 +418,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesYourPoison:
 	case ECataclysmStatCondition::NoEnemyInReach:
 	case ECataclysmStatCondition::TargetCarriesNecrosis:
+	case ECataclysmStatCondition::TargetMarkedByYou:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the forty-six says
+		// nothing for a number to be compared against. Each of the forty-seven says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -669,6 +671,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetStruckFromBehind:
 	case C::TargetCarriesNecrosis:
 	case C::MinionWithinMetresOfYou:
+	case C::TargetMarkedByYou:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
@@ -1559,6 +1562,9 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::TargetCarriesNecrosis:
 		return State.bTargetCarriesNecrosis;
+
+	case ECataclysmStatCondition::TargetMarkedByYou:
+		return State.bTargetMarkedByYou;
 
 	// THE DEATH TREES' SLICE C6d2 (2026-11-25): a clock, as every clock is, never reads -1 and refuses, inclusive.
 	case ECataclysmStatCondition::WithinSecondsOfMinionDeath:

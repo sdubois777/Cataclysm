@@ -3223,6 +3223,10 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 		}
 	}
 
+	// AND A SHADOW'S MARK ON IT MOVES, to the strongest enemy within 10 metres of it (the Death trees' slice C6e,
+	// 2026-11-25, as ruled), while the dying creature still stands where it fell.
+	UCataclysmAbilitySystemComponent::MoveShadowMarksOff(Character);
+
 	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:
 	// Press-Ganged and Rekindled. A minion whose death is an explosion is
 	// destroyed inside `HandleDeath`, so where it stood and whether it exploded

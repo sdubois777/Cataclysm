@@ -656,3 +656,8 @@ Necromancer_basic_gr_stem1#1,Necromancer_basic_gr_stem1,minion_damage,increased,
 Necromancer_basic_gr_b0#1,Necromancer_basic_gr_b0,minion_damage_leeched_to_you_percent,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Necromancer_capstone_200#1,Necromancer_capstone_200,minion_cannot_die_above_health_percent,flat,50.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Necromancer_capstone_100#1,Necromancer_capstone_100,minion_health_percent_of_yours_per_other_minion,flat,5.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_b_kB#1,Shadow_keystone_b_kB,death_marks_held,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_b_kB#2,Shadow_keystone_b_kB,attack_damage,more,30.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_b_kB#3,Shadow_keystone_b_kB,spell_damage,more,30.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_b_kB#4,Shadow_keystone_b_kB,fervour_per_critical_strike,flat,5.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_b_kD#1,Shadow_keystone_b_kD,death_marks_held,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

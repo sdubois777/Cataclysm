@@ -12691,6 +12691,34 @@ namespace CataclysmStatExemptionTest
 					   HealthBefore + 1000.0f, 0.01f);
 	}
 
+	void ProbeDeathMarksHeld(FAutomationTestBase& Test)
+	{
+		// `death_marks_held`, read by `UCataclysmAbilitySystemComponent::MaintainShadowMarks`: the Shadow's Deathmark,
+		// the Death trees' slice C6e (2026-11-25). A monster 5 metres from the fighter. THE CONTROL: with no row a step
+		// marks nothing. With 1, the monster is marked.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Marker(World, /*AttackDamage=*/0.0f);
+		ACataclysmEnemyCharacter* Monster =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(5.0f * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("death_marks_held: a monster"), Monster))
+		{
+			return;
+		}
+		Monster->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Marker.AbilitySystem->MaintainShadowMarks();
+		const bool bWithNoRow = Marker.AbilitySystem->HoldsShadowMarkOn(Monster);
+		GrantFlatLines(Marker, {{UCataclysmAbilitySystemComponent::ShadowMarksStat, 1.0f}});
+		Marker.AbilitySystem->MaintainShadowMarks();
+		Test.TestFalse(TEXT("control: with no row nothing is marked"), bWithNoRow);
+		Test.TestTrue(TEXT("with 1, the monster is marked, so MaintainShadowMarks really reads it"),
+					  Marker.AbilitySystem->HoldsShadowMarkOn(Monster));
+	}
+
 	void ProbeDecayFloorPercent(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -13464,6 +13492,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_damage_leeched_to_you_percent"), &ProbeMinionDamageLeechedToYou},
 			{TEXT("minion_cannot_die_above_health_percent"), &ProbeMinionCannotDieAboveHealthPercent},
 			{TEXT("minion_health_percent_of_yours_per_other_minion"), &ProbeMinionHealthPercentOfYoursPerOtherMinion},
+			// AND THE DEATH TREES' SLICE C6e's DEATHMARK (2026-11-25).
+			{TEXT("death_marks_held"), &ProbeDeathMarksHeld},
 			{TEXT("health_percent_lost_per_fervour_lost"), &ProbeHealthPercentLostPerFervourLost},
 			{TEXT("fervour_overflow_attack_speed_seconds"), &ProbeOverflowAttackSpeedSeconds},
 			{TEXT("kill_chain_seconds"), &ProbeKillChainSeconds},

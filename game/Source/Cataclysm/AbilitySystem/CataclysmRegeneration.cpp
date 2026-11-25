@@ -757,6 +757,12 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 
 	SharedBloodStep(Character, SecondsInStep, /*bFill=*/false);
 	BoundBonesStep(Character);
+
+	// AND THE SHADOW'S MARKS ARE KEPT UP: the Death trees' slice C6e (2026-11-25).
+	if (UCataclysmAbilitySystemComponent* Marker = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Marker->MaintainShadowMarks();
+	}
 }
 
 const TCHAR* UCataclysmRegeneration::SharedBloodStat =

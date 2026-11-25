@@ -639,6 +639,11 @@ INVENTORY = {
         "the share a projectile's later contact keeps (issue #1686), with "
         "the firing skill's tags; the count of contacts is the "
         "projectile's own, so no blow state is handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ShadowMarksStat), FGameplayTagContainer(), 0.0f'):
+        "how many enemies the character marks (the Death trees' slice C6e, "
+        "Deathmark and Two Marks), asked each regeneration step, which is a "
+        "clock rather than a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
      'FName(MinionDamageLeechedStat), FGameplayTagContainer(), 0.0f'):
         "the commander's share of its minion's damage leeched as health (the "

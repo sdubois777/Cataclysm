@@ -2107,6 +2107,15 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	MinionWithinMetresOfYou
 		UMETA(DisplayName = "Minion Within Metres Of You"),
+
+	/**
+	 * The character struck carries one of the asker's own marks: the Shadow's Deathmark, "It takes 30% more damage from
+	 * you, and each critical strike on it gives 5 Fervour". The Death trees' slice C6e (2026-11-25), as ruled (Q5): a
+	 * mark of its own, keyed by the marker, separate from War's Deathmark. Filled by `WithTargetState` only when a row
+	 * asks, from `UCataclysmAbilitySystemComponent::HoldsShadowMarkOn`. IT TAKES NO VALUE.
+	 */
+	TargetMarkedByYou
+		UMETA(DisplayName = "Target Marked By You"),
 };
 
 /**
@@ -3240,6 +3249,10 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** Whether the character struck carries Necrosis. The Death trees' slice C6d1. See `TargetCarriesNecrosis`. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesNecrosis = false;
+
+	/** Whether the character struck carries one of the asker's marks. The Death trees' slice C6e. See `TargetMarkedByYou`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetMarkedByYou = false;
 
 	/**
 	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
@@ -5826,7 +5839,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-fifth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5843,7 +5856,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-SIX OF THE HUNDRED-AND-FOUR COMPARE NOTHING. They are the case labels
+	 * FORTY-SEVEN OF THE HUNDRED-AND-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

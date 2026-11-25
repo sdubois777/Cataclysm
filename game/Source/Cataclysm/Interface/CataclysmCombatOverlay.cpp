@@ -549,6 +549,13 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
+FString UCataclysmCombatOverlay::MarkedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	return AbilitySystem && AbilitySystem->IsShadowMarked() ? FString(TEXT("Marked")) : FString();
+}
+
 FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -1016,7 +1023,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  ContagiousTouchTextFor(Actor), FamishedBeastsTextFor(Actor), RelicSpiritTextFor(Actor),
 		  ChaosSpawnTextFor(Actor), BannerAssailantTextFor(Actor), TitheAngelTextFor(Actor),
 		  QuarantineTextFor(Actor), ShroudedTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
+		  ArmourRemovedTextFor(Actor), MarkedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), FearedTextFor(Actor),
 		  MaddenedTextFor(Actor),
 		  // THE FOUR TAGGED DEBUFFS, by name only, beside Madness. Issue #2379.
 		  CrippledTextFor(Actor), WeakenedTextFor(Actor), ShreddedTextFor(Actor), StunnedTextFor(Actor),

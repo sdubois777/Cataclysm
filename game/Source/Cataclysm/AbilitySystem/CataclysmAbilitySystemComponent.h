@@ -4991,6 +4991,53 @@ public:
 	float BoundBonesHealthAdded = 0.0f;
 
 	/**
+	 * THE SHADOW'S DEATHMARK AND TWO MARKS, the Death trees' slice C6e (2026-11-25), as ruled (Q5): "The strongest enemy
+	 * within 15 metres is marked ... When it dies, the mark moves to the strongest enemy within 10 metres." A mark of
+	 * this character's own, kept on it, separate from War's Deathmark (which marks whatever War crits, for everyone).
+	 *
+	 * STICKY: a mark is chosen only while this character holds fewer than its count (`ShadowMarksStat`, 1 for Deathmark
+	 * and 1 more for Two Marks), and is kept until its creature dies. Called at every regeneration step: marks on the
+	 * dead or the gone are dropped, any over the count are dropped, and each empty one is given the strongest enemy
+	 * within 15 metres (`UCataclysmDebuffs::StrongestEnemyNear`) not already marked. With no count, every mark is lifted.
+	 */
+	void MaintainShadowMarks();
+
+	/** A creature this character marked is dying: its mark moves to the strongest unmarked enemy within 10 metres of it, or is lifted for the next step to fill. */
+	void MoveShadowMarkFrom(const AActor* Dying);
+
+	/** Every character that marked `Dying` moves its mark, as `MoveShadowMarkFrom` says. Called where a death begins. */
+	static void MoveShadowMarksOff(const AActor* Dying);
+
+	/** Whether this character holds a mark on `Creature`: the condition `target_marked_by_you`. */
+	bool HoldsShadowMarkOn(const AActor* Creature) const;
+
+	/** How many marks this character holds now. */
+	int32 ShadowMarksHeld() const;
+
+	/** Whether some character's Shadow mark is on this one: the "Marked" label under its health bar. */
+	bool IsShadowMarked() const;
+
+	/** The stat naming how many marks a character holds: Deathmark's 1, and Two Marks' 1 more. */
+	static const TCHAR* ShadowMarksStat;
+
+	/** "The strongest enemy within 15 metres", and "the strongest enemy within 10 metres" of the one that died. */
+	static constexpr float ShadowMarkReachCm = 1500.0f;
+	static constexpr float ShadowMarkMoveCm = 1000.0f;
+
+protected:
+	/** The creatures this character has marked, in the order marked. */
+	TArray<TWeakObjectPtr<AActor>> ShadowMarks;
+
+	/** On a marked creature: every character whose mark is on it. */
+	TArray<TWeakObjectPtr<UCataclysmAbilitySystemComponent>> ShadowMarkedBy;
+
+	/** Put a mark on `Creature` and tell it who marked it, or lift it. */
+	void AddShadowMark(AActor* Creature);
+	void LiftShadowMark(AActor* Creature);
+
+public:
+
+	/**
 	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *

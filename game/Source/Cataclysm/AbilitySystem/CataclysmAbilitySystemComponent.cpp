@@ -1841,6 +1841,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsBehind = false;
 	bool bWantsMovementSkillHit = false;
 	bool bWantsNecrosis = false;
+	bool bWantsShadowMark = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1898,6 +1899,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND WHETHER THE TARGET CARRIES NECROSIS, Grave Cold, the Death trees' slice C6d1.
 			case ECataclysmStatCondition::TargetCarriesNecrosis:
 				bWantsNecrosis = true;
+				break;
+			// AND WHETHER IT CARRIES THE ASKER'S OWN MARK, the Shadow's Deathmark (the Death trees' slice C6e).
+			case ECataclysmStatCondition::TargetMarkedByYou:
+				bWantsShadowMark = true;
 				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
@@ -1957,7 +1962,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// to the declarations.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
 			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind && bWantsMovementSkillHit
-			&& bWantsRarity && bWantsNecrosis)
+			&& bWantsRarity && bWantsNecrosis && bWantsShadowMark)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1972,7 +1977,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
 			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind && !bWantsMovementSkillHit
-			&& !bWantsRarity && !bWantsNecrosis))
+			&& !bWantsRarity && !bWantsNecrosis && !bWantsShadowMark))
 	{
 		return State;
 	}
@@ -2002,6 +2007,14 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		const FGameplayTag Necrosis = UCataclysmDebuffs::NecrosisTag();
 		const UAbilitySystemComponent* Carrier = UCataclysmTargeting::AbilitySystemOf(Target);
 		State.bTargetCarriesNecrosis = Necrosis.IsValid() && Carrier && Carrier->HasMatchingGameplayTag(Necrosis);
+	}
+
+	// AND WHETHER IT CARRIES THE ASKER'S OWN MARK (the Death trees' slice C6e, 2026-11-25).
+	if (bWantsShadowMark)
+	{
+		const UCataclysmAbilitySystemComponent* Marker =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetMarkedByYou = Marker && Marker->HoldsShadowMarkOn(Target);
 	}
 
 	// AND HOW LONG AGO THE ASKER'S MOVEMENT SKILL STRUCK IT, from the record kept on it (the Death trees' slice C6b2).
@@ -5179,6 +5192,153 @@ void UCataclysmAbilitySystemComponent::NoteMovementSkillEnded()
 	}
 
 	ActOnEvent(FName(TEXT("movement_skill_ends")));
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::ShadowMarksStat = TEXT("death_marks_held");
+
+void UCataclysmAbilitySystemComponent::AddShadowMark(AActor* Creature)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Creature));
+	if (!Creature || HoldsShadowMarkOn(Creature))
+	{
+		return;
+	}
+	ShadowMarks.Add(Creature);
+	if (Theirs)
+	{
+		Theirs->ShadowMarkedBy.AddUnique(this);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::LiftShadowMark(AActor* Creature)
+{
+	ShadowMarks.RemoveAll([Creature](const TWeakObjectPtr<AActor>& Held) { return Held.Get() == Creature; });
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Creature)))
+	{
+		Theirs->ShadowMarkedBy.RemoveAll(
+			[this](const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& By) { return By.Get() == this; });
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsShadowMarkOn(const AActor* Creature) const
+{
+	return Creature && ShadowMarks.ContainsByPredicate(
+		[Creature](const TWeakObjectPtr<AActor>& Held) { return Held.Get() == Creature; });
+}
+
+int32 UCataclysmAbilitySystemComponent::ShadowMarksHeld() const
+{
+	int32 Held = 0;
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		Held += Mark.IsValid() ? 1 : 0;
+	}
+	return Held;
+}
+
+bool UCataclysmAbilitySystemComponent::IsShadowMarked() const
+{
+	return ShadowMarkedBy.ContainsByPredicate(
+		[](const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& By) { return By.IsValid(); });
+}
+
+void UCataclysmAbilitySystemComponent::MaintainShadowMarks()
+{
+	// NOTHING TO DO FOR A CHARACTER WITH NO LINE FOR THE STAT AND NO MARK, which is every character but a Shadow
+	// holding Deathmark: one lookup of the line and no stat asked.
+	if (!GetStatInputs(FName(ShadowMarksStat)) && ShadowMarks.IsEmpty())
+	{
+		return;
+	}
+	const AActor* Self = GetAvatarActor();
+	const int32 Count = Self && !UCataclysmSkillEffects::IsDead(Self)
+		? FMath::Max(0, FMath::FloorToInt(StatForSkill(FName(ShadowMarksStat), FGameplayTagContainer(), 0.0f)))
+		: 0;
+
+	// THE DEAD AND THE GONE ARE DROPPED, then any over the count, last marked first.
+	TArray<AActor*> Lifted;
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		AActor* Held = Mark.Get();
+		if (!Held || UCataclysmSkillEffects::IsDead(Held))
+		{
+			Lifted.Add(Held);
+		}
+	}
+	for (AActor* Each : Lifted)
+	{
+		if (Each)
+		{
+			LiftShadowMark(Each);
+		}
+	}
+	ShadowMarks.RemoveAll([](const TWeakObjectPtr<AActor>& Held) { return !Held.IsValid(); });
+	while (ShadowMarks.Num() > Count)
+	{
+		LiftShadowMark(ShadowMarks.Last().Get());
+	}
+
+	// EACH EMPTY MARK IS GIVEN THE STRONGEST ENEMY WITHIN 15 METRES NOT ALREADY MARKED.
+	while (Self && ShadowMarks.Num() < Count)
+	{
+		TArray<const AActor*> Marked;
+		for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+		{
+			Marked.Add(Mark.Get());
+		}
+		AActor* Next = UCataclysmDebuffs::StrongestEnemyNear(Self, Self, ShadowMarkReachCm, Marked);
+		if (!Next)
+		{
+			break;
+		}
+		AddShadowMark(Next);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::MoveShadowMarkFrom(const AActor* Dying)
+{
+	if (!HoldsShadowMarkOn(Dying))
+	{
+		return;
+	}
+	LiftShadowMark(const_cast<AActor*>(Dying));
+	const AActor* Self = GetAvatarActor();
+	if (!Self)
+	{
+		return;
+	}
+	TArray<const AActor*> Marked = {Dying};
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		Marked.Add(Mark.Get());
+	}
+	// THE STRONGEST WITHIN 10 METRES OF THE ONE THAT DIED, as an enemy of this character's. None near: the next
+	// regeneration step chooses within 15 metres of this character.
+	if (AActor* Next = UCataclysmDebuffs::StrongestEnemyNear(Dying, Self, ShadowMarkMoveCm, Marked))
+	{
+		AddShadowMark(Next);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::MoveShadowMarksOff(const AActor* Dying)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Dying));
+	if (!Theirs || Theirs->ShadowMarkedBy.IsEmpty())
+	{
+		return;
+	}
+	// COPIED FIRST, because moving a mark changes the list being walked.
+	const TArray<TWeakObjectPtr<UCataclysmAbilitySystemComponent>> Markers = Theirs->ShadowMarkedBy;
+	for (const TWeakObjectPtr<UCataclysmAbilitySystemComponent>& Marker : Markers)
+	{
+		if (UCataclysmAbilitySystemComponent* By = Marker.Get())
+		{
+			By->MoveShadowMarkFrom(Dying);
+		}
+	}
 }
 
 void UCataclysmAbilitySystemComponent::NoteMinionDied(const AActor* Body, const FGameplayTagContainer& FollowerTags)

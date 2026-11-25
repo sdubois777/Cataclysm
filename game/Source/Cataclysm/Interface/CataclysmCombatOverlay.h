@@ -543,6 +543,12 @@ public:
 	static FString SlowedTextFor(const AActor* Actor);
 
 	/**
+	 * "Marked" under a creature's health bar while a Shadow's Deathmark is on it, or empty. The Death trees' slice C6e
+	 * (2026-11-25), as ruled (Q5): its own word, so it is never read as War's "Deathmarked".
+	 */
+	static FString MarkedTextFor(const AActor* Actor);
+
+	/**
 	 * "Held" under a creature's health bar while a holder of Nowhere to Run holds
 	 * it, or empty. Issue #1515, asked for 2026-09-25: a player cannot otherwise
 	 * tell a held creature from one that has simply stopped moving.

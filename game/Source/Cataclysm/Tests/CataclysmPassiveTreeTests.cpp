@@ -3599,7 +3599,9 @@ namespace CataclysmPassiveConditionTest
 			// AND HUNTING GROUND'S "no enemy within", the Death trees' slice C6b3: a state, its radius the reach.
 			|| Name == TEXT("no_enemy_in_reach")
 			// AND GRAVE COLD'S "enemies that have Necrosis", the Death trees' slice C6d1: a state of the target.
-			|| Name == TEXT("target_carries_necrosis");
+			|| Name == TEXT("target_carries_necrosis")
+			// AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you", the Death trees' slice C6e: a state.
+			|| Name == TEXT("target_marked_by_you");
 	}
 }
 

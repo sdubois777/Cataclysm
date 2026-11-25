@@ -307,7 +307,8 @@ public:
 	 * rung, then the most current health, then the nearest. As ruled for Blood Debt, the Death trees' slice C4c2
 	 * (2026-11-25). Null when there is none.
 	 */
-	static AActor* StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm);
+	static AActor* StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm,
+									  const TArray<const AActor*>& Excluding = TArray<const AActor*>());
 
 	/** How far Blood Debt looks from the body: "the strongest enemy within 10 metres". */
 	static constexpr float BloodDebtReachCm = 1000.0f;

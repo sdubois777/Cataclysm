@@ -5644,6 +5644,11 @@ CONDITIONS = {
     # fact of the target in hand, so one of `CONDITIONS_OF_A_HIT_DEALT`.
     "minions_in_reach_at_least": (1.0, 20.0, "a number of minions"),
     "target_carries_necrosis": None,
+    # AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you, and each
+    # critical strike on it gives 5 Fervour": the character struck carries one
+    # of the asker's own marks. The Death trees' slice C6e (2026-11-25), as ruled
+    # (Q5). It names a state. A fact of the target in hand.
+    "target_marked_by_you": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -11316,6 +11321,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_beyond_metres",
     "target_struck_by_your_movement_skill_within_seconds",
     "target_carries_necrosis",
+    "target_marked_by_you",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",

@@ -1169,6 +1169,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And its Bound Bones: the per cent of the commander's maximum health each follower gains for every other one
 		// alive. Read by UCataclysmRegeneration::BoundBonesStep. No attribute and no base.
 		TEXT("minion_health_percent_of_yours_per_other_minion"),
+		// And the Shadow's Deathmark and Two Marks, the Death trees' slice C6e: how many enemies a character marks.
+		// Read by UCataclysmAbilitySystemComponent::MaintainShadowMarks. No attribute and no base.
+		TEXT("death_marks_held"),
 		// And the Shadow's starting node and Telling Blows, the Death trees' slice C4d1: the Fervour a landed critical
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.

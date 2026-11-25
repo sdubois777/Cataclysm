@@ -753,7 +753,9 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 653 THE SAME DAY, for slice C6d2: Death Ward, Bone Knit, Marrow Feast
 #: and Avenging Dead. AND TO 654 FOR ITS MARSHAL. AND TO 657 FOR ITS SHARED
 #: LEECH, ETERNAL ARMY AND BOUND BONES.
-AUTHORED_ROWS = 657
+#:
+#: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks.
+AUTHORED_ROWS = 662
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1244,7 +1246,9 @@ AUTHORED_ROWS = 657
 #: LEECH. Eternal Army and Bound Bones are options, counted in
 #: `AUTHORED_OPTIONS`; their capstones had no row before, so each moves this
 #: count too, to 394.
-AUTHORED_NODES = 394
+#:
+#: AND TO 396 THE SAME DAY, for slice C6e's Deathmark and Two Marks.
+AUTHORED_NODES = 396
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1948,6 +1952,9 @@ CONDITION_WORDS = {
     "hit_took_at_least_percent_of_max_health": ("when a hit takes more than", "{value:g}% of your maximum health"),
     # AND MARSHAL'S "Your minions within 10 metres of you".
     "minion_within_metres_of_you": ("your minions within", "{value:g} metres of you"),
+    # AND THE SHADOW'S DEATHMARK'S "The strongest enemy within 15 metres is
+    # marked. It takes 30% more damage from you" (the Death trees' slice C6e).
+    "target_marked_by_you": ("is marked", None),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -3223,6 +3230,13 @@ VALUE_IN_WORDS = {
         ("rises as a lesser imp that fights for you", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
         ("slowed", 1.0),
+    # THE SHADOW'S MARKS, the Death trees' slice C6e (2026-11-25): a count of
+    # one each, Deathmark's "is marked" and Two Marks' "You mark two enemies".
+    ("Shadow_keystone_b_kB", "death_marks_held"): ("the strongest enemy within 15 metres is marked", 1.0),
+    ("Shadow_keystone_b_kD", "death_marks_held"): ("you mark two enemies", 1.0),
+    # AND DEATHMARK'S "each critical strike on it gives 5 Fervour", worded
+    # differently from the forms `fervour_per_critical_strike` takes.
+    ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),
     ("Necromancer_keystone_gr_kC", "immune_to_slow"):
         ("slowed", 1.0),
 

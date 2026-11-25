@@ -814,6 +814,17 @@ NODES: tuple[Node, ...] = (
     # maximum health for every other minion alive", recounted each step (Q4).
     Node(NE + "capstone_100", "Bound Bones",
          (R("minion_health_percent_of_yours_per_other_minion", "flat", 5),), option=3),
+
+    # ---- SLICE C6e (2026-11-25): THE SHADOW'S MARKS, as ruled (Q5). A mark of the
+    # Shadow's own (not War's Deathmark): the strongest enemy within 15 metres,
+    # kept until it dies, then moved to the strongest within 10 metres of it.
+    # Two Marks adds a second.
+    Node(SH + "keystone_b_kB", "Deathmark",
+         (R("death_marks_held", "flat", 1),
+          R("attack_damage", "more", 30, cond="target_marked_by_you"),
+          R("spell_damage", "more", 30, cond="target_marked_by_you"),
+          R("fervour_per_critical_strike", "flat", 5, cond="target_marked_by_you"))),
+    Node(SH + "keystone_b_kD", "Two Marks", (R("death_marks_held", "flat", 1),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

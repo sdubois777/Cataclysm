@@ -330,7 +330,8 @@ float UCataclysmDebuffs::BleedLeftLaidBy(const AActor* Carrier, const AActor* Ap
 	return Left;
 }
 
-AActor* UCataclysmDebuffs::StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm)
+AActor* UCataclysmDebuffs::StrongestEnemyNear(const AActor* Of, const AActor* Asker, float RadiusCm,
+											 const TArray<const AActor*>& Excluding)
 {
 	const UWorld* World = Of ? Of->GetWorld() : nullptr;
 	if (!World || !Asker)
@@ -343,7 +344,9 @@ AActor* UCataclysmDebuffs::StrongestEnemyNear(const AActor* Of, const AActor* As
 	// NEAREST FIRST, so a tie on rung and health keeps the nearer.
 	for (AActor* Candidate : UCataclysmTargeting::FindEnemiesInSphere(World, Asker, Of->GetActorLocation(), RadiusCm))
 	{
-		if (Candidate == Of || UCataclysmSkillEffects::IsDead(Candidate))
+		// AND ANY THE CALLER LEAVES OUT: a second Shadow mark is never put on the creature the first is on (the Death
+		// trees' slice C6e).
+		if (Candidate == Of || UCataclysmSkillEffects::IsDead(Candidate) || Excluding.Contains(Candidate))
 		{
 			continue;
 		}
