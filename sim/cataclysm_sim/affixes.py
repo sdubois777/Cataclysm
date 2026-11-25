@@ -1894,6 +1894,13 @@ def max_affix_tier_on_a_drop(tier: int) -> int:
     the cap reaches T7 at difficulty tier 6 and stays there for tiers 6, 7 and 8.
 
     IT DOES NOT CAP CRAFTING. See `max_affix_tier_by_crafting`.
+
+    A HYBRID IS CAPPED BY WHAT IT GRANTS, since issue #2883. A hybrid rolls tiers
+    3 to 7 and at tier N grants each half at tier N - 2 (`affix_ranges`), so a
+    tier 1 drop's hybrid is tier 3 and grants both halves at tier 1, under the
+    cap of 2. Ruled by the coordinating session on 2026-11-25: the cap exists to
+    bound power, and a hybrid's power is its halves'. `loot.roll_item` raises a
+    hybrid to tier 3 after the draw, so no extra number is drawn.
     """
     if not 1 <= tier <= DIFFICULTY_TIERS:
         raise ValueError(f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
