@@ -35,9 +35,9 @@ Cataclysms (2026-11-24), the Death quest and surge effect, **with the simulation
 ### SAID FIRST
 
 - **WRITTEN WITHOUT A BUILD.**
-- **THE STEP IS 1.0 UNTIL THE A2 SWEEP SETS IT**, in both halves. At 1.0 every lair's Abomination is the base Boss-rung
-  Gatekeeper, and the Unreal strength checks cannot tell a scaled boss from an unscaled one. The sweep runs only when
-  no Unreal window runs (L9), so it waits for bundle 1's window. Its figures and the step it picks are added here.
+- **THE STEP IS 1.10, A NUMBER FOR THE OWNER'S PLAY TEST**, set by the coordinating session on 2026-11-25 because the
+  model could not size it (see "The step, slice A2" below). An Abomination is 1.1 to the power of the cities fallen
+  when its lair appeared: **2.6 times its base after ten falls, 6.7 times after twenty.**
 - **WHAT A PLAYER MEETS.** Every Quest dungeon Death sends is an Abomination lair, a Horde. Its last wave holds the
   Cursed Abomination, a Gatekeeper at the Boss rung named so under its bar, whose health, damage and gear grow by the
   step once for every city fallen when the lair appeared. Every city that falls while Death is active adds one more
@@ -84,6 +84,29 @@ CONTROL none without Death; two falls, two lairs; the last wave's Cursed Abomina
 gear's step, CONTROL War's Horde; its health and damage by the step; the map's line; the save's round trip; the
 migration from `Run_v21.json`. Python: `sim/tests/test_an_abomination_lair.py` (6) and
 `tools/tests/test_abomination_lairs_port.py` (6).
+
+### The step, slice A2
+
+Campaigns whose drawn Cataclysms include Death, the first 1000 seeds at each tier, `policies.triage`, the report
+settings (`.claude/windows/b5_sweep_abomination_step.py`). Won share, noise between two cells 2.2 points:
+
+| Tier | 1.00 | 1.05 | 1.10 | 1.15 | 1.20 | 1.25 |
+| --: | --: | --: | --: | --: | --: | --: |
+| 1 | 45.0 | 45.0 | 45.0 | 45.0 | 45.0 | 44.9 |
+| 2 | 43.3 | 43.2 | 43.4 | 43.4 | 43.2 | 43.1 |
+| 3 | 22.2 | 21.5 | 21.3 | 21.4 | 21.4 | 21.4 |
+
+Cities lost: tier 1 10.36, tier 2 17.85 to 17.90, tier 3 23.83 to 23.85. Lairs a fall made: 10.35, 17.6 and 22.9 a
+campaign. Objectives: 5.00 at tier 1 in every cell.
+
+- **The L7 criterion printed 1.25, the top of the range swept, and that is no answer**: no step in the range moves tier 1
+  by more than 0.1 point, though 1.25 makes a lair after 10 to 20 falls 9 to 87 times its base.
+- **Why the model is insensitive, as far as I can tell, and NOT CONFIRMED which:** a lair's boss is one capped term of
+  the last floor's death chance (boss risk at most 0.95, survival at least 0.05), so a boss far stronger than the player
+  changes nothing more; or a tier 1 Death player clears exactly the 5 objectives the win needs and may not walk the late,
+  strong lairs. [#2917](https://github.com/sdubois777/Cataclysm/issues/2917) holds both and the first test.
+- **So the step is a play-test number, 1.10**, the coordinating session's choice (c) on 2026-11-25, over sizing it from
+  a wider sweep: that would show where the cap bites, not what feels right in play.
 
 ### Registered
 

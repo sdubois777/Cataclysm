@@ -1165,9 +1165,11 @@ public:
 	/**
 	 * The Abomination's step: what a lair's boss's health, damage and gear drops are multiplied by once for each city
 	 * fallen when the lair appeared, with no cap (the owner, 2026-11-24, Q7). The model's
-	 * `TuningConfig.abomination_step`, which the slice A2 sweep sizes. Issue #51 slice B5.
+	 * `TuningConfig.abomination_step`. 1.10, A NUMBER FOR THE OWNER'S PLAY TEST (the coordinating session, 2026-11-25):
+	 * 2.6 times the base boss after ten falls, 6.7 after twenty. The slice A2 sweep could not size it, since the model
+	 * barely sees a lair boss's strength (issue #2917). Issue #51 slice B5.
 	 */
-	static constexpr float AbominationStep = 1.0f;
+	static constexpr float AbominationStep = 1.10f;
 
 	/**
 	 * The one sub-type a Cataclysm dungeon may not roll.
