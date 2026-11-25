@@ -33,7 +33,7 @@ HEADERS = ["Node", "Stat", "Value Kind", "Value Per Point", "Required Tags", "Co
            "Condition Value", "Scale", "Scale Step", "Option", "Reach Metres", "Min Points",
            "Scale Max Steps", "Action", "Action Event", "Fraction Of", "Stack Seconds",
            "Scale Offset", "Every Seconds", "Every Nth", "Condition 2", "Condition Value 2",
-           "Trigger Cooldown", "Event Value", "Ailment", "Damage Share", "Per Point From"]
+           "Trigger Cooldown", "Event Value", "Ailment", "Damage Share", "Per Point From", "Max Points"]
 
 #: Real nodes, so a row's words can be read from the tree files. Their own sentences do not matter here.
 BLOCK_NODE = "Bulwark_basic_ic_t2_002"
@@ -181,7 +181,8 @@ def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
     War riders, 2026-11-25) and `Action Event` and `Stack Seconds` (the Saboteur's device conditions, the same day).
     UNTIL 2026-11-25 THIS WAS `test_the_sheet_reads_with_no_port_column_at_all`, which stopped being true when two of
     the port's columns became required."""
-    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"]
+    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action",
+                "Max Points"]
     old = HEADERS[:HEADERS.index("Action")] + required
     out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
     assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
@@ -198,7 +199,7 @@ def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("column", ["Per Point From", "Condition 2", "Condition Value 2", "Action Event",
-                                    "Stack Seconds", "Action"])
+                                    "Stack Seconds", "Action", "Max Points"])
 def test_a_sheet_without_a_column_a_row_now_uses_is_refused(tmp_path, column):
     """Slice D put `Per Point From` in the workbook on 2026-11-24 with Pain is Power's row, the War riders put
     `Condition 2` and `Condition Value 2` there on 2026-11-25 with Hair-Trigger's, Death Blow's and Brute Force's, and
@@ -250,13 +251,14 @@ def test_the_struct_carries_the_port_fields_in_the_csv_order():
     """`test_csv_columns_match_their_row_structs.py` holds the column NAMES to the struct; this holds the ORDER of
     the fourteen, so a reader of either file finds the port's fields after `ScaleMaxSteps`, as both say."""
     fields = _passive_row_struct_fields()
-    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom"]
+    # AND `MaxPoints` LAST, since the Saboteur's rows of 2026-11-25.
+    assert fields[fields.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "MaxPoints"]
 
 
 def test_the_written_csv_has_the_port_columns_last():
     with open(REPO_ROOT / "game/Data/PassiveEffects.csv", encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
-    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom"]
+    assert header[header.index("ScaleMaxSteps") + 1:] == [*gen.PASSIVE_PORT_FIELDS, "PerPointFrom", "MaxPoints"]
 
 
 def test_the_engine_names_the_same_two_scales_an_action_grants():

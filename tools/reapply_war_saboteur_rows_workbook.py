@@ -3,10 +3,13 @@
     python tools/reapply_war_saboteur_rows_workbook.py
     python tools/reapply_war_saboteur_rows_workbook.py --check
 
-THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Fifteen nodes, each on a
+THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Sixteen nodes, each on a
 stat, scale, condition or action the game already reads; where a node has a clause that needs a mechanism, only the
-rest is written here and the clause waits for its own slice (named below). Durable Modifications is written by the
-same branch's Max Points work, not here.
+rest is written here and the clause waits for its own slice (named below).
+
+  - Durable Modifications: damage reduction "more", EXACTLY DOUBLED by the ruling on question 4: 3% a point at or
+    below 50% of the maximum Fervour (`class_resource_at_or_below`, new); 3% a point above 50% at 1 to 3 points (Max
+    Points 4, new, exclusive); 6% a point above 50% from 4 points. The three never hold together, so no two multiply.
 
   - Tripwire Network: `fervour_per_trap_triggered` 1 a point.
   - Hair Trigger, Hair Wire: `trap_trigger_radius` 10% a point. (Their 5- and 4-point clauses, "arm instantly" and
@@ -85,6 +88,10 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R(RESERVE, "flat", 4, tags=TRAP),
         R(RESERVE, "flat", 10, tags=GADGET))),
     ("Saboteur_basic_trap_qty_001", "Minefield", (R(RESERVE, "flat", 5, tags=TRAP, min_points=6),)),
+    ("Saboteur_basic_trunk_014", "Durable Modifications", (
+        R("damage_reduction", "more", 3, cond="class_resource_at_or_below", cond_value=50),
+        R("damage_reduction", "more", 3, cond="class_resource_above", cond_value=50, max_points=4),
+        R("damage_reduction", "more", 6, cond="class_resource_above", cond_value=50, min_points=4, per_point_from=1))),
 )
 
 

@@ -2,6 +2,138 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Type.Gadget on every machine that is not a trap, sixteen Saboteur nodes' rows, and Durable Modifications exactly doubled by a Max Points column and the condition class_resource_at_or_below
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Config/Tags/CataclysmTags.ini`, `game/Data/MinionTypes.csv`: `Type.Gadget`
+  declared on the Tags sheet and carried by BoltTurret, Ballista and SkillGadget
+  (`tools/apply_gadget_tag_2026_11_25.py`, new). `game/Data/PassiveEffects.csv` (520 rows): Support Network's two gadget
+  damage rows moved to it, twenty-six rows on sixteen nodes (`tools/reapply_war_saboteur_rows_workbook.py`, new), and
+  the columns Action and Max Points. `docs/README.md` (the sheet table). **The editor step must rebuild
+  `DT_PassiveEffects` and `DT_MinionTypes`, and the editor must be restarted to read the new tag.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`: a skill gadget's cast carries `Type.Gadget`; a War
+  machine's own blow reads the rows naming `Type.Deployable` or `Type.Gadget`. `CataclysmSkillEffects.cpp`: a skill
+  gadget's blow treats `Type.Gadget` as it treats `Type.Deployable` (taken out of the spell part, read for the flat rows,
+  left out of the rows the attribute cannot carry). `CataclysmAbilitySystemComponent.h` and `.cpp`: container forms of
+  `StatNamingTagAppliedTo`, `FlatOfStatNamingTag` and `FlatTheAttributeCannotCarry`.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: `FCataclysmPassiveEffectRow::MaxPoints`.
+  `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: `PointsPaid` reads it.
+  `CataclysmStatPipeline.h` and `.cpp`: the condition `ClassResourceAtOrBelowPercent`, and the counted sentences (forty
+  of eighty-two).
+- `tools/generate_datatables.py`: the Minion Types rule for `Type.Gadget`; `Type.Gadget` allowed on a reserve row; Max
+  Points read (`_max_points`); the condition; Action leaves `OPTIONAL_COLUMNS`; the passive duplicate key gains Required
+  Tags and Max Points. `tools/reapply_war_data_rows_workbook.py`: the columns Action and Max Points; a read-back failure
+  says the workbook was saved.
+- Tests: `CataclysmSaboteurRowsTests.cpp` (new, three), `CataclysmDataTableTests.cpp` (the pin, 520);
+  `tools/tests/test_gadget_tag_script.py` and `test_war_saboteur_rows_scripts.py` (new);
+  `test_passive_effects_match_the_node_text.py` (words, action rows, "beyond N", a node stating a condition by its
+  complement, the Max Points threshold check, 520 rows and 305 nodes), `test_generate_datatables.py` and
+  `test_passive_rows_carry_the_action_columns.py` (the test sheets carry Action and Max Points);
+  `tools/reapply_war_saboteur_devices_workbook.py` writes Support Network's rows on `Type.Gadget`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, restart the editor
+  for the tag, and run `Cataclysm.SaboteurRows.` (three tests, new), `Cataclysm.Data.` (the pin, 520) and the groups
+  that price a gadget's or a trap's blow, whose counts do not change: `Cataclysm.SkillGadgets.`, `Cataclysm.Traps.`,
+  `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.GadgetAndResource.` and `Cataclysm.DeployableSelfBlast.`.
+- **TWO MERGE OBLIGATIONS**, recorded at the coordinating session's request. (1) Any test on another branch that builds
+  its own Passive Effects sheet, as `test_generate_datatables.py` and `test_passive_rows_carry_the_action_columns.py` do
+  here, lacks the columns Action Event, Stack Seconds, Action and Max Points; whichever branch merges second adds them to
+  those sheets. (2) `feat/death-trees-c3a` adds a condition too: whichever merges second recounts the sentences in
+  `CataclysmStatPipeline.h` and `.cpp`.
+- **MAX POINTS IS A REQUIRED COLUMN AND AN EMPTY CELL IS NO LIMIT**, as Condition 2, Action Event and Stack Seconds
+  behave, keeping issue #1882's rule whole (the coordinating session agreed). A script that does not know the column
+  writes an empty cell, which is no limit, so every other writer of Passive Effects rows keeps working.
+- **EIGHTEEN ENCHANTMENT ROWS MEAN GADGETS AND STILL READ `Type.Deployable`**, left as they are by the ruling (their
+  Weights and Tags are not changed); a trap still takes them: "Gadgets deal 20%-40% increased damage", "Gadgets deal
+  bonus damage equal to 3%-6% of your maximum HP per hit", "While stationary, your gadgets deal 20%-40% increased
+  damage", "Gadgets have 40%-70% increased HP", "Gadgets last 30%-60% longer", "Gadgets fire 20%-40% faster", "Gadgets
+  apply a 15%-25% armor reduction to enemies they hit for 3 seconds", "Gadgets deal 5%-10% increased damage for each
+  second they have been active, up to 30 seconds", "Gadgets that survive for 15 seconds gain a permanent 20%-40% damage
+  bonus for the rest of their duration", "Gadgets have 20%-40% increased attack range", "When any of your gadgets is
+  destroyed, all remaining gadgets gain 30%-50% increased damage for 5 seconds", "Your gadgets prioritize the highest HP
+  enemy within their range instead of the nearest", "Gadgets fire at all enemies within range simultaneously once every
+  5-8 seconds", "When a gadget kills an enemy, it fires an additional burst at the nearest enemy within its range", "Your
+  gadgets are invincible but lose 5% of their maximum HP per second passively", "Gadgets copy the last skill you used
+  and fire it at their target once every 2 seconds", "When a gadget is destroyed it arms all traps within 12 meters
+  instantly" and "When a gadget is destroyed, the nearest active trap within 10 meters is triggered immediately". "Your
+  deployables reserve 15%-30% reduced Fervour" means both and is right on `Type.Deployable`.
+- **FOURTEEN NODES ARE WRITTEN IN PART**: the clauses that need a mechanism wait for their slices, Hair Trigger's,
+  Hair Wire's, Trapsmith's and Minefield's for the C1 plan, Calculated's for its search (question 3), Slippery's and
+  Reinforced Frame's for C2, Volatile Mixture's and Death Ground's for C3. Each is named in the rows script.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the Saboteur survey of that day:
+- **Question 1:** "add Type.Gadget to every machine that is not a trap, and move every PASSIVE row that means gadgets
+  only onto it ... Do not change any enchantment row's Weights or Tags; if an enchantment row's action means gadgets and
+  reads Type.Deployable, list it in the entry and leave it as it is." This replaces its judgement 5 of the device
+  conditions: with a gadget tag, "gadget damage" means gadgets.
+- **Question 4:** "exact doubling: 6% a point while above 50% and 3% a point otherwise. If no opposite condition exists,
+  a condition for 'at or below 50%' is cheap and worth adding." Then, on being told two "more" rows multiply: "option
+  (a), a Max Points column (exclusive) ... It is general, changes no existing row, and other 'At N points: ...
+  becomes' sentences can use it", and on #1882: "Max Points is a required column and an empty cell means no upper limit".
+- **Question 5:** the rule of a tenth governs Pressure Sensitive's slow (and Concealed's stun and Bleeding Ground's
+  bleed, which are not built here).
+- Questions 2 and 3 are for the C1/C5 plan, sent before building.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **`Type.Gadget`** on the three machines that are not traps; the generator refuses a deployable type that is not a
+   trap without it, and a type with it that is a trap or not deployable. A row naming it reaches a gadget's blow, cast,
+   reserve, health and lifetime, and not a trap's: a trap's tags lack it, and every reading checks a row's tags against
+   the machine's.
+2. **The rows** (the rows script lists each node, its rows and the clauses left): sixteen nodes. **Judgements:**
+   Volatile Mixture's "trap and explosive area" is the traps' own blasts (`area_of_effect` on `Type.Trap`); Pressure
+   Sensitive's "Enemies slowed by your traps" is any Cripple; Tinkerer's duration reaches War gadgets only, since a
+   skill gadget has no lifetime.
+3. **Max Points**, a whole number from 2 up and above Min Points; a row stops applying at that many points. An empty cell
+   is no limit.
+4. **`class_resource_at_or_below`**: the class resource at or below that percentage of its maximum, the complement of
+   `class_resource_above` with its three clauses. It compares a number; an unknown reading refuses, as the complement's
+   does, so a character with no pool is neither.
+5. **Durable Modifications**: damage reduction "more", 3% a point at or below 50%; 3% a point above 50% at 1 to 3 points
+   (Max Points 4); 6% a point above 50% from 4 points. One row holds at a time, so the doubling is exact.
+6. **The duplicate-row key gains Required Tags** (Bag of Tricks lowers traps' and gadgets' reserves, one stat twice)
+   and Max Points.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored. Each break is to
+`game/Data/PassiveEffects.csv`.
+
+| Break | Command | Named failure |
+|---|---|---|
+| Bag of Tricks' gadget reserve row put back on `Type.Deployable` | `pytest tools/tests/test_gadget_tag_script.py` | `test_no_passive_row_names_deployables` |
+| Durable Modifications' Max Points 4 to 3 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| Its at-or-below value 50 to 40 | the same | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+The generator's new Minion Types rule was seen refusing before the tags were written: "Minion Types row 4: BoltTurret
+is a deployable machine that is not a trap and does not carry Type.Gadget".
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurRows.AMaxPointsRowAppliesBelowItsLimitAndNotAtIt` | no limit: 4 at 4 (control); Max Points 4: 3 at 3, nothing at 4 or 6; Min 2 and Max 4: nothing at 1, once at 2 and 3, nothing at 4 |
+| `Cataclysm.SaboteurRows.DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints` | the generated rows at 1 to 6 points: 1 + 3p% at or below half; above half 1 + 3p% at 1 to 3 and 1 + 6p% from 4 (each edge's neighbour the control) |
+| `Cataclysm.SaboteurRows.AGadgetRowReachesGadgetsAndNotTraps` | the three gadget types carry the tag and the two trap types do not (controls); a ballista's blow 150, a spike trap's 100 (control); a skill gadget's reserve halved, a skill trap's unchanged (control) |
+
+Predicted counts: `Cataclysm.SaboteurRows.` 3; `Cataclysm.Data.` the pin, 520.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. Max Points: in `CataclysmPassiveTree.cpp`, `Points >= Effect.MaxPoints` becomes `Points > Effect.MaxPoints`. Must fail
+   `AMaxPointsRowAppliesBelowItsLimitAndNotAtIt` and `DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints`.
+2. The condition: in `CataclysmStatPipeline.cpp`, the at-or-below case's `<= Value` becomes `< Value`. Must fail
+   `DurableModificationsIsExactlyDoubledAboveHalfFromFourPoints` (50 of 100 is at half).
+3. The gadget rows: in `CataclysmAbilitySystemComponent.cpp`, the container `StatNamingTagAppliedTo`'s
+   `Modifier.RequiredTags.HasAnyExact(Named)` becomes `Modifier.RequiredTags.HasTagExact(Named.First())`. Must fail
+   `AGadgetRowReachesGadgetsAndNotTraps`.
+
+---
+
 ## 2026-11-25 — The Saboteur's device conditions: nine nodes on the player's traps and gadgets, a `device_placed` event, four conditions, a "more" on the trap trigger radius, and the passive order fixes written into the War trees
 
 **Affects:**

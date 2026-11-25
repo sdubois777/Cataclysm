@@ -1840,6 +1840,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	NoRoomForATrap
 		UMETA(DisplayName = "No Room For A Trap"),
+
+	/**
+	 * The class resource is AT OR BELOW that PERCENTAGE of its maximum: the complement of `ClassResourceAbovePercent`,
+	 * with its three clauses in the same order. The Saboteur's rows of 2026-11-25, for Durable Modifications' "+3% damage
+	 * reduction per point (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum
+	 * Fervour": the coordinating session ruled the doubling exact, 6% a point above 50% and 3% a point otherwise, so the
+	 * otherwise needs a condition of its own. AN UNKNOWN READING REFUSES, as its complement's does: a character with no
+	 * pool is neither above nor at or below.
+	 */
+	ClassResourceAtOrBelowPercent
+		UMETA(DisplayName = "Class Resource At Or Below Percent"),
 };
 
 /**
@@ -5209,7 +5220,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-second, which is the drift that put the passive tree eight
+	 * adds an eighty-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5218,7 +5229,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY OF THE EIGHTY-ONE COMPARE NOTHING. They are the case labels
+	 * FORTY OF THE EIGHTY-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

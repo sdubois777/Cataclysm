@@ -76,9 +76,11 @@ STACK_SECONDS = "Stack Seconds"
 #: point to triggered enemies for 2 seconds": `slow_for_seconds` on `trap_triggered`, as the trap enchantment writes it
 #: (`tools/reapply_war_saboteur_rows_workbook.py`). An action row states no stat and no value kind.
 ACTION = "Action"
+#: AND THE UPPER LIMIT, the same day, for Durable Modifications' exact doubling: a row stops applying at this many points.
+MAX_POINTS = "Max Points"
 #: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
 #: condition columns go together, so a row's second condition never lands without its value's column.
-ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION)
+ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION, MAX_POINTS)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -102,6 +104,7 @@ class Row:
     action_event: str | None = None
     stack_seconds: float | None = None
     action: str | None = None
+    max_points: int | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -110,7 +113,8 @@ class Row:
                 num(self.cond_value), self.scale or None, num(self.step), num(self.option),
                 num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
                 num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None,
-                self.action_event or None, num(self.stack_seconds) or None, self.action or None)
+                self.action_event or None, num(self.stack_seconds) or None, self.action or None,
+                num(self.max_points) or None)
 
 
 R = Row
@@ -209,7 +213,8 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                per_point_from=number(cells.get(PER_POINT_FROM)) or None,
                cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)),
                reach=number(cells.get("Reach Metres")), action_event=text(cells.get(ACTION_EVENT)),
-               stack_seconds=number(cells.get(STACK_SECONDS)), action=text(cells.get(ACTION)))
+               stack_seconds=number(cells.get(STACK_SECONDS)), action=text(cells.get(ACTION)),
+               max_points=number(cells.get(MAX_POINTS)) or None)
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -223,7 +228,7 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             "Reach Metres": out(row.reach), "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
             PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
             CONDITION_VALUE_2: out(row.cond_value2), ACTION_EVENT: row.action_event,
-            STACK_SECONDS: out(row.stack_seconds), ACTION: row.action}
+            STACK_SECONDS: out(row.stack_seconds), ACTION: row.action, MAX_POINTS: out(row.max_points)}
 
 
 def _multiset(rows) -> collections.Counter:

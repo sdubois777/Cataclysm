@@ -1461,7 +1461,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
                  "Scale Step", "Option", "Reach Metres", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1524,7 +1524,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
                                   "Min Points", "Scale Max Steps", "Per Point From", "Condition 2",
-                                  "Condition Value 2", "Action Event", "Stack Seconds", "Action"],
+                                  "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"],
                                  ["A_node", "damage_taken", "more", -1, None, None,
                                   None, scale, step, None, None, None, cap]]}))
         return gen.passive_effects(book)
@@ -1568,7 +1568,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"],
+                                  "Min Points", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"],
                                  ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
@@ -1687,7 +1687,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
                  "Reach Metres", "Required Tags", "Option", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5353,7 +5353,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
                  "Scale", "Scale Step", "Option", "Reach Metres",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(

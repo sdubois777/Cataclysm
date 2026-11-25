@@ -2884,6 +2884,19 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
 	int32 PerPointFrom = 0;
+
+	/**
+	 * The number of points from which a row stops applying, or 0 for no upper limit. The Saboteur's rows of 2026-11-25,
+	 * on the coordinating session's ruling for Durable Modifications' "+3% damage reduction per point
+	 * (multiplicative). At 4 points: This damage reduction is doubled while above 50% maximum Fervour": its 3% a point
+	 * above 50% holds at 1 to 3 points and stops at 4, where 6% a point takes over, so the two never multiply together.
+	 *
+	 * EXCLUSIVE: a row with `MaxPoints` 4 applies at 3 points and not at 4. The generator keeps it above `MinPoints` and
+	 * from 2 up. `UCataclysmPassiveTree::PointsPaid` reads it. AN EMPTY CELL IS NO LIMIT, so a row written by a script
+	 * that does not know the column is paid as before.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect", meta = (DataTableImportOptional))
+	int32 MaxPoints = 0;
 };
 
 /**

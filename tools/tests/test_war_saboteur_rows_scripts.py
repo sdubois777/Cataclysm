@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import reapply_war_saboteur_rows_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
-ROW_COUNT = 23
+ROW_COUNT = 26
 
 
 def _rows_of(node: str) -> tuple:
@@ -28,9 +28,19 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_its_rows_on_fifteen_nodes():
+def test_the_script_writes_its_rows_on_sixteen_nodes():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
-    assert len({node for node, _, _ in rows.NODES}) == 15
+    assert len({node for node, _, _ in rows.NODES}) == 16
+
+
+def test_durable_modifications_is_exactly_doubled_by_rows_that_never_hold_together():
+    """The ruling on question 4: 6% a point above 50% from 4 points, 3% a point otherwise. At or below 50% one row
+    holds at every point; above 50% the 3% row stops at 4 points (Max Points, exclusive) where the 6% row starts."""
+    shapes = {(row.value, row.cond, row.cond_value, row.min_points, row.per_point_from, row.max_points)
+              for row in _rows_of("Saboteur_basic_trunk_014")}
+    assert shapes == {(3, "class_resource_at_or_below", 50, None, None, None),
+                      (3, "class_resource_above", 50, None, None, 4),
+                      (6, "class_resource_above", 50, 4, 1, None)}
 
 
 def test_every_row_meaning_gadgets_names_gadgets_alone():

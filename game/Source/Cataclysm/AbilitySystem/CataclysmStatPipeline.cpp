@@ -158,6 +158,8 @@ namespace
 		{ TEXT("target_not_yet_triggered_your_trap"), ECataclysmStatCondition::TargetNotYetTriggeredYourTrap },
 		{ TEXT("seconds_after_gadget_struck"),  ECataclysmStatCondition::WithinSecondsOfGadgetStruck },
 		{ TEXT("no_room_for_a_trap"),           ECataclysmStatCondition::NoRoomForATrap },
+		// THE SABOTEUR'S ROWS, 2026-11-25: Durable Modifications' 3% a point at or below half the pool.
+		{ TEXT("class_resource_at_or_below"),   ECataclysmStatCondition::ClassResourceAtOrBelowPercent },
 	};
 
 	struct FNamedStatScale
@@ -423,6 +425,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::ClassResourceAtMaximum:
 	case C::ClassResourceAbovePercent:
 	case C::ClassResourcePointsAtLeast:
+	// AND ITS COMPLEMENT, the Saboteur's rows of 2026-11-25.
+	case C::ClassResourceAtOrBelowPercent:
 		return EOn::ClassResource;
 
 	case C::EnergyShieldAtMaximum:
@@ -1359,6 +1363,14 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 			&& State.ClassResourceMaximum > 0.0f
 			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
 				   > Value;
+
+	case ECataclysmStatCondition::ClassResourceAtOrBelowPercent:
+		// THE COMPLEMENT OF THE ONE ABOVE, WITH ITS THREE CLAUSES. The Saboteur's rows, 2026-11-25. Known, able to hold
+		// something, and then at or below: with the one above, every known share is exactly one of the two.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceMaximum > 0.0f
+			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
+				   <= Value;
 
 	case ECataclysmStatCondition::ClassResourcePointsAtLeast:
 		// AT OR ABOVE, for "50 or more" -- the boundary `HealthAtOrAbovePercent`

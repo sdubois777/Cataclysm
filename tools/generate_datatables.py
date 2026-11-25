@@ -5308,6 +5308,9 @@ CONDITIONS = {
     #
     # STRICTLY ABOVE, the boundary `health_above` draws for the same word.
     "class_resource_above": (0.0, 100.0, "a percentage of the maximum class resource"),
+    # ITS COMPLEMENT, "at or below", the Saboteur's rows of 2026-11-25: Durable
+    # Modifications' 3% a point at or below 50%, beside its 6% above.
+    "class_resource_at_or_below": (0.0, 100.0, "a percentage of the maximum class resource"),
 
     # "While you have 50 or more Fervour, you gain +2% increased Damage Reduction
     # and +3% increased Attack Damage per point" is the Ravager's Set Against It.
@@ -6210,6 +6213,35 @@ def _per_point_from(raw, headers, index: int, node: str, min_points: int) -> int
     return int(value)
 
 
+def _max_points(raw, headers, index: int, node: str, min_points: int) -> int:
+    """The Max Points column: the number of points from which a row stops applying.
+
+    THE SABOTEUR'S ROWS OF 2026-11-25, on the coordinating session's ruling for
+    Durable Modifications: its 3% a point above 50% Fervour holds at 1 to 3
+    points and its 6% a point from 4, so the two never multiply together.
+    EXCLUSIVE: 4 applies at 3 points and not at 4. AN EMPTY CELL IS NO LIMIT,
+    which is every row a script that does not know the column writes.
+
+    A WHOLE NUMBER FROM 2 UP, AND ABOVE ITS MIN POINTS: at or below the
+    threshold the row would never apply.
+    """
+    written = clean(_cell(raw, headers, "Max Points"))
+    if not written:
+        return 0
+    value = number(written, "Max Points", index)
+    if value != int(value) or value < 2:
+        raise DataError(
+            f"Passive Effects row {index}: {node} has a Max Points of {value:g}, "
+            f"and it takes a whole number of points from 2 up, the point at which "
+            f"the row stops. Leave the column empty for no upper limit.")
+    if min_points and value <= min_points:
+        raise DataError(
+            f"Passive Effects row {index}: {node} applies from {min_points} points "
+            f"and stops at {int(value)}, so it never applies. Max Points is above "
+            f"the Min Points.")
+    return int(value)
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -6294,6 +6326,7 @@ def passive_effects(book) -> list[dict]:
         option = _passive_option(raw, headers, index, node)
         min_points = _passive_min_points(raw, headers, index, node)
         per_point_from = _per_point_from(raw, headers, index, node, min_points)
+        max_points = _max_points(raw, headers, index, node, min_points)
 
         # A ROW STATING AN ACTION COLUMN, OR SCALED BY A COUNT AN ACTION GRANTS,
         # IS READ BY THE ENCHANTMENT EFFECTS SHEET'S OWN RULES. The passive row
@@ -6347,6 +6380,7 @@ def passive_effects(book) -> list[dict]:
                 "ScaleMaxSteps": shared["ScaleMaxSteps"],
                 **{column: shared[column] for column in PASSIVE_PORT_FIELDS},
                 "PerPointFrom": per_point_from,
+                "MaxPoints": max_points,
             })
             continue
 
@@ -6489,6 +6523,8 @@ def passive_effects(book) -> list[dict]:
             # none of them, which is every row read here. Since 2026-11-24.
             **dict(PASSIVE_PORT_DEFAULTS),
             "PerPointFrom": per_point_from,
+            # AND THE UPPER LIMIT, LAST, since the Saboteur's rows of 2026-11-25.
+            "MaxPoints": max_points,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -6525,7 +6561,7 @@ def passive_effects(book) -> list[dict]:
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row["Option"], row["MinPoints"], row["Action"],
                row["ActionEvent"], row["FractionOf"], row["Condition2"],
-               row["ConditionValue2"], row["RequiredTags"])
+               row["ConditionValue2"], row["RequiredTags"], row["MaxPoints"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:

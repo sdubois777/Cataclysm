@@ -689,7 +689,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 517 THE SAME DAY: twenty-three rows on fifteen Saboteur nodes, the
 #: survey's groups A and B (`tools/reapply_war_saboteur_rows_workbook.py`).
-AUTHORED_ROWS = 517
+#:
+#: AND TO 520 THE SAME DAY: Durable Modifications' three rows, on the Max Points
+#: column and the at-or-below condition.
+AUTHORED_ROWS = 520
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1122,7 +1125,8 @@ AUTHORED_ROWS = 517
 #: AND TO 289 THE SAME DAY: Razor Instincts, Sentry Network, Ambush, Overcautious
 #: and Overwhelming Presence.
 #: AND TO 304 THE SAME DAY: fifteen Saboteur nodes, the survey's groups A and B.
-AUTHORED_NODES = 304
+#: AND TO 305 THE SAME DAY: Durable Modifications.
+AUTHORED_NODES = 305
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1586,6 +1590,9 @@ CONDITION_WORDS = {
     "seconds_after_block": ("after a successful block", "{value:g} second"),
     "seconds_after_dodge": ("after successfully evading", "{value:g} second"),
     "class_resource_above": ("while above", "{value:g}%"),
+    # ITS COMPLEMENT, the Saboteur's rows of 2026-11-25. A node may state it only
+    # as the other side of a "while above": see `STATED_AS_ITS_COMPLEMENT`.
+    "class_resource_at_or_below": ("at or below", "{value:g}%"),
     "out_of_combat": ("out of combat", None),
     "seconds_after_movement_skill": ("after you use a movement skill",
                                      "{value:g} second"),
@@ -1836,6 +1843,19 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             for column, value_column in (("Condition", "ConditionValue"),
                                          ("Condition2", "ConditionValue2"))):
         if not condition:
+            continue
+
+        complement = STATED_AS_ITS_COMPLEMENT.get((row["Node"], condition))
+        if complement is not None:
+            other, other_words = complement
+            value = float(condition_value or 0)
+            assert any(each["Node"] == row["Node"] and each["Condition"].strip() == other
+                       and float(each["ConditionValue"] or 0) == value for each in effects), (
+                f"{row['Node']} states {condition!r} only as the other side of {other!r} at {value:g}, and carries "
+                f"no row under {other!r} at that value")
+            assert f"{other_words} {value:g}%" in words_of(row, nodes).lower(), (
+                f"{row['Node']} states {condition!r} as the other side of {other_words!r} {value:g}%, and its "
+                f"sentence does not say that: {words_of(row, nodes)}")
             continue
 
         assert condition in CONDITION_WORDS, (
@@ -2180,6 +2200,18 @@ SCALE_WORDS = {
 #: step-of-one phrase would fail them.
 STEP_OF_ONE_ON_ONE_NODE = {
     ("Berserker_capstone_25", "life_leech"): "your current life leech percentage",
+}
+
+
+#: Rows whose condition the node states only as the other side of a condition
+#: the node also carries, by (node, condition): the complement it is the other
+#: side of, and the words the sentence says that one in. Durable Modifications
+#: (the Saboteur's rows, 2026-11-25): "doubled while above 50% maximum Fervour",
+#: whose otherwise is the 3% a point at or below 50%, the ruling on question 4.
+#: EXCUSED ONLY WHILE the node carries a row under the complement with the same
+#: value and the sentence says the complement's words with that value.
+STATED_AS_ITS_COMPLEMENT = {
+    ("Saboteur_basic_trunk_014", "class_resource_at_or_below"): ("class_resource_above", "while above"),
 }
 
 
@@ -2697,6 +2729,10 @@ VALUE_IN_WORDS = {
     # of 100, which pays within the next quarter-second step (2026-11-25).
     ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_applies_bleed"): ("also applies bleed", 1.0),
     ("Berserker_leech_001", "leech_payout_rate"): ("applied instantly", 1100.0),
+    # DURABLE MODIFICATIONS' "doubled while above 50%" from 4 points, 6% a point,
+    # the ruling on question 4 (the Saboteur's rows, 2026-11-25); its two 3% rows
+    # are checked by their digits.
+    ("Saboteur_basic_trunk_014", "damage_reduction", "class_resource_above", "more", "4"): ("doubled", 6.0),
     # OVERWHELMING PRESENCE'S "trap trigger radius is doubled", 100% more by the
     # coordinating session's ruling of 2026-11-25 (a true doubling).
     ("Saboteur_keystone_trap_qty", "trap_trigger_radius"): ("radius is doubled", 100.0),
@@ -3937,6 +3973,22 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         if min_points not in said and not any(min_points % n == 0 for n in steps):
             wrong.append(f"{row['Name']} applies from {min_points} points and "
                          f"its node's sentence says {said or 'no threshold'}")
+    assert not wrong, wrong
+
+
+def test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points(effects, nodes):
+    """A row with `MaxPoints` stops at a threshold its node names, "At N points:", with that N. The Saboteur's rows of
+    2026-11-25: Durable Modifications' 3% a point above 50% stops at 4, where "At 4 points" doubles it. THE CONTROL is
+    the first assertion: the check reads at least one such row."""
+    stopping = [row for row in effects if int(float(row.get("MaxPoints", 0) or 0))]
+    assert stopping, "no passive row stops at a number of points, so this check reads nothing"
+    wrong = []
+    for row in stopping:
+        max_points = int(float(row["MaxPoints"]))
+        said = [int(n) for n in AT_N_POINTS.findall(nodes.get(row["Node"], {}).get("Description", ""))]
+        if max_points not in said:
+            wrong.append(f"{row['Name']} stops at {max_points} points and its node's sentence says "
+                         f"{said or 'no threshold'}")
     assert not wrong, wrong
 
 

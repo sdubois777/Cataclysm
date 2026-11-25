@@ -987,6 +987,13 @@ int32 UCataclysmPassiveTree::PointsPaid(const FCataclysmPassiveEffectRow& Effect
 		return 0;
 	}
 
+	// AT OR PAST ITS UPPER LIMIT: NOTHING. The Saboteur's rows of 2026-11-25 (`MaxPoints`, exclusive): Durable
+	// Modifications' 3% a point above 50% Fervour stops at 4 points, where its 6% a point begins.
+	if (Effect.MaxPoints > 0 && Points >= Effect.MaxPoints)
+	{
+		return 0;
+	}
+
 	// NO THRESHOLD: EVERY POINT, which is what "per point" means in every description that has one.
 	if (Effect.MinPoints <= 0)
 	{
