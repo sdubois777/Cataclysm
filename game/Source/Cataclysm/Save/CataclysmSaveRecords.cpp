@@ -847,6 +847,52 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before the keys remembered their defaults (issue #837 slice 1, the owner's Q1 of 2026-11-24)
+	 * remembered none: an empty `RememberedDefaults`, so its first fill after loading remembers the default it showed
+	 * before. Written out, for `Migrate_3_to_4`'s reason. A LIST ALREADY THERE IS KEPT, and anything else under the key
+	 * is refused rather than read as empty.
+	 *
+	 * AND THE SAME IN THE HELD BUILD, `ConsumptionBuild`, which copies the keys for the double (ruled by the
+	 * coordinating session on 2026-11-24). Its list may already be there: `Migrate_5_to_6` writes a whole default build,
+	 * which carries every field the build has now.
+	 */
+	bool Migrate_16_to_17(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const auto WriteTheList = [&OutError](const TSharedRef<FJsonObject>& Into, const TCHAR* Where)
+		{
+			TArray<TSharedPtr<FJsonValue>> Held;
+			if (Into->HasField(TEXT("RememberedDefaults")))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+				if (!Into->TryGetArrayField(TEXT("RememberedDefaults"), Listed) || Listed == nullptr)
+				{
+					OutError = FString::Printf(TEXT("%sRememberedDefaults holds something that is not a list"), Where);
+					return false;
+				}
+				Held = *Listed;
+			}
+			Into->SetArrayField(TEXT("RememberedDefaults"), Held); // A migration's: the remembered defaults, written out.
+			return true;
+		};
+		if (!WriteTheList(Record, TEXT("")))
+		{
+			return false;
+		}
+		if (Record->HasField(TEXT("ConsumptionBuild")))
+		{
+			const TSharedPtr<FJsonObject>* Build = nullptr;
+			if (!Record->TryGetObjectField(TEXT("ConsumptionBuild"), Build) || Build == nullptr || !Build->IsValid())
+			{
+				OutError = TEXT("ConsumptionBuild holds something that is not an object");
+				return false;
+			}
+			return WriteTheList(Build->ToSharedRef(), TEXT("ConsumptionBuild's "));
+		}
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -869,6 +915,7 @@ namespace CataclysmCharacterSaveMigration
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
+		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 	};
 }
 

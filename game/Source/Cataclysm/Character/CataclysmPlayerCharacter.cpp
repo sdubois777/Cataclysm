@@ -2622,7 +2622,7 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	// (Q11), and the weapons in slot order, the first OCCUPIED slot first, so a
 	// lone weapon in the second hand is the first weapon. With nothing worn the
 	// carried list is the creation type alone, for the starting weapon below.
-	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
 									   : UCataclysmCharacterCreation::DefaultDamageType;
 
@@ -2638,8 +2638,27 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 		Equipment ? Equipment->WornWeaponTypes() : TArray<FString>();
 	if (!WornTypes.IsEmpty())
 	{
+		// AND WHAT EACH KEY HELD BY DEFAULT, since issue #837 slice 1 (the owner's Q1 of 2026-11-24, "the keys stay as
+		// they are"): handed over before the fill and remembered again after it, so the next fill keeps every key whose
+		// skill is still in the pool. Only a fill from worn weapons is remembered.
+		WeaponSlots->UseRememberedDefaults(Chooser ? Chooser->GetRememberedDefaults() : TArray<FCataclysmSkillChoice>());
 		WeaponSlots->EquipWeaponTypes(WornTypes);
+		if (Chooser)
+		{
+			Chooser->RememberDefaults(WeaponSlots->GetAvailableSkills());
+		}
 		return;
+	}
+
+	// NO WEAPON WORN, SO NOTHING IS HANDED OVER OR REMEMBERED (slice 1's R4): the starting weapon type below is a
+	// stand-in, and keys remembered from it would hold its skills over the first real weapon's. WHAT WAS REMEMBERED IS
+	// FORGOTTEN ONLY WHEN A WEAPON WAS EXPECTED: at possession, before the weapon goes on (`NotYet`), the player state
+	// may be carrying a character's keys into a new pawn (the player state outlives a death), and the gear put back
+	// next must find them.
+	WeaponSlots->UseRememberedDefaults(TArray<FCataclysmSkillChoice>());
+	if (Chooser && Expected == ECataclysmWeaponExpected::Yes)
+	{
+		Chooser->ForgetRememberedDefaults();
 	}
 
 	// THIS IS NOW A NET UNDER A CASE THAT SHOULD NOT ARISE, AND IT SAYS SO WHEN

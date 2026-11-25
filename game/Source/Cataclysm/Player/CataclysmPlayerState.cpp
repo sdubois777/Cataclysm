@@ -81,6 +81,7 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, DefeatedCataclysmBosses);
 	DOREPLIFETIME(ACataclysmPlayerState, PointsAnAllocationWasHandedWith);
 	DOREPLIFETIME(ACataclysmPlayerState, SkillAssignment);
+	DOREPLIFETIME(ACataclysmPlayerState, RememberedDefaults);
 }
 
 FCataclysmCreationChoice ACataclysmPlayerState::GetCreationChoice() const
@@ -942,6 +943,60 @@ bool ACataclysmPlayerState::ForgetSkillChoice(ECataclysmAbilitySlot Slot)
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillForgottenLine(SkillSlotName(Slot)));
 	UCataclysmSaveWriter::NoteTriggerIn(GetWorld(), ECataclysmSaveTrigger::CharacterBuildChanged);
 	return true;
+}
+
+void ACataclysmPlayerState::RememberDefaults(const TArray<FCataclysmWeaponSkill>& OnKeys)
+{
+	// REPLACED, NEVER ADDED TO: what the keys hold now is the whole of what is remembered. A key holding the player's
+	// own choice is left out, so "chosen" keeps meaning the player chose it (Q10); a key whose choice is off with its
+	// weapon holds a default, and that default is remembered.
+	RememberedDefaults.Reset();
+	for (const FCataclysmWeaponSkill& Skill : OnKeys)
+	{
+		if (!UCataclysmWeaponSkills::IsChoosableSlot(Skill.Slot) || Skill.RowName.IsNone())
+		{
+			continue;
+		}
+		const bool bChosen = SkillAssignment.ContainsByPredicate([&Skill](const FCataclysmSkillChoice& Choice)
+			{ return Choice.Slot == Skill.Slot && Choice.SkillRow == Skill.RowName; });
+		if (bChosen)
+		{
+			continue;
+		}
+		FCataclysmSkillChoice& Remembered = RememberedDefaults.AddDefaulted_GetRef();
+		Remembered.Slot = Skill.Slot;
+		Remembered.SkillRow = Skill.RowName;
+	}
+}
+
+void ACataclysmPlayerState::RestoreSkillChoices(const TArray<FCataclysmSkillChoice>& Choices,
+												const TArray<FCataclysmSkillChoice>& Remembered, const UDataTable* Table,
+												int32& OutRefused)
+{
+	// AS DATA, CHECKED AGAINST THE TABLE AND NOT THE POOL: a choice whose weapon was off at saving is kept (Q7), as
+	// `AssignSkill` would have refused it. A key or a row named twice keeps its first entry, as the fill reads them.
+	// ONLY A REFUSED CHOICE IS COUNTED: a remembered default the table no longer has is dropped and the key takes the
+	// next default, as it would in play, and the player chose nothing to lose.
+	const auto Kept = [Table](const TArray<FCataclysmSkillChoice>& Listed, int32& Refused)
+	{
+		TArray<FCataclysmSkillChoice> Out;
+		for (const FCataclysmSkillChoice& Entry : Listed)
+		{
+			const bool bRepeated = Out.ContainsByPredicate([&Entry](const FCataclysmSkillChoice& Earlier)
+				{ return Earlier.Slot == Entry.Slot || Earlier.SkillRow == Entry.SkillRow; });
+			if (!UCataclysmWeaponSkills::IsChoosableSlot(Entry.Slot) || Entry.SkillRow.IsNone() || bRepeated
+				|| (Table && !Table->FindRowUnchecked(Entry.SkillRow)))
+			{
+				++Refused;
+				continue;
+			}
+			Out.Add(Entry);
+		}
+		return Out;
+	};
+	int32 DefaultsDropped = 0;
+	SkillAssignment = Kept(Choices, OutRefused);
+	RememberedDefaults = Kept(Remembered, DefaultsDropped);
 }
 
 // ---------------------------------------------------------------------------

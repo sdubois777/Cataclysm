@@ -31,6 +31,8 @@ FCataclysmPlayerBuild FCataclysmPlayerBuild::Of(const ACataclysmPlayerCharacter&
 	{
 		Build = NumbersOf(*State);
 		Build.SkillAssignment = State->GetSkillAssignment();
+		// AND WHAT EACH OTHER KEY HELD BY DEFAULT, so the double holds the keys the player had (issue #837 slice 1).
+		Build.RememberedDefaults = State->GetRememberedDefaults();
 	}
 	else
 	{

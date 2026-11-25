@@ -630,6 +630,10 @@ A player carrying several damage types will have far more skills available than 
 
   
 
+**A CHANGE OF WEAPONS NEVER TAKES A SKILL OFF A KEY WHILE IT IS STILL IN THE POOL.** Ruled by the project owner on 2026-11-24 (issue #837). Putting a second weapon on adds its skills to the pool and leaves every key as it was, so the keys never change because of which hand a weapon went into; taking a weapon off changes only the keys whose skills it took with it, each taking the next skill in the pool made for it. A key the player has not chosen for holds a skill that does something before one that is not built yet, and the skills the game put on keys by itself are remembered and saved with the character, as the player's own choices are. A choice whose weapon is off is kept and returns with the weapon, across a save and a load as in play.
+
+  
+
 | Slot | Description |
 | :-: | :-: |
 | Basic Attack | Left mouse button — augmented by all damage types on the weapon. Can be a damage source or resource generator depending on build. |
