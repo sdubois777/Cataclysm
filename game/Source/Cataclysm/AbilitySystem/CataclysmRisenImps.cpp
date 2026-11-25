@@ -70,10 +70,40 @@ AActor* UCataclysmRisenImps::CurserOf(const AActor* Dying)
 	return nullptr;
 }
 
-ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
+bool UCataclysmRisenImps::CarriesCurseLaidBy(const AActor* Carrier, const AActor* Curser)
 {
-	AActor* Curser = CurserOf(Dying);
-	if (!Curser)
+	if (!Carrier || !Curser)
+	{
+		return false;
+	}
+	UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Carrier);
+	const FGameplayTag Curses = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Status.Debuff")), /*ErrorIfNotFound=*/false);
+	if (!Theirs || !Curses.IsValid())
+	{
+		return false;
+	}
+
+	// THE SAME QUERY AND THE SAME RECORD `CurserOf` READS: every `Status.Debuff.*`, and the instigator its effect
+	// names. Only the question differs: whether THIS character laid one, not who of the rule's holders did.
+	const FGameplayEffectQuery Query = FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+		FGameplayTagContainer(Curses));
+	for (const FActiveGameplayEffectHandle& Handle : Theirs->GetActiveEffects(Query))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Curser)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+const TCHAR* UCataclysmRisenImps::ExtraImpsStat = TEXT("curse_death_extra_imps");
+
+ACataclysmMinion* UCataclysmRisenImps::SummonImpKindFor(AActor* Commander, const FVector& Where, bool bRisen)
+{
+	if (!IsValid(Commander))
 	{
 		return nullptr;
 	}
@@ -85,43 +115,90 @@ ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
 	if (!SummonImp || SummonImp->Params.Minions.IsEmpty())
 	{
 		UE_LOG(LogCataclysm, Warning,
-			TEXT("'%s' died cursed by '%s', and nothing rose: the weapon skill table "
-				 "has no '%s' naming a minion to raise."),
-			*GetNameSafe(Dying), *Curser->GetName(), ImpSkillName);
+			TEXT("Nothing was made for '%s': the weapon skill table has no '%s' naming a minion to make."),
+			*Commander->GetName(), ImpSkillName);
 		return nullptr;
 	}
 
 	const FString Type = SummonImp->Params.Minions[0].Type;
 
 	// THE POOL MUST HOLD ITS RESERVE, Summon Imp's from Summon Imp's row, after Crowned, AND THAT IS THE ONLY LIMIT on
-	// how many rise. Issue #2787, the owner's rulings of 2026-11-20: every minion reserves, and nothing that reserves
-	// has a count cap, so the cap risen imps shared with Summon Imp (#1479) is gone. When the pool cannot hold it,
-	// nothing rises and nothing is destroyed.
+	// how many are made. Issue #2787, the owner's rulings of 2026-11-20: every minion reserves, and nothing that
+	// reserves has a count cap, so the cap risen imps shared with Summon Imp (#1479) is gone. When the pool cannot hold
+	// it, nothing is made and nothing is destroyed.
 	const float Reserve =
-		UCataclysmCommand::ReserveFor(Curser, SummonImp->Params.FervourReserve, SummonImp->Tags);
-	if (!UCataclysmCommand::HasRoomToReserve(Curser, Reserve))
+		UCataclysmCommand::ReserveFor(Commander, SummonImp->Params.FervourReserve, SummonImp->Tags);
+	if (!UCataclysmCommand::HasRoomToReserve(Commander, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
-			TEXT("'%s' died cursed by '%s', whose pool has no room for an imp reserving %.0f Fervour, so "
-				 "nothing rose."),
-			*GetNameSafe(Dying), *Curser->GetName(), Reserve);
+			TEXT("'%s' has no room in its pool for an imp reserving %.0f Fervour, so none was made."),
+			*Commander->GetName(), Reserve);
 		return nullptr;
 	}
 
 	const float Lifetime =
 		SummonImp->Params.Duration > 0.0f ? SummonImp->Params.Duration : 20.0f;
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
-		Curser, Dying->GetActorLocation(), Lifetime, SummonImp->Params.bBurns, Type);
+		Commander, Where, Lifetime, SummonImp->Params.bBurns, Type);
 	if (Imp)
 	{
 		Imp->RecordExplosionRadius(SummonImp->Params.RadiusCm);
-		if (const UWorld* World = Imp->GetWorld())
+		if (bRisen)
 		{
-			Imp->RisenAtSeconds = World->GetTimeSeconds();
+			if (const UWorld* World = Imp->GetWorld())
+			{
+				Imp->RisenAtSeconds = World->GetTimeSeconds();
+			}
 		}
-		UCataclysmCommand::HoldReserve(Curser, Imp, Reserve);
+		UCataclysmCommand::HoldReserve(Commander, Imp, Reserve);
 	}
 	return Imp;
+}
+
+ACataclysmMinion* UCataclysmRisenImps::RiseOnDeath(AActor* Dying)
+{
+	AActor* Curser = CurserOf(Dying);
+	if (!Curser)
+	{
+		return nullptr;
+	}
+
+	// ONE, AND OPEN CHANNEL'S EXTRA. The demonic tree rework of 2026-11-24: "An enemy that dies carrying your curse
+	// raises two imps rather than one", a flat 1 on the curser. WHOLE IMPS, ROUNDED DOWN, so a reading a hair under a
+	// whole number from summed rows is not a lost imp.
+	int32 Count = 1;
+	if (const UCataclysmAbilitySystemComponent* Theirs = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Curser)))
+	{
+		const float Extra = Theirs->StatForSkill(FName(ExtraImpsStat), FGameplayTagContainer(), 0.0f);
+		Count += FMath::Max(0, FMath::FloorToInt(Extra + KINDA_SMALL_NUMBER));
+	}
+
+	// EACH ASKS THE POOL FOR ITS OWN RESERVE, so a pool with room for one raises one and the second is refused, with
+	// nothing destroyed: the owner's rule of 2026-11-20 that the reserve is the only limit. The first stands where the
+	// creature died; each extra a little apart, on a circle round it, so two are never made in one place.
+	const FVector DiedAt = Dying->GetActorLocation();
+	ACataclysmMinion* First = nullptr;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FVector Where = Index == 0
+			? DiedAt
+			: DiedAt + FRotator(0.0f, 120.0f * static_cast<float>(Index), 0.0f)
+				  .RotateVector(FVector(ExtraImpSpacingCm, 0.0f, 0.0f));
+		ACataclysmMinion* Imp = SummonImpKindFor(Curser, Where, /*bRisen=*/true);
+		if (!Imp)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' died cursed by '%s', and imp %d of %d did not rise."),
+				*GetNameSafe(Dying), *Curser->GetName(), Index + 1, Count);
+			break;
+		}
+		if (!First)
+		{
+			First = Imp;
+		}
+	}
+	return First;
 }
 
 ACataclysmMinion* UCataclysmRisenImps::RiseOnNecrosisKill(

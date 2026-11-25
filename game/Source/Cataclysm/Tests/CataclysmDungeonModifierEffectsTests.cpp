@@ -49079,13 +49079,16 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 		Names.Add(Skill.Name);
 	}
 
-	// WAR TODAY: 54 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills.
+	// WAR TODAY: 53 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills. 54
+	// until 2026-11-25, when Blood and Iron was built as an Aura (the damage-type auras), which leaves it out.
 	TMap<EWhy, TArray<FString>> War;
 	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 54);
+	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 53);
+	Pin(TEXT("War: aura"), CountOf(War, EWhy::Aura), 1);
 	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
 	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
 	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	TestTrue(TEXT("Blood and Iron is an aura"), Holds(War, EWhy::Aura, TEXT("Blood and Iron")));
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
 	// but War and Demonic one kit each, so no damage type is without a shaped skill any more.
@@ -64567,7 +64570,13 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	constexpr float FittedBuiltHealth[8] = {945.6f, 1485.5f, 2139.7f, 2926.7f, 3940.4f, 5314.3f, 6109.7f, 6902.3f};
+	// THE DEMONIC CORRUPTED STALKER IS 3 TO 5% TOUGHER SINCE THE DEMONIC TREE REWORK (2026-11-24), because the rework
+	// raised the Ravager's health rows its build holds (Ravager_basic_spine_001 from 0.5 to 1.0 increased a point, and
+	// new rows on Ravager_basic_a_stem2 and Ravager_basic_a_c1). Measured in window tb-w1 (2026-11-25): 990.9 at tier 1
+	// (was 945.6, +4.8%) to 7122.1 at tier 8 (was 6902.3, +3.2%). By the coordinating session's ruling the multiplier
+	// is kept and only these figures follow the build; the Stalker's tables are fitted again in the affix ranges and
+	// rebalance bundle (issues #2883 and #2884), which measures the new game first.
+	constexpr float FittedBuiltHealth[8] = {990.9f, 1553.3f, 2231.9f, 3044.2f, 4086.0f, 5492.8f, 6309.4f, 7122.1f};
 	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{

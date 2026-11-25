@@ -109,6 +109,22 @@ public:
 	/** Whether healing stops removing Fervour at all. Zero for no. #1006. */
 	static const TCHAR* LossSuppressedStat;
 
+	/**
+	 * The Fervour healing can never take the pool below. Zero for no floor.
+	 *
+	 * THE MASOCHIST'S SANGUINE LEDGER, AS REWORKED BY THE PROJECT OWNER'S
+	 * APPROVAL OF 2026-11-24: "Healing never takes your Fervour below 50." Its
+	 * row is a flat 50. It replaced the keystone's old trade -- regeneration
+	 * removing no Fervour at the price of half the regeneration -- with an
+	 * upgrade: once a Masochist has banked the Ultimate's cost, healing cannot
+	 * take it back, and above the floor the class rule holds.
+	 *
+	 * A STAT WITH NO GAMEPLAY ATTRIBUTE, read only by `FloorAgainstHealing`
+	 * below, the way `LossSuppressedStat` above is read only by
+	 * `LossIsSuppressed`.
+	 */
+	static const TCHAR* FloorAgainstHealingStat;
+
 	/** How much Fervour arrives every second, from nothing happening. #1008. */
 	static const TCHAR* PerSecondStat;
 
@@ -157,15 +173,59 @@ public:
 	static const TCHAR* DecayGraceMetresStat;
 
 	/**
-	 * How long this character may be out of contact before Fervour decays.
-	 * Issue #1515.
+	 * How long this character may be out of contact before Fervour decays,
+	 * before any row lengthens it. Issue #1515.
 	 *
-	 * A CONSTANT RATHER THAN A STAT, unlike the radius beside it, because no
-	 * node in any tree changes the delay and one keystone changes the radius.
-	 * `Ravager_basic_spine_000` states it: "after 3 seconds with no enemy
-	 * within 4 metres".
+	 * THE BASE, AND `DecayGraceSecondsStat` BELOW IS ADDED TO IT. It was a
+	 * constant with nothing added because no node changed the delay; the Ravager
+	 * tree rework of 2026-11-24 gave Stoked that job. `Ravager_basic_spine_000`
+	 * states the base: "after 3 seconds with no enemy within 4 metres".
 	 */
 	static constexpr float DecayGraceSeconds = 3.0f;
+
+	/**
+	 * `fervour_decay_grace_seconds`: seconds ADDED to `DecayGraceSeconds` before
+	 * an out-of-contact character's Fervour starts to decay. The Ravager tree
+	 * rework of 2026-11-24, Stoked: "Your Fervour starts to decay 1 second later
+	 * per point." Flat, a point a second; read in `DecayStep` through the
+	 * pipeline, with nought as the fallback. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it. Path of
+	 * Exile's "Inherent Rage Loss starts 2 seconds later" is the shipped shape.
+	 */
+	static const TCHAR* DecayGraceSecondsStat;
+
+	/**
+	 * `health_restored_on_fervour_full`: the share of maximum health, in
+	 * percent, restored each time this character's Fervour BECOMES full. The
+	 * Ravager tree rework of 2026-11-24, Second Wind: "Each time your Fervour
+	 * becomes full, restore 2% of your maximum health per point." See
+	 * `RestoreHealthOnFervourFull`. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* HealthRestoredOnFullStat;
+
+	/**
+	 * Restore the health `HealthRestoredOnFullStat` grants, answering how much
+	 * really arrived. The Ravager tree rework of 2026-11-24, Second Wind.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE POOL BECAME FULL. The crossing is
+	 * `ACataclysmPlayerCharacter::OnClassResourceChanged`'s, which stamps the
+	 * moment for `seconds_after_resource_full` and calls this beside the stamp,
+	 * so the heal and the window open on the same event and never on a pool
+	 * that merely sits at its maximum.
+	 *
+	 * THROUGH `UCataclysmRegeneration::TopUp`, as every restoration in this file
+	 * is, so it obeys the same ceiling and the same received-healing rows.
+	 *
+	 * ASKED THROUGH THE PIPELINE WITH A FALLBACK OF NOUGHT, the rule every rate
+	 * here keeps: a row that later gains a condition is never folded into an
+	 * attribute, and this stat has none anyway.
+	 *
+	 * @return the health really restored, which is zero for a character without
+	 *         the node, for one already at full health, and for one with no
+	 *         vital attribute set
+	 */
+	static float RestoreHealthOnFervourFull(UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How much of a character's maximum health a kill restores, in percent.
@@ -384,6 +444,20 @@ public:
 	 */
 	static bool LossIsSuppressed(const UAbilitySystemComponent* AbilitySystem,
 								 const FGameplayTagContainer& Healing);
+
+	/**
+	 * The Fervour this character's healing may not take the pool below, or
+	 * zero for none. Sanguine Ledger, 2026-11-24. See `FloorAgainstHealingStat`.
+	 *
+	 * ASKED WITH THE HEALING'S OWN TAGS, as `LossIsSuppressed` is, so a later
+	 * row may scope a floor to one kind of healing. Sanguine Ledger's row names
+	 * no tag and covers every kind.
+	 *
+	 * Zero for an ability system with no class resource attribute set, which is
+	 * every enemy, and floored at zero, so no row can make healing ADD Fervour.
+	 */
+	static float FloorAgainstHealing(const UAbilitySystemComponent* AbilitySystem,
+									 const FGameplayTagContainer& Healing);
 
 	/**
 	 * Add the Fervour a step this long is worth, and answer what arrived.

@@ -29,8 +29,12 @@
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
+// For who commands a killer, so The Swarm hears a kill by one of this
+// character's minions. The demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -1085,6 +1089,14 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))
 	{
 		Cataclysm->NoteClassResourceFull();
+
+		// AND SECOND WIND'S HEAL, ON THE SAME CROSSING AND NO OTHER. The Ravager
+		// tree rework of 2026-11-24: "Each time your Fervour becomes full,
+		// restore 2% of your maximum health per point." Beside the stamp, so the
+		// heal and the window it opens cannot disagree about when the pool
+		// filled; a pool sitting at its maximum restores nothing more. Nought
+		// for every character without the node.
+		UCataclysmFervour::RestoreHealthOnFervourFull(Cataclysm);
 	}
 
 	// EMPTY IS ONLY EVER THE POOL, NOT THE MAXIMUM. "Hits zero" is about what
@@ -1521,6 +1533,18 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
 		}
 
+		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree
+		// rework of 2026-11-24: "When you or one of your minions kills an enemy, a new minion is summoned where it fell,
+		// if your Fervour has room for it." OUTSIDE THE KILLER TEST ABOVE, because a minion's kill is the minion's own
+		// unless Conduit is taken: with Conduit the killer is this character, without it the killer is a minion (or a
+		// thrall) this character commands, and either way it is heard once. Nothing without the keystone; the enemy
+		// test and the pool's room are `UCataclysmSummonSkill::SummonAtAKillFor`'s.
+		if (Notice.Killer
+			&& (Notice.Killer == this || UCataclysmCommand::CommanderOf(Notice.Killer) == this))
+		{
+			UCataclysmSummonSkill::SummonAtAKillFor(this, Notice.Victim, Notice.Location);
+		}
+
 		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.
 		// `Ravager_capstone_50`'s third option: "Killing an enemy restores 5% of
 		// your maximum health." A kill is this character's kill as above, its
@@ -1707,8 +1731,30 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	const float FromAttribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
 
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+
+	// AN ACTOR IMMUNE TO SLOW IGNORES EVERY MOVEMENT REDUCTION, the coordinating session's ruling of 2026-11-25:
+	// Grave Shroud's, Fevered Blood's and Living Pyre's `Immune=Slow` until then blocked nothing, because nothing that
+	// slows asked the immunity. It takes the suppression branch below, which drops the reducing parts and keeps the
+	// earned ones, as a node saying "nothing may lower this character's speed" does.
+	const bool bImmuneToSlow = UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));
+	bSlowImmuneAtLastSpeedRefresh = bImmuneToSlow;
+
+	// AND WHAT AN AURA HOLDS ON IT: War's Blood and Iron raises an ally's movement 15% and slows an enemy's. Multiplied
+	// last, after everything else; a slow share is a reduction and an immunity to Slow drops it. 2026-11-25.
+	float AuraFactor = 1.0f;
+	if (Cataclysm)
+	{
+		Cataclysm->PruneLapsedAuraShares();
+		AuraFactor = 1.0f + Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) / 100.0f;
+		if (!bImmuneToSlow)
+		{
+			AuraFactor *= 1.0f - FMath::Clamp(Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced),
+											  0.0f, 99.0f) / 100.0f;
+		}
+	}
+
 	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273. AND WHAT WITHER LEAVES, multiplied
 	// with it as a separate slow. Issue #1722.
 	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this)
@@ -1716,7 +1762,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	if (!Cataclysm)
 	{
-		ApplyMovementSpeed(FromAttribute * Crippled);
+		ApplyMovementSpeed(FromAttribute * (bImmuneToSlow ? 1.0f : Crippled));
 		return;
 	}
 
@@ -1739,35 +1785,61 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 		AbilitySystem->GetNumericAttribute(
 			UCataclysmCombatAttributeSet::
 				GetMovementSpeedReductionSuppressedAttribute()));
-	if (Suppressed <= 0.0f)
+	if (Suppressed <= 0.0f && !bImmuneToSlow)
 	{
-		ApplyMovementSpeed(Asked * Crippled);
+		ApplyMovementSpeed(Asked * Crippled * AuraFactor);
 		return;
 	}
 
-	// THE REDUCING PARTS ARE DROPPED, THE EARNED ONES KEPT, AND THE DIFFERENCE
+	// THE REDUCING ROWS ARE DROPPED, THE EARNED ONES KEPT, AND THE DIFFERENCE
 	// IS NOT ACADEMIC. Flooring the answer at the attribute would take away a
 	// node's +20% along with a Singularity Well's -40% and leave the character
 	// at their base speed; the row says the reduction does not apply, not that
-	// the bonus does not either. So the stat is run again with each bucket
-	// clamped to the side that cannot lower it:
+	// the bonus does not either.
 	//
-	//     Flat             floored at 0      a negative addition is a reduction
-	//     SumOfIncreases   floored at 0      a negative increase is a reduction
-	//     MoreMultiplier   floored at 1      a "less" multiplier is below one
+	// ROW BY ROW, NOT BY FLOORING THE SUMS, SINCE 2026-11-24. The coordinating
+	// session's ruling that day, on the Ravager tree rework's Relentless ("Your
+	// Movement Speed and Attack Speed cannot be reduced by any effect"):
+	// "cannot be reduced" means every reducing row is ignored on its own and
+	// every bonus still counts, the same for both speeds. Until then each
+	// bucket was summed first and the sum floored -- Flat at 0, the increases at
+	// 0, the "more" product at 1 -- so +12% beside -40% in the increased bucket
+	// summed to -28% and was floored to nothing, and the earned 12% was lost
+	// with the reduction. Now each row is judged by its own sign before
+	// anything is summed: a flat, an increase or a "more" stating a figure
+	// below nought is a reduction, and so is a removal, and only those are
+	// dropped. `UCataclysmBasicAttack::AttackSpeedAfterSlows` does the same for
+	// attack speed. A scaled row's sign is its value's, since every scale
+	// counts whole steps of nought or more.
+	//
+	// ONLY UNDER THE FLAG. A character without it -- every character slowed by
+	// a creature, a dungeon rule or Cripple outside Relentless, Unstoppable's
+	// crowd and Nothing Moves You's 50 Fervour -- still sums its rows as the
+	// pipeline does, above. The flag is one stat for all three of those
+	// clauses, so all three now read the way Relentless does.
 	//
 	// A SECOND PIPELINE PASS RATHER THAN ARITHMETIC ON THE FIRST ANSWER. The
 	// single number `StatForSkill` returns cannot be taken apart again -- a
 	// figure below the base could be a reduction or a small base, and nothing
-	// in it says which. The breakdown says which, so it is what gets asked.
+	// in it says which. The rows say which, so they are what gets asked.
 	const FCataclysmStatInputs* Inputs =
 		Cataclysm->GetStatInputs(FName(TEXT("movement_speed")));
 	if (!Inputs)
 	{
 		// NO STAT LINE MEANS NOTHING TO DROP, so the answer above already is the
 		// speed. That is every character before its first refresh.
-		ApplyMovementSpeed(Asked);
+		ApplyMovementSpeed(Asked * AuraFactor);
 		return;
+	}
+
+	TArray<FCataclysmStatModifier> Earned;
+	Earned.Reserve(Inputs->Modifiers.Num());
+	for (const FCataclysmStatModifier& Row : Inputs->Modifiers)
+	{
+		if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)
+		{
+			Earned.Add(Row);
+		}
 	}
 
 	// THE CONDITION STATE IS BUILT THE WAY `StatForSkill` BUILDS IT, and that is
@@ -1778,19 +1850,16 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	// passed. `WithEnemiesInReach` is what fills those distances in, and only
 	// when a row in the list actually asks.
 	const FCataclysmStatBreakdown Breakdown = UCataclysmStatPipeline::Evaluate(
-		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		Inputs->Base, Earned, FGameplayTagContainer(),
 		Cataclysm->WithEnemiesInReach(
-			Inputs->Modifiers,
+			Earned,
 			UCataclysmAbilitySystemComponent::WithTargetState(
-				Inputs->Modifiers, /*Target=*/nullptr,
+				Earned, /*Target=*/nullptr,
 				Cataclysm->CurrentConditions())));
 
-	const float Flat = FMath::Max(Breakdown.Flat, 0.0f);
-	const float Increases = FMath::Max(Breakdown.SumOfIncreases, 0.0f);
-	const float More = FMath::Max(Breakdown.MoreMultiplier, 1.0f);
-
-	ApplyMovementSpeed((Breakdown.Base + Flat) * (1.0f + Increases / 100.0f)
-					   * More);
+	// THE TREES BASE'S ROW-BY-ROW ANSWER (issue #2912) TIMES THE AURA'S SHARE (`AuraFactor`, the damage-type auras),
+	// as the other two paths above multiply theirs. Resolved in bundle 1, 2026-11-25.
+	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f) * AuraFactor);
 }
 
 bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
@@ -1800,6 +1869,15 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 	if (!Cataclysm)
 	{
 		return false;
+	}
+
+	// AN AURA'S SHARE AND AN IMMUNITY TO SLOW LAPSE WITH NO EVENT, so while either is held -- or the immunity was held
+	// at the last refresh, which has to be undone once -- the speed is worked out again on every regeneration step.
+	// 2026-11-25.
+	if (Cataclysm->HoldsAnyAuraShare() || bSlowImmuneAtLastSpeedRefresh
+		|| UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return true;
 	}
 
 	// BOTH STATS `RefreshMovementSpeed` ASKS FOR, because a row on either moves

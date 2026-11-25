@@ -281,8 +281,9 @@ bool FCataclysmAuraDamageMiasmaRowTest::RunTest(const FString& Parameters)
 /**
  * EVERY AURA ROW IN THE TABLE, #2875. Each row whose Shape is Aura, read through `SkillsOfDamageType` for each of the
  * eight damage types and stamped onto an aura as a grant stamps it, deals what its row states and nought when it
- * states none: Conflagration 10, Living Pyre 66.67, the other ten nought. Twelve rows, counted, so a new aura row fails
- * here until somebody says what it deals.
+ * states none: Conflagration 10, Living Pyre 66.67, the other eleven nought. Thirteen rows, counted, so a new aura row
+ * fails here until somebody says what it deals. THIRTEEN SINCE 2026-11-25: War's Blood and Iron was given the Aura
+ * shape (the owner's "Go with A"), and its sentence names no damage.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraDamageEveryRowTest,
 	"Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates",
@@ -321,7 +322,8 @@ bool FCataclysmAuraDamageEveryRowTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestEqual(TEXT("twelve rows of the table have the Aura shape"), Seen.Num(), 12);
+	TestEqual(TEXT("thirteen rows of the table have the Aura shape"), Seen.Num(), 13);
+	TestTrue(TEXT("Blood and Iron is one of them, since 2026-11-25"), Seen.Contains(FString(TEXT("Blood and Iron"))));
 	TestTrue(TEXT("Conflagration is one of them"), Seen.Contains(FString(TEXT("Conflagration"))));
 	TestTrue(TEXT("and Living Pyre"), Seen.Contains(FString(TEXT("Living Pyre"))));
 	TestTrue(TEXT("and Miasma, which states nothing"), Seen.Contains(FString(TEXT("Miasma"))));

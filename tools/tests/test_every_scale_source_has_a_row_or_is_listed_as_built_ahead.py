@@ -131,7 +131,18 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: with them.
 #: IT LEFT with its two rows on 2026-10-18, in the layer above its mechanism in
 #: the same build window, and the list is empty again.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: ONE JOINED ON 2026-11-24, `increased_movement_speed`, for the Ravager tree
+#: rework's Relentless, "you gain 1% increased Attack Speed for every 2%
+#: increased Movement Speed you have", built ahead of its row while the design
+#: workbook is with the session writing the rework's rows. It leaves with that
+#: row, and `EXPECTED_NAMED_BY_A_ROW` below moves then and not before.
+#: IT LEFT THE SAME DAY with that row, and in the same change `damage_reduction`
+#: JOINED, NOT BUILT AHEAD BUT LEFT BEHIND: its one row was the Ravager's Weight
+#: Against Them, "+1% increased Attack Damage for every 2% of Damage Reduction you
+#: have", which the rework replaced with Thronged. The engine still reads the
+#: scale, and a row may name it again. So `EXPECTED_NAMED_BY_A_ROW` does not
+#: move: one name gained its row and one lost its only one.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"damage_reduction"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

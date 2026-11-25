@@ -16,8 +16,8 @@
     {
       "id": "basic_trunk_000",
       "position": {
-        "x": 0,
-        "y": 770
+        "x": 0.0,
+        "y": 0.0
       },
       "type": "basic",
       "data": {
@@ -38,8 +38,8 @@
     {
       "id": "basic_trunk_001",
       "position": {
-        "x": -160,
-        "y": 650
+        "x": 75.0,
+        "y": 129.9
       },
       "type": "basic",
       "data": {
@@ -60,8 +60,8 @@
     {
       "id": "basic_trunk_002",
       "position": {
-        "x": 0,
-        "y": 650
+        "x": -28.5,
+        "y": -106.3
       },
       "type": "basic",
       "data": {
@@ -82,8 +82,8 @@
     {
       "id": "basic_trunk_003",
       "position": {
-        "x": 0,
-        "y": 530
+        "x": -54.4,
+        "y": -202.8
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "basic_trunk_004",
       "position": {
-        "x": -320,
-        "y": 530
+        "x": 145.0,
+        "y": 251.1
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "basic_trunk_005",
       "position": {
-        "x": 160,
-        "y": 530
+        "x": 147.4,
+        "y": -103.2
       },
       "type": "basic",
       "data": {
@@ -148,8 +148,8 @@
     {
       "id": "basic_trunk_006",
       "position": {
-        "x": 0,
-        "y": 410
+        "x": -80.2,
+        "y": -299.4
       },
       "type": "basic",
       "data": {
@@ -170,8 +170,8 @@
     {
       "id": "basic_trunk_007",
       "position": {
-        "x": -160,
-        "y": 290
+        "x": 287.3,
+        "y": -372.0
       },
       "type": "basic",
       "data": {
@@ -192,8 +192,8 @@
     {
       "id": "basic_trunk_008",
       "position": {
-        "x": 160,
-        "y": 290
+        "x": -492.6,
+        "y": 85.6
       },
       "type": "basic",
       "data": {
@@ -214,8 +214,8 @@
     {
       "id": "basic_trunk_009",
       "position": {
-        "x": -320,
-        "y": 410
+        "x": 260.0,
+        "y": 203.2
       },
       "type": "basic",
       "data": {
@@ -236,8 +236,8 @@
     {
       "id": "basic_trunk_010",
       "position": {
-        "x": 320,
-        "y": 410
+        "x": 341.6,
+        "y": 48.0
       },
       "type": "basic",
       "data": {
@@ -258,8 +258,8 @@
     {
       "id": "basic_trap_stem_001",
       "position": {
-        "x": -160,
-        "y": 170
+        "x": 469.6,
+        "y": -491.8
       },
       "type": "basic",
       "data": {
@@ -280,8 +280,8 @@
     {
       "id": "basic_trap_stem_002",
       "position": {
-        "x": -320,
-        "y": 50
+        "x": 286.2,
+        "y": -463.8
       },
       "type": "basic",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "basic_trap_stem_003",
       "position": {
-        "x": -160,
-        "y": 50
+        "x": 668.9,
+        "y": -438.9
       },
       "type": "basic",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "basic_trap_stem_004",
       "position": {
-        "x": -320,
-        "y": -70
+        "x": 771.8,
+        "y": -553.1
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "basic_trap_stem_005",
       "position": {
-        "x": -160,
-        "y": -70
+        "x": 750.7,
+        "y": -276.6
       },
       "type": "basic",
       "data": {
@@ -368,8 +368,8 @@
     {
       "id": "basic_trap_qty_001",
       "position": {
-        "x": -320,
-        "y": -190
+        "x": 675.4,
+        "y": -79.1
       },
       "type": "basic",
       "data": {
@@ -390,8 +390,8 @@
     {
       "id": "basic_trap_qty_002",
       "position": {
-        "x": -480,
-        "y": -310
+        "x": 676.4,
+        "y": 69.5
       },
       "type": "basic",
       "data": {
@@ -412,8 +412,8 @@
     {
       "id": "basic_trap_qty_003",
       "position": {
-        "x": -320,
-        "y": -310
+        "x": 524.6,
+        "y": -75.4
       },
       "type": "keystone",
       "data": {
@@ -434,8 +434,8 @@
     {
       "id": "basic_trap_qty_004",
       "position": {
-        "x": -480,
-        "y": -430
+        "x": 643.3,
+        "y": 220.4
       },
       "type": "basic",
       "data": {
@@ -456,8 +456,8 @@
     {
       "id": "keystone_trap_qty",
       "position": {
-        "x": -480,
-        "y": -670
+        "x": 1504.1,
+        "y": -635.1
       },
       "type": "keystone",
       "data": {
@@ -478,8 +478,8 @@
     {
       "id": "basic_trap_ql_001",
       "position": {
-        "x": -160,
-        "y": -190
+        "x": 899.6,
+        "y": -638.6
       },
       "type": "basic",
       "data": {
@@ -500,8 +500,8 @@
     {
       "id": "basic_trap_ql_002",
       "position": {
-        "x": -160,
-        "y": -310
+        "x": 1045.5,
+        "y": -686.6
       },
       "type": "basic",
       "data": {
@@ -522,8 +522,8 @@
     {
       "id": "basic_trap_ql_003",
       "position": {
-        "x": -640,
-        "y": -430
+        "x": 544.9,
+        "y": 8.2
       },
       "type": "basic",
       "data": {
@@ -544,8 +544,8 @@
     {
       "id": "basic_trap_ql_004",
       "position": {
-        "x": -160,
-        "y": -430
+        "x": 1198.9,
+        "y": -688.9
       },
       "type": "basic",
       "data": {
@@ -566,8 +566,8 @@
     {
       "id": "keystone_trap_ql",
       "position": {
-        "x": -320,
-        "y": -550
+        "x": 1154.9,
+        "y": -853.1
       },
       "type": "keystone",
       "data": {
@@ -588,8 +588,8 @@
     {
       "id": "basic_trap_deep_001",
       "position": {
-        "x": 0,
-        "y": -550
+        "x": 1313.8,
+        "y": -785.3
       },
       "type": "basic",
       "data": {
@@ -610,8 +610,8 @@
     {
       "id": "basic_trap_deep_002",
       "position": {
-        "x": -640,
-        "y": -550
+        "x": 577.0,
+        "y": 359.9
       },
       "type": "basic",
       "data": {
@@ -632,8 +632,8 @@
     {
       "id": "keystone_trap_deep_001",
       "position": {
-        "x": 0,
-        "y": -670
+        "x": 1428.7,
+        "y": -881.7
       },
       "type": "keystone",
       "data": {
@@ -654,8 +654,8 @@
     {
       "id": "keystone_trap_deep_002",
       "position": {
-        "x": -640,
-        "y": -670
+        "x": 480.8,
+        "y": 480.8
       },
       "type": "keystone",
       "data": {
@@ -676,8 +676,8 @@
     {
       "id": "basic_gadget_stem_001",
       "position": {
-        "x": 160,
-        "y": 170
+        "x": -673.6,
+        "y": 93.0
       },
       "type": "basic",
       "data": {
@@ -698,8 +698,8 @@
     {
       "id": "basic_gadget_stem_002",
       "position": {
-        "x": 320,
-        "y": 50
+        "x": -677.6,
+        "y": -56.7
       },
       "type": "basic",
       "data": {
@@ -720,8 +720,8 @@
     {
       "id": "basic_gadget_stem_003",
       "position": {
-        "x": 160,
-        "y": 50
+        "x": -636.9,
+        "y": 238.1
       },
       "type": "basic",
       "data": {
@@ -742,8 +742,8 @@
     {
       "id": "basic_gadget_stem_004",
       "position": {
-        "x": 480,
-        "y": -70
+        "x": -641.3,
+        "y": -226.2
       },
       "type": "basic",
       "data": {
@@ -764,8 +764,8 @@
     {
       "id": "basic_gadget_stem_005",
       "position": {
-        "x": 160,
-        "y": -70
+        "x": -569.4,
+        "y": 371.8
       },
       "type": "basic",
       "data": {
@@ -786,8 +786,8 @@
     {
       "id": "basic_gadget_dep_001",
       "position": {
-        "x": 160,
-        "y": -190
+        "x": -474.2,
+        "y": 487.4
       },
       "type": "basic",
       "data": {
@@ -808,8 +808,8 @@
     {
       "id": "basic_gadget_dep_002",
       "position": {
-        "x": 320,
-        "y": -310
+        "x": -400.7,
+        "y": 384.0
       },
       "type": "basic",
       "data": {
@@ -830,8 +830,8 @@
     {
       "id": "basic_gadget_dep_003",
       "position": {
-        "x": 160,
-        "y": -310
+        "x": -356.0,
+        "y": 579.4
       },
       "type": "basic",
       "data": {
@@ -852,8 +852,8 @@
     {
       "id": "basic_gadget_dep_004",
       "position": {
-        "x": 320,
-        "y": -430
+        "x": -328.1,
+        "y": 293.2
       },
       "type": "basic",
       "data": {
@@ -874,8 +874,8 @@
     {
       "id": "basic_gadget_dep_005",
       "position": {
-        "x": 74.80239881694055,
-        "y": -423.80381082305024
+        "x": -306.3,
+        "y": 498.4
       },
       "type": "basic",
       "data": {
@@ -896,8 +896,8 @@
     {
       "id": "keystone_gadget_dep",
       "position": {
-        "x": 480,
-        "y": -430
+        "x": -184.6,
+        "y": 410.4
       },
       "type": "keystone",
       "data": {
@@ -918,8 +918,8 @@
     {
       "id": "basic_gadget_sus_001",
       "position": {
-        "x": 480,
-        "y": -190
+        "x": -588.5,
+        "y": -340.7
       },
       "type": "basic",
       "data": {
@@ -940,8 +940,8 @@
     {
       "id": "basic_gadget_sus_002",
       "position": {
-        "x": 480,
-        "y": -310
+        "x": -499.6,
+        "y": -461.3
       },
       "type": "basic",
       "data": {
@@ -962,8 +962,8 @@
     {
       "id": "basic_gadget_sus_003",
       "position": {
-        "x": 640,
-        "y": -310
+        "x": -406.7,
+        "y": -235.5
       },
       "type": "keystone",
       "data": {
@@ -984,8 +984,8 @@
     {
       "id": "basic_gadget_sus_004",
       "position": {
-        "x": 640,
-        "y": -430
+        "x": -386.6,
+        "y": -559.4
       },
       "type": "basic",
       "data": {
@@ -1006,8 +1006,8 @@
     {
       "id": "basic_gadget_sus_005",
       "position": {
-        "x": 320,
-        "y": -550
+        "x": -257.4,
+        "y": 214.4
       },
       "type": "basic",
       "data": {
@@ -1028,8 +1028,8 @@
     {
       "id": "keystone_gadget_sus",
       "position": {
-        "x": 640,
-        "y": -550
+        "x": -254.7,
+        "y": -630.5
       },
       "type": "keystone",
       "data": {
@@ -1050,8 +1050,8 @@
     {
       "id": "basic_gadget_deep_001",
       "position": {
-        "x": 160,
-        "y": -550
+        "x": -231.8,
+        "y": 639.3
       },
       "type": "basic",
       "data": {
@@ -1072,8 +1072,8 @@
     {
       "id": "basic_gadget_deep_002",
       "position": {
-        "x": 160,
-        "y": -670
+        "x": -80.3,
+        "y": 675.2
       },
       "type": "basic",
       "data": {
@@ -1094,8 +1094,8 @@
     {
       "id": "basic_gadget_deep_003",
       "position": {
-        "x": 320,
-        "y": -670
+        "x": -199.4,
+        "y": 550.0
       },
       "type": "basic",
       "data": {
@@ -1116,8 +1116,8 @@
     {
       "id": "keystone_gadget_deep_001",
       "position": {
-        "x": 160,
-        "y": -910
+        "x": 227.0,
+        "y": 641.0
       },
       "type": "keystone",
       "data": {
@@ -1138,8 +1138,8 @@
     {
       "id": "keystone_gadget_deep_002",
       "position": {
-        "x": 480,
-        "y": -550
+        "x": -106.0,
+        "y": 215.3
       },
       "type": "keystone",
       "data": {
@@ -1160,8 +1160,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -1400,
-        "y": 770
+        "x": -917.6,
+        "y": 675.8
       },
       "type": "capstone",
       "data": {
@@ -1184,8 +1184,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -1400,
-        "y": 510
+        "x": -917.6,
+        "y": 415.8
       },
       "type": "capstone",
       "data": {
@@ -1208,8 +1208,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -1400,
-        "y": 250
+        "x": -917.6,
+        "y": 155.8
       },
       "type": "capstone",
       "data": {
@@ -1232,8 +1232,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -1400,
-        "y": -10
+        "x": -917.6,
+        "y": -104.2
       },
       "type": "capstone",
       "data": {
@@ -1256,8 +1256,8 @@
     {
       "id": "basic_trunk_011",
       "position": {
-        "x": -480,
-        "y": 410
+        "x": 210.0,
+        "y": 363.7
       },
       "type": "basic",
       "data": {
@@ -1278,8 +1278,8 @@
     {
       "id": "basic_trunk_012",
       "position": {
-        "x": 160,
-        "y": 410
+        "x": 298.7,
+        "y": -100.0
       },
       "type": "basic",
       "data": {
@@ -1300,8 +1300,8 @@
     {
       "id": "basic_trunk_013",
       "position": {
-        "x": -480,
-        "y": 290
+        "x": 340.0,
+        "y": 588.9
       },
       "type": "keystone",
       "data": {
@@ -1322,8 +1322,8 @@
     {
       "id": "basic_trunk_014",
       "position": {
-        "x": 320,
-        "y": 290
+        "x": 449.2,
+        "y": -120.4
       },
       "type": "basic",
       "data": {
@@ -1344,8 +1344,8 @@
     {
       "id": "basic_trap_mid_001",
       "position": {
-        "x": 0,
-        "y": -310
+        "x": -100.5,
+        "y": -672.5
       },
       "type": "basic",
       "data": {
@@ -1366,8 +1366,8 @@
     {
       "id": "basic_trap_mid_002",
       "position": {
-        "x": 0,
-        "y": -190
+        "x": 53.9,
+        "y": -677.9
       },
       "type": "basic",
       "data": {
@@ -1388,8 +1388,8 @@
     {
       "id": "basic_trap_mid_003",
       "position": {
-        "x": -480,
-        "y": -70
+        "x": 89.1,
+        "y": -430.9
       },
       "type": "keystone",
       "data": {
@@ -1410,8 +1410,8 @@
     {
       "id": "basic_trap_mid_004",
       "position": {
-        "x": -480,
-        "y": -550
+        "x": 1351.5,
+        "y": -662.0
       },
       "type": "basic",
       "data": {
@@ -1432,8 +1432,8 @@
     {
       "id": "basic_trap_mid_005",
       "position": {
-        "x": 0,
-        "y": -70
+        "x": 205.5,
+        "y": -648.2
       },
       "type": "basic",
       "data": {
@@ -1454,8 +1454,8 @@
     {
       "id": "basic_trap_mid_006",
       "position": {
-        "x": 0,
-        "y": 50
+        "x": 346.5,
+        "y": -585.1
       },
       "type": "basic",
       "data": {
@@ -1476,8 +1476,8 @@
     {
       "id": "basic_trap_mid_007",
       "position": {
-        "x": -160,
-        "y": -550
+        "x": 1253.6,
+        "y": -538.6
       },
       "type": "basic",
       "data": {
@@ -1498,8 +1498,8 @@
     {
       "id": "basic_gadget_mid_001",
       "position": {
-        "x": 480,
-        "y": 50
+        "x": -516.4,
+        "y": -61.4
       },
       "type": "basic",
       "data": {
@@ -1520,8 +1520,8 @@
     {
       "id": "basic_gadget_mid_002",
       "position": {
-        "x": 640,
-        "y": -70
+        "x": -456.5,
+        "y": -112.0
       },
       "type": "basic",
       "data": {
@@ -1542,8 +1542,8 @@
     {
       "id": "basic_gadget_mid_003",
       "position": {
-        "x": 320,
-        "y": 170
+        "x": -362.0,
+        "y": 145.2
       },
       "type": "keystone",
       "data": {
@@ -1564,8 +1564,8 @@
     {
       "id": "basic_gadget_mid_004",
       "position": {
-        "x": 480,
-        "y": -670
+        "x": -198.1,
+        "y": 95.7
       },
       "type": "basic",
       "data": {
@@ -1586,8 +1586,8 @@
     {
       "id": "basic_gadget_mid_005",
       "position": {
-        "x": 320,
-        "y": -70
+        "x": -557.9,
+        "y": 175.9
       },
       "type": "keystone",
       "data": {
@@ -1608,8 +1608,8 @@
     {
       "id": "basic_gadget_mid_006",
       "position": {
-        "x": 160,
-        "y": -790
+        "x": 75.3,
+        "y": 675.8
       },
       "type": "basic",
       "data": {
@@ -1630,8 +1630,8 @@
     {
       "id": "basic_gadget_mid_007",
       "position": {
-        "x": 640,
-        "y": -190
+        "x": -514.0,
+        "y": -181.3
       },
       "type": "keystone",
       "data": {

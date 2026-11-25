@@ -113,6 +113,35 @@ struct FCataclysmGrantedImmunity
 	float UntilSeconds = 0.0f;
 };
 
+/** What an aura's share on a character changes. War's Blood and Iron, 2026-11-25. */
+enum class ECataclysmAuraShareKind : uint8
+{
+	/** Percent of armour removed, in the sum `ArmourRemovedPercentNow` reads. */
+	ArmourRemoved,
+	/** Percent slower the character moves. A slow: an actor immune to Slow ignores it. */
+	MovementReduced,
+	/** Percent faster the character moves. */
+	MovementRaised,
+};
+
+/**
+ * A share an aura holds on a character for as long as it keeps renewing it, as `FCataclysmGrantedImmunity` is held:
+ * renewed every pulse, lapsing two pulses after the character leaves the ring. War's Blood and Iron, the owner's
+ * ruling of 2026-11-25 and the coordinating session's of the same day (two pulses, no new linger).
+ */
+struct FCataclysmAuraShare
+{
+	ECataclysmAuraShareKind Kind = ECataclysmAuraShareKind::ArmourRemoved;
+
+	/** What holds it, so that one aura renews and takes back exactly its own. */
+	TWeakObjectPtr<const UObject> From;
+
+	float Percent = 0.0f;
+
+	/** World time it lapses at when nothing renews it. */
+	float UntilSeconds = 0.0f;
+};
+
 /**
  * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
  * the event's name. Issue #1821.
@@ -3042,6 +3071,16 @@ public:
 	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
 
 	/**
+	 * Whether Rekindled may keep a minion of this character's whose time has run out, now. The demonic tree rework of
+	 * 2026-11-24: "no more than once every 5 seconds". The shape `MayReplaceMinion` has: never renewed is allowed, and
+	 * no world means no clock and so no renewal. A clock of its own, so Press-Ganged's wait does not decide it.
+	 */
+	bool MayRenewMinionLifetime() const;
+
+	/** Record that a minion's lifetime was renewed, so the next waits `IntervalSeconds`. */
+	void NoteMinionLifetimeRenewed(float IntervalSeconds);
+
+	/**
 	 * The waits running for minions this character lost and will summon again.
 	 * Issue #1833 group E part 4b. Written by
 	 * `UCataclysmSummonSkill::ScheduleResummon`, and public so tests can count
@@ -3102,6 +3141,34 @@ public:
 	 * naming `CrowdControl` covers every effect, as it does in a skill's row.
 	 */
 	bool HasGrantedImmunityTo(const FString& Effect) const;
+
+	/**
+	 * The shares auras hold on this character (`FCataclysmAuraShare`). Public so tests can count them. Lapsed entries
+	 * stay until the next `HoldAuraShare` or `PruneLapsedAuraShares`, so a character's speed is worked out once more
+	 * after its last share lapses (`HoldsAnyAuraShare`).
+	 */
+	TArray<FCataclysmAuraShare> AuraShares;
+
+	/** Hold `Percent` of `Kind` from `From` for `Seconds`, or renew it when `From` already holds that kind. */
+	void HoldAuraShare(ECataclysmAuraShareKind Kind, const UObject* From, float Percent, float Seconds);
+
+	/**
+	 * Take back every running share `From` holds: each LAPSES NOW and is pruned at the next refresh, so the
+	 * character's speed is worked out once more after it. @return how many were taken back.
+	 */
+	int32 ReleaseAuraSharesFrom(const UObject* From);
+
+	/**
+	 * The largest running share of `Kind`, 0 when none runs. THE LARGEST, NOT THE SUM: two auras of the same kind do
+	 * not stack, as a removal of armour takes the larger share (ruled 2026-09-24).
+	 */
+	float AuraSharePercentNow(ECataclysmAuraShareKind Kind) const;
+
+	/** Whether any share is held, running or lapsed and not yet pruned. */
+	bool HoldsAnyAuraShare() const { return AuraShares.Num() > 0; }
+
+	/** Drop the lapsed shares. */
+	void PruneLapsedAuraShares();
 
 	/**
 	 * End every wait above without summoning anything. This character's death
@@ -3466,8 +3533,19 @@ public:
 	 * returned without a word. The count stayed at five and the brand exploded
 	 * on every hit after the fifth. The warning is what stops the two readings
 	 * disagreeing in silence again. To remove stacks, call `ClearStacks`.
+	 *
+	 * @param ExtraWindowSeconds  how much longer than `WindowSeconds` the whole
+	 *        count lasts from this grant, decided at the grant and kept with it
+	 *        until the next one. Nought for every kind but one: Carnivore's
+	 *        Carnage, whose "each stack lasts 1 second longer for every 10
+	 *        Fervour you hold" (approved by the project owner on 2026-11-24) is
+	 *        read when a stack arrives, by `UCataclysmStacks::CarnageExtraSeconds`.
+	 *        Decided here rather than when the count is asked, because the
+	 *        count is asked from inside `CurrentConditions`, where asking the
+	 *        pipeline again would re-enter it.
 	 */
-	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap);
+	void GrantStack(ECataclysmStackKind Kind, float WindowSeconds, int32 Cap,
+					float ExtraWindowSeconds = 0.0f);
 
 	/**
 	 * Remove every stack of a kind, as if none had ever been granted.
@@ -5828,6 +5906,9 @@ protected:
 	/** When Rekindled may next replace a minion that exploded. -1 is never yet. */
 	float MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 
+	/** When Rekindled may next keep a minion whose time ran out (the rework of 2026-11-24). -1 is never yet. */
+	float MinionLifetimeRenewalNextAllowedSeconds = -1.0f;
+
 	/** When Nothing Stops It may next save this character. -1 is never yet. */
 	float LethalHitSurvivalNextAllowedSeconds = -1.0f;
 
@@ -6052,6 +6133,13 @@ protected:
 	 */
 	int32 StackCounts[UCataclysmStacks::KindCount] = {};
 	float StackGrantedAtSeconds[UCataclysmStacks::KindCount] = {};
+
+	/**
+	 * How much longer than its kind's window each count lasts, decided by its
+	 * last grant. Nought for every kind but Carnage on a holder of Carnivore.
+	 * See `GrantStack`. Written by `GrantStack` and `ClearStacks` only.
+	 */
+	float StackExtraWindowSeconds[UCataclysmStacks::KindCount] = {};
 
 	/** When Touch of Nothing last refused a buff, in world seconds; negative for never. Issue #1722. */
 	float BuffNegatedAtSeconds = -1.0f;

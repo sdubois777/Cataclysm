@@ -16,8 +16,8 @@
     {
       "id": "basic_spine_000",
       "position": {
-        "x": 0,
-        "y": 780
+        "x": 0.0,
+        "y": 0.0
       },
       "type": "basic",
       "data": {
@@ -38,14 +38,14 @@
     {
       "id": "basic_spine_001",
       "position": {
-        "x": -450,
-        "y": 648
+        "x": -150.0,
+        "y": -45.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Thick Hide",
-        "description": "+1% increased Armor and +0.5% increased Maximum Health per point.",
+        "description": "+1% increased Armor and +1% increased Maximum Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -60,8 +60,8 @@
     {
       "id": "basic_spine_002",
       "position": {
-        "x": 675,
-        "y": 648
+        "x": 150.0,
+        "y": -45.0
       },
       "type": "basic",
       "data": {
@@ -82,8 +82,8 @@
     {
       "id": "basic_spine_003",
       "position": {
-        "x": -300,
-        "y": 516
+        "x": -260.0,
+        "y": 85.0
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "basic_spine_004",
       "position": {
-        "x": -300,
-        "y": 384
+        "x": -450.0,
+        "y": -80.0
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "basic_spine_005",
       "position": {
-        "x": 900,
-        "y": 516
+        "x": 260.0,
+        "y": 85.0
       },
       "type": "basic",
       "data": {
@@ -148,14 +148,14 @@
     {
       "id": "basic_spine_006",
       "position": {
-        "x": -375,
-        "y": 252
+        "x": -370.0,
+        "y": 150.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Set Stance",
-        "description": "+1% increased Damage Reduction per point. At 4 points: you cannot be knocked back while an enemy is within 4 metres.",
+        "description": "+1% Damage Reduction per point. At 4 points: you cannot be knocked back while an enemy is within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -170,8 +170,8 @@
     {
       "id": "basic_spine_007",
       "position": {
-        "x": 900,
-        "y": 384
+        "x": 450.0,
+        "y": -80.0
       },
       "type": "basic",
       "data": {
@@ -192,14 +192,14 @@
     {
       "id": "basic_spine_008",
       "position": {
-        "x": -375,
-        "y": 120
+        "x": -355.0,
+        "y": 275.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Scarred Plate",
-        "description": "+1.5% increased Armor per point. At 4 points: +5% increased Crowd Control Resistance.",
+        "description": "+2% increased Armor per point. At 4 points: +10% Crowd Control Resistance.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -214,14 +214,14 @@
     {
       "id": "basic_spine_009",
       "position": {
-        "x": 900,
-        "y": 252
+        "x": 370.0,
+        "y": 150.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Stoked",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "Your Fervour starts to decay 1 second later per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -236,8 +236,8 @@
     {
       "id": "basic_spine_010",
       "position": {
-        "x": -150,
-        "y": -12
+        "x": -190.0,
+        "y": 300.0
       },
       "type": "basic",
       "data": {
@@ -258,14 +258,14 @@
     {
       "id": "keystone_spine_001",
       "position": {
-        "x": 150,
-        "y": 516
+        "x": 0.0,
+        "y": -300.0
       },
       "type": "keystone",
       "data": {
         "kind": "keystone",
         "name": "Ironhide",
-        "description": "Your Armor cannot be ignored: armor penetration and piercing weapons remove none of it.",
+        "description": "Your Armor cannot be ignored, and Overwhelm takes only half as much from it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -280,8 +280,8 @@
     {
       "id": "keystone_spine_002",
       "position": {
-        "x": 0,
-        "y": 252
+        "x": -300.0,
+        "y": -40.0
       },
       "type": "keystone",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "keystone_spine_003",
       "position": {
-        "x": -150,
-        "y": -144
+        "x": 0.0,
+        "y": 215.0
       },
       "type": "keystone",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "basic_a_stem0",
       "position": {
-        "x": -450,
-        "y": -12
+        "x": -375.0,
+        "y": 385.0
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "basic_a_stem1",
       "position": {
-        "x": -450,
-        "y": -144
+        "x": -400.0,
+        "y": 490.0
       },
       "type": "basic",
       "data": {
@@ -368,14 +368,14 @@
     {
       "id": "basic_a_stem2",
       "position": {
-        "x": -300,
-        "y": -276
+        "x": -150.0,
+        "y": 480.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Rooted",
-        "description": "+3% increased Crowd Control Resistance per point.",
+        "description": "+3% increased Maximum Health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -390,14 +390,14 @@
     {
       "id": "basic_a_a0",
       "position": {
-        "x": -600,
-        "y": -276
+        "x": -360.0,
+        "y": 650.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Plated",
-        "description": "+1.5% increased Armor per point.",
+        "description": "+1% increased Armor per point, and another +1% per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -412,14 +412,14 @@
     {
       "id": "basic_a_a1",
       "position": {
-        "x": -600,
-        "y": -408
+        "x": -310.0,
+        "y": 790.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Thick Blood",
-        "description": "+1% increased Life Leech per point.",
+        "description": "+1% Life Leech per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -434,14 +434,14 @@
     {
       "id": "basic_a_a2",
       "position": {
-        "x": -600,
-        "y": -540
+        "x": -185.0,
+        "y": 925.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Slow to Fall",
-        "description": "+2% increased Health Regeneration per point.",
+        "description": "+1% Damage Reduction per point while three or more enemies are within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -456,14 +456,14 @@
     {
       "id": "basic_a_b0",
       "position": {
-        "x": -450,
-        "y": -276
+        "x": -545.0,
+        "y": 390.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Braced",
-        "description": "+1% increased Damage Reduction per point.",
+        "description": "+1% increased Armor per point for every full 20 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -478,14 +478,14 @@
     {
       "id": "basic_a_b1",
       "position": {
-        "x": -450,
-        "y": -408
+        "x": -610.0,
+        "y": 245.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Set Against It",
-        "description": "While you have 50 or more Fervour, you gain +2% increased Damage Reduction and +3% increased Attack Damage per point.",
+        "description": "While you have 50 or more Fervour, you gain +1% Damage Reduction and +3% increased Attack Damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -500,14 +500,14 @@
     {
       "id": "basic_a_b2",
       "position": {
-        "x": -450,
-        "y": -540
+        "x": -635.0,
+        "y": 95.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Second Wind",
-        "description": "+2% increased Health Regeneration per point.",
+        "description": "Each time your Fervour becomes full, restore 2% of your maximum health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -522,14 +522,14 @@
     {
       "id": "basic_a_c0",
       "position": {
-        "x": -300,
-        "y": -408
+        "x": -140.0,
+        "y": 575.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Stubborn",
-        "description": "+3% increased Crowd Control Resistance per point.",
+        "description": "+5% Crowd Control Resistance per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -544,14 +544,14 @@
     {
       "id": "basic_a_c1",
       "position": {
-        "x": -300,
-        "y": -540
+        "x": -128.0,
+        "y": 670.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Deep Wells",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+2% increased Maximum Health and +2% increased Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -566,8 +566,8 @@
     {
       "id": "keystone_a_kA",
       "position": {
-        "x": -600,
-        "y": -672
+        "x": -75.0,
+        "y": 1035.0
       },
       "type": "keystone",
       "data": {
@@ -588,14 +588,14 @@
     {
       "id": "keystone_a_kB",
       "position": {
-        "x": -450,
-        "y": -672
+        "x": -640.0,
+        "y": -40.0
       },
       "type": "keystone",
       "data": {
         "kind": "keystone",
         "name": "Nothing Moves You",
-        "description": "Crowd control effects on you last half as long, and one ends entirely when you kill the enemy that applied it.",
+        "description": "Crowd control effects on you last half as long, and one ends entirely when you kill the enemy that applied it. While you have 50 or more Fervour, no crowd control can be applied to you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -610,14 +610,14 @@
     {
       "id": "keystone_a_kC",
       "position": {
-        "x": -300,
-        "y": -672
+        "x": -115.0,
+        "y": 765.0
       },
       "type": "keystone",
       "data": {
         "kind": "keystone",
         "name": "Weight Bearing",
-        "description": "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you have.",
+        "description": "Your Maximum Health also grants Armor: 1 Armor for every 4 maximum health you have.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -632,8 +632,8 @@
     {
       "id": "basic_b_stem0",
       "position": {
-        "x": -900,
-        "y": 516
+        "x": -310.0,
+        "y": -170.0
       },
       "type": "basic",
       "data": {
@@ -654,8 +654,8 @@
     {
       "id": "basic_b_stem1",
       "position": {
-        "x": -900,
-        "y": 384
+        "x": -470.0,
+        "y": -300.0
       },
       "type": "basic",
       "data": {
@@ -676,8 +676,8 @@
     {
       "id": "basic_b_stem2",
       "position": {
-        "x": -750,
-        "y": 252
+        "x": -430.0,
+        "y": -445.0
       },
       "type": "basic",
       "data": {
@@ -698,14 +698,14 @@
     {
       "id": "basic_b_a0",
       "position": {
-        "x": -1050,
-        "y": 252
+        "x": -655.0,
+        "y": -400.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Reach",
-        "description": "+2% increased Area of Effect per point.",
+        "description": "+1% increased Area of Effect per point for each enemy within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -720,14 +720,14 @@
     {
       "id": "basic_b_a1",
       "position": {
-        "x": -1050,
-        "y": 120
+        "x": -820.0,
+        "y": -565.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Crushing Weight",
-        "description": "+2% increased Attack Damage per point.",
+        "description": "Your melee hits ignore 2% of enemy Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -742,8 +742,8 @@
     {
       "id": "basic_b_a2",
       "position": {
-        "x": -1050,
-        "y": -12
+        "x": -925.0,
+        "y": -775.0
       },
       "type": "basic",
       "data": {
@@ -764,8 +764,8 @@
     {
       "id": "basic_b_b0",
       "position": {
-        "x": -900,
-        "y": 252
+        "x": -560.0,
+        "y": -150.0
       },
       "type": "basic",
       "data": {
@@ -786,14 +786,14 @@
     {
       "id": "basic_b_b1",
       "position": {
-        "x": -900,
-        "y": 120
+        "x": -830.0,
+        "y": -235.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Swing Through",
-        "description": "+2% increased Area of Effect per point.",
+        "description": "You gain 1 Fervour per point whenever an enemy dies within 10 metres of you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -808,8 +808,8 @@
     {
       "id": "basic_b_b2",
       "position": {
-        "x": -900,
-        "y": -12
+        "x": -1035.0,
+        "y": -500.0
       },
       "type": "basic",
       "data": {
@@ -830,14 +830,14 @@
     {
       "id": "basic_b_c0",
       "position": {
-        "x": -750,
-        "y": 120
+        "x": -350.0,
+        "y": -550.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Wind Up",
-        "description": "+2% increased Attack Damage per point.",
+        "description": "+3% Cooldown Reduction per point for Heavy skills.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -852,14 +852,14 @@
     {
       "id": "basic_b_c1",
       "position": {
-        "x": -750,
-        "y": -12
+        "x": -230.0,
+        "y": -615.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Whirl",
-        "description": "+2% increased Attack Speed per point.",
+        "description": "+3% increased Area of Effect per point for Heavy skills. At 6 points: your Heavy skills sweep at least a half circle.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -874,8 +874,8 @@
     {
       "id": "keystone_b_kA",
       "position": {
-        "x": -1050,
-        "y": -144
+        "x": -935.0,
+        "y": -1030.0
       },
       "type": "keystone",
       "data": {
@@ -896,8 +896,8 @@
     {
       "id": "keystone_b_kB",
       "position": {
-        "x": -900,
-        "y": -144
+        "x": -1025.0,
+        "y": -885.0
       },
       "type": "keystone",
       "data": {
@@ -918,8 +918,8 @@
     {
       "id": "keystone_b_kC",
       "position": {
-        "x": -750,
-        "y": -144
+        "x": -80.0,
+        "y": -650.0
       },
       "type": "keystone",
       "data": {
@@ -940,8 +940,8 @@
     {
       "id": "basic_c_stem0",
       "position": {
-        "x": 450,
-        "y": 516
+        "x": 310.0,
+        "y": -170.0
       },
       "type": "basic",
       "data": {
@@ -962,8 +962,8 @@
     {
       "id": "basic_c_stem1",
       "position": {
-        "x": 450,
-        "y": 384
+        "x": 470.0,
+        "y": -300.0
       },
       "type": "basic",
       "data": {
@@ -984,14 +984,14 @@
     {
       "id": "basic_c_stem2",
       "position": {
-        "x": 600,
-        "y": 252
+        "x": 430.0,
+        "y": -445.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Deeper Hurt",
-        "description": "+3% increased duration of Cripple and Weaken you apply per point.",
+        "description": "When an enemy you have Crippled or Weakened dies, its Cripple and Weaken pass to the nearest enemy within 1 metre per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1006,8 +1006,8 @@
     {
       "id": "basic_c_a0",
       "position": {
-        "x": 300,
-        "y": 252
+        "x": 655.0,
+        "y": -400.0
       },
       "type": "basic",
       "data": {
@@ -1028,14 +1028,14 @@
     {
       "id": "basic_c_a1",
       "position": {
-        "x": 300,
-        "y": 120
+        "x": 820.0,
+        "y": -565.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Dragging Weight",
-        "description": "+3% increased magnitude of Cripple you apply per point.",
+        "description": "+5% increased magnitude of Cripple you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1050,8 +1050,8 @@
     {
       "id": "basic_c_a2",
       "position": {
-        "x": 300,
-        "y": -12
+        "x": 925.0,
+        "y": -775.0
       },
       "type": "basic",
       "data": {
@@ -1072,8 +1072,8 @@
     {
       "id": "basic_c_b0",
       "position": {
-        "x": 450,
-        "y": 252
+        "x": 560.0,
+        "y": -150.0
       },
       "type": "basic",
       "data": {
@@ -1094,14 +1094,14 @@
     {
       "id": "basic_c_b1",
       "position": {
-        "x": 450,
-        "y": 120
+        "x": 830.0,
+        "y": -235.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Sapped",
-        "description": "+3% increased magnitude of Weaken you apply per point.",
+        "description": "+5% increased magnitude of Weaken you apply per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1116,14 +1116,14 @@
     {
       "id": "basic_c_b2",
       "position": {
-        "x": 450,
-        "y": -12
+        "x": 1035.0,
+        "y": -500.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Wearing Them Down",
-        "description": "+2% increased Damage Reduction per point against enemies you have Weakened.",
+        "description": "+1% Damage Reduction per point against enemies you have Weakened.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1138,8 +1138,8 @@
     {
       "id": "basic_c_c0",
       "position": {
-        "x": 600,
-        "y": 120
+        "x": 350.0,
+        "y": -550.0
       },
       "type": "basic",
       "data": {
@@ -1160,8 +1160,8 @@
     {
       "id": "basic_c_c1",
       "position": {
-        "x": 600,
-        "y": -12
+        "x": 230.0,
+        "y": -615.0
       },
       "type": "basic",
       "data": {
@@ -1182,8 +1182,8 @@
     {
       "id": "keystone_c_kA",
       "position": {
-        "x": 300,
-        "y": -144
+        "x": 935.0,
+        "y": -1030.0
       },
       "type": "keystone",
       "data": {
@@ -1204,8 +1204,8 @@
     {
       "id": "keystone_c_kB",
       "position": {
-        "x": 450,
-        "y": -144
+        "x": 1025.0,
+        "y": -885.0
       },
       "type": "keystone",
       "data": {
@@ -1226,8 +1226,8 @@
     {
       "id": "keystone_c_kC",
       "position": {
-        "x": 600,
-        "y": -144
+        "x": 80.0,
+        "y": -650.0
       },
       "type": "keystone",
       "data": {
@@ -1248,8 +1248,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -1500,
-        "y": 780
+        "x": -1485.0,
+        "y": 0.0
       },
       "type": "capstone",
       "data": {
@@ -1263,15 +1263,15 @@
         "options": [
           {
             "name": "Wade In",
-            "description": "Each enemy within 4 metres of you grants 3% increased Armor and 3% increased Attack Damage."
+            "description": "Each enemy within 4 metres of you grants 2% more Attack Damage and 3% increased Armor."
           },
           {
             "name": "Never Lets Go",
-            "description": "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% increased damage to Crippled enemies."
+            "description": "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% more damage to Crippled enemies."
           },
           {
             "name": "Headlong",
-            "description": "+25% increased Movement Speed, and your first melee attack after moving 5 metres deals 50% increased damage."
+            "description": "+25% increased Movement Speed. Your first melee attack after moving 5 metres deals 50% more damage."
           }
         ],
         "selectedOption": null,
@@ -1287,8 +1287,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -1500,
-        "y": 540
+        "x": -1485.0,
+        "y": -240.0
       },
       "type": "capstone",
       "data": {
@@ -1310,7 +1310,7 @@
           },
           {
             "name": "Long Hold",
-            "description": "Killing an enemy restores 5% of your maximum health."
+            "description": "Killing an enemy restores 1% of your maximum health for each enemy within 4 metres of you."
           }
         ],
         "selectedOption": null,
@@ -1326,8 +1326,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -1500,
-        "y": 300
+        "x": -1485.0,
+        "y": -480.0
       },
       "type": "capstone",
       "data": {
@@ -1344,8 +1344,8 @@
             "description": "Enemies within 4 metres of you have 15% reduced Movement Speed and 15% reduced Attack Speed."
           },
           {
-            "name": "Weight Against Them",
-            "description": "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage Reduction you have."
+            "name": "Thronged",
+            "description": "Your Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you use it."
           },
           {
             "name": "Shoulder Through",
@@ -1365,8 +1365,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -1500,
-        "y": 60
+        "x": -1485.0,
+        "y": -720.0
       },
       "type": "capstone",
       "data": {
@@ -1380,7 +1380,7 @@
         "options": [
           {
             "name": "Nowhere to Run",
-            "description": "Enemies within 8 metres of you cannot move away from you. They may move toward you or around you, but not further away. Your Fervour does not decay while any enemy is held this way."
+            "description": "Enemies within 8 metres of you cannot move away from you. They may move toward you or around you, but not further away. Your Fervour does not decay while any enemy is held this way, and you deal 2% more damage for each enemy within 8 metres of you."
           },
           {
             "name": "Both Hands Full",
@@ -1404,14 +1404,14 @@
     {
       "id": "basic_d_stem0",
       "position": {
-        "x": 900,
-        "y": 120
+        "x": 355.0,
+        "y": 280.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Never Still",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "+1% increased Movement Speed per point, and another +1% per point while out of combat.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1426,14 +1426,14 @@
     {
       "id": "basic_d_stem1",
       "position": {
-        "x": 900,
-        "y": -12
+        "x": 385.0,
+        "y": 400.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Hunter's Pace",
-        "description": "+1% increased Movement Speed and +1% increased Attack Speed per point.",
+        "description": "For 4 seconds after you use a Movement skill, +2% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1448,14 +1448,14 @@
     {
       "id": "basic_d_stem2",
       "position": {
-        "x": 975,
-        "y": -144
+        "x": 400.0,
+        "y": 505.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Blood Drinker",
-        "description": "+1% increased Life Leech per point.",
+        "description": "+1% Life Leech per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1470,14 +1470,14 @@
     {
       "id": "basic_d_a0",
       "position": {
-        "x": 750,
-        "y": -144
+        "x": 545.0,
+        "y": 330.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Onset",
-        "description": "+2% increased Attack Damage per point while an enemy is within 4 metres.",
+        "description": "Your first hit against each enemy ignores 5% of its Armor per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1492,14 +1492,14 @@
     {
       "id": "basic_d_a1",
       "position": {
-        "x": 750,
-        "y": -276
+        "x": 610.0,
+        "y": 200.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Pressing",
-        "description": "+1% increased Movement Speed per point.",
+        "description": "While your Fervour is full, +3% increased Movement Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1514,8 +1514,8 @@
     {
       "id": "basic_d_a2",
       "position": {
-        "x": 750,
-        "y": -408
+        "x": 635.0,
+        "y": 75.0
       },
       "type": "basic",
       "data": {
@@ -1536,14 +1536,14 @@
     {
       "id": "keystone_d_kA",
       "position": {
-        "x": 750,
-        "y": -540
+        "x": 640.0,
+        "y": -40.0
       },
       "type": "keystone",
       "data": {
         "kind": "keystone",
         "name": "Relentless",
-        "description": "Your Movement Speed cannot be reduced by any effect.",
+        "description": "Your Movement Speed and Attack Speed cannot be reduced by any effect, and you gain 1% increased Attack Speed for every 2% increased Movement Speed you have.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1558,14 +1558,14 @@
     {
       "id": "basic_d_b0",
       "position": {
-        "x": 900,
-        "y": -276
+        "x": 360.0,
+        "y": 655.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Held Ground",
-        "description": "+2% increased Fervour gained from enemies near you per point.",
+        "description": "+5% increased Fervour gained per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1580,14 +1580,14 @@
     {
       "id": "basic_d_b1",
       "position": {
-        "x": 900,
-        "y": -408
+        "x": 310.0,
+        "y": 790.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Stoked Further",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+5 maximum Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1602,14 +1602,14 @@
     {
       "id": "basic_d_b2",
       "position": {
-        "x": 900,
-        "y": -540
+        "x": 185.0,
+        "y": 925.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Banked Ruin",
-        "description": "+1% increased Damage Reduction per point for every full 25 Fervour you currently hold.",
+        "description": "+1% increased Attack Speed per point for every full 20 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1624,8 +1624,8 @@
     {
       "id": "keystone_d_kB",
       "position": {
-        "x": 900,
-        "y": -672
+        "x": 75.0,
+        "y": 1035.0
       },
       "type": "keystone",
       "data": {
@@ -1646,14 +1646,14 @@
     {
       "id": "basic_d_c0",
       "position": {
-        "x": 1050,
-        "y": -276
+        "x": 150.0,
+        "y": 485.0
       },
       "type": "basic",
       "data": {
         "kind": "basic",
         "name": "Sustained Assault",
-        "description": "+1% increased Life Leech per point.",
+        "description": "After 5 seconds in combat, +3% increased Attack Speed per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1668,8 +1668,8 @@
     {
       "id": "basic_d_c1",
       "position": {
-        "x": 1050,
-        "y": -408
+        "x": 132.0,
+        "y": 625.0
       },
       "type": "basic",
       "data": {
@@ -1690,14 +1690,14 @@
     {
       "id": "keystone_d_kC",
       "position": {
-        "x": 1050,
-        "y": -540
+        "x": 115.0,
+        "y": 765.0
       },
       "type": "keystone",
       "data": {
         "kind": "keystone",
         "name": "No Ground Given",
-        "description": "Your Fervour does not decay while an enemy is within 8 metres of you, rather than 4.",
+        "description": "Your Fervour does not decay.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

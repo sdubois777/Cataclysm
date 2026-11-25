@@ -99,6 +99,8 @@ const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
 	TEXT("shield_absorbs_damage_over_time");
 const TCHAR* UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat =
 	TEXT("armor_penetration_suppressed");
+const TCHAR* UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat =
+	TEXT("armor_overwhelm_halved");
 const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
 	TEXT("critical_armor_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
@@ -1053,8 +1055,16 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			* (1.0f - Ignored / 100.0f)
 			* (1.0f - Removed / 100.0f);
 		const float BeforeArmour = Damage;
+		// HALF THE OVERWHELM FOR A DEFENDER HOLDING IRONHIDE'S SECOND ROW. The Ravager tree rework, ruled by the
+		// project owner on 2026-11-24: Ironhide is an exception to "Overwhelm strips every kind of mitigation", and
+		// only halves what it takes from armour. Read here and at no other step, so the resistance, block and evasion
+		// steps above and below still meet the whole of it. The defender's own, as the penetration flag above is.
+		const bool bOverwhelmHalvedOnArmour =
+			DefenderStat(Defender, ArmorOverwhelmHalvedStat, 0.0f, BlowOf(Hit)) > 0.0f;
+		const float OverwhelmOnArmour =
+			bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints;
 		// LESS THE OVERWHELM, in points off the reduction percentage, held at nought. Issue #2824, slice b, ruling Q7.
-		Damage *= 1.0f - FMath::Max(0.0f, ArmorReduction(Armor, Tier) - Hit.OverwhelmPoints) / 100.0f;
+		Damage *= 1.0f - FMath::Max(0.0f, ArmorReduction(Armor, Tier) - OverwhelmOnArmour) / 100.0f;
 		Result.RemovedByArmour = BeforeArmour - Damage;
 	}
 

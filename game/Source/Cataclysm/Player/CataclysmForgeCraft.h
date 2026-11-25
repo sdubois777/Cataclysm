@@ -79,6 +79,10 @@ struct FCataclysmForgeCraftStep
 	/** The threshold question's first words: "Upgrading", "Socketing a gem into". */
 	FString ThresholdWords;
 
+	/** Whether the empire tree's affix nodes act on the changed item (#2741's crafting slices C3 and C4): every item craft
+	 *  but the dismantle, which ends the piece (G1). */
+	bool bTreeAffixNodes = true;
+
 	/** The refusals with no run, and with nothing at the target. */
 	FString NoRunRefusal = TEXT("There is no run to take the craft's days from.");
 	FString NothingThereRefusal = TEXT("There is nothing there to craft.");
@@ -351,7 +355,18 @@ public:
 	 */
 	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
 												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options,
-												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+												  const FCataclysmForgeCosts& Costs = FCataclysmForgeCosts());
+
+	/**
+	 * The empire tree's crafting nodes for a craft on the item at a target whose own material is `CraftMaterial`
+	 * (#2741's crafting group, slices C1 and C2): the residue factor that applies to it (Tool Maintenance's always,
+	 * Limited Knowledge's below +6, Heat Shielding's on a tier 3+ material), Stable Compounds' share, Master's Touch's
+	 * draw for this item today, and the day nodes. Every `OptionsFor` call and the cleanse's plan pass it (G2). None with
+	 * no item or no run.
+	 */
+	static FCataclysmForgeCosts CostsFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										 FName CraftMaterial);
 
 	/**
 	 * The empire tree's forge gold pricing for a craft on the item at a target (#47 slice F6a): each material tier's
@@ -366,6 +381,31 @@ public:
 	 * item: Forge Upgrades' roll is seeded by the rung and the day (Q10).
 	 */
 	static FCataclysmForgePricing CombinePricingFor(const UObject* WorldContext, int32 Rung);
+
+	/**
+	 * The empire tree's three material draws for a craft on the item at a target, today (#47 slice F6b, Q13): what
+	 * `DoItemCraft` keeps of the craft's materials once it can no longer fail (N1). None with no item or no run.
+	 */
+	static FCataclysmForgeKeeping KeepingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The forge screen's words for what the tree will keep of a craft whose own material is `Count` of `Material` and
+	 * whose options take `OptionMaterials` (N4), as `UCataclysmForge::KeptText`: "" when nothing is kept.
+	 */
+	static FString KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
+							   int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials);
+
+	/** The empire tree's roll nodes for the character playing (#2741's crafting slice C3): Master's Workshop's floor and
+	 *  Precision Crafting's chance. The reroll and the Deterministic Affix pass them; none with no character. */
+	static FCataclysmForgeRolls RollsFor(const UObject* WorldContext);
+
+	/** The empire tree's three affix nodes, and the rolls Rough Draft's affix is drawn with (slices C3 and C4), for the
+	 *  character playing. `DoItemCraft` applies them; none with no character. */
+	static FCataclysmForgeAffixNodes AffixNodesFor(const UObject* WorldContext);
+
+	/** The forge screen's words for them at the end of a priced question: `UCataclysmForge::RollsText` when the craft
+	 *  draws a roll, then `UCataclysmForge::AffixNodesChanceText` (G3). "" with none held. */
+	static FString AffixNodesTextFor(const UObject* WorldContext, bool bDrawsARoll);
 
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);

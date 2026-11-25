@@ -705,6 +705,74 @@ upgrade at the forge (step 16), say 4,500 for a +2 helm carrying 250 residue.
   Upgrades' tenth is in it." The same piece on the same day always draws the same, so a reload does not change it.
 - **The price named is the price paid**, and a character holding the discounted price is not refused.
 
+### 30. Take the forge's material nodes in the empire tree, and see a craft keep its materials
+
+The three material nodes of the empire tree's Artisan branch (issue #47, slice F6b).
+
+- **Buy Material Conservation to 10 points.** About one item craft in five then keeps its tier 1 and 2 materials:
+  upgrade stones up to +4, the Corrupted Mote, the Jeweler's Setting Agent, a Tainted Shard spent as an option. When it
+  will, the craft's question ends, for a +2 to +3 upgrade: "The empire tree keeps 2 Upgrade Stone +3 (Material
+  Conservation)." After the craft its stones are still in the bag, and after the craft's own line:
+
+  `PLAY LOOP: the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm`
+
+- **Resource Management** (1% a point, 20% at 20) keeps the tier 3 to 5 materials the same way: stones from +5, the
+  Chaos Stabilizer, the Primal Spark, the Purified Essence of a cleanse.
+- **Tempting Fate**: on a piece carrying more than 500 residue, about one craft in seven returns every material it used,
+  and the words name Tempting Fate alone.
+- **The combines never keep a stone**, and a gem socketed is not kept. The same piece on the same day always draws the
+  same, so a reload does not change it.
+
+### 31. Take the forge's residue and day nodes in the empire tree, and see a craft cost less of both
+
+The eight residue and day nodes of the empire tree's Artisan branch (#2741's crafting group, slices C1 and C2). With
+none held, note an upgrade's question at the forge: for a +2 helm carrying 250 residue to +3, "residue 250 to 275" and
+5 days.
+
+- **Buy Tool Maintenance to 8 points and Master Craftsman to 10.** The same question now ends: "The empire tree's
+  crafting nodes: residue 250 to 266.6, not 275; 1 day, not 5." After the upgrade the helm carries 266.6 residue and one
+  day of the run has passed.
+- **Limited Knowledge** takes 2.5% a point more off the residue of a craft on a piece below +6; **Heat Shielding** 2.5%
+  a point off a craft whose own material is tier 3 or above (an upgrade to +5 and higher); both multiply.
+- **Stable Compounds** makes a Chaos Stabilizer keep less of what a craft adds: a quarter at 10 points, not a half.
+- **Master's Touch**: on a piece carrying residue, 1% for each whole 100 of it that a craft leaves it at 0; when it will,
+  the question says "Master's Touch and the empire tree's crafting nodes: residue 640 to 0, not 690." The same piece on
+  the same day always draws the same.
+- **Industrial Speed** (10% a point, half at 5) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
+  at least one day still takes one; a reroll that took none still takes none. The cleanse's days come down the same way.
+
+### 32. Take the forge's affix nodes in the empire tree, and see a craft change more than it was asked to
+
+The five affix nodes of the empire tree's Artisan branch (issue #2741, crafting slices C3 and C4).
+
+- **Buy Rough Draft to 8 points and Quality Materials to 10.** Every priced question at the forge now ends: "The
+  empire tree's affix nodes: a 40% chance of one more affix; a 50% chance one affix's roll is made its best." Upgrade a
+  Quality Helm with a free slot. After the craft one of its affixes may read 100 percent of its tier's range, a new
+  affix may have joined it at the run's best drop tier (tier 2 on a tier 1 run), and after the craft's own line:
+
+  `PLAY LOOP: the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat evasion's roll its best, 37 to 100 percent`
+
+- **A piece with no free slot**, or with an enchantment, gets no added affix, and a piece whose rolls are all at the
+  top has none made its best: the line names only what happened, and no line is said when nothing did.
+- **Apprentice Smith** (1% a point) raises one affix below tier 7 a tier and keeps its roll; the line says "raised
+  Flat armor from tier 2 to tier 3".
+- **Master's Workshop and Precision Crafting** act on a roll the forge draws: a reroll's and an added affix's. The
+  reroll's question says, at 15 points each, "Its roll is drawn from 30 percent up, with a 45% chance from 75 percent
+  up." A reroll then never falls below 30 percent of the range.
+- **A dismantle** is never changed by them. The same piece on the same day always draws the same, so a reload does
+  not change what happened.
+
+### 33. Take Ancient Techniques and Residue Protocols in the empire tree
+
+Two more crafting nodes of the empire tree's Artisan branch (issue #2741, crafting slice C6).
+
+- **Ancient Techniques** at 10 points: a craft on a piece that already has four affixes takes 10 days fewer, and still
+  at least one; the question's words name the days, as Master Craftsman's do. A piece with three affixes takes no fewer.
+- **Residue Protocols** at 10 points: the character sheet's line reads "Worn Residue 750 of 1950 (tier 1), 50% ignored
+  by Residue Protocols" for 1,500 worn. Putting on a piece is asked about the Consumption Threshold only when the counted
+  total crosses it, and so is a forge craft on a worn piece. Each piece still shows its own residue, and a craft's gold
+  and days are unchanged.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

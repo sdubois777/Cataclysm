@@ -324,6 +324,21 @@ SHAPE_RIDERS = {
                            "grants allies standing in it, to damage of every "
                            "element (ruled 2026-10-25, Q-P2)",
 
+    # THE DAMAGE-TYPE AURAS MADE DIFFERENT FROM ONE ANOTHER, the owner's rulings of 2026-11-25: "make it 10% more and
+    # I'm good with it" (Death), "Go with A for both" (Demonic, War), and "I think we should avoid making all of the
+    # aura's kinda samey".
+    "AllyMoreDamage": "percentage points of MORE damage, a separate multiplier, an aura grants its caster and every "
+                      "ally standing in it, minions included (Death's Pall of Ending)",
+    "BurnPassesOnDeath": "metres: a burning enemy that dies inside an aura passes its strongest burn, with the seconds "
+                         "it had left, to the nearest other enemy within this many metres, as the caster's burn "
+                         "(Demonic's Conflagration)",
+    "EnemyArmourRemoved": "percent of armour an aura removes from every enemy inside it, held two pulses (War)",
+    "EnemyMovementSpeedReduced": "percent slower every enemy inside an aura moves, movement only, held two pulses "
+                                 "(War)",
+    "AllyMovementSpeed": "percent faster an aura's caster and every ally inside it move, held two pulses (War)",
+    "AllyImmune": "what every ally inside an aura cannot be subjected to, granted two pulses at a time, in Immune's "
+                  "words (War: Slow)",
+
     # THE OTHER HALF OF THE SAME EVENT `ScalingSource=HitTaken` READS. Added
     # 2026-09-02 for Living Pyre, "returns health equal to 25% of the damage
     # that hit dealt", which had no key. Of what reached health, not of what
@@ -509,6 +524,7 @@ TEXT_PARAM_VALUES = {
     "SpreadWhen": SPREAD_CONDITIONS,
     "Requires": REQUIREMENTS,
     "Immune": IMMUNITIES,
+    "AllyImmune": IMMUNITIES,
     "HoldForbids": HOLD_FORBIDS,
     "OnDeath": ON_DEATHS,
     "ChargeBreaksOn": CHARGE_BREAKS,
@@ -2007,6 +2023,14 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: AILMENT JOINED ON 2026-10-01 for issue #1833 group D part 4, built ahead of
 #: its rows while the design workbook is with another session.
 #: IT LEFT with the remaining damage rows, and the table is empty again.
+#: SCALE MAX STEPS ON THE PASSIVE EFFECTS SHEET JOINED ON 2026-11-24, for the
+#: Ritualist's Wall of Servants ("You take 1% less damage for each minion you
+#: have, up to 20% less"), the demonic tree rework the owner approved that day,
+#: built ahead of the workbook column while the workbook is with the
+#: coordinating session. It leaves when the column is in the workbook, which
+#: `tools/tests/test_required_workbook_columns.py` then requires.
+#: IT LEFT THE SAME DAY, when `tools/reapply_demonic_tree_rework_workbook.py`
+#: added the column with Wall of Servants' 20, and the table is empty again.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
@@ -3926,7 +3950,16 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "crafting": "crafting, which the game does not have yet (issue #47)",
+    # #2741's crafting group, G4 (the coordinating session, 2026-11-25): the one "crafting" reason split into what
+    # each row still waits on, now that the forge is built. The ten nodes the owner left unbuilt the same day ("Leave
+    # them unbuilt for now") name issue #2897, which holds them.
+    "crafting station": ("a crafting station with workers, a queue or a project that finishes later, which the "
+                         "game does not have (issue #2897)"),
+    "double craft": "a double craft, which the game does not have (issue #2897)",
+    "exalted item": "an Exalted item, which the game does not have (issue #2897)",
+    "item tier": "an item tier, which item bases and their stats do not have (issue #2897)",
+    "crafted-affix mark": "a mark on each affix the forge crafted, which the game does not have (issue #2741)",
+    "held-over residue": "residue held over between crafts, which the game does not have (issue #2741)",
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
@@ -3968,6 +4001,23 @@ EMPIRE_TREE_BUILT = {
     # and 2026-11-24 (A, B). Numbered 11, the slice after F6's 10.
     "Workshop Upgrades": 11, "Apprentice Oversight": 11,
     "Architectural Synergy": 11, "Treasury Synergy": 11, "Forge Upgrades": 11,
+    # #47 slice F6b: the three forge material nodes, ruled by the coordinating
+    # session on 2026-11-22 (Q11 to Q17) and 2026-11-25 (N1 to N5). Numbered 12,
+    # the slice after F6a's 11.
+    "Material Conservation": 12, "Resource Management": 12, "Tempting Fate": 12,
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days,
+    # ruled by the coordinating session on 2026-11-25. Numbered 13, the slice
+    # after F6b's 12.
+    "Tool Maintenance": 13, "Limited Knowledge": 13, "Heat Shielding": 13,
+    "Stable Compounds": 13, "Master's Touch": 13, "Master Craftsman": 13,
+    "Industrial Speed": 13, "Sovereign's Assembly": 13,
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes, ruled
+    # by the coordinating session on 2026-11-25 (D1 to D4). Numbered 14.
+    "Precision Crafting": 14, "Master's Workshop": 14, "Quality Materials": 14,
+    "Apprentice Smith": 14, "Rough Draft": 14,
+    # #2741's crafting group, slice C6: Ancient Techniques and Residue Protocols,
+    # ruled by the coordinating session on 2026-11-25 (R1, R2). Numbered 15.
+    "Ancient Techniques": 15, "Residue Protocols": 15,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -4072,26 +4122,16 @@ EMPIRE_TREE_REFUSED = {
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
-    "Apprentice Smith": "crafting", "Material Conservation": "crafting",
-    "Rough Draft": "crafting", "Tool Maintenance": "crafting",
-    "Limited Knowledge": "crafting",
-    "Industrial Speed": "crafting",
-    "Refining Techniques": "crafting",
-    "Quality Materials": "crafting",
-    "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
-    "Master Craftsman": "crafting",
-    "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
-    "Expanded Station (Smith)": "crafting",
-    "Expanded Station (Enchantress)": "crafting",
-    "Precision Crafting": "crafting",
-    "Master's Touch": "crafting", "Sovereign's Assembly": "crafting",
-    "Heat Shielding": "crafting", "Flawless Production": "crafting",
-    "Residue Protocols": "crafting", "Grand Forge": "crafting",
-    "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
-    "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
-    "Assembly Line": "crafting",
-    "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
-    "Tempting Fate": "crafting",
+    "Refining Techniques": "item tier",
+    "Explorer Synergy": "double craft",
+    "Expanded Station (Jeweler)": "crafting station",
+    "Expanded Station (Smith)": "crafting station",
+    "Expanded Station (Enchantress)": "crafting station",
+    "Flawless Production": "exalted item",
+    "Grand Forge": "item tier",
+    "Residue Mastery": "exalted item", "The Hidden Stash": "crafting station",
+    "Assembly Line": "crafting station",
+    "The Alchemist's Transmutation": "crafted-affix mark", "Steady Hands": "held-over residue",
 }
 
 
@@ -4338,6 +4378,16 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # #47 slice F6a: the five forge gold nodes, read by CraftGoldFactorFor.
     "CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
     "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance",
+    # #47 slice F6b: the three forge material nodes, drawn by UCataclysmForge::KeepingOn.
+    "LowTierMaterialKeptChance", "RareMaterialKeptChance", "HighResidueMaterialsReturnedChance",
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days.
+    "CraftResidueKept", "LowLevelCraftResidueKept", "RareMaterialCraftResidueKept", "StabilizerShareReduced",
+    "ResidueResetChancePerHundred", "CraftDaysOff", "CraftDaysReduced", "CraftDaysReducedMore",
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes.
+    "AffixRollTopQuarterChance", "AffixRollFloor", "AffixRollMaxedChance", "AffixTierRaisedChance",
+    "AffixAddedChance",
+    # #2741's crafting group, slice C6.
+    "CraftDaysOffOnFullItems", "WornResidueIgnored",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4455,6 +4505,54 @@ EMPIRE_TREE_EFFECTS = {
     "Architectural Synergy": [("CraftGoldReducedPerBranchStep", 0.01, 10, "Treasury", 0.30)],
     "Treasury Synergy": [("CraftGoldReducedPerSpendingStep", 0.01, 0, "", 0.30)],
     "Forge Upgrades": [("CraftGoldTenthOffChance", 0.01)],
+    # #47 slice F6b: the forge's materials. "2% chance per point to not consume
+    # T2 and below crafting materials"; "+1% chance per point to not consume
+    # Rare materials when crafting" ("Rare" is tier 3 and above, Q14); "While
+    # your item's CR is above 500, all crafting actions on that item have a 15%
+    # chance to return all crafting materials used" (the 500 is
+    # UCataclysmForge::TemptingFateResidueAbove, read before the craft, Q15, N5).
+    "Material Conservation": [("LowTierMaterialKeptChance", 0.02)],
+    "Resource Management": [("RareMaterialKeptChance", 0.01)],
+    "Tempting Fate": [("HighResidueMaterialsReturnedChance", 0.15)],
+    # #2741's crafting group, slices C1 and C2 (2026-11-25). "-5% CR gained from
+    # all crafting actions per point (multiplicative)"; "-2.5% CR gained from
+    # crafting actions on items below +6 per point (multiplicative)"; "-2.5% CR
+    # gained from crafting actions using T3+ materials per point
+    # (multiplicative)"; "Chaos Stabilizer reduces CR gain by an additional 2.5%
+    # per point"; "1% chance per 100 CR on an item to reset CR to 0 when
+    # crafting"; "-1 Day to crafting time per point"; "-10% of Days required for
+    # any crafting project per point" (the keystones document's figure, ruled
+    # by the coordinating session on 2026-11-25 under the owner's delegation:
+    # the tree file's 1% rounded away to nothing; 50% at 5 points); "Reduce
+    # total crafting time required by 50%".
+    "Tool Maintenance": [("CraftResidueKept", 0.05)],
+    "Limited Knowledge": [("LowLevelCraftResidueKept", 0.025)],
+    "Heat Shielding": [("RareMaterialCraftResidueKept", 0.025)],
+    "Stable Compounds": [("StabilizerShareReduced", 0.025)],
+    "Master's Touch": [("ResidueResetChancePerHundred", 0.01)],
+    "Master Craftsman": [("CraftDaysOff", 1.0)],
+    "Industrial Speed": [("CraftDaysReduced", 0.10)],
+    "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
+    # #2741's crafting group, slices C3 and C4 (2026-11-25). "+3% chance per
+    # point for affixes to roll in the top 25% of their range"; "+2% to the
+    # minimum roll range of all affixes on a crafted item per point"; "+5%
+    # chance per point for a craft to roll maximum values on one random affix"
+    # (ruled on 2026-11-25 under the owner's delegation: 50% at 10 points, so
+    # the Primal Spark's craft still matters); "1% chance per point to upgrade a random affix
+    # to next tier when using the smith"; "+5% chance per point for a crafted
+    # item to roll one additional affix".
+    "Precision Crafting": [("AffixRollTopQuarterChance", 0.03)],
+    "Master's Workshop": [("AffixRollFloor", 0.02)],
+    "Quality Materials": [("AffixRollMaxedChance", 0.05)],
+    "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
+    "Rough Draft": [("AffixAddedChance", 0.05)],
+    # #2741's crafting group, slice C6 (2026-11-25). "-1 Day crafting time per
+    # point for crafts with 4 or more affixes" (the owner's question 1, ruled:
+    # 4, a full item); "Ignore 5% of Worn Residue per point when it is measured
+    # against the Consumption Threshold" (question 3, ruled: the keystones
+    # document's figure, as the design document and the simulation use it).
+    "Ancient Techniques": [("CraftDaysOffOnFullItems", 1.0)],
+    "Residue Protocols": [("WornResidueIgnored", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).
@@ -5469,6 +5567,17 @@ CONDITIONS = {
     # as `target_is_silenced` is, so it is one of `CONDITIONS_OF_A_HIT_DEALT`.
     # NOT `while_moving`, which reads the wearer's own movement.
     "target_is_moving": None,
+
+    # "+20% increased Spell Damage against enemies carrying your curse" and
+    # "your minions deal 20% increased damage to enemies carrying your curse",
+    # Subjugator and Long Servitude in the Ritualist tree since the demonic tree
+    # rework of 2026-11-24. The character struck carries a `Status.Debuff.*` the
+    # asker laid (`UCataclysmRisenImps::CarriesCurseLaidBy`); for a minion's blow
+    # the asker is its summoner. IT TAKES NO VALUE. A fact of the target in hand,
+    # read by `WithTargetState` as `target_is_moving` is, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
+    # satisfies.
+    "target_carries_your_curse": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -5843,6 +5952,15 @@ SCALES = {
     # and `passive_effects` refuses the scale outright: a passive node has no
     # own stacks.
     "enemies_in_reach_while_own_stack": (1.0, 1.0, "one enemy"),
+
+    # "you gain 1% increased Attack Speed for every 2% increased Movement Speed
+    # you have" is `increased_movement_speed` with a step of 2. The Ravager tree
+    # rework of 2026-11-24, Relentless. The INCREASES bucket of the character's
+    # own `movement_speed` line, in percentage points, judged with its state;
+    # `ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed` says how it is
+    # read. Whole steps, rounded down. Bounded at 1,000, the bound the other
+    # percentage-of-a-stat scales take.
+    "increased_movement_speed": (0.0, 1000.0, "a percentage of increased movement speed"),
 }
 
 
@@ -5924,8 +6042,9 @@ MAX_SCALE_OFFSET = 230
 #: its sentence, "While leeching, reduce your max resistances by 1%-3% per
 #: second", states no end. The ruling caps it at 10 seconds; the engine's
 #: scale holds no cap of its own, so a row written without one would be
-#: UNCAPPED. The row is refused instead. The Passive Effects sheet has no
-#: such column, so a row there naming one of these is refused outright.
+#: UNCAPPED. The row is refused instead. The Passive Effects sheet has carried
+#: the column since 2026-11-24, so a row there naming one of these is refused
+#: unless it states a cap, as an enchantment's is.
 SCALES_THAT_NEED_A_CAP = frozenset({"seconds_leeching"})
 
 #: The scales whose count is a FRACTION and not a number of whole steps. Ruled
@@ -6048,15 +6167,18 @@ def passive_effects(book) -> list[dict]:
     rows = list(book["Passive Effects"].iter_rows(values_only=True))
     headers = _header_index(rows, "Passive Effects")
 
-    # NO CAP ON THIS SHEET. Issue #1815. `ScaleMaxSteps` is read from an
-    # enchantment's row only; a passive node's modifier never carries one, so a
-    # cap written here would be dropped with no error.
-    if "Scale Max Steps" in headers:
-        raise DataError(
-            "the Passive Effects sheet has a 'Scale Max Steps' column, and the "
-            "game reads a cap from the Enchantment Effects sheet only. Remove it.")
+    # A CAP ON THIS SHEET SINCE 2026-11-24. Issue #1815 refused the column
+    # because a passive node's modifier carried no cap, so a cap written here
+    # was dropped with no error. The demonic tree rework the owner approved
+    # that day needs one: the Ritualist's Wall of Servants reads "You take 1%
+    # less damage for each minion you have, up to 20% less", and the owner
+    # answered that the per-minion damage reduction is capped at 20%. So the
+    # row struct carries `ScaleMaxSteps` and `UCataclysmPassiveTree::
+    # AccumulateInto` copies it onto the modifier, which `ScaledValue` caps by,
+    # as an enchantment's is. It is read below, by the same rules the
+    # Enchantment Effects sheet keeps.
 
-    # NOR STACK SECONDS, FOR THE SAME REASON. Issue #1833.
+    # NO STACK SECONDS ON THIS SHEET. Issue #1833.
     if "Stack Seconds" in headers:
         raise DataError(
             "the Passive Effects sheet has a 'Stack Seconds' column, and the "
@@ -6100,11 +6222,38 @@ def passive_effects(book) -> list[dict]:
         # #1593; one copy means the wording and the rules cannot drift apart.
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Passive Effects", index, node)
-        if scale in SCALES_THAT_NEED_A_CAP:
+
+        # "UP TO 20% LESS" IS A CAP OF 20 WHOLE STEPS, since 2026-11-24 (see
+        # above). THE ENCHANTMENT SHEET'S RULES, KEPT THE SAME: empty is no
+        # cap; a cap needs a scale to cap; it is a whole number of steps from 1
+        # to MAX_SCALE_STEPS; a scale counting a fraction takes none; and a
+        # scale that needs one must state one.
+        cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
+        scale_max_steps = 0
+        if cap_text:
+            if scale in SCALES_THAT_COUNT_A_FRACTION:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} scales by {scale!r} "
+                    f"and states Scale Max Steps {cap_text!r}. That scale counts "
+                    f"a fraction and not whole steps, and is capped at the row's "
+                    f"whole value by itself. Leave the column empty.")
+            cap = number(cap_text, "Scale Max Steps", index)
+            if not scale:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps and no scale. A cap limits how many steps a scale "
+                    f"counts, so with no scale it caps nothing.")
+            if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
+                raise DataError(
+                    f"Passive Effects row {index}: {node} has a cap of {cap:g} "
+                    f"steps. A cap is a whole number of steps from 1 to "
+                    f"{MAX_SCALE_STEPS}; leave the column empty for none.")
+            scale_max_steps = int(cap)
+        if scale in SCALES_THAT_NEED_A_CAP and scale_max_steps < 1:
             raise DataError(
-                f"Passive Effects row {index}: {node} scales by {scale!r}, which "
-                f"needs a cap in Scale Max Steps, and this sheet has no such "
-                f"column. The row would be uncapped.")
+                f"Passive Effects row {index}: {node} scales by {scale!r} and "
+                f"states no Scale Max Steps. That scale has no cap of its own, "
+                f"so the row would be uncapped. State the cap.")
         # AND THE SCALE THAT COUNTS ENEMIES ONLY WHILE AN OWN STACK IS HELD.
         # Ruled by the project owner on 2026-10-17. A passive node holds no own
         # stacks, so its modifier would have no window to read.
@@ -6221,6 +6370,9 @@ def passive_effects(book) -> list[dict]:
             "Option": option,
             "ReachMetres": reach_metres,
             "MinPoints": min_points,
+            # LAST, AFTER MIN POINTS, so every column before it keeps its
+            # place. 0 is no cap. Since 2026-11-24; see above.
+            "ScaleMaxSteps": scale_max_steps,
         })
 
     # THE SAME NODE AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A DOUBLE
@@ -8528,8 +8680,8 @@ def enchantment_effects(book) -> list[dict]:
                 f"{', '.join(EVENTS_CARRYING_A_HIT_DEALTS_TAGS)}.")
 
         # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
-        # alone carries the column, because only an enchantment's modifier reads
-        # it (`UCataclysmItemModifiers`); `passive_effects` refuses the column.
+        # carried the column alone until 2026-11-24, when `passive_effects`
+        # began reading it by these same rules for the demonic tree rework.
         # Empty is no cap. A cap needs a scale to cap, and is a whole number of
         # steps, from 1 up to the largest a sentence states.
         cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
@@ -10265,6 +10417,16 @@ STATS_WITH_AN_ASKER = frozenset({
     # measures it on a trap's blow with the scale and the offset the first of
     # those rows carries.
     "minion_damage",
+    # ADDED 2026-11-24 FOR BOUND SERVANTS, the Ritualist's First Pact's first
+    # option in the demonic tree rework the owner approved that day: "Your
+    # minions deal 5% increased damage and have 5% increased health for each
+    # minion you have", two rows scaled by `minions_held`. A minion's health is
+    # asked when it is made, in `ACataclysmMinion::Spawn`, through
+    # `UCataclysmCommand::SummonerMultiplierFor`, which runs the summoner's line
+    # through the pipeline with `CurrentConditions` -- so the scaled row is read
+    # with the summoner's count, the minion being made included. The list is
+    # brought up to the code; `ProbeScaledMinionHealth` measures it.
+    "minion_health",
     # ADDED 2026-10-17 FOR SPELLSLINGER, Spellblade's Will's six-piece bonus,
     # "makes your spells cost 10% less mana per stack", a row scaled by
     # its own stacks; ruled that day (R1). `UCataclysmGameplayAbility::ManaCostFor`
@@ -10285,6 +10447,34 @@ STATS_WITH_AN_ASKER = frozenset({
     # `StatForSkill` when a blow or a tick would kill;
     # `ProbeScaledLethalHitReprieveEvery` measures that.
     "lethal_hit_reprieve_every_seconds",
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK THE PROJECT OWNER APPROVED
+    # THAT DAY, two vow clauses scaled by the Fervour held. Reprisal Wave's
+    # "and 1 metre further for every 25 Fervour you hold": `retaliation_radius_metres`
+    # has been asked through `StatForSkill` by `UCataclysmRetaliation::RadiusMetresFor`
+    # since issue #1047, and `ProbeScaledRetaliationRadius` measures it with the
+    # scale the row carries. Carnivore's "each stack lasts 1 second longer for
+    # every 10 Fervour you hold": `carnage_stack_seconds` is asked by
+    # `UCataclysmStacks::CarnageExtraSeconds` when a Carnage stack is granted, and
+    # `ProbeCarnageStackSeconds` measures it.
+    "retaliation_radius_metres",
+    "carnage_stack_seconds",
+    # ADDED 2026-11-24 FOR THE RAVAGER TREE REWORK, three rows scaled by the
+    # enemies within 4 metres. `area_of_effect` for Reach, "+1% increased Area
+    # of Effect per point for each enemy within 4 metres":
+    # `UCataclysmSkillEffects::AsMultiplierForSkill` has asked it through
+    # `StatForSkill` with the skill's tags since issue #943, so nothing was
+    # built; `ProbeScaledAreaOfEffect` measures the scaled row.
+    # `health_restored_on_kill_at_no_cost` for Long Hold, "Killing an enemy
+    # restores 1% of your maximum health for each enemy within 4 metres of
+    # you": `UCataclysmFervour::RestoreHealthOnKillAtNoCost` asks it through
+    # `StatForSkill`; `ProbeScaledHealthRestoredOnKill` measures it.
+    # `ultimate_fervour_cost_reduction` for Thronged, "Your Ultimate costs 5
+    # less Fervour for each enemy within 4 metres of you when you use it":
+    # `UCataclysmGameplayAbility::FervourCostFor` asks it, built for it;
+    # `ProbeScaledUltimateFervourCostReduction` measures it.
+    "area_of_effect",
+    "health_restored_on_kill_at_no_cost",
+    "ultimate_fervour_cost_reduction",
 })
 
 
@@ -10370,6 +10560,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_within_metres",
     "target_is_silenced",
     "target_is_moving",
+    "target_carries_your_curse",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -10468,6 +10659,15 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "movement_speed": ASKER_PASSES_NOTHING_MORE,
     "movement_speed_reduction_suppressed": ASKER_PASSES_NOTHING_MORE,
     "nova_damage_of_missing_health": ASKER_PASSES_NOTHING_MORE,
+    # ADDED 2026-11-24 FOR THE MASOCHIST TREE REWORK. Unstable Aura's share of
+    # weapon damage, under `health_at_or_below` 50, asked by `UCataclysmNova::Step`
+    # with the wearer's state and no tags (its probe is in `Probes`). And
+    # Threadbare's "Fervour removed by your health regeneration is reduced",
+    # under the same condition: `UCataclysmFervour::RateFor` asks the removal
+    # rate through `StatForSkill` with the healing's tags on every heal
+    # (`ProbeConditionedFervourLostToHealing`).
+    "nova_damage_of_weapon_damage": ASKER_PASSES_NOTHING_MORE,
+    "fervour_lost_to_healing": ASKER_PASSES_NOTHING_MORE,
     "retaliation": ASKER_PASSES_NOTHING_MORE,
     "skill_charges_bonus": ASKER_PASSES_NOTHING_MORE,
     "skill_cost_paid_from_health": ASKER_PASSES_NOTHING_MORE,

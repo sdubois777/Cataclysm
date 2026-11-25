@@ -594,6 +594,67 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::CraftGoldTenthOffChance:
 			Bonuses.CraftGoldTenthOffChance += Total;
 			break;
+		// #47 SLICE F6b: the forge's materials, three chances drawn once a craft (`UCataclysmForge::KeepingOn`).
+		case ECataclysmEmpireTreeEffect::LowTierMaterialKeptChance:
+			Bonuses.LowTierMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialKeptChance:
+			Bonuses.RareMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::HighResidueMaterialsReturnedChance:
+			Bonuses.HighResidueMaterialsReturnedChance += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICES C1 AND C2: a forge craft's residue and days. The three "(multiplicative)" nodes
+		// compound per point, as `WalkTimeCompounded` does.
+		case ECataclysmEmpireTreeEffect::CraftResidueKept:
+			Bonuses.CraftResidueFactor *= FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::LowLevelCraftResidueKept:
+			Bonuses.LowLevelCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialCraftResidueKept:
+			Bonuses.RareMaterialCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::StabilizerShareReduced:
+			Bonuses.StabilizerShareReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ResidueResetChancePerHundred:
+			Bonuses.ResidueResetChancePerHundred += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysOff:
+			Bonuses.CraftDaysOff += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReduced:
+			Bonuses.CraftDaysReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReducedMore:
+			Bonuses.CraftDaysReducedMore += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICES C3 AND C4: a forge craft's affixes.
+		case ECataclysmEmpireTreeEffect::AffixRollTopQuarterChance:
+			Bonuses.AffixRollTopQuarterChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollFloor:
+			Bonuses.AffixRollFloor += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollMaxedChance:
+			Bonuses.AffixRollMaxedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixTierRaisedChance:
+			Bonuses.AffixTierRaisedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixAddedChance:
+			Bonuses.AffixAddedChance += Total;
+			break;
+		// #2741's CRAFTING GROUP, SLICE C6: Ancient Techniques and Residue Protocols.
+		case ECataclysmEmpireTreeEffect::CraftDaysOffOnFullItems:
+			Bonuses.CraftDaysOffOnFullItems += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::WornResidueIgnored:
+			Bonuses.WornResidueIgnored += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

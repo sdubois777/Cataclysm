@@ -703,7 +703,9 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
   
 
-**AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Six auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason and Gnawing Want. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. **Living Pyre**, an aura made for the Ultimate key, **states 66.67% a pulse**: the Ultimate's 400% spread over its six pulses, the owner's ruling of 2026-11-24 ("400% spread over 6 pulses"), still raised 8% by every hit its holder takes.
+**AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Seven auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason, Gnawing Want and, since it was given its shape on 2026-11-25, Blood and Iron. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. **Living Pyre**, an aura made for the Ultimate key, **states 66.67% a pulse**: the Ultimate's 400% spread over its six pulses, the owner's ruling of 2026-11-24 ("400% spread over 6 pulses"), still raised 8% by every hit its holder takes.
+
+**THE THREE DAMAGE-TYPE AURAS EACH HELP THEIR SIDE DIFFERENTLY**, the owner's rulings of 2026-11-25: "I think we should avoid making all of the aura's kinda samey". **Pall of Ending** (Death): you, your minions and your allies within it deal 10% more damage, a separate multiplier ("make it 10% more and I'm good with it"), while enemies within it deal 15% less damage while they stay and for 5 seconds after they leave. **Conflagration** (Demonic): when a burning enemy dies within it, its burn passes to the nearest other enemy within 4 metres, as your burn, with the seconds it had left ("Go with A"); its allies' 8% increased damage is gone. **Blood and Iron** (War): enemies within its 10 metres lose 10% of their armour and 15% of their movement speed, and you and your allies within it cannot be slowed and move 15% faster ("Go with A"); it drains mana a second as the other two do. Each enemy effect and the speed last two seconds after an enemy or ally leaves. **And an immunity to Slow now does what it says**: whoever is immune to Slow ignores every movement reduction, which makes Grave Shroud's, Fevered Blood's and Living Pyre's immunity, written in their rows since they were designed, take effect.
 
   
 
@@ -805,6 +807,12 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 | Basic Nodes | Scaling stat nodes with per-point benefits and threshold bonuses at mid-investment. Most of the tree. |
 | Keystones | Single-point investments that fundamentally change how a mechanic works. Build-defining. Require full investment in a parent node. |
 | Capstones | One per tier (25/50/100/200 pts). Player chooses one of three options per tier. Escalating power from identity declaration to god-tier mechanics. |
+
+**A threshold or a step, never a fraction.** A basic node's bonus at mid-investment reads "At N points: ..." and is granted whole from that point. A per-point value below 1 is written instead as a whole number "for every N points", granted at every Nth point: Brutal Determination's "+1% Life Leech for every 2 points" is 5% at ten points. The project owner chose steps over fractional values on 2026-11-24.
+
+**Keystones are upgrades by default**, and a tree keeps at most one or two that convert one thing into another; the Masochist's are The Reckoning and Point of No Return. **Each tree names a core count, and one option at every capstone tier scales with it**: the Masochist's Fervour held, the Ravager's enemies within 4 metres, the Ritualist's minions held. A mechanic of the class's own belongs on a keystone or a capstone, with one recorded exception: the Ritualist's starting node keeps "cursed enemies rise as imps", because that is how a Ritualist with no summon skill fills Fervour at all. Ruled 2026-11-24; `docs/DECISIONS.md` has the entry.
+
+**"Cannot be reduced" drops each reducing effect on its own and keeps every bonus.** The Ravager's Relentless reads "Your Movement Speed and Attack Speed cannot be reduced by any effect": every row that would lower either speed is ignored, one by one, and every increase still counts, so +12% beside -40% gives +12% for both speeds, and Cripple and Wither do not slow the holder at all. It is not a floor at the character's own speed, which would take the earned 12% away with the slow. Unstoppable's "cannot be slowed while an enemy is within 4 metres" and Nothing Moves You's clause at 50 or more Fervour share the movement half of the rule. A character without any of them sums its speed rows as every character does. Ruled by the coordinating session on 2026-11-24.
 
   
 
@@ -1323,6 +1331,8 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 **But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
+
+**Its own payment rolls no ailment; a row that acts on the retaliation event may apply one**, as the enchantment "Your retaliation damage also applies a bleed stack to the attacker" does (built 2026-10-01, `apply_status` Bleed on `retaliation_dealt`). The project owner accepted this reading on 2026-11-24 with the War trees' rulings pass (R7), which `docs/DECISIONS.md` records.
 
 
 
@@ -1843,6 +1853,8 @@ Tier Width is the difference between the maximum Power Score of the current diff
 
 **Overwhelm strips every kind of mitigation, not only resistance.** Armor, block, evasion and resistance are all reduced. This is what stops a character sidestepping the mechanic by choosing a different defensive layer.
 
+**One exception: the Ravager's keystone Ironhide halves what Overwhelm takes from its holder's armour.** Resistance, block and evasion stay fully overwhelmed, so armour alone cannot be used to sidestep the rule, and a keystone named for its armour protects it. The project owner ruled it on 2026-11-24 ("Yes, but only halve it"); `docs/DECISIONS.md` has the entry.
+
   
 
 **It is rated against tier width rather than a flat number of points.** A flat step is worth 17% of a tier 1 tier width but only 6% of a tier 8 one, which made a fully geared tier 1 player lose 13% of their mitigation at their own final boss while a fully geared tier 8 player lost 47% at theirs. Rating against tier width makes the same relative shortfall cost the same everywhere.
@@ -2327,7 +2339,7 @@ The following is a sample of War damage type skills across weapon types to illus
 | Shield / Ultimate | Fortress | Become immovable for 5 seconds. 60% damage reduction. Reflect 500% of blocked damage. Allies within 6m take 30% less damage. |
 | Whip / Ultimate | Whirlwind of Steel | Spin the whip for 4 seconds in a 7m zone. Every enemy in range struck repeatedly. Each hit applies bleed. |
 | Greataxe / Ultimate | Annihilator | Channel spin for 3 seconds dealing rapid hits to all in melee range, applying bleed and reducing armor each revolution. |
-| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. Allies: +8% physical damage. Drains mana. |
+| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. You and allies: cannot be slowed, +15% move speed. Drains mana. |
 
   
 
@@ -2351,7 +2363,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Each reserves 10 Fervour while it is out, and as many stand as the pool holds. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
 | Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. The blow never kills a target Subjugate could take -- one that is not a boss, not unable to be hurt, not already the player's, with room in the Fervour pool for it: a blow that would kill it leaves it at 1 health, below half, so it is taken (the owner's ruling of 2026-11-22, issue #2856: "ok, well it should still take them even if it would kill"). Anything else the blow can kill as before. A pool with no room for the thrall releases the oldest minions and thralls the player holds until it has some (the owner's ruling of 2026-11-24, "Replace the oldest"), and such a target is held at 1 health too. A thrall is built from its own kind and rarity at the player's level, not the floor's (issue #2868; see "A creature taken by Subjugate is raised by its commander's level too" under the eight shapes). Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). A Common thrall reserves 30 Fervour, an Elite 45, a Legendary 60 and a Herald 90 (the owner's ruling of 2026-11-24, "Reserve grows with rarity"). Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
-| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. Allies: +8% damage. Drains mana. |
+| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. A burning enemy dying in it passes its burn to the nearest other enemy within 4m. Drains mana. |
 
   
 

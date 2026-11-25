@@ -12,11 +12,20 @@ class UAbilitySystemComponent;
 /**
  * A burst of damage a character releases around itself on a repeating interval.
  *
- * WHAT IT IS FOR. The Masochist's `basic_ll_b2` Unstable Aura:
+ * WHAT IT IS FOR. The Masochist's `basic_ll_b2` Unstable Aura, as reworked by
+ * the project owner's approval of 2026-11-24:
  *
- *   While at or below 10% health, you release a nova every 5 seconds dealing
- *   damage equal to 1% of your missing health per point to enemies within 6
- *   metres.
+ *   While you are at or below 50% health, you release a nova every 3 seconds
+ *   dealing 10% of your weapon damage per point to enemies within 6 metres.
+ *
+ * UNTIL THEN IT READ "While at or below 10% health, you release a nova every 5
+ * seconds dealing damage equal to 1% of your missing health per point", and the
+ * audit of 2026-11-24 measured it at about 182 damage at level 100 against tier
+ * 8 enemies of 3,238 to 40,048 health, at a health a player does not keep. The
+ * missing-health figure is still read (`DamageStat`), for anything that grants
+ * it; the weapon-damage figure (`WeaponDamageStat`) is what the node grants now.
+ * A character holding both releases one nova worth the two together, on the
+ * weapon figure's shorter interval.
  *
  * IT IS THE ONLY THING IN THE GAME A CHARACTER DOES WITHOUT ACTING. Every other
  * source of damage a player deals comes from a skill they used or from a blow
@@ -39,9 +48,14 @@ class UAbilitySystemComponent;
  * is enforced by a timestamp on the ability system component, which is the shape
  * `UCataclysmDamageConversion` uses for its cooldown.
  *
- * NOT SCALED BY THE CHARACTER'S DAMAGE STATS. The node states the amount
- * exactly -- "damage equal to 1% of your missing health per point" -- so what it
- * deals is that and not that multiplied by the increases the character carries.
+ * NOT SCALED BY THE CHARACTER'S DAMAGE STATS BEYOND ITS WEAPON DAMAGE. The node
+ * states the amount -- a share of missing health, or a share of weapon damage --
+ * so what it deals is that and not that multiplied again by the increases the
+ * character carries. Weapon damage is `UCataclysmSkillEffects::WeaponDamageOf`,
+ * the basic attack's figure every skill slot is a percentage of, which already
+ * holds the character's unconditioned attack damage rows; a conditioned or
+ * scaled damage row is not asked here, as it is not asked for the missing-health
+ * figure either. A judgement of 2026-11-24, recorded with the rework.
  *
  * NOT EXEMPT FROM THE TARGET'S DEFENCES. It IS a hit, unlike retaliation, which
  * the design says explicitly is not one. Armour, resistance, evasion and block
@@ -58,6 +72,21 @@ public:
 	 * percentage. As `game/Data/PassiveEffects.csv` spells it.
 	 */
 	static const TCHAR* DamageStat;
+
+	/**
+	 * The stat naming what share of the character's WEAPON DAMAGE one nova
+	 * deals, as a percentage. Unstable Aura's row since 2026-11-24, a flat 10 a
+	 * point under `health_at_or_below` 50. A stat with no gameplay attribute,
+	 * asked for here and nowhere else.
+	 */
+	static const TCHAR* WeaponDamageStat;
+
+	/**
+	 * Seconds between one nova and the next while the character holds
+	 * `WeaponDamageStat`: "every 3 seconds". A constant for the reason
+	 * `IntervalSeconds` below gives.
+	 */
+	static constexpr float WeaponDamageIntervalSeconds = 3.0f;
 
 	/**
 	 * Seconds between one nova and the next.
@@ -95,6 +124,14 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Nova")
 	static float AmountFrom(float SharePercent, float Health, float MaxHealth);
+
+	/**
+	 * What one nova deals from a share of weapon damage. Pure arithmetic, as
+	 * `AmountFrom` is. Nought for no share and for no weapon damage, never
+	 * negative.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Nova")
+	static float AmountFromWeaponDamage(float SharePercent, float WeaponDamage);
 
 	/**
 	 * Release a nova if this character has one to release and it is due.

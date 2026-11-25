@@ -11,6 +11,8 @@
 #include "Items/CataclysmForge.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Player/CataclysmEmpireTree.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
 #include "Player/CataclysmPlayLoopLog.h"
 
@@ -523,13 +525,29 @@ FCataclysmThresholdCrossing UCataclysmWearing::CrossingFor(
 	{
 		return Crossing;
 	}
-	Crossing.Now = Equipment->WornResidue();
+	// AS THE THRESHOLD COUNTS IT (Residue Protocols, #2741's crafting slice C6).
+	Crossing.Now = CountedWornResidue(Equipment, Equipment->WornResidue());
 	Crossing.After = Crossing.Now;
 	if (const FCataclysmItem* Carried = Inventory ? Inventory->ItemAt(CarriedSlot) : nullptr)
 	{
-		Crossing.After = Equipment->WornResidueIfEquipped(*Carried, Into);
+		Crossing.After = CountedWornResidue(Equipment, Equipment->WornResidueIfEquipped(*Carried, Into));
 	}
 	return Crossing;
+}
+
+float UCataclysmWearing::CountedWornResidueOf(float WornResidue, float IgnoredShare)
+{
+	return WornResidue * (1.0f - FMath::Clamp(IgnoredShare, 0.0f, 1.0f));
+}
+
+float UCataclysmWearing::IgnoredWornResidueShare(const UObject* WorldContext)
+{
+	return UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext).WornResidueIgnored;
+}
+
+float UCataclysmWearing::CountedWornResidue(const UObject* WorldContext, float WornResidue)
+{
+	return CountedWornResidueOf(WornResidue, IgnoredWornResidueShare(WorldContext));
 }
 
 FString UCataclysmWearing::ThresholdQuestion(const FString& ItemName,

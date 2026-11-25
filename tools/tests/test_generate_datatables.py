@@ -1469,7 +1469,8 @@ class TestAPassiveNodeCanGrantSeveralStats:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
-                 "Scale Step", "Option", "Reach Metres", "Min Points"]] + rows
+                 "Scale Step", "Option", "Reach Metres", "Min Points",
+                 "Scale Max Steps"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1524,14 +1525,60 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="Scale Offset"):
             gen.passive_effects(book)
 
-    def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
-        """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
-        written on this sheet would be dropped with no error."""
+    def capped(self, tmp_path, scale, step, cap):
+        """One row under a scale and a cap, every other column the reader asks
+        for present and empty."""
         book = openpyxl.load_workbook(workbook_with(
-            tmp_path / "effects.xlsx",
+            tmp_path / "capped.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
-                                  "Required Tags", "Scale Max Steps"],
-                                 ["A_node", "armor", "increased", 3, None, None]]}))
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Min Points", "Scale Max Steps"],
+                                 ["A_node", "damage_taken", "more", -1, None, None,
+                                  None, scale, step, None, None, None, cap]]}))
+        return gen.passive_effects(book)
+
+    def test_a_cap_on_this_sheet_reaches_the_output(self, tmp_path):
+        """Since the demonic tree rework of 2026-11-24. Wall of Servants, "You
+        take 1% less damage for each minion you have, up to 20% less", is a cap
+        of 20 steps; the engine copies it onto the modifier. Issue #1815 had
+        refused the column because no passive modifier carried a cap. The
+        control is the same row with the cell empty, which is no cap."""
+        assert self.capped(tmp_path, "minions_held", 1, 20)[0]["ScaleMaxSteps"] == 20
+        assert self.capped(tmp_path, "minions_held", 1, None)[0]["ScaleMaxSteps"] == 0
+
+    def test_a_cap_with_no_scale_is_refused(self, tmp_path):
+        """A cap limits how many steps a scale counts; on a fixed row it caps
+        nothing, and the engine's `ValidateModifier` refuses it too."""
+        with pytest.raises(gen.DataError, match="no scale"):
+            self.capped(tmp_path, None, None, 20)
+
+    @pytest.mark.parametrize("cap", [0, 2.5, gen.MAX_SCALE_STEPS + 1])
+    def test_a_cap_that_is_not_a_whole_number_of_steps_in_range_is_refused(
+            self, tmp_path, cap):
+        with pytest.raises(gen.DataError, match="whole number of steps"):
+            self.capped(tmp_path, "minions_held", 1, cap)
+
+    def test_a_sheet_without_the_cap_column_is_refused_now_the_rows_have_it(
+            self, tmp_path):
+        """The column was optional until Wall of Servants' row came, as Min Points
+        was until its rows came.
+
+        It read "a sheet without the cap column reads no cap while it is
+        optional" until the same day, 2026-11-24, when
+        `tools/reapply_demonic_tree_rework_workbook.py` put the column in the
+        workbook with that row's 20 and the declaration left `OPTIONAL_COLUMNS`.
+        A sheet without it is now refused like any other column the generator
+        reads, so a column deleted from the workbook cannot drop the cap in
+        silence."""
+        assert "Scale Max Steps" not in gen.OPTIONAL_COLUMNS.get("Passive Effects", {})
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "without.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Condition", "Condition Value",
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Min Points"],
+                                 ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
 
@@ -1648,7 +1695,8 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
-                 "Reach Metres", "Required Tags", "Option", "Min Points"]] + rows
+                 "Reach Metres", "Required Tags", "Option", "Min Points",
+                 "Scale Max Steps"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5296,7 +5344,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
     def sheet(rows: list[list]) -> list[list]:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
-                 "Scale", "Scale Step", "Option", "Reach Metres"]] + rows
+                 "Scale", "Scale Step", "Option", "Reach Metres",
+                 "Scale Max Steps"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5342,7 +5391,8 @@ class TestAnAtNPointsRowStatesItsThreshold:
             tmp_path / "without.xlsx",
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
-                                  "Scale", "Scale Step", "Option", "Reach Metres"],
+                                  "Scale", "Scale Step", "Option", "Reach Metres",
+                                  "Scale Max Steps"],
                                  ["A_node", "armor", "increased", 5]]}))
         with pytest.raises(gen.DataError, match="Min Points"):
             gen.passive_effects(book)
@@ -5543,17 +5593,23 @@ class TestTheConditionsAndTheScaleOfTheSeventhOfOctober:
         out = self.out(tmp_path, "Negative", self.LEECH, row)
         assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("character_kills", 0)
 
-    def test_the_leech_scale_is_refused_on_a_passive_row(self, tmp_path):
-        """The Passive Effects sheet has no cap column. The control is the
-        same row on a scale that needs none."""
+    def test_the_leech_scale_needs_a_cap_on_a_passive_row_too(self, tmp_path):
+        """The Passive Effects sheet has carried a cap column since the demonic
+        tree rework of 2026-11-24, so a passive row on the leech scale is
+        refused without a cap and carried with one, as an enchantment's is. The
+        control is the same row on a scale that needs none."""
         passive = TestARowCountingNearbyEnemiesCarriesItsOwnRadius()
         gen.passive_effects(passive.book(tmp_path, [
             ["A_node", "armor", "increased", 3,
              None, None, "seconds_in_combat", 1, None]]))
-        with pytest.raises(gen.DataError, match="needs a cap in Scale Max Steps"):
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
             gen.passive_effects(passive.book(tmp_path, [
                 ["A_node", "armor", "increased", 3,
                  None, None, "seconds_leeching", 1, None]]))
+        out = gen.passive_effects(passive.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "seconds_leeching", 1, None, None, None, None, 10]]))
+        assert (out[0]["Scale"], out[0]["ScaleMaxSteps"]) == ("seconds_leeching", 10)
 
     def test_a_leech_step_of_nothing_or_past_a_minute_is_refused(self, tmp_path):
         for step in (0, 61):

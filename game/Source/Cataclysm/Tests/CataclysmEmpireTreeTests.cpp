@@ -41,8 +41,9 @@ namespace CataclysmEmpireTreeTestNodes
 	const FName Pacing(TEXT("basic_00000029"));					// a root, 10 points
 	const FName FleetFooted(TEXT("keystone_0000002b"));			// <- Pacing full
 
-	// Artisan. (Coinage was the Treasury root used here until gold existed: issue #2741 slice 6 builds it.)
-	const FName RoughDraft(TEXT("basic_arts_t1d"));			// a root; waits on crafting
+	// Treasury. (Coinage was the Treasury root used here until gold existed: issue #2741 slice 6 builds it. Rough Draft,
+	// an Artisan root, was used after it until #2741's crafting slice C4 built it, 2026-11-25.)
+	const FName MerchantGuild(TEXT("basic_tres_t1e"));		// <- Coinage at 2; waits on a market
 
 	// The centre.
 	const FName Foundations(TEXT("capstone_0000000m"));			// 25: Aegis of Hope, The Delver, The Hoarder
@@ -213,11 +214,11 @@ bool FCataclysmEmpireTreeWaitsOnTest::RunTest(const FString& Parameters)
 	FCataclysmPassiveAllocation Allocation;
 	double Bank = 50.0;
 	FString Reason;
-	TestFalse(TEXT("Rough Draft, a root with a full bank, is refused"),
-			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, RoughDraft, Bank, Reason));
-	TestEqual(TEXT("and the refusal names crafting and its issue"), Reason,
-			  FString(TEXT("Rough Draft cannot be bought yet: it needs crafting, which the game does not have yet "
-						   "(issue #47).")));
+	// THE SYSTEM IS ASKED BEFORE ANYTHING ELSE, so Merchant Guild's shut edge (Coinage at 2) is not what refuses it.
+	TestFalse(TEXT("Merchant Guild, with a full bank, is refused"),
+			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, MerchantGuild, Bank, Reason));
+	TestEqual(TEXT("and the refusal names the market"), Reason,
+			  FString(TEXT("Merchant Guild cannot be bought yet: it needs a market, which the game does not have.")));
 	TestEqual(TEXT("the bank is untouched"), Bank, 50.0);
 	TestEqual(TEXT("nothing is spent"), Allocation.Total(), 0);
 

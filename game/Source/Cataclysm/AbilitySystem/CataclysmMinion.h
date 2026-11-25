@@ -1677,6 +1677,42 @@ public:
 	virtual void HandleDeath() override;
 
 	/**
+	 * The end of its time: removed, as every actor is, UNLESS ITS SUMMONER HOLDS REKINDLED, which keeps it for its whole
+	 * lifetime again. The Ritualist keystone since the demonic tree rework of 2026-11-24: "When one of your minions
+	 * reaches the end of its time, it stays for that long again, no more than once every 5 seconds."
+	 *
+	 * ONLY A LIVING MINION THAT IS NOT A PLACED MACHINE. A dead one's body is removed by this same call
+	 * `DeadBodySeconds` after its death, and must go; a deployable is a machine and the Ritualist tree's "minion"
+	 * means its imps and thralls (the owner, 2026-09-16). A thrall has no lifetime to end.
+	 *
+	 * REACHES A RISEN IMP, whose summoner is its curser, so it works for a Wand Ritualist, the owner's answer of
+	 * 2026-11-24. "No more than once every 5 seconds" is per summoner: the clock is on its ability system, so ten imps
+	 * expiring together keep one.
+	 */
+	virtual void LifeSpanExpired() override;
+
+	/**
+	 * Rekindled's stat: the seconds between two lifetimes renewed, read off the summoner with no tags. Above nought IS
+	 * the keystone being held. No gameplay attribute.
+	 */
+	static const TCHAR* LifetimeRenewedEverySecondsStat;
+
+	/**
+	 * Keep this minion for `GrantedLifetimeSeconds` again, if Rekindled allows it now, and answer whether it did. What
+	 * `LifeSpanExpired` asks first. PUBLIC SO A TEST CAN ASK WITHOUT WAITING FOR A TIMER.
+	 */
+	bool RenewLifetimeIfRekindled();
+
+	/**
+	 * The lifetime this minion was given when it was made, after its summoner's `minion_duration`: what Rekindled
+	 * gives it again. Nought for one with no lifetime. Written by `Spawn`.
+	 */
+	float GrantedLifetimeSeconds = 0.0f;
+
+	/** How many times Rekindled has kept this minion. Read by tests. */
+	int32 TimesLifetimeRenewed = 0;
+
+	/**
 	 * How long a minion that died without exploding stays before it is
 	 * removed. Issue #1528, ruled 2026-09-30. A judgement: long enough for the
 	 * killing blow's impact and damage number to be drawn on it.
