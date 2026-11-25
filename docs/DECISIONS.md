@@ -2,6 +2,225 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The Death weapon skills, slice DS4: eight more rows working; a strike's refund on a kill, spending every Fervour held, cashing in its caster's ailments, a rift's minions bursting as it closes, a buff laid by every blow, and a buff lengthening melee reach (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS3 (`3f7bc432e`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N9, N13, N15, `7c66aa287`), change B (N12, N17,
+  N21, `96e47c162`) and change C (the rows, the data and the row tests, `299592390`). Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **EVERY PIECE THE BRIEF NAMED IS BUILT, AND EVERY ROW IT NAMED IS WHOLE: none was left waiting.** Mercy Stroke (N9),
+  Grave Mouth (N12), Soul Snare (N5 and N12), Requiem (N13), Quietus (N15), Hemlock and Death Grip (N17), Grim Reach
+  (N17 and N21). Each piece was small: N9, N15 and N21 reuse a call that already existed (Emberhaul's refund, the
+  enchantment row's remaining-damage burst, Overreach's flat reach), N12 is a branch in the rift's closing, N13 one spend
+  and one scaling source, N17 three existing riders called from Groundbreaker's hook.
+- **SOUL SNARE'S WISP IS GRAVE MOUTH'S, AS SLICE DS3 FOUND IT HAD TO BE.** With Grave Mouth shaped and the `Wisp` in the
+  Minion Types sheet, a snared creature dying rises as a wisp lasting Grave Mouth's 4 seconds and reserving its 2 -- the
+  draft's own judgement of 4 seconds ("that is Grave Mouth's own duration ... a snared enemy's wisp has no grave to
+  close") is what the engine reads, not a figure of its own.
+- **JUDGEMENTS, each worth a look:**
+  - *N9, Mercy Stroke's refund,* is asked of the targets the swing struck, dead or at no health (Emberhaul's test), and
+    LAST, after the swing's curse, cash-in, detonation and order, so a kill any of them deals in the same instant
+    counts as the stroke's.
+  - *N13, Requiem's spend,* happens at the press, once the use is paid for, and what is spent is the cost and every
+    point left beside it -- "every Fervour you hold, the Ultimate's 50 among it" -- read by the blow however long its
+    swing waits. A free start that pays nothing (Follow Through) spends nothing and scales by nought; one that pays its
+    cost (ruled 2026-10-06) spends all. The rest of the pool raises no second `resource_consumed` event: the cost
+    already raised one, "once per payment whatever its size" (issue #1833), and this is the same payment.
+  - *N15, Quietus's cash-in,* is centred on where the use is cast (the caster), reaches the row's own 10 m, not widened
+    by area of effect (as C3's taunt radius is the row's own), and goes off with every swing, whether or not its blow
+    landed: the sentence ties it to "the same instant", not to the hit. After the blow, the sentence's order. The
+    caster's own Poison, Bleed and Necrosis only: not a burn, a disease or a splinter (the sentence names three), not a
+    minion's (a minion's ailment is the minion's, ruled 2026-09-17) and not another's.
+  - *N12, Grave Mouth's closing,* bursts the living minions in the rift's own list, gathered before the first goes off,
+    and destroys the rest as before. A rift cut short does not collapse (ruled 2026-10-08), so its wisps do not burst and
+    keep their 4 s. A burst is an explosion and not a death, DS2's judgement, kept.
+  - *N17, every blow,* lays the buff's ailment, then its forced movement, then its named effect -- the order a strike
+    keeps -- on a blow that landed and dealt damage (Groundbreaker's hook hears no other), and NOT on a blow that killed:
+    a body is neither poisoned nor dragged. The buff grants its `Effect` to nobody else, its holder included, so Grim
+    Reach does not Cripple the player (the draft's and slice DS2's warning). Death Grip's "each drag within 5 seconds of
+    the last on the same enemy goes half as far" is the displacement rule every pull already meets
+    (`TakeNextDisplacementShare`, its five-second window), so it is no key.
+  - *N21, Grim Reach's reach,* is added to strikes tagged `Type.Melee` (the basic attack among them, issue #944), beside
+    the `melee_reach_metres` stat and after area of effect and a range increase, as Overreach's is; the largest of the
+    holder's running buffs, as `HeldRangeIncreasePercent` takes it.
+  - *The Wisp's threat* stays the draft's 10: neither Grave Mouth's sentence nor Soul Snare's says the enemies pass it
+    over, as Wailing Host's says of the Shade (slice DS1's judgement for the Shade is not carried over).
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's)
+  and `WeaponSkills.csv`, and every Unreal test reading the tables reads stale ones: the eight row tests and the two
+  counting tests fail at their set-up lines, which say so. The six mechanism tests write their own cells and raise Imps,
+  which the old table has, so they do not wait on it.
+
+**Affects:** `tools/generate_datatables.py` (`SCALING_SOURCES`, `SHAPE_PARAMS`, `check_a_spending_or_cashing_strike`,
+`check_a_bursting_rift_and_a_buff_on_every_blow`) and its copy in `sim/cataclysm_sim/enemy_abilities.py`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp` (`bSpendsAllFervour`, `CashInRadiusCm`,
+`bCollapseBursts`, `bEveryBlow`, `MeleeReachCm`); `CataclysmFervour.h` and `.cpp` (`SpendAll`); `CataclysmSkillTemplate.h`
+and `.cpp` (`FervourSpentThisUse`, `AilmentsCashedIn`, `CashInOwnAilmentsAround`, `HeldMeleeReachCm`, `ScalingUnits`,
+`MeleeReachBonusCm`); `CataclysmSkillTemplates.h` and `.cpp` (the strike's spend, cash-in and refund; the self buff's
+every-blow riders and its holder's effect; the rift's `SpawnTick` and `Collapse` made public, `BurstAtCollapse`);
+`CataclysmRisingCurse.h` (a comment); `CataclysmUndesignedSkill.h` (the counts); `tools/reapply_death_skills_workbook.py`
+and the workbook it edits; `game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `docs/README.md`; the Unreal
+tests in `CataclysmDeathSkillsTests.cpp` and `CataclysmDataTableTests.cpp`; and the Python checks named below.
+
+### The instruction, verbatim
+
+- The coordinating session's brief for slice DS4, 2026-11-24: "Build these pieces and give every row they complete its
+  full Shape: N12 (Grave Mouth, and with DS3's N5, Soul Snare; it needs the `Wisp` minion row), N9 (Mercy Stroke), N13
+  (Requiem), N15 (Quietus), N17 (Hemlock, Death Grip; with N21, Grim Reach: the flat 3 m reach that `RangeIncrease`
+  cannot give ...)." No owner ruling is new to this slice; the rows are the 40 the owner approved on 2026-11-24, quoted
+  in DS1's entry below.
+
+### The rows
+
+**Eight more written whole**, 39 of the 45 in all, each exactly as approved:
+
+| Row | Needs |
+| :-- | :-- |
+| Mercy Stroke (Sword Heavy) | N9 |
+| Grave Mouth (Staff Special) | N12 |
+| Soul Snare (Wand Support) | N5, N12 |
+| Requiem (Wand Ultimate) | N13 |
+| Quietus (Fist Ultimate) | N15 |
+| Hemlock (Fist Support) | N17 |
+| Death Grip (Whip Support) | N17 |
+| Grim Reach (Spear Support) | N17, N21 |
+
+**6 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N14 (burst on death) | Gravetouch |
+| N18 (untargetable on a charge) | Wraithwalk |
+| N19 (Fervour per enemy hit, a cap a cast) | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The minion kind**: `Wisp` (60 health, 3.5 a blow every 0.8 s, threat 10, reach 3 m, `Minion.Spell`), the draft's
+figures. **The workbook cells**, 30: on Weapon Skills, the Shape and Shape Params of the eight rows (16); on Minion
+Types, row 16, every column (14). Run a second time the script writes nothing ("0 cells to write; nothing written"), and
+`generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N9, `RefundsCooldown` on a Strike.** `UCataclysmStrikeSkill::SwingOnce` returns the named cooldown when a target
+  its swing struck is dead or at no health, Emberhaul's test at a movement's arrival. No key: `RefundsCooldown` was a
+  rider every shape may state and no strike read it.
+- **N13, `SpendsAllFervour=1` and `ScalingSource=FervourSpent` on a Strike.** `UCataclysmStrikeSkill::ActivateAbility`,
+  once `CommitAndBegin` has paid the cost, empties the pool (`UCataclysmFervour::SpendAll`) and records the cost and the
+  rest in `FervourSpentThisUse`, which `ScalingUnits` answers for `FervourSpent`: Requiem's 250%, 1% more a point
+  spent, to its 700% ceiling (500% at 100). The generator refuses `FervourSpent` without `SpendsAllFervour=1`.
+- **N15, `CashInRadius=N` on a Strike.** In the same swing, after the blow and its curse,
+  `UCataclysmSkillTemplate::CashInOwnAilmentsAround` deals every Poison, Bleed and Necrosis the caster laid on an enemy
+  within N metres at 100% of what it had left and ends it: the enchantment row's call
+  (`UCataclysmSkillEffects::DealRemainingDamageOverTime`, "all active DoTs on nearby enemies instantly deal their
+  remaining damage"), once for each of the three tags. A bleed pays only what its four seconds of movement still allow
+  (issue #918). The generator refuses a radius of nought or less.
+
+**Change B.**
+
+- **N12, `CollapseBursts=1` on a rift.** `UCataclysmSummonSkill::Collapse` explodes every living minion of the rift's
+  list (`ACataclysmMinion::Explode`, its own blow in the row's radius) before destroying what is left. `SpawnTick` and
+  `Collapse` are public so a test drives a rift without a clock. The generator refuses it on a summon that is no rift
+  (an `Interval` and a `Duration`), which never closes.
+- **N17, `EveryBlow=1` on a self buff.** `UCataclysmSelfBuffSkill::NoteBlowLanded`, Groundbreaker's hook, which every
+  landed blow of the holder's reaches (projectiles and buried weapons included, issue #1938), lays the buff's
+  `Ailment` (`ApplyStatedAilmentTo`), `ForcedMovement` (`ApplyForcedMovementTo`) and `Effect` (`ApplyNamedEffectsTo`)
+  on what the blow hit, and `ActivateAbility` grants the buff's `Effect` to its holder only when the row states no
+  `EveryBlow`. The generator refuses it with nothing to lay.
+- **N21, `MeleeReachMetres=N` on a self buff.** `UCataclysmSkillTemplate::HeldMeleeReachCm` (the largest of the holder's
+  running buffs) is added in `MeleeReachBonusCm` beside the `melee_reach_metres` stat for a strike tagged `Type.Melee`,
+  so `ScaledRadiusCm` and the basic attack's reach (`UCataclysmBasicAttack`) both take it: the spear's swing reaches
+  6.3 m and Reaping Arc 10. The generator refuses nought or less.
+
+### Research
+
+No formula is new. Each shape is the approved draft's, with its sources -- Diablo IV's Reap and its "Cull the Weak"
+upgrade (Mercy Stroke's refund), Last Epoch's Summon Wraith as Maxroll describes it and Path of Exile 2's Unearth (Grave
+Mouth's stream of short-lived minions), the draft's research table -- which were not fetched again for this slice. The
+draft names this game's own precedent for each piece -- Emberhaul's arrival (N9), Soul Fuel's spend and Extinction's
+`ScalingSource=Consumed` (N13), the necrosis enchantment that deals remaining damage (N15), Open the Rift's collapse and
+`ACataclysmMinion::Explode` (N12), Groundbreaker's every blow (N17), Overreach's flat reach and Coil of Embers'
+`HeldRangeIncreasePercent` (N21) -- and each piece calls that precedent's code rather than a copy. What the precedents
+do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **60 performed, 60 succeeded** (DS1's 14, DS2's
+14, DS3's 18 and these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `AStrikeThatRefundsItsCooldownIsReadyAgainWhenItsSwingKillsAndWaitsWhenItDoesNot` | A, N9 | a kill takes the cooldown off; controls: a survivor, and no key, keep it |
+| `AStrikeThatSpendsEveryFervourEmptiesThePoolAndStrikesHarderForWhatItSpentToItsCeiling` | A, N13 | 100 spent, pool empty, 2x; 150 spent, 2.4x under a 600 ceiling; control: spends its 50 alone |
+| `AStrikeThatCashesInEndsItsCastersPoisonBleedAndNecrosisWithinItsRadiusForWhatTheyHadLeft` | A, N15 | three cashed in and ended; burn, another's, 12 m off run on; control: no key |
+| `ARiftThatBurstsAsItClosesExplodesWhatItRaisedAndOneThatDoesNotDestroysItQuietly` | B, N12 | two burst, 1 m past struck, 7 m past not; control: destroyed, nothing struck |
+| `ABuffOnEveryBlowLaysItsAilmentEffectAndPullOnWhatItsHolderHitsAndNothingOnItsHolder` | B, N17 | Poison, Cripple 30 for 4 s, dragged ~1 m, holder unharmed; control: the swing before it |
+| `ABuffLengtheningMeleeReachMakesAMeleeStrikeReachItsMetresFartherAndARangedOneNoFarther` | B, N21 | 2 m to 5 m, the 4 m creature struck, ranged stays 2 m, back on cancel; control: misses before |
+| `MercyStrokeStrikesOneEnemyForThreeHundredAndIsReadyAgainWhenItKills` | C, row | one struck, killed, cooldown off; control: a survivor's cooldown runs |
+| `GraveMouthStreamsEightWispsReservingTwoAndBurstsThemAllAsItCloses` | C, row | eight wisps of 4 s reserving 2, a ninth refused; all burst; control: 7 m past |
+| `SoulSnareShredsWithinFourteenMetresAndTheSnaredDeadLooseGraveMouthsWisp` | C, row | Shred 10 s on two; a wisp of 4 s reserving 2 rises; control: 15 m |
+| `RequiemSpendsEveryFervourStrikesHarderForWhatItSpentToSevenHundredAndCripplesByForty` | C, row | 50, 100, 200 spent: 375%, 500%, 700%; Cripple 40 for 6 s at 13 m; control: 15 m |
+| `QuietusStrikesOneEnemyAndCashesInTheCastersAilmentsWithinTenMetres` | C, row | one struck; three cashed in at 8 m; control: 11 m runs on |
+| `HemlockPoisonsWhatEveryBlowHitsForSixSeconds` | C, row | 6 s; a blow poisons; control: the swing before it |
+| `DeathGripDragsWhatEveryBlowHitsAMetreAndHalfAsFarWithinFiveSeconds` | C, row | ~1 m, then ~half; control: the swing before it |
+| `GrimReachMakesTheSpearReachThreeMetresFartherAndEveryHitCrippleByThirty` | C, row | 3.3 m to 6.3 m, Cripple 30 for 4 s, holder unharmed; control: misses before |
+
+**Three Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 39 rows (from 31), the eight rows' DS4 keys and Mercy Stroke's crit chance and cooldowns;
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 6 waiting (from 14) and 45 of
+51 shaped (from 37); `Cataclysm.Data.EveryGeneratedTableImports` pins `MinionTypes.csv` at 15 (from 14). **The whole
+suite is registered as 5472**: slice DS3's registered 5458 and these 14; a prediction, the run is the figure.
+
+**Six C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`, after the editor step.
+Change A has three, change B three; change C is data and has none:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N9 | `CataclysmSkillTemplates.cpp` | `if (!Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())` becomes `if (false && !Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())` | `AStrikeThatRefundsItsCooldown...`, `MercyStrokeStrikes...` |
+| G2, N13 | `CataclysmSkillTemplates.cpp` | `FervourSpentThisUse = FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender);` becomes `FervourSpentThisUse = 0.0f * (FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender));` | `AStrikeThatSpendsEveryFervour...`, `RequiemSpends...` |
+| G3, N15 | `CataclysmSkillTemplate.cpp` | `if (!Self \|\| Params.CashInRadiusCm <= 0.0f)` becomes `if (true \|\| !Self \|\| Params.CashInRadiusCm <= 0.0f)` | `AStrikeThatCashesIn...`, `QuietusStrikes...` |
+| G4, N12 | `CataclysmSkillTemplates.cpp` | `if (Params.bCollapseBursts)` becomes `if (false && Params.bCollapseBursts)` | `ARiftThatBurstsAsItCloses...`, `GraveMouthStreams...` (not Soul Snare, whose wisp rises without a closing) |
+| G5, N17 | `CataclysmSkillTemplates.cpp` | `if (Params.bEveryBlow && IsValid(Target))` becomes `if (false && Params.bEveryBlow && IsValid(Target))` | `ABuffOnEveryBlow...`, `HemlockPoisons...`, `DeathGripDrags...`, `GrimReachMakes...` |
+| G6, N21 | `CataclysmSkillTemplate.cpp` | `Largest = FMath::Max(Largest, Running->Params.MeleeReachCm);` becomes `Largest = 0.0f * FMath::Max(Largest, Running->Params.MeleeReachCm);` | `ABuffLengtheningMeleeReach...`, `GrimReachMakes...` |
+
+Each break line was confirmed to appear exactly once in its file.
+
+**Python checks moved with the rows:** the script's built rows 31 to 39, what each of the six waiting rows waits on, and
+a rising curse with the row it reads (`test_reapply_death_skills_workbook.py`); two rising curses, Death Rattle's husk and
+Soul Snare's wisp (`test_minion_skill_shapes.py`); the `Wisp` in the minion table (`test_minion_stat_blocks.py`);
+`RESERVING_SKILLS` 10 to 11 (`test_every_gadget_skill_reserves_fervour.py`); the README's Minion Types row count 14 to
+15; the undesigned count 68 of 198 to 60 (`CataclysmUndesignedSkill.h`). **New:** in `test_death_skill_shape_keys.py`,
+each new key accepted on its rows' cells and refused where it would do nothing.
+
+### What was run, on `299592390`
+
+- **Full Python suite: "1 failed, 8404 passed, 9 skipped in 341.62s"; JUnit 8414 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` and `WeaponSkills.csv`; the editor step clears it. ruff: "All checks passed!".
+  `tools/check_resolved_cpp.py` on the twelve changed C++ files: "12 files read, 0 with complaints". The engine-name,
+  anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0 cells to write;
+  nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+
+- **Six Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `299592390`**, each
+  failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N13 | the `FervourSpent`-without-`SpendsAllFervour` refusal made `if False and ...` | the three `test_scaling_by_the_fervour_spent_without_spending_it_is_refused` |
+| P2, N15 | the nought-or-less `CashInRadius` refusal made `if False and ...` | both `test_a_cash_in_that_reaches_nobody_is_refused` |
+| P3, N12 | the no-rift refusal made `if False and not rift:` | the four `test_bursting_what_was_raised_on_a_summon_that_never_closes_is_refused` |
+| P4, N17 | the nothing-to-lay refusal made `if False and not lays:` | `test_a_buff_on_every_blow_that_lays_nothing_is_refused` |
+| P5, N21 | the nought-or-less `MeleeReachMetres` refusal made `if False and ...` | both `test_a_buff_adding_no_reach_is_refused` |
+| P6, the rows | `BUILT` without N12 in the script | six checks of `test_reapply_death_skills_workbook.py` (the committed workbook and table among them) and two of `test_minion_skill_shapes.py` |
+
+---
+
 ## 2026-11-24 — The Death weapon skills, slice DS3: nine more rows working; Fervour paid for a kill, scaling by the Fervour held, a buff holding Fervour from decay, a flicker its deaths lengthen, and a curse under which the dying rise (#2885)
 
 **Said first:**
