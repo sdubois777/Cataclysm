@@ -137,7 +137,19 @@ its Imp is Common, draws nothing, and only its starting damage and health are as
 | B3-2, a load forgets it | `CataclysmSaveApply.cpp` | `Dungeon.GiveTheDungeonsCataclysm(Back);` read as `;` | `Cataclysm.SaveLoad.ACreatureSavedInADeathDungeon` | `ACreatureSavedInADeathDungeonComesBackDealingDeath` |
 | B3-3, the called Imps do not | `CataclysmGatekeeperCharacter.cpp` | `Imp->DamageType = DamageType;` read as `;` | `Cataclysm.CreatureCataclysm.TheGatekeepers` | `TheGatekeepersCalledImpsTakeItsCataclysm` |
 
-**Python.** No Python check reads these functions; none was added (the slice changes no data and nothing in `sim/`).
+**Python.** One existing check read the change and refused it, rightly by its letter:
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py::test_no_floor_rule_writes_a_shared_damage_type` forbids any
+`->DamageType =` in `CataclysmDungeonGameMode.cpp`, because before issue #1924 the floor rules wrote a type onto the
+one hazard-source actor they all share. `GiveTheDungeonsCataclysm` writes one creature's own field, which is not that.
+**The check now leaves out that one function's body by name, and only it**: the function must exist, and every write in
+it must be onto its own creature, `Enemy`. Proved with `tools/prove_guard.py`, both halves, on the test file alone:
+
+| Break in `CataclysmDungeonGameMode.cpp` | Result |
+| :-- | :-- |
+| `DungeonCataclysm = ECataclysmType::None;` in `LeaveEmpireDungeon` read as `TheReaper->DamageType = NAME_None;` | "PROVED: 1 failed, 222 passed in 0.91s \| restored: 223 passed in 0.74s"; named failure `test_no_floor_rule_writes_a_shared_damage_type` |
+| `Enemy->DamageType = SendersDamageType;` read as `CorruptedStalker->DamageType = SendersDamageType;` | "PROVED: 1 failed, 222 passed in 0.86s \| restored: 223 passed in 0.74s"; the same named failure |
+
+No other Python check was added: the slice changes no data and nothing in `sim/`.
 
 ---
 
