@@ -36,6 +36,7 @@
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "HAL/IConsoleManager.h"
+#include "TimerManager.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
 // For the level a minion's own health and damage are raised by, and for the
@@ -2721,6 +2722,9 @@ bool ACataclysmMinion::StartPlayersSkillFromHere(AActor* Player, const FCataclys
 const TCHAR* ACataclysmMinion::SkillTrapTypeName = TEXT("SkillTrap");
 const TCHAR* ACataclysmMinion::TrapArmingSpeedStat = TEXT("trap_arming_speed");
 const TCHAR* ACataclysmMinion::TrapTriggerRadiusStat = TEXT("trap_trigger_radius");
+const TCHAR* ACataclysmMinion::TrapsArmInstantlyStat = TEXT("traps_arm_instantly");
+const TCHAR* ACataclysmMinion::TrapArmingSecondsAddedStat = TEXT("trap_arming_seconds_added");
+const TCHAR* ACataclysmMinion::TrapArmingSecondsLessPerOtherTrapStat = TEXT("trap_arming_seconds_less_per_other_trap");
 
 namespace
 {
@@ -2731,13 +2735,88 @@ namespace
 			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
 		return Theirs ? FMath::Max(0.0f, Theirs->IncreasesForStat(FName(Stat), TrapTags)) : 0.0f;
 	}
+
+	/** The player's own figure of `Stat` for a trap of `TrapTags`, through the pipeline, or nought. Floored at nought. */
+	float SkillTrapTimingFigureOf(const AActor* Player, const TCHAR* Stat, const FGameplayTagContainer& TrapTags)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+		return Theirs ? FMath::Max(0.0f, Theirs->StatForSkill(FName(Stat), TrapTags, /*Fallback=*/0.0f)) : 0.0f;
+	}
 }
 
-float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
+float ACataclysmMinion::SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags,
+												  const ACataclysmMinion* Self)
 {
+	// HAIR TRIGGER AT 5 POINTS: AT ONCE, whatever else is held (the C1 plan, ruled 2026-11-25: it beats Delayed Fuse).
+	if (SkillTrapTimingFigureOf(Player, TrapsArmInstantlyStat, TrapTags) > 0.0f)
+	{
+		return 0.0f;
+	}
+
 	// FASTER IS A RATE, so the seconds are divided by one plus the increases, as "Gadgets fire 20%-40% faster" divides a
-	// gadget's clock. 60% faster arms in 1/1.6 of a second.
-	return SkillTrapArmSeconds / (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+	// gadget's clock. 60% faster arms in 1/1.6 of a second. DELAYED FUSE'S EXTRA SECOND IS ADDED FIRST (ruled), so
+	// arming speed shortens the whole delay.
+	const float Seconds = (SkillTrapArmSeconds + SkillTrapTimingFigureOf(Player, TrapArmingSecondsAddedStat, TrapTags))
+		/ (1.0f + SkillTrapIncreasesOf(Player, TrapArmingSpeedStat, TrapTags));
+
+	// VOLATILE CASING: LESS FOR EACH OTHER TRAP STANDING, after the division, counted when this one is placed or rearmed,
+	// and never below the floor by it (a time already under the floor is left as it is).
+	const float LessPerOther = SkillTrapTimingFigureOf(Player, TrapArmingSecondsLessPerOtherTrapStat, TrapTags);
+	if (LessPerOther <= 0.0f)
+	{
+		return Seconds;
+	}
+	int32 Others = 0;
+	for (const ACataclysmMinion* Each : SkillTrapsOf(Player))
+	{
+		Others += Each != Self ? 1 : 0;
+	}
+	return FMath::Max(FMath::Min(Seconds, SkillTrapArmingFloorSeconds), Seconds - LessPerOther * Others);
+}
+
+void ACataclysmMinion::BeginSkillTrapArming(float Seconds)
+{
+	UWorld* const World = GetWorld();
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(SkillTrapArmingTimer);
+	}
+	SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + FMath::Max(0.0f, Seconds);
+	bSkillTrapArmed = Seconds <= 0.0f;
+	ShowSkillTrapTint();
+	if (!World)
+	{
+		return;
+	}
+	if (Seconds > 0.0f)
+	{
+		World->GetTimerManager().SetTimer(SkillTrapArmingTimer, this, &ACataclysmMinion::SkillTrapArmingTimeReached,
+										  Seconds, /*bLoop=*/false);
+	}
+	else
+	{
+		SkillTrapArmingTimer =
+			World->GetTimerManager().SetTimerForNextTick(this, &ACataclysmMinion::SkillTrapArmingTimeReached);
+	}
+}
+
+void ACataclysmMinion::SkillTrapArmingTimeReached()
+{
+	if (!IsSkillTrap() || IsActorBeingDestroyed())
+	{
+		return;
+	}
+	// THE TIMER IS THE ARMING TIME, so it arms the trap rather than asking the age again, which a world clock added up in
+	// floating point could leave a hair short. Then the step, as on any quarter second: an enemy within the radius sets
+	// it off now.
+	if (!bSkillTrapArmed)
+	{
+		bSkillTrapArmed = true;
+		SkillTrapArmsAtAgeSeconds = FMath::Min(SkillTrapArmsAtAgeSeconds, GetGameTimeSinceCreation());
+		ShowSkillTrapTint();
+	}
+	StepSkillTrap();
 }
 
 float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags)
@@ -2827,10 +2906,9 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		Placed->SetLifeSpan(0.0f);
 	}
 	Placed->SkillTrapSlot = Slot;
-	Placed->SkillTrapArmsAtAgeSeconds =
-		Placed->GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, Placed->TypeTags);
-	Placed->bSkillTrapArmed = false;
-	Placed->ShowSkillTrapTint();
+	// ARMED AT ITS EXACT TIME, by a timer (the C1 plan, ruled 2026-11-25). The slot is set above, so `SkillTrapsOf` counts
+	// this trap and Volatile Casing passes over it as `Self`.
+	Placed->BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, Placed->TypeTags, Placed));
 	// ITS RESERVE, and the spendable Fervour cut to what is left.
 	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
 
@@ -3003,9 +3081,9 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// kept among the used-up traps, so a later blow of its cast finds it standing.
 	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
 	{
-		bSkillTrapArmed = false;
-		SkillTrapArmsAtAgeSeconds = GetGameTimeSinceCreation() + SkillTrapArmingSecondsFor(Player, TypeTags);
-		ShowSkillTrapTint();
+		// AND ARMED AGAIN AT ITS EXACT TIME, as at placing (the C1 plan, ruled 2026-11-25). An arming time of nought arms
+		// it now and looks for an enemy on the next tick, so it still cannot trigger twice in this step.
+		BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, TypeTags, this));
 		return true;
 	}
 
@@ -3082,6 +3160,7 @@ AActor* ACataclysmMinion::SkillTrapNearestEnemyTo(AActor* TriggeringEnemy) const
 // ==========================================================================
 
 const TCHAR* ACataclysmMinion::TrapsDoNotExpireStat = TEXT("traps_do_not_expire");
+const TCHAR* ACataclysmMinion::TrapsNotSetOffWhileArmingStat = TEXT("traps_not_set_off_while_arming");
 
 namespace
 {
@@ -3261,14 +3340,18 @@ int32 ACataclysmMinion::SetOffSkillTrapsNear(AActor* Player, const FVector* Plac
 	// as its own step casts nothing then.
 	TArray<ACataclysmMinion*> Standing = SkillTrapsStandingNear(Player, Place, RadiusCm, Except);
 	const TArray<TWeakObjectPtr<AActor>>& SetOffThisChain = Theirs->SkillTrapsSetOffThisChain;
-	Standing.RemoveAll([&SetOffThisChain, Theirs](const ACataclysmMinion* Each)
+	// AND NONE STILL ARMING, FOR A PLAYER HOLDING DELAYED FUSE'S FLAG (the C1 plan, ruled 2026-11-25): "cannot be
+	// accidentally triggered by you or your gadgets during the arming period". Without it, armed and unarmed alike (H4).
+	const bool bSparesTheArming = SkillTrapFigureOf(Player, TrapsNotSetOffWhileArmingStat) > 0.0f;
+	Standing.RemoveAll([&SetOffThisChain, Theirs, bSparesTheArming](const ACataclysmMinion* Each)
 	{
 		// A STANDING TRAP IS ITSELF IN THE LIST WHILE IT STANDS, so comparing what the list names now is enough here.
 		const bool bSetOffAlready = SetOffThisChain.ContainsByPredicate([Each](const TWeakObjectPtr<AActor>& Fired)
 		{
 			return Fired.Get() == Each;
 		});
-		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot);
+		return bSetOffAlready || UCataclysmSkillEffects::CannotAct(Each) || !Theirs->SlotIsASkillTrap(Each->SkillTrapSlot)
+			|| (bSparesTheArming && !Each->bSkillTrapArmed);
 	});
 	if (bNearestOnly && Place)
 	{

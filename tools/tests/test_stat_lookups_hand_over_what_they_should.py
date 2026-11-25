@@ -1126,6 +1126,12 @@ INVENTORY = {
         "row requiring one ailment's tag reaches that ailment alone; no blow "
         "exists yet and the stat is no modifier of one, so no blow and no "
         "target are handed over",
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan): Hair Trigger's flag, Delayed Fuse's extra second and
+    # Volatile Casing's seconds less for each other trap.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(Stat), TrapTags, 0.0f'):
+        "the player's own trap-timing figures, asked by SkillTrapTimingFigureOf with the trap's type tags when "
+        "a trap is placed or rearmed; no blow and no target exist then",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
      'FName(Stat), TypeTags, 0.0f'):
         "a stat a summoner's row gives its gadgets (ruled 2026-10-13), asked "

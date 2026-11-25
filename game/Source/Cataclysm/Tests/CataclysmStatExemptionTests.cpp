@@ -12184,6 +12184,105 @@ namespace CataclysmStatExemptionTest
 		}
 	}
 
+	/**
+	 * THE SABOTEUR'S TRAP TIMING, ruled 2026-11-25 (the C1 plan): four figures of the player's, each against a control
+	 * without it.
+	 * - `traps_arm_instantly` (`ACataclysmMinion::SkillTrapArmingSecondsFor`): one second without it, none with it.
+	 * - `trap_arming_seconds_added` (the same reader): one second without it, two with 1 of it.
+	 * - `trap_arming_seconds_less_per_other_trap` (the same reader): with a second trap of the player's standing, one
+	 *   second without it, three quarters with 0.25 of it.
+	 * - `traps_not_set_off_while_arming` (`ACataclysmMinion::SetOffSkillTrapsNear`): an unarmed trap is passed over with
+	 *   it, and recorded without it. The flagged call comes first, since a recorded trap joins the chain and is never
+	 *   chosen again in it.
+	 *
+	 * WHAT THIS DOES NOT REACH. A trap arming or set off by them: `Cataclysm.SaboteurTrapTiming.`.
+	 */
+	void ProbeTrapTiming(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FGameplayTagContainer TrapTags(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+		const float Plain = ACataclysmMinion::SkillTrapArmSeconds;
+
+		if (Which <= 1)
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+			Test.TestEqual(TEXT("control: with no row a trap arms in its ruled second"),
+						   ACataclysmMinion::SkillTrapArmingSecondsFor(Fighter.Actor, TrapTags), Plain, 0.0001f);
+			if (Which == 0)
+			{
+				GrantFlat(Fighter.Actor, ACataclysmMinion::TrapsArmInstantlyStat, 1.0f);
+				Test.TestEqual(TEXT("with traps_arm_instantly it arms at once, so SkillTrapArmingSecondsFor reads it"),
+							   ACataclysmMinion::SkillTrapArmingSecondsFor(Fighter.Actor, TrapTags), 0.0f, 0.0001f);
+				return;
+			}
+			GrantFlat(Fighter.Actor, ACataclysmMinion::TrapArmingSecondsAddedStat, 1.0f);
+			Test.TestEqual(TEXT("with 1 of trap_arming_seconds_added it arms in two, so SkillTrapArmingSecondsFor reads it"),
+						   ACataclysmMinion::SkillTrapArmingSecondsFor(Fighter.Actor, TrapTags), Plain + 1.0f, 0.0001f);
+			return;
+		}
+
+		// A PLAYER WHO CAN PLACE TRAPS: a pool to hold their reserves, and its Heavy slot a trap's.
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		ACataclysmPlayerCharacter* Player =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+		UCataclysmAbilitySystemComponent* System =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+		if (!Player || !Test.TestNotNull(TEXT("a player with an ability system"), System))
+		{
+			return;
+		}
+		Player->SetPlayerState(PlayerState);
+		Player->OnRep_PlayerState();
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+		const FName Converted(TEXT("skill_slot_is_a_trap"));
+		GrantFlats(Player, {{Converted, 1.0f}});
+		ACataclysmMinion* First =
+			ACataclysmMinion::PlaceSkillTrap(Player, ECataclysmAbilitySlot::Heavy, FVector(300.0f, 0.0f, 0.0f));
+		if (!Test.TestNotNull(TEXT("a trap is placed"), First))
+		{
+			return;
+		}
+
+		if (Which == 2)
+		{
+			ACataclysmMinion* Second =
+				ACataclysmMinion::PlaceSkillTrap(Player, ECataclysmAbilitySlot::Heavy, FVector(600.0f, 0.0f, 0.0f));
+			if (!Test.TestNotNull(TEXT("a second trap is placed"), Second))
+			{
+				return;
+			}
+			Test.TestEqual(TEXT("control: with a second trap standing and no row, the first arms in its second"),
+						   ACataclysmMinion::SkillTrapArmingSecondsFor(Player, TrapTags, First), Plain, 0.0001f);
+			GrantFlats(Player, {{Converted, 1.0f},
+								{FName(ACataclysmMinion::TrapArmingSecondsLessPerOtherTrapStat), 0.25f}});
+			Test.TestEqual(TEXT("with 0.25 of trap_arming_seconds_less_per_other_trap it arms in three quarters, so "
+								"SkillTrapArmingSecondsFor reads it"),
+						   ACataclysmMinion::SkillTrapArmingSecondsFor(Player, TrapTags, First), Plain - 0.25f, 0.0001f);
+			return;
+		}
+
+		if (!Test.TestFalse(TEXT("set-up: the trap is still arming"), First->bSkillTrapArmed))
+		{
+			return;
+		}
+		const FVector Place = First->GetActorLocation();
+		GrantFlats(Player, {{Converted, 1.0f}, {FName(ACataclysmMinion::TrapsNotSetOffWhileArmingStat), 1.0f}});
+		const int32 Spared = ACataclysmMinion::SetOffSkillTrapsNear(Player, &Place, 100.0f, /*bNearestOnly=*/false,
+																   /*Except=*/nullptr, /*bEvenForADeadPlayer=*/false);
+		GrantFlats(Player, {{Converted, 1.0f}});
+		const int32 Recorded = ACataclysmMinion::SetOffSkillTrapsNear(Player, &Place, 100.0f, /*bNearestOnly=*/false,
+																	 /*Except=*/nullptr, /*bEvenForADeadPlayer=*/false);
+		Test.TestEqual(TEXT("control: without traps_not_set_off_while_arming the arming trap is recorded"), Recorded, 1);
+		Test.TestEqual(TEXT("and with it the arming trap is passed over, so SetOffSkillTrapsNear reads it"), Spared, 0);
+	}
+
 	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpentOrDrained`: nothing for 20 spent
 	 *  without it; with 5 of it, two steps of 5% of 10,000. */
 	void ProbeHealthPerTenFervourSpent(FAutomationTestBase& Test)
@@ -12507,6 +12606,11 @@ namespace CataclysmStatExemptionTest
 			{TEXT("blood_price_percent_of_maximum_fervour"),
 			 [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 7); }},
 			{TEXT("blood_price_seconds"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 8); }},
+			// THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan).
+			{TEXT("traps_arm_instantly"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 0); }},
+			{TEXT("trap_arming_seconds_added"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 1); }},
+			{TEXT("trap_arming_seconds_less_per_other_trap"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 2); }},
+			{TEXT("traps_not_set_off_while_arming"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 3); }},
 		};
 		return Made;
 	}

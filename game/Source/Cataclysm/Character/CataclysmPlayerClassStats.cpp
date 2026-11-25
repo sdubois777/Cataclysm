@@ -1011,6 +1011,15 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// ACataclysmMinion::SkillTrapsDoNotExpireFor. No gameplay attribute and no
 		// base. (M1's trap cap bonus went with the cap, issue #2787.)
 		TEXT("traps_do_not_expire"),
+		// THE SABOTEUR'S TRAP TIMING, ruled by the coordinating session on 2026-11-25 (the C1 plan): Hair Trigger's
+		// instant arming, Delayed Fuse's extra second and Volatile Casing's seconds less for each other trap, read
+		// off the player with the trap's type tags by ACataclysmMinion::SkillTrapArmingSecondsFor; and Delayed
+		// Fuse's flag sparing a trap still arming, read with Type.Trap by ACataclysmMinion::SetOffSkillTrapsNear.
+		// No gameplay attribute and no base.
+		TEXT("traps_arm_instantly"),
+		TEXT("trap_arming_seconds_added"),
+		TEXT("trap_arming_seconds_less_per_other_trap"),
+		TEXT("traps_not_set_off_while_arming"),
 		// Issue #2787, the owner's rulings of 2026-11-20: what raised a count cap
 		// lowers the reserve instead. The percent LESS one minion, gadget or trap
 		// reserves, a negative row being that many percent more, read with the

@@ -287,7 +287,7 @@
       "data": {
         "kind": "basic",
         "name": "Hair Wire",
-        "description": "+10% trap trigger radius per point. At 4 points: Traps trigger 20% faster after detecting an enemy.",
+        "description": "+10% trap trigger radius per point. At 4 points: Your traps arm 20% faster.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -309,7 +309,7 @@
       "data": {
         "kind": "basic",
         "name": "Volatile Casing",
-        "description": "Each active trap on the battlefield reduces the trigger delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds.",
+        "description": "Each active trap on the battlefield reduces the arming delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -375,7 +375,7 @@
       "data": {
         "kind": "basic",
         "name": "Minefield",
-        "description": "+10% trap placement speed per point. At 6 points: Your traps reserve 5% reduced Fervour.",
+        "description": "+10% trap arming speed per point. At 6 points: Your traps reserve 5% reduced Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -683,7 +683,7 @@
       "data": {
         "kind": "basic",
         "name": "Field Engineer",
-        "description": "+12% gadget deployment speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing.",
+        "description": "+12% gadget attack speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

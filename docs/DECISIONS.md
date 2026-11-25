@@ -2,6 +2,166 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Saboteur's trap timing: a trap arms at its exact time, Hair Trigger arms at once, Delayed Fuse adds a second and spares a trap still arming, Volatile Casing shortens arming for each other trap, and four sentences reworded to what the game has
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`:
+  - `BeginSkillTrapArming` and `SkillTrapArmingTimeReached`, a one-shot timer at placing and at rearming that arms the
+    trap and runs its step;
+  - `SkillTrapArmingSecondsFor` gains Hair Trigger's flag, Delayed Fuse's second and Volatile Casing's reduction (and a
+    `Self` parameter);
+  - `SetOffSkillTrapsNear` passes over a trap still arming for a player holding Delayed Fuse's flag;
+  - four stats: `traps_arm_instantly`, `trap_arming_seconds_added`, `trap_arming_seconds_less_per_other_trap`,
+    `traps_not_set_off_while_arming`.
+- `CataclysmPlayerClassStats.cpp`: the four stats have no attribute.
+- `docs/Saboteur_Class_Tree_Final.json` (four sentences, `tools/apply_saboteur_rewordings_2026_11_25.py`, new),
+  `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (540 rows): every row of six nodes
+  (`tools/reapply_war_saboteur_trap_timing_workbook.py`, new).
+  - Three of those nodes, Hair Trigger, Hair Wire and Minefield, are taken over from
+    `tools/reapply_war_saboteur_rows_workbook.py`, which no longer lists them.
+  - `tools/reapply_war_data_rows_workbook.py` gains `extending`: a node an earlier script wrote may hold some of the
+    rows wanted, and only the rest are appended. A row held that is not wanted is still refused, before the save and in
+    the read-back.
+  - `docs/README.md` (the sheet table).
+  - **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests:
+  - Unreal: `CataclysmSaboteurTrapTimingTests.cpp` (new, five), `CataclysmStatExemptionTests.cpp` (four probes),
+    `CataclysmDataTableTests.cpp` (the pin, 540).
+  - Python: `tools/tests/test_war_saboteur_trap_timing_scripts.py` (new, thirteen),
+    `test_war_saboteur_rows_scripts.py` (23 rows on 13 nodes), `test_passive_effects_match_the_node_text.py` (the new
+    words, 540 rows, 311 nodes), `test_stat_lookups_hand_over_what_they_should.py` (one lookup).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.SaboteurTrapTiming.`: five tests, new.
+  - `Cataclysm.StatExemption.`: the four probes; its count does not change.
+  - `Cataclysm.Data.`: the pin, 540.
+  - **The groups that place skill traps, because every trap now arms by a timer**, each count unchanged:
+    `Cataclysm.Traps.`, `Cataclysm.KindReserves.`, `Cataclysm.NoCaps.`, `Cataclysm.SaboteurDevices.`,
+    `Cataclysm.BuriedWeaponKills.`, `Cataclysm.DeathInActivation.`, `Cataclysm.LevelCosts.`,
+    `Cataclysm.NoSkillBlowTags.`, `Cataclysm.SkillAssignment.` and `Cataclysm.SkillLevelSources.`. The trap tests call
+    a trap's step by hand after a clock pass, so they never saw the quarter-second rounding, and they should hold.
+- **THE ARMING ROWS CHANGE IN PLAY.** Until this change a trap checked whether it had armed only on its quarter-second
+  step, so an arming time between two steps waited for the later one: 1/1.30 = 0.769 s armed at 1.0 s.
+  - **Any arming-speed bonus below a third did nothing on its own.** That covers Trapsmith's 6% a point at 1 to 5
+    points (the Saboteur rows slice) and the enchantment rows "Traps arm 30%-60% faster" below 34%.
+  - Now a trap arms at its exact time, so every one of those figures counts.
+  - A trap also looks for an enemy at that moment rather than at the next step, so a trap with an enemy already inside
+    its radius goes off up to a quarter second sooner than before.
+- **TWO NODES' CLAUSES ARE ALREADY TRUE AND HAVE NO ROW:**
+  - Trapsmith at 4 ("Traps can be placed while moving without interrupting your movement"): placing a skill trap by
+    its key starts no ability, plays no animation and stops nothing. A basic trap placed by clicking an enemy goes
+    through the world click, which ends a click-to-move path, as every click does.
+  - Field Engineer at 4 ("Deploying a gadget does not interrupt any action you are currently performing"): a skill
+    gadget is placed the same way; a War machine plays the punch clip and stops nothing.
+- **MERGE OBLIGATIONS:**
+  - Any other branch adding Passive Effects rows moves the same counts. Whichever merges second adds both.
+  - Any branch calling `tools/reapply_war_data_rows_workbook.py`'s `plan` or `apply` positionally past `label` must
+    account for the new `extending` argument (no caller does today).
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the C1/C5 plan of that day: "C1/C5 plan accepted
+as written." With it:
+- "Exact-time arming: yes, a one-shot timer at placing and rearming that arms the trap and runs the same enemy check.
+  Test it with a bonus below a third (for example 30%: arms at about 0.77 s, not 1.0 s) and a control with none. Say in
+  the entry that Trapsmith's rows and the enchantment trap-arming-speed rows did nothing below a third until this
+  change, so they change in play."
+- "Hair Trigger at 5 and Delayed Fuse: build as written. Judgement accepted: instant arming beats Delayed Fuse's extra
+  second when both are held."
+- "The rewordings, accepted as proposed, each recorded in the entry as the coordinating session's ruling of 2026-11-25
+  with the old sentence beside the new."
+- "Trapsmith at 4 and Field Engineer's 4-point clause: already true; no rows."
+
+The rule the rewordings follow, set by the coordinating session earlier that day: build the smallest mechanism, and
+reword only a sentence the game cannot have.
+
+**The rewordings, the coordinating session's ruling of 2026-11-25** (each sentence names a delay or a speed the game
+does not have: a trap triggers on the step it finds an enemy, with nothing between; placing and deploying take no time):
+
+| Node | Old sentence | New sentence |
+|---|---|---|
+| Hair Wire | "+10% trap trigger radius per point. At 4 points: Traps trigger 20% faster after detecting an enemy." | "+10% trap trigger radius per point. At 4 points: Your traps arm 20% faster." |
+| Volatile Casing | "Each active trap on the battlefield reduces the trigger delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds." | "Each active trap on the battlefield reduces the arming delay of all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds." |
+| Minefield | "+10% trap placement speed per point. At 6 points: Your traps reserve 5% reduced Fervour." | "+10% trap arming speed per point. At 6 points: Your traps reserve 5% reduced Fervour." |
+| Field Engineer | "+12% gadget deployment speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing." | "+12% gadget attack speed per point. At 4 points: Deploying a gadget does not interrupt any action you are currently performing." |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Exact-time arming.**
+   - Placing and rearming set a one-shot timer for the arming time. Its call arms the trap and runs the trap's step,
+     which looks for an enemy at once.
+   - An arming time of nought arms the trap at placing, and looks for an enemy on the next tick, so nothing is set off
+     inside the press that placed it.
+   - The quarter-second step still arms a trap whose time has passed, as before.
+2. **Hair Trigger at 5:** `traps_arm_instantly`, a flag; the trap arms at placing (and at rearming).
+3. **Delayed Fuse:**
+   - 15% increased trap damage a point (`minion_damage` on `Type.Trap`).
+   - `trap_arming_seconds_added` 1: the extra second, added to the base before arming speed divides it (a judgement of
+     the plan: arming speed shortens the whole delay).
+   - `traps_not_set_off_while_arming`: a flag under which a forced set-off passes over a trap still arming. Neither the
+     player nor a gadget ever sets off a trap by standing near it. The row actions do: a gadget destroyed, a trap
+     triggered, the player's death. Every one of those comes through `SetOffSkillTrapsNear`.
+4. **Volatile Casing:** 0.1 s a point less for each other skill trap of the player's standing when this one is placed
+   or rearmed. It is taken off after the speed division, and the time is never brought below 0.1 s by it; a time
+   already under 0.1 s is left as it is. **Judgement:** counted at placing and rearming, so a trap placed later does
+   not shorten one already arming.
+5. **The rows, every row of six nodes:**
+   - Hair Trigger's radius and flag (from 5 points).
+   - Hair Wire's radius and 20% arming speed (from 4 points).
+   - Volatile Casing's 0.1 s a point.
+   - Minefield's 10% arming speed a point and its reserve (from 6 points).
+   - Field Engineer's 12% `minion_attack_speed` a point on `Type.Gadget` (the stat "Gadgets fire faster" uses).
+   - Delayed Fuse's three.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `tools/reapply_war_data_rows_workbook.py`: the extending path no longer refuses a row held beside the wanted ones | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_row_script_refuses_a_row_somebody_wrote_on_a_node_it_extends` |
+| `game/Data/PassiveEffects.csv`: Hair Wire's arming speed from 3 points, not 4 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `docs/Saboteur_Class_Tree_Final.json`: Volatile Casing's sentence back to "trigger delay" | `pytest tools/tests/test_war_saboteur_trap_timing_scripts.py` | `test_the_tree_file_holds_the_reworded_sentences`, `test_the_reword_script_rewords_the_ruled_sentences_once` |
+
+**THE FIRST PROOF FAILED ONCE, AND THAT FOUND TWO FAULTS.** As first written, the refusal test passed with the break
+in. The break let the script append beside the foreign row and save; the read-back after the save then refused, and its
+message quotes the same words the test matched.
+- The read-back now passes `extending` too.
+- The test now also asserts the message does not say the workbook was saved, and that the file is unchanged.
+- The rerun proved.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurTrapTiming.ATrapArmsAtItsExactTimeNotAtTheNextQuarterSecond` | two traps placed at one moment, the control with no row and one with 30% arming speed (0.769 s); the clock run as play runs it: 0.8 s in, the quick trap is armed and the control is not; 1.05 s in, both |
+| `Cataclysm.SaboteurTrapTiming.HairTriggerArmsAtOnceAndBeatsDelayedFusesExtraSecond` | the control at 1 s; the extra second at 2 s; the flag armed at placing; both held, armed at placing; on the clock the fused trap is unarmed at 1.05 s and armed at 2.05 s |
+| `Cataclysm.SaboteurTrapTiming.VolatileCasingShortensArmingForEachOtherTrapDownToATenthOfASecond` | with four others standing and no row, 1 s (control); 0.2 s less for five others held at 0.1 s; 0.15 s less for six, 0.1 s; 0.1 s less for seven, 0.3 s; 0.15 s in, the floored trap is armed and the 0.3 s one and the control are not |
+| `Cataclysm.SaboteurTrapTiming.DelayedFuseKeepsATrapStillArmingFromBeingSetOff` | two players, each with an armed trap and one still arming; a forced set-off of all of each player's traps: without the flag both recorded (control), with it only the armed one |
+| `Cataclysm.SaboteurTrapTiming.TheGeneratedRowsGiveEachFigureAtItsPoints` | the generated rows: Hair Trigger no flag at 4 (control), the flag at 5; Hair Wire no arming speed at 3 (control), 20% at 4; Volatile Casing 0.8 at 8; Minefield 80% at 8; Field Engineer 96% at 8 on a gadget and none on a trap (control); Delayed Fuse at 6: 90%, one second, the flag |
+
+Predicted counts:
+- `Cataclysm.SaboteurTrapTiming.`: 5.
+- `Cataclysm.Data.`: the pin, 540; its count unchanged.
+- `Cataclysm.StatExemption.` and the trap-placing groups listed above: unchanged.
+
+**Planned C++ guard proofs** (one per mechanism; not run; prefix `Cataclysm.SaboteurTrapTiming.`):
+1. **Exact-time arming:** in `CataclysmMinion.cpp`, `BeginSkillTrapArming`'s
+   `World->GetTimerManager().SetTimer(SkillTrapArmingTimer, ...)` is taken out. Must fail
+   `ATrapArmsAtItsExactTimeNotAtTheNextQuarterSecond` ("0.8 s in, the quick trap is armed") and
+   `VolatileCasingShortensArmingForEachOtherTrapDownToATenthOfASecond` ("0.15 s in, the floored trap is armed").
+2. **Hair Trigger:** in `SkillTrapArmingSecondsFor`, `if (SkillTrapTimingFigureOf(Player, TrapsArmInstantlyStat,
+   TrapTags) > 0.0f)` becomes `if (false)`. Must fail `HairTriggerArmsAtOnceAndBeatsDelayedFusesExtraSecond`.
+3. **Delayed Fuse's flag:** in `SetOffSkillTrapsNear`, `|| (bSparesTheArming && !Each->bSkillTrapArmed)` is taken out.
+   Must fail `DelayedFuseKeepsATrapStillArmingFromBeingSetOff`.
+
+---
+
 ## 2026-11-25 — Skull Splitter, Deathmark and Blood Price: an armour reduction a critical strike in Wrath pays 3 Fervour for, a mark that raises the damage an enemy takes from every source, and damage held for the next melee blow after the pool empties
 
 **Affects:**

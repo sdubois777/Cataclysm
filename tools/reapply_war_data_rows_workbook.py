@@ -235,11 +235,16 @@ def _multiset(rows) -> collections.Counter:
     return collections.Counter(row.key() for row in rows)
 
 
-def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], list[str], list[dict[str, object]], list[str]]:
+def plan(sheet, nodes=None, label: str = "slice D",
+         extending: frozenset[str] = frozenset()) -> tuple[list[str], list[str], list[dict[str, object]], list[str]]:
     """The header, the columns of `ADDABLE_COLUMNS` that must be added, the rows to append, and the report.
 
     `nodes` is a list in the shape of `NODES`, which it defaults to; a later War slice's script passes its own
-    (`tools/reapply_war_berserker_states_workbook.py`), and `label` names that slice in a refusal."""
+    (`tools/reapply_war_berserker_states_workbook.py`), and `label` names that slice in a refusal.
+
+    `extending` names nodes whose rows an earlier script wrote and this one has taken over with more rows (2026-11-25,
+    the Saboteur's trap timing): such a node may already hold SOME of the rows wanted, and only the rest are appended.
+    A row held that is not among those wanted is still refused, so nothing somebody wrote since is passed over."""
     nodes = NODES if nodes is None else nodes
     header = [helpers._text(cell.value) for cell in sheet[1]]
     while header and header[-1] is None:
@@ -268,6 +273,15 @@ def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], list[str
             if _multiset(current) == _multiset(rows):
                 report.append(f"{where}: already holds its {len(rows)} row(s); left alone")
                 continue
+            if current and node in extending and not _multiset(current) - _multiset(rows):
+                lacking = _multiset(rows) - _multiset(current)
+                report.append(f"{where}: holds {len(current)} of its {len(rows)} row(s); the rest are appended")
+                for row in rows:
+                    if lacking[row.key()] > 0:
+                        lacking[row.key()] -= 1
+                        append.append(cells_from_row(node, name_label, row))
+                        report.append(f"{where}: + {row.stat} {row.kind} {row.value:g}")
+                continue
             if current:
                 raise ReapplyError(f"{where} holds {[row.key() for row in current]}, which are not the rows {label} "
                                    f"writes; somebody has written it since. Nothing was written")
@@ -281,12 +295,14 @@ def plan(sheet, nodes=None, label: str = "slice D") -> tuple[list[str], list[str
     return header, add_columns, append, report
 
 
-def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, label: str = "slice D") -> list[str]:
-    """Append the rows the workbook at `path` lacks; return the report. `nodes` and `label` as `plan` takes them."""
+def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, label: str = "slice D",
+          extending: frozenset[str] = frozenset()) -> list[str]:
+    """Append the rows the workbook at `path` lacks; return the report. `nodes`, `label` and `extending` as `plan`
+    takes them."""
     book = openpyxl.load_workbook(path)
     helpers.refuse_what_a_save_would_lose(book)
     sheet = book[SHEET]
-    header, add_columns, append, report = plan(sheet, nodes, label)
+    header, add_columns, append, report = plan(sheet, nodes, label, extending)
     if not append:
         return report + ["every row is already written; nothing written"]
     for column in add_columns:
@@ -319,7 +335,9 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
     # THE READ-BACK SAYS THE WORKBOOK WAS SAVED. `plan`'s own refusal ends "Nothing was written", which is false by
     # now; until 2026-11-25 it reached the caller as it was, after a save, and read as a refusal before writing.
     try:
-        _, _, still_missing, _ = plan(after[SHEET], nodes, label)
+        # WITH THE SAME `extending`, so a node this run extended reads back as holding all its rows, and a row held
+        # beside them that is not wanted is refused here as it would have been before the save.
+        _, _, still_missing, _ = plan(after[SHEET], nodes, label, extending)
     except ReapplyError as error:
         raise ReapplyError(f"the workbook WAS SAVED with {len(append)} row(s) appended, and {SHEET!r} did not read "
                            f"back as written: {error}") from error
@@ -328,7 +346,8 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
     return report + [f"wrote {len(append)} row(s) after sheet row {last}; no other row or sheet changed"]
 
 
-def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", description: str | None = None) -> int:
+def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", description: str | None = None,
+         extending: frozenset[str] = frozenset()) -> int:
     """The command line. A later War slice's script calls this with its own `nodes`, `label` and description."""
     parser = argparse.ArgumentParser(description=description or __doc__.splitlines()[0])
     parser.add_argument("--workbook", type=pathlib.Path, default=WORKBOOK)
@@ -338,7 +357,7 @@ def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", desc
                         help="write the rows without regenerating the CSVs")
     args = parser.parse_args(argv)
     try:
-        report = apply(args.workbook, check_only=args.check, nodes=nodes, label=label)
+        report = apply(args.workbook, check_only=args.check, nodes=nodes, label=label, extending=extending)
     except ReapplyError as error:
         print(f"Refused: {error}", file=sys.stderr)
         return 2

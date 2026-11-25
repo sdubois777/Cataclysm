@@ -523,7 +523,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 517 THE SAME DAY, for fifteen Saboteur nodes, the survey's groups A and B.
 	// AND 520 THE SAME DAY, for Durable Modifications' three rows on the Max Points column.
 	// AND 532 THE SAME DAY, for Skull Splitter, Deathmark and Blood Price.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        532)
+	// AND 540 THE SAME DAY, for the Saboteur's trap timing (the C1 plan).
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        540)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

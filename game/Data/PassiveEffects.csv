@@ -531,3 +531,11 @@ Berserker_crit_004#3,Berserker_crit_004,deathmark_fervour_cost,flat,-1.0,,,0.0,,
 Berserker_crit_004#4,Berserker_crit_004,deathmark_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_trunk_008#1,Berserker_trunk_008,blood_price_percent_of_maximum_fervour,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_trunk_008#2,Berserker_trunk_008,blood_price_seconds,flat,3.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trunk_001#2,Saboteur_basic_trunk_001,traps_arm_instantly,flat,1.0,,,0.0,,0.0,0,-1.0,5,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_stem_002#2,Saboteur_basic_trap_stem_002,trap_arming_speed,increased,20.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_stem_003#1,Saboteur_basic_trap_stem_003,trap_arming_seconds_less_per_other_trap,flat,0.1,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_qty_001#2,Saboteur_basic_trap_qty_001,trap_arming_speed,increased,10.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_gadget_stem_001#1,Saboteur_basic_gadget_stem_001,minion_attack_speed,increased,12.0,Type.Gadget,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_ql_003#1,Saboteur_basic_trap_ql_003,minion_damage,increased,15.0,Type.Trap,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_ql_003#2,Saboteur_basic_trap_ql_003,trap_arming_seconds_added,flat,1.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trap_ql_003#3,Saboteur_basic_trap_ql_003,traps_not_set_off_while_arming,flat,1.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

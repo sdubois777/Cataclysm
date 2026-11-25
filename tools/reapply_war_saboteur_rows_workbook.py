@@ -3,7 +3,7 @@
     python tools/reapply_war_saboteur_rows_workbook.py
     python tools/reapply_war_saboteur_rows_workbook.py --check
 
-THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Sixteen nodes, each on a
+THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Thirteen nodes, each on a
 stat, scale, condition or action the game already reads; where a node has a clause that needs a mechanism, only the
 rest is written here and the clause waits for its own slice (named below).
 
@@ -12,8 +12,8 @@ rest is written here and the clause waits for its own slice (named below).
     Points 4, new, exclusive); 6% a point above 50% from 4 points. The three never hold together, so no two multiply.
 
   - Tripwire Network: `fervour_per_trap_triggered` 1 a point.
-  - Hair Trigger, Hair Wire: `trap_trigger_radius` 10% a point. (Their 5- and 4-point clauses, "arm instantly" and
-    "trigger 20% faster after detecting an enemy", wait for the C1 plan.)
+  - (Hair Trigger, Hair Wire and Minefield were written here until the C1 plan's slice of the same day took them over
+    with their remaining clauses: `tools/reapply_war_saboteur_trap_timing_workbook.py` holds every row of the three.)
   - Trapsmith: `trap_arming_speed` 6% a point. (Its 4-point clause waits for the C1 plan.)
   - Volatile Mixture: `area_of_effect` 3% a point on `Type.Trap`. ("and explosive" is read as the traps' own blasts, a
     judgement; its 5-point burning patch waits for C3.)
@@ -34,7 +34,6 @@ rest is written here and the clause waits for its own slice (named below).
   - Mechanical Familiar: 15% less Fervour reserved by gadgets (`Type.Gadget`); 1% attack and spell damage and 5%
     `minion_health` on `Type.Gadget` for every 10 Fervour held.
   - Bag of Tricks: 4% less reserved by traps and 10% less by gadgets, a point.
-  - Minefield: from 6 points 5% less reserved by traps. (Its placement speed waits for the C1 plan.)
 
 THE MACHINERY IS `tools/reapply_war_data_rows_workbook.py`'s (slice D), imported. IT IS IDEMPOTENT and REFUSES RATHER
 THAN GUESSES, as that script does. `--check` writes nothing and exits 1 when a row would be written.
@@ -59,8 +58,6 @@ RESERVE = "minion_reserve_percent_less"
 #: (node, Node Name label, rows), in the shape `base.NODES` takes.
 NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Saboteur_basic_trap_stem_005", "Tripwire Network", (R("fervour_per_trap_triggered", "flat", 1),)),
-    ("Saboteur_basic_trunk_001", "Hair Trigger", (R("trap_trigger_radius", "increased", 10),)),
-    ("Saboteur_basic_trap_stem_002", "Hair Wire", (R("trap_trigger_radius", "increased", 10),)),
     ("Saboteur_basic_trap_stem_001", "Trapsmith", (R("trap_arming_speed", "increased", 6),)),
     ("Saboteur_basic_trunk_007", "Volatile Mixture", (R("area_of_effect", "increased", 3, tags=TRAP),)),
     ("Saboteur_basic_trunk_008", "Tinkerer", (
@@ -87,7 +84,6 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Saboteur_basic_trunk_006", "Bag of Tricks", (
         R(RESERVE, "flat", 4, tags=TRAP),
         R(RESERVE, "flat", 10, tags=GADGET))),
-    ("Saboteur_basic_trap_qty_001", "Minefield", (R(RESERVE, "flat", 5, tags=TRAP, min_points=6),)),
     ("Saboteur_basic_trunk_014", "Durable Modifications", (
         R("damage_reduction", "more", 3, cond="class_resource_at_or_below", cond_value=50),
         R("damage_reduction", "more", 3, cond="class_resource_above", cond_value=50, max_points=4),

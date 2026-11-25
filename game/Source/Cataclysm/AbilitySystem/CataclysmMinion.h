@@ -1213,8 +1213,31 @@ public:
 	static const TCHAR* TrapArmingSpeedStat;
 	static const TCHAR* TrapTriggerRadiusStat;
 
-	/** `SkillTrapArmSeconds` for `Player`'s trap of `TrapTags`: divided by one plus the arming-speed increases. */
-	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
+	/**
+	 * THE SABOTEUR'S TRAP TIMING, ruled by the coordinating session on 2026-11-25 (the C1 plan): three figures of the
+	 * player's, asked with the trap's type tags by `SkillTrapArmingSecondsFor`. No gameplay attribute and no base.
+	 * - `TrapsArmInstantlyStat`, a flag: the trap arms at once (Hair Trigger at 5 points). It beats every other figure,
+	 *   Delayed Fuse's extra second included (ruled).
+	 * - `TrapArmingSecondsAddedStat`: seconds added to `SkillTrapArmSeconds` before arming speed divides it (Delayed Fuse,
+	 *   "a 1 second additional arming delay").
+	 * - `TrapArmingSecondsLessPerOtherTrapStat`: seconds taken off after the division for each other skill trap of the
+	 *   player's standing, never below `SkillTrapArmingFloorSeconds` by it (Volatile Casing, "reduces the arming delay of
+	 *   all your other traps by 0.1 seconds per point, to a minimum of 0.1 seconds").
+	 */
+	static const TCHAR* TrapsArmInstantlyStat;
+	static const TCHAR* TrapArmingSecondsAddedStat;
+	static const TCHAR* TrapArmingSecondsLessPerOtherTrapStat;
+
+	/** The least Volatile Casing's reduction leaves of a trap's arming time, in seconds. */
+	static constexpr float SkillTrapArmingFloorSeconds = 0.1f;
+
+	/**
+	 * Seconds from placing (or rearming) to armed for `Player`'s trap of `TrapTags`: none under `TrapsArmInstantlyStat`;
+	 * otherwise `SkillTrapArmSeconds` plus `TrapArmingSecondsAddedStat`, divided by one plus the arming-speed increases,
+	 * less `TrapArmingSecondsLessPerOtherTrapStat` for each of the player's skill traps standing other than `Self`.
+	 */
+	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags,
+										   const ACataclysmMinion* Self = nullptr);
 
 	/**
 	 * `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases, and times
@@ -1279,6 +1302,21 @@ public:
 	/** Its age at which it arms, set when it is placed. */
 	float SkillTrapArmsAtAgeSeconds = 0.0f;
 
+	/**
+	 * Begin this skill trap's arming, at placing and at rearming: unarmed, to arm `Seconds` from now. ARMED AT THAT
+	 * EXACT TIME, by a one-shot timer that arms it and runs `StepSkillTrap` (so it looks for an enemy then), and not at
+	 * the next quarter-second step, which held every arming time between two steps to the later one: until 2026-11-25 an
+	 * arming-speed bonus below a third armed at the full second (the C1 plan's finding, ruled). `Seconds` of nought arms
+	 * it now and looks for an enemy on the next tick, so nothing is set off inside the press that placed it.
+	 */
+	void BeginSkillTrapArming(float Seconds);
+
+	/** The arming timer's call: arm this trap, then run its step. See `BeginSkillTrapArming`. */
+	void SkillTrapArmingTimeReached();
+
+	/** The one-shot timer `BeginSkillTrapArming` sets. */
+	FTimerHandle SkillTrapArmingTimer;
+
 	/** Whether it is armed. */
 	bool bSkillTrapArmed = false;
 
@@ -1333,6 +1371,15 @@ public:
 	 * reserve 5%-25% reduced Fervour", read by `UCataclysmCommand::ReserveFor`.
 	 */
 	static const TCHAR* TrapsDoNotExpireStat;
+
+	/**
+	 * DELAYED FUSE, "cannot be accidentally triggered by you or your gadgets during the arming period", ruled by the
+	 * coordinating session on 2026-11-25 (the C1 plan): a flag of the player's, asked with `Type.Trap`, under which
+	 * `SetOffSkillTrapsNear` passes over a trap not yet armed. Neither the player nor a gadget ever sets off a trap by
+	 * standing near it; a row action does (a gadget destroyed, a trap triggered, the player's death), and those all come
+	 * through there. No gameplay attribute and no base.
+	 */
+	static const TCHAR* TrapsNotSetOffWhileArmingStat;
 
 	/** Whether a skill trap `Player` places now has no life span: the no-expire flag, read as above nought. */
 	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
@@ -1438,7 +1485,8 @@ public:
 	 * event of it answered (G-1 (a)). THE CHAIN GUARD (H5 (b), the owner's): a trap in the player's
 	 * `SkillTrapsSetOffThisChain` is never chosen, and each trap is added to it WHEN RECORDED, so each trap goes off at most
 	 * once in a chain. The list is taken once. A trap that cannot act, or whose slot is no longer converted, is not
-	 * chosen, as its own step does nothing then. `bEvenForADeadPlayer` for the player's death alone. How many recorded.
+	 * chosen, as its own step does nothing then. Nor, for a player holding `TrapsNotSetOffWhileArmingStat` (Delayed
+	 * Fuse, 2026-11-25), is one not yet armed. `bEvenForADeadPlayer` for the player's death alone. How many recorded.
 	 */
 	static int32 SetOffSkillTrapsNear(AActor* Player, const FVector* Place, float RadiusCm, bool bNearestOnly,
 									  const AActor* Except, bool bEvenForADeadPlayer);

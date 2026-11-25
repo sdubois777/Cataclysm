@@ -20,7 +20,9 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import reapply_war_saboteur_rows_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
-ROW_COUNT = 26
+#: 26 until the C1 plan's slice of 2026-11-25 took over Hair Trigger's, Hair Wire's and Minefield's rows
+#: (`tools/reapply_war_saboteur_trap_timing_workbook.py`).
+ROW_COUNT = 23
 
 
 def _rows_of(node: str) -> tuple:
@@ -28,9 +30,9 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_its_rows_on_sixteen_nodes():
+def test_the_script_writes_its_rows_on_thirteen_nodes():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
-    assert len({node for node, _, _ in rows.NODES}) == 16
+    assert len({node for node, _, _ in rows.NODES}) == 13
 
 
 def test_durable_modifications_is_exactly_doubled_by_rows_that_never_hold_together():

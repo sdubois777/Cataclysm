@@ -695,7 +695,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 532 THE SAME DAY: twelve rows on Skull Splitter, Deathmark and Blood
 #: Price (`tools/reapply_war_skull_deathmark_blood_workbook.py`).
-AUTHORED_ROWS = 532
+#:
+#: AND TO 540 THE SAME DAY: eight rows of the Saboteur's trap timing
+#: (`tools/reapply_war_saboteur_trap_timing_workbook.py`, the C1 plan).
+AUTHORED_ROWS = 540
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1130,7 +1133,8 @@ AUTHORED_ROWS = 532
 #: AND TO 304 THE SAME DAY: fifteen Saboteur nodes, the survey's groups A and B.
 #: AND TO 305 THE SAME DAY: Durable Modifications.
 #: AND TO 308 THE SAME DAY: Skull Splitter, Deathmark and Blood Price.
-AUTHORED_NODES = 308
+#: AND TO 311 THE SAME DAY: Volatile Casing, Field Engineer and Delayed Fuse.
+AUTHORED_NODES = 311
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2686,6 +2690,9 @@ VALUE_FORMS = {
     # 5 seconds", "costs 10 Fervour", "+3% increased damage per point"; "within 3
     # seconds deals bonus damage equal to 5% per point of your maximum Fervour".
     "crit_armor_removed_in_wrath": "armor reduction of {value:g}% per point",
+    # VOLATILE CASING, the Saboteur's trap timing, 2026-11-25: "reduces the arming delay of all your other
+    # traps by 0.1 seconds per point".
+    "trap_arming_seconds_less_per_other_trap": "by {value:g} seconds per point",
     "crit_armor_fervour_cost": "drain an additional {value:g} Fervour",
     "crit_armor_stack_cap": ("up to {value:g} times", "instead of {value:g}"),
     "crit_armor_seconds": "{value:g}-second armor reduction",
@@ -2757,6 +2764,13 @@ VALUE_IN_WORDS = {
     # OVERWHELMING PRESENCE'S "trap trigger radius is doubled", 100% more by the
     # coordinating session's ruling of 2026-11-25 (a true doubling).
     ("Saboteur_keystone_trap_qty", "trap_trigger_radius"): ("radius is doubled", 100.0),
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan): Hair Trigger's "At 5
+    # points: Traps arm instantly", a flag; Delayed Fuse's "a 1 second additional
+    # arming delay", one second, and its "cannot be accidentally triggered ...
+    # during the arming period", a flag.
+    ("Saboteur_basic_trunk_001", "traps_arm_instantly"): ("traps arm instantly", 1.0),
+    ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
+    ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
     ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
@@ -3938,6 +3952,10 @@ FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 #: Fervour per second while active" are each one rate, whatever the points; the
 #: bonus beside each is the per-point figure.
 FIXED_FROM_THE_FIRST_POINT = frozenset({
+    # THE SABOTEUR'S TRAP TIMING, 2026-11-25: Delayed Fuse's extra second and its
+    # flag are one figure whatever the points.
+    ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"),
+    ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"),
     # SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25: each cost, cap and
     # length is one figure whatever the points; Skull Splitter's cap of 4 stops at
     # 5 points (Max Points), where its 6 begins.
