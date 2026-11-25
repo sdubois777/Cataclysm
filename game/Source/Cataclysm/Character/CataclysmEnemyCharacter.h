@@ -2407,8 +2407,10 @@ public:
 	 * writes the Cataclysm that sent the dungeon here before the creature's
 	 * modifiers are drawn, so a Death dungeon's Demonic bodies deal Death and draw
 	 * Death and Generic modifiers, as the owner accepted on 2026-11-24 (Q16). A
-	 * dungeon nobody sent, and every place outside a dungeon, leaves this default.
-	 * The Gatekeeper's called Imps copy their Gatekeeper's.
+	 * dungeon nobody sent, and every place outside a dungeon, leaves this default,
+	 * but a Fallen City's creatures take the run's newest active Cataclysm. The
+	 * Gatekeeper's called Imps copy their Gatekeeper's; the Corrupted Stalker and
+	 * the corrupted double take their build's (ruled 2026-11-25).
 	 *
 	 * A CREATURE AND A FLOOR HAZARD ARE THE ONLY TWO THINGS IN THE GAME WHOSE
 	 * DAMAGE CARRIES A TYPE. This said "the only damage in the game" until a

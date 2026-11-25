@@ -136,9 +136,10 @@ struct CATACLYSM_API FCataclysmDungeonIdentity
 	 * bodies standing in for Death's and War's on 2026-11-24 (the plan's Q16). `CreatureDamageTypeFor` turns it into
 	 * the damage type; `FCataclysmFloorPopulator::PackKindsFor` reads it, through the brief, for the roster.
 	 *
-	 * `None` LEAVES EVERY CREATURE ITS CLASS'S OWN TYPE, which is Demonic: a Fallen City (sent by nobody,
-	 * `UCataclysmSurgeScheduler::MakeFallenCityDungeon`), a dungeon built by hand in a test, and pressing Play in
-	 * `L_Dungeon`. That is every creature the game placed before this field existed.
+	 * `None` LEAVES EVERY CREATURE ITS CLASS'S OWN TYPE, which is Demonic: a dungeon built by hand in a test, and pressing
+	 * Play in `L_Dungeon`. That is every creature the game placed before this field existed. A FALLEN CITY IS SENT BY
+	 * NOBODY (`UCataclysmSurgeScheduler::MakeFallenCityDungeon`) and still carries one here: the run's newest active
+	 * Cataclysm, which `ACataclysmDungeonGameMode::BindEmpireDungeon` gives it, ruled on 2026-11-25.
 	 *
 	 * NOT SAVED HERE OR ANYWHERE NEW: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved,
 	 * the way `ACataclysmDungeonGameMode::DungeonCityTier` comes back.

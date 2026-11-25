@@ -67,6 +67,14 @@ bool ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild(const FCataclysmP
 	BasicAttack = WeaponTypes.IsEmpty()
 		? FCataclysmWeaponSkill()
 		: UCataclysmWeaponSkills::BasicAttackFor(UCataclysmItemModifiers::LoadBaseTable(), WeaponTypes[0]);
+
+	// AND IT DEALS THE BUILD'S DAMAGE TYPE, the one its character chose at creation, as the Stalker deals its entry's.
+	// Ruled by the coordinating session on 2026-11-25 for slice B3. A build captured before the choice was recorded
+	// holds none, and the double then keeps its class's type, Demonic.
+	if (!HeldBuild.CreationDamageType.IsNone())
+	{
+		DamageType = HeldBuild.CreationDamageType;
+	}
 	return true;
 }
 

@@ -3535,11 +3535,13 @@ float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
 	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
 }
 
-bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType)
+bool UCataclysmDungeonModifierEffects::SoulHarvestTakesAsADemon(FName CreatureDamageType, FName DungeonsOwnDamageType)
 {
 	// THE CREATURE'S CATACLYSM, read as the damage type it deals: the design gives each Cataclysm one, and its
-	// creatures deal it. Issue #1671.
-	return CreatureDamageType == FName(TEXT("Demonic"));
+	// creatures deal it. Issue #1671. AGAINST THE DUNGEON'S OWN CREATURES' TYPE since slice B3 (2026-11-25), Demonic for
+	// a dungeon nobody sent. See the header.
+	const FName OwnType = DungeonsOwnDamageType.IsNone() ? FName(TEXT("Demonic")) : DungeonsOwnDamageType;
+	return !CreatureDamageType.IsNone() && CreatureDamageType == OwnType;
 }
 
 bool UCataclysmDungeonModifierEffects::SoulHarvestSoulArrivesAfter(const FVector& From, const FVector& To,

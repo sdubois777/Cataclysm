@@ -312,6 +312,9 @@ public:
 	 * Death and draw Death and Generic modifiers. `None`, which every floor with no empire dungeon behind it carries,
 	 * leaves each creature Demonic, its class's own type.
 	 *
+	 * A FALLEN CITY, WHICH NOBODY SENT, TAKES THE RUN'S NEWEST ACTIVE CATACLYSM HERE (`BindEmpireDungeon`), ruled by the
+	 * coordinating session on 2026-11-25; its empire record still names nobody.
+	 *
 	 * EDITABLE HERE for the reason `DungeonSubType` is: pressing Play in `L_Dungeon` builds a floor with no empire behind
 	 * it, and a floor should be able to be told what it is standing in.
 	 *
@@ -1519,9 +1522,11 @@ public:
 	 * `Cataclysm` is saved, as `DungeonCityTier`'s ring is. Public for that second caller and for the tests.
 	 *
 	 * NOT THE OBJECTS A RULE STANDS ON A FLOOR (a Chorus's source, a Bloom, a Spire, a Heavenly Core and the others
-	 * spawned directly), which never strike; NOT THE CORRUPTED STALKER OR THE CORRUPTED DOUBLE, which are a player's
-	 * build and not the Cataclysm's creatures. Each keeps its class's type. The Gatekeeper's called Imps take the
-	 * Gatekeeper's own (`ACataclysmGatekeeperCharacter`). `docs/DECISIONS.md`, 2026-11-25, lists every spawn site.
+	 * spawned directly), which never strike and keep their class's type; NOT THE CORRUPTED STALKER OR THE CORRUPTED
+	 * DOUBLE, which are a player's build and not the Cataclysm's creatures, and deal their build's own type
+	 * (`ACataclysmCorruptedStalkerCharacter::WearTheBuild`, `ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`).
+	 * The Gatekeeper's called Imps take the Gatekeeper's own (`ACataclysmGatekeeperCharacter`). `docs/DECISIONS.md`,
+	 * 2026-11-25, lists every spawn site.
 	 */
 	void GiveTheDungeonsCataclysm(ACataclysmEnemyCharacter* Enemy) const;
 
@@ -2551,7 +2556,8 @@ public:
 	/**
 	 * Whether a soul may feed this creature: it stands, it is a demon (`SoulHarvestTakesAsADemon` of its damage type),
 	 * and it is the player's enemy, which a thrall the player took is not. Asked by a floating soul of its own demon
-	 * every step, issue #1671.
+	 * every step, issue #1671. A DEMON IS ONE OF THE DUNGEON'S OWN CREATURES since slice B3 (2026-11-25): of the type
+	 * `DungeonCataclysm`'s creatures deal, Demonic when nobody sent the dungeon.
 	 */
 	bool SoulHarvestMayFeed(const ACataclysmEnemyCharacter* Creature) const;
 

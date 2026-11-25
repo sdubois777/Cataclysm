@@ -2548,10 +2548,10 @@ public:
 	 *   design gives each Cataclysm one damage type and its creatures deal it. The 2026-09-24
 	 *   entry said this reading must be revisited. SINCE SLICE B3 (2026-11-25) A CREATURE IS THE
 	 *   CATACLYSM'S THAT SENT ITS DUNGEON (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`),
-	 *   so on a floor of a dungeon another Cataclysm sent no creature is a demon and the row
-	 *   releases no soul; in a Demonic dungeon, a Fallen City and a floor with no empire dungeon
-	 *   behind it every creature still is one. Left as #1671 ruled it, and flagged to the owner in
-	 *   the 2026-11-25 `docs/DECISIONS.md` entry.
+	 *   AND THIS ROW'S DEMONS ARE THE DUNGEON'S OWN CREATURES, whoever sent it: a creature of the
+	 *   type the dungeon's own creatures deal, Demonic in a dungeon nobody sent. Ruled by the
+	 *   coordinating session on 2026-11-25, so the row keeps working in a Death or War dungeon;
+	 *   #1671's reading stays true everywhere but in this row. `SoulHarvestTakesAsADemon`.
 	 * - NO DEMON WITHIN 6 METRES OF THE DEATH: no soul is released.
 	 * - ITS TARGET DIES, OR STOPS BEING AN ENEMY DEMON, BEFORE IT ARRIVES: it turns to the
 	 *   nearest demon within 6 metres of where the soul is then; with none, it fades, giving
@@ -8292,8 +8292,19 @@ public:
 	/** What this many souls add to a creature's all-resistance figure. */
 	static float SoulHarvestResistanceAdded(int32 Souls);
 
-	/** Whether a creature dealing this damage type is a demon a soul may float to. Issue #1671. */
-	static bool SoulHarvestTakesAsADemon(FName CreatureDamageType);
+	/**
+	 * Whether a creature dealing this damage type is a demon a soul may float to. Issue #1671.
+	 *
+	 * THE ROW'S DEMONS ARE THE DUNGEON'S OWN CREATURES, WHATEVER CATACLYSM SENT IT: a creature of the type the dungeon's
+	 * own creatures deal (`DungeonsOwnDamageType`, `FCataclysmDungeonFloorRules::CreatureDamageTypeFor` of the
+	 * dungeon's sender). Ruled by the coordinating session on 2026-11-25 for slice B3: the row was written when every
+	 * creature was Demonic, and #1671's "a demon is a creature whose damage type is Demonic" stays true everywhere but in
+	 * this floor rule, so Soul Harvest keeps working in a Death or War dungeon.
+	 *
+	 * NAME_None, THE DEFAULT, IS A DUNGEON NOBODY SENT, whose own creatures are Demonic: then this is #1671's reading
+	 * exactly. A creature of no type is never a demon.
+	 */
+	static bool SoulHarvestTakesAsADemon(FName CreatureDamageType, FName DungeonsOwnDamageType = NAME_None);
 
 	/**
 	 * One step of a soul's float, issue #1671: from `From` toward `To` for `Seconds` at

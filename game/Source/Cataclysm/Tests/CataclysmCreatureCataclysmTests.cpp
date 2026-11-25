@@ -5,6 +5,9 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmConsumptionDoubleCharacter.h"
+#include "Character/CataclysmCorruptedStalkerCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -26,8 +29,13 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
+#include "Math/RandomStream.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -119,11 +127,12 @@ namespace CataclysmCreatureCataclysmTest
 	}
 
 	/**
-	 * Puts one ordinary dungeon, sent by `Sender`, on the run's first standing Outpost, with its timer. Its identifier,
-	 * or `INDEX_NONE`.
+	 * Puts one dungeon of this kind, an ordinary one unless told, sent by `Sender`, on the run's first standing Outpost,
+	 * with its timer. Its identifier, or `INDEX_NONE`.
 	 */
 	int32 PlaceADungeonSentBy(UCataclysmEmpireRun& Run, ECataclysmType Sender, int32 Floors,
-							  const TArray<FName>& Rows = TArray<FName>())
+							  const TArray<FName>& Rows = TArray<FName>(),
+							  ECataclysmDungeonType Kind = ECataclysmDungeonType::Basic)
 	{
 		if (!Run.Map || !Run.Clock)
 		{
@@ -147,7 +156,7 @@ namespace CataclysmCreatureCataclysmTest
 
 		FCataclysmDungeon Placed;
 		Placed.DungeonId = Run.NextDungeonId;
-		Placed.Type = ECataclysmDungeonType::Basic;
+		Placed.Type = Kind;
 		Placed.SubType = ECataclysmDungeonSubType::None;
 		Placed.Cataclysm = Sender;
 		Placed.CityId = HostId;
@@ -717,6 +726,299 @@ bool FCataclysmCreatureCataclysmCalledImpsTest::RunTest(const FString& Parameter
 	CalledTypes(*Unsent, FName(TEXT("Demonic")), UnsentCalled, UnsentOfDemonic);
 	TestTrue(TEXT("CONTROL: it called Imps"), UnsentCalled > 0);
 	TestEqual(TEXT("CONTROL: and every one is Demonic"), UnsentOfDemonic, UnsentCalled);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The coordinating session's rulings of 2026-11-25: Soul Harvest, a Fallen City, the Stalker and the double
+// ---------------------------------------------------------------------------
+
+/**
+ * SOUL HARVEST'S DEMONS ARE THE DUNGEON'S OWN CREATURES, WHOEVER SENT IT. Ruled by the coordinating session on
+ * 2026-11-25: the row was written when every creature was Demonic. In a dungeon Death sent carrying
+ * `Demonic_Soul_Harvest`, a soul may feed a creature of the dungeon's own and passes over a nearer Demonic one, and the
+ * demon a death six metres away would send its soul to is the dungeon's own.
+ *
+ * THE CONTROL: the same two kinds of creature in a dungeon nobody sent, whose own creatures are Demonic: the roles swap.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureCataclysmSoulHarvestTest,
+	"Cataclysm.CreatureCataclysm.InADeathDungeonSoulHarvestFeedsTheDungeonsOwnCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreatureCataclysmSoulHarvestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCreatureCataclysmTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCreatureCataclysmPlayer Player(World);
+	if (!TestTrue(TEXT("set-up: a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	const FCreatureCataclysmScene Scene = MakeCreatureCataclysmScene(World, /*bStartPlay=*/true, /*Density=*/0.0f);
+	if (!TestTrue(TEXT("set-up: a dungeon game mode and a run"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	const FName SoulHarvestRow(UCataclysmDungeonModifierEffects::SoulHarvestKey);
+	const auto EnterCarryingSoulHarvest = [this, &Scene, &SoulHarvestRow](ECataclysmType Sender) -> bool
+	{
+		const int32 DungeonId = PlaceADungeonSentBy(*Scene.Run, Sender, /*Floors=*/3, {SoulHarvestRow});
+		return TestTrue(TEXT("set-up: a dungeon carrying Soul Harvest was placed"), DungeonId != INDEX_NONE)
+			&& TestTrue(TEXT("set-up: it was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			&& TestTrue(TEXT("set-up: its floor carries Soul Harvest"),
+						Scene.Mode->FloorBrief.Modifiers.Contains(SoulHarvestRow));
+	};
+	const auto AnImpAt = [World](const FVector& Where) -> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		return World->SpawnActor<ACataclysmImpCharacter>(ACataclysmImpCharacter::StaticClass(), Where,
+														 FRotator::ZeroRotator, Params);
+	};
+	const FName DeathType(TEXT("Death"));
+	const FName DemonicType(TEXT("Demonic"));
+
+	// A DEATH DUNGEON: the dungeon's own creature five metres from a death, a Demonic one two metres from it.
+	if (!EnterCarryingSoulHarvest(ECataclysmType::Death))
+	{
+		return false;
+	}
+	const FVector WhereOneDies(40000.0f, 40000.0f, 0.0f);
+	ACataclysmEnemyCharacter* NearerDemonic = AnImpAt(WhereOneDies + FVector(200.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* FartherOwn = AnImpAt(WhereOneDies + FVector(500.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a Demonic creature two metres from the death"), NearerDemonic)
+		|| !TestNotNull(TEXT("set-up: and another five metres from it"), FartherOwn))
+	{
+		return false;
+	}
+	Scene.Mode->GiveTheDungeonsCataclysm(FartherOwn);
+	if (!TestEqual(TEXT("set-up: the farther one is the dungeon's own, Death's"), FartherOwn->DamageType, DeathType)
+		|| !TestEqual(TEXT("set-up: the nearer one is Demonic"), NearerDemonic->DamageType, DemonicType))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a soul may feed the Death dungeon's own creature"), Scene.Mode->SoulHarvestMayFeed(FartherOwn));
+	TestFalse(TEXT("and not the Demonic one"), Scene.Mode->SoulHarvestMayFeed(NearerDemonic));
+	TestTrue(TEXT("so a death's soul goes to the dungeon's own creature, passing the nearer Demonic one"),
+			 Scene.Mode->NearestDemonForASoul(WhereOneDies, nullptr) == FartherOwn);
+	Scene.Mode->LeaveEmpireDungeon();
+
+	// THE CONTROL: A DUNGEON NOBODY SENT, the same two kinds, somewhere else.
+	if (!EnterCarryingSoulHarvest(ECataclysmType::None))
+	{
+		return false;
+	}
+	const FVector WhereAnotherDies(60000.0f, 60000.0f, 0.0f);
+	ACataclysmEnemyCharacter* NearerOfDeath = AnImpAt(WhereAnotherDies + FVector(200.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* FartherDemonic = AnImpAt(WhereAnotherDies + FVector(500.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("set-up: a creature two metres from the second death"), NearerOfDeath)
+		|| !TestNotNull(TEXT("set-up: and a Demonic one five metres from it"), FartherDemonic))
+	{
+		return false;
+	}
+	NearerOfDeath->DamageType = DeathType;
+	TestFalse(TEXT("CONTROL: in a dungeon nobody sent, a Death creature is not its own"),
+			  Scene.Mode->SoulHarvestMayFeed(NearerOfDeath));
+	TestTrue(TEXT("CONTROL: a Demonic one is"), Scene.Mode->SoulHarvestMayFeed(FartherDemonic));
+	TestTrue(TEXT("CONTROL: and the soul goes to it"),
+			 Scene.Mode->NearestDemonForASoul(WhereAnotherDies, nullptr) == FartherDemonic);
+	return true;
+}
+
+/**
+ * A FALLEN CITY'S CREATURES TAKE THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added. Ruled by the
+ * coordinating session on 2026-11-25, as the fallback for the Cataclysm of the dungeon whose hit felled the city, which
+ * nothing records. A Fallen City placed by hand, sent by nobody as the empire makes every one, with the run facing
+ * Demonic and then Death: its creatures deal Death.
+ *
+ * THE CONTROLS: an ordinary dungeon nobody sent, on the same run, stays Demonic; and the same Fallen City entered again
+ * with the run facing Death and then War takes War, the last of the list and not the first.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureCataclysmFallenCityTest,
+	"Cataclysm.CreatureCataclysm.AFallenCitysCreaturesTakeTheRunsNewestActiveCataclysm",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreatureCataclysmFallenCityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmCreatureCataclysmTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCreatureCataclysmScene Scene = MakeCreatureCataclysmScene(World, /*bStartPlay=*/false, /*Density=*/0.1f);
+	if (!TestTrue(TEXT("set-up: a dungeon game mode and a run"), Scene.IsUsable()))
+	{
+		return false;
+	}
+	Scene.Run->ActiveCataclysms = {ECataclysmType::Demonic, ECataclysmType::Death};
+
+	const int32 FallenId = PlaceADungeonSentBy(*Scene.Run, ECataclysmType::None, /*Floors=*/3, TArray<FName>(),
+											   ECataclysmDungeonType::FallenCity);
+	const int32 PlainId = PlaceADungeonSentBy(*Scene.Run, ECataclysmType::None, /*Floors=*/3);
+	if (!TestTrue(TEXT("set-up: a Fallen City and an ordinary dungeon, both sent by nobody, were placed"),
+				  FallenId != INDEX_NONE && PlainId != INDEX_NONE))
+	{
+		return false;
+	}
+
+	const auto WalkIn = [this, &Scene](int32 DungeonId, FName ReadAs, FCreatureCataclysmFloor& OutFloor,
+									  ECataclysmType& OutSender) -> bool
+	{
+		if (!TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+		OutSender = Scene.Mode->DungeonCataclysm;
+		OutFloor = ReadTheFloor(*Scene.Mode, ReadAs);
+		Scene.Mode->LeaveEmpireDungeon();
+		return true;
+	};
+
+	FCreatureCataclysmFloor FallenFloor;
+	ECataclysmType FallenSender = ECataclysmType::None;
+	if (!WalkIn(FallenId, FName(TEXT("Death")), FallenFloor, FallenSender))
+	{
+		return false;
+	}
+	AddInfo(DescribeCreatureFloor(TEXT("A FALLEN CITY, THE RUN FACING DEMONIC THEN DEATH"), FallenFloor));
+	TestEqual(TEXT("a Fallen City's creatures belong to the run's newest active Cataclysm, Death"),
+			  static_cast<int32>(FallenSender), static_cast<int32>(ECataclysmType::Death));
+	if (!TestTrue(TEXT("CONTROL: the Fallen City's floor holds creatures"), FallenFloor.Creatures > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and every one of them deals Death"), FallenFloor.OfTheType, FallenFloor.Creatures);
+
+	// AN ORDINARY DUNGEON NOBODY SENT STAYS DEMONIC.
+	FCreatureCataclysmFloor PlainFloor;
+	ECataclysmType PlainSender = ECataclysmType::Death;
+	if (!WalkIn(PlainId, FName(TEXT("Demonic")), PlainFloor, PlainSender))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: an ordinary dungeon nobody sent belongs to nobody"), static_cast<int32>(PlainSender),
+			  static_cast<int32>(ECataclysmType::None));
+	TestEqual(TEXT("CONTROL: and its creatures are Demonic"), PlainFloor.OfTheType, PlainFloor.Creatures);
+
+	// THE NEWEST, NOT THE FIRST.
+	Scene.Run->ActiveCataclysms = {ECataclysmType::Death, ECataclysmType::War};
+	FCreatureCataclysmFloor AgainFloor;
+	ECataclysmType AgainSender = ECataclysmType::None;
+	if (!WalkIn(FallenId, FName(TEXT("War")), AgainFloor, AgainSender))
+	{
+		return false;
+	}
+	TestEqual(TEXT("CONTROL: facing Death then War, the Fallen City's creatures are War's, the newest"),
+			  static_cast<int32>(AgainSender), static_cast<int32>(ECataclysmType::War));
+	TestEqual(TEXT("CONTROL: every one of them"), AgainFloor.OfTheType, AgainFloor.Creatures);
+	return true;
+}
+
+/**
+ * THE CORRUPTED STALKER DEALS ITS ENTRY'S DAMAGE TYPE AND THE CORRUPTED DOUBLE ITS BUILD'S. Ruled by the coordinating
+ * session on 2026-11-25: each is a corrupted former character wearing that build, not the Cataclysm's creature. Every
+ * authored Stalker entry, worn, deals its own type and the damage pipeline reads it so; a double wearing a build whose
+ * character chose Death deals Death.
+ *
+ * THE CONTROLS: each Stalker and the double are Demonic, their class's own, before they wear a build; and some entry is
+ * not Demonic, so the check is not answered by the default.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureCataclysmStalkerTest,
+	"Cataclysm.CreatureCataclysm.TheCorruptedStalkerAndTheDoubleDealTheirBuildsDamageType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreatureCataclysmStalkerTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	// A GAME INSTANCE, as the double's own tests give their world.
+	World->SetGameInstance(NewObject<UCataclysmGameInstance>());
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FName DemonicType(TEXT("Demonic"));
+
+	const TArray<FCataclysmStalkerEntry> Entries = ACataclysmCorruptedStalkerCharacter::AuthoredEntries();
+	if (!TestTrue(TEXT("set-up: some Stalker entries are authored"), Entries.Num() > 0))
+	{
+		return false;
+	}
+	int32 NotDemonic = 0;
+	float Along = 0.0f;
+	for (const FCataclysmStalkerEntry& Entry : Entries)
+	{
+		const FString Type = Entry.DamageType.ToString();
+		ACataclysmCorruptedStalkerCharacter* Stalker = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
+			ACataclysmCorruptedStalkerCharacter::StaticClass(), FVector(Along, 30000.0f, 0.0f), FRotator::ZeroRotator,
+			Params);
+		Along += 1000.0f;
+		if (!TestNotNull(FString::Printf(TEXT("set-up: a %s Stalker was spawned"), *Type), Stalker))
+		{
+			continue;
+		}
+		Stalker->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		TestEqual(FString::Printf(TEXT("CONTROL: the %s Stalker is Demonic before it wears its build"), *Type),
+				  Stalker->DamageType, DemonicType);
+
+		FRandomStream Stream(2);
+		if (!TestTrue(FString::Printf(TEXT("set-up: the %s Stalker wears its build"), *Type),
+					  Stalker->WearTheBuild(Entry, /*DifficultyTier=*/4, Stream)))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("the %s Stalker deals %s"), *Type, *Type), Stalker->DamageType, Entry.DamageType);
+		TestEqual(FString::Printf(TEXT("and the damage pipeline reads the %s Stalker's blows as %s"), *Type, *Type),
+				  UCataclysmSkillEffects::DamageTypeOf(Stalker), Entry.DamageType);
+		NotDemonic += Entry.DamageType != DemonicType ? 1 : 0;
+	}
+	TestTrue(FString::Printf(TEXT("CONTROL: %d authored entries are not Demonic"), NotDemonic), NotDemonic > 0);
+
+	// THE DOUBLE, wearing a level 20 Ravager's build whose character chose Death, holding a Death Greataxe.
+	ACataclysmConsumptionDoubleCharacter* Double = World->SpawnActor<ACataclysmConsumptionDoubleCharacter>(
+		ACataclysmConsumptionDoubleCharacter::StaticClass(), FVector(0.0f, 50000.0f, 0.0f), FRotator::ZeroRotator,
+		Params);
+	if (!TestNotNull(TEXT("set-up: a double was spawned"), Double))
+	{
+		return false;
+	}
+	Double->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	TestEqual(TEXT("CONTROL: the double is Demonic before it wears a build"), Double->DamageType, DemonicType);
+
+	FCataclysmItem Greataxe;
+	Greataxe.Base = FName(TEXT("Weapon_Greataxe"));
+	Greataxe.GearLevel = 3;
+	Greataxe.DamageTypes = {FName(TEXT("Death"))};
+	FCataclysmWornItem InTheHand;
+	InTheHand.Slot = ECataclysmGearSlot::Weapon1;
+	InTheHand.Item = Greataxe;
+	FCataclysmPlayerBuild Build;
+	Build.Worn = {InTheHand};
+	Build.Level = 20;
+	Build.ClassName = TEXT("Ravager");
+	Build.CreationDamageType = FName(TEXT("Death"));
+	if (!TestTrue(TEXT("set-up: the double wears the build"), Double->WearThePlayersBuild(Build)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the double deals the build's damage type, Death"), Double->DamageType, FName(TEXT("Death")));
+	TestEqual(TEXT("and the damage pipeline reads its blows as Death"), UCataclysmSkillEffects::DamageTypeOf(Double),
+			  FName(TEXT("Death")));
 	return true;
 }
 

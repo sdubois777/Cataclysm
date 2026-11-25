@@ -14554,7 +14554,9 @@ bool ACataclysmDungeonGameMode::SoulHarvestMayFeed(const ACataclysmEnemyCharacte
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
 	return IsValid(Creature) && Player && !UCataclysmSkillEffects::IsDead(Creature)
-		&& Effects::SoulHarvestTakesAsADemon(Creature->DamageType)
+		// THE DUNGEON'S OWN CREATURES ARE ITS DEMONS, whoever sent it: ruled for slice B3, 2026-11-25. See the header.
+		&& Effects::SoulHarvestTakesAsADemon(Creature->DamageType,
+											 FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm))
 		&& UCataclysmTargeting::IsHostileTo(Creature, Player);
 }
 
@@ -16028,10 +16030,21 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	DungeonCityTier = Dungeon.CityTier;
 
 	// AND WHO SENT IT: every creature it places is that Cataclysm's, dealing its damage type and drawing its enemy
-	// modifiers (`GiveTheDungeonsCataclysm`). `None` for a Fallen City, which nobody sent, whose creatures stay
-	// Demonic. A load binds here too, before the saved creatures are put back. Slice B3 of the Death and War plan,
-	// 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
+	// modifiers (`GiveTheDungeonsCataclysm`). A load binds here too, before the saved creatures are put back. Slice B3
+	// of the Death and War plan, 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
+	//
+	// A FALLEN CITY WAS SENT BY NOBODY, so its record names none (`UCataclysmEmpireRun::AddFallenCityDungeon`), and its
+	// creatures take THE RUN'S NEWEST ACTIVE CATACLYSM, the last the character's draw added: ruled by the coordinating
+	// session on 2026-11-25, which asked first for the Cataclysm of the dungeon whose hit felled the city. Nothing records
+	// that, and recording it is a saved field and a run record version step, so it is left; `docs/DECISIONS.md`,
+	// 2026-11-25. Read from the run at every bind, so a load finds the same one. Any other dungeon nobody sent -- one
+	// built by hand in a test -- stays Demonic.
 	DungeonCataclysm = Dungeon.Cataclysm;
+	if (DungeonCataclysm == ECataclysmType::None && Dungeon.Type == ECataclysmDungeonType::FallenCity
+		&& Run.ActiveCataclysms.Num() > 0)
+	{
+		DungeonCataclysm = Run.ActiveCataclysms.Last();
+	}
 
 	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
 	// game mode and adds it to every creature on the floor, which is how a
