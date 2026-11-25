@@ -115,7 +115,33 @@ an enemy with no Necrosis; a summoner with no row; the walk and the loss before 
 
 ### What was run
 
-FIGURES_HERE
+**The whole Python suite on `111bd5979`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8969 passed, 9 skipped in 613.64s
+(0:10:13)". The JUnit file agrees: tests 8979, failures 1, errors 0, skipped 9, so 8969 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on
+`a7b372ca3`'s working tree, also failed the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Ten Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`a7b372ca3`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A minion's blow raising `hit_dealt` rather than `minion_hit` | `test_charge_and_placed_action_names_match_the_engine.py::test_a_minions_and_a_thralls_blow_raise_minion_hit_on_the_commander` |
+| A thrall's blow raising `hit_dealt` rather than `minion_hit` | the same test |
+| `immune_to_slow` read as more than 1 rather than above nought | `test_charge_and_placed_action_names_match_the_engine.py::test_the_minion_stats_of_the_slice_are_read_where_they_act` |
+| Grave Pact's factor no longer multiplying the damage taken | the same test |
+| Hasty Dead's walk reading `minion_attack_speed` | the same test |
+| The Necrosis question missing from the stop-early list | `test_charge_and_placed_action_names_match_the_engine.py::test_every_target_question_reaches_both_lists_in_with_target_state` |
+| Ringed in Bone's slow row asking four minions rather than five | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Grave Pact at 20% less rather than 30% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| The engine's conditioned probe pin left at 36 | `test_every_conditioned_stat_has_an_asker.py::test_the_engine_pins_the_conditioned_table_at_the_size_it_has` |
+| `minion_hit` taken out of the events whose character cannot be struck | `test_pool_action_names_match_the_engine.py::test_every_event_a_strike_may_hang_on_is_fired_with_a_character` and `::test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
 
 ---
 
