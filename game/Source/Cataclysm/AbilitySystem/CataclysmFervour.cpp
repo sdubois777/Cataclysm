@@ -1001,6 +1001,28 @@ float UCataclysmFervour::GainStated(UAbilitySystemComponent* AbilitySystem, floa
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
+float UCataclysmFervour::SpendAll(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		// No class resource set means no pool to spend, which is every enemy and every minion.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float HeldBefore = AbilitySystem->GetNumericAttribute(Pool);
+	if (HeldBefore <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// TAKEN AS THE COST IS, through `ApplyModToAttribute`, so the pool's own clamp at nought is what it meets. Issue
+	// #2885, N13.
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -HeldBefore);
+	return FMath::Max(0.0f, HeldBefore - AbilitySystem->GetNumericAttribute(Pool));
+}
+
 float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* AbilitySystem,
 												float MetresAway)
 {

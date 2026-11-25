@@ -145,6 +145,22 @@ void UCataclysmStrikeSkill::ActivateAbility(
 		return;
 	}
 
+	// A ROW THAT SPENDS EVERY FERVOUR HELD SPENDS IT NOW, ONCE THE USE IS PAID FOR. Issue #2885, the Death draft's N13,
+	// slice DS4: the Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50 among it". The cost was taken by
+	// `ApplyCost` in the commit above; what is spent is that cost and every point left beside it, which the blow then
+	// scales by (`ScalingSource=FervourSpent`). HERE, AT THE PRESS, as the cost is, and not when the blow lands, so a
+	// wave whose swing waits on its animation spends what was held when it was pressed.
+	//
+	// A FREE START THAT PAYS NOTHING SPENDS NOTHING, a judgement of slice DS4: Follow Through's repeat "pays nothing"
+	// (ruled 2026-09-24), so it empties no pool and its blow scales by nought. A free start that pays its cost (ruled
+	// 2026-10-06) pays all.
+	FervourSpentThisUse = 0.0f;
+	if (Params.bSpendsAllFervour && (!bFreeRepeat || bFreeRepeatPaysCost))
+	{
+		UAbilitySystemComponent* Spender = GetAbilitySystemComponentFromActorInfo();
+		FervourSpentThisUse = FervourCostFor(Spender) + UCataclysmFervour::SpendAll(Spender);
+	}
+
 	// EVERYTHING BELOW WAITS FOR THE WEAPON TO ARRIVE. Issue #1133. Until this,
 	// the whole of it ran in the frame the ability activated while the swing
 	// animation played for a second or more beside it, so an enemy took damage
@@ -486,6 +502,18 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 		}
 	}
 
+	// AND IN THE SAME INSTANT THE CASTER'S OWN POISON, BLEED AND NECROSIS AROUND IT DEAL ALL THEY HAD LEFT, AND END, WHEN
+	// THE ROW SAYS SO. Issue #2885, the Death draft's N15, slice DS4: the Fist's Quietus, "deliver the quietus to one
+	// enemy for 400% weapon damage. In the same instant every Poison, Bleed and Necrosis you have laid on enemies within
+	// 10 meters deals all the damage it had left, and ends." AFTER THE BLOW, the sentence's order, so the blow is not
+	// struck at an enemy the cash-in has just killed. WITH EVERY SWING, WHETHER OR NOT ITS BLOW LANDED, a judgement:
+	// the sentence ties the cash-in to the instant and not to the hit, so an evaded quietus still cashes them in.
+	// Around where the use is cast from, the apex, which is the caster's own place unless a free start gave another.
+	if (Params.CashInRadiusCm > 0.0f)
+	{
+		CashInOwnAilmentsAround(Apex);
+	}
+
 	// AND THE CASTER'S OWN MINIONS INSIDE THE SWING EXPLODE, IF THE ROW SAYS SO, AND THEN EVERYTHING ELSE IT COMMANDS
 	// STRIKES THE FIRST ENEMY THE SWING HIT. Issue #2885, the Death draft's N3 and N4: the Greatsword's Gravebell,
 	// "every minion of yours the arc passes through explodes, and every other creature you command strikes the first
@@ -516,6 +544,24 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 			if (IsValid(Target) && !UCataclysmSkillEffects::IsDead(Target))
 			{
 				OrderEveryCommandedStrikeOn(Target);
+				break;
+			}
+		}
+	}
+
+	// AND THE COOLDOWN COMES BACK IF THE SWING KILLED WHAT IT STRUCK, WHEN THE ROW SAYS SO. Issue #2885, the Death
+	// draft's N9, slice DS4: the Sword's Mercy Stroke, "if the stroke kills, the sword is ready to strike again at once".
+	// Emberhaul's test at its arrival (`UCataclysmMovementSkill`), asked of the targets this swing struck and not of a
+	// death anywhere: dead, or at no health, whichever of the two its death path reached first. LAST, after everything
+	// the swing does, so a kill by its curse or its cash-in in the same instant counts as the stroke's. Nothing for a
+	// strike stating no `RefundsCooldown`, which was every strike before slice DS4.
+	if (!Params.RefundsCooldown.IsEmpty() && !Targets.IsEmpty())
+	{
+		for (AActor* Target : Targets)
+		{
+			if (UCataclysmSkillEffects::IsDead(Target) || AtNoHealth(Target))
+			{
+				RefundCooldown();
 				break;
 			}
 		}

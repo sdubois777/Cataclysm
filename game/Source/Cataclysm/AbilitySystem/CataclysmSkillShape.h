@@ -386,6 +386,12 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 * ScalingUnits`, Grim Swath) and by a self buff's bonus as it changes
 	 * (`UCataclysmSelfBuffSkill::ScalingCount`, Cold Blood). The generator
 	 * refuses it on any other shape.
+	 *
+	 * `FervourSpent` IS A THIRTEENTH, slice DS4, the Death draft's N13: the
+	 * Fervour this use spent, its cost and everything else held, when its row
+	 * states `SpendsAllFervour=1` (`UCataclysmSkillTemplate::
+	 * FervourSpentThisUse`, the Wand's Requiem). The generator refuses it
+	 * without that key.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString ScalingSource;
@@ -1047,6 +1053,24 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bHoldsFervour = false;
 
+	/**
+	 * True when a use spends every Fervour its caster holds, its own cost among it. `SpendsAllFervour=1`, on a Strike.
+	 * Issue #2885, the Death draft's N13, slice DS4: the Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50
+	 * among it". What was spent is `UCataclysmSkillTemplate::FervourSpentThisUse`, which `ScalingSource=FervourSpent`
+	 * counts ("1% more for every Fervour spent"); the pool is emptied by `UCataclysmFervour::SpendAll`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bSpendsAllFervour = false;
+
+	/**
+	 * Centimetres around the caster within which its own Poison, Bleed and Necrosis deal all the damage they had left,
+	 * and end, as the strike lands; nought for none. `CashInRadius=10`, on a Strike. Issue #2885, the Death draft's N15,
+	 * slice DS4: the Fist's Quietus, "every Poison, Bleed and Necrosis you have laid on enemies within 10 meters deals
+	 * all the damage it had left, and ends". `UCataclysmSkillTemplate::CashInOwnAilmentsAround`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CashInRadiusCm = 0.0f;
+
 	// --- Projectile extras -------------------------------------------------
 
 	/** How many times a thrown weapon glances onward. Carom states 3. */
@@ -1154,7 +1178,12 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bDetonates = false;
 
-	/** Which cooldown the skill returns: Self or Movement. Empty returns none. */
+	/**
+	 * Which cooldown the skill returns: Self or Movement. Empty returns none. A movement's arrival returns it when it
+	 * kills (Emberhaul), a self buff on a blow from behind (Slipstream), and since issue #2885, the Death draft's N9,
+	 * slice DS4, a STRIKE when its swing kills what it struck: the Sword's Mercy Stroke, "if the stroke kills, the sword
+	 * is ready to strike again at once" (`UCataclysmStrikeSkill::SwingOnce`).
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString RefundsCooldown;
 

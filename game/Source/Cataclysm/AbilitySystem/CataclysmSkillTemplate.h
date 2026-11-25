@@ -460,6 +460,33 @@ public:
 	int32 MinionsDetonated = 0;
 
 	/**
+	 * The Fervour this skill's last use spent when its row states `SpendsAllFervour=1`: its own cost and every point
+	 * held beside it. Nought for every other skill and for a free start that pays nothing. Issue #2885, the Death
+	 * draft's N13, slice DS4: what `ScalingSource=FervourSpent` counts, the Wand's Requiem, "1% more for every Fervour
+	 * spent". Written by `UCataclysmStrikeSkill::ActivateAbility` when the use is paid for, read at the blow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float FervourSpentThisUse = 0.0f;
+
+	/**
+	 * How many of its caster's Poisons, Bleeds and Necroses this skill's last swing cashed in. Issue #2885, the Death
+	 * draft's N15 (`CashInRadius`). Zero for every skill that states none. Read by tests.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 AilmentsCashedIn = 0;
+
+	/**
+	 * Every Poison, Bleed and Necrosis this skill's caster laid on an enemy within the row's `CashInRadius` of `Centre`
+	 * deals all the damage it had left, at once, and ends; answers how many, and records it in `AilmentsCashedIn`.
+	 * Issue #2885, the Death draft's N15, slice DS4: the Fist's Quietus. THE PRECEDENT'S OWN CALL, the enchantment row
+	 * "all active DoTs on nearby enemies instantly deal their remaining damage"
+	 * (`UCataclysmSkillEffects::DealRemainingDamageOverTime` at 100% with each one ended), narrowed to the three
+	 * ailments the sentence names. THE CASTER'S OWN: a minion's ailment is the minion's (ruled 2026-09-17), and
+	 * another's is not cashed. Public so a test can drive it.
+	 */
+	int32 CashInOwnAilmentsAround(const FVector& Centre);
+
+	/**
 	 * Set, the use now running was counted as a channelled skill on its
 	 * character's ability system, and `EndAbility` owes that system one
 	 * `NoteChannelEnded`. Ruled 2026-10-08.

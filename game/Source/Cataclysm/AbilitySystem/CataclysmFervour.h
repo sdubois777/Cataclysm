@@ -534,6 +534,20 @@ public:
 	static float GainStated(UAbilitySystemComponent* AbilitySystem, float Stated);
 
 	/**
+	 * Empty the pool, and answer what left it: every point held. Issue #2885, the Death draft's N13, slice DS4: the
+	 * Wand's Requiem, "spend every Fervour you hold, the Ultimate's 50 among it". THE WRITE TO THE POOL, here for the
+	 * reason every other is: one place clamps it. It decides nothing about whether a use spends all; the strike asks
+	 * its row's `SpendsAllFervour` and pays its own cost first, through `ApplyCost`.
+	 *
+	 * NO `resource_consumed` EVENT, a judgement of slice DS4: the use's cost already raised one ("once per payment
+	 * whatever its size", issue #1833), and this is the rest of the same payment rather than a second one.
+	 *
+	 * @param AbilitySystem  the spender's; nothing for one with no class resource set
+	 * @return how much Fervour left the pool, nought or more
+	 */
+	static float SpendAll(UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Fervour gained when an enemy dies near this character.
 	 * `Ritualist_capstone_50`'s second option, Fed by the Fallen, is its only
 	 * source. Issue #1515.

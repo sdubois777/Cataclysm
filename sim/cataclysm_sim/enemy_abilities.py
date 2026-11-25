@@ -82,9 +82,13 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # `KillFervour` joined the same day with slice DS3 (the draft's N6) on
     # Strike, Projectile, Movement and Debuff: extra Fervour for a kill. No
     # enemy ability uses it.
+    # `SpendsAllFervour` and `CashInRadius` joined the same day with slice DS4
+    # (the draft's N13 and N15): the Wand's Requiem spends every Fervour held,
+    # and the Fist's Quietus cashes in its caster's ailments. No enemy ability
+    # uses either.
     "Strike": ("Radius", "Angle", "MaxTargets", "Duration", "Interval",
                "DisarmsUntilRecalled", "Detonates", "CommandStrike",
-               "KillFervour"),
+               "KillFervour", "SpendsAllFervour", "CashInRadius"),
     # A PROJECTILE MAY REPEAT since 2026-09-01. Butcher's Bill throws thirty
     # axes over ten seconds, which needs the Count, Duration and Interval a
     # Summon has always had. No enemy ability uses them on a projectile yet.

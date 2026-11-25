@@ -4,7 +4,9 @@ Slice DS2 built the Death draft's N1 (`Permanent=1`, a raise that stands until i
 caster's minions in the skill's area explode), N4 (`CommandStrike=1`, until then a projectile's alone, on a Strike) and
 N11 (`MinionsLayEffect=1`, a summon's minions lay its `Effect` with their blows). N2 has no key: a Summon row stating a
 Damage Percent of its own strikes as it rises, and lays its `Effect` with that blow. N16 widened `SKILL_ROW_AILMENTS`,
-which `test_stalker_kit_shape_keys.py` holds.
+which `test_stalker_kit_shape_keys.py` holds. Slice DS3 added N5, N6, N7, N8 and N10's keys, and slice DS4 N13's
+`SpendsAllFervour` with `ScalingSource=FervourSpent` and N15's `CashInRadius` on a Strike (N9, a strike's refund, is the
+`RefundsCooldown` rider and has no key of its own).
 
 EACH KEY IS SHOWN BOTH WAYS: accepted where the engine reads it, and refused where a row stating it would run and
 quietly do something else -- which is the failure `parse_shape_params` exists to prevent. The C++ parser reading each
@@ -315,3 +317,64 @@ def test_a_risen_kind_the_minion_table_lacks_is_refused():
     tables["WeaponSkills"][0]["ShapeParams"] = DEATH_RATTLE.replace("RisesAs=Husk", "RisesAs=Ghoul")
     problems = gen.validate_risen_kinds(tables)
     assert len(problems) == 1 and "no row in the Minion Types sheet" in problems[0], problems
+
+
+# --------------------------------------------------------------------------
+# Slice DS4: N9 a strike's refund, N13 SpendsAllFervour and ScalingSource=FervourSpent, N15 CashInRadius
+
+REQUIEM = ("Radius=14; Angle=360; Effect=Cripple; EffectMagnitude=40; EffectDuration=6; SpendsAllFervour=1; "
+           "MoreDamagePer=1; ScalingSource=FervourSpent; MaxDamagePercent=700")
+
+
+def test_a_strike_returning_its_own_cooldown_is_accepted():
+    """Mercy Stroke's cell, word for word. N9 has no key of its own: `RefundsCooldown` is a rider every shape may state,
+    and a strike reads it since slice DS4."""
+    assert parse("Radius=2.5; Angle=60; MaxTargets=1; RefundsCooldown=Self", "Strike")["RefundsCooldown"] == "Self"
+
+
+def test_a_strike_spending_every_fervour_and_scaling_by_what_it_spent_is_accepted():
+    """Requiem's cell, word for word."""
+    params = parse(REQUIEM, "Strike")
+    assert params["SpendsAllFervour"] == "1" and params["ScalingSource"] == "FervourSpent"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=14; Angle=360; MoreDamagePer=1; ScalingSource=FervourSpent"),
+    ("Strike", "Radius=14; Angle=360; SpendsAllFervour=0; MoreDamagePer=1; ScalingSource=FervourSpent"),
+    ("Projectile", "Range=14; Radius=1; Speed=2400; MoreDamagePer=1; ScalingSource=FervourSpent"),
+])
+def test_scaling_by_the_fervour_spent_without_spending_it_is_refused(shape, text):
+    """Nothing is spent, so the scaling would count a nought it never moves. A projectile cannot spend at all."""
+    assert "SpendsAllFervour=1" in refused(text, shape)
+
+
+def test_spending_every_fervour_alone_passes():
+    """THE CONTROL for the refusal above: a row may spend and scale by nothing, and the key is a strike's to state."""
+    assert parse("Radius=14; Angle=360; SpendsAllFervour=1", "Strike")["SpendsAllFervour"] == "1"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Projectile", "Range=14; Radius=1; Speed=2400; SpendsAllFervour=1"),
+    ("SelfBuff", "Duration=6; SpendsAllFervour=1"),
+    ("Movement", "Mode=Leap; Range=10; Radius=3; SpendsAllFervour=1"),
+])
+def test_spending_every_fervour_is_a_strikes_alone(shape, text):
+    assert "has no parameter 'SpendsAllFervour'" in refused(text, shape)
+
+
+def test_a_strike_cashing_in_its_casters_ailments_is_accepted():
+    """Quietus's cell, word for word."""
+    assert parse("Radius=2.5; Angle=60; MaxTargets=1; CashInRadius=10", "Strike")["CashInRadius"] == "10"
+
+
+@pytest.mark.parametrize("radius", ["0", "-2"])
+def test_a_cash_in_that_reaches_nobody_is_refused(radius):
+    assert "reaches nobody" in refused(f"Radius=2.5; Angle=60; MaxTargets=1; CashInRadius={radius}", "Strike")
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Projectile", "Range=14; Radius=1; Speed=2400; CashInRadius=10"),
+    ("Debuff", "Range=12; Radius=5; Effect=Cripple; CashInRadius=10"),
+])
+def test_a_cash_in_is_a_strikes_alone(shape, text):
+    assert "has no parameter 'CashInRadius'" in refused(text, shape)

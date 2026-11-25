@@ -2440,6 +2440,16 @@ float UCataclysmSkillTemplate::ScalingUnits(int32 ConsumedCount,
 		return FervourHeldBy(Avatar());
 	}
 
+	if (Params.ScalingSource.Equals(TEXT("FervourSpent"), ESearchCase::IgnoreCase))
+	{
+		// THE FERVOUR THIS USE SPENT, ITS COST AMONG IT. Issue #2885, the Death draft's N13, slice DS4: the Wand's
+		// Requiem, "spend every Fervour you hold, the Ultimate's 50 among it ... 250% weapon damage, 1% more for every
+		// Fervour spent, to at most 700%", written as `SpendsAllFervour=1; MoreDamagePer=1; ScalingSource=FervourSpent;
+		// MaxDamagePercent=700`. Spent when the use was paid for (`UCataclysmStrikeSkill::ActivateAbility`), so the pool
+		// is empty by the time the blow lands and only this remembers it.
+		return FervourSpentThisUse;
+	}
+
 	// One of the sources nothing counts here -- Kill, Bounce, Pierced, Pinned --
 	// or Burning, Kill, Pinned and a buff's own Second, which
 	// `UCataclysmSelfBuffSkill::Units` counts for itself. Scaling by nothing is
@@ -3410,6 +3420,51 @@ bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target)
 	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
 	// is, which is `RollOnLandedBlow`'s call.
 	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
+}
+
+int32 UCataclysmSkillTemplate::CashInOwnAilmentsAround(const FVector& Centre)
+{
+	AilmentsCashedIn = 0;
+	AActor* Self = Avatar();
+	if (!Self || Params.CashInRadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE THREE THE SENTENCE NAMES, BY THE TAGS THEIR OWN AILMENT ROWS GRANT. Issue #2885, the Death draft's N15: "every
+	// Poison, Bleed and Necrosis you have laid". Not a burn, a disease or a splinter. Read from `UCataclysmAilments` so
+	// the tag is the one an application grants, not a second spelling of it.
+	static const TCHAR* const CashedInByName[] = {TEXT("Poison"), TEXT("Bleed"), TEXT("Necrosis")};
+	TArray<FGameplayTag> CashedInTags;
+	for (const TCHAR* const AilmentName : CashedInByName)
+	{
+		const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(AilmentName);
+		const FGameplayTag Granted = Kind
+			? FGameplayTag::RequestGameplayTag(FName(Kind->TagName), /*ErrorIfNotFound=*/false)
+			: FGameplayTag();
+		if (Granted.IsValid())
+		{
+			CashedInTags.Add(Granted);
+		}
+	}
+
+	// THE ROW'S OWN RADIUS, NOT WIDENED BY AREA OF EFFECT, a judgement of slice DS4: the sentence's "within 10 meters"
+	// is a reach that decides whose ailments are cashed, as a taunt's radius is the row's own (C3), not an area the blow
+	// strikes. Every enemy in it, with no limit on how many, as the precedent's "on nearby enemies" has none.
+	for (AActor* Ailing : UCataclysmTargeting::FindEnemiesInSphere(GetWorld(), Self, Centre, Params.CashInRadiusCm))
+	{
+		for (const FGameplayTag& Granting : CashedInTags)
+		{
+			AilmentsCashedIn += UCataclysmSkillEffects::DealRemainingDamageOverTime(
+				Self, Ailing, /*Percent=*/100.0f, Granting, /*bEndEach=*/true);
+		}
+	}
+
+	if (AilmentsCashedIn > 0)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' cashed in %d of its caster's ailments."), *SkillName, AilmentsCashedIn);
+	}
+	return AilmentsCashedIn;
 }
 
 float UCataclysmSkillTemplate::DrawDamageRoll() const

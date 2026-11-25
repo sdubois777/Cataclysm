@@ -5,6 +5,8 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the tag each ailment a skill row names grants, which a cash-in reads. Slice DS4.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -466,6 +468,39 @@ namespace CataclysmDeathSkillsTest
 	float DeathSkillHealthLost(const FDeathSkillCreature& Creature)
 	{
 		return 100000.0f - DeathSkillHealthOf(Creature.Actor);
+	}
+
+	/** Health a bare fighter has lost from the 100000 `FDeathSkillFighter` gives it. Slice DS4. */
+	float DeathSkillFighterHealthLost(const FDeathSkillFighter& Fighter)
+	{
+		return 100000.0f - Fighter.Health();
+	}
+
+	/** The tag the ailment a skill row writes as `Name` grants, or an invalid one this build does not know. Slice DS4. */
+	FGameplayTag DeathSkillAilmentTag(const TCHAR* Name)
+	{
+		const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Name);
+		return Kind ? FGameplayTag::RequestGameplayTag(FName(Kind->TagName), /*ErrorIfNotFound=*/false) : FGameplayTag();
+	}
+
+	/**
+	 * Lay the ailment a skill row writes as `Name` on `On` in `By`'s name: ten a tick for ten seconds, unscaled, as
+	 * `CataclysmRemainingDamageTests.cpp` lays one, so what it has left is the engine's own figure. Slice DS4.
+	 */
+	bool DeathSkillLayAilment(AActor* By, AActor* On, const TCHAR* Name)
+	{
+		const FGameplayTag Granted = DeathSkillAilmentTag(Name);
+		return Granted.IsValid()
+			&& UCataclysmSkillEffects::ApplyDamageOverTime(By, On, /*DamagePerTick=*/10.0f, /*DurationSeconds=*/10.0f,
+														   Granted, /*bScalesWithInstigator=*/false);
+	}
+
+	/** Whether `Actor` carries the ailment a skill row writes as `Name`. Slice DS4. */
+	bool DeathSkillCarriesAilment(const AActor* Actor, const TCHAR* Name)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
+		const FGameplayTag Granted = DeathSkillAilmentTag(Name);
+		return System && Granted.IsValid() && System->HasMatchingGameplayTag(Granted);
 	}
 }
 
@@ -3740,6 +3775,278 @@ bool FCataclysmDeathSkillsDeathRattleTest::RunTest(const FString&)
 	TestEqual(TEXT("lasting 8 seconds"), Husks[0]->GetLifeSpan(), 8.0f, DeathSkillAllowance);
 	TestEqual(TEXT("reserving Shallow Graves' 3 Fervour"), Husks[0]->ReservedFervour, 3.0f, DeathSkillAllowance);
 	TestEqual(TEXT("and taunting within its 4 m"), Husks[0]->TauntRadiusCm, 4.0f * DeathSkillMetre, DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS4, change A. N9: a strike returns its cooldown on a kill. N13: a strike spends every Fervour held and scales
+// by what it spent. N15: a strike cashes in its caster's Poison, Bleed and Necrosis around it.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsStrikeRefundsOnAKillTest,
+	"Cataclysm.DeathSkills.AStrikeThatRefundsItsCooldownIsReadyAgainWhenItsSwingKillsAndWaitsWhenItDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N9 (`UCataclysmStrikeSkill::SwingOnce`): a ring swing stating `RefundsCooldown=Self` -- Mercy Stroke's key -- pressed
+ * from the Heavy slot with a cooldown of 4 s kills a creature of 1 health 2 m off, and its cooldown is taken off at once.
+ * THE CONTROLS, each a fresh caster 100 m further along +Y: the same swing at a creature it leaves standing keeps its
+ * cooldown, and a swing stating no `RefundsCooldown` keeps its cooldown though it kills.
+ */
+bool FCataclysmDeathSkillsStrikeRefundsOnAKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
+	if (!TestTrue(TEXT("set-up: the Heavy slot's cooldown has a tag"), Cooldown.IsValid()))
+	{
+		return false;
+	}
+	const TCHAR* const Refunding = TEXT("Radius=3; Angle=360; MaxTargets=1; RefundsCooldown=Self");
+
+	// THE KILL: the cooldown goes.
+	FDeathSkillFighter Killer(World, FVector::ZeroVector);
+	FDeathSkillCreature Doomed(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	Doomed.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	UCataclysmStrikeSkill* Stroke = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Killer.AbilitySystem, Killer.Actor, ECataclysmAbilitySlot::Heavy, Refunding, TEXT("A refunding stroke"));
+	if (!TestNotNull(TEXT("set-up: the stroke is granted"), Stroke))
+	{
+		return false;
+	}
+	Stroke->CooldownOverride = 4.0f;
+	Stroke->DamagePercentOverride = 300.0f;
+	if (!TestTrue(TEXT("the stroke is pressed"), ActivateDeathSkill(Killer.AbilitySystem, Stroke)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and kills the creature of 1 health"), UCataclysmSkillEffects::IsDead(Doomed.Actor));
+	TestFalse(TEXT("so its cooldown was taken off at once"), Killer.AbilitySystem->HasMatchingGameplayTag(Cooldown));
+
+	// THE FIRST CONTROL: the same stroke leaving its creature standing.
+	FDeathSkillFighter Sparer(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Spared(World, FVector(2.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Sparing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Sparer.AbilitySystem, Sparer.Actor, ECataclysmAbilitySlot::Heavy, Refunding, TEXT("A stroke that spares"));
+	if (!TestNotNull(TEXT("set-up: the control stroke is granted"), Sparing))
+	{
+		return false;
+	}
+	Sparing->CooldownOverride = 4.0f;
+	Sparing->DamagePercentOverride = 300.0f;
+	if (!TestTrue(TEXT("set-up: the control stroke is pressed"), ActivateDeathSkill(Sparer.AbilitySystem, Sparing)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("set-up: its creature stands"), UCataclysmSkillEffects::IsDead(Spared.Actor));
+	TestTrue(TEXT("control: so its cooldown runs"), Sparer.AbilitySystem->HasMatchingGameplayTag(Cooldown));
+
+	// THE SECOND CONTROL: a stroke stating no refund, which kills.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 200.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature PlainDoomed(World, FVector(2.0f * DeathSkillMetre, 200.0f * DeathSkillMetre, 0.0f),
+									ECataclysmTeam::Monsters);
+	PlainDoomed.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	UCataclysmStrikeSkill* PlainStroke = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=360; MaxTargets=1"),
+		TEXT("A stroke that refunds nothing"));
+	if (!TestNotNull(TEXT("set-up: the plain stroke is granted"), PlainStroke))
+	{
+		return false;
+	}
+	PlainStroke->CooldownOverride = 4.0f;
+	PlainStroke->DamagePercentOverride = 300.0f;
+	if (!TestTrue(TEXT("set-up: the plain stroke is pressed"), ActivateDeathSkill(Plain.AbilitySystem, PlainStroke)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: it kills its creature of 1 health"), UCataclysmSkillEffects::IsDead(PlainDoomed.Actor));
+	TestTrue(TEXT("control: and its cooldown runs, the row stating no refund"),
+			 Plain.AbilitySystem->HasMatchingGameplayTag(Cooldown));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsStrikeSpendsAllFervourTest,
+	"Cataclysm.DeathSkills.AStrikeThatSpendsEveryFervourEmptiesThePoolAndStrikesHarderForWhatItSpentToItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N13 (`UCataclysmStrikeSkill::ActivateAbility`, `UCataclysmFervour::SpendAll`, `ScalingUnits`): a ring swing of 250%
+ * stating `SpendsAllFervour=1; MoreDamagePer=1; ScalingSource=FervourSpent; MaxDamagePercent=600` -- Requiem's rate, under
+ * a ceiling low enough to reach -- pressed from the Ultimate slot at a cost of 50. At 100 Fervour it spends all 100, the
+ * pool is empty, and it strikes twice as hard as the control (500% against 250%); at 150 it spends 150 and strikes for its
+ * 600% ceiling, 2.4 times, where its rate alone would make 625%. THE CONTROL: the same swing stating neither key, at 100
+ * Fervour, spends its 50 alone, keeps 50, and strikes for its 250%. Read as ratios of the health each swing took, each a
+ * fresh caster and creature 100 m apart.
+ */
+bool FCataclysmDeathSkillsStrikeSpendsAllFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const TCHAR* const Spending =
+		TEXT("Radius=3; Angle=360; SpendsAllFervour=1; MoreDamagePer=1; ScalingSource=FervourSpent; MaxDamagePercent=600");
+	const auto PressAt = [World](float HeldFervour, const TCHAR* WaveCell, float AcrossMetres, float& OutSpent,
+								 float& OutLeft) -> float
+	{
+		FDeathSkillFighter Singer(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
+		FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f),
+								   ECataclysmTeam::Monsters);
+		DeathSkillSetFervour(Singer.Actor, HeldFervour);
+		UCataclysmStrikeSkill* Wave = GrantDeathSkill<UCataclysmStrikeSkill>(
+			Singer.AbilitySystem, Singer.Actor, ECataclysmAbilitySlot::Ultimate, WaveCell, TEXT("A spending wave"));
+		if (!Wave)
+		{
+			return -1.0f;
+		}
+		Wave->DamagePercentOverride = 250.0f;
+		Wave->FervourCostOverride = 50.0f;
+		if (!ActivateDeathSkill(Singer.AbilitySystem, Wave))
+		{
+			return -1.0f;
+		}
+		OutSpent = Wave->FervourSpentThisUse;
+		OutLeft = DeathSkillFervourOf(Singer.Actor);
+		return DeathSkillHealthLost(Struck);
+	};
+
+	float ControlSpent = -1.0f;
+	float ControlLeft = -1.0f;
+	const float Plain = PressAt(100.0f, TEXT("Radius=3; Angle=360"), 0.0f, ControlSpent, ControlLeft);
+	if (!TestTrue(TEXT("set-up: the control wave was pressed and struck"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: it spent its cost of 50 alone and keeps 50"), ControlLeft, 50.0f, DeathSkillAllowance);
+	TestEqual(TEXT("control: and records nothing spent, stating no SpendsAllFervour"), ControlSpent, 0.0f,
+			  DeathSkillAllowance);
+
+	float SpentAtHundred = -1.0f;
+	float LeftAtHundred = -1.0f;
+	const float AtHundred = PressAt(100.0f, Spending, 100.0f, SpentAtHundred, LeftAtHundred);
+	if (!TestTrue(TEXT("set-up: the spending wave was pressed at 100 Fervour and struck"), AtHundred > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 100 it spent all 100, its cost of 50 among it"), SpentAtHundred, 100.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and the pool is empty"), LeftAtHundred, 0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and it struck twice as hard as the control: 500% against 250%"), AtHundred / Plain, 2.0f,
+			  DeathSkillAllowance);
+
+	float SpentAtCeiling = -1.0f;
+	float LeftAtCeiling = -1.0f;
+	const float AtCeiling = PressAt(150.0f, Spending, 200.0f, SpentAtCeiling, LeftAtCeiling);
+	TestEqual(TEXT("at 150 it spent 150"), SpentAtCeiling, 150.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and struck for its 600% ceiling, 2.4 times, not the 625% its rate makes"), AtCeiling / Plain, 2.4f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsStrikeCashesInAilmentsTest,
+	"Cataclysm.DeathSkills.AStrikeThatCashesInEndsItsCastersPoisonBleedAndNecrosisWithinItsRadiusForWhatTheyHadLeft",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N15 (`UCataclysmSkillTemplate::CashInOwnAilmentsAround`, from `UCataclysmStrikeSkill::SwingOnce`): a swing stating
+ * `CashInRadius=10` -- Quietus's key -- strikes the creature 2 m ahead, and in the same instant the caster's Poison,
+ * Bleed and Necrosis on a fighter 6 m behind it deal what they had left and end: three cashed in, health taken. Left
+ * running: the caster's burn on that fighter (not one of the three), another's Necrosis on a fighter 6 m off (not the
+ * caster's), and the caster's Poison on a fighter 12 m off (beyond the 10 m). THE CONTROL, 100 m along +Y: the same
+ * swing stating no `CashInRadius` cashes in nothing and leaves its three running.
+ */
+bool FCataclysmDeathSkillsStrikeCashesInAilmentsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	if (!TestTrue(TEXT("set-up: the vocabulary has the three ailments and the burn"),
+				  DeathSkillAilmentTag(TEXT("Poison")).IsValid() && DeathSkillAilmentTag(TEXT("Bleed")).IsValid()
+				  && DeathSkillAilmentTag(TEXT("Necrosis")).IsValid() && Burn.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillFighter Other(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillFighter Ailing(World, FVector(-6.0f * DeathSkillMetre, 0.0f, 0.0f));
+	FDeathSkillFighter Theirs(World, FVector(0.0f, 6.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillFighter Far(World, FVector(-12.0f * DeathSkillMetre, 0.0f, 0.0f));
+	FDeathSkillFighter ControlCaster(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillFighter ControlAiling(World, FVector(-6.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f));
+	if (!TestTrue(TEXT("set-up: the caster's Poison, Bleed, Necrosis and burn on the fighter 6 m behind"),
+				  DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Poison"))
+				  && DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Bleed"))
+				  && DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Necrosis"))
+				  && UCataclysmSkillEffects::ApplyDamageOverTime(Caster.Actor, Ailing.Actor, 10.0f, 10.0f, Burn,
+																 /*bScalesWithInstigator=*/false))
+		|| !TestTrue(TEXT("set-up: another's Necrosis on the fighter 6 m off"),
+					 DeathSkillLayAilment(Other.Actor, Theirs.Actor, TEXT("Necrosis")))
+		|| !TestTrue(TEXT("set-up: the caster's Poison on the fighter 12 m off"),
+					 DeathSkillLayAilment(Caster.Actor, Far.Actor, TEXT("Poison")))
+		|| !TestTrue(TEXT("set-up: the control caster's three on its own fighter"),
+					 DeathSkillLayAilment(ControlCaster.Actor, ControlAiling.Actor, TEXT("Poison"))
+					 && DeathSkillLayAilment(ControlCaster.Actor, ControlAiling.Actor, TEXT("Bleed"))
+					 && DeathSkillLayAilment(ControlCaster.Actor, ControlAiling.Actor, TEXT("Necrosis"))))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Quietus = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=2.5; Angle=60; MaxTargets=1; CashInRadius=10"), TEXT("A cashing stroke"));
+	if (!TestNotNull(TEXT("set-up: the stroke is granted"), Quietus))
+	{
+		return false;
+	}
+	Quietus->DamagePercentOverride = 400.0f;
+	TestEqual(TEXT("the stroke strikes the creature 2 m ahead"), Quietus->SwingOnce(), 1);
+	TestTrue(TEXT("which takes its blow"), DeathSkillHealthLost(Struck) > 0.0f);
+	TestEqual(TEXT("and three of the caster's ailments were cashed in"), Quietus->AilmentsCashedIn, 3);
+	TestFalse(TEXT("the Poison 6 m behind has ended"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Poison")));
+	TestFalse(TEXT("and the Bleed"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Bleed")));
+	TestFalse(TEXT("and the Necrosis"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Necrosis")));
+	TestTrue(TEXT("and dealt what they had left at once"), DeathSkillFighterHealthLost(Ailing) > 0.0f);
+	TestTrue(TEXT("the caster's burn there runs on, not one of the three"), Ailing.Carries(Burn));
+	TestTrue(TEXT("another's Necrosis 6 m off runs on, not the caster's"),
+			 DeathSkillCarriesAilment(Theirs.Actor, TEXT("Necrosis")));
+	TestTrue(TEXT("the caster's Poison 12 m off runs on, beyond the 10 m"),
+			 DeathSkillCarriesAilment(Far.Actor, TEXT("Poison")));
+
+	// THE CONTROL: the same stroke stating no CashInRadius.
+	UCataclysmStrikeSkill* PlainStroke = GrantDeathSkill<UCataclysmStrikeSkill>(
+		ControlCaster.AbilitySystem, ControlCaster.Actor, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=2.5; Angle=60; MaxTargets=1"), TEXT("A stroke that cashes in nothing"));
+	if (!TestNotNull(TEXT("set-up: the control stroke is granted"), PlainStroke))
+	{
+		return false;
+	}
+	PlainStroke->DamagePercentOverride = 400.0f;
+	PlainStroke->SwingOnce();
+	TestEqual(TEXT("control: it cashed in nothing"), PlainStroke->AilmentsCashedIn, 0);
+	TestTrue(TEXT("control: its fighter's Poison runs on"), DeathSkillCarriesAilment(ControlAiling.Actor, TEXT("Poison")));
+	TestTrue(TEXT("control: and its Bleed"), DeathSkillCarriesAilment(ControlAiling.Actor, TEXT("Bleed")));
+	TestTrue(TEXT("control: and its Necrosis"), DeathSkillCarriesAilment(ControlAiling.Actor, TEXT("Necrosis")));
 	return true;
 }
 

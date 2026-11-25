@@ -558,6 +558,16 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bHoldsFervour = Number != 0.0f;
 		}
+		// The Death draft's N13 and N15, issue #2885 slice DS4: a strike spending every Fervour held, and one cashing in
+		// its caster's Poison, Bleed and Necrosis around it.
+		else if (Key.Equals(TEXT("SpendsAllFervour"), ESearchCase::IgnoreCase))
+		{
+			Params.bSpendsAllFervour = Number != 0.0f;
+		}
+		else if (Key.Equals(TEXT("CashInRadius"), ESearchCase::IgnoreCase))
+		{
+			Params.CashInRadiusCm = Number * ToCm;
+		}
 		// --- Projectile extras ------------------------------------------
 		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))
 		{

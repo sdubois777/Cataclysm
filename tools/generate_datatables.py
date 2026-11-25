@@ -425,9 +425,14 @@ SHAPE_RIDERS = {
 #: Sword's Cold Blood ("1% more damage for every 4 Fervour you hold") on a self
 #: buff; `check_death_skill_keys` refuses it on any other shape, where nothing
 #: reads it.
+#:
+#: `FervourSpent` JOINED THE SAME DAY WITH SLICE DS4: the Death draft's N13,
+#: the Fervour a use spent when its row states `SpendsAllFervour=1` -- the
+#: Wand's Requiem, "1% more for every Fervour spent".
+#: `check_a_spending_or_cashing_strike` refuses it without that key.
 SCALING_SOURCES = frozenset({
     "Kill", "Burning", "Second", "Meter", "HitTaken", "Consume", "Consumed",
-    "Bounce", "Pierced", "Pinned", "HealthMissing", "Fervour",
+    "Bounce", "Pierced", "Pinned", "HealthMissing", "Fervour", "FervourSpent",
 })
 
 #: The shapes that read `ScalingSource=Fervour`: a Strike's blow, through
@@ -628,7 +633,14 @@ SHAPE_PARAMS = {
                # Fervour for each enemy the skill's own blow kills (Grim Swath,
                # Last Toll). On the four shapes whose blows are their own, and
                # `check_death_skill_keys` says what a Debuff's means.
-               "KillFervour"},
+               "KillFervour",
+               # SLICE DS4, 2026-11-24, issue #2885: N13, `SpendsAllFervour`,
+               # a use that spends every Fervour held (the Wand's Requiem),
+               # and N15, `CashInRadius`, the caster's own Poison, Bleed and
+               # Necrosis around it deal all they had left (the Fist's
+               # Quietus). N9 needs no key: `RefundsCooldown` is a rider, and
+               # a strike now reads it.
+               "SpendsAllFervour", "CashInRadius"},
     # A PROJECTILE MAY NOW REPEAT. Butcher's Bill throws thirty axes over ten
     # seconds, which needs the same Count, Duration and Interval a Summon has
     # always had; before this it could only be written as prose. `TargetMode`
@@ -865,6 +877,28 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
     check_kill_fervour_and_fervour_scaling(params, shape, where)
     check_a_lengthened_flicker(params, shape, where)
     check_a_rising_curse(params, shape, where)
+    check_a_spending_or_cashing_strike(params, where)
+
+
+def check_a_spending_or_cashing_strike(params: dict[str, str],
+                                       where: str) -> None:
+    """Refuse N13's `ScalingSource=FervourSpent` and N15's `CashInRadius` where they would do nothing. Slice DS4.
+
+    Issue #2885. `SHAPE_PARAMS` keeps `SpendsAllFervour` and `CashInRadius` to
+    a Strike. What a use spent is counted only when its row spends: a row
+    scaling by `FervourSpent` without `SpendsAllFervour=1` would scale by a
+    nought it never moves -- the Wand's Requiem states both. And a cash-in
+    reaches the enemies within its radius, so nought or less reaches nobody.
+    """
+    if params.get("ScalingSource") == "FervourSpent" and not is_on(params, "SpendsAllFervour"):
+        raise DataError(
+            f"{where}: states ScalingSource=FervourSpent and not "
+            f"SpendsAllFervour=1, so nothing is spent and it would scale by "
+            f"nought")
+    if "CashInRadius" in params and float(params["CashInRadius"]) <= 0.0:
+        raise DataError(
+            f"{where}: states CashInRadius={params['CashInRadius']}, which "
+            f"reaches nobody. A cash-in's radius has to be more than nought")
 
 
 def check_a_lengthened_flicker(params: dict[str, str], shape: str,
