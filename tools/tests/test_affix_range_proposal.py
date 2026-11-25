@@ -216,19 +216,31 @@ def test_the_owners_d5_keeps_flat_crit_and_flat_mana_regeneration(table):
 
 
 def test_tier_one_starts_follow_the_owners_order(table, rows):
-    """D7: "% increases definitely need to be significantly higher than 1%";
-    increased highest, flat in the middle. Every affix starts at or above its
-    kind's minimum, the minimums run increase > flat percentage, and the only
-    affixes below are the two the owner gave ranges for in D5."""
-    assert p.MIN_START["increase"] > p.MIN_START["points"] > 1
-    below = []
+    """D7: "% increases definitely need to be significantly higher than 1%",
+    and the owner's correction: "flat crit, is added. It isn't a %." An
+    increase starts at 8 at the least; a flat stat -- an amount, or points
+    added to a base chance -- starts at today's worst +0 roll, rounded, at
+    least 1."""
+    af = p._sim()
+    assert p.MIN_START == {"increase": 8, "points": 1, "amount": 1}
     for row in rows:
         affix = table[row["AffixName"]]
-        if affix.kind == "Hybrid" or affix.retired:
+        if affix.kind == "Hybrid":
             continue
-        if affix.tiers[0][0] < p.MIN_START[p.number_kind(row)]:
-            below.append(affix.name)
-    assert sorted(below) == ["Flat critical strike chance", "Flat mana regeneration"]
+        if p.number_kind(row) == "increase":
+            assert affix.tiers[0][0] >= 8, affix.name
+        else:
+            worst = max(float(row["TopValue"]) * af.WORST_MULTIPLIER,
+                        float(row["Floor"] or 0.0))
+            assert affix.tiers[0][0] == max(p.round_half_up(worst), 1), affix.name
+
+
+def test_the_owners_flat_crit_example_reads_as_written(table):
+    """"if I say flat crit +1, that means my flat 5% chance to crit goes up to
+    6%": flat crit chance adds points, starting at 1-2 on a fresh drop."""
+    assert table["Flat critical strike chance"].tiers[0] == (1, 2)
+    assert p.number_kind({"AffixKind": "Stat", "ValueKind": "flat", "Percent": "True",
+                          "AffixName": "Flat critical strike chance"}) == "points"
 
 
 def test_increased_sits_above_flat_except_where_flat_is_a_pool(table):

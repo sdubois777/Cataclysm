@@ -251,16 +251,20 @@ def today(rows: list[dict[str, str]] | None = None) -> list[TodayAffix]:
 #: THE OWNER'S RULING D7 (issue #2883, 2026-11-24): "% increases definitely need
 #: to be significantly higher than 1%. That's dumb, and virtually useless across
 #: all stats. ... more should be the lowest, increased should be the highest, and
-#: flat should be in the middle in most cases." No affix grants "more" (the
-#: design refuses it on a rolled affix), so among affixes the order is: an
-#: increase starts highest, a flat percentage in the middle, and an amount --
-#: health, armour, damage, regeneration -- keeps today's bottom, since it is on
-#: its own scale. The three numbers are a judgement: 8 and 5 give an increase
-#: 8-9% and a flat percentage 5-6 on a fresh drop (20-23% and 13-15 at +10),
-#: against Path of Exile's lowest tiers of 5-7 (attack speed), 6-10 (rarity) and
-#: 3-5 (all resistances). The owner's 2026-09-04 floors still apply where higher
-#: (single resistance 10, two resistances 7, movement speed 9).
-MIN_START = {"increase": 8, "points": 5, "amount": 2}
+#: flat should be in the middle in most cases." AND THEIR CORRECTION: "flat crit,
+#: is added. It isn't a %. The base value just happens to be a chance. So if I
+#: say flat crit +1, that means my flat 5% chance to crit goes up to 6%."
+#:
+#: So the 1% rule is about INCREASED affixes only. A stat that ADDS to a base --
+#: an amount such as health or damage, or points added to a base chance such as
+#: crit chance, block, damage reduction, evasion, resistance, leech or
+#: penetration -- is FLAT, sits in the middle of more < flat < increased, and
+#: starts at today's worst +0 roll, rounded, at least 1 (the owner's own "1-2,
+#: 3-4" for flat crit). An increase starts at 8 at the least: 8-9% on a fresh
+#: drop and 20-23% at +10, a judgement inside Path of Exile's lowest increase
+#: tiers (attack speed 5-7, rarity 6-10, crit chance 10-14). No affix grants
+#: "more"; the design refuses it on a rolled affix.
+MIN_START = {"increase": 8, "points": 1, "amount": 1}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -275,16 +279,17 @@ class Override:
 
 #: Each one is the owner's ruling or a judgement under it, and the proposal
 #: document says which. THE SMALL STATS' SLOT LISTS ARE THE RULING "Fewer slots"
-#: (issue #2883): the top rises to what seven whole ranges need, and the slot
-#: list narrows to the piece count whose ceiling is nearest today's, rounding
-#: down where a cap is close. The pieces chosen keep every hybrid that uses one
-#: of these stats able to roll somewhere.
+#: (issue #2883), approved only so that the most a character can carry stays
+#: the same: seven two-value tiers from 1 need a top of 14 at +0, which is 35 at
+#: +10, so a stat that is 4 or 5 a piece today keeps the piece count whose
+#: carry (top x pieces) is nearest today's, rounding down where a cap is close.
+#: The pieces chosen keep every hybrid that uses one of these stats able to
+#: roll somewhere.
 OVERRIDES: dict[str, Override] = {
     # THE OWNER'S RULING D5, verbatim: "Keep them, but make the ranges like 1-2,
     # 3-4, etc. And lower the amount of slots they can roll on. Maybe flat crit
     # only rolls on weapons and gloves, and flat mana regen only rolls on belts
-    # and ammys." Both start at 1: the one exception to the D7 starts, because
-    # the owner named these ranges.
+    # and ammys."
     "Flat critical strike chance": Override(
         start=1, slots=("Weapon", "Gloves"),
         why="the owner's D5: 1-2, 3-4 ... on weapons and gloves; two pieces "
@@ -295,32 +300,30 @@ OVERRIDES: dict[str, Override] = {
             "(70 a second) instead of twelve (7.8)"),
     "Flat evasion": Override(
         slots=("Chest",),
-        why="one piece (45) instead of fourteen (56): two would be 90, past "
+        why="one piece (35) instead of fourteen (56): two would be 70, past "
             "evasion's soft cap of 60"),
     "Flat block chance": Override(
-        slots=("Belt",),
-        why="one piece (45) instead of fourteen (70): two would be 90, and with "
-            "a Shield's 13 every hit would be blocked"),
+        slots=("Shoulders", "Belt"),
+        why="two pieces (70) instead of fourteen (70)"),
     "Flat damage reduction": Override(
         slots=("Pants",),
-        why="one piece (45) instead of fourteen (56): two would be 90 against "
+        why="one piece (35) instead of fourteen (56): two would be 70 against "
             "a cap of 75"),
     "Flat retaliation": Override(
-        slots=("Shoulders",),
-        why="one piece (45) instead of fourteen (56)"),
+        slots=("Head", "Shoulders"),
+        why="two pieces (70) instead of fourteen (56)"),
     "Flat crowd control resistance": Override(
         slots=("Belt", "Boots"),
-        why="two pieces (90) instead of fourteen (70); immunity is 100"),
+        why="two pieces (70) instead of fourteen (70)"),
     "Flat life leech": Override(
         slots=("Weapon",),
-        why="the weapon only: 45, or 90 two-handed or with an offhand, "
+        why="the weapon only: 35, or 70 two-handed or with an offhand, "
             "instead of twelve pieces (48)"),
     "Flat mana leech": Override(slots=("Weapon",), why="as life leech"),
     "Flat energy shield leech": Override(slots=("Weapon",), why="as life leech"),
     "Flat penetration": Override(
         slots=("Weapon",),
-        why="the weapon only (45); 35 is the most any enemy resists, so the "
-            "rest is wasted"),
+        why="the weapon only: 35, the most any enemy resists"),
     "Flat maximum class resource": Override(
         slots=("Necklace", "Relic"),
         why="two pieces (76) instead of eleven (77)"),
@@ -329,7 +332,7 @@ OVERRIDES: dict[str, Override] = {
         why="three pieces (114) instead of twelve (96)"),
     "Flat energy shield regeneration": Override(
         slots=("Head", "Chest", "Shoulders"),
-        why="three pieces (114) instead of twelve (120)"),
+        why="three pieces (105) instead of twelve (120)"),
 }
 
 
