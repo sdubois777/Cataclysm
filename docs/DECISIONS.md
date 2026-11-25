@@ -2,6 +2,165 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The empire tree's five forge affix nodes act: Master's Workshop and Precision Crafting raise the rolls the forge draws, and Rough Draft, Apprentice Smith and Quality Materials add, raise and perfect an affix on a craft; the crafting rows still refused say what each waits on (#2741, crafting slices C3 and C4)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: five effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: five
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeRolls`, `FCataclysmForgeAffixNodes`, `FCataclysmForgeAffixNodesDone`; `RerolledAffixRoll` and
+  `DeterministicAffixOf` take the rolls; `AffixNodesOn`, `AffixNodesChanceText`, `RollsText`, `AffixNodesDoneText`.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `RollsFor`, `AffixNodesFor`, `AffixNodesTextFor`; `DoItemCraft` applies the nodes and says what they did; the step's
+  `bTreeAffixNodes`, off for the dismantle.
+- `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.h` and `game/Source/Cataclysm/Player/CataclysmPlayLoopLog.cpp`:
+  `ForgeAffixNodesLine`.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the eight priced questions.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeAffixNodesTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`, `game/Source/Cataclysm/Tests/CataclysmEmpireTreeTests.cpp`,
+  `game/Source/Cataclysm/Tests/CataclysmEmpireTreeAccountTests.cpp` and
+  `game/Source/Cataclysm/Tests/CataclysmEmpireTreeScreenTests.cpp`.
+- `tools/tests/test_forge_affix_nodes.py`, new; `tools/tests/test_forge_gold_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py`,
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py` and
+  `tools/tests/test_the_play_loop_is_logged_at_each_step.py`.
+- `docs/Play_Loop_Checklist.md` step 32.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group, second slice: C3 (the rolls)
+with C4 (the affixes). On `feat/forge-affix-nodes-c3c4`, written on top of slices C1 and C2 (`feat/forge-costs-c1c2`,
+which holds #47 slice F6b), and moved onto development with them.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **THREE EMPIRE TREE TESTS NAMED ROUGH DRAFT AS THE NODE A MISSING SYSTEM REFUSES**, and this slice builds it:
+  `ANodeWhoseSystemIsMissingIsRefusedAndSaysWhich`, `APointBoughtComesOffTheBankAndTheAccountIsWritten` and the screen's
+  click test. Each now names **Merchant Guild**, which waits on a market. The refusal still reads the system first
+  (`RefusalForSpending` asks `WaitsOn` before the edges), so its shut edge (Coinage at 2) does not decide it; the
+  screen test checks the tool tip and the refusal name the market, not only the dimmed box. The only refused root left
+  is The Alchemist's Transmutation, a capstone that waits on the owner's answer, so it was not chosen.
+- **QUALITY MATERIALS IS BUILT AS WRITTEN** ("+10% chance per point ... to roll maximum values on one random affix",
+  100% at 10 points), as ruled; the owner's question 5 may change it, and the answer is a data change.
+- **NO NEW GENRE RESEARCH.** A roll's floor and a chance of a better band copy this project's own drop roll
+  (`FRandomStream::FRand` from 0 up to 1); Rough Draft's affix is drawn as the shift draws one.
+- **NO SAVE VERSION MOVES.** An affix's tier and roll, and the piece's rarity (read from its affix count), are saved
+  already.
+
+### The rulings, the coordinating session, 2026-11-25
+
+The C3/C4 detail was accepted as written:
+
+- **Where the rolls act**: `FCataclysmForgeRolls` (Master's Workshop's floor, Precision Crafting's chance) passed to the
+  reroll, the Deterministic Affix and Rough Draft's affix, defaulting to none (ruling A's shape). A roll is
+  `Low + (1 - Low) x draw`, `Low` the floor, or 0.75 when Precision Crafting's own draw (salt "FPRC", on the roll's seed)
+  lands and that is higher. The shift and the tier upgrade keep the roll (F1 Q12), so neither takes them.
+- **D1, the order**: once in `DoItemCraft`, after the craft's own change and before its residue is written: Rough Draft,
+  then Apprentice Smith, then Quality Materials, each on a draw of its own (salts "FRDR", "FAPS", "FQMT") from the item as
+  it stood and the day, each choosing among the affixes as they stand at its turn.
+- **G1**: every item craft through `DoItemCraft` but the dismantle, which ends the piece.
+- **Rough Draft**: only on a free slot (`Affixes + EnchantmentCount < 4`) whose side has room (two prefixes, two
+  suffixes); a side at random when both have, as a drop picks the side of an odd affix; the slot's candidates
+  (`UCataclysmDropRoll::CandidatesFor`) of no stat group the piece holds, evenly, as the shift draws one. **D2**: its tier
+  is `UCataclysmDropRoll::MaxAffixTierOnADrop` of the run's difficulty. **D3**: the piece is promoted by its new affix
+  count, as rarity is read. No residue, days or gold of its own.
+- **Apprentice Smith and Quality Materials** pick among the regular affixes only: below tier 7, and with a roll below 1.
+  None to pick, nothing happens.
+- **G3, the words**: every priced question ends with the chances of the nodes held; the reroll's and the addition's
+  questions say the rolls before them; a PLAY LOOP line says what happened, only when anything did.
+- **D4, G4's split**, each naming #2741: a crafting station (Expanded Station x3, Assembly Line, The Hidden Stash), a
+  double craft (Explorer Synergy), an Exalted item (Flawless Production, Residue Mastery), an item tier (Grand Forge), the
+  owner's question (Ancient Techniques, Refining Techniques, Residue Protocols, The Alchemist's Transmutation), residue
+  held over between crafts (Steady Hands).
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Precision Crafting (15) | "+3% chance per point for affixes to roll in the top 25% of their range." | `AffixRollTopQuarterChance` 0.03: 45% at 15 |
+| Master's Workshop (15) | "+2% to the minimum roll range of all affixes on a crafted item per point." | `AffixRollFloor` 0.02: from 30% up at 15 |
+| Quality Materials (10) | "+10% chance per point for a craft to roll maximum values on one random affix." | `AffixRollMaxedChance` 0.10: 100% at 10 |
+| Apprentice Smith (10) | "1% chance per point to upgrade a random affix to next tier when using the smith." | `AffixTierRaisedChance` 0.01: 10% at 10 |
+| Rough Draft (8) | "+5% chance per point for a crafted item to roll one additional affix." | `AffixAddedChance` 0.05: 40% at 8 |
+
+- **The words**: " The empire tree's affix nodes: a 40% chance of one more affix; a 10% chance one affix rises a tier; a
+  100% chance one affix's roll is made its best." after every priced question; " Its roll is drawn from 30 percent up,
+  with a 45% chance from 75 percent up." before it on a reroll and an addition.
+- **The line**: `the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat
+  evasion's roll its best, 37 to 100 percent`.
+- **The refusals**: the 103 points of crafting rows still refused are counted by their six reasons, not one.
+
+### Tests
+
+`Cataclysm.ForgeAffixNodes.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheFiveNodesGiveTheirFigures` | through the tables, every node at full points; CONTROL none held |
+| `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp` | the default rolls return each draw exactly; 0.5 at a floor of 0.3 is 0.65, from 0.75 up 0.875, the higher of the two; at 45% a seed that lands and one that misses, and 800 to 1,000 of 2,000 land; a reroll with no node draws as before, and with the floor from 0.3 up |
+| `TheDeterministicAffixDrawsItsRollWithTheRolls` | its roll from 0.3 up, the rest of its draw unchanged |
+| `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` | a second affix last, at tier 2 on a tier 1 run, of another stat group, the piece one rarity up; two prefixes and a suffix gain a suffix; CONTROL four affixes, three and an enchantment, no node |
+| `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest` | the affix below tier 7 rises one, its roll kept; the affix below its best is made 1, its tier kept; CONTROL all at 7, all at their best |
+| `TheThreeActInOrderEachOnTheAffixesAsTheyStand` | on a helm whose one affix is at tier 7 and its best, all three act on the affix Rough Draft added; the words in order; the same item and day draw the same |
+| `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` | in a world: Quality Materials at 10 makes the upgraded helm's roll 1, Master's Workshop at 15 places the reroll from 0.3 up, each as its question said; CONTROL none held |
+| `TheWordsSayTheChancesTheRollsAndWhatWasDone` | every sentence, the line, and nothing when nothing |
+
+The dismantle has no Unreal test of its own: the piece is gone, so there is nothing to read. The Python check below
+reads that only the dismantle turns the nodes off.
+
+Python: `tools/tests/test_forge_affix_nodes.py`, five checks (the list at its top). The tree checks count 140 built nodes,
+slice 14's 58 points and the six reasons' 11, 10, 35, 10, 36 and 1 in place of crafting's 161; `CataclysmDataTableTests.cpp`
+pins 146 effect rows; the play loop check counts forty-one places; checklist step 32. **F6a's two pricing checks now
+accept the rolls after the pricing as well, and still check the pricing.**
+
+### Not done
+
+- **C5 and the owner's four**: Ancient Techniques, Refining Techniques, Residue Protocols and The Alchemist's
+  Transmutation wait on the owner's answers; the rest of the crafting rows wait on systems the game does not have, each
+  now saying which.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `7c52bafb1`, each narrowed to
+`tools/tests/test_forge_affix_nodes.py` (five checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| AP1 | the dismantle's `Step.bTreeAffixNodes = false;` removed | "PROVED: 1 failed, 4 passed in 1.12s \| restored: 5 passed in 1.06s" | `test_only_the_dismantle_turns_the_nodes_off` |
+| AP2 | `AddAffixPlanFor` without `RollsFor(WorldContext)` | "PROVED: 1 failed, 4 passed in 1.05s \| restored: 5 passed in 1.01s" | `test_the_reroll_and_the_addition_draw_with_the_rolls_and_the_shift_does_not` |
+| AP3 | the cleanse's question without `AffixNodesTextFor` | "PROVED: 1 failed, 4 passed in 1.36s \| restored: 5 passed in 1.02s" | `test_every_priced_question_says_the_chances_and_only_the_two_draws_say_the_rolls` |
+
+**A check from the affix crafts' slice moved**: `tools/tests/test_the_forge_crafts_one_affix.py`'s
+`test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes` read the reroll's call word for word and failed
+on the first whole-suite run here (8551 tests, 2 failures); it now reads the call with the rolls after the day, and still
+requires the draw from the item before the craft, the mask and the day.
+
+**The whole Python suite at `7c52bafb1`:** "1 failed, 8541 passed, 9 skipped in 515.65s (0:08:35)"; JUnit 8551 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree CSVs,
+whose assets the window's editor step rebuilds.
+
+**For the window**: this slice joins #47 slice F6b's and slices C1 and C2's (on `feat/forge-costs-c1c2`), since it is
+done and its Python run clean before that window registers; it carries their registration and adds its own.
+**Re-registered from the Rifts window's whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, as theirs does.
+- **The whole suite: 5516** (their 5508 + this slice's 8 in `Cataclysm.ForgeAffixNodes.`, none removed).
+- **No save record moves.**
+- **Groups alone, 21**: theirs (19, 153 tests), `ForgeAffixNodes.` 8 (new), and `EmpireTreeScreen.` (11 name literals in
+  `CataclysmEmpireTreeScreenTests.cpp`; the run's count is the one quoted), whose click test now names Merchant Guild.
+  `EmpireTree.`, `Data.` and `PlayLoop.` are in theirs already.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeAffixNodes.`, each anchor once in `CataclysmForge.cpp` at
+  `7c52bafb1`:
+
+| Proof | The break | Predicted |
+| :-- | :-- | :-- |
+| AF1 | `FCataclysmForgeRolls::Shape`'s `float Low = FMath::Clamp(Floor, 0.0f, 1.0f);` read as `float Low = 0.0f;` | `ARollIsDrawnFromTheFloorUpAndOnPrecisionCraftingsDrawFromThreeQuartersUp`, `TheDeterministicAffixDrawsItsRollWithTheRolls`, `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` |
+| AF2 | Apprentice Smith's `Tier < UCataclysmItemValues::MaxAffixTier` read as `<=` | `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest`; `TheThreeActInOrderEachOnTheAffixesAsTheyStand` only if its draw picks the tier 7 affix |
+| AF3 | Rough Draft's free-slot `>= UCataclysmItemValues::SlotsPerPiece` read as `>` | `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` (the helm with three affixes and an enchantment gains one) |
+
+---
+
 ## 2026-11-25 — The empire tree's eight forge residue and day nodes act: three take residue off a craft, Stable Compounds strengthens the Chaos Stabilizer, Master's Touch can leave an item at 0, and three take days off (#2741, crafting slices C1 and C2)
 
 **Affects:**
