@@ -3039,9 +3039,13 @@ float ACataclysmMinion::SkillTrapReserveFor(const AActor* Player, ECataclysmAbil
 
 const TCHAR* ACataclysmMinion::TrapCreepMetresPerSecondStat = TEXT("trap_creep_metres_per_second");
 const TCHAR* ACataclysmMinion::TrapCreepReachMetresStat = TEXT("trap_creep_reach_metres");
+const TCHAR* ACataclysmMinion::DeviceWireReachMetresStat = TEXT("device_wire_reach_metres");
+const TCHAR* ACataclysmMinion::DeviceWirePinSecondsStat = TEXT("device_wire_pin_seconds");
+const TCHAR* ACataclysmMinion::DeviceWireRepinSecondsStat = TEXT("device_wire_repin_seconds");
 
 namespace
 {
+	// A PLAYER'S FLAT DEVICE FIGURE, never below nought: Creeping Mines' two (V5a) and Cat's Cradle's three (V5b2).
 	float CataclysmTrapCreepFigure(const AActor* Player, const TCHAR* Stat)
 	{
 		const UCataclysmAbilitySystemComponent* Theirs =
@@ -3058,6 +3062,21 @@ float ACataclysmMinion::TrapCreepCmPerSecondFor(const AActor* Player)
 float ACataclysmMinion::TrapCreepReachCmFor(const AActor* Player)
 {
 	return CataclysmTrapCreepFigure(Player, TrapCreepReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::DeviceWireReachCmFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWireReachMetresStat) * 100.0f;
+}
+
+float ACataclysmMinion::DeviceWirePinSecondsFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWirePinSecondsStat);
+}
+
+float ACataclysmMinion::DeviceWireRepinSecondsFor(const AActor* Player)
+{
+	return CataclysmTrapCreepFigure(Player, DeviceWireRepinSecondsStat);
 }
 
 bool ACataclysmMinion::CreepTowardNearestEnemy(float Seconds)

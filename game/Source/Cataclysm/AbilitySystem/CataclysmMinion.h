@@ -1321,6 +1321,20 @@ public:
 	static float TrapCreepCmPerSecondFor(const AActor* Player);
 	static float TrapCreepReachCmFor(const AActor* Player);
 
+	/**
+	 * Cat's Cradle, V5b2, 2026-11-25: "Each of your traps and gadgets is joined by a wire to every other one within 10
+	 * metres. An enemy crossing a wire is pinned for 1 second, no more than once every 4 seconds, and the nearer end
+	 * answers: a trap goes off, a gadget fires at it." The reach, the pin's seconds and the seconds an enemy waits before
+	 * it can be pinned again are flat stats of the player's, with no gameplay attribute. Nought reach is no wires.
+	 * `UCataclysmAbilitySystemComponent::StepCatsCradle` reads them.
+	 */
+	static const TCHAR* DeviceWireReachMetresStat;
+	static const TCHAR* DeviceWirePinSecondsStat;
+	static const TCHAR* DeviceWireRepinSecondsStat;
+	static float DeviceWireReachCmFor(const AActor* Player);
+	static float DeviceWirePinSecondsFor(const AActor* Player);
+	static float DeviceWireRepinSecondsFor(const AActor* Player);
+
 	/** The seconds between two device steps: `ACataclysmCharacterBase` steps every device every quarter second. */
 	static constexpr float DeviceStepSeconds = 0.25f;
 

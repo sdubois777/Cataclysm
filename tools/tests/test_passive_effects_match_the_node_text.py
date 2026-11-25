@@ -735,7 +735,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 585 THE SAME DAY: Scrap Mines' two rows, on `gadget_destroyed` and `gadget_expired`
 #: (`tools/reapply_war_vows_v5b1_workbook.py`, V5b1).
-AUTHORED_ROWS = 585
+#:
+#: AND TO 588 THE SAME DAY: Cat's Cradle's three flat rows, its reach, its pin and the seconds between pins
+#: (`tools/reapply_war_vows_v5b2_workbook.py`, V5b2).
+AUTHORED_ROWS = 588
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1301,7 +1304,8 @@ AUTHORED_NODES = 322
 #: AND TO 68 THE SAME DAY: V5a -- Lightning Rod, Creeping Mines, Where They Fall and Crossfire (Saboteur). Each
 #: capstone already had a row.
 #: AND TO 69 THE SAME DAY: V5b1 -- Scrap Mines (Saboteur). Its capstone already had a row.
-AUTHORED_OPTIONS = 69
+#: AND TO 70 THE SAME DAY: V5b2 -- Cat's Cradle (Saboteur). Its capstone already had a row.
+AUTHORED_OPTIONS = 70
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2932,6 +2936,10 @@ VALUE_IN_WORDS = {
     ("Saboteur_capstone_200", "option 3", ""): ("at 10% of its damage", 10.0),
     # SCRAP MINES (V5b1, 2026-11-25): two action rows, "at double damage", which is 200%.
     ("Saboteur_capstone_50", "option 2", ""): ("at double damage", 200.0),
+    # CAT'S CRADLE (V5b2, 2026-11-25): its reach, its pin and the seconds an enemy waits before it is pinned again.
+    ("Saboteur_capstone_50", "device_wire_reach_metres"): ("every other one within 10 metres", 10.0),
+    ("Saboteur_capstone_50", "device_wire_pin_seconds"): ("pinned for 1 second", 1.0),
+    ("Saboteur_capstone_50", "device_wire_repin_seconds"): ("no more than once every 4 seconds", 4.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

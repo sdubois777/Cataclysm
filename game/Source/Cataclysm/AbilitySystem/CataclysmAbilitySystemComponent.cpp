@@ -6,6 +6,7 @@
 #include "Misc/ScopeExit.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmDeviceWire.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSilence.h"
 #include "AbilitySystem/CataclysmVoidAura.h"
@@ -6206,18 +6207,117 @@ int32 UCataclysmAbilitySystemComponent::QueueCounterfire(const FCataclysmPoolAct
 	});
 	for (int32 Index = 0; Index < Answers; ++Index)
 	{
-		ACataclysmMinion* Answering = Devices[Index];
-		if (Answering->IsSkillTrap())
-		{
-			QueueSkillTrapSetOff(Answering, /*bEvenForADeadPlayer=*/false);
-			continue;
-		}
-		FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
-		Queued.Gadget = Answering;
-		Queued.Enemy = const_cast<AActor*>(Attacker);
-		Queued.DamageMultiplier = FMath::Max(0.0f, Action.Percent) / 100.0f;
+		QueueDeviceAnswer(Devices[Index], const_cast<AActor*>(Attacker), FMath::Max(0.0f, Action.Percent) / 100.0f);
 	}
 	return Answers;
+}
+
+void UCataclysmAbilitySystemComponent::QueueDeviceAnswer(ACataclysmMinion* Device, AActor* Enemy,
+														 float DamageMultiplier)
+{
+	if (!IsValid(Device) || !IsValid(Enemy))
+	{
+		return;
+	}
+	if (Device->IsSkillTrap())
+	{
+		QueueSkillTrapSetOff(Device, /*bEvenForADeadPlayer=*/false);
+		return;
+	}
+	FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
+	Queued.Gadget = Device;
+	Queued.Enemy = Enemy;
+	Queued.DamageMultiplier = DamageMultiplier;
+}
+
+int32 UCataclysmAbilitySystemComponent::StepCatsCradle()
+{
+	AActor* const Player = GetAvatarActor();
+	UWorld* const World = GetWorld();
+	const float ReachCm = Player && World && !UCataclysmSkillEffects::IsDead(Player)
+		? ACataclysmMinion::DeviceWireReachCmFor(Player) : 0.0f;
+
+	// THE WIRES: every pair within the reach along the floor, the earlier placed first, each pair once.
+	TArray<TPair<ACataclysmMinion*, ACataclysmMinion*>> Pairs;
+	if (ReachCm > 0.0f)
+	{
+		TArray<ACataclysmMinion*> Devices = ACataclysmMinion::DevicesOf(Player);
+		Devices.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+		for (int32 First = 0; First < Devices.Num(); ++First)
+		{
+			for (int32 Second = First + 1; Second < Devices.Num(); ++Second)
+			{
+				if (FVector::Dist2D(Devices[First]->GetActorLocation(), Devices[Second]->GetActorLocation()) <= ReachCm)
+				{
+					Pairs.Emplace(Devices[First], Devices[Second]);
+				}
+			}
+		}
+	}
+
+	// SEEN (ruled C2): one wire for each pair, re-stretched at this step; what is left over taken down.
+	DeviceWires.RemoveAll([](const TObjectPtr<ACataclysmDeviceWire>& Wire) { return !IsValid(Wire); });
+	while (DeviceWires.Num() > Pairs.Num())
+	{
+		DeviceWires.Pop()->Destroy();
+	}
+	for (int32 Index = 0; Index < Pairs.Num(); ++Index)
+	{
+		const FVector From = Pairs[Index].Key->GetActorLocation();
+		const FVector To = Pairs[Index].Value->GetActorLocation();
+		if (DeviceWires.IsValidIndex(Index))
+		{
+			DeviceWires[Index]->Span(From, To);
+		}
+		else if (ACataclysmDeviceWire* Made = ACataclysmDeviceWire::Stretch(World, Player, From, To))
+		{
+			DeviceWires.Add(Made);
+		}
+	}
+	if (Pairs.IsEmpty())
+	{
+		return 0;
+	}
+
+	// CROSSING (ruled C1): an enemy's centre within 50 cm of a wire at this step, caught once a step, and not again for
+	// the repin seconds.
+	const float Now = World->GetTimeSeconds();
+	const float PinSeconds = ACataclysmMinion::DeviceWirePinSecondsFor(Player);
+	const float RepinSeconds = ACataclysmMinion::DeviceWireRepinSecondsFor(Player);
+	for (auto It = DeviceWireCaughtAtSeconds.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid() || Now - It.Value() >= RepinSeconds)
+		{
+			It.RemoveCurrent();
+		}
+	}
+	int32 Caught = 0;
+	for (const TPair<ACataclysmMinion*, ACataclysmMinion*>& Pair : Pairs)
+	{
+		const FVector From = Pair.Key->GetActorLocation();
+		const FVector To = Pair.Value->GetActorLocation();
+		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInLine(World, Player, From, To, DeviceWireCrossingCm))
+		{
+			if (DeviceWireCaughtAtSeconds.Contains(Enemy))
+			{
+				continue;
+			}
+			DeviceWireCaughtAtSeconds.Add(Enemy, Now);
+			++Caught;
+			UCataclysmSkillEffects::ApplyPin(Player, Enemy, PinSeconds);
+			// THE NEARER END ANSWERS, the earlier placed of two at one distance.
+			const FVector At = Enemy->GetActorLocation();
+			ACataclysmMinion* Nearer =
+				FVector::Dist2D(To, At) < FVector::Dist2D(From, At) ? Pair.Value : Pair.Key;
+			QueueDeviceAnswer(Nearer, Enemy, 1.0f);
+		}
+	}
+	if (Caught > 0)
+	{
+		DrainQueuedSkillTrapSetOffs();
+		DrainQueuedGadgetShotsAtTrapEnemies();
+	}
+	return Caught;
 }
 
 bool UCataclysmAbilitySystemComponent::QueueLastTrapCopyAt(const FCataclysmPoolAction& Action, const AActor* Victim)

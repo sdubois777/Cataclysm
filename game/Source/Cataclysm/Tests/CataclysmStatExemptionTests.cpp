@@ -9519,6 +9519,41 @@ namespace CataclysmStatExemptionTest
 	void ProbeTrapCreepReach(FAutomationTestBase& Test) { ProbeTrapCreepFigures(Test, /*bSpeed=*/false); }
 
 	/**
+	 * Cat's Cradle's `device_wire_reach_metres`, `device_wire_pin_seconds` and `device_wire_repin_seconds`, read by
+	 * `ACataclysmMinion::DeviceWireReachCmFor`, `DeviceWirePinSecondsFor` and `DeviceWireRepinSecondsFor`, which the
+	 * player's step asks. The War vow options' fifth slice, second half, second part, V5b2, 2026-11-25. Two characters;
+	 * only the second holds 10, 1 and 4, and only it is answered 1,000 centimetres, 1 second and 4 seconds.
+	 */
+	void ProbeDeviceWireFigures(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::DeviceWireReachMetresStat), 10.0f},
+								   {FName(ACataclysmMinion::DeviceWirePinSecondsStat), 1.0f},
+								   {FName(ACataclysmMinion::DeviceWireRepinSecondsStat), 4.0f}});
+		const auto Read = [Which](const AActor* Who)
+		{
+			return Which == 0 ? ACataclysmMinion::DeviceWireReachCmFor(Who)
+				 : Which == 1 ? ACataclysmMinion::DeviceWirePinSecondsFor(Who)
+							  : ACataclysmMinion::DeviceWireRepinSecondsFor(Who);
+		};
+		Test.TestEqual(TEXT("a character without the stat is answered nought"), Read(Plain.Actor), 0.0f);
+		Test.TestEqual(TEXT("and one holding it its figure, so the player's step really reads it"), Read(Holding.Actor),
+					   Which == 0 ? 1000.0f : Which == 1 ? 1.0f : 4.0f, 0.01f);
+	}
+
+	void ProbeDeviceWireReach(FAutomationTestBase& Test) { ProbeDeviceWireFigures(Test, 0); }
+	void ProbeDeviceWirePin(FAutomationTestBase& Test) { ProbeDeviceWireFigures(Test, 1); }
+	void ProbeDeviceWireRepin(FAutomationTestBase& Test) { ProbeDeviceWireFigures(Test, 2); }
+
+	/**
 	 * Lightning Rod's `blow_to_device_chance_per_device`, read by `UCataclysmAbilitySystemComponent::
 	 * BlowToDeviceChanceFor`. V5a, 2026-11-25. A character holding 3 is answered 12 with four devices and the cap of 30
 	 * with twenty; one without it is answered nought.
@@ -12914,6 +12949,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_creep_metres_per_second"), &ProbeTrapCreepSpeed},
 			{TEXT("trap_creep_reach_metres"), &ProbeTrapCreepReach},
 			{TEXT("blow_to_device_chance_per_device"), &ProbeBlowToDeviceChance},
+			{TEXT("device_wire_reach_metres"), &ProbeDeviceWireReach},
+			{TEXT("device_wire_pin_seconds"), &ProbeDeviceWirePin},
+			{TEXT("device_wire_repin_seconds"), &ProbeDeviceWireRepin},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

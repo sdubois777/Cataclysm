@@ -29,6 +29,8 @@ struct FGameplayTag;
 struct FCataclysmEnchantmentEffectRow;
 // LIGHTNING ROD'S DEVICE, V5a: a pointer only, so the minion's header is not included here.
 class ACataclysmMinion;
+// CAT'S CRADLE'S SEEN WIRES, V5b2: pointers only.
+class ACataclysmDeviceWire;
 
 /**
  * What `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` took away when a
@@ -4348,6 +4350,37 @@ public:
 	 */
 	void SendBlowToDevice(ACataclysmMinion* Device, AActor* Attacker, float Damage);
 
+	/**
+	 * How a device of this character's answers `Enemy`, queued and made at depth nought as Counterfire's answers are: a
+	 * skill trap goes off through the forced set-off; a skill gadget fires its shot at `Enemy` at `DamageMultiplier`; a
+	 * War gadget, a War trap or a scrap trap deals its own blow at `Enemy` (the scrap trap its one shot). Counterfire's
+	 * answer, out of `QueueCounterfire` for Cat's Cradle (V5b2, ruled C1: "through Counterfire's path").
+	 */
+	void QueueDeviceAnswer(ACataclysmMinion* Device, AActor* Enemy, float DamageMultiplier);
+
+	/**
+	 * Cat's Cradle's step, V5b2, 2026-11-25, on the coordinating session's rulings C1 and C2. Called on this character's
+	 * quarter-second step (`ACataclysmCharacterBase`).
+	 * - THE WIRES: every pair of this character's devices (`ACataclysmMinion::DevicesOf`) no further apart along the
+	 *   floor than `ACataclysmMinion::DeviceWireReachCmFor`. Nought reach, or a dead character, is no wires.
+	 * - SEEN (C2): one `ACataclysmDeviceWire` for each pair, re-stretched here; the rest taken down.
+	 * - CROSSING (C1): an enemy whose centre is within `DeviceWireCrossingCm` of a wire at this step. Each enemy is
+	 *   caught once a step, by the first wire found, the earliest placed pair first, and not again until
+	 *   `DeviceWireRepinSecondsFor` seconds have passed since it was last caught.
+	 * - A CAUGHT ENEMY is pinned through `UCataclysmSkillEffects::ApplyPin` for `DeviceWirePinSecondsFor` seconds, with
+	 *   its refusals, and the device at the wire's nearer end answers (`QueueDeviceAnswer`, at 100%), the earlier placed
+	 *   of two at one distance. A refused pin still counts as caught and is still answered (a judgement: the crossing is
+	 *   what the sentence answers).
+	 * Returns how many enemies were caught.
+	 */
+	int32 StepCatsCradle();
+
+	/** How close an enemy's centre must come to a wire to cross it, in centimetres. Ruled C1; the 50 is a judgement. */
+	static constexpr float DeviceWireCrossingCm = 50.0f;
+
+	/** The wires seen now, one for each pair, for tests and the interface. */
+	const TArray<TObjectPtr<ACataclysmDeviceWire>>& GetDeviceWires() const { return DeviceWires; }
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
@@ -5540,6 +5573,13 @@ public:
 
 	/** Whether the queue of shots is being drained now, so a drain reached from inside a shot returns at once. */
 	bool bDrainingQueuedGadgetShotsAtTrapEnemies = false;
+
+	/** Cat's Cradle's seen wires, one for each pair of devices within reach. See `StepCatsCradle`. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACataclysmDeviceWire>> DeviceWires;
+
+	/** When each enemy was last caught by a wire, by the world's clock. See `StepCatsCradle`. */
+	TMap<TWeakObjectPtr<AActor>, float> DeviceWireCaughtAtSeconds;
 
 	/**
 	 * Choose the gadget `Action` names for the trap whose `trap_triggered` is being raised (`SkillTrapRaisingItsTrigger`) and

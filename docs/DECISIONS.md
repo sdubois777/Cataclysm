@@ -2,6 +2,114 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fifth slice, second half, second part (V5b2): Cat's Cradle, with its wires seen
+
+**Affects:**
+- `tools/reapply_war_vows_v5b2_workbook.py` (new) writes three rows into `docs/All_Things_Cataclysm.xlsx`. The
+  generated table: `game/Data/PassiveEffects.csv` (588 rows). `docs/README.md` (the count). **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- C++:
+  - `CataclysmDeviceWire.h` and `.cpp` (new): `ACataclysmDeviceWire`, one seen wire, the engine's cube squashed to a
+    3 cm bar in the telegraph markers' unlit material, no collision, no tick.
+  - `CataclysmMinion.h` and `.cpp`: the three stat names, and `DeviceWireReachCmFor`, `DeviceWirePinSecondsFor` and
+    `DeviceWireRepinSecondsFor`, read through the same helper as Creeping Mines' figures.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `StepCatsCradle`, the wires, their crossing, the pin and the answer;
+    - `QueueDeviceAnswer`, Counterfire's answer taken out of `QueueCounterfire` unchanged, so both use one path;
+    - the seen wires and when each enemy was last caught.
+  - `CataclysmCharacterBase.cpp`: the step calls `StepCatsCradle` beside `GadgetStep`, for every character.
+  - `CataclysmPlayerClassStats.cpp`: the three stats listed as having no gameplay attribute.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b2Tests.cpp` (new, three tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe for each of the three stats.
+    - `CataclysmDataTableTests.cpp`: the pin, 588.
+  - Python:
+    - `tools/tests/test_war_vows_v5b2_scripts.py` (new, six).
+    - `test_passive_effects_match_the_node_text.py`: 588 rows and 70 authored options, and Cat's Cradle's words.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b2.`: three tests, new.
+  - `Cataclysm.StatExemption.` (three probes more), and `Cataclysm.Data.` (588), its count unchanged.
+  - The groups that use Counterfire's answer, counts unchanged: `Cataclysm.WarVowsV4b.` and `Cataclysm.WarVowsV5b1.`.
+- **THE WIRE HAS NOT BEEN LOOKED AT.** The tests hold that one is spawned for each pair, where it should be, as long as
+  it should be, with a mesh; nobody has seen it in a running game. Its 3 cm and its pale steel (`C8D2DC`) are
+  judgements, and a play-test point.
+- **EVERY CHARACTER'S STEP NOW ASKS FOR THE REACH**, four times a second: one stat lookup for each character, nought
+  for every one but a Saboteur holding the option. It was not measured.
+- **A SKILL TRAP OR A SKILL GADGET ANSWERING A WIRE IS NOT TESTED.** The tests use a Spike Trap and a Bolt Turret,
+  whose blows differ (18 and 36), so the damage says which end answered. A skill trap's and a skill gadget's answers go
+  through `QueueDeviceAnswer`, the path Counterfire's own tests hold.
+
+### WHAT WAS RULED
+
+- C1 (2026-11-25): "A wire is the segment between two devices 10 m apart or less. 'Crossing' means the enemy's centre
+  comes within 50 cm of a wire at the player's quarter-second step. The 50 cm is a judgement. The enemy is pinned
+  through ApplyPin, with its refusals. Each enemy waits 4 s before it can be pinned again. The device at the nearer end
+  answers through Counterfire's path: a skill trap goes off; a skill gadget fires at the enemy; a War machine deals its
+  ordinary blow."
+- C2: the wires are seen, a thin line between each pair, refreshed at the step.
+
+### JUDGEMENTS
+
+- **A REFUSED PIN IS STILL A CROSSING.** An enemy that `ApplyPin` refuses is still caught: the nearer end answers, and
+  it waits its 4 s. The sentence answers the crossing, not the pin.
+- **ONE CATCH A STEP FOR EACH ENEMY**, by the first wire found, the earliest placed pair first: an enemy across two
+  wires at once is pinned once and answered once.
+- **THE NEARER END** is measured along the floor to the enemy's centre; of two at one distance, the earlier placed.
+- **A GADGET'S ANSWER IS AT 100%.** "A gadget fires at it" states no share; Counterfire's row states 100 for the same
+  words.
+- **THE THREE FIGURES ARE STATS**, as Creeping Mines' two are, so the reach, the pin and the wait are data.
+- **THE WIRES ARE MEASURED BETWEEN THE DEVICES' OWN PLACES**, never against the seen actor, so a wire that failed to
+  spawn changes nothing in play.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over the 51
+.cpp files that differ from `development`, committed or not.
+- Result: **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmAbilitySystemComponent.cpp` without `#include "AbilitySystem/CataclysmDeviceWire.h"`
+  failed, naming `ACataclysmDeviceWire`.
+- **What the audit does not model**, a member reached through a pointer to a type seen only by a forward declaration:
+  the new test calls `GetStaticMesh` on the wire's `UStaticMeshComponent`, so it includes
+  `Components/StaticMeshComponent.h`, added by reading rather than by the audit.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: the pin's stat name misspelt (`device_wire_pin_second`) | `pytest tools/tests/test_war_vows_v5b2_scripts.py` | `test_the_engine_reads_the_three_names` |
+| `CataclysmPlayerClassStats.cpp`: `device_wire_repin_seconds` taken off the list of stats with no attribute | the same | `test_the_engine_reads_the_three_names` |
+
+The generator refuses the rows while the three stats are not listed in `CataclysmPlayerClassStats.cpp` ("a flat row on
+a stat the game reads nowhere"), seen when the rows were first generated before the list was written.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b2.AnEnemyCrossingAWireIsPinnedAndTheNearerEndAnswers` | a Spike Trap and a Bolt Turret 6 m apart: without the option nobody is caught (the control); with it, a creature 30 cm off the wire nearer each end is pinned and takes that end's blow; a creature 2 m off is neither (the control); 2 s later neither is caught again (the control), 4.5 s later both are |
+| `Cataclysm.WarVowsV5b2.AWireJoinsDevicesWithinReachIsSeenAndComesDownWithoutTheOption` | three Bolt Turrets at 20, 28 and 40 m: without the option no wire (the control); with it one wire, 8 m long, halfway between, with a mesh, and a creature between the devices 12 m apart is not caught (the control); with a reach of 13 m, two wires; with the option gone, none, and the one seen taken down |
+| `Cataclysm.WarVowsV5b2.AWarPlayerTakingCatsCradleIsHandedItsThreeFigures` | through `SetPassiveAllocation`: 1,000 cm, 1 s and 4 s; Trail of Wire hands over no reach (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: the nearer end chosen the other way (`<` turned to `>` in `StepCatsCradle`) | `Cataclysm.WarVowsV5b2.` | `AnEnemyCrossingAWireIsPinnedAndTheNearerEndAnswers` |
+
+**Dropped under that ruling:** a proof that the 4 s wait holds (the wait taken out), which would fail the same test.
+
+---
+
 ## 2026-11-25 — The War vow options' fifth slice, second half, first part (V5b1): Scrap Mines, and the event a gadget raises when its life span runs out
 
 **Affects:**

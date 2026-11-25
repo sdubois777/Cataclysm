@@ -221,6 +221,15 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// refuses a corpse itself.
 	ACataclysmMinion::GadgetStep(this);
 
+	// AND CAT'S CRADLE'S WIRES, ON THE SAME STEP (V5b2, ruled C1 and C2: "at the player's quarter-second step"). Nothing
+	// for a character whose rows state no reach, which is every character but a Saboteur holding the option; a dead
+	// one's wires are taken down. BEFORE THE GUARD BELOW, as the gadget's step is, so a death takes the wires down.
+	if (UCataclysmAbilitySystemComponent* Cradle =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this)))
+	{
+		Cradle->StepCatsCradle();
+	}
+
 	// AND FERVOUR MAY ARRIVE FROM THE PASSAGE OF TIME ALONE. Issue #1008. The
 	// Masochist's Low Life keystone reads "While at or below 35% health you gain
 	// 10 Fervour per second", and it is the first thing that fills the pool

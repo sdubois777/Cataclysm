@@ -783,6 +783,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("trap_creep_metres_per_second"),
 		TEXT("trap_creep_reach_metres"),
 		TEXT("blow_to_device_chance_per_device"),
+		// Cat's Cradle's reach, pin and seconds between pins, read by ACataclysmMinion::DeviceWireReachCmFor,
+		// DeviceWirePinSecondsFor and DeviceWireRepinSecondsFor at the player's step. V5b2, 2026-11-25. No gameplay
+		// attribute.
+		TEXT("device_wire_reach_metres"),
+		TEXT("device_wire_pin_seconds"),
+		TEXT("device_wire_repin_seconds"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
