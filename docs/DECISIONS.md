@@ -242,10 +242,10 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ## 2026-11-24 — A held item pressed onto a gear slot is worn in that slot, and a press that does not do what was asked says why on the inventory screen (#837, slice 3)
 
-**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, after slice 2 and after the merge of
-`fix/ring-comparison` (`5acf6bd2a`, its own entry below the slice 1 entry), which the coordinating session asked to
-come first on 2026-11-24 so that a pressed slot overrides that branch's choice of ring. Issue
-[#837](https://github.com/sdubois777/Cataclysm/issues/837).
+**RUN AND PASSED IN THREE WINDOWS, ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THIS ENTRY.** On
+`feat/skill-selection-837`, after slice 2 and after the merge of `fix/ring-comparison` (`5acf6bd2a`, its own entry below
+the slice 1 entry), which the coordinating session asked to come first on 2026-11-24 so that a pressed slot overrides
+that branch's choice of ring. Issue [#837](https://github.com/sdubois777/Cataclysm/issues/837).
 
 ### Why
 
@@ -311,17 +311,17 @@ is a judgement, as the plan said.
 
 ### Tests
 
-**Unreal, registered** (none run): `Cataclysm.Wearing.` gains fifteen in a new file, `CataclysmWearHeldIntoTests.cpp`:
-`AWeaponPressedOntoAFilledHandIsWornThereAndTheOtherGoesToTheBag`, `PressedOntoTheOtherHandItReplacesWeaponTwo`
-(control: the right press replaces Weapon 1), `PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand` (one
-announcement, made with a weapon in hand; control: the only weapon still cannot be taken off),
-`PressedOntoAnEmptyHandItIsWornThere`, `ATwoHandedWeaponPressedOntoEitherHandTakesBoth`,
-`ATwoHandedWeaponWithNoRoomForTheSecondIsRefusedAndNothingMoves` (control: one free cell),
-`AOneHanderPressedOntoATwoHandersHandTakesItOff`, `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` (control:
-the head), `ARingPressedOntoRingFiveGoesInRingFive` (control: the right press's slot is Ring 2),
-`APressedRingSlotOverridesTheRingEquipWouldReplace` (eight rings worn, the ring report's case; control: `Equip` would
-replace the Quality ring in Ring 3, and the press onto Ring 1 replaces Ring 1),
-`PressedPastTheConsumptionThresholdItAsksFirst`, `TheThresholdQuestionIsAboutTheSlotPressed` (control: the total for
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): `Cataclysm.Wearing.` gains fifteen in a new file,
+`CataclysmWearHeldIntoTests.cpp`: `AWeaponPressedOntoAFilledHandIsWornThereAndTheOtherGoesToTheBag`,
+`PressedOntoTheOtherHandItReplacesWeaponTwo` (control: the right press replaces Weapon 1),
+`PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand` (one announcement, made with a weapon in hand; control: the
+only weapon still cannot be taken off), `PressedOntoAnEmptyHandItIsWornThere`,
+`ATwoHandedWeaponPressedOntoEitherHandTakesBoth`, `ATwoHandedWeaponWithNoRoomForTheSecondIsRefusedAndNothingMoves`
+(control: one free cell), `AOneHanderPressedOntoATwoHandersHandTakesItOff`,
+`AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` (control: the head), `ARingPressedOntoRingFiveGoesInRingFive`
+(control: the right press's slot is Ring 2), `APressedRingSlotOverridesTheRingEquipWouldReplace` (eight rings worn, the
+ring report's case; control: `Equip` would replace the Quality ring in Ring 3, and the press onto Ring 1 replaces Ring
+1), `PressedPastTheConsumptionThresholdItAsksFirst`, `TheThresholdQuestionIsAboutTheSlotPressed` (control: the total for
 the first free ring slot crosses), `WearingTheHeldItemEndsTheHold` (control: nothing held is `NothingHeld`),
 `TheLastWeaponRefusalNamesThePress` and `ARefusedPressIsShownOnTheScreen` (control: the six answers that did what was
 asked show nothing).
@@ -462,11 +462,52 @@ War Axe alone. All six-skill comparisons in the test now go through one helper, 
 then joined), which replaces the control's own copy of it. The four that compare damage types (two of `InFillOrder`,
 two of the slots' types) keep their order, which is the rule under test (Q11). No game code changed.
 
+### Window ss2-w3, 2026-11-25, on `8408ab4b7`: PASSED
+
+**RUN AND PASSED** on `feat/skill-selection-837-2` at `8408ab4b758628b3353a2f5db004f0e48c3e91ae`, under the lock
+`ss2-w3`, narrowed as ss2-w2 was by the coordinating session: the build and `Cataclysm.SkillPool.` alone, in parallel
+with Python off the machine, then the twelve guard proofs once Python had passed. **No second whole suite:** ss2-w1's,
+on `56360b4d6`, stands for every other test, by that ruling. Between ss2-w1 and this window only
+`CataclysmSkillPoolTests.cpp` and this log changed.
+
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp".
+- **`Cataclysm.SkillPool.` alone**: "11 tests performed, 11 succeeded, 0 failed".
+- **Python** on `8408ab4b7`: "8474 passed, 10 skipped in 352.25s"; JUnit 8484 tests, 0 failures, 0 errors. ruff: "All
+  checks passed!". The proofs waited 300 s for it.
+
+**C++ guard proofs**, each PROVED: named tests failed with the break in, and every test of the group passed restored.
+SP2, SQ3, SR1 and SR3 were written as `false && <the original condition>`, and SR2 passed `false ? Into :
+ECataclysmGearSlot::Count`, the registered break's value, so that every name the line read was still read; SP3 moved
+the whole restore call below the announcement.
+
+| Proof | Group | With the break in | Against the prediction |
+| :-- | :-- | :-- | :-- |
+| SP1 | `SkillDefaults.` | 18 performed, 11 failed, SD1 `ASecondWeaponLeavesEveryKeyAsItWas` and SD12 `RememberedDefaultsAreWrittenAndPutBackBeforeTheFill` among them | as predicted, "at least" |
+| SP2 | `SkillDefaults.` | 1 failed: SD10 `AWorkingSkillTakesAKeyBeforeAPlaceholder` | as predicted, "only" |
+| SP3 | `SkillDefaults.` | 2 failed: SD12 and `ALoadSaysNothing` | **SD13 `AChoiceWhoseWeaponIsOffSurvivesALoad` was predicted to fail and passed; `ALoadSaysNothing` (slice 2's) failed and was not predicted** |
+| SQ1 | `SkillBar.` | 3 failed: `AClickOnABoxNamesThatBoxesKey`, `TheControllerNamesTheKeyOfTheBoxUnderAPoint`, `AClickBetweenOrOffTheBoxesNamesNoKey` | **one more than predicted**, the third |
+| SQ2 | `SkillDefaults.` | 4 failed: `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing`, `AWeaponThatAddsSkillsOnNoKeySaysSo`, `ALoadSaysNothing` | **one more than predicted**, the fourth |
+| SQ3 | `SkillChoiceScreen.` | 1 failed: `APlaceholderIsMarkedNotBuiltYet` | as predicted |
+| SR1 | `Wearing.` | 1 failed: `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` | as predicted |
+| SR2 | `Wearing.` | 1 failed: `TheThresholdQuestionIsAboutTheSlotPressed` | as predicted |
+| SR3 | `Wearing.` | 6 failed, the six registered | as predicted |
+| R1 | `ItemComparison.` | 3 failed: `ARingIsComparedWithTheRingTheEquipActionWouldReplace`, `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, `AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand` | as predicted |
+| R2 | `ItemComparison.` | 2 failed: `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` | as predicted |
+| R3 | `ItemComparison.` | 1 failed: `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` | as predicted |
+
+Restored, each group performed all its tests with none failed (18, 26, 9, 34 and 11). The source hash was the same
+before and after each proof, and the tested head was still `8408ab4b7` after the last.
+
+**WHAT THE THREE WINDOWS SHOW TOGETHER.** ss2-w1 ran every test of the branch on `56360b4d6`: 5474 performed, 5473
+succeeded, and the one failure was a test's control written before Q2. ss2-w2 and ss2-w3 changed that test alone, and
+ss2-w3 ran its group and every guard proof on the final head. No game code changed after ss2-w1.
+
 ---
 
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
 
-**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, after slice 1 (the entry below). Issue
+**RUN AND PASSED IN WINDOWS ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THE SLICE 3 ENTRY.** On
+`feat/skill-selection-837`, after slice 1 (the entry below). Issue
 [#837](https://github.com/sdubois777/Cataclysm/issues/837).
 
 ### Why
@@ -513,12 +554,12 @@ new weapon added, "The Fist adds 5 skills to your pool. Press K, or click a skil
 
 ### Tests
 
-**Unreal, registered** (none run): `Cataclysm.SkillBar.` gains four in a new file, `CataclysmSkillBarClickTests.cpp`:
-`AClickOnABoxNamesThatBoxesKey`, `AClickBetweenOrOffTheBoxesNamesNoKey` (the control),
-`TheControllerNamesTheKeyOfTheBoxUnderAPoint` and `TheBarNamesTheKeyThatOpensTheScreen`. `Cataclysm.SkillDefaults.`
-gains four: `AWeaponThatAddsSkillsOnNoKeySaysSo` (the words, and their going after six seconds),
-`AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing` and `ALoadSaysNothing`. `Cataclysm.SkillChoiceScreen.` gains
-`APlaceholderIsMarkedNotBuiltYet`. Nine in all.
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): `Cataclysm.SkillBar.` gains four in a new file,
+`CataclysmSkillBarClickTests.cpp`: `AClickOnABoxNamesThatBoxesKey`, `AClickBetweenOrOffTheBoxesNamesNoKey` (the
+control), `TheControllerNamesTheKeyOfTheBoxUnderAPoint` and `TheBarNamesTheKeyThatOpensTheScreen`.
+`Cataclysm.SkillDefaults.` gains four: `AWeaponThatAddsSkillsOnNoKeySaysSo` (the words, and their going after six
+seconds), `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing` and `ALoadSaysNothing`. `Cataclysm.SkillChoiceScreen.`
+gains `APlaceholderIsMarkedNotBuiltYet`. Nine in all.
 
 **Python**: `tools/tests/test_a_skill_box_opens_the_skill_screen.py`, five checks, new;
 `test_the_play_loop_is_logged_at_each_step.py` lists the new line, and the checklist quotes it.
@@ -547,7 +588,8 @@ rc-w1's log, + 4 = 26), `Cataclysm.SkillChoiceScreen.` 9 (8 + 1); the whole suit
 
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
 
-**WRITTEN AND NOT COMPILED; NO WINDOW YET.** On `feat/skill-selection-837`, from development `5f302b0a7`. Issue
+**RUN AND PASSED IN WINDOWS ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THE SLICE 3 ENTRY.** On
+`feat/skill-selection-837`, from development `5f302b0a7`. Issue
 [#837](https://github.com/sdubois777/Cataclysm/issues/837), slice 1 of three on one branch. The plan is
 `plan_skill_selection.md` in the coordinating session's `.claude/windows` folder (nice-carson worktree).
 
@@ -608,7 +650,7 @@ version step, "A double should hold the keys the player actually had".
 
 ### Tests
 
-**Unreal, registered** (none run; no window yet): a new group, `Cataclysm.SkillDefaults.`, 14 tests in
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): a new group, `Cataclysm.SkillDefaults.`, 14 tests in
 `CataclysmSkillDefaultsTests.cpp`, and one in `Cataclysm.SaveRecords.`:
 
 | | Test | What it checks |
@@ -920,7 +962,8 @@ half). Each anchor occurs once in the file.
 | R2, the lowest Power Score | `if (!bChosen \|\| Score < ChosenScore)` to `if (!bChosen \|\| Score > ChosenScore)` (the highest) | `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity` (Ring 2, the +6 ring: the control's slot, its mark 4 but 2, the bold Ring 4 line -- 3); `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 3, the +3 Everyday ring: the control's slot, its mark 6 but 3, the bold Ring 6 line -- 3) |
 | R3, the lowest rarity when its own is not worn | `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : LowestRank;` to `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : -2;` (no rank matches, so the first candidate, the old behaviour) | `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 1: the control's slot, its mark 6 but 1, the bold Ring 6 line -- 3). The weapon test's Superb case expects Weapon 1, which the break also gives, so it passes |
 
-The breaks were not compiled. Each leaves every variable read, so none should stop the build on an unused variable.
+The breaks were not compiled when registered; they were run in window ss2-w3 (the slice 3 entry's record). Each leaves
+every variable read, so none should stop the build on an unused variable.
 
 ---
 
