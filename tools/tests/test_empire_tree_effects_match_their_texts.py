@@ -156,6 +156,11 @@ DISMANTLE_NODES = {"Salvage Protocol", "Disassembly Expert"}
 #: THE KINDS WHOSE TEXT STATES THE TOTAL AT THE NODE'S FULL POINTS, not the figure a point: Salvage Protocol's "25% more"
 #: at its 10 points is 2.5% a point (N6).
 TOTAL_AT_FULL_POINTS = {"DismantleMaterialsIncreased": 10}
+#: #47 slice F6, the forge: the two crafting options of the centre milestones (2026-11-22, R1 to R8), numbered 10.
+SLICE_F6 = {"The Soul Forge", "The Master Tinkerer"}
+#: #47 slice F6a, the forge's gold: the five forge gold nodes (2026-11-22, Q1 to Q10, the owner's 30% for Architectural
+#: Synergy; 2026-11-24, A and B), numbered 11.
+SLICE_F6A = {"Workshop Upgrades", "Apprentice Oversight", "Architectural Synergy", "Treasury Synergy", "Forge Upgrades"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -234,13 +239,15 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dismantle_nodes_act() -> None:
+def test_exactly_the_124_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismantle_nodes_f6_and_f6a_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
     assert len(SLICE_6D) == 2 and len(SLICE_6E) == 2 and len(SLICE_7) == 4 and len(SLICE_8) == 1
     assert len(SLICE_BUILD_DAYS) == 3
     assert len(SLICE_9) == 5 and len(DISMANTLE_NODES) == 2
+    assert len(SLICE_F6) == 2
+    assert len(SLICE_F6A) == 5
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -259,8 +266,13 @@ def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dis
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS) & SLICE_9
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9) & DISMANTLE_NODES
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES) & SLICE_F6
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6) & SLICE_F6A
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES)
+             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6 | SLICE_F6A)
+    assert len(built) == 124
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -282,6 +294,10 @@ def test_exactly_the_117_nodes_of_slices_3a_to_9_the_build_nodes_and_the_two_dis
         "every slice 9 node with an effect is one EMPIRE_TREE_BUILT gives to slice 9")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 2848 for name in DISMANTLE_NODES), (
         "every dismantle node is one EMPIRE_TREE_BUILT gives to issue #2848")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 10 for name in SLICE_F6), (
+        "every #47 slice F6 option with an effect is one EMPIRE_TREE_BUILT gives to slice 10")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 11 for name in SLICE_F6A), (
+        "every #47 slice F6a forge gold node is one EMPIRE_TREE_BUILT gives to slice 11")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:
@@ -322,7 +338,7 @@ def test_every_value_is_in_its_own_words(texts) -> None:
     assert not wrong, "\n".join(wrong)
 
 
-def test_the_fifteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
+def test_the_seventeen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> None:
     caps = {name: effect[4]
             for name, effects in gen.EMPIRE_TREE_EFFECTS.items()
             for effect in effects if len(effect) > 4 and effect[4]}
@@ -349,8 +365,13 @@ def test_the_fifteen_caps_are_the_rulings_and_nothing_else_is_capped(texts) -> N
                     # Slice 9, the coordinating session's ruling of 2026-11-21:
                     # Reinvestment's "(Capped)" is 30%, Veteran's Edge at its full
                     # 10 points, held apart from it (V3).
-                    "Reinvestment": 0.30}, caps
+                    "Reinvestment": 0.30,
+                    # #47 slice F6a: Architectural Synergy's 30%, the owner's
+                    # choice of 2026-11-22, "30% (Recommended)" (Q4); Treasury
+                    # Synergy's own "(Cap 30%)" (Q7).
+                    "Architectural Synergy": 0.30, "Treasury Synergy": 0.30}, caps
     assert "(Capped)" in texts["Reinvestment"]
+    assert "(Cap 30%)" in texts["Treasury Synergy"]
     assert "cap 20%" in texts["Venture Capital"]
     assert "20% cap" in texts["Treasury Guard"]
     assert "25% cap" in texts["Imperial Reserve"]

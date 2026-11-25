@@ -111,8 +111,9 @@ struct FCataclysmForgeCraftHooks
  *
  * AN UPGRADE, IN ORDER: the stones are taken from the bag; the item, carried or worn, is raised one level in its own
  * cell or slot and carries 25 more residue; then the days pass through `UCataclysmEmpireRun::AdvanceDays`, so a surge
- * or a resolve inside them happens on its own day. A PLAY LOOP line says it, and `ForgeCrafted` saves the character
- * record and the run record.
+ * or a resolve inside them happens on its own day. A PLAY LOOP line says it, a second says what the days did -- the
+ * dungeons resolved, the cities hit and by how much, the cities fallen, any surge (issue #2857) -- and `ForgeCrafted`
+ * saves the character record and the run record.
  *
  * A WORN PIECE'S UPGRADE ASKS FIRST when it would take Worn Residue from below this tier's Consumption Threshold to at
  * or past it: "There is no path across the threshold that does not show the warning first." A confirmed crossing
@@ -349,7 +350,22 @@ public:
 	 * `UCataclysmForge::OptionsOn`.
 	 */
 	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
-												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options);
+												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options,
+												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+
+	/**
+	 * The empire tree's forge gold pricing for a craft on the item at a target (#47 slice F6a): each material tier's
+	 * factor by `UCataclysmEmpireTree::CraftGoldFactorFor`, from the character's tree, the gold it has spent at the forge
+	 * (Treasury Synergy's count) and Forge Upgrades' roll for this item on this day of the run. Every plan call with an
+	 * item passes it, and so does every `OptionsFor` call, so a craft and its options take one roll (ruling B).
+	 */
+	static FCataclysmForgePricing PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The same for a combine of the rung `Rung` (a stone combine's `Level - 1`, a gem combine's rarity), which has no
+	 * item: Forge Upgrades' roll is seeded by the rung and the day (Q10).
+	 */
+	static FCataclysmForgePricing CombinePricingFor(const UObject* WorldContext, int32 Rung);
 
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
@@ -371,8 +387,11 @@ public:
 	 * that does not show the warning first."); the mark set before the change; the gold, once; the materials, through
 	 * `TakeMaterials`; the hooks' take; the item changed by `ChangeTheItem` from a copy of it as it stood and the run before
 	 * the days pass, which may refuse; the residue written from `Step.ResidueAfter`; the item put back; the hooks' after;
-	 * the days; the build the double wears, captured after the change; the craft's line through `SayTheLine`, then the
-	 * options' line; and the save triggers. ANYTHING THAT CANNOT BE FINISHED PUTS BACK WHAT IT TOOK.
+	 * the days, their reports kept; the build the double wears, captured after the change; the craft's line through
+	 * `SayTheLine`, then the options' line, then what the days did ("at the forge, days 97 to 99: dungeons resolved:
+	 * ...", `FCataclysmPlayLoopLog::AwayAccount`) when a day passed, also kept for the screen
+	 * (`UCataclysmGameInstance::KeepCapitalDays`, issue #2857); and the save triggers. ANYTHING THAT CANNOT BE FINISHED
+	 * PUTS BACK WHAT IT TOOK.
 	 */
 	static ECataclysmForgeResult DoItemCraft(
 		const UObject* WorldContext, const FCataclysmForgeCraftStep& Step, bool bConfirmedPastThreshold,

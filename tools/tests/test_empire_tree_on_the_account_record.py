@@ -11,7 +11,8 @@ read as text are checked here as well.
 
 SLICE 1C (the same issue) gave a Solo Self-Found character its own bank and tree,
 on its character record at version 9 (the owner's reversal of C8, 2026-11-18), so
-`Character_v17.json`, the committed character file since issue #837 slice 1 (`Character_v16.json` from issue #2849,
+`Character_v18.json`, the committed character file since #47 slice F6a (`Character_v17.json` from issue #837 slice 1,
+`Character_v16.json` from issue #2849,
 `Character_v15.json` from issue #2848,
 `Character_v14.json` from issue #2741 slice 9,
 `Character_v13.json` from issue #46, `Character_v12.json` from issue #2741 slice 8), is checked the same way as the
@@ -56,11 +57,11 @@ EDGES_CSV = REPO_ROOT / "game" / "Data" / "EmpireTreeEdges.csv"
 RECORDS_H = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveRecords.h"
 GAME_INSTANCE = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player" / "CataclysmGameInstance.cpp"
 TRIGGERS = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save" / "CataclysmSaveTriggers.cpp"
-# `Account_v7.json` SINCE ISSUE #2741 SLICE 9 AND `Character_v17.json` SINCE ISSUE #837 SLICE 1 (`Character_v16.json` from
-# issue #2849, `Character_v15.json` from issue
+# `Account_v8.json` SINCE #47 SLICE F6a (`Account_v7.json` from issue #2741 slice 9) AND `Character_v18.json` SINCE
+# #47 SLICE F6a (`Character_v17.json` from issue #837 slice 1, `Character_v16.json` from issue #2849, `Character_v15.json` from issue
 # #2848, `Character_v14.json` from slice 9), `Account_v6.json` and `Character_v13.json` from issue #46 and slice 8.
-ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v7.json"
-CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v17.json"
+ACCOUNT_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Account_v8.json"
+CHARACTER_FILE = REPO_ROOT / "game" / "Tests" / "SaveFixtures" / "Character_v18.json"
 
 #: `class CATACLYSM_API UCataclysmAccountSave ... SchemaVersionNow = 7;` (6 until issue #2741 slice 9, 5 until slice 8,
 #: 4 until slice 6e)
@@ -231,7 +232,7 @@ def test_the_record_that_holds_the_tree_is_the_one_written():
 
 
 def test_the_committed_character_file_holds_its_own_tree_at_the_records_version(node_rows, edges_into):
-    """`Character_v17.json` (`Character_v16.json` until issue #837 slice 1, `Character_v15.json` until issue #2849, `Character_v14.json` until issue #2848, `Character_v13.json` until issue #2741 slice 9, `Character_v12.json` until issue #46,
+    """`Character_v18.json` (`Character_v17.json` until #47 slice F6a, `Character_v16.json` until issue #837 slice 1, `Character_v15.json` until issue #2849, `Character_v14.json` until issue #2848, `Character_v13.json` until issue #2741 slice 9, `Character_v12.json` until issue #46,
     `Character_v11.json` until issue #2741 slice 8, `Character_v10.json` until slice 6e,
     `Character_v9.json` until issue #2764):
     at the character record's version, with

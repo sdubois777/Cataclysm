@@ -8,6 +8,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmEmpireTreeTestTables.h"
 
 /**
  * The empire upgrade tree's buying rules, over the real generated tables. Issue #2741, slice 1a.
@@ -45,7 +46,7 @@ namespace CataclysmEmpireTreeTestNodes
 
 	// The centre.
 	const FName Foundations(TEXT("capstone_0000000m"));			// 25: Aegis of Hope, The Delver, The Hoarder
-	const FName EdictsOfPower(TEXT("capstone_0000000n"));		// 50: option 3, The Soul Forge, waits on crafting
+	const FName EdictsOfPower(TEXT("capstone_0000000n"));		// 50: option 3, The Soul Forge, built in #47 slice F6
 	const FName ImperialZenith(TEXT("capstone_0000000p"));		// 200: option 1, Imperial Prowess, built in slice 8
 
 	/**
@@ -389,9 +390,15 @@ bool FCataclysmEmpireTreeOptionWaitsTest::RunTest(const FString& Parameters)
 	FillBranch(Nodes, Allocation, TEXT("Architect"), 200);
 	TestEqual(TEXT("200 points are spent"), Allocation.Total(), 200);
 
+	// NO OPTION OF THE GENERATED TABLE WAITS SINCE #47 SLICE F6, so the refusal is shown on a copy in which The Soul
+	// Forge waits on crafting as it did (`CataclysmEmpireTreeTestTables::WithAnOptionWaiting`).
+	const UDataTable* Waiting = CataclysmEmpireTreeTestTables::WithAnOptionWaiting(
+		Nodes, EdictsOfPower, 3, CataclysmEmpireTreeTestTables::CraftingReason());
+	TestTrue(TEXT("CONTROL: in the generated table The Soul Forge can be chosen, since #47 slice F6"),
+			 UCataclysmEmpireTree::RefusalForChoosingOption(Nodes, Allocation, EdictsOfPower, 3).IsEmpty());
 	FString Reason;
-	TestFalse(TEXT("The Soul Forge, Edicts of Power's third, cannot be chosen"),
-			  UCataclysmEmpireTree::ChooseOption(Nodes, Allocation, EdictsOfPower, 3, Reason));
+	TestFalse(TEXT("The Soul Forge, Edicts of Power's third, cannot be chosen while it waits"),
+			  UCataclysmEmpireTree::ChooseOption(Waiting, Allocation, EdictsOfPower, 3, Reason));
 	TestEqual(TEXT("and the refusal names crafting"), Reason,
 			  FString(TEXT("The Soul Forge cannot be chosen yet: it needs crafting, which the game does not have yet "
 						   "(issue #47).")));

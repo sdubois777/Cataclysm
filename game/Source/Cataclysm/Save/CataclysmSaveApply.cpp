@@ -727,6 +727,7 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	State->SetOwnGold(Record.Gold); // A load's: a Solo Self-Found character's own gold. Issue #2742.
 	State->SetOwnGoldOwed(Record.GoldOwed, Record.GoldOwedEachDay); // And its own debt. Issue #2741 slice 6e.
 	State->SetOwnGoldSpentOnCityUpgrades(Record.GoldSpentOnCityUpgrades); // And Reinvestment's count. Slice 9.
+	State->SetOwnGoldSpentAtTheForge(Record.GoldSpentAtTheForge); // And Treasury Synergy's. #47 slice F6a.
 	// A load's: a Solo Self-Found character's own empire upgrade points and tree. Issue #2741 slice 1c.
 	State->SetOwnEmpireTree(Record.PrivateEmpireUpgradePoints, Record.PrivateEmpireTree);
 	if (Record.bMarkedByConsumption) // A load's: the Consumption mark. Issue #2688.

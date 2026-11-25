@@ -2515,6 +2515,32 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The same, for a piece of Superb or above (Disassembly Expert, 20%, N7 and O4). Issue #2848, slice S2. */
 	DismantleMaterialsIncreasedSuperbAndAbove,
+
+	/** The chance an item's upgrade adds two levels instead of one, up to +10 (The Soul Forge, 15%). #47 slice F6, read
+	 *  by `UCataclysmForge::SoulForgeLevels` through `UCataclysmEmpireTree::PlayerBonusesFor`. */
+	UpgradeExtraLevelChance,
+
+	/** The chance an enchantment craft is a critical success: its rolls drawn twice with the better kept, and no days
+	 *  (The Master Tinkerer, 5%). #47 slice F6, read by `UCataclysmForge::EnchantCritical`. */
+	EnchantCriticalChance,
+
+	/** Off every forge gold price, 1.5% a point (Workshop Upgrades). #47 slice F6a, read by
+	 *  `UCataclysmEmpireTree::CraftGoldFactorFor` through `UCataclysmEmpireTree::PlayerBonusesFor`. */
+	CraftGoldReduced,
+
+	/** Off a forge gold price whose material is tier 1 or 2, 20% (Apprentice Oversight, Q3). #47 slice F6a. */
+	LowTierCraftGoldReduced,
+
+	/** Off every forge gold price, 1% a point for each 10 points in the Treasury branch, capped at 30% (Architectural
+	 *  Synergy; the owner's cap of 2026-11-22). #47 slice F6a. */
+	CraftGoldReducedPerBranchStep,
+
+	/** Off every forge gold price, 1% for each 50,000 tier 1 gold spent at the forge, capped at 30% (Treasury Synergy,
+	 *  Q5 to Q7). #47 slice F6a, read by `UCataclysmEmpireTree::CraftGoldFromSpendingFor`. */
+	CraftGoldReducedPerSpendingStep,
+
+	/** The chance a forge craft costs a tenth less, 1% a point (Forge Upgrades, Q8 to Q10). #47 slice F6a. */
+	CraftGoldTenthOffChance,
 };
 
 /**

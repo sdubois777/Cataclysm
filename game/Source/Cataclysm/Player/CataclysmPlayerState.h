@@ -438,6 +438,17 @@ public:
 	void SetOwnGoldSpentOnCityUpgrades(double Spent) { OwnGoldSpentOnCityUpgrades = FMath::Max(0.0, Spent); }
 
 	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent at the forge, across runs, which Treasury
+	 * Synergy reads (#47 slice F6a, Q5, as Reinvestment's V2). ONLY A SOLO SELF-FOUND CHARACTER'S; every other
+	 * character's is its lethality mode's account's. Only `UCataclysmGameInstance`'s gold functions should read or
+	 * change it.
+	 */
+	double GetOwnGoldSpentAtTheForge() const { return OwnGoldSpentAtTheForge; }
+
+	/** Set it, as a load or a craft does. A negative figure is held at 0. */
+	void SetOwnGoldSpentAtTheForge(double Spent) { OwnGoldSpentAtTheForge = FMath::Max(0.0, Spent); }
+
+	/**
 	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent, and what its own empire upgrade
 	 * tree has bought, which its character record holds (version 9). Issue #2741 slice 1c.
 	 *
@@ -1080,6 +1091,10 @@ protected:
 	/** See `GetOwnGoldSpentOnCityUpgrades`. Issue #2741 slice 9. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	double OwnGoldSpentOnCityUpgrades = 0.0;
+
+	/** See `GetOwnGoldSpentAtTheForge`. #47 slice F6a. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	double OwnGoldSpentAtTheForge = 0.0;
 
 	/** See `GetOwnEmpireUpgradePoints`. Issue #2741 slice 1c. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
