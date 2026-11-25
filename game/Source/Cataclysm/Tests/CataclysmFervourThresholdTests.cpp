@@ -294,8 +294,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourThresholdRecoveryTest,
  * The fourth vow's clause through its real row, as the coordinating session ruled it: a rate. Two real Death characters
  * with The Final Vow's point and 200 points spent each start a 20 second cooldown holding 50 Fervour, and their own
  * regeneration steps run on the test clock. One reaches 100 Fervour after a second, falls back to 50 after two more, and
- * reaches 100 again: its cooldown runs twice as fast only while it holds 100, and ends after 11 seconds. THE CONTROL: the
- * other stays at 50 and has 9 seconds left then.
+ * reaches 100 again: its cooldown runs twice as fast only while it holds 100, and has ended 11.2 seconds after it began.
+ * THE CONTROL: the other stays at 50 and has about 8.8 seconds left then.
+ *
+ * NO STEP IS CALLED BY HAND. The precedent for a character's own regeneration timer running on `RunClock` is
+ * `Cataclysm.MasochistVowRows.CeaselessPenanceKeepsARealMasochistsDebuffsWhileAboveHalfHealth`, which passed in two
+ * windows on 2026-11-25; see the slice C3d entry in docs/DECISIONS.md.
  */
 bool FCataclysmFervourThresholdRecoveryTest::RunTest(const FString&)
 {

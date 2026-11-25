@@ -114,6 +114,15 @@ clock**: two real Death characters' own steps, started at begin-play, with no st
 not run in a test world, the test would fail at its second figure (15 left after two seconds at 100), and the probe
 `ProbeCooldownsRecoverFaster`, which calls the step by hand, would still pass.
 
+**THE PRECEDENT, asked for by the coordinating session:**
+`Cataclysm.MasochistVowRows.CeaselessPenanceKeepsARealMasochistsDebuffsWhileAboveHalfHealth`
+(`CataclysmPassiveTreeTests.cpp`) holds a Cripple on a real Masochist by that character's own regeneration timer alone
+(`UCataclysmDebuffs::HoldStep`, called by the step), with `RunClock` and no step called by hand, and asserts the Cripple
+is still there three seconds later. It passed in two windows on 2026-11-25: "Test Completed. Result={Success}" in the
+engine logs `Cataclysm-before-tests-2026.11.25-04.07.32.log` of the worktree `interesting-snyder-dca273` (log time
+10.45.14) and `Cataclysm-before-tests-2026.11.25-01.59.06.log` of `sharp-meitner-246682` (log time 08.44.53). Its
+control, the same Cripple gone three seconds later without the option, shows the clock ran at all.
+
 **Three C++ guard proofs are registered for the window:**
 1. `CataclysmStatPipeline.cpp`, the condition's case: `return State.FervourThresholdsReached >= 0 && Index >= 0` and
    its next line `&& (State.FervourThresholdsReached & (1 << Index)) != 0;` become `return State.FervourThresholdsReached
