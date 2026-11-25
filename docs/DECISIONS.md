@@ -146,7 +146,20 @@ No sentence is reworded by this branch.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+**THE FIRST RUN FAILED TWO REAL TESTS.** On `870dc249babf0dff225f058999faef2750a0012a`: **3 failed, 8554 passed, 9
+skipped in 499.29s**, the JUnit file agreeing. Two of the failures were
+`test_charge_and_placed_action_names_match_the_engine.py`'s placed and nearby name tests. They hold the generator's
+action names equal to the engine's, and did not list V2b's two new names. They were corrected in
+`8b848fc9f52a3ff411a8354b1a29db1d9fc31ad0`, where that file reads 42 passed.
+
+**The second run**, on `8b848fc9f52a3ff411a8354b1a29db1d9fc31ad0`, with nothing in the worktree changing during the
+run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8556 passed, 9 skipped
+in 604.74s**, and the JUnit file `tests="8566" failures="1" errors="0" skipped="9"`, which is 8,556 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 13 files read, 0 with complaints. The include audit
+over the branch's nine changed .cpp files: 0 names unreachable.
 
 ### PYTHON GUARD PROOFS
 
