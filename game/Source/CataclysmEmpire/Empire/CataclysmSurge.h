@@ -1318,9 +1318,8 @@ public:
 	 * And Celestial's Ascendant, the seventh, since 2026-10-22, and War's
 	 * Siege, the eighth, since 2026-11-25 (issue #51 slice B4, the War quest).
 	 * Until then War's rolled on purpose, while the owner had ruled War out of
-	 * the game, and `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_
-	 * not_yet_in_the_game.py` held the gap; it was deleted by its own restore
-	 * text. `None` itself, the Cataclysm nobody named, answers `None`: a Quest
+	 * the game, and a file of Python checks named for War's Quest sub-type held
+	 * the gap; it was deleted by its own restore text. `None` itself, the Cataclysm nobody named, answers `None`: a Quest
 	 * dungeon made without a sender rolls, as the model's does.
 	 * `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the layers.
 	 *

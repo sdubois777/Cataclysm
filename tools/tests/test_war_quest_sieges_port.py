@@ -182,6 +182,9 @@ def test_the_run_record_step_writes_the_two_fields_and_every_chain_test_adds_the
 
     chain20 = chain21 = 0
     for path in TESTS.rglob("*.cpp"):
+        # THE STEP'S OWN MIGRATION TEST runs `Run_v20.json` through the one step, not the chain, so it adds 21 alone.
+        if path.name == "CataclysmWarQuestSiegesTests.cpp":
+            continue
         text = read(path)
         twenty = len(re.findall(r"AddTheRunsVersion20Defaults\(", text))
         twenty_one = len(re.findall(r"AddTheRunsVersion21Defaults\(", text))

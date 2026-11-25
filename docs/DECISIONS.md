@@ -21,10 +21,14 @@ Decisions made outside the Google Drive documents, newest first.
 - `game/Source/Cataclysm/Tests/CataclysmWarQuestSiegesTests.cpp`, new;
   `game/Source/CataclysmEmpire/Tests/CataclysmSurgeTests.cpp`: two tests at eight sub-types.
 - `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/world.py`;
+  `sim/cataclysm_sim/policies.py`: `siege_daily_damage`'s Siege mix re-measured over 10,000 campaigns, 107,735 Sieges
+  at 67% Basic, 29% Quest, 5% Fallen City, 10.77 a campaign, where it said 96,875 at 70 / 25 / 5 and 9.69;
   `sim/tests/test_a_fall_to_war_starts_the_next_siege.py`, new;
   `sim/tests/test_a_war_quest_siege_is_capped_and_bites_a_quarter.py`.
 - `tools/tests/test_war_quest_sieges_port.py`, new; `tools/tests/test_dungeon_subtype_port.py`;
-  `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`, deleted by its own restore text.
+  `tools/tests/test_demonic_rifts_port.py`: `Kind` is no longer `const` in `RollWave`.
+- The file of Python checks that held War's Quest sub-type as a gap in the game, deleted by its own restore text (it
+  is named in the 2026-10-21 entry's dated sentences).
 
 Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B4 of the plan for the Demonic, Death and War
 Cataclysms (2026-11-24), the War quest. On `feat/war-quest-sieges`, **stacked on `feat/abyssal-rifts-2864-2`**, which

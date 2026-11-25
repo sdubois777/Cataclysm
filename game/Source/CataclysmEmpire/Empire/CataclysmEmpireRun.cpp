@@ -1065,8 +1065,8 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 				const FHitRecordedOnLeaving RecordTheHit(OutReport, Map.Get(), HostId, ECataclysmCityHitKind::QuestTimer);
 				// LAST STAND PROTOCOLS, armed for this one call: a Quest dungeon's timer is a dungeon's resolution (Q3).
 				// Issue #2741 slice 3b.
-				ArmTheLastStandFor(HostId);
 				HitBy = Dungeon->Cataclysm; // Who fells it, if this does. Issue #51 slice B4.
+				ArmTheLastStandFor(HostId);
 				if (Map->Damage(HostId, Ordinary.DefenceDamage, Ordinary.PopulationDamage) || (bHollow && Map->AddVoidStacks(HostId, HollowStacks)))
 				{
 					CityFell(HostId, OutReport);
@@ -1158,8 +1158,8 @@ void UCataclysmEmpireRun::ResolveDungeon(int32 DungeonId,
 	// WHAT THE HIT TAKES, RECORDED: the city read before it and after. Issue #2733 slice 3; changes nothing.
 	const FCityBeforeAHit BeforeTheHit = BeforeAHit(Map.Get(), CityId);
 	// LAST STAND PROTOCOLS, armed for this one call, an ordinary dungeon's resolution (Q3). Issue #2741 slice 3b.
-	ArmTheLastStandFor(CityId);
 	HitBy = Dungeon->Cataclysm; // Who fells it, if this does. Issue #51 slice B4.
+	ArmTheLastStandFor(CityId);
 	if (Map->Damage(CityId, Defence, Population) || (bVoid && Map->AddVoidStacks(CityId, Stacks)))
 	{
 		CityFell(CityId, OutReport);
