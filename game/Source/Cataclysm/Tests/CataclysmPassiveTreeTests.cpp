@@ -14147,7 +14147,7 @@ bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------
-/ Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
+// Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
 // generates it from crippled enemies near the character. Issue #1515.
 // --------------------------------------------------------------------------
 
@@ -15295,7 +15295,7 @@ bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
 	return true;
 }
 
-/ ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
+// ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
 
 namespace CataclysmDeathRewardsTest
 {
