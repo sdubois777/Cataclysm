@@ -253,8 +253,9 @@ public:
 	 * `Equip` ITSELF DECIDES, ON A COPY THAT IS PUT BACK. Which slot an item goes to and what comes off with it -- the
 	 * first free ring slot or the ring `UCataclysmGearSlots::SlotToReplace` names, a two-handed weapon over two held
 	 * ones, Both Hands Full read off the owner's ability system -- is decided in `Equip` and `EquipInto`, and a second
-	 * copy of that rule written for a preview would one day disagree with the first. So the slots are copied, `Equip` runs on them with nothing announced,
-	 * what went where and what came off are recorded, and the slots and the change count are put back as they were.
+	 * copy of that rule written for a preview would one day disagree with the first. So the slots are copied, `Equip`
+	 * runs on them with nothing announced, what went where and what came off are recorded, and the slots and the change
+	 * count are put back as they were.
 	 * Nothing leaves the component, so nothing can be lost, and no listener hears of it. Not const for that reason
 	 * alone.
 	 *
