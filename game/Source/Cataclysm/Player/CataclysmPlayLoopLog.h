@@ -221,6 +221,13 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString SkillForgottenLine(const FString& Slot);
 
 	/**
+	 * A change of gear that added skills to the pool on no key: "the Fist added 5 skills to the pool on no key, and 2 not
+	 * built yet". `Weapon` empty is "the weapons". Said by `ACataclysmPlayerCharacter::NoteSkillsAddedToThePool` beside
+	 * the notice it posts; never by a load. Issue #837 slice 2 (the owner's Q4).
+	 */
+	static FString SkillsAddedLine(const FString& Weapon, int32 Built, int32 NotBuilt);
+
+	/**
 	 * An item raised a gear level at the forge: "upgraded Quality Torc of Warding from +2 to +3 with two +3 stones, 4
 	 * left, and 2,055 gold; residue 87 to 112; it cost 3 days, day 20 to day 23". The owner's ruling of 2026-11-19,
 	 * "build it next"; the gold since #2830. Said by `UCataclysmForgeCraft::Upgrade`, after the stones and the gold are

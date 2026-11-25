@@ -1308,6 +1308,15 @@ struct CATACLYSM_API FCataclysmPlayerBuild
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
 
+	/**
+	 * What each other key held by default, as `ACataclysmPlayerState::GetRememberedDefaults` holds them. Issue #837
+	 * slice 1, ruled by the coordinating session on 2026-11-24: a double holds the keys the player actually had, so its
+	 * fill reads these after the choices, as the player's does. In the character record from its version 17
+	 * (`Migrate_16_to_17` writes an empty list into a held build that lacks it).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
+
 	/** Every point spent in the passive trees, as the player state holds it. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	FCataclysmPassiveAllocation PassiveAllocation;
@@ -1370,7 +1379,11 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 16 SINCE 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
+	 * 17 SINCE 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
+	 * `RememberedDefaults`, so a loaded character's keys stay as they were (the owner's Q1, "Approve all three
+	 * (Recommended)"). `Migrate_16_to_17` writes an empty list, which is what a character written before it held.
+	 *
+	 * 16 FROM 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
 	 * are two lists of their own, `CarriedMaterials` and `CarriedGems`, one stack per material and one per gem and
 	 * rarity. `Migrate_15_to_16` moves each stack out of `CarriedSlots` into its list and blanks its cell, so every
 	 * piece of gear keeps its cell. The owner's ruling of that day: "One cell per kind, no limit (Recommended)".
@@ -1437,7 +1450,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 16;
+	static constexpr int32 SchemaVersionNow = 17;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1802,10 +1815,24 @@ public:
 	 *
 	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
 	 * default fill, so a file written before it reads as the character it always was (section 5 of
-	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back through `AssignSkill` (#753).
+	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back AS DATA, before the restore's one
+	 * fill (`ACataclysmPlayerState::RestoreSkillChoices`, issue #837 slice 1); until then it went through `AssignSkill`
+	 * after the fill, which dropped a choice whose weapon was off.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/**
+	 * What each key held by default after the last fill: `ACataclysmPlayerState::GetRememberedDefaults`. Issue #837
+	 * slice 1, the owner's Q1 of 2026-11-24 ("the keys stay as they are"). Put back with the choices, as data, before the
+	 * restore's one fill, so a loaded character's keys are the keys it was saved with.
+	 *
+	 * VERSION 17 (`Migrate_16_to_17` writes an empty list): from issue #1472 on, a field added to a record takes a
+	 * version (`game/Tests/SaveFixtures/README.md`). Empty is what a character written before it holds: its first fill
+	 * after loading remembers the default it showed before.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
 
 	/**
 	 * Each skill's total experience, by skill row: `ACataclysmPlayerState::GetSkillExperienceRecord`. Issue #2764,

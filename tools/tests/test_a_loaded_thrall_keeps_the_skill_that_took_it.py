@@ -103,7 +103,9 @@ def test_the_saved_creature_carries_both_fields_both_ways() -> None:
 # --------------------------------------------------------------------------
 
 def test_the_step_gives_a_thrall_subjugate_at_level_one_and_every_other_creature_nothing() -> None:
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
+    # THE RUN RECORD'S OWN STEPS: the character record has a `Migrate_16_to_17` too since issue #837 slice 1 (its
+    # remembered defaults), and a search of the whole file would find that one first.
+    records = body(code(SAVE / "CataclysmSaveRecords.cpp"), "namespace CataclysmRunSaveMigration")
     step = body(records, "bool Migrate_16_to_17(")
     assert 'TryGetBoolField(TEXT("bCommandedByThePlayer"), bThrall);' in step
     assert ('SetStringField(TEXT("TakenBySkillRow"), bThrall ? FString(SubjugateRow) : FString(TEXT("None")));'

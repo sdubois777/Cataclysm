@@ -14,9 +14,12 @@
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Interface/CataclysmEmpireTreeWidget.h"
 #include "Interface/CataclysmForgeWidget.h"
+#include "Interface/CataclysmInventoryScreen.h"
 #include "Interface/CataclysmInventoryWidget.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Interface/CataclysmSkillAssignmentWidget.h"
+#include "Interface/CataclysmSkillBar.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Interface/CataclysmLootFilterWidget.h"
 #include "Interface/CataclysmMerchantWidget.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -1153,6 +1156,34 @@ void ACataclysmPlayerController::ToggleSkillAssignment()
 	SkillAssignmentScreen->AddToViewport();
 }
 
+ECataclysmAbilitySlot ACataclysmPlayerController::SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const
+{
+	// NO BAR, NO BOX: the bar can be switched off, and a pawn with no slots draws none.
+	if (!UCataclysmSkillBar::Enabled() || Viewport.X <= 0.0f || Viewport.Y <= 0.0f)
+	{
+		return ECataclysmAbilitySlot::None;
+	}
+	return UCataclysmSkillBar::KeyUnder(UCataclysmSkillBar::Read(GetPawn()), Point, Viewport.X, Viewport.Y);
+}
+
+bool ACataclysmPlayerController::OpenSkillAssignmentOn(ECataclysmAbilitySlot Key)
+{
+	// OPENED IF CLOSED, NEVER CLOSED: a second click on the bar with the screen open selects that key instead.
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		ToggleSkillAssignment();
+	}
+	if (!SkillAssignmentScreen || !SkillAssignmentScreen->IsInViewport())
+	{
+		return false;
+	}
+	if (UCataclysmWeaponSkills::IsChoosableSlot(Key))
+	{
+		SkillAssignmentScreen->SelectSlot(Key);
+	}
+	return true;
+}
+
 void ACataclysmPlayerController::Input_ToggleLootFilterScreen()
 {
 	ToggleLootFilterScreen();
@@ -1512,18 +1543,18 @@ bool ACataclysmPlayerController::InventoryPressTarget(
 void ACataclysmPlayerController::ReportInventoryPress(
 	ECataclysmWearResult Result) const
 {
-	switch (Result)
+	// THE SCREEN'S LINE DECIDES WHAT IS SAID, and the log says the same. Issue
+	// #837, slice 3. A press that did what was asked takes the last line away,
+	// so a refusal is never left up beside the change that followed it.
+	const FString Line = UCataclysmInventoryScreen::PressLineFor(Result);
+	if (!Line.IsEmpty())
 	{
-	case ECataclysmWearResult::Worn:
-	case ECataclysmWearResult::Swapped:
-	case ECataclysmWearResult::TakenOff:
-	case ECataclysmWearResult::PickedUp:
-	case ECataclysmWearResult::PutDown:
-	case ECataclysmWearResult::Exchanged:
-		return;
-	default:
-		UE_LOG(LogCataclysm, Log, TEXT("%s"),
-			   *UCataclysmWearing::Explain(Result));
+		UE_LOG(LogCataclysm, Log, TEXT("%s"), *Line);
+	}
+	if (InventoryScreen)
+	{
+		const UWorld* World = GetWorld();
+		InventoryScreen->ShowPressLine(Line, World ? World->GetTimeSeconds() : 0.0);
 	}
 }
 
@@ -1580,11 +1611,28 @@ void ACataclysmPlayerController::PressOnTheInventoryScreen()
 	const ECataclysmGearSlot Worn = InventoryScreen->GearSlotUnderCursor(Point);
 	if (Worn != ECataclysmGearSlot::Count)
 	{
-		// A WORN PIECE COMES OFF ONTO THE CURSOR. Putting one back ON with a
-		// left press is not defined by docs/Inventory_Screen_Design.md, whose
-		// table gives left only "pick it up off the body the same way", so a
-		// press on a gear slot while holding something is refused rather than
-		// given behaviour nobody chose.
+		// HOLDING AN ITEM, THE PRESS WEARS IT IN THIS SLOT, and what was there
+		// goes into the bag. The owner's Q5 of 2026-11-24 (issue #837 comment
+		// 7150408605), which docs/Inventory_Screen_Design.md's table now states;
+		// until then this press was refused because no rule had been chosen. A
+		// crossing of the Consumption Threshold is asked about first, about this
+		// slot, as the right press asks it.
+		if (Bag && Bag->IsHolding())
+		{
+			const int32 HeldCell = Bag->HeldSlot();
+			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
+			const ECataclysmWearResult Result = UCataclysmWearing::WearHeldInto(
+				Bag, Wearer->GetEquipment(), Worn, Went);
+			if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
+			{
+				AskBeforeWearing(Wearer, HeldCell, Worn);
+				return;
+			}
+			ReportInventoryPress(Result);
+			return;
+		}
+
+		// HOLDING NOTHING, A WORN PIECE COMES OFF ONTO THE CURSOR.
 		ReportInventoryPress(UCataclysmWearing::PickUpWorn(
 			Bag, Wearer->GetEquipment(), Worn));
 		return;
@@ -1641,7 +1689,7 @@ void ACataclysmPlayerController::RightPressOnTheInventoryScreen()
 			Wearer->GetInventory(), Wearer->GetEquipment(), Carried, Went);
 		if (Result == ECataclysmWearResult::WouldCrossConsumptionThreshold)
 		{
-			AskBeforeWearing(Wearer, Carried);
+			AskBeforeWearing(Wearer, Carried, ECataclysmGearSlot::Count);
 			return;
 		}
 		ReportInventoryPress(Result);
@@ -1708,6 +1756,26 @@ void ACataclysmPlayerController::Input_MoveToCursorStarted()
 	// anything drawn on the canvas, so without this a click on a grid cell would
 	// send the character to whatever piece of floor lies behind the panel.
 	// Issue #731.
+	// A PRESS ON A SKILL BOX OPENS THE SKILL SCREEN WITH THAT KEY SELECTED, AND IS NEITHER A MOVE NOR A SWING. Issue
+	// #837 slice 2, the owner's Q3 of 2026-11-24. Asked first: the bar is drawn by the heads-up display, so the
+	// interface test below does not see it.
+	{
+		float MouseX = 0.0f;
+		float MouseY = 0.0f;
+		int32 ViewportX = 0;
+		int32 ViewportY = 0;
+		GetViewportSize(ViewportX, ViewportY);
+		const ECataclysmAbilitySlot Box = GetMousePosition(MouseX, MouseY)
+			? SkillBoxKeyAt(FVector2D(MouseX, MouseY), FVector2D(ViewportX, ViewportY))
+			: ECataclysmAbilitySlot::None;
+		if (Box != ECataclysmAbilitySlot::None)
+		{
+			bPressBeganOnInterface = true;
+			OpenSkillAssignmentOn(Box);
+			return;
+		}
+	}
+
 	bPressBeganOnInterface = CursorIsOverInterface();
 	if (bPressBeganOnInterface)
 	{
@@ -1999,7 +2067,8 @@ bool ACataclysmPlayerController::WearingQuestionIsOpen() const
 	return ChoicePanel && ChoicePanel->IsAskingAQuestion() && ChoicePanel->IsInViewport();
 }
 
-void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot)
+void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot,
+												  ECataclysmGearSlot Into)
 {
 	UCataclysmInventoryComponent* Bag = Wearer ? Wearer->GetInventory() : nullptr;
 	const FCataclysmItem* Carried = Bag ? Bag->ItemAt(CarriedSlot) : nullptr;
@@ -2011,8 +2080,9 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 
 	// A COPY, because the yes is about this item, and WearAfterConfirming compares the cell with it.
 	const FCataclysmItem AskedAbout = *Carried;
+	// ABOUT THE SLOT PRESSED, when one was (issue #837, slice 3), and the yes puts it there.
 	const FCataclysmThresholdCrossing Crossing =
-		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot);
+		UCataclysmWearing::CrossingFor(Bag, Wearer->GetEquipment(), CarriedSlot, 0, Into);
 	const FString Name = UCataclysmItemName::NameOf(
 		AskedAbout, UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable());
 
@@ -2026,7 +2096,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 	Panel->SetQuestion(
 		TEXT("Past the Consumption Threshold"), UCataclysmWearing::ThresholdQuestion(Name, Crossing), {WearIt},
 		TEXT("Keep it off"),
-		[Asker, CarriedSlot, AskedAbout](FName)
+		[Asker, CarriedSlot, AskedAbout, Into](FName)
 		{
 			ACataclysmPlayerController* Controller = Asker.Get();
 			ACataclysmPlayerCharacter* Now =
@@ -2036,7 +2106,7 @@ void ACataclysmPlayerController::AskBeforeWearing(ACataclysmPlayerCharacter* Wea
 				return;
 			}
 			ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
-			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went));
+			Controller->ReportInventoryPress(Now->WearPastTheThreshold(CarriedSlot, &AskedAbout, Went, Into));
 		});
 	if (!Panel->IsInViewport())
 	{

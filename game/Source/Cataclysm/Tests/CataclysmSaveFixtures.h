@@ -612,6 +612,24 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the character record's `Migrate_16_to_17` writes into a character file written before version 17: no
+	 * remembered defaults, an empty `RememberedDefaults`, and the same in a held `ConsumptionBuild` that lacks one (a
+	 * build `Migrate_5_to_6` wrote already carries it, and it is kept). Issue #837 slice 1. THE CHARACTER RECORD'S 17.
+	 * ONE COPY, for every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion16Defaults`.
+	 */
+	inline void AddTheCharactersVersion17Defaults(FJsonObject& Expected)
+	{
+		Expected.SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		const TSharedPtr<FJsonObject>* Build = nullptr;
+		if (Expected.TryGetObjectField(TEXT("ConsumptionBuild"), Build) && Build && Build->IsValid()
+			&& !(*Build)->HasField(TEXT("RememberedDefaults")))
+		{
+			(*Build)->SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		}
+	}
+
+	/**
 	 * What the run record's newest step writes into a run file written before it: no city bailed out, no dungeon a bonus
 	 * one, no bonus dungeon cleared and no bribe made (`bBailedOut`, `bBonus`, `BonusDungeonsCleared`,
 	 * `bBribedThisSurge`). Issue #2741 slice 9. NAMED FOR THE VERSION IT REACHES, 15, after the gems window's

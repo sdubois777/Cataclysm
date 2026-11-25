@@ -191,6 +191,17 @@ public:
 	 */
 	bool CursorIsOverPanel(const FVector2D& ViewportPoint) const;
 
+	/**
+	 * Shows what a press on the screen did, above the panel, for `UCataclysmInventoryScreen::PressLineSeconds` from
+	 * `Now` (world seconds); an empty line takes the one shown away. Issue #837, slice 3: the owner's Q6 has the last
+	 * weapon's refusal shown here. The controller's `ReportInventoryPress` calls it with
+	 * `UCataclysmInventoryScreen::PressLineFor`, which decides the words.
+	 */
+	void ShowPressLine(const FString& Line, double Now);
+
+	/** The line last given to `ShowPressLine`, shown or not. */
+	const FString& LastPressLine() const { return PressLineText; }
+
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
 
@@ -328,6 +339,17 @@ private:
 	/** The panel behind everything. What CursorIsOverPanel measures. */
 	UPROPERTY()
 	TObjectPtr<UBorder> Panel = nullptr;
+
+	/** What a press said, above the panel, and its backing. Issue #837, slice 3. At no opacity while nothing is shown. */
+	UPROPERTY()
+	TObjectPtr<UBorder> PressLineBacking = nullptr;
+
+	UPROPERTY()
+	TObjectPtr<UTextBlock> PressLine = nullptr;
+
+	/** The line `ShowPressLine` was given, and the world second it was. */
+	FString PressLineText;
+	double PressLinePostedAt = 0.0;
 
 	/** The line above the grid saying how many slots are used. */
 	UPROPERTY()

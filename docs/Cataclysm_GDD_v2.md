@@ -209,7 +209,7 @@ The following are default controls. Players with multiple damage types can map m
 
 | Input | Action |
 | :-: | :-: |
-| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. |
+| LMB | Attack the enemy under the cursor, pick up the dropped item under the cursor, or move to the point clicked. Which one is decided by what is under the cursor. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -243,7 +243,7 @@ WASD moves the character, so the Support ability moves off W to 1. The left mous
 | Input | Action |
 | :-: | :-: |
 | WASD | Directional movement |
-| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. |
+| LMB | Attack the enemy under the cursor, or pick up the dropped item under the cursor. It does not move the character; the keys do that. On a skill box of the bar it opens the skill choice screen with that key selected, and is neither an attack nor a move (issue #837, ruled 2026-11-24); "K: skills" is written by the bar. |
 | Left Shift | Held: stand still. Abilities fire without the character moving. |
 | RMB | Heavy ability |
 | Q | Special ability |
@@ -638,6 +638,10 @@ A player carrying several damage types will have far more skills available than 
   
 
 **A MATCHED PAIR OF WEAPONS CHANGES NOTHING HERE.** Two weapons of the same type carrying the same damage types contribute the same skills, so the pool is what one of them would have given and there is no choice to make. The choice appears the moment the two differ in either.
+
+  
+
+**A CHANGE OF WEAPONS NEVER TAKES A SKILL OFF A KEY WHILE IT IS STILL IN THE POOL.** Ruled by the project owner on 2026-11-24 (issue #837). Putting a second weapon on adds its skills to the pool and leaves every key as it was, so the keys never change because of which hand a weapon went into; taking a weapon off changes only the keys whose skills it took with it, each taking the next skill in the pool made for it. A key the player has not chosen for holds a skill that does something before one that is not built yet, and the skills the game put on keys by itself are remembered and saved with the character, as the player's own choices are. A choice whose weapon is off is kept and returns with the weapon, across a save and a load as in play.
 
   
 
@@ -2561,6 +2565,8 @@ and evasion build new offensive slots to serve six skills.
   - Jewelry: 8 Rings, Necklace, Relic
   - Consumables: 4 Potion slots
   - Weapons: See weapon types above
+
+**A ring put on while all eight ring slots are full replaces the worn ring of its own rarity, and hovering a ring compares it with that ring.** The owner, 2026-11-24: "when a ring drops on the ground and actually shows through the filter, it's supposed to compare against whatever ring is of equal tier." With several rings of that rarity worn, the one with the lowest Power Score is replaced, and among equals the lowest ring slot; with none of its rarity worn, the ring of the lowest rarity worn, which is the ring the loot filter judges rings by. A free ring slot is always filled first. Weapons follow the same rule when both hands hold weapons the new one may stand beside: the hand of its own rarity, else the lower hand. A hovered piece, in the bag or on the ground, is always compared with exactly what wearing it would take off.
 
 **The four potion slots each hold a health potion on the keys 2 to 5.** A drink heals 35% of maximum health over 3 seconds, and one potion heal runs at a time. Each slot holds up to 30 charges and a drink spends 10. Every kill adds charges to all four slots by the creature's rarity: Common 1, Elite 3.5, Legendary 6, and 11 for a Herald, a Boss or a Cataclysm Boss. A creature whose death pays no loot or experience adds none. Every slot is full on entering a dungeon and is not refilled on the stairs. A potion heal obeys every rule on healing, Point of No Return's ceiling included. The slots are identical until gems fill their sockets. These are play-test values chosen on 2026-09-25; `docs/DECISIONS.md` has the sources.
 

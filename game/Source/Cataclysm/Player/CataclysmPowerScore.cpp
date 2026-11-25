@@ -223,6 +223,23 @@ FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterFrom(int32 Level,
 	return Out;
 }
 
+float UCataclysmPowerScore::WornPieceScoreOf(const FCataclysmItem& Item, ECataclysmGearSlot Slot)
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (Index >= static_cast<int32>(ECataclysmGearSlot::Count))
+	{
+		return 0.0f;
+	}
+
+	// THE PIECE ALONE, IN ITS SLOT, AT LEVEL 0 WITH NO RESISTANCE: `Breakdown` scores level 0 as nothing, so the gear
+	// and gem terms are all there is, and they are exactly what this piece moves.
+	TArray<FCataclysmItem> Alone;
+	Alone.SetNum(static_cast<int32>(ECataclysmGearSlot::Count));
+	Alone[Index] = Item;
+	const FCataclysmPowerBreakdown Terms = Breakdown(ScoredCharacterFrom(0, Alone, TArray<float>()));
+	return Terms.FromGear + Terms.FromGems;
+}
+
 FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterOf(const ACataclysmPlayerCharacter* Character,
 																  int32 DifficultyTier)
 {

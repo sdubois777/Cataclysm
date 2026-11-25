@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -758,19 +759,15 @@ bool FCataclysmSaveApply::CharacterInto(const UCataclysmCharacterSave& Record, A
 	State->RestorePassiveAllocation(Record.PassiveAllocation, Record.DefeatedCataclysmBosses,
 									Record.PassivePointsAnAllocationWasHandedWith);
 
-	// ONE ANNOUNCEMENT, NOW THAT EVERYTHING IS BACK: the stat line, the second
-	// two-handed weapon's permission, and the skill slots from the worn weapons.
-	Equipment->AnnounceRestored();
+	// THE SKILL CHOICES AND THE REMEMBERED DEFAULTS, AS DATA, BEFORE THE ANNOUNCEMENT, so its one fill reads both
+	// (issue #837 slice 1). Checked against the skill table and not the pool worn now: a choice whose weapon was off
+	// at saving is kept (the owner's Q7 of 2026-11-24), as it is kept in play (Q5 of 2026-10-25).
+	State->RestoreSkillChoices(Record.SkillAssignment, Record.RememberedDefaults,
+							   UCataclysmWeaponSkills::LoadGeneratedTable(), OutSkillsRefused);
 
-	// THE SKILL CHOICES, checked against the skills the worn weapons give.
-	for (const FCataclysmSkillChoice& Choice : Record.SkillAssignment)
-	{
-		FString Reason;
-		if (!State->AssignSkill(Choice.Slot, Choice.SkillRow, Reason))
-		{
-			++OutSkillsRefused;
-		}
-	}
+	// ONE ANNOUNCEMENT, NOW THAT EVERYTHING IS BACK: the stat line, the second
+	// two-handed weapon's permission, and the skill slots from the worn weapons, the choices and the defaults.
+	Equipment->AnnounceRestored();
 
 	OutWhy.Reset();
 	return true;

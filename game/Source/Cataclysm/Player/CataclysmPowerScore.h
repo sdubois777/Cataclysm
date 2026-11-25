@@ -9,6 +9,7 @@ class ACataclysmPlayerCharacter;
 class ACataclysmEnemyCharacter;
 struct FCataclysmScoredFloor;
 struct FCataclysmItem;
+enum class ECataclysmGearSlot : uint8;
 
 /**
  * One equipped item, as far as Power Score cares.
@@ -242,6 +243,19 @@ public:
 	 */
 	static FCataclysmScoredCharacter ScoredCharacterFrom(int32 Level, const TArray<FCataclysmItem>& Worn,
 														 const TArray<float>& Resistances);
+
+	/**
+	 * What one piece adds to a Power Score when it is worn in `Slot`: `Breakdown`'s gear term and gem term of a character
+	 * wearing that piece alone, at level 0 with no resistance, so the two terms a worn piece moves and nothing else. The
+	 * owner's report of 2026-11-24, ruled by the coordinating session: when every ring slot is full, a ring replaces the
+	 * worn ring of its own rarity with the lowest Power Score (`UCataclysmGearSlots::SlotToReplace`).
+	 *
+	 * THROUGH `ScoredCharacterFrom` AND `Breakdown`, NOT A THIRD COPY OF THEIR ARITHMETIC: its rarity and gear level, and
+	 * its filled sockets' gems, exactly as the character's own score reads them, the hands' rule included (a weapon in a
+	 * weapon slot counts six of its gems). Nought for a piece with no rarity, which the score does not count, and for a
+	 * slot outside the enum.
+	 */
+	static float WornPieceScoreOf(const FCataclysmItem& Item, ECataclysmGearSlot Slot);
 
 	/**
 	 * The character playing, scored at `DifficultyTier`: its player state's level, its equipment component's slots,

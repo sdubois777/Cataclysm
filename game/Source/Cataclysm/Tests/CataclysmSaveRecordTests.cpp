@@ -224,7 +224,7 @@ namespace CataclysmSaveRecordTest
 			// hold a gem (issue #46), and at v12 from 2026-11-21, when its allocations came to
 			// hold Imperial Prowess's extra option (slice 8); Character_v13.json and the older
 			// files are migration inputs now.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v16.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v17.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v18.json") },
 		};
 	}
@@ -681,7 +681,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v17.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -694,12 +694,12 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v16.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v17.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	// THE CURRENT VERSION SINCE `Character_v16.json` BECAME THE COMMITTED FILE (issue #2849); it was 15 from issue #2848, 14 from issue #2741 slice 9, 13 from issue #46,
+	// THE CURRENT VERSION SINCE `Character_v17.json` BECAME THE COMMITTED FILE (issue #837 slice 1); it was 16 from issue #2849, 15 from issue #2848, 14 from issue #2741 slice 9, 13 from issue #46,
 	// the gems window, 12 from issue #2741 slice 8, 11 from issue #2741 slice 6e, 10 from issue #2764, 9 from issue #2741 slice 1c, 8 until then. Read from the record rather
 	// than written here, because gems slice G2 also moves the character record and the second to merge renumbers.
 	TestEqual(TEXT("it says it is the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
@@ -975,6 +975,7 @@ bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
+	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -1522,7 +1523,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v17.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -1534,7 +1535,7 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v16.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v17.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}

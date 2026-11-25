@@ -475,60 +475,85 @@ TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::PoolFor(const UDataTable* 
 TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::DefaultFillFrom(const TArray<FCataclysmWeaponSkill>& Pool)
 {
 	// THE FIRST FOR EACH SLOT, in the pool's order, so one weapon of one type keeps `SkillsFor`'s order exactly.
+	//
+	// A BUILT ONE BEFORE ONE THAT IS NOT (issue #837 slice 1, Q2): the slots in the order their first entry comes, each
+	// holding its first built entry, or its first entry when none of them is built.
 	TArray<FCataclysmWeaponSkill> Filled;
-	TSet<ECataclysmAbilitySlot> Taken;
+	TMap<ECataclysmAbilitySlot, int32> At;
 	for (const FCataclysmWeaponSkill& Skill : Pool)
 	{
-		if (Skill.Slot != ECataclysmAbilitySlot::None && !Taken.Contains(Skill.Slot))
+		if (Skill.Slot == ECataclysmAbilitySlot::None)
 		{
-			Taken.Add(Skill.Slot);
-			Filled.Add(Skill);
+			continue;
 		}
+		if (const int32* Index = At.Find(Skill.Slot))
+		{
+			if (!IsBuilt(Filled[*Index]) && IsBuilt(Skill))
+			{
+				Filled[*Index] = Skill;
+			}
+			continue;
+		}
+		At.Add(Skill.Slot, Filled.Add(Skill));
 	}
 	return Filled;
 }
 
 TArray<FCataclysmWeaponSkill> UCataclysmWeaponSkills::FillWithChoices(const TArray<FCataclysmWeaponSkill>& Pool,
-																	  const TArray<FCataclysmSkillChoice>& Choices)
+																	  const TArray<FCataclysmSkillChoice>& Choices,
+																	  const TArray<FCataclysmSkillChoice>& Remembered)
 {
 	TMap<ECataclysmAbilitySlot, FCataclysmWeaponSkill> OnKey;
 	TSet<FName> Held;
 
-	// EACH CHOSEN ROW THAT IS IN THE POOL, ON ITS KEY, KEEPING THE SLOT IT WAS MADE FOR (O1). The first choice of a key
-	// or of a row wins. A row not in the pool fills nothing here and stays chosen in the player state (Q5).
-	for (const FCataclysmSkillChoice& Choice : Choices)
+	// EACH LISTED ROW THAT IS IN THE POOL, ON ITS KEY, KEEPING THE SLOT IT WAS MADE FOR (O1). The first entry for a key
+	// or a row wins. A row not in the pool fills nothing here and stays listed in the player state (Q5).
+	const auto PutOnKeys = [&Pool, &OnKey, &Held](const TArray<FCataclysmSkillChoice>& Listed)
 	{
-		if (!IsChoosableSlot(Choice.Slot) || Choice.SkillRow.IsNone() || OnKey.Contains(Choice.Slot)
-			|| Held.Contains(Choice.SkillRow))
+		for (const FCataclysmSkillChoice& Choice : Listed)
 		{
-			continue;
+			if (!IsChoosableSlot(Choice.Slot) || Choice.SkillRow.IsNone() || OnKey.Contains(Choice.Slot)
+				|| Held.Contains(Choice.SkillRow))
+			{
+				continue;
+			}
+			const FCataclysmWeaponSkill* InPool = Pool.FindByPredicate(
+				[&Choice](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == Choice.SkillRow; });
+			if (!InPool)
+			{
+				continue;
+			}
+			FCataclysmWeaponSkill OnThisKey = *InPool;
+			OnThisKey.DesignedSlot = DesignedSlotOf(*InPool);
+			OnThisKey.Slot = Choice.Slot;
+			OnKey.Add(Choice.Slot, OnThisKey);
+			Held.Add(Choice.SkillRow);
 		}
-		const FCataclysmWeaponSkill* InPool = Pool.FindByPredicate(
-			[&Choice](const FCataclysmWeaponSkill& Skill) { return Skill.RowName == Choice.SkillRow; });
-		if (!InPool)
-		{
-			continue;
-		}
-		FCataclysmWeaponSkill OnThisKey = *InPool;
-		OnThisKey.DesignedSlot = DesignedSlotOf(*InPool);
-		OnThisKey.Slot = Choice.Slot;
-		OnKey.Add(Choice.Slot, OnThisKey);
-		Held.Add(Choice.SkillRow);
-	}
+	};
 
-	// EVERY OTHER KEY: THE FIRST POOL ENTRY DESIGNED FOR IT NOT ALREADY HELD (O4), or nothing.
-	for (const FCataclysmWeaponSkill& Skill : Pool)
+	// THE PLAYER'S CHOICES FIRST, THEN WHAT EACH OTHER KEY HELD BY DEFAULT AFTER THE LAST FILL (slice 1, Q1): a key whose
+	// remembered row is still in the pool keeps it, so a weapon going on or off moves no skill that is still there.
+	PutOnKeys(Choices);
+	PutOnKeys(Remembered);
+
+	// EVERY OTHER KEY: THE FIRST POOL ENTRY DESIGNED FOR IT NOT ALREADY HELD (O4), or nothing. A BUILT ENTRY IN A FIRST
+	// PASS AND ANY ENTRY IN A SECOND (slice 1, Q2), so a skill that does nothing takes a key only when nothing built
+	// for that key is left.
+	for (const bool bBuiltOnly : {true, false})
 	{
-		const ECataclysmAbilitySlot Designed = DesignedSlotOf(Skill);
-		if (Designed == ECataclysmAbilitySlot::None || OnKey.Contains(Designed)
-			|| (!Skill.RowName.IsNone() && Held.Contains(Skill.RowName)))
+		for (const FCataclysmWeaponSkill& Skill : Pool)
 		{
-			continue;
-		}
-		OnKey.Add(Designed, Skill);
-		if (!Skill.RowName.IsNone())
-		{
-			Held.Add(Skill.RowName);
+			const ECataclysmAbilitySlot Designed = DesignedSlotOf(Skill);
+			if (Designed == ECataclysmAbilitySlot::None || OnKey.Contains(Designed)
+				|| (!Skill.RowName.IsNone() && Held.Contains(Skill.RowName)) || (bBuiltOnly && !IsBuilt(Skill)))
+			{
+				continue;
+			}
+			OnKey.Add(Designed, Skill);
+			if (!Skill.RowName.IsNone())
+			{
+				Held.Add(Skill.RowName);
+			}
 		}
 	}
 

@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmPlayerController.generated.h"
 
+enum class ECataclysmAbilitySlot : uint8;
+
 class ACataclysmDroppedItem;
 class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
@@ -47,6 +49,11 @@ struct FInputActionValue;
 // parameter and including it here would pull the item system into every
 // translation unit that knows about the controller.
 enum class ECataclysmWearResult : uint8;
+
+// AND THE GEAR SLOT, for the same reason and with the same rule: its underlying
+// type matches CataclysmEquipmentComponent.h. AskBeforeWearing's slot, issue
+// #837's slice 3.
+enum class ECataclysmGearSlot : uint8;
 
 /**
  * The player's controller: it owns input, the cursor, and the movement order.
@@ -240,9 +247,13 @@ public:
 	/**
 	 * Says what a press did, when it did not do what was asked.
 	 *
-	 * LOGGED RATHER THAN SHOWN, and that is a gap rather than a decision. A
-	 * press that changes nothing looks exactly like a press that missed.
-	 * There is nowhere on the screen to say so yet; issue #831 records it.
+	 * SHOWN ON THE SCREEN AND LOGGED, since issue #837's slice 3. Until then it
+	 * was only logged, a gap issue #831 recorded: a press that changes nothing
+	 * looked exactly like a press that missed. The owner's Q6 of 2026-11-24 had
+	 * the last weapon's refusal shown, and every refusal is shown the same way,
+	 * above the inventory panel (`UCataclysmInventoryWidget::ShowPressLine`), in
+	 * the words `UCataclysmInventoryScreen::PressLineFor` gives. A press that did
+	 * what was asked takes the line away.
 	 */
 	void ReportInventoryPress(ECataclysmWearResult Result) const;
 
@@ -250,8 +261,11 @@ public:
 	 * Asks, on the choice panel, before the item in this carried cell is put on past this tier's Consumption
 	 * Threshold, and puts it on only for "Wear it". Issue #2687. The answer goes through
 	 * `UCataclysmWearing::WearAfterConfirming`, so a cell that changed while the question was open puts nothing on.
+	 *
+	 * @param Into  the gear slot a held item was pressed onto (issue #837, slice 3): the question is about that slot
+	 *              and the yes wears it there. `ECataclysmGearSlot::Count` for the right press, `Equip`'s choice.
 	 */
-	void AskBeforeWearing(class ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot);
+	void AskBeforeWearing(class ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot, ECataclysmGearSlot Into);
 
 	/**
 	 * Whether the question `AskBeforeWearing` opened is on the screen. While it is, a press on the inventory screen
@@ -477,6 +491,19 @@ public:
 	 * Cataclysm.ChooseSkills"). It does not pause the game and opens anywhere, a dungeon included (ruled Q2).
 	 */
 	void ToggleSkillAssignment();
+
+	/**
+	 * The key of the skill box on the player's bar under a point of the screen, or `None`. Issue #837 slice 2, the owner's
+	 * Q3: a left press over a box opens the skill screen with that key selected and is neither a move nor a swing
+	 * (`Input_MoveToCursorStarted` asks this first). The viewport is the caller's, so a test can ask without one.
+	 */
+	ECataclysmAbilitySlot SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const;
+
+	/**
+	 * Opens the skill screen if it is closed, never closing it, and selects `Key` when it is one of the six (the basic
+	 * attack's box opens the screen with nothing selected). Issue #837 slice 2. Whether the screen is open after.
+	 */
+	bool OpenSkillAssignmentOn(ECataclysmAbilitySlot Key);
 
 	/**
 	 * Opens and closes the loot filter screen. Issue #2846, slice LF2. The skill-choice screen's shape, and public for

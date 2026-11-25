@@ -240,6 +240,479 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ---
 
+## 2026-11-24 — A held item pressed onto a gear slot is worn in that slot, and a press that does not do what was asked says why on the inventory screen (#837, slice 3)
+
+**RUN AND PASSED IN THREE WINDOWS, ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THIS ENTRY.** On
+`feat/skill-selection-837`, after slice 2 and after the merge of `fix/ring-comparison` (`5acf6bd2a`, its own entry below
+the slice 1 entry), which the coordinating session asked to come first on 2026-11-24 so that a pressed slot overrides
+that branch's choice of ring. Issue [#837](https://github.com/sdubois777/Cataclysm/issues/837).
+
+### Why
+
+Slice 1 made the hands decide only which weapon the basic attack swings, so the player needs a way to put a weapon in
+the hand they choose. Until this slice a left press on a gear slot while holding an item was refused
+(`AlreadyHolding`), because no rule had been chosen for it, and the refusal of taking off the only weapon worn reached
+only the log, so it looked exactly like a press that missed.
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605: "Approve all three (Recommended)".** For this slice: Q5,
+pressing a held item onto a gear slot wears it in that slot, with what was there going into the bag; Q6, the rule
+that the only weapon worn cannot be taken off stays (ruled 2026-09-14 under #841), its refusal is shown on the
+inventory screen, and its sentence names the new press: "That is your only weapon, and you have to hold one. Press
+another weapon onto this hand to swap them." No ARPG source was read for the press; it follows the click-to-place
+gesture `docs/Inventory_Screen_Design.md` already chose after looking at Path of Exile, Last Epoch and Diablo, and it
+is a judgement, as the plan said.
+
+### What changed
+
+- **The press.** `UCataclysmWearing::WearHeldInto(Inventory, Equipment, GearSlot, ...)` wears the held cell's item in
+  the slot pressed: `WearFromCarried` with a new last parameter, `Into`, the slot named (`ECataclysmGearSlot::Count`,
+  the default, is `Equip`'s own choice, so every existing caller is unchanged). With a slot named it calls
+  `EquipInto` instead of `Equip`, and keeps every check: the room for a second weapon coming off, the Consumption
+  Threshold question, the play loop's line and the end of the hold.
+  `ACataclysmPlayerController::PressOnTheInventoryScreen` calls it for a press on a gear slot while holding; holding
+  nothing, the press still picks the worn piece up (`PickUpWorn`, unchanged, still answers `AlreadyHolding` itself).
+- **A pressed slot is the only slot.** With every ring slot full, `Equip` now replaces the ring
+  `UCataclysmGearSlots::SlotToReplace` names (`fix/ring-comparison`); a press names its own slot and goes through
+  `EquipInto`, so that choice is not asked: the coordinating session's ruling of 2026-11-24, "a pressed slot overrides
+  SlotToReplace's choice and every other path keeps it".
+- **The question is about the slot pressed.** `UCataclysmEquipmentComponent::PreviewEquip` and
+  `WornResidueIfEquipped`, `UCataclysmWearing::CrossingFor` and `WearAfterConfirming`,
+  `ACataclysmPlayerController::AskBeforeWearing` and the pawn's `WearPastTheThreshold` (a new overload) each take the
+  slot, so the question's total is the one that slot would leave and its "Wear it" wears the item there.
+- **`UCataclysmEquipmentComponent::SlotItLandsIn`**: the rule that a two-handed weapon without Both Hands Full is kept
+  in Weapon 1, moved out of `Equip`, which now reports its slot through it, as the named-slot wear does.
+- **The screen says why.** `ReportInventoryPress` shows its answer above the inventory panel for four seconds
+  (`UCataclysmInventoryWidget::ShowPressLine`) in the words `UCataclysmInventoryScreen::PressLineFor` gives, and logs
+  the same line; a press that did what was asked takes the line away.
+- **`Explain(TheLastWeapon)`** is the owner's sentence above.
+- **`docs/Inventory_Screen_Design.md`**, "How it is operated": the left press on a worn item while holding one, and
+  two paragraphs on the press and the line.
+
+### Judgements of this change
+
+1. **The question carries the slot pressed.** The plan said only that the press keeps the threshold question. Asked
+   of `Equip`'s slot, a ring pressed over a worn ring would be asked about with the total of adding it to a free slot,
+   and the "Wear it" would put it in that other slot. So the slot travels to the wear, a wider change than the plan
+   named, reported to the coordinating session before it was written.
+2. **The room check is `WearFromCarried`'s, unchanged, and it is exact for a named hand.** Two weapons come off only
+   when both hands are held, and then the hand pressed does not change how many.
+3. **An item pressed onto a slot it cannot go in is refused before anything moves**, so it stays in its own cell:
+   taken out and put back, `AddItem` would put it in the first free cell.
+4. **The line shows every answer the log shows**, a drop on the floor included, so the two never disagree. It sits
+   above the panel, which leaves at least 14% of the screen free over it, rather than in it, so the panel keeps the
+   size `CellSizeFor` worked out. Four seconds is a judgement.
+5. **Hidden by opacity, not visibility.** `test_the_inventory_screen_draws_the_designed_grid.py` forbids collapsing or
+   wholly hit-test-hiding anything in the widget, which would stop the cells' tool tips; the line is drawn at no
+   opacity while nothing is shown, as the item on the cursor is.
+6. **The pawn's confirmed wear is an overload, not a default parameter**, because its header declares the slot enum
+   without its values; the six existing test calls are unchanged.
+
+### Tests
+
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): `Cataclysm.Wearing.` gains fifteen in a new file,
+`CataclysmWearHeldIntoTests.cpp`: `AWeaponPressedOntoAFilledHandIsWornThereAndTheOtherGoesToTheBag`,
+`PressedOntoTheOtherHandItReplacesWeaponTwo` (control: the right press replaces Weapon 1),
+`PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand` (one announcement, made with a weapon in hand; control: the
+only weapon still cannot be taken off), `PressedOntoAnEmptyHandItIsWornThere`,
+`ATwoHandedWeaponPressedOntoEitherHandTakesBoth`, `ATwoHandedWeaponWithNoRoomForTheSecondIsRefusedAndNothingMoves`
+(control: one free cell), `AOneHanderPressedOntoATwoHandersHandTakesItOff`,
+`AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` (control: the head), `ARingPressedOntoRingFiveGoesInRingFive`
+(control: the right press's slot is Ring 2), `APressedRingSlotOverridesTheRingEquipWouldReplace` (eight rings worn, the
+ring report's case; control: `Equip` would replace the Quality ring in Ring 3, and the press onto Ring 1 replaces Ring
+1), `PressedPastTheConsumptionThresholdItAsksFirst`, `TheThresholdQuestionIsAboutTheSlotPressed` (control: the total for
+the first free ring slot crosses), `WearingTheHeldItemEndsTheHold` (control: nothing held is `NothingHeld`),
+`TheLastWeaponRefusalNamesThePress` and `ARefusedPressIsShownOnTheScreen` (control: the six answers that did what was
+asked show nothing).
+
+**Python**: `tools/tests/test_a_held_item_pressed_onto_a_gear_slot_is_worn_there.py`, four checks, new.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (a tree written
+through a temporary index file, so the branch's own index was not touched), each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PR1 | the held press asks `AskBeforeWearing(Wearer, HeldCell, ECataclysmGearSlot::Count)` | `test_a_press_on_a_gear_slot_while_holding_wears_the_held_item_there` |
+| PR2 | the question's "Wear it" calls `WearPastTheThreshold(CarriedSlot, &AskedAbout, Went)` | `test_the_question_is_about_the_slot_pressed_and_its_yes_wears_it_there` |
+| PR3 | `ReportInventoryPress`'s `InventoryScreen->ShowPressLine(...)` removed | `test_a_refused_press_is_shown_on_the_screen` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SR1 | `WearFromCarried`'s named-slot refusal `if (bNamed && !(Base && ...Contains(Into)))` read as `if (false)` | `Cataclysm.Wearing.` | `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` |
+| SR2 | `CrossingFor`'s `WornResidueIfEquipped(*Carried, Into)` read as `WornResidueIfEquipped(*Carried)` | `Cataclysm.Wearing.` | `TheThresholdQuestionIsAboutTheSlotPressed` |
+| SR3 | `WearFromCarried`'s `if (bNamed)` before `EquipInto` read as `if (false)`, so `Equip` chooses | `Cataclysm.Wearing.` | `PressedOntoTheOtherHandItReplacesWeaponTwo`, `PressedOntoTheOnlyWeaponsHandItSwapsWithoutAnEmptyHand`, `AOneHanderPressedOntoATwoHandersHandTakesItOff`, `ARingPressedOntoRingFiveGoesInRingFive`, `APressedRingSlotOverridesTheRingEquipWouldReplace`, `TheThresholdQuestionIsAboutTheSlotPressed` |
+
+**Registration moves by fifteen:** `Cataclysm.Wearing.` 34 (19 in window rc-w1's log, `rc_suite_engine_5e8be468.log`,
+whose names no later commit changed, + 15). The whole suite: slice 2's 5378, + 3 for the merged ring comparison
+(`Cataclysm.ItemComparison.` 8 to 11, its proofs R1 to R3, its entry below), + 15 = 5396.
+
+**THE WINDOW'S REGISTRATION, ON THE REBUILD ONTO DEVELOPMENT `cf760f169`** (score-and-drops, #2890; registered
+2026-11-25). It replaces the figures above, which were counted on the base `5f302b0a7`.
+
+- **The rebuild**: `feat/skill-selection-837` (`4647b82ad`) as `feat/skill-selection-837-2`, with development merged in
+  (`049f0e96c`) rather than rebased, because the branch already holds a merge of `fix/ring-comparison`. The one
+  conflict was this log: development's, with this branch's four entries placed by the author date of the commit that
+  first wrote each (the three skill key slices 20:07, 20:30 and 20:58 above the Cataclysm Boss entry of 20:05; the ring
+  comparison 19:29 below it). Every other file's own change, its added and removed lines against its base, is the
+  branch's as it was.
+- **What score-and-drops moved that this branch reads.** The Power Score's weights reach it only through the ring
+  comparison's `UCataclysmPowerScore::WornPieceScoreOf`, which is `Breakdown`'s gear and gem terms. Its tests compare
+  scores with each other and with nought (a +6 ring above a +2 ring, two equal rings tied, a socketed gem raising a
+  ring, a ring of no rarity scoring nought); the plain weights keep each relation (an Everyday +3 ring 8, an Everyday +1
+  ring 4). No line this branch adds reads the hover text, a drop count, the Overwhelm or a gap factor (searched in
+  every added line of `game/Source`, `tools/tests` and `sim`).
+- **What the bug batches moved that this branch reads.** No skill's Shape changed (Conflagration's radius alone, in
+  its ShapeParams), so the War Axe's skills, which the skill key tests use as not built yet, are still not built. No
+  save version moved after `5f302b0a7`, and each of the nine tests that steps a character record to version 16 also
+  steps it to 17.
+- **The base**: window sd2-w1's whole suite on `9cef8126c` (`sd2_suite_engine_9cef8126.log` in the sharp-meitner
+  worktree): "5432 tests performed, 5432 succeeded, 0 failed. 58 skipped part of what they check"; "874 written and
+  deleted, 0 left behind".
+- **The whole suite: 5474 performed** (5432 + 42: `SkillDefaults.` 18, `Wearing.` 15, `SkillBar.` 4,
+  `ItemComparison.` 3, `SkillChoiceScreen.` 1, `SaveRecords.` 1, counted from the test names the branch adds; it
+  removes none), 5474 succeeded; **58 skipped halves; 874 saves** written and deleted, 0 left behind. No test this
+  branch adds reports a skipped half or writes a save.
+- **Groups alone**, counted in sd2-w1's log with a literal match, plus the tests added by name: `SkillDefaults.` 18
+  (0 + 18), `SkillBar.` 26, `SkillChoiceScreen.` 9, `SkillAssignment.` 16, `SkillPool.` 11, `SaveApply.` 24,
+  `SaveRecords.` 18, `BuildSave.` 6, `ConsumptionDouble.` 15, `ConsumptionMark.` 6, `CataclysmDraw.` 6, `GemSave.` 2,
+  `Gold.` 13, `Dismantle.` 12, `SkillLevels.` 13, `EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1,
+  `EmpireTreeProwess.` 6, `ItemComparison.` 11, `Equipment.` 30, `PowerScore.` 5, `PowerScoreLive.` 10, `Wearing.` 34,
+  `BothHandsFull.` 7, `ThresholdQuestion.` 4, `LootFilter.` 8, `GroundItemHover.` 7, `HeldItem.` 5, `WeaponMesh.` 10,
+  `InventoryTabs.` 7. The three slices' and the ring comparison's groups, `PowerScore.` for the weights, and the groups
+  whose tests call what slice 3 changed (`WearFromCarried`, `CrossingFor`, `WearPastTheThreshold`, the slot `Equip`
+  reports) or draw what it changed (the hand a weapon lands in, the inventory screen).
+- **No editor step**: no asset, CSV or workbook changes.
+- **C++ guard proofs**, only if every group and the suite pass: the twelve registered in the four entries (SP1 to
+  SP3, SQ1 to SQ3, SR1 to SR3, R1 to R3), three a change. Each anchor occurs once in the file it breaks, checked on the
+  rebuild.
+
+### Window ss2-w1, 2026-11-25, on `56360b4d6`: ONE TEST FAILED, A TEST'S EXPECTATION THAT Q2 REPLACED
+
+**NOT PASSED. One test failed, in its group alone and in the whole suite; no guard proof was run.** Under the lock
+`ss2-w1`; scripts and logs in `.claude/windows/` in the sharp-meitner worktree (`run_ss2.py`, `ss2_run.out`).
+
+- **Builds**, under the lock `skill-selection-compile`: the branch, "Build: Succeeded - 75 actions, 68 files
+  compiled"; each changed `.cpp` out of its unity file, "61 actions, 58 files compiled"; the unity files again, "23
+  actions, 20 files compiled". 0 compiler warning or error lines in each.
+- **Groups alone**: 29 of 30 passed at their registered counts. `Cataclysm.SkillPool.` performed 11, succeeded 10.
+- **The whole suite**: "Tests: 5474 tests performed, 5473 succeeded, 1 failed:
+  TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder. 58 skipped part of what they check"; "Test
+  saves: 874 written and deleted, 0 left behind"; "Declared: 5474 tests in the tree at 56360b4d6; 5474 performed, gap
+  0". Every figure but the one failure is the registered one.
+- **Python**, alongside: "8474 passed, 10 skipped in 348.94s"; JUnit 8484 tests, 0 failures, 0 errors. ruff: "All
+  checks passed!".
+
+**THE FAILURE**: `Cataclysm.SkillPool.TheDefaultFillTakesTheCreationTypeFirstThenTheWornWeaponsInSlotOrder`, "Expected
+'control: and fill the War Greataxe's six' to be "Sundering Arc, Savage Leap, Spinning Axe, Blood Frenzy, Annihilator,
+Blood and Iron", but it was "Molten Cleave, Infernal Plunge, Emberhurl, Burning Wrath, Pyroclasm, Conflagration"".
+A character created War wears a Greataxe carrying War and Demonic. The slots carry War first, as that test's line
+before it checked and passed (Q11). **But none of the War Greataxe's six is built** (the log: "the weapons added 0
+skills to the pool on no key, and 6 not built yet"), and slice 1's rule, the owner's Q2, gives each key the first BUILT
+skill designed for it: "a skill that is not built yet does not take a key a built skill made for it could". So the
+keys hold the Demonic Greataxe's built six, as ruled. The control was written for layer 3's Q11 before Q2 existed.
+**It is this branch's fault, not the rebuild's**: the test file is unchanged by the branch and by development, and
+development passed it in sd2-w1 (`SkillPool.` 11 of 11). Slice 1's registration predicted `SkillPool.` passing; it
+should have searched the tests that assert a default fill for a weapon whose skills are not built.
+
+**THE CORRECTION**, in that test only: the control's line now checks, as a set-up check, that none of the War
+Greataxe's six is built, then that the keys hold the Demonic Greataxe's six and not the War Greataxe's; its comment
+and the test's description say why. No game code changed. The old guard proof L2-G2 (the fill ignoring the creation
+type's priority) failed three checks of this test, none of them the line changed: `InFillOrder` putting Demonic first
+for a character created Demonic, the slots carrying Demonic first, and the Demonic six on the keys. The first two are
+unchanged and still fail under that break; the third now holds either way, because Q2 puts the built Demonic six on
+the keys whichever type comes first. L2-G2's failure in test 8's control is untouched.
+
+**FOR A SECOND WINDOW**, at the coordinating session's word: the build (it compiles the one test file),
+`Cataclysm.SkillPool.` alone (11, all succeeding), the whole suite (5474, all succeeding, 58 skipped halves, 874
+saves), Python alongside, then the twelve guard proofs.
+
+### Window ss2-w2, 2026-11-25, on `ae5932f29`: THE CORRECTED CONTROL FAILED ON ORDER
+
+**NOT PASSED. No guard proof was run.** The coordinating session narrowed it, as for inv-w1, since only one test's
+control changed and no game code: the build, `Cataclysm.SkillPool.` alone, then the twelve guard proofs, with no
+second whole suite (ss2-w1's stands for every other test) and Python run off the machine first. Under the lock
+`ss2-w2`.
+
+- **Python**, on `ae5932f29` before the window: "8474 passed, 10 skipped in 345.79s"; JUnit 8484 tests, 0 failures,
+  0 errors. ruff: "All checks passed!".
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp".
+- **`Cataclysm.SkillPool.` alone**: "11 tests performed, 10 succeeded, 1 failed", the same test. Its new set-up check
+  (none of the War Greataxe's six built) and its "not the War Greataxe's six" check passed. The new control failed:
+  "Expected 'control: so the keys hold the Demonic Greataxe's built six (Q2)' to be "Burning Wrath, Molten Cleave,
+  Pyroclasm, Infernal Plunge, Emberhurl, Conflagration", but it was "Molten Cleave, Infernal Plunge, Emberhurl,
+  Burning Wrath, Pyroclasm, Conflagration"". **The same six skills, in another order.** I compared two joined lists,
+  the keys' and `SkillsFor`'s, as the test's other checks do, and did not check that this fill hands the skills back
+  in the table's order; it does not. Each skill carries its own key, so the order is not a rule.
+
+**THE SECOND CORRECTION**, in the same lines: the two are compared as sets, each list of names sorted before joining,
+and the "not the War Greataxe's six" check likewise; the War Greataxe's joined list, no longer read, is removed. No
+game code changed.
+
+**FOR A THIRD WINDOW**, at the coordinating session's word: as ss2-w2, the build, `Cataclysm.SkillPool.` alone (11,
+all succeeding), then the twelve guard proofs, with Python off the machine first.
+
+**THE SAME TEST'S OTHER LIST COMPARISONS, BEFORE THE THIRD WINDOW** (the coordinating session's word: fix any other
+check in that test that compares a joined list whose order is not a rule, in the same change, before the proofs). Four
+more compared the keys' six with a weapon's six as joined lists and passed only because those fills hand the skills
+back in `SkillsFor`'s order: the character created Demonic, the War Sword with the War Axe, the two swapped, and the
+War Axe alone. All six-skill comparisons in the test now go through one helper, `SkillNamesInAnyOrder` (names sorted,
+then joined), which replaces the control's own copy of it. The four that compare damage types (two of `InFillOrder`,
+two of the slots' types) keep their order, which is the rule under test (Q11). No game code changed.
+
+### Window ss2-w3, 2026-11-25, on `8408ab4b7`: PASSED
+
+**RUN AND PASSED** on `feat/skill-selection-837-2` at `8408ab4b758628b3353a2f5db004f0e48c3e91ae`, under the lock
+`ss2-w3`, narrowed as ss2-w2 was by the coordinating session: the build and `Cataclysm.SkillPool.` alone, in parallel
+with Python off the machine, then the twelve guard proofs once Python had passed. **No second whole suite:** ss2-w1's,
+on `56360b4d6`, stands for every other test, by that ruling. Between ss2-w1 and this window only
+`CataclysmSkillPoolTests.cpp` and this log changed.
+
+- **The build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.41.cpp".
+- **`Cataclysm.SkillPool.` alone**: "11 tests performed, 11 succeeded, 0 failed".
+- **Python** on `8408ab4b7`: "8474 passed, 10 skipped in 352.25s"; JUnit 8484 tests, 0 failures, 0 errors. ruff: "All
+  checks passed!". The proofs waited 300 s for it.
+
+**C++ guard proofs**, each PROVED: named tests failed with the break in, and every test of the group passed restored.
+SP2, SQ3, SR1 and SR3 were written as `false && <the original condition>`, and SR2 passed `false ? Into :
+ECataclysmGearSlot::Count`, the registered break's value, so that every name the line read was still read; SP3 moved
+the whole restore call below the announcement.
+
+| Proof | Group | With the break in | Against the prediction |
+| :-- | :-- | :-- | :-- |
+| SP1 | `SkillDefaults.` | 18 performed, 11 failed, SD1 `ASecondWeaponLeavesEveryKeyAsItWas` and SD12 `RememberedDefaultsAreWrittenAndPutBackBeforeTheFill` among them | as predicted, "at least" |
+| SP2 | `SkillDefaults.` | 1 failed: SD10 `AWorkingSkillTakesAKeyBeforeAPlaceholder` | as predicted, "only" |
+| SP3 | `SkillDefaults.` | 2 failed: SD12 and `ALoadSaysNothing` | **SD13 `AChoiceWhoseWeaponIsOffSurvivesALoad` was predicted to fail and passed; `ALoadSaysNothing` (slice 2's) failed and was not predicted** |
+| SQ1 | `SkillBar.` | 3 failed: `AClickOnABoxNamesThatBoxesKey`, `TheControllerNamesTheKeyOfTheBoxUnderAPoint`, `AClickBetweenOrOffTheBoxesNamesNoKey` | **one more than predicted**, the third |
+| SQ2 | `SkillDefaults.` | 4 failed: `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing`, `AWeaponThatAddsSkillsOnNoKeySaysSo`, `ALoadSaysNothing` | **one more than predicted**, the fourth |
+| SQ3 | `SkillChoiceScreen.` | 1 failed: `APlaceholderIsMarkedNotBuiltYet` | as predicted |
+| SR1 | `Wearing.` | 1 failed: `AnItemPressedOntoASlotItCannotGoInIsRefusedAndStaysHeld` | as predicted |
+| SR2 | `Wearing.` | 1 failed: `TheThresholdQuestionIsAboutTheSlotPressed` | as predicted |
+| SR3 | `Wearing.` | 6 failed, the six registered | as predicted |
+| R1 | `ItemComparison.` | 3 failed: `ARingIsComparedWithTheRingTheEquipActionWouldReplace`, `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, `AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand` | as predicted |
+| R2 | `ItemComparison.` | 2 failed: `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` | as predicted |
+| R3 | `ItemComparison.` | 1 failed: `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` | as predicted |
+
+Restored, each group performed all its tests with none failed (18, 26, 9, 34 and 11). The source hash was the same
+before and after each proof, and the tested head was still `8408ab4b7` after the last.
+
+**WHAT THE THREE WINDOWS SHOW TOGETHER.** ss2-w1 ran every test of the branch on `56360b4d6`: 5474 performed, 5473
+succeeded, and the one failure was a test's control written before Q2. ss2-w2 and ss2-w3 changed that test alone, and
+ss2-w3 ran its group and every guard proof on the final head. No game code changed after ss2-w1.
+
+---
+
+## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
+
+**RUN AND PASSED IN WINDOWS ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THE SLICE 3 ENTRY.** On
+`feat/skill-selection-837`, after slice 1 (the entry below). Issue
+[#837](https://github.com/sdubois777/Cataclysm/issues/837).
+
+### Why
+
+The plan found that the skill screen on K worked and that nothing on screen named it: the owner's logs of 2026-11-20
+to 11-24 held 62 passive and attribute point lines and no skill chosen. After slice 1 a new weapon's skills wait in the
+pool, so the player has to be told they are there and where to choose them.
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605: "Approve all three (Recommended)".** For this slice: Q2, a skill
+that is not built yet is marked "not built yet" on K and can still be chosen; Q3, clicking a skill box on the bar opens
+the skill screen with that key selected, the click doing nothing else, with "K: skills" written by the bar (as Diablo
+II and Last Epoch open their choice from the bar); Q4, a notice for about six seconds and a PLAY LOOP line say what a
+new weapon added, "The Fist adds 5 skills to your pool. Press K, or click a skill box, to choose."
+
+### What changed
+
+- **The click.** `ACataclysmPlayerController::Input_MoveToCursorStarted` asks first whether the press is on a skill box
+  (`SkillBoxKeyAt`, through `UCataclysmSkillBar::KeyUnder`); if so it opens the screen with that key selected
+  (`OpenSkillAssignmentOn`: opened if closed and never closed, the key selected when it is one of the six) and returns,
+  so the press is neither a move nor a swing.
+- **"K: skills"** (`UCataclysmSkillBar::OpenScreenHint`), drawn by the heads-up display above the bar's first box.
+- **The notice.** `ACataclysmPlayerCharacter::OnEquipmentChanged` notes the pool before its fill and, after it, counts
+  the pool skills that are new and on no key (`NoteSkillsAddedToThePool`): when there are any it posts the notice for
+  `SkillPoolNoticeSeconds` (6) and says `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`.
+  The heads-up display draws it (`DrawSkillPoolNotice`).
+- **"not built yet"** on a pool skill's button on the skill screen (`NotBuiltYetMark`).
+- **The design document's two controls tables** (the `LMB` rows) and **`docs/Play_Loop_Checklist.md`** (a step and its
+  line).
+
+### Judgements of this change
+
+1. **Not for a load.** A load's one announcement comes through the same handler as a change of gear, so the equipment
+   component says when the announcement is a restore's (`IsAnnouncingARestore`, true only inside `AnnounceRestored`)
+   and no notice is posted then: what a loaded character carries is not news.
+2. **The weapon is named when the change added exactly one weapon type**, else "Your weapons"; the skills that do
+   something are counted first and the ones not built yet after them.
+3. **"K: skills" sits above the first box, at the bar's left edge**: each box's name is drawn under it, and the locked
+   notice is centred above the bar.
+4. **The click's two halves are tested apart.** Which key a point is over is a plain function and a controller
+   function the automation tests call; that the press asks it first and goes no further is read out of the controller
+   by a Python check, because a test world has no viewport to press in and no screen to open.
+
+### Tests
+
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): `Cataclysm.SkillBar.` gains four in a new file,
+`CataclysmSkillBarClickTests.cpp`: `AClickOnABoxNamesThatBoxesKey`, `AClickBetweenOrOffTheBoxesNamesNoKey` (the
+control), `TheControllerNamesTheKeyOfTheBoxUnderAPoint` and `TheBarNamesTheKeyThatOpensTheScreen`.
+`Cataclysm.SkillDefaults.` gains four: `AWeaponThatAddsSkillsOnNoKeySaysSo` (the words, and their going after six
+seconds), `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing` and `ALoadSaysNothing`. `Cataclysm.SkillChoiceScreen.`
+gains `APlaceholderIsMarkedNotBuiltYet`. Nine in all.
+
+**Python**: `tools/tests/test_a_skill_box_opens_the_skill_screen.py`, five checks, new;
+`test_the_play_loop_is_logged_at_each_step.py` lists the new line, and the checklist quotes it.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (a tree written
+through a temporary index file, so the branch's own index was not touched), each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PQ1 | the `return;` after `OpenSkillAssignmentOn(Box);` removed | `test_a_press_on_a_skill_box_is_asked_first_and_goes_no_further` |
+| PQ2 | the keyboard scheme's `IA_ToggleSkillAssignment` on J instead of K | `test_k_opens_the_skill_screen_and_the_bar_says_so` |
+| PQ3 | the notice's `!(Equipment && Equipment->IsAnnouncingARestore())` removed | `test_a_change_of_gear_tells_and_a_load_does_not` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SQ1 | `KeyUnder`'s `Slots[Box].Slot` read as the next box's (`Slots.IsValidIndex(Box + 1) ? Slots[Box + 1].Slot`) | `Cataclysm.SkillBar.` | `AClickOnABoxNamesThatBoxesKey`, `TheControllerNamesTheKeyOfTheBoxUnderAPoint` |
+| SQ2 | `if (Built + NotBuilt == 0)` read as `if (Built + NotBuilt < 0)` | `Cataclysm.SkillDefaults.` | `AChangeOfArmourSaysNothing`, `AMatchedPairSaysNothing`, and the control of `AWeaponThatAddsSkillsOnNoKeySaysSo` |
+| SQ3 | `if (!UCataclysmWeaponSkills::IsBuilt(Skill))` in `DescribePoolButton` read as `if (false)` | `Cataclysm.SkillChoiceScreen.` | `APlaceholderIsMarkedNotBuiltYet` |
+
+**Registration moves by nine:** `Cataclysm.SkillDefaults.` 18 (14 + 4), `Cataclysm.SkillBar.` alone (22 in window
+rc-w1's log, + 4 = 26), `Cataclysm.SkillChoiceScreen.` 9 (8 + 1); the whole suite slice 1's 5369 + 9 = 5378.
+
+---
+
+## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
+
+**RUN AND PASSED IN WINDOWS ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THE SLICE 3 ENTRY.** On
+`feat/skill-selection-837`, from development `5f302b0a7`. Issue
+[#837](https://github.com/sdubois777/Cataclysm/issues/837), slice 1 of three on one branch. The plan is
+`plan_skill_selection.md` in the coordinating session's `.claude/windows` folder (nice-carson worktree).
+
+### Why
+
+**The owner, 2026-11-24, verbatim:** "At the moment when dual wielding you can only use the skills from weapon slot 2
+for some reason, and it's super annoying trying to switch them because it wont let you not have a weapon equipped."
+The plan found the cause in the default fill: with no choice made, each key took the first pool skill made for it, and
+the pool lists the creation damage type first and, within it, the weapon in Weapon 1 first, so the weapon put on second
+(which lands in Weapon 1) took every key. It also found that a choice whose weapon was off was dropped at load
+(against the owner's Q5 of 2026-10-25), and that a skill with no shape, which does nothing, took keys ahead of working
+ones (54 of the 61 War rows).
+
+### The rulings
+
+**The owner, 2026-11-24, issue #837 comment 7150408605, chosen option verbatim: "Approve all three (Recommended)"**,
+every recommendation of the plan. For this slice: Q1, the keys stay as they are when a second weapon goes on, its skills
+joining the pool; Q2, a skill that is not built yet does not take a key by default when a built skill made for that key
+is in the pool; Q7, a choice whose weapon is off survives a load; Q10, a skill chosen for another key stays refused,
+while one only remembered there moves.
+
+**The coordinating session, 2026-11-24:** the Consumption double copies the remembered defaults too, inside the same
+version step, "A double should hold the keys the player actually had".
+
+### What changed
+
+- **The fill** (`UCataclysmWeaponSkills::FillWithChoices`): after the player's choices, each other key takes its
+  REMEMBERED DEFAULT, the row it held by default after the last fill, while that row is in the pool and no key holds it;
+  only then the first pool entry made for it, a BUILT one first (`IsBuilt`: the row's shape has a template). The
+  default fill (`DefaultFillFrom`) prefers a built entry the same way, the slots in the order they came, so "with no
+  choice, element for element the default fill" still holds.
+- **The player state** keeps `RememberedDefaults` (replicated), replaced after every fill from worn weapons by the rows
+  on the keys that are not the player's choices (`RememberDefaults`), and forgotten when no weapon is worn
+  (`ForgetRememberedDefaults`). A separate list, so "chosen" still means the player chose it.
+- **The pawn** (`FillAbilitySlotsFromWornWeapon`) hands the defaults to the weapon slots before the fill and remembers
+  them after it.
+- **The save**: the character record goes to **version 17** with `RememberedDefaults`, in the record and in its held
+  build (`FCataclysmPlayerBuild`, which the double copies). `Migrate_16_to_17`, in the character record's own namespace
+  (the run record has a step of the same name), writes an empty list in both, keeping a list already there.
+  `FCataclysmSaveApply::CharacterInto` puts the choices and the defaults back AS DATA, through
+  `ACataclysmPlayerState::RestoreSkillChoices`, BEFORE its one announcement, so the one fill reads both; it no longer
+  calls `AssignSkill`, which checked each choice against the pool worn at loading and dropped one whose weapon was off.
+- **The double** (`ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild`) fills from the build's choices and its
+  remembered defaults.
+- **The design document**, Skill Slots: "A CHANGE OF WEAPONS NEVER TAKES A SKILL OFF A KEY WHILE IT IS STILL IN THE
+  POOL."
+
+### Judgements of this change
+
+1. **No weapon worn forgets the remembered defaults only when a weapon was expected** (`ECataclysmWeaponExpected::Yes`).
+   The plan's R4 said "no weapon worn clears the remembered defaults". At possession, before the weapon goes on
+   (`NotYet`), the player state may be carrying a character's keys into a new pawn (it outlives a death), and the gear
+   put back next must find them.
+2. **Only a refused CHOICE is counted in a load's `SkillsRefused`**; a remembered default the table no longer has is
+   dropped and its key takes the next default, as in play.
+3. **A built skill is one whose shape has a template**, the same question the weapon slots ask when they grant a
+   placeholder (`TemplateFor`), so "built" cannot disagree with what is granted.
+
+### Tests
+
+**Unreal, registered** (run in windows ss2-w1 to ss2-w3): a new group, `Cataclysm.SkillDefaults.`, 14 tests in
+`CataclysmSkillDefaultsTests.cpp`, and one in `Cataclysm.SaveRecords.`:
+
+| | Test | What it checks |
+| :-- | :-- | :-- |
+| SD1 | `ASecondWeaponLeavesEveryKeyAsItWas` | an Axe, then a Fist: the keys stay the Axe's; control, the default fill is the Fist's |
+| SD2 | `TheSecondWeaponsSkillsAreInThePoolAndOnNoKey` | the Fist's five in the pool, none on a key |
+| SD3 | `TakingAWeaponOffChangesOnlyTheKeysItsSkillsHeld` | the Fist off: only its chosen Heavy key changes; the choice kept |
+| SD4 | `ARememberedDefaultWhoseWeaponComesOffIsForgotten` | a Dagger over the Axe, the Axe back: the keys stay the Dagger's |
+| SD5 | `AChoiceWhoseWeaponComesOffStillReturnsWithIt` | SD4's control: a CHOSEN Axe skill returns with the Axe (Q5) |
+| SD6 | `AFreshBarIsTheCreationTypeFirstThenWeaponOne` | nothing remembered: Q11's order, Weapon 1 first |
+| SD7 | `NoWeaponWornForgetsTheRememberedDefaults` | R4, with judgement 1 |
+| SD8 | `ASkillRememberedOnAnotherKeyMovesWhenChosenAndThatKeyTakesTheNext` | O4 and Q10; control: a chosen one is still refused |
+| SD9 | `ClearTheSlotGivesTheDefaultAndRemembersIt` | O5 |
+| SD10 | `AWorkingSkillTakesAKeyBeforeAPlaceholder` | the owner's Wolf Axe and Whip: a built skill on every key one is made for; control: a key whose first pool entry is a placeholder. Prints "BUILT FIRST" |
+| SD11 | `APlaceholderStillTakesAKeyNothingWorkingIsMadeFor` | a War Axe alone keeps its five placeholders |
+| SD12 | `RememberedDefaultsAreWrittenAndPutBackBeforeTheFill` | gathered and loaded into a second player, the keys stay the Axe's; control, the default fill is the Fist's |
+| SD13 | `AChoiceWhoseWeaponIsOffSurvivesALoad` | Q7; control: `RefusalForSkillChoice` would refuse it |
+| SD15 | `ADoubleHoldsTheKeysThePlayerHad` | the coordinating session's ruling; control: the same build with nothing remembered holds the default fill |
+| SD14 | `Cataclysm.SaveRecords.ACharacterFileFromBeforeRememberedDefaultsMigratesWithNone` | `Character_v16.json` migrates with none, in the record and its held build; control: `Character_v17.json` read, not migrated |
+
+**Changed by the version step** (`Character_v16.json` to `Character_v17.json` as the committed file, and version 17's
+defaults after version 16's in each test that runs an older file through the chain): twelve test files, among them
+`Cataclysm.SaveRecords.`, `GemSave.`, `Gold.`, `Dismantle.`, `CataclysmDraw.`, `ConsumptionDouble.`, `ConsumptionMark.`,
+`SkillLevels.` and the empire tree's credit, nine-saves, own-tree and prowess tests.
+
+**Python**: `tools/tests/test_the_keys_remember_their_defaults.py`, five checks, new. Four checks follow the step:
+`test_a_build_change_is_saved.py` (the load restores through `RestoreSkillChoices`; it and `RememberDefaults` save
+nothing), `test_a_loaded_thrall_keeps_the_skill_that_took_it.py` (the run record's `Migrate_16_to_17`, looked up in its
+own namespace, the trap the coordinating session named), `test_empire_tree_on_the_account_record.py` (reads
+`Character_v17.json`) and `test_inventory_tabs.py` (16 or later).
+
+**The Python suite on `5e2b9cfd6`:** "8259 passed, 10 skipped in 363.57s"; JUnit 8269 tests, 0 failures, 0 errors.
+ruff: "All checks passed!".
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `5e2b9cfd6`, each PROVED:
+
+| Proof | Break | Named failure |
+| :-- | :-- | :-- |
+| PS1 | an `AnnounceRestored` put before `RestoreSkillChoices` in `CharacterInto` | `test_a_load_puts_the_choices_back_before_its_one_fill` |
+| PS2 | `Character_v17.json`'s remembered default emptied | `test_the_committed_file_is_version_sixteens_with_one_remembered_default` |
+| PS3 | the double's fill without `HeldBuild.RememberedDefaults` | `test_a_double_holds_the_keys_the_player_had` |
+| PS4 | `TryGetObjectField(TEXT("ConsumptionBuild"), Build)` renamed (the text is in the file twice and both were renamed) | `test_the_record_holds_the_field_at_version_seventeen` |
+
+**C++ guard proofs registered, at most three:**
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| SP1 | `FillWithChoices(SkillPool, SkillChoices, RememberedDefaults)` read as `FillWithChoices(SkillPool, SkillChoices)` | `Cataclysm.SkillDefaults.` | SD1 and SD12 at least |
+| SP2 | the built-first pass, `\|\| (bBuiltOnly && !IsBuilt(Skill))` read as `\|\| (bBuiltOnly && false)` | `Cataclysm.SkillDefaults.` | SD10 only |
+| SP3 | `RestoreSkillChoices` moved after `AnnounceRestored` in `CharacterInto` | `Cataclysm.SkillDefaults.` | SD12, SD13 |
+
+**Registration** (for a window of its own or one shared with slices 2 and 3): the base is the newest whole-suite figure,
+window inv-w1's of #2887, 5354 performed, 57 skipped halves, 861 saves; this slice adds 15, so **5369 performed**, 57
+skipped halves and 861 saves (no test of this slice reports a skipped half or writes a save). Groups alone, counted in
+window rc-w1's log (`rc_suite_engine_5e8be468.log`; #2887's own groups changed after it, so `SaveRecords.` is to be
+re-counted from inv-w1's log): `Cataclysm.SkillDefaults.` 14, `SkillAssignment.` 16, `SkillPool.` 11,
+`SkillChoiceScreen.` 8, `SaveApply.` 24, `SaveRecords.` 17 + 1, `BuildSave.` 6, `ConsumptionDouble.` 15,
+`ConsumptionMark.` 6, `CataclysmDraw.` 6, `GemSave.` 2, `Gold.` 13, `Dismantle.` 12, `SkillLevels.` 13,
+`EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1, `EmpireTreeProwess.` 6.
+
+---
+
 ## 2026-11-24 — The Cataclysm Boss always drops one piece of the next tier's best rarity, beside its ordinary drops (#2853)
 
 **RUN AND PASSED IN WINDOW sd2-w1 (2026-11-25), WITH THE DROP SUPPLY AND POWER SCORE ENTRIES BELOW; THE WINDOW'S
@@ -319,6 +792,178 @@ counted in rc-w1's log and the same in bb12-w1's; the whole suite registered bel
 | CB1 | `return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));` read as `return HighestDroppableRarity(Tier);` | `Cataclysm.RarityCap.` | RC7 (RC6 and RC8 ask the function itself and pass) |
 | CB2 | in `SpawnTheCataclysmBossesPieceFor`, `EnemyRarityStep != CataclysmBossRarityStep` read as `EnemyRarityStep < FirstBossRarityStep` | `Cataclysm.RarityCap.` | RC9 |
 | CB3 | `Drop->bTheCataclysmBossesPiece = bTheCataclysmBossesPiece;` read as `Drop->bTheCataclysmBossesPiece = false;` | `Cataclysm.RarityCap.` | RC6, RC8 |
+
+---
+
+## 2026-11-24 — With every ring slot full, a ring replaces and is compared with the worn ring of its own rarity, else the lowest rarity worn; the two hands by the same rule (the owner's report)
+
+**Affects:**
+- `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`: `UCataclysmGearSlots::SlotToReplace`, new;
+  `UCataclysmEquipmentComponent::Equip` calls it when no candidate slot is free; the comments on `Equip` and
+  `PreviewEquip`.
+- `game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`: `UCataclysmPowerScore::WornPieceScoreOf`, new.
+- `game/Source/Cataclysm/Interface/CataclysmItemComparison.h`: the class comment.
+- `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp`: one test rewritten, three new.
+- `docs/Cataclysm_GDD_v2.md`, Item Slots.
+
+No issue number: the owner's report of 2026-11-24, relayed by the coordinating session with its ruling.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** No Unreal build or test has run on this branch; the machine belongs to the window. Every
+  Unreal figure below is a prediction registered for the window. The changed and new C++ was read top to bottom as the
+  compiler would read it, and every engine call in the tests was checked against
+  `Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h` (`TestNotEqual(const TCHAR*, const FString&, const
+  FString&)`, `TestEqual` and `TestTrue` taking an `FString`).
+- **WEAPONS CHANGED TOO, A JUDGEMENT THE BRIEF LEFT TO THE CODE.** The brief asked whether the two hands make the same
+  mistake and said to change them only if they do. They do: with both hands full and a weapon that may stand beside
+  either, `Equip` took Weapon 1 whatever the two held, so a Quality sword in Weapon 1 and a Masterful dagger in Weapon 2
+  compared a Masterful axe with the sword. The loot filter's own entry (#2846, LF1) says "weapons work as rings do".
+  The hands now take the same rule through the same function. A loadout where both hands come off -- a two-handed
+  weapon without Both Hands Full, or a weapon of the other kind beside two held -- is unchanged, and so is the hand it
+  lands in. If the owner wants weapons left as they were, the change is the `IsWeaponSlot` clause in `Equip`'s new
+  condition and test 2d.
+- **ONE BEHAVIOUR A PLAYER CAN SEE BESIDE THE TOOLTIP: WHICH HAND SWINGS THE BASIC ATTACK.** The basic attack belongs to
+  the first occupied weapon slot (`UCataclysmEquipmentComponent::WornWeaponTypes`). A one-handed weapon that now
+  replaces Weapon 2 leaves Weapon 1's basic attack in place, where before it always became the basic attack's weapon.
+  The design says there is no primary hand; this is noted so it is not a surprise.
+- **PIECES WITH NO RARITY CHANGE NOTHING.** A piece with no affix and no enchantment ranks below Everyday and scores
+  nothing, so among pieces that all have none -- what most older equipment tests wear -- the first candidate is still
+  chosen, exactly as before. The sweep of the Unreal tests that put a ninth ring or a third weapon on through `Equip`
+  (below) found none that wears pieces of differing rarity or score.
+
+### The owner's report and the ruling
+
+The owner, 2026-11-24, verbatim: "when a ring drops on the ground and actually shows through the filter, it's
+supposed to compare against whatever ring is of equal tier. At the moment, it just compares with ring 1 no matter what,
+so you're looking at a quality ring comparing it against a masterwork when hovering the ring."
+
+"Tier" there is rarity (Quality, Masterful and so on). The coordinating session's ruling under the report: when every
+ring slot is full, a ring from the bag or the ground
+
+1. is compared with, and on equip replaces, the worn ring of the SAME rarity; if several share it, the one with the
+   lowest Power Score (ties: the lowest slot number);
+2. if no worn ring has that rarity, the LOWEST-rarity worn ring (the filter's reference), with the same tie rule.
+
+A free ring slot still takes the ring first. The comparison must always show the ring the equip action would replace,
+so the equip choice and the comparison change together, through one shared function.
+
+### What was wrong
+
+`UCataclysmEquipmentComponent::Equip` (`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, the loop under
+"THE FIRST FREE ONE, AND THE FIRST ONE WHEN NONE IS FREE", lines 416 to 428 on `development` at `5f302b0a7`) set
+`Chosen = Candidates[0]` and changed it only for a free slot. With all eight rings worn that is Ring 1, and the
+tooltip's comparison asks `Equip` through `PreviewEquip` (ruling (a) of 2026-11-02), so it compared with Ring 1 too.
+The comparison was faithful to `Equip`; `Equip`'s choice was the fault.
+
+### What changes
+
+- **`UCataclysmGearSlots::SlotToReplace`, THE ONE RULE.** Static and handed the slots, so a test can ask it of plain
+  values. Of the full candidates it finds the rank to replace -- the incoming piece's own rarity when one is worn, else
+  the lowest worn -- and of those the lowest Power Score, the first candidate among equals.
+- **`Equip` CALLS IT, AND THE COMPARISON FOLLOWS.** When no candidate is free and there are several, `Equip` takes
+  `SlotToReplace`'s answer; a weapon only when `WeaponsComingOffFor` says one weapon comes off. `PreviewEquip` runs
+  `Equip`, so the comparison, the Worn Residue question before an equip (`WornResidueIfEquipped`) and the real equip
+  read one choice. Nothing else chooses a slot.
+- **`UCataclysmPowerScore::WornPieceScoreOf`, A PIECE'S POWER SCORE.** The ruling's "lowest Power Score" needs one per
+  ring, and the score had only a character's. This is `Breakdown`'s gear and gem terms of a character wearing that
+  piece alone, through `ScoredCharacterFrom`, so it is the character score's own arithmetic and not a copy of it.
+
+### Judgements of this change, each labelled
+
+- **A PIECE WITH NO RARITY RANKS BELOW EVERYDAY.** The loot filter reads such a piece as nothing worn, and nothing is the
+  lowest there is. So a ring of no rarity worn is what a ring of a rarity nobody wears replaces first.
+- **A RING'S POWER SCORE COUNTS ITS GEMS.** The score reads a worn piece's rarity, gear level and socketed gems, and
+  taking the ring off takes all three away, so all three are what "its Power Score" means. Within one rarity that is
+  the gear level and the gems.
+- **WEAPONS BY THE SAME RULE**, said first above.
+
+### Genre sources, read 2026-11-24
+
+Each page was fetched for this entry. None of the posters quoted is identified as the developer's staff.
+
+- **Diablo IV**, Blizzard's forum, "Equipped ring comparison"
+  (https://us.forums.blizzard.com/en/d4/t/equipped-ring-comparison/242377): a player, Djarell-1710, says the equipped
+  ring "the system picks to compare to isn't the one you want to compare against"; others answer that Alt (Y on a
+  controller) swaps the comparison between the two worn rings.
+- **Last Epoch**, its forum, "Ring comparison" (https://forum.lastepoch.com/t/ring-comparison/34054): the opening post
+  says the comparison "is only done against the left hand ring, not the right", and a reply calls it a known issue.
+- **No Rest for the Wicked**, its forum (https://forum.norestforthewicked.com/t/ring-comparison-always-shows-stats-difference-against-the-first-equipped-ring/13851):
+  a bug report, "Ring Comparison always shows stats difference compared against the first equipped ring", answered
+  "sent along to the design team" by a poster the page does not mark as staff.
+- **Path of Exile**, its forum (https://www.pathofexile.com/forum/view-thread/3451112): in controller mode, equipping
+  a ring "always equips it to the left slot"; holding L3 changes "Equip" to "Equip Offhand".
+
+### What the research settles, and what it does not
+
+- **Settled, as a fault:** comparing with, or replacing, a fixed first ring slot is reported as wrong by players of three
+  games, which is the owner's report in other words. The shipped remedies are a key that cycles the comparison (Diablo
+  IV) or a way to name the other slot (Path of Exile).
+- **Not settled by any of them, the coordinating session's ruling:** which of EIGHT rings to choose automatically. None
+  of these games has more than two ring slots. Same rarity first, then the lowest rarity, then the lowest Power Score,
+  is specific to this game: it matches the loot filter's "lowest ring worn" and the owner's "of equal tier".
+
+### Tests
+
+All in `game/Source/Cataclysm/Tests/CataclysmItemComparisonTests.cpp`, group `Cataclysm.ItemComparison.`, each in a
+world that has begun play with a spawned stand-in, each against a real `Equip` on a second character as its CONTROL.
+The rings carry one to four real flat affixes allowed on a ring (`game/Data/Affixes.csv`) and no enchantment, which
+makes them Everyday to Masterful; each is marked by its residue, so a test names the ring that came off.
+
+1. `Cataclysm.ItemComparison.ARingIsComparedWithTheRingTheEquipActionWouldReplace`, REWRITTEN. Three worn, Masterful,
+   Quality and Everyday, and a Quality ring hovered: Ring 4, nothing off, "Compared with nothing: Ring 4 is empty." --
+   a free slot first, though a Quality ring is worn. Eight worn, the owner's case: Masterful in Ring 1, the one Quality
+   ring in Ring 3, an Everyday ring in Ring 6: compared with Ring 3 (not Ring 1, and not the lowest ring), the real
+   equip takes off the ring marked 3, the heading names the Quality ring, and the tooltip both hovers draw
+   (`TooltipColumnsFor`, issue #2807) has the Quality ring's own lines as its worn column. It said "Eight worn: Ring 1,
+   as a real equip chooses" until this.
+2. `Cataclysm.ItemComparison.ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity`, new ("RING LOWEST SCORE"). Three
+   Quality rings among eight: Ring 2 at +6, Ring 4 and Ring 6 at +2. Compared with Ring 4, the lowest score and the
+   lower slot of the two that tie. CONTROLS: `WornPieceScoreOf` ranks the three as the set-up says, a socketed gem
+   raises a ring's score, and a ring of no rarity scores nothing.
+3. `Cataclysm.ItemComparison.ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn`, new ("RING LOWEST RARITY"). No
+   Quality ring among eight; the two Everyday rings, Ring 3 at +3 and Ring 6 at +1, are the lowest. A Quality ring is
+   compared with Ring 6.
+4. `Cataclysm.ItemComparison.AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand`, new ("WEAPON HANDS"). A
+   Quality sword in Weapon 1, a Masterful dagger in Weapon 2: a Masterful axe is compared with Weapon 2, a Superb axe
+   with Weapon 1, the lower hand.
+
+THE SWEEP FOR WHAT ELSE THE CHANGE REACHES, read and not run: every Unreal test that puts a ninth ring or a third weapon
+on through `Equip` or `UCataclysmWearing::WearFromCarried`. `Cataclysm.Equipment.EightRingsFillEightSlotsAndTheNinthReplacesOne`
+wears nine plain rings, all of no rarity, so Ring 1 is still chosen, and it does not ask which. The weapon tests that
+put a third weapon on (`Cataclysm.BothHandsFull.`, `Cataclysm.Wearing.`, `Cataclysm.Equipment.AttackSpeedAveragesAcrossWeaponsAndAffixesRaiseIt`,
+`Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced`) wear plain weapons, or put a weapon where a hand is free,
+or put on one that takes both off. `Cataclysm.ReferenceBuild.` fills eight free ring slots and puts on no ninth.
+
+### Registered before the run
+
+Counted by reading the test files (each test name a literal in `IMPLEMENT_SIMPLE_AUTOMATION_TEST`, no wrapper macro in
+those files). The base is `development` at `5f302b0a7`.
+
+| Figure | Registered |
+|---|---|
+| `Cataclysm.ItemComparison.` alone | 11 / 11: 8 before, + 3 |
+| `Cataclysm.Equipment.` alone | 30 / 30, unchanged |
+| `Cataclysm.PowerScoreLive.` alone | 8 / 8, unchanged (`WornPieceScoreOf` is new and none of them calls it) |
+| `Cataclysm.Wearing.` alone | 19 / 19, unchanged |
+| `Cataclysm.BothHandsFull.` alone | 7 / 7, unchanged |
+| `Cataclysm.ThresholdQuestion.` alone | 4 / 4, unchanged |
+| `Cataclysm.LootFilter.` alone | 8 / 8, unchanged |
+| `Cataclysm.GroundItemHover.` alone | 7 / 7, unchanged |
+| Whole Unreal suite | the base's last measured total + 3, 0 failed; a "Test saves:" line with 0 left behind |
+
+THREE GUARD PROOFS, ONE PER MECHANISM, each a one-line break in
+`game/Source/Cataclysm/Items/CataclysmEquipmentComponent.cpp`, prefix `Cataclysm.ItemComparison.` (11 performed in each
+half). Each anchor occurs once in the file.
+
+| Proof | Break | Must fail, and nothing else |
+|---|---|---|
+| R1, the ring of its own rarity | `bOwnRarityWorn = bOwnRarityWorn \|\| Rank == IncomingRank;` to `bOwnRarityWorn = bOwnRarityWorn && Rank == IncomingRank;` (never true, so always the lowest rarity) | `ARingIsComparedWithTheRingTheEquipActionWouldReplace` (Ring 6, the Everyday ring: "CONTROL: a real equip replaces Ring 3, the Quality ring", "CONTROL: and takes off the ring marked 3" to be 3.000000 but 6.000000, the heading, the worn column -- 4); `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity` (Ring 5, the Everyday ring: the control's slot, its mark 4 but 5, and the bold Ring 4 line -- 3); `AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand` (the Masterful axe to Weapon 1: its control's hand, its mark 2 but 1, and its bold hand line -- 3) |
+| R2, the lowest Power Score | `if (!bChosen \|\| Score < ChosenScore)` to `if (!bChosen \|\| Score > ChosenScore)` (the highest) | `ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity` (Ring 2, the +6 ring: the control's slot, its mark 4 but 2, the bold Ring 4 line -- 3); `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 3, the +3 Everyday ring: the control's slot, its mark 6 but 3, the bold Ring 6 line -- 3) |
+| R3, the lowest rarity when its own is not worn | `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : LowestRank;` to `const int32 ReplacedRank = bOwnRarityWorn ? IncomingRank : -2;` (no rank matches, so the first candidate, the old behaviour) | `ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn` (Ring 1: the control's slot, its mark 6 but 1, the bold Ring 6 line -- 3). The weapon test's Superb case expects Weapon 1, which the break also gives, so it passes |
+
+The breaks were not compiled when registered; they were run in window ss2-w3 (the slice 3 entry's record). Each leaves
+every variable read, so none should stop the build on an unused variable.
 
 ---
 

@@ -701,6 +701,21 @@ followed, ruled 2026-11-01:
   migration input; every test that read it as the committed file reads the new
   one, and every test that runs an older file through the chain adds what the
   step writes through `AddTheCharactersVersion16Defaults`.
+- **The character record went to version 17 on 2026-11-24**, for the skill keys
+  (issue #837 slice 1; the owner: "Approve all three (Recommended)"). The
+  character keeps what each key held by default after the last fill,
+  `RememberedDefaults`, so its keys stay as they are when a weapon goes on or off
+  and after a load. `Migrate_16_to_17` writes an empty list, which is what a
+  character written before it held. `Character_v17.json` is `Character_v16.json`
+  at version 17 with one remembered default, War_Greatsword_Special on the
+  Special key, and one in its held build, War_Greatsword_Support on the Support
+  key (the double copies the keys, ruled the same day): figures and not the
+  default, so the round trip proves both fields are read. The step writes an
+  empty list into a held build that lacks one, and keeps one `Migrate_5_to_6`
+  already wrote. `Character_v16.json` is now a migration input; every test that read it
+  as the committed file reads the new one, and every test that runs an older
+  file through the chain adds what the step writes through
+  `AddTheCharactersVersion17Defaults`.
 - **The run record went to version 16 on 2026-11-22**, for the cleanse city
   upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
   `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
@@ -969,6 +984,7 @@ followed, ruled 2026-11-01:
 | `Character_v14.json` | The same character at version 14: version 13's contents, plus 50000.25 tier 1 gold spent on city upgrades |
 | `Character_v15.json` | The same character at version 15: version 14's contents, plus where each item arrived -- the creation greatsword +0 at tier 2, the carried Circlet +4 at tier 2, the empty slot not known, the worn ring +3 at tier 1 |
 | `Character_v16.json` | The same character at version 16: version 15's contents, with its 12 Whispering Ash in `CarriedMaterials` and its second carried slot blank, plus 3 Superb Of The Viper in `CarriedGems` |
+| `Character_v17.json` | The same character at version 17: version 16's contents, plus one remembered default, `War_Greatsword_Special` on the Special key, and one in its held build, `War_Greatsword_Support` on the Support key |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |

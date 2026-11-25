@@ -19,9 +19,11 @@
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmForge.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPowerScore.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -32,6 +34,12 @@
  * written to the character -- tests 1 and 4; (c) a two-handed weapon compared with both weapons it replaces -- test 3;
  * (e) the basic attack's hit, priced by the game's own no-target function -- test 7. Ruling (d), shown on hover with no
  * key held, is the widget's and cannot be watched under `-nullrhi`.
+ *
+ * AND WHICH RING, the owner's report of 2026-11-24 ("it just compares with ring 1 no matter what"), ruled by the
+ * coordinating session: with every ring slot full, the worn ring of the hovered ring's own rarity, the lowest Power Score
+ * among several and the lowest slot among equals (tests 2 and 2b); with none of its rarity worn, the lowest rarity worn
+ * (test 2c); a free slot still first (test 2); and the two hands by the same rule (test 2d). Each against a real `Equip`
+ * as its control, since the comparison asks `Equip`.
  *
  * THE ITEM BASES ARE REAL ROWS OF `game/Data/ItemBases.csv`, because `Equip` looks the base up to choose a slot, and
  * the comparison asks `Equip`.
@@ -175,6 +183,93 @@ namespace CataclysmItemComparisonTest
 		return UCataclysmItemComparison::HeadingFor(Result, UCataclysmItemModifiers::LoadBaseTable(),
 													UCataclysmDropRoll::LoadAffixTable());
 	}
+
+	/** Real flat affixes `game/Data/Affixes.csv` allows on a ring: two prefixes, then two suffixes. */
+	const TCHAR* const RingAffixRows[] = {TEXT("Stat_Flat_maximum_health"), TEXT("Stat_Flat_maximum_mana"),
+										  TEXT("Stat_Flat_health_regeneration"), TEXT("Stat_Flat_mana_regeneration")};
+
+	/** Real flat affixes `game/Data/Affixes.csv` allows on a weapon: a prefix, then three suffixes. */
+	const TCHAR* const WeaponAffixRows[] = {TEXT("Stat_Flat_damage"), TEXT("Stat_Flat_life_leech"),
+											TEXT("Stat_Flat_critical_strike_chance"), TEXT("Stat_Flat_penetration")};
+
+	/**
+	 * A piece of a rarity from Everyday to Masterful at a gear level: one to four of `Rows` and no enchantment, which is
+	 * what those four rarities are (`UCataclysmItemValues::RarityOf`). MARKED BY ITS RESIDUE, so a test can say which
+	 * piece came off.
+	 */
+	FCataclysmItem OfRarity(const TCHAR* Base, const TCHAR* const* Rows, ECataclysmRarity Rarity, int32 GearLevel,
+							float Mark)
+	{
+		FCataclysmItem Item = PlainOf(Base, GearLevel);
+		const int32 Affixes = FMath::Min(UCataclysmItemValues::AffixSlotsFor(Rarity), 4);
+		for (int32 Index = 0; Index < Affixes; ++Index)
+		{
+			FCataclysmRolledAffix Rolled;
+			Rolled.Affix = FName(Rows[Index]);
+			Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+			Rolled.Roll = 1.0f;
+			Item.Affixes.Add(Rolled);
+		}
+		Item.Residue = Mark;
+		return Item;
+	}
+
+	/** A ring of a rarity, at a gear level, marked. */
+	FCataclysmItem RingOf(ECataclysmRarity Rarity, int32 GearLevel, float Mark)
+	{
+		return OfRarity(RingBase, RingAffixRows, Rarity, GearLevel, Mark);
+	}
+
+	/** Its rarity, by the definition of rarity, for a set-up check. */
+	bool IsOfRarity(const FCataclysmItem& Item, ECataclysmRarity Rarity)
+	{
+		ECataclysmRarity Found = ECataclysmRarity::Everyday;
+		return UCataclysmItemModifiers::RarityOfItem(Item, Found) && Found == Rarity;
+	}
+
+	/**
+	 * Puts `Rings` on through `Equip`, in order, each into the next free ring slot, so ring N is worn in Ring N. Fails
+	 * the test by name, and answers false, when one is not.
+	 */
+	bool WearRingsInOrder(FAutomationTestBase& Test, const FComparedCharacter& Character,
+						  const TArray<FCataclysmItem>& Rings)
+	{
+		const TArray<ECataclysmGearSlot>& Slots = UCataclysmGearSlots::RingSlots();
+		bool bInOrder = Rings.Num() <= Slots.Num();
+		for (int32 Index = 0; bInOrder && Index < Rings.Num(); ++Index)
+		{
+			bInOrder = Character.Wear(Rings[Index]) == Slots[Index];
+		}
+		return Test.TestTrue(TEXT("set-up: ring N is worn in Ring N"), bInOrder);
+	}
+
+	/** What a comparison chose for a hovered piece, and what a real equip of it chose: each slot and what came off. */
+	struct FComparedAndEquipped
+	{
+		FCataclysmComparisonResult Result;
+		ECataclysmGearSlot ReallyWent = ECataclysmGearSlot::Count;
+		FCataclysmItem ReallyOff;
+	};
+
+	/**
+	 * `Hovered` compared on `Character`, and really put on through `Equip` on `Control`, the CONTROL: a second character
+	 * wearing the same pieces. Neither character changes the other.
+	 */
+	FComparedAndEquipped CompareAndEquip(const FCataclysmItem& Hovered, const FComparedCharacter& Character,
+										 const FComparedCharacter& Control, ACataclysmComparisonStandIn& StandIn)
+	{
+		FComparedAndEquipped Out;
+		Out.Result = UCataclysmItemComparison::Compare(Hovered, *Character.Equipment, Character.AbilitySystem, StandIn);
+		FCataclysmItem AlsoOff;
+		Control.Equipment->Equip(Hovered, Out.ReallyOff, AlsoOff, Out.ReallyWent);
+		return Out;
+	}
+
+	/** The mark of the one piece a comparison says would come off, or -1 when it is not exactly one piece. */
+	float ReplacedMarkOf(const FCataclysmComparisonResult& Result)
+	{
+		return Result.Replaced.Num() == 1 ? Result.Replaced[0].Residue : -1.0f;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -284,25 +379,32 @@ bool FCataclysmItemComparisonRingAgainstRing::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const FCataclysmItem Hovered = WithHealthOf(RingBase);
+	const FCataclysmItem Hovered = RingOf(ECataclysmRarity::Quality, 0, 99.0f);
+	if (!TestTrue(TEXT("set-up: the hovered ring is Quality"), IsOfRarity(Hovered, ECataclysmRarity::Quality)))
+	{
+		return false;
+	}
 
-	// THREE RINGS WORN: the fourth slot is free, so it goes there and replaces nothing.
+	// THREE RINGS WORN, ONE OF THEM QUALITY: the fourth slot is free, so it goes there and replaces nothing. A FREE
+	// SLOT IS STILL TAKEN FIRST, before the ring of its own rarity.
 	{
 		FComparedCharacter Character(World);
 		FComparedCharacter Control(World);
-		for (int32 Ring = 0; Ring < 3; ++Ring)
+		const TArray<FCataclysmItem> Worn = {RingOf(ECataclysmRarity::Masterful, 0, 1.0f),
+											 RingOf(ECataclysmRarity::Quality, 0, 2.0f),
+											 RingOf(ECataclysmRarity::Everyday, 0, 3.0f)};
+		if (!WearRingsInOrder(*this, Character, Worn) || !WearRingsInOrder(*this, Control, Worn))
 		{
-			Character.Wear(PlainOf(RingBase));
-			Control.Wear(PlainOf(RingBase));
+			return false;
 		}
-		const ECataclysmGearSlot ReallyWent = Control.Wear(Hovered);
-		TestTrue(TEXT("CONTROL: a real equip puts it in Ring 4"), ReallyWent == ECataclysmGearSlot::Ring4);
+		const FComparedAndEquipped Both = CompareAndEquip(Hovered, Character, Control, *StandIn);
+		TestTrue(TEXT("CONTROL: a real equip puts it in Ring 4"), Both.ReallyWent == ECataclysmGearSlot::Ring4);
+		TestTrue(TEXT("CONTROL: and takes nothing off"), Both.ReallyOff.Base.IsNone());
 
-		const FCataclysmComparisonResult Result =
-			UCataclysmItemComparison::Compare(Hovered, *Character.Equipment, Character.AbilitySystem, *StandIn);
+		const FCataclysmComparisonResult& Result = Both.Result;
 		TestTrue(TEXT("three worn: it is compared"), Result.bCompared);
-		TestTrue(TEXT("three worn: in the slot the real equip chose"), Result.Slot == ReallyWent);
-		TestEqual(TEXT("three worn: nothing would come off"), Result.Replaced.Num(), 0);
+		TestTrue(TEXT("three worn: in the slot the real equip chose"), Result.Slot == Both.ReallyWent);
+		TestEqual(TEXT("three worn: nothing would come off, though a Quality ring is worn"), Result.Replaced.Num(), 0);
 
 		FString Left;
 		FString Right;
@@ -312,33 +414,293 @@ bool FCataclysmItemComparisonRingAgainstRing::RunTest(const FString& Parameters)
 		TestTrue(TEXT("three worn: the left column names the slot"), Left.Contains(TEXT("If worn in Ring 4:")));
 	}
 
-	// EIGHT RINGS WORN: none is free, so `Equip` replaces the first, marked here by its residue.
+	// EIGHT RINGS WORN, THE OWNER'S CASE OF 2026-11-24: a Masterful ring in Ring 1, one Quality ring in Ring 3, and an
+	// Everyday ring in Ring 6 below both. A Quality ring hovered is compared with the Quality ring, not with Ring 1 --
+	// which it was "no matter what" until the report -- and not with the lowest ring either.
 	{
 		FComparedCharacter Character(World);
 		FComparedCharacter Control(World);
-		for (int32 Ring = 0; Ring < 8; ++Ring)
+		const TArray<FCataclysmItem> Worn = {
+			RingOf(ECataclysmRarity::Masterful, 0, 1.0f), RingOf(ECataclysmRarity::Masterful, 0, 2.0f),
+			RingOf(ECataclysmRarity::Quality, 0, 3.0f), RingOf(ECataclysmRarity::Superb, 0, 4.0f),
+			RingOf(ECataclysmRarity::Superb, 0, 5.0f), RingOf(ECataclysmRarity::Everyday, 0, 6.0f),
+			RingOf(ECataclysmRarity::Superb, 0, 7.0f), RingOf(ECataclysmRarity::Masterful, 0, 8.0f)};
+		if (!WearRingsInOrder(*this, Character, Worn) || !WearRingsInOrder(*this, Control, Worn))
 		{
-			FCataclysmItem Worn = PlainOf(RingBase);
-			Worn.Residue = Ring == 0 ? 11.0f : 0.0f;
-			Character.Wear(Worn);
-			Control.Wear(Worn);
+			return false;
 		}
-		FCataclysmItem ReallyOff;
-		FCataclysmItem ReallyAlsoOff;
-		ECataclysmGearSlot ReallyWent = ECataclysmGearSlot::Count;
-		Control.Equipment->Equip(Hovered, ReallyOff, ReallyAlsoOff, ReallyWent);
-		TestTrue(TEXT("CONTROL: a real equip replaces Ring 1"), ReallyWent == ECataclysmGearSlot::Ring1);
-		TestEqual(TEXT("CONTROL: and takes off the marked ring"), ReallyOff.Residue, 11.0f);
+		TestTrue(TEXT("set-up: Ring 1 holds a Masterful ring"), IsOfRarity(Worn[0], ECataclysmRarity::Masterful));
 
-		const FCataclysmComparisonResult Result =
-			UCataclysmItemComparison::Compare(Hovered, *Character.Equipment, Character.AbilitySystem, *StandIn);
-		TestTrue(TEXT("eight worn: in the slot the real equip chose"), Result.Slot == ReallyWent);
-		if (TestEqual(TEXT("eight worn: one ring would come off"), Result.Replaced.Num(), 1))
-		{
-			TestEqual(TEXT("eight worn: the one the real equip takes off"), Result.Replaced[0].Residue,
-					  ReallyOff.Residue);
-		}
+		const FComparedAndEquipped Both = CompareAndEquip(Hovered, Character, Control, *StandIn);
+		TestTrue(TEXT("CONTROL: a real equip replaces Ring 3, the Quality ring"),
+				 Both.ReallyWent == ECataclysmGearSlot::Ring3);
+		TestEqual(TEXT("CONTROL: and takes off the ring marked 3"), Both.ReallyOff.Residue, 3.0f);
+
+		const FCataclysmComparisonResult& Result = Both.Result;
+		TestTrue(TEXT("eight worn: it is compared"), Result.bCompared);
+		TestTrue(TEXT("eight worn: in the slot the real equip chose"), Result.Slot == Both.ReallyWent);
+		TestFalse(TEXT("eight worn: not with Ring 1's Masterful ring"), Result.Slot == ECataclysmGearSlot::Ring1);
+		TestEqual(TEXT("eight worn: the ring that would come off is the one the real equip takes off"),
+				  ReplacedMarkOf(Result), Both.ReallyOff.Residue);
+		// BY THE NAME THE HEADING CALLS A PIECE (`UCataclysmForge::NameOf`), checked first to tell the two rings apart.
+		const FString QualityName = UCataclysmForge::NameOf(Worn[2], UCataclysmItemModifiers::LoadBaseTable(),
+															UCataclysmDropRoll::LoadAffixTable());
+		TestNotEqual(TEXT("CONTROL: the Quality ring and Ring 1's Masterful ring have different names"), QualityName,
+					 UCataclysmForge::NameOf(Worn[0], UCataclysmItemModifiers::LoadBaseTable(),
+											 UCataclysmDropRoll::LoadAffixTable()));
+		TestEqual(TEXT("eight worn: the heading names the Quality ring"), HeadingOf(Result),
+				  FString::Printf(TEXT("If worn, in place of %s:"), *QualityName));
+
+		// AND THE TOOLTIP BOTH HOVERS DRAW, the bag's and the ground's (`TooltipColumnsFor`, issue #2807): the worn
+		// column is the Quality ring's own tooltip.
+		FCataclysmCarriedSlot AsCarried;
+		AsCarried.Item = Hovered;
+		FString Left;
+		FString Right;
+		const bool bCompared = UCataclysmItemComparison::TooltipColumnsFor(
+			AsCarried, Character.Equipment, Character.AbilitySystem, StandIn, /*WornNow=*/nullptr,
+			UCataclysmItemModifiers::LoadBaseTable(), UCataclysmDropRoll::LoadAffixTable(),
+			UCataclysmDropRoll::LoadCraftingMaterialTable(), UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+			UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Left, Right);
+		TestTrue(TEXT("eight worn: the hover's tooltip compares it"), bCompared);
+		TestEqual(TEXT("eight worn: and its worn column is the Quality ring's own tooltip"), Right,
+				  FString(TEXT("Worn now:\n")) + OwnLinesOf(Worn[2]));
+
+		AddInfo(FString::Printf(TEXT("RING SAME RARITY: compared with %s, really replaced %s, mark %.0f"),
+								*UCataclysmGearSlots::DisplayName(Result.Slot),
+								*UCataclysmGearSlots::DisplayName(Both.ReallyWent), Both.ReallyOff.Residue));
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Among rings of its own rarity, the one with the lowest Power Score
+// ---------------------------------------------------------------------------
+
+/**
+ * Eight rings worn, three of them Quality: Ring 2 at +6, Ring 4 and Ring 6 at +2. A Quality ring hovered is compared
+ * with the lowest-scoring Quality ring, and of the two that tie, the lower slot: Ring 4. CONTROLS: the three Quality
+ * rings' Power Scores are as the set-up says, a socketed gem raises a ring's score (so the score, not the gear level
+ * alone, decides), and a real equip takes off the ring the comparison names. Prints "RING LOWEST SCORE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonRingLowestScore,
+	"Cataclysm.ItemComparison.ARingIsComparedWithTheLowestScoringRingOfItsOwnRarity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemComparisonRingLowestScore::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemComparisonTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmComparisonStandIn* StandIn = StandInFor(*this, World);
+	if (!StandIn)
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmItem> Worn = {
+		RingOf(ECataclysmRarity::Masterful, 0, 1.0f), RingOf(ECataclysmRarity::Quality, 6, 2.0f),
+		RingOf(ECataclysmRarity::Superb, 0, 3.0f), RingOf(ECataclysmRarity::Quality, 2, 4.0f),
+		RingOf(ECataclysmRarity::Everyday, 0, 5.0f), RingOf(ECataclysmRarity::Quality, 2, 6.0f),
+		RingOf(ECataclysmRarity::Superb, 0, 7.0f), RingOf(ECataclysmRarity::Masterful, 0, 8.0f)};
+
+	// CONTROLS ON THE SCORE ITSELF: the +6 Quality ring scores more than the two +2 ones, which tie; and a gem in a
+	// socket raises a ring's score at the same gear level.
+	const float ScoreAtSix = UCataclysmPowerScore::WornPieceScoreOf(Worn[1], ECataclysmGearSlot::Ring2);
+	const float ScoreAtTwo = UCataclysmPowerScore::WornPieceScoreOf(Worn[3], ECataclysmGearSlot::Ring4);
+	const float ScoreAtTwoToo = UCataclysmPowerScore::WornPieceScoreOf(Worn[5], ECataclysmGearSlot::Ring6);
+	TestTrue(TEXT("CONTROL: a Quality ring at +6 scores more than one at +2"), ScoreAtSix > ScoreAtTwo);
+	TestEqual(TEXT("CONTROL: the two Quality rings at +2 score the same"), ScoreAtTwoToo, ScoreAtTwo);
+	FCataclysmItem Gemmed = Worn[3];
+	FCataclysmSocket Socket;
+	Socket.Gem = FName(TEXT("Gem_Of_The_Viper"));
+	Socket.GemRarity = ECataclysmRarity::Everyday;
+	Gemmed.Sockets.Add(Socket);
+	TestTrue(TEXT("CONTROL: a socketed gem raises a ring's score"),
+			 UCataclysmPowerScore::WornPieceScoreOf(Gemmed, ECataclysmGearSlot::Ring4) > ScoreAtTwo);
+	TestEqual(TEXT("CONTROL: a ring with no rarity scores nothing, as the character's score counts it"),
+			  UCataclysmPowerScore::WornPieceScoreOf(PlainOf(RingBase, 10), ECataclysmGearSlot::Ring4), 0.0f);
+
+	FComparedCharacter Character(World);
+	FComparedCharacter Control(World);
+	if (!WearRingsInOrder(*this, Character, Worn) || !WearRingsInOrder(*this, Control, Worn))
+	{
+		return false;
+	}
+
+	const FCataclysmItem Hovered = RingOf(ECataclysmRarity::Quality, 0, 99.0f);
+	const FComparedAndEquipped Both = CompareAndEquip(Hovered, Character, Control, *StandIn);
+	TestTrue(TEXT("CONTROL: a real equip replaces Ring 4"), Both.ReallyWent == ECataclysmGearSlot::Ring4);
+	TestEqual(TEXT("CONTROL: and takes off the ring marked 4"), Both.ReallyOff.Residue, 4.0f);
+
+	const FCataclysmComparisonResult& Result = Both.Result;
+	TestTrue(TEXT("it is compared"), Result.bCompared);
+	TestTrue(TEXT("**with the lowest-scoring Quality ring, the lower slot of the two that tie: Ring 4**"),
+			 Result.Slot == ECataclysmGearSlot::Ring4);
+	TestTrue(TEXT("in the slot the real equip chose"), Result.Slot == Both.ReallyWent);
+	TestEqual(TEXT("and the ring that would come off is the one the real equip takes off"), ReplacedMarkOf(Result),
+			  Both.ReallyOff.Residue);
+
+	AddInfo(FString::Printf(TEXT("RING LOWEST SCORE: Quality +6 %.3f, +2 %.3f and %.3f; compared with %s, really "
+								 "replaced %s"),
+							ScoreAtSix, ScoreAtTwo, ScoreAtTwoToo, *UCataclysmGearSlots::DisplayName(Result.Slot),
+							*UCataclysmGearSlots::DisplayName(Both.ReallyWent)));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 2c. With no ring of its own rarity worn, the lowest rarity worn
+// ---------------------------------------------------------------------------
+
+/**
+ * Eight rings worn and none of them Quality: two Everyday rings, Ring 3 at +3 and Ring 6 at +1, are the lowest rarity
+ * worn -- the loot filter's reference -- and the rest are Superb and Masterful. A Quality ring hovered is compared with
+ * the lower-scoring Everyday ring, Ring 6. CONTROL: a real equip takes off the same ring. Prints "RING LOWEST RARITY".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonRingLowestRarity,
+	"Cataclysm.ItemComparison.ARingOfARarityNotWornIsComparedWithTheLowestRarityWorn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemComparisonRingLowestRarity::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemComparisonTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmComparisonStandIn* StandIn = StandInFor(*this, World);
+	if (!StandIn)
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmItem> Worn = {
+		RingOf(ECataclysmRarity::Masterful, 0, 1.0f), RingOf(ECataclysmRarity::Masterful, 0, 2.0f),
+		RingOf(ECataclysmRarity::Everyday, 3, 3.0f), RingOf(ECataclysmRarity::Masterful, 0, 4.0f),
+		RingOf(ECataclysmRarity::Superb, 0, 5.0f), RingOf(ECataclysmRarity::Everyday, 1, 6.0f),
+		RingOf(ECataclysmRarity::Superb, 0, 7.0f), RingOf(ECataclysmRarity::Masterful, 0, 8.0f)};
+	int32 QualityWorn = 0;
+	for (const FCataclysmItem& Ring : Worn)
+	{
+		QualityWorn += IsOfRarity(Ring, ECataclysmRarity::Quality) ? 1 : 0;
+	}
+	TestEqual(TEXT("set-up: no Quality ring is worn"), QualityWorn, 0);
+
+	FComparedCharacter Character(World);
+	FComparedCharacter Control(World);
+	if (!WearRingsInOrder(*this, Character, Worn) || !WearRingsInOrder(*this, Control, Worn))
+	{
+		return false;
+	}
+
+	const FCataclysmItem Hovered = RingOf(ECataclysmRarity::Quality, 0, 99.0f);
+	const FComparedAndEquipped Both = CompareAndEquip(Hovered, Character, Control, *StandIn);
+	TestTrue(TEXT("CONTROL: a real equip replaces Ring 6"), Both.ReallyWent == ECataclysmGearSlot::Ring6);
+	TestEqual(TEXT("CONTROL: and takes off the ring marked 6"), Both.ReallyOff.Residue, 6.0f);
+
+	const FCataclysmComparisonResult& Result = Both.Result;
+	TestTrue(TEXT("it is compared"), Result.bCompared);
+	TestTrue(TEXT("**with the lower-scoring of the two Everyday rings, the lowest rarity worn: Ring 6**"),
+			 Result.Slot == ECataclysmGearSlot::Ring6);
+	TestTrue(TEXT("in the slot the real equip chose"), Result.Slot == Both.ReallyWent);
+	TestEqual(TEXT("and the ring that would come off is the one the real equip takes off"), ReplacedMarkOf(Result),
+			  Both.ReallyOff.Residue);
+
+	AddInfo(FString::Printf(TEXT("RING LOWEST RARITY: compared with %s, really replaced %s, mark %.0f"),
+							*UCataclysmGearSlots::DisplayName(Result.Slot),
+							*UCataclysmGearSlots::DisplayName(Both.ReallyWent), Both.ReallyOff.Residue));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 2d. Weapons, as rings: the hand of its own rarity, else the lower hand
+// ---------------------------------------------------------------------------
+
+/**
+ * A Quality sword in Weapon 1 and a Masterful dagger in Weapon 2. A Masterful axe hovered is compared with the dagger,
+ * the hand of its own rarity; a Superb axe, whose rarity neither hand holds, with the sword, the lower of the two
+ * hands. Until the owner's report of 2026-11-24 both were compared with Weapon 1. CONTROL: a real equip of each takes
+ * off the same weapon. Prints "WEAPON HANDS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmItemComparisonWeaponHands,
+	"Cataclysm.ItemComparison.AWeaponIsComparedWithTheHandOfItsOwnRarityElseTheLowerHand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmItemComparisonWeaponHands::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmItemComparisonTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmComparisonStandIn* StandIn = StandInFor(*this, World);
+	if (!StandIn)
+	{
+		return false;
+	}
+
+	const FCataclysmItem Sword = OfRarity(SwordBase, WeaponAffixRows, ECataclysmRarity::Quality, 0, 1.0f);
+	const FCataclysmItem Dagger = OfRarity(DaggerBase, WeaponAffixRows, ECataclysmRarity::Masterful, 0, 2.0f);
+	const TCHAR* AxeBase = TEXT("Weapon_Axe");
+	struct FHandCase
+	{
+		const TCHAR* Name;
+		FCataclysmItem Hovered;
+		ECataclysmGearSlot Expected;
+		float ExpectedMark;
+	};
+	const FHandCase Cases[] = {
+		{TEXT("a Masterful axe, the dagger's rarity"),
+		 OfRarity(AxeBase, WeaponAffixRows, ECataclysmRarity::Masterful, 0, 99.0f), ECataclysmGearSlot::Weapon2, 2.0f},
+		{TEXT("a Superb axe, which neither hand holds"),
+		 OfRarity(AxeBase, WeaponAffixRows, ECataclysmRarity::Superb, 0, 99.0f), ECataclysmGearSlot::Weapon1, 1.0f},
+	};
+
+	FString Said;
+	for (const FHandCase& Case : Cases)
+	{
+		FComparedCharacter Character(World);
+		FComparedCharacter Control(World);
+		const bool bDressed = Character.Wear(Sword) == ECataclysmGearSlot::Weapon1
+			&& Character.Wear(Dagger) == ECataclysmGearSlot::Weapon2
+			&& Control.Wear(Sword) == ECataclysmGearSlot::Weapon1
+			&& Control.Wear(Dagger) == ECataclysmGearSlot::Weapon2;
+		if (!TestTrue(TEXT("set-up: the sword in Weapon 1 and the dagger in Weapon 2"), bDressed))
+		{
+			return false;
+		}
+
+		const FComparedAndEquipped Both = CompareAndEquip(Case.Hovered, Character, Control, *StandIn);
+		TestTrue(FString::Printf(TEXT("CONTROL: %s: a real equip replaces the expected hand"), Case.Name),
+				 Both.ReallyWent == Case.Expected);
+		TestEqual(FString::Printf(TEXT("CONTROL: %s: and takes off the expected weapon"), Case.Name),
+				  Both.ReallyOff.Residue, Case.ExpectedMark);
+
+		const FCataclysmComparisonResult& Result = Both.Result;
+		TestTrue(FString::Printf(TEXT("%s: it is compared"), Case.Name), Result.bCompared);
+		TestTrue(FString::Printf(TEXT("**%s: in the expected hand**"), Case.Name), Result.Slot == Case.Expected);
+		TestEqual(FString::Printf(TEXT("%s: and the weapon that would come off is the one the real equip takes off"),
+								  Case.Name),
+				  ReplacedMarkOf(Result), Both.ReallyOff.Residue);
+		Said += FString::Printf(TEXT("%s: compared with %s; "), Case.Name,
+								*UCataclysmGearSlots::DisplayName(Result.Slot));
+	}
+
+	AddInfo(TEXT("WEAPON HANDS: ") + Said);
 	return true;
 }
 
