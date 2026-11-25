@@ -14,6 +14,8 @@
 // For marking a cursed creature so its curse passes on when it dies.
 // The Wand's Anathema. Issue #37.
 #include "AbilitySystem/CataclysmCurseSpread.h"
+// For a curse under which the dying rise. Issue #2885, N5.
+#include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1342,6 +1344,15 @@ int32 UCataclysmSkillTemplate::NoteKill(AActor* Killer)
 			Buff->NoteKill();
 			++Told;
 		}
+		// AND A FLICKER COUNTING THE DEATHS DURING IT, the second listener. Issue #2885, the Death draft's N6 and N10,
+		// slice DS3: the Sword's Danse Macabre, "every enemy that dies during the dance gives you 5 Fervour and adds half
+		// a second to it". Counted only when it took the death into account, so a move that counts nothing tells
+		// nobody; every self buff is still counted as before, whether or not it counts kills.
+		else if (UCataclysmMovementSkill* Move =
+					 Cast<UCataclysmMovementSkill>(Spec.GetPrimaryInstance()))
+		{
+			Told += Move->NoteADeathWhileItRuns() ? 1 : 0;
+		}
 	}
 
 	return Told;
@@ -1846,6 +1857,15 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 			Mark->SkillName = SkillName;
 			Mark->Curses = Laying;
 		}
+	}
+
+	// AND A CREATURE THAT DIES UNDER IT RISES FOR ITS CASTER, IF THE ROW SAYS SO. Issue #2885, the Death draft's N5,
+	// slice DS3: the Greataxe's Death Rattle, "any that dies while it rattles rises at once as a husk, the same husk
+	// Shallow Graves raises", written as `OnDeath=Rise; RisesAs=Husk`. Marked only when something was laid, as the
+	// spreading curse above is; what rises is read from the Summon row of this skill's damage type that raises the kind.
+	if (Applied > 0 && !Params.RisesAs.IsEmpty() && Params.OnDeath.Equals(TEXT("Rise"), ESearchCase::IgnoreCase))
+	{
+		UCataclysmRisingCurse::MarkOn(Target, Self, Params.RisesAs, Type.ToString(), Laying);
 	}
 
 	return Applied;

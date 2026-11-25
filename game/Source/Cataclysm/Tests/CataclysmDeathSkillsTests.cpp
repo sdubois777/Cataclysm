@@ -9,10 +9,12 @@
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmProjectile.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -2677,14 +2679,15 @@ bool FCataclysmDeathSkillsStrikeScalesByFervourTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
 	const TCHAR* const Scaling = TEXT("Radius=3; Angle=360; MoreDamagePer=0.5; ScalingSource=Fervour; MaxDamagePercent=320");
-	const auto LostAt = [World](float Fervour, const TCHAR* Cell, float AcrossMetres) -> float
+	const auto LostAt = [World](float HeldFervour, const TCHAR* SwingCell, float AcrossMetres) -> float
 	{
 		FDeathSkillFighter Swinger(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
 		FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f),
 								   ECataclysmTeam::Monsters);
-		DeathSkillSetFervour(Swinger.Actor, Fervour);
+		DeathSkillSetFervour(Swinger.Actor, HeldFervour);
 		UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
-			Swinger.AbilitySystem, Swinger.Actor, ECataclysmAbilitySlot::Heavy, Cell, TEXT("A swing scaling by Fervour"));
+			Swinger.AbilitySystem, Swinger.Actor, ECataclysmAbilitySlot::Heavy, SwingCell,
+			TEXT("A swing scaling by Fervour"));
 		if (!Swing)
 		{
 			return -1.0f;
@@ -2822,6 +2825,274 @@ bool FCataclysmDeathSkillsBuffHoldsFervourTest::RunTest(const FString&)
 	TestFalse(TEXT("cancelled, it holds nothing"), UCataclysmSkillTemplate::ARunningBuffHoldsFervour(Holder.Actor));
 	UCataclysmFervour::DecayStep(Holder.Actor, 1.0f);
 	TestEqual(TEXT("and the next step takes 5 again"), DeathSkillFervourOf(Holder.Actor), 40.0f, DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS3, change B. N10: a flicker its deaths lengthen, re-gathering its circle. N5: a curse under which the dying
+// rise.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsFlickerLengthenedByDeathsTest,
+	"Cataclysm.DeathSkills.AFlickerItsDeathsLengthenGainsHalfASecondAndItsFervourForEachDeathToItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N10 and N6 on a flicker (`UCataclysmMovementSkill::NoteADeathWhileItRuns`, told by `UCataclysmSkillTemplate::NoteKill`
+ * as Butcher's Heat is): a flicker stating `Duration=4; Untargetable=1; DurationPer=0.5; ScalingSource=Kill;
+ * MaxDuration=5; KillFervour=5` -- Danse Macabre's cell under a ceiling of 5 so it is reached in two -- runs 4 s and
+ * leaves its caster untargetable for 4. Each death it is told of pays 5 Fervour and adds half a second, the dance and
+ * the untargetability alike: 4.5, then 5; a third death pays 5 and adds nothing, the ceiling reached. THE CONTROL, 100 m
+ * along +Y: a flicker stating none of the keys (Everywhere at Once's shape) is not told, runs its 4 s, and pays nothing.
+ */
+bool FCataclysmDeathSkillsFlickerLengthenedByDeathsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTag Untargetable = UCataclysmSkillEffects::UntargetableTag();
+	FDeathSkillFighter Dancer(World, FVector::ZeroVector);
+	FDeathSkillFighter Partner(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f));
+	DeathSkillSetFervour(Dancer.Actor, 0.0f);
+	UCataclysmMovementSkill* Dance = GrantDeathSkill<UCataclysmMovementSkill>(
+		Dancer.AbilitySystem, Dancer.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33; Untargetable=1; DurationPer=0.5; ScalingSource=Kill; "
+			 "MaxDuration=5; KillFervour=5"),
+		TEXT("A dance its deaths lengthen"));
+	if (!TestTrue(TEXT("set-up: the untargetable tag"), Untargetable.IsValid())
+		|| !TestNotNull(TEXT("set-up: the flicker is granted"), Dance)
+		|| !TestTrue(TEXT("the dance begins"), ActivateDeathSkill(Dancer.AbilitySystem, Dance)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it runs 4 s"), Dance->FlickerSecondsInAll, 4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and its dancer is untargetable for 4"), DeathSkillSecondsLeft(Dancer.Actor, Untargetable), 4.0f,
+			  DeathSkillAllowance);
+
+	TestEqual(TEXT("a death is told to the running dance"), UCataclysmSkillTemplate::NoteKill(Dancer.Actor), 1);
+	TestEqual(TEXT("it pays 5 Fervour"), DeathSkillFervourOf(Dancer.Actor), 5.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and adds half a second: 4.5"), Dance->FlickerSecondsInAll, 4.5f, DeathSkillAllowance);
+	TestEqual(TEXT("and the untargetability with it"), DeathSkillSecondsLeft(Dancer.Actor, Untargetable), 4.5f,
+			  DeathSkillAllowance);
+
+	UCataclysmSkillTemplate::NoteKill(Dancer.Actor);
+	TestEqual(TEXT("a second death pays 5 more"), DeathSkillFervourOf(Dancer.Actor), 10.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and reaches the ceiling of 5 s"), Dance->FlickerSecondsInAll, 5.0f, DeathSkillAllowance);
+
+	UCataclysmSkillTemplate::NoteKill(Dancer.Actor);
+	TestEqual(TEXT("a third pays 5 more, the ceiling being on the time alone"), DeathSkillFervourOf(Dancer.Actor), 15.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and adds nothing past the ceiling"), Dance->FlickerSecondsInAll, 5.0f, DeathSkillAllowance);
+	TestEqual(TEXT("three deaths were heard"), Dance->DeathsDuringTheFlicker, 3);
+
+	// THE CONTROL: a flicker stating none of the keys.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillFighter PlainPartner(World, FVector(3.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSetFervour(Plain.Actor, 0.0f);
+	UCataclysmMovementSkill* PlainDance = GrantDeathSkill<UCataclysmMovementSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33; Untargetable=1"), TEXT("A plain flicker"));
+	if (!TestNotNull(TEXT("set-up: the control flicker is granted"), PlainDance)
+		|| !TestTrue(TEXT("set-up: the control flicker begins"), ActivateDeathSkill(Plain.AbilitySystem, PlainDance)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: a death is told to nothing"), UCataclysmSkillTemplate::NoteKill(Plain.Actor), 0);
+	TestEqual(TEXT("control: it runs its 4 s"), PlainDance->FlickerSecondsInAll, 4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("control: and pays nothing"), DeathSkillFervourOf(Plain.Actor), 0.0f, DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsFlickerGathersAFreshCircleTest,
+	"Cataclysm.DeathSkills.AFlickerItsDeathsLengthenGathersAFreshCircleOnceItsFirstHasFallen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N10's "re-gathering its circle" (`UCataclysmMovementSkill::FlickerOnce`, `GatherAFreshCircle`): a flicker its deaths
+ * lengthen arrives at the one creature within its 10 m, 3 m along +X, which then dies; a second creature comes within
+ * reach afterwards, 6 m from where the dancer stands, and the next arrival gathers a fresh circle and strikes it. THE
+ * CONTROL, 100 m along +Y: a flicker stating none of the keys keeps the circle it gathered at the cast, and the next
+ * arrival, finding nobody standing in it, goes nowhere and strikes the newcomer not at all.
+ */
+bool FCataclysmDeathSkillsFlickerGathersAFreshCircleTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillFighter Dancer(World, FVector::ZeroVector);
+	FDeathSkillCreature First(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmMovementSkill* Dance = GrantDeathSkill<UCataclysmMovementSkill>(
+		Dancer.AbilitySystem, Dancer.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33; DurationPer=0.5; ScalingSource=Kill; MaxDuration=8"),
+		TEXT("A dance that moves on"));
+	if (!TestNotNull(TEXT("set-up: the flicker is granted"), Dance)
+		|| !TestTrue(TEXT("the dance begins"), ActivateDeathSkill(Dancer.AbilitySystem, Dance))
+		|| !TestEqual(TEXT("its first arrival is at the one creature in reach"), Dance->Arrivals, 1))
+	{
+		return false;
+	}
+	DeathSkillKillCreature(First);
+	FDeathSkillCreature Second(World, FVector(3.0f * DeathSkillMetre, 6.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+
+	Dance->FlickerOnce();
+	TestEqual(TEXT("with its circle fallen, the next arrival gathered a fresh one"), Dance->FreshCirclesGathered, 1);
+	TestEqual(TEXT("and arrived"), Dance->Arrivals, 2);
+	TestTrue(TEXT("at the newcomer, 6 m from where the dancer stood, and struck it"), DeathSkillHealthLost(Second) > 0.0f);
+
+	// THE CONTROL: a flicker stating none of the keys.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature PlainFirst(World, FVector(3.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								   ECataclysmTeam::Monsters);
+	UCataclysmMovementSkill* PlainDance = GrantDeathSkill<UCataclysmMovementSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Flicker; Range=10; Duration=4; Interval=0.33"), TEXT("A flicker that keeps its circle"));
+	if (!TestNotNull(TEXT("set-up: the control flicker is granted"), PlainDance)
+		|| !TestTrue(TEXT("set-up: the control flicker begins"), ActivateDeathSkill(Plain.AbilitySystem, PlainDance))
+		|| !TestEqual(TEXT("set-up: its first arrival"), PlainDance->Arrivals, 1))
+	{
+		return false;
+	}
+	DeathSkillKillCreature(PlainFirst);
+	FDeathSkillCreature PlainSecond(World, FVector(3.0f * DeathSkillMetre, 106.0f * DeathSkillMetre, 0.0f),
+									ECataclysmTeam::Monsters);
+	PlainDance->FlickerOnce();
+	TestEqual(TEXT("control: it gathers no fresh circle"), PlainDance->FreshCirclesGathered, 0);
+	TestEqual(TEXT("control: and makes no arrival"), PlainDance->Arrivals, 1);
+	TestEqual(TEXT("control: so the newcomer is untouched"), DeathSkillHealthLost(PlainSecond), 0.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRisingCurseTest,
+	"Cataclysm.DeathSkills.ACreatureDyingUnderARisingCurseRisesAsItsKindReadFromTheRowThatRaisesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * N5 (`UCataclysmRisingCurse`): a Death curse stating `Effect=Cripple; EffectMagnitude=20; OnDeath=Rise; RisesAs=Husk`
+ * -- Death Rattle's cell -- is laid on a creature 11 m off, and its death raises a husk where it fell, for the caster,
+ * read from Shallow Graves' row: lasting its 8 s, reserving its 3 Fervour, exploding and taunting within its 4 m, so the
+ * creature 2 m beyond, which the curse did not reach (13 m off), turns on it. THE CONTROLS: a creature under the same
+ * curse whose Cripple is cleansed before it dies raises nothing -- "while it rattles" -- and a creature under the same
+ * Cripple from a curse stating no `OnDeath=Rise` raises nothing.
+ *
+ * READS `DT_WeaponSkills` AND `DT_MinionTypes` for Shallow Graves and the Husk, which slice DS1 wrote; the set-up line
+ * says so when the table is older than the CSV.
+ */
+bool FCataclysmDeathSkillsRisingCurseTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCataclysmWeaponSkill Raiser;
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	const FGameplayTag Death = DeathSkillTagNamed(TEXT("Element.Death"));
+	if (!TestTrue(TEXT("set-up: a Death Summon row raises the Husk with a Duration. If not, DT_WeaponSkills is older "
+					   "than the CSV"), UCataclysmRisingCurse::FindTheRowThatRaises(TEXT("Death"), TEXT("Husk"), Raiser))
+		|| !TestEqual(TEXT("set-up: it is Shallow Graves"), Raiser.Name, FString(TEXT("Shallow Graves")))
+		|| !TestTrue(TEXT("set-up: the Cripple curse and the Death element"), Cripple.IsValid() && Death.IsValid()))
+	{
+		return false;
+	}
+
+	const TCHAR* const Rattle = TEXT("Range=12; Radius=5; MaxTargets=8; EffectDuration=8; Effect=Cripple; "
+									 "EffectMagnitude=20; OnDeath=Rise; RisesAs=Husk");
+	const auto GrantTheCurse = [](const FDeathSkillFighter& Cursing, const TCHAR* CurseCell, const TCHAR* CurseName)
+	{
+		UCataclysmDebuffSkill* Granted = GrantDeathSkill<UCataclysmDebuffSkill>(
+			Cursing.AbilitySystem, Cursing.Actor, ECataclysmAbilitySlot::Support, CurseCell, CurseName);
+		if (Granted)
+		{
+			// A DEATH CURSE, as its row's `Element.Death` tag makes it: the kind is read from a Death Summon row.
+			Granted->SkillTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Element.Death")), false));
+		}
+		return Granted;
+	};
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillCreature Rattled(World, FVector(11.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(13.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmDebuffSkill* Curse = GrantTheCurse(Caster, Rattle, TEXT("A rising curse"));
+	TArray<ACataclysmMinion*> Risen;
+	ON_SCOPE_EXIT { DeathSkillClear(Risen); };
+	if (!TestNotNull(TEXT("set-up: the curse is granted"), Curse)
+		|| !TestTrue(TEXT("the curse is laid"), ActivateDeathSkill(Caster.AbilitySystem, Curse))
+		|| !TestTrue(TEXT("on the creature 11 m off"), Rattled.AbilitySystem->HasMatchingGameplayTag(Cripple))
+		|| !TestFalse(TEXT("and not the one 13 m off, beyond its 12 m"), Beyond.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	const FVector DiedAt = Rattled.Actor->GetActorLocation();
+
+	DeathSkillKillCreature(Rattled);
+	Risen = UCataclysmCommand::MinionsOfTypeCommandedBy(Caster.Actor, TEXT("Husk"));
+	if (!TestEqual(TEXT("its death raised one husk for the caster. If none, DT_MinionTypes is older than the CSV"),
+				   Risen.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* Husk = Risen[0];
+	TestTrue(TEXT("where the creature fell"), FVector::Dist2D(Husk->GetActorLocation(), DiedAt) < 1.0f);
+	TestEqual(TEXT("lasting Shallow Graves' 8 s"), Husk->GetLifeSpan(), 8.0f, DeathSkillAllowance);
+	TestEqual(TEXT("reserving its 3 Fervour"), Husk->ReservedFervour, 3.0f, DeathSkillAllowance);
+	TestEqual(TEXT("taunting within its 4 m"), Husk->TauntRadiusCm, 4.0f * DeathSkillMetre, DeathSkillAllowance);
+	TestTrue(TEXT("so the creature 2 m beyond turns on it"), UCataclysmTaunt::TaunterOf(Beyond.Actor) == Husk);
+
+	// CONTROL: the same curse, cleansed before the death.
+	FDeathSkillCreature PlayersSideToo(World, FVector(0.0f, 300.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Lifter(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Lifter, PlayersSideToo);
+	FDeathSkillCreature Lifted(World, FVector(11.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	UCataclysmDebuffSkill* LiftedCurse = GrantTheCurse(Lifter, Rattle, TEXT("A rising curse lifted"));
+	if (!TestNotNull(TEXT("set-up: the control curse is granted"), LiftedCurse)
+		|| !TestTrue(TEXT("set-up: the control curse is laid"), ActivateDeathSkill(Lifter.AbilitySystem, LiftedCurse))
+		|| !TestTrue(TEXT("set-up: on the control creature"), Lifted.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	Lifted.AbilitySystem->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(Cripple));
+	DeathSkillKillCreature(Lifted);
+	TestEqual(TEXT("control: a creature whose curse was cleansed raises nothing"),
+			  UCataclysmCommand::MinionsOfTypeCommandedBy(Lifter.Actor, TEXT("Husk")).Num(), 0);
+
+	// CONTROL: the same Cripple from a curse stating no rise.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 200.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Plain, PlayersSideToo);
+	FDeathSkillCreature PlainCursed(World, FVector(11.0f * DeathSkillMetre, 200.0f * DeathSkillMetre, 0.0f),
+									ECataclysmTeam::Monsters);
+	UCataclysmDebuffSkill* PlainCurse = GrantTheCurse(
+		Plain, TEXT("Range=12; Radius=5; MaxTargets=8; EffectDuration=8; Effect=Cripple; EffectMagnitude=20"),
+		TEXT("A curse that raises nothing"));
+	if (!TestNotNull(TEXT("set-up: the plain curse is granted"), PlainCurse)
+		|| !TestTrue(TEXT("set-up: the plain curse is laid"), ActivateDeathSkill(Plain.AbilitySystem, PlainCurse))
+		|| !TestTrue(TEXT("set-up: on its creature"), PlainCursed.AbilitySystem->HasMatchingGameplayTag(Cripple)))
+	{
+		return false;
+	}
+	DeathSkillKillCreature(PlainCursed);
+	TestEqual(TEXT("control: a creature under a curse stating no rise raises nothing"),
+			  UCataclysmCommand::MinionsOfTypeCommandedBy(Plain.Actor, TEXT("Husk")).Num(), 0);
 	return true;
 }
 

@@ -352,6 +352,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	float DurationPer = 0.0f;
 
 	/**
+	 * The most a skill `DurationPer` lengthens may run in all, in seconds, or nought for no ceiling. `MaxDuration=8`,
+	 * the Death draft's N10, slice DS3: the Sword's Danse Macabre, "adds half a second to it, up to 8 seconds in all",
+	 * read by `UCataclysmMovementSkill::NoteADeathWhileItRuns`. The generator refuses it beside no `DurationPer` or
+	 * below the skill's own `Duration`. Butcher's Heat states none: "the bonus has no ceiling".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float MaxDuration = 0.0f;
+
+	/**
 	 * What the three keys above count, as written in the sheet.
 	 *
 	 * One of Kill, Burning, Second, Meter, HitTaken, Consume, Consumed, Bounce,
@@ -998,13 +1007,22 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 
 	// --- On death ----------------------------------------------------------
 
-	/** What happens when an affected enemy dies: Leap, SpreadDebuff or Release. */
+	/** What happens when an affected enemy dies: Leap, SpreadDebuff, Release or, since issue #2885 (N5), Rise. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	FString OnDeath;
 
 	/** Centimetres the on-death effect reaches for its next target. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float OnDeathRangeCm = 0.0f;
+
+	/**
+	 * The kind that rises from a creature dying under this curse, a Minion Types row, beside `OnDeath=Rise`; empty for
+	 * none. Issue #2885, the Death draft's N5, slice DS3: the Greataxe's Death Rattle, `RisesAs=Husk`, "rises at once as
+	 * a husk, the same husk Shallow Graves raises". Every figure of what rises is read from the Summon row of the curse's
+	 * damage type that raises the kind (`UCataclysmRisingCurse`); the generator refuses a kind no such row raises.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	FString RisesAs;
 
 	// --- Fervour a skill pays and holds (the Death skills, issue #2885) ----
 

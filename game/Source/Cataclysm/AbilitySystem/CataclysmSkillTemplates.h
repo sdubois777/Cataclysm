@@ -1394,6 +1394,39 @@ public:
 	int32 Arrivals = 0;
 
 	/**
+	 * Take one enemy death that happened while this flicker runs into account: pay the row's `KillFervour`, and lengthen
+	 * the flicker by its `DurationPer`, to its `MaxDuration` in all. Issue #2885, the Death draft's N6 and N10, slice
+	 * DS3: the Sword's Danse Macabre, "every enemy that dies during the dance gives you 5 Fervour and adds half a second
+	 * to it, up to 8 seconds in all".
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteKill`, which the enemy death path calls once per death, as Butcher's
+	 * Heat's `UCataclysmSelfBuffSkill::NoteKill` is: the precedent the draft names, so "every enemy that dies during the
+	 * dance" is every death the character is told of, whoever dealt it. Nothing for any move but a running flicker
+	 * stating `ScalingSource=Kill` (`UCataclysmKillFervour::CountsTheDeathsWhileItRuns`).
+	 *
+	 * THE UNTARGETABILITY IS LENGTHENED WITH IT, for a row stating `Untargetable=1`: "nothing can touch you between
+	 * arrivals" is the whole dance, however long it runs.
+	 *
+	 * Public so a test can drive it without killing anything.
+	 *
+	 * @return whether it was taken into account
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
+	bool NoteADeathWhileItRuns();
+
+	/** How long this flicker now runs in all, after any lengthening. Read by tests. Issue #2885, N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float FlickerSecondsInAll = 0.0f;
+
+	/** How many deaths this flicker has been told of while it runs. Read by tests. Issue #2885, N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 DeathsDuringTheFlicker = 0;
+
+	/** How many fresh circles a flicker lengthened by deaths has gathered since its first. Read by tests. N10. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 FreshCirclesGathered = 0;
+
+	/**
 	 * The creature a `Swap` traded places with, or null. Read by tests.
 	 *
 	 * THE STAFF'S VESSELSTEP IS THE ONE ROW: "trade places with a creature you
@@ -1558,6 +1591,19 @@ private:
 
 	/** Ends a flicker when its duration runs out. */
 	void FinishFlicker();
+
+	/**
+	 * Whether this is a flicker its deaths lengthen: `Mode=Flicker; ScalingSource=Kill` and a `DurationPer` above
+	 * nought. Issue #2885, N10, Danse Macabre. Such a flicker gathers a fresh circle when its last has fallen.
+	 */
+	bool LengthensWithDeaths() const;
+
+	/**
+	 * Gather a fresh circuit of every living enemy within the move's range of `Around`, nearest first, and start it from
+	 * its first. Issue #2885, N10: "re-gathering its circle", so a dance lengthened past the enemies it began among goes
+	 * on to the next within reach rather than standing still. @return whether anything was gathered
+	 */
+	bool GatherAFreshCircle(const FVector& Around);
 
 	/** What a worn row gives this skill for `RiderStat`, asked with the skill's own tags. Nought with no row. */
 	float WornRowStat(const TCHAR* RiderStat) const;

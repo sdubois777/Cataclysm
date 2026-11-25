@@ -737,6 +737,12 @@ public:
 	 * while it lasts grants 1% more damage and adds another second to the heat".
 	 * A buff whose `ScalingSource` is not `Kill` ignores it.
 	 *
+	 * AND A SECOND SINCE ISSUE #2885 SLICE DS3: the Sword's Danse Macabre, a
+	 * flicker stating `ScalingSource=Kill`, "every enemy that dies during the
+	 * dance gives you 5 Fervour and adds half a second to it"
+	 * (`UCataclysmMovementSkill::NoteADeathWhileItRuns`). A move counting nothing
+	 * is not told and not counted below.
+	 *
 	 * CALLED FROM `ACataclysmEnemyCharacter::HandleDeath`, beside the three
 	 * things a kill already does there -- granting experience, clearing a health
 	 * debt and building a Carnage stack. That file's comment already calls
@@ -748,7 +754,7 @@ public:
 	 * three and is not made worse here.
 	 *
 	 * @return how many running self buffs were told, whether or not each one
-	 *         counts kills
+	 *         counts kills, and how many running flickers took the death in
 	 */
 	static int32 NoteKill(AActor* Killer);
 

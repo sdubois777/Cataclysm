@@ -31,6 +31,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the Fervour a self buff scaling by it follows. Issue #2885, N7.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For which flicker counts the deaths during it. Issue #2885, N10.
+#include "AbilitySystem/CataclysmKillFervour.h"
 #include "AbilitySystem/CataclysmCommand.h"
 // For what a rack's spawn-less throw resolved to, and the Fervour it earns.
 // Issue #1515. `CataclysmSkillEffects.h` only declares the result.
@@ -3570,6 +3572,13 @@ void UCataclysmMovementSkill::ActivateAbility(
 		EnemiesHit = FlickerCircuit.Num();
 		ArrivedAt = Start;
 
+		// RESET ON EVERY CAST, as the self buff's kill tally is: one instance stands for every use of the skill. Issue
+		// #2885, N10: how long this dance runs in all, how many deaths it has heard of, and how many fresh circles it
+		// has gathered.
+		FlickerSecondsInAll = Params.Duration;
+		DeathsDuringTheFlicker = 0;
+		FreshCirclesGathered = 0;
+
 		// "NOTHING CAN TOUCH YOU BETWEEN ARRIVALS", FOR THE WHOLE DURATION. It
 		// is applied whether or not anything was found: the row pays for the
 		// four seconds of safety as much as for the blows, and a flicker cast
@@ -3963,7 +3972,7 @@ bool UCataclysmMovementSkill::HasMark() const
 void UCataclysmMovementSkill::FlickerOnce()
 {
 	AActor* Self = Avatar();
-	if (!Self || FlickerCircuit.Num() == 0)
+	if (!Self)
 	{
 		return;
 	}
@@ -3973,50 +3982,144 @@ void UCataclysmMovementSkill::FlickerOnce()
 	// safety and simply stops moving, which is why this returns quietly rather
 	// than ending the ability: the untargetability is half of what the row paid
 	// for.
-	const int32 Count = FlickerCircuit.Num();
-	for (int32 Tried = 0; Tried < Count; ++Tried)
+	//
+	// UNLESS ITS DEATHS LENGTHEN IT, WHEN A SECOND LAP GOES ROUND A FRESH CIRCLE. Issue #2885, the Death draft's N10,
+	// slice DS3: Danse Macabre, "re-gathering its circle". A dance its kills carry to 8 seconds would otherwise stand
+	// still once the enemies it began among have fallen; it gathers every living enemy within its range of where the
+	// caster now stands, once a lap has found nobody, and goes on. A judgement of slice DS3: once a circle is spent and
+	// not at each death, so the dance finishes a pack before it moves to the next. Every other flicker, Everywhere at
+	// Once among them, keeps the one circle it gathered at the cast, as before.
+	for (int32 Lap = 0; Lap < 2; ++Lap)
 	{
-		AActor* Next = FlickerCircuit[NextInCircuit].Get();
-		NextInCircuit = (NextInCircuit + 1) % Count;
-
-		if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+		const int32 Count = FlickerCircuit.Num();
+		for (int32 Tried = 0; Tried < Count; ++Tried)
 		{
-			continue;
+			AActor* Next = FlickerCircuit[NextInCircuit].Get();
+			NextInCircuit = (NextInCircuit + 1) % Count;
+
+			if (!IsValid(Next) || UCataclysmSkillEffects::IsDead(Next))
+			{
+				continue;
+			}
+
+			// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
+			// arrangement `ConditionalDestination` uses and for the same two
+			// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
+			// collision stops the caster short of it; and taking the creature's
+			// height would drop a character through the floor when it arrived at
+			// something standing lower.
+			const FVector Feet(Next->GetActorLocation().X,
+							   Next->GetActorLocation().Y,
+							   Self->GetActorLocation().Z);
+			const FVector SelfWas = Self->GetActorLocation();
+			UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
+			ArrivedAt = Self->GetActorLocation();
+
+			// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
+			UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
+			++Arrivals;
+
+			// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
+			// one blow at the one it arrived at, not a sweep of whatever is nearby.
+			//
+			// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
+			// `RearHits=1` is read in `HitTargets`, which is also where the burn
+			// rider fires, so both halves of "striking each from behind ... and
+			// setting them alight" are handled by the blow rather than here.
+			TArray<AActor*> One;
+			One.Add(Next);
+			HitScaled(One, TArray<AActor*>());
+
+			// AND THE ROW'S NAMED EFFECTS ON IT, as every arrival lays them. Issue #2885, N22.
+			LayTheRowsEffectsOn(One);
+
+			return;
 		}
 
-		// AT THE CREATURE'S FEET AND AT THE CASTER'S OWN HEIGHT, which is the
-		// arrangement `ConditionalDestination` uses and for the same two
-		// reasons: `SetActorLocation` sweeps, so aiming inside the creature's
-		// collision stops the caster short of it; and taking the creature's
-		// height would drop a character through the floor when it arrived at
-		// something standing lower.
-		const FVector Feet(Next->GetActorLocation().X,
-						   Next->GetActorLocation().Y,
-						   Self->GetActorLocation().Z);
-		const FVector SelfWas = Self->GetActorLocation();
-		UCataclysmMovement::MoveWithoutSticking(Self, Feet - Self->GetActorLocation());
-		ArrivedAt = Self->GetActorLocation();
-
-		// EACH ARRIVAL OF A FLICKER IS AN INSTANT RELOCATION. Issue #2388.
-		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
-		++Arrivals;
-
-		// ONE CREATURE PER ARRIVAL. "Striking each from behind as you arrive" is
-		// one blow at the one it arrived at, not a sweep of whatever is nearby.
-		//
-		// AND IT COUNTS AS A REAR HIT WITHOUT THIS FUNCTION SAYING SO. The row's
-		// `RearHits=1` is read in `HitTargets`, which is also where the burn
-		// rider fires, so both halves of "striking each from behind ... and
-		// setting them alight" are handled by the blow rather than here.
-		TArray<AActor*> One;
-		One.Add(Next);
-		HitScaled(One, TArray<AActor*>());
-
-		// AND THE ROW'S NAMED EFFECTS ON IT, as every arrival lays them. Issue #2885, N22.
-		LayTheRowsEffectsOn(One);
-
-		return;
+		// NOBODY STANDING IN THIS CIRCLE. A second lap round a fresh one, for a flicker its deaths lengthen; for every
+		// other flicker, or when the fresh circle is empty too, it stands where it is. Issue #2885, N10.
+		if (Lap > 0 || !LengthensWithDeaths() || !GatherAFreshCircle(Self->GetActorLocation()))
+		{
+			return;
+		}
 	}
+}
+
+bool UCataclysmMovementSkill::LengthensWithDeaths() const
+{
+	return Params.DurationPer > 0.0f && UCataclysmKillFervour::CountsTheDeathsWhileItRuns(Params);
+}
+
+bool UCataclysmMovementSkill::GatherAFreshCircle(const FVector& Around)
+{
+	FlickerCircuit.Reset();
+	NextInCircuit = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Avatar(), Around, ScaledRangeCm(), Params.MaxTargets))
+	{
+		if (!UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			FlickerCircuit.Add(Enemy);
+		}
+	}
+	if (FlickerCircuit.IsEmpty())
+	{
+		return false;
+	}
+
+	++FreshCirclesGathered;
+	EnemiesHit += FlickerCircuit.Num();
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("'%s' gathered a fresh circle of %d enemies, its last having fallen."), *SkillName, FlickerCircuit.Num());
+	return true;
+}
+
+bool UCataclysmMovementSkill::NoteADeathWhileItRuns()
+{
+	if (!IsActive() || Params.MovementMode != ECataclysmMovementMode::Flicker
+		|| !UCataclysmKillFervour::CountsTheDeathsWhileItRuns(Params))
+	{
+		// Every move but a running flicker counting deaths: Danse Macabre's alone.
+		return false;
+	}
+
+	++DeathsDuringTheFlicker;
+	AActor* Self = Avatar();
+
+	// "EVERY ENEMY THAT DIES DURING THE DANCE GIVES YOU 5 FERVOUR." Issue #2885, the Death draft's N6, slice DS3: paid
+	// for every death heard of while it runs, whether or not the dance's ceiling has been reached.
+	if (Params.KillFervour > 0.0f && Self)
+	{
+		UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Self), Params.KillFervour);
+	}
+
+	// "AND ADDS HALF A SECOND TO IT, UP TO 8 SECONDS IN ALL." Issue #2885, N10. The stop timer is reset to what is left
+	// plus what is added, as Butcher's Heat lengthens its own, since a timer manager cannot add to a running timer. What
+	// is added stops at the ceiling; a flicker already finishing is not brought back.
+	UWorld* World = GetWorld();
+	const float Ceiling = Params.MaxDuration > 0.0f ? Params.MaxDuration : TNumericLimits<float>::Max();
+	const float Added = FMath::Min(Params.DurationPer, Ceiling - FlickerSecondsInAll);
+	if (!World || Added <= 0.0f)
+	{
+		return true;
+	}
+	const float Remaining = World->GetTimerManager().GetTimerRemaining(StopTimer);
+	if (Remaining <= 0.0f)
+	{
+		return true;
+	}
+
+	FlickerSecondsInAll += Added;
+	World->GetTimerManager().SetTimer(
+		StopTimer, this, &UCataclysmMovementSkill::FinishFlicker, Remaining + Added, /*bLoop=*/false);
+
+	// AND NOTHING CAN TOUCH THE DANCER FOR THE LONGER DANCE. The tag is refreshed to the longer length, which a refresh
+	// of a running application allows (`ApplyTagForDuration`).
+	if (Params.bUntargetable && Self)
+	{
+		UCataclysmSkillEffects::ApplyUntargetable(Self, Self, Remaining + Added);
+	}
+	return true;
 }
 
 const UCataclysmMovementSkill* UCataclysmMovementSkill::RunningAdvanceOn(

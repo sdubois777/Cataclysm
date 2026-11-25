@@ -227,3 +227,91 @@ def test_scaling_by_the_fervour_held_on_a_shape_that_does_not_read_it_is_refused
 def test_holding_fervour_is_a_self_buffs_alone():
     assert parse("Duration=6; HoldsFervour=1", "SelfBuff")["HoldsFervour"] == "1"
     assert "has no parameter 'HoldsFervour'" in refused("Radius=3; Angle=90; HoldsFervour=1", "Strike")
+
+
+# --------------------------------------------------------------------------
+# Slice DS3: N10 a flicker its deaths lengthen, N5 a curse under which the dying rise
+
+DANSE_MACABRE = ("Mode=Flicker; Range=10; Duration=4; Interval=0.33; RearHits=1; Untargetable=1; "
+                 "DurationPer=0.5; ScalingSource=Kill; MaxDuration=8; KillFervour=5")
+
+
+def test_a_flicker_its_deaths_lengthen_is_accepted():
+    """Danse Macabre's cell, word for word."""
+    params = parse(DANSE_MACABRE, "Movement")
+    assert params["MaxDuration"] == "8" and params["DurationPer"] == "0.5" and params["ScalingSource"] == "Kill"
+
+
+@pytest.mark.parametrize("text, said", [
+    ("Mode=Charge; Range=12; Duration=1.5; Radius=2; DurationPer=0.5; ScalingSource=Kill", "not a flicker counting"),
+    ("Mode=Flicker; Range=10; Duration=4; Interval=0.33; DurationPer=0.5", "not a flicker counting"),
+    ("Mode=Flicker; Range=10; Duration=4; Interval=0.33; ScalingSource=Kill; MaxDuration=8", "nothing to cap"),
+    ("Mode=Flicker; Range=10; Duration=4; Interval=0.33; DurationPer=0.5; ScalingSource=Kill; MaxDuration=3",
+     "below the move's own Duration"),
+])
+def test_a_lengthening_a_move_would_not_read_is_refused(text, said):
+    assert said in refused(text, "Movement")
+
+
+def test_a_ceiling_is_a_moves_alone():
+    assert "has no parameter 'MaxDuration'" in refused("Radius=3; Angle=90; MaxDuration=8", "Strike")
+
+
+DEATH_RATTLE = ("Range=12; Radius=5; MaxTargets=8; EffectDuration=8; Effect=Cripple; EffectMagnitude=20; "
+                "OnDeath=Rise; RisesAs=Husk")
+
+
+def test_a_rising_curse_is_accepted_on_a_debuff():
+    """Death Rattle's cell, with the `RisesAs=Husk` slice DS3 adds to name the husk its sentence names."""
+    params = parse(DEATH_RATTLE, "Debuff")
+    assert params["OnDeath"] == "Rise" and params["RisesAs"] == "Husk"
+
+
+@pytest.mark.parametrize("shape, text, said", [
+    ("Strike", "Radius=3; Angle=90; Effect=Cripple; OnDeath=Rise", "only a Debuff"),
+    ("Debuff", "Range=12; Radius=5; Effect=Cripple; OnDeath=Rise", "no RisesAs"),
+    ("Debuff", "Range=12; Radius=5; Effect=Cripple; RisesAs=Husk", "not OnDeath=Rise"),
+    ("Debuff", "Range=12; Radius=5; Effect=Cripple; OnDeath=Rise; RisesAs=Two Husks", "not one Minion Types"),
+    ("Debuff", "Range=12; Radius=5; OnDeath=Rise; RisesAs=Husk", "no curse"),
+])
+def test_a_rising_curse_that_could_raise_nothing_is_refused(shape, text, said):
+    assert said in refused(text, shape)
+
+
+def rise_tables(*summons: tuple[str, str, str]) -> dict[str, list[dict]]:
+    """A weapon skill table with Death Rattle and the given Summon rows (name, damage type, cell), and the minion
+    table `validate_risen_kinds` reads."""
+    skills = [{"Name": "Death_Greataxe_Support", "DamageType": "Death", "Shape": "Debuff",
+               "ShapeParams": DEATH_RATTLE}]
+    skills += [{"Name": name, "DamageType": damage, "Shape": "Summon", "ShapeParams": cell}
+               for name, damage, cell in summons]
+    return {"WeaponSkills": skills, "MinionTypes": [{"Name": "Husk"}, {"Name": "Shade"}]}
+
+
+SHALLOW_GRAVES = "Range=10; Radius=4; Count=4; Duration=8; Minions=Husk:4; FervourReserve=3; Taunts=1"
+
+
+def test_a_risen_kind_one_summon_row_of_its_damage_type_raises_passes():
+    assert gen.validate_risen_kinds(rise_tables(("Death_Greataxe_Special", "Death", SHALLOW_GRAVES))) == []
+
+
+@pytest.mark.parametrize("summons, said", [
+    ((), "0 Death Summon rows"),
+    ((("Demonic_Staff_Special", "Demonic", SHALLOW_GRAVES),), "0 Death Summon rows"),
+    ((("Death_Greataxe_Special", "Death", "Range=10; Radius=4; Count=4; Minions=Husk:4; FervourReserve=3"),),
+     "0 Death Summon rows"),
+    ((("Death_Greataxe_Special", "Death", SHALLOW_GRAVES), ("Death_Staff_Special", "Death", SHALLOW_GRAVES)),
+     "2 Death Summon rows"),
+])
+def test_a_risen_kind_no_single_summon_row_of_its_damage_type_raises_is_refused(summons, said):
+    """None at all; one of another damage type; one with no Duration, which raises nothing that lasts a stated time;
+    and two, which would leave the engine choosing by table order."""
+    problems = gen.validate_risen_kinds(rise_tables(*summons))
+    assert len(problems) == 1 and said in problems[0], problems
+
+
+def test_a_risen_kind_the_minion_table_lacks_is_refused():
+    tables = rise_tables(("Death_Greataxe_Special", "Death", SHALLOW_GRAVES))
+    tables["WeaponSkills"][0]["ShapeParams"] = DEATH_RATTLE.replace("RisesAs=Husk", "RisesAs=Ghoul")
+    problems = gen.validate_risen_kinds(tables)
+    assert len(problems) == 1 and "no row in the Minion Types sheet" in problems[0], problems

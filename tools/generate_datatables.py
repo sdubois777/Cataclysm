@@ -437,7 +437,15 @@ FERVOUR_SCALING_SHAPES = frozenset({"Strike", "SelfBuff"})
 FORCED_MOVEMENTS = frozenset({"Knockdown", "Launch", "Pull", "Drag", "Pin"})
 TERRAIN_KINDS = frozenset({"Pit", "Wall", "Fissure", "Thicket"})
 REQUIREMENTS = frozenset({"Burning", "Target", "Stationary", "RearHit"})
-ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release"})
+#: `Rise` JOINED ON 2026-11-24, issue #2885 slice DS3: the Death draft's N5,
+#: the Greataxe's Death Rattle, "any that dies while it rattles rises at once
+#: as a husk, the same husk Shallow Graves raises". A Debuff's alone, beside
+#: `RisesAs=<kind>`, which `validate_risen_kinds` holds to a Summon row of the
+#: same damage type raising that kind.
+ON_DEATHS = frozenset({"Leap", "SpreadDebuff", "Release", "Rise"})
+
+#: How a `RisesAs` value is written: one Minion Types row's name.
+RISEN_KIND = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 
 #: What a skill may make its caster immune to while it runs.
 #:
@@ -545,7 +553,11 @@ TEXT_PARAM_VALUES = {
 #: Iron Fortress deploys two ballistae AND three spike traps, which no single
 #: key and value can say. Every type it names must exist in the Minion Types
 #: sheet, and `validate_minion_references` refuses one that does not.
-TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions"}
+#:
+#: `RisesAs` JOINED ON 2026-11-24, issue #2885 slice DS3, N5: the kind that
+#: rises from a creature dying under a curse, a Minion Types row's name, which
+#: `validate_risen_kinds` checks against the sheet as `Minions` is checked.
+TEXT_PARAMS = frozenset({"Mode", "Effect", "Minions", "RisesAs"}
                         | set(TEXT_PARAM_VALUES))
 
 #: How a `Minions` entry is written: `Imp:1`, or `Ballista:2, SpikeTrap:3`.
@@ -666,9 +678,11 @@ SHAPE_PARAMS = {
     # whose blows are struck elsewhere and do not detonate.
     #
     # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: Pale Rider's kills, and
-    # Danse Macabre's deaths during the dance.
+    # Danse Macabre's deaths during the dance. `MaxDuration` JOINED THE SAME
+    # DAY, N10: the ceiling on a flicker its deaths lengthen by `DurationPer`
+    # ("up to 8 seconds in all"); `check_death_skill_keys` says where.
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates", "KillFervour"},
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     #
     # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
@@ -715,9 +729,11 @@ SHAPE_PARAMS = {
     # `KillFervour` JOINED ON 2026-11-24, slice DS3, N6: the Sword's Death
     # Warrant, "if it dies while the warrant holds, you gain 10 Fervour". A
     # curse pays for a death it marks, so `check_death_skill_keys` asks for
-    # `OnDeath=SpreadDebuff` beside it.
+    # `OnDeath=SpreadDebuff` beside it. `RisesAs` JOINED THE SAME DAY, N5: the
+    # kind that rises from a creature dying under the curse, beside
+    # `OnDeath=Rise` (Death Rattle's husk).
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius", "KillFervour"},
+               "SpreadWhen", "SpreadRadius", "KillFervour", "RisesAs"},
 }
 
 #: The movement modes, and what each one is.
@@ -847,6 +863,74 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
                 f"A move detonates where its single arrival strikes, and this "
                 f"one's blows are struck step by step, so nothing would explode")
     check_kill_fervour_and_fervour_scaling(params, shape, where)
+    check_a_lengthened_flicker(params, shape, where)
+    check_a_rising_curse(params, shape, where)
+
+
+def check_a_lengthened_flicker(params: dict[str, str], shape: str,
+                               where: str) -> None:
+    """Refuse N10's keys on a move whose deaths would not lengthen it. Issue #2885, slice DS3.
+
+    `UCataclysmMovementSkill::NoteADeathWhileItRuns` lengthens a running
+    flicker that counts deaths -- `Mode=Flicker; ScalingSource=Kill` -- by its
+    `DurationPer`, to its `MaxDuration` in all: Danse Macabre. On any other
+    move `DurationPer` is read by nothing, and a ceiling with nothing to cap,
+    or one below the move's own duration, says something untrue.
+    """
+    if shape != "Movement":
+        return
+    lengthens = float(params.get("DurationPer", "0")) > 0.0
+    if lengthens and (params.get("Mode") != "Flicker" or params.get("ScalingSource") != "Kill"):
+        raise DataError(
+            f"{where}: a Movement states DurationPer={params['DurationPer']} "
+            f"and is not a flicker counting kills (Mode=Flicker; "
+            f"ScalingSource=Kill), the one move whose deaths lengthen it, so "
+            f"nothing would read it")
+    if "MaxDuration" in params:
+        ceiling = float(params["MaxDuration"])
+        if not lengthens:
+            raise DataError(
+                f"{where}: states MaxDuration={params['MaxDuration']} and no "
+                f"DurationPer above nought, so there is nothing to cap")
+        if ceiling < float(params.get("Duration", "0")):
+            raise DataError(
+                f"{where}: MaxDuration={params['MaxDuration']} is below the "
+                f"move's own Duration={params.get('Duration')}, so the ceiling "
+                f"would be lower than where it starts")
+
+
+def check_a_rising_curse(params: dict[str, str], shape: str,
+                         where: str) -> None:
+    """Refuse N5's `OnDeath=Rise` and `RisesAs` where nothing would rise. Issue #2885, slice DS3.
+
+    A Debuff's curse marks the creature it lands on
+    (`UCataclysmSkillTemplate::ApplyNamedEffectsTo`), and the creature rises
+    as `RisesAs` names if it dies while that curse holds. So the two keys go
+    together, on a Debuff, which names the curse in its `Effect`. Whether a
+    Summon row raises the kind is `validate_risen_kinds`'s to say, since it
+    needs the whole table.
+    """
+    rises = params.get("OnDeath") == "Rise"
+    if rises and shape != "Debuff":
+        raise DataError(
+            f"{where}: a {shape} states OnDeath=Rise, which only a Debuff's "
+            f"curse marks a creature for")
+    if rises and not (params.get("RisesAs") or "").strip():
+        raise DataError(
+            f"{where}: states OnDeath=Rise and no RisesAs, so it names no kind "
+            f"to rise")
+    if "RisesAs" in params and not rises:
+        raise DataError(
+            f"{where}: states RisesAs={params['RisesAs']} and not OnDeath=Rise, "
+            f"so nothing would rise")
+    if rises and not RISEN_KIND.match(params["RisesAs"].strip()):
+        raise DataError(
+            f"{where}: RisesAs={params['RisesAs']!r} is not one Minion Types "
+            f"row's name")
+    if rises and not (params.get("Effect") or "").strip():
+        raise DataError(
+            f"{where}: states OnDeath=Rise and names no Effect, so there is no "
+            f"curse for a creature to die under")
 
 
 def check_kill_fervour_and_fervour_scaling(params: dict[str, str], shape: str,
@@ -15352,6 +15436,59 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
+def validate_risen_kinds(tables: dict[str, list[dict]]) -> list[str]:
+    """A curse's `RisesAs` names a kind exactly one Summon row of its damage type raises. Issue #2885, N5.
+
+    WHAT RISES IS READ FROM THAT ROW: `UCataclysmRisingCurse::MarkOn` finds the
+    Summon row of the curse's damage type whose `Minions` names the kind, and
+    takes its `Duration`, `FervourReserve`, `Radius`, `Taunts` and `Burn` --
+    Death Rattle's husk is Shallow Graves' husk in every figure, which is what
+    its sentence says. So the kind must be a Minion Types row, and one such
+    Summon row must exist, with a `Duration` (a risen minion's lifetime) and
+    not possessing. Two would leave the engine choosing between them by table
+    order, so two are refused too. A row with no shape raises nothing, so a
+    Summon row still waiting on code -- Grave Mouth, before N12 -- does not
+    count, and Soul Snare's wisp waits with it.
+    """
+    skills = tables.get("WeaponSkills")
+    types = tables.get("MinionTypes")
+    if not skills or not types:
+        return []
+
+    known = {row["Name"] for row in types}
+    raisers: dict[tuple[str, str], list[str]] = {}
+    for row in skills:
+        if row["Shape"] != "Summon" or not row["ShapeParams"]:
+            continue
+        params = parse_shape_params(row["ShapeParams"], "Summon", f"WeaponSkills/{row['Name']}")
+        if is_on(params, "Possess") or float(params.get("Duration", "0")) <= 0.0 or not params.get("Minions"):
+            continue
+        for kind in parse_minions(params["Minions"], f"WeaponSkills/{row['Name']}"):
+            raisers.setdefault((row["DamageType"], kind), []).append(row["Name"])
+
+    problems = []
+    for row in skills:
+        if not row["Shape"] or not row["ShapeParams"]:
+            continue
+        where = f"WeaponSkills/{row['Name']}"
+        params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
+        if params.get("OnDeath") != "Rise":
+            continue
+        kind = params.get("RisesAs", "").strip()
+        if kind not in known:
+            problems.append(
+                f"{where}: RisesAs={kind!r}, which has no row in the Minion "
+                f"Types sheet. It reads {sorted(known)}.")
+            continue
+        found = raisers.get((row["DamageType"], kind), [])
+        if len(found) != 1:
+            problems.append(
+                f"{where}: RisesAs={kind}, and {len(found)} {row['DamageType']} "
+                f"Summon rows with a Duration raise it ({found}); what rises is "
+                f"read from exactly one, so one must exist and no second.")
+    return problems
+
+
 def refuse_a_count_cap_on_a_summon(tables: dict[str, list[dict]]) -> list[str]:
     """A Summon row states no `MaxActive` unless it states an `Interval` too.
 
@@ -15820,6 +15957,7 @@ def main(argv: list[str] | None = None) -> int:
                 + validate_weapon_tags(tables, declared_tags(book))
                 + validate_skill_effects(tables)
                 + validate_minion_references(tables)
+                + validate_risen_kinds(tables)
                 + refuse_a_count_cap_on_a_summon(tables)
                 + validate_targeted_shapes_state_a_radius(tables)
                 + validate_hybrid_parts(tables)

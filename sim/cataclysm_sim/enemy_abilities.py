@@ -110,8 +110,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # charges have no way to differ. No enemy ability states it yet.
     # `Detonates` joined on 2026-11-24 (issue #2885, N3): Barrow Leap, Open Grave
     # and Grave Return. No enemy ability uses it.
+    # `MaxDuration` joined with slice DS3 (N10, Danse Macabre). No enemy ability
+    # uses it.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates", "KillFervour"),
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration"),
     # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
     # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.
@@ -133,8 +135,9 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # Wand's Hex of Cinders. No enemy ability states either yet.
     # `KillFervour` joined on 2026-11-24 with slice DS3 (N6), for the Sword's
     # Death Warrant. No enemy ability states it.
+    # `RisesAs` joined the same day (N5, Death Rattle). No enemy ability uses it.
     "Debuff": ("Range", "Radius", "MaxTargets", "Duration",
-               "SpreadWhen", "SpreadRadius", "KillFervour"),
+               "SpreadWhen", "SpreadRadius", "KillFervour", "RisesAs"),
 }
 
 #: Riders any shape may carry, from the same section of the design document.

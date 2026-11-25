@@ -234,6 +234,8 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 			// AND TWO MORE ON 2026-11-17 FOR THE STALKER'S KITS, issue #2580: an ailment's name and a pick. Each would
 			// otherwise go through Atof and take the whole cell down, as `Minions` did on #622.
 			TEXT("Ailment"), TEXT("EffectPick"),
+			// AND ONE ON 2026-11-24 FOR THE DEATH SKILLS, issue #2885 slice DS3, N5: the kind that rises, a name.
+			TEXT("RisesAs"),
 		};
 		bool bIsNumber = true;
 		for (const TCHAR* const TextKey : TextKeys)
@@ -396,6 +398,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.DurationPer = Number;
 		}
+		// The Death draft's N10, issue #2885 slice DS3: the ceiling on a flicker its deaths lengthen.
+		else if (Key.Equals(TEXT("MaxDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.MaxDuration = Number;
+		}
 		else if (Key.Equals(TEXT("ScalingSource"), ESearchCase::IgnoreCase))
 		{
 			// Not checked against the closed list here, for the same reason
@@ -536,6 +543,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("OnDeathRange"), ESearchCase::IgnoreCase))
 		{
 			Params.OnDeathRangeCm = Number * ToCm;
+		}
+		// The Death draft's N5, issue #2885 slice DS3: the kind that rises from a creature dying under the curse.
+		else if (Key.Equals(TEXT("RisesAs"), ESearchCase::IgnoreCase))
+		{
+			Params.RisesAs = Value;
 		}
 		// The Death draft's N6 and N8, issue #2885 slice DS3: Fervour paid for a kill, and Fervour held from decay.
 		else if (Key.Equals(TEXT("KillFervour"), ESearchCase::IgnoreCase))
