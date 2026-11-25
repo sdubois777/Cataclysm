@@ -2,6 +2,145 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Fervour on evasions and on hits on the strong, a chance on a class resource row, and decay held by who is near (Death trees, slice C6b3)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the base `ECataclysmPoolActionBase::Points`
+  and `FCataclysmPoolAction::ChancePercent`; the conditions `opponent_rarity_at_least`, `enemy_of_rarity_in_reach` and
+  `no_enemy_in_reach`; `FCataclysmBlowContext::OpponentRarityStep`; three state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `ApplyPoolAction` pays a `points` row's
+  value and sends EVERY class resource gain through `UCataclysmFervour::RaisePool`; `ActOnEvent` and the timed path roll
+  a row's chance first (`PoolActionChanceComesUp`, `Cataclysm.ClassResourceChanceRoll`); `WithEnemiesInReach` keeps
+  each hostile's rung and says when the distances walk was made.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp`, `CataclysmVitalAttributeSet.cpp`: the
+  attacker's rung on an incoming hit and its blow context.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: `ChancePercent` on the passive and the enchantment effect rows.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp`: Fraction Of `points` and the chance onto a pool action.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.cpp`: `EnchantmentRowsFor` pays a chance per point, and names a
+  second action row of one node on one action and event `_Row2`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourOnEventsTests.cpp`, new (7); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`) and `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (two), `test_passive_rows_carry_the_action_columns.py` (seven new, three changed),
+  `test_passive_effects_match_the_node_text.py`, `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` and `test_generate_datatables.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx` (the Passive
+  Effects sheet gains a Chance Percent column), `game/Data/PassiveEffects.csv` (623 rows),
+  `game/Data/EnchantmentEffects.csv` (a ChancePercent column of 0 on every row), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects` and `DT_EnchantmentEffects`, and run the groups under "Unreal tests".
+- **A CHANGE TO ROWS THAT ALREADY SHIP, AS RULED.** The three enchantment rows that grant class resource ("Blocking an
+  attack generates 5-10% of your class resource", "Each skill use generates 1-3% of your maximum class resource", "Strike
+  skills generate 5-10% of your class resource") were paid through `UCataclysmRegeneration::TopUp`, which stops at the
+  maximum ATTRIBUTE and tells nothing that the pool rose. They are now paid as every other class resource gain is:
+  scaled by `class_resource_generation` (unchanged), then `UCataclysmFervour::RaisePool`, which stops at the full bar
+  after reserves (`MaximumClassResourceAsked`) and tells Kindred Fires and Borrowed Time. Their amounts are unchanged.
+  The coordinating session's reason: the War and Death lines bring reserves and the rule that the full bar is the
+  maximum less the reserve, and a gain that filled the reserved share would contradict it.
+- **WAR'S FERVOUR STATS ARE NOT USED, AS RULED (a).** War grants flat Fervour with one stat per event
+  (`fervour_per_hit_dealt` and the rest, in `CataclysmWarFervour.cpp`), read with the event's tags and no target. These
+  three nodes need the target or the attacker, a wait between gains and a chance, which an action row already has. So a
+  flat amount is an action row on `class_resource` with Fraction Of `points`. At the bundle 3 merge the only shared change
+  is the value `points` in `FRACTION_BASES`; nothing here edits `CataclysmWarFervour.cpp`.
+- **TEAR LOOSE IS ROLLED, A NEW COLUMN, AS RULED (b).** "Your hits on an Elite or stronger creature have a 2% chance per
+  point to give you 1 Fervour" is a Chance Percent of 2 a point on a row paying 1. Nothing could roll a chance on a class
+  resource row: `FCataclysmPoolAction` had no chance, and a chance existed only on actions whose value IS the chance. Not
+  (a), paying the average, 0.02 Fervour a point on every hit: the owner's whole-numbers rule outranks it. Not (c), 1
+  Fervour on every 50th hit with a row at each point: whole numbers, but paid in lumps the sentence does not describe, and
+  the Every Nth column does not reach a pool action. An empty cell is every time, so every row written before the column
+  is unchanged, and a test shows one still pays on a roll of 99.
+- **A ROW WITH A CHANCE IS PAID PER POINT IN ITS CHANCE, NOT ITS AMOUNT**, a judgement from the sentence: "a 2% chance
+  per point to give you 1 Fervour" gives 1 at any points. `EnchantmentRowsFor` multiplies the chance by the points and
+  leaves the value alone.
+- **THE ROLL COMES BEFORE THE ROW PAYS AND BEFORE ITS WAIT STARTS.** A failed roll pays nothing and starts no wait. Tear
+  Loose's row keeps the quarter second wait every hit-fired action row gets (`DEFAULT_TRIGGER_COOLDOWN`), after a roll
+  that succeeds.
+- **A SECOND ACTION ROW OF ONE NODE ON ONE ACTION AND EVENT IS NOW ALLOWED UNDER A DIFFERENT CONDITION**, a judgement
+  needed by Opening Found, "generates 1 Fervour per point, or 2 per point if the attacker is Elite or stronger": 1
+  always, and 1 more under `target_rarity_at_least` 1, both on `dodge`. The generator refused it, because the game kept
+  one wait for each node, option, action and event; both rows wait a quarter second after paying, so the second would
+  never have paid. `EnchantmentRowsFor` names the second `_Row2`, as slice C6a named a stepped row `_From<N>`. Two rows
+  under the same conditions are still refused.
+- **"DOES NOT DECAY" AND "DOES NOT DRAIN" ARE REMOVALS OF THE KILL DECAY**, `removed` while the condition holds, as
+  the Ritualist's mana cost is removed while stationary. A Less multiplier stops at 99%, so it would leave a hundredth.
+- **FOUR FAULTS FOUND BEFORE THE COMMIT, AND FIXED.**
+  (1) Opening Found's two rows were refused, as described above.
+  (2) `tools/tests/test_csv_columns_match_their_row_structs.py` refused a property of the enchantment row struct that
+  its table did not write. So the generator writes the column, 0 on every enchantment row, rather than marking the
+  property optional and leaving the check without anything to check.
+  (3) The whole suite: `opponent_rarity_at_least` was not in `CONDITIONS_OF_A_BLOW_TAKEN`, which
+  `tools/tests/test_every_conditioned_stat_has_an_asker.py` requires of every condition about a blow taken.
+  (4) The whole suite: `tools/tests/test_generate_datatables.py`'s expected enchantment row lacked the new column.
+
+### What each reads
+
+- **OPENING FOUND (the Shadow, basic):** on `dodge`, 1 Fervour a point, and a second row paying 1 more a point when the
+  attacker (the event's character) is Elite or stronger.
+- **REAPER'S DUE (the Soul Collector's 25 vow, option 2):** on `hit_dealt`, 5 Fervour on a hit on a Boss, waiting 0.5
+  seconds after each ("at most twice a second"); and the kill decay removed while a creature of rung 4 (Boss) or above is
+  within 15 metres.
+- **TEAR LOOSE (the Soul Collector, basic):** on `hit_dealt`, 1 Fervour on a 2% chance a point, on a hit on an Elite or
+  stronger creature.
+- **READ THE BLOW (the Shadow, basic):** evasion flat 1 a point under `opponent_rarity_at_least` 1: the attacker of the
+  blow being evaded, which the evasion roll's lookup already hands over as its blow.
+- **HUNTING GROUND (the Shadow, keystone):** the kill decay removed under `no_enemy_in_reach`, reach 20 metres. "No
+  enemy" holds only when the distances walk was made, since an empty list is also what a lookup that walked nothing
+  holds.
+- **VIGIL OVER THE STRONG (the Soul Collector, basic):** the kill decay 5% slower a point (increased, -5) under
+  `enemy_of_rarity_in_reach` 1, reach 15 metres.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Opening Found (Shadow basic) | class_resource, points, 1, on dodge; the same under target_rarity_at_least 1 |
+| Reaper's Due (Soul Collector 25 vow, option 2) | class_resource, points, 5, on hit_dealt, cond=target_is_boss, trigger cooldown 0.5; fervour_kill_decay_per_second, removed, cond=enemy_of_rarity_in_reach 4, reach 15 |
+| Tear Loose (Soul Collector basic) | class_resource, points, 1, on hit_dealt, cond=target_rarity_at_least 1, chance 2 |
+| Read the Blow (Shadow basic) | evasion, flat, 1, cond=opponent_rarity_at_least 1 |
+| Hunting Ground (Shadow keystone) | fervour_kill_decay_per_second, removed, cond=no_enemy_in_reach, reach 20 |
+| Vigil Over the Strong (Soul Collector basic) | fervour_kill_decay_per_second, increased, -5, cond=enemy_of_rarity_in_reach 1, reach 15 |
+
+`PassiveEffects.csv` 615 to 623; the Shadow 113 rows, the Soul Collector 127. The pins: rows 623, nodes 372, options 55.
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25: (1) the flat Fervour form, (a) action rows with Fraction Of `points`, War
+keeping its stats and nothing from the Death line editing `CataclysmWarFervour.cpp`, on the condition that a `points`
+gain is scaled by `class_resource_generation` and stops at the full bar after reserves; (2) Tear Loose, (b) the Chance
+Percent column, read by class resource rows only, refused elsewhere and outside 0 to 100, rolled on a pinnable roll;
+(3) the three enchantment rows that grant class resource moved onto the same path, amounts unchanged.
+
+### Research
+
+None new. The roll copies the shape every chance in `ActOnEvent` has (issue #2201); the rung walk copies the crippled
+walk (issue #1515).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourOnEvents.` | new: `APointsRowPaysItsValueScaledByGeneration`, `AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt`, `AChanceRowPaysOnARollUnderItAndWaitsOnlyAfterItPays`, `TheRungAndReachConditionsJudgeTheirState`, `VigilAndHuntingGroundReadARealWalk`, `OpeningFoundsSecondRowAndTearLoosesChanceAreCopiedApart`, `TheSixNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.Passives.` | `ComparesNothing` names `no_enemy_in_reach` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 623 | unchanged |
+
+Each new test has a control: the normal generation; the hold before the row; a roll equal to the chance, and a row with
+no chance; a Common, a far Elite and nobody walked; a Common creature near; Tear Loose at 1 point.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`ApplyPoolAction`: `if (Amount > 0.0f && Action.Pool == ClassResourcePoolName)` made
+`if (Amount > 0.0f && Action.Pool == NAME_None)`, so a class resource gain goes through `TopUp` again. Prefix
+`Cataclysm.FervourOnEvents.`; must fail `AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt` (stored 100, and decay
+not held).
+
+### What was run
+
+SUITE_FIGURES_C6B3
+
+PYTHON_PROOFS_C6B3
+
+---
+
 ## 2026-11-25 — The movement skill's two clocks: Arrival and Glancing Cuts (Death trees, slice C6b2)
 
 **Affects:**
