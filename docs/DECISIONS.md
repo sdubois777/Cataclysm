@@ -196,8 +196,9 @@ working tree, failed that one and nothing else.
   5. A MINION'S BLOW THAT CONDUIT CREDITS TO THE PLAYER: War's critical-strike call pays for it, unlike its own
      `GainOnHitDealt`, which leaves it out. Decided as the coordinating session directed, to match `GainOnHitDealt`:
      left out. This slice's call already leaves it out (`!Cast<ACataclysmMinion>(Notice.DealtBy)`).
-  6. One difference left to the War session's word: War pays after the `critical_strike` rows and this slice before
-     them.
+  6. WHERE THE ONE PAYMENT IS MADE, ruled by the coordinating session on 2026-11-25: at this slice's position, before the
+     `critical_strike` rows act, so any row that reads Fervour on a critical strike sees it already paid. War pays
+     after the rows; that call is the one dropped.
   7. Test each: a Berserker's critical strike paying its 1 once; a melee-scoped row paying on a melee critical strike
      and not on a spell's; the clamp after reserves; a minion's critical strike credited by Conduit paying nothing.
 
