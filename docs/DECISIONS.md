@@ -30,6 +30,9 @@ Decisions made outside the Google Drive documents, newest first.
   (same count; six more probes in one test and one more in the scaled probes) and `Cataclysm.Data.` (the pin, 465).
 - **CLEAVE'S TRADE IS NOT EXERCISED THROUGH ITS CALL SITE** (`BeginAttackOn`): its test calls the function. The site is
   one call beside Berserking's spend, read only.
+- **A PLAY-TEST POINT: UNDYING IS A LETHAL-BLOW SAVE WITH NO COOLDOWN**, gated only by the pool refilling to 50 Fervour.
+  A Berserker who fills 50 Fervour quickly is saved from every lethal blow that finds it full. Built as the sentence
+  states; the coordinating session asked on 2026-11-25 that it be watched in play.
 - **NOT IN THIS BRANCH:** Riposte, Vengeful Discharge and Crimson Tide, ruled the same day (below) and going on the next
   branch; Skull Splitter, Deathmark and Blood Price (a mark, a mark, and a sentence to rule).
 - **A NEW CHECK, AND WHAT IT FOUND:** no test held a row's reach to its sentence. `test_a_reach_is_the_one_the_node_states`
