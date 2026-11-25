@@ -3479,6 +3479,56 @@ class TestOverkillExplosion:
             gen.enchantment_effects(self.explode(tmp_path, {"Trigger Cooldown": 1}))
 
 
+class TestDeathTreeActionBounds:
+    """The two value bounds the Death trees' slices C4c1 and C4c2 (2026-11-25)
+    added and left untested, as the coordinating session asked: The Ferryman's
+    burst is a share of the slain creature's maximum health above 0 and up to
+    `MAX_SLAIN_BURST_SHARE`; Blood Debt's value is the seconds its Bleed is
+    dealt over, above 0 and up to `MAX_BLEED_LEFT_SECONDS`. Each is driven
+    through the whole Enchantment Effects read. THE CONTROL for each: the edge
+    value itself is carried through."""
+
+    WORDS = "Enemies killed by you explode for the overkill amount"
+    NAME = gen.row_name("Positive", WORDS[:48])
+    ENCHANTMENTS = [
+        ["Positives", "Type", "Weight", "Column 4", None,
+         "Negatives", "Type", "Weight", "Tags"],
+        [WORDS, "Generic", 2, "Trigger.OnKill, Scope.Global", None,
+         "You have 20% less hp.", "Generic", 3, "Stat.Defense.Life"],
+    ]
+    HEADER = TestScaleStepHigh.HEADER
+
+    def row(self, tmp_path, action, event, value):
+        values = {"Enchantment": self.NAME, "Effect": self.WORDS, "Action": action,
+                  "Action Event": event, "Value Low": value, "Value High": value}
+        row = [values.get(column) for column in self.HEADER]
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "bounds.xlsx",
+            {"Enchantments": self.ENCHANTMENTS,
+             "Enchantment Effects": [self.HEADER, row]}))
+
+    def test_the_ferrymans_share_at_its_bound_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.SLAIN_BURST_ACTION, "kill", gen.MAX_SLAIN_BURST_SHARE))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (100.0, 100.0)
+
+    @pytest.mark.parametrize("value", [0, 100.5])
+    def test_the_ferrymans_share_just_outside_is_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The share is above 0 and up to 100"):
+            gen.enchantment_effects(self.row(tmp_path, gen.SLAIN_BURST_ACTION, "kill", value))
+
+    def test_blood_debts_seconds_at_their_bound_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.row(
+            tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", gen.MAX_BLEED_LEFT_SECONDS))
+        assert (out[0]["ValueLow"], out[0]["ValueHigh"]) == (10.0, 10.0)
+
+    @pytest.mark.parametrize("value", [0, 10.5])
+    def test_blood_debts_seconds_just_outside_are_refused(self, tmp_path, value):
+        with pytest.raises(gen.DataError, match="The seconds are above 0 and up to 10"):
+            gen.enchantment_effects(self.row(
+                tmp_path, gen.BLEED_LEFT_TO_STRONGEST_ACTION, "afflicted_death", value))
+
+
 class TestStrikeTarget:
     """A row that deals a direct hit to the other character of its event.
     Ruled 2026-10-07: "When you evade a ranged attack, throw an attack dealing
