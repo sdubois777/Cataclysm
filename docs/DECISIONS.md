@@ -2,6 +2,165 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — Bug batches 1 and 2 and the creation skill count, one window on development after the inventory tabs: 68 new tests registered, and 42 guard proofs kept under the owner's budget of three a change
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE** when this entry was written. `feat/bug-batches-1-2` is built on development
+  `5f302b0a7` (the inventory tabs, #2887), as the coordinating session ruled on 2026-11-24: bug batches 1 and 2 run as
+  one window with one pull request, and `fix/creation-skill-count` was added to it.
+- **Built from merges, not a rebase**: one merge of `feat/bug-batch-2` (which holds `feat/bug-batch-1` and its ten fix
+  branches), a commit putting the new decisions entries first, then one merge of `fix/creation-skill-count`. Neither
+  batch branch is changed; no history was rewritten.
+- **It needs an editor step**: the auras branch (#2869) edits the design workbook, and `SkillSlots.csv` and
+  `WeaponSkills.csv` change with it, so `DT_SkillSlots` and `DT_WeaponSkills` are rebuilt and committed in the window.
+- **The guard proofs are trimmed to the owner's rule of 2026-09-14**, at most three per change and one per mechanism
+  the change adds: 42 of the 67 the branches registered. The dropped ones and why are below. Their tests still run in
+  the whole suite and in their groups alone.
+- **A RISK, A READING AND NOT A RUN, carried from batch 2's entry**: weapon-skills (#2872) chains a leap from inside a
+  dying creature's hooks, and was written before drops-and-death's `MarkDead` refused a death already being marked.
+  `BuriedWeaponKills.` runs alone to show the two together.
+
+### What it holds
+
+| Commit | What |
+| :-- | :-- |
+| `53a49e66c` | One merge of `feat/bug-batch-2` at `632a43022`, which holds `feat/bug-batch-1` at `3720e7d77`: bug batch 1's five fix branches (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863) and bug batch 2's five (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878) |
+| `24bf708f8` | This log's 16 new entries first, newest first by the author date of the commit that first wrote each heading, each checked equal to its text on `feat/bug-batch-2`; development's 1276 entries after them in their own order |
+| `9633c15d7` | One merge of `fix/creation-skill-count` at `2749670ee`; its entry goes first, as the newest (first written 2026-11-24 17:42) |
+
+### What the inventory tabs moved, swept
+
+Development moved from `5cdd6bdc4` to `5f302b0a7` since the trial build: the inventory tabs (#2887) take materials and
+gems out of the 48 bag slots, remove the dismantle room check, and take the character record to 16
+(`Character_v16.json`). **None of it reaches the batches**, read from the diff:
+
+- Of the 53 files the tabs change, the batches change four: this log, `docs/Cataclysm_GDD_v2.md`,
+  `CataclysmDungeonGameMode.cpp` and `CataclysmPlayerController.cpp`. Only this log conflicted; the other three merged
+  on their own, the tabs' hunks (the tithe's materials read from the materials tab; the inventory screen's tab and gem
+  page presses) apart from the batches'.
+- No added line of either batch or of the creation branch names `AddMaterial`, `AddGems`, `SlotOfMaterial`,
+  `SlotOfGems`, `GetSlots`, an inventory component, a dismantle call, a save version or a committed save file.
+- The one batch test that reads drops on the floor (`BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce`)
+  reads `ACataclysmDroppedItem::IsAQuantity` and `Item`, which the tabs leave as they were; they change only what
+  `UCataclysmDropPickup::TakeInto` does with a taken drop.
+
+### Checks on the branch
+
+- **Conflicts: only this log**, at both merges, each entry kept whole. `docs/Cataclysm_GDD_v2.md`,
+  `CataclysmDungeonGameMode.cpp` and `CataclysmPlayerController.cpp`, changed by both the batches and development since
+  their common base `6dd62aba6`, merged on their own.
+- **Every file arrived as written**: of the 128 files the batches' merge changes against development, the 125 only the
+  batches change are byte for byte `feat/bug-batch-2`'s, and in the three both sides change, the batches' changed lines
+  against `6dd62aba6` are exactly the merge's against development. The creation branch's three code files are byte for
+  byte its own.
+- `tools/check_resolved_cpp.py`: "103 files read, 0 with complaints" on the batches' changed C++ files, and "3 files
+  read, 0 with complaints" on the creation branch's.
+- The engine-name and anonymous-helper checks: "7 passed".
+- **Full Python suite on `9633c15d7`: "1 failed, 8289 passed, 10 skipped in 344.43s"; JUnit 8300 tests, 1 failure, 0
+  errors, 10 skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `SkillSlots.csv` and `WeaponSkills.csv`; the window's editor step clears it. ruff: "All checks passed!".
+- The 42 proof anchors each match once on `9633c15d7`, and a trial run of `make_window_bb12.py` passed its assertions:
+  every group's count, the branch's 5422 declared tests and the anchors.
+
+### Registered for its window
+
+**The base is inv-w1's whole-suite engine log**, `C:/invw1/.claude/windows/inv_suite_engine_8fb8c696.log`, measured at
+`8fb8c6965`: 5354 performed, 57 skipped halves, 861 test saves written and deleted, 0 left behind. Development differs
+from that tree by the gem names inside one inventory test (fixed after that run, re-run alone at `fb69687b`) and this
+log, and declares the same 5354 tests (`tools/unreal_build.py`'s `declared_tests`).
+
+**The whole suite is registered as 5422**: 5354 and 68 (bug batch 1 37 net, bug batch 2 28, the creation skill count 3),
+all succeeded; **58 skipped halves, the base's 57 and one new (a reading of the code, not a run)**: `HarrowerLeaps.AThrownAxeLeapsToASecondEnemyThenAThirdAndStopsWhenNoneIsInReach`
+reports one when the axe's mesh does not load, which is every run without `game/Content/Medieval_Weapons/` (gitignored,
+so absent from every worktree; `UCataclysmBuriedWeapon` draws the axe through `UCataclysmWeaponMeshes::MeshFor`). **Batch 2's
+entry registered 57 and missed it.** No other new test reaches a skipped half: the three other files holding new tests
+and a `ReportSkippedHalf` call (`EnemyHitTiming`, `Gatekeeper`, `PlayerCopies`) make it only inside existing tests' own bodies.
+**0 test saves left behind, the number written not predicted**, because batch 2's two resume tests write the run slot
+through the game's own save. The branch's tree
+declares 5422 tests, 69 more names than development's and 1 fewer (`DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach`,
+renamed `...AnywhereOnTheFloor` by the modifiers branch).
+
+**Groups alone, first, 33**, each at its count in the base log plus what the branch adds; for every group the base
+log's count equals what development declares, and what the branch adds equals what its tree declares less
+development's (`make_window_bb12.py` asserts both):
+
+| Group | From | Base log | Added | Registered |
+| :-- | :-- | --: | --: | --: |
+| `Cataclysm.EffectPlacement.` (new) | batch 1 | 0 | 4 | 4 |
+| `Cataclysm.PassThroughBodies.` (new) | batch 1 | 0 | 5 | 5 |
+| `Cataclysm.AuraDamage.` (new) | batch 2 | 0 | 4 | 4 |
+| `Cataclysm.WhipAim.` (new) | batch 2 | 0 | 3 | 3 |
+| `Cataclysm.HarrowerLeaps.` (new) | batch 2 | 0 | 2 | 2 |
+| `Cataclysm.DungeonModifierEffects.` | batch 1 | 777 | 8 | 785 |
+| `Cataclysm.EnemyModifiers.` | batch 1 | 57 | 4 | 61 |
+| `Cataclysm.EnemyHitTiming.` | batch 1 | 14 | 1 | 15 |
+| `Cataclysm.EnemyStrength.` | batch 1 | 8 | 1 | 9 |
+| `Cataclysm.PlayerCopies.` | batch 1 | 7 | 1 | 8 |
+| `Cataclysm.BuriedWeaponKills.` | batch 1 | 3 | 1 | 4 |
+| `Cataclysm.HitLog.` | batch 1 | 7 | 1 | 8 |
+| `Cataclysm.Fervour.` | batch 1 | 29 | 3 | 32 |
+| `Cataclysm.ThornsOfGlass.` | batch 1 | 9 | 2 | 11 |
+| `Cataclysm.EmpireTreeCity.` | batch 1 | 17 | 4 | 21 |
+| `Cataclysm.EmpireTreeEvents.` | batch 1 | 14 | 1 | 15 |
+| `Cataclysm.WalkFromTheScreen.` | batch 1 | 5 | 1 | 6 |
+| `Cataclysm.EmpireScreen.` | batch 1 | 16 | 0 | 16 |
+| `Cataclysm.CityScreen.` | batch 1 | 19 | 0 | 19 |
+| `Cataclysm.SaveLoad.` | batch 1 (its file), batch 2 (2 tests) | 81 | 2 | 83 |
+| `Cataclysm.Command.` | batch 2 | 25 | 6 | 31 |
+| `Cataclysm.LevelCosts.` | batch 2 | 4 | 1 | 5 |
+| `Cataclysm.Gatekeeper.` | batch 2 | 14 | 1 | 15 |
+| `Cataclysm.Terrain.` | batch 2 | 9 | 3 | 12 |
+| `Cataclysm.Telegraph.` | batch 2 | 14 | 2 | 16 |
+| `Cataclysm.SkillNumbers.` | batch 2 | 3 | 1 | 4 |
+| `Cataclysm.Targeting.` | batch 2 | 5 | 2 | 7 |
+| `Cataclysm.Travel.` | batch 2 | 9 | 1 | 10 |
+| `Cataclysm.Overlay.` | batch 2 | 34 | 0 | 34 |
+| `Cataclysm.SkillLevelSources.` | batch 2 | 19 | 0 | 19 |
+| `Cataclysm.MinionFollowSpeed.` | batch 2 | 11 | 0 | 11 |
+| `Cataclysm.SkillCost.` | batch 2 | 3 | 0 | 3 |
+| `Cataclysm.Creation.` | creation skill count | 14 | 3 | 17 |
+| **33 groups** | | | | **1295** |
+
+`DungeonModifierEffects.`'s 8 is net: 9 new names, and one test renamed by the modifiers branch. The four groups at 0 added in
+batch 2's part are the ones its thralls entries name to read; `EmpireScreen.`, `CityScreen.` and `SaveLoad.` were
+registered by batch 1 because it changes their code.
+
+**Editor step**: `tools/run_editor_python.py tools/generate_datatable_assets.py`, committing `DT_SkillSlots`,
+`DT_WeaponSkills` and `datatable_asset_sources.json` only. Python and ruff run beside the whole suite.
+
+### The 42 guard proofs, and the 25 dropped
+
+Each proof's break and the tests it must fail are in the entry of the batch that registered it (bug batch 1's and bug
+batch 2's entries below) and the creation entry's G1 and G2, renamed CS1 and CS2 here because batch 1 has a G1. Every
+anchor matches once on this branch (`.claude/windows/prove_bb12_table.py.txt`). Every selected test must fail with the
+break in, except RP1's (it selects three and must fail only the first-floor test), and pass restored.
+
+| Change | Kept | Dropped, and why the kept ones cover it |
+| :-- | :-- | :-- |
+| drops-and-death (#2871, #2874) | G1, G2, G3 | G4: the creature death line, a printed line and not a play mechanism (ruled 2026-11-24) |
+| creature-combat (#2874, #2876, #2877) | CC1, CC2, CC3, CC4 | CC5: the same skip of a creature that cannot be hurt as CC4, at its second call site; CC6: a measurement's control, not a mechanism |
+| modifiers (#2855, #2854) | B1, B2, T2 | T1: T2 breaks the same strike-back branch and fails the Thorns tests' cadence too |
+| empire-cities (#2859, #2866) | EC1, EC2, EC5 | EC3, EC4: the same `KeepShares` helper at two more call sites (a fall, the day's turn) |
+| demonic-guide (#2860, #2861, #2862) | GD3, GD5, GD7 | GD1, GD2 (GD3 fails both target tests); GD4, GD9, GD10 (GD5 fails the body tests); GD6, GD8 (GD7 is the footprints' timing) |
+| masochist-shield (#2873) | F1, F2 | none |
+| masochist-shield (#2863) | EP1, EP2, EP3 | EP4: EP1 breaks the one helper and fails the debris test with the other three |
+| thralls: the reserve by rarity (#2856, #2868) | TR1, TR3, TR4 | TR2: TR1 and TR3 break the same pricing from both ends |
+| thralls: a full pool (#2856, #2868) | O1, O2, L1 | O3, O4 (O1 and O2 are the release and its order); L2, L3 (L1 is the rebuild) |
+| thralls: Subjugate takes (#2856, #2867) | H1, H3, GB1 | H2 (the same hold as H1); TF1 (the refusal line's text, not a play mechanism, ruled 2026-11-24); GB2 (the same bar as GB1) |
+| resume-position (#2858) | RP1, RP2, RP3 | none |
+| weapon-skills (#2870, #2872) | W1, W4, W5 | W2 (W1's cone); W3 (W4's cursor); W6 (the leap's line, a printed line; W5 proves the chain on a kill) |
+| auras (#2869) | AU1, AU2 | none |
+| upthrust-wall (#2878) | UW1, UW2 | none |
+| creation-skill-count | CS1, CS2 | none |
+
+**The ruling, the coordinating session, 2026-11-24**: "one per mechanism the change adds" lets a fourth mechanism that
+changes what happens in play have a fourth proof (creature-combat's CC4: the skip of a creature that cannot be hurt
+changes which creatures Sacrifice and Epidemic hit); a printed line is not a play mechanism, and the whole suite still
+runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
+
+---
+
 ## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
 
 On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the
