@@ -761,7 +761,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldConte
 			// and the day before the craft's days pass, so the same item on the same day of the same run draws the same.
 			if (Craft == ECataclysmForgeAffixCraft::RerollValue)
 			{
-				Done.ToRoll = UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day());
+				Done.ToRoll = UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day(),
+																 RollsFor(WorldContext));
 			}
 			FCataclysmRolledAffix& Affixed = Changed.Affixes[Plan.Affix];
 			Affixed.Tier = Done.ToTier;
@@ -819,7 +820,7 @@ FCataclysmForgeAffixChange UCataclysmForgeCraft::AddAffixPlanFor(const UObject* 
 	return UCataclysmForge::DeterministicAffixOf(
 		*Item, AffixRow, Tier, Seed, AffixTable, BaseTable,
 		Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::SchematicFragmentsRow)), GoldTierOf(WorldContext),
-		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
+		GoldHeldIn(WorldContext), PricingFor(WorldContext, Target), RollsFor(WorldContext));
 }
 
 FCataclysmForgeAffixChange UCataclysmForgeCraft::ShiftAffixPlanFor(const UObject* WorldContext,
@@ -1418,6 +1419,14 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		OutMessage = Refusal.IsEmpty() ? FString(TEXT("The item could not be changed; nothing changed.")) : Refusal;
 		return ECataclysmForgeResult::Refused;
 	}
+	// THE EMPIRE TREE'S AFFIX NODES (#2741's crafting slices C3 and C4): on the item the craft changed, Rough Draft, then
+	// Apprentice Smith, then Quality Materials (D1), each drawn from the item as it stood and the day the craft began.
+	// Not on a dismantle, which ends the piece (G1). Put back with the rest of the change when a later step fails.
+	const UDataTable* AffixTable = UCataclysmDropRoll::LoadAffixTable();
+	const FCataclysmForgeAffixNodesDone TreeAffixes = Step.bTreeAffixNodes
+		? UCataclysmForge::AffixNodesOn(Changed, Before, AffixNodesFor(WorldContext), Run->WalkSeedMask, Run->Day(),
+										AffixTable, UCataclysmItemModifiers::LoadBaseTable(), Run->DifficultyTier)
+		: FCataclysmForgeAffixNodesDone();
 	Changed.Residue = Step.ResidueAfter;
 	const auto PutTheItem = [&](const FCataclysmItem& Item)
 	{
@@ -1479,6 +1488,12 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 	if (!Kept.IsEmpty())
 	{
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeMaterialsKeptLine(Name, Keeping.KeptPartsOf(Kept)));
+	}
+	// AND WHAT THE EMPIRE TREE'S AFFIX NODES DID, only when they did anything (slices C3 and C4).
+	if (TreeAffixes.Any())
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeAffixNodesLine(
+			Name, UCataclysmForge::AffixNodesDoneText(TreeAffixes, AffixTable)));
 	}
 
 	// AND WHAT THE DAYS DID, in the walk's words after the forge's lead (`FCataclysmPlayLoopLog::AwayAccount`), said
@@ -1551,6 +1566,33 @@ FString UCataclysmForgeCraft::KeptTextFor(const UObject* WorldContext, const FCa
 	Materials.Add({Material, Count});
 	Materials.Append(OptionMaterials);
 	return UCataclysmForge::KeptText(KeepingFor(WorldContext, Target), Materials);
+}
+
+FCataclysmForgeRolls UCataclysmForgeCraft::RollsFor(const UObject* WorldContext)
+{
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	FCataclysmForgeRolls Out;
+	Out.Floor = Tree.AffixRollFloor;
+	Out.TopQuarterChance = Tree.AffixRollTopQuarterChance;
+	return Out;
+}
+
+FCataclysmForgeAffixNodes UCataclysmForgeCraft::AffixNodesFor(const UObject* WorldContext)
+{
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	FCataclysmForgeAffixNodes Out;
+	Out.AddedChance = Tree.AffixAddedChance;
+	Out.TierRaisedChance = Tree.AffixTierRaisedChance;
+	Out.RollMaxedChance = Tree.AffixRollMaxedChance;
+	Out.Rolls = RollsFor(WorldContext);
+	return Out;
+}
+
+FString UCataclysmForgeCraft::AffixNodesTextFor(const UObject* WorldContext, bool bDrawsARoll)
+{
+	const FCataclysmForgeAffixNodes Nodes = AffixNodesFor(WorldContext);
+	return (bDrawsARoll ? UCataclysmForge::RollsText(Nodes.Rolls) : FString())
+		+ UCataclysmForge::AffixNodesChanceText(Nodes);
 }
 
 FCataclysmForgePricing UCataclysmForgeCraft::CombinePricingFor(const UObject* WorldContext, int32 Rung)
@@ -1675,6 +1717,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContex
 		Step.ResidueAfter = Held->Residue;
 	}
 	Step.ThresholdWords = TEXT("Dismantling");
+	Step.bTreeAffixNodes = false; // THE PIECE ENDS: the empire tree's affix nodes have nothing to act on (G1).
 	Step.NothingThereRefusal = TEXT("There is nothing there to dismantle.");
 
 	FCataclysmForgeDismantle Done = Plan;

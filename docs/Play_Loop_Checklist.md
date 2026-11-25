@@ -741,6 +741,27 @@ none held, note an upgrade's question at the forge: for a +2 helm carrying 250 r
 - **Industrial Speed** (1% a point) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
   at least one day still takes one; a reroll that took none still takes none. The cleanse's days come down the same way.
 
+### 32. Take the forge's affix nodes in the empire tree, and see a craft change more than it was asked to
+
+The five affix nodes of the empire tree's Artisan branch (issue #2741, crafting slices C3 and C4).
+
+- **Buy Rough Draft to 8 points and Quality Materials to 10.** Every priced question at the forge now ends: "The
+  empire tree's affix nodes: a 40% chance of one more affix; a 100% chance one affix's roll is made its best." Upgrade a
+  Quality Helm with a free slot. After the craft one of its affixes reads 100 percent of its tier's range, perhaps a new
+  affix has joined it at the run's best drop tier (tier 2 on a tier 1 run), and after the craft's own line:
+
+  `PLAY LOOP: the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat evasion's roll its best, 37 to 100 percent`
+
+- **A piece with no free slot**, or with an enchantment, gets no added affix, and a piece whose rolls are all at the
+  top has none made its best: the line names only what happened, and no line is said when nothing did.
+- **Apprentice Smith** (1% a point) raises one affix below tier 7 a tier and keeps its roll; the line says "raised
+  Flat armor from tier 2 to tier 3".
+- **Master's Workshop and Precision Crafting** act on a roll the forge draws: a reroll's and an added affix's. The
+  reroll's question says, at 15 points each, "Its roll is drawn from 30 percent up, with a 45% chance from 75 percent
+  up." A reroll then never falls below 30 percent of the range.
+- **A dismantle** is never changed by them. The same piece on the same day always draws the same, so a reload does
+  not change what happened.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

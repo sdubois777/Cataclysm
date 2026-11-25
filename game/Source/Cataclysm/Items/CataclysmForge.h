@@ -585,6 +585,71 @@ struct FCataclysmForgeCosts
 };
 
 /**
+ * What the empire tree's roll nodes do to an affix roll the forge draws. #2741's crafting group, slice C3, ruled by the
+ * coordinating session on 2026-11-25: a reroll's roll (`UCataclysmForge::RerolledAffixRoll`), a Deterministic Affix's
+ * (`DeterministicAffixOf`) and Rough Draft's affix's are drawn from `Floor` up to 1 (Master's Workshop, 0.02 a point),
+ * and from `UCataclysmForge::TopQuarterFloor` up when Precision Crafting's own draw lands (3% a point), the higher of the
+ * two. A shift and a tier upgrade keep the roll (F1 Q12), so neither reaches it. The default changes nothing.
+ */
+struct FCataclysmForgeRolls
+{
+	/** Master's Workshop: a roll is drawn from this up to 1. */
+	float Floor = 0.0f;
+
+	/** Precision Crafting: the chance a roll is drawn from `UCataclysmForge::TopQuarterFloor` up. */
+	float TopQuarterChance = 0.0f;
+
+	/** Whether Precision Crafting's draw lands for a roll drawn on `Seed`: its chance above nought and a draw on `Seed`
+	 *  mixed with `UCataclysmForge::PrecisionCraftingSalt` below it, so the roll's own draws are untouched. */
+	bool TopQuarterLands(int32 Seed) const;
+
+	/** The roll for `Draw` (0 up to but not 1) drawn on `Seed`: `Low + (1 - Low) x Draw`, `Low` the floor, or 0.75 when
+	 *  Precision Crafting's draw lands and that is higher. With neither node, `Draw` itself. */
+	float Shape(float Draw, int32 Seed) const;
+};
+
+/**
+ * The empire tree's three affix nodes that change the item of a forge item craft. #2741's crafting group, slices C3 and
+ * C4, ruled by the coordinating session on 2026-11-25 (D1 to D3): once a craft has changed the item, on draws of their
+ * own from the item as it stood and the day, in this order, each choosing among the affixes as they stand at its turn:
+ *   - Rough Draft adds one affix (5% a point), when a slot of the four is free and its side has room, drawn as a shift
+ *     draws one, at the drop's best tier for the run (`UCataclysmDropRoll::MaxAffixTierOnADrop`), its roll drawn with
+ *     `Rolls`; the piece is promoted by its new affix count, as rarity is;
+ *   - Apprentice Smith raises one regular affix below tier 7 a tier, its roll kept (1% a point);
+ *   - Quality Materials makes one regular affix's roll below 1 its best, 1 (10% a point).
+ * Worked out by `UCataclysmForgeCraft::AffixNodesFor`; applied by `UCataclysmForge::AffixNodesOn` in
+ * `UCataclysmForgeCraft::DoItemCraft`, never on a dismantle. The default changes nothing.
+ */
+struct FCataclysmForgeAffixNodes
+{
+	float AddedChance = 0.0f;
+	float TierRaisedChance = 0.0f;
+	float RollMaxedChance = 0.0f;
+	FCataclysmForgeRolls Rolls;
+};
+
+/** What the three affix nodes did to one craft's item; `INDEX_NONE` is a node that did nothing. Slices C3 and C4. */
+struct FCataclysmForgeAffixNodesDone
+{
+	/** Rough Draft's affix: its place on the piece, its row and its tier. */
+	int32 Added = INDEX_NONE;
+	FName AddedRow;
+	int32 AddedTier = 0;
+
+	/** Apprentice Smith's affix: its place, its row and the tier it rose from. */
+	int32 Raised = INDEX_NONE;
+	FName RaisedRow;
+	int32 RaisedFromTier = 0;
+
+	/** Quality Materials' affix: its place, its row and the roll it had. */
+	int32 Maxed = INDEX_NONE;
+	FName MaxedRow;
+	float MaxedFromRoll = 0.0f;
+
+	bool Any() const { return Added != INDEX_NONE || Raised != INDEX_NONE || Maxed != INDEX_NONE; }
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -946,8 +1011,10 @@ public:
 	 */
 	static int32 RerolledAffixSeed(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day);
 
-	/** The roll a reroll draws: `FRandomStream::FRand` on a stream of `RerolledAffixSeed`, from 0 up to but not 1. */
-	static float RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day);
+	/** The roll a reroll draws: `FRandomStream::FRand` on a stream of `RerolledAffixSeed`, from 0 up to but not 1, placed
+	 *  by the empire tree's roll nodes (`FCataclysmForgeRolls::Shape`, #2741's crafting slice C3). */
+	static float RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day,
+								   const FCataclysmForgeRolls& Rolls = FCataclysmForgeRolls());
 
 	/** A roll as the screen and the lines say it: "50 percent", its fraction of the tier's range, rounded. */
 	static int32 RollPercent(float Roll);
@@ -1029,7 +1096,8 @@ public:
 														   int32 Seed, const UDataTable* AffixTable,
 														   const UDataTable* BaseTable, int32 FragmentsHeld,
 														   int32 DifficultyTier, int64 GoldHeld,
-		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+		const FCataclysmForgeRolls& Rolls = FCataclysmForgeRolls());
 
 	/**
 	 * What shifting the item's affix `Affix` to another stat takes, against the Crystals of Instability held. The new
@@ -1339,6 +1407,47 @@ public:
 
 	/** The same for a cleanse, after its question. */
 	static FString CleanseCostsText(const FCataclysmForgeCleanse& Plan);
+
+	// ---- #2741's crafting group, slices C3 and C4: the empire tree's affix nodes (`FCataclysmForgeRolls`,
+	// `FCataclysmForgeAffixNodes`). Each drawn as F6b's are, from the item and the day on a salt of its own, so a reload
+	// cannot draw again; what they did is not shown before the press, only their chances (G3, as F6's R8).
+
+	/** Precision Crafting's "top 25% of their range": a roll on its draw is drawn from this up. */
+	static constexpr float TopQuarterFloor = 0.75f;
+
+	/** The salts of the four draws: "FPRC" (Precision Crafting), "FRDR" (Rough Draft), "FAPS" (Apprentice Smith) and
+	 *  "FQMT" (Quality Materials). */
+	static constexpr int32 PrecisionCraftingSalt = 0x46505243;
+	static constexpr int32 RoughDraftSalt = 0x46524452;
+	static constexpr int32 ApprenticeSmithSalt = 0x46415053;
+	static constexpr int32 QualityMaterialsSalt = 0x46514D54;
+
+	/**
+	 * The three affix nodes on `Changed`, the item a craft on `Before` changed, on `Day`: Rough Draft, then Apprentice
+	 * Smith, then Quality Materials (D1), each a chance above nought and a draw on `AffixCraftSeed` of `Before` with its
+	 * salt below it, then its choice on the same stream. Rough Draft draws its affix as `AffixShiftOf` draws one, on the
+	 * side a drop would pick when both have room (`UCataclysmItemValues::PrefixesPerPiece`, `SuffixesPerPiece`), at
+	 * `UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTier)` (D2). A node with nothing to act on does nothing.
+	 */
+	static FCataclysmForgeAffixNodesDone AffixNodesOn(FCataclysmItem& Changed, const FCataclysmItem& Before,
+													  const FCataclysmForgeAffixNodes& Nodes, int32 WalkSeedMask,
+													  int32 Day, const UDataTable* AffixTable,
+													  const UDataTable* BaseTable, int32 DifficultyTier);
+
+	/**
+	 * The forge screen's words for the affix nodes held, said at the end of every priced question (G3): "" with none;
+	 * otherwise " The empire tree's affix nodes: a 40% chance of one more affix; a 10% chance one affix rises a tier; a
+	 * 100% chance one affix's roll is made its best." Only the nodes held are named.
+	 */
+	static FString AffixNodesChanceText(const FCataclysmForgeAffixNodes& Nodes);
+
+	/** The same for the roll nodes, after the question of a craft that draws a roll: "" with neither; otherwise " Its
+	 *  roll is drawn from 30 percent up, with a 45% chance from 75 percent up." */
+	static FString RollsText(const FCataclysmForgeRolls& Rolls);
+
+	/** What the affix nodes did, in their order, for the play loop line: "added Flat armor at tier 5; raised Flat evasion
+	 *  from tier 2 to tier 3; made Flat life's roll its best, 37 to 100 percent". Empty when they did nothing. */
+	static FString AffixNodesDoneText(const FCataclysmForgeAffixNodesDone& Done, const UDataTable* AffixTable);
 
 	/**
 	 * The forge screen's words for a price the empire tree discounts, said after the craft's question: "" with no

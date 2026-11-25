@@ -632,6 +632,22 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::CraftDaysReducedMore:
 			Bonuses.CraftDaysReducedMore += Total;
 			break;
+		// #2741's CRAFTING GROUP, SLICES C3 AND C4: a forge craft's affixes.
+		case ECataclysmEmpireTreeEffect::AffixRollTopQuarterChance:
+			Bonuses.AffixRollTopQuarterChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollFloor:
+			Bonuses.AffixRollFloor += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixRollMaxedChance:
+			Bonuses.AffixRollMaxedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixTierRaisedChance:
+			Bonuses.AffixTierRaisedChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::AffixAddedChance:
+			Bonuses.AffixAddedChance += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

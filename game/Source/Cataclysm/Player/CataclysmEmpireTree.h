@@ -268,6 +268,17 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float CraftDaysOff = 0.0f;
 	float CraftDaysReduced = 0.0f;
 	float CraftDaysReducedMore = 0.0f;
+
+	/** #2741's crafting group, slices C3 and C4 (the coordinating session's rulings of 2026-11-25). An affix roll the
+	 *  forge draws (a reroll, a Deterministic Affix, Rough Draft's affix) is drawn from `AffixRollFloor` up (Master's
+	 *  Workshop, 0.02 a point), and on Precision Crafting's draw (`AffixRollTopQuarterChance`, 3% a point) from 0.75 up.
+	 *  A forge item craft, on draws of its own: adds one affix (Rough Draft, 5% a point), raises one random affix a tier
+	 *  (Apprentice Smith, 1% a point), makes one random affix's roll its best (Quality Materials, 10% a point). */
+	float AffixRollTopQuarterChance = 0.0f;
+	float AffixRollFloor = 0.0f;
+	float AffixRollMaxedChance = 0.0f;
+	float AffixTierRaisedChance = 0.0f;
+	float AffixAddedChance = 0.0f;
 };
 
 /**

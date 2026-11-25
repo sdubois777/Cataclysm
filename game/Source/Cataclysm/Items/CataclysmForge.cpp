@@ -313,6 +313,272 @@ FString UCataclysmForge::CleanseCostsText(const FCataclysmForgeCleanse& Plan)
 											 Plan.DaysBeforeTheTree);
 }
 
+bool FCataclysmForgeRolls::TopQuarterLands(int32 Seed) const
+{
+	if (TopQuarterChance <= 0.0f)
+	{
+		return false;
+	}
+	// ITS OWN STREAM, from the roll's seed and its salt, so the roll's own draws land where they did before this slice.
+	FRandomStream Stream(CataclysmSeedMix::Mix(Seed, UCataclysmForge::PrecisionCraftingSalt, 0));
+	return Stream.GetFraction() < TopQuarterChance;
+}
+
+float FCataclysmForgeRolls::Shape(float Draw, int32 Seed) const
+{
+	// THE HIGHER OF THE TWO FLOORS (the coordinating session, 2026-11-25), and the draw spread from it up to 1.
+	float Low = FMath::Clamp(Floor, 0.0f, 1.0f);
+	if (TopQuarterLands(Seed))
+	{
+		Low = FMath::Max(Low, UCataclysmForge::TopQuarterFloor);
+	}
+	return Low + (1.0f - Low) * Draw;
+}
+
+namespace CataclysmForgeAffixNodes
+{
+	/** "a 40%" for a chance, held inside 0 to 100. */
+	int32 PercentOf(float Chance)
+	{
+		return FMath::RoundToInt(FMath::Clamp(Chance, 0.0f, 1.0f) * 100.0f);
+	}
+
+	/** Whether a node's draw lands for a craft on `Before`: its chance above nought and a draw on its stream below it. */
+	bool Lands(float Chance, FRandomStream& Stream)
+	{
+		return Chance > 0.0f && Stream.GetFraction() < Chance;
+	}
+
+	/** How many of the item's affixes are prefixes and how many suffixes, by their rows' positions. */
+	void CountSides(const FCataclysmItem& Item, const UDataTable* AffixTable, int32& OutPrefixes, int32& OutSuffixes)
+	{
+		OutPrefixes = 0;
+		OutSuffixes = 0;
+		for (const FCataclysmRolledAffix& Rolled : Item.Affixes)
+		{
+			const FCataclysmAffixRow* Row = AffixTable->FindRow<FCataclysmAffixRow>(
+				Rolled.Affix, TEXT("CataclysmForgeAffixNodes::CountSides"), /*bWarnIfMissing=*/false);
+			if (Row != nullptr && Row->Position.Equals(TEXT("prefix"), ESearchCase::IgnoreCase))
+			{
+				++OutPrefixes;
+			}
+			else if (Row != nullptr && Row->Position.Equals(TEXT("suffix"), ESearchCase::IgnoreCase))
+			{
+				++OutSuffixes;
+			}
+		}
+	}
+
+	/**
+	 * Rough Draft's affix for `Item`, on `Stream`: a side with room (a drop's pick of the two when both have), then one
+	 * of that side's candidates for the slot that is of no stat group the item holds, evenly, as a shift draws one; the
+	 * other side when the first has none. False when no slot is free or nothing can be added.
+	 */
+	bool RoughDraftAffixFor(const FCataclysmItem& Item, FRandomStream& Stream, const UDataTable* AffixTable,
+							const UDataTable* BaseTable, FCataclysmAffixCandidate& OutDrawn)
+	{
+		if (AffixTable == nullptr || Item.Affixes.Num() + Item.EnchantmentCount >= UCataclysmItemValues::SlotsPerPiece)
+		{
+			return false; // A FREE SLOT OF THE FOUR, as the Deterministic Affix asks.
+		}
+		const FString Slot = UCataclysmForge::SlotOf(Item, BaseTable);
+		if (Slot.IsEmpty())
+		{
+			return false;
+		}
+		int32 Prefixes = 0;
+		int32 Suffixes = 0;
+		CountSides(Item, AffixTable, Prefixes, Suffixes);
+		TArray<FString> Sides;
+		if (Prefixes < UCataclysmItemValues::PrefixesPerPiece)
+		{
+			Sides.Add(TEXT("prefix"));
+		}
+		if (Suffixes < UCataclysmItemValues::SuffixesPerPiece)
+		{
+			Sides.Add(TEXT("suffix"));
+		}
+		// BOTH HAVE ROOM: A SIDE AT RANDOM, as a drop picks the side of an odd affix (`SplitForADrop`).
+		if (Sides.Num() == 2 && Stream.RandRange(0, 1) == 1)
+		{
+			Sides.Swap(0, 1);
+		}
+		TSet<FString> Held;
+		UCataclysmForge::HeldGroupsOf(Item, AffixTable, Held);
+		for (const FString& Side : Sides)
+		{
+			TArray<FCataclysmAffixCandidate> Candidates;
+			UCataclysmDropRoll::CandidatesFor(AffixTable, Slot, Side, Stream, Candidates);
+			TArray<FCataclysmAffixCandidate> Open;
+			for (const FCataclysmAffixCandidate& Candidate : Candidates)
+			{
+				const FCataclysmAffixRow* Row = AffixTable->FindRow<FCataclysmAffixRow>(
+					Candidate.Affix, TEXT("CataclysmForgeAffixNodes::RoughDraftAffixFor"), /*bWarnIfMissing=*/false);
+				if (Row == nullptr)
+				{
+					continue;
+				}
+				TSet<FString> Groups;
+				UCataclysmDropRoll::GroupsOf(AffixTable, *Row, Candidate.DamageTypes, Groups);
+				if (Groups.Intersect(Held).Num() == 0)
+				{
+					Open.Add(Candidate);
+				}
+			}
+			if (!Open.IsEmpty())
+			{
+				OutDrawn = Open[Stream.RandRange(0, Open.Num() - 1)];
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+FCataclysmForgeAffixNodesDone UCataclysmForge::AffixNodesOn(FCataclysmItem& Changed, const FCataclysmItem& Before,
+															 const FCataclysmForgeAffixNodes& Nodes, int32 WalkSeedMask,
+															 int32 Day, const UDataTable* AffixTable,
+															 const UDataTable* BaseTable, int32 DifficultyTier)
+{
+	FCataclysmForgeAffixNodesDone Done;
+
+	// ROUGH DRAFT FIRST (D1): one more affix, at the drop's best tier for the run (D2), its roll drawn with the tree's
+	// roll nodes; the piece's rarity follows its affix count (D3).
+	{
+		const int32 Seed = AffixCraftSeed(Before, RoughDraftSalt, 0, WalkSeedMask, Day);
+		FRandomStream Stream(Seed);
+		FCataclysmAffixCandidate Drawn;
+		if (CataclysmForgeAffixNodes::Lands(Nodes.AddedChance, Stream)
+			&& CataclysmForgeAffixNodes::RoughDraftAffixFor(Changed, Stream, AffixTable, BaseTable, Drawn))
+		{
+			FCataclysmRolledAffix Added;
+			Added.Affix = Drawn.Affix;
+			Added.Tier = UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTier);
+			Added.Roll = Nodes.Rolls.Shape(Stream.FRand(), Seed);
+			Added.DamageTypes = Drawn.DamageTypes;
+			Done.Added = Changed.Affixes.Add(Added);
+			Done.AddedRow = Added.Affix;
+			Done.AddedTier = Added.Tier;
+		}
+	}
+
+	// THEN APPRENTICE SMITH: one regular affix below tier 7, a tier up, its roll kept as the tier upgrade keeps it.
+	{
+		FRandomStream Stream(AffixCraftSeed(Before, ApprenticeSmithSalt, 0, WalkSeedMask, Day));
+		if (CataclysmForgeAffixNodes::Lands(Nodes.TierRaisedChance, Stream))
+		{
+			TArray<int32> Below;
+			for (int32 Index = 0; Index < Changed.Affixes.Num(); ++Index)
+			{
+				if (Changed.Affixes[Index].Tier < UCataclysmItemValues::MaxAffixTier)
+				{
+					Below.Add(Index);
+				}
+			}
+			if (!Below.IsEmpty())
+			{
+				const int32 Index = Below[Stream.RandRange(0, Below.Num() - 1)];
+				Done.Raised = Index;
+				Done.RaisedRow = Changed.Affixes[Index].Affix;
+				Done.RaisedFromTier = Changed.Affixes[Index].Tier;
+				Changed.Affixes[Index].Tier += 1;
+			}
+		}
+	}
+
+	// THEN QUALITY MATERIALS: one regular affix's roll below the top, made the top.
+	{
+		FRandomStream Stream(AffixCraftSeed(Before, QualityMaterialsSalt, 0, WalkSeedMask, Day));
+		if (CataclysmForgeAffixNodes::Lands(Nodes.RollMaxedChance, Stream))
+		{
+			TArray<int32> Below;
+			for (int32 Index = 0; Index < Changed.Affixes.Num(); ++Index)
+			{
+				if (Changed.Affixes[Index].Roll < 1.0f)
+				{
+					Below.Add(Index);
+				}
+			}
+			if (!Below.IsEmpty())
+			{
+				const int32 Index = Below[Stream.RandRange(0, Below.Num() - 1)];
+				Done.Maxed = Index;
+				Done.MaxedRow = Changed.Affixes[Index].Affix;
+				Done.MaxedFromRoll = Changed.Affixes[Index].Roll;
+				Changed.Affixes[Index].Roll = 1.0f;
+			}
+		}
+	}
+	return Done;
+}
+
+FString UCataclysmForge::AffixNodesChanceText(const FCataclysmForgeAffixNodes& Nodes)
+{
+	TArray<FString> Parts;
+	if (Nodes.AddedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance of one more affix"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.AddedChance)));
+	}
+	if (Nodes.TierRaisedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance one affix rises a tier"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.TierRaisedChance)));
+	}
+	if (Nodes.RollMaxedChance > 0.0f)
+	{
+		Parts.Add(FString::Printf(TEXT("a %d%% chance one affix's roll is made its best"),
+								  CataclysmForgeAffixNodes::PercentOf(Nodes.RollMaxedChance)));
+	}
+	if (Parts.IsEmpty())
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT(" The empire tree's affix nodes: %s."), *FString::Join(Parts, TEXT("; ")));
+}
+
+FString UCataclysmForge::RollsText(const FCataclysmForgeRolls& Rolls)
+{
+	const int32 Floor = CataclysmForgeAffixNodes::PercentOf(Rolls.Floor);
+	const int32 Top = CataclysmForgeAffixNodes::PercentOf(Rolls.TopQuarterChance);
+	const int32 TopFloor = CataclysmForgeAffixNodes::PercentOf(TopQuarterFloor);
+	if (Floor > 0 && Top > 0)
+	{
+		return FString::Printf(TEXT(" Its roll is drawn from %d percent up, with a %d%% chance from %d percent up."),
+							   Floor, Top, TopFloor);
+	}
+	if (Floor > 0)
+	{
+		return FString::Printf(TEXT(" Its roll is drawn from %d percent up."), Floor);
+	}
+	if (Top > 0)
+	{
+		return FString::Printf(TEXT(" Its roll has a %d%% chance to be drawn from %d percent up."), Top, TopFloor);
+	}
+	return FString();
+}
+
+FString UCataclysmForge::AffixNodesDoneText(const FCataclysmForgeAffixNodesDone& Done, const UDataTable* AffixTable)
+{
+	TArray<FString> Parts;
+	if (Done.Added != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("added %s at tier %d"), *AffixNameOf(Done.AddedRow, AffixTable),
+								  Done.AddedTier));
+	}
+	if (Done.Raised != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("raised %s from tier %d to tier %d"), *AffixNameOf(Done.RaisedRow, AffixTable),
+								  Done.RaisedFromTier, Done.RaisedFromTier + 1));
+	}
+	if (Done.Maxed != INDEX_NONE)
+	{
+		Parts.Add(FString::Printf(TEXT("made %s's roll its best, %d to 100 percent"),
+								  *AffixNameOf(Done.MaxedRow, AffixTable), RollPercent(Done.MaxedFromRoll)));
+	}
+	return FString::Join(Parts, TEXT("; "));
+}
+
 FString UCataclysmForge::DiscountText(const FCataclysmForgePricing& Pricing, FName Material)
 {
 	const int32 Off = Pricing.PercentOffFor(Material);
@@ -982,11 +1248,14 @@ int32 UCataclysmForge::RerolledAffixSeed(const FCataclysmItem& Item, int32 Affix
 	return CataclysmSeedMix::Mix(OfTheRunAndDay, static_cast<int32>(Crc), Affix);
 }
 
-float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day)
+float UCataclysmForge::RerolledAffixRoll(const FCataclysmItem& Item, int32 Affix, int32 WalkSeedMask, int32 Day,
+										const FCataclysmForgeRolls& Rolls)
 {
-	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`).
-	const FRandomStream Stream(RerolledAffixSeed(Item, Affix, WalkSeedMask, Day));
-	return Stream.FRand();
+	// EVENLY FROM 0 UP TO 1, AS A DROP DRAWS AN AFFIX'S ROLL (`UCataclysmDropRoll`, `Rolled.Roll = Stream.FRand()`), then
+	// placed by the empire tree's roll nodes (#2741's crafting slice C3), whose own draw is on another stream.
+	const int32 Seed = RerolledAffixSeed(Item, Affix, WalkSeedMask, Day);
+	const FRandomStream Stream(Seed);
+	return Rolls.Shape(Stream.FRand(), Seed);
 }
 
 int32 UCataclysmForge::RollPercent(float Roll)
@@ -1095,7 +1364,7 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 																  int32 Seed, const UDataTable* AffixTable,
 																  const UDataTable* BaseTable, int32 FragmentsHeld,
 																  int32 DifficultyTier, int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeRolls& Rolls)
 {
 	FCataclysmForgeAffixChange Out;
 	Out.Affix = Item.Affixes.Num();
@@ -1160,7 +1429,7 @@ FCataclysmForgeAffixChange UCataclysmForge::DeterministicAffixOf(const FCataclys
 			Out.ToDamageTypes.Add(Pool[Taken]);
 		}
 	}
-	Out.Roll = Stream.FRand();
+	Out.Roll = Rolls.Shape(Stream.FRand(), Seed); // #2741's crafting slice C3: the empire tree's roll nodes.
 
 	if (Out.MaterialHeld < 1)
 	{

@@ -79,6 +79,10 @@ struct FCataclysmForgeCraftStep
 	/** The threshold question's first words: "Upgrading", "Socketing a gem into". */
 	FString ThresholdWords;
 
+	/** Whether the empire tree's affix nodes act on the changed item (#2741's crafting slices C3 and C4): every item craft
+	 *  but the dismantle, which ends the piece (G1). */
+	bool bTreeAffixNodes = true;
+
 	/** The refusals with no run, and with nothing at the target. */
 	FString NoRunRefusal = TEXT("There is no run to take the craft's days from.");
 	FString NothingThereRefusal = TEXT("There is nothing there to craft.");
@@ -390,6 +394,18 @@ public:
 	 */
 	static FString KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
 							   int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials);
+
+	/** The empire tree's roll nodes for the character playing (#2741's crafting slice C3): Master's Workshop's floor and
+	 *  Precision Crafting's chance. The reroll and the Deterministic Affix pass them; none with no character. */
+	static FCataclysmForgeRolls RollsFor(const UObject* WorldContext);
+
+	/** The empire tree's three affix nodes, and the rolls Rough Draft's affix is drawn with (slices C3 and C4), for the
+	 *  character playing. `DoItemCraft` applies them; none with no character. */
+	static FCataclysmForgeAffixNodes AffixNodesFor(const UObject* WorldContext);
+
+	/** The forge screen's words for them at the end of a priced question: `UCataclysmForge::RollsText` when the craft
+	 *  draws a roll, then `UCataclysmForge::AffixNodesChanceText` (G3). "" with none held. */
+	static FString AffixNodesTextFor(const UObject* WorldContext, bool bDrawsARoll);
 
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);

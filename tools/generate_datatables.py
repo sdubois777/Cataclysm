@@ -3847,7 +3847,15 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap": "a gold cap, which the game does not have",
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
-    "crafting": "crafting, which the game does not have yet (issue #47)",
+    # #2741's crafting group, G4 (the coordinating session, 2026-11-25): the one "crafting" reason split into what
+    # each row still waits on, now that the forge is built.
+    "crafting station": ("a crafting station with workers, a queue or a project that finishes later, which the "
+                         "game does not have (issue #2741)"),
+    "double craft": "a double craft, which the game does not have (issue #2741)",
+    "exalted item": "an Exalted item, which the game does not have (issue #2741)",
+    "item tier": "an item tier above the one a piece has, which the game does not have (issue #2741)",
+    "owner's question": "the owner's answer to what its sentence means (issue #2741)",
+    "held-over residue": "residue held over between crafts, which the game does not have (issue #2741)",
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
     "stash": "a stash inside dungeons, which the game does not have",
     "modifier reroll": "dungeon modifier rerolls, which the game does not have",
@@ -3899,6 +3907,10 @@ EMPIRE_TREE_BUILT = {
     "Tool Maintenance": 13, "Limited Knowledge": 13, "Heat Shielding": 13,
     "Stable Compounds": 13, "Master's Touch": 13, "Master Craftsman": 13,
     "Industrial Speed": 13, "Sovereign's Assembly": 13,
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes, ruled
+    # by the coordinating session on 2026-11-25 (D1 to D4). Numbered 14.
+    "Precision Crafting": 14, "Master's Workshop": 14, "Quality Materials": 14,
+    "Apprentice Smith": 14, "Rough Draft": 14,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -4003,21 +4015,17 @@ EMPIRE_TREE_REFUSED = {
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
-    "Apprentice Smith": "crafting",
-    "Rough Draft": "crafting",
-    "Refining Techniques": "crafting",
-    "Quality Materials": "crafting",
-    "Explorer Synergy": "crafting",
-    "Expanded Station (Jeweler)": "crafting",
-    "Expanded Station (Smith)": "crafting",
-    "Expanded Station (Enchantress)": "crafting",
-    "Precision Crafting": "crafting",
-    "Flawless Production": "crafting",
-    "Residue Protocols": "crafting", "Grand Forge": "crafting",
-    "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
-    "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
-    "Assembly Line": "crafting",
-    "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
+    "Refining Techniques": "owner's question",
+    "Explorer Synergy": "double craft",
+    "Expanded Station (Jeweler)": "crafting station",
+    "Expanded Station (Smith)": "crafting station",
+    "Expanded Station (Enchantress)": "crafting station",
+    "Flawless Production": "exalted item",
+    "Residue Protocols": "owner's question", "Grand Forge": "item tier",
+    "Ancient Techniques": "owner's question",
+    "Residue Mastery": "exalted item", "The Hidden Stash": "crafting station",
+    "Assembly Line": "crafting station",
+    "The Alchemist's Transmutation": "owner's question", "Steady Hands": "held-over residue",
 }
 
 
@@ -4269,6 +4277,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # #2741's crafting group, slices C1 and C2: a forge craft's residue and days.
     "CraftResidueKept", "LowLevelCraftResidueKept", "RareMaterialCraftResidueKept", "StabilizerShareReduced",
     "ResidueResetChancePerHundred", "CraftDaysOff", "CraftDaysReduced", "CraftDaysReducedMore",
+    # #2741's crafting group, slices C3 and C4: a forge craft's affixes.
+    "AffixRollTopQuarterChance", "AffixRollFloor", "AffixRollMaxedChance", "AffixTierRaisedChance",
+    "AffixAddedChance",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4412,6 +4423,18 @@ EMPIRE_TREE_EFFECTS = {
     "Master Craftsman": [("CraftDaysOff", 1.0)],
     "Industrial Speed": [("CraftDaysReduced", 0.01)],
     "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
+    # #2741's crafting group, slices C3 and C4 (2026-11-25). "+3% chance per
+    # point for affixes to roll in the top 25% of their range"; "+2% to the
+    # minimum roll range of all affixes on a crafted item per point"; "+10%
+    # chance per point for a craft to roll maximum values on one random affix"
+    # (the owner's question 5); "1% chance per point to upgrade a random affix
+    # to next tier when using the smith"; "+5% chance per point for a crafted
+    # item to roll one additional affix".
+    "Precision Crafting": [("AffixRollTopQuarterChance", 0.03)],
+    "Master's Workshop": [("AffixRollFloor", 0.02)],
+    "Quality Materials": [("AffixRollMaxedChance", 0.10)],
+    "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
+    "Rough Draft": [("AffixAddedChance", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).

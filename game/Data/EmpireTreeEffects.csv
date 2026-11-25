@@ -75,6 +75,11 @@ keystone_0000005c#1,keystone_0000005c,0,ResidueResetChancePerHundred,0.01,0,,0.0
 basic_00000057#1,basic_00000057,0,CraftDaysOff,1.0,0,,0.0
 basic_00000053#1,basic_00000053,0,CraftDaysReduced,0.01,0,,0.0
 keystone_0000005d#1,keystone_0000005d,0,CraftDaysReducedMore,0.5,0,,0.0
+basic_arts_t3f#1,basic_arts_t3f,0,AffixRollTopQuarterChance,0.03,0,,0.0
+basic_arts_t4f#1,basic_arts_t4f,0,AffixRollFloor,0.02,0,,0.0
+basic_arts_t2d#1,basic_arts_t2d,0,AffixRollMaxedChance,0.1,0,,0.0
+basic_0000004y#1,basic_0000004y,0,AffixTierRaisedChance,0.01,0,,0.0
+basic_arts_t1d#1,basic_arts_t1d,0,AffixAddedChance,0.05,0,,0.0
 basic_expl_t1d#1,basic_expl_t1d,0,EmpirePointsFromClears,0.03,0,,0.0
 basic_0000002a#1,basic_0000002a,0,MagicFindAdded,0.05,0,,0.0
 basic_0000002e#1,basic_0000002e,0,LootQuantityIncreased,0.05,0,,0.0

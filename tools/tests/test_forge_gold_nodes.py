@@ -120,15 +120,19 @@ def test_every_plan_applies_the_pricing_after_its_price_and_before_its_refusal()
         match = re.search(rf"\n\w[\w<>]* UCataclysmForge::{name}\(", forge)
         assert match, name
         signature = flat(forge[match.start():forge.index("{", match.start())]).rstrip()
-        # THE PRICING LAST, or before the empire tree's crafting costs (#2741's crafting group, slices C1 and C2).
+        # THE PRICING LAST, or before the empire tree's crafting costs (#2741's crafting group, slices C1 and C2) or its
+        # roll nodes (slice C3).
         assert signature.endswith(("int64 GoldHeld, const FCataclysmForgePricing& Pricing)",
-                                   "int64 GoldHeld, const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)")
+                                   "int64 GoldHeld, const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)",
+                                   "int64 GoldHeld, const FCataclysmForgePricing& Pricing, const FCataclysmForgeRolls& Rolls)")
                                   ), f"{name}: {signature[-80:]}"
         declared = re.search(rf"static \w+ {name}\([^;]*\);", header)
         assert declared and declared.group(0).endswith(
             ("const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());",
              "const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(), const FCataclysmForgeCosts& Costs = "
-             "FCataclysmForgeCosts());")), f"{name}'s default is not no discount"
+             "FCataclysmForgeCosts());",
+             "const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(), const FCataclysmForgeRolls& Rolls = "
+             "FCataclysmForgeRolls());")), f"{name}'s default is not no discount"
         text = flat(body(forge, f"UCataclysmForge::{name}("))
         prices = [m.end() for m in re.finditer(r"Out\.Gold = (GoldFor|CombineGoldFor)\(", text)]
         applied = text.find(f"Out.Gold = Pricing.Apply(Out.Gold, {material});")
@@ -166,6 +170,9 @@ def test_every_plan_and_options_call_the_game_makes_passes_a_pricing() -> None:
         # THE EMPIRE TREE'S CRAFTING COSTS MAY FOLLOW THE PRICING (slices C1 and C2); the pricing is still checked.
         if ", CostsFor(WorldContext, Target," in arguments:
             arguments = arguments[:arguments.rindex(", CostsFor(WorldContext, Target,")]
+        # AND THE EMPIRE TREE'S ROLL NODES (slice C3), after the pricing, which is still checked.
+        if arguments.endswith(", RollsFor(WorldContext)"):
+            arguments = arguments[:-len(", RollsFor(WorldContext)")]
         assert arguments.endswith((", PricingFor(WorldContext, Target)", ", CombinePricingFor(WorldContext, Level - 1)",
                                    ", CombinePricingFor(WorldContext, static_cast<int32>(Rarity))")), (
             f"UCataclysmForge::{match.group(1)} is called with the character's gold and without its pricing: {arguments}")

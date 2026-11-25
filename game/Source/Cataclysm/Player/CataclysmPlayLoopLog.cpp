@@ -583,6 +583,11 @@ FString FCataclysmPlayLoopLog::ForgeMaterialsKeptLine(const FString& ItemName, c
 	return FString::Printf(TEXT("the empire tree kept %s at the forge on %s"), *Kept, *ItemName);
 }
 
+FString FCataclysmPlayLoopLog::ForgeAffixNodesLine(const FString& ItemName, const FString& Done)
+{
+	return FString::Printf(TEXT("the empire tree's affix nodes, at the forge on %s: %s"), *ItemName, *Done);
+}
+
 FString FCataclysmPlayLoopLog::ForgeCriticalLine(const FString& ItemName)
 {
 	// ONE STRING LITERAL, so `tools/tests/test_the_play_loop_is_logged_at_each_step.py` reads the whole line.

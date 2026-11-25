@@ -12,11 +12,12 @@ twenty-first and twenty-second, the forge's upgrade and combine, are the owner's
 twenty-third and twenty-fourth, a piece of gear picked up and one worn, are the coordinating session's ruling of
 2026-11-19; the twenty-fifth, a skill level gained, is issue #2764's. The thirty-fourth and thirty-fifth, what days spent
 at the forge and on a respec did, are issue #2857's. The fortieth, what the empire tree's material nodes kept at the
-forge, is #47 slice F6b's.
+forge, is #47 slice F6b's; the forty-first, what its affix nodes did to a forge craft's item, #2741's crafting slices C3
+and C4's.
 
 WHAT IS CHECKED, by reading the C++ with comments removed:
 
-  1. each of the forty places says its builder's line;
+  1. each of the forty-one places says its builder's line;
   2. each says it after the step it reports -- the floor's line after the floor's day is spent, the clear's account
      after the walk's days have run, the death's after the death's own days;
   3. the dungeons are named before the days run, because a dungeon those days resolve is gone from the run after;
@@ -40,7 +41,7 @@ LOG_CPP = SOURCE / "Player" / "CataclysmPlayLoopLog.cpp"
 CHECKLIST = REPO_ROOT / "docs" / "Play_Loop_Checklist.md"
 GAME_README = REPO_ROOT / "game" / "README.md"
 
-#: The forty places, by file and signature, and the builder each one says.
+#: The forty-one places, by file and signature, and the builder each one says.
 STEPS = [
     ("Player/CataclysmFrontEndGameMode.cpp", "void ACataclysmFrontEndPlayerController::BeginPlay()", "FrontEndLine"),
     ("Interface/CataclysmNewCharacterWidget.cpp", "bool UCataclysmNewCharacterWidget::ConfirmInto(", "NewCharacterLine"),
@@ -102,6 +103,10 @@ STEPS = [
     # craft's own line and its options', only when it kept anything (N4).
     ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(",
      "ForgeMaterialsKeptLine"),
+    # AND WHAT THE EMPIRE TREE'S AFFIX NODES DID, #2741's crafting slices C3 and C4: said by the same sequence after what
+    # the material nodes kept, only when they did anything.
+    ("Player/CataclysmForgeCraft.cpp", "ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(",
+     "ForgeAffixNodesLine"),
     # GEAR PICKED UP AND WORN, the coordinating session's ruling of 2026-11-19: the owner's play log said nothing about
     # gear. Said where every pickup and every wear the player chooses comes through.
     ("Items/CataclysmDroppedItem.cpp", "bool UCataclysmDropPickup::TakeInto(", "PickedUpLine"),

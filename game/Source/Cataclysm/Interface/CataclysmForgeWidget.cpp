@@ -450,6 +450,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -525,6 +526,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -601,6 +603,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(
+					Context(), /*bDrawsARoll=*/Plan.Craft == ECataclysmForgeAffixCraft::RerollValue)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -712,6 +716,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/!Plan.bShift)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -837,6 +842,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, {})
 				+ UCataclysmForge::CleanseCostsText(Plan)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ TimersRunningOutIn(Plan.Days);
 			RefreshDisplay();
 			return;
@@ -892,6 +898,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -970,6 +977,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).EnchantCriticalChance, /*bUpgrade=*/false)
 				+ TimersRunningOutIn(Effect.Days);
@@ -1064,6 +1072,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Stone, Plan.StonesNeeded, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
+				+ UCataclysmForgeCraft::AffixNodesTextFor(Context(), /*bDrawsARoll=*/false)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).UpgradeExtraLevelChance, /*bUpgrade=*/true)
 				+ TimersRunningOutIn(Effect.Days);

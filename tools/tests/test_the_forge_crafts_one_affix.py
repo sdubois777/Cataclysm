@@ -172,7 +172,10 @@ def test_the_python_copy_gives_the_figures_fa2_asserts() -> None:
 
 def test_a_reroll_is_drawn_before_the_days_pass_and_only_the_affix_changes() -> None:
     craft = body(code(CRAFT_CPP), "ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(")
-    drawn = craft.find("UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day())")
+    # THE EMPIRE TREE'S ROLL NODES MAY FOLLOW THE DAY (#2741's crafting slice C3); the draw is still the item's, the
+    # mask's and the day's.
+    craft = re.sub(r"\s+", " ", craft)
+    drawn = craft.find("UCataclysmForge::RerolledAffixRoll(Before, Plan.Affix, Run.WalkSeedMask, Run.Day()")
     # SLICE F5: THE DAYS PASS IN `DoItemCraft`, after the change it is handed, which this draw is inside;
     # `test_every_item_craft_goes_through_one_sequence.py` holds that order.
     handed = craft.find("DoItemCraft(")

@@ -2579,6 +2579,22 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** Off a forge item craft's days again, multiplied with the above, 50% (Sovereign's Assembly). Slice C2. */
 	CraftDaysReducedMore,
+
+	/** The chance an affix roll the forge draws is drawn from the top quarter of its band, 3% a point (Precision
+	 *  Crafting). #2741's crafting group, slice C3. */
+	AffixRollTopQuarterChance,
+
+	/** The floor of an affix roll the forge draws, 0.02 a point (Master's Workshop). Slice C3. */
+	AffixRollFloor,
+
+	/** The chance a forge item craft makes one random affix's roll its best, 10% a point (Quality Materials). Slice C3. */
+	AffixRollMaxedChance,
+
+	/** The chance a forge item craft raises one random affix a tier, 1% a point (Apprentice Smith). Slice C4. */
+	AffixTierRaisedChance,
+
+	/** The chance a forge item craft adds one affix, 5% a point (Rough Draft). Slice C4. */
+	AffixAddedChance,
 };
 
 /**
