@@ -2651,6 +2651,28 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfIncreasedMovementSpeed
 		UMETA(DisplayName = "Per Percent Of Increased Movement Speed"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the class resource's maximum. The War vow options' second slice,
+	 * 2026-11-25: Titan's "Your maximum HP is increased by 1% for every 2 points of maximum Fervour you have" is a step
+	 * of 2, and Unbridled's "Every 20 points of maximum Fervour you have also grants 1% damage reduction" a step of 20.
+	 *
+	 * READ FROM `FCataclysmStatConditions::ClassResourceMaximumNow`, the maximum with the `class_resource` rows that
+	 * hold now counted, which `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row in the list
+	 * it is handed asks for this scale. A `class_resource` row scaled by it would read an unknown maximum and count
+	 * nothing, so `tools/generate_datatables.py` refuses one.
+	 */
+	PerPointOfMaximumClassResource
+		UMETA(DisplayName = "Per Point Of Maximum Class Resource"),
+
+	/**
+	 * `Value` per whole `ScaleStep` percentage points of the character's Block Chance attribute. The War vow options'
+	 * second slice, 2026-11-25: Bastion's "Your Maximum HP is increased by 1% for every 1% Block Chance you have" is a
+	 * step of 1. The ATTRIBUTE, as `PerPointOfArmor` reads its attribute; `FCataclysmStatConditions::BlockChance` says
+	 * why.
+	 */
+	PerPercentOfBlockChance
+		UMETA(DisplayName = "Per Percent Of Block Chance"),
 };
 
 /**
@@ -3271,6 +3293,34 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	/** The Armor attribute, or -1 when there is no combat set. Issue #1833. */
 	float Armor = -1.0f;
+
+	/**
+	 * The Block Chance attribute in percentage points, or -1 when there is no combat set. The War vow options' second
+	 * slice, 2026-11-25, for Bastion's "for every 1% Block Chance you have"; read by
+	 * `ECataclysmStatScale::PerPercentOfBlockChance`.
+	 *
+	 * THE ATTRIBUTE, THE CHARACTER SHEET'S FIGURE, ruled that day: not the chance a blow is judged against, which
+	 * `block_chance` rows conditioned on the blow or on the moment change -- Iron Aegis doubles it while the character
+	 * has not attacked for 3 seconds -- so a maximum health read from it does not move every 3 seconds.
+	 */
+	float BlockChance = -1.0f;
+
+	/**
+	 * The class resource's maximum as `UCataclysmAbilitySystemComponent::MaximumClassResource` answers it, with the
+	 * `class_resource` rows that hold now counted, or -1. The War vow options' second slice, 2026-11-25, for Titan and
+	 * Unbridled; read by `ECataclysmStatScale::PerPointOfMaximumClassResource`.
+	 *
+	 * NOT `ClassResourceMaximum`, which is the attribute and leaves out a conditioned row. Ragnarok's "Your maximum
+	 * Fervour is doubled" is one, under "Two-handed weapons only", and the ruling of 2026-11-25 is that it raises
+	 * Titan's health.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, which is every state but one a lookup asking for that scale was given: `CurrentConditions`
+	 * never fills it. `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills it, and only when a row in the list it
+	 * is handed asks for the scale, from `MaximumClassResource`, which evaluates the `class_resource` line with
+	 * `CurrentConditions` and so never asks for this reading itself. Not the maximum less what an army reserves
+	 * (`MaximumClassResourceAsked`): a reservation holds part of the bar back, and the bar is as big as it was.
+	 */
+	float ClassResourceMaximumNow = -1.0f;
 
 	/** Unique Cataclysm bosses ever defeated, or -1 with no player state. */
 	int32 CataclysmBossesDefeated = -1;

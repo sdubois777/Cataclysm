@@ -733,6 +733,10 @@ INVENTORY = {
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "
         'moved (issue #1755); whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
+     'FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f'):
+        "Unstoppable's flag (the War vow options' second slice, 2026-11-25), asked of the target of a pin before "
+        "anything is applied; whether it holds, not a modifier of a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
         "the share a skill's zone deals on its first sweep (issue #1686), "

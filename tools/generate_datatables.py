@@ -5845,7 +5845,30 @@ SCALES = {
     # read. Whole steps, rounded down. Bounded at 1,000, the bound the other
     # percentage-of-a-stat scales take.
     "increased_movement_speed": (0.0, 1000.0, "a percentage of increased movement speed"),
+
+    # THE WAR VOW OPTIONS' SECOND SLICE, 2026-11-25, on the coordinating
+    # session's rulings that day. Titan's "Your maximum HP is increased by 1%
+    # for every 2 points of maximum Fervour you have" is `max_class_resource`
+    # with a step of 2, and Unbridled's "Every 20 points of maximum Fervour you
+    # have" a step of 20: the maximum `MaximumClassResource` answers, with the
+    # `class_resource` rows that hold now counted, so Ragnarok's doubling raises
+    # Titan's health as ruled. Bounded at 1,000 points, the bound
+    # `class_resource_points_at_least` takes. A `class_resource` row may not
+    # scale by it (`MAXIMUM_CLASS_RESOURCE_SCALE`). Bastion's "Your Maximum HP
+    # is increased by 1% for every 1% Block Chance you have" is `block_chance`
+    # with a step of 1: the Block Chance attribute in percentage points, the
+    # character sheet's figure, as ruled, and not the chance a blow is judged
+    # against. Whole steps, rounded down, for both.
+    "max_class_resource": (0.0, 1000.0, "a number of points of the class resource's maximum"),
+    "block_chance": (0.0, 100.0, "a percentage of block chance"),
 }
+
+#: The scale that reads the class resource's maximum with its rows counted, which
+#: a `class_resource` row may not take. The War vow options' second slice,
+#: 2026-11-25. The engine reads that maximum by evaluating the `class_resource`
+#: line without the readings a row must ask for, so a row on that line scaled by
+#: it would read an unknown maximum and grant nothing.
+MAXIMUM_CLASS_RESOURCE_SCALE = "max_class_resource"
 
 
 #: The largest cap on a scale a row may state, in whole steps. Issue #1815.
@@ -6439,6 +6462,15 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} scales by {scale!r}, which "
                 f"counts enemies only while an enchantment's own stack is held, "
                 f"and a passive node has no own stacks. The row would grant "
+                f"nothing.")
+        # NOR THE POOL'S MAXIMUM BY ITSELF. The War vow options' second slice,
+        # 2026-11-25. See `MAXIMUM_CLASS_RESOURCE_SCALE`.
+        if scale == MAXIMUM_CLASS_RESOURCE_SCALE and stat == "class_resource":
+            raise DataError(
+                f"Passive Effects row {index}: {node} scales `class_resource` by "
+                f"{scale!r}. That scale reads the maximum the `class_resource` "
+                f"line comes to, and the line is read without the readings a row "
+                f"must ask for, so the row would read an unknown maximum and grant "
                 f"nothing.")
 
         # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
@@ -7659,6 +7691,12 @@ ACTION_ONLY_EVENTS = (
     # evasion chance per point for 3 seconds after placing a trap or gadget", is
     # one row on it, so one placing grants one stack. Clockless.
     "device_placed",
+    # THE BERSERKER ENTERING FRENZY, raised once per entry by
+    # `FCataclysmBerserkerStates::Judge` after the state is set, with no tags.
+    # The War vow options' second slice, 2026-11-25, ruled that day: Opportunist,
+    # "Entering Frenzy immediately resets the cooldown of your movement skill", is
+    # a `cooldown_reset_movement` row on it. Clockless.
+    "frenzy_entered",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -10954,6 +10992,17 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "health_cost_suppressed": ASKER_PASSES_NOTHING_MORE,
     "health_regen": ASKER_PASSES_NOTHING_MORE,
     "knockback_suppressed": ASKER_PASSES_NOTHING_MORE,
+    # THE WAR VOW OPTIONS' SECOND SLICE, 2026-11-25. Unstoppable's "cannot be
+    # rooted", a pin counted as the root, under "above 75% Fervour" and
+    # "Two-handed weapons only": `UCataclysmSkillEffects::ApplyPin` asks it of
+    # the target with no tags; probed in the table of stats with no attribute.
+    # And Ragnarok's "Your maximum Fervour is doubled", under "Two-handed weapons
+    # only": `UCataclysmAbilitySystemComponent::MaximumClassResource` evaluates
+    # the line with the wearer's state, which every gain, spend and full-pool
+    # judgement reads; probed by `ProbeScaledMaximumClassResource` in the table
+    # of scaled stats, which measures that the line is asked with the state.
+    "pin_suppressed": ASKER_PASSES_NOTHING_MORE,
+    "class_resource": ASKER_PASSES_NOTHING_MORE,
     "life_leech": ASKER_PASSES_NOTHING_MORE,
     "mana_cost": ASKER_PASSES_NOTHING_MORE,
     "mana_leech": ASKER_PASSES_NOTHING_MORE,

@@ -957,6 +957,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		if (const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>())
 		{
 			State.Armor = Combat->GetArmor();
+			// AND THE BLOCK CHANCE ATTRIBUTE, for Bastion's "for every 1% Block Chance you have". The War vow options'
+			// second slice, 2026-11-25. The attribute, as ruled that day; `FCataclysmStatConditions::BlockChance` says why.
+			State.BlockChance = Combat->GetBlockChance();
 		}
 
 		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
@@ -1529,11 +1532,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// Overwhelming Presence. Filled here for the reason the movement speed reading is: it asks a stat of every slot, so
 	// only a lookup that needs it pays for it.
 	bool bWantsTrapRoom = false;
+	// AND WHETHER A ROW SCALES BY THE CLASS RESOURCE'S MAXIMUM. The War vow options' second slice, 2026-11-25, Titan and
+	// Unbridled. Filled here for the movement speed reading's reason: the maximum is a pipeline pass of its own.
+	bool bWantsMaximumClassResource = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		if (Modifier.Scale == ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
 		{
 			bWantsIncreasedMovementSpeed = true;
+		}
+		if (Modifier.Scale == ECataclysmStatScale::PerPointOfMaximumClassResource)
+		{
+			bWantsMaximumClassResource = true;
 		}
 		if (Modifier.Condition == ECataclysmStatCondition::NoRoomForATrap
 			|| Modifier.Condition2 == ECataclysmStatCondition::NoRoomForATrap)
@@ -1563,6 +1573,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	if (bWantsTrapRoom)
 	{
 		State.bNoRoomForATrap = HasNoRoomForATrap();
+	}
+
+	// THE CLASS RESOURCE'S MAXIMUM WITH ITS ROWS COUNTED, ONLY WHEN A ROW ASKS: Ragnarok's doubling, under "Two-handed
+	// weapons only", raises what Titan reads, as ruled on 2026-11-25. `MaximumClassResource` evaluates the
+	// `class_resource` line with `CurrentConditions` and not through this function, so it never asks for this reading
+	// and cannot ask without end. No class resource set leaves it unknown, which is every enemy.
+	if (bWantsMaximumClassResource
+		&& HasAttributeSetForAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute()))
+	{
+		State.ClassResourceMaximumNow = MaximumClassResource();
 	}
 
 	// THE INCREASES OF THIS CHARACTER'S OWN MOVEMENT SPEED LINE, ONLY WHEN A ROW

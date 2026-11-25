@@ -551,3 +551,10 @@ Bulwark_capstone_25#2,Bulwark_capstone_25,,,1.0,,,0.0,,0.0,2,-1.0,0,0,health,eve
 Bulwark_capstone_100#1,Bulwark_capstone_100,retaliation,increased,1.0,,,0.0,health_missing,1.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_200#1,Bulwark_capstone_200,healing_received,more,100.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Bulwark_capstone_200#2,Bulwark_capstone_200,retaliation,increased,1.0,,,0.0,armor,100.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_trunk_004#1,Berserker_trunk_004,class_resource,flat,10.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_trunk_004#2,Berserker_trunk_004,damage_reduction,flat,1.0,,,0.0,max_class_resource,20.0,0,-1.0,5,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_25#2,Berserker_capstone_25,,,100.0,,,0.0,,0.0,2,-1.0,0,0,cooldown_reset_movement,frenzy_entered,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_50#5,Berserker_capstone_50,pin_suppressed,flat,1.0,,class_resource_above,75.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_100#2,Berserker_capstone_100,max_health,increased,1.0,,wielding_two_handed_weapon,0.0,max_class_resource,2.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#3,Berserker_capstone_200,class_resource,more,100.0,,wielding_two_handed_weapon,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_100#2,Bulwark_capstone_100,max_health,increased,1.0,,,0.0,block_chance,1.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

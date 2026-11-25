@@ -2,6 +2,170 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' second slice (V2a): Titan, Unbridled and Bastion on two new scales, Ragnarok's doubled maximum Fervour, Opportunist on a new event raised on entering Frenzy, a pin refused by Unstoppable, and a passive node or option with no row marked "not built yet" on the tree screen
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (559 rows): seven rows on six nodes and options
+  (`tools/reapply_war_vows_v2a_workbook.py`, new), which also takes over Unstoppable's two rows and Ragnarok's drain row
+  from `tools/reapply_war_vows_v1_workbook.py` (now six rows on six options). `docs/README.md` (the sheet table's
+  count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - two scales, `max_class_resource` (bounded at 1,000) and `block_chance` (bounded at 100);
+  - the event `frenzy_entered`;
+  - `pin_suppressed` and `class_resource` accepted under a condition, each asked with the wearer's state;
+  - a refusal of a `class_resource` row scaled by `max_class_resource` (`MAXIMUM_CLASS_RESOURCE_SCALE`).
+- C++:
+  - `CataclysmStatPipeline.h` and `.cpp`: the two scales (`PerPointOfMaximumClassResource`, `PerPercentOfBlockChance`)
+    and two readings (`ClassResourceMaximumNow`, `BlockChance`).
+  - `CataclysmAbilitySystemComponent.cpp`: `CurrentConditions` reads the Block Chance attribute;
+    `WithEnemiesInReach` fills `ClassResourceMaximumNow` from `MaximumClassResource` only when a row asks for its scale.
+  - `CataclysmBerserkerStates.cpp`: `Judge` raises `frenzy_entered` when the state becomes Frenzy.
+  - `CataclysmSkillEffects.h` and `.cpp`: `ApplyPin` refuses a target holding `pin_suppressed`
+    (`PinSuppressedStat`). `CataclysmPlayerClassStats.cpp`: the stat in `StatsWithNoAttribute`.
+  - `CataclysmPassiveTree.h` and `.cpp`: `HasEffectRows`, `MarkedNotBuiltYet`, and an effect table handed to
+    `ShortDescriptionOf` and `FullDescriptionOf`. `CataclysmPassiveTreeWidget.h` and `.cpp`: the screen hands the table
+    over, puts the mark on an option's button (`OptionLabelFor`, new) and on a node's tool tip.
+- Tests:
+  - Unreal: `CataclysmWarVowsV2aTests.cpp` (new, six); `CataclysmStatExemptionTests.cpp` (a probe,
+    `ProbePinSuppressed`); `CataclysmWarVowsV1Tests.cpp` (two row counts, 3 and 2); `CataclysmDataTableTests.cpp`
+    (the pin, 559).
+  - Python: `tools/tests/test_war_vows_v2a_scripts.py` (new, thirteen). `test_war_vows_v1_scripts.py`: six rows on six
+    options, and its Unstoppable test moved to the new file. `test_passive_effects_match_the_node_text.py`: the two
+    scales' words, three values stated in words, 559 rows, 317 nodes, 53 authored options, and Ragnarok's excuse
+    removed (`MULTIPLIER_WAITS_FOR_A_LATER_SLICE` is empty). `test_stat_lookups_hand_over_what_they_should.py`: the
+    pin's lookup. `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`: 43 scales named by a row.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  these groups:
+  - `Cataclysm.WarVowsV2a.`: six tests, new.
+  - `Cataclysm.WarVowsV1.`: three, two row counts moved.
+  - `Cataclysm.Data.`: the pin, 559.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - `Cataclysm.BerserkerStates.`, `Cataclysm.Debuff.` and `Cataclysm.Passives.`: neighbours of `Judge`, `ApplyPin`
+    and the tree screen; their counts unchanged.
+- **THE PASSIVE TREE SCREEN HAD NO "NOT BUILT YET" WORDS BEFORE THIS BRANCH**, which the coordinating session asked to
+  be searched. The words the game had were on the floor modifier panel only,
+  `UCataclysmFloorModifierPanelLayout::NameLineFor`: "(not built yet: it does nothing)". The skill screen has none
+  either. With this branch the same words go on:
+  - a node's description under the tree, and its tool tip on the graph;
+  - a capstone option's button while the choice is on offer, and its heading in the full description.
+  Measured on the generated table after this branch: 19 options and 120 nodes are marked, all in the three War trees.
+  - The options: the Saboteur's twelve; the Berserker's Warlord, Pure Carnage and Thousand Deaths; the Bulwark's Blood
+    Oath, Thornwall, Spiteful Guard and The Unbreakable Wall.
+  - The nodes: Berserker 45, Bulwark 43, Saboteur 32.
+- **"NO ROW" IS WHAT IS MARKED, NOT "PART OF THE SENTENCE".** An option with a row that builds part of its sentence is
+  not marked. Ragnarok (its shockwaves are V2b's), Eternal Hunger, Colossus Eternal and Wrath Incarnate are such
+  options. A player choosing one of them is not told that part of it does nothing yet.
+- **A COST THIS BRANCH WIDENS, FOR A RULING.** The Fervour percentage conditions divide by the maximum-Fervour
+  attribute, not by the maximum its conditioned rows make: `class_resource_above`, `class_resource_at_or_below` and
+  `class_resource_at_maximum`. The code says so at the line, under issue #1515, with the reason: the larger maximum
+  is worked out by `MaximumClassResource`, which calls `CurrentConditions`, so `CurrentConditions` cannot call it.
+  - Until now that gap was a few points, from Vessel's scaled row.
+  - With Ragnarok's doubling held, the bar is 200 and the attribute 100. So Unstoppable's "above 75% Fervour" holds at
+    76 Fervour held, not at 151, and every other "above N% Fervour" row moves the same way. `Judge` reads the larger
+    maximum, so Wrath still begins at a full 200.
+  - Not changed here. A fix that cannot loop: at the end of `CurrentConditions`, evaluate the `class_resource` line
+    once with the state already built, and use that maximum. It is to be ruled first, because it changes when every
+    such row holds.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25, on the vow survey, verbatim in the parts this branch builds:
+  - "2 Opportunist: build frenzy_entered."
+  - "3 Unstoppable: pin counts as the root; keep the name."
+  - "4 Titan: the maximum-Fervour scale (serves Unbridled too)."
+  - "6 Ragnarok: out-of-combat decay continues; Titan with Ragnarok accepted, noted as a play-test point."
+  - "13 Bastion: the block chance attribute."
+- The same day, the split: "V2a (Titan, Unbridled, Bastion, Ragnarok's doubling, Opportunist's frenzy_entered, pin as
+  root) then V2b (Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath, Spiteful Guard), each with up to three C++
+  proofs."
+- And the display: "If nothing says so, add a small item to V2a: an option or node with no rows shows "not built yet"
+  on the tree screen, with a test and a control. A player should not spend a choice on words that do nothing without
+  being told." Then: "accepted; follow the floor modifier panel's wording so the game says it one way. Test it with a
+  node that has rows (control) and one that has none."
+
+No sentence is reworded by this branch.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Node or option | Row |
+|---|---|
+| Unbridled (`Berserker_trunk_004`) | `class_resource` flat 10 a point; from 5 points `damage_reduction` flat 1 for every 20 of `max_class_resource` |
+| Opportunist (`Berserker_capstone_25`, 2) | `cooldown_reset_movement` on `frenzy_entered`, 100 (always) |
+| Unstoppable (`Berserker_capstone_50`, 1) | `pin_suppressed`, a flag, beside the first slice's two, all above 75% Fervour with a two-handed weapon |
+| Titan (`Berserker_capstone_100`, 1) | `max_health` increased 1 for every 2 of `max_class_resource`, with a two-handed weapon |
+| Ragnarok (`Berserker_capstone_200`, 1) | `class_resource` more 100 with a two-handed weapon, beside the first slice's drain row |
+| Bastion (`Bulwark_capstone_100`, 1) | `max_health` increased 1 for every 1 of `block_chance` |
+
+**Judgements:**
+- **The maximum Titan and Unbridled read** is `MaximumClassResource`, the attribute with the `class_resource` rows that
+  hold now. So Ragnarok's doubling raises Titan's health, as ruled. It is not the maximum less what an army reserves
+  (`MaximumClassResourceAsked`): a reservation holds part of the bar back, and the bar is as big as it was.
+- **It is read only when a row asks**, in `WithEnemiesInReach`, as the increased movement speed reading is.
+  `MaximumClassResource` evaluates its line with `CurrentConditions`, not through `WithEnemiesInReach`, so it never
+  asks for this reading and cannot loop. A `class_resource` row scaled by it would read an unknown maximum and grant
+  nothing, so the generator refuses one.
+- **Bastion reads the attribute in `CurrentConditions`**, beside Armor, as ruled. A `block_chance` row conditioned on
+  the blow or the moment does not move it. Iron Aegis's doubling, while the character has not attacked for 3 seconds,
+  is such a row.
+- **`frenzy_entered` is raised once per entry**, after the state is set, with no tags. A Frenzy that goes on raises
+  nothing more, and Wrath raises nothing. A pool filled by a row's own action enters Frenzy without the event, because
+  `ActOnEvent` acts at depth one; `resource_full` is dropped there the same way.
+- **Opportunist's row states no weapon condition.** Frenzy is entered only dual wielding: `frenzy_on_full_fervour` is
+  under `dual_wielding`. Cut and Run's row does the same.
+- **Unstoppable refuses a pin before anything is applied**, so a refused pin leaves neither its tag nor its damage
+  taken increase, and a pin already running is kept.
+- **The not-built mark**:
+  - It follows the floor modifier panel's form, "<name> (not built yet: it does nothing)", on all four places.
+  - A capstone's own node is never marked. Its points carry no row by design; its options are marked where they are
+    offered.
+  - With no effect table, nothing is marked: a table that failed to load must not mark every node.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored. The tracked files were compared
+with a copy taken before the proofs, and were identical afterwards.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `CataclysmBerserkerStates.cpp`: the `frenzy_entered` call taken out | `pytest tools/tests/test_pool_action_names_match_the_engine.py` | `test_every_event_a_row_may_hang_on_is_one_the_game_fires` |
+| `tools/generate_datatables.py`: the refusal of a `class_resource` row scaled by its own maximum switched off | `pytest tools/tests/test_war_vows_v2a_scripts.py` | `test_a_class_resource_row_scaled_by_its_own_maximum_is_refused` |
+| `game/Data/PassiveEffects.csv`: Titan's step written as 3 rather than 2 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV2a.TitanUnbridledRagnarokAndBastionGiveTheirFiguresAndTheirControlsNone` | the generated rows through `ModifiersFor`: Titan 50% at 100 maximum Fervour with two hands (none with one hand, with the maximum unknown, or with Crimson Pact); Ragnarok 100 to 200 with two hands (100 with one, and with Eternal Hunger); Unbridled 50 Fervour and 7 damage reduction at 5 points and 150 maximum (40 and none at 4 points); Bastion 25% at 25% block chance (none unknown, none with Bloodied but Unbroken) |
+| `Cataclysm.WarVowsV2a.TitansScaleReadsTheMaximumFervourItsConditionedRowsMake` | a creature with a `class_resource` line of 100 doubling at or below 50% health, and Titan's row on `max_health` of 1,000: 1,500 at full health, 2,000 at 40%. Controls: the attribute stays 100; a lookup no row of which asks leaves the reading unknown |
+| `Cataclysm.WarVowsV2a.EnteringFrenzyRaisesFrenzyEnteredOncePerEntry` | `Judge` on a creature allowed Frenzy: one event at a full pool, none more while in Frenzy, a second after it ends and begins again. Control: a creature allowed Wrath raises none |
+| `Cataclysm.WarVowsV2a.AWarPlayerTakingOpportunistIsHandedAMovementResetOnEnteringFrenzy` | a level 10 War player through `SetPassiveAllocation`: Opportunist hands over one movement reset on `frenzy_entered`, always. Control: Vital Strikes none |
+| `Cataclysm.WarVowsV2a.UnstoppableRefusesAPinOnlyWhileItsConditionHolds` | Unstoppable copies `pin_suppressed` with both conditions (Thrill of the Hunt none); a creature holding it above 75% is not pinned at 100 Fervour, and is pinned at 50 (the control) |
+| `Cataclysm.WarVowsV2a.APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` | Open Wounds and Warlord, with no row, are marked in the description, the option button, the full description and the tool tip. Controls: Wrath and Vital Strikes, with rows, are not; with no table, nothing is |
+
+Predicted counts:
+- `Cataclysm.WarVowsV2a.`: 6.
+- `Cataclysm.WarVowsV1.`: 3.
+- `Cataclysm.Data.`, `Cataclysm.StatExemption.`, `Cataclysm.BerserkerStates.`, `Cataclysm.Debuff.` and
+  `Cataclysm.Passives.`: unchanged.
+
+### C++ GUARD PROOFS (planned, three, with `test_prefix="Cataclysm.WarVowsV2a."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: `State.ClassResourceMaximumNow = MaximumClassResource();` reads the attribute instead (`= State.ClassResourceMaximum;`) | `TitansScaleReadsTheMaximumFervourItsConditionedRowsMake` |
+| `CataclysmSkillEffects.cpp`: the `PinSuppressedStat` check in `ApplyPin` made `false && ...` | `UnstoppableRefusesAPinOnlyWhileItsConditionHolds` |
+| `CataclysmPassiveTree.cpp`: `MarkedNotBuiltYet` returns the name unmarked | `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` |
+
+---
+
 ## 2026-11-25 — The War vow options' first slice: nine rows on eight options, the ruled option sentences and the Saboteur's twelve options written into the tree files, and the passive row port's last eight columns made required
 
 **Affects:**

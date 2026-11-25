@@ -708,7 +708,11 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 552 THE SAME DAY: nine rows on eight War vow options
 #: (`tools/reapply_war_vows_v1_workbook.py`).
-AUTHORED_ROWS = 552
+#:
+#: AND TO 559 THE SAME DAY: seven rows of the War vow options' second slice,
+#: V2a (`tools/reapply_war_vows_v2a_workbook.py`): Unbridled's two, Opportunist,
+#: Unstoppable's pin, Titan, Ragnarok's doubling and Bastion.
+AUTHORED_ROWS = 559
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1146,7 +1150,9 @@ AUTHORED_ROWS = 552
 #: AND TO 311 THE SAME DAY: Volatile Casing, Field Engineer and Delayed Fuse.
 #: AND TO 312 THE SAME DAY: Thin Air.
 #: AND TO 316 THE SAME DAY: four oaths, with the War vow options' first slice.
-AUTHORED_NODES = 316
+#: AND TO 317 THE SAME DAY: Unbridled, with the second slice, V2a. Its options
+#: (Opportunist, Titan, Bastion) are on capstones already counted.
+AUTHORED_NODES = 317
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1248,7 +1254,9 @@ AUTHORED_NODES = 316
 #: Unbroken, Colossus Eternal and Wrath Incarnate (Bulwark). Four capstones had
 #: no row and move `AUTHORED_NODES` too: the Berserker's Final Oath and the
 #: Bulwark's First, Third and Final Oaths.
-AUTHORED_OPTIONS = 50
+#: AND TO 53 THE SAME DAY: the second slice, V2a -- Opportunist and Titan
+#: (Berserker) and Bastion (Bulwark). Each capstone already had a row.
+AUTHORED_OPTIONS = 53
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2218,6 +2226,15 @@ SCALE_WORDS = {
                          None),
     "increased_movement_speed": (("for every", "increased movement speed"),
                                  "{value:g}%", None),
+
+    # THE CLASS RESOURCE'S MAXIMUM AND THE BLOCK CHANCE ATTRIBUTE, the War vow
+    # options' second slice (2026-11-25). Titan reads "for every 2 points of
+    # maximum Fervour you have" and Unbridled "Every 20 points of maximum Fervour
+    # you have": "maximum fervour" keeps the row off a node about the Fervour
+    # held, and the step form carries the number beside "points of maximum
+    # fervour". Bastion reads "for every 1% Block Chance you have".
+    "max_class_resource": (("maximum fervour", "you have"), "{value:g} points of maximum fervour", None),
+    "block_chance": (("for every", "block chance you have"), "{value:g}% block chance", None),
 }
 
 
@@ -2795,6 +2812,14 @@ VALUE_IN_WORDS = {
     # UNSTOPPABLE, the Berserker's Second Oath, 2026-11-25: "you cannot be slowed, rooted, or knocked back", two flags.
     ("Berserker_capstone_50", "movement_speed_reduction_suppressed"): ("cannot be slowed", 1.0),
     ("Berserker_capstone_50", "knockback_suppressed"): ("knocked back", 1.0),
+    # AND ITS "rooted", a third flag, with the second slice, V2a: a pin counted as the root, as ruled on 2026-11-25.
+    ("Berserker_capstone_50", "pin_suppressed"): ("rooted", 1.0),
+    # RAGNAROK'S "Your maximum Fervour is doubled", a More of 100 under "Two-handed weapons only" (V2a, 2026-11-25).
+    ("Berserker_capstone_200", "class_resource"): ("maximum fervour is doubled", 100.0),
+    # OPPORTUNIST, the Berserker's First Oath (V2a, 2026-11-25): "Entering Frenzy immediately resets the cooldown of
+    # your movement skill", a `cooldown_reset_movement` action whose value is its chance, 100 being always. An action
+    # row names no stat, so the key's stat is empty; the node has no other action row.
+    ("Berserker_capstone_25", ""): ("immediately resets the cooldown of your movement skill", 100.0),
     # RAGNAROK, the Berserker's Final Oath, 2026-11-25: "Wrath no longer drains Fervour passively", the drain removed.
     ("Berserker_capstone_200", "fervour_drain_per_second"): ("no longer drains fervour", 1.0),
     # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of
@@ -3496,9 +3521,9 @@ FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
 
 #: See `test_the_bucket_matches_the_nodes_own_wording`.
 #: An option whose sentence multiplies in a clause a later slice builds; see
-#: `test_a_multiplicative_description_has_a_multiplicative_row`. Ragnarok's "Your maximum Fervour is doubled"
-#: (the War vow options' second slice).
-MULTIPLIER_WAITS_FOR_A_LATER_SLICE = frozenset({("Berserker_capstone_200", 1)})
+#: `test_a_multiplicative_description_has_a_multiplicative_row`. Ragnarok's "Your maximum Fervour is doubled" was the
+#: one, until the War vow options' second slice, V2a, wrote its `class_resource` row on 2026-11-25. Empty since.
+MULTIPLIER_WAITS_FOR_A_LATER_SLICE: frozenset[tuple[str, int]] = frozenset()
 
 DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 

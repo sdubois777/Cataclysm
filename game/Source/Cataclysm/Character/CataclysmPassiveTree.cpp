@@ -382,7 +382,8 @@ TArray<FString> UCataclysmPassiveTree::OptionDescriptionsOf(
 }
 
 FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
-												  FName Node)
+												  FName Node,
+												  const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -393,7 +394,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 	FString Text = Row->Description;
 	if (Row->Kind != CapstoneKind)
 	{
-		return Text;
+		// A NODE WITH NO ROW SAYS SO, when the caller hands over the table to ask. The War vow options' second slice.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// THE THREE NAMES ON THE SAME LINE, AND NOT WHAT THEY DO. Issue #1078. A
@@ -408,7 +410,9 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (Names.IsValidIndex(Index) && !Names[Index].IsEmpty())
 		{
-			Offered.Add(FString::Printf(TEXT("%d %s"), Option, *Names[Index]));
+			// AND AN OPTION WITH NO ROW SAYS SO, beside its name. The War vow options' second slice, 2026-11-25.
+			const FString Named = FString::Printf(TEXT("%d %s"), Option, *Names[Index]);
+			Offered.Add(EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named);
 		}
 	}
 
@@ -422,7 +426,8 @@ FString UCataclysmPassiveTree::ShortDescriptionOf(const UDataTable* NodeTable,
 }
 
 FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
-												 FName Node)
+												 FName Node,
+												 const UDataTable* EffectTable)
 {
 	const FCataclysmPassiveNodeRow* Row = FindNode(NodeTable, Node);
 	if (!Row)
@@ -434,8 +439,9 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	if (Row->Kind != CapstoneKind)
 	{
 		// EVERY ORDINARY NODE SAYS WHAT IT DOES IN ITS OWN DESCRIPTION, which is
-		// what this screen has always shown.
-		return Text;
+		// what this screen has always shown, and since 2026-11-25 that it does
+		// nothing when it has no row.
+		return EffectTable && !HasEffectRows(EffectTable, Node) ? MarkedNotBuiltYet(Text) : Text;
 	}
 
 	// A CAPSTONE'S DOES NOT. Issue #1076. "Unlocks at 25 points spent. Choose
@@ -456,7 +462,10 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 			continue;
 		}
 
-		Text += FString::Printf(TEXT("\n\n%d  %s"), Option, *Names[Index]);
+		// THE HEADING MARKED WHEN THE OPTION HAS NO ROW. The War vow options' second slice, 2026-11-25.
+		const FString Named = FString::Printf(TEXT("%d  %s"), Option, *Names[Index]);
+		Text += TEXT("\n\n");
+		Text += EffectTable && !HasEffectRows(EffectTable, Node, Option) ? MarkedNotBuiltYet(Named) : Named;
 
 		// A NAMED OPTION WITH NO DESCRIPTION SAYS SO. It cannot happen in the
 		// six trees today and the alternative is a name followed by nothing,
@@ -469,6 +478,32 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 	}
 
 	return Text;
+}
+
+bool UCataclysmPassiveTree::HasEffectRows(const UDataTable* EffectTable, FName Node, int32 Option)
+{
+	if (!EffectTable)
+	{
+		return false;
+	}
+
+	// THE TABLE WALKED ONCE, STOPPING AT THE FIRST ROW, rather than `EffectsFor`, which builds and sorts a map of every
+	// node to answer for one. The screen asks this for every node it draws.
+	const FString Wanted = Node.ToString();
+	for (const TPair<FName, uint8*>& Each : EffectTable->GetRowMap())
+	{
+		const FCataclysmPassiveEffectRow* Effect = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
+		if (Effect && Effect->Option == Option && Effect->Node == Wanted)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FString UCataclysmPassiveTree::MarkedNotBuiltYet(const FString& Name)
+{
+	return FString::Printf(TEXT("%s (not built yet: it does nothing)"), *Name);
 }
 
 FString UCataclysmPassiveTree::RefusalForSpending(

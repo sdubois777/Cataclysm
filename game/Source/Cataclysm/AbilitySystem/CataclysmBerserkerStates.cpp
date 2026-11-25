@@ -93,6 +93,17 @@ bool FCataclysmBerserkerStates::Judge(UCataclysmAbilitySystemComponent* Cataclys
 	if (Now != Was)
 	{
 		Cataclysm->SetBerserkerState(Now);
+
+		// AND ENTERING FRENZY IS AN EVENT, raised after the state is set so a row acting on it reads the character in
+		// Frenzy. The War vow options' second slice, 2026-11-25: Opportunist's "Entering Frenzy immediately resets the
+		// cooldown of your movement skill" is a row on it, ruled that day over a row on `resource_full` while in Frenzy,
+		// which would also fire on every refill during one. Once per entry: a Frenzy that goes on raises nothing more,
+		// and Wrath raises nothing, since no row asks. A pool filled by a row's own action enters Frenzy without it,
+		// because `ActOnEvent` acts at depth one; `resource_full` is dropped there the same way.
+		if (Now == ECataclysmBerserkerState::Frenzy)
+		{
+			Cataclysm->ActOnEvent(FName(TEXT("frenzy_entered")));
+		}
 	}
 	if (bArmed != Cataclysm->IsBerserkingArmed())
 	{

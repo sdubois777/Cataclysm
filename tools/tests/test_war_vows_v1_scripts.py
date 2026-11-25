@@ -25,7 +25,9 @@ import reapply_war_vows_v1_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 DOCS = REPO_ROOT / "docs"
-ROW_COUNT = 9
+#: 9 until the second slice, V2a, took over Unstoppable's two rows and Ragnarok's drain row the same day
+#: (`tools/reapply_war_vows_v2a_workbook.py`, whose tests now hold Unstoppable's conditions).
+ROW_COUNT = 6
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +116,12 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_nine_rows_on_eight_options():
+def test_the_script_writes_six_rows_on_six_options():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
     options = {(node, row.option) for node, _, wanted in rows.NODES for row in wanted}
-    assert len(options) == 8
+    assert len(options) == 6
+    assert ("Berserker_capstone_50", 1) not in options and ("Berserker_capstone_200", 1) not in options, (
+        "Unstoppable's and Ragnarok's rows are the second slice's script's")
     assert rows.base.PORT_EIGHT == ("Fraction Of", "Scale Offset", "Every Seconds", "Every Nth", "Trigger Cooldown",
                                     "Event Value", "Ailment", "Damage Share")
 
@@ -128,12 +132,6 @@ def test_shield_oath_and_flesh_oath_restore_a_share_of_health():
         1, "health", "block", "maximum", 2)
     assert (flesh.option, flesh.action, flesh.action_event, flesh.fraction_of, flesh.every_seconds, flesh.value) == (
         2, "health", "every_seconds", "current", 1, 1)
-
-
-def test_unstoppable_holds_above_75_percent_with_two_hands():
-    for row in _rows_of("Berserker_capstone_50"):
-        assert (row.option, row.cond, row.cond_value, row.cond2) == (
-            1, "class_resource_above", 75, "wielding_two_handed_weapon"), row
 
 
 def test_the_workbook_holds_the_rows_and_the_columns():

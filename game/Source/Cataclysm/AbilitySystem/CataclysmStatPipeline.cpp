@@ -211,6 +211,8 @@ namespace
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
 		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
+		{ TEXT("max_class_resource"),  ECataclysmStatScale::PerPointOfMaximumClassResource },
+		{ TEXT("block_chance"),        ECataclysmStatScale::PerPercentOfBlockChance },
 	};
 
 	/**
@@ -1945,6 +1947,30 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		}
 		const float Steps =
 			FMath::FloorToFloat(State.IncreasedMovementSpeedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	// PER WHOLE STEP OF THE CLASS RESOURCE'S MAXIMUM, AND OF THE BLOCK CHANCE ATTRIBUTE. The War vow options' second
+	// slice, 2026-11-25: Titan's "1% for every 2 points of maximum Fervour" is a step of 2, Unbridled's "every 20 points
+	// of maximum Fervour" a step of 20, and Bastion's "1% for every 1% Block Chance" a step of 1. The same two refusals as
+	// the readings above, an unknown reading and a step of nothing; whole steps, rounded down.
+	case ECataclysmStatScale::PerPointOfMaximumClassResource:
+	{
+		if (State.ClassResourceMaximumNow < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.ClassResourceMaximumNow / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPercentOfBlockChance:
+	{
+		if (State.BlockChance < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(State.BlockChance / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}

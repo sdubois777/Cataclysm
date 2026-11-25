@@ -465,6 +465,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Set Stance's "cannot be knocked back", above zero meaning held, read
 		// by UCataclysmSkillEffects::ApplyKnockback. Issue #1755.
 		TEXT("knockback_suppressed"),
+		// Unstoppable's "cannot be rooted", a pin counted as the root, above zero
+		// meaning held, read by UCataclysmSkillEffects::ApplyPin. The War vow
+		// options' second slice, 2026-11-25.
+		TEXT("pin_suppressed"),
 		// The block's two figures, read in UCataclysmDamageCalculation::Resolve
 		// at the block step: the share a block removes, on a base of 50 that
 		// `EngineSuppliedBases` states, and the chance it removes all of the hit.

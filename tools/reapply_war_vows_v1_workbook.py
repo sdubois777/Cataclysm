@@ -4,13 +4,14 @@
     python tools/reapply_war_vows_v1_workbook.py --check
 
 THE WAR VOW OPTIONS' FIRST SLICE (2026-11-25), on the coordinating session's rulings on the vow survey that day. Nine
-rows on eight options, each on a stat, scale, condition or pool action the game already reads; the rest of each option's
-sentence waits for the slice that builds its mechanism (V2 or V3), named in the decisions entry.
+rows on eight options were written here, each on a stat, scale, condition or pool action the game already reads; the
+rest of each option's sentence waits for the slice that builds its mechanism (V2 or V3), named in the decisions entry.
 
-  - Unstoppable (Berserker Second Oath, option 1): cannot be slowed and cannot be knocked back, above 75% Fervour with a
-    two-handed weapon. (Pin as a root is V2's.)
-  - Ragnarok (Berserker Final Oath, option 1): the drain removed while in Wrath. (The doubled maximum and the
-    shockwaves are V2's.)
+SIX ROWS ON SIX OPTIONS ARE LISTED HERE NOW. Unstoppable's two rows (Berserker Second Oath, option 1: cannot be slowed
+and cannot be knocked back, above 75% Fervour with a two-handed weapon) and Ragnarok's one (Berserker Final Oath, option
+1: the drain removed while in Wrath) were taken over the same day by the second slice, V2a, with the rows it adds to
+those two options: `tools/reapply_war_vows_v2a_workbook.py` holds every row of both.
+
   - Eternal Hunger (Berserker Final Oath, option 3): life leech increased 50%. (Health above the maximum is V3's.)
   - Shield Oath (Bulwark First Oath, option 1): a block restores 2% of maximum health.
   - Flesh Oath (Bulwark First Oath, option 2): 1% of current health every second (in combat, as every timed row runs).
@@ -38,16 +39,11 @@ import reapply_war_data_rows_workbook as base  # noqa: E402
 
 R = base.Row
 LABEL = "the War vow options' first slice"
-TWO_HANDED_ABOVE_75 = {"cond": "class_resource_above", "cond_value": 75, "cond2": "wielding_two_handed_weapon"}
 
 #: (node, Node Name label, rows), in the shape `base.NODES` takes. An option's rows carry its option number.
 NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
-    ("Berserker_capstone_50", "Second Oath", (
-        R("movement_speed_reduction_suppressed", "flat", 1, option=1, **TWO_HANDED_ABOVE_75),
-        R("knockback_suppressed", "flat", 1, option=1, **TWO_HANDED_ABOVE_75))),
     ("Berserker_capstone_200", "Final Oath", (
-        R("fervour_drain_per_second", "removed", 1, cond="in_wrath", option=1),
-        R("life_leech", "increased", 50, option=3))),
+        R("life_leech", "increased", 50, option=3),)),
     ("Bulwark_capstone_25", "First Oath", (
         R(None, "", 2, action="health", action_event="block", fraction_of="maximum", option=1),
         R(None, "", 1, action="health", action_event="every_seconds", fraction_of="current", every_seconds=1,

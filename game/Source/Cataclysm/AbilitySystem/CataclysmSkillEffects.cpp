@@ -411,6 +411,8 @@ const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
 	TEXT("crowd_control_resistance");
 const TCHAR* UCataclysmSkillEffects::KnockbackSuppressedStat =
 	TEXT("knockback_suppressed");
+const TCHAR* UCataclysmSkillEffects::PinSuppressedStat =
+	TEXT("pin_suppressed");
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
@@ -5244,6 +5246,17 @@ bool UCataclysmSkillEffects::ApplyPin(AActor* Instigator, AActor* Target,
 	if (!Source || !Defender)
 	{
 		return false;
+	}
+
+	// A TARGET THAT CANNOT BE ROOTED IS NOT PINNED, and keeps whatever pin it already carries. The War vow options'
+	// second slice, 2026-11-25: Unstoppable's "you cannot be ... rooted", with a pin counted as the root. Asked of the
+	// target through the pipeline, as `ApplyKnockback` asks its flag, and before anything is applied.
+	if (const UCataclysmAbilitySystemComponent* Held = Cast<UCataclysmAbilitySystemComponent>(Defender))
+	{
+		if (Held->StatForSkill(FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f) > 0.0f)
+		{
+			return false;
+		}
 	}
 
 	// THE STRONGEST APPLICATION WINS, which the project owner ruled on

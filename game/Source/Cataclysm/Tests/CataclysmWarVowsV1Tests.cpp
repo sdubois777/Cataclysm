@@ -113,14 +113,15 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1StatRowsTest,
 	{
 		return false;
 	}
+	// THREE AND TWO SINCE THE SECOND SLICE, V2a, the same day: Ragnarok's doubling and Bastion.
 	struct FCapstoneRows
 	{
 		const TCHAR* Node;
 		int32 Rows;
 	};
-	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 2},
+	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 3},
 														   {TEXT("Bulwark_capstone_25"), 2},
-														   {TEXT("Bulwark_capstone_100"), 1},
+														   {TEXT("Bulwark_capstone_100"), 2},
 														   {TEXT("Bulwark_capstone_200"), 2}})
 	{
 		const int32 Held = UCataclysmPassiveTree::EffectsFor(Effects, FName(Each.Node)).Num();
