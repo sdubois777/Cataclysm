@@ -151,6 +151,10 @@ it must be onto its own creature, `Enemy`. Proved with `tools/prove_guard.py`, b
 
 No other Python check was added: the slice changes no data and nothing in `sim/`.
 
+**The Python suite.** On `2c78f9b30`, before the guard was amended: "1 failed, 8290 passed, 9 skipped in 367.26s
+(0:06:07)", the one failure being the check above. On `fc196cce9`: "8291 passed, 9 skipped in 333.24s (0:05:33)"; JUnit
+8300 tests, 0 failures, 0 errors, 9 skipped. ruff: "All checks passed!".
+
 ---
 
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
