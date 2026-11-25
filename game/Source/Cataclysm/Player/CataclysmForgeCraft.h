@@ -351,7 +351,18 @@ public:
 	 */
 	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
 												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options,
-												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+												  const FCataclysmForgeCosts& Costs = FCataclysmForgeCosts());
+
+	/**
+	 * The empire tree's crafting nodes for a craft on the item at a target whose own material is `CraftMaterial`
+	 * (#2741's crafting group, slices C1 and C2): the residue factor that applies to it (Tool Maintenance's always,
+	 * Limited Knowledge's below +6, Heat Shielding's on a tier 3+ material), Stable Compounds' share, Master's Touch's
+	 * draw for this item today, and the day nodes. Every `OptionsFor` call and the cleanse's plan pass it (G2). None with
+	 * no item or no run.
+	 */
+	static FCataclysmForgeCosts CostsFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										 FName CraftMaterial);
 
 	/**
 	 * The empire tree's forge gold pricing for a craft on the item at a target (#47 slice F6a): each material tier's

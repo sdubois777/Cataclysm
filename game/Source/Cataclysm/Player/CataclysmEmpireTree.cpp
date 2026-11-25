@@ -604,6 +604,34 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::HighResidueMaterialsReturnedChance:
 			Bonuses.HighResidueMaterialsReturnedChance += Total;
 			break;
+		// #2741's CRAFTING GROUP, SLICES C1 AND C2: a forge craft's residue and days. The three "(multiplicative)" nodes
+		// compound per point, as `WalkTimeCompounded` does.
+		case ECataclysmEmpireTreeEffect::CraftResidueKept:
+			Bonuses.CraftResidueFactor *= FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::LowLevelCraftResidueKept:
+			Bonuses.LowLevelCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialCraftResidueKept:
+			Bonuses.RareMaterialCraftResidueFactor *=
+				FMath::Pow(FMath::Max(0.0f, 1.0f - Row->PerPoint), static_cast<float>(Points));
+			break;
+		case ECataclysmEmpireTreeEffect::StabilizerShareReduced:
+			Bonuses.StabilizerShareReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::ResidueResetChancePerHundred:
+			Bonuses.ResidueResetChancePerHundred += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysOff:
+			Bonuses.CraftDaysOff += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReduced:
+			Bonuses.CraftDaysReduced += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::CraftDaysReducedMore:
+			Bonuses.CraftDaysReducedMore += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

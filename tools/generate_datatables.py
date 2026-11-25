@@ -3893,6 +3893,12 @@ EMPIRE_TREE_BUILT = {
     # session on 2026-11-22 (Q11 to Q17) and 2026-11-25 (N1 to N5). Numbered 12,
     # the slice after F6a's 11.
     "Material Conservation": 12, "Resource Management": 12, "Tempting Fate": 12,
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days,
+    # ruled by the coordinating session on 2026-11-25. Numbered 13, the slice
+    # after F6b's 12.
+    "Tool Maintenance": 13, "Limited Knowledge": 13, "Heat Shielding": 13,
+    "Stable Compounds": 13, "Master's Touch": 13, "Master Craftsman": 13,
+    "Industrial Speed": 13, "Sovereign's Assembly": 13,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -3998,19 +4004,15 @@ EMPIRE_TREE_REFUSED = {
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
     "Apprentice Smith": "crafting",
-    "Rough Draft": "crafting", "Tool Maintenance": "crafting",
-    "Limited Knowledge": "crafting",
-    "Industrial Speed": "crafting",
+    "Rough Draft": "crafting",
     "Refining Techniques": "crafting",
     "Quality Materials": "crafting",
-    "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
-    "Master Craftsman": "crafting",
+    "Explorer Synergy": "crafting",
     "Expanded Station (Jeweler)": "crafting",
     "Expanded Station (Smith)": "crafting",
     "Expanded Station (Enchantress)": "crafting",
     "Precision Crafting": "crafting",
-    "Master's Touch": "crafting", "Sovereign's Assembly": "crafting",
-    "Heat Shielding": "crafting", "Flawless Production": "crafting",
+    "Flawless Production": "crafting",
     "Residue Protocols": "crafting", "Grand Forge": "crafting",
     "Ancient Techniques": "crafting", "Master's Workshop": "crafting",
     "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
@@ -4264,6 +4266,9 @@ EMPIRE_TREE_EFFECT_KINDS = (
     "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance",
     # #47 slice F6b: the three forge material nodes, drawn by UCataclysmForge::KeepingOn.
     "LowTierMaterialKeptChance", "RareMaterialKeptChance", "HighResidueMaterialsReturnedChance",
+    # #2741's crafting group, slices C1 and C2: a forge craft's residue and days.
+    "CraftResidueKept", "LowLevelCraftResidueKept", "RareMaterialCraftResidueKept", "StabilizerShareReduced",
+    "ResidueResetChancePerHundred", "CraftDaysOff", "CraftDaysReduced", "CraftDaysReducedMore",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4390,6 +4395,23 @@ EMPIRE_TREE_EFFECTS = {
     "Material Conservation": [("LowTierMaterialKeptChance", 0.02)],
     "Resource Management": [("RareMaterialKeptChance", 0.01)],
     "Tempting Fate": [("HighResidueMaterialsReturnedChance", 0.15)],
+    # #2741's crafting group, slices C1 and C2 (2026-11-25). "-5% CR gained from
+    # all crafting actions per point (multiplicative)"; "-2.5% CR gained from
+    # crafting actions on items below +6 per point (multiplicative)"; "-2.5% CR
+    # gained from crafting actions using T3+ materials per point
+    # (multiplicative)"; "Chaos Stabilizer reduces CR gain by an additional 2.5%
+    # per point"; "1% chance per 100 CR on an item to reset CR to 0 when
+    # crafting"; "-1 Day to crafting time per point"; "-1% of Days required for
+    # any crafting project per point" (the tree file's figure, ruling C1; the
+    # owner's question 6); "Reduce total crafting time required by 50%".
+    "Tool Maintenance": [("CraftResidueKept", 0.05)],
+    "Limited Knowledge": [("LowLevelCraftResidueKept", 0.025)],
+    "Heat Shielding": [("RareMaterialCraftResidueKept", 0.025)],
+    "Stable Compounds": [("StabilizerShareReduced", 0.025)],
+    "Master's Touch": [("ResidueResetChancePerHundred", 0.01)],
+    "Master Craftsman": [("CraftDaysOff", 1.0)],
+    "Industrial Speed": [("CraftDaysReduced", 0.01)],
+    "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).

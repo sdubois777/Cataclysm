@@ -309,6 +309,15 @@ struct FCataclysmForgeOptionEffect
 	bool bStabilizerUsed = false;
 	int32 ShardsUsed = 0;
 
+	/** The residue after and the days with the options alone, before the empire tree's crafting nodes (#2741's
+	 *  crafting group, slices C1 and C2): what the options' sentences say. Equal to `ResidueAfter` and `Days` when no
+	 *  node applies. */
+	float OptionsResidueAfter = 0.0f;
+	int32 OptionsDays = 0;
+
+	/** Master's Touch's draw landed: the residue after the craft is 0. */
+	bool bResidueReset = false;
+
 	/** The gold the options cost, on top of the craft's own (G1), and the materials they take. */
 	int64 Gold = 0;
 	TArray<FCataclysmForgeMaterialTake> Materials;
@@ -330,6 +339,10 @@ struct FCataclysmForgeCleanse
 
 	/** The days of the run it costs: one for each 500 residue or part of it, at least one (Q25). */
 	int32 Days = 0;
+
+	/** The days before the empire tree's day nodes, and whether Master's Touch left the residue at 0 (slices C1, C2). */
+	int32 DaysBeforeTheTree = 0;
+	bool bResidueReset = false;
 
 	/** The gold it costs at the difficulty tier of the run, and the gold held. */
 	int64 Gold = 0;
@@ -547,6 +560,28 @@ struct FCataclysmForgeKeeping
 	/** "2 Upgrade Stone +3 (Material Conservation), 1 Chaos Stabilizer (Resource Management)" for the kept takes of
 	 *  `Materials`, each with its node; empty when none is kept. */
 	FString KeptPartsOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const;
+};
+
+/**
+ * What the empire tree's crafting nodes do to one forge item craft's residue and days. #2741's crafting group, slices C1
+ * and C2, ruled by the coordinating session on 2026-11-25:
+ *   - the residue the craft adds is multiplied by `ResidueFactor` (Tool Maintenance's, Limited Knowledge's on an item
+ *     below +6, Heat Shielding's on a tier 3+ craft material, each compounded per point), and a Chaos Stabilizer keeps
+ *     `StabilizedResidueShare` less `StabilizerShareReduced` of it (Stable Compounds); when Master's Touch's draw
+ *     landed, the residue after the craft is 0;
+ *   - the days, after the Tainted Shards: times `DaysFactor` (Industrial Speed, Sovereign's Assembly), less `DaysOff`
+ *     (Master Craftsman), rounded; a craft of at least one day keeps one, a craft of none stays at none
+ *     (`UCataclysmForge::TreeDaysFor`).
+ * Worked out once by `UCataclysmForgeCraft::CostsFor` and passed to `OptionsOn` and `CleanseOf`, so the question and the
+ * press read the same figures (G2). The default changes nothing.
+ */
+struct FCataclysmForgeCosts
+{
+	float ResidueFactor = 1.0f;
+	float StabilizerShareReduced = 0.0f;
+	bool bResidueReset = false;
+	float DaysFactor = 1.0f;
+	float DaysOff = 0.0f;
 };
 
 /**
@@ -1271,6 +1306,40 @@ public:
 	 */
 	static FString KeptText(const FCataclysmForgeKeeping& Keeping, const TArray<FCataclysmForgeMaterialTake>& Materials);
 
+	// ---- #2741's crafting group, slices C1 and C2: the empire tree's residue and day nodes (`FCataclysmForgeCosts`).
+
+	/** Limited Knowledge's "on items below +6": an item's gear level before the craft must be below this. */
+	static constexpr int32 LimitedKnowledgeBelowLevel = 6;
+
+	/** Heat Shielding's "using T3+ materials": the craft's own material's tier must be at least this. */
+	static constexpr int32 HeatShieldingLowestTier = 3;
+
+	/** Master's Touch's "per 100 CR": its chance counts each whole step of this much residue before the craft. */
+	static constexpr float MastersTouchResidueStep = 100.0f;
+
+	/** The salt of Master's Touch's draw: "FMTC". */
+	static constexpr int32 MastersTouchSalt = 0x464D5443;
+
+	/**
+	 * Whether Master's Touch's draw lands for a craft on `Item` on `Day`: `ChancePerStep` for each whole
+	 * `MastersTouchResidueStep` of the item's residue before the craft, and a draw on its own seed below it.
+	 */
+	static bool ResidueResetLands(const FCataclysmItem& Item, float ChancePerStep, int32 WalkSeedMask, int32 Day);
+
+	/** A craft's days after the empire tree's day nodes: `Days` times `DaysFactor`, less `DaysOff`, rounded; at least
+	 *  one when `Days` is at least one, and none when it is none (the coordinating session's ruling of 2026-11-25). */
+	static int32 TreeDaysFor(int32 Days, const FCataclysmForgeCosts& Costs);
+
+	/**
+	 * The forge screen's words for what the empire tree's crafting nodes changed in a craft, said after the options'
+	 * sentences: "" when nothing; otherwise " The empire tree's crafting nodes: residue 40 to 49.5, not 55; 3 days, not
+	 * 5." Master's Touch's reset says " Master's Touch: residue 640 to 0, not 690."
+	 */
+	static FString CostsText(const FCataclysmForgeOptionEffect& Effect, float ResidueBefore);
+
+	/** The same for a cleanse, after its question. */
+	static FString CleanseCostsText(const FCataclysmForgeCleanse& Plan);
+
 	/**
 	 * The forge screen's words for a price the empire tree discounts, said after the craft's question: "" with no
 	 * discount; otherwise " The empire tree's forge nodes take 28% off its gold." and, when Forge Upgrades' tenth landed,
@@ -1364,7 +1433,8 @@ public:
 	static FCataclysmForgeOptionEffect OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
 												 const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
 												 int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld,
-		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+		const FCataclysmForgeCosts& Costs = FCataclysmForgeCosts());
 
 	/**
 	 * What the options add to a craft's first-press question, empty with none. An added socket at 250 residue, tier 1,
@@ -1381,7 +1451,8 @@ public:
 	 */
 	static FCataclysmForgeCleanse CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
 											int64 GoldHeld,
-		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing());
+		const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+		const FCataclysmForgeCosts& Costs = FCataclysmForgeCosts());
 
 	/**
 	 * What the first press of a cleanse says, at tier 1: "Press again to cleanse half the residue: one Purified Essence,

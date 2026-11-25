@@ -2553,6 +2553,32 @@ enum class ECataclysmEmpireTreeEffect : uint8
 	/** The chance a forge item craft returns every crafting material it used, on an item whose residue before the craft
 	 *  is above `UCataclysmForge::TemptingFateResidueAbove` (Tempting Fate, Q15, N5). #47 slice F6b. */
 	HighResidueMaterialsReturnedChance,
+
+	/** The residue every forge item craft adds, kept at 0.95 to the power of the points (Tool Maintenance, "-5% CR gained
+	 *  from all crafting actions per point (multiplicative)"). #2741's crafting group, slice C1. */
+	CraftResidueKept,
+
+	/** The same at 0.975 a point, on an item below +6 before the craft (Limited Knowledge). Slice C1. */
+	LowLevelCraftResidueKept,
+
+	/** The same at 0.975 a point, on a craft whose own material is tier 3 or above (Heat Shielding). Slice C1. */
+	RareMaterialCraftResidueKept,
+
+	/** Off the Chaos Stabilizer's share of the residue a craft adds, 0.025 a point (Stable Compounds). Slice C1. */
+	StabilizerShareReduced,
+
+	/** The chance, for each whole 100 of an item's residue before a craft, that the craft leaves it at 0 (Master's
+	 *  Touch). Slice C1. */
+	ResidueResetChancePerHundred,
+
+	/** Days off every forge item craft, one a point (Master Craftsman), after the multipliers. Slice C2. */
+	CraftDaysOff,
+
+	/** Off a forge item craft's days, 1% a point (Industrial Speed). Slice C2. */
+	CraftDaysReduced,
+
+	/** Off a forge item craft's days again, multiplied with the above, 50% (Sovereign's Assembly). Slice C2. */
+	CraftDaysReducedMore,
 };
 
 /**

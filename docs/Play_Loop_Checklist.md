@@ -723,6 +723,24 @@ The three material nodes of the empire tree's Artisan branch (issue #47, slice F
 - **The combines never keep a stone**, and a gem socketed is not kept. The same piece on the same day always draws the
   same, so a reload does not change it.
 
+### 31. Take the forge's residue and day nodes in the empire tree, and see a craft cost less of both
+
+The eight residue and day nodes of the empire tree's Artisan branch (#2741's crafting group, slices C1 and C2). With
+none held, note an upgrade's question at the forge: for a +2 helm carrying 250 residue to +3, "residue 250 to 275" and
+5 days.
+
+- **Buy Tool Maintenance to 8 points and Master Craftsman to 10.** The same question now ends: "The empire tree's
+  crafting nodes: residue 250 to 266.6, not 275; 1 day, not 5." After the upgrade the helm carries 266.6 residue and one
+  day of the run has passed.
+- **Limited Knowledge** takes 2.5% a point more off the residue of a craft on a piece below +6; **Heat Shielding** 2.5%
+  a point off a craft whose own material is tier 3 or above (an upgrade to +5 and higher); both multiply.
+- **Stable Compounds** makes a Chaos Stabilizer keep less of what a craft adds: a quarter at 10 points, not a half.
+- **Master's Touch**: on a piece carrying residue, 1% for each whole 100 of it that a craft leaves it at 0; when it will,
+  the question says "Master's Touch and the empire tree's crafting nodes: residue 640 to 0, not 690." The same piece on
+  the same day always draws the same.
+- **Industrial Speed** (1% a point) and **Sovereign's Assembly** (half) take a share of a craft's days. A craft that took
+  at least one day still takes one; a reroll that took none still takes none. The cleanse's days come down the same way.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

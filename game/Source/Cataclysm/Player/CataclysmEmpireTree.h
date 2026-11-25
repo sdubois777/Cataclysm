@@ -247,6 +247,27 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	float LowTierMaterialKeptChance = 0.0f;
 	float RareMaterialKeptChance = 0.0f;
 	float HighResidueMaterialsReturnedChance = 0.0f;
+
+	/** #2741's crafting group, slices C1 and C2 (the coordinating session's rulings of 2026-11-25). The residue a forge
+	 *  item craft adds is multiplied by each factor that applies to it, each compounded per point: Tool Maintenance's
+	 *  on every craft, Limited Knowledge's on an item below +6 before the craft, Heat Shielding's on a craft whose own
+	 *  material is tier 3 or above. `UCataclysmForgeCraft::CostsFor` chooses which apply. */
+	float CraftResidueFactor = 1.0f;
+	float LowLevelCraftResidueFactor = 1.0f;
+	float RareMaterialCraftResidueFactor = 1.0f;
+
+	/** Stable Compounds' 0.025 a point off the Chaos Stabilizer's share of the residue a craft adds (0.5). */
+	float StabilizerShareReduced = 0.0f;
+
+	/** Master's Touch's 1% for each whole 100 of an item's residue before a craft that the craft leaves it at 0. */
+	float ResidueResetChancePerHundred = 0.0f;
+
+	/** A forge item craft's days: times (1 - `CraftDaysReduced`) (Industrial Speed) and (1 - `CraftDaysReducedMore`)
+	 *  (Sovereign's Assembly), less `CraftDaysOff` (Master Craftsman), then rounded; a craft of at least one day keeps
+	 *  one, and a craft of none stays at none (`UCataclysmForge::TreeDaysFor`). */
+	float CraftDaysOff = 0.0f;
+	float CraftDaysReduced = 0.0f;
+	float CraftDaysReducedMore = 0.0f;
 };
 
 /**

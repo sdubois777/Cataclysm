@@ -245,6 +245,74 @@ FString UCataclysmForge::KeptText(const FCataclysmForgeKeeping& Keeping, const T
 	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT(" The empire tree keeps %s."), *Parts);
 }
 
+bool UCataclysmForge::ResidueResetLands(const FCataclysmItem& Item, float ChancePerStep, int32 WalkSeedMask, int32 Day)
+{
+	// WHOLE STEPS OF THE RESIDUE BEFORE THE CRAFT (C3's whole steps, Q15's "before").
+	const float Chance = ChancePerStep * FMath::FloorToFloat(FMath::Max(0.0f, Item.Residue) / MastersTouchResidueStep);
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	FRandomStream Stream(AffixCraftSeed(Item, MastersTouchSalt, 0, WalkSeedMask, Day));
+	return Stream.GetFraction() < Chance;
+}
+
+int32 UCataclysmForge::TreeDaysFor(int32 Days, const FCataclysmForgeCosts& Costs)
+{
+	if (Days <= 0)
+	{
+		return 0; // A CRAFT OF NO DAY STAYS AT NONE.
+	}
+	// THE MULTIPLIERS, THEN THE DAYS OFF, THEN ROUNDED (the city upgrade's order), AND AT LEAST ONE DAY.
+	const float Taken = static_cast<float>(Days) * FMath::Max(0.0f, Costs.DaysFactor) - FMath::Max(0.0f, Costs.DaysOff);
+	return FMath::Max(1, FMath::RoundToInt(Taken));
+}
+
+namespace CataclysmForgeCostsText
+{
+	/** A residue as the screen says it, as `OptionsQuestion` does: whole when whole, else to one place. */
+	FString ResidueWords(float Value)
+	{
+		return FMath::IsNearlyEqual(Value, FMath::RoundToFloat(Value), 0.01f)
+			? FString::Printf(TEXT("%d"), FMath::RoundToInt(Value))
+			: FString::Printf(TEXT("%.1f"), Value);
+	}
+
+	FString Sentence(float ResidueBefore, float ResidueAfter, float ResidueWithout, bool bReset, int32 Days, int32 DaysWithout)
+	{
+		TArray<FString> Parts;
+		if (!FMath::IsNearlyEqual(ResidueAfter, ResidueWithout, 0.01f))
+		{
+			Parts.Add(FString::Printf(TEXT("residue %s to %s, not %s"), *ResidueWords(ResidueBefore),
+									  *ResidueWords(ResidueAfter), *ResidueWords(ResidueWithout)));
+		}
+		if (Days != DaysWithout)
+		{
+			Parts.Add(FString::Printf(TEXT("%d day%s, not %d"), Days, Days == 1 ? TEXT("") : TEXT("s"), DaysWithout));
+		}
+		if (Parts.IsEmpty())
+		{
+			return FString();
+		}
+		return FString::Printf(TEXT(" %s: %s."), bReset ? TEXT("Master's Touch and the empire tree's crafting nodes")
+														: TEXT("The empire tree's crafting nodes"),
+							   *FString::Join(Parts, TEXT("; ")));
+	}
+}
+
+FString UCataclysmForge::CostsText(const FCataclysmForgeOptionEffect& Effect, float ResidueBefore)
+{
+	return CataclysmForgeCostsText::Sentence(ResidueBefore, Effect.ResidueAfter, Effect.OptionsResidueAfter,
+											 Effect.bResidueReset, Effect.Days, Effect.OptionsDays);
+}
+
+FString UCataclysmForge::CleanseCostsText(const FCataclysmForgeCleanse& Plan)
+{
+	const float Halved = FMath::Max(0.0f, Plan.ResidueBefore) * CleansedResidueShare;
+	return CataclysmForgeCostsText::Sentence(Plan.ResidueBefore, Plan.ResidueAfter, Halved, Plan.bResidueReset, Plan.Days,
+											 Plan.DaysBeforeTheTree);
+}
+
 FString UCataclysmForge::DiscountText(const FCataclysmForgePricing& Pricing, FName Material)
 {
 	const int32 Off = Pricing.PercentOffFor(Material);
@@ -1736,12 +1804,14 @@ int32 UCataclysmForge::PenaltyDaysFor(float Residue)
 FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, float ResidueAfter, int32 Days, int64 CraftGold,
 													   const FCataclysmForgeCraftOptions& Options, int32 StabilizersHeld,
 													   int32 ShardsHeld, int32 DifficultyTier, int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)
 {
 	FCataclysmForgeOptionEffect Out;
 	Out.ResidueAfter = ResidueAfter;
 	Out.Days = Days;
 	const float Added = ResidueAfter - ResidueBefore;
+	// THE EMPIRE TREE'S RESIDUE NODES ON WHAT THE CRAFT ADDS (slice C1), applied with the options' below and said apart.
+	const float TreeShare = Added > 0.0f ? FMath::Max(0.0f, Costs.ResidueFactor) : 1.0f;
 
 	// A CHAOS STABILIZER HALVES WHAT THE CRAFT ADDS, CERTAINLY (Q27). The days and the craft's gold are read from the
 	// residue before the craft, so they do not change.
@@ -1762,6 +1832,13 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.bStabilizerUsed = true;
 		Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;
 		Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
+		// STABLE COMPOUNDS (slice C1): "reduces CR gain by an additional 2.5% per point", off the Stabilizer's share.
+		if (Costs.StabilizerShareReduced > 0.0f)
+		{
+			Out.ResidueAfter =
+				ResidueBefore + Added * FMath::Max(0.0f, StabilizedResidueShare - Costs.StabilizerShareReduced);
+			Out.ResidueSaved = ResidueAfter - Out.ResidueAfter;
+		}
 		// ITS ROW'S BASE GOLD THROUGH `GoldFor`, ONCE (G1).
 		const int64 GoldBeforeTheStabilizer = Out.Gold;
 		Out.Gold += GoldFor(BaseGoldOf(ReduceResidueGainOperationRow, BaseGoldFor(0)), ResidueBefore, DifficultyTier);
@@ -1809,6 +1886,19 @@ FCataclysmForgeOptionEffect UCataclysmForge::OptionsOn(float ResidueBefore, floa
 		Out.Materials.Add({FName(TaintedShardRow), Shards});
 	}
 
+	// THE EMPIRE TREE'S CRAFTING NODES, AFTER THE OPTIONS (slices C1 and C2): what the options alone give is kept for
+	// their sentences, then the residue they leave is taken down by the tree's factor (multiplied: D9), Master's Touch
+	// leaves it at 0, and the days after the Tainted Shards take the day nodes.
+	Out.OptionsResidueAfter = Out.ResidueAfter;
+	Out.OptionsDays = Out.Days;
+	Out.ResidueAfter = ResidueBefore + (Out.ResidueAfter - ResidueBefore) * TreeShare;
+	if (Costs.bResidueReset)
+	{
+		Out.ResidueAfter = 0.0f;
+		Out.bResidueReset = true;
+	}
+	Out.Days = TreeDaysFor(Out.Days, Costs);
+
 	// THE GOLD, THE CRAFT'S AND THE OPTIONS' TOGETHER.
 	if (Out.Gold > 0 && FMath::Max<int64>(0, GoldHeld) < CraftGold + Out.Gold)
 	{
@@ -1832,13 +1922,13 @@ FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effe
 	if (Effect.bStabilizerUsed)
 	{
 		Out += FString::Printf(TEXT(" With a Chaos Stabilizer: residue %s to %s, not %s."), *Residue(ResidueBefore),
-							   *Residue(Effect.ResidueAfter), *Residue(PlanResidueAfter));
+							   *Residue(Effect.OptionsResidueAfter), *Residue(PlanResidueAfter));
 	}
 	if (Effect.ShardsUsed > 0)
 	{
 		Out += FString::Printf(TEXT(" With %d Tainted Shard%s: %d day%s, not %d."), Effect.ShardsUsed,
-							   Effect.ShardsUsed == 1 ? TEXT("") : TEXT("s"), Effect.Days, Effect.Days == 1 ? TEXT("") : TEXT("s"),
-							   PlanDays);
+							   Effect.ShardsUsed == 1 ? TEXT("") : TEXT("s"), Effect.OptionsDays,
+							   Effect.OptionsDays == 1 ? TEXT("") : TEXT("s"), PlanDays);
 	}
 	if (Effect.Gold > 0)
 	{
@@ -1849,7 +1939,7 @@ FString UCataclysmForge::OptionsQuestion(const FCataclysmForgeOptionEffect& Effe
 
 FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, int32 EssenceHeld, int32 DifficultyTier,
 												  int64 GoldHeld,
-	const FCataclysmForgePricing& Pricing)
+	const FCataclysmForgePricing& Pricing, const FCataclysmForgeCosts& Costs)
 {
 	FCataclysmForgeCleanse Out;
 	Out.Material = FName(PurifiedEssenceRow);
@@ -1858,6 +1948,15 @@ FCataclysmForgeCleanse UCataclysmForge::CleanseOf(const FCataclysmItem& Item, in
 	Out.ResidueAfter = FMath::Max(0.0f, Item.Residue) * CleansedResidueShare;
 	// "1 day per 500 CR", A PART COUNTING AS A DAY, AND AT LEAST ONE (Q25).
 	Out.Days = FMath::Max(1, FMath::CeilToInt(FMath::Max(0.0f, Item.Residue) / ResiduePerCleanseDay));
+	// THE EMPIRE TREE'S CRAFTING NODES (slices C1, C2): the cleanse adds no residue for the residue nodes to take, but
+	// Master's Touch can leave it at 0 and the day nodes take its days, as every forge item craft's (G1, G2).
+	Out.DaysBeforeTheTree = Out.Days;
+	Out.Days = TreeDaysFor(Out.Days, Costs);
+	if (Costs.bResidueReset)
+	{
+		Out.ResidueAfter = 0.0f;
+		Out.bResidueReset = true;
+	}
 	Out.Gold = GoldFor(BaseGoldOf(CleanseOperationRow, BaseGoldFor(1)), Item.Residue, DifficultyTier);
 	Out.Gold = Pricing.Apply(Out.Gold, Out.Material); // #47 slice F6a: the empire tree's forge gold nodes.
 	Out.GoldHeld = FMath::Max<int64>(0, GoldHeld);

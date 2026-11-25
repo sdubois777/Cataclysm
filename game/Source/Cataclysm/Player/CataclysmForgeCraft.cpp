@@ -122,6 +122,31 @@ namespace
 		return Out;
 	}
 
+	/** The tree's crafting nodes for a craft on `Item` today whose own material is `CraftMaterial` (slices C1, C2). */
+	FCataclysmForgeCosts ForgeCostsOf(const UObject* WorldContext, const FCataclysmItem& Item, const UCataclysmEmpireRun& Run,
+									  FName CraftMaterial)
+	{
+		const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+		FCataclysmForgeCosts Out;
+		// EACH FACTOR THAT APPLIES, MULTIPLIED (D9): Limited Knowledge on the item's gear level BEFORE the craft,
+		// Heat Shielding on the craft's OWN material's tier, not the options' (the coordinating session, 2026-11-25).
+		Out.ResidueFactor = Tree.CraftResidueFactor;
+		if (Item.GearLevel < UCataclysmForge::LimitedKnowledgeBelowLevel)
+		{
+			Out.ResidueFactor *= Tree.LowLevelCraftResidueFactor;
+		}
+		if (UCataclysmForgeCraft::MaterialTierOf(CraftMaterial) >= UCataclysmForge::HeatShieldingLowestTier)
+		{
+			Out.ResidueFactor *= Tree.RareMaterialCraftResidueFactor;
+		}
+		Out.StabilizerShareReduced = Tree.StabilizerShareReduced;
+		Out.bResidueReset =
+			UCataclysmForge::ResidueResetLands(Item, Tree.ResidueResetChancePerHundred, Run.WalkSeedMask, Run.Day());
+		Out.DaysFactor = FMath::Max(0.0f, 1.0f - Tree.CraftDaysReduced) * FMath::Max(0.0f, 1.0f - Tree.CraftDaysReducedMore);
+		Out.DaysOff = Tree.CraftDaysOff;
+		return Out;
+	}
+
 	/** The tree's three material draws for an item craft on `Item` today (#47 slice F6b, Q13). */
 	FCataclysmForgeKeeping ForgeMaterialKeepingOf(const UObject* WorldContext, const FCataclysmItem& Item,
 												  const UCataclysmEmpireRun& Run)
@@ -221,7 +246,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::Upgrade(const UObject* WorldContext,
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Stone));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -483,7 +508,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -630,7 +655,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketWork(const UObject* WorldCon
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -714,7 +739,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftAffix(const UObject* WorldConte
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -865,7 +890,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoAffixChange(const UObject* WorldCo
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -968,7 +993,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::CraftDamageType(const UObject* World
 	}
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -1115,7 +1140,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoEnchantmentWork(const UObject* Wor
 {
 	const FCataclysmForgeOptionEffect Effect =
 		OptionsFor(WorldContext, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-				   PricingFor(WorldContext, Target));
+				   PricingFor(WorldContext, Target), CostsFor(WorldContext, Target, Plan.Material));
 	if (!Effect.bPossible)
 	{
 		OutMessage = Effect.Refusal;
@@ -1478,7 +1503,8 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* WorldContext, float ResidueBefore,
 															 float ResidueAfter, int32 Days, int64 CraftGold,
 															 const FCataclysmForgeCraftOptions& Options,
-															 const FCataclysmForgePricing& Pricing)
+															 const FCataclysmForgePricing& Pricing,
+															 const FCataclysmForgeCosts& Costs)
 {
 	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
 	const UCataclysmInventoryComponent* Inventory = Character != nullptr ? Character->GetInventory() : nullptr;
@@ -1486,7 +1512,7 @@ FCataclysmForgeOptionEffect UCataclysmForgeCraft::OptionsFor(const UObject* Worl
 		ResidueBefore, ResidueAfter, Days, CraftGold, Options,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::ChaosStabilizerRow)) : 0,
 		Inventory != nullptr ? Inventory->CountOfMaterial(FName(UCataclysmForge::TaintedShardRow)) : 0,
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing);
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), Pricing, Costs);
 }
 
 FCataclysmForgePricing UCataclysmForgeCraft::PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target)
@@ -1506,6 +1532,15 @@ FCataclysmForgeKeeping UCataclysmForgeCraft::KeepingFor(const UObject* WorldCont
 	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
 	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
 	return Item != nullptr && Run != nullptr ? ForgeMaterialKeepingOf(WorldContext, *Item, *Run) : FCataclysmForgeKeeping();
+}
+
+FCataclysmForgeCosts UCataclysmForgeCraft::CostsFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+												  FName CraftMaterial)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	return Item != nullptr && Run != nullptr ? ForgeCostsOf(WorldContext, *Item, *Run, CraftMaterial) : FCataclysmForgeCosts();
 }
 
 FString UCataclysmForgeCraft::KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
@@ -1536,7 +1571,8 @@ FCataclysmForgeCleanse UCataclysmForgeCraft::CleansePlanFor(const UObject* World
 	}
 	return UCataclysmForge::CleanseOf(
 		*Item, Character->GetInventory()->CountOfMaterial(FName(UCataclysmForge::PurifiedEssenceRow)),
-		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target));
+		GoldTierOf(WorldContext), GoldHeldIn(WorldContext), PricingFor(WorldContext, Target),
+		CostsFor(WorldContext, Target, FName(UCataclysmForge::PurifiedEssenceRow)));
 }
 
 ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(const UObject* WorldContext, const FCataclysmForgeTarget& Target,

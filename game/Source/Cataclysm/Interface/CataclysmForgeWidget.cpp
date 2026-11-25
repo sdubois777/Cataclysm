@@ -430,7 +430,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -448,6 +449,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -503,7 +505,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -521,6 +524,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -577,7 +581,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -595,6 +600,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -685,7 +691,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -704,6 +711,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -828,6 +836,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			Message = UCataclysmForge::CleanseQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, {})
+				+ UCataclysmForge::CleanseCostsText(Plan)
 				+ TimersRunningOutIn(Plan.Days);
 			RefreshDisplay();
 			return;
@@ -863,7 +872,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -881,6 +891,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
 			return;
@@ -938,7 +949,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 		const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 			Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Material));
 		if (Refusal.IsEmpty() && !Effect.bPossible)
 		{
 			Refusal = Effect.Refusal;
@@ -957,6 +969,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).EnchantCriticalChance, /*bUpgrade=*/false)
 				+ TimersRunningOutIn(Effect.Days);
@@ -1026,7 +1039,8 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 	// THE OPTIONS' EFFECT, FROM THE FUNCTION THE CRAFT WILL USE, and a refused option refuses the press (slice F5).
 	const FCataclysmForgeOptionEffect Effect = UCataclysmForgeCraft::OptionsFor(
 		Context(), Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days, Plan.Gold, Options,
-			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget));
+			UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget),
+			UCataclysmForgeCraft::CostsFor(Context(), ChosenTarget, Plan.Stone));
 	if (Refusal.IsEmpty() && !Effect.bPossible)
 	{
 		Refusal = Effect.Refusal;
@@ -1049,6 +1063,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Stone)
 				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Stone, Plan.StonesNeeded, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
+				+ UCataclysmForge::CostsText(Effect, Plan.ResidueBefore)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).UpgradeExtraLevelChance, /*bUpgrade=*/true)
 				+ TimersRunningOutIn(Effect.Days);
