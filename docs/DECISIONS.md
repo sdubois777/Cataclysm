@@ -2,6 +2,142 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The first Death nodes that act on a kill: Soul Tide, Gleaning, Thinning the Herd, Death's Patience, Flicker, Clean Kill and Hunting Leap (Death trees, slice C4a)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `PerKillExtraChanceStat`
+  (`fervour_per_kill_extra_chance`) rolled in `GainOnOwnKill`, pinned in tests by `Cataclysm.KillFervourExtraRoll`;
+  `HealthRestoredOnCriticalKillStat` (`health_restored_on_critical_kill`) and `RestoreHealthOnCriticalKill`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp`: `FCataclysmLastBlow::bKillingBlowWasCritical`
+  and `FCataclysmDeathNotice::bByACriticalStrike`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition
+  `target_carries_your_poison_or_bleed` (`TargetCarriesYourPoisonOrBleed`) and its state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `CarriesPoisonOrBleedLaidBy`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `WithTargetState` fills the new field.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler restores Clean Kill's share for a kill
+  whose notice says the killing blow was critical.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the two new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillHooksTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (four
+  probes), `CataclysmDataTableTests.cpp`, and `CataclysmPassiveTreeTests.cpp` (`ComparesNothing` names the new
+  condition); `tools/tests/test_a_critical_killing_blow_reaches_clean_kill.py`, new (4);
+  `test_passive_effects_match_the_node_text.py`, `test_stat_lookups_hand_over_what_they_should.py` and
+  `test_every_conditioned_stat_has_an_asker.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (560 rows), `docs/README.md`.
+- And the branch's first commit, `c1e74bd5b`: two comment lines in `CataclysmPassiveTreeTests.cpp` that began with one
+  slash, from `d2cdaf5b1` on the stacked base, which stopped the compile-only build of slices A to C3e. The
+  coordinating session chose to fix them here; the rebuild at that commit printed `Build: Succeeded - 5 actions, 1 file
+  compiled: Module.Cataclysm.49.cpp`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The compile at `c1e74bd5b` is the stacked base
+  before any of it. A window has to compile, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **CLEAN KILL IS A STAT, NOT A CONDITION OR AN EVENT**, which differs from the plan's words (a new condition read at the
+  kill). The notice records the critical killing blow as ruled (Q5). But "1% of your Maximum Health for every 2 points"
+  is a row at each second point, and the generator keeps one action row per node and event, so four action rows on a
+  `critical_kill` event were refused. The rows are a stat the kill handler reads on a critical kill, through
+  `UCataclysmRegeneration::TopUp`, as the restoration on every kill beside it already is.
+- **FLICKER'S DEATHMARK HALF IS NOT BUILT.** Only "Killing an enemy resets your movement skill's cooldown" has a row;
+  Deathmark and what reads it are a later piece of their own.
+- **THINNING THE HERD NEEDED NO ENGINE CHANGE**, and an earlier message of mine said otherwise. I told the coordinating
+  session the reach count includes dead bodies, having searched where the count is used rather than where it is
+  defined. `UCataclysmTargeting::MatchesAttitude` refuses a dead character, which
+  `Cataclysm.EnemiesInReach.ADeadEnemyStandingNextToYouCountsForNothing` tests (#1693). The slain creature is marked dead
+  before its death is announced (`UCataclysmSkillEffects::MarkDead`), so it is never counted.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Soul Tide (Soul Collector vow 25, option 1) | fervour_per_kill, flat, 1, cond=seconds_after_kill 2 |
+| Gleaning | fervour_per_kill_extra_chance, flat, 5 |
+| Thinning the Herd | fervour_per_kill, increased, 1, scale=enemies_in_reach, step 1, reach 8, cap 10 |
+| Death's Patience (Shadow) | fervour_per_kill, flat, 1, cond=target_carries_your_poison_or_bleed |
+| Flicker (Shadow keystone) | action cooldown_reset_movement, 100, on kill |
+| Clean Kill (Shadow) | health_restored_on_critical_kill, flat, 1, at 2, 4, 6 and 8 points |
+| Hunting Leap (Shadow) | skill_range, increased, 3, tags Slot.Movement; and the same under seconds_after_kill 2 |
+
+`PassiveEffects.csv` 549 to 560; the Soul Collector 100 rows, the Shadow 77.
+
+### What each reads
+
+- **Soul Tide's "Kills within 2 seconds of each other"** is the kill clock read before this kill stamps it, so it is
+  the time since the previous kill (slice C's ruling, checked by `test_kill_clock_reads_the_previous_kill.py`).
+- **Gleaning** rolls once a kill, after the kill's own payment is known to be above nought, and adds 1 before the
+  payment is scaled by how fast the class resource generates, as the payment itself is. A chance of 100 or more is
+  compared rather than rolled. A roll equal to the chance fails.
+- **Death's Patience's "your" Poison or Bleed** is the new condition `target_carries_your_poison_or_bleed`. It asks
+  whether the target in hand carries a running Poison or Bleed whose effect names the asker's character as its
+  instigator, found by the tag as `RunningApplicationOf` finds one, the same test as `target_carries_your_curse`. WHEN
+  IT CANNOT READ ITS SUBJECT it refuses: no target, a target with no ability system, or a lookup with no asker. IT TAKES
+  NO VALUE and compares no number; it is one of the conditions of a hit dealt, judged on the target in hand, which at a
+  kill is the slain creature. That creature still carries its effects then, because `MarkDead` announces the death
+  before anything removes them. A JUDGEMENT: one laid by the character's minion is the minion's, not the character's.
+- **Clean Kill's critical strike** is the killing blow's own roll, recorded with the blow, and never a tick of damage
+  over time.
+- **Hunting Leap's "doubled"** is exact because `skill_range` is read as increases (`UCataclysmSkillTemplate`'s range is
+  multiplied by one plus the owner's increases), the condition the coordinating session put on Q6.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4 plan: Q1, the split and order, C4a first, then C4b (Fervour
+sources and decay), C4c (area effects on a kill), C4d (larger single mechanisms); Q2, Gleaning's chance is rolled on each
+kill with a console variable for tests; Q3, Thinning the Herd counts the living enemies within 8 metres at the kill, the
+slain one excluded, up to 10; Q4, a new condition for a Poison or Bleed this character applied; Q5, the kill notice
+records whether the killing blow was critical, and a tick of damage over time is not one; Q6, Hunting Leap as a second
+row under the kill clock, only if `skill_range` is an increased stat.
+
+### Research
+
+None new. The figures are the owner's approved trees'; the machinery is this game's own kill event, kill clock, reach
+count and stat pipeline.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillHooks.` | new: `GleaningRollsForOneExtraFervourOnAKill`, `ThinningTheHerdCountsTheLivingEnemiesNearAndNotTheDead`, `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain`, `ADeathNoticeSaysWhetherTheKillingBlowWasCritical`, `CleanKillRestoresItsShareOfMaximumHealth`, `HuntingLeapDoublesForTwoSecondsAfterAKill`, `TheSevenNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs two new probes, `EveryStatTheDataScalesIsAskedForThroughThePipeline` one, `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` one | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 560 | unchanged |
+
+Each new test has a control: no Gleaning, and a roll equal to the chance; an enemy 12 metres off, and the near one dead;
+a creature carrying nothing, and one carrying another character's Poison; the same blow not critical; no Clean Kill;
+before any kill, 2.1 seconds after, and a skill that is not the movement skill.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmCombatEvents.cpp`, the lethal blow: `Blow.bKillingBlowWasCritical = Outcome.bWasCritical;` becomes
+   `Blow.bKillingBlowWasCritical = false;`. Prefix `Cataclysm.KillHooks.`; must fail
+   `ADeathNoticeSaysWhetherTheKillingBlowWasCritical`.
+2. `CataclysmDebuffs.cpp`, `CarriesPoisonOrBleedLaidBy`: `if (Active && Active->Spec.GetContext().GetInstigator() ==
+   Applier)` becomes `if (Active)`. Prefix `Cataclysm.KillHooks.`; must fail
+   `DeathsPatienceAsksForYourPoisonOrBleedOnTheSlain`.
+3. `CataclysmFervour.cpp`, `GainOnOwnKill`: `if (ExtraChance >= 100.0f || Roll < ExtraChance)` becomes `if (ExtraChance
+   >= 100.0f || Roll <= ExtraChance)`. Prefix `Cataclysm.KillHooks.`; must fail `GleaningRollsForOneExtraFervourOnAKill`.
+
+### What was run
+
+SUITE_FIGURES_C4A
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`43243fb9a`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The death notice counting a tick of damage over time as a critical kill | `test_a_critical_killing_blow_reaches_clean_kill.py::test_the_death_notice_leaves_out_a_tick_of_damage_over_time` |
+| The kill handler restoring Clean Kill's share on every kill | `test_a_critical_killing_blow_reaches_clean_kill.py::test_the_kill_handler_restores_health_only_for_a_critical_kill` |
+| Gleaning's row at 6 a point rather than 5 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| Gleaning's chance asked without the slain creature | `test_stat_lookups_hand_over_what_they_should.py::test_every_call_site_is_in_the_inventory` and `::test_the_inventory_holds_no_call_site_that_has_gone` |
+| Death's Patience's row naming `target_carries_your_curse` instead of its own condition | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+**A sixth break was tried first and NOTHING FAILED:** Death's Patience's row with its condition removed passed all 25
+tests in `test_passive_effects_match_the_node_text.py`. That check confirms a condition a row states matches the
+node's words; it does not notice a row that has lost a condition its words call for, so a row granting Fervour on every
+kill would pass it. The Unreal test `TheSevenNodesRowsAreTheirSentences` reads Death's Patience's condition, which
+covers this row in a window; no Python check covers the class.
+
+---
+
 ## 2026-11-25 — Fervour counted as held: Chained Souls' share of what followers hold back, and Empty Hands' "fewer than 20" (Death trees, slice C3e)
 
 **Affects:**
