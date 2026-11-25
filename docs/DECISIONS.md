@@ -236,6 +236,13 @@ three merges since `5f302b0a7`: bug batches 1 and 2 (#2889), score-and-drops (#2
 `AddTheCharactersVersion18Defaults` call removed, "PROVED: 1 failed, 7 passed in 2.47s | restored: 8 passed in 1.09s",
 the named failure `tools/tests/test_forge_gold_nodes.py::test_both_records_save_the_count`.
 
+**The whole Python suite at `2f673d420`**, this entry's commit: "1 failed, 8495 passed, 9 skipped in 351.73s";
+JUnit 8505 tests, 1 failure, 0 errors, 9 skipped. ruff: "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, "['EmpireTreeEffects.csv',
+'EmpireTreeNodes.csv'] changed since their DataTable assets were built", which the window's editor step clears. The
+three character-version failures of `29c13a0ce` are gone. Development `be7ffb06e` (#2892, one bullet in this log)
+was merged on top afterwards, in `d97b30307`.
+
 ---
 
 ## 2026-11-24 — Days spent in the capital say what they will do before they are spent and what they did after: the forge's crafts and the empire upgrade tree's respec keep their days' reports, say the walk's PLAY LOOP account of them, and warn which dungeons' timers run out (#2857)
@@ -557,6 +564,13 @@ slice F6a), on development `eb34af972`. Prepared only: nothing compiled, no edit
 `.claude/windows/unity_name_check.py` against development, 0 findings; no member either side added is hidden by a local
 or parameter the other side added in its class's `.cpp` (by script); every guard proof anchor below is once on the
 branch.
+
+**The whole Python suite at `2f673d420`**, this entry's commit: "1 failed, 8495 passed, 9 skipped in 351.73s";
+JUnit 8505 tests, 1 failure, 0 errors, 9 skipped. ruff: "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, "['EmpireTreeEffects.csv',
+'EmpireTreeNodes.csv'] changed since their DataTable assets were built", which the window's editor step clears. The
+three character-version failures of `29c13a0ce` are gone. Development `be7ffb06e` (#2892, one bullet in this log)
+was merged on top afterwards, in `d97b30307`.
 
 **THE REGISTRATION.** Base: window ss2-w1's whole-suite engine log, `ss2_suite_engine_56360b4d.log` in the worktree
 `sharp-meitner-246682`'s `.claude/windows/` (skill selection on `56360b4d6`: "5474 tests performed", "58 skipped part of
