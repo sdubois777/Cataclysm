@@ -62,6 +62,10 @@ RESTORES = [
     "void ACataclysmPlayerState::RestorePassiveAllocation(",
     "void ACataclysmPlayerState::RestoreSpentAttributePoints(",
     "void ACataclysmPlayerState::SetPassiveAllocation(",
+    # A LOAD'S SINCE ISSUE #837 SLICE 1: the choices and the keys' remembered defaults put back as data, and the
+    # defaults remembered after every fill. Neither is the player's act.
+    "void ACataclysmPlayerState::RestoreSkillChoices(",
+    "void ACataclysmPlayerState::RememberDefaults(",
 ]
 
 
@@ -87,9 +91,11 @@ def test_putting_a_build_back_saves_nothing(signature: str) -> None:
 
 def test_the_save_apply_uses_the_load_functions_and_raises_nothing() -> None:
     code = read_code(APPLY)
-    assert "->AssignSkill(" in code, (
-        "CataclysmSaveApply.cpp no longer puts the saved skill choices back through AssignSkill; if it moved, this "
-        "check and the one on AssignSkill above need to follow it.")
+    # THROUGH `RestoreSkillChoices` SINCE ISSUE #837 SLICE 1, before the one announcement (until then `AssignSkill`
+    # after it, which dropped a choice whose weapon was off).
+    assert "->RestoreSkillChoices(" in code, (
+        "CataclysmSaveApply.cpp no longer puts the saved skill choices back through RestoreSkillChoices; if it moved, "
+        "this check and the one on RestoreSkillChoices above need to follow it.")
     for name in (TRIGGER, "->ChooseSkill(", "->ForgetSkillChoice("):
         assert name not in code, f"CataclysmSaveApply.cpp names {name}, so a load would write the record it just read."
 

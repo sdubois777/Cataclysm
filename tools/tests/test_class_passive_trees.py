@@ -883,6 +883,48 @@ def test_the_gdd_class_resource_table_names_the_masochist_resource(demonic):
             f"second name for it is the confusion that change removed.")
 
 
+def test_the_gdd_counts_energy_shield_damage_as_health_lost_for_the_masochist():
+    """Issue #2873. The project owner, 2026-11-24: "the massochist doesn't gain
+    fervour with damage to energy shield, and it should." The coordinating
+    session ruled the detail the same day: the shield's share counts exactly as
+    health lost, per 1% of maximum HEALTH, and the shield recharging removes no
+    Fervour.
+
+    BOTH PLACES THE DESIGN STATES THE GENERATOR, because a reader reaches either
+    first: the paragraph led by "A generator is a set of rates" and the class
+    table's Masochist row. The game reads neither, so nothing at run time would
+    notice the two disagreeing with the code or with each other.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+    document = " ".join(GDD.read_text(encoding="utf-8").split())
+
+    start = document.find("**A generator is a set of rates, and each rate is its own stat.**")
+    assert start != -1, (
+        "docs/Cataclysm_GDD_v2.md no longer has the paragraph led by \"A "
+        "generator is a set of rates\". It is where the Masochist's three rates "
+        "are stated. Issue #2873.")
+    end = document.find("**A rate is per percent of maximum health", start)
+    paragraph = document[start:end if end != -1 else start + 4000]
+    assert "Damage the energy shield absorbs counts as health lost to damage" in paragraph, (
+        "the generator paragraph does not say that damage the energy shield "
+        "absorbs fills the Masochist's Fervour as health lost does. The owner "
+        "decided it on 2026-11-24. Issue #2873.")
+    assert "The energy shield recharging removes no Fervour" in paragraph, (
+        "the generator paragraph does not say that the energy shield recharging "
+        "removes no Fervour, which the coordinating session ruled on 2026-11-24 "
+        "with the rate. Issue #2873.")
+
+    row = ("| Masochist (Demonic) | 1 per 1% of maximum health lost to damage, "
+           "counting damage its energy shield absorbs as health lost,")
+    assert row in document, (
+        "the class table's Masochist row does not say that damage its energy "
+        "shield absorbs counts as health lost. Issue #2873.")
+    assert "The energy shield recharging removes none |" in document, (
+        "the class table's Masochist row does not say that the energy shield "
+        "recharging removes no Fervour. Issue #2873.")
+
+
 # ---------------------------------------------------------------------------
 # The other two Demonic trees, added by issue #950
 # ---------------------------------------------------------------------------

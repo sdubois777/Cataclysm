@@ -354,17 +354,23 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 		const ECataclysmCityMark Mark =
 			UCataclysmEmpireMapLayout::MarkFor(Run->Map, Index);
 
-		// THREE STATES OUT OF THE CHOICE BUTTON'S OWN THREE APPEARANCES, rather
-		// than three more colour properties on this screen. A fallen city is
-		// unavailable and reads dim; an exposed one is chosen and reads bright,
-		// because it is the one the player has to decide about; a sealed one is
-		// plain.
+		// THREE STATES OUT OF THE CHOICE BUTTON'S OWN APPEARANCES, rather than
+		// three more colour properties on this screen. A fallen city reads dim;
+		// an exposed one is chosen and reads bright, because it is the one the
+		// player has to decide about; a sealed one is plain.
+		//
+		// A FALLEN CITY IS DIMMED AND STILL PRESSED, since issue #2866: its box
+		// opens its city screen, where the Fallen City dungeon standing on it is
+		// walked to retake it. Until then it was made unavailable, which reads the
+		// same and cannot be pressed, so a fallen city could not be retaken.
 		Button->SetChoice(
 			ButtonNameFor(Index),
 			FText::FromString(
-				UCataclysmEmpireMapLayout::CityLabel(Run->Map, Index)),
+				UCataclysmEmpireMapLayout::CityLabel(Run->Map, Index)
+				+ UCataclysmEmpireMapLayout::RiftMark(Run, Index)), // ", Rift" (issue #51 slice B2).
 			/*bChosen*/ Mark == ECataclysmCityMark::Exposed,
-			/*bAvailable*/ Mark != ECataclysmCityMark::Fallen);
+			/*bAvailable*/ UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, Index));
+		Button->SetDimmed(UCataclysmEmpireMapLayout::IsCityDimmed(Run->Map, Index));
 	}
 
 	PlaceCataclysmDungeon(Scale);
@@ -678,7 +684,8 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 
 	if (City->bFallen)
 	{
-		Parts.Add(TEXT("fallen"));
+		// AND HOW IT COMES BACK: its Fallen City dungeon, walked from the screen its box opens. Issue #2866.
+		Parts.Add(UCataclysmEmpireMapLayout::FallenCityDetail(Run, CityId));
 	}
 	else
 	{

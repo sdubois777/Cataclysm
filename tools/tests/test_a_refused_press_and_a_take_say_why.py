@@ -16,9 +16,13 @@ WHAT IS CHECKED:
   2. `PressRefusalLine` reads every check a press is judged on: the Fervour, the pool the cost is paid from, the
      charges, the lock, the hard stops and a planted weapon;
   3. `FervourFiguresFor` names the ceiling the pool can be filled to now and what holds the rest back, by kind;
-  4. every exit of `UCataclysmSummonSkill::Possess` after it starts logs at `Log`, none at `Verbose`, and a take says so.
+  4. every exit of `UCataclysmSummonSkill::Possess` after it starts logs at `Log`, none at `Verbose`, and a take says so;
+  5. the line for the command's own refusal names the reason `UCataclysmCommand::Subjugate` refused by and every reason it
+     can refuse for, each asked by the one function `Subjugate` asks. Issue #2856: that line named three of the six
+     reasons, so a creature the blow had killed printed "no" for all three and "dead" nowhere.
 
-The Fervour figures' arithmetic is tested in `Cataclysm.PressRefusal.` (`CataclysmPressRefusalTests.cpp`).
+The Fervour figures' arithmetic is tested in `Cataclysm.PressRefusal.` (`CataclysmPressRefusalTests.cpp`), and the
+refusal's reasons in `Cataclysm.Command.ATakeRefusalNamesItsReasonAndDeadIsOneOfThem` (`CataclysmCommandTests.cpp`).
 """
 
 from __future__ import annotations
@@ -31,6 +35,8 @@ ABILITY = REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
 COMPONENT = ABILITY / "CataclysmAbilitySystemComponent.cpp"
 TEMPLATE = ABILITY / "CataclysmSkillTemplate.cpp"
 TEMPLATES = ABILITY / "CataclysmSkillTemplates.cpp"
+COMMAND = ABILITY / "CataclysmCommand.cpp"
+COMMAND_HEADER = ABILITY / "CataclysmCommand.h"
 
 
 def code(path: pathlib.Path) -> str:
@@ -102,3 +108,49 @@ def test_every_outcome_of_a_take_is_logged_at_log() -> None:
         "command's refusal and the take -- and each is logged at Log")
     assert possess.count('TEXT("TAKE REFUSED:') == 6, "each refusal of a take does not say TAKE REFUSED"
     assert "TAKE: '%s' took '%s', reserving %.0f." in possess, "a take that succeeds does not say so"
+
+
+def subjugate_refusal_reasons() -> list[str]:
+    """The reasons `ECataclysmSubjugateRefusal` lists, without `None` and the `Count` sentinel, block comments removed."""
+    header = re.sub(r"/\*.*?\*/", "", code(COMMAND_HEADER), flags=re.S)
+    found = re.search(r"enum class ECataclysmSubjugateRefusal : uint8\s*\{(.*?)\};", header, flags=re.S)
+    assert found, "CataclysmCommand.h no longer declares the list of reasons Subjugate refuses for"
+    listed = [name.strip() for name in found.group(1).split(",") if name.strip()]
+    assert listed[0] == "None" and listed[-1] == "Count", (
+        f"the list of reasons should open with None and close with the Count sentinel, and reads {listed}")
+    return listed[1:-1]
+
+
+def test_the_commands_refusal_line_names_every_reason_it_can_refuse_for() -> None:
+    reasons = subjugate_refusal_reasons()
+    assert len(reasons) >= 6, f"the reasons Subjugate refuses for have shrunk to {reasons}"
+    assert "Dead" in reasons, "a dead creature is no longer a reason Subjugate refuses for, so the log cannot name it"
+
+    possess = squeeze(body(code(TEMPLATES), "bool UCataclysmSummonSkill::Possess()", "CataclysmSkillTemplates.cpp"))
+    line = possess.find("could not take '%s', refused as %s: %s.")
+    assert line != -1, "the line for the command's refusal no longer names the reason and the list"
+    after = possess[line:]
+    assert after.find("UCataclysmCommand::SubjugateRefusalName(UCataclysmCommand::WhySubjugateRefuses(Self, Target))") \
+        != -1, "the line does not name the reason Subjugate refused by"
+    assert after.find("*UCataclysmCommand::SubjugateRefusalsText(Self, Target)") != -1, (
+        "the line does not print every reason with its answer")
+
+    command = code(COMMAND)
+    subjugate = squeeze(body(command, "bool UCataclysmCommand::Subjugate(", "CataclysmCommand.cpp"))
+    assert "WhySubjugateRefuses(Commander, Enemy)" in subjugate, (
+        "Subjugate does not refuse by WhySubjugateRefuses, so the log line can disagree with what it did")
+
+    holds = squeeze(body(command, "bool UCataclysmCommand::SubjugateRefusalHolds(", "CataclysmCommand.cpp"))
+    named = squeeze(body(command, "const TCHAR* UCataclysmCommand::SubjugateRefusalName(", "CataclysmCommand.cpp"))
+    for reason in reasons:
+        case = f"case ECataclysmSubjugateRefusal::{reason}:"
+        assert case in holds, f"SubjugateRefusalHolds never asks whether {reason} holds"
+        assert case in named, f"SubjugateRefusalName gives {reason} no words, so the log line cannot name it"
+
+    for walker in ("ECataclysmSubjugateRefusal UCataclysmCommand::WhySubjugateRefuses(",
+                   "FString UCataclysmCommand::SubjugateRefusalsText("):
+        walk = squeeze(body(command, walker, "CataclysmCommand.cpp"))
+        assert "Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count)" in walk, (
+            f"{walker} does not walk every reason up to the Count sentinel")
+        assert "SubjugateRefusalHolds(Reason, Commander, Enemy)" in walk, (
+            f"{walker} does not ask each reason by SubjugateRefusalHolds")

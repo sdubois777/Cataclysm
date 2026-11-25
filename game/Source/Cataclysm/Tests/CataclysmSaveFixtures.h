@@ -502,6 +502,16 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the account record's step to 8 writes into an account file written before it: no tier 1 gold spent at the
+	 * forge that Treasury Synergy counts (`GoldSpentAtTheForge`, 0). #47 slice F6a. NAMED FOR THE VERSION IT REACHES, 8.
+	 * ONE COPY, for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion8Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentAtTheForge"), 0.0);
+	}
+
+	/**
 	 * What the character record's newest step writes into a character file written before it: no tier 1 gold spent on
 	 * city upgrades (`GoldSpentOnCityUpgrades`, 0), for a Solo Self-Found character's Reinvestment. Issue #2741 slice 9.
 	 * NAMED FOR THE VERSION IT REACHES, 14, after the gems window's 13 (V1). ONE COPY.
@@ -609,6 +619,35 @@ namespace CataclysmSaveFixtures
 		}
 		Expected.SetArrayField(TEXT("CarriedMaterials"), Materials);
 		Expected.SetArrayField(TEXT("CarriedGems"), Gems);
+	}
+
+	/**
+	 * What the character record's `Migrate_16_to_17` writes into a character file written before version 17: no
+	 * remembered defaults, an empty `RememberedDefaults`, and the same in a held `ConsumptionBuild` that lacks one (a
+	 * build `Migrate_5_to_6` wrote already carries it, and it is kept). Issue #837 slice 1. THE CHARACTER RECORD'S 17.
+	 * ONE COPY, for every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion16Defaults`.
+	 */
+	inline void AddTheCharactersVersion17Defaults(FJsonObject& Expected)
+	{
+		Expected.SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		const TSharedPtr<FJsonObject>* Build = nullptr;
+		if (Expected.TryGetObjectField(TEXT("ConsumptionBuild"), Build) && Build && Build->IsValid()
+			&& !(*Build)->HasField(TEXT("RememberedDefaults")))
+		{
+			(*Build)->SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		}
+	}
+
+	/**
+	 * What the character record's `Migrate_17_to_18` writes into a character file written before version 18: no tier 1
+	 * gold spent at the forge, `GoldSpentAtTheForge` 0 (#47 slice F6a). THE CHARACTER RECORD'S 18. ONE COPY, for
+	 * every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion17Defaults`.
+	 */
+	inline void AddTheCharactersVersion18Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentAtTheForge"), 0.0);
 	}
 
 	/**
@@ -733,7 +772,7 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
-	 * What the run record's newest step writes into a run file written before it: every ground item as arrived at a
+	 * What the run record's step to 18 writes into a run file written before it: every ground item as arrived at a
 	 * place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
 	 * 18. ONE COPY.
 	 */
@@ -742,6 +781,23 @@ namespace CataclysmSaveFixtures
 		for (const auto& Field : Expected.Values)
 		{
 			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the run record's newest step, `Migrate_18_to_19`, writes into a run file written before it: no Rift altar
+	 * fallen, an empty `RiftAltarsDestroyed` in the floor's rule state, where the file has one. Issue #51 slice B1,
+	 * 2026-11-24. NAMED FOR THE VERSION IT REACHES, 19. ONE COPY, for every test that runs an older run file through the
+	 * whole chain.
+	 */
+	inline void AddTheRunsVersion19Defaults(FJsonObject& Expected)
+	{
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Expected.TryGetObjectField(TEXT("Floor"), Floor) && Floor != nullptr && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState != nullptr && RuleState->IsValid())
+		{
+			(*RuleState)->SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());
 		}
 	}
 

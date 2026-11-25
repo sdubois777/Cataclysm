@@ -275,6 +275,18 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 			{
 				NewValue = FMath::Min(1.0f, GetHealth());
 			}
+
+			// AND A CREATURE SUBJUGATE IS TAKING CANNOT BE KILLED, HELD THE SAME WAY. Issue #2856, the owner's ruling of
+			// 2026-11-22: "ok, well it should still take them even if it would kill". `UCataclysmSummonSkill::Possess`
+			// marks its target around its own blow, and only a target nothing but the blow's outcome would refuse; at
+			// one health that target is below any threshold the skill states, so it is taken. ANY CHARACTER, NOT ONLY A
+			// CREATURE, because `UCataclysmCommand::Subjugate` takes any character; ASKED OF THE BODY THE SET BELONGS
+			// TO, which for a creature is the same actor the sigil is asked about.
+			if (NewValue <= 0.0f && GetHealth() > 0.0f
+				&& UCataclysmCommand::IsHeldAliveForATake(CataclysmDefendingBody(*this)))
+			{
+				NewValue = FMath::Min(1.0f, GetHealth());
+			}
 		}
 	}
 	else
@@ -2240,6 +2252,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			const bool bHeldBySigil = bWouldKill
 				&& UCataclysmEnemyModifiers::IsProtectedBySigil(GetOwningActor());
 
+			// AND ONE SUBJUGATE IS TAKING, the same way and for the same two readers. Issue #2856: `PreAttributeChange`
+			// holds it at one health while `UCataclysmSummonSkill::Possess` marks it, so its blow is not a death.
+			const bool bHeldForATake = bWouldKill
+				&& UCataclysmCommand::IsHeldAliveForATake(CataclysmDefendingBody(*this));
+			const bool bHeldAlive = bHeldBySigil || bHeldForATake;
+
 			// ANNOUNCED HERE, WHERE THE BLOW'S WHOLE OUTCOME IS KNOWN, AND BEFORE
 			// HEALTH IS WRITTEN. Issue #41, slice 4. Every resolved blow reaches
 			// this line, evaded and blocked ones included. The death the write
@@ -2262,7 +2280,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				Executable ? Executable->TakeCullAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			UCataclysmCombatEvents::NoteBlow(
 				Data, Hit, Outcome, AssetTags,
-				/*bLethal=*/bWouldKill && !bHeldBySigil, bFirstFromAttacker);
+				/*bLethal=*/bWouldKill && !bHeldAlive, bFirstFromAttacker);
 			const UCataclysmAbilitySystemComponent::FExecuteAsked AskedByThisHit =
 				Executable ? Executable->TakeExecuteAsked() : UCataclysmAbilitySystemComponent::FExecuteAsked();
 			const UCataclysmAbilitySystemComponent::FExecuteAsked CullByThisHit =
@@ -2296,8 +2314,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// `PreAttributeChange` holds the current value at one; the base is
 				// held only to its plain bounds by `PreAttributeBaseChange` (issue
 				// #1096), which here leaves it at zero, and the next gain would add
-				// to that. The same write-back the health branch below makes.
-				if (bHeldBySigil)
+				// to that. The same write-back the health branch below makes. AND
+				// WHERE A TAKE HELD IT, issue #2856, for the same reason.
+				if (bHeldAlive)
 				{
 					SetHealth(GetHealth());
 				}
@@ -2322,59 +2341,69 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					Executable->CullIfLeftBelow(CullByThisHit);
 				}
+			}
 
-				// AND HEALTH LOST TO DAMAGE FILLS FERVOUR. Issue #954. The
-				// Masochist's starting node states the rule -- 1 Fervour per 1%
-				// of maximum health lost -- and a character that has not spent a
-				// point on a generator has a rate of zero, so this costs nothing
-				// for everybody else.
-				//
-				// WHAT REACHED HEALTH, NOT WHAT THE HIT WAS WORTH, and the
-				// difference is a design position rather than an accident.
-				// `docs/Cataclysm_GDD_v2.md` says an energy shield "absorbs the
-				// damage the class needs to convert", so a shield on a Masochist
-				// is a straight loss of resource generation. Putting the whole
-				// hit here instead would quietly delete that.
-				//
-				// THE HIT'S TAGS GO WITH IT, because the tree has a node about
-				// Fervour gained from damage OVER TIME specifically, and the tag
-				// on the effect is what tells the two apart.
-				//
-				// WHAT REACHED HEALTH AFTER THE CONVERSION, AND TODAY THAT IS
-				// THE SAME NUMBER. Issue #985.
-				//
-				// SAYING SO PLAINLY, BECAUSE A GUARD PROOF CAUGHT THE CLAIM THAT
-				// IT WAS NOT. The Breaking Point converts a blow whole or not at
-				// all, so `TurnedIntoBleeding` is either zero or the entire
-				// amount -- and when it is the entire amount, `ToHealth` is zero
-				// and this whole block is skipped, Fervour included. There is no
-				// case today where the two expressions differ HERE, and breaking
-				// this line to the other one failed no test at all.
-				//
-				// IT IS STILL THE RIGHT EXPRESSION. It says what it means -- the
-				// bar is filled by health actually lost -- and it is what a
-				// PARTIAL conversion would need if one is ever added. What it is
-				// not is a fix for a live defect, and calling it one would put a
-				// false story in this file.
-				//
-				// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at
-				// a time, as the Bleeding takes health through this same path.
-				//
-				// SINCE 2026-10-12 THERE IS A CASE WHERE THE TWO EXPRESSIONS DIFFER HERE. A worn row can take
-				// a share of a blow off above and hold it (`UCataclysmDelayedDamage::DelayShare`), and
-				// `ToHealth` is then less than what the blow resolved to. Fervour is filled by what was taken
-				// at once. THE HELD SHARE FILLS NONE WHEN IT IS DRAINED: the drain writes health directly and
-				// does not come through this path.
-				//
-				// AND A SHARE OF AN ALLY'S BLOW FILLS NONE (R7), ruled 2026-10-15: it is health lost to a blow this
-				// character did not take.
-				if (!bShareOfAnAllysDamage)
-				{
-					UCataclysmFervour::GainFromDamage(
-						GetOwningAbilitySystemComponent(), ToHealth, AssetTags);
-					// AND SOULBOUND'S LOSS, by the same health lost (the Death trees' slice C6c, 2026-11-25, as ruled).
-					UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), ToHealth);
-				}
+			// AND HEALTH LOST TO DAMAGE FILLS FERVOUR, AND SO DOES WHAT THE ENERGY SHIELD TOOK. Issue #954 for health,
+			// issue #2873 for the shield. The Masochist's starting node states the rule -- 1 Fervour per 1% of maximum
+			// health lost -- and a character that has not spent a point on a generator has a rate of zero, so this
+			// costs nothing for everybody else.
+			//
+			// THE SHIELD'S SHARE COUNTS EXACTLY AS HEALTH LOST, AT THE SAME RATE: per 1% of maximum HEALTH. The project
+			// owner, 2026-11-24: "the massochist doesn't gain fervour with damage to energy shield, and it should."
+			// The coordinating session ruled the detail the same day, option (a) of the issue: the shield's share is
+			// added to what reached health and the one rate is read for both, so the rate and the tree's nodes that
+			// raise it are unchanged and a point of damage is worth the same wherever it lands. Until that ruling this
+			// read what reached health alone, because the design then called a shield "a straight loss of resource
+			// generation" for this class. A RECHARGING SHIELD REMOVES NOTHING: `UCataclysmRegeneration::TopUp` empties
+			// Fervour for health coming back and for no other pool, ruled the same day.
+			//
+			// WHAT THE SHIELD LOST, `Outcome.AbsorbedByShield`, in the shield's own points: a magic blow's bonus and
+			// the defender's "energy shield takes increased damage" make it lose more than the raw blow held, as a
+			// slashing blow's bonus makes health lose more. A judgement of the writing session: the figure on the bar
+			// is the figure that fills Fervour, for the shield as for health. NOT THE TEMPORARY ABSORB AND NOT THE
+			// MANA a row puts first: the owner named the energy shield, and ruled on 2026-10-07 that the temporary
+			// absorb is separate from it. A judgement too.
+			//
+			// OUTSIDE THE BLOCK THAT WRITES HEALTH, BECAUSE A BLOW THE SHIELD TOOK WHOLE NEVER ENTERS IT. That block
+			// runs only when something reaches health, so a shield-only blow filled nothing for as long as this line
+			// sat inside it. Directly after it, so a blow that does reach health fills Fervour at the moment it always
+			// did: after the write, the death check, the execute and the cull, and before the bond pays the allies.
+			//
+			// WHAT REACHED HEALTH, NOT WHAT THE HIT WAS WORTH, for the health half. THE HIT'S TAGS GO WITH IT, because
+			// the tree has a node about Fervour gained from damage OVER TIME specifically, and the tag on the effect is
+			// what tells the two apart. A tick the shield took carries them as a tick to health does.
+			//
+			// WHAT REACHED HEALTH AFTER THE CONVERSION, AND TODAY THAT IS THE SAME NUMBER. Issue #985.
+			//
+			// SAYING SO PLAINLY, BECAUSE A GUARD PROOF CAUGHT THE CLAIM THAT IT WAS NOT. The Breaking Point converts a
+			// blow whole or not at all, so `TurnedIntoBleeding` is either zero or the entire amount -- and when it is
+			// the entire amount, `ToHealth` is zero and the health half adds nothing. There is no case today where the
+			// two expressions differ HERE, and breaking this line to the other one failed no test at all. A CONVERTED
+			// BLOW'S SHIELD SHARE STILL FILLS FERVOUR NOW: the shield took it before the conversion was asked.
+			//
+			// IT IS STILL THE RIGHT EXPRESSION. It says what it means -- the bar is filled by health actually lost --
+			// and it is what a PARTIAL conversion would need if one is ever added.
+			//
+			// THE FERVOUR A CONVERTED BLOW IS WORTH STILL ARRIVES, a tick at a time, as the Bleeding takes health
+			// through this same path.
+			//
+			// SINCE 2026-10-12 THERE IS A CASE WHERE THE TWO EXPRESSIONS DIFFER HERE. A worn row can take a share of a
+			// blow off above and hold it (`UCataclysmDelayedDamage::DelayShare`), and `ToHealth` is then less than
+			// what the blow resolved to. Fervour is filled by what was taken at once. THE HELD SHARE FILLS NONE WHEN
+			// IT IS DRAINED: the drain writes health directly and does not come through this path. The shield's share
+			// is never delayed, so all of it fills at once.
+			//
+			// AND A SHARE OF AN ALLY'S BLOW FILLS NONE (R7), ruled 2026-10-15: it is health lost to a blow this
+			// character did not take. Its shield share fills none either, for the same reason.
+			const float HealthLostToTheBlow = FMath::Max(0.0f, ToHealth);
+			const float ShieldLostToTheBlow = FMath::Max(0.0f, Outcome.AbsorbedByShield);
+			if (!bShareOfAnAllysDamage && HealthLostToTheBlow + ShieldLostToTheBlow > 0.0f)
+			{
+				UCataclysmFervour::GainFromDamage(
+					GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);
+				// AND SOULBOUND'S LOSS, by the HEALTH lost alone (the Death trees' slice C6c, 2026-11-25, as ruled: an
+				// energy shield or mana absorbing the blow costs nothing).
+				UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), HealthLostToTheBlow);
 			}
 
 			// THE BONDED CREATURE'S ALLIES PAY THE REST, EVENLY. Issue #1559.
@@ -2444,8 +2473,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// WHAT REACHED THE CHARACTER, NOT WHAT WAS AIMED AT IT. A blow
 			// that was evaded or wholly mitigated removed nothing, and is not
 			// damage taken. A shield absorbing it IS damage taken, which is
-			// why both figures count here -- unlike Fervour above, where the
-			// design says a shield is a straight loss of generation.
+			// why both figures count here -- as they do for Fervour above
+			// since issue #2873, ruled 2026-11-24.
 			//
 			// OTHER THAN THE CHARACTER'S OWN TYPE, read from its weapon. An
 			// untyped hit opens nothing, which is what keeps a player's own
@@ -2753,7 +2782,6 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				AActor* Striker =
 					Data.EffectSpec.GetContext().GetEffectCauser();
 
-				UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
 				UCataclysmEnemyModifiers::CharmWhoeverStruck(GetOwningActor(),
 															 Striker);
 
@@ -2761,6 +2789,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// per hit that takes health, and a damage-over-time tick caused by the same creature is not a hit.
 				if (!Hit.bIsDamageOverTime)
 				{
+					// AND INFERNAL BRAND, BY THE SAME RULE, since issue #2874: its row says "on hit", and a tick is
+					// not a hit. Ruled by the coordinating session on 2026-11-24. Until then it was called above, for
+					// every blow that took health, ticks included, and a Boss Brute carrying Hellfire Aura branded the
+					// owner four times in three seconds by its burn alone: one rock and four ticks made five stacks, and
+					// the explosion was the blow that killed.
+					UCataclysmEnemyModifiers::BrandOnHit(Striker, GetOwningActor());
 					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
 					// AND VOID'S TOUCH OF NOTHING, by the same rule: a hit that took health. Issue #1722.
 					UCataclysmEnemyModifiers::TouchOfNothingOnHit(Striker, GetOwningActor());
@@ -3075,7 +3109,12 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	ACataclysmCharacterBase* Character = AbilitySystem
 		? Cast<ACataclysmCharacterBase>(AbilitySystem->GetAvatarActor())
 		: nullptr;
-	if (!Character || UCataclysmSkillEffects::IsDead(Character))
+	// AND NOT FOR ONE WHOSE DEATH IS BEING MARKED NOW. Issue #2871: a blow dealt from inside `MarkDead`'s own hooks can
+	// write this character's health at nought again before its tag is on -- Harrower's leap into a creature carrying
+	// Sacrificial Bond pays the dying creature a share -- and a second `HandleDeath` here paid the kill twice. The death
+	// under way finishes it; `MarkDead` refuses the same case for every other caller of `HandleDeath`.
+	if (!Character || UCataclysmSkillEffects::IsDead(Character)
+		|| UCataclysmSkillEffects::IsBeingMarkedDead(Character))
 	{
 		return;
 	}

@@ -118,6 +118,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	int32 LabelPoints() const;
 
+	/** The label `SetChoice` last gave. For a test reading what a screen wrote on a button: the skill screen's (issue
+	 *  #837 slice 2) and the passive tree's mark tests (2026-11-24). Both branches added this accessor; the trees base
+	 *  keeps development's and drops the second declaration, which stopped the build. */
+	const FText& GetLabel() const { return Label; }
+
 	/** The value this button stands for. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	FName GetChoiceValue() const { return Value; }

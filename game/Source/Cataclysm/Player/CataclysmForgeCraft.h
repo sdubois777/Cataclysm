@@ -79,6 +79,10 @@ struct FCataclysmForgeCraftStep
 	/** The threshold question's first words: "Upgrading", "Socketing a gem into". */
 	FString ThresholdWords;
 
+	/** Whether the empire tree's affix nodes act on the changed item (#2741's crafting slices C3 and C4): every item craft
+	 *  but the dismantle, which ends the piece (G1). */
+	bool bTreeAffixNodes = true;
+
 	/** The refusals with no run, and with nothing at the target. */
 	FString NoRunRefusal = TEXT("There is no run to take the craft's days from.");
 	FString NothingThereRefusal = TEXT("There is nothing there to craft.");
@@ -111,8 +115,9 @@ struct FCataclysmForgeCraftHooks
  *
  * AN UPGRADE, IN ORDER: the stones are taken from the bag; the item, carried or worn, is raised one level in its own
  * cell or slot and carries 25 more residue; then the days pass through `UCataclysmEmpireRun::AdvanceDays`, so a surge
- * or a resolve inside them happens on its own day. A PLAY LOOP line says it, and `ForgeCrafted` saves the character
- * record and the run record.
+ * or a resolve inside them happens on its own day. A PLAY LOOP line says it, a second says what the days did -- the
+ * dungeons resolved, the cities hit and by how much, the cities fallen, any surge (issue #2857) -- and `ForgeCrafted`
+ * saves the character record and the run record.
  *
  * A WORN PIECE'S UPGRADE ASKS FIRST when it would take Worn Residue from below this tier's Consumption Threshold to at
  * or past it: "There is no path across the threshold that does not show the warning first." A confirmed crossing
@@ -349,7 +354,58 @@ public:
 	 * `UCataclysmForge::OptionsOn`.
 	 */
 	static FCataclysmForgeOptionEffect OptionsFor(const UObject* WorldContext, float ResidueBefore, float ResidueAfter,
-												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options);
+												  int32 Days, int64 CraftGold, const FCataclysmForgeCraftOptions& Options,
+												  const FCataclysmForgePricing& Pricing = FCataclysmForgePricing(),
+												  const FCataclysmForgeCosts& Costs = FCataclysmForgeCosts());
+
+	/**
+	 * The empire tree's crafting nodes for a craft on the item at a target whose own material is `CraftMaterial`
+	 * (#2741's crafting group, slices C1 and C2): the residue factor that applies to it (Tool Maintenance's always,
+	 * Limited Knowledge's below +6, Heat Shielding's on a tier 3+ material), Stable Compounds' share, Master's Touch's
+	 * draw for this item today, and the day nodes. Every `OptionsFor` call and the cleanse's plan pass it (G2). None with
+	 * no item or no run.
+	 */
+	static FCataclysmForgeCosts CostsFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+										 FName CraftMaterial);
+
+	/**
+	 * The empire tree's forge gold pricing for a craft on the item at a target (#47 slice F6a): each material tier's
+	 * factor by `UCataclysmEmpireTree::CraftGoldFactorFor`, from the character's tree, the gold it has spent at the forge
+	 * (Treasury Synergy's count) and Forge Upgrades' roll for this item on this day of the run. Every plan call with an
+	 * item passes it, and so does every `OptionsFor` call, so a craft and its options take one roll (ruling B).
+	 */
+	static FCataclysmForgePricing PricingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The same for a combine of the rung `Rung` (a stone combine's `Level - 1`, a gem combine's rarity), which has no
+	 * item: Forge Upgrades' roll is seeded by the rung and the day (Q10).
+	 */
+	static FCataclysmForgePricing CombinePricingFor(const UObject* WorldContext, int32 Rung);
+
+	/**
+	 * The empire tree's three material draws for a craft on the item at a target, today (#47 slice F6b, Q13): what
+	 * `DoItemCraft` keeps of the craft's materials once it can no longer fail (N1). None with no item or no run.
+	 */
+	static FCataclysmForgeKeeping KeepingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The forge screen's words for what the tree will keep of a craft whose own material is `Count` of `Material` and
+	 * whose options take `OptionMaterials` (N4), as `UCataclysmForge::KeptText`: "" when nothing is kept.
+	 */
+	static FString KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
+							   int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials);
+
+	/** The empire tree's roll nodes for the character playing (#2741's crafting slice C3): Master's Workshop's floor and
+	 *  Precision Crafting's chance. The reroll and the Deterministic Affix pass them; none with no character. */
+	static FCataclysmForgeRolls RollsFor(const UObject* WorldContext);
+
+	/** The empire tree's three affix nodes, and the rolls Rough Draft's affix is drawn with (slices C3 and C4), for the
+	 *  character playing. `DoItemCraft` applies them; none with no character. */
+	static FCataclysmForgeAffixNodes AffixNodesFor(const UObject* WorldContext);
+
+	/** The forge screen's words for them at the end of a priced question: `UCataclysmForge::RollsText` when the craft
+	 *  draws a roll, then `UCataclysmForge::AffixNodesChanceText` (G3). "" with none held. */
+	static FString AffixNodesTextFor(const UObject* WorldContext, bool bDrawsARoll);
 
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
@@ -371,8 +427,11 @@ public:
 	 * that does not show the warning first."); the mark set before the change; the gold, once; the materials, through
 	 * `TakeMaterials`; the hooks' take; the item changed by `ChangeTheItem` from a copy of it as it stood and the run before
 	 * the days pass, which may refuse; the residue written from `Step.ResidueAfter`; the item put back; the hooks' after;
-	 * the days; the build the double wears, captured after the change; the craft's line through `SayTheLine`, then the
-	 * options' line; and the save triggers. ANYTHING THAT CANNOT BE FINISHED PUTS BACK WHAT IT TOOK.
+	 * the days, their reports kept; the build the double wears, captured after the change; the craft's line through
+	 * `SayTheLine`, then the options' line, then what the days did ("at the forge, days 97 to 99: dungeons resolved:
+	 * ...", `FCataclysmPlayLoopLog::AwayAccount`) when a day passed, also kept for the screen
+	 * (`UCataclysmGameInstance::KeepCapitalDays`, issue #2857); and the save triggers. ANYTHING THAT CANNOT BE FINISHED
+	 * PUTS BACK WHAT IT TOOK.
 	 */
 	static ECataclysmForgeResult DoItemCraft(
 		const UObject* WorldContext, const FCataclysmForgeCraftStep& Step, bool bConfirmedPastThreshold,

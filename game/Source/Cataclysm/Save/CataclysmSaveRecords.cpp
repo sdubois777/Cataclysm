@@ -847,6 +847,70 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before the keys remembered their defaults (issue #837 slice 1, the owner's Q1 of 2026-11-24)
+	 * remembered none: an empty `RememberedDefaults`, so its first fill after loading remembers the default it showed
+	 * before. Written out, for `Migrate_3_to_4`'s reason. A LIST ALREADY THERE IS KEPT, and anything else under the key
+	 * is refused rather than read as empty.
+	 *
+	 * AND THE SAME IN THE HELD BUILD, `ConsumptionBuild`, which copies the keys for the double (ruled by the
+	 * coordinating session on 2026-11-24). Its list may already be there: `Migrate_5_to_6` writes a whole default build,
+	 * which carries every field the build has now.
+	 */
+	bool Migrate_16_to_17(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const auto WriteTheList = [&OutError](const TSharedRef<FJsonObject>& Into, const TCHAR* Where)
+		{
+			TArray<TSharedPtr<FJsonValue>> Held;
+			if (Into->HasField(TEXT("RememberedDefaults")))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+				if (!Into->TryGetArrayField(TEXT("RememberedDefaults"), Listed) || Listed == nullptr)
+				{
+					OutError = FString::Printf(TEXT("%sRememberedDefaults holds something that is not a list"), Where);
+					return false;
+				}
+				Held = *Listed;
+			}
+			Into->SetArrayField(TEXT("RememberedDefaults"), Held); // A migration's: the remembered defaults, written out.
+			return true;
+		};
+		if (!WriteTheList(Record, TEXT("")))
+		{
+			return false;
+		}
+		if (Record->HasField(TEXT("ConsumptionBuild")))
+		{
+			const TSharedPtr<FJsonObject>* Build = nullptr;
+			if (!Record->TryGetObjectField(TEXT("ConsumptionBuild"), Build) || Build == nullptr || !Build->IsValid())
+			{
+				OutError = TEXT("ConsumptionBuild holds something that is not an object");
+				return false;
+			}
+			return WriteTheList(Build->ToSharedRef(), TEXT("ConsumptionBuild's "));
+		}
+		return true;
+	}
+
+	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_17_to_18(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -869,6 +933,8 @@ namespace CataclysmCharacterSaveMigration
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
+		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
+		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 	};
 }
 
@@ -1327,6 +1393,26 @@ namespace CataclysmRunSaveMigration
 		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
 	}
 
+	/**
+	 * A run written before a Rift's altars stood holds none fallen: no dungeon placed an altar before issue #51 slice
+	 * B1, 2026-11-24. Written out, for `Migrate_1_to_2`'s reason, as an empty `RiftAltarsDestroyed` in the floor's rule
+	 * state, and only where the file has one; a version 1 file always has it, as `Migrate_1_to_2` says. Written whatever
+	 * the key held, for `Migrate_7_to_8`'s reason: a run written at 18 never wrote it.
+	 */
+	bool Migrate_18_to_19(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const TSharedPtr<FJsonObject>* Floor = nullptr;
+		const TSharedPtr<FJsonObject>* RuleState = nullptr;
+		if (Record->TryGetObjectField(TEXT("Floor"), Floor) && Floor && Floor->IsValid()
+			&& (*Floor)->TryGetObjectField(TEXT("RuleState"), RuleState) && RuleState && RuleState->IsValid())
+		{
+			// A migration's: no Rift altar had fallen, written out.
+			(*RuleState)->SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());
+		}
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1346,6 +1432,7 @@ namespace CataclysmRunSaveMigration
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
+		{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },
 	};
 }
 
@@ -1482,6 +1569,24 @@ namespace CataclysmAccountSaveMigration
 		return true;
 	}
 
+	/**
+	 * A record written before the forge's gold was counted (#47 slice F6a, Q5): `GoldSpentAtTheForge` is written 0, as
+	 * Reinvestment's count was; a number already there is kept, and anything else is refused.
+	 */
+	bool Migrate_7_to_8(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		double Held = 0.0;
+		if (Record->HasField(TEXT("GoldSpentAtTheForge"))
+			&& !Record->TryGetNumberField(TEXT("GoldSpentAtTheForge"), Held))
+		{
+			OutError = TEXT("GoldSpentAtTheForge holds something that is not a number");
+			return false;
+		}
+		Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held); // A migration's: the count, written out.
+		return true;
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep AccountSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1490,6 +1595,7 @@ namespace CataclysmAccountSaveMigration
 		{ 4, TEXT("Migrate_4_to_5"), &Migrate_4_to_5 },
 		{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },
 		{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 },
+		{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 },
 	};
 }
 

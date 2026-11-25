@@ -4152,6 +4152,100 @@ bool FCataclysmSaveLoadCoreTest::RunTest(const FString&)
 }
 
 /**
+ * A Rift's altar felled stays fallen after a load, and the stairs it sealed stay open. Issue #51 slice B1, run record
+ * version 19. A Rift four floors deep, as the owner made one: a Quest dungeon Demonic sent, Elite; its floor 1's one
+ * altar is felled and the run saved. THE LOAD REBUILDS THE FLOOR, WHICH PLACES THE ALTAR AGAIN, and the saved rule state
+ * fells it again: CONTROL, the rebuilt floor did place one, so its absence is the save's doing and not a floor that
+ * placed none. Prints "LOAD RIFT ALTAR".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadRiftAltarTest,
+	"Cataclysm.SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadRiftAltarTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	const FName AltarSeal(ACataclysmDungeonGameMode::RiftAltarsSealKey);
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		// A RIFT, FOUR FLOORS DEEP: a Quest dungeon Demonic sent, Elite as its Quest dungeons are.
+		if (UCataclysmEmpireRun* Run = Scene.Base.Instance->GetOrBeginEmpireRun())
+		{
+			for (FCataclysmDungeon& Dungeon : Run->Dungeons)
+			{
+				if (Dungeon.DungeonId == DungeonId)
+				{
+					Dungeon.Floors = 4;
+					Dungeon.Type = ECataclysmDungeonType::Quest;
+					Dungeon.SubType = ECataclysmDungeonSubType::Elite;
+					Dungeon.Cataclysm = ECataclysmType::Demonic;
+				}
+			}
+		}
+		if (!TestTrue(TEXT("set-up: a Rift was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the Rift was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: it is a Rift"), Scene.Mode->IsARift())
+			|| !TestEqual(TEXT("set-up: its floor 1 placed one altar"), Scene.Mode->RiftAltarsPlacedHere(), 1)
+			|| !TestTrue(TEXT("set-up: the altar seals the stairs"), Scene.Mode->StairsSealedBy().Contains(AltarSeal))
+			|| !KillOnTheFloor(*this, *Scene.Base.Character, Scene.Mode->RiftAltarsStandingNow()[0], TEXT("the altar"))
+			|| !TestFalse(TEXT("set-up: and no longer seals them"), Scene.Mode->StairsSealedBy().Contains(AltarSeal)))
+		{
+			return false;
+		}
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+	}
+
+	FDungeonScene Scene = MakeDungeonScene();
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Scene.Base.World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bRift = Scene.Mode->IsARift();
+	const int32 Placed = Scene.Mode->RiftAltarsPlacedHere();
+	const int32 Standing = Scene.Mode->RiftAltarsStandingNow().Num();
+	const bool bSealed = Scene.Mode->StairsSealedBy().Contains(AltarSeal);
+
+	AddInfo(FString::Printf(TEXT("LOAD RIFT ALTAR: %s (%s); a Rift %s, floor %d, %d altar(s) placed, %d standing; the "
+								 "stairs %s"),
+							FCataclysmSaveLoad::Describe(Report.Outcome), *Report.Why, bRift ? TEXT("yes") : TEXT("NO"),
+							Scene.Mode->FloorNumber, Placed, Standing, bSealed ? TEXT("SEALED") : TEXT("unsealed")));
+
+	TestEqual(TEXT("the load put the character and its run back"),
+			  static_cast<int32>(Report.Outcome), static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestTrue(TEXT("the loaded walk is the Rift"), bRift);
+	TestEqual(TEXT("CONTROL: the rebuilt floor placed its altar again"), Placed, 1);
+	TestEqual(TEXT("and the saved state felled it again"), Standing, 0);
+	TestFalse(TEXT("so the stairs stay unsealed"), bSealed);
+	return true;
+}
+
+/**
  * A Soul Chains gate neither opens nor pays on a load: a gate opened before the save stays open without paying again,
  * and a closed gate keeps its bearers, which the load re-links instead of choosing. Until this a load destroyed the
  * rebuilt floor's bearers and every closed gate opened and paid on the next beat. Issue #753, Group 3c-1, ruled
@@ -5544,8 +5638,8 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
  * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
- * `Run_v18.json` since the run record went to version 18 (issue #2848), `Run_v17.json` from version 17 (issue
- * #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
+ * `Run_v19.json` since the run record went to version 19 (issue #51), `Run_v18.json` from version 18 (issue #2848),
+ * `Run_v17.json` from version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
  * `Run_v13.json` from version 13 (issue #2825),
  * `Run_v12.json` from version 12 (issue
  * #2741 slice 6b), reads true on its first creature, the risen Brute that sees 30 times as far, and false on its
@@ -5561,7 +5655,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5602,7 +5696,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v18.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v19.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5623,6 +5717,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5641,7 +5736,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v18.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v19.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5650,7 +5745,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v18.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v19.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -6427,6 +6522,493 @@ bool FCataclysmSaveLoadTestKillReflectsNothingTest::RunTest(const FString&)
 							UCataclysmSkillEffects::IsDead(&Player) ? TEXT("DEAD") : TEXT("alive")));
 	TestEqual(TEXT("the player's health is as it was"), After, Before, 0.01f);
 	TestFalse(TEXT("and the player is alive"), UCataclysmSkillEffects::IsDead(&Player));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Where a resume stands the character
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/**
+	 * How far from where its record says it stood a continued character may be found. Nothing moves it in between, so
+	 * this is slack for the arithmetic only; the place it stood is many times this from the floor's entrance (the
+	 * test's CONTROL). Issue #2858.
+	 */
+	static constexpr float ResumePlaceToleranceCm = 10.0f;
+
+	/**
+	 * The first floor cell, in the plan's own order, at least `Cells` cells from both the entrance and the exit on one
+	 * axis or the other, or (-1, -1): somewhere a floor's start never stands the character, and not on the stairs.
+	 */
+	FIntPoint ResumePlaceCellAwayFromBothEnds(const FCataclysmFloorPlan& Plan, int32 Cells)
+	{
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				const FIntPoint Cell(X, Y);
+				const int32 FromEntrance = FMath::Max(FMath::Abs(X - Plan.Entrance.X), FMath::Abs(Y - Plan.Entrance.Y));
+				const int32 FromExit = FMath::Max(FMath::Abs(X - Plan.Exit.X), FMath::Abs(Y - Plan.Exit.Y));
+				if (Plan.IsFloor(Cell) && FromEntrance >= Cells && FromExit >= Cells)
+				{
+					return Cell;
+				}
+			}
+		}
+		return FIntPoint(-1, -1);
+	}
+}
+
+/**
+ * Continue on a character saved inside a dungeon, away from the floor's entrance, stands it where it was saved -- through
+ * the dungeon level's own start, as a launched game runs it: the pawn standing before play begins, the character
+ * pending, and `StartPlay` loading it in its parent's. Until issue #2858 the level's start stood the character at the
+ * floor's entrance a moment after the load put it back, while the load's own line said "placed where it was saved", and
+ * every test of a resume called the load directly, after `StartPlay`, so none saw it.
+ *
+ * SAVED AS PLAY SAVES IT: floor 2 of a walk, two of its creatures killed, the character moved to a floor cell three
+ * cells or more from both ends of the floor, and the clock's write, which logs the place it holds. AFTER THE LOAD the
+ * character is within `ResumePlaceToleranceCm` of where the record says it stood, and still after one beat of the floor;
+ * the creatures standing are the ones saved, the two killed still dead; and the level's start says it left the
+ * character there. THE CONTROL is the distance from where it stood to the floor's entrance, over a hundred times the
+ * tolerance, so a character stood at the entrance fails. Prints "RESUME PLACE".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadResumePlaceTest,
+	"Cataclysm.SaveLoad.ACharacterContinuedInsideADungeonStandsWhereItWasSaved",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadResumePlaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	/** The `LogCataclysm` lines that say where a save put the character and where the load left it. */
+	struct FResumePlaceLines : public FOutputDevice
+	{
+		FResumePlaceLines() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FResumePlaceLines() override { if (GLog) { GLog->RemoveOutputDevice(this); } }
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm"))
+				&& (Line.Contains(TEXT("The run record was written for the clock"))
+					|| Line.Contains(TEXT("stays where its save put it"))))
+			{
+				Lines.Add(Line);
+			}
+		}
+		// FLUSHED BEFORE IT IS READ: a line written off the game thread waits in the log until then. Issue #1522.
+		TArray<FString> Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+		TArray<FString> Lines;
+	};
+
+	// 1. PLAYED AND SAVED.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	int32 DungeonId = INDEX_NONE;
+	int32 StandingBeforeTheKills = -1;
+	int32 CreaturesSaved = -1;
+	FVector MovedTo = FVector::ZeroVector;
+	FVector SavedAt = FVector(-1.0e6f, -1.0e6f, -1.0e6f);
+	TArray<FString> ClockLines;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2))
+			|| !TestNotNull(TEXT("set-up: the floor was built"), Scene.Mode->CurrentFloor.Get()))
+		{
+			return false;
+		}
+		ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+		// BOTH RECORDS ON DISK FIRST, as the trip from the capital leaves them: the clock writes the run record only.
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+
+		const TArray<ACataclysmEnemyCharacter*> Standing = UnruledStanding(*Scene.Mode);
+		StandingBeforeTheKills = Standing.Num();
+		TArray<ACataclysmEnemyCharacter*> Victims;
+		for (ACataclysmEnemyCharacter* One : Standing)
+		{
+			if (Victims.Num() < 2 && !One->bCannotBeHurt)
+			{
+				Victims.Add(One);
+			}
+		}
+		if (!TestTrue(TEXT("set-up: the floor has three creatures or more, two of which can be hurt"),
+					  Standing.Num() >= 3 && Victims.Num() == 2)
+			|| !KillOnTheFloor(*this, Player, Victims[0], TEXT("the first creature killed"))
+			|| !KillOnTheFloor(*this, Player, Victims[1], TEXT("the second creature killed")))
+		{
+			return false;
+		}
+
+		const FIntPoint Away = ResumePlaceCellAwayFromBothEnds(Scene.Mode->CurrentFloor->GetPlan(), 3);
+		if (!TestTrue(TEXT("set-up: floor 2 has a cell three cells from both its ends"), Away != FIntPoint(-1, -1)))
+		{
+			return false;
+		}
+		StandOnCell(*Scene.Mode, Player, Away);
+		MovedTo = Player.GetActorLocation();
+
+		// THE CLOCK'S WRITE, IN A FRAME OF ITS OWN: the run record is written at most once a frame, and a test runs in
+		// one frame unless it moves the counter, as `CataclysmTestWorld::RunClock` does.
+		const int32 WritesBefore = Scene.Base.Writer->WritesStarted();
+		FResumePlaceLines Lines;
+		++GFrameCounter;
+		Scene.Base.Writer->Tick(UCataclysmSaveTriggers::SecondsBetweenClockWrites + 0.5f);
+		ClockLines = Lines.Said();
+		if (!TestTrue(TEXT("set-up: the clock wrote"), Scene.Base.Writer->WritesStarted() > WritesBefore)
+			|| !TestTrue(TEXT("set-up: the run record reached the disk"), WaitForSlot(Saved.RunSlot())))
+		{
+			return false;
+		}
+		const UCataclysmRunSave* Written = Read<UCataclysmRunSave>(Saved.RunSlot());
+		if (!TestNotNull(TEXT("set-up: the run record reads"), Written))
+		{
+			return false;
+		}
+		for (const FCataclysmSavedCharacterPlacement& Placement : Written->Floor.Characters)
+		{
+			if (Placement.CharacterId == Saved.CharacterId)
+			{
+				SavedAt = Placement.Location;
+			}
+		}
+		CreaturesSaved = Written->Floor.Creatures.Num();
+		TestEqual(TEXT("the clock's record holds the floor without the two killed"), CreaturesSaved,
+				  StandingBeforeTheKills - 2);
+		if (!TestTrue(TEXT("set-up: the clock's record holds the character where it was moved"),
+					  FVector::Dist(SavedAt, MovedTo) < ResumePlaceToleranceCm))
+		{
+			return false;
+		}
+	}
+
+	// 2. CONTINUED, AS A LAUNCHED GAME RUNS IT: the pawn standing before play begins, the character pending, and the
+	// dungeon level's own `StartPlay`, whose parent loads it.
+	FDungeonScene Scene;
+	Scene.Base = MakeScene();
+	if (Scene.Base.World)
+	{
+		Scene.Mode = Scene.Base.World->SpawnActor<ACataclysmDungeonGameMode>();
+	}
+	if (!TestTrue(TEXT("set-up: the continuing dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	ACataclysmPlayerCharacter& Player = *Scene.Base.Character;
+
+	Scene.Base.Instance->PendingCharacterId = Saved.CharacterId;
+	FResumePlaceLines StartLines;
+	Scene.Mode->StartPlay();
+	const TArray<FString> LeftLines = StartLines.Said();
+
+	const bool bStillPending = Scene.Base.Instance->PendingCharacterId.IsValid();
+	const bool bLeftThere = Scene.Mode->PendingLoadPutTheCharacterWhereSaved();
+	const float SavedFromEntrance =
+		Scene.Mode->CurrentFloor ? FVector::Dist2D(SavedAt, Scene.Mode->CurrentFloor->EntranceWorld()) : -1.0f;
+	const float FromSaved = FVector::Dist(Player.GetActorLocation(), SavedAt);
+	const int32 StandingAfter = UnruledStanding(*Scene.Mode).Num();
+
+	// AND ONE BEAT OF THE FLOOR, which is what runs next in play.
+	BeatOnce(*Scene.Mode);
+	const float FromSavedAfterABeat = FVector::Dist(Player.GetActorLocation(), SavedAt);
+
+	AddInfo(FString::Printf(TEXT("RESUME PLACE: saved at %.0f %.0f %.0f, %.0f cm from the entrance; after the level's start "
+								 "%.1f cm from it, after a beat %.1f cm; walking dungeon %d floor %d (saved %d floor 2); "
+								 "creatures %d standing before the kills, %d saved, %d after the load; left there %s; "
+								 "clock lines [%s]; start lines [%s]"),
+							SavedAt.X, SavedAt.Y, SavedAt.Z, SavedFromEntrance, FromSaved, FromSavedAfterABeat,
+							Scene.Mode->EmpireDungeonId, Scene.Mode->FloorNumber, DungeonId, StandingBeforeTheKills,
+							CreaturesSaved, StandingAfter, bLeftThere ? TEXT("yes") : TEXT("NO"),
+							*FString::Join(ClockLines, TEXT(" | ")), *FString::Join(LeftLines, TEXT(" | "))));
+
+	TestFalse(TEXT("the pending character was loaded"), bStillPending);
+	TestEqual(TEXT("the dungeon it was saved in is walked again"), Scene.Mode->EmpireDungeonId, DungeonId);
+	TestEqual(TEXT("on the floor it was saved on"), Scene.Mode->FloorNumber, 2);
+	TestTrue(TEXT("CONTROL: where it stood is over a hundred times the tolerance from the floor's entrance"),
+			 SavedFromEntrance > 100.0f * ResumePlaceToleranceCm);
+	TestTrue(TEXT("the character stands where it was saved after the level's start"), FromSaved < ResumePlaceToleranceCm);
+	TestTrue(TEXT("and still after a beat of the floor"), FromSavedAfterABeat < ResumePlaceToleranceCm);
+	TestEqual(TEXT("the creatures standing are the ones saved, the two killed still dead"), StandingAfter, CreaturesSaved);
+	TestTrue(TEXT("the load told the level's start it put the character where it was saved"), bLeftThere);
+	TestEqual(TEXT("the level's start says once that it left the character there"), LeftLines.Num(), 1);
+	if (TestEqual(TEXT("the clock's write said once what place it holds"), ClockLines.Num(), 1))
+	{
+		TestTrue(TEXT("naming the floor"), ClockLines[0].Contains(TEXT("on floor 2 of")));
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A level's first floor starts for the player once
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSaveLoadTest
+{
+	/** The share of maximum health the worn floor-start cap lowers health to, or -1 when none is worn. */
+	float ResumeCapShareWorn(const UCataclysmAbilitySystemComponent& Abilities)
+	{
+		for (const FCataclysmPoolAction& Action : Abilities.GetPoolActions())
+		{
+			if (Action.bHealthCap)
+			{
+				return Action.Percent;
+			}
+		}
+		return -1.0f;
+	}
+
+	/**
+	 * Wears "You start every dungeon floor at 30%-50% of your maximum HP" on a helm, as the floor-start cap tests in
+	 * `CataclysmDungeonModifierEffectsTests.cpp` wear it, and returns the share it rolled, or -1. Issue #2858.
+	 */
+	float ResumeCapWearTheFloorStartCap(FAutomationTestBase& Test, ACataclysmPlayerCharacter& Character)
+	{
+		UCataclysmEquipmentComponent* Equipment = Character.GetEquipment();
+		UCataclysmAbilitySystemComponent* Abilities =
+			Cast<UCataclysmAbilitySystemComponent>(Character.GetAbilitySystemComponent());
+		if (!Test.TestNotNull(TEXT("set-up: the player's equipment"), Equipment)
+			|| !Test.TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+		{
+			return -1.0f;
+		}
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(TEXT("Positive_Your_HP_regeneration_continues_at_50_effectiven"));
+		Rolled.Negative = FName(TEXT("Negative_You_start_every_dungeon_floor_at_30_50_of_your"));
+		Helm.Enchantments.Add(Rolled);
+		Helm.EnchantmentCount = 1;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Abilities);
+		return ResumeCapShareWorn(*Abilities);
+	}
+}
+
+/**
+ * A dungeon level's first floor starts for the player once: `floor_start` reaches it one time, not two. The pawn stands
+ * before the level's `StartPlay`, as login leaves it in a launched game (the engine spawns the player before play
+ * begins), and nothing is pending. Until issue #2858 `StartPlay` repeated the floor's start for the player after its
+ * `GoToFloor` had already reached the pawn: the entrance, the Corrupted Double's note, the floor's rules and
+ * `floor_start`, so "You start every dungeon floor at 30%-50% of your maximum HP" capped twice. Ruled a defect by the
+ * coordinating session on 2026-11-24. THE CONTROL is that the floor's start did reach the player: it stands at the
+ * floor's entrance. Prints "FIRST FLOOR START".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelFirstFloorStartsOnceTest,
+	"Cataclysm.Travel.ADungeonLevelsFirstFloorStartReachesThePlayerOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTravelFirstFloorStartsOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	FLoadScene Scene = MakeScene();
+	ACataclysmDungeonGameMode* Mode = Scene.World ? Scene.World->SpawnActor<ACataclysmDungeonGameMode>() : nullptr;
+	if (!TestTrue(TEXT("set-up: the dungeon level's world was built, its pawn standing"), Scene.IsUsable() && Mode))
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmAbilitySystemComponent* Abilities =
+		Cast<UCataclysmAbilitySystemComponent>(Scene.Character->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+	{
+		return false;
+	}
+
+	int32 FloorStarts = 0;
+	const FDelegateHandle Listening = Abilities->OnActionEvent.AddLambda([&FloorStarts](FName Event)
+	{
+		FloorStarts += Event == FName(TEXT("floor_start")) ? 1 : 0;
+	});
+	ON_SCOPE_EXIT { Abilities->OnActionEvent.Remove(Listening); };
+
+	Mode->StartPlay();
+
+	const float FromEntrance = Mode->CurrentFloor
+		? FVector::Dist2D(Scene.Character->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+		: -1.0f;
+	AddInfo(FString::Printf(TEXT("FIRST FLOOR START: floor %d started for the player %d time(s); it stands %.1f cm from "
+								 "the floor's entrance"),
+							Mode->FloorNumber, FloorStarts, FromEntrance));
+
+	TestEqual(TEXT("the first floor's start reaches the player once, not twice"), FloorStarts, 1);
+	TestTrue(TEXT("CONTROL: and it did reach the player, who stands at the floor's entrance"),
+			 FromEntrance >= 0.0f && FromEntrance < ResumePlaceToleranceCm);
+	return true;
+}
+
+/**
+ * A character continued inside a dungeon wearing "You start every dungeon floor at 30%-50% of your maximum HP" keeps the
+ * health it was saved with. The resumed floor's own start reaches it during the load, before its place and health are
+ * put back; until issue #2858 the dungeon level's `StartPlay` then raised `floor_start` again, after the health was put
+ * back, and the cap lowered it to 30%-50% of its maximum. Ruled a defect by the coordinating session on 2026-11-24: "On a
+ * resume ... the floor_start event must not fire again after the saved health is put back".
+ *
+ * SAVED on floor 2 wearing the cap on a helm, at 80% of its maximum health; CONTINUED through the dungeon level's own
+ * `StartPlay`, the pawn standing first. It keeps that health, and still after a beat, and no `floor_start` reaches it after
+ * the load put it back. THE CONTROLS: the loaded character wears the cap; its saved health is above any share the cap
+ * lowers to; and the resumed floor's start did reach it, during the load. Prints "RESUME CAP".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadResumeCapTest,
+	"Cataclysm.SaveLoad.AResumedCharacterWearingTheFloorStartCapKeepsItsSavedHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadResumeCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// 1. SAVED ON FLOOR 2, WEARING THE CAP, ABOVE ITS SHARE.
+	FSaved Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	float ShareSaved = -1.0f;
+	float MaximumSaved = -1.0f;
+	float SavedHealth = -1.0f;
+	{
+		FDungeonScene Scene = MakeDungeonScene();
+		if (!TestTrue(TEXT("set-up: the saving dungeon world was built"), Scene.IsUsable()))
+		{
+			if (Scene.Base.World)
+			{
+				Scene.Base.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		Saved.RunId = FGuid::NewGuid();
+		Saved.CharacterId = FGuid::NewGuid();
+		Scene.Base.Writer->BeginRun(Saved.RunId, Saved.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
+		const int32 DungeonId = PlaceADungeonCarrying(*this, Scene, {});
+		ShareSaved = ResumeCapWearTheFloorStartCap(*this, *Scene.Base.Character);
+		if (!TestTrue(TEXT("set-up: a dungeon was placed"), DungeonId != INDEX_NONE)
+			|| !TestTrue(FString::Printf(TEXT("set-up: the helm gave a cap between 30 and 50: %.2f"), ShareSaved),
+						 ShareSaved >= 30.0f && ShareSaved <= 50.0f)
+			|| !TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId))
+			|| !TestTrue(TEXT("set-up: the walk reached floor 2"), Scene.Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+
+		UAbilitySystemComponent* Abilities = Scene.Base.Character->GetAbilitySystemComponent();
+		MaximumSaved = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		Abilities->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.8f * MaximumSaved);
+		Scene.Base.Writer->NoteTrigger(ECataclysmSaveTrigger::CharacterDied);
+		WaitForSlot(Saved.RunSlot());
+		const UCataclysmRunSave* Written = Read<UCataclysmRunSave>(Saved.RunSlot());
+		if (!TestNotNull(TEXT("set-up: the run record reads"), Written))
+		{
+			return false;
+		}
+		for (const FCataclysmSavedCharacterPlacement& Placement : Written->Floor.Characters)
+		{
+			if (Placement.CharacterId == Saved.CharacterId)
+			{
+				SavedHealth = Placement.Health;
+			}
+		}
+		if (!TestEqual(TEXT("set-up: the record holds the health it was given"), SavedHealth, 0.8f * MaximumSaved, 0.5f))
+		{
+			return false;
+		}
+	}
+
+	// 2. CONTINUED, AS A LAUNCHED GAME RUNS IT, with every floor start heard and whether the load had put it back yet.
+	FDungeonScene Scene;
+	Scene.Base = MakeScene();
+	if (Scene.Base.World)
+	{
+		Scene.Mode = Scene.Base.World->SpawnActor<ACataclysmDungeonGameMode>();
+	}
+	if (!TestTrue(TEXT("set-up: the continuing dungeon world was built"), Scene.IsUsable()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UCataclysmAbilitySystemComponent* Abilities =
+		Cast<UCataclysmAbilitySystemComponent>(Scene.Base.Character->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("set-up: the player's ability system"), Abilities))
+	{
+		return false;
+	}
+
+	ACataclysmDungeonGameMode* Mode = Scene.Mode;
+	int32 FloorStarts = 0;
+	int32 FloorStartsAfterThePutBack = 0;
+	const FDelegateHandle Listening = Abilities->OnActionEvent.AddLambda(
+		[&FloorStarts, &FloorStartsAfterThePutBack, Mode](FName Event)
+		{
+			if (Event == FName(TEXT("floor_start")))
+			{
+				++FloorStarts;
+				FloorStartsAfterThePutBack += Mode->PendingLoadPutTheCharacterWhereSaved() ? 1 : 0;
+			}
+		});
+	ON_SCOPE_EXIT { Abilities->OnActionEvent.Remove(Listening); };
+
+	Scene.Base.Instance->PendingCharacterId = Saved.CharacterId;
+	Mode->StartPlay();
+
+	const bool bPutBack = Mode->PendingLoadPutTheCharacterWhereSaved();
+	const float ShareWorn = ResumeCapShareWorn(*Abilities);
+	const float Maximum = Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Health = HealthOf(*Scene.Base.Character);
+	BeatOnce(*Mode);
+	const float HealthAfterABeat = HealthOf(*Scene.Base.Character);
+
+	AddInfo(FString::Printf(TEXT("RESUME CAP: saved at %.1f of %.1f wearing a %.2f%% cap; after the level's start %.1f of "
+								 "%.1f, a beat later %.1f; the cap worn %.2f%%; %d floor start(s), %d after the load put "
+								 "the character back; put back %s"),
+							SavedHealth, MaximumSaved, ShareSaved, Health, Maximum, HealthAfterABeat, ShareWorn,
+							FloorStarts, FloorStartsAfterThePutBack, bPutBack ? TEXT("yes") : TEXT("NO")));
+
+	TestTrue(TEXT("set-up: the load put the character where it was saved"), bPutBack);
+	TestTrue(TEXT("CONTROL: the loaded character wears the floor-start cap"), ShareWorn >= 30.0f && ShareWorn <= 50.0f);
+	TestTrue(TEXT("CONTROL: its saved health is above any share the cap lowers to"), SavedHealth > 0.5f * Maximum + 1.0f);
+	TestTrue(TEXT("CONTROL: the resumed floor's start reached it during the load"), FloorStarts >= 1);
+	TestEqual(TEXT("no floor start reaches it after the load put it back"), FloorStartsAfterThePutBack, 0);
+	TestEqual(TEXT("it keeps the health it was saved with"), Health, SavedHealth, 0.5f);
+	TestEqual(TEXT("and still after a beat of the floor"), HealthAfterABeat, SavedHealth, 0.5f);
 	return true;
 }
 
@@ -9070,8 +9652,13 @@ namespace CataclysmFirstSurgeTest
 			Test.TestEqual(Name + TEXT("'s timer is still full"), Run.Clock->DaysUntilResolveFor(Dungeon.DungeonId),
 						   Dungeon.ResolveDays, 0.0001f);
 			Test.TestEqual(Name + TEXT(" arrived on day 0"), Dungeon.SpawnedDay, 0);
-			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type"), SlotModifiersOf(Dungeon),
-						   UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier, Dungeon.SubType));
+			// A RIFT CARRIES EIGHT WHATEVER THE TIER, since issue #51 slice B2: a new character's Cataclysms are drawn
+			// by the clock, so its opening wave can hold a Quest dungeon Demonic sent.
+			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type, or a Rift's eight"),
+						   SlotModifiersOf(Dungeon),
+						   Dungeon.IsARift() ? UCataclysmDungeonModifierRules::RiftModifierCount
+											 : UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier,
+																						 Dungeon.SubType));
 			const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
 			Parts.Add(FString::Printf(TEXT("%d %s%s%s %d floors %d modifiers"), Dungeon.DungeonId,
 									  *UCataclysmSurgeScheduler::KindName(Dungeon.Type),
@@ -10804,6 +11391,10 @@ bool FCataclysmTravelArriveTest::RunTest(const FString&)
 	TestEqual(TEXT("and its health"), Health, Handed.Health);
 	TestTrue(TEXT("and not at the capital's place, which means nothing here"),
 			 FVector::Dist2D(At, Handed.PlacedAt) > 1.0f);
+	// AND THE LEVEL'S START IS TOLD THE LOAD PUT BACK NO PLACE, so it stands the character at the floor's entrance: only a
+	// record holding a floor keeps the character where it stood. Issue #2858.
+	TestFalse(TEXT("the hand-over's load put back no place, so the level's start stands the character at the entrance"),
+			  Scene.Mode->PendingLoadPutTheCharacterWhereSaved());
 	TestTrue(TEXT("then the pending walk is entered"), bEntered);
 	TestEqual(TEXT("the dungeon the capital's Walk chose"), Scene.Mode->EmpireDungeonId, Handed.DungeonId);
 	TestEqual(TEXT("on its floor 1"), Scene.Mode->FloorNumber, 1);
@@ -11202,6 +11793,7 @@ bool FCataclysmTravelReturnLineTest::RunTest(const FString&)
 				AHit(Ids[4], 10.0f, 50.0f, false)};
 	Day.Fallen = {Ids[0], Ids[1]};
 	Day.bSurged = true;
+	Day.Surges = 1; // As `FireSurge` writes it: the days away count this since issue #2865, a day can hold several.
 	Day.SurgeDungeons = 6;
 	Run->NoteClear(9, TEXT("the dungeon on a city"), 4);
 	Run->NoteDaysAway(5, 9, Reports, /*bEndedInAClear*/ true);
@@ -11316,6 +11908,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -11346,7 +11939,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v18.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v19.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
  * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
@@ -11354,8 +11947,8 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
  * went to version 13 on 2026-11-21, issue #2825, and `Run_v13.json` until it went to version 14 on 2026-11-22, issue #46,
  * and `Run_v14.json` until it went to version 15 the same day, issue #2741 slice 9, and `Run_v15.json` until it went to
  * version 16 the same day, issue #2838, and `Run_v16.json` until it went to version 17 the same day, issue #2840,
- * and `Run_v17.json` until it went to version 18 on 2026-11-24, issue #2848, and the twelve hold the same
- * values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
+ * and `Run_v17.json` until it went to version 18 on 2026-11-24, issue #2848, and `Run_v18.json` until it went to
+ * version 19 the same day, issue #51, and the thirteen hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
  */
@@ -11367,7 +11960,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -11378,7 +11971,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v18.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v19.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}

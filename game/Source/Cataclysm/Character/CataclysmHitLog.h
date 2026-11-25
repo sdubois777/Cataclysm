@@ -107,6 +107,21 @@ struct CATACLYSM_API FCataclysmHitLog
 	 */
 	static FString OutgoingLine(const FCataclysmHitNotice& Notice);
 
+	/** What a creature's death line begins with. Not "HIT", so a filter on blows does not find deaths. Issue #2874. */
+	static const TCHAR* const CreatureDeathPrefix;
+
+	/**
+	 * A creature's death, said once by `ACataclysmEnemyCharacter::HandleDeath`: "DIED: CataclysmBruteCharacter_136
+	 * (Boss) at 0.0 of 4265 health; last struck by CataclysmPlayerCharacter_0", its figures as every line here says
+	 * them (whole from ten up, one decimal below). Issue #2874: the owner was killed 0.36 s
+	 * after a 438 critical on a Boss Brute, and nothing in the log said whether the Brute was already dead when its
+	 * swing landed; every blow is said and no creature's death was. Who struck last is the creature's own record of its
+	 * last blow to reach health, named as `AttackerText` names an attacker; "nobody on record" when there is none.
+	 *
+	 * NEVER " died at ", which is the player's own death line and what its readers search for.
+	 */
+	static FString CreatureDeathLine(const AActor* Creature, float Health, float MaxHealth, const AActor* LastStruckBy);
+
 	/**
 	 * Notes a blow the character took at world time `Now`, and answers the lines to say now: every second's total
 	 * that has run out by `Now`, then this blow's own line unless it is damage over time, which is added to its

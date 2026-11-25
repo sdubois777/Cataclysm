@@ -130,6 +130,21 @@ public:
 														  const FString& TypeName);
 
 	/**
+	 * The level a minion's own base figures are raised by when `Summoner` makes it: a player's character level, an
+	 * enemy summoner's tier reference level, a minion summoner's own summoner's. What `Spawn` reads. Issue #2868: a
+	 * thrall's figures are raised by the same level, its commander's, read the same way.
+	 */
+	static int32 LevelOfSummonerFor(const AActor* Summoner);
+
+	/**
+	 * One type row's health and damage per hit at a summoner level, before any minion modifier: `Base + PerLevel x
+	 * Level`, the arithmetic `Spawn` raises a minion's own figures by. Issue #2868: a thrall's figures are a multiple of
+	 * the Imp row's at its commander's level, so the two are read by the one function.
+	 */
+	static void TypeFiguresAtLevel(const struct FCataclysmMinionTypeRow& Type, int32 Level, float& OutHealth,
+								   float& OutDamagePerHit);
+
+	/**
 	 * A type row's Tags column as tags, which `Spawn` gives a new minion as its
 	 * `TypeTags`. Empty when the table has no such row. Issue #2787: a kind's
 	 * reserve is asked with these BEFORE the spawn, because the pool must have

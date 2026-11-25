@@ -73,6 +73,11 @@ enum class ECataclysmWearResult : uint8
 	 *
 	 * SWAPPING IS NOT REFUSED, only taking the last one off. Wearing a different
 	 * weapon over this one goes through WearFromCarried and never reaches here.
+	 *
+	 * ITS SENTENCE NAMES THE PRESS THAT SWAPS, since issue #837's slice 3: the
+	 * owner's Q6 of 2026-11-24 kept the rule, shows the refusal on the inventory
+	 * screen, and has it say how to change weapon, a held weapon pressed onto
+	 * this hand (WearHeldInto).
 	 */
 	TheLastWeapon		UMETA(DisplayName = "That is your only weapon"),
 
@@ -219,15 +224,51 @@ public:
 	 * place would put that piece on the cursor. Wearing any other item leaves
 	 * the hold alone, and so does every refusal.
 	 *
+	 * A SLOT CAN BE NAMED, `Into`, AND IT IS THEN THE ONLY SLOT. Issue #837, slice 3: a held item pressed onto a
+	 * gear slot. `Equip`'s own choice is not asked, so with every ring slot full the ring pressed onto replaces
+	 * the one pressed and not the one `UCataclysmGearSlots::SlotToReplace` names (the coordinating session's
+	 * ruling of 2026-11-24). An item that does not go in that slot is refused as CannotBeWorn before anything moves, so it stays
+	 * in its own cell; taken out and put back it would land in the first free cell instead. Every other check above
+	 * is the same, and the threshold question is about that slot.
+	 *
 	 * @param OutSlot  where the item ended up. Untouched when nothing was worn.
 	 * @param bConfirmedPastThreshold  the player has said yes, so do not ask.
 	 * @param DifficultyTier  the tier whose threshold applies; 0 for the one
 	 *                        the equipment's world is played at.
+	 * @param Into  the slot the player named, or `Count`, the default, for
+	 *              `Equip`'s choice.
 	 */
 	static ECataclysmWearResult WearFromCarried(
 		UCataclysmInventoryComponent* Inventory,
 		UCataclysmEquipmentComponent* Equipment,
 		int32 CarriedSlot,
+		ECataclysmGearSlot& OutSlot,
+		bool bConfirmedPastThreshold = false,
+		int32 DifficultyTier = 0,
+		ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
+
+	/**
+	 * Wear the item on the cursor in the gear slot it was pressed onto, and put
+	 * what was there into the bag. Issue #837, slice 3.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-24, issue #837 comment 7150408605, Q5:
+	 * "pressing a held item onto a gear slot wear[s] it in that slot", so a
+	 * weapon goes into the hand the player chooses in one press and never
+	 * through an empty hand, which is why the last-weapon rule (Q6, kept) is
+	 * never in its way. A two-handed weapon pressed onto either hand is kept in
+	 * Weapon1, as `EquipInto` decides.
+	 *
+	 * `WearFromCarried` ON THE HELD CELL WITH THE SLOT NAMED, so every rule of
+	 * that function holds here: the room for a second weapon coming off, the
+	 * threshold question, the play loop's line and the end of the hold.
+	 *
+	 * @return NothingHeld when nothing is on the cursor; otherwise as
+	 *         WearFromCarried.
+	 */
+	static ECataclysmWearResult WearHeldInto(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment,
+		ECataclysmGearSlot GearSlot,
 		ECataclysmGearSlot& OutSlot,
 		bool bConfirmedPastThreshold = false,
 		int32 DifficultyTier = 0);
@@ -239,6 +280,9 @@ public:
 	 * slot is read again: when it no longer holds exactly `AskedAbout`, nothing
 	 * moves and the answer is NoLongerThere. A yes given about one item must
 	 * never put on another.
+	 *
+	 * @param Into  the slot the question was about, as WearFromCarried's: a
+	 *              yes to a press onto a gear slot puts it in that slot.
 	 */
 	static ECataclysmWearResult WearAfterConfirming(
 		UCataclysmInventoryComponent* Inventory,
@@ -246,7 +290,8 @@ public:
 		int32 CarriedSlot,
 		const FCataclysmItem& AskedAbout,
 		ECataclysmGearSlot& OutSlot,
-		int32 DifficultyTier = 0);
+		int32 DifficultyTier = 0,
+		ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
 
 	/**
 	 * What putting on the item in a carried slot would do to the Worn Residue.
@@ -254,12 +299,32 @@ public:
 	 * crosses. Issue #2687.
 	 *
 	 * @param DifficultyTier  as WearFromCarried's.
+	 * @param Into  as WearFromCarried's: the total is the one that slot would
+	 *              leave. Issue #837, slice 3.
 	 */
 	static FCataclysmThresholdCrossing CrossingFor(
 		const UCataclysmInventoryComponent* Inventory,
 		UCataclysmEquipmentComponent* Equipment,
 		int32 CarriedSlot,
-		int32 DifficultyTier = 0);
+		int32 DifficultyTier = 0,
+		ECataclysmGearSlot Into = ECataclysmGearSlot::Count);
+
+	/**
+	 * Worn Residue as the Consumption Threshold counts it: `WornResidue` less the share Residue Protocols ignores,
+	 * `IgnoredShare` held inside 0 to 1. #2741's crafting group, slice C6, the coordinating session's R1 of 2026-11-25:
+	 * the design document and the simulation (`sim/cataclysm_sim/residue.py`) already use the node this way. The items
+	 * keep their residue; only the comparison with the threshold reads this.
+	 */
+	static float CountedWornResidueOf(float WornResidue, float IgnoredShare);
+
+	/** The share of Worn Residue the character playing in `WorldContext`'s world has Residue Protocols ignore. */
+	static float IgnoredWornResidueShare(const UObject* WorldContext);
+
+	/**
+	 * THE ONE FUNCTION every comparison of Worn Residue with the Consumption Threshold reads: the equip crossing
+	 * (`CrossingFor`), the forge's crossing (`UCataclysmForgeCraft::DoItemCraft`) and the character sheet's line.
+	 */
+	static float CountedWornResidue(const UObject* WorldContext, float WornResidue);
 
 	/**
 	 * What crossing the threshold does, in the design's words: `docs/Cataclysm_GDD_v2.md`, "What crossing it does",

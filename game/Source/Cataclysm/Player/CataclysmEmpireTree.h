@@ -210,6 +210,81 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 
 	/** Bribery's points, 1 when held: the player may reset one dungeon's timer a surge for a fee (V12 to V14). */
 	int32 DungeonBribePoints = 0;
+
+	// ---- #47 slice F6: the two crafting options of the centre milestones, ruled 2026-11-22 (R1 to R8). ----
+
+	/** The Soul Forge's chance an upgrade adds two levels, 0.15 when chosen, 0 otherwise (`UCataclysmForge::
+	 *  SoulForgeLevels`). A chance, so the larger held, as The Warlord's is. */
+	float UpgradeExtraLevelChance = 0.0f;
+
+	/** The Master Tinkerer's chance an enchantment craft is a critical success, 0.05 when chosen
+	 *  (`UCataclysmForge::EnchantCritical`). */
+	float EnchantCriticalChance = 0.0f;
+
+	// ---- #47 slice F6a: the five forge gold nodes, ruled 2026-11-22 (Q1 to Q10) and 2026-11-24 (A, B). ----
+
+	/** Workshop Upgrades' 1.5% a point, and Architectural Synergy's 1% a point for each 10 points in the Treasury branch
+	 *  (its own cap 30%, the owner's), off every forge gold price. Added with the two below and held at
+	 *  `CraftGoldReductionCap` (Q1, as P1) by `UCataclysmEmpireTree::CraftGoldFactorFor`. */
+	float CraftGoldReduced = 0.0f;
+
+	/** Apprentice Oversight's 20% off a forge price whose material is tier 1 or 2 (Q3). A gem combine has no material. */
+	float LowTierCraftGoldReduced = 0.0f;
+
+	/** Treasury Synergy's 1% off for each `TreasurySynergyGoldAStep` tier 1 gold spent at the forge, and the most it may
+	 *  give (30%, its own, inside the 75%: Q7). `UCataclysmEmpireTree::CraftGoldFromSpendingFor` reads them. */
+	float CraftGoldReducedPerSpendingStep = 0.0f;
+	float CraftGoldSpendingCap = 0.0f;
+
+	/** Forge Upgrades' chance a craft costs a tenth less, 1% a point (Q8 to Q10): times `ForgeUpgradesFactor` after
+	 *  the capped reductions, rolled once a craft from the item and the day (`UCataclysmForge::ForgeUpgradesTenthOff`). */
+	float CraftGoldTenthOffChance = 0.0f;
+
+	/** #47 slice F6b, the forge's materials (the coordinating session's Q11 to Q17 of 2026-11-22, N1 to N5 of 2026-11-25).
+	 *  Each a chance drawn once a forge item craft from the item and the day (`UCataclysmForge::KeepingOn`): Material
+	 *  Conservation's, 2% a point, keeps the craft's tier 1 and 2 materials; Resource Management's, 1% a point, its tier
+	 *  3 to 5 ones; Tempting Fate's, 15%, every material, on an item whose residue before the craft is above 500. */
+	float LowTierMaterialKeptChance = 0.0f;
+	float RareMaterialKeptChance = 0.0f;
+	float HighResidueMaterialsReturnedChance = 0.0f;
+
+	/** #2741's crafting group, slices C1 and C2 (the coordinating session's rulings of 2026-11-25). The residue a forge
+	 *  item craft adds is multiplied by each factor that applies to it, each compounded per point: Tool Maintenance's
+	 *  on every craft, Limited Knowledge's on an item below +6 before the craft, Heat Shielding's on a craft whose own
+	 *  material is tier 3 or above. `UCataclysmForgeCraft::CostsFor` chooses which apply. */
+	float CraftResidueFactor = 1.0f;
+	float LowLevelCraftResidueFactor = 1.0f;
+	float RareMaterialCraftResidueFactor = 1.0f;
+
+	/** Stable Compounds' 0.025 a point off the Chaos Stabilizer's share of the residue a craft adds (0.5). */
+	float StabilizerShareReduced = 0.0f;
+
+	/** Master's Touch's 1% for each whole 100 of an item's residue before a craft that the craft leaves it at 0. */
+	float ResidueResetChancePerHundred = 0.0f;
+
+	/** A forge item craft's days: times (1 - `CraftDaysReduced`) (Industrial Speed) and (1 - `CraftDaysReducedMore`)
+	 *  (Sovereign's Assembly), less `CraftDaysOff` (Master Craftsman), then rounded; a craft of at least one day keeps
+	 *  one, and a craft of none stays at none (`UCataclysmForge::TreeDaysFor`). */
+	float CraftDaysOff = 0.0f;
+	float CraftDaysReduced = 0.0f;
+	float CraftDaysReducedMore = 0.0f;
+
+	/** #2741's crafting group, slices C3 and C4 (the coordinating session's rulings of 2026-11-25). An affix roll the
+	 *  forge draws (a reroll, a Deterministic Affix, Rough Draft's affix) is drawn from `AffixRollFloor` up (Master's
+	 *  Workshop, 0.02 a point), and on Precision Crafting's draw (`AffixRollTopQuarterChance`, 3% a point) from 0.75 up.
+	 *  A forge item craft, on draws of its own: adds one affix (Rough Draft, 5% a point), raises one random affix a tier
+	 *  (Apprentice Smith, 1% a point), makes one random affix's roll its best (Quality Materials, 10% a point). */
+	float AffixRollTopQuarterChance = 0.0f;
+	float AffixRollFloor = 0.0f;
+	float AffixRollMaxedChance = 0.0f;
+	float AffixTierRaisedChance = 0.0f;
+	float AffixAddedChance = 0.0f;
+
+	/** #2741's crafting group, slice C6 (the coordinating session's rulings of 2026-11-25). Ancient Techniques: days off
+	 *  a forge craft on an item that has four affixes or more before it, added to Master Craftsman's. Residue Protocols:
+	 *  the share of Worn Residue the Consumption Threshold does not count (`UCataclysmWearing::CountedWornResidue`). */
+	float CraftDaysOffOnFullItems = 0.0f;
+	float WornResidueIgnored = 0.0f;
 };
 
 /**
@@ -617,6 +692,39 @@ public:
 
 	/** Whether either credit node is held, so a debt can be the reason no more credit is given. */
 	static bool AllowsUpgradeCredit(const FCataclysmEmpireTreePlayerBonuses& Bonuses);
+
+	/**
+	 * THE MOST A FORGE GOLD PRICE IS REDUCED BY, as a city upgrade's is (Q1 copies P1): Workshop Upgrades' 12%,
+	 * Apprentice Oversight's 20%, Architectural Synergy's 30% and Treasury Synergy's 30% add to 92% at full, and are held
+	 * here. #47 slice F6a.
+	 */
+	static constexpr float CraftGoldReductionCap = UpgradePriceReductionCap;
+
+	/** Treasury Synergy's "For every 50,000 Gold spent on crafting", in tier 1 gold, as Reinvestment's step is (Q5). */
+	static constexpr int64 TreasurySynergyGoldAStep = 50000;
+
+	/** Forge Upgrades' "reduce the cost of a craft in the forge by 10%": a price it reaches is multiplied by this (Q9). */
+	static constexpr float ForgeUpgradesFactor = 0.9f;
+
+	/** The highest crafting material tier Apprentice Oversight's "Tier 1 and Tier 2 crafts" covers (Q3). */
+	static constexpr int32 LowTierCraftHighestTier = 2;
+
+	/**
+	 * Treasury Synergy's reduction of every forge gold price: 1% for each whole `TreasurySynergyGoldAStep` of
+	 * `GoldSpentAtTierOne` spent at the forge, held at its own 30% cap (Q7). Nought without the node. The count is kept
+	 * whether the node is held or not (Q5, as V5). A copy of `EmpirePointsFromSpendingFor`. #47 slice F6a.
+	 */
+	static float CraftGoldFromSpendingFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, double GoldSpentAtTierOne);
+
+	/**
+	 * What a forge gold price is multiplied by (#47 slice F6a; Q1, Q3, Q9). One less the sum of Workshop Upgrades' and
+	 * Architectural Synergy's reductions, Apprentice Oversight's when the craft's material is tier 1 or 2, and Treasury
+	 * Synergy's from the gold spent at the forge, the sum held at `CraftGoldReductionCap`; then times
+	 * `ForgeUpgradesFactor` when Forge Upgrades' roll for this craft landed. A copy of `UpgradePriceFactorFor`'s shape.
+	 * Exactly 1 with no forge gold node and no tenth. `MaterialTier` 0 is a craft with no material (a gem combine).
+	 */
+	static float CraftGoldFactorFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses, double CraftGoldSpentAtTierOne,
+									int32 MaterialTier, bool bTenthOff);
 
 	/** Whether a debt made now is repaid by day: Sovereign Loans held at the purchase (D4). */
 	static bool RepaidDailyFor(const FCataclysmEmpireTreePlayerBonuses& Bonuses);

@@ -59,6 +59,45 @@ public:
 						 const FVector& Point, float RadiusCm, float AngleDegrees);
 
 	/**
+	 * Whether a body of `BodyRadiusCm` standing at `Point` is inside the cone: its centre within `RadiusCm` of the apex,
+	 * and some part of it inside the cone's angle. Issue #2870.
+	 *
+	 * WHAT IT FIXES. `IsInCone` asks about the centre alone, and a narrow cone is narrow at its apex: the Whip's 3 m,
+	 * 45 degree basic attack is 41 cm wide one metre out, so an enemy standing a metre ahead and half a metre to one
+	 * side, its 48 cm body squarely in the swing, was missed, while the same half metre at 3 m was inside. The owner
+	 * saw it as "it only hits them if they're on the edge". Here the body counts: it is inside when its circle
+	 * overlaps the cone's angle, the circle's nearest point to the nearer of the cone's two edges no further than its
+	 * radius, and it is inside when the apex stands within it.
+	 *
+	 * THE REACH IS STILL MEASURED TO THE CENTRE, which is ruling P7-c of 2026-10-16 ("Reach is measured between the two
+	 * actors' origins") and `UCataclysmBasicAttack::TargetIsInReach`, so a body whose centre is beyond `RadiusCm` is
+	 * outside however much of it is within. Only the angle allows for the body. A judgement of the writing session:
+	 * the fault reported is about the angle, and lengthening every melee reach by the width of what it strikes is a
+	 * balance change nobody asked for.
+	 *
+	 * EVERYTHING `IsInCone` CALLS INSIDE STAYS INSIDE, so it is never narrower than the centre's test. A body radius
+	 * of nought is exactly `IsInCone`.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Targeting")
+	static bool IsBodyInCone(const FVector& Origin, const FVector& Forward, const FVector& Point,
+							 float BodyRadiusCm, float RadiusCm, float AngleDegrees);
+
+	/**
+	 * The radius a cone measures an actor's body with: its simple collision cylinder's, which is a character's capsule
+	 * (48 cm for an ordinary creature, 42 for the player), or nought for an actor with no collision. Issue #2870.
+	 */
+	static float BodyRadiusOf(const AActor* Actor);
+
+	/**
+	 * `IsBodyInCone` for an actor, at its location and with `BodyRadiusOf` its body. THE ONE TEST EVERY CONE SEARCH
+	 * USES: `FindEnemiesInCone`, `UCataclysmAreaShareOnAllies::AlliesInCone` and
+	 * `UCataclysmDeployableSelfBlast::WearerInCone`, so an ally or a wearer is inside a cone exactly when an enemy
+	 * standing there would be. Issue #2870.
+	 */
+	static bool IsActorInCone(const FVector& Origin, const FVector& Forward, const AActor* Actor,
+							  float RadiusCm, float AngleDegrees);
+
+	/**
 	 * Whether a point falls within HalfWidthCm of the segment Start to End.
 	 *
 	 * Used for the skills written as lines rather than cones: Infernal Lance
@@ -110,7 +149,10 @@ public:
 											   float RadiusCm,
 											   int32 MaxTargets = 0);
 
-	/** Every enemy inside the cone, nearest first. See IsInCone for the shape. */
+	/**
+	 * Every enemy inside the cone, nearest first. See `IsActorInCone` for the shape: since issue #2870 an enemy whose
+	 * body overlaps the cone's angle is inside, and its centre must still be within the cone's radius.
+	 */
 	static TArray<AActor*> FindEnemiesInCone(const UWorld* World,
 											 const AActor* Instigator,
 											 const FVector& Origin,
@@ -131,12 +173,14 @@ public:
 	 * Every ally within RadiusCm of Origin, nearest first. Excludes the
 	 * instigator itself.
 	 *
-	 * FOR THE ALLY HALF OF AN AURA. Conflagration and Blood and Iron both state
-	 * a benefit for allies standing in them -- "allies within it deal 8%
-	 * increased fire damage" -- and before there were sides there was no way to
-	 * ask who those were. The benefit itself is a buff magnitude, which is issue
-	 * #166 and is still not applied; this is the half that finds who to apply it
-	 * to.
+	 * FOR THE ALLY HALF OF AN AURA, which finds who to apply it to; before there
+	 * were sides there was no way to ask who those were. Five auras state "allies
+	 * within it deal 8% increased damage" (`AllyIncreasedDamage`), and since
+	 * 2026-11-25 the three damage-type auras each do a different thing (the
+	 * owner's "avoid making all of the aura's kinda samey"): Pall of Ending's 10%
+	 * more damage and Blood and Iron's speed and slow immunity reach allies found
+	 * here AND the caster, which `UCataclysmAuraSkill` adds itself because this
+	 * excludes it; Conflagration's ally half was replaced by a burn passing on.
 	 *
 	 * @param MaxTargets  zero means no limit
 	 */
@@ -185,6 +229,16 @@ public:
 	 * as a separate clause where it means it.
 	 */
 	static bool IsFriendlyTo(const AActor* Actor, const AActor* Instigator);
+
+	/**
+	 * Whether this actor is nobody's target, which no search here returns on any side: a character answering
+	 * `ACataclysmCharacterBase::IsNeverATarget`, which is Demonic Guide's guide. Issue #2860.
+	 *
+	 * A FOURTH QUESTION BESIDE THE THREE THIS CLASS'S COMMENT NAMES, asked with them in `MatchesAttitude` and in the
+	 * side-less search, so a minion, a thrall, a skill, a click and a floor rule's sweep all pass the guide over
+	 * through one line. False for null and for anything that is not one of this project's characters.
+	 */
+	static bool IsNeverATarget(const AActor* Actor);
 
 	/** The actor's ability system component, or null if it has none. */
 	static UAbilitySystemComponent* AbilitySystemOf(const AActor* Actor);

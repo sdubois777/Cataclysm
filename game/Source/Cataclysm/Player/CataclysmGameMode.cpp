@@ -265,6 +265,9 @@ ACataclysmGameMode::EPendingLoad ACataclysmGameMode::LoadThePendingCharacter()
 
 	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Character, Chosen); // The arrival's load.
 
+	// WHETHER IT PUT THE CHARACTER WHERE IT STOOD, for a level's start that runs after this. Issue #2858.
+	bPendingLoadPutTheCharacterWhereSaved = Report.bPutWhereSaved;
+
 	// THE FRESH SLOTS GO, whatever the load did. NEVER THE CHOSEN CHARACTER'S OWN SLOT, which no fresh identifier names;
 	// AND, AFTER A LOAD, NEVER WHAT THE WRITER NOW WRITES: were this ever run a second time, the names it noted would be
 	// the loaded ones. After a refusal the writer still writes the fresh pair, and those go.

@@ -68,7 +68,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemSaveCharacterMigrationTest,
  * `Character_v12.json`, written before version 13, migrates with its carried piece's 2 sockets, its worn greatsword's 3
  * and its held build's greatsword's 3 as that many empty sockets of type Any, no gem in either carried slot, and every
  * other field kept; its stack of 12 Whispering_Ash is in the materials tab since version 16 (issue #2849), and it holds no
- * gem stack. CONTROL: the committed character file, `Character_v16.json` since issue #2849 (`Character_v15.json` from
+ * gem stack. CONTROL: the committed character file, `Character_v18.json` since #47 slice F6a (`Character_v17.json` from issue #837 slice 1, `Character_v16.json` from issue #2849, `Character_v15.json` from
  * issue #2848, `Character_v14.json` from issue #2741 slice 9), reads its carried piece's sockets as Attack holding Of
  * The Viper at Quality, then Defense, its worn greatsword's as Attack, Defense and Utility, and its gems tab as 3 Of The
  * Viper at Superb.
@@ -82,7 +82,7 @@ bool FCataclysmGemSaveCharacterMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Character_v12.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Character_v16.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Character_v18.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -90,12 +90,12 @@ bool FCataclysmGemSaveCharacterMigrationTest::RunTest(const FString&)
 	const UCataclysmCharacterSave* Migrated = Cast<UCataclysmCharacterSave>(
 		ReadRecordText(*this, Text, UCataclysmCharacterSave::StaticClass(), TEXT("Character_v12.json")));
 	const UCataclysmCharacterSave* Current = Cast<UCataclysmCharacterSave>(
-		ReadRecordText(*this, CurrentText, UCataclysmCharacterSave::StaticClass(), TEXT("Character_v16.json")));
+		ReadRecordText(*this, CurrentText, UCataclysmCharacterSave::StaticClass(), TEXT("Character_v18.json")));
 	if (!Migrated || !Current
 		|| !TestEqual(TEXT("set-up: Character_v12.json carries two slots"), Migrated->CarriedSlots.Num(), 2)
 		|| !TestEqual(TEXT("set-up: and wears two items"), Migrated->WornGear.Num(), 2)
 		|| !TestEqual(TEXT("set-up: and holds a build wearing one"), Migrated->ConsumptionBuild.Worn.Num(), 1)
-		|| !TestEqual(TEXT("set-up: Character_v16.json carries two slots"), Current->CarriedSlots.Num(), 2)
+		|| !TestEqual(TEXT("set-up: Character_v18.json carries two slots"), Current->CarriedSlots.Num(), 2)
 		|| !TestEqual(TEXT("set-up: and wears two items"), Current->WornGear.Num(), 2))
 	{
 		return false;
@@ -109,6 +109,8 @@ bool FCataclysmGemSaveCharacterMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
+	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
+	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -127,7 +129,7 @@ bool FCataclysmGemSaveCharacterMigrationTest::RunTest(const FString&)
 	const FCataclysmItem& CurrentWorn = Current->WornGear[0].Item;
 
 	AddInfo(FString::Printf(TEXT("GEM CHARACTER MIGRATED: version %d; carried %d socket(s) (%s), worn %d (%s), held %d "
-								 "(%s); %d slot(s) holding a gem; the rest %s; Character_v16.json carried %s with %s at "
+								 "(%s); %d slot(s) holding a gem; the rest %s; Character_v18.json carried %s with %s at "
 								 "rarity %d, worn %s"),
 							Migrated->SchemaVersion, Carried.Sockets.Num(), *TypesOf(Carried), Worn.Sockets.Num(),
 							*TypesOf(Worn), Held.Sockets.Num(), *TypesOf(Held), GemSlots, bSame ? TEXT("kept") : *Where,
@@ -150,7 +152,7 @@ bool FCataclysmGemSaveCharacterMigrationTest::RunTest(const FString&)
 		&& Migrated->CarriedMaterials[0].Material == FName(TEXT("Whispering_Ash")) && Migrated->CarriedMaterials[0].Quantity == 12);
 	TestEqual(TEXT("and its gems tab is empty"), Migrated->CarriedGems.Num(), 0);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Character_v16.json's carried piece reads its own types"), TypesOf(CurrentCarried),
+	TestEqual(TEXT("CONTROL: Character_v18.json's carried piece reads its own types"), TypesOf(CurrentCarried),
 			  FString(TEXT("Attack,Defense")));
 	TestTrue(TEXT("CONTROL: with Of The Viper at Quality in its first"),
 			 CurrentCarried.Sockets.Num() == 2 && CurrentCarried.Sockets[0].Gem == FName(TEXT("Gem_Of_The_Viper"))
@@ -170,7 +172,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemSaveRunMigrationTest,
 /**
  * `Run_v13.json`, written before version 14, migrates and loads: each ground item's socket count of 0 becomes an empty
  * list -- a count left as a number would refuse the whole record, since the list cannot be read from one -- and both
- * ground items hold no gem, every other field kept. CONTROL: the committed run file, `Run_v18.json` since issue #2848 (`Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its two
+ * ground items hold no gem, every other field kept. CONTROL: the committed run file, `Run_v19.json` since issue #51 (`Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9), reads its two
  * ground items the same. Prints "GEM RUN MIGRATED".
  */
 bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
@@ -181,7 +183,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v13.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v18.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -189,10 +191,10 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	const UCataclysmRunSave* Migrated = Cast<UCataclysmRunSave>(
 		ReadRecordText(*this, Text, UCataclysmRunSave::StaticClass(), TEXT("Run_v13.json")));
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(
-		ReadRecordText(*this, CurrentText, UCataclysmRunSave::StaticClass(), TEXT("Run_v18.json")));
+		ReadRecordText(*this, CurrentText, UCataclysmRunSave::StaticClass(), TEXT("Run_v19.json")));
 	if (!Migrated || !Current
 		|| !TestEqual(TEXT("set-up: Run_v13.json has two ground items"), Migrated->Floor.GroundItems.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v18.json has two ground items"), Current->Floor.GroundItems.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v19.json has two ground items"), Current->Floor.GroundItems.Num(), 2))
 	{
 		return false;
 	}
@@ -204,6 +206,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
+	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -224,7 +227,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	}
 
 	AddInfo(FString::Printf(TEXT("GEM RUN MIGRATED: version %d; %d ground item(s), %d socket(s), %d holding gems; the "
-								 "rest %s; Run_v18.json %d holding gems"),
+								 "rest %s; Run_v19.json %d holding gems"),
 							Migrated->SchemaVersion, Migrated->Floor.GroundItems.Num(), Sockets, GemDrops,
 							bSame ? TEXT("kept") : *Where, CurrentGemDrops));
 
@@ -232,7 +235,7 @@ bool FCataclysmGemSaveRunMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("its ground items' counts of 0 are no sockets"), Sockets, 0);
 	TestEqual(TEXT("no ground item holds gems"), GemDrops, 0);
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: nor does Run_v18.json's"), CurrentGemDrops, 0);
+	TestEqual(TEXT("CONTROL: nor does Run_v19.json's"), CurrentGemDrops, 0);
 	return true;
 }
 

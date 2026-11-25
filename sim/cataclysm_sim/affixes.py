@@ -464,10 +464,14 @@ DEFENSIVE_SLOTS = frozenset({"Head", "Chest", "Shoulders", "Belt", "Pants",
 RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 
 
-#: How much one gear upgrade level adds to every affix on that piece, as a
-#: fraction of the affix's unupgraded value. A +10 piece is about 3.52 times a
-#: +0 one. It is not a round number because it is DERIVED from the tier anchors
-#: rather than chosen.
+#: HISTORY, KEPT FOR THE REASONING BELOW; THE NUMBERS HAVE MOVED TWICE. This was
+#: how much one gear upgrade level adds to every affix on that piece, as a
+#: fraction of the affix's unupgraded value, and a +10 piece was about 3.52 times
+#: a +0 one, because the Power Score's upgrade factor was then DERIVED from the
+#: tier anchors. Since 2026-09-03 the affix ladder is GEAR_LEVEL_FACTOR below,
+#: and since the owner's ruling of 2026-11-24 (issue #2853) the Power Score's
+#: upgrade factor is a plain 1: each upgrade level adds the piece's +0 worth
+#: again, so a +10 piece scores 11 times a +0 one.
 #:
 #: NOT A SECOND NUMBER. It is read from `player_power.WEIGHTS`, where it is
 #: already used for exactly this: `Cataclysm_GDD_v2.md` says gear upgrade level
@@ -492,8 +496,9 @@ RESISTANCE_SLOTS = frozenset(GEAR_SLOTS) - {"Weapon"}
 #: how it plays." The alternatives measured at the time were applying it to the
 #: flat bracket only, which lands at 1.64 against a target of 1.56, or cutting
 #: the factor to 0.0268, which makes a +10 piece only 1.27 times a +0 one.
-#: The Power Score model's own upgrade weight. STILL USED FOR SCORING, and no
-#: longer used for what an item's values are -- see GEAR_LEVEL_FACTOR below.
+#: The Power Score model's own upgrade weight, 1 since 2026-11-24. STILL USED FOR
+#: SCORING, and no longer used for what an item's values are -- see
+#: GEAR_LEVEL_FACTOR below.
 POWER_SCORE_UPGRADE_FACTOR = player_power.WEIGHTS["upgrade_factor"]
 
 #: How much one upgrade level adds to what a piece carries.
@@ -1916,6 +1921,41 @@ def max_affix_tier(tier: int) -> int:
     know which route wins.
     """
     return max(max_affix_tier_on_a_drop(tier), max_affix_tier_by_crafting(tier))
+
+
+#: The lowest difficulty tier at which the all-resistances family can roll on a
+#: DROP. Ruled by the project owner on 2026-11-24, issue #2853, the chosen option
+#: quoted: "No all-resist at tier 1 (Recommended)": the all-resistances family
+#: cannot roll on a difficulty tier 1 drop; single resistances still can.
+#:
+#: WHY. At tier 1 a run faces one Cataclysm, so an all-resistances roll is the
+#: weakest family in combat (3 to 3.6 a type, and only one type attacking) and
+#: the strongest in the Power Score, which reads all eight types: 24 to 29 points
+#: a roll, 58 to 65 per cent of a fresh tier 1 character's resistance points
+#: (`sim/measure_drop_supply.py`). The genre gates it the same way: Path of
+#: Exile's single-resistance suffix starts at item level 1 and its
+#: all-resistances one, "of the Crystal", at item level 12
+#: (pathofexile.com/item-data/mods, read 2026-11-24).
+#:
+#: A DROP ONLY. Crafting is not gated (`max_affix_tier_by_crafting` gates
+#: nothing either), so a tier 1 player can still forge one; and nothing else
+#: about the family moves, its floors (issue #1230) included.
+ALL_RESISTANCES_LOWEST_DROP_TIER = 2
+
+
+def rolls_on_a_drop_at(affix, tier: int) -> bool:
+    """Whether this affix may be drawn for an item that DROPS at this difficulty
+    tier. Every affix may, except the all-resistances family below
+    `ALL_RESISTANCES_LOWEST_DROP_TIER`.
+
+    IT IS ASKED OF THE CANDIDATES AFTER THEY ARE BUILT, so the random stream is
+    drawn exactly as it was: a tier 1 drop differs from before only where the
+    draw would have taken the all-resistances family, and another affix takes
+    the place, as the draw already does for one it cannot use.
+    """
+    if not 1 <= tier <= DIFFICULTY_TIERS:
+        raise ValueError(f"tier {tier} is outside 1 to {DIFFICULTY_TIERS}")
+    return affix is not ALL_RESISTANCE or tier >= ALL_RESISTANCES_LOWEST_DROP_TIER
 
 
 #: How heavily each affix tier is weighted on a drop, mirroring the Drop Weight

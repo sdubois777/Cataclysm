@@ -23,6 +23,7 @@ struct FCataclysmDeathNotice;
 struct FCataclysmHitNotice;
 struct FCataclysmSkillUsedNotice;
 struct FCataclysmItem;
+struct FCataclysmWeaponSkill;
 enum class ECataclysmGearSlot : uint8;
 enum class ECataclysmWearResult : uint8;
 
@@ -112,6 +113,12 @@ public:
 	static float CapsuleRadiusCm();
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	/**
+	 * The player's body: `PlayerBodyMaskBit`, so it passes through what it commands and through Demonic Guide's guide,
+	 * and they through it. Issue #2861. See `ACataclysmCharacterBase::RefreshPassThroughBody`.
+	 */
+	virtual uint8 PassThroughBodyMaskBit() const override { return PlayerBodyMaskBit; }
 
 	/**
 	 * Writes a movement speed, stated in metres per second, onto the movement
@@ -480,6 +487,33 @@ public:
 	float DeathCostNoticePostedAtSeconds() const { return DeathCostNoticePostedAt; }
 
 	/**
+	 * How long the notice saying what a new weapon added to the skill pool stays up, in seconds. Issue #837 slice 2,
+	 * the owner's Q4 of 2026-11-24 ("Approve all three (Recommended)": "for about six seconds"). About twenty words.
+	 */
+	static constexpr float SkillPoolNoticeSeconds = 6.0f;
+
+	/**
+	 * The notice saying what a change of gear added to the skill pool on no key, at a moment of the world's time, or
+	 * empty: "The Fist adds 5 skills to your pool. Press K, or click a skill box, to choose." Posted by a change of
+	 * gear whose new pool skills went on no key (slice 1 leaves the keys as they are), for `SkillPoolNoticeSeconds`.
+	 * Issue #837 slice 2. Nothing for a change that added nothing, a matched pair, or a load.
+	 */
+	FString SkillPoolNoticeAt(float WorldSeconds) const;
+
+	/** Whether `SkillPoolNoticeAt` would answer the notice at that moment, without copying it. */
+	bool SkillPoolNoticeIsUpAt(float WorldSeconds) const;
+
+	/** The world's time the notice was posted at, or -1 when none has been. For tests and the heads-up display. */
+	float SkillPoolNoticePostedAtSeconds() const { return SkillPoolNoticePostedAt; }
+
+	/**
+	 * The notice's words for a change of gear that put `Built` skills that do something and `NotBuilt` that do not into
+	 * the pool on no key. `Weapon` names the one weapon type the change added, or is empty for "Your weapons". Static,
+	 * so a test can read the words without a world.
+	 */
+	static FString SkillPoolNoticeFor(const FString& Weapon, int32 Built, int32 NotBuilt);
+
+	/**
 	 * What the character carries, and what it is wearing.
 	 *
 	 * ACCESSORS RATHER THAN MAKING THE COMPONENTS PUBLIC, because the
@@ -510,6 +544,15 @@ public:
 	 *                    console's confirm, which named a slot and no item.
 	 */
 	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot);
+
+	/**
+	 * The same, for a question about a gear slot the player named: a held item pressed onto that slot (issue #837,
+	 * slice 3). The crossing is judged for that slot and the item goes on there. The overload above is this one with
+	 * `ECataclysmGearSlot::Count`, `Equip`'s own choice; it is an overload rather than a default because this header
+	 * declares the slot enum without its values.
+	 */
+	ECataclysmWearResult WearPastTheThreshold(int32 CarriedSlot, const FCataclysmItem* AskedAbout, ECataclysmGearSlot& OutSlot,
+											  ECataclysmGearSlot Into);
 
 	/** What the character is wearing. Issue #828. */
 	UCataclysmEquipmentComponent* GetEquipment() const { return Equipment; }
@@ -1092,6 +1135,12 @@ private:
 	int32 UnannouncedSpeedRefreshCount = 0;
 
 	/**
+	 * Whether the last `RefreshMovementSpeed` found this character immune to Slow, so the speed is worked out
+	 * once more after the immunity ends, which no event announces. 2026-11-25.
+	 */
+	bool bSlowImmuneAtLastSpeedRefresh = false;
+
+	/**
 	 * Recomputes the stat line and refills the ability slots after a change
 	 * to what is worn.
 	 *
@@ -1142,6 +1191,16 @@ private:
 	/** The notice `DeathCostNoticeAt` answers, and the world's time it was posted at, or -1. Issue #41. */
 	FString DeathCostNotice;
 	float DeathCostNoticePostedAt = -1.0f;
+
+	/** The notice `SkillPoolNoticeAt` answers, and the world's time it was posted at, or -1. Issue #837 slice 2. */
+	FString SkillPoolNotice;
+	float SkillPoolNoticePostedAt = -1.0f;
+
+	/**
+	 * After a change of gear's fill: counts the pool skills that were not in `PoolBefore` and sit on no key, and when
+	 * there are any posts the notice and says a PLAY LOOP line. Issue #837 slice 2 (the owner's Q4).
+	 */
+	void NoteSkillsAddedToThePool(const TArray<FCataclysmWeaponSkill>& PoolBefore, const TArray<FString>& TypesBefore);
 
 	// --- The basic attack is NOT here any more. Issue #1187 -----------------
 	//

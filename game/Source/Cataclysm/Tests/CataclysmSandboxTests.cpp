@@ -517,8 +517,9 @@ bool FCataclysmSandboxArmourReducesAHitTest::RunTest(const FString& Parameters)
  * `ACataclysmEnemyCharacter::SetRarityStep` outside the automation tests, so
  * every creature in a play session spawned Common however the game mode was
  * configured. Three systems read that field and all three sat at the bottom
- * rung: the drop rate, which is 0.16 items for a Common and exactly 5 for a
- * Boss; the magic find a rarer enemy adds to its own drops; and the design's
+ * rung: the drop rate, which is 0.08 items for a Common and 2.5 on average for
+ * a Boss (half what it was until issue #2853); the magic find a rarer enemy
+ * adds to its own drops; and the design's
  * rule that a boss cannot be stunned at all.
  *
  * THE SETTINGS ARE ASKED FOR EXPLICITLY rather than taken from the defaults, and

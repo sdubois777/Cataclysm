@@ -438,6 +438,17 @@ public:
 	void SetOwnGoldSpentOnCityUpgrades(double Spent) { OwnGoldSpentOnCityUpgrades = FMath::Max(0.0, Spent); }
 
 	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent at the forge, across runs, which Treasury
+	 * Synergy reads (#47 slice F6a, Q5, as Reinvestment's V2). ONLY A SOLO SELF-FOUND CHARACTER'S; every other
+	 * character's is its lethality mode's account's. Only `UCataclysmGameInstance`'s gold functions should read or
+	 * change it.
+	 */
+	double GetOwnGoldSpentAtTheForge() const { return OwnGoldSpentAtTheForge; }
+
+	/** Set it, as a load or a craft does. A negative figure is held at 0. */
+	void SetOwnGoldSpentAtTheForge(double Spent) { OwnGoldSpentAtTheForge = FMath::Max(0.0, Spent); }
+
+	/**
 	 * A Solo Self-Found character's own empire upgrade points, banked and not yet spent, and what its own empire upgrade
 	 * tree has bought, which its character record holds (version 9). Issue #2741 slice 1c.
 	 *
@@ -814,6 +825,44 @@ public:
 	 */
 	bool ForgetSkillChoice(ECataclysmAbilitySlot Slot);
 
+	/**
+	 * What each key held BY DEFAULT after the last fill from worn weapons: one entry per key that no choice of the
+	 * player's filled, the row on it. Issue #837 slice 1, the owner's Q1 of 2026-11-24 ("Approve all three
+	 * (Recommended)"): the keys stay as they are when a weapon goes on or off. The next fill hands these to
+	 * `UCataclysmWeaponSkills::FillWithChoices` after the choices, so a key keeps its row while the row is in the pool.
+	 *
+	 * A LIST OF ITS OWN AND NOT ENTRIES IN `GetSkillAssignment`, so "chosen" still means the player chose it: the screen
+	 * reads a key with no choice as "(default)", and only a choice is refused when another key asks for its row (Q10).
+	 *
+	 * SAVED with the character (`UCataclysmCharacterSave::RememberedDefaults`, record version 17), so a loaded character
+	 * holds the keys it was saved with.
+	 */
+	const TArray<FCataclysmSkillChoice>& GetRememberedDefaults() const { return RememberedDefaults; }
+
+	/**
+	 * Remember what each key holds by default now. `OnKeys` is what the fill put on the keys
+	 * (`UCataclysmWeaponSlotsComponent::GetAvailableSkills`); every one of the six keys holding a row that is not the
+	 * player's choice for that key is recorded, and nothing else, so the list is replaced and never grows. Issue #837
+	 * slice 1. Called by the pawn after every fill from worn weapons. Says and saves nothing.
+	 */
+	void RememberDefaults(const TArray<FCataclysmWeaponSkill>& OnKeys);
+
+	/** Forget every remembered default: no weapon is worn (slice 1's R4). Says and saves nothing. */
+	void ForgetRememberedDefaults() { RememberedDefaults.Reset(); }
+
+	/**
+	 * FOR A SAVE RESTORE AND NOTHING ELSE: puts back the player's choices and the remembered defaults as the record holds
+	 * them, AS DATA, before the restore's one announcement fills the keys from both. Issue #837 slice 1 (the owner's Q7
+	 * of 2026-11-24): a choice whose weapon was off at saving is kept, as it is kept in play (Q5 of 2026-10-25), and
+	 * `AssignSkill`, which checks a choice against the pool worn NOW, is not asked.
+	 *
+	 * REFUSED: an entry on a key that is not one of the six, a row the table does not have (when `Table` is given), and a
+	 * second entry for a key or a row already put back. ONLY A REFUSED CHOICE IS COUNTED IN `OutRefused`; a refused
+	 * remembered default is dropped, and the key takes its next default. Says and saves nothing.
+	 */
+	void RestoreSkillChoices(const TArray<FCataclysmSkillChoice>& Choices, const TArray<FCataclysmSkillChoice>& Remembered,
+							 const UDataTable* Table, int32& OutRefused);
+
 	// ----------------------------------------------------------------------
 	// Skill levels. Issue #2764, ruled 2026-11-19: a skill levels as it is used. `UCataclysmSkillLevels` holds the
 	// numbers; this holds each skill's total experience, by skill row, and nothing else, so a level can never disagree
@@ -1043,6 +1092,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	double OwnGoldSpentOnCityUpgrades = 0.0;
 
+	/** See `GetOwnGoldSpentAtTheForge`. #47 slice F6a. */
+	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
+	double OwnGoldSpentAtTheForge = 0.0;
+
 	/** See `GetOwnEmpireUpgradePoints`. Issue #2741 slice 1c. */
 	UPROPERTY(VisibleAnywhere, Category = "Cataclysm|Creation")
 	double OwnEmpireUpgradePoints = 0.0;
@@ -1090,6 +1143,13 @@ protected:
 	 */
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Skills")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/**
+	 * See `GetRememberedDefaults`. Issue #837 slice 1. Written by `RememberDefaults`, `ForgetRememberedDefaults` and
+	 * `RestoreSkillChoices`, and by nothing else. REPLICATED, as `SkillAssignment` is, because a client's fill reads it.
+	 */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Skills")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
 
 	/** See `GetSkillExperience`. Issue #2764. Written by `GrantSkillExperience`, `RestoreSkillExperience` and
 	 *  `SetSkillExperience`, and by nothing else. */

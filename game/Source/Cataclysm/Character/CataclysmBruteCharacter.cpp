@@ -356,7 +356,7 @@ void ACataclysmBruteCharacter::ApplyChaseSpeed()
 	//
 	// AND WITHOUT THE VENGEFUL WRAITHS RULE'S 1.2 WHILE SOMETHING COMMANDS IT, as `RefreshWalkSpeed` does: a Brute is one
 	// of the kinds a wraith rises as. Issue #2793; see `WalkSpeedMultiplier`.
-	Movement->MaxWalkSpeed = Designed * WalkSpeedMultiplier() * AilmentWalkMultiplier();
+	Movement->MaxWalkSpeed = Designed * WalkSpeedMultiplierWithSlows();
 }
 
 void ACataclysmBruteCharacter::RefreshWalkSpeed()

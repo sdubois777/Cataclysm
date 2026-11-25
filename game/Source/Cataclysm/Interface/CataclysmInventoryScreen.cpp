@@ -8,6 +8,7 @@
 // A gem stack's name, issue #46 slice G2.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "Engine/DataTable.h"
 
 const TCHAR* UCataclysmInventoryScreen::PanelHex = TEXT("0A0F12");
@@ -391,6 +392,27 @@ FLinearColor UCataclysmInventoryScreen::FrameColourFor(
 	FLinearColor Dimmed = ItemColour;
 	Dimmed.A *= LiftedFrameOpacity;
 	return Dimmed;
+}
+
+FString UCataclysmInventoryScreen::PressLineFor(ECataclysmWearResult Result)
+{
+	switch (Result)
+	{
+	case ECataclysmWearResult::Worn:
+	case ECataclysmWearResult::Swapped:
+	case ECataclysmWearResult::TakenOff:
+	case ECataclysmWearResult::PickedUp:
+	case ECataclysmWearResult::PutDown:
+	case ECataclysmWearResult::Exchanged:
+		return FString(); // It did what was asked, and the screen shows that.
+	default:
+		return UCataclysmWearing::Explain(Result);
+	}
+}
+
+bool UCataclysmInventoryScreen::PressLineIsShown(const FString& Line, double PostedAt, double Now)
+{
+	return !Line.IsEmpty() && Now >= PostedAt && Now < PostedAt + PressLineSeconds;
 }
 
 FString UCataclysmInventoryScreen::TextShownFor(const FString& Text,

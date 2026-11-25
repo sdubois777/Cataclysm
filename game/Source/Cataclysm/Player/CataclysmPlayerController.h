@@ -7,6 +7,8 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmPlayerController.generated.h"
 
+enum class ECataclysmAbilitySlot : uint8;
+
 class ACataclysmDroppedItem;
 class ACataclysmPlayerCharacter;
 class UCataclysmAbilitySystemComponent;
@@ -47,6 +49,11 @@ struct FInputActionValue;
 // parameter and including it here would pull the item system into every
 // translation unit that knows about the controller.
 enum class ECataclysmWearResult : uint8;
+
+// AND THE GEAR SLOT, for the same reason and with the same rule: its underlying
+// type matches CataclysmEquipmentComponent.h. AskBeforeWearing's slot, issue
+// #837's slice 3.
+enum class ECataclysmGearSlot : uint8;
 
 /**
  * The player's controller: it owns input, the cursor, and the movement order.
@@ -240,9 +247,13 @@ public:
 	/**
 	 * Says what a press did, when it did not do what was asked.
 	 *
-	 * LOGGED RATHER THAN SHOWN, and that is a gap rather than a decision. A
-	 * press that changes nothing looks exactly like a press that missed.
-	 * There is nowhere on the screen to say so yet; issue #831 records it.
+	 * SHOWN ON THE SCREEN AND LOGGED, since issue #837's slice 3. Until then it
+	 * was only logged, a gap issue #831 recorded: a press that changes nothing
+	 * looked exactly like a press that missed. The owner's Q6 of 2026-11-24 had
+	 * the last weapon's refusal shown, and every refusal is shown the same way,
+	 * above the inventory panel (`UCataclysmInventoryWidget::ShowPressLine`), in
+	 * the words `UCataclysmInventoryScreen::PressLineFor` gives. A press that did
+	 * what was asked takes the line away.
 	 */
 	void ReportInventoryPress(ECataclysmWearResult Result) const;
 
@@ -250,8 +261,11 @@ public:
 	 * Asks, on the choice panel, before the item in this carried cell is put on past this tier's Consumption
 	 * Threshold, and puts it on only for "Wear it". Issue #2687. The answer goes through
 	 * `UCataclysmWearing::WearAfterConfirming`, so a cell that changed while the question was open puts nothing on.
+	 *
+	 * @param Into  the gear slot a held item was pressed onto (issue #837, slice 3): the question is about that slot
+	 *              and the yes wears it there. `ECataclysmGearSlot::Count` for the right press, `Equip`'s choice.
 	 */
-	void AskBeforeWearing(class ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot);
+	void AskBeforeWearing(class ACataclysmPlayerCharacter* Wearer, int32 CarriedSlot, ECataclysmGearSlot Into);
 
 	/**
 	 * Whether the question `AskBeforeWearing` opened is on the screen. While it is, a press on the inventory screen
@@ -479,6 +493,19 @@ public:
 	void ToggleSkillAssignment();
 
 	/**
+	 * The key of the skill box on the player's bar under a point of the screen, or `None`. Issue #837 slice 2, the owner's
+	 * Q3: a left press over a box opens the skill screen with that key selected and is neither a move nor a swing
+	 * (`Input_MoveToCursorStarted` asks this first). The viewport is the caller's, so a test can ask without one.
+	 */
+	ECataclysmAbilitySlot SkillBoxKeyAt(const FVector2D& Point, const FVector2D& Viewport) const;
+
+	/**
+	 * Opens the skill screen if it is closed, never closing it, and selects `Key` when it is one of the six (the basic
+	 * attack's box opens the screen with nothing selected). Issue #837 slice 2. Whether the screen is open after.
+	 */
+	bool OpenSkillAssignmentOn(ECataclysmAbilitySlot Key);
+
+	/**
 	 * Opens and closes the loot filter screen. Issue #2846, slice LF2. The skill-choice screen's shape, and public for
 	 * its reason: `Cataclysm.EditLootFilters` calls it, so a checkout whose input assets predate the L key can still
 	 * open the screen. It does not pause the game.
@@ -704,6 +731,50 @@ public:
 	 */
 	void PressOnAnEnemyForTest(AActor* Enemy) { PressOnAnEnemy(Enemy); }
 	void ReleaseTheButtonForTest() { Input_MoveToCursorReleased(); }
+
+	/**
+	 * Where a skill this player uses is aimed: the point under the cursor. False when the cursor points at nothing in
+	 * the world, and then `UCataclysmSkillTemplate::AimPoint` falls back to the character, whose facing aims the use.
+	 * Issue #2870.
+	 *
+	 * AN ENEMY UNDER THE CURSOR IS AIMED AT ITSELF, at its location, before the floor is asked. WHAT IT FIXES: the floor
+	 * trace is on the visibility channel, and the engine's stock `Pawn` and `CharacterMesh` profiles both ignore it, so
+	 * a cursor resting on a creature's body passes through it and lands on the floor BEHIND it. The camera looks down at
+	 * sixty degrees (`ACataclysmPlayerCharacter`'s boom), so a cursor on a creature's body a metre above the floor lands
+	 * about 0.58 m (one metre over the tangent of sixty degrees) beyond its feet, up the screen. For a creature a metre
+	 * to the character's left or right on screen that turns the aim about thirty degrees off it, outside the 22.5
+	 * either side of the Whip's 45 degree swing; the same creature three metres away is off by about eleven, inside.
+	 * That is the owner's "it only hits them if they're on the edge" from the aim's side, beside the cone's own.
+	 *
+	 * THE SAME TEST THE CLICK ATTACK USES, `EnemyUnderCursor` (the pawn channel, a living hostile that is not hidden),
+	 * so a press with the cursor on an enemy aims where a click on it would, which ruling P7-b of 2026-10-16 already
+	 * gives the click. An ally, a corpse or the player's own body under the cursor is not an
+	 * enemy, and the floor is asked as before.
+	 *
+	 * NOTHING ELSE CHANGES: no auto-target, no nearest enemy, no lock. With no enemy under the cursor the floor point
+	 * is the aim, as it always was, and the character's facing is used only when the cursor points at nothing.
+	 */
+	bool AimPointUnderCursor(FVector& OutPoint) const;
+
+	/**
+	 * What the cursor is over, given by hand for automation tests, which have no cursor to trace: an enemy (or null),
+	 * and the floor point the visibility trace would answer. While given, `AimPointUnderCursor` reads these instead of
+	 * tracing, and runs its own choice between them unchanged. `ForgetCursorForTest` returns it to tracing. Nothing in
+	 * the game calls these. Issue #2870.
+	 */
+	void PointCursorForTest(AActor* Enemy, const FVector& FloorPoint)
+	{
+		bCursorGivenForTest = true;
+		CursorEnemyForTest = Enemy;
+		CursorFloorForTest = FloorPoint;
+	}
+	void ForgetCursorForTest() { bCursorGivenForTest = false; CursorEnemyForTest.Reset(); }
+
+private:
+	/** What `PointCursorForTest` gave, read by `AimPointUnderCursor` while `bCursorGivenForTest` is set. */
+	bool bCursorGivenForTest = false;
+	TWeakObjectPtr<AActor> CursorEnemyForTest;
+	FVector CursorFloorForTest = FVector::ZeroVector;
 
 private:
 	/**

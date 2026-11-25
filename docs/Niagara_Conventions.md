@@ -990,6 +990,30 @@ rises with skill points and legendary affixes, and section 5 above already
 records his statement that intensity changes spawn rate, velocity, emissivity and
 colour range rather than uniformly scaling the effect.
 
+### An effect drawn on the ground asks where the ground is
+
+**Rule, 2026-11-24, issue #2863.** The project owner saw effects "going off under
+the floor" at a floor's edge. Nothing drawn on the ground asked where the ground
+was: each went exactly where its caller pointed, and callers point at a capsule
+centre, at a creature's own floor under a target standing higher, or at a cell's
+walking surface. **Anything drawn on the ground is placed through
+`CataclysmEffectPlacement::OnTheFloor`** (`game/Source/Cataclysm/AbilitySystem/CataclysmEffectPlacement.h`),
+which searches straight down from a metre above the point to three metres below
+it for world-static geometry and puts the drawing 2 cm above what it finds, or
+leaves it where it was asked when it finds nothing. Today that is a ground zone's
+ring (`UCataclysmGroundEffect::PlayFor`, per copy), a telegraph marker and a
+debris burst. **Only the drawing moves**: the zone, the point an attack is aimed
+at and where a shot lands are where their callers put them. An effect that belongs
+to a body or to the air -- the cast burst, the swing arc, the hit burst, a
+projectile -- is not placed this way; it sits where that body is.
+
+**What this does not reach.** Where each system's own emitters and meshes sit
+relative to the point it is spawned at is authored in the editor, and the binary
+assets cannot be read without it. A system whose geometry reaches below its spawn
+point -- a cylinder centred on its pivot and scaled up, for instance -- would still
+draw under the floor, and checking that needs the editor. `docs/DECISIONS.md`,
+2026-11-24, lists every spawn site that was checked.
+
 ### MEASURED 2026-08-22: the colours are being used about forty times too dim
 
 **This is the largest single fault found in the effects and it was found by

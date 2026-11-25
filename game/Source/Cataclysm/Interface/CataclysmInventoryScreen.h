@@ -10,6 +10,7 @@ struct FCataclysmCarriedSlot;
 class UCataclysmInventoryComponent;
 class UDataTable;
 enum class ECataclysmInventoryTab : uint8;
+enum class ECataclysmWearResult : uint8;
 
 /**
  * How one carried cell is drawn. Issue #878.
@@ -443,6 +444,36 @@ public:
 	 *                size is treated as nought
 	 */
 	static FVector2D HeldItemTopLeftFor(const FVector2D& Cursor, float CellPx);
+
+	//~ What a press said. Issue #837, slice 3.
+
+	/**
+	 * The line the screen shows for what a press on it did: the sentence `UCataclysmWearing::Explain` gives, or nothing
+	 * when the press did what was asked (worn, swapped, taken off, picked up, put down, exchanged).
+	 *
+	 * THE OWNER'S Q6 OF 2026-11-24 (issue #837 comment 7150408605): the last weapon's refusal is shown on the inventory
+	 * screen, where until then it reached only the log. Every press that did not do what was asked is shown the same
+	 * way, so a press that changed nothing no longer looks like a press that missed. THE SAME RESULTS THE LOG LINE
+	 * NAMES, so the screen and the log never disagree: a drop on the floor is said in both, as it was logged before.
+	 */
+	static FString PressLineFor(ECataclysmWearResult Result);
+
+	/** How long the line stays, in seconds: long enough to read a sentence of two clauses. A judgement. */
+	static constexpr double PressLineSeconds = 4.0;
+
+	/**
+	 * Whether the line posted at `PostedAt` is still shown at `Now`, world seconds both: a line that says something,
+	 * for `PressLineSeconds`.
+	 */
+	static bool PressLineIsShown(const FString& Line, double PostedAt, double Now);
+
+	/**
+	 * How far below the top of the screen the line is drawn, centred across it. ABOVE THE PANEL, which is centred and
+	 * at most `PanelHeightShare` of the height tall, so the band above it is at least 14% of the screen: 151 units at
+	 * 1080, and the line and its backing take under 90 from the top. Below the panel the heads-up display's skill bar
+	 * is drawn, and a widget is drawn over it.
+	 */
+	static constexpr float PressLineTopPx = 48.0f;
 
 	//~ Colours. Six-digit hex, the same form UCataclysmCombatOverlay uses.
 

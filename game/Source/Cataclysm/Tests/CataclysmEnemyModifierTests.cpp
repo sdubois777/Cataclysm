@@ -3589,6 +3589,320 @@ CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandTagEndsTest,
 	return true;
 }
 
+namespace CataclysmEnemyModifierTest
+{
+	/**
+	 * A player for a brander to strike, `Where`, every blow reaching its health: no evasion, block, armour, damage
+	 * reduction or energy shield, as `FBareTarget` above holds them, and `Health` of health. Named for the
+	 * brand-on-the-dead test, issue #2874.
+	 */
+	ACataclysmPlayerCharacter* BrandedPlayerAt(UWorld* World, const FVector& Where, float Health)
+	{
+		ACataclysmPlayerCharacter* Player = SpawnPlayerWithState(World);
+		UAbilitySystemComponent* Its = Player ? Player->GetAbilitySystemComponent() : nullptr;
+		if (!Its)
+		{
+			return nullptr;
+		}
+		Player->SetActorLocation(Where);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), 0.0f);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		return Player;
+	}
+}
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotOnTheDeadTest,
+	"Cataclysm.EnemyModifiers.TheBlowThatKillsThePlayerNeitherBrandsTheBodyNorBurstsOnIt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874. The owner's log of 2026-11-24 says "CataclysmBruteCharacter_136's Infernal Brand reached five stacks
+	// on CataclysmPlayerState_0 and dealt 367" two milliseconds after the player's death line. The attribute set calls
+	// `BrandOnHit` after a blow's health write, so for the blow that kills, after `HandleDeath` has marked the player
+	// dead: the killing blow was the fifth brand, and the brand burst on the body.
+	//
+	// THROUGH THE DAMAGE PIPELINE, as `InfernalBrandExplodesOnceForEveryFiveHitsThatLand` drives it, on a REAL PLAYER,
+	// whose death is the one `HandleDeath` marks. THE CONTROL first: a living player's fifth brand bursts, which is a
+	// second blow resolved on its ability system and its four stacks spent. THEN THE CASE: four brands on a second
+	// player 10 m away, and a fifth blow that kills it. One blow is resolved, the killing blow, and the four stacks
+	// are left as they were: none is added to the body and none bursts.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Living = BrandedPlayerAt(World, FVector(200.0f, 0.0f, 0.0f), 5000.0f);
+	ACataclysmPlayerCharacter* Dying = BrandedPlayerAt(World, FVector(0.0f, 1000.0f, 0.0f), 5000.0f);
+	UCataclysmAbilitySystemComponent* LivingSystem =
+		Living ? Cast<UCataclysmAbilitySystemComponent>(Living->GetAbilitySystemComponent()) : nullptr;
+	UCataclysmAbilitySystemComponent* DyingSystem =
+		Dying ? Cast<UCataclysmAbilitySystemComponent>(Dying->GetAbilitySystemComponent()) : nullptr;
+	if (!TestNotNull(TEXT("set-up: a living player with its ability system"), LivingSystem)
+		|| !TestNotNull(TEXT("set-up: and a second player with its"), DyingSystem))
+	{
+		return false;
+	}
+
+	// ONE POINT, SO A BRAND'S OWN HIT IS NEGLIGIBLE.
+	const auto Brand = [Brander](ACataclysmPlayerCharacter* Player, float Damage)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, Damage, FCataclysmHitDelivery());
+	};
+
+	// THE CONTROL: A LIVING PLAYER'S FIFTH BRAND BURSTS.
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Brand(Living, 1.0f);
+	}
+	const int32 LivingHeldAfterFour = UCataclysmStacks::Held(LivingSystem, ECataclysmStackKind::InfernalBrand);
+	const uint32 LivingBefore = LivingSystem->GetResolvedHitStamp();
+	Brand(Living, 1.0f);
+	const int32 LivingBlowsOnTheFifth = static_cast<int32>(LivingSystem->GetResolvedHitStamp() - LivingBefore);
+	const int32 LivingHeldAfterFive = UCataclysmStacks::Held(LivingSystem, ECataclysmStackKind::InfernalBrand);
+
+	// THE CASE: FOUR BRANDS, THEN THE BLOW THAT KILLS.
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Brand(Dying, 1.0f);
+	}
+	const int32 DyingHeldAfterFour = UCataclysmStacks::Held(DyingSystem, ECataclysmStackKind::InfernalBrand);
+	const uint32 DyingBefore = DyingSystem->GetResolvedHitStamp();
+	Brand(Dying, 100000.0f);
+	const int32 DyingBlowsOnTheFifth = static_cast<int32>(DyingSystem->GetResolvedHitStamp() - DyingBefore);
+	const int32 DyingHeldAfterFive = UCataclysmStacks::Held(DyingSystem, ECataclysmStackKind::InfernalBrand);
+
+	AddInfo(FString::Printf(TEXT("BRAND ON THE DEAD: living player held %d, the fifth resolved %d blow(s), held %d after; "
+								 "dying player held %d, the killing fifth resolved %d blow(s), held %d after"),
+							LivingHeldAfterFour, LivingBlowsOnTheFifth, LivingHeldAfterFive, DyingHeldAfterFour,
+							DyingBlowsOnTheFifth, DyingHeldAfterFive));
+
+	TestEqual(TEXT("set-up: four brands on the living player"), LivingHeldAfterFour, 4);
+	TestFalse(TEXT("set-up: and it lives"), UCataclysmSkillEffects::IsDead(Living));
+	TestEqual(TEXT("CONTROL: a living player's fifth brand bursts, a second blow resolved"), LivingBlowsOnTheFifth, 2);
+	TestEqual(TEXT("CONTROL: and spends its stacks"), LivingHeldAfterFive, 0);
+
+	TestEqual(TEXT("set-up: four brands on the second player"), DyingHeldAfterFour, 4);
+	TestTrue(TEXT("set-up: the fifth blow killed it"), UCataclysmSkillEffects::IsDead(Dying));
+	TestEqual(TEXT("THE KILLING BLOW IS THE ONLY BLOW RESOLVED: no brand bursts on the body"), DyingBlowsOnTheFifth, 1);
+	TestEqual(TEXT("AND NO STACK IS ADDED TO THE BODY: the four it held are left"), DyingHeldAfterFive, 4);
+	return true;
+}
+
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNotByTicksTest,
+	"Cataclysm.EnemyModifiers.ABrandersBurnTicksTakeHealthAndAddNoBrand")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874, AS THE OWNER MET IT. At 18:51:19 on 2026-11-24 a Boss Brute carrying Infernal Brand and Hellfire Aura
+	// killed the owner with the brand's explosion, and the five stacks were one rock and four ticks of the aura's burn:
+	// the attribute set called `BrandOnHit` for every blow that took health, ticks included. The row says "on hit", and
+	// a tick is not a hit, ruled by the coordinating session on 2026-11-24. Since then only a blow that is not damage
+	// over time brands, as only such a blow builds Withering and Touch of Nothing.
+	//
+	// THE CONTROL: one direct hit from the brander is one brand. THEN THE CASE: the brander's burn, the table's 25 a
+	// tick, run for three seconds on the clock, its ticks taking health. Before the change each tick was a brand, so the
+	// player held four or five, or had burst; after it, the one the hit gave.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	// ITS BRAIN IS TAKEN AWAY, so moving the clock fires no think that swings at anything: only the test's hit and the
+	// burn reach the player.
+	if (AController* Brain = Brander->GetController())
+	{
+		Brain->UnPossess();
+	}
+
+	ACataclysmPlayerCharacter* Player = BrandedPlayerAt(World, FVector(1000.0f, 0.0f, 0.0f), 5000.0f);
+	UCataclysmAbilitySystemComponent* PlayerSystem =
+		Player ? Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()) : nullptr;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: a player with its ability system"), PlayerSystem)
+		|| !TestNotNull(TEXT("set-up: the announcer"), Events))
+	{
+		return false;
+	}
+	PlayerSystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthRegenAttribute(), 0.0f);
+
+	// EVERY BLOW OF THE BRANDER'S ON THE PLAYER, sorted: ticks that took health, and any blow that is not a tick and
+	// sent at least the explosion's 500, which only an explosion does here.
+	int32 TicksThatTookHealth = 0;
+	int32 Explosions = 0;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&TicksThatTookHealth, &Explosions, Player, Brander](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target != Player || Notice.Attacker != Brander)
+			{
+				return;
+			}
+			if (Notice.bDamageOverTime && Notice.DealtToHealth > 0.0f)
+			{
+				++TicksThatTookHealth;
+			}
+			else if (!Notice.bDamageOverTime && Notice.Sent >= 400.0f)
+			{
+				++Explosions;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+
+	// THE CONTROL: ONE HIT, ONE POINT, ONE BRAND.
+	UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, /*Damage=*/1.0f, FCataclysmHitDelivery());
+	const int32 HeldAfterTheHit = UCataclysmStacks::Held(PlayerSystem, ECataclysmStackKind::InfernalBrand);
+
+	// THE CASE: THE BRANDER'S BURN, THREE SECONDS OF IT. Inside the brand's eight-second window, so nothing the hit
+	// gave runs out.
+	if (!TestTrue(TEXT("set-up: the brander's burn is laid on the player"),
+				  UCataclysmSkillEffects::ApplyBurn(Brander, Player, /*HitDamage=*/0.0f,
+													/*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 3.1f);
+	const int32 HeldAfterTheBurn = UCataclysmStacks::Held(PlayerSystem, ECataclysmStackKind::InfernalBrand);
+
+	AddInfo(FString::Printf(TEXT("BRAND BY TICKS: one hit left %d brand(s); %d tick(s) took health; %d brand(s) held "
+								 "after the burn; %d explosion(s)"),
+							HeldAfterTheHit, TicksThatTookHealth, HeldAfterTheBurn, Explosions));
+
+	TestEqual(TEXT("CONTROL: one hit that took health is one brand"), HeldAfterTheHit, 1);
+	TestTrue(FString::Printf(TEXT("set-up: at least two of the burn's ticks took health (%d)"), TicksThatTookHealth),
+			 TicksThatTookHealth >= 2);
+	TestEqual(TEXT("NO TICK ADDED A BRAND: the one the hit gave is all the player holds"), HeldAfterTheBurn, 1);
+	TestEqual(TEXT("AND NOTHING BURST"), Explosions, 0);
+	return true;
+}
+
+
+CATACLYSM_MODIFIER_TEST(FCataclysmInfernalBrandNeverCriticalTest,
+	"Cataclysm.EnemyModifiers.AnInfernalBrandsExplosionIsFiveHitsAndNeverACriticalStrike")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// ISSUE #2874. The owner's Boss Brute's explosion sent 367, five of its hits, and struck critically, so it was ten:
+	// cut to the 396 health the character had left, it killed. Ruled by the coordinating session on 2026-11-24, as the
+	// overkill explosion and the death blast were on 2026-10-07: the explosion cannot critically strike.
+	//
+	// EVERY ROLL CRITICAL: the brander's chance is 100 and the roll is pinned at 0. THE CONTROL: its five one-point hits
+	// are each critical, so the pin and the chance reach its blows. THEN: the fifth sets off the explosion, which sends
+	// five of its 100 hits and is not critical, and lands no more than it sent on a player with no defences.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll EveryRollCritical(0.0f);
+
+	ACataclysmEnemyCharacter* Brander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	UAbilitySystemComponent* Own = Brander ? Brander->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to do the branding, with an ability system"), Own))
+	{
+		return false;
+	}
+	Brander->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Brander->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalBrandRow));
+	constexpr float BranderHit = 100.0f;
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), BranderHit);
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	Own->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 200.0f);
+	if (AController* Brain = Brander->GetController())
+	{
+		Brain->UnPossess();
+	}
+
+	ACataclysmPlayerCharacter* Player = BrandedPlayerAt(World, FVector(1000.0f, 0.0f, 0.0f), 5000.0f);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: the announcer"), Events))
+	{
+		return false;
+	}
+
+	// THE BRANDER'S BLOWS ON THE PLAYER: the hits, told apart from the explosion by what each sent.
+	const float Explosion = BranderHit * UCataclysmEnemyModifiers::InfernalBrandExplosionHits;
+	int32 Hits = 0;
+	int32 CriticalHits = 0;
+	int32 Explosions = 0;
+	int32 CriticalExplosions = 0;
+	float ExplosionSent = 0.0f;
+	float ExplosionLanded = 0.0f;
+	const FDelegateHandle Listening = Events->OnHit.AddLambda(
+		[&, Player, Brander](const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Target != Player || Notice.Attacker != Brander || Notice.bDamageOverTime)
+			{
+				return;
+			}
+			if (Notice.Sent >= Explosion - 0.01f)
+			{
+				++Explosions;
+				CriticalExplosions += Notice.bCritical ? 1 : 0;
+				ExplosionSent = Notice.Sent;
+				ExplosionLanded = Notice.Landed;
+			}
+			else
+			{
+				++Hits;
+				CriticalHits += Notice.bCritical ? 1 : 0;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Listening); };
+
+	for (int32 Index = 0; Index < 5; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Brander, Player, /*Damage=*/1.0f, FCataclysmHitDelivery());
+	}
+
+	AddInfo(FString::Printf(TEXT("BRAND NEVER CRITICAL: %d hit(s), %d critical; %d explosion(s), %d critical, sent %.2f "
+								 "and landed %.2f, five hits being %.2f"),
+							Hits, CriticalHits, Explosions, CriticalExplosions, ExplosionSent, ExplosionLanded,
+							Explosion));
+
+	TestEqual(TEXT("set-up: five hits reached the player"), Hits, 5);
+	TestEqual(TEXT("CONTROL: every one of the five hits was a critical strike"), CriticalHits, 5);
+	TestEqual(TEXT("set-up: the fifth set off one explosion"), Explosions, 1);
+	TestEqual(TEXT("THE EXPLOSION SENT FIVE OF THE BRANDER'S HITS"), ExplosionSent, Explosion, 0.01f);
+	TestEqual(TEXT("AND IT WAS NOT A CRITICAL STRIKE"), CriticalExplosions, 0);
+	TestTrue(FString::Printf(TEXT("AND IT LANDED NO MORE THAN IT SENT: %.2f of %.2f"), ExplosionLanded, ExplosionSent),
+			 ExplosionLanded > 0.0f && ExplosionLanded <= ExplosionSent + 0.01f);
+	return true;
+}
+
 
 CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 	"Cataclysm.EnemyModifiers.InfernalSacrificeHealsThroughTheHealingRulesSoAReductionCutsIt")
@@ -3657,6 +3971,68 @@ CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeHealsThroughTheRulesTest,
 							Whole, Halved, Quarter));
 	TestEqual(TEXT("CONTROL: with no reduction the eater regains a quarter of its maximum"), Whole, Quarter, 0.01f);
 	TestEqual(TEXT("with its healing received reduced by half it regains an eighth"), Halved, Quarter * 0.5f, 0.01f);
+	return true;
+}
+
+
+CATACLYSM_MODIFIER_TEST(FCataclysmSacrificeSparesTheUnhurtableTest,
+	"Cataclysm.EnemyModifiers.InfernalSacrificePassesOverACreatureThatCannotBeHurt")
+{
+	using namespace CataclysmEnemyModifierTest;
+
+	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. Sacrifice kills its ally by calling `HandleDeath`,
+	// which skips the health hold that keeps a creature that cannot be hurt standing, so a carrier could eat any creature
+	// a rule had made unhurtable. Since then it passes over one, as it passes over a dead ally.
+	//
+	// AN EATER, AN ALLY THAT CANNOT BE HURT 1.5 m from it, the nearest, and an ordinary ally 4 m from it, both inside
+	// the 6 m it looks in; stepped through one interval. THE CONTROL: the ordinary ally is eaten, so the rule acted and
+	// took the next nearest. THE CASE: the unhurtable one stands, at its whole health.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Eater =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Unhurtable =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(150.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Ordinary =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(-400.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: an eater"), Eater) || !TestNotNull(TEXT("set-up: an unhurtable ally"), Unhurtable)
+		|| !TestNotNull(TEXT("set-up: an ordinary ally"), Ordinary))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Each : {Eater, Unhurtable, Ordinary})
+	{
+		Each->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Each->SetHealth(1000.0f);
+	}
+	Unhurtable->bCannotBeHurt = true;
+	Eater->ModifierRows.Add(FName(UCataclysmEnemyModifiers::InfernalSacrificeRow));
+	Eater->SecondsSinceSacrifice = 0.0f;
+
+	// SIX SECONDS AT A QUARTER OF A SECOND A STEP IS TWENTY-FOUR STEPS, the interval.
+	for (int32 Step = 0; Step < 24; ++Step)
+	{
+		UCataclysmEnemyModifiers::TimedStep(Eater, 0.25f);
+	}
+
+	const UAbilitySystemComponent* Its = Unhurtable->GetAbilitySystemComponent();
+	const float UnhurtableHealth =
+		Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	AddInfo(FString::Printf(TEXT("SACRIFICE AND THE UNHURTABLE: the ordinary ally was eaten %s; the unhurtable one is "
+								 "dead %s, at %.1f health"),
+							UCataclysmSkillEffects::IsDead(Ordinary) ? TEXT("yes") : TEXT("no"),
+							UCataclysmSkillEffects::IsDead(Unhurtable) ? TEXT("yes") : TEXT("no"), UnhurtableHealth));
+
+	TestTrue(TEXT("CONTROL: the rule acted and ate the ordinary ally, the next nearest"),
+			 UCataclysmSkillEffects::IsDead(Ordinary));
+	TestFalse(TEXT("THE ALLY THAT CANNOT BE HURT WAS NOT EATEN, though it stood nearest"),
+			  UCataclysmSkillEffects::IsDead(Unhurtable));
+	TestEqual(TEXT("and it stands at its whole health"), UnhurtableHealth, 1000.0f, 0.01f);
 	return true;
 }
 

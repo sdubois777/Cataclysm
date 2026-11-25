@@ -77,10 +77,11 @@ AActor* UCataclysmDeployableSelfBlast::WearerInCone(const UWorld* World, AActor*
 													const FVector& Apex, const FVector& Forward, float RadiusCm,
 													float AngleDegrees, const TWeakObjectPtr<AActor>& UsedUpCastBy)
 {
-	// THE SPHERE OF THE CONE'S RADIUS, THEN `IsInCone` ON THE WEARER'S LOCATION, which is the predicate
-	// `FindEnemiesInCone` hands its search. The used-up trap's identity is handed on to the sphere (traps layer 7, L-1).
+	// THE SPHERE OF THE CONE'S RADIUS, THEN `IsActorInCone` ON THE WEARER, which is the test `FindEnemiesInCone`
+	// applies: since issue #2870 a body overlapping the cone's angle is inside. The used-up trap's identity is handed on
+	// to the sphere (traps layer 7, L-1).
 	AActor* Inside = WearerInSphere(World, Wearer, CastFrom, Apex, RadiusCm, UsedUpCastBy);
-	return Inside && UCataclysmTargeting::IsInCone(Apex, Forward, Inside->GetActorLocation(), RadiusCm, AngleDegrees)
+	return Inside && UCataclysmTargeting::IsActorInCone(Apex, Forward, Inside, RadiusCm, AngleDegrees)
 		? Inside
 		: nullptr;
 }

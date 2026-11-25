@@ -31,6 +31,7 @@ from __future__ import annotations
 import dataclasses
 import os
 import pathlib
+from collections.abc import Callable
 import subprocess
 import sys
 import textwrap
@@ -39,7 +40,9 @@ import pytest
 
 # `tools` is on the path via pythonpath in pyproject.toml, so this is a
 # plain module import rather than a package one.
+import prove_guard
 from prove_guard import (
+    FilesLeftBroken,
     GuardResult,
     break_and_run,
     clear_bytecode_caches,
@@ -589,3 +592,133 @@ def test_a_command_that_is_not_a_test_run_gets_no_second_half() -> None:
     assert not result.looks_like_a_test_run
     assert result.restored is None, (
         "a command with no test output has no second half worth taking")
+
+
+# ---------------------------------------------------------------------------
+# A restore the operating system refuses. 2026-11-25: a whole-suite run's guard
+# case broke `docs/Cataclysm_GDD_v2.md`, writing it back raised OSError 22, the
+# break stayed in, and the next case failed against it with nothing saying why.
+#
+# THE REFUSAL IS FAKED, NOT PRODUCED. `pathlib.Path.write_bytes` is replaced
+# for one probe file, and every other write goes through. Holding a real file
+# open from another process would make these tests depend on timing.
+# ---------------------------------------------------------------------------
+
+REFUSED_PROBE = "tools/tests/_restore_refused_probe.txt"
+OTHER_PROBE = "tools/tests/_restore_other_probe.txt"
+
+
+def refuse_writes_to(monkeypatch: pytest.MonkeyPatch, relative: str, times: int | None) -> list[int]:
+    """Make `times` writes of the probe raise OSError 22, then let them through;
+    every write when `times` is None. Returns the list each refusal appends to.
+
+    NO WAITING: the waits between tries are set to nothing, keeping their number,
+    so a test takes no longer than the writes do.
+    """
+    target = (REPO_ROOT / relative).resolve()
+    real_write_bytes = pathlib.Path.write_bytes
+    refusals: list[int] = []
+
+    def write_bytes(self: pathlib.Path, data: bytes) -> int:
+        if self.resolve() == target and (times is None or len(refusals) < times):
+            refusals.append(1)
+            raise OSError(22, "Invalid argument", str(self))
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(pathlib.Path, "write_bytes", write_bytes)
+    monkeypatch.setattr(prove_guard, "RESTORE_WAITS_SECONDS",
+                        tuple(0.0 for _ in prove_guard.RESTORE_WAITS_SECONDS))
+    return refusals
+
+
+@pytest.fixture
+def probes() -> tuple[pathlib.Path, pathlib.Path]:
+    """Two files `break_and_run` can break, removed afterwards whatever happened."""
+    made = (REPO_ROOT / REFUSED_PROBE, REPO_ROOT / OTHER_PROBE)
+    for path in made:
+        path.write_text("original\n", encoding="utf-8")
+    yield made
+    for path in made:
+        path.unlink(missing_ok=True)
+
+
+def break_the(relative: str) -> dict[str, Callable[[str], str]]:
+    return {relative: lambda text: text.replace("original", "broken")}
+
+
+def test_a_restore_refused_twice_is_tried_again_and_the_file_comes_back(
+        probes: tuple[pathlib.Path, pathlib.Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    refused_probe, _ = probes
+    refusals = refuse_writes_to(monkeypatch, REFUSED_PROBE, times=2)
+
+    result = break_and_run(break_the(REFUSED_PROBE), [sys.executable, "-c", "print('ran')"])
+
+    assert refusals == [1, 1], "set-up: the fake refused the first two writes back"
+    assert refused_probe.read_text(encoding="utf-8") == "original\n", (
+        "the third try should have written the original back")
+    assert result.unrestored == ()
+    assert "ran" in result.stdout
+
+
+def test_control_one_try_alone_would_have_left_that_file_broken(
+        probes: tuple[pathlib.Path, pathlib.Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE CONTROL FOR THE TEST ABOVE: the same two refusals with no second try
+    leave the file broken. So the retries are what restored it."""
+    refused_probe, _ = probes
+    refuse_writes_to(monkeypatch, REFUSED_PROBE, times=2)
+    monkeypatch.setattr(prove_guard, "RESTORE_WAITS_SECONDS", ())
+
+    with pytest.raises(FilesLeftBroken):
+        break_and_run(break_the(REFUSED_PROBE), [sys.executable, "-c", "print('ran')"])
+    assert refused_probe.read_text(encoding="utf-8") == "broken\n"
+
+
+def test_a_restore_always_refused_raises_naming_the_file_and_how_to_restore_it(
+        probes: tuple[pathlib.Path, pathlib.Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Raised, not returned: a caller asserting on `named_failures` would pass
+    on a returned result. The result rides on the exception instead."""
+    refused_probe, other_probe = probes
+    refusals = refuse_writes_to(monkeypatch, REFUSED_PROBE, times=None)
+    command = [sys.executable, "-c",
+               "print('FAILED tools/tests/test_x.py::test_y - broke'); print('1 failed in 0.01s'); "
+               "raise SystemExit(1)"]
+
+    with pytest.raises(FilesLeftBroken) as raised:
+        break_and_run({**break_the(REFUSED_PROBE), **break_the(OTHER_PROBE)}, command)
+
+    error = raised.value
+    assert len(refusals) == len(prove_guard.RESTORE_WAITS_SECONDS) + 1, (
+        "every try was made before giving up")
+    assert error.paths == (REFUSED_PROBE,)
+    assert f"git checkout -- {REFUSED_PROBE}" in str(error)
+    assert "Invalid argument" in str(error), "the last error is in the message"
+    assert error.result.unrestored == (REFUSED_PROBE,)
+    assert error.result.named_failures == ("tools/tests/test_x.py::test_y",), (
+        "set-up: what the run measured is kept on the result")
+    assert not error.result.proved
+    assert error.result.restored is None, (
+        "no second half may run while a file still holds the break")
+    assert REFUSED_PROBE in error.result.summary
+    assert error.result.summary.startswith("FILES LEFT BROKEN: ")
+    assert refused_probe.read_text(encoding="utf-8") == "broken\n", (
+        "CONTROL: the refused file really is still broken, which is what the "
+        "message says")
+    assert other_probe.read_text(encoding="utf-8") == "original\n", (
+        "the file whose write was not refused is put back all the same; one "
+        "refusal used to stop the loop")
+
+
+def test_an_edit_that_raises_keeps_its_own_error_with_the_broken_file_attached(
+        probes: tuple[pathlib.Path, pathlib.Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The first failure explains the run, so it is the one that leaves, as in
+    `unreal_build.prove_cpp_guard` (issue #384), carrying the files as a note."""
+    refuse_writes_to(monkeypatch, REFUSED_PROBE, times=None)
+
+    with pytest.raises(FileNotFoundError) as raised:
+        break_and_run({**break_the(REFUSED_PROBE),
+                       "tools/there_is_no_such_file.py": lambda text: text},
+                      [sys.executable, "-c", "pass"])
+
+    notes = "\n".join(getattr(raised.value, "__notes__", []))
+    assert "FILES LEFT BROKEN" in notes and REFUSED_PROBE in notes, (
+        f"the refused file is not named on the error that left: {notes!r}")

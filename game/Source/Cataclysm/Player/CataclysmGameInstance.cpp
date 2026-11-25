@@ -576,6 +576,52 @@ bool UCataclysmGameInstance::AddGoldSpentOnCityUpgradesFor(const UObject* WorldC
 	return true;
 }
 
+bool UCataclysmGameInstance::GoldSpentAtTheForgeBy(const UObject* WorldContext, double& OutSpentAtTierOne)
+{
+	OutSpentAtTierOne = 0.0;
+	const ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		OutSpentAtTierOne = State->GetOwnGoldSpentAtTheForge();
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	const UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	OutSpentAtTierOne = Account->GoldSpentAtTheForge;
+	return true;
+}
+
+bool UCataclysmGameInstance::AddGoldSpentAtTheForgeFor(const UObject* WorldContext, double SpentAtTierOne)
+{
+	ACataclysmPlayerState* State = CataclysmGameInstanceGold::PlayingState(WorldContext);
+	if (State == nullptr)
+	{
+		return false;
+	}
+	const double Added = FMath::Max(0.0, SpentAtTierOne);
+	if (State->GetPartition().bSoloSelfFound)
+	{
+		State->SetOwnGoldSpentAtTheForge(State->GetOwnGoldSpentAtTheForge() + Added);
+		return true;
+	}
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	UCataclysmAccountSave* Account = Instance != nullptr ? Instance->AccountFor(State->GetPartition()) : nullptr;
+	if (Account == nullptr)
+	{
+		return false;
+	}
+	Account->GoldSpentAtTheForge = FMath::Max(0.0, Account->GoldSpentAtTheForge) + Added;
+	return true;
+}
+
 bool UCataclysmGameInstance::SpendGoldOnCreditFor(const UObject* WorldContext, int64 Price, int64 Allowance,
 												  bool bRepaidDaily, bool& bOutFromTheCharacter, int64& OutOwed)
 {
@@ -879,6 +925,19 @@ void UCataclysmGameInstance::RefreshEmpireTreeBonuses(const UObject* WorldContex
 {
 	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
 	{
+		// A TREE CHANGED IN PLAY, so every city keeps its share of its maxima: "It should maintain the % they were at
+		// before buying the upgrades." Issue #2859.
+		Run->ChangeTreeBonuses(EmpireTreeBonusesFor(WorldContext));
+		WireTheRunToTheBalance(WorldContext, Run);
+	}
+}
+
+void UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(const UObject* WorldContext)
+{
+	if (UCataclysmEmpireRun* Run = EmpireRunFor(WorldContext, /*bStartIfNone*/ false))
+	{
+		// NOTHING WRITTEN INTO THE CITIES: they were saved holding what they held under the tree, and keeping their
+		// shares from a run that has had no tree since it was rebuilt would scale them by the whole tree. Issue #2859.
 		Run->SetTreeBonuses(EmpireTreeBonusesFor(WorldContext));
 		WireTheRunToTheBalance(WorldContext, Run);
 	}
@@ -1129,11 +1188,14 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 	// THE TREE GOES BEFORE THE DAYS PASS, so they pass without it. Issue #2741 slice 3a.
 	RefreshEmpireTreeBonuses(WorldContext);
 
-	// THE DAYS, through the call every other run of days goes through.
+	// THE DAYS, through the call every other run of days goes through; THEIR REPORTS KEPT, and the dungeons standing named
+	// before them, since a dungeon the days resolve is gone from the run after. Issue #2857.
 	const int32 DayBefore = Run->Day();
+	const TMap<int32, FString> NamesBeforeTheDays = FCataclysmPlayLoopLog::NamesStanding(Run);
+	const TArray<FCataclysmDayReport> TheDays = Run->AdvanceDays(Days);
 	int32 Resolved = 0;
 	int32 Fallen = 0;
-	for (const FCataclysmDayReport& Report : Run->AdvanceDays(Days))
+	for (const FCataclysmDayReport& Report : TheDays)
 	{
 		Resolved += Report.Resolved.Num();
 		Fallen += Report.Fallen.Num();
@@ -1147,6 +1209,11 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 	// THE PLAY LOOP: the points back, the bank, and the days it cost. Issue #2741 slice 2.
 	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::TreeRespecLine(OutPointsReturned, *Held.Bank, Days, DayBefore,
 		Run->Day()));
+	// AND WHAT THOSE DAYS DID, in the walk's words after the respec's own lead, said whatever they did; and kept for the
+	// tree's screen to show when they did something. Issue #2857.
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::AwayAccount(DayBefore, Run->Day(), TheDays, NamesBeforeTheDays, Run,
+																  TEXT("for the respec")));
+	KeepCapitalDays(WorldContext, DayBefore, Run->Day(), TheDays, NamesBeforeTheDays, Run);
 
 	// SAVED WHOLE: the points, in the record that holds the tree, and the run's days by a trigger that writes the run
 	// record whatever else wrote it earlier in this frame. `Clock` would have been skipped then; the coordinating
@@ -1155,6 +1222,29 @@ bool UCataclysmGameInstance::RespecEmpireTree(const UObject* WorldContext, int32
 	UCataclysmSaveWriter::NoteTriggerIn(CataclysmGameInstanceEmpireTree::WorldOf(WorldContext),
 										ECataclysmSaveTrigger::EmpireTreeRespecced);
 	return true;
+}
+
+void UCataclysmGameInstance::KeepCapitalDays(const UObject* WorldContext, int32 FromDay, int32 ToDay,
+											 const TArray<FCataclysmDayReport>& Days,
+											 const TMap<int32, FString>& NamesBefore, const UCataclysmEmpireRun* Run)
+{
+	UCataclysmGameInstance* Instance = In(WorldContext);
+	if (Instance == nullptr)
+	{
+		return;
+	}
+
+	// THE PLAY LOOP'S OWN ACCOUNT OF THE DAYS, after "Meanwhile", so the screen and the log name the same dungeons and the
+	// same figures; and NOTHING WHEN THE DAYS DID NOTHING, so a screen says no more than it did before. Issue #2857.
+	Instance->CapitalDaysAccount = ToDay > FromDay && FCataclysmPlayLoopLog::DaysDidSomething(Days)
+		? FCataclysmPlayLoopLog::AwayAccount(FromDay, ToDay, Days, NamesBefore, Run, TEXT("Meanwhile")) + TEXT(".")
+		: FString();
+}
+
+FString UCataclysmGameInstance::CapitalDaysAccountIn(const UObject* WorldContext)
+{
+	const UCataclysmGameInstance* Instance = In(WorldContext);
+	return Instance != nullptr ? Instance->CapitalDaysAccount : FString();
 }
 
 bool UCataclysmGameInstance::PlayingPartition(const UObject* WorldContext, FCataclysmCharacterPartition& OutPartition)

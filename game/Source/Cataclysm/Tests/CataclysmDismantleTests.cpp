@@ -757,8 +757,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDismantleCharacterMigrationTest,
  * The character record went to version 15 for the two fields (ruled by the coordinating session on 2026-11-24, by
  * `game/Tests/SaveFixtures/README.md`). `Character_v14.json`, written before them, migrates: each carried item reads
  * -1 and 0, "not known", and every other field is kept. CONTROL: the committed character file is read, not migrated,
- * and its carried Circlet states +4 at tier 2, not the defaults, so the fields are read from the file: `Character_v16.json`
- * since issue #2849, which moved the inventory's stacks to tabs of their own (`Character_v15.json` from issue #2848), so
+ * and its carried Circlet states +4 at tier 2, not the defaults, so the fields are read from the file: `Character_v18.json`
+ * since #47 slice F6a, `Character_v17.json` from issue #837 slice 1 and `Character_v16.json` before it, since issue #2849, which moved the inventory's stacks to tabs of their own (`Character_v15.json` from issue #2848), so
  * `Character_v14.json` also passes through that step, and the expected record takes both steps' defaults. Prints
  * "ARRIVAL CHARACTER".
  */
@@ -772,10 +772,10 @@ bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 	const UCataclysmCharacterSave* Old =
 		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v14.json"), OldText, OldResult);
 	const UCataclysmCharacterSave* Committed =
-		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v16.json"), NewText, NewResult);
-	if (!TestNotNull(TEXT("Character_v14.json loads"), Old) || !TestNotNull(TEXT("Character_v16.json loads"), Committed)
+		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v18.json"), NewText, NewResult);
+	if (!TestNotNull(TEXT("Character_v14.json loads"), Old) || !TestNotNull(TEXT("Character_v18.json loads"), Committed)
 		|| !TestEqual(TEXT("set-up: Character_v14.json carries two slots"), Old->CarriedSlots.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Character_v16.json carries two slots"), Committed->CarriedSlots.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Character_v18.json carries two slots"), Committed->CarriedSlots.Num(), 2))
 	{
 		return false;
 	}
@@ -785,10 +785,12 @@ bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 											{
 												CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(Expected);
 												CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(Expected); // And 16, issue #2849.
+												CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(Expected); // And 17, issue #837 slice 1: no remembered defaults.
+												CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(Expected); // And 18, #47 slice F6a: nothing spent at the forge.
 											},
 											Old, Where);
 	AddInfo(FString::Printf(TEXT("ARRIVAL CHARACTER: Character_v14.json %s, carried %s, the rest %s; "
-								 "Character_v16.json %s, carried %s"),
+								 "Character_v18.json %s, carried %s"),
 							FCataclysmSaveStorage::Describe(OldResult), *ArrivalsOf(CharacterItems(*Old)),
 							bKept ? TEXT("kept") : *Where, FCataclysmSaveStorage::Describe(NewResult),
 							*ArrivalsOf(CharacterItems(*Committed))));
@@ -797,7 +799,7 @@ bool FCataclysmDismantleCharacterMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("**each carried item arrived at a place not known**"), ArrivalsOf(CharacterItems(*Old)),
 			  FString(TEXT("-1:0 -1:0")));
 	TestTrue(TEXT("and every other field is kept"), bKept);
-	TestEqual(TEXT("CONTROL: Character_v16.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Character_v18.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: its Circlet arrived at +4 at tier 2, and its empty slot is not known, as it states"),
 			  ArrivalsOf(CharacterItems(*Committed)), FString(TEXT("4:2 -1:0")));
@@ -814,8 +816,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDismantleRunMigrationTest,
 /**
  * The run record went to version 18 for the two fields, as the character record went to 15. `Run_v17.json`, written
  * before them, migrates: each ground item reads -1 and 0, "not known", and every other field is kept. CONTROL:
- * `Run_v18.json` is read, not migrated, and its Circlet on the ground states +0 at tier 4, not the defaults. Prints
- * "ARRIVAL RUN".
+ * `Run_v19.json`, the committed run file since issue #51 took the record to version 19, is read, not migrated, and
+ * its Circlet on the ground states +0 at tier 4, not the defaults. Prints "ARRIVAL RUN".
  */
 bool FCataclysmDismantleRunMigrationTest::RunTest(const FString&)
 {
@@ -826,17 +828,23 @@ bool FCataclysmDismantleRunMigrationTest::RunTest(const FString&)
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
 	const UCataclysmRunSave* Old = ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v17.json"), OldText, OldResult);
 	const UCataclysmRunSave* Committed =
-		ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v18.json"), NewText, NewResult);
-	if (!TestNotNull(TEXT("Run_v17.json loads"), Old) || !TestNotNull(TEXT("Run_v18.json loads"), Committed)
+		ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v19.json"), NewText, NewResult);
+	if (!TestNotNull(TEXT("Run_v17.json loads"), Old) || !TestNotNull(TEXT("Run_v19.json loads"), Committed)
 		|| !TestEqual(TEXT("set-up: Run_v17.json has two ground items"), Old->Floor.GroundItems.Num(), 2)
-		|| !TestEqual(TEXT("set-up: Run_v18.json has two ground items"), Committed->Floor.GroundItems.Num(), 2))
+		|| !TestEqual(TEXT("set-up: Run_v19.json has two ground items"), Committed->Floor.GroundItems.Num(), 2))
 	{
 		return false;
 	}
 	FString Where;
+	// THE STEP TO 18 AND, SINCE ISSUE #51, THE STEP TO 19 AFTER IT: `Run_v17.json` is migrated through both.
 	const bool bKept = KeepsEveryOtherField(OldText, UCataclysmRunSave::SchemaVersionNow,
-											&CataclysmSaveFixtures::AddTheRunsVersion18Defaults, Old, Where);
-	AddInfo(FString::Printf(TEXT("ARRIVAL RUN: Run_v17.json %s, ground %s, the rest %s; Run_v18.json %s, ground %s"),
+											[](FJsonObject& BothSteps)
+											{
+												CataclysmSaveFixtures::AddTheRunsVersion18Defaults(BothSteps);
+												CataclysmSaveFixtures::AddTheRunsVersion19Defaults(BothSteps);
+											},
+											Old, Where);
+	AddInfo(FString::Printf(TEXT("ARRIVAL RUN: Run_v17.json %s, ground %s, the rest %s; Run_v19.json %s, ground %s"),
 							FCataclysmSaveStorage::Describe(OldResult), *ArrivalsOf(GroundItems(*Old)),
 							bKept ? TEXT("kept") : *Where, FCataclysmSaveStorage::Describe(NewResult),
 							*ArrivalsOf(GroundItems(*Committed))));
@@ -845,7 +853,7 @@ bool FCataclysmDismantleRunMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("**each ground item arrived at a place not known**"), ArrivalsOf(GroundItems(*Old)),
 			  FString(TEXT("-1:0 -1:0")));
 	TestTrue(TEXT("and every other field is kept"), bKept);
-	TestEqual(TEXT("CONTROL: Run_v18.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("CONTROL: Run_v19.json is read, not migrated"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: its Circlet arrived at +0 at tier 4, and its gold pile is not known, as it states"),
 			  ArrivalsOf(GroundItems(*Committed)), FString(TEXT("0:4 -1:0")));

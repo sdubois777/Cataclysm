@@ -596,12 +596,15 @@ def test_a_used_up_traps_late_blows_are_found_by_its_identity_where_they_are_pri
     assert "LaysForATrap->SpentSkillTrapNamed(FreeRepeatCastBy, SpentTrap)" in template
     assert "PerTick * TrapsPartOfTheTick" in template
     buried = code_of(SOURCE.parent / "CataclysmBuriedWeapon.cpp")
-    assert "Buried->Caster.Get()" in buried
+    # THE CONTROL READS THE CASTER THROUGH `Get` WHEREVER THE LEAP KEEPS IT: on the component until issue #2872, and
+    # since then on what the leap copies out of the component before any blow (`Carried`).
+    assert "Carried.Caster.Get()" in buried
     assert "CastBy.Get()" not in buried
     templates = code_of(SOURCE.parent / "CataclysmSkillTemplates.cpp")
     # THE TRAP'S IDENTITY IS STILL HANDED TO THE BURIED AXE, and since issue #2764 slice 2a the throwing skill's row after
-    # it, so a leap scales by that skill's level and credits it.
-    assert re.search(r"Params\.bBurns, FreeRepeatCastBy,\s*UCataclysmSkillLevels::RowThatLevels\(this\)\)\)", templates)
+    # it, so a leap scales by that skill's level and credits it. Two closing brackets and not three since issue #2872,
+    # when the call's result was kept (`Left`) rather than tested inside an `if`.
+    assert re.search(r"Params\.bBurns, FreeRepeatCastBy,\s*UCataclysmSkillLevels::RowThatLevels\(this\)\);", templates)
     engine = code_of(SOURCE)
     assert "SpentSkillTraps.Empty();" in engine
 
@@ -1180,8 +1183,12 @@ def test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired() -> None:
                      fervour)
     assert "FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before))" in fervour
     vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
-    assert re.search(r"UCataclysmFervour::GainFromDamage\(\s*GetOwningAbilitySystemComponent\(\), ToHealth, AssetTags\);\s*"
-                     r"UCataclysmFervour::LoseFromDamage\(GetOwningAbilitySystemComponent\(\), ToHealth\);", vitals)
+    # SINCE THE MERGE OF development (2026-11-25), the Masochist's gain reads the health AND the energy shield a blow
+    # took (#2873); Soulbound's loss reads the health alone, as ruled.
+    assert re.search(r"UCataclysmFervour::GainFromDamage\(\s*GetOwningAbilitySystemComponent\(\), "
+                     r"HealthLostToTheBlow \+ ShieldLostToTheBlow, AssetTags\);\s*"
+                     r"UCataclysmFervour::LoseFromDamage\(GetOwningAbilitySystemComponent\(\), HealthLostToTheBlow\);",
+                     vitals)
     engine = code_without_comments(SOURCE)
     assert re.search(r'const float ChainSeconds = Event == FName\(TEXT\("kill"\)\)\s*'
                      r'&& Action\.StackKey\.ToString\(\)\.StartsWith\(TEXT\("Passive_"\)\)\s*\? KillChainSecondsHeld\(\)\s*'

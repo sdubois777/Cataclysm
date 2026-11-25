@@ -2,7 +2,8 @@
 
 Issue #46, slice G5. The coordinating session ruled on 2026-11-21 that gem drop rates are measured in the simulation.
 This is the measurement. `loot.GEM_DROPS_PER_GEAR_DROP` is the figure it chooses from, and `loot.ENEMY_GEM_DROPS`
-the Enemy Drops sheet's Gem Drops column it gives.
+the Enemy Drops sheet's Gem Drops column it gives. Since 2026-11-24 (issue #2853) that column is tier 8's, and a lower
+tier drops `loot.gem_drop_share(tier)` of it; the report shows what each tier then gets against what it needs.
 
     cd sim && python analyse_gem_drops.py
 
@@ -100,19 +101,24 @@ def main() -> None:
               f" {needed_share(tier):>16.5f}")
     binding = max(TIERS, key=needed_share)
     print(f"\n  The most any tier needs: {needed_share(binding):.5f} gems a gear drop, at tier {binding}.")
-    print(f"  Shipped: GEM_DROPS_PER_GEAR_DROP = {loot.GEM_DROPS_PER_GEAR_DROP}, that figure rounded up.\n")
+    print(f"  Shipped: GEM_DROPS_PER_GEAR_DROP = {loot.GEM_DROPS_PER_GEAR_DROP}, that figure rounded up, at tier 8;")
+    print(f"  each tier below drops {loot.GEM_DROP_SHARE_A_TIER_DOWN} of the tier above's (issue #2853).\n")
     print("WHAT THE SHIPPED RATE GIVES\n")
-    print("  Tier | Gems in a tier | In a dungeon | Filled at the tier's rarity, of those needed")
-    print("  " + "-" * 76)
+    print("  Tier | Share of tier 8's | Gems a gear drop | Over the need | Gems in a tier | In a dungeon |"
+          " Filled at the tier's rarity, of those needed")
+    print("  " + "-" * 130)
     floors = curve.average_dungeon_floors()
     for tier in TIERS:
-        dropped = loot.GEM_DROPS_PER_GEAR_DROP * gear_drops_per_kill() * kills
+        share = loot.gem_drop_share(tier)
+        rate = loot.GEM_DROPS_PER_GEAR_DROP * share
+        dropped = rate * gear_drops_per_kill() * kills
         reach = dropped * worth_against_the_tier(tier)
-        print(f"  {tier:>4} | {dropped:>14,.0f} | {dropped / curve.CAMPAIGN_DUNGEONS:>12.1f} |"
-              f" {reach:>8.0f} of {gems_filled(tier):>2}")
-    print(f"\n  A dungeon is {floors:.1f} floors, so the shipped rate is about "
-          f"{loot.GEM_DROPS_PER_GEAR_DROP * gear_drops_per_kill() * curve.creatures_per_floor():.2f} gems a floor.")
-    print("\n  Gem Drops by enemy rarity (the sheet's column):")
+        print(f"  {tier:>4} | {share:>17.4f} | {rate:>16.6f} | {rate / needed_share(tier):>13.2f} | {dropped:>14,.0f} |"
+              f" {dropped / curve.CAMPAIGN_DUNGEONS:>12.1f} | {reach:>8.0f} of {gems_filled(tier):>2}")
+    print(f"\n  A dungeon is {floors:.1f} floors, so tier 8's rate is about "
+          f"{loot.GEM_DROPS_PER_GEAR_DROP * gear_drops_per_kill() * curve.creatures_per_floor():.2f} gems a floor, and "
+          f"tier 1's {loot.GEM_DROPS_PER_GEAR_DROP * loot.gem_drop_share(1) * gear_drops_per_kill() * curve.creatures_per_floor():.3f}.")
+    print("\n  Gem Drops by enemy rarity (the sheet's column, tier 8's):")
     for rarity, gems in loot.ENEMY_GEM_DROPS.items():
         print(f"    {rarity:<15} {gems}")
 

@@ -124,6 +124,20 @@ namespace CataclysmFervourTest
 				Current);
 		}
 
+		/**
+		 * An energy shield holding `Current` of `Maximum`. Issue #2873. The
+		 * maximum first, so the clamp on the current value reads the new one.
+		 */
+		void SetEnergyShield(float Current, float Maximum) const
+		{
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), Maximum);
+			AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Current);
+		}
+
+		float EnergyShield() const { return Vitals->GetEnergyShield(); }
+
 		float Fervour() const { return Resource->GetClassResource(); }
 
 		TObjectPtr<AActor> Actor = nullptr;
@@ -571,6 +585,222 @@ CATACLYSM_TEST(FCataclysmFervourFromARealHitTest,
 					  TEXT("a blow of %.1f on 10000 health granted %.2f Fervour"),
 					  Dealt, Expected),
 				  Defender.Fervour(), Expected, 0.01f);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Damage the energy shield takes counts as health lost. Issue #2873.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmFervourFromAShieldOnlyBlowTest,
+	"Cataclysm.Fervour.ABlowTheEnergyShieldTakesWholeFillsTheBar")
+{
+	// THE OWNER, 2026-11-24: "the massochist doesn't gain fervour with damage to
+	// energy shield, and it should." The coordinating session's ruling of the same
+	// day: the shield's share counts exactly as health lost, at the one rate per
+	// 1% of maximum HEALTH. So a blow the shield takes whole, on a character with
+	// 10000 health, is worth its size over 10000, times 100, times the rate of 1.
+	//
+	// THROUGH A REAL BLOW, for the reason `ARealBlowLandingFillsTheBar` gives: the
+	// call that connects a blow to Fervour is one line in
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, and calling
+	// `GainFromDamage` directly would pass with that line wrong. Until issue
+	// #2873 that line sat inside the block that writes health, which a blow the
+	// shield takes whole never enters, so this read nothing.
+	using namespace CataclysmFervourTest;
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	{
+		const FScopedCharacter Attacker(World);
+		const FScopedCharacter Defender(World);
+		const FScopedCharacter NoGenerator(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 500.0f);
+
+		// A SHIELD FAR LARGER THAN THE BLOW, so it takes all of it and health
+		// takes nothing. The same for the control, which has no generator.
+		Defender.SetHealth(10'000.0f, 10'000.0f);
+		Defender.SetEnergyShield(10'000.0f, 10'000.0f);
+		Defender.GiveTheMasochistGenerator();
+		Defender.SetFervour(0.0f);
+		NoGenerator.SetHealth(10'000.0f, 10'000.0f);
+		NoGenerator.SetEnergyShield(10'000.0f, 10'000.0f);
+
+		// THE CONTROL FIRST: the same blow on the same shield fills nothing for a
+		// character with no generator, so the figure below is the generator's.
+		FCataclysmDamageResult OnTheControl;
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, NoGenerator.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery(), &OnTheControl);
+		if (!TestTrue(FString::Printf(TEXT("set-up: the control's shield took the blow (%.1f)"),
+									  OnTheControl.AbsorbedByShield),
+					  OnTheControl.AbsorbedByShield > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("a character with no generator gains nothing from its shield being struck"),
+				  NoGenerator.Fervour(), 0.0f);
+
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery(), &Resolved);
+
+		// READ OFF WHAT THE BLOW REALLY DID, and refused unless the shield took
+		// all of it: a blow that reached health would be the old rule's case.
+		if (!TestTrue(FString::Printf(TEXT("set-up: the shield took the whole blow (%.1f) and health "
+										   "none of it (%.1f)"),
+									  Resolved.AbsorbedByShield, Resolved.DealtToHealth),
+					  Resolved.AbsorbedByShield > 0.0f && Resolved.DealtToHealth <= 0.0f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("set-up: health did not move"), Defender.Vitals->GetHealth(), 10'000.0f, 0.001f);
+		TestEqual(TEXT("set-up: the shield lost what the blow says it absorbed"),
+				  Defender.EnergyShield(), 10'000.0f - Resolved.AbsorbedByShield, 0.01f);
+
+		const float Expected = Resolved.AbsorbedByShield / 10'000.0f * 100.0f;
+		TestEqual(FString::Printf(
+					  TEXT("a blow of %.1f the shield took whole, on 10000 health, granted %.2f Fervour, as "
+						   "the same loss of health would"),
+					  Resolved.AbsorbedByShield, Expected),
+				  Defender.Fervour(), Expected, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmFervourFromAShieldAndHealthBlowTest,
+	"Cataclysm.Fervour.ABlowSplitBetweenTheShieldAndHealthCountsBothHalves")
+{
+	// THE SAME RULING, FOR A BLOW THE SHIELD STOPS ONLY PART OF. The shield's
+	// share and health's share are added, and the one rate is read for the sum,
+	// so the blow is worth what it would be worth with no shield at all.
+	using namespace CataclysmFervourTest;
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	{
+		const FScopedCharacter Attacker(World);
+		const FScopedCharacter Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 500.0f);
+
+		// A SHIELD OF 100 AGAINST A BLOW OF ABOUT 500, so both pools take part.
+		Defender.SetHealth(10'000.0f, 10'000.0f);
+		Defender.SetEnergyShield(100.0f, 100.0f);
+		Defender.GiveTheMasochistGenerator();
+		Defender.SetFervour(0.0f);
+
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(
+			Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
+			FGameplayTagContainer(), FCataclysmHitDelivery(), &Resolved);
+		if (!TestTrue(FString::Printf(TEXT("set-up: the shield took part of the blow (%.1f) and health "
+										   "the rest (%.1f)"),
+									  Resolved.AbsorbedByShield, Resolved.DealtToHealth),
+					  Resolved.AbsorbedByShield > 0.0f && Resolved.DealtToHealth > 0.0f))
+		{
+			return false;
+		}
+
+		const float FromHealthAlone = Resolved.DealtToHealth / 10'000.0f * 100.0f;
+		const float Expected =
+			(Resolved.AbsorbedByShield + Resolved.DealtToHealth) / 10'000.0f * 100.0f;
+		TestEqual(FString::Printf(
+					  TEXT("%.1f to the shield and %.1f to health, on 10000 health, granted %.2f Fervour, "
+						   "not the %.2f health alone is worth"),
+					  Resolved.AbsorbedByShield, Resolved.DealtToHealth, Expected, FromHealthAlone),
+				  Defender.Fervour(), Expected, 0.01f);
+	}
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmFervourShieldRechargeTest,
+	"Cataclysm.Fervour.TheEnergyShieldRechargingRemovesNoFervour")
+{
+	// THE SECOND HALF OF THE RULING OF 2026-11-24: the energy shield recharging
+	// does NOT remove Fervour; only health coming back does, as before. Issue
+	// #2873. The recharge is automatic, and removing Fervour for it would empty
+	// the bar after every fight.
+	//
+	// THROUGH THE REAL REGENERATION STEP, `UCataclysmRegeneration::ApplyStep`,
+	// which is what refills the shield in play. AND A CONTROL THROUGH THE SAME
+	// STEP that does move Fervour, health regenerating, so the unchanged figure
+	// is that step's answer about the shield rather than a step that does nothing.
+	using namespace CataclysmFervourTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	{
+		const FScopedCharacter Character(World);
+		Character.GiveTheMasochistGenerator();
+
+		// FULL HEALTH WITH NO HEALTH REGENERATION, so nothing in the step but the
+		// shield can move anything. A shield of 100 at nothing, refilling 100 a
+		// second.
+		Character.SetHealth(500.0f, 500.0f);
+		Character.SetEnergyShield(0.0f, 100.0f);
+		Character.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldRegenAttribute(), 100.0f);
+		Character.SetFervour(50.0f);
+
+		UCataclysmRegeneration::ApplyStep(Character.Actor, /*SecondsInStep=*/0.5f,
+										  /*SecondsSinceLastDamage=*/100.0f);
+		if (!TestTrue(FString::Printf(TEXT("set-up: the step recharged the shield (%.1f of 100)"),
+									  Character.EnergyShield()),
+					  Character.EnergyShield() > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("and the shield recharging removed no Fervour"), Character.Fervour(), 50.0f, 0.001f);
+
+		// AND SHIELD LEECH, THE OTHER WAY A SHIELD COMES BACK, through the
+		// function both use, with leech's tag: "only healing health does".
+		FGameplayTagContainer Leech;
+		Leech.AddTag(UCataclysmFervour::LeechTag());
+		const float ShieldBeforeLeech = Character.EnergyShield();
+		UCataclysmRegeneration::TopUp(*Character.AbilitySystem, Vital::GetEnergyShieldAttribute(),
+									  Vital::GetMaxEnergyShieldAttribute(), 20.0f, Leech);
+		if (!TestTrue(FString::Printf(TEXT("set-up: leech restored shield (%.1f to %.1f)"),
+									  ShieldBeforeLeech, Character.EnergyShield()),
+					  Character.EnergyShield() > ShieldBeforeLeech))
+		{
+			return false;
+		}
+		TestEqual(TEXT("and shield restored by leech removed no Fervour either"), Character.Fervour(), 50.0f,
+				  0.001f);
+
+		// THE CONTROL: the same step with health below its maximum and
+		// regenerating does remove Fervour, so the step is one that can.
+		Character.SetHealth(400.0f, 500.0f);
+		Character.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldRegenAttribute(), 0.0f);
+		Character.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthRegenAttribute(), 100.0f);
+		UCataclysmRegeneration::ApplyStep(Character.Actor, 0.5f, 100.0f);
+		TestTrue(FString::Printf(TEXT("control: health regenerating through the same step removed Fervour "
+									  "(health %.1f, Fervour %.2f)"),
+								 Character.Vitals->GetHealth(), Character.Fervour()),
+				 Character.Vitals->GetHealth() > 400.0f && Character.Fervour() < 50.0f);
 	}
 	return true;
 }

@@ -135,9 +135,12 @@ public:
 
 	/**
 	 * What hovering the status line says of the score: the tier range it falls in (design section XII, from
-	 * `UCataclysmPowerScore::TierAnchors`), then each of the four terms, rounded to a whole number. "Power Score 4,745,
-	 * in tier 7's range of 4,058 to 5,120." -- or "above tier 8's range, which ends at 6,327." -- then "From level:
-	 * 633", "From gear: 2,950", "From gems: 1,000", "From resistances: 162". Issue #2824.
+	 * `UCataclysmPowerScore::TierAnchors`), then each of the four terms, rounded to a whole number, with its weight
+	 * beside it. "Power Score 4,745, in tier 7's range of 4,058 to 5,120." -- or "above tier 8's range, which ends at
+	 * 6,327." -- then "From level: 633 (10 a level)", "From gear: 2,950 (2 a rarity step of each piece, times 1 + its
+	 * gear level)", "From gems: 1,000 (5 a rarity step of each socketed gem)", "From resistances: 162 (1 a resistance
+	 * percent, up to 70)". Issue #2824; THE WEIGHTS SINCE ISSUE #2853, the owner's plain numbers of 2026-11-24, read
+	 * from `UCataclysmPowerScore`.
 	 */
 	static FString PowerScoreTooltip(const FCataclysmPowerBreakdown& Breakdown);
 
@@ -147,7 +150,7 @@ public:
 	 * IT is the coordinating session's judgement (2026-11-01), which the owner can change at the launch check: the sum
 	 * alone does not say how near the character is to being consumed.
 	 */
-	static FString WornResidueLine(float WornResidue, int32 DifficultyTier);
+	static FString WornResidueLine(float WornResidue, int32 DifficultyTier, float IgnoredShare = 0.0f);
 
 	/**
 	 * "Marked: crossed the Consumption Threshold" for a marked character, and nothing for one that is not. Issue #2688.

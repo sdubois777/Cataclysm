@@ -8,6 +8,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmEmpireTreeTestTables.h"
 
 /**
  * The empire upgrade tree's buying rules, over the real generated tables. Issue #2741, slice 1a.
@@ -40,12 +41,13 @@ namespace CataclysmEmpireTreeTestNodes
 	const FName Pacing(TEXT("basic_00000029"));					// a root, 10 points
 	const FName FleetFooted(TEXT("keystone_0000002b"));			// <- Pacing full
 
-	// Artisan. (Coinage was the Treasury root used here until gold existed: issue #2741 slice 6 builds it.)
-	const FName RoughDraft(TEXT("basic_arts_t1d"));			// a root; waits on crafting
+	// Treasury. (Coinage was the Treasury root used here until gold existed: issue #2741 slice 6 builds it. Rough Draft,
+	// an Artisan root, was used after it until #2741's crafting slice C4 built it, 2026-11-25.)
+	const FName MerchantGuild(TEXT("basic_tres_t1e"));		// <- Coinage at 2; waits on a market
 
 	// The centre.
 	const FName Foundations(TEXT("capstone_0000000m"));			// 25: Aegis of Hope, The Delver, The Hoarder
-	const FName EdictsOfPower(TEXT("capstone_0000000n"));		// 50: option 3, The Soul Forge, waits on crafting
+	const FName EdictsOfPower(TEXT("capstone_0000000n"));		// 50: option 3, The Soul Forge, built in #47 slice F6
 	const FName ImperialZenith(TEXT("capstone_0000000p"));		// 200: option 1, Imperial Prowess, built in slice 8
 
 	/**
@@ -212,11 +214,11 @@ bool FCataclysmEmpireTreeWaitsOnTest::RunTest(const FString& Parameters)
 	FCataclysmPassiveAllocation Allocation;
 	double Bank = 50.0;
 	FString Reason;
-	TestFalse(TEXT("Rough Draft, a root with a full bank, is refused"),
-			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, RoughDraft, Bank, Reason));
-	TestEqual(TEXT("and the refusal names crafting and its issue"), Reason,
-			  FString(TEXT("Rough Draft cannot be bought yet: it needs crafting, which the game does not have yet "
-						   "(issue #47).")));
+	// THE SYSTEM IS ASKED BEFORE ANYTHING ELSE, so Merchant Guild's shut edge (Coinage at 2) is not what refuses it.
+	TestFalse(TEXT("Merchant Guild, with a full bank, is refused"),
+			  UCataclysmEmpireTree::Spend(Nodes, Edges, Allocation, MerchantGuild, Bank, Reason));
+	TestEqual(TEXT("and the refusal names the market"), Reason,
+			  FString(TEXT("Merchant Guild cannot be bought yet: it needs a market, which the game does not have.")));
 	TestEqual(TEXT("the bank is untouched"), Bank, 50.0);
 	TestEqual(TEXT("nothing is spent"), Allocation.Total(), 0);
 
@@ -389,9 +391,15 @@ bool FCataclysmEmpireTreeOptionWaitsTest::RunTest(const FString& Parameters)
 	FillBranch(Nodes, Allocation, TEXT("Architect"), 200);
 	TestEqual(TEXT("200 points are spent"), Allocation.Total(), 200);
 
+	// NO OPTION OF THE GENERATED TABLE WAITS SINCE #47 SLICE F6, so the refusal is shown on a copy in which The Soul
+	// Forge waits on crafting as it did (`CataclysmEmpireTreeTestTables::WithAnOptionWaiting`).
+	const UDataTable* Waiting = CataclysmEmpireTreeTestTables::WithAnOptionWaiting(
+		Nodes, EdictsOfPower, 3, CataclysmEmpireTreeTestTables::CraftingReason());
+	TestTrue(TEXT("CONTROL: in the generated table The Soul Forge can be chosen, since #47 slice F6"),
+			 UCataclysmEmpireTree::RefusalForChoosingOption(Nodes, Allocation, EdictsOfPower, 3).IsEmpty());
 	FString Reason;
-	TestFalse(TEXT("The Soul Forge, Edicts of Power's third, cannot be chosen"),
-			  UCataclysmEmpireTree::ChooseOption(Nodes, Allocation, EdictsOfPower, 3, Reason));
+	TestFalse(TEXT("The Soul Forge, Edicts of Power's third, cannot be chosen while it waits"),
+			  UCataclysmEmpireTree::ChooseOption(Waiting, Allocation, EdictsOfPower, 3, Reason));
 	TestEqual(TEXT("and the refusal names crafting"), Reason,
 			  FString(TEXT("The Soul Forge cannot be chosen yet: it needs crafting, which the game does not have yet "
 						   "(issue #47).")));

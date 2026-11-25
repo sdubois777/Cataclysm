@@ -149,6 +149,15 @@ int32 UCataclysmSkillBar::BoxUnder(const FVector2D& Point, int32 Count, float Vi
 	return INDEX_NONE;
 }
 
+const TCHAR* UCataclysmSkillBar::OpenScreenHint = TEXT("K: skills");
+
+ECataclysmAbilitySlot UCataclysmSkillBar::KeyUnder(const TArray<FCataclysmSkillBarSlot>& Slots, const FVector2D& Point,
+												   float ViewportWidth, float ViewportHeight)
+{
+	const int32 Box = BoxUnder(Point, Slots.Num(), ViewportWidth, ViewportHeight);
+	return Slots.IsValidIndex(Box) ? Slots[Box].Slot : ECataclysmAbilitySlot::None;
+}
+
 TArray<FString> UCataclysmSkillBar::PopupLinesFor(const FCataclysmSkillBarSlot& Slot)
 {
 	TArray<FString> Lines;

@@ -9,13 +9,25 @@
 class UDataTable;
 
 /**
+ * What a class tree's node is drawn as, by its kind. Since 2026-11-24, for the class-tree sigils.
+ *
+ * AN ORDINARY NODE, A KEYSTONE AND A VOW (THE TREE FILES' "capstone") EACH HAVE THEIR OWN MARK, so the shape a tree is
+ * laid out in reads on screen: until then every node was the same 150 by 44 labelled box, and the boxes hid the shape
+ * the nodes made.
+ */
+enum class ECataclysmTreeMark : uint8
+{
+	Ordinary,
+	Keystone,
+	Vow,
+};
+
+/**
  * The rectangle a tree's nodes occupy, in the authoring tool's own coordinates.
  *
- * NOT IN PIXELS. The four class trees are laid out in
- * `C:\Projects\PassiveTreeCreator` on a canvas of its own, and those numbers
- * come through `game/Data/PassiveNodes.csv` untouched. The Masochist tree is
- * 3,600 units across and the Berserker one 1,622, so a tree has to be scaled to
- * fit a screen rather than drawn at its authored size.
+ * NOT IN PIXELS. The class trees are laid out in `C:\Projects\PassiveTreeCreator` on a canvas of its own, and those
+ * numbers come through `game/Data/PassiveNodes.csv` untouched. The trees span from about 1,600 to 2,600 units across,
+ * so a tree has to be scaled to fit a screen rather than drawn at its authored size.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmTreeExtent
@@ -50,9 +62,9 @@ struct CATACLYSM_API FCataclysmTreeExtent
  * stays uncovered.
  *
  * THE ONE THING SLATE CANNOT WORK OUT. A canvas panel places a child where it is
- * told and nothing more. Which point of a 3,600-unit-wide authored tree a
- * 2,400-pixel-wide panel should show, and where a node at (-2000, 1200) lands
- * once it is scaled and panned, is this class.
+ * told and nothing more. Which point of a 2,500-unit-wide authored tree a
+ * 2,400-pixel-wide panel should show, where a node at (-1000, 800) lands once it
+ * is scaled and panned, and how big its mark is, is this class.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmPassiveTreeLayout : public UBlueprintFunctionLibrary
@@ -78,18 +90,38 @@ public:
 	static constexpr float ZoomPerNotch = 1.15f;
 
 	/**
-	 * How wide and tall a node is drawn at a zoom of one, in pixels.
+	 * How wide and tall an EMPIRE TREE node is drawn at a zoom of one, in pixels, and how thick its edges are.
 	 *
-	 * A NODE HAS TO HOLD ITS OWN NAME, which is why it is this wide rather than
-	 * the 16 by 16 the authoring tool draws. `Retributive Instinct` and
-	 * `Iron Will, but For the Soul` are node names, and a tree of unlabelled
-	 * dots would say nothing about what any limb does.
+	 * THE EMPIRE TREE'S AND NO LONGER A CLASS TREE'S. A class tree drew every node as this labelled box until
+	 * 2026-11-24 and now draws marks (below); `UCataclysmEmpireTreeLayout` and `UCataclysmEmpireTreeWidget` still
+	 * read these, so they keep their values. An empire node holds its own name, which is why it is this wide.
 	 */
 	static constexpr float NodeWidthPx = 150.0f;
 	static constexpr float NodeHeightPx = 44.0f;
-
-	/** How thick an edge is drawn, in pixels at a zoom of one. */
 	static constexpr float EdgeThicknessPx = 3.0f;
+
+	/**
+	 * How big a class tree's mark is drawn at a zoom of one, in pixels, by kind. Since 2026-11-24.
+	 *
+	 * A KEYSTONE IS LARGER THAN AN ORDINARY NODE AND A VOW IS WIDER THAN IT IS TALL, so the three kinds read apart by
+	 * shape as well as size: a square, a larger square, and a wide bar. A mark holds at most its spent count ("2/3");
+	 * the node's name is drawn beside it on hover or selection (`NameCaption`).
+	 */
+	static constexpr float OrdinaryMarkPx = 28.0f;
+	static constexpr float KeystoneMarkPx = 48.0f;
+	static constexpr float VowMarkWidthPx = 72.0f;
+	static constexpr float VowMarkHeightPx = 40.0f;
+
+	/**
+	 * How thick a class tree's edge is drawn, in pixels at a zoom of one. Since 2026-11-24.
+	 *
+	 * THICK ENOUGH THAT A GAP READS AS A GAP. Two marks side by side with no line between them are not joined, and a
+	 * 3 px line at a fitted zoom of about 0.4 was a pixel; ten keeps a line visible at that zoom.
+	 */
+	static constexpr float MarkEdgeThicknessPx = 10.0f;
+
+	/** The gap between a mark's right edge and its name, in pixels. */
+	static constexpr float CaptionGapPx = 8.0f;
 
 	/**
 	 * Clear space left around a tree when the view is fitted to it.
@@ -99,30 +131,45 @@ public:
 	 */
 	static constexpr float FitMarginPx = 90.0f;
 
+	/** The mark a node of this kind is drawn as: "keystone" and "capstone" (a vow) by name, anything else ordinary. */
+	static ECataclysmTreeMark MarkFor(const FString& Kind);
+
+	/** How wide and tall a mark of this kind is at a zoom of one, in pixels. */
+	static FVector2D MarkSizePx(ECataclysmTreeMark Mark);
+
+	/** The mark size of one node of the table, by its kind. An ordinary mark's for a node the table does not have. */
+	static FVector2D MarkSizeForNode(const UDataTable* NodeTable, FName Node);
+
 	/**
-	 * The largest a node may be drawn without two of them overlapping.
+	 * The largest a tree's marks may be drawn without two of them overlapping. Since 2026-11-24, in place of the box
+	 * rule (`NodeScaleFor`) that shrank every node of a tree to the box its closest pair allowed.
 	 *
-	 * A NUMBER TO MULTIPLY `NodeWidthPx` AND `NodeHeightPx` BY, so the node
-	 * keeps its shape and only its size moves.
+	 * A NUMBER TO MULTIPLY EVERY MARK'S SIZE BY. Two marks miss each other when they are clear on either axis, so a pair
+	 * separated by `dx` and `dy` permits any scale up to `max(dx / ((wA + wB) / 2), dy / ((hA + hB) / 2))`, each mark's
+	 * own size counted, and the tree permits the smallest of those over every pair. Measured on 2026-11-24, every class
+	 * tree in `PassiveNodes.csv` and all nine sigil drafts permit 1: the marks are small enough that no tree crowds them.
+	 * The rule stays so a tree laid out closer is drawn smaller rather than overlapping.
 	 *
-	 * WHY IT IS DERIVED RATHER THAN CHOSEN. The four trees were laid out in
-	 * `C:\Projects\PassiveTreeCreator` with a spacing in mind, and it is not
-	 * the same spacing in each: measured on 2026-08-25, three of them allow a
-	 * node of about 160 by 47 units and the Bulwark tree allows only 74 by 22,
-	 * because two of its nodes sit 74 units apart. A single chosen size would
-	 * either overlap in that tree or waste most of the room in the other three.
-	 *
-	 * TWO BOXES MISS EACH OTHER WHEN THEY ARE CLEAR ON EITHER AXIS, so a pair
-	 * separated by `dx` and `dy` permits any scale up to
-	 * `max(dx / width, dy / height)`, and the tree permits the smallest of those
-	 * over every pair.
-	 *
-	 * CAPPED AT ONE. A node bigger than its designed size gains nothing: the
-	 * name inside it is already fully visible at one.
+	 * CAPPED AT ONE, AND A FLOOR OF 0.05 so two nodes on one point leave a mark that can still be clicked.
 	 *
 	 * @return 1 for a tree with fewer than two nodes, which cannot overlap
 	 */
-	static float NodeScaleFor(const UDataTable* NodeTable, const FString& Tree);
+	static float MarkScaleFor(const UDataTable* NodeTable, const FString& Tree);
+
+	/** What a mark says on itself: its spent count, "2/3", for a node holding points, and nothing for one holding none. */
+	static FString MarkCaption(int32 Points, int32 MaxPoints);
+
+	/** What is drawn beside a hovered or selected node: its name and its count, "Shield Mastery  2/3". */
+	static FString NameCaption(const FString& Name, int32 Points, int32 MaxPoints);
+
+	/**
+	 * Where a node's name is drawn: beside its mark's right edge, level with its centre.
+	 *
+	 * @param MarkCentre  the mark's centre on the panel
+	 * @param MarkSize    the mark's size on the panel, scale and zoom applied
+	 * @return the point the caption's left edge sits on, halfway up it
+	 */
+	static FVector2D NameCaptionPosition(FVector2D MarkCentre, FVector2D MarkSize);
 
 	/** The rectangle one tree's nodes occupy. `bAny` is false for a tree with
 	 *  no nodes, which has no centre and cannot be fitted to. */

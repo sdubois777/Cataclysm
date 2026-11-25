@@ -25,12 +25,17 @@
 #include "AbilitySystem/CataclysmSharedBuffs.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+// For the side a body's pass-through bit is read from. Issue #2861.
+#include "AbilitySystem/CataclysmTeams.h"
 // For Brute's Heart's taunt aura, which beats by itself below half health. Ruled 2026-10-18.
 #include "AbilitySystem/CataclysmTauntAura.h"
 // For Chronomancer's Time-Lock's temporal rift, which appears by itself. Ruled 2026-10-19.
 #include "AbilitySystem/CataclysmTimeLockRift.h"
 #include "Character/CataclysmEnemyModifiers.h"
+// For the capsule whose mask filter says which bodies pass through it. Issue #2861.
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/EngineTypes.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
@@ -77,6 +82,10 @@ void ACataclysmCharacterBase::WearBodyBeforeComponentsRegister(const TCHAR* Body
 void ACataclysmCharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// WHICH BODIES THIS ONE PASSES THROUGH, from the side its constructor gave it: the player's, and nought for a
+	// creature. Issue #2861. A summoned minion is given its side after this, and `SetGenericTeamId` writes it again.
+	RefreshPassThroughBody();
 
 	// A REPEATING TIMER RATHER THAN A TICK. This is the only per-frame work any
 	// of these characters would have and it does not need a frame. The base
@@ -516,6 +525,43 @@ UAbilitySystemComponent* ACataclysmCharacterBase::GetAbilitySystemComponent() co
 void ACataclysmCharacterBase::SetGenericTeamId(const FGenericTeamId& NewTeamId)
 {
 	TeamId = NewTeamId;
+
+	// AND THE BODY GOES WITH THE SIDE. Issue #2861: "A thrall changes sides when taken, so its collision must change
+	// with it." `UCataclysmCommand::Subjugate`, `ACataclysmMinion::Spawn` and a load's thrall all give a side through
+	// here, so none of them can leave a body on the side it came from.
+	RefreshPassThroughBody();
+}
+
+uint8 ACataclysmCharacterBase::PassThroughBodyMaskBit() const
+{
+	// ON THE PLAYER'S SIDE AND NOT A PLAYER: a summoned minion, a deployed gadget, a thrall. The player answers for
+	// itself, in `ACataclysmPlayerCharacter`.
+	return TeamId == UCataclysmTeams::IdFor(ECataclysmTeam::Players) ? CommandedBodyMaskBit : 0;
+}
+
+uint8 ACataclysmCharacterBase::MovesThroughMaskFor(uint8 OwnBit)
+{
+	// THE OTHER TWO AND NOT ITS OWN, so two commanded bodies still block each other, as they did before issue #2861.
+	return OwnBit != 0 ? static_cast<uint8>(PassThroughBodyMaskBits & ~OwnBit) : static_cast<uint8>(0);
+}
+
+void ACataclysmCharacterBase::RefreshPassThroughBody()
+{
+	// THE ENGINE HAS SIX BITS FOR THIS (`NumExtraFilterBits`), AND THREE ARE USED.
+	static_assert(PassThroughBodyMaskBits < (1 << NumExtraFilterBits),
+				  "A pass-through bit above the engine's extra filter bits would be cut off the physics filter.");
+
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!Capsule)
+	{
+		return;
+	}
+
+	// BOTH HALVES: what this body is when another moves into it, and what it moves through itself. A body whose bit is
+	// nought ignores nothing and is ignored by nothing, which is every creature.
+	const uint8 OwnBit = PassThroughBodyMaskBit();
+	Capsule->SetMaskFilterOnBodyInstance(OwnBit);
+	Capsule->SetMoveIgnoreMask(MovesThroughMaskFor(OwnBit));
 }
 
 FGenericTeamId ACataclysmCharacterBase::GetGenericTeamId() const

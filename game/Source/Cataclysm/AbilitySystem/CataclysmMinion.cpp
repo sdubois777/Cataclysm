@@ -358,6 +358,20 @@ const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
 	return Found;
 }
 
+int32 ACataclysmMinion::LevelOfSummonerFor(const AActor* Summoner)
+{
+	return LevelOfSummoner(Summoner);
+}
+
+void ACataclysmMinion::TypeFiguresAtLevel(const FCataclysmMinionTypeRow& Type, int32 Level, float& OutHealth,
+										  float& OutDamagePerHit)
+{
+	// THE SAME ARITHMETIC `Spawn` RAISES A MINION BY, so a thrall measured against an Imp is measured against the Imp
+	// `Spawn` makes. See `RaisedByLevel` for why it is `Base + PerLevel x Level`.
+	OutHealth = RaisedByLevel(Type.BaseHealth, Type.HealthPerLevel, Level);
+	OutDamagePerHit = RaisedByLevel(Type.BaseDamage, Type.DamagePerLevel, Level);
+}
+
 namespace
 {
 	/** A type row's comma-separated Tags column as tags, leaving out any name that is not a registered tag. */
@@ -1515,7 +1529,13 @@ void ACataclysmMinion::RefreshWalkSpeed()
 	// ITS SUMMONER'S PACE, OR ITS OWN WHEN THERE IS NO SUMMONER TO READ. `CommandedWalkSpeedCmPerSecond` answers nought
 	// for a summoner that is not a walking character, which no shipped summon has. Issue #2793.
 	const float Commanded = UCataclysmCommand::CommandedWalkSpeedCmPerSecond(this);
-	const float Wanted = Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond;
+	// AND FASTER WHILE AN AURA HOLDS THAT ON IT: War's Blood and Iron, "you and your allies within it ... move 15%
+	// faster", 2026-11-25. A minion has no slow to drop for its immunity: nothing slows a minion's walk.
+	const UCataclysmAbilitySystemComponent* Abilities =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this));
+	const float Raised =
+		1.0f + (Abilities ? Abilities->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) : 0.0f) / 100.0f;
+	const float Wanted = (Commanded > 0.0f ? Commanded : UncommandedWalkSpeedCmPerSecond) * Raised;
 
 	// ONLY ON A CHANGE, as a creature's walking speed is written: a state that changes rarely, not a value recomputed.
 	if (!FMath::IsNearlyEqual(Movement->MaxWalkSpeed, Wanted))

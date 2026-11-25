@@ -22,6 +22,7 @@
 
 const TCHAR* UCataclysmSkillAssignmentWidget::BasicAttackLine = TEXT("Basic attack: from the weapon");
 const TCHAR* UCataclysmSkillAssignmentWidget::NoSlotSelectedRefusal = TEXT("Click a slot first, then a skill.");
+const TCHAR* UCataclysmSkillAssignmentWidget::NotBuiltYetMark = TEXT(", not built yet");
 const TCHAR* UCataclysmSkillAssignmentWidget::ClearLabelText = TEXT("Clear the slot");
 
 namespace
@@ -373,6 +374,12 @@ void UCataclysmSkillAssignmentWidget::DescribePoolButton(UCataclysmChoiceButton&
 	if (Holder && UCataclysmWeaponSkills::DesignedSlotOf(Skill) != ECataclysmAbilitySlot::BasicAttack)
 	{
 		Label += FString::Printf(TEXT(", level %d"), Holder->SkillLevelOf(Skill.RowName));
+	}
+	// AND "NOT BUILT YET" ON A SKILL THAT DOES NOTHING WHEN PRESSED (issue #837 slice 2, the owner's Q2 of 2026-11-24):
+	// it stays in the pool and can still be chosen, and the player can see before choosing it that it does nothing.
+	if (!UCataclysmWeaponSkills::IsBuilt(Skill))
+	{
+		Label += NotBuiltYetMark;
 	}
 	Button.SetChoice(Skill.RowName, FText::FromString(Label),
 					 /*bInChosen=*/OnKey != ECataclysmAbilitySlot::None, /*bInAvailable=*/true);

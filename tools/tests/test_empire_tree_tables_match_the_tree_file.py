@@ -276,9 +276,13 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_seven_slices_that_make_it_act() -> None:
-    # AND ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 2848}
+def test_a_built_node_names_one_of_the_thirteen_slices_or_the_dismantling_issue_that_make_it_act() -> None:
+    # 10 IS #47 SLICE F6's: The Soul Forge and The Master Tinkerer, the forge's two options (2026-11-22). 11 IS #47 SLICE
+    # F6a's: the five forge gold nodes (2026-11-24). 12 IS #47 SLICE F6b's: the three forge material nodes (2026-11-25). 13
+    # IS #2741's CRAFTING SLICES C1 AND C2: a forge craft's residue and days (2026-11-25). 14 IS ITS SLICES C3 AND C4: a
+    # forge craft's affixes (2026-11-25). 15 IS ITS SLICE C6: Ancient Techniques and Residue Protocols (2026-11-25). AND
+    # ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 2848}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -299,7 +303,28 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     growth rate, Scout Parties' 8 on bonus dungeons, Bribery's 1 and Economic
     Bailout's 1 on a fee figure, and Reinvestment's 1 on a cap figure. Issue
     #2848's slice S2 (2026-11-22) built 11 of crafting's: Salvage Protocol's 10
-    and Disassembly Expert's 1, which waited on dismantling."""
+    and Disassembly Expert's 1, which waited on dismantling. #47 slice F6a
+    (2026-11-24) built 25 more of crafting's, the forge's gold: Workshop
+    Upgrades' 8, Apprentice Oversight's 1, Forge Upgrades' 5, Architectural
+    Synergy's 10 and Treasury Synergy's 1. #47 slice F6b (2026-11-25) built 31
+    more, the forge's materials: Material Conservation's 10, Resource
+    Management's 20 and Tempting Fate's 1. #2741's crafting slices C1 and C2
+    (2026-11-25) built 50 more, a forge craft's residue and days: Tool
+    Maintenance's 8, Limited Knowledge's 10, Heat Shielding's 5, Stable
+    Compounds' 10, Master's Touch's 1, Master Craftsman's 10, Industrial
+    Speed's 5 and Sovereign's Assembly's 1. Its slices C3 and C4 (2026-11-25)
+    built 58 more, a forge craft's affixes: Precision Crafting's 15, Master's
+    Workshop's 15, Quality Materials' 10, Apprentice Smith's 10 and Rough
+    Draft's 8. The 103 of crafting's that still wait were split the same day
+    (G4) by what each waits on: a crafting station's 11, a double craft's 10,
+    an Exalted item's 35, an item tier's 10, the owner's question's 36 and
+    residue held over between crafts' 1. The rulings on the owner's questions,
+    made by the coordinating session the same day under the owner's
+    delegation, moved Refining Techniques' 15 to an item tier, Ancient
+    Techniques' and Residue Protocols' 20 to a later slice of #2741, and The
+    Alchemist's Transmutation's 1 to the mark a crafted affix needs. Its slice
+    C6 (2026-11-25) built those 20: Ancient Techniques' 10 and Residue
+    Protocols' 10."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -315,16 +340,19 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
 
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
-        "slice 7": 17, "slice 9": 21, "slice 2848": 11,
+        "slice 7": 17, "slice 9": 21, "slice 2848": 11, "slice 11": 25, "slice 12": 31, "slice 13": 50,
+        "slice 14": 58, "slice 15": 20,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "crafting": 267, "loot chest": 8,
+        "crafting station": 11, "double craft": 10, "exalted item": 35, "item tier": 25,
+        "crafted-affix mark": 1, "held-over residue": 1, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
     assert sum(points[f"slice {n}"] for n in (3, 4, 5, 6, 7, 9)) == 881
-    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it.
+    # Imperial Prowess waited on a ruling until the project owner's of 2026-11-21; slice 8 builds it. The Soul Forge and
+    # The Master Tinkerer waited on crafting until #47 slice F6 (2026-11-22), numbered 10.
     assert dict(options) == {"slice 3": 3, "slice 4": 4, "slice 5": 1,
-                             "crafting": 2, "slice 6": 1, "slice 8": 1}
+                             "slice 10": 2, "slice 6": 1, "slice 8": 1}
 
 
 @pytest.mark.parametrize("name, slice_", [
@@ -353,6 +381,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier".
     ("Imperial Prowess", 8),
+    # #47 slice F6a: the owner's ruling 2 of 2026-11-18 left Architectural Synergy's cap to the building session, and
+    # the owner chose 30% on 2026-11-22 (Q4); it is built with the forge's gold.
+    ("Architectural Synergy", 11),
 ])
 def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
     assert gen.EMPIRE_TREE_BUILT.get(name) == slice_
@@ -360,8 +391,7 @@ def test_a_ruled_node_is_built_in_its_slice(name, slice_) -> None:
 
 @pytest.mark.parametrize("name, system", [
     ("Scorched Earth", "destroy upgrade"),    # Q6
-    ("Explorer Synergy", "crafting"),         # Q8: its cap waits on crafting
-    ("Architectural Synergy", "crafting"),
+    ("Explorer Synergy", "double craft"),     # Q8: its cap waits on crafting; G4 (2026-11-25): on a double craft
     ("Field Depot I", "stash"),               # Q4
     ("Field Depot II", "stash"),
     ("Field Depot III", "stash"),

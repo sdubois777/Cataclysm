@@ -11,6 +11,37 @@ class ACataclysmCharacterBase;
 class ACataclysmMinion;
 
 /**
+ * Why `UCataclysmCommand::Subjugate` would refuse to take a creature, one value for each reason it can refuse, in the
+ * order it asks them. Issue #2856.
+ *
+ * ONE LIST, SO THE REFUSAL AND ITS LOG LINE CANNOT PART COMPANY. The line in `UCataclysmSummonSkill::Possess` used to
+ * name three of the six reasons by asking them again for itself, so a creature the blow had killed printed "boss no,
+ * cannot be hurt no, already on its side no" and its real reason nowhere. Now `Subjugate` refuses by
+ * `UCataclysmCommand::WhySubjugateRefuses` and the line prints that answer and every reason on this list.
+ *
+ * NOT A UENUM, because nothing outside C++ reads it.
+ */
+enum class ECataclysmSubjugateRefusal : uint8
+{
+	/** Nothing refuses: the creature can be taken. */
+	None,
+	/** No commander, no creature, or the commander asked to take itself. */
+	NothingToTake,
+	/** An actor that is not a character: ground, a projectile, terrain. */
+	NotACharacter,
+	/** Dead already: the blow killed it, or something before the blow did. */
+	Dead,
+	/** A boss, by its rarity: "Bosses cannot be taken". */
+	Boss,
+	/** A creature that cannot be hurt: The Reaper. */
+	CannotBeHurt,
+	/** On the commander's side already. */
+	AlreadyOnItsSide,
+	/** Not a reason: one past the last, so a walk over every reason ends here. */
+	Count
+};
+
+/**
  * What a character commands, what it is ordered to attack, and taking an enemy
  * into that command.
  *
@@ -127,6 +158,29 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
 	static AActor* CommanderOf(const AActor* Follower);
+
+	/**
+	 * Who stands at the top of this creature's chain of command: its commander, that commander's commander, and so on,
+	 * up to the one that answers to nobody. Issue #2867.
+	 *
+	 * NULL FOR A CREATURE THAT ANSWERS TO NOBODY, AND FOR ONE WHOSE CHAIN REACHES A COMMANDER THAT NO LONGER EXISTS.
+	 * The second is a taken Gatekeeper's Imps once the Gatekeeper is gone: their owner is the destroyed Gatekeeper until
+	 * the engine clears it (`UWorld::DestroyActor` clears the destroyed actor's own owner and not its children's), and
+	 * they stay on its commander's side, ruled for issue #2791. A caller that needs to tell those two apart asks the
+	 * creature's side.
+	 *
+	 * WHY A CHAIN AT ALL. A thrall's own abilities can make creatures, and Call the Damned does: a taken Gatekeeper's
+	 * Imps follow the Gatekeeper, not the player (issue #2791), so `CommanderOf` answers the Gatekeeper and the player is
+	 * one step further up.
+	 *
+	 * AT MOST `MostLinksOfCommand` STEPS, and null past them, so a chain that loops cannot hang the frame. None loops
+	 * today: only `Subjugate`, a summoning and a taken Gatekeeper's Call the Damned name a commander, and none of the
+	 * three takes or makes its own commander.
+	 */
+	static AActor* TopCommanderOf(const AActor* Follower);
+
+	/** How many steps `TopCommanderOf` climbs. A thrall's Imp is two from the player; eight is room to spare. */
+	static constexpr int32 MostLinksOfCommand = 8;
 
 	/**
 	 * How fast a commanded creature walks, in centimetres a second: its commander's walking speed now, times
@@ -332,6 +386,64 @@ public:
 										float PerThrall);
 
 	/**
+	 * What this commander may release to make room for a thrall, oldest first: every minion and thrall it commands,
+	 * and no deployable machine. Issue #2856, the owner's ruling of 2026-11-24 for a take the pool has no room for,
+	 * "Replace the oldest": "the oldest minion (an Imp or thrall) is released to make room, and the take happens".
+	 *
+	 * OLDEST BY `ACataclysmCharacterBase::CommandedSinceSeconds`, when it was summoned or taken, whichever kind it is;
+	 * one never stamped counts as the newest, as A Second Self counts it. A tie goes to the nearer, since
+	 * `ThingsCommandedBy` answers nearest first and the sort keeps that order.
+	 *
+	 * NOT A MACHINE, A JUDGEMENT: the ruling names an Imp or a thrall, and a turret, a ballista or a trap is placed
+	 * where it stands for a fight; A Second Self chooses among the same followers (`ACataclysmMinion::bIsMachine`).
+	 */
+	static TArray<ACataclysmCharacterBase*> ReleasableOldestFirst(const AActor* Commander);
+
+	/**
+	 * What a thrall's stated Fervour reserve is multiplied by for the rarity of the creature taken. The owner's ruling of
+	 * 2026-11-24, "Reserve grows with rarity (Recommended)": "A thrall's Fervour reserve rises with its rarity, e.g.
+	 * Common 30, Elite 45, Legendary 60, Herald 90. A Herald thrall takes most of your pool, so it is a choice between
+	 * one monster and an army. Exact figures set by the builder."
+	 *
+	 * COMMON 1, ELITE 1.5, LEGENDARY 2, HERALD 3, A JUDGEMENT THAT KEEPS THE RULING'S EXAMPLE. Subjugate's row states a
+	 * Common's 30, so these give 30, 45, 60 and 90, and a Herald holds back 60% of the Ritualist's 150. Each rung costs
+	 * less than it is worth: by the rarity table a rung multiplies health by 1.85 and damage by 1.4, so an Elite is
+	 * about 1.6 Commons, a Legendary 2.6 and a Herald 4.2 (the square root of the two multiples, health times damage),
+	 * against 1.5, 2 and 3 here; taking a rarer creature stays worth its cost, and the pool still bounds it. Read in
+	 * `CataclysmCommand.cpp` and `docs/DECISIONS.md`.
+	 *
+	 * A BOSS CANNOT BE TAKEN, so its rungs are never asked; they answer the Herald's figure rather than invent one.
+	 * ONE for anything that is not a creature of the enemy class, which has no rung.
+	 */
+	static float ThrallReserveScaleFor(const AActor* Taken);
+
+	/**
+	 * Whether a thrall reserving `PerThrall` fits now, or would fit once every follower `ReleasableOldestFirst` names
+	 * were released. Issue #2856. What `UCataclysmSummonSkill::Possess` asks before its blow, to know whether the
+	 * target is one it could take.
+	 *
+	 * WHAT STAYS IS THE MACHINES, which A Second Self never chooses, so with every releasable follower gone nothing is
+	 * chosen and the new thrall would be, counting twice while the passive is held, as `HasRoomForAnotherThrall` counts
+	 * it. When even that does not fit, nothing is released for a take that could not happen.
+	 */
+	static bool RoomCanBeMadeForAThrall(const AActor* Commander, float PerThrall);
+
+	/**
+	 * Release this commander's followers, oldest first, until a thrall reserving `PerThrall` fits. Issue #2856,
+	 * "Replace the oldest". Answers how many were released: none when there is room already, or when
+	 * `RoomCanBeMadeForAThrall` says none can be made.
+	 *
+	 * RELEASED MEANS GONE, A JUDGEMENT: the follower leaves the world as it does when its commander leaves the dungeon
+	 * (`ACataclysmDungeonGameMode::EndEveryPlayersFollowers`) or a summoned minion's time runs out. It does not die, so
+	 * nothing a death sets off answers it -- no explosion, no replacement, no Fervour for losing a minion, no soul, no
+	 * loot -- and it does not turn back into an enemy beside the player. Each release is logged at `Log`, "RELEASED:".
+	 *
+	 * ONE AT A TIME, ASKING `HasRoomForAnotherThrall` AFTER EACH, so A Second Self's double count, which moves to the
+	 * next oldest when the oldest goes, is counted as that function counts it.
+	 */
+	static int32 ReleaseOldestForAThrall(const AActor* Commander, float PerThrall);
+
+	/**
 	 * The Fervour everything this character commands holds back from its pool.
 	 * Issues #1160 and #1934.
 	 *
@@ -524,14 +636,57 @@ public:
 	 * shape as the stun's boss immunity and read off the same rarity. SO IS A CREATURE
 	 * THAT CANNOT BE HURT, The Reaper, by ruling: see `bCannotBeHurt`.
 	 *
+	 * EVERY REFUSAL IS `WhySubjugateRefuses`'S, since issue #2856, so the line that
+	 * reports a refusal reads the same answer this acted on.
+	 *
 	 * IT DOES NOT CHECK THE HEALTH THRESHOLD OR THE RESERVE. Those belong to the
 	 * skill: `HealthThresholdPercent` is a number on one row and the reserve is
 	 * paid out of the caster's own pool, and neither is a fact about the creature
 	 * being taken.
 	 *
-	 * @return whether the enemy was taken. False for anything already on the
-	 *         commander's side, for a boss, and for anything dead
+	 * @return whether the enemy was taken. False whenever `WhySubjugateRefuses`
+	 *         names a reason: anything already on the commander's side, a boss,
+	 *         a creature that cannot be hurt, and anything dead
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Command")
 	static bool Subjugate(AActor* Commander, AActor* Enemy);
+
+	/**
+	 * The first reason `Subjugate` would refuse to take `Enemy` for `Commander`, in the order of
+	 * `ECataclysmSubjugateRefusal`, or `None` when it would take it. Issue #2856.
+	 *
+	 * WHAT `Subjugate` ITSELF REFUSES BY, and what `UCataclysmSummonSkill::Possess` asks BEFORE its blow as well as
+	 * after: a target nothing here refuses, with room in the pool, is one the blow must not kill. The owner's ruling of
+	 * 2026-11-22: "ok, well it should still take them even if it would kill".
+	 */
+	static ECataclysmSubjugateRefusal WhySubjugateRefuses(const AActor* Commander, const AActor* Enemy);
+
+	/**
+	 * Whether this one reason holds for this pair, asked on its own: the answer for one reason does not depend on
+	 * whether an earlier one holds. False for `None` and `Count`. Issue #2856.
+	 */
+	static bool SubjugateRefusalHolds(ECataclysmSubjugateRefusal Reason, const AActor* Commander,
+									  const AActor* Enemy);
+
+	/** A reason in a few words, as the play log prints it: "dead", "boss", "already on its side". Issue #2856. */
+	static const TCHAR* SubjugateRefusalName(ECataclysmSubjugateRefusal Reason);
+
+	/**
+	 * Every reason `Subjugate` can refuse, each with "yes" or "no" for this pair, in order:
+	 * "nothing to take no, not a character no, dead yes, boss no, cannot be hurt no, already on its side no". Issue
+	 * #2856.
+	 *
+	 * WHAT THE PLAY LOG PRINTS WHEN A TAKE IS REFUSED, so a refusal always shows a "yes": `Subjugate` refuses only when
+	 * `WhySubjugateRefuses` names one of these, and each is asked here by the same `SubjugateRefusalHolds`.
+	 */
+	static FString SubjugateRefusalsText(const AActor* Commander, const AActor* Enemy);
+
+	/**
+	 * Whether a blow may not kill this creature now, because Subjugate is taking it: its
+	 * `ACataclysmCharacterBase::bHeldAliveForATake`. False for anything that is not a character. Issue #2856.
+	 *
+	 * ASKED BY `UCataclysmVitalAttributeSet` BESIDE A FRIENDLY UNHOLY SIGIL'S HOLD, and held the same way: a write that
+	 * would take health to nothing leaves one point, so the blow is never the creature's death.
+	 */
+	static bool IsHeldAliveForATake(const AActor* Creature);
 };

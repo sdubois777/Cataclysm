@@ -17,6 +17,9 @@
 #include "Character/CataclysmEnemyCharacter.h"
 // A creature taken leaves the floor's list of enemies. Issue #2797.
 #include "Dungeon/CataclysmDungeonGameMode.h"
+// A thrall's figures are built from its kind and its commander's level at the take. Issue #2868.
+#include "Character/CataclysmEnemyRarity.h"
+#include "Dungeon/CataclysmEnemyStrength.h"
 // The line of sight `ThingsCommandedInSightOf` traces. Issue #2792.
 #include "CollisionQueryParams.h"
 #include "Engine/World.h"
@@ -289,6 +292,33 @@ AActor* UCataclysmCommand::CommanderOf(const AActor* Follower)
 	}
 
 	return Owner;
+}
+
+AActor* UCataclysmCommand::TopCommanderOf(const AActor* Follower)
+{
+	// UP THE CHAIN ONE `CommanderOf` AT A TIME, the question every other reader of command asks, so a thrall's owner and
+	// a minion's summoner are each one step and nothing new decides who commands whom.
+	AActor* Top = nullptr;
+	const AActor* At = Follower;
+	for (int32 Link = 0; Link < MostLinksOfCommand; ++Link)
+	{
+		AActor* Above = CommanderOf(At);
+		if (!Above)
+		{
+			// `At` ANSWERS TO NOBODY, so it is the top: null when `At` is the follower itself.
+			return Top;
+		}
+		if (!IsValid(Above))
+		{
+			// A COMMANDER THAT HAS BEEN DESTROYED: the chain stops at nobody who is still here. See the header.
+			return nullptr;
+		}
+		Top = Above;
+		At = Above;
+	}
+
+	// LONGER THAN ANY CHAIN THE GAME MAKES, which only a loop could be. Nobody stands at the top of a loop.
+	return nullptr;
 }
 
 float UCataclysmCommand::CommandedWalkSpeedCmPerSecond(const AActor* Follower)
@@ -830,6 +860,114 @@ bool UCataclysmCommand::HasRoomForAnotherThrall(const AActor* Commander,
 	return HasRoomToReserve(Commander, PerThrall * (bWouldBeChosen ? 2.0f : 1.0f));
 }
 
+TArray<ACataclysmCharacterBase*> UCataclysmCommand::ReleasableOldestFirst(const AActor* Commander)
+{
+	TArray<ACataclysmCharacterBase*> Releasable;
+	for (AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Follower);
+		if (Body && !(Minion && Minion->bIsMachine))
+		{
+			Releasable.Add(Body);
+		}
+	}
+
+	// OLDEST FIRST, BY THE STAMP; NEVER STAMPED IS NEWEST. A stable sort, so a tie keeps `ThingsCommandedBy`'s order.
+	Releasable.StableSort([](const ACataclysmCharacterBase& A, const ACataclysmCharacterBase& B)
+	{
+		const float AFrom = A.CommandedSinceSeconds >= 0.0f ? A.CommandedSinceSeconds : TNumericLimits<float>::Max();
+		const float BFrom = B.CommandedSinceSeconds >= 0.0f ? B.CommandedSinceSeconds : TNumericLimits<float>::Max();
+		return AFrom < BFrom;
+	});
+	return Releasable;
+}
+
+float UCataclysmCommand::ThrallReserveScaleFor(const AActor* Taken)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Taken);
+	if (!Creature)
+	{
+		return 1.0f;
+	}
+	// BY THE RUNG, as `game/Data/EnemyRarities.csv` numbers it: Common 0, Elite 1, Legendary 2, Herald 3. The header
+	// says why these four. A boss's rungs answer the Herald's, never asked since a boss cannot be taken.
+	switch (Creature->RarityStep)
+	{
+	case 0:
+		return 1.0f;
+	case 1:
+		return 1.5f;
+	case 2:
+		return 2.0f;
+	default:
+		return 3.0f;
+	}
+}
+
+bool UCataclysmCommand::RoomCanBeMadeForAThrall(const AActor* Commander, float PerThrall)
+{
+	if (HasRoomForAnotherThrall(Commander, PerThrall))
+	{
+		return true;
+	}
+	const UCataclysmAbilitySystemComponent* Pool =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Pool)
+	{
+		return false;
+	}
+
+	// WHAT STAYS WHEN EVERY RELEASABLE FOLLOWER IS GONE: the machines' reserves, each once, since none is ever chosen.
+	const TArray<ACataclysmCharacterBase*> Releasable = ReleasableOldestFirst(Commander);
+	float Staying = 0.0f;
+	for (AActor* Follower : ThingsCommandedBy(Commander))
+	{
+		const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+		if (Body && !Releasable.Contains(Body))
+		{
+			Staying += Body->ReservedFervour;
+		}
+	}
+
+	// AND THE NEW THRALL, TWICE WHILE A SECOND SELF IS HELD, because nothing is left to be chosen before it. Held is
+	// what `UCataclysmSecondSelf` answers either way: a chosen follower, or a share owed to the next one taken.
+	const bool bHoldsSecondSelf = UCataclysmSecondSelf::Chosen(Commander) != nullptr
+		|| UCataclysmSecondSelf::ExtraThrallShares(Commander) > 0;
+	return Staying + PerThrall * (bHoldsSecondSelf ? 2.0f : 1.0f) <= Pool->MaximumClassResource();
+}
+
+int32 UCataclysmCommand::ReleaseOldestForAThrall(const AActor* Commander, float PerThrall)
+{
+	if (!IsValid(Commander) || HasRoomForAnotherThrall(Commander, PerThrall)
+		|| !RoomCanBeMadeForAThrall(Commander, PerThrall))
+	{
+		return 0;
+	}
+
+	int32 Released = 0;
+	for (ACataclysmCharacterBase* Oldest : ReleasableOldestFirst(Commander))
+	{
+		if (HasRoomForAnotherThrall(Commander, PerThrall))
+		{
+			break;
+		}
+		if (!IsValid(Oldest))
+		{
+			continue;
+		}
+		// SAID BEFORE IT GOES, with what it held and since when, so a play log shows which follower made the room.
+		UE_LOG(LogCataclysm, Log,
+			TEXT("RELEASED: '%s' released '%s', which held %.0f Fervour back and was commanded from %.1f s, to make room "
+				 "for a thrall reserving %.0f."),
+			*Commander->GetName(), *Oldest->GetName(), Oldest->ReservedFervour, Oldest->CommandedSinceSeconds,
+			PerThrall);
+		Oldest->Destroy();
+		++Released;
+	}
+	return Released;
+}
+
 float UCataclysmCommand::ReservedFervourOf(const AActor* Commander)
 {
 	return ReservedFervourAmong(Commander, ThingsCommandedBy(Commander));
@@ -955,59 +1093,136 @@ void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacter
 	}
 }
 
-bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
+bool UCataclysmCommand::SubjugateRefusalHolds(ECataclysmSubjugateRefusal Reason, const AActor* Commander,
+											  const AActor* Enemy)
 {
-	if (!IsValid(Commander) || !IsValid(Enemy) || Commander == Enemy)
-	{
-		return false;
-	}
+	// EACH REASON IS ASKED ON ITS OWN, so the log line can say "yes" or "no" for every one. The ones after the first two
+	// are about a creature, so each answers no for a pair the first two already refuse.
+	const bool bAPair = IsValid(Commander) && IsValid(Enemy) && Commander != Enemy;
+	const ACataclysmCharacterBase* Character = bAPair ? Cast<const ACataclysmCharacterBase>(Enemy) : nullptr;
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Character);
 
-	ACataclysmCharacterBase* Taken = Cast<ACataclysmCharacterBase>(Enemy);
-	if (!Taken)
+	switch (Reason)
 	{
+	case ECataclysmSubjugateRefusal::NothingToTake:
+		return !bAPair;
+
+	case ECataclysmSubjugateRefusal::NotACharacter:
 		// Only a character can be taken. A patch of burning ground, a projectile
 		// and a piece of terrain are all actors and none of them fights for
 		// anybody.
-		return false;
-	}
+		return bAPair && !Character;
 
-	if (UCataclysmSkillEffects::IsDead(Taken))
-	{
+	case ECataclysmSubjugateRefusal::Dead:
 		// A corpse does not fight for you. The skill's own threshold leaves the
 		// target alive by design -- below half health, not below none -- so this
-		// is the case where the blow killed outright.
-		return false;
-	}
+		// is the case where something killed it before the take. Since issue #2856
+		// Subjugate's own blow cannot be that something for a creature it could take:
+		// `UCataclysmSummonSkill::Possess` holds such a creature at one health.
+		return Character && UCataclysmSkillEffects::IsDead(Character);
 
-	// "BOSSES CANNOT BE TAKEN", which the row states outright. Read off the
-	// rarity the spawner set, the same way `UCataclysmSkillEffects::ApplyStun`
-	// reads boss immunity, so the two cannot drift apart.
-	if (const ACataclysmEnemyCharacter* AsEnemy =
-			Cast<ACataclysmEnemyCharacter>(Taken))
-	{
-		if (AsEnemy->IsBoss())
-		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' is a boss and cannot be taken."), *Taken->GetName());
-			return false;
-		}
+	case ECataclysmSubjugateRefusal::Boss:
+		// "BOSSES CANNOT BE TAKEN", which the row states outright. Read off the
+		// rarity the spawner set, the same way `UCataclysmSkillEffects::ApplyStun`
+		// reads boss immunity, so the two cannot drift apart.
+		return Creature && Creature->IsBoss();
 
+	case ECataclysmSubjugateRefusal::CannotBeHurt:
 		// AND NOTHING THAT CANNOT BE HURT: The Reaper. Issues #1820 and #41, ruled by the
 		// coordinating session under the owner's delegation, 2026-09-24. A thrall that
 		// cannot die would be an ally nothing can remove, and Sacrificial Ward, which ends
 		// a minion by writing its health, would reach it past the check that keeps it
 		// alive.
-		if (AsEnemy->bCannotBeHurt)
+		return Creature && Creature->bCannotBeHurt;
+
+	case ECataclysmSubjugateRefusal::AlreadyOnItsSide:
+		// ALREADY OURS. Taking something twice would reserve a second 30 Fervour for
+		// one creature, so the caller has to be told nothing happened.
+		return Character && UCataclysmTargeting::IsFriendlyTo(Character, Commander);
+
+	default:
+		return false;
+	}
+}
+
+ECataclysmSubjugateRefusal UCataclysmCommand::WhySubjugateRefuses(const AActor* Commander, const AActor* Enemy)
+{
+	// IN THE ORDER OF THE LIST, which is the order `Subjugate` asked them in before issue #2856 gathered them here.
+	for (int32 Raw = static_cast<int32>(ECataclysmSubjugateRefusal::None) + 1;
+		 Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count); ++Raw)
+	{
+		const ECataclysmSubjugateRefusal Reason = static_cast<ECataclysmSubjugateRefusal>(Raw);
+		if (SubjugateRefusalHolds(Reason, Commander, Enemy))
 		{
-			UE_LOG(LogCataclysm, Verbose,
-				TEXT("'%s' cannot be hurt and cannot be taken."), *Taken->GetName());
-			return false;
+			return Reason;
 		}
 	}
+	return ECataclysmSubjugateRefusal::None;
+}
 
-	// ALREADY OURS. Taking something twice would reserve a second 30 Fervour for
-	// one creature, so the caller has to be told nothing happened.
-	if (UCataclysmTargeting::IsFriendlyTo(Taken, Commander))
+const TCHAR* UCataclysmCommand::SubjugateRefusalName(ECataclysmSubjugateRefusal Reason)
+{
+	switch (Reason)
+	{
+	case ECataclysmSubjugateRefusal::None:
+		return TEXT("nothing refuses");
+	case ECataclysmSubjugateRefusal::NothingToTake:
+		return TEXT("nothing to take");
+	case ECataclysmSubjugateRefusal::NotACharacter:
+		return TEXT("not a character");
+	case ECataclysmSubjugateRefusal::Dead:
+		return TEXT("dead");
+	case ECataclysmSubjugateRefusal::Boss:
+		return TEXT("boss");
+	case ECataclysmSubjugateRefusal::CannotBeHurt:
+		return TEXT("cannot be hurt");
+	case ECataclysmSubjugateRefusal::AlreadyOnItsSide:
+		return TEXT("already on its side");
+	default:
+		return TEXT("");
+	}
+}
+
+FString UCataclysmCommand::SubjugateRefusalsText(const AActor* Commander, const AActor* Enemy)
+{
+	// EVERY REASON ON THE LIST, BY THE SAME WALK `WhySubjugateRefuses` MAKES, so a reason added to the list is printed
+	// without anybody remembering this line. Issue #2856.
+	FString Text;
+	for (int32 Raw = static_cast<int32>(ECataclysmSubjugateRefusal::None) + 1;
+		 Raw < static_cast<int32>(ECataclysmSubjugateRefusal::Count); ++Raw)
+	{
+		const ECataclysmSubjugateRefusal Reason = static_cast<ECataclysmSubjugateRefusal>(Raw);
+		if (!Text.IsEmpty())
+		{
+			Text += TEXT(", ");
+		}
+		Text += FString::Printf(TEXT("%s %s"), SubjugateRefusalName(Reason),
+								SubjugateRefusalHolds(Reason, Commander, Enemy) ? TEXT("yes") : TEXT("no"));
+	}
+	return Text;
+}
+
+bool UCataclysmCommand::IsHeldAliveForATake(const AActor* Creature)
+{
+	const ACataclysmCharacterBase* Character = Cast<const ACataclysmCharacterBase>(Creature);
+	return Character && Character->bHeldAliveForATake;
+}
+
+bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
+{
+	// EVERY REFUSAL IS ONE OF `WhySubjugateRefuses`'S, which carries each reason's own comment. Issue #2856: the play
+	// log reports a refusal from the same answer, so it can no longer print a refusal whose every reason reads "no".
+	const ECataclysmSubjugateRefusal Refusal = WhySubjugateRefuses(Commander, Enemy);
+	if (Refusal != ECataclysmSubjugateRefusal::None)
+	{
+		UE_LOG(LogCataclysm, Verbose, TEXT("'%s' cannot be taken: %s."), *GetNameSafe(Enemy),
+			   SubjugateRefusalName(Refusal));
+		return false;
+	}
+
+	// A CHARACTER, WHICH NOTHING REFUSING HAS ESTABLISHED: `NotACharacter` holds for anything else.
+	ACataclysmCharacterBase* Taken = Cast<ACataclysmCharacterBase>(Enemy);
+	if (!Taken)
 	{
 		return false;
 	}
@@ -1051,6 +1266,36 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// tags, so a minion_health row requiring a tag does not reach a thrall. Not ruled either way.
 	if (ACataclysmEnemyCharacter* AsCreature = Cast<ACataclysmEnemyCharacter>(Taken))
 	{
+		// AND FIRST ITS OWN FIGURES ARE BUILT AGAIN, FROM ITS KIND AND ITS COMMANDER'S LEVEL AND NOT FROM THE FLOOR.
+		// Issue #2868, the owner's ruling of 2026-11-24: "Shouldn't minions scale based off your stats? Like not 1 for
+		// 1, but if A has 100 health, and B has 500 health, and minion health scales at like 2x per your level, A would
+		// have 200 health and B would have 1000 health." `UCataclysmEnemyStrength::ThrallFiguresFor` has the arithmetic:
+		// a summoned Imp's figures at the commander's level times the kind's multiple of an Imp. The creature still
+		// applies its rarity's scale and the modifiers it carries itself, so a taken Herald is a Herald's multiple of a
+		// Common of its kind, and the minion health below multiplies the result.
+		//
+		// SET AS ITS STARTING FIGURES, through the three setters the dungeon builds a creature with, so a rung raised
+		// later scales these and a save keeps them. FIXED AT THE TAKE, as a summoned minion's are at its summoning.
+		//
+		// A CREATURE OF NO DESIGNED KIND KEEPS ITS OWN FIGURES: the sandbox's training dummy, which the tests take, has
+		// no archetype row, and a missing table leaves every creature as it was.
+		FCataclysmStartingFigures AsAMinion;
+		if (!AsCreature->ArchetypeRow.IsNone()
+			&& UCataclysmEnemyStrength::ThrallFiguresFor(
+				UCataclysmEnemyRarity::LoadEnemyRarityTable(), UCataclysmEnemyStrength::LoadEnemyArchetypeTable(),
+				ACataclysmMinion::LoadTypeTable(), AsCreature->ArchetypeRow,
+				ACataclysmMinion::LevelOfSummonerFor(Commander), AsAMinion))
+		{
+			AsCreature->SetHealth(AsAMinion.Health);
+			AsCreature->SetAttackDamage(AsAMinion.AttackDamage);
+			AsCreature->SetArmour(AsAMinion.Armour);
+			UE_LOG(LogCataclysm, Log,
+				TEXT("'%s' takes '%s' as a minion of level %d: %.0f health, %.1f attack damage and %.0f armour before "
+					 "its rarity and modifiers."),
+				*Commander->GetName(), *AsCreature->GetName(), ACataclysmMinion::LevelOfSummonerFor(Commander),
+				AsAMinion.Health, AsAMinion.AttackDamage, AsAMinion.Armour);
+		}
+
 		AsCreature->SetCommanderHealthMultiplier(SummonerMultiplierFor(
 			Commander, TEXT("minion_health"), FGameplayTagContainer()));
 	}

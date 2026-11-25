@@ -4070,7 +4070,10 @@ bool UCataclysmSkillEffects::ApplyUntargetable(AActor* Instigator,
 
 bool UCataclysmSkillEffects::IsUntargetable(const AActor* Actor)
 {
-	return HasTag(Actor, UntargetableTag());
+	// AND, FOR AS LONG AS IT STANDS, NOBODY'S TARGET: Demonic Guide's guide. Issue #2860. A blow aimed at it directly --
+	// one whose target was chosen before this change reached it, or by a caller that names it -- lands nothing, and no
+	// rider after the blow sees one land. The searches already pass it over (`UCataclysmTargeting::IsNeverATarget`).
+	return HasTag(Actor, UntargetableTag()) || UCataclysmTargeting::IsNeverATarget(Actor);
 }
 
 bool UCataclysmSkillEffects::CannotAct(const AActor* Actor)
@@ -4648,6 +4651,27 @@ bool UCataclysmSkillEffects::IsDead(const AActor* Actor)
 	return HasTag(Actor, DeadTag());
 }
 
+namespace
+{
+	/**
+	 * Every actor `MarkDead` is part way through. Issue #2871: see `MarkDead` in the header.
+	 *
+	 * RAW POINTERS, COMPARED AND NEVER FOLLOWED. An actor is in the set only for the length of one `MarkDead` call,
+	 * which adds it before the hooks and takes it out once the tag is on, so nothing here outlives the actor. The game
+	 * thread is the only one that marks a death.
+	 */
+	TSet<const AActor*>& CataclysmSkillEffectsActorsBeingMarkedDead()
+	{
+		static TSet<const AActor*> BeingMarked;
+		return BeingMarked;
+	}
+}
+
+bool UCataclysmSkillEffects::IsBeingMarkedDead(const AActor* Actor)
+{
+	return Actor != nullptr && CataclysmSkillEffectsActorsBeingMarkedDead().Contains(Actor);
+}
+
 bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 {
 	UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Actor);
@@ -4656,6 +4680,23 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	{
 		return false;
 	}
+
+	// A DEATH ALREADY BEING MARKED IS NOT MARKED AGAIN FROM INSIDE ITSELF. Issue #2871. The tag goes on at the bottom of
+	// this function, after the five hooks below, and every one of them can strike: a hook's blow that reaches back to
+	// this actor -- Harrower's leap into a creature carrying Sacrificial Bond, which pays this dying ally a share of it
+	// -- writes its health at nought and calls its `HandleDeath` again before the tag is on. Without this the second
+	// call ran the hooks again and returned true, and so did every call inside it, so `HandleDeath` paid the kill once
+	// per call: its drops, rolled from the same seed in the same frame, lay on the floor as identical copies.
+	//
+	// THE OUTER CALL STILL FINISHES THE DEATH, once: the inner call refuses, and its `HandleDeath` returns at once as it
+	// does for a creature already dead. `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` asks the same and
+	// does not start the inner death at all.
+	TSet<const AActor*>& BeingMarked = CataclysmSkillEffectsActorsBeingMarkedDead();
+	if (BeingMarked.Contains(Actor))
+	{
+		return false;
+	}
+	BeingMarked.Add(Actor);
 
 	// A CURSE THAT PASSES ON DOES SO NOW, BEFORE THE DEATH IS RECORDED. The
 	// Wand's Anathema: "anything that dies while damned passes the curse to the
@@ -4742,6 +4783,10 @@ bool UCataclysmSkillEffects::MarkDead(AActor* Actor)
 	// more moving parts and one more way to get the duration wrong. What takes
 	// it off again is ClearDead below, called deliberately.
 	System->AddLooseGameplayTag(Dead);
+
+	// AND THE DEATH IS NO LONGER BEING MARKED: the tag answers from here on. Issue #2871. Taken out before the
+	// announcement, so that a listener's question about this actor is answered by the tag alone.
+	BeingMarked.Remove(Actor);
 
 	// AND THE DEATH IS ANNOUNCED, AFTER THE TAG. Issue #41, slice 4. Here for
 	// the reason every hook above gives: this is the one place a death is

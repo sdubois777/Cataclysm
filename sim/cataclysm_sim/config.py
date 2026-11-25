@@ -383,10 +383,17 @@ class TuningConfig:
     # being arithmetically impossible.
     cataclysm_volume_exponent: float = 0.7
 
-    # A surge also fires immediately when a city falls, unless the last surge
-    # landed less than `surge_interval_min` days ago (issue #1432): the same
-    # brake the board-empty trigger respects.
+    # A surge also fires immediately when a city falls, every time. The owner
+    # ruled on 2026-11-24, verbatim: "surges from cities falling should happen
+    # regardless" (issue #2865). From issue #1432 (2026-09-14) until then a fall
+    # fired none when the last surge landed less than `surge_interval_min` days
+    # ago; `city_fall_surge_braked` below gives that rule back.
     surge_on_city_fall: bool = True
+    #: Whether `surge_interval_min` brakes a city fall's surge. True was the rule
+    #: of issue #1432, ruled 2026-09-14 under the owner's delegation and copied
+    #: into the game by issue #2380. False is the owner's ruling of 2026-11-24,
+    #: and ships. Kept so the earlier rule can still be measured.
+    city_fall_surge_braked: bool = False
     # Does a fall-triggered surge also advance the escalation counter? If it
     # does, losing a city permanently speeds the game up -- a death spiral.
     city_fall_advances_escalation: bool = True
@@ -441,6 +448,43 @@ class TuningConfig:
     # would face a continuous surge. 25 days is what that constant already held
     # for the escalating modes.
     surge_on_empty_board: bool = True
+
+    # THE OWNER'S RULING OF 2026-11-23 ON ISSUE #2865, VERBATIM "yes, your rec":
+    #   1. the board counts as empty when no ORDINARY dungeon stands: Quest
+    #      dungeons, the Cataclysm boss dungeon and Fallen City dungeons do not
+    #      count. This fixes the rule of 2026-09-07 above: on day 416 of the
+    #      owner's run a Quest dungeon, and later a Fallen City dungeon, kept the
+    #      board from ever being empty;
+    #   2. a surge fired by an empty board brings the previous surge's dungeon
+    #      count plus 4, and `surge_count_max` does not cap it -- SUPERSEDED by the
+    #      owner's ruling of 2026-11-24, chosen option verbatim "Flat +4, no
+    #      stacking": an empty-board surge always brings the SCHEDULED count plus
+    #      4 (8 + 4 = 12 today), never growing from the previous wave. Measured
+    #      first: previous wave + 4 compounded to waves of 20 to 45 (issue #2865);
+    #   3. `surge_interval_min` does not brake it;
+    #   4. the +4 is checked in this model before the game changes.
+    #
+    # EACH PART IS ITS OWN SWITCH, AND ALL THREE SHIP ON, with the game's half
+    # in the same change: `tools/tests/test_surge_port.py` holds this model's
+    # rule equal to `UCataclysmSurgeScheduler::IsDueOnEmptyBoard` and
+    # `ExtraDungeonsOnEmptyBoard`, and the design document, the model and the
+    # game change together (the ruling's point 4). Off, each gives back the rule
+    # of 2026-09-07, which the older tests in
+    # `sim/tests/test_surge_when_the_board_empties.py` still hold.
+    #
+    # ORDINARY IS `DungeonType.BASIC`: the Last Stand and the Cataclysm boss
+    # dungeon are both `DungeonType.CATACLYSM` here.
+    empty_board_counts_ordinary_only: bool = True
+    #: Whether an empty-board surge is the scheduled count plus
+    #: `empty_board_surge_extra` (the ruling of 2026-11-24). The cap
+    #: `surge_count_max` and the lethality multiplier then apply as to any wave:
+    #: the coordinating session's judgement of the same day, "apply both after
+    #: the +4, as for any wave". False keeps `surge_count()`.
+    empty_board_surge_larger: bool = True
+    empty_board_surge_extra: int = 4
+    #: Whether `surge_interval_min` brakes an empty-board surge. True was the
+    #: rule of 2026-09-07; the ruling of 2026-11-23 removed it.
+    empty_board_surge_braked: bool = False
 
     # UNKNOWN #3 -- resolve timers.
     # A flat timer table cannot work at one day a floor: a 40-floor dungeon
@@ -720,6 +764,82 @@ class TuningConfig:
         "Void": "Hollow",
     })
 
+    # --- Demonic's Infernal Rifts (Hell on Earth, issue #51) ------------
+    #
+    # THE OWNER'S RULINGS OF 2026-11-24, on issue #51 (comment 7149391315), each
+    # the option they chose, verbatim:
+    #   Q1 "Rift = Quest dungeon (Recommended)": a Rift IS a Demonic Quest
+    #      dungeon. Sealing one is one quest objective; it is Elite, hits its
+    #      city on its timer and moves when its city falls, as any Quest
+    #      dungeon does.
+    #   Q3/Q4 "Anywhere but the Pillar (Recommended)": it opens on any standing
+    #      city but the Pillar, behind the front included, by the surge's tier
+    #      weights (`SURGE_TARGET_WEIGHT`). Every 5 days from the day it opened,
+    #      not reset when it moves, an unsealed Rift sends an ordinary Basic
+    #      Demonic dungeon, made as a surge makes one, to an adjacent city a
+    #      surge could target; nothing when no neighbour qualifies.
+    #   Q5 "Every death, no gap (Recommended)": each death in a Rift brings an
+    #      ordinary surge at once, with no least-interval brake.
+    #
+    # AND ON THE RIFT ITSELF, the same day, after the measurement of 4-floor
+    # Rifts (issue #51, the newest comment), verbatim: "Rift are quest dungeons
+    # yes, but we determined they have 4 pillars the player needs to destroy.
+    # So... let's make them 4 floors?", "Keep the short timer for rifts. It's
+    # only fair, it has 4 floors. If you keep on top of them it wont matter.",
+    # "Also, I think we should make it so Rifts always have 8 dungeon modifiers.
+    # Keep it spicy", "No limit" and "(b) 8 modifiers only (Recommended)". So a
+    # Rift is exactly 4 floors, one altar on each, with the quest timer of 4
+    # floors, exactly 8 modifiers, and the enemies of an ordinary 4-floor
+    # dungeon; it sends with no limit on how many of its dungeons stand.
+    #
+    # THE RIFTS SHIP ON, IN THE SAME CHANGE AS THE GAME'S (slice B2), ruled by
+    # the coordinating session on 2026-11-24 "so the model and the game agree".
+    # Off, nothing reads the switches below and a campaign is the one measured
+    # before the Rifts existed. A campaign whose character never faces Demonic
+    # is the same either way: the Rift code takes no draw unless Demonic sends a
+    # Quest dungeon.
+    demonic_rifts: bool = True
+    #: Days between an unsealed Rift's dungeons, counted from the day it opened.
+    #: The design's 5 (section XI). 0 sends none.
+    rift_spawn_every_days: int = 5
+    #: Whether a death in a Rift brings an ordinary surge at once.
+    rift_death_brings_surge: bool = True
+    #: A Rift is made as any Demonic Quest dungeon (depth rolled for its city)
+    #: and then given exactly this many floors, whatever the empire tree adds;
+    #: its walk and its reward are these floors. 4, ruled above. 0 keeps a Rift
+    #: as deep as any Quest dungeon, the rule of comment 7149391315 before the
+    #: owner chose 4.
+    rift_floors: int = 4
+    #: With `rift_floors` set, whether the Rift's quest timer is the one its
+    #: rolled depth gives (True) or the one its own floors give (False, ruled:
+    #: "Keep the short timer for rifts"). Quest timers scale with depth (the
+    #: owner, 2026-10-16), so a short Rift's own timer runs out, and hits its
+    #: city, far more often.
+    rift_timer_from_quest_depth: bool = False
+    #: With `rift_floors` set, whether the Rift's floors fight the enemies of
+    #: its rolled depth (True: floor i fights floor ceil(i x depth / floors),
+    #: kept as `Dungeon.strength_floors` for `combat.death_chance`) or their
+    #: own, as an ordinary dungeon of that many floors (False, ruled: "(b) 8
+    #: modifiers only").
+    rift_strength_from_quest_depth: bool = False
+    #: How many dungeon modifiers a Rift carries, whatever the tier; 0 carries
+    #: what any dungeon of the tier does (one a tier). 8, ruled above.
+    rift_modifiers: int = 8
+    #: The highest difficulty tier at which a Rift never draws the Demonic
+    #: Guide; above it a Rift draws it as any row. The owner, 2026-11-25,
+    #: issue #51, verbatim: "Make demonic guide not spawn on the Rifts. It
+    #: would be really annoying if you're trying to destroy a pillar and you
+    #: can't because that guy will kill you if you let him get out of
+    #: range.", and a moment later, "at least not on t1". 0 lets every Rift
+    #: draw it. Ported to the game as
+    #: `UCataclysmDungeonModifierRules::RiftWithoutTheGuideUpToTier`.
+    rift_without_the_guide_up_to_tier: int = 1
+    #: A Rift sends only while none of the dungeons it sent still stands.
+    #: Recommended to the owner on 2026-11-24 against the board filling up
+    #: under the 5-day spawn, and refused: "No limit". Kept so it can still be
+    #: measured.
+    rift_one_sent_at_a_time: bool = False
+
     # --- the Siege sub-type ----------------------------------------------
     #
     # THE ONE PLACE IN THIS MODEL WHERE DAMAGE IS STILL A SHARE OF A CITY'S
@@ -763,12 +883,13 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 9 / 25 / 40 (the walk today, re-measured on 2026-11-19 over 10,000
+    # 8 / 23 / 37 (the walk today, re-measured on 2026-11-24 over 10,000
     # campaigns, seeds 0 to 9999, by the prose test's own method: its report
     # settings, no tree, `triage`, every dungeon recorded when it is made, with
-    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749 and
-    # Demonic following the front line since the same issue; it was
-    # 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
+    # an Outpost's ordinary dungeons 5 to 10 floors since issue #2749, Demonic
+    # following the front line since the same issue, the surge rulings of issue
+    # #2865 and Demonic's Rifts since issue #51; it was 9 / 25 / 40 on
+    # 2026-11-19, and 9 / 23 / 35 earlier that day, with Demonic landing behind the line,
     # 14 / 23 / 35 on 2026-10-18 with an Outpost's dungeons 8 to 15,
     # 14 / 22 / 34 on 2026-10-12, 14 / 23 / 37 on the day of the cut and
     # 14 / 24 / 37 after issue #1432), so on the day of the cut the

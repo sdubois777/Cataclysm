@@ -117,6 +117,43 @@ public:
 	static constexpr int32 SacrificialMultiplier = 2;
 
 	/**
+	 * How many modifiers a Rift carries, whatever the difficulty tier: eight. The owner, 2026-11-24, issue #51,
+	 * verbatim: "Also, I think we should make it so Rifts always have 8 dungeon modifiers. Keep it spicy", and of the
+	 * two forms measured, "(b) 8 modifiers only (Recommended)": the modifiers are the whole of a Rift's added
+	 * difficulty, on an ordinary 4-floor dungeon's floors. A PORT OF `TuningConfig.rift_modifiers`.
+	 *
+	 * DRAWN AS ANY DUNGEON'S ARE, WITH NO REPEATS (`Draw`). Eight can always be drawn: the smallest Cataclysm's column
+	 * holds 12 rows, and at difficulty tier 1 Demonic's 14 are the whole pool. `UCataclysmEmpireRun::GiveModifiersFrom`
+	 * asks `FCataclysmDungeon::IsARift`. Issue #51 slice B2.
+	 */
+	static constexpr int32 RiftModifierCount = 8;
+
+	/**
+	 * The highest difficulty tier at which a Rift never draws the Demonic Guide (`DemonicGuideKey`). The owner,
+	 * 2026-11-25, issue #51, verbatim: "Make demonic guide not spawn on the Rifts. It would be really annoying if you're
+	 * trying to destroy a pillar and you can't because that guy will kill you if you let him get out of range.", and a
+	 * moment later, "at least not on t1" (a "pillar" is a Rift's altar). So a Rift of tier 1 draws its eight from the
+	 * pool without the Guide, and a Rift of tier 2 or above draws it as it draws any row. A PORT OF
+	 * `TuningConfig.rift_without_the_guide_up_to_tier`.
+	 */
+	static constexpr int32 RiftWithoutTheGuideUpToTier = 1;
+
+	/**
+	 * The Demonic Guide's row in `game/Data/DungeonModifiers.csv`: `Demonic_Demonic_Guide`. The same name as
+	 * `UCataclysmDungeonModifierEffects::DemonicGuideKey` in the Cataclysm module, which this module may not include;
+	 * `tools/tests/test_a_tier_one_rift_never_draws_the_demonic_guide.py` holds the two and the table's row together.
+	 */
+	static FName DemonicGuideKey();
+
+	/**
+	 * The pool a Rift of this tier draws its eight from: `Pool` without the Demonic Guide's row at
+	 * `RiftWithoutTheGuideUpToTier` and below, and `Pool` itself above it. Every other row is kept, in its order.
+	 * Eight can still always be drawn: at tier 1 the pool is Demonic's 14 rows, 13 without the Guide.
+	 */
+	static TArray<FCataclysmDungeonModifier> RiftPoolFor(const TArray<FCataclysmDungeonModifier>& Pool,
+														 int32 DifficultyTier);
+
+	/**
 	 * How many modifiers a dungeon of this tier and sub-type carries.
 	 *
 	 * @param DifficultyTier the run's tier, 1 to 8. Clamped at zero from below,

@@ -64,14 +64,14 @@
     {
       "asset": "DT_EmpireTreeEffects",
       "csv": "EmpireTreeEffects.csv",
-      "rows": 123,
-      "csv_sha256": "1c31f40cd8519b70ee81800f3e56fd05bb703a71932b11bcdf60b7261da7392b"
+      "rows": 148,
+      "csv_sha256": "37e2a25d26bebbce1ddfff687c25bacc83fb2f960f3b8774d689b9c9ab4dfae1"
     },
     {
       "asset": "DT_EmpireTreeNodes",
       "csv": "EmpireTreeNodes.csv",
       "rows": 159,
-      "csv_sha256": "fdef7a84b516a8c827c58f4bdeb8f5a935e26e583942bee4557ccbccf99a837d"
+      "csv_sha256": "8fdf8691e4da12ff9d344219b013c1c4794ba1e67f0e250797d135008c8e118b"
     },
     {
       "asset": "DT_EnchantmentEffects",
@@ -101,7 +101,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "bca9b368275f616d7e433948a29fbe9c1f50285a117fea677daea67e534c9e3c"
+      "csv_sha256": "3d0a4f8857a37d4d000ad93b836ad4961e1066d8d75078d257ec3441b28aecda"
     },
     {
       "asset": "DT_EnemyModifiers",
@@ -172,20 +172,20 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 325,
-      "csv_sha256": "c44c9987e7100a5c6db6af8566c9efcf751851feb4dbe07bb50ebebd71b88306"
+      "rows": 364,
+      "csv_sha256": "f0bcde01ba79b863edbb157f100a72a57b306fcfa284d6d347641d00d343dca4"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 441,
-      "csv_sha256": "7a8d38d1cbe9c7a01f6b8e004a49c1a72189cbf85d501d769e8d039004d4ab08"
+      "csv_sha256": "e3add4eea0efa75b95012e300b0d8509b5d2ddc6121a6fe4b0e511d3a0ff73b5"
     },
     {
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
-      "csv_sha256": "402fca60e960369b248fd3102cbc3f59fe43b3944c47295db18ac6a8aa1099fb"
+      "csv_sha256": "1d5956c42a9e824b66185b2405f36d2b077adeee9786a48661af998182cbc8f5"
     },
     {
       "asset": "DT_StatusEffects",
@@ -203,7 +203,7 @@
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
       "rows": 403,
-      "csv_sha256": "03d45a87672d730ce41035b946396429e15aaa4d699aa0927a7d35b2f1c85156"
+      "csv_sha256": "ac2116539cb2424fe2322e62ace2e82e44cded650b82d37b3e148f2913276e03"
     }
   ]
 }

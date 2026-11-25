@@ -34,6 +34,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -44,6 +45,7 @@
 // For the slain enemy's maximum health, which the kill event carries.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
@@ -1819,8 +1821,30 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	const float FromAttribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
 
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+
+	// AN ACTOR IMMUNE TO SLOW IGNORES EVERY MOVEMENT REDUCTION, the coordinating session's ruling of 2026-11-25:
+	// Grave Shroud's, Fevered Blood's and Living Pyre's `Immune=Slow` until then blocked nothing, because nothing that
+	// slows asked the immunity. It takes the suppression branch below, which drops the reducing parts and keeps the
+	// earned ones, as a node saying "nothing may lower this character's speed" does.
+	const bool bImmuneToSlow = UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));
+	bSlowImmuneAtLastSpeedRefresh = bImmuneToSlow;
+
+	// AND WHAT AN AURA HOLDS ON IT: War's Blood and Iron raises an ally's movement 15% and slows an enemy's. Multiplied
+	// last, after everything else; a slow share is a reduction and an immunity to Slow drops it. 2026-11-25.
+	float AuraFactor = 1.0f;
+	if (Cataclysm)
+	{
+		Cataclysm->PruneLapsedAuraShares();
+		AuraFactor = 1.0f + Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) / 100.0f;
+		if (!bImmuneToSlow)
+		{
+			AuraFactor *= 1.0f - FMath::Clamp(Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced),
+											  0.0f, 99.0f) / 100.0f;
+		}
+	}
+
 	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273. AND WHAT WITHER LEAVES, multiplied
 	// with it as a separate slow. Issue #1722.
 	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this)
@@ -1828,7 +1852,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	if (!Cataclysm)
 	{
-		ApplyMovementSpeed(FromAttribute * Crippled);
+		ApplyMovementSpeed(FromAttribute * (bImmuneToSlow ? 1.0f : Crippled));
 		return;
 	}
 
@@ -1851,9 +1875,9 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 		AbilitySystem->GetNumericAttribute(
 			UCataclysmCombatAttributeSet::
 				GetMovementSpeedReductionSuppressedAttribute()));
-	if (Suppressed <= 0.0f)
+	if (Suppressed <= 0.0f && !bImmuneToSlow)
 	{
-		ApplyMovementSpeed(Asked * Crippled);
+		ApplyMovementSpeed(Asked * Crippled * AuraFactor);
 		return;
 	}
 
@@ -1894,7 +1918,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	{
 		// NO STAT LINE MEANS NOTHING TO DROP, so the answer above already is the
 		// speed. That is every character before its first refresh.
-		ApplyMovementSpeed(Asked);
+		ApplyMovementSpeed(Asked * AuraFactor);
 		return;
 	}
 
@@ -1923,7 +1947,9 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 				Earned, /*Target=*/nullptr,
 				Cataclysm->CurrentConditions())));
 
-	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f));
+	// THE TREES BASE'S ROW-BY-ROW ANSWER (issue #2912) TIMES THE AURA'S SHARE (`AuraFactor`, the damage-type auras),
+	// as the other two paths above multiply theirs. Resolved in bundle 1, 2026-11-25.
+	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f) * AuraFactor);
 }
 
 bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
@@ -1933,6 +1959,15 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 	if (!Cataclysm)
 	{
 		return false;
+	}
+
+	// AN AURA'S SHARE AND AN IMMUNITY TO SLOW LAPSE WITH NO EVENT, so while either is held -- or the immunity was held
+	// at the last refresh, which has to be undone once -- the speed is worked out again on every regeneration step.
+	// 2026-11-25.
+	if (Cataclysm->HoldsAnyAuraShare() || bSlowImmuneAtLastSpeedRefresh
+		|| UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return true;
 	}
 
 	// BOTH STATS `RefreshMovementSpeed` ASKS FOR, because a row on either moves
@@ -2494,6 +2529,100 @@ bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 	return UCataclysmSkillEffects::IsDead(this);
 }
 
+bool ACataclysmPlayerCharacter::SkillPoolNoticeIsUpAt(float WorldSeconds) const
+{
+	// UP FROM THE MOMENT IT WAS POSTED UNTIL `SkillPoolNoticeSeconds` AFTER IT, both ends included, as the death cost's.
+	if (SkillPoolNoticePostedAt < 0.0f || SkillPoolNotice.IsEmpty())
+	{
+		return false;
+	}
+	const float Since = WorldSeconds - SkillPoolNoticePostedAt;
+	return Since >= 0.0f && Since <= SkillPoolNoticeSeconds;
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeAt(float WorldSeconds) const
+{
+	return SkillPoolNoticeIsUpAt(WorldSeconds) ? SkillPoolNotice : FString();
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeFor(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	// THE WEAPON NAMED WHEN ONE WAS ADDED, "The Fist adds"; else "Your weapons add". The skills that do something are
+	// counted first, and the ones that are not built yet after them, so the count a player can use is the one read.
+	const FString Who =
+		Weapon.IsEmpty() ? FString(TEXT("Your weapons add")) : FString::Printf(TEXT("The %s adds"), *Weapon);
+	const auto Skills = [](int32 Count)
+	{
+		return FString::Printf(TEXT("%d skill%s"), Count, Count == 1 ? TEXT("") : TEXT("s"));
+	};
+	FString What;
+	if (Built > 0 && NotBuilt > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool, and %d not built yet"), *Skills(Built), NotBuilt);
+	}
+	else if (Built > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool"), *Skills(Built));
+	}
+	else
+	{
+		What = FString::Printf(TEXT("%s not built yet to your pool"), *Skills(NotBuilt));
+	}
+	return FString::Printf(TEXT("%s %s. Press K, or click a skill box, to choose."), *Who, *What);
+}
+
+void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(const TArray<FCataclysmWeaponSkill>& PoolBefore,
+														 const TArray<FString>& TypesBefore)
+{
+	// NEW TO THE POOL AND ON NO KEY: a skill the change put on a key needs no telling, and one already in the pool was
+	// told of before. Rows, not names, since two weapons can make skills of one name.
+	TSet<FName> Before;
+	for (const FCataclysmWeaponSkill& Skill : PoolBefore)
+	{
+		Before.Add(Skill.RowName);
+	}
+	TSet<FName> OnKeys;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetAvailableSkills())
+	{
+		OnKeys.Add(Skill.RowName);
+	}
+	int32 Built = 0;
+	int32 NotBuilt = 0;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetSkillPool())
+	{
+		if (Skill.RowName.IsNone() || Before.Contains(Skill.RowName) || OnKeys.Contains(Skill.RowName))
+		{
+			continue;
+		}
+		if (UCataclysmWeaponSkills::IsBuilt(Skill))
+		{
+			++Built;
+		}
+		else
+		{
+			++NotBuilt;
+		}
+	}
+	if (Built + NotBuilt == 0)
+	{
+		return;
+	}
+
+	// THE WEAPON NAMED ONLY WHEN THE CHANGE ADDED EXACTLY ONE WEAPON TYPE.
+	TArray<FString> Added;
+	for (const FString& Type : WeaponSlots->GetWornWeaponTypes())
+	{
+		if (!TypesBefore.Contains(Type))
+		{
+			Added.AddUnique(Type);
+		}
+	}
+	const FString Weapon = Added.Num() == 1 ? Added[0] : FString();
+	SkillPoolNotice = SkillPoolNoticeFor(Weapon, Built, NotBuilt);
+	SkillPoolNoticePostedAt = GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds()) : 0.0f;
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillsAddedLine(Weapon, Built, NotBuilt));
+}
+
 bool ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt(float WorldSeconds) const
 {
 	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
@@ -2634,8 +2763,17 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 																	 const FCataclysmItem* AskedAbout,
 																	 ECataclysmGearSlot& OutSlot)
 {
+	return WearPastTheThreshold(CarriedSlot, AskedAbout, OutSlot, ECataclysmGearSlot::Count);
+}
+
+ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 CarriedSlot,
+																	 const FCataclysmItem* AskedAbout,
+																	 ECataclysmGearSlot& OutSlot,
+																	 ECataclysmGearSlot Into)
+{
 	ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
-	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot).Crosses();
+	// THE SLOT THE QUESTION WAS ABOUT, issue #837's slice 3: `Count` is `Equip`'s choice, as before it.
+	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot, 0, Into).Crosses();
 	const bool bWasMarked = State && State->IsMarkedByConsumption();
 
 	// MARKED FIRST, so the character record the equip writes already holds it. See the header.
@@ -2643,8 +2781,9 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 
 	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
 	const ECataclysmWearResult Result = AskedAbout
-		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went)
-		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true);
+		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went, 0, Into)
+		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true,
+											 0, Into);
 	const bool bWorn = Result == ECataclysmWearResult::Worn || Result == ECataclysmWearResult::Swapped;
 	if (bWorn)
 	{
@@ -2719,7 +2858,18 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// takes back everything it granted before it grants again, so calling it
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
+	//
+	// AND WHAT THE CHANGE ADDED TO THE POOL ON NO KEY IS SAID, since issue #837 slice 2 (the owner's Q4 of 2026-11-24):
+	// slice 1 leaves the keys as they are, so a new weapon's skills wait in the pool, and the player is told where to
+	// choose them. NOT FOR A LOAD, whose one announcement comes here too: what a loaded character carries is not news.
+	const TArray<FCataclysmWeaponSkill> PoolBefore =
+		WeaponSlots ? WeaponSlots->GetSkillPool() : TArray<FCataclysmWeaponSkill>();
+	const TArray<FString> TypesBefore = WeaponSlots ? WeaponSlots->GetWornWeaponTypes() : TArray<FString>();
 	FillAbilitySlotsFromWornWeapon();
+	if (WeaponSlots && !(Equipment && Equipment->IsAnnouncingARestore()))
+	{
+		NoteSkillsAddedToThePool(PoolBefore, TypesBefore);
+	}
 
 	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
 	// could equip a Greataxe and see nothing change at all.
@@ -2756,7 +2906,7 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	// (Q11), and the weapons in slot order, the first OCCUPIED slot first, so a
 	// lone weapon in the second hand is the first weapon. With nothing worn the
 	// carried list is the creation type alone, for the starting weapon below.
-	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
 									   : UCataclysmCharacterCreation::DefaultDamageType;
 
@@ -2772,8 +2922,27 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 		Equipment ? Equipment->WornWeaponTypes() : TArray<FString>();
 	if (!WornTypes.IsEmpty())
 	{
+		// AND WHAT EACH KEY HELD BY DEFAULT, since issue #837 slice 1 (the owner's Q1 of 2026-11-24, "the keys stay as
+		// they are"): handed over before the fill and remembered again after it, so the next fill keeps every key whose
+		// skill is still in the pool. Only a fill from worn weapons is remembered.
+		WeaponSlots->UseRememberedDefaults(Chooser ? Chooser->GetRememberedDefaults() : TArray<FCataclysmSkillChoice>());
 		WeaponSlots->EquipWeaponTypes(WornTypes);
+		if (Chooser)
+		{
+			Chooser->RememberDefaults(WeaponSlots->GetAvailableSkills());
+		}
 		return;
+	}
+
+	// NO WEAPON WORN, SO NOTHING IS HANDED OVER OR REMEMBERED (slice 1's R4): the starting weapon type below is a
+	// stand-in, and keys remembered from it would hold its skills over the first real weapon's. WHAT WAS REMEMBERED IS
+	// FORGOTTEN ONLY WHEN A WEAPON WAS EXPECTED: at possession, before the weapon goes on (`NotYet`), the player state
+	// may be carrying a character's keys into a new pawn (the player state outlives a death), and the gear put back
+	// next must find them.
+	WeaponSlots->UseRememberedDefaults(TArray<FCataclysmSkillChoice>());
+	if (Chooser && Expected == ECataclysmWeaponExpected::Yes)
+	{
+		Chooser->ForgetRememberedDefaults();
 	}
 
 	// THIS IS NOW A NET UNDER A CASE THAT SHOULD NOT ARISE, AND IT SAYS SO WHEN
@@ -5094,7 +5263,13 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmEmpireAdvance(
 				}
 
 				TArray<FString> Parts;
-				if (Report.bSurged)
+				// SEVERAL SURGES ON ONE DAY SAY SO: since issue #2865 every city that falls fires its own.
+				if (Report.Surges > 1)
+				{
+					Parts.Add(FString::Printf(TEXT("%d surges brought %d dungeons"),
+											  Report.Surges, Report.Spawned.Num()));
+				}
+				else if (Report.bSurged)
 				{
 					Parts.Add(FString::Printf(TEXT("a surge brought %d dungeons"),
 											  Report.Spawned.Num()));

@@ -521,6 +521,9 @@ public:
 	 * slot's alone, which was true while a skill could only sit in the slot
 	 * it was designed for. A slot is now a key and any skill may go in any
 	 * slot, so the name would have become a lie. Issue #836.
+	 *
+	 * AND NOUGHT FOR AN AURA THAT STATES NONE, never its slot's figure. Ruled 2026-11-24, issue #2875: an aura deals
+	 * damage only if its description says so.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	float GetDamagePercent() const;
@@ -782,6 +785,10 @@ public:
 	 * is how a row loses one of them in a later edit.
 	 *
 	 * @param Who     the character that might be immune
+	 * `Slow` IS ASKED BY THE CODE THAT WORKS OUT A WALKING SPEED, since 2026-11-25: an actor immune to Slow ignores
+	 * every movement reduction (`ACataclysmPlayerCharacter::RefreshMovementSpeed`,
+	 * `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows`). `Pin` and `Madness` are asked by no code.
+	 *
 	 * @param Effect  one of `Stun`, `Knockdown`, `Slow`, `Displacement`, `Pin`
 	 *                or `Madness`. The design's own words, from its table of
 	 *                which effects the anti-stun-lock rule covers

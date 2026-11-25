@@ -1094,8 +1094,11 @@ bool FCataclysmEmpireLastHitLineTest::RunTest(const FString& Parameters)
 	Run->Begin(7);
 
 	// THE OPENING WAVE IS TAKEN OFF, both lists, so the only timers that run
-	// out below are the two this test puts down. The last surge is then day 1
-	// and nothing can bring a wave before day 26.
+	// out below are the two this test puts down. The last surge is then day 1.
+	// Since issue #2865 a day that ends with no ordinary dungeon standing brings
+	// a wave at its end, with no least interval; no timer of it runs out within
+	// 15 days, so the two put down are still the only ones that run out below.
+	// Until then nothing could bring a wave before day 26.
 	Run->AdvanceDay();
 	Run->Dungeons.Empty();
 	Run->Clock->Timers.Empty();

@@ -194,10 +194,27 @@ agrees on and a mixed pair carries none.
 
 | Button | On a carried item | On a worn item | On neither panel |
 | :-- | :-- | :-- | :-- |
-| Left | Pick it up and hold it on the cursor; a second left click puts it down under the cursor | Take it off onto the cursor the same way | While holding an item, drop it on the floor. Otherwise nothing |
+| Left | Pick it up and hold it on the cursor; a second left click puts it down under the cursor | Take it off onto the cursor the same way. While holding an item, wear the held item in this slot; what was here goes into the bag | While holding an item, drop it on the floor. Otherwise nothing |
 | Right | Wear it | Take it off into the bag | Nothing |
 
 This is issue #853, and it is what Path of Exile, Last Epoch and Diablo all do.
+
+**A held item pressed onto a gear slot is worn in that slot.** The project
+owner's ruling of 2026-11-24 (issue #837, Q5). It puts a weapon into the hand
+the player chooses in one press, and the weapon never passes through an empty
+hand, so the rule that the only weapon worn cannot be taken off is never in its
+way. A two-handed weapon pressed onto either hand fills both. Every check the
+right press makes is made here too: room in the bag for a second weapon coming
+off, and the question before the Worn Residue crosses the Consumption Threshold,
+which is about the slot pressed. An item that does not go in that slot is
+refused and stays on the cursor. Until this ruling the press was refused,
+because no rule had been chosen for it. No ARPG source was read for it; it
+follows the click-to-place gesture this screen already uses, and is a judgement.
+
+**A press that does not do what was asked says why, above the panel**, for four
+seconds (issue #837, Q6): for example "That is your only weapon, and you have to
+hold one. Press another weapon onto this hand to swap them." Until then such a
+press only wrote to the log, so it looked exactly like a press that missed.
 
 **A held item is not a third place an item can be**, and it was described as one
 here until 2026-09-02. `UCataclysmInventoryComponent` holds only the slot number
