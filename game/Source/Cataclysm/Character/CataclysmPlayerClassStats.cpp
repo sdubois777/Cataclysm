@@ -1134,6 +1134,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// The Death trees' slice C3e: Chained Souls' share of what followers hold back counted as Fervour held, read with
 		// no reading while the conditions are filled. No attribute and no base.
 		TEXT("reserved_fervour_counts_as_held_percent"),
+		// The Death trees' slice C4a: Gleaning's chance of 1 extra Fervour on a kill, read by
+		// UCataclysmFervour::GainOnOwnKill against the slain creature. No attribute and no base.
+		TEXT("fervour_per_kill_extra_chance"),
+		// And the Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
+		// UCataclysmFervour::RestoreHealthOnCriticalKill. No attribute and no base.
+		TEXT("health_restored_on_critical_kill"),
 	};
 	return Stats;
 }

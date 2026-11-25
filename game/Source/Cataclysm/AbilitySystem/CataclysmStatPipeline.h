@@ -1840,6 +1840,22 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ClassResourcePointsBelow
 		UMETA(DisplayName = "Class Resource Points Below"),
+
+	/**
+	 * The character struck or slain carries a Poison or a Bleed THE ASKER applied: the Shadow's Death's Patience,
+	 * "Killing an enemy that carries your Poison or Bleed generates +1 Fervour per point". The Death trees' slice C4a
+	 * (2026-11-25), as ruled: anyone's damage over time is `TargetCarriesADot`, not this.
+	 *
+	 * "YOUR" IS THE ASKER'S AVATAR, the instigator an ailment's effect names, as `TargetCarriesYourCurse` reads a curse.
+	 * Read by `UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy`.
+	 *
+	 * READ ONLY WHEN A ROW ASKS, by `WithTargetState`. False is "none of yours", "no target in hand", "no asker" and
+	 * "nothing asked", and all refuse.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetCarriesYourPoisonOrBleed
+		UMETA(DisplayName = "Target Carries Your Poison Or Bleed"),
 };
 
 /**
@@ -3560,6 +3576,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetCarriesYourCurse = false;
+
+	/**
+	 * Whether the character struck or slain carries a Poison or a Bleed the asker applied. The Death trees' slice C4a
+	 * (2026-11-25). Filled by `WithTargetState` only when a modifier asks and an asker is in hand; false otherwise, which
+	 * refuses. See `ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCarriesYourPoisonOrBleed = false;
 
 	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
@@ -5303,7 +5327,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-second, which is the drift that put the passive tree eight
+	 * adds an eighty-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5320,7 +5344,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-SIX OF THE EIGHTY-ONE COMPARE NOTHING. They are the case labels
+	 * THIRTY-SEVEN OF THE EIGHTY-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

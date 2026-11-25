@@ -548,3 +548,14 @@ SoulCollector_basic_a_c1#2,SoulCollector_basic_a_c1,spell_damage,increased,1.0,,
 SoulCollector_keystone_a_kC#1,SoulCollector_keystone_a_kC,fervour_threshold_linger_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_b_stem1#1,SoulCollector_basic_b_stem1,attack_speed,increased,2.0,,class_resource_points_below,20.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 SoulCollector_basic_a_stem2#1,SoulCollector_basic_a_stem2,reserved_fervour_counts_as_held_percent,flat,8.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_25#3,SoulCollector_capstone_25,fervour_per_kill,flat,1.0,,seconds_after_kill,2.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_stem0#1,SoulCollector_basic_b_stem0,fervour_per_kill_extra_chance,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_b_stem2#1,SoulCollector_basic_b_stem2,fervour_per_kill,increased,1.0,,,0.0,enemies_in_reach,1.0,0,8.0,0,10,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_a_stem0#1,Shadow_basic_a_stem0,fervour_per_kill,flat,1.0,,target_carries_your_poison_or_bleed,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_keystone_c_kA#1,Shadow_keystone_c_kA,,,100.0,,,0.0,,0.0,0,-1.0,0,0,cooldown_reset_movement,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_b_a1#1,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,,,0.0,,0.0,0,-1.0,2,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_b_a1#2,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,,,0.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_b_a1#3,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_b_a1#4,Shadow_basic_b_a1,health_restored_on_critical_kill,flat,1.0,,,0.0,,0.0,0,-1.0,8,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_stem2#1,Shadow_basic_c_stem2,skill_range,increased,3.0,Slot.Movement,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Shadow_basic_c_stem2#2,Shadow_basic_c_stem2,skill_range,increased,3.0,Slot.Movement,seconds_after_kill,2.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

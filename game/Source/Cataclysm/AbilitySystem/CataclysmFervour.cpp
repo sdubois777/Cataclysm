@@ -11,6 +11,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
+#include "HAL/IConsoleManager.h"
 
 const TCHAR* UCataclysmFervour::FromDamageStat = TEXT("fervour_from_damage");
 const TCHAR* UCataclysmFervour::FromCostStat = TEXT("fervour_from_cost");
@@ -792,6 +793,33 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 	return AbilitySystem->GetNumericAttribute(Health) - Before;
 }
 
+const TCHAR* UCataclysmFervour::HealthRestoredOnCriticalKillStat = TEXT("health_restored_on_critical_kill");
+
+float UCataclysmFervour::RestoreHealthOnCriticalKill(UAbilitySystemComponent* AbilitySystem)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	const float Percent =
+		Cataclysm->StatForSkill(FName(HealthRestoredOnCriticalKillStat), FGameplayTagContainer(), 0.0f);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (Percent <= 0.0f || !AbilitySystem->HasAttributeSetForAttribute(Health))
+	{
+		return 0.0f;
+	}
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before >= Maximum)
+	{
+		return 0.0f;
+	}
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth, Maximum * Percent / 100.0f);
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
 float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
 	UAbilitySystemComponent* AbilitySystem)
 {
@@ -1113,6 +1141,16 @@ void UCataclysmFervour::NoteOwnKill(UAbilitySystemComponent* AbilitySystem, cons
 	Cataclysm->NoteOwnKill(Grace);
 }
 
+const TCHAR* UCataclysmFervour::PerKillExtraChanceStat = TEXT("fervour_per_kill_extra_chance");
+
+/**
+ * Pins the roll `GainOnOwnKill` makes against Gleaning's chance, 0 to 100, for tests. Negative, the default, rolls. The
+ * same shape as `Cataclysm.CooldownResetRoll`. The Death trees' slice C4a (2026-11-25).
+ */
+static TAutoConsoleVariable<float> CVarKillFervourExtraRoll(
+	TEXT("Cataclysm.KillFervourExtraRoll"), -1.0f,
+	TEXT("Pins the roll a kill makes against its chance of 1 extra Fervour (0-100); negative rolls."));
+
 float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
 {
 	if (!AbilitySystem)
@@ -1132,12 +1170,27 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 
 	// ASKED AGAINST THE SLAIN CREATURE, so its rarity rung can pick the row. NO TAGS: the generator pays for the kill,
 	// not for the skill that made it. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
-	const float PerKill = Cataclysm->StatForSkill(
+	float PerKill = Cataclysm->StatForSkill(
 		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
 	if (PerKill <= 0.0f)
 	{
 		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE.
 		return 0.0f;
+	}
+
+	// AND GLEANING'S CHANCE OF ONE MORE, rolled on each kill (the Death trees' slice C4a). A chance of 100 or more is
+	// always, compared rather than rolled, as a cooldown reset's is.
+	const float ExtraChance = Cataclysm->StatForSkill(
+		FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f,
+		false, Slain);
+	if (ExtraChance > 0.0f)
+	{
+		const float Pinned = CVarKillFervourExtraRoll.GetValueOnAnyThread();
+		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+		if (ExtraChance >= 100.0f || Roll < ExtraChance)
+		{
+			PerKill += 1.0f;
+		}
 	}
 
 	const FGameplayAttribute Pool =

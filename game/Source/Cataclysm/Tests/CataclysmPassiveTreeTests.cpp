@@ -3548,7 +3548,11 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_is_moving")
 			// THE DEMONIC TREE REWORK OF 2026-11-24, "ENEMIES CARRYING YOUR CURSE": the character struck carries a
 			// curse the asker laid. It names a state, so it compares nothing.
-			|| Name == TEXT("target_carries_your_curse");
+			|| Name == TEXT("target_carries_your_curse")
+			// THE DEATH TREES' SLICE C4a (2026-11-25), DEATH'S PATIENCE'S "AN ENEMY THAT CARRIES YOUR POISON OR BLEED":
+			// the character struck carries a Poison or a Bleed the asker applied. It names a state, so it compares
+			// nothing.
+			|| Name == TEXT("target_carries_your_poison_or_bleed");
 	}
 }
 

@@ -157,6 +157,7 @@ namespace
 		{ TEXT("seconds_after_fervour_spent"),  ECataclysmStatCondition::WithinSecondsOfFervourSpent },
 		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
 		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
+		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
 	};
 
 	struct FNamedStatScale
@@ -376,8 +377,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsSilenced:
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
+	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-six says
+		// nothing for a number to be compared against. Each of the thirty-seven says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -596,6 +598,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
 	// target in hand, after `TargetIsMoving`.
 	case C::TargetCarriesYourCurse:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK OR SLAIN CREATURE CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a: a fact of the
+	// target in hand, as the curse above is.
+	case C::TargetCarriesYourPoisonOrBleed:
 		return EOn::TheBlowOrSkill;
 
 	// THE STRUCK OR SLAIN CREATURE'S RARITY RUNG, the Death trees of 2026-11-24: a fact of the target in hand, after
@@ -1344,6 +1351,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`. The demonic tree rework of
 		// 2026-11-24. False is also "no target in hand", "no asker" and "nothing asked", and all refuse together.
 		return State.bTargetCarriesYourCurse;
+
+	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`, as the curse above is. The Death
+		// trees' slice C4a (2026-11-25).
+		return State.bTargetCarriesYourPoisonOrBleed;
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

@@ -309,6 +309,44 @@ float UCataclysmDebuffs::DamageAgainstSharedDebuff(
 	return Percent / 100.0f;
 }
 
+bool UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier)
+{
+	if (!Carrier || !Applier)
+	{
+		return false;
+	}
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Carrier);
+	if (!Theirs)
+	{
+		return false;
+	}
+	FGameplayTagContainer Kinds;
+	const FGameplayTag Poison =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.DoT.Poison")), /*ErrorIfNotFound=*/false);
+	if (Poison.IsValid())
+	{
+		Kinds.AddTag(Poison);
+	}
+	if (BleedTag().IsValid())
+	{
+		Kinds.AddTag(BleedTag());
+	}
+	if (Kinds.IsEmpty())
+	{
+		return false;
+	}
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Theirs->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Kinds)))
+	{
+		const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+		if (Active && Active->Spec.GetContext().GetInstigator() == Applier)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 FGameplayTag UCataclysmDebuffs::BleedTag()
 {
 	return UGameplayTagsManager::Get().RequestGameplayTag(

@@ -5413,6 +5413,13 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
     # satisfies.
     "target_carries_your_curse": None,
+    # "Killing an enemy that carries your Poison or Bleed" is
+    # `target_carries_your_poison_or_bleed`: the Shadow's Death's Patience, the
+    # Death trees' slice C4a (2026-11-25). A Poison or a Bleed whose effect names
+    # the asker as its instigator (`UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy`),
+    # as the curse above. IT TAKES NO VALUE, and it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`, a fact of the target in hand.
+    "target_carries_your_poison_or_bleed": None,
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -10590,6 +10597,11 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE DEATH TREES' SLICE C4a (2026-11-25): Fervour a kill pays, scaled by the
+    # living enemies within 8 metres for the Soul Collector's Thinning the Herd.
+    # Asked through the pipeline at the kill by `UCataclysmFervour::GainOnOwnKill`;
+    # `ProbeScaledFervourPerKill` measures it.
+    "fervour_per_kill",
     # ADDED 2026-10-05 FOR "Starvation (10-Piece Bonus): When you kill an enemy,
     # gain a stack of 'Famished.' Each stack increases all of your leech by 5%",
     # issue #1833, three rows scaled by their own stacks. `UCataclysmLeech::NoteHit`
@@ -10844,6 +10856,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_is_silenced",
     "target_is_moving",
     "target_carries_your_curse",
+    "target_carries_your_poison_or_bleed",
     "target_rarity_at_least",
     "target_rarity_is",
 })
@@ -10921,6 +10934,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # `UCataclysmAbilitySystemComponent::FervourThresholdStep`. Probed by
     # `ProbeConditionedProjectileCount` and `ProbeConditionedCooldownsRecoverFaster`.
     "projectile_count": ASKER_PASSES_NOTHING_MORE,
+    # AND THE SKILL'S RANGE, the Death trees' slice C4a, for the Shadow's Hunting
+    # Leap under `seconds_after_kill`: asked as increases with the skill's tags by
+    # `UCataclysmAbilitySystemComponent::IncreasesForStat`, with the wearer's state.
+    # Probed by `ProbeConditionedSkillRange`.
+    "skill_range": ASKER_PASSES_NOTHING_MORE,
     "cooldowns_recover_faster_percent": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by

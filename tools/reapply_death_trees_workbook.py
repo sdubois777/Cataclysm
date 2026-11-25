@@ -533,6 +533,26 @@ NODES: tuple[Node, ...] = (
     Node(SC + "basic_b_stem1", "Empty Hands",
          (R("attack_speed", "increased", 2, cond="class_resource_points_below", cond_value=20),)),
     Node(SC + "basic_a_stem2", "Chained Souls", (R("reserved_fervour_counts_as_held_percent", "flat", 8),)),
+
+    # ---- SLICE C4a (2026-11-25): THE FIRST NODES THAT ACT ON A KILL. Soul Tide reads
+    # the kill clock before the kill stamps it, so "within 2 seconds of each other"
+    # is the time since the previous kill; Thinning the Herd counts the living
+    # enemies within 8 metres, the slain one already dead; Clean Kill's "for every
+    # 2 points" is a stat row at each second point, read on a kill whose killing
+    # blow was a critical strike.
+    Node(SC + "capstone_25", "Soul Tide",
+         (R("fervour_per_kill", "flat", 1, cond="seconds_after_kill", cond_value=2),), option=1),
+    Node(SC + "basic_b_stem0", "Gleaning", (R("fervour_per_kill_extra_chance", "flat", 5),)),
+    Node(SC + "basic_b_stem2", "Thinning the Herd",
+         (R("fervour_per_kill", "increased", 1, scale="enemies_in_reach", step=1, reach=8, cap=10),)),
+    Node(SH + "basic_a_stem0", "Death's Patience",
+         (R("fervour_per_kill", "flat", 1, cond="target_carries_your_poison_or_bleed"),)),
+    Node(SH + "keystone_c_kA", "Flicker", (A("cooldown_reset_movement", 100, event="kill"),)),
+    Node(SH + "basic_b_a1", "Clean Kill",
+         tuple(R("health_restored_on_critical_kill", "flat", 1, min_points=points) for points in (2, 4, 6, 8))),
+    Node(SH + "basic_c_stem2", "Hunting Leap",
+         (R("skill_range", "increased", 3, tags="Slot.Movement"),
+          R("skill_range", "increased", 3, tags="Slot.Movement", cond="seconds_after_kill", cond_value=2))),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

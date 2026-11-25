@@ -283,6 +283,14 @@ public:
 	static FGameplayTag BleedTag();
 
 	/**
+	 * Whether `Carrier` carries a Poison or a Bleed whose effect names `Applier` as its instigator: the condition
+	 * `target_carries_your_poison_or_bleed`, the Shadow's Death's Patience. The Death trees' slice C4a (2026-11-25). The
+	 * same query and record `UCataclysmRisenImps::CarriesCurseLaidBy` reads for a curse: each running effect granting
+	 * `Keyword.DoT.Poison` or `Keyword.DoT.Bleed`, and its instigator. False with either missing.
+	 */
+	static bool CarriesPoisonOrBleedLaidBy(const AActor* Carrier, const AActor* Applier);
+
+	/**
 	 * How many seconds of movement one bleed ticks through before it stops: "ticks only while the affected target is
 	 * moving, stopping after 4 seconds of movement" (the DoTs sheet, `DoT_Bleed`). Issue #918, ruled 2026-10-31.
 	 */

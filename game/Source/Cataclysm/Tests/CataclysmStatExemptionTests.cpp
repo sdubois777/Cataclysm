@@ -5801,6 +5801,40 @@ namespace CataclysmStatExemptionTest
 					   100.0f, 0.01f);
 	}
 
+	/**
+	 * `fervour_per_kill` scaled by the enemies within 8 metres, read by `UCataclysmFervour::GainOnOwnKill`: the Soul
+	 * Collector's Thinning the Herd, the Death trees' slice C4a (2026-11-25). ONE CHARACTER, a flat row of 1 for each
+	 * enemy within 8 metres. THE CONTROL IS THE SAME CHARACTER ALONE: a kill pays nothing. With one creature near, 1.
+	 */
+	void ProbeScaledFervourPerKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmFervour::PerKillStat)).Modifiers = {RavagerReworkFlatPerEnemy(1.0f, 8.0f)};
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Alone = UCataclysmFervour::GainOnOwnKill(System, nullptr);
+		if (!RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		const float Crowded = UCataclysmFervour::GainOnOwnKill(System, nullptr);
+		Test.TestEqual(TEXT("fervour_per_kill by the enemies near: control, alone a kill pays nothing"), Alone, 0.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and with one enemy near it pays 1, so it is asked with the count"), Crowded, 1.0f, 0.001f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE MASOCHIST TREE REWORK'S TWO SCALED VOW CLAUSES, approved by the project
 	// owner on 2026-11-24. Each grants a flat row scaled by the Fervour held, the
@@ -6271,6 +6305,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("carnage_stack_seconds"),      &ProbeCarnageStackSeconds},
 			{TEXT("area_of_effect"),             &ProbeScaledAreaOfEffect},
 			{TEXT("health_restored_on_kill_at_no_cost"), &ProbeScaledHealthRestoredOnKill},
+			// THE DEATH TREES' SLICE C4a (2026-11-25): Thinning the Herd.
+			{TEXT("fervour_per_kill"), &ProbeScaledFervourPerKill},
 			{TEXT("ultimate_fervour_cost_reduction"), &ProbeScaledUltimateFervourCostReduction},
 			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
 			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
@@ -7529,6 +7565,29 @@ namespace CataclysmStatExemptionTest
 		AtHealthShare(Fighter, 0.4f);
 		Test.TestEqual(TEXT("cooldowns_recover_faster_percent is asked for, so below half health a step takes a second"),
 					   Fighter.AbilitySystem->FervourThresholdStep(1.0f), 1.0f, 0.001f);
+	}
+
+	/**
+	 * `skill_range`, read as increases by `UCataclysmAbilitySystemComponent::IncreasesForStat` with the character's
+	 * state: the Shadow's Hunting Leap under `seconds_after_kill` (the Death trees' slice C4a, 2026-11-25). Conditioned
+	 * here below half health.
+	 */
+	void ProbeConditionedSkillRange(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		ConditionedBelowHalf(Fighter, TEXT("skill_range"), ECataclysmStatBucket::Increased, 50.0f, 0.0f);
+		const FName Range(TEXT("skill_range"));
+		Test.TestEqual(TEXT("skill_range at full health: nothing increased"),
+					   Fighter.AbilitySystem->IncreasesForStat(Range, FGameplayTagContainer()), 0.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("skill_range is asked for, so below half health 50% increased"),
+					   Fighter.AbilitySystem->IncreasesForStat(Range, FGameplayTagContainer()), 0.5f, 0.001f);
 	}
 
 	/** `cooldown_reduction`, read by `UCataclysmGameplayAbility::CooldownAfterReduction`. */
@@ -12037,6 +12096,64 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_per_kill_extra_chance`, read by `UCataclysmFervour::GainOnOwnKill` and rolled on each kill: the Soul
+	 * Collector's Gleaning, the Death trees' slice C4a (2026-11-25). ONE FIGHTER with a Fervour pool and 1 Fervour a
+	 * kill, the roll pinned at 0. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a kill pays 1. Granted at a
+	 * flat 50, it pays 2.
+	 */
+	void ProbeFervourPerKillExtraChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.KillFervourExtraRoll"));
+		if (!Test.TestNotNull(TEXT("the extra Fervour roll can be pinned"), Roll))
+		{
+			return;
+		}
+		Roll->Set(0.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
+		Fighter.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f}});
+		Test.TestEqual(TEXT("control: with no fervour_per_kill_extra_chance a kill pays 1"),
+					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 1.0f, 0.001f);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f},
+								   {FName(UCataclysmFervour::PerKillExtraChanceStat), 50.0f}});
+		Test.TestEqual(TEXT("with it at 50 and the roll at 0, 2, so GainOnOwnKill really reads it"),
+					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 2.0f, 0.001f);
+	}
+
+	/**
+	 * `health_restored_on_critical_kill`, read by `UCataclysmFervour::RestoreHealthOnCriticalKill`: the Shadow's Clean
+	 * Kill, the Death trees' slice C4a (2026-11-25). ONE FIGHTER at half health. THE CONTROL IS THE SAME FIGHTER BEFORE
+	 * THE STAT IS GRANTED: nothing is restored. Granted at a flat 4, 4% of its maximum.
+	 */
+	void ProbeHealthRestoredOnCriticalKill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		const float Maximum = Fighter.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		AtHealthShare(Fighter, 0.5f);
+		Test.TestEqual(TEXT("control: with no health_restored_on_critical_kill nothing is restored"),
+					   UCataclysmFervour::RestoreHealthOnCriticalKill(Fighter.AbilitySystem), 0.0f, 0.001f);
+		GrantFlat(Fighter.Actor, UCataclysmFervour::HealthRestoredOnCriticalKillStat, 4.0f);
+		Test.TestEqual(TEXT("with it at 4, 4% of the maximum, so RestoreHealthOnCriticalKill really reads it"),
+					   UCataclysmFervour::RestoreHealthOnCriticalKill(Fighter.AbilitySystem), Maximum * 0.04f, 0.01f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12245,6 +12362,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("area_of_effect"),           &ProbeConditionedAreaOfEffect},
 			// THE DEATH TREES' SLICE C3d (2026-11-25): two Soul Collector vows' clauses.
 			{TEXT("projectile_count"),         &ProbeConditionedProjectileCount},
+			// AND THE SLICE C4a's HUNTING LEAP (2026-11-25).
+			{TEXT("skill_range"),              &ProbeConditionedSkillRange},
 			{TEXT("cooldowns_recover_faster_percent"), &ProbeConditionedCooldownsRecoverFaster},
 			{TEXT("cooldown_skip_chance"),     &ProbeConditionedCooldownSkipChance},
 			{TEXT("debuffs_do_not_expire"),    &ProbeConditionedDebuffsDoNotExpire},
@@ -12531,6 +12650,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_threshold_linger_seconds"), &ProbeFervourThresholdLinger},
 			{TEXT("cooldowns_recover_faster_percent"), &ProbeCooldownsRecoverFaster},
 			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
+			{TEXT("fervour_per_kill_extra_chance"), &ProbeFervourPerKillExtraChance},
+			{TEXT("health_restored_on_critical_kill"), &ProbeHealthRestoredOnCriticalKill},
 		};
 		return Made;
 	}

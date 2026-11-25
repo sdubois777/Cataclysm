@@ -536,8 +536,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Cinders Kept, Phylactery and the Shadow's Borrowed Step (two rows). AND 547 FOR
 	// SLICE C3d: the four vows' Fervour threshold clauses, Generous Count, Steady
 	// Count (two) and Long Shadow; the Soul Collector 95. AND 549 FOR SLICE C3e:
-	// Empty Hands and Chained Souls; the Soul Collector 97.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        549)
+	// Empty Hands and Chained Souls; the Soul Collector 97. AND 560 FOR SLICE C4a:
+	// Soul Tide, Gleaning and Thinning the Herd, the Soul Collector 100; the Shadow's
+	// Death's Patience, Flicker, Clean Kill (four) and Hunting Leap (two), the Shadow 77.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        560)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

@@ -410,6 +410,17 @@ INVENTORY = {
         "the regeneration step with no tags because it reaches every skill's "
         "cooldown; no attribute, so nought is the fallback, and no blow is in "
         "hand. The Death trees' slice C3d",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
+     'false, Slain'):
+        "Gleaning's chance of one more Fervour, asked at the kill against the "
+        "slain creature as the payment beside it is, so a rarity row is judged; "
+        "no tags, no blow. The Death trees' slice C4a",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(HealthRestoredOnCriticalKillStat), FGameplayTagContainer(), 0.0f'):
+        "Clean Kill's share of maximum health on a kill by a critical strike, "
+        "asked with no tags because it is for the kill and not a skill; no "
+        "attribute, so nought is the fallback. The Death trees' slice C4a",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "
@@ -1302,6 +1313,11 @@ TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
         "asked at a kill, for the same reason as the Fervour the kill pays",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
+     'false, Slain'):
+        "asked at a kill beside the Fervour the kill pays, for the same reason "
+        "(Gleaning, the Death trees' slice C4a)",
 }
 
 

@@ -311,6 +311,21 @@ public:
 	static float RestoreHealthOnKillAtNoCost(UAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * The stat holding the share of maximum health, in per cent, a kill by a critical strike restores: the Shadow's Clean
+	 * Kill, "Killing an enemy with a critical strike restores 1% of your Maximum Health for every 2 points". The Death
+	 * trees' slice C4a (2026-11-25). A STAT AND NOT AN ACTION ROW, because "for every 2 points" is a row at each second
+	 * point and the generator keeps one action row per node and event. No attribute and no base.
+	 */
+	static const TCHAR* HealthRestoredOnCriticalKillStat;
+
+	/**
+	 * Restore `HealthRestoredOnCriticalKillStat`'s share of maximum health, through `UCataclysmRegeneration::TopUp` as
+	 * `RestoreHealthOnKillAtNoCost` does. The player's kill handler calls it for a kill whose killing blow was a critical
+	 * strike (`FCataclysmDeathNotice::bByACriticalStrike`). Returns the health really restored.
+	 */
+	static float RestoreHealthOnCriticalKill(UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * How much increased damage, in percent, a melee attack buys for each enemy
 	 * it strikes beyond the first. `Ravager_basic_b_b2` Bought With Ruin is its
 	 * only source. Issue #1515.
@@ -647,6 +662,14 @@ public:
 	 * `target_rarity_at_least`, ASKED WITH THE SLAIN CREATURE AS THE TARGET, so the rung is read where it is needed.
 	 */
 	static const TCHAR* PerKillStat;
+
+	/**
+	 * The stat holding the chance, in per cent, that a kill gives 1 Fervour more than `PerKillStat` pays: the Soul
+	 * Collector's Gleaning, "Each enemy you kill has a 5% chance per point to give 1 extra Fervour". The Death trees'
+	 * slice C4a (2026-11-25). ROLLED ON EACH KILL, as ruled, in `GainOnOwnKill`, and asked against the slain creature as
+	 * the payment is; `Cataclysm.KillFervourExtraRoll` pins the roll for tests. No attribute and no base.
+	 */
+	static const TCHAR* PerKillExtraChanceStat;
 
 	/**
 	 * Fervour a second the Death classes' decay takes once the grace after the last kill has run out:

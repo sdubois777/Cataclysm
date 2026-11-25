@@ -701,7 +701,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 549 THE SAME DAY, for slice C3e: Empty Hands and Chained Souls. The
 #: Soul Collector 97 rows on 52 nodes.
-AUTHORED_ROWS = 549
+#:
+#: AND TO 560 THE SAME DAY, for slice C4a: Soul Tide, Gleaning, Thinning the
+#: Herd, and the Shadow's Death's Patience, Flicker, Clean Kill (four, one at each
+#: second point) and Hunting Leap (two).
+AUTHORED_ROWS = 560
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1145,7 +1149,11 @@ AUTHORED_ROWS = 549
 #:
 #: AND TO 335 THE SAME DAY, for slice C3e's Empty Hands and Chained Souls: the
 #: Soul Collector 52 of its 73.
-AUTHORED_NODES = 335
+#:
+#: AND TO 341 THE SAME DAY, for slice C4a's Gleaning, Thinning the Herd, Death's
+#: Patience, Flicker, Clean Kill and Hunting Leap. Soul Tide is an option of a
+#: capstone already counted.
+AUTHORED_NODES = 341
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1247,7 +1255,10 @@ AUTHORED_NODES = 335
 #:
 #: AND TO 46 THE SAME DAY, for slice C3c: the Soul Collector's Phylactery (100,
 #: option 1).
-AUTHORED_OPTIONS = 46
+#:
+#: AND TO 47 THE SAME DAY, for slice C4a: the Soul Collector's Soul Tide (25,
+#: option 1).
+AUTHORED_OPTIONS = 47
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1601,6 +1612,9 @@ CONDITION_WORDS = {
     "target_not_yet_struck_by_you": ("first hit against each enemy", None),
     "in_combat_for_seconds": ("in combat", "{value:g} second"),
     "target_carries_your_curse": ("carrying your curse", None),
+    # DEATH'S PATIENCE, the Death trees' slice C4a (2026-11-25): "an enemy that
+    # carries your Poison or Bleed".
+    "target_carries_your_poison_or_bleed": ("carries your poison or bleed", None),
     # THE CHARACTER STRUCK IS IN THE ASKER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
     # damage from you". No value.
@@ -1792,7 +1806,9 @@ CONDITION_WORDS = {
     "seconds_after_striking_a_boss": ("hit a boss in the last", "{value:g} second"),
     # And the window after a kill: Between the Dead and Killing Pace, "for 4
     # seconds after you kill", and Light Feet, "for 4 seconds after a kill".
-    "seconds_after_kill": (("after you kill", "after a kill"), "{value:g} second"),
+    # AND SOUL TIDE'S "Kills within 2 seconds of each other", the Death trees'
+    # slice C4a (2026-11-25): the clock reads the time since the previous kill.
+    "seconds_after_kill": (("after you kill", "after a kill", "of each other"), "{value:g} second"),
 
     # THREE PREDICATES NO TREE USED BEFORE THE DEATH TREES OF 2026-11-24.
     #
@@ -2523,7 +2539,14 @@ VALUE_FORMS = {
     # rather than 4"; the Shadow's "drains at 10 per second"; Momentum's "2
     # seconds later" and Grave Patience's "1 second later".
     "fervour_per_kill": (": {value:g} for", ", {value:g} for", "and {value:g} for",
-                         "+{value:g} Fervour"),
+                         "+{value:g} Fervour",
+                         # SOUL TIDE, the Death trees' slice C4a (2026-11-25):
+                         # "give 1 extra Fervour each".
+                         "give {value:g} extra Fervour"),
+    # SLICE C4a (2026-11-25): Gleaning's "5% chance per point to give 1 extra
+    # Fervour", and Clean Kill's "restores 1% of your Maximum Health".
+    "fervour_per_kill_extra_chance": ("{value:g}% chance per point to give 1 extra Fervour",),
+    "health_restored_on_critical_kill": ("restores {value:g}% of your Maximum Health",),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
                                       "drains at {value:g} per second"),
     # THE SIPHON'S RADIUS AND ITS LINGER, the Death trees' slice C2 (2026-11-25):
@@ -3089,6 +3112,9 @@ ACTION_VALUE_IN_WORDS = {
     # outright", a chance of 100. The execute never takes a Boss; the engine
     # holds that inside the action.
     ("Shadow_capstone_200", "execute_target"): ("outright", 100.0),
+    # FLICKER, the Death trees' slice C4a (2026-11-25): "Killing an enemy resets
+    # your movement skill's cooldown", a chance of 100.
+    ("Shadow_keystone_c_kA", "cooldown_reset_movement"): ("resets your movement skill's cooldown", 100.0),
 }
 
 

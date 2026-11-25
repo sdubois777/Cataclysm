@@ -1587,6 +1587,13 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		if (Notice.Killer == this && Notice.Victim)
 		{
 			UCataclysmFervour::RestoreHealthOnKillAtNoCost(Acting);
+
+			// AND THE SHADOW'S CLEAN KILL, FOR A KILL BY A CRITICAL STRIKE (a tick of damage over time is never one): the
+			// Death trees' slice C4a (2026-11-25). Beside the restoration above, which costs nothing as this does.
+			if (Notice.bByACriticalStrike)
+			{
+				UCataclysmFervour::RestoreHealthOnCriticalKill(Acting);
+			}
 		}
 
 		// AND FOLLOW THROUGH. Issue #1515, `Ravager_keystone_b_kB`: "Killing an

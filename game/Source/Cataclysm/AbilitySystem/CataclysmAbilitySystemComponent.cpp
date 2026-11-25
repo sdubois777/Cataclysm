@@ -1664,6 +1664,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
+	bool bWantsYourPoisonOrBleed = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1728,6 +1729,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetCarriesYourCurse:
 				bWantsYourCurse = true;
 				break;
+			// AND WHETHER IT CARRIES THE ASKER'S POISON OR BLEED, the Death trees' slice C4a (2026-11-25): Death's
+			// Patience, asked at a kill against the slain creature.
+			case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
+				bWantsYourPoisonOrBleed = true;
+				break;
 			// AND THE TARGET'S RARITY RUNG, the Death trees of 2026-11-24: "Elite or stronger", and the Soul
 			// Collector's Fervour a kill by the slain creature's rung.
 			case ECataclysmStatCondition::TargetRarityAtLeast:
@@ -1774,6 +1780,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (bWantsYourCurse && State.AskingAbilitySystem)
 	{
 		State.bTargetCarriesYourCurse = UCataclysmRisenImps::CarriesCurseLaidBy(
+			Target, State.AskingAbilitySystem->GetAvatarActor());
+	}
+
+	// AND WHETHER IT CARRIES A POISON OR A BLEED THE ASKER APPLIED, the same way (the Death trees' slice C4a).
+	if (bWantsYourPoisonOrBleed && State.AskingAbilitySystem)
+	{
+		State.bTargetCarriesYourPoisonOrBleed = UCataclysmDebuffs::CarriesPoisonOrBleedLaidBy(
 			Target, State.AskingAbilitySystem->GetAvatarActor());
 	}
 
