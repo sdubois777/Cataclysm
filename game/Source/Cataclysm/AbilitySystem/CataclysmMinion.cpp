@@ -843,17 +843,55 @@ AActor* ACataclysmMinion::SkillCopyTarget() const
 
 bool ACataclysmMinion::CopySummonersLastSkill()
 {
-	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
 	AActor* const Caster = Summoner.Get();
-	if (!IsGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
-		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
-	{
-		return false;
-	}
 	const UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Caster));
 	const FCataclysmWeaponSkill* Recorded = Theirs ? Theirs->SkillGadgetsCopy() : nullptr;
 	if (!Recorded)
+	{
+		return false;
+	}
+	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
+	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds.
+	const FCataclysmWeaponSkill Skill = *Recorded;
+	return CastSkillCopy(Skill);
+}
+
+const TCHAR* ACataclysmMinion::EldestGadgetCastsEverySkillStat = TEXT("eldest_gadget_casts_every_skill");
+
+bool ACataclysmMinion::EldestGadgetCastsEverySkillFor(const AActor* Player)
+{
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	return Theirs
+		&& Theirs->StatForSkill(FName(EldestGadgetCastsEverySkillStat), FGameplayTagContainer(), 0.0f) > 0.0f;
+}
+
+ACataclysmMinion* ACataclysmMinion::EldestGadgetOf(const AActor* Player)
+{
+	ACataclysmMinion* Eldest = nullptr;
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Player))
+	{
+		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
+		if (!IsValid(Each) || Each->IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(Each)
+			|| !(Each->IsGadget() || Each->IsSkillGadget()))
+		{
+			continue;
+		}
+		if (!Eldest || Each->SpawnOrder < Eldest->SpawnOrder)
+		{
+			Eldest = Each;
+		}
+	}
+	return Eldest;
+}
+
+bool ACataclysmMinion::CastSkillCopy(const FCataclysmWeaponSkill& Skill)
+{
+	// A GADGET, standing and able to act, OF A SUMMONER THAT IS STILL HERE AND ALIVE.
+	AActor* const Caster = Summoner.Get();
+	if (!(IsGadget() || IsSkillGadget()) || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+		|| !IsValid(Caster) || UCataclysmSkillEffects::IsDead(Caster))
 	{
 		return false;
 	}
@@ -862,11 +900,7 @@ bool ACataclysmMinion::CopySummonersLastSkill()
 	{
 		return false;
 	}
-
-	// THE ROW AS IT WAS USED, whether or not the summoner still holds it: the coordinating session's ruling of
-	// 2026-10-14 (option B). Copied, because starting a skill may change what the record holds. Asked once more
-	// whether a row may cast it again, which it was when it was recorded.
-	const FCataclysmWeaponSkill Skill = *Recorded;
+	// ASKED WHETHER A ROW MAY CAST IT AGAIN, as when the copy was recorded.
 	if (!UCataclysmTriggeredSkill::RepeatsFromARow(Skill))
 	{
 		return false;

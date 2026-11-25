@@ -5118,6 +5118,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::TauntEnemiesNearTrapAction =
 	TEXT("taunt_enemies_near_trap");
 const TCHAR* UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction =
 	TEXT("place_last_trap_again");
+const TCHAR* UCataclysmAbilitySystemComponent::CounterfireAction =
+	TEXT("counterfire");
 
 namespace
 {
@@ -6164,6 +6166,61 @@ int32 UCataclysmAbilitySystemComponent::TauntEnemiesNearTrap(const FCataclysmPoo
 		Taunted += UCataclysmTaunt::ApplyTaunt(Trap, Enemy, Action.Percent) ? 1 : 0;
 	}
 	return Taunted;
+}
+
+int32 UCataclysmAbilitySystemComponent::QueueCounterfire(const FCataclysmPoolAction& Action, const AActor* Attacker)
+{
+	AActor* const Wearer = GetAvatarActor();
+	if (!Wearer || !IsValid(Attacker) || UCataclysmSkillEffects::IsDead(Attacker) || Action.EventValue < 1.0f)
+	{
+		return 0;
+	}
+	// EVERY LIVING TRAP AND GADGET THE WEARER COMMANDS, skill traps included, once each.
+	TArray<ACataclysmMinion*> Devices;
+	const auto Consider = [&Devices](AActor* Follower)
+	{
+		ACataclysmMinion* Each = Cast<ACataclysmMinion>(Follower);
+		if (IsValid(Each) && !Each->IsActorBeingDestroyed() && !UCataclysmSkillEffects::IsDead(Each)
+			&& (Each->IsTrap() || Each->IsGadget() || Each->IsSkillGadget()))
+		{
+			Devices.AddUnique(Each);
+		}
+	};
+	for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(Wearer))
+	{
+		Consider(Follower);
+	}
+	for (ACataclysmMinion* Trap : ACataclysmMinion::SkillTrapsOf(Wearer))
+	{
+		Consider(Trap);
+	}
+	// "ONE FOR EVERY 2", ROUNDED DOWN, THE NEAREST THE ATTACKER FIRST, the earlier placed of two at one distance.
+	const int32 Answers = FMath::FloorToInt(static_cast<float>(Devices.Num()) / Action.EventValue);
+	if (Answers <= 0)
+	{
+		return 0;
+	}
+	const FVector At = Attacker->GetActorLocation();
+	Devices.Sort([&At](const ACataclysmMinion& A, const ACataclysmMinion& B)
+	{
+		const float ToA = FVector::DistSquared(A.GetActorLocation(), At);
+		const float ToB = FVector::DistSquared(B.GetActorLocation(), At);
+		return ToA != ToB ? ToA < ToB : A.SpawnOrder < B.SpawnOrder;
+	});
+	for (int32 Index = 0; Index < Answers; ++Index)
+	{
+		ACataclysmMinion* Answering = Devices[Index];
+		if (Answering->IsSkillTrap())
+		{
+			QueueSkillTrapSetOff(Answering, /*bEvenForADeadPlayer=*/false);
+			continue;
+		}
+		FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
+		Queued.Gadget = Answering;
+		Queued.Enemy = const_cast<AActor*>(Attacker);
+		Queued.DamageMultiplier = FMath::Max(0.0f, Action.Percent) / 100.0f;
+	}
+	return Answers;
 }
 
 bool UCataclysmAbilitySystemComponent::QueueLastTrapPlacedAgain()
@@ -7769,6 +7826,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// COUNTERFIRE, V4b (2026-11-25): landed only, on an event naming the attacker, with the row's second.
+		if (Action.bCounterfire)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action) && QueueCounterfire(Action, EventTarget) > 0)
+			{
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}
@@ -10040,6 +10106,18 @@ void UCataclysmAbilitySystemComponent::DrainQueuedGadgetShotsAtTrapEnemies()
 		ACataclysmMinion* Shooter = Cast<ACataclysmMinion>(Next.Gadget.Get());
 		if (!IsValid(Shooter) || Shooter->IsActorBeingDestroyed())
 		{
+			continue;
+		}
+		// A WAR MACHINE, a gadget or a trap, ANSWERS WITH ITS OWN ORDINARY BLOW AT THE ENEMY: Counterfire's answer (V4b,
+		// ruled 2026-11-25, Q8). Nothing else queues one. A skill gadget fires its shot, as every shot here did before.
+		if (!Shooter->IsSkillGadget())
+		{
+			AActor* Enemy = Next.Enemy.Get();
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !UCataclysmSkillEffects::IsDead(Shooter)
+				&& !UCataclysmSkillEffects::CannotAct(Shooter))
+			{
+				Shooter->AttackTarget(Enemy);
+			}
 			continue;
 		}
 		Shooter->FireSkillGadgetAtTrapEnemy(Next.Enemy.Get(), Next.DamageMultiplier);

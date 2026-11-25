@@ -533,7 +533,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 570 THE SAME DAY, for V3a: Thornwall, Wrath Incarnate's pulse, Absorb and Return and Eternal Hunger's two.
 	// AND 574 THE SAME DAY, for V3b: Colossus Eternal's three and Thousand Deaths' chain.
 	// AND 576 THE SAME DAY, for V4a: Baited's taunt and Trail of Wire.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        576)
+	// AND 578 THE SAME DAY, for V4b: Counterfire and Magnum Opus.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        578)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

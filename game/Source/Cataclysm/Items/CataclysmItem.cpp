@@ -1649,6 +1649,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bPlaceLastTrapAgain = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::PlaceLastTrapAgainAction,
 						ESearchCase::IgnoreCase);
+					// AND COUNTERFIRE'S ANSWERS. V4b, 2026-11-25.
+					Action.bCounterfire = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CounterfireAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

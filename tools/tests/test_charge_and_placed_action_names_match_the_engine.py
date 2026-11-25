@@ -88,6 +88,8 @@ CONSTANTS = {
     # AND BAITED'S TAUNT AND TRAIL OF WIRE, V4a, 2026-11-25.
     "TauntEnemiesNearTrapAction": "taunt_enemies_near_trap",
     "PlaceLastTrapAgainAction": "place_last_trap_again",
+    # AND COUNTERFIRE, V4b, 2026-11-25.
+    "CounterfireAction": "counterfire",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -225,6 +227,11 @@ def test_the_generator_accepts_exactly_the_v4a_names_the_engine_has() -> None:
     """The War vow options' fourth slice, first half, V4a, 2026-11-25: Baited and Trail of Wire."""
     assert gen.TAUNT_NEAR_TRAP_ACTION == engine_names()["TauntEnemiesNearTrapAction"]
     assert gen.PLACE_LAST_TRAP_AGAIN_ACTION == engine_names()["PlaceLastTrapAgainAction"]
+
+
+def test_the_generator_accepts_exactly_the_counterfire_name_the_engine_has() -> None:
+    """The War vow options' fourth slice, second half, V4b, 2026-11-25: Counterfire."""
+    assert gen.COUNTERFIRE_ACTION == engine_names()["CounterfireAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

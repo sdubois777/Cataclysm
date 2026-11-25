@@ -753,6 +753,10 @@ INVENTORY = {
      'FName(UGuarded::LethalHitSurvivedAboveHealthStat), FGameplayTagContainer(), 0.0f'):
         "Colossus Eternal's save (the War vow options' third slice, second half, V3b, 2026-11-25), asked at a lethal "
         "blow and compared with health before it; the stat is stated under no condition, and a save is not a skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',
+     'FName(EldestGadgetCastsEverySkillStat), FGameplayTagContainer(), 0.0f'):
+        "Magnum Opus's flag (the War vow options' fourth slice, second half, V4b, 2026-11-25), asked of the player at "
+        "each skill use; whether it holds, not a modifier of a blow, and stated under no condition",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmRetaliation.cpp',
      'FName(BigHitShareStat), FGameplayTagContainer(), 0.0f'):
         "Absorb and Return's share (V3a, 2026-11-25), asked while retaliation for a big hit is priced; retaliation is "

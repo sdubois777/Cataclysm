@@ -1371,6 +1371,22 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 			&& UCataclysmTriggeredSkill::RepeatsFromARow(Used))
 		{
 			Acting->NoteSkillGadgetsCopy(Used);
+
+			// AND MAGNUM OPUS: the eldest gadget casts the same skill once, at its own target, with the whole of the
+			// damage (the War vow options' fourth slice, second half, V4b, ruled 2026-11-25). Skills only: NOT THE
+			// BASIC ATTACK, which is left out above, AND NOT THE MOVEMENT SKILL. ON THE NEXT TICK, for the reason the
+			// repeats above wait: this runs inside the used skill's activation, where a skill cannot be granted. The
+			// eldest is chosen then, so a gadget gone in between is passed over.
+			if (Notice.Slot != ECataclysmAbilitySlot::Movement && ACataclysmMinion::EldestGadgetCastsEverySkillFor(this))
+			{
+				GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Used]()
+				{
+					if (ACataclysmMinion* Eldest = ACataclysmMinion::EldestGadgetOf(this))
+					{
+						Eldest->CastSkillCopy(Used);
+					}
+				}));
+			}
 		}
 	}
 }

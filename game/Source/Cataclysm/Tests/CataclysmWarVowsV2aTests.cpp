@@ -506,9 +506,9 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 {
 	using namespace CataclysmWarVowsV2aTest;
 	// THE WORDS THE FLOOR MODIFIER PANEL USES, "(not built yet: it does nothing)", on a node and an option with no row:
-	// Open Wounds (`Berserker_trunk_006`) and Magnum Opus (the Saboteur's Final Oath, option 2, V5's). The First Oath's
-	// Warlord was the option until V2b built it, and Thousand Deaths (the Berserker's Final Oath, option 2) until V3b
-	// built it, the same day: every Berserker and Bulwark option has a row since V3b.
+	// Open Wounds (`Berserker_trunk_006`) and Crossfire (the Saboteur's Final Oath, option 3, V5's). The First Oath's
+	// Warlord was the option until V2b built it, Thousand Deaths (the Berserker's Final Oath, option 2) until V3b built
+	// it, and Magnum Opus (the Saboteur's Final Oath, option 2) until V4b built it, the same day.
 	// THE CONTROLS: Wrath (`Berserker_twoh_001`) and Thousand Deaths have rows and are not marked, and with no effect
 	// table nothing is.
 	const UDataTable* Nodes = UCataclysmPassiveTree::LoadNodeTable();
@@ -529,7 +529,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 		|| !TestNotNull(TEXT("set-up: Wrath is a node"), BuiltRow)
 		|| !TestFalse(TEXT("set-up: Open Wounds has no row"), FTree::HasEffectRows(Effects, Unbuilt))
 		|| !TestTrue(TEXT("set-up: Wrath has a row"), FTree::HasEffectRows(Effects, Built))
-		|| !TestFalse(TEXT("set-up: Magnum Opus has no row"), FTree::HasEffectRows(Effects, FinalOath, 2))
+		|| !TestFalse(TEXT("set-up: Crossfire has no row"), FTree::HasEffectRows(Effects, FinalOath, 3))
 		|| !TestTrue(TEXT("set-up: Thousand Deaths has a row"), FTree::HasEffectRows(Effects, BuiltOath, 2)))
 	{
 		return false;
@@ -543,23 +543,23 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	TestEqual(TEXT("control: with no table, Open Wounds' are not"), FTree::ShortDescriptionOf(Nodes, Unbuilt),
 			  UnbuiltRow->Description);
 	const FString Full = FTree::FullDescriptionOf(Nodes, FinalOath, Effects);
-	TestTrue(TEXT("the Saboteur's Final Oath's full text marks Magnum Opus' heading"),
-			 Full.Contains(TEXT("2  Magnum Opus") + Mark));
+	TestTrue(TEXT("the Saboteur's Final Oath's full text marks Crossfire's heading"),
+			 Full.Contains(TEXT("3  Crossfire") + Mark));
 	const FString BuiltFull = FTree::FullDescriptionOf(Nodes, BuiltOath, Effects);
 	TestTrue(TEXT("control: and the Berserker's does not mark Thousand Deaths'"),
 			 BuiltFull.Contains(TEXT("2  Thousand Deaths\n")) && !BuiltFull.Contains(TEXT("2  Thousand Deaths") + Mark));
-	TestTrue(TEXT("the Saboteur's Final Oath's short text marks Magnum Opus"),
-			 FTree::ShortDescriptionOf(Nodes, FinalOath, Effects).Contains(TEXT("2 Magnum Opus") + Mark));
+	TestTrue(TEXT("the Saboteur's Final Oath's short text marks Crossfire"),
+			 FTree::ShortDescriptionOf(Nodes, FinalOath, Effects).Contains(TEXT("3 Crossfire") + Mark));
 
 	// THE OPTION BUTTONS WHILE THE CHOICE IS ON OFFER.
-	TestEqual(TEXT("Magnum Opus' button is marked"),
-			  UCataclysmPassiveTreeWidget::OptionLabelFor(Nodes, Effects, FinalOath, 2),
-			  FString(TEXT("2  Magnum Opus")) + Mark);
+	TestEqual(TEXT("Crossfire's button is marked"),
+			  UCataclysmPassiveTreeWidget::OptionLabelFor(Nodes, Effects, FinalOath, 3),
+			  FString(TEXT("3  Crossfire")) + Mark);
 	TestEqual(TEXT("control: Thousand Deaths' is not"),
 			  UCataclysmPassiveTreeWidget::OptionLabelFor(Nodes, Effects, BuiltOath, 2),
 			  FString(TEXT("2  Thousand Deaths")));
-	TestEqual(TEXT("control: with no table, Magnum Opus' is not"),
-			  UCataclysmPassiveTreeWidget::OptionLabelFor(Nodes, nullptr, FinalOath, 2), FString(TEXT("2  Magnum Opus")));
+	TestEqual(TEXT("control: with no table, Crossfire's is not"),
+			  UCataclysmPassiveTreeWidget::OptionLabelFor(Nodes, nullptr, FinalOath, 3), FString(TEXT("3  Crossfire")));
 
 	// AND A NODE'S TOOL TIP ON THE GRAPH, from the function the screen's panel runs, with no character shown.
 	UCataclysmPassiveTreeWidget* Screen = NewObject<UCataclysmPassiveTreeWidget>();

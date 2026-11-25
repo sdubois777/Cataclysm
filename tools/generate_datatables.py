@@ -7520,6 +7520,9 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # `trap_triggered`, which no hit fires, so it takes none by default.
             or action == SLOW_FOR_SECONDS_ACTION
             or action == STRIKE_TARGET_ACTION
+            # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
+            # a second" is its Trigger Cooldown (V4b, 2026-11-25).
+            or action == COUNTERFIRE_ACTION
             # AN EXECUTE MAY STATE ONE, AND TAKES NONE BY DEFAULT: see
             # `ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN`. The engine starts a
             # stated wait when an enemy is executed, and not when the roll
@@ -7636,6 +7639,22 @@ MAX_TAUNT_NEAR_TRAP_SECONDS = 30.0
 #: the same name.
 PLACE_LAST_TRAP_AGAIN_ACTION = "place_last_trap_again"
 PLACE_LAST_TRAP_AGAIN_EVENTS = ("movement_skill",)
+
+#: The action that ANSWERS AN EVADED BLOW with the wearer's traps and gadgets:
+#: one for every Event Value of them, rounded down, the nearest the attacker
+#: first; a skill trap goes off, a skill gadget fires at the attacker at the
+#: row's value as a share of its shot, and a War machine deals its own blow at
+#: the attacker. The War vow options' fourth slice, second half, V4b,
+#: 2026-11-25: Counterfire, "Each hit you evade is answered by one of your traps
+#: or gadgets for every 2 you have on the battlefield, nearest the attacker
+#: first: a gadget fires at it, a trap goes off. No more than once a second."
+#: ON `dodge` ONLY, which names the attacker; the second is the row's Trigger
+#: Cooldown. `UCataclysmAbilitySystemComponent::CounterfireAction` holds the
+#: same name.
+COUNTERFIRE_ACTION = "counterfire"
+COUNTERFIRE_EVENTS = ("dodge",)
+MAX_COUNTERFIRE_DEVICES_PER_ANSWER = 10.0
+MAX_COUNTERFIRE_PERCENT = 1000.0
 
 #: The events a temporary absorb may be granted on: the clock, and no other
 #: until a sentence asks for one. The clock counts only while the wearer is in
@@ -7987,7 +8006,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_frenzy_chain_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
         return
-    if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION):
+    if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION,
+                  COUNTERFIRE_ACTION):
         _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
                           headers)
         return
@@ -8455,8 +8475,11 @@ def _check_v4a_action(index: int, who: str, action: str, event: str,
     where they are read. A fraction, a value kind and a scale each mean nothing
     here, so each is refused rather than dropped.
     """
-    events = (TAUNT_NEAR_TRAP_EVENTS if action == TAUNT_NEAR_TRAP_ACTION
-              else PLACE_LAST_TRAP_AGAIN_EVENTS)
+    # AND COUNTERFIRE'S, ON `dodge`, since the fourth slice's second half,
+    # V4b, the same day.
+    events = {TAUNT_NEAR_TRAP_ACTION: TAUNT_NEAR_TRAP_EVENTS,
+              PLACE_LAST_TRAP_AGAIN_ACTION: PLACE_LAST_TRAP_AGAIN_EVENTS,
+              COUNTERFIRE_ACTION: COUNTERFIRE_EVENTS}[action]
     if event not in events:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts as {action} on the "
@@ -9018,6 +9041,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != FRENZY_CHAIN_ACTION \
                 and action != TAUNT_NEAR_TRAP_ACTION \
                 and action != PLACE_LAST_TRAP_AGAIN_ACTION \
+                and action != COUNTERFIRE_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9379,6 +9403,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} taunts for {low:g} to "
                 f"{high:g} seconds. It is above 0 and up to "
                 f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
+    # COUNTERFIRE'S VALUE IS A SHARE OF A GADGET'S SHOT, above 0 and up to the
+    # bound. V4b, 2026-11-25.
+    if action == COUNTERFIRE_ACTION:
+        if not (0 < low <= MAX_COUNTERFIRE_PERCENT
+                and 0 < high <= MAX_COUNTERFIRE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers with {low:g} "
+                f"to {high:g} per cent of a shot. It is above 0 and up to "
+                f"{MAX_COUNTERFIRE_PERCENT:g}.")
     if action == PLACE_LAST_TRAP_AGAIN_ACTION:
         if not (low == 100 and high == 100):
             raise DataError(
@@ -10081,6 +10114,21 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == COUNTERFIRE_ACTION:
+        # OR COUNTERFIRE'S DEVICES FOR EACH ANSWER, required, a whole number
+        # from 1 to the bound. V4b, 2026-11-25. See `COUNTERFIRE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers an evaded "
+                f"blow and states no Event Value. It is the devices for each "
+                f"answer.")
+        event_value = number(event_value_text, "Event Value", index)
+        if (event_value != int(event_value)
+                or not 1 <= event_value <= MAX_COUNTERFIRE_DEVICES_PER_ANSWER):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} answers once for every "
+                f"{event_value:g} devices. It is a whole number from 1 to "
+                f"{MAX_COUNTERFIRE_DEVICES_PER_ANSWER:g}.")
     elif action == TAUNT_NEAR_TRAP_ACTION:
         # OR THE RADIUS OF BAITED'S TAUNT, in metres around the trap, required.
         # V4a, 2026-11-25. See `TAUNT_NEAR_TRAP_ACTION`.

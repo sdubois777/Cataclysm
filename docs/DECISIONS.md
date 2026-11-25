@@ -2,6 +2,136 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fourth slice, second half (V4b): Counterfire answers an evaded blow with the player's traps and gadgets, and Magnum Opus's eldest gadget casts every skill used
+
+**Affects:**
+- `tools/reapply_war_vows_v4b_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`: the first rows
+  on the Saboteur's Third and Final Oaths. The generated table: `game/Data/PassiveEffects.csv` (578 rows).
+  `docs/README.md` (the count). **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an action, `counterfire`, on `dodge` only;
+  - its Event Value is the devices for each answer, a whole number from 1 to 10, required;
+  - its value is a share of a shot, above 0 and up to 1,000;
+  - it may state a Trigger Cooldown (`takes_a_trigger_cooldown`).
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `CounterfireAction`, `QueueCounterfire` and the action in `ActOnEvent`;
+    - the drain of queued gadget shots now lets a War machine, a gadget or a trap, answer with its own ordinary blow
+      (`AttackTarget`). A skill gadget still fires its shot.
+  - `CataclysmMinion.h` and `.cpp`:
+    - `CopySummonersLastSkill`'s cast moved into `CastSkillCopy`, which it now calls with the recorded skill;
+    - `EldestGadgetCastsEverySkillStat`, `EldestGadgetCastsEverySkillFor` and `EldestGadgetOf`.
+  - `CataclysmPlayerCharacter.cpp`: at each skill use, not the basic attack and not the movement slot, a player
+    holding the flag has the eldest gadget cast the same skill on the next tick.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bCounterfire`.
+  - `CataclysmItem.cpp`: the builder sets it.
+  - `CataclysmPlayerClassStats.cpp`: the flag in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV4bTests.cpp` (new, three tests).
+    - `CataclysmStatExemptionTests.cpp`: a probe, `ProbeEldestGadgetCastsEverySkill`.
+    - `CataclysmDataTableTests.cpp`: the pin, 578.
+    - `CataclysmWarVowsV2aTests.cpp`: `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` takes Crossfire (the
+      Saboteur's Final Oath, option 3, V5's) as its unbuilt option, now that Magnum Opus has a row.
+  - Python:
+    - `tools/tests/test_war_vows_v4b_scripts.py` (new, twelve).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`: 578 rows, 322 authored nodes, 64 authored options, and the two
+      rows' words.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the flag's lookup.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV4b.`: three tests, new.
+  - `Cataclysm.StatExemption.`: one more probe inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (578) and `Cataclysm.WarVowsV2a.`;
+    - the groups touching the moved skill copy and the gadget shot drain: `Cataclysm.GadgetCopiesSkill.`,
+      `Cataclysm.AoeStrikesAllies.`, `Cataclysm.SkillGadgets.` and `Cataclysm.Traps.`.
+- **COUNTERFIRE'S TEST USES WAR TURRETS ONLY.** A skill trap going off and a skill gadget firing at the attacker go
+  through the existing forced set-off and gadget shot, which their own groups (`Cataclysm.Traps.`) hold. This slice
+  only queues them, and no new test casts a skill from a trap or a skill gadget.
+- **A WAR TRAP ANSWERS WITH ITS ORDINARY BLOW, as a War gadget does.** It has no set-off of its own. Q9 ruled the
+  forced set-off for traps, which exists for skill traps only, so this is a judgement, stated here.
+- **THE SKILL COPY'S CAST WAS MOVED, NOT CHANGED.** `CopySummonersLastSkill` makes the same cast through
+  `CastSkillCopy`, with the same refusals, now in this order:
+  - the recorded skill is read first;
+  - then the gadget's state and its summoner's;
+  - then the target;
+  - then `RepeatsFromARow`.
+  Before, the gadget's state was asked before the record. One refusal was widened: a skill gadget is accepted as well
+  as a gadget (`IsGadget() || IsSkillGadget()`), so Magnum Opus reaches skill gadgets.
+
+### WHAT WAS RULED
+
+The coordinating session's rulings on V4, 2026-11-25, "every recommendation as written":
+- Q7: Counterfire acts on `dodge` with a 1 s trigger cooldown. The count is half, rounded down, of every `Type.Trap`
+  and `Type.Gadget` machine the player commands, skill and War alike; the nearest the attacker answer. An evade that
+  names no attacker answers nothing.
+- Q8: a skill gadget fires its existing shot at the attacker; "build the War gadget's own attack at the attacker; the
+  scope ruling covers War gadgets".
+- Q9: a skill trap goes off through the existing forced set-off, as it is.
+- Q10: "standing longest" is the living gadget, skill or War, with the earliest `SpawnOrder`. Moving a skill gadget
+  does not reset it.
+- Q11: on each skill use, not the basic attack and not the movement slot, the eldest gadget casts the same skill once:
+  on the next tick, free, with no cooldown, raising no `skill_use`, at damage share 1.0, at its own target within its
+  reach, and not at all with no target in reach. Skills the copy path refuses are not copied.
+- Q12: worn with "Gadgets copy the last skill you used", both apply.
+
+### JUDGEMENTS
+
+- **"The nearest the attacker first"** ties go to the earlier placed (`SpawnOrder`).
+- **A War machine's answer is one ordinary blow** (`AttackTarget`), whatever the row's share. The row's 100 is the
+  share of a skill gadget's shot, and a War machine's blow has no share to scale.
+- **Counterfire's answers are queued and made after the event, at depth nought**, in the queue the gadget shots at a
+  trap's enemy use. So the answers' own blows are announced to the player's rows.
+- **Magnum Opus chooses the eldest on the next tick**, when the cast is made, so a gadget gone in between is passed
+  over.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 81 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV4bTests.cpp` without `#include "Items/CataclysmWeaponSlotsComponent.h"` failed,
+  naming `UCataclysmWeaponSlotsComponent` on line 57.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Counterfire allowed on `block` | `pytest tools/tests/test_war_vows_v4b_scripts.py` | `test_counterfire_on_an_event_other_than_a_dodge_is_refused`, `test_the_names_are_the_generators` |
+| Counterfire's count not held to a whole number | the same | `test_counterfire_with_a_count_that_is_not_whole_is_refused` |
+| Counterfire may not state a Trigger Cooldown | the same | four: the control, the two refusals before it is read, and `test_the_names_are_the_generators` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV4b.AnEvadedBlowIsAnsweredByOneDeviceForEveryTwoTheNearestFirstOnceASecond` | four Bolt Turrets: an evade is answered by two blows; a second at once by none (the control); one 1.1 s later by two; with one turret left, none (the control) |
+| `Cataclysm.WarVowsV4b.TheEldestGadgetCastsEverySkillUsedAndTheNextTakesItsPlace` | without the flag no turret casts (the control); a use from the movement slot is not copied (the control); a use is copied once by the elder and not the younger; with the elder gone the younger copies the next |
+| `Cataclysm.WarVowsV4b.AWarPlayerTakingTheOptionsIsHandedCounterfireAndMagnumOpus` | through `SetPassiveAllocation`: Counterfire's action (on `dodge`, 2, 100%, 1 s) and Magnum Opus's flag; the first options hand over neither (the controls) |
+| `ProbeEldestGadgetCastsEverySkill` in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | a character without the flag is answered no, one holding it yes |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmAbilitySystemComponent.cpp`: `QueueCounterfire` answers with every device (`FloorToInt(... / Action.EventValue)` replaced by `Devices.Num()`) | `Cataclysm.WarVowsV4b.` | `AnEvadedBlowIsAnsweredByOneDeviceForEveryTwoTheNearestFirstOnceASecond` |
+
+**Dropped under that ruling:** a proof that Magnum Opus copies a movement-slot use (the `Notice.Slot != Movement` test
+taken out), which would fail `TheEldestGadgetCastsEverySkillUsedAndTheNextTakesItsPlace`.
+
+---
+
 ## 2026-11-25 — The War vow options' fourth slice, first half (V4a): Baited draws enemies to a trap that arms, and Trail of Wire places the last trap again where the movement began
 
 **Affects:**

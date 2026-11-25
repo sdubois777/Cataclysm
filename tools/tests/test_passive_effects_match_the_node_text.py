@@ -727,7 +727,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 576 THE SAME DAY: two rows of V4a (`tools/reapply_war_vows_v4a_workbook.py`): Baited's taunt and Trail of
 #: Wire.
-AUTHORED_ROWS = 576
+#:
+#: AND TO 578 THE SAME DAY: two rows of V4b (`tools/reapply_war_vows_v4b_workbook.py`): Counterfire and Magnum Opus.
+AUTHORED_ROWS = 578
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1172,7 +1174,9 @@ AUTHORED_ROWS = 576
 #: on capstones already counted.
 #: AND TO 320 THE SAME DAY: the Saboteur's First and Second Oaths, with V4a's
 #: Baited and Trail of Wire, the first rows on either capstone.
-AUTHORED_NODES = 320
+#: AND TO 322 THE SAME DAY: the Saboteur's Third and Final Oaths, with V4b's
+#: Counterfire and Magnum Opus, the first rows on either capstone.
+AUTHORED_NODES = 322
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1286,7 +1290,9 @@ AUTHORED_NODES = 320
 #: are rows on an option already counted. Every Berserker and Bulwark option has a row from here.
 #: AND TO 62 THE SAME DAY: V4a -- Baited and Trail of Wire (Saboteur), the first rows on their capstones, which move
 #: `AUTHORED_NODES` too.
-AUTHORED_OPTIONS = 62
+#: AND TO 64 THE SAME DAY: V4b -- Counterfire and Magnum Opus (Saboteur), the first rows on their capstones, which move
+#: `AUTHORED_NODES` too.
+AUTHORED_OPTIONS = 64
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2898,6 +2904,10 @@ VALUE_IN_WORDS = {
     # empty stat and condition. Baited's value is the taunt's seconds; Trail of Wire's is 100, always.
     ("Saboteur_capstone_25", "", ""): ("for 4 seconds", 4.0),
     ("Saboteur_capstone_50", "", ""): ("the last trap you placed is placed again", 100.0),
+    # COUNTERFIRE AND MAGNUM OPUS, the Saboteur's Third and Final Oaths (V4b, 2026-11-25): Counterfire's value is 100%
+    # of a gadget's shot, which the sentence says as "a gadget fires at it"; Magnum Opus is a flag.
+    ("Saboteur_capstone_100", "", ""): ("a gadget fires at it", 100.0),
+    ("Saboteur_capstone_200", "eldest_gadget_casts_every_skill"): ("uses every skill you use", 1.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

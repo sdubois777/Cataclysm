@@ -4999,6 +4999,13 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bPlaceLastTrapAgain = false;
 
 	/**
+	 * Set, this action ANSWERS AN EVADED BLOW with the wearer's traps and gadgets: Counterfire, V4b, 2026-11-25. On
+	 * `dodge` only. See `UCataclysmAbilitySystemComponent::QueueCounterfire`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCounterfire = false;
+
+	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
 	 * ailments that were on the body on them. Ruled 2026-10-07 for "Plague

@@ -1819,6 +1819,15 @@ public:
 	static const TCHAR* PlaceLastTrapAgainAction;
 
 	/**
+	 * Counterfire. The War vow options' fourth slice, second half, V4b, 2026-11-25: "Each hit you evade is answered by
+	 * one of your traps or gadgets for every 2 you have on the battlefield, nearest the attacker first: a gadget fires
+	 * at it, a trap goes off. No more than once a second." On `dodge` only. The row's Event Value is the devices for each
+	 * answer (2), its value the share of a gadget's ordinary shot (100), and its Trigger Cooldown the second. See
+	 * `QueueCounterfire`.
+	 */
+	static const TCHAR* CounterfireAction;
+
+	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
 	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
 	 * `FCataclysmPoolAction::bRepeatSkill`.
@@ -4241,6 +4250,18 @@ public:
 	 * one (ruled 2026-11-25). Returns whether a placing was queued: false before any trap was placed.
 	 */
 	bool QueueLastTrapPlacedAgain();
+
+	/**
+	 * Counterfire's answers to an evaded blow from `Attacker`. Of every living trap and gadget this character commands,
+	 * skill and War alike (ruled 2026-11-25, Q7), one for every `Action.EventValue` of them answers, rounded down, the
+	 * nearest `Attacker` first:
+	 * - a skill trap goes off through the forced set-off (`QueueSkillTrapSetOff`), at its own forced enemy (Q9);
+	 * - a skill gadget fires its shot at `Attacker` (`ACataclysmMinion::FireSkillGadgetAtTrapEnemy`), at the row's share;
+	 * - a War gadget or a War trap deals its own ordinary blow at `Attacker` (`ACataclysmMinion::AttackTarget`, Q8).
+	 * All are queued and made at depth nought, after the event, as the gadget shots at a trap's enemy are. Returns how
+	 * many answers were queued.
+	 */
+	int32 QueueCounterfire(const FCataclysmPoolAction& Action, const AActor* Attacker);
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;

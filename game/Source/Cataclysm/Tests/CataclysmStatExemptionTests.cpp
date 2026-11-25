@@ -9465,6 +9465,29 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `eldest_gadget_casts_every_skill`, read by `ACataclysmMinion::EldestGadgetCastsEverySkillFor`, which the player
+	 * character asks at each skill use. The War vow options' fourth slice, second half, V4b, 2026-11-25: Magnum Opus. Two
+	 * characters; only the second holds the flag, and only it is answered yes.
+	 */
+	void ProbeEldestGadgetCastsEverySkill(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::EldestGadgetCastsEverySkillStat), 1.0f}});
+		Test.TestFalse(TEXT("a character without eldest_gadget_casts_every_skill is answered no"),
+					   ACataclysmMinion::EldestGadgetCastsEverySkillFor(Plain.Actor));
+		Test.TestTrue(TEXT("and one holding it yes, so EldestGadgetCastsEverySkillFor really reads it"),
+					  ACataclysmMinion::EldestGadgetCastsEverySkillFor(Holding.Actor));
+	}
+
+	/**
 	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
 	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
 	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
@@ -12830,6 +12853,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("leech_overheal_absorb_decay_percent_per_second"), &ProbeLeechOverhealAbsorbDecay},
 			{TEXT("lethal_hit_survived_above_health"), &ProbeLethalHitSurvivedAboveHealth},
 			{TEXT("max_health_increases_count_twice"), &ProbeMaxHealthIncreasesCountTwice},
+			{TEXT("eldest_gadget_casts_every_skill"), &ProbeEldestGadgetCastsEverySkill},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

@@ -774,6 +774,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// flag doubling the increases to maximum health, read by ApplyTo below. V3b, 2026-11-25. No gameplay attribute.
 		TEXT("lethal_hit_survived_above_health"),
 		TEXT("max_health_increases_count_twice"),
+		// Magnum Opus's flag, read by ACataclysmMinion::EldestGadgetCastsEverySkillFor at each skill use. V4b,
+		// 2026-11-25. No gameplay attribute.
+		TEXT("eldest_gadget_casts_every_skill"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

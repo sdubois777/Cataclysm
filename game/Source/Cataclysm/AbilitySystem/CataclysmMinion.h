@@ -426,6 +426,32 @@ public:
 	 */
 	bool CopySummonersLastSkill();
 
+	/**
+	 * Cast `Skill` once from this gadget at its own target, free, at the whole of its damage: the cast
+	 * `CopySummonersLastSkill` makes, for a skill handed over rather than the recorded one. Refused, as that cast is,
+	 * for a gadget that cannot act, a summoner gone or dead, no target within reach, and a skill no row may cast again
+	 * (`UCataclysmTriggeredSkill::RepeatsFromARow`). Magnum Opus (the War vow options' fourth slice, second half, V4b,
+	 * 2026-11-25) calls it on the eldest gadget for each skill its summoner uses.
+	 */
+	bool CastSkillCopy(const FCataclysmWeaponSkill& Skill);
+
+	/**
+	 * Magnum Opus, V4b, 2026-11-25: "The gadget you have had standing longest uses every skill you use, at its own target
+	 * and with your full damage. When it is gone, the next longest-standing takes its place." A flag on the summoner,
+	 * flat 1, with no gameplay attribute, asked with no tags by `EldestGadgetCastsEverySkillFor`.
+	 */
+	static const TCHAR* EldestGadgetCastsEverySkillStat;
+
+	/** Whether `Player` holds `EldestGadgetCastsEverySkillStat`. The one place the stat is read. */
+	static bool EldestGadgetCastsEverySkillFor(const AActor* Player);
+
+	/**
+	 * The gadget `Player` has had standing longest: of every living gadget it commands, skill gadgets and War gadgets
+	 * alike, the earliest placed (the lowest `SpawnOrder`, which moving a skill gadget does not change), or null. Ruled
+	 * 2026-11-25 (Q10). The next longest-standing takes its place by itself when it is gone.
+	 */
+	static ACataclysmMinion* EldestGadgetOf(const AActor* Player);
+
 	/** The enemy this gadget's copy would be aimed at now, or null. See `CopySummonersLastSkill`. */
 	AActor* SkillCopyTarget() const;
 
