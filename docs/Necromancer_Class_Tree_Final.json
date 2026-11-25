@@ -1,0 +1,2500 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Necromancer Class Tree",
+    "description": "Single continuous web, laid out node for node like the three Demonic trees. The Path of the Dead runs up the centre and is what fills Fervour from deaths near you; its left side grows the army and leads to the Legion, its right side hardens the commander and leads to the Grave. The Charnel and the Ossuary both open from Death Knell, the first node on the spine's right side, so each limb's keystone is a character's 8th point at the earliest. The Legion (the permanent army) upper-left, the Charnel (minions raised to explode) lower-left, the Ossuary (remains as a bonus) lower-right, the Grave (the sturdy commander) upper-right. Keystones sit at the far end of each limb and need full investment in their parent, except Lit Fuse and Bone Fuse, which open the Charnel and the Ossuary: taking one is choosing that build, and the limb's ordinary nodes improve it. The four rite capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "createdAt": "2026-11-24T00:00:00.000Z",
+    "updatedAt": "2026-11-24T00:00:00.000Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 1200.0,
+    "y": 200.0,
+    "zoom": 0.45
+  },
+  "nodes": [
+    {
+      "id": "basic_spine_000",
+      "position": {
+        "x": 0,
+        "y": 780
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fervour",
+        "description": "Deaths around you generate Fervour: 1 each time an enemy dies within 10 metres of you or to one of your minions. While you have this, Fervour does not decay, so what you hold is held until you spend it or your minions reserve it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_001",
+      "position": {
+        "x": -450,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Wider Grave",
+        "description": "+2% increased maximum Fervour per point. Every minion holds back its share of the pool while it stands, so the pool is the size of your army.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_002",
+      "position": {
+        "x": 675,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Death Knell",
+        "description": "+3% increased Fervour gained from enemies dying near you or to your minions per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_003",
+      "position": {
+        "x": -300,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Restless Host",
+        "description": "+1% increased Minion Damage and +1% increased Minion Health per point, for every minion you raise, the ones that stay and the ones that last seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_004",
+      "position": {
+        "x": -300,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cold Hands",
+        "description": "Your minions' hits have a 4% chance per point to inflict Necrosis.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_005",
+      "position": {
+        "x": 900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gravekeeper's Hide",
+        "description": "+1% increased Maximum Health per point, and +1% increased Armor per point while three or more of your minions are within 6 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_006",
+      "position": {
+        "x": -375,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Raised in Haste",
+        "description": "+3% increased cooldown recovery speed of your summon skills per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_007",
+      "position": {
+        "x": 900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grave Sense",
+        "description": "+2% increased Fervour gained per point, from every source.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_008",
+      "position": {
+        "x": -375,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Massed Dead",
+        "description": "+1% increased Minion Damage per point for every 5 minions you have, up to 25 minions.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_009",
+      "position": {
+        "x": 900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deeper Grave",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_010",
+      "position": {
+        "x": -150,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Carrion Host",
+        "description": "Each enemy your permanent minions kill has a 3% chance per point to rise where it fell as a husk that lasts 8 seconds, if your Fervour has room for it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_001",
+      "position": {
+        "x": 150,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Second Death",
+        "description": "When one of your minions that was not raised from the dead dies, such as a thrall, an imp or a minion an item gives you, it rises where it fell as a husk that lasts 8 seconds, as large as it was, if your Fervour has room for it. A minion that has risen this way does not rise again.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_002",
+      "position": {
+        "x": 0,
+        "y": 252
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Grave Cold",
+        "description": "Every hit your minions land inflicts Necrosis, and your minions deal 15% more damage to enemies that have Necrosis.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_003",
+      "position": {
+        "x": -150,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Harvest of the Host",
+        "description": "Every enemy your permanent minions kill rises where it fell as a husk that lasts 8 seconds, if your Fervour has room for it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_stem0",
+      "position": {
+        "x": -450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Standing Army",
+        "description": "Your permanent minions have +3% increased damage and +3% increased health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_stem1",
+      "position": {
+        "x": -450,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Reforged",
+        "description": "Using a summon skill when your Fervour has no room for another permanent minion restores 10% per point of the health of your most wounded permanent minion, rather than raising nothing.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_stem2",
+      "position": {
+        "x": -300,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Motley Host",
+        "description": "+2% increased Minion Damage per point for each kind of minion you have beyond the first. Every type of minion is its own kind: a Barrow Guard, a shade, a husk, a thrall, an imp and each kind an item gives you are all different kinds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_a0",
+      "position": {
+        "x": -600,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Old Bones",
+        "description": "Each of your permanent minions deals +1% increased damage per point for every full 30 seconds it has stood, up to 4 times.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_a1",
+      "position": {
+        "x": -600,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "First Among the Dead",
+        "description": "Your permanent minion with the most maximum health has +4% increased damage and +4% increased health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_a2",
+      "position": {
+        "x": -600,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Master's Edge",
+        "description": "Your permanent minions add 4% per point of your critical strike chance and critical strike multiplier to their own.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_b0",
+      "position": {
+        "x": -450,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lighter Bones",
+        "description": "Your permanent minions reserve 2% reduced Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_b1",
+      "position": {
+        "x": -450,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Will Not Stay Down",
+        "description": "Each of your permanent minions that dies has a 4% chance per point to rise again where it fell 3 seconds later, if your Fervour has room for it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_b2",
+      "position": {
+        "x": -450,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Rise Together",
+        "description": "Each permanent minion you raise has a 4% chance per point to raise a second one beside it, if your Fervour has room for it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_c0",
+      "position": {
+        "x": -300,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Mending Dead",
+        "description": "Your permanent minions regenerate 0.5% of their maximum health per second per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_lg_c1",
+      "position": {
+        "x": -300,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Called to Heel",
+        "description": "Your permanent minions take 3% reduced damage per point while they are within 8 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_lg_kA",
+      "position": {
+        "x": -600,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Lone Revenant",
+        "description": "You can have one permanent minion only; it has 400% more health and damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_lg_kB",
+      "position": {
+        "x": -450,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Bone Lord",
+        "description": "Your summon skills raise 2 more permanent minions each time they raise any, if your Fervour has room for them.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_lg_kC",
+      "position": {
+        "x": -300,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Grave Pact",
+        "description": "Your minions take 30% less damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_stem0",
+      "position": {
+        "x": -900,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Lit Fuse",
+        "description": "Your weapon skills that land on one of your own minions detonate it, whatever kind it is.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_stem1",
+      "position": {
+        "x": -900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Made Room",
+        "description": "A minion of yours that is released to make room for another detonates as it goes, with the radius and damage of the skill that raised it. Your minions' detonations have +2% increased area and deal +2% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_stem2",
+      "position": {
+        "x": -750,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Teeming Grave",
+        "description": "Each time a summon skill raises minions, it has an 8% chance per point to raise one more.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_a0",
+      "position": {
+        "x": -1050,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Close Packed",
+        "description": "A minion's detonation deals +1% increased damage per point for each other minion of yours within 3 metres of it, up to 5.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_a1",
+      "position": {
+        "x": -1050,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lingering Rot",
+        "description": "A minion's detonation leaves rotting ground for 0.5 seconds per point, dealing 10% of the detonation's damage each second to enemies standing in it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_a2",
+      "position": {
+        "x": -1050,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bursting Ranks",
+        "description": "A minion's detonation deals +1% increased damage per point for each detonation of yours in the last 2 seconds, of a minion or of remains, up to 5.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_b0",
+      "position": {
+        "x": -900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hasty Dead",
+        "description": "Your minions have +2% increased Movement Speed and +2% increased Attack Speed per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_b1",
+      "position": {
+        "x": -900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Swollen",
+        "description": "A minion's detonation deals +1% increased damage per point for each full second it has stood, up to 5 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_b2",
+      "position": {
+        "x": -900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ripened",
+        "description": "A minion of yours whose lifespan ends without being detonated has a 10% chance per point to explode anyway, for full damage, so at 10 points every one does.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_c0",
+      "position": {
+        "x": -750,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Toll of the Dead",
+        "description": "+3% increased Fervour gained from enemies dying near you or to your minions per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_ch_c1",
+      "position": {
+        "x": -750,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cheap Bones",
+        "description": "Your minions reserve 4% reduced Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_ch_kA",
+      "position": {
+        "x": -1050,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Mass Grave",
+        "description": "Detonating a minion detonates every other minion of yours within 3 metres, each for 40% damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_ch_kC",
+      "position": {
+        "x": -750,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Last Breath",
+        "description": "When one of your minions is detonated, you gain Fervour equal to twice what it reserved.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_stem0",
+      "position": {
+        "x": 450,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Bone Fuse",
+        "description": "Dead creatures leave remains: a small marker where each one fell, lasting 10 seconds, which only you see. Each minion you raise on remains generates 3 Fervour. Without this keystone, or the Bone Colossus vow, no remains appear.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_stem1",
+      "position": {
+        "x": 450,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Mantle of Bone",
+        "description": "Your weapon skills that land on remains detonate them, dealing 0.5% per point of the dead creature's maximum health to enemies within 3 metres. +0.5% increased Armor per point for each creature's remains within 6 metres of you, up to 10.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_stem2",
+      "position": {
+        "x": 600,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Raised on Bones",
+        "description": "A minion raised on remains consumes them and has +5% increased damage and +5% increased health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_a0",
+      "position": {
+        "x": 300,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gravefinder",
+        "description": "A minion your summon skill raises within 1 metre per point of remains is raised on them.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_a1",
+      "position": {
+        "x": 300,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gathered Remains",
+        "description": "Your Abomination rises sooner: each point takes 2 off the percentage of a floor's starting creatures you must kill, from 50% down to 34% at 8 points. Remains last 25% longer per point, so at 8 points they last three times as long: 30 seconds rather than 10.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_a2",
+      "position": {
+        "x": 300,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fallen Again",
+        "description": "Each of your minions that dies without being detonated has a 6% chance per point to leave remains.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_b0",
+      "position": {
+        "x": 450,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bone-Bound",
+        "description": "Minions raised on remains reserve 4% reduced Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_b1",
+      "position": {
+        "x": 450,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Picked Clean",
+        "description": "Consuming remains, by raising a minion on them or by detonating them, restores 0.3% of your maximum health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_b2",
+      "position": {
+        "x": 450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Two From One",
+        "description": "Raising a minion on remains has a 4% chance per point not to consume them.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_c0",
+      "position": {
+        "x": 600,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Festering",
+        "description": "Detonated remains deal +2% increased damage per point for each ailment their creature died with.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_os_c1",
+      "position": {
+        "x": 600,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grave Spores",
+        "description": "Detonated remains have a 6% chance per point to inflict Necrosis on each enemy they hit.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_os_kB",
+      "position": {
+        "x": 450,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Grave Robber",
+        "description": "Raising a minion on remains refunds 5 Fervour: you gain 5, on top of the 3 Bone Fuse gives for the raise.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_os_kC",
+      "position": {
+        "x": 600,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Plague Pit",
+        "description": "Remains your skills detonate pass every ailment their creature died with, for the time it had left, to each enemy the blast hits.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -1500,
+        "y": 780
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The First Rite",
+        "description": "Unlocks at 25 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "The Restless Dead",
+            "description": "Enemies you or your minions kill have a chance to rise on their own as weak skeletons for 8 seconds, each with a quarter of a husk's health and damage. Each reserves 3 Fervour, so your pool is the limit and there is no separate cap."
+          },
+          {
+            "name": "Bone Colossus",
+            "description": "One giant you feed remains to over a floor; it grows with each creature's remains and shrinks when hurt."
+          },
+          {
+            "name": "Strength in Numbers",
+            "description": "1% more damage and 1% less damage taken for each minion alive, up to 20."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -1500,
+        "y": 540
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Second Rite",
+        "description": "Unlocks at 50 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Grave Swap",
+            "description": "Your movement skill can swap places with any of your minions, so your army is your escape route."
+          },
+          {
+            "name": "Living Bombs",
+            "description": "Your minions run at the nearest enemy and detonate on contact, and each detonation has a 50% chance to raise a husk that lasts 8 seconds where it went off."
+          },
+          {
+            "name": "Gathering Dark",
+            "description": "Your skills gain 2% area for each minion alive."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -1500,
+        "y": 300
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Third Rite",
+        "description": "Unlocks at 100 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Lich Form",
+            "description": "Each time your Fervour reaches its maximum, for 10 seconds your skills deal 50% more damage and each one raises a husk that lasts 8 seconds where it lands."
+          },
+          {
+            "name": "Shared Flesh",
+            "description": "Damage you take is split evenly between you and your minions."
+          },
+          {
+            "name": "Bound Bones",
+            "description": "Each minion gains 5% of your maximum health for every other minion alive."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -1500,
+        "y": 60
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Final Rite",
+        "description": "Unlocks at 200 points spent. Choose one. The choice is permanent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Abomination",
+            "description": "When you have killed at least 50% of the creatures the floor started with, their remains combine into an Abomination that fights for you until you leave the floor. It reserves 100 Fervour and releases whatever else you have out that would stop it being raised. Its health and damage are a share of every creature killed on the floor so far, and it grows with each kill after it rises, so a floor of Elites makes a stronger one. Creatures a rule keeps sending (rift hunters, Horde waves) do not count toward the 50%. With Lone Revenant, the Abomination is your one permanent minion and gains Lone Revenant's bonus."
+          },
+          {
+            "name": "Eternal Army",
+            "description": "Your minions cannot die while you are above 50% health."
+          },
+          {
+            "name": "The Horde Ascendant",
+            "description": "Whenever you cast a skill, every minion within 10 m casts it too, at 10% of its damage."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_stem0",
+      "position": {
+        "x": 900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Among the Dead",
+        "description": "+1% increased Maximum Health per point, and +1% increased Armor per point for every 5 minions you have, up to 20 minions.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_stem1",
+      "position": {
+        "x": 900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Marshal",
+        "description": "Your minions within 10 metres of you deal +2% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_stem2",
+      "position": {
+        "x": 975,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Avenging Dead",
+        "description": "When a hit takes more than 5% of your maximum health, your minions gain +3% increased Attack Speed per point for 4 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_a0",
+      "position": {
+        "x": 750,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Shielding Ranks",
+        "description": "+1% increased Damage Reduction per point while five or more of your minions are within 6 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_a1",
+      "position": {
+        "x": 750,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Interpose",
+        "description": "A hit aimed at you has a 3% chance per point to be taken instead by one of your minions within 3 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_a2",
+      "position": {
+        "x": 750,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Carapace",
+        "description": "+2% increased Maximum Health per point while you have 10 or more minions.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_gr_kA",
+      "position": {
+        "x": 750,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Bone Armour",
+        "description": "Each minion you have alive gives you 1% less damage taken, up to 20%.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_b0",
+      "position": {
+        "x": 900,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Shared Leech",
+        "description": "0.1% of the damage your minions deal is leeched to you as health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_b1",
+      "position": {
+        "x": 900,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Death Ward",
+        "description": "+2% increased Damage Reduction per point for 3 seconds after one of your minions dies within 6 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_b2",
+      "position": {
+        "x": 900,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bone Knit",
+        "description": "+3% increased Health Regeneration per point while one of your minions has died in the last 3 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_gr_kB",
+      "position": {
+        "x": 900,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Marrow Feast",
+        "description": "When one of your minions dies or is detonated, you recover 1% of your maximum health, up to 10% each second.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_c0",
+      "position": {
+        "x": 1050,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Steadfast Among Them",
+        "description": "+2% increased Crowd Control Resistance per point, doubled while five or more of your minions are within 6 metres of you.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_gr_c1",
+      "position": {
+        "x": 1050,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Guard the Master",
+        "description": "Your minions turn on the last enemy that hit you, and deal +3% increased damage per point to it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_gr_kC",
+      "position": {
+        "x": 1050,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Ringed in Bone",
+        "description": "While five or more of your minions are within 6 metres of you, you cannot be stunned, slowed or knocked back.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_frame_1",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -120.0,
+        "y": 1400.0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 0.7,
+        "text": "NECROMANCER",
+        "fontSize": 22
+      },
+      "measured": {
+        "width": 168,
+        "height": 33
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1",
+      "source": "basic_spine_000",
+      "target": "basic_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_2",
+      "source": "basic_spine_000",
+      "target": "basic_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_3",
+      "source": "basic_spine_001",
+      "target": "basic_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_4",
+      "source": "basic_spine_003",
+      "target": "basic_spine_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_5",
+      "source": "basic_spine_002",
+      "target": "basic_spine_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "e_6",
+      "source": "basic_spine_004",
+      "target": "basic_spine_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_7",
+      "source": "basic_spine_005",
+      "target": "basic_spine_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_8",
+      "source": "basic_spine_006",
+      "target": "basic_spine_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_9",
+      "source": "basic_spine_007",
+      "target": "basic_spine_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_10",
+      "source": "basic_spine_008",
+      "target": "basic_spine_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_11",
+      "source": "basic_spine_001",
+      "target": "keystone_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_12",
+      "source": "basic_spine_004",
+      "target": "keystone_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_13",
+      "source": "basic_spine_010",
+      "target": "keystone_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_14",
+      "source": "basic_spine_008",
+      "target": "basic_lg_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_15",
+      "source": "basic_lg_stem0",
+      "target": "basic_lg_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_16",
+      "source": "basic_lg_stem1",
+      "target": "basic_lg_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_17",
+      "source": "basic_lg_stem1",
+      "target": "basic_lg_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_18",
+      "source": "basic_lg_a0",
+      "target": "basic_lg_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_19",
+      "source": "basic_lg_a1",
+      "target": "basic_lg_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_20",
+      "source": "basic_lg_stem1",
+      "target": "basic_lg_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_21",
+      "source": "basic_lg_b0",
+      "target": "basic_lg_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_22",
+      "source": "basic_lg_b1",
+      "target": "basic_lg_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_23",
+      "source": "basic_lg_stem2",
+      "target": "basic_lg_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_24",
+      "source": "basic_lg_c0",
+      "target": "basic_lg_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_25",
+      "source": "basic_lg_a2",
+      "target": "keystone_lg_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_26",
+      "source": "basic_lg_b2",
+      "target": "keystone_lg_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_27",
+      "source": "basic_lg_c1",
+      "target": "keystone_lg_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_42",
+      "source": "basic_spine_002",
+      "target": "basic_ch_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_43",
+      "source": "basic_ch_stem0",
+      "target": "basic_ch_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_44",
+      "source": "basic_ch_stem1",
+      "target": "basic_ch_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_45",
+      "source": "basic_ch_stem1",
+      "target": "basic_ch_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_46",
+      "source": "basic_ch_a0",
+      "target": "basic_ch_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_47",
+      "source": "basic_ch_a1",
+      "target": "basic_ch_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_48",
+      "source": "basic_ch_stem1",
+      "target": "basic_ch_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_49",
+      "source": "basic_ch_b0",
+      "target": "basic_ch_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_50",
+      "source": "basic_ch_b1",
+      "target": "basic_ch_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_51",
+      "source": "basic_ch_stem2",
+      "target": "basic_ch_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_52",
+      "source": "basic_ch_c0",
+      "target": "basic_ch_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_53",
+      "source": "basic_ch_a2",
+      "target": "keystone_ch_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_55",
+      "source": "basic_ch_c1",
+      "target": "keystone_ch_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_56",
+      "source": "basic_spine_002",
+      "target": "basic_os_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_57",
+      "source": "basic_os_stem0",
+      "target": "basic_os_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_58",
+      "source": "basic_os_stem1",
+      "target": "basic_os_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_59",
+      "source": "basic_os_stem1",
+      "target": "basic_os_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_60",
+      "source": "basic_os_a0",
+      "target": "basic_os_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_61",
+      "source": "basic_os_a1",
+      "target": "basic_os_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_62",
+      "source": "basic_os_stem1",
+      "target": "basic_os_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_63",
+      "source": "basic_os_b0",
+      "target": "basic_os_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_64",
+      "source": "basic_os_b1",
+      "target": "basic_os_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_65",
+      "source": "basic_os_stem2",
+      "target": "basic_os_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_66",
+      "source": "basic_os_c0",
+      "target": "basic_os_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_68",
+      "source": "basic_os_b2",
+      "target": "keystone_os_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_69",
+      "source": "basic_os_c1",
+      "target": "keystone_os_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_gr_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_gr_stem0",
+      "target": "basic_gr_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_gr_stem1",
+      "target": "basic_gr_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_gr_stem1",
+      "target": "basic_gr_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_gr_stem2",
+      "target": "basic_gr_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_gr_stem2",
+      "target": "basic_gr_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_gr_a0",
+      "target": "basic_gr_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_gr_a1",
+      "target": "basic_gr_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_gr_a2",
+      "target": "keystone_gr_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_gr_b0",
+      "target": "basic_gr_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_gr_b1",
+      "target": "basic_gr_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_gr_b2",
+      "target": "keystone_gr_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_gr_c0",
+      "target": "basic_gr_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_gr_c1",
+      "target": "keystone_gr_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    }
+  ]
+}

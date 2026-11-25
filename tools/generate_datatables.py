@@ -3624,9 +3624,18 @@ def enemy_rarities(_book=None) -> list[dict]:
 # about the tree, and a screen that drew them would be drawing the editor.
 # --------------------------------------------------------------------------
 
-#: The four class trees that exist. The other twenty are issue #24.
+#: The nine class trees that exist: the three War, the three Demonic and, since
+#: 2026-11-24, the three Death. The other fifteen are issue #24.
+#:
+#: EACH IS THE CLASS'S NAME AS THE GAME SPELLS IT, space included.
+#: `UCataclysmCharacterCreation::ClassesByDamageType` names the Death classes
+#: "Soul Collector", "Necromancer" and "Shadow", and
+#: `UCataclysmPassiveTree::TreeIsReachable` compares a node's `Tree` column with
+#: that list as written, so the column must say "Soul Collector" and not
+#: "SoulCollector". The file name and the row names cannot hold the space; see
+#: `tree_file` and `tree_row_prefix`.
 CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
-               "Ritualist")
+               "Ritualist", "Soul Collector", "Necromancer", "Shadow")
 
 #: How many options a capstone offers, from the design document: "Player chooses
 #: one of three options per tier." Fixed at three, which is why the options are
@@ -3634,12 +3643,27 @@ CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
 CAPSTONE_OPTIONS = 3
 
 
-def _tree_file(name: str) -> pathlib.Path:
-    return REPO_ROOT / "docs" / f"{name}_Class_Tree_Final.json"
+def tree_file(name: str) -> pathlib.Path:
+    """The tree's file in docs/, with any space in the class name an underscore:
+    `docs/Soul_Collector_Class_Tree_Final.json`."""
+    return REPO_ROOT / "docs" / f"{name.replace(' ', '_')}_Class_Tree_Final.json"
+
+
+def tree_row_prefix(name: str) -> str:
+    """What every node and edge row of this tree is named with in front.
+
+    THE CLASS NAME WITH ITS SPACES REMOVED, `SoulCollector`, because that is how
+    the version 3 save step reads a node's tree back out of its name:
+    `ClassOfNode` in `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`
+    strips the spaces from each class name before it compares, and
+    `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py` holds every
+    row to it. For the six one-word classes it is the name itself.
+    """
+    return name.replace(" ", "")
 
 
 def _load_tree(name: str) -> dict:
-    path = _tree_file(name)
+    path = tree_file(name)
     if not path.is_file():
         raise DataError(f"{path.name} is not present")
     try:
@@ -3691,7 +3715,7 @@ def _no_duplicates(rows: list[dict], table: str) -> list[dict]:
 
 
 def passive_nodes(_book=None) -> list[dict]:
-    """One row per node, across all four class trees.
+    """One row per node, across every class tree in `CLASS_TREES`.
 
     THE ROW KEY IS THE TREE AND THE NODE IDENTIFIER TOGETHER, because node
     identifiers are only unique within a tree. Fourteen are shared by more than
@@ -3713,7 +3737,7 @@ def passive_nodes(_book=None) -> list[dict]:
             options = body.get("options", []) if kind == "capstone" else []
 
             row = {
-                "Name": f"{tree}_{node['id']}",
+                "Name": f"{tree_row_prefix(tree)}_{node['id']}",
                 "Tree": tree,
                 "NodeId": node["id"],
                 "Kind": kind,
@@ -3747,7 +3771,7 @@ def passive_nodes(_book=None) -> list[dict]:
 
 
 def passive_edges(_book=None) -> list[dict]:
-    """One row per dependency edge, across all four class trees.
+    """One row per dependency edge, across every class tree in `CLASS_TREES`.
 
     AN EDGE IS A REQUIREMENT AND NOT A LINE. `requiredPoints` on an edge from A
     to B means B cannot be taken until A holds that many points. The positions
@@ -3766,11 +3790,12 @@ def passive_edges(_book=None) -> list[dict]:
                     f"{tree}: edge {edge.get('id')} joins {source} to {target} "
                     f"and one of them is not a node in that tree")
 
+            prefix = tree_row_prefix(tree)
             out.append({
-                "Name": f"{tree}_{edge['id']}",
+                "Name": f"{prefix}_{edge['id']}",
                 "Tree": tree,
-                "Source": f"{tree}_{source}",
-                "Target": f"{tree}_{target}",
+                "Source": f"{prefix}_{source}",
+                "Target": f"{prefix}_{target}",
                 "RequiredPoints": int(edge.get("data", {})
                                       .get("requiredPoints", 0)),
             })

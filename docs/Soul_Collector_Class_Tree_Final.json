@@ -1,0 +1,2534 @@
+{
+  "version": "1.0",
+  "metadata": {
+    "name": "Soul Collector Class Tree",
+    "description": "Single continuous web. The Reaper's Road runs up the centre and is what fills Fervour from kills. Hoard upper-left, Harvest lower-left, Siphon lower-right, Burn upper-right. Keystones sit at the far end of each limb and need full investment in their parent, except The Siphon, which opens the Siphon limb: taking it is choosing a Siphon build, and the limb's ordinary nodes improve it. The four vow capstones are the 25/50/100/200 point tiers, each of which also opens a Fervour threshold, and stand apart from the web.",
+    "createdAt": "2026-11-24T00:00:00.000Z",
+    "updatedAt": "2026-11-24T00:00:00.000Z",
+    "pointBudget": 230
+  },
+  "viewport": {
+    "x": 1200.0,
+    "y": 200.0,
+    "zoom": 0.45
+  },
+  "nodes": [
+    {
+      "id": "basic_spine_000",
+      "position": {
+        "x": 0,
+        "y": 780
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Fervour",
+        "description": "Kills generate Fervour, taken from the dead: 1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. You deal 0.5% more damage for each Fervour you hold. While you have this, Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you kill again, so a pause between kills is what empties it. Killing an Elite or stronger creature holds off the decay for 8 seconds rather than 4.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_001",
+      "position": {
+        "x": -450,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Tithe of the Dead",
+        "description": "+2% increased Fervour gained from kills per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_002",
+      "position": {
+        "x": 675,
+        "y": 648
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Last Breath",
+        "description": "Each Fervour a kill gives you restores 0.1% of your maximum health per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_003",
+      "position": {
+        "x": -300,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Weight of Souls",
+        "description": "Each Fervour you hold gives a further +0.02% increased damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_004",
+      "position": {
+        "x": -300,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grave Patience",
+        "description": "Your Fervour begins to decay 0.1 seconds later per point after a kill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_005",
+      "position": {
+        "x": 900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Between the Dead",
+        "description": "+1% increased Movement Speed per point for 4 seconds after you kill, so you reach the next pack before your Fervour begins to decay.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_006",
+      "position": {
+        "x": -375,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Pale Ward",
+        "description": "+0.1% increased Damage Reduction per point for every 10 Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_007",
+      "position": {
+        "x": 900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Claimed",
+        "description": "An enemy you hit gives you its Fervour if it dies within 0.5 seconds per point of that hit, whatever kills it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_008",
+      "position": {
+        "x": -375,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deep Urn",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_009",
+      "position": {
+        "x": 900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Spent Breath",
+        "description": "+3% increased damage per point for 4 seconds after you spend 10 or more Fervour at once.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_spine_010",
+      "position": {
+        "x": -150,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Held Close",
+        "description": "+3% increased Crowd Control Resistance per point while you hold 50 or more Fervour. A stun stops your kills, and stopped kills let your Fervour decay.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_001",
+      "position": {
+        "x": 150,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Death's Toll",
+        "description": "Enemies your minions, gadgets and traps kill give you their Fervour, and count as your kills for everything this tree asks.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_002",
+      "position": {
+        "x": 0,
+        "y": 252
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Reclaimed",
+        "description": "A kill made after your Fervour has begun to decay gives back the Fervour that decay took from you in the 3 seconds before it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_spine_003",
+      "position": {
+        "x": -150,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Soulbound",
+        "description": "Your Fervour no longer decays with time. Instead you lose 1 Fervour for every 2% of your maximum health that you lose to damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem0",
+      "position": {
+        "x": -450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ossuary",
+        "description": "+2% increased maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem1",
+      "position": {
+        "x": -450,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gathered Weight",
+        "description": "+0.5% increased Area of Effect per point for every 20 Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_stem2",
+      "position": {
+        "x": -300,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Chained Souls",
+        "description": "8% per point of the Fervour your minions, gadgets and traps hold back counts as Fervour you hold, for everything that counts Fervour held.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a0",
+      "position": {
+        "x": -600,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cold Precision",
+        "description": "+0.02% increased Critical Strike Multiplier per point for each Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a1",
+      "position": {
+        "x": -600,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Brimming",
+        "description": "+1% increased Attack and Cast Speed per point while you hold 50 or more Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_a2",
+      "position": {
+        "x": -600,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Full Measure",
+        "description": "+2% increased damage per point while your Fervour is at its maximum.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b0",
+      "position": {
+        "x": -450,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Hoarded Life",
+        "description": "+1% increased Health Regeneration per point for every 20 Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b1",
+      "position": {
+        "x": -450,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Miser's Grip",
+        "description": "Your Fervour never decays below 3% of your maximum Fervour per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_b2",
+      "position": {
+        "x": -450,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cold Storage",
+        "description": "Your Fervour decays 5% slower per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c0",
+      "position": {
+        "x": -300,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Generous Count",
+        "description": "Each Fervour threshold is reached 1 Fervour sooner per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_a_c1",
+      "position": {
+        "x": -300,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Steady Count",
+        "description": "+1% increased damage per point for each Fervour threshold you are at or above.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kA",
+      "position": {
+        "x": -600,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Overflow",
+        "description": "Fervour gained above the maximum becomes 5 seconds of attack and cast speed. Each Fervour above it gives 1% increased Attack and Cast Speed for 5 seconds, up to 30%.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kB",
+      "position": {
+        "x": -450,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Hoarder",
+        "description": "Fervour decays half as fast.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_a_kC",
+      "position": {
+        "x": -300,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Long Shadow",
+        "description": "Each Fervour threshold you reach stays in effect for 5 seconds after you fall below it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem0",
+      "position": {
+        "x": -900,
+        "y": 516
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Gleaning",
+        "description": "Each enemy you kill has a 5% chance per point to give 1 extra Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem1",
+      "position": {
+        "x": -900,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Empty Hands",
+        "description": "+2% increased Attack and Cast Speed per point while you hold fewer than 20 Fervour, to fill the bar again quickly.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_stem2",
+      "position": {
+        "x": -750,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Thinning the Herd",
+        "description": "Each kill gives +1% increased Fervour per point for every other enemy within 8 metres of you, up to 10 enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a0",
+      "position": {
+        "x": -1050,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Kill Chain",
+        "description": "Kills within 2 seconds of each other form a chain. +0.5% increased damage per point for each kill in your current chain, up to 10 kills.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a1",
+      "position": {
+        "x": -1050,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Unbroken Chain",
+        "description": "A chain of kills allows 0.1 seconds more between kills per point. The same applies to Soul Tide.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_a2",
+      "position": {
+        "x": -1050,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Grim Wake",
+        "description": "Enemies within 3 metres of an enemy you kill take 2% increased damage from you per point for 3 seconds.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b0",
+      "position": {
+        "x": -900,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Quarry",
+        "description": "+2% increased damage per point against Elite and stronger creatures, which give the most Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b1",
+      "position": {
+        "x": -900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Tear Loose",
+        "description": "Your hits on an Elite or stronger creature have a 2% chance per point to give you 1 Fervour, torn from it.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_b2",
+      "position": {
+        "x": -900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Vigil Over the Strong",
+        "description": "While an Elite or stronger creature is within 15 metres of you, your Fervour decays 5% slower per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c0",
+      "position": {
+        "x": -750,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Any Fuel",
+        "description": "+2% increased Fervour gained from sources other than kills per point, so another class's way of filling the bar fills it faster.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_b_c1",
+      "position": {
+        "x": -750,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Borrowed Time",
+        "description": "Each time you gain Fervour from a source other than a kill, the time before your Fervour begins to decay is extended by 0.1 seconds per point, never past its full length.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kA",
+      "position": {
+        "x": -1050,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Passed On",
+        "description": "Half the damage your hit deals beyond what killing an enemy needed is dealt to every other enemy within 3 metres of it. A kill this makes passes on its own excess the same way.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kB",
+      "position": {
+        "x": -900,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Hungry for the Strong",
+        "description": "Elite and stronger creatures give double Fervour.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_b_kC",
+      "position": {
+        "x": -750,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Kindred Fires",
+        "description": "Fervour you gain from any source, not only a kill, holds off decay as a kill does: the time before your Fervour begins to decay starts again.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem0",
+      "position": {
+        "x": 450,
+        "y": 516
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "The Siphon",
+        "description": "You siphon every enemy within 6 metres of you. The enemies in your Siphon are what the other nodes of this limb act on, and what a skill that names your Siphon reads. Without this keystone you have no Siphon.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem1",
+      "position": {
+        "x": 450,
+        "y": 384
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Sapping Cold",
+        "description": "Each enemy in your Siphon deals 1% reduced damage and has 1.5% reduced Movement Speed and Attack Speed per point, and you gain +0.5% increased damage and +0.5% increased Movement Speed per point for each of them, up to 10 enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_stem2",
+      "position": {
+        "x": 600,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Pall of Souls",
+        "description": "+0.5% increased area of your Siphon per point for every 10 Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a0",
+      "position": {
+        "x": 300,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Life Siphon",
+        "description": "Each enemy in your Siphon restores 0.05% of your maximum health per point each second, up to 10 enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a1",
+      "position": {
+        "x": 300,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Drain",
+        "description": "Your Siphon deals damage over time to every enemy in it: 2% of your weapon damage per point each second, as Death damage.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_a2",
+      "position": {
+        "x": 300,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Necrotic Siphon",
+        "description": "An enemy that has been in your Siphon for 3 seconds has a 5% chance per point each second to be given Necrosis.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b0",
+      "position": {
+        "x": 450,
+        "y": 252
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Enfeeble",
+        "description": "Enemies in your Siphon deal a further 1% reduced damage per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b1",
+      "position": {
+        "x": 450,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Stolen Strength",
+        "description": "+0.25% increased Damage Reduction per point for each enemy in your Siphon, up to 10 enemies.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_b2",
+      "position": {
+        "x": 450,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Soul-Heavy Air",
+        "description": "Enemies in your Siphon take 0.2% increased damage from you per point for every 10 Fervour you hold.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c0",
+      "position": {
+        "x": 600,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Lingering Pull",
+        "description": "Enemies stay in your Siphon for 0.25 seconds per point after they leave its area.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_c_c1",
+      "position": {
+        "x": 600,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Reaching Cold",
+        "description": "+4% increased area of your Siphon per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kA",
+      "position": {
+        "x": 300,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Living Harvest",
+        "description": "Each enemy in your Siphon gives you 1 Fervour every 2 seconds, up to 4 Fervour a second. This Fervour does not come from kills, so on its own it does not hold off decay.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_c_kB",
+      "position": {
+        "x": 450,
+        "y": -144
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Deathly Presence",
+        "description": "For every 10 Fervour held, enemies within 6 metres deal 1% less damage.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_25",
+      "position": {
+        "x": -1500,
+        "y": 780
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The First Vow",
+        "description": "Unlocks at 25 points spent. Choose one. The choice is permanent. Reaching 25 points also opens the first Fervour threshold: while you hold 20 or more Fervour, all your skills have 20% more Area of Effect.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Soul Tide",
+            "description": "Kills within 2 seconds of each other give 1 extra Fervour each, so chains of kills fill the bar fast."
+          },
+          {
+            "name": "Reaper's Due",
+            "description": "Each hit on a Boss gives 5 Fervour (at most twice a second), and Fervour does not decay while a Boss is within 15 metres."
+          },
+          {
+            "name": "Swift Reaper",
+            "description": "2% movement speed for every 10 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 25
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_50",
+      "position": {
+        "x": -1500,
+        "y": 540
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Second Vow",
+        "description": "Unlocks at 50 points spent. Choose one. The choice is permanent. Reaching 50 points also opens the second Fervour threshold: while you hold 40 or more Fervour, all your skills fire one extra projectile or chain one extra time.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Second Wind",
+            "description": "Reaching a full bar refills your health and mana, once every 60 seconds."
+          },
+          {
+            "name": "Spirit Volley",
+            "description": "Each Fervour you gain from a kill flies to you as a spirit that strikes the nearest enemy on its way for 30% of weapon damage. Kills make spirits, spirits make kills."
+          },
+          {
+            "name": "Death's Focus",
+            "description": "+1% critical strike chance for every 20 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 50
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_100",
+      "position": {
+        "x": -1500,
+        "y": 300
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Third Vow",
+        "description": "Unlocks at 100 points spent. Choose one. The choice is permanent. Reaching 100 points also opens the third Fervour threshold: while you hold 60 or more Fervour, your skills cost no mana.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Phylactery",
+            "description": "A blow that would kill you instead spends all your Fervour (at least 50) and leaves you at that many percent of your health. Once every 60 seconds."
+          },
+          {
+            "name": "Reaper's Edge",
+            "description": "Your hits kill a non-Boss enemy below 15% health outright, and those kills give double Fervour."
+          },
+          {
+            "name": "Soul Haste",
+            "description": "3% attack and cast speed for every 10 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 100
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "capstone_200",
+      "position": {
+        "x": -1500,
+        "y": 60
+      },
+      "type": "capstone",
+      "data": {
+        "kind": "capstone",
+        "name": "The Final Vow",
+        "description": "Unlocks at 200 points spent. Choose one. The choice is permanent. Reaching 200 points also opens the fourth Fervour threshold: while you hold 100 or more Fervour, a full bar at the base maximum, your skill cooldowns recover twice as fast.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1,
+        "isDecision": true,
+        "options": [
+          {
+            "name": "Wearer of the Dead",
+            "description": "Killing an Elite or stronger creature gives you its modifiers for 20 seconds."
+          },
+          {
+            "name": "The Ferryman",
+            "description": "While your bar is full, every enemy you kill bursts for 10% of its maximum health to enemies within 4 metres, and a creature the burst kills bursts too."
+          },
+          {
+            "name": "Soul Barrage",
+            "description": "+1 projectile for every 10 Fervour held."
+          }
+        ],
+        "selectedOption": null,
+        "threshold": 200
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem0",
+      "position": {
+        "x": 900,
+        "y": 120
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Soul Fuel",
+        "description": "Your skills that have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +0.25% increased damage per point for each Fervour they spend.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 12
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem1",
+      "position": {
+        "x": 900,
+        "y": -12
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Deeper Draw",
+        "description": "Your skills spend 1 more Fervour per point, up to 20 Fervour a skill.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_stem2",
+      "position": {
+        "x": 975,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Quick Kindling",
+        "description": "+1% increased Cooldown Reduction per point for 4 seconds after you spend Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a0",
+      "position": {
+        "x": 750,
+        "y": -144
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Pyre",
+        "description": "Skills that spend Fervour have +1% increased Area of Effect per point for every 5 Fervour they spend.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 10
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a1",
+      "position": {
+        "x": 750,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Soul Shatter",
+        "description": "Skills that spend Fervour have +4% increased Critical Strike Chance per point.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_a2",
+      "position": {
+        "x": 750,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Final Rites",
+        "description": "Skills that spend Fervour deal +3% increased damage per point against Elite and stronger creatures.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kA",
+      "position": {
+        "x": 750,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Soul Furnace",
+        "description": "Spending 10 or more Fervour at once releases a blast dealing damage for each Fervour spent. The blast deals 10% of your weapon damage for each Fervour spent to every enemy within 5 metres.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b0",
+      "position": {
+        "x": 900,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Burnt Offering",
+        "description": "You take 1% reduced damage per point for 4 seconds after you spend Fervour.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b1",
+      "position": {
+        "x": 900,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Spirit to Mana",
+        "description": "Spending Fervour restores 1% of your maximum mana per point for every 10 Fervour spent.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_b2",
+      "position": {
+        "x": 900,
+        "y": -540
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Ashen Ward",
+        "description": "Spending Fervour restores 0.5% of your Maximum Energy Shield per point for every 5 Fervour spent.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kB",
+      "position": {
+        "x": 900,
+        "y": -672
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Feast",
+        "description": "Spending Fervour heals 1% of maximum health for each Fervour spent.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c0",
+      "position": {
+        "x": 1050,
+        "y": -276
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Bound Offering",
+        "description": "Fervour you hold back for a minion, gadget or trap counts as Fervour spent, at 15% per point of what is held back.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "basic_d_c1",
+      "position": {
+        "x": 1050,
+        "y": -408
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Cinders Kept",
+        "description": "3% per point of the Fervour you spend returns to you 4 seconds later.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 6
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "keystone_d_kC",
+      "position": {
+        "x": 1050,
+        "y": -540
+      },
+      "type": "keystone",
+      "data": {
+        "kind": "keystone",
+        "name": "Turn of the Wheel",
+        "description": "Each Fervour you spend takes 0.1 seconds off the cooldowns of your skills that did not spend it.",
+        "currentPoints": 0,
+        "color": "#cbd5e1",
+        "maxPoints": 1
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "uiElements": [
+    {
+      "id": "ui_textLabel_frame_1",
+      "type": "ui_textLabel",
+      "position": {
+        "x": -120.0,
+        "y": 1400.0
+      },
+      "zIndex": -1,
+      "dragHandle": ".ui-drag-handle",
+      "data": {
+        "kind": "ui_textLabel",
+        "color": "#e2e8f0",
+        "opacity": 0.7,
+        "text": "SOUL COLLECTOR",
+        "fontSize": 22
+      },
+      "measured": {
+        "width": 220,
+        "height": 33
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_1",
+      "source": "basic_spine_000",
+      "target": "basic_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_2",
+      "source": "basic_spine_000",
+      "target": "basic_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_3",
+      "source": "basic_spine_001",
+      "target": "basic_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_4",
+      "source": "basic_spine_003",
+      "target": "basic_spine_004",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_5",
+      "source": "basic_spine_002",
+      "target": "basic_spine_005",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 3
+      },
+      "selected": false
+    },
+    {
+      "id": "e_6",
+      "source": "basic_spine_004",
+      "target": "basic_spine_006",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_7",
+      "source": "basic_spine_005",
+      "target": "basic_spine_007",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 5
+      },
+      "selected": false
+    },
+    {
+      "id": "e_8",
+      "source": "basic_spine_006",
+      "target": "basic_spine_008",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_9",
+      "source": "basic_spine_007",
+      "target": "basic_spine_009",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_10",
+      "source": "basic_spine_008",
+      "target": "basic_spine_010",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_11",
+      "source": "basic_spine_001",
+      "target": "keystone_spine_001",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 12
+      },
+      "selected": false
+    },
+    {
+      "id": "e_12",
+      "source": "basic_spine_004",
+      "target": "keystone_spine_002",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
+      },
+      "selected": false
+    },
+    {
+      "id": "e_13",
+      "source": "basic_spine_010",
+      "target": "keystone_spine_003",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_14",
+      "source": "basic_spine_008",
+      "target": "basic_a_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_15",
+      "source": "basic_a_stem0",
+      "target": "basic_a_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_16",
+      "source": "basic_a_stem1",
+      "target": "basic_a_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_17",
+      "source": "basic_a_stem1",
+      "target": "basic_a_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_18",
+      "source": "basic_a_a0",
+      "target": "basic_a_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_19",
+      "source": "basic_a_a1",
+      "target": "basic_a_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_20",
+      "source": "basic_a_stem1",
+      "target": "basic_a_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_21",
+      "source": "basic_a_b0",
+      "target": "basic_a_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_22",
+      "source": "basic_a_b1",
+      "target": "basic_a_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_23",
+      "source": "basic_a_stem2",
+      "target": "basic_a_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_24",
+      "source": "basic_a_c0",
+      "target": "basic_a_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_25",
+      "source": "basic_a_a2",
+      "target": "keystone_a_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_26",
+      "source": "basic_a_b2",
+      "target": "keystone_a_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_27",
+      "source": "basic_a_c1",
+      "target": "keystone_a_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_42",
+      "source": "basic_spine_001",
+      "target": "basic_b_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_43",
+      "source": "basic_b_stem0",
+      "target": "basic_b_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_44",
+      "source": "basic_b_stem1",
+      "target": "basic_b_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_45",
+      "source": "basic_b_stem1",
+      "target": "basic_b_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_46",
+      "source": "basic_b_a0",
+      "target": "basic_b_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_47",
+      "source": "basic_b_a1",
+      "target": "basic_b_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_48",
+      "source": "basic_b_stem1",
+      "target": "basic_b_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_49",
+      "source": "basic_b_b0",
+      "target": "basic_b_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_50",
+      "source": "basic_b_b1",
+      "target": "basic_b_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_51",
+      "source": "basic_b_stem2",
+      "target": "basic_b_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_52",
+      "source": "basic_b_c0",
+      "target": "basic_b_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_53",
+      "source": "basic_b_a2",
+      "target": "keystone_b_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_54",
+      "source": "basic_b_b2",
+      "target": "keystone_b_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_55",
+      "source": "basic_b_c1",
+      "target": "keystone_b_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_56",
+      "source": "basic_spine_002",
+      "target": "basic_c_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_57",
+      "source": "basic_c_stem0",
+      "target": "basic_c_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 1
+      },
+      "selected": false
+    },
+    {
+      "id": "e_58",
+      "source": "basic_c_stem1",
+      "target": "basic_c_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_59",
+      "source": "basic_c_stem1",
+      "target": "basic_c_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_60",
+      "source": "basic_c_a0",
+      "target": "basic_c_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_61",
+      "source": "basic_c_a1",
+      "target": "basic_c_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_62",
+      "source": "basic_c_stem1",
+      "target": "basic_c_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_63",
+      "source": "basic_c_b0",
+      "target": "basic_c_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_64",
+      "source": "basic_c_b1",
+      "target": "basic_c_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_65",
+      "source": "basic_c_stem2",
+      "target": "basic_c_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_66",
+      "source": "basic_c_c0",
+      "target": "basic_c_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_67",
+      "source": "basic_c_a2",
+      "target": "keystone_c_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_68",
+      "source": "basic_c_b2",
+      "target": "keystone_c_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 8
+      },
+      "selected": false
+    },
+    {
+      "id": "e_70",
+      "source": "basic_spine_009",
+      "target": "basic_d_stem0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 2
+      },
+      "selected": false
+    },
+    {
+      "id": "e_71",
+      "source": "basic_d_stem0",
+      "target": "basic_d_stem1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_72",
+      "source": "basic_d_stem1",
+      "target": "basic_d_stem2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_73",
+      "source": "basic_d_stem1",
+      "target": "basic_d_a0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_74",
+      "source": "basic_d_stem2",
+      "target": "basic_d_b0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_75",
+      "source": "basic_d_stem2",
+      "target": "basic_d_c0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_76",
+      "source": "basic_d_a0",
+      "target": "basic_d_a1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_77",
+      "source": "basic_d_a1",
+      "target": "basic_d_a2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_78",
+      "source": "basic_d_a2",
+      "target": "keystone_d_kA",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_79",
+      "source": "basic_d_b0",
+      "target": "basic_d_b1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_80",
+      "source": "basic_d_b1",
+      "target": "basic_d_b2",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_81",
+      "source": "basic_d_b2",
+      "target": "keystone_d_kB",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    },
+    {
+      "id": "e_82",
+      "source": "basic_d_c0",
+      "target": "basic_d_c1",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_83",
+      "source": "basic_d_c1",
+      "target": "keystone_d_kC",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 6
+      },
+      "selected": false
+    }
+  ]
+}

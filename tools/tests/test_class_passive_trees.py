@@ -102,8 +102,13 @@ GDD = DOCS / "Cataclysm_GDD_v2.md"
 #: Demonic damage type from one designed class of three to all three, which is
 #: what the vertical slice needs, and they take the Ravager -- the class every
 #: new character starts on -- from having no tree to having one.
+#:
+#: THE THREE DEATH TREES JOINED ON 2026-11-24: the Soul Collector, the
+#: Necromancer and the Shadow, which the project owner approved that day. "Soul
+#: Collector" is the first class name holding a space; its file is
+#: `Soul_Collector_Class_Tree_Final.json`, which `tree_path` spells.
 CLASS_TREES = ("Berserker", "Bulwark", "Saboteur", "Masochist", "Ravager",
-               "Ritualist")
+               "Ritualist", "Soul Collector", "Necromancer", "Shadow")
 
 #: The tree issue #63 added, and the one the Phase 1 vertical slice needs.
 DEMONIC_TREE = "Masochist"
@@ -281,8 +286,14 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 NODES_RELYING_ON_THE_WIDENED_RULE = 9
 
 
+def tree_path(tree_name: str) -> pathlib.Path:
+    """The tree's file, with a space in the class name written as an underscore,
+    as `tools/generate_datatables.py`'s `tree_file` reads it."""
+    return DOCS / f"{tree_name.replace(' ', '_')}_Class_Tree_Final.json"
+
+
 def load(tree_name: str) -> dict:
-    path = DOCS / f"{tree_name}_Class_Tree_Final.json"
+    path = tree_path(tree_name)
     if not path.is_file():
         pytest.skip(f"{path.name} is not present")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -536,7 +547,9 @@ def nodes_relying_on_the_widened_wording_rule() -> list[str]:
             texts += [o.get("description", "")
                       for o in body.get("options", []) or []]
             if any(MAGNITUDE_WORDING.search(t or "") for t in texts):
-                found.append(f"{path.stem.split('_')[0]}/{body['name']}")
+                tree = (path.stem.removesuffix("_Class_Tree_Final")
+                        .removesuffix("_Development_Tree_Final"))
+                found.append(f"{tree}/{body['name']}")
     return sorted(found)
 
 
