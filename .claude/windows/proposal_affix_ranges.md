@@ -1,4 +1,4 @@
-# Affix ranges: whole numbers, one range per tier (third version, under the owner's rulings)
+# Affix ranges: whole numbers, one range per tier (fourth version, under the owner's rulings)
 
 **A proposal, 2026-11-24. Nothing in the game, the CSVs or the design workbook is changed.**
 Branch `proposal/affix-ranges`. The script is `tools/affix_range_proposal.py` and its tests are
@@ -23,6 +23,7 @@ Their rulings on the earlier versions (issue #2883), quoted:
 | 4 | Flat damage | "It's fine, keep the 6 slots and upgrade the damage. We'll fix it with the enemy balance audit like for the first question." |
 | D5 | Flat crit chance and flat mana regeneration | "Keep them, but make the ranges like 1-2, 3-4, etc. And lower the amount of slots they can roll on. Maybe flat crit only rolls on weapons and gloves, and flat mana regen only rolls on belts and ammys." |
 | D7 | Tier 1 starting values | "% increases definitely need to be significantly higher than 1%. That's dumb, and virtually useless across all stats. Increased and percentage are the same thing... I think you meant more/increased/flat? In which case, more should be the lowest, increased should be the highest, and flat should be in the middle in most cases." |
+| D7, corrected | What counts as flat | "flat crit, is added. It isn't a %. The base value just happens to be a chance. So if I say flat crit +1, that means my flat 5% chance to crit goes up to 6%. If I say 100% increased, my 5% becomes 10%. See what i'm saying?" The 1% rule is about increased affixes only; a stat adding to a base chance is flat and may start low |
 | D6, D8, D9 | Hybrids two tiers down; enchantment durations as whole seconds 1-2; implicits as whole +0 values | Accepted as recommended |
 
 ## Headline: before and after
@@ -37,7 +38,8 @@ Their rulings on the earlier versions (issue #2883), quoted:
 | Increased maximum health, tier 7 at +10 | 9-12% | 50-53% |
 | Flat damage, tier 1 at +0 / tier 7 at +10 | 2.2-2.9 / 16.5-22 | 2-3 / 35-38 |
 | Affixes keeping today's top at +10 | | 14 |
-| Affixes whose top rises | | 59, median x4.42. Largest x11.25 (the small stats, 4 -> 45), and x54 for flat mana regeneration (0.65 -> 35 a second, the owner's D5) |
+| Affixes whose top rises | | 59, median x4.42 (the increases, 12 -> 53). Largest x8.75 (the small stats, 4 -> 35), and x54 for flat mana regeneration (0.65 -> 35 a second, the owner's D5) |
+| Flat stats, tier 1 on a fresh drop | 1.0-1.1 (evasion, leech, damage reduction, penetration, retaliation); 1.25-1.4 (crit chance, block, crowd control resistance) | 1-2 |
 | Affixes on fewer slots | | 14 (the twelve small stats, and the two D5 affixes) |
 | Reference character's damage per hit at difficulty tier 8 (6 flat + 6 increased slots) | 1,853 | 2,660 (+44%), for #2884 |
 
@@ -57,7 +59,7 @@ own affix at tier N - 2. Implicits are whole +0 numbers, multiplied the same way
 | 2 | Every affix and every implicit grows with upgrades | Ruling 1; the 2026-08-03 rule stands |
 | 3 | **How rounding works at each upgrade step.** The multiplier is 1.00, 1.15, 1.30, 1.45, 1.60, 1.75, 1.90, 2.05, 2.20, 2.35, 2.50 for +0 to +10. Each end of the +0 range is multiplied by it and rounded to the nearest whole number, a half going up, always from the +0 end, so rounding never compounds. The arithmetic is in whole hundredths, because in floating point 10 x 1.15 is 11.499999999999998 and would round the wrong way; the engine must do the same | "How an Attribute Rounds": "A half rounds up", "The rounded number is the only number" |
 | 4 | A roll is a position in [0, 1], as an item stores it today, and picks one of the whole numbers in the tier's range at the piece's level, each with an equal share. Every number a tooltip's range shows can occur; an upgrade never lowers a roll | `UCataclysmItemValues::EnchantmentValue`, the enchantment rule already |
-| 5 | Tier 1 starts at +0 at least 8 for an increase, 5 for a flat percentage, 2 for an amount; higher where the owner's 2026-09-04 floors are higher; 1 for the two D5 affixes | D7 and D5, next section |
+| 5 | Tier 1 starts at +0 at least 8 for an increase. A flat stat (an amount, or points added to a base chance) starts at today's worst +0 roll, rounded, at least 1 | D7 as the owner corrected it, next section |
 | 6 | A hybrid rolls tiers 3 to 7 only, and at tier N grants each half at that half's tier N - 2 | D6, accepted |
 | 7 | `Floor`, `TIER_FRACTIONS`, `ROLL_BAND_FRACTION` and `WORST_MULTIPLIER` stop producing values | The written tier 1 minimum is the floor |
 
@@ -75,41 +77,86 @@ It reports **0 problems**.
 
 ## Tier 1 starts, by kind (D7)
 
-The owner reads the scales as more / increased / flat, with more lowest, increased highest and flat
-in between "in most cases". **No affix grants "more"**: the design refuses it on a rolled affix
-("No ordinary affix is a 'more' multiplier"). More lives in gems, passive keystones and 115
-enchantment effect rows, none of which this table covers, so the ordering checked here is increased
-above flat.
+The owner reads the scales as more < flat < increased, and corrected what counts as flat, verbatim:
+
+> flat crit, is added. It isn't a %. The base value just happens to be a chance. So if I say flat
+> crit +1, that means my flat 5% chance to crit goes up to 6%. If I say 100% increased, my 5%
+> becomes 10%. See what i'm saying?
+
+So the "no 1%" rule is about **increased** affixes only. A stat that **adds** to a base is flat,
+even when the base is a chance: amounts (health, damage, regeneration) and points added to a chance
+or a value (crit chance, block, damage reduction, evasion, resistances, leech, penetration and the
+like). Flat stats sit in the middle and may start low. **No affix grants "more"**: the design
+refuses it on a rolled affix. More lives in gems, passive keystones and 115 enchantment effect rows,
+outside this table.
 
 | Kind | Tier 1 at +0 | ... at +10 | Affixes |
 | :-- | :-- | :-- | :-- |
 | more | none | | no affix |
 | increased | **8-9%** at least (13-15 for increased damage, spell and minion damage; 40-47 against one type; 9-10 movement speed) | 20-23% | every "Increased ..." affix |
-| flat percentage | **5-6** at least (10-11 single resistance and 7-8 two resistances, the owner's 2026-09-04 floors) | 13-15 | block, damage reduction, retaliation, crowd control resistance, leech, penetration, flat evasion, crit multiplier, cooldown reduction, magic find, resistances, ailment chances |
-| flat amount | **2-3** at least, today's bottom (12-13 health, 25-29 armour, 5-6 shield, 4-5 mana) | 5-8 | flat damage, health, mana, shield, armour, class resource, health and shield regeneration |
-| D5 exceptions | **1-2** | 3-5 | flat crit chance, flat mana regeneration, in the owner's own words |
+| flat | **today's worst +0 roll, rounded, at least 1**: 1-2 for flat crit chance, block, damage reduction, evasion, leech, penetration, retaliation, crowd control resistance, cooldown reduction, and mana and shield regeneration; 2-3 for flat damage, crit multiplier, class resource, health regeneration and most ailment chances; higher where today's numbers are (12-13 health, 25-29 armour, 10-11 single resistance) | 3-5 for a start of 1 | every flat affix |
 
-**What the start of 5 does to the flat percentages.**
-- A two-wide ladder from 5 tops at 18 at +0, which is 45 at +10. Today these stats top at 4 to 20.
-- Ruling 3 narrows their slots, to the piece count whose most-a-character-can-carry is nearest
-  today's. It rounds down where a cap is close.
+**The correction undoes the start of 5 and part of its narrowing.**
+- Seven two-value tiers from 1 need a +0 top of 14, which is 35 at +10.
+- So the twelve small stats still cannot go back to all their slots: 35 on fourteen pieces would
+  be 490.
+- Ruling 3 approved narrowing "so the most a character can carry stays the same". Each stat keeps
+  the piece count whose carry is nearest today's, rounding down where a cap is close.
+- With 35 a piece instead of 45, **block and retaliation go back from one piece to two**. The rest
+  keep their piece count at a lower carry.
 
-| Stat | Top at +10 | Pieces now (today) | Most a character carries (today) | Against its cap |
-| :-- | --: | :-- | --: | :-- |
-| Flat evasion | 45 | Chest (14) | 45 (56) | soft cap 60; two pieces would be 90 |
-| Flat block chance | 45 | Belt (14) | 45, 58 with a Shield (70, 82) | two pieces would be 103 with a Shield: every hit blocked |
-| Flat damage reduction | 45 | Pants (14) | 45 (56) | cap 75; two pieces would be 90 |
-| Flat retaliation | 45 | Shoulders (14) | 45 (56) | |
-| Flat crowd control resistance | 45 | Belt, Boots (14) | 90, 95 with a Visage (70) | immunity at 100 |
-| Flat life, mana and shield leech | 45 | Weapon (12) | 45; 90 two-handed or with an offhand (48) | |
-| Flat penetration | 45 | Weapon (12) | 45; 90 two-handed (48) | 35 is the most any enemy resists, so 10 is wasted |
-| Flat crit multiplier | 45 | unchanged (12) | 540 (240) | not narrowed: not in ruling 3's twelve |
-| Flat cooldown reduction | 45 | unchanged (12) | 540 (144) | cooldowns divide, so no cap; not in the twelve |
-| Flat magic find | 45 | unchanged (12) | 540 (120) | not in the twelve |
-| Ailment chances | 45 | unchanged (11) | 495 for one ailment (165 for bleed today) | chance past 100% becomes magnitude |
-| All resistances | 45 | unchanged (17) | capping all eight at tier 8 takes 3.2 slots (12.1) | R2, for #2884 |
-| Flat crit chance (D5) | 35 | Weapon, Gloves (12) | 70 (60) | the owner's slots |
-| Flat mana regeneration (D5) | 35 a second | Belt, Necklace (12) | 70 a second (7.8) | the owner's slots |
+The full before-and-after for every flat stat:
+
+| Flat affix | Tier 1 at +0, today -> proposed | Top at +10, today -> proposed | Slots now (pieces) | Pieces today -> at the start of 5 -> now | Carry today -> now |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Flat maximum health | 12-16 -> 12-13 | 120 -> 120 | unchanged | 14 -> 14 -> 14 | 1680 -> 1680 |
+| Flat maximum mana | 3.8-5.07 -> 4-5 | 38 -> 43 | unchanged | 13 -> 13 -> 13 | 494 -> 559 |
+| Flat maximum energy shield | 5-6.67 -> 5-6 | 50 -> 50 | unchanged | 12 -> 12 -> 12 | 600 -> 600 |
+| Flat armor | 25-33.33 -> 25-29 | 250 -> 250 | unchanged | 14 -> 14 -> 14 | 3500 -> 3500 |
+| Flat evasion | 1-1.11 -> 1-2 | 4 -> 35 | Chest | 14 -> 1 -> 1 | 56 -> 35 |
+| Flat damage | 2.2-2.93 -> 2-3 | 22 -> 38 | unchanged | 12 -> 12 -> 12 | 264 -> 456 |
+| Flat maximum class resource | 1.75-1.94 -> 2-3 | 7 -> 38 | Necklace, Relic | 11 -> 2 -> 2 | 77 -> 76 |
+| Flat health regeneration | 2-2.22 -> 2-3 | 8 -> 38 | Chest, Belt, Necklace | 12 -> 3 -> 3 | 96 -> 114 |
+| Flat mana regeneration | 0.2-0.22 -> 1-2 | 0.65 -> 35 | Belt, Necklace | 12 -> 2 -> 2 | 7.8 -> 70 |
+| Flat life leech | 1-1.11 -> 1-2 | 4 -> 35 | Weapon | 12 -> 1 -> 1 | 48 -> 35 |
+| Flat block chance | 1.25-1.39 -> 1-2 | 5 -> 35 | Shoulders, Belt | 14 -> 1 -> 2 | 70 -> 70 |
+| Flat damage reduction | 1-1.11 -> 1-2 | 4 -> 35 | Pants | 14 -> 1 -> 1 | 56 -> 35 |
+| Flat retaliation | 1-1.11 -> 1-2 | 4 -> 35 | Head, Shoulders | 14 -> 1 -> 2 | 56 -> 70 |
+| Flat crowd control resistance | 1.25-1.39 -> 1-2 | 5 -> 35 | Belt, Boots | 14 -> 2 -> 2 | 70 -> 70 |
+| Flat critical strike chance | 1.25-1.39 -> 1-2 | 5 -> 35 | Weapon, Gloves | 12 -> 2 -> 2 | 60 -> 70 |
+| Flat critical strike multiplier | 2-2.67 -> 2-3 | 20 -> 38 | unchanged | 12 -> 12 -> 12 | 240 -> 456 |
+| Flat penetration | 1-1.11 -> 1-2 | 4 -> 35 | Weapon | 12 -> 1 -> 1 | 48 -> 35 |
+| Flat cooldown reduction | 1.2-1.6 -> 1-2 | 12 -> 35 | unchanged | 12 -> 12 -> 12 | 144 -> 420 |
+| Flat magic find | 2.5-2.78 -> 3-4 | 10 -> 40 | unchanged | 12 -> 12 -> 12 | 120 -> 480 |
+| Single resistance | 10-11.11 -> 10-11 | 40 -> 58 | unchanged | 17 -> 17 -> 17 | 680 -> 986 |
+| Two resistances | 7-7.78 -> 7-8 | 28 -> 50 | unchanged | 17 -> 17 -> 17 | 476 -> 850 |
+| All resistances | 3-3.33 -> 3-4 | 12 -> 40 | unchanged | 17 -> 17 -> 17 | 204 -> 680 |
+| Chance to bleed | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to poison | 2.5-3.33 -> 3-4 | 25 -> 40 | unchanged | 11 -> 11 -> 11 | 275 -> 440 |
+| Chance to disease | 2-2.67 -> 2-3 | 20 -> 38 | unchanged | 11 -> 11 -> 11 | 220 -> 418 |
+| Chance to apply void splinter | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to necrose | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to madden | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to cripple | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to weaken | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to shred | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to burn | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Chance to stun | 1.5-2 -> 2-3 | 15 -> 38 | unchanged | 11 -> 11 -> 11 | 165 -> 418 |
+| Flat mana leech | 1-1.11 -> 1-2 | 4 -> 35 | Weapon | 12 -> 1 -> 1 | 48 -> 35 |
+| Flat energy shield leech | 1-1.11 -> 1-2 | 4 -> 35 | Weapon | 12 -> 1 -> 1 | 48 -> 35 |
+| Flat energy shield regeneration | 1-1.33 -> 1-2 | 10 -> 35 | Head, Chest, Shoulders | 12 -> 3 -> 3 | 120 -> 105 |
+
+The twelve small stats are ruling 3's narrowed rows, and the two D5 rows are on the owner's slots.
+The other flat stats were never in ruling 3, so they keep their slots and their carry rises with
+their tops.
+
+**Against caps:**
+- Evasion stays on one piece: two would be 70, past its soft cap of 60.
+- Damage reduction stays on one: two would be 70 against a cap of 75.
+- Block on two pieces carries 70, or 83 with a Shield (82 today).
+- Crowd control resistance carries 70, or 75 with a Visage (74 today); immunity is at 100.
+- Penetration's 35 is exactly the most any enemy resists.
+- Leech is 35 on one weapon, and 70 two-handed or with an offhand.
 
 ### Increased above flat, stat by stat
 
@@ -118,8 +165,8 @@ above flat.
 | armor | 25, 250 | 8%, 53% | no: the flat one is an amount on its own scale |
 | attack_damage | 2, 38 | 13%, 125% | yes |
 | crit_chance | 1, 35 | 8%, 53% | yes |
-| energy_shield_regen | 2, 38 | 8%, 53% | yes |
-| evasion | 5, 45 | 8%, 53% | yes |
+| energy_shield_regen | 1, 35 | 8%, 53% | yes |
+| evasion | 1, 35 | 8%, 53% | yes |
 | health_regen | 2, 38 | 8%, 53% | yes |
 | mana_regen | 1, 35 | 8%, 53% | yes |
 | max_energy_shield | 5, 50 | 8%, 53% | yes |
@@ -128,9 +175,9 @@ above flat.
 
 **The two exceptions are flat health and flat armour.** Their numbers are amounts on their own scale
 (a level 100 character carries thousands of each), so 120 and 250 sit above any percentage. Every
-pair whose flat side is a percentage is ordered. Across stats, only single resistance (58) tops
-above the 53 of the increases. The owner's floor of 10 starts it there; two resistances (50) and
-all resistances (45) sit below.
+other pair is ordered, starts and tops both. Across stats, only single resistance (58) tops above
+the 53 of the increases. The owner's floor of 10 starts it there; two resistances (50) and all
+resistances (40) sit below.
 
 ## Research
 
@@ -177,12 +224,12 @@ build is where #2884 starts.
 | Damage over time levers solve (1 + 2v)^3 = 8.5 at 52 | 52 | 53 (8.74) | moves by a rounding |
 | Flat damage 22, fitted to the 1,860 target with 6 slots | 22 | 38 | moves; ruling 4: tier 8 hit 1,853 -> 2,660 |
 | Flat vs increased health crossover (+200% increases) | 3,000 base | 679 | moves: at level 100 increased health wins from the first slot; R1 |
-| Resistance families 40 / 28 / 12 | 40 / 28 / 12 | 58 / 50 / 45 | moves |
-| Capping all eight at tier 8 costs about 12 slots | 12.1 | 3.2 | moves; R2 |
-| Ailment chance = its gem's + 5; the gem stays the stronger source | 15-25 | 45 | "+5" breaks. The gem stays stronger one-handed. Two-handed (x2 = 90) the madness and withering gems (60%) fall below and shredding (90%) ties; R3 |
+| Resistance families 40 / 28 / 12 | 40 / 28 / 12 | 58 / 50 / 40 | moves |
+| Capping all eight at tier 8 costs about 12 slots | 12.1 | 3.6 | moves; R2 |
+| Ailment chance = its gem's + 5; the gem stays the stronger source | 15-25 | 38-40 | "+5" breaks. The gem stays stronger one-handed. Two-handed (x2 = 76) the madness and withering gems (60%) fall below; R3 |
 | Movement speed 35% on boots | 35 | 55 | moves (tier 1 starts at the owner's floor, 9); R4 |
 | Energy shield refills in 5 s (flat shield / flat regeneration) | 5 s | 1.3 s | moves |
-| Crit multiplier per affix | 20 | 45 | moves |
+| Crit multiplier per affix | 20 | 38 | moves |
 | Hybrid share 70% | 0.70 | 0.59-0.81 at T7 | moves (D6) |
 
 **Damage per non-critical hit of the reference character** (6 flat + 6 increased slots, as ruled;
@@ -195,16 +242,17 @@ target 1,860 at tier 8):
 | Change | +5% | +16% | +28% | +29% | +31% | +42% | +42% | +44% |
 
 **The reference build cannot be carried over as written.** It spends four slots each on block,
-damage reduction and penetration, and each of those now rolls on one piece.
+damage reduction and penetration. Damage reduction and penetration now roll on one piece and block
+on two.
 
 Read literally, the simulation gives that build at tier 8:
 
 | Stat | Today | Proposed |
 | :-- | --: | --: |
-| Block | 20 | 180 |
-| Damage reduction | 16 | 180 (cap 75) |
-| Penetration | 16 | 180 |
-| Resistance per type | 144 | 540 |
+| Block | 20 | 140 |
+| Damage reduction | 16 | 140 (cap 75) |
+| Penetration | 16 | 140 |
+| Resistance per type | 144 | 480 |
 | Increased health | 72% | 318% |
 | Increased armour | 48% | 212% |
 | Increased attack speed | 60% | 212% |
@@ -228,7 +276,7 @@ per distinct ladder (the letter in "Ladder"). A two-handed weapon doubles inside
 | Increased maximum energy shield | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Flat armor | 25-29 / 63-73 | 30-35 / 75-88 | 36-42 / 90-105 | 43-49 / 108-123 | 50-59 / 125-148 | 60-74 / 150-185 | 75-100 / 188-250 | 250 (250) | 14 | E |  |
 | Increased armor | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat evasion | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (14) | F | one piece (45) instead of fourteen (56): two would be 90, past evasion's soft cap of 60 |
+| Flat evasion | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (14) | F | one piece (35) instead of fourteen (56): two would be 70, past evasion's soft cap of 60 |
 | Increased evasion | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
 | Flat damage | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (22) | 12 | G | raised: the smallest top that holds seven two-value tiers |
 | Increased damage | 13-15 / 33-38 | 16-18 / 40-45 | 19-21 / 48-53 | 22-26 / 55-65 | 27-31 / 68-78 | 32-37 / 80-93 | 38-50 / 95-125 | 125 (125) | 12 | H |  |
@@ -236,39 +284,39 @@ per distinct ladder (the letter in "Ladder"). A two-handed weapon doubles inside
 | Flat maximum class resource | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (7) | 2 (11) | G | two pieces (76) instead of eleven (77) |
 | Flat health regeneration | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (8) | 3 (12) | G | three pieces (114) instead of twelve (96) |
 | Increased health regeneration | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat mana regeneration | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (0.65) | 2 (12) | I | the owner's D5: 1-2, 3-4 ... on belts and amulets; two pieces (70 a second) instead of twelve (7.8) |
+| Flat mana regeneration | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (0.65) | 2 (12) | F | the owner's D5: 1-2, 3-4 ... on belts and amulets; two pieces (70 a second) instead of twelve (7.8) |
 | Increased mana regeneration | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased energy shield regeneration | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat life leech | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (12) | F | the weapon only: 45, or 90 two-handed or with an offhand, instead of twelve pieces (48) |
-| Flat block chance | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (5) | 1 (14) | F | one piece (45) instead of fourteen (70): two would be 90, and with a Shield's 13 every hit would be blocked |
-| Flat damage reduction | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (14) | F | one piece (45) instead of fourteen (56): two would be 90 against a cap of 75 |
-| Flat retaliation | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (14) | F | one piece (45) instead of fourteen (56) |
-| Flat crowd control resistance | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (5) | 2 (14) | F | two pieces (90) instead of fourteen (70); immunity is 100 |
-| Flat critical strike chance | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (5) | 2 (12) | I | the owner's D5: 1-2, 3-4 ... on weapons and gloves; two pieces (70) instead of twelve (60) |
+| Flat life leech | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (12) | F | the weapon only: 35, or 70 two-handed or with an offhand, instead of twelve pieces (48) |
+| Flat block chance | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (5) | 2 (14) | F | two pieces (70) instead of fourteen (70) |
+| Flat damage reduction | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (14) | F | one piece (35) instead of fourteen (56): two would be 70 against a cap of 75 |
+| Flat retaliation | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 2 (14) | F | two pieces (70) instead of fourteen (56) |
+| Flat crowd control resistance | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (5) | 2 (14) | F | two pieces (70) instead of fourteen (70) |
+| Flat critical strike chance | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (5) | 2 (12) | F | the owner's D5: 1-2, 3-4 ... on weapons and gloves; two pieces (70) instead of twelve (60) |
 | Increased critical strike chance | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (25) | 12 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat critical strike multiplier | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (20) | 12 | F | raised: the smallest top that holds seven two-value tiers |
+| Flat critical strike multiplier | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (20) | 12 | G | raised: the smallest top that holds seven two-value tiers |
 | Increased attack speed | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (15) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased area of effect | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased damage over time frequency | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (52) | 12 | B | rounding: 21 is the nearest whole +0 top, and shows 53 at +10 |
-| Flat penetration | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (12) | F | the weapon only (45); 35 is the most any enemy resists, so the rest is wasted |
-| Increased movement speed | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 19-20 / 48-50 | 21-22 / 53-55 | 55 (35) | 1 | J | raised: the smallest top that holds seven two-value tiers |
-| Flat cooldown reduction | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (12) | 12 | F | raised: the smallest top that holds seven two-value tiers |
-| Flat magic find | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (10) | 12 | F | raised: the smallest top that holds seven two-value tiers |
+| Flat penetration | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (12) | F | the weapon only: 35, the most any enemy resists |
+| Increased movement speed | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 19-20 / 48-50 | 21-22 / 53-55 | 55 (35) | 1 | I | raised: the smallest top that holds seven two-value tiers |
+| Flat cooldown reduction | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (12) | 12 | F | raised: the smallest top that holds seven two-value tiers |
+| Flat magic find | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 40 (10) | 12 | J | raised: the smallest top that holds seven two-value tiers |
 | Increased loot quantity | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (8) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Single resistance | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 22-23 / 55-58 | 58 (40) | 17 | K | raised: the smallest top that holds seven two-value tiers |
 | Two resistances | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 19-20 / 48-50 | 50 (28) | 17 | L | raised: the smallest top that holds seven two-value tiers |
-| All resistances | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (12) | 17 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to bleed | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to poison | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (25) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to disease | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (20) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to apply void splinter | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to necrose | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to madden | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to cripple | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to weaken | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to shred | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to burn | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
-| Chance to stun | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (15) | 11 | F | raised: the smallest top that holds seven two-value tiers |
+| All resistances | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 40 (12) | 17 | J | raised: the smallest top that holds seven two-value tiers |
+| Chance to bleed | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to poison | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 40 (25) | 11 | J | raised: the smallest top that holds seven two-value tiers |
+| Chance to disease | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (20) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to apply void splinter | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to necrose | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to madden | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to cripple | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to weaken | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to shred | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to burn | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
+| Chance to stun | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (15) | 11 | G | raised: the smallest top that holds seven two-value tiers |
 | Increased agility | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased ferocity | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased constitution | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
@@ -277,8 +325,8 @@ per distinct ladder (the letter in "Ladder"). A two-handed weapon doubles inside
 | Increased spirit | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased efficacy | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased luck | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 12 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat mana leech | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (12) | F | as life leech |
-| Flat energy shield leech | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 15-16 / 38-40 | 17-18 / 43-45 | 45 (4) | 1 (12) | F | as life leech |
+| Flat mana leech | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (12) | F | as life leech |
+| Flat energy shield leech | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (4) | 1 (12) | F | as life leech |
 | Increased damage against War enemies | 40-47 / 100-118 | 48-59 / 120-148 | 60-69 / 150-173 | 70-84 / 175-210 | 85-99 / 213-248 | 100-119 / 250-298 | 120-160 / 300-400 | 400 (400) | 12 | M |  |
 | Increased damage against Demonic enemies | 40-47 / 100-118 | 48-59 / 120-148 | 60-69 / 150-173 | 70-84 / 175-210 | 85-99 / 213-248 | 100-119 / 250-298 | 120-160 / 300-400 | 400 (400) | 12 | M |  |
 | Increased damage against Death enemies | 40-47 / 100-118 | 48-59 / 120-148 | 60-69 / 150-173 | 70-84 / 175-210 | 85-99 / 213-248 | 100-119 / 250-298 | 120-160 / 300-400 | 400 (400) | 12 | M |  |
@@ -292,7 +340,7 @@ per distinct ladder (the letter in "Ladder"). A two-handed weapon doubles inside
 | Increased minion damage | 13-15 / 33-38 | 16-18 / 40-45 | 19-21 / 48-53 | 22-26 / 55-65 | 27-31 / 68-78 | 32-37 / 80-93 | 38-50 / 95-125 | 125 (125) | 12 | H |  |
 | Increased minion health | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (12) | 14 | B | raised: the smallest top that holds seven two-value tiers |
 | Increased minion attack speed | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 16-17 / 40-43 | 18-19 / 45-48 | 20-21 / 50-53 | 53 (15) | 12 | B | raised: the smallest top that holds seven two-value tiers |
-| Flat energy shield regeneration | 2-3 / 5-8 | 4-5 / 10-13 | 6-7 / 15-18 | 8-9 / 20-23 | 10-11 / 25-28 | 12-13 / 30-33 | 14-15 / 35-38 | 38 (10) | 3 (12) | G | three pieces (114) instead of twelve (120) |
+| Flat energy shield regeneration | 1-2 / 3-5 | 3-4 / 8-10 | 5-6 / 13-15 | 7-8 / 18-20 | 9-10 / 23-25 | 11-12 / 28-30 | 13-14 / 33-35 | 35 (10) | 3 (12) | F | three pieces (105) instead of twelve (120) |
 
 "raised" means the top moved to the smallest value that holds seven two-value tiers above the
 tier 1 start, and no further.
@@ -311,23 +359,23 @@ then edits freely):
 | :-- | :-- | --: | --: | --: | --: | :-- |
 | Health and armor | Flat maximum health; Flat armor | 12-13; 25-29 | 25-29; 50-59 | 63-73; 125-148 | 0.61; 0.59 | Belt, Boots, Chest, Head, Pants, Ring, Shoulders |
 | Health and energy shield | Flat maximum health; Flat maximum energy shield | 12-13; 5-6 | 25-29; 13-14 | 63-73; 33-35 | 0.61; 0.70 | Chest, Head, Ring, Shoulders |
-| Armor and evasion | Flat armor; Flat evasion | 25-29; 5-6 | 50-59; 13-14 | 125-148; 33-35 | 0.59; 0.78 | Chest (Boots, Chest, Head, Pants, Ring, Shoulders) |
-| Evasion and energy shield | Flat evasion; Flat maximum energy shield | 5-6; 5-6 | 13-14; 13-14 | 33-35; 33-35 | 0.78; 0.70 | Chest (Chest, Head, Ring, Shoulders) |
+| Armor and evasion | Flat armor; Flat evasion | 25-29; 1-2 | 50-59; 9-10 | 125-148; 23-25 | 0.59; 0.71 | Chest (Boots, Chest, Head, Pants, Ring, Shoulders) |
+| Evasion and energy shield | Flat evasion; Flat maximum energy shield | 1-2; 5-6 | 9-10; 13-14 | 23-25; 33-35 | 0.71; 0.70 | Chest (Chest, Head, Ring, Shoulders) |
 | Mana and energy shield | Flat maximum mana; Flat maximum energy shield | 4-5; 5-6 | 12-13; 13-14 | 30-33; 33-35 | 0.77; 0.70 | Chest, Head, Relic, Ring |
 | Increased health and armor | Increased maximum health; Increased armor | 8-9; 8-9 | 16-17; 16-17 | 40-43; 40-43 | 0.81; 0.81 | Belt, Boots, Chest, Head, Pants, Ring, Shoulders |
 | Attack speed and critical strike chance | Increased attack speed; Increased critical strike chance | 8-9; 8-9 | 16-17; 16-17 | 40-43; 40-43 | 0.81; 0.81 | Gloves, Necklace, Relic, Ring, Weapon |
-| Critical strike chance and multiplier | Flat critical strike chance; Flat critical strike multiplier | 1-2; 5-6 | 9-10; 13-14 | 23-25; 33-35 | 0.71; 0.78 | Gloves, Weapon (Gloves, Necklace, Relic, Ring, Weapon) |
+| Critical strike chance and multiplier | Flat critical strike chance; Flat critical strike multiplier | 1-2; 2-3 | 9-10; 10-11 | 23-25; 25-28 | 0.71; 0.74 | Gloves, Weapon (Gloves, Necklace, Relic, Ring, Weapon) |
 | Health and mana regeneration | Flat health regeneration; Flat mana regeneration | 2-3; 1-2 | 10-11; 9-10 | 25-28; 23-25 | 0.74; 0.71 | Belt, Necklace (Belt, Boots, Chest, Necklace, Ring) |
-| Penetration and critical strike multiplier | Flat penetration; Flat critical strike multiplier | 5-6; 5-6 | 13-14; 13-14 | 33-35; 33-35 | 0.78; 0.78 | Weapon (Gloves, Necklace, Relic, Ring, Weapon) |
-| Block chance and crowd control resistance | Flat block chance; Flat crowd control resistance | 5-6; 5-6 | 13-14; 13-14 | 33-35; 33-35 | 0.78; 0.78 | Belt (Belt, Boots, Chest, Head, Pants, Ring, Shoulders) |
-| Magic find and loot quantity | Flat magic find; Increased loot quantity | 5-6; 8-9 | 13-14; 16-17 | 33-35; 40-43 | 0.78; 0.81 | Belt, Boots, Necklace, Relic, Ring |
+| Penetration and critical strike multiplier | Flat penetration; Flat critical strike multiplier | 1-2; 2-3 | 9-10; 10-11 | 23-25; 25-28 | 0.71; 0.74 | Weapon (Gloves, Necklace, Relic, Ring, Weapon) |
+| Block chance and crowd control resistance | Flat block chance; Flat crowd control resistance | 1-2; 1-2 | 9-10; 9-10 | 23-25; 23-25 | 0.71; 0.71 | Belt (Belt, Boots, Chest, Head, Pants, Ring, Shoulders) |
+| Magic find and loot quantity | Flat magic find; Increased loot quantity | 3-4; 8-9 | 11-12; 16-17 | 28-30; 40-43 | 0.75; 0.81 | Belt, Boots, Necklace, Relic, Ring |
 | Minion damage and minion health | Increased minion damage; Increased minion health | 13-15; 8-9 | 27-31; 16-17 | 68-78; 40-43 | 0.62; 0.81 | Ring |
 
-No half is renamed now that nothing is retired. Five hybrids lose slots because a half narrowed (the
+No half is renamed now that nothing is retired. Six hybrids lose slots because a half narrowed (the
 rule is "A hybrid can never appear on a slot one of its halves could not"), and every hybrid keeps
 at least one slot. The share runs 0.59-0.81 against the design's 0.70: two-wide ladders put tier 5
 nearer tier 7 than today's geometric ladder did. `check` reports that today's 70%-and-round rule
-would break the new rules in 91 places at +0.
+would break the new rules in 89 places at +0.
 
 ### Implicits (D9, accepted)
 
@@ -388,29 +436,27 @@ would break the new rules in 91 places at +0.
 
 Each item says what conflicts. Nothing here is a fault in the check.
 
-1. **D5 against D7 for flat crit chance.** D7 says no percentage stat starts near 1%; D5 gives flat
-   crit chance "1-2, 3-4, etc." The table follows D5, the owner's words for that affix, so its tier 1
-   is 1-2% crit on a fresh drop (3-5 at +10). Flat mana regeneration is 1-2 a second too, but it is
-   an amount, not a percentage.
+1. **The D5 and D7 conflict is gone.** The owner's correction makes flat crit chance a flat stat,
+   so its 1-2 start is the rule rather than an exception.
 2. **Increased above flat fails for flat health and flat armour**, which are amounts on their own
    scale. Across stats, single resistance tops above the increases (58 against 53), because of the
    owner's 2026-09-04 floor of 10.
 3. **"More" is not checked.** No affix grants it; it lives in 115 enchantment effect rows, in gems
-   and in passive keystones. Whether those sit below the increases is a separate audit.
-4. **Ceilings.**
-   - Flat mana regeneration rises from 7.8 to 70 a second across the owner's two pieces. That is 11%
-     of a level 100 pool of 644 every second.
-   - Block falls from 82 to 58 (with a Shield), because two pieces would block every hit.
-   - Damage reduction and evasion fall from 56 to 45 (one piece each), against caps of 75 and 60.
-   - Penetration wastes 10 of its 45 against the most resistant enemy.
+   and in passive keystones. Whether those sit below the flat and increased numbers is a separate
+   audit.
+4. **A carry cannot be held exactly everywhere.** Seven whole tiers need 35 a piece at +10, so the
+   most a character carries moves in steps of 35.
+   - Damage reduction and evasion fall from 56 to 35. One piece is all a nearby cap allows.
+   - Leech falls from 48 to 35 one-handed, and rises to 70 two-handed or with an offhand.
+   - Retaliation rises from 56 to 70.
+   - Shield regeneration falls from 120 to 105, and health regeneration rises from 96 to 114.
+   - Flat mana regeneration rises from 7.8 to 70 a second on the owner's two pieces, 11% of a
+     level 100 pool of 644 every second.
+   - Flat crit chance rises from 60 to 70 on weapons and gloves.
 5. **Upgrades do not move a low range end on every step.** One upgrade adds 0.15 of a +0 number,
-   under one below 7, so these move only every second or third upgrade:
-   - the D5 pair's ends from 1 to 6;
-   - the small amounts' ends from 2 to 6 (flat damage, mana, shield, class resource,
-     regeneration);
-   - the flat percentages' tier 1, 5-6.
-
-   A +0 end of 1 shows 1 until +4, then 2, then 3 at +10.
+   under one below 7, so ends below 7 move only every second or third upgrade. Most flat ladders now
+   start at 1 or 2, so this touches tiers 1 to 3 of most flat stats. A +0 end of 1 shows 1 until
+   +4, then 2, then 3 at +10.
 6. **The hybrid share is 0.59-0.81 rather than 0.70**, and the ailment rule "+5 over the gem" is
    gone. Both are listed with the measured moves above.
 
@@ -419,8 +465,8 @@ Each item says what conflicts. Nothing here is a fault in the check.
 | # | What moved |
 | :-- | :-- |
 | R1 | Flat health, armour, shield and mana keep today's tops while their increased twins go 12 -> 53; the health crossover falls from 3,000 base to 679 |
-| R2 | Capping all eight resistances at tier 8 falls from about 12 slots to 3.2. Seven whole tiers starting at 5 rule out smaller resistance values; the difficulty tier's resistance penalty (#1229) is the lever left |
-| R3 | Ailment affixes at 45 (90 two-handed) against gems of 60 to 200 |
+| R2 | Capping all eight resistances at tier 8 falls from about 12 slots to 3.6. Seven whole tiers rule out smaller resistance values (all resistances cannot top below 35 at +10); the difficulty tier's resistance penalty (#1229) is the lever left |
+| R3 | Ailment affixes at 38-40 (76-80 two-handed) against gems of 60 to 200 |
 | R4 | Movement speed 55 on boots |
 | R5 | Damage over time levers 53 |
 | R6 | The reference build cannot hold four damage reduction, block or penetration affixes |
@@ -471,29 +517,29 @@ Information: 6 of the +0 numbers in the table show the same number at some pair 
   4: unchanged by the upgrade to +2, +4, +7, +9
   5: unchanged by the upgrade to +3, +7
   6: unchanged by the upgrade to +6
-Not the proposal: today's 70% hybrid rule, rounded, would break the new rules in 91 places at +0.
+Not the proposal: today's 70% hybrid rule, rounded, would break the new rules in 89 places at +0.
 
 $ python -m pytest tools/tests/test_affix_range_proposal.py
-39 passed in 4.65s
+40 passed in 4.09s
 
 $ python -I <scratchpad>/affixproof/prove_ladder.py      # tools/prove_guard.break_and_run, two breaks
 == ladder minimum width   ("starts[k - 1] + MIN_VALUES_PER_TIER" -> "starts[k - 1] + 1")
-PROVED: 12 failed, 27 passed in 3.36s | restored: 39 passed in 4.46s
+PROVED: 13 failed, 27 passed in 3.28s | restored: 40 passed in 4.05s
   (among them test_the_proposal_has_no_problems,
    test_every_live_affix_has_seven_whole_contiguous_tiers_of_two_or_more,
-   test_the_owners_d5_keeps_flat_crit_and_flat_mana_regeneration)
+   test_the_owners_flat_crit_example_reads_as_written)
 == upgrade rounding half up   ("return (scaled + 50) // 100" -> "return scaled // 100")
-PROVED: 3 failed, 36 passed in 4.23s | restored: 39 passed in 4.14s
+PROVED: 3 failed, 37 passed in 7.02s | restored: 40 passed in 7.92s
   test_an_upgrade_rounds_exactly_and_a_half_goes_up
   test_every_upgrade_level_is_the_plus_zero_number_times_its_multiplier
   test_flat_damage_grows_with_upgrades_on_the_owners_six_slots
 
-$ python tools/affix_range_proposal.py apply --source docs/All_Things_Cataclysm.xlsx --out <scratchpad>/affixproof/applied_copy_v3.xlsx
-wrote ...applied_copy_v3.xlsx: 73 tier rows, 20 slot lists, 0 hybrid halves, 0 retired rows, 76 implicits
+$ python tools/affix_range_proposal.py apply --source docs/All_Things_Cataclysm.xlsx --out <scratchpad>/affixproof/applied_copy_v4.xlsx
+wrote ...applied_copy_v4.xlsx: 73 tier rows, 20 slot lists, 0 hybrid halves, 0 retired rows, 76 implicits
 
-$ python -u -m pytest --junit-xml=<scratchpad>/affixproof/junit3.xml      # the whole suite, once
-8255 passed, 9 skipped in 351.06s (0:05:51)
-# JUnit: tests 8264, failures 0, errors 0, skipped 9 -> 8255 passed
+$ python -u -m pytest --junit-xml=<scratchpad>/affixproof/junit4.xml      # the whole suite, once
+8256 passed, 9 skipped in 346.86s (0:05:46)
+# JUnit: tests 8265, failures 0, errors 0, skipped 9 -> 8256 passed
 
 $ python -m ruff check .
 All checks passed!
@@ -588,23 +634,23 @@ two-handed weapon doubles each end before the rounding.
 | +9 | 2.35 | 59-68 | 71-82 | 85-99 | 101-115 | 118-139 | 141-174 | 176-235 |
 | +10 | 2.50 | 63-73 | 75-88 | 90-105 | 108-123 | 125-148 | 150-185 | 188-250 |
 
-#### Ladder F: Flat evasion, Flat life leech, Flat block chance, Flat damage reduction, Flat retaliation, Flat crowd control resistance, Flat critical strike multiplier, Flat penetration, Flat cooldown reduction, Flat magic find, All resistances, Chance to bleed, Chance to poison, Chance to disease, Chance to apply void splinter, Chance to necrose, Chance to madden, Chance to cripple, Chance to weaken, Chance to shred, Chance to burn, Chance to stun, Flat mana leech, Flat energy shield leech
+#### Ladder F: Flat evasion, Flat mana regeneration, Flat life leech, Flat block chance, Flat damage reduction, Flat retaliation, Flat crowd control resistance, Flat critical strike chance, Flat penetration, Flat cooldown reduction, Flat mana leech, Flat energy shield leech, Flat energy shield regeneration
 
 | Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
-| +0 | 1.00 | 5-6 | 7-8 | 9-10 | 11-12 | 13-14 | 15-16 | 17-18 |
-| +1 | 1.15 | 6-7 | 8-9 | 10-12 | 13-14 | 15-16 | 17-18 | 20-21 |
-| +2 | 1.30 | 7-8 | 9-10 | 12-13 | 14-16 | 17-18 | 20-21 | 22-23 |
-| +3 | 1.45 | 7-9 | 10-12 | 13-15 | 16-17 | 19-20 | 22-23 | 25-26 |
-| +4 | 1.60 | 8-10 | 11-13 | 14-16 | 18-19 | 21-22 | 24-26 | 27-29 |
-| +5 | 1.75 | 9-11 | 12-14 | 16-18 | 19-21 | 23-25 | 26-28 | 30-32 |
-| +6 | 1.90 | 10-11 | 13-15 | 17-19 | 21-23 | 25-27 | 29-30 | 32-34 |
-| +7 | 2.05 | 10-12 | 14-16 | 18-21 | 23-25 | 27-29 | 31-33 | 35-37 |
-| +8 | 2.20 | 11-13 | 15-18 | 20-22 | 24-26 | 29-31 | 33-35 | 37-40 |
-| +9 | 2.35 | 12-14 | 16-19 | 21-24 | 26-28 | 31-33 | 35-38 | 40-42 |
-| +10 | 2.50 | 13-15 | 18-20 | 23-25 | 28-30 | 33-35 | 38-40 | 43-45 |
+| +0 | 1.00 | 1-2 | 3-4 | 5-6 | 7-8 | 9-10 | 11-12 | 13-14 |
+| +1 | 1.15 | 1-2 | 3-5 | 6-7 | 8-9 | 10-12 | 13-14 | 15-16 |
+| +2 | 1.30 | 1-3 | 4-5 | 7-8 | 9-10 | 12-13 | 14-16 | 17-18 |
+| +3 | 1.45 | 1-3 | 4-6 | 7-9 | 10-12 | 13-15 | 16-17 | 19-20 |
+| +4 | 1.60 | 2-3 | 5-6 | 8-10 | 11-13 | 14-16 | 18-19 | 21-22 |
+| +5 | 1.75 | 2-4 | 5-7 | 9-11 | 12-14 | 16-18 | 19-21 | 23-25 |
+| +6 | 1.90 | 2-4 | 6-8 | 10-11 | 13-15 | 17-19 | 21-23 | 25-27 |
+| +7 | 2.05 | 2-4 | 6-8 | 10-12 | 14-16 | 18-21 | 23-25 | 27-29 |
+| +8 | 2.20 | 2-4 | 7-9 | 11-13 | 15-18 | 20-22 | 24-26 | 29-31 |
+| +9 | 2.35 | 2-5 | 7-9 | 12-14 | 16-19 | 21-24 | 26-28 | 31-33 |
+| +10 | 2.50 | 3-5 | 8-10 | 13-15 | 18-20 | 23-25 | 28-30 | 33-35 |
 
-#### Ladder G: Flat damage, Flat maximum class resource, Flat health regeneration, Flat energy shield regeneration
+#### Ladder G: Flat damage, Flat maximum class resource, Flat health regeneration, Flat critical strike multiplier, Chance to bleed, Chance to disease, Chance to apply void splinter, Chance to necrose, Chance to madden, Chance to cripple, Chance to weaken, Chance to shred, Chance to burn, Chance to stun
 
 | Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
@@ -636,23 +682,7 @@ two-handed weapon doubles each end before the rounding.
 | +9 | 2.35 | 31-35 | 38-42 | 45-49 | 52-61 | 63-73 | 75-87 | 89-118 |
 | +10 | 2.50 | 33-38 | 40-45 | 48-53 | 55-65 | 68-78 | 80-93 | 95-125 |
 
-#### Ladder I: Flat mana regeneration, Flat critical strike chance
-
-| Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
-| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
-| +0 | 1.00 | 1-2 | 3-4 | 5-6 | 7-8 | 9-10 | 11-12 | 13-14 |
-| +1 | 1.15 | 1-2 | 3-5 | 6-7 | 8-9 | 10-12 | 13-14 | 15-16 |
-| +2 | 1.30 | 1-3 | 4-5 | 7-8 | 9-10 | 12-13 | 14-16 | 17-18 |
-| +3 | 1.45 | 1-3 | 4-6 | 7-9 | 10-12 | 13-15 | 16-17 | 19-20 |
-| +4 | 1.60 | 2-3 | 5-6 | 8-10 | 11-13 | 14-16 | 18-19 | 21-22 |
-| +5 | 1.75 | 2-4 | 5-7 | 9-11 | 12-14 | 16-18 | 19-21 | 23-25 |
-| +6 | 1.90 | 2-4 | 6-8 | 10-11 | 13-15 | 17-19 | 21-23 | 25-27 |
-| +7 | 2.05 | 2-4 | 6-8 | 10-12 | 14-16 | 18-21 | 23-25 | 27-29 |
-| +8 | 2.20 | 2-4 | 7-9 | 11-13 | 15-18 | 20-22 | 24-26 | 29-31 |
-| +9 | 2.35 | 2-5 | 7-9 | 12-14 | 16-19 | 21-24 | 26-28 | 31-33 |
-| +10 | 2.50 | 3-5 | 8-10 | 13-15 | 18-20 | 23-25 | 28-30 | 33-35 |
-
-#### Ladder J: Increased movement speed
+#### Ladder I: Increased movement speed
 
 | Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: |
@@ -667,6 +697,22 @@ two-handed weapon doubles each end before the rounding.
 | +8 | 2.20 | 20-22 | 24-26 | 29-31 | 33-35 | 37-40 | 42-44 | 46-48 |
 | +9 | 2.35 | 21-24 | 26-28 | 31-33 | 35-38 | 40-42 | 45-47 | 49-52 |
 | +10 | 2.50 | 23-25 | 28-30 | 33-35 | 38-40 | 43-45 | 48-50 | 53-55 |
+
+#### Ladder J: Flat magic find, All resistances, Chance to poison
+
+| Level | x | T1 | T2 | T3 | T4 | T5 | T6 | T7 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| +0 | 1.00 | 3-4 | 5-6 | 7-8 | 9-10 | 11-12 | 13-14 | 15-16 |
+| +1 | 1.15 | 3-5 | 6-7 | 8-9 | 10-12 | 13-14 | 15-16 | 17-18 |
+| +2 | 1.30 | 4-5 | 7-8 | 9-10 | 12-13 | 14-16 | 17-18 | 20-21 |
+| +3 | 1.45 | 4-6 | 7-9 | 10-12 | 13-15 | 16-17 | 19-20 | 22-23 |
+| +4 | 1.60 | 5-6 | 8-10 | 11-13 | 14-16 | 18-19 | 21-22 | 24-26 |
+| +5 | 1.75 | 5-7 | 9-11 | 12-14 | 16-18 | 19-21 | 23-25 | 26-28 |
+| +6 | 1.90 | 6-8 | 10-11 | 13-15 | 17-19 | 21-23 | 25-27 | 29-30 |
+| +7 | 2.05 | 6-8 | 10-12 | 14-16 | 18-21 | 23-25 | 27-29 | 31-33 |
+| +8 | 2.20 | 7-9 | 11-13 | 15-18 | 20-22 | 24-26 | 29-31 | 33-35 |
+| +9 | 2.35 | 7-9 | 12-14 | 16-19 | 21-24 | 26-28 | 31-33 | 35-38 |
+| +10 | 2.50 | 8-10 | 13-15 | 18-20 | 23-25 | 28-30 | 33-35 | 38-40 |
 
 #### Ladder K: Single resistance
 
