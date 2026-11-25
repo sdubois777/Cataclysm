@@ -349,6 +349,46 @@ through a temporary index file, so the branch's own index was not touched), each
 whose names no later commit changed, + 15). The whole suite: slice 2's 5378, + 3 for the merged ring comparison
 (`Cataclysm.ItemComparison.` 8 to 11, its proofs R1 to R3, its entry below), + 15 = 5396.
 
+**THE WINDOW'S REGISTRATION, ON THE REBUILD ONTO DEVELOPMENT `cf760f169`** (score-and-drops, #2890; registered
+2026-11-25). It replaces the figures above, which were counted on the base `5f302b0a7`.
+
+- **The rebuild**: `feat/skill-selection-837` (`4647b82ad`) as `feat/skill-selection-837-2`, with development merged in
+  (`049f0e96c`) rather than rebased, because the branch already holds a merge of `fix/ring-comparison`. The one
+  conflict was this log: development's, with this branch's four entries placed by the author date of the commit that
+  first wrote each (the three skill key slices 20:07, 20:30 and 20:58 above the Cataclysm Boss entry of 20:05; the ring
+  comparison 19:29 below it). Every other file's own change, its added and removed lines against its base, is the
+  branch's as it was.
+- **What score-and-drops moved that this branch reads.** The Power Score's weights reach it only through the ring
+  comparison's `UCataclysmPowerScore::WornPieceScoreOf`, which is `Breakdown`'s gear and gem terms. Its tests compare
+  scores with each other and with nought (a +6 ring above a +2 ring, two equal rings tied, a socketed gem raising a
+  ring, a ring of no rarity scoring nought); the plain weights keep each relation (an Everyday +3 ring 8, an Everyday +1
+  ring 4). No line this branch adds reads the hover text, a drop count, the Overwhelm or a gap factor (searched in
+  every added line of `game/Source`, `tools/tests` and `sim`).
+- **What the bug batches moved that this branch reads.** No skill's Shape changed (Conflagration's radius alone, in
+  its ShapeParams), so the War Axe's skills, which the skill key tests use as not built yet, are still not built. No
+  save version moved after `5f302b0a7`, and each of the nine tests that steps a character record to version 16 also
+  steps it to 17.
+- **The base**: window sd2-w1's whole suite on `9cef8126c` (`sd2_suite_engine_9cef8126.log` in the sharp-meitner
+  worktree): "5432 tests performed, 5432 succeeded, 0 failed. 58 skipped part of what they check"; "874 written and
+  deleted, 0 left behind".
+- **The whole suite: 5474 performed** (5432 + 42: `SkillDefaults.` 18, `Wearing.` 15, `SkillBar.` 4,
+  `ItemComparison.` 3, `SkillChoiceScreen.` 1, `SaveRecords.` 1, counted from the test names the branch adds; it
+  removes none), 5474 succeeded; **58 skipped halves; 874 saves** written and deleted, 0 left behind. No test this
+  branch adds reports a skipped half or writes a save.
+- **Groups alone**, counted in sd2-w1's log with a literal match, plus the tests added by name: `SkillDefaults.` 18
+  (0 + 18), `SkillBar.` 26, `SkillChoiceScreen.` 9, `SkillAssignment.` 16, `SkillPool.` 11, `SaveApply.` 24,
+  `SaveRecords.` 18, `BuildSave.` 6, `ConsumptionDouble.` 15, `ConsumptionMark.` 6, `CataclysmDraw.` 6, `GemSave.` 2,
+  `Gold.` 13, `Dismantle.` 12, `SkillLevels.` 13, `EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1,
+  `EmpireTreeProwess.` 6, `ItemComparison.` 11, `Equipment.` 30, `PowerScore.` 5, `PowerScoreLive.` 10, `Wearing.` 34,
+  `BothHandsFull.` 7, `ThresholdQuestion.` 4, `LootFilter.` 8, `GroundItemHover.` 7, `HeldItem.` 5, `WeaponMesh.` 10,
+  `InventoryTabs.` 7. The three slices' and the ring comparison's groups, `PowerScore.` for the weights, and the groups
+  whose tests call what slice 3 changed (`WearFromCarried`, `CrossingFor`, `WearPastTheThreshold`, the slot `Equip`
+  reports) or draw what it changed (the hand a weapon lands in, the inventory screen).
+- **No editor step**: no asset, CSV or workbook changes.
+- **C++ guard proofs**, only if every group and the suite pass: the twelve registered in the four entries (SP1 to
+  SP3, SQ1 to SQ3, SR1 to SR3, R1 to R3), three a change. Each anchor occurs once in the file it breaks, checked on the
+  rebuild.
+
 ---
 
 ## 2026-11-24 — A click on a skill box opens the skill screen with that key selected, the bar names K, a new weapon's skills are told, and a skill not built yet is marked (#837, slice 2)
