@@ -106,7 +106,15 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+Run on `3cf13b254d4bb5c3b803ca5145ec0a32771dec97`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8570 passed, 9 skipped in
+612.03s**, and the JUnit file `tests="8580" failures="1" errors="0" skipped="9"`, which is 8,570 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `EnchantmentEffects.csv`, `MinionTypes.csv`, `PassiveEffects.csv`, `PassiveNodes.csv` and `WeaponSkills.csv`,
+which this stack carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 10 files read, 0 with complaints. The include audit over the nine
+changed .cpp files: 0 names unreachable.
 
 ### PYTHON GUARD PROOFS
 
