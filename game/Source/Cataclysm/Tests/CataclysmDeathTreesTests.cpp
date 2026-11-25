@@ -9,8 +9,12 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
 // For the bucket, condition and scale an authored row's modifier carries.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -408,6 +412,141 @@ bool FCataclysmDeathTreesScreenTest::RunTest(const FString&)
 	TestFalse(TEXT("\"SoulCollector\" is not a tree"), Screen->ShowTree(TEXT("SoulCollector")));
 	TestEqual(TEXT("so the Soul Collector's is still shown"), Screen->GetShownTree(),
 			  FString(TEXT("Soul Collector")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathTreesRealActionRowTest,
+	"Cataclysm.DeathTrees.KillChainsRealRowsCountASoulCollectorsKillsThroughThePortsBuilder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A REAL ACTION ROW, END TO END (asked by the coordinating session on 2026-11-25, the Death trees' slice C2). Kill
+ * Chain's eight rows in `DT_PassiveEffects` as the generator wrote them (`own_stacks` on the `kill` event, 2 seconds,
+ * up to 10), copied by the passive row port and built by the enchantment rows' builder through the equipment's
+ * refresh, as the game does for a real level 10 Death character holding a Death weapon. A kill announced for the
+ * character grants one stack (the four rows of a stat share it), a second kill a second later a second, and both lapse
+ * together 2 seconds after the last. THE CONTROL: the same character with only the starting node gets no action and no
+ * stack from the same kill.
+ */
+bool FCataclysmDeathTreesRealActionRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathTreesTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* SpawnedState = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!SpawnedState || !Controller || !Character)
+	{
+		AddError(TEXT("A possessed player could not be built."));
+		return false;
+	}
+	Controller->SetPlayerState(SpawnedState);
+	Controller->Possess(Character);
+	ACataclysmPlayerState* State = Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* System = State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("set-up: the player state"), State) || !TestNotNull(TEXT("set-up: equipment"), Equipment)
+		|| !TestNotNull(TEXT("set-up: the ability system"), System) || !TestNotNull(TEXT("set-up: the combat events"), Events))
+	{
+		return false;
+	}
+	State->SetCreationChoice(FName(TEXT("Dagger")), FName(TEXT("Death")));
+	State->SetLevelAndExperience(10, 0);
+	Equipment->RefreshAttributes(System);
+	if (!TestTrue(TEXT("set-up: a Death character reaches the Soul Collector tree"),
+			State->ReachableTrees().Contains(TEXT("Soul Collector"))))
+	{
+		return false;
+	}
+
+	const FName Root(TEXT("SoulCollector_basic_spine_000"));
+	const FName KillChain(TEXT("SoulCollector_basic_b_a0"));
+	const FName StackKey(TEXT("Passive_SoulCollector_basic_b_a0:attack_damage"));
+	const auto ActionsUnderTheKey = [System, &StackKey]()
+	{
+		TArray<FCataclysmPoolAction> Found;
+		for (const FCataclysmPoolAction& Action : System->GetPoolActions())
+		{
+			if (Action.StackKey == StackKey)
+			{
+				Found.Add(Action);
+			}
+		}
+		return Found;
+	};
+	float AlongX = 600.0f;
+	const auto KillOne = [World, Events, Character, &AlongX]()
+	{
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(AlongX, 0.0f, 0.0f), FRotator::ZeroRotator);
+		AlongX += 300.0f;
+		if (!Creature)
+		{
+			return false;
+		}
+		FCataclysmDeathNotice Notice;
+		Notice.Victim = Creature;
+		Notice.Killer = Character;
+		Events->OnDeath.Broadcast(Notice);
+		return true;
+	};
+
+	// THE CONTROL FIRST: the starting node alone.
+	FCataclysmPassiveAllocation RootOnly;
+	RootOnly.Add(Root, 1);
+	State->SetPassiveAllocation(RootOnly, TArray<FName>());
+	Equipment->RefreshAttributes(System);
+	TestEqual(TEXT("control: without Kill Chain no action is handed over under its key"),
+			  ActionsUnderTheKey().Num(), 0);
+	if (!TestTrue(TEXT("set-up: a kill"), KillOne()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: and a kill grants no stack"), System->OwnStacksHeld(StackKey), 0);
+
+	// KILL CHAIN, EIGHT POINTS: its rows from 2, 4, 6 and 8 points, each on attack damage and on spell damage.
+	FCataclysmPassiveAllocation WithKillChain = RootOnly;
+	WithKillChain.Add(KillChain, 8);
+	State->SetPassiveAllocation(WithKillChain, TArray<FName>());
+	Equipment->RefreshAttributes(System);
+	const TArray<FCataclysmPoolAction> Granting = ActionsUnderTheKey();
+	if (!TestTrue(TEXT("Kill Chain's rows are handed over as actions under its key"), Granting.Num() > 0))
+	{
+		return false;
+	}
+	for (const FCataclysmPoolAction& Action : Granting)
+	{
+		TestEqual(TEXT("each on a kill"), Action.Event, FName(TEXT("kill")));
+		TestEqual(TEXT("with a 2 second window"), Action.StackSeconds, 2.0f, 0.001f);
+		TestEqual(TEXT("and a cap of 10"), Action.StackCap, 10);
+	}
+	int32 KeyedModifiers = 0;
+	if (const FCataclysmStatInputs* Attack = System->GetStatInputs(FName(TEXT("attack_damage"))))
+	{
+		for (const FCataclysmStatModifier& Modifier : Attack->Modifiers)
+		{
+			if (Modifier.Scale == ECataclysmStatScale::PerOwnStack && Modifier.StackKey == StackKey)
+			{
+				++KeyedModifiers;
+				TestEqual(TEXT("each of attack damage's modifiers is 1% a stack"), Modifier.Value, 1.0f, 0.001f);
+			}
+		}
+	}
+	TestEqual(TEXT("four attack damage modifiers read the stacks, one a step"), KeyedModifiers, 4);
+
+	TestEqual(TEXT("before a kill, no stack"), System->OwnStacksHeld(StackKey), 0);
+	KillOne();
+	TestEqual(TEXT("a kill grants one stack, though four rows share it"), System->OwnStacksHeld(StackKey), 1);
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	KillOne();
+	TestEqual(TEXT("a kill a second later grants a second"), System->OwnStacksHeld(StackKey), 2);
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	TestEqual(TEXT("and both lapse together 2 seconds after the last kill"), System->OwnStacksHeld(StackKey), 0);
 	return true;
 }
 
