@@ -1007,6 +1007,20 @@ followed, ruled 2026-11-01:
   2026-11-24 and renumbered to 19 to 20** when it was rebuilt on development,
   which by then held 18 (issue #2848) and 19 (issue #51). **No other record
   moves.**
+- **The run record went to version 21 on 2026-11-25**, for the War quest (issue
+  #51 slice B4): a Siege's growth counts the days on the city it stands on now, so
+  each dungeon keeps the day it reached that city, `ArrivedDay`, -1 until it first
+  moves, and each city the Cataclysm whose hit felled it, `FellTo`, which decides
+  whether a fall was to War. `Migrate_20_to_21` writes -1 into every dungeon and
+  "None" into every city. `Run_v21.json` is `Run_v20.json` at version 21 with
+  those two fields added, the fallen city felled by Demonic, a figure and not the
+  default. `Run_v20.json` is now a migration input, not edited again:
+  `Cataclysm.WarQuestSieges.ARunFileFromVersion20GainsNoArrivalAndNoFeller` runs
+  it through the step, every test that read it as the committed file reads
+  `Run_v21.json` now, and every test that runs an older run file through the
+  whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheRunsVersion21Defaults`. Built on the Abyssal
+  Rifts branch, which takes 19 to 20. **No other record moves.**
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -1066,6 +1080,7 @@ followed, ruled 2026-11-01:
 | `Run_v18.json` | The same run at version 18: version 17's contents, plus where each ground item arrived -- the Circlet +0 at tier 4, the gold pile not known |
 | `Run_v19.json` | The same run at version 19: version 18's contents, plus a Rift's altars fallen on its floor, the first and the third |
 | `Run_v20.json` | The same run at version 20: version 19's contents, with the floor's one Abyssal Rift state replaced by two rifts' health left and seconds stood, a standing rift at 1536.5 and 96.25 and a killed one at 0 and 30.5 |
+| `Run_v21.json` | The same run at version 21: version 20's contents, plus each dungeon's day of arrival (-1, the Siege has not moved) and each city's felling Cataclysm (the fallen city Demonic, the standing one None) |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

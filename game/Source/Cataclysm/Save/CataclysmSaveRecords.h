@@ -2040,8 +2040,14 @@ public:
 	 * (`FCataclysmSavedFloorRuleState::AbyssalRiftHealthLeft`, `AbyssalRiftSecondsAlive`) where it carried one rift's
 	 * state (`AbyssalRiftState`). `Migrate_19_to_20` removes the state and writes, for a state other than 0 -- a rift
 	 * the player had met, which loaded closed and failed -- every rift a floor can hold as killed, and for 0 nothing.
+	 *
+	 * 21 SINCE 2026-11-25. Issue #51 slice B4, the War quest: a Siege's growth counts the days on the city it stands on
+	 * now, so each dungeon carries the day it reached that city (`FCataclysmDungeon::ArrivedDay`, `INDEX_NONE` until
+	 * it first moves), and each city the Cataclysm whose hit felled it (`FCataclysmCity::FellTo`), which decides
+	 * whether a fall was to War. `Migrate_20_to_21` writes `INDEX_NONE` into every dungeon -- growth then counts from
+	 * `SpawnedDay`, as it did -- and `None` into every city: what felled a city before was not recorded.
 	 */
-	static constexpr int32 SchemaVersionNow = 20;
+	static constexpr int32 SchemaVersionNow = 21;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

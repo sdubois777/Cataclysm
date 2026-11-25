@@ -1309,14 +1309,32 @@ class TuningConfig:
     # campaign took the Explorer player at tier 1 from 49.8% won to 21.0% and
     # from 0.98 cities lost to 12.02. The owner chose, on 2026-10-17, verbatim:
     # "the first option, but make it up to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress."
-    # So: at most this many of them in one wave (a further Quest roll for that
-    # Cataclysm in the same wave makes an ordinary dungeon instead), and
-    # each bites this share of an ordinary Siege's daily damage, flat share and
-    # growth alike. Its growth also counts only the days it has stood on the
-    # city it stands on now (`Dungeon.days_on_its_city`), which is the third
-    # part of the same choice.
-    quest_sieges_per_wave_max: int = 2
+    # So: at most this many of them MADE ON ONE DAY (a further Quest roll for
+    # that Cataclysm that day makes an ordinary dungeon instead), and each bites
+    # this share of an ordinary Siege's daily damage, flat share and growth
+    # alike. Its growth also counts only the days it has stood on the city it
+    # stands on now (`Dungeon.days_on_its_city`), which is the third part of the
+    # same choice.
+    #
+    # ONE DAY AND NOT ONE WAVE SINCE 2026-11-25 (issue #51 slice B4, the
+    # coordinating session's W2): a city's fall to War makes one too
+    # (`war_fall_makes_a_quest_siege`), and a fall is not a wave, so waves and
+    # falls are counted together by the day. Named `quest_sieges_per_wave_max`
+    # until then. Two waves on one day were already possible, a fall's and the
+    # clock's, and could make four.
+    quest_sieges_per_day_max: int = 2
     quest_siege_bite_scale: float = 0.25
+
+    # A CITY'S FALL TO WAR STARTS THE NEXT SIEGE, since 2026-11-25 (issue #51
+    # slice B4). The design's section XI: "Player cities become aggressive and
+    # begin attacking each other", read as the War Quest Sieges being those
+    # attacks, accepted by the owner on 2026-11-24 ("Your recommendations work
+    # for all of those death/war questions"). When the hit that felled a city
+    # was sent by War (W1), one War Quest Siege, a Quest dungeon counting toward
+    # War's objectives (W3), is made for an adjacent exposed city that holds no
+    # Siege, inside `quest_sieges_per_day_max` (W2). The game's
+    # `UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall`.
+    war_fall_makes_a_quest_siege: bool = True
 
     # THE VOID ADDS STACKS AND DOES NO DAMAGE, since 2026-10-18. The owner,
     # 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."

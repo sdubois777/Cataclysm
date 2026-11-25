@@ -373,6 +373,19 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	int32 SpawnedDay = 0;
 
 	/**
+	 * The day it reached the city it stands on now, or `INDEX_NONE` until it first moves, when `SpawnedDay` is that
+	 * day. Set wherever a dungeon's `CityId` moves: the timer's move (`UCataclysmEmpireRun::RelocateQuestDungeon`) and
+	 * the move on a fall (`UCataclysmEmpireRun::CityFell`). The model's `Dungeon.arrived_day`.
+	 *
+	 * NOT `SpawnedDay`, WHICH IS ALSO A RIFT'S SEND CLOCK and is "not reset when it moves" (issue #51), so the day of
+	 * arrival needs a field of its own. What a Siege's growth counts (`DaysOnItsCity`), the owner's choice of
+	 * 2026-10-17 quoted at `UCataclysmSurgeScheduler::QuestSiegesPerDay`. Saved: run record version 21. Issue #51
+	 * slice B4, the War quest.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
+	int32 ArrivedDay = INDEX_NONE;
+
+	/**
 	 * The dungeon modifiers it carries, as row keys of the modifier table.
 	 *
 	 * ONE PER DIFFICULTY TIER, DOUBLED FOR A SACRIFICIAL DUNGEON, drawn from the
@@ -506,6 +519,21 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * being walked (the four altars, slice B1), and the map's Rifts (slice B2) are the dungeons answering true here.
 	 */
 	bool IsARift() const;
+
+	/**
+	 * Days it has stood on the city it stands on now, on `Day`: from `ArrivedDay`, or from `SpawnedDay` when it has
+	 * not moved. NEVER NEGATIVE: a dungeon built by hand in a test may carry a day later than the clock, and a negative
+	 * age would heal a city. WHAT A SIEGE'S GROWTH COUNTS, as the model's `Dungeon.days_on_its_city`. Only a Quest
+	 * dungeon moves, so for every other dungeon this is its age.
+	 */
+	int32 DaysOnItsCity(int32 Day) const;
+
+	/**
+	 * The share of an ordinary Siege's daily damage this one deals, flat share and growth alike:
+	 * `UCataclysmSurgeScheduler::QuestSiegeBiteShare` for a Quest dungeon, 1 for any other. The model's
+	 * `Dungeon.siege_bite_share`. Only War's Quest dungeons are Sieges.
+	 */
+	float SiegeBiteShare() const;
 
 	/**
 	 * The seed a walk of this dungeon carves its floors from:
@@ -1095,6 +1123,22 @@ public:
 	static constexpr int32 SiegesPerCity = 1;
 
 	/**
+	 * WAR'S QUEST DUNGEONS ARE SIEGES (`QuestSubTypeFor`), and one never leaves on its own and moves on when its city
+	 * falls, so it bites until the player clears it. The owner, 2026-10-17, verbatim: "the first option, but make it up
+	 * to 2 a wave. So they player isn't just stuck there forever waiting for the next surge to progress." So at most
+	 * this many are MADE ON ONE DAY, by waves and by falls together (the coordinating session, 2026-11-25, W2, since a
+	 * fall to War makes one too and a fall is not a wave); a further Quest roll for War that day makes a Basic dungeon.
+	 * The model's `TuningConfig.quest_sieges_per_day_max`. Issue #51 slice B4.
+	 */
+	static constexpr int32 QuestSiegesPerDay = 2;
+
+	/**
+	 * The share of an ordinary Siege's daily damage a Quest Siege deals, flat share and growth alike: the second part
+	 * of the same choice of 2026-10-17. The model's `TuningConfig.quest_siege_bite_scale`.
+	 */
+	static constexpr float QuestSiegeBiteShare = 0.25f;
+
+	/**
 	 * The one sub-type a Cataclysm dungeon may not roll.
 	 *
 	 * **THE PROJECT OWNER RULED IT ON 2026-09-06, verbatim: "Last stand is a
@@ -1265,23 +1309,20 @@ public:
 	 * The one sub-type a Cataclysm's Quest dungeons take, or `None` for "roll
 	 * one as any dungeon does".
 	 *
-	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, FOR SEVEN OF ITS EIGHT. The
-	 * owner, 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
+	 * A PORT OF `config.QUEST_SUBTYPE_BY_CATACLYSM`, ALL EIGHT. The owner,
+	 * 2026-10-16, verbatim: "Each cataclysm's quest dungeons will be one
 	 * specific type." Death's are Horde, Demonic's Elite, Pestilence's Timed,
 	 * Famine's Sacrificial and Chaos's Volatile, since 2026-10-21, and the
 	 * Void's Hollow since 2026-10-22.
 	 *
-	 * And Celestial's Ascendant, the seventh, since 2026-10-22.
-	 *
-	 * ONE ANSWERS `None` ON PURPOSE, AND THE MODEL NAMES ONE FOR IT. War's are
-	 * Sieges in the model and roll here, because the owner has ruled War out
-	 * of the game. Celestial answered `None` too until 2026-10-22, while the
-	 * game had no Ascendant. `None` itself, the Cataclysm nobody named, answers
-	 * `None` too: a Quest dungeon made without a sender rolls, as the model's
-	 * does.
-	 * `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_not_yet_in_the_game.py`
-	 * holds War; `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the
-	 * layers.
+	 * And Celestial's Ascendant, the seventh, since 2026-10-22, and War's
+	 * Siege, the eighth, since 2026-11-25 (issue #51 slice B4, the War quest).
+	 * Until then War's rolled on purpose, while the owner had ruled War out of
+	 * the game, and `tools/tests/test_war_s_quest_sub_type_is_in_the_model_and_
+	 * not_yet_in_the_game.py` held the gap; it was deleted by its own restore
+	 * text. `None` itself, the Cataclysm nobody named, answers `None`: a Quest
+	 * dungeon made without a sender rolls, as the model's does.
+	 * `docs/DECISIONS.md`, 2026-10-21 and 2026-10-22, has the layers.
 	 *
 	 * IT DRAWS NOTHING. `MakeDungeon` still takes the sub-type draw and then
 	 * discards it for a fixed Quest dungeon; see there for why.
@@ -2029,6 +2070,38 @@ public:
 	static int32 PickRiftTarget(const UCataclysmEmpireMap& Map, const FCataclysmCity& From, FRandomStream& Draws,
 								const TArray<int32>& DungeonsPerCity = TArray<int32>());
 
+	/** The salt War's Quest Sieges' own seeds are mixed with: "wars". Issue #51 slice B4. */
+	static constexpr int32 WarSiegeSalt = 0x77617273;
+
+	/** Which of a War Quest Siege's draws a seed is for: the wave's re-draw of its city (0), a fall's Siege (1). */
+	static constexpr int32 WarSiegeWaveDraw = 0;
+	static constexpr int32 WarSiegeFallDraw = 1;
+
+	/**
+	 * The seed of one of a War Quest Siege's own draws, made as `RiftSeedFor` makes a Rift's, from the run's seed and
+	 * the dungeon's identifier. **NO NUMBER COMES OFF THE SHARED STREAMS**, so a run War does not face, and a War wave
+	 * that needs no re-draw, rolls exactly what it rolled before slice B4.
+	 */
+	static int32 WarSiegeSeedFor(int32 RunSeed, int32 DungeonId, int32 Draw);
+
+	/**
+	 * Where a War Quest dungeon drawn onto a city that already holds a Siege goes instead: an exposed city that is not
+	 * the Pillar, has room (`RoomLeftOn`) and holds no Siege, by the surge's tier weights. `INDEX_NONE`, with no draw,
+	 * when none qualifies; it then lands where it was drawn, the only way a city holds two. The model's re-draw in
+	 * `Simulation.trigger_surge`, ruled by the coordinating session on 2026-10-16. Issue #51 slice B4.
+	 */
+	static int32 PickCityWithoutASiege(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
+									   const TArray<int32>& DungeonsPerCity, const TArray<int32>& SiegesPerCityNow);
+
+	/**
+	 * Where a city's fall to War makes its War Quest Siege: an adjacent city a surge could target (exposed and so
+	 * standing, not the Pillar, with room) that holds no Siege, by the surge's tier weights. `INDEX_NONE`, with no
+	 * draw, when none qualifies, and then none is made. The plan's reading of section XI, accepted by the owner on
+	 * 2026-11-24: "a city's fall to War starts the next one". Issue #51 slice B4.
+	 */
+	static int32 PickWarSiegeCity(const UCataclysmEmpireMap& Map, const FCataclysmCity& From, FRandomStream& Draws,
+								  const TArray<int32>& DungeonsPerCity, const TArray<int32>& SiegesPerCityNow);
+
 	/**
 	 * Where a Quest dungeon standing on a city that has just fallen goes, or
 	 * `INDEX_NONE` when nowhere qualifies and it stays on the fallen city.
@@ -2129,7 +2202,13 @@ public:
 	 * @param RiftSeed       the run's seed for its Rifts' own draws (`RiftSeedFor`):
 	 *                       a Demonic Quest dungeon, a Rift, re-draws its city with
 	 *                       `PickRiftCity` from a stream of its own. Issue #51 slice
-	 *                       B2. 0 by default, which is still a seed.
+	 *                       B2. 0 by default, which is still a seed. A War Quest
+	 *                       dungeon's re-draw away from a besieged city uses it
+	 *                       too (`WarSiegeSeedFor`), slice B4.
+	 * @param QuestSiegesAlreadyToday the War Quest Sieges already made today, by an
+	 *                       earlier wave or a fall: this wave makes at most
+	 *                       `QuestSiegesPerDay` less this, and a further War Quest
+	 *                       roll is made Basic. 0 by default. Issue #51 slice B4.
 	 */
 	TArray<FCataclysmDungeon> RollWave(
 		const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
@@ -2138,5 +2217,6 @@ public:
 		const TArray<int32>& SiegesPerCityNow = TArray<int32>(),
 		const TFunction<ECataclysmType()>& DrawCataclysm =
 			TFunction<ECataclysmType()>(),
-		bool bFromEmptyBoard = false, int32 RiftSeed = 0) const;
+		bool bFromEmptyBoard = false, int32 RiftSeed = 0,
+		int32 QuestSiegesAlreadyToday = 0) const;
 };

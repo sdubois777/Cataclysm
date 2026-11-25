@@ -5636,7 +5636,7 @@ bool FCataclysmSaveLoadVengefulWraithTest::RunTest(const FString&)
 /**
  * `Run_v9.json`, written before a saved creature said whether it is a Vengeful Wraith, migrates to no wraith: a
  * `bIsVengefulWraith` of false on both its creatures, with every other field kept. CONTROL: the committed run file,
- * `Run_v20.json` since the run record went to version 20 (issue #2864), `Run_v19.json` from version 19 (issue #51), `Run_v18.json` from version 18 (issue #2848),
+ * `Run_v21.json` since the run record went to version 21 (issue #51 slice B4), `Run_v20.json` from version 20 (issue #2864), `Run_v19.json` from version 19 (issue #51), `Run_v18.json` from version 18 (issue #2848),
  * `Run_v17.json` from version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46),
  * `Run_v13.json` from version 13 (issue #2825),
  * `Run_v12.json` from version 12 (issue
@@ -5653,7 +5653,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v9.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -5694,7 +5694,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	FString CurrentMessage;
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, CurrentMessage));
-	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v20.json loads"), Current))
+	if (!TestNotNull(TEXT("Run_v9.json loads"), Read) || !TestNotNull(TEXT("Run_v21.json loads"), Current))
 	{
 		AddError(Message + TEXT(" | ") + CurrentMessage);
 		return false;
@@ -5717,6 +5717,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -5735,7 +5736,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	};
 
 	AddInfo(FString::Printf(TEXT("WRAITH MIGRATED: the step %d (%s); false written on %d creature(s); the record at "
-								 "version %d with flags %s; Run_v20.json flags %s; the rest %s"),
+								 "version %d with flags %s; Run_v21.json flags %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, WrittenFalse, Read->SchemaVersion, *Flags(*Read),
 							*Flags(*Current), bSame ? TEXT("kept") : *Where));
 	TestEqual(TEXT("the chain migrates the version 9 file"), static_cast<int32>(Stepping),
@@ -5744,7 +5745,7 @@ bool FCataclysmSaveLoadWraithMigrationTest::RunTest(const FString&)
 	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
 	TestEqual(TEXT("and neither creature is a wraith"), Flags(*Read), FString(TEXT("00")));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v20.json's first creature is a wraith and its second is not"), Flags(*Current),
+	TestEqual(TEXT("CONTROL: Run_v21.json's first creature is a wraith and its second is not"), Flags(*Current),
 			  FString(TEXT("10")));
 	return true;
 }
@@ -8277,7 +8278,7 @@ bool FCataclysmSaveLoadAbyssalRiftsTest::RunTest(const FString&)
  * `Run_v19.json`, written before the redesign, held one rift's state, 2, a rift the player had met, which a version 19
  * load closed and counted failed (U2). The chain removes the state and writes three rifts killed, 0 health and 0
  * seconds each, with every other field kept; the same file with a state of 0 migrates to no rift saved, two empty
- * lists. CONTROL: `Run_v20.json` is read, not migrated, and holds a standing rift at 1536.5 health and 96.25 seconds
+ * lists. CONTROL: `Run_v21.json` is read, not migrated, and holds a standing rift at 1536.5 health and 96.25 seconds
  * and a killed one at 0 and 30.5, not what the step writes. Issue #2864. Prints "RIFTS MIGRATED".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadAbyssalRiftsMigrationTest,
@@ -8290,7 +8291,7 @@ bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
 	FString CurrentText;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v19.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), CurrentText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), CurrentText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -8313,7 +8314,7 @@ bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
 	const UCataclysmRunSave* Current = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
 		CurrentText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), CurrentResult, Message));
 	if (!TestNotNull(TEXT("Run_v19.json loads"), Met) || !TestNotNull(TEXT("its copy at 0 loads"), Waiting)
-		|| !TestNotNull(TEXT("Run_v20.json loads"), Current))
+		|| !TestNotNull(TEXT("Run_v21.json loads"), Current))
 	{
 		AddError(Message);
 		return false;
@@ -8323,6 +8324,7 @@ bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
 	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
 	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
 	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected);
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -8342,7 +8344,7 @@ bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
 	const FCataclysmSavedFloorRuleState& WaitingState = Waiting->Floor.RuleState;
 	const FCataclysmSavedFloorRuleState& CurrentState = Current->Floor.RuleState;
 	AddInfo(FString::Printf(TEXT("RIFTS MIGRATED: Run_v19.json %s, health [%s] seconds [%s]; at 0 %s, health [%s] "
-								 "seconds [%s]; Run_v20.json %s, health [%s] seconds [%s]; the rest %s"),
+								 "seconds [%s]; Run_v21.json %s, health [%s] seconds [%s]; the rest %s"),
 							FCataclysmSaveStorage::Describe(Result), *Floats(MetState.AbyssalRiftHealthLeft),
 							*Floats(MetState.AbyssalRiftSecondsAlive), FCataclysmSaveStorage::Describe(WaitingResult),
 							*Floats(WaitingState.AbyssalRiftHealthLeft), *Floats(WaitingState.AbyssalRiftSecondsAlive),
@@ -8358,7 +8360,7 @@ bool FCataclysmSaveLoadAbyssalRiftsMigrationTest::RunTest(const FString&)
 	TestTrue(TEXT("and every other field is kept"), bSame);
 	TestTrue(TEXT("a waiting rift: no rift saved"),
 			 WaitingState.AbyssalRiftHealthLeft.IsEmpty() && WaitingState.AbyssalRiftSecondsAlive.IsEmpty());
-	TestEqual(TEXT("CONTROL: Run_v20.json is read, not migrated"), static_cast<int32>(CurrentResult),
+	TestEqual(TEXT("CONTROL: Run_v21.json is read, not migrated"), static_cast<int32>(CurrentResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("CONTROL: and holds what it states"),
 			  Floats(CurrentState.AbyssalRiftHealthLeft) + TEXT(" ") + Floats(CurrentState.AbyssalRiftSecondsAlive),
@@ -12143,6 +12145,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
 	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
+	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
 	FString Rewritten;
 	FString Error;
 	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
@@ -12173,7 +12176,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
 }
 
 /**
- * `Run_v20.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
+ * `Run_v21.json` reads into the award, the clear and the days away it states (it read `Run_v6.json` until the run record
  * went to version 7 on 2026-11-18, issue #2742, `Run_v7.json` until it went to version 8 the same day, issue #2749
  * B10, `Run_v8.json` until it went to version 9 on 2026-11-19, issue #2741 slice 3b, and `Run_v9.json` until it went
  * to version 10 the same day, issue #2725, and `Run_v10.json` until it went to version 11 on 2026-11-20, issue #2741
@@ -12182,7 +12185,7 @@ bool FCataclysmTravelMigrationTest::RunTest(const FString&)
  * and `Run_v14.json` until it went to version 15 the same day, issue #2741 slice 9, and `Run_v15.json` until it went to
  * version 16 the same day, issue #2838, and `Run_v16.json` until it went to version 17 the same day, issue #2840,
  * and `Run_v17.json` until it went to version 18 on 2026-11-24, issue #2848, and `Run_v18.json` until it went to
- * version 19 the same day, issue #51, and `Run_v19.json` until it went to version 20 on 2026-11-25, issue #2864, and the
+ * version 19 the same day, issue #51, and `Run_v19.json` until it went to version 20 on 2026-11-25, issue #2864, `Run_v20.json` until it went to version 21 the same day, issue #51 slice B4, and the
  * fourteen hold the same values). Every value but one is not a default, so each is read and not re-defaulted; THE ONE IS `bEndedInAClear`, false, because the run it describes last came back
  * from a death -- on day 103, at 15 days, felling cities 17 and 23, which the summary lists -- and a fixture describes a
  * state play reaches. The test of the return line reads a true one. Prints "TRAVEL FILE".
@@ -12195,7 +12198,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v20.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Run_v21.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -12206,7 +12209,7 @@ bool FCataclysmTravelCommittedFileTest::RunTest(const FString&)
 		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Run_v20.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
+		AddError(FString::Printf(TEXT("Run_v21.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
 								 *Message));
 		return false;
 	}
