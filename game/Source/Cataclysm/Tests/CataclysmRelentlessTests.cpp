@@ -66,7 +66,7 @@ namespace CataclysmRelentlessTest
 		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
 	};
 
-	FCataclysmStatModifier RelentlessRow(ECataclysmStatBucket Bucket, float Value)
+	FCataclysmStatModifier RelentlessTestRow(ECataclysmStatBucket Bucket, float Value)
 	{
 		FCataclysmStatModifier Row;
 		Row.Bucket = Bucket;
@@ -81,12 +81,12 @@ namespace CataclysmRelentlessTest
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		FCataclysmStatInputs& Speed = Inputs.FindOrAdd(FName(TEXT("attack_speed")));
 		Speed.Base = 1.0f;
-		Speed.Modifiers = {RelentlessRow(ECataclysmStatBucket::Increased, 40.0f),
-						   RelentlessRow(ECataclysmStatBucket::Increased, -50.0f)};
+		Speed.Modifiers = {RelentlessTestRow(ECataclysmStatBucket::Increased, 40.0f),
+						   RelentlessTestRow(ECataclysmStatBucket::Increased, -50.0f)};
 		if (bHeld)
 		{
 			Inputs.FindOrAdd(FName(UCataclysmBasicAttack::AttackSpeedReductionSuppressedStat)).Modifiers =
-				{RelentlessRow(ECataclysmStatBucket::Flat, 1.0f)};
+				{RelentlessTestRow(ECataclysmStatBucket::Flat, 1.0f)};
 		}
 		return Inputs;
 	}
@@ -175,7 +175,7 @@ CATACLYSM_RELENTLESS_TEST(FCataclysmRelentlessIgnoresCrippleTest,
 		if (bHeld)
 		{
 			Inputs.FindOrAdd(FName(UCataclysmBasicAttack::AttackSpeedReductionSuppressedStat)).Modifiers =
-				{RelentlessRow(ECataclysmStatBucket::Flat, 1.0f)};
+				{RelentlessTestRow(ECataclysmStatBucket::Flat, 1.0f)};
 		}
 		return Inputs;
 	};
@@ -217,7 +217,7 @@ CATACLYSM_RELENTLESS_TEST(FCataclysmRelentlessScaleTest,
 
 	const auto RatePerSecond = [&Swinger](const TArray<FCataclysmStatModifier>& MovementRows)
 	{
-		FCataclysmStatModifier PerStep = RelentlessRow(ECataclysmStatBucket::Increased, 1.0f);
+		FCataclysmStatModifier PerStep = RelentlessTestRow(ECataclysmStatBucket::Increased, 1.0f);
 		PerStep.Scale = ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed;
 		PerStep.ScaleStep = 2.0f;
 		TMap<FName, FCataclysmStatInputs> Inputs;
@@ -232,14 +232,14 @@ CATACLYSM_RELENTLESS_TEST(FCataclysmRelentlessScaleTest,
 		return Seconds > 0.0f ? 1.0f / Seconds : 0.0f;
 	};
 
-	FCataclysmStatModifier AskingForItself = RelentlessRow(ECataclysmStatBucket::Increased, 10.0f);
+	FCataclysmStatModifier AskingForItself = RelentlessTestRow(ECataclysmStatBucket::Increased, 10.0f);
 	AskingForItself.Scale = ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed;
 	AskingForItself.ScaleStep = 1.0f;
 
-	const float WithTwentyFive = RatePerSecond({RelentlessRow(ECataclysmStatBucket::Increased, 25.0f)});
-	const float WithItself = RatePerSecond({RelentlessRow(ECataclysmStatBucket::Increased, 25.0f), AskingForItself});
+	const float WithTwentyFive = RatePerSecond({RelentlessTestRow(ECataclysmStatBucket::Increased, 25.0f)});
+	const float WithItself = RatePerSecond({RelentlessTestRow(ECataclysmStatBucket::Increased, 25.0f), AskingForItself});
 	const float WithNone = RatePerSecond({});
-	const float WithLess = RatePerSecond({RelentlessRow(ECataclysmStatBucket::Increased, -30.0f)});
+	const float WithLess = RatePerSecond({RelentlessTestRow(ECataclysmStatBucket::Increased, -30.0f)});
 	AddInfo(FString::Printf(TEXT("RELENTLESS SCALE: +25%% %.4f; with a self-asking row %.4f; none %.4f; -30%% %.4f"),
 							WithTwentyFive, WithItself, WithNone, WithLess));
 

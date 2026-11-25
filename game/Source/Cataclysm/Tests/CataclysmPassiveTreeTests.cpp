@@ -12999,10 +12999,10 @@ namespace CataclysmRavagerFervourTest
 	/** The tree's starting node: the rate, the decay and the radius. */
 	const TCHAR* const StartingNode = TEXT("Ravager_basic_spine_000");
 
-	/** "+2% increased Fervour gained from enemies near you per point." */
+	/** "+5% increased Fervour gained per point." The rework of 2026-11-24. */
 	const TCHAR* const HeldGround = TEXT("Ravager_basic_d_b0");
 
-	/** "...within 8 metres of you, rather than 4." */
+	/** "Your Fervour does not decay." The rework of 2026-11-24. */
 	const TCHAR* const NoGroundGiven = TEXT("Ravager_keystone_d_kC");
 
 	/**
@@ -13200,13 +13200,18 @@ bool FCataclysmPassiveUnspentRuinOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBankedRuinOnARealCharacterTest,
-	"Cataclysm.FervourRows.BankedRuinRaisesARealRavagersDamageReductionForEachFullTwentyFiveFervourHeld",
+	"Cataclysm.FervourRows.BankedRuinRaisesARealRavagersAttackSpeedForEachFullTwentyFervourHeld",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_basic_d_b2` Banked Ruin: "+1% increased Damage Reduction per point
- * for every full 25 Fervour you currently hold." Six points, so 6% a step.
- * Read as `DefenderStat` reads it for every hit.
+ * `Ravager_basic_d_b2` Banked Ruin: "+1% increased Attack Speed per point for
+ * every full 20 Fervour you hold." The Ravager tree rework of 2026-11-24; until
+ * then it raised damage reduction per full 25, which this test measured. Six
+ * points, so 6% a step. Read as the increases the attack speed line carries with
+ * the character's state, because a test player holds no weapon and so has no
+ * attack speed base for a rate to be read off.
+ *
+ * "FULL" IS WHAT 19 AND 59 ARE FOR: one short of a step must not round up.
  */
 bool FCataclysmPassiveBankedRuinOnARealCharacterTest::RunTest(const FString&)
 {
@@ -13226,38 +13231,34 @@ bool FCataclysmPassiveBankedRuinOnARealCharacterTest::RunTest(const FString&)
 		return false;
 	}
 
-	const auto Reduction = [&Player]()
+	const auto Increases = [&Player]()
 	{
-		return Player.AbilitySystem->StatForSkill(
-			FName(TEXT("damage_reduction")), FGameplayTagContainer(),
-			Player.AbilitySystem->GetNumericAttribute(
-				UCataclysmCombatAttributeSet::GetDamageReductionAttribute()));
+		return Player.AbilitySystem->IncreasesForStat(FName(TEXT("attack_speed")), FGameplayTagContainer());
 	};
 
 	Take(Player, TEXT("Ravager_basic_d_b2"), 6);
 	SetFervourTo(Player, 0.0f);
-	const float Empty = Reduction();
-	if (!TestTrue(TEXT("the Ravager has damage reduction to raise"), Empty > 0.0f))
+	const float Empty = Increases();
+
+	const auto At = [&](float Fervour)
 	{
-		return false;
-	}
-	const float Others = PlainIncreases(Player, TEXT("damage_reduction"));
-	const auto Steps = [Others](int32 Count)
-	{
-		return (1.0f + (Others + 6.0f * Count) / 100.0f) / (1.0f + Others / 100.0f);
+		SetFervourTo(Player, Fervour);
+		if (!TestEqual(*FString::Printf(TEXT("the bar holds %.0f"), Fervour),
+					   FervourOf(Player), Fervour, 0.001f))
+		{
+			return -1.0f;
+		}
+		return Increases() - Empty;
 	};
 
-	SetFervourTo(Player, 24.0f);
-	TestEqual(TEXT("24 Fervour is not a full 25: nothing"), Reduction() / Empty,
-			  Steps(0), 0.0001f);
-	SetFervourTo(Player, 25.0f);
-	TestEqual(TEXT("25 Fervour: 6% more increased"), Reduction() / Empty, Steps(1),
-			  0.0001f);
-	SetFervourTo(Player, 99.0f);
-	TestEqual(TEXT("99 Fervour is three full 25s: 18%"), Reduction() / Empty, Steps(3),
-			  0.0001f);
-	SetFervourTo(Player, 100.0f);
-	TestEqual(TEXT("100 Fervour: 24%"), Reduction() / Empty, Steps(4), 0.0001f);
+	TestEqual(TEXT("19 Fervour is not a full 20: nothing"), At(19.0f), 0.0f, 0.0001f);
+	TestEqual(TEXT("20 Fervour: 6%"), At(20.0f), 0.06f, 0.0001f);
+	TestEqual(TEXT("59 Fervour is two full 20s: 12%"), At(59.0f), 0.12f, 0.0001f);
+	TestEqual(TEXT("100 Fervour: 30%"), At(100.0f), 0.30f, 0.0001f);
+
+	Take(Player, TEXT("Ravager_basic_d_b2"), 0);
+	TestEqual(TEXT("with the points given back, 100 Fervour is worth nothing"),
+			  At(100.0f), 0.0f, 0.0001f);
 	return true;
 }
 
@@ -14016,17 +14017,20 @@ bool FCataclysmFervourWithoutTheNodeNeverDecaysTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldGroundRaisesTheRateTest,
-	"Cataclysm.Passives.HeldGroundRaisesTheRateFromNearbyEnemies",
+	"Cataclysm.Passives.HeldGroundRaisesEveryFervourGain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_basic_d_b0` Held Ground. Issue #1515.
+ * `Ravager_basic_d_b0` Held Ground. The Ravager tree rework of 2026-11-24.
  *
- * "+2% increased Fervour gained from enemies near you per point."
+ * "+5% increased Fervour gained per point." Until then it read "+2% increased
+ * Fervour gained from enemies near you per point" and raised only the contact
+ * rate, which this test measured as 1.16 a second.
  *
- * AN `increased` ROW AGAINST A STAT WITH NO BASE, which works only because the
- * starting node grants the flat value it multiplies. Eight points is 16%, so a
- * rate of one a second becomes 1.16.
+ * ITS ROW IS `class_resource_generation`, the stat every gain of class resource
+ * is scaled by (`UCataclysmAbilitySystemComponent::ClassResourceGainScaled`, on
+ * its engine base of 100). Eight points is 40%, so the starting node's contact
+ * rate of one a second becomes 1.4, and so does a hit's one.
  */
 bool FCataclysmHeldGroundRaisesTheRateTest::RunTest(const FString&)
 {
@@ -14064,32 +14068,35 @@ bool FCataclysmHeldGroundRaisesTheRateTest::RunTest(const FString&)
 
 	Hold(Player, {{FName(StartingNode), 1}, {FName(HeldGround), 8}});
 	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
-	TestEqual(TEXT("eight points of Held Ground is sixteen per cent more"),
-			  FervourOf(Player) - Plain, 1.16f, 0.001f);
+	const float AfterContact = FervourOf(Player);
+	TestEqual(TEXT("eight points of Held Ground is forty per cent more from contact"),
+			  AfterContact - Plain, 1.4f, 0.001f);
+
+	// AND FROM A HIT, the other half of the starting node: every gain, not only
+	// the one from enemies standing near.
+	UCataclysmFervour::GainForEnemiesHit(Player.AbilitySystem, FGameplayTagContainer(),
+										 /*EnemiesHit=*/1);
+	TestEqual(TEXT("and forty per cent more from one enemy hit"),
+			  FervourOf(Player) - AfterContact, 1.4f, 0.001f);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoGroundGivenWidensTheRadiusTest,
-	"Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight",
+	"Cataclysm.Passives.NoGroundGivenStopsFervourDecaying",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_keystone_d_kC` No Ground Given. Issue #1515.
+ * `Ravager_keystone_d_kC` No Ground Given. The Ravager tree rework of
+ * 2026-11-24.
  *
- * "Your Fervour does not decay while an enemy is within 8 metres of you,
- * rather than 4."
+ * "Your Fervour does not decay." Until then it widened the no-decay radius from
+ * 4 metres to 8, which this test measured. Its row is now
+ * `fervour_decay_per_second` in the `removed` bucket, which takes the starting
+ * node's 5 a second to nothing whatever else reaches it; the enchantment of the
+ * same sentence is the precedent.
  *
- * THIS TEST IS WHAT CHECKS THE ARITHMETIC THE SENTENCE DOES NOT STATE. The
- * keystone's row grants 4, not 8, because two flat rows on one stat sum with
- * the starting node's 4. Neither digit in the sentence is the row's value, so
- * `VALUE_IN_WORDS` in
- * `tools/tests/test_passive_effects_match_the_node_text.py` exempts that row
- * from the digit check and names this test as what replaces it. A change to
- * either row that breaks the sum fails here.
- *
- * AN ENEMY AT FIVE METRES IS THE WHOLE EXPERIMENT: outside the starting node's
- * four and inside the keystone's eight, so it decays without the keystone and
- * holds with it.
+ * NO ENEMY AND A LONG TIME, the starting node's worst case: without the
+ * keystone the bar drains once the grace lapses, with it nothing drains.
  */
 bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
 {
@@ -14110,38 +14117,39 @@ bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	if (!TestNotNull(TEXT("an enemy five metres away"),
-					 EnemyAtMetres(World, 5.0f)))
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, FName(NoGroundGiven));
+	if (!TestEqual(TEXT("No Ground Given carries one row"), Effects.Num(), 1))
 	{
 		return false;
 	}
+	TestEqual(TEXT("on the decay rate"), Effects[0]->Stat,
+			  FString(UCataclysmFervour::DecayPerSecondStat));
+	TestEqual(TEXT("which it removes"), Effects[0]->ValueKind, FString(TEXT("removed")));
 
-	// WITHOUT THE KEYSTONE: five metres is outside the four, so contact never
-	// holds and the bar drains once the grace lapses.
+	// WITHOUT THE KEYSTONE: nobody near, so the bar drains once the grace lapses.
 	Hold(Player, {{FName(StartingNode), 1}});
 	GiveFervour(Player, 50.0f);
 	World->TimeSeconds += 4.0f;
 	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
-	if (!TestEqual(TEXT("at four metres of radius, an enemy at five is out of "
-					    "contact and the bar drains"),
+	if (!TestEqual(TEXT("CONTROL: out of contact past the grace, the bar drains five"),
 				   FervourOf(Player), 45.0f, 0.001f))
 	{
 		return false;
 	}
 
-	// WITH IT: the two rows sum to eight, so the same enemy is in contact.
+	// WITH IT: the same character, longer out of contact, loses nothing.
 	Hold(Player, {{FName(StartingNode), 1}, {FName(NoGroundGiven), 1}});
-	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
-	World->TimeSeconds += 4.0f;
-	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
-	TestEqual(TEXT("with No Ground Given the radius is eight, so the same "
-				   "enemy holds contact and nothing drains"),
+	World->TimeSeconds += 30.0f;
+	UCataclysmFervour::DecayStep(Player.Character, 30.0f);
+	TestEqual(TEXT("with No Ground Given thirty seconds out of contact take nothing"),
 			  FervourOf(Player), 45.0f, 0.001f);
 	return true;
 }
 
 // --------------------------------------------------------------------------
-// Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
+/ Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
 // generates it from crippled enemies near the character. Issue #1515.
 // --------------------------------------------------------------------------
 
@@ -15187,7 +15195,7 @@ bool FCataclysmPassivePressTheAdvantageRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveHeadlongSecondClauseRowTest,
-	"Cataclysm.Passives.HeadlongsFirstMeleeAttackAfterMovingFiveMetresGainsItsIncrease",
+	"Cataclysm.Passives.HeadlongsFirstMeleeAttackAfterMovingFiveMetresDealsFiftyPercentMore",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -15195,7 +15203,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveHeadlongSecondClauseRowTest,
  * loads: its second clause. Issue #1515.
  *
  * "+25% increased Movement Speed, and your first melee attack after moving 5
- * metres deals 50% increased damage."
+ * metres deals 50% more damage." "50% increased" until the Ravager tree rework
+ * of 2026-11-24, which moved the vows' damage clauses to "more".
  *
  * THE CONDITION IS HOW FAR THE ATTACKER MOVED BEFORE THE ATTACK, measured when
  * the skill is paid for and reset at each attack, which is what makes it the
@@ -15230,8 +15239,8 @@ bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("stated as an increase"), Clause->ValueKind,
-			  FString(TEXT("increased")));
+	TestEqual(TEXT("stated as a multiplier, the rework of 2026-11-24: 50% more"), Clause->ValueKind,
+			  FString(TEXT("more")));
 	TestEqual(TEXT("of fifty"), Clause->ValuePerPoint, 50.0f);
 	TestEqual(TEXT("for melee attacks only"), Clause->RequiredTags,
 			  FString(TEXT("Type.Melee")));
@@ -15263,30 +15272,32 @@ bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
 		return false;
 	}
 
-	const auto IncreasesAfter = [AttackDamage](float Metres,
-											   const FGameplayTagContainer& Tags)
+	// THE "MORE" MULTIPLIER, since the rework of 2026-11-24 moved the vows'
+	// damage clauses to "more" (the owner's ruling that day). One means nothing.
+	const auto MoreAfter = [AttackDamage](float Metres,
+										  const FGameplayTagContainer& Tags)
 	{
 		FCataclysmStatConditions State;
 		State.MetresMovedBeforeBlow = Metres;
 		return UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage, Tags, State)
-			.SumOfIncreases;
+			.MoreMultiplier;
 	};
 
-	TestEqual(TEXT("a melee attack after moving six metres gains 50"),
-			  IncreasesAfter(6.0f, Melee), 50.0f, 0.001f);
+	TestEqual(TEXT("a melee attack after moving six metres deals 50% more"),
+			  MoreAfter(6.0f, Melee), 1.5f, 0.001f);
 	TestEqual(TEXT("and after exactly five, because the condition is at least"),
-			  IncreasesAfter(5.0f, Melee), 50.0f, 0.001f);
-	TestEqual(TEXT("after four it gains nothing"), IncreasesAfter(4.0f, Melee),
-			  0.0f, 0.001f);
+			  MoreAfter(5.0f, Melee), 1.5f, 0.001f);
+	TestEqual(TEXT("after four it gains nothing"), MoreAfter(4.0f, Melee),
+			  1.0f, 0.001f);
 	TestEqual(TEXT("an attack that is not melee gains nothing after six"),
-			  IncreasesAfter(6.0f, FGameplayTagContainer()), 0.0f, 0.001f);
+			  MoreAfter(6.0f, FGameplayTagContainer()), 1.0f, 0.001f);
 	TestEqual(TEXT("and a blow that carries no distance gains nothing"),
-			  IncreasesAfter(-1.0f, Melee), 0.0f, 0.001f);
+			  MoreAfter(-1.0f, Melee), 1.0f, 0.001f);
 
 	return true;
 }
 
-// ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
+/ ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
 
 namespace CataclysmDeathRewardsTest
 {
@@ -15745,20 +15756,22 @@ namespace CataclysmFourRowsReadTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWeightAgainstThemRowTest,
-	"Cataclysm.Passives.WeightAgainstThemGrantsAttackDamageForEveryTwoPercentOfDamageReduction",
+	"Cataclysm.Passives.ThrongedTakesFiveFervourOffTheUltimateForEachEnemyWithinFourMetres",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The Third Onslaught's second option, Weight Against Them, read out of the tables
- * the game loads. Issue #1515.
+ * The Third Onslaught's second option, Thronged, read out of the tables the game
+ * loads. The Ravager tree rework of 2026-11-24, which replaced Weight Against
+ * Them ("+1% increased Attack Damage for every 2% of Damage Reduction you have")
+ * in this place; the class name is kept so the test keeps its slot.
  *
- * "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage
- * Reduction you have."
+ * "Your Ultimate costs 5 less Fervour for each enemy within 4 metres of you when
+ * you use it."
  *
  * Through the tree's own accumulation and the stat pipeline, as Headlong's test
- * reads its clause, with the damage reduction stated in the conditions. Where a
- * real character's reading comes from, and the cap it stops at, is
- * `Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap`.
+ * reads its clause, with the enemies' distances stated in the conditions. What
+ * the cost does with the figure, and the count a real world gives, is
+ * `Cataclysm.Thronged.`.
  */
 bool FCataclysmPassiveWeightAgainstThemRowTest::RunTest(const FString&)
 {
@@ -15774,46 +15787,39 @@ bool FCataclysmPassiveWeightAgainstThemRowTest::RunTest(const FString&)
 		return false;
 	}
 
-	const FCataclysmPassiveEffectRow* Row =
-		RowFor(EffectTable, TEXT("Ravager_capstone_100"), 2, TEXT("attack_damage"));
-	if (!TestNotNull(TEXT("Weight Against Them has an attack damage row"), Row))
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ravager_capstone_100"), 2, TEXT("ultimate_fervour_cost_reduction"));
+	if (!TestNotNull(TEXT("Thronged has a row taking Fervour off the Ultimate"), Row))
 	{
 		return false;
 	}
-	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
-			  FString(TEXT("increased")));
-	TestEqual(TEXT("of one"), Row->ValuePerPoint, 1.0f);
-	TestEqual(TEXT("for no skill in particular"), Row->RequiredTags, FString());
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of five"), Row->ValuePerPoint, 5.0f);
 	TestEqual(TEXT("under no condition"), Row->Condition, FString());
-	TestEqual(TEXT("scaled by damage reduction"), Row->Scale,
-			  FString(TEXT("damage_reduction")));
-	TestEqual(TEXT("in steps of two"), Row->ScaleStep, 2.0f);
+	TestEqual(TEXT("scaled by the enemies in reach"), Row->Scale,
+			  FString(TEXT("enemies_in_reach")));
+	TestEqual(TEXT("one enemy a step"), Row->ScaleStep, 1.0f);
+	TestEqual(TEXT("within four metres"), Row->ReachMetres, 4.0f);
 
 	TMap<FName, TArray<FCataclysmStatModifier>> Out;
-	const TArray<FCataclysmStatModifier>* AttackDamage = Granted(
+	const TArray<FCataclysmStatModifier>* Less = Granted(
 		Out, NodeTable, EffectTable, TEXT("Ravager_capstone_100"), 1, 2,
-		TEXT("attack_damage"));
-	if (!TestNotNull(TEXT("choosing Weight Against Them grants attack damage"),
-					 AttackDamage))
+		TEXT("ultimate_fervour_cost_reduction"));
+	if (!TestNotNull(TEXT("choosing Thronged grants the stat"), Less))
 	{
 		return false;
 	}
 
-	const auto IncreasesWith = [AttackDamage](float Percent)
+	const auto FervourOffWith = [Less](const TArray<float>& Distances)
 	{
 		FCataclysmStatConditions State;
-		State.DamageReductionPercent = Percent;
-		return UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
-												FGameplayTagContainer(), State)
-			.SumOfIncreases;
+		State.HostileDistancesMetres = Distances;
+		return UCataclysmStatPipeline::Evaluate(0.0f, *Less, FGameplayTagContainer(), State).Final;
 	};
 
-	TestEqual(TEXT("ten per cent of damage reduction grants five"),
-			  IncreasesWith(10.0f), 5.0f, 0.001f);
-	TestEqual(TEXT("nine grants four, in whole steps"), IncreasesWith(9.0f), 4.0f,
-			  0.001f);
-	TestEqual(TEXT("and an unknown reading grants nothing"), IncreasesWith(-1.0f),
-			  0.0f, 0.001f);
+	TestEqual(TEXT("nobody near takes nothing off"), FervourOffWith({}), 0.0f, 0.001f);
+	TestEqual(TEXT("two within four metres and one at five take ten off"),
+			  FervourOffWith({2.0f, 3.5f, 5.0f}), 10.0f, 0.001f);
 	return true;
 }
 
@@ -15887,18 +15893,23 @@ bool FCataclysmPassiveDrawnDeepRowTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveLongHoldRowTest,
-	"Cataclysm.Passives.LongHoldGrantsFivePercentOfMaximumHealthOnAKill",
+	"Cataclysm.Passives.LongHoldGrantsOnePercentOfMaximumHealthOnAKillForEachEnemyNear",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The Second Onslaught's third option, Long Hold, read out of the tables the game
- * loads. Issue #1515.
+ * loads. Issue #1515, and the Ravager tree rework of 2026-11-24.
  *
- * "Killing an enemy restores 5% of your maximum health."
+ * "Killing an enemy restores 1% of your maximum health for each enemy within 4
+ * metres of you." Until the rework a flat 5%, which this test measured; now the
+ * tier's option that scales with the Ravager's core count, the enemies within
+ * 4 metres (the owner's ruling that day).
  *
- * THE ROW, AND THE ATTRIBUTE IT LANDS ON. A flat stat with no attribute in
- * `UCataclysmPlayerClassStats::StatToAttribute` would be dropped by `ApplyTo`,
- * so the map entry is asserted beside the row. What a kill does with the stat is
+ * A SCALED ROW IS NEVER FOLDED INTO THE ATTRIBUTE, so the count is stated in the
+ * conditions here, and `UCataclysmFervour::RestoreHealthOnKillAtNoCost` asks the
+ * stat through `StatForSkill` with the character's state, which
+ * `Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline`
+ * measures. What a kill does with the stat is
  * `Cataclysm.DeathRewards.LongHoldRestoresHealthOnAKillAndNothingOnADeathItDidNotCause`.
  */
 bool FCataclysmPassiveLongHoldRowTest::RunTest(const FString&)
@@ -15923,9 +15934,12 @@ bool FCataclysmPassiveLongHoldRowTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
-	TestEqual(TEXT("of five"), Row->ValuePerPoint, 5.0f);
+	TestEqual(TEXT("of one"), Row->ValuePerPoint, 1.0f);
 	TestEqual(TEXT("under no condition"), Row->Condition, FString());
-	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+	TestEqual(TEXT("scaled by the enemies in reach"), Row->Scale,
+			  FString(TEXT("enemies_in_reach")));
+	TestEqual(TEXT("one enemy a step"), Row->ScaleStep, 1.0f);
+	TestEqual(TEXT("within four metres"), Row->ReachMetres, 4.0f);
 
 	TMap<FName, TArray<FCataclysmStatModifier>> Out;
 	const TArray<FCataclysmStatModifier>* Restored = Granted(
@@ -15935,10 +15949,15 @@ bool FCataclysmPassiveLongHoldRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("worth five per cent"),
-			  UCataclysmStatPipeline::Evaluate(0.0f, *Restored,
-											   FGameplayTagContainer()).Final,
-			  5.0f, 0.001f);
+	const auto PercentWith = [Restored](const TArray<float>& Distances)
+	{
+		FCataclysmStatConditions State;
+		State.HostileDistancesMetres = Distances;
+		return UCataclysmStatPipeline::Evaluate(0.0f, *Restored, FGameplayTagContainer(), State).Final;
+	};
+	TestEqual(TEXT("alone, nothing"), PercentWith({}), 0.0f, 0.001f);
+	TestEqual(TEXT("three within four metres and one at six, three per cent"),
+			  PercentWith({1.0f, 2.0f, 3.9f, 6.0f}), 3.0f, 0.001f);
 	TestNotNull(TEXT("and the stat has an attribute for ApplyTo to write"),
 				UCataclysmPlayerClassStats::StatToAttribute().Find(
 					FString(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat)));
@@ -16011,8 +16030,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNeverLetsGoRowTest,
  * The First Onslaught's second option, Never Lets Go, read out of the tables the
  * game loads. Issue #1515.
  *
- * "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
- * increased damage to Crippled enemies."
+ * "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20% more
+ * damage to Crippled enemies." "20% increased" until the Ravager tree rework of
+ * 2026-11-24, which moved the vows' damage clauses to "more".
  *
  * ITS TWO ROWS ARE DELIVERED BY DIFFERENT ROUTES, which is why both are asserted
  * here. The Cripple chance carries no condition, so it folds into the gameplay
@@ -16057,8 +16077,8 @@ bool FCataclysmPassiveNeverLetsGoRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("stated as an increase"), Damage->ValueKind,
-			  FString(TEXT("increased")));
+	TestEqual(TEXT("stated as a multiplier, the rework of 2026-11-24: 20% more"), Damage->ValueKind,
+			  FString(TEXT("more")));
 	TestEqual(TEXT("of twenty"), Damage->ValuePerPoint, 20.0f);
 	TestEqual(TEXT("only against a crippled target"), Damage->Condition,
 			  FString(TEXT("target_carries_cripple")));
@@ -16103,17 +16123,17 @@ bool FCataclysmPassiveNeverLetsGoRowTest::RunTest(const FString&)
 
 	FCataclysmStatConditions Crippled;
 	Crippled.TargetDebuffs.AddTag(Cripple);
-	TestEqual(TEXT("twenty against a crippled target"),
+	TestEqual(TEXT("20% more against a crippled target"),
 			  UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
 											   FGameplayTagContainer(), Crippled)
-				  .SumOfIncreases,
-			  20.0f, 0.001f);
+				  .MoreMultiplier,
+			  1.2f, 0.001f);
 	TestEqual(TEXT("and nothing against a target that is not"),
 			  UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
 											   FGameplayTagContainer(),
 											   FCataclysmStatConditions())
-				  .SumOfIncreases,
-			  0.0f, 0.001f);
+				  .MoreMultiplier,
+			  1.0f, 0.001f);
 	return true;
 }
 
@@ -20082,8 +20102,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWearingThemDownOnARealCharacte
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_basic_c_b2` Wearing Them Down: "+2% increased Damage Reduction per
- * point against enemies you have Weakened." Eight points, 16%.
+ * `Ravager_basic_c_b2` Wearing Them Down: "+1% Damage Reduction per point
+ * against enemies you have Weakened." Eight points, eight. "+2% increased" until
+ * the Ravager tree rework of 2026-11-24.
  *
  * THE RAVAGER IS THE DEFENDER HERE. The attacker's debuffs reach the reading
  * through the blow `BlowContextFor` builds from them, as every hit's is. The
@@ -20141,12 +20162,15 @@ bool FCataclysmPassiveWearingThemDownOnARealCharacterTest::RunTest(const FString
 	{
 		return false;
 	}
+	// FLAT POINTS SINCE THE RAVAGER TREE REWORK OF 2026-11-24, "+1% Damage
+	// Reduction per point", the owner's ruling that such nodes give points: eight
+	// points add eight, times whatever increases the line already carries.
 	const float Others = UnconditionedIncreases(Player, TEXT("damage_reduction"),
 												FGameplayTagContainer());
-	TestEqual(TEXT("against a Weakened attacker, damage reduction carries 16% more "
-				   "increased than against a plain one"),
-			  ReductionAgainst(Weakened) / AgainstPlain,
-			  (1.0f + (Others + 16.0f) / 100.0f) / (1.0f + Others / 100.0f), 0.0001f);
+	TestEqual(TEXT("against a Weakened attacker, damage reduction carries eight points "
+				   "more than against a plain one"),
+			  ReductionAgainst(Weakened) - AgainstPlain,
+			  8.0f * (1.0f + Others / 100.0f), 0.0001f);
 
 	Take(Player, TEXT("Ravager_basic_c_b2"), 0);
 	TestEqual(TEXT("and with the points given back, the two attackers are alike"),
@@ -20298,10 +20322,15 @@ namespace CataclysmDemonicRowsTest
 	 * which the engine tests, granting each stat by hand, cannot see.
 	 *
 	 * Option 0 is a keystone: the node's own rows, one point, no choice.
+	 *
+	 * `OtherRows` IS HOW MANY MORE ROWS THE OPTION CARRIES THAT ARE NOT FLAT
+	 * FIGURES, which another test reads. Nought for eight of the nine; two for
+	 * Nowhere to Run since the Ravager tree rework of 2026-11-24, whose damage
+	 * clause is a "more" row scaled by the enemies held, read in that test.
 	 */
 	bool WearsTheRows(FAutomationTestBase& Test, const TCHAR* ClassName,
 					  const FName& Node, int32 Option,
-					  const TArray<FStatFigure>& Figures)
+					  const TArray<FStatFigure>& Figures, int32 OtherRows = 0)
 	{
 		FScopedPlayerClass AsClass(ClassName);
 		if (!Test.TestTrue(TEXT("the class console variable exists"),
@@ -20337,8 +20366,8 @@ namespace CataclysmDemonicRowsTest
 			CataclysmDamagedByYouRowTest::RowsOf(EffectTable, Node, Option);
 		if (!Test.TestEqual(*FString::Printf(TEXT("%s option %d carries %d rows"),
 											 *Node.ToString(), Option,
-											 Figures.Num()),
-							Rows.Num(), Figures.Num()))
+											 Figures.Num() + OtherRows),
+							Rows.Num(), Figures.Num() + OtherRows))
 		{
 			Test.AddError(TEXT("The option's rows are missing from the data, so "
 							   "it grants nothing in play. Author them in the "
@@ -23373,15 +23402,63 @@ bool FCataclysmPassiveWeightOfTheAxeOnARealCharacterTest::RunTest(const FString&
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveOnsetOnARealCharacterTest,
-	"Cataclysm.ReachRows.OnsetRaisesARealRavagersAttackDamageOnlyWithAnEnemyNear",
+	"Cataclysm.ReachRows.OnsetIgnoresFivePercentOfArmourAPointOnTheFirstHitAgainstEachEnemy",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Ravager_basic_d_a0` Onset: "+2% increased Attack Damage per point while an
- *  enemy is within 4 metres." Ten points, so 20%. */
+/** `Ravager_basic_d_a0` Onset: "Your first hit against each enemy ignores 5% of
+ *  its Armor per point." Ten points, so half. The Ravager tree rework of
+ *  2026-11-24; until then "+2% increased Attack Damage per point while an enemy
+ *  is within 4 metres", a copy of Weight of the Axe, which this test measured
+ *  with an enemy placed near. Read out of the tables through the tree's own
+ *  accumulation and the stat pipeline, with the strike history stated: armour
+ *  penetration is asked while a hit is priced, with the character struck, and
+ *  `Cataclysm.StatExemption.AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed`
+ *  measures that ask. Not under the reach group's helper any more, which places
+ *  bodies near: this row asks about the target, not the crowd. */
 bool FCataclysmPassiveOnsetOnARealCharacterTest::RunTest(const FString&)
 {
-	return CataclysmReachRowTest::AnEnemyNearRaisesAttackDamage(
-		*this, TEXT("Ravager_basic_d_a0"), 10, 0.20f);
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row =
+		RowFor(EffectTable, TEXT("Ravager_basic_d_a0"), 0, TEXT("armor_penetration"));
+	if (!TestNotNull(TEXT("Onset has an armour penetration row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of five a point"), Row->ValuePerPoint, 5.0f);
+	TestEqual(TEXT("on a target not yet struck"), Row->Condition,
+			  FString(TEXT("target_not_yet_struck_by_you")));
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Penetration = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ravager_basic_d_a0"), 10, 0, TEXT("armor_penetration"));
+	if (!TestNotNull(TEXT("ten points of Onset grant armour penetration"), Penetration))
+	{
+		return false;
+	}
+	const auto IgnoredWhen = [Penetration](bool bKnown, bool bStruck)
+	{
+		FCataclysmStatConditions State;
+		State.bTargetStrikeHistoryKnown = bKnown;
+		State.bTargetStruckByYou = bStruck;
+		return UCataclysmStatPipeline::Evaluate(0.0f, *Penetration, FGameplayTagContainer(), State).Final;
+	};
+	TestEqual(TEXT("**the first hit on an enemy ignores half its armour**"), IgnoredWhen(true, false), 50.0f,
+			  0.001f);
+	TestEqual(TEXT("**a later hit on the same enemy ignores none**"), IgnoredWhen(true, true), 0.0f, 0.001f);
+	TestEqual(TEXT("and a lookup with no target in hand ignores none"), IgnoredWhen(false, false), 0.0f, 0.001f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnbreakingOnARealCharacterTest,
@@ -23541,7 +23618,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWadeInOnARealCharacterTest,
 
 /**
  * `Ravager_capstone_25` option 1, Wade In: "Each enemy within 4 metres of you
- * grants 3% increased Armor and 3% increased Attack Damage."
+ * grants 3% increased Armor and 2% more Attack Damage." "3% increased Attack
+ * Damage" until the Ravager tree rework of 2026-11-24, which moved the vows'
+ * damage clauses to "more".
  *
  * THE TREE IS FILLED TO THE CAPSTONE'S THRESHOLD, and whatever those 25 points
  * grant is on both sides of every comparison: each reading here is the option
@@ -23598,22 +23677,27 @@ bool FCataclysmPassiveWadeInOnARealCharacterTest::RunTest(const FString&)
 				UCataclysmCombatAttributeSet::GetArmorAttribute()));
 	};
 
-	// WHAT OPTION 1 ADDS, AS THINGS STAND: to attack damage as a fraction, and
+	// WHAT OPTION 1 ADDS, AS THINGS STAND: to attack damage as a multiplier, the
+	// "more" its row has carried since the Ravager tree rework of 2026-11-24, and
 	// to armour as a hit reads it.
+	const auto AttackMore = [&Player]()
+	{
+		return Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer());
+	};
 	const auto OptionAdds = [&]()
 	{
 		Take(Player, Unchosen);
-		const float AttackWithout = Increases(Player);
+		const float AttackWithout = AttackMore();
 		const float ArmourWithout = Armour();
 		Take(Player, Chosen);
-		return TPair<float, float>(Increases(Player) - AttackWithout,
+		return TPair<float, float>(AttackWithout > 0.0f ? AttackMore() / AttackWithout : -1.0f,
 								   Armour() - ArmourWithout);
 	};
 
 	const TPair<float, float> None = OptionAdds();
-	TestEqual(TEXT("with nothing near, Wade In adds no attack damage"),
-			  None.Key, 0.0f, 0.0001f);
-	TestEqual(TEXT("and no armour"), None.Value, 0.0f, 0.001f);
+	TestEqual(TEXT("with nothing near, Wade In multiplies attack damage by nothing"),
+			  None.Key, 1.0f, 0.0001f);
+	TestEqual(TEXT("and adds no armour"), None.Value, 0.0f, 0.001f);
 
 	SpawnHostile(World, FarSpot(Player));
 	if (!TestNotNull(TEXT("one enemy two metres off"),
@@ -23622,9 +23706,8 @@ bool FCataclysmPassiveWadeInOnARealCharacterTest::RunTest(const FString&)
 		return false;
 	}
 	const TPair<float, float> One = OptionAdds();
-	TestEqual(TEXT("one near, and one ten metres off: 3% more increased attack "
-				   "damage"),
-			  One.Key, 0.03f, 0.0001f);
+	TestEqual(TEXT("one near, and one ten metres off: 2% more attack damage"),
+			  One.Key, 1.02f, 0.0001f);
 	if (!TestTrue(TEXT("and some armour"), One.Value > 0.0f))
 	{
 		return false;
@@ -23632,8 +23715,8 @@ bool FCataclysmPassiveWadeInOnARealCharacterTest::RunTest(const FString&)
 
 	SpawnHostile(World, NearSpot(Player, 1));
 	const TPair<float, float> Two = OptionAdds();
-	TestEqual(TEXT("two near: 6% increased attack damage, 3% for each"),
-			  Two.Key, 0.06f, 0.0001f);
+	TestEqual(TEXT("two near: 4% more attack damage, 2% for each"),
+			  Two.Key, 1.04f, 0.0001f);
 	TestEqual(TEXT("and twice the armour one enemy gave, since each grants 3%"),
 			  Two.Value, 2.0f * One.Value, 0.001f);
 	return true;
@@ -23651,12 +23734,48 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNowhereToRunTest,
 /** `Ravager_capstone_200` option 1, Nowhere to Run: "Enemies within 8 metres of
  *  you cannot move away from you. They may move toward you or around you, but
  *  not further away. Your Fervour does not decay while any enemy is held this
- *  way." */
+ *  way, and you deal 2% more damage for each enemy within 8 metres of you."
+ *
+ *  THE LAST CLAUSE IS THE RAVAGER TREE REWORK'S OF 2026-11-24, the tier's option
+ *  that scales with the core count: two "more" rows, attack and spell damage,
+ *  scaled by the enemies within eight metres. They are checked here as
+ *  authored and evaluated with the distances stated; the flat radius is worn
+ *  by the shared helper as before. */
 bool FCataclysmDemonicRowsNowhereToRunTest::RunTest(const FString&)
 {
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		return false;
+	}
+	for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage")})
+	{
+		const FCataclysmPassiveEffectRow* Row =
+			CataclysmFourRowsReadTest::RowFor(EffectTable, TEXT("Ravager_capstone_200"), 1, Stat);
+		if (!TestNotNull(*FString::Printf(TEXT("Nowhere to Run has a %s row"), Stat), Row))
+		{
+			return false;
+		}
+		TestEqual(TEXT("in the more bucket"), Row->ValueKind, FString(TEXT("more")));
+		TestEqual(TEXT("of two"), Row->ValuePerPoint, 2.0f);
+		TestEqual(TEXT("scaled by the enemies in reach"), Row->Scale, FString(TEXT("enemies_in_reach")));
+		TestEqual(TEXT("within eight metres"), Row->ReachMetres, 8.0f);
+		FCataclysmStatModifier Built;
+		Built.Bucket = ECataclysmStatBucket::More;
+		Built.Source = ECataclysmModifierSource::PassiveKeystone;
+		Built.Value = Row->ValuePerPoint;
+		Built.Scale = ECataclysmStatScale::PerEnemyInReach;
+		Built.ScaleStep = Row->ScaleStep;
+		Built.ReachMetres = Row->ReachMetres;
+		FCataclysmStatConditions State;
+		State.HostileDistancesMetres = {2.0f, 7.5f, 9.0f};
+		TestEqual(TEXT("two held within eight and one at nine: 4% more"),
+				  UCataclysmStatPipeline::Evaluate(100.0f, {Built}, FGameplayTagContainer(), State).MoreMultiplier,
+				  1.04f, 0.001f);
+	}
 	return CataclysmDemonicRowsTest::WearsTheRows(
 		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_200")), 1,
-		{{UCataclysmDebuffs::NowhereToRunMetresStat, 8.0f}});
+		{{UCataclysmDebuffs::NowhereToRunMetresStat, 8.0f}}, /*OtherRows=*/2);
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsBothHandsFullTest,
@@ -23838,14 +23957,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarredPlateAtFourPointsTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_basic_spine_008` Scarred Plate: "+1.5% increased Armor per point. At
- * 4 points: +5% increased Crowd Control Resistance."
+ * `Ravager_basic_spine_008` Scarred Plate: "+2% increased Armor per point. At
+ * 4 points: +10% Crowd Control Resistance." Until the Ravager tree rework of
+ * 2026-11-24, "+1.5% increased Armor per point. At 4 points: +5% increased Crowd
+ * Control Resistance"; the clause is flat points now, the owner's ruling that
+ * crowd control resistance nodes give points.
  *
  * UNCONDITIONED, SO THE ATTRIBUTE CARRIES IT, and the attribute is what
- * `AfterCrowdControlResistance` starts from. Nothing at three points, 5%
- * increased at four, and still 5% at eight rather than 10% or 40%. Each reading
- * is against the same Ravager with no points, so its class line's resistance
- * is what the increase multiplies.
+ * `AfterCrowdControlResistance` starts from. Nothing at three points, ten points
+ * at four, and still ten at eight rather than twenty or eighty. Each reading is
+ * against the same Ravager with no points. The class line carries no increases
+ * to this stat, so the ten arrive whole.
  */
 bool FCataclysmScarredPlateAtFourPointsTest::RunTest(const FString&)
 {
@@ -23886,12 +24008,12 @@ bool FCataclysmScarredPlateAtFourPointsTest::RunTest(const FString&)
 			  0.001f);
 
 	Take(Player, Node, 4);
-	TestEqual(TEXT("at four points the resistance is 5% increased"), Resistance(),
-			  None * 1.05f, 0.001f);
+	TestEqual(TEXT("at four points the resistance is ten points higher"), Resistance(),
+			  None + 10.0f, 0.001f);
 
 	Take(Player, Node, 8);
-	TestEqual(TEXT("and at eight still 5%, not per point"), Resistance(),
-			  None * 1.05f, 0.001f);
+	TestEqual(TEXT("and at eight still ten, not per point"), Resistance(),
+			  None + 10.0f, 0.001f);
 	return true;
 }
 
@@ -23900,9 +24022,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSetStanceAtFourPointsTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ravager_basic_spine_006` Set Stance: "+1% increased Damage Reduction per
- * point. At 4 points: you cannot be knocked back while an enemy is within 4
- * metres."
+ * `Ravager_basic_spine_006` Set Stance: "+1% Damage Reduction per point. At 4
+ * points: you cannot be knocked back while an enemy is within 4 metres." (The
+ * first clause was "+1% increased" until the Ravager tree rework of 2026-11-24;
+ * this test is about the second and reads nothing of the first.)
  *
  * THE SAME ENEMY TWO METRES OFF IN ALL THREE READINGS but the last, so the
  * points decide the first two and the enemy the third: three points, knocked
