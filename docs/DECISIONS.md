@@ -2,6 +2,230 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The Death weapon skills, slice DS2: ten more rows working; Bleed on a skill row, permanent raises that strike as they rise, a skill that explodes its caster's minions, a strike that commands, minions that lay their row's effect; four ranges brought to 14 m (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885` on top of slice DS1 (`4860e7f7d`), as the
+  coordinating session asked on 2026-11-24, in three commits: change A (N16, N1, N2), change B (N3, N4, N11) and change
+  C (the rows, the data and the row tests). Issue [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **N14 IS NOT BUILT, SO GRAVETOUCH STILL WAITS, ON N14 ALONE.** Judged not small: an enemy dying "while the wound still
+  bleeds" needs a mark the strike leaves (a component, as `UCataclysmCurseSpread` is), a new death hook in
+  `UCataclysmSkillEffects::MarkDead` beside the curse spread, a judgement on which bleed is "the wound" when another
+  source's bleed has replaced it under the one-stack rule, and a ruling-sized question whether the burst (a share of the
+  dying creature's maximum health) credits Gravetouch. N4 and N11 were each small and are built, so Gravebell and Bone
+  Choir work.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming `MinionTypes.csv` and `WeaponSkills.csv` (and bug
+  batch 2's `SkillSlots.csv`, already registered), and every row test below reads a stale table: the eight row tests
+  and the two counting tests fail at their set-up lines, which say so.
+- **A DETONATION IS AN EXPLOSION AND NOT A DEATH -- a judgement, worth a look.** `ACataclysmMinion::Explode` deals the
+  minion's own blast and destroys it, which frees its reserve at once (the Necromancer draft's "An explosion frees the
+  reservation at once, which is what drives the loop"). So nothing a minion's death raises answers a detonation:
+  Press-Ganged and Rekindled replace nothing, Shared Ruin's blast does not go off, no Fervour is paid for the loss, and
+  the minion does not need `minion_explodes_on_death`. A skill that explodes a minion is the explosion; Every One
+  Bursts makes a death into one. If the Necromancer tree's Mass Grave or Rekindled is meant to answer a detonation, that
+  is a ruling for the tree's slice.
+- **WHICH MINIONS A SKILL EXPLODES -- judgements.** Every creature the caster raised (`ACataclysmMinion` whose
+  `Summoner` it is), whatever its kind, by the owner's ruling quoted below; so a Barrow Guard inside Gravebell's arc
+  explodes, as the approved draft's "Effects that now reach every minion" says. **Not a machine** (a turret, a skill
+  gadget, a skill trap: placed, not raised, and no Death sentence names one) **and not a thrall** (an enemy taken, with
+  no `Explode` of its own). Found by who commands it (`UCataclysmCommand::ThingsCommandedBy`), not by side, so a minion
+  Madness has turned is still the caster's.
+- **THE FOUR LONG RANGES ARE 14 M**, by the coordinating session's ruling, and their sentences say 14: None Spared and
+  Coffin Nail from 17, Soul Lance and Pale Rider from 16. None Spared needed nothing else and works. **Pale Rider keeps
+  its 1.5 seconds** (a judgement, the draft's time), so its charge is 9.3 m a second where it was 10.7. The re-apply
+  script now rewrites a cell holding what slice DS1 wrote there before a ruling changed it (`SUPERSEDED`), and still
+  refuses any other value it did not write.
+
+**Affects:** `tools/generate_datatables.py` (`SKILL_ROW_AILMENTS`, `SHAPE_PARAMS`, `check_death_skill_keys`,
+`check_a_summon_effect_has_a_carrier`) and its copy in `sim/cataclysm_sim/enemy_abilities.py`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and `.cpp` (`bPermanent`, `bMinionsLayEffect`,
+`bDetonates`); `CataclysmSkillTemplate.h` and `.cpp` (`DetonateOwnMinionsWhere`, `DetonateOwnMinionsAround`,
+`DetonateOwnMinionsAlong`, `OrderEveryCommandedStrikeOn`, `MinionsDetonated`, and `CommandedStrikes` moved here from the
+projectile template); `CataclysmSkillTemplates.h` and `.cpp` (`UCataclysmStrikeSkill::SwingOnce`,
+`UCataclysmProjectileSkill::Land` and `OnProjectileFinished`, `UCataclysmMovementSkill::DetonateWhereItArrived`,
+`UCataclysmSummonSkill::StrikesAsItRises`, `StrikeAsItRises` and `RecordTheSkillOn`); `CataclysmMinion.h` and `.cpp`
+(`EffectTagsItsBlowsLay` and its three neighbours, `LayTheEffectsItsBlowsLay`, `AttackTarget`);
+`CataclysmUndesignedSkill.h` (the counts); `tools/reapply_death_skills_workbook.py` and the workbook it edits;
+`game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `docs/README.md`; the Unreal tests
+`CataclysmDeathSkillsTests.cpp` and `CataclysmDataTableTests.cpp`; and the Python checks named below.
+
+### The rulings, verbatim
+
+- The coordinating session, 2026-11-24, ruling 1: "**Range: 14 m.** `tools/tests/test_enemy_abilities.py::
+  test_the_sentinel_reach_is_the_longest_range_any_player_attack_has` holds that no player attack outranges the
+  Corrupted Sentinel's 14 m reach. So None Spared (17 m), Coffin Nail (17 m), Soul Lance (16 m) and Pale Rider (16 m)
+  become 14 m."
+- The coordinating session, 2026-11-24, ruling 2: "**Bleed is allowed on a skill row.** The owner accepted the Death and
+  War plan's Q22 on 2026-11-24 ("Your recommendations work for all of those death/war questions"): widen the closed set
+  of row ailments from Poison, Disease, Necrosis and Void Splinter to those plus Bleed". This is N16.
+- The owner's ruling of 2026-11-24 on the 40 drafted skills, which N3 follows: "I'm not sure what the difference is
+  between minions and "pop minions" minion pop is a playstyle, not a distinction. So stuff that references "pop minions"
+  should be changed to just say it kills minions or minions that explode or something like that."
+
+### The rows
+
+**Ten more written whole**, 22 of the 45 in all, each as approved but for the ranges above:
+
+| Row | Needs |
+| :-- | :-- |
+| Gravebell (Greatsword Heavy) | N3, N4 |
+| Barrow Guard (Greatsword Ultimate) | N1, N2, C3 |
+| Barrow Leap (Greatsword Movement) | N3, N22 |
+| Exhume (Greataxe Ultimate) | N1, N2 |
+| Open Grave (Greataxe Movement) | N3 |
+| Marrow Lance (Staff Heavy) | N3 |
+| Bone Choir (Staff Ultimate) | N1, N2, N11 |
+| Grave Return (Wand Movement) | N3 |
+| Severing Rush (Fist Movement) | N16 |
+| None Spared (Crossbow Ultimate) | the range ruling |
+
+**23 still wait, with no shape** (`tools/reapply_death_skills_workbook.py` holds each one's shape):
+
+| Waits on | Rows |
+| :-- | :-- |
+| N5 (the dying rise) | Death Rattle, Soul Snare |
+| N6 (Fervour per kill) | Death Warrant, Hungering Soul, Restless Spirits, Last Toll, Pale Rider; Danse Macabre also N10; Grim Swath also N7 |
+| N7, N8 | Cold Blood |
+| N9 | Mercy Stroke |
+| N12 | Grave Mouth |
+| N13 | Requiem |
+| N14 (burst on death) | Gravetouch |
+| N15 | Quietus |
+| N17 | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 | Wraithwalk |
+| N19 | Soul Lance |
+| C1 | Coffin Nail |
+| C2 | Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+
+**The minion kinds** the three permanent raises raise, the draft's figures unchanged: `BarrowGuard` (400 health, 15.75
+a blow each second, threat 150), `BoneReaper` (300, 42 every 2 s, 60, reach 2.5 m) and `SkeletalMage` (150, 15.75 every
+1.5 s, 40, reach 9 m, `Minion.Spell`). The Wisp waits with Grave Mouth and Soul Snare.
+
+**The workbook cells**, 66: on Weapon Skills, the Shape and Shape Params of the ten rows (20) and the four range
+sentences (4); on Minion Types, rows 13 to 15, every column (42). Run a second time the script writes nothing
+("0 cells to write; nothing written"), and `generate_datatables.py --check` says "All 34 DataTable CSVs are up to date."
+
+### The code
+
+**Change A.**
+
+- **N16, Bleed on a skill row.** `SKILL_ROW_AILMENTS` gains `Bleed`. The engine needed nothing:
+  `UCataclysmAilments::KindNamedInASkillRow` already finds it among the eleven, and a bleed's movement gate (issue #918)
+  applies as it does to a gear chance's bleed, so Severing Rush's "whatever chases you pays for it" is that gate.
+- **N1, `Permanent=1` on a Summon.** `UCataclysmSummonSkill::RecordTheSkillOn`, which both places that make a summon's
+  minion call, takes its lifespan away (`SetLifeSpan(0)`, the engine's "never expires", as `PlaceSkillGadget` does).
+  A replacement, a re-summon and a spawn at a kill are permanent too. The reserve is the army's limit, as a thrall's is.
+  The generator refuses it beside a `Duration`, a rift `Interval` or `Possess`.
+- **N2, a raise that strikes as it rises.** A Summon row stating a Damage Percent of its own, and not possessing, strikes
+  before the first minion is made (`StrikeAsItRises`): every enemy within the row's `Radius` of the rift, or, with
+  `MaxTargets=1`, the one enemy within its `Range` of the caster nearest where the player points (Subjugate's rule),
+  at whose feet the raise then rises. The row's `Effect` goes on what the blow landed on, after it. No key of its own:
+  a summon row's damage figure said nothing before, so stating one is what makes the raise strike; the generator
+  refuses a Summon naming an `Effect` that neither such a blow nor N11 lays. **Judgements:** with no enemy in reach,
+  Exhume strikes nobody and its Reaper rises where it was aimed (the Fervour is spent and the Reaper is the larger half
+  of the row); and the blow spends no next-use charge, as Subjugate's does not, since the summon template's
+  `DeliversDamageItself` is ground alone by the ruling of 2026-09-24 on #1833.
+
+**Change B.**
+
+- **N3, `Detonates=1` on a Strike, a Projectile or a Movement.** The caster's minions inside the skill's area explode,
+  measured as the skill's enemy search measures an enemy: a strike's cone (or its ring when a row made the use hit all
+  around), a beam's line or landing circle, a move's single arrival mode by mode (a charge's line, a blink's and a
+  trade's two circles, a leap's and a return's circle). After the blow and the curse, as the sentences order them. **A
+  flying shot detonates once, as it finishes, along the line it flew** (a judgement: the line is known only then, as its
+  ground's is, and a lance a wall stopped detonates nothing beyond it). The generator refuses it on a flicker and a
+  walked charge, whose blows are struck step by step.
+- **N4, `CommandStrike=1` on a Strike.** Compel's order moved, unchanged, from `UCataclysmProjectileSkill::Land` to
+  `UCataclysmSkillTemplate::OrderEveryCommandedStrikeOn`, with `CommandedStrikes`. A swing orders everything its caster
+  commands onto **the first enemy it struck that it left standing** (a judgement: the search answers nearest first, and
+  a creature ordered onto one just killed strikes nothing), after its own minions in the arc exploded, so an exploded one
+  is not also ordered.
+- **N11, `MinionsLayEffect=1` on a Summon.** `RecordTheSkillOn` teaches each minion the row's named effects with the
+  seconds the skill would lay them, the row's magnitude and its damage type; `ACataclysmMinion::AttackTarget` lays them
+  on a blow that landed (not evaded, not refused as immune to its attacker), the minion as the instigator, as it sets the
+  fire `Burn=1` gives it. Its explosion lays none. The generator refuses it with no `Effect` or on a possession.
+
+### Research
+
+No formula is new. Each shape is the approved draft's, with the draft's sources (Diablo IV's Book of the Dead and Bone
+Spear, Path of Exile's minion skills); `.claude/windows/death_weapon_skills_draft.md` lists them and they were not
+fetched again for this slice. What they do not settle is labelled a judgement above.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`**, predicted **28 performed, 28 succeeded** (DS1's 14 and
+these):
+
+| Test | Change | What it holds |
+| :-- | :-- | :-- |
+| `APermanentRaiseStandsWithNoLifespanAndARaiseWithoutTheKeyLastsItsDuration` | A, N1 | no lifespan, a replacement too; control: 8 s |
+| `ARaiseStatingItsDamageStrikesAndCripplesTheRingItRisesInAndOneStatingNoneStrikesNothing` | A, N2 | 3 m struck, Crippled 30 for 4 s, 7 m not; control: no damage of its own, no blow |
+| `ARaiseThatHewsOneEnemyStrikesTheNearestInReachAndRisesAtItsFeet` | A, N2 | the nearest in 4 m hewn, not 3.5 m or 6 m; rises at its feet; control: nobody in reach, rises at the rift |
+| `ADetonatingSwingExplodesTheCastersMinionsInsideItsArcAndNoOthers` | B, N3 | in the arc explodes and its blast lands; behind, beyond, another's stand; control: no key |
+| `ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone` | B, N4 | a minion 20 m off ordered and swings; control: no key |
+| `AMinionTaughtTheRowsEffectLaysItWithItsBlowAndOneNotTaughtLaysNone` | B, N11 | taught Cripple 20 for 2 s, laid by its blow; control: no key |
+| `SeveringRushOpensABleedOnTheEnemyItsChargeCrossesAndNoneBesideIt` | C, row | the line's enemy bleeds; control: 4 m off |
+| `BarrowGuardRaisesTwoPermanentTauntingGuardsInABurstThatCripplesWithinFiveMetres` | C, row | burst 30 for 4 s at 4 m; two guards, no lifespan, 5 m taunt; control: 7 m |
+| `ExhumeHewsTheEnemyWithinFourMetresAndRaisesAPermanentBoneReaperAtItsFeet` | C, row | hewn at 3 m, Reaper at its feet; control: 6 m |
+| `GravebellExplodesTheMinionsInItsArcAndOrdersTheRestOntoTheEnemyItStruck` | C, row | Necrosis; one exploded; one ordered |
+| `BarrowLeapCripplesAndExplodesTheCastersMinionsWithinFourMetresOfItsLanding` | C, row | 30 for 3 s; 3 m explodes; 7 m and another's stand |
+| `MarrowLanceExplodesTheCastersMinionsOnTheLineItFlewAndNoneBesideIt` | C, row | nothing in flight; on finishing, 0.5 m off explodes, 3 m off stands |
+| `GraveReturnExplodesTheCastersMinionsWithinThreeMetresOfTheShadeItReturnsTo` | C, row | first press nothing; return explodes 1.8 m, not 5 m |
+| `BoneChoirRaisesTwoPermanentMagesWhoseBurstAndBlowsCrippleByTwenty` | C, row | burst 20 for 2 s; two mages, no lifespan; a mage's blow 20 for 2 s |
+
+**Three Unreal tests change, counts unchanged:** `Cataclysm.DeathSkills.EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers`
+reads 22 rows (from 12) and the four new keys, and None Spared's certain critical strike and 14 m;
+`Cataclysm.DeathSkills.EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` reads 23 waiting (from 33) and 28
+of 51 shaped (from 18); `Cataclysm.Data.EveryGeneratedTableImports` pins `MinionTypes.csv` at 14 (from 11). **The whole
+suite is registered as 5440**: slice DS1's registered 5426 and these 14; a prediction, the run is the figure.
+
+**Five C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.` (N16 has no C++ and is
+proven in Python below). Change A has two, change B three:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N1 | `CataclysmSkillTemplates.cpp` | `if (Params.bPermanent)` becomes `if (false && Params.bPermanent)` | `APermanentRaiseStands...`, `BarrowGuardRaises...`, `ExhumeHews...`, `BoneChoirRaises...` |
+| G2, N2 | `CataclysmSkillTemplates.cpp` | `return !Params.bPossess && DamagePercentOverride > 0.0f;` becomes `return false && !Params.bPossess && DamagePercentOverride > 0.0f;` | `ARaiseStatingItsDamage...`, `ARaiseThatHewsOneEnemy...`, `BarrowGuardRaises...`, `ExhumeHews...`, `BoneChoirRaises...` |
+| G3, N3 | `CataclysmSkillTemplate.cpp` | `if (!Params.bDetonates \|\| !Self)` becomes `if (true \|\| !Params.bDetonates \|\| !Self)` | `ADetonatingSwing...`, `GravebellExplodes...`, `BarrowLeapCripples...`, `MarrowLanceExplodes...`, `GraveReturnExplodes...` |
+| G4, N4 | `CataclysmSkillTemplates.cpp` | `if (Params.bCommandStrike)` (the strike's; Compel's line reads `if (Params.bCommandStrike && !Targets.IsEmpty())` and is untouched) becomes `if (false && Params.bCommandStrike)` | `ASwingThatCommands...`, `GravebellExplodes...` |
+| G5, N11 | `CataclysmMinion.cpp` | `if (!EffectTagsItsBlowsLay.IsEmpty() && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)` becomes `if (false && !EffectTagsItsBlowsLay.IsEmpty() && !Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker)` | `AMinionTaughtTheRowsEffect...`, `BoneChoirRaises...` |
+
+**Python checks moved with the rows:** `RESERVING_SKILLS` 7 to 10 (`test_every_gadget_skill_reserves_fervour.py`);
+`BarrowGuard`, `BoneReaper` and `SkeletalMage` in the minion table (`test_minion_stat_blocks.py`); the README's Minion
+Types row count 11 to 14; the undesigned count 87 of 198 to 77 (`CataclysmUndesignedSkill.h`); the script's built rows
+12 to 22 (`test_reapply_death_skills_workbook.py`); `test_the_owners_four_are_exactly_the_closed_set` holds five, its
+name kept because this log cites it; the impact test's rule-strike anchor follows Compel's order to
+`OrderEveryCommandedStrikeOn`. **New:** `tools/tests/test_death_skill_shape_keys.py` (each new key accepted where the
+engine reads it and refused where it would do something else), and in the script's tests what each waiting row waits
+on, no script row out-ranging the Sentinel, and the `SUPERSEDED` rewrite beside its refusal.
+
+### What was run, on `849aafcb0`
+
+- **Full Python suite: "1 failed, 8331 passed, 9 skipped in 444.79s"; JUnit 8341 tests, 1 failure, 0 errors, 9
+  skipped.** The one failure is the expected `test_every_csv_still_hashes_to_what_was_recorded`, naming
+  `MinionTypes.csv`, `SkillSlots.csv` (bug batch 2's) and `WeaponSkills.csv`; the editor step clears it. ruff: "All
+  checks passed!". `tools/check_resolved_cpp.py` on the eleven changed C++ files: "11 files read, 0 with complaints".
+  The engine-name, anonymous-helper, header-reach and shape-parameter checks: "14 passed". The script's `--check`: "0
+  cells to write; nothing written"; `generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- **Seven Python guard proofs, each PROVED by `tools/prove_guard.py` in a `git archive` copy of `849aafcb0`**, each
+  failing with the break in and passing restored:
+
+| | Break | Failed with it in |
+| :-- | :-- | :-- |
+| P1, N16 | `"Bleed"` taken out of `SKILL_ROW_AILMENTS` | `test_the_owners_four_are_exactly_the_closed_set`, both `test_bleed_is_accepted_on_the_two_fist_rows_that_state_it`, `test_every_row_the_script_writes_whole_is_accepted_by_the_generator`, `test_it_writes_the_edit_on_a_copy_put_back_to_before_it` |
+| P2, N1 | `if is_on(params, "Permanent"):` made `if False and ...` | the three `test_a_permanent_raise_with_a_lifespan_or_a_possession_is_refused` |
+| P3, N2 | the carrier check's condition made `False and (...)` | the three `test_a_summons_effect_that_nothing_lays_is_refused` |
+| P4, N11 | the no-`Effect` refusal made `if False:` | `test_minions_told_to_lay_an_effect_the_row_does_not_name_are_refused` |
+| P5, N3 | the flicker and walked-charge refusal made `if False:` | both `test_a_detonation_on_a_move_that_strikes_step_by_step_is_refused` |
+| P6, `SUPERSEDED` | its rewrite made `if False and ...` | `test_it_rewrites_what_an_earlier_slice_wrote_and_still_refuses_anything_else` |
+| P7, the range ruling | None Spared's `Range=14` made 17 in the script | `test_no_death_row_outranges_the_corrupted_sentinel`, and the three checks that hold the script to the committed workbook and table |
+
+---
+
 ## 2026-11-24 — The Death weapon skills, slice DS1: the 45 rows entered, twelve of them working; a movement lays its row's effect, a raised minion taunts, and a skill row's Cripple slows by its stated size (#2885)
 
 **Said first:**
