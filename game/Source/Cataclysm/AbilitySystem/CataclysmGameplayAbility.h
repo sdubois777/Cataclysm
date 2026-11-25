@@ -409,6 +409,17 @@ public:
 	static const TCHAR* ManaCostAsMaximumManaPercentStat;
 
 	/**
+	 * `ultimate_fervour_cost_reduction`: Fervour taken off what one use costs, in points, subtracted in
+	 * `FervourCostFor` and floored at a cost of nought. The Ravager tree rework of 2026-11-24, Thronged, the third
+	 * Onslaught's second option: "Your Ultimate costs 5 less Fervour for each enemy within 4 metres of you when you
+	 * use it". Its row is flat 5 scaled by `enemies_in_reach` at 4 metres, so it is ASKED through the pipeline with
+	 * the character's state when the cost is read, and never read off an attribute: it has none, and a scaled row is
+	 * never folded into one. Only the Ultimate slot states a Fervour cost, so only an Ultimate is made cheaper.
+	 * `thrall_reserve_reduction` is the precedent for a stat subtracted from a figure the data states.
+	 */
+	static const TCHAR* UltimateFervourCostReductionStat;
+
+	/**
 	 * Mana one landed use RETURNS to the character holding it, at their level.
 	 *
 	 * ONLY THE BASIC ATTACK HAS ONE. game/Data/SkillSlots.csv gives the Basic

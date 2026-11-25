@@ -1084,6 +1084,14 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))
 	{
 		Cataclysm->NoteClassResourceFull();
+
+		// AND SECOND WIND'S HEAL, ON THE SAME CROSSING AND NO OTHER. The Ravager
+		// tree rework of 2026-11-24: "Each time your Fervour becomes full,
+		// restore 2% of your maximum health per point." Beside the stamp, so the
+		// heal and the window it opens cannot disagree about when the pool
+		// filled; a pool sitting at its maximum restores nothing more. Nought
+		// for every character without the node.
+		UCataclysmFervour::RestoreHealthOnFervourFull(Cataclysm);
 	}
 
 	// EMPTY IS ONLY EVER THE POOL, NOT THE MAXIMUM. "Hits zero" is about what

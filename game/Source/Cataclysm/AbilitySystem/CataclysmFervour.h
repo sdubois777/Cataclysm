@@ -156,15 +156,59 @@ public:
 	static const TCHAR* DecayGraceMetresStat;
 
 	/**
-	 * How long this character may be out of contact before Fervour decays.
-	 * Issue #1515.
+	 * How long this character may be out of contact before Fervour decays,
+	 * before any row lengthens it. Issue #1515.
 	 *
-	 * A CONSTANT RATHER THAN A STAT, unlike the radius beside it, because no
-	 * node in any tree changes the delay and one keystone changes the radius.
-	 * `Ravager_basic_spine_000` states it: "after 3 seconds with no enemy
-	 * within 4 metres".
+	 * THE BASE, AND `DecayGraceSecondsStat` BELOW IS ADDED TO IT. It was a
+	 * constant with nothing added because no node changed the delay; the Ravager
+	 * tree rework of 2026-11-24 gave Stoked that job. `Ravager_basic_spine_000`
+	 * states the base: "after 3 seconds with no enemy within 4 metres".
 	 */
 	static constexpr float DecayGraceSeconds = 3.0f;
+
+	/**
+	 * `fervour_decay_grace_seconds`: seconds ADDED to `DecayGraceSeconds` before
+	 * an out-of-contact character's Fervour starts to decay. The Ravager tree
+	 * rework of 2026-11-24, Stoked: "Your Fervour starts to decay 1 second later
+	 * per point." Flat, a point a second; read in `DecayStep` through the
+	 * pipeline, with nought as the fallback. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it. Path of
+	 * Exile's "Inherent Rage Loss starts 2 seconds later" is the shipped shape.
+	 */
+	static const TCHAR* DecayGraceSecondsStat;
+
+	/**
+	 * `health_restored_on_fervour_full`: the share of maximum health, in
+	 * percent, restored each time this character's Fervour BECOMES full. The
+	 * Ravager tree rework of 2026-11-24, Second Wind: "Each time your Fervour
+	 * becomes full, restore 2% of your maximum health per point." See
+	 * `RestoreHealthOnFervourFull`. No gameplay attribute, so
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* HealthRestoredOnFullStat;
+
+	/**
+	 * Restore the health `HealthRestoredOnFullStat` grants, answering how much
+	 * really arrived. The Ravager tree rework of 2026-11-24, Second Wind.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE POOL BECAME FULL. The crossing is
+	 * `ACataclysmPlayerCharacter::OnClassResourceChanged`'s, which stamps the
+	 * moment for `seconds_after_resource_full` and calls this beside the stamp,
+	 * so the heal and the window open on the same event and never on a pool
+	 * that merely sits at its maximum.
+	 *
+	 * THROUGH `UCataclysmRegeneration::TopUp`, as every restoration in this file
+	 * is, so it obeys the same ceiling and the same received-healing rows.
+	 *
+	 * ASKED THROUGH THE PIPELINE WITH A FALLBACK OF NOUGHT, the rule every rate
+	 * here keeps: a row that later gains a condition is never folded into an
+	 * attribute, and this stat has none anyway.
+	 *
+	 * @return the health really restored, which is zero for a character without
+	 *         the node, for one already at full health, and for one with no
+	 *         vital attribute set
+	 */
+	static float RestoreHealthOnFervourFull(UAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * How much of a character's maximum health a kill restores, in percent.
