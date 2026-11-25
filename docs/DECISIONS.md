@@ -2,6 +2,120 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' fifth slice, second half, first part (V5b1): Scrap Mines, and the event a gadget raises when its life span runs out
+
+**Affects:**
+- `tools/reapply_war_vows_v5b1_workbook.py` (new) writes two rows into `docs/All_Things_Cataclysm.xlsx`. The generated
+  table: `game/Data/PassiveEffects.csv` (585 rows). `docs/README.md` (the count). **The editor step must rebuild
+  `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an event, `gadget_expired`, which names the wearer's own gadget and so may carry no strike;
+  - an action, `scrap_mine`, on `gadget_destroyed` and `gadget_expired` only. Its value is the shot's per cent (above 0,
+    up to 1,000); its Event Value is the trigger radius in metres (above 0, up to 10). It takes no fraction, value kind
+    or scale.
+- C++:
+  - `CataclysmMinion.h` and `.cpp`:
+    - `LifeSpanExpired` raises `gadget_expired` for a gadget before it goes;
+    - `LeaveScrapTrapOf`, `IsScrapTrap`, `StepScrapTrap` and `FireScrapTrapAt`;
+    - the scrap trap's step comes first in `GadgetStep`, after Creeping Mines;
+    - `AttackTarget` deals nothing for a scrap trap except its one shot, which is multiplied;
+    - `CastPlayersSkillFromHere` lets a skill gadget's scrap trap make its one cast.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `ScrapMineAction`, and the action in `ActOnEvent`;
+    - Counterfire's answer and Lightning Rod's struck trap both fire a scrap trap's one shot.
+  - `CataclysmStatPipeline.h`: `FCataclysmPoolAction::bScrapMine`.
+  - `CataclysmItem.cpp`: the builder sets it.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV5b1Tests.cpp` (new, three tests).
+    - `CataclysmDataTableTests.cpp`: the pin, 585.
+  - Python:
+    - `tools/tests/test_war_vows_v5b1_scripts.py` (new, nine).
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the name.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 585 rows and 69 authored options;
+      - Scrap Mines' words, "at double damage" for 200;
+      - the duplicate-row key now includes the action and its event, because Scrap Mines' two rows differ only in the
+        event.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** It goes in the War line's one window (bundle 2):
+  - `Cataclysm.WarVowsV5b1.`: three tests, new.
+  - `Cataclysm.Data.` (585), its count unchanged.
+  - The groups touching a gadget's expiry, its blow and the gadget step, counts unchanged: `Cataclysm.WarVowsV4b.`,
+    `Cataclysm.WarVowsV5a.`, `Cataclysm.SkillGadgets.`, `Cataclysm.GadgetCopiesSkill.`, `Cataclysm.Command.` and
+    `Cataclysm.Enchantments.` (the gadget rows and Rekindled's renewed lifetime).
+- **THE SCRAP TRAP IS A COPY OF THE GONE GADGET'S TYPE, MARKED A TRAP**, at half size, as the coordinating session
+  accepted on 2026-11-25. It is therefore counted by every trap rule:
+  - Creeping Mines moves it;
+  - Counterfire and Lightning Rod can set it off, which fires its one shot.
+  It RESERVES NOTHING. It lasts the ordinary 20 s and arms after the ordinary arming time.
+- **A SKILL GADGET'S SCRAP TRAP CASTING ITS SLOT'S SKILL IS NOT TESTED.** The tests use Bolt Turrets, whose scrap fires
+  the turret's own blow. The cast goes through `CastPlayersSkillFromHere`, which the skill gadget's own groups hold.
+- **`gadget_expired` IS NEW FOR EVERY GADGET**, whoever holds Scrap Mines. A gadget whose life span runs out now raises
+  it. Before this, it raised nothing. No other row acts on it.
+
+### WHAT WAS RULED
+
+- S1 (2026-11-25): "a new event, gadget_expired, raised when a gadget's life span runs out ... Scrap Mines acts on
+  gadget_destroyed and gadget_expired."
+- S2: "the scrap trap ... fires once and is used up ... arms after the ordinary arming time"; it reserves no Fervour,
+  and lasts the ordinary 20 s.
+- The coordinating session, 2026-11-25, on the design: "The scrap trap as an inert, half-size copy of the gone gadget
+  tagged Type.Trap is accepted: generic, no per-machine code, and it reuses the gadget's own attack pricing. State in
+  the entry that it is then counted by every trap rule ... and that it reserves nothing."
+
+### JUDGEMENTS
+
+- **A scrap trap's death or expiry leaves no scrap**, because it is no longer a gadget (`IsGadget` is false).
+- **A scrap trap is used up by destruction, not death**, as a skill trap is. So its firing raises no
+  `gadget_destroyed`.
+- **Generic by construction**: the rule asks `IsGadget` of what is gone and copies its own type, never a machine by
+  name.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over every
+.cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not.
+- Result: 83 files, **0 types used that the file cannot see, 0 notes**.
+- Control: a copy of `CataclysmWarVowsV5b1Tests.cpp` without `#include "AbilitySystem/CataclysmMinion.h"` failed,
+  naming `ACataclysmMinion`.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+`tools/generate_datatables.py` byte-identical afterwards (MD5 before and after).
+
+| Break in `tools/generate_datatables.py` | Command | Named failures |
+|---|---|---|
+| Scrap Mines allowed on `trap_triggered` | `pytest tools/tests/test_war_vows_v5b1_scripts.py` | `test_a_scrap_row_on_an_event_other_than_a_gadget_gone_is_refused`, `test_the_names_are_the_generators` |
+| Scrap Mines' radius bound set to nought | the same | `test_the_control_a_scrap_row_is_read_with_its_radius_and_no_fraction` |
+| Scrap Mines given the default fraction of maximum | the same | `test_the_control_a_scrap_row_is_read_with_its_radius_and_no_fraction` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV5b1.ADestroyedGadgetLeavesAScrapTrapThatFiresItsAttackOnceAtDouble` | a destroyed Bolt Turret leaves one scrap trap where it stood, a trap and not a gadget, at half size, reserving nothing; before its arming time it fires nothing and its own swing deals nothing (the controls); armed, it fires once at double a turret's blow and is used up; a scrap trap destroyed leaves no scrap (the control) |
+| `Cataclysm.WarVowsV5b1.AGadgetWhoseLifeRunsOutRaisesGadgetExpiredAndLeavesAScrapTrap` | before a short-lived turret's life runs out no scrap stands (the control); when it runs out one does |
+| `Cataclysm.WarVowsV5b1.AWarPlayerTakingScrapMinesIsHandedBothActions` | through `SetPassiveAllocation`: two actions, on `gadget_destroyed` and `gadget_expired`, 200% within 3 m; Trail of Wire hands over none (the control) |
+
+### C++ GUARD PROOF (planned, one, as the bundle ruling of 2026-11-25 allows)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmMinion.cpp`: a scrap trap's shot not multiplied (the `* (bIsScrapTrap ? ScrapShotMultiplier : 1.0f)` taken out) | `Cataclysm.WarVowsV5b1.` | `ADestroyedGadgetLeavesAScrapTrapThatFiresItsAttackOnceAtDouble` |
+
+**Dropped under that ruling:** a proof that `LifeSpanExpired` raises `gadget_expired` (the call taken out), which would
+fail `AGadgetWhoseLifeRunsOutRaisesGadgetExpiredAndLeavesAScrapTrap`.
+
+---
+
 ## 2026-11-25 — The War vow options' fifth slice, first half (V5a): Creeping Mines, Where They Fall, Crossfire and Lightning Rod
 
 **Affects:**

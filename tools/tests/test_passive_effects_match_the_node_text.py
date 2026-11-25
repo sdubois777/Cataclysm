@@ -732,7 +732,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 583 THE SAME DAY: five rows of V5a (`tools/reapply_war_vows_v5a_workbook.py`): Lightning Rod, Creeping
 #: Mines' two, Where They Fall and Crossfire.
-AUTHORED_ROWS = 583
+#:
+#: AND TO 585 THE SAME DAY: Scrap Mines' two rows, on `gadget_destroyed` and `gadget_expired`
+#: (`tools/reapply_war_vows_v5b1_workbook.py`, V5b1).
+AUTHORED_ROWS = 585
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1297,7 +1300,8 @@ AUTHORED_NODES = 322
 #: `AUTHORED_NODES` too.
 #: AND TO 68 THE SAME DAY: V5a -- Lightning Rod, Creeping Mines, Where They Fall and Crossfire (Saboteur). Each
 #: capstone already had a row.
-AUTHORED_OPTIONS = 68
+#: AND TO 69 THE SAME DAY: V5b1 -- Scrap Mines (Saboteur). Its capstone already had a row.
+AUTHORED_OPTIONS = 69
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1503,11 +1507,16 @@ def test_no_node_grants_the_same_stat_twice(effects):
         # AND THE REQUIRED TAGS, since the Saboteur's rows of 2026-11-25: Bag of
         # Tricks lowers what traps reserve and what gadgets reserve, one stat on
         # `Type.Trap` and on `Type.Gadget`. The generator's key has them too.
+        #
+        # AND THE ACTION AND ITS EVENT, since Scrap Mines (V5b1, 2026-11-25):
+        # one action on `gadget_destroyed` and the same on `gadget_expired`,
+        # two rows with no stat that differ only in the event they act on.
         key = (row["Node"], row["Stat"], row["Condition"],
                row["ConditionValue"], row["Scale"], row["ScaleStep"],
                row.get("Option", ""), row.get("MinPoints", ""),
                row.get("Condition2", ""), row.get("ConditionValue2", ""),
-               row.get("RequiredTags", ""))
+               row.get("RequiredTags", ""), row.get("Action", ""),
+               row.get("ActionEvent", ""))
         seen[key] = seen.get(key, 0) + 1
 
     twice = sorted(key for key, count in seen.items() if count > 1)
@@ -2921,6 +2930,8 @@ VALUE_IN_WORDS = {
     ("Saboteur_capstone_25", "blow_to_device_chance_per_device"): ("a 3% chance for each trap and gadget", 3.0),
     ("Saboteur_capstone_200", "option 1", ""): ("lasts 4 seconds", 4.0),
     ("Saboteur_capstone_200", "option 3", ""): ("at 10% of its damage", 10.0),
+    # SCRAP MINES (V5b1, 2026-11-25): two action rows, "at double damage", which is 200%.
+    ("Saboteur_capstone_50", "option 2", ""): ("at double damage", 200.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

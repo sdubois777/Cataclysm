@@ -1317,6 +1317,34 @@ public:
 	 */
 	bool CreepTowardNearestEnemy(float Seconds);
 
+	/**
+	 * Scrap Mines, the War vow options' fifth slice, second half, first part, V5b1, 2026-11-25: "When one of your gadgets
+	 * expires or is destroyed, it leaves a trap where it stood. The trap fires that gadget's attack once, at double
+	 * damage, at the first enemy to come within 3 metres." THE SCRAP TRAP IS A COPY OF THE GONE GADGET'S OWN TYPE, made
+	 * inert and marked a trap (`Type.Trap` added to its tags), at half size, reserving nothing (ruled 2026-11-25). So
+	 * every rule that counts traps counts it: Creeping Mines moves it, and Counterfire and Lightning Rod can set it off.
+	 * It arms after the ordinary arming time, fires once at `ShotMultiplier` of its gadget's attack (a War machine's own
+	 * blow, or a skill gadget's slot skill) at the nearest enemy within `TriggerRadiusCm`, and is used up. It lasts the
+	 * ordinary 20 s. Generic: it keys on what the gone gadget is (`IsGadget`), never on a machine by name.
+	 */
+	static ACataclysmMinion* LeaveScrapTrapOf(const ACataclysmMinion* Gone, float ShotMultiplier, float TriggerRadiusCm);
+
+	/** Whether this machine is a scrap trap. See `LeaveScrapTrapOf`. */
+	bool IsScrapTrap() const { return bIsScrapTrap; }
+
+	/** A scrap trap's step: armed at its time, it fires at the first enemy within its radius and is used up. */
+	bool StepScrapTrap();
+
+	/** A scrap trap's one shot at `Enemy`, at its multiplier, and then it is used up. Returns whether it fired. */
+	bool FireScrapTrapAt(AActor* Enemy);
+
+	bool bIsScrapTrap = false;
+	float ScrapShotMultiplier = 1.0f;
+	float ScrapTriggerRadiusCm = 0.0f;
+	float ScrapArmsAtAgeSeconds = 0.0f;
+	/** Held while a scrap trap's one shot is made, the only time its `AttackTarget` deals anything. */
+	bool bScrapTrapFiring = false;
+
 	/** Every living skill trap `Player` commands, the oldest first by `SpawnOrder`. */
 	static TArray<ACataclysmMinion*> SkillTrapsOf(const AActor* Player);
 

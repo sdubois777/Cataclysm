@@ -671,6 +671,13 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 		Gadget->CreepTowardNearestEnemy(DeviceStepSeconds);
 	}
 
+	// A SCRAP TRAP'S STEP, AND NOTHING OF A GADGET'S (V5b1): it is a trap now.
+	if (Gadget && Gadget->IsScrapTrap())
+	{
+		Gadget->StepScrapTrap();
+		return;
+	}
+
 	// A SKILL TRAP'S STEP, BEFORE THE REFUSAL OF WHAT IS NOT A GADGET, because a trap is not one (ruled 2026-10-07) and
 	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
 	if (Gadget && Gadget->IsSkillTrap())
@@ -1179,7 +1186,10 @@ bool ACataclysmMinion::CastPlayersSkillFromHere(bool bEvenForADeadPlayer, AActor
 	// player's death and cast nothing while it lasts; THE ONE CAST THE DEATH ITSELF MAKES is the exception (ruled
 	// 2026-10-19, C2), and is let through only that refusal. See `FireForItsSummonersDeath`.
 	AActor* const Player = Summoner.Get();
-	if (!IsSkillGadget() || UCataclysmSkillEffects::IsDead(this) || UCataclysmSkillEffects::CannotAct(this)
+	// OR A SKILL GADGET'S SCRAP TRAP, which is a trap now and keeps the slot for its one cast (V5b1).
+	const bool bScrapOfASkillGadget = bIsScrapTrap && SkillGadgetSlot != ECataclysmAbilitySlot::None;
+	if (!(IsSkillGadget() || bScrapOfASkillGadget) || UCataclysmSkillEffects::IsDead(this)
+		|| UCataclysmSkillEffects::CannotAct(this)
 		|| !IsValid(Player) || (!bEvenForADeadPlayer && UCataclysmSkillEffects::IsDead(Player)))
 	{
 		return false;
@@ -1635,6 +1645,11 @@ void ACataclysmMinion::AttackOnce()
 
 void ACataclysmMinion::AttackTarget(AActor* Target)
 {
+	// A SCRAP TRAP DEALS NOTHING BUT ITS ONE SHOT (V5b1): its controller would otherwise swing it as the gadget it was.
+	if (bIsScrapTrap && !bScrapTrapFiring)
+	{
+		return;
+	}
 	if (!IsValid(Summoner) || !IsValid(Target))
 	{
 		return;
@@ -1707,7 +1722,8 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// A WARHOUND'S BLOW IS A SHARE OF ITS SUMMONER'S ARMOUR, IN PLACE OF ITS TYPE'S OWN DAMAGE. Warlord's Will's
 	// six-piece, ruled 2026-10-18 (Q5): "deals damage based on your armor", 20% a hit. Everything below that raises a
 	// minion's blow raises it as it raises any other.
-	const float OwnBlow = bIsWarhound ? WarhoundBlow() : OwnDamagePerHit;
+	// AND A SCRAP TRAP'S SHOT AT ITS MULTIPLIER, "at double damage" (V5b1).
+	const float OwnBlow = (bIsWarhound ? WarhoundBlow() : OwnDamagePerHit) * (bIsScrapTrap ? ScrapShotMultiplier : 1.0f);
 	if (OwnBlow > 0.0f)
 	{
 		// AND THE SUMMONER'S INCREASED MINION DAMAGE ON TOP, WHICH IS NEW. Issue
@@ -1979,7 +1995,82 @@ void ACataclysmMinion::LifeSpanExpired()
 	{
 		return;
 	}
+	// A GADGET WHOSE LIFE SPAN RAN OUT IS ANNOUNCED, as `gadget_expired`, with its tags, naming it, before it goes. Ruled
+	// in the vow survey of 2026-11-25 ("a gadget expiring raises an event") and built for Scrap Mines (V5b1). A gadget
+	// only (`IsGadget`): a trap's expiry still raises nothing.
+	if (IsGadget())
+	{
+		if (UCataclysmAbilitySystemComponent* Theirs =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+		{
+			const FGameplayTagContainer GadgetTags = TypeTags;
+			Theirs->ActOnEvent(FName(TEXT("gadget_expired")), &GadgetTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
+		}
+	}
 	Super::LifeSpanExpired();
+}
+
+ACataclysmMinion* ACataclysmMinion::LeaveScrapTrapOf(const ACataclysmMinion* Gone, float ShotMultiplier,
+													 float TriggerRadiusCm)
+{
+	AActor* const Player = IsValid(Gone) ? Gone->Summoner.Get() : nullptr;
+	if (!Player || !Gone->IsGadget() || Gone->IsScrapTrap() || ShotMultiplier <= 0.0f || TriggerRadiusCm <= 0.0f)
+	{
+		return nullptr;
+	}
+	ACataclysmMinion* Scrap =
+		Spawn(Player, Gone->GetActorLocation(), SkillTrapSeconds, /*bBurns=*/false, Gone->TypeName);
+	if (!Scrap)
+	{
+		return nullptr;
+	}
+	// A TRAP NOW, AND INERT AS A GADGET. The slot is kept, so a skill gadget's scrap casts its slot's skill.
+	const FGameplayTag Trap = TagOfATrap();
+	if (Trap.IsValid())
+	{
+		Scrap->TypeTags.AddTag(Trap);
+	}
+	Scrap->bIsScrapTrap = true;
+	Scrap->SkillGadgetSlot = Gone->SkillGadgetSlot;
+	Scrap->ScrapShotMultiplier = ShotMultiplier;
+	Scrap->ScrapTriggerRadiusCm = TriggerRadiusCm;
+	Scrap->ScrapArmsAtAgeSeconds = Scrap->GetGameTimeSinceCreation()
+		+ SkillTrapArmingSecondsFor(Player, Scrap->TypeTags, Scrap);
+	Scrap->SetActorScale3D(Gone->GetActorScale3D() * 0.5f);
+	return Scrap;
+}
+
+bool ACataclysmMinion::StepScrapTrap()
+{
+	if (!bIsScrapTrap || IsActorBeingDestroyed() || UCataclysmSkillEffects::IsDead(this)
+		|| GetGameTimeSinceCreation() < ScrapArmsAtAgeSeconds - SkillGadgetClockAllowanceSeconds)
+	{
+		return false;
+	}
+	const TArray<AActor*> Within = HostilesWithin(ScrapTriggerRadiusCm);
+	return !Within.IsEmpty() && FireScrapTrapAt(Within[0]);
+}
+
+bool ACataclysmMinion::FireScrapTrapAt(AActor* Enemy)
+{
+	if (!bIsScrapTrap || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || IsActorBeingDestroyed())
+	{
+		return false;
+	}
+	bool bFired = false;
+	if (SkillGadgetSlot != ECataclysmAbilitySlot::None)
+	{
+		bFired = CastPlayersSkillFromHere(/*bEvenForADeadPlayer=*/false, Enemy, ScrapShotMultiplier);
+	}
+	else
+	{
+		TGuardValue<bool> Firing(bScrapTrapFiring, true);
+		AttackTarget(Enemy);
+		bFired = true;
+	}
+	// USED UP, as a skill trap is: destroyed, with no death, so no `gadget_destroyed` and no second scrap.
+	Destroy();
+	return bFired;
 }
 
 void ACataclysmMinion::HandleDeath()

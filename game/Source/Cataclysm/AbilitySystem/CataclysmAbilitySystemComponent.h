@@ -1848,6 +1848,13 @@ public:
 	 */
 	static const TCHAR* CrossfireAction;
 
+	/**
+	 * Scrap Mines (V5b1, 2026-11-25): on `gadget_destroyed` and `gadget_expired`, the gone gadget leaves a scrap trap
+	 * (`ACataclysmMinion::LeaveScrapTrapOf`). The row's value is the shot's per cent (200, "double damage") and its Event
+	 * Value the trigger radius in metres (3).
+	 */
+	static const TCHAR* ScrapMineAction;
+
 	/** Crossfire's "up to 15 of them". */
 	static constexpr int32 CrossfireMostDevices = 15;
 

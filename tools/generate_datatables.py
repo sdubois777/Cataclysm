@@ -7470,6 +7470,8 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     "device_placed",
     # V4a, 2026-11-25. `trap_armed` carries the wearer's own trap.
     "trap_armed",
+    # V5b1, 2026-11-25. `gadget_expired` carries the wearer's own gadget.
+    "gadget_expired",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7674,6 +7676,18 @@ CROSSFIRE_ACTION = "crossfire"
 CROSSFIRE_EVENTS = ("hit_dealt",)
 MAX_CROSSFIRE_METRES = 30.0
 MAX_CROSSFIRE_PERCENT = 100.0
+
+#: The action that LEAVES A SCRAP TRAP where a gadget that was destroyed or
+#: expired stood: a copy of the gadget marked a trap, firing the gadget's attack
+#: once at the row's value in per cent at the first enemy within its Event Value
+#: in metres. The War vow options' fifth slice, second half, first part, V5b1,
+#: 2026-11-25: Scrap Mines. ON `gadget_destroyed` AND `gadget_expired` ONLY,
+#: one row on each. `UCataclysmAbilitySystemComponent::ScrapMineAction` holds the
+#: name.
+SCRAP_MINE_ACTION = "scrap_mine"
+SCRAP_MINE_EVENTS = ("gadget_destroyed", "gadget_expired")
+MAX_SCRAP_MINE_METRES = 10.0
+MAX_SCRAP_MINE_PERCENT = 1000.0
 MAX_COUNTERFIRE_DEVICES_PER_ANSWER = 10.0
 MAX_COUNTERFIRE_PERCENT = 1000.0
 
@@ -7860,6 +7874,11 @@ ACTION_ONLY_EVENTS = (
     # slice, V4a, ruled 2026-11-25: Baited's taunt is a
     # `taunt_enemies_near_trap` row on it. Clockless.
     "trap_armed",
+    # A GADGET OF THE WEARER'S WHOSE LIFE SPAN RAN OUT, raised by
+    # `ACataclysmMinion::LifeSpanExpired` with the gadget's tags, naming it,
+    # before it goes. Ruled in the vow survey of 2026-11-25 ("a gadget expiring
+    # raises an event") and built for Scrap Mines, V5b1. Clockless.
+    "gadget_expired",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -8029,7 +8048,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         return
     if action in (TAUNT_NEAR_TRAP_ACTION, PLACE_LAST_TRAP_AGAIN_ACTION,
                   COUNTERFIRE_ACTION, COPY_LAST_TRAP_AT_KILL_ACTION,
-                  CROSSFIRE_ACTION):
+                  CROSSFIRE_ACTION, SCRAP_MINE_ACTION):
         _check_v4a_action(index, who, action, event, fraction_of, kind, raw,
                           headers)
         return
@@ -8504,7 +8523,9 @@ def _check_v4a_action(index: int, who: str, action: str, event: str,
               COUNTERFIRE_ACTION: COUNTERFIRE_EVENTS,
               # AND WHERE THEY FALL'S AND CROSSFIRE'S, V5a, the same day.
               COPY_LAST_TRAP_AT_KILL_ACTION: COPY_LAST_TRAP_AT_KILL_EVENTS,
-              CROSSFIRE_ACTION: CROSSFIRE_EVENTS}[action]
+              CROSSFIRE_ACTION: CROSSFIRE_EVENTS,
+              # AND SCRAP MINES', V5b1, the same day.
+              SCRAP_MINE_ACTION: SCRAP_MINE_EVENTS}[action]
     if event not in events:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts as {action} on the "
@@ -9069,6 +9090,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != COUNTERFIRE_ACTION \
                 and action != COPY_LAST_TRAP_AT_KILL_ACTION \
                 and action != CROSSFIRE_ACTION \
+                and action != SCRAP_MINE_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9432,6 +9454,14 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"{MAX_TAUNT_NEAR_TRAP_SECONDS:g}.")
     # WHERE THEY FALL'S VALUE IS THE COPY'S SECONDS, AND CROSSFIRE'S A SHARE OF
     # THE HIT, each above 0 and up to its bound. V5a, 2026-11-25.
+    # A SCRAP TRAP'S VALUE IS ITS SHOT'S PER CENT. V5b1, 2026-11-25.
+    if action == SCRAP_MINE_ACTION:
+        if not (0 < low <= MAX_SCRAP_MINE_PERCENT
+                and 0 < high <= MAX_SCRAP_MINE_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"firing at {low:g} to {high:g} per cent. It is above 0 and up "
+                f"to {MAX_SCRAP_MINE_PERCENT:g}.")
     if action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
         bound = (MAX_COPY_LAST_TRAP_AT_KILL_SECONDS
                  if action == COPY_LAST_TRAP_AT_KILL_ACTION
@@ -10153,6 +10183,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == SCRAP_MINE_ACTION:
+        # OR A SCRAP TRAP'S TRIGGER RADIUS, in metres, required. V5b1,
+        # 2026-11-25. See `SCRAP_MINE_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"and states no Event Value. It is the trigger radius in "
+                f"metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_SCRAP_MINE_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} leaves a scrap trap "
+                f"with a radius of {event_value:g} metres. It is above 0 and up "
+                f"to {MAX_SCRAP_MINE_METRES:g}.")
     elif action in (COPY_LAST_TRAP_AT_KILL_ACTION, CROSSFIRE_ACTION):
         # OR THE METRES FROM A DEVICE, required: Where They Fall's to the one
         # killed, Crossfire's to the enemy struck. V5a, 2026-11-25.

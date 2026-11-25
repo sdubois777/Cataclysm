@@ -582,3 +582,5 @@ Saboteur_capstone_100#2,Saboteur_capstone_100,trap_creep_metres_per_second,flat,
 Saboteur_capstone_100#3,Saboteur_capstone_100,trap_creep_reach_metres,flat,10.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_capstone_200#2,Saboteur_capstone_200,,,4.0,,,0.0,,0.0,1,-1.0,0,0,copy_last_trap_at_kill,kill,,0.0,0.0,0.0,0,,0.0,0.0,10.0,,0.0,0,0
 Saboteur_capstone_200#3,Saboteur_capstone_200,,,10.0,,,0.0,,0.0,3,-1.0,0,0,crossfire,hit_dealt,,0.0,0.0,0.0,0,,0.0,0.0,15.0,,0.0,0,0
+Saboteur_capstone_50#2,Saboteur_capstone_50,,,200.0,,,0.0,,0.0,2,-1.0,0,0,scrap_mine,gadget_destroyed,,0.0,0.0,0.0,0,,0.0,0.0,3.0,,0.0,0,0
+Saboteur_capstone_50#3,Saboteur_capstone_50,,,200.0,,,0.0,,0.0,2,-1.0,0,0,scrap_mine,gadget_expired,,0.0,0.0,0.0,0,,0.0,0.0,3.0,,0.0,0,0

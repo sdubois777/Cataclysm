@@ -93,6 +93,8 @@ CONSTANTS = {
     # AND WHERE THEY FALL AND CROSSFIRE, V5a, 2026-11-25.
     "CopyLastTrapAtKillAction": "copy_last_trap_at_kill",
     "CrossfireAction": "crossfire",
+    # AND SCRAP MINES, V5b1, 2026-11-25.
+    "ScrapMineAction": "scrap_mine",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -241,6 +243,11 @@ def test_the_generator_accepts_exactly_the_v5a_names_the_engine_has() -> None:
     """The War vow options' fifth slice, first half, V5a, 2026-11-25: Where They Fall and Crossfire."""
     assert gen.COPY_LAST_TRAP_AT_KILL_ACTION == engine_names()["CopyLastTrapAtKillAction"]
     assert gen.CROSSFIRE_ACTION == engine_names()["CrossfireAction"]
+
+
+def test_the_generator_accepts_exactly_the_scrap_mine_name_the_engine_has() -> None:
+    """The War vow options' fifth slice, second half, first part, V5b1, 2026-11-25: Scrap Mines."""
+    assert gen.SCRAP_MINE_ACTION == engine_names()["ScrapMineAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

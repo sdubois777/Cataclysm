@@ -5124,6 +5124,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::CopyLastTrapAtKillAction =
 	TEXT("copy_last_trap_at_kill");
 const TCHAR* UCataclysmAbilitySystemComponent::CrossfireAction =
 	TEXT("crossfire");
+const TCHAR* UCataclysmAbilitySystemComponent::ScrapMineAction =
+	TEXT("scrap_mine");
 const TCHAR* UCataclysmAbilitySystemComponent::BlowToDeviceChancePerDeviceStat =
 	TEXT("blow_to_device_chance_per_device");
 
@@ -6357,6 +6359,11 @@ void UCataclysmAbilitySystemComponent::SendBlowToDevice(ACataclysmMinion* Device
 	{
 		QueueSkillTrapSetOff(Device, /*bEvenForADeadPlayer=*/false);
 		DrainQueuedSkillTrapSetOffs();
+	}
+	// A SCRAP TRAP GOES OFF WITH ITS ONE SHOT, at the attacker (V5b1).
+	else if (Device->IsScrapTrap())
+	{
+		Device->FireScrapTrapAt(Attacker);
 	}
 	else if (Device->IsTrap() && !UCataclysmSkillEffects::CannotAct(Device))
 	{
@@ -7967,6 +7974,17 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				{
 					NoteTriggerFired(Action);
 				}
+			}
+			continue;
+		}
+		// SCRAP MINES, V5b1 (2026-11-25): on an event naming the gadget gone, a scrap trap where it stood.
+		if (Action.bScrapMine)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action)
+				&& ACataclysmMinion::LeaveScrapTrapOf(Cast<ACataclysmMinion>(EventTarget), Action.Percent / 100.0f,
+													  Action.EventValue * 100.0f))
+			{
+				NoteTriggerFired(Action);
 			}
 			continue;
 		}
@@ -10269,6 +10287,12 @@ void UCataclysmAbilitySystemComponent::DrainQueuedGadgetShotsAtTrapEnemies()
 		}
 		// A WAR MACHINE, a gadget or a trap, ANSWERS WITH ITS OWN ORDINARY BLOW AT THE ENEMY: Counterfire's answer (V4b,
 		// ruled 2026-11-25, Q8). Nothing else queues one. A skill gadget fires its shot, as every shot here did before.
+		// A SCRAP TRAP ANSWERS WITH ITS ONE SHOT AND IS USED UP (V5b1): "a trap goes off".
+		if (Shooter->IsScrapTrap())
+		{
+			Shooter->FireScrapTrapAt(Next.Enemy.Get());
+			continue;
+		}
 		if (!Shooter->IsSkillGadget())
 		{
 			AActor* Enemy = Next.Enemy.Get();

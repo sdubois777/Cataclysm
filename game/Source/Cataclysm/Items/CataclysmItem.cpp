@@ -1660,6 +1660,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bCrossfire = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CrossfireAction,
 						ESearchCase::IgnoreCase);
+					// AND SCRAP MINES'. V5b1, 2026-11-25.
+					Action.bScrapMine = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ScrapMineAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

@@ -5013,6 +5013,10 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bCrossfire = false;
 
+	/** Set, Scrap Mines' scrap trap (V5b1, 2026-11-25). See `ACataclysmMinion::LeaveScrapTrapOf`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bScrapMine = false;
+
 	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for
 	 * `Percent` of the amount its event carried, and then puts the wearer's
