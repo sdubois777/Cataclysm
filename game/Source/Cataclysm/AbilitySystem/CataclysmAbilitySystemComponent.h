@@ -113,6 +113,35 @@ struct FCataclysmGrantedImmunity
 	float UntilSeconds = 0.0f;
 };
 
+/** What an aura's share on a character changes. War's Blood and Iron, 2026-11-25. */
+enum class ECataclysmAuraShareKind : uint8
+{
+	/** Percent of armour removed, in the sum `ArmourRemovedPercentNow` reads. */
+	ArmourRemoved,
+	/** Percent slower the character moves. A slow: an actor immune to Slow ignores it. */
+	MovementReduced,
+	/** Percent faster the character moves. */
+	MovementRaised,
+};
+
+/**
+ * A share an aura holds on a character for as long as it keeps renewing it, as `FCataclysmGrantedImmunity` is held:
+ * renewed every pulse, lapsing two pulses after the character leaves the ring. War's Blood and Iron, the owner's
+ * ruling of 2026-11-25 and the coordinating session's of the same day (two pulses, no new linger).
+ */
+struct FCataclysmAuraShare
+{
+	ECataclysmAuraShareKind Kind = ECataclysmAuraShareKind::ArmourRemoved;
+
+	/** What holds it, so that one aura renews and takes back exactly its own. */
+	TWeakObjectPtr<const UObject> From;
+
+	float Percent = 0.0f;
+
+	/** World time it lapses at when nothing renews it. */
+	float UntilSeconds = 0.0f;
+};
+
 /**
  * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
  * the event's name. Issue #1821.
@@ -3112,6 +3141,34 @@ public:
 	 * naming `CrowdControl` covers every effect, as it does in a skill's row.
 	 */
 	bool HasGrantedImmunityTo(const FString& Effect) const;
+
+	/**
+	 * The shares auras hold on this character (`FCataclysmAuraShare`). Public so tests can count them. Lapsed entries
+	 * stay until the next `HoldAuraShare` or `PruneLapsedAuraShares`, so a character's speed is worked out once more
+	 * after its last share lapses (`HoldsAnyAuraShare`).
+	 */
+	TArray<FCataclysmAuraShare> AuraShares;
+
+	/** Hold `Percent` of `Kind` from `From` for `Seconds`, or renew it when `From` already holds that kind. */
+	void HoldAuraShare(ECataclysmAuraShareKind Kind, const UObject* From, float Percent, float Seconds);
+
+	/**
+	 * Take back every running share `From` holds: each LAPSES NOW and is pruned at the next refresh, so the
+	 * character's speed is worked out once more after it. @return how many were taken back.
+	 */
+	int32 ReleaseAuraSharesFrom(const UObject* From);
+
+	/**
+	 * The largest running share of `Kind`, 0 when none runs. THE LARGEST, NOT THE SUM: two auras of the same kind do
+	 * not stack, as a removal of armour takes the larger share (ruled 2026-09-24).
+	 */
+	float AuraSharePercentNow(ECataclysmAuraShareKind Kind) const;
+
+	/** Whether any share is held, running or lapsed and not yet pruned. */
+	bool HoldsAnyAuraShare() const { return AuraShares.Num() > 0; }
+
+	/** Drop the lapsed shares. */
+	void PruneLapsedAuraShares();
 
 	/**
 	 * End every wait above without summoning anything. This character's death

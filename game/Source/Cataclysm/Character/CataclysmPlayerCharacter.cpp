@@ -34,6 +34,7 @@
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -1730,8 +1731,30 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	const float FromAttribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute());
 
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+
+	// AN ACTOR IMMUNE TO SLOW IGNORES EVERY MOVEMENT REDUCTION, the coordinating session's ruling of 2026-11-25:
+	// Grave Shroud's, Fevered Blood's and Living Pyre's `Immune=Slow` until then blocked nothing, because nothing that
+	// slows asked the immunity. It takes the suppression branch below, which drops the reducing parts and keeps the
+	// earned ones, as a node saying "nothing may lower this character's speed" does.
+	const bool bImmuneToSlow = UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));
+	bSlowImmuneAtLastSpeedRefresh = bImmuneToSlow;
+
+	// AND WHAT AN AURA HOLDS ON IT: War's Blood and Iron raises an ally's movement 15% and slows an enemy's. Multiplied
+	// last, after everything else; a slow share is a reduction and an immunity to Slow drops it. 2026-11-25.
+	float AuraFactor = 1.0f;
+	if (Cataclysm)
+	{
+		Cataclysm->PruneLapsedAuraShares();
+		AuraFactor = 1.0f + Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementRaised) / 100.0f;
+		if (!bImmuneToSlow)
+		{
+			AuraFactor *= 1.0f - FMath::Clamp(Cataclysm->AuraSharePercentNow(ECataclysmAuraShareKind::MovementReduced),
+											  0.0f, 99.0f) / 100.0f;
+		}
+	}
+
 	// WHAT CRIPPLE LEAVES OF IT, as a creature's walk is multiplied. Issue #2273. AND WHAT WITHER LEAVES, multiplied
 	// with it as a separate slow. Issue #1722.
 	const float Crippled = UCataclysmSkillEffects::CrippleMultiplierOn(this)
@@ -1739,7 +1762,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	if (!Cataclysm)
 	{
-		ApplyMovementSpeed(FromAttribute * Crippled);
+		ApplyMovementSpeed(FromAttribute * (bImmuneToSlow ? 1.0f : Crippled));
 		return;
 	}
 
@@ -1762,9 +1785,9 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 		AbilitySystem->GetNumericAttribute(
 			UCataclysmCombatAttributeSet::
 				GetMovementSpeedReductionSuppressedAttribute()));
-	if (Suppressed <= 0.0f)
+	if (Suppressed <= 0.0f && !bImmuneToSlow)
 	{
-		ApplyMovementSpeed(Asked * Crippled);
+		ApplyMovementSpeed(Asked * Crippled * AuraFactor);
 		return;
 	}
 
@@ -1805,7 +1828,7 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 	{
 		// NO STAT LINE MEANS NOTHING TO DROP, so the answer above already is the
 		// speed. That is every character before its first refresh.
-		ApplyMovementSpeed(Asked);
+		ApplyMovementSpeed(Asked * AuraFactor);
 		return;
 	}
 
@@ -1834,7 +1857,9 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 				Earned, /*Target=*/nullptr,
 				Cataclysm->CurrentConditions())));
 
-	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f));
+	// THE TREES BASE'S ROW-BY-ROW ANSWER (issue #2912) TIMES THE AURA'S SHARE (`AuraFactor`, the damage-type auras),
+	// as the other two paths above multiply theirs. Resolved in bundle 1, 2026-11-25.
+	ApplyMovementSpeed(FMath::Max(Breakdown.Final, 0.0f) * AuraFactor);
 }
 
 bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
@@ -1844,6 +1869,15 @@ bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
 	if (!Cataclysm)
 	{
 		return false;
+	}
+
+	// AN AURA'S SHARE AND AN IMMUNITY TO SLOW LAPSE WITH NO EVENT, so while either is held -- or the immunity was held
+	// at the last refresh, which has to be undone once -- the speed is worked out again on every regeneration step.
+	// 2026-11-25.
+	if (Cataclysm->HoldsAnyAuraShare() || bSlowImmuneAtLastSpeedRefresh
+		|| UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow")))
+	{
+		return true;
 	}
 
 	// BOTH STATS `RefreshMovementSpeed` ASKS FOR, because a row on either moves

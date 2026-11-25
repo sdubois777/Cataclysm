@@ -324,6 +324,21 @@ SHAPE_RIDERS = {
                            "grants allies standing in it, to damage of every "
                            "element (ruled 2026-10-25, Q-P2)",
 
+    # THE DAMAGE-TYPE AURAS MADE DIFFERENT FROM ONE ANOTHER, the owner's rulings of 2026-11-25: "make it 10% more and
+    # I'm good with it" (Death), "Go with A for both" (Demonic, War), and "I think we should avoid making all of the
+    # aura's kinda samey".
+    "AllyMoreDamage": "percentage points of MORE damage, a separate multiplier, an aura grants its caster and every "
+                      "ally standing in it, minions included (Death's Pall of Ending)",
+    "BurnPassesOnDeath": "metres: a burning enemy that dies inside an aura passes its strongest burn, with the seconds "
+                         "it had left, to the nearest other enemy within this many metres, as the caster's burn "
+                         "(Demonic's Conflagration)",
+    "EnemyArmourRemoved": "percent of armour an aura removes from every enemy inside it, held two pulses (War)",
+    "EnemyMovementSpeedReduced": "percent slower every enemy inside an aura moves, movement only, held two pulses "
+                                 "(War)",
+    "AllyMovementSpeed": "percent faster an aura's caster and every ally inside it move, held two pulses (War)",
+    "AllyImmune": "what every ally inside an aura cannot be subjected to, granted two pulses at a time, in Immune's "
+                  "words (War: Slow)",
+
     # THE OTHER HALF OF THE SAME EVENT `ScalingSource=HitTaken` READS. Added
     # 2026-09-02 for Living Pyre, "returns health equal to 25% of the damage
     # that hit dealt", which had no key. Of what reached health, not of what
@@ -509,6 +524,7 @@ TEXT_PARAM_VALUES = {
     "SpreadWhen": SPREAD_CONDITIONS,
     "Requires": REQUIREMENTS,
     "Immune": IMMUNITIES,
+    "AllyImmune": IMMUNITIES,
     "HoldForbids": HOLD_FORBIDS,
     "OnDeath": ON_DEATHS,
     "ChargeBreaksOn": CHARGE_BREAKS,

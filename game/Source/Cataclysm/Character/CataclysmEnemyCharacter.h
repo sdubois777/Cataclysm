@@ -1576,6 +1576,15 @@ public:
 	float AilmentWalkMultiplier() const;
 
 	/**
+	 * What its walk is multiplied by: `WalkSpeedMultiplier` and `AilmentWalkMultiplier`, and what an aura holds on it
+	 * (War's Blood and Iron: an enemy's movement 15% slower, an ally's 15% faster). AN ACTOR IMMUNE TO SLOW IGNORES EVERY
+	 * MOVEMENT REDUCTION, the coordinating session's ruling of 2026-11-25: Cripple, Ground Down, an ailment's slows and
+	 * an aura's slow are dropped, and a commander's pace and the Vengeful Wraiths rule's, which are not slows, are kept.
+	 * The one place both walk writers (this class's `RefreshWalkSpeed` and the Brute's) ask.
+	 */
+	float WalkSpeedMultiplierWithSlows() const;
+
+	/**
 	 * Ground Down, the Ravager's `Ravager_capstone_100` option 1. Issue #1515:
 	 * "Enemies within 4 metres of you have 15% reduced Movement Speed and 15%
 	 * reduced Attack Speed." It names BOTH stats, so it is a factor of

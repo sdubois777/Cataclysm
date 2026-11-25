@@ -1135,6 +1135,12 @@ private:
 	int32 UnannouncedSpeedRefreshCount = 0;
 
 	/**
+	 * Whether the last `RefreshMovementSpeed` found this character immune to Slow, so the speed is worked out
+	 * once more after the immunity ends, which no event announces. 2026-11-25.
+	 */
+	bool bSlowImmuneAtLastSpeedRefresh = false;
+
+	/**
 	 * Recomputes the stat line and refills the ability slots after a change
 	 * to what is worn.
 	 *

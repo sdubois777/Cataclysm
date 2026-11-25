@@ -198,6 +198,139 @@ the others are further tests in the same group that read the same line, which th
 
 ---
 
+## 2026-11-25 — The three damage-type auras each help their side differently: Pall of Ending gives 10% more damage to you, your minions and allies; Conflagration passes a dying enemy's burn on; Blood and Iron is built, and an immunity to Slow now works
+
+**Nothing here has run in Unreal.** The owner's rulings of 2026-11-25, verbatim: "make it 10% more and I'm good with
+it" (Death's aura), and for Demonic's and War's, after the coordinating session proposed options, "I like those
+recommendations. Go with A for both"; with the reason for all three, "I think we should avoid making all of the
+aura's kinda samey". The coordinating session ruled the five questions this raised on the same day; each is named
+below where it applies.
+
+| Aura | Until today | From today |
+| :-- | :-- | :-- |
+| Pall of Ending (Death) | Allies within it deal 8% increased damage; the caster gets nothing | You, your minions and your allies within it deal 10% **more** damage, a separate multiplier. Enemies' 15% less damage and its 5 s linger unchanged |
+| Conflagration (Demonic) | Allies within it deal 8% increased damage | When a burning enemy dies within it, its burn passes to the nearest other enemy within 4 m, as the caster's burn, with the seconds it had left. Its ring damage, burning and 15% Shred unchanged |
+| Blood and Iron (War) | No shape, so it did nothing (granted the placeholder) | Built on the Aura shape: 10 m; enemies within lose 10% armour and 15% movement speed; you and your allies within cannot be slowed and move 15% faster; drains the Aura slot's 20 mana a second |
+
+### What was built
+
+- **Pall of Ending: a new key, `AllyMoreDamage=10`**, not a new meaning for `AllyIncreasedDamage`, which five auras
+  keep (Exposing Light, Miasma, Undertow, Unreason, Gnawing Want: 8 increased, allies only). `HelpAlliesInside` gives
+  a More modifier, source `SkillBuff`, to every ally inside -- a minion is an ally, sharing its summoner's team -- and
+  **to the caster** (the coordinating session's ruling: the owner's "you" includes the caster). The aura effect and
+  buff potency rows raise it as they raise the increase (ruled).
+- **The 5 s linger was already built**: "15% less damage" is a Weaken of 15, refreshed every pulse, whose own duration
+  on the Status Effects sheet is 5 s, so an enemy that walks out keeps it for 5 s. Nothing was built for it; a test
+  shows it holds.
+- **Conflagration: a new key, `BurnPassesOnDeath=4`.** While the aura runs it listens to
+  `UCataclysmCombatEvents::OnDeath`. A victim hostile to the caster (by `UCataclysmTeams::AttitudeBetween`, since the
+  hostility test refuses the dead) that fell within the ring and carried a burn passes it, by
+  `UCataclysmSkillEffects::ApplySpreadCopy`, to the nearest other living enemy within 4 m of the body, credited to the
+  caster. **Any burn, the strongest** (ruled): an enemy carries one application of an ailment, the strongest
+  (`RunningAilmentOn`). The receiver takes it by the ordinary rule for burns. The 4 m is raised by the aura effect row.
+  A burn already passes at a death only for a row that says so (`UCataclysmContagion::SpreadFromTheDying`, Disease by
+  itself), so this repeats nothing.
+- **Blood and Iron: four new keys** -- `EnemyArmourRemoved=10`, `EnemyMovementSpeedReduced=15`, `AllyMovementSpeed=15`,
+  `AllyImmune=Slow` -- with `Immune=Slow` for the caster. They are held as **aura shares**, a new list on the ability
+  system component (`FCataclysmAuraShare`, `HoldAuraShare`), renewed every pulse and lapsing **two pulses after a
+  character leaves** (ruled: "two pulses after leaving (2 s), no new linger"). The armour share joins the sum damage
+  reads (`ArmourRemovedPercentNow`); two auras give the larger share, not the sum, as an armour removal does. The
+  slow is **movement only** (Cripple also slows attacks, which the row does not say), in
+  `ACataclysmEnemyCharacter::WalkSpeedMultiplierWithSlows`. The haste is multiplied into the player's speed, a
+  creature's walk and a minion's walk.
+- **AN IMMUNITY TO SLOW NOW WORKS EVERYWHERE** (the coordinating session's ruling of 2026-11-25). Until today
+  `Immune=Slow` blocked nothing: no code that slows asked the immunity. Now an actor immune to Slow ignores every
+  movement reduction: the player takes the branch that already drops reductions for "nothing may lower this
+  character's speed" (Cripple, Wither, every reducing part of the speed line and an aura's slow), keeping the
+  bonuses; a creature drops Cripple, Ground Down, its ailments' slows and an aura's slow, keeping a commander's and the
+  Vengeful Wraiths rule's pace. **THREE ROWS CHANGE IN PLAY**, because they always stated it: **Grave Shroud** (Death
+  dagger, `Immune=Slow, Stun`), **Fevered Blood** (Pestilence fist, `Immune=Slow`) and **Living Pyre** (Demonic fist
+  Ultimate, `Immune=Stun, Slow, Displacement`). A player's speed is now worked out again on every regeneration step
+  while an aura share or an immunity to Slow is held, and once after either ends.
+- **Judgements of this change, labelled as such:** the rows' Tags are left as they were (Conflagration and Blood and
+  Iron still carry `Stat.Offense.Global`), to keep the change to what the owner ruled; War's ally shares lapse two
+  pulses after leaving as its enemy shares do (the ruling named the enemies); `AllyImmune` grants every ally inside
+  whatever the caster wears, where the older stat-gated sharing grants only for a caster wearing
+  `aura_shares_immunities_with_allies`.
+
+### Files
+
+- `CataclysmSkillShape.h/.cpp` (the six keys, `AllyImmune` read as text), `CataclysmSkillTemplates.h/.cpp` (the aura),
+  `CataclysmAbilitySystemComponent.h/.cpp` (aura shares), `CataclysmPlayerCharacter.h/.cpp`,
+  `CataclysmEnemyCharacter.h/.cpp`, `CataclysmBruteCharacter.cpp`, `CataclysmMinion.cpp` (speeds),
+  `CataclysmSkillEffects.h`, `CataclysmSkillTemplate.h`, `CataclysmTargeting.h` (comments made true).
+- `docs/All_Things_Cataclysm.xlsx`, Weapon Skills, seven cells, by `tools/reapply_damage_type_auras_workbook_edit.py`
+  (refuses unless each cell holds its value before or after, and checks no other cell moved); `game/Data/WeaponSkills.csv`
+  regenerated, three rows; `tools/generate_datatables.py` accepts the six keys.
+- `docs/Cataclysm_GDD_v2.md`: the two table lines and a paragraph on the three auras and Slow immunity.
+
+### Tests
+
+- **Unreal, new, `Cataclysm.DamageTypeAuras.`, six**, each with a control:
+  `PallOfEndingGivesItsCasterAndAMinionInsideTenPercentMoreAndOneOutsideNothing`,
+  `AnEnemyLeavingPallOfEndingKeepsItsWeakenForTheFiveSecondsItLasts`,
+  `ABurningEnemyDyingInConflagrationPassesItsBurnToTheNearestOtherWithinFourMetres`,
+  `BloodAndIronTakesArmourAndSpeedFromEnemiesInsideAndNotOutside`,
+  `BloodAndIronMakesItsCasterAndAMinionInsideFasterAndUnslowable`,
+  `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` (the control for the three rows that change in
+  play: a granted immunity to Slow answers through the same `IsImmuneTo` a running row's `Immune=Slow` does).
+- **Unreal, changed:** `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates` counts thirteen Aura rows,
+  Blood and Iron among them.
+- **Python, changed:** `test_an_aura_deals_damage_only_where_its_row_states_it.py` (Blood and Iron listed;
+  Conflagration's `BurnPassesOnDeath=4` and no `AllyIncreasedDamage`). `test_stalker_kit_shape_keys.py` caught
+  `AllyImmune` missing from the C++ `TextKeys`, which would have read "Slow" as nought.
+
+**MERGE OBLIGATION:** `feat/death-skills-2885` carries the three old rows in its copy of the workbook. Whichever
+lands second re-applies the other's cells; for this change that is `tools/reapply_damage_type_auras_workbook_edit.py`.
+
+### Registered, 2026-11-25: for BUNDLE 1, with the forge window
+
+**Nothing here has run in Unreal.** The owner asked on 2026-11-25 to bundle windows to save the build machine's time,
+and the coordinating session put this branch in BUNDLE 1 with the forge window: one branch, one window and one pull
+request, assembled by the forge session from `feat/damage-type-auras` at the commit that carries this section. The
+window's results for the auras are written there, into this entry, by the forge session (the coordinating session's
+ruling: one branch, one writer).
+
+- **Base:** counted from window rifts-w1's `rifts_suite_engine_b80da905.log` (5520 performed). Development `db7427d7a`
+  adds two Rift tests to it, and this branch six, all in `Cataclysm.DamageTypeAuras.`, none removed: 5528. **The bundle
+  is made after the trees base merges, so every count below is taken again from that window's whole-suite log**;
+  `Creation.` and `Player.` are groups it also changes.
+- **The build**, then **the editor step**: `DT_WeaponSkills` only (`python tools/run_editor_python.py
+  tools/generate_datatable_assets.py`), since three rows of `WeaponSkills.csv` changed. Until it runs,
+  `tools/tests/test_datatable_assets_are_current.py` fails, which is the one Python failure below. No save record
+  changes.
+- **The groups alone**, each with a trailing dot, 32 groups and 632 tests, each predicted all succeeded and 0 failed:
+  `DamageTypeAuras.` 6 (new), `AuraDamage.` 4 (the Aura row count, 12 to 13), `AuraEffect.` 7, `AuraImmunity.` 5,
+  `BuffPotency.` 6, `GenericBuffs.` 3, `AllyBuffsRefused.` 5, `SkillShape.` 10 (row parsing), `SkillNumbers.` 4,
+  `WeaponSlots.` 17 (rows that had no shape), `Creation.` 17 (rows that had no shape), `Teams.` 6, `Player.` 20 (the
+  player's speed), `GroundDown.` 3 (a creature's walk), `Brute.` 23 (the Brute's walk), `Imp.` 6, `Hellhound.` 11,
+  `Gatekeeper.` 15, `Sentinel.` 6, `Succubus.` 10, `Warden.` 20, `Enemy.` 19, `Command.` 31 (a commander's pace),
+  `MinionFollowSpeed.` 11 (a minion's walk), `Withering.` 3 (Wither), `ClickToMove.` 2, `RenderingBlows.` 3 (armour
+  removed), `ImmuneAfterFifteenSeconds.` 8 (immunities), `CrowdControlCeiling.` 5 (immunities), `SufferingAuraImmunity.`
+  3 (immunities), `Traps.` 60 (armour removed), `Skills.` 283 (the aura template; the largest, so last).
+- **The whole suite**: the base's total + 6, every test succeeding; skipped halves and saves as the base log; none of
+  the six writes a save.
+- **ONE C++ guard proof**, the bundle's limit of one a branch. **AW1**: in
+  `ACataclysmPlayerCharacter::RefreshMovementSpeed`, `const bool bImmuneToSlow =
+  UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));` becomes `const bool bImmuneToSlow = false &&
+  UCataclysmSkillTemplate::IsImmuneTo(this, TEXT("Slow"));`, `test_prefix` `Cataclysm.DamageTypeAuras.`, predicted to
+  fail `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest` and nothing else. Kept as the most central rule: an
+  immunity to Slow working changes play beyond the three auras, for Grave Shroud, Fevered Blood and Living Pyre and for
+  every player's speed.
+- **Dropped, by the bundle's limit:** AD1 (Pall of Ending's More bucket made Increased; it would fail
+  `PallOfEndingGivesItsCasterAndAMinionInsideTenPercentMoreAndOneOutsideNothing`) and AC1 (the burn copy never applied;
+  it would fail `ABurningEnemyDyingInConflagrationPassesItsBurnToTheNearestOtherWithinFourMetres`). Each guards one
+  figure inside one aura, and each keeps its own new test with a control.
+- **Python, run on `6375111e0`**, which this head differs from only in `docs/DECISIONS.md`, with `python -u -m pytest
+  --junit-xml=<a file outside the repository>`: `1 failed, 8608 passed, 10 skipped in 533.01s (0:08:53)`; the JUnit file
+  agrees, 8,619 tests, 1 failure, 0 errors, 10 skipped. **The one failure is the expected one**:
+  `test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+  because `WeaponSkills.csv` changed and its asset is rebuilt only by the window's editor step. (On `4f72f30f8` it was 4
+  failed; the other three were tests this change moved, corrected in `6375111e0`.) `python -m ruff check .`: `All checks
+  passed!`.
+
+---
+
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it
 
 **Tools only; no Unreal build.** Branch `fix/prove-guard-restore-retry`, at the coordinating session's brief of
