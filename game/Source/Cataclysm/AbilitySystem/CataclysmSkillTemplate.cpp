@@ -9,6 +9,8 @@
 #include "AbilitySystem/CataclysmChorus.h"
 // For announcing a skill once it has been paid for. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+// For the nails a flying shot drives into what it lands on. Issue #2885, the Death Crossbow draft's C1.
+#include "AbilitySystem/CataclysmCoffinNails.h"
 // For the health cost a character adds to every skill. Issue #970.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For marking a cursed creature so its curse passes on when it dies.
@@ -1575,6 +1577,43 @@ int32 UCataclysmSkillTemplate::NoteBlowLanded(AActor* Attacker,
 		}
 	}
 
+	return Told;
+}
+
+int32 UCataclysmSkillTemplate::NoteCriticalStrikeLanded(AActor* Striker, AActor* Struck, const UGameplayAbility* BySkill)
+{
+	const UAbilitySystemComponent* AbilitySystem = UCataclysmTargeting::AbilitySystemOf(Striker);
+	if (!AbilitySystem)
+	{
+		return 0;
+	}
+
+	// THE RUNNING BUFFS STATING `StrikesOnCritical`, GATHERED BEFORE ANY IS TOLD, because a buff told strikes, and a blow
+	// can change what its striker holds; the list walked is then a copy, not the ability system's own. The shape of
+	// `NoteBlowLanded` above otherwise: a buff that lasts is an active ability for as long as it lasts.
+	TArray<UCataclysmSelfBuffSkill*> Listening;
+	for (const FGameplayAbilitySpec& Spec : AbilitySystem->GetActivatableAbilities())
+	{
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+		UCataclysmSelfBuffSkill* Buff = Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance());
+		if (Buff && Buff->Params.bStrikesOnCritical)
+		{
+			Listening.Add(Buff);
+		}
+	}
+
+	int32 Told = 0;
+	for (UCataclysmSelfBuffSkill* Buff : Listening)
+	{
+		if (IsValid(Buff))
+		{
+			Buff->CriticalStrikeLanded(Struck, BySkill);
+			++Told;
+		}
+	}
 	return Told;
 }
 
@@ -3425,6 +3464,17 @@ bool UCataclysmSkillTemplate::LayWhatALandedShotCarries(AActor* Firer, AActor* T
 	// and `SwingOnce` the second once the blows are dealt, so a Shred never lowers the resistance its own blow met.
 	const bool bPinned = LayTheLandedBlowsHolds(Firer, Target, Dealt);
 	ApplyNamedEffectsTo(Target);
+
+	// AND A NAIL, WHEN THE ROW DRIVES ONE. Issue #2885, the Death Crossbow draft's C1, slice DS5: the Crossbow's Coffin
+	// Nail, "the nail stays in: for every nail an enemy carries, your critical strike chance against it is 5% higher, up
+	// to 4 nails, and they stay until 4 seconds pass without a new one". Last, after the blow it rode in on: the shot
+	// that drives a nail was settled before it, so its own chance had none of it. In the firer's name, whose later blows
+	// it raises. The row's `EffectDuration` is the nails' hold; nothing for a row stating no `CritChanceAgainst`.
+	if (Params.CritChanceAgainst > 0.0f)
+	{
+		UCataclysmCoffinNails::DriveInto(Target, Firer, Params.CritChanceAgainst, Params.CritChanceAgainstMax,
+										 Params.EffectDuration);
+	}
 	return bPinned;
 }
 

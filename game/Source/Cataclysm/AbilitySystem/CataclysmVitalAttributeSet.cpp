@@ -35,6 +35,8 @@
 // For announcing each blow, and keeping it as the target's last, so a death
 // can say who dealt it. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+// For the critical strike chance the nails an attacker drove add to its blows. Issue #2885, the Crossbow draft's C1.
+#include "AbilitySystem/CataclysmCoffinNails.h"
 // For turning health lost to damage into Fervour. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For the character's own Cataclysm type, so a hit of another one can be told
@@ -1146,8 +1148,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 											  AssetTags, Offence->GetMaxCritChance()),
 										  0.0f, Offence->GetMaxCritChance())
 							: Offence->GetMaxCritChance();
+						// AND THE NAILS THE ATTACKER HAS DRIVEN INTO WHAT IT STRIKES, ADDED TO WHICHEVER CHANCE THE BLOW
+						// HAS, BEFORE THE CEILING. Issue #2885, the Death Crossbow draft's C1, slice DS5: the Crossbow's
+						// Coffin Nail, "for every nail an enemy carries, your critical strike chance against it is 5%
+						// higher", and the owner's choice of 2026-11-24 that the 5 is "flat critical strike chance added
+						// to the base". So a skill stating its own chance (Mercy Stroke's 10) is raised as the character's
+						// own is. Nought for every blow at a creature carrying none of this attacker's nails.
+						const float FromNails = UCataclysmCoffinNails::CritChanceAgainst(
+							CataclysmDefendingBody(*this), Attacker->GetAvatarActor());
 						Hit.CritChance = FMath::Min(
-							Stated >= 0.0f ? Stated : OwnCritChance, Ceiling);
+							(Stated >= 0.0f ? Stated : OwnCritChance) + FromNails, Ceiling);
 
 						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
 						// REASON THE CHANCE IS. Issue #947 lists it among the

@@ -336,6 +336,9 @@ public:
 	 * session 2026-11-17, issue #2580: a projectile with a speed hits through `ACataclysmProjectile::HitOne`, which
 	 * never passed through `HitTargets`, so none of them reached what it touched. The same code, not a copy.
 	 *
+	 * AND, LAST, A NAIL for a row stating `CritChanceAgainst`: issue #2885, the Death Crossbow draft's C1, slice DS5, the
+	 * Crossbow's Coffin Nail (`UCataclysmCoffinNails::DriveInto`), in the firer's name.
+	 *
 	 * @return whether the contact pinned the target, for a line `OnDeath=Release` binds when the shot finishes
 	 */
 	bool LayWhatALandedShotCarries(AActor* Firer, AActor* Target, float Dealt) const;
@@ -988,6 +991,22 @@ public:
 	 */
 	static int32 NoteBlowLanded(AActor* Attacker, AActor* Target,
 								const FVector& Where, bool bFromBehind = false);
+
+	/**
+	 * Tell this character's running buffs that one of its blows was a critical strike, once that blow is wholly
+	 * resolved. Issue #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land
+	 * a critical strike, a crow dives at the enemy you struck". A buff stating no `StrikesOnCritical` is not told.
+	 *
+	 * CALLED FROM `UCataclysmSkillEffects::ApplyHit`, after `ApplyDirectDamage` returns, for a blow the striker landed
+	 * that critically struck -- the one place every skill blow, basic attack, flying shot's contact and path hit of a
+	 * player is dealt -- so the struck creature's health is written and its death marked by then. That function says
+	 * which blows count.
+	 *
+	 * @param Struck   what the critical strike landed on, dead or alive
+	 * @param BySkill  the skill whose blow it was, so a buff's own strike calls no other; null for one no skill dealt
+	 * @return how many running buffs were told
+	 */
+	static int32 NoteCriticalStrikeLanded(AActor* Striker, AActor* Struck, const UGameplayAbility* BySkill);
 
 	/**
 	 * The reach a `Requires` condition is judged over, in centimetres.

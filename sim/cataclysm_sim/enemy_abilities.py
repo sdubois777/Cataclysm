@@ -105,15 +105,20 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
                    # N6, slice DS3: Restless Spirits and Hungering Soul.
                    "KillFervour",
                    # N19, slice DS5: the Spear's Soul Lance.
-                   "HitFervour", "HitFervourPerCast"),
+                   "HitFervour", "HitFervourPerCast",
+                   # The Crossbow draft's C1, slice DS5: Coffin Nail.
+                   "CritChanceAgainst", "CritChanceAgainstMax"),
     # `Interval` joined on 2026-09-02 with the Spear's Held Fast, which is
     # the first self buff that repeats. No enemy ability states it yet.
     # `HoldsFervour` joined on 2026-11-24 with slice DS3 (the Death draft's N8,
     # Cold Blood). No enemy ability uses it.
     # `MeleeReachMetres` and `EveryBlow` joined with slice DS4 (N21 and N17,
     # Grim Reach, Hemlock and Death Grip). No enemy ability uses either.
+    # `StrikesOnCritical` joined with slice DS5 (the Crossbow draft's C2,
+    # Carrion Crows). No enemy ability uses it.
     "SelfBuff": ("Duration", "Interval", "Radius", "RangeIncrease",
-                 "HoldsFervour", "MeleeReachMetres", "EveryBlow"),
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow",
+                 "StrikesOnCritical"),
     # `MaxTargets` JOINED ON 2026-09-01, and the engine had always read it: all
     # three movement modes that hit anything hand it straight to the targeting
     # search. The Spear's Nail Down impales "the first enemy you reach" where the

@@ -454,6 +454,17 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bEveryBlow = false;
 
+	/**
+	 * True when, while a self buff runs, each critical strike its holder lands strikes again for the row's Damage
+	 * Percent: at the enemy struck, or the nearest within the row's `Radius` of it if that blow killed it; at most one a
+	 * quarter second; a strike of the buff's own calls no other. `StrikesOnCritical=1`, on a SelfBuff. Issue #2885, the
+	 * Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land a critical strike, a crow
+	 * dives at the enemy you struck for 40% weapon damage ... At most four crows dive each second, and a crow's own
+	 * critical strike calls no other". `UCataclysmSelfBuffSkill::CriticalStrikeHeard`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bStrikesOnCritical = false;
+
 	// --- Riders every shape may carry -------------------------------------
 
 	/** True when the skill sets what it hits alight. Fifteen of sixteen do. */
@@ -1122,6 +1133,22 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float HitFervourPerCast = 0.0f;
+
+	/**
+	 * Percentage points of critical strike chance each nail a flying shot of this skill drives into what it lands on
+	 * gives its firer's blows at that creature; nought for none. `CritChanceAgainst=5`, on a Projectile with a speed,
+	 * beside `CritChanceAgainstMax` and `EffectDuration`, how long the nails stay without a new one. Issue #2885, the
+	 * Death Crossbow draft's C1, slice DS5: the Crossbow's Coffin Nail, "for every nail an enemy carries, your critical
+	 * strike chance against it is 5% higher, up to 4 nails, and they stay until 4 seconds pass without a new one".
+	 * Driven by `UCataclysmSkillTemplate::LayWhatALandedShotCarries` (`UCataclysmCoffinNails`), added to a blow's chance
+	 * by `UCataclysmVitalAttributeSet`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CritChanceAgainst = 0.0f;
+
+	/** The most the nails together give, in percentage points; nought for no ceiling. `CritChanceAgainstMax=20`, C1. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float CritChanceAgainstMax = 0.0f;
 
 	// --- Projectile extras -------------------------------------------------
 

@@ -670,7 +670,10 @@ SHAPE_PARAMS = {
                    "KillFervour",
                    # N19, slice DS5: the Spear's Soul Lance, Fervour for each
                    # enemy a flying shot lands on, to a cap a cast.
-                   "HitFervour", "HitFervourPerCast"},
+                   "HitFervour", "HitFervourPerCast",
+                   # The Crossbow draft's C1, slice DS5: the Crossbow's Coffin
+                   # Nail, a nail's critical strike chance and the nails' ceiling.
+                   "CritChanceAgainst", "CritChanceAgainstMax"},
     # `Interval` JOINED ON 2026-09-02 WITH THE SPEAR'S HELD FAST, whose
     # sentence has a per-second half: "any pinned enemy within 12 meters is
     # set alight again each second it is held". Until then a self buff was
@@ -689,8 +692,14 @@ SHAPE_PARAMS = {
     # (Hemlock, Death Grip, Grim Reach). `UCataclysmSelfBuffSkill::
     # NoteBlowLanded` lays them; `check_a_bursting_rift_and_a_buff_on_every_blow`
     # refuses either where it would do nothing.
+    #
+    # `StrikesOnCritical` JOINED WITH SLICE DS5: the Crossbow draft's C2, a buff
+    # whose holder's critical strikes each strike again for the row's Damage
+    # Percent (the Crossbow's Carrion Crows); `check_a_buff_striking_on_a_
+    # critical_states_its_damage` asks the row for that figure.
     "SelfBuff": {"Duration", "Interval", "Radius", "RangeIncrease",
-                 "HoldsFervour", "MeleeReachMetres", "EveryBlow"},
+                 "HoldsFervour", "MeleeReachMetres", "EveryBlow",
+                 "StrikesOnCritical"},
     # Inexorable walks for three seconds and Everywhere at Once flickers for
     # four, so a movement can now last and repeat. `RearHits` says every blow it
     # lands counts as struck from behind.
@@ -906,6 +915,67 @@ def check_death_skill_keys(params: dict[str, str], shape: str,
     check_a_spending_or_cashing_strike(params, where)
     check_a_bursting_rift_and_a_buff_on_every_blow(params, where)
     check_a_bursting_wound_a_paid_hit_and_an_escape(params, shape, where)
+    check_a_coffin_nail(params, shape, where)
+
+
+def check_a_coffin_nail(params: dict[str, str], shape: str, where: str) -> None:
+    """Refuse the Crossbow draft's C1 nails where they would raise nothing. Issue #2885, slice DS5.
+
+    A flying shot stating `CritChanceAgainst` drives a nail into what it lands
+    on, each worth that many points of its firer's critical strike chance
+    against it, to `CritChanceAgainstMax` in all, until `EffectDuration` passes
+    without a new one (`UCataclysmCoffinNails`). So nought or less a nail
+    raises nothing; a ceiling with no nails caps nothing, and one below a
+    single nail's points would not let one count whole; nails that never lapse
+    or lapse at once are not what the key means; and a beam's landing is no
+    flying contact, so it drives none.
+    """
+    if "CritChanceAgainst" in params:
+        per_nail = float(params["CritChanceAgainst"])
+        if per_nail <= 0.0:
+            raise DataError(
+                f"{where}: states CritChanceAgainst={params['CritChanceAgainst']}, "
+                f"which raises nothing. A nail's critical strike chance has to "
+                f"be more than nought")
+        if "CritChanceAgainstMax" in params and float(params["CritChanceAgainstMax"]) < per_nail:
+            raise DataError(
+                f"{where}: states CritChanceAgainstMax="
+                f"{params['CritChanceAgainstMax']}, below one nail's "
+                f"CritChanceAgainst={params['CritChanceAgainst']}, so not even "
+                f"one nail would count whole")
+        if float(params.get("EffectDuration", "0")) <= 0.0:
+            raise DataError(
+                f"{where}: states CritChanceAgainst and no EffectDuration above "
+                f"nought, which is how long the nails stay without a new one")
+        if shape == "Projectile" and not flies(params):
+            raise DataError(
+                f"{where}: states CritChanceAgainst on a projectile with no "
+                f"Speed and no Arc, a beam, and only a flying shot's contact "
+                f"drives a nail")
+    elif "CritChanceAgainstMax" in params:
+        raise DataError(
+            f"{where}: states CritChanceAgainstMax and no CritChanceAgainst, so "
+            f"there are no nails to cap")
+
+
+def check_a_buff_striking_on_a_critical_states_its_damage(params: dict[str, str],
+                                                         damage_percent: str,
+                                                         where: str) -> None:
+    """A buff whose holder's critical strikes strike again states the Damage Percent each strike is worth.
+
+    Issue #2885, the Crossbow draft's C2, slice DS5: the Crossbow's Carrion
+    Crows, "a crow dives at the enemy you struck for 40% weapon damage". The
+    strike is the row's own Damage Percent (`UCataclysmSelfBuffSkill::
+    CriticalStrikeLanded`); left blank it would take its slot's figure, which
+    for the Support slot a buff sits in is nought, so every crow would deal
+    nothing. A slot is a key and a skill is worth what it is worth (the owner,
+    2026-08-22), so the row says it.
+    """
+    if is_on(params, "StrikesOnCritical") and not (damage_percent or "").strip():
+        raise DataError(
+            f"{where}: states StrikesOnCritical={params['StrikesOnCritical']} "
+            f"and no Damage Percent, so each strike would be worth whatever "
+            f"its slot is, nought for a Support. State what each strike deals")
 
 
 def flies(params: dict[str, str]) -> bool:
@@ -1332,6 +1402,8 @@ def weapon_skills(book) -> list[dict]:
             check_a_roll_states_no_damage_percent(parsed, damage_percent, where)
             check_a_summon_effect_has_a_carrier(parsed, shape, damage_percent,
                                                 where)
+            check_a_buff_striking_on_a_critical_states_its_damage(
+                parsed, damage_percent, where)
 
         out.append({"Name": row_name(damage, weapon, slot),
                     "WeaponType": weapon, "DamageType": damage, "Slot": slot,

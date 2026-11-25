@@ -1438,6 +1438,24 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 						  /*LevelFactor=*/CataclysmSkillEffectsLevels::ThrallsLevelFactor(Instigator, Target));
 			}
 		}
+		// AND A CRITICAL STRIKE THE INSTIGATOR LANDED IS TOLD TO ITS RUNNING BUFFS, ONCE THE BLOW IS WHOLLY RESOLVED. Issue
+		// #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "each time you land a critical
+		// strike, a crow dives at the enemy you struck ... or at the nearest enemy within 10 meters if the strike killed
+		// it". HERE, AFTER `ApplyDirectDamage` RETURNS, so the struck creature's health is written and its death marked:
+		// the hit notice is heard before that write and could not say whether the strike killed. A STRIKE THE INSTIGATOR
+		// LANDED: not evaded, not refused as immune to its attacker, not a tick, not a share struck at an ally, and not a
+		// blow that is no strike of its -- the consequence of a death, a blow returned for one taken, the explosion at an
+		// ailment's end, a share of an ally's blow, or a worn row's answer to an event, which would let one critical
+		// strike call a crow through a row's answer and that answer another. A skill gadget's or trap's cast takes the
+		// other path below and is the machine's blow, as a minion's is the minion's. Nothing for a blow that did not
+		// critically strike, which is nearly every one: the buffs are asked only then.
+		if (Landed->bWasCritical && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
+			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
+			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
+			&& !Arrived.bIsARowsAnswerToAnEvent)
+		{
+			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+		}
 		return bDealt ? Sent : 0.0f;
 	}
 	// AND A LATE BLOW OF A TRAP ALREADY USED UP IS ANNOUNCED AS THE TRAP'S, with the tags it was kept with (ruled

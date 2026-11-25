@@ -7,7 +7,10 @@ Damage Percent of its own strikes as it rises, and lays its `Effect` with that b
 which `test_stalker_kit_shape_keys.py` holds. Slice DS3 added N5, N6, N7, N8 and N10's keys, and slice DS4 N13's
 `SpendsAllFervour` with `ScalingSource=FervourSpent` and N15's `CashInRadius` on a Strike (N9, a strike's refund, is the
 `RefundsCooldown` rider and has no key of its own), N12's `CollapseBursts` on a Summon, and N17's `EveryBlow` and N21's
-`MeleeReachMetres` on a SelfBuff.
+`MeleeReachMetres` on a SelfBuff. Slice DS5 added N14's `OnDeath=Burst` with `BurstPercentOfMaximumHealth` on a Strike,
+N19's `HitFervour` and `HitFervourPerCast` and the Crossbow draft's C1 `CritChanceAgainst` and `CritChanceAgainstMax` on
+a flying Projectile, C2's `StrikesOnCritical` on a SelfBuff, and N18's refusal of `Untargetable` on anything but a
+flicker and a walked charge.
 
 EACH KEY IS SHOWN BOTH WAYS: accepted where the engine reads it, and refused where a row stating it would run and
 quietly do something else -- which is the failure `parse_shape_params` exists to prevent. The C++ parser reading each
@@ -558,3 +561,87 @@ def test_untargetable_on_a_move_or_shape_that_does_not_last_is_refused(shape, te
 def test_untargetable_switched_off_on_a_leap_passes():
     """THE CONTROL for the refusal above: nought is the key switched off."""
     assert parse("Mode=Leap; Range=10; Radius=3; Untargetable=0", "Movement")["Untargetable"] == "0"
+
+
+# --------------------------------------------------------------------------
+# Slice DS5: the Crossbow draft's C1 CritChanceAgainst and C2 StrikesOnCritical
+
+COFFIN_NAIL = ("Range=14; Radius=0.4; Pierce=0; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=20; "
+               "EffectDuration=4")
+CARRION_CROWS = "Duration=8; Radius=10; StrikesOnCritical=1"
+CROSSBOW_SUPPORT = "Weapon Skills row 405 (Death Crossbow Support)"
+
+
+def test_a_shot_driving_nails_is_accepted():
+    """Coffin Nail's cell, word for word."""
+    params = parse(COFFIN_NAIL, "Projectile")
+    assert params["CritChanceAgainst"] == "5" and params["CritChanceAgainstMax"] == "20"
+
+
+def test_a_shot_driving_nails_with_no_ceiling_passes():
+    """THE CONTROL for the ceiling's refusals: the ceiling is the row's to state; with none every nail counts."""
+    assert parse("Range=14; Radius=0.4; Speed=3000; CritChanceAgainst=5; EffectDuration=4",
+                 "Projectile")["CritChanceAgainst"] == "5"
+
+
+@pytest.mark.parametrize("text, said", [
+    ("Range=14; Radius=0.4; Speed=3000; CritChanceAgainst=0; EffectDuration=4", "raises nothing"),
+    ("Range=14; Radius=0.4; Speed=3000; CritChanceAgainst=-5; EffectDuration=4", "raises nothing"),
+    ("Range=14; Radius=0.4; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=4; EffectDuration=4",
+     "not even one nail"),
+    ("Range=14; Radius=0.4; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=20", "no EffectDuration"),
+    ("Range=14; Radius=0.4; CritChanceAgainst=5; CritChanceAgainstMax=20; EffectDuration=4", "a beam"),
+    ("Range=14; Radius=0.4; Speed=3000; CritChanceAgainstMax=20; EffectDuration=4", "no nails to cap"),
+])
+def test_nails_that_would_raise_nothing_are_refused(text, said):
+    """Nought or less a nail; a ceiling below one nail; nails that never lapse; a beam; a ceiling with no nails."""
+    assert said in refused(text, "Projectile")
+
+
+@pytest.mark.parametrize("key", ["CritChanceAgainst=5", "CritChanceAgainstMax=20"])
+def test_nails_are_a_projectiles_alone(key):
+    assert f"has no parameter '{key.split('=')[0]}'" in refused(
+        f"Radius=3; Angle=90; EffectDuration=4; {key}", "Strike")
+
+
+def test_a_buff_striking_again_on_each_critical_strike_is_accepted():
+    """Carrion Crows' cell, word for word."""
+    assert parse(CARRION_CROWS, "SelfBuff")["StrikesOnCritical"] == "1"
+
+
+@pytest.mark.parametrize("shape, text", [
+    ("Strike", "Radius=3; Angle=90; StrikesOnCritical=1"),
+    ("Projectile", "Range=14; Radius=0.4; Speed=3000; StrikesOnCritical=1"),
+])
+def test_striking_on_a_critical_is_a_self_buffs_alone(shape, text):
+    assert "has no parameter 'StrikesOnCritical'" in refused(text, shape)
+
+
+def test_a_buff_striking_on_a_critical_that_states_no_damage_is_refused():
+    """Its strikes are the row's own Damage Percent; left blank they would take the Support slot's nought."""
+    with pytest.raises(gen.DataError, match="no Damage Percent"):
+        gen.check_a_buff_striking_on_a_critical_states_its_damage(
+            gen.parse_shape_params(CARRION_CROWS, "SelfBuff", CROSSBOW_SUPPORT), "", CROSSBOW_SUPPORT)
+
+
+@pytest.mark.parametrize("text, damage", [
+    (CARRION_CROWS, "40"),
+    ("Duration=8; Radius=10; StrikesOnCritical=0", ""),
+    ("Duration=6; Ailment=Poison; EveryBlow=1", ""),
+])
+def test_a_buff_striking_on_a_critical_with_its_damage_or_none_passes(text, damage):
+    """THE CONTROL for the refusal above: Carrion Crows' own 40, the key switched off, and Hemlock, which strikes
+    nothing of its own and needs no Damage Percent."""
+    gen.check_a_buff_striking_on_a_critical_states_its_damage(
+        gen.parse_shape_params(text, "SelfBuff", CROSSBOW_SUPPORT), damage, CROSSBOW_SUPPORT)
+
+
+def test_the_crows_quarter_second_is_the_generators_trigger_cooldown():
+    """C2's "at most four crows dive each second" is the quarter second every hit-fired row waits, as the Warhound's is
+    (`test_warlords_will_six_rows.py`). THE CONTROL is the generator's own figure, read first."""
+    import re
+
+    assert gen.DEFAULT_TRIGGER_COOLDOWN == 0.25
+    header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem" / "CataclysmSkillTemplates.h")
+    (written,) = re.findall(r"CrowCooldownSeconds\s*=\s*([0-9.]+)f;", header.read_text(encoding="utf-8"))
+    assert float(written) == gen.DEFAULT_TRIGGER_COOLDOWN

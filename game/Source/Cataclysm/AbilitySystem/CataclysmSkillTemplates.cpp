@@ -2428,6 +2428,9 @@ void UCataclysmSelfBuffSkill::ActivateAbility(
 	AttackersLit = 0;
 	SecondsHeld = 0;
 	BlowsLaidOn = 0;
+	// AND THE CROWS THIS ACTIVATION SENT, AND WHEN THE LAST WENT. Issue #2885, the Death Crossbow draft's C2.
+	CrowsSent = 0;
+	LastCrowAt = -1.0;
 
 	// AND THE STORE STARTS EMPTY, for the same reason. Martyr's Ember holds "40%
 	// of all damage you take WHILE IT LASTS", so what was held during the last
@@ -3170,6 +3173,77 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 	{
 		++TerrainLeft;
 	}
+}
+
+void UCataclysmSelfBuffSkill::CriticalStrikeLanded(AActor* Struck, const UGameplayAbility* BySkill)
+{
+	// A STRIKE OF THIS BUFF'S OWN CALLS NO OTHER, by its name or because this buff is striking now: "a crow's own
+	// critical strike calls no other". And nothing for a buff not running, or stating no `StrikesOnCritical`.
+	if (bSendingACrow || BySkill == this || !IsActive() || !Params.bStrikesOnCritical)
+	{
+		return;
+	}
+
+	AActor* Holder = Avatar();
+	UWorld* World = GetWorld();
+	if (!Holder || !World)
+	{
+		return;
+	}
+
+	// AT MOST ONE A QUARTER SECOND: "at most four crows dive each second". A critical strike inside it calls nothing.
+	const double Now = World->GetTimeSeconds();
+	if (LastCrowAt >= 0.0 && Now - LastCrowAt < static_cast<double>(CrowCooldownSeconds))
+	{
+		return;
+	}
+
+	// AT THE ENEMY STRUCK, OR, IF THE STRIKE KILLED IT, AT THE NEAREST WITHIN THE ROW'S OWN RADIUS OF WHERE IT STOOD: "or
+	// at the nearest enemy within 10 meters if the strike killed it". The blow is wholly resolved by now, so dead or at no
+	// health is the strike's kill. The row's own `Radius`, not widened by area of effect: a reach that finds the crow's
+	// enemy, as a cash-in's and a taunt's are the row's own (slice DS4, slice DS1).
+	AActor* CrowAt = nullptr;
+	if (IsValid(Struck))
+	{
+		if (!UCataclysmSkillEffects::IsDead(Struck) && !AtNoHealth(Struck))
+		{
+			CrowAt = Struck;
+		}
+		else if (Params.RadiusCm > 0.0f)
+		{
+			for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(World, Holder, Struck->GetActorLocation(),
+																		 Params.RadiusCm))
+			{
+				if (Near != Struck && !AtNoHealth(Near))
+				{
+					CrowAt = Near;
+					break;
+				}
+			}
+		}
+	}
+	if (!CrowAt)
+	{
+		return;
+	}
+
+	// THE QUARTER SECOND IS CLAIMED BEFORE THE STRIKE, so nothing the strike sets off -- its own critical strike among it
+	// -- finds the buff free in the same instant.
+	LastCrowAt = Now;
+
+	// AN ORDINARY HIT OF THE HOLDER'S, at the row's Damage Percent, with the skill's tags and its own critical strike
+	// chance, naming this skill. See the header.
+	FCataclysmHitDelivery CrowsDelivery;
+	CrowsDelivery.CritChancePercent = CritChancePercent;
+	CrowsDelivery.Skill = this;
+	{
+		TGuardValue<bool> Sending(bSendingACrow, true);
+		UCataclysmSkillEffects::ApplyHit(Holder, CrowAt, GetDamagePercent(), SkillTags, CrowsDelivery);
+	}
+	++CrowsSent;
+
+	UE_LOG(LogCataclysm, Verbose, TEXT("'%s' sent a strike at '%s' for a critical strike, %d this activation."),
+		*SkillName, *GetNameSafe(CrowAt), CrowsSent);
 }
 
 void UCataclysmSelfBuffSkill::RevokeIncrease()

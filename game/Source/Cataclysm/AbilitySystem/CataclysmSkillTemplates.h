@@ -1064,6 +1064,47 @@ public:
 	int32 BlowsLaidOn = 0;
 
 	/**
+	 * Answer one of the holder's critical strikes, for a row stating `StrikesOnCritical=1`: strike again for the row's
+	 * Damage Percent. Issue #2885, the Death Crossbow draft's C2, slice DS5: the Crossbow's Carrion Crows, "Each time you
+	 * land a critical strike, a crow dives at the enemy you struck for 40% weapon damage, or at the nearest enemy within
+	 * 10 meters if the strike killed it. At most four crows dive each second, and a crow's own critical strike calls no
+	 * other."
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteCriticalStrikeLanded`, once the critical blow is wholly resolved, so
+	 * whether it killed is known. THE RULES, in the row's words:
+	 *   - AT THE ENEMY STRUCK, or, if that blow killed it, at the nearest enemy of the holder's within the row's own
+	 *     `Radius` of where it stood (a judgement of slice DS5: the crow was diving there). None when nothing is there.
+	 *   - AT MOST ONE A `CrowCooldownSeconds`, "four a second", the quarter second every hit-fired row waits. A critical
+	 *     strike inside it calls nothing and is not kept for later, as a row on cooldown keeps nothing.
+	 *   - A STRIKE OF THIS BUFF'S OWN CALLS NO OTHER: one that names this skill, or one landed while this buff is
+	 *     striking, is passed over, so a crow that critically strikes cannot loop.
+	 *
+	 * THE CROW IS AN ORDINARY HIT OF THE HOLDER'S, `UCataclysmSkillEffects::ApplyHit` at the row's Damage Percent with the
+	 * skill's tags and its own critical strike chance, which it may roll, as a row's path hit is dealt
+	 * (`UCataclysmMovementSkill::HitWhatThePathCrossed`): it raises the hit notice every on-hit row hears and lays what a
+	 * blow's chances lay, and it is no skill swing through `HitTargets`, so it pays no `fervour_per_enemy_hit` and tells
+	 * no running buff it landed. AT ONCE, with no bird in flight: a judgement of slice DS5, which draws nothing.
+	 *
+	 * Public so a test can drive it without a critical strike.
+	 *
+	 * @param Struck   what the critical strike landed on
+	 * @param BySkill  the skill whose blow it was
+	 */
+	void CriticalStrikeLanded(AActor* Struck, const UGameplayAbility* BySkill);
+
+	/**
+	 * The least time between two of this buff's strikes for its holder's critical strikes: "at most four crows dive each
+	 * second". Issue #2885, C2. The quarter second every hit-fired row waits, `DEFAULT_TRIGGER_COOLDOWN` in
+	 * `tools/generate_datatables.py`; `tools/tests/test_death_skill_shape_keys.py` compares the two, as
+	 * `ACataclysmMinion::WarhoundSummonCooldownSeconds` is compared.
+	 */
+	static constexpr float CrowCooldownSeconds = 0.25f;
+
+	/** How many strikes this buff has sent for its holder's critical strikes this activation. Issue #2885, C2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	int32 CrowsSent = 0;
+
+	/**
 	 * React to a blow landed ON this buff's holder, if its row says to.
 	 *
 	 * ONE ROW STATES IT: the Greataxe's Burning Wrath, "while it lasts, any enemy
@@ -1244,6 +1285,15 @@ private:
 	/** The binding `WatchTheFervourHeld` made, and the ability system it was made on. Empty while none is made. */
 	FDelegateHandle FervourChangedHandle;
 	TWeakObjectPtr<UAbilitySystemComponent> FervourWatched;
+
+	/**
+	 * The world's time this buff last struck for a critical strike, or below nought for none this activation. Issue
+	 * #2885, C2: `CriticalStrikeLanded` holds its strikes a `CrowCooldownSeconds` apart.
+	 */
+	double LastCrowAt = -1.0;
+
+	/** True while this buff's own strike is being dealt, so a critical strike it lands calls no other. Issue #2885, C2. */
+	bool bSendingACrow = false;
 
 
 	FTimerHandle FinishTimer;

@@ -10,6 +10,8 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the nails a flying shot drives. Slice DS5, the Crossbow draft's C1.
+#include "AbilitySystem/CataclysmCoffinNails.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmFervour.h"
@@ -5243,6 +5245,268 @@ bool FCataclysmDeathSkillsWoundBurstsTest::RunTest(const FString&)
 	DeathSkillKillCreature(Closed);
 	TestEqual(TEXT("control: a death after the wound closed bursts nothing"), DeathSkillHealthLost(BesideClosed), 0.0f,
 			  DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS5, change B. The Crossbow draft's C1: a flying shot's nails raise its firer's critical strike chance against
+// what they are in. C2: a buff whose holder's critical strikes each strike again.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsNailsRaiseTheChanceTest,
+	"Cataclysm.DeathSkills.AShotDrivingNailsRaisesItsFirersCriticalStrikeChanceAgainstWhatItNailsToItsCeilingUntilTheyLapse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * C1 (`UCataclysmCoffinNails`, driven by `UCataclysmSkillTemplate::LayWhatALandedShotCarries` and added to a blow's
+ * chance in `UCataclysmVitalAttributeSet`): a bolt stating `CritChanceAgainst=5; CritChanceAgainstMax=20;
+ * EffectDuration=4` -- Coffin Nail's -- shot at a creature 5 m ahead drives one nail, worth 5; four more make 4 nails
+ * worth 20, the ceiling, a fifth counting none more. With the critical strike roll pinned at 18, the nailer's plain blow
+ * at that creature, from a chance of nought, is a critical strike. THE CONTROLS: the same blow of another fighter's, whose
+ * nails it carries none of, and the nailer's blow at a creature carrying none, are not. 3.9 seconds after the last nail
+ * the four still hold; at 4.1 they have lapsed, and the nailer's blow is no critical strike.
+ */
+bool FCataclysmDeathSkillsNailsRaiseTheChanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FDeathSkillFighter Nailer(World, FVector::ZeroVector);
+	FDeathSkillFighter Other(World, FVector(0.0f, -3.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Nailed(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Clean(World, FVector(0.0f, 5.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmProjectileSkill* Bolt = GrantDeathSkill<UCataclysmProjectileSkill>(
+		Nailer.AbilitySystem, Nailer.Actor, ECataclysmAbilitySlot::Heavy,
+		TEXT("Range=14; Radius=0.4; Pierce=0; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=20; EffectDuration=4"),
+		TEXT("A nailing bolt"));
+	if (!TestNotNull(TEXT("set-up: the bolt is granted"), Bolt))
+	{
+		return false;
+	}
+	Bolt->DamagePercentOverride = 250.0f;
+	Bolt->CooldownOverride = 0.0f;
+
+	if (!TestTrue(TEXT("the first bolt is shot"), ActivateDeathSkill(Nailer.AbilitySystem, Bolt)))
+	{
+		return false;
+	}
+	DeathSkillFlyToTheEnd(Bolt->InFlight.Get());
+	TestTrue(TEXT("it struck the creature 5 m ahead"), DeathSkillHealthLost(Nailed) > 0.0f);
+	TestEqual(TEXT("and left one nail in it"), UCataclysmCoffinNails::NailsIn(Nailed.Actor, Nailer.Actor), 1);
+	TestEqual(TEXT("worth 5 points of the nailer's chance against it"),
+			  UCataclysmCoffinNails::CritChanceAgainst(Nailed.Actor, Nailer.Actor), 5.0f, DeathSkillAllowance);
+
+	for (int32 More = 0; More < 4; ++More)
+	{
+		if (!TestTrue(TEXT("another bolt is shot"), ActivateDeathSkill(Nailer.AbilitySystem, Bolt)))
+		{
+			return false;
+		}
+		DeathSkillFlyToTheEnd(Bolt->InFlight.Get());
+	}
+	TestEqual(TEXT("five bolts leave 4 nails, the ceiling's worth"),
+			  UCataclysmCoffinNails::NailsIn(Nailed.Actor, Nailer.Actor), 4);
+	TestEqual(TEXT("worth the ceiling's 20"), UCataclysmCoffinNails::CritChanceAgainst(Nailed.Actor, Nailer.Actor), 20.0f,
+			  DeathSkillAllowance);
+
+	{
+		const CataclysmTestWorld::FScopedCritRoll Pinned(18.0f);
+		FCataclysmDamageResult ByTheNailer;
+		UCataclysmSkillEffects::ApplyHit(Nailer.Actor, Nailed.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &ByTheNailer);
+		TestTrue(TEXT("with the roll at 18, the nailer's blow at the nailed creature is a critical strike: 0 + 20"),
+				 ByTheNailer.bWasCritical);
+
+		FCataclysmDamageResult ByAnother;
+		UCataclysmSkillEffects::ApplyHit(Other.Actor, Nailed.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &ByAnother);
+		TestFalse(TEXT("control: another's blow at it, whose nails it carries none of, is not"), ByAnother.bWasCritical);
+
+		FCataclysmDamageResult AtTheClean;
+		UCataclysmSkillEffects::ApplyHit(Nailer.Actor, Clean.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &AtTheClean);
+		TestFalse(TEXT("control: nor is the nailer's blow at a creature carrying none"), AtTheClean.bWasCritical);
+	}
+
+	World->TimeSeconds += 3.9f;
+	TestEqual(TEXT("3.9 seconds after the last nail the four still hold"),
+			  UCataclysmCoffinNails::NailsIn(Nailed.Actor, Nailer.Actor), 4);
+	World->TimeSeconds += 0.2f;
+	TestEqual(TEXT("at 4.1 they have lapsed"), UCataclysmCoffinNails::NailsIn(Nailed.Actor, Nailer.Actor), 0);
+	{
+		const CataclysmTestWorld::FScopedCritRoll Pinned(18.0f);
+		FCataclysmDamageResult AfterTheLapse;
+		UCataclysmSkillEffects::ApplyHit(Nailer.Actor, Nailed.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &AfterTheLapse);
+		TestFalse(TEXT("and the nailer's blow at it is no critical strike"), AfterTheLapse.bWasCritical);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCrowsOnCriticalsTest,
+	"Cataclysm.DeathSkills.ABuffStrikingOnCriticalsStrikesWhatEachCriticalStrikeLandsOnForItsDamageAtMostFourASecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * C2 (`UCataclysmSelfBuffSkill::CriticalStrikeLanded`, told by `UCataclysmSkillTemplate::NoteCriticalStrikeLanded` from
+ * `UCataclysmSkillEffects::ApplyHit`): with the critical strike roll pinned at 50, a swing stating a chance of 100 always
+ * critically strikes the creature 3 m off. THE CONTROL first: with no buff running it sends nothing. A buff stating
+ * `Duration=8; Radius=10; StrikesOnCritical=1` at 40% -- Carrion Crows' -- goes up: the next critical strike sends one
+ * strike at that creature, worth exactly what a 40% blow takes from a reference creature. A third critical strike in the
+ * same instant sends none, "at most four a second"; 0.3 s later, past the quarter second, one more. Cancelled, the buff
+ * sends none.
+ */
+bool FCataclysmDeathSkillsCrowsOnCriticalsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Struck(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Reference(World, FVector(0.0f, -50.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; MaxTargets=1"),
+		TEXT("A certain swing"));
+	UCataclysmSelfBuffSkill* Crows = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support, TEXT("Duration=8; Radius=10; StrikesOnCritical=1"),
+		TEXT("A murder of crows"));
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Swing) || !TestNotNull(TEXT("set-up: the buff is granted"), Crows))
+	{
+		return false;
+	}
+	Swing->DamagePercentOverride = 100.0f;
+	Swing->CritChancePercent = 100.0f;
+	Crows->DamagePercentOverride = 40.0f;
+
+	// THE CONTROL: a critical strike with no buff running.
+	TestEqual(TEXT("control: the swing strikes the creature 3 m off"), Swing->SwingOnce(), 1);
+	const float OneSwing = DeathSkillHealthLost(Struck);
+	TestTrue(TEXT("control: and takes its blow"), OneSwing > 0.0f);
+	TestEqual(TEXT("control: with no buff running nothing more is sent"), Crows->CrowsSent, 0);
+
+	if (!TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Crows)))
+	{
+		return false;
+	}
+	Swing->SwingOnce();
+	TestEqual(TEXT("the next critical strike sends one strike"), Crows->CrowsSent, 1);
+	UCataclysmSkillEffects::ApplyHit(Holder.Actor, Reference.Actor, 40.0f, FGameplayTagContainer(), FCataclysmHitDelivery());
+	const float FortyPercent = DeathSkillHealthLost(Reference);
+	TestTrue(TEXT("set-up: a 40% blow takes health from the reference"), FortyPercent > 0.0f);
+	TestEqual(TEXT("at the creature it struck, worth what a 40% blow takes"),
+			  DeathSkillHealthLost(Struck) - 2.0f * OneSwing, FortyPercent, 1.0f);
+
+	Swing->SwingOnce();
+	TestEqual(TEXT("a third critical strike in the same instant sends none: at most four a second"), Crows->CrowsSent, 1);
+	World->TimeSeconds += 0.3f;
+	Swing->SwingOnce();
+	TestEqual(TEXT("a little over a quarter second later, one more"), Crows->CrowsSent, 2);
+
+	Holder.AbilitySystem->CancelAbilityHandle(Crows->GetCurrentAbilitySpecHandle());
+	World->TimeSeconds += 1.0f;
+	const float BeforeTheLast = DeathSkillHealthLost(Struck);
+	Swing->SwingOnce();
+	TestEqual(TEXT("cancelled, the buff sends none: the last swing took one swing's worth"),
+			  DeathSkillHealthLost(Struck) - BeforeTheLast, OneSwing, 1.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCrowFindsTheNextTest,
+	"Cataclysm.DeathSkills.ACriticalStrikeThatKillsSendsItsStrikeAtTheNearestWithinTheRadiusAndAStrikesOwnCriticalCallsNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * C2's other two rules: a buff stating `Duration=8; Radius=10; StrikesOnCritical=1` is up and a swing stating a chance of
+ * 100 critically strikes, and kills, a creature of 1 health 3 m off: the strike goes at the nearest enemy within 10 m of
+ * where it fell, 4 m from it, and THE CONTROL 11 m from it takes nothing. Then, 100 m along +Y, a holder whose own
+ * critical strike chance is 100, so the buff's strike itself critically strikes: one critical strike sends one strike and
+ * no more, "a crow's own critical strike calls no other".
+ */
+bool FCataclysmDeathSkillsCrowFindsTheNextTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	const CataclysmTestWorld::FScopedCritRoll Pinned(50.0f);
+	const TCHAR* const Murder = TEXT("Duration=8; Radius=10; StrikesOnCritical=1");
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Doomed(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Next(World, FVector(3.0f * DeathSkillMetre, 4.0f * DeathSkillMetre, 0.0f),
+							 ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(3.0f * DeathSkillMetre, -11.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	Doomed.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; MaxTargets=1"),
+		TEXT("A certain swing"));
+	UCataclysmSelfBuffSkill* Crows = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Support, Murder, TEXT("A murder of crows"));
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Swing) || !TestNotNull(TEXT("set-up: the buff is granted"), Crows))
+	{
+		return false;
+	}
+	Swing->DamagePercentOverride = 100.0f;
+	Swing->CritChancePercent = 100.0f;
+	Crows->DamagePercentOverride = 40.0f;
+	if (!TestTrue(TEXT("the buff goes up"), ActivateDeathSkill(Holder.AbilitySystem, Crows)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the swing strikes the creature of 1 health 3 m off"), Swing->SwingOnce(), 1);
+	TestTrue(TEXT("and kills it"), UCataclysmSkillEffects::IsDead(Doomed.Actor));
+	TestEqual(TEXT("and its critical strike sent one strike"), Crows->CrowsSent, 1);
+	TestTrue(TEXT("at the nearest enemy within 10 m of where it fell, 4 m from it"), DeathSkillHealthLost(Next) > 0.0f);
+	TestEqual(TEXT("control: the creature 11 m from it took nothing"), DeathSkillHealthLost(Beyond), 0.0f,
+			  DeathSkillAllowance);
+
+	// A STRIKE'S OWN CRITICAL STRIKE CALLS NO OTHER.
+	FDeathSkillFighter Sharp(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Target(World, FVector(3.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	Sharp.Set(UCataclysmCombatAttributeSet::GetCritChanceAttribute(), 100.0f);
+	UCataclysmStrikeSkill* SharpSwing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Sharp.AbilitySystem, Sharp.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; MaxTargets=1"),
+		TEXT("A sharp swing"));
+	UCataclysmSelfBuffSkill* SharpCrows = GrantDeathSkill<UCataclysmSelfBuffSkill>(
+		Sharp.AbilitySystem, Sharp.Actor, ECataclysmAbilitySlot::Support, Murder, TEXT("Sharp crows"));
+	if (!TestNotNull(TEXT("set-up: the sharp swing is granted"), SharpSwing)
+		|| !TestNotNull(TEXT("set-up: the sharp buff is granted"), SharpCrows))
+	{
+		return false;
+	}
+	SharpSwing->DamagePercentOverride = 100.0f;
+	SharpCrows->DamagePercentOverride = 40.0f;
+	FCataclysmDamageResult ItsOwn;
+	UCataclysmSkillEffects::ApplyHit(Sharp.Actor, Target.Actor, 40.0f, FGameplayTagContainer(), FCataclysmHitDelivery(),
+									 &ItsOwn);
+	if (!TestTrue(TEXT("set-up: this holder's every blow is a critical strike, a 40% blow such as its buff's among them"),
+				  ItsOwn.bWasCritical)
+		|| !TestTrue(TEXT("set-up: the sharp buff goes up"), ActivateDeathSkill(Sharp.AbilitySystem, SharpCrows)))
+	{
+		return false;
+	}
+	SharpSwing->SwingOnce();
+	TestEqual(TEXT("one critical strike sends one strike, whose own critical strike calls no other"),
+			  SharpCrows->CrowsSent, 1);
 	return true;
 }
 

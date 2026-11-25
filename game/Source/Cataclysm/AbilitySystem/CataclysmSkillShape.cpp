@@ -431,6 +431,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bEveryBlow = Number != 0.0f;
 		}
+		// The Death Crossbow draft's C2, issue #2885 slice DS5: a buff whose holder's critical strikes strike again.
+		else if (Key.Equals(TEXT("StrikesOnCritical"), ESearchCase::IgnoreCase))
+		{
+			Params.bStrikesOnCritical = Number != 0.0f;
+		}
 		// --- Applied effect detail --------------------------------------
 		else if (Key.Equals(TEXT("EffectDuration"), ESearchCase::IgnoreCase))
 		{
@@ -590,6 +595,15 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		else if (Key.Equals(TEXT("HitFervourPerCast"), ESearchCase::IgnoreCase))
 		{
 			Params.HitFervourPerCast = Number;
+		}
+		// The Death Crossbow draft's C1, issue #2885 slice DS5: a nail's critical strike chance, and the nails' ceiling.
+		else if (Key.Equals(TEXT("CritChanceAgainst"), ESearchCase::IgnoreCase))
+		{
+			Params.CritChanceAgainst = Number;
+		}
+		else if (Key.Equals(TEXT("CritChanceAgainstMax"), ESearchCase::IgnoreCase))
+		{
+			Params.CritChanceAgainstMax = Number;
 		}
 		// --- Projectile extras ------------------------------------------
 		else if (Key.Equals(TEXT("Bounces"), ESearchCase::IgnoreCase))
