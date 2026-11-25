@@ -2047,6 +2047,20 @@ public:
 	static const TCHAR* CriticalTwiceOnEvasionAction;
 
 	/**
+	 * The two kill actions of the Shadow's 50 and 200 vows, the Death trees' slice C6e (2026-11-25): Blade Echo's hit on
+	 * the strongest enemy near, and Thousand Cuts' move beside it and hit. The same names as
+	 * `STRIKE_STRONGEST_NEAR_ACTION` and `DASH_TO_STRONGEST_AND_STRIKE_ACTION` in `tools/generate_datatables.py`.
+	 */
+	static const TCHAR* StrikeStrongestNearAction;
+	static const TCHAR* DashToStrongestAndStrikeAction;
+
+	/** "The strongest enemy within 10 metres": Blade Echo's and Thousand Cuts' reach. */
+	static constexpr float StrongestNearReachCm = 1000.0f;
+
+	/** This character's own Shadow mark if it is alive and within `RadiusCm`, else the strongest enemy that near. */
+	AActor* MarkedOrStrongestNear(float RadiusCm) const;
+
+	/**
 	 * The action that deals a direct hit to the other character of its event, with the value as a percentage of
 	 * the wearer's attack damage. Ruled 2026-10-07. `tools/generate_datatables.py` holds the same name as
 	 * `STRIKE_TARGET_ACTION`. See `FCataclysmPoolAction::bStrikeTarget`.
@@ -5019,6 +5033,29 @@ public:
 
 	/** The stat naming how many marks a character holds: Deathmark's 1, and Two Marks' 1 more. */
 	static const TCHAR* ShadowMarksStat;
+
+	/**
+	 * LETHAL DOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q8): the per cent of this character's critical
+	 * strike multiplier's INCREASED bucket a Poison or Bleed its critical strike applies takes as increased damage over
+	 * time (50, "at half their value"). Read by `UCataclysmAilments::RollOnLandedBlow`.
+	 */
+	static const TCHAR* CritIncreasesToAilmentsStat;
+
+	/**
+	 * While a Poison or Bleed of a critical strike of this character's is being applied: the increased damage over time,
+	 * in percentage points, Lethal Dose lends it. Nought at every other moment. Set by
+	 * `UCataclysmAilments::RollOnLandedBlow` around the application, read by
+	 * `UCataclysmSkillEffects::DamageOverTimeNumbers`, which adds it to `dot_damage`'s increased bucket.
+	 */
+	float AilmentIncreasePercentLentByCritical = 0.0f;
+
+	/**
+	 * INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): the chance in per cent that a hit aimed at
+	 * this character is taken instead by its nearest minion within 3 metres. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+	 */
+	static const TCHAR* InterposeChanceStat;
+	static constexpr float InterposeReachCm = 300.0f;
 
 	/** "The strongest enemy within 15 metres", and "the strongest enemy within 10 metres" of the one that died. */
 	static constexpr float ShadowMarkReachCm = 1500.0f;

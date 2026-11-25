@@ -828,6 +828,19 @@ NODES: tuple[Node, ...] = (
     # Hollow Step, as ruled (H1, H2): the movement skill passes through enemies
     # for the move only, never ends inside one, and hits the line once.
     Node(SH + "keystone_c_kB", "Hollow Step", (R("movement_passes_through_enemies", "flat", 1),)),
+    # Lethal Dose, as ruled (Q8): half the critical strike multiplier's
+    # increases, for a crit's Poison or Bleed.
+    Node(SH + "keystone_a_kA", "Lethal Dose",
+         (R("crit_multiplier_increases_to_poison_and_bleed_percent", "flat", 50),)),
+    # Blade Echo and Thousand Cuts, as ruled (Q6): on a kill, 100% of weapon
+    # damage on the mark within 10 metres, else the strongest that near.
+    Node(SH + "capstone_50", "Blade Echo", (A("strike_strongest_near", 100, event="kill"),), option=1),
+    Node(SH + "capstone_200", "Thousand Cuts", (A("dash_to_strongest_and_strike", 100, event="kill"),), option=1),
+    # The Necromancer's Interpose, as ruled (Q9), and Guard the Master.
+    Node(NE + "basic_gr_a1", "Interpose", (R("interpose_chance", "flat", 3),)),
+    Node(NE + "basic_gr_c1", "Guard the Master",
+         (R("minions_turn_on_your_last_attacker", "flat", 1),
+          R("minion_damage", "increased", 3, cond="target_is_your_last_attacker"))),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

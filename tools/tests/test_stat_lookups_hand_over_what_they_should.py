@@ -644,6 +644,21 @@ INVENTORY = {
         "how many enemies the character marks (the Death trees' slice C6e, "
         "Deathmark and Two Marks), asked each regeneration step, which is a "
         "clock rather than a blow",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
+     'FName(UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat), FGameplayTagContainer(), 0.0f'):
+        "the share of the critical strike multiplier's increases a crit's Poison "
+        "or Bleed takes (the Death trees' slice C6e, Lethal Dose), asked of the "
+        "applier as the ailment is applied; a flag of the character's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(TurnOnLastAttackerStat), FGameplayTagContainer(), 0.0f'):
+        "whether the commander's minions turn on its last attacker (the Death "
+        "trees' slice C6e, Guard the Master), asked as a follower chooses what to "
+        "attack; a flag of the commander's, not a blow's",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmAbilitySystemComponent::InterposeChanceStat), FGameplayTagContainer(), 0.0f'):
+        "the chance a hit is taken by a minion instead (the Death trees' slice "
+        "C6e, Interpose), asked of the defender before the hit resolves; the "
+        "defender's own chance, not the blow's",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmLeech.cpp',
      'FName(MinionDamageLeechedStat), FGameplayTagContainer(), 0.0f'):
         "the commander's share of its minion's damage leeched as health (the "

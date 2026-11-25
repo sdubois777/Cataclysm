@@ -123,6 +123,16 @@ static TAutoConsoleVariable<float> CVarBlockRoll(
 		 "is any chance to; 100 never blocks."),
 	ECVF_Default);
 
+/**
+ * Pins Interpose's roll, 0-100, for tests (the Death trees' slice C6e). -1 rolls for real. A hit is taken by a minion
+ * when the roll is below the chance, so 0 always interposes and 100 never does.
+ */
+static TAutoConsoleVariable<float> CVarInterposeRoll(
+	TEXT("Cataclysm.InterposeRoll"),
+	-1.0f,
+	TEXT("Pins Interpose's roll, 0-100. -1 rolls normally. 0 interposes whenever there is any chance to."),
+	ECVF_Default);
+
 namespace
 {
 	/**
@@ -601,6 +611,49 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						UCataclysmEnemyModifiers::BeguilingRow)
 					&& Swinging->HasMatchingGameplayTag(Charm))
 				{
+					Hit.Damage = 0.0f;
+				}
+			}
+
+			// INTERPOSE, the Death trees' slice C6e (2026-11-25), as ruled (Q9): "A hit aimed at you has a 3% chance per
+			// point to be taken instead by one of your minions within 3 metres of you." A hit, not a tick; the nearest
+			// of the defender's own followers within 3 metres, not a gadget or a trap, takes the whole of it from the
+			// attacker, through its own defences, and the defender takes nothing. Overkill is not passed back. The
+			// figure handed over is the hit as sent, before the defender's evasion, block and mitigation, so no
+			// critical strike is rolled on it twice.
+			if (!Hit.bIsDamageOverTime && Hit.Damage > 0.0f)
+			{
+				const UCataclysmAbilitySystemComponent* Guarded =
+					Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent());
+				AActor* Guard = nullptr;
+				const float Chance = Guarded
+					? Guarded->StatForSkill(FName(UCataclysmAbilitySystemComponent::InterposeChanceStat),
+											FGameplayTagContainer(), 0.0f)
+					: 0.0f;
+				if (Chance > 0.0f && Guarded->GetAvatarActor())
+				{
+					const float Pinned = CVarInterposeRoll.GetValueOnAnyThread();
+					if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Chance)
+					{
+						for (AActor* Follower : UCataclysmCommand::ThingsCommandedBy(
+								 Guarded->GetAvatarActor(), UCataclysmAbilitySystemComponent::InterposeReachCm))
+						{
+							const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+							if (!Machine || !Machine->IsDeployable())
+							{
+								Guard = Follower;
+								break;
+							}
+						}
+					}
+				}
+				AActor* Interposer = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
+				if (Guard && Interposer)
+				{
+					FCataclysmHitDelivery Taken;
+					Taken.bCannotBeEvaded = true;
+					Taken.bCannotBeRetaliatedAgainst = true;
+					UCataclysmSkillEffects::ApplyDirectDamage(Interposer, Guard, Hit.Damage, Taken);
 					Hit.Damage = 0.0f;
 				}
 			}
@@ -2834,7 +2887,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			if (!Hit.bIsDamageOverTime)
 			{
 				UCataclysmAilments::RollOnLandedBlow(Data.EffectSpec,
-					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly);
+					GetOwningActor(), Outcome.DealtToHealth, Hit.bIsBlunt && !bAreaSkillShareOnAnAlly,
+					/*bCritical=*/Outcome.bWasCritical);
 			}
 
 			// A MELEE CRITICAL STRIKE MAY APPLY BLEEDING TO WHAT IT HIT.

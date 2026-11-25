@@ -3601,7 +3601,9 @@ namespace CataclysmPassiveConditionTest
 			// AND GRAVE COLD'S "enemies that have Necrosis", the Death trees' slice C6d1: a state of the target.
 			|| Name == TEXT("target_carries_necrosis")
 			// AND THE SHADOW'S DEATHMARK'S "It takes 30% more damage from you", the Death trees' slice C6e: a state.
-			|| Name == TEXT("target_marked_by_you");
+			|| Name == TEXT("target_marked_by_you")
+			// AND GUARD THE MASTER'S "the last enemy that hit you", the same slice: a state.
+			|| Name == TEXT("target_is_your_last_attacker");
 	}
 }
 

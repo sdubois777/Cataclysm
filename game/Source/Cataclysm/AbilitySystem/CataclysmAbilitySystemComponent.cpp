@@ -22,6 +22,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the minions a scaling bonus counts. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
+// For Thousand Cuts' move beside the enemy it strikes (the Death trees' slice C6e).
+#include "AbilitySystem/CataclysmMovement.h"
 // For the damage reduction cap, which a reading counted by a scaling bonus
 // stops at, the same cap a hit stops at. Issue #1515.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1842,6 +1844,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsMovementSkillHit = false;
 	bool bWantsNecrosis = false;
 	bool bWantsShadowMark = false;
+	bool bWantsLastAttacker = false;
 	bool bWantsRarity = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
@@ -1904,6 +1907,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			case ECataclysmStatCondition::TargetMarkedByYou:
 				bWantsShadowMark = true;
 				break;
+			// AND WHETHER IT IS THE LAST THAT HIT THE ASKER, Guard the Master (the Death trees' slice C6e).
+			case ECataclysmStatCondition::TargetIsYourLastAttacker:
+				bWantsLastAttacker = true;
+				break;
 			// AND WHETHER THE TARGET STANDS IN ONE OF THE ASKER'S ZONES, LISTED HERE FOR THE REASON THE
 			// AILMENT COMMENT ABOVE GIVES. Ruled 2026-10-06.
 			case ECataclysmStatCondition::TargetStandsInYourZone:
@@ -1962,7 +1969,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// to the declarations.
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory && bWantsZone && bWantsSiphon
 			&& bWantsSilence && bWantsMoving && bWantsYourCurse && bWantsYourPoisonOrBleed && bWantsNearKill && bWantsBehind && bWantsMovementSkillHit
-			&& bWantsRarity && bWantsNecrosis && bWantsShadowMark)
+			&& bWantsRarity && bWantsNecrosis && bWantsShadowMark && bWantsLastAttacker)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1977,7 +1984,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (!Target
 		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory && !bWantsZone && !bWantsSiphon
 			&& !bWantsSilence && !bWantsMoving && !bWantsYourCurse && !bWantsYourPoisonOrBleed && !bWantsNearKill && !bWantsBehind && !bWantsMovementSkillHit
-			&& !bWantsRarity && !bWantsNecrosis && !bWantsShadowMark))
+			&& !bWantsRarity && !bWantsNecrosis && !bWantsShadowMark && !bWantsLastAttacker))
 	{
 		return State;
 	}
@@ -2015,6 +2022,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		const UCataclysmAbilitySystemComponent* Marker =
 			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
 		State.bTargetMarkedByYou = Marker && Marker->HoldsShadowMarkOn(Target);
+	}
+
+	// AND WHETHER IT IS THE LAST THAT HIT THE ASKER (the Death trees' slice C6e, 2026-11-25).
+	if (bWantsLastAttacker)
+	{
+		const UCataclysmAbilitySystemComponent* Hit = Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		State.bTargetIsYourLastAttacker = Hit && Hit->GetLastBlow().IsOnRecord() && Hit->GetLastBlow().Attacker.Get() == Target;
 	}
 
 	// AND HOW LONG AGO THE ASKER'S MOVEMENT SKILL STRUCK IT, from the record kept on it (the Death trees' slice C6b2).
@@ -5913,6 +5927,32 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceMovementAction = TE
 const TCHAR* UCataclysmAbilitySystemComponent::FervourHoldExtendedAction = TEXT("fervour_hold_extended");
 const TCHAR* UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction = TEXT("next_hit_critical_twice");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeStrongestNearAction = TEXT("strike_strongest_near");
+const TCHAR* UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction = TEXT("dash_to_strongest_and_strike");
+const TCHAR* UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat =
+	TEXT("crit_multiplier_increases_to_poison_and_bleed_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::InterposeChanceStat = TEXT("interpose_chance");
+
+AActor* UCataclysmAbilitySystemComponent::MarkedOrStrongestNear(float RadiusCm) const
+{
+	const AActor* Self = GetAvatarActor();
+	if (!Self)
+	{
+		return nullptr;
+	}
+	// THE WEARER'S OWN MARK FIRST, as Blade Echo's and Thousand Cuts' sentences say "(the enemy Deathmark marked, if
+	// you have Deathmark)", while it lives and is that near.
+	for (const TWeakObjectPtr<AActor>& Mark : ShadowMarks)
+	{
+		AActor* Marked = Mark.Get();
+		if (Marked && !UCataclysmSkillEffects::IsDead(Marked)
+			&& FVector::Dist(Self->GetActorLocation(), Marked->GetActorLocation()) <= RadiusCm)
+		{
+			return Marked;
+		}
+	}
+	return UCataclysmDebuffs::StrongestEnemyNear(Self, Self, RadiusCm);
+}
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execute_target");
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
@@ -8084,6 +8124,30 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// DEALT INSIDE THIS LOOP, which runs one level deep. The hit's own announcements reach `ActOnEvent`
 		// while this call is running and are dropped: it acts on none of the wearer's `hit_dealt`,
 		// `first_hit_dealt`, `critical_strike` or `kill` rows.
+		// BLADE ECHO AND THOUSAND CUTS, the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant hit
+		// of the row's per cent of weapon damage on the wearer's own mark within 10 metres, else the strongest enemy that
+		// near, the one just slain left out; Thousand Cuts puts the wearer beside it first. Dealt inside this loop, as
+		// the strike below is, so its own kill acts on none of the wearer's rows and cannot chain.
+		if (Action.bStrikeStrongestNear || Action.bDashToStrongestAndStrike)
+		{
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			AActor* Struck = (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
+				? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;
+			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				if (Action.bDashToStrongestAndStrike)
+				{
+					UCataclysmMovement::PlaceBeside(Self, Struck);
+				}
+				FCataclysmHitDelivery Delivery;
+				Delivery.bCannotBeEvaded = true;
+				Delivery.bIsARowsAnswerToAnEvent = true;
+				UCataclysmSkillEffects::ApplyHit(Self, Struck, Action.Percent, FGameplayTagContainer(), Delivery);
+			}
+			continue;
+		}
 		if (Action.bStrikeTarget)
 		{
 			AActor* Other = const_cast<AActor*>(EventTarget);

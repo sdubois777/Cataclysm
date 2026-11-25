@@ -755,8 +755,9 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: LEECH, ETERNAL ARMY AND BOUND BONES.
 #:
 #: AND TO 662 THE SAME DAY, for slice C6e: Deathmark (four) and Two Marks. AND
-#: TO 663 FOR ITS HOLLOW STEP.
-AUTHORED_ROWS = 663
+#: TO 663 FOR ITS HOLLOW STEP. AND TO 669 FOR ITS LETHAL DOSE, BLADE ECHO,
+#: THOUSAND CUTS, INTERPOSE AND GUARD THE MASTER (TWO).
+AUTHORED_ROWS = 669
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1249,8 +1250,10 @@ AUTHORED_ROWS = 663
 #: count too, to 394.
 #:
 #: AND TO 396 THE SAME DAY, for slice C6e's Deathmark and Two Marks. AND TO 397
-#: FOR ITS HOLLOW STEP.
-AUTHORED_NODES = 397
+#: FOR ITS HOLLOW STEP. AND TO 400 FOR ITS LETHAL DOSE, INTERPOSE AND GUARD THE
+#: MASTER; Blade Echo and Thousand Cuts are options, counted in
+#: `AUTHORED_OPTIONS`, on capstones already counted.
+AUTHORED_NODES = 400
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1377,7 +1380,10 @@ AUTHORED_NODES = 397
 #:
 #: AND TO 57 THE SAME DAY, for slice C6d2: Bound Bones (the Necromancer's 100
 #: vow, option 3) and Eternal Army (its 200 vow, option 2).
-AUTHORED_OPTIONS = 57
+#:
+#: AND TO 59 THE SAME DAY, for slice C6e: Blade Echo (the Shadow's 50 vow,
+#: option 1) and Thousand Cuts (its 200 vow, option 1).
+AUTHORED_OPTIONS = 59
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1957,6 +1963,8 @@ CONDITION_WORDS = {
     # AND THE SHADOW'S DEATHMARK'S "The strongest enemy within 15 metres is
     # marked. It takes 30% more damage from you" (the Death trees' slice C6e).
     "target_marked_by_you": ("is marked", None),
+    # AND GUARD THE MASTER'S "the last enemy that hit you ... to it".
+    "target_is_your_last_attacker": ("the last enemy that hit you", None),
 
     "wearing_enemy_modifier": ("gives you its modifiers",
                                {float(place): "its modifiers"
@@ -3238,6 +3246,11 @@ VALUE_IN_WORDS = {
     ("Shadow_keystone_b_kD", "death_marks_held"): ("you mark two enemies", 1.0),
     # AND HOLLOW STEP'S FLAG, "passes through enemies and hits each one".
     ("Shadow_keystone_c_kB", "movement_passes_through_enemies"): ("passes through enemies and hits each one", 1.0),
+    # AND THE REST OF SLICE C6e: Lethal Dose's "at half their value", 50 per
+    # cent; Guard the Master's "Your minions turn on the last enemy that hit
+    # you", a flag of one a point.
+    ("Shadow_keystone_a_kA", "crit_multiplier_increases_to_poison_and_bleed_percent"): ("at half their value", 50.0),
+    ("Necromancer_basic_gr_c1", "minions_turn_on_your_last_attacker"): ("your minions turn on the last enemy", 1.0),
     # AND DEATHMARK'S "each critical strike on it gives 5 Fervour", worded
     # differently from the forms `fervour_per_critical_strike` takes.
     ("Shadow_keystone_b_kB", "fervour_per_critical_strike"): ("each critical strike on it gives 5 fervour", 5.0),
@@ -3407,6 +3420,8 @@ ACTION_VALUE_FORMS = {
     # Opening Found's "generates 1 Fervour per point", Reaper's Due's "gives 5
     # Fervour" and Tear Loose's "to give you 1 Fervour".
     "class_resource": ("{value:g} Fervour",),
+    # BLADE ECHO'S "for 100% weapon damage" (the Death trees' slice C6e).
+    "strike_strongest_near": ("{value:g}% weapon damage",),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
@@ -3427,6 +3442,10 @@ SIZED_BY_THE_AMOUNT_ROWS = 5
 #: An action row's number stated in words, by node and action, as
 #: `VALUE_IN_WORDS` holds a stat's.
 ACTION_VALUE_IN_WORDS = {
+    # THOUSAND CUTS, the Death trees' slice C6e (2026-11-25): "moves you straight
+    # to the strongest enemy within 10 metres ... and strikes it", a hit of 100%
+    # of weapon damage, as ruled (Q6).
+    ("Shadow_capstone_200", "dash_to_strongest_and_strike"): ("and strikes it", 100.0),
     # GRAVE COLD, the Death trees' slice C6d1 (2026-11-25): "Every hit your
     # minions land inflicts Necrosis", a 100% chance on `minion_hit`.
     ("Necromancer_keystone_spine_002", "apply_status"): ("every hit your minions land inflicts necrosis", 100.0),

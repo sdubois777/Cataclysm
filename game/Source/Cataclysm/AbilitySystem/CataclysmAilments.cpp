@@ -411,7 +411,7 @@ const FCataclysmAilmentKind* UCataclysmAilments::ApplyRandomDebuff(
 
 int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 										   AActor* Defender, float DealtToHealth,
-										   bool bIsBlunt)
+										   bool bIsBlunt, bool bCritical)
 {
 	if (!BlowCanCarryAnAilment(Defender, DealtToHealth))
 	{
@@ -487,6 +487,27 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 		//
 		// THE SKILL WHOSE BLOW ROLLED IT goes on the ailment too, so that
 		// every tick of it names the skill. Issue #41, slice 4.
+		// AND A POISON OR BLEED OF A CRITICAL STRIKE IS LENT HALF ITS CRITICAL STRIKE MULTIPLIER'S INCREASES, where the
+		// applier holds Lethal Dose (the Death trees' slice C6e, 2026-11-25), as ruled (Q8): the increased bucket only,
+		// added to `dot_damage`'s increases for this application alone.
+		UCataclysmAbilitySystemComponent* Lender = nullptr;
+		float Lent = 0.0f;
+		if (bCritical && (FCString::Strcmp(Kind.Ailment, TEXT("Poison")) == 0 || FCString::Strcmp(Kind.Ailment, TEXT("Bleed")) == 0))
+		{
+			Lender = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Applier));
+			const float Share = Lender
+				? Lender->StatForSkill(FName(UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat),
+									   FGameplayTagContainer(), 0.0f)
+				: 0.0f;
+			if (Share > 0.0f)
+			{
+				Lent = FMath::Max(0.0f, Lender->IncreasesForStat(FName(TEXT("crit_multiplier")), FGameplayTagContainer()))
+					* 100.0f * Share / 100.0f;
+			}
+		}
+		float Unlent = 0.0f;
+		float& LentSlot = Lender ? Lender->AilmentIncreasePercentLentByCritical : Unlent;
+		TGuardValue<float> LendsIt(LentSlot, Lent);
 		if ((Chance >= ChanceCap || AilmentRoll() < Chance)
 			&& Apply(Applier, Defender, Kind, Magnitude,
 					 Spec.GetContext().GetAbilityInstance_NotReplicated()))

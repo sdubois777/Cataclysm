@@ -5649,6 +5649,11 @@ CONDITIONS = {
     # of the asker's own marks. The Death trees' slice C6e (2026-11-25), as ruled
     # (Q5). It names a state. A fact of the target in hand.
     "target_marked_by_you": None,
+    # AND GUARD THE MASTER'S "deal +3% increased damage per point to it": the
+    # character struck is the last that hit the asker, for a minion's blow its
+    # summoner. The Death trees' slice C6e (2026-11-25). A fact of the target in
+    # hand.
+    "target_is_your_last_attacker": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -8212,6 +8217,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_next_hit_critical_twice_action(index, who, action, event,
                                               fraction_of, kind, raw, headers)
         return
+    if action in STRONGEST_NEAR_ACTIONS:
+        _check_strongest_near_action(index, who, action, event, fraction_of,
+                                     kind, raw, headers)
+        return
     if action in TRAPS_NEARBY_ACTIONS:
         _check_traps_nearby_action(index, who, action, event, fraction_of,
                                    kind, raw, headers)
@@ -8248,6 +8257,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"or {NEXT_HIT_CRITICAL_ACTION}; "
             f"or {FERVOUR_HOLD_EXTENDED_ACTION}; "
             f"or {NEXT_HIT_CRITICAL_TWICE_ACTION}; "
+            f"or {', '.join(STRONGEST_NEAR_ACTIONS)}; "
             f"or an action on the wearer's other traps, "
             f"{', '.join(TRAPS_NEARBY_ACTIONS)}; "
             f"or {GADGET_FIRES_AT_TRAP_ENEMY_ACTION}; "
@@ -9182,6 +9192,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != NEXT_HIT_CRITICAL_ACTION \
                 and action != FERVOUR_HOLD_EXTENDED_ACTION \
                 and action != NEXT_HIT_CRITICAL_TWICE_ACTION \
+                and action not in STRONGEST_NEAR_ACTIONS \
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
@@ -9480,6 +9491,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} makes the next hit a "
                 f"critical strike for {low:g} to {high:g} seconds. The seconds "
                 f"are 0 (until used) up to {MAX_NEXT_HIT_CRITICAL_SECONDS:g}.")
+
+    # AND BLADE ECHO'S AND THOUSAND CUTS' IS THE PER CENT OF WEAPON DAMAGE THEIR
+    # HIT DEALS. The Death trees' slice C6e.
+    if action in STRONGEST_NEAR_ACTIONS:
+        if not (0 < low <= MAX_STRIKE_TARGET_PERCENT and 0 < high <= MAX_STRIKE_TARGET_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} strikes the strongest "
+                f"enemy near for {low:g} to {high:g}% of weapon damage. The per "
+                f"cent is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
 
     # AND TWICE ANSWERED'S IS THE CRITICAL STRIKES THE CHARGE HOLDS, two and
     # nothing else; its chance is the Chance Percent. The Death trees' slice C6b4.
@@ -11322,6 +11342,7 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_struck_by_your_movement_skill_within_seconds",
     "target_carries_necrosis",
     "target_marked_by_you",
+    "target_is_your_last_attacker",
     "target_health_below",
     "target_is_boss",
     "target_is_not_boss",
@@ -14956,6 +14977,17 @@ MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 #: trees' slice C6b4 (2026-11-25), as ruled. Its value is the count, 2.
 #: `UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction` holds the
 #: same name. ON `dodge` AND NO OTHER EVENT: "each evasion".
+#: Blade Echo and Thousand Cuts, the Shadow's 50 and 200 vows' first options,
+#: the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant
+#: hit of the value's per cent of weapon damage on the wearer's own mark within
+#: 10 metres, else the strongest enemy that near; Thousand Cuts moves the wearer
+#: beside it first. On `kill` only. The value is the per cent, up to
+#: `MAX_STRIKE_TARGET_PERCENT`.
+STRIKE_STRONGEST_NEAR_ACTION = "strike_strongest_near"
+DASH_TO_STRONGEST_AND_STRIKE_ACTION = "dash_to_strongest_and_strike"
+STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION)
+STRONGEST_NEAR_EVENTS = ("kill",)
+
 NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
 NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)
 NEXT_HIT_CRITICAL_TWICE_COUNT = 2.0
@@ -15097,6 +15129,29 @@ def _check_fervour_hold_extended_action(index: int, who: str, action: str,
                 f"Enchantment Effects row {index}: {who} lengthens the hold "
                 f"before decay and states {column} {written!r}. Its value is "
                 f"the seconds and nothing else, so the column must be empty.")
+
+
+def _check_strongest_near_action(index: int, who: str, action: str,
+                                 event: str, fraction_of: str, kind: str,
+                                 raw, headers: dict[str, int]) -> None:
+    """Everything a Blade Echo or Thousand Cuts row must say, and everything it
+    must not. The Death trees' slice C6e (2026-11-25). ON `kill` ONLY; the per
+    cent is checked where the value is read. A fraction, a value kind and a scale
+    each mean nothing here, so each is refused rather than dropped.
+    """
+    if event not in STRONGEST_NEAR_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} strikes the strongest enemy "
+            f"near on the event {event or '(none)'!r}. Only a kill does: "
+            f"{', '.join(STRONGEST_NEAR_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} strikes the strongest "
+                f"enemy near and states {column} {written!r}. Its value is the "
+                f"per cent and nothing else, so the column must be empty.")
 
 
 def _check_next_hit_critical_twice_action(index: int, who: str, action: str,

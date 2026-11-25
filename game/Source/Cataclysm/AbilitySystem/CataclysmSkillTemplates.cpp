@@ -3148,43 +3148,11 @@ void UCataclysmMovementSkill::PassThroughEnemies(bool bThrough)
 
 void UCataclysmMovementSkill::StepOutOfEnemies(const FVector& LineStart)
 {
-	ACharacter* Mover = Cast<ACharacter>(Avatar());
-	UWorld* World = GetWorld();
-	if (!Mover || !World || !Mover->GetCapsuleComponent())
+	// THE ONE STEP OUT, shared with Thousand Cuts' move (`UCataclysmMovement::StepOutOfEnemies`).
+	AActor* Mover = Avatar();
+	if (Mover && UCataclysmMovement::StepOutOfEnemies(Mover, LineStart))
 	{
-		return;
-	}
-	const float MyRadius = Mover->GetCapsuleComponent()->GetScaledCapsuleRadius();
-	const FVector Ended = Mover->GetActorLocation();
-	const FVector Toward = FVector(LineStart.X - Ended.X, LineStart.Y - Ended.Y, 0.0f);
-	const float Length = Toward.Size();
-	const FVector Back = Length > 0.0f ? Toward / Length : FVector::ZeroVector;
-	const auto Overlaps = [this, World, Mover, MyRadius](const FVector& At)
-	{
-		for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(World, Mover, At, MyRadius + 200.0f))
-		{
-			const ACharacter* Body = Cast<ACharacter>(Enemy);
-			const float TheirRadius = Body && Body->GetCapsuleComponent()
-				? Body->GetCapsuleComponent()->GetScaledCapsuleRadius() : 0.0f;
-			if (!UCataclysmSkillEffects::IsDead(Enemy) && FVector::Dist2D(At, Enemy->GetActorLocation()) < MyRadius + TheirRadius)
-			{
-				return true;
-			}
-		}
-		return false;
-	};
-	for (float Walked = 0.0f; Walked <= Length + 1.0f; Walked += 10.0f)
-	{
-		const FVector At = Ended + Back * FMath::Min(Walked, Length);
-		if (!Overlaps(At))
-		{
-			if (Walked > 0.0f)
-			{
-				Mover->SetActorLocation(At, /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
-				ArrivedAt = At;
-			}
-			return;
-		}
+		ArrivedAt = Mover->GetActorLocation();
 	}
 }
 

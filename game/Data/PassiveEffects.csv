@@ -662,3 +662,9 @@ Shadow_keystone_b_kB#3,Shadow_keystone_b_kB,spell_damage,more,30.0,,target_marke
 Shadow_keystone_b_kB#4,Shadow_keystone_b_kB,fervour_per_critical_strike,flat,5.0,,target_marked_by_you,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_keystone_b_kD#1,Shadow_keystone_b_kD,death_marks_held,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
 Shadow_keystone_c_kB#1,Shadow_keystone_c_kB,movement_passes_through_enemies,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_keystone_a_kA#1,Shadow_keystone_a_kA,crit_multiplier_increases_to_poison_and_bleed_percent,flat,50.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_capstone_50#2,Shadow_capstone_50,,,100.0,,,0.0,,0.0,1,-1.0,0,0,strike_strongest_near,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Shadow_capstone_200#4,Shadow_capstone_200,,,100.0,,,0.0,,0.0,1,-1.0,0,0,dash_to_strongest_and_strike,kill,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_a1#1,Necromancer_basic_gr_a1,interpose_chance,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_c1#1,Necromancer_basic_gr_c1,minions_turn_on_your_last_attacker,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0
+Necromancer_basic_gr_c1#2,Necromancer_basic_gr_c1,minion_damage,increased,3.0,,target_is_your_last_attacker,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0

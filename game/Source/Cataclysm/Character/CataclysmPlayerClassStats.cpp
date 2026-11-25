@@ -1175,6 +1175,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// And its Hollow Step: a movement skill that passes through enemies and hits each one. Read by
 		// UCataclysmMovementSkill::PassesThroughEnemies. No attribute and no base.
 		TEXT("movement_passes_through_enemies"),
+		// And the slice's Guard the Master (minions turn on the commander's last attacker), Lethal Dose (the share of
+		// the critical strike multiplier's increases a crit's Poison or Bleed takes) and Interpose (the chance a hit
+		// is taken by a minion). Read by UCataclysmCommand, UCataclysmAilments and UCataclysmVitalAttributeSet. No
+		// attribute and no base.
+		TEXT("minions_turn_on_your_last_attacker"),
+		TEXT("crit_multiplier_increases_to_poison_and_bleed_percent"),
+		TEXT("interpose_chance"),
 		// And the Shadow's starting node and Telling Blows, the Death trees' slice C4d1: the Fervour a landed critical
 		// strike pays, read by UCataclysmFervour::GainOnCriticalStrike against the character struck. No attribute and no
 		// base.

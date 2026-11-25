@@ -562,8 +562,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// (two) and Grave Pact, the Necromancer 32. AND 653 FOR SLICE C6d2: Death Ward, Bone Knit, Marrow Feast and Avenging
 	// Dead, the Necromancer 36; AND 654 FOR ITS MARSHAL, the Necromancer 37; AND 657 FOR ITS SHARED LEECH, ETERNAL ARMY
 	// AND BOUND BONES, the Necromancer 40. AND 662 FOR SLICE C6e: Deathmark (four) and Two Marks, the Shadow 124; AND 663
-	// FOR ITS HOLLOW STEP, the Shadow 125.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        663)
+	// FOR ITS HOLLOW STEP, the Shadow 125; AND 669 FOR ITS LETHAL DOSE, BLADE ECHO AND THOUSAND CUTS, the Shadow 128, AND
+	// INTERPOSE AND GUARD THE MASTER (TWO), the Necromancer 43.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        669)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

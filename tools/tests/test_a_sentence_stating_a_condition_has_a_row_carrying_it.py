@@ -55,6 +55,10 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Necromancer_basic_gr_a1", "0", "minion_within_metres_of_you"):
+        "Interpose's 'one of your minions within 3 metres of you' is the reach the game searches for the minion that "
+        "takes the hit (UCataclysmAbilitySystemComponent::InterposeReachCm), not a condition on a stat (the Death "
+        "trees' slice C6e)",
     ("Necromancer_capstone_200", "2", "health_above"):
         "Eternal Army's 'while you are above 50% health' is the commander's health share its stat "
         "minion_cannot_die_above_health_percent 50 compares, read where a follower's health reaches nought "

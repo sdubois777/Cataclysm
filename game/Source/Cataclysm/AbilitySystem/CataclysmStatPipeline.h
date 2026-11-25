@@ -2116,6 +2116,15 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetMarkedByYou
 		UMETA(DisplayName = "Target Marked By You"),
+
+	/**
+	 * The character struck is the last that hit the asker: Guard the Master, "Your minions turn on the last enemy that
+	 * hit you, and deal +3% increased damage per point to it". The Death trees' slice C6e (2026-11-25). Read from the
+	 * asker's `GetLastBlow` by `WithTargetState`, only when a row asks; for a minion's blow the asker is its summoner.
+	 * IT TAKES NO VALUE.
+	 */
+	TargetIsYourLastAttacker
+		UMETA(DisplayName = "Target Is Your Last Attacker"),
 };
 
 /**
@@ -3253,6 +3262,10 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** Whether the character struck carries one of the asker's marks. The Death trees' slice C6e. See `TargetMarkedByYou`. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bTargetMarkedByYou = false;
+
+	/** Whether the character struck is the last that hit the asker. The Death trees' slice C6e. See `TargetIsYourLastAttacker`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsYourLastAttacker = false;
 
 	/**
 	 * How many enemies are in this character's Siphon, for `ECataclysmStatScale::PerEnemyInSiphon`. The Death trees'
@@ -5446,6 +5459,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bNextHitCriticalTwice = false;
 
 	/**
+	 * Blade Echo and Thousand Cuts, the Death trees' slice C6e (2026-11-25), as ruled (Q6): on a kill, an instant hit
+	 * of `Percent` of the wearer's weapon damage on the strongest enemy within 10 metres, the wearer's own Shadow mark
+	 * first if it is that near; Thousand Cuts moves the wearer beside it first. No projectile is drawn.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bStrikeStrongestNear = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bDashToStrongestAndStrike = false;
+
+	/**
 	 * Set, this action pays `Percent` of the damage its block removed back to the
 	 * attacker, as retaliation pays: through the attacker's armour and
 	 * resistance, never retaliated against, and scaled by nothing. Issue #1833
@@ -5839,7 +5863,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-sixth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-seventh, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5856,7 +5880,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY-SEVEN OF THE HUNDRED-AND-FIVE COMPARE NOTHING. They are the case labels
+	 * FORTY-EIGHT OF THE HUNDRED-AND-SIX COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

@@ -716,6 +716,32 @@ float UCataclysmCommand::AttackIntervalScaleFor(const AActor* Follower,
  * affix rows carry no scope tags and apply to every minion, and a row scoped
  * to `Type.Deployable` now reaches a machine and not an imp.
  */
+const TCHAR* UCataclysmCommand::TurnOnLastAttackerStat = TEXT("minions_turn_on_your_last_attacker");
+
+AActor* UCataclysmCommand::CommandersLastAttackerFor(const AActor* Follower)
+{
+	const ACataclysmMinion* Machine = Cast<ACataclysmMinion>(Follower);
+	const AActor* Commander = Follower ? CommanderOf(Follower) : nullptr;
+	const UCataclysmAbilitySystemComponent* Theirs = Commander
+		? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Commander))
+		: nullptr;
+	if (!Theirs || (Machine && Machine->IsDeployable())
+		|| Theirs->StatForSkill(FName(TurnOnLastAttackerStat), FGameplayTagContainer(), 0.0f) <= 0.0f
+		|| !Theirs->GetLastBlow().IsOnRecord())
+	{
+		return nullptr;
+	}
+	AActor* Attacker = Theirs->GetLastBlow().Attacker.Get();
+	const ACataclysmCharacterBase* Body = Cast<ACataclysmCharacterBase>(Follower);
+	if (!Attacker || Attacker == Follower || UCataclysmSkillEffects::IsDead(Attacker)
+		|| !UCataclysmTargeting::IsHostileTo(Attacker, Follower)
+		|| (Body && FVector::Dist(Follower->GetActorLocation(), Attacker->GetActorLocation()) > Body->NoticesFromCm()))
+	{
+		return nullptr;
+	}
+	return Attacker;
+}
+
 float UCataclysmCommand::SummonerMultiplierFor(const AActor* Summoner, const TCHAR* Stat,
 											 const FGameplayTagContainer& MinionTags,
 											 const AActor* AskingMinion)

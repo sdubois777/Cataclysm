@@ -2672,6 +2672,19 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
 		FName(TEXT("dot_damage")), Tags);
+	// AND LETHAL DOSE'S SHARE OF A CRITICAL STRIKE'S INCREASES, added to `dot_damage`'s increased bucket while its
+	// Poison or Bleed is applied (the Death trees' slice C6e, 2026-11-25), as ruled (Q8): one plus the increases is
+	// replaced by one plus the increases and the share, so it sums with them and is multiplied by nothing else.
+	if (const UCataclysmAbilitySystemComponent* Lender = Cast<UCataclysmAbilitySystemComponent>(Source);
+		Lender && Lender->AilmentIncreasePercentLentByCritical > 0.0f)
+	{
+		const float Increases = Lender->IncreasesForStat(FName(TEXT("dot_damage")), Tags);
+		if (1.0f + Increases > 0.0f)
+		{
+			Numbers.DamagePerTick *= (1.0f + Increases + Lender->AilmentIncreasePercentLentByCritical / 100.0f)
+				/ (1.0f + Increases);
+		}
+	}
 	// AND `debuff_duration`'s INCREASES IN THE SAME BUCKET. Issue #1833, ruled
 	// 2026-09-30: a damage over time effect is a debuff the character applies.
 	// `dot_duration` carries only increased rows, so its multiplier is one

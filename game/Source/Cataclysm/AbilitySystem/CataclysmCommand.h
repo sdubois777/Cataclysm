@@ -227,6 +227,18 @@ public:
 	static AActor* OrderedTargetFor(const AActor* Follower);
 
 	/**
+	 * GUARD THE MASTER, the Death trees' slice C6e (2026-11-25): "Your minions turn on the last enemy that hit you". The
+	 * last character that hit `Follower`'s commander, when the commander holds `TurnOnLastAttackerStat` above nought and
+	 * that character is alive, hostile to the follower and within what the follower notices. Null otherwise, and for a
+	 * gadget or a trap, which are machines rather than minions. `ACataclysmEnemyController::ChooseTarget` asks it after
+	 * a Quarry order and before every other choice.
+	 */
+	static AActor* CommandersLastAttackerFor(const AActor* Follower);
+
+	/** The stat Guard the Master states on the commander: its minions turn on the last enemy that hit it. */
+	static const TCHAR* TurnOnLastAttackerStat;
+
+	/**
 	 * The minion that draws this creature off the character it would otherwise
 	 * attack, or null when nothing changes.
 	 *

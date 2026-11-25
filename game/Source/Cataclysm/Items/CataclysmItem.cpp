@@ -1638,6 +1638,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// the Death trees' slice C6b4 (2026-11-25). The chance is the row's `ChancePercent`.
 					Action.bNextHitCriticalTwice = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT STRIKES THE STRONGEST ENEMY NEAR ON A KILL, Blade Echo, or moves beside it and
+					// strikes, Thousand Cuts: the Death trees' slice C6e (2026-11-25).
+					Action.bStrikeStrongestNear = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeStrongestNearAction, ESearchCase::IgnoreCase);
+					Action.bDashToStrongestAndStrike = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
