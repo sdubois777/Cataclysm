@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Facts of the target of a hit: From Behind, Opening Strike, Venomed Prey and Hit and Run (Death trees, slice C6b1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `target_struck_from_behind`,
+  `target_at_full_health`, `target_carries_your_poison` and `target_beyond_metres`, and two state fields.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `SetStrikingFromBehindByRule`,
+  `IsStrikingFromBehindByRule`; `WithTargetState` fills the new fields, with a new flag in both of its flag lists.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `CarriesPoisonLaidBy`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: a `RearHits=1` strike marks its striker around the
+  hit.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmHitTargetFactsTests.cpp`, new (5); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`) and `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (one), `test_passive_effects_match_the_node_text.py` and
+  `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (reads the second condition column).
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (611 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **SLICE C6b IS BUILT IN THREE PARTS**, this being the first: the facts of a hit's target. C6b2 is the movement skill's
+  clocks (Arrival, Glancing Cuts); C6b3 the Fervour from evasions and Bosses with the `points` base (Opening Found,
+  Reaper's Due, Tear Loose, Read the Blow, Hunting Ground, Vigil Over the Strong). Festering's per-second scale and
+  Twice Answered's two charges go where their pieces fit.
+- **OPENING STRIKE'S "IS A CRITICAL STRIKE" IS A CHANCE OF 100, HELD UNDER THE CEILING**, as Overpowered's was ruled
+  (C4d3, W2), a judgement: unlike Chain Execution's charge, which the coordinating session ruled certain, its sentence
+  names a hit by its state rather than a charge.
+- **"FROM BEHIND" IS JUDGED WHERE THE STAT IS ASKED**, by `UCataclysmSkillEffects::IsBehind` (the target's facing, the
+  same 90 degree arc every rear-hit skill uses), or by a mark a `RearHits=1` skill sets on its striker around its hit in
+  `UCataclysmSkillTemplate`. A projectile or a buried weapon has no `RearHits` rule today, so only the geometry
+  applies to them.
+- **TWO FAULTS FOUND BY THE WHOLE SUITE BEFORE THE COMMIT, AND FIXED.** (1) Comment lines I had put between `case`
+  labels in `WhatConditionDependsOn` split three label groups; `test_a_minion_row_asks_only_what_its_read_can_answer.py`
+  reads each run of labels up to its `return`, so it read them as shorter. The comments are moved above the groups,
+  with a note saying why. (2) `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` read only the first
+  condition column, so `target_at_full_health`, which Opening Strike names as its second condition, read as unreached.
+  The check now reads both columns, which is what play reaches.
+- **HIT AND RUN IS JUDGED AT EACH TICK**, a judgement from "which a bleeding enemy is while it chases you": a Bleed tick
+  carries its distance from its applier, which the per-tick `dot_damage` lookup already hands over.
+
+### What each reads
+
+- **FROM BEHIND:** crit chance increased 3 a point under `target_struck_from_behind`.
+- **OPENING STRIKE (the Shadow's 25 vow, option 1):** crit chance flat 100 and attack and spell damage 50% more, each
+  under `target_not_yet_struck_by_you` and, as its second condition, `target_at_full_health`, which reads the health
+  share `target_health_below` reads.
+- **VENOMED PREY:** attack and spell damage increased 2 a point under `target_carries_your_poison`, a Poison the asker
+  laid (`UCataclysmDebuffs::CarriesPoisonLaidBy`), a Bleed alone not counting.
+- **HIT AND RUN:** `dot_damage` increased 3 a point on `Keyword.DoT.Bleed` under `target_beyond_metres` 4, strictly more
+  than, reading the distance `target_within_metres` reads.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| From Behind (Shadow basic, max 8) | crit_chance, increased, 3, cond=target_struck_from_behind |
+| Opening Strike (Shadow 25 vow, option 1) | crit_chance, flat, 100; attack_damage and spell_damage, more, 50; each cond=target_not_yet_struck_by_you, cond2=target_at_full_health |
+| Venomed Prey (Shadow basic) | attack_damage and spell_damage, increased, 2, cond=target_carries_your_poison |
+| Hit and Run (Shadow basic) | dot_damage, increased, 3, tags Keyword.DoT.Bleed, cond=target_beyond_metres 4 |
+
+`PassiveEffects.csv` 604 to 611; the Shadow 105 rows. The pins: rows 611, nodes 365, options 54. The node-text test's
+words for `target_not_yet_struck_by_you` now also accept "your first hit on an enemy".
+
+### Rulings recorded here
+
+None new: the C6 plan's rulings are recorded in the slice C6a entry.
+
+### Research
+
+None new. From Behind reuses the rear arc the dagger skills' `RearHits` and `IsBehind` already use.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.HitTargetFacts.` | new: `FromBehindHoldsInTheRearArcAndForARearHitsSkill`, `OpeningStrikeHoldsOnAFirstHitOnACreatureAtFullHealth`, `VenomedPreyCountsYourPoisonAndNotYourBleed`, `HitAndRunHoldsStrictlyBeyondFourMetres`, `TheFourNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.Passives.` | `ComparesNothing` names the three new no-value conditions | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 611 | unchanged |
+
+Each new test has a control: an asker in front, and the mark cleared; a creature at 999 of 1,000 and one already struck;
+your Bleed and another character's Poison; exactly 4 metres, 3 metres and an unknown distance.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmAbilitySystemComponent.cpp`,
+`WithTargetState`: the line `|| UCataclysmSkillEffects::IsBehind(State.AskingAbilitySystem->GetAvatarActor(), Target);`
+removed, so only the mark counts. Prefix `Cataclysm.HitTargetFacts.`; must fail
+`FromBehindHoldsInTheRearArcAndForARearHitsSkill` (10 behind).
+
+### What was run
+
+SUITE_FIGURES_C6B1
+
+PYTHON_PROOFS_C6B1
+
+---
+
 ## 2026-11-25 — Evasions and a full bar that speed the next thing, and four nodes that are data alone (Death trees, slice C6a)
 
 **Affects:**
