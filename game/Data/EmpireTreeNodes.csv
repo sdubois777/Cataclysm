@@ -127,7 +127,7 @@ basic_arts_t1e,Artisan,basic,Tool Maintenance,-5% CR gained from all crafting ac
 basic_arts_t1f,Artisan,basic,Workshop Upgrades,-1.5% Gold cost for all crafting actions per point.,8,0,-182.77631826024628,-66.79884945632696,,,,,,,,,,
 basic_arts_t1g,Artisan,basic,Limited Knowledge,-2.5% CR gained from crafting actions on items below +6 per point (multiplicative).,10,0,-65.78820564190167,-232.00789654014525,,,,,,,,,,
 keystone_00000051,Artisan,keystone,Apprentice Oversight,Reduces the Gold cost of all Tier 1 and Tier 2 crafts by 20%.,1,0,-247.4,-61.7,,,,,,,,,,
-basic_00000053,Artisan,basic,Industrial Speed,-1% of Days required for any crafting project per point.,5,0,-293.09416908862636,-115.31564626440174,,,,,,,,,,
+basic_00000053,Artisan,basic,Industrial Speed,-10% of Days required for any crafting project per point.,5,0,-293.09416908862636,-115.31564626440174,,,,,,,,,,
 basic_00000054,Artisan,basic,Refining Techniques,+5% chance for a crafted item to roll with a Higher Tier base stat.,15,0,-164.72780316430914,-158.29015821545786,the owner's answer to what its sentence means (issue #2741),,,,,,,,,
 basic_00000055,Artisan,basic,Salvage Protocol,Dismantling items now yields 25% more crafting materials.,10,0,-210.54530758651134,-243.4605272208894,,,,,,,,,,
 basic_arts_t2d,Artisan,basic,Quality Materials,+10% chance per point for a craft to roll maximum values on one random affix.,10,0,-280.57311075082055,-214.64038669424028,,,,,,,,,,

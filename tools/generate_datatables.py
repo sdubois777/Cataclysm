@@ -4412,16 +4412,18 @@ EMPIRE_TREE_EFFECTS = {
     # gained from crafting actions using T3+ materials per point
     # (multiplicative)"; "Chaos Stabilizer reduces CR gain by an additional 2.5%
     # per point"; "1% chance per 100 CR on an item to reset CR to 0 when
-    # crafting"; "-1 Day to crafting time per point"; "-1% of Days required for
-    # any crafting project per point" (the tree file's figure, ruling C1; the
-    # owner's question 6); "Reduce total crafting time required by 50%".
+    # crafting"; "-1 Day to crafting time per point"; "-10% of Days required for
+    # any crafting project per point" (the keystones document's figure, ruled
+    # by the coordinating session on 2026-11-25 under the owner's delegation:
+    # the tree file's 1% rounded away to nothing; 50% at 5 points); "Reduce
+    # total crafting time required by 50%".
     "Tool Maintenance": [("CraftResidueKept", 0.05)],
     "Limited Knowledge": [("LowLevelCraftResidueKept", 0.025)],
     "Heat Shielding": [("RareMaterialCraftResidueKept", 0.025)],
     "Stable Compounds": [("StabilizerShareReduced", 0.025)],
     "Master's Touch": [("ResidueResetChancePerHundred", 0.01)],
     "Master Craftsman": [("CraftDaysOff", 1.0)],
-    "Industrial Speed": [("CraftDaysReduced", 0.01)],
+    "Industrial Speed": [("CraftDaysReduced", 0.10)],
     "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
     # #2741's crafting group, slices C3 and C4 (2026-11-25). "+3% chance per
     # point for affixes to roll in the top 25% of their range"; "+2% to the

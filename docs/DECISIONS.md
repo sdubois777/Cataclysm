@@ -193,8 +193,10 @@ and moved onto development once F6b merges.
   this session) was accepted with every C1 and C2 recommendation as written, and G1 to G4.
 - **NO NEW GENRE RESEARCH.** The combination rules copy this project's own: the three-bucket pipeline, "(multiplicative)"
   as compounding per point (the 2026-09-07 entry; `WalkTimeCompounded`), and D9 (separately capped reductions multiply).
-- **THE TREE FILE'S FIGURES, RULING C1**: Industrial Speed is built at the file's 1% a point, not the keystones
-  document's 10%. That is the owner's question 6; the answer is a data change.
+- **INDUSTRIAL SPEED IS 10% A POINT**, the keystones document's figure, 50% at its 5 points. The owner left the six
+  forge node questions to the coordinating session ("I'll let you decide on those questions"), which ruled on 2026-11-25 that the tree file's
+  1% rounds away to nothing. This slice was first written at the tree file's 1% (ruling C1, the owner's question 6);
+  the tree file's sentence, the generator's row and the checks were changed to 10% before the window registered.
 - **NO SAVE VERSION MOVES.** Master's Touch's draw is the item's and the day's.
 
 ### The rulings, the coordinating session, 2026-11-25
@@ -224,7 +226,7 @@ and moved onto development once F6b merges.
 | Stable Compounds (10) | "Chaos Stabilizer reduces CR gain by an additional 2.5% per point." | `StabilizerShareReduced` 0.025: the Stabilizer keeps 0.25 at 10 |
 | Master's Touch (1) | "1% chance per 100 CR on an item to reset CR to 0 when crafting." | `ResidueResetChancePerHundred` 0.01 |
 | Master Craftsman (10) | "-1 Day to crafting time per point." | `CraftDaysOff` 1 |
-| Industrial Speed (5) | "-1% of Days required for any crafting project per point." | `CraftDaysReduced` 0.01 |
+| Industrial Speed (5) | "-10% of Days required for any crafting project per point." | `CraftDaysReduced` 0.10: 0.5 at 5 |
 | Sovereign's Assembly (1) | "Reduce total crafting time required by 50%." | `CraftDaysReducedMore` 0.5 |
 
 - **The costs** (`FCataclysmForgeCosts`, `UCataclysmForgeCraft::CostsFor` with the craft's own material): the residue
