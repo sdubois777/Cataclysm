@@ -2,6 +2,151 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Soul Collector's Siphon and the eleven nodes that act on it, and an end-to-end test of a real passive action row (Death trees, slice C2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.h` and `.cpp`, new: `FCataclysmSiphon`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: the Siphon's record
+  (`SiphonMembers`, `EnemiesInSiphon`, `HasInSiphon`, `SiphonPulseSeconds`), the cut a member's damage takes
+  (`NoteSiphonDamageCut`, `SiphonDamageCutPercentNow`), the count in `CurrentConditions` and the target fact in
+  `WithTargetState`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the scale `enemies_in_siphon`
+  (`PerEnemyInSiphon`) and the condition `target_in_your_siphon` (`TargetInYourSiphon`).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`: `DealLessPercentOn` multiplies the Siphon's cut
+  with the debuff cut.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step), `CataclysmPlayerClassStats.cpp` (eight stats
+  with no attribute), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the line above the skill bar).
+- Tests: `game/Source/Cataclysm/Tests/CataclysmSiphonTests.cpp`, new (5); `CataclysmDeathTreesTests.cpp` (1);
+  `CataclysmStatExemptionTests.cpp` (11 probes); `CataclysmPassiveTreeTests.cpp` and `CataclysmDataTableTests.cpp`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (525 rows), `docs/README.md`, and the Python checks
+  `test_passive_effects_match_the_node_text.py`, `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`,
+  `test_damage_over_time_names_its_skill.py`, `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects` in the editor
+  step, and run the groups under "Unreal tests".
+- **THE SIPHON REACHES ENEMIES THROUGH TWO RECORDS OTHER RULES ALSO WRITE.** Its cut multiplies with the debuff cut
+  inside `UCataclysmDebuffs::DealLessPercentOn`, which every enemy's weapon damage reads; and its slow is Ground Down's
+  record (`ACataclysmEnemyCharacter::NoteGroundDown`), where the strongest holds, so a Siphon's slow and a Ravager's
+  Ground Down on one creature do not add.
+- **THE SIPHON'S INTERFACE IS A LINE ABOVE THE SKILL BAR, "Siphon: 2 within 6.0 m", AND NOT A RING ON THE GROUND.** The
+  ring drawn on the ground in this game is an attack's warning, with a fill that grows; drawn round the player, it
+  would say an attack is coming.
+- **NOT BUILT:** the Crossbow's Effigy, "If you have the Siphon keystone, the effigy siphons the enemies around it too",
+  which is a skill on the Death weapon skills branch.
+- **THE END-TO-END TEST THE COORDINATING SESSION ASKED FOR AFTER C1** is
+  `Cataclysm.DeathTrees.KillChainsRealRowsCountASoulCollectorsKillsThroughThePortsBuilder`: a real level 10 Death
+  character, Kill Chain's real rows through the port's copy and builder and the equipment's refresh, and real kill
+  announcements, with a control holding only the starting node.
+
+### Rulings of the coordinating session, 2026-11-25
+
+From the slice C plan: the Siphon's effects are paid once a second, and "each enemy deals reduced damage" is a cut to
+what the enemy deals, through `UCataclysmDebuffs::DealLessPercentOn`. And after C1: at least one end-to-end Unreal
+test of a real Death action row, through the port's copy and builder, with a control.
+
+### What the Siphon is, in the code
+
+`FCataclysmSiphon::Step` runs on every character's regeneration step, a quarter of a second, after the kill decay:
+- **Who is in it:** every enemy within `siphon_radius_metres` (the keystone's 6), and one that left it for less than
+  `siphon_linger_seconds` (Lingering Pull). Without the keystone the radius is nought and the record is cleared.
+- **What a member carries while it is in**, renewed every step and held three steps past it, as Ground Down holds: a cut
+  to what it deals (`siphon_enemies_deal_less_percent`, Sapping Cold and Enfeeble) and a slow of movement and attack
+  speed (`siphon_enemy_slow_percent`, Sapping Cold).
+- **Once a second:** Drain's Death damage (`siphon_drain_weapon_percent`), Necrotic Siphon's chance of Necrosis for a
+  member in for 3 seconds (`siphon_necrosis_chance`), Life Siphon's health (`siphon_life_percent`) and Living Harvest's
+  Fervour (`siphon_fervour_per_second`). The last two are rows scaled by `enemies_in_siphon` with their caps.
+
+**Judgements**, each with its reason:
+- **"Increased area of your Siphon" is an increase on its radius**, because an area in this game multiplies its radius
+  (`UCataclysmSkillEffects::AsMultiplierForSkill` on the area attribute).
+- **The character's own Area of Effect does not reach the Siphon**, which is no skill.
+- **Drain is delivered as a damage over time's tick is:** Death damage, priced through the holder's damage rows with
+  the member as the target, no critical strike, no ailment chance, not retaliated against.
+- **Several Siphons on one creature do not add:** the largest cut holds while it runs, as several holders of Ground
+  Down do not (ruled 2026-09-24).
+- **Necrotic Siphon's 3 seconds count from entering**, and a member lingering after it left keeps its count.
+- **Living Harvest is half a Fervour a second for each member, up to 8**, which is "1 Fervour every 2 seconds, up to 4
+  Fervour a second" paid once a second; it stamps no kill clock, as the node says.
+- **A member that stepped out leaves at once without Lingering Pull**, however little time passed since it was in.
+
+### The rows
+
+Twenty-seven rows on the Siphon's twelve nodes:
+
+| Node | Rows |
+|---|---|
+| The Siphon | siphon_radius_metres, flat, 6 |
+| Sapping Cold | siphon_enemies_deal_less_percent, flat, 1; siphon_enemy_slow_percent, flat, 3, at 2, 4 and 6 points; attack_damage, spell_damage and movement_speed, increased, 1, scale=enemies_in_siphon, step=1, cap=10, at 2, 4 and 6 points |
+| Pall of Souls | siphon_radius_metres, increased, 1, scale=class_resource_held, step=20 |
+| Life Siphon | siphon_life_percent, flat, 1, scale=enemies_in_siphon, step=1, cap=5, from 10 points |
+| Drain | siphon_drain_weapon_percent, flat, 2 |
+| Necrotic Siphon | siphon_necrosis_chance, flat, 5 |
+| Enfeeble | siphon_enemies_deal_less_percent, flat, 1 |
+| Stolen Strength | damage_reduction, increased, 1, scale=enemies_in_siphon, step=1, cap=10, at 4 and 8 points |
+| Soul-Heavy Air | attack_damage and spell_damage, increased, 1, cond=target_in_your_siphon, scale=class_resource_held, step=50 |
+| Lingering Pull | siphon_linger_seconds, flat, 1, at 4 and 8 points |
+| Reaching Cold | siphon_radius_metres, increased, 4 |
+| Living Harvest | siphon_fervour_per_second, flat, 0.5, scale=enemies_in_siphon, step=1, cap=8 |
+
+**Coverage:** 92 of the 220 Death nodes grant something (the Soul Collector 36 of its 73, the Necromancer 15 of its 73,
+the Shadow 41 of its 74); `PassiveEffects.csv` 498 to 525.
+
+### Research
+
+Fetched again before this entry: Path of Exile 2's Presence, "By default this has a 4 metre radius"
+(poe2db.tw/us/Presence); and its passive Glorious Anticipation, "Skills gain 1 Glory every 2 seconds for each Rare or
+Unique monster in your Presence" (poe2db.tw/us/Glorious_Anticipation), the shape of Living Harvest. The plan's research
+also found Diablo III's Decrepify (Opportunist) and Leech (Cursed Ground) runes as the shapes of "for each of them, up
+to 10" and "1% of maximum health each second for each enemy"; both pages returned HTTP 502 when fetched again for this
+entry, so their figures are not recorded here. **Settled by the research:** an always-on radius around the player whose
+effects count the enemies in it, and a resource paid every 2 seconds for each. **Specific to this game:** the
+judgements above and the owner's approved figures.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.Siphon.` | new: `TheKeystonesRealRowTakesACreatureWithinSixMetresAndNotOneAtTen`, `SappingColdsRealRowsSlowAndCutEachMemberAndRaiseTheHoldersDamageForEach`, `LivingHarvestsRealRowPaysOnceASecondForEachMember`, `SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`, `LingeringPullsRealRowsKeepALeaverInTheSiphonForTwoSeconds` | 5 |
+| `Cataclysm.DeathTrees.` | new: `KillChainsRealRowsCountASoulCollectorsKillsThroughThePortsBuilder` | 7 |
+| `Cataclysm.StatExemption.` | eight probes in `EveryStatWithNoAttributeIsActuallyRead` and three scaled probes | the base's count, unchanged |
+| `Cataclysm.PassiveTree.` | `target_in_your_siphon` in a list of conditions that compare nothing | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 525 | unchanged |
+
+Every new test has a control: no keystone, a creature outside, the steps before a second has passed, an outsider, no
+Lingering Pull, and a character with only the starting node.
+
+**Three C++ guard proofs are registered for the window**, each with `test_prefix="Cataclysm.Siphon."`:
+1. `CataclysmSiphon.cpp`, `Step`: `if (System->SiphonPulseSeconds >= 1.0f - KINDA_SMALL_NUMBER)` becomes
+   `if (System->SiphonPulseSeconds >= 0.25f - KINDA_SMALL_NUMBER)`. Must fail
+   `LivingHarvestsRealRowPaysOnceASecondForEachMember`.
+2. `CataclysmDebuffs.cpp`, `DealLessPercentOn`:
+   `const float Siphon = FMath::Clamp(Cataclysm->SiphonDamageCutPercentNow(), 0.0f, 100.0f);` becomes
+   `const float Siphon = 0.0f;`. Must fail `SappingColdsRealRowsSlowAndCutEachMemberAndRaiseTheHoldersDamageForEach`.
+3. `CataclysmAbilitySystemComponent.cpp`, `WithTargetState`: `State.bTargetInYourSiphon = Asker->HasInSiphon(Target);`
+   becomes `State.bTargetInYourSiphon = false;`. Must fail
+   `SoulHeavyAirsRealRowRaisesTheDamageAMemberTakesAndNotAnOutsiders`.
+
+### What was run
+
+SUITE_FIGURES_C2
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`ca9fcbb35`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| Living Harvest's row 0.5 to 1.0 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+| Soul-Heavy Air's condition to `target_in_your_zone` | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Stolen Strength's second step from 8 points to 6 | `test_passive_effects_match_the_node_text.py::test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` and `::test_a_for_every_n_points_sentence_has_a_row_at_every_step` |
+| The call to `FCataclysmSiphon::Step` taken out of the regeneration step | `test_hooks_no_headless_test_can_drive_still_call_their_jobs.py::test_the_hook_runs_this_job[ACataclysmCharacterBase::RegenerationStep-FCataclysmSiphon::Step-...]` |
+| `siphon_life_percent` taken off `STATS_WITH_AN_ASKER` | `test_every_scaled_stat_has_an_asker.py::test_the_generators_list_and_the_engines_probes_are_the_same_set` and `::test_no_shipped_row_is_refused_by_the_new_rule[PassiveEffects]` |
+
+---
+
 ## 2026-11-25 — A kill's Fervour asked before the kill clock, a full bar judged less the reserve on every class, and sixteen Death nodes and options as rows with the passive row port's columns (Death trees, slice C1)
 
 **Affects:**
