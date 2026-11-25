@@ -2,6 +2,138 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — A share of each spend of Fervour returned later, a lethal blow saved by spending all Fervour, and a movement skill used on cooldown for Fervour (Death trees, slice C3c)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourSpent` queues
+  Cinders Kept's share; `ReturnFervourDue`, `FervourWaitingToReturn`, `MaySaveLethalBlowWithFervour`,
+  `TakeFervourForLethalSave`, the two stat names and two constants; `ClearWhatDeathEnds` forgets the shares and the
+  save's wait; the comment on Turn of the Wheel's cut records the ruling below.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`: Phylactery's save, last of the saves.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`: the regeneration step returns what is due.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`: `MovementOnCooldownFervourCostStat`,
+  `FervourToUseOnCooldown`; `CheckCooldown` lets a borrowed use through and `ApplyCooldown` takes its Fervour.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourPaidTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp`
+  (three probes) and `CataclysmDataTableTests.cpp`; `tools/tests/test_fervour_paid_where_the_engine_reads_it.py`, new
+  (8); `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (539
+  rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **FOUR JUDGEMENTS, each labelled where it is made:**
+  1. **Phylactery is the last save asked**, after Nothing Stops It, the Demon King's reprieve and Archon's Aegis's
+     crossing: it costs everything held, so a save that costs less goes first.
+  2. **Phylactery saves a damage-over-time tick too**, as the reprieve reads "would be killed": the sentence's "a blow
+     that would kill you" is read as the death, not the kind of damage.
+  3. **Borrowed Step's use leaves the movement skill's cooldown running as it was.** A use borrowed on cooldown does not
+     start another cooldown. The test lets a second pass before the borrowed use, so a cooldown started again would
+     read longer than the one measured.
+  4. **Cinders Kept returns a share of every spend**, Bound Offering's reserve and Phylactery's save included, since
+     each counts as Fervour spent. With Bound Offering at six points (90%) and Cinders Kept at six (18%), holding back 20
+     returns about 3.2 Fervour 4 seconds later that was never taken from the pool. The two are neighbours in the same
+     limb; flagged in case the pairing is not meant to pay.
+- **TWO FIGURES ARE THE ENGINE'S, NOT ROWS:** Cinders Kept's 4 seconds (`FervourReturnedAfterSeconds`) and Phylactery's
+  50 (`FervourLethalSaveLeast`), as the Siphon's fixed seconds are. Phylactery's 60 seconds and Borrowed Step's 40 and 2
+  are rows.
+- **A NEW EXCEPTION IN THE NODE-TEXT CHECK.** Borrowed Step's "40 Fervour, reduced by 2 per point" is a row of 40 paid
+  once from the first point and a row of -2 paid per point. The check that a Min Points row sits on an "At N points"
+  sentence now passes such a row only when it is named in `STATED_ONCE_BESIDE_A_PER_POINT_ROW` with the words that say
+  so and its per-point partner is in the sheet. Each of the three reasons is tested by taking it away.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECES:** the Fervour thresholds (C3d); Soul Fuel and Deeper Draw, Pyre, Soul
+  Shatter, Final Rites, after `feat/death-skills-2885` merges.
+
+### What each node does now
+
+**Cinders Kept.** `NoteFervourSpent` asks `fervour_spent_returned_percent` with the spending skill's tags and queues
+that share of the spend, due 4 seconds later. The regeneration step's `ReturnFervourDue` adds every share now due, as
+far as the Fervour that may be held allows (a share returning to a full bar is lost, as a gain is), and is not scaled by
+how fast the class resource generates: it is Fervour coming back, not Fervour made. A death forgets the shares.
+
+**Phylactery.** In `UCataclysmVitalAttributeSet`, a blow or tick that would empty health and that no other save took is
+saved when `fervour_lethal_save_every_seconds` is held, its seconds have passed since the last such save, and at least
+50 Fervour is held. Every Fervour held is taken, the blow takes nothing, health is SET to that many percent of maximum
+health (so a character hurt below it is raised to it), and only then is the spend raised, so a row healing on the spend
+(Feast) heals on top. A death clears the wait, as it clears Nothing Stops It's.
+
+**Borrowed Step.** For a skill made for the movement slot, on whichever key it sits, `movement_on_cooldown_fervour_cost`
+is what a use costs while the skill has no charge left. `CheckCooldown` lets the use through while that much Fervour is
+held; `ApplyCooldown`, where the use is known to be one, takes it, raises `resource_consumed` and `fervour_spent` as a
+skill's Fervour cost does, and returns without starting a cooldown.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Cinders Kept | fervour_spent_returned_percent, flat, 3 |
+| Phylactery (The Third Vow, option 1) | fervour_lethal_save_every_seconds, flat, 60 |
+| Borrowed Step | movement_on_cooldown_fervour_cost, flat, 40, min_points=1; movement_on_cooldown_fervour_cost, flat, -2 |
+
+`PassiveEffects.csv` 535 to 539; 103 of the 220 Death nodes grant something, and 46 of the 96 named capstone options.
+
+### Rulings recorded here
+
+The coordinating session's rulings of 2026-11-25 on slice C3b:
+1. **Turn of the Wheel: a spend that names no skill takes the second off every skill's cooldown.** "Your skills that
+   did not spend it": when no skill spent it, none of them did. The 2026-09-25 ruling that a reset of every other
+   cooldown clears nothing in that case stands, and **the two read differently on purpose**: "reset all other skill
+   cooldowns" is said of one skill's use, so with no skill there is no "other"; "your skills that did not spend it" is
+   said of every skill but a spender, so with no spender it is every skill. The comment in `ReduceCooldowns` says so.
+2. "For each Fervour spent" counts whole Fervour.
+3. Bound Offering raising nothing from inside another event's action is a known limit (`ActOnEvent` drops events at
+   depth one).
+4. The three reserve writers in `CataclysmSkillTemplates.cpp` (`SummonReplacementAt`, `SummonOne`, `Possess`) hold
+   through `UCataclysmCommand::HoldReserve`; the coordinating session holds the merge note against
+   `feat/death-skills-2885`.
+
+### Research
+
+None new. Each mechanism is this game's own (the lethal-blow saves, the regeneration step, the skill's cooldown check),
+and the three nodes' figures are the owner's approved trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourPaid.` | new: `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`, `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`, `PhylacteryWaitsItsSecondsAndNeedsFiftyHeld`, `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`, `TheRealRowsGiveEighteenSixtyAndTwentyFour` | 5 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 539 | unchanged |
+
+Each new test has a control: a spend before the stat, a return not yet due, a death; a holder without the stat, a
+second save inside the wait, 49 held; a use refused without the stat and with too little Fervour; Borrowed Step at one
+point.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmVitalAttributeSet.cpp`, Phylactery's save: `&& Guarded->MaySaveLethalBlowWithFervour() &&
+   EmptiesHealthLessTheDelayedShare())` becomes `&& false && EmptiesHealthLessTheDelayedShare())`. Prefix
+   `Cataclysm.FervourPaid.`; must fail `PhylacterySavesALethalBlowBySpendingAllTheFervourHeld`.
+2. `CataclysmGameplayAbility.cpp`, `CheckCooldown`: `if (Borrowed > 0.0f && AbilitySystem->HasAttributeSetForAttribute(
+   Pool)` becomes `if (false && Borrowed > 0.0f && ...`. Prefix `Cataclysm.FervourPaid.`; must fail
+   `BorrowedStepUsesTheMovementSkillOnCooldownForFervour`.
+3. `CataclysmAbilitySystemComponent.cpp`, `NoteFervourSpent`: `FervourToReturn.Emplace(World->GetTimeSeconds() +
+   FervourReturnedAfterSeconds,` becomes `(void)(World->GetTimeSeconds() + FervourReturnedAfterSeconds,`. Prefix
+   `Cataclysm.FervourPaid.`; must fail `CindersKeptReturnsAShareOfEachSpendFourSecondsLater`.
+
+### What was run
+
+SUITE_FIGURES_C3C
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`f30990b54`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| `NoteFervourSpent` no longer queuing Cinders Kept's share | `test_fervour_paid_where_the_engine_reads_it.py::test_a_spend_queues_its_returned_share_and_the_step_returns_it` |
+| `ClearWhatDeathEnds` no longer clearing Phylactery's wait | `test_fervour_paid_where_the_engine_reads_it.py::test_a_death_forgets_the_shares_and_the_save_wait` |
+| Phylactery raising the spend before it sets health | `test_fervour_paid_where_the_engine_reads_it.py::test_phylactery_is_the_last_save_and_raises_its_spend_after_setting_health` |
+| Borrowed Step's cost asked of every skill rather than a movement skill | `test_fervour_paid_where_the_engine_reads_it.py::test_borrowed_step_is_let_through_and_paid_where_the_cooldown_is_kept` |
+| The node-text exception no longer needing the per-point partner | `test_fervour_paid_where_the_engine_reads_it.py::test_a_figure_stated_once_without_its_reasons_is_still_refused[effects0-nodes0]` |
+
+---
+
 ## 2026-11-25 — Rows sized by what a spend of Fervour carried, a cut to every other skill's cooldown, and a reserve held counting as a spend (Death trees, slice C3b)
 
 **Affects:**
