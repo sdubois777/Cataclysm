@@ -107,6 +107,16 @@ number is the design's sentence, and the order and edges below are judgements.
 8. **The player sees the state**: "Wrath", "Frenzy" or "Berserking ready" in the list of what affects the player, the
    owner's rule of 2026-08-24 that a system must be seen in game.
 
+### THE PYTHON SUITE
+
+Run on `0bd47ca4a09d7218b062f8e694d1db8f06b7fac4`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8406 passed, 9 skipped in 365.97s**, and the JUnit file `tests="8416" failures="1" errors="0"
+skipped="9"`, which is 8,406 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed`: 15 files read, 0 with complaints.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Both reported `proved` True:
