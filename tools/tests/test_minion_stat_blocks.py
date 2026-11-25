@@ -94,12 +94,16 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
 
     AND THREE MORE WITH SLICE DS2 THE SAME DAY, the permanent raises' kinds:
     `BarrowGuard` (Barrow Guard), `BoneReaper` (Exhume) and `SkeletalMage`
-    (Bone Choir). The draft's `Wisp` waits with Grave Mouth and Soul Snare.
+    (Bone Choir). The draft's `Wisp` waited with Grave Mouth and Soul Snare.
+
+    AND ONE MORE WITH SLICE DS4: the `Wisp`, which Grave Mouth raises (N12)
+    and Soul Snare's snared dead rise as, read from Grave Mouth's row.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
                                   "SpikeTrap", "SkillGadget", "TyrantsMinion",
                                   "Warhound", "SkillTrap", "Shade", "Husk",
-                                  "BarrowGuard", "BoneReaper", "SkeletalMage"}
+                                  "BarrowGuard", "BoneReaper", "SkeletalMage",
+                                  "Wisp"}
 
 
 

@@ -16,7 +16,8 @@ struct FCataclysmWeaponSkill;
  *
  * WHAT ASKS FOR IT. The Greataxe's Death Rattle: "any that dies while it rattles rises at once as a husk, the same husk
  * Shallow Graves raises, that fights for you and turns the enemies around it on itself. Each husk lasts 8 seconds and
- * reserves Fervour while it stands." And the Wand's Soul Snare, whose wisp is Grave Mouth's, which waits with that row.
+ * reserves Fervour while it stands." And the Wand's Soul Snare, whose wisp is Grave Mouth's: it waited with that row
+ * until slice DS4 built Grave Mouth's N12, and rises lasting Grave Mouth's 4 seconds and reserving its 2.
  *
  * THE MINION IS READ FROM THE SUMMON ROW THAT RAISES ITS KIND, as a risen imp is read from Summon Imp's
  * (`UCataclysmRisenImps`): the one Summon row of the curse's damage type whose `Minions` names the kind `RisesAs` names

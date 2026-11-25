@@ -89,13 +89,13 @@ def test_the_rows_are_the_45_the_owner_approved():
 def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
     """`works` is the rule the whole script turns on, so it is checked against `BUILT` directly. Twelve rows needed only
     N22, C3 or nothing after slice DS1; slice DS2 built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled,
-    and ten more are whole; slice DS3 built N5, N6, N7, N8 and N10, and nine more are. The other 14 wait, and say on
-    what."""
+    and ten more are whole; slice DS3 built N5, N6, N7, N8 and N10, and nine more are; slice DS4 built N9, N12, N13,
+    N15, N17 and N21, and eight more are. The other 6 wait, and say on what."""
     assert script.BUILT <= script.KNOWN_PIECES
     for row in script.ROWS:
         assert row.works == (set(row.needs) <= script.BUILT), row.csv_name
         assert row.waits_on == tuple(piece for piece in row.needs if piece not in script.BUILT), row.csv_name
-    assert sum(row.works for row in script.ROWS) == 31
+    assert sum(row.works for row in script.ROWS) == 39
     assert {row.name for row in script.ROWS if row.works} == {
         "Grave Muster", "Wailing Host", "Shallow Graves", "Grasping Dead", "Nightshade", "Soul Lash",
         "Gallows Chain", "Soul Herd", "Reaping Arc", "Pale Stride", "Pale Vault", "Parting Shot",
@@ -104,25 +104,26 @@ def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
         "Grave Return", "Severing Rush", "None Spared",
         # SLICE DS3.
         "Cold Blood", "Danse Macabre", "Death Warrant", "Death Rattle", "Grim Swath", "Hungering Soul",
-        "Restless Spirits", "Last Toll", "Pale Rider"}
+        "Restless Spirits", "Last Toll", "Pale Rider",
+        # SLICE DS4.
+        "Mercy Stroke", "Grave Mouth", "Soul Snare", "Requiem", "Quietus", "Hemlock", "Death Grip", "Grim Reach"}
 
 
-def test_what_each_waiting_row_waits_on_after_slice_ds3():
+def test_what_each_waiting_row_waits_on_after_slice_ds4():
     """The rows still waiting and the pieces they wait on, so a slice that builds one sees exactly which rows move.
-    Gravetouch waits on N14 alone now that Bleed (N16) is allowed. SOUL SNARE WAITS ON N12 since slice DS3, which built
-    N5 and found its wisp is read from Grave Mouth's row, which has no shape until N12."""
+    Gravetouch waits on N14 alone now that Bleed (N16) is allowed. Soul Snare waited on N12 from slice DS3, which built N5
+    and found its wisp is read from Grave Mouth's row; slice DS4 built N12, and it is whole."""
     waiting = {row.name: row.waits_on for row in script.ROWS if not row.works}
     assert waiting == {
-        "Mercy Stroke": ("N9",), "Wraithwalk": ("N18",), "Grave Mouth": ("N12",), "Soul Snare": ("N12",),
-        "Requiem": ("N13",), "Hemlock": ("N17",), "Gravetouch": ("N14",), "Quietus": ("N15",),
-        "Death Grip": ("N17",), "Grim Reach": ("N17", "N21"), "Soul Lance": ("N19",), "Carrion Crows": ("C2",),
+        "Wraithwalk": ("N18",), "Gravetouch": ("N14",), "Soul Lance": ("N19",), "Carrion Crows": ("C2",),
         "Coffin Nail": ("C1",), "Effigy": ("C4", "DeployableReserve")}
 
 
 def test_a_rising_curse_waits_with_the_summon_row_its_kind_is_read_from():
     """N5 READS WHAT RISES FROM THE ONE SUMMON ROW OF ITS DAMAGE TYPE RAISING THE KIND (`validate_risen_kinds`), so a
     curse stating `RisesAs` can be written whole only once that row is: Death Rattle's husk with Shallow Graves, Soul
-    Snare's wisp with Grave Mouth. THE CONTROL is that Death Rattle is whole and Soul Snare is not."""
+    Snare's wisp with Grave Mouth. THE CONTROL that the rule binds: Soul Snare is whole only with Grave Mouth, whose N12
+    it needs as well as N5, so a `BUILT` without N12 leaves both waiting together. Both are whole since slice DS4."""
     rows = {row.name: row for row in script.ROWS}
     for curse, raiser in (("Death Rattle", "Shallow Graves"), ("Soul Snare", "Grave Mouth")):
         kind = next(piece.split("=", 1)[1] for piece in (p.strip() for p in rows[curse].params.split(";"))
@@ -131,7 +132,8 @@ def test_a_rising_curse_waits_with_the_summon_row_its_kind_is_read_from():
         assert set(rows[raiser].needs) <= set(rows[curse].needs) | {"C3"}, (curse, raiser)
         if rows[curse].works:
             assert rows[raiser].works, (curse, raiser)
-    assert rows["Death Rattle"].works and not rows["Soul Snare"].works
+    assert "N12" in rows["Soul Snare"].needs and "N12" in rows["Grave Mouth"].needs
+    assert rows["Death Rattle"].works and rows["Soul Snare"].works and rows["Grave Mouth"].works
 
 
 def test_no_death_row_outranges_the_corrupted_sentinel():

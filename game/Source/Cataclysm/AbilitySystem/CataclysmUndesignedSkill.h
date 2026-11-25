@@ -16,21 +16,22 @@
  * reaches something, and swapping weapons visibly changes what is granted, which
  * is the part of issue #36 that can be built and tested today.
  *
- * UNDESIGNED SKILLS: 68. NAMED SKILLS: 198. Those are how many rows of
+ * UNDESIGNED SKILLS: 60. NAMED SKILLS: 198. Those are how many rows of
  * `game/Data/WeaponSkills.csv` carry a skill name and no shape, and how many
- * carry a name at all. The other 130 do have a shape and its parameters -- 56
+ * carry a name at all. The other 138 do have a shape and its parameters -- 56
  * Demonic, 7 War, since issue #2580 the Corrupted Stalker's six kits, one
  * weapon's five rows and the Aura for each of Death, Pestilence, Famine,
- * Celestial, Chaos and Void, and since issue #2885 thirty-one more Death rows
+ * Celestial, Chaos and Void, and since issue #2885 thirty-nine more Death rows
  * -- and are built as real abilities rather than by this class. (This said "the
  * other 58 ... 51 Demonic" until #2580, when 63 were already shaped, 54 of 153
- * until #2885, 87 of 198 after its first slice, and 77 after its second.)
+ * until #2885, 87 of 198 after its first slice, 77 after its second, and 68
+ * after its third.)
  *
  * ISSUE #2885 MADE THIS CLASS A DESIGNED SKILL'S WAITING ROOM AS WELL AS AN
  * UNDESIGNED ONE'S. The 45 Death skills the owner approved on 2026-11-24 were
  * entered with their names, descriptions and numbers, and those whose code is
  * not built yet with no shape: 33 after the first slice, 23 after the second,
- * 14 after the third;
+ * 14 after the third, 6 after the fourth;
  * `tools/reapply_death_skills_workbook.py` holds each one's shape and the piece
  * it waits on, and writes the shape when that piece is built.
  *
@@ -39,7 +40,7 @@
  * On 2026-08-21 it was read, believed, and a recommendation was made on it that
  * was wrong. The count above is checked against the table by
  * `tools/tests/test_undesigned_skill_count_is_true.py`, so it cannot go stale
- * quietly again: designing one of the 68 fails that test until this number is
+ * quietly again: designing one of the 60 fails that test until this number is
  * corrected.
  *
  * It carries the designed skill's name so that anything showing the player their

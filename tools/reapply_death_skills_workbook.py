@@ -19,7 +19,8 @@ WHAT IT WRITES, every cell found by its row's Weapon Type, Damage Type and Slot 
   and Slot as well: the coordinating session's judgement of 2026-11-24 under the owner's delegation gives Death the
   one-handed Crossbow (issue #2885, comment 7149138032).
 - MINION TYPES, the kinds the rows built here raise: `Shade` (Wailing Host) and `Husk` (Shallow Graves) since slice
-  DS1, and `BarrowGuard` (Barrow Guard), `BoneReaper` (Exhume) and `SkeletalMage` (Bone Choir) since slice DS2.
+  DS1, `BarrowGuard` (Barrow Guard), `BoneReaper` (Exhume) and `SkeletalMage` (Bone Choir) since slice DS2, and `Wisp`
+  (Grave Mouth, and Soul Snare's risen wisp, read from Grave Mouth's row) since slice DS4.
 
 A ROW IS WRITTEN WHOLE ONLY WHEN THE CODE IT NEEDS IS BUILT. `BUILT` names the code pieces this branch has built
 (the drafts' N1-N22 and the Crossbow draft's C1-C4) and the rulings made since (`KNOWN_PIECES` says which is which);
@@ -70,8 +71,13 @@ DAMAGE_TYPE = "Death"
 #: row's effect with their blows). Slice DS3, the same day: N6 (`KillFervour`, Fervour for a kill or a death under the
 #: skill's mark), N7 (`ScalingSource=Fervour`, the Fervour held), N8 (`HoldsFervour=1`, a buff holding Fervour from
 #: decay), N10 (a flicker its deaths lengthen, re-gathering its circle) and N5 (`OnDeath=Rise; RisesAs=<kind>`, a curse
-#: under which the dying rise).
-BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11", "N6", "N7", "N8", "N10", "N5"})
+#: under which the dying rise). Slice DS4, the same day: N9 (a strike stating `RefundsCooldown` returns it when its swing
+#: kills), N13 (`SpendsAllFervour=1` with `ScalingSource=FervourSpent`, a strike spending every Fervour held and scaling
+#: by it), N15 (`CashInRadius`, a strike cashing in its caster's Poison, Bleed and Necrosis around it), N12
+#: (`CollapseBursts=1`, what a rift raised bursts as it closes), N17 (`EveryBlow=1`, a buff's riders laid by every blow
+#: its holder lands) and N21 (`MeleeReachMetres`, a buff lengthening its holder's melee reach).
+BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11", "N6", "N7", "N8", "N10", "N5",
+                   "N9", "N13", "N15", "N12", "N17", "N21"})
 
 #: Every code piece a row may need, so a misspelt one in `needs` is refused rather than read as never built.
 #: N1-N22 are `death_weapon_skills_draft.md`'s (N20 was dropped on 2026-11-24 and is not one), C1-C4 the Death Crossbow
@@ -396,9 +402,9 @@ ROWS: tuple[DeathRow, ...] = (
         ('Item.Weapon.Wand, Element.Death, Type.Spell, Type.Debuff, Stat.Defense.Resist, Type.Minion, '
          'Keyword.Summon, Trigger.OnDeath, Type.Ranged'),
         'Debuff',
-        # `RisesAs=Wisp` as Death Rattle's `RisesAs=Husk`. AND IT WAITS ON N12 AS WELL AS N5, found in slice DS3: its wisp
-        # is read from Grave Mouth's row, which has no shape (and the Wisp no Minion Types row) until N12 is built, and
-        # the generator refuses a `RisesAs` no Death Summon row raises.
+        # `RisesAs=Wisp` as Death Rattle's `RisesAs=Husk`. AND IT NEEDS N12 AS WELL AS N5, found in slice DS3: its wisp is
+        # read from Grave Mouth's row, which has no shape (and the Wisp no Minion Types row) until N12 is built, and the
+        # generator refuses a `RisesAs` no Death Summon row raises. Slice DS4 built N12, and both rows are whole.
         ('Range=14; Radius=4; MaxTargets=6; EffectDuration=10; Effect=Shred; EffectMagnitude=15; '
          'OnDeath=Rise; RisesAs=Wisp'),
         needs=('N5', 'N12')),
@@ -641,9 +647,10 @@ MINION_COLUMNS = ("Minion Type", "Family", "Base Health", "Health Per Level", "B
 #: the Shade's threat is nought where the draft wrote 20. Wailing Host's sentence says the enemies "pay them little
 #: attention", and since the owner's decision of 2026-11-01 (issue #2553) a threat above nought draws nothing in an
 #: ordinary choice while nought is what makes the nearest-enemy search pass a minion over.
-#: Slice DS2 added BarrowGuard, BoneReaper and SkeletalMage with the three permanent raises, as drafted. The draft's
-#: Wisp and the Crossbow draft's Effigy are added by the slice that builds the rows raising them (Grave Mouth, Soul
-#: Snare; the Effigy).
+#: Slice DS2 added BarrowGuard, BoneReaper and SkeletalMage with the three permanent raises, as drafted. Slice DS4 added
+#: the draft's Wisp with Grave Mouth (N12) and Soul Snare, as drafted: its threat of 10 is kept, a judgement, since
+#: neither sentence says the enemies pass it over as Wailing Host's says of the Shade. The Crossbow draft's Effigy is
+#: added by the slice that builds its row.
 MINION_ROWS: dict[str, tuple[object, ...]] = {
     "Shade": ("Shade", "Creature", 100, 45, 5.25, 4.725, 0.8, 5.5, 0, 350, 1500, "Nearest",
               "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
@@ -656,6 +663,9 @@ MINION_ROWS: dict[str, tuple[object, ...]] = {
                    "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee", 300),
     "SkeletalMage": ("SkeletalMage", "Creature", 150, 67.5, 15.75, 15.75, 1.5, 4.4, 40, 900, 1500, "Nearest",
                      "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
+    # SLICE DS4, 2026-11-24: Grave Mouth's wisp, which Soul Snare's dying rise as; the draft's figures unchanged.
+    "Wisp": ("Wisp", "Creature", 60, 27, 3.5, 3.15, 0.8, 5.5, 10, 300, 1500, "Nearest",
+             "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
 }
 
 

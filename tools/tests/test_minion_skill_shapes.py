@@ -144,11 +144,12 @@ def test_the_shape_agrees_with_the_tag_the_skill_already_carried():
             pytest.fail(f"{row['SkillName']} has shape {row['Shape']!r}")
 
 
-def test_the_one_rising_curse_is_death_rattles_and_its_husk_has_a_stat_block():
-    """THE CONTROL that the branch above is reached: one written row rises, Death Rattle, and it raises a husk."""
-    rising = [r for r in minion_skills() if r["Shape"] == "Debuff" and rises(r)]
-    assert [r["SkillName"] for r in rising] == ["Death Rattle"]
-    assert produced_by(rising[0]) == {"Husk": 1}
+def test_the_two_rising_curses_are_death_rattles_and_soul_snares_and_each_kind_has_a_stat_block():
+    """THE CONTROL that the branch above is reached: two written rows rise, Death Rattle, raising a husk, and since slice
+    DS4 the Wand's Soul Snare, raising a wisp, the same wisp Grave Mouth tears free."""
+    rising = {r["SkillName"]: produced_by(r) for r in minion_skills() if r["Shape"] == "Debuff" and rises(r)}
+    assert rising == {"Death Rattle": {"Husk": 1}, "Soul Snare": {"Wisp": 1}}
+    assert {"Husk", "Wisp"} <= minion_types()
 
 
 def test_the_three_deployables_are_the_three_that_were_empty():

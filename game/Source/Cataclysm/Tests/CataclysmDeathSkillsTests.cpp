@@ -423,6 +423,32 @@ namespace CataclysmDeathSkillsTest
 		const TCHAR* RisesAs;
 	};
 
+	/**
+	 * Slice DS4's keys on one of the eight rows it writes whole, read back off the generated row: N9's `RefundsCooldown`
+	 * on a strike, N13 `SpendsAllFervour` with `ScalingSource=FervourSpent` and its rate and ceiling, N15 `CashInRadius`,
+	 * N12 `CollapseBursts` with its rift's `Interval` and `MaxActive`, N17 `EveryBlow` with a drag's distance, N21
+	 * `MeleeReachMetres`, and Soul Snare's `OnDeath=Rise` with `RisesAs`.
+	 */
+	struct FDeathRowDS4Keys
+	{
+		const TCHAR* Weapon;
+		ECataclysmAbilitySlot Slot;
+		const TCHAR* RefundsCooldown;
+		bool bSpendsAllFervour;
+		const TCHAR* ScalingSource;
+		float MoreDamagePer;
+		float MaxDamagePercent;
+		float CashInRadiusMetres;
+		bool bCollapseBursts;
+		float Interval;
+		int32 MaxActive;
+		bool bEveryBlow;
+		float ForcedMovementDistanceMetres;
+		float MeleeReachMetres;
+		const TCHAR* OnDeath;
+		const TCHAR* RisesAs;
+	};
+
 	/** Step every shot in the world until it has finished, as `DeathSkillFlyToTheEnd` steps one. Slice DS3. */
 	void DeathSkillFlyEveryShot(UWorld* World)
 	{
@@ -1070,6 +1096,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuiltRowsCarryTheirNumbers
  * Grim Swath, Hungering Soul, Restless Spirits, Last Toll and Pale Rider (at its 14 m), with their new keys read off
  * the generated row: `KillFervour`, `ScalingSource=Fervour` with its rate and ceiling, `HoldsFervour`, `DurationPer` and
  * `MaxDuration`, and `OnDeath=Rise` with `RisesAs`.
+ *
+ * AND EIGHT FROM SLICE DS4, which built N9, N12, N13, N15, N17 and N21: Mercy Stroke, Grave Mouth, Soul Snare (whose
+ * wisp is Grave Mouth's), Requiem, Quietus, Hemlock, Death Grip and Grim Reach, with their keys read off the generated
+ * row (`FDeathRowDS4Keys`) and the row-level figures each states: Mercy Stroke's critical strike chance and cooldown,
+ * the two buffs' cooldown of 10.
  */
 bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&)
 {
@@ -1151,9 +1182,27 @@ bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&
 		 TEXT("Necrosis"), false, 0.0f},
 		{TEXT("Spear"), ESlot::Ultimate, TEXT("Pale Rider"), EShape::Movement, 2.5f, 14.0f, 300.0f, TEXT("Cripple"), 50.0f,
 		 TEXT(""), false, 0.0f},
+		// SLICE DS4.
+		{TEXT("Sword"), ESlot::Heavy, TEXT("Mercy Stroke"), EShape::Strike, 2.5f, 0.0f, 300.0f, TEXT(""), 0.0f, TEXT(""),
+		 false, 0.0f},
+		{TEXT("Staff"), ESlot::Special, TEXT("Grave Mouth"), EShape::Summon, 3.0f, 12.0f, -1.0f, TEXT(""), 0.0f, TEXT(""),
+		 false, 2.0f},
+		{TEXT("Wand"), ESlot::Support, TEXT("Soul Snare"), EShape::Debuff, 4.0f, 14.0f, -1.0f, TEXT("Shred"), 15.0f,
+		 TEXT(""), false, 0.0f},
+		{TEXT("Wand"), ESlot::Ultimate, TEXT("Requiem"), EShape::Strike, 14.0f, 0.0f, 250.0f, TEXT("Cripple"), 40.0f,
+		 TEXT(""), false, 0.0f},
+		{TEXT("Fist"), ESlot::Support, TEXT("Hemlock"), EShape::SelfBuff, 0.0f, 0.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT("Poison"), false, 0.0f},
+		{TEXT("Fist"), ESlot::Ultimate, TEXT("Quietus"), EShape::Strike, 2.5f, 0.0f, 400.0f, TEXT(""), 0.0f, TEXT(""),
+		 false, 0.0f},
+		{TEXT("Whip"), ESlot::Support, TEXT("Death Grip"), EShape::SelfBuff, 0.0f, 0.0f, -1.0f, TEXT(""), 0.0f, TEXT(""),
+		 false, 0.0f},
+		{TEXT("Spear"), ESlot::Support, TEXT("Grim Reach"), EShape::SelfBuff, 0.0f, 0.0f, -1.0f, TEXT("Cripple"), 30.0f,
+		 TEXT(""), false, 0.0f},
 	};
-	TestEqual(TEXT("set-up: thirty-one rows are written whole, twelve by slice DS1, ten by DS2 and nine by DS3"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Rows)), 31);
+	TestEqual(TEXT("set-up: thirty-nine rows are written whole, twelve by slice DS1, ten by DS2, nine by DS3 and eight "
+				   "by DS4"),
+			  static_cast<int32>(UE_ARRAY_COUNT(Rows)), 39);
 
 	FDeathSkillFighter Holder(World, FVector::ZeroVector);
 	for (const FDeathRowDrafted& Drafted : Rows)
@@ -1258,6 +1307,69 @@ bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&
 				  Drafted.OnDeathRangeMetres * DeathSkillMetre, DeathSkillAllowance);
 		TestEqual(*FString::Printf(TEXT("%s: what rises"), *Where), Row.Params.RisesAs, FString(Drafted.RisesAs));
 	}
+
+	// SLICE DS4'S KEYS ON THE EIGHT ROWS IT WRITES WHOLE, as `death_weapon_skills_draft.csv` states them.
+	const FDeathRowDS4Keys KeyedDS4[] = {
+		{TEXT("Sword"), ESlot::Heavy, TEXT("Self"), false, TEXT(""), 0.0f, 0.0f, 0.0f, false, 0.0f, 0, false, 0.0f, 0.0f,
+		 TEXT(""), TEXT("")},
+		{TEXT("Staff"), ESlot::Special, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 0.0f, true, 0.5f, 8, false, 0.0f, 0.0f,
+		 TEXT(""), TEXT("")},
+		{TEXT("Wand"), ESlot::Support, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 0.0f, false, 0.0f, 0, false, 0.0f, 0.0f,
+		 TEXT("Rise"), TEXT("Wisp")},
+		{TEXT("Wand"), ESlot::Ultimate, TEXT(""), true, TEXT("FervourSpent"), 1.0f, 700.0f, 0.0f, false, 0.0f, 0, false,
+		 0.0f, 0.0f, TEXT(""), TEXT("")},
+		{TEXT("Fist"), ESlot::Support, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 0.0f, false, 0.0f, 0, true, 0.0f, 0.0f,
+		 TEXT(""), TEXT("")},
+		{TEXT("Fist"), ESlot::Ultimate, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 10.0f, false, 0.0f, 0, false, 0.0f, 0.0f,
+		 TEXT(""), TEXT("")},
+		{TEXT("Whip"), ESlot::Support, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 0.0f, false, 0.0f, 0, true, 1.0f, 0.0f,
+		 TEXT(""), TEXT("")},
+		{TEXT("Spear"), ESlot::Support, TEXT(""), false, TEXT(""), 0.0f, 0.0f, 0.0f, false, 0.0f, 0, true, 0.0f, 3.0f,
+		 TEXT(""), TEXT("")},
+	};
+	for (const FDeathRowDS4Keys& Drafted : KeyedDS4)
+	{
+		const FCataclysmWeaponSkill Row = DeathRowOf(Drafted.Weapon, Drafted.Slot);
+		const FString Where = FString::Printf(TEXT("%s, Death %s"), *Row.Name, Drafted.Weapon);
+		TestEqual(*FString::Printf(TEXT("%s: the cooldown it returns"), *Where), Row.Params.RefundsCooldown,
+				  FString(Drafted.RefundsCooldown));
+		TestTrue(*FString::Printf(TEXT("%s: spends every Fervour or not, as drafted"), *Where),
+				 Row.Params.bSpendsAllFervour == Drafted.bSpendsAllFervour);
+		TestEqual(*FString::Printf(TEXT("%s: what it scales by"), *Where), Row.Params.ScalingSource,
+				  FString(Drafted.ScalingSource));
+		TestEqual(*FString::Printf(TEXT("%s: more damage a unit"), *Where), Row.Params.MoreDamagePer,
+				  Drafted.MoreDamagePer, DeathSkillAllowance);
+		TestEqual(*FString::Printf(TEXT("%s: its damage ceiling"), *Where), Row.Params.MaxDamagePercent,
+				  Drafted.MaxDamagePercent, DeathSkillAllowance);
+		TestEqual(*FString::Printf(TEXT("%s: how far it cashes in"), *Where), Row.Params.CashInRadiusCm,
+				  Drafted.CashInRadiusMetres * DeathSkillMetre, DeathSkillAllowance);
+		TestTrue(*FString::Printf(TEXT("%s: bursts what it raised as it closes or not, as drafted"), *Where),
+				 Row.Params.bCollapseBursts == Drafted.bCollapseBursts);
+		TestEqual(*FString::Printf(TEXT("%s: seconds between its spawns"), *Where), Row.Params.Interval, Drafted.Interval,
+				  DeathSkillAllowance);
+		TestEqual(*FString::Printf(TEXT("%s: how many one cast raises"), *Where), Row.Params.MaxActive, Drafted.MaxActive);
+		TestTrue(*FString::Printf(TEXT("%s: lays its riders with every blow or not, as drafted"), *Where),
+				 Row.Params.bEveryBlow == Drafted.bEveryBlow);
+		TestEqual(*FString::Printf(TEXT("%s: how far a blow drags"), *Where), Row.Params.ForcedMovementDistanceCm,
+				  Drafted.ForcedMovementDistanceMetres * DeathSkillMetre, DeathSkillAllowance);
+		TestEqual(*FString::Printf(TEXT("%s: the melee reach it adds"), *Where), Row.Params.MeleeReachCm,
+				  Drafted.MeleeReachMetres * DeathSkillMetre, DeathSkillAllowance);
+		TestEqual(*FString::Printf(TEXT("%s: what its death does"), *Where), Row.Params.OnDeath, FString(Drafted.OnDeath));
+		TestEqual(*FString::Printf(TEXT("%s: what rises"), *Where), Row.Params.RisesAs, FString(Drafted.RisesAs));
+	}
+
+	// AND THE ROW-LEVEL FIGURES THE DS4 ROWS STATE: Mercy Stroke's 10% critical strike chance and 4 s cooldown, the two
+	// buffs' 10 s, Grim Reach none (its slot's), and Requiem no Fervour cost of its own (the Ultimate's).
+	const FCataclysmWeaponSkill Mercy = DeathRowOf(TEXT("Sword"), ESlot::Heavy);
+	TestEqual(TEXT("Mercy Stroke states a critical strike chance of 10"), Mercy.CritChancePercent, 10.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and a cooldown of 4"), Mercy.Cooldown, 4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("Hemlock states a cooldown of 10"), DeathRowOf(TEXT("Fist"), ESlot::Support).Cooldown, 10.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and Death Grip"), DeathRowOf(TEXT("Whip"), ESlot::Support).Cooldown, 10.0f, DeathSkillAllowance);
+	TestTrue(TEXT("Grim Reach states none, taking its slot's"), DeathRowOf(TEXT("Spear"), ESlot::Support).Cooldown < 0.0f);
+	TestTrue(TEXT("Requiem states no Fervour cost, taking the Ultimate's"),
+			 DeathRowOf(TEXT("Wand"), ESlot::Ultimate).FervourCost < 0.0f);
 	return true;
 }
 
@@ -1268,12 +1380,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsWaitingRowsArePlaceholders
 /**
  * The Death rows written with their name, description and numbers and NO shape, because the code they need is not
  * built (`tools/reapply_death_skills_workbook.py` names what each waits on): 33 after slice DS1, 23 after slice DS2,
- * which built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled, and 14 after slice DS3, which built N5,
- * N6, N7, N8 and N10 (Soul Snare waits on N12 too, its wisp being Grave Mouth's). Each is offered by its weapon
+ * which built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled, 14 after slice DS3, which built N5, N6,
+ * N7, N8 and N10, and 6 after slice DS4, which built N9, N12, N13, N15, N17 and N21. Each is offered by its weapon
  * (`SkillsFor` keeps a named row), carries its description, and has no shape, so `TemplateFor` answers null and the
  * weapon slots grant `UCataclysmUndesignedSkill`, which says what it will do and does nothing yet. THE CONTROL: across
- * every Death weapon and the aura the table holds 51 named Death rows, of which 37 have a shape: the Dagger's five,
- * the aura and the thirty-one the three slices write whole.
+ * every Death weapon and the aura the table holds 51 named Death rows, of which 45 have a shape: the Dagger's five,
+ * the aura and the thirty-nine the four slices write whole.
  */
 bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&)
 {
@@ -1287,22 +1399,14 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 
 	using ESlot = ECataclysmAbilitySlot;
 	const FDeathRowWaiting Waiting[] = {
-		{TEXT("Sword"), ESlot::Heavy, TEXT("Mercy Stroke")},
 		{TEXT("Staff"), ESlot::Movement, TEXT("Wraithwalk")},
-		{TEXT("Staff"), ESlot::Special, TEXT("Grave Mouth")},
-		{TEXT("Wand"), ESlot::Support, TEXT("Soul Snare")},
-		{TEXT("Wand"), ESlot::Ultimate, TEXT("Requiem")},
-		{TEXT("Fist"), ESlot::Support, TEXT("Hemlock")},
 		{TEXT("Fist"), ESlot::Heavy, TEXT("Gravetouch")},
-		{TEXT("Fist"), ESlot::Ultimate, TEXT("Quietus")},
-		{TEXT("Whip"), ESlot::Support, TEXT("Death Grip")},
-		{TEXT("Spear"), ESlot::Support, TEXT("Grim Reach")},
 		{TEXT("Spear"), ESlot::Special, TEXT("Soul Lance")},
 		{TEXT("Crossbow"), ESlot::Support, TEXT("Carrion Crows")},
 		{TEXT("Crossbow"), ESlot::Heavy, TEXT("Coffin Nail")},
 		{TEXT("Crossbow"), ESlot::Special, TEXT("Effigy")},
 	};
-	TestEqual(TEXT("set-up: 14 rows wait"), static_cast<int32>(UE_ARRAY_COUNT(Waiting)), 14);
+	TestEqual(TEXT("set-up: 6 rows wait"), static_cast<int32>(UE_ARRAY_COUNT(Waiting)), 6);
 
 	for (const FDeathRowWaiting& Row : Waiting)
 	{
@@ -1324,8 +1428,8 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		Shaped += Skill.Shape != ECataclysmSkillShape::None ? 1 : 0;
 	}
 	TestEqual(TEXT("control: 51 named Death rows, the 45 of issue #2885, the Dagger's five and the aura"), Named, 51);
-	TestEqual(TEXT("control: of which 37 have a shape, the 31 of the three slices, the Dagger's five and the aura"),
-			  Shaped, 37);
+	TestEqual(TEXT("control: of which 45 have a shape, the 39 of the four slices, the Dagger's five and the aura"),
+			  Shaped, 45);
 	return true;
 }
 
@@ -4290,6 +4394,557 @@ bool FCataclysmDeathSkillsBuffLengthensMeleeReachTest::RunTest(const FString&)
 	Holder.AbilitySystem->CancelAbilityHandle(Reach->GetCurrentAbilitySpecHandle());
 	TestEqual(TEXT("cancelled, the melee swing is back to its 2 m"), MeleeSwing->ScaledRadiusCm(),
 			  2.0f * DeathSkillMetre, DeathSkillAllowance);
+	return true;
+}
+
+// ==========================================================================
+// Slice DS4, change C: the eight rows the six mechanisms make whole, each cast from its own generated row
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsMercyStrokeTest,
+	"Cataclysm.DeathSkills.MercyStrokeStrikesOneEnemyForThreeHundredAndIsReadyAgainWhenItKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Sword's Mercy Stroke, its own row: "One slow, deliberate stroke at a single enemy for 300% weapon damage. If the
+ * stroke kills, the sword is ready to strike again at once." Pressed at a creature of 1 health 2 m ahead, it strikes
+ * that one alone -- a second creature beside it, inside its 2.5 m, takes nothing -- kills it, and its cooldown is taken
+ * off at once. THE CONTROL, 100 m along +Y: pressed at a creature it leaves standing, its cooldown runs.
+ */
+bool FCataclysmDeathSkillsMercyStrokeTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Sword"), ECataclysmAbilitySlot::Heavy);
+	const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
+	if (!TestEqual(TEXT("set-up: the Death Sword's Heavy row is Mercy Stroke. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Mercy Stroke")))
+		|| !TestTrue(TEXT("set-up: the Heavy slot's cooldown has a tag"), Cooldown.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Striker(World, FVector::ZeroVector);
+	FDeathSkillCreature Doomed(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beside(World, FVector(2.2f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	Doomed.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), 1.0f);
+	UCataclysmStrikeSkill* Stroke = GrantDeathRow<UCataclysmStrikeSkill>(Striker.AbilitySystem, Striker.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Stroke)
+		|| !TestTrue(TEXT("the stroke is pressed"), ActivateDeathSkill(Striker.AbilitySystem, Stroke)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it kills the creature of 1 health 2 m ahead"), UCataclysmSkillEffects::IsDead(Doomed.Actor));
+	TestEqual(TEXT("and strikes nothing else: the creature beside it takes nothing"), DeathSkillHealthLost(Beside), 0.0f,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("and the sword is ready again at once: its cooldown was taken off"),
+			  Striker.AbilitySystem->HasMatchingGameplayTag(Cooldown));
+
+	// THE CONTROL: a stroke that leaves its creature standing.
+	FDeathSkillFighter Sparer(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Standing(World, FVector(2.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f),
+								 ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Sparing = GrantDeathRow<UCataclysmStrikeSkill>(Sparer.AbilitySystem, Sparer.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted to the second striker"), Sparing)
+		|| !TestTrue(TEXT("set-up: the second stroke is pressed"), ActivateDeathSkill(Sparer.AbilitySystem, Sparing)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: its creature took the stroke"), DeathSkillHealthLost(Standing) > 0.0f);
+	TestFalse(TEXT("set-up: and stands"), UCataclysmSkillEffects::IsDead(Standing.Actor));
+	TestTrue(TEXT("control: so its cooldown runs"), Sparer.AbilitySystem->HasMatchingGameplayTag(Cooldown));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsGraveMouthTest,
+	"Cataclysm.DeathSkills.GraveMouthStreamsEightWispsReservingTwoAndBurstsThemAllAsItCloses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Staff's Grave Mouth, its own row: "Tear open a grave-mouth at a point up to 12 meters away. For 4 seconds a wisp
+ * flies out of it every half second, 8 in all ... When the grave closes, every wisp still out bursts at once. Each wisp
+ * lasts until the grave closes and reserves Fervour while it is out." Opened 12 m ahead -- no cursor, so as far as it
+ * reaches along the caster's facing -- its spawns driven by hand: eight wisps, each reserving 2 and lasting no longer
+ * than the grave's 4 s, and a ninth spawn refused by its 8 in all. As it closes all eight burst: the creature a metre
+ * past it takes their blasts, and THE CONTROL, 7 m past it, takes nothing.
+ */
+bool FCataclysmDeathSkillsGraveMouthTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Staff"), ECataclysmAbilitySlot::Special);
+	if (!TestEqual(TEXT("set-up: the Death Staff's Special row is Grave Mouth. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Grave Mouth"))))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillCreature PastTheGrave(World, FVector(13.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature FarPast(World, FVector(19.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Grave = GrantDeathRow<UCataclysmSummonSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	TArray<ACataclysmMinion*> Wisps;
+	ON_SCOPE_EXIT { DeathSkillClear(Wisps); };
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Grave)
+		|| !TestTrue(TEXT("the grave is torn open"), ActivateDeathSkill(Caster.AbilitySystem, Grave)))
+	{
+		return false;
+	}
+	for (int32 Spawn = 0; Spawn < 9; ++Spawn)
+	{
+		Grave->SpawnTick();
+	}
+	for (ACataclysmMinion* Made : Grave->Minions)
+	{
+		Wisps.Add(Made);
+	}
+	if (!TestEqual(TEXT("nine spawns raised eight wisps, its 8 in all"), Wisps.Num(), 8)
+		|| !TestEqual(TEXT("set-up: each a Wisp"), Wisps[0]->TypeName, FString(TEXT("Wisp")))
+		|| !TestTrue(TEXT("set-up: with a blow of its own. If nought, DT_MinionTypes is older than the CSV"),
+					 Wisps[0]->OwnDamagePerHit > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("each reserving 2 Fervour"), Wisps[0]->ReservedFervour, 2.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and lasting no longer than the grave's 4 seconds"), Wisps[0]->GetLifeSpan(), 4.0f,
+			  DeathSkillAllowance);
+	TestTrue(TEXT("torn out of the grave 12 m ahead"),
+			 FVector::Dist2D(Wisps[0]->GetActorLocation(), FVector(12.0f * DeathSkillMetre, 0.0f, 0.0f))
+				 < 1.0f * DeathSkillMetre);
+
+	Grave->Collapse();
+	TestEqual(TEXT("as the grave closed all eight burst"), Grave->BurstAtCollapse, 8);
+	TestTrue(TEXT("the creature a metre past it took their blasts"), DeathSkillHealthLost(PastTheGrave) > 0.0f);
+	TestEqual(TEXT("control: the creature 7 m past it took nothing, beyond the row's 3 m"), DeathSkillHealthLost(FarPast),
+			  0.0f, DeathSkillAllowance);
+	TestFalse(TEXT("and no wisp is left"), IsValid(Wisps[7]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsSoulSnareTest,
+	"Cataclysm.DeathSkills.SoulSnareShredsWithinFourteenMetresAndTheSnaredDeadLooseGraveMouthsWisp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Wand's Soul Snare, its own row: "Snare the souls of up to 6 enemies within 4 meters of a point up to 14 meters
+ * away. For 10 seconds their Death resistance is cut by 15, and any that dies snared lets loose a wisp, the same wisp
+ * Grave Mouth tears free, that hurls itself at the nearest enemy and fights for you for 4 seconds." Two creatures, 5 m
+ * and about 5.4 m off, are Shredded for 10 s, and THE CONTROL 15 m off, beyond the 14 m, is not. The first's death
+ * lets loose one wisp where it fell, lasting Grave Mouth's 4 s and reserving its 2; the second still stands.
+ */
+bool FCataclysmDeathSkillsSoulSnareTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Wand"), ECataclysmAbilitySlot::Support);
+	const FGameplayTag Shred = DeathSkillStatus(TEXT("Shred"));
+	if (!TestEqual(TEXT("set-up: the Death Wand's Support row is Soul Snare. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Soul Snare")))
+		|| !TestTrue(TEXT("set-up: the Shred curse"), Shred.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillCreature First(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Second(World, FVector(5.0f * DeathSkillMetre, 2.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(15.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmDebuffSkill* Snare = GrantDeathRow<UCataclysmDebuffSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	TArray<ACataclysmMinion*> Loosed;
+	ON_SCOPE_EXIT { DeathSkillClear(Loosed); };
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Snare)
+		|| !TestTrue(TEXT("the souls are snared"), ActivateDeathSkill(Caster.AbilitySystem, Snare)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the creature 5 m off is Shredded"), First.AbilitySystem->HasMatchingGameplayTag(Shred));
+	TestEqual(TEXT("for the row's 10 seconds"), DeathSkillSecondsLeft(First.Actor, Shred), 10.0f, DeathSkillAllowance);
+	TestTrue(TEXT("and so is the one beside it, up to 6 being taken"), Second.AbilitySystem->HasMatchingGameplayTag(Shred));
+	TestFalse(TEXT("control: the creature 15 m off, beyond the 14 m, is not"),
+			  Beyond.AbilitySystem->HasMatchingGameplayTag(Shred));
+
+	const FVector DiedAt = First.Actor->GetActorLocation();
+	DeathSkillKillCreature(First);
+	Loosed = UCataclysmCommand::MinionsOfTypeCommandedBy(Caster.Actor, TEXT("Wisp"));
+	if (!TestEqual(TEXT("its death let loose one wisp for the caster, the other still standing. If none, "
+						"DT_MinionTypes or DT_WeaponSkills is older than the CSV"), Loosed.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("where the creature fell"), FVector::Dist2D(Loosed[0]->GetActorLocation(), DiedAt) < 1.0f);
+	TestEqual(TEXT("lasting Grave Mouth's 4 seconds"), Loosed[0]->GetLifeSpan(), 4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and reserving Grave Mouth's 2 Fervour"), Loosed[0]->ReservedFervour, 2.0f, DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRequiemTest,
+	"Cataclysm.DeathSkills.RequiemSpendsEveryFervourStrikesHarderForWhatItSpentToSevenHundredAndCripplesByForty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Wand's Requiem, its own row: "Sing the requiem and spend every Fervour you hold, the Ultimate's 50 among it. A
+ * wave of grave-cold rolls out 14 meters for 250% weapon damage, 1% more for every Fervour spent, to at most 700%, and
+ * Cripples everything it touches, 40% slower for 6 seconds." Each press a fresh singer and a creature 2 m off, 100 m
+ * apart, read as ratios of the health taken. At 50 Fervour it spends all 50 (375%), THE CONTROL the others are read
+ * against; at 100 it spends all 100 and the pool is empty (500%, 4/3 as hard); at a pool of 200 it spends all 200 and
+ * strikes for its 700% ceiling (28/15 as hard), where its rate would make 750%. A creature 13 m off is Crippled at 40
+ * for 6 s, and one 15 m off, beyond the wave, is untouched.
+ */
+bool FCataclysmDeathSkillsRequiemTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Wand"), ECataclysmAbilitySlot::Ultimate);
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestEqual(TEXT("set-up: the Death Wand's Ultimate row is Requiem. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Requiem")))
+		|| !TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	const auto SingAt = [World, &Row](float HeldFervour, float AcrossMetres, float& OutSpent, float& OutLeft) -> float
+	{
+		FDeathSkillFighter Singer(World, FVector(0.0f, AcrossMetres * DeathSkillMetre, 0.0f));
+		FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, AcrossMetres * DeathSkillMetre, 0.0f),
+								   ECataclysmTeam::Monsters);
+		Singer.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), FMath::Max(150.0f, HeldFervour));
+		DeathSkillSetFervour(Singer.Actor, HeldFervour);
+		UCataclysmStrikeSkill* Wave = GrantDeathRow<UCataclysmStrikeSkill>(Singer.AbilitySystem, Singer.Actor, Row);
+		if (!Wave || !ActivateDeathSkill(Singer.AbilitySystem, Wave))
+		{
+			return -1.0f;
+		}
+		OutSpent = Wave->FervourSpentThisUse;
+		OutLeft = DeathSkillFervourOf(Singer.Actor);
+		return DeathSkillHealthLost(Struck);
+	};
+
+	float SpentAtFifty = -1.0f;
+	float LeftAtFifty = -1.0f;
+	const float AtFifty = SingAt(50.0f, 0.0f, SpentAtFifty, LeftAtFifty);
+	if (!TestTrue(TEXT("control: sung at 50 Fervour, the wave struck"), AtFifty > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("control: at 50 it spent all 50"), SpentAtFifty, 50.0f, DeathSkillAllowance);
+
+	float SpentAtHundred = -1.0f;
+	float LeftAtHundred = -1.0f;
+	const float AtHundred = SingAt(100.0f, 100.0f, SpentAtHundred, LeftAtHundred);
+	TestEqual(TEXT("at 100 it spent all 100, the Ultimate's 50 among it"), SpentAtHundred, 100.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and the pool is empty"), LeftAtHundred, 0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and it struck 4/3 as hard: 500% against 375%"), AtHundred / AtFifty, 500.0f / 375.0f,
+			  DeathSkillAllowance);
+
+	float SpentAtCeiling = -1.0f;
+	float LeftAtCeiling = -1.0f;
+	const float AtCeiling = SingAt(200.0f, 200.0f, SpentAtCeiling, LeftAtCeiling);
+	TestEqual(TEXT("at a pool of 200 it spent all 200"), SpentAtCeiling, 200.0f, DeathSkillAllowance);
+	TestEqual(TEXT("and struck for its 700% ceiling, not the 750% its rate makes"), AtCeiling / AtFifty, 700.0f / 375.0f,
+			  DeathSkillAllowance);
+
+	// THE WAVE'S REACH AND ITS CRIPPLE.
+	FDeathSkillFighter Singer(World, FVector(0.0f, 300.0f * DeathSkillMetre, 0.0f));
+	FDeathSkillCreature Reached(World, FVector(13.0f * DeathSkillMetre, 300.0f * DeathSkillMetre, 0.0f),
+								ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(-15.0f * DeathSkillMetre, 300.0f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Wave = GrantDeathRow<UCataclysmStrikeSkill>(Singer.AbilitySystem, Singer.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted to the last singer"), Wave)
+		|| !TestTrue(TEXT("set-up: the last requiem is sung"), ActivateDeathSkill(Singer.AbilitySystem, Wave)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the creature 13 m off is Crippled"), Reached.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("at the row's 40"), UCataclysmSkillEffects::StatedStrengthOn(Reached.Actor, Cripple), 40.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for its 6 seconds"), DeathSkillSecondsLeft(Reached.Actor, Cripple), 6.0f, DeathSkillAllowance);
+	TestEqual(TEXT("the creature 15 m off, beyond the 14 m wave, is untouched"), DeathSkillHealthLost(Beyond), 0.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsQuietusTest,
+	"Cataclysm.DeathSkills.QuietusStrikesOneEnemyAndCashesInTheCastersAilmentsWithinTenMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Fist's Quietus, its own row: "Deliver the quietus to one enemy for 400% weapon damage. In the same instant every
+ * Poison, Bleed and Necrosis you have laid on enemies within 10 meters deals all the damage it had left, and ends."
+ * Swung at a creature 2 m ahead, it strikes that one alone -- a second beside it, inside its 2.5 m, takes nothing -- and
+ * the caster's Poison, Bleed and Necrosis on a fighter 8 m behind end and deal what they had left. THE CONTROL: the
+ * caster's Poison on a fighter 11 m behind, beyond the 10 m, runs on.
+ */
+bool FCataclysmDeathSkillsQuietusTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Fist"), ECataclysmAbilitySlot::Ultimate);
+	if (!TestEqual(TEXT("set-up: the Death Fist's Ultimate row is Quietus. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Quietus"))))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillCreature Struck(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beside(World, FVector(2.2f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f),
+							   ECataclysmTeam::Monsters);
+	FDeathSkillFighter Ailing(World, FVector(-8.0f * DeathSkillMetre, 0.0f, 0.0f));
+	FDeathSkillFighter Far(World, FVector(-11.0f * DeathSkillMetre, 0.0f, 0.0f));
+	if (!TestTrue(TEXT("set-up: the caster's Poison, Bleed and Necrosis on the fighter 8 m behind"),
+				  DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Poison"))
+				  && DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Bleed"))
+				  && DeathSkillLayAilment(Caster.Actor, Ailing.Actor, TEXT("Necrosis")))
+		|| !TestTrue(TEXT("set-up: and its Poison on the fighter 11 m behind"),
+					 DeathSkillLayAilment(Caster.Actor, Far.Actor, TEXT("Poison"))))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Quietus = GrantDeathRow<UCataclysmStrikeSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Quietus))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the quietus strikes one enemy"), Quietus->SwingOnce(), 1);
+	TestTrue(TEXT("the creature 2 m ahead"), DeathSkillHealthLost(Struck) > 0.0f);
+	TestEqual(TEXT("and not the one beside it"), DeathSkillHealthLost(Beside), 0.0f, DeathSkillAllowance);
+	TestEqual(TEXT("in the same instant three of the caster's ailments were cashed in"), Quietus->AilmentsCashedIn, 3);
+	TestFalse(TEXT("the Poison 8 m behind has ended"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Poison")));
+	TestFalse(TEXT("and the Bleed"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Bleed")));
+	TestFalse(TEXT("and the Necrosis"), DeathSkillCarriesAilment(Ailing.Actor, TEXT("Necrosis")));
+	TestTrue(TEXT("having dealt what they had left"), DeathSkillFighterHealthLost(Ailing) > 0.0f);
+	TestTrue(TEXT("control: the Poison 11 m behind runs on, beyond the 10 m"),
+			 DeathSkillCarriesAilment(Far.Actor, TEXT("Poison")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsHemlockTest,
+	"Cataclysm.DeathSkills.HemlockPoisonsWhatEveryBlowHitsForSixSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Fist's Hemlock, its own row: "Coat your knuckles in hemlock for 6 seconds. Every blow you land while it lasts
+ * Poisons what it hits." THE CONTROL first: a fist's swing at a creature 1.5 m off before the hemlock, which leaves it
+ * unpoisoned. Coated, for the row's 6 seconds, the same swing Poisons it.
+ */
+bool FCataclysmDeathSkillsHemlockTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Fist"), ECataclysmAbilitySlot::Support);
+	if (!TestEqual(TEXT("set-up: the Death Fist's Support row is Hemlock. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Hemlock")))
+		|| !TestTrue(TEXT("set-up: the Poison"), DeathSkillAilmentTag(TEXT("Poison")).IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Struck(World, FVector(1.5f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Fists = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=2; Angle=360"),
+		TEXT("A fist's swing"));
+	UCataclysmSelfBuffSkill* Hemlock = GrantDeathRow<UCataclysmSelfBuffSkill>(Holder.AbilitySystem, Holder.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Fists) || !TestNotNull(TEXT("set-up: the row is granted"), Hemlock))
+	{
+		return false;
+	}
+	Fists->DamagePercentOverride = 100.0f;
+
+	Fists->SwingOnce();
+	TestFalse(TEXT("control: before the hemlock the swing poisons nothing"),
+			  DeathSkillCarriesAilment(Struck.Actor, TEXT("Poison")));
+
+	if (!TestTrue(TEXT("the knuckles are coated"), ActivateDeathSkill(Holder.AbilitySystem, Hemlock)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("for the row's 6 seconds"), Hemlock->TotalDuration, 6.0f, DeathSkillAllowance);
+	TestEqual(TEXT("the swing strikes it again"), Fists->SwingOnce(), 1);
+	TestTrue(TEXT("and Poisons it"), DeathSkillCarriesAilment(Struck.Actor, TEXT("Poison")));
+	TestFalse(TEXT("and not its holder"), DeathSkillCarriesAilment(Holder.Actor, TEXT("Poison")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsDeathGripTest,
+	"Cataclysm.DeathSkills.DeathGripDragsWhatEveryBlowHitsAMetreAndHalfAsFarWithinFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Whip's Death Grip, its own row: "For 6 seconds every blow you land drags what it hits 1 meter toward you. Each
+ * drag within 5 seconds of the last on the same enemy goes half as far." THE CONTROL first: a whip's swing at a
+ * creature 5 m off before the grip, which leaves it where it stood. Gripped, for the row's 6 seconds, the swing drags it
+ * about a metre nearer, and a second swing at once -- within the 5 seconds, since no clock runs -- drags it about half
+ * as far, by the displacement rule every pull meets.
+ */
+bool FCataclysmDeathSkillsDeathGripTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Whip"), ECataclysmAbilitySlot::Support);
+	if (!TestEqual(TEXT("set-up: the Death Whip's Support row is Death Grip. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Death Grip"))))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Struck(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Lash = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("A whip's swing"));
+	UCataclysmSelfBuffSkill* Grip = GrantDeathRow<UCataclysmSelfBuffSkill>(Holder.AbilitySystem, Holder.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Lash) || !TestNotNull(TEXT("set-up: the row is granted"), Grip))
+	{
+		return false;
+	}
+	Lash->DamagePercentOverride = 100.0f;
+	const auto DistanceOut = [&Struck]() -> float
+	{
+		return static_cast<float>(FVector::Dist2D(Struck.Actor->GetActorLocation(), FVector::ZeroVector));
+	};
+
+	Lash->SwingOnce();
+	const float Before = DistanceOut();
+	TestEqual(TEXT("control: before the grip the swing drags nothing"), Before, 5.0f * DeathSkillMetre, 1.0f);
+
+	if (!TestTrue(TEXT("the grip is taken"), ActivateDeathSkill(Holder.AbilitySystem, Grip)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("for the row's 6 seconds"), Grip->TotalDuration, 6.0f, DeathSkillAllowance);
+	Lash->SwingOnce();
+	const float AfterFirst = DistanceOut();
+	const float FirstDrag = Before - AfterFirst;
+	TestTrue(TEXT("its first blow drags the creature about a metre nearer"),
+			 FirstDrag > 0.7f * DeathSkillMetre && FirstDrag < 1.3f * DeathSkillMetre);
+	Lash->SwingOnce();
+	const float SecondDrag = AfterFirst - DistanceOut();
+	TestTrue(TEXT("and the next, within 5 seconds, about half as far"),
+			 SecondDrag > 0.2f * DeathSkillMetre && SecondDrag < 0.8f * DeathSkillMetre && SecondDrag < FirstDrag);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsGrimReachTest,
+	"Cataclysm.DeathSkills.GrimReachMakesTheSpearReachThreeMetresFartherAndEveryHitCrippleByThirty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Spear's Grim Reach, its own row: "Shift your grip to the end of the spear for 10 seconds. While it lasts your
+ * attacks reach 3 meters farther, and every hit you land Cripples what it hits, moving and attacking 30% slower for 4
+ * seconds." A spear's swing -- the Spear's own basic shape, `Radius=3.3; Angle=40; MaxTargets=1`, tagged Type.Melee as
+ * a melee basic attack is -- misses a creature 6 m ahead: THE CONTROL. Gripped, for the row's 10 seconds, its holder is
+ * not Crippled; the swing reaches 6.3 m, strikes that creature and Cripples it at 30 for 4 seconds.
+ */
+bool FCataclysmDeathSkillsGrimReachTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Spear"), ECataclysmAbilitySlot::Support);
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	const FGameplayTag Melee = DeathSkillTagNamed(TEXT("Type.Melee"));
+	if (!TestEqual(TEXT("set-up: the Death Spear's Support row is Grim Reach. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Grim Reach")))
+		|| !TestTrue(TEXT("set-up: the Cripple curse and Type.Melee"), Cripple.IsValid() && Melee.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Holder(World, FVector::ZeroVector);
+	FDeathSkillCreature Far(World, FVector(6.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmStrikeSkill* Spear = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Holder.AbilitySystem, Holder.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3.3; Angle=40; MaxTargets=1"),
+		TEXT("A spear's swing"));
+	UCataclysmSelfBuffSkill* Reach = GrantDeathRow<UCataclysmSelfBuffSkill>(Holder.AbilitySystem, Holder.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Spear) || !TestNotNull(TEXT("set-up: the row is granted"), Reach))
+	{
+		return false;
+	}
+	Spear->SkillTags = FGameplayTagContainer(Melee);
+	Spear->DamagePercentOverride = 100.0f;
+
+	TestEqual(TEXT("control: ungripped, the swing reaches its 3.3 m"), Spear->ScaledRadiusCm(), 3.3f * DeathSkillMetre,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("control: and misses the creature 6 m ahead"), Spear->SwingOnce(), 0);
+
+	if (!TestTrue(TEXT("the grip is shifted"), ActivateDeathSkill(Holder.AbilitySystem, Reach)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("for the row's 10 seconds"), Reach->TotalDuration, 10.0f, DeathSkillAllowance);
+	TestFalse(TEXT("and its holder is not Crippled"), Holder.Carries(Cripple));
+	TestEqual(TEXT("the swing now reaches 3 m farther: 6.3 m"), Spear->ScaledRadiusCm(), 6.3f * DeathSkillMetre,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and strikes the creature 6 m ahead"), Spear->SwingOnce(), 1);
+	TestTrue(TEXT("and Cripples it"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("at the row's 30"), UCataclysmSkillEffects::StatedStrengthOn(Far.Actor, Cripple), 30.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for its 4 seconds"), DeathSkillSecondsLeft(Far.Actor, Cripple), 4.0f, DeathSkillAllowance);
 	return true;
 }
 

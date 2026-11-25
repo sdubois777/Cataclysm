@@ -99,7 +99,10 @@ RESERVE_KEY = "FervourReserve"
 #: Exhume, 15 for its Reaper; and Bone Choir, 10 for each of two mages, written
 #: whole once N1, N2 and N11 were built. Grave Mouth (N12) and the Effigy (C4
 #: and a Death deployable's reserve) still wait, and bring it to twelve.
-RESERVING_SKILLS = 10
+#:
+#: ELEVEN SINCE SLICE DS4 THE SAME DAY: Grave Mouth, 2 for each wisp, written
+#: whole once N12 was built. The Effigy still waits, and brings it to twelve.
+RESERVING_SKILLS = 11
 
 
 def skills() -> list[dict]:

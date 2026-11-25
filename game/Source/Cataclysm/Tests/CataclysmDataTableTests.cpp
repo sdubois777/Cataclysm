@@ -187,7 +187,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Shallow Graves raise (issue #2885).
 	// AND 14 SINCE SLICE DS2 THE SAME DAY: the Barrow Guard, the Bone Reaper and the Skeletal Mage, the three permanent
 	// raises' kinds (Barrow Guard, Exhume, Bone Choir).
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            14)
+	// AND 15 SINCE SLICE DS4 THE SAME DAY: the Wisp, which the Death Staff's Grave Mouth raises and the Wand's Soul
+	// Snare's snared dead rise as.
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            15)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been
