@@ -122,6 +122,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	FName GetChoiceValue() const { return Value; }
 
+	/** What the button says, as last given to `SetChoice`. Read by the passive tree's mark tests, since 2026-11-24. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	FText GetLabel() const { return Label; }
+
 	/** Whether this is the option currently taken. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	bool IsChosen() const { return bChosen; }
