@@ -75,9 +75,15 @@ DAMAGE_TYPE = "Death"
 #: kills), N13 (`SpendsAllFervour=1` with `ScalingSource=FervourSpent`, a strike spending every Fervour held and scaling
 #: by it), N15 (`CashInRadius`, a strike cashing in its caster's Poison, Bleed and Necrosis around it), N12
 #: (`CollapseBursts=1`, what a rift raised bursts as it closes), N17 (`EveryBlow=1`, a buff's riders laid by every blow
-#: its holder lands) and N21 (`MeleeReachMetres`, a buff lengthening its holder's melee reach).
+#: its holder lands) and N21 (`MeleeReachMetres`, a buff lengthening its holder's melee reach). Slice DS5, the same day:
+#: N18 (`Untargetable=1` read by a walked charge), N19 (`HitFervour` and `HitFervourPerCast`, Fervour for each enemy a
+#: flying shot lands on, to a cap a cast), N14 (`OnDeath=Burst` with `BurstPercentOfMaximumHealth`, a creature dying
+#: while the skill's wound still runs bursts), and the Crossbow draft's C1 (`CritChanceAgainst`, a shot's nails raising
+#: its firer's critical strike chance against what they are in) and C2 (`StrikesOnCritical=1`, a buff's holder's
+#: critical strikes each striking again).
 BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11", "N6", "N7", "N8", "N10", "N5",
-                   "N9", "N13", "N15", "N12", "N17", "N21"})
+                   "N9", "N13", "N15", "N12", "N17", "N21",
+                   "N18", "N19", "N14", "C1", "C2"})
 
 #: Every code piece a row may need, so a misspelt one in `needs` is refused rather than read as never built.
 #: N1-N22 are `death_weapon_skills_draft.md`'s (N20 was dropped on 2026-11-24 and is not one), C1-C4 the Death Crossbow

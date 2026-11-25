@@ -90,12 +90,13 @@ def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
     """`works` is the rule the whole script turns on, so it is checked against `BUILT` directly. Twelve rows needed only
     N22, C3 or nothing after slice DS1; slice DS2 built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled,
     and ten more are whole; slice DS3 built N5, N6, N7, N8 and N10, and nine more are; slice DS4 built N9, N12, N13,
-    N15, N17 and N21, and eight more are. The other 6 wait, and say on what."""
+    N15, N17 and N21, and eight more are; slice DS5 built N14, N18, N19, C1 and C2, and five more are. The last one
+    waits, and says on what."""
     assert script.BUILT <= script.KNOWN_PIECES
     for row in script.ROWS:
         assert row.works == (set(row.needs) <= script.BUILT), row.csv_name
         assert row.waits_on == tuple(piece for piece in row.needs if piece not in script.BUILT), row.csv_name
-    assert sum(row.works for row in script.ROWS) == 39
+    assert sum(row.works for row in script.ROWS) == 44
     assert {row.name for row in script.ROWS if row.works} == {
         "Grave Muster", "Wailing Host", "Shallow Graves", "Grasping Dead", "Nightshade", "Soul Lash",
         "Gallows Chain", "Soul Herd", "Reaping Arc", "Pale Stride", "Pale Vault", "Parting Shot",
@@ -106,17 +107,18 @@ def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
         "Cold Blood", "Danse Macabre", "Death Warrant", "Death Rattle", "Grim Swath", "Hungering Soul",
         "Restless Spirits", "Last Toll", "Pale Rider",
         # SLICE DS4.
-        "Mercy Stroke", "Grave Mouth", "Soul Snare", "Requiem", "Quietus", "Hemlock", "Death Grip", "Grim Reach"}
+        "Mercy Stroke", "Grave Mouth", "Soul Snare", "Requiem", "Quietus", "Hemlock", "Death Grip", "Grim Reach",
+        # SLICE DS5.
+        "Wraithwalk", "Gravetouch", "Soul Lance", "Carrion Crows", "Coffin Nail"}
 
 
-def test_what_each_waiting_row_waits_on_after_slice_ds4():
+def test_what_each_waiting_row_waits_on_after_slice_ds5():
     """The rows still waiting and the pieces they wait on, so a slice that builds one sees exactly which rows move.
-    Gravetouch waits on N14 alone now that Bleed (N16) is allowed. Soul Snare waited on N12 from slice DS3, which built N5
-    and found its wisp is read from Grave Mouth's row; slice DS4 built N12, and it is whole."""
+    Slice DS5 built N14, N18, N19, C1 and C2, and Gravetouch, Wraithwalk, Soul Lance, Coffin Nail and Carrion Crows are
+    whole. The Effigy waits on the Soul Collector's Siphon keystone (C4) and on a Death deployable's reserve, which the
+    coordinating session's brief for slice DS5 left unbuilt."""
     waiting = {row.name: row.waits_on for row in script.ROWS if not row.works}
-    assert waiting == {
-        "Wraithwalk": ("N18",), "Gravetouch": ("N14",), "Soul Lance": ("N19",), "Carrion Crows": ("C2",),
-        "Coffin Nail": ("C1",), "Effigy": ("C4", "DeployableReserve")}
+    assert waiting == {"Effigy": ("C4", "DeployableReserve")}
 
 
 def test_a_rising_curse_waits_with_the_summon_row_its_kind_is_read_from():
