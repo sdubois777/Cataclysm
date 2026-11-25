@@ -118,9 +118,29 @@ no place; a regeneration step before the kill; a Common creature's kill through 
 
 ### What was run
 
-SUITE_FIGURES_C4D3
+**The whole Python suite on `4a17b306c`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8551 passed, 9 skipped in 498.80s
+(0:08:18)". The JUnit file agrees: tests 8561, failures 1, errors 0, skipped 9, so 8551 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, also failed the check that every condition is named in this log, which this entry satisfies.
 
-PYTHON_PROOFS_C4D3
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Six Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`25e02a4e8`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The engine's worn list in another order than the generator's | `test_charge_and_placed_action_names_match_the_engine.py::test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine` |
+| A Common creature lending its modifiers | `test_charge_and_placed_action_names_match_the_engine.py::test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kind_of_kill` |
+| A follower's kill under Death's Toll lending nothing | the same test |
+| The condition's upper bound no longer following the list | `test_charge_and_placed_action_names_match_the_engine.py::test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine` |
+| Overpowered's row at Bloodthirsty's place | the same test |
+| Relentless worn at 3% rather than 2% | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
 
 ---
 
