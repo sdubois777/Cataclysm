@@ -2,6 +2,191 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' second slice (V2b): Fervour shares judged against the maximum the Fervour rows make, Warlord's armour removal on every enemy nearby, a nova sized by a hit for Pure Carnage and Ragnarok's shockwaves, Blood Oath's retaliation penetration, Spiteful Guard's store of blocked damage, and a second condition on an action
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (564 rows): five rows on five options
+  (`tools/reapply_war_vows_v2b_workbook.py`, new), which also takes over Ragnarok's two earlier rows from
+  `tools/reapply_war_vows_v2a_workbook.py` (now eight rows on five nodes and options). `docs/README.md` (the count).
+  **The editor step must rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - two actions: `enemy_armor_removed_nearby` in `PLACED_ACTIONS`, on `hit_dealt`; and `smite_nearby_by_hit` in
+    `NEARBY_ACTIONS`, on the events that carry a hit (`SMITE_NEARBY_BY_HIT_EVENTS`), its radius required in Event Value
+    (above 0 and up to 20 metres);
+  - an action row may state Condition 2, an execute excepted.
+- C++:
+  - `CataclysmAbilitySystemComponent.cpp` and `.h`:
+    - `CurrentConditions` evaluates the `class_resource` line once, last but one, for `ClassResourceMaximum`;
+    - `PoolActionAllowed` judges a second condition;
+    - `ActOnNearby` takes the event's amount and acts for the two new kinds;
+    - a stored-blocked-damage store (`NoteBlockedDamageForRetaliation`, `SpendStoredBlockedDamage`), filled by
+      `NoteBlocked` and cleared at death;
+    - two action names.
+  - `CataclysmStatPipeline.h`: `ECataclysmNearbyAction::SmiteByHit` and `ArmourRemoved`;
+    `FCataclysmPoolAction::Condition2` and `ConditionValue2`; comments on `ClassResourceMaximum` and
+    `ClassResourceMaximumNow`.
+  - `CataclysmItem.cpp`: the builder maps the two actions and copies a second condition.
+  - `CataclysmRetaliation.h` and `.cpp`: `PenetrationStat` and `BlockedDamageAddedStat`; `Pay` adds the store to its
+    first blow.
+  - `CataclysmVitalAttributeSet.cpp`: a blow stamped as retaliation adds the attacker's `retaliation_penetration`.
+  - `CataclysmPlayerClassStats.cpp`: the two stats in `StatsWithNoAttribute`.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV2bTests.cpp` (new, four).
+    - `CataclysmStatExemptionTests.cpp`: two probes, `ProbeRetaliationPenetration` and
+      `ProbeBlockedDamageAddedToNextRetaliation`.
+    - `CataclysmWarVowsV2aTests.cpp`: three row counts; and its "not built yet" test now uses Thousand Deaths and
+      Eternal Hunger, since V2b builds the Warlord it used.
+    - `CataclysmWarVowsV1Tests.cpp`: three row counts.
+    - `CataclysmDataTableTests.cpp`: the pin, 564.
+  - Python:
+    - `tools/tests/test_war_vows_v2b_scripts.py` (new, fifteen).
+    - `test_war_vows_v2a_scripts.py`: eight rows on five nodes and options; Ragnarok's test moved to the new file.
+    - `test_passive_effects_match_the_node_text.py`: 564 rows and 57 authored options; Spiteful Guard stated in words;
+      Opportunist's exemption keyed by its empty condition too, since Warlord's action row shares its node and empty
+      stat.
+    - `test_generate_datatables.py`: the second-condition refusal is an execute's now.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the two new lookups.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  these groups:
+  - `Cataclysm.WarVowsV2b.`: four tests, new.
+  - `Cataclysm.WarVowsV2a.`: six, three row counts moved and one test changed (above).
+  - `Cataclysm.WarVowsV1.`: three, three row counts moved.
+  - `Cataclysm.Data.`: the pin, 564.
+  - `Cataclysm.StatExemption.`: two more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - Neighbours, their counts unchanged:
+    - `Cataclysm.BlockReflect.`, for `ActOnNearby` and the block note;
+    - `Cataclysm.Retaliation.` and `Cataclysm.RetaliationUnmitigated.`, for `Pay`;
+    - `Cataclysm.Enchantments.`, for `PoolActionAllowed` and the builder;
+    - `Cataclysm.BerserkerStates.` and `Cataclysm.Passives.`, for the conditions' maximum.
+- **THE FERVOUR SHARE CHANGE MOVES PLAY FOR TWO KINDS OF CHARACTER.** `class_resource_above`,
+  `class_resource_at_or_below` and `class_resource_at_maximum` now divide by the maximum with the `class_resource`
+  rows that hold now. This changes play in two cases:
+  - **Ragnarok with two hands.** The bar is 200, and Unstoppable's "above 75% Fervour" holds at 151, not 76.
+  - **Vessel (the Ritualist).** "At maximum" is judged against the real bar, not a little before it. That is the cost
+    commit `2df271abf` wrote at the line under issue #1515.
+- **ISSUE #1515 IS NOT CLOSED BY THIS**, as the coordinating session asked to be checked. It was already closed, and
+  its subject was 48 Ravager and Ritualist nodes. The cost this change removes was recorded at the line by commit
+  `2df271abf` (Weight Bearing and Vessel, 2026-09-23), and no open issue tracked it.
+- **THE ONE-PASS LIMIT.** The maximum is worked out once, near the end of `CurrentConditions`, with the state already
+  built. A maximum-Fervour row that itself depends on a Fervour share or a full bar is therefore judged against the
+  unconditioned maximum. No such row exists.
+- **A MERGE OBLIGATION, NAMED AS THE COORDINATING SESSION ASKED.** The Death line's slice C1 (`feat/death-trees-c1`,
+  `54aa0bfb3`) changed "the bar is full" to "held reaches the maximum less the reserve", for every class, in the same
+  conditions (`ClassResourceAtMaximum`, with `FCataclysmStatConditions::ClassResourceReserved`). Whichever of the two
+  merges second keeps both: the full maximum from this change, less the reserve from theirs. Both read
+  `ClassResourceMaximum`, so the two compose if both edits survive the merge.
+- **AN ACTION MAY NOW CARRY A SECOND CONDITION**, for every action, not only Warlord's. It is judged beside the first,
+  against the same state, when the event fires. An execute still carries one: its condition is its share of health,
+  judged after the hit. The generator test that pinned "An action carries one condition" now pins the execute's
+  refusal, and was renamed.
+- **OPTIONS STILL WITH NO ROW**, which the tree screen marks "(not built yet: it does nothing)": 15.
+  - The Saboteur's twelve.
+  - Thousand Deaths, Thornwall and The Unbreakable Wall.
+  - 120 nodes, unchanged by this branch.
+
+### WHAT WAS RULED
+
+- The coordinating session, 2026-11-25, on the vow survey, verbatim in the parts this branch builds:
+  - "1 Warlord: all enemies within 5 m."
+  - "5 Pure Carnage: a share of what the hit took from health."
+  - "11 Blood Oath: the retaliation-only penetration stat."
+  - "15 Spiteful Guard: as written."
+- The split: "V2b (Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath, Spiteful Guard)".
+- The Fervour shares: "RULED IN, in V2b, as you propose: at the end of CurrentConditions, evaluate the class_resource
+  line once with the state already built and divide by that maximum. Test it with Ragnarok's doubling (Unstoppable's
+  "above 75%" holds at 151 of 200 and not at 76) and a control with no doubling. State the one-pass limit in the
+  entry."
+- "'Melee range' in a node is 4 metres" (`docs/Cataclysm_GDD_v2.md`, ruled on 2026-11-25), for Pure Carnage's
+  "within melee range".
+
+No sentence is reworded by this branch.
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Option | Row |
+|---|---|
+| Warlord (`Berserker_capstone_25`, 1) | `enemy_armor_removed_nearby` 15 on `hit_dealt` with `Type.Melee`, above 50% Fervour and with a two-handed weapon, 3 seconds, one stack |
+| Pure Carnage (`Berserker_capstone_100`, 2) | `smite_nearby_by_hit` 30 on `critical_strike` in Frenzy, within 4 metres |
+| Ragnarok (`Berserker_capstone_200`, 1) | `smite_nearby_by_hit` 50 on `hit_dealt` in Wrath, within 6 metres, beside its drain removed and its doubled maximum |
+| Blood Oath (`Bulwark_capstone_25`, 3) | `retaliation_penetration` 25 |
+| Spiteful Guard (`Bulwark_capstone_100`, 3) | `blocked_damage_added_to_next_retaliation`, a flag |
+
+**Judgements:**
+
+- **Warlord's stack goes on every enemy within the nearby actions' 5 metres of the wearer**, as ruled. It is the armour
+  stack `enemy_armor_removed` places on the enemy struck, under its own key. Each hit restarts its 3-second window,
+  and its cap of one makes "refreshes on each hit" one stack, not several.
+  - Its two conditions are judged on the wearer when the hit is dealt.
+  - Its melee tag is judged on the hit's own skill tags.
+- **The nova is a share of what the hit took from health**, as ruled.
+  - It strikes every enemy within its radius, the one struck included: "all enemies within".
+  - It meets each one's mitigation, as the armour nova (`smite_nearby_by_armor`) does.
+  - Its blows fire none of the wearer's own rows, because `ActOnEvent` acts at depth one.
+  - **Its radius is the row's Event Value.** The gadget's shot at a trap's enemy already reads a radius in metres
+    there, so no column was added.
+  - Both rows carry the generator's quarter-second trigger wait for an event a hit fires, so Ragnarok's shockwaves come
+    at most four times a second.
+  - Pure Carnage states no weapon condition: Frenzy is entered only dual wielding. Ragnarok's shockwaves state none
+    either: Wrath is entered only with two hands.
+- **Blood Oath's 25 points are added to the attacker's penetration on every blow stamped as retaliation**, and on no
+  other. The blows stamped that way are the ordinary payment, the pulse, a creature's strike-back, a blocked blow's
+  reflect and Riposte. It is asked with no tags, as retaliation is no skill.
+- **Spiteful Guard's store:**
+  - It is filled by each block's removed damage while the flag holds. It has no ceiling, since the sentence states
+    none, and death clears it.
+  - It is spent whole on the first blow of the next ordinary retaliation payment (`UCataclysmRetaliation::Pay`), not
+    on a pulse, a reflect or Riposte: "your next retaliation hit".
+  - The first target is the attacker when there is one.
+  - It is added to what is sent, so the target's defences take their share of it as of the rest.
+  - A blow's own block is noted after its payment, so what it blocked waits for the next payment.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored. The tracked files were compared
+with a copy taken before the proofs, and were identical afterwards.
+
+| Break in `tools/generate_datatables.py` | Command | Named failure |
+|---|---|---|
+| the nova's radius no longer required | `pytest tools/tests/test_war_vows_v2b_scripts.py` | `test_a_nova_with_no_radius_is_refused` |
+| every action refused a second condition again | the same | `test_the_control_an_action_with_a_second_condition_is_read` |
+| the nova allowed on an event that carries no hit | the same | `test_a_nova_on_an_event_that_carries_no_hit_is_refused` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV2b.AFervourShareIsJudgedAgainstTheMaximumRagnaroksDoublingMakes` | a level 100 War player with a greataxe, Unstoppable and Ragnarok: an attribute of 100, a bar of 200, the conditions read 200, Unstoppable holds at 151 and not at 76. Control: with Eternal Hunger the conditions read 100, and it holds at 76 and not at 75 |
+| `Cataclysm.WarVowsV2b.ANovaSizedByAHitStrikesEveryEnemyWithinItsRadiusForItsShare` | 30% within 4 metres on a critical strike that took 200: the creatures at 2 and 3 metres lose 60 each, the one at 7 nothing. Control: a strike that took nothing strikes nobody |
+| `Cataclysm.WarVowsV2b.AnArmourStackGoesOnEveryEnemyNearbyOnlyWhileBothConditionsHold` | 15% for 3 seconds, one stack, under two health conditions: nothing at 60% or 10% health (controls); at 40% the creatures at 2 and 4 metres lose 15% of their armour and the one at 8 none; a second hit leaves 15% |
+| `Cataclysm.WarVowsV2b.AWarPlayerTakingTheOptionsIsHandedTheirActionsAndStats` | a Berserker with Warlord, Pure Carnage and Ragnarok is handed the armour removal (with its second condition and melee tag) and two novas (4 metres on a critical strike in Frenzy, 6 on a hit in Wrath); a Bulwark with Blood Oath and Spiteful Guard is handed 25 penetration and the flag. Controls: the third options, and Shield Oath and Bastion |
+
+Predicted counts:
+- `Cataclysm.WarVowsV2b.`: 4.
+- `Cataclysm.WarVowsV2a.`: 6.
+- `Cataclysm.WarVowsV1.`: 3.
+- The rest: unchanged.
+
+### C++ GUARD PROOFS (planned, three, with `test_prefix="Cataclysm.WarVowsV2b."`)
+
+| Break | Predicted named failure |
+|---|---|
+| `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.ClassResourceMaximum = FMath::Max(0.0f, State.ClassResourceMaximum + (Now - Folded));` keeps the attribute (`+ 0.0f`) | `AFervourShareIsJudgedAgainstTheMaximumRagnaroksDoublingMakes` |
+| `ActOnNearby`: the nova's `ApplyDirectDamage(Self, Other, ByHit)` sends 0 | `ANovaSizedByAHitStrikesEveryEnemyWithinItsRadiusForItsShare` |
+| `PoolActionAllowed`: the second condition's check made `false && ...` | `AnArmourStackGoesOnEveryEnemyNearbyOnlyWhileBothConditionsHold` |
+
+Blood Oath's and Spiteful Guard's engine halves are held by their two probes and get no planned proof here.
+
+---
+
 ## 2026-11-25 — The War vow options' second slice (V2a): Titan, Unbridled and Bastion on two new scales, Ragnarok's doubled maximum Fervour, Opportunist on a new event raised on entering Frenzy, a pin refused by Unstoppable, and a passive node or option with no row marked "not built yet" on the tree screen
 
 **Affects:**

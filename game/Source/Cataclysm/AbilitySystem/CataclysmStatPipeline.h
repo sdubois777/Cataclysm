@@ -4108,6 +4108,19 @@ enum class ECataclysmNearbyAction : uint8
 	 * your armor as damage to nearby enemies". Issue #1833 group E part 3.
 	 */
 	SmiteByArmour UMETA(DisplayName = "Smite nearby enemies by armour"),
+
+	/**
+	 * A blow of `Percent` of what the event's hit took from health on every enemy within `EventValue` metres, the
+	 * struck one included, meeting each one's mitigation as a blow does. The War vow options' second slice, V2b,
+	 * 2026-11-25: Pure Carnage's nova and Ragnarok's shockwaves.
+	 */
+	SmiteByHit UMETA(DisplayName = "Smite nearby enemies by a share of the hit"),
+
+	/**
+	 * The row's armour stack (`PlacedKey`, `StackSeconds`, `StackCap`) placed on every enemy nearby rather than on the
+	 * event's own character. The War vow options' second slice, V2b, 2026-11-25: Warlord.
+	 */
+	ArmourRemoved UMETA(DisplayName = "Remove the armour of nearby enemies"),
 };
 
 /**
@@ -4426,6 +4439,18 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** What that condition compares against. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ConditionValue = 0.0f;
+
+	/**
+	 * A second state this only fires in, judged with the first at the moment of the event. The War vow options'
+	 * second slice, V2b, 2026-11-25: Warlord's "above 50% Fervour" with "Two-handed weapons only". `Always` is none,
+	 * which is every action before it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition2 = ECataclysmStatCondition::Always;
+
+	/** What that second condition compares against. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ConditionValue2 = 0.0f;
 
 	/**
 	 * Set, this action GRANTS A STACK of the row it names instead of moving a

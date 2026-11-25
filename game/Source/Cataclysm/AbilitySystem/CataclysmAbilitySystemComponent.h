@@ -1251,6 +1251,12 @@ public:
 	static const TCHAR* AttackerDamageRemovedAction;
 
 	/**
+	 * The armour stack of `EnemyArmorRemovedAction` placed on every enemy within `NearbyActionRadiusCm` of the
+	 * wearer. The War vow options' second slice, V2b, 2026-11-25: Warlord. In `PLACED_ACTIONS` too.
+	 */
+	static const TCHAR* EnemyArmorRemovedNearbyAction;
+
+	/**
 	 * The three "every Nth" action names. Issue #1833, phase 2.
 	 * `tools/generate_datatables.py` holds the same three in `NTH_ACTIONS`.
 	 */
@@ -1747,6 +1753,13 @@ public:
 	static const TCHAR* SmiteNearbyByArmourAction;
 
 	/**
+	 * A blow of a share of what the event's hit took from health on every enemy within the row's Event Value in metres.
+	 * The War vow options' second slice, V2b, 2026-11-25: Pure Carnage and Ragnarok's shockwaves. In `NEARBY_ACTIONS`
+	 * too.
+	 */
+	static const TCHAR* SmiteNearbyByHitAction;
+
+	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
 	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
 	 * `FCataclysmPoolAction::bRepeatSkill`.
@@ -2150,6 +2163,19 @@ public:
 
 	/** What Nothing Wasted holds now, for the line above the skill bar. */
 	float StoredMitigatedDamageNow() const { return StoredMitigatedDamage; }
+
+	/**
+	 * Add what a block removed from a blow on THIS character to Spiteful Guard's store, if it holds
+	 * `UCataclysmRetaliation::BlockedDamageAddedStat`. The War vow options' second slice, V2b, 2026-11-25. Called by
+	 * `NoteBlocked`. No ceiling and no time limit, as the sentence states none; death clears it.
+	 */
+	void NoteBlockedDamageForRetaliation(float DamageBlocked);
+
+	/** Answer the whole of Spiteful Guard's store and empty it. `UCataclysmRetaliation::Pay` spends it. */
+	float SpendStoredBlockedDamage();
+
+	/** What Spiteful Guard holds now. */
+	float StoredBlockedDamageNow() const { return StoredBlockedDamage; }
 
 	/**
 	 * Two more stores of the same shape as Nothing Wasted's, each under its own
@@ -5551,6 +5577,9 @@ protected:
 	/** Nothing Wasted's store. Issue #1515. */
 	float StoredMitigatedDamage = 0.0f;
 
+	/** Spiteful Guard's store of blocked damage. V2b, 2026-11-25. */
+	float StoredBlockedDamage = 0.0f;
+
 	/** What the energy shield absorbed, kept for the next attack. See `ShieldAbsorbedAddedCapStat`. */
 	float StoredShieldAbsorbedDamage = 0.0f;
 
@@ -5608,9 +5637,11 @@ protected:
 
 	/**
 	 * Smite or heal every enemy within `NearbyActionRadiusCm` of the avatar.
-	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`.
+	 * Issue #1833 group D part 3. See `ECataclysmNearbyAction`. `EventAmount` is
+	 * what the event carried, which only a smite sized by a hit reads (V2b,
+	 * 2026-11-25); that one reaches its own `EventValue` in metres.
 	 */
-	void ActOnNearby(const FCataclysmPoolAction& Action);
+	void ActOnNearby(const FCataclysmPoolAction& Action, float EventAmount);
 
 	/**
 	 * Count one event for an action with an "every Nth" count in a window, and

@@ -14,13 +14,15 @@ Six nodes and options, every row of each, on the mechanisms this slice builds:
     (`pin_suppressed`, a pin counted as the root, as ruled), each above 75% Fervour with a two-handed weapon.
   - Titan (Berserker Third Oath, option 1): `max_health` 1% increased for every 2 points of maximum Fervour, with a
     two-handed weapon, on `max_class_resource`.
-  - Ragnarok (Berserker Final Oath, option 1): the drain removed in Wrath, and, new, `class_resource` 100% more with a
-    two-handed weapon: "Your maximum Fervour is doubled". (The shockwaves are V2b's.)
+  - Ragnarok (Berserker Final Oath, option 1): `class_resource` 100% more with a two-handed weapon, "Your maximum
+    Fervour is doubled". WRITTEN HERE AND TAKEN OVER THE SAME DAY by V2b's script
+    (`tools/reapply_war_vows_v2b_workbook.py`) with its shockwaves, which now holds all three of the option's rows.
   - Bastion (Bulwark Third Oath, option 1): `max_health` 1% increased for every 1% block chance, on the new
     `block_chance` scale, which reads the attribute, as ruled.
 
-UNSTOPPABLE'S AND RAGNAROK'S OPTIONS HELD ROWS FROM `tools/reapply_war_vows_v1_workbook.py`, which no longer lists them:
-this script names their nodes in `EXTENDING`, so the rows they hold are kept and only the rest are appended.
+UNSTOPPABLE'S OPTION HELD ROWS FROM `tools/reapply_war_vows_v1_workbook.py`, which no longer lists them: this script
+names its node in `EXTENDING`, so the rows it holds are kept and only the rest are appended. (Ragnarok's did too, until
+V2b took that option over.)
 
 THE MACHINERY IS `tools/reapply_war_data_rows_workbook.py`'s (slice D), imported. IT IS IDEMPOTENT and REFUSES RATHER
 THAN GUESSES, as that script does. `--check` writes nothing and exits 1 when a row would be written.
@@ -53,15 +55,12 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("pin_suppressed", "flat", 1, option=1, **TWO_HANDED_ABOVE_75))),
     ("Berserker_capstone_100", "Third Oath", (
         R("max_health", "increased", 1, scale="max_class_resource", step=2, cond=TWO_HANDED, option=1),)),
-    ("Berserker_capstone_200", "Final Oath", (
-        R("fervour_drain_per_second", "removed", 1, cond="in_wrath", option=1),
-        R("class_resource", "more", 100, cond=TWO_HANDED, option=1))),
     ("Bulwark_capstone_100", "Third Oath", (
         R("max_health", "increased", 1, scale="block_chance", step=1, option=1),)),
 )
 
-#: The nodes `tools/reapply_war_vows_v1_workbook.py` wrote rows on, for the options this script took over.
-EXTENDING = frozenset({"Berserker_capstone_50", "Berserker_capstone_200"})
+#: The node `tools/reapply_war_vows_v1_workbook.py` wrote rows on, for the option this script took over.
+EXTENDING = frozenset({"Berserker_capstone_50"})
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

@@ -6680,6 +6680,15 @@ NEXT_USE_ACTIONS = (
 PLACED_ACTIONS = {
     "enemy_armor_removed": ("hit_dealt", "deployable_hit"),
     "attacker_damage_removed": ("melee_hit_taken",),
+    # THE SAME ARMOUR STACK PLACED ON EVERY ENEMY NEAR THE WEARER, within the
+    # nearby radius of five metres, rather than on the event's own character.
+    # The War vow options' second slice, V2b, 2026-11-25: Warlord, "your melee
+    # attacks reduce the armor of all enemies within 5 meters by 15% for 3
+    # seconds. This effect refreshes on each hit", ruled "all enemies within 5
+    # m". The window and the cap are read as for the one above.
+    # `UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction` holds
+    # the same name.
+    "enemy_armor_removed_nearby": ("hit_dealt",),
 }
 
 #: The actions that COUNT A KIND OF EVENT AND ACT ON EVERY Nth, each naming
@@ -6810,7 +6819,27 @@ NEARBY_ACTIONS = (
     # 2026-10-02: "Blocking attacks deals 200%-400% of your armor as damage to
     # nearby enemies". `SmiteNearbyByArmourAction` holds the same name.
     "smite_nearby_by_armor",
+    # A BLOW OF A SHARE OF WHAT THE EVENT'S HIT TOOK FROM HEALTH on every enemy
+    # within the row's Event Value in metres of the wearer, the struck one
+    # included, meeting each one's mitigation as a blow does. The War vow
+    # options' second slice, V2b, 2026-11-25: Pure Carnage, "critical strikes
+    # release a nova of force that deals 30% of the hit's damage to all enemies
+    # within melee range", ruled "a share of what the hit took from health", and
+    # Ragnarok's shockwaves, 50% within 6 metres. Its radius is its own, so it is
+    # not the five metres above; see `SMITE_NEARBY_BY_HIT_ACTION`.
+    # `SmiteNearbyByHitAction` holds the same name.
+    "smite_nearby_by_hit",
 )
+
+#: The nova sized by a hit, its events and its radius. The War vow options'
+#: second slice, V2b, 2026-11-25. ONLY THE EVENTS THAT CARRY WHAT A HIT TOOK
+#: FROM HEALTH, which `ACataclysmPlayerCharacter` raises with the hit notice's
+#: `DealtToHealth`. THE RADIUS IS THE ROW'S EVENT VALUE IN METRES, required, as
+#: the gadget's shot at a trap's enemy reads its own there: Pure Carnage's "melee
+#: range" is 4 (the design document's melee range) and Ragnarok's 6.
+SMITE_NEARBY_BY_HIT_ACTION = "smite_nearby_by_hit"
+SMITE_NEARBY_BY_HIT_EVENTS = ("hit_dealt", "first_hit_dealt", "critical_strike")
+MAX_SMITE_NEARBY_BY_HIT_METRES = 20.0
 
 #: The largest share a nearby action may state: a smite of ten times weapon
 #: damage, or a heal of a whole maximum. A sanity bound, as the clocks' is.
@@ -6818,6 +6847,7 @@ MAX_NEARBY_PERCENT = {
     "smite_nearby": 1000.0,
     "heal_nearby_enemies": 100.0,
     "smite_nearby_by_armor": 1000.0,
+    "smite_nearby_by_hit": 1000.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -8051,6 +8081,13 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"Enchantment Effects row {index}: {who} acts on the characters "
             f"nearby on the event {event or '(none)'!r}, which the game does "
             f"not fire. Known: {', '.join(sorted(known))}.")
+    # A NOVA SIZED BY A HIT NEEDS AN EVENT CARRYING ONE. V2b, 2026-11-25.
+    if action == SMITE_NEARBY_BY_HIT_ACTION and event not in SMITE_NEARBY_BY_HIT_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} deals a share of a hit on "
+            f"the event {event!r}, which carries no hit. Only "
+            f"{', '.join(SMITE_NEARBY_BY_HIT_EVENTS)} carry what a hit took "
+            f"from health.")
     for column, written in (("Fraction Of", fraction_of),
                             ("Value Kind", kind),
                             ("Scale", clean(_cell(raw, headers, "Scale")))):
@@ -9678,10 +9715,17 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {name} names "
                 f"{condition!r} as both conditions.")
-        if action:
+        # AN ACTION MAY CARRY A SECOND CONDITION since the War vow options'
+        # second slice (V2b, 2026-11-25): Warlord's armour removal holds "above
+        # 50% Fervour" with "Two-handed weapons only". Both are judged when the
+        # event fires (`UCataclysmAbilitySystemComponent::PoolActionAllowed`).
+        # NOT AN EXECUTE: its one condition is its share of health, judged after
+        # the hit.
+        if action == EXECUTE_TARGET_ACTION:
             raise DataError(
-                f"Enchantment Effects row {index}: {name} moves {action} and "
-                f"states Condition 2. An action carries one condition.")
+                f"Enchantment Effects row {index}: {name} executes and states "
+                f"Condition 2. An execute carries one condition, its share of "
+                f"health, judged after the hit.")
         if CONDITIONS[condition2] is None:
             if value2_text:
                 raise DataError(
@@ -9801,6 +9845,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"gadget within {event_value:g} metres of a trap. The "
                     f"radius is 0, any distance, up to "
                     f"{MAX_GADGET_SHOT_AT_TRAP_ENEMY_METRES:g}.")
+    elif action == SMITE_NEARBY_BY_HIT_ACTION:
+        # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
+        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} deals a share of a "
+                f"hit to the enemies nearby and states no Event Value. It is the "
+                f"radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_SMITE_NEARBY_BY_HIT_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} reaches "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "

@@ -28,10 +28,11 @@ import generate_datatables as gen  # noqa: E402
 import reapply_war_vows_v2a_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
-#: Every row the script lists, the three it took over included.
-ROW_COUNT = 10
-#: The rows this slice added; the other three were the first slice's.
-NEW_ROW_COUNT = 7
+#: Every row the script lists, the two it took over included. 10 until V2b took over Ragnarok's option the same day
+#: (`tools/reapply_war_vows_v2b_workbook.py`, whose tests now hold Ragnarok's rows).
+ROW_COUNT = 8
+#: The rows this slice's script adds; the other two were the first slice's.
+NEW_ROW_COUNT = 6
 TWO_HANDED = "wielding_two_handed_weapon"
 
 
@@ -44,12 +45,12 @@ def _rows_of(node: str) -> tuple:
 # The rows
 # ---------------------------------------------------------------------------
 
-def test_the_script_lists_every_row_of_six_nodes_and_options():
+def test_the_script_lists_every_row_of_five_nodes_and_options():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
     groups = {(node, row.option) for node, _, wanted in rows.NODES for row in wanted}
     assert groups == {("Berserker_trunk_004", None), ("Berserker_capstone_25", 2), ("Berserker_capstone_50", 1),
-                      ("Berserker_capstone_100", 1), ("Berserker_capstone_200", 1), ("Bulwark_capstone_100", 1)}
-    assert rows.EXTENDING == {"Berserker_capstone_50", "Berserker_capstone_200"}
+                      ("Berserker_capstone_100", 1), ("Bulwark_capstone_100", 1)}
+    assert rows.EXTENDING == {"Berserker_capstone_50"}
 
 
 def test_unstoppable_holds_above_75_percent_with_two_hands():
@@ -63,14 +64,11 @@ def test_unstoppable_holds_above_75_percent_with_two_hands():
             1, "flat", 1, "class_resource_above", 75, TWO_HANDED), row
 
 
-def test_titan_and_ragnaroks_doubling_hold_only_with_two_hands():
+def test_titan_holds_only_with_two_hands():
+    # RAGNAROK'S DOUBLING, tested here until V2b took its option over, is in `test_war_vows_v2b_scripts.py`.
     (titan,) = _rows_of("Berserker_capstone_100")
     assert (titan.option, titan.stat, titan.kind, titan.value, titan.scale, titan.step, titan.cond) == (
         1, "max_health", "increased", 1, "max_class_resource", 2, TWO_HANDED)
-    drain, doubled = _rows_of("Berserker_capstone_200")
-    assert (drain.stat, drain.kind, drain.cond) == ("fervour_drain_per_second", "removed", "in_wrath")
-    assert (doubled.option, doubled.stat, doubled.kind, doubled.value, doubled.cond) == (
-        1, "class_resource", "more", 100, TWO_HANDED)
 
 
 def test_unbridled_and_bastion():
@@ -139,7 +137,7 @@ def test_the_script_appends_only_what_the_two_options_it_took_over_lack(tmp_path
     copy = _workbook_without(tmp_path, keep_the_first_slices=True)
     first = rows.apply(copy)
     assert sum(1 for line in first if ": + " in line) == NEW_ROW_COUNT, first
-    assert sum(1 for line in first if "the rest are appended" in line) == 2, first
+    assert sum(1 for line in first if "the rest are appended" in line) == 1, first
     assert rows.apply(copy)[-1] == "every row is already written; nothing written"
 
 

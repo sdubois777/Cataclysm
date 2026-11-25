@@ -9148,6 +9148,83 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `retaliation_penetration`, read with the attacker's penetration by `UCataclysmVitalAttributeSet` for a blow
+	 * stamped as retaliation. The War vow options' second slice, V2b, 2026-11-25: Blood Oath. Two retaliators, each
+	 * with retaliation at 20, each pay once for a blow of 500 struck by an attacker holding 50 resistance to all
+	 * damage. Only the second holds 25 of the stat. Its payment loses less to the resistance.
+	 *
+	 * A RELATIVE CHECK, NOT A FIGURE: the payment carries no damage type, so it meets the resistance to all damage, and
+	 * the figure it lands at is that step's arithmetic, which its own tests hold. What this holds is that the stat is
+	 * read.
+	 */
+	void ProbeRetaliationPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		GrantFlats(Holding.Actor, {{FName(UCataclysmRetaliation::PenetrationStat), 25.0f}});
+
+		const float Resisted =
+			UCataclysmRetaliation::Pay(Plain.AbilitySystem, Plain.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		const float Penetrating =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		Test.TestTrue(*FString::Printf(TEXT("control: with none of the stat the resistance takes a share of the 100 "
+											"sent: %.2f reached health"), Resisted),
+					  Resisted > 0.0f && Resisted < 99.0f);
+		Test.TestTrue(*FString::Printf(TEXT("and with retaliation_penetration at 25 more reaches health, %.2f against "
+											"%.2f, so the resistance step really reads it"), Penetrating, Resisted),
+					  Penetrating > Resisted + 1.0f);
+	}
+
+	/**
+	 * `blocked_damage_added_to_next_retaliation`, read by `UCataclysmAbilitySystemComponent::
+	 * NoteBlockedDamageForRetaliation` when a block is noted, and spent by `UCataclysmRetaliation::Pay`. The War vow
+	 * options' second slice, V2b, 2026-11-25: Spiteful Guard. Two retaliators, each with retaliation at 20, each block
+	 * 80 of a blow and then pay once for a blow of 500 struck by an attacker with no defences. Only the second holds
+	 * the flag: its payment is 180 and its next 100, and the first's is 100.
+	 */
+	void ProbeBlockedDamageAddedToNextRetaliation(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Plain.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		GrantFlats(Holding.Actor, {{FName(UCataclysmRetaliation::BlockedDamageAddedStat), 1.0f}});
+		Plain.AbilitySystem->NoteBlocked(Attacker.Actor, /*DamageBlocked=*/80.0f);
+		Holding.AbilitySystem->NoteBlocked(Attacker.Actor, /*DamageBlocked=*/80.0f);
+
+		Test.TestEqual(TEXT("control: with no flag the payment is the 100 the stat sends"),
+					   UCataclysmRetaliation::Pay(Plain.AbilitySystem, Plain.Actor, Attacker.Actor, 500.0f),
+					   100.0f, 0.01f);
+		Test.TestEqual(TEXT("and with blocked_damage_added_to_next_retaliation at 1 the 80 blocked is added, so "
+							"NoteBlockedDamageForRetaliation really reads it"),
+					   UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, 500.0f),
+					   180.0f, 0.01f);
+		Test.TestEqual(TEXT("and the store is spent: the next payment is 100"),
+					   UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, 500.0f),
+					   100.0f, 0.01f);
+	}
+
+	/**
 	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
 	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
 	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
@@ -12505,6 +12582,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_type_immunity_on_hit_chance"), &ProbeDamageTypeImmunityOnHitChance},
 			{TEXT("damage_type_immunity_on_hit_seconds"), &ProbeDamageTypeImmunityOnHitSeconds},
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeRetaliationCannotBeMitigated},
+			{TEXT("retaliation_penetration"), &ProbeRetaliationPenetration},
+			{TEXT("blocked_damage_added_to_next_retaliation"), &ProbeBlockedDamageAddedToNextRetaliation},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

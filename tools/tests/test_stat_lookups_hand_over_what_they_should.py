@@ -733,6 +733,14 @@ INVENTORY = {
      'FName(KnockbackSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Set Stance's flag, asked of the target of a knockback before it is "
         'moved (issue #1755); whether it holds, not a modifier of a blow',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(UCataclysmRetaliation::BlockedDamageAddedStat), FGameplayTagContainer(), 0.0f'):
+        "Spiteful Guard's flag (the War vow options' second slice, V2b, 2026-11-25), asked when a block is noted; "
+        "whether it holds, not a modifier of a blow, so no blow and no target are handed over",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Oath's retaliation-only penetration (V2b, 2026-11-25), asked of the attacker of a blow stamped as "
+        "retaliation; retaliation is not a skill and carries no tags, and the stat is stated under no condition",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(PinSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "Unstoppable's flag (the War vow options' second slice, 2026-11-25), asked of the target of a pin before "

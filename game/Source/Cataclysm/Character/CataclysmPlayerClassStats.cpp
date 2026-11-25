@@ -752,6 +752,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// "Retaliation damage cannot be reduced or mitigated by the attacker". A
 		// flag. No gameplay attribute and no base.
 		TEXT("retaliation_cannot_be_mitigated"),
+		// Blood Oath's resistance points a retaliation blow ignores, read with
+		// the attacker's penetration in UCataclysmVitalAttributeSet for a blow
+		// stamped as retaliation; and Spiteful Guard's flag, read by
+		// UCataclysmAbilitySystemComponent::NoteBlockedDamageForRetaliation. The
+		// War vow options' second slice, V2b, 2026-11-25. No gameplay attribute
+		// and no base.
+		TEXT("retaliation_penetration"),
+		TEXT("blocked_damage_added_to_next_retaliation"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on

@@ -43,6 +43,7 @@
 // healing reach it and the Masochist's rule that healing removes Fervour
 // applies to it. Issue #1815.
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
 // For whether the character being hit carries a curse the asker laid, which
 // `target_carries_your_curse` reads. The demonic tree rework of 2026-11-24.
 #include "AbilitySystem/CataclysmRisenImps.h"
@@ -3158,6 +3159,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	StoredShieldAbsorbedDamage = 0.0f;
 	StoredSpellAbsorbedDamage = 0.0f;
 
+	// AND SPITEFUL GUARD'S STORE OF BLOCKED DAMAGE, which waits for the next retaliation payment (V2b, 2026-11-25).
+	StoredBlockedDamage = 0.0f;
+
 	// AND THE TEMPORARY ABSORB. Ruled 2026-10-07: it has no duration and lasts
 	// until damage removes it. A judgement by the writing session that a respawn
 	// empties it: it is temporary, and this function removes what is temporary.
@@ -3599,6 +3603,9 @@ void UCataclysmAbilitySystemComponent::NoteBlocked(const AActor* Attacker, float
 	{
 		LastBlockAtSeconds = World->GetTimeSeconds();
 	}
+
+	// AND SPITEFUL GUARD'S STORE, before the block's rows act (V2b, 2026-11-25).
+	NoteBlockedDamageForRetaliation(DamageBlocked);
 
 	ActOnEvent(FName(TEXT("block")), /*EventTags=*/nullptr,
 			   /*EventAmount=*/FMath::Max(0.0f, DamageBlocked), /*bLanded=*/true, Attacker);
@@ -4665,6 +4672,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextSkillEffectivenessAction =
 	TEXT("next_skill_effectiveness");
 const TCHAR* UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction =
 	TEXT("enemy_armor_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::EnemyArmorRemovedNearbyAction =
+	TEXT("enemy_armor_removed_nearby");
 const TCHAR* UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction =
 	TEXT("attacker_damage_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::NthHitTakenDamageAction =
@@ -5067,6 +5076,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::ExecuteTargetAction = TEXT("execu
 const TCHAR* UCataclysmAbilitySystemComponent::TemporaryAbsorbAction = TEXT("temporary_absorb");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction =
+	TEXT("smite_nearby_by_hit");
 
 namespace
 {
@@ -5921,6 +5932,24 @@ void UCataclysmAbilitySystemComponent::NoteMitigatedDamage(float Removed)
 		return;
 	}
 	StoredMitigatedDamage += Removed;
+}
+
+void UCataclysmAbilitySystemComponent::NoteBlockedDamageForRetaliation(float DamageBlocked)
+{
+	// ONLY WHILE THE FLAG HOLDS, asked with no tags and a fallback of nought, so every character without Spiteful
+	// Guard stores nothing.
+	if (DamageBlocked > 0.0f
+		&& StatForSkill(FName(UCataclysmRetaliation::BlockedDamageAddedStat), FGameplayTagContainer(), 0.0f) > 0.0f)
+	{
+		StoredBlockedDamage += DamageBlocked;
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SpendStoredBlockedDamage()
+{
+	const float Spent = FMath::Max(0.0f, StoredBlockedDamage);
+	StoredBlockedDamage = 0.0f;
+	return Spent;
 }
 
 float UCataclysmAbilitySystemComponent::SpendStoredMitigatedDamage(float HitDamage)
@@ -6854,7 +6883,9 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// struck, or the attacker that struck. Issue #1833, phase 2. Landed
 		// only, once per row per event, and only for an event naming that
 		// character. `PoolActionAllowed` above has judged the row's tags.
-		if (!Action.PlacedKey.IsNone())
+		// NOT A STACK PLACED ON EVERY ENEMY NEARBY, which carries the same key
+		// and is acted on with the nearby actions below (V2b, 2026-11-25).
+		if (!Action.PlacedKey.IsNone() && Action.Nearby == ECataclysmNearbyAction::None)
 		{
 			if (bLanded && EventTarget && !StackedThisEvent.Contains(Action.PlacedKey))
 			{
@@ -6955,7 +6986,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				&& TriggerReady(Action) && CountedToNth(Action))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
-				ActOnNearby(Action);
+				ActOnNearby(Action, EventAmount);
 				NoteTriggerFired(Action);
 			}
 			continue;
@@ -7718,9 +7749,15 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	// "NOT A SPELL" IS JUDGED FROM THE EVENT'S OWN TAGS, AND ONLY HERE. Ruled 2026-10-17 (O6), for the Null Emperor's
 	// "Your attacks": the event's skill is not a spell. An event with no tags is a hit no skill dealt, and that is not
 	// a spell either. The stat pipeline is not asked: it is handed no event's tags.
-	if (Action.Condition == ECataclysmStatCondition::HitDealtIsNotSpell)
+	//
+	// EITHER OF THE TWO CONDITIONS MAY BE IT since an action carries a second (V2b, 2026-11-25); judged here for both
+	// and passed over below.
+	const bool bIsASpell = EventTags && UCataclysmSkillEffects::IsSpell(*EventTags);
+	if ((Action.Condition == ECataclysmStatCondition::HitDealtIsNotSpell
+		 || Action.Condition2 == ECataclysmStatCondition::HitDealtIsNotSpell)
+		&& bIsASpell)
 	{
-		return !(EventTags && UCataclysmSkillEffects::IsSpell(*EventTags));
+		return false;
 	}
 
 	// AND THE CONDITION IS JUDGED NOW, which is the whole difference from a stat
@@ -7739,22 +7776,44 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	// written to the enemy's health, and "below 15%" is judged on the health the hit leaves:
 	// `ExecuteIfLeftBelow` judges it, by the same strict comparison, once the damage is written. Any other
 	// condition on such a row is judged here as before; the generator accepts no other.
+	//
+	// AND THE SECOND CONDITION, IF ANY, JUDGED BESIDE THE FIRST against the same state (V2b, 2026-11-25). The generator
+	// refuses a second condition on an execute row, whose one condition is judged after the hit.
 	const bool bJudgedAfterTheHit = Action.bExecuteTarget
 		&& Action.Condition == ECataclysmStatCondition::TargetHealthBelowPercent;
-	if (Action.Condition != ECataclysmStatCondition::Always && !bJudgedAfterTheHit)
+	const bool bAsksTheFirst = Action.Condition != ECataclysmStatCondition::Always
+		&& Action.Condition != ECataclysmStatCondition::HitDealtIsNotSpell && !bJudgedAfterTheHit;
+	const bool bAsksTheSecond = Action.Condition2 != ECataclysmStatCondition::Always
+		&& Action.Condition2 != ECataclysmStatCondition::HitDealtIsNotSpell;
+	if (bAsksTheFirst || bAsksTheSecond)
 	{
-		FCataclysmStatModifier Asking;
-		Asking.Condition = Action.Condition;
-		Asking.ConditionValue = Action.ConditionValue;
+		TArray<FCataclysmStatModifier> Asking;
+		if (bAsksTheFirst)
+		{
+			FCataclysmStatModifier& First = Asking.AddDefaulted_GetRef();
+			First.Condition = Action.Condition;
+			First.ConditionValue = Action.ConditionValue;
+		}
+		if (bAsksTheSecond)
+		{
+			FCataclysmStatModifier& Second = Asking.AddDefaulted_GetRef();
+			Second.Condition = Action.Condition2;
+			Second.ConditionValue = Action.ConditionValue2;
+		}
 		const FCataclysmStatConditions State = WithTargetState(
-			{Asking}, EventTarget,
+			Asking, EventTarget,
 			CurrentConditions(/*SkillHealthCostPercent=*/-1.0f,
 							  FCataclysmBlowContext(),
 							  /*MetresMovedBeforeBlow=*/-1.0f,
 							  /*TargetDistanceMetres=*/-1.0f,
 							  EventTarget && UCataclysmSkillEffects::IsStaggered(EventTarget)));
-		if (!UCataclysmStatPipeline::ConditionHolds(
-				Action.Condition, Action.ConditionValue, State))
+		if (bAsksTheFirst
+			&& !UCataclysmStatPipeline::ConditionHolds(Action.Condition, Action.ConditionValue, State))
+		{
+			return false;
+		}
+		if (bAsksTheSecond
+			&& !UCataclysmStatPipeline::ConditionHolds(Action.Condition2, Action.ConditionValue2, State))
 		{
 			return false;
 		}
@@ -8689,7 +8748,7 @@ bool UCataclysmAbilitySystemComponent::ApplyStatusOf(const FCataclysmPoolAction&
 		/*Skill=*/nullptr, NAME_None, bSeconds ? Action.Percent : 0.0f);
 }
 
-void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& Action)
+void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& Action, float EventAmount)
 {
 	// FROM THE CHARACTER, NOT THE PLAYER STATE THAT OWNS THIS COMPONENT: the
 	// avatar is where the wearer stands and the side it is on.
@@ -8700,15 +8759,46 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 		return;
 	}
 
+	// A SMITE SIZED BY A HIT NEEDS A HIT THAT TOOK SOMETHING, AND REACHES ITS OWN RADIUS. The War vow options' second
+	// slice, V2b, 2026-11-25: the row's Event Value in metres, which the generator requires. A hit that took nothing
+	// from health, or a row with no radius, does nothing and searches nothing.
+	const bool bByHit = Action.Nearby == ECataclysmNearbyAction::SmiteByHit;
+	const float ByHit = bByHit ? EventAmount * Action.Percent / 100.0f : 0.0f;
+	if (bByHit && (ByHit <= 0.0f || Action.EventValue <= 0.0f))
+	{
+		return;
+	}
+	const float RadiusCm = bByHit ? Action.EventValue * 100.0f : NearbyActionRadiusCm;
+
 	// THE SEARCH THE PLAYER'S OWN NOVAS MAKE (`UCataclysmNova`): every living
 	// character with an ability system that the wearer's side counts as an
 	// enemy, floor sources included, nearest first. A dead wearer still
 	// searches, because "On death" fires after the death is marked.
 	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
-		World, Self, Self->GetActorLocation(), NearbyActionRadiusCm);
+		World, Self, Self->GetActorLocation(), RadiusCm);
 
 	for (AActor* Other : Nearby)
 	{
+		if (bByHit)
+		{
+			// A BLOW OF THE SHARE OF WHAT THE HIT TOOK FROM HEALTH, meeting each enemy's mitigation as a blow does, the
+			// struck one included: "all enemies within". ACT ON EVENT IS DEPTH ONE, so these blows fire none of the
+			// wearer's own rows, this one included.
+			UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, ByHit);
+			continue;
+		}
+		if (Action.Nearby == ECataclysmNearbyAction::ArmourRemoved)
+		{
+			// THE ROW'S ARMOUR STACK ON EACH ONE, as `EnemyArmorRemovedAction` places it on the enemy struck: its
+			// window restarts at each placing and its cap holds. Warlord (V2b, 2026-11-25).
+			if (UCataclysmAbilitySystemComponent* Theirs =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Other)))
+			{
+				Theirs->ReceivePlacedStack(Action.PlacedKey, Action.Percent, Action.StackSeconds, Action.StackCap,
+										   /*bCutsDamage=*/false);
+			}
+			continue;
+		}
 		if (Action.Nearby == ECataclysmNearbyAction::Smite)
 		{
 			// A REAL HIT OF THE STATED SHARE OF WEAPON DAMAGE, as the Nova's

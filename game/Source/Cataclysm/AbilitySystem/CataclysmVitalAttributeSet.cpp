@@ -952,6 +952,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor())
 							: Offence->GetPenetration();
 
+						// AND A RETALIATION BLOW'S OWN PENETRATION, ADDED. The War vow options' second slice, V2b,
+						// 2026-11-25: Blood Oath, "Your retaliation damage ignores 25% of enemy resistances", ruled a
+						// retaliation-only penetration stat. Only for a blow stamped as retaliation, asked of the
+						// attacker with no tags and a fallback of nought; never below nought.
+						if (AskingToPenetrate
+							&& Data.EffectSpec.GetSetByCallerMagnitude(
+								   FName(UCataclysmSkillEffects::RetaliationDataName),
+								   /*WarnIfNotFound=*/false, 0.0f) > 0.0f)
+						{
+							Hit.ResistancePenetration += FMath::Max(0.0f, AskingToPenetrate->StatForSkill(
+								FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f));
+						}
+
 						// ARMOUR PENETRATION IS ASKED WITH THE ATTACK'S COUNT, so a row
 						// conditioned on how many enemies the attack struck together
 						// is judged against this blow. Issue #1515. Sundering: "Your

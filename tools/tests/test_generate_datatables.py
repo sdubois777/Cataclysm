@@ -3703,8 +3703,10 @@ class TestExecuteTarget:
             gen.enchantment_effects(self.execute(
                 tmp_path, {"Condition": condition, "Condition Value": value}))
 
-    def test_a_second_condition_is_refused_because_an_action_carries_one(self, tmp_path):
-        with pytest.raises(gen.DataError, match="An action carries one condition"):
+    def test_a_second_condition_is_refused_because_an_execute_carries_one(self, tmp_path):
+        # AN EXECUTE, AND NOT EVERY ACTION, since the War vow options' second slice (V2b, 2026-11-25) let an action
+        # carry a second condition. See `test_war_vows_v2b_scripts.py` for an action that carries one.
+        with pytest.raises(gen.DataError, match="An execute carries one condition"):
             gen.enchantment_effects(self.execute(
                 tmp_path, {"Condition 2": "target_is_not_boss"}))
 

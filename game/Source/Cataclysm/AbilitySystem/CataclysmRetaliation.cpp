@@ -18,6 +18,8 @@ const TCHAR* UCataclysmRetaliation::RadiusMetresStat =
 const TCHAR* UCataclysmRetaliation::LeechesStat = TEXT("retaliation_leeches");
 const TCHAR* UCataclysmRetaliation::CannotBeMitigatedStat =
 	TEXT("retaliation_cannot_be_mitigated");
+const TCHAR* UCataclysmRetaliation::PenetrationStat = TEXT("retaliation_penetration");
+const TCHAR* UCataclysmRetaliation::BlockedDamageAddedStat = TEXT("blocked_damage_added_to_next_retaliation");
 
 namespace
 {
@@ -317,16 +319,32 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 	// `FCataclysmHitDelivery::bCannotBeMitigated` for what is skipped.
 	Delivery.bCannotBeMitigated = CannotBeMitigatedFor(Defender);
 
+	// AND WHAT BLOCKS STORED, ON THE FIRST BLOW OF THIS PAYMENT ONLY. The War vow options' second slice, V2b,
+	// 2026-11-25: Spiteful Guard, "Blocked damage is stored and added to your next retaliation hit". The whole store,
+	// once, on the first target, which is the attacker when there is one, and the store empties; a payment with no
+	// target keeps it. A blow's own block is noted after this payment for it is made, so what it blocked is added to
+	// the next one. Added to what is sent, so each target's defences take their share of it as of the rest.
+	const TArray<AActor*> Targets = TargetsOf(Defender, Attacker);
+	float Stored = 0.0f;
+	if (!Targets.IsEmpty())
+	{
+		if (UCataclysmAbilitySystemComponent* Storing = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Stored = Storing->SpendStoredBlockedDamage();
+		}
+	}
+
 	float TakenAltogether = 0.0f;
-	for (AActor* Target : TargetsOf(Defender, Attacker))
+	for (AActor* Target : Targets)
 	{
 		// MEASURED RATHER THAN ASSUMED, and that is the design's overkill rule.
 		// What a target with 25 health left actually loses to a payment of 400
 		// is 25, and the target's own armour and resistance now take a share
 		// before that -- so what was sent and what landed differ twice over.
 		const float Before = HealthOfRetaliationTarget(Target);
-		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount,
+		UCataclysmSkillEffects::ApplyDirectDamage(Instigator, Target, Amount + Stored,
 												  Delivery);
+		Stored = 0.0f;
 		const float Taken =
 			FMath::Max(0.0f, Before - HealthOfRetaliationTarget(Target));
 		TakenAltogether += Taken;

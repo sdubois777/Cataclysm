@@ -119,9 +119,10 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1StatRowsTest,
 		const TCHAR* Node;
 		int32 Rows;
 	};
-	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 3},
-														   {TEXT("Bulwark_capstone_25"), 2},
-														   {TEXT("Bulwark_capstone_100"), 2},
+	// AND 4, 3 AND 3 SINCE V2b, the same day: Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
+	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 4},
+														   {TEXT("Bulwark_capstone_25"), 3},
+														   {TEXT("Bulwark_capstone_100"), 3},
 														   {TEXT("Bulwark_capstone_200"), 2}})
 	{
 		const int32 Held = UCataclysmPassiveTree::EffectsFor(Effects, FName(Each.Node)).Num();

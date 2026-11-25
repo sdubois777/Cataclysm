@@ -85,6 +85,23 @@ public:
 	static const TCHAR* CannotBeMitigatedStat;
 
 	/**
+	 * `retaliation_penetration`: resistance points this character's retaliation ignores, beside the ordinary
+	 * `penetration`. The War vow options' second slice, V2b, 2026-11-25: Blood Oath, "Your retaliation damage ignores
+	 * 25% of enemy resistances", ruled a retaliation-only penetration stat. Read by
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` for a blow stamped as retaliation
+	 * (`UCataclysmSkillEffects::RetaliationDataName`), asked of the attacker with no tags. No attribute and no base.
+	 */
+	static const TCHAR* PenetrationStat;
+
+	/**
+	 * `blocked_damage_added_to_next_retaliation`: a flag. While it holds, what a block removes is stored, and the next
+	 * retaliation payment adds the whole store to its first blow and empties it. The War vow options' second slice,
+	 * V2b, 2026-11-25: Spiteful Guard, "Blocked damage is stored and added to your next retaliation hit". See
+	 * `UCataclysmAbilitySystemComponent::NoteBlockedDamageForRetaliation`. No attribute and no base.
+	 */
+	static const TCHAR* BlockedDamageAddedStat;
+
+	/**
 	 * Whether this character's retaliation cannot be reduced or mitigated by what it strikes.
 	 *
 	 * ASKED WITH NO TAGS AND A FALLBACK OF NOUGHT, where retaliation is paid. Retaliation is not a skill and

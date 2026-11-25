@@ -711,8 +711,11 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 559 THE SAME DAY: seven rows of the War vow options' second slice,
 #: V2a (`tools/reapply_war_vows_v2a_workbook.py`): Unbridled's two, Opportunist,
-#: Unstoppable's pin, Titan, Ragnarok's doubling and Bastion.
-AUTHORED_ROWS = 559
+#: Unbridled's two, Opportunist, Unstoppable's pin, Titan, Ragnarok's doubling and Bastion.
+#:
+#: AND TO 564 THE SAME DAY: five rows of V2b (`tools/reapply_war_vows_v2b_workbook.py`): Warlord, Pure Carnage,
+#: Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
+AUTHORED_ROWS = 564
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1256,7 +1259,10 @@ AUTHORED_NODES = 317
 #: Bulwark's First, Third and Final Oaths.
 #: AND TO 53 THE SAME DAY: the second slice, V2a -- Opportunist and Titan
 #: (Berserker) and Bastion (Bulwark). Each capstone already had a row.
-AUTHORED_OPTIONS = 53
+#: AND TO 57 THE SAME DAY: V2b -- Warlord and Pure Carnage (Berserker), and Blood Oath and Spiteful Guard (Bulwark).
+#: Each capstone already had a row, so `AUTHORED_NODES` does not move. Ragnarok's shockwaves are a third row on an
+#: option already counted.
+AUTHORED_OPTIONS = 57
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2818,8 +2824,13 @@ VALUE_IN_WORDS = {
     ("Berserker_capstone_200", "class_resource"): ("maximum fervour is doubled", 100.0),
     # OPPORTUNIST, the Berserker's First Oath (V2a, 2026-11-25): "Entering Frenzy immediately resets the cooldown of
     # your movement skill", a `cooldown_reset_movement` action whose value is its chance, 100 being always. An action
-    # row names no stat, so the key's stat is empty; the node has no other action row.
-    ("Berserker_capstone_25", ""): ("immediately resets the cooldown of your movement skill", 100.0),
+    # row names no stat, so the key's stat is empty. KEYED BY ITS EMPTY CONDITION TOO since V2b gave the node a second
+    # action row, Warlord's, under `class_resource_above`, whose 15% is stated in digits.
+    ("Berserker_capstone_25", "", ""): ("immediately resets the cooldown of your movement skill", 100.0),
+    # SPITEFUL GUARD, the Bulwark's Third Oath (V2b, 2026-11-25): "Blocked damage is stored and added to your next
+    # retaliation hit", a flag.
+    ("Bulwark_capstone_100", "blocked_damage_added_to_next_retaliation"):
+        ("blocked damage is stored and added to your next retaliation hit", 1.0),
     # RAGNAROK, the Berserker's Final Oath, 2026-11-25: "Wrath no longer drains Fervour passively", the drain removed.
     ("Berserker_capstone_200", "fervour_drain_per_second"): ("no longer drains fervour", 1.0),
     # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of

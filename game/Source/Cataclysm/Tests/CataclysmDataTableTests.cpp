@@ -528,7 +528,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 552 THE SAME DAY, for the War vow options' first slice.
 	// AND 559 THE SAME DAY, for the second slice, V2a: Unbridled, Opportunist, Unstoppable's pin, Titan, Ragnarok's
 	// doubling and Bastion.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        559)
+	// AND 564 THE SAME DAY, for V2b: Warlord, Pure Carnage, Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        564)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
