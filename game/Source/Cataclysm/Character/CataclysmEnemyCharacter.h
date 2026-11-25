@@ -2395,12 +2395,20 @@ public:
 	/**
 	 * Which of the player's eight resistances this creature's attacks are met by.
 	 *
-	 * DEMONIC, BECAUSE THE WHOLE VERTICAL SLICE IS. The design gives each
+	 * DEMONIC BY DEFAULT, BECAUSE THE WHOLE VERTICAL SLICE IS. The design gives each
 	 * Cataclysm one damage type and says its enemies deal it; all seven Demonic
 	 * creatures therefore share this. `Archetype.cataclysm` in
 	 * `sim/cataclysm_sim/enemy_stats.py` is the same field with the same default,
 	 * and `EnemyArchetypes.csv` carries it per archetype for when this is read
 	 * from data rather than declared.
+	 *
+	 * AND THE DUNGEON'S SENDER ON A DUNGEON FLOOR, since slice B3 of the Death and
+	 * War plan (2026-11-25): `ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`
+	 * writes the Cataclysm that sent the dungeon here before the creature's
+	 * modifiers are drawn, so a Death dungeon's Demonic bodies deal Death and draw
+	 * Death and Generic modifiers, as the owner accepted on 2026-11-24 (Q16). A
+	 * dungeon nobody sent, and every place outside a dungeon, leaves this default.
+	 * The Gatekeeper's called Imps copy their Gatekeeper's.
 	 *
 	 * A CREATURE AND A FLOOR HAZARD ARE THE ONLY TWO THINGS IN THE GAME WHOSE
 	 * DAMAGE CARRIES A TYPE. This said "the only damage in the game" until a

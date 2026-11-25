@@ -2545,9 +2545,13 @@ public:
 	 * AND BY THE WORKER SESSION OF 2026-11-17 UNDER THE SAME DELEGATION, issue #1671, which
 	 * replaced the instant grant of 2026-09-24 with a soul that travels:
 	 * - A DEMON IS A CREATURE WHOSE DAMAGE TYPE IS DEMONIC (`SoulHarvestTakesAsADemon`): the
-	 *   design gives each Cataclysm one damage type and its creatures deal it. Every creature a
-	 *   floor places today is Demonic, so this passes over only a creature some other rule made
-	 *   of another Cataclysm. The 2026-09-24 entry said this reading must be revisited.
+	 *   design gives each Cataclysm one damage type and its creatures deal it. The 2026-09-24
+	 *   entry said this reading must be revisited. SINCE SLICE B3 (2026-11-25) A CREATURE IS THE
+	 *   CATACLYSM'S THAT SENT ITS DUNGEON (`ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm`),
+	 *   so on a floor of a dungeon another Cataclysm sent no creature is a demon and the row
+	 *   releases no soul; in a Demonic dungeon, a Fallen City and a floor with no empire dungeon
+	 *   behind it every creature still is one. Left as #1671 ruled it, and flagged to the owner in
+	 *   the 2026-11-25 `docs/DECISIONS.md` entry.
 	 * - NO DEMON WITHIN 6 METRES OF THE DEATH: no soul is released.
 	 * - ITS TARGET DIES, OR STOPS BEING AN ENEMY DEMON, BEFORE IT ARRIVES: it turns to the
 	 *   nearest demon within 6 metres of where the soul is then; with none, it fades, giving

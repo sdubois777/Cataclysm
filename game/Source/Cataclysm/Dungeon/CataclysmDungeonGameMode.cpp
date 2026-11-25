@@ -1687,6 +1687,8 @@ FCataclysmDungeonIdentity ACataclysmDungeonGameMode::DungeonIdentity() const
 	Dungeon.EdictSeed = ChooseSeed();
 	// AND HOW MANY BOSSES IT HOLDS, which a Fallen City spreads down its floors. Issue #1466.
 	Dungeon.Bosses = DungeonBosses;
+	// AND WHO SENT IT, whose creatures every one it places is. Slice B3, 2026-11-25.
+	Dungeon.Cataclysm = DungeonCataclysm;
 	return Dungeon;
 }
 
@@ -1926,6 +1928,10 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		return;
 	}
 
+	// THE CATACLYSM THAT SENT THE DUNGEON, FIRST, because `DrawModifiersForRarity` below pools its modifiers by the
+	// creature's damage type. Nothing when nobody sent it. Slice B3, 2026-11-25.
+	GiveTheDungeonsCataclysm(Enemy);
+
 	// BUILT FROM THE DESIGN'S ENEMY SCORE ON THIS FLOOR, since issue #1569. The project owner, 2026-09-11: "Creature
 	// health and damage come from the design's enemy score on each floor". `UCataclysmEnemyStrength` turns the score
 	// -- eased by the tier relief, held above a minimum, and with damage scaled by the tier, all ruled 2026-10-30 --
@@ -2006,6 +2012,18 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 	default:
 		break;
 	}
+}
+
+void ACataclysmDungeonGameMode::GiveTheDungeonsCataclysm(ACataclysmEnemyCharacter* Enemy) const
+{
+	// THE SENDER'S DAMAGE TYPE, OR NOTHING WRITTEN WHEN NOBODY SENT THE DUNGEON: the creature then keeps its class's
+	// own, Demonic. See the header; `CreatureDamageTypeFor` answers NAME_None for `None`.
+	const FName SendersDamageType = FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm);
+	if (!Enemy || SendersDamageType.IsNone())
+	{
+		return;
+	}
+	Enemy->DamageType = SendersDamageType;
 }
 
 void ACataclysmDungeonGameMode::ClearFloorEnemies()
@@ -16009,6 +16027,12 @@ void ACataclysmDungeonGameMode::BindEmpireDungeon(int32 DungeonId, const FCatacl
 	// now: see `DungeonCityTier`. Issue #2749's ring slice.
 	DungeonCityTier = Dungeon.CityTier;
 
+	// AND WHO SENT IT: every creature it places is that Cataclysm's, dealing its damage type and drawing its enemy
+	// modifiers (`GiveTheDungeonsCataclysm`). `None` for a Fallen City, which nobody sent, whose creatures stay
+	// Demonic. A load binds here too, before the saved creatures are put back. Slice B3 of the Death and War plan,
+	// 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
+	DungeonCataclysm = Dungeon.Cataclysm;
+
 	// AND WHAT ITS MODIFIERS ADD. `UCataclysmEnemyScore` reads this back off the
 	// game mode and adds it to every creature on the floor, which is how a
 	// dungeon modifier makes a dungeon harder --
@@ -17347,6 +17371,9 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND ITS RING, back to an Outpost's: a floor walked after this with no empire dungeon behind it builds its
 	// creatures as every floor did before the ring existed. Issue #2749's ring slice.
 	DungeonCityTier = ECataclysmCityTier::Outpost;
+	// AND WHO SENT IT, back to nobody: a floor walked after this places Demonic creatures, as every floor with no
+	// empire dungeon behind it does. Slice B3, 2026-11-25.
+	DungeonCataclysm = ECataclysmType::None;
 	FloorBrief = FCataclysmFloorBrief();
 
 	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.

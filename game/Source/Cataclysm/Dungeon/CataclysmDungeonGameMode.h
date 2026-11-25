@@ -303,6 +303,23 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmCityTier DungeonCityTier = ECataclysmCityTier::Outpost;
 
+	/**
+	 * Which Cataclysm sent the dungeon being walked: `FCataclysmDungeon::Cataclysm`, copied by `BindEmpireDungeon`, put
+	 * back to `None` by `LeaveEmpireDungeon`, and handed to the floor rules by `DungeonIdentity`. Slice B3 of the Death
+	 * and War plan, 2026-11-25.
+	 *
+	 * EVERY CREATURE THE DUNGEON PLACES BELONGS TO IT (`GiveTheDungeonsCataclysm`): a Death dungeon's creatures deal
+	 * Death and draw Death and Generic modifiers. `None`, which every floor with no empire dungeon behind it carries,
+	 * leaves each creature Demonic, its class's own type.
+	 *
+	 * EDITABLE HERE for the reason `DungeonSubType` is: pressing Play in `L_Dungeon` builds a floor with no empire behind
+	 * it, and a floor should be able to be told what it is standing in.
+	 *
+	 * NOT SAVED HERE: a resumed walk binds the saved empire dungeon again, and its `Cataclysm` is saved.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	ECataclysmType DungeonCataclysm = ECataclysmType::None;
+
 	/** Which layout family carves it. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Dungeon")
 	ECataclysmFloorLayout Layout = ECataclysmFloorLayout::Halls;
@@ -1474,10 +1491,39 @@ public:
 	 * zero and it is the only creature in the roster with none, so calling
 	 * `SetArmour(0)` would look like a figure somebody chose. The sandbox's own
 	 * Imp spawner says the same thing.
+	 *
+	 * AND, FIRST OF ALL, THE CATACLYSM THAT SENT THE DUNGEON, before its modifiers are drawn, because the draw reads
+	 * it: `GiveTheDungeonsCataclysm`. Slice B3, 2026-11-25. With no dungeon bound, which is a test calling this on a
+	 * bare game mode, nothing changes.
 	 */
 	void ApplyDesignedStats(ACataclysmEnemyCharacter* Enemy,
 							ECataclysmDungeonCreature Creature,
 							int32 FixedRung = -1) const;
+
+	/**
+	 * Makes one creature belong to the Cataclysm that sent the dungeon being walked: its `DamageType` becomes
+	 * `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm)`, so its blows meet that Cataclysm's
+	 * resistance, a player's "damage against" that Cataclysm reads it, and a draw of its modifiers made after this pools
+	 * that Cataclysm's column and the Generic one (`UCataclysmEnemyModifiers::PoolFor`). Slice B3 of the Death and War
+	 * plan, 2026-11-25; the owner accepted it on 2026-11-24 (Q16).
+	 *
+	 * NOTHING WHEN NOBODY SENT IT (`DungeonCataclysm` is `None`): a Fallen City, a floor with no empire dungeon behind
+	 * it, every test that binds none. The creature keeps its class's own type, Demonic, as every creature did before.
+	 *
+	 * IT DRAWS NOTHING AND WRITES NOTHING ELSE, so it adds no draw to any stream and moves no figure: a creature's
+	 * stats do not read its damage type. A Demonic dungeon's creatures come out exactly as they did.
+	 *
+	 * TWO CALLERS: `ApplyDesignedStats`, which every creature the floor places goes through (the population, a
+	 * Horde wave, and every rule arrival placed through `SpawnPlacedCreature`); and `FCataclysmSaveApply::
+	 * DungeonFloorInto`, for a creature a load puts back, whose record holds no damage type -- the bound dungeon's
+	 * `Cataclysm` is saved, as `DungeonCityTier`'s ring is. Public for that second caller and for the tests.
+	 *
+	 * NOT THE OBJECTS A RULE STANDS ON A FLOOR (a Chorus's source, a Bloom, a Spire, a Heavenly Core and the others
+	 * spawned directly), which never strike; NOT THE CORRUPTED STALKER OR THE CORRUPTED DOUBLE, which are a player's
+	 * build and not the Cataclysm's creatures. Each keeps its class's type. The Gatekeeper's called Imps take the
+	 * Gatekeeper's own (`ACataclysmGatekeeperCharacter`). `docs/DECISIONS.md`, 2026-11-25, lists every spawn site.
+	 */
+	void GiveTheDungeonsCataclysm(ACataclysmEnemyCharacter* Enemy) const;
 
 private:
 	/**

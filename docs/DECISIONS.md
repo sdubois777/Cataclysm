@@ -2,6 +2,145 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Every creature belongs to the Cataclysm that sent its dungeon: a Death dungeon's Demonic bodies deal Death and draw Death and Generic modifiers (slice B3 of the Death and War plan)
+
+On `feat/creature-cataclysm-b3`, from development `9acbb3528`. Slice B3 of the coordinating session's plan for the
+Demonic quest and the Death and War Cataclysms (2026-11-24, section 5).
+
+**Said first:**
+
+- **WRITTEN AHEAD OF ITS WINDOW. NOT BUILT, NOT RUN IN UNREAL.** Every C++ line here is unbuilt; the six Unreal tests and
+  the three guard proofs below are registered for the window and have not run. Only the Python suite has run.
+- **A CONSEQUENCE IN PLAY THE OWNER SHOULD KNOW: Soul Harvest feeds nobody in a dungeon another Cataclysm sent.** The row
+  (`Demonic_Soul_Harvest`) gives its souls to demons, and #1671's ruling of 2026-11-17 made a demon "a creature whose
+  damage type is Demonic". A Death dungeon carrying the row (possible whenever Demonic is also active) now holds no demon,
+  so it releases no soul. Left as #1671 ruled; not changed here.
+- **A CLASH THIS OPENS, NOT YET LIVE: the Succubus's Dominion grants Commander, which is also War's enemy modifier
+  `War_Commander`.** A War dungeon's Succubus can now roll the effect it already gives. The row has no effect yet, so
+  nothing doubles today; the War enemy modifier slice (B10) has to settle it. Recorded in `docs/Cataclysm_GDD_v2.md`
+  beside the rule it breaks ("An innate ability must not duplicate a modifier its own Cataclysm can roll").
+- **NO SAVE RECORD MOVES.** No saved field was added: a load binds the saved empire dungeon again, and its `Cataclysm` was
+  already saved, so the creatures a load puts back are given its type, as `DungeonCityTier` comes back.
+- **War is included although the agent rules of 2026-11-24 say "No War Cataclysm work"**, because the brief for this slice
+  asks for a War dungeon's rule creature to take War and the owner's acceptance of Q16 names War. The coordinating session
+  should confirm.
+
+### The owner's ruling
+
+The plan's Q16, as asked: "Until Death and War creatures exist, should a Death or War dungeon's Demonic bodies belong to
+that Cataclysm (deal its damage type, draw its modifiers)? Recommended: yes." The owner, 2026-11-24, verbatim: "Your
+recommendations work for all of those death/war questions."
+
+### Why
+
+A creature draws its enemy modifiers from its own Cataclysm's column and the Generic one
+(`UCataclysmEnemyModifiers::Draw`, called with `ACataclysmEnemyCharacter::DamageType` in `DrawModifiersForRarity`), and
+that field defaulted to Demonic and nothing outside the tests set it. So a Death or War dungeon filled with Demonic
+creatures dealing Demonic damage, and none of the 11 Death or 9 War enemy modifier rows (being built on other branches)
+could ever be drawn in play. `FCataclysmDungeonIdentity` had no Cataclysm field, so nothing on the floor side could know
+who sent the dungeon.
+
+### What changed
+
+- **The sender crosses into the dungeon.** `ACataclysmDungeonGameMode::DungeonCataclysm` (new) is copied from
+  `FCataclysmDungeon::Cataclysm` by `BindEmpireDungeon` (entering and a load's resume both bind), put back to `None` by
+  `LeaveEmpireDungeon`, and handed to the floor rules by `DungeonIdentity` as `FCataclysmDungeonIdentity::Cataclysm`
+  (new). `FCataclysmDungeonFloorRules::BriefFor` copies it onto `FCataclysmFloorBrief::Cataclysm` (new).
+- **Each creature the floor places takes it.** `ApplyDesignedStats`, which every creature `SpawnPlacedCreature` places goes
+  through, first calls `GiveTheDungeonsCataclysm` (new), which writes
+  `FCataclysmDungeonFloorRules::CreatureDamageTypeFor(DungeonCataclysm)` (new: `UCataclysmRoster::NameFor`, or nothing
+  for `None`) onto `DamageType` **before** `DrawModifiersForRarity` draws. It draws nothing and moves no figure, so a
+  Demonic dungeon's floor is the same draw for draw.
+- **A creature a load puts back takes it**: `FCataclysmSaveApply::DungeonFloorInto` calls `GiveTheDungeonsCataclysm` on
+  each.
+- **The Gatekeeper's called Imps take the Gatekeeper's type** (`ACataclysmGatekeeperCharacter`, Call the Damned).
+- **A roster per Cataclysm in the floor populator, every one the Demonic seven**:
+  `FCataclysmFloorPopulator::PackKindsFor` (new) answers `PackKinds()` itself, the same array, for all eight and `None`,
+  and `Populate` draws its groups from `PackKindsFor(Brief.Cataclysm)`. No floor changes; slice B37 re-casts it when
+  Death's and War's rosters exist (B35, B36).
+- Comments brought into line: `ACataclysmEnemyCharacter::DamageType`, `SoulHarvestKey`, `DungeonFloorInto`, and the
+  design document's Enemy Modifiers section and its innate-ability clash rule.
+
+### Every place a creature is spawned, and what it takes
+
+| Spawn site | Takes the dungeon's Cataclysm? |
+| :-- | :-- |
+| The floor's population, every floor, the boss at the exit included (`PopulateFloor` through `SpawnPlacedCreature`) | **Yes** |
+| A Horde dungeon's waves (`ContinueTheWaveArriving` through `SpawnPlacedCreature`) | **Yes** |
+| Every dungeon-rule arrival placed through `SpawnPlacedCreature`: The Reaper, Vengeful Wraiths, Grave Tide, Dead Rising's risen, Echoes of the Past, the Demon Prince, Epidemic's lord, the Royal Guard, Warzone allies, Quarantine Breach, the Unstable Portal's Warden, Divine Resurgence, the Demonic Guide and the rest (30 call sites in 29 functions; with the population and the wave, every one of the 32 calls of `SpawnPlacedCreature`) | **Yes**, judgement 2 |
+| A creature a rule raises a rung (Volatile Evolution, Blood-Forged Champions, the dark floor's raise) | Keeps what it was placed with, which is the dungeon's |
+| The Cataclysm boss dungeon's Cataclysm Boss (the Gatekeeper at rung 5) and its floors | **Yes**: that dungeon's sender is the newest active Cataclysm (`OpenCataclysmDungeonIfEarned`) |
+| A Fallen City's creatures | **No**: nobody sent it (`Cataclysm` is `None`), so they stay Demonic, judgement 3 |
+| The Gatekeeper's called Imps | **The Gatekeeper's own type**, which on a floor is the dungeon's |
+| A creature a load puts back (`DungeonFloorInto`) | **Yes**, from the dungeon bound again |
+| The Corrupted Stalker and the corrupted double (`RaiseTheCorruptedStalker`, `RaiseTheConsumptionDouble`) | **No**, judgement 4 |
+| The objects a rule stands on a floor (Chorus sources, Blooms, Spires, the Heavenly Core, Sarcophagi, Beacons, Portals, the Abyssal Rift, the Necrotic Bloom, the Quarantine, carcasses, veins) | **No**: `ACataclysmFloorSourceCharacter` and kin never strike and draw nothing |
+| The sandbox's spawners (`ACataclysmGameMode`) and the cloth stress console tool | **No**: no dungeon, Demonic |
+
+### Judgements
+
+1. **All eight Cataclysms, not only Death and War. A judgement:** the design's rule (own column and Generic) is the same
+   for every Cataclysm, and Q16 gives its reason in those terms. A Pestilence, Celestial or Chaos dungeon's creatures now
+   draw rows that have no effect yet (none of those columns is built), where before they drew the 8 built Demonic rows;
+   Famine and Void have 2 and 1 built.
+2. **A rule's creature belongs to the dungeon's sender, not to the row's Cataclysm. A judgement:** one rule, one source
+   of truth. The Reaper, a Death row, raised in a War dungeon is War's; the Demon Prince in a Death dungeon is Death's.
+3. **A Fallen City stays Demonic. A judgement:** `MakeFallenCityDungeon` leaves it sent by nobody ("made from what a city
+   was carrying rather than sent by anybody"), and giving it a sender is empire-side work outside this slice's lane. War's
+   section XI line "Conquered cities immediately become Dungeon Cities" may argue a War-taken city's should be War's;
+   asked, not decided.
+4. **The Corrupted Stalker and the corrupted double keep their class's type. A judgement:** they wear a player's build
+   (one Stalker entry per damage type), so they are not the Cataclysm's creatures. Whether a Stalker should deal its
+   entry's damage type is a separate question, asked and not decided here.
+5. **No saved field, so no record version step. A judgement:** the dungeon's sender is saved and every creature on its
+   floor is its sender's. The one case that comes back different is a thrall carried from one dungeon into another entered
+   from inside a walk and saved there: it comes back as the second dungeon's. Its type moves nothing a thrall does to a
+   creature, which has one resistance figure for every type.
+
+No genre research: no formula, number or new mechanic is chosen. The rule is the design's own.
+
+### Tests
+
+**Unreal, registered and not yet run.** New group **`Cataclysm.CreatureCataclysm.`, 5 tests** (none before; no other
+group begins with that string), in `game/Source/Cataclysm/Tests/CataclysmCreatureCataclysmTests.cpp`; and
+**`Cataclysm.SaveLoad.` goes from 83 to 84**. Counted by registration macro in the source.
+
+| Test | What it checks | Controls |
+| :-- | :-- | :-- |
+| `Cataclysm.CreatureCataclysm.TheBriefCarriesTheSenderAndEveryRosterIsTheDemonicSevenForNow` | the brief carries the sender on every floor; `None` names no type; each of the eight names its own and is the enemy modifier table's spelling; every roster is the same array as `PackKinds()`; a floor populated for Death and for nobody places the same creatures | the floor holds creatures |
+| `Cataclysm.CreatureCataclysm.ADeathDungeonsCreaturesDealDeathAndDrawOnlyDeathAndGenericModifiers` | entered from the empire, every creature of a Death dungeon's floor (all at the Herald rung) deals Death and is read as Death by `DamageTypeOf`; every row drawn is Death's or Generic | creatures stand; some rows are Death's own; the sender reaches the identity and the brief; leaving forgets it |
+| `Cataclysm.CreatureCataclysm.ADemonicDungeonsCreaturesStayDemonicAndDrawWhatTheyDrewBefore` | one dungeon entered as sent by nobody, by Demonic and by Death: nobody's and Demonic's creatures are Demonic and carry the same modifiers in the same order | Death's holds the same kinds, all Death's, with other modifiers |
+| `Cataclysm.CreatureCataclysm.ACreatureARuleRaisesInAWarDungeonDealsWar` | The Reaper raised in a dungeon War sent deals War | the same rule in a dungeon nobody sent raises a Demonic Reaper |
+| `Cataclysm.CreatureCataclysm.TheGatekeepersCalledImpsTakeItsCataclysm` | a War dungeon's Gatekeeper is War's and every Imp it calls deals War | a Gatekeeper outside any floor and its Imps are Demonic |
+| `Cataclysm.SaveLoad.ACreatureSavedInADeathDungeonComesBackDealingDeath` | a floor saved in a Death dungeon and loaded in another world: every creature put back deals Death | every creature dealt Death when saved; the standing creatures are the saved ones, the hurt one among them |
+
+`SaveInADungeon` in `CataclysmSaveLoadTests.cpp` gains a defaulted `Sender` parameter (nobody, as before) and records how
+many standing creatures dealt the sender's type; its three existing callers are unchanged.
+
+**Tests that assumed every creature is Demonic, swept** (every caller of `EnterEmpireDungeon`, `ResumeEmpireDungeon` and
+`EnterThePendingWalkIfReady` in the test files, read for what it asserts): **none both places creatures in a dungeon with a
+sender and asserts something this moves.** The save-and-load tests bind dungeons placed by hand with no sender; the
+Boss Floor, Winning the Run, Dungeon Costs Days, Floor Brief, Walk Seed, Potions, Enemy Strength and dark-floor tests bind
+seed-rolled senders and assert days, seals, rungs, briefs, seeds or win lines, clearing the boss's rows before a kill; the
+three Heavenly Core tests bind Celestial and read only the Core, which is spawned directly. The tests that assume Demonic
+(`Cataclysm.EnemyModifiers.*` seed searches through `Imp->DamageType`, `Cataclysm.Enemy.AnOrdinaryEnemyCarriesTheBaselineProfile`,
+`Cataclysm.DamageDoneToAllies.TheWearersArmourAndResistanceToTheBlowsTypeReduceTheShare`, the Soul Harvest tests,
+`Cataclysm.Seeding.*`) bind no dungeon, or one sent by nobody, so are unchanged. One test calls `ApplyDesignedStats` with a
+seed-rolled dungeon bound (`Cataclysm.EnemyStrength.AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`):
+its Imp is Common, draws nothing, and only its starting damage and health are asserted.
+
+**C++ guard proofs, planned and not run** (`prove_cpp_guard`), at most three:
+
+| Proof | File | Break | Prefix | Must fail |
+| :-- | :-- | :-- | :-- | :-- |
+| B3-1, no creature takes the sender | `CataclysmDungeonGameMode.cpp` | `GiveTheDungeonsCataclysm(Enemy);` read as `;` | `Cataclysm.CreatureCataclysm.` | `ADeathDungeonsCreaturesDealDeathAndDrawOnlyDeathAndGenericModifiers`, `ADemonicDungeonsCreaturesStayDemonicAndDrawWhatTheyDrewBefore`, `ACreatureARuleRaisesInAWarDungeonDealsWar`, `TheGatekeepersCalledImpsTakeItsCataclysm` |
+| B3-2, a load forgets it | `CataclysmSaveApply.cpp` | `Dungeon.GiveTheDungeonsCataclysm(Back);` read as `;` | `Cataclysm.SaveLoad.ACreatureSavedInADeathDungeon` | `ACreatureSavedInADeathDungeonComesBackDealingDeath` |
+| B3-3, the called Imps do not | `CataclysmGatekeeperCharacter.cpp` | `Imp->DamageType = DamageType;` read as `;` | `Cataclysm.CreatureCataclysm.TheGatekeepers` | `TheGatekeepersCalledImpsTakeItsCataclysm` |
+
+**Python.** No Python check reads these functions; none was added (the slice changes no data and nothing in `sim/`).
+
+---
+
 ## 2026-11-24 — Bug batches 1 and 2 and the creation skill count on development after the inventory tabs: the whole suite 5422 with three test faults corrected, and 42 of 42 guard proofs under the owner's budget of three a change
 
 **Said first:**

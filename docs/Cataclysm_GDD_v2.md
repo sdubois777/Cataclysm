@@ -5617,6 +5617,10 @@ An enemy carries **one modifier per rarity above Common**:
 
   
 
+**An enemy draws its modifiers from its own Cataclysm's column and the Generic one, and an enemy belongs to the Cataclysm that sent its dungeon.** A dungeon Death sent fills with Death's creatures: each deals Death damage, meets the player's Death resistance, is struck by "damage against Death", and draws from the Death and Generic columns. This holds while the seven Demonic creatures stand in for Death's and War's own, which are not yet designed: the project owner accepted on 2026-11-24 that "a Death or War dungeon's Demonic bodies belong to that Cataclysm (deal its damage type, draw its modifiers)". It holds for all eight Cataclysms, and for every creature the dungeon places: its floors, a Horde dungeon's waves, the creatures its dungeon modifiers raise (The Reaper in a dungeon War sent is War's, though the row is Death's), and the Cataclysm Boss in the Cataclysm's own dungeon. The Gatekeeper's called Imps are the Gatekeeper's Cataclysm. A dungeon nobody sent, which is a Fallen City, places Demonic creatures. The things a dungeon modifier stands on a floor to be destroyed, and the Corrupted Stalker and the corrupted double, which carry a player's build, are not the Cataclysm's creatures and keep their own type. `docs/DECISIONS.md`, 2026-11-25.
+
+  
+
 **Enemy modifiers do not change an enemy's score.** They are mechanical effects rather than stat increases: a burning aura deals its own damage, and a charm stops the player dealing damage for a few seconds. Scoring them as well would count the same difficulty twice, once in the effect and once in the larger health and damage pool that a higher score produces.
 
   
@@ -6143,6 +6147,8 @@ The ring behaviour is not scripted. It is what crowd avoidance produces when twe
   
 
 **A modifier belonging to a different Cataclysm is not a clash**, because that enemy can never roll it. Two Demonic modifiers, Abyssal Aura and Infernal Brand, are also named in the effect table and are therefore closed to Demonic enemies as innate abilities. Nothing else is.
+
+**Since 2026-11-25 the seven Demonic creatures stand in for every Cataclysm's in that Cataclysm's dungeons and draw its column there** (Enemy Modifiers, above), **so a stand-in can roll a modifier of another column, and one clash exists: the Succubus's Dominion grants Commander, and Commander is also War's enemy modifier `War_Commander`.** A War dungeon's Succubus can therefore roll the effect it already gives innately. It does nothing yet, because `War_Commander` is not built; how it is resolved is open and is recorded in `docs/DECISIONS.md` (2026-11-25) for the War enemy modifier slice to settle.
 
   
 
