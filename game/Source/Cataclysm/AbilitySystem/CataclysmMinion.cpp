@@ -924,6 +924,11 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillGadget(AActor* Player, ECataclysmA
 		const FGameplayTagContainer GadgetTags = Placed->TypeTags;
 		Theirs->ActOnEvent(FName(TEXT("gadget_placed")), &GadgetTags, /*EventAmount=*/0.0f,
 						   /*bLanded=*/true, Placed);
+		// AND `device_placed`, BESIDE IT: placing a trap or a gadget, one event for either. The Saboteur's device
+		// conditions, 2026-11-25 (the coordinating session's ruling), for Razor Instincts, "+3% evasion chance per point
+		// for 3 seconds after placing a trap or gadget": one row on one event, so one placing grants one stack.
+		Theirs->ActOnEvent(FName(TEXT("device_placed")), &GadgetTags, /*EventAmount=*/0.0f,
+						   /*bLanded=*/true, Placed);
 		FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, GadgetTags);
 	}
 	return Placed;
@@ -2707,7 +2712,15 @@ float ACataclysmMinion::SkillTrapTriggerRadiusCmFor(const AActor* Player, const 
 	// "INCREASED TRIGGER RADIUS" IS A SIZE, so the radius is multiplied by one plus the increases. NOT the type row's
 	// reach, which `Spawn` lengthens by "Gadgets have 20%-40% increased attack range" because a trap carries
 	// `Type.Deployable`: the radius is the constant of T2 and this stat alone.
-	return SkillTrapTriggerRadiusCm * (1.0f + SkillTrapIncreasesOf(Player, TrapTriggerRadiusStat, TrapTags));
+	//
+	// AND BY ITS "MORE", since 2026-11-25: Overwhelming Presence's "trap trigger radius is doubled" is 100% more, the
+	// coordinating session's ruling, so it doubles whatever the increases make the radius, as its "50% more trap damage"
+	// beside it does. `MultiplierForStatAgainst` is `(1 + increases) * more`, the increases floored at nought as
+	// `SkillTrapIncreasesOf` floors them; with no "more" row it is the old figure.
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Player));
+	return SkillTrapTriggerRadiusCm
+		* (Theirs ? Theirs->MultiplierForStatAgainst(FName(TrapTriggerRadiusStat), TrapTags, /*Target=*/nullptr) : 1.0f);
 }
 
 TArray<ACataclysmMinion*> ACataclysmMinion::SkillTrapsOf(const AActor* Player)
@@ -2792,6 +2805,10 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	{
 		const FGameplayTagContainer TrapTags = Placed->TypeTags;
 		Theirs->ActOnEvent(FName(TEXT("trap_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
+		// AND `device_placed`, BESIDE IT: placing a trap or a gadget, one event for either. The Saboteur's device
+		// conditions, 2026-11-25 (the coordinating session's ruling), for Razor Instincts, "+3% evasion chance per point
+		// for 3 seconds after placing a trap or gadget": one row on one event, so one placing grants one stack.
+		Theirs->ActOnEvent(FName(TEXT("device_placed")), &TrapTags, /*EventAmount=*/0.0f, /*bLanded=*/true, Placed);
 
 		// AND THE SABOTEUR'S FERVOUR FOR IT, after the reserve above is held. Nought for every character without
 		// `fervour_per_trap_placed`. Slice C, 2026-11-24.
@@ -2914,6 +2931,19 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 		return false;
 	}
 	++SkillTrapTriggersMade;
+
+	// AND THE ENEMY THAT SET IT OFF REMEMBERS IT, the first trap of this player's it set off and no later one. The
+	// Saboteur's device conditions, 2026-11-25, for Ambush's `target_not_yet_triggered_your_trap`. Written once the cast
+	// has started; the blows of this trap on that enemy, a late one included, are still judged "not yet triggered",
+	// because the condition sets this trap aside (`TriggeredATrapOfOtherThan`).
+	if (Enemy)
+	{
+		if (UCataclysmAbilitySystemComponent* EnemysOwn =
+				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Enemy)))
+		{
+			EnemysOwn->NoteTriggeredATrapOf(Theirs, this);
+		}
+	}
 
 	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
 	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.

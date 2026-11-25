@@ -1873,6 +1873,17 @@ public:
 	void NoteGadgetDestroyed(const AActor* Gadget, const FGameplayTagContainer& GadgetTags);
 
 	/**
+	 * One of this, the summoner's, gadgets took a landed blow. The Saboteur's device conditions, 2026-11-25: stamps the
+	 * clock `seconds_after_gadget_struck` reads, for Overcautious, "+4% evasion chance per point while any of your
+	 * gadgets are under attack" (2 seconds, the coordinating session's ruling). Called by the gadget's own
+	 * `NoteHitTaken` for a landed blow that is not a tick.
+	 */
+	void NoteGadgetStruck();
+
+	/** Seconds since one of this character's gadgets took a landed blow, or -1 if none has. */
+	float SecondsSinceGadgetStruck() const;
+
+	/**
 	 * Raise `resource_consumed` `Times` times. Issue #1833 group D part 5, ruled
 	 * 2026-10-01: a class-resource cost paid, once per payment, or a next-use
 	 * charge spent, once per charge. MANA IS NOT A RESOURCE HERE, and the Fervour
@@ -4012,6 +4023,24 @@ public:
 	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
+	 * This character set off `Trap`, a skill trap of the player whose ability system is `TrapsPlayer`. The Saboteur's
+	 * device conditions, 2026-11-25, for Ambush: "+5% trap damage per point against enemies that have not yet triggered
+	 * one of your traps". ONLY THE FIRST IS KEPT, per player, and nothing clears it. Called by
+	 * `ACataclysmMinion::TriggerSkillTrap` for the enemy that set the trap off, once its cast has started.
+	 */
+	void NoteTriggeredATrapOf(const UAbilitySystemComponent* TrapsPlayer, const AActor* Trap);
+
+	/**
+	 * Whether this character has set off a skill trap of `TrapsPlayer`'s other than `Trap`. False with no record, and
+	 * false when the trap it set off first is `Trap` itself, so that trap's own blows on it, a late one included, still
+	 * find it "not yet triggered" (the coordinating session's ruling of 2026-11-25: an enemy's first trap counts as not
+	 * yet triggered). A TRAP THAT REARMS AND IS SET OFF AGAIN BY THE SAME ENEMY is still its first, a judgement: the
+	 * record names the trap and not the trigger.
+	 */
+	bool TriggeredATrapOfOtherThan(const UAbilitySystemComponent* TrapsPlayer,
+								   const TWeakObjectPtr<const AActor>& Trap) const;
+
+	/**
 	 * Rendering Blows, the Ravager's `Ravager_capstone_50` option 1. Issue
 	 * #1515: "Every third melee attack against the same enemy removes 20% of its
 	 * Armor for 6 seconds." The row will carry the 20 and the 6 on these two
@@ -4821,7 +4850,16 @@ public:
 	 * and "doubles" reach it as written. A FRACTION, 0.3 for 30%, and a multiplier of 1 with no such row.
 	 */
 	void TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target, float& OutIncreases,
-							  float& OutMore) const;
+							  float& OutMore,
+							  TWeakObjectPtr<const AActor> BlowsTrap = TWeakObjectPtr<const AActor>()) const;
+
+	/**
+	 * Whether this character's Fervour has no room to reserve another skill trap: at least one slot is converted into a
+	 * trap (`SlotIsASkillTrap`), and none of them could reserve one more (`UCataclysmCommand::HasRoomToReserve` with
+	 * `ACataclysmMinion::SkillTrapReserveFor`). The Saboteur's device conditions, 2026-11-25, for Overwhelming Presence.
+	 * Read by `WithEnemiesInReach` only when a row asks `NoRoomForATrap`, since it asks a stat of every slot.
+	 */
+	bool HasNoRoomForATrap() const;
 
 	/**
 	 * TRAPS LAYER 2, THE BASIC ATTACK'S TRAP. Ruled 2026-10-21 by the coordinating session (L1, L2), for "Your basic
@@ -5780,6 +5818,21 @@ protected:
 	 * overwritten, and cleared with `StruckBy`. See `SecondsSinceFirstStruckBy`.
 	 */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> FirstStruckBy;
+
+	/**
+	 * The first skill trap of each player's this character set off, by that player's ability system. The Saboteur's
+	 * device conditions, 2026-11-25. See `NoteTriggeredATrapOf`.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, TWeakObjectPtr<const AActor>> FirstTrapTriggeredOf;
+
+	/**
+	 * The trap whose blow `TrapDamageNamingTrap` is pricing, while it prices it, and none at every other time. Read by
+	 * `WithTargetState` for `TargetNotYetTriggeredYourTrap`. The Saboteur's device conditions, 2026-11-25.
+	 */
+	mutable TWeakObjectPtr<const AActor> TrapWhoseBlowIsPriced;
+
+	/** When one of this character's gadgets last took a landed blow, in world seconds, or -1. See `NoteGadgetStruck`. */
+	float LastGadgetStruckAtSeconds = -1.0f;
 
 	/**
 	 * When each striker's first blow of its current combat got through to this

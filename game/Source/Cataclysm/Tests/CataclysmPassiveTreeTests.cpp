@@ -3541,7 +3541,11 @@ namespace CataclysmPassiveConditionTest
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")
 			|| Name == TEXT("in_wrath")
-			|| Name == TEXT("in_frenzy");
+			|| Name == TEXT("in_frenzy")
+			// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25: the two that name a state. `own_gadget_within_metres` and
+			// `seconds_after_gadget_struck` compare their metres and seconds and are deliberately absent.
+			|| Name == TEXT("target_not_yet_triggered_your_trap")
+			|| Name == TEXT("no_room_for_a_trap");
 	}
 }
 

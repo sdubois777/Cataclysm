@@ -21,7 +21,7 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import reapply_war_saboteur_devices_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
-ROW_COUNT = 7
+ROW_COUNT = 13
 
 
 def _rows_of(node: str) -> tuple:
@@ -33,7 +33,8 @@ def test_the_script_writes_its_rows_on_its_nodes():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
     assert [node for node, _, _ in rows.NODES] == [
         "Saboteur_basic_trap_mid_006", "Saboteur_basic_trap_mid_002", "Saboteur_basic_gadget_mid_004",
-        "Saboteur_basic_gadget_stem_005"]
+        "Saboteur_basic_gadget_stem_005", "Saboteur_basic_trunk_012", "Saboteur_basic_gadget_mid_006",
+        "Saboteur_basic_trap_stem_004", "Saboteur_basic_gadget_mid_002", "Saboteur_keystone_trap_qty"]
 
 
 def test_snap_back_is_the_trap_count_capped_at_one_step():
@@ -56,6 +57,32 @@ def test_support_network_gives_its_radius_once_from_four_points_while_a_gadget_i
     assert (radius.value, radius.scale, radius.step, radius.cap, radius.min_points) == (10, "gadgets_active", 1, 1, 4)
 
 
+def test_razor_instincts_is_one_row_on_the_one_placing_event():
+    """The coordinating session's ruling of 2026-11-25: one `device_placed` event for a trap or a gadget, and the node
+    one row on it, so one placing grants one stack (3% at 1 point, not 6%)."""
+    (razor,) = _rows_of("Saboteur_basic_trunk_012")
+    assert (razor.stat, razor.value, razor.action_event, razor.stack_seconds, razor.cap) == (
+        "evasion", 3, "device_placed", 3, 1)
+
+
+def test_each_condition_node_states_its_ruled_condition_and_value():
+    conditions = {node: {(row.stat, row.cond, row.cond_value) for row in wanted}
+                  for node, _, wanted in rows.NODES if any(row.cond for row in wanted)}
+    assert conditions == {
+        "Saboteur_basic_gadget_mid_006": {("evasion", "own_gadget_within_metres", 15)},
+        "Saboteur_basic_trap_stem_004": {("minion_damage", "target_not_yet_triggered_your_trap", None)},
+        "Saboteur_basic_gadget_mid_002": {("evasion", "seconds_after_gadget_struck", 2)},
+        "Saboteur_keystone_trap_qty": {("minion_damage", "no_room_for_a_trap", None),
+                                       ("trap_trigger_radius", "no_room_for_a_trap", None)},
+    }
+
+
+def test_overwhelming_presence_doubles_the_radius_as_a_more():
+    """The ruling: "doubled" is a true doubling, 100% more, as the 50% more damage beside it is."""
+    kinds = {(row.stat, row.kind, row.value) for row in _rows_of("Saboteur_keystone_trap_qty")}
+    assert kinds == {("minion_damage", "more", 50), ("trap_trigger_radius", "more", 100)}
+
+
 def test_the_workbook_holds_the_rows():
     report = rows.apply(WORKBOOK, check_only=True)
     assert report[-1] == "every row is already written; nothing written", report
@@ -68,12 +95,13 @@ def test_the_generated_csv_holds_the_rows():
     with open(REPO_ROOT / "game" / "Data" / "PassiveEffects.csv", encoding="utf-8", newline="") as handle:
         written = [(row["Node"], row["Stat"], row["ValueKind"], number(row["ValuePerPoint"]), row["RequiredTags"],
                     row["Scale"], number(row["ScaleStep"]), number(row["ScaleMaxSteps"]), number(row["MinPoints"]),
-                    row["ActionEvent"], number(row["StackSeconds"])) for row in csv.DictReader(handle)]
+                    row["ActionEvent"], number(row["StackSeconds"]), row["Condition"],
+                    number(row["ConditionValue"])) for row in csv.DictReader(handle)]
     for node, _, wanted in rows.NODES:
         for row in wanted:
             key = (node, row.stat, row.kind, float(row.value), row.tags or "", row.scale or "", float(row.step or 0),
                    float(row.cap or 0), float(row.min_points or 0), row.action_event or "",
-                   float(row.stack_seconds or 0))
+                   float(row.stack_seconds or 0), row.cond or "", float(row.cond_value or 0))
             assert written.count(key) == 1, key
 
 

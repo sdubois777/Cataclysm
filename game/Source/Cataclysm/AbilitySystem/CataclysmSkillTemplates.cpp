@@ -4255,6 +4255,13 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 								   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
 				FCataclysmWarFervour::GainOnGadgetPlaced(Theirs, MachineTags);
 			}
+
+			// AND `device_placed` FOR EITHER, a War trap included, a judgement: Razor Instincts says "after placing a trap
+			// or gadget", and `device_placed` is new, so no row written for skill traps alone can reach a War trap
+			// through it, which is the reason a War trap raises no `trap_placed`. The Saboteur's device conditions,
+			// 2026-11-25.
+			Theirs->ActOnEvent(FName(TEXT("device_placed")), &MachineTags,
+							   /*EventAmount=*/0.0f, /*bLanded=*/true, Machine);
 		}
 	}
 	return Machine;

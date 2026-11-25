@@ -682,7 +682,11 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #: AND TO 488 THE SAME DAY: seven rows on Snap Back, Sprung, Emergency Protocol
 #: and Support Network, the Saboteur's device conditions that need no code
 #: (`tools/reapply_war_saboteur_devices_workbook.py`).
-AUTHORED_ROWS = 488
+#:
+#: AND TO 494 THE SAME DAY: six rows on Razor Instincts, Sentry Network, Ambush,
+#: Overcautious and Overwhelming Presence, on the event and the four conditions
+#: the same branch adds.
+AUTHORED_ROWS = 494
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1112,7 +1116,9 @@ AUTHORED_ROWS = 488
 #: AND TO 280 THE SAME DAY: Riposte, Vengeful Discharge and Crimson Tide.
 #: AND TO 284 THE SAME DAY: Snap Back, Sprung, Emergency Protocol and Support
 #: Network, the Saboteur's device conditions that need no code.
-AUTHORED_NODES = 284
+#: AND TO 289 THE SAME DAY: Razor Instincts, Sentry Network, Ambush, Overcautious
+#: and Overwhelming Presence.
+AUTHORED_NODES = 289
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1539,6 +1545,18 @@ CONDITION_WORDS = {
     # (2026-11-25): a state held while the event happens, which "while" says,
     # unlike the seventeen "when you attack at maximum Fervour".
     "class_resource_at_maximum": (("fervour is at maximum", "fervour is full", "while at maximum fervour"), None),
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Sentry Network's "while
+    # within 15 meters of at least one active gadget"; Ambush's "enemies that
+    # have not yet triggered one of your traps"; Overcautious's "while any of your
+    # gadgets are under attack", whose 2 seconds the sentence does not state (the
+    # coordinating session's ruling that "under attack" lasts 2 seconds after a
+    # gadget takes a hit), so the words are listed against that one value and any
+    # other is refused; and Overwhelming Presence's "While your Fervour has no
+    # room to reserve another trap".
+    "own_gadget_within_metres": ("of at least one active gadget", "{value:g} meters"),
+    "target_not_yet_triggered_your_trap": ("have not yet triggered one of your traps", None),
+    "seconds_after_gadget_struck": ("gadgets are under attack", {2.0: "under attack"}),
+    "no_room_for_a_trap": ("no room to reserve another trap", None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -2156,6 +2174,8 @@ STEP_OF_ONE_ON_ONE_NODE = {
 OWN_STACK_EVENT_WORDS = {
     "trap_triggered": ("traps is triggered",),
     "gadget_destroyed": ("gadget is destroyed",),
+    # Razor Instincts' "after placing a trap or gadget", one event for either.
+    "device_placed": ("placing a trap or gadget",),
 }
 
 
@@ -2661,6 +2681,9 @@ VALUE_IN_WORDS = {
     # of 100, which pays within the next quarter-second step (2026-11-25).
     ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_applies_bleed"): ("also applies bleed", 1.0),
     ("Berserker_leech_001", "leech_payout_rate"): ("applied instantly", 1100.0),
+    # OVERWHELMING PRESENCE'S "trap trigger radius is doubled", 100% more by the
+    # coordinating session's ruling of 2026-11-25 (a true doubling).
+    ("Saboteur_keystone_trap_qty", "trap_trigger_radius"): ("radius is doubled", 100.0),
     ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
     ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%

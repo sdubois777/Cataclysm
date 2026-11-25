@@ -153,6 +153,11 @@ namespace
 		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
+		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
+		{ TEXT("own_gadget_within_metres"),     ECataclysmStatCondition::OwnGadgetWithinMetres },
+		{ TEXT("target_not_yet_triggered_your_trap"), ECataclysmStatCondition::TargetNotYetTriggeredYourTrap },
+		{ TEXT("seconds_after_gadget_struck"),  ECataclysmStatCondition::WithinSecondsOfGadgetStruck },
+		{ TEXT("no_room_for_a_trap"),           ECataclysmStatCondition::NoRoomForATrap },
 	};
 
 	struct FNamedStatScale
@@ -324,8 +329,10 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::DualWielding:
 	case ECataclysmStatCondition::InWrath:
 	case ECataclysmStatCondition::InFrenzy:
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+	case ECataclysmStatCondition::NoRoomForATrap:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirty-eight says
+		// nothing for a number to be compared against. Each of the forty says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -441,6 +448,16 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::InFrenzy:
 		return EOn::ClassResource;
 
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Whether the pool has room for another trap moves with the pool and
+	// with the reserves, which a trap placed or ended changes in the pool's own maximum; the nearest gadget's distance
+	// moves as the character walks, which nothing announces; and a gadget's hit is a window that closes on time.
+	case C::NoRoomForATrap:
+		return EOn::ClassResource;
+	case C::OwnGadgetWithinMetres:
+		return EOn::Surroundings;
+	case C::WithinSecondsOfGadgetStruck:
+		return EOn::Time;
+
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
 	// something has or has not happened. Bleeding is here too: it ends when
 	// the ailment wears off, and nothing is written to the character then.
@@ -543,6 +560,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// WHETHER THE STRUCK CHARACTER CARRIES A CURSE THE ASKER LAID, the demonic tree rework of 2026-11-24: a fact of the
 	// target in hand, after `TargetIsMoving`.
 	case C::TargetCarriesYourCurse:
+		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE STRUCK CHARACTER HAS SET OFF A TRAP OF THE ASKER'S, the Saboteur's device conditions of 2026-11-25: a
+	// fact of the target in hand, after `TargetCarriesYourCurse`.
+	case C::TargetNotYetTriggeredYourTrap:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -979,6 +1001,20 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 
 	case ECataclysmStatCondition::InFrenzy:
 		return State.bInFrenzy;
+
+	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Each refuses an unknown reading: no gadget (-1), no gadget struck
+	// (-1), no record read.
+	case ECataclysmStatCondition::OwnGadgetWithinMetres:
+		return State.MetresToNearestOwnGadget >= 0.0f && State.MetresToNearestOwnGadget <= Value;
+
+	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+		return State.bTargetTrapHistoryKnown && !State.bTargetTriggeredAnotherTrapOfYours;
+
+	case ECataclysmStatCondition::WithinSecondsOfGadgetStruck:
+		return State.SecondsSinceGadgetStruck >= 0.0f && State.SecondsSinceGadgetStruck <= Value;
+
+	case ECataclysmStatCondition::NoRoomForATrap:
+		return State.bNoRoomForATrap;
 
 	case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 		// Issue #1515. Known first, as above, then the two rules of every

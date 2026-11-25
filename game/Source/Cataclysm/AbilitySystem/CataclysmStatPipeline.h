@@ -1786,6 +1786,59 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	InFrenzy
 		UMETA(DisplayName = "In Frenzy"),
+
+	/**
+	 * The character stands within `Value` metres of at least one gadget it commands. The Saboteur's device conditions,
+	 * 2026-11-25: Sentry Network, "+2% evasion chance per point while within 15 meters of at least one active gadget".
+	 * A gadget is `ACataclysmMinion::IsGadget`, a deployable machine that is not a trap, as `gadgets_active` counts.
+	 *
+	 * READ FROM `MetresToNearestOwnGadget`, measured in the walk that counts the character's machines. -1 is "none
+	 * commanded" and refuses; the window is inclusive.
+	 */
+	OwnGadgetWithinMetres
+		UMETA(DisplayName = "Own Gadget Within Metres"),
+
+	/**
+	 * The enemy struck has not set off a skill trap of the asker's, other than the trap whose blow this is. The
+	 * Saboteur's device conditions, 2026-11-25: Ambush, "+5% trap damage per point against enemies that have not yet
+	 * triggered one of your traps". The coordinating session's ruling of that day: an enemy's first trap counts as not
+	 * yet triggered, and an enemy caught in a blast it did not set off keeps the bonus.
+	 *
+	 * THE ENEMY KEEPS THE RECORD, the first skill trap of each player's it set off
+	 * (`UCataclysmAbilitySystemComponent::NoteTriggeredATrapOf`, written by `ACataclysmMinion::TriggerSkillTrap`), and
+	 * the blow names its trap (`TrapDamageNamingTrap`), so that trap's own blows on it, a late one included, still find
+	 * it "not yet triggered". A lookup with no target in hand refuses.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	TargetNotYetTriggeredYourTrap
+		UMETA(DisplayName = "Target Not Yet Triggered Your Trap"),
+
+	/**
+	 * Within `Value` seconds of a gadget the character commands taking a landed blow. The Saboteur's device conditions,
+	 * 2026-11-25: Overcautious, "+4% evasion chance per point while any of your gadgets are under attack", and the
+	 * coordinating session's ruling of that day that "under attack" lasts 2 seconds after a gadget takes a hit.
+	 *
+	 * A LANDED BLOW, NOT A TICK: `UCataclysmAbilitySystemComponent::NoteHitTaken` on the gadget's own ability system
+	 * tells its summoner's (`NoteGadgetStruck`). -1 is "never" and refuses; the window is inclusive.
+	 */
+	WithinSecondsOfGadgetStruck
+		UMETA(DisplayName = "Within Seconds Of Gadget Struck"),
+
+	/**
+	 * The character's Fervour has no room to reserve another skill trap. The Saboteur's device conditions, 2026-11-25:
+	 * Overwhelming Presence, as the passive order fixes the owner approved on 2026-11-24 reword it, "While your Fervour
+	 * has no room to reserve another trap, you deal 50% more trap damage and trap trigger radius is doubled".
+	 *
+	 * TRUE WHEN AT LEAST ONE SLOT IS CONVERTED INTO A SKILL TRAP AND NONE OF THEM COULD RESERVE ANOTHER
+	 * (`UCataclysmCommand::HasRoomToReserve` with `ACataclysmMinion::SkillTrapReserveFor`); false for a character with no
+	 * trap slot, which has no trap to place. FILLED ONLY WHEN A ROW ASKS, by `WithEnemiesInReach`, because it asks a
+	 * stat of every slot.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 */
+	NoRoomForATrap
+		UMETA(DisplayName = "No Room For A Trap"),
 };
 
 /**
@@ -3107,6 +3160,24 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bInWrath = false;
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bInFrenzy = false;
+
+	/**
+	 * The Saboteur's device conditions, 2026-11-25. The distance in metres from the character to the nearest gadget it
+	 * commands, or -1 with none (`OwnGadgetWithinMetres`); the seconds since one of its gadgets took a landed blow, or -1
+	 * (`WithinSecondsOfGadgetStruck`); whether its Fervour has no room to reserve another skill trap, filled only when a
+	 * row asks (`NoRoomForATrap`); and whether the target's record of the asker's traps was read, and whether that target
+	 * set off one other than the trap whose blow this is (`TargetNotYetTriggeredYourTrap`).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MetresToNearestOwnGadget = -1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceGadgetStruck = -1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNoRoomForATrap = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetTrapHistoryKnown = false;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetTriggeredAnotherTrapOfYours = false;
 
 	/**
 	 * How long the character has been channelling, in seconds, or negative
@@ -5137,7 +5208,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a seventy-eighth, which is the drift that put the passive tree eight
+	 * adds an eighty-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5146,7 +5217,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-EIGHT OF THE SEVENTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * FORTY OF THE EIGHTY-ONE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

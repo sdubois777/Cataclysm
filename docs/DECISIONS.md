@@ -2,6 +2,127 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Saboteur's device conditions: nine nodes on the player's traps and gadgets, a `device_placed` event, four conditions, a "more" on the trap trigger radius, and the passive order fixes written into the War trees
+
+**Affects:**
+- `docs/Saboteur_Class_Tree_Final.json` and `docs/Bulwark_Class_Tree_Final.json`: the passive order fixes the owner approved
+  on 2026-11-24 (`tools/apply_passive_order_fixes_2026_11_24.py`), applied: six Saboteur count caps reworded, the four
+  Saboteur oaths' decision fields, Serrated Edge. `game/Data/PassiveNodes.csv`: the seven sentences.
+- `docs/All_Things_Cataclysm.xlsx`: thirteen rows on nine Saboteur nodes and two columns, Action Event and Stack Seconds
+  (`tools/reapply_war_saboteur_devices_workbook.py`, new; the row helper `tools/reapply_war_data_rows_workbook.py` learns
+  the two columns). `game/Data/PassiveEffects.csv` (494 rows); `docs/README.md` (the sheet's count and columns).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: four conditions, `OwnGadgetWithinMetres`,
+  `TargetNotYetTriggeredYourTrap`, `WithinSecondsOfGadgetStruck` and `NoRoomForATrap`, with their readings and the
+  counted sentences (forty of eighty-one compare nothing).
+- `CataclysmAbilitySystemComponent.h` and `.cpp`: the nearest gadget's distance in the walk that counts the machines; the
+  gadget-struck clock (`NoteGadgetStruck`, called from a gadget's own `NoteHitTaken`, raising `gadget_struck`); the
+  enemy's record of the first trap it set off (`NoteTriggeredATrapOf`, `TriggeredATrapOfOtherThan`); `HasNoRoomForATrap`,
+  filled by `WithEnemiesInReach` only when a row asks; `TrapDamageNamingTrap` names the blow's trap.
+- `CataclysmMinion.h` and `.cpp`: `device_placed` beside `trap_placed` and `gadget_placed`; `TriggerSkillTrap` writes the
+  enemy's record; `SkillTrapTriggerRadiusCmFor` reads the radius's "more". `CataclysmSkillTemplates.cpp`: `device_placed`
+  for every War machine. `CataclysmSkillEffects.cpp`: `ApplyHit` names the blow's trap.
+- `tools/generate_datatables.py`: the four conditions, `device_placed`, `trap_trigger_radius` in `STATS_WITH_AN_ASKER` and
+  `CONDITIONED_STATS_WITH_AN_ASKER`.
+- Tests: `CataclysmSaboteurDeviceTests.cpp` (new, six), `CataclysmStatExemptionTests.cpp` (`ProbeScaledTrapTriggerRadius`),
+  `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`), `CataclysmDataTableTests.cpp` (the pin, 494);
+  `tools/tests/test_war_saboteur_devices_scripts.py` (new), `test_passive_effects_match_the_node_text.py` (the words, an
+  own stack's event and seconds, 494 rows, 289 nodes), `test_the_condition_count_sentences_agree_with_the_code.py` ("adds
+  an").
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run
+  `Cataclysm.SaboteurDevices.` (six tests, new), `Cataclysm.StatExemption.` (one more scaled probe), `Cataclysm.Passives.`
+  (the value-less list) and `Cataclysm.Data.` (the pin, 494).
+- **A MERGE POINT WITH THE DEATH TREES' LINE.** `feat/death-trees-c3a` adds the condition `seconds_after_fervour_spent`;
+  both lines change the counted sentences in `CataclysmStatPipeline.h` and `.cpp` and add enumerators after `InFrenzy`.
+  Whichever merges second must recount: `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` fails until
+  it does.
+- **THE PASSIVE ORDER FIXES WERE NEVER IN A TREE FILE.** `fix/passive-order-2026-11-24` (5d883e185) adds the script and its
+  tests and writes no tree file, so no merge meets these sentences twice. If a later branch writes them, the sentences in
+  `tools/apply_passive_order_fixes_2026_11_24.py` are the ones to keep.
+- **SUPPORT NETWORK'S "GADGET DAMAGE" REACHES TRAPS TOO.** It is written on `Type.Deployable`, as every "gadgets deal" row
+  is; a trap carries that tag, so a trap's own blow also gains it. That is the precedent's breadth, not a new one.
+- **A NEW EVENT A ROW MAY ACT ON, `gadget_struck`**, raised beside the clock `seconds_after_gadget_struck`, because every
+  `seconds_after_<event>` clock is an event (`test_pool_action_names_match_the_engine.py`). No row acts on it.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the survey of that day:
+- Apply the War-tree parts of the passive order fixes as the first commit of the branch.
+- **Support Network's** 4-point clause: 10% while at least one gadget is active, not per gadget.
+- **Ambush:** an enemy's first trap counts as "not yet triggered"; the record is written after that trap's blows land; an
+  enemy caught in a blast it did not set off keeps the bonus.
+- **Overcautious:** "under attack" lasts 2 seconds after a gadget takes a hit.
+- **Overwhelming Presence:** "doubled" is a true doubling: a "more" read on `trap_trigger_radius`, and the node 100% more.
+- **Razor Instincts:** one `device_placed` event raised beside `trap_placed` and `gadget_placed`, the node one row on it,
+  and an Unreal test that one placing gives one stack (3%, not 6%).
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Data alone.** Snap Back: 4% evasion a point, `traps_active` capped at one step ("at least one active trap"). Sprung:
+   3% movement speed a point, the row's own stack on `trap_triggered`, 3 s, one at most. Emergency Protocol: 5% movement
+   speed and 5% evasion a point, own stacks on `gadget_destroyed`, 5 s (a stack's key is node and stat, so each stat keeps
+   its own). Support Network: 3% attack and spell damage a point on `Type.Deployable` per active trap; from 4 points 10%
+   trap trigger radius while a gadget is active.
+2. **`device_placed`** is raised by `PlaceSkillTrap` beside `trap_placed`, by `PlaceSkillGadget` beside `gadget_placed`,
+   and by `UCataclysmDeployableSkill::DeployOne` for every War machine. **A judgement: a War trap raises it too**, which
+   "after placing a trap or gadget" says; a War trap raises no `trap_placed` so that rows written for skill traps do not
+   reach it, and no such row can be written on an event that did not exist. Razor Instincts: 3% evasion a point, one row,
+   its own stack on `device_placed`, 3 s, one at most.
+3. **`own_gadget_within_metres`** (Sentry Network, 15): the nearest gadget the wearer commands, in metres from the wearer.
+   It compares a number; with no gadget the reading is -1 and the condition refuses.
+4. **`target_not_yet_triggered_your_trap`** (Ambush): the struck enemy has set off no skill trap of the asker's other than
+   the one whose blow this is. It compares nothing; with no target or no record read it refuses. The enemy keeps the first
+   trap of each player's it set off; the blow names its trap. **Judgement on the ruling's "after that trap's blows land":
+   the record is written when the trap's cast starts, and the condition sets that trap aside**, so all its blows, a late
+   shot included, still count as the first trap's. **Judgement: a trap that rearms and is set off again by the same enemy
+   is still its first**, because the record names the trap and not the trigger.
+5. **`seconds_after_gadget_struck`** (Overcautious, 2): within that many seconds of a gadget the wearer commands taking a
+   landed blow that is not a tick. It compares a number; never struck reads -1 and refuses.
+6. **`no_room_for_a_trap`** (Overwhelming Presence): at least one slot converted into a skill trap, and none could reserve
+   another. It compares nothing; **a character with no trap slot refuses it**, a judgement: there is no trap to place, so
+   "no room for another" has nothing to be about. Filled only when a row asks, since it asks a stat of every slot.
+   Overwhelming Presence: 50% more trap damage and 100% more trap trigger radius under it. **The radius now reads "more"**:
+   `(1 + increases) x more`, the increases floored at nought as before.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Each reported `proved` True: a named test
+failed with the break in, and all 27 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failure |
+|---|---|
+| Sprung's stack, `Saboteur_basic_trap_mid_002#1`, 3 seconds to 4 | `test_an_own_stack_states_its_event_and_its_seconds` |
+| Overcautious's condition value, 2 to 3 | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| Ambush's condition, `target_not_yet_triggered_your_trap` to `target_not_yet_struck_by_you` | `test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SaboteurDevices.RazorInstinctsOnePlacingGrantsOneStackOfThree` | the generated row: nothing before (control); a trap placed, 3; a gadget within the window, still 3; 3.1 s on, nothing |
+| `Cataclysm.SaboteurDevices.TwoRowsOnOneStackKeyEachCountTheOneStack` | two hand rows on one key, granted on `trap_placed` and `gadget_placed`: one trap placed, one stack and 6 (measures why the node is one row) |
+| `Cataclysm.SaboteurDevices.SentryNetworkHoldsWithinFifteenMetresOfAGadget` | the generated row: a gadget 20 m away, nothing (control); moved to 5 m, 2 |
+| `Cataclysm.SaboteurDevices.OvercautiousHoldsForTwoSecondsAfterAGadgetIsStruck` | the generated row: not struck, and a tick, nothing (controls); a landed blow, 4; held at 1.9 s, gone at 2.1 |
+| `Cataclysm.SaboteurDevices.AmbushCountsAnEnemysFirstTrapAndNoLaterOne` | 5% before anything (control); after the enemy sets trap A off for real, A's blow 5%, B's nothing, B's on a second enemy 5% |
+| `Cataclysm.SaboteurDevices.OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom` | room: 450 cm and a "more" of 1 (control); no room: 900 cm and 1.5; no trap slot: 450 again (control) |
+
+Predicted counts: `Cataclysm.SaboteurDevices.` 6; `Cataclysm.StatExemption.` the same count, one more scaled probe;
+`Cataclysm.Data.` the pin, 494.
+
+**Planned C++ guard proofs** (one per mechanism; not run):
+1. The trap room: in `CataclysmAbilitySystemComponent.cpp`, `HasNoRoomForATrap`'s `return bAnyTrapSlot;` becomes
+   `return false;`. Must fail `OverwhelmingPresenceHoldsOnlyWhenNoTrapSlotHasRoom`.
+2. The enemy's record: in `CataclysmMinion.cpp`, `EnemysOwn->NoteTriggeredATrapOf(Theirs, this);` becomes
+   `EnemysOwn->NoteTriggeredATrapOf(Theirs, nullptr);`. Must fail `AmbushCountsAnEnemysFirstTrapAndNoLaterOne`.
+3. The placing event: in `CataclysmMinion.cpp`, `PlaceSkillTrap`'s `FName(TEXT("device_placed")), &TrapTags` becomes
+   `FName(TEXT("gadget_struck")), &TrapTags`. Must fail `RazorInstinctsOnePlacingGrantsOneStackOfThree`.
+
+---
+
 ## 2026-11-25 — Riposte, Vengeful Discharge and Crimson Tide: a counter-attack that stuns at a full pool, a drain whose emptying pulses retaliation on the last blow taken, a heal for Fervour spent or drained, and a Stun on another character for a row's seconds
 
 **Affects:**

@@ -518,8 +518,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 449 SINCE 2026-11-25, for the War riders: twenty rows on ten nodes.
 	// AND 465 THE SAME DAY, for the Fervour spends: sixteen rows on six nodes.
 	// AND 481 THE SAME DAY, for Riposte, Vengeful Discharge and Crimson Tide.
-	// AND 488 THE SAME DAY, for Snap Back, Sprung, Emergency Protocol and Support Network.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        488)
+	// AND 494 THE SAME DAY, for Snap Back, Sprung, Emergency Protocol and Support Network, and Razor Instincts, Sentry
+	// Network, Ambush, Overcautious and Overwhelming Presence.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        494)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

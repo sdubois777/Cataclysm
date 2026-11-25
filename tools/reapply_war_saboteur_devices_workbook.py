@@ -4,8 +4,8 @@
     python tools/reapply_war_saboteur_devices_workbook.py --check
 
 THE SABOTEUR'S DEVICE CONDITIONS (2026-11-25), on the coordinating session's rulings of that day: nodes whose figures
-hold while, or for some seconds after, something happens to the player's traps and gadgets. These four need no new
-code, only rows:
+hold while, or for some seconds after, something happens to the player's traps and gadgets. Nine nodes, thirteen rows.
+These four need no new code, only rows:
 
   - Snap Back (`Saboteur_basic_trap_mid_006`): 4% evasion a point while at least one trap is active, the trap count
     capped at one step, which is exactly "at least one".
@@ -17,6 +17,18 @@ code, only rows:
   - Support Network (`Saboteur_basic_gadget_stem_005`): 3% increased attack and spell damage a point on
     `Type.Deployable` for each active trap, the tag every "gadgets deal" row names; and from 4 points 10% increased
     trap trigger radius while at least one gadget is active (the coordinating session's ruling: not 10% a gadget).
+
+These five stand on what the same branch adds to the engine, one event and four conditions:
+
+  - Razor Instincts (`Saboteur_basic_trunk_012`): 3% evasion a point, the row's own stack granted by `device_placed`
+    (a trap or a gadget placed, one event for either, the ruling), lasting 3 seconds, at most one.
+  - Sentry Network (`Saboteur_basic_gadget_mid_006`): 2% evasion a point under `own_gadget_within_metres` 15.
+  - Ambush (`Saboteur_basic_trap_stem_004`): 5% increased trap damage (`minion_damage` on `Type.Trap`) a point under
+    `target_not_yet_triggered_your_trap`; an enemy's first trap counts as not yet triggered (the ruling).
+  - Overcautious (`Saboteur_basic_gadget_mid_002`): 4% evasion a point under `seconds_after_gadget_struck` 2 ("under
+    attack" lasts 2 seconds after a gadget takes a hit, the ruling).
+  - Overwhelming Presence (`Saboteur_keystone_trap_qty`), as the passive order fixes reword it: 50% more trap damage and
+    100% more trap trigger radius ("doubled", a true doubling by the ruling), each under `no_room_for_a_trap`.
 
 THE MACHINERY IS `tools/reapply_war_data_rows_workbook.py`'s (slice D), imported. IT IS IDEMPOTENT and REFUSES RATHER
 THAN GUESSES, as that script does. `--check` writes nothing and exits 1 when a row would be written.
@@ -33,6 +45,8 @@ import reapply_war_data_rows_workbook as base  # noqa: E402
 
 R = base.Row
 DEPLOYABLE = "Type.Deployable"
+TRAP = "Type.Trap"
+NO_ROOM = {"cond": "no_room_for_a_trap"}
 LABEL = "the Saboteur's device conditions"
 
 #: (node, Node Name label, rows), in the shape `base.NODES` takes.
@@ -51,6 +65,17 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("attack_damage", "increased", 3, tags=DEPLOYABLE, scale="traps_active", step=1),
         R("spell_damage", "increased", 3, tags=DEPLOYABLE, scale="traps_active", step=1),
         R("trap_trigger_radius", "increased", 10, scale="gadgets_active", step=1, cap=1, min_points=4))),
+    ("Saboteur_basic_trunk_012", "Razor Instincts", (
+        R("evasion", "flat", 3, scale="own_stacks", step=1, cap=1, action_event="device_placed", stack_seconds=3),)),
+    ("Saboteur_basic_gadget_mid_006", "Sentry Network", (
+        R("evasion", "flat", 2, cond="own_gadget_within_metres", cond_value=15),)),
+    ("Saboteur_basic_trap_stem_004", "Ambush", (
+        R("minion_damage", "increased", 5, tags=TRAP, cond="target_not_yet_triggered_your_trap"),)),
+    ("Saboteur_basic_gadget_mid_002", "Overcautious", (
+        R("evasion", "flat", 4, cond="seconds_after_gadget_struck", cond_value=2),)),
+    ("Saboteur_keystone_trap_qty", "Overwhelming Presence", (
+        R("minion_damage", "more", 50, tags=TRAP, **NO_ROOM),
+        R("trap_trigger_radius", "more", 100, **NO_ROOM))),
 )
 
 

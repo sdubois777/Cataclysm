@@ -5408,6 +5408,30 @@ CONDITIONS = {
     # `CONDITIONS_OF_A_HIT_DEALT`. NOT `target_carries_any_debuff`, which a burn
     # satisfies.
     "target_carries_your_curse": None,
+
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25, on the coordinating
+    # session's rulings of that day.
+    #
+    # "while within 15 meters of at least one active gadget" (Sentry Network) is
+    # `own_gadget_within_metres` with 15: the nearest gadget the wearer commands,
+    # measured from the wearer. The same 0 to 100 metre bound the other distance
+    # conditions use.
+    "own_gadget_within_metres": (0.0, 100.0, "a distance in metres"),
+    # "against enemies that have not yet triggered one of your traps" (Ambush)
+    # is `target_not_yet_triggered_your_trap`: the enemy struck has set off no
+    # skill trap of the wearer's other than the one whose blow it is taking.
+    # IT TAKES NO VALUE. A fact of the target in hand, so it is one of
+    # `CONDITIONS_OF_A_HIT_DEALT`.
+    "target_not_yet_triggered_your_trap": None,
+    # "while any of your gadgets are under attack" (Overcautious) is
+    # `seconds_after_gadget_struck` with 2: within that many seconds of a gadget
+    # the wearer commands taking a landed blow (the ruling: 2 seconds).
+    "seconds_after_gadget_struck": (0.0, 60.0, "a number of seconds"),
+    # "While your Fervour has no room to reserve another trap" (Overwhelming
+    # Presence, as the passive order fixes of 2026-11-24 reword it) is
+    # `no_room_for_a_trap`: a slot converted into a skill trap, and none of them
+    # could reserve another. IT TAKES NO VALUE.
+    "no_room_for_a_trap": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -7298,6 +7322,9 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # Slice C of plan_death_and_war.md, 2026-11-24. `gadget_placed` carries the
     # wearer's own gadget, as `trap_placed` carries its trap.
     "gadget_placed",
+    # The Saboteur's device conditions, 2026-11-25. `device_placed` carries the
+    # wearer's own trap or gadget.
+    "device_placed",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -7567,6 +7594,14 @@ ACTION_ONLY_EVENTS = (
     # before, and Razor Instincts and Forward Operating Base are about it.
     # Clockless, as the two above; in no narrower list yet.
     "gadget_placed",
+    # A TRAP OR A GADGET PLACED, one event for either, raised beside
+    # `trap_placed` by `ACataclysmMinion::PlaceSkillTrap`, beside `gadget_placed`
+    # by `PlaceSkillGadget`, and by `UCataclysmDeployableSkill::DeployOne` for
+    # every War machine, a trap included. The Saboteur's device conditions,
+    # 2026-11-25 (the coordinating session's ruling): Razor Instincts, "+3%
+    # evasion chance per point for 3 seconds after placing a trap or gadget", is
+    # one row on it, so one placing grants one stack. Clockless.
+    "device_placed",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -10715,6 +10750,10 @@ CONDITIONS_OF_A_HIT_DEALT = frozenset({
     "target_is_silenced",
     "target_is_moving",
     "target_carries_your_curse",
+    # The Saboteur's device conditions, 2026-11-25: Ambush. A fact of the target
+    # in hand, read by `WithTargetState`; the trap rows that carry it are priced
+    # by `TrapDamageNamingTrap` with the enemy struck.
+    "target_not_yet_triggered_your_trap",
 })
 
 #: What a stat's asker hands the pipeline BEYOND the wearer's own state, for
@@ -10782,6 +10821,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # blow `FCataclysmWarFervour::GainOnHitDealt` asks with the blow's skill tags
     # and no blow record. Each is probed in `CataclysmStatExemptionTests.cpp`'s
     # table of stats with no attribute.
+    # THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Overwhelming Presence's
+    # "trap trigger radius is doubled", stated under `no_room_for_a_trap`.
+    # `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it with the trap's
+    # tags and no blow; probed in the table of conditioned stats.
+    "trap_trigger_radius": ASKER_PASSES_NOTHING_MORE,
     "wrath_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,

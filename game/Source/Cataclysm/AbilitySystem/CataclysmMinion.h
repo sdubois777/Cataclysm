@@ -1216,7 +1216,10 @@ public:
 	/** `SkillTrapArmSeconds` for `Player`'s trap of `TrapTags`: divided by one plus the arming-speed increases. */
 	static float SkillTrapArmingSecondsFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
 
-	/** `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases. */
+	/**
+	 * `SkillTrapTriggerRadiusCm` for `Player`'s trap of `TrapTags`: times one plus the trigger-radius increases, and times
+	 * its "more" since 2026-11-25 (Overwhelming Presence's "doubled").
+	 */
 	static float SkillTrapTriggerRadiusCmFor(const AActor* Player, const FGameplayTagContainer& TrapTags);
 
 	/**

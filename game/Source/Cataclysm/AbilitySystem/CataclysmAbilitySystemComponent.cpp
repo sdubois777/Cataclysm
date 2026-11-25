@@ -1006,6 +1006,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
 	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
 	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
+	// AND THE SABOTEUR'S "UNDER ATTACK", 2026-11-25: since one of this character's gadgets took a landed blow.
+	State.SecondsSinceGadgetStruck = SecondsSinceGadgetStruck();
 	State.SecondsInCombat = SecondsInCombat();
 	State.SecondsOutOfCombat = SecondsOutOfCombat();
 
@@ -1291,6 +1293,17 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// BY THE ONE TEST OF WHAT A GADGET IS, `ACataclysmMinion::IsGadget`, which the behaviours a summoner's
 		// row gives "your gadgets" also ask. Ruled 2026-10-13. It answers what this line computed before.
 		State.GadgetsActive += Minion && Minion->IsGadget() ? 1 : 0;
+
+		// AND HOW FAR THE NEAREST GADGET STANDS FROM THE AVATAR, in metres. The Saboteur's device conditions, 2026-11-25,
+		// for Sentry Network's "while within 15 meters of at least one active gadget". -1 while none is commanded.
+		if (Minion && Minion->IsGadget() && GetAvatarActor())
+		{
+			const float Metres =
+				FVector::Dist(Minion->GetActorLocation(), GetAvatarActor()->GetActorLocation()) / 100.0f;
+			State.MetresToNearestOwnGadget = State.MetresToNearestOwnGadget < 0.0f
+				? Metres
+				: FMath::Min(State.MetresToNearestOwnGadget, Metres);
+		}
 	}
 
 	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test
@@ -1501,11 +1514,20 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// here, beside the other readings a row has to ask for, so every lookup that builds its state through this function
 	// -- `StatForSkill` and the rest -- answers the scale without a change of its own.
 	bool bWantsIncreasedMovementSpeed = false;
+	// AND WHETHER A ROW ASKS IF THE POOL HAS ROOM FOR ANOTHER TRAP. The Saboteur's device conditions, 2026-11-25,
+	// Overwhelming Presence. Filled here for the reason the movement speed reading is: it asks a stat of every slot, so
+	// only a lookup that needs it pays for it.
+	bool bWantsTrapRoom = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		if (Modifier.Scale == ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed)
 		{
 			bWantsIncreasedMovementSpeed = true;
+		}
+		if (Modifier.Condition == ECataclysmStatCondition::NoRoomForATrap
+			|| Modifier.Condition2 == ECataclysmStatCondition::NoRoomForATrap)
+		{
+			bWantsTrapRoom = true;
 		}
 
 		// EITHER CONDITION MAY ASK, since issue #1833 gave a row a second one.
@@ -1523,6 +1545,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
 		}
+	}
+
+	// NO ROW ASKING FOR THE TRAP ROOM ASKS IT OF ITSELF: the slot flags and the reserve reductions it reads carry no
+	// such condition, so this cannot ask without end.
+	if (bWantsTrapRoom)
+	{
+		State.bNoRoomForATrap = HasNoRoomForATrap();
 	}
 
 	// THE INCREASES OF THIS CHARACTER'S OWN MOVEMENT SPEED LINE, ONLY WHEN A ROW
@@ -1658,6 +1687,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsSilence = false;
 	bool bWantsMoving = false;
 	bool bWantsYourCurse = false;
+	bool bWantsTrapHistory = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		// BOTH CONDITIONS ASK, the second as the first does. Issue #1833, ruled
@@ -1716,6 +1746,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// ABOVE GIVES. The demonic tree rework of 2026-11-24: Subjugator and Long Servitude.
 			case ECataclysmStatCondition::TargetCarriesYourCurse:
 				bWantsYourCurse = true;
+				break;
+			// AND WHETHER THE TARGET HAS SET OFF A TRAP OF THE ASKER'S, LISTED HERE FOR THE REASON THE AILMENT COMMENT
+			// ABOVE GIVES. The Saboteur's device conditions, 2026-11-25 (Ambush).
+			case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
+				bWantsTrapHistory = true;
 				break;
 			default:
 				break;
@@ -1793,6 +1828,23 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			State.SecondsSinceStruckByYou =
 				Struck->SecondsSinceStruckBy(State.AskingAbilitySystem);
 			State.bTargetStrikeHistoryKnown = true;
+		}
+	}
+
+	// WHETHER THE TARGET HAS SET OFF A TRAP OF THE ASKER'S OTHER THAN THE ONE WHOSE BLOW THIS IS. The Saboteur's device
+	// conditions, 2026-11-25 (Ambush). The target keeps the record, as it keeps who has struck it; the trap is the one
+	// `TrapDamageNamingTrap` is pricing on the asker's component, and none for any other lookup. Read through the state's
+	// asker because this function is static.
+	if (bWantsTrapHistory && State.AskingAbilitySystem)
+	{
+		const UCataclysmAbilitySystemComponent* Asker =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		if (const UCataclysmAbilitySystemComponent* Struck =
+				Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.bTargetTriggeredAnotherTrapOfYours = Struck->TriggeredATrapOfOtherThan(
+				State.AskingAbilitySystem, Asker ? Asker->TrapWhoseBlowIsPriced : TWeakObjectPtr<const AActor>());
+			State.bTargetTrapHistoryKnown = true;
 		}
 	}
 
@@ -3076,6 +3128,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastBlockAtSeconds = -1.0f;
 	LastSummonAtSeconds = -1.0f;
 	LastEvadeAtSeconds = -1.0f;
+	// AND THE SABOTEUR'S GADGET-STRUCK WINDOW, 2026-11-25, a window like the rest.
+	LastGadgetStruckAtSeconds = -1.0f;
 	LastHitTakenAtSeconds = -1.0f;
 	LastClassResourceFullAtSeconds = -1.0f;
 	LastClassResourceEmptyAtSeconds = -1.0f;
@@ -3286,6 +3340,70 @@ void UCataclysmAbilitySystemComponent::NoteGadgetDestroyed(const AActor* Gadget,
 			   /*bLanded=*/true, Gadget);
 }
 
+void UCataclysmAbilitySystemComponent::NoteGadgetStruck()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastGadgetStruckAtSeconds = World->GetTimeSeconds();
+	}
+
+	// AND THE EVENT OF THE SAME NAME, as `NoteBlocked` raises `block` beside its clock: every `seconds_after_<event>`
+	// clock is an event a row may act on, which `tools/tests/test_pool_action_names_match_the_engine.py` holds.
+	ActOnEvent(FName(TEXT("gadget_struck")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceGadgetStruck() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastGadgetStruckAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastGadgetStruckAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteTriggeredATrapOf(const UAbilitySystemComponent* TrapsPlayer,
+														   const AActor* Trap)
+{
+	// THE FIRST ONLY: a later trap of the same player's leaves the record naming the first.
+	if (TrapsPlayer && Trap && !FirstTrapTriggeredOf.Contains(TrapsPlayer))
+	{
+		FirstTrapTriggeredOf.Add(TrapsPlayer, Trap);
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::TriggeredATrapOfOtherThan(const UAbilitySystemComponent* TrapsPlayer,
+																 const TWeakObjectPtr<const AActor>& Trap) const
+{
+	// COMPARED BY IDENTITY, which a weak pointer keeps after its trap is used up and gone, so a late blow of the first
+	// trap is still that trap's.
+	const TWeakObjectPtr<const AActor>* First = TrapsPlayer ? FirstTrapTriggeredOf.Find(TrapsPlayer) : nullptr;
+	return First && *First != Trap;
+}
+
+bool UCataclysmAbilitySystemComponent::HasNoRoomForATrap() const
+{
+	const AActor* Avatar = GetAvatarActor();
+	if (!Avatar)
+	{
+		return false;
+	}
+	bool bAnyTrapSlot = false;
+	for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+	{
+		if (!SlotIsASkillTrap(Slot))
+		{
+			continue;
+		}
+		bAnyTrapSlot = true;
+		if (UCataclysmCommand::HasRoomToReserve(Avatar, ACataclysmMinion::SkillTrapReserveFor(Avatar, Slot)))
+		{
+			return false;
+		}
+	}
+	return bAnyTrapSlot;
+}
+
 void UCataclysmAbilitySystemComponent::NoteResourceConsumed(float Amount,
 															const FGameplayTagContainer* Tags,
 															int32 Times)
@@ -3432,6 +3550,22 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	if (const UWorld* World = GetWorld())
 	{
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
+	}
+
+	// AND A GADGET'S LANDED BLOW IS ITS SUMMONER'S "UNDER ATTACK". The Saboteur's device conditions, 2026-11-25
+	// (Overcautious): a landed blow and not a tick, on a gadget (`ACataclysmMinion::IsGadget`), told to the summoner's
+	// ability system.
+	if (bLanded && !bDamageOverTime)
+	{
+		const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(GetAvatarActor());
+		if (Gadget && Gadget->IsGadget())
+		{
+			if (UCataclysmAbilitySystemComponent* Summoners = Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Gadget->Summoner.Get())))
+			{
+				Summoners->NoteGadgetStruck();
+			}
+		}
 	}
 
 	// AND A HIT TAKEN IS HALF OF WHAT "IN COMBAT" MEANS. Issue #1815.
@@ -8996,10 +9130,14 @@ void UCataclysmAbilitySystemComponent::ReleaseOfASkillTrapSlot(const FGameplayTa
 }
 
 void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagContainer& Tags, const AActor* Target,
-															 float& OutIncreases, float& OutMore) const
+															 float& OutIncreases, float& OutMore,
+															 TWeakObjectPtr<const AActor> BlowsTrap) const
 {
 	OutIncreases = 0.0f;
 	OutMore = 1.0f;
+	// THE TRAP WHOSE BLOW THIS IS, held while the rows are judged and put back after, for Ambush's
+	// `TargetNotYetTriggeredYourTrap` (the Saboteur's device conditions, 2026-11-25).
+	TGuardValue<TWeakObjectPtr<const AActor>> PricingItsBlow(TrapWhoseBlowIsPriced, BlowsTrap);
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(TEXT("minion_damage")));
 	const FGameplayTag Trap = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	if (!Inputs || !Trap.IsValid())

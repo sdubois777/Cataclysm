@@ -487,3 +487,9 @@ Saboteur_basic_gadget_mid_004#2,Saboteur_basic_gadget_mid_004,evasion,flat,5.0,,
 Saboteur_basic_gadget_stem_005#1,Saboteur_basic_gadget_stem_005,attack_damage,increased,3.0,Type.Deployable,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_stem_005#2,Saboteur_basic_gadget_stem_005,spell_damage,increased,3.0,Type.Deployable,,0.0,traps_active,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Saboteur_basic_gadget_stem_005#3,Saboteur_basic_gadget_stem_005,trap_trigger_radius,increased,10.0,,,0.0,gadgets_active,1.0,0,-1.0,4,1,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trunk_012#1,Saboteur_basic_trunk_012,evasion,flat,3.0,,,0.0,own_stacks,1.0,0,-1.0,0,1,,device_placed,,3.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_gadget_mid_006#1,Saboteur_basic_gadget_mid_006,evasion,flat,2.0,,own_gadget_within_metres,15.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_trap_stem_004#1,Saboteur_basic_trap_stem_004,minion_damage,increased,5.0,Type.Trap,target_not_yet_triggered_your_trap,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_basic_gadget_mid_002#1,Saboteur_basic_gadget_mid_002,evasion,flat,4.0,,seconds_after_gadget_struck,2.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_keystone_trap_qty#1,Saboteur_keystone_trap_qty,minion_damage,more,50.0,Type.Trap,no_room_for_a_trap,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+Saboteur_keystone_trap_qty#2,Saboteur_keystone_trap_qty,trap_trigger_radius,more,100.0,,no_room_for_a_trap,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
