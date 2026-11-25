@@ -95,6 +95,10 @@ public:
 	 * A press of the Respec button. The first press asks for a second, saying what it costs; the second respecs through
 	 * `UCataclysmGameInstance::RespecEmpireTree`. A respec the rules refuse is refused on the first press.
 	 *
+	 * SINCE ISSUE #2857 the first press also says, in `RefusalText`'s line, which dungeons' timers run out within the
+	 * respec's days (`UCataclysmEmpireMapLayout::TimersRunningOutText`), and the second what those days did when they did
+	 * anything (`UCataclysmGameInstance::CapitalDaysAccount`), as the forge's crafts do.
+	 *
 	 * @return true only on the press that respecced
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
@@ -122,7 +126,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|EmpireTree")
 	FText BranchText() const;
 
-	/** Why the last thing tried was refused; when nothing was, the walk refusal during a walk; else empty. */
+	/**
+	 * Why the last thing tried was refused; when nothing was, the walk refusal during a walk; else empty. A Respec press
+	 * puts its warning and its account of the days here too (`PressRespec`, issue #2857).
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|EmpireTree")
 	FText RefusalText() const;
 

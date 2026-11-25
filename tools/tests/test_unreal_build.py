@@ -33,7 +33,9 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+import prove_guard  # noqa: E402
 import unreal_build  # noqa: E402
+from prove_guard import FilesLeftBroken  # noqa: E402
 from unreal_build import (  # noqa: E402
     BuildDidNothing,
     BuildOutcome,
@@ -1857,3 +1859,107 @@ def test_only_the_newest_three_moved_aside_logs_are_kept_and_no_other_name(
     assert module.move_aside_when_released(log) is None, (
         "a log that is not there is nothing to move, not an error")
 
+
+
+# ---------------------------------------------------------------------------
+# A restore the operating system refuses, as in `test_prove_guard.py`'s
+# section of the same name: the C++ helper writes back through the same
+# `prove_guard.write_back`, and on a file it cannot write back it keeps the
+# recovery file, builds nothing more and raises `FilesLeftBroken`. The refusal
+# is faked for one file; nothing holds a real one.
+# ---------------------------------------------------------------------------
+
+
+def refuse_writes_to_thing(monkeypatch: pytest.MonkeyPatch, source: pathlib.Path,
+                           times: int | None) -> list[int]:
+    """Make `times` writes of `source` raise OSError 22, then let them through;
+    every write when `times` is None. No waiting between tries."""
+    target = source.resolve()
+    real_write_bytes = pathlib.Path.write_bytes
+    refusals: list[int] = []
+
+    def write_bytes(self: pathlib.Path, data: bytes) -> int:
+        if self.resolve() == target and (times is None or len(refusals) < times):
+            refusals.append(1)
+            raise OSError(22, "Invalid argument", str(self))
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(pathlib.Path, "write_bytes", write_bytes)
+    monkeypatch.setattr(prove_guard, "RESTORE_WAITS_SECONDS",
+                        tuple(0.0 for _ in prove_guard.RESTORE_WAITS_SECONDS))
+    return refusals
+
+
+def test_a_cpp_restore_refused_twice_is_tried_again_and_the_proof_completes(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    original = source.read_bytes()
+    refusals = refuse_writes_to_thing(monkeypatch, source, times=2)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    runs = iter([TestOutcome(2, ("a",), ("b",)), TestOutcome(2, ("a", "b"), ())])
+
+    result = prove_cpp_guard({"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+                             test_prefix="Cataclysm.Thing", builder=builds,
+                             tester=lambda prefix: next(runs))
+
+    assert refusals == [1, 1], "set-up: the fake refused the first two writes back"
+    assert source.read_bytes() == original
+    assert builds.calls == 2, "the restore build ran once the file was back"
+    assert not a_recovery_file_outside_the_repository.exists()
+    assert result.unrestored == ()
+    assert result.proved, result.summary
+
+
+def test_a_cpp_restore_always_refused_raises_keeps_the_recovery_file_and_builds_nothing_more(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    refusals = refuse_writes_to_thing(monkeypatch, source, times=None)
+    builds = RecordedBuilds(build_that_compiled_thing(), build_that_compiled_thing())
+    tests_run: list[str] = []
+
+    def tester(prefix: str) -> TestOutcome:
+        tests_run.append(prefix)
+        return TestOutcome(2, ("a",), ("b",))
+
+    with pytest.raises(FilesLeftBroken) as raised:
+        prove_cpp_guard({"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+                        test_prefix="Cataclysm.Thing", builder=builds, tester=tester)
+
+    error = raised.value
+    assert len(refusals) == len(prove_guard.RESTORE_WAITS_SECONDS) + 1
+    assert error.paths == ("Thing.cpp",)
+    assert "restore-proof" in str(error) and "Invalid argument" in str(error)
+    assert error.result.unrestored == ("Thing.cpp",)
+    assert error.result.named_failures == ("b",), "set-up: the broken half is kept"
+    assert not error.result.proved
+    assert error.result.summary.startswith("FILES LEFT BROKEN: ")
+    assert builds.calls == 1, (
+        "no restore build may run while the source holds the break: it would "
+        "compile the break and be read as the restore")
+    assert tests_run == ["Cataclysm.Thing"], "and no second half ran"
+    assert a_recovery_file_outside_the_repository.exists(), (
+        "the recovery file is what `restore-proof` writes back from, so it stays")
+    assert "0.0f" in source.read_text(encoding="utf-8"), (
+        "CONTROL: the source really is still broken, which is what the message says")
+
+
+def test_restore_proof_says_which_file_it_could_not_write_back_and_keeps_the_recovery_file(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path, capsys) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    recovery = a_recovery_file_outside_the_repository
+    recovery.parent.mkdir(parents=True)
+    recovery.write_text(json.dumps({"saved_at": "2026-11-25T10:00:00Z",
+                                    "broken_at": time.time() - 5.0,
+                                    "files": {"Thing.cpp": base64.b64encode(source.read_bytes()).decode()}}),
+                        encoding="utf-8")
+    refuse_writes_to_thing(monkeypatch, source, times=None)
+
+    code = unreal_build.main(["restore-proof"])
+
+    assert code == 1
+    printed = capsys.readouterr().out
+    assert "FILES LEFT BROKEN" in printed and "Thing.cpp" in printed
+    assert recovery.exists(), "kept, so the same command can be run again"

@@ -735,6 +735,156 @@ bool FCataclysmEmpireTreeScreenRespecTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmEmpireTreeScreenTest
+{
+	/** The PLAY LOOP lines said while it lives, in order, without their prefix. Issue #2857. */
+	struct FRespecDaysLines : public FOutputDevice
+	{
+		TArray<FString> Lines;
+
+		FRespecDaysLines()
+		{
+			if (GLog)
+			{
+				GLog->AddOutputDevice(this);
+			}
+		}
+
+		virtual ~FRespecDaysLines() override
+		{
+			if (GLog)
+			{
+				GLog->RemoveOutputDevice(this);
+			}
+		}
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.StartsWith(FCataclysmPlayLoopLog::Prefix))
+			{
+				Lines.Add(Line.RightChop(FCString::Strlen(FCataclysmPlayLoopLog::Prefix)));
+			}
+		}
+
+		/** What was said, after the log is flushed: a line written off the game thread is buffered until then. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+	};
+}
+
+/**
+ * Issue #2857: the respec spends days in the capital as a forge craft does, and says the same about them. Its first
+ * press says which dungeons' timers run out within its days, the city each would hit and the day; its second says
+ * what the days did, on the screen and in a PLAY LOOP line after the respec's own, "for the respec, days 0 to 5:
+ * dungeons resolved: ...". Until then the respec counted what resolved in a log line the PLAY LOOP filter hides, and
+ * the screen said nothing. One ordinary dungeon is due in three days and every other timer in 60. Prints "RESPEC DAYS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenRespecDaysTest,
+	"Cataclysm.EmpireTreeScreen.ARespecSaysWhichTimersItsDaysRunOutAndThenWhatTheyDid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeScreenRespecDaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeScreenTest;
+
+	FTreeScreenScene Scene = MakeScene(/*bSoloSelfFound*/ false, /*bWithARun*/ true);
+	ON_SCOPE_EXIT
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	UCataclysmAccountSave* Account = Scene.Account();
+	UCataclysmEmpireRun* Run = Scene.Run();
+	UCataclysmEmpireTreeWidget* Screen = MakeScreen(Scene);
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable())
+		|| !TestNotNull(TEXT("set-up: with its account record"), Account)
+		|| !TestTrue(TEXT("set-up: and a run with a clock and a map"),
+					 Run != nullptr && Run->Clock != nullptr && Run->Map != nullptr)
+		|| !TestNotNull(TEXT("set-up: and the screen"), Screen))
+	{
+		return false;
+	}
+
+	// ONE ORDINARY DUNGEON ON A STANDING CITY -- not a bonus dungeon, not a Void one, whose hit takes no defence -- due in
+	// three days, inside the respec's five; every other timer in 60. The run's opening wave stands already.
+	int32 Due = INDEX_NONE;
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		const FCataclysmCity* City = Run->Map->Find(Dungeon.CityId);
+		if (Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus && !Dungeon.AddsVoidStacks()
+			&& City != nullptr && !City->bFallen)
+		{
+			Due = Dungeon.DungeonId;
+			break;
+		}
+	}
+	const FCataclysmDungeon* Dungeon = Due != INDEX_NONE ? Run->FindDungeon(Due) : nullptr;
+	const FCataclysmCity* City = Dungeon != nullptr ? Run->Map->Find(Dungeon->CityId) : nullptr;
+	if (!TestNotNull(TEXT("set-up: the opening wave stood an ordinary dungeon on a standing city"), City))
+	{
+		return false;
+	}
+	for (FCataclysmDungeonTimer& Timer : Run->Clock->Timers)
+	{
+		Timer.DaysUntilResolve = Timer.DungeonId == Due ? 3.0f : 60.0f;
+	}
+	const FString DueName = Run->NameOfDungeon(Due);
+	const FString CityName = City->Name;
+	const int32 Days = UCataclysmEmpireTree::RespecDays(static_cast<int32>(ECataclysmLethality::Standard));
+	const int32 Today = Run->Day();
+
+	Account->EmpireTree.Add(StructuralIntegrity, 1);
+	Screen->ShowBranch(TEXT("Architect"));
+
+	FRespecDaysLines Capture;
+	const bool bAsked = Screen->PressRespec();
+	const FString Warned = Screen->RefusalText().ToString();
+	const bool bDone = Screen->PressRespec();
+	const FString After = Screen->RefusalText().ToString();
+	const TArray<FString> Said = Capture.Said();
+
+	const FString Lead = FString::Printf(TEXT("for the respec, days %d to %d: "), Today, Today + Days);
+	// THE DUNGEON BY ITS NUMBER AND NAME, which only the resolved part says, and its city among those hit, which a Siege's
+	// daily share may also be.
+	const FString Resolved = FString::Printf(TEXT("%d (%s)"), Due, *DueName);
+	const FString Hit = FString::Printf(TEXT("%s lost "), *CityName);
+	const int32 RespecAt = Said.IndexOfByPredicate([](const FString& Line)
+	{
+		return Line.StartsWith(TEXT("respecced the empire upgrade tree: "));
+	});
+	const int32 AccountAt = Said.IndexOfByPredicate([&Lead](const FString& Line) { return Line.StartsWith(Lead); });
+	AddInfo(FString::Printf(TEXT("RESPEC DAYS: dungeon %d (%s) due in 3 on %s, respec %d days; asked %s \"%s\"; done %s "
+								 "\"%s\"; said: %s"),
+							Due, *DueName, *CityName, Days, bAsked ? TEXT("DONE") : TEXT("no"), *Warned,
+							bDone ? TEXT("yes") : TEXT("NO"), *After, *FString::Join(Said, TEXT(" | "))));
+
+	TestTrue(TEXT("set-up: the respec costs more than three days"), Days >= 3);
+	TestFalse(TEXT("the first press asks"), bAsked);
+	TestEqual(TEXT("naming the dungeon whose timer its days run out, the city it hits and the day"), Warned,
+			  FString::Printf(TEXT("Within %d days, 1 dungeon's timer runs out: dungeon %d (%s) hits %s on day %d."), Days,
+							  Due, *DueName, *CityName, Today + 3));
+	TestTrue(TEXT("the second respecs"), bDone);
+	TestTrue(TEXT("and the screen says what the days did: the dungeon resolved"),
+			 After.StartsWith(FString::Printf(TEXT("Meanwhile, days %d to %d: "), Today, Today + Days))
+				 && After.Contains(Resolved));
+	TestTrue(TEXT("and the city it hit"), After.Contains(Hit));
+	if (TestTrue(TEXT("a PLAY LOOP line says what the respec's days did"), Said.IsValidIndex(AccountAt)))
+	{
+		TestTrue(TEXT("naming the dungeon and the city"), Said[AccountAt].Contains(Resolved) && Said[AccountAt].Contains(Hit));
+	}
+	TestTrue(TEXT("after the respec's own line"), RespecAt != INDEX_NONE && AccountAt > RespecAt);
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // A Solo Self-Found character's own tree
 // ---------------------------------------------------------------------------

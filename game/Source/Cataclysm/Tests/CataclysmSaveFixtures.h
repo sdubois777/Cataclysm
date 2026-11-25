@@ -502,6 +502,16 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the account record's step to 8 writes into an account file written before it: no tier 1 gold spent at the
+	 * forge that Treasury Synergy counts (`GoldSpentAtTheForge`, 0). #47 slice F6a. NAMED FOR THE VERSION IT REACHES, 8.
+	 * ONE COPY, for every test that runs an older account file through the whole chain.
+	 */
+	inline void AddTheAccountsVersion8Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentAtTheForge"), 0.0);
+	}
+
+	/**
 	 * What the character record's newest step writes into a character file written before it: no tier 1 gold spent on
 	 * city upgrades (`GoldSpentOnCityUpgrades`, 0), for a Solo Self-Found character's Reinvestment. Issue #2741 slice 9.
 	 * NAMED FOR THE VERSION IT REACHES, 14, after the gems window's 13 (V1). ONE COPY.
@@ -627,6 +637,17 @@ namespace CataclysmSaveFixtures
 		{
 			(*Build)->SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
 		}
+	}
+
+	/**
+	 * What the character record's `Migrate_17_to_18` writes into a character file written before version 18: no tier 1
+	 * gold spent at the forge, `GoldSpentAtTheForge` 0 (#47 slice F6a). THE CHARACTER RECORD'S 18. ONE COPY, for
+	 * every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion17Defaults`.
+	 */
+	inline void AddTheCharactersVersion18Defaults(FJsonObject& Expected)
+	{
+		Expected.SetNumberField(TEXT("GoldSpentAtTheForge"), 0.0);
 	}
 
 	/**

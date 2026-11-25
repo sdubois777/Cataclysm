@@ -1076,7 +1076,11 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * buying rules were written (`UCataclysmEmpireTree`). The banked points are here because the game banks them: a
  * defeated dungeon's award, since issue #52's first slice.
  *
- * VERSION 7 SINCE 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
+ * VERSION 8 SINCE 2026-11-24. The account counts the tier 1 gold spent at the forge across runs
+ * (`GoldSpentAtTheForge`, #47 slice F6a), which Treasury Synergy reads, and `Migrate_7_to_8` writes 0 into an account
+ * written at 7: the count starts at this build, as Reinvestment's did (Q5, as V5).
+ *
+ * VERSION 7 FROM 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
  * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), which Reinvestment reads, and `Migrate_6_to_7` writes 0 into an
  * account written at 6: the count starts at this build (V5).
  *
@@ -1110,7 +1114,7 @@ class CATACLYSM_API UCataclysmAccountSave : public UCataclysmSaveRecord
 
 public:
 	static const FName TypeName;
-	static constexpr int32 SchemaVersionNow = 7;
+	static constexpr int32 SchemaVersionNow = 8;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
@@ -1178,6 +1182,15 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	double GoldSpentOnCityUpgrades = 0.0;
+
+	/**
+	 * The tier 1 gold spent at the forge by the mode's characters, across runs: each done craft's price charged over its
+	 * run's gold scale, UNROUNDED, a double as `GoldSpentOnCityUpgrades` is (#47 slice F6a, Q5, as V4 and V20). Treasury
+	 * Synergy reads it; it is counted whether the node is held or not. `UCataclysmGameInstance::GoldSpentAtTheForgeBy`
+	 * reads it. A Solo Self-Found character's is in its character record. RECORD VERSION 8.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentAtTheForge = 0.0;
 
 	/**
 	 * What the partition's empire upgrade tree has bought: each node's points, and which option each centre capstone
@@ -1379,7 +1392,10 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 17 SINCE 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
+	 * 18 SINCE 2026-11-25. #47 slice F6a: a Solo Self-Found character counts the tier 1 gold it has spent at the
+	 * forge across runs (`GoldSpentAtTheForge`), which Treasury Synergy reads, and `Migrate_17_to_18` writes 0.
+	 *
+	 * 17 FROM 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
 	 * `RememberedDefaults`, so a loaded character's keys stay as they were (the owner's Q1, "Approve all three
 	 * (Recommended)"). `Migrate_16_to_17` writes an empty list, which is what a character written before it held.
 	 *
@@ -1450,7 +1466,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 17;
+	static constexpr int32 SchemaVersionNow = 18;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1571,6 +1587,14 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	double GoldSpentOnCityUpgrades = 0.0;
+
+	/**
+	 * A Solo Self-Found character's own count of the tier 1 gold it has spent at the forge across runs:
+	 * `UCataclysmAccountSave::GoldSpentAtTheForge` for a character whose gold is its own. #47 slice F6a;
+	 * `ACataclysmPlayerState::GetOwnGoldSpentAtTheForge`. ZERO AND UNUSED FOR EVERY OTHER CHARACTER. VERSION 18.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	double GoldSpentAtTheForge = 0.0;
 
 	/**
 	 * When the save writer last wrote this record, in UTC, as ISO 8601 text; empty in a record written before the

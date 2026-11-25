@@ -26,6 +26,13 @@ twice gave two different answers, which is the only reason it was noticed.
 the repository broken. Every restore here happens in a `finally`, so an
 exception, a failing command and a keyboard interrupt all put the files back.
 
+**And a restore the operating system refuses (2026-11-25).** Another process
+holding the file for a moment -- one with it memory-mapped makes `write_bytes`
+raise OSError 22 -- used to leave the break in place, raise out of the restore
+and say nothing about which file. Each write back is now tried six times over
+3.1 seconds and read back (`write_back`); a file still refused after that raises
+`FilesLeftBroken`, which names it and says how to put it back.
+
 **The busy-checkout trap (issue #598).** This breaks the REAL repository for the
 duration of the command. Anything else working in the same checkout at that
 moment — a second test run, an editor, another agent — can read the broken text
@@ -85,18 +92,21 @@ than have this module hide it.
     assert result.failed       # the guard noticed
 
 The file is restored byte for byte before `break_and_run` returns, whatever the
-command did.
+command did -- or, if it cannot be written back, `FilesLeftBroken` is raised
+naming it.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import errno
 import re
 import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -129,6 +139,104 @@ TEST_RUN_MARKERS = (
 #: "0 failed" only when something else failed too, so any match means a test
 #: reached its assertions and did not pass.
 FAILED_COUNT = re.compile(r"\b([1-9]\d*) failed\b")
+
+#: THE WAITS BETWEEN TRIES WHEN WRITING A BROKEN FILE BACK IS REFUSED: six tries
+#: and at most 3.1 seconds of waiting, for each file.
+#:
+#: MEASURED 2026-11-25 ON THIS PROJECT'S WINDOWS MACHINE, with a scratch file.
+#: While another process has the file MEMORY-MAPPED -- a virus scanner or an
+#: indexer may, for a moment -- `write_bytes` raises OSError 22, "Invalid
+#: argument", the error a whole-suite run met writing
+#: `docs/Cataclysm_GDD_v2.md` back after a guard case broke it. While another
+#: process holds a byte-range lock it raises PermissionError 13. Both cleared as
+#: soon as the holder let go, a 1.5 second hold included, and the next write
+#: succeeded with the content intact. Writing the 15 MB `docs/DECISIONS.md` back
+#: and reading it again takes about 12 ms, so the waits, not the writes, are
+#: the cost.
+RESTORE_WAITS_SECONDS: tuple[float, ...] = (0.1, 0.2, 0.4, 0.8, 1.6)
+
+
+def write_back(path: pathlib.Path, content: bytes, *,
+               then: Callable[[], None] | None = None) -> OSError | None:
+    """Write `content` to `path` and read it back, trying again when refused.
+
+    Returns None once the file holds exactly `content` and `then`, when given,
+    has run. Returns the last error once every try has failed: one, then one
+    more after each wait in `RESTORE_WAITS_SECONDS`.
+
+    IT RETURNS THE ERROR RATHER THAN RAISING IT, so a caller restoring several
+    files goes on to the next one. A restore loop that raised on its first
+    refused write left every later file broken as well, and replaced the
+    failure that explained the run.
+
+    READ BACK, BECAUSE A WRITE CAN FAIL PART WAY. A file opened for writing is
+    emptied first, so a write refused after that leaves less than it found.
+
+    @param then  run after a verified write, inside the same tries: the C++
+                 helper pushes the modification time forward here, and a
+                 refusal of that is tried again too.
+    """
+    last: OSError | None = None
+    for wait in (*RESTORE_WAITS_SECONDS, None):
+        try:
+            path.write_bytes(content)
+            if path.read_bytes() != content:
+                raise OSError(errno.EIO, "the file read back is not what was written",
+                              str(path))
+            if then is not None:
+                then()
+            return None
+        except OSError as error:
+            last = error
+        if wait is not None:
+            time.sleep(wait)
+    return last
+
+
+def files_left_broken(paths: Sequence[str], how_to_restore: str | None = None) -> str:
+    """The sentence naming every file a break could not be written back to.
+
+    @param how_to_restore  what to run; `git checkout -- <path>` for each file
+                           when not given.
+    """
+    if how_to_restore is None:
+        how_to_restore = ", ".join(f"`git checkout -- {path}`" for path in paths)
+    tries = len(RESTORE_WAITS_SECONDS) + 1
+    return (f"FILES LEFT BROKEN: {', '.join(paths)} could not be written back "
+            f"after {tries} tries over {sum(RESTORE_WAITS_SECONDS):.1f} s, so the "
+            "break is still in it, and anything that reads it now reads the "
+            f"broken text. Restore it before anything else runs: {how_to_restore}. "
+            "This run is not a proof.")
+
+
+class FilesLeftBroken(RuntimeError):
+    """A break could not be written back, so the repository still holds it.
+
+    RAISED RATHER THAN RETURNED, ON PURPOSE. A caller that asserts on
+    `named_failures`, as `CLAUDE.md` tells one with no second half to do, would
+    pass on a returned result whose file was still broken, and the next case
+    would fail against the broken file with nothing saying why. That is what a
+    whole-suite run met on 2026-11-25: a guard case in
+    `tools/tests/test_what_a_run_ending_costs.py` broke the design document, its
+    restore was refused, and the break stayed in.
+
+    `paths` names every file still broken, relative to the repository root.
+    `result` is what the run measured, with `unrestored` set, so `proved` is
+    False and `summary` says the same; None when there was nothing to report.
+    """
+
+    def __init__(self, message: str, paths: Sequence[str], result: object | None = None) -> None:
+        super().__init__(message)
+        self.paths = tuple(paths)
+        self.result = result
+
+
+def files_left_broken_error(refused: Mapping[str, OSError], how_to_restore: str | None = None,
+                            result: object | None = None) -> FilesLeftBroken:
+    """`FilesLeftBroken` for these files, its message ending with each file's last error."""
+    errors = "; ".join(f"{path}: {error}" for path, error in refused.items())
+    message = f"{files_left_broken(list(refused), how_to_restore)} The last error: {errors}."
+    return FilesLeftBroken(message, list(refused), result)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -167,6 +275,12 @@ class GuardResult:
     #: anybody adding a third opt-out write one -- which is where they find out
     #: they do not have one.
     restored_half_supplied_by: str | None = None
+
+    #: Files the break could not be written back to, relative to the repository
+    #: root, so they still hold it. Set only on the result a `FilesLeftBroken`
+    #: carries; `break_and_run` raises rather than returning one, so a caller
+    #: asserting on `named_failures` cannot pass over it.
+    unrestored: tuple[str, ...] = ()
 
     @property
     def named_failures(self) -> tuple[str, ...]:
@@ -266,7 +380,7 @@ class GuardResult:
         rather than leaving a bare False to be read as a guard that did not
         fire -- that is issue #1313's mistake and it is easy to repeat here.
         """
-        if self.restored is None:
+        if self.restored is None or self.unrestored:
             return False
         return (self.failed
                 and bool(self.named_failures)
@@ -277,6 +391,10 @@ class GuardResult:
     @property
     def summary(self) -> str:
         """The last line of output, which for pytest is its result line."""
+        if self.unrestored:
+            lines = [line for line in (self.stdout + self.stderr).splitlines() if line.strip()]
+            return (files_left_broken(self.unrestored) + " | with the break in: "
+                    + (lines[-1].strip() if lines else "(no output)"))
         if self.disturbed:
             return ("EVIDENCE COMPROMISED: " + ", ".join(self.disturbed)
                     + " changed underneath this run, so its result means nothing. "
@@ -412,6 +530,12 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
     #: What each broken file held while the command ran. Compared against the
     #: file afterwards. See the note on being disturbed below.
     written: dict[pathlib.Path, bytes] = {}
+    #: Every file whose original could not be written back, with its last
+    #: error. See `FilesLeftBroken`.
+    refused: dict[str, OSError] = {}
+    #: An exception already leaving the `try`, so the restore can attach the
+    #: files it left broken to it rather than raising over it.
+    first_failure: BaseException | None = None
     try:
         for relative, edit in edits.items():
             path = REPO_ROOT / relative
@@ -446,12 +570,33 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
             if not path.is_file() or path.read_bytes() != content)
 
         broken = dataclasses.replace(result, disturbed=disturbed)
+    except BaseException as error:
+        first_failure = error
+        raise
     finally:
         # IN A FINALLY, so a raising edit, a crashing command and an interrupt
         # all leave the repository as they found it.
+        #
+        # EVERY FILE IS TRIED, AND A REFUSED WRITE IS TRIED AGAIN (`write_back`).
+        # Until 2026-11-25 this was one `write_bytes` a file: a refusal raised out
+        # of the loop, so the files after it were not written back either, and
+        # its OSError replaced whatever explained the run.
         for path, content in originals.items():
-            path.write_bytes(content)
+            error = write_back(path, content)
+            if error is not None:
+                refused[str(path.relative_to(REPO_ROOT)).replace("\\", "/")] = error
         clear_bytecode_caches()
+        if refused and first_failure is not None:
+            # THE FIRST FAILURE IS THE ONE THAT EXPLAINS THE RUN, so it is the
+            # one that leaves, carrying the broken files as a note. The same rule
+            # `unreal_build.prove_cpp_guard` follows, from issue #384.
+            first_failure.add_note(str(files_left_broken_error(refused)))
+
+    # NOTHING HERE MAY RUN WHILE A FILE STILL HOLDS THE BREAK, a second half
+    # least of all: it would measure the broken file and call it restored.
+    if refused:
+        raise files_left_broken_error(
+            refused, result=dataclasses.replace(broken, unrestored=tuple(refused)))
 
     # THE SECOND HALF RUNS HERE, AFTER THE finally AND NOT INSIDE IT. That block
     # is what makes a crashing command or an interrupt leave the repository as it

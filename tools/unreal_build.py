@@ -92,6 +92,10 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 
+# THE WRITE BACK AND ITS REFUSAL ARE THE PYTHON GUARD HELPER'S, so the two
+# helpers retry a refused restore alike and name what they leave broken alike.
+from prove_guard import FilesLeftBroken, files_left_broken, files_left_broken_error, write_back
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 GAME_DIR = REPO_ROOT / "game"
 PROJECT_FILE = GAME_DIR / "Cataclysm.uproject"
@@ -520,6 +524,12 @@ class CppGuardResult:
     #: rebuild compiled, so a correct binary is standing by the time this runs.
     tests_restored: TestOutcome | None = None
 
+    #: Files the break could not be written back to, relative to the repository
+    #: root, so the source still holds it and no restore build ran. Set only on
+    #: the result a `prove_guard.FilesLeftBroken` carries: `prove_cpp_guard`
+    #: raises rather than returning one, as `break_and_run` does.
+    unrestored: tuple[str, ...] = ()
+
     @property
     def crashed(self) -> bool:
         """The test run did not finish, so it says nothing about the guard.
@@ -591,7 +601,7 @@ class CppGuardResult:
         compile and a run that crashed. Those say the measurement did not
         happen, and `summary` tells them apart from a guard that did not fire.
         """
-        if self.tests_restored is None:
+        if self.tests_restored is None or self.unrestored:
             return False
         if self.crashed or self.tests_restored.crashed:
             return False
@@ -601,6 +611,9 @@ class CppGuardResult:
 
     @property
     def summary(self) -> str:
+        if self.unrestored:
+            return (files_left_broken(self.unrestored, RESTORE_PROOF_ADVICE)
+                    + f" | with the break in: {self.tests.summary}")
         if not self.build.succeeded:
             return f"the build itself failed: {self.build.summary}"
         if self.crashed:
@@ -1157,7 +1170,7 @@ def saves_failure(tests: TestOutcome | None, saves_line: str) -> str | None:
             f"{names}. A run whose tests leave slots fails, a narrow one included; nothing was deleted. Issue #2673.")
 
 
-def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> None:
+def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> OSError | None:
     """Write the original bytes back and make sure the file looks newer than the build.
 
     Writing normally gives the file the current time, which is already after the
@@ -1166,11 +1179,18 @@ def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> 
     than the moment the break was made, the modification time is pushed forward
     explicitly. That is the "touch the file after restoring it" in issue #139,
     done every time rather than only when someone remembers.
+
+    A REFUSED WRITE IS TRIED AGAIN, and the touch with it (`prove_guard.write_back`).
+    Returns None once the file is back, or the last error once every try was
+    refused, so the caller goes on to its other files. Until 2026-11-25 this was
+    one write that raised on refusal.
     """
-    path.write_bytes(content)
-    if path.stat().st_mtime <= not_before:
-        stamp = not_before + 1.0
-        os.utime(path, (stamp, stamp))
+    def push_the_time_past_the_break() -> None:
+        if path.stat().st_mtime <= not_before:
+            stamp = not_before + 1.0
+            os.utime(path, (stamp, stamp))
+
+    return write_back(path, content, then=push_the_time_past_the_break)
 
 
 #: Where `prove_cpp_guard` keeps the original bytes of every file it breaks,
@@ -1239,6 +1259,13 @@ def save_originals_for_recovery(originals: Mapping[pathlib.Path, bytes],
     path.write_text(json.dumps(record, indent=1), encoding="utf-8")
 
 
+#: What to run when `prove_cpp_guard` could not write a broken file back. The
+#: recovery file is kept whenever that happens, which is what makes this work.
+RESTORE_PROOF_ADVICE = ("`python tools/unreal_build.py restore-proof`, which writes back every "
+                        "original the kept recovery file holds, then build: no restore build "
+                        "ran, so the binaries may hold the break")
+
+
 def forget_the_saved_originals() -> None:
     """Delete the recovery file; called only once every file is restored."""
     path = recovery_file()
@@ -1261,9 +1288,18 @@ def restore_an_interrupted_proof() -> list[str]:
     record = json.loads(path.read_text(encoding="utf-8"))
     not_before = float(record.get("broken_at", time.time()))
     restored: list[str] = []
+    refused: dict[str, OSError] = {}
     for relative, encoded in record["files"].items():
-        restore_and_touch(REPO_ROOT / relative, base64.b64decode(encoded), not_before)
-        restored.append(relative)
+        error = restore_and_touch(REPO_ROOT / relative, base64.b64decode(encoded), not_before)
+        if error is None:
+            restored.append(relative)
+        else:
+            refused[relative] = error
+    if refused:
+        # THE RECOVERY FILE STAYS, so the same command can be run again.
+        raise files_left_broken_error(
+            refused, f"run `python tools/unreal_build.py restore-proof` again ({path} is kept), "
+                     "then build")
     path.unlink()
     return restored
 
@@ -1362,6 +1398,10 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     #: records seeing exactly that.
     first_failure: BaseException | None = None
 
+    #: Every file whose original could not be written back, with its last error.
+    #: See `prove_guard.FilesLeftBroken`.
+    refused: dict[str, OSError] = {}
+
     #: What the build with the break in it reported, or None if it never got that
     #: far.
     #:
@@ -1421,12 +1461,25 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
         first_failure = error
         raise
     finally:
+        # EVERY FILE IS TRIED, AND A REFUSED WRITE IS TRIED AGAIN
+        # (`restore_and_touch`). Until 2026-11-25 a refusal raised out of this
+        # loop, leaving the files after it broken too, and replaced whatever
+        # explained the run -- issue #384's fault from a new direction.
         for path, content in originals.items():
-            restore_and_touch(path, content, broken_at)
-        if originals:
-            # ONLY ONCE EVERY RESTORE ABOVE HAS BEEN WRITTEN. A restore that
-            # raised never reaches this line, and the file stays for
-            # `restore-proof`. Issue #1917.
+            error = restore_and_touch(path, content, broken_at)
+            if error is not None:
+                refused[str(path.relative_to(REPO_ROOT)).replace("\\", "/")] = error
+        if refused:
+            # A FILE STILL HOLDS THE BREAK, so the recovery file stays for
+            # `restore-proof` and NO RESTORE BUILD RUNS: it would compile the
+            # break and be read as the restore. `FilesLeftBroken` is raised
+            # below, or attached here to a failure already on its way out.
+            if first_failure is not None:
+                first_failure.add_note(str(files_left_broken_error(refused, RESTORE_PROOF_ADVICE)))
+        elif originals:
+            # ONLY ONCE EVERY RESTORE ABOVE HAS BEEN WRITTEN. A refused restore
+            # never reaches this line, and the file stays for `restore-proof`.
+            # Issue #1917.
             forget_the_saved_originals()
             restored_build = builder(target)
             try:
@@ -1456,6 +1509,13 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                     "The restore build was also unsatisfactory, and this is "
                     "reported as a note so it does not hide the failure above:"
                     f"\n{restore_failure}")
+
+    # NOTHING BELOW MAY RUN WHILE A FILE STILL HOLDS THE BREAK. Raised rather
+    # than returned, as `break_and_run` does: see `prove_guard.FilesLeftBroken`.
+    if refused:
+        raise files_left_broken_error(
+            refused, RESTORE_PROOF_ADVICE,
+            result=dataclasses.replace(broken, unrestored=tuple(refused)))
 
     # THE SECOND HALF, AND IT IS OUT HERE RATHER THAN IN THE `finally` ON
     # PURPOSE. Issue #1663 adds it; issue #384 says where it may not go. That
@@ -1667,7 +1727,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         list(argv if argv is not None else sys.argv[1:]))
 
     if arguments.command == "restore-proof":
-        restored = restore_an_interrupted_proof()
+        try:
+            restored = restore_an_interrupted_proof()
+        except FilesLeftBroken as error:
+            # SAID, NOT A TRACEBACK: the message names each file and what to run.
+            print(error)
+            return 1
         if not restored:
             print(f"Nothing to restore: {recovery_file()} does not exist, so no "
                   "prove_cpp_guard run was interrupted between its break and "
