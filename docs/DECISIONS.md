@@ -37,7 +37,7 @@ Decisions made outside the Google Drive documents, newest first.
   step for the two DataTable assets, and run the groups predicted under "Unreal tests".
 - **FIVE SENTENCES ARE NOT THE AUDITS' WORDS, each a judgement, because the audits' words would have been untrue or
   refused:**
-  - **Broken Will.** The audit wrote "when you kill an enemy, each curse and burn it carries has a 50% chance to pass".
+  - **Broken Will, the coordinating session's judgement (2026-11-24): "your sentence is accepted".** The audit wrote "when you kill an enemy, each curse and burn it carries has a 50% chance to pass".
     The stat it named, `debuff_spread_on_death_chance` (Empathic Link's), rolls on every enemy's death whoever killed
     it, and for every debuff, bleeds included. The sentence now says that: "At 4 points: when an enemy dies, each
     debuff it carries has a 50% chance to pass to a random enemy within 6 metres." A passed curse is credited to the
@@ -61,9 +61,20 @@ Decisions made outside the Google Drive documents, newest first.
   into magnitude and `CapThenExtend` (#1256) turns magnitude above 80 into duration, as the design document's
   ailments section says ("Chance above 100% becomes magnitude"). The audit's finding D was wrong. A test now holds it
   at Attrition's figures: 174% Cripple and 166% Weaken give 52.2 and 33.2.
-- **RELENTLESS TREATS THE TWO SPEEDS DIFFERENTLY, AND THAT WAS NOT FIXED.** Movement speed keeps its old suppression,
-  which sums the reductions first (+12% beside -40% gives no bonus); the new attack speed suppression drops each
-  reducing row on its own (+40% beside -50% keeps the +40%). Worth a ruling.
+- **RELENTLESS: BOTH SPEEDS DROP EACH REDUCING ROW ON ITS OWN, ruled by the coordinating session on 2026-11-24.**
+  The first version of this branch left the two speeds different: attack speed dropped each reducing row on its own
+  (+40% beside -50% kept the +40%), while movement speed summed each bucket and floored the sum (+12% beside -40% in
+  the increased bucket gave nothing). The ruling: "'Cannot be reduced' means every reducing row is ignored on its own
+  and every bonus still counts, so +12% beside -40% gives +12% for both speeds." `ACataclysmPlayerCharacter::
+  RefreshMovementSpeed` now drops the reducing rows, as `UCataclysmBasicAttack::AttackSpeedAfterSlows` does.
+  - **Only under the flag.** A character without `movement_speed_reduction_suppressed` -- every character a creature,
+    a dungeon rule or Cripple slows outside Relentless -- still sums its rows exactly as before; that path is
+    unchanged.
+  - **The flag is shared, and so is the rule.** Unstoppable's clause while an enemy is within 4 metres and Nothing
+    Moves You's clause at 50 or more Fervour grant the same stat, so they now read the same way. Their sentences say
+    the holder cannot be slowed, which is this rule.
+  - Tested by `Cataclysm.Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` (+12% and
+    -40%, both increases: 0.72 of the plain speed without the flag, 1.12 with it; the old floor gave 1.0).
 - **CROWD CONTROL RESISTANCE IS WRITTEN TWO WAYS**, as the audits wrote it: "+4 Crowd Control Resistance per point"
   (Masochist), "+2 Crowd Control Resistance per point" (Ritualist), "+5% Crowd Control Resistance per point" and "+10%
   Crowd Control Resistance" (Ravager). One stat, one number either way.
@@ -161,8 +172,9 @@ New groups (by the tests registered in their files): `Cataclysm.SanguineLedger.`
 `Cataclysm.IronhideOverwhelm.` 3, `Cataclysm.Thronged.` 3, `Cataclysm.Stoked.` 2, `Cataclysm.SecondWind.` 3,
 `Cataclysm.Relentless.` 4, `Cataclysm.DeeperHurt.` 4, `Cataclysm.YourCurse.` 3, `Cataclysm.OpenChannel.` 2,
 `Cataclysm.WardedFlesh.` 2, `Cataclysm.Swarm.` 2, `Cataclysm.PressGangedWand.` 1, `Cataclysm.Rekindled.` 2,
-`Cataclysm.PassiveScaleCap.` 1, `Cataclysm.RitualistRework.` 6: 58 in all. Grown: `Cataclysm.Ailments.` +1 and
-`Cataclysm.MasochistCostRows.` +1, so **60 more tests** than the base's total. Every other group keeps its count;
+`Cataclysm.PassiveScaleCap.` 1, `Cataclysm.RitualistRework.` 6: 58 in all. Grown: `Cataclysm.Ailments.` +1,
+`Cataclysm.MasochistCostRows.` +1 and `Cataclysm.Player.` +1 (the Relentless ruling), so **61 more tests** than the
+base's total. Every other group keeps its count;
 about forty existing tests were rewritten or renamed for the new rows.
 
 ### Guard proofs registered for the window
@@ -183,6 +195,7 @@ One break per mechanism, at most three per change; each must fail the tests name
 | Ravager 2 | `CataclysmBasicAttack.cpp`: `if (Suppressed <= 0.0f)` -> `if (Suppressed <= 1000.0f)` | `Relentless.ARowLoweringAttackSpeedIsDroppedAndAnEarnedOneKept` |
 | Ravager 2 | `CataclysmDebuffs.cpp`: `? Theirs->StatForSkill(FName(SpreadOnDeathMetresStat), FGameplayTagContainer(), 0.0f)` -> `? 0.0f * Theirs->StatForSkill(...)` | `DeeperHurt.ACrippleAndAWeakenPassToTheNearestEnemyWhenTheirCarrierDies` |
 | Ravager 2 | `CataclysmPlayerCharacter.cpp`: `UCataclysmFervour::RestoreHealthOnFervourFull(Cataclysm);` -> `(void)Cataclysm;` | `SecondWind.EachTimeTheBarFillsItRestoresItsShareOfMaximumHealth` |
+| Relentless ruling | `CataclysmPlayerCharacter.cpp` (`RefreshMovementSpeed`): `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= 0.0f)` -> `if (Row.Bucket != ECataclysmStatBucket::Removed && Row.Value >= -1000.0f)` | `Player.MovementSpeedKeepsAnIncreaseALargerReductionInTheSameBucketWouldCancel` |
 | Ritualist 1 | `CataclysmRisenImps.cpp`: `if (Active && Active->Spec.GetContext().GetInstigator() == Curser)` -> `if (Active)` | `YourCurse.ARowHoldsAgainstATargetCarryingYourCurseAndNotAStrangersCurse` |
 | Ritualist 1 | `CataclysmRisenImps.cpp`: `Count += FMath::Max(0, FMath::FloorToInt(Extra + KINDA_SMALL_NUMBER));` -> `Count += 0;` | `OpenChannel.ACursedDeathRaisesTwoImpsApartAndWithoutTheRowOne` |
 | Ritualist 1 | `CataclysmVitalAttributeSet.cpp`: delete `UCataclysmRegeneration::GiveShieldOnMinionDeath(Commander);` | `WardedFlesh.EachMinionDeathGivesItsCommanderATenthOfItsShield` |

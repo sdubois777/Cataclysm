@@ -124,8 +124,9 @@ public:
 	 * rate is not applied at all. Flooring the answer at the attribute would take
 	 * away a node's increase along with a slow, and the sentence says the
 	 * reduction does not apply, not the bonus. ROW BY ROW AND NOT BY FLOORING THE
-	 * SUMS, unlike `ACataclysmPlayerCharacter::RefreshMovementSpeed` under its
-	 * own flag, so +40% beside -50% keeps the +40%.
+	 * SUMS, so +40% beside -50% keeps the +40%; and since the coordinating
+	 * session's ruling of 2026-11-24 `ACataclysmPlayerCharacter::RefreshMovementSpeed`
+	 * reads its own flag the same way.
 	 *
 	 * @param Swinger  the avatar; Cripple and Wither are read off a player
 	 *                 character only, as before, because a creature's interval

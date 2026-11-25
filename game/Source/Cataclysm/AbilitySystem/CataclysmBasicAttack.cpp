@@ -129,6 +129,7 @@ float UCataclysmBasicAttack::AttackSpeedAfterSlows(
 
 	// THE REDUCING ROWS DROPPED, THE EARNED ONES KEPT, AND NO SLOW APPLIED. Each row is judged by its own sign, before
 	// any is summed: a flat, an increase or a "more" stating a figure below nought is a reduction, and so is a removal.
+	// `ACataclysmPlayerCharacter::RefreshMovementSpeed` drops movement speed's the same way, ruled 2026-11-24.
 	// Dropping rows rather than flooring the sums is what keeps an earned increase that a larger reduction would
 	// otherwise cancel: +40% and -50% leave +40%, not nought. A scaled row's sign is its value's, since every scale
 	// counts whole steps of nought or more. The pass is asked with the state `StatForSkill` builds, so a conditioned or
