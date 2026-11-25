@@ -125,7 +125,17 @@ kill's payment inside a running hold; the same gain on a full bar.
 
 ### What was run
 
-SUITE_FIGURES_C4B1
+**The whole Python suite on `8eb68ed03`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8512 passed, 9 skipped in 394.70s
+(0:06:34)". The JUnit file agrees: tests 8522, failures 1, errors 0, skipped 9, so 8512 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run before, on the
+working tree, failed that one and the check that every condition is named in this log, which this entry satisfies.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `9b7c3fb51`, and each `proved`:
