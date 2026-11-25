@@ -57,11 +57,13 @@ def test_no_two_of_the_six_classes_have_the_same_stat_line():
     assert len(set(lines.values())) == len(lines) == 6
 
 
-def test_the_shadow_is_the_only_class_with_evasion():
-    """Its Evasion limb increases evasion, so it needs a base; no other class's
-    identity is avoiding the blow."""
-    evading = [n for n in cl.CLASSES if _at_100(n).stat("evasion") > 0]
-    assert evading == ["Shadow"]
+def test_no_class_has_a_base_of_evasion_and_the_shadow_takes_less_area():
+    """The gem ruling of 2026-11-21 rests on no class having a base of evasion,
+    so the Shadow does not get one: its tree supplies its own (the test at the
+    bottom of this file). Its draft's "low area damage" is its area of effect."""
+    assert [n for n in cl.CLASSES if _at_100(n).stat("evasion") > 0] == []
+    generic = ch.Character(ch.GENERIC, level=100)
+    assert _at_100("Shadow").stat("area_of_effect") < generic.stat("area_of_effect")
 
 
 def test_the_necromancer_trades_health_for_mana_and_is_not_a_second_ritualist():
@@ -124,7 +126,6 @@ INCREASED_BY_THE_TREE = {
         "class_resource": ("Wider Grave", "increased maximum Fervour"),
     },
     "Shadow": {
-        "evasion": ("Nimble", "increased Evasion chance"),
         "crit_multiplier": ("Find the Gap", "increased Critical Strike Multiplier"),
         "movement_speed": ("Light Feet", "increased Movement Speed"),
         "dot_duration": ("Lasting Wounds", "increased duration"),
@@ -181,6 +182,7 @@ def test_the_design_document_death_table_matches_the_model():
         "Damage Reduction": "damage_reduction",
         "Crowd Control Resistance": "crowd_control_resistance",
         "Critical Strike Multiplier": "crit_multiplier",
+        "Area of Effect": "area_of_effect",
         "Movement Speed": "movement_speed",
         "Class Resource": "class_resource",
     }
@@ -197,4 +199,38 @@ def test_the_design_document_death_table_matches_the_model():
                 f"the design document says {name} has {written} {stat}; the "
                 f"model gives {actual}")
             checked += 1
-    assert checked == len(labels) * 3 == 36
+    assert checked == len(labels) * 3 == 39
+
+
+def test_the_shadows_evasion_increases_are_reached_only_through_its_flat_evasion():
+    """No class has a base of evasion, so the Shadow's two increases of it
+    (Nimble, Moving Target) are worth something only because every path to them
+    runs through Counterstroke, whose "+1% Evasion chance per point" is flat, and
+    asks 4 points of it. A re-drawn edge that let either be reached another way
+    would leave a Shadow paying for an increase of nothing."""
+    data = _tree("Shadow")
+    by_id = {n["id"]: n["data"] for n in data["nodes"]}
+    named = {body["name"]: node_id for node_id, body in by_id.items()}
+    base = named["Counterstroke"]
+    assert "+1% Evasion chance per point" in by_id[base]["description"]
+    assert "increased Evasion" not in by_id[base]["description"]
+
+    parents: dict[str, list[tuple[str, int]]] = {}
+    for edge in data["edges"]:
+        parents.setdefault(edge["target"], []).append(
+            (edge["source"], edge["data"]["requiredPoints"]))
+
+    def every_path_passes(node_id: str, seen: frozenset = frozenset()) -> bool:
+        if node_id == base:
+            return True
+        ways_in = parents.get(node_id, [])
+        if not ways_in or node_id in seen:
+            return False
+        return all(every_path_passes(source, seen | {node_id}) for source, _ in ways_in)
+
+    for increasing in ("Nimble", "Moving Target"):
+        node_id = named[increasing]
+        assert "increased Evasion chance" in by_id[node_id]["description"], increasing
+        assert every_path_passes(node_id), (
+            f"{increasing} can be reached without Counterstroke's flat evasion")
+    assert all(points >= 4 for source, points in parents[named["Nimble"]] if source == base)

@@ -211,6 +211,11 @@ NODES: tuple[Node, ...] = (
     Node(SH + "basic_c_c1", "Fed Stride",
          (R("cooldown_reduction", "flat", 5, tags="Slot.Movement",
             cond="class_resource_points_at_least", cond_value=50),)),
+    # COUNTERSTROKE'S FIRST HALF, "+1% Evasion chance per point": the flat evasion
+    # every other Evasion node is reached through (each needs 4 points in it), so
+    # Nimble's and Moving Target's increases always have a base under them. Its
+    # second half needs the Slip keystone's critical strike and is not built.
+    Node(SH + "basic_d_stem1", "Counterstroke", (R("evasion", "flat", 1),)),
     Node(SH + "basic_d_stem2", "Nimble", (R("evasion", "increased", 3),)),
     Node(SH + "basic_d_b0", "Moving Target",
          (R("evasion", "increased", 3, cond="while_moving"),)),
@@ -241,8 +246,8 @@ CLASS_STATS: tuple[tuple[str, str, float, float], ...] = (
     ("Necromancer", "crowd_control_resistance", 5, 0.1),
     ("Necromancer", "movement_speed", 3.8, 0),
     ("Shadow", "max_health", 90, 13),
-    ("Shadow", "evasion", 5, 0.1),
     ("Shadow", "crit_multiplier", 160, 0),
+    ("Shadow", "area_of_effect", 90, 0),
     ("Shadow", "movement_speed", 4.4, 0),
 )
 

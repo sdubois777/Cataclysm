@@ -644,14 +644,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Ravager_keystone_spine_002`, `melee_arc_full_circle` flat 1. The node
 #: already counted, so `AUTHORED_NODES` does not move. Issue #1515.
 #:
-#: AND TO 374 ON 2026-11-24, for the three Death trees' first rows: 49 rows on
-#: 42 nodes, every one a stat, condition and scale the game already had, written
+#: AND TO 375 ON 2026-11-24, for the three Death trees' first rows: 50 rows on
+#: 43 nodes, every one a stat, condition and scale the game already had, written
 #: by `tools/reapply_death_trees_workbook.py`. Eleven are the Soul
 #: Collector's, nine the Necromancer's (its starting node's within-10-metres
-#: half among them) and 29 the Shadow's. Six "damage" sentences are two rows
+#: half among them) and 30 the Shadow's (Counterstroke's first half among them). Six "damage" sentences are two rows
 #: each, one on attack damage and one on spell damage, and so is Restless Host,
 #: which raises minion damage and minion health.
-AUTHORED_ROWS = 374
+AUTHORED_ROWS = 375
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1065,11 +1065,11 @@ AUTHORED_ROWS = 374
 #: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
 #: Issue #1515.
 #:
-#: AND TO 268 ON 2026-11-24, for 42 nodes of the three Death trees: the Soul
+#: AND TO 269 ON 2026-11-24, for 43 nodes of the three Death trees: the Soul
 #: Collector 10 (three of them capstones, for one option each), the Necromancer
-#: 8 and the Shadow 24 (two capstones). Measured then: the Soul Collector is 10
-#: of its 73, the Necromancer 8 of its 72 and the Shadow 24 of its 74.
-AUTHORED_NODES = 268
+#: 8 and the Shadow 25 (two capstones). Measured then: the Soul Collector is 10
+#: of its 73, the Necromancer 8 of its 72 and the Shadow 25 of its 74.
+AUTHORED_NODES = 269
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:

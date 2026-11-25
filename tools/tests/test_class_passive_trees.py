@@ -938,6 +938,52 @@ def test_the_new_generators_say_both_how_they_fill_and_what_they_empty(tree_name
         f"not decaying' rather than staying silent. It reads: {text!r}")
 
 
+# ---------------------------------------------------------------------------
+# The three Death trees, added 2026-11-24
+# ---------------------------------------------------------------------------
+
+#: The three trees the project owner approved on 2026-11-24. Named rather than
+#: derived, for the reason `TREES_ADDED_BY_950` gives.
+TREES_ADDED_ON_2026_11_24 = ("Soul Collector", "Necromancer", "Shadow")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_ON_2026_11_24)
+def test_the_three_death_trees_exist_under_their_class_names(tree_name):
+    """The metadata name is the class's name, space included, as
+    `UCataclysmCharacterCreation::ClassesByDamageType` spells it. The file name
+    is the one thing that writes the space as an underscore."""
+    data = load(tree_name)
+    assert data["metadata"]["name"] == f"{tree_name} Class Tree"
+    assert tree_path(tree_name).name == (
+        f"{tree_name.replace(' ', '_')}_Class_Tree_Final.json")
+
+
+@pytest.mark.parametrize("tree_name", TREES_ADDED_ON_2026_11_24)
+def test_the_death_generators_say_both_how_they_fill_and_what_they_empty(tree_name):
+    """The same two statements `test_the_new_generators_say_both_how_they_fill_
+    and_what_they_empty` asks of the Ravager and the Ritualist. Two of the three
+    Death classes add a decay; the Necromancer keeps the default and says so."""
+    text = [n["data"]["description"] for n in load(tree_name)["nodes"]
+            if n["data"]["name"] == "Fervour"][0].lower()
+    assert "generate" in text, f"{tree_name}: the Fervour node says nothing fills it"
+    assert any(word in text for word in ("decay", "does not decay", "empties", "drains")), (
+        f"{tree_name}: the Fervour node says nothing about emptying: {text!r}")
+
+
+def test_no_death_vow_promises_a_stat_this_game_does_not_have():
+    """There is no cast speed in this game (issue #1000). The approved Soul
+    Collector draft said "Attack and Cast Speed" four times, which were made
+    "Attack Speed" when the tree landed; this keeps a fifth from arriving."""
+    for tree_name in TREES_ADDED_ON_2026_11_24:
+        for node in load(tree_name)["nodes"]:
+            body = node["data"]
+            texts = [body["description"]] + [o["description"]
+                                            for o in body.get("options") or []]
+            for text in texts:
+                assert "cast speed" not in text.lower(), (
+                    f"{tree_name}/{body['name']} promises cast speed: {text!r}")
+
+
 def test_the_ritualist_tree_grows_the_army_by_growing_the_pool():
     """THE CONSTRAINT THIS TREE WAS BUILT AROUND, and the one most likely to be
     lost, because it was decided outside the tree and outside this file.

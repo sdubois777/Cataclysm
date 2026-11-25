@@ -367,6 +367,7 @@ Shadow_basic_c_a0#2,Shadow_basic_c_a0,spell_damage,increased,4.0,Slot.Movement,,
 Shadow_basic_c_a2#1,Shadow_basic_c_a2,crit_chance,increased,3.0,Slot.Movement,,0.0,,0.0,0,-1.0,0
 Shadow_basic_c_b2#1,Shadow_basic_c_b2,bleed_chance,flat,5.0,Slot.Movement,,0.0,,0.0,0,-1.0,0
 Shadow_basic_c_c1#1,Shadow_basic_c_c1,cooldown_reduction,flat,5.0,Slot.Movement,class_resource_points_at_least,50.0,,0.0,0,-1.0,0
+Shadow_basic_d_stem1#1,Shadow_basic_d_stem1,evasion,flat,1.0,,,0.0,,0.0,0,-1.0,0
 Shadow_basic_d_stem2#1,Shadow_basic_d_stem2,evasion,increased,3.0,,,0.0,,0.0,0,-1.0,0
 Shadow_basic_d_b0#1,Shadow_basic_d_b0,evasion,increased,3.0,,while_moving,0.0,,0.0,0,-1.0,0
 Shadow_basic_d_b1#1,Shadow_basic_d_b1,evasion,flat,3.0,,seconds_after_movement_skill,2.0,,0.0,0,-1.0,0

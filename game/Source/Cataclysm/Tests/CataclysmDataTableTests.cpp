@@ -512,9 +512,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// starting node, curse_death_raises_imp. Issue #1479.
 	// AND 325 SINCE 2026-09-30, for Every Swing Lands' arc: a second row on
 	// the Ravager keystone, melee_arc_full_circle. Issue #1515.
-	// AND 374 SINCE 2026-11-24, for the three Death trees' first 49 rows on 42
-	// nodes: 11 the Soul Collector's, 9 the Necromancer's, 29 the Shadow's.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        374)
+	// AND 375 SINCE 2026-11-24, for the three Death trees' first 50 rows on 43
+	// nodes: 11 the Soul Collector's, 9 the Necromancer's, 30 the Shadow's.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        375)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

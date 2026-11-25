@@ -243,7 +243,7 @@
       "data": {
         "kind": "basic",
         "name": "Held Close",
-        "description": "+3% increased Crowd Control Resistance per point while you hold 50 or more Fervour. A stun stops your kills, and stopped kills let your Fervour decay.",
+        "description": "+3% increased Crowd Control Resistance per point while you hold 50 or more Fervour. Crowd control stops your kills, and stopped kills let your Fervour decay.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

@@ -45,6 +45,6 @@ Necromancer_damage_reduction,Necromancer,damage_reduction,2.0,0.03
 Necromancer_crowd_control_resistance,Necromancer,crowd_control_resistance,5.0,0.1
 Necromancer_movement_speed,Necromancer,movement_speed,3.8,0.0
 Shadow_max_health,Shadow,max_health,90.0,13.0
-Shadow_evasion,Shadow,evasion,5.0,0.1
 Shadow_crit_multiplier,Shadow,crit_multiplier,160.0,0.0
+Shadow_area_of_effect,Shadow,area_of_effect,90.0,0.0
 Shadow_movement_speed,Shadow,movement_speed,4.4,0.0

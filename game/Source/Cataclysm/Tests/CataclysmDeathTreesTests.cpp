@@ -338,24 +338,23 @@ bool FCataclysmDeathTreesClassLinesTest::RunTest(const FString&)
 	}
 
 	// LEVEL 20, SO THE PER-LEVEL GAIN IS IN EVERY FIGURE: base + 19 x gain.
-	// The Soul Collector's health is 115 + 19 x 17, the Necromancer's armour
-	// 15 + 19 x 2 and the Shadow's evasion 5 + 19 x 0.1.
+	// The Soul Collector's health is 115 + 19 x 17 and the Necromancer's armour
+	// 15 + 19 x 2. The Shadow's area of effect has no gain: 90 at every level.
 	TestEqual(TEXT("the Soul Collector's health, read with the space in its name"),
 			  UCataclysmClassStats::BaseFor(Table, TEXT("Soul Collector"), TEXT("max_health"), 20),
 			  438.0f);
 	TestEqual(TEXT("the Necromancer's armour"),
 			  UCataclysmClassStats::BaseFor(Table, TEXT("Necromancer"), TEXT("armor"), 20), 53.0f);
-	TestEqual(TEXT("the Shadow's evasion"),
-			  UCataclysmClassStats::BaseFor(Table, TEXT("Shadow"), TEXT("evasion"), 20), 6.9f,
-			  0.001f);
+	TestEqual(TEXT("the Shadow's smaller area of effect"),
+			  UCataclysmClassStats::BaseFor(Table, TEXT("Shadow"), TEXT("area_of_effect"), 20), 90.0f);
 
 	// WHAT EACH REFUSES IS NOUGHT, and that is the design: the Shadow takes no
-	// armour and the Soul Collector no evasion.
+	// armour, and no class -- the Shadow included -- has a base of evasion; the
+	// Shadow's comes from its tree's Counterstroke.
 	TestEqual(TEXT("the Shadow has no armour"),
 			  UCataclysmClassStats::BaseFor(Table, TEXT("Shadow"), TEXT("armor"), 20), 0.0f);
-	TestEqual(TEXT("the Soul Collector has no evasion"),
-			  UCataclysmClassStats::BaseFor(Table, TEXT("Soul Collector"), TEXT("evasion"), 20),
-			  0.0f);
+	TestEqual(TEXT("the Shadow has no evasion from its class"),
+			  UCataclysmClassStats::BaseFor(Table, TEXT("Shadow"), TEXT("evasion"), 20), 0.0f);
 
 	// THE CONTROL: the space-free spelling names no line, so it falls back to
 	// the shared default, 100 + 19 x 15. A character on that line would have
