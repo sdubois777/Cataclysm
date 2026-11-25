@@ -131,6 +131,17 @@ Decisions made outside the Google Drive documents, newest first.
 - Colossus Eternal's doubling is one row on healing received, which regeneration and leech already pass through. A
   second row on regeneration would make it four times, as the survey said.
 
+### THE PYTHON SUITE
+
+Run on `df77c40d60269f21e9c4af84622dc5b3fe67c0e1`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8529 passed, 9
+skipped in 472.80s**, and the JUnit file `tests="8539" failures="1" errors="0" skipped="9"`, which is
+8,529 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py --changed` before the commit: 6 files read, 0 with complaints. The include
+audit over the branch's five .cpp files: 0 unreachable.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
