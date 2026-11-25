@@ -85,6 +85,19 @@ float FCataclysmDungeon::SiegeBiteShare() const
 	return Type == ECataclysmDungeonType::Quest ? UCataclysmSurgeScheduler::QuestSiegeBiteShare : 1.0f;
 }
 
+bool FCataclysmDungeon::IsALair() const
+{
+	// A QUEST DUNGEON DEATH SENT, as `IsARift` asks of Demonic. Issue #51 slice B5.
+	return Type == ECataclysmDungeonType::Quest
+		&& Cataclysm == ECataclysmType::Death;
+}
+
+float FCataclysmDungeon::AbominationMultiplier() const
+{
+	return IsALair() ? FMath::Pow(UCataclysmSurgeScheduler::AbominationStep, static_cast<float>(CitiesFallenBefore))
+					 : 1.0f;
+}
+
 int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const
 {
 	// THE IDENTIFIER PLUS ONE, XORED WITH THE RUN'S MASK, so two runs' dungeon N differ; a mask of 0 is the seed every
@@ -1305,6 +1318,11 @@ int32 UCataclysmSurgeScheduler::WarSiegeSeedFor(int32 RunSeed, int32 DungeonId, 
 	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(RunSeed, WarSiegeSalt, DungeonId), WarSiegeSalt, Draw);
 }
 
+int32 UCataclysmSurgeScheduler::LairSeedFor(int32 RunSeed, int32 DungeonId)
+{
+	return CataclysmSeedMix::Mix(CataclysmSeedMix::Mix(RunSeed, LairSalt, DungeonId), LairSalt, 0);
+}
+
 int32 UCataclysmSurgeScheduler::PickCityWithoutASiege(const UCataclysmEmpireMap& Map, FRandomStream& Draws,
 													  const TArray<int32>& DungeonsPerCity,
 													  const TArray<int32>& SiegesPerCityNow)
@@ -1780,6 +1798,12 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 												Day, Stream, bSiegeAllowed,
 												Kind, Sender);
 		Dungeon.Cataclysm = Sender;
+
+		// AN ABOMINATION LAIR COUNTS THE CITIES FALLEN AS IT LANDS. No draw. Issue #51 slice B5.
+		if (Dungeon.IsALair())
+		{
+			Dungeon.CitiesFallenBefore = Map.FallenCityCount();
+		}
 
 		if (Dungeon.SubType == ECataclysmDungeonSubType::Siege)
 		{

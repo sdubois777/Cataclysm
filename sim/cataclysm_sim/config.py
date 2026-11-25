@@ -1336,6 +1336,27 @@ class TuningConfig:
     # `UCataclysmEmpireRun::MakeWarQuestSiegeOnAFall`.
     war_fall_makes_a_quest_siege: bool = True
 
+    # DEATH'S QUEST DUNGEONS ARE ABOMINATION LAIRS, since 2026-11-25 (issue #51
+    # slice B5, with the simulation slice A2). The design's Dead Rising: "Cursed
+    # Abominations spawn as cities fall, growing stronger with each subsequent
+    # loss ... Each fallen city adds a more powerful Abomination." Accepted by the
+    # owner on 2026-11-24 ("Your recommendations work for all of those death/war
+    # questions"): Q6, a surge's Death Quest dungeon is a lair AND every city that
+    # falls while Death is active adds one, placed as a fall moves a Quest
+    # dungeon (`Simulation._quest_refuge`), with no cap (L2); Q7, its boss's
+    # health and damage are multiplied by `abomination_step` once for every city
+    # fallen when the lair appeared, the fall that made it included (L1), with no
+    # cap. The coordinating session ruled L1 to L9 on 2026-11-25.
+    death_lairs: bool = True
+
+    # THE ABOMINATION'S STEP: the multiplier on a lair boss's health and damage
+    # for each city fallen when the lair appeared. 1.0 UNTIL MEASURED, which
+    # leaves every figure where it was: the slice A2 sweep
+    # (`.claude/windows/b5_sweep_abomination_step.py`) picks the largest step
+    # whose tier 1 Death won share is within 5 points of a step of 1.0, a
+    # judgement the coordinating session ruled on 2026-11-25 (L7).
+    abomination_step: float = 1.0
+
     # THE VOID ADDS STACKS AND DOES NO DAMAGE, since 2026-10-18. The owner,
     # 2026-10-16, verbatim: "All void dungeons when they resolve add 1-3 void stacks to a city instead of doing damage to the city or population and at 10 stacks the city is erased. So, maybe Hollow works, but we shouldn't just flat out erase a city if they player can't get to it in time."
     # Ruled by the coordinating session the same day: an ordinary Void dungeon

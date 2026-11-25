@@ -393,6 +393,14 @@ struct CATACLYSMEMPIRE_API FCataclysmDayReport
 	TArray<int32> WarSiegeOnAFall;
 
 	/**
+	 * The Abomination lairs a city's fall made today while Death was active, in the order they were made; `Spawned`
+	 * lists them too, and `SurgeDungeons` does not. `UCataclysmEmpireRun::MakeLairOnAFall` fills it. Additive only.
+	 * Issue #51 slice B5.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Empire")
+	TArray<int32> LairOnAFall;
+
+	/**
 	 * Whether a death in a Rift brought a surge in this report. `bSurged` and `Surges` say so too. Issue #51 slice B2:
 	 * the owner, 2026-11-24, "Every death, no gap (Recommended)". Only the report
 	 * `UCataclysmEmpireRun::SurgeForADeathInARift` answers sets it.
@@ -2319,6 +2327,16 @@ private:
 	 * counts it toward the day's two. The model's `Simulation._war_siege_on_a_fall`. Issue #51 slice B4.
 	 */
 	void MakeWarQuestSiegeOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
+
+	/**
+	 * A city's fall while Death is active makes one Abomination lair: a Quest dungeon Death sends, made as a surge
+	 * makes one for the city `UCataclysmSurgeScheduler::PickRefuge` answers from the fallen city -- an adjacent exposed
+	 * city first, else the nearest that qualifies -- with no cap (L2). It counts the cities fallen, this one included
+	 * (L1), and toward Death's 5 objectives when cleared. Its draws come from a stream of its own (`LairSeedFor`).
+	 * `CityFell` calls it after War's Siege and before the fall's own surge. The owner, 2026-11-24, Q6; the
+	 * coordinating session, 2026-11-25, L1 and L2. The model's `Simulation._lair_on_a_fall`. Issue #51 slice B5.
+	 */
+	void MakeLairOnAFall(int32 FallenCityId, FCataclysmDayReport& OutReport);
 
 	/**
 	 * The War Quest Sieges made on `Day` that still stand: the Quest dungeons on the map whose sub-type is Siege and
