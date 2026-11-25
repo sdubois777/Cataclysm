@@ -519,3 +519,15 @@ Saboteur_basic_trap_qty_001#1,Saboteur_basic_trap_qty_001,minion_reserve_percent
 Saboteur_basic_trunk_014#1,Saboteur_basic_trunk_014,damage_reduction,more,3.0,,class_resource_at_or_below,50.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_basic_trunk_014#2,Saboteur_basic_trunk_014,damage_reduction,more,3.0,,class_resource_above,50.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,4
 Saboteur_basic_trunk_014#3,Saboteur_basic_trunk_014,damage_reduction,more,6.0,,class_resource_above,50.0,,0.0,0,-1.0,4,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,1,0
+Berserker_twoh_003#1,Berserker_twoh_003,crit_multiplier,flat,6.0,,wielding_two_handed_weapon,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_twoh_003#2,Berserker_twoh_003,crit_armor_removed_in_wrath,flat,10.0,,in_wrath,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0
+Berserker_twoh_003#3,Berserker_twoh_003,crit_armor_fervour_cost,flat,3.0,,in_wrath,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0
+Berserker_twoh_003#4,Berserker_twoh_003,crit_armor_stack_cap,flat,4.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,5
+Berserker_twoh_003#5,Berserker_twoh_003,crit_armor_stack_cap,flat,6.0,,,0.0,,0.0,0,-1.0,5,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_twoh_003#6,Berserker_twoh_003,crit_armor_seconds,flat,2.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_crit_004#1,Berserker_crit_004,deathmark_damage_taken_percent,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_crit_004#2,Berserker_crit_004,deathmark_fervour_cost,flat,10.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_crit_004#3,Berserker_crit_004,deathmark_fervour_cost,flat,-1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_crit_004#4,Berserker_crit_004,deathmark_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_trunk_008#1,Berserker_trunk_008,blood_price_percent_of_maximum_fervour,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_trunk_008#2,Berserker_trunk_008,blood_price_seconds,flat,3.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

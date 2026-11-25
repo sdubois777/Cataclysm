@@ -301,6 +301,20 @@ TArray<FCataclysmPlayerEffect> UCataclysmPlayerEffects::EntriesFor(const AActor*
 	// and Berserking waits for the next melee attack. The Berserker's states, 2026-11-25; the owner's rule of 2026-08-24
 	// that a system must be seen in game.
 	AddText(Buffs, FCataclysmBerserkerStates::StateTextFor(Actor), false, AbilitySystem, nullptr);
+	// AND BLOOD PRICE'S DAMAGE WHILE IT WAITS FOR THE NEXT MELEE BLOW THAT LANDS, with its seconds. The Berserker's Blood
+	// Price, 2026-11-25.
+	if (const UCataclysmAbilitySystemComponent* BloodPriceHolder =
+			Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		if (BloodPriceHolder->BloodPriceHeldNow() > 0.0f)
+		{
+			FCataclysmPlayerEffect Held;
+			Held.Name = FString::Printf(TEXT("Blood Price +%d damage"),
+										FMath::RoundToInt(BloodPriceHolder->BloodPriceHeldNow()));
+			Held.SecondsLeft = BloodPriceHolder->BloodPriceSecondsLeft();
+			Buffs.Add(Held);
+		}
+	}
 	if (NihilMore > 0.0f)
 	{
 		FCataclysmPlayerEffect Reward;

@@ -1894,6 +1894,39 @@ public:
 	float SecondsSinceGadgetStruck() const;
 
 	/**
+	 * Lay a Deathmark on this character, or refresh the one it carries, for `Seconds`, adding `Percent` to the damage it
+	 * takes from every source (`UCataclysmDamageCalculation::Resolve`, beside an ailment's damage-taken rider). One mark
+	 * at a time: a new one replaces the old. A percent of nought is a mark that adds nothing, which Deathmark lays when
+	 * its cost could not be paid. The Berserker's Deathmark, 2026-11-25.
+	 */
+	void MarkWithDeathmark(float Percent, float Seconds);
+
+	/** Whether a Deathmark lasts on this character now. */
+	bool IsDeathmarked() const;
+
+	/** What the Deathmark this character carries adds to the damage it takes, in per cent, or nought with none. */
+	float DeathmarkPercentNow() const;
+
+	/** `DeathmarkPercentNow` of `Carrier`'s component, or nought for any other component. For the damage step. */
+	static float DeathmarkPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * Hold Blood Price's damage for `Seconds`: the first melee blow of this character's own that lands in that time adds
+	 * it before the increases (`UCataclysmSkillEffects::ApplyHit`) and spends it. A later emptying replaces it. The
+	 * Berserker's Blood Price, 2026-11-25.
+	 */
+	void HoldBloodPrice(float Damage, float Seconds);
+
+	/** The Blood Price damage held now, or nought once spent or past its seconds. */
+	float BloodPriceHeldNow() const;
+
+	/** The seconds the held Blood Price damage has left, or nought with none. For the effects line. */
+	float BloodPriceSecondsLeft() const;
+
+	/** Spend the held Blood Price damage: a melee blow carrying it landed. */
+	void SpendBloodPrice();
+
+	/**
 	 * Raise `resource_consumed` `Times` times. Issue #1833 group D part 5, ruled
 	 * 2026-10-01: a class-resource cost paid, once per payment, or a next-use
 	 * charge spent, once per charge. MANA IS NOT A RESOURCE HERE, and the Fervour
@@ -5868,6 +5901,14 @@ protected:
 
 	/** When one of this character's gadgets last took a landed blow, in world seconds, or -1. See `NoteGadgetStruck`. */
 	float LastGadgetStruckAtSeconds = -1.0f;
+
+	/** The Deathmark this character carries: its percent, and when it ends in world seconds (-1 with none). */
+	float DeathmarkedPercent = 0.0f;
+	float DeathmarkedUntilSeconds = -1.0f;
+
+	/** Blood Price's damage held, and when it lapses in world seconds (-1 with none). See `HoldBloodPrice`. */
+	float BloodPriceDamage = 0.0f;
+	float BloodPriceUntilSeconds = -1.0f;
 
 	/**
 	 * When each striker's first blow of its current combat got through to this

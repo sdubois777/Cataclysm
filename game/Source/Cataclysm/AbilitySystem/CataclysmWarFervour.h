@@ -258,6 +258,58 @@ public:
 	 */
 	static float NoteFervourSpentOrDrained(UAbilitySystemComponent* AbilitySystem, float Spent);
 
+	//~ SKULL SPLITTER (`Berserker_twoh_003`), on the coordinating session's rulings of 2026-11-25: "While in Wrath,
+	// critical strikes drain an additional 3 Fervour per hit in exchange for applying a 2-second armor reduction of 10%
+	// per point on the target. At 5 points: This armor reduction stacks up to 6 times instead of 4." The percent a stack
+	// and the cost, each stated under `in_wrath` and `wielding_two_handed_weapon`; the cap (4, and 6 from 5 points, by
+	// Max Points and Min Points); the seconds.
+	static const TCHAR* CritArmorRemovedInWrathStat;
+	static const TCHAR* CritArmorFervourCostStat;
+	static const TCHAR* CritArmorStackCapStat;
+	static const TCHAR* CritArmorSecondsStat;
+
+	/**
+	 * Skull Splitter at a critical strike on `Target`. With the percent and the seconds above nought and the pool able to
+	 * pay the whole cost, the cost is taken and one stack placed on the target through `ReceivePlacedStack`, as an
+	 * `enemy_armor_removed` row places one, so the creature's status line shows it as armour removed. A POOL THAT CANNOT
+	 * PAY THE WHOLE COST PAYS NOTHING AND PLACES NOTHING: the ruling on question 1, "in exchange for".
+	 * @return the percent of the stack placed, or nought
+	 */
+	static float SkullSplitterOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Target,
+											   const FGameplayTagContainer& SkillTags);
+
+	//~ DEATHMARK (`Berserker_crit_004`): "Critical strikes apply a Deathmark for 5 seconds. Applying a Deathmark costs 10
+	// Fervour, reduced by 1 per point. Marked enemies take +3% increased damage per point from all sources. If you have no
+	// Fervour the mark still applies but deals no bonus damage." The mark's percent, its cost (10 once and -1 a point),
+	// and its seconds.
+	static const TCHAR* DeathmarkPercentStat;
+	static const TCHAR* DeathmarkFervourCostStat;
+	static const TCHAR* DeathmarkSecondsStat;
+
+	/**
+	 * Deathmark at a critical strike on `Target`. With the percent and the seconds above nought, a pool holding the whole
+	 * cost pays it and the mark carries the percent; a pool holding less PAYS NOTHING AND THE MARK CARRIES NOUGHT (the
+	 * ruling on question 2: less than the cost is none, as the sentence says for none). Either way the mark is laid, or
+	 * refreshed, for its seconds (`UCataclysmAbilitySystemComponent::MarkWithDeathmark`). @return the percent the mark
+	 * carries, or -1 when none was laid
+	 */
+	static float DeathmarkOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Target,
+										   const FGameplayTagContainer& SkillTags);
+
+	//~ BLOOD PRICE (`Berserker_trunk_008`): "When your Fervour reaches 0 for any reason, your next melee attack within 3
+	// seconds deals bonus damage equal to 5% per point of your maximum Fervour." The percent of the maximum and the
+	// seconds.
+	static const TCHAR* BloodPricePercentStat;
+	static const TCHAR* BloodPriceSecondsStat;
+
+	/**
+	 * Blood Price as the pool empties, for any reason (the ruling on question 4: decay included): hold, for its seconds,
+	 * damage of its percent of the maximum Fervour for the first melee blow that lands (question 5), which
+	 * `UCataclysmSkillEffects::ApplyHit` adds before the increases and spends (`HoldBloodPrice`). @return the damage held,
+	 * or nought
+	 */
+	static float ArmBloodPrice(UAbilitySystemComponent* AbilitySystem);
+
 private:
 	/** Take up to `Amount` from the pool, clamped at nought, and return what was taken. */
 	static float TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount);

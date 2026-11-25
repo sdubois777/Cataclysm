@@ -1111,6 +1111,10 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (bPoolMoved && HeldBefore > 0.0f && HeldNow <= 0.0f)
 	{
 		Cataclysm->NoteClassResourceEmptied();
+
+		// AND BLOOD PRICE'S DAMAGE, HELD FOR THE NEXT MELEE BLOW THAT LANDS, on the same crossing and for any reason the
+		// pool emptied (the Berserker's Blood Price, 2026-11-25). Nought for every character without the node.
+		FCataclysmWarFervour::ArmBloodPrice(Cataclysm);
 	}
 }
 
@@ -1285,6 +1289,12 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		// character without `fervour_per_critical_strike`. Slice C, 2026-11-24.
 		FCataclysmWarFervour::GainOnCriticalStrike(
 			Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+
+		// AND SKULL SPLITTER'S ARMOR REDUCTION AND DEATHMARK'S MARK ON THE CREATURE STRUCK, each paying its own cost, the
+		// first first. The Berserker's nodes of 2026-11-25. Nought for every character without them.
+		const FGameplayTagContainer CritTags = Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer();
+		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
+		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
 	}
 }
 

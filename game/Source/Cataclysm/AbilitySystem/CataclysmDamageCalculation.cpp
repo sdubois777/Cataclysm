@@ -1220,7 +1220,11 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			DefenderStat(Defender, DamageTakenStat,
 						 Combat->GetDamageTaken(), BlowOf(Hit))
 			+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
-				  Defender, ECataclysmAilmentRider::DamageTaken)) / 100.0f;
+				  Defender, ECataclysmAilmentRider::DamageTaken)
+			// AND A DEATHMARK'S PERCENT, "Marked enemies take +3% increased damage per point from all sources" (the
+			// Berserker's Deathmark, 2026-11-25): from every attacker, minions and allies included (question 3), as the
+			// rider beside it is.
+			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f;
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS

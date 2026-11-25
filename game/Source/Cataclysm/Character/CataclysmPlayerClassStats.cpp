@@ -1144,6 +1144,19 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("retaliation_pulse_radius_metres"),
 		TEXT("retaliation_pulse_applies_bleed"),
 		TEXT("health_percent_per_ten_fervour_spent"),
+		// SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25, each read by FCataclysmWarFervour: Skull Splitter's percent
+		// a stack, cost, cap and seconds, and Deathmark's percent, cost and seconds (SkullSplitterOnCriticalStrike and
+		// DeathmarkOnCriticalStrike, at a critical strike); Blood Price's percent of the maximum and seconds
+		// (ArmBloodPrice, as the pool empties).
+		TEXT("crit_armor_removed_in_wrath"),
+		TEXT("crit_armor_fervour_cost"),
+		TEXT("crit_armor_stack_cap"),
+		TEXT("crit_armor_seconds"),
+		TEXT("deathmark_damage_taken_percent"),
+		TEXT("deathmark_fervour_cost"),
+		TEXT("deathmark_seconds"),
+		TEXT("blood_price_percent_of_maximum_fervour"),
+		TEXT("blood_price_seconds"),
 	};
 	return Stats;
 }

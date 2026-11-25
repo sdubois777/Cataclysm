@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Skull Splitter, Deathmark and Blood Price: an armour reduction a critical strike in Wrath pays 3 Fervour for, a mark that raises the damage an enemy takes from every source, and damage held for the next melee blow after the pool empties
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (532 rows): twelve rows on three Berserker nodes,
+  Skull Splitter (`Berserker_twoh_003`), Deathmark (`Berserker_crit_004`) and Blood Price (`Berserker_trunk_008`)
+  (`tools/reapply_war_skull_deathmark_blood_workbook.py`, new). `docs/README.md` (the sheet table). **The editor step
+  must rebuild `DT_PassiveEffects`.**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: nine stats, and
+  `SkullSplitterOnCriticalStrike`, `DeathmarkOnCriticalStrike` and `ArmBloodPrice`.
+  `CataclysmAbilitySystemComponent.h` and `.cpp`: the mark (`MarkWithDeathmark`, `IsDeathmarked`, `DeathmarkPercentNow`,
+  `DeathmarkPercentOn`) and the held damage (`HoldBloodPrice`, `BloodPriceHeldNow`, `BloodPriceSecondsLeft`,
+  `SpendBloodPrice`), both cleared by `ClearWhatDeathEnds` beside the other windows. `CataclysmDamageCalculation.cpp`:
+  the mark's percent in the damage-taken factor. `CataclysmSkillEffects.cpp`: the held damage in `ApplyHit`'s flat sum,
+  spent by a blow that lands.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: Skull Splitter and Deathmark at a critical strike
+  (`OnSomethingWasHit`, after the critical strike's Fervour gain), Blood Price as the pool empties
+  (`OnClassResourceChanged`, beside `NoteClassResourceEmptied`). `CataclysmPlayerClassStats.cpp`: the nine stats have no
+  attribute.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`: `DeathmarkTextFor`, in the line under a
+  creature's health bar. `CataclysmPlayerEffects.cpp`: "Blood Price +N damage", with its seconds, on the effects line.
+- `tools/generate_datatables.py`: Skull Splitter's percent and cost are conditioned stats with an asker.
+- Tests: `CataclysmSkullDeathmarkBloodTests.cpp` (new, four), `CataclysmStatExemptionTests.cpp` (nine probes),
+  `CataclysmDataTableTests.cpp` (the pin, 532); `tools/tests/test_war_skull_deathmark_blood_scripts.py` (new),
+  `test_passive_effects_match_the_node_text.py` (the nine stats' words, 532 rows and 308 nodes),
+  `test_stat_lookups_hand_over_what_they_should.py` (nine lookups).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run
+  `Cataclysm.SkullDeathmarkBlood.` (four tests, new), `Cataclysm.StatExemption.` (the nine probes, inside
+  `EveryStatWithNoAttributeIsActuallyRead`; the group's count does not change), `Cataclysm.Data.` (the pin, 532) and
+  `Cataclysm.WarFervour.` (the critical strike's site; its count does not change).
+- **THE DISPLAY, CHECKED AS THE COORDINATING SESSION ASKED.** A placed stack already shows: Skull Splitter's stacks are
+  placed stacks, which `ArmourRemovedTextFor` sums with every other armour reduction into "Armor -N%" under the
+  creature's health bar (`StatusLineFor`). A Deathmark showed nowhere, so it has a basic display: "Deathmarked +18%", or
+  "Deathmarked" for a mark carrying nothing (question 2). Blood Price's held damage shows on the player's effects line.
+- **TWO MERGE OBLIGATIONS.** (1) Any other branch adding Passive Effects rows moves the same counts
+  (`AUTHORED_ROWS`, `AUTHORED_NODES`, the pin in `CataclysmDataTableTests.cpp`, `docs/README.md`); whichever merges
+  second adds both. (2) `feat/death-trees-c3d` changes `OnClassResourceChanged` in `CataclysmPlayerCharacter.cpp` at
+  the place Blood Price is armed; whichever merges second keeps both, and runs `tools/check_resolved_cpp.py`.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the plan of that day: "Q1 neither the drain nor
+the armor reduction when the pool cannot pay 3; Q2 less than Deathmark's cost is treated as none (the mark with no
+bonus, nothing spent), as the node's last sentence says for none; Q3 "all sources" includes minions and allies; Q4 "for
+any reason" includes decay; Q5 the first melee blow that lands." And: "check whether a placed stack already shows on
+the enemy; if not, the mark needs a basic display."
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Skull Splitter**: "+6% critical strike multiplier per point" is a row on `crit_multiplier` under
+   `wielding_two_handed_weapon`. At a critical strike the player dealt, in Wrath and with a two-handed weapon (the
+   percent's and the cost's two conditions), a pool holding 3 pays 3 and the struck creature receives one stack of 10%
+   a point armour removed for 2 seconds, up to 4 stacks to 4 points and 6 from 5 points (Max Points 5 on the first cap
+   row). A pool holding less pays nothing and places nothing (question 1). **Judgements:** the stacks are placed stacks
+   keyed by the node, so they add into the one armour-removed sum, clamped at 100 (issue #1833's ruling), and lapse
+   together 2 seconds after the last one, each new stack restarting the window (the own-stack rule of 2026-09-24); a
+   critical strike at the cap still pays 3, since it still applies the reduction (the window restarts); the cap and
+   the seconds carry no condition, because they are read only once the conditioned percent is above nought.
+2. **Deathmark**: at a critical strike the player dealt, a pool holding the whole cost (10 less 1 a point: 9 at 1 point,
+   4 at 6) pays it and the struck creature is marked for 5 seconds with 3% a point more damage taken; a pool holding less,
+   or nothing, pays nothing and marks with no bonus (question 2). The percent is read in the damage step beside an
+   ailment's damage-taken rider, for every blow the creature takes, whoever deals it (question 3). **Judgements:** one
+   mark at a time; a later critical strike replaces it, restarting its 5 seconds with the newer percent. "Increased"
+   adds into the damage-taken factor rather than multiplying it, as the three-bucket rule reads the word. Skull
+   Splitter pays first, then Deathmark, both after the critical strike's own Fervour gain, so that gain can pay for
+   either.
+3. **Blood Price**: when the player's pool reaches 0 for any reason, the out-of-combat decay included (question 4),
+   5% a point of the maximum Fervour at that moment is held for 3 seconds. The first melee blow of the player's own that
+   lands in that time adds it to the blow's flat damage, before the increases, and spends it (question 5); an evaded
+   blow, or one the target is immune to, keeps it. **Judgements:** flat before the increases, as traps layer 4's "bonus
+   damage equal to X% of the enemy's maximum HP" (F5) is; a later emptying replaces what is held rather than adding to
+   it; "melee" is a delivery flagged melee or a skill carrying `Type.Melee`; a use a minion cast in the player's name, a
+   damage-over-time tick and an area skill's share struck at an ally neither carry nor spend it.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `PassiveEffects.csv`: Skull Splitter's first cap row stops at 4 points, not 5 (Max Points 5 to 4) | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `PassiveEffects.csv`: Deathmark's cost falls by 2 a point, not 1 | the same | `test_every_value_appears_in_the_nodes_own_description` |
+| `CataclysmStatExemptionTests.cpp`: Skull Splitter's cost loses its probe | `pytest tools/tests/test_every_conditioned_stat_has_an_asker.py` | `test_every_listed_stat_has_a_probe_or_is_named_as_unprobed` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.SkullDeathmarkBlood.TheGeneratedRowsGiveEachFigureAtItsPoints` | the generated rows, judged by the pipeline: Skull Splitter at 4 points in Wrath with two hands a multiplier of 24, 40% a stack, a cost of 3, 2 seconds, a cap of 4; a cap of 6 at 5 and 8 points; out of Wrath no percent and no cost but a multiplier of 30 at 5 (controls); with one hand none of the three (controls); Deathmark 3% and a cost of 9 at 1 point, 18% and 4 at 6, 5 seconds; Blood Price 5% at 1 point, 40% at 8, 3 seconds |
+| `Cataclysm.SkullDeathmarkBlood.SkullSplitterPaysThreeForEachStackAndPlacesNoneItCannotPayFor` | a real player's critical strike: out of Wrath, and a blow that is not critical in Wrath, place and spend nothing (controls); in Wrath 10% placed, 3 spent, "Armor -10%" shown; five place four stacks (40%) and spend 15; a pool holding 2 places nothing on a second creature and spends nothing (question 1); the stacks lapse after 2 seconds |
+| `Cataclysm.SkullDeathmarkBlood.DeathmarkMarksOnACriticalStrikeAndTheMarkedTakeMoreFromEverySource` | a blow that is not critical marks nothing (control); a critical strike marks with 18%, shows "Deathmarked +18%" and spends 4; a second 3 seconds on refreshes the mark past the first's 5; a pool of 3 and an empty pool mark with no bonus, show "Deathmarked" and spend nothing (question 2); a blow of 100 with no attacker deals 118 to a creature marked with 18% and 100 to one marked with nothing (control) |
+| `Cataclysm.SkullDeathmarkBlood.BloodPriceArmsAsThePoolEmptiesAndTheFirstMeleeBlowThatLandsSpendsIt` | the decay empties a real player's pool: nothing held without the percent (control); 40 held with 40% of 100, shown as "Blood Price +40 damage" with 3 seconds (question 4); between two bare characters a ranged blow neither carries nor spends it (control); the first melee blow carries 40 more and spends it, the next carries nothing (question 5); held past 3 seconds it is gone |
+
+Predicted counts: `Cataclysm.SkullDeathmarkBlood.` 4; `Cataclysm.Data.` the pin, 532, its count unchanged;
+`Cataclysm.StatExemption.` and `Cataclysm.WarFervour.` unchanged.
+
+**Planned C++ guard proofs** (one per ruling with a mechanism of its own; not run; prefix
+`Cataclysm.SkullDeathmarkBlood.`):
+1. Question 1: in `CataclysmWarFervour.cpp`, Skull Splitter's `if (Held < Cost)`, under the comment "IN EXCHANGE FOR
+   THE WHOLE COST, OR NOT AT ALL", becomes `if (Held < 0.0f)`, so a pool of 2 pays 2 and places a stack. Must fail
+   `SkullSplitterPaysThreeForEachStackAndPlacesNoneItCannotPayFor`.
+2. Question 3: in `CataclysmDamageCalculation.cpp`, `+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender))`
+   becomes `+ 0.0f)`. Must fail `DeathmarkMarksOnACriticalStrikeAndTheMarkedTakeMoreFromEverySource` (118).
+3. Question 5: in `CataclysmSkillEffects.cpp`, `BloodPricePayer->SpendBloodPrice();` becomes `(void)BloodPricePayer;`.
+   Must fail `BloodPriceArmsAsThePoolEmptiesAndTheFirstMeleeBlowThatLandsSpendsIt` ("and spends it", "so the next
+   carries nothing").
+
+---
+
 ## 2026-11-25 — Type.Gadget on every machine that is not a trap, sixteen Saboteur nodes' rows, and Durable Modifications exactly doubled by a Max Points column and the condition class_resource_at_or_below
 
 **Affects:**

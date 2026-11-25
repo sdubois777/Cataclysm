@@ -3142,6 +3142,11 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastEvadeAtSeconds = -1.0f;
 	// AND THE SABOTEUR'S GADGET-STRUCK WINDOW, 2026-11-25, a window like the rest.
 	LastGadgetStruckAtSeconds = -1.0f;
+	// AND BLOOD PRICE'S HELD DAMAGE AND A DEATHMARK, 2026-11-25: each lasts a few seconds after something happened.
+	BloodPriceDamage = 0.0f;
+	BloodPriceUntilSeconds = -1.0f;
+	DeathmarkedPercent = 0.0f;
+	DeathmarkedUntilSeconds = -1.0f;
 	LastHitTakenAtSeconds = -1.0f;
 	LastClassResourceFullAtSeconds = -1.0f;
 	LastClassResourceEmptyAtSeconds = -1.0f;
@@ -3362,6 +3367,66 @@ void UCataclysmAbilitySystemComponent::NoteGadgetStruck()
 	// AND THE EVENT OF THE SAME NAME, as `NoteBlocked` raises `block` beside its clock: every `seconds_after_<event>`
 	// clock is an event a row may act on, which `tools/tests/test_pool_action_names_match_the_engine.py` holds.
 	ActOnEvent(FName(TEXT("gadget_struck")));
+}
+
+void UCataclysmAbilitySystemComponent::MarkWithDeathmark(float Percent, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f)
+	{
+		return;
+	}
+	DeathmarkedPercent = FMath::Max(0.0f, Percent);
+	DeathmarkedUntilSeconds = World->GetTimeSeconds() + Seconds;
+}
+
+bool UCataclysmAbilitySystemComponent::IsDeathmarked() const
+{
+	const UWorld* World = GetWorld();
+	return World && DeathmarkedUntilSeconds >= 0.0f && World->GetTimeSeconds() < DeathmarkedUntilSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::DeathmarkPercentNow() const
+{
+	return IsDeathmarked() ? DeathmarkedPercent : 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::DeathmarkPercentOn(const UAbilitySystemComponent* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->DeathmarkPercentNow() : 0.0f;
+}
+
+void UCataclysmAbilitySystemComponent::HoldBloodPrice(float Damage, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Damage <= 0.0f || Seconds <= 0.0f)
+	{
+		return;
+	}
+	BloodPriceDamage = Damage;
+	BloodPriceUntilSeconds = World->GetTimeSeconds() + Seconds;
+}
+
+float UCataclysmAbilitySystemComponent::BloodPriceHeldNow() const
+{
+	return BloodPriceSecondsLeft() > 0.0f ? BloodPriceDamage : 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::BloodPriceSecondsLeft() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || BloodPriceDamage <= 0.0f || BloodPriceUntilSeconds < 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, BloodPriceUntilSeconds - World->GetTimeSeconds());
+}
+
+void UCataclysmAbilitySystemComponent::SpendBloodPrice()
+{
+	BloodPriceDamage = 0.0f;
+	BloodPriceUntilSeconds = -1.0f;
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceGadgetStruck() const

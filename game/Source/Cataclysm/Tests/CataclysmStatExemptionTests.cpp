@@ -12031,6 +12031,159 @@ namespace CataclysmStatExemptionTest
 					  Its->HasMatchingGameplayTag(UCataclysmDebuffs::BleedTag()));
 	}
 
+	/** Skull Splitter's, Deathmark's and Blood Price's nine stats, each read by the function that applies it
+	 *  (`FCataclysmWarFervour::SkullSplitterOnCriticalStrike`, `DeathmarkOnCriticalStrike` and `ArmBloodPrice`) and held
+	 *  beside the others that reading needs: nothing without it (the control), the figure with it. 2026-11-25. */
+	void ProbeSkullDeathmarkBlood(FAutomationTestBase& Test, int32 Which)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = nullptr;
+		UCataclysmAbilitySystemComponent* System = SpendsHolder(Test, World, Holder);
+		ACataclysmEnemyCharacter* Creature = RiposteCreature(Test, World);
+		UCataclysmAbilitySystemComponent* Its =
+			Creature ? Cast<UCataclysmAbilitySystemComponent>(Creature->GetAbilitySystemComponent()) : nullptr;
+		if (!System || !Test.TestNotNull(TEXT("a creature with an ability system"), Its))
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const FGameplayTagContainer NoTags;
+		const FName Armour(FCataclysmWarFervour::CritArmorRemovedInWrathStat);
+		const FName ArmourSeconds(FCataclysmWarFervour::CritArmorSecondsStat);
+		const FName Mark(FCataclysmWarFervour::DeathmarkPercentStat);
+		const FName MarkSeconds(FCataclysmWarFervour::DeathmarkSecondsStat);
+		const FName Blood(FCataclysmWarFervour::BloodPricePercentStat);
+		const FName BloodSeconds(FCataclysmWarFervour::BloodPriceSecondsStat);
+		auto Split = [&]() { FCataclysmWarFervour::SkullSplitterOnCriticalStrike(System, Creature, NoTags); };
+		auto Deathmark = [&]() { FCataclysmWarFervour::DeathmarkOnCriticalStrike(System, Creature, NoTags); };
+		switch (Which)
+		{
+		case 0:
+		{
+			GrantFlats(Holder, {{ArmourSeconds, 2.0f}});
+			Split();
+			const float Plain = Its->ArmourRemovedPercentNow();
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f}});
+			Split();
+			Test.TestEqual(TEXT("crit_armor_removed_in_wrath: control, no armour removed without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 10% with 10 of it, so SkullSplitterOnCriticalStrike really reads it"),
+						   Its->ArmourRemovedPercentNow(), 10.0f, 0.001f);
+			return;
+		}
+		case 1:
+		{
+			GrantFlats(Holder, {{Armour, 10.0f}});
+			Split();
+			const float Plain = Its->ArmourRemovedPercentNow();
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f}});
+			Split();
+			Test.TestEqual(TEXT("crit_armor_seconds: control, no armour removed without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 10% with 2 of it, so SkullSplitterOnCriticalStrike really reads it"),
+						   Its->ArmourRemovedPercentNow(), 10.0f, 0.001f);
+			return;
+		}
+		case 2:
+		{
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f}});
+			Split();
+			const float Kept = System->GetNumericAttribute(Pool);
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f},
+								{FName(FCataclysmWarFervour::CritArmorFervourCostStat), 3.0f}});
+			Split();
+			Test.TestEqual(TEXT("crit_armor_fervour_cost: control, the 50 held are kept without it"), Kept, 50.0f, 0.001f);
+			Test.TestEqual(TEXT("and 3 are taken with 3 of it, so SkullSplitterOnCriticalStrike really reads it"),
+						   System->GetNumericAttribute(Pool), 47.0f, 0.001f);
+			return;
+		}
+		case 3:
+		{
+			// A CAP OF NOUGHT IS NONE: three stacks of 10 without it; with 2 of it, three more leave two.
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f}});
+			Split();
+			Split();
+			Split();
+			const float Uncapped = Its->ArmourRemovedPercentNow();
+			GrantFlats(Holder, {{Armour, 10.0f}, {ArmourSeconds, 2.0f},
+								{FName(FCataclysmWarFervour::CritArmorStackCapStat), 2.0f}});
+			Split();
+			Split();
+			Split();
+			Test.TestEqual(TEXT("crit_armor_stack_cap: control, three stacks (30%) without it"), Uncapped, 30.0f, 0.001f);
+			Test.TestEqual(TEXT("and two (20%) with 2 of it, so SkullSplitterOnCriticalStrike really reads it"),
+						   Its->ArmourRemovedPercentNow(), 20.0f, 0.001f);
+			return;
+		}
+		case 4:
+		{
+			GrantFlats(Holder, {{MarkSeconds, 5.0f}});
+			Deathmark();
+			const bool bMarkedWithout = Its->IsDeathmarked();
+			GrantFlats(Holder, {{Mark, 3.0f}, {MarkSeconds, 5.0f}});
+			Deathmark();
+			Test.TestFalse(TEXT("deathmark_damage_taken_percent: control, no mark without it"), bMarkedWithout);
+			Test.TestEqual(TEXT("and a mark adding 3% with 3 of it, so DeathmarkOnCriticalStrike really reads it"),
+						   Its->DeathmarkPercentNow(), 3.0f, 0.001f);
+			return;
+		}
+		case 5:
+		{
+			GrantFlats(Holder, {{Mark, 3.0f}});
+			Deathmark();
+			const bool bMarkedWithout = Its->IsDeathmarked();
+			GrantFlats(Holder, {{Mark, 3.0f}, {MarkSeconds, 5.0f}});
+			Deathmark();
+			Test.TestFalse(TEXT("deathmark_seconds: control, no mark without it"), bMarkedWithout);
+			Test.TestTrue(TEXT("and a mark with 5 of it, so DeathmarkOnCriticalStrike really reads it"),
+						  Its->IsDeathmarked());
+			return;
+		}
+		case 6:
+		{
+			GrantFlats(Holder, {{Mark, 3.0f}, {MarkSeconds, 5.0f}});
+			Deathmark();
+			const float Kept = System->GetNumericAttribute(Pool);
+			System->SetNumericAttributeBase(Pool, 50.0f);
+			GrantFlats(Holder, {{Mark, 3.0f}, {MarkSeconds, 5.0f},
+								{FName(FCataclysmWarFervour::DeathmarkFervourCostStat), 10.0f}});
+			Deathmark();
+			Test.TestEqual(TEXT("deathmark_fervour_cost: control, the 50 held are kept without it"), Kept, 50.0f, 0.001f);
+			Test.TestEqual(TEXT("and 10 are taken with 10 of it, so DeathmarkOnCriticalStrike really reads it"),
+						   System->GetNumericAttribute(Pool), 40.0f, 0.001f);
+			return;
+		}
+		case 7:
+		{
+			GrantFlats(Holder, {{BloodSeconds, 3.0f}});
+			FCataclysmWarFervour::ArmBloodPrice(System);
+			const float Plain = System->BloodPriceHeldNow();
+			GrantFlats(Holder, {{Blood, 5.0f}, {BloodSeconds, 3.0f}});
+			FCataclysmWarFervour::ArmBloodPrice(System);
+			Test.TestEqual(TEXT("blood_price_percent_of_maximum_fervour: control, nothing held without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 5 (5% of 100) with 5 of it, so ArmBloodPrice really reads it"),
+						   System->BloodPriceHeldNow(), 5.0f, 0.001f);
+			return;
+		}
+		default:
+		{
+			GrantFlats(Holder, {{Blood, 5.0f}});
+			FCataclysmWarFervour::ArmBloodPrice(System);
+			const float Plain = System->BloodPriceHeldNow();
+			GrantFlats(Holder, {{Blood, 5.0f}, {BloodSeconds, 3.0f}});
+			FCataclysmWarFervour::ArmBloodPrice(System);
+			Test.TestEqual(TEXT("blood_price_seconds: control, nothing held without it"), Plain, 0.0f);
+			Test.TestEqual(TEXT("and 5 with 3 of it, so ArmBloodPrice really reads it"),
+						   System->BloodPriceHeldNow(), 5.0f, 0.001f);
+			return;
+		}
+		}
+	}
+
 	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpentOrDrained`: nothing for 20 spent
 	 *  without it; with 5 of it, two steps of 5% of 10,000. */
 	void ProbeHealthPerTenFervourSpent(FAutomationTestBase& Test)
@@ -12343,6 +12496,17 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation_pulse_radius_metres"), [](FAutomationTestBase& Test) { ProbePulse(Test, 1); }},
 			{TEXT("retaliation_pulse_applies_bleed"), [](FAutomationTestBase& Test) { ProbePulse(Test, 2); }},
 			{TEXT("health_percent_per_ten_fervour_spent"), &ProbeHealthPerTenFervourSpent},
+			// SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25.
+			{TEXT("crit_armor_removed_in_wrath"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 0); }},
+			{TEXT("crit_armor_seconds"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 1); }},
+			{TEXT("crit_armor_fervour_cost"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 2); }},
+			{TEXT("crit_armor_stack_cap"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 3); }},
+			{TEXT("deathmark_damage_taken_percent"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 4); }},
+			{TEXT("deathmark_seconds"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 5); }},
+			{TEXT("deathmark_fervour_cost"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 6); }},
+			{TEXT("blood_price_percent_of_maximum_fervour"),
+			 [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 7); }},
+			{TEXT("blood_price_seconds"), [](FAutomationTestBase& Test) { ProbeSkullDeathmarkBlood(Test, 8); }},
 		};
 		return Made;
 	}

@@ -528,6 +528,19 @@ FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
+FString UCataclysmCombatOverlay::DeathmarkTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	if (!AbilitySystem || !AbilitySystem->IsDeathmarked())
+	{
+		return FString();
+	}
+	const int32 Percent = FMath::RoundToInt(AbilitySystem->DeathmarkPercentNow());
+	return Percent > 0 ? FString::Printf(TEXT("Deathmarked +%d%%"), Percent) : FString(TEXT("Deathmarked"));
+}
+
 FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -999,6 +1012,7 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 		  TouchOfNothingTextFor(Actor), NegatedTextFor(Actor),
 		  SilencedTextFor(Actor),
 		  DamageCutTextFor(Actor),
+		  DeathmarkTextFor(Actor),
 		  // THE BUFF A WORN ROW DREW, LAST. Ruled 2026-10-12. Empty for every creature today: none wears a row.
 		  HeldBuffTextFor(Actor),
 		  // AND THE DAMAGE TYPES IT IS IMMUNE TO FOR A TIME, after the buff's. Ruled 2026-10-12. Empty for every

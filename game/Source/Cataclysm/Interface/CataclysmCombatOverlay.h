@@ -527,6 +527,14 @@ public:
 	static FString ArmourRemovedTextFor(const AActor* Actor);
 
 	/**
+	 * "Deathmarked +18%" under a creature's health bar while a Deathmark lasts on it, carrying that much more damage
+	 * taken, "Deathmarked" for a mark laid when its cost could not be paid, or empty with none. The Berserker's
+	 * Deathmark, 2026-11-25: state on the creature, so nothing else on screen would say it was there (the owner's rule
+	 * that a system ships with a basic display).
+	 */
+	static FString DeathmarkTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while Ground Down slows it,
 	 * such as "Slowed -15%", or empty while nothing does. Issue #1515.
 	 *

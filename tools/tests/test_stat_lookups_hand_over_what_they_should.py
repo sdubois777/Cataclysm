@@ -502,6 +502,37 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
      'FName(HealthPerTenFervourSpentStat), FGameplayTagContainer(), 0.0f'):
         "Crimson Tide's heal, asked at every spend and drain with the wearer's state; no blow is handed over",
+    # SKULL SPLITTER AND DEATHMARK, 2026-11-25: each asked at a critical strike with the crit's skill tags and the
+    # wearer's state (Wrath and the weapon for Skull Splitter's percent and cost); the creature struck is not handed
+    # over, since none of them asks about it.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorRemovedInWrathStat), SkillTags, 0.0f'):
+        "Skull Splitter's percent a stack, asked at a critical strike under Wrath and a two-handed weapon",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorSecondsStat), SkillTags, 0.0f'):
+        "Skull Splitter's seconds, asked beside its percent",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorFervourCostStat), SkillTags, 0.0f'):
+        "Skull Splitter's cost, asked once its percent and seconds are known",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(CritArmorStackCapStat), SkillTags, 0.0f'):
+        "Skull Splitter's cap, asked once the cost is paid",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkPercentStat), SkillTags, 0.0f'):
+        "Deathmark's percent, asked at a critical strike",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkSecondsStat), SkillTags, 0.0f'):
+        "Deathmark's seconds, asked beside its percent",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(DeathmarkFervourCostStat), SkillTags, 0.0f'):
+        "Deathmark's cost, asked once its percent and seconds are known",
+    # BLOOD PRICE, 2026-11-25: asked as the pool empties, with the wearer's state and no tags.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(BloodPricePercentStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Price's percent of the maximum, asked as the pool empties",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.cpp',
+     'FName(BloodPriceSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Blood Price's seconds, asked beside its percent",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'Stat, Context, Plain'):
         'class resource generation, asked on a timer with no blow, '

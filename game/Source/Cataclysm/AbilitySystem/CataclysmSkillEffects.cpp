@@ -1307,9 +1307,22 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// named there. A minion's own swing never comes here; it is the minion's `ApplyDirectDamage`.
 	const float KeptUnderTheCurse = NamedCastBy.IsExplicitlyNull() ? KeptUnderWitheredTouch(Instigator) : 1.0f;
 
+	// AND BLOOD PRICE'S HELD DAMAGE, ON THE PLAYER'S OWN MELEE BLOW: "your next melee attack within 3 seconds deals bonus
+	// damage equal to 5% per point of your maximum Fervour" (the Berserker's Blood Price, 2026-11-25). Flat, before the
+	// increases, as the share of a trap's enemy's health is (F5). Not for a use a minion cast in the player's name, a
+	// tick, or a share struck at an ally. SPENT BELOW ONLY IF THE BLOW LANDS (question 5): an evaded blow keeps it for
+	// the next.
+	const FGameplayTag BloodPriceMelee = UCataclysmDamageCalculation::MeleeTag();
+	UCataclysmAbilitySystemComponent* const BloodPricePayer =
+		NamedCastBy.IsExplicitlyNull() && !Delivery.bIsDamageOverTime && Delivery.AreaSkillShareOnAnAllyPercent <= 0.0f
+			&& (Delivery.bIsMelee || (BloodPriceMelee.IsValid() && SkillTags.HasTag(BloodPriceMelee)))
+		? Cast<UCataclysmAbilitySystemComponent>(Source)
+		: nullptr;
+	const float BloodPriceFlat = BloodPricePayer ? BloodPricePayer->BloodPriceHeldNow() : 0.0f;
+
 	const float Damage = ModifiedDamage(
 		Source,
-		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat)
+		(BeforeIncreases * DamagePercent / 100.0f + Flat + GadgetFlat + TrapsEnemyHealthFlat + LineFlat + BloodPriceFlat)
 			* (1.0f + Applying + Conditional + Bought + TrapIncreases)
 			* TrapMore
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
@@ -1457,6 +1470,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		FCataclysmDamageResult ThrallsOwnResult;
 		FCataclysmDamageResult* const Landed = OutResolved ? OutResolved : &ThrallsOwnResult;
 		const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Landed);
+		// BLOOD PRICE IS SPENT BY THE BLOW THAT LANDS, and kept by one evaded or refused (question 5).
+		if (BloodPriceFlat > 0.0f && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker)
+		{
+			BloodPricePayer->SpendBloodPrice();
+		}
 		// AND A THRALL SETS ALIGHT WHAT IT STRIKES. Issue #2784, Subjugate's row: "...fights for you until it dies, keeps
 		// its own abilities, and sets alight what it strikes." Ruled 2026-11-22, the summoned imp's swing burn's shape
 		// (Q3): DESIGNED, so it lands whatever the blow did (#917); the flat `DoT_Burn`, SET BY THE THRALL, neither side's

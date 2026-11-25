@@ -10886,6 +10886,12 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # `ACataclysmMinion::SkillTrapTriggerRadiusCmFor` asks it with the trap's
     # tags and no blow; probed in the table of conditioned stats.
     "trap_trigger_radius": ASKER_PASSES_NOTHING_MORE,
+    # SKULL SPLITTER, 2026-11-25: its percent a stack and its cost, each stated
+    # under `in_wrath` and `wielding_two_handed_weapon`, asked by
+    # `FCataclysmWarFervour::SkullSplitterOnCriticalStrike` with the crit's skill
+    # tags and no blow; probed in the table of stats with no attribute.
+    "crit_armor_removed_in_wrath": ASKER_PASSES_NOTHING_MORE,
+    "crit_armor_fervour_cost": ASKER_PASSES_NOTHING_MORE,
     "wrath_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "frenzy_on_full_fervour": ASKER_PASSES_NOTHING_MORE,
     "fervour_drain_per_second": ASKER_PASSES_NOTHING_MORE,

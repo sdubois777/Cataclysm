@@ -522,7 +522,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// Network, Ambush, Overcautious and Overwhelming Presence.
 	// AND 517 THE SAME DAY, for fifteen Saboteur nodes, the survey's groups A and B.
 	// AND 520 THE SAME DAY, for Durable Modifications' three rows on the Max Points column.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        520)
+	// AND 532 THE SAME DAY, for Skull Splitter, Deathmark and Blood Price.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        532)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

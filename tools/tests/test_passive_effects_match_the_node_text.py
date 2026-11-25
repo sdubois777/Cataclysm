@@ -692,7 +692,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 520 THE SAME DAY: Durable Modifications' three rows, on the Max Points
 #: column and the at-or-below condition.
-AUTHORED_ROWS = 520
+#:
+#: AND TO 532 THE SAME DAY: twelve rows on Skull Splitter, Deathmark and Blood
+#: Price (`tools/reapply_war_skull_deathmark_blood_workbook.py`).
+AUTHORED_ROWS = 532
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1126,7 +1129,8 @@ AUTHORED_ROWS = 520
 #: and Overwhelming Presence.
 #: AND TO 304 THE SAME DAY: fifteen Saboteur nodes, the survey's groups A and B.
 #: AND TO 305 THE SAME DAY: Durable Modifications.
-AUTHORED_NODES = 305
+#: AND TO 308 THE SAME DAY: Skull Splitter, Deathmark and Blood Price.
+AUTHORED_NODES = 308
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2676,6 +2680,20 @@ VALUE_FORMS = {
     # "within 4 metres", and Crimson Tide's "a heal equal to 1% of your maximum
     # HP", which its "1% life leech" beside it would otherwise satisfy.
     "riposte_fervour_cost": "draining {value:g} Fervour",
+    # SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25: "drain an additional
+    # 3 Fervour per hit in exchange for applying a 2-second armor reduction of
+    # 10% per point", "stacks up to 6 times instead of 4"; "apply a Deathmark for
+    # 5 seconds", "costs 10 Fervour", "+3% increased damage per point"; "within 3
+    # seconds deals bonus damage equal to 5% per point of your maximum Fervour".
+    "crit_armor_removed_in_wrath": "armor reduction of {value:g}% per point",
+    "crit_armor_fervour_cost": "drain an additional {value:g} Fervour",
+    "crit_armor_stack_cap": ("up to {value:g} times", "instead of {value:g}"),
+    "crit_armor_seconds": "{value:g}-second armor reduction",
+    "deathmark_damage_taken_percent": "+{value:g}% increased damage per point",
+    "deathmark_fervour_cost": "costs {value:g} Fervour",
+    "deathmark_seconds": "Deathmark for {value:g} seconds",
+    "blood_price_percent_of_maximum_fervour": "{value:g}% per point of your maximum Fervour",
+    "blood_price_seconds": "within {value:g} seconds",
     "riposte_stun_seconds_at_maximum": "for {value:g} second",
     "retaliation_pulse_drain_per_second": "drains {value:g} Fervour per second",
     "retaliation_pulse_radius_metres": "within {value:g} metres",
@@ -2733,6 +2751,9 @@ VALUE_IN_WORDS = {
     # the ruling on question 4 (the Saboteur's rows, 2026-11-25); its two 3% rows
     # are checked by their digits.
     ("Saboteur_basic_trunk_014", "damage_reduction", "class_resource_above", "more", "4"): ("doubled", 6.0),
+    # DEATHMARK'S "costs 10 Fervour, reduced by 1 per point": the -1 a point
+    # beside the 10 once (2026-11-25).
+    ("Berserker_crit_004", "deathmark_fervour_cost", "", "flat", "0"): ("reduced by 1 per point", -1.0),
     # OVERWHELMING PRESENCE'S "trap trigger radius is doubled", 100% more by the
     # coordinating session's ruling of 2026-11-25 (a true doubling).
     ("Saboteur_keystone_trap_qty", "trap_trigger_radius"): ("radius is doubled", 100.0),
@@ -3917,6 +3938,15 @@ FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 #: Fervour per second while active" are each one rate, whatever the points; the
 #: bonus beside each is the per-point figure.
 FIXED_FROM_THE_FIRST_POINT = frozenset({
+    # SKULL SPLITTER, DEATHMARK AND BLOOD PRICE, 2026-11-25: each cost, cap and
+    # length is one figure whatever the points; Skull Splitter's cap of 4 stops at
+    # 5 points (Max Points), where its 6 begins.
+    ("Berserker_twoh_003", "crit_armor_fervour_cost"),
+    ("Berserker_twoh_003", "crit_armor_stack_cap"),
+    ("Berserker_twoh_003", "crit_armor_seconds"),
+    ("Berserker_crit_004", "deathmark_fervour_cost"),
+    ("Berserker_crit_004", "deathmark_seconds"),
+    ("Berserker_trunk_008", "blood_price_seconds"),
     ("Bulwark_basic_tw_t3_001", "retaliation_radius_metres"),
     ("Berserker_twoh_011", "fervour_drain_per_second"),
     ("Bulwark_basic_trunk_009", "fervour_drain_per_second"),

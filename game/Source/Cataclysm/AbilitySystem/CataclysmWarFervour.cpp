@@ -44,6 +44,16 @@ const TArray<const TCHAR*>& FCataclysmWarFervour::GainStats()
 	return Stats;
 }
 
+const TCHAR* FCataclysmWarFervour::CritArmorRemovedInWrathStat = TEXT("crit_armor_removed_in_wrath");
+const TCHAR* FCataclysmWarFervour::CritArmorFervourCostStat = TEXT("crit_armor_fervour_cost");
+const TCHAR* FCataclysmWarFervour::CritArmorStackCapStat = TEXT("crit_armor_stack_cap");
+const TCHAR* FCataclysmWarFervour::CritArmorSecondsStat = TEXT("crit_armor_seconds");
+const TCHAR* FCataclysmWarFervour::DeathmarkPercentStat = TEXT("deathmark_damage_taken_percent");
+const TCHAR* FCataclysmWarFervour::DeathmarkFervourCostStat = TEXT("deathmark_fervour_cost");
+const TCHAR* FCataclysmWarFervour::DeathmarkSecondsStat = TEXT("deathmark_seconds");
+const TCHAR* FCataclysmWarFervour::BloodPricePercentStat = TEXT("blood_price_percent_of_maximum_fervour");
+const TCHAR* FCataclysmWarFervour::BloodPriceSecondsStat = TEXT("blood_price_seconds");
+
 float FCataclysmWarFervour::TakeFromPool(UAbilitySystemComponent* AbilitySystem, float Amount)
 {
 	if (!AbilitySystem || Amount <= 0.0f || !AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>())
@@ -467,4 +477,95 @@ float FCataclysmWarFervour::OutOfCombatDecayStep(ACataclysmCharacterBase* Charac
 
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return Cataclysm->GetNumericAttribute(Pool) - Before;
+}
+
+float FCataclysmWarFervour::SkullSplitterOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Target,
+														   const FGameplayTagContainer& SkillTags)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Struck =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!Cataclysm || !Struck || Struck == Cataclysm || !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return 0.0f;
+	}
+
+	// THE PERCENT AND THE SECONDS FIRST: nought without the node, and outside Wrath or without a two-handed weapon, which
+	// the percent's rows are stated under. Nothing is paid for a stack that would not be placed.
+	const float Percent = Cataclysm->StatForSkill(FName(CritArmorRemovedInWrathStat), SkillTags, 0.0f);
+	const float Seconds = Cataclysm->StatForSkill(FName(CritArmorSecondsStat), SkillTags, 0.0f);
+	if (Percent <= 0.0f || Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// IN EXCHANGE FOR THE WHOLE COST, OR NOT AT ALL (question 1).
+	const float Cost = FMath::Max(0.0f, Cataclysm->StatForSkill(FName(CritArmorFervourCostStat), SkillTags, 0.0f));
+	const float Held = Cataclysm->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	if (Held < Cost)
+	{
+		return 0.0f;
+	}
+	TakeFromPool(Cataclysm, Cost);
+
+	// ONE STACK, RESTARTING THE WINDOW, UP TO THE CAP; a cap of nought is none, as `ReceivePlacedStack` reads it.
+	const int32 Cap = FMath::Max(0, FMath::RoundToInt(
+		Cataclysm->StatForSkill(FName(CritArmorStackCapStat), SkillTags, 0.0f)));
+	Struck->ReceivePlacedStack(FName(TEXT("Passive_Berserker_twoh_003:enemy_armor_removed")), Percent, Seconds, Cap,
+							   /*bCutsDamage=*/false);
+	return Percent;
+}
+
+float FCataclysmWarFervour::DeathmarkOnCriticalStrike(UAbilitySystemComponent* AbilitySystem, const AActor* Target,
+													  const FGameplayTagContainer& SkillTags)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	UCataclysmAbilitySystemComponent* Struck =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!Cataclysm || !Struck || Struck == Cataclysm || !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return -1.0f;
+	}
+	const float Percent = Cataclysm->StatForSkill(FName(DeathmarkPercentStat), SkillTags, 0.0f);
+	const float Seconds = Cataclysm->StatForSkill(FName(DeathmarkSecondsStat), SkillTags, 0.0f);
+	if (Percent <= 0.0f || Seconds <= 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// THE WHOLE COST, OR NOTHING AND A MARK THAT ADDS NOTHING (question 2). A pool holding nothing pays nothing even
+	// for a cost of nought, since the sentence gives no bonus with no Fervour.
+	const float Cost = FMath::Max(0.0f, Cataclysm->StatForSkill(FName(DeathmarkFervourCostStat), SkillTags, 0.0f));
+	const float Held = Cataclysm->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	const bool bPays = Held > 0.0f && Held >= Cost;
+	if (bPays)
+	{
+		TakeFromPool(Cataclysm, Cost);
+	}
+	const float Carried = bPays ? Percent : 0.0f;
+	Struck->MarkWithDeathmark(Carried, Seconds);
+	return Carried;
+}
+
+float FCataclysmWarFervour::ArmBloodPrice(UAbilitySystemComponent* AbilitySystem)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+	const float Percent = Cataclysm->StatForSkill(FName(BloodPricePercentStat), FGameplayTagContainer(), 0.0f);
+	const float Seconds = Cataclysm->StatForSkill(FName(BloodPriceSecondsStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f || Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// OF THE MAXIMUM AS THE POOL EMPTIES, read once: a maximum that moves in the next 3 seconds does not change the blow.
+	const float Damage = Cataclysm->MaximumClassResource() * Percent / 100.0f;
+	if (Damage <= 0.0f)
+	{
+		return 0.0f;
+	}
+	Cataclysm->HoldBloodPrice(Damage, Seconds);
+	return Damage;
 }
