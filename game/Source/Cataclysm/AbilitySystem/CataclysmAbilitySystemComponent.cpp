@@ -4886,7 +4886,7 @@ static TAutoConsoleVariable<int32> CVarRandomBuffPick(
 	TEXT("Pins the buff a random buff is, by its place in the table: 0 Mana Surge, 1 Tactical Advantage, "
 		 "2 Famished, 3 Commander, 4 Divine Aegis, 5 Spellslinger, 6 Dervish, 7 Warhound, 8 Sanctified Power, "
 		 "9 Demonic Rage, 10 Temporal Flux, 11 Void, 12 Death, 13 Feasting, 14 The Ascended, 15 Plague, "
-		 "16 Chaotic Barrier. -1 picks at random."),
+		 "16 Chaotic Barrier, 17 Drums of War. -1 picks at random."),
 	ECVF_Default);
 
 /**
@@ -7886,6 +7886,19 @@ const TArray<UCataclysmAbilitySystemComponent::FRandomBuff>& UCataclysmAbilitySy
 		{
 			FRandomBuff Buff;
 			Buff.Name = TEXT("Chaotic Barrier");
+			Buffs.Add(Buff);
+		}
+
+		// "All allies within 4 meters gain 50% increased movement speed and attack speed." Joined 2026-11-25 with its row,
+		// which War's Drums of War enemy modifier added to the Buffs sheet, by the owner's "Add everything" of 2026-10-26
+		// (issue #2538): every Buff row joins once it is built as a buff the holder can hold. Laid on its holder, as
+		// Commander's is, and no ally is read: 50 increased movement speed and attack speed. Appended, so places 0 to 16
+		// keep their buffs.
+		{
+			FRandomBuff Buff;
+			Buff.Name = TEXT("Drums of War");
+			Buff.Lines.Add(Line(TEXT("movement_speed"), EBucket::Increased, 50.0f));
+			Buff.Lines.Add(Line(UCataclysmItemModifiers::AttackSpeedStat, EBucket::Increased, 50.0f));
 			Buffs.Add(Buff);
 		}
 

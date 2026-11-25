@@ -80,6 +80,13 @@ keep Commander and Drums of War, Drums of War at half Commander's radius.
 | Artillery Barrage: "Call down explosive projectiles in random areas near the player." | Every 6 seconds, when an enemy is within 20 metres, three 3 metre circles are drawn on the floor at random within 4 metres of the nearest; 1.5 seconds later each lands for one and a half of the creature's hits on everyone of the player's side inside it, as an area blow that never crits. Killing the creature in the warning calls the volley off. "Barrage" under its bar. | `TimedStep`, `NoteDeathOfACarrier` |
 | 1 On 1 | **Not built.** | -- |
 
+**THE NEW BUFF ROW JOINED THE RANDOM BUFF TABLE.** `Buff_Drums_of_War` is a Buffs row, and the owner's "Add
+everything" of 2026-10-26 ([#2538](https://github.com/sdubois777/Cataclysm/issues/2538)) puts every Buff row in
+`UCataclysmAbilitySystemComponent::RandomBuffTable` once it is built as a buff its holder can hold;
+`tools/tests/test_the_random_buff_table_names_buff_rows.py` failed until it was decided. It is appended at place 17,
+so places 0 to 16 keep their buffs, laid on its holder as Commander's entry is: 50 increased movement speed and attack
+speed, no ally read. A drawn buff is one in eighteen now, not one in seventeen. **A judgement under that ruling.**
+
 A creature that takes no hostile action (the floor's medic, [#1680](https://github.com/sdubois777/Cataclysm/issues/1680)) never shouts or calls a barrage; it still grants
 Commander and Drums of War and still braces with Phalanx, because those harm nobody. **A judgement.** The status line
 gains "Phalanx -N%", "Barrage", "Drums of War" and "Battle Cry" (`UCataclysmCombatOverlay::WarModifierTextFor`); the
@@ -141,7 +148,11 @@ moved.
 
 **War:** new file `game/Source/Cataclysm/Tests/CataclysmWarModifierTests.cpp`, group `Cataclysm.WarModifiers.`:
 **0 to 8**. `Cataclysm.EnemyModifiers.EveryModifierWithAnEffectIsStillInTheTable` names the eight War rows too; that
-group's count does not move. **Whole suite: the base's last measured total plus 19** (11 Death, 8 War).
+group's count does not move. Two more tests changed and keep their counts:
+`Cataclysm.Enchantments.ShardOfAnarchysTwoPiecesLayAPinnedBuffOrTheMergedDrawsDebuffAfterThirtySecondsOfAFight`
+names the eighteen buffs of the table, and `Cataclysm.Data.EveryGeneratedTableImports` pins `StatusEffects.csv` at 55
+rows, not 52 (`tools/tests/test_unreal_pinned_row_counts.py` failed until it did). **Whole suite: the base's last
+measured total plus 19** (11 Death, 8 War).
 
 One proof per War modifier, each a single-line break that still compiles, prefix `Cataclysm.WarModifiers.`, each to
 fail exactly the one test named:
