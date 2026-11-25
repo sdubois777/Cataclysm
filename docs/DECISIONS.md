@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Thirty War nodes given their rows with no new code: the War survey's twenty-three data-only nodes and options, and the eight rulings the owner accepted whose sentence is a row (slice D)
+
+**Affects:**
+- `docs/Bulwark_Class_Tree_Final.json`, `docs/Berserker_Class_Tree_Final.json`, `docs/Saboteur_Class_Tree_Final.json`:
+  eleven sentences reworded by name (`tools/apply_war_data_rows_2026_11_24.py`, new).
+- `docs/All_Things_Cataclysm.xlsx`, Passive Effects: 48 rows on 30 nodes, and the `Per Point From` column
+  (`tools/reapply_war_data_rows_workbook.py`, new). `game/Data/PassiveEffects.csv` (421 rows) and `PassiveNodes.csv`,
+  generated. **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/generate_datatables.py`: `Per Point From` leaves `OPTIONAL_COLUMNS`, so the workbook must carry it; the
+  `max_health` scale's step bound rises from 1,000 to 5,000.
+- `tools/tests/test_passive_effects_match_the_node_text.py`: the words and forms the new sentences use, three
+  allowances each keyed to one node, a new check that plain "damage" is two rows, and `AUTHORED_ROWS` 421,
+  `AUTHORED_NODES` 259, `AUTHORED_OPTIONS` 41.
+- `tools/tests/test_war_data_rows_scripts.py`, new. `tools/tests/test_passive_rows_carry_the_action_columns.py` and
+  `tools/tests/test_generate_datatables.py`: their sheets carry the now-required column.
+- `game/Source/Cataclysm/Tests/CataclysmWarDataRowsTests.cpp`, new: three tests in `Cataclysm.WarDataRows.`.
+  `CataclysmDataTableTests.cpp`: the Passive Effects pin, 421. `docs/README.md`: 421 and the column.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** No engine code changed; the one new C++ file is a test file, read
+  as the compiler only. A window has to compile it, rebuild the two DataTable assets, and run `Cataclysm.WarDataRows.`
+  (three tests, trailing dot) and `Cataclysm.Data.` (the 421 pin).
+- **"DATA ALONE" IS THE GENERATOR'S VERDICT, NOT A READING.** Every scaled and every conditioned row passed
+  `refuse_a_scale_nothing_asks_for` and `refuse_a_condition_nothing_asks_for`, whose lists of stats something asks for
+  are each held by an engine probe (`Cataclysm.StatExemption.`). Iron Constitution's armour-scaled maximum health is
+  the one that most needed it: a scaled row is never folded into a gameplay attribute.
+- **`test_datatable_assets_are_current` FAILS** until the editor step, as it does on every branch that changes a CSV.
+- **THIS SLICE FIRST WROTE SEVEN NODES WITH ATTACK DAMAGE ALONE**, against the owner's ruling of 2026-08-25 that
+  plain "damage" on a passive node is attack and spell damage, and every check passed them. Found before committing,
+  by comparing with the Demonic rows; each is two rows now, and
+  `test_plain_damage_on_a_passive_node_is_attack_and_spell_damage` is new so the next tree cannot repeat it.
+- **NOT IN THIS SLICE:** the Bulwark's kill Fervour (it waits on `fervour_per_kill` from `feat/death-trees-b`), the War
+  nodes that need a mechanism, the vow options, and R29's rename of Wrath Incarnate to Outnumbered.
+
+### WHAT WAS RULED
+
+- **The War rulings (Q20), the owner's answer of 2026-11-24:** "I'll go with your recommendations on the war
+  rulings." Eight of them are a sentence and a row, written here word for word: R1 Crushing Presence, R2 Weight of the
+  World, R15 Crimson Pact (a Third Oath option), R21 Saturation, R22 Meat Shield, R23 Dense Muscle, R24 Unstoppable
+  Force, R25 Walking Fortress. R26, Ironblood, is reworded here too and counted with the survey's nodes.
+- **Barbed Skin, the coordinating session's ruling of 2026-11-24 under the owner's delegation:** "+2% Retaliation per
+  point.", a flat 2, as the Masochist's Spine node words the same row.
+- **The `max_health` step bound**, raised to 5,000 for R2, R23 and R25, which step by 5,000; agreed by the coordinating
+  session the same day. The bound guards against a figure typed into the wrong column, and the simulation's tier 8
+  reference character holds 11,023 maximum health.
+- **"Damage" is attack damage and spell damage**, the owner's ruling of 2026-08-25 (the entry headed "Increased damage"
+  on a passive node means attack damage and spell damage). Seven nodes here say plain "damage", increased or more, and
+  each is two rows.
+
+### WHAT WAS DECIDED HERE (judgements, labelled)
+
+1. **Bloodthirst, "+0.3% life leech per point" became "+1% life leech on all melee attacks for every 3 points".** The
+   design document's rule "A threshold or a step, never a fraction" (the owner's choice of 2026-11-24). The 3 is the
+   whole step nearest 1 / 0.3: 2% at its 8 points where 0.3 a point gave 2.4.
+2. **Iron Constitution's "At 5 points: Gain HP equal to 10% of your Armor value"** is 1 flat maximum health for every
+   10 armour, granted once from 5 points. The sentence states a share of armour, not a figure a point.
+3. **Aura of Pain's "Enemies within 3 meters"** is a 3 metre radius granted once from the first point. A per-point row
+   would make it 24 metres at 8.
+4. **Pain is Power's "At 5 points: This bonus also applies to retaliation damage"** is its 2% for every 10% of missing
+   health on retaliation too, paid on every point once 5 are spent (`Per Point From` 1). Nothing at 4; 10% at 5.
+5. **Crushing Presence's "+1 flat damage" is flat attack damage alone,** as the "Flat damage" affix grants
+   (`game/Data/Affixes.csv`, `Stat_Flat_damage`) and as R1 sized it ("about four flat damage affixes"). The owner's
+   ruling of 2026-08-25 is about increases; no flat spell damage row exists on any passive node.
+6. **Vital Strikes' "all incoming damage is reduced by your current life leech percentage"** is 1 damage reduction for
+   every 1% of life leech, while above 50% Fervour.
+
+### HOW THE CHECKS WERE KEPT ABLE TO FAIL
+
+`test_passive_effects_match_the_node_text.py` needed three allowances, each keyed to one node so no other row is
+loosened: Iron Constitution's value in words (a four-part key, node, stat, condition and bucket, because the node grants
+`max_health` twice), Vital Strikes' step of one in words (`STEP_OF_ONE_ON_ONE_NODE`), and Aura of Pain's radius from
+the first point (`FIXED_FROM_THE_FIRST_POINT`). Each was guard-proved below. The new check,
+`test_plain_damage_on_a_passive_node_is_attack_and_spell_damage`, is what would have caught the seven nodes this slice
+first wrote with attack damage alone; it was guard-proved too.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, each against
+`python -m pytest tools/tests/test_passive_effects_match_the_node_text.py`. Every one reported `proved` True: a named
+test failed with the break in, and all 25 passed with it restored. Each break is to `game/Data/PassiveEffects.csv`.
+
+| Break | Named failures |
+|---|---|
+| P1. Iron Constitution's armour row, `Bulwark_basic_trunk_002#2`, value 1.0 to 2.0 | `test_every_value_appears_in_the_nodes_own_description` |
+| P2. Vital Strikes' row, `Berserker_capstone_25#1`, scale step 1.0 to 2.0 | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+| P3. Warbringer's spell damage row, `Bulwark_basic_trunk_003#2`, removed | `test_plain_damage_on_a_passive_node_is_attack_and_spell_damage`, `test_the_coverage_is_what_it_was_measured_to_be` |
+
+P1 and P2 show the two one-node allowances still check the value and the step they excuse the words of. P3 is the
+fault this slice first made.
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarDataRows.ThresholdRowsPayFromTheirThresholdAsTheirSentencesSay` | Bloodthirst 0, 1, 1, 2 at 2, 3, 5, 8 points; Pain is Power's retaliation 0, 10, 16 at 4, 5, 8; Aura of Pain's 3 m at 1 and 8; Iron Constitution's and Walking Fortress's threshold rows; each against its node's per-point row |
+| `Cataclysm.WarDataRows.ScaledRowsCarryTheirStepAndCapIntoTheModifier` | Saturation's cap of 5 against Crushing Presence's none; the 1,000 and 5,000 steps; Army of One's four rows |
+| `Cataclysm.WarDataRows.EachWarOathOptionGrantsItsOwnRowAndNoOther` | Iron Aegis and Titan's Blood each alone; nothing with no option or with Thornwall; Vital Strikes and not Warlord |
+
+Predicted counts: `Cataclysm.WarDataRows.` 3. `Cataclysm.Data.` unchanged in number; its import test reads 421 rows.
+
+**No C++ guard proof is planned.** The slice changes no engine code, and a broken row reaches the engine only through
+the editor step, which `prove_cpp_guard` does not run. Each test above carries its own control instead, and the
+mechanisms it leans on were guard-proved where they were built (`PointsPaid`, the passive row port).
+
+---
+
 ## 2026-11-24 — The War classes fill Fervour: the Bulwark on a hit taken and a block, the Berserker on a critical strike, the Saboteur on placing, triggering and landing its devices; the Bulwark and the Berserker decay out of combat (slice C)
 
 **Affects:**

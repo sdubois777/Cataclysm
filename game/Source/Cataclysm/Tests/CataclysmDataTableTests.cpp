@@ -511,7 +511,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// replaced per-point values below 1, one row per step.
 	// AND 373 SINCE 2026-11-24, for the War classes' Fervour (slice C of
 	// plan_death_and_war.md): nine rows on the three War starting nodes.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        373)
+	// AND 421 SINCE 2026-11-25, for slice D of plan_death_and_war.md: forty-eight
+	// rows on thirty War nodes that had none, every one data alone.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        421)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

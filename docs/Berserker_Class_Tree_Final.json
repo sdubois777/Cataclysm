@@ -67,7 +67,7 @@
       "data": {
         "kind": "basic",
         "name": "Bloodthirst",
-        "description": "+0.3% life leech per point on all melee attacks.",
+        "description": "+1% life leech on all melee attacks for every 3 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1601,7 +1601,7 @@
           {
             "name": "Crimson Pact",
             "identity": "Crit \u00d7 Leech",
-            "description": "Your critical strike multiplier bonus is added to your life leech percentage. Your life leech percentage is added to your critical strike multiplier bonus."
+            "description": "Your critical strike multiplier is increased by 10% for every 1% of life leech you have."
           }
         ],
         "pointThreshold": 100,

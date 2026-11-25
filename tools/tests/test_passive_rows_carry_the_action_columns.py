@@ -175,18 +175,29 @@ def test_a_column_about_an_item_is_refused(tmp_path, column):
 
 
 def test_the_sheet_reads_with_no_port_column_at_all(tmp_path):
-    """The workbook has none of the fourteen yet. `OPTIONAL_COLUMNS` lets the sheet read without them, until the
-    first slice that writes a row using one adds that column."""
-    old = HEADERS[:HEADERS.index("Action")]
+    """The workbook has none of the thirteen action columns yet. `OPTIONAL_COLUMNS` lets the sheet read without
+    them, until the first slice that writes a row using one adds that column. `Per Point From` is no longer among
+    them: slice D's rows added it to the workbook on 2026-11-24 (Pain is Power), so it is required."""
+    old = HEADERS[:HEADERS.index("Action")] + ["Per Point From"]
     out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
     assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
     declared = set(gen.OPTIONAL_COLUMNS["Passive Effects"])
-    assert declared == set(gen.PASSIVE_ACTION_COLUMNS) | {"Per Point From"}
+    assert declared == set(gen.PASSIVE_ACTION_COLUMNS)
 
 
 # ---------------------------------------------------------------------------
 # Per Point From
 # ---------------------------------------------------------------------------
+
+def test_a_sheet_without_per_point_from_is_refused_now_a_row_has_it(tmp_path):
+    """Slice D put the column in the workbook on 2026-11-24 with Pain is Power's row, and the declaration left
+    `OPTIONAL_COLUMNS`, as `Scale Max Steps` did with Wall of Servants'. A sheet without it is now refused like any
+    other column the generator reads, so a column deleted from the workbook cannot drop the threshold in silence."""
+    assert "Per Point From" not in gen.OPTIONAL_COLUMNS["Passive Effects"]
+    without = [column for column in HEADERS if column != "Per Point From"]
+    with pytest.raises(gen.DataError, match="Per Point From"):
+        read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=without)
+
 
 def test_per_point_from_is_kept_with_a_threshold(tmp_path):
     """Tempered Steel's "At 6 points: These bonuses are doubled while at maximum Fervour": all its points, from 6."""

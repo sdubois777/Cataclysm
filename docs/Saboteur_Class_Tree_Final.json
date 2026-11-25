@@ -419,7 +419,7 @@
       "data": {
         "kind": "keystone",
         "name": "Saturation",
-        "description": "Your evasion chance cap is increased by 5% for each active trap on the battlefield. Bonus evasion from this effect is not subject to the normal 60% cap.",
+        "description": "+5% evasion chance for each of your active traps, up to 5 traps.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

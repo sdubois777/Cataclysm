@@ -2014,6 +2014,9 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: writes a row using one adds that column to the workbook with its re-apply
 #: script and deletes it here, which `tools/tests/test_required_workbook_columns.py`
 #: then requires.
+#: PER POINT FROM LEFT ON 2026-11-24 with slice D's rows
+#: (`tools/reapply_war_data_rows_workbook.py`), which added the column for Pain
+#: is Power's "At 5 points: This bonus also applies to retaliation damage".
 _PASSIVE_PORT_COLUMN_REASON = (
     "the passive row port of 2026-11-24; added to the workbook by the first War "
     "or Death tree slice that authors a row using it")
@@ -2023,8 +2026,7 @@ OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
         for column in ("Action", "Action Event", "Fraction Of", "Stack Seconds",
                        "Scale Offset", "Every Seconds", "Every Nth",
                        "Condition 2", "Condition Value 2", "Trigger Cooldown",
-                       "Event Value", "Ailment", "Damage Share",
-                       "Per Point From")},
+                       "Event Value", "Ailment", "Damage Share")},
 }
 
 
@@ -5596,7 +5598,17 @@ SCALES = {
     # passives, and the Ravager 2,110. A step past 1,000 would be a bonus worth
     # one or two of itself at the very end of a character's life, which is far
     # likelier a number typed into the wrong column.
-    "max_health": (0.0, 1000.0, "an amount of maximum health"),
+    #
+    # RAISED TO 5,000 ON 2026-11-24 for the War trees' rulings R2, R23 and R25,
+    # which the owner accepted that day: Weight of the World, Dense Muscle and
+    # Walking Fortress step by 5,000 maximum health. The figure above is before
+    # gear and passives; the simulation's tier 8 reference character, level
+    # 100 with half its slots on staying alive, holds 11,023
+    # (`sim/cataclysm_sim/fight.py`, `reference_player`), and a Bulwark that
+    # invests in health holds more, so a step of 5,000 is reached twice by that
+    # character and more often by the build these nodes are for. The
+    # coordinating session agreed the raise the same day.
+    "max_health": (0.0, 5000.0, "an amount of maximum health"),
 
     # "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
     # target" is `metres_to_target` with a step of 1. Issue #1981.

@@ -142,7 +142,7 @@ def words_of(row: dict, nodes: dict) -> str:
 #: SO THIS PATTERN NOW ASKS FOR A NUMBER EVERYWHERE, which is what makes it worth
 #: having. A sentence stating no magnitude cannot be tied to a magnitude in a
 #: spreadsheet, however honest the word in it is.
-MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
+MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\b",
                         re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
@@ -659,7 +659,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: none. The Bulwark's three (hit taken, block, decay), the Berserker's two
 #: (critical strike, decay) and the Saboteur's four (trap placed, gadget placed,
 #: trap triggered, device hit). Three new nodes, so `AUTHORED_NODES` moves too.
-AUTHORED_ROWS = 373
+#:
+#: AND TO 421 ON 2026-11-25, for slice D of `plan_death_and_war.md`: forty-eight
+#: rows on thirty War nodes that had none, every one data alone, seven of them the
+#: spell damage half of a plain "damage". Written by
+#: `tools/reapply_war_data_rows_workbook.py`, which lists them.
+AUTHORED_ROWS = 421
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1076,7 +1081,12 @@ AUTHORED_ROWS = 373
 #: AND TO 229 ON 2026-11-24: the three War starting nodes, `Bulwark_basic_trunk_000`,
 #: `Berserker_trunk_000` and `Saboteur_basic_trunk_000`, each given its Fervour rows
 #: by slice C of `plan_death_and_war.md`.
-AUTHORED_NODES = 229
+#:
+#: AND TO 259 ON 2026-11-24: the thirty War nodes slice D of
+#: `plan_death_and_war.md` gave rows, none of which had one -- sixteen Bulwark
+#: (fifteen nodes and its Second Oath), seven Berserker (four nodes and its three
+#: Oaths) and seven Saboteur.
+AUTHORED_NODES = 259
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1166,7 +1176,11 @@ AUTHORED_NODES = 229
 #: AND TO 36 ON 2026-09-25: Nowhere to Run, Both Hands Full, Shoulder
 #: Through, A Second Self and Chorus. Follow Through is a keystone and moves
 #: `AUTHORED_NODES` instead. Issue #1515.
-AUTHORED_OPTIONS = 36
+#: AND TO 41 ON 2026-11-24, slice D of `plan_death_and_war.md`: the Bulwark's
+#: Iron Aegis and Titan's Blood (its Second Oath), and the Berserker's Vital
+#: Strikes, Thrill of the Hunt and Crimson Pact (the third option of each Oath).
+#: Each capstone had no row, so all four move `AUTHORED_NODES` too.
+AUTHORED_OPTIONS = 41
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1492,6 +1506,13 @@ CONDITION_WORDS = {
     #   Subjugator, Long Servitude      "enemies carrying your curse", a condition
     #     (Ritualist)                   the rework added to the game
     "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
+    # THE WAR ROWS OF SLICE D, plan_death_and_war.md, 2026-11-24: Punishing Blow's
+    # "for 3 seconds after a successful block", On Your Toes' "for 3 seconds after
+    # successfully evading", and "while above 50% Fervour" (Precision, Vital
+    # Strikes) and "while above 50% of your maximum Fervour" (Prepared).
+    "seconds_after_block": ("after a successful block", "{value:g} second"),
+    "seconds_after_dodge": ("after successfully evading", "{value:g} second"),
+    "class_resource_above": ("while above", "{value:g}%"),
     "out_of_combat": ("out of combat", None),
     "seconds_after_movement_skill": ("after you use a movement skill",
                                      "{value:g} second"),
@@ -1872,7 +1893,9 @@ def test_a_condition_is_actually_used(effects):
 #: name no number anywhere.
 SCALE_WORDS = {
     "health_missing": (("for every", "missing"), "{value:g}%", None),
-    "class_resource_held": (("fervour you",), "{value:g} fervour",
+    # AND Endless Spite's "for every 10 Fervour currently held" (slice D,
+    # 2026-11-24), a second word set beside the first.
+    "class_resource_held": ([("fervour you",), ("fervour currently held",)], "{value:g} fervour",
                             "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
 
@@ -1883,7 +1906,11 @@ SCALE_WORDS = {
     #
     # A STEP FORM IN PERCENT, because the sentence writes one -- "1% of life
     # leech" -- unlike the stack counts below, which name no step at all.
-    "life_leech": (("for every", "life leech"), "{value:g}%", None),
+    #
+    # AND VITAL STRIKES' "reduced by your current life leech percentage" (the
+    # Berserker's First Oath, slice D, 2026-11-24): 1 for every 1% of leech, the
+    # step stated in words. See `STEP_OF_ONE_ON_ONE_NODE`.
+    "life_leech": ([("for every", "life leech"), ("your current life leech",)], "{value:g}%", None),
 
     # THREE STACK COUNTS, EACH NAMING ITS OWN STACK. Issues #1002, #1003 and
     # #1004. The words include the stack's name wherever the node gives it one,
@@ -2007,8 +2034,21 @@ SCALE_WORDS = {
     # Issue #1515. Weight Bearing reads "1 Armor for every 10 maximum health you
     # have": the others read how FULL the bar is, and this reads how BIG it is,
     # so naming the pool is what keeps this row off a node about missing health.
-    "max_health": (("for every", "maximum health"), "{value:g} maximum health",
-                   None),
+    #
+    # AND THE WAR RULINGS' WORDING, accepted by the owner on 2026-11-24 (R1, R2,
+    # R22 to R25): "for every 1,000 Maximum HP" and "Each 1,000 Maximum HP", with
+    # a thousands comma. A LIST of word sets, any one of which must be wholly
+    # present, and a tuple of step forms, any one of which must appear.
+    "max_health": ([("for every", "maximum health"), ("for every", "maximum hp"),
+                    ("each", "maximum hp")],
+                   ("{value:g} maximum health", "{value:,g} maximum hp"), None),
+    # THE SCALES SLICE D PUT ON A PASSIVE ROW FOR THE FIRST TIME, 2026-11-24.
+    # Iron Constitution's "Gain HP equal to 10% of your Armor value" (1 for every
+    # 10 armour); Army of One's "Each active gadget" and Mobile Armory's "for each
+    # active gadget"; Saturation's "for each of your active traps".
+    "armor": (("of your armor",), "{value:g}%", None),
+    "gadgets_active": (("active gadget",), None, "each active gadget"),
+    "traps_active": (("active traps",), None, "for each of your active traps"),
 
     # THE SCALES THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW FOR
     # THE FIRST TIME. Beacon of Despair counts the debuffs on the enemy struck
@@ -2021,6 +2061,17 @@ SCALE_WORDS = {
                          None),
     "increased_movement_speed": (("for every", "increased movement speed"),
                                  "{value:g}%", None),
+}
+
+
+#: A step of one one node states in words while the rest of its scale states the
+#: step in digits, keyed by node and scale. Vital Strikes (the Berserker's First
+#: Oath, slice D, 2026-11-24) reads "reduced by your current life leech
+#: percentage", one for every 1% of leech; Glutton and Crimson Pact write the
+#: same step as "for every 1% of life leech", so giving the whole scale a
+#: step-of-one phrase would fail them.
+STEP_OF_ONE_ON_ONE_NODE = {
+    ("Berserker_capstone_25", "life_leech"): "your current life leech percentage",
 }
 
 
@@ -2054,13 +2105,13 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         described = words_of(row, nodes)
         words = described.lower()
-        for phrase in expected_words:
-            assert phrase in words, (
-                f"{row['Node']} carries the scale {scale!r} and its description "
-                f"does not say {phrase!r}:\n"
-                f"    {described}\n"
-                f"All of {list(expected_words)} have to be in it."
-            )
+        # A LIST OF WORD SETS IS ANY ONE OF THEM, WHOLLY (slice D, 2026-11-24); a
+        # tuple is one set, every word of it.
+        word_sets = expected_words if isinstance(expected_words, list) else [expected_words]
+        assert any(all(phrase in words for phrase in each) for each in word_sets), (
+            f"{row['Node']} carries the scale {scale!r} and its description "
+            f"says none of these sets in full: {word_sets}: {described}"
+        )
 
         step = float(row["ScaleStep"])
         assert step > 0.0, (
@@ -2083,6 +2134,9 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
             continue
 
+        # ONE NODE'S STEP OF ONE IN WORDS. See `STEP_OF_ONE_ON_ONE_NODE`.
+        step_of_one_words = STEP_OF_ONE_ON_ONE_NODE.get((row["Node"], scale), step_of_one_words)
+
         if step == 1.0 and step_of_one_words is not None:
             # A STEP OF ONE STATED IN WORDS RATHER THAN DIGITS. Issue #1029.
             # Reciprocity says "for each point of Fervour you currently hold",
@@ -2098,9 +2152,10 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
             continue
 
-        printed = value_form.format(value=step)
-        assert printed.lower() in words, (
-            f"{row['Node']} scales in steps of {printed!r} and the node says:\n"
+        forms = value_form if isinstance(value_form, tuple) else (value_form,)
+        printed = " or ".join(repr(form.format(value=step)) for form in forms)
+        assert any(form.format(value=step).lower() in words for form in forms), (
+            f"{row['Node']} scales in steps of {printed} and the node says:\n"
             f"    {described}\n"
             "The two have to agree. Either the workbook is stale or the tree "
             "file changed."
@@ -2210,7 +2265,8 @@ VALUE_FORMS = {
     # what makes that worth doing: a workbook changed to 6 metres while the node
     # still says 4 fails this check, where a constant in C++ could disagree with
     # the sentence for ever and nothing would notice.
-    "retaliation_radius_metres": "{value:g} metre",
+    # AND "meters", which the War trees write (Aura of Pain, slice D, 2026-11-24).
+    "retaliation_radius_metres": ("{value:g} metre", "{value:g} meter"),
 
     # A PLAIN COUNT OF MAXIMUM FERVOUR. Issue #1515. `class_resource` is the
     # size of the class's resource pool, and until 2026-09-11 every row on it
@@ -2228,7 +2284,11 @@ VALUE_FORMS = {
     # ANY ONE OF THEM MAY MATCH, the shape `CONDITION_WORDS` already uses for
     # the same reason. It does not weaken the check: each alternative still has
     # to appear in the sentence with the row's own number in it.
-    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour"),
+    #
+    # AND MEAT SHIELD'S RULED "increases your maximum Fervour by 3" (R22, slice
+    # D, 2026-11-24), the number after the noun.
+    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour",
+                       "maximum Fervour by {value:g}"),
 
     # A FLAT AMOUNT OF ARMOUR, WHICH ONLY ONE NODE GRANTS. Issue #1515. Weight
     # Bearing reads "1 Armor for every 10 maximum health you have", so the
@@ -2380,6 +2440,17 @@ VALUE_FORMS = {
     "cripple_and_weaken_spread_on_death_metres": "{value:g} metre",
     "ultimate_fervour_cost_reduction": "{value:g} less Fervour",
     "minion_lifetime_renewed_every_seconds": "{value:g} second",
+    # IRONBLOOD'S RULED "+2 flat HP Regen per second per point" (R26, slice D,
+    # 2026-11-24), the first flat health_regen row; the percent form stays for
+    # any node that writes the regeneration as a share.
+    "health_regen": ("{value:g}%", "{value:g} flat HP Regen"),
+    # CRUSHING PRESENCE'S RULED "+1 flat damage per point for every 1,000 Maximum
+    # HP" (R1, slice D, 2026-11-24), the first flat attack_damage row.
+    "attack_damage": ("{value:g}%", "{value:g} flat damage"),
+    # WALKING FORTRESS'S RULED "+40 flat Maximum HP per point" (R25, slice D,
+    # 2026-11-24). Iron Constitution's flat row states its value in words and is
+    # in `VALUE_IN_WORDS`.
+    "max_health": ("{value:g}%", "{value:g} flat Maximum HP"),
     # THE WAR CLASSES' FERVOUR, slice C of plan_death_and_war.md, 2026-11-24. Each
     # the whole phrase after its number, for the reason the Ravager's starting
     # node gives above: the Bulwark's and the Saboteur's sentences each hold
@@ -2411,6 +2482,20 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE BULWARK'S SECOND OATH, slice D, 2026-11-24: Iron Aegis' "Your Block
+    # Chance is doubled ..." and Titan's Blood's "Your HP regeneration is
+    # doubled", each a More of 100 stated as "doubled".
+    ("Bulwark_capstone_50", "block_chance"): ("is doubled", 100.0),
+    ("Bulwark_capstone_50", "health_regen"): ("is doubled", 100.0),
+    # VITAL STRIKES, the Berserker's First Oath, slice D, 2026-11-24: "all
+    # incoming damage is reduced by your current life leech percentage" is 1
+    # damage reduction for every 1% of leech, the 1 stated by "percentage".
+    ("Berserker_capstone_25", "damage_reduction"): ("reduced by your current life leech percentage", 1.0),
+    # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%
+    # of your Armor value" is 1 maximum health for every 10 armour, a share of
+    # another stat. Its other max_health row, "+2% Maximum HP per point", is an
+    # increase stated in digits, so the key carries the bucket.
+    ("Bulwark_basic_trunk_002", "max_health", "", "flat"): ("10% of your armor", 1.0),
     # AND THE COUNT OF MINIONS BEHIND THE VEIL ASKS FOR. Issue #1515. The node
     # reads "while you have three or more minions", so the sheet's 3 has no
     # digit to match in the sentence. Its OTHER row needs no entry: the same
@@ -2773,10 +2858,15 @@ VALUE_IN_WORDS = {
 
 
 def in_words(row: dict):
-    """The `VALUE_IN_WORDS` entry for a row: by node, stat and condition first,
-    then by node and stat. The three-part key is for a node granting one stat
-    twice under different conditions, each stated in its own words (2026-11-24)."""
-    return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
+    """The `VALUE_IN_WORDS` entry for a row: by node, stat, condition and value
+    kind first, then by node, stat and condition, then by node and stat. The
+    three-part key is for a node granting one stat twice under different
+    conditions, each stated in its own words (2026-11-24); the four-part key
+    for one granting a stat twice in two buckets, one of them stated as a share
+    of another stat (Iron Constitution, slice D, 2026-11-24)."""
+    return (VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip(),
+                                row["ValueKind"].strip().lower()))
+            or VALUE_IN_WORDS.get((row["Node"], row["Stat"], row["Condition"].strip()))
             or VALUE_IN_WORDS.get((row["Node"], row["Stat"])))
 
 
@@ -3537,6 +3627,17 @@ AT_N_POINTS = re.compile(r"\bAt (\d+) points:")
 FOR_EVERY_N_POINTS = re.compile(r"\bfor every (\d+) points\b")
 
 
+#: Rows granting a fixed figure once from a node's first point: `MinPoints` 1,
+#: on a node of several points whose sentence states the figure with no "per
+#: point" and no "At N points". Aura of Pain, slice D, 2026-11-24: "+5% aura
+#: retaliation damage per point. Enemies within 3 meters take retaliation
+#: damage ..." -- the 3 metres is the aura's radius at any number of points, so
+#: it is granted once, where a per-point row would make it 24 metres at 8.
+FIXED_FROM_THE_FIRST_POINT = frozenset({
+    ("Bulwark_basic_tw_t3_001", "retaliation_radius_metres"),
+})
+
+
 def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
         effects, nodes):
     """A row with `MinPoints` belongs to a node that says "At N points:", with
@@ -3552,6 +3653,10 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
     for row in effects:
         min_points = int(float(row.get("MinPoints", 0) or 0))
         if not min_points:
+            continue
+        # A FIXED FIGURE FROM THE FIRST POINT, which the sentence states with no
+        # "per point" and no threshold. See `FIXED_FROM_THE_FIRST_POINT`.
+        if min_points == 1 and (row["Node"], row["Stat"]) in FIXED_FROM_THE_FIRST_POINT:
             continue
         sentence = nodes.get(row["Node"], {}).get("Description", "")
         said = [int(n) for n in AT_N_POINTS.findall(sentence)]
@@ -3645,3 +3750,64 @@ def test_a_chance_on_melee_hit_is_scoped_to_melee(effects, nodes):
     assert len(checked) == 8, (
         f"expected the six on-melee-hit rows and Attrition's two, found {checked}")
     assert not wrong, "a chance on a melee hit is not scoped to melee:\n" + "\n".join(wrong)
+
+
+#: "+3% damage", "20% more damage", "+2% to all damage": a percentage of damage
+#: that names no kind. The number is captured so a row is matched to the figure
+#: its own sentence states for it.
+PLAIN_DAMAGE = re.compile(r"(\d+(?:\.\d+)?)% (?:more |increased )?(?:to all )?damage\b")
+
+#: The columns two rows have to share to be one bonus granted to two stats.
+SAME_BONUS_COLUMNS = ("Node", "Option", "ValueKind", "ValuePerPoint", "RequiredTags", "Condition",
+                      "ConditionValue", "Condition2", "ConditionValue2", "Scale", "ScaleStep",
+                      "ScaleMaxSteps", "ScaleOffset", "MinPoints", "PerPointFrom")
+
+
+def test_plain_damage_on_a_passive_node_is_attack_and_spell_damage(effects, nodes):
+    """A node saying "damage" with no kind grants attack damage AND spell damage.
+
+    THE OWNER'S RULING OF 2026-08-25 (`docs/DECISIONS.md`, "Increased damage" on
+    a passive node means attack damage and spell damage): "a node granting it is
+    therefore two rows ... one per stat, both the same value". The fifteen
+    Demonic nodes saying it were written that way by hand, and nothing checked
+    it: slice D of `plan_death_and_war.md` first wrote seven War nodes with
+    attack damage alone, and every other check here passed them.
+
+    WHAT IT READS: every `increased` or `more` row on attack or spell damage whose
+    own sentence (the option's, for a capstone) states that row's figure as plain
+    damage. Such a row needs a partner on the other stat sharing every column of
+    `SAME_BONUS_COLUMNS`.
+
+    A SENTENCE NAMING ATTACKS OR SPELLS IS LEFT OUT, because "your attacks deal
+    20% more damage" is attack damage alone (the Ravager's First Onslaught), and
+    a check that cannot tell that apart from plain damage would fire on it. So it
+    can miss a node that says both; it cannot accuse one that is right.
+    """
+    def bonus(row: dict, stat: str) -> tuple:
+        return (stat, *(str(row.get(column, "")).strip() for column in SAME_BONUS_COLUMNS))
+
+    granted = {bonus(row, row["Stat"]) for row in effects}
+    checked = []
+    alone = []
+    for row in effects:
+        if row["Stat"] not in ("attack_damage", "spell_damage") or row["ValueKind"] not in ("increased", "more"):
+            continue
+        described = words_of(row, nodes).lower()
+        if "attack" in described or "spell" in described:
+            continue
+        figure = f"{abs(float(row['ValuePerPoint'])):g}"
+        if figure not in {found.group(1) for found in PLAIN_DAMAGE.finditer(described)}:
+            continue
+        checked.append(row["Name"])
+        other = "spell_damage" if row["Stat"] == "attack_damage" else "attack_damage"
+        if bonus(row, other) not in granted:
+            alone.append(f"{row['Name']}: {row['Stat']} {row['ValueKind']} {figure} has no {other} beside it: "
+                         f"{described}")
+
+    # THE CHECK REACHES ROWS AT ALL, and enough of them to cover both sources:
+    # the Demonic nodes written by hand and the War nodes slice D wrote. Measured
+    # 2026-11-25: 60 rows, 16 of them on War nodes (eight pairs, Prepared's among
+    # them).
+    assert len(checked) >= 60, f"the check read only {len(checked)} rows: {checked}"
+    assert not alone, ("plain damage on a passive node is attack damage and spell damage, two rows of one bonus "
+                       "(the owner's ruling of 2026-08-25):\n" + "\n".join(alone))

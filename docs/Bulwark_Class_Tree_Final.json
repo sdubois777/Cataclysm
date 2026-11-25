@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Meat Shield",
-        "description": "+4% Maximum HP per point. Each 1,000 Maximum HP above 5,000 increases your Fervour cap by 5.",
+        "description": "+4% Maximum HP per point. Each 1,000 Maximum HP increases your maximum Fervour by 3.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Ironblood",
-        "description": "+50 flat HP Regen per second per point.",
+        "description": "+2 flat HP Regen per second per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Crushing Presence",
-        "description": "+100 flat damage per point. Requires 5,000 Maximum HP to activate.",
+        "description": "+1 flat damage per point for every 1,000 Maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -903,7 +903,7 @@
       "data": {
         "kind": "basic",
         "name": "Dense Muscle",
-        "description": "+2% damage reduction per point for every 5,000 Maximum HP above 10,000 (multiplicative).",
+        "description": "+1% damage reduction per point for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -925,7 +925,7 @@
       "data": {
         "kind": "basic",
         "name": "Unstoppable Force",
-        "description": "+1% damage per point for every 1,000 Maximum HP above 10,000.",
+        "description": "+1% damage per point for every 1,000 Maximum HP.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -947,7 +947,7 @@
       "data": {
         "kind": "basic",
         "name": "Weight of the World",
-        "description": "+50 flat damage per point for every 5,000 Maximum HP you have. Requires 8,000 Maximum HP to activate.",
+        "description": "+1% damage per point for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Walking Fortress",
-        "description": "+500 flat Maximum HP per point. At 6 points: For every 10,000 Maximum HP you have, gain 1% of your Maximum HP as flat damage reduction (multiplicative).",
+        "description": "+40 flat Maximum HP per point. At 6 points: +1% damage reduction for every 5,000 Maximum HP (multiplicative).",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "basic",
         "name": "Barbed Skin",
-        "description": "+2% damage reflected to attackers per point (multiplicative).",
+        "description": "+2% Retaliation per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
