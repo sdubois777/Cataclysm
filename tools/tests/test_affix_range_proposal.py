@@ -178,7 +178,8 @@ def test_a_narrowed_stat_stays_near_its_ceiling(table):
     """The owner's ruling "Fewer slots": the top and the slot list move
     together. The piece count is the one whose ceiling is nearest today's,
     rounded down where a cap is close (damage reduction, evasion)."""
-    narrowed = [a for a in _live(table) if a.slots != a.old_slots]
+    d5 = {"Flat critical strike chance", "Flat mana regeneration"}
+    narrowed = [a for a in _live(table) if a.slots != a.old_slots and a.name not in d5]
     assert len(narrowed) == 12
     for affix in narrowed:
         before = affix.old_top * affix.old_pieces()
@@ -199,16 +200,46 @@ def test_an_ailment_affix_never_beats_its_gem_on_one_hand(table, rows):
             assert table[row["AffixName"]].top < best_gem, row["AffixName"]
 
 
-def test_two_retired_affixes_name_live_ones_and_no_hybrid_uses_them(table):
-    retired = {a.name: a.retired_into for a in table.values() if a.retired}
-    assert retired == {
-        "Flat critical strike chance": "Increased critical strike chance",
-        "Flat mana regeneration": "Increased mana regeneration",
-    }
+def test_the_owners_d5_keeps_flat_crit_and_flat_mana_regeneration(table):
+    """"Keep them, but make the ranges like 1-2, 3-4, etc. ... flat crit only
+    rolls on weapons and gloves, and flat mana regen only rolls on belts and
+    ammys." Nothing is retired, and every hybrid still rolls somewhere."""
+    assert not [a.name for a in table.values() if a.retired]
+    two_wide = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12), (13, 14))
+    crit = table["Flat critical strike chance"]
+    regen = table["Flat mana regeneration"]
+    assert crit.tiers == two_wide and set(crit.slots) == {"Weapon", "Gloves"}
+    assert regen.tiers == two_wide and set(regen.slots) == {"Belt", "Necklace"}
     for hybrid in table.values():
         if hybrid.kind == "Hybrid":
-            assert not set(hybrid.hybrid_parts or ()) & set(retired)
             assert hybrid.slots, hybrid.name
+
+
+def test_tier_one_starts_follow_the_owners_order(table, rows):
+    """D7: "% increases definitely need to be significantly higher than 1%";
+    increased highest, flat in the middle. Every affix starts at or above its
+    kind's minimum, the minimums run increase > flat percentage, and the only
+    affixes below are the two the owner gave ranges for in D5."""
+    assert p.MIN_START["increase"] > p.MIN_START["points"] > 1
+    below = []
+    for row in rows:
+        affix = table[row["AffixName"]]
+        if affix.kind == "Hybrid" or affix.retired:
+            continue
+        if affix.tiers[0][0] < p.MIN_START[p.number_kind(row)]:
+            below.append(affix.name)
+    assert sorted(below) == ["Flat critical strike chance", "Flat mana regeneration"]
+
+
+def test_increased_sits_above_flat_except_where_flat_is_a_pool(table):
+    """Stat by stat, the increased affix starts and tops above the flat one,
+    except flat health and flat armour, whose numbers are amounts on their own
+    scale (a level 100 character has thousands of each)."""
+    rows = p.scale_order()
+    assert len(rows) == 10
+    exceptions = {r["stat"] for r in rows if not r["ordered"]}
+    assert exceptions == {"max_health", "armor"}
+    assert all(r["flat is an amount"] for r in rows if not r["ordered"])
 
 
 # ---------------------------------------------------------------------------
@@ -329,9 +360,11 @@ def test_a_hybrid_half_is_its_own_affix_two_tiers_down(table):
 
 
 def test_every_hybrid_share_brackets_the_designs_seventy_percent(table):
+    """0.59 to 0.81 against the design's 0.70: two-wide ladders put tier 5
+    nearer tier 7 than a geometric one does."""
     shares = [top for top, _ in p.hybrid_shares(table).values()]
-    assert min(shares) >= 0.5
-    assert max(shares) <= 0.8
+    assert min(shares) >= 0.55
+    assert max(shares) <= 0.85
 
 
 def test_todays_seventy_percent_rule_would_break_the_new_rules(table):
@@ -412,8 +445,8 @@ def test_apply_writes_the_table_into_a_copy(workbook_copy, tmp_path, table):
     counts = p.apply(workbook_copy, out)
     assert _digest(p.WORKBOOK) == real_before
 
-    assert counts["retired rows"] == 2
-    assert counts["tier rows"] == len(_live(table))
+    assert counts["retired rows"] == 0
+    assert counts["tier rows"] == len(_live(table)) == 73
 
     book = openpyxl.load_workbook(out, data_only=True)
     sheet = book["Affixes"]
@@ -439,8 +472,8 @@ def test_apply_writes_the_table_into_a_copy(workbook_copy, tmp_path, table):
         assert got == affix.tiers, name
         assert set(s.strip() for s in raw[index["Allowed Slots"]].split(",")) == \
             set(affix.slots), name
-    assert "Flat critical strike chance" not in seen
-    assert "Flat mana regeneration" not in seen
+    assert "Flat critical strike chance" in seen
+    assert "Flat mana regeneration" in seen
 
 
 def test_apply_leaves_every_other_sheet_as_it_was(workbook_copy, tmp_path):
