@@ -137,7 +137,37 @@ must fail `EternalArmyKeepsAMinionAtOneHealthOnlyWhileTheSummonerIsAboveHalf`.
 
 ### What was run
 
-FIGURES_HERE
+**The whole Python suite on `960470122`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8973 passed, 9 skipped in 603.67s
+(0:10:03)". The JUnit file agrees: tests 8983, failures 1, errors 0, skipped 9, so 8973 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects` and the other tables it names. The run on
+`ae642777a`, before this entry, also failed the check that every condition is named in this log, which this entry
+satisfies; the run on `e89cc8bb8` failed the check described under "Said first", fixed in `506da5798`.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Twelve Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy, and each
+`proved`: eleven on `ae642777a`, and the hit's amount on `7d115a743`, after `hit_taken` began to carry it. A twelfth on
+`ae642777a` proved the earlier form, an amount of nought, and is replaced by that one.
+
+| Break | Named failures |
+|---|---|
+| A follower's death raising `kill` rather than `minion_death` | `test_charge_and_placed_action_names_match_the_engine.py::test_a_followers_death_is_told_to_its_commander_and_eternal_army_comes_first` |
+| Eternal Army comparing below rather than above | the same test |
+| An own stack's event condition no longer put on its grant | `test_charge_and_placed_action_names_match_the_engine.py::test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_still_carries_nought` (its name on `ae642777a`) |
+| `hit_taken` back to an amount of nought (on `7d115a743`) | `test_charge_and_placed_action_names_match_the_engine.py::test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_the_share` |
+| A thrall's blow no longer naming itself to Marshal | `test_charge_and_placed_action_names_match_the_engine.py::test_marshal_shared_leech_and_bound_bones_are_read_where_they_act` |
+| Shared Leech no longer paid beside the leech | the same test |
+| Bound Bones no longer recounted each step | the same test |
+| The slow suppression no longer an immunity to Slow | `test_charge_and_placed_action_names_match_the_engine.py::test_a_row_saying_nothing_may_slow_the_character_is_an_immunity_to_slow` |
+| Death Ward's window at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+| `minion_death` taken out of the events whose character cannot be struck | `test_pool_action_names_match_the_engine.py::test_every_event_a_strike_may_hang_on_is_fired_with_a_character` |
+| The condition count sentence left at a hundred and three | `test_the_condition_count_sentences_agree_with_the_code.py::test_the_header_count_sentence_states_the_two_counts_the_code_holds` |
+| The summoner's lookup no longer filling the asking minion's distance | `test_a_minion_row_asks_only_what_its_read_can_answer.py::test_no_minion_row_asks_what_its_read_cannot_answer` |
 
 ---
 
