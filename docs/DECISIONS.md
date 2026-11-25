@@ -240,6 +240,88 @@ runs its assertions (drops-and-death's G4, Subjugate's TF1, weapon-skills' W6).
 
 ---
 
+## 2026-11-24 — The Cataclysm Boss always drops one piece of the next tier's best rarity, beside its ordinary drops (#2853)
+
+**RUN AND PASSED IN WINDOW sd2-w1 (2026-11-25), WITH THE DROP SUPPLY AND POWER SCORE ENTRIES BELOW; THE WINDOW'S
+RECORD IS AT THE END OF THE DROP SUPPLY ENTRY.** Written on `feat/score-and-drops-2853`, by the
+coordinating session's instruction of 2026-11-24, as one change before that branch's window. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853).
+
+### The ruling
+
+**The owner, 2026-11-24, issue #2853 comment 7150904221, verbatim:** "as far as loot is concerned, I know we just put a
+hard cap. However I think for Cataclysm bosses they should always drop a single piece of loot that is 3 tiers above the
+current tier when possible. This will kinda tease the player and show them what they have to look forward to getting in
+the next tier." Asked which rarity, **the chosen option verbatim: "The next tier's best (Recommended)"**: rarity number
+tier + 4, one rung above the tier's cap, so tier 1 Legendary, 2 Mythical, 3 Ascendant, 4 to 8 Cataclysmic. The cap of
+#2886 holds for every other roll. The precedents named when it was asked: Diablo III's Rift Guardians always drop a
+legendary; Path of Exile's pinnacle bosses have guaranteed drops.
+
+### What changed
+
+- `UCataclysmDropRoll::CataclysmBossPieceRarity(Tier)`: `HighestDroppableRarity(min(Tier + 1, 8))`, the next tier's
+  cap in the owner's own words, and Cataclysmic at tier 8. `loot.cataclysm_boss_piece_rarity` in the simulation.
+- `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor`: at the Cataclysm Boss's rung (`CataclysmBossRarityStep`,
+  held to `ACataclysmDungeonGameMode::CataclysmBossRung` by a `static_assert` at the death site) one item through
+  `SpawnDropsFor`, with that rarity as the lowest; nothing for any other rung. The drop is marked
+  `ACataclysmDroppedItem::bTheCataclysmBossesPiece`, through a new last parameter of `SpawnDropsFor` that every other
+  caller leaves false. `loot.roll_the_cataclysm_bosses_piece`, and `roll_item` takes a rarity to give.
+- **The death site** (`ACataclysmEnemyCharacter`) calls it LAST, after the gems, so every other draw of a Cataclysm
+  Boss's kill is as it was.
+- **The design document**, the cap section: a paragraph and the table "The Cataclysm Boss's piece".
+
+### Judgements of this change
+
+1. **Its rarity is exact**, by the High Roller's path: a lowest rarity above the tier's cap gives that rarity and
+   nothing rarer (`RollRarityAtLeast`, the owner's exception of the same day), and from tier 4 the lowest is
+   Cataclysmic, the top. So the piece is the next tier's best and never more.
+2. **It arrives at its rarity's gear level gate**, as every drop does (`RollItem`): Legendary +4, Mythical +6,
+   Ascendant +8, Cataclysmic +10. The ruling named a rarity and no level.
+3. **One piece whatever the loot quantity or the Power Score gap's loot factor**: the owner said "always". It is given a
+   count of one and the baseline loot quantity.
+4. **A separate function beside the High Roller's extra drops, not a branch inside `SpawnDropsFor`**, so the tests that
+   count a Cataclysm Boss's ordinary drops through `SpawnDropsFor` (`Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed`,
+   `AKillDropsAtTheRateItsRarityStates`, `EveryCreatureDropsHalfTheGearItDidAndTheSameGemsAndGold`) count what they
+   counted. `Cataclysm.RarityCap.AKillAtTierOneDropsNothingAboveMasterful` calls it as the death site does and sets the
+   piece aside by `bTheCataclysmBossesPiece`.
+
+### Tests
+
+**Unreal, registered** (run in window sd2-w1): `Cataclysm.RarityCap.` gains three, RC7
+`TheCataclysmBossesPieceIsTheNextTiersBest` (the rarity at every tier, written out), RC8
+`ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate` (tiers 1, 4 and 8: one item, marked, of that rarity, at its
+gate) and RC9 `OnlyTheCataclysmBossesRungDropsThePiece` (rungs 0 to 4 nothing, the Boss's included; the control: the
+Cataclysm Boss's one). RC6 `AKillAtTierOneDropsNothingAboveMasterful` drops the piece with each of its 20 kills, sets it
+aside by name, and asserts 20 pieces, each the next tier's best, at tiers 1 and 8; it prints them on its "RARITY CAP
+LIVE" line.
+
+**Python**: `sim/tests/test_loot.py` adds the piece's rarity at every tier (8), one piece at its rarity and gate at
+tiers 1, 4 and 8 for magic find 0 and 100,000 (3), and only a Cataclysm Boss (1);
+`tools/tests/test_gear_rarity_gate_is_stated_everywhere.py` adds the document's table against the model and the
+engine's function and death-site order.
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of the working tree (`git stash
+create` `5011d01f5`, which changes no stash), each PROVED (failed with the break in, passed restored):
+
+| Proof | Break | Named failures | Restored |
+| :-- | :-- | :-- | :-- |
+| PB1 | `loot.cataclysm_boss_piece_rarity`'s `min(tier + 1, ...)` read as `min(tier, ...)` | the piece at tiers 1 to 4 (4), the document's table (1); the one-piece test passes, as it asks the function for the rarity | 148 passed |
+| PB2 | the document's `\| 1 \| Legendary \|` read as `\| 1 \| Mythical \|` | the document's table | 11 passed |
+| PB3 | the death site's `SpawnTheCataclysmBossesPieceFor(` renamed | the engine's death-site order | 11 passed |
+
+**The window's registration moves by three**: `Cataclysm.RarityCap.` alone 9 (6 + 3), and `Cataclysm.BossFloor.` 5 and
+`Cataclysm.WinningTheRun.` 11 alone (each kills the Cataclysm Boss through the death site; neither counts drops),
+counted in rc-w1's log and the same in bb12-w1's; the whole suite registered below, 5432, includes these three.
+**C++ guard proofs, at most three**:
+
+| Proof | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- |
+| CB1 | `return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));` read as `return HighestDroppableRarity(Tier);` | `Cataclysm.RarityCap.` | RC7 (RC6 and RC8 ask the function itself and pass) |
+| CB2 | in `SpawnTheCataclysmBossesPieceFor`, `EnemyRarityStep != CataclysmBossRarityStep` read as `EnemyRarityStep < FirstBossRarityStep` | `Cataclysm.RarityCap.` | RC9 |
+| CB3 | `Drop->bTheCataclysmBossesPiece = bTheCataclysmBossesPiece;` read as `Drop->bTheCataclysmBossesPiece = false;` | `Cataclysm.RarityCap.` | RC6, RC8 |
+
+---
+
 ## 2026-11-24 — The character creator's skill line counts the damage type's Aura and says how many skills work: "Demonic, Sword    6 of 6 skills work"
 
 On `fix/creation-skill-count`, from development `5cdd6bdc4`. No issue was filed: the owner's report came to the
@@ -452,6 +534,464 @@ are not used: by its report they no longer fail anything, the two protections ea
 
 ---
 
+## 2026-11-24 — Drop supply at tier 1: half the gear, gems scaled by tier, no all-resistances on a tier 1 drop, and the gap rule's cut starting at a per-tier width (#2853)
+
+**ONE WINDOW WITH THE POWER SCORE ENTRY BELOW, ON `feat/score-and-drops-2853-2`; RUN AND PASSED IN WINDOW sd2-w1
+(2026-11-25), ITS RECORD AT THE END OF THIS ENTRY; THE WORKBOOK WRITTEN.** Written on `feat/drop-supply-2853`, made from
+`feat/power-score-weights-2853` at `0799b7b27`. Both branches' commits were replayed onto development `5cdd6bdc4` (the
+rarity cap, merged as #2886) as `feat/score-and-drops-2853`, which writes the workbook and holds the window's
+registration: "One window for both", at the end of this entry. That branch was rebuilt on development `9acbb3528` (the
+bug batches, #2889) as `feat/score-and-drops-2853-2`, with the workbook written again on development's, and
+re-registered; the registration says how. Since that rebuild bug batch 1's entry stands between this entry and the Power
+Score entry, by the dates that order the log. Issue [#2853](https://github.com/sdubois777/Cataclysm/issues/2853), the
+drop supply half of the owner's "Adopt, and look at drop supply (Recommended)" (the Power Score entry below). The
+window's editor step rebuilt `DT_EnemyDrops` as `9cef8126c`; until then one Python test failed and said so, and since
+then none fails.
+
+### Why
+
+**The owner, 2026-11-23, verbatim:** "I've run one dungeon and I'm already almost double the dungeon score". After the
+plain weights, the drop supply proposal (branch `proposal/drop-supply-2853`, `ea7efabeb`; its write-up in the
+coordinating session's worktree) measured a fresh tier 1 character at 1.72, 2.19 and 2.83 times the dungeon's score after
+1, 2 and 4 Outpost dungeons, and found the cause in how much drops: about 123 gear pieces a tier 1 floor, every tier at
+tier 8's gem rate (seven gems after one Outpost dungeon, more than tier 1's whole reference character holds), the
+all-resistances family 58 to 65 per cent of the character's resistance points, and a gap rule that cut the character
+the experience curve produces in its own tier.
+
+### The rulings
+
+**RULINGS, the owner, 2026-11-24, chosen options quoted** (issue comment 7147403317, as the coordinating session
+recorded them):
+
+1. Gear quantity: "Halve gear drops (Recommended)": the whole gear drop column halves, about 61 pieces a tier 1 floor
+   instead of 123.
+2. Gems: "Milder: tier 1 gets 1/8 (Recommended)": the gem rate scales by tier, less steeply than halving per tier, so
+   tier 1 gets about 1/8 of today's rate (roughly one gem a dungeon); the exact curve to be measured before it ships.
+3. Resistance: "No all-resist at tier 1 (Recommended)": the all-resistances affix family cannot roll on a difficulty tier
+   1 drop; single resistances still can. (Path of Exile allows all-elemental resistance only from item level 12.)
+4. Gap rule: "Per-tier start (Recommended)": the experience-and-loot cut starts at 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8
+   tier widths above the dungeon at tiers 1 to 8 (was 0.6 everywhere), so a normally levelled player is not cut in its
+   own tier, while a character finished in the next tier is still cut to 5% (15% at tier 6).
+
+### What changed
+
+**1. Gear.** The Enemy Drops sheet's Gear Drops column halves, every enemy rarity alike:
+
+| Enemy rarity | Common | Elite | Legendary | Herald | Boss | Cataclysm Boss |
+| :-- | --: | --: | --: | --: | --: | --: |
+| Gear drops a kill, before | 0.16 | 0.5 | 1.0 | 2.0 | 5.0 | 12.0 |
+| **Now** | **0.08** | **0.25** | **0.5** | **1.0** | **2.5** | **6.0** |
+
+A tier 1 floor of 258 creatures drops 61.3 gear pieces (122.6 before), an Outpost dungeon 460 (919), a slot of it 41.8
+(83.6). `loot.ENEMY_GEAR_DROPS`, `game/Data/EnemyDrops.csv` (as the generator makes it from the halved column), the
+design document's What a Kill Drops table. **The material, gem and gold columns do not move.** So a kill now drops half
+as many materials as gear (a quarter until today), and **a kill's gold piles are twice its gear drops**: the gear ladder
+G1 ruled on 2026-11-18, its shape and its figures (a judgement, below).
+
+**2. Gems.** Tier 8 keeps the gem rate a kill had; each tier below drops three quarters of the tier above's:
+
+| Difficulty tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Share of tier 8's gem rate | 0.1335 | 0.1780 | 0.2373 | 0.3164 | 0.4219 | 0.5625 | 0.75 | 1 |
+| Over what a full clear needs to fill the tier's reference character | 41.4 | 20.2 | 11.5 | 6.9 | 4.1 | 2.5 | 1.6 | 1.01 |
+| Gems in an average 50-floor dungeon | 5.5 | 7.4 | 9.9 | 13.1 | 17.5 | 23.4 | 31.1 | 41.5 |
+
+`loot.GEM_DROP_SHARE_A_TIER_DOWN` (0.75), `loot.gem_drop_share(tier)`, and `loot.expected_gem_drops` and
+`roll_gem_drops_from_kill` read it; the game's `UCataclysmDropRoll::GemDropShareATierDown`, `GemDropShareAt(Tier)`, and
+`ExpectedGemDrops`, which takes the tier now (`SpawnGemsFor` passes the tier being played). **The Gem Drops column does
+not move**: the gear column halved, so `loot.GEM_DROPS_PER_GEAR_DROP` doubles from 0.0068 to 0.0136 and the column, gems
+a kill at tier 8, is exactly what it was. 0.0136 is still tier 8's need rounded up: that need against the halved column
+is 0.01343 (`sim/analyse_gem_drops.py`).
+
+**3. All resistances.** `affixes.ALL_RESISTANCES_LOWEST_DROP_TIER` (2) and `affixes.rolls_on_a_drop_at`; `loot.roll_item`
+takes the family out of the candidates after building them. The game's `UCataclysmDropRoll::AllResistancesLowestDropTier`
+and `RollsOnADropAt`; `RollItem` removes the family from the candidates `CandidatesFor` built, before the draw. Another
+affix takes the place. The forge is not gated: its affix change draws from `CandidatesFor` unfiltered. Measured, 3,000
+Chests at 300 magic find from one seed: tier 1 rolled 143 single, 163 two and 0 all-resistances affixes; tier 2 rolled
+139, 160 and 153.
+
+**4. The gap rule.** `analyse_power_gap_rewards.Rule` gains `band_down_by_tier`, and `RULED` is rule D with the cut
+beginning at 1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8 and 0.8 tier widths at tiers 1 to 8; its `multiplier` needs the tier.
+Rule D of 2026-11-22 stays in `RULES` as the candidate it was. The game's `FCataclysmPowerGapRule::BandBelow(Tier)`
+(the table in its definition) replaces the constant `BandBelow`, and `Multiplier` takes the tier; `RewardsFor` already
+had it. Measured on the shipped weights, the experience curve's character in its tier's reference gear sits 1.22, 1.12,
+0.97, 0.89, 0.79, 0.72, 0.67 and 0.65 tier widths above the shallowest dungeon each tier spawns, so no start cuts it, and
+the next tier's finished character is still cut to 5% in this tier's average dungeon (15% at tier 6), as ruled.
+
+### The gem curve, measured, and the judgement
+
+The ruling left the curve to be measured. `sim/measure_drop_supply.py` (rebuilt from the proposal's script on the model
+as shipped) measured four, each against what a full clear of a tier needs to fill its reference character:
+
+| Curve | Share at tier 1 | Steps from tier to tier | Any tier below its need | Gems dropped by a full clear of 1, 2, 4 Outposts at tier 1 | the same at tier 4 |
+| :-- | --: | :-- | :-- | :-- | :-- |
+| **Three quarters a tier (shipped)** | 0.1335 | 1.33 every step | none | 1.1, 2.1, 3.8 | 2.4, 4.8, 8.9 |
+| Eighths, tier / 8 | 0.125 | 2.00, 1.50, 1.33 ... 1.14 | none | 1.1, 2.0, 3.8 | 3.3, 6.8, 13.1 |
+| Halved a tier (the proposal) | 0.0078 | 2.00 every step | none | 0.1, 0.1, 0.2 | 0.6, 0.8, 1.7 |
+| Tier 8's at every tier (before) | 1 | 1.00 | none | 5.9, 12.2, 25.1 | 6.2, 13.5, 25.4 |
+
+(40 seeds, means; the gap rule off, so these are the drops alone. Tier 1's 10th to 90th percentile after one Outpost is 0
+to 3 gems.)
+
+**Three quarters a tier is a judgement.** It is one plain step, the same at every tier, the milder form of the proposal's
+"halved for each tier below 8", and 0.75 to the 7th is 13.3% at tier 1: "about 1/8", and about one gem an Outpost
+dungeon, as ruled. The even split into eighths is as plain to read and gives tier 1 the same, but it is as steep as
+halving between tiers 1 and 2 (an eighth to a quarter), which the ruling's "less steeply than halving per tier" rules
+out, and it gives tiers 2 to 6 more (half the rate at tier 4, against a third). Every tier stays above its need under
+either.
+
+### Measured: a fresh tier 1 character
+
+`sim/measure_drop_supply.py`, from `sim/`, about two minutes; two runs printed the same figures. Outpost dungeons (5 to 10
+floors), Basic, tier 1, 258 creatures a floor all killed, a Boss at the end, the equip rule of the proposal (a judgement,
+unchanged), each supply with its own gap rule on as the game has it. 40 seeds; mean and 10th to 90th percentile.
+
+| Supply | After | Score | Level / gear / gems / resistances | Dungeon Score | **Times the dungeon** | Gear dropped | Gems | Resistance points |
+| :-- | --: | --: | :-- | --: | --: | --: | --: | --: |
+| Before #2853 | 1 | 348 (291-416) | 54 / 126 / 55 / 114 | 203 | 1.72 | 951 | 7.0 | 113.8 |
+| Before #2853 | 2 | 448 (400-518) | 66 / 135 / 102 / 145 | 204 | 2.19 | 1,815 | 13.1 | 144.7 |
+| Before #2853 | 4 | 578 (523-643) | 82 / 141 / 169 / 186 | 204 | 2.83 | 3,362 | 24.1 | 186.4 |
+| **As shipped** | 1 | **229** (202-263) | 54 / 114 / 5 / 56 | 203 | **1.13** | 477 | 0.7 | 55.7 |
+| **As shipped** | 2 | **276** (249-304) | 68 / 128 / 10 / 70 | 203 | **1.36** | 983 | 1.4 | 70.0 |
+| **As shipped** | 4 | **342** (296-383) | 89 / 135 / 26 / 91 | 205 | **1.67** | 1,895 | 3.3 | 91.3 |
+
+The "before" rows reproduce the proposal's (348, 448, 578). Killing half the creatures: 186, 228 and 276 (0.92, 1.12 and
+1.35 times the dungeon) as shipped, against 278, 347 and 454 before. **The owner's "almost double the dungeon score after
+one dungeon" becomes about an eighth over it.** As shipped, the all-resistances family is 0% of the resistance points
+(60 to 70% before). The figures are higher than the proposal's "recommended" row (224, 266, 312) because the owner chose
+an eighth of the gem rate at tier 1 rather than the proposal's 1/128: the gem term after four Outposts is 26 against 1.
+
+**A whole tier 1 campaign** (26 dungeons of 50 floors, Dungeon Score 201, full clear, 4 seeds, the gap rule on): 1,072
+before (level 15.5, 5.33 times the dungeon, mean experience factor 0.09) and **1,066 as shipped (level 34.8, 5.31 times,
+mean factor 0.55)**, against the tier 1 ceiling of 385. As the proposal said, supply fixes the first dungeons and not the
+end of a 1,300-floor tier: over a whole campaign the walk still fills every socket (23.8 gems, 312 points) and piles up
+resistance (263 points) with the equip rule's pick of the most resistant of some 80,000 drops, an upper bound; and the
+character then out-scores its dungeons, so the gap rule cuts it to 55% of its experience on average. Reported, not
+retuned: nothing ruled covers it.
+
+### Genre research (re-fetched 2026-11-24 by this change)
+
+- **Path of Exile**, the official mod list (pathofexile.com/item-data/mods): the single-resistance suffixes "of the
+  Whelpling" and "of the Inuit" are item level 1, "(6-11)% to Fire Resistance" and Cold; the all-elemental-resistances
+  suffix "of the Crystal" is item level 12, "(3-5)% to all Elemental Resistances", and "of the Prism" 24.
+- **Diablo IV**, Season 4 "Loot Reborn" (news.blizzard.com, article 24077223): "we've significantly decreased the number
+  of items that drop when slaying Monsters" -- fewer items, each more likely to be valuable.
+- **Last Epoch**, the 1.0 patch notes (forum.lastepoch.com, 19 February 2024): "Overall we have reduced the base item
+  drop rate, especially in end-game", the item factions making up for it.
+
+The proposal's other sources (a Path of Exile 2 developer post on item quantity, a forum measurement of map monster
+counts) were not re-fetched and are not relied on here. **What the research settles:** the direction (fewer items, each
+worth more) and the gate on all resistances at the lowest drops. **What it does not:** the size of the cut, the gem
+curve and the per-tier start, which are this game's numbers; the owner ruled the half and the starts, and the gem step is
+a judgement.
+
+### Judgements of this change
+
+1. **The gem curve: three quarters a tier below 8.** The reasons are above. Accepted by the coordinating session on
+   2026-11-24 (issue comment 7148394456).
+2. **The Gem Drops column stays and the share of a gear drop doubles to 0.0136**, rather than the column halving with the
+   gear: "tier 8 keeps today's rate" is gems a kill, and the column is gems a kill. Accepted by the coordinating
+   session the same day (the same comment).
+3. **The gold column stays, so a kill's gold piles are twice its gear drops. THE OWNER RULED IT after this was
+   written, 2026-11-24, the chosen option verbatim: "Keep gold as it is (Recommended)"** (issue comment
+   7148394456). G1 (2026-11-18) ruled gold "as gear and
+   materials drop today", which the code and `tools/tests/test_gold_drops_and_the_balance.py` held as gold equal to
+   gear. The owner halved the gear column and adopted the proposal that said the gold and material columns do not move;
+   halving gold with it would have halved every kill's gold, an economy change nobody ruled. The test now pins G1's six
+   figures and the ladder's shape (twice the gear). `Cataclysm.Gold.AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem`
+   asserts twice.
+4. **The game finds the all-resistances family as the resistance row covering every damage type**, the convention
+   `CandidatesFor` already reads; `tools/tests/test_all_resistances_drop_gate_port.py` checks that row is the
+   simulation's family by name and breadth. **It is taken out after the candidates are built**, in both models, so a
+   drop at tier 2 or above draws exactly the stream it drew before (`sim/tests/test_all_resistances_drop_gate.py`
+   compares 120 seeded drops with a roll that never asks).
+5. **A tier outside 1 to 8 is held to the nearest in the game** (`BandBelow`, `GemDropShareAt`), as a console variable
+   can set any tier; the simulation refuses one.
+6. **Three Unreal tests kill more to keep their margins**, since a Boss now drops 2.5 gear and a Cataclysm Boss 6:
+   `Cataclysm.Drop.LootQuantityOnThePlayerChangesWhatAKillDrops` kills twelve Bosses a setting (six),
+   `Cataclysm.Drop.ADropIsRolledAtTheTierBeingPlayed` sixteen Cataclysm Bosses (eight), so each still reads about the
+   number of drops it was sized on; and `Cataclysm.Drop.KillingAnEnemyIsWhatPutsLootOnTheFloor` five Bosses (three),
+   since a Boss now leaves nothing at all about 2 kills in a hundred and three kills would fail about one run in 77,000.
+7. **The measurement was rebuilt, not copied**: the proposal's script measured levers against the model before the
+   rulings; this one measures the model as shipped against the supply before, put back by levers. Its tests
+   (`sim/tests/test_measure_drop_supply.py`) hold its item roll to `loot.roll_item` at tiers 1, 2 and 8 and its kill to
+   `loot`'s own.
+
+### The workbook stage (not done on this branch; done on `feat/score-and-drops-2853`, at the end of this entry)
+
+The Gear Drops column lives in `docs/All_Things_Cataclysm.xlsx`, which this branch was told not to edit. The exact cell
+changes, on the **Enemy Drops** sheet, found by the Enemy Rarity in column A:
+
+| Cell | Row | Before | After |
+| :-- | :-- | --: | --: |
+| C2 | Common | 0.16 | 0.08 |
+| C3 | Elite | 0.5 | 0.25 |
+| C4 | Legendary | 1 | 0.5 |
+| C5 | Herald | 2 | 1 |
+| C6 | Boss | 5 | 2.5 |
+| C7 | Cataclysm Boss | 12 | 6 |
+| H2 | Common, Note | "Path of Exile's figure for a normal monster, taken as the starting point. One kill in six drops something, ..." | "Half of Path of Exile's figure for a normal monster, 0.16, which was the starting point; the whole column was halved on 2026-11-24 (issue #2853). About one kill in thirteen drops something, ..." |
+
+`python tools/apply_halved_gear_drops.py` writes them (keyed on the rarity, refusing a cell holding neither figure,
+reading the file back to prove only those seven changed) and regenerates the CSVs; `--check` only asks. Run on a copy
+of this branch's workbook, it wrote 7 cells and the generator then produced `game/Data/EnemyDrops.csv` byte-identical to
+the one this branch carries (`tools/tests/test_apply_halved_gear_drops.py` does both on every run). **Until it is run,
+`tools/tests/test_generate_datatables.py::TestAgainstTheRealWorkbook::test_the_committed_csvs_are_current` and
+`tools/tests/test_enemy_drop_sheet_matches_the_model.py::test_every_gear_drop_rate_matches_the_model` fail on this
+branch**, each naming the gear column. `DT_EnemyDrops.uasset` needs the editor step afterwards, as any CSV change does
+(`tools/tests/test_datatable_assets_are_current.py` fails until then).
+
+### Tests
+
+**Python.** New: `sim/tests/test_all_resistances_drop_gate.py` (5), `sim/tests/test_measure_drop_supply.py` (72),
+`tools/tests/test_all_resistances_drop_gate_port.py` (4), `tools/tests/test_apply_halved_gear_drops.py` (4). Changed:
+`sim/tests/test_loot.py` (the halved column pinned, the Common rate, materials half of gear), `sim/tests/test_gem_drops.py`
+(every tier's shipped rate against its need, tier 8's kill rate unchanged, the three-quarter step, a counted tier 1
+share), `sim/tests/test_power_gap_rewards.py` (the per-tier start, the curve's character never cut, the next tier's
+still cut), `tools/tests/test_power_gap_rewards_port.py`, `tools/tests/test_gems_drop_from_kills.py`,
+`tools/tests/test_gold_drops_and_the_balance.py`.
+
+**The Python suite, on `b433c33ca`** (nothing in the worktree edited while it ran): "3 failed, 8377 passed, 9 skipped
+in 367.09s (0:06:07)"; JUnit 8389 tests, 3 failures, 0 errors, 9 skipped, so 8,377 passed. 112 more than the 8,268 of
+the branch it starts from, which are the tests this change adds. **The three failures are the three expected, and no
+other**: `test_the_committed_csvs_are_current` and `test_every_gear_drop_rate_matches_the_model` (the workbook stage
+above) and `test_datatable_assets_are_current.py::...::test_every_csv_still_hashes_to_what_was_recorded` (the editor
+step). **With the workbook stage run** on a `git archive` copy of `b433c33ca` (`python tools/apply_halved_gear_drops.py`:
+7 cells written, every CSV then "up to date"; a second run wrote nothing), `test_generate_datatables.py`,
+`test_enemy_drop_sheet_matches_the_model.py`, `test_apply_halved_gear_drops.py` and
+`test_docs_readme_sheet_table_is_true.py` gave "1082 passed", and the whole suite on that copy "12 failed, 8362 passed,
+15 skipped in 368.30s": the 12 are the editor step's asset test and 11 that run git, which a `git archive` copy is not
+(`test_map_built_data_is_not_committed.py` 4, `test_stray_lfs_hook_directory_is_ignored.py` 6,
+`test_only_one_session_can_hold_the_unreal_editor.py` 1, each "not a git repository"); no workbook, drop or gem test
+failed. `python -m ruff check .`: "All checks passed!".
+
+**Python guard proofs**, `tools/prove_guard.break_and_run` in a `git archive` copy of `b3d1b9f81`, each PROVED (failed
+with the break in, passed restored):
+
+| Proof | Break | Named failures |
+| :-- | :-- | :-- |
+| PY1 | `GEM_DROP_SHARE_A_TIER_DOWN = 0.75` read as `0.5` | 3: the three-quarter step, the tier 1 rarity spread, the port's step |
+| PY2 | `ALL_RESISTANCES_LOWEST_DROP_TIER = 2` read as `1` | 3: the owner's rule, the 3,000-drop count, the port's tier |
+| PY3 | `RollItem`'s removal answers `return false;` | 1: the port's order of build, remove, draw |
+| PY4 | tier 1's start `1.4` read as `0.6` | 4: the curve's character at tier 1, the ruled rule, the port's table, the test's table |
+| PY5 | `ExpectedGemDrops` without `* GemDropShareAt(DifficultyTier)` | 1: the port's share check |
+| PY6 | `EnemyDrops.csv`'s Common gear `0.08` read as `0.16` | 3: the script's figures, the generator's output, gold twice gear |
+
+**Unreal, registered** (run in window sd2-w1, recorded at the end of the drop supply entry):
+
+| Group | Test | |
+| :-- | :-- | :-- |
+| `Cataclysm.Drop.` | `EveryCreatureDropsHalfTheGearItDidAndTheSameGemsAndGold` | new |
+| | `NoAllResistancesAffixRollsOnATierOneDrop` | new |
+| | `AKillDropsAtTheRateItsRarityStates` | the halved column |
+| | `LootQuantityOnThePlayerChangesWhatAKillDrops` | twelve Bosses |
+| | `ADropIsRolledAtTheTierBeingPlayed` | sixteen Cataclysm Bosses |
+| | `KillingAnEnemyIsWhatPutsLootOnTheFloor` | five Bosses |
+| `Cataclysm.GemDrops.` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | new |
+| | `TheGemColumnIsTheGearColumnTimesTheMeasuredShareAndLootQuantityRaisesIt` | 0.0136, at tier 8 |
+| `Cataclysm.PowerGapRewards.` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | new |
+| | `TheRuleIsTheSimulationsAtElevenGaps` | at tier 4, a tier per row |
+| | `TwoScoresGiveBothFactorsAndTheLineAndNoScoreChangesNothing` | 3,085 in place of 2,726 |
+| | `TheMapAndCityScreenShowTheRewardsBesideTheDungeonScore` | three widths above |
+| `Cataclysm.Gold.` | `AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem` | twice the gear |
+
+Predicted counts, read from the files: `Cataclysm.Drop.` 32 (30 + 2), `Cataclysm.GemDrops.` 5, `Cataclysm.PowerGapRewards.`
+6, `Cataclysm.Gold.` 13 (unchanged).
+
+**C++ guard proofs planned for the window** (run in window sd2-w1):
+
+| Proof | Break | Must fail | Prefix |
+| :-- | :-- | :-- | :-- |
+| CG1 | in `RollItem`'s removal, `return Row != nullptr && !UCataclysmDropRoll::RollsOnADropAt(*Row, DifficultyTier);` read as `return false;` | `NoAllResistancesAffixRollsOnATierOneDrop` | `Cataclysm.Drop.` |
+| CG2 | in `GemDropShareAt`, `Share *= GemDropShareATierDown;` read as `Share *= 1.0f;` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
+| CG3 | in `SpawnGemsFor`, `ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)` read as `..., 8)` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | `Cataclysm.GemDrops.` |
+| CG4 | in `BandBelow`, `{ 1.4, 1.3,` read as `{ 0.6, 1.3,` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | `Cataclysm.PowerGapRewards.` |
+
+**Every `Cataclysm.GemDrops.`, `Cataclysm.Gold.` and kill-counting test reads
+`DT_EnemyDrops`, so the asset must be rebuilt from the halved CSV before they run.**
+
+### One window for both, on `feat/score-and-drops-2853` (2026-11-24)
+
+By the coordinating session's instruction of 2026-11-24: one window for the rest of #2853, the plain Power Score weights
+(the Power Score entry below) and this drop supply. Prepared then with nothing compiled, no editor and no pull request.
+
+**The branch.** Made from development `5cdd6bdc4`. `git rebase --onto origin/development e36bbf4bb` replayed the eight
+commits above the old rarity cap (the two of `feat/power-score-weights-2853`, the six of `feat/drop-supply-2853`) with
+no conflict anywhere, this file included. No C++ was resolved by hand (`tools/check_resolved_cpp.py --changed`: "read no
+files, so nothing was checked").
+
+**The workbook stage, done.** `python tools/apply_halved_gear_drops.py` on development's workbook, committed alone as
+`0436874b3`. Compared cell by cell across all 28 sheets with the commit before it, exactly seven cells differ, all on
+Enemy Drops: C2 to C7 (0.16, 0.5, 1, 2, 5, 12 became 0.08, 0.25, 0.5, 1, 2.5, 6) and the Common row's note, H2. Every
+CSV the generator then wrote is the one committed ("All 34 DataTable CSVs are up to date"), and `--check` prints "The
+Enemy Drops sheet holds the halved Gear Drops column".
+
+**Checked against the rulings, on the branch's code:** the weights 10, 2, 1, 5 and 1 in `player_power.py` and in
+`CataclysmPowerScore.h`; the gem step 0.75 in both, and `GEM_DROPS_PER_GEAR_DROP` 0.0136; the all-resistances gate at
+tier 2 in both; the gap rule's starts, 1.4 down to 0.8, in both; the rarity cap as merged. Against development,
+`game/Data/EnemyDrops.csv` moves its GearDrops column only: GoldDrops and GemDrops are as they were.
+
+**The Python suite on `0436874b3`:** "1 failed, 8394 passed, 10 skipped in 384.24s"; JUnit 8405 tests, 1 failure, 0
+errors, 10 skipped. **The one failure is the expected one:** `test_datatable_assets_are_current.py`'s
+`test_every_csv_still_hashes_to_what_was_recorded`, "['EnemyDrops.csv'] changed since their DataTable assets were
+built", which the window's editor step clears. The two workbook failures `feat/drop-supply-2853` carried are gone. The
+unity-build name checks (`test_no_class_and_struct_share_an_engine_name.py`,
+`test_no_two_files_share_an_anonymous_helper.py`) ran in it and passed. ruff: "All checks passed!".
+
+**Python guard proofs for what this branch adds, each PROVED:**
+
+| Proof | Break | Failed with the break in | Restored |
+| :-- | :-- | :-- | :-- |
+| PW1 | the workbook's Enemy Drops C2, Common gear, 0.08 read as 0.16 | `test_every_gear_drop_rate_matches_the_model`, `test_the_committed_csvs_are_current`: 2 failed, 1106 passed | 1108 passed |
+| PYG3 | `SpawnGemsFor`'s `ExpectedGemDrops(Drops, EnemyRarity, LootQuantity, DifficultyTier)` read as `..., 8)` | `test_the_tiers_share_of_the_gem_column_is_the_simulations` | 8 passed |
+
+PW1 was run by hand: `tools/prove_guard.py` reads the file it breaks as text and cannot break a workbook. The broken
+half was a `git archive` copy of `0436874b3` with the cell set by openpyxl, found by its Enemy Rarity; the restored half
+a second, untouched copy; each ran the six test files that read the Enemy Drops sheet. PYG3 is `prove_guard` in that
+untouched copy, and replaces the planned C++ proof CG3: a Python test reads that call as text.
+
+**THE WINDOW'S REGISTRATION** (`.claude/windows/register_score_and_drops.md` in the sharp-meitner worktree),
+**re-registered on the rebuild onto development `9acbb3528`**. It was first registered on window rc-w1's log (5347
+performed, 57 skipped halves, 861 saves). The base now is window bb12-w1's whole suite on `75633311e`, the bug batches
+on development after the inventory tabs (`bb12_suite_engine_75633311.log` in the laughing-curran worktree): "5422 tests
+performed, 5419 succeeded, 3 failed", the three test faults corrected on development with no game code changed (the
+bug batches' entry); "58 skipped part of what they check"; "874 written and deleted, 0 left behind"; "Declared: 5422
+tests".
+
+- **The rebuild**, `git rebase --onto origin/development 5cdd6bdc4`: eleven commits replayed, with conflicts in this log
+  and the workbook only. This branch's three entries go among development's by the author date of the commit that
+  first wrote each (16:03, 17:03 and 20:05 on 2026-11-24), and every replayed commit's log was checked equal to
+  development's with that commit's own entries placed so. The workbook is development's with
+  `tools/apply_halved_gear_drops.py` run on it. Compared cell by cell (openpyxl, every non-empty cell of every sheet):
+  against development's, exactly the seven Enemy Drops cells differ (C2 to C7 halved, and H2, the Common row's note);
+  against the old branch's, exactly the bug batches' six (Skill Slots C6 and J6, Weapon Skills E398, H398, J188 and
+  J398), so those are kept. The 34 CSVs the script regenerates are the ones committed. Every other file's own change,
+  its added and removed lines against its base, is the old branch's.
+- **What the bug batches add that this branch reaches**, found from the batches' added test lines that name a drop, a
+  drop spawner, the score or the Overwhelm. Two tests:
+  - `BuriedWeaponKills.AHostWhoseLeapStrikesABondedAllyDiesOnceAndDropsEachItemOnce` kills a host paying as a
+    Cataclysm Boss and reads each piece of gear on the floor (8 in bb12-w1). It asks for more than none and for no two
+    to be one item. The Boss's piece is one more draw, at a rarity no ordinary drop at tiers 1 to 3 can have, so the
+    test is predicted to pass.
+  - `EnemyStrength.ATierOneOutpostBossBrutesMeleeCriticalOnALevelSixCharacterIsTheDesigns` reads
+    `OverwhelmPointsAgainst`, which the weights move. In bb12-w1 its 27.92 points already took all of the character's
+    armour, and the character held no resistance, so a larger figure lands the same 139.94 (60.8% of 230 health) and a
+    smaller one lands less; predicted to pass.
+
+  The batches' gold test counts gold piles only, which this branch does not move. Both groups are added below.
+- **Three comments corrected on the rebuild** that stated the old gear column: the leap test's constant and set-up said
+  a Cataclysm Boss's kill drops twelve and a dozen pieces of gear (six now, and the piece), and the trick-or-treat test
+  said 15 drops at that rung (9 now, and the piece, which is marked as the raised creature's, so something always
+  falls).
+
+- **The editor step**, after the build: `python tools/run_editor_python.py tools/generate_datatable_assets.py`, which
+  runs from a worktree once its own editor target is built. Kept: `game/Content/Data/DT_EnemyDrops.uasset` and
+  `game/Data/datatable_asset_sources.json` (EnemyDrops' hash); anything else it rewrites is restored. Committed alone;
+  the tested head becomes that commit.
+- **The whole suite: 5432 performed** (5422 + 10: fourteen names added, four of them renames of names removed, the
+  Cataclysm Boss entry's three among them), 5432 succeeded; **58 skipped halves; 874 saves** written and deleted, 0
+  left behind; declared 5432. No test this branch adds or changes reports a skipped half or writes a save.
+- **Groups alone**, counted in bb12-w1's whole-suite log with a literal match (every group registered before has the
+  count it had in rc-w1's), plus the tests added by name:
+  `Cataclysm.Drop.` 32, `DropPickup.` 20, `Item.` 13, `GemDrops.` 5, `Gold.` 13, `PowerGapRewards.` 6, `PowerScore.` 5,
+  `PowerScoreLive.` 10, `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `RarityCap.` 9, `Dismantle.` 12,
+  `EmpireTreeDrops.` 13, `CityDungeonRewards.` 5, `ConsumptionDouble.` 15, `SaveApply.` 24, `Data.` 7,
+  `ExtraDamageTypes.` 6, `Enchantments.` 366, `BossFloor.` 5, `WinningTheRun.` 11, `BuriedWeaponKills.` 4,
+  `EnemyStrength.` 9, and six `Cataclysm.DungeonModifierEffects.` tests by full name (the group holds 785, and the
+  branch changes three comments in its file): `PandorasBoxARewardRollGivesABossKillsDropsAndNoWaves`,
+  `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`,
+  `RealityRiftsChamberTheRiftCarriesInGivesOneEliteDropRollAndCarriesOutAtOnce`,
+  `RealityRiftsChamberAnEmptyEliteRollStillLeavesOneDropInTheChamber`,
+  `ACorruptedStalkerHoldsThePlayerNumbersOfItsBuildAtTheTiersReferenceLevel` and
+  `ACorruptedStalkersDeathDropsTheBossRowsMaterialsAndNoRandomGear`. Chosen by searching every test body for the
+  functions and constants either change moves (the score's weights and terms, the kill drop and gem spawners, the gap
+  rule, `RollItem`), every group in a test file either branch changed, and the groups both entries registered.
+- **C++ guard proofs**, only if every group passes; at most three a change (the owner's rule of 2026-09-14). Each anchor
+  occurs once in the file it breaks, checked again on the rebuild.
+
+| Proof | Change | Break | Prefix | Predicted to fail |
+| :-- | :-- | :-- | :-- | :-- |
+| PS1 | weights | `CataclysmPowerScore.cpp`: `FromGear += Rarity * (1.0 + UpgradePoints * Upgrade);` read as `... (1.0 + 0.25 * UpgradePoints * Upgrade);` | `Cataclysm.PowerScore.` and `Cataclysm.PowerScoreLive.` | `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheFourRulesTheFormulaImplies`, `GearBuiltToTheTierEightReferenceScoresTheReference` at least |
+| PS2 | weights | the level term's `FMath::Clamp(Character.Level, 0, MaxLevel)` read as `FMath::Clamp(Character.Level - 1, 0, MaxLevel)` | `Cataclysm.PowerScore.` and `Cataclysm.PowerScoreLive.` | `ALevelSixCharacterScoresSixtyFromItsLevel`, `TheSheetShowsEachTermBesideItsPlainWeight` at least |
+| PS3 | weights | `CataclysmCharacterSheetLayout.cpp`'s `Plain`: `return FMath::IsNearlyEqual(Value, static_cast<float>(Rounded)) ? FString::FromInt(Rounded)` read as `return false ? FString::FromInt(Rounded)` | `Cataclysm.PowerScoreLive.` | `TheSheetShowsEachTermBesideItsPlainWeight` |
+| CG1 | drops | as planned above | `Cataclysm.Drop.` | `NoAllResistancesAffixRollsOnATierOneDrop` |
+| CG2 | drops | as planned above | `Cataclysm.GemDrops.` | `ATierOneKillDropsAboutAnEighthOfTierEightsGems` |
+| CG4 | drops | as planned above | `Cataclysm.PowerGapRewards.` | `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` |
+
+PS1 to PS3 break lines no Python test reads, so only the C++ tests can see them. CG1's, CG2's and CG4's lines are each
+read as text by a Python port test (`test_all_resistances_drop_gate_port.py`, `test_gems_drop_from_kills.py`,
+`test_power_gap_rewards_port.py`); each is kept as the one proof that its new C++ behaviour test can fail. CG3 is
+dropped for PYG3 above.
+
+### Window sd2-w1, 2026-11-25, on `9cef8126c`: PASSED
+
+**RUN AND PASSED** on `feat/score-and-drops-2853-2`: the registration commit `61505def5` and, on it, the editor step's
+commit `9cef8126c57b12a4d2605233954a3b45decabb2a`, under the lock `sd2-w1`. Every count below is the one registered
+before the run. Scripts and logs: `.claude/windows/` in the sharp-meitner worktree (`run_sd2.py`, `sd2_run.out`).
+
+- **Builds**, under the lock `score-and-drops-compile`: the branch as committed, "Build: Succeeded - 74 actions, 67
+  files compiled"; each changed `.cpp` out of its unity file, "40 actions, 37 files compiled" (all 20 changed `.cpp`
+  files named in the build tool's "Excluded from Cataclysm unity file" line); the unity files again, "20 actions, 17
+  files compiled". 0 compiler warning or error lines in each build tool log.
+- **The editor step**: `tools/generate_datatable_assets.py` changed exactly `game/Content/Data/DT_EnemyDrops.uasset` and
+  `game/Data/datatable_asset_sources.json`, so nothing was restored. The record moved for `DT_EnemyDrops` alone (6 rows;
+  `csv_sha256` `bca9b368...` to `3d0a4f88...`), and `test_datatable_assets_are_current.py` then printed "18 passed".
+  Committed alone as `9cef8126c`, the package stored as a Git LFS object; pushed, with its LFS object.
+- **Groups alone**: 30 of 30 passed, each at its registered count with none failed: `RarityCap.` 9, `Drop.` 32,
+  `DropPickup.` 20, `Item.` 13, `GemDrops.` 5, `Gold.` 13, `PowerGapRewards.` 6, `PowerScore.` 5, `PowerScoreLive.` 10,
+  `Overwhelm.` 8, `CharacterSheet.` 10, `Sandbox.` 8, `Dismantle.` 12, `EmpireTreeDrops.` 13, `CityDungeonRewards.` 5,
+  `ConsumptionDouble.` 15, `SaveApply.` 24, `Data.` 7, `ExtraDamageTypes.` 6, `BossFloor.` 5, `WinningTheRun.` 11,
+  `BuriedWeaponKills.` 4, `EnemyStrength.` 9, the six `DungeonModifierEffects.` tests 1 each, `Enchantments.` 366.
+- **The whole suite**: "Tests: 5432 tests performed, 5432 succeeded, 0 failed. 58 skipped part of what they check";
+  "Test saves: 874 written and deleted, 0 left behind"; "Declared: 5432 tests in the tree at 9cef8126c; 5432
+  performed, gap 0; every declared test was reported by the run". Memory: "tests=6039 peak_used_virtual_mb=9226".
+- **Python**, alongside the whole suite: "8457 passed, 10 skipped in 358.13s"; JUnit 8467 tests, 0 failures, 0 errors,
+  10 skipped. ruff: "All checks passed!". Before the editor step, on `61505def5`: "1 failed, 8456 passed, 10 skipped";
+  JUnit 8467 tests, 1 failure, 0 errors; the one failure `test_every_csv_still_hashes_to_what_was_recorded`, as
+  registered.
+
+**What the new tests printed**, quoted from the run:
+
+| Test's line | Printed |
+| :-- | :-- |
+| GEAR HALVED | "Common 0.08 (was 0.16), Elite 0.25 (was 0.50), Legendary 0.50 (was 1.00), Herald 1.00 (was 2.00), Boss 2.50 (was 5.00), Cataclysm_Boss 6.00 (was 12.00); 40000 Common kills dropped 3166 gear, 0.0791 a kill" |
+| NO ALL RESIST | "3000 Chests a tier; tier 1 rolled 0 all-resistances and 141 single resistances (0 failed); tier 2 rolled 139 and 155 (0 failed)" |
+| GEM TIER SHARE | "tier 8 1.000000, tier 7 0.750000, [...] tier 1 0.133484; 20 Cataclysm Bosses placed 221 gems, 217.8 expected at tier 1's share and 1632.0 at tier 8's" |
+| GAP START | "tier 1 1.40 \| tier 2 1.30 \| tier 3 1.10 \| tier 4 1.00 \| tier 5 0.90 \| tier 6 0.90 \| tier 7 0.80 \| tier 8 0.80 [...]" |
+| LADDER | "Common 0.16 piles, 0.08 gear [...] Cataclysm_Boss 12 piles, 6 gear, 24 gear at 400%" |
+| POWER WEIGHTS | "level 10.0000, gear 2.0000, upgrade factor 1.0000, gem 5.0000, resistance 1.0000" |
+| POWER ANCHORS | "T1 364 against 385 (-5.5%) \| T2 860 against 883 (-2.6%) \| [...] \| T8 6528 against 6327 (+3.2%)" |
+| POWER SHARES | "T8 15 / 49 / 28 / 9 \| T1 33 / 40 / 8 / 19" |
+| LIVE SHEET WEIGHTS | "From level: 60 (10 a level) / From gear: 8 (2 a rarity step of each piece, times 1 + its gear level) / From gems: 15 (5 a rarity step of each socketed gem) / From resistances: 10 (1 a resistance percent, up to 70)" |
+| BOSS PIECE | "tier 1, 1 spawned, 1 on the floor, Legendary +4"; "tier 4, [...] Cataclysmic +10"; "tier 8, [...] Cataclysmic +10" |
+| RARITY CAP LIVE | "best at tier 1 3 (66 Masterful), best at tier 8 7; the Cataclysm Boss's pieces 20 at tier 1 (20 the next tier's best), 20 at tier 8 (20)" |
+
+**The two bug batch tests the registration named, as predicted**: `BuriedWeaponKills.` "LEAP INTO A BOND: [...] 9
+piece(s) of gear on the floor, 0 a copy of another" (8 in bb12-w1); `EnemyStrength.` "BOSS BRUTE MELEE CRITICAL:
+[...] Overwhelm 26.49 points; keeps 0.9675 of a hit; [...] landed 139.9402 [...] 60.8% of the character's health"
+(27.92 points and the same 139.9402 in bb12-w1).
+
+**C++ guard proofs**, each PROVED: named tests failed with the break in, and every test of the groups passed restored.
+CG1 and CB3 were written as `false && <the original expression>`, which returns or stores false as the registered
+`return false;` and `= false;` do while every name on the line is still read, so the build could not stop on an
+unreferenced variable.
+
+| Proof | Groups | With the break in | Restored | Against the prediction |
+| :-- | :-- | :-- | :-- | :-- |
+| PS1 | `PowerScore.`, `PowerScoreLive.` | 15 performed, 5 failed: `TheFourRulesTheFormulaImplies`, `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine`, `AMasterfulPieceAtPlusNoughtScoresTwiceItsRarity`, `GearBuiltToTheTierEightReferenceScoresTheReference` | 15 of 15 | the three predicted "at least", and two more |
+| PS2 | `PowerScore.`, `PowerScoreLive.` | 15 performed, 5 failed: `ALevelSixCharacterScoresSixtyFromItsLevel`, `TheReferenceCharacterLandsNearEveryTiersAnchor`, `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine`, `GearBuiltToTheTierEightReferenceScoresTheReference`, `TheSheetShowsEachTermBesideItsPlainWeight` | 15 of 15 | the two predicted "at least", and three more |
+| PS3 | `PowerScoreLive.` | 10 performed, 2 failed: `TheSheetShowsEachTermBesideItsPlainWeight`, `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | 10 of 10 | **one more than predicted**: that test compares the whole hover text, which shows each weight; it read "10.0 a level" for "10 a level" |
+| CG1 | `Drop.` | 32 performed, 1 failed: `NoAllResistancesAffixRollsOnATierOneDrop` | 32 of 32 | as predicted |
+| CG2 | `GemDrops.` | 5 performed, 1 failed: `ATierOneKillDropsAboutAnEighthOfTierEightsGems` | 5 of 5 | as predicted |
+| CG4 | `PowerGapRewards.` | 6 performed, 1 failed: `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight` | 6 of 6 | as predicted |
+| CB1 | `RarityCap.` | 9 performed, 1 failed: `TheCataclysmBossesPieceIsTheNextTiersBest` (RC7) | 9 of 9 | as predicted |
+| CB2 | `RarityCap.` | 9 performed, 1 failed: `OnlyTheCataclysmBossesRungDropsThePiece` (RC9) | 9 of 9 | as predicted |
+| CB3 | `RarityCap.` | 9 performed, 2 failed: `ACataclysmBossDropsOnePieceOfTheNextTiersBestAtItsGate` (RC8), `AKillAtTierOneDropsNothingAboveMasterful` (RC6) | 9 of 9 | as predicted |
+
+The source hash was the same before and after each proof, and the tested head was still `9cef8126c` after the last.
+
+---
+
 ## 2026-11-24 — Bug batch 1: five fix branches in one window, and a guard proof registered for every new test (#2871, #2874, #2876, #2877, #2855, #2854, #2859, #2866, #2860, #2861, #2862, #2873, #2863)
 
 **Said first:**
@@ -560,6 +1100,196 @@ break that moves other tests of a large group is not read as this proof's. Predi
 run twice per proof. B1 and T2 are anchored on a longer text than their entry quotes, because the quoted text occurs
 12 and 5 times in its file. **G4 is rewritten**: the planned break gave a one-placeholder format extra arguments, which
 the engine's compile-time format check may refuse.
+
+---
+
+## 2026-11-24 — The player's Power Score counts in plain numbers: 10 a level, 2 x rarity x (1 + gear level) a piece, 5 a gem rarity step, 1 a resistance percent (#2853)
+
+**ONE WINDOW WITH THE DROP SUPPLY, ON `feat/score-and-drops-2853-2` (the drop supply entry above); RUN AND PASSED IN
+WINDOW sd2-w1 (2026-11-25), ITS RECORD AT THE END OF THE DROP SUPPLY ENTRY.** Written on
+`feat/power-score-weights-2853`, made from `fix/rarity-cap-2853` at `e36bbf4bb`; the rarity cap has since merged as
+#2886. Issue
+[#2853](https://github.com/sdubois777/Cataclysm/issues/2853), part 2. Part 1, the rarity cap, is an entry further below.
+
+### Why
+
+**The owner, 2026-11-24, verbatim:** "for some reason I'm getting 38 points from my level, even though i'm only lvl 6.
+That doesn't seem right, and leads me to believe some of the other power score stuff is wrong as well. [...] That
+formula needs to be fixed/adjusted, maybe put more points on your level instead of gear."
+
+38 was not a bug: the level weight was 6.327 a level, 10% of tier 8's 6,327 over 100 levels. The game, the simulation
+and the reference agreed. **The owner, the same day, verbatim:** "do you think it is going to make sense to the player.
+Like why would I think a level is worth 6.3 points? It would make sense as 1, 2, 5, 10, 25, 50, 100, but 6.3 makes no
+sense at all."
+
+The proposal (branch `proposal/power-score-shares-2853`, `8cdd8b9a8`, `sim/measure_power_score_weights.py`) measured
+that with the rarity cap a fresh tier 1 character scores 2.9, 3.2 and 3.8 times the dungeon after 1, 2 and 4 Outpost
+dungeons under the derived weights, and 1.7, 2.2 and 2.8 times under the plain weights it recommended.
+
+### The ruling
+
+**RULING, the owner, 2026-11-24, chosen option quoted: "Adopt, and look at drop supply (Recommended)".** As the
+coordinating session recorded it on the issue: "Adopt the weights 10 / 2 x rarity x (1 + upgrade) / 5 / 1 in
+sim/cataclysm_sim/player_power.py and the game's copy together, and separately investigate drop supply at tier 1, the
+larger cause". The drop supply half is not in this change.
+
+| | Until this change (derived from four shares) | Now (the owner's plain numbers) |
+| :-- | --: | --: |
+| Level Weight, points a level | 6.3270 | **10** |
+| Gear Weight, points a rarity step of a +0 piece | 6.2330 | **2** |
+| Upgrade Factor, what an upgrade level adds, times the +0 worth | 0.2525 | **1** |
+| Gem Weight, points a gem rarity step | 5.2725 | **5** |
+| Resistance Weight, points a resistance percent, to 70 | 1.1298 | **1** |
+| A +10 piece against the same piece at +0 | 3.52 times | 11 times |
+| A level 6 character's level part | 38 | 60 |
+| A Masterful +0 piece (the best tier 1 drop) | 24.9 | 8 |
+| A Cataclysmic +10 piece | 175.8 | 176 |
+
+**THE SHARES NOW FALL OUT OF THE WEIGHTS.** The finished tier 8 character draws 15% from level, 49% from gear, 28% from
+gems and 9% from resistances (10 / 50 / 30 / 10 before, when those four were the input); the finished tier 1 character
+33 / 40 / 8 / 19 (20 / 51 / 8 / 21 before). `player_power.shares_of` computes them.
+
+**THE ANCHORS DID NOT MOVE** (`scoring.PLAYER_MAX_SCORES`, the DungeonSimulator ceilings; DungeonSimulator and
+`scoring.py` were not touched). The reference character now lands near each rather than on it:
+
+| Tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :-- | --: | --: | --: | --: | --: | --: | --: | --: |
+| Anchor | 385 | 883 | 1,508 | 2,225 | 3,078 | 4,057 | 5,120 | 6,327 |
+| Reference character, before | 384 | 883 | 1,508 | 2,225 | 3,078 | 4,057 | 5,120 | 6,327 |
+| Reference character, now | 364 | 860 | 1,493 | 2,228 | 3,110 | 4,134 | 5,255 | 6,528 |
+| Against the anchor | -5.5% | -2.6% | -1.0% | +0.1% | +1.0% | +1.9% | +2.6% | +3.2% |
+
+### What changed
+
+- **The simulation** (`sim/cataclysm_sim/player_power.py`): `SHARE_*`, `_curve_coefficients` and `_derive_weights` are
+  gone; `LEVEL_WEIGHT`, `GEAR_WEIGHT`, `UPGRADE_FACTOR`, `GEM_WEIGHT` and `RESISTANCE_WEIGHT` are written out and
+  `WEIGHTS` keeps its five keys. `shares_of` is new. The module's docstring and its printed report say the weights are
+  chosen and the shares fall out. `sim/cataclysm_sim/affixes.py`'s `POWER_SCORE_UPGRADE_FACTOR` still reads
+  `WEIGHTS["upgrade_factor"]` and is now 1; its comment says so (the affix ladder, `GEAR_LEVEL_FACTOR` 0.15, is a
+  separate number since 2026-09-03 and did not move).
+- **The game** (`game/Source/Cataclysm/Player/CataclysmPowerScore.h` and `.cpp`): `ShareLevel` and the three other
+  shares are gone, and with them the anonymous-namespace `DeriveWeights`; five constants `PointsPerLevel` (10),
+  `PointsPerGearRarityStep` (2), `UpgradeFactorPerGearLevel` (1), `PointsPerGemRarityStep` (5) and
+  `PointsPerResistancePercent` (1) replace them. `LevelWeight()` and the four other `BlueprintPure` functions keep their
+  signatures and return the constants; `Breakdown` reads the constants.
+- **The character sheet** (`Interface/CataclysmCharacterSheetLayout.cpp`, `PowerScoreTooltip`): each term is shown
+  beside its weight, read from `UCataclysmPowerScore`: "From level: 60 (10 a level)", "From gear: 8 (2 a rarity step of
+  each piece, times 1 + its gear level)", "From gems: 15 (5 a rarity step of each socketed gem)", "From resistances: 10
+  (1 a resistance percent, up to 70)".
+- **The experience curve** (`sim/analyse_experience_curve.py`): `LEVEL_WEIGHT` was written out as 6.3270; it now reads
+  `player_power.LEVEL_WEIGHT`, so the two cannot part. Its out-levelling row, which the design document carries, moved:
+  a character entering tier 2 at level 42 carries 109% of tier 1's ceiling from level alone (69% before), and entering
+  tier 8 at level 95, 19% (12% before).
+- **The design document**, section IV: the weight table (with a column saying each weight as a player reads it), the
+  ruling and the owner's words, a table of what a piece scores, the sheet's tooltip, "11 times", the shares sentence, the
+  tier 8 gear table (6,528 down to 4,944 for all Masterful, 103% to 78% of the anchor), a Power Score column on the
+  reference character table, and the paragraph that said the reference lands exactly on every anchor. Section VI's
+  "section IV still multiplies gear rarity by 3.52" and section XII's out-levelling row.
+
+### What reads the player's score, and whether its thresholds need re-reading
+
+Asked by the coordinating session. Reported, not retuned; no test that guards a design property failed.
+
+- **Overwhelm** reads the live score against each creature's Enemy Score, in tier widths
+  (`UCataclysmPowerScore::OverwhelmPointsAgainst`). Its rate and cap are unchanged. The design's worked figures (8.4 and
+  20.9 points at tier 8) are for "a player at that tier's maximum Power Score", 6,327, and still hold; the tier 8
+  reference character now scores 6,528 and would lose 4.2 and 16.7. Early in tier 1 the opposite: a character after one
+  Outpost dungeon scores about 348 now against 588 before (the proposal's figures), so a tier 1 Cataclysm Boss (545 on a
+  one-floor dungeon) applies about 12.8 points of Overwhelm where it applied none. That is the mechanism working as
+  designed (an out-scored player is stripped), and is the owner's to judge in play. The simulation's 16% to 21% band
+  (`sim/tests/test_power_threshold.py`) reads `PLAYER_MAX_SCORES`, not this model, and did not move.
+- **The experience and loot gap rule** (`FCataclysmPowerGapRule`, `analyse_power_gap_rewards.RULED`) reads the live
+  score against the Dungeon Score, in tier widths; its band is unchanged. A lower early score means less cutting: the
+  proposal measured a tier 1 campaign ending at level 15.5 under the new weights against 13 under the old, both far
+  below the experience curve's 42. That gap is one of the open questions the owner sent to the drop supply
+  investigation; nothing here changes it.
+- **The Corrupted Stalker** does not read the score. It reads `ReferenceCharacter(Tier)`'s level and gear level
+  (`CataclysmCorruptedStalkerCharacter.cpp`, `PiecesAt` and `WearTheBuild`), and the reference character's make-up did
+  not change, only what it scores. Unchanged.
+- **The experience curve's warning** grew, as the proposal said any weight putting more on level would: level 42 alone
+  is now 109% of the tier 1 ceiling. `sim/tests/test_analysis_scripts.py` still holds that the lead shrinks every tier
+  and is under 20% entering tier 8 (19%, so near that line).
+
+### Genre research
+
+The proposal's research (its section 2), re-fetched by this change on 2026-11-24 for the claims recorded here: **none of
+the four single-number systems read counts character level.** Lost Ark's Average Item Level is "an average of the Item
+Levels of their current equipment", the "Weapon, Helmet, Chest Armor, Shoulder Armor, Gloves, and Pants"
+(lostark.wiki.fextralife.com/Armor); World of Warcraft's average item level is on the character sheet and "used as a
+gating requirement when queueing" (warcraft.wiki.gg/wiki/Item_level); Destiny 2: "Your Power is the average of all your
+equipped gear" (shacknews.com, article 102358); Diablo Immortal's Combat Rating is "tied to the quality of your gear
+rather than your character's overall level" (denofgeek.com). The per-step figures the proposal quoted (Lost Ark +5 a
+honing step, World of Warcraft +3 or +4 an upgrade rank) are the proposal's reading and were not re-fetched here.
+
+**What the research settles:** one number built from values the player can read on each item, as the owner asked.
+**What it does not:** putting more on level is the owner's direction and a judgement specific to this game; and summing
+rather than averaging, and rarity multiplied by upgrade level, are forced by this game's eight anchors (they grow 16.4
+times from tier 1 to tier 8), not read off another game.
+
+### Judgements of this change
+
+1. **The sheet's wording**, a judgement: the coordinating session asked for "a character sheet line [that] shows the
+   plain weights". Each term's line carries its weight in brackets, read from the code rather than written out, so a
+   re-tune cannot leave the line stating an old weight.
+2. **The Overwhelm worked-figures test reads the tier 8 anchor, not the reference character's score**, a judgement:
+   `Cataclysm.Overwhelm.ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` used
+   `Score(ReferenceCharacter(8))`, which was 6,327 until this change. The design's sentence says "a player at that
+   tier's maximum Power Score", and `tools/tests/test_overwhelm_is_the_simulations.py` already reads
+   `scoring.PLAYER_MAX_SCORES[8]`, so the test now does too and its figures stand.
+3. **The weights are floats in the simulation** (10.0, 2.0, ...), a judgement: `affixes.POWER_SCORE_UPGRADE_FACTOR is
+   player_power.WEIGHTS["upgrade_factor"]` is an identity check that a small integer would pass for any retyped 1.
+4. **The five C++ constant names** (`PointsPerLevel` and so on) are mine; the five functions keep their names, so
+   nothing that calls them changed.
+5. **The upgrade factor stays a multiplier of rarity**, as ruled; the comment beside `UPGRADE_FACTOR` records the
+   proposal's reason (every additive set near the anchors puts 58 to 61% of the tier 8 score on gems).
+
+### Not done here
+
+- **Drop supply at tier 1**, the other half of the ruling: gem supply (`loot.GEM_DROPS_PER_GEAR_DROP` is one figure for
+  every tier), resistance affix floors at tier 1, the gap rule against the experience curve, and the reference
+  character's level column against the curve. For the coordinating session.
+- **Stale comments in files this change may not touch:** `sim/cataclysm_sim/scoring.py` line 41 says
+  "`player_power.py` pins its curve through those two and nothing else", no longer true; `scoring.py` is the port and is
+  not hand-edited. Not changed.
+
+### Tests
+
+**Python**: `sim/tests/test_player_power.py` replaces the four calibration tests and the three share-derivation tests
+with: the weights are the ruled numbers; each is on the owner's list; a level 6 character scores 60; six pieces score 2
+x rarity x (1 + upgrade); a Masterful +0 equals the tier 1 reference's Everyday +3; a gem and a resistance percent; the
+reference character's eight scores are the proposal's; every tier within -5.5% to +3.2%; the anchors are unchanged; the
+shares at tier 8 and tier 1; the shares are gone. `tools/tests/test_power_score_port.py` compares the five C++ constants
+with the model's (the shares were compared before), checks each weight function and `Breakdown` read them, checks the
+tooltip reads them, and adds `TestTheDesignDocument`, which recomputes section IV's weight table, shares, piece table,
+"11 times", reference table and tier 8 gear table from the model.
+
+**The Python suite, on `e16766979`:** "8268 passed, 9 skipped in 345.14s (0:05:45)"; JUnit 8277 tests, 0 failures, 0
+errors, 9 skipped. ruff: "All checks passed!".
+
+**Python guard proofs, in a `git archive` copy of `e16766979`, each PROVED** (failed with the break in, passed restored):
+
+| Proof | Break | Failed |
+| :-- | :-- | :-- |
+| PY1 | `LEVEL_WEIGHT = 10.0` read as `= 6.327` in `player_power.py` | 18: seven in `test_player_power.py` (the ruled numbers, the owner's list, level six, the proposal's eight scores, the band, both share tests) and eleven in `test_power_score_port.py` (the model against the header, the document's Level Weight row, both share sentences, the reference table, the six tier 8 gear rows) |
+| PY2 | `PointsPerGearRarityStep = 2.0f` read as `= 3.0f` in the header | 2: the header against the model, and the ruled numbers |
+| PY3 | the document's tier 8 shares sentence read as 10/50/30/10 | 1: the document's tier 8 shares |
+
+**Unreal, registered** (run in window sd2-w1, recorded at the end of the drop supply entry):
+
+| Group | Test | |
+| :-- | :-- | :-- |
+| `Cataclysm.PowerScore.` | `TheWeightsAreTheOwnersPlainNumbers` | renamed from `WeightsDeriveToTheModelsNumbers` |
+| | `ALevelSixCharacterScoresSixtyFromItsLevel` | new |
+| | `TheReferenceCharacterLandsNearEveryTiersAnchor` | renamed from `TheReferenceCharacterHitsBothEndAnchors` |
+| | `TheSharesFallOutAtFifteenFortyNineTwentyEightAndNine` | renamed from `EachSourceSuppliesItsShareAtTierEight` |
+| | `TheFourRulesTheFormulaImplies` | 3.52 times became 11 |
+| `Cataclysm.PowerScoreLive.` | `GearBuiltToTheTierEightReferenceScoresTheReference` | renamed from `...ScoresItsAnchor`; 6,528 |
+| | `TheSheetSaysTheScoreItsTierRangeAndItsFourTerms` | the tooltip's text |
+| | `AMasterfulPieceAtPlusNoughtScoresTwiceItsRarity` | new |
+| | `TheSheetShowsEachTermBesideItsPlainWeight` | new |
+| `Cataclysm.Overwhelm.` | `ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss` | reads the anchor |
+
+Predicted counts: `Cataclysm.PowerScore.` 5, `Cataclysm.PowerScoreLive.` 10, `Cataclysm.Overwhelm.` 8.
 
 ---
 

@@ -348,7 +348,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		LootQuantity *= CityRewards.LootMore;
 
 		// AND THE GAP BETWEEN THE DUNGEON'S SCORE AND THE PLAYER'S (issue #2824, slice c; rule D and the owner's 25% loot
-		// floor, 2026-11-22): full from 0.6 of a tier width over the dungeon to 0.25 under it, up to 25% more above,
+		// floor, 2026-11-22; the per-tier start of the cut, issue #2853, 2026-11-24): full from the tier's start, 1.4 of
+		// a tier width over the dungeon at tier 1 down to 0.8 at tiers 7 and 8, to 0.25 under it, up to 25% more above,
 		// down to 5% experience and 25% loot below. The loot factor reaches the loot quantity and the gold multiplier
 		// through `KillLootFor`, once the tree's gold multiplier is known below; the experience takes its own factor at
 		// the grants. Both 1 outside an empire dungeon or with nobody playing (`PowerGapRewardsIn`). Asking draws nothing.
@@ -406,6 +407,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// slice G5.
 			UCataclysmDropSpawner::SpawnGemsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 												Stream, /*bMarked=*/bRaisedByARule);
+
+			// AND THE CATACLYSM BOSS'S ONE PIECE OF THE NEXT TIER'S BEST, LAST, so every draw above is as it was, and
+			// nothing for any other rung. Issue #2853, the owner's ruling of 2026-11-24: "The next tier's best
+			// (Recommended)". One piece whatever the loot quantity or the gap rule's loot factor: the owner said "always".
+			static_assert(UCataclysmDropSpawner::CataclysmBossRarityStep == ACataclysmDungeonGameMode::CataclysmBossRung,
+						  "The Cataclysm Boss's piece is no longer dropped at the rung the Gatekeeper is placed at");
+			UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(World, RarityStepItPaysAs(), MagicFind,
+																   GetActorLocation(), Stream,
+																   /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.
