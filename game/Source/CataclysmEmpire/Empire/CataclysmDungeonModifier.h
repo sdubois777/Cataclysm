@@ -117,6 +117,18 @@ public:
 	static constexpr int32 SacrificialMultiplier = 2;
 
 	/**
+	 * How many modifiers a Rift carries, whatever the difficulty tier: eight. The owner, 2026-11-24, issue #51,
+	 * verbatim: "Also, I think we should make it so Rifts always have 8 dungeon modifiers. Keep it spicy", and of the
+	 * two forms measured, "(b) 8 modifiers only (Recommended)": the modifiers are the whole of a Rift's added
+	 * difficulty, on an ordinary 4-floor dungeon's floors. A PORT OF `TuningConfig.rift_modifiers`.
+	 *
+	 * DRAWN AS ANY DUNGEON'S ARE, WITH NO REPEATS (`Draw`). Eight can always be drawn: the smallest Cataclysm's column
+	 * holds 12 rows, and at difficulty tier 1 Demonic's 14 are the whole pool. `UCataclysmEmpireRun::GiveModifiersFrom`
+	 * asks `FCataclysmDungeon::IsARift`. Issue #51 slice B2.
+	 */
+	static constexpr int32 RiftModifierCount = 8;
+
+	/**
 	 * How many modifiers a dungeon of this tier and sub-type carries.
 	 *
 	 * @param DifficultyTier the run's tier, 1 to 8. Clamped at zero from below,

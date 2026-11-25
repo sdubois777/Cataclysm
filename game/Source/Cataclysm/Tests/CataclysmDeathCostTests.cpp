@@ -912,4 +912,142 @@ bool FCataclysmDeathCostCommittedFileTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A death in a Rift brings a surge (issue #51 slice B2)
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDeathCostTest
+{
+	/**
+	 * A Quest dungeon `Sender` sent, of four floors, on `CityId`, with a timer that does not run out in these tests, and
+	 * an ordinary dungeon on the Pillar that does not either, so the board is never empty and no empty-board wave lands
+	 * (only an ordinary dungeon keeps the board from being empty, issue #2865). A Quest dungeon Demonic sent is a Rift.
+	 */
+	int32 PlaceAQuestDungeonAndHoldTheBoard(UCataclysmEmpireRun& Run, int32 CityId, ECataclysmType Sender)
+	{
+		const int32 Holder = PlaceAnOrdinaryDungeon(Run, Run.Map->PillarId);
+		const int32 Quest = PlaceAnOrdinaryDungeon(Run, CityId);
+		if (Holder == INDEX_NONE || Quest == INDEX_NONE)
+		{
+			return INDEX_NONE;
+		}
+		Run.Clock->SetResolveDays(Holder, 10000.0f);
+		Run.Clock->SetResolveDays(Quest, 10000.0f);
+		for (FCataclysmDungeon& Dungeon : Run.Dungeons)
+		{
+			if (Dungeon.DungeonId == Quest)
+			{
+				Dungeon.Type = ECataclysmDungeonType::Quest;
+				Dungeon.SubType = ECataclysmDungeonSubType::Elite;
+				Dungeon.Cataclysm = Sender;
+				Dungeon.Floors = 4;
+				Dungeon.ResolveDays = 10000.0f;
+			}
+		}
+		return Quest;
+	}
+
+	/**
+	 * Enters the dungeon and dies on its first floor. NO STAIRS ARE TAKEN: a Rift's altars seal them (slice B1), and
+	 * these tests are about what the death does to the empire, not the walk. Asserted as set-up.
+	 */
+	bool EnterAndDie(FAutomationTestBase& Test, const FDeathCostScene& Scene, int32 DungeonId)
+	{
+		if (!Test.TestTrue(TEXT("set-up: the dungeon was entered"), Scene.Mode->EnterEmpireDungeon(DungeonId)))
+		{
+			return false;
+		}
+		Scene.Mode->ClearFloorEnemies();
+		return Test.TestTrue(TEXT("set-up: the player stands at the floor's entrance"),
+							 Scene.Mode->PlaceAtEntrance(Scene.Player))
+			&& DieAndStandUp(Test, Scene);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostRiftSurgeTest,
+	"Cataclysm.DeathCost.ADeathInARiftBringsASurgeOnTheDayOfTheDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner, 2026-11-24, issue #51: "Every death, no gap (Recommended)". A death in a Rift brings one ordinary surge,
+ * after the walk's days and before the death's own, and the summary of the days away counts it. The scene's run fired
+ * its first surge on day 1 and the next is about 90 days off, so the one surge counted here is the Rift's.
+ */
+bool FCataclysmDeathCostRiftSurgeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathCostTest;
+
+	FDeathCostScene Scene = MakeDeathCostScene();
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	const int32 RiftId = PlaceAQuestDungeonAndHoldTheBoard(*Scene.Run, AStandingOutpost(*Scene.Run),
+														   ECataclysmType::Demonic);
+	if (!TestTrue(TEXT("set-up: a Rift was placed"), RiftId != INDEX_NONE && Scene.Run->FindDungeon(RiftId)
+					  && Scene.Run->FindDungeon(RiftId)->IsARift()))
+	{
+		return false;
+	}
+	const int32 FiredBefore = Scene.Run->Surges->SurgesFired;
+	if (!EnterAndDie(*this, Scene, RiftId))
+	{
+		return false;
+	}
+
+	const UCataclysmEmpireRun& Run = *Scene.Run;
+	AddInfo(FString::Printf(TEXT("RIFT DEATH: surges fired %d before, %d after; days away counted %d surges; the death "
+								 "was on day %d"),
+							FiredBefore, Run.Surges->SurgesFired, Run.LastDaysAway.Surges, Run.LastDeathDay));
+	TestEqual(TEXT("one surge fired, the Rift's"), Run.Surges->SurgesFired, FiredBefore + 1);
+	TestEqual(TEXT("and the summary of the days away counts it"), Run.LastDaysAway.Surges, 1);
+	TestEqual(TEXT("it landed on the day of the death"), Run.Surges->LastSurgeDay, Run.LastDeathDay);
+	TestNotNull(TEXT("the Rift is still on the map: nothing resolves a Quest dungeon"), Run.FindDungeon(RiftId));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathCostNotARiftTest,
+	"Cataclysm.DeathCost.ADeathInAQuestDungeonThatIsNoRiftBringsNoSurge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** The control for the test above: the same death in a Quest dungeon Death sent brings no surge. */
+bool FCataclysmDeathCostNotARiftTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDeathCostTest;
+
+	FDeathCostScene Scene = MakeDeathCostScene();
+	if (!TestNotNull(TEXT("a test world was created"), Scene.World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()))
+	{
+		return false;
+	}
+
+	const int32 QuestId = PlaceAQuestDungeonAndHoldTheBoard(*Scene.Run, AStandingOutpost(*Scene.Run),
+															ECataclysmType::Death);
+	if (!TestTrue(TEXT("set-up: a Quest dungeon that is no Rift was placed"), QuestId != INDEX_NONE
+					  && Scene.Run->FindDungeon(QuestId) && !Scene.Run->FindDungeon(QuestId)->IsARift()))
+	{
+		return false;
+	}
+	const int32 FiredBefore = Scene.Run->Surges->SurgesFired;
+	if (!EnterAndDie(*this, Scene, QuestId))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("no surge fired"), Scene.Run->Surges->SurgesFired, FiredBefore);
+	TestEqual(TEXT("and the summary of the days away counts none"), Scene.Run->LastDaysAway.Surges, 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

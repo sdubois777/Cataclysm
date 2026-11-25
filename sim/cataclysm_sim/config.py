@@ -781,43 +781,51 @@ class TuningConfig:
     #   Q5 "Every death, no gap (Recommended)": each death in a Rift brings an
     #      ordinary surge at once, with no least-interval brake.
     #
-    # OFF BY DEFAULT UNTIL THE MEASUREMENT IS ACCEPTED AND THE GAME HAS THEM
-    # (slice B2). Nothing else here reads these three while `demonic_rifts` is
-    # off, so every figure measured before them is unchanged.
+    # AND ON THE RIFT ITSELF, the same day, after the measurement of 4-floor
+    # Rifts (issue #51, the newest comment), verbatim: "Rift are quest dungeons
+    # yes, but we determined they have 4 pillars the player needs to destroy.
+    # So... let's make them 4 floors?", "Keep the short timer for rifts. It's
+    # only fair, it has 4 floors. If you keep on top of them it wont matter.",
+    # "Also, I think we should make it so Rifts always have 8 dungeon modifiers.
+    # Keep it spicy", "No limit" and "(b) 8 modifiers only (Recommended)". So a
+    # Rift is exactly 4 floors, one altar on each, with the quest timer of 4
+    # floors, exactly 8 modifiers, and the enemies of an ordinary 4-floor
+    # dungeon; it sends with no limit on how many of its dungeons stand.
+    #
+    # THE RIFTS THEMSELVES ARE OFF BY DEFAULT UNTIL THE GAME HAS THEM (slice
+    # B2); the switches below default to the ruling. Nothing reads them while
+    # `demonic_rifts` is off, so every figure measured before them is unchanged.
     demonic_rifts: bool = False
     #: Days between an unsealed Rift's dungeons, counted from the day it opened.
     #: The design's 5 (section XI). 0 sends none.
     rift_spawn_every_days: int = 5
     #: Whether a death in a Rift brings an ordinary surge at once.
     rift_death_brings_surge: bool = True
-    #: UNRULED, FOR MEASUREMENT. The owner proposed on 2026-11-24, verbatim:
-    #: "Rift are quest dungeons yes, but we determined they have 4 pillars the
-    #: player needs to destroy. So... let's make them 4 floors? Is that
-    #: reasonable? Their difficulty would need to be increased a decent amount,
-    #: but that seems fair to me." With this above 0 a Rift is made as any
-    #: Demonic Quest dungeon (depth rolled for its city) and then given exactly
-    #: this many floors, whatever the empire tree adds; the rolled depth is kept
-    #: as `Dungeon.strength_floors`, whose floors its enemies are
-    #: (`combat.death_chance`). Its walk and its reward are these floors. 0, the
-    #: default, keeps a Rift as deep as any Quest dungeon.
-    rift_floors: int = 0
+    #: A Rift is made as any Demonic Quest dungeon (depth rolled for its city)
+    #: and then given exactly this many floors, whatever the empire tree adds;
+    #: its walk and its reward are these floors. 4, ruled above. 0 keeps a Rift
+    #: as deep as any Quest dungeon, the rule of comment 7149391315 before the
+    #: owner chose 4.
+    rift_floors: int = 4
     #: With `rift_floors` set, whether the Rift's quest timer is the one its
-    #: rolled depth gives (True) or the one its own floors give (False). Quest
-    #: timers scale with depth (the owner, 2026-10-16), so a short Rift's own
-    #: timer runs out, and hits its city, far more often.
-    rift_timer_from_quest_depth: bool = True
+    #: rolled depth gives (True) or the one its own floors give (False, ruled:
+    #: "Keep the short timer for rifts"). Quest timers scale with depth (the
+    #: owner, 2026-10-16), so a short Rift's own timer runs out, and hits its
+    #: city, far more often.
+    rift_timer_from_quest_depth: bool = False
     #: With `rift_floors` set, whether the Rift's floors fight the enemies of
-    #: its rolled depth (True: floor i fights floor ceil(i x depth / floors)) or
-    #: their own, as a plain dungeon of that many floors (False).
-    rift_strength_from_quest_depth: bool = True
-    #: How many dungeon modifiers a Rift carries; 0 carries what any dungeon of
-    #: the tier does (one a tier). The owner, 2026-11-24, verbatim: "Also, I
-    #: think we should make it so Rifts always have 8 dungeon modifiers. Keep it
-    #: spicy". Kept at 0 here until the form is chosen and measured.
-    rift_modifiers: int = 0
-    #: UNRULED, FOR MEASUREMENT: a Rift sends only while none of the dungeons
-    #: it sent still stands. Recommended to the owner on 2026-11-24 against the
-    #: board filling up under the 5-day spawn. False sends on every 5th day.
+    #: its rolled depth (True: floor i fights floor ceil(i x depth / floors),
+    #: kept as `Dungeon.strength_floors` for `combat.death_chance`) or their
+    #: own, as an ordinary dungeon of that many floors (False, ruled: "(b) 8
+    #: modifiers only").
+    rift_strength_from_quest_depth: bool = False
+    #: How many dungeon modifiers a Rift carries, whatever the tier; 0 carries
+    #: what any dungeon of the tier does (one a tier). 8, ruled above.
+    rift_modifiers: int = 8
+    #: A Rift sends only while none of the dungeons it sent still stands.
+    #: Recommended to the owner on 2026-11-24 against the board filling up
+    #: under the 5-day spawn, and refused: "No limit". Kept so it can still be
+    #: measured.
     rift_one_sent_at_a_time: bool = False
 
     # --- the Siege sub-type ----------------------------------------------

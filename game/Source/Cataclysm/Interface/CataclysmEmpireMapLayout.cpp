@@ -187,6 +187,17 @@ FString UCataclysmEmpireMapLayout::FallenCityDetail(const UCataclysmEmpireRun* R
 		: FString(TEXT("fallen"));
 }
 
+FString UCataclysmEmpireMapLayout::RiftMark(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	// THE RUN'S OWN LIST, BY `FCataclysmDungeon::IsARift`, and no new state. Issue #51 slice B2.
+	const int32 Rifts = Run != nullptr ? Run->RiftsOn(CityId) : 0;
+	if (Rifts <= 0)
+	{
+		return FString();
+	}
+	return Rifts == 1 ? FString(TEXT(", Rift")) : FString::Printf(TEXT(", %d Rifts"), Rifts);
+}
+
 FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
 {
 	if (Run == nullptr || Run->Map == nullptr)
@@ -224,6 +235,17 @@ FString UCataclysmEmpireMapLayout::CityDetailDungeonLine(const UCataclysmEmpireR
 	if (Dungeon == nullptr || Run->Clock == nullptr)
 	{
 		return FString();
+	}
+
+	// A RIFT IS NAMED AS ONE, WITH THE DAYS UNTIL IT NEXT SENDS A DUNGEON, since issue #51 slice B2: "Infernal Rift of 4
+	// floors, 3 days left, sends a dungeon in 2 days". "Infernal Rift" is the floor panel's name for it (slice B1). Its
+	// sub-type is not named: every Rift is Elite.
+	if (Dungeon->IsARift())
+	{
+		const int32 Sends = Run->DaysUntilRiftSends(DungeonId);
+		return FString::Printf(TEXT("Infernal Rift of %d floors, %.0f days left, sends a dungeon in %d day%s"),
+							   Dungeon->Floors, Run->Clock->DaysUntilResolveFor(DungeonId), Sends,
+							   Sends == 1 ? TEXT("") : TEXT("s"));
 	}
 
 	// THE SUB-TYPE FOR EVERY DUNGEON, AND THE KIND AFTER IT FOR A QUEST DUNGEON ONLY. Issue #2800, ruled 2026-11-21.

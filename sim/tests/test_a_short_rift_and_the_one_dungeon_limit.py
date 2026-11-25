@@ -1,15 +1,16 @@
-"""Two unruled variants of Demonic's Rifts, kept in the model for measurement (issue #51).
+"""The Rift itself, as the owner ruled it on 2026-11-24 (issue #51), and the variants measured on the way.
 
-THE SHORT RIFT, `TuningConfig.rift_floors`. The owner proposed on 2026-11-24, verbatim: "Rift are quest dungeons yes,
-but we determined they have 4 pillars the player needs to destroy. So... let's make them 4 floors? Is that reasonable?
-Their difficulty would need to be increased a decent amount, but that seems fair to me." Modelled as the coordinating
-session asked: Rift floor i fights the enemies of floor ceil(i x rolled depth / 4) of a dungeon of the rolled depth,
-and its quest timer is the rolled depth's unless `rift_timer_from_quest_depth` is off.
+THE RULING, verbatim from the newest comment on issue #51: "let's make them 4 floors?", "Keep the short timer for
+rifts. It's only fair, it has 4 floors.", "Rifts always have 8 dungeon modifiers. Keep it spicy", "No limit" and "(b) 8
+modifiers only (Recommended)". So a Rift is exactly 4 floors (`rift_floors`), with the quest timer of 4 floors
+(`rift_timer_from_quest_depth` False), exactly 8 dungeon modifiers (`rift_modifiers`) and the enemies of an ordinary
+4-floor dungeon (`rift_strength_from_quest_depth` False). Those are the defaults; `demonic_rifts` itself ships off.
 
-THE ONE-DUNGEON LIMIT, `rift_one_sent_at_a_time`: a Rift sends only while none of the dungeons it sent still stands.
-Recommended to the owner on 2026-11-24.
+THE VARIANTS STAY MEASURABLE: the rolled depth's timer, the rolled depth's enemies (Rift floor i fights floor
+ceil(i x rolled depth / 4) of a dungeon that deep), and the one-dungeon limit (`rift_one_sent_at_a_time`, a Rift sends
+only while none of the dungeons it sent still stands), which the owner refused: "No limit".
 
-Both ship off. EACH TEST HAS A CONTROL.
+EACH TEST HAS A CONTROL, and each names the switches it needs rather than leaning on the defaults.
 """
 from __future__ import annotations
 
@@ -42,13 +43,30 @@ def quest_on(sim: Simulation, tier: CityTier, source: str = "Demonic"):
     return d
 
 
-def test_both_ship_off() -> None:
+def test_the_switches_default_to_the_ruling() -> None:
     cfg = TuningConfig()
-    assert cfg.rift_floors == 0
-    assert cfg.rift_timer_from_quest_depth is True
-    assert cfg.rift_strength_from_quest_depth is True
-    assert cfg.rift_modifiers == 0
+    assert cfg.demonic_rifts is False, "the Rifts ship on before the game has them"
+    assert cfg.rift_floors == 4
+    assert cfg.rift_timer_from_quest_depth is False
+    assert cfg.rift_strength_from_quest_depth is False
+    assert cfg.rift_modifiers == 8
     assert cfg.rift_one_sent_at_a_time is False
+
+
+def test_a_rift_made_with_the_defaults_is_the_ruled_one() -> None:
+    """4 floors, a 4-floor dungeon's enemies, 8 modifiers, the timer of 4 floors. The control is the same Rift made
+    as deep as any Quest dungeon, which keeps its rolled depth and its longer timer."""
+    from cataclysm_sim.modifiers import pool_for
+    cfg = TuningConfig()
+    for seed in range(10):
+        sim = simulation(seed=seed)
+        sim.modifier_pool = pool_for(sim.active_types)
+        d = quest_on(sim, CityTier.BULWARK)
+        assert (d.floors, d.strength_floors, d.tree_floors, d.run_days) == (4, 0, 0, 4)
+        assert len(slotted(d)) == 8
+        assert d.resolve_max <= int((cfg.resolve_base_days + 4 * cfg.resolve_floor_ratio) * (1 + cfg.resolve_jitter))
+        deep = quest_on(simulation(seed=seed, rift_floors=0), CityTier.BULWARK)
+        assert deep.floors > 4 and deep.resolve_max > d.resolve_max
 
 
 # -- eight modifiers ------------------------------------------------------------------------------------------------
@@ -76,7 +94,7 @@ def test_a_rift_carries_eight_different_demonic_modifiers_at_tier_one() -> None:
 
 
 def test_control_without_the_switch_a_tier_one_rift_carries_one() -> None:
-    d = quest_on(simulation(rift_floors=4), CityTier.OUTPOST)
+    d = quest_on(simulation(rift_modifiers=0), CityTier.OUTPOST)
     assert len(slotted(d)) == 1
 
 
@@ -103,7 +121,7 @@ def test_a_rift_carries_eight_at_tier_four_too() -> None:
 def test_with_its_own_strength_a_short_rift_fights_its_own_four_floors() -> None:
     d = quest_on(simulation(rift_floors=4, rift_strength_from_quest_depth=False), CityTier.BULWARK)
     assert (d.floors, d.strength_floors, d.tree_floors) == (4, 0, 0)
-    control = quest_on(simulation(rift_floors=4), CityTier.BULWARK)
+    control = quest_on(simulation(rift_strength_from_quest_depth=True), CityTier.BULWARK)
     assert control.strength_floors > 4
 
 
@@ -112,8 +130,8 @@ def test_with_its_own_strength_a_short_rift_fights_its_own_four_floors() -> None
 
 def test_a_short_rift_has_four_floors_and_keeps_its_rolled_depth_as_its_strength() -> None:
     for seed in range(20):
-        deep = quest_on(simulation(seed=seed), CityTier.BULWARK)
-        short = quest_on(simulation(seed=seed, rift_floors=4), CityTier.BULWARK)
+        deep = quest_on(simulation(seed=seed, rift_floors=0), CityTier.BULWARK)
+        short = quest_on(simulation(seed=seed, rift_strength_from_quest_depth=True), CityTier.BULWARK)
         assert (short.floors, short.run_days, short.tree_floors) == (4, 4, 0)
         assert short.strength_floors == deep.floors, "the strength is not the depth the Rift was rolled at"
         lo, hi = TuningConfig().spec(DungeonType.QUEST, CityTier.BULWARK).floors
@@ -130,15 +148,15 @@ def test_control_only_a_demonic_quest_dungeon_with_the_rifts_on_is_shortened() -
 
 def test_a_short_rift_keeps_the_timer_of_its_rolled_depth() -> None:
     for seed in range(20):
-        deep = quest_on(simulation(seed=seed), CityTier.OUTPOST)
-        short = quest_on(simulation(seed=seed, rift_floors=4), CityTier.OUTPOST)
+        deep = quest_on(simulation(seed=seed, rift_floors=0), CityTier.OUTPOST)
+        short = quest_on(simulation(seed=seed, rift_timer_from_quest_depth=True), CityTier.OUTPOST)
         assert short.resolve_max == deep.resolve_max
 
 
 def test_control_with_its_own_timer_a_short_rift_runs_out_sooner_by_the_depth_ratio() -> None:
     cfg = TuningConfig()
     for seed in range(20):
-        deep = quest_on(simulation(seed=seed), CityTier.OUTPOST)
+        deep = quest_on(simulation(seed=seed, rift_floors=0), CityTier.OUTPOST)
         short = quest_on(simulation(seed=seed, rift_floors=4, rift_timer_from_quest_depth=False), CityTier.OUTPOST)
         ratio = ((cfg.resolve_base_days + 4 * cfg.resolve_floor_ratio)
                  / (cfg.resolve_base_days + deep.floors * cfg.resolve_floor_ratio))
@@ -147,7 +165,7 @@ def test_control_with_its_own_timer_a_short_rift_runs_out_sooner_by_the_depth_ra
 
 
 def test_shortening_a_rift_takes_no_draw() -> None:
-    a = simulation(seed=3)
+    a = simulation(seed=3, rift_floors=0)
     b = simulation(seed=3, rift_floors=4)
     quest_on(a, CityTier.OUTPOST)
     quest_on(b, CityTier.OUTPOST)
@@ -198,7 +216,7 @@ def test_a_strength_equal_to_the_floors_is_the_ordinary_path() -> None:
 
 
 def test_the_simulation_reads_the_strength() -> None:
-    sim = simulation(rift_floors=4)
+    sim = simulation(rift_strength_from_quest_depth=True)
     short = quest_on(sim, CityTier.OUTPOST)
     sim.power = sim.tier_min
     plain = replace(short, strength_floors=0)

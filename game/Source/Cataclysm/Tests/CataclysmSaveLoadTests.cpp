@@ -9557,8 +9557,13 @@ namespace CataclysmFirstSurgeTest
 			Test.TestEqual(Name + TEXT("'s timer is still full"), Run.Clock->DaysUntilResolveFor(Dungeon.DungeonId),
 						   Dungeon.ResolveDays, 0.0001f);
 			Test.TestEqual(Name + TEXT(" arrived on day 0"), Dungeon.SpawnedDay, 0);
-			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type"), SlotModifiersOf(Dungeon),
-						   UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier, Dungeon.SubType));
+			// A RIFT CARRIES EIGHT WHATEVER THE TIER, since issue #51 slice B2: a new character's Cataclysms are drawn
+			// by the clock, so its opening wave can hold a Quest dungeon Demonic sent.
+			Test.TestEqual(Name + TEXT(" carries its tier's modifiers for its sub-type, or a Rift's eight"),
+						   SlotModifiersOf(Dungeon),
+						   Dungeon.IsARift() ? UCataclysmDungeonModifierRules::RiftModifierCount
+											 : UCataclysmDungeonModifierRules::CountFor(Run.DifficultyTier,
+																						 Dungeon.SubType));
 			const FString SubType = UCataclysmSurgeScheduler::SubTypeName(Dungeon.SubType);
 			Parts.Add(FString::Printf(TEXT("%d %s%s%s %d floors %d modifiers"), Dungeon.DungeonId,
 									  *UCataclysmSurgeScheduler::KindName(Dungeon.Type),

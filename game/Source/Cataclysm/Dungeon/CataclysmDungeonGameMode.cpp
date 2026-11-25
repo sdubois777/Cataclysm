@@ -25762,6 +25762,10 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	// the days the walk owes, since 2026-10-24: the run's own day does not move
 	// while the player is inside.
 	const bool bItResolves = DungeonDiedIn != nullptr && DungeonDiedIn->Resolves();
+
+	// AND WHETHER IT WAS A RIFT, read here for the same reason: a death in one brings a surge after the walk's days
+	// (step 2b). A Rift is a Quest dungeon, which nothing resolves, but its city can fall in those days. Issue #51.
+	const bool bDiedInARift = DungeonDiedIn != nullptr && DungeonDiedIn->IsARift();
 	const int32 DaysTheWalkOwed = Run->DaysOwed();
 	const int32 DayOfTheDeath = Run->Day() + DaysTheWalkOwed;
 	const int32 DayTheWalkLeft = Run->Day(); // For the summary of the days away, issue #2733 slice 3.
@@ -25795,6 +25799,15 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	LastWalksDays.Reset();
 	LeaveEmpireDungeon();
 
+	// 2b. A DEATH IN A RIFT BRINGS AN ORDINARY SURGE, ON THE DAY OF THE DEATH: after the walk's days, which reached
+	// it, and before the death's own. The owner, 2026-11-24, issue #51, "Every death, no gap (Recommended)". Issue #51
+	// slice B2; `UCataclysmEmpireRun::SurgeForADeathInARift` says the rest.
+	FCataclysmDayReport WhatTheRiftBrought;
+	if (bDiedInARift)
+	{
+		WhatTheRiftBrought = Run->SurgeForADeathInARift();
+	}
+
 	// 3. AND THE DAYS ARE PAID, whole days through the same call every other
 	// run of days goes through, so a surge, a repair and a resolve that fall
 	// inside them happen on their own days.
@@ -25813,6 +25826,10 @@ bool ACataclysmDungeonGameMode::EndTheDungeonForADeath()
 	TArray<FCataclysmDayReport> DaysAway;
 	DaysAway.Add(WhatTheDeathResolved);
 	DaysAway.Append(LastWalksDays);
+	if (bDiedInARift)
+	{
+		DaysAway.Add(WhatTheRiftBrought); // The Rift's surge, between the walk's days and the death's (issue #51).
+	}
 	DaysAway.Append(DaysTheDeathRan);
 	Run->NoteDaysAway(DayTheWalkLeft, Run->Day(), DaysAway, /*bEndedInAClear*/ false);
 
