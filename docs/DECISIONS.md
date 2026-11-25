@@ -130,7 +130,22 @@ in 445.26s**, and the JUnit file `tests="8507" failures="2" errors="0" skipped="
   The order fixes of 2026-11-24 reworded Minefield's count cap and refuse a sentence that is neither theirs nor the
   one they replaced, so they refused this slice's Minefield sentence.
 - A narrowed run of the node-text and script tests had not covered that test file. The `later` field above is the
-  fix; the rerun's figures follow in the next commit.
+  fix.
+
+**THE SECOND RUN WAS COMPROMISED, NOT BY THIS BRANCH.** Run on `3ca53f9d0a9914a1f014d89e840ed6e2ecf2cd42`: 3 failed,
+8497 passed, 9 skipped. Beside the asset check, two cases of
+`test_what_a_run_ending_costs.py::test_the_guards_fail_when_the_document_regresses` failed.
+- One case broke `docs/Cataclysm_GDD_v2.md` on purpose, and `tools/prove_guard.py`'s restore of it, in its `finally`
+  (`path.write_bytes(content)`, line 453), raised `OSError: [Errno 22] Invalid argument`. So the break stayed in the
+  document, and the next case failed against it.
+- Neither file is this branch's. The document was restored from git, the file then passed alone (27 passed), and
+  the document was unchanged after.
+- Which process held the file is not known.
+
+**THE THIRD RUN**, on the same head with nothing else writing: the count line read **1 failed, 8499 passed, 9
+skipped in 430.76s**, and the JUnit file `tests="8509" failures="1" errors="0" skipped="9"`, which is
+8,499 passed: the two agree. The one failure is the asset check. The worktree was unchanged after the run.
+`python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed`: 0 with complaints.
 
 ### PYTHON GUARD PROOFS
 
