@@ -144,7 +144,7 @@ float FCataclysmBerserkerStates::DrainStep(ACataclysmCharacterBase* Character, f
 				Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 				Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
 				// A DRAIN, for Crimson Tide (2026-11-25).
-				FCataclysmWarFervour::NoteFervourSpent(Cataclysm, -Moved);
+				FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, -Moved);
 			}
 		}
 	}
@@ -187,7 +187,7 @@ float FCataclysmBerserkerStates::SpendBerserking(UAbilitySystemComponent* Abilit
 	}
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Consumed);
 	// A SPEND, for Crimson Tide (2026-11-25).
-	FCataclysmWarFervour::NoteFervourSpent(Cataclysm, Consumed);
+	FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, Consumed);
 	return PerFervour * Consumed;
 }
 

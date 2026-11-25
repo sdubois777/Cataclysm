@@ -6,7 +6,7 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:**
 - `game/Source/Cataclysm/AbilitySystem/CataclysmWarFervour.h` and `.cpp`: `RiposteOnBlock`, `RetaliationPulseDrainStep`
-  and `NoteFervourSpent` (called by `TakeFromPool`, Cleave's costs, and the sites below).
+  and `NoteFervourSpentOrDrained` (called by `TakeFromPool`, Cleave's costs, and the sites below).
 - `CataclysmRetaliation.h` and `.cpp`: `Pay` remembers every blow taken; `PayPulse`, new.
 - `CataclysmAbilitySystemComponent.h` and `.cpp`: the last blow taken and when (`NoteBlowTakenForRetaliation`,
   `LastBlowTakenThisFloor`), Crimson Tide's count, `ApplyStatusOf`'s new Stun branch, and a pool action's Fervour drain
@@ -38,6 +38,14 @@ Decisions made outside the Google Drive documents, newest first.
 - **CRIMSON TIDE DOES NOT COUNT THE MASOCHIST'S OR THE RAVAGER'S SPENDS** in `UCataclysmFervour` (Bought With Ruin, Wrung
   Out), which the Death trees session owns. Every War spend and drain counts, and so do the Ultimate's Fervour cost and
   a pool action's drain. A Berserker holding a Demonic node beside Crimson Tide would not count those two.
+- **TWO RECORDS OF FERVOUR, DIFFERENT ON PURPOSE.** `FCataclysmWarFervour::NoteFervourSpentOrDrained` counts spends
+  and drains for Crimson Tide. The Death trees' `UCataclysmAbilitySystemComponent::NoteFervourSpent`
+  (`feat/death-trees-c3a`) records a skill's Fervour cost alone, for `seconds_after_fervour_spent` and the event
+  `fervour_spent`. This branch's function, and the component's count and remainder beside it, were renamed from
+  `NoteFervourSpent`, `CountFervourSpentSteps` and `FervourSpentTowardsHeal` on 2026-11-25 at the coordinating session's
+  request, so the two cannot be confused. **AT MERGE, `CataclysmGameplayAbility.cpp` KEEPS BOTH CALLS** after the
+  Ultimate's Fervour cost: both branches change the same line, and that cost is a skill's spend for the one record and
+  counts for Crimson Tide in the other.
 - **THE GENERAL STUN BRANCH IS EXERCISED ON A PLAIN EVENT** (`deployable_hit`); the Saboteur's Concealed, which asked for
   it on a trap trigger, is not built here.
 
@@ -64,7 +72,7 @@ The coordinating session, 2026-11-25, under the owner's delegation:
    not the drain is draining; the Bleed is laid on an enemy the pulse took health from, without the rule of a tenth.
 3. **Crimson Tide**: its fractions made steps by the design document's rule "A threshold or a step, never a fraction" (as
    Bloodthirst's were): 1% life leech on melee for every 2 points (2% at 4, 4% at 8, as 0.5 a point gave), and the heal 1%
-   of maximum health for every 2 points for each whole 10 Fervour spent or drained (`NoteFervourSpent`, the rest carried).
+   of maximum health for every 2 points for each whole 10 Fervour spent or drained (`NoteFervourSpentOrDrained`, the rest carried).
 4. **The Stun branch** (`ApplyStatusOf`): a designed stun on the event's other character for the row's seconds, on
    `apply_status_seconds` only; a plain row naming Stun lays nothing.
 5. **The rule that every stun states how long** (issue #271) now reads a passive row. Riposte's is the first passive row
@@ -122,8 +130,8 @@ Predicted counts: `Cataclysm.WarFervour.` 13; `Cataclysm.ApplyStatus.` one more 
    `0.0f);`. Must fail `RiposteCountersABlockAtTwentyFiveFervourAndStunsAtTheMaximum`.
 2. The pulse's trigger: in `CataclysmWarFervour.cpp`, `if (After <= 0.0f)` becomes `if (After < -1.0f)`. Must fail
    `VengefulDischargesDrainPulsesOnTheLastBlowTakenWhenItEmptiesThePool`.
-3. Crimson Tide's drain site: in `CataclysmBerserkerStates.cpp`, `FCataclysmWarFervour::NoteFervourSpent(Cataclysm, -Moved);`
-   becomes `FCataclysmWarFervour::NoteFervourSpent(Cataclysm, 0.0f);`. Must fail
+3. Crimson Tide's drain site: in `CataclysmBerserkerStates.cpp`, `FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, -Moved);`
+   becomes `FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, 0.0f);`. Must fail
    `CrimsonTideHealsForFervourDrainedAndNotForFervourDecayed`.
 
 ---

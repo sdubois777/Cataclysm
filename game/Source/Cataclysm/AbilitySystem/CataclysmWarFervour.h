@@ -249,9 +249,14 @@ public:
 	 * file's pulse drain, the Ultimate's Fervour cost (`UCataclysmGameplayAbility`) and a pool action's drain
 	 * (`UCataclysmAbilitySystemComponent::ApplyPoolAction`). NOT the Masochist's and Ravager's spends in
 	 * `UCataclysmFervour`, which the Death trees session owns; a Berserker holding a Demonic node beside Crimson Tide
-	 * would not count those. @return the health restored
+	 * would not count those.
+	 *
+	 * NAMED FOR WHAT IT COUNTS, SPENDS AND DRAINS: renamed from `NoteFervourSpent` on 2026-11-25 at the coordinating
+	 * session's request, because the Death trees' line records a skill's Fervour cost alone under that name, for the
+	 * clock `seconds_after_fervour_spent` and the event `fervour_spent`. The two records differ on purpose.
+	 * @return the health restored
 	 */
-	static float NoteFervourSpent(UAbilitySystemComponent* AbilitySystem, float Spent);
+	static float NoteFervourSpentOrDrained(UAbilitySystemComponent* AbilitySystem, float Spent);
 
 private:
 	/** Take up to `Amount` from the pool, clamped at nought, and return what was taken. */

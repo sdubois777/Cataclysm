@@ -8583,7 +8583,7 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 		// A DRAIN OF FERVOUR, for Crimson Tide's heal for every 10 Fervour drained (2026-11-25).
 		if (Held == UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
 		{
-			FCataclysmWarFervour::NoteFervourSpent(this, -Change);
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(this, -Change);
 		}
 	}
 }

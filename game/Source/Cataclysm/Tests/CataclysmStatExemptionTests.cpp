@@ -11998,7 +11998,7 @@ namespace CataclysmStatExemptionTest
 					  Its->HasMatchingGameplayTag(UCataclysmDebuffs::BleedTag()));
 	}
 
-	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpent`: nothing for 20 spent
+	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpentOrDrained`: nothing for 20 spent
 	 *  without it; with 5 of it, two steps of 5% of 10,000. */
 	void ProbeHealthPerTenFervourSpent(FAutomationTestBase& Test)
 	{
@@ -12014,11 +12014,11 @@ namespace CataclysmStatExemptionTest
 		{
 			return;
 		}
-		const float Plain = FCataclysmWarFervour::NoteFervourSpent(System, 20.0f);
+		const float Plain = FCataclysmWarFervour::NoteFervourSpentOrDrained(System, 20.0f);
 		GrantFlat(Holder, FCataclysmWarFervour::HealthPerTenFervourSpentStat, 5.0f);
-		const float Held = FCataclysmWarFervour::NoteFervourSpent(System, 20.0f);
+		const float Held = FCataclysmWarFervour::NoteFervourSpentOrDrained(System, 20.0f);
 		Test.TestEqual(TEXT("health_percent_per_ten_fervour_spent: control, nothing without it"), Plain, 0.0f);
-		Test.TestEqual(TEXT("and 1,000 for 20 spent with 5 of it, so NoteFervourSpent really reads it"), Held, 1000.0f,
+		Test.TestEqual(TEXT("and 1,000 for 20 spent with 5 of it, so NoteFervourSpentOrDrained really reads it"), Held, 1000.0f,
 					   0.001f);
 	}
 

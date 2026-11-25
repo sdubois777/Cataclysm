@@ -4588,18 +4588,18 @@ public:
 	/**
 	 * Crimson Tide's count (2026-11-25): add `Spent` Fervour spent or drained, and return how many whole steps of `Step`
 	 * it now holds, keeping the rest. The same shape as `CountRegenerationSteps`. Asked only by
-	 * `FCataclysmWarFervour::NoteFervourSpent`.
+	 * `FCataclysmWarFervour::NoteFervourSpentOrDrained`.
 	 */
-	int32 CountFervourSpentSteps(float Spent, float Step)
+	int32 CountFervourSpentOrDrainedSteps(float Spent, float Step)
 	{
 		if (Step <= 0.0f)
 		{
-			FervourSpentTowardsHeal = 0.0f;
+			FervourSpentOrDrainedTowardsHeal = 0.0f;
 			return 0;
 		}
-		FervourSpentTowardsHeal += FMath::Max(0.0f, Spent);
-		const int32 Steps = FMath::FloorToInt(FervourSpentTowardsHeal / Step);
-		FervourSpentTowardsHeal -= static_cast<float>(Steps) * Step;
+		FervourSpentOrDrainedTowardsHeal += FMath::Max(0.0f, Spent);
+		const int32 Steps = FMath::FloorToInt(FervourSpentOrDrainedTowardsHeal / Step);
+		FervourSpentOrDrainedTowardsHeal -= static_cast<float>(Steps) * Step;
 		return Steps;
 	}
 
@@ -5631,7 +5631,7 @@ protected:
 	float RegeneratedTowardsFervourLoss = 0.0f;
 
 	/** Fervour spent or drained since Crimson Tide last healed, short of a whole step. Not saved, not replicated. */
-	float FervourSpentTowardsHeal = 0.0f;
+	float FervourSpentOrDrainedTowardsHeal = 0.0f;
 
 	/** The last blow taken, before mitigation, and the world time it was taken at, or -1. See
 	 *  `NoteBlowTakenForRetaliation`. Not saved, not replicated. */

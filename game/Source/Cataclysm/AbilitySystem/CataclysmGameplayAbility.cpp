@@ -689,8 +689,8 @@ void UCataclysmGameplayAbility::ApplyCost(
 		{
 			Paying->NoteResourceConsumed(Fervour, &SkillTagsForStats());
 
-			// AND A SPEND, for Crimson Tide's heal for every 10 Fervour spent (2026-11-25).
-			FCataclysmWarFervour::NoteFervourSpent(Paying, Fervour);
+			// AND A SPEND, for Crimson Tide's heal for every 10 Fervour spent or drained (2026-11-25).
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Paying, Fervour);
 		}
 	}
 

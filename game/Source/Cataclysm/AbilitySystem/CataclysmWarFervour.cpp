@@ -61,11 +61,11 @@ float FCataclysmWarFervour::TakeFromPool(UAbilitySystemComponent* AbilitySystem,
 	}
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
 	const float Spent = Before - AbilitySystem->GetNumericAttribute(Pool);
-	NoteFervourSpent(AbilitySystem, Spent);
+	NoteFervourSpentOrDrained(AbilitySystem, Spent);
 	return Spent;
 }
 
-float FCataclysmWarFervour::NoteFervourSpent(UAbilitySystemComponent* AbilitySystem, float Spent)
+float FCataclysmWarFervour::NoteFervourSpentOrDrained(UAbilitySystemComponent* AbilitySystem, float Spent)
 {
 	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
 	if (!Cataclysm || Spent <= 0.0f || !AbilitySystem->GetSet<UCataclysmVitalAttributeSet>())
@@ -78,7 +78,7 @@ float FCataclysmWarFervour::NoteFervourSpent(UAbilitySystemComponent* AbilitySys
 	{
 		return 0.0f;
 	}
-	const int32 Steps = Cataclysm->CountFervourSpentSteps(Spent, 10.0f);
+	const int32 Steps = Cataclysm->CountFervourSpentOrDrainedSteps(Spent, 10.0f);
 	if (Steps <= 0)
 	{
 		return 0.0f;
@@ -170,7 +170,7 @@ float FCataclysmWarFervour::RetaliationPulseDrainStep(ACataclysmCharacterBase* C
 	}
 	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	const float After = Cataclysm->GetNumericAttribute(Pool);
-	NoteFervourSpent(Cataclysm, Before - After);
+	NoteFervourSpentOrDrained(Cataclysm, Before - After);
 
 	// THIS DRAIN EMPTIED THE POOL: the pulse.
 	if (After <= 0.0f)
@@ -255,7 +255,7 @@ float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponen
 		CostsPaid += Cost;
 	}
 	// THE COSTS ARE SPENT, for Crimson Tide, whatever the gains returned.
-	NoteFervourSpent(AbilitySystem, CostsPaid);
+	NoteFervourSpentOrDrained(AbilitySystem, CostsPaid);
 	const float Change = Held - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
