@@ -191,6 +191,9 @@ bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySys
 	NoteOwnKill(AbilitySystem, Notice.Victim);
 	// AND GRIM WAKE'S MARK on the enemies near the body (the Death trees' slice C4c2), as for an own kill.
 	MarkNearAKill(AbilitySystem, Notice.Victim, Notice.Location);
+	// AND WEARER OF THE DEAD'S MODIFIERS, as ruled (W5): a follower's kill Death's Toll makes the character's lends them
+	// too. The Death trees' slice C4d3 (2026-11-25).
+	WearTheModifiersOf(AbilitySystem, Notice.Victim);
 
 	// `kill`, RAISED TO THE SOUL COLLECTOR'S OWN ROWS ONLY (Kill Chain's stacks among them), carrying the slain creature
 	// and its maximum health as an own kill's does. Not for a kill a row made, for the reason the own kill gives.
@@ -1566,6 +1569,8 @@ void UCataclysmFervour::CreditAKillWithoutADeath(UAbilitySystemComponent* Abilit
 	GainOnOwnKill(AbilitySystem, Slain);
 	NoteOwnKill(AbilitySystem, Slain);
 	MarkNearAKill(AbilitySystem, Slain, Slain->GetActorLocation());
+	// AND WEARER OF THE DEAD'S MODIFIERS (the Death trees' slice C4d3): the creature is alive and carries them still.
+	WearTheModifiersOf(AbilitySystem, Slain);
 
 	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Slain);
 	const float SlainMaximum =
@@ -1577,6 +1582,77 @@ void UCataclysmFervour::CreditAKillWithoutADeath(UAbilitySystemComponent* Abilit
 	Acting->TakePendingOverkillExplosionRadiusCm();
 	Acting->TakePendingSlainBurstSharePercent();
 	Acting->TakePendingKillingBlowExplosionSharePercent();
+}
+
+const TArray<FName>& UCataclysmFervour::WornEnemyModifierRows()
+{
+	// IN PLACE ORDER, FROM 1. Appended to, never reordered: a row's place is written in the data.
+	static const TArray<FName> Rows = {
+		FName(TEXT("Generic_Titanic_Resolve")),
+		FName(TEXT("Generic_Overpowered")),
+		FName(TEXT("Generic_Bloodthirsty")),
+		FName(TEXT("Generic_Unyielding")),
+		FName(TEXT("Generic_Relentless")),
+	};
+	return Rows;
+}
+
+int32 UCataclysmFervour::WornEnemyModifierPlace(FName Row)
+{
+	const int32 Index = WornEnemyModifierRows().IndexOfByKey(Row);
+	return Index == INDEX_NONE ? 0 : Index + 1;
+}
+
+int32 UCataclysmFervour::WearTheModifiersOf(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
+{
+	UCataclysmAbilitySystemComponent* Wearer = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const ACataclysmEnemyCharacter* Creature = Cast<const ACataclysmEnemyCharacter>(Slain);
+	if (!Wearer || !Creature || Creature->RarityStep < 1)
+	{
+		return 0;
+	}
+	int32 Recorded = 0;
+	for (const FName& Row : Creature->ModifierRows)
+	{
+		const int32 Place = WornEnemyModifierPlace(Row);
+		if (Place > 0 && Wearer->HoldsARowWearing(Place))
+		{
+			Wearer->NoteWornEnemyModifier(Place, WornEnemyModifierSeconds);
+			++Recorded;
+		}
+	}
+	if (Recorded > 0)
+	{
+		Wearer->RefreshLiveMaximumHealth();
+	}
+	return Recorded;
+}
+
+FString UCataclysmFervour::WornModifiersLine(const UCataclysmAbilitySystemComponent* Holder)
+{
+	if (!Holder)
+	{
+		return FString();
+	}
+	TArray<FString> Parts;
+	const TArray<FName>& Rows = WornEnemyModifierRows();
+	for (int32 Index = 0; Index < Rows.Num(); ++Index)
+	{
+		const float Left = Holder->WornEnemyModifierSecondsLeft(Index + 1);
+		if (Left > 0.0f)
+		{
+			// THE ROW'S NAME LESS ITS CATACLYSM, its underscores as spaces: "Generic_Titanic_Resolve" is "Titanic Resolve".
+			FString Name = Rows[Index].ToString();
+			int32 Underscore = INDEX_NONE;
+			if (Name.FindChar(TEXT('_'), Underscore))
+			{
+				Name.RightChopInline(Underscore + 1);
+			}
+			Name.ReplaceCharInline(TEXT('_'), TEXT(' '));
+			Parts.Add(FString::Printf(TEXT("%s %ds"), *Name, FMath::CeilToInt(Left)));
+		}
+	}
+	return Parts.IsEmpty() ? FString() : TEXT("Worn: ") + FString::Join(Parts, TEXT(", "));
 }
 
 float UCataclysmFervour::KillDecayStep(UAbilitySystemComponent* AbilitySystem, float SecondsInStep)

@@ -638,6 +638,13 @@ NODES: tuple[Node, ...] = (
          (R("boss_ticks_pay_a_kill_every_seconds", "flat", 2, cond="target_is_boss"),)),
     Node(SH + "keystone_b_kC", "Death by Inches",
          (R("boss_hits_counted_as_a_kill_every", "flat", 10, cond="target_is_boss"),)),
+    Node(SC + "capstone_200", "Wearer of the Dead",
+         (R("max_health", "more", 50, cond="wearing_enemy_modifier", cond_value=1),
+          R("crit_chance", "flat", 100, cond="wearing_enemy_modifier", cond_value=2),
+          R("life_leech", "flat", 10, cond="wearing_enemy_modifier", cond_value=3),
+          R("crowd_control_resistance", "flat", 100, cond="wearing_enemy_modifier", cond_value=4),
+          R("health_regen", "flat", 2, cond="wearing_enemy_modifier", cond_value=5)),
+         option=1),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

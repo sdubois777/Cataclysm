@@ -8011,6 +8011,34 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `max_health`, read by `UCataclysmAbilitySystemComponent::RefreshLiveMaximumHealth`, which writes the attribute. The
+	 * Death trees' slice C4d3 (2026-11-25), shipped under `wearing_enemy_modifier` (Wearer of the Dead's Titanic
+	 * Resolve); a health condition stands for it, as for every conditioned probe. 50% increased below half health: the
+	 * maximum is the 10,000 pool at full health and 15,000 once below half and refreshed.
+	 */
+	void ProbeConditionedMaxHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), TargetHealthPool);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("max_health"), ECataclysmStatBucket::Increased, 50.0f, TargetHealthPool);
+		Fighter.AbilitySystem->RefreshLiveMaximumHealth();
+		Test.TestEqual(TEXT("max_health at full health: the 10,000 pool"),
+					   Fighter.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()), TargetHealthPool, 0.01f);
+		AtHealthShare(Fighter, 0.4f);
+		Fighter.AbilitySystem->RefreshLiveMaximumHealth();
+		Test.TestEqual(TEXT("max_health is asked for, so below half health the refresh writes 15,000"),
+					   Fighter.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+					   TargetHealthPool * 1.5f, 0.01f);
+	}
+
+	/**
 	 * `fervour_per_critical_strike`, read by `UCataclysmFervour::GainOnCriticalStrike`. The Death trees' slice C4d1
 	 * (2026-11-25), shipped under `target_rarity_at_least` (Telling Blows). A health condition stands for it here, as
 	 * for `fervour_per_kill` above: this measures the ask. With no character struck in hand.
@@ -12691,6 +12719,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_kill"),         &ProbeConditionedFervourPerKill},
 			// AND THE SLICE C4d1's TELLING BLOWS (2026-11-25).
 			{TEXT("fervour_per_critical_strike"), &ProbeConditionedFervourPerCriticalStrike},
+			// AND THE SLICE C4d3's WEARER OF THE DEAD (2026-11-25): Titanic Resolve's maximum health.
+			{TEXT("max_health"), &ProbeConditionedMaxHealth},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},

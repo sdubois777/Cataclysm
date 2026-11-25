@@ -55,6 +55,10 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("SoulCollector_capstone_200", "1", "target_rarity_at_least"):
+        "Wearer of the Dead's 'an Elite or stronger creature' is read off the slain creature at the kill "
+        "(RarityStep of 1 or more, in UCataclysmFervour::WearTheModifiersOf), as ruled (W4) in the Death trees' "
+        "slice C4d3; its rows wait on the worn modifier instead",
     ("Shadow_keystone_b_kC", "0", "target_rarity_at_least"):
         "Death by Inches' 'counts as killing an Elite or stronger enemy' is met by the Boss's own rung, the kill "
         "credited against the Boss itself, as ruled (Q7 b) in the Death trees' slice C4d2",

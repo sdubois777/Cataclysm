@@ -106,7 +106,8 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # DAY, for slice C4d1's Telling Blows: `fervour_per_critical_strike`. 35
     # THE SAME DAY, for slice C4d2's Patient Blade and Death by Inches:
     # `boss_ticks_pay_a_kill_every_seconds` and `boss_hits_counted_as_a_kill_every`.
-    assert sizes["ConditionedProbes"] == 35, sizes
+    # 36 THE SAME DAY, for slice C4d3's Wearer of the Dead: `max_health`.
+    assert sizes["ConditionedProbes"] == 36, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

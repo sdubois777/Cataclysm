@@ -162,6 +162,7 @@ namespace
 		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
 		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
 		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
+		{ TEXT("wearing_enemy_modifier"), ECataclysmStatCondition::WearingEnemyModifier },
 	};
 
 	struct FNamedStatScale
@@ -531,6 +532,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// out, which nothing announces.
 	case C::WithinSecondsOfKill:
 	case C::WithinSecondsOfFervourSpent:
+	// AND A WORN ENEMY MODIFIER, the Death trees' slice C4d3 (2026-11-25): it runs out after its seconds with nothing
+	// announcing it, as the kill's clock does.
+	case C::WearingEnemyModifier:
 	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
 	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
 	// resource's conditions.
@@ -1400,6 +1404,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it pays for and acts on a kill made by
 		// an execute, the Death trees' slice C4d1 (2026-11-25). False outside such a kill, which refuses.
 		return State.bKillWasAnExecute;
+
+	case ECataclysmStatCondition::WearingEnemyModifier:
+	{
+		// THE PLACE IN THE LIST, COUNTED FROM 1, as a whole number. The Death trees' slice C4d3 (2026-11-25).
+		const int32 Place = FMath::RoundToInt(Value);
+		return Place >= 1 && State.WornEnemyModifierPlaces.Contains(Place);
+	}
 
 	case ECataclysmStatCondition::TargetRarityAtLeast:
 		// FILLED ONLY WHEN A ROW ASKS, by `WithTargetState`. The Death trees of 2026-11-24. -1 is "not a creature",

@@ -829,6 +829,25 @@ public:
 	int32 CountBossHit(const AActor* Boss);
 
 	/**
+	 * Wearer of the Dead's record: the enemy modifier at `Place` of `UCataclysmFervour::WornEnemyModifierRows` (counted
+	 * from 1) is worn for `Seconds` from now. A second record of the same place sets it to the full seconds again; it
+	 * never stacks, as ruled. The Death trees' slice C4d3 (2026-11-25).
+	 */
+	void NoteWornEnemyModifier(int32 Place, float Seconds);
+
+	/** The seconds the modifier at `Place` has left to be worn, or nought when it is not worn. */
+	float WornEnemyModifierSecondsLeft(int32 Place) const;
+
+	/** The places of the modifiers worn now, as `FCataclysmStatConditions::WornEnemyModifierPlaces` holds them. */
+	TArray<int32> WornEnemyModifierPlacesNow() const;
+
+	/**
+	 * Whether this character holds a stat row under `wearing_enemy_modifier` at `Place`, in either condition column:
+	 * only such a modifier is recorded, so a character without the vow wears nothing and shows nothing.
+	 */
+	bool HoldsARowWearing(int32 Place) const;
+
+	/**
 	 * A request, left on THE CHARACTER STRUCK, that it be executed if the hit now resolving leaves it below a share
 	 * of its maximum health. Ruled 2026-10-12 under the owner's delegation, for "Strike skills have a 10%-20% chance
 	 * to execute enemies below 15% HP". See `FCataclysmPoolAction::bExecuteTarget`.
@@ -6430,6 +6449,9 @@ protected:
 
 	/** Landed hits on each Boss, for Death by Inches. See `CountBossHit`. */
 	TMap<TWeakObjectPtr<const AActor>, int32> BossHitsCounted;
+
+	/** When each worn enemy modifier runs out, in world seconds, by its place. See `NoteWornEnemyModifier`. */
+	TMap<int32, float> WornEnemyModifierUntil;
 
 	/** What a striking character's row asked of this character for the hit now resolving. See `AskToBeExecuted`. */
 	FExecuteAsked ExecuteAsked;

@@ -11,6 +11,7 @@
 
 class AActor;
 class UAbilitySystemComponent;
+class UCataclysmAbilitySystemComponent;
 class ACataclysmCharacterBase;
 struct FCataclysmDeathNotice;
 
@@ -885,6 +886,39 @@ public:
 	 * nothing died. The Death trees' slice C4d2 (2026-11-25).
 	 */
 	static void CreditAKillWithoutADeath(UAbilitySystemComponent* AbilitySystem, AActor* Slain);
+
+	/**
+	 * The enemy modifiers Wearer of the Dead can lend, in their fixed places: place N of `wearing_enemy_modifier` is the
+	 * Nth of these, counted from 1. `tools/generate_datatables.py` holds the same list as `WORN_ENEMY_MODIFIERS`, and a
+	 * Python test holds the two equal. The Death trees' slice C4d3 (2026-11-25), as ruled (W1): the five built
+	 * modifiers that are a plain number on a player stat. TO ADD ONE: append its row name here and to
+	 * `WORN_ENEMY_MODIFIERS`, and give the vow its row under `wearing_enemy_modifier` at the new place; the condition's
+	 * bounds follow the list's length. Never reorder: a row's place is written in the data. Issue #2899 builds every
+	 * enemy modifier but the one button ability to work on any wearer and adds each here; the first expected source is
+	 * the branch `feat/death-war-enemy-modifiers`.
+	 */
+	static const TArray<FName>& WornEnemyModifierRows();
+
+	/** The place of `Row` in `WornEnemyModifierRows`, counted from 1, or nought when it is not there. */
+	static int32 WornEnemyModifierPlace(FName Row);
+
+	/** How long a lent modifier is worn: "for 20 seconds". */
+	static constexpr float WornEnemyModifierSeconds = 20.0f;
+
+	/**
+	 * Wearer of the Dead: at a kill of `Slain`, Elite or stronger (rarity rung 1 and up, bosses included, as ruled),
+	 * record on the character each of its modifiers that has a place and that the character holds a row for, worn for
+	 * `WornEnemyModifierSeconds`, and refresh the character's live maximum health so a worn bonus to it arrives at once.
+	 * Called by the kill handler, by `CreditAFollowersKill` and by `CreditAKillWithoutADeath`. Answers how many were
+	 * recorded.
+	 */
+	static int32 WearTheModifiersOf(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
+
+	/**
+	 * The line the screen shows above the skill bar while modifiers are worn: each by name with its whole seconds left.
+	 * Empty when none is. Every system has a basic interface; this is Wearer of the Dead's.
+	 */
+	static FString WornModifiersLine(const UCataclysmAbilitySystemComponent* Holder);
 
 	/** The start of every Soul Collector row's trigger key: `Passive_SoulCollector_`. See `CreditAFollowersKill`. */
 	static FString SoulCollectorRowKeyPrefix();

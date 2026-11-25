@@ -9,6 +9,7 @@ a pool it has no case for, so the row does nothing and nothing says so.
 `test_pool_action_names_match_the_engine.py` guards the pool actions; these had
 no guard until this file.
 """
+import csv
 import re
 import sys
 from pathlib import Path
@@ -894,6 +895,57 @@ def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_dea
         assert f"Acting->{taken}();" in credit, taken
     for left_out in ("MarkDead", "ExplodeForOverkill", "BurstTheSlain", "AnnounceAfflictedDeath", "NoteDeath"):
         assert left_out not in credit, left_out
+
+
+def test_the_worn_enemy_modifiers_are_one_list_in_the_generator_and_the_engine() -> None:
+    """The Death trees' slice C4d3 (2026-11-25), as ruled (W6). A row's
+    `wearing_enemy_modifier` value is a place in a list the generator and the
+    engine each hold, so the two must be the same list in the same order; the
+    condition's bounds are that list's ends; every place has its row on Wearer
+    of the Dead; and every name is a row of the enemy modifier table. THE
+    CONTROL: the engine list is found and has five names."""
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    start = fervour.index("const TArray<FName>& UCataclysmFervour::WornEnemyModifierRows()")
+    body = fervour[start:fervour.index("\n}\n", start)]
+    engine = tuple(re.findall(r'FName\(TEXT\("([A-Za-z_]+)"\)\)', body))
+    assert len(engine) == 5, engine
+    assert engine == gen.WORN_ENEMY_MODIFIERS
+    assert gen.CONDITIONS["wearing_enemy_modifier"][:2] == (1.0, float(len(gen.WORN_ENEMY_MODIFIERS)))
+    effects = list(csv.DictReader((ROOT / "game" / "Data" / "PassiveEffects.csv").open(encoding="utf-8")))
+    places = sorted(int(float(r["ConditionValue"])) for r in effects
+                    if r["Condition"] == "wearing_enemy_modifier")
+    assert places == list(range(1, len(gen.WORN_ENEMY_MODIFIERS) + 1)), places
+    modifiers = {r["Name"] for r in csv.DictReader((ROOT / "game" / "Data" / "EnemyModifiers.csv").open(encoding="utf-8"))}
+    assert set(gen.WORN_ENEMY_MODIFIERS) <= modifiers
+
+
+def test_wearer_of_the_dead_records_an_elite_or_strongers_modifiers_at_every_kind_of_kill() -> None:
+    """The Death trees' slice C4d3 (2026-11-25), as ruled (W3 to W6). The kill
+    handler, a follower's kill under Death's Toll and a kill without a death
+    each call the wearing; it reads the slain creature's rung of 1 or more,
+    records only a place the character holds a row for, refreshes maximum
+    health, and the conditions fill reads the record. A second record of the
+    same place sets its time again rather than adding. Read from the code with
+    comments taken out."""
+    player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
+    assert re.search(r"UCataclysmFervour::MarkNearAKill\(Acting, Notice\.Victim, Notice\.Location\);\s*"
+                     r"UCataclysmFervour::WearTheModifiersOf\(Acting, Notice\.Victim\);", player)
+    fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
+    assert re.search(r"MarkNearAKill\(AbilitySystem, Notice\.Victim, Notice\.Location\);\s*"
+                     r"WearTheModifiersOf\(AbilitySystem, Notice\.Victim\);", fervour)
+    assert re.search(r"MarkNearAKill\(AbilitySystem, Slain, Slain->GetActorLocation\(\)\);\s*"
+                     r"WearTheModifiersOf\(AbilitySystem, Slain\);", fervour)
+    wear = fervour[fervour.index("int32 UCataclysmFervour::WearTheModifiersOf("):]
+    wear = wear[:wear.index("\n}\n")]
+    assert "Creature->RarityStep < 1" in wear
+    assert re.search(r"if \(Place > 0 && Wearer->HoldsARowWearing\(Place\)\)", wear)
+    assert "Wearer->NoteWornEnemyModifier(Place, WornEnemyModifierSeconds);" in wear
+    assert "Wearer->RefreshLiveMaximumHealth();" in wear
+    engine = code_without_comments(SOURCE)
+    assert "State.WornEnemyModifierPlaces = WornEnemyModifierPlacesNow();" in engine
+    assert "WornEnemyModifierUntil.Add(Place, World->GetTimeSeconds() + Seconds);" in engine
+    header = code_without_comments(SOURCE.parent / "CataclysmFervour.h")
+    assert "static constexpr float WornEnemyModifierSeconds = 20.0f;" in header
 
 
 def test_blood_debt_passes_the_bleed_left_to_the_strongest_enemy_near_the_body() -> None:

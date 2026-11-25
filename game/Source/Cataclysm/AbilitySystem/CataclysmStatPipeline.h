@@ -1914,6 +1914,21 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	KillWasAnExecute
 		UMETA(DisplayName = "Kill Was An Execute"),
+
+	/**
+	 * The character is wearing the enemy modifier whose place in `UCataclysmFervour::WornEnemyModifierRows` is
+	 * `ConditionValue` (counted from 1): the Soul Collector's Wearer of the Dead, "Killing an Elite or stronger creature
+	 * gives you its modifiers for 20 seconds". The Death trees' slice C4d3 (2026-11-25), as ruled. Each worn modifier
+	 * is a row on the vow under this condition, naming which modifier it waits on.
+	 *
+	 * READ FROM A RECORD ON THE CHARACTER (`UCataclysmAbilitySystemComponent::NoteWornEnemyModifier`), written at an
+	 * Elite or stronger kill for each of the slain creature's modifiers that has a row, and running out after its
+	 * seconds with nothing announcing it.
+	 *
+	 * IT TAKES A VALUE: the modifier's place in the list.
+	 */
+	WearingEnemyModifier
+		UMETA(DisplayName = "Wearing Enemy Modifier"),
 };
 
 /**
@@ -3673,6 +3688,16 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bKillWasAnExecute = false;
+
+	/**
+	 * The places, in `UCataclysmFervour::WornEnemyModifierRows`, of the enemy modifiers the character is wearing now.
+	 * The Death trees' slice C4d3 (2026-11-25). A list rather than bits, because issue #2899 grows the worn list toward
+	 * every enemy modifier but the one button ability, past what a mask holds. Filled by
+	 * `UCataclysmAbilitySystemComponent::CurrentConditions`; empty, which refuses every place, otherwise. See
+	 * `ECataclysmStatCondition::WearingEnemyModifier`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<int32> WornEnemyModifierPlaces;
 
 	/**
 	 * The rarity rung of the creature being hit or killed, or -1 when it was not read or is not a creature. The Death
@@ -5456,7 +5481,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eighty-seventh, which is the drift that put the passive tree eight
+	 * adds an eighty-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5473,7 +5498,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FORTY OF THE EIGHTY-SIX COMPARE NOTHING. They are the case labels
+	 * FORTY OF THE EIGHTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

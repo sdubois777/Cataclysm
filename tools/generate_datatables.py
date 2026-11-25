@@ -5447,6 +5447,13 @@ CONDITIONS = {
     # ruled. The kill handler marks a kill whose death notice says it was an
     # execute while it pays for it and acts on it. It names a state.
     "kill_was_an_execute": None,
+    # "Killing an Elite or stronger creature gives you its modifiers for 20
+    # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
+    # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
+    # modifier's place in `WORN_ENEMY_MODIFIERS`, counted from 1, so the bounds
+    # are that list's ends: the upper one is set from the list's length below
+    # `WORN_ENEMY_MODIFIERS`, so adding to the list moves it.
+    "wearing_enemy_modifier": (1.0, 1.0, "a place in WORN_ENEMY_MODIFIERS, counted from 1"),
 
     # THE DEATH TREES OF 2026-11-24. The rarity rung of the creature struck or
     # slain, 0 Common to 5 Cataclysm Boss (`game/Data/EnemyRarities.csv`):
@@ -11018,6 +11025,13 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
+    # AND MAXIMUM HEALTH, the Death trees' slice C4d3 (2026-11-25), for Wearer of
+    # the Dead's Titanic Resolve. `RefreshLiveMaximumHealth` asks the whole line
+    # with the character's state and writes the attribute, from `ApplyTo`, from
+    # each regeneration step for a line whose rows move with state (a condition
+    # included), and when a modifier is worn; `ProbeConditionedMaxHealth`
+    # measures that.
+    "max_health": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
@@ -14497,6 +14511,27 @@ NEXT_HIT_CRITICAL_EVENTS = ("kill",)
 #: The most seconds the charge may last. A bound for typing mistakes; the one
 #: sentence is 2.
 MAX_NEXT_HIT_CRITICAL_SECONDS = 10.0
+
+#: The enemy modifiers Wearer of the Dead can lend, in their fixed places,
+#: counted from 1: a `wearing_enemy_modifier` row's value names one. The Death
+#: trees' slice C4d3 (2026-11-25), as ruled (W1): the five built modifiers that
+#: are a plain number on a player stat. `UCataclysmFervour::WornEnemyModifierRows`
+#: holds the same list, and a test holds the two equal. Appended to when a
+#: modifier is built on enemies and is a plain number too, never reordered. TO
+#: ADD ONE: append it here and to the engine's list, and give the vow its row at
+#: the new place; the condition's upper bound follows from this list's length.
+#: Issue #2899 builds every enemy modifier but the one button ability to work on
+#: any wearer and adds each here; the first expected source is the branch
+#: `feat/death-war-enemy-modifiers`.
+WORN_ENEMY_MODIFIERS = (
+    "Generic_Titanic_Resolve",
+    "Generic_Overpowered",
+    "Generic_Bloodthirsty",
+    "Generic_Unyielding",
+    "Generic_Relentless",
+)
+CONDITIONS["wearing_enemy_modifier"] = (
+    1.0, float(len(WORN_ENEMY_MODIFIERS)), CONDITIONS["wearing_enemy_modifier"][2])
 
 #: A cooldown reduction's Fraction Of that acts once for each whole hundred of
 #: the class resource held when the row acts: Relentless, the Death trees'

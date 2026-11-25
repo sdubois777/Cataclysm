@@ -723,7 +723,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: execute and the doubled payment), Relentless and Chain Execution.
 #:
 #: AND TO 584 THE SAME DAY, for slice C4d2: Patient Blade and Death by Inches.
-AUTHORED_ROWS = 584
+#:
+#: AND TO 589 THE SAME DAY, for slice C4d3: Wearer of the Dead's five worn
+#: modifiers. The Soul Collector 122 rows.
+AUTHORED_ROWS = 589
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1299,7 +1302,10 @@ AUTHORED_NODES = 354
 #: AND TO 51 ON 2026-11-25, for the Death trees' slice C4d1: Reaper's Edge (the
 #: Soul Collector's 100 vow, option 2), Chain Execution and Relentless (the
 #: Shadow's 100 vow, options 2 and 3).
-AUTHORED_OPTIONS = 51
+#:
+#: AND TO 52 THE SAME DAY, for slice C4d3: Wearer of the Dead (the Soul
+#: Collector's 200 vow, option 1).
+AUTHORED_OPTIONS = 52
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1811,6 +1817,16 @@ CONDITION_WORDS = {
     # non-Boss enemy below 15% health outright, and those kills give double
     # Fervour." The Death trees' slice C4d1 (2026-11-25).
     "kill_was_an_execute": ("those kills give double", None),
+
+    # WEARER OF THE DEAD, the Soul Collector's 200 vow, option 1: "Killing an
+    # Elite or stronger creature gives you its modifiers for 20 seconds." The
+    # Death trees' slice C4d3 (2026-11-25). The value is a place in
+    # WORN_ENEMY_MODIFIERS, one row a modifier: each place is "its modifiers",
+    # so the words are listed against the places, as counts written in words
+    # are. A place added to the list is refused here until it is listed too.
+    "wearing_enemy_modifier": ("gives you its modifiers",
+                               {float(place): "its modifiers"
+                                for place in range(1, len(gen.WORN_ENEMY_MODIFIERS) + 1)}),
 
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
@@ -2734,6 +2750,16 @@ VALUE_IN_WORDS = {
     # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
     # double Fervour" is 100% more on the kill's payment.
     ("SoulCollector_capstone_100", "fervour_per_kill"): ("give double fervour", 100.0),
+    # WEARER OF THE DEAD, the Death trees' slice C4d3 (2026-11-25): "gives you its
+    # modifiers" states each worn modifier's own figure, read off the enemy
+    # modifier it copies: Titanic Resolve's 50% more health, Overpowered's crit
+    # chance of 100, Bloodthirsty's 10% leech, Unyielding's 100 crowd control
+    # resistance and Relentless's 2% of maximum health a second.
+    ("SoulCollector_capstone_200", "max_health"): ("gives you its modifiers", 50.0),
+    ("SoulCollector_capstone_200", "crit_chance"): ("gives you its modifiers", 100.0),
+    ("SoulCollector_capstone_200", "life_leech"): ("gives you its modifiers", 10.0),
+    ("SoulCollector_capstone_200", "crowd_control_resistance"): ("gives you its modifiers", 100.0),
+    ("SoulCollector_capstone_200", "health_regen"): ("gives you its modifiers", 2.0),
     # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
     # Ritualist's Ritual Focus writes it.
     ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),
@@ -3548,6 +3574,10 @@ MORE_STATED_IN_A_WORD = {
     # REAPER'S EDGE, the Death trees' slice C4d1 (2026-11-25): "those kills give
     # double Fervour" is 100% more.
     ("SoulCollector_capstone_100", 2): "double fervour",
+    # WEARER OF THE DEAD, the Death trees' slice C4d3 (2026-11-25): Titanic
+    # Resolve's "50% more health" is the modifier it copies, named by "its
+    # modifiers".
+    ("SoulCollector_capstone_200", 1): "its modifiers",
 }
 
 

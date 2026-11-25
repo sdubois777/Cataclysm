@@ -1016,6 +1016,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// (2026-11-25).
 	State.bKillWasAnExecute = bActingOnAKillByAnExecute;
 
+	// AND THE ENEMY MODIFIERS IT WEARS, for Wearer of the Dead's `wearing_enemy_modifier`. The Death trees' slice C4d3
+	// (2026-11-25).
+	State.WornEnemyModifierPlaces = WornEnemyModifierPlacesNow();
+
 	// AND HOW MANY ENEMIES ARE IN ITS SIPHON, for `enemies_in_siphon`. The Death trees' slice C2 (2026-11-25).
 	State.EnemiesInSiphon = EnemiesInSiphon();
 
@@ -3998,6 +4002,54 @@ float UCataclysmAbilitySystemComponent::SecondsSinceNearKillBy(const UAbilitySys
 		return -1.0f;
 	}
 	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
+}
+
+void UCataclysmAbilitySystemComponent::NoteWornEnemyModifier(int32 Place, float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Place < 1 || Seconds <= 0.0f)
+	{
+		return;
+	}
+	WornEnemyModifierUntil.Add(Place, World->GetTimeSeconds() + Seconds);
+}
+
+float UCataclysmAbilitySystemComponent::WornEnemyModifierSecondsLeft(int32 Place) const
+{
+	const UWorld* World = GetWorld();
+	const float* Until = WornEnemyModifierUntil.Find(Place);
+	return World && Until ? FMath::Max(0.0f, *Until - World->GetTimeSeconds()) : 0.0f;
+}
+
+TArray<int32> UCataclysmAbilitySystemComponent::WornEnemyModifierPlacesNow() const
+{
+	TArray<int32> Places;
+	for (const TPair<int32, float>& Worn : WornEnemyModifierUntil)
+	{
+		if (Worn.Key >= 1 && WornEnemyModifierSecondsLeft(Worn.Key) > 0.0f)
+		{
+			Places.Add(Worn.Key);
+		}
+	}
+	return Places;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsARowWearing(int32 Place) const
+{
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if ((Row.Condition == ECataclysmStatCondition::WearingEnemyModifier
+				 && FMath::RoundToInt(Row.ConditionValue) == Place)
+				|| (Row.Condition2 == ECataclysmStatCondition::WearingEnemyModifier
+					&& FMath::RoundToInt(Row.ConditionValue2) == Place))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 void UCataclysmAbilitySystemComponent::NoteBossTickPaid()
