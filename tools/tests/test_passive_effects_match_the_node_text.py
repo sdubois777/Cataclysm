@@ -644,14 +644,15 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Ravager_keystone_spine_002`, `melee_arc_full_circle` flat 1. The node
 #: already counted, so `AUTHORED_NODES` does not move. Issue #1515.
 #:
-#: AND TO 375 ON 2026-11-24, for the three Death trees' first rows: 50 rows on
-#: 43 nodes, every one a stat, condition and scale the game already had, written
-#: by `tools/reapply_death_trees_workbook.py`. Eleven are the Soul
-#: Collector's, nine the Necromancer's (its starting node's within-10-metres
-#: half among them) and 30 the Shadow's (Counterstroke's first half among them). Six "damage" sentences are two rows
+#: AND TO 381 ON 2026-11-24, for the three Death trees' first rows: 56 rows on
+#: 47 nodes, every one a stat, condition and scale the game already had, written
+#: by `tools/reapply_death_trees_workbook.py`. Seventeen are the Soul
+#: Collector's (its starting node's damage half among them), nine the
+#: Necromancer's (its starting node's within-10-metres half among them) and 30
+#: the Shadow's (Counterstroke's first half among them). Six "damage" sentences are two rows
 #: each, one on attack damage and one on spell damage, and so is Restless Host,
 #: which raises minion damage and minion health.
-AUTHORED_ROWS = 375
+AUTHORED_ROWS = 381
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1065,11 +1066,11 @@ AUTHORED_ROWS = 375
 #: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
 #: Issue #1515.
 #:
-#: AND TO 269 ON 2026-11-24, for 43 nodes of the three Death trees: the Soul
-#: Collector 10 (three of them capstones, for one option each), the Necromancer
-#: 8 and the Shadow 25 (two capstones). Measured then: the Soul Collector is 10
+#: AND TO 273 ON 2026-11-24, for 47 nodes of the three Death trees: the Soul
+#: Collector 14 (three of them capstones, for one option each), the Necromancer
+#: 8 and the Shadow 25 (two capstones). Measured then: the Soul Collector is 14
 #: of its 73, the Necromancer 8 of its 72 and the Shadow 25 of its 74.
-AUTHORED_NODES = 269
+AUTHORED_NODES = 273
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:

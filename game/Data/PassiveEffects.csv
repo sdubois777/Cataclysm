@@ -324,9 +324,15 @@ Ravager_basic_spine_008#2,Ravager_basic_spine_008,crowd_control_resistance,incre
 Ravager_basic_spine_006#2,Ravager_basic_spine_006,knockback_suppressed,flat,1.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0,4
 Ritualist_basic_spine_000#3,Ritualist_basic_spine_000,curse_death_raises_imp,flat,1.0,,,0.0,,0.0,0,-1.0,0
 Ravager_keystone_spine_002#2,Ravager_keystone_spine_002,melee_arc_full_circle,flat,1.0,,,0.0,,0.0,0,-1.0,0
+SoulCollector_basic_spine_000#1,SoulCollector_basic_spine_000,attack_damage,more,1.0,,,0.0,class_resource_held,2.0,0,-1.0,0
+SoulCollector_basic_spine_000#2,SoulCollector_basic_spine_000,spell_damage,more,1.0,,,0.0,class_resource_held,2.0,0,-1.0,0
+SoulCollector_basic_spine_003#1,SoulCollector_basic_spine_003,attack_damage,increased,1.0,,,0.0,class_resource_held,50.0,0,-1.0,0
+SoulCollector_basic_spine_003#2,SoulCollector_basic_spine_003,spell_damage,increased,1.0,,,0.0,class_resource_held,50.0,0,-1.0,0
+SoulCollector_basic_spine_006#1,SoulCollector_basic_spine_006,damage_reduction,increased,1.0,,,0.0,class_resource_held,100.0,0,-1.0,0
 SoulCollector_basic_spine_008#1,SoulCollector_basic_spine_008,class_resource,increased,2.0,,,0.0,,0.0,0,-1.0,0
 SoulCollector_basic_spine_010#1,SoulCollector_basic_spine_010,crowd_control_resistance,increased,3.0,,class_resource_points_at_least,50.0,,0.0,0,-1.0,0
 SoulCollector_basic_a_stem0#1,SoulCollector_basic_a_stem0,class_resource,increased,2.0,,,0.0,,0.0,0,-1.0,0
+SoulCollector_basic_a_a0#1,SoulCollector_basic_a_a0,crit_multiplier,increased,1.0,,,0.0,class_resource_held,50.0,0,-1.0,0
 SoulCollector_basic_a_a1#1,SoulCollector_basic_a_a1,attack_speed,increased,1.0,,class_resource_points_at_least,50.0,,0.0,0,-1.0,0
 SoulCollector_basic_a_a2#1,SoulCollector_basic_a_a2,attack_damage,increased,2.0,,class_resource_at_maximum,0.0,,0.0,0,-1.0,0
 SoulCollector_basic_a_a2#2,SoulCollector_basic_a_a2,spell_damage,increased,2.0,,class_resource_at_maximum,0.0,,0.0,0,-1.0,0

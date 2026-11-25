@@ -397,7 +397,7 @@
       "data": {
         "kind": "basic",
         "name": "Festering",
-        "description": "Poison you apply deals +0.5% increased damage per point for each second the enemy has stayed poisoned by you without a break, up to 10 seconds.",
+        "description": "Poison you apply deals +1% increased damage for every 2 points for each second the enemy has stayed poisoned by you without a break, up to 10 seconds.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -705,7 +705,7 @@
       "data": {
         "kind": "basic",
         "name": "Clean Kill",
-        "description": "Killing an enemy with a critical strike restores 0.5% of your Maximum Health per point.",
+        "description": "Killing an enemy with a critical strike restores 1% of your Maximum Health for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -771,7 +771,7 @@
       "data": {
         "kind": "basic",
         "name": "Wearing Cut",
-        "description": "+0.5% increased damage per point for each hit in a row you have landed on the same enemy, up to 10 hits.",
+        "description": "+1% increased damage for every 2 points for each hit in a row you have landed on the same enemy, up to 10 hits.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Find the Rhythm",
-        "description": "Against a Boss, each critical strike takes 0.1 seconds per point off your movement skill's remaining cooldown.",
+        "description": "Against a Boss, each critical strike takes 1 second for every 4 points off your movement skill's remaining cooldown.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Through and Through",
-        "description": "Each enemy your movement skill hits generates 0.5 Fervour per point.",
+        "description": "Each enemy your movement skill hits generates 1 Fervour for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1349,7 +1349,7 @@
           },
           {
             "name": "Relentless",
-            "description": "Each kill takes 0.1 seconds off all your skill cooldowns for every 10 Fervour held."
+            "description": "Each kill takes 1 second off all your skill cooldowns for every 100 Fervour held."
           }
         ],
         "selectedOption": null,
@@ -1653,7 +1653,7 @@
       "data": {
         "kind": "basic",
         "name": "Untouched",
-        "description": "+0.5% Evasion chance per point for every full 20 Fervour you currently hold.",
+        "description": "+1% Evasion chance for every 2 points for every full 20 Fervour you currently hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1675,7 +1675,7 @@
       "data": {
         "kind": "basic",
         "name": "Keep the Count",
-        "description": "Evading a hit adds 0.2 seconds per point to the time before your Fervour begins to drain.",
+        "description": "Evading a hit adds 1 second for every 3 points to the time before your Fervour begins to drain.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1697,7 +1697,7 @@
       "data": {
         "kind": "basic",
         "name": "Sidestep",
-        "description": "Evading a hit takes 0.1 seconds per point off your movement skill's remaining cooldown.",
+        "description": "Evading a hit takes 1 second for every 5 points off your movement skill's remaining cooldown.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10

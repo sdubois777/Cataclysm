@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Kills generate Fervour, taken from the dead: 1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. You deal 0.5% more damage for each Fervour you hold. While you have this, Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you kill again, so a pause between kills is what empties it. Killing an Elite or stronger creature holds off the decay for 8 seconds rather than 4.",
+        "description": "Kills generate Fervour, taken from the dead: 1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. You deal 1% more damage for every 2 Fervour you hold. While you have this, Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you kill again, so a pause between kills is what empties it. Killing an Elite or stronger creature holds off the decay for 8 seconds rather than 4.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -67,7 +67,7 @@
       "data": {
         "kind": "basic",
         "name": "Last Breath",
-        "description": "Each Fervour a kill gives you restores 0.1% of your maximum health per point.",
+        "description": "Each kill restores 1% of your maximum health for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -89,7 +89,7 @@
       "data": {
         "kind": "basic",
         "name": "Weight of Souls",
-        "description": "Each Fervour you hold gives a further +0.02% increased damage per point.",
+        "description": "+1% increased damage per point for every 50 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -111,7 +111,7 @@
       "data": {
         "kind": "basic",
         "name": "Grave Patience",
-        "description": "Your Fervour begins to decay 0.1 seconds later per point after a kill.",
+        "description": "Your Fervour begins to decay 1 second later after a kill for every 5 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -155,7 +155,7 @@
       "data": {
         "kind": "basic",
         "name": "Pale Ward",
-        "description": "+0.1% increased Damage Reduction per point for every 10 Fervour you hold.",
+        "description": "+1% increased Damage Reduction per point for every 100 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -177,7 +177,7 @@
       "data": {
         "kind": "basic",
         "name": "Claimed",
-        "description": "An enemy you hit gives you its Fervour if it dies within 0.5 seconds per point of that hit, whatever kills it.",
+        "description": "An enemy you hit gives you its Fervour if it dies within 1 second for every 2 points of that hit, whatever kills it.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -353,7 +353,7 @@
       "data": {
         "kind": "basic",
         "name": "Gathered Weight",
-        "description": "+0.5% increased Area of Effect per point for every 20 Fervour you hold.",
+        "description": "+1% increased Area of Effect per point for every 40 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -397,7 +397,7 @@
       "data": {
         "kind": "basic",
         "name": "Cold Precision",
-        "description": "+0.02% increased Critical Strike Multiplier per point for each Fervour you hold.",
+        "description": "+1% increased Critical Strike Multiplier per point for every 50 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -705,7 +705,7 @@
       "data": {
         "kind": "basic",
         "name": "Kill Chain",
-        "description": "Kills within 2 seconds of each other form a chain. +0.5% increased damage per point for each kill in your current chain, up to 10 kills.",
+        "description": "Kills within 2 seconds of each other form a chain. +1% increased damage for every 2 points for each kill in your current chain, up to 10 kills.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Unbroken Chain",
-        "description": "A chain of kills allows 0.1 seconds more between kills per point. The same applies to Soul Tide.",
+        "description": "A chain of kills allows 1 second more between kills for every 4 points. The same applies to Soul Tide.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Borrowed Time",
-        "description": "Each time you gain Fervour from a source other than a kill, the time before your Fervour begins to decay is extended by 0.1 seconds per point, never past its full length.",
+        "description": "Each time you gain Fervour from a source other than a kill, the time before your Fervour begins to decay is extended by 1 second for every 3 points, never past its full length.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -969,7 +969,7 @@
       "data": {
         "kind": "basic",
         "name": "Sapping Cold",
-        "description": "Each enemy in your Siphon deals 1% reduced damage and has 1.5% reduced Movement Speed and Attack Speed per point, and you gain +0.5% increased damage and +0.5% increased Movement Speed per point for each of them, up to 10 enemies.",
+        "description": "Each enemy in your Siphon deals 1% reduced damage per point and has 3% reduced Movement Speed and Attack Speed for every 2 points, and you gain +1% increased damage and +1% increased Movement Speed for every 2 points for each of them, up to 10 enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -991,7 +991,7 @@
       "data": {
         "kind": "basic",
         "name": "Pall of Souls",
-        "description": "+0.5% increased area of your Siphon per point for every 10 Fervour you hold.",
+        "description": "+1% increased area of your Siphon per point for every 20 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1013,7 +1013,7 @@
       "data": {
         "kind": "basic",
         "name": "Life Siphon",
-        "description": "Each enemy in your Siphon restores 0.05% of your maximum health per point each second, up to 10 enemies.",
+        "description": "At 10 points: each enemy in your Siphon restores 1% of your maximum health each second, up to 5 enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Stolen Strength",
-        "description": "+0.25% increased Damage Reduction per point for each enemy in your Siphon, up to 10 enemies.",
+        "description": "+1% increased Damage Reduction for every 4 points for each enemy in your Siphon, up to 10 enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1123,7 +1123,7 @@
       "data": {
         "kind": "basic",
         "name": "Soul-Heavy Air",
-        "description": "Enemies in your Siphon take 0.2% increased damage from you per point for every 10 Fervour you hold.",
+        "description": "Enemies in your Siphon take 1% increased damage from you per point for every 50 Fervour you hold.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "basic",
         "name": "Lingering Pull",
-        "description": "Enemies stay in your Siphon for 0.25 seconds per point after they leave its area.",
+        "description": "Enemies stay in your Siphon for 1 second for every 4 points after they leave its area.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1389,7 +1389,7 @@
       "data": {
         "kind": "basic",
         "name": "Soul Fuel",
-        "description": "Your skills that have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +0.25% increased damage per point for each Fervour they spend.",
+        "description": "Your skills that have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +1% increased damage for every 4 points for each Fervour they spend.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1587,7 +1587,7 @@
       "data": {
         "kind": "basic",
         "name": "Ashen Ward",
-        "description": "Spending Fervour restores 0.5% of your Maximum Energy Shield per point for every 5 Fervour spent.",
+        "description": "Spending Fervour restores 1% of your Maximum Energy Shield per point for every 10 Fervour spent.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1675,7 +1675,7 @@
       "data": {
         "kind": "keystone",
         "name": "Turn of the Wheel",
-        "description": "Each Fervour you spend takes 0.1 seconds off the cooldowns of your skills that did not spend it.",
+        "description": "Every 10 Fervour you spend takes 1 second off the cooldowns of your skills that did not spend it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

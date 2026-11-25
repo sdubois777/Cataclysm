@@ -27,6 +27,12 @@ number:
     anything else                refused, writing nothing, because somebody has
                                  changed them since and a person has to look
 
+TO CHANGE A ROW, edit `NODES` or `CLASS_STATS`, take `development`'s workbook and
+run this once. The committed workbook must be exactly that one run: rows already
+written are refused rather than rewritten, and
+`tools/tests/test_reapply_death_trees_workbook.py` compares the committed sheets
+with a fresh application, row order included.
+
 IT REFUSES a workbook holding formulas, charts or images, which an openpyxl save
 can drop without saying so, and after saving it proves that both sheets hold
 exactly the intended rows and that no other sheet changed.
@@ -122,17 +128,26 @@ SH = "Shadow_"
 HELD = "class_resource_held"
 
 #: The Death rows that are data today: a stat, a condition and a scale the game
-#: already has, for each node whose sentence states a whole number. The survey of
-#: 2026-11-24 (plan section 4.1, group (a)) found 46 such entries; the five whose
-#: sentences state a fraction are left out until the whole-number rule is
-#: applied to them.
+#: already has. The survey of 2026-11-24 (plan section 4.1, group (a)) found 46
+#: such entries. Two of them, Untouched and Through and Through, now say "for
+#: every 2 points" and need one row per step, which the text checks accept once
+#: the Demonic tree rework's step support is in this branch; they are written
+#: then.
 NODES: tuple[Node, ...] = (
     # ---------------------------------------------------------------- Soul Collector
+    # THE STARTING NODE'S DAMAGE HALF, "You deal 1% more damage for every 2
+    # Fervour you hold". Its Fervour per kill and its decay are the next slice.
+    Node(SC + "basic_spine_000", "Fervour", damage("more", 1, scale=HELD, step=2)),
+    Node(SC + "basic_spine_003", "Weight of Souls", damage("increased", 1, scale=HELD, step=50)),
+    Node(SC + "basic_spine_006", "Pale Ward",
+         (R("damage_reduction", "increased", 1, scale=HELD, step=100),)),
     Node(SC + "basic_spine_008", "Deep Urn", (R("class_resource", "increased", 2),)),
     Node(SC + "basic_spine_010", "Held Close",
          (R("crowd_control_resistance", "increased", 3,
             cond="class_resource_points_at_least", cond_value=50),)),
     Node(SC + "basic_a_stem0", "Ossuary", (R("class_resource", "increased", 2),)),
+    Node(SC + "basic_a_a0", "Cold Precision",
+         (R("crit_multiplier", "increased", 1, scale=HELD, step=50),)),
     Node(SC + "basic_a_a1", "Brimming",
          (R("attack_speed", "increased", 1,
             cond="class_resource_points_at_least", cond_value=50),)),

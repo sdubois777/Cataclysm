@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Mending Dead",
-        "description": "Your permanent minions regenerate 0.5% of their maximum health per second per point.",
+        "description": "Your permanent minions regenerate 1% of their maximum health per second for every 2 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Lingering Rot",
-        "description": "A minion's detonation leaves rotting ground for 0.5 seconds per point, dealing 10% of the detonation's damage each second to enemies standing in it.",
+        "description": "A minion's detonation leaves rotting ground for 1 second for every 2 points, dealing 10% of the detonation's damage each second to enemies standing in it.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -947,7 +947,7 @@
       "data": {
         "kind": "basic",
         "name": "Mantle of Bone",
-        "description": "Your weapon skills that land on remains detonate them, dealing 0.5% per point of the dead creature's maximum health to enemies within 3 metres. +0.5% increased Armor per point for each creature's remains within 6 metres of you, up to 10.",
+        "description": "Your weapon skills that land on remains detonate them, dealing 1% for every 2 points of the dead creature's maximum health to enemies within 3 metres. +1% increased Armor for every 2 points for each creature's remains within 6 metres of you, up to 10.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "basic",
         "name": "Picked Clean",
-        "description": "Consuming remains, by raising a minion on them or by detonating them, restores 0.3% of your maximum health per point.",
+        "description": "Consuming remains, by raising a minion on them or by detonating them, restores 1% of your maximum health for every 3 points.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1521,7 +1521,7 @@
       "data": {
         "kind": "basic",
         "name": "Shared Leech",
-        "description": "0.1% of the damage your minions deal is leeched to you as health per point.",
+        "description": "At 8 points: 1% of the damage your minions deal is leeched to you as health.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
