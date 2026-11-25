@@ -950,8 +950,9 @@ namespace CataclysmEquipmentTest
  *
  * THE FIGURES ARE QUOTED FROM THE DESIGN DOCUMENT, from the paragraph opening
  * "That 87 is two one-handed weapons, not one weapon." in
- * docs/Cataclysm_GDD_v2.md: "an Axe with an Axe at 92 and an Axe with a Sword
- * at 86".
+ * docs/Cataclysm_GDD_v2.md: "an Axe with an Axe at 90 and an Axe with a Sword
+ * at 85". (92 and 86 until issue #2883 made each implicit a whole number at
+ * +0: the Axe's stated 46 is 18 at +0 and 45 at +10.)
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWornWeaponsReachAttackDamage,
 	"Cataclysm.Equipment.WornWeaponsReachAttackDamageAndTwoOfThemSum",
@@ -986,23 +987,24 @@ bool FCataclysmWornWeaponsReachAttackDamage::RunTest(const FString& Parameters)
 	FCataclysmItem AlsoRemoved;
 	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
 
-	// The sheet states the +10 figure, so a fully upgraded Axe carries 46.
+	// The sheet states 46 at +10, which is 18 at +0 (issue #2883), so a fully
+	// upgraded Axe carries 45.
 	Character.Equipment->Equip(Plain(TEXT("Weapon_Axe"), 10),
 							   Removed, AlsoRemoved, Went);
-	TestEqual(TEXT("one worn Axe supplies the 46 the sheet states"),
-		AttackDamage(), 46.0f, 0.05f);
+	TestEqual(TEXT("one worn Axe supplies 45"),
+		AttackDamage(), 45.0f, 0.05f);
 
 	// A SECOND WEAPON ADDS ITS DAMAGE. This is the reported fault: the project
 	// owner equipped a second whip and nothing changed at all.
 	Character.Equipment->Equip(Plain(OneHandedBase, 10),
 							   Removed, AlsoRemoved, Went);
-	TestEqual(TEXT("an Axe with a Sword gives 86, the design document's figure"),
-		AttackDamage(), 86.0f, 0.05f);
+	TestEqual(TEXT("an Axe with a Sword gives 85, the design document's figure"),
+		AttackDamage(), 85.0f, 0.05f);
 
 	// TAKING ONE OFF TAKES ITS DAMAGE WITH IT.
 	Character.Equipment->Unequip(ECataclysmGearSlot::Weapon2, Removed);
-	TestEqual(TEXT("taking the Sword off leaves the Axe's 46"),
-		AttackDamage(), 46.0f, 0.05f);
+	TestEqual(TEXT("taking the Sword off leaves the Axe's 45"),
+		AttackDamage(), 45.0f, 0.05f);
 
 	Character.Equipment->Unequip(ECataclysmGearSlot::Weapon1, Removed);
 	TestEqual(TEXT("and taking the last weapon off leaves nothing"),
@@ -1056,9 +1058,11 @@ bool FCataclysmUpgradeLevelReachesAttackDamage::RunTest(const FString& Parameter
 
 	// A TWO-HANDED WEAPON IS WORTH DOUBLE ITS STATED FIGURE, and is one item
 	// rather than two, because it is stored in the first weapon slot alone.
-	TestEqual(TEXT("a +10 Greatsword's stated 78 doubles to 156"),
+	// 31 at +0 (issue #2883), doubled and upgraded together: 155, where the
+	// stated 78 doubled exactly to 156 before.
+	TestEqual(TEXT("a +10 Greatsword gives 155"),
 		AttributeWearing(World, {Plain(TwoHandedBase, 10)}, Damage),
-		156.0f, 0.05f);
+		155.0f, 0.05f);
 
 	return true;
 }
