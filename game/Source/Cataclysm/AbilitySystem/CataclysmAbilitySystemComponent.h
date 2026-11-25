@@ -1795,6 +1795,16 @@ public:
 	static const TCHAR* RetaliationPulseAction;
 
 	/**
+	 * Thousand Deaths' chain. The War vow options' third slice, second half, V3b, 2026-11-25: "Dual wield only. While in
+	 * Frenzy, your attacks chain to one additional nearby enemy for 60% damage. Each kill during Frenzy permanently adds
+	 * one additional chain target for the remainder of the Frenzy duration." On `hit_dealt` only: the row's value is the
+	 * share of what the hit sent before defences, its Event Value the radius in metres around the enemy struck, and the
+	 * number of enemies chained to is one plus `FrenzyKillsHeld`. See `ChainFromStruck`. In `tools/generate_datatables.py`
+	 * as `FRENZY_CHAIN_ACTION`.
+	 */
+	static const TCHAR* FrenzyChainAction;
+
+	/**
 	 * The action that repeats the skill just used, free, with its value as the chance. Mechanism B2, ruled
 	 * 2026-10-05. `tools/generate_datatables.py` holds the same name in `REPEAT_SKILL_ACTION`. See
 	 * `FCataclysmPoolAction::bRepeatSkill`.
@@ -3299,6 +3309,24 @@ public:
 	 * option is held; the second is the 2.
 	 */
 	static const TCHAR* LethalHitSurvivedEverySecondsStat;
+
+	/**
+	 * Colossus Eternal's save, V3b, 2026-11-25: "While above 50% health, a hit that would kill you leaves you at 1 HP
+	 * instead." The stat's value is the share of maximum health, in per cent, that health must be above before the blow;
+	 * a lethal hit that is not a tick then leaves 1 HP. NO COOLDOWN AND NO WINDOW OF IMMUNITY (ruled 2026-11-25: at 1 HP
+	 * the condition no longer holds), and judged BEFORE the Final Onslaught's save (`LethalHitSurvivedEverySecondsStat`),
+	 * so it never spends that save's cooldown. It raises no event, as that save raises none. A flat stat with no gameplay
+	 * attribute, asked with no tags.
+	 */
+	static const TCHAR* LethalHitSurvivedAboveHealthStat;
+
+	/**
+	 * Colossus Eternal's "your increases to Maximum HP count twice", V3b, 2026-11-25: a flag. While it holds, every
+	 * increase on `max_health` is entered twice in the list the character's maximum health is worked out from, so 40%
+	 * increased becomes 80%; flat additions and "more" multipliers are entered once. Read by
+	 * `UCataclysmPlayerClassStats::ApplyTo`, unconditioned and with no tags. No gameplay attribute.
+	 */
+	static const TCHAR* MaxHealthIncreasesCountTwiceStat;
 	static const TCHAR* ImmuneAfterLethalHitSecondsStat;
 
 	/**
@@ -4142,6 +4170,42 @@ public:
 		return bWas;
 	}
 
+	/**
+	 * The kills this character has made in the Frenzy it is in, for Thousand Deaths' chain (V3b, 2026-11-25). Counted by
+	 * `NoteKillInFrenzy` and cleared whenever the Berserker's state changes, so a Frenzy begins at nought and its count
+	 * ends with it. Nought outside Frenzy.
+	 */
+	int32 FrenzyKillsHeld() const { return FrenzyKills; }
+
+	/** One more kill, counted only while in Frenzy. Called for each of this character's kills. */
+	void NoteKillInFrenzy()
+	{
+		if (HeldBerserkerState == ECataclysmBerserkerState::Frenzy)
+		{
+			++FrenzyKills;
+		}
+	}
+
+	/**
+	 * What the attack being announced as `hit_dealt` sent before the struck enemy's defences, for Thousand Deaths' chain;
+	 * nought for a hit that may not chain (a spell, a tick, a retaliation, a minion's blow). Set by
+	 * `ACataclysmPlayerCharacter` while `hit_dealt` is raised; returns what it held before, for the caller to put back.
+	 */
+	float SetAttackBeingAnnouncedSent(float Sent)
+	{
+		const float Was = AttackBeingAnnouncedSent;
+		AttackBeingAnnouncedSent = Sent;
+		return Was;
+	}
+
+	/**
+	 * Thousand Deaths' chain from `Struck`: a blow of `Action.Percent` per cent of what the attack being announced sent,
+	 * meeting each enemy's defences, on the nearest enemies within `Action.EventValue` metres of `Struck`, `Struck` and
+	 * the dead left out, one plus `FrenzyKillsHeld` of them. A CHAINED BLOW DOES NOT CHAIN AGAIN: it is dealt while this
+	 * character's rows act, and `ActOnEvent` acts at depth one. Returns how many enemies it struck.
+	 */
+	int32 ChainFromStruck(const FCataclysmPoolAction& Action, const AActor* Struck);
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
@@ -4785,6 +4849,12 @@ public:
 	 */
 	void SetBerserkerState(ECataclysmBerserkerState State)
 	{
+		// A CHANGE OF STATE CLEARS THE FRENZY'S KILLS, so a Frenzy begins at nought and its count ends with it (V3b,
+		// 2026-11-25, ruled: "cleared when the Frenzy ends").
+		if (State != HeldBerserkerState)
+		{
+			FrenzyKills = 0;
+		}
 		HeldBerserkerState = State;
 		if (State != ECataclysmBerserkerState::None)
 		{
@@ -5711,6 +5781,12 @@ protected:
 
 	/** What the big hit whose `big_hit_taken` rows are acting was worth before defences. See `NoteBigHitTaken`. */
 	float BigHitBlowWorth = 0.0f;
+
+	/** See `FrenzyKillsHeld`. V3b, 2026-11-25. */
+	int32 FrenzyKills = 0;
+
+	/** See `SetAttackBeingAnnouncedSent`. V3b, 2026-11-25. */
+	float AttackBeingAnnouncedSent = 0.0f;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

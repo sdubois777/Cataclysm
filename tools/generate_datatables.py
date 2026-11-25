@@ -5861,6 +5861,13 @@ SCALES = {
     # against. Whole steps, rounded down, for both.
     "max_class_resource": (0.0, 1000.0, "a number of points of the class resource's maximum"),
     "block_chance": (0.0, 100.0, "a percentage of block chance"),
+
+    # THE WAR VOW OPTIONS' THIRD SLICE, SECOND HALF, V3b, 2026-11-25. Colossus
+    # Eternal's "your attacks deal bonus damage equal to 2% of your current HP"
+    # is a flat `attack_damage` of 2 with a step of 100 points of current health:
+    # the share of maximum health held times the maximum, as the character's
+    # state reads them. Whole steps, rounded down. Bounded as `max_health` is.
+    "current_health": (0.0, 5000.0, "an amount of current health"),
 }
 
 #: The scale that reads the class resource's maximum with its rows counted, which
@@ -7590,6 +7597,21 @@ RETALIATION_PULSE_EVENTS = ("big_hit_taken",)
 MAX_RETALIATION_PULSE_METRES = 20.0
 MAX_RETALIATION_PULSE_PERCENT = 1000.0
 
+#: The action that CHAINS AN ATTACK to the nearest enemies within its Event
+#: Value in metres of the enemy struck, for its value's share of what the attack
+#: sent before defences, to one enemy plus one for each kill in the current
+#: Frenzy. The War vow options' third slice, second half, V3b, 2026-11-25:
+#: Thousand Deaths, "Dual wield only. While in Frenzy, your attacks chain to one
+#: additional nearby enemy for 60% damage. Each kill during Frenzy permanently
+#: adds one additional chain target for the remainder of the Frenzy duration",
+#: ruled 5 metres, and a chained blow does not chain again. ON `hit_dealt` ONLY,
+#: the one event that names the enemy struck and carries what the attack sent.
+#: `UCataclysmAbilitySystemComponent::FrenzyChainAction` holds the same name.
+FRENZY_CHAIN_ACTION = "frenzy_chain"
+FRENZY_CHAIN_EVENTS = ("hit_dealt",)
+MAX_FRENZY_CHAIN_METRES = 20.0
+MAX_FRENZY_CHAIN_PERCENT = 1000.0
+
 #: The events a temporary absorb may be granted on: the clock, and no other
 #: until a sentence asks for one. The clock counts only while the wearer is in
 #: combat, which is what the ruling of 2026-10-07 asks of this row.
@@ -7928,6 +7950,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     if action == RETALIATION_PULSE_ACTION:
         _check_retaliation_pulse_action(index, who, action, event, fraction_of,
                                         kind, raw, headers)
+        return
+    if action == FRENZY_CHAIN_ACTION:
+        _check_frenzy_chain_action(index, who, action, event, fraction_of,
+                                   kind, raw, headers)
         return
     if action == KEPT_STACKS_REPEAT_SKILL_ACTION:
         _check_kept_stacks_repeat_skill_action(index, who, action, event,
@@ -8358,6 +8384,30 @@ def _check_retaliation_pulse_action(index: int, who: str, action: str,
                 f"pulse and states {column} {written!r}. Its value is a share "
                 f"of the retaliation the big hit earns and nothing else, so "
                 f"the column must be empty.")
+
+
+def _check_frenzy_chain_action(index: int, who: str, action: str,
+                               event: str, fraction_of: str, kind: str,
+                               raw, headers: dict[str, int]) -> None:
+    """Everything a Frenzy chain row must say, and everything it must not. The
+    War vow options' third slice, second half, V3b, 2026-11-25: Thousand
+    Deaths. On `hit_dealt` only; the radius is checked where Event Value is
+    read. A fraction, a value kind and a scale each mean nothing here, so each
+    is refused rather than dropped.
+    """
+    if event not in FRENZY_CHAIN_EVENTS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} chains an attack on the "
+            f"event {event or '(none)'!r}. Only a hit dealt names the enemy "
+            f"struck and what the attack sent: {', '.join(FRENZY_CHAIN_EVENTS)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} chains an attack and "
+                f"states {column} {written!r}. Its value is a share of what the "
+                f"attack sent and nothing else, so the column must be empty.")
 
 
 def _check_strike_target_action(index: int, who: str, action: str, event: str,
@@ -8903,6 +8953,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
                 and action != RETALIATION_PULSE_ACTION \
+                and action != FRENZY_CHAIN_ACTION \
                 and action != KEPT_STACKS_REPEAT_SKILL_ACTION \
                 and action != KEPT_STACKS_FREE_NEXT_ABILITY_ACTION \
                 and action not in SKILL_IN_HAND_ACTIONS \
@@ -9254,6 +9305,16 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} pays a retaliation "
                 f"pulse of {low:g} to {high:g} per cent. It is above 0 and up "
                 f"to {MAX_RETALIATION_PULSE_PERCENT:g}.")
+
+    # A FRENZY CHAIN'S VALUE IS A SHARE OF WHAT THE ATTACK SENT, above 0 and up
+    # to the bound. V3b, 2026-11-25.
+    if action == FRENZY_CHAIN_ACTION:
+        if not (0 < low <= MAX_FRENZY_CHAIN_PERCENT
+                and 0 < high <= MAX_FRENZY_CHAIN_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains an attack for "
+                f"{low:g} to {high:g} per cent. It is above 0 and up to "
+                f"{MAX_FRENZY_CHAIN_PERCENT:g}.")
 
     # A REPEAT'S VALUE IS A CHANCE, above 0 and up to 100. Mechanism B2.
     if action in SKILL_IN_HAND_ACTIONS:
@@ -9940,6 +10001,19 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == FRENZY_CHAIN_ACTION:
+        # OR THE RADIUS OF A FRENZY CHAIN, in metres around the enemy struck,
+        # required. V3b, 2026-11-25. See `FRENZY_CHAIN_ACTION`.
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains an attack and "
+                f"states no Event Value. It is the radius in metres.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= MAX_FRENZY_CHAIN_METRES:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} chains "
+                f"{event_value:g} metres. The radius is above 0 and up to "
+                f"{MAX_FRENZY_CHAIN_METRES:g}.")
     elif action == RETALIATION_PULSE_ACTION:
         # OR THE RADIUS OF A RETALIATION PULSE, in metres, required, and its
         # share bounded. V3a, 2026-11-25. See `RETALIATION_PULSE_ACTION`.

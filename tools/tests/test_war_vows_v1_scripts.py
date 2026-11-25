@@ -29,7 +29,8 @@ DOCS = REPO_ROOT / "docs"
 #: (`tools/reapply_war_vows_v2a_workbook.py`, whose tests now hold Unstoppable's conditions).
 #: 6 until the third slice, V3a, took over Eternal Hunger's leech row and Wrath Incarnate's armour row the same day
 #: (`tools/reapply_war_vows_v3a_workbook.py`, whose tests now hold both).
-ROW_COUNT = 4
+#: 4 until V3b took over Colossus Eternal's healing row the same day (`tools/reapply_war_vows_v3b_workbook.py`).
+ROW_COUNT = 3
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +119,11 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_four_rows_on_four_options():
+def test_the_script_writes_three_rows_on_three_options():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
     options = {(node, row.option) for node, _, wanted in rows.NODES for row in wanted}
-    assert len(options) == 4
+    assert len(options) == 3
+    assert ("Bulwark_capstone_200", 2) not in options, "Colossus Eternal's rows are V3b's script's"
     assert ("Berserker_capstone_50", 1) not in options and ("Berserker_capstone_200", 1) not in options, (
         "Unstoppable's and Ragnarok's rows are the second slice's script's")
     assert ("Berserker_capstone_200", 3) not in options and ("Bulwark_capstone_200", 3) not in options, (

@@ -2673,6 +2673,15 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfBlockChance
 		UMETA(DisplayName = "Per Percent Of Block Chance"),
+
+	/**
+	 * `Value` per whole `ScaleStep` points of the character's current health. The War vow options' third slice, second
+	 * half, V3b, 2026-11-25: Colossus Eternal's "your attacks deal bonus damage equal to 2% of your current HP" is a flat
+	 * `attack_damage` of 2 a step of 100. Read from `FCataclysmStatConditions::HealthPercent` and `MaximumHealth`, which
+	 * every reading of the character's state fills; an unknown reading of either counts nothing.
+	 */
+	PerPointOfCurrentHealth
+		UMETA(DisplayName = "Per Point Of Current Health"),
 };
 
 /**
@@ -4966,6 +4975,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bRetaliationPulse = false;
+
+	/**
+	 * Set, this action CHAINS THE ATTACK being announced to the nearest enemies within `EventValue` metres of the enemy
+	 * struck, for `Percent` of what it sent: Thousand Deaths, V3b, 2026-11-25. On `hit_dealt` only. See
+	 * `UCataclysmAbilitySystemComponent::ChainFromStruck`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFrenzyChain = false;
 
 	/**
 	 * Whether this action BLASTS EVERY ENEMY NEAR AN ENEMY THAT DIED, for

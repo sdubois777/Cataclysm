@@ -1638,6 +1638,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.bRetaliationPulse = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::RetaliationPulseAction,
 						ESearchCase::IgnoreCase);
+					// AND WHETHER IT IS THOUSAND DEATHS' CHAIN, its radius in Event Value. V3b, 2026-11-25.
+					Action.bFrenzyChain = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FrenzyChainAction,
+						ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(
 							UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction,
 							ESearchCase::IgnoreCase))

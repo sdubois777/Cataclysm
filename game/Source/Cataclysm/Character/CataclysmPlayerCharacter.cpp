@@ -1242,9 +1242,16 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		Acting->AskToCullOnHit(Notice.Target);
 	}
+	// AND WHAT AN ATTACK SENT, HELD WHILE THE EVENT'S ROWS ACT, for Thousand Deaths' chain (V3b, 2026-11-25): "your
+	// attacks chain ... for 60% damage", ruled a share of what the hit sent before defences. NOUGHT FOR WHAT IS NOT THIS
+	// CHARACTER'S ATTACK: a spell, a tick, a retaliation payment, and a minion's own blow. Put back afterwards.
+	const bool bAnAttackThatMayChain = !Notice.bIsSpell && !Notice.bDamageOverTime && !Notice.bRetaliation
+		&& !Cast<ACataclysmMinion>(Notice.DealtBy);
+	const float WasSent = Acting->SetAttackBeingAnnouncedSent(bAnAttackThatMayChain ? Notice.Sent : 0.0f);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetAttackBeingAnnouncedSent(WasSent);
 
 	// AND FERVOUR FOR A BLOW THIS CHARACTER LANDED ITSELF: the Berserker's Frenzy, "all melee hits generate 2 additional
 	// Fervour", a row scoped to melee under `in_frenzy`, read with the blow's skill tags. NOT A MINION'S BLOW, for the
@@ -1454,6 +1461,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			{
 				Mine->NoteKill();
 			}
+			// AND IN THE FRENZY THIS CHARACTER IS IN, for Thousand Deaths (V3b, 2026-11-25): every kill of its own, a
+			// chained blow's included, as ruled. Nothing outside Frenzy.
+			Acting->NoteKillInFrenzy();
 			// AND ON EACH WORN WEAPON, whose own count "This weapon has..." reads.
 			if (UCataclysmEquipmentComponent* Gear = GetEquipment())
 			{

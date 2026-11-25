@@ -721,7 +721,10 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #:
 #: AND TO 570 THE SAME DAY: five rows of V3a (`tools/reapply_war_vows_v3a_workbook.py`): Thornwall's stack, Wrath
 #: Incarnate's pulse, Absorb and Return's share for big hits, and Eternal Hunger's cap and decay.
-AUTHORED_ROWS = 570
+#:
+#: AND TO 574 THE SAME DAY: four rows of V3b (`tools/reapply_war_vows_v3b_workbook.py`): Colossus Eternal's flag, save
+#: and bonus from current health, and Thousand Deaths' chain.
+AUTHORED_ROWS = 574
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1274,7 +1277,9 @@ AUTHORED_NODES = 318
 #: AND TO 58 THE SAME DAY: The Unbreakable Wall (Bulwark), by the owner's ruling. Its capstone already had a row.
 #: AND TO 59 THE SAME DAY: V3a -- Thornwall (Bulwark). Its capstone already had a row. Wrath Incarnate's pulse and
 #: Eternal Hunger's two are rows on options already counted.
-AUTHORED_OPTIONS = 59
+#: AND TO 60 THE SAME DAY: V3b -- Thousand Deaths (Berserker). Its capstone already had a row. Colossus Eternal's three
+#: are rows on an option already counted. Every Berserker and Bulwark option has a row from here.
+AUTHORED_OPTIONS = 60
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1544,7 +1549,12 @@ CONDITION_WORDS = {
     # Requiring the subject as well as the word is what keeps this row off that
     # node. It needs no `CONDITION_WORDS_MUST_NOT_SAY` entry for the same
     # reason: the fragment is already unique.
-    "health_above": ("you are above", "{value:g}%"),
+    #
+    # AND "while above", Colossus Eternal's (the War vow options' third slice,
+    # second half, V3b, 2026-11-25): "While above 75% health, your attacks deal
+    # bonus damage". Still the character's own health and never a cost: Grand
+    # Tithe's sentence holds no "while above".
+    "health_above": (("you are above", "while above"), "{value:g}%"),
 
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
@@ -2253,6 +2263,21 @@ SCALE_WORDS = {
     # fervour". Bastion reads "for every 1% Block Chance you have".
     "max_class_resource": (("maximum fervour", "you have"), "{value:g} points of maximum fervour", None),
     "block_chance": (("for every", "block chance you have"), "{value:g}% block chance", None),
+
+    # THE CHARACTER'S CURRENT HEALTH, the War vow options' third slice, second
+    # half (V3b, 2026-11-25): Colossus Eternal's "bonus damage equal to 2% of your
+    # current HP", 2 for every 100 points. The sentence states a SHARE, not a
+    # step, so the step is checked with the value in `SCALES_STATED_AS_A_SHARE`.
+    "current_health": (("of your current hp",), "{value:g}", None),
+}
+
+
+#: Scales whose sentence states the value and the step together as one share of
+#: a pool, "2% of your current HP", rather than "for every N": the row's value
+#: per step of 100 must be that share, printed before these words. The War vow
+#: options' third slice, second half (V3b, 2026-11-25).
+SCALES_STATED_AS_A_SHARE = {
+    "current_health": "of your current hp",
 }
 
 
@@ -2370,6 +2395,15 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
                 "has to be 1. If the design now states a step, give this scale a "
                 "step form in SCALE_WORDS instead."
             )
+            continue
+
+        # A SHARE OF A POOL, THE VALUE AND THE STEP TOGETHER. See `SCALES_STATED_AS_A_SHARE`.
+        if scale in SCALES_STATED_AS_A_SHARE:
+            share = float(row["ValuePerPoint"]) * 100.0 / step
+            stated = f"{share:g}% {SCALES_STATED_AS_A_SHARE[scale]}"
+            assert stated in words, (
+                f"{row['Node']} grants {row['ValuePerPoint']} for every {step:g} on the scale {scale!r}, which is "
+                f"{stated!r}, and the node says:\n    {described}")
             continue
 
         # ONE NODE'S STEP OF ONE IN WORDS. See `STEP_OF_ONE_ON_ONE_NODE`.
@@ -2851,6 +2885,8 @@ VALUE_IN_WORDS = {
     # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of
     # 100 on healing received, which regeneration and leech already pass through.
     ("Bulwark_capstone_200", "healing_received"): ("the healing you receive are doubled", 100.0),
+    # AND ITS "your increases to Maximum HP count twice", a flag (V3b, 2026-11-25).
+    ("Bulwark_capstone_200", "max_health_increases_count_twice"): ("your increases to maximum hp count twice", 1.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.

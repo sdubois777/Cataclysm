@@ -60,7 +60,8 @@ def test_v1s_script_no_longer_lists_the_two_rows_taken_over():
     listed = {(node, row.stat, row.option) for node, _, wanted in v1.NODES for row in wanted}
     assert ("Bulwark_capstone_200", "retaliation", 3) not in listed
     assert ("Berserker_capstone_200", "life_leech", 3) not in listed
-    assert ("Bulwark_capstone_200", "healing_received", 2) in listed, "control: Colossus Eternal's row stays V1's"
+    # THE CONTROL WAS COLOSSUS ETERNAL'S HEALING ROW until V3b took it over the same day; Bloodied but Unbroken's stays.
+    assert ("Bulwark_capstone_100", "retaliation", 2) in listed, "control: Bloodied but Unbroken's row stays V1's"
 
 
 def test_thornwall_places_a_stack_on_the_attacker_of_a_hit_taken():

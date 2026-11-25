@@ -1584,7 +1584,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					const FName ImmuneForStat(UGuarded::ImmuneAfterLethalHitSecondsStat);
 					const float Every = Guarded->StatForSkill(
 						SurvivedEveryStat, FGameplayTagContainer(), 0.0f);
-					if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
+					// COLOSSUS ETERNAL'S SAVE FIRST, V3b (2026-11-25): health above the stat's share of maximum health
+					// BEFORE THE BLOW, which is what this attribute set holds here. No cooldown and no window, ruled
+					// that day, and judged before the Final Onslaught's so it never spends that save's cooldown.
+					const float SavedAbove = Guarded->StatForSkill(
+						FName(UGuarded::LethalHitSurvivedAboveHealthStat), FGameplayTagContainer(), 0.0f);
+					if (SavedAbove > 0.0f && GetMaxHealth() > 0.0f
+						&& GetHealth() / GetMaxHealth() * 100.0f > SavedAbove && EmptiesHealthLessTheDelayedShare())
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+					}
+					else if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
 						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);

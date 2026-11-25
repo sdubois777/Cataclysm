@@ -2,6 +2,162 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' third slice, second half (V3b): Colossus Eternal's increases to maximum health counted twice, its save above half health and its bonus from current health; Thousand Deaths' chain
+
+**Affects:**
+- `tools/reapply_war_vows_v3b_workbook.py` (new) writes four rows into `docs/All_Things_Cataclysm.xlsx` and takes
+  over Colossus Eternal's healing row from `tools/reapply_war_vows_v1_workbook.py`, which no longer lists it. The
+  generated table: `game/Data/PassiveEffects.csv` (574 rows). `docs/README.md` (the count). **The editor step must
+  rebuild `DT_PassiveEffects`.**
+- `tools/generate_datatables.py`:
+  - an action, `frenzy_chain`, on `hit_dealt` only, its radius in Event Value (above 0, up to 20) and its share above
+    0, up to 1,000, with no fraction, value kind or scale;
+  - a scale, `current_health`, its step above 0, up to 5,000.
+- C++:
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`:
+    - `FrenzyChainAction`, `ChainFromStruck` and the chain in `ActOnEvent`;
+    - `FrenzyKillsHeld` and `NoteKillInFrenzy`, the kills in the current Frenzy, cleared by `SetBerserkerState`
+      whenever the state changes;
+    - `SetAttackBeingAnnouncedSent`;
+    - `LethalHitSurvivedAboveHealthStat` and `MaxHealthIncreasesCountTwiceStat`.
+  - `CataclysmStatPipeline.h` and `.cpp`: `FCataclysmPoolAction::bFrenzyChain`, and the scale `PerPointOfCurrentHealth`
+    (`current_health`).
+  - `CataclysmItem.cpp`: the builder sets `bFrenzyChain`.
+  - `CataclysmPlayerCharacter.cpp`:
+    - what an attack sent is held while `hit_dealt`'s rows act, nought for a spell, a tick, a retaliation payment and
+      a minion's own blow;
+    - each of the character's kills is counted in its Frenzy.
+  - `CataclysmVitalAttributeSet.cpp`: Colossus Eternal's save, judged before the Final Onslaught's.
+  - `CataclysmPlayerClassStats.cpp`:
+    - the two new stats in `StatsWithNoAttribute`;
+    - while the flag holds, every increase on `max_health` entered twice before the list is recorded.
+- Tests:
+  - Unreal:
+    - `CataclysmWarVowsV3bTests.cpp` (new, four tests).
+    - `CataclysmStatExemptionTests.cpp`: two probes, `ProbeLethalHitSurvivedAboveHealth` and
+      `ProbeMaxHealthIncreasesCountTwice`.
+    - `CataclysmDataTableTests.cpp`: the pin, 574.
+    - `CataclysmWarVowsV1Tests.cpp`: the Final Oaths' row counts, 7 and 7.
+    - `CataclysmWarVowsV2aTests.cpp`:
+      - the Berserker Final Oath's row count, 7;
+      - `APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet` takes Magnum Opus (the Saboteur's Final Oath, option 2) as
+        its unbuilt option, because every Berserker and Bulwark option now has a row, and Thousand Deaths as its
+        control.
+  - Python:
+    - `tools/tests/test_war_vows_v3b_scripts.py` (new, sixteen).
+    - `test_war_vows_v1_scripts.py`: three rows on three options.
+    - `test_war_vows_v3a_scripts.py`: its control row is Bloodied but Unbroken's.
+    - `test_charge_and_placed_action_names_match_the_engine.py`: the new action name.
+    - `test_passive_effects_match_the_node_text.py`:
+      - 574 rows and 60 authored options;
+      - `health_above` also read as "while above";
+      - the `current_health` scale, checked as a share of a pool (`SCALES_STATED_AS_A_SHARE`: the value for every 100
+        points is the percentage the sentence states);
+      - the flag's words.
+    - `test_stat_lookups_hand_over_what_they_should.py`: the save's lookup.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run:
+  - `Cataclysm.WarVowsV3b.`: four tests, new.
+  - `Cataclysm.StatExemption.`: two more probes inside `EveryStatWithNoAttributeIsActuallyRead`; the count unchanged.
+  - With counts unchanged:
+    - the groups whose pins or examples moved: `Cataclysm.Data.` (574), `Cataclysm.WarVowsV1.` and
+      `Cataclysm.WarVowsV2a.`;
+    - the groups touching what this changes: `Cataclysm.WarVowsV3a.`, `Cataclysm.LethalHit.`, `Cataclysm.SetBonus.`
+      (the Demon King's reprieve after the saves), `Cataclysm.DelayedDamage.`, `Cataclysm.BerserkerStates.`,
+      `Cataclysm.SkullDeathmarkBlood.`, `Cataclysm.StatPipeline.`, `Cataclysm.KillCounter.` and
+      `Cataclysm.PlayerStats.`.
+- **COLOSSUS ETERNAL'S SAVE RAISES NO EVENT, WHICH IS NOT WHAT THE RULED PROPOSAL SAID.** Q9 as proposed and ruled
+  read "it raises lethal_hit_reprieved as the Final Onslaught's save does". The Final Onslaught's save
+  (`NoteLethalHitSurvived`) raises no event at all; `lethal_hit_reprieved` is raised only by the Demon King's Regalia's
+  reprieve (`NoteLethalHitReprieved`), and rows act on it. Raising it here would have handed that set's rows to every
+  Colossus Eternal save. Built as the Final Onslaught's is, raising nothing, and reported to the coordinating session
+  for a ruling.
+- **EVERY BERSERKER AND BULWARK OPTION HAS A ROW FROM HERE**; Titanfall, a keystone, is still not built and is
+  deferred to after V5, as ruled.
+- **A CHAINED BLOW IS DEALT AS DIRECT DAMAGE BY THE PLAYER**, so it is announced as the player's hit like any blow.
+  `ActOnEvent` acts at depth one, so it fires none of the player's rows, the chain included. Fervour from hits dealt is
+  granted outside the rows: `FCataclysmWarFervour::GainOnHitDealt` is asked with the chained blow's tags, which are
+  none, so a melee-scoped Fervour row does not count it. That was read from the code and not measured.
+
+### WHAT WAS RULED
+
+- The vow survey, 2026-11-25:
+  - item 7, Thousand Deaths: "chain range 5 m, a chained blow does not chain again";
+  - item 17, Colossus Eternal: "as you propose, the save with no cooldown".
+- The coordinating session's rulings on the V3 questions, 2026-11-25, "every proposal as written":
+  - Q8: the flag `max_health_increases_count_twice`; every increase to `max_health` entered twice in the list both
+    maximum-health calculations read; "more" multipliers and flat additions unchanged.
+  - Q9: the save, a stat of its own, `lethal_hit_survived_above_health`, flat 50; a lethal hit that is not a tick
+    leaves 1 HP when health before it was above 50%; no cooldown and no window of immunity; "judged before the Final
+    Onslaught's save". (Its event: see SAID FIRST.)
+  - Q10: a new scale, `current_health`; the row `attack_damage` flat 2 for every 100 current health under
+    `health_above` 75; it reaches attacks and not spells, through the path flat attack damage takes.
+  - Q11: on each landed `hit_dealt` that is not a spell, in Frenzy and dual wielding, the hit chains to the nearest N
+    other enemies within 5 m of the enemy struck; N is 1 plus the kills in the current Frenzy; each takes 60% of what
+    the hit sent before defences, as a direct blow its own defences reduce.
+  - Q12: kills by chained blows count; the count clears when Frenzy ends, in the state judge.
+
+### JUDGEMENTS
+
+- **"Your attacks" leaves out four kinds of blow, not only spells.** The chain is sized by what the attack sent, which
+  the player character holds while `hit_dealt`'s rows act. For a spell, a damage-over-time tick, a retaliation payment
+  and a minion's own blow it holds nought, so the chain strikes nobody. Q11 named spells; the other three are not
+  attacks the player made.
+- **The kill count clears on any change of the Berserker's state**, entering Frenzy included, which is the same as
+  clearing at its end because a count is only ever taken in Frenzy.
+- **Every kill of the character's own counts while in Frenzy**, a kill by damage over time and a kill a row made
+  included, as `NoteKill` counts them.
+- **The doubled increases include the ones the attributes add** to `max_health`: "your increases to Maximum HP" is
+  every increase. Each copy keeps its own scope and condition.
+- **The save compares health with maximum health as the attribute set holds them before the blow**, strictly above,
+  so a character at exactly half health dies.
+- **The share-of-a-pool check in the text test** (`SCALES_STATED_AS_A_SHARE`) reads the value and the step together,
+  "2% of your current HP" being 2 for every 100, because the sentence names no step of its own.
+
+### THE PYTHON SUITE
+
+To be recorded in the commit after this one, with the head it ran on.
+
+### INCLUDE AUDIT
+
+`tools/check_includes.py` from `origin/development`, its `main()` called with this worktree's `game/Source`, over
+every .cpp the War line added or changed since its merge-base with `development` (`5f302b0a7`), committed or not: 78
+files, **0 types used that the file cannot see, 0 notes**. The control, a copy of `CataclysmWarVowsV3bTests.cpp`
+without `#include "AbilitySystem/CataclysmTeams.h"`, failed naming `ECataclysmTeam` and `UCataclysmTeams` on line 144.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit; each `proved` True, and
+the two files broken byte-identical afterwards (MD5 before and after).
+
+| Break | Command | Named failures |
+|---|---|---|
+| `generate_datatables.py`: a chain allowed on `critical_strike` | `pytest tools/tests/test_war_vows_v3b_scripts.py` | `test_a_chain_on_an_event_that_is_not_a_hit_dealt_is_refused`, `test_the_names_are_the_generators` |
+| `generate_datatables.py`: a chain given the default fraction of maximum | the same | `test_the_control_a_chain_is_read_with_its_radius_and_no_fraction` |
+| `PassiveEffects.csv`: Colossus Eternal's bonus written as 3 for every 100, where the node says 2% | `pytest tools/tests/test_passive_effects_match_the_node_text.py -k test_a_scale_matches_the_words_of_the_node_it_is_on` | `test_a_scale_matches_the_words_of_the_node_it_is_on` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV3b.ColossusEternalSavesFromALethalHitAboveHalfHealthWithNoCooldown` | real blows of 200,000 on a wearer of 100,000 maximum health holding the save at 50: at 60,000 it is left at 1; at 1 the next kills (the control); at 60,000 again at once it is saved again; at exactly 50,000 it dies (the control) |
+| `Cataclysm.WarVowsV3b.ACurrentHealthScaleGrantsItsValueForEveryStepOfHealthHeld` | 2 for every 100 current health above 75%: 160 at 8,000 of 10,000; 0 at 7,000 (the control); 0 with health unknown (the control) |
+| `Cataclysm.WarVowsV3b.ThousandDeathsChainsToOneEnemyMoreForEachKillInTheFrenzy` | an attack that sent nothing chains to nobody (the control); 1,000 sent chains 600 to the nearest other enemy only; in Frenzy with two kills to three, never to the one 10 metres from the struck enemy; leaving Frenzy clears the kills |
+| `Cataclysm.WarVowsV3b.AWarPlayerTakingTheOptionsIsHandedTheirStatsAndChain` | through `SetPassiveAllocation`: Colossus Eternal's save at 50 and flag; Thousand Deaths' chain, 60% within 5 metres on a hit dealt, in Frenzy, dual wielding; Wrath Incarnate and Eternal Hunger hand over none (the controls) |
+| the two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` | the save at 50: a defender at 600 of 1,000 is left at 1 by a blow of 5,000, and one without it at nothing; the flag: the list `max_health` is worked out from carries twice the increases, and the maximum is higher |
+
+### C++ GUARD PROOFS (planned, three)
+
+| Break | Test prefix | Predicted named failure |
+|---|---|---|
+| `CataclysmVitalAttributeSet.cpp`: Colossus Eternal's save never taken (`SavedAbove > 0.0f` replaced by `false`) | `Cataclysm.WarVowsV3b.` | `ColossusEternalSavesFromALethalHitAboveHalfHealthWithNoCooldown` |
+| `CataclysmAbilitySystemComponent.cpp`: `ChainFromStruck` ignores the Frenzy's kills (`1 + FrenzyKills` replaced by `1`) | `Cataclysm.WarVowsV3b.` | `ThousandDeathsChainsToOneEnemyMoreForEachKillInTheFrenzy` |
+| `CataclysmStatPipeline.cpp`: the current-health scale reads the maximum (`State.HealthPercent / 100.0f * State.MaximumHealth` replaced by `State.MaximumHealth`) | `Cataclysm.WarVowsV3b.` | `ACurrentHealthScaleGrantsItsValueForEveryStepOfHealthHeld` |
+
+---
+
 ## 2026-11-25 — The War vow options' third slice (V3a): Thornwall's stack on the attacker, the big hit with Wrath Incarnate's pulse and Absorb and Return, and Eternal Hunger's health above the maximum held in the temporary absorb
 
 **Affects:**

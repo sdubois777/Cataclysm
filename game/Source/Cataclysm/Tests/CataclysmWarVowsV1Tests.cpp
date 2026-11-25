@@ -121,10 +121,11 @@ CATACLYSM_WAR_VOWS_V1_TEST(FCataclysmWarVowsV1StatRowsTest,
 	};
 	// AND 4, 3 AND 3 SINCE V2b, the same day: Ragnarok's shockwaves, Blood Oath and Spiteful Guard.
 	// AND 6 AND 4 SINCE V3a, the same day: Eternal Hunger's cap and decay, and Wrath Incarnate's pulse.
-	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 6},
+	// AND 7 AND 7 SINCE V3b, the same day: Thousand Deaths' chain, and Colossus Eternal's three.
+	for (const FCapstoneRows& Each : TArray<FCapstoneRows>{{TEXT("Berserker_capstone_200"), 7},
 														   {TEXT("Bulwark_capstone_25"), 3},
 														   {TEXT("Bulwark_capstone_100"), 3},
-														   {TEXT("Bulwark_capstone_200"), 4}})
+														   {TEXT("Bulwark_capstone_200"), 7}})
 	{
 		const int32 Held = UCataclysmPassiveTree::EffectsFor(Effects, FName(Each.Node)).Num();
 		if (Held != Each.Rows)

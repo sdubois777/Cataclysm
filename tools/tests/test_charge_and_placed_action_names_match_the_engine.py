@@ -83,6 +83,8 @@ CONSTANTS = {
     "SmiteNearbyByHitAction": "smite_nearby_by_hit",
     # AND WRATH INCARNATE'S PULSE, V3a, 2026-11-25.
     "RetaliationPulseAction": "retaliation_pulse",
+    # AND THOUSAND DEATHS' CHAIN, V3b, 2026-11-25.
+    "FrenzyChainAction": "frenzy_chain",
     # AND THE CLEANSE, which the engine has held since 2026-09-26 and the
     # generator accepted on 2026-10-05, issue #1833.
     "CleanseAction": "cleanse",
@@ -209,6 +211,11 @@ def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None
 def test_the_generator_accepts_exactly_the_retaliation_pulse_name_the_engine_has() -> None:
     """The War vow options' third slice, V3a, 2026-11-25: Wrath Incarnate."""
     assert gen.RETALIATION_PULSE_ACTION == engine_names()["RetaliationPulseAction"]
+
+
+def test_the_generator_accepts_exactly_the_frenzy_chain_name_the_engine_has() -> None:
+    """The War vow options' third slice, second half, V3b, 2026-11-25: Thousand Deaths."""
+    assert gen.FRENZY_CHAIN_ACTION == engine_names()["FrenzyChainAction"]
 
 
 def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:

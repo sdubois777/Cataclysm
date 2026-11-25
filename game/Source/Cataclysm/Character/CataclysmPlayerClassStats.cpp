@@ -770,6 +770,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("retaliation_for_big_hits"),
 		TEXT("leech_overheal_absorb_percent_of_maximum_health"),
 		TEXT("leech_overheal_absorb_decay_percent_per_second"),
+		// Colossus Eternal's save above a share of health, read by UCataclysmVitalAttributeSet at a lethal hit, and its
+		// flag doubling the increases to maximum health, read by ApplyTo below. V3b, 2026-11-25. No gameplay attribute.
+		TEXT("lethal_hit_survived_above_health"),
+		TEXT("max_health_increases_count_twice"),
 		// How many seconds after this character's first hit on an enemy that
 		// enemy becomes immune to this character's damage, read by
 		// UCataclysmAbilitySystemComponent::IsImmuneToDamageOf where a blow on
@@ -2191,6 +2195,28 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		if (ForStat.IsEmpty())
 		{
 			return Base;
+		}
+
+		// COLOSSUS ETERNAL'S "YOUR INCREASES TO MAXIMUM HP COUNT TWICE", V3b, ruled 2026-11-25: while the flag holds,
+		// unconditioned and with no tags, every increase on `max_health` is entered twice, the attributes' included,
+		// each with its own scope and condition. Flat additions and "more" multipliers are entered once. Here, before
+		// the list is recorded, so the live maximum `StatForSkill` works out reads the same doubled list.
+		if (Modifiers && Stat == TEXT("max_health"))
+		{
+			const TArray<FCataclysmStatModifier>* Flag =
+				Modifiers->Find(FName(UCataclysmAbilitySystemComponent::MaxHealthIncreasesCountTwiceStat));
+			if (Flag && UCataclysmStatPipeline::Evaluate(0.0f, *Flag, FGameplayTagContainer()).Final > 0.0f)
+			{
+				const int32 Held = ForStat.Num();
+				for (int32 Index = 0; Index < Held; ++Index)
+				{
+					if (ForStat[Index].Bucket == ECataclysmStatBucket::Increased)
+					{
+						const FCataclysmStatModifier Again = ForStat[Index];
+						ForStat.Add(Again);
+					}
+				}
+			}
 		}
 
 		// KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS. Issue #943.

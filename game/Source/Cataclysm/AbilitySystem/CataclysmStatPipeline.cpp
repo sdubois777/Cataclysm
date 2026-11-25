@@ -213,6 +213,7 @@ namespace
 		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
 		{ TEXT("max_class_resource"),  ECataclysmStatScale::PerPointOfMaximumClassResource },
 		{ TEXT("block_chance"),        ECataclysmStatScale::PerPercentOfBlockChance },
+		{ TEXT("current_health"),      ECataclysmStatScale::PerPointOfCurrentHealth },
 	};
 
 	/**
@@ -1971,6 +1972,19 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			return 0.0f;
 		}
 		const float Steps = FMath::FloorToFloat(State.BlockChance / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPointOfCurrentHealth:
+	{
+		// THE SAME REFUSALS AS THE MAXIMUM HEALTH SCALE: an unknown reading of either figure, or a step of nothing.
+		// V3b, 2026-11-25.
+		if (State.HealthPercent < 0.0f || State.MaximumHealth < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Current = State.HealthPercent / 100.0f * State.MaximumHealth;
+		const float Steps = FMath::FloorToFloat(Current / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}

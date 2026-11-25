@@ -2331,6 +2331,10 @@ void UCataclysmAbilitySystemComponent::NoteMinionLifetimeRenewed(float IntervalS
 	MinionLifetimeRenewalNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedAboveHealthStat =
+	TEXT("lethal_hit_survived_above_health");
+const TCHAR* UCataclysmAbilitySystemComponent::MaxHealthIncreasesCountTwiceStat =
+	TEXT("max_health_increases_count_twice");
 const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat =
 	TEXT("lethal_hit_survived_every_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat =
@@ -5105,6 +5109,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction =
 	TEXT("smite_nearby_by_hit");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
+const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
+	TEXT("frenzy_chain");
 
 namespace
 {
@@ -6134,6 +6140,37 @@ void UCataclysmAbilitySystemComponent::DecayLeechAbsorb(float Seconds)
 								  GetNumericAttribute(MaxHealthAttribute) * PercentPerSecond / 100.0f * Seconds);
 	LeechAbsorb -= Lost;
 	TemporaryAbsorb = FMath::Max(0.0f, TemporaryAbsorb - Lost);
+}
+
+int32 UCataclysmAbilitySystemComponent::ChainFromStruck(const FCataclysmPoolAction& Action, const AActor* Struck)
+{
+	AActor* Self = GetAvatarActor();
+	UWorld* World = GetWorld();
+	const float Share = AttackBeingAnnouncedSent * Action.Percent / 100.0f;
+	if (!Self || !World || !Struck || Share <= 0.0f || Action.EventValue <= 0.0f)
+	{
+		return 0;
+	}
+	// "ONE ADDITIONAL NEARBY ENEMY", AND ONE MORE FOR EACH KILL IN THIS FRENZY. Around the enemy struck, as a chain runs
+	// from what it hit; the nearest first, the struck one and the dead left out.
+	const int32 Wanted = 1 + FrenzyKills;
+	int32 Chained = 0;
+	for (AActor* Other : UCataclysmTargeting::FindEnemiesInSphere(World, Self, Struck->GetActorLocation(),
+																	Action.EventValue * 100.0f))
+	{
+		if (Other == Struck || UCataclysmSkillEffects::IsDead(Other))
+		{
+			continue;
+		}
+		// A BLOW OF THE SHARE, MEETING THIS ENEMY'S DEFENCES as a blow does. ACT ON EVENT IS DEPTH ONE, so it raises none
+		// of this character's rows, this chain included.
+		UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Share);
+		if (++Chained >= Wanted)
+		{
+			break;
+		}
+	}
+	return Chained;
 }
 
 bool UCataclysmAbilitySystemComponent::IsBigHit(float GotThrough, float MaximumHealth)
@@ -7673,6 +7710,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				if (CountedToNth(Action) && QueueGadgetShotAtTrapEnemy(Action, EventTarget))
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// THOUSAND DEATHS' CHAIN, V3b (2026-11-25): landed only, on an event naming the enemy struck, once per row per
+		// event, with the row's trigger cooldown. `PoolActionAllowed` above has judged its two conditions.
+		if (Action.bFrenzyChain)
+		{
+			if (bLanded && EventTarget && TriggerReady(Action) && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (ChainFromStruck(Action, EventTarget) > 0)
 				{
 					NoteTriggerFired(Action);
 				}

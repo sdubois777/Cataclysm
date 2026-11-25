@@ -16,12 +16,14 @@ FOUR ROWS ON FOUR OPTIONS SINCE THE THIRD SLICE, V3a, the same day. Eternal Hung
 option 3) and Wrath Incarnate's armour row (Bulwark Final Oath, option 3) were taken over by it with the rows it adds to
 those two options: `tools/reapply_war_vows_v3a_workbook.py` holds every row of both.
 
+THREE ROWS ON THREE OPTIONS SINCE THE THIRD SLICE'S SECOND HALF, V3b, the same day. Colossus Eternal's healing row
+(Bulwark Final Oath, option 2) was taken over by it with the rows it adds: `tools/reapply_war_vows_v3b_workbook.py`
+holds every row of that option.
+
   - Shield Oath (Bulwark First Oath, option 1): a block restores 2% of maximum health.
   - Flesh Oath (Bulwark First Oath, option 2): 1% of current health every second (in combat, as every timed row runs).
   - Bloodied but Unbroken (Bulwark Third Oath, option 2): retaliation 1% increased for every 1% of maximum health
     missing.
-  - Colossus Eternal (Bulwark Final Oath, option 2): healing received 100% more. (The doubled increases to Maximum HP,
-    the lethal save and the bonus from current health are V2's and V3's.)
 
 AND THE PORT'S LAST EIGHT COLUMNS, all added (`base.PORT_EIGHT`), so the War line's sheet carries the fourteen the
 Death line's does, all required: the coordinating session's ruling of 2026-11-25.
@@ -50,8 +52,6 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
           option=2))),
     ("Bulwark_capstone_100", "Third Oath", (
         R("retaliation", "increased", 1, scale="health_missing", step=1, option=2),)),
-    ("Bulwark_capstone_200", "Final Oath", (
-        R("healing_received", "more", 100, option=2),)),
 )
 
 

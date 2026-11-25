@@ -9372,6 +9372,99 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `lethal_hit_survived_above_health`, read by `UCataclysmVitalAttributeSet` at a lethal blow that is not a tick. The
+	 * War vow options' third slice, second half, V3b, 2026-11-25: Colossus Eternal's save. Two defenders at 600 of 1,000
+	 * health each take a blow of 5,000. Only the second holds the stat at 50: it is left at 1, and the first at nothing.
+	 */
+	void ProbeLethalHitSurvivedAboveHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor,
+				   {{FName(UCataclysmAbilitySystemComponent::LethalHitSurvivedAboveHealthStat), 50.0f}});
+		for (FScopedFighter* Defender : {&Plain, &Holding})
+		{
+			Defender->AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+			Defender->AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 600.0f);
+			UCataclysmSkillEffects::ApplyDirectDamage(Attacker.Actor, Defender->Actor, 5000.0f);
+		}
+
+		Test.TestEqual(TEXT("a defender without lethal_hit_survived_above_health is left at nothing"), Plain.Health(),
+					   0.0f, 0.01f);
+		Test.TestEqual(TEXT("and one holding it at 50, above half health, is left at 1, so the save really reads it"),
+					   Holding.Health(), 1.0f, 0.01f);
+	}
+
+	/**
+	 * `max_health_increases_count_twice`, read by `UCataclysmPlayerClassStats::ApplyTo` while it works out
+	 * `max_health`. The War vow options' third slice, second half, V3b, 2026-11-25: Colossus Eternal. Two characters on
+	 * the shared Default line at level 1, each with one 50% increase to maximum health. Only the second holds the flag:
+	 * the list its maximum is worked out from carries one more increase for every increase the first's carries, and its
+	 * maximum is higher.
+	 */
+	void ProbeMaxHealthIncreasesCountTwice(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		FCataclysmStatModifier Increase;
+		Increase.Bucket = ECataclysmStatBucket::Increased;
+		Increase.Source = ECataclysmModifierSource::PassiveKeystone;
+		Increase.Value = 50.0f;
+		FCataclysmStatModifier Flag;
+		Flag.Bucket = ECataclysmStatBucket::Flat;
+		Flag.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flag.Value = 1.0f;
+		TMap<FName, TArray<FCataclysmStatModifier>> Once;
+		Once.Add(FName(TEXT("max_health")), {Increase});
+		TMap<FName, TArray<FCataclysmStatModifier>> Twice = Once;
+		Twice.Add(FName(UCataclysmAbilitySystemComponent::MaxHealthIncreasesCountTwiceStat), {Flag});
+		UCataclysmPlayerClassStats::ApplyTo(Plain.AbilitySystem, UCataclysmPlayerClassStats::LoadTable(),
+											TEXT("Default"), /*Level=*/1, &Once);
+		UCataclysmPlayerClassStats::ApplyTo(Holding.AbilitySystem, UCataclysmPlayerClassStats::LoadTable(),
+											TEXT("Default"), /*Level=*/1, &Twice);
+
+		const auto Increases = [](const UCataclysmAbilitySystemComponent* System)
+		{
+			int32 Count = 0;
+			if (const FCataclysmStatInputs* Inputs = System->GetStatInputs(FName(TEXT("max_health"))))
+			{
+				for (const FCataclysmStatModifier& Each : Inputs->Modifiers)
+				{
+					Count += Each.Bucket == ECataclysmStatBucket::Increased ? 1 : 0;
+				}
+			}
+			return Count;
+		};
+		const int32 PlainIncreases = Increases(Plain.AbilitySystem);
+		Test.TestTrue(*FString::Printf(TEXT("set-up: the first character's maximum health carries %d increase(s), at "
+											"least the one handed over"), PlainIncreases),
+					  PlainIncreases >= 1);
+		Test.TestEqual(TEXT("and one holding max_health_increases_count_twice carries twice as many, so ApplyTo really "
+							"reads it"),
+					   Increases(Holding.AbilitySystem), 2 * PlainIncreases);
+		Test.TestTrue(*FString::Printf(TEXT("and its maximum is higher: %.1f against %.1f"),
+									   Holding.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+									   Plain.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())),
+					  Holding.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+						  > Plain.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()) + 1.0f);
+	}
+
+	/**
 	 * `enemies_immune_to_you_after_seconds`, read by `UCataclysmAbilitySystemComponent::IsImmuneToDamageOf` where a
 	 * blow is resolved. Ruled 2026-10-12, for "Enemies that have been alive for more than 15 seconds become immune
 	 * to your damage until you disengage for 3 seconds". Two attackers each strike the same enemy once and then stay
@@ -12735,6 +12828,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation_for_big_hits"), &ProbeRetaliationForBigHits},
 			{TEXT("leech_overheal_absorb_percent_of_maximum_health"), &ProbeLeechOverhealAbsorbCap},
 			{TEXT("leech_overheal_absorb_decay_percent_per_second"), &ProbeLeechOverhealAbsorbDecay},
+			{TEXT("lethal_hit_survived_above_health"), &ProbeLethalHitSurvivedAboveHealth},
+			{TEXT("max_health_increases_count_twice"), &ProbeMaxHealthIncreasesCountTwice},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

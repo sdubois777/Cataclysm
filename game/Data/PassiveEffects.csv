@@ -569,3 +569,7 @@ Bulwark_capstone_200#4,Bulwark_capstone_200,,,200.0,,,0.0,,0.0,3,-1.0,0,0,retali
 Bulwark_basic_tw_t2_001#1,Bulwark_basic_tw_t2_001,retaliation_for_big_hits,flat,3.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_capstone_200#5,Berserker_capstone_200,leech_overheal_absorb_percent_of_maximum_health,flat,100.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Berserker_capstone_200#6,Berserker_capstone_200,leech_overheal_absorb_decay_percent_per_second,flat,1.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#5,Bulwark_capstone_200,max_health_increases_count_twice,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#6,Bulwark_capstone_200,lethal_hit_survived_above_health,flat,50.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#7,Bulwark_capstone_200,attack_damage,flat,2.0,,health_above,75.0,current_health,100.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#7,Berserker_capstone_200,,,60.0,,in_frenzy,0.0,,0.0,2,-1.0,0,0,frenzy_chain,hit_dealt,,0.0,0.0,0.0,0,dual_wielding,0.0,0.0,5.0,,0.0,0,0
