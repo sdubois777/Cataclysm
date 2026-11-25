@@ -82,6 +82,7 @@ int32 FCataclysmSiphon::Step(ACataclysmCharacterBase* Holder, float StepSeconds)
 	const float Now = World->GetTimeSeconds();
 
 	// WHO IS WITHIN THE RADIUS NOW. An enemy new to it enters now; one already in it is seen again.
+	TSet<const AActor*> SeenNow;
 	for (AActor* Each : UCataclysmTargeting::FindEnemiesInSphere(World, Holder, Holder->GetActorLocation(),
 																	   Radius * 100.0f))
 	{
@@ -89,6 +90,7 @@ int32 FCataclysmSiphon::Step(ACataclysmCharacterBase* Holder, float StepSeconds)
 		{
 			continue;
 		}
+		SeenNow.Add(Each);
 		if (UCataclysmAbilitySystemComponent::FSiphonMember* Known = Members.Find(Each))
 		{
 			Known->LastInsideAtSeconds = Now;
@@ -102,13 +104,15 @@ int32 FCataclysmSiphon::Step(ACataclysmCharacterBase* Holder, float StepSeconds)
 		}
 	}
 
-	// WHO HAS GONE: dead, removed, or out of the radius longer than the linger. With no Lingering Pull an enemy that
-	// stepped out this step is gone at once.
+	// WHO HAS GONE: dead, removed, or not within the radius this step and out of it for the linger or longer. With no
+	// Lingering Pull an enemy that stepped out is gone at once, however little time has passed.
 	const float Linger = FMath::Max(0.0f, CataclysmSiphonParts::HolderStat(System, LingerStat));
 	for (auto It = Members.CreateIterator(); It; ++It)
 	{
 		const AActor* Member = It.Key().Get();
-		if (!Member || UCataclysmSkillEffects::IsDead(Member) || Now - It.Value().LastInsideAtSeconds > Linger)
+		const bool bGone = !Member || UCataclysmSkillEffects::IsDead(Member)
+			|| (!SeenNow.Contains(Member) && Now - It.Value().LastInsideAtSeconds >= Linger);
+		if (bGone)
 		{
 			It.RemoveCurrent();
 		}

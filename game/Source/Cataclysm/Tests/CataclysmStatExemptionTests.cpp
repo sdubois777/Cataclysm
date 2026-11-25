@@ -25,6 +25,7 @@
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSharedBuffs.h"
+#include "AbilitySystem/CataclysmSiphon.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmLeech.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -5892,6 +5893,346 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmStacks::Held(Killer.AbilitySystem, ECataclysmStackKind::Carnage), 0);
 	}
 
+	// ------------------------------------------------------------------------
+	// THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25). Each probe gives a holder on the players'
+	// team the Siphon's radius and one more of its stats, puts a hostile creature a metre away, and asks the reader
+	// in `FCataclysmSiphon` with and without the stat.
+	// ------------------------------------------------------------------------
+
+	/** A flat row of `Value`, scaled by `Scale` in steps of `Step` when a scale is given. */
+	FCataclysmStatModifier SiphonRow(float Value, ECataclysmStatScale Scale = ECataclysmStatScale::Fixed,
+									 float Step = 0.0f, ECataclysmStatBucket Bucket = ECataclysmStatBucket::Flat)
+	{
+		FCataclysmStatModifier Row;
+		Row.Bucket = Bucket;
+		Row.Source = ECataclysmModifierSource::PassiveKeystone;
+		Row.Value = Value;
+		Row.Scale = Scale;
+		Row.ScaleStep = Step;
+		return Row;
+	}
+
+	/** REPLACES `Holder`'s stat lines with these rows, each line on a base of nought. */
+	void SiphonLines(ACataclysmEnemyCharacter* Holder, const TArray<TPair<FName, FCataclysmStatModifier>>& Rows)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		for (const TPair<FName, FCataclysmStatModifier>& Each : Rows)
+		{
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(Each.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Each.Value);
+		}
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** The Siphon's 6 metres, the keystone's row. */
+	TPair<FName, FCataclysmStatModifier> SiphonSixMetres()
+	{
+		return TPair<FName, FCataclysmStatModifier>(FName(FCataclysmSiphon::RadiusStat), SiphonRow(6.0f));
+	}
+
+	/** One of the Siphon's stats at `Value`. */
+	TPair<FName, FCataclysmStatModifier> SiphonStat(const TCHAR* Stat, float Value)
+	{
+		return TPair<FName, FCataclysmStatModifier>(FName(Stat), SiphonRow(Value));
+	}
+
+	/** One regeneration step of the holder's Siphon, after a quarter of a second has passed. */
+	int32 SiphonStep(UWorld* World, ACataclysmEnemyCharacter* Holder)
+	{
+		World->TimeSeconds += UCataclysmRegeneration::StepSeconds;
+		return FCataclysmSiphon::Step(Holder, UCataclysmRegeneration::StepSeconds);
+	}
+
+	/** `siphon_radius_metres`, read by `FCataclysmSiphon::Step`: with 6 metres a creature a metre away is in it. */
+	void ProbeSiphonRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const int32 Plain = SiphonStep(World, Holder);
+		SiphonLines(Holder, {SiphonSixMetres()});
+		const int32 Held = SiphonStep(World, Holder);
+		Test.TestEqual(TEXT("siphon_radius_metres: control, nobody is in a Siphon of nothing"), Plain, 0);
+		Test.TestEqual(TEXT("and with 6 metres the creature a metre away is in it, so Step really reads it"), Held, 1);
+	}
+
+	/** `siphon_enemies_deal_less_percent`, read by `FCataclysmSiphon::Step` and `DealLessPercentOn`. */
+	void ProbeSiphonEnemiesDealLess(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = Holder ? RavagerReworkCreatureNear(Test, World) : nullptr;
+		if (!Creature)
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres()});
+		SiphonStep(World, Holder);
+		const float Plain = UCataclysmDebuffs::DealLessPercentOn(Creature->GetAbilitySystemComponent());
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::EnemiesDealLessStat, 10.0f)});
+		SiphonStep(World, Holder);
+		const float Held = UCataclysmDebuffs::DealLessPercentOn(Creature->GetAbilitySystemComponent());
+		Test.TestEqual(TEXT("siphon_enemies_deal_less_percent: control, a member deals no less without it"), Plain,
+					   0.0f, 0.001f);
+		Test.TestEqual(TEXT("and 10% less with it, so the Siphon's step really reads it"), Held, 10.0f, 0.001f);
+	}
+
+	/** `siphon_enemy_slow_percent`, read by `FCataclysmSiphon::Step` through Ground Down's record. */
+	void ProbeSiphonEnemySlow(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = Holder ? RavagerReworkCreatureNear(Test, World) : nullptr;
+		if (!Creature)
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres()});
+		SiphonStep(World, Holder);
+		const float Plain = Creature->GroundDownMultiplier();
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::SlowStat, 9.0f)});
+		SiphonStep(World, Holder);
+		const float Held = Creature->GroundDownMultiplier();
+		Test.TestEqual(TEXT("siphon_enemy_slow_percent: control, a member is not slowed without it"), Plain, 1.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and slowed 9% with it, so the Siphon's step really reads it"), Held, 0.91f, 0.001f);
+	}
+
+	/** `siphon_linger_seconds`, read by `FCataclysmSiphon::Step`: a member that stepped out stays for the linger. */
+	void ProbeSiphonLinger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		ACataclysmEnemyCharacter* Creature = Holder ? RavagerReworkCreatureNear(Test, World) : nullptr;
+		if (!Creature)
+		{
+			return;
+		}
+		const FVector Near(1 * M, 0, 0);
+		const FVector Far(20 * M, 0, 0);
+		SiphonLines(Holder, {SiphonSixMetres()});
+		SiphonStep(World, Holder);
+		Creature->SetActorLocation(Far);
+		const int32 Plain = SiphonStep(World, Holder);
+		Creature->SetActorLocation(Near);
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::LingerStat, 2.0f)});
+		SiphonStep(World, Holder);
+		Creature->SetActorLocation(Far);
+		const int32 Held = SiphonStep(World, Holder);
+		Test.TestEqual(TEXT("siphon_linger_seconds: control, a creature that steps out is out at once"), Plain, 0);
+		Test.TestEqual(TEXT("and with 2 seconds it stays a quarter of a second later, so the step really reads it"),
+					   Held, 1);
+	}
+
+	/** `siphon_drain_weapon_percent`, read by `FCataclysmSiphon::DrainOnce`. */
+	void ProbeSiphonDrain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		Holder->SetAttackDamage(100.0f);
+		SiphonLines(Holder, {SiphonSixMetres()});
+		SiphonStep(World, Holder);
+		const float Plain = FCataclysmSiphon::DrainOnce(Holder);
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::DrainStat, 10.0f)});
+		const float Held = FCataclysmSiphon::DrainOnce(Holder);
+		Test.TestEqual(TEXT("siphon_drain_weapon_percent: control, no damage without it"), Plain, 0.0f, 0.001f);
+		Test.TestTrue(TEXT("and Death damage to the member with it, so DrainOnce really reads it"), Held > 0.0f);
+	}
+
+	/** `siphon_necrosis_chance`, read by `FCataclysmSiphon::NecrosisOnce` for a member in for 3 seconds. */
+	void ProbeSiphonNecrosisChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres()});
+		SiphonStep(World, Holder);
+		World->TimeSeconds += FCataclysmSiphon::NecrosisAfterSeconds + 0.5f;
+		const int32 Plain = FCataclysmSiphon::NecrosisOnce(Holder);
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::NecrosisChanceStat, 100.0f)});
+		const int32 Held = FCataclysmSiphon::NecrosisOnce(Holder);
+		Test.TestEqual(TEXT("siphon_necrosis_chance: control, nobody is given Necrosis without it"), Plain, 0);
+		Test.TestEqual(TEXT("and a member in for 3.5 seconds is, at 100, so NecrosisOnce really reads it"), Held, 1);
+	}
+
+	/** `siphon_life_percent`, read by `FCataclysmSiphon::LifeOnce`: 2% of ten thousand. */
+	void ProbeSiphonLife(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres()});
+		const float Plain = FCataclysmSiphon::LifeOnce(System);
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::LifeStat, 2.0f)});
+		const float Held = FCataclysmSiphon::LifeOnce(System);
+		Test.TestEqual(TEXT("siphon_life_percent: control, nothing is restored without it"), Plain, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and 2% of ten thousand with it, so LifeOnce really reads it"), Held, 200.0f, 0.01f);
+	}
+
+	/** `siphon_fervour_per_second`, read by `FCataclysmSiphon::FervourOnce`. */
+	void ProbeSiphonFervour(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres()});
+		const float Plain = FCataclysmSiphon::FervourOnce(System);
+		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::FervourStat, 3.0f)});
+		const float Held = FCataclysmSiphon::FervourOnce(System);
+		Test.TestEqual(TEXT("siphon_fervour_per_second: control, no Fervour without it"), Plain, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and 3 with it, so FervourOnce really reads it"), Held, 3.0f, 0.01f);
+	}
+
+	/** `siphon_radius_metres` scaled by the Fervour held: Pall of Souls' shape, 100% more radius at 50 Fervour. */
+	void ProbeScaledSiphonRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres(),
+							 TPair<FName, FCataclysmStatModifier>(
+								 FName(FCataclysmSiphon::RadiusStat),
+								 SiphonRow(100.0f, ECataclysmStatScale::PerPointOfClassResourceHeld, 50.0f,
+										   ECataclysmStatBucket::Increased))});
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+		const float Empty = FCataclysmSiphon::RadiusMetresOf(System);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+		const float Holding = FCataclysmSiphon::RadiusMetresOf(System);
+		Test.TestEqual(TEXT("siphon_radius_metres by the Fervour held: control, 6 metres at none"), Empty, 6.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and 12 at 50, so it is asked with the holder's state"), Holding, 12.0f, 0.001f);
+	}
+
+	/** `siphon_life_percent` scaled by the enemies in the Siphon: Life Siphon's shape. */
+	void ProbeScaledSiphonLife(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres(),
+							 TPair<FName, FCataclysmStatModifier>(
+								 FName(FCataclysmSiphon::LifeStat),
+								 SiphonRow(1.0f, ECataclysmStatScale::PerEnemyInSiphon, 1.0f))});
+		const float Alone = FCataclysmSiphon::LifeOnce(System);
+		SiphonStep(World, Holder);
+		const float WithOne = FCataclysmSiphon::LifeOnce(System);
+		Test.TestEqual(TEXT("siphon_life_percent by the enemies in the Siphon: control, nothing before the step"),
+					   Alone, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and 1% of ten thousand with one in it, so it is asked with the count"), WithOne, 100.0f,
+					   0.01f);
+	}
+
+	/** `siphon_fervour_per_second` scaled by the enemies in the Siphon: Living Harvest's shape. */
+	void ProbeScaledSiphonFervour(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		SiphonLines(Holder, {SiphonSixMetres(),
+							 TPair<FName, FCataclysmStatModifier>(
+								 FName(FCataclysmSiphon::FervourStat),
+								 SiphonRow(2.0f, ECataclysmStatScale::PerEnemyInSiphon, 1.0f))});
+		const float Alone = FCataclysmSiphon::FervourOnce(System);
+		SiphonStep(World, Holder);
+		const float WithOne = FCataclysmSiphon::FervourOnce(System);
+		Test.TestEqual(TEXT("siphon_fervour_per_second by the enemies in the Siphon: control, nothing before the step"),
+					   Alone, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and 2 with one in it, so it is asked with the count"), WithOne, 2.0f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -5931,6 +6272,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("area_of_effect"),             &ProbeScaledAreaOfEffect},
 			{TEXT("health_restored_on_kill_at_no_cost"), &ProbeScaledHealthRestoredOnKill},
 			{TEXT("ultimate_fervour_cost_reduction"), &ProbeScaledUltimateFervourCostReduction},
+			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
+			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
+			{TEXT("siphon_fervour_per_second"),  &ProbeScaledSiphonFervour},
 		};
 		return Made;
 	}
@@ -11879,6 +12223,14 @@ namespace CataclysmStatExemptionTest
 			{TEXT("health_restored_on_fervour_full"), &ProbeHealthRestoredOnFervourFull},
 			{TEXT("attack_speed_reduction_suppressed"), &ProbeAttackSpeedReductionSuppressed},
 			{TEXT("cripple_and_weaken_spread_on_death_metres"), &ProbeCrippleAndWeakenSpreadOnDeath},
+			{TEXT("siphon_radius_metres"), &ProbeSiphonRadius},
+			{TEXT("siphon_enemies_deal_less_percent"), &ProbeSiphonEnemiesDealLess},
+			{TEXT("siphon_enemy_slow_percent"), &ProbeSiphonEnemySlow},
+			{TEXT("siphon_linger_seconds"), &ProbeSiphonLinger},
+			{TEXT("siphon_drain_weapon_percent"), &ProbeSiphonDrain},
+			{TEXT("siphon_necrosis_chance"), &ProbeSiphonNecrosisChance},
+			{TEXT("siphon_life_percent"), &ProbeSiphonLife},
+			{TEXT("siphon_fervour_per_second"), &ProbeSiphonFervour},
 		};
 		return Made;
 	}
