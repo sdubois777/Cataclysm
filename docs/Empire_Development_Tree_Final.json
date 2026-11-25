@@ -2973,7 +2973,7 @@
       "data": {
         "kind": "basic",
         "name": "Quality Materials",
-        "description": "+10% chance per point for a craft to roll maximum values on one random affix.",
+        "description": "+5% chance per point for a craft to roll maximum values on one random affix.",
         "currentPoints": 0,
         "color": "#f97316",
         "maxPoints": 10

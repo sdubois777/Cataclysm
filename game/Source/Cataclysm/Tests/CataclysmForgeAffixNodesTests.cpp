@@ -34,7 +34,7 @@
  * point up to 1, and Precision Crafting's own draw (3% a point) from 0.75 up, the higher of the two. Once a craft has
  * changed the item, in this order, each on a draw of its own from the item as it stood and the day: Rough Draft (5% a
  * point) adds one affix on a free slot whose side has room, at the drop's best tier for the run; Apprentice Smith (1% a
- * point) raises one affix below tier 7 a tier, its roll kept; Quality Materials (10% a point) makes one affix's roll its
+ * point) raises one affix below tier 7 a tier, its roll kept; Quality Materials (5% a point) makes one affix's roll its
  * best. Never on a dismantle (`tools/tests/test_forge_affix_nodes.py` checks that one in the source).
  *
  * WRITTEN BEFORE A BUILD. The scene is `CataclysmForgeTreeCostsTests.cpp`'s, copied into this file's namespace.
@@ -169,7 +169,7 @@ namespace CataclysmForgeAffixNodesTest
 // --------------------------------------------------------------------------------------------------------------------
 /**
  * Read through the generated tables, each node at its full points: Precision Crafting 0.45, Master's Workshop 0.30,
- * Quality Materials 1.0, Apprentice Smith 0.10, Rough Draft 0.40. CONTROL: none held gives nought. Prints "TREE AFFIX".
+ * Quality Materials 0.50, Apprentice Smith 0.10, Rough Draft 0.40. CONTROL: none held gives nought. Prints "TREE AFFIX".
  */
 CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesTreeTest, "Cataclysm.ForgeAffixNodes.TheFiveNodesGiveTheirFigures")
 {
@@ -201,7 +201,8 @@ CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesTreeTest, "Cataclysm.ForgeAf
 
 	TestEqual(TEXT("**Precision Crafting: 3% a point, 45%**"), All.AffixRollTopQuarterChance, 0.45f, 0.0001f);
 	TestEqual(TEXT("**Master's Workshop: 0.02 a point, 0.30**"), All.AffixRollFloor, 0.30f, 0.0001f);
-	TestEqual(TEXT("**Quality Materials: 10% a point, 100%**"), All.AffixRollMaxedChance, 1.0f, 0.0001f);
+	TestEqual(TEXT("**Quality Materials: 5% a point, 50% (the ruling of 2026-11-25)**"), All.AffixRollMaxedChance, 0.5f,
+			  0.0001f);
 	TestEqual(TEXT("**Apprentice Smith: 1% a point, 10%**"), All.AffixTierRaisedChance, 0.10f, 0.0001f);
 	TestEqual(TEXT("**Rough Draft: 5% a point, 40%**"), All.AffixAddedChance, 0.40f, 0.0001f);
 	TestTrue(TEXT("CONTROL: none held changes nothing"),
@@ -518,8 +519,9 @@ CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesOrderTest,
 // A7. In a world: an upgrade takes Quality Materials, and a reroll Master's Workshop's floor, as the question says.
 // --------------------------------------------------------------------------------------------------------------------
 /**
- * Quality Materials at 10 (100%): a +2 helm whose one affix is at 0.4 is upgraded to +3 and its affix's roll is 1; the
- * question's words end " The empire tree's affix nodes: a 100% chance one affix's roll is made its best." Master's
+ * Quality Materials at 10 (50%): a +2 helm whose one affix is at 0.4 and whose draw lands is upgraded to +3 and its
+ * affix's roll is 1, and one whose draw misses keeps 0.4; the question's words end " The empire tree's affix nodes: a 50%
+ * chance one affix's roll is made its best." Master's
  * Workshop alone at 15: a reroll of that affix ends at the bare draw placed from 0.3 up, and the reroll's words begin
  * " Its roll is drawn from 30 percent up." CONTROL: with no node held the upgrade leaves the roll at 0.4, the reroll
  * draws the bare roll, and the words are empty. Prints "IN A WORLD".
@@ -544,9 +546,34 @@ CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesWorldTest,
 		return false;
 	}
 	const FName Stone3 = UCataclysmForge::StoneFor(3);
-	auto UpgradeOnce = [&](float& OutRoll, FString& OutWords)
+	// A HELM WHOSE QUALITY MATERIALS DRAW TODAY LANDS (or misses) at 50%, read from the helm in the bag, as the craft reads it.
+	auto MaterialsLand = [&](const FCataclysmItem& Item)
 	{
-		const int32 Cell = Scene.Bag()->AddItem(Helm(11, {Affix(FlatArmor, 3, 0.4f)}));
+		FRandomStream Stream(UCataclysmForge::AffixCraftSeed(Item, UCataclysmForge::QualityMaterialsSalt, 0,
+															 Scene.Run->WalkSeedMask, Scene.Run->Day()));
+		return Stream.GetFraction() < 0.5f;
+	};
+	auto PlaceHelm = [&](TFunctionRef<bool(const FCataclysmItem&)> Wanted)
+	{
+		for (int32 Kills = 0; Kills < 2000; ++Kills)
+		{
+			const int32 Cell = Scene.Bag()->AddItem(Helm(Kills, {Affix(FlatArmor, 3, 0.4f)}));
+			if (Scene.Bag()->ItemAt(Cell) != nullptr && Wanted(*Scene.Bag()->ItemAt(Cell)))
+			{
+				return Cell;
+			}
+			Scene.Bag()->RemoveItemAt(Cell);
+		}
+		return static_cast<int32>(INDEX_NONE);
+	};
+	auto UpgradeOnce = [&](TFunctionRef<bool(const FCataclysmItem&)> Wanted, float& OutRoll, FString& OutWords)
+	{
+		const int32 Cell = PlaceHelm(Wanted);
+		if (Cell == INDEX_NONE)
+		{
+			OutRoll = -1.0f;
+			return false;
+		}
 		Scene.Bag()->AddMaterial(Stone3, 2);
 		const FCataclysmForgeTarget Target = FCataclysmForgeTarget::Carried(Cell);
 		OutWords = UCataclysmForgeCraft::AffixNodesTextFor(Scene.World, /*bDrawsARoll=*/false);
@@ -585,7 +612,8 @@ CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesWorldTest,
 	};
 	float BareUpgradeRoll = 0.0f;
 	FString BareUpgradeWords;
-	const bool bBareUpgrade = UpgradeOnce(BareUpgradeRoll, BareUpgradeWords);
+	const auto Any = [](const FCataclysmItem&) { return true; };
+	const bool bBareUpgrade = UpgradeOnce(Any, BareUpgradeRoll, BareUpgradeWords);
 	float BareRerollRoll = 0.0f;
 	float BareRerollDraw = 0.0f;
 	FString BareRerollWords;
@@ -593,24 +621,28 @@ CATACLYSM_AFFIX_NODES_TEST(FCataclysmForgeAffixNodesWorldTest,
 	Scene.Hold({{QualityMaterials, 10}});
 	float MaterialsRoll = 0.0f;
 	FString MaterialsWords;
-	const bool bMaterials = UpgradeOnce(MaterialsRoll, MaterialsWords);
+	const bool bMaterials = UpgradeOnce(MaterialsLand, MaterialsRoll, MaterialsWords);
+	float MissedRoll = 0.0f;
+	FString MissedWords;
+	const bool bMissed = UpgradeOnce([&](const FCataclysmItem& Item) { return !MaterialsLand(Item); }, MissedRoll, MissedWords);
 	Scene.Hold({{MastersWorkshop, 15}});
 	float WorkshopRoll = 0.0f;
 	float WorkshopDraw = 0.0f;
 	FString WorkshopWords;
 	const bool bWorkshop = RerollOnce(WorkshopRoll, WorkshopDraw, WorkshopWords);
 	AddInfo(FString::Printf(TEXT("IN A WORLD: bare upgrade %.4f \"%s\", bare reroll %.4f of %.4f \"%s\"; Quality Materials "
-								 "upgrade %.4f \"%s\"; Master's Workshop reroll %.4f of %.4f \"%s\""),
+								 "upgrade %.4f \"%s\", missed %.4f; Master's Workshop reroll %.4f of %.4f \"%s\""),
 							BareUpgradeRoll, *BareUpgradeWords, BareRerollRoll, BareRerollDraw, *BareRerollWords,
-							MaterialsRoll, *MaterialsWords, WorkshopRoll, WorkshopDraw, *WorkshopWords));
+							MaterialsRoll, *MaterialsWords, MissedRoll, WorkshopRoll, WorkshopDraw, *WorkshopWords));
 
-	TestTrue(TEXT("set-up: the four crafts are done"), bBareUpgrade && bBareReroll && bMaterials && bWorkshop);
+	TestTrue(TEXT("set-up: the five crafts are done"), bBareUpgrade && bBareReroll && bMaterials && bMissed && bWorkshop);
 	TestEqual(TEXT("CONTROL: no node, the upgrade leaves the roll"), BareUpgradeRoll, 0.4f);
 	TestEqual(TEXT("CONTROL: no node, the reroll draws the bare roll"), BareRerollRoll, BareRerollDraw);
 	TestTrue(TEXT("CONTROL: no node, no words"), BareUpgradeWords.IsEmpty() && BareRerollWords.IsEmpty());
-	TestEqual(TEXT("**Quality Materials at 100%: the upgraded helm's roll is its best**"), MaterialsRoll, 1.0f);
+	TestEqual(TEXT("**Quality Materials, its draw landed: the upgraded helm's roll is its best**"), MaterialsRoll, 1.0f);
+	TestEqual(TEXT("**its draw missed: the roll is kept**"), MissedRoll, 0.4f);
 	TestEqual(TEXT("and the question said so"), MaterialsWords,
-			  FString(TEXT(" The empire tree's affix nodes: a 100% chance one affix's roll is made its best.")));
+			  FString(TEXT(" The empire tree's affix nodes: a 50% chance one affix's roll is made its best.")));
 	TestEqual(TEXT("**Master's Workshop: the reroll's draw from 0.3 up**"), WorkshopRoll, 0.3f + 0.7f * WorkshopDraw, 0.0001f);
 	TestEqual(TEXT("and the question said so"), WorkshopWords, FString(TEXT(" Its roll is drawn from 30 percent up.")));
 	return true;

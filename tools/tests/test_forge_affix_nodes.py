@@ -33,19 +33,20 @@ WIDGET_CPP = SOURCE / "Interface" / "CataclysmForgeWidget.cpp"
 
 FIVE = {"Precision Crafting": [("AffixRollTopQuarterChance", 0.03)],
         "Master's Workshop": [("AffixRollFloor", 0.02)],
-        "Quality Materials": [("AffixRollMaxedChance", 0.10)],
+        "Quality Materials": [("AffixRollMaxedChance", 0.05)],
         "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
         "Rough Draft": [("AffixAddedChance", 0.05)]}
 
-#: G4: what each row that waited on "crafting" waits on now.
-SPLIT = {"crafting station": {"Expanded Station (Jeweler)", "Expanded Station (Smith)", "Expanded Station (Enchantress)",
-                              "Assembly Line", "The Hidden Stash"},
-         "double craft": {"Explorer Synergy"},
-         "exalted item": {"Flawless Production", "Residue Mastery"},
-         "item tier": {"Grand Forge"},
-         "owner's question": {"Ancient Techniques", "Refining Techniques", "Residue Protocols",
-                              "The Alchemist's Transmutation"},
-         "held-over residue": {"Steady Hands"}}
+#: G4: what each row that waited on "crafting" waits on now, and the issue it names. The ten nodes the owner left
+#: unbuilt on 2026-11-25 name #2897; the rest #2741 (the coordinating session's rulings of the same day).
+SPLIT = {"crafting station": ({"Expanded Station (Jeweler)", "Expanded Station (Smith)", "Expanded Station (Enchantress)",
+                               "Assembly Line", "The Hidden Stash"}, "#2897"),
+         "double craft": ({"Explorer Synergy"}, "#2897"),
+         "exalted item": ({"Flawless Production", "Residue Mastery"}, "#2897"),
+         "item tier": ({"Grand Forge", "Refining Techniques"}, "#2897"),
+         "later slice": ({"Ancient Techniques", "Residue Protocols"}, "#2741"),
+         "crafted-affix mark": ({"The Alchemist's Transmutation"}, "#2741"),
+         "held-over residue": ({"Steady Hands"}, "#2741")}
 
 
 def code(path: pathlib.Path) -> str:
@@ -81,9 +82,10 @@ def test_the_five_nodes_are_built_in_slice_fourteen_and_no_row_waits_on_crafting
             assert effect[0] in gen.EMPIRE_TREE_EFFECT_KINDS
     assert "crafting" not in gen.EMPIRE_TREE_SYSTEMS, "the one crafting reason is still a system"
     assert "crafting" not in gen.EMPIRE_TREE_REFUSED.values(), "a row still waits on crafting"
-    for system, names in SPLIT.items():
+    for system, (names, issue) in SPLIT.items():
         assert {name for name, reason in gen.EMPIRE_TREE_REFUSED.items() if reason == system} == names, system
-        assert "(issue #2741)" in gen.EMPIRE_TREE_SYSTEMS[system], f"{system!r} does not name issue #2741"
+        assert f"issue {issue}" in gen.EMPIRE_TREE_SYSTEMS[system], f"{system!r} does not name issue {issue}"
+    assert sum(len(names) for names, issue in SPLIT.values() if issue == "#2897") == 10, "issue #2897 holds ten nodes"
 
 
 def test_the_sequence_applies_the_nodes_to_the_changed_item_before_it_is_put_back() -> None:

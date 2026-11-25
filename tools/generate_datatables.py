@@ -3848,13 +3848,15 @@ EMPIRE_TREE_SYSTEMS = {
     "gold cap and death loss": ("a gold cap and a gold loss on death, which the "
                                 "game does not have"),
     # #2741's crafting group, G4 (the coordinating session, 2026-11-25): the one "crafting" reason split into what
-    # each row still waits on, now that the forge is built.
+    # each row still waits on, now that the forge is built. The ten nodes the owner left unbuilt the same day ("Leave
+    # them unbuilt for now") name issue #2897, which holds them.
     "crafting station": ("a crafting station with workers, a queue or a project that finishes later, which the "
-                         "game does not have (issue #2741)"),
-    "double craft": "a double craft, which the game does not have (issue #2741)",
-    "exalted item": "an Exalted item, which the game does not have (issue #2741)",
-    "item tier": "an item tier above the one a piece has, which the game does not have (issue #2741)",
-    "owner's question": "the owner's answer to what its sentence means (issue #2741)",
+                         "game does not have (issue #2897)"),
+    "double craft": "a double craft, which the game does not have (issue #2897)",
+    "exalted item": "an Exalted item, which the game does not have (issue #2897)",
+    "item tier": "an item tier, which item bases and their stats do not have (issue #2897)",
+    "later slice": "a later slice of issue #2741, which builds it as ruled on 2026-11-25",
+    "crafted-affix mark": "a mark on each affix the forge crafted, which the game does not have (issue #2741)",
     "held-over residue": "residue held over between crafts, which the game does not have (issue #2741)",
     "loot chest": "a loot chest on a dungeon floor, which the game does not have",
     "stash": "a stash inside dungeons, which the game does not have",
@@ -4015,17 +4017,17 @@ EMPIRE_TREE_REFUSED = {
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
-    "Refining Techniques": "owner's question",
+    "Refining Techniques": "item tier",
     "Explorer Synergy": "double craft",
     "Expanded Station (Jeweler)": "crafting station",
     "Expanded Station (Smith)": "crafting station",
     "Expanded Station (Enchantress)": "crafting station",
     "Flawless Production": "exalted item",
-    "Residue Protocols": "owner's question", "Grand Forge": "item tier",
-    "Ancient Techniques": "owner's question",
+    "Residue Protocols": "later slice", "Grand Forge": "item tier",
+    "Ancient Techniques": "later slice",
     "Residue Mastery": "exalted item", "The Hidden Stash": "crafting station",
     "Assembly Line": "crafting station",
-    "The Alchemist's Transmutation": "owner's question", "Steady Hands": "held-over residue",
+    "The Alchemist's Transmutation": "crafted-affix mark", "Steady Hands": "held-over residue",
 }
 
 
@@ -4427,14 +4429,15 @@ EMPIRE_TREE_EFFECTS = {
     "Sovereign's Assembly": [("CraftDaysReducedMore", 0.5)],
     # #2741's crafting group, slices C3 and C4 (2026-11-25). "+3% chance per
     # point for affixes to roll in the top 25% of their range"; "+2% to the
-    # minimum roll range of all affixes on a crafted item per point"; "+10%
+    # minimum roll range of all affixes on a crafted item per point"; "+5%
     # chance per point for a craft to roll maximum values on one random affix"
-    # (the owner's question 5); "1% chance per point to upgrade a random affix
+    # (ruled on 2026-11-25 under the owner's delegation: 50% at 10 points, so
+    # the Primal Spark's craft still matters); "1% chance per point to upgrade a random affix
     # to next tier when using the smith"; "+5% chance per point for a crafted
     # item to roll one additional affix".
     "Precision Crafting": [("AffixRollTopQuarterChance", 0.03)],
     "Master's Workshop": [("AffixRollFloor", 0.02)],
-    "Quality Materials": [("AffixRollMaxedChance", 0.10)],
+    "Quality Materials": [("AffixRollMaxedChance", 0.05)],
     "Apprentice Smith": [("AffixTierRaisedChance", 0.01)],
     "Rough Draft": [("AffixAddedChance", 0.05)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],

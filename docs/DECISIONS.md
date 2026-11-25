@@ -41,8 +41,24 @@ which holds #47 slice F6b), and moved onto development with them.
   (`RefusalForSpending` asks `WaitsOn` before the edges), so its shut edge (Coinage at 2) does not decide it; the
   screen test checks the tool tip and the refusal name the market, not only the dimmed box. The only refused root left
   is The Alchemist's Transmutation, a capstone that waits on the owner's answer, so it was not chosen.
-- **QUALITY MATERIALS IS BUILT AS WRITTEN** ("+10% chance per point ... to roll maximum values on one random affix",
-  100% at 10 points), as ruled; the owner's question 5 may change it, and the answer is a data change.
+- **QUALITY MATERIALS IS 5% A POINT, 50% AT 10.** First written at the tree file's 10% a point (100% at 10), as the
+  C3/C4 detail ruled, and changed before the window registered by the ruling on the owner's question 5 below.
+
+### The owner's six forge node questions, ruled by the coordinating session on 2026-11-25
+
+The owner left them to the coordinating session: "I'll let you decide on those questions".
+
+| Question | Ruling | Where it lands |
+| :-- | :-- | :-- |
+| 6, Industrial Speed | 10% a point (the keystones document's figure), 50% at its 5 points; the tree file's 1% rounds away to nothing | slice C2, before this window: the tree file's sentence, the data and the C1/C2 checks |
+| 5, Quality Materials | 5% a point, 50% at 10, so the Primal Spark's craft still matters | this slice, before this window: the tree file's sentence, the data, the checks |
+| 1, Ancient Techniques | "for crafts with 4 or more affixes": a full item; an enchantment does not count as an affix | a later slice; refused for now as "a later slice of issue #2741" |
+| 3, Residue Protocols | the design document's "ignore 5% of residue per point", which the design document, the simulation and the Consumption Threshold's derivation already use; the tree file's sentence to be reworded; no saved state, so it leaves C5 | the same later slice; its sentence is not yet reworded |
+| 4, The Alchemist's Transmutation | as written, no cap: a 200-point capstone, a play-test point | still waits on a mark on each affix the forge crafted (C5) |
+| 2, Refining Techniques | left unbuilt: there are no item tiers | joins issue #2897 with the nine the owner left unbuilt |
+
+The ten nodes in issue #2897 are the nine the owner ruled on 2026-11-25 ("Leave them unbuilt for now, we have a lot of
+stuff going. Just make sure there's an issue for them") and Refining Techniques; their refusal reasons name #2897.
 - **NO NEW GENRE RESEARCH.** A roll's floor and a chance of a better band copy this project's own drop roll
   (`FRandomStream::FRand` from 0 up to 1); Rough Draft's affix is drawn as the shift draws one.
 - **NO SAVE VERSION MOVES.** An affix's tier and roll, and the piece's rarity (read from its affix count), are saved
@@ -69,10 +85,11 @@ The C3/C4 detail was accepted as written:
   None to pick, nothing happens.
 - **G3, the words**: every priced question ends with the chances of the nodes held; the reroll's and the addition's
   questions say the rolls before them; a PLAY LOOP line says what happened, only when anything did.
-- **D4, G4's split**, each naming #2741: a crafting station (Expanded Station x3, Assembly Line, The Hidden Stash), a
-  double craft (Explorer Synergy), an Exalted item (Flawless Production, Residue Mastery), an item tier (Grand Forge), the
-  owner's question (Ancient Techniques, Refining Techniques, Residue Protocols, The Alchemist's Transmutation), residue
-  held over between crafts (Steady Hands).
+- **D4, G4's split**, as amended by the rulings above: naming #2897, a crafting station (Expanded Station x3, Assembly
+  Line, The Hidden Stash), a double craft (Explorer Synergy), an Exalted item (Flawless Production, Residue Mastery) and
+  an item tier (Grand Forge, Refining Techniques); naming #2741, a later slice (Ancient Techniques, Residue Protocols), a
+  mark on each affix the forge crafted (The Alchemist's Transmutation) and residue held over between crafts (Steady
+  Hands).
 
 ### What it does
 
@@ -80,16 +97,16 @@ The C3/C4 detail was accepted as written:
 | :-- | :-- | :-- |
 | Precision Crafting (15) | "+3% chance per point for affixes to roll in the top 25% of their range." | `AffixRollTopQuarterChance` 0.03: 45% at 15 |
 | Master's Workshop (15) | "+2% to the minimum roll range of all affixes on a crafted item per point." | `AffixRollFloor` 0.02: from 30% up at 15 |
-| Quality Materials (10) | "+10% chance per point for a craft to roll maximum values on one random affix." | `AffixRollMaxedChance` 0.10: 100% at 10 |
+| Quality Materials (10) | "+5% chance per point for a craft to roll maximum values on one random affix." | `AffixRollMaxedChance` 0.05: 50% at 10 |
 | Apprentice Smith (10) | "1% chance per point to upgrade a random affix to next tier when using the smith." | `AffixTierRaisedChance` 0.01: 10% at 10 |
 | Rough Draft (8) | "+5% chance per point for a crafted item to roll one additional affix." | `AffixAddedChance` 0.05: 40% at 8 |
 
 - **The words**: " The empire tree's affix nodes: a 40% chance of one more affix; a 10% chance one affix rises a tier; a
-  100% chance one affix's roll is made its best." after every priced question; " Its roll is drawn from 30 percent up,
+  50% chance one affix's roll is made its best." after every priced question; " Its roll is drawn from 30 percent up,
   with a 45% chance from 75 percent up." before it on a reroll and an addition.
 - **The line**: `the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat
   evasion's roll its best, 37 to 100 percent`.
-- **The refusals**: the 103 points of crafting rows still refused are counted by their six reasons, not one.
+- **The refusals**: the 103 points of crafting rows still refused are counted by their seven reasons, not one.
 
 ### Tests
 
@@ -103,22 +120,23 @@ The C3/C4 detail was accepted as written:
 | `RoughDraftAddsOneAffixOnAFreeSlotAtTheDropsBestTier` | a second affix last, at tier 2 on a tier 1 run, of another stat group, the piece one rarity up; two prefixes and a suffix gain a suffix; CONTROL four affixes, three and an enchantment, no node |
 | `ApprenticeSmithRaisesATierAndQualityMaterialsMakesARollItsBest` | the affix below tier 7 rises one, its roll kept; the affix below its best is made 1, its tier kept; CONTROL all at 7, all at their best |
 | `TheThreeActInOrderEachOnTheAffixesAsTheyStand` | on a helm whose one affix is at tier 7 and its best, all three act on the affix Rough Draft added; the words in order; the same item and day draw the same |
-| `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` | in a world: Quality Materials at 10 makes the upgraded helm's roll 1, Master's Workshop at 15 places the reroll from 0.3 up, each as its question said; CONTROL none held |
+| `AnUpgradeTakesQualityMaterialsAndARerollTheFloorAsTheQuestionSays` | in a world: Quality Materials at 10 (50%) makes the roll 1 on a helm whose draw lands and keeps it on one whose draw misses, Master's Workshop at 15 places the reroll from 0.3 up, each as its question said; CONTROL none held |
 | `TheWordsSayTheChancesTheRollsAndWhatWasDone` | every sentence, the line, and nothing when nothing |
 
 The dismantle has no Unreal test of its own: the piece is gone, so there is nothing to read. The Python check below
 reads that only the dismantle turns the nodes off.
 
 Python: `tools/tests/test_forge_affix_nodes.py`, five checks (the list at its top). The tree checks count 140 built nodes,
-slice 14's 58 points and the six reasons' 11, 10, 35, 10, 36 and 1 in place of crafting's 161; `CataclysmDataTableTests.cpp`
+slice 14's 58 points and the seven reasons' 11, 10, 35, 25, 20, 1 and 1 in place of crafting's 161; `CataclysmDataTableTests.cpp`
 pins 146 effect rows; the play loop check counts forty-one places; checklist step 32. **F6a's two pricing checks now
 accept the rolls after the pricing as well, and still check the pricing.**
 
 ### Not done
 
-- **C5 and the owner's four**: Ancient Techniques, Refining Techniques, Residue Protocols and The Alchemist's
-  Transmutation wait on the owner's answers; the rest of the crafting rows wait on systems the game does not have, each
-  now saying which.
+- **Ancient Techniques and Residue Protocols**, ruled above, wait on a small slice after this window; Residue
+  Protocols' sentence in the tree file is reworded there.
+- **The Alchemist's Transmutation** waits on a mark on each affix the forge crafted (C5).
+- **The ten nodes of issue #2897**, and Steady Hands, wait on systems the game does not have, each saying which.
 
 ### Registered
 

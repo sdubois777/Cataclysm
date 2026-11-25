@@ -746,9 +746,9 @@ none held, note an upgrade's question at the forge: for a +2 helm carrying 250 r
 The five affix nodes of the empire tree's Artisan branch (issue #2741, crafting slices C3 and C4).
 
 - **Buy Rough Draft to 8 points and Quality Materials to 10.** Every priced question at the forge now ends: "The
-  empire tree's affix nodes: a 40% chance of one more affix; a 100% chance one affix's roll is made its best." Upgrade a
-  Quality Helm with a free slot. After the craft one of its affixes reads 100 percent of its tier's range, perhaps a new
-  affix has joined it at the run's best drop tier (tier 2 on a tier 1 run), and after the craft's own line:
+  empire tree's affix nodes: a 40% chance of one more affix; a 50% chance one affix's roll is made its best." Upgrade a
+  Quality Helm with a free slot. After the craft one of its affixes may read 100 percent of its tier's range, a new
+  affix may have joined it at the run's best drop tier (tier 2 on a tier 1 run), and after the craft's own line:
 
   `PLAY LOOP: the empire tree's affix nodes, at the forge on Quality Helm: added Flat armor at tier 2; made Flat evasion's roll its best, 37 to 100 percent`
 

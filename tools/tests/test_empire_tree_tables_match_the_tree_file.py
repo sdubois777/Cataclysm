@@ -318,7 +318,11 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     Draft's 8. The 103 of crafting's that still wait were split the same day
     (G4) by what each waits on: a crafting station's 11, a double craft's 10,
     an Exalted item's 35, an item tier's 10, the owner's question's 36 and
-    residue held over between crafts' 1."""
+    residue held over between crafts' 1. The rulings on the owner's questions,
+    made by the coordinating session the same day under the owner's
+    delegation, moved Refining Techniques' 15 to an item tier, Ancient
+    Techniques' and Residue Protocols' 20 to a later slice of #2741, and The
+    Alchemist's Transmutation's 1 to the mark a crafted affix needs."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -337,8 +341,8 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
         "slice 7": 17, "slice 9": 21, "slice 2848": 11, "slice 11": 25, "slice 12": 31, "slice 13": 50,
         "slice 14": 58,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "crafting station": 11, "double craft": 10, "exalted item": 35, "item tier": 10,
-        "owner's question": 36, "held-over residue": 1, "loot chest": 8,
+        "crafting station": 11, "double craft": 10, "exalted item": 35, "item tier": 25,
+        "later slice": 20, "crafted-affix mark": 1, "held-over residue": 1, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }
