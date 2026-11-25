@@ -1213,6 +1213,24 @@ INVENTORY = {
         "Second Wind's share of maximum health (the Ravager tree rework, "
         "2026-11-24), asked when the Fervour pool becomes full; a crossing "
         "of the pool is not a blow and no skill is in hand",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "the Fervour a kill pays (the Death trees' kill generator, "
+        "2026-11-24), asked in GainOnOwnKill with the slain creature so its "
+        "rows are tiered by its rarity rung; a kill is not a blow being "
+        "priced, so no blow and no skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "the seconds a kill holds the decay off (the Death trees' kill "
+        "generator, 2026-11-24), asked in NoteOwnKill with the slain "
+        "creature, 4 for a Common kill and 8 for an Elite or stronger one; "
+        "no blow and no skill",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        "the Fervour lost a second once a kill's hold has run out (the "
+        "Death trees' kill generator, 2026-11-24), asked in KillDecayStep "
+        "on the regeneration step; time passing is not a blow and no skill "
+        "is in hand",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(UltimateFervourCostReductionStat), SkillTagsForStats(), 0.0f'):
         "Thronged's Fervour off the Ultimate's cost (the Ravager tree "
@@ -1233,9 +1251,23 @@ INVENTORY = {
         "cancels, so what the application baked in is not counted twice",
 }
 
-#: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
-#: entries, and both now hand over the distance and the stagger.
-TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {}
+#: EMPTY FROM ISSUE #1992 TO THE DEATH TREES' KILL GENERATOR (2026-11-24). The
+#: two critical strike lookups were its first entries, and both hand over the
+#: distance and the stagger since #1992. The two below hand over the slain
+#: creature only, and a row asking either condition on their stats is refused
+#: by the generator, which `CONDITIONS_OF_A_HIT_DEALT_AN_ASKER_DOES_NOT_PASS`
+#: in `tools/generate_datatables.py` says, so no such row can ship and grant
+#: nothing.
+TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "asked at a kill: the slain creature is handed over for its rarity "
+        "rung, and how far away or how staggered a dead creature is has no "
+        "row that asks it",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
+        "asked at a kill, for the same reason as the Fervour the kill pays",
+}
 
 
 def test_the_reader_finds_the_call_sites_it_is_meant_to() -> None:

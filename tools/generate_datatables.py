@@ -7430,15 +7430,18 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 
 #: Events an action may hang on that have NO clock of their own.
 #:
-#: EVERY CLOCK IS SOMETHING DONE TO THE CHARACTER and these are things the
-#: character DID, which is why none of them is a clock: a clock is stamped on
-#: whoever the blow landed on, and these belong to whoever dealt it.
+#: HAVING NO CLOCK IS THE ONLY THING THAT PUTS AN EVENT HERE. An event with a
+#: clock is derived from the clock's name by `action_events`, and listing it
+#: here too is refused by a test. Most clocks are something done to the
+#: character, but not all: `striking_a_boss`, `movement_skill` and `kill` are
+#: things it did. `kill` was on this list until the Death trees' kill generator
+#: (2026-11-24) gave it the clock `seconds_after_kill`, and is derived since;
+#: the game raises the event as it did.
 #:
 #: `hit_dealt` IS NOT `hit_taken`. They are the same word at opposite ends of
 #: one blow. `seconds_after_hit_taken` is stamped on the character that was
 #: hit; `hit_dealt` fires on the character that hit.
 ACTION_ONLY_EVENTS = (
-    "kill",
     "critical_strike",
     "nearby_death",
     "skill_use",

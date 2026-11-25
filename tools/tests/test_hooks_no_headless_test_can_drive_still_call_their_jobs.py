@@ -88,6 +88,12 @@ HOOKS = {
             "UCataclysmFervour::DecayStep":
                 "the Fervour a Ravager loses once it has been out of "
                 "contact for three seconds, issue #1515",
+            "UCataclysmFervour::KillDecayStep":
+                "the Fervour a Soul Collector or a Shadow loses once the "
+                "seconds after its last kill have run out (the Death trees' "
+                "kill generator, 2026-11-24). Deleting it leaves the pool "
+                "never draining between kills, while each test of the decay, "
+                "which calls the step directly, still passes",
             "UCataclysmNova::Step":
                 "the nova a character at very low health releases, issue #1050",
             "UCataclysmContagion::AuraStep":

@@ -4688,8 +4688,8 @@ class TestEnchantmentEffects:
                 {"Action Event": "sneezes_twice"})]))
 
     def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
-        # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
-        # the character and these are things the character DID.
+        # THESE EVENTS HAVE NO CLOCK, which is the only thing that puts an
+        # event on the list; an event with a clock is derived from it.
         # AND THE ONE THAT NEEDS A THRESHOLD IS GIVEN ONE: health_falls_below
         # requires an Event Value, issue #1833 group D part 2.
         for event in gen.ACTION_ONLY_EVENTS:
