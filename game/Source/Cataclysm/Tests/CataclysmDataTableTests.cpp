@@ -237,14 +237,18 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	//
 	// 660 SINCE 2026-11-24, when the three Death trees were added: the Soul
 	// Collector 73 nodes, the Necromancer 72 and the Shadow 74, which is 219.
-	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          660)
+	// 661 SINCE THE OWNER'S ORDER FIXES OF THE SAME DAY reached them: the
+	// Necromancer's Many Made One, the Abomination half moved off Gathered
+	// Remains, makes its tree 73.
+	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv",          661)
 	// 416: every dependency edge of those six trees. Fewer than the nodes,
 	// because the four capstones of each tree deliberately have none -- a
 	// capstone tier is reached by total points spent rather than along a path.
 	// 278 until 2026-09-07, and the two new trees carry 69 edges each.
 	// 620 SINCE 2026-11-24: the Soul Collector's 68 edges, the Necromancer's 67
-	// and the Shadow's 69.
-	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          620)
+	// and the Shadow's 69. 621 since Many Made One's edge from First Among the
+	// Dead, which asks for all 10 of its points: the Necromancer's 68.
+	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv",          621)
 	// 159: every node of the empire upgrade tree, `docs/Empire_Development_Tree_Final.json` -- 110 basic, 41 keystones
 	// and 8 capstones, four in the middle and one at the end of each branch. Issue #2741.
 	CHECK_TABLE(FCataclysmEmpireTreeNodeRow,    "EmpireTreeNodes.csv",       159)

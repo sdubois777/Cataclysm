@@ -268,7 +268,9 @@ def test_gathered_remains_keeps_only_its_remains_half():
     data = necromancer()
     fixes.apply_fixes(data, "Necromancer")
     sentence = by_name(data, "Gathered Remains")["data"]["description"]
-    assert sentence == "Remains within 10 metres of you last 10% longer per point."
+    # The remains half as the 15-keystone merge wrote it (ruled 2026-11-24).
+    assert sentence == ("Remains last 25% longer per point, so at 8 points they last "
+                        "three times as long: 30 seconds rather than 10.")
     assert "Abomination" not in sentence
     assert by_name(data, "Gathered Remains")["data"]["maxPoints"] == 8
 

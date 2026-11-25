@@ -198,8 +198,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Death's Patience",
-        "description": "Killing an enemy that carries your Poison or Bleed generates +1 Fervour per point.",
+        "name": "Envenom",
+        "description": "Your critical strikes have a 6% chance per point to apply Poison and a 6% chance per point to apply Bleed.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -308,8 +308,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Envenom",
-        "description": "Your critical strikes have a 6% chance per point to apply Poison and a 6% chance per point to apply Bleed.",
+        "name": "Death's Patience",
+        "description": "Killing an enemy that carries your Poison or Bleed generates +1 Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

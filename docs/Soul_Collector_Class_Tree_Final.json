@@ -220,11 +220,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Spent Breath",
-        "description": "+3% increased damage per point for 4 seconds after you spend 10 or more Fervour at once.",
+        "name": "Soul Fuel",
+        "description": "Your skills that have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +1% increased damage for every 4 points for each Fervour they spend.",
         "currentPoints": 0,
         "color": "#94a3b8",
-        "maxPoints": 6
+        "maxPoints": 12
       },
       "measured": {
         "width": 16,
@@ -1388,11 +1388,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Soul Fuel",
-        "description": "Your skills that have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +1% increased damage for every 4 points for each Fervour they spend.",
+        "name": "Spent Breath",
+        "description": "+3% increased damage per point for 4 seconds after you spend 10 or more Fervour at once.",
         "currentPoints": 0,
         "color": "#94a3b8",
-        "maxPoints": 12
+        "maxPoints": 6
       },
       "measured": {
         "width": 16,

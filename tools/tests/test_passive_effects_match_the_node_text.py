@@ -1210,8 +1210,10 @@ NAMED_OPTIONS = 96
 #: them is issue #1463, opened with the trees rather than left implied.
 #:
 #: 441 UNTIL 2026-11-24, when the three Death trees landed: the Soul Collector
-#: 73 nodes, the Necromancer 72 and the Shadow 74.
-TOTAL_NODES = 660
+#: 73 nodes, the Necromancer 72 and the Shadow 74. 660 until the owner's order
+#: fixes of the same day reached them and gave the Necromancer Many Made One,
+#: the Abomination half moved off Gathered Remains: 73.
+TOTAL_NODES = 661
 
 
 def rows_of(path: pathlib.Path) -> list[dict]:

@@ -146,8 +146,9 @@ bool FCataclysmDeathTreesNamedTest::RunTest(const FString&)
 	// EVERY NODE OF THE THREE FILES, AND NONE UNDER THE SPACE-FREE NAME.
 	TestEqual(TEXT("the Soul Collector has its 73 nodes"),
 			  UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Soul Collector")).Num(), 73);
-	TestEqual(TEXT("the Necromancer its 72"),
-			  UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Necromancer")).Num(), 72);
+	// 73 SINCE THE OWNER'S ORDER FIXES OF 2026-11-24 added Many Made One.
+	TestEqual(TEXT("the Necromancer its 73"),
+			  UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Necromancer")).Num(), 73);
 	TestEqual(TEXT("the Shadow its 74"),
 			  UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Shadow")).Num(), 74);
 	TestEqual(TEXT("and no tree is called \"SoulCollector\""),

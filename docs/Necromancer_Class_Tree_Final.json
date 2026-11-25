@@ -432,6 +432,28 @@
       "dragging": false
     },
     {
+      "id": "basic_lg_d0",
+      "position": {
+        "x": -708.8,
+        "y": -222.2
+      },
+      "type": "basic",
+      "data": {
+        "kind": "basic",
+        "name": "Many Made One",
+        "description": "Your Abomination rises sooner: each point takes 2 off the percentage of a floor's starting creatures you must kill, from 50% down to 34% at 8 points.",
+        "currentPoints": 0,
+        "color": "#94a3b8",
+        "maxPoints": 8
+      },
+      "measured": {
+        "width": 16,
+        "height": 16
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
       "id": "basic_lg_a2",
       "position": {
         "x": -1012.0,
@@ -946,11 +968,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Mantle of Bone",
-        "description": "Your weapon skills that land on remains detonate them, dealing 1% for every 2 points of the dead creature's maximum health to enemies within 3 metres. +1% increased Armor for every 2 points for each creature's remains within 6 metres of you, up to 10.",
+        "name": "Gravefinder",
+        "description": "A minion your summon skill raises within 1 metre per point of remains is raised on them.",
         "currentPoints": 0,
         "color": "#94a3b8",
-        "maxPoints": 12
+        "maxPoints": 10
       },
       "measured": {
         "width": 16,
@@ -990,11 +1012,11 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Gravefinder",
-        "description": "A minion your summon skill raises within 1 metre per point of remains is raised on them.",
+        "name": "Mantle of Bone",
+        "description": "Your weapon skills that land on remains detonate them, dealing 1% for every 2 points of the dead creature's maximum health to enemies within 3 metres. +1% increased Armor for every 2 points for each creature's remains within 6 metres of you, up to 10.",
         "currentPoints": 0,
         "color": "#94a3b8",
-        "maxPoints": 10
+        "maxPoints": 12
       },
       "measured": {
         "width": 16,
@@ -1013,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Gathered Remains",
-        "description": "Your Abomination rises sooner: each point takes 2 off the percentage of a floor's starting creatures you must kill, from 50% down to 34% at 8 points. Remains last 25% longer per point, so at 8 points they last three times as long: 30 seconds rather than 10.",
+        "description": "Remains last 25% longer per point, so at 8 points they last three times as long: 30 seconds rather than 10.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1917,6 +1939,18 @@
       "type": "dependency",
       "data": {
         "requiredPoints": 4
+      },
+      "selected": false
+    },
+    {
+      "id": "e_lg_a1_lg_d0",
+      "source": "basic_lg_a1",
+      "target": "basic_lg_d0",
+      "sourceHandle": "n",
+      "targetHandle": "s",
+      "type": "dependency",
+      "data": {
+        "requiredPoints": 10
       },
       "selected": false
     },
