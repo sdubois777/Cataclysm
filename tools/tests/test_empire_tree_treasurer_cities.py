@@ -190,7 +190,9 @@ def test_the_golden_touchs_materials_reach_the_material_roll_and_draw_nothing() 
 
     handler = body(code(ENEMY), "void ACataclysmEnemyCharacter::HandleDeath()", "CataclysmEnemyCharacter.cpp")
     drops = re.search(r"UCataclysmDropSpawner::SpawnDropsFor\(([^;]*)\);", handler)
-    assert drops and flat(drops.group(1)).rstrip().endswith("CityRewards.MaterialsMore * TreeDrops.MaterialsMultiplier"), (
+    # NOT THE LAST ARGUMENT SINCE ISSUE #51 SLICE B5: the Cataclysm boss's piece and the gear's step follow it.
+    assert drops and re.search(r"CityRewards\.MaterialsMore \* TreeDrops\.MaterialsMultiplier\s*(,|$)",
+                               flat(drops.group(1)).rstrip()), (
         "the kill does not give its material roll The Golden Touch's figure beside the city's")
 
 
