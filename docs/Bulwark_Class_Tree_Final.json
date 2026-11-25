@@ -1276,7 +1276,7 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Wrath Incarnate",
+        "name": "Outnumbered",
         "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits all nearby enemies rather than just your attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
