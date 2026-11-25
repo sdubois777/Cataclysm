@@ -135,9 +135,32 @@ not held).
 
 ### What was run
 
-SUITE_FIGURES_C6B3
+**The whole Python suite on `069552203`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8576 passed, 9 skipped in 390.37s
+(0:06:30)". The JUnit file agrees: tests 8586, failures 1, errors 0, skipped 9, so 8576 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`, `DT_EnchantmentEffects` and the other tables it names.
+The run before, on the working tree, also failed the check that every condition is named in this log, which this entry
+satisfies, and faults (3) and (4) under "Said first", fixed before the commit.
 
-PYTHON_PROOFS_C6B3
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+
+**Eight Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`596ffc027`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| A `points` row paying a share of a base rather than its value | `test_charge_and_placed_action_names_match_the_engine.py::test_a_flat_amount_and_a_chance_of_class_resource_are_paid_as_every_gain_is` |
+| A class resource gain paid through `TopUp` again | the same test |
+| A roll equal to the chance passing | the same test |
+| A chance row's amount multiplied by the points as well | the same test |
+| No enemy in reach holding when nobody walked | `test_charge_and_placed_action_names_match_the_engine.py::test_the_attackers_rung_and_the_enemies_near_are_filled_and_judged` |
+| A chance accepted on a row that does not move the class resource | `test_passive_rows_carry_the_action_columns.py::test_a_chance_is_refused_on_a_row_that_does_not_move_the_class_resource`, both cases (an action, a stat row) |
+| Two action rows of one node under the same conditions accepted | `test_passive_rows_carry_the_action_columns.py::test_two_rows_of_one_node_sharing_an_action_and_event_are_refused` and `::test_two_steps_of_one_node_at_different_thresholds_may_share_an_action_and_event` |
+| Read the Blow against every attacker, rung 0 rather than 1 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
 
 ---
 
