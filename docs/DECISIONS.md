@@ -78,6 +78,16 @@ the first point (`FIXED_FROM_THE_FIRST_POINT`). Each was guard-proved below. The
 `test_plain_damage_on_a_passive_node_is_attack_and_spell_damage`, is what would have caught the seven nodes this slice
 first wrote with attack damage alone; it was guard-proved too.
 
+### THE PYTHON SUITE
+
+Run on `e0d1376400a6fa8086bad735f1cb09aec53a1ecd`, the commit that brought this entry, with nothing in the worktree
+changing during the run: `python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8394 passed, 9 skipped in 378.46s**, and the JUnit file `tests="8404" failures="1" errors="0"
+skipped="9"`, which is 8,394 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step rebuilds the assets. `python -m ruff check .`: all
+checks passed. `python tools/check_resolved_cpp.py --changed`: 1 file read, 0 with complaints.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, each against
