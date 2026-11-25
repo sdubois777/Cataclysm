@@ -499,4 +499,95 @@ bool FCataclysmClassKillFervourHandlerTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassKillFervourPreviousKillTest,
+	"Cataclysm.ClassKillFervour.AKillsFervourUnderSecondsAfterAKillReadsThePreviousKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClassKillFervourPreviousKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmClassKillFervourTest;
+
+	// THE PAYMENT IS ASKED BEFORE THE STAMP (ruled 2026-11-25, the Death trees' slice C). A `fervour_per_kill` row under
+	// `seconds_after_kill` 2 therefore pays for a kill within 2 seconds of the PREVIOUS kill, and not for the first kill
+	// or one after a longer gap. Asked after the stamp, as slice B had it, the window read nought at every kill and the
+	// row paid every time. One hand-built row, because the subject is the order in the kill handler, not a table.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!State || !Controller || !Player)
+	{
+		AddError(TEXT("A possessed player could not be built."));
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	UCataclysmAbilitySystemComponent* System = State->GetCataclysmAbilitySystemComponent();
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the player's ability system"), System) || !TestNotNull(TEXT("the combat events"), Events))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier WithinTwoSeconds;
+	WithinTwoSeconds.Bucket = ECataclysmStatBucket::Flat;
+	WithinTwoSeconds.Source = ECataclysmModifierSource::PassiveKeystone;
+	WithinTwoSeconds.Value = 5.0f;
+	WithinTwoSeconds.Condition = ECataclysmStatCondition::WithinSecondsOfKill;
+	WithinTwoSeconds.ConditionValue = 2.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmFervour::PerKillStat));
+	Line.Base = 0.0f;
+	Line.Modifiers = {WithinTwoSeconds};
+	System->SetStatInputs(MoveTemp(Inputs));
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
+	System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+	const auto KillOne = [World, Events, Player](float AlongX)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(AlongX, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Creature)
+		{
+			Creature->SetRarityStep(0);
+			FCataclysmDeathNotice Notice;
+			Notice.Victim = Creature;
+			Notice.Killer = Player;
+			Events->OnDeath.Broadcast(Notice);
+		}
+		return Creature != nullptr;
+	};
+
+	// THE FIRST KILL OF ALL: no previous kill, so the window does not hold and nothing is paid. The clock starts.
+	if (!TestTrue(TEXT("set-up: a first creature"), KillOne(600.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first kill, with no kill before it, pays nothing"), System->GetNumericAttribute(Pool), 0.0f,
+			  0.001f);
+	TestTrue(TEXT("and starts the kill clock"), System->SecondsSinceOwnKill() >= 0.0f);
+
+	// A KILL ONE SECOND LATER: within 2 seconds of the previous one, so the row pays 5.
+	RunClock(World, 1.0f);
+	if (!TestTrue(TEXT("set-up: a second creature"), KillOne(900.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill 1 second after the previous one pays 5"), System->GetNumericAttribute(Pool), 5.0f, 0.001f);
+
+	// AND THE CONTROL ON THE OTHER SIDE: a kill 3 seconds after that one is outside the window and pays nothing more.
+	RunClock(World, 3.0f);
+	if (!TestTrue(TEXT("set-up: a third creature"), KillOne(1200.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill 3 seconds after the previous one pays nothing more"), System->GetNumericAttribute(Pool),
+			  5.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

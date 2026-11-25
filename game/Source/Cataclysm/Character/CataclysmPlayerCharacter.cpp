@@ -1427,13 +1427,18 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				Gear->NoteKillOnWornWeapons(Acting);
 			}
 
-			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The stamp first, for every character: the clock a
-			// row under `seconds_after_kill` reads, and the grace before the decay after a kill, asked against the
-			// slain creature. Then the Fervour this kill pays by the slain creature's rarity rung, nought for a
-			// character without a Death starting node. ON EVERY KILL CREDITED HERE, its damage over time's and a
-			// row's included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.
-			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
+			// AND THE DEATH CLASSES' KILL GENERATOR, 2026-11-24. The Fervour this kill pays by the slain creature's
+			// rarity rung first, nought for a character without a Death starting node; then the stamp, for every
+			// character: the clock a row under `seconds_after_kill` reads, and the grace before the decay after a
+			// kill, asked against the slain creature. ON EVERY KILL CREDITED HERE, its damage over time's and a row's
+			// included; a skill's own `KillFervour` (#2885) pays on top when that skill's blow made the kill.
+			//
+			// THE PAYMENT BEFORE THE STAMP, ruled by the coordinating session on 2026-11-25 (the Death trees' slice
+			// C). Asked after it, `seconds_after_kill` on a kill's own stat read nought at every kill and always held;
+			// asked before it, it reads the time since the PREVIOUS kill, which "kills within 2 seconds of each
+			// other" needs. The grace is asked inside the stamp before the clock moves, so it reads the same.
 			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
+			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes

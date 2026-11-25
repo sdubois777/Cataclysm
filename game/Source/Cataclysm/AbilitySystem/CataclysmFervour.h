@@ -672,8 +672,10 @@ public:
 	 * FOR EVERY KILL OF EVERY CHARACTER, whatever its tree: a row under `seconds_after_kill` needs the clock whether or
 	 * not the character has the generator, and a character with no grace row is held until now, which holds nothing.
 	 *
-	 * CALLED FROM `ACataclysmPlayerCharacter::OnSomethingDied` FOR A DEATH CREDITED TO THIS CHARACTER, before
-	 * `GainOnOwnKill`. Nothing for an ability system that is not this game's.
+	 * CALLED FROM `ACataclysmPlayerCharacter::OnSomethingDied` FOR A DEATH CREDITED TO THIS CHARACTER, after
+	 * `GainOnOwnKill` (ruled 2026-11-25). The grace is asked before the clock moves, so a grace row under
+	 * `seconds_after_kill` reads the time since the previous kill, as the payment does. Nothing for an ability system
+	 * that is not this game's.
 	 */
 	static void NoteOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
 
@@ -686,6 +688,10 @@ public:
 	 *
 	 * SCALED BY THE GENERATION RATE AND CLAMPED AT THE MAXIMUM, the rule every gain in this file follows. No reservation
 	 * is read or changed.
+	 *
+	 * ASKED BEFORE `NoteOwnKill` STAMPS THIS KILL (ruled 2026-11-25), so a row under `seconds_after_kill` reads the
+	 * time since the previous kill: "kills within 2 seconds of each other" is that row with the value 2, and the first
+	 * kill of all, with no previous one, matches no such row.
 	 *
 	 * @return the Fervour that arrived: nought for a character without the rows, for a creature no row's rung matches,
 	 *         for a full bar and for an ability system with no class resource attribute set

@@ -12643,6 +12643,46 @@ def refuse_a_window_scale_with_no_own_stack_row(
     return problems
 
 
+#: The event a kill raises, and the clock a kill stamps.
+KILL_EVENT = "kill"
+KILL_CLOCK = "seconds_after_kill"
+
+
+def refuse_a_kill_clock_on_a_kill_action(sheet: str,
+                                         rows: list[dict]) -> list[str]:
+    """No action hung on the `kill` event asks `seconds_after_kill`.
+
+    IT WOULD ALWAYS HOLD. The kill handler (`ACataclysmPlayerCharacter::
+    OnSomethingDied`) pays the kill's Fervour, then stamps the kill clock, then
+    raises `kill`, so every row acting on that event reads a clock stamped by
+    the same kill: nought seconds, inside any window. A row written as "within
+    2 seconds of your previous kill" would act on every kill. Ruled by the
+    coordinating session on 2026-11-25 (the Death trees' slice C), with the
+    order that makes the condition mean something on a kill's own STAT: the
+    payment is asked before the stamp, so `seconds_after_kill` on
+    `fervour_per_kill` reads the time since the previous kill.
+
+    EITHER CONDITION COLUMN, because a second condition is judged the same way.
+    """
+    problems = []
+    for row in rows:
+        if not str(row.get("Action") or "").strip():
+            continue
+        if str(row.get("ActionEvent") or "").strip().lower() != KILL_EVENT:
+            continue
+        for column in ("Condition", "Condition2"):
+            if str(row.get(column) or "").strip().lower() == KILL_CLOCK:
+                problems.append(
+                    f"{sheet}/{row['Name']}: acts on {KILL_EVENT!r} under "
+                    f"{KILL_CLOCK!r} ({column}). The kill clock is stamped by "
+                    f"the same kill before its rows act, so the window reads "
+                    f"nought and always holds: the row would act on EVERY "
+                    f"kill. A kill's own stat, such as fervour_per_kill, may "
+                    f"ask it: that is asked before the stamp and reads the "
+                    f"time since the previous kill.")
+    return problems
+
+
 #: Tyrant's Chains' six-piece bonus. Ruled 2026-10-17 by the project owner
 #: (#3: the Tyrant's Minion's own death explodes but summons none; at most one
 #: stands; a new summon refreshes the one standing) and 2026-10-18 by the
@@ -14716,6 +14756,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     problems.extend(
         refuse_a_class_point_row_the_game_cannot_count("PassiveEffects", effects))
 
+    # AND NO ACTION ON A KILL ASKS THE KILL'S OWN CLOCK, where it always holds.
+    # Ruled 2026-11-25 (the Death trees' slice C).
+    problems.extend(refuse_a_kill_clock_on_a_kill_action("PassiveEffects", effects))
+
     return problems
 
 
@@ -14928,6 +14972,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # AND A ROW COUNTING ENEMIES ONLY WHILE ANOTHER ROW'S STACK IS HELD HAS
     # THAT ROW BESIDE IT. Ruled by the project owner on 2026-10-17.
     problems.extend(refuse_a_window_scale_with_no_own_stack_row(
+        "EnchantmentEffects", effects))
+
+    # AND NO ACTION ON A KILL ASKS THE KILL'S OWN CLOCK, where it always holds.
+    # Ruled 2026-11-25 (the Death trees' slice C).
+    problems.extend(refuse_a_kill_clock_on_a_kill_action(
         "EnchantmentEffects", effects))
 
     # AND THE DEATH FLAG AND THE TYRANT'S MINION'S SECONDS ARE FLAT, WITH NO
