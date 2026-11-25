@@ -3343,6 +3343,9 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =
 	TEXT("melee_reach_metres");
 
+const TCHAR* UCataclysmSkillTemplate::MeleeReachCentimetresStat =
+	TEXT("melee_reach_centimetres");
+
 const TCHAR* UCataclysmSkillTemplate::SkillDurationStat = TEXT("skill_duration");
 const TCHAR* UCataclysmSkillTemplate::BuffDurationStat = TEXT("buff_duration");
 
@@ -3417,11 +3420,13 @@ float UCataclysmSkillTemplate::MeleeReachBonusCm() const
 		return 0.0f;
 	}
 
-	// METRES IN THE ROW, CENTIMETRES HERE, and never below nothing: a row that
-	// shortened a reach would be a different sentence from this one.
-	return FMath::Max(0.0f, Mine->StatForSkill(FName(MeleeReachMetresStat),
-											   SkillTags, 0.0f))
-		* 100.0f;
+	// TWO STATS, ONE REACH: Overreach's metres times a hundred, plus the reach
+	// enchantment's centimetres (issue #2883, D8), and never below nothing: a
+	// row that shortened a reach would be a different sentence from these.
+	const float Metres = Mine->StatForSkill(FName(MeleeReachMetresStat), SkillTags, 0.0f);
+	const float Centimetres =
+		Mine->StatForSkill(FName(MeleeReachCentimetresStat), SkillTags, 0.0f);
+	return FMath::Max(0.0f, Metres * 100.0f + Centimetres);
 }
 
 float UCataclysmSkillTemplate::ScaledRadiusCm() const

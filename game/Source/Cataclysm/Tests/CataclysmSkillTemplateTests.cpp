@@ -17000,6 +17000,102 @@ namespace CataclysmOverreachTest
 		Line.Modifiers = {Flat};
 		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
 	}
+
+	/**
+	 * Overreach's `melee_reach_metres` and the reach enchantment's
+	 * `melee_reach_centimetres` together, each flat and scoped to melee as its
+	 * row grants it. Either may be zero, which grants nothing for that stat.
+	 * One call, because SetStatInputs replaces every line it is given.
+	 */
+	void GiveMetresAndCentimetres(CataclysmSkillTest::FScopedFighter& Caster,
+								  float Metres, float Centimetres)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		const TPair<const TCHAR*, float> Grants[] = {
+			{UCataclysmSkillTemplate::MeleeReachMetresStat, Metres},
+			{UCataclysmSkillTemplate::MeleeReachCentimetresStat, Centimetres}};
+		for (const TPair<const TCHAR*, float>& Grant : Grants)
+		{
+			if (Grant.Value <= 0.0f)
+			{
+				continue;
+			}
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::Enchantment;
+			Flat.Value = Grant.Value;
+			Flat.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Grant.Key));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReachMetresAndCentimetresTest,
+	"Cataclysm.Skills.OverreachsMetresAndTheReachEnchantmentsCentimetresAddUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two stats, one reach. Issue #2883, D8: the reach enchantment rolls whole
+ * centimetres, `melee_reach_centimetres` 50 to 100, while Overreach keeps its
+ * `melee_reach_metres` 2. Ruled by the coordinating session on 2026-11-25: a
+ * second stat rather than a rename, read by MeleeReachBonusCm as metres times a
+ * hundred plus centimetres.
+ *
+ * Overreach's 2 m and a 75 cm roll on one character: a 1.8 m melee strike
+ * reaches 1.8 m + 2.75 m. The controls: the 75 cm alone reaches 2.55 m, so the
+ * centimetres are not read as metres; nothing granted reaches 1.8 m; and a
+ * strike without `Type.Melee` on the character holding both reaches 1.8 m, so
+ * the new stat keeps the row's melee scope.
+ */
+bool FCataclysmReachMetresAndCentimetresTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmOverreachTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto MeleeStrikeOf = [](FScopedFighter& Caster, const TCHAR* Tags)
+	{
+		return GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=1.8"),
+			TEXT("Melee Strike"), Tags);
+	};
+
+	FScopedFighter Both(World, FVector::ZeroVector);
+	GiveMetresAndCentimetres(Both, 2.0f, 75.0f);
+	FScopedFighter CentimetresOnly(World, FVector(1000.0f, 0.0f, 0.0f));
+	GiveMetresAndCentimetres(CentimetresOnly, 0.0f, 75.0f);
+	FScopedFighter Neither(World, FVector(2000.0f, 0.0f, 0.0f));
+	GiveMetresAndCentimetres(Neither, 0.0f, 0.0f);
+
+	UCataclysmSkillTemplate* BothStrike = MeleeStrikeOf(Both, TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* BothPlain = GrantSkill<UCataclysmStrikeSkill>(
+		Both, ECataclysmAbilitySlot::Heavy, TEXT("Radius=1.8"), TEXT("Plain Strike"));
+	UCataclysmSkillTemplate* CentimetresStrike = MeleeStrikeOf(CentimetresOnly, TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* NeitherStrike = MeleeStrikeOf(Neither, TEXT("Type.Melee"));
+	if (!BothStrike || !BothPlain || !CentimetresStrike || !NeitherStrike)
+	{
+		AddError(TEXT("Could not grant the four strikes."));
+		return false;
+	}
+
+	TestEqual(TEXT("Overreach's 2 m and a 75 cm roll: a 1.8 m melee strike reaches 275 cm further, 455 cm"),
+			  BothStrike->ScaledRadiusCm(), 455.0f, 0.01f);
+	TestEqual(TEXT("the 75 cm alone reaches 255 cm, so centimetres are not read as metres"),
+			  CentimetresStrike->ScaledRadiusCm(), 255.0f, 0.01f);
+	TestEqual(TEXT("nothing granted reaches 180 cm"),
+			  NeitherStrike->ScaledRadiusCm(), 180.0f, 0.01f);
+	TestEqual(TEXT("a strike without the melee tag on the character holding both reaches 180 cm"),
+			  BothPlain->ScaledRadiusCm(), 180.0f, 0.01f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverreachStrikeTest,

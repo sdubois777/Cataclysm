@@ -12,6 +12,12 @@ WHAT IT WRITES, KEYED ON CONTENT AND NEVER ON A ROW NUMBER:
                  +0 (73 rows, 1,022 cells); and Allowed Slots narrowed on 20 rows.
     Item Bases   two columns, Implicit 1 At +0 and Implicit 2 At +0, added the same
                  way, holding each implicit's whole +0 value (76 cells on 55 bases).
+    Enchantments and Enchantment Effects
+                 the thirteen enchantments whose numbers become whole (D8 of the
+                 approved proposal, accepted by the coordinating session on
+                 2026-11-25 with row 4 as a new stat, melee_reach_centimetres): each
+                 sentence, every effect row carrying it, the nine row names the new
+                 sentences give, and the values the sentences now state.
 
 THE VALUES ARE FROZEN HERE, NOT COMPUTED. They are what the approved proposal's
 `apply` wrote (`tools/affix_range_proposal.py` on `proposal/affix-ranges` at
@@ -259,6 +265,157 @@ IMPLICITS_AT_ZERO: dict[str, tuple[int | None, int | None]] = {
 }
 
 
+#: D8: (sheet column, sentence before, sentence after, row name before, row name after).
+#: The row name is what `generate_datatables.row_name(kind, sentence[:48])` gives each
+#: sentence; the nine that change are in FCataclysmEnchantmentRenames and the pin file
+#: `tools/tests/enchantment_row_names.txt`, so a saved item keeps its enchantment.
+BRUTE_BEFORE = ("Brute's Heart (10-Piece Bonus): Every 30 seconds, you can unleash a powerful "
+                "\"Ground Pound\" that deals 500% of your armor as damage to all enemies in a large "
+                "radius and stuns them for 3 seconds. The cooldown of this ability is reduced by "
+                "0.5 seconds per kill")
+BRUTE_AFTER = BRUTE_BEFORE.replace("reduced by 0.5 seconds per kill",
+                                   "reduced by 1 second for every 2 kills")
+SENTENCES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("Positives",
+     "Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run",
+     "Your damage is increased by 1%-5% permanently for every 100,000 enemies killed this run",
+     "Positive_Your_damage_is_increased_by_0_01_0_05_permanen",
+     "Positive_Your_damage_is_increased_by_1_5_permanently_fo"),
+    ("Positives",
+     "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run",
+     "Your maximum HP is increased by 1%-5% permanently for every 100,000 enemies killed this run",
+     "Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm",
+     "Positive_Your_maximum_HP_is_increased_by_1_5_permanentl"),
+    ("Positives",
+     "Each class point spent above 100 grants 0.5%-1% increased damage",
+     "Every 2 class points spent above 100 grant 1%-2% increased damage",
+     "Positive_Each_class_point_spent_above_100_grants_0_5_1",
+     "Positive_Every_2_class_points_spent_above_100_grant_1_2"),
+    ("Positives",
+     "Your melee skills have +0.5-1 metre reach",
+     "Your melee skills have +50-100 centimetres reach",
+     "Positive_Your_melee_skills_have_0_5_1_metre_reach",
+     "Positive_Your_melee_skills_have_50_100_centimetres_reach"),
+    ("Negatives",
+     "Your skills deal 1.5%-2.5% less damage for every 10 class points spent above 100",
+     "Your skills deal 3%-5% less damage for every 20 class points spent above 100",
+     "Negative_Your_skills_deal_1_5_2_5_less_damage_for_every",
+     "Negative_Your_skills_deal_3_5_less_damage_for_every_20"),
+    ("Negatives",
+     "Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above 50",
+     "Your maximum HP is reduced by 3%-5% for every 20 class points above 50",
+     "Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever",
+     "Negative_Your_maximum_HP_is_reduced_by_3_5_for_every_20"),
+    ("Positives", BRUTE_BEFORE, BRUTE_AFTER,
+     "Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds",
+     "Positive_Brute_s_Heart_10_Piece_Bonus_Every_30_seconds"),
+    ("Positives",
+     "Enemies you stagger are also briefly rooted for 0.5-1.5 seconds",
+     "Enemies you stagger are also briefly rooted for 1-2 seconds",
+     "Positive_Enemies_you_stagger_are_also_briefly_rooted_for",
+     "Positive_Enemies_you_stagger_are_also_briefly_rooted_for"),
+    ("Positives",
+     "Your heavy attack cooldown is reduced by 0.5-1.5 seconds each time you land a critical strike",
+     "Your heavy attack cooldown is reduced by 1-2 seconds each time you land a critical strike",
+     "Positive_Your_heavy_attack_cooldown_is_reduced_by_0_5_1_5",
+     "Positive_Your_heavy_attack_cooldown_is_reduced_by_1_2_sec"),
+    ("Positives",
+     "Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds",
+     "Each spell cast reduces your next spell cooldown by 1-2 seconds",
+     "Positive_Each_spell_cast_reduces_your_next_spell_cooldown",
+     "Positive_Each_spell_cast_reduces_your_next_spell_cooldown"),
+    ("Negatives",
+     "Point blank AOE skills have a 0.75-1.5 second cast delay before firing",
+     "Point blank AOE skills have a 1-2 second cast delay before firing",
+     "Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca",
+     "Negative_Point_blank_AOE_skills_have_a_1_2_second_cast_de"),
+    ("Negatives",
+     "Critical strikes trigger a 0.5-1 second global cooldown on all your skills",
+     "Critical strikes trigger a 1-2 second global cooldown on all your skills",
+     "Negative_Critical_strikes_trigger_a_0_5_1_second_global_c",
+     "Negative_Critical_strikes_trigger_a_1_2_second_global_coo"),
+    ("Negatives",
+     "After using a charge skill you are briefly stunned for 0.5-1 second",
+     "After using a charge skill you are briefly stunned for 1-2 seconds",
+     "Negative_After_using_a_charge_skill_you_are_briefly_stunn",
+     "Negative_After_using_a_charge_skill_you_are_briefly_stunn"),
+)
+
+#: D8: the effect values each new sentence states. (sentence after, the column and value
+#: that pick the one effect row among those carrying the sentence, or None when only one
+#: row carries it, then {column: (before, after)}). Brute's Heart keeps 0.5 a kill: the
+#: coordinating session ruled on 2026-11-25 to change its sentence only, the same rate.
+EFFECT_VALUES: tuple[tuple[str, tuple[str, str] | None, dict[str, tuple[object, object]]], ...] = (
+    (SENTENCES[0][2], ("Stat", "attack_damage"),
+     {"Value Low": (0.01, 1), "Value High": (0.05, 5), "Scale Step": (1000, 100000)}),
+    (SENTENCES[0][2], ("Stat", "spell_damage"),
+     {"Value Low": (0.01, 1), "Value High": (0.05, 5), "Scale Step": (1000, 100000)}),
+    (SENTENCES[1][2], ("Stat", "max_health"),
+     {"Value Low": (0.01, 1), "Value High": (0.05, 5), "Scale Step": (1000, 100000)}),
+    (SENTENCES[2][2], ("Stat", "attack_damage"),
+     {"Value Low": (0.5, 1), "Value High": (1, 2), "Scale Step": (1, 2)}),
+    (SENTENCES[2][2], ("Stat", "spell_damage"),
+     {"Value Low": (0.5, 1), "Value High": (1, 2), "Scale Step": (1, 2)}),
+    (SENTENCES[3][2], None,
+     {"Stat": ("melee_reach_metres", "melee_reach_centimetres"),
+      "Value Low": (0.5, 50), "Value High": (1, 100)}),
+    (SENTENCES[4][2], ("Stat", "attack_damage"),
+     {"Value Low": (-1.5, -3), "Value High": (-2.5, -5), "Scale Step": (10, 20)}),
+    (SENTENCES[4][2], ("Stat", "spell_damage"),
+     {"Value Low": (-1.5, -3), "Value High": (-2.5, -5), "Scale Step": (10, 20)}),
+    (SENTENCES[5][2], None,
+     {"Value Low": (-1.5, -3), "Value High": (-2.5, -5), "Scale Step": (10, 20)}),
+    (SENTENCES[7][2], None, {"Value Low": (0.5, 1), "Value High": (1.5, 2)}),
+    (SENTENCES[8][2], None, {"Value Low": (0.5, 1), "Value High": (1.5, 2)}),
+    (SENTENCES[9][2], None, {"Value Low": (0.5, 1), "Value High": (1.5, 2)}),
+    (SENTENCES[10][2], None, {"Value Low": (0.75, 1), "Value High": (1.5, 2)}),
+    (SENTENCES[11][2], None, {"Stack Seconds": (0.5, 1), "Stack Seconds High": (1, 2)}),
+    (SENTENCES[12][2], None, {"Value Low": (0.5, 1), "Value High": (1, 2)}),
+)
+
+
+def enchantment_cells(book) -> list[tuple[str, int, int, object, object, str]]:
+    """Every cell the D8 edit owns, as `planned_cells` lists them."""
+    cells = []
+    sheet = book["Enchantments"]
+    header = {str(c.value).strip(): c.column for c in sheet[1] if c.value is not None}
+    effects = book["Enchantment Effects"]
+    effect_header = {str(c.value).strip(): c.column for c in effects[1] if c.value is not None}
+    for column, before, after, name_before, name_after in SENTENCES:
+        found = [r for r in range(2, sheet.max_row + 1)
+                 if sheet.cell(row=r, column=header[column]).value in (before, after)]
+        if len(found) != 1:
+            sys.exit(f"Enchantments: expected one {column} row reading {before[:50]!r} or its "
+                     f"new words, found {len(found)}; refusing")
+        cells.append(("Enchantments", found[0], header[column], before, after,
+                      f"{column}: {after[:50]}"))
+        carrying = [r for r in range(2, effects.max_row + 1)
+                    if effects.cell(row=r, column=effect_header["Effect"]).value in (before, after)]
+        if not carrying:
+            sys.exit(f"Enchantment Effects: no row carries {before[:50]!r}; refusing")
+        for r in carrying:
+            cells.append(("Enchantment Effects", r, effect_header["Effect"], before, after,
+                          f"Effect: {after[:50]}"))
+            if name_before != name_after:
+                cells.append(("Enchantment Effects", r, effect_header["Enchantment"],
+                              name_before, name_after, f"Enchantment: {name_after}"))
+    for sentence, pick, values in EFFECT_VALUES:
+        before_sentence = next(s[1] for s in SENTENCES if s[2] == sentence)
+        rows = [r for r in range(2, effects.max_row + 1)
+                if effects.cell(row=r, column=effect_header["Effect"]).value
+                in (before_sentence, sentence)]
+        if pick is not None:
+            rows = [r for r in rows
+                    if effects.cell(row=r, column=effect_header[pick[0]]).value == pick[1]]
+        if len(rows) != 1:
+            sys.exit(f"Enchantment Effects: expected one row for {sentence[:50]!r} {pick}, "
+                     f"found {len(rows)}; refusing")
+        for column, (before, after) in values.items():
+            cells.append(("Enchantment Effects", rows[0], effect_header[column], before, after,
+                          f"{column}: {sentence[:40]}"))
+    return cells
+
+
 def snapshot(book) -> dict:
     return {(ws.title, cell.coordinate): cell.value
             for ws in book.worksheets for row in ws.iter_rows() for cell in row
@@ -324,7 +481,7 @@ def planned_cells(book) -> list[tuple[str, int, int, object, object, str]]:
             if value is not None:
                 cells.append(("Item Bases", by_base[name], header[title], None, value,
                               f"{name}, {title}"))
-    return cells
+    return cells + enchantment_cells(book)
 
 
 def main() -> int:

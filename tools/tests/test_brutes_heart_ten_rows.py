@@ -5,11 +5,12 @@ once ready and an enemy is inside its radius) and 2026-10-18 by the
 coordinating session (Q1-Q5). The 10-piece bonus, "Every 30 seconds, you can
 unleash a powerful "Ground Pound" that deals 500% of your armor as damage to all
 enemies in a large radius and stuns them for 3 seconds. The cooldown of this
-ability is reduced by 0.5 seconds per kill", is FIVE rows, each `flat` with no
+ability is reduced by 1 second for every 2 kills", is FIVE rows, each `flat` with no
 Required Tags, no Condition, no Scale and no Action: `ground_pound_every_seconds`
 at 30, `ground_pound_percent_of_armor` at 500, `ground_pound_radius_metres` at 8
 (Q1), `ground_pound_stun_seconds` at 3 and `ground_pound_seconds_off_per_kill` at
-0.5. The rest is the engine's (`UCataclysmGroundPound`). The enchantment session
+0.5. (The sentence said "0.5 seconds per kill" until issue #2883, D8: the same
+rate in whole numbers, and the row keeps 0.5 a kill, ruled 2026-11-25.) The rest is the engine's (`UCataclysmGroundPound`). The enchantment session
 authors the rows; THIS FILE AUTHORS NOTHING. It builds a made-up workbook
 holding the sentence typed Generic so the set rule (a set written whole or not at
 all) does not ask for the rest of the set, as `test_tyrants_chains_six_rows.py`
@@ -36,7 +37,7 @@ TEN_PIECE_WORDS = (
     "Brute's Heart (10-Piece Bonus): Every 30 seconds, you can unleash a "
     'powerful "Ground Pound" that deals 500% of your armor as damage to all '
     "enemies in a large radius and stuns them for 3 seconds. The cooldown of "
-    "this ability is reduced by 0.5 seconds per kill")
+    "this ability is reduced by 1 second for every 2 kills")
 TEN_PIECE = gen.row_name("Positive", TEN_PIECE_WORDS[:48])
 EVERY = "ground_pound_every_seconds"
 PERCENT = "ground_pound_percent_of_armor"

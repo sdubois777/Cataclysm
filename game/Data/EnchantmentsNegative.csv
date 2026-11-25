@@ -41,7 +41,7 @@ Negative_Melee_attacks_that_hit_you_reduce_your_armor_by,"Melee attacks that hit
 Negative_Taking_damage_while_channeling_interrupts_the_ch,Taking damage while channeling interrupts the channel immediately,Generic,3.0,Type.Channel,True,,0
 Negative_You_cannot_move_while_channeling_any_skill,You cannot move while channeling any skill,Generic,4.0,"Type.Channel, Stat.Utility.Movespeed",True,,0
 Negative_You_take_10_20_of_the_damage_dealt_by_your_own,You take 10%-20% of the damage dealt by your own point blank AOE skills,Generic,3.0,Type.AOE.PointBlank,True,,0
-Negative_Point_blank_AOE_skills_have_a_0_75_1_5_second_ca,Point blank AOE skills have a 0.75-1.5 second cast delay before firing,Generic,3.0,Type.AOE.PointBlank,True,,0
+Negative_Point_blank_AOE_skills_have_a_1_2_second_cast_de,Point blank AOE skills have a 1-2 second cast delay before firing,Generic,3.0,Type.AOE.PointBlank,True,,0
 Negative_Point_blank_AOE_skills_deal_15_25_less_damage,Point blank AOE skills deal 15%-25% less damage to a single target,Generic,4.0,Type.AOE.PointBlank,True,,0
 Negative_Persistent_AOE_zones_also_damage_you_if_you_stan,Persistent AOE zones also damage you if you stand in them,Generic,4.0,Type.AOE.Persistent,True,,0
 Negative_Persistent_AOE_zones_deal_20_35_less_damage_on,Persistent AOE zones deal 20%-35% less damage on initial placement,Generic,4.0,Type.AOE.Persistent,True,,0
@@ -60,7 +60,7 @@ Negative_Your_ultimate_ability_deals_30_50_less_damage,Your ultimate ability dea
 Negative_Your_ultimate_ability_cannot_be_used_unless_you,Your ultimate ability cannot be used unless you are below 50% HP,Generic,3.0,"Slot.Ultimate, Trigger.LowLife",True,,0
 Negative_Projectiles_have_a_20_35_chance_to_explode_pre,Projectiles have a 20%-35% chance to explode prematurely dealing no damage,Generic,3.0,Type.Projectile,True,,0
 Negative_Projectiles_deal_20_35_less_damage_on_each_sub,Projectiles deal 20%-35% less damage on each subsequent hit after the first,Generic,4.0,Type.Projectile,True,,0
-Negative_Critical_strikes_trigger_a_0_5_1_second_global_c,Critical strikes trigger a 0.5-1 second global cooldown on all your skills,Generic,2.0,Stat.Offense.Crit,True,,0
+Negative_Critical_strikes_trigger_a_1_2_second_global_coo,Critical strikes trigger a 1-2 second global cooldown on all your skills,Generic,2.0,Stat.Offense.Crit,True,,0
 Negative_Non_critical_strikes_deal_20_35_less_damage,Non-critical strikes deal 20%-35% less damage,Generic,3.0,Stat.Offense.Crit,True,,0
 Negative_Your_critical_strike_chance_cannot_exceed_30_50,Your critical strike chance cannot exceed 30%-50%,Generic,3.0,Stat.Offense.Crit,True,1,0
 Negative_Your_attack_speed_is_reduced_by_20_35,Your attack speed is reduced by 20%-35%,Generic,3.0,Stat.Offense.Speed,True,,0
@@ -84,7 +84,7 @@ Negative_You_take_20_35_increased_damage_from_spells,You take 20%-35% increased 
 Negative_Spell_damage_ignores_20_40_of_your_armor,Spell damage ignores 20%-40% of your armor,Generic,4.0,"Stat.Defense.Spell, Stat.Defense.Armor",True,,0
 Negative_On_death_all_nearby_enemies_are_healed_for_10_2,On death all nearby enemies are healed for 10%-20% of their maximum HP,Generic,4.0,Trigger.OnDeath,True,,0
 Negative_Each_skill_use_costs_an_additional_2_4_of_your,Each skill use costs an additional 2%-4% of your current HP,Generic,3.0,"Trigger.OnSkillUse, Stat.Resource.HP",True,,0
-Negative_After_using_a_charge_skill_you_are_briefly_stunn,After using a charge skill you are briefly stunned for 0.5-1 second,Generic,4.0,"Keyword.Charge, Keyword.CC",True,,0
+Negative_After_using_a_charge_skill_you_are_briefly_stunn,After using a charge skill you are briefly stunned for 1-2 seconds,Generic,4.0,"Keyword.Charge, Keyword.CC",True,,0
 Negative_Your_energy_shield_takes_30_50_increased_damag,Your energy shield takes 30%-50% increased damage,Generic,4.0,"Keyword.Shield, Stat.Defense.EnergyShield",True,,0
 Negative_Your_energy_shield_cannot_recharge_above_50_of,Your energy shield cannot recharge above 50% of its maximum,Generic,3.0,"Keyword.Shield, Stat.Defense.EnergyShield",True,,0
 Negative_Your_retaliation_damage_also_damages_you_at_20,Your retaliation damage also damages you at 20%-40% effectiveness,Generic,4.0,Stat.Defense.Retaliation,True,,0
@@ -92,7 +92,7 @@ Negative_You_deal_no_retaliation_damage,You deal no retaliation damage,Generic,3
 Negative_Spells_have_a_15_25_chance_to_backfire_dealing,Spells have a 15%-25% chance to backfire dealing half damage to you,Generic,3.0,Type.Spell,True,,0
 Negative_You_start_every_dungeon_floor_at_30_50_of_your,You start every dungeon floor at 30%-50% of your maximum HP,Generic,3.0,"Trigger.LowLife, Stat.Defense.Life",True,1,0
 Negative_Every_10_seconds_you_lose_5_10_of_your_current,Every 10 seconds you lose 5%-10% of your current HP,Generic,3.0,"Trigger.Timer, Stat.Defense.Life",True,,0
-Negative_Your_skills_deal_1_5_2_5_less_damage_for_every,Your skills deal 1.5%-2.5% less damage for every 10 class points spent above 100,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",True,,0
+Negative_Your_skills_deal_3_5_less_damage_for_every_20,Your skills deal 3%-5% less damage for every 20 class points spent above 100,Generic,2.0,"Trigger.Progression, Stat.Offense.Global",True,,0
 Negative_You_deal_20_35_less_damage_to_non_Boss_enemies,You deal 20%-35% less damage to non-Boss enemies,Generic,3.0,Stat.Offense.Global,True,,0
 Negative_You_take_15_25_increased_damage_from_Boss_enem,You take 15%-25% increased damage from Boss enemies,Generic,4.0,Stat.Defense.Global,True,,0
 Negative_Bleed_effects_applied_to_you_deal_30_50_increa,Bleed effects applied to you deal 30%-50% increased damage,Generic,4.0,Keyword.DoT.Bleed,True,,0
@@ -100,7 +100,7 @@ Negative_Bleeding_on_you_lasts_50_100_longer,Bleeding on you lasts 50%-100% long
 Negative_Melee_damage_you_deal_is_reduced_by_15_30,Melee damage you deal is reduced by 15%-30%,Generic,3.0,"Stat.Defense.Melee, Type.Melee",True,,0
 Negative_Enemies_ignore_10_20_of_your_armor,Enemies ignore 10%-20% of your armor,Generic,4.0,"Stat.Offense.Penetration, Stat.Defense.Armor",True,,0
 Negative_Enemies_ignore_10_20_of_your_resistances,Enemies ignore 10%-20% of your resistances,Generic,4.0,"Stat.Offense.Penetration, Stat.Defense.Resist",True,,0
-Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever,Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above 50,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Defense.Life",True,,0
+Negative_Your_maximum_HP_is_reduced_by_3_5_for_every_20,Your maximum HP is reduced by 3%-5% for every 20 class points above 50,Generic,2.0,"Stat.Progression.ClassPoints, Stat.Defense.Life",True,,0
 Negative_Projectiles_deal_10_30_less_damage,Projectiles deal 10-30% less damage,Generic,4.0,Type.Projectile,True,,0
 Negative_Cannot_block,Cannot block,Generic,3.0,Stat.Defense.Block,True,,0
 Negative_Take_10_20_more_damage_from_Boss_enemies,Take 10%-20% more damage from Boss enemies,Generic,4.0,,True,,0
