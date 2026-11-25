@@ -3919,6 +3919,25 @@ public:
 	float SecondsSinceEvaded() const;
 
 	/**
+	 * Seconds since a blow that LANDED on this character, a tick of damage over time included, or -1 if none has: what
+	 * `NoteHitTaken` stamps when its blow landed, so an evaded blow is not one. "Taking damage", as Thin Air's sentence
+	 * says it (the Saboteur's Thin Air, 2026-11-25).
+	 */
+	float SecondsSinceLandedHitTaken() const;
+
+	/**
+	 * THIN AIR (`Saboteur_basic_trunk_013`, ruled by the coordinating session on 2026-11-25, the C5 plan): "You cannot
+	 * be targeted while moving. Taking damage breaks this effect for 2 seconds." Whether this character holds
+	 * `CannotBeTargetedWhileMovingStat`, is moving (`IsMoving`), and has had no landed blow within
+	 * `ThinAirBrokenSecondsStat`. Read for a player candidate by `UCataclysmTargetCandidates::NearestHostile`, which then
+	 * passes it over, and by the effects line, which shows "Thin Air" while it holds.
+	 */
+	bool IsHiddenByThinAir() const;
+
+	static const TCHAR* CannotBeTargetedWhileMovingStat;
+	static const TCHAR* ThinAirBrokenSecondsStat;
+
+	/**
 	 * Record that this character has just been hit, whatever became of the
 	 * blow. Issue #1815.
 	 *
@@ -5957,6 +5976,9 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastHitTakenAtSeconds = -1.0f;
+
+	/** When a blow that landed last reached this character, or -1. See `SecondsSinceLandedHitTaken`. */
+	float LastLandedHitTakenAtSeconds = -1.0f;
 
 	/**
 	 * When this character's class resource last became full, in world

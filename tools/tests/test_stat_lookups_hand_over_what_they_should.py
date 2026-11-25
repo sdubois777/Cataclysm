@@ -1126,6 +1126,14 @@ INVENTORY = {
         "row requiring one ailment's tag reaches that ailment alone; no blow "
         "exists yet and the stat is no modifier of one, so no blow and no "
         "target are handed over",
+    # THIN AIR, 2026-11-25 (the C5 plan): its flag and the seconds a landed blow breaks it for, asked with no tags as a
+    # creature's search weighs a player or the effects line is drawn; no blow is in hand.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CannotBeTargetedWhileMovingStat), FGameplayTagContainer(), 0.0f'):
+        "Thin Air's flag, asked while a creature's search weighs a moving player",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(ThinAirBrokenSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Thin Air's seconds after a landed blow, asked beside its flag",
     # THE SABOTEUR'S TRAP TIMING, 2026-11-25 (the C1 plan): Hair Trigger's flag, Delayed Fuse's extra second and
     # Volatile Casing's seconds less for each other trap.
     ('game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp',

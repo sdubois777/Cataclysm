@@ -14,6 +14,10 @@ thing the game has, as proposed in the C1/C5 plan and accepted as proposed:
                   -> "... reduces the arming delay of all your other traps ..."
     Minefield        "+10% trap placement speed per point."  -> "+10% trap arming speed per point."
     Field Engineer   "+12% gadget deployment speed per point." -> "+12% gadget attack speed per point."
+    Calculated       "At 6 points: Your Fervour cannot be reduced by enemy effects."
+                  -> "At 6 points: Your maximum Fervour is increased by 10%."  (the C5 plan: no enemy effect lowers
+                     a player's Fervour on development or on the Death line's enemy modifiers, so the clause did
+                     nothing)
 
 EACH NODE IS FOUND BY NAME IN THE SABOTEUR TREE, and a sentence reading neither the one the ruling was made against nor
 the new one is refused (`tools/apply_passive_order_fixes_2026_11_24.py`'s `Reword`, imported). A file already reworded
@@ -56,6 +60,10 @@ REWORDS: tuple[order.Reword, ...] = (
         "are currently performing.",
         "+12% gadget attack speed per point. At 4 points: Deploying a gadget does not interrupt any action you are "
         "currently performing."),
+    order.Reword(
+        "Calculated",
+        "+5 maximum Fervour per point. At 6 points: Your Fervour cannot be reduced by enemy effects.",
+        "+5 maximum Fervour per point. At 6 points: Your maximum Fervour is increased by 10%."),
 )
 
 

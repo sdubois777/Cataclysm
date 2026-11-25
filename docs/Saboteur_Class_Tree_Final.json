@@ -89,7 +89,7 @@
       "data": {
         "kind": "basic",
         "name": "Calculated",
-        "description": "+5 maximum Fervour per point. At 6 points: Your Fervour cannot be reduced by enemy effects.",
+        "description": "+5 maximum Fervour per point. At 6 points: Your maximum Fervour is increased by 10%.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

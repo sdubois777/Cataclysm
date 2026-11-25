@@ -698,7 +698,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 540 THE SAME DAY: eight rows of the Saboteur's trap timing
 #: (`tools/reapply_war_saboteur_trap_timing_workbook.py`, the C1 plan).
-AUTHORED_ROWS = 540
+#:
+#: AND TO 543 THE SAME DAY: Thin Air's two rows and Calculated's 6-point row
+#: (`tools/reapply_war_saboteur_thin_air_workbook.py`, the C5 plan).
+AUTHORED_ROWS = 543
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1134,7 +1137,8 @@ AUTHORED_ROWS = 540
 #: AND TO 305 THE SAME DAY: Durable Modifications.
 #: AND TO 308 THE SAME DAY: Skull Splitter, Deathmark and Blood Price.
 #: AND TO 311 THE SAME DAY: Volatile Casing, Field Engineer and Delayed Fuse.
-AUTHORED_NODES = 311
+#: AND TO 312 THE SAME DAY: Thin Air.
+AUTHORED_NODES = 312
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2693,6 +2697,8 @@ VALUE_FORMS = {
     # VOLATILE CASING, the Saboteur's trap timing, 2026-11-25: "reduces the arming delay of all your other
     # traps by 0.1 seconds per point".
     "trap_arming_seconds_less_per_other_trap": "by {value:g} seconds per point",
+    # THIN AIR, 2026-11-25: "Taking damage breaks this effect for 2 seconds".
+    "cannot_be_targeted_broken_seconds": "breaks this effect for {value:g} seconds",
     "crit_armor_fervour_cost": "drain an additional {value:g} Fervour",
     "crit_armor_stack_cap": ("up to {value:g} times", "instead of {value:g}"),
     "crit_armor_seconds": "{value:g}-second armor reduction",
@@ -2771,6 +2777,8 @@ VALUE_IN_WORDS = {
     ("Saboteur_basic_trunk_001", "traps_arm_instantly"): ("traps arm instantly", 1.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
+    # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.
+    ("Saboteur_basic_trunk_013", "cannot_be_targeted_while_moving"): ("cannot be targeted while moving", 1.0),
     ("Bulwark_basic_jg_resolve_001", "fervour_lost_to_regeneration", "", "flat", "6"): ("reduced to 1 per 150", -4.0),
     ("Bulwark_basic_jg_resolve_001", "regeneration_per_fervour_loss", "", "flat", "6"): ("reduced to 1 per 150", 50.0),
     # IRON CONSTITUTION, slice D, 2026-11-24: "At 5 points: Gain HP equal to 10%

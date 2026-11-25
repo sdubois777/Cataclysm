@@ -539,3 +539,6 @@ Saboteur_basic_gadget_stem_001#1,Saboteur_basic_gadget_stem_001,minion_attack_sp
 Saboteur_basic_trap_ql_003#1,Saboteur_basic_trap_ql_003,minion_damage,increased,15.0,Type.Trap,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_basic_trap_ql_003#2,Saboteur_basic_trap_ql_003,trap_arming_seconds_added,flat,1.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_basic_trap_ql_003#3,Saboteur_basic_trap_ql_003,traps_not_set_off_while_arming,flat,1.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trunk_013#1,Saboteur_basic_trunk_013,cannot_be_targeted_while_moving,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trunk_013#2,Saboteur_basic_trunk_013,cannot_be_targeted_broken_seconds,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Saboteur_basic_trunk_003#2,Saboteur_basic_trunk_003,class_resource,increased,10.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0

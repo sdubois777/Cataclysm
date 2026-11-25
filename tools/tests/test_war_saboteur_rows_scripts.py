@@ -21,8 +21,9 @@ import reapply_war_saboteur_rows_workbook as rows  # noqa: E402
 
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 #: 26 until the C1 plan's slice of 2026-11-25 took over Hair Trigger's, Hair Wire's and Minefield's rows
-#: (`tools/reapply_war_saboteur_trap_timing_workbook.py`).
-ROW_COUNT = 23
+#: (`tools/reapply_war_saboteur_trap_timing_workbook.py`), and 23 until the C5 plan's took over Calculated's
+#: (`tools/reapply_war_saboteur_thin_air_workbook.py`).
+ROW_COUNT = 22
 
 
 def _rows_of(node: str) -> tuple:
@@ -30,9 +31,9 @@ def _rows_of(node: str) -> tuple:
     return found
 
 
-def test_the_script_writes_its_rows_on_thirteen_nodes():
+def test_the_script_writes_its_rows_on_twelve_nodes():
     assert sum(len(wanted) for _, _, wanted in rows.NODES) == ROW_COUNT
-    assert len({node for node, _, _ in rows.NODES}) == 13
+    assert len({node for node, _, _ in rows.NODES}) == 12
 
 
 def test_durable_modifications_is_exactly_doubled_by_rows_that_never_hold_together():
@@ -122,7 +123,7 @@ def test_the_row_script_refuses_a_node_somebody_wrote_since(tmp_path):
     book = openpyxl.load_workbook(copy)
     sheet = book[rows.base.SHEET]
     header = [cell.value for cell in sheet[1]]
-    sheet.append([{"Node": "Saboteur_basic_trunk_003", "Stat": "class_resource", "Value Kind": "flat",
+    sheet.append([{"Node": "Saboteur_basic_trap_stem_005", "Stat": "class_resource", "Value Kind": "flat",
                    "Value Per Point": 4}.get(name) for name in header])
     book.save(copy)
     with pytest.raises(rows.base.ReapplyError, match="the Saboteur's rows writes"):

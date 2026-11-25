@@ -3,7 +3,7 @@
     python tools/reapply_war_saboteur_rows_workbook.py
     python tools/reapply_war_saboteur_rows_workbook.py --check
 
-THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Thirteen nodes, each on a
+THE SURVEY'S GROUPS A AND B (2026-11-25), on the coordinating session's rulings of that day. Twelve nodes, each on a
 stat, scale, condition or action the game already reads; where a node has a clause that needs a mechanism, only the
 rest is written here and the clause waits for its own slice (named below).
 
@@ -20,7 +20,8 @@ rest is written here and the clause waits for its own slice (named below).
   - Tinkerer: 3% attack and spell damage a point on `Type.Gadget`; from 7 points `minion_duration` 20% a point on
     `Type.Gadget`, counted from the seventh ("per point invested beyond 6"). A skill gadget has no lifetime, so the
     duration reaches War gadgets only.
-  - Calculated: `class_resource` 5 a point. (Its 6-point clause waits for the C1/C5 plan's search.)
+  - (Calculated was written here until the C5 plan's slice of the same day took it over with its 6-point clause:
+    `tools/reapply_war_saboteur_thin_air_workbook.py` holds both its rows.)
   - Slippery: `evasion` 1 a point. (Its 5-point clause, 3 Fervour on an evade, waits for C2.)
   - Ghost Step: `movement_speed` 1% a point; from 5 points 2% a point more, counted from the first, while above 50% of
     the maximum Fervour.
@@ -64,7 +65,6 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("attack_damage", "increased", 3, tags=GADGET),
         R("spell_damage", "increased", 3, tags=GADGET),
         R("minion_duration", "increased", 20, tags=GADGET, min_points=7, per_point_from=7))),
-    ("Saboteur_basic_trunk_003", "Calculated", (R("class_resource", "flat", 5),)),
     ("Saboteur_basic_trunk_004", "Slippery", (R("evasion", "flat", 1),)),
     ("Saboteur_basic_trunk_011", "Ghost Step", (
         R("movement_speed", "increased", 1),

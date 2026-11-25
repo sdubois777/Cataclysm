@@ -1020,6 +1020,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("trap_arming_seconds_added"),
 		TEXT("trap_arming_seconds_less_per_other_trap"),
 		TEXT("traps_not_set_off_while_arming"),
+		// THIN AIR, ruled by the coordinating session on 2026-11-25 (the C5 plan): the flag and the seconds a landed
+		// blow breaks it for, read off the player with no tags by
+		// UCataclysmAbilitySystemComponent::IsHiddenByThinAir. No gameplay attribute and no base.
+		TEXT("cannot_be_targeted_while_moving"),
+		TEXT("cannot_be_targeted_broken_seconds"),
 		// Issue #2787, the owner's rulings of 2026-11-20: what raised a count cap
 		// lowers the reserve instead. The percent LESS one minion, gadget or trap
 		// reserves, a negative row being that many percent more, read with the

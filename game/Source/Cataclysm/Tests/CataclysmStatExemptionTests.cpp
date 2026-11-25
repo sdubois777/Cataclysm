@@ -12283,6 +12283,45 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and with it the arming trap is passed over, so SetOffSkillTrapsNear reads it"), Spared, 0);
 	}
 
+	/**
+	 * THIN AIR, ruled 2026-11-25 (the C5 plan): two figures read by `UCataclysmAbilitySystemComponent::IsHiddenByThinAir`,
+	 * on one moving fighter, each against a control without it.
+	 * - `cannot_be_targeted_while_moving`: not hidden without it, hidden with it.
+	 * - `cannot_be_targeted_broken_seconds`: just after a landed blow, still hidden with no seconds held, and not with 2.
+	 *
+	 * WHAT THIS DOES NOT REACH. A creature's search passing the player over: `Cataclysm.ThinAir.`.
+	 */
+	void ProbeThinAir(FAutomationTestBase& Test, bool bSeconds)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
+		const FName Flag(UCataclysmAbilitySystemComponent::CannotBeTargetedWhileMovingStat);
+		System->NoteMovedMetres(1.0f);
+		if (!bSeconds)
+		{
+			const bool bPlain = System->IsHiddenByThinAir();
+			GrantFlats(Fighter.Actor, {{Flag, 1.0f}});
+			Test.TestFalse(TEXT("cannot_be_targeted_while_moving: control, a moving fighter is not hidden without it"),
+						   bPlain);
+			Test.TestTrue(TEXT("and is hidden with it, so IsHiddenByThinAir really reads it"), System->IsHiddenByThinAir());
+			return;
+		}
+		GrantFlats(Fighter.Actor, {{Flag, 1.0f}});
+		System->NoteHitTaken(/*bLanded=*/true);
+		const bool bWithout = System->IsHiddenByThinAir();
+		GrantFlats(Fighter.Actor, {{Flag, 1.0f}, {FName(UCataclysmAbilitySystemComponent::ThinAirBrokenSecondsStat), 2.0f}});
+		Test.TestTrue(TEXT("cannot_be_targeted_broken_seconds: control, with none held a landed blow does not break it"),
+					  bWithout);
+		Test.TestFalse(TEXT("and with 2 held the blow just landed breaks it, so IsHiddenByThinAir really reads it"),
+					   System->IsHiddenByThinAir());
+	}
+
 	/** `health_percent_per_ten_fervour_spent`, read by `FCataclysmWarFervour::NoteFervourSpentOrDrained`: nothing for 20 spent
 	 *  without it; with 5 of it, two steps of 5% of 10,000. */
 	void ProbeHealthPerTenFervourSpent(FAutomationTestBase& Test)
@@ -12611,6 +12650,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_arming_seconds_added"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 1); }},
 			{TEXT("trap_arming_seconds_less_per_other_trap"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 2); }},
 			{TEXT("traps_not_set_off_while_arming"), [](FAutomationTestBase& Test) { ProbeTrapTiming(Test, 3); }},
+			// THIN AIR, 2026-11-25 (the C5 plan).
+			{TEXT("cannot_be_targeted_while_moving"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, false); }},
+			{TEXT("cannot_be_targeted_broken_seconds"), [](FAutomationTestBase& Test) { ProbeThinAir(Test, true); }},
 		};
 		return Made;
 	}

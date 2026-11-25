@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Thin Air hides a moving player from a creature's search until a blow lands, and Calculated at 6 points reworded to 10% more maximum Fervour because no enemy effect lowers Fervour
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`:
+  - `IsHiddenByThinAir`, and the stats `cannot_be_targeted_while_moving` and `cannot_be_targeted_broken_seconds`;
+  - `SecondsSinceLandedHitTaken`, stamped by `NoteHitTaken` for a blow that landed and cleared by `ClearWhatDeathEnds`.
+- `game/Source/Cataclysm/Character/CataclysmTargetCandidates.cpp`: `NearestHostile` passes over a player Thin Air hides.
+- `game/Source/Cataclysm/Interface/CataclysmPlayerEffects.cpp`: "Thin Air" on the effects line while it hides the player.
+- `CataclysmPlayerClassStats.cpp`: the two stats have no attribute.
+- `docs/Saboteur_Class_Tree_Final.json` (Calculated's sentence; `tools/apply_saboteur_rewordings_2026_11_25.py` gains
+  it), `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (543 rows): every row of Thin Air and Calculated
+  (`tools/reapply_war_saboteur_thin_air_workbook.py`, new).
+  - Calculated is taken over from `tools/reapply_war_saboteur_rows_workbook.py` through `extending` (now twelve nodes,
+    22 rows).
+  - `docs/README.md` (the sheet table).
+  - **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- Tests:
+  - Unreal: `CataclysmThinAirTests.cpp` (new, two), `CataclysmStatExemptionTests.cpp` (two probes),
+    `CataclysmDataTableTests.cpp` (the pin, 543).
+  - Python: `tools/tests/test_war_saboteur_thin_air_scripts.py` (new, ten), `test_war_saboteur_rows_scripts.py`,
+    `test_passive_effects_match_the_node_text.py` (the words, 543 rows, 312 nodes),
+    `test_stat_lookups_hand_over_what_they_should.py` (two lookups).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.ThinAir.`: two tests, new.
+  - `Cataclysm.StatExemption.`: the two probes; its count does not change.
+  - `Cataclysm.Data.`: the pin, 543.
+  - **The groups that choose a target**, because every creature's search now asks one more question of a player
+    candidate (counts unchanged): `Cataclysm.AI.`, `Cataclysm.Brute.`, `Cataclysm.Command.`, `Cataclysm.Gatekeeper.`,
+    `Cataclysm.TargetChoice.`, `Cataclysm.GadgetTargets.`, `Cataclysm.BallistaTargets.` and `Cataclysm.EnemiesInReach.`.
+- **WHAT THIN AIR DOES NOT DO, as ruled ("players only on the NearestHostile path"):**
+  - An area blow still strikes the player.
+  - The search an enemy runs with no target lists (`ACataclysmEnemyController`'s fallback) does not read it.
+  - A taunt, which `ChooseTarget` asks before the search, still holds a creature to the player.
+- **PERFORMANCE:** the question is asked of a player candidate only, and last, after the distance, capsule and
+  hostility tests, because this is the search every creature runs on its think (#1547). Not measured.
+
+### WHAT WAS RULED
+
+The coordinating session, 2026-11-25, under the owner's delegation, on the C1/C5 plan of that day: "C1/C5 plan accepted
+as written." With it:
+- "Thin Air: build as written, players only on the NearestHostile path, with its "Thin Air" display."
+- The rewordings, Calculated at 6 among them, "accepted as proposed, each recorded in the entry as the coordinating
+  session's ruling of 2026-11-25 with the old sentence beside the new ... Calculated at 6 ("Your maximum Fervour is
+  increased by 10%"), since no enemy effect lowers Fervour on any line."
+
+The search behind that ruling (question 3 of the Saboteur survey), run the same day: no enemy effect lowers a player's
+Fervour on this branch, on origin/development (`0d9259653`), or on `44b3ab7e2` (the Death line's enemy modifiers). The
+nearest is the Eternal Chorus floor modifier, a Less on `fervour_per_second`, a regeneration rate no War node grants.
+
+**The rewording, the coordinating session's ruling of 2026-11-25:**
+
+| Node | Old sentence | New sentence |
+|---|---|---|
+| Calculated | "+5 maximum Fervour per point. At 6 points: Your Fervour cannot be reduced by enemy effects." | "+5 maximum Fervour per point. At 6 points: Your maximum Fervour is increased by 10%." |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+1. **Thin Air (`Saboteur_basic_trunk_013`, 1 point):** `cannot_be_targeted_while_moving`, a flag, and
+   `cannot_be_targeted_broken_seconds` 2.
+   - A player holding the flag, moving (the movement sampler's `IsMoving`), and with no landed blow within the
+     seconds, is passed over by `NearestHostile` as if it were not there. The creature takes the next nearest
+     hostile, or none.
+   - "Thin Air" shows on the effects line while it holds.
+   - **Judgement: "Taking damage" is a blow that landed** (`NoteHitTaken` with `bLanded`), a damage-over-time tick
+     included and an evaded blow not. The hit-taken clock beside it opens for evaded blows too, so a second clock was
+     added.
+   - **Judgement: "players" are `ACataclysmPlayerCharacter`.** A cast, so a player with no controller (as in a test) is
+     one.
+2. **Calculated (`Saboteur_basic_trunk_003`):** `class_resource` 5 a point, as before; from 6 points `class_resource`
+   increased 10.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the file passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `game/Data/PassiveEffects.csv`: Calculated's 10% from 5 points, not 6 | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points` |
+| `game/Data/PassiveEffects.csv`: Thin Air broken for 3 seconds, not 2 | the same | `test_every_value_appears_in_the_nodes_own_description` |
+| `docs/Saboteur_Class_Tree_Final.json`: Calculated's sentence back to "cannot be reduced by enemy effects" | `pytest tools/tests/test_war_saboteur_thin_air_scripts.py` | `test_calculated_is_reworded_to_what_its_row_gives` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.ThinAir.AMovingPlayerIsPassedOverByACreaturesSearchUntilABlowLands` | a creature 3 m from a player: without the flag a moving player is found (control); with it, a player standing still is found (control); with it and moving, nothing is found and "Thin Air" is shown; an evaded blow leaves it whole; 1.5 s after a landed blow the player is found and nothing is shown; 2.5 s after, hidden again |
+| `Cataclysm.ThinAir.TheGeneratedRowsGiveThinAirAndCalculatedTheirFigures` | the generated rows: Thin Air's flag and 2 seconds; Calculated 25 and no increase at 5 points (control), 30 and 10% at 6 |
+
+Predicted counts:
+- `Cataclysm.ThinAir.`: 2.
+- `Cataclysm.Data.`: the pin, 543; its count unchanged.
+- `Cataclysm.StatExemption.` and the target-choosing groups listed above: unchanged.
+
+**Planned C++ guard proofs** (one per mechanism; not run; prefix `Cataclysm.ThinAir.`):
+1. **The search:** in `CataclysmTargetCandidates.cpp`, `|| PlayerCandidateHiddenByThinAir(Candidate)` is taken out.
+   Must fail `AMovingPlayerIsPassedOverByACreaturesSearchUntilABlowLands` ("with the flag and moving, the search finds
+   nothing").
+2. **The landed-blow clock:** in `NoteHitTaken`, the `if (bLanded)` around `LastLandedHitTakenAtSeconds` is taken out,
+   so an evaded blow stamps it too. Must fail the same test ("an evaded blow does not break it").
+3. **The break:** in `IsHiddenByThinAir`, `return Since < 0.0f || Since >= Broken;` becomes `return true;`. Must fail
+   the same test ("1.5 s after a landed blow the player is found").
+
+---
+
 ## 2026-11-25 — The Saboteur's trap timing: a trap arms at its exact time, Hair Trigger arms at once, Delayed Fuse adds a second and spares a trap still arming, Volatile Casing shortens arming for each other trap, and four sentences reworded to what the game has
 
 **Affects:**

@@ -3148,6 +3148,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	DeathmarkedPercent = 0.0f;
 	DeathmarkedUntilSeconds = -1.0f;
 	LastHitTakenAtSeconds = -1.0f;
+	LastLandedHitTakenAtSeconds = -1.0f;
 	LastClassResourceFullAtSeconds = -1.0f;
 	LastClassResourceEmptyAtSeconds = -1.0f;
 	// THE BOSS WINDOW TOO, which issue #2010 added without adding it here, so a
@@ -3367,6 +3368,33 @@ void UCataclysmAbilitySystemComponent::NoteGadgetStruck()
 	// AND THE EVENT OF THE SAME NAME, as `NoteBlocked` raises `block` beside its clock: every `seconds_after_<event>`
 	// clock is an event a row may act on, which `tools/tests/test_pool_action_names_match_the_engine.py` holds.
 	ActOnEvent(FName(TEXT("gadget_struck")));
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::CannotBeTargetedWhileMovingStat = TEXT("cannot_be_targeted_while_moving");
+const TCHAR* UCataclysmAbilitySystemComponent::ThinAirBrokenSecondsStat = TEXT("cannot_be_targeted_broken_seconds");
+
+float UCataclysmAbilitySystemComponent::SecondsSinceLandedHitTaken() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastLandedHitTakenAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastLandedHitTakenAtSeconds);
+}
+
+bool UCataclysmAbilitySystemComponent::IsHiddenByThinAir() const
+{
+	// MOVING FIRST, a flag: a character standing still is never hidden, and the pipeline is not asked for it.
+	if (!IsMoving()
+		|| StatForSkill(FName(CannotBeTargetedWhileMovingStat), FGameplayTagContainer(), /*Fallback=*/0.0f) <= 0.0f)
+	{
+		return false;
+	}
+	// BROKEN FOR THE ROW'S SECONDS AFTER A LANDED BLOW; a blow before then, or none, leaves it whole.
+	const float Since = SecondsSinceLandedHitTaken();
+	const float Broken = StatForSkill(FName(ThinAirBrokenSecondsStat), FGameplayTagContainer(), /*Fallback=*/0.0f);
+	return Since < 0.0f || Since >= Broken;
 }
 
 void UCataclysmAbilitySystemComponent::MarkWithDeathmark(float Percent, float Seconds)
@@ -3632,6 +3660,11 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	if (const UWorld* World = GetWorld())
 	{
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
+		// AND THE LANDED BLOWS APART, for Thin Air's "Taking damage" (2026-11-25): an evaded blow is a hit and not damage.
+		if (bLanded)
+		{
+			LastLandedHitTakenAtSeconds = LastHitTakenAtSeconds;
+		}
 	}
 
 	// AND A GADGET'S LANDED BLOW IS ITS SUMMONER'S "UNDER ATTACK". The Saboteur's device conditions, 2026-11-25

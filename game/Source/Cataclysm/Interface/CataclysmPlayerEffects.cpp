@@ -314,6 +314,14 @@ TArray<FCataclysmPlayerEffect> UCataclysmPlayerEffects::EntriesFor(const AActor*
 			Held.SecondsLeft = BloodPriceHolder->BloodPriceSecondsLeft();
 			Buffs.Add(Held);
 		}
+		// AND THIN AIR WHILE IT HIDES THE PLAYER (the Saboteur's Thin Air, 2026-11-25): no seconds, since it lasts while
+		// the player moves.
+		if (BloodPriceHolder->IsHiddenByThinAir())
+		{
+			FCataclysmPlayerEffect Hidden;
+			Hidden.Name = TEXT("Thin Air");
+			Buffs.Add(Hidden);
+		}
 	}
 	if (NihilMore > 0.0f)
 	{
