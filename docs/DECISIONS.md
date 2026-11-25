@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The empire tree's eight forge residue and day nodes act: three take residue off a craft, Stable Compounds strengthens the Chaos Stabilizer, Master's Touch can leave an item at 0, and three take days off (#2741, crafting slices C1 and C2)
+
+**Affects:**
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: eight effect kinds.
+- `game/Source/Cataclysm/Player/CataclysmEmpireTree.h` and `game/Source/Cataclysm/Player/CataclysmEmpireTree.cpp`: eight
+  bonus fields and their switch cases.
+- `game/Source/Cataclysm/Items/CataclysmForge.h` and `game/Source/Cataclysm/Items/CataclysmForge.cpp`:
+  `FCataclysmForgeCosts`; `OptionsOn` and `CleanseOf` take it; `ResidueResetLands`, `TreeDaysFor`, `CostsText`,
+  `CleanseCostsText`; the option effect's and the cleanse's figures before the tree.
+- `game/Source/Cataclysm/Player/CataclysmForgeCraft.h` and `game/Source/Cataclysm/Player/CataclysmForgeCraft.cpp`:
+  `CostsFor`, passed by every `OptionsFor` call and the cleanse's plan.
+- `game/Source/Cataclysm/Interface/CataclysmForgeWidget.cpp`: the seven questions with options and the cleanse's.
+- `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
+- `game/Source/Cataclysm/Tests/CataclysmForgeTreeCostsTests.cpp`, new;
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`.
+- `tools/tests/test_forge_tree_costs.py`, new; `tools/tests/test_forge_gold_nodes.py`,
+  `tools/tests/test_empire_tree_effects_match_their_texts.py` and
+  `tools/tests/test_empire_tree_tables_match_the_tree_file.py`.
+- `docs/Play_Loop_Checklist.md` step 31.
+
+Issue [#2741](https://github.com/sdubois777/Cataclysm/issues/2741), its crafting group: the 18 empire tree nodes that
+change the forge's crafts, ruled by the coordinating session on 2026-11-25 to belong to #2741. This is its first slice,
+C1 (residue) with C2 (days). On `feat/forge-costs-c1c2`, written on top of #47 slice F6b (`feat/forge-material-nodes-f6b`)
+and moved onto development once F6b merges.
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
+- **THE PLAN** (`plan_crafting_18_nodes.md`, from a read-only survey agent's report, its four main findings checked by
+  this session) was accepted with every C1 and C2 recommendation as written, and G1 to G4.
+- **NO NEW GENRE RESEARCH.** The combination rules copy this project's own: the three-bucket pipeline, "(multiplicative)"
+  as compounding per point (the 2026-09-07 entry; `WalkTimeCompounded`), and D9 (separately capped reductions multiply).
+- **THE TREE FILE'S FIGURES, RULING C1**: Industrial Speed is built at the file's 1% a point, not the keystones
+  document's 10%. That is the owner's question 6; the answer is a data change.
+- **NO SAVE VERSION MOVES.** Master's Touch's draw is the item's and the day's.
+
+### The rulings, the coordinating session, 2026-11-25
+
+- **G1**: "crafting action", "craft", "crafted item", "crafting project" and "when crafting" mean every forge item craft
+  through `DoItemCraft`, the cleanse included; not the combines or the dismantle (no residue, no day).
+- **G2**: the costs are worked out once and passed to `OptionsOn` as a trailing parameter defaulting to none (ruling A's
+  shape), so the question and the press read the same figures; the cleanse takes them in its own plan.
+- **G3**: a draw that changes a cost shows its outcome in the question (F6a Q10, F6b Q13): Master's Touch.
+- **G4**: each remaining crafting row's refusal reason says what it waits on, in the first slice that touches the list
+  (not done here: see "Not done").
+- **C1**: Tool Maintenance 0.95 to the points; Limited Knowledge 0.975 to the points on an item below +6 before the
+  craft; Heat Shielding 0.975 to the points on a tier 3+ craft material only (the options do not decide it); Stable
+  Compounds 0.5 less 0.025 a point; Master's Touch 1% per whole 100 residue before the craft, the after-craft residue
+  then 0, its days, gold and any Consumption mark unchanged.
+- **C2**: after the Tainted Shards, the multipliers (Industrial Speed, then Sovereign's Assembly, multiplied), then
+  Master Craftsman's days off, then rounded (the city upgrade's order); **a craft that had at least one day keeps one,
+  and a craft of none stays at none** (the coordinating session's own ruling, Q7; the owner can change it).
+
+### What it does
+
+| Node | Text | Built as |
+| :-- | :-- | :-- |
+| Tool Maintenance (8) | "-5% CR gained from all crafting actions per point (multiplicative)." | `CraftResidueKept` 0.05: 0.95 to the points (0.663 at 8) |
+| Limited Knowledge (10) | "-2.5% CR gained from crafting actions on items below +6 per point (multiplicative)." | `LowLevelCraftResidueKept` 0.025: 0.975 to the points (0.776 at 10) below +6 |
+| Heat Shielding (5) | "-2.5% CR gained from crafting actions using T3+ materials per point (multiplicative)." | `RareMaterialCraftResidueKept` 0.025: 0.975 to the points (0.881 at 5) on a tier 3+ craft material |
+| Stable Compounds (10) | "Chaos Stabilizer reduces CR gain by an additional 2.5% per point." | `StabilizerShareReduced` 0.025: the Stabilizer keeps 0.25 at 10 |
+| Master's Touch (1) | "1% chance per 100 CR on an item to reset CR to 0 when crafting." | `ResidueResetChancePerHundred` 0.01 |
+| Master Craftsman (10) | "-1 Day to crafting time per point." | `CraftDaysOff` 1 |
+| Industrial Speed (5) | "-1% of Days required for any crafting project per point." | `CraftDaysReduced` 0.01 |
+| Sovereign's Assembly (1) | "Reduce total crafting time required by 50%." | `CraftDaysReducedMore` 0.5 |
+
+- **The costs** (`FCataclysmForgeCosts`, `UCataclysmForgeCraft::CostsFor` with the craft's own material): the residue
+  factor of the nodes that apply, Stable Compounds' reduction, Master's Touch's draw (salt "FMTC"), the day multiplier
+  and the days off.
+- **`OptionsOn`**: the Stabilizer keeps `StabilizedResidueShare - StabilizerShareReduced`; the options' own residue and
+  days are kept (`OptionsResidueAfter`, `OptionsDays`) for their sentences; then the residue added is multiplied by the
+  factor, Master's Touch sets it to 0, and the days take `TreeDaysFor`; then the gold refusal.
+- **The cleanse**: its days take `TreeDaysFor` and Master's Touch can leave it at 0 (it adds no residue for the factors).
+- **The words**: after the options' sentences, " The empire tree's crafting nodes: residue 250 to 266.6, not 275; 1 day,
+  not 5."; with Master's Touch, "Master's Touch and the empire tree's crafting nodes: ...". The cleanse's question says
+  the same. Nothing when nothing changed.
+
+### Tests
+
+`Cataclysm.ForgeTreeCosts.`, a new group of eight:
+
+| Test | What it checks |
+| :-- | :-- |
+| `TheEightNodesGiveTheirFigures` | through the tables, every node at full points; CONTROL none held |
+| `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset` | 100 to 200: a factor of 0.5 gives 150 (options alone 200); a Stabilizer at a quarter gives 125 alone, saving 75, then 112.5; the reset 0; CONTROL the default Stabilizer 150 |
+| `TheDaysTakeTheMultipliersThenTheDaysOffThenRoundAfterTheShards` | 10 at 0.475 is 5, less 2 is 3; 1 less 10 keeps 1; 0 stays 0; a shard first (6 to 5), then 2 off (3); CONTROL the default 3 |
+| `MastersTouchCountsWholeHundredsOfTheResidueBeforeTheCraft` | 99 never, 10,000 always, 250 on some of 400 days; the same item and day the same |
+| `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays` | in a world with Tool Maintenance and Master Craftsman: the plan's residue times 0.663, its days less 10 (at least one), the question saying both; CONTROL none held |
+| `LimitedKnowledgeIsBelowSixAndHeatShieldingIsTheCraftsOwnMaterial` | +5 to +6 (tier 3 stone) both; +6 to +7 (tier 4) Heat Shielding only; +2 to +3 (tier 2) Limited Knowledge only, a Stabilizer in the bag not counted |
+| `TheCleanseTakesTheDayNodesAndMastersTouch` | 1,200 residue: 3 days and 600 bare; 1 day and 0 with the nodes on a landing draw; its words |
+| `TheWordsSayWhatTheTreeChangedAfterTheOptions` | both, the days only, and nothing |
+
+Python: `tools/tests/test_forge_tree_costs.py`, five checks (the list at its top). The tree checks count 135 built nodes
+and slice 13's 50 points, and "crafting" falls from 211 to 161; `CataclysmDataTableTests.cpp` pins 141 effect rows;
+checklist step 31. **F6a's two pricing checks required the pricing to be the last parameter of a plan and the last
+argument of its call; they now accept the costs after it, and still check the pricing.** The Chaos Stabilizer's line
+`Out.ResidueAfter = ResidueBefore + Added * StabilizedResidueShare;`, which `test_every_item_craft_goes_through_one_sequence.py`
+pins, is kept: Stable Compounds acts in a branch after it, so that pin did not move.
+
+### Not done
+
+- **G4's refusal reasons**: the ten crafting rows still refused still say "crafting, which the game does not have yet
+  (issue #47)". Left for slice C3 with C4, which touches the same list, so this slice moves no row it does not build.
+
+### Registered
+
+**Python guard proofs, PROVED**, `tools/prove_guard.py` in an extracted copy of `067a088af`, each narrowed to
+`tools/tests/test_forge_tree_costs.py` (five checks):
+
+| Proof | The break | Result | The named failure |
+| :-- | :-- | :-- | :-- |
+| KP1 | `OptionsOn`'s `Out.Days = TreeDaysFor(Out.Days, Costs);` removed | "PROVED: 1 failed, 4 passed in 1.03s \| restored: 5 passed in 0.94s" | `test_options_on_keeps_the_options_figures_then_applies_the_tree_before_its_refusal` |
+| KP2 | Limited Knowledge's `<` read as `<=` | "PROVED: 1 failed, 4 passed in 1.00s \| restored: 5 passed in 0.92s" | `test_the_costs_read_the_gear_level_and_the_crafts_material_and_the_days_keep_one` |
+| KP3 | the cleanse question without `CleanseCostsText` | "PROVED: 1 failed, 4 passed in 0.98s \| restored: 5 passed in 0.93s" | `test_every_question_with_options_and_the_cleanse_say_what_the_tree_changed` |
+
+**The whole Python suite at `067a088af`:** "1 failed, 8535 passed, 9 skipped in 431.97s"; JUnit 8545 tests, 1
+failure, 0 errors, 9 skipped; ruff "All checks passed!". **The one failure is expected**:
+`test_datatable_assets_are_current.py`'s `test_every_csv_still_hashes_to_what_was_recorded`, the two empire tree
+CSVs, whose assets the window's editor step rebuilds.
+
+**For the window**, after #47 slice F6b's (this slice is on its branch): registered from F6b's registration, its whole
+suite 5500; **re-registered from the newest whole-suite log at its turn.**
+- **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`.
+- **The whole suite: 5508** (F6b's 5500 + this slice's 8 in `Cataclysm.ForgeTreeCosts.`, none removed); 58 skipped halves;
+  the test saves as F6b's window records them, plus whatever the 8 new tests write.
+- **No save record moves.**
+- **Groups alone, 19, 153 tests**: `ForgeTreeCosts.` 8 (new) and F6b's 18 (`ForgeMaterialNodes.` 7, `Forge.` 9,
+  `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3, `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.`
+  4, `ForgeGoldNodes.` 8, `ForgeMilestones.` 6, `ForgeResidueTools.` 5, `ForgeScreen.` 5, `ForgeSockets.` 6,
+  `Dismantle.` 12, `Data.` 7, `EmpireTree.` 24, `PlayLoop.` 13, `InventoryTabs.` 7): every forge group, since every
+  craft with options and the cleanse take the costs and their questions changed.
+- **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeTreeCosts.`, each anchor once on the branch:
+
+| Proof | File | The break | Predicted |
+| :-- | :-- | :-- | :-- |
+| KF1 | `CataclysmForge.cpp` | `OptionsOn`'s `Out.ResidueAfter = ResidueBefore + (Out.ResidueAfter - ResidueBefore) * TreeShare;` removed | `TheResidueTakesTheTreesFactorTheStabilizersShareAndTheReset`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays` |
+| KF2 | `CataclysmForge.cpp` | `TreeDaysFor`'s `return FMath::Max(1, FMath::RoundToInt(Taken));` read as `return FMath::RoundToInt(Taken);` | `TheDaysTakeTheMultipliersThenTheDaysOffThenRoundAfterTheShards`, `AnUpgradeWithTheNodesTakesTheirResidueAndDaysAsTheQuestionSays`, `TheCleanseTakesTheDayNodesAndMastersTouch` |
+| KF3 | `CataclysmForgeCraft.cpp` | Heat Shielding's `>= UCataclysmForge::HeatShieldingLowestTier` read as `>` | `LimitedKnowledgeIsBelowSixAndHeatShieldingIsTheCraftsOwnMaterial` |
+
+---
+
 ## 2026-11-25 — The empire tree's three forge material nodes act: Material Conservation and Resource Management keep a craft's materials on a draw, by tier, and Tempting Fate returns them all on an item above 500 residue (#47, slice F6b)
 
 **Affects:**
