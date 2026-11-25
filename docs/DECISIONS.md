@@ -2,6 +2,128 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Wearer of the Dead lends an Elite's modifiers for 20 seconds (Death trees, slice C4d3)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `WornEnemyModifierRows`,
+  `WornEnemyModifierPlace`, `WornEnemyModifierSeconds`, `WearTheModifiersOf`, `WornModifiersLine`; `CreditAFollowersKill`
+  and `CreditAKillWithoutADeath` call the wearing.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteWornEnemyModifier`,
+  `WornEnemyModifierSecondsLeft`, `WornEnemyModifierPlacesNow`, `HoldsARowWearing`; `CurrentConditions` fills the new
+  state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `wearing_enemy_modifier`
+  (`WearingEnemyModifier`) and its state field, `WornEnemyModifierPlaces`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler calls the wearing.
+- `game/Source/Cataclysm/Interface/CataclysmHUD.cpp`: the worn modifiers' line above the skill bar.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmWornModifiersTests.cpp`, new (4); `CataclysmStatExemptionTests.cpp` (a
+  conditioned probe for `max_health`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two),
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (an exception),
+  `test_every_conditioned_stat_has_an_asker.py` and `test_passive_effects_match_the_node_text.py`.
+- `tools/generate_datatables.py` (`WORN_ENEMY_MODIFIERS`, the condition, `max_health` asked under a condition),
+  `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (589 rows),
+  `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **FIVE OF THE 80 ENEMY MODIFIERS ARE WORN TODAY.** The rest are issue #2899's, below.
+- **A WORN MAXIMUM HEALTH ENDS AT THE NEXT REGENERATION STEP**, not on the exact second: maximum health is an attribute,
+  written by `RefreshLiveMaximumHealth`, which runs when a modifier is worn and on each regeneration step for a line
+  whose rows move with state. Every other worn stat is asked through the pipeline when it is used, and ends on the
+  second.
+- **`max_health` IS NOW A STAT THE GENERATOR ACCEPTS UNDER A CONDITION**, with a probe, because `RefreshLiveMaximumHealth`
+  asks its whole line with the character's state. Before this slice it was refused under any condition.
+
+### The owner's ruling, verbatim (2026-11-25, relayed by the coordinating session)
+
+"yeah go with your recommendation. Everything that isn't a new ability that would require a button push should work for
+a player. Even the random teleport, poe does this as well and it's fine."
+
+So this slice builds the recommendation, and issue #2899 carries the rest: every enemy modifier is to be built so that
+it works on any wearer, the existing enemy-only ones converted (Phasewalker's random teleport included), with only
+Inferno Charge, a button ability, left out; each joins the worn list as it is built.
+
+### What it reads
+
+- **THE WORN LIST (W1):** `UCataclysmFervour::WornEnemyModifierRows` in the engine and `WORN_ENEMY_MODIFIERS` in the
+  generator, the same five names in the same order, which a Python test holds equal: Titanic Resolve, Overpowered,
+  Bloodthirsty, Unyielding, Relentless. These are the five built modifiers that are a plain number on a player stat.
+- **TO ADD ONE**, for issue #2899 and for each modifier built after: append its row name to both lists, and give the vow
+  a row under `wearing_enemy_modifier` at the new place. The condition's upper bound is set from the list's length, the
+  state holds a list of places rather than bits (so the list may grow past 31), and the node-text test lists the places
+  from the generator's list. Never reorder: a row's place is written in the data. The first expected source is the
+  branch `feat/death-war-enemy-modifiers`, which builds 11 Death and 8 War enemy modifiers; its plain-number ones join
+  when it lands.
+- **THE CONDITION (W6):** `wearing_enemy_modifier`, whose value is a place in the list, counted from 1, holds while the
+  character's record of that place is live. It runs out with time and nothing announces it, so it is classed with the
+  kill's clock.
+- **THE RECORD (W3 to W5):** at a kill of a creature at rarity rung 1 or more, bosses included (W4), the kill handler,
+  `CreditAFollowersKill` (a follower's kill Death's Toll makes the character's, W5) and `CreditAKillWithoutADeath` each
+  call `WearTheModifiersOf`, which records each of the slain creature's modifiers that has a place and that the character
+  holds a row for, worn for 20 seconds. A second record of the same place sets it to the full 20 again and never stacks
+  (W3). A character without the vow holds no such row, so records nothing and shows nothing.
+- **OVERPOWERED (W2):** `crit_chance` flat 100, a chance held under the player's ceiling, unlike Chain Execution's
+  certain critical strike.
+- **THE LINE ABOVE THE SKILL BAR (W6):** "Worn: Overpowered 20s", each worn modifier by its row's name less its
+  Cataclysm, with its whole seconds left; empty when none is worn.
+
+### The rows
+
+| Place | Modifier | Row on the Soul Collector's 200 vow, option 1 |
+|---|---|---|
+| 1 | Generic_Titanic_Resolve, 50% more health | max_health, more, 50 |
+| 2 | Generic_Overpowered, always crits | crit_chance, flat, 100 |
+| 3 | Generic_Bloodthirsty, heals 10% of damage dealt | life_leech, flat, 10 |
+| 4 | Generic_Unyielding, immune to crowd control | crowd_control_resistance, flat, 100 |
+| 5 | Generic_Relentless, 2% of maximum health a second | health_regen, flat, 2 |
+
+Each row is under `wearing_enemy_modifier` at its place. `PassiveEffects.csv` 584 to 589; the Soul Collector 122 rows.
+The pins: rows 589, options 52.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the classification table: W1, the five; W2, a chance under the
+ceiling; W3, a fresh 20 seconds and no stacking; W4, rung 1 and up, bosses included; W5, a follower's kill under Death's
+Toll lends too; W6, the condition, the record and the line as described. The owner's ruling above, and issue #2899.
+
+### Research
+
+None new. The shape comes from the node's sentence, the rulings and the owner's ruling, which names Path of Exile as
+doing the same for the random teleport; no page was read for this slice.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.WornModifiers.` | new: `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn`, `TitanicResolveRaisesMaximumHealthAtOnceAndTheStepAfterTwentySecondsLowersIt`, `ARealPlayersKillOfAnEliteLendsItsModifierThroughTheKillHandler`, `TheVowsFiveRowsAreTheModifiersTheyCopy` | 4 |
+| `Cataclysm.StatExemption.` | the conditioned probe runs one new probe, `max_health` | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 589 | unchanged |
+
+The one through the real kill handler builds the scene `Cataclysm.Swarm.` builds. Each new test has a control: a
+Common creature carrying a worn modifier, a character with no worn row, a modifier the creature does not carry, one with
+no place; a regeneration step before the kill; a Common creature's kill through the real handler.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmStatPipeline.cpp`, `ConditionHolds`: `State.WornEnemyModifierPlaces.Contains(Place)` becomes `true`. Prefix
+   `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (105 before
+   the kill).
+2. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Wearer->RefreshLiveMaximumHealth();` removed. Prefix
+   `Cataclysm.WornModifiers.`; must fail `TitanicResolveRaisesMaximumHealthAtOnceAndTheStepAfterTwentySecondsLowersIt`
+   (1,000 at the kill).
+3. `CataclysmFervour.cpp`, `WearTheModifiersOf`: `Creature->RarityStep < 1` becomes `Creature->RarityStep < 0`. Prefix
+   `Cataclysm.WornModifiers.`; must fail `AnElitesWornModifierLastsTwentySecondsAndOnlyOnesWithARowAreWorn` (the Common
+   creature lends).
+
+### What was run
+
+SUITE_FIGURES_C4D3
+
+PYTHON_PROOFS_C4D3
+
+---
+
 ## 2026-11-25 — A Boss fight fills the bar without kills: Patient Blade and Death by Inches (Death trees, slice C4d2)
 
 **Affects:**
