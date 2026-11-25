@@ -129,6 +129,49 @@ fail only PM1, which PMK1 already fails; PMK4, PMK6 and PMK7 fail PM3 or PM4, wh
 **No proof for the emblem positions** (data, read by the two existing tests above) **or for the two comment
 commits** (no behaviour).
 
+### Window tb-w1, 2026-11-25: what it measured
+
+**SEVEN TESTS FAILED AND NO PROOF RAN.** The whole suite on 2feb41fe: "5587 tests performed, 5580 succeeded, 7
+failed"; declared 5587, gap 0; "Test saves: 881 written and deleted, 0 left behind"; 58 skipped halves, all as
+registered. This is the first whole suite to run the Rifts' second window's two tests. Python beside it: "8694 passed,
+10 skipped", JUnit 8704 tests, 0 failures; `ruff` clean. Of the 38 groups alone, 37 passed at their registered counts;
+`Passives.` performed 161 with 5 failed.
+
+- **The first build of d2551a312 failed** ("Build: Failed - 72 actions, 67 files compiled"):
+  `CataclysmChoiceButton.h` declared `GetLabel()` twice, because development's skill screen (#2891) and the tree screen
+  each added one at different lines, and git merged both with no conflict. 292ec1e27 keeps development's. Neither
+  `check_resolved_cpp.py` nor `check_includes.py` sees a duplicate declaration: issue #2900. The three builds of
+  292ec1e27 then succeeded with no warning.
+- **The editor step** rebuilt `DT_PassiveEffects` (325 rows to 364) and `DT_PassiveNodes` (441), committed alone as
+  2feb41fe; `test_datatable_assets_are_current.py` "18 passed".
+- **Four `Passives.ClassPointsFromGear.` tests** stopped at their set-up, "Willing Flesh has an unconditioned row on
+  health_regen worth something a point": the rework gave Willing Flesh a scale (health missing). They read what the
+  stat line records, which is the value a point times the points whatever the scale, so they now read the row through
+  `PerPointRecordedOn`, which accepts a scale; Willing Flesh keeps its place as one of the two nodes the root opens.
+- **`Passives.DeficitPaysForHealthMissingAndHealthOwedOnARealCharacter`**: owing a fifth gave 9 points, not 10. Two
+  single-test diagnostic runs under the lock: only the option's own owed row contributes, and at maximum health
+  678.72 and "owed 20.0000%" it counted 9 steps of 2%. Inferred, not printed to enough digits: the float reading is a
+  hair under 20 and the step count floors it with no tolerance, a pipeline fault the rework's new maximum health
+  exposed, carried by issue #2905. By the coordinating session's ruling the test now owes 21%, off the boundary.
+- **`CapstoneOptions.EveryDemonicCapstoneOptionGrantsItsRowsAndNoOthers`**: "Ritualist: at least 18 rows checked, 16
+  were". The rework's pact options carry fewer rows. The floors are the counts measured here: Masochist 32, Ravager 20,
+  Ritualist 16.
+- **`DungeonModifierEffects.WhatACorruptedStalkerIsBuiltWithAtEachTier`**: the Stalker's health before its multiplier
+  was above the fitted table at every tier, 990.9 against 945.6 at tier 1 (+4.8%) to 7122.1 against 6902.3 at tier 8
+  (+3.2%). **THE DEMONIC CORRUPTED STALKER IS 3 TO 5% TOUGHER**, because the rework raised the Ravager's health rows
+  its build holds (`Ravager_basic_spine_001` 0.5 to 1.0 increased a point; new rows on `Ravager_basic_a_stem2` and
+  `Ravager_basic_a_c1`). By the coordinating session's ruling the multiplier is kept and only the test's fitted figures
+  follow; the Stalker's tables are fitted again in the affix ranges and rebalance bundle (#2883, #2884), which
+  measures the new game first.
+
+### Registered for window tb-w2
+
+**Narrowed, by the coordinating session's ruling:** tb-w1's whole suite stands, because its seven failures were all
+in the three groups below and the only change since is those groups' test files. No editor step: no CSV or asset
+changes. The build, then alone: `Cataclysm.Passives.` 161, `Cataclysm.CapstoneOptions.` 1 and
+`Cataclysm.DungeonModifierEffects.` 786 (counts from tb-w1's whole-suite log), each all succeeded; then the eleven
+proofs in the table above, with the predictions above.
+
 ---
 
 ## 2026-11-25 — A guard proof's write back is tried again when the operating system refuses it, and a file it cannot put back raises FilesLeftBroken naming it

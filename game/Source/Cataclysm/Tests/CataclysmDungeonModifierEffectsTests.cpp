@@ -64567,7 +64567,13 @@ bool FCataclysmCorruptedStalkerBuiltAtEachTierTest::RunTest(const FString& Param
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-	constexpr float FittedBuiltHealth[8] = {945.6f, 1485.5f, 2139.7f, 2926.7f, 3940.4f, 5314.3f, 6109.7f, 6902.3f};
+	// THE DEMONIC CORRUPTED STALKER IS 3 TO 5% TOUGHER SINCE THE DEMONIC TREE REWORK (2026-11-24), because the rework
+	// raised the Ravager's health rows its build holds (Ravager_basic_spine_001 from 0.5 to 1.0 increased a point, and
+	// new rows on Ravager_basic_a_stem2 and Ravager_basic_a_c1). Measured in window tb-w1 (2026-11-25): 990.9 at tier 1
+	// (was 945.6, +4.8%) to 7122.1 at tier 8 (was 6902.3, +3.2%). By the coordinating session's ruling the multiplier
+	// is kept and only these figures follow the build; the Stalker's tables are fitted again in the affix ranges and
+	// rebalance bundle (issues #2883 and #2884), which measures the new game first.
+	constexpr float FittedBuiltHealth[8] = {990.9f, 1553.3f, 2231.9f, 3044.2f, 4086.0f, 5492.8f, 6309.4f, 7122.1f};
 	constexpr float FittedBlow[8] = {348.0f, 468.0f, 634.0f, 867.0f, 1195.0f, 1661.0f, 1874.0f, 2101.0f};
 	for (int32 Tier = 1; Tier <= 8; ++Tier)
 	{
