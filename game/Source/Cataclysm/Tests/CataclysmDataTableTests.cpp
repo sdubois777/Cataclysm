@@ -185,7 +185,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 9 SINCE THE SKILL TRAP, a slot converted into a placeable trap, ruled 2026-10-19, from 8.
 	// AND 11 SINCE 2026-11-24: the Shade and the Husk, which the Death Greatsword's Wailing Host and Greataxe's
 	// Shallow Graves raise (issue #2885).
-	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            11)
+	// AND 14 SINCE SLICE DS2 THE SAME DAY: the Barrow Guard, the Bone Reaper and the Skeletal Mage, the three permanent
+	// raises' kinds (Barrow Guard, Exhume, Bone Choir).
+	CHECK_TABLE(FCataclysmMinionTypeRow,        "MinionTypes.csv",            14)
 	// 2, not 4. One row per (attribute, tag, stat) and only damage is decided:
 	// Spirit raises a Minion.Creature and Agility a Minion.Machine, both by 1%
 	// per point. Health is expressible in the same table and no figure has been

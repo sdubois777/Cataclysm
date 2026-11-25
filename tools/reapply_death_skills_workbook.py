@@ -18,7 +18,8 @@ WHAT IT WRITES, every cell found by its row's Weapon Type, Damage Type and Slot 
 - WEAPON SKILLS, FIVE NEW DEATH CROSSBOW ROWS, appended below the sheet's last row with their Weapon Type, Damage Type
   and Slot as well: the coordinating session's judgement of 2026-11-24 under the owner's delegation gives Death the
   one-handed Crossbow (issue #2885, comment 7149138032).
-- MINION TYPES, the kinds the rows built here raise: `Shade` (Wailing Host) and `Husk` (Shallow Graves).
+- MINION TYPES, the kinds the rows built here raise: `Shade` (Wailing Host) and `Husk` (Shallow Graves) since slice
+  DS1, and `BarrowGuard` (Barrow Guard), `BoneReaper` (Exhume) and `SkeletalMage` (Bone Choir) since slice DS2.
 
 A ROW IS WRITTEN WHOLE ONLY WHEN THE CODE IT NEEDS IS BUILT. `BUILT` names the code pieces this branch has built
 (the drafts' N1-N22 and the Crossbow draft's C1-C4) and the rulings made since (`KNOWN_PIECES` says which is which);
@@ -32,7 +33,9 @@ WHAT IT REFUSES. A workbook holding formulas, charts or images, because an openp
 and empty a formula without saying so; a sheet missing a column this writes; a Death row missing from the sheet (the 40
 were in the matrix before), or found twice; and a cell holding neither the value it had before issue #2885 nor the
 value this writes, which means somebody else changed it and a person has to look. It reads the file back from disk and
-refuses if any cell other than the ones it meant to write changed.
+refuses if any cell other than the ones it meant to write changed. A cell holding what an EARLIER SLICE of this script
+wrote there, before a ruling changed it, is its own and is rewritten (`SUPERSEDED`): the four ranges the coordinating
+session's ruling of 2026-11-24 brought down to 14 m.
 
 Run against a workbook already carrying the edit, it reports nothing to write and writes nothing, which is its
 positive control. AFTERWARDS the DataTable assets need the editor step,
@@ -60,20 +63,24 @@ MINIONS_SHEET = "Minion Types"
 DAMAGE_TYPE = "Death"
 
 #: The code pieces this branch has built, by the drafts' own numbering. Slice DS1, 2026-11-24: N22 (a movement lays
-#: its row's `Effect`) and C3 (`Taunts=1`, a minion or a placed machine taunting the enemies near it).
-BUILT = frozenset({"N22", "C3"})
+#: its row's `Effect`) and C3 (`Taunts=1`, a minion or a placed machine taunting the enemies near it). Slice DS2, the
+#: same day: N16 (Bleed on a skill row, the owner's set widened), N1 (`Permanent=1`, a raise that stands until it is
+#: destroyed), N2 (a summon that states its own damage strikes as it raises), N3 (`Detonates=1`, the caster's minions
+#: in the skill's area explode), N4 (`CommandStrike=1` on a strike) and N11 (`MinionsLayEffect=1`, minions that lay the
+#: row's effect with their blows).
+BUILT = frozenset({"N22", "C3", "N16", "N1", "N2", "N3", "N4", "N11"})
 
 #: Every code piece a row may need, so a misspelt one in `needs` is refused rather than read as never built.
 #: N1-N22 are `death_weapon_skills_draft.md`'s (N20 was dropped on 2026-11-24 and is not one), C1-C4 the Death Crossbow
 #: draft's. `DeployableReserve` was found while entering the Effigy on 2026-11-24: `UCataclysmDeployableSkill::DeployOne`
 #: reserves no Fervour (the no-War rule, issue #1934), so a Death deployable stating `FervourReserve` would not hold it.
-#: `SentinelReach` IS A RULING AND NOT CODE, found the same day: the Corrupted Sentinel's reach is the longest range any
-#: player attack has (14 m; `test_the_sentinel_reach_is_the_longest_range_any_player_attack_has`, issue #352), and the
-#: Death Crossbow's 17 m and the reach kit's 16 m would out-range it. Until the owner or the coordinating session rules
-#: whether the Sentinel's reach rises or those ranges fall, a row stating a Range above 14 that needs nothing else waits
-#: on it: None Spared. Coffin Nail, Soul Lance and Pale Rider wait on code as well and meet it when that code is built.
+#:
+#: `SentinelReach` WAS A RULING AND NOT CODE, AND IS RULED: the coordinating session's ruling of 2026-11-24, "Range:
+#: 14 m", keeps the Corrupted Sentinel's reach the longest range any player attack has
+#: (`test_the_sentinel_reach_is_the_longest_range_any_player_attack_has`, issue #352), so None Spared and Coffin Nail
+#: fall from 17 m to 14 and Soul Lance and Pale Rider from 16 m to 14. No row waits on it, and it is no longer a piece.
 KNOWN_PIECES = frozenset({f"N{n}" for n in range(1, 23) if n != 20}
-                         | {"C1", "C2", "C3", "C4", "DeployableReserve", "SentinelReach"})
+                         | {"C1", "C2", "C3", "C4", "DeployableReserve"})
 
 #: The Weapon Skills sheet's columns this reads or writes, by header.
 WEAPON, DAMAGE, SLOT = "Weapon Type", "Damage Type", "Slot"
@@ -90,6 +97,29 @@ NEW_WEAPONS = frozenset({"Crossbow"})
 #: and so was this one for the 35 rows not named here.
 TAGS_BEFORE = {("Sword", slot): "Item.Weapon.Sword, Element.Death"
                for slot in ("Support", "Heavy", "Ultimate", "Movement", "Special")}
+
+#: CELLS AN EARLIER SLICE OF THIS SCRIPT WROTE AND A RULING SINCE CHANGED, by row and column: what slice DS1 wrote there.
+#: The script treats each as its own and rewrites it, where any other value it did not write is refused. The coordinating
+#: session's ruling of 2026-11-24, "Range: 14 m", brought four ranges down to the Corrupted Sentinel's 14 m reach, which
+#: no player attack may out-range (issue #352); their descriptions say the range, so each is listed here. Their Shape
+#: Params cells were empty in DS1 (the four waited), so the cell's value before issue #2885 already covers them.
+SUPERSEDED: dict[tuple[str, str], dict[str, object]] = {
+    ("Crossbow", "Ultimate"): {DESCRIPTION: (
+        'Take aim at everything within 17 meters and loose 12 bolts over 1.5 seconds, each at the next enemy in turn, '
+        'so the bolts are shared out across a crowd and a lone enemy takes all twelve. Every bolt deals 35% weapon '
+        'damage and is a critical strike.')},
+    ("Crossbow", "Heavy"): {DESCRIPTION: (
+        'Drive a coffin nail into the first enemy in a line up to 17 meters away. The nail stays in: for every nail an '
+        'enemy carries, your critical strike chance against it is 5% higher, up to 4 nails, and they stay until 4 '
+        'seconds pass without a new one.')},
+    ("Spear", "Special"): {DESCRIPTION: (
+        'Throw the spear through a line up to 16 meters long. It passes through every enemy in the line, and each enemy '
+        'it hits gives you 1 Fervour, at most 4 a throw.')},
+    ("Spear", "Ultimate"): {DESCRIPTION: (
+        'Ride as Death rides. You charge 16 meters in 1.5 seconds and nothing turns you aside: everything in your path '
+        'is run through for 300% weapon damage and Crippled, moving and attacking 50% slower for 4 seconds. Every enemy '
+        'it kills gives you 5 Fervour.')},
+}
 
 
 class DeathRow(NamedTuple):
@@ -136,6 +166,10 @@ class DeathRow(NamedTuple):
         before = {column: None for column in self.cells()}
         before[TAGS] = TAGS_BEFORE.get((self.weapon, self.slot))
         return before
+
+    def cells_superseded(self) -> dict[str, object]:
+        """What an earlier slice of this script wrote in a column a ruling has since changed. See `SUPERSEDED`."""
+        return SUPERSEDED.get((self.weapon, self.slot), {})
 
 
 #: The 45 rows: the 40 of `death_weapon_skills_draft.csv` and the five of `death_crossbow_skills_draft.csv`, as the
@@ -509,13 +543,13 @@ ROWS: tuple[DeathRow, ...] = (
         damage=200, needs=()),
     DeathRow(
         'Spear', 'Ultimate', 'Pale Rider',
-        ('Ride as Death rides. You charge 16 meters in 1.5 seconds and nothing turns you aside: everything'
+        ('Ride as Death rides. You charge 14 meters in 1.5 seconds and nothing turns you aside: everything'
          ' in your path is run through for 300% weapon damage and Crippled, moving and attacking 50% '
          'slower for 4 seconds. Every enemy it kills gives you 5 Fervour.'),
         ('Item.Weapon.Spear, Element.Death, Type.Strike, Type.Melee, Keyword.Charge, Type.Debuff, '
          'Stat.Resource.ClassResource, Trigger.OnKill'),
         'Movement',
-        ('Mode=Charge; Range=16; Duration=1.5; Radius=2.5; Immune=CrowdControl; Effect=Cripple; '
+        ('Mode=Charge; Range=14; Duration=1.5; Radius=2.5; Immune=CrowdControl; Effect=Cripple; '
          'EffectMagnitude=50; EffectDuration=4; KillFervour=5'),
         damage=300, needs=('N6', 'N22')),
     DeathRow(
@@ -529,12 +563,12 @@ ROWS: tuple[DeathRow, ...] = (
         damage=150, needs=('N22',)),
     DeathRow(
         'Spear', 'Special', 'Soul Lance',
-        ('Throw the spear through a line up to 16 meters long. It passes through every enemy in the line, '
+        ('Throw the spear through a line up to 14 meters long. It passes through every enemy in the line, '
          'and each enemy it hits gives you 1 Fervour, at most 4 a throw.'),
         ('Item.Weapon.Spear, Element.Death, Type.Projectile, Stat.Resource.ClassResource, Trigger.OnHit, '
          'Type.Ranged'),
         'Projectile',
-        ('Range=16; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=4'),
+        ('Range=14; Radius=1; Pierce=99; Speed=2400; HitFervour=1; HitFervourPerCast=4'),
         needs=('N19',)),
     DeathRow(
         'Crossbow', 'Support', 'Carrion Crows',
@@ -547,25 +581,25 @@ ROWS: tuple[DeathRow, ...] = (
         damage=40, cooldown=10, needs=('C2',)),
     DeathRow(
         'Crossbow', 'Heavy', 'Coffin Nail',
-        ('Drive a coffin nail into the first enemy in a line up to 17 meters away. The nail stays in: for '
+        ('Drive a coffin nail into the first enemy in a line up to 14 meters away. The nail stays in: for '
          'every nail an enemy carries, your critical strike chance against it is 5% higher, up to 4 nails,'
          ' and they stay until 4 seconds pass without a new one.'),
         ('Item.Weapon.Crossbow, Element.Death, Type.Projectile, Type.Debuff, Stat.Offense.Crit, '
          'Type.Ranged'),
         'Projectile',
-        ('Range=17; Radius=0.4; Pierce=0; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=20; '
+        ('Range=14; Radius=0.4; Pierce=0; Speed=3000; CritChanceAgainst=5; CritChanceAgainstMax=20; '
          'EffectDuration=4'),
         needs=('C1',)),
     DeathRow(
         'Crossbow', 'Ultimate', 'None Spared',
-        ('Take aim at everything within 17 meters and loose 12 bolts over 1.5 seconds, each at the next '
+        ('Take aim at everything within 14 meters and loose 12 bolts over 1.5 seconds, each at the next '
          'enemy in turn, so the bolts are shared out across a crowd and a lone enemy takes all twelve. '
          'Every bolt deals 35% weapon damage and is a critical strike.'),
         ('Item.Weapon.Crossbow, Element.Death, Type.Projectile, Stat.Offense.Crit, Type.Ranged'),
         'Projectile',
-        ('Range=17; Radius=0.4; Pierce=0; Speed=3000; Count=12; Duration=1.5; Interval=0.125; '
+        ('Range=14; Radius=0.4; Pierce=0; Speed=3000; Count=12; Duration=1.5; Interval=0.125; '
          'TargetMode=All'),
-        crit=100, damage=35, needs=('SentinelReach',)),
+        crit=100, damage=35, needs=()),
     DeathRow(
         'Crossbow', 'Movement', 'Parting Shot',
         ('Leap to a point up to 10 meters away and loose a bolt as you land at the nearest enemy within 10'
@@ -598,13 +632,21 @@ MINION_COLUMNS = ("Minion Type", "Family", "Base Health", "Health Per Level", "B
 #: the Shade's threat is nought where the draft wrote 20. Wailing Host's sentence says the enemies "pay them little
 #: attention", and since the owner's decision of 2026-11-01 (issue #2553) a threat above nought draws nothing in an
 #: ordinary choice while nought is what makes the nearest-enemy search pass a minion over.
-#: The other kinds the draft names (BarrowGuard, BoneReaper, SkeletalMage, Wisp) and the Crossbow draft's Effigy are
-#: added by the slice that builds the rows raising them.
+#: Slice DS2 added BarrowGuard, BoneReaper and SkeletalMage with the three permanent raises, as drafted. The draft's
+#: Wisp and the Crossbow draft's Effigy are added by the slice that builds the rows raising them (Grave Mouth, Soul
+#: Snare; the Effigy).
 MINION_ROWS: dict[str, tuple[object, ...]] = {
     "Shade": ("Shade", "Creature", 100, 45, 5.25, 4.725, 0.8, 5.5, 0, 350, 1500, "Nearest",
               "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
     "Husk": ("Husk", "Creature", 160, 72, 10.5, 10.5, 1.5, 4.4, 150, 200, 1500, "Nearest",
              "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee", 300),
+    # SLICE DS2, 2026-11-24: the three permanent raises' kinds, the draft's figures unchanged.
+    "BarrowGuard": ("BarrowGuard", "Creature", 400, 180, 15.75, 15.75, 1.0, 4.4, 150, 200, 1500, "Nearest",
+                    "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee", 300),
+    "BoneReaper": ("BoneReaper", "Creature", 300, 135, 42, 42, 2.0, 4.4, 60, 250, 1500, "Nearest",
+                   "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee", 300),
+    "SkeletalMage": ("SkeletalMage", "Creature", 150, 67.5, 15.75, 15.75, 1.5, 4.4, 40, 900, 1500, "Nearest",
+                     "Type.Minion, Type.Summon, Minion.Creature, Minion.Spell", 300),
 }
 
 
@@ -706,9 +748,13 @@ def plan_skills(sheet) -> tuple[list[Write], list[DeathRow]]:
             continue
         row = found[0]
         before = death.cells_before()
+        superseded = death.cells_superseded()
         for column, after in death.cells().items():
             value = sheet.cell(row, at[column]).value
             if same(value, after):
+                continue
+            if column in superseded and same(value, superseded[column]):
+                writes.append(Write(SKILLS_SHEET, row, at[column], f"{death.csv_name}, {column}", value, after))
                 continue
             if not same(value, before[column]):
                 raise ApplyError(

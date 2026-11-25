@@ -378,6 +378,11 @@ namespace CataclysmDeathSkillsTest
 		const TCHAR* Ailment;
 		bool bTaunts;
 		float FervourReserve;
+		/** Slice DS2's keys: N1 `Permanent`, N3 `Detonates`, N4 `CommandStrike` and N11 `MinionsLayEffect`. */
+		bool bPermanent = false;
+		bool bDetonates = false;
+		bool bCommandStrike = false;
+		bool bMinionsLayEffect = false;
 	};
 
 	/** One of the 33 rows waiting on code or a ruling, by weapon, slot and name. */
@@ -941,10 +946,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBuiltRowsCarryTheirNumbers
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The twelve Death rows slice DS1 writes whole, each read through `UCataclysmWeaponSkills::SkillsFor` (the function a
- * weapon grants from), granted the template its shape names in its designed slot and stamped as a weapon stamps it,
- * and read back off the template: its name, shape, radius, range, damage percent, named effect and magnitude, ailment,
- * taunt and reserve, as `death_weapon_skills_draft.csv` and `death_crossbow_skills_draft.csv` state them.
+ * The Death rows written whole, each read through `UCataclysmWeaponSkills::SkillsFor` (the function a weapon grants
+ * from), granted the template its shape names in its designed slot and stamped as a weapon stamps it, and read back off
+ * the template: its name, shape, radius, range, damage percent, named effect and magnitude, ailment, taunt and reserve,
+ * and slice DS2's four keys, as `death_weapon_skills_draft.csv` and `death_crossbow_skills_draft.csv` state them.
+ *
+ * TWELVE FROM SLICE DS1 AND TEN FROM SLICE DS2: Gravebell, Barrow Guard, Barrow Leap, Exhume, Open Grave, Marrow Lance,
+ * Bone Choir, Grave Return, Severing Rush, and None Spared, which waited on a ruling and not on code. The four ranges the
+ * coordinating session's ruling of 2026-11-24 brought down to 14 m are read here as 14: None Spared's among them, and
+ * Coffin Nail's, Soul Lance's and Pale Rider's when their code lands.
  */
 bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&)
 {
@@ -985,8 +995,31 @@ bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&
 		 TEXT(""), false, 0.0f},
 		{TEXT("Crossbow"), ESlot::Movement, TEXT("Parting Shot"), EShape::Movement, 10.0f, 10.0f, -1.0f, TEXT("Cripple"),
 		 30.0f, TEXT(""), false, 0.0f},
+		// SLICE DS2.
+		{TEXT("Greatsword"), ESlot::Heavy, TEXT("Gravebell"), EShape::Strike, 4.5f, 0.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT("Necrosis"), false, 0.0f, /*bPermanent=*/false, /*bDetonates=*/true, /*bCommandStrike=*/true},
+		{TEXT("Greatsword"), ESlot::Ultimate, TEXT("Barrow Guard"), EShape::Summon, 5.0f, 0.0f, 300.0f, TEXT("Cripple"),
+		 30.0f, TEXT(""), true, 10.0f, /*bPermanent=*/true},
+		{TEXT("Greatsword"), ESlot::Movement, TEXT("Barrow Leap"), EShape::Movement, 4.0f, 10.0f, -1.0f, TEXT("Cripple"),
+		 30.0f, TEXT(""), false, 0.0f, /*bPermanent=*/false, /*bDetonates=*/true},
+		{TEXT("Greataxe"), ESlot::Ultimate, TEXT("Exhume"), EShape::Summon, 2.5f, 4.0f, 400.0f, TEXT(""), 0.0f, TEXT(""),
+		 false, 15.0f, /*bPermanent=*/true},
+		{TEXT("Greataxe"), ESlot::Movement, TEXT("Open Grave"), EShape::Movement, 5.0f, 9.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT(""), false, 0.0f, /*bPermanent=*/false, /*bDetonates=*/true},
+		{TEXT("Staff"), ESlot::Heavy, TEXT("Marrow Lance"), EShape::Projectile, 1.2f, 14.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT("Necrosis"), false, 0.0f, /*bPermanent=*/false, /*bDetonates=*/true},
+		{TEXT("Staff"), ESlot::Ultimate, TEXT("Bone Choir"), EShape::Summon, 5.0f, 12.0f, 300.0f, TEXT("Cripple"), 20.0f,
+		 TEXT(""), false, 10.0f, /*bPermanent=*/true, /*bDetonates=*/false, /*bCommandStrike=*/false,
+		 /*bMinionsLayEffect=*/true},
+		{TEXT("Wand"), ESlot::Movement, TEXT("Grave Return"), EShape::Movement, 3.0f, 14.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT(""), false, 0.0f, /*bPermanent=*/false, /*bDetonates=*/true},
+		{TEXT("Fist"), ESlot::Movement, TEXT("Severing Rush"), EShape::Movement, 2.0f, 12.0f, -1.0f, TEXT(""), 0.0f,
+		 TEXT("Bleed"), false, 0.0f},
+		{TEXT("Crossbow"), ESlot::Ultimate, TEXT("None Spared"), EShape::Projectile, 0.4f, 14.0f, 35.0f, TEXT(""), 0.0f,
+		 TEXT(""), false, 0.0f},
 	};
-	TestEqual(TEXT("set-up: twelve rows are written whole"), static_cast<int32>(UE_ARRAY_COUNT(Rows)), 12);
+	TestEqual(TEXT("set-up: twenty-two rows are written whole, twelve by slice DS1 and ten by DS2"),
+			  static_cast<int32>(UE_ARRAY_COUNT(Rows)), 22);
 
 	FDeathSkillFighter Holder(World, FVector::ZeroVector);
 	for (const FDeathRowDrafted& Drafted : Rows)
@@ -1033,8 +1066,24 @@ bool FCataclysmDeathSkillsBuiltRowsCarryTheirNumbersTest::RunTest(const FString&
 		TestTrue(*FString::Printf(TEXT("%s: taunts or not, as drafted"), *Where), Granted->Params.bTaunts == Drafted.bTaunts);
 		TestEqual(*FString::Printf(TEXT("%s: Fervour reserved each"), *Where), Granted->Params.FervourReserve,
 				  Drafted.FervourReserve, DeathSkillAllowance);
+		TestTrue(*FString::Printf(TEXT("%s: permanent or not, as drafted"), *Where),
+				 Granted->Params.bPermanent == Drafted.bPermanent);
+		TestTrue(*FString::Printf(TEXT("%s: detonates or not, as drafted"), *Where),
+				 Granted->Params.bDetonates == Drafted.bDetonates);
+		TestTrue(*FString::Printf(TEXT("%s: commands a strike or not, as drafted"), *Where),
+				 Granted->Params.bCommandStrike == Drafted.bCommandStrike);
+		TestTrue(*FString::Printf(TEXT("%s: its minions lay its effect or not, as drafted"), *Where),
+				 Granted->Params.bMinionsLayEffect == Drafted.bMinionsLayEffect);
 		TestTrue(*FString::Printf(TEXT("%s: the whole cell read"), *Where), Granted->Params.bValid);
 	}
+
+	// NONE SPARED'S CERTAIN CRITICAL STRIKE, the owner's ruling of 2026-11-24, and its 14 m since the coordinating
+	// session's ruling of the same day: a crossbow may not out-range the Corrupted Sentinel's 14 m reach (issue #352).
+	const FCataclysmWeaponSkill NoneSpared = DeathRowOf(TEXT("Crossbow"), ESlot::Ultimate);
+	TestEqual(TEXT("None Spared states a critical strike chance of 100"), NoneSpared.CritChancePercent, 100.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and twelve bolts"), NoneSpared.Params.Count, 12);
+	TestEqual(TEXT("each at the next enemy in turn"), NoneSpared.Params.TargetMode, FString(TEXT("All")));
 	return true;
 }
 
@@ -1043,14 +1092,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsWaitingRowsArePlaceholders
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The 33 Death rows slice DS1 writes with their name, description and numbers and NO shape, because the code they need
- * is not built, or, for None Spared, because a ruling on the Corrupted Sentinel's reach is not made
- * (`tools/reapply_death_skills_workbook.py` names what each waits on). Each is offered by its weapon (`SkillsFor`
+ * The Death rows written with their name, description and numbers and NO shape, because the code they need is not
+ * built (`tools/reapply_death_skills_workbook.py` names what each waits on): 33 after slice DS1, 23 after slice DS2,
+ * which built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled. Each is offered by its weapon (`SkillsFor`
  * keeps a named row), carries its description, and has no shape, so `TemplateFor` answers null and the weapon slots
- * grant `UCataclysmUndesignedSkill`, which says what it will do and does nothing yet. None Spared carries its numbers
- * already: a critical strike chance of 100, the owner's ruling of 2026-11-24 that its critical strikes are certain.
- * THE CONTROL: across every Death weapon and the aura the table holds 51 named Death rows, of which 18 have a shape:
- * the Dagger's five, the aura and the twelve this slice writes whole.
+ * grant `UCataclysmUndesignedSkill`, which says what it will do and does nothing yet. THE CONTROL: across every Death
+ * weapon and the aura the table holds 51 named Death rows, of which 28 have a shape: the Dagger's five, the aura and
+ * the twenty-two the two slices write whole.
  */
 bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&)
 {
@@ -1068,26 +1116,17 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		{TEXT("Sword"), ESlot::Heavy, TEXT("Mercy Stroke")},
 		{TEXT("Sword"), ESlot::Ultimate, TEXT("Danse Macabre")},
 		{TEXT("Sword"), ESlot::Special, TEXT("Death Warrant")},
-		{TEXT("Greatsword"), ESlot::Heavy, TEXT("Gravebell")},
-		{TEXT("Greatsword"), ESlot::Ultimate, TEXT("Barrow Guard")},
-		{TEXT("Greatsword"), ESlot::Movement, TEXT("Barrow Leap")},
 		{TEXT("Greataxe"), ESlot::Support, TEXT("Death Rattle")},
 		{TEXT("Greataxe"), ESlot::Heavy, TEXT("Grim Swath")},
-		{TEXT("Greataxe"), ESlot::Ultimate, TEXT("Exhume")},
-		{TEXT("Greataxe"), ESlot::Movement, TEXT("Open Grave")},
-		{TEXT("Staff"), ESlot::Heavy, TEXT("Marrow Lance")},
-		{TEXT("Staff"), ESlot::Ultimate, TEXT("Bone Choir")},
 		{TEXT("Staff"), ESlot::Movement, TEXT("Wraithwalk")},
 		{TEXT("Staff"), ESlot::Special, TEXT("Grave Mouth")},
 		{TEXT("Wand"), ESlot::Support, TEXT("Soul Snare")},
 		{TEXT("Wand"), ESlot::Heavy, TEXT("Hungering Soul")},
 		{TEXT("Wand"), ESlot::Ultimate, TEXT("Requiem")},
-		{TEXT("Wand"), ESlot::Movement, TEXT("Grave Return")},
 		{TEXT("Wand"), ESlot::Special, TEXT("Restless Spirits")},
 		{TEXT("Fist"), ESlot::Support, TEXT("Hemlock")},
 		{TEXT("Fist"), ESlot::Heavy, TEXT("Gravetouch")},
 		{TEXT("Fist"), ESlot::Ultimate, TEXT("Quietus")},
-		{TEXT("Fist"), ESlot::Movement, TEXT("Severing Rush")},
 		{TEXT("Whip"), ESlot::Support, TEXT("Death Grip")},
 		{TEXT("Whip"), ESlot::Ultimate, TEXT("Last Toll")},
 		{TEXT("Spear"), ESlot::Support, TEXT("Grim Reach")},
@@ -1096,9 +1135,8 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		{TEXT("Crossbow"), ESlot::Support, TEXT("Carrion Crows")},
 		{TEXT("Crossbow"), ESlot::Heavy, TEXT("Coffin Nail")},
 		{TEXT("Crossbow"), ESlot::Special, TEXT("Effigy")},
-		{TEXT("Crossbow"), ESlot::Ultimate, TEXT("None Spared")},
 	};
-	TestEqual(TEXT("set-up: 33 rows wait"), static_cast<int32>(UE_ARRAY_COUNT(Waiting)), 33);
+	TestEqual(TEXT("set-up: 23 rows wait"), static_cast<int32>(UE_ARRAY_COUNT(Waiting)), 23);
 
 	for (const FDeathRowWaiting& Row : Waiting)
 	{
@@ -1120,14 +1158,8 @@ bool FCataclysmDeathSkillsWaitingRowsArePlaceholdersTest::RunTest(const FString&
 		Shaped += Skill.Shape != ECataclysmSkillShape::None ? 1 : 0;
 	}
 	TestEqual(TEXT("control: 51 named Death rows, the 45 of issue #2885, the Dagger's five and the aura"), Named, 51);
-	TestEqual(TEXT("control: of which 18 have a shape, the 12 of this slice, the Dagger's five and the aura"), Shaped,
-			  18);
-
-	// NONE SPARED'S NUMBERS ARE ENTERED WITH IT, the certain critical strike among them.
-	const FCataclysmWeaponSkill NoneSpared = DeathRowOf(TEXT("Crossbow"), ESlot::Ultimate);
-	TestEqual(TEXT("None Spared states a critical strike chance of 100"), NoneSpared.CritChancePercent, 100.0f,
-			  DeathSkillAllowance);
-	TestEqual(TEXT("and 35% weapon damage a bolt"), NoneSpared.DamagePercent, 35.0f, DeathSkillAllowance);
+	TestEqual(TEXT("control: of which 28 have a shape, the 22 of the two slices, the Dagger's five and the aura"),
+			  Shaped, 28);
 	return true;
 }
 
@@ -1411,6 +1443,26 @@ bool FCataclysmDeathSkillsPermanentRaiseTest::RunTest(const FString&)
 		return false;
 	}
 
+	ACataclysmMinion* Stays = Lasting->SummonOne();
+	ACataclysmMinion* Replacement = Lasting->SummonReplacementAt(FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* Passes = Passing->SummonOne();
+	ON_SCOPE_EXIT { DeathSkillClear({Stays, Replacement, Passes}); };
+	if (!TestNotNull(TEXT("set-up: the permanent raise rose"), Stays)
+		|| !TestNotNull(TEXT("set-up: and so did its replacement"), Replacement)
+		|| !TestNotNull(TEXT("set-up: and the control's imp"), Passes))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the permanent raise has no lifespan: it stands until it is destroyed"), Stays->GetLifeSpan(), 0.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("and neither has a replacement of it"), Replacement->GetLifeSpan(), 0.0f, DeathSkillAllowance);
+	TestTrue(TEXT("and it holds its reserve while it stands"), Stays->ReservedFervour > 0.0f);
+	TestEqual(TEXT("control: a raise without the key has its row's 8 seconds"), Passes->GetLifeSpan(), 8.0f,
+			  DeathSkillAllowance);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsRisingBurstTest,
 	"Cataclysm.DeathSkills.ARaiseStatingItsDamageStrikesAndCripplesTheRingItRisesInAndOneStatingNoneStrikesNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1461,6 +1513,38 @@ bool FCataclysmDeathSkillsRisingBurstTest::RunTest(const FString&)
 	{
 		return false;
 	}
+
+	const float NearBefore = DeathSkillHealthOf(Near.Actor);
+	const float FarBefore = DeathSkillHealthOf(Far.Actor);
+	TestEqual(TEXT("its blow struck the one enemy within 5 m"), Rising->StrikeAsItRises(), 1);
+	TestEqual(TEXT("and records it"), Rising->StruckAsItRose, 1);
+	TestTrue(TEXT("the enemy 3 m off lost health"), DeathSkillHealthOf(Near.Actor) < NearBefore);
+	TestEqual(TEXT("and is Crippled at the row's 30"), UCataclysmSkillEffects::StatedStrengthOn(Near.Actor, Cripple),
+			  30.0f, DeathSkillAllowance);
+	TestEqual(TEXT("for the row's 4 seconds"), DeathSkillSecondsLeft(Near.Actor, Cripple), 4.0f, DeathSkillAllowance);
+	TestEqual(TEXT("the enemy 7 m off, beyond the radius, lost nothing"), DeathSkillHealthOf(Far.Actor), FarBefore,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("and is not Crippled"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
+
+	// THE CONTROL: the same cell, no damage of its own.
+	FDeathSkillCreature ControlSummoner(ControlWorld, FVector::ZeroVector, ECataclysmTeam::Players);
+	ControlSummoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature ControlNear(ControlWorld, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Quiet = GrantDeathSkill<UCataclysmSummonSkill>(
+		ControlSummoner.AbilitySystem, ControlSummoner.Actor, ECataclysmAbilitySlot::Ultimate, Cell,
+		TEXT("A raise stating no damage of its own"));
+	if (!TestNotNull(TEXT("set-up: the control raise is granted"), Quiet))
+	{
+		return false;
+	}
+	const float ControlBefore = DeathSkillHealthOf(ControlNear.Actor);
+	TestFalse(TEXT("control: a row stating no damage of its own does not strike as it rises"), Quiet->StrikesAsItRises());
+	TestEqual(TEXT("control: so its blow struck nobody"), Quiet->StrikeAsItRises(), 0);
+	TestEqual(TEXT("control: the enemy 3 m off lost nothing"), DeathSkillHealthOf(ControlNear.Actor), ControlBefore,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("control: and is not Crippled"), ControlNear.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsHewingRaiseTest,
 	"Cataclysm.DeathSkills.ARaiseThatHewsOneEnemyStrikesTheNearestInReachAndRisesAtItsFeet",
@@ -1522,6 +1606,220 @@ bool FCataclysmDeathSkillsHewingRaiseTest::RunTest(const FString&)
 				 FVector::Dist2D(Risen->GetActorLocation(), Hewn.Actor->GetActorLocation()) < 1.0f);
 	}
 
+	// THE CONTROL: nobody within reach.
+	FDeathSkillCreature ControlSummoner(ControlWorld, FVector::ZeroVector, ECataclysmTeam::Players);
+	ControlSummoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature OutOfReach(ControlWorld, FVector(6.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Unanswered = GrantDeathSkill<UCataclysmSummonSkill>(
+		ControlSummoner.AbilitySystem, ControlSummoner.Actor, ECataclysmAbilitySlot::Ultimate, Cell,
+		TEXT("A raise with nobody to hew"));
+	if (!TestNotNull(TEXT("set-up: the control raise is granted"), Unanswered))
+	{
+		return false;
+	}
+	Unanswered->DamagePercentOverride = 400.0f;
+	TestEqual(TEXT("control: with nobody within 4 m the blow strikes nobody"), Unanswered->StrikeAsItRises(), 0);
+	ACataclysmMinion* RisenAnyway = Unanswered->SummonOne();
+	ON_SCOPE_EXIT { DeathSkillClear({RisenAnyway}); };
+	if (TestNotNull(TEXT("control: and the raise still rises"), RisenAnyway))
+	{
+		TestTrue(TEXT("control: where its rift was, the origin, and not at the enemy out of reach"),
+				 FVector::Dist2D(RisenAnyway->GetActorLocation(), FVector::ZeroVector) < 1.0f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsSeveringRushTest,
+	"Cataclysm.DeathSkills.SeveringRushOpensABleedOnTheEnemyItsChargeCrossesAndNoneBesideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Fist's Severing Rush, its own row: "Rush 12 meters through everything in your way, knocking each enemy 2 meters
+ * aside and opening a Bleed on it." N16: its `Ailment=Bleed`, which the owner's set allows since 2026-11-24, laid through
+ * `UCataclysmSkillTemplate::ApplyStatedAilmentTo` as Nightshade's Poison is. The charge runs 12 m along +X: the enemy
+ * 6 m along it and half a metre off the line is struck and bleeds (`Keyword.DoT.Bleed`, the tag a bleed is laid with);
+ * THE CONTROL, the enemy 6 m along and 4 m off the line, beyond the charge's 2 m, is not struck and does not bleed.
+ */
+bool FCataclysmDeathSkillsSeveringRushTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Fist"), ECataclysmAbilitySlot::Movement);
+	const FGameplayTag Bleed = DeathSkillTagNamed(TEXT("Keyword.DoT.Bleed"));
+	if (!TestEqual(TEXT("set-up: the Death Fist's Movement row is Severing Rush. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Severing Rush")))
+		|| !TestEqual(TEXT("set-up: it states a Bleed"), Row.Params.Ailment, FString(TEXT("Bleed")))
+		|| !TestTrue(TEXT("set-up: the vocabulary has the bleed's tag"), Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	FDeathSkillFighter Crossed(World, FVector(6.0f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f));
+	FDeathSkillFighter Beside(World, FVector(6.0f * DeathSkillMetre, 4.0f * DeathSkillMetre, 0.0f));
+	UCataclysmMovementSkill* Rush = GrantDeathRow<UCataclysmMovementSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Rush))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the rush activates"), ActivateDeathSkill(Caster.AbilitySystem, Rush));
+	TestEqual(TEXT("it struck the one enemy on its line"), Rush->EnemiesHit, 1);
+	TestTrue(TEXT("which bleeds"), Crossed.Carries(Bleed));
+	TestFalse(TEXT("control: the enemy 4 m off the line, beyond the charge's 2 m, does not"), Beside.Carries(Bleed));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBarrowGuardTest,
+	"Cataclysm.DeathSkills.BarrowGuardRaisesTwoPermanentTauntingGuardsInABurstThatCripplesWithinFiveMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Greatsword's Barrow Guard, its own row: "call up two Barrow Guards, skeleton warriors that fight beside you until
+ * they are destroyed and draw the fight onto themselves: every enemy within 5 meters of a guard turns on it ... They rise
+ * in a burst of grave-cold: every enemy within 5 meters takes 300% weapon damage and is Crippled, moving and attacking
+ * 30% slower, for 4 seconds." N1, N2 and C3 together, raised as a press raises them -- the rising blow, then one
+ * `SummonOne` for each of the row's `Count` -- at a summoner that has not aimed, so at its feet. The enemy 4 m off is
+ * struck, Crippled at 30 for 4 s and taunted by a guard; THE CONTROL, the enemy 7 m off, is none of them. Two guards of
+ * the BarrowGuard kind stand with no lifespan, each taunting within the row's 5 m and holding some of its summoner's
+ * Fervour.
+ */
+bool FCataclysmDeathSkillsBarrowGuardTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Greatsword"), ECataclysmAbilitySlot::Ultimate);
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestEqual(TEXT("set-up: the Death Greatsword's Ultimate row is Barrow Guard. If empty, DT_WeaponSkills is older "
+						"than the CSV"), Row.Name, FString(TEXT("Barrow Guard")))
+		|| !TestEqual(TEXT("set-up: it raises two"), Row.Params.Count, 2)
+		|| !TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Summoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature Near(World, FVector(4.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Far(World, FVector(0.0f, 7.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Guard = GrantDeathRow<UCataclysmSummonSkill>(Summoner.AbilitySystem, Summoner.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Guard))
+	{
+		return false;
+	}
+
+	const float NearBefore = DeathSkillHealthOf(Near.Actor);
+	const float FarBefore = DeathSkillHealthOf(Far.Actor);
+	TestEqual(TEXT("the burst struck the one enemy within 5 m"), Guard->StrikeAsItRises(), 1);
+	TestTrue(TEXT("the enemy 4 m off lost health"), DeathSkillHealthOf(Near.Actor) < NearBefore);
+	TestEqual(TEXT("and is Crippled at 30"), UCataclysmSkillEffects::StatedStrengthOn(Near.Actor, Cripple), 30.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for 4 seconds"), DeathSkillSecondsLeft(Near.Actor, Cripple), 4.0f, DeathSkillAllowance);
+
+	TArray<ACataclysmMinion*> Guards;
+	ON_SCOPE_EXIT { DeathSkillClear(Guards); };
+	for (int32 Index = 0; Index < Row.Params.Count; ++Index)
+	{
+		Guards.Add(Guard->SummonOne());
+	}
+	bool bNearTauntedByAGuard = false;
+	for (const ACataclysmMinion* Risen : Guards)
+	{
+		if (!TestNotNull(TEXT("a guard rose. If not, DT_MinionTypes is older than the CSV"), Risen))
+		{
+			return false;
+		}
+		TestEqual(TEXT("of the BarrowGuard kind"), Risen->TypeName, FString(TEXT("BarrowGuard")));
+		TestEqual(TEXT("standing until it is destroyed"), Risen->GetLifeSpan(), 0.0f, DeathSkillAllowance);
+		TestEqual(TEXT("taunting within the row's 5 m"), Risen->TauntRadiusCm, 5.0f * DeathSkillMetre,
+				  DeathSkillAllowance);
+		TestTrue(TEXT("and holding some of its summoner's Fervour"), Risen->ReservedFervour > 0.0f);
+		bNearTauntedByAGuard = bNearTauntedByAGuard || Near.TauntedBy() == Risen;
+	}
+	TestEqual(TEXT("two guards stand"), Guard->LivingMinionCount(), 2);
+	TestTrue(TEXT("and the enemy 4 m off is taunted by one of them"), bNearTauntedByAGuard);
+	TestEqual(TEXT("control: the enemy 7 m off lost nothing"), DeathSkillHealthOf(Far.Actor), FarBefore,
+			  DeathSkillAllowance);
+	TestFalse(TEXT("control: is not Crippled"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestNull(TEXT("control: and is not taunted"), Far.TauntedBy());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsExhumeTest,
+	"Cataclysm.DeathSkills.ExhumeHewsTheEnemyWithinFourMetresAndRaisesAPermanentBoneReaperAtItsFeet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Greataxe's Exhume, its own row: "Hew one enemy within 4 meters for 400% weapon damage and drag a Bone Reaper up out
+ * of the ground at its feet. The Reaper fights for you until it is destroyed ... and reserves 15 Fervour while it
+ * stands." N1 and N2 as one blow. The enemy 3 m off is hewn and the Reaper rises at its feet, of the BoneReaper kind,
+ * with no lifespan and holding some of its summoner's Fervour; THE CONTROL, the enemy 6 m off, beyond the 4 m, is not
+ * struck.
+ */
+bool FCataclysmDeathSkillsExhumeTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Greataxe"), ECataclysmAbilitySlot::Ultimate);
+	if (!TestEqual(TEXT("set-up: the Death Greataxe's Ultimate row is Exhume. If empty, DT_WeaponSkills is older than the "
+						"CSV"), Row.Name, FString(TEXT("Exhume")))
+		|| !TestEqual(TEXT("set-up: it hews one"), Row.Params.MaxTargets, 1))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Summoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature Hewn(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Beyond(World, FVector(0.0f, 6.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Exhume = GrantDeathRow<UCataclysmSummonSkill>(Summoner.AbilitySystem, Summoner.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Exhume))
+	{
+		return false;
+	}
+
+	const float HewnBefore = DeathSkillHealthOf(Hewn.Actor);
+	const float BeyondBefore = DeathSkillHealthOf(Beyond.Actor);
+	TestEqual(TEXT("it hewed one enemy"), Exhume->StrikeAsItRises(), 1);
+	TestTrue(TEXT("the enemy 3 m off lost health"), DeathSkillHealthOf(Hewn.Actor) < HewnBefore);
+	TestEqual(TEXT("control: the enemy 6 m off, beyond the 4 m, lost nothing"), DeathSkillHealthOf(Beyond.Actor),
+			  BeyondBefore, DeathSkillAllowance);
+
+	ACataclysmMinion* Reaper = Exhume->SummonOne();
+	ON_SCOPE_EXIT { DeathSkillClear({Reaper}); };
+	if (!TestNotNull(TEXT("a Reaper rose. If not, DT_MinionTypes is older than the CSV"), Reaper))
+	{
+		return false;
+	}
+	TestEqual(TEXT("of the BoneReaper kind"), Reaper->TypeName, FString(TEXT("BoneReaper")));
+	TestTrue(TEXT("at the hewn enemy's feet"),
+			 FVector::Dist2D(Reaper->GetActorLocation(), Hewn.Actor->GetActorLocation()) < 1.0f);
+	TestEqual(TEXT("standing until it is destroyed"), Reaper->GetLifeSpan(), 0.0f, DeathSkillAllowance);
+	TestTrue(TEXT("and holding some of its summoner's Fervour"), Reaper->ReservedFervour > 0.0f);
+	return true;
+}
+
 // ==========================================================================
 // Slice DS2, change B. N3: the caster's minions in the skill's area explode. N4: a strike orders everything its caster
 // commands. N11: a summon's minions lay its effect with their blows.
@@ -1569,6 +1867,44 @@ bool FCataclysmDeathSkillsDetonatingSwingTest::RunTest(const FString&)
 		return false;
 	}
 
+	UCataclysmStrikeSkill* Swing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Caster.AbilitySystem, Caster.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=90; Detonates=1"),
+		TEXT("A detonating swing"));
+	if (!TestNotNull(TEXT("set-up: the swing is granted"), Swing))
+	{
+		return false;
+	}
+
+	const float BlastedBefore = Blasted.Health();
+	TestEqual(TEXT("the swing reaches no enemy of its own"), Swing->SwingOnce(), 0);
+	TestEqual(TEXT("and explodes one minion"), Swing->MinionsDetonated, 1);
+	TestFalse(TEXT("the caster's minion 2 m ahead, inside the arc, is gone"), IsValid(Inside));
+	TestTrue(TEXT("its blast struck the enemy beside it, outside the arc"), Blasted.Health() < BlastedBefore);
+	TestTrue(TEXT("the caster's minion 2 m behind, outside the arc, stands"), IsValid(Behind));
+	TestTrue(TEXT("its minion 6 m ahead, beyond the reach, stands"), IsValid(Beyond));
+	TestTrue(TEXT("and another summoner's minion inside the arc stands: only the caster's explode"),
+			 IsValid(NotTheCasters));
+
+	// THE CONTROL: the same swing without the key.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Plain, PlayersSide);
+	ACataclysmMinion* PlainInside =
+		DeathSkillMinionOf(Plain.Actor, FVector(2.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({PlainInside}); };
+	UCataclysmStrikeSkill* PlainSwing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=90"),
+		TEXT("A swing that explodes nothing"));
+	if (!TestNotNull(TEXT("set-up: the control minion"), PlainInside)
+		|| !TestNotNull(TEXT("set-up: the control swing"), PlainSwing))
+	{
+		return false;
+	}
+	PlainSwing->SwingOnce();
+	TestEqual(TEXT("control: a swing without the key explodes nothing"), PlainSwing->MinionsDetonated, 0);
+	TestTrue(TEXT("control: and its minion inside the arc stands"), IsValid(PlainInside));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsCommandingSwingTest,
 	"Cataclysm.DeathSkills.ASwingThatCommandsOrdersEveryCreatureItsCasterCommandsAndOneThatDoesNotOrdersNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1605,6 +1941,33 @@ bool FCataclysmDeathSkillsCommandingSwingTest::RunTest(const FString&)
 		return false;
 	}
 
+	const int32 Before = Distant->AttacksMade;
+	TestEqual(TEXT("the swing struck the enemy 2 m ahead"), Swing->SwingOnce(), 1);
+	TestEqual(TEXT("and ordered one creature onto it"), Swing->CommandedStrikes, 1);
+	TestEqual(TEXT("the caster's minion 20 m away swung once, wherever it stands"), Distant->AttacksMade, Before + 1);
+
+	// THE CONTROL: the same swing without the key.
+	FDeathSkillFighter Plain(World, FVector(0.0f, 100.0f * DeathSkillMetre, 0.0f));
+	DeathSkillSideWithThePlayers(Plain, PlayersSide);
+	FDeathSkillFighter PlainStruck(World, FVector(2.0f * DeathSkillMetre, 100.0f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* PlainDistant =
+		DeathSkillMinionOf(Plain.Actor, FVector(0.0f, 120.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({PlainDistant}); };
+	UCataclysmStrikeSkill* PlainSwing = GrantDeathSkill<UCataclysmStrikeSkill>(
+		Plain.AbilitySystem, Plain.Actor, ECataclysmAbilitySlot::Heavy, TEXT("Radius=3; Angle=120"),
+		TEXT("A swing that commands nobody"));
+	if (!TestNotNull(TEXT("set-up: the control minion"), PlainDistant)
+		|| !TestNotNull(TEXT("set-up: the control swing"), PlainSwing))
+	{
+		return false;
+	}
+	const int32 PlainBefore = PlainDistant->AttacksMade;
+	TestEqual(TEXT("control: the plain swing struck its enemy too"), PlainSwing->SwingOnce(), 1);
+	TestEqual(TEXT("control: and ordered nobody"), PlainSwing->CommandedStrikes, 0);
+	TestEqual(TEXT("control: so its minion did not swing"), PlainDistant->AttacksMade, PlainBefore);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsMinionsLayEffectTest,
 	"Cataclysm.DeathSkills.AMinionTaughtTheRowsEffectLaysItWithItsBlowAndOneNotTaughtLaysNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1631,5 +1994,372 @@ bool FCataclysmDeathSkillsMinionsLayEffectTest::RunTest(const FString&)
 	{
 		return false;
 	}
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	FDeathSkillCreature Struck(World, FVector(1.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature ControlStruck(World, FVector(0.0f, 50.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Teaching = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; Effect=Cripple; EffectMagnitude=20; EffectDuration=2; "
+			 "MinionsLayEffect=1"), TEXT("A raise whose minions Cripple"));
+	UCataclysmSummonSkill* Plain = GrantDeathSkill<UCataclysmSummonSkill>(
+		Summoner.AbilitySystem, Summoner.Actor, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; Radius=3; Minions=Imp:1; FervourReserve=3; Effect=Cripple; EffectMagnitude=20; EffectDuration=2"),
+		TEXT("A raise whose minions lay nothing"));
+	if (!TestNotNull(TEXT("set-up: the teaching raise"), Teaching) || !TestNotNull(TEXT("set-up: the control"), Plain))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* Taught = Teaching->SummonOne();
+	ACataclysmMinion* Untaught = Plain->SummonOne();
+	ON_SCOPE_EXIT { DeathSkillClear({Taught, Untaught}); };
+	if (!TestNotNull(TEXT("set-up: the taught imp rose"), Taught)
+		|| !TestNotNull(TEXT("set-up: the control imp rose"), Untaught)
+		|| !TestEqual(TEXT("the taught imp was taught one effect"), Taught->EffectTagsItsBlowsLay.Num(), 1)
+		|| !TestEqual(TEXT("with its seconds beside it"), Taught->EffectSecondsItsBlowsLay.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the Cripple"), Taught->EffectTagsItsBlowsLay[0] == Cripple);
+	TestEqual(TEXT("for 2 seconds"), Taught->EffectSecondsItsBlowsLay[0], 2.0f, DeathSkillAllowance);
+	TestEqual(TEXT("at 20"), Taught->EffectMagnitudeItsBlowsLay, 20.0f, DeathSkillAllowance);
+
+	Taught->AttackTarget(Struck.Actor);
+	TestTrue(TEXT("its blow Crippled the enemy it struck"), Struck.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("at 20"), UCataclysmSkillEffects::StatedStrengthOn(Struck.Actor, Cripple), 20.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for 2 seconds"), DeathSkillSecondsLeft(Struck.Actor, Cripple), 2.0f, DeathSkillAllowance);
+
+	// THE CONTROL: an imp taught nothing.
+	TestEqual(TEXT("control: the imp of a row without the key was taught nothing"),
+			  Untaught->EffectTagsItsBlowsLay.Num(), 0);
+	const int32 SwungBefore = Untaught->AttacksMade;
+	Untaught->AttackTarget(ControlStruck.Actor);
+	TestEqual(TEXT("control: set-up: its blow was dealt"), Untaught->AttacksMade, SwungBefore + 1);
+	TestFalse(TEXT("control: and laid no Cripple"), ControlStruck.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsGravebellTest,
+	"Cataclysm.DeathSkills.GravebellExplodesTheMinionsInItsArcAndOrdersTheRestOntoTheEnemyItStruck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Greatsword's Gravebell, its own row: "Swing the greatsword through a wide arc like a tolling bell, giving Necrosis
+ * to everything it strikes. Your dead answer the bell: every minion of yours the arc passes through explodes, and every
+ * other creature you command strikes the first enemy the arc hit, wherever it is standing." N3 and N4 in one swing. The
+ * enemy 2 m ahead is struck and carries Necrosis; the caster's minion 3 m ahead and half a metre aside, inside the 4.5 m,
+ * 140 degree arc, explodes; its minion 20 m away is ordered onto the enemy and swings, and is the one creature ordered,
+ * since the exploded one is gone before the order.
+ */
+bool FCataclysmDeathSkillsGravebellTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Greatsword"), ECataclysmAbilitySlot::Heavy);
+	const FGameplayTag Necrosis = DeathSkillTagNamed(TEXT("Keyword.DoT.Necrosis"));
+	if (!TestEqual(TEXT("set-up: the Death Greatsword's Heavy row is Gravebell. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Gravebell")))
+		|| !TestTrue(TEXT("set-up: the vocabulary has Necrosis's tag"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillFighter Struck(World, FVector(2.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* InTheArc =
+		DeathSkillMinionOf(Caster.Actor, FVector(3.0f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Away = DeathSkillMinionOf(Caster.Actor, FVector(0.0f, 20.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({InTheArc, Away}); };
+	UCataclysmStrikeSkill* Bell = GrantDeathRow<UCataclysmStrikeSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the minion in the arc"), InTheArc) || !TestNotNull(TEXT("set-up: the one away"), Away)
+		|| !TestNotNull(TEXT("set-up: the row is granted"), Bell))
+	{
+		return false;
+	}
+
+	const int32 Before = Away->AttacksMade;
+	TestEqual(TEXT("the swing struck the enemy 2 m ahead"), Bell->SwingOnce(), 1);
+	TestTrue(TEXT("which carries Necrosis"), Struck.Carries(Necrosis));
+	TestEqual(TEXT("one minion exploded"), Bell->MinionsDetonated, 1);
+	TestFalse(TEXT("the one inside the arc"), IsValid(InTheArc));
+	TestEqual(TEXT("one creature was ordered"), Bell->CommandedStrikes, 1);
+	TestEqual(TEXT("the minion 20 m away, which swung once"), Away->AttacksMade, Before + 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBarrowLeapTest,
+	"Cataclysm.DeathSkills.BarrowLeapCripplesAndExplodesTheCastersMinionsWithinFourMetresOfItsLanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Greatsword's Barrow Leap, its own row: "Leap to a point up to 10 meters away and land in a burst of grave-cold,
+ * Crippling every enemy within 4 meters so it moves and attacks 30% slower for 3 seconds. Every minion of yours within it
+ * explodes as you land." N3 at a leap's arrival, with N22. It lands 10 m along +X: the enemy 1 m beyond is Crippled at
+ * 30 for 3 s; the caster's minion 3 m to the side of the landing explodes; its minion 7 m to the side, beyond the 4 m,
+ * stands; and another summoner's minion a metre and a half from the landing stands, not being the caster's.
+ */
+bool FCataclysmDeathSkillsBarrowLeapTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Greatsword"), ECataclysmAbilitySlot::Movement);
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestEqual(TEXT("set-up: the Death Greatsword's Movement row is Barrow Leap. If empty, DT_WeaponSkills is older "
+						"than the CSV"), Row.Name, FString(TEXT("Barrow Leap")))
+		|| !TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillFighter Landed(World, FVector(11.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* Near =
+		DeathSkillMinionOf(Caster.Actor, FVector(10.0f * DeathSkillMetre, 3.0f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Far =
+		DeathSkillMinionOf(Caster.Actor, FVector(10.0f * DeathSkillMetre, 7.0f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Others =
+		DeathSkillMinionOf(PlayersSide.Actor, FVector(9.0f * DeathSkillMetre, 1.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({Near, Far, Others}); };
+	UCataclysmMovementSkill* Leap = GrantDeathRow<UCataclysmMovementSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the near minion"), Near) || !TestNotNull(TEXT("set-up: the far one"), Far)
+		|| !TestNotNull(TEXT("set-up: another's"), Others) || !TestNotNull(TEXT("set-up: the row is granted"), Leap))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the leap activates"), ActivateDeathSkill(Caster.AbilitySystem, Leap));
+	TestTrue(TEXT("the enemy 1 m beyond the landing is Crippled"), Landed.Carries(Cripple));
+	TestEqual(TEXT("at 30"), UCataclysmSkillEffects::StatedStrengthOn(Landed.Actor, Cripple), 30.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for 3 seconds"), DeathSkillSecondsLeft(Landed.Actor, Cripple), 3.0f, DeathSkillAllowance);
+	TestEqual(TEXT("one minion exploded"), Leap->MinionsDetonated, 1);
+	TestFalse(TEXT("the caster's, 3 m from the landing"), IsValid(Near));
+	TestTrue(TEXT("its minion 7 m from the landing stands"), IsValid(Far));
+	TestTrue(TEXT("and another summoner's minion beside the landing stands"), IsValid(Others));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsMarrowLanceTest,
+	"Cataclysm.DeathSkills.MarrowLanceExplodesTheCastersMinionsOnTheLineItFlewAndNoneBesideIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Staff's Marrow Lance, its own row: "Drive a lance of bone up out of the ground along a line up to 14 meters long,
+ * giving Necrosis to everything it passes. Every minion of yours on the line explodes." N3 through a projectile that
+ * flies (`Speed=2400`): as the lance finishes, the caster's minions within its 1.2 m of the line it flew explode
+ * (`UCataclysmProjectileSkill::OnProjectileFinished`; a judgement of slice DS2 that a flying lance detonates once, as it
+ * finishes). Fired along +X: nothing has exploded while it is in the air; then the enemy 5 m along is struck and carries
+ * Necrosis, the caster's minion 7 m along and half a metre aside explodes, and its minion 7 m along and 3 m aside stands.
+ */
+bool FCataclysmDeathSkillsMarrowLanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Staff"), ECataclysmAbilitySlot::Heavy);
+	const FGameplayTag Necrosis = DeathSkillTagNamed(TEXT("Keyword.DoT.Necrosis"));
+	if (!TestEqual(TEXT("set-up: the Death Staff's Heavy row is Marrow Lance. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Marrow Lance")))
+		|| !TestTrue(TEXT("set-up: the vocabulary has Necrosis's tag"), Necrosis.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	FDeathSkillFighter Passed(World, FVector(5.0f * DeathSkillMetre, 0.0f, 0.0f));
+	ACataclysmMinion* OnTheLine =
+		DeathSkillMinionOf(Caster.Actor, FVector(7.0f * DeathSkillMetre, 0.5f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Beside =
+		DeathSkillMinionOf(Caster.Actor, FVector(7.0f * DeathSkillMetre, 3.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({OnTheLine, Beside}); };
+	UCataclysmProjectileSkill* Lance = GrantDeathRow<UCataclysmProjectileSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the minion on the line"), OnTheLine) || !TestNotNull(TEXT("set-up: beside"), Beside)
+		|| !TestNotNull(TEXT("set-up: the row is granted"), Lance))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the lance is thrown"), ActivateDeathSkill(Caster.AbilitySystem, Lance)))
+	{
+		return false;
+	}
+	ACataclysmProjectile* Shot = Lance->InFlight.Get();
+	if (!TestNotNull(TEXT("and is in the air, since it has a speed"), Shot))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing has exploded while it flies"), Lance->MinionsDetonated, 0);
+	TestTrue(TEXT("and the minion on the line still stands"), IsValid(OnTheLine));
+
+	DeathSkillFlyToTheEnd(Shot);
+	TestTrue(TEXT("set-up: the lance has finished"), !IsValid(Shot) || Shot->bFinished);
+	TestTrue(TEXT("the enemy 5 m along carries Necrosis"), Passed.Carries(Necrosis));
+	TestEqual(TEXT("one minion exploded"), Lance->MinionsDetonated, 1);
+	TestFalse(TEXT("the caster's, half a metre off the line"), IsValid(OnTheLine));
+	TestTrue(TEXT("and its minion 3 m off the line stands"), IsValid(Beside));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsGraveReturnTest,
+	"Cataclysm.DeathSkills.GraveReturnExplodesTheCastersMinionsWithinThreeMetresOfTheShadeItReturnsTo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Wand's Grave Return, its own row: "Leave a shade of yourself where you stand. For 8 seconds you may return to it
+ * from anywhere within 14 meters. As you arrive it bursts, throwing every enemy within 3 meters 3 meters back, and every
+ * minion of yours within it explodes too." N3 at a return. The first press leaves the shade at the origin and explodes
+ * nothing; the caster is moved 10 m along +X; the second press returns it to the origin, where the caster's minion
+ * nearly 2 m from the shade explodes and its minion 5 m from it, beyond the 3 m, stands.
+ */
+bool FCataclysmDeathSkillsGraveReturnTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Wand"), ECataclysmAbilitySlot::Movement);
+	if (!TestEqual(TEXT("set-up: the Death Wand's Movement row is Grave Return. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Grave Return")))
+		|| !TestTrue(TEXT("set-up: it is a return"), Row.Params.MovementMode == ECataclysmMovementMode::Recall))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature PlayersSide(World, FVector(0.0f, -100.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Players);
+	FDeathSkillFighter Caster(World, FVector::ZeroVector);
+	DeathSkillSideWithThePlayers(Caster, PlayersSide);
+	ACataclysmMinion* Near =
+		DeathSkillMinionOf(Caster.Actor, FVector(1.5f * DeathSkillMetre, 1.0f * DeathSkillMetre, 0.0f));
+	ACataclysmMinion* Far = DeathSkillMinionOf(Caster.Actor, FVector(0.0f, 5.0f * DeathSkillMetre, 0.0f));
+	ON_SCOPE_EXIT { DeathSkillClear({Near, Far}); };
+	UCataclysmMovementSkill* Return = GrantDeathRow<UCataclysmMovementSkill>(Caster.AbilitySystem, Caster.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the near minion"), Near) || !TestNotNull(TEXT("set-up: the far one"), Far)
+		|| !TestNotNull(TEXT("set-up: the row is granted"), Return))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the first press activates"), ActivateDeathSkill(Caster.AbilitySystem, Return));
+	TestEqual(TEXT("and explodes nothing: it only leaves the shade"), Return->MinionsDetonated, 0);
+	TestTrue(TEXT("so the minion beside it still stands"), IsValid(Near));
+
+	Caster.Actor->SetActorLocation(FVector(10.0f * DeathSkillMetre, 0.0f, 0.0f));
+	TestTrue(TEXT("the second press activates"), ActivateDeathSkill(Caster.AbilitySystem, Return));
+	TestTrue(TEXT("and returns the caster to the shade"),
+			 FVector::Dist2D(Caster.Actor->GetActorLocation(), FVector::ZeroVector) < 1.0f * DeathSkillMetre);
+	TestEqual(TEXT("one minion exploded"), Return->MinionsDetonated, 1);
+	TestFalse(TEXT("the caster's, within 3 m of the shade"), IsValid(Near));
+	TestTrue(TEXT("and its minion 5 m from the shade stands"), IsValid(Far));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsBoneChoirTest,
+	"Cataclysm.DeathSkills.BoneChoirRaisesTwoPermanentMagesWhoseBurstAndBlowsCrippleByTwenty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Staff's Bone Choir, its own row: "Call two Skeletal Mages up out of the ground ... in a burst of grave-cold that
+ * deals 300% weapon damage within 5 meters. They fight for you until they are destroyed and keep their distance, and the
+ * burst and every bolt they throw Cripple what they hit, 20% slower for 2 seconds." N1, N2 and N11 together, raised as a
+ * press raises them at a summoner that has not aimed (a skill never pressed holds its rift at the origin, where it
+ * stands). The burst strikes the enemy 3 m off and Cripples it at 20 for 2 s; the enemy 7 m off is not struck, until a
+ * mage's blow lands on it and Cripples it at 20 for 2 s. Two mages of the SkeletalMage kind stand with no lifespan.
+ */
+bool FCataclysmDeathSkillsBoneChoirTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeathSkillsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Row = DeathRowOf(TEXT("Staff"), ECataclysmAbilitySlot::Ultimate);
+	const FGameplayTag Cripple = DeathSkillStatus(TEXT("Cripple"));
+	if (!TestEqual(TEXT("set-up: the Death Staff's Ultimate row is Bone Choir. If empty, DT_WeaponSkills is older than "
+						"the CSV"), Row.Name, FString(TEXT("Bone Choir")))
+		|| !TestEqual(TEXT("set-up: it raises two"), Row.Params.Count, 2)
+		|| !TestTrue(TEXT("set-up: the Cripple curse"), Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	FDeathSkillCreature Summoner(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	Summoner.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), DeathSkillWeaponDamage);
+	FDeathSkillCreature Near(World, FVector(3.0f * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	FDeathSkillCreature Far(World, FVector(0.0f, 7.0f * DeathSkillMetre, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmSummonSkill* Choir = GrantDeathRow<UCataclysmSummonSkill>(Summoner.AbilitySystem, Summoner.Actor, Row);
+	if (!TestNotNull(TEXT("set-up: the row is granted"), Choir))
+	{
+		return false;
+	}
+
+	const float NearBefore = DeathSkillHealthOf(Near.Actor);
+	TestEqual(TEXT("the burst struck the one enemy within 5 m"), Choir->StrikeAsItRises(), 1);
+	TestTrue(TEXT("the enemy 3 m off lost health"), DeathSkillHealthOf(Near.Actor) < NearBefore);
+	TestEqual(TEXT("and is Crippled at 20"), UCataclysmSkillEffects::StatedStrengthOn(Near.Actor, Cripple), 20.0f,
+			  DeathSkillAllowance);
+	TestEqual(TEXT("for 2 seconds"), DeathSkillSecondsLeft(Near.Actor, Cripple), 2.0f, DeathSkillAllowance);
+	TestFalse(TEXT("the enemy 7 m off is not, yet"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
+
+	TArray<ACataclysmMinion*> Mages;
+	ON_SCOPE_EXIT { DeathSkillClear(Mages); };
+	for (int32 Index = 0; Index < Row.Params.Count; ++Index)
+	{
+		Mages.Add(Choir->SummonOne());
+	}
+	for (const ACataclysmMinion* Mage : Mages)
+	{
+		if (!TestNotNull(TEXT("a mage rose. If not, DT_MinionTypes is older than the CSV"), Mage))
+		{
+			return false;
+		}
+		TestEqual(TEXT("of the SkeletalMage kind"), Mage->TypeName, FString(TEXT("SkeletalMage")));
+		TestEqual(TEXT("standing until it is destroyed"), Mage->GetLifeSpan(), 0.0f, DeathSkillAllowance);
+		TestEqual(TEXT("and taught the row's one effect"), Mage->EffectTagsItsBlowsLay.Num(), 1);
+	}
+	TestEqual(TEXT("two mages stand"), Choir->LivingMinionCount(), 2);
+
+	Mages[0]->AttackTarget(Far.Actor);
+	TestTrue(TEXT("a mage's blow Crippled the enemy 7 m off"), Far.AbilitySystem->HasMatchingGameplayTag(Cripple));
+	TestEqual(TEXT("at 20"), UCataclysmSkillEffects::StatedStrengthOn(Far.Actor, Cripple), 20.0f, DeathSkillAllowance);
+	TestEqual(TEXT("for 2 seconds"), DeathSkillSecondsLeft(Far.Actor, Cripple), 2.0f, DeathSkillAllowance);
+	return true;
+}
 
 #endif // WITH_AUTOMATION_TESTS

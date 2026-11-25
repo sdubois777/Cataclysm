@@ -91,10 +91,15 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
     that raise them: the `Shade`, Wailing Host's, and the `Husk`, Shallow
     Graves'. `tools/reapply_death_skills_workbook.py` writes them; the other
     kinds the Death draft names arrive with the rows that raise them.
+
+    AND THREE MORE WITH SLICE DS2 THE SAME DAY, the permanent raises' kinds:
+    `BarrowGuard` (Barrow Guard), `BoneReaper` (Exhume) and `SkeletalMage`
+    (Bone Choir). The draft's `Wisp` waits with Grave Mouth and Soul Snare.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
                                   "SpikeTrap", "SkillGadget", "TyrantsMinion",
-                                  "Warhound", "SkillTrap", "Shade", "Husk"}
+                                  "Warhound", "SkillTrap", "Shade", "Husk",
+                                  "BarrowGuard", "BoneReaper", "SkeletalMage"}
 
 
 

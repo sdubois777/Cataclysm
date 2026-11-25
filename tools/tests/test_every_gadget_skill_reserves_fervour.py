@@ -94,7 +94,12 @@ RESERVE_KEY = "FervourReserve"
 #: Bone Choir, Grave Mouth and the Crossbow's Effigy -- are entered with no
 #: shape until the code they need is built (`tools/reapply_death_skills_workbook.py`
 #: names it), and each raises this by one when its shape is written: twelve.
-RESERVING_SKILLS = 7
+#:
+#: TEN SINCE SLICE DS2 THE SAME DAY: Barrow Guard, 10 for each of two guards;
+#: Exhume, 15 for its Reaper; and Bone Choir, 10 for each of two mages, written
+#: whole once N1, N2 and N11 were built. Grave Mouth (N12) and the Effigy (C4
+#: and a Death deployable's reserve) still wait, and bring it to twelve.
+RESERVING_SKILLS = 10
 
 
 def skills() -> list[dict]:

@@ -87,16 +87,60 @@ def test_the_rows_are_the_45_the_owner_approved():
 
 
 def test_a_row_is_written_whole_exactly_when_what_it_needs_is_built():
-    """`works` is the rule the whole script turns on, so it is checked against `BUILT` directly. Twelve rows need only
-    N22, C3 or nothing; the other 33 wait, and say on what."""
+    """`works` is the rule the whole script turns on, so it is checked against `BUILT` directly. Twelve rows needed only
+    N22, C3 or nothing after slice DS1; slice DS2 built N1, N2, N3, N4, N11 and N16 and saw None Spared's range ruled,
+    and ten more are whole. The other 23 wait, and say on what."""
     assert script.BUILT <= script.KNOWN_PIECES
     for row in script.ROWS:
         assert row.works == (set(row.needs) <= script.BUILT), row.csv_name
         assert row.waits_on == tuple(piece for piece in row.needs if piece not in script.BUILT), row.csv_name
-    assert sum(row.works for row in script.ROWS) == 12
+    assert sum(row.works for row in script.ROWS) == 22
     assert {row.name for row in script.ROWS if row.works} == {
         "Grave Muster", "Wailing Host", "Shallow Graves", "Grasping Dead", "Nightshade", "Soul Lash",
-        "Gallows Chain", "Soul Herd", "Reaping Arc", "Pale Stride", "Pale Vault", "Parting Shot"}
+        "Gallows Chain", "Soul Herd", "Reaping Arc", "Pale Stride", "Pale Vault", "Parting Shot",
+        # SLICE DS2.
+        "Gravebell", "Barrow Guard", "Barrow Leap", "Exhume", "Open Grave", "Marrow Lance", "Bone Choir",
+        "Grave Return", "Severing Rush", "None Spared"}
+
+
+def test_what_each_waiting_row_waits_on_after_slice_ds2():
+    """The rows still waiting and the pieces they wait on, so a slice that builds one sees exactly which rows move.
+    Gravetouch waits on N14 alone now that Bleed (N16) is allowed."""
+    waiting = {row.name: row.waits_on for row in script.ROWS if not row.works}
+    assert waiting == {
+        "Cold Blood": ("N7", "N8"), "Mercy Stroke": ("N9",), "Danse Macabre": ("N6", "N10"),
+        "Death Warrant": ("N6",), "Death Rattle": ("N5",), "Grim Swath": ("N6", "N7"), "Wraithwalk": ("N18",),
+        "Grave Mouth": ("N12",), "Soul Snare": ("N5",), "Hungering Soul": ("N6",), "Requiem": ("N13",),
+        "Restless Spirits": ("N6",), "Hemlock": ("N17",), "Gravetouch": ("N14",), "Quietus": ("N15",),
+        "Death Grip": ("N17",), "Last Toll": ("N6",), "Grim Reach": ("N17", "N21"), "Pale Rider": ("N6",),
+        "Soul Lance": ("N19",), "Carrion Crows": ("C2",), "Coffin Nail": ("C1",), "Effigy": ("C4", "DeployableReserve")}
+
+
+def test_no_death_row_outranges_the_corrupted_sentinel():
+    """THE COORDINATING SESSION'S RULING OF 2026-11-24, "Range: 14 m": no player attack may out-range the Corrupted
+    Sentinel's reach (issue #352), so None Spared and Coffin Nail fell from 17 m and Soul Lance and Pale Rider from 16.
+    `test_the_sentinel_reach_is_the_longest_range_any_player_attack_has` reads only the rows written whole; this reads
+    every row the script holds, the waiting ones too, so a row cannot carry a longer range into the table later. THE
+    CONTROL is that the four rows the ruling moved are among those read and state 14, in their numbers and sentences."""
+    sys.path.insert(0, str(REPO_ROOT / "sim"))
+    from cataclysm_sim.enemy_abilities import ATTACK_REACH
+
+    reach = ATTACK_REACH["Corrupted Sentinel"]
+    # READ AS TEXT AND NOT THROUGH THE GENERATOR'S PARSER, which refuses the keys a waiting row is waiting on. THE
+    # ATTACKING SHAPES ONLY, as `player_attack_ranges` in tools/tests/test_enemy_abilities.py counts them: a Debuff and
+    # a Summon are not what the Sentinel is struck from, so Death Warrant's 15 m curse is not one.
+    ranges = {}
+    for row in script.ROWS:
+        if row.shape not in ("Projectile", "Strike", "Movement"):
+            continue
+        stated = [piece.split("=", 1)[1] for piece in (p.strip() for p in row.params.split(";"))
+                  if piece.startswith("Range=")]
+        ranges[row.name] = float(stated[0]) if stated else 0.0
+    assert {name: metres for name, metres in ranges.items() if metres > reach} == {}
+    for name in ("None Spared", "Coffin Nail", "Soul Lance", "Pale Rider"):
+        assert ranges[name] == reach == 14.0, name
+        description = next(row.description for row in script.ROWS if row.name == name)
+        assert "14 meters" in description and "16 meters" not in description and "17 meters" not in description, name
 
 
 def test_every_row_the_script_writes_whole_is_accepted_by_the_generator():
@@ -194,6 +238,35 @@ def test_it_refuses_a_cell_somebody_else_changed(before_the_edit: pathlib.Path):
         script.apply(before_the_edit)
     after = openpyxl.load_workbook(before_the_edit)[script.SKILLS_SHEET]
     assert after.cell(target, at[script.NAME]).value == "Somebody Else's Stroke", "a refused run wrote nothing"
+
+
+def test_it_rewrites_what_an_earlier_slice_wrote_and_still_refuses_anything_else(before_the_edit: pathlib.Path):
+    """`SUPERSEDED`, slice DS2: a cell holding what slice DS1 wrote before a ruling changed it is the script's own, so
+    it is rewritten -- None Spared's description from its 17 metres to 14 -- and nothing else is written with it. THE
+    CONTROL: a cell holding a third text, neither DS1's nor DS2's, is still refused, as any cell somebody else changed
+    is."""
+    script.apply(before_the_edit)
+    book = openpyxl.load_workbook(before_the_edit)
+    skills = book[script.SKILLS_SHEET]
+    at = script.header_of(skills, script.SKILL_COLUMNS)
+    target = next(row[0].row for row in skills.iter_rows(min_row=2)
+                  if (row[at[script.WEAPON] - 1].value, row[at[script.DAMAGE] - 1].value,
+                      row[at[script.SLOT] - 1].value) == ("Crossbow", "Death", "Ultimate"))
+    earlier = script.SUPERSEDED[("Crossbow", "Ultimate")][script.DESCRIPTION]
+    assert "17 meters" in earlier, "set-up: DS1 wrote None Spared's 17 metres"
+    skills.cell(target, at[script.DESCRIPTION]).value = earlier
+    book.save(before_the_edit)
+
+    written = script.apply(before_the_edit)
+    assert [(w.row, w.column) for w in written] == [(target, at[script.DESCRIPTION])]
+    assert "14 meters" in written[0].after
+    assert script.check(before_the_edit)
+
+    book = openpyxl.load_workbook(before_the_edit)
+    book[script.SKILLS_SHEET].cell(target, at[script.DESCRIPTION]).value = "Somebody else's volley."
+    book.save(before_the_edit)
+    with pytest.raises(script.ApplyError, match="Somebody else's volley"):
+        script.apply(before_the_edit)
 
 
 def test_it_refuses_a_minion_row_somebody_else_wrote_differently(before_the_edit: pathlib.Path):
