@@ -449,9 +449,10 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 		const int32 Index = Option - 1;
 		if (!Names.IsValidIndex(Index) || Names[Index].IsEmpty())
 		{
-			// NOTHING IS WRITTEN FOR THIS ONE. The Saboteur's four capstones
-			// name no option at all, issue #935, and printing an empty heading
-			// would suggest there is something to read.
+			// NOTHING IS WRITTEN FOR THIS ONE. A capstone may name no option at
+			// all, as the Saboteur's four did until their options were written on
+			// 2026-11-25 (issue #935), and printing an empty heading would suggest
+			// there is something to read.
 			continue;
 		}
 
@@ -522,9 +523,10 @@ FString UCataclysmPassiveTree::RefusalForSpending(
 				*Row->NodeName, Row->Threshold, *Row->Tree, Spent);
 		}
 
-		// THE SABOTEUR'S FOUR OFFER NONE, and its own descriptions say to choose
-		// one of three. Taking a capstone that offers nothing would spend a
-		// point on a choice that was never written. Issue #935.
+		// A CAPSTONE MAY OFFER NONE, as the Saboteur's four did until their options
+		// were written on 2026-11-25, while their descriptions said to choose one
+		// of three. Taking a capstone that offers nothing would spend a point on a
+		// choice that was never written. Issue #935.
 		const TArray<FString> Options = OptionNamesOf(*Row);
 		const bool bAnyOption = Options.ContainsByPredicate(
 			[](const FString& Name) { return !Name.IsEmpty(); });
@@ -672,9 +674,10 @@ bool UCataclysmPassiveTree::AwaitsAnOptionChoice(
 		return false;
 	}
 
-	// AND IT HAS TO HAVE SOMETHING TO OFFER. The Saboteur's four capstones name
-	// no options at all, issue #935, and announcing a decision nobody wrote
-	// would send a player looking for three names that do not exist.
+	// AND IT HAS TO HAVE SOMETHING TO OFFER. A capstone may name no options at
+	// all, as the Saboteur's four did until 2026-11-25 (issue #935), and
+	// announcing a decision nobody wrote would send a player looking for three
+	// names that do not exist.
 	const TArray<FString> Options = OptionNamesOf(*Row);
 	return Options.ContainsByPredicate(
 		[](const FString& Name) { return !Name.IsEmpty(); });

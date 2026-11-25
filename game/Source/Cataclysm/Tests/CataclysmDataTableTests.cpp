@@ -525,7 +525,8 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 532 THE SAME DAY, for Skull Splitter, Deathmark and Blood Price.
 	// AND 540 THE SAME DAY, for the Saboteur's trap timing (the C1 plan).
 	// AND 543 THE SAME DAY, for Thin Air and Calculated (the C5 plan).
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        543)
+	// AND 552 THE SAME DAY, for the War vow options' first slice.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        552)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

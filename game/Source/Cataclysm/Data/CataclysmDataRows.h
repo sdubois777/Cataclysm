@@ -1997,11 +1997,11 @@ struct FCataclysmPassiveNodeRow : public FTableRowBase
 	 * would be the right shape for a number that could change and the wrong one
 	 * for a number that cannot.
 	 *
-	 * EMPTY FOR EVERY NODE THAT IS NOT A CAPSTONE, and empty for the Saboteur's
-	 * four capstones as well, which offer none in the source file even though
-	 * each says to choose one of three. Issue #935. A capstone with no options
-	 * cannot be taken and the screen says so, rather than offering a choice
-	 * between nothing.
+	 * EMPTY FOR EVERY NODE THAT IS NOT A CAPSTONE, and empty for a capstone whose
+	 * source file names no options, as the Saboteur's four did until their
+	 * options were written on 2026-11-25 even though each said to choose one of
+	 * three. Issue #935. A capstone with no options cannot be taken and the
+	 * screen says so, rather than offering a choice between nothing.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Tree|Capstone")
 	FString Option1Name;

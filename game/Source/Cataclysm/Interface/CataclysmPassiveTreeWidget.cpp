@@ -477,10 +477,10 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 					? Names[Option - 1] : FString();
 
 				// A NAMELESS OPTION SAYS SO RATHER THAN SHOWING A BLANK BUTTON.
-				// The Saboteur's four capstones have three each, issue #935, and
-				// this list never opens on one of those -- `AwaitsAnOptionChoice`
-				// refuses a capstone offering nothing -- so this is for a
-				// capstone that names one option and not another.
+				// This list never opens on a capstone naming no option at all (the
+				// Saboteur's four until 2026-11-25, issue #935) --
+				// `AwaitsAnOptionChoice` refuses a capstone offering nothing -- so
+				// this is for a capstone that names one option and not another.
 				const FString Label = Name.IsEmpty()
 					? FString::Printf(TEXT("%d  (nothing is written here)"),
 									  Option)

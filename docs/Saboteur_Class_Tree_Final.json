@@ -1171,7 +1171,20 @@
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1,
-        "options": [],
+        "options": [
+          {
+            "name": "Baited",
+            "description": "When one of your traps arms, every enemy within 8 metres of it is drawn to it: it goes for the trap instead of whatever it was attacking, for 4 seconds or until the trap goes off."
+          },
+          {
+            "name": "Walking Arsenal",
+            "description": "Your gadgets walk after you, staying within 8 metres of you, and keep firing as they move."
+          },
+          {
+            "name": "Lightning Rod",
+            "description": "A hit that would strike you has a 3% chance for each trap and gadget you have on the battlefield, up to 30%, to strike the nearest of them within 10 metres of you instead. A trap struck this way goes off."
+          }
+        ],
         "pointThreshold": 25,
         "isDecision": true,
         "threshold": 25,
@@ -1198,7 +1211,20 @@
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1,
-        "options": [],
+        "options": [
+          {
+            "name": "Trail of Wire",
+            "description": "Each time you use your movement skill, the last trap you placed is placed again where the movement began, armed at once."
+          },
+          {
+            "name": "Scrap Mines",
+            "description": "When one of your gadgets expires or is destroyed, it leaves a trap where it stood. The trap fires that gadget's attack once, at double damage, at the first enemy to come within 3 metres."
+          },
+          {
+            "name": "Cat's Cradle",
+            "description": "Each of your traps and gadgets is joined by a wire to every other one within 10 metres. An enemy crossing a wire is pinned for 1 second, no more than once every 4 seconds, and the nearer end answers: a trap goes off, a gadget fires at it."
+          }
+        ],
         "pointThreshold": 50,
         "isDecision": true,
         "threshold": 50,
@@ -1225,7 +1251,20 @@
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1,
-        "options": [],
+        "options": [
+          {
+            "name": "Creeping Mines",
+            "description": "Your armed traps creep toward the nearest enemy within 10 metres of them, at 3 metres a second."
+          },
+          {
+            "name": "Bolted Together",
+            "description": "A gadget you place within 4 metres of another of yours is bolted onto it: one gadget, with their health added together, that fires all their attacks with 10% more damage for each gadget in it."
+          },
+          {
+            "name": "Counterfire",
+            "description": "Each hit you evade is answered by one of your traps or gadgets for every 2 you have on the battlefield, nearest the attacker first: a gadget fires at it, a trap goes off. No more than once a second."
+          }
+        ],
         "pointThreshold": 100,
         "isDecision": true,
         "threshold": 100,
@@ -1252,7 +1291,20 @@
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1,
-        "options": [],
+        "options": [
+          {
+            "name": "Where They Fall",
+            "description": "An enemy killed within 10 metres of one of your traps or gadgets leaves an armed copy of the last trap you placed where it fell. The copy reserves 1 Fervour and lasts 4 seconds."
+          },
+          {
+            "name": "Magnum Opus",
+            "description": "The gadget you have had standing longest uses every skill you use, at its own target and with your full damage. When it is gone, the next longest-standing takes its place."
+          },
+          {
+            "name": "Crossfire",
+            "description": "Every hit you land is repeated from each of your traps and gadgets within 15 metres of the enemy, up to 15 of them, at 10% of its damage. A trap that repeats a hit does not go off."
+          }
+        ],
         "pointThreshold": 200,
         "isDecision": true,
         "threshold": 200,

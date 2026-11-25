@@ -1644,7 +1644,7 @@
           {
             "name": "Eternal Hunger",
             "identity": "Leech",
-            "description": "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%."
+            "description": "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%."
           }
         ],
         "pointThreshold": 200,

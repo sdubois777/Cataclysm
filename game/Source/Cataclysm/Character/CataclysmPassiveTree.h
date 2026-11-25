@@ -318,19 +318,19 @@ public:
 	 * siblings are on every capstone row of `game/Data/PassiveNodes.csv` and
 	 * nothing in the interface read any of them.
 	 *
-	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. The Saboteur's
-	 * four capstones name none at all, issue #935, so this answers with the
-	 * node's own description for those, which is honest: there is nothing else
-	 * written.
+	 * AN OPTION WITH NO NAME IS LEFT OUT RATHER THAN SHOWN BLANK. A capstone that
+	 * names none at all -- the Saboteur's four until their options were written on
+	 * 2026-11-25, issue #935 -- answers with the node's own description, which is
+	 * honest: there is nothing else written.
 	 */
 	static FString FullDescriptionOf(const UDataTable* NodeTable, FName Node);
 
 	/**
 	 * Why one of a capstone's options cannot be taken, or empty when it can.
 	 *
-	 * THE SABOTEUR'S FOUR CAPSTONES OFFER NONE, so every option is refused on
-	 * them and the reason says so rather than reporting a bad option number.
-	 * Issue #935.
+	 * A CAPSTONE OFFERING NONE, as the Saboteur's four did until 2026-11-25,
+	 * refuses every option and the reason says so rather than reporting a bad
+	 * option number. Issue #935.
 	 */
 	static FString RefusalForChoosingOption(const UDataTable* NodeTable,
 											const FCataclysmPassiveAllocation& Allocation,
@@ -359,9 +359,9 @@ public:
 	 * and to show the three names; the console listing uses it to name the
 	 * capstone and say what it needs.
 	 *
-	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, which is the Saboteur's four.
-	 * Issue #935. Announcing a decision that was never written would be worse
-	 * than saying nothing.
+	 * FALSE FOR A CAPSTONE THAT OFFERS NO OPTIONS, as the Saboteur's four did
+	 * until 2026-11-25. Issue #935. Announcing a decision that was never written
+	 * would be worse than saying nothing.
 	 *
 	 * IT SAYS NOTHING ABOUT WHETHER A POINT IS SPARE. A capstone costs one point
 	 * of its own on top of its threshold, and a player who has spent everything

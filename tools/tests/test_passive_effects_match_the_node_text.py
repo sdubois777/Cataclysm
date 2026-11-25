@@ -142,7 +142,11 @@ def words_of(row: dict, nodes: dict) -> str:
 #: SO THIS PATTERN NOW ASKS FOR A NUMBER EVERYWHERE, which is what makes it worth
 #: having. A sentence stating no magnitude cannot be tied to a magnitude in a
 #: spreadsheet, however honest the word in it is.
-MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\b",
+#:
+#: "ARE DOUBLED" BESIDE "IS DOUBLED" SINCE 2026-11-25, for Colossus Eternal's "Your health regeneration and the healing
+#: you receive are doubled" (R17, accepted by the owner on 2026-11-24, so the wording is not this test's to change). The
+#: plural of the same word, not a new one.
+MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:more|less)\b",
                         re.IGNORECASE)
 
 #: How many rows the effects file holds altogether.
@@ -701,7 +705,10 @@ MULTIPLIES = re.compile(r"multiplicative|\bis doubled\b|\d+\s*%\s+(?:more|less)\
 #:
 #: AND TO 543 THE SAME DAY: Thin Air's two rows and Calculated's 6-point row
 #: (`tools/reapply_war_saboteur_thin_air_workbook.py`, the C5 plan).
-AUTHORED_ROWS = 543
+#:
+#: AND TO 552 THE SAME DAY: nine rows on eight War vow options
+#: (`tools/reapply_war_vows_v1_workbook.py`).
+AUTHORED_ROWS = 552
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1138,7 +1145,8 @@ AUTHORED_ROWS = 543
 #: AND TO 308 THE SAME DAY: Skull Splitter, Deathmark and Blood Price.
 #: AND TO 311 THE SAME DAY: Volatile Casing, Field Engineer and Delayed Fuse.
 #: AND TO 312 THE SAME DAY: Thin Air.
-AUTHORED_NODES = 312
+#: AND TO 316 THE SAME DAY: four oaths, with the War vow options' first slice.
+AUTHORED_NODES = 316
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1149,9 +1157,10 @@ AUTHORED_NODES = 312
 #: its twelve options granted nothing, and the project owner found out by taking
 #: Water to Blood in play and getting nothing. Issue #1066.
 #:
-#: NAMED OPTIONS ONLY, because the Saboteur's four capstones name none at all --
-#: issue #935 -- and counting twelve options nobody wrote as unauthored would mix
-#: two different problems into one number.
+#: NAMED OPTIONS ONLY, because the Saboteur's four capstones named none at all
+#: until their options were written on 2026-11-25 -- issue #935 -- and counting
+#: twelve options nobody wrote as unauthored would have mixed two different
+#: problems into one number.
 #:
 #: IT WENT FROM 8 TO 9 ON 2026-08-28, when Water to Blood was built. The eight
 #: before it are spread across the Masochist's four capstones; the Bulwark's
@@ -1234,13 +1243,20 @@ AUTHORED_NODES = 312
 #: Each capstone had no row, so all four move `AUTHORED_NODES` too.
 #: AND TO 42 ON 2026-11-25: Cut and Run, the Berserker's Second Oath's second
 #: option, with the Fervour spends. Its capstone already had a row.
-AUTHORED_OPTIONS = 42
+#: AND TO 50 THE SAME DAY: the War vow options' first slice -- Unstoppable,
+#: Ragnarok and Eternal Hunger (Berserker), Shield Oath, Flesh Oath, Bloodied but
+#: Unbroken, Colossus Eternal and Wrath Incarnate (Bulwark). Four capstones had
+#: no row and move `AUTHORED_NODES` too: the Berserker's Final Oath and the
+#: Bulwark's First, Third and Final Oaths.
+AUTHORED_OPTIONS = 50
 
 #: How many capstone options are named at all, across every tree.
 #:
 #: 36 UNTIL 2026-09-07, when the Ravager and Ritualist trees landed for issue
 #: #950 with twelve capstones between them, three options each.
-NAMED_OPTIONS = 60
+#: AND TO 72 ON 2026-11-25, when the Saboteur's twelve options, approved on
+#: 2026-11-24, were written into its four oaths (`tools/apply_war_vow_sentences_2026_11_25.py`).
+NAMED_OPTIONS = 72
 
 #: How many nodes there are altogether, so the share is visible in the failure
 #: message rather than needing to be worked out.
@@ -2175,7 +2191,8 @@ SCALE_WORDS = {
     # Iron Constitution's "Gain HP equal to 10% of your Armor value" (1 for every
     # 10 armour); Army of One's "Each active gadget" and Mobile Armory's "for each
     # active gadget"; Saturation's "for each of your active traps".
-    "armor": (("of your armor",), "{value:g}%", None),
+    # AND WRATH INCARNATE'S "increased by 1% for every 100 Armor you have" (R18, written 2026-11-25).
+    "armor": ([("of your armor",), ("armor you have",)], ("{value:g}%", "every {value:g} armor"), None),
     "gadgets_active": (("active gadget",), None, "each active gadget"),
     # AND SNAP BACK'S "while you have at least one active trap" (2026-11-25), the
     # trap count capped at one step, which is exactly "at least one"; and SUPPORT
@@ -2775,6 +2792,14 @@ VALUE_IN_WORDS = {
     # arming delay", one second, and its "cannot be accidentally triggered ...
     # during the arming period", a flag.
     ("Saboteur_basic_trunk_001", "traps_arm_instantly"): ("traps arm instantly", 1.0),
+    # UNSTOPPABLE, the Berserker's Second Oath, 2026-11-25: "you cannot be slowed, rooted, or knocked back", two flags.
+    ("Berserker_capstone_50", "movement_speed_reduction_suppressed"): ("cannot be slowed", 1.0),
+    ("Berserker_capstone_50", "knockback_suppressed"): ("knocked back", 1.0),
+    # RAGNAROK, the Berserker's Final Oath, 2026-11-25: "Wrath no longer drains Fervour passively", the drain removed.
+    ("Berserker_capstone_200", "fervour_drain_per_second"): ("no longer drains fervour", 1.0),
+    # COLOSSUS ETERNAL, the Bulwark's Final Oath (R17), 2026-11-25: "the healing you receive are doubled", a More of
+    # 100 on healing received, which regeneration and leech already pass through.
+    ("Bulwark_capstone_200", "healing_received"): ("the healing you receive are doubled", 100.0),
     ("Saboteur_basic_trap_ql_003", "trap_arming_seconds_added"): ("1 second additional arming delay", 1.0),
     ("Saboteur_basic_trap_ql_003", "traps_not_set_off_while_arming"): ("cannot be accidentally triggered", 1.0),
     # THIN AIR, 2026-11-25: "You cannot be targeted while moving", a flag.
@@ -3470,6 +3495,11 @@ FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent"})
 
 
 #: See `test_the_bucket_matches_the_nodes_own_wording`.
+#: An option whose sentence multiplies in a clause a later slice builds; see
+#: `test_a_multiplicative_description_has_a_multiplicative_row`. Ragnarok's "Your maximum Fervour is doubled"
+#: (the War vow options' second slice).
+MULTIPLIER_WAITS_FOR_A_LATER_SLICE = frozenset({("Berserker_capstone_200", 1)})
+
 DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 
 
@@ -3519,6 +3549,15 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
     # flat 2 a point adds 2 a point; a More would double every crit chance the
     # character has. Excused only while the node really holds two equal flat
     # rows of one stat, the second carrying a second condition.
+    # A DOUBLING WHOSE ROW A LATER SLICE BUILDS: Ragnarok's "Your maximum Fervour is doubled" waits for the War vow
+    # options' second slice, which makes `class_resource` a stat a condition can be stated on; the first slice wrote
+    # only its drain removed in Wrath (2026-11-25). Excused only while the option still has no multiplying row, so the
+    # entry has to be taken out when the doubling lands.
+    for node, option in MULTIPLIER_WAITS_FOR_A_LATER_SLICE:
+        assert (node, option) not in multiplying_nodes, (
+            f"{node} option {option} now holds its multiplying row: take it out of MULTIPLIER_WAITS_FOR_A_LATER_SLICE")
+        multiplying_nodes.add((node, option))
+
     for node in DOUBLES_ITS_OWN_FLAT_BONUS:
         own = [row for row in effects if row["Node"] == node]
         assert len(own) == 2 and own[0]["Stat"] == own[1]["Stat"] and own[0]["ValuePerPoint"] == own[1]["ValuePerPoint"]             and {row["ValueKind"] for row in own} == {"flat"} and sorted(bool(row.get("Condition2")) for row in own)             == [False, True], f"{node} no longer doubles its own flat bonus with a second equal row: {own}"

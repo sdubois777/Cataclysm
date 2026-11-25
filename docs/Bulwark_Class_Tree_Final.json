@@ -1574,7 +1574,7 @@
           {
             "name": "Shield Oath",
             "identity": "Block/Shield",
-            "description": "Blocking an attack restores 50 HP."
+            "description": "Blocking an attack restores 2% of your Maximum HP."
           },
           {
             "name": "Flesh Oath",
@@ -1665,7 +1665,7 @@
           {
             "name": "Bloodied but Unbroken",
             "identity": "HP \u00d7 Retaliation",
-            "description": "Your retaliation damage is increased by 1% for every 75 HP you are missing."
+            "description": "Your retaliation damage is increased by 1% for every 1% of your Maximum HP you are missing."
           },
           {
             "name": "Spiteful Guard",
@@ -1708,12 +1708,12 @@
           {
             "name": "Colossus Eternal",
             "identity": "Juggernaut/HP",
-            "description": "All healing, regeneration, and HP bonuses are doubled. While above 50% HP, you are immune to instant-kill effects. While above 75% HP, your attacks deal bonus damage equal to 2% of your current HP."
+            "description": "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP."
           },
           {
             "name": "Wrath Incarnate",
             "identity": "Retaliation/Thorns",
-            "description": "Your retaliation damage percentage is added to your total Armor, and your Armor contributes to your retaliation damage proportional to the damage reduction it provides. When you take a hit that would deal more than 10% of your Maximum HP in a single strike, you erupt \u2014 instantly retaliating against all nearby enemies for 200% of your retaliation damage."
+            "description": "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage."
           }
         ],
         "pointThreshold": 200

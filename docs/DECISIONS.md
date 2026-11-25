@@ -2,6 +2,164 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The War vow options' first slice: nine rows on eight options, the ruled option sentences and the Saboteur's twelve options written into the tree files, and the passive row port's last eight columns made required
+
+**Affects:**
+- `docs/Berserker_Class_Tree_Final.json`, `docs/Bulwark_Class_Tree_Final.json`, `docs/Saboteur_Class_Tree_Final.json`:
+  five option sentences reworded and the Saboteur's twelve options written into its four oaths
+  (`tools/apply_war_vow_sentences_2026_11_25.py`, new). `game/Data/PassiveNodes.csv`.
+- `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (552 rows): nine rows on eight options, and the eight
+  columns Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment and Damage Share
+  (`tools/reapply_war_vows_v1_workbook.py`, new). `docs/README.md` (the sheet table: the count and the columns).
+  **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_data_rows_workbook.py`:
+  - the row record gains the eight columns' fields, under the Death line's names (`fraction_of`, `scale_offset`,
+    `every_seconds`, `every_nth`, `trigger_cooldown`, `event_value`, `ailment`, `damage_share`);
+  - `columns` adds columns whether or not a row uses them, and adding columns alone is a change to write;
+  - the read-back requires the columns too;
+  - a report line names an action row by its action and event.
+- `tools/generate_datatables.py`: `OPTIONAL_COLUMNS` is empty, as on the Death line.
+- C++, COMMENTS ONLY: `CataclysmPassiveTree.h` and `.cpp`, `CataclysmDataRows.h`, `CataclysmPassiveTreeWidget.cpp`
+  no longer say the Saboteur's capstones offer no options. The code always read the option cells, so its behaviour is
+  unchanged.
+- Tests:
+  - Unreal: `CataclysmWarVowsV1Tests.cpp` (new, three); `CataclysmDataTableTests.cpp` (the pin, 552);
+    `CataclysmPassiveTreeTests.cpp`, where two tests that read the Saboteur's First Oath as a capstone naming no option
+    now read the hand-made table's `Ravager_empty`, since no real capstone names none.
+  - Python: `tools/tests/test_war_vows_v1_scripts.py` (new, fifteen).
+  - `test_class_passive_trees.py`: the rule of three named options on every capstone, widened to every tree (issue
+    #935's second part), and its wording counts.
+  - `test_passive_tables_match_the_tree_files.py`: 72 options carried across.
+  - `test_passive_effects_match_the_node_text.py`: the words, 552 rows, 316 nodes, 50 authored and 72 named options,
+    "are doubled", Wrath Incarnate's armour scale, and a waiting list for Ragnarok's doubling.
+  - `test_passive_rows_carry_the_action_columns.py`: the Death line's test, verbatim.
+  - `test_generate_datatables.py`: the test sheets carry the eight columns.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild the two assets, and run these
+  groups:
+  - `Cataclysm.WarVowsV1.`: three tests, new.
+  - `Cataclysm.Data.`: the pin, 552.
+  - `Cataclysm.Passives.`: its count unchanged; two of its tests moved to the hand-made table:
+    `ACapstoneThatHasOpenedAndIsUndecidedSaysSo` and `ReadingACapstoneSaysWhatItsThreeOptionsDo`.
+  - `Cataclysm.PassiveRowPort.`: the builder these rows go through; its count unchanged.
+- **ISSUE #935 IS DONE BY THIS BRANCH**, both of its parts: the Saboteur's twelve options are written, and the rule
+  that every capstone offers three named options now covers every tree, so the next tree cannot ship without them.
+  The issue's smaller note, the threshold field's name, was settled by the passive order fixes of 2026-11-24, which
+  gave the Saboteur's oaths `threshold`.
+  To be closed when this branch merges.
+- **THE SABOTEUR'S TWELVE OPTIONS ARE WORDS, NOT YET MECHANICS.** A Saboteur can now choose one, and gets nothing until
+  its slice is built (V4 and V5). Their source is the "Ready to paste" block of
+  `C:/Projects/Cataclysm/.claude/worktrees/nice-carson-77a188/.claude/windows/saboteur_vows_draft.md`, which is not in
+  git. Each sentence was checked against that block, word for word, before it was written.
+- **EIGHT OPTIONS ARE WRITTEN IN PART**; the rest waits for its slice:
+  - Unstoppable: a pin as a root waits for V2.
+  - Ragnarok: the doubled maximum and the shockwaves wait for V2.
+  - Eternal Hunger: health above the maximum waits for V3.
+  - Colossus Eternal: increases to Maximum HP counted twice, the lethal save, and the bonus from current health wait
+    for V2 and V3.
+  - Wrath Incarnate: the big hit waits for V3.
+  - Shield Oath, Flesh Oath and Bloodied but Unbroken are whole.
+- **WHAT MATCHES THE DEATH LINE, AND WHAT WHOEVER MERGES SECOND RESOLVES.** Checked against
+  `origin/feat/death-trees-c4a` (`fed4e15fe`), as the coordinating session asked.
+  - Matches:
+    - the fourteen port columns, under the same header names, all required;
+    - the same Fraction Of values (this branch uses only `maximum` and `current`; the Death line's two others are its
+      own);
+    - the row record's field names;
+    - the name and assertions of `test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them`.
+  - Still differs:
+    - the column order;
+    - Max Points, on this line only;
+    - the text of the `OPTIONAL_COLUMNS` comment;
+    - the rest of `test_passive_rows_carry_the_action_columns.py`;
+    - `test_generate_datatables.py`'s header lists (`PORT_EIGHT_HEADERS` here, the Death line's `PASSIVE_PORT_HEADERS`,
+      a different list).
+  - The workbook cannot be merged: the second line to land re-applies its scripts onto the first's workbook.
+- **TWO TEST WIDENINGS, said plainly.**
+  - `MULTIPLIES` accepts "are doubled" beside "is doubled", for Colossus Eternal's R17 sentence ("the healing you
+    receive are doubled"), which the owner accepted and this test may not reword.
+  - Ragnarok's "Your maximum Fervour is doubled" is excused, by `MULTIPLIER_WAITS_FOR_A_LATER_SLICE`, from having a
+    multiplying row until V2 builds one. The excuse fails the test as soon as such a row exists, proved below, so it
+    cannot outlive its reason.
+
+### WHAT WAS RULED
+
+- The project owner, 2026-11-24, on every War ruling: "I'll go with your recommendations on the war rulings." That
+  includes R14 (Eternal Hunger), R17 (Colossus Eternal) and R18 (Wrath Incarnate).
+- The coordinating session, 2026-11-25, on the vow survey: "Every recommendation accepted, except item 16" (The
+  Unbreakable Wall, which goes to the owner and is not here).
+  - Item 9: "Shield Oath: "Blocking an attack restores 2% of your Maximum HP" (2% is a play-test point)".
+  - Item 10: "Flesh Oath: in combat only".
+  - Item 14: "Bloodied but Unbroken: "1% for every 1% of your Maximum HP you are missing" on health_missing".
+- The same day: "R14, R17, R18 and the 12 approved Saboteur sentences go into the workbook in V1, with every
+  replacement sentence ruled tonight, each recorded with the old sentence beside it."
+- And on the columns: "all eight remaining port columns added as required under the Death line's header and field
+  names, OPTIONAL_COLUMNS emptied, no new Fraction Of values, and the Death line's test name and assertions taken
+  verbatim."
+
+**The sentences** (old beside new):
+
+| Option | Old sentence | New sentence | Ruling |
+|---|---|---|---|
+| Eternal Hunger (Berserker Final Oath) | "Your life leech cap is removed entirely. Any HP restored by life leech beyond your maximum is added as overleech that decays at 1% per second. Life leech effectiveness is increased by 50%." | "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%." | R14 |
+| Colossus Eternal (Bulwark Final Oath) | "All healing, regeneration, and HP bonuses are doubled. While above 50% HP, you are immune to instant-kill effects. While above 75% HP, your attacks deal bonus damage equal to 2% of your current HP." | "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP." | R17 |
+| Wrath Incarnate (Bulwark Final Oath) | "Your retaliation damage percentage is added to your total Armor, and your Armor contributes to your retaliation damage proportional to the damage reduction it provides. When you take a hit that would deal more than 10% of your Maximum HP in a single strike, you erupt — instantly retaliating against all nearby enemies for 200% of your retaliation damage." | "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage." | R18 |
+| Shield Oath (Bulwark First Oath) | "Blocking an attack restores 50 HP." | "Blocking an attack restores 2% of your Maximum HP." | vow survey item 9 |
+| Bloodied but Unbroken (Bulwark Third Oath) | "Your retaliation damage is increased by 1% for every 75 HP you are missing." | "Your retaliation damage is increased by 1% for every 1% of your Maximum HP you are missing." | vow survey item 14 |
+| The Saboteur's twelve | none: each oath's option list was empty | Baited, Walking Arsenal, Lightning Rod; Trail of Wire, Scrap Mines, Cat's Cradle; Creeping Mines, Bolted Together, Counterfire; Where They Fall, Magnum Opus, Crossfire, each with its approved sentence (`SABOTEUR_OPTIONS` in the script) | approved 2026-11-24 |
+
+### WHAT WAS BUILT, AND THE JUDGEMENTS
+
+| Option | Row |
+|---|---|
+| Unstoppable (`Berserker_capstone_50`, 1) | `movement_speed_reduction_suppressed` and `knockback_suppressed`, flags, above 75% Fervour with a two-handed weapon |
+| Ragnarok (`Berserker_capstone_200`, 1) | `fervour_drain_per_second` removed in Wrath |
+| Eternal Hunger (`Berserker_capstone_200`, 3) | `life_leech` increased 50 |
+| Shield Oath (`Bulwark_capstone_25`, 1) | `health` on `block`, 2% of maximum |
+| Flesh Oath (`Bulwark_capstone_25`, 2) | `health` every second, 1% of current |
+| Bloodied but Unbroken (`Bulwark_capstone_100`, 2) | `retaliation` increased 1, per 1% of maximum health missing |
+| Colossus Eternal (`Bulwark_capstone_200`, 2) | `healing_received` more 100 |
+| Wrath Incarnate (`Bulwark_capstone_200`, 3) | `retaliation` increased 1 per 100 armour |
+
+**Judgements:**
+- Ragnarok's row carries only `in_wrath` and no weapon condition. The row that grants Wrath
+  (`Berserker_twoh_001`, `wrath_on_full_fervour`) requires a two-handed weapon, and the Berserker states' step ends
+  Wrath once that row no longer holds (`CataclysmBerserkerStates.cpp`), so being in Wrath already means two hands, up to
+  that step's quarter second.
+- Colossus Eternal's doubling is one row on healing received, which regeneration and leech already pass through. A
+  second row on regeneration would make it four times, as the survey said.
+
+### PYTHON GUARD PROOFS
+
+Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became these commits. Each reported `proved`
+True: a named test failed with the break in, and the files passed with it restored.
+
+| Break | Command | Named failure |
+|---|---|---|
+| `docs/Saboteur_Class_Tree_Final.json`: the First Oath's three options taken away again | `pytest tools/tests/test_class_passive_trees.py` | `test_every_capstone_in_every_tree_offers_three_named_choices[Saboteur]` |
+| `tools/generate_datatables.py`: Fraction Of declared optional again | `pytest tools/tests/test_passive_rows_carry_the_action_columns.py tools/tests/test_required_workbook_columns.py` | nine, among them `test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them` and `test_an_optional_column_the_sheet_now_has_is_not_listed` |
+| `game/Data/PassiveEffects.csv`: Ragnarok's row made a "more" row, so its excuse is out of date | `pytest tools/tests/test_passive_effects_match_the_node_text.py` | `test_the_bucket_matches_the_nodes_own_wording` |
+
+### UNREAL TESTS (predicted, not run)
+
+| Test | What it holds |
+|---|---|
+| `Cataclysm.WarVowsV1.EachOptionsStatRowsGiveItsFiguresAndAnotherOptionGivesNone` | the generated stat rows through `ModifiersFor`: Eternal Hunger 50% leech (Thousand Deaths none, the control); Ragnarok's drain of 5 removed in Wrath, kept out of it, and kept under Eternal Hunger (controls); Colossus Eternal doubled healing (Wrath Incarnate not); Wrath Incarnate 10% retaliation at 1,000 armour (Colossus Eternal none); Bloodied but Unbroken 30% at 30% missing (Bastion none) |
+| `Cataclysm.WarVowsV1.UnstoppableAndTheHealthOathsAreCopiedForTheBuilderOnlyWhenTaken` | `EnchantmentRowsFor`: Unstoppable's two flags with both conditions (Thrill of the Hunt none); Shield Oath's 2% of maximum on a block; Flesh Oath's 1% of current every second (Blood Oath none) |
+| `Cataclysm.WarVowsV1.AWarPlayerTakingAHealthOathIsHandedItsHealthAction` | a level 10 War Greataxe player through `SetPassiveAllocation`: Blood Oath hands over no health action (control); Shield Oath one on a block, 2% of maximum; Flesh Oath one every second, 1% of current |
+
+Predicted counts:
+- `Cataclysm.WarVowsV1.`: 3.
+- `Cataclysm.Data.`: the pin, 552; its count unchanged.
+- `Cataclysm.Passives.` and `Cataclysm.PassiveRowPort.`: unchanged.
+
+**No C++ guard proof is planned.** This branch changes no engine code, only comments; what its new tests read is data,
+and the Python checks on that data are proved above.
+
+---
+
 ## 2026-11-25 — Thin Air hides a moving player from a creature's search until a blow lands, and Calculated at 6 points reworded to 10% more maximum Fervour because no enemy effect lowers Fervour
 
 **Affects:**

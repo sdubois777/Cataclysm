@@ -78,9 +78,23 @@ STACK_SECONDS = "Stack Seconds"
 ACTION = "Action"
 #: AND THE UPPER LIMIT, the same day, for Durable Modifications' exact doubling: a row stops applying at this many points.
 MAX_POINTS = "Max Points"
+#: AND THE PORT'S LAST EIGHT, added together by the War vow options' first slice, 2026-11-25
+#: (`tools/reapply_war_vows_v1_workbook.py`), whose Shield Oath and Flesh Oath restore a share of maximum or current
+#: health: the Death line's `tools/reapply_death_trees_workbook.py` had added all fourteen port columns that day under
+#: these header names, and the coordinating session ruled that both lines carry the same columns, all required.
+FRACTION_OF = "Fraction Of"
+SCALE_OFFSET = "Scale Offset"
+EVERY_SECONDS = "Every Seconds"
+EVERY_NTH = "Every Nth"
+TRIGGER_COOLDOWN = "Trigger Cooldown"
+EVENT_VALUE = "Event Value"
+AILMENT = "Ailment"
+DAMAGE_SHARE = "Damage Share"
+PORT_EIGHT = (FRACTION_OF, SCALE_OFFSET, EVERY_SECONDS, EVERY_NTH, TRIGGER_COOLDOWN, EVENT_VALUE, AILMENT, DAMAGE_SHARE)
 #: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
 #: condition columns go together, so a row's second condition never lands without its value's column.
-ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION, MAX_POINTS)
+ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION, MAX_POINTS,
+                   *PORT_EIGHT)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -105,6 +119,14 @@ class Row:
     stack_seconds: float | None = None
     action: str | None = None
     max_points: int | None = None
+    fraction_of: str | None = None
+    scale_offset: float | None = None
+    every_seconds: float | None = None
+    every_nth: int | None = None
+    trigger_cooldown: float | None = None
+    event_value: float | None = None
+    ailment: str | None = None
+    damage_share: float | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -114,7 +136,9 @@ class Row:
                 num(self.min_points), num(self.cap), num(self.per_point_from), self.cond2 or None,
                 num(self.cond_value2) or None, num(self.reach) if self.reach and self.reach > 0 else None,
                 self.action_event or None, num(self.stack_seconds) or None, self.action or None,
-                num(self.max_points) or None)
+                num(self.max_points) or None, self.fraction_of or None, num(self.scale_offset) or None,
+                num(self.every_seconds) or None, num(self.every_nth) or None, num(self.trigger_cooldown) or None,
+                num(self.event_value) or None, self.ailment or None, num(self.damage_share) or None)
 
 
 R = Row
@@ -214,7 +238,11 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                cond2=text(cells.get(CONDITION_2)), cond_value2=number(cells.get(CONDITION_VALUE_2)),
                reach=number(cells.get("Reach Metres")), action_event=text(cells.get(ACTION_EVENT)),
                stack_seconds=number(cells.get(STACK_SECONDS)), action=text(cells.get(ACTION)),
-               max_points=number(cells.get(MAX_POINTS)) or None)
+               max_points=number(cells.get(MAX_POINTS)) or None, fraction_of=text(cells.get(FRACTION_OF)),
+               scale_offset=number(cells.get(SCALE_OFFSET)), every_seconds=number(cells.get(EVERY_SECONDS)),
+               every_nth=number(cells.get(EVERY_NTH)), trigger_cooldown=number(cells.get(TRIGGER_COOLDOWN)),
+               event_value=number(cells.get(EVENT_VALUE)), ailment=text(cells.get(AILMENT)),
+               damage_share=number(cells.get(DAMAGE_SHARE)))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -228,15 +256,23 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             "Reach Metres": out(row.reach), "Min Points": out(row.min_points), helpers.CAP_COLUMN: out(row.cap),
             PER_POINT_FROM: out(row.per_point_from), CONDITION_2: row.cond2,
             CONDITION_VALUE_2: out(row.cond_value2), ACTION_EVENT: row.action_event,
-            STACK_SECONDS: out(row.stack_seconds), ACTION: row.action, MAX_POINTS: out(row.max_points)}
+            STACK_SECONDS: out(row.stack_seconds), ACTION: row.action, MAX_POINTS: out(row.max_points),
+            FRACTION_OF: row.fraction_of, SCALE_OFFSET: out(row.scale_offset), EVERY_SECONDS: out(row.every_seconds),
+            EVERY_NTH: out(row.every_nth), TRIGGER_COOLDOWN: out(row.trigger_cooldown),
+            EVENT_VALUE: out(row.event_value), AILMENT: row.ailment, DAMAGE_SHARE: out(row.damage_share)}
+
+
+def _what(row: Row) -> str:
+    """What a report line names a row by: its stat, or for an action row with none, the action and its event."""
+    return row.stat or f"{row.action} on {row.action_event}"
 
 
 def _multiset(rows) -> collections.Counter:
     return collections.Counter(row.key() for row in rows)
 
 
-def plan(sheet, nodes=None, label: str = "slice D",
-         extending: frozenset[str] = frozenset()) -> tuple[list[str], list[str], list[dict[str, object]], list[str]]:
+def plan(sheet, nodes=None, label: str = "slice D", extending: frozenset[str] = frozenset(),
+         columns: tuple[str, ...] = ()) -> tuple[list[str], list[str], list[dict[str, object]], list[str]]:
     """The header, the columns of `ADDABLE_COLUMNS` that must be added, the rows to append, and the report.
 
     `nodes` is a list in the shape of `NODES`, which it defaults to; a later War slice's script passes its own
@@ -244,7 +280,11 @@ def plan(sheet, nodes=None, label: str = "slice D",
 
     `extending` names nodes whose rows an earlier script wrote and this one has taken over with more rows (2026-11-25,
     the Saboteur's trap timing): such a node may already hold SOME of the rows wanted, and only the rest are appended.
-    A row held that is not among those wanted is still refused, so nothing somebody wrote since is passed over."""
+    A row held that is not among those wanted is still refused, so nothing somebody wrote since is passed over.
+
+    `columns` names columns of `ADDABLE_COLUMNS` to add whether or not an appended row uses them (2026-11-25, the War
+    vow options' first slice, which adds the port's last eight together so the sheet carries what the Death line's
+    does)."""
     nodes = NODES if nodes is None else nodes
     header = [helpers._text(cell.value) for cell in sheet[1]]
     while header and header[-1] is None:
@@ -280,15 +320,19 @@ def plan(sheet, nodes=None, label: str = "slice D",
                     if lacking[row.key()] > 0:
                         lacking[row.key()] -= 1
                         append.append(cells_from_row(node, name_label, row))
-                        report.append(f"{where}: + {row.stat} {row.kind} {row.value:g}")
+                        report.append(f"{where}: + {_what(row)} {row.kind} {row.value:g}".replace("  ", " "))
                 continue
             if current:
                 raise ReapplyError(f"{where} holds {[row.key() for row in current]}, which are not the rows {label} "
                                    f"writes; somebody has written it since. Nothing was written")
             for row in rows:
                 append.append(cells_from_row(node, name_label, row))
-                report.append(f"{where}: + {row.stat} {row.kind} {row.value:g}")
+                report.append(f"{where}: + {_what(row)} {row.kind} {row.value:g}".replace("  ", " "))
     used = {column for column in ADDABLE_COLUMNS if any(cells.get(column) is not None for cells in append)}
+    unknown = [column for column in columns if column not in ADDABLE_COLUMNS]
+    if unknown:
+        raise ReapplyError(f"{unknown} are not columns this script adds; it adds {list(ADDABLE_COLUMNS)}")
+    used |= set(columns)
     if CONDITION_2 in used:
         used.add(CONDITION_VALUE_2)
     add_columns = [column for column in ADDABLE_COLUMNS if column in used and column not in header]
@@ -296,14 +340,14 @@ def plan(sheet, nodes=None, label: str = "slice D",
 
 
 def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, label: str = "slice D",
-          extending: frozenset[str] = frozenset()) -> list[str]:
-    """Append the rows the workbook at `path` lacks; return the report. `nodes`, `label` and `extending` as `plan`
-    takes them."""
+          extending: frozenset[str] = frozenset(), columns: tuple[str, ...] = ()) -> list[str]:
+    """Append the rows the workbook at `path` lacks, and the columns; return the report. `nodes`, `label`,
+    `extending` and `columns` as `plan` takes them."""
     book = openpyxl.load_workbook(path)
     helpers.refuse_what_a_save_would_lose(book)
     sheet = book[SHEET]
-    header, add_columns, append, report = plan(sheet, nodes, label, extending)
-    if not append:
+    header, add_columns, append, report = plan(sheet, nodes, label, extending, columns)
+    if not append and not add_columns:
         return report + ["every row is already written; nothing written"]
     for column in add_columns:
         report.append(f"added the column {column!r} to {SHEET!r}")
@@ -337,17 +381,18 @@ def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False, nodes=None, l
     try:
         # WITH THE SAME `extending`, so a node this run extended reads back as holding all its rows, and a row held
         # beside them that is not wanted is refused here as it would have been before the save.
-        _, _, still_missing, _ = plan(after[SHEET], nodes, label, extending)
+        _, still_lacking, still_missing, _ = plan(after[SHEET], nodes, label, extending, columns)
     except ReapplyError as error:
         raise ReapplyError(f"the workbook WAS SAVED with {len(append)} row(s) appended, and {SHEET!r} did not read "
                            f"back as written: {error}") from error
-    if still_missing:
-        raise ReapplyError(f"the workbook WAS SAVED, and {SHEET!r} did not read back with the rows written")
+    if still_missing or still_lacking:
+        raise ReapplyError(f"the workbook WAS SAVED, and {SHEET!r} did not read back with the rows and columns "
+                           f"written")
     return report + [f"wrote {len(append)} row(s) after sheet row {last}; no other row or sheet changed"]
 
 
 def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", description: str | None = None,
-         extending: frozenset[str] = frozenset()) -> int:
+         extending: frozenset[str] = frozenset(), columns: tuple[str, ...] = ()) -> int:
     """The command line. A later War slice's script calls this with its own `nodes`, `label` and description."""
     parser = argparse.ArgumentParser(description=description or __doc__.splitlines()[0])
     parser.add_argument("--workbook", type=pathlib.Path, default=WORKBOOK)
@@ -357,7 +402,8 @@ def main(argv: list[str] | None = None, nodes=None, label: str = "slice D", desc
                         help="write the rows without regenerating the CSVs")
     args = parser.parse_args(argv)
     try:
-        report = apply(args.workbook, check_only=args.check, nodes=nodes, label=label, extending=extending)
+        report = apply(args.workbook, check_only=args.check, nodes=nodes, label=label, extending=extending,
+                       columns=columns)
     except ReapplyError as error:
         print(f"Refused: {error}", file=sys.stderr)
         return 2

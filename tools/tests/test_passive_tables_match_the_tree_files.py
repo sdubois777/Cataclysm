@@ -219,10 +219,14 @@ def test_capstone_options_are_carried_across(trees, node_rows):
     # IT WAS 36 AND THREE TREES UNTIL 2026-09-07, when the Ravager and Ritualist
     # trees were added for issue #950 and brought twelve capstones between them,
     # each offering three options.
-    assert carried == 60, (
-        f"{carried} capstone options were carried across, expected 60: five "
-        "trees with three options on each of four capstones. The Saboteur's "
-        "four have none, which is issue #935."
+    #
+    # AND 60 AND FIVE TREES UNTIL 2026-11-25, when the Saboteur's twelve options,
+    # approved on 2026-11-24, were written into its four oaths
+    # (`tools/apply_war_vow_sentences_2026_11_25.py`). They had none until then,
+    # which was issue #935.
+    assert carried == 72, (
+        f"{carried} capstone options were carried across, expected 72: six "
+        "trees with three options on each of four capstones."
     )
 
 

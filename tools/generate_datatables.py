@@ -2026,16 +2026,13 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: two columns for Sprung's, Emergency Protocol's and Razor Instincts' own stacks.
 #: AND ACTION THE SAME DAY with the Saboteur's rows
 #: (`tools/reapply_war_saboteur_rows_workbook.py`): Pressure Sensitive's slow.
-_PASSIVE_PORT_COLUMN_REASON = (
-    "the passive row port of 2026-11-24; added to the workbook by the first War "
-    "or Death tree slice that authors a row using it")
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Passive Effects": {
-        column: _PASSIVE_PORT_COLUMN_REASON
-        for column in ("Fraction Of",
-                       "Scale Offset", "Every Seconds", "Every Nth",
-                       "Trigger Cooldown", "Event Value", "Ailment", "Damage Share")},
-}
+#: THE LAST EIGHT LEFT THE SAME DAY with the War vow options' first slice
+#: (`tools/reapply_war_vows_v1_workbook.py`), which added all eight -- Fraction
+#: Of and Every Seconds for Shield Oath's and Flesh Oath's health, and the six
+#: beside them -- so the War line's sheet carries the fourteen the Death line's
+#: `tools/reapply_death_trees_workbook.py` had added that day, all required (the
+#: coordinating session's ruling). The table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):

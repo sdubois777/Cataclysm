@@ -17,6 +17,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import generate_datatables as gen  # noqa: E402
 
+#: The passive row port's last eight columns, required on the Passive Effects sheet since the War vow options'
+#: first slice (2026-11-25, `tools/reapply_war_vows_v1_workbook.py`) put them in the workbook. A test sheet that leaves
+#: them empty appends them after its other columns, so the values its rows give by position stay where they were. The
+#: Death line names all fourteen `PASSIVE_PORT_HEADERS`, in another order; this is a different list.
+PORT_EIGHT_HEADERS = ["Fraction Of", "Scale Offset", "Every Seconds", "Every Nth", "Trigger Cooldown", "Event Value",
+                      "Ailment", "Damage Share"]
+
 
 def workbook_with(path: pathlib.Path, sheets: dict[str, list[list]]) -> pathlib.Path:
     """Build a workbook from {sheet name: rows}, always including a Tags sheet."""
@@ -1461,7 +1468,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Required Tags", "Condition", "Condition Value", "Scale",
                  "Scale Step", "Option", "Reach Metres", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1524,7 +1531,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
                                   "Min Points", "Scale Max Steps", "Per Point From", "Condition 2",
-                                  "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"],
+                                  "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS,
                                  ["A_node", "damage_taken", "more", -1, None, None,
                                   None, scale, step, None, None, None, cap]]}))
         return gen.passive_effects(book)
@@ -1568,7 +1575,7 @@ class TestAPassiveNodeCanGrantSeveralStats:
             {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
                                   "Required Tags", "Condition", "Condition Value",
                                   "Scale", "Scale Step", "Option", "Reach Metres",
-                                  "Min Points", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"],
+                                  "Min Points", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS,
                                  ["A_node", "armor", "increased", 3]]}))
         with pytest.raises(gen.DataError, match="Scale Max Steps"):
             gen.passive_effects(book)
@@ -1687,7 +1694,7 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
                  "Reach Metres", "Required Tags", "Option", "Min Points",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -5353,7 +5360,7 @@ class TestAnAtNPointsRowStatesItsThreshold:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Min Points", "Required Tags", "Condition", "Condition Value",
                  "Scale", "Scale Step", "Option", "Reach Metres",
-                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"]] + rows
+                 "Scale Max Steps", "Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action", "Max Points"] + PORT_EIGHT_HEADERS] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(

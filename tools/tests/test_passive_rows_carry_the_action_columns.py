@@ -174,24 +174,23 @@ def test_a_column_about_an_item_is_refused(tmp_path, column):
              headers=HEADERS + [column])
 
 
-def test_the_sheet_reads_with_no_optional_port_column(tmp_path):
-    """`OPTIONAL_COLUMNS` lets the sheet read without the action columns the workbook does not have yet, until the
-    first slice that writes a row using one adds that column. `Per Point From` is no longer among them: slice D's rows
-    added it to the workbook on 2026-11-24 (Pain is Power), so it is required; so are `Condition 2` and its value (the
-    War riders, 2026-11-25) and `Action Event` and `Stack Seconds` (the Saboteur's device conditions, the same day).
-    UNTIL 2026-11-25 THIS WAS `test_the_sheet_reads_with_no_port_column_at_all`, which stopped being true when two of
-    the port's columns became required."""
-    required = ["Per Point From", "Condition 2", "Condition Value 2", "Action Event", "Stack Seconds", "Action",
-                "Max Points"]
-    old = HEADERS[:HEADERS.index("Action")] + required
-    out = read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
-    assert out[0]["Action"] == "" and out[0]["PerPointFrom"] == 0
-    declared = set(gen.OPTIONAL_COLUMNS["Passive Effects"])
-    # CONDITION 2 AND ITS VALUE ARE REQUIRED SINCE 2026-11-25: the War riders' rows added them to the workbook. AND
-    # ACTION EVENT AND STACK SECONDS THE SAME DAY: the Saboteur's device conditions' own stacks added them. AND ACTION
-    # THE SAME DAY: Pressure Sensitive's slow, the Saboteur's rows.
-    assert declared == set(gen.PASSIVE_ACTION_COLUMNS) - {"Condition 2", "Condition Value 2", "Action Event",
-                                                           "Stack Seconds", "Action"}
+def test_a_sheet_with_no_port_column_is_refused_now_the_rows_have_them(tmp_path):
+    """The fourteen were optional until the first rows using them came.
+
+    THE NAME AND THE ASSERTIONS ARE THE DEATH LINE'S, taken verbatim on 2026-11-25 at the coordinating session's
+    ruling, so the two lines' copies of this test differ as little as they can. On the Death line its slice C1 put all
+    fourteen in the workbook at once with `tools/reapply_death_trees_workbook.py`. On the War line they came in
+    stages: Per Point From with slice D, the second condition with the War riders, Action Event, Stack Seconds and
+    Action with the Saboteur's slices, and the last eight with the War vow options' first slice
+    (`tools/reapply_war_vows_v1_workbook.py`). On both, `OPTIONAL_COLUMNS` is now empty, so a sheet without them is
+    refused like any other column the generator reads. UNTIL 2026-11-25 THE WAR LINE'S TEST HERE WAS
+    `test_the_sheet_reads_with_no_optional_port_column`."""
+    old = HEADERS[:HEADERS.index("Action")]
+    with pytest.raises(gen.DataError, match="the Passive Effects sheet has no '") as refused:
+        read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=old)
+    missing = str(refused.value).split("'")[1]
+    assert missing in set(gen.PASSIVE_ACTION_COLUMNS) | {"Per Point From"}, missing
+    assert "Passive Effects" not in gen.OPTIONAL_COLUMNS
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +206,7 @@ def test_a_sheet_without_a_column_a_row_now_uses_is_refused(tmp_path, column):
     declaration left `OPTIONAL_COLUMNS`, as `Scale Max Steps` did with Wall of Servants'. A sheet without one is now
     refused like any other column the generator reads, so a column deleted from the workbook cannot drop a threshold
     or a second condition in silence."""
-    assert column not in gen.OPTIONAL_COLUMNS["Passive Effects"]
+    assert "Passive Effects" not in gen.OPTIONAL_COLUMNS
     without = [name for name in HEADERS if name != column]
     with pytest.raises(gen.DataError, match=column):
         read(tmp_path, [[BLOCK_NODE, "armor", "increased", 3]], headers=without)

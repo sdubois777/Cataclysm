@@ -542,3 +542,12 @@ Saboteur_basic_trap_ql_003#3,Saboteur_basic_trap_ql_003,traps_not_set_off_while_
 Saboteur_basic_trunk_013#1,Saboteur_basic_trunk_013,cannot_be_targeted_while_moving,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_basic_trunk_013#2,Saboteur_basic_trunk_013,cannot_be_targeted_broken_seconds,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
 Saboteur_basic_trunk_003#2,Saboteur_basic_trunk_003,class_resource,increased,10.0,,,0.0,,0.0,0,-1.0,6,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_50#3,Berserker_capstone_50,movement_speed_reduction_suppressed,flat,1.0,,class_resource_above,75.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_50#4,Berserker_capstone_50,knockback_suppressed,flat,1.0,,class_resource_above,75.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#1,Berserker_capstone_200,fervour_drain_per_second,removed,1.0,,in_wrath,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Berserker_capstone_200#2,Berserker_capstone_200,life_leech,increased,50.0,,,0.0,,0.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_25#1,Bulwark_capstone_25,,,2.0,,,0.0,,0.0,1,-1.0,0,0,health,block,maximum,0.0,0.0,0.0,0,,0.0,0.25,0.0,,0.0,0,0
+Bulwark_capstone_25#2,Bulwark_capstone_25,,,1.0,,,0.0,,0.0,2,-1.0,0,0,health,every_seconds,current,0.0,0.0,1.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_100#1,Bulwark_capstone_100,retaliation,increased,1.0,,,0.0,health_missing,1.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#1,Bulwark_capstone_200,healing_received,more,100.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
+Bulwark_capstone_200#2,Bulwark_capstone_200,retaliation,increased,1.0,,,0.0,armor,100.0,3,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0
