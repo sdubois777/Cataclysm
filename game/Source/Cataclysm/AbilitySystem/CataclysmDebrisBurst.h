@@ -72,7 +72,9 @@ public:
 	 * Put broken pieces at a point and take them away after Seconds.
 	 *
 	 * @param Instigator  whose attack broke; becomes the actor's owner
-	 * @param At          where the impact happened
+	 * @param At          where the impact happened. The pieces are put on the
+	 *   floor under it, found by `CataclysmEffectPlacement::OnTheFloor`, and at
+	 *   `At` itself only where no floor is found. Issue #2863
 	 * @param Pieces      the meshes to scatter. Nulls in the array are skipped,
 	 *   so a caller whose art is missing passes what it has and gets what it has
 	 * @param Material    what the pieces wear. Null leaves each mesh's own, which

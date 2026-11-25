@@ -153,6 +153,135 @@ bool FCataclysmConeShapeTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConeBodyShapeTest,
+	"Cataclysm.Targeting.ABodyOverlappingAConesSideIsInsideAndItsReachIsStillMeasuredToItsCentre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConeBodyShapeTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetingTest;
+
+	// THE WHIP'S BASIC ATTACK, `Weapon_Whip` in game/Data/ItemBases.csv: Radius=3; Angle=45. Issue #2870. A creature's
+	// body is a 48 cm capsule. The cone faces +X from the origin, so its edges are 22.5 degrees either side of X.
+	const FVector Origin = FVector::ZeroVector;
+	const FVector Forward = FVector::ForwardVector;
+	const float Radius = 3 * M;
+	const float Angle = 45.0f;
+	const float Body = 48.0f;
+
+	// THE CASE THE OWNER MET: a metre ahead and half a metre to the side, its centre 26.6 degrees off the aim.
+	const FVector Beside(1 * M, 0.5f * M, 0);
+	TestFalse(TEXT("control: its centre alone is outside a 45 degree cone"),
+		UCataclysmTargeting::IsInCone(Origin, Forward, Beside, Radius, Angle));
+	TestTrue(TEXT("its 48 cm body, 8 cm from the cone's edge, is inside"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, Beside, Body, Radius, Angle));
+	TestTrue(TEXT("and on the other side too"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(1 * M, -0.5f * M, 0), Body, Radius, Angle));
+
+	// A BODY OF NO SIZE IS THE CENTRE'S OWN TEST.
+	TestFalse(TEXT("a body of no size is outside where its centre is"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, Beside, 0.0f, Radius, Angle));
+
+	// THE EDGE STILL HOLDS: a body just clear of it is outside, one just touching it inside. The edge's own direction
+	// and the direction square to it, on the +Y side.
+	const float Half = FMath::DegreesToRadians(Angle * 0.5f);
+	const FVector Edge(FMath::Cos(Half), FMath::Sin(Half), 0);
+	const FVector Outward(-FMath::Sin(Half), FMath::Cos(Half), 0);
+	TestTrue(TEXT("a body whose centre is 47 cm outside the edge, 2 m along it, touches it and is inside"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, Edge * 2 * M + Outward * 47.0f, Body, Radius, Angle));
+	TestFalse(TEXT("one 49 cm outside it is not"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, Edge * 2 * M + Outward * 49.0f, Body, Radius, Angle));
+
+	// THE REACH IS MEASURED TO THE CENTRE (P7-c): a body straight ahead whose centre is 20 cm past the radius, its near
+	// side well within it, is outside.
+	TestFalse(TEXT("a body straight ahead, its centre 20 cm beyond the 3 m reach, is outside"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(3.2f * M, 0, 0), Body, Radius, Angle));
+	TestTrue(TEXT("and one 20 cm within it is inside"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(2.8f * M, 0, 0), Body, Radius, Angle));
+
+	// A BODY THE APEX STANDS INSIDE IS INSIDE, from any side: pressed against the caster's back.
+	TestTrue(TEXT("a body 30 cm behind the apex, which stands inside it, is inside"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(-0.3f * M, 0, 0), Body, Radius, Angle));
+	TestFalse(TEXT("and one a metre behind is not"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(-1 * M, 0, 0), Body, Radius, Angle));
+
+	// A WIDE CONE AND A RING ARE UNCHANGED WHERE THE CENTRE WAS ALREADY INSIDE, and a ring still has its radius.
+	TestTrue(TEXT("a ring covers behind"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(-2 * M, 0, 0), Body, Radius, 360.0f));
+	TestFalse(TEXT("a ring still respects its radius"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(-3.5f * M, 0, 0), Body, Radius, 360.0f));
+
+	// A RADIUS OR AN ANGLE OF NOUGHT HITS NOTHING, a body or not.
+	TestFalse(TEXT("a radius of nought hits nothing"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(0.2f * M, 0, 0), Body, 0.0f, Angle));
+	TestFalse(TEXT("an angle of nought hits nothing"),
+		UCataclysmTargeting::IsBodyInCone(Origin, Forward, FVector(1 * M, 0, 0), Body, Radius, 0.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConeBodySearchTest,
+	"Cataclysm.Targeting.AConeSearchFindsABodyBesideItsAimNearTheCasterAndStillTakesTheNearestInside",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmConeBodySearchTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetingTest;
+
+	// THE WHIP'S CONE AGAIN, searched in a world. Every target here is a 34 cm sphere on the pawn channel. Issue #2870.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedTarget Caster(World, FVector::ZeroVector);
+	// A METRE AHEAD AND 45 CM TO THE SIDE: its centre 24.2 degrees off the aim, outside the 22.5, and its body 3 cm
+	// from the cone's edge.
+	FScopedTarget Beside(World, FVector(1 * M, 0.45f * M, 0));
+	// AND ONE 2.5 M AHEAD, inside by its centre.
+	FScopedTarget Ahead(World, FVector(2.5f * M, 0, 0));
+	// AND ONE TO THE SIDE, ITS BODY WELL CLEAR OF THE EDGE: half a metre ahead and two metres across, 76 degrees off.
+	FScopedTarget Clear(World, FVector(0.5f * M, -2 * M, 0));
+
+	if (!TestFalse(TEXT("set-up: the target beside the aim is outside the cone by its centre"),
+			UCataclysmTargeting::IsInCone(FVector::ZeroVector, FVector::ForwardVector,
+										  Beside.Actor->GetActorLocation(), 3 * M, 45.0f))
+		|| !TestEqual(TEXT("set-up: its body is its 34 cm sphere"),
+			   UCataclysmTargeting::BodyRadiusOf(Beside.Actor), 34.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const TArray<AActor*> Found = UCataclysmTargeting::FindEnemiesInCone(
+		World, Caster.Actor, FVector::ZeroVector, FVector::ForwardVector, 3 * M, 45.0f);
+	TestTrue(TEXT("the target a metre ahead and 45 cm to the side, its body inside, is found"),
+		Found.Contains(Beside.Actor));
+	TestTrue(TEXT("the one 2.5 m ahead is found"), Found.Contains(Ahead.Actor));
+	TestFalse(TEXT("the one whose body is clear of the edge is not"), Found.Contains(Clear.Actor));
+	if (Found.Num() == 2)
+	{
+		TestEqual(TEXT("nearest first: the one beside the aim"), Found[0], Beside.Actor);
+	}
+
+	// A LIMIT OF ONE IS THE NEAREST INSIDE, which is the whip's: the target beside the aim, not the one ahead.
+	const TArray<AActor*> One = UCataclysmTargeting::FindEnemiesInCone(
+		World, Caster.Actor, FVector::ZeroVector, FVector::ForwardVector, 3 * M, 45.0f, /*MaxTargets=*/1);
+	TestEqual(TEXT("a limit of one returns one"), One.Num(), 1);
+	if (One.Num() == 1)
+	{
+		TestEqual(TEXT("and it is the nearest inside, the target beside the aim"), One[0], Beside.Actor);
+	}
+
+	// AND A LIMIT IS NEVER SPENT ON A TARGET OUTSIDE THE CONE THOUGH NEARER: aimed along -Y, the clear target 2.1 m
+	// away is 14 degrees off and inside, and the target beside the old aim, 1.1 m away and nearer, is behind the cone's
+	// edge; the cut keeps the clear one.
+	const TArray<AActor*> Turned = UCataclysmTargeting::FindEnemiesInCone(
+		World, Caster.Actor, FVector::ZeroVector, FVector(0, -1, 0), 3 * M, 45.0f, /*MaxTargets=*/1);
+	TestEqual(TEXT("aimed along -Y, a limit of one returns one"), Turned.Num(), 1);
+	if (Turned.Num() == 1)
+	{
+		TestEqual(TEXT("and it is the target inside, not the nearer one outside"), Turned[0], Clear.Actor);
+	}
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // The line
 // --------------------------------------------------------------------------

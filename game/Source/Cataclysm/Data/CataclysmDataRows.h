@@ -1696,9 +1696,10 @@ struct FCataclysmEnemyDropRow : public FTableRowBase
 	 * How many gear items this kill is EXPECTED to drop, before loot quantity.
 	 *
 	 * AN EXPECTED COUNT RATHER THAN A CHANCE, which matters at both ends. A
-	 * chance cannot exceed one and a Cataclysm Boss drops twelve; and 0.16 for a
+	 * chance cannot exceed one and a Cataclysm Boss drops six; and 0.08 for a
 	 * Common enemy rounds to nothing, so the fraction is rolled as a probability
-	 * instead. See UCataclysmDropRoll::RollDropCount.
+	 * instead. See UCataclysmDropRoll::RollDropCount. The column was halved on
+	 * 2026-11-24 (issue #2853).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
 	float GearDrops = 0.0f;

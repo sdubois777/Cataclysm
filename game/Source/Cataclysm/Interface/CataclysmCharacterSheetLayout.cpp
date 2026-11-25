@@ -927,7 +927,27 @@ FString UCataclysmCharacterSheetLayout::PowerScoreTooltip(const FCataclysmPowerB
 		const int32 From = Tier == 1 ? 0 : Anchors[Tier - 1] + 1;
 		Range = FString::Printf(TEXT("in tier %d's range of %s to %s."), Tier, *Whole(From), *Whole(Anchors[Tier]));
 	}
-	return FString::Printf(TEXT("Power Score %s, %s\nFrom level: %s\nFrom gear: %s\nFrom gems: %s\nFrom resistances: %s"),
-						   *Whole(Breakdown.Total), *Range, *Whole(Breakdown.FromLevel), *Whole(Breakdown.FromGear),
-						   *Whole(Breakdown.FromGems), *Whole(Breakdown.FromResistances));
+	// AND EACH TERM'S WEIGHT BESIDE IT, as plain numbers a player can add up: the owner's ruling of 2026-11-24 (issue
+	// #2853), which asked why a level was worth 6.3 points. Read from `UCataclysmPowerScore`, never written out here, so
+	// the line cannot show a weight the score does not use.
+	const auto Plain = [](float Value)
+	{
+		const int32 Rounded = FMath::RoundToInt32(Value);
+		return FMath::IsNearlyEqual(Value, static_cast<float>(Rounded)) ? FString::FromInt(Rounded)
+																		 : FString::SanitizeFloat(Value);
+	};
+	const float Upgrade = UCataclysmPowerScore::UpgradeFactor();
+	const FString PerGearLevel = FMath::IsNearlyEqual(Upgrade, 1.0f)
+		? FString(TEXT("its gear level"))
+		: FString::Printf(TEXT("%s x its gear level"), *Plain(Upgrade));
+	return FString::Printf(TEXT("Power Score %s, %s\n"
+								"From level: %s (%s a level)\n"
+								"From gear: %s (%s a rarity step of each piece, times 1 + %s)\n"
+								"From gems: %s (%s a rarity step of each socketed gem)\n"
+								"From resistances: %s (%s a resistance percent, up to %s)"),
+						   *Whole(Breakdown.Total), *Range, *Whole(Breakdown.FromLevel),
+						   *Plain(UCataclysmPowerScore::LevelWeight()), *Whole(Breakdown.FromGear),
+						   *Plain(UCataclysmPowerScore::GearWeight()), *PerGearLevel, *Whole(Breakdown.FromGems),
+						   *Plain(UCataclysmPowerScore::GemWeight()), *Whole(Breakdown.FromResistances),
+						   *Plain(UCataclysmPowerScore::ResistanceWeight()), *Plain(UCataclysmPowerScore::ResistanceCap));
 }

@@ -35,7 +35,8 @@ class ACataclysmCharacterBase;
  *   Saboteur    placing a trap or gadget, and one of them dealing damage
  *   Ravager     1 an enemy an attack hits, 1 a second an enemy within 4 metres,
  *               and decaying at 5 a second once nothing is in reach
- *   Masochist   health lost to damage, and health spent as an ability cost
+ *   Masochist   health and energy shield lost to damage, and health spent as
+ *               an ability cost
  *   Ritualist   1 a second for each minion held, and 5 when one of them dies
  *
  * The Masochist's is issue #954 and the Ritualist's is #1518. The four that are
@@ -79,7 +80,7 @@ class ACataclysmCharacterBase;
  *
  *   damage    `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, in the
  *             branch where the Damage meta attribute has been resolved and the
- *             amount that reached health is known
+ *             amounts that reached health and the energy shield are known
  *   cost      `UCataclysmSkillTemplate::PayHealthCost`
  *   healing   `UCataclysmRegeneration::TopUp`, which is the one place both
  *             health regeneration and life leech restore health through
@@ -597,12 +598,20 @@ public:
 						 FName Stat, const FGameplayTagContainer& Context);
 
 	/**
-	 * Fill the bar from health this character lost to damage.
+	 * Fill the bar from health and energy shield this character lost to damage.
 	 *
-	 * @param HealthLost  what reached HEALTH, not what the hit was worth. A blow
-	 *                    an energy shield absorbed generates nothing, which the
-	 *                    design states outright: a shield on a Masochist is a
-	 *                    straight loss of resource generation
+	 * @param HealthLost  what reached HEALTH plus what the ENERGY SHIELD lost to
+	 *                    the same blow, not what the hit was worth. The shield's
+	 *                    share counts exactly as health lost, at the one rate per
+	 *                    1% of maximum HEALTH: the project owner, 2026-11-24, "the
+	 *                    massochist doesn't gain fervour with damage to energy
+	 *                    shield, and it should", and the coordinating session's
+	 *                    ruling of the same day on the rate. Issue #2873. Until
+	 *                    then a blow the shield absorbed generated nothing. The
+	 *                    one caller, `UCataclysmVitalAttributeSet::
+	 *                    PostGameplayEffectExecute`, adds the two; a shield
+	 *                    recharging removes nothing, because `RemoveForHealing`
+	 *                    is asked for health alone
 	 * @return how much Fervour was really added, after the clamp at the maximum
 	 */
 	static float GainFromDamage(UAbilitySystemComponent* AbilitySystem,

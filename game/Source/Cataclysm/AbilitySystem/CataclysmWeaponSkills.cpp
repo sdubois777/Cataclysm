@@ -159,7 +159,10 @@ namespace
 		// nothing and the slot's figure is used; turning it into that
 		// figure here would put the fallback in a second place. Applied
 		// once, where the ability is granted, in
-		// UCataclysmWeaponSlotsComponent. Issue #836.
+		// UCataclysmWeaponSlotsComponent. Issue #836. An aura's -1 is no
+		// damage at all rather than its slot's, and that rule is applied in
+		// the same one place, `UCataclysmSkillTemplate::GetDamagePercent`
+		// (issue #2875).
 		Skill.DamagePercent = Row.DamagePercent;
 		Skill.Cooldown = Row.Cooldown;
 		Skill.ManaCost = Row.ManaCost;

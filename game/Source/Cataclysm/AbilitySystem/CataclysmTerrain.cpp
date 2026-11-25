@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmTerrain.h"
+#include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -144,7 +145,41 @@ ACataclysmTerrain* ACataclysmTerrain::Spawn(
 	// sweeping kinds work either way, because their timer only reads these
 	// members when it fires, long after `Spawn` has returned. Only the wall does
 	// work at `BeginPlay`, so only the wall noticed.
-	const FTransform Where(FRotator::ZeroRotator, Start);
+	//
+	// ON THE FLOOR UNDER THE NEAR END, NOT AT THE HEIGHT IT WAS HANDED. Issue
+	// #2878. Every caller hands over a capsule centre -- the caster's for
+	// Upthrust, Thicket and Break the World, the caster's on arrival for Crater,
+	// the struck creature's for Groundbreaker's fissure -- which is 45 to 155 cm
+	// above the floor. A wall is built upward from the actor's own height, so
+	// Upthrust's ridge stood with its base about 98 cm up, floating over the
+	// floor it says it rises out of, and anything shorter than that gap walked or
+	// flew underneath it.
+	//
+	// EVERY KIND, NOT ONLY THE WALL, so terrain is where it says it is. The three
+	// round kinds decide who is inside them by a flat test (`IsInLine`). The
+	// sphere their sweep gathers with is centred on the actor and as wide as the
+	// terrain, and centred on the floor a sphere wider than about 1.3 m still
+	// reaches every body standing inside its radius, on the floor or on the exit
+	// stairs' 60 cm top tier; the smallest the sheet states is a fissure's 2 m.
+	// So moving them changes their height and not who they hold.
+	//
+	// THE SURFACE ITSELF, NOT `OnTheFloor`'S TWO CENTIMETRES ABOVE IT. That lift
+	// keeps a flat drawing from fighting the floor for the same pixels; a wall
+	// is solid, and a gap under it is the fault being fixed.
+	//
+	// UNDER THE NEAR END, which is where the caster or the struck creature
+	// stands, so there is floor under it. Under the middle of a ten metre ridge
+	// there may be a dungeon wall, a pillar or the void past a floor's edge.
+	//
+	// LEFT WHERE IT WAS ASKED WHEN THERE IS NO FLOOR: every test world that
+	// builds no geometry, and a point out over the void.
+	FVector Near = Start;
+	float FloorZ = 0.0f;
+	if (CataclysmEffectPlacement::FloorSurfaceUnder(World, Start, FloorZ))
+	{
+		Near.Z = FloorZ;
+	}
+	const FTransform Where(FRotator::ZeroRotator, Near);
 	ACataclysmTerrain* Terrain = World->SpawnActorDeferred<ACataclysmTerrain>(
 		ACataclysmTerrain::StaticClass(), Where, Owner, /*Instigator=*/nullptr,
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
@@ -173,6 +208,11 @@ ACataclysmTerrain* ACataclysmTerrain::Spawn(
 	// either one needs it. That was the wording's original reason and it held
 	// while the ground zone still spawned in one step; since issue #1153 both
 	// spawn in two.
+	//
+	// AND IT CARRIES THE MOVE ONTO THE FLOOR WITH IT. The far end keeps its offset
+	// from the near end, so a ridge whose two ends were handed at one height has
+	// both on the floor under the near end, and a round kind's two ends are still
+	// one point.
 	Terrain->FarEnd = Terrain->GetActorLocation() + (End - Start);
 
 	Terrain->HoldSeconds = HoldSeconds > 0.0f ? HoldSeconds : DefaultHoldSeconds;
@@ -294,7 +334,14 @@ void ACataclysmTerrain::BuildWall()
 	// RAISED FROM THE GROUND UP, so the ridge stands on the floor rather than
 	// being buried to its middle in it. The cube's origin is its centre, so half
 	// its height is where the bottom face sits.
-	const FVector Lifted(Middle.X, Middle.Y, Middle.Z + WallHeightCm * 0.5f);
+	//
+	// FROM THE ACTOR'S OWN HEIGHT, WHICH `Spawn` PUT ON THE FLOOR. Issue #2878.
+	// This comment said "stands on the floor" while `Spawn` left the actor at the
+	// caster's capsule centre, so the base was about 98 cm up and the top about
+	// 498. The near end's height rather than the middle's, so a far end handed at
+	// another height cannot tilt the base off the floor the near end found; the
+	// facing and the length above are both flat already.
+	const FVector Lifted(Middle.X, Middle.Y, Start.Z + WallHeightCm * 0.5f);
 
 	// RELATIVE TO THE ACTOR, because the component is attached to it. Passing a
 	// world transform here would place the wall at that offset from itself.

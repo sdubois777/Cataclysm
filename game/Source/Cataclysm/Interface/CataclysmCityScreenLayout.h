@@ -220,6 +220,10 @@ public:
 	 * AND THE EDICT AN ASCENDANT LEFT ON IT, WHILE ITS DAYS RUN, since
 	 * 2026-10-22: "Edict of Silence, 12 days left". A city carrying none reads
 	 * as before.
+	 *
+	 * AND, FOR A FALLEN CITY WHOSE FALLEN CITY DUNGEON STANDS ON IT, HOW IT IS
+	 * RETAKEN: "Walk its Fallen City dungeon below to retake it." Issue #2866.
+	 * A fallen city with no such dungeon reads as before.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Empire")
 	static FString StatusTextFor(const UCataclysmEmpireRun* Run, int32 CityId);

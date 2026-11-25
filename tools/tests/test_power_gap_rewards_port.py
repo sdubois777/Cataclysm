@@ -1,16 +1,18 @@
 """The game's rule for a kill's experience and loot by the Power Score gap is the simulation's, and a kill pays it.
 
 WHY THIS EXISTS. Issue #2824, slice c: the coordinating session's rule D and the owner's 25% loot floor, both of
-2026-11-22. `FCataclysmPowerGapRule` (`game/Source/Cataclysm/Dungeon/CataclysmPowerGapRewards.h`) is a port of
+2026-11-22; and issue #2853, the owner's per-tier start of the cut, 2026-11-24. `FCataclysmPowerGapRule` (`game/Source/Cataclysm/Dungeon/CataclysmPowerGapRewards.h`) is a port of
 `sim/analyse_power_gap_rewards.py`'s `RULED.multiplier`. Continuous integration compiles no C++, so the automation
 tests `Cataclysm.PowerGapRewards.` never run on a pull request; they hold the simulation's figures written out, and
 this check holds those figures, and the port's constants, to the simulation. Two copies of a number are two numbers.
 
 WHAT IS CHECKED:
 
-  1. each of the port's seven constants is the ruled rule's field of the same meaning;
-  2. each row of `TheRuleIsTheSimulationsAtElevenGaps`'s table is `RULED.multiplier` at that gap, experience and loot,
-     and the rows reach both floors, the cap, both ramps and the band;
+  1. each of the port's six constants is the ruled rule's field of the same meaning, and its table of where the cut
+     begins at each tier is the ruled rule's `band_down_by_tier`;
+  2. each row of `TheRuleIsTheSimulationsAtElevenGaps`'s table is `RULED.multiplier` at that gap and tier, experience
+     and loot, and the rows reach both floors, the cap, both ramps and the band; and each row of
+     `TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight`'s table, likewise;
   3. each row of `TwoScoresGiveBothFactorsAndTheLineAndNoScoreChangesNothing`'s table is the line the simulation's
      factors make for those two scores, at the simulation's tier width;
   4. the death handler asks for the factor before it pays, multiplies the loot quantity and the gold multiplier by the
@@ -48,8 +50,9 @@ with contextlib.redirect_stdout(io.StringIO()):
 
 RULED = gaps.RULED
 
-#: Each C++ constant and the simulation's field of the same meaning.
-CONSTANTS = {"BandAbove": "band", "BandBelow": "band_down", "BonusCap": "cap_up", "BonusRamp": "ramp_up",
+#: Each C++ constant and the simulation's field of the same meaning. Where the cut begins is a table by tier since
+#: issue #2853, `BandBelow`'s `ByTier`, checked on its own.
+CONSTANTS = {"BandAbove": "band", "BonusCap": "cap_up", "BonusRamp": "ramp_up",
              "CutRamp": "ramp_down", "ExperienceFloor": "floor", "LootFloor": "loot_floor"}
 
 
@@ -97,8 +100,23 @@ def test_the_ports_constants_are_the_ruled_rules() -> None:
             f"{name} is {found[name]} in the game and {field} is {getattr(RULED, field)} in the ruled rule")
 
 
+def test_where_the_cut_begins_at_each_tier_is_the_ruled_rules() -> None:
+    below = body(code(RULE_CPP), "double FCataclysmPowerGapRule::BandBelow(")
+    found = re.search(r"static constexpr double ByTier\[\] = \{([^}]*)\};", below)
+    assert found, "BandBelow holds no ByTier table"
+    table = tuple(float(x) for x in found.group(1).split(","))
+    assert table == RULED.band_down_by_tier == (1.4, 1.3, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8), (
+        f"the game's cut begins at {table} and the simulation's at {RULED.band_down_by_tier}")
+    assert "FMath::Clamp(DifficultyTier, 1, static_cast<int32>(UE_ARRAY_COUNT(ByTier)))" in below, (
+        "BandBelow no longer holds the tier inside the table")
+    assert "return ByTier[Tier - 1];" in below
+    assert "BandBelow = " not in code(HEADER), "the header still holds one start for every tier"
+
+
 def test_the_multiplier_is_written_as_the_simulation_writes_it() -> None:
     multiplier = body(code(RULE_CPP), "double FCataclysmPowerGapRule::Multiplier(")
+    assert "const double Below = BandBelow(DifficultyTier);" in multiplier, (
+        "the multiplier does not read where the cut begins at the dungeon's tier")
     above = multiplier.find("if (Gap > BandAbove)")
     below = multiplier.find("if (Gap < -Below)")
     assert -1 < above < below, "the port no longer asks above the band first and below it second, as the simulation does"
@@ -107,22 +125,53 @@ def test_the_multiplier_is_written_as_the_simulation_writes_it() -> None:
     assert "const double Floor = bLoot ? LootFloor : ExperienceFloor;" in multiplier
 
 
+def tier_rows(test_name: str) -> list[tuple[int, float, float, float]]:
+    """The (tier, gap, experience, loot) rows of an automation test's `Cases[]` table."""
+    return [(int(tier), float(gap), float(experience), float(loot)) for tier, gap, experience, loot in
+            re.findall(r"\{\s*(\d+),\s*(-?[\d.]+),\s*([\d.]+),\s*([\d.]+)\s*\}", table(test_name))]
+
+
+def assert_rows_are_the_simulations(rows: list[tuple[int, float, float, float]]) -> None:
+    for tier, gap, experience, loot in rows:
+        assert math.isclose(experience, RULED.multiplier(gap, tier=tier), abs_tol=1e-12), (
+            f"at {gap}, tier {tier}: the test says experience {experience}, the simulation "
+            f"{RULED.multiplier(gap, tier=tier)}")
+        assert math.isclose(loot, RULED.multiplier(gap, loot=True, tier=tier), abs_tol=1e-12), (
+            f"at {gap}, tier {tier}: the test says loot {loot}, the simulation "
+            f"{RULED.multiplier(gap, loot=True, tier=tier)}")
+
+
 def test_the_automation_tests_eleven_gaps_are_the_simulations() -> None:
-    rows = [tuple(float(x) for x in row) for row in
-            re.findall(r"\{\s*(-?[\d.]+),\s*([\d.]+),\s*([\d.]+)\s*\}",
-                       table("FCataclysmPowerGapRewardsRuleTest"))]
+    rows = tier_rows("FCataclysmPowerGapRewardsRuleTest")
     assert len(rows) == 11, f"the table holds {len(rows)} rows, not 11"
-    for gap, experience, loot in rows:
-        assert math.isclose(experience, RULED.multiplier(gap), abs_tol=1e-12), (
-            f"at {gap}: the test says experience {experience}, the simulation {RULED.multiplier(gap)}")
-        assert math.isclose(loot, RULED.multiplier(gap, loot=True), abs_tol=1e-12), (
-            f"at {gap}: the test says loot {loot}, the simulation {RULED.multiplier(gap, loot=True)}")
-    experiences = {row[1] for row in rows}
-    assert RULED.floor in experiences and RULED.loot_floor in {row[2] for row in rows}, "the table misses a floor"
+    assert_rows_are_the_simulations(rows)
+    tiers = {row[0] for row in rows}
+    assert len(tiers) == 1, f"the eleven gaps are at tiers {sorted(tiers)}, not one"
+    tier = tiers.pop()
+    experiences = {row[2] for row in rows}
+    assert RULED.floor in experiences and RULED.loot_floor in {row[3] for row in rows}, "the table misses a floor"
     assert 1.0 + RULED.cap_up in experiences, "the table misses the cap"
     assert any(RULED.floor < e < 1.0 for e in experiences), "the table misses the cut's ramp"
     assert any(1.0 < e < 1.0 + RULED.cap_up for e in experiences), "the table misses the bonus's ramp"
-    assert {-RULED.band_down, RULED.band} <= {row[0] for row in rows}, "the table misses an edge of the band"
+    assert {-RULED.below_at(tier), RULED.band} <= {row[1] for row in rows}, "the table misses an edge of the band"
+
+
+def test_the_automation_tests_per_tier_starts_are_the_simulations() -> None:
+    """`TheCutBeginsAtOnePointFourWidthsAtTierOneAndNoughtPointEightAtTierEight`: its seven rows, and its table of the
+    eight starts, against the ruled rule. Each of tier 1's and tier 8's starts is in the table, paid in full, with a gap
+    a tenth beyond it that is cut."""
+    rows = tier_rows("FCataclysmPowerGapRewardsStartTest")
+    assert len(rows) == 7, f"the table holds {len(rows)} rows, not 7"
+    assert_rows_are_the_simulations(rows)
+    for tier in (1, 8):
+        start = -RULED.below_at(tier)
+        assert (tier, start, 1.0, 1.0) in rows, f"the table does not pay tier {tier}'s start, {start}, in full"
+        assert any(t == tier and math.isclose(gap, start - 0.1) and e < 1.0 for t, gap, e, _ in rows), (
+            f"the table does not cut a tenth beyond tier {tier}'s start")
+    run = body(code(TEST), "bool FCataclysmPowerGapRewardsStartTest::RunTest(")
+    found = re.search(r"const double Starts\[\] = \{([^}]*)\};", run)
+    assert found and tuple(float(x) for x in found.group(1).split(",")) == RULED.band_down_by_tier, (
+        "the test's eight starts are not the ruled rule's")
 
 
 def test_the_automation_tests_lines_are_the_simulations() -> None:
@@ -131,8 +180,8 @@ def test_the_automation_tests_lines_are_the_simulations() -> None:
     assert len(rows) == 4, f"the table holds {len(rows)} rows, not 4"
     for dungeon, player, tier, text in rows:
         gap = (int(dungeon) - int(player)) / scoring.tier_width(int(tier))
-        experience = half_up_percent(RULED.multiplier(gap))
-        loot = half_up_percent(RULED.multiplier(gap, loot=True))
+        experience = half_up_percent(RULED.multiplier(gap, tier=int(tier)))
+        loot = half_up_percent(RULED.multiplier(gap, loot=True, tier=int(tier)))
         expected = (f"Rewards {experience}%." if experience == loot
                     else f"Rewards: experience {experience}%, loot {loot}%.")
         assert text == expected, f"{dungeon} against {player} at tier {tier}: the test says {text!r}, the simulation {expected!r}"
@@ -175,6 +224,10 @@ def test_the_factor_and_the_panel_read_the_same_two_scores() -> None:
     assert "FCataclysmPowerGapRule::RewardsText(FCataclysmPowerGapRule::RewardsFor(" in line
     within = body(mode, "FCataclysmPowerGapRewards ACataclysmDungeonGameMode::PowerGapRewardsIn(")
     assert "Mode->PowerGapRewardsHere()" in within
+    rewards = body(code(RULE_CPP), "FCataclysmPowerGapRewards FCataclysmPowerGapRule::RewardsFor(")
+    for loot in ("false", "true"):
+        assert f"Multiplier(Gap, {loot}, DifficultyTier);" in rewards, (
+            "RewardsFor does not ask the multiplier at the dungeon's tier")
 
 
 def test_the_map_and_the_city_screen_show_the_rewards_after_the_dungeon_score() -> None:

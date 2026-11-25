@@ -163,23 +163,48 @@ namespace CataclysmGoldTest
 		return Out;
 	}
 
-	/** Kills `Kills` creatures of this rung in the world, each with its own corpse, and answers where each died. */
-	TArray<FVector> Kill(UWorld* World, int32 RarityStep, int32 Kills)
+	/** One kill: where its creature died, and the gold piles its death put on the floor. */
+	struct FGoldKill
 	{
-		TArray<FVector> Corpses;
+		FVector Corpse = FVector::ZeroVector;
+		TArray<ACataclysmDroppedItem*> Piles;
+	};
+
+	/**
+	 * Kills `Kills` creatures of this rung in the world, one at a time, each with its own corpse, and answers each kill's
+	 * corpse and the piles that kill put down: those on the floor after it that were not there before it.
+	 *
+	 * 100 M APART, AND EACH KILL'S PILES KEPT WITH IT. A kill's gold lies on a ring of radius 25 cm x (piles + 1)
+	 * (`UCataclysmDropSpawner::GoldScatterOffset`), and an odd count puts one pile straight behind. At the 6 m apart
+	 * these stood until window bb12-w1 (2026-11-24), a boss that rolled exactly 23 piles put one on the corpse before
+	 * it, and a check of every pile against every corpse counted that as lying where a kill's lone item would. A ring
+	 * would need 399 piles to reach a neighbour 100 m away, and the check now asks each kill only about its own corpse.
+	 */
+	TArray<FGoldKill> Kill(UWorld* World, int32 RarityStep, int32 Kills)
+	{
+		TArray<FGoldKill> Done;
 		for (int32 Index = 0; Index < Kills; ++Index)
 		{
+			const TArray<ACataclysmDroppedItem*> Before = PilesIn(World);
 			ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(
-				ACataclysmEnemyCharacter::StaticClass(), FVector(2000.0f + 600.0f * static_cast<float>(Index), 0.0f, 0.0f),
-				FRotator::ZeroRotator);
+				ACataclysmEnemyCharacter::StaticClass(),
+				FVector(2000.0f + 10000.0f * static_cast<float>(Index), 0.0f, 0.0f), FRotator::ZeroRotator);
 			if (Victim != nullptr)
 			{
 				Victim->SetRarityStep(RarityStep);
-				Corpses.Add(Victim->GetActorLocation());
+				FGoldKill& This = Done.AddDefaulted_GetRef();
+				This.Corpse = Victim->GetActorLocation();
 				Victim->HandleDeath();
+				for (ACataclysmDroppedItem* Pile : PilesIn(World))
+				{
+					if (!Before.Contains(Pile))
+					{
+						This.Piles.Add(Pile);
+					}
+				}
 			}
 		}
-		return Corpses;
+		return Done;
 	}
 
 	/** The rung a Cataclysm Boss is: twelve piles expected, so no pile at all is about six chances in a million. */
@@ -251,8 +276,10 @@ bool FCataclysmGoldPileSizeTest::RunTest(const FString&)
 
 /**
  * A kill's piles follow the gear ladder, the ruling's "as gear and materials drop today", and no loot quantity moves
- * them: the expected piles of every rung equal its expected gear at the baseline, and stay there when loot quantity is
- * quadrupled while the gear does not. Prints "LADDER".
+ * them: the expected piles of every rung are twice its expected gear at the baseline, and stay there when loot quantity
+ * is quadrupled while the gear does not. TWICE SINCE 2026-11-24, when the owner halved the gear column and the gold
+ * column did not move (issue #2853): the piles are the gear ladder of 2026-11-18, its shape and its figures. Prints
+ * "LADDER".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGoldLadderTest,
 	"Cataclysm.Gold.AKillsPilesFollowTheGearLadderAndNoLootQuantityMovesThem",
@@ -281,7 +308,8 @@ bool FCataclysmGoldLadderTest::RunTest(const FString&)
 		const float GearFourTimes = UCataclysmDropRoll::ExpectedGearDrops(Drops, Rarity, 400.0f);
 		Lines.Add(FString::Printf(TEXT("%s %g piles, %g gear, %g gear at 400%%"), *Rarity.ToString(), Piles, Gear,
 								  GearFourTimes));
-		TestEqual(*FString::Printf(TEXT("%s: its piles are its gear"), *Rarity.ToString()), Piles, Gear);
+		TestEqual(*FString::Printf(TEXT("%s: its piles are twice its gear, the ladder of 2026-11-18"), *Rarity.ToString()),
+				  Piles, 2.0f * Gear);
 		TestTrue(*FString::Printf(TEXT("%s: CONTROL: loot quantity does move its gear"), *Rarity.ToString()),
 				 GearFourTimes > Gear);
 	}
@@ -385,7 +413,7 @@ bool FCataclysmGoldKillsTest::RunTest(const FString&)
 	}
 
 	TestEqual(TEXT("CONTROL: no gold lies on the floor before the kills"), PilesIn(Scene.World).Num(), 0);
-	const TArray<FVector> Corpses = Kill(Scene.World, CataclysmBossStep, 3);
+	const TArray<FGoldKill> Kills = Kill(Scene.World, CataclysmBossStep, 3);
 	Kill(Solo.World, CataclysmBossStep, 3);
 
 	const TArray<ACataclysmDroppedItem*> Piles = PilesIn(Scene.World);
@@ -393,33 +421,44 @@ bool FCataclysmGoldKillsTest::RunTest(const FString&)
 	int32 InRange = 0;
 	int32 Coloured = 0;
 	int32 Thin = 0;
-	int32 OnACorpse = 0;
 	for (const ACataclysmDroppedItem* Pile : Piles)
 	{
 		Named += Pile->DisplayName == ACataclysmDroppedItem::GoldName(Pile->Gold) ? 1 : 0;
 		InRange += Pile->Gold >= 8 && Pile->Gold <= 12 ? 1 : 0;
 		Coloured += Pile->NameColour.Equals(ACataclysmDroppedItem::GoldNameColour) ? 1 : 0;
 		Thin += UCataclysmDropPickup::NameBorderThicknessOf(*Pile) == UCataclysmDropPickup::ThinnestNameBorderPx ? 1 : 0;
-		// WHERE A LONE ITEM LIES: on its corpse, which `ScatterOffset` gives a count of one. A pile's ring is 50 cm out
-		// at the least.
-		for (const FVector& Corpse : Corpses)
+	}
+
+	// WHERE A LONE ITEM LIES: on its corpse, which `ScatterOffset` gives a count of one. A pile's ring is 50 cm out at
+	// the least. EACH KILL'S PILES AGAINST ITS OWN CORPSE ONLY: where another kill's ring reaches is no question about
+	// this kill's lone item (see `Kill`).
+	int32 OnTheirCorpse = 0;
+	int32 Attributed = 0;
+	FString EachKill;
+	for (const FGoldKill& Each : Kills)
+	{
+		Attributed += Each.Piles.Num();
+		EachKill += FString::Printf(TEXT("%s%d"), EachKill.IsEmpty() ? TEXT("") : TEXT(", "), Each.Piles.Num());
+		for (const ACataclysmDroppedItem* Pile : Each.Piles)
 		{
-			OnACorpse += FVector::Dist2D(Pile->GetActorLocation(), Corpse) < 25.0f ? 1 : 0;
+			OnTheirCorpse += FVector::Dist2D(Pile->GetActorLocation(), Each.Corpse) < 25.0f ? 1 : 0;
 		}
 	}
 	const int32 SoloPiles = PilesIn(Solo.World).Num();
 
-	AddInfo(FString::Printf(TEXT("KILLS: %d piles from three Cataclysm Bosses; %d named, %d holding 8 to 12, %d in the gold "
-								 "colour, %d with the thinnest border, %d on a corpse; Solo Self-Found: %d piles"),
-							Piles.Num(), Named, InRange, Coloured, Thin, OnACorpse, SoloPiles));
+	AddInfo(FString::Printf(TEXT("KILLS: %d piles from three Cataclysm Bosses (%s); %d named, %d holding 8 to 12, %d in "
+								 "the gold colour, %d with the thinnest border, %d on its own kill's corpse; Solo "
+								 "Self-Found: %d piles"),
+							Piles.Num(), *EachKill, Named, InRange, Coloured, Thin, OnTheirCorpse, SoloPiles));
 
 	TestTrue(TEXT("killing three Cataclysm Bosses put gold on the floor"), Piles.Num() > 0);
 	TestEqual(TEXT("each pile is named for its gold"), Named, Piles.Num());
 	TestEqual(TEXT("each holds 8 to 12 at tier 1 on floor 1"), InRange, Piles.Num());
 	TestEqual(TEXT("each is drawn in the gold colour"), Coloured, Piles.Num());
 	TestEqual(TEXT("each has the thinnest border"), Thin, Piles.Num());
-	TestEqual(TEXT("CONTROL: three corpses were placed"), Corpses.Num(), 3);
-	TestEqual(TEXT("none lies where the kill's lone item would"), OnACorpse, 0);
+	TestEqual(TEXT("CONTROL: three corpses were placed"), Kills.Num(), 3);
+	TestEqual(TEXT("CONTROL: every pile on the floor is one of the three kills'"), Attributed, Piles.Num());
+	TestEqual(TEXT("none lies where its kill's lone item would"), OnTheirCorpse, 0);
 	TestTrue(TEXT("a Solo Self-Found character's kills put gold down too"), SoloPiles > 0);
 	return true;
 }

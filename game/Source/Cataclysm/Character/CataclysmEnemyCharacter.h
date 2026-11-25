@@ -1378,6 +1378,25 @@ public:
 		// long as the player stays away, so a modifier aura or charge of its own would be a second attack. Issue #2740.
 		return bHealsAlliesForTheFloorRule || bGuidesThePlayerForTheFloorRule || bIsPlaguebearer || bIsAnEchoOfThePast;
 	}
+
+	/**
+	 * Demonic Guide's guide is nobody's target: no minion, thrall, skill or floor rule finds it, and no blow lands on
+	 * it. Issue #2860, the owner's play-test of 2026-11-23. See `ACataclysmCharacterBase::IsNeverATarget`.
+	 *
+	 * THE GUIDE ALONE. The Reaper, an echo, a rift and the floor's other objects that cannot be hurt are still found
+	 * and struck for nothing, as their own rulings have them.
+	 */
+	virtual bool IsNeverATarget() const override { return bGuidesThePlayerForTheFloorRule; }
+
+	/**
+	 * Demonic Guide's guide's body, `GuideBodyMaskBit`, which the player and what the player commands pass through and
+	 * which passes through them; a creature still blocks it and it still blocks a creature. Issue #2861. Every other
+	 * creature answers as the base does: nought, or the commanded body once it is a thrall.
+	 */
+	virtual uint8 PassThroughBodyMaskBit() const override
+	{
+		return bGuidesThePlayerForTheFloorRule ? GuideBodyMaskBit : Super::PassThroughBodyMaskBit();
+	}
 	//~ End
 
 	// ----------------------------------------------------------------------

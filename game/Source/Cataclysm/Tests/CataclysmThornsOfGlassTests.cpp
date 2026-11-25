@@ -152,6 +152,89 @@ namespace CataclysmThornsOfGlassTest
 		return UCataclysmSkillEffects::ApplyHit(Player, Creature, /*DamagePercent=*/100.0f, FGameplayTagContainer(),
 												Delivery);
 	}
+
+	/** A Brute's designed attack interval, `ACataclysmBruteCharacter::DesignedAttackIntervalSeconds`: issue #2854's Boss. */
+	constexpr float ThornsBruteIntervalSeconds = 1.2f;
+
+	/** How many pulses of an aura `ThornsHitAtAnAurasCadence` lands, and how far apart: the spacing of issue #2854's log. */
+	constexpr int32 ThornsAuraPulses = 7;
+	constexpr double ThornsAuraPulseSpacingSeconds = 1.001;
+
+	/** What `ThornsHitAtAnAurasCadence` saw. */
+	struct FThornsCadenceReading
+	{
+		/** Which of the pulses, counted from nought, drew a strike back. */
+		TArray<int32> PulsesStruckBack;
+		/** How many of the quick hits and burn ticks between the pulses drew one. */
+		int32 OthersStruckBack = 0;
+		/** Every blow dealt, and how many of them landed on the creature. */
+		int32 Blows = 0;
+		int32 Landed = 0;
+		/** What the player lost altogether. */
+		float PlayerLost = 0.0f;
+	};
+
+	/**
+	 * ISSUE #2854'S CADENCE, ON THE WORLD CLOCK: the player's aura hits the creature once a second, 1.001 seconds apart
+	 * as the owner's log has Conflagration's pulses; a twentieth and a tenth of a second after each pulse a quick hit
+	 * lands, as Compel's and a basic attack's did inside the same second; and half-way between, a burn tick. Each blow
+	 * is dealt at its own moment, and whether the player lost health to it is read straight after it.
+	 *
+	 * THE QUICK HITS COME NO LATER THAN 0.1 SECONDS AFTER A PULSE ON PURPOSE: the latest, after a pulse that was not
+	 * struck back, is 1.101 seconds after the last strike back, inside a Brute's 1.2. One at 0.2 would be at 1.201 and
+	 * due, which is the rule working and not what these readings are about.
+	 */
+	FThornsCadenceReading ThornsHitAtAnAurasCadence(UWorld* World, ACataclysmPlayerCharacter* Player,
+													ACataclysmEnemyCharacter* Creature)
+	{
+		FCataclysmHitDelivery Pulse;
+		Pulse.bIsArea = true;
+		Pulse.bCarriesNoAilmentChance = true;
+		FCataclysmHitDelivery Quick;
+		Quick.bCarriesNoAilmentChance = true;
+		FCataclysmHitDelivery Tick;
+		Tick.bIsDamageOverTime = true;
+		Tick.bCarriesNoAilmentChance = true;
+
+		FThornsCadenceReading Reading;
+		const double Start = World->TimeSeconds;
+		const float PlayerAtStart = ThornsHealthOf(Player);
+		const auto StruckBackFor = [World, Player, Creature, Start, &Reading](double At,
+																			  const FCataclysmHitDelivery& Delivery)
+		{
+			World->TimeSeconds = Start + At;
+			const float PlayerBefore = ThornsHealthOf(Player);
+			const float CreatureBefore = ThornsHealthOf(Creature);
+			ThornsPlayerHits(Player, Creature, Delivery);
+			++Reading.Blows;
+			Reading.Landed += ThornsHealthOf(Creature) < CreatureBefore ? 1 : 0;
+			return ThornsHealthOf(Player) < PlayerBefore - 0.01f;
+		};
+		for (int32 Index = 0; Index < ThornsAuraPulses; ++Index)
+		{
+			const double At = static_cast<double>(Index) * ThornsAuraPulseSpacingSeconds;
+			if (StruckBackFor(At, Pulse))
+			{
+				Reading.PulsesStruckBack.Add(Index);
+			}
+			Reading.OthersStruckBack += StruckBackFor(At + 0.05, Quick) ? 1 : 0;
+			Reading.OthersStruckBack += StruckBackFor(At + 0.1, Quick) ? 1 : 0;
+			Reading.OthersStruckBack += StruckBackFor(At + 0.5, Tick) ? 1 : 0;
+		}
+		Reading.PlayerLost = PlayerAtStart - ThornsHealthOf(Player);
+		return Reading;
+	}
+
+	/** The pulses a reading drew strike backs from, for a message: "0, 2, 4, 6". */
+	FString ThornsPulsesSaid(const FThornsCadenceReading& Reading)
+	{
+		TArray<FString> Said;
+		for (const int32 Index : Reading.PulsesStruckBack)
+		{
+			Said.Add(FString::FromInt(Index));
+		}
+		return FString::Join(Said, TEXT(", "));
+	}
 }
 
 #define CATACLYSM_THORNS_TEST(TestClass, TestName) \
@@ -659,6 +742,124 @@ CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassEachItsOwnClockTest,
 	World->TimeSeconds += First->SecondsBetweenAttacks() + 0.01f;
 	TestEqual(TEXT("past their interval it draws one from each again"), NovaCost(), 2.0f * ThornsCreatureAttackDamage,
 			  0.01f);
+	return true;
+}
+
+/**
+ * ISSUE #2854, BEFORE ITS CARRIER WAS HASTED: an aura hitting a carrier of a Brute's 1.2 second interval once every
+ * 1.001 seconds, with two quick hits after each pulse and a burn tick between, for seven pulses. A pulse is struck back
+ * only once 1.2 seconds have passed since the last strike back, so pulses 0, 2, 4 and 6 are and 1, 3 and 5 are not;
+ * the quick hits fall inside the interval and the ticks are never struck back. THE TICKS ARE TESTED HERE AND NOT IN THE
+ * HASTED TEST BELOW: the tick 1.501 seconds after a strike back is past this interval, so a tick that was struck back
+ * would be, and would refuse the pulse at 2.002. THE CONTROL: every blow landed on the creature, so a blow that drew
+ * nothing got through and was refused, not missed.
+ */
+CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassAuraCadenceTest,
+	"Cataclysm.ThornsOfGlass.AnAuraHittingEverySecondWithTicksBetweenIsStruckBackOncePerABrutesInterval")
+{
+	using namespace CataclysmThornsOfGlassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnThornsPlayer(World);
+	ACataclysmEnemyCharacter* Thorned = SpawnThornsCreature(World, FVector(3.0f * ThornsMetre, 0.0f, 0.0f), true);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: a thorned creature"), Thorned))
+	{
+		return false;
+	}
+	Thorned->AttackIntervalSeconds = ThornsBruteIntervalSeconds;
+	if (!TestEqual(TEXT("set-up: the carrier swings every 1.2 seconds, a Brute's interval"),
+				   Thorned->SecondsBetweenAttacks(), ThornsBruteIntervalSeconds, 0.001f))
+	{
+		return false;
+	}
+
+	const FThornsCadenceReading Reading = ThornsHitAtAnAurasCadence(World, Player, Thorned);
+	AddInfo(FString::Printf(TEXT("THORNS AT AN AURA'S CADENCE, 1.2 s: %d blows, %d landed; pulses struck back: %s; "
+								 "others struck back: %d; the player lost %.2f"),
+							Reading.Blows, Reading.Landed, *ThornsPulsesSaid(Reading), Reading.OthersStruckBack,
+							Reading.PlayerLost));
+	if (!TestEqual(TEXT("CONTROL: every pulse, quick hit and tick landed on the creature"), Reading.Landed,
+				   Reading.Blows))
+	{
+		return false;
+	}
+	TestEqual(TEXT("pulses 0, 2, 4 and 6 are struck back, 1.2 seconds or more after the last strike back"),
+			  ThornsPulsesSaid(Reading), FString(TEXT("0, 2, 4, 6")));
+	TestEqual(TEXT("no quick hit and no tick draws a strike back"), Reading.OthersStruckBack, 0);
+	TestEqual(TEXT("so the player lost four of the creature's attack damage in six seconds"), Reading.PlayerLost,
+			  4.0f * ThornsCreatureAttackDamage, 0.05f);
+	return true;
+}
+
+/**
+ * ISSUE #2854'S DEATH: THE SAME CADENCE, ON A CARRIER HASTED AS INFERNAL SACRIFICE HASTES ITSELF. The Boss Brute
+ * sacrificed an ally half a second before the four strike backs that killed the owner, and Infernal Sacrifice grants
+ * its carrier Commander, a fifth more attack speed, for `UCataclysmEnemyModifiers::SacrificeBuffSeconds`. Its interval
+ * is then 1.2 / 1.2 = 1 second, which is "its own attack interval" as the row and the owner's ruling of 2026-11-19 read
+ * it, so a pulse 1.001 seconds after the last strike back is due one: all seven are struck back. The quick hits a
+ * twentieth and a tenth after each pulse draw none, nor do the ticks, which come half a second after a strike back and
+ * so could not be due here even if they were asked; the test above is the one that holds ticks to the rule.
+ */
+CATACLYSM_THORNS_TEST(FCataclysmThornsOfGlassHastedCadenceTest,
+	"Cataclysm.ThornsOfGlass.ACarrierHastedByItsOwnSacrificeStrikesBackAtEachPulseOfAnAuraEverySecond")
+{
+	using namespace CataclysmThornsOfGlassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnThornsPlayer(World);
+	ACataclysmEnemyCharacter* Thorned = SpawnThornsCreature(World, FVector(3.0f * ThornsMetre, 0.0f, 0.0f), true);
+	if (!TestNotNull(TEXT("set-up: a player"), Player) || !TestNotNull(TEXT("set-up: a thorned creature"), Thorned))
+	{
+		return false;
+	}
+	Thorned->AttackIntervalSeconds = ThornsBruteIntervalSeconds;
+
+	// HASTED THE WAY INFERNAL SACRIFICE HASTES ITS CARRIER: Commander, granted by the creature to itself.
+	const FGameplayTag Haste = UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	if (!TestTrue(TEXT("set-up: Commander is in the tag vocabulary"), Haste.IsValid())
+		|| !TestTrue(TEXT("set-up: the carrier hastes itself as Infernal Sacrifice does"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(Thorned, Thorned, Haste,
+																 UCataclysmEnemyModifiers::SacrificeBuffSeconds)))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("set-up: hasted by a fifth, the carrier swings every second"), Thorned->SecondsBetweenAttacks(),
+				   1.0f, 0.001f))
+	{
+		return false;
+	}
+	// ITS ATTACK DAMAGE WRITTEN AGAIN AFTER THE HASTE, as `GiveThorns` writes it after the row, so the figure each
+	// strike back is measured against is this test's own whatever granting a tag may refresh. Commander names speeds
+	// alone ("All nearby allies gain 20% increased movement speed and attack speed").
+	ThornsSet(Thorned, Combat::GetAttackDamageAttribute(), ThornsCreatureAttackDamage);
+
+	const FThornsCadenceReading Reading = ThornsHitAtAnAurasCadence(World, Player, Thorned);
+	AddInfo(FString::Printf(TEXT("THORNS AT AN AURA'S CADENCE, HASTED to %.3f s: %d blows, %d landed; pulses struck "
+								 "back: %s; others struck back: %d; the player lost %.2f"),
+							Thorned->SecondsBetweenAttacks(), Reading.Blows, Reading.Landed, *ThornsPulsesSaid(Reading),
+							Reading.OthersStruckBack, Reading.PlayerLost));
+	if (!TestEqual(TEXT("CONTROL: every pulse, quick hit and tick landed on the creature"), Reading.Landed,
+				   Reading.Blows))
+	{
+		return false;
+	}
+	TestEqual(TEXT("every pulse is struck back, each 1.001 seconds after the last strike back"),
+			  ThornsPulsesSaid(Reading), FString(TEXT("0, 1, 2, 3, 4, 5, 6")));
+	TestEqual(TEXT("no quick hit and no tick draws a strike back"), Reading.OthersStruckBack, 0);
+	TestEqual(TEXT("so the player lost seven of the creature's attack damage in six seconds"), Reading.PlayerLost,
+			  7.0f * ThornsCreatureAttackDamage, 0.05f);
 	return true;
 }
 

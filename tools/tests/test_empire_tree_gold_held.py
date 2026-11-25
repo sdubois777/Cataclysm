@@ -93,7 +93,13 @@ def test_the_game_instance_hands_the_run_both_functions_where_it_hands_it_the_tr
         "a run begins without being told the balance after its tree")
     refresh = body(instance, "void UCataclysmGameInstance::RefreshEmpireTreeBonuses(", "CataclysmGameInstance.cpp")
     assert "WireTheRunToTheBalance(WorldContext, Run);" in refresh, (
-        "a refresh, which a load calls, does not tell the run the balance again")
+        "a refresh, which a change to the tree calls, does not tell the run the balance again")
+    # A LOAD HANDS THE TREE THROUGH ITS OWN DOOR SINCE ISSUE #2859, which writes nothing into the cities; it still tells
+    # the run the balance.
+    loaded = body(instance, "void UCataclysmGameInstance::HandEmpireTreeBonusesToALoadedRun(",
+                  "CataclysmGameInstance.cpp")
+    assert "WireTheRunToTheBalance(WorldContext, Run);" in loaded, (
+        "the tree handed to a loaded run does not tell the run the balance again")
     wire = body(instance, "void UCataclysmGameInstance::WireTheRunToTheBalance(", "CataclysmGameInstance.cpp")
     for given in ("Run->GoldHeldAtTierOne =", "Run->OnDayPassed ="):
         assert given in wire, f"WireTheRunToTheBalance does not set {given}"

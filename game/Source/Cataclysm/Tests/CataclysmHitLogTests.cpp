@@ -610,6 +610,67 @@ CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogOutgoingTest,
 	return true;
 }
 
+/**
+ * A creature's death is said once, at Display, after the line of the blow that killed it: "DIED: <creature> (<rarity>)
+ * at <health> of <maximum> health; last struck by <who>". Issue #2874: the owner was killed by a Boss Brute's swing 0.36 s
+ * after a 438 critical on it, and nothing in the log said whether the Brute was already dead. CONTROL: a blow on the
+ * body says no second line. THEN THE WORDS, with nobody on record, which no blow in a world can give.
+ */
+CATACLYSM_HIT_LOG_TEST(FCataclysmHitLogCreatureDeathTest,
+	"Cataclysm.HitLog.ACreaturesDeathIsSaidOnceAfterTheBlowThatKilledIt")
+{
+	using namespace CataclysmHitLogTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnHitLogPlayer(World);
+	ACataclysmEnemyCharacter* Creature = SpawnHitLogCreature(World, /*RarityStep=*/4);
+	if (!TestNotNull(TEXT("a player"), Player) || !TestNotNull(TEXT("a creature"), Creature))
+	{
+		return false;
+	}
+
+	FHitLogCapture Capture;
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Creature, 100000.0f);
+	const bool bDead = UCataclysmSkillEffects::IsDead(Creature);
+	const TArray<TPair<FString, ELogVerbosity::Type>> Died = Capture.Holding({TEXT("DIED: ")});
+	const int32 BlowAt = Capture.IndexOf(TEXT("HIT OUT: "));
+	const int32 DeathAt = Capture.IndexOf(TEXT("DIED: "));
+
+	// CONTROL: A BLOW ON THE BODY.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Creature, 5.0f);
+	const int32 AfterABlowOnTheBody = Capture.Holding({TEXT("DIED: ")}).Num();
+
+	AddInfo(FString::Printf(TEXT("HIT LOG CREATURE DEATH: dead %s; line [%s]"), bDead ? TEXT("yes") : TEXT("NO"),
+							Died.Num() > 0 ? *Died[0].Key : TEXT("none")));
+
+	TestTrue(TEXT("set-up: the player's blow killed the creature"), bDead);
+	if (TestEqual(TEXT("one death line"), Died.Num(), 1))
+	{
+		const FString& Line = Died[0].Key;
+		TestTrue(TEXT("naming the creature and its rarity, at nought health"),
+				 Line.StartsWith(FString::Printf(TEXT("DIED: %s (Boss) at 0.0 of "), *Creature->GetName())));
+		TestTrue(TEXT("and the player as who struck it last"),
+				 Line.EndsWith(FString::Printf(TEXT(" health; last struck by %s"), *Player->GetName())));
+		TestEqual(TEXT("at Display"), static_cast<int32>(Died[0].Value), static_cast<int32>(ELogVerbosity::Display));
+		TestFalse(TEXT("and never the player's own death words"), Line.Contains(TEXT(" died at ")));
+	}
+	TestTrue(TEXT("after the line of the blow that killed it"), BlowAt >= 0 && DeathAt > BlowAt);
+	TestEqual(TEXT("CONTROL: a blow on the body says no second death"), AfterABlowOnTheBody, Died.Num());
+
+	// THE WORDS, WITH NOBODY ON RECORD.
+	TestEqual(TEXT("the words, when no blow is on record"),
+			  FCataclysmHitLog::CreatureDeathLine(Creature, 0.0f, 4265.0f, nullptr),
+			  FString::Printf(TEXT("DIED: %s (Boss) at 0.0 of 4265 health; last struck by nobody on record"),
+							  *Creature->GetName()));
+	return true;
+}
+
 #undef CATACLYSM_HIT_LOG_TEST
 
 #endif // WITH_AUTOMATION_TESTS

@@ -85,6 +85,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmHarvestedSoul.h"
+// For the footprints Demonic Guide's guide leaves. Issue #2862.
+#include "Dungeon/CataclysmGuideFootprints.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
 #include "Engine/TargetPoint.h"
@@ -10369,7 +10371,7 @@ bool FCataclysmLeechSporesSplitTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarPulseTest,
-	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach",
+	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerAnywhereOnTheFloor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
@@ -10379,7 +10381,9 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 	using Vital = UCataclysmVitalAttributeSet;
 
 	// THE ALTAR ON THE EXIT, FED BY DEATHS THE PLAYER DID NOT CAUSE, PULSING ON ITS
-	// CLOCK AT THE PLAYER ALONE. Issues #1820 and #41.
+	// CLOCK AT THE PLAYER ALONE, WHEREVER THE PLAYER STANDS. Issues #1820 and #41, and
+	// #2855 for the last: until then this test's last pulse found a player just outside
+	// the ring at the stairs and took nothing, and in play no pulse ever found the owner.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -10439,8 +10443,8 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("the ring stands on the exit cell: %.1f cm away"),
 							 FromExit),
 			 FromExit < 1.0f);
-	TestEqual(TEXT("it reaches as far as the figure says"), Ring->RadiusCm,
-			  Effects::BloodAltarReachCm, 0.01f);
+	TestEqual(TEXT("it is drawn as wide as the figure says"), Ring->RadiusCm,
+			  Effects::BloodAltarRingRadiusCm, 0.01f);
 	TestTrue(TEXT("and lasts the floor"), Ring->bLastsTheFloor);
 
 	const auto AltarLine = [Mode]() -> FString
@@ -10555,25 +10559,33 @@ bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
 			  LostWithVoid, LostToThree, 0.5f);
 	Player.AbilitySystem->SetNumericAttributeBase(Void, VoidWas);
 
-	// OUTSIDE THE REACH, NOTHING. Inclusion is by body, so the player's body is
-	// placed beyond the reach and that is asserted before it is relied on.
+	// OUTSIDE THE RING, THE SAME PULSE. Issue #2855: the ring marks the altar and no
+	// longer bounds a pulse. The player's body is placed wholly beyond the ring, and
+	// that is asserted before it is relied on; the pulse is compared with the one after
+	// three deaths taken at the altar, with the same deaths and the same resistances.
+	// Until #2855 this reading was "a player just outside the reach loses nothing".
 	const float BodyRadius =
 		Player.Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
 	Player.Character->SetActorLocation(
-		Altar + FVector(Effects::BloodAltarReachCm + BodyRadius + 100.0f, 0.0f, 0.0f));
+		Altar + FVector(Effects::BloodAltarRingRadiusCm + BodyRadius + 100.0f, 0.0f, 0.0f));
 	const float BodyEdge =
 		FVector::Dist2D(Player.Character->GetActorLocation(), Altar) - BodyRadius;
 	if (!TestTrue(FString::Printf(
-					  TEXT("the player's body is outside the reach: %.1f cm against "
-						   "%.1f"), BodyEdge, Effects::BloodAltarReachCm),
-				  BodyEdge > Effects::BloodAltarReachCm))
+					  TEXT("the player's body is outside the ring: %.1f cm against "
+						   "%.1f"), BodyEdge, Effects::BloodAltarRingRadiusCm),
+				  BodyEdge > Effects::BloodAltarRingRadiusCm))
 	{
 		return false;
 	}
 	const float BeforeOutside = Player.Read(Health);
 	Beat(Mode, BeatsPerPulse);
-	TestEqual(TEXT("a player just outside the reach loses nothing"),
-			  Player.Read(Health), BeforeOutside, 0.01f);
+	const float LostOutside = BeforeOutside - Player.Read(Health);
+	TestTrue(FString::Printf(TEXT("a player outside the ring still loses health to a pulse: %.1f"),
+							 LostOutside),
+			 LostOutside > 0.0f);
+	TestEqual(FString::Printf(TEXT("as much as at the altar, after the same three deaths: %.1f against %.1f"),
+							  LostOutside, LostToThree),
+			  LostOutside, LostToThree, 0.5f);
 
 	// AND THE STAIRS START IT AGAIN: nothing counted, and one ring, on the new exit.
 	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
@@ -10710,6 +10722,206 @@ bool FCataclysmBloodAltarCeilingTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and a pulse on it"),
 			 Effects::BloodAltarPulseIsDue(Effects::BloodAltarSecondsBetweenPulses));
 
+	return true;
+}
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * Every `LogCataclysm` line saying a Blood Altar pulse, printed while it lives. Issue #2855. Named for the altar
+	 * because the unity build joins test files: `CataclysmHitLogTests.cpp` has its own `FHitLogCapture` and
+	 * `CataclysmCharacterLevelTests.cpp` its own `FCapture`.
+	 */
+	struct FBloodAltarPulseLogCapture : public FOutputDevice
+	{
+		FBloodAltarPulseLogCapture() { if (GLog) { GLog->AddOutputDevice(this); } }
+		virtual ~FBloodAltarPulseLogCapture() override { if (GLog) { GLog->RemoveOutputDevice(this); } }
+
+		virtual void Serialize(const TCHAR* Text, ELogVerbosity::Type Verbosity, const FName& Category) override
+		{
+			const FString Line(Text);
+			if (Category == FName(TEXT("LogCataclysm")) && Line.Contains(TEXT("Blood Altar: pulse")))
+			{
+				Lines.Add(Line);
+			}
+		}
+
+		/** The pulse lines printed so far, flushed first. */
+		const TArray<FString>& Said()
+		{
+			if (GLog)
+			{
+				GLog->Flush();
+			}
+			return Lines;
+		}
+
+		TArray<FString> Lines;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarPlayCaseTest,
+	"Cataclysm.DungeonModifierEffects.ABloodAltarPulseFindsThePlayerAtTheEntranceOnItsClockAndSaysSo",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodAltarPlayCaseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE PLAY CASE OF ISSUE #2855. The owner walked four Blood Altar floors on 2026-11-22 and no pulse found them,
+	// and the log said nothing of the altar. Here the player stands at the floor's ENTRANCE, where a floor starts
+	// them, far from the altar at the exit, while creatures die elsewhere; the altar must pulse on its 30 second clock,
+	// take more after more deaths, and say one line for every pulse, the unfed one first.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never calls.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {BloodAltar};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute MaxHealth = Vital::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(MaxHealth, 100000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+	const float Maximum = Player.Read(MaxHealth);
+	if (!TestTrue(FString::Printf(TEXT("the player's maximum health is large: %.0f"), Maximum), Maximum >= 100000.0f))
+	{
+		return false;
+	}
+
+	FBloodAltarPulseLogCapture Capture;
+
+	// THE ALTAR'S RING ON THE FIRST BEAT, AND THE PLAYER AT THE ENTRANCE, WHOLLY OUTSIDE IT. Asserted before it is
+	// relied on, so a floor whose entrance stood by its exit could not pass this test by putting the player at the
+	// altar after all.
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Ring = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("the altar's ring was placed on the first beat"), Ring))
+	{
+		return false;
+	}
+	const FVector Altar = Ring->GetActorLocation();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(Entrance);
+	const float BodyRadius = Player.Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const float BodyEdge = FVector::Dist2D(Player.Character->GetActorLocation(), Altar) - BodyRadius;
+	if (!TestTrue(FString::Printf(TEXT("set-up: the player at the entrance is outside the altar's ring: %.0f cm "
+									   "against %.0f"),
+								  BodyEdge, Effects::BloodAltarRingRadiusCm),
+				  BodyEdge > Effects::BloodAltarRingRadiusCm))
+	{
+		return false;
+	}
+
+	// DEATHS THE PLAYER DID NOT CAUSE, FAR FROM BOTH.
+	int32 Killed = 0;
+	const auto KillCreatures = [this, World, &Entrance, &Killed](int32 HowMany)
+	{
+		for (int32 Index = 0; Index < HowMany; ++Index, ++Killed)
+		{
+			ACataclysmEnemyCharacter* Creature =
+				SpawnCreatureWithHealth(World, Entrance + FVector(0.0f, 3000.0f + 300.0f * Killed, 0.0f), 100.0f);
+			if (!Creature)
+			{
+				AddError(TEXT("set-up: a creature to kill could not be spawned"));
+				return;
+			}
+			UCataclysmSkillEffects::ReduceHealthDirectly(Creature, Creature, 100000.0f);
+			if (!UCataclysmSkillEffects::IsDead(Creature))
+			{
+				AddError(TEXT("set-up: a creature did not die"));
+			}
+		}
+	};
+
+	// ONE PULSE: NOTHING A BEAT BEFORE IT IS DUE, AND ON ITS BEAT WHAT IT TAKES AND ITS LINE. One beat has passed.
+	const int32 BeatsPerPulse = BeatsFor(Effects::BloodAltarSecondsBetweenPulses);
+	struct FBloodAltarPulseReading
+	{
+		float Lost = 0.0f;
+		float LostEarly = 0.0f;
+		int32 LinesEarly = 0;
+		int32 Lines = 0;
+	};
+	const auto NextPulse = [&Player, &Health, &Capture, Mode, BeatsPerPulse](int32 BeatsSoFar)
+	{
+		FBloodAltarPulseReading Reading;
+		const float Before = Player.Read(Health);
+		Beat(Mode, BeatsPerPulse - BeatsSoFar - 1);
+		Reading.LostEarly = Before - Player.Read(Health);
+		Reading.LinesEarly = Capture.Said().Num();
+		Beat(Mode, 1);
+		Reading.Lost = Before - Player.Read(Health);
+		Reading.Lines = Capture.Said().Num();
+		return Reading;
+	};
+
+	// THE FIRST PULSE, UNFED: it takes nothing and still says its line.
+	const FBloodAltarPulseReading Unfed = NextPulse(1);
+	TestEqual(TEXT("before the first pulse is due, no line"), Unfed.LinesEarly, 0);
+	TestEqual(TEXT("the unfed altar's pulse takes nothing"), Unfed.Lost, 0.0f, 0.01f);
+	if (TestEqual(TEXT("and says one line"), Unfed.Lines, 1))
+	{
+		const FString& Line = Capture.Said()[0];
+		TestTrue(FString::Printf(TEXT("which names the floor and no deaths: %s"), *Line),
+				 Line.Contains(TEXT("pulse on floor 1 after 0 death(s) counted")));
+	}
+
+	// TWO DEATHS, THEN THE SECOND PULSE, AT THE ENTRANCE.
+	KillCreatures(2);
+	const FBloodAltarPulseReading AfterTwo = NextPulse(0);
+	TestEqual(TEXT("nothing is taken a beat before the second pulse"), AfterTwo.LostEarly, 0.0f, 0.01f);
+	TestEqual(TEXT("and no second line yet"), AfterTwo.LinesEarly, 1);
+	TestTrue(FString::Printf(TEXT("the second pulse finds the player at the entrance: %.1f"), AfterTwo.Lost),
+			 AfterTwo.Lost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and takes no more than its stated share: %.1f of %.1f"), AfterTwo.Lost,
+							 Effects::BloodAltarPulseDamage(Maximum, 2)),
+			 AfterTwo.Lost <= Effects::BloodAltarPulseDamage(Maximum, 2) + 0.01f);
+	if (TestEqual(TEXT("and says its line"), AfterTwo.Lines, 2))
+	{
+		const FString& Line = Capture.Said()[1];
+		TestTrue(FString::Printf(TEXT("which names two deaths and what it sent: %s"), *Line),
+				 Line.Contains(TEXT("after 2 death(s) counted: sent")));
+	}
+
+	// TWO MORE DEATHS, AND THE THIRD PULSE TAKES MORE.
+	KillCreatures(2);
+	const FBloodAltarPulseReading AfterFour = NextPulse(0);
+	TestEqual(TEXT("nothing is taken a beat before the third pulse"), AfterFour.LostEarly, 0.0f, 0.01f);
+	TestTrue(FString::Printf(TEXT("a pulse after four deaths takes more than after two: %.1f against %.1f"),
+							 AfterFour.Lost, AfterTwo.Lost),
+			 AfterFour.Lost > AfterTwo.Lost + 1.0f);
+	TestTrue(FString::Printf(TEXT("and no more than its stated share: %.1f of %.1f"), AfterFour.Lost,
+							 Effects::BloodAltarPulseDamage(Maximum, 4)),
+			 AfterFour.Lost <= Effects::BloodAltarPulseDamage(Maximum, 4) + 0.01f);
+	if (TestEqual(TEXT("and says its line"), AfterFour.Lines, 3))
+	{
+		const FString& Line = Capture.Said()[2];
+		TestTrue(FString::Printf(TEXT("which names four deaths: %s"), *Line),
+				 Line.Contains(TEXT("after 4 death(s) counted: sent")));
+	}
+	AddInfo(FString::Printf(TEXT("BLOOD ALTAR AT THE ENTRANCE: %.0f cm from the altar; pulses took %.1f, %.1f and "
+								 "%.1f of %.0f after 0, 2 and 4 deaths"),
+							BodyEdge, Unfed.Lost, AfterTwo.Lost, AfterFour.Lost, Maximum));
 	return true;
 }
 
@@ -16419,6 +16631,113 @@ bool FCataclysmEpidemicChainTest::RunTest(const FString& Parameters)
 							  Effects::EpidemicSpreadsToKill,
 							  Effects::EpidemicPlagueLordsPerFloor));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicSparesTheUnhurtableTest,
+	"Cataclysm.DungeonModifierEffects.AChainsEndPassesOverACreatureThatCannotBeHurt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicSparesTheUnhurtableTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE COORDINATING SESSION, 2026-11-24, on issue #2874's branch. The chain's end writes each creature's health to
+	// nought and calls `HandleDeath`; the write is held at the maximum for a creature that cannot be hurt and the
+	// `HandleDeath` killed it anyway, so a chain ended beside the Reaper or an echo could kill it. Since then the chain's end
+	// passes over one.
+	//
+	// THE LINE OF `AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord`, and beside its fifth kill, 3 m off the line,
+	// an Imp that cannot be hurt and carries nothing. THE CONTROL: every creature of the line within reach dies, so the
+	// chain ended and its killing reached that far. THE CASE: the unhurtable Imp stands.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what this test spawned.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	TArray<ACataclysmEnemyCharacter*> Line;
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill + 2; ++Index)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(
+			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("a creature in the line"), Creature)
+			|| !TestTrue(TEXT("carrying the disease"),
+						 GiveTheDebuff(Player.Character, Creature, Disease)))
+		{
+			return false;
+		}
+		Line.Add(Creature);
+	}
+
+	// BESIDE THE FIFTH KILL, which is where the chain ends: 3 m off the line, inside the 6 m its killing reaches, and
+	// farther from every kill than the next creature of the line, so no disease is passed to it.
+	ACataclysmEnemyCharacter* Unhurtable = SpawnImpWithHealth(
+		World, FVector(600.0f + 100.0f * (Effects::EpidemicSpreadsToKill - 1), 300.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("set-up: an Imp that cannot be hurt"), Unhurtable))
+	{
+		return false;
+	}
+	Unhurtable->bCannotBeHurt = true;
+
+	// FIVE KILLS, EACH WITH SOMEBODY BESIDE IT TO CATCH THE DISEASE.
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Line[Index])))
+		{
+			return false;
+		}
+	}
+
+	int32 StillStanding = 0;
+	for (ACataclysmEnemyCharacter* Creature : Line)
+	{
+		StillStanding += (IsValid(Creature)
+						  && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
+	}
+	const bool bUnhurtableStands = IsValid(Unhurtable) && !UCataclysmSkillEffects::IsDead(Unhurtable);
+	AddInfo(FString::Printf(TEXT("EPIDEMIC AND THE UNHURTABLE: %d of the line still standing; the Imp that cannot be "
+								 "hurt stands %s"),
+							StillStanding, bUnhurtableStands ? TEXT("yes") : TEXT("no")));
+
+	TestEqual(TEXT("CONTROL: the chain ended and killed every creature of the line within reach"), StillStanding, 0);
+	TestTrue(TEXT("THE IMP THAT CANNOT BE HURT, 3 m from the chain's end, STILL STANDS"), bUnhurtableStands);
 	return true;
 }
 
@@ -24783,10 +25102,12 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 
 	// AND THE DEATH PATH PASSES THE CREATURE'S MARK TO THE SPAWNER. The floor is cleared of
 	// drops first. This half's drop roll is the game's own and cannot be seeded. At the
-	// Cataclysm Boss rung the kill is expected to leave 15 drops (12 gear, 3 materials, since
-	// issue #2829), and both Poisson draws leave none with probability e^-15, about once in
-	// 3.3 million kills. That
-	// case FAILS the assertion that something fell, rather than passing while checking nothing.
+	// Cataclysm Boss rung the kill is expected to leave 9 drops (6 gear since the owner halved
+	// the gear column, issue #2853, and 3 materials, since issue #2829), and both Poisson draws
+	// leave none with probability e^-9, about once in 8,100 kills. Since #2853 the kill also
+	// always leaves the Cataclysm Boss's one piece of the next tier's best, marked as the
+	// creature's, so something falls even then. Had nothing fallen, the assertion that something
+	// fell would FAIL, rather than pass while checking nothing.
 	DropsLying(Lying);
 	for (ACataclysmDroppedItem* Drop : Lying)
 	{
@@ -37206,6 +37527,508 @@ bool FCataclysmGuideFloorTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// Demonic Guide's guide is nobody's target, passes through the player's side, and leaves footprints. Issues #2860,
+// #2861 and #2862, the owner's play-test of 2026-11-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * The guide lifted 30 m above where it stands, clear of every wall and floor, and where it now is. The body and
+	 * targeting tests below put everything around it there, so no geometry of the floor stands between two bodies and
+	 * no spawn is pushed aside by a wall.
+	 */
+	FVector LiftTheGuideClear(ACataclysmEnemyCharacter* Guide)
+	{
+		const FVector Lifted = Guide->GetActorLocation() + FVector(0.0f, 0.0f, 3000.0f);
+		Guide->SetActorLocation(Lifted);
+		return Lifted;
+	}
+
+	/**
+	 * `Mover` put at `From` and swept to `To` as a body moves, and what stopped it, or null. `bOutArrived` says whether
+	 * it reached `To`. A sweep is what the character movement component makes for every step, and it reads the same
+	 * mask filter (`UPrimitiveComponent::InitSweepCollisionParams`).
+	 */
+	AActor* GuideBodySweep(AActor* Mover, const FVector& From, const FVector& To, bool& bOutArrived)
+	{
+		Mover->SetActorLocation(From);
+		FHitResult Hit;
+		Mover->SetActorLocation(To, /*bSweep=*/true, &Hit);
+		bOutArrived = FVector::Dist(Mover->GetActorLocation(), To) < 1.0;
+		return Hit.bBlockingHit ? Hit.GetActor() : nullptr;
+	}
+
+	/** A creature's health now. */
+	float GuideHealthOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Its = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) : -1.0f;
+	}
+
+	/**
+	 * The guide walked `Beats` beats from where it stands along X, `CmPerBeat` a beat, the player kept 1 m ahead of it
+	 * so it never waits. The beat is what steps its footprints.
+	 */
+	void WalkTheGuideAlong(ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player, int32 Beats, float CmPerBeat)
+	{
+		ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+		for (int32 Index = 0; Index < Beats; ++Index)
+		{
+			Guide->SetActorLocation(Guide->GetActorLocation() + FVector(CmPerBeat, 0.0f, 0.0f));
+			StandFromTheGuide(Mode, Player, 100.0f);
+			Beat(Mode, 1);
+		}
+	}
+}
+
+// THE GUIDE IS NOBODY'S TARGET (issue #2860): a minion and a thrall standing 1.5 m from it choose the Imp 6 m beyond
+// it; the player's search and a creature's search for allies pass it over; a blow aimed at it is refused. CONTROL: the
+// same body, no longer the guide, is the minion's choice, so the guide is the nearer and the minion's search is not
+// choosing by something else. Prints "GUIDE NO TARGET".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideNoTargetTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideIsNoTargetForAMinionAThrallOrThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideNoTargetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	const FVector At = LiftTheGuideClear(Guide);
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, At + FVector(150.0f, 0.0f, 0.0f), /*Lifetime=*/60.0f, /*bBurns=*/false);
+	ACataclysmEnemyCharacter* Thrall = SpawnImpWithHealth(World, At + FVector(-150.0f, 0.0f, 0.0f), 1000.0f);
+	ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(World, At + FVector(0.0f, 600.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("set-up: a minion of the player's"), Minion)
+		|| !TestNotNull(TEXT("set-up: an Imp to take"), Thrall)
+		|| !TestNotNull(TEXT("set-up: an Imp beyond the guide"), Creature)
+		|| !TestTrue(TEXT("set-up: the Imp is taken as the player's thrall"),
+					 UCataclysmCommand::Subjugate(Player.Character, Thrall)))
+	{
+		return false;
+	}
+	const ACataclysmEnemyController* MinionBrain = Cast<ACataclysmEnemyController>(Minion->GetController());
+	const ACataclysmEnemyController* ThrallBrain = Cast<ACataclysmEnemyController>(Thrall->GetController());
+	if (!TestNotNull(TEXT("set-up: the minion has a brain"), MinionBrain)
+		|| !TestNotNull(TEXT("set-up: the thrall has a brain"), ThrallBrain))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: the guide is nearer the minion than the Imp is"),
+			 FVector::Dist(Minion->GetActorLocation(), Guide->GetActorLocation())
+				 < FVector::Dist(Minion->GetActorLocation(), Creature->GetActorLocation()));
+	TestTrue(TEXT("set-up: and nearer the thrall"),
+			 FVector::Dist(Thrall->GetActorLocation(), Guide->GetActorLocation())
+				 < FVector::Dist(Thrall->GetActorLocation(), Creature->GetActorLocation()));
+
+	const AActor* MinionChose = MinionBrain->ChooseTarget();
+	const AActor* ThrallChose = ThrallBrain->ChooseTarget();
+	const TArray<AActor*> PlayersSearch = UCataclysmTargeting::FindEnemiesInSphere(World, Player.Character, At, 400.0f);
+	const TArray<AActor*> CreaturesAllies = UCataclysmTargeting::FindAlliesInSphere(World, Creature, At, 400.0f);
+	const bool bUntargetable = UCataclysmSkillEffects::IsUntargetable(Guide);
+
+	// CONTROL: the same body, not the floor's guide, read by the same brain.
+	Guide->bGuidesThePlayerForTheFloorRule = false;
+	const AActor* MinionChoseWhenNoGuide = MinionBrain->ChooseTarget();
+	Guide->bGuidesThePlayerForTheFloorRule = true;
+
+	auto NameOf = [](const AActor* Actor) { return Actor ? Actor->GetName() : FString(TEXT("nothing")); };
+	AddInfo(FString::Printf(TEXT("GUIDE NO TARGET: the minion chose %s, the thrall %s; the player's search found the "
+								 "guide %s, a creature's search for allies %s; untargetable %s; CONTROL: not a guide, "
+								 "the minion chose %s"),
+							*NameOf(MinionChose), *NameOf(ThrallChose),
+							PlayersSearch.Contains(Guide) ? TEXT("yes") : TEXT("no"),
+							CreaturesAllies.Contains(Guide) ? TEXT("yes") : TEXT("no"),
+							bUntargetable ? TEXT("yes") : TEXT("no"), *NameOf(MinionChoseWhenNoGuide)));
+
+	TestTrue(TEXT("it is nobody's target"), UCataclysmTargeting::IsNeverATarget(Guide));
+	TestTrue(TEXT("the minion chooses the Imp beyond it"), MinionChose == Creature);
+	TestTrue(TEXT("and so does the thrall"), ThrallChose == Creature);
+	TestFalse(TEXT("it is no enemy of the minion's"), UCataclysmTargeting::IsHostileTo(Guide, Minion));
+	TestFalse(TEXT("nor of the thrall's"), UCataclysmTargeting::IsHostileTo(Guide, Thrall));
+	TestFalse(TEXT("nor of the player's"), UCataclysmTargeting::IsHostileTo(Guide, Player.Character));
+	TestFalse(TEXT("a search as the player passes it over"), PlayersSearch.Contains(Guide));
+	TestFalse(TEXT("a creature's search for allies passes it over"), CreaturesAllies.Contains(Guide));
+	TestTrue(TEXT("a blow aimed at it is refused"), bUntargetable);
+	TestTrue(TEXT("CONTROL: the same body, not the guide, is the minion's choice"), MinionChoseWhenNoGuide == Guide);
+	return true;
+}
+
+// THE GUIDE TAKES NO DAMAGE FROM THE PLAYER'S HIT AND DOES NOT DIE (issue #2860): a blow of 100,000% of the player's
+// weapon damage is refused before anything is sent, its health stays at its maximum, and its death called outright
+// leaves it standing on the floor. CONTROL: the same blow kills an ordinary Imp. Prints "GUIDE UNHURT".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideUnhurtTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideTakesNoDamageFromThePlayersHitAndDoesNotDie",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideUnhurtTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	const FVector At = LiftTheGuideClear(Guide);
+	const UAbilitySystemComponent* Its = Guide->GetAbilitySystemComponent();
+	if (!TestNotNull(TEXT("set-up: the guide's ability system"), Its))
+	{
+		return false;
+	}
+	const float Maximum = Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Before = GuideHealthOf(Guide);
+
+	FCataclysmDamageResult Resolved;
+	const float Sent = UCataclysmSkillEffects::ApplyHit(Player.Character, Guide, 100000.0f, FGameplayTagContainer(),
+														FCataclysmHitDelivery(), &Resolved);
+	const float AfterTheHit = GuideHealthOf(Guide);
+
+	// A RULE'S KILL, CALLED OUTRIGHT, as Epidemic's chain and Infernal Sacrifice call it.
+	Guide->HandleDeath();
+	const bool bDeadAfterTheCall = UCataclysmSkillEffects::IsDead(Guide);
+
+	// CONTROL: the same blow on an ordinary Imp.
+	ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, At + FVector(400.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("set-up: an ordinary Imp"), Imp))
+	{
+		return false;
+	}
+	FCataclysmDamageResult ImpResolved;
+	const float ImpSent = UCataclysmSkillEffects::ApplyHit(Player.Character, Imp, 100000.0f, FGameplayTagContainer(),
+														   FCataclysmHitDelivery(), &ImpResolved);
+
+	AddInfo(FString::Printf(TEXT("GUIDE UNHURT: maximum %.0f, before %.0f, sent %.1f, dealt %.1f, after %.0f, dead after "
+								 "its death was called %s; CONTROL: the Imp was sent %.1f, dealt %.1f, dead %s"),
+							Maximum, Before, Sent, Resolved.DealtToHealth, AfterTheHit,
+							bDeadAfterTheCall ? TEXT("yes") : TEXT("no"), ImpSent, ImpResolved.DealtToHealth,
+							UCataclysmSkillEffects::IsDead(Imp) ? TEXT("yes") : TEXT("no")));
+
+	TestEqual(TEXT("the blow is refused before anything is sent"), Sent, 0.0f, 0.001f);
+	TestEqual(TEXT("nothing reaches its health"), Resolved.DealtToHealth, 0.0f, 0.001f);
+	TestEqual(TEXT("its health is where it was"), AfterTheHit, Before, 0.001f);
+	TestEqual(TEXT("which is its maximum"), AfterTheHit, Maximum, 0.001f);
+	TestFalse(TEXT("its death called outright does not kill it"), bDeadAfterTheCall);
+	TestTrue(TEXT("and it is still the floor's guide"), Mode->DemonicGuideOnTheFloor() == Guide);
+	TestTrue(TEXT("CONTROL: the same blow is sent at an ordinary Imp"), ImpSent > 0.0f);
+	TestTrue(TEXT("CONTROL: and kills it"), UCataclysmSkillEffects::IsDead(Imp));
+	return true;
+}
+
+// THE GUIDE PASSES THROUGH THE PLAYER AND THE PLAYER'S MINION, BOTH WAYS, AND A CREATURE STILL BLOCKS IT, BOTH WAYS
+// (issue #2861). Each body is swept onto another as a step of its movement sweeps it. Prints "GUIDE BODY".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideBodyTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideWalksThroughThePlayerAndItsMinionAndACreatureStillBlocksIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideBodyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	const FVector At = LiftTheGuideClear(Guide);
+
+	// EACH 3 M FROM THE GUIDE ON ITS OWN SIDE OF IT, so no sweep below crosses a third body.
+	const FVector MinionAt = At + FVector(300.0f, 0.0f, 0.0f);
+	const FVector PlayerAt = At + FVector(-300.0f, 0.0f, 0.0f);
+	const FVector CreatureAt = At + FVector(0.0f, 300.0f, 0.0f);
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(Player.Character, MinionAt, /*Lifetime=*/60.0f, /*bBurns=*/false);
+	ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(World, CreatureAt, 1000.0f);
+	if (!TestNotNull(TEXT("set-up: a minion of the player's"), Minion)
+		|| !TestNotNull(TEXT("set-up: an ordinary Imp"), Creature))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(PlayerAt);
+
+	bool bMinionArrived = false;
+	bool bPlayerArrived = false;
+	bool bGuideReachedTheMinion = false;
+	bool bGuideReachedThePlayer = false;
+	bool bCreatureArrived = false;
+	bool bGuideReachedTheCreature = false;
+	const AActor* MinionMet = GuideBodySweep(Minion, MinionAt, At, bMinionArrived);
+	Minion->SetActorLocation(MinionAt);
+	const AActor* PlayerMet = GuideBodySweep(Player.Character, PlayerAt, At, bPlayerArrived);
+	Player.Character->SetActorLocation(PlayerAt);
+	const AActor* GuideMetTheMinion = GuideBodySweep(Guide, At, MinionAt, bGuideReachedTheMinion);
+	const AActor* GuideMetThePlayer = GuideBodySweep(Guide, At, PlayerAt, bGuideReachedThePlayer);
+	Guide->SetActorLocation(At);
+	const AActor* CreatureMet = GuideBodySweep(Creature, CreatureAt, At, bCreatureArrived);
+	Creature->SetActorLocation(CreatureAt);
+	const AActor* GuideMetTheCreature = GuideBodySweep(Guide, At, CreatureAt, bGuideReachedTheCreature);
+	Guide->SetActorLocation(At);
+
+	auto NameOf = [](const AActor* Actor) { return Actor ? Actor->GetName() : FString(TEXT("nothing")); };
+	AddInfo(FString::Printf(TEXT("GUIDE BODY: the minion met %s, the player %s; the guide met %s going to the minion and "
+								 "%s going to the player; CONTROL: the Imp met %s, the guide going to the Imp %s"),
+							*NameOf(MinionMet), *NameOf(PlayerMet), *NameOf(GuideMetTheMinion),
+							*NameOf(GuideMetThePlayer), *NameOf(CreatureMet), *NameOf(GuideMetTheCreature)));
+
+	TestTrue(TEXT("the minion walks through the guide"), MinionMet != Guide && bMinionArrived);
+	TestTrue(TEXT("so does the player"), PlayerMet != Guide && bPlayerArrived);
+	TestTrue(TEXT("the guide walks through the minion"), GuideMetTheMinion != Minion && bGuideReachedTheMinion);
+	TestTrue(TEXT("and through the player"), GuideMetThePlayer != Player.Character && bGuideReachedThePlayer);
+	TestTrue(TEXT("CONTROL: a creature is still stopped by the guide"), CreatureMet == Guide && !bCreatureArrived);
+	TestTrue(TEXT("CONTROL: and the guide by a creature"), GuideMetTheCreature == Creature && !bGuideReachedTheCreature);
+	return true;
+}
+
+// THE GUIDE'S FOOTPRINTS (issue #2862): the first beat prints where it stands; walking 85 cm a beat for ten beats
+// prints one every 80 cm, ten more, at its feet, left and right of its line in turn, the newest the brightest; standing
+// for ten seconds lifts every one of them, and their components with them. Prints "GUIDE FOOTPRINTS".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFootprintsTest,
+	"Cataclysm.DungeonModifierEffects.TheGuideLeavesFootprintsThatFadeAndAreGoneAfterTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideFootprintsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	ACataclysmGuideFootprints* Footprints = Mode->DemonicGuideFootprintsOnTheFloor();
+	const UCapsuleComponent* Body = Guide->GetCapsuleComponent();
+	if (!TestNotNull(TEXT("its footprints were begun with the guide"), Footprints)
+		|| !TestNotNull(TEXT("set-up: the guide's capsule"), Body))
+	{
+		return false;
+	}
+	// FACING ALONG X, THE WAY IT WALKS BELOW, so the first print, which is pointed the way the guide faces, lies beside
+	// the same line as the rest.
+	Guide->SetActorRotation(FRotator::ZeroRotator);
+	const FVector Start = Guide->GetActorLocation();
+	const double FeetZ = Start.Z - Body->GetScaledCapsuleHalfHeight();
+
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	const int32 AtFirst = Footprints->PrintsShown();
+	WalkTheGuideAlong(Mode, Player, 10, 85.0f);
+	const int32 Walked = Footprints->PrintsShown();
+	const int32 WalkedVisible = Footprints->PrintComponentsVisible();
+
+	TArray<FVector> Where;
+	TArray<float> Opacity;
+	Footprints->ShownPrints(Where, Opacity);
+	bool bAllAtItsFeet = Where.Num() > 0;
+	bool bAllBesideItsLine = Where.Num() > 0;
+	bool bSidesTakeTurns = Where.Num() > 1;
+	for (int32 Index = 0; Index < Where.Num(); ++Index)
+	{
+		const double Off = Where[Index].Y - Start.Y;
+		bAllAtItsFeet = bAllAtItsFeet
+			&& FMath::Abs(Where[Index].Z - (FeetZ + ACataclysmGuideFootprints::PrintLiftCm)) < 1.0;
+		bAllBesideItsLine = bAllBesideItsLine
+			&& FMath::Abs(FMath::Abs(Off) - Effects::DemonicGuideFootprintSideCm) < 1.0;
+		if (Index > 0)
+		{
+			bSidesTakeTurns = bSidesTakeTurns && ((Off > 0.0) != (Where[Index - 1].Y - Start.Y > 0.0));
+		}
+	}
+	const float Oldest = Opacity.IsEmpty() ? -1.0f : Opacity[0];
+	const float Newest = Opacity.IsEmpty() ? -1.0f : Opacity.Last();
+
+	// STANDING, WITH THE PLAYER BESIDE IT SO IT DOES NOT WAIT, FOR ITS PRINTS' WHOLE LIFE.
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, BeatsFor(Effects::DemonicGuideFootprintSeconds) + 1);
+	const int32 Stood = Footprints->PrintsShown();
+	const int32 StoodVisible = Footprints->PrintComponentsVisible();
+
+	AddInfo(FString::Printf(TEXT("GUIDE FOOTPRINTS: %d at the first beat, %d (%d drawn) after walking 8.5 m; at its feet "
+								 "%s, beside its line %s, sides in turn %s; oldest %.2f, newest %.2f; %d (%d drawn) after "
+								 "standing %.0f s"),
+							AtFirst, Walked, WalkedVisible, bAllAtItsFeet ? TEXT("yes") : TEXT("no"),
+							bAllBesideItsLine ? TEXT("yes") : TEXT("no"), bSidesTakeTurns ? TEXT("yes") : TEXT("no"),
+							Oldest, Newest, Stood, StoodVisible, Effects::DemonicGuideFootprintSeconds));
+
+	TestEqual(TEXT("one print where it stands at the first beat"), AtFirst, 1);
+	TestEqual(TEXT("ten more for 8.5 m walked, one every 80 cm"), Walked, AtFirst + 10);
+	TestEqual(TEXT("every one drawn"), WalkedVisible, Walked);
+	TestTrue(TEXT("each at its feet"), bAllAtItsFeet);
+	TestTrue(TEXT("each a step's width off its line"), bAllBesideItsLine);
+	TestTrue(TEXT("left and right in turn"), bSidesTakeTurns);
+	TestTrue(TEXT("the newest the brightest"), Newest > Oldest && Oldest > 0.0f);
+	TestEqual(TEXT("a new print at its full opacity"), Newest, Effects::DemonicGuideFootprintOpacity, 0.001f);
+	TestEqual(TEXT("none left after ten seconds standing"), Stood, 0);
+	TestEqual(TEXT("and none drawn"), StoodVisible, 0);
+	return true;
+}
+
+// A WAITING GUIDE'S FOOTPRINTS DO NOT FADE (issue #2862, a judgement): it waits when the player is beyond 15 m, which
+// is when the trail is wanted. With the player 20 m away for fourteen seconds the prints all stay; back beside it, they
+// go in ten. Prints "GUIDE FOOTPRINTS WAIT".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFootprintsWaitTest,
+	"Cataclysm.DungeonModifierEffects.AWaitingGuidesFootprintsDoNotFade",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideFootprintsWaitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	ACataclysmGuideFootprints* Footprints = Mode->DemonicGuideFootprintsOnTheFloor();
+	if (!TestNotNull(TEXT("its footprints were begun with the guide"), Footprints))
+	{
+		return false;
+	}
+
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	WalkTheGuideAlong(Mode, Player, 3, 85.0f);
+	const int32 Laid = Footprints->PrintsShown();
+
+	StandFromTheGuide(Mode, Player, 2000.0f);
+	Beat(Mode, BeatsFor(Effects::DemonicGuideFootprintSeconds) + 16);
+	const bool bWaited = Guide->bGuideWaits;
+	const int32 AfterWaiting = Footprints->PrintsShown();
+
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, BeatsFor(Effects::DemonicGuideFootprintSeconds) + 1);
+	const int32 AfterWalkingOn = Footprints->PrintsShown();
+
+	AddInfo(FString::Printf(TEXT("GUIDE FOOTPRINTS WAIT: %d laid; it waited %s, and %d were left after 14 s; %d after "
+								 "10 s more with the player beside it"),
+							Laid, bWaited ? TEXT("yes") : TEXT("no"), AfterWaiting, AfterWalkingOn));
+
+	TestEqual(TEXT("set-up: four prints laid"), Laid, 4);
+	TestTrue(TEXT("set-up: with the player 20 m away it waits"), bWaited);
+	TestEqual(TEXT("every print stays while it waits, longer than their life"), AfterWaiting, Laid);
+	TestEqual(TEXT("CONTROL: with the player back beside it they go in ten seconds"), AfterWalkingOn, 0);
+	return true;
+}
+
+// THE GUIDE'S FOOTPRINTS ARE ONE ACTOR AND A FIXED POOL (issue #2862): a hundred and twenty beats of walking, to and
+// fro over 4.25 m so it stays near where it was raised, lay more prints than the pool holds and never more than it
+// holds on the floor, in one trail actor; a guide put 10 m away in one beat starts the trail again with one print
+// rather than printing the gap. Prints "GUIDE FOOTPRINTS POOL".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGuideFootprintsPoolTest,
+	"Cataclysm.DungeonModifierEffects.TheGuidesFootprintsAreOnePoolAndAJumpIsNotPrinted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGuideFootprintsPoolTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ADemonicGuideFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Guide = Mode->DemonicGuideOnTheFloor();
+	ACataclysmGuideFootprints* Footprints = Mode->DemonicGuideFootprintsOnTheFloor();
+	if (!TestNotNull(TEXT("its footprints were begun with the guide"), Footprints))
+	{
+		return false;
+	}
+
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	for (int32 Leg = 0; Leg < 24; ++Leg)
+	{
+		WalkTheGuideAlong(Mode, Player, 5, Leg % 2 == 0 ? 85.0f : -85.0f);
+	}
+	const int32 LaidWalking = Footprints->PrintsLaid();
+	const int32 ShownWalking = Footprints->PrintsShown();
+	const int32 Pool = Footprints->PoolSize();
+	int32 Trails = 0;
+	for (TActorIterator<ACataclysmGuideFootprints> It(World); It; ++It)
+	{
+		Trails += IsValid(*It) ? 1 : 0;
+	}
+
+	// PUT 10 M ON IN ONE BEAT: not a walk.
+	const int32 LaidBeforeTheJump = Footprints->PrintsLaid();
+	Guide->SetActorLocation(Guide->GetActorLocation() + FVector(1000.0f, 0.0f, 0.0f));
+	StandFromTheGuide(Mode, Player, 100.0f);
+	Beat(Mode, 1);
+	const int32 LaidByTheJump = Footprints->PrintsLaid() - LaidBeforeTheJump;
+
+	AddInfo(FString::Printf(TEXT("GUIDE FOOTPRINTS POOL: %d laid walking 102 m to and fro, %d on the floor, a pool of %d, "
+								 "%d trail actor(s); a 10 m jump laid %d"),
+							LaidWalking, ShownWalking, Pool, Trails, LaidByTheJump));
+
+	TestEqual(TEXT("the pool is the figure"), Pool, Effects::DemonicGuideFootprintsAtMost);
+	TestTrue(TEXT("set-up: more prints laid than the pool holds"), LaidWalking > Pool);
+	TestTrue(TEXT("never more on the floor than the pool"), ShownWalking <= Pool);
+	TestEqual(TEXT("one trail actor, not one a print"), Trails, 1);
+	TestEqual(TEXT("a jump lays one print where it lands, not the gap"), LaidByTheJump, 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Pestilence_Carrion_Feast. Issues #1820 and #41.
 // ---------------------------------------------------------------------------
 
@@ -41827,7 +42650,8 @@ bool FCataclysmBoxesRewardTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("the box went"), Mode->PandorasBoxesNow().Num(), 2);
-	// A BOSS'S KILL GIVES FIVE ITEMS ON AVERAGE, DRAWN, ON A STREAM SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
+	// A BOSS'S KILL GIVES 2.5 GEAR ITEMS AND 1.25 MATERIALS ON AVERAGE (5 GEAR BEFORE ISSUE #2853), DRAWN, ON A STREAM
+	// SEEDED FROM THE FLOOR: THE SAME FLOOR GIVES THE SAME.
 	TestTrue(FString::Printf(TEXT("it gave drops: %d"), Mode->PandorasBoxLastRewardDrops()),
 			 Mode->PandorasBoxLastRewardDrops() > 0);
 	TestEqual(TEXT("and they lie in the world"), DropsInTheWorld(World) - Before, Mode->PandorasBoxLastRewardDrops());
@@ -63870,7 +64694,7 @@ bool FCataclysmCorruptedStalkerMaterialsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and its death rolls no random gear"), Stalker->RandomGearDropsGiven(), 0);
 
 	// THE DEATH STREAM CANNOT BE PINNED (seeded from the creature and the clock), so bounds: every gear item on the
-	// floor is one it wore, and materials came. The Boss row's mean is five, a Poisson draw.
+	// floor is one it wore, and materials came. The Boss row's mean is 2.5 gear and 1.25 materials, a Poisson draw.
 	TSet<FName> Worn;
 	for (const FCataclysmItem& Piece : Stalker->WornPieces())
 	{

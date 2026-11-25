@@ -32,6 +32,8 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmEnemyDeath.h"
+// For the line that says a creature died, and who struck it last. Issue #2874.
+#include "Character/CataclysmHitLog.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
@@ -180,10 +182,36 @@ ACataclysmEnemyCharacter::ACataclysmEnemyCharacter()
 
 void ACataclysmEnemyCharacter::HandleDeath()
 {
+	// NOBODY'S TARGET IS NOBODY'S KILL: Demonic Guide's guide does not die. Issue #2860, the owner's play-test of
+	// 2026-11-23: "sometimes he manages to die." Its health is held at its maximum (`bCannotBeHurt`), so no write to
+	// health reaches here for it; but a rule that kills by calling this outright after writing health to nought --
+	// Epidemic's chain ending, Infernal Sacrifice eating an ally, a drained delayed blow or health debt -- skips that
+	// hold. BEFORE THE MARK, so it is not marked dead either, and every rule that asks `IsDead` still finds it standing.
+	if (IsNeverATarget())
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("%s is the floor's guide and nobody's target; it was not killed."), *GetName());
+		return;
+	}
+
 	if (!UCataclysmSkillEffects::MarkDead(this))
 	{
-		// Already dead. Nothing here is safe to run twice.
+		// Already dead, or its death is being marked by a call this one is inside (issue #2871). Nothing here is safe
+		// to run twice.
 		return;
+	}
+
+	// AND THE LOG SAYS THE CREATURE DIED, which it did not until issue #2874. On 2026-11-24 a Boss Brute's swing killed
+	// the owner 0.36 s after the owner's 438 critical on it, and nothing could say whether the Brute was already dead.
+	// AT `Display`, the level the hit log's lines use, so the death sits among the blows in a play session's log, and
+	// ONCE: below the mark, which refuses a second death. Its health is read now, before anything below can move it.
+	if (AbilitySystemComponent)
+	{
+		const FCataclysmLastBlow& Last = AbilitySystemComponent->GetLastBlow();
+		UE_LOG(LogCataclysm, Display, TEXT("%s"), *FCataclysmHitLog::CreatureDeathLine(
+			this,
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()),
+			AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+			Last.IsOnRecord() ? Last.Attacker.Get() : nullptr));
 	}
 
 	// AND A CREATURE CARRYING HORDE LEADER RALLIES WHAT IS LEFT OF ITS PACK.
@@ -320,7 +348,8 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		LootQuantity *= CityRewards.LootMore;
 
 		// AND THE GAP BETWEEN THE DUNGEON'S SCORE AND THE PLAYER'S (issue #2824, slice c; rule D and the owner's 25% loot
-		// floor, 2026-11-22): full from 0.6 of a tier width over the dungeon to 0.25 under it, up to 25% more above,
+		// floor, 2026-11-22; the per-tier start of the cut, issue #2853, 2026-11-24): full from the tier's start, 1.4 of
+		// a tier width over the dungeon at tier 1 down to 0.8 at tiers 7 and 8, to 0.25 under it, up to 25% more above,
 		// down to 5% experience and 25% loot below. The loot factor reaches the loot quantity and the gold multiplier
 		// through `KillLootFor`, once the tree's gold multiplier is known below; the experience takes its own factor at
 		// the grants. Both 1 outside an empire dungeon or with nobody playing (`PowerGapRewardsIn`). Asking draws nothing.
@@ -378,6 +407,15 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			// slice G5.
 			UCataclysmDropSpawner::SpawnGemsFor(World, RarityStepItPaysAs(), MagicFind, LootQuantity, GetActorLocation(),
 												Stream, /*bMarked=*/bRaisedByARule);
+
+			// AND THE CATACLYSM BOSS'S ONE PIECE OF THE NEXT TIER'S BEST, LAST, so every draw above is as it was, and
+			// nothing for any other rung. Issue #2853, the owner's ruling of 2026-11-24: "The next tier's best
+			// (Recommended)". One piece whatever the loot quantity or the gap rule's loot factor: the owner said "always".
+			static_assert(UCataclysmDropSpawner::CataclysmBossRarityStep == ACataclysmDungeonGameMode::CataclysmBossRung,
+						  "The Cataclysm Boss's piece is no longer dropped at the rung the Gatekeeper is placed at");
+			UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(World, RarityStepItPaysAs(), MagicFind,
+																   GetActorLocation(), Stream,
+																   /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

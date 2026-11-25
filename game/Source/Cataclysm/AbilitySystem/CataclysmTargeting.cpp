@@ -3,6 +3,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTeams.h"
+// For the character that is nobody's target. Issue #2860.
+#include "Character/CataclysmCharacterBase.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
 #include "Engine/OverlapResult.h"
@@ -58,6 +60,73 @@ bool UCataclysmTargeting::IsInCone(const FVector& Origin, const FVector& Forward
 	// The written angle is the full width, so half of it is the limit either
 	// side of the facing direction.
 	return Cosine >= FMath::Cos(FMath::DegreesToRadians(AngleDegrees * 0.5f));
+}
+
+bool UCataclysmTargeting::IsBodyInCone(const FVector& Origin, const FVector& Forward, const FVector& Point,
+									   float BodyRadiusCm, float RadiusCm, float AngleDegrees)
+{
+	// WHAT THE CENTRE'S TEST CALLS INSIDE STAYS INSIDE: a ring, a centre on the apex, a centre inside the angle.
+	if (IsInCone(Origin, Forward, Point, RadiusCm, AngleDegrees))
+	{
+		return true;
+	}
+	if (BodyRadiusCm <= 0.0f || RadiusCm <= 0.0f || AngleDegrees <= 0.0f)
+	{
+		return false;
+	}
+
+	FVector ToPoint = Point - Origin;
+	ToPoint.Z = 0.0f;
+	const float DistanceSquared = ToPoint.SizeSquared();
+
+	// THE REACH IS MEASURED TO THE CENTRE, ruling P7-c: a centre beyond the radius is outside, whatever is within.
+	if (DistanceSquared > RadiusCm * RadiusCm)
+	{
+		return false;
+	}
+
+	// A BODY THE APEX STANDS INSIDE IS INSIDE ANY CONE. An enemy pressed against the character has no direction worth
+	// comparing; the alternative is that the closest enemy of all is the one a narrow swing cannot reach.
+	if (DistanceSquared <= BodyRadiusCm * BodyRadiusCm)
+	{
+		return true;
+	}
+
+	FVector Facing = Forward;
+	Facing.Z = 0.0f;
+	if (!Facing.Normalize())
+	{
+		return false;
+	}
+
+	// THE NEARER OF THE CONE'S TWO EDGES is the one on the body's own side of the facing, which the sign of the cross
+	// product's height says. The edge is the facing turned by half the written angle toward that side.
+	const float HalfRadians = FMath::DegreesToRadians(FMath::Min(AngleDegrees, 360.0f) * 0.5f);
+	const float Side = FVector::CrossProduct(Facing, ToPoint).Z >= 0.0f ? 1.0f : -1.0f;
+	const float EdgeCos = FMath::Cos(HalfRadians);
+	const float EdgeSin = FMath::Sin(HalfRadians) * Side;
+	const FVector Edge(Facing.X * EdgeCos - Facing.Y * EdgeSin, Facing.X * EdgeSin + Facing.Y * EdgeCos, 0.0f);
+
+	// THE NEAREST POINT OF THAT EDGE TO THE CENTRE. Behind the apex it is the apex, which the test above has already
+	// answered. Ahead of it, it is never past the edge's far end, because the centre is within the radius.
+	const float Along = FVector::DotProduct(ToPoint, Edge);
+	if (Along <= 0.0f)
+	{
+		return false;
+	}
+	return (ToPoint - Edge * Along).SizeSquared() <= BodyRadiusCm * BodyRadiusCm;
+}
+
+float UCataclysmTargeting::BodyRadiusOf(const AActor* Actor)
+{
+	return IsValid(Actor) ? FMath::Max(0.0f, Actor->GetSimpleCollisionRadius()) : 0.0f;
+}
+
+bool UCataclysmTargeting::IsActorInCone(const FVector& Origin, const FVector& Forward, const AActor* Actor,
+										float RadiusCm, float AngleDegrees)
+{
+	return IsValid(Actor)
+		&& IsBodyInCone(Origin, Forward, Actor->GetActorLocation(), BodyRadiusOf(Actor), RadiusCm, AngleDegrees);
 }
 
 bool UCataclysmTargeting::IsInLine(const FVector& Start, const FVector& End,
@@ -143,6 +212,16 @@ bool UCataclysmTargeting::MatchesAttitude(const AActor* Actor, const AActor* Ins
 		return false;
 	}
 
+	// AND NOBODY'S TARGET IS NEITHER AN ENEMY NOR AN ALLY, whoever asks and whatever their side: Demonic Guide's guide.
+	// Issue #2860, the owner's play-test of 2026-11-23: "My minions are constantly trying to attack him." Here, beside
+	// the dead, so a minion's and a thrall's choice of target (`UCataclysmTargetCandidates`), every skill's search,
+	// the click and the floor rules that sweep as the player -- Epidemic's chain among them -- all pass it over, and
+	// so does a creature's search for allies, which Infernal Sacrifice eats from.
+	if (IsNeverATarget(Actor))
+	{
+		return false;
+	}
+
 	// No instigator means no side to compare against. A hostile search then
 	// returns everything, which is what a hazard belonging to nobody should do;
 	// a friendly search returns nothing, because nothing can be an ally of no
@@ -163,6 +242,12 @@ bool UCataclysmTargeting::IsHostileTo(const AActor* Actor, const AActor* Instiga
 bool UCataclysmTargeting::IsFriendlyTo(const AActor* Actor, const AActor* Instigator)
 {
 	return MatchesAttitude(Actor, Instigator, ETeamAttitude::Friendly);
+}
+
+bool UCataclysmTargeting::IsNeverATarget(const AActor* Actor)
+{
+	const ACataclysmCharacterBase* Character = Cast<ACataclysmCharacterBase>(Actor);
+	return Character && Character->IsNeverATarget();
 }
 
 TArray<AActor*> UCataclysmTargeting::FindEveryoneInLine(
@@ -219,9 +304,11 @@ TArray<AActor*> UCataclysmTargeting::Gather(
 		// TAKING NO SIDE STILL REFUSES SCENERY AND THE DEAD, which is what
 		// MatchesAttitude asks first and what a bare `bEveryone` would have
 		// dropped along with the question of sides.
+		// AND NOBODY'S TARGET, AS `MatchesAttitude` REFUSES IT. Issue #2860: a Hellhound's burning lane does not find
+		// Demonic Guide's guide either.
 		const bool bWanted = bEveryone
 			? (IsValid(Actor) && AbilitySystemOf(Actor) != nullptr
-			   && !UCataclysmSkillEffects::IsDead(Actor))
+			   && !UCataclysmSkillEffects::IsDead(Actor) && !IsNeverATarget(Actor))
 			: MatchesAttitude(Actor, Instigator, Wanted);
 
 		if (!bWanted || Seen.Contains(Actor))
@@ -272,11 +359,27 @@ TArray<AActor*> UCataclysmTargeting::FindEnemiesInCone(
 	const UWorld* World, const AActor* Instigator, const FVector& Origin,
 	const FVector& Forward, float RadiusCm, float AngleDegrees, int32 MaxTargets)
 {
-	return Gather(World, Instigator, Origin, RadiusCm, MaxTargets, ETeamAttitude::Hostile,
-		[&](const FVector& Point)
+	// THE BODY COUNTS, SO THE TEST NEEDS THE ACTOR AND NOT ONLY ITS LOCATION. Issue #2870. `Gather`'s predicate is
+	// handed a location, so the sphere is gathered with no limit and no shape, which keeps its nearest-first order;
+	// the cone is applied here, and the limit after it, which is the order `Gather` itself keeps: sorted, shaped, then
+	// cut, so a limit of one is the nearest enemy INSIDE the cone and never the nearest one outside it.
+	TArray<AActor*> Found = Gather(World, Instigator, Origin, RadiusCm, /*MaxTargets=*/0, ETeamAttitude::Hostile,
+		[](const FVector&)
 		{
-			return IsInCone(Origin, Forward, Point, RadiusCm, AngleDegrees);
+			return true;
 		});
+
+	// `RemoveAll` KEEPS THE ORDER OF WHAT IT LEAVES, so the nearest-first sort survives it.
+	Found.RemoveAll([&](const AActor* One)
+	{
+		return !IsActorInCone(Origin, Forward, One, RadiusCm, AngleDegrees);
+	});
+
+	if (MaxTargets > 0 && Found.Num() > MaxTargets)
+	{
+		Found.SetNum(MaxTargets);
+	}
+	return Found;
 }
 
 TArray<AActor*> UCataclysmTargeting::FindEnemiesInLine(
