@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Deaths the Soul Collector did not make, and decay given back: Reclaimed, Claimed and Death's Toll (Death trees, slice C4b2)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: the stats `DecayGivenBackOnKillSecondsStat`
+  (`decay_given_back_on_kill_seconds`), `ClaimedWithinSecondsStat` (`fervour_claimed_within_seconds`) and
+  `FollowerKillsCountAsYoursStat` (`follower_kills_count_as_yours`); `GiveBackDecayOnKill`, `ClaimOnDeath`,
+  `CreditAFollowersKill` and `SoulCollectorRowKeyPrefix`; `DecayStep` and `KillDecayStep` record what they took.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `NoteFervourDecayed`,
+  `TakeFervourDecayedWithin`, and `ActOnEvent`'s new last parameter, `OnlyRowsWhoseKeyBegins`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler gives back decay before an own kill's
+  payment, and for a death it did not make asks Death's Toll and otherwise Claimed.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmKillCreditTests.cpp`, new (5); `CataclysmStatExemptionTests.cpp` (three
+  probes) and `CataclysmDataTableTests.cpp`; `tools/tests/test_kill_credit_reaches_the_soul_collector.py`, new (4);
+  `test_passive_effects_match_the_node_text.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`, `game/Data/PassiveEffects.csv` (570 rows),
+  `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **THE KILL HANDLER'S ORDER IS CHECKED ONLY BY READING THE SOURCE.** The Unreal tests call `GiveBackDecayOnKill`,
+  `ClaimOnDeath` and `CreditAFollowersKill` directly. None drives `ACataclysmPlayerCharacter::OnSomethingDied`, which
+  needs a whole player; `test_kill_credit_reaches_the_soul_collector.py` reads the order from the source.
+- **THE PLAN'S RESEARCH WAS WIDER THAN WHAT A READABLE PAGE SUPPORTS.** The plan said Path of Exile and Last Epoch both
+  leave a minion's kill out of the player's "on kill" effects. Re-read before this entry: the Last Epoch forum supports it
+  for Last Epoch, from a community member, not a developer; no readable Path of Exile page says it either way. See
+  "Research".
+- **LAST BREATH'S STAT IS SHARED.** `health_restored_on_kill_at_no_cost` carries both the Soul Collector's Last Breath and
+  a Ravager capstone row. Death's Toll restores it for a follower's kill, so a character holding both trees' rows would
+  have the Ravager's share restored on such a kill too. It is recorded rather than prevented.
+
+### What each reads
+
+- **RECLAIMED.** `DecayStep` (the Ravager's out of contact) and `KillDecayStep` (the Death decay after a kill) each record
+  what they took, with the time. A kill gives back the sum taken in the stat's seconds before it, as a kill's payment
+  and unscaled, before the kill's own payment (Q7), and then forgets every record, so a second kill straight after gives
+  nothing twice. A JUDGEMENT: "a kill made after your Fervour has begun to decay" is read as "decay took something in
+  those seconds", which a kill made before any decay never satisfies, and which works for both decays alike. Records are
+  kept 30 seconds with no kill to read them.
+- **CLAIMED.** For a death not credited to the character and not made its own by Death's Toll, when the character's last
+  hit on the slain creature landed within the stat's seconds (`SecondsSinceStruckBy`, the record the struck character
+  keeps), the character is paid what its own kill of the creature would pay (`GainOnOwnKill`, Gleaning's roll included)
+  as a kill's payment, with no kill clock and no hold (Q9). "Within" includes the boundary.
+- **DEATH'S TOLL.** A kill whose killer `UCataclysmCommand::CommanderOf` reads as the character's follower (a minion, a
+  gadget or a trap, each a `ACataclysmMinion`; or a thrall, by its owner) is the character's for everything the Soul
+  Collector tree asks, in an own kill's order: Reclaimed's give-back, the payment and every row inside it, `NoteOwnKill`
+  (the kill clock and the hold), `kill` raised to the Soul Collector's own rows only, and Last Breath. Not the run's kill
+  count, not a worn weapon's, and no other tree's rows.
+- **THE SOUL COLLECTOR'S ROWS, READ FROM WHAT EACH ROW HOLDS (Q8).** A row's trigger key begins with its enchantment's
+  name: `<enchantment>:<action>:<event>` for an action row and `<enchantment>:<stat>:<event>` for a stack row
+  (`CataclysmItem.cpp`), and a passive row's enchantment is `Passive_<node>` (`UCataclysmPassiveTree::EnchantmentNameFor`).
+  So `ActOnEvent` skips a row whose trigger key does not begin with `Passive_SoulCollector_` when asked to. No new column.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Reclaimed (keystone) | decay_given_back_on_kill_seconds, flat, 3 |
+| Claimed | fervour_claimed_within_seconds, flat, 1, at 2, 4, 6 and 8 points |
+| Death's Toll (keystone) | follower_kills_count_as_yours, flat, 1 |
+
+`PassiveEffects.csv` 564 to 570; the Soul Collector 110 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4b plan, recorded with slice C4b1 and applied here: Q7, both
+decays count and are given back unscaled as a kill payment; Q8, Death's Toll raises `kill` for a follower's kill only to
+rows whose node belongs to the Soul Collector tree, read from what the row already holds, with no new column; Q9, Claimed
+pays as a kill payment, Gleaning included, with no clock and no hold, and never on top of a kill Death's Toll made yours.
+
+### Research
+
+What a shipped game does with a minion's kill, for Death's Toll, read on 2026-11-25:
+
+| Game | Source | What it says |
+|---|---|---|
+| Last Epoch | `forum.lastepoch.com/t/how-the-on-kill-effect-works/46372`, a reply by the community member "Heavy", 15 December 2021, not marked as a developer | "Your minions do not trigger on kill effect for the players and vice versa." |
+| Path of Exile | `poedb.tw/us/Kill`, read in part | Lists minion modifiers that give the MINION an effect on its own kill, such as "Minions have 10% chance to gain Onslaught for 4 seconds on Kill"; says nothing about whether a minion's kill counts as the player's |
+
+What it settles: in Last Epoch, by a player's account, a minion's kill does not count as the player's by default, which
+is this game's default too (Conduit is the Ritualist's opt-in). Death's Toll is the Soul Collector's opt-in, scoped by
+its sentence to its own tree. Not settled by research and ruled: that scope (Q8). The figures are the owner's approved
+trees'.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.KillCredit.` | new: `ReclaimedGivesBackWhatDecayTookInTheSecondsBeforeAKill`, `ClaimedPaysForAnEnemyYouHitWhateverKillsIt`, `DeathsTollMakesAFollowersKillYours`, `DeathsTollRaisesTheKillToTheSoulCollectorsRowsOnly`, `TheThreeNodesRowsAreTheirSentences` | 5 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 570 | unchanged |
+
+Each new test has a control: no Reclaimed, and a second kill straight after; a hit too long before, and an enemy never
+struck; no Death's Toll, and a killer nobody owns; the character's own kill, which raises `kill` to every row.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `TakeFervourDecayedWithin`: `if (Entry.Key >= Since)` becomes `if (true)`.
+   Prefix `Cataclysm.KillCredit.`; must fail `ReclaimedGivesBackWhatDecayTookInTheSecondsBeforeAKill` (20 rather than
+   15).
+2. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `if (OnlyRowsWhoseKeyBegins &&
+   !Listed.TriggerKey.ToString().StartsWith(OnlyRowsWhoseKeyBegins))` becomes `if (false)`. Prefix
+   `Cataclysm.KillCredit.`; must fail `DeathsTollRaisesTheKillToTheSoulCollectorsRowsOnly` (800 rather than 600).
+3. `CataclysmFervour.cpp`, `ClaimOnDeath`: `if (Since < 0.0f || Since > Within)` becomes `if (Since < 0.0f)`. Prefix
+   `Cataclysm.KillCredit.`; must fail `ClaimedPaysForAnEnemyYouHitWhateverKillsIt` (the hit 1.5 seconds before the
+   death, within 1 second).
+
+### What was run
+
+SUITE_FIGURES_C4B2
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`c5fb408b3`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| An own kill paid before Reclaimed gives back decay | `test_kill_credit_reaches_the_soul_collector.py::test_an_own_kill_gives_back_decay_before_it_is_paid` |
+| Claimed asked even when Death's Toll credited the kill | `test_kill_credit_reaches_the_soul_collector.py::test_claimed_is_asked_only_when_no_kill_was_credited` |
+| `KillDecayStep` no longer recording what it took | `test_kill_credit_reaches_the_soul_collector.py::test_both_decays_record_what_they_took` |
+| `ActOnEvent` no longer filtering rows by the prefix | `test_kill_credit_reaches_the_soul_collector.py::test_a_followers_kill_raises_kill_to_the_soul_collectors_rows_only` |
+| Reclaimed's row at 4 seconds rather than 3 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
 ## 2026-11-25 — Fervour gained from other sources and the hold before decay: Any Fuel, Borrowed Time, Kindred Fires, and one way for every gain to reach the pool (Death trees, slice C4b1)
 
 **Affects:**
