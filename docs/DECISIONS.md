@@ -92,6 +92,21 @@ The coordinating session, 2026-11-25, under the owner's delegation, on the surve
    from the old read**, which floored the increases themselves at nought: a net reduction of the radius was ignored and
    now shrinks it. No row reduces the radius today.
 
+### THE PYTHON SUITE
+
+Run on `1d97ba1d2bd990cc9dabbb325996dde3586aabe6`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read
+**1 failed, 8452 passed, 9 skipped in 402.79s**, and the JUnit file `tests="8462" failures="1" errors="0"
+skipped="9"`, which is 8,452 passed: the two agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which every branch changing a CSV carries until the editor step. `python -m ruff check .`: all checks passed.
+`python tools/check_resolved_cpp.py` on the twelve C++ files this branch changes: 12 files read, 0 with complaints.
+
+**THE RUN BEFORE IT**, on `11318524a`, read 2 failed, 8449 passed, 9 skipped: the asset check, and
+`test_required_workbook_columns.py::test_an_optional_column_the_sheet_now_has_is_not_listed`, because Action Event and
+Stack Seconds were still declared optional; the commit after it made them required. Two runs before that were stopped
+part-way, each to correct a file the suite reads, and measured nothing.
+
 ### PYTHON GUARD PROOFS
 
 Run with `tools/prove_guard.py` on 2026-11-25, on the working tree that became this commit, against
