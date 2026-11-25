@@ -9,6 +9,7 @@
 class AActor;
 class UAbilitySystemComponent;
 class UCataclysmAbilitySystemComponent;
+struct FGameplayTagContainer;
 
 /**
  * The basic attack, which fires by itself.
@@ -94,6 +95,45 @@ public:
 	 */
 	static float SecondsBetweenSwingsFor(
 		const UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * `attack_speed_reduction_suppressed`: a flag saying nothing may lower this
+	 * character's attack speed. The Ravager tree rework of 2026-11-24, Relentless:
+	 * "Your Movement Speed and Attack Speed cannot be reduced by any effect".
+	 * The attack speed twin of `ACataclysmPlayerCharacter::
+	 * MovementSpeedReductionSuppressedStat`, read the same way. No gameplay
+	 * attribute, so `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* AttackSpeedReductionSuppressedStat;
+
+	/**
+	 * A character's attack speed, in swings a second, after everything that
+	 * slows it: its own rows and, for a player character, Cripple and Wither.
+	 * The one place both attack speed readers take it from, the basic attack's
+	 * swing and a projectile skill's rack. The Ravager tree rework of
+	 * 2026-11-24.
+	 *
+	 * ASKED FOR, WITH THE SKILL'S TAGS, THE ATTRIBUTE THE FALLBACK, which is what
+	 * both readers did before; an ability system with no stat line answers the
+	 * attribute.
+	 *
+	 * AND NOTHING LOWERS IT FOR A CHARACTER HOLDING
+	 * `AttackSpeedReductionSuppressedStat`, which is what Relentless says: every
+	 * row stating a figure below nought, and every removal, is dropped before the
+	 * pass, the earned rows are kept, and Cripple's and Wither's share of the
+	 * rate is not applied at all. Flooring the answer at the attribute would take
+	 * away a node's increase along with a slow, and the sentence says the
+	 * reduction does not apply, not the bonus. ROW BY ROW AND NOT BY FLOORING THE
+	 * SUMS, unlike `ACataclysmPlayerCharacter::RefreshMovementSpeed` under its
+	 * own flag, so +40% beside -50% keeps the +40%.
+	 *
+	 * @param Swinger  the avatar; Cripple and Wither are read off a player
+	 *                 character only, as before, because a creature's interval
+	 *                 divides by the same share elsewhere
+	 */
+	static float AttackSpeedAfterSlows(const UCataclysmAbilitySystemComponent* AbilitySystem,
+									   const FGameplayTagContainer& SkillTags, float Attribute,
+									   const AActor* Swinger);
 
 	/**
 	 * Whether a character is in a state where it may swing at all.

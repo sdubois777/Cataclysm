@@ -892,17 +892,20 @@ CATACLYSM_AILMENT_TEST(FCataclysmChancePastCertaintyTest,
 	}
 
 	{
-		// AND CRIPPLE'S MAGNITUDE IS NOT BUILT. Its row says magnitude raises the
-		// slow to 80% and then extends the duration; until that exists a chance
-		// past 100% applies it at the row's own figures, and this says so rather
-		// than letting it pass unnoticed.
+		// AND CRIPPLE'S ROW SAYS MAGNITUDE RAISES THE SLOW TO 80% AND THEN
+		// EXTENDS THE DURATION, which issue #1256 built (`CapThenExtend`). This
+		// comment said it was not built until the Ravager tree rework of
+		// 2026-11-24, which found it built and read the strength: 250% of 30 is
+		// 75, under the cap, so the row's four seconds stand.
 		const FScopedFighter Attacker(World);
 		Attacker.ArmFor(1'000.0f);
 		Attacker.SetChance(*Cripple, 250.0f);
 		const FScopedFighter Defender(World);
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
 
-		TestEqual(TEXT("250% to cripple still lasts the row's four seconds"),
+		TestEqual(TEXT("250% to cripple slows by 75%, two and a half times the row's 30"),
+			Defender.StatedOn(Cripple->TagName), 75.0f, 0.01f);
+		TestEqual(TEXT("and, under the cap, lasts the row's four seconds"),
 			Defender.SecondsLeftOn(Cripple->TagName), 4.0f, 0.05f);
 	}
 
@@ -926,6 +929,85 @@ CATACLYSM_AILMENT_TEST(FCataclysmChancePastCertaintyTest,
 				Defender.SecondsLeftOn(Splinter->TagName), 4.0f, 0.05f);
 		}
 	}
+	return true;
+}
+
+/**
+ * CRIPPLE AND WEAKEN PAST CERTAINTY, AT THE RAVAGER'S OWN FIGURES. The Ravager tree rework of 2026-11-24.
+ *
+ * THE PROJECT OWNER RULED THAT DAY that Cripple and Weaken chance above 100% raises their strength everywhere in the
+ * game, copying the stun rule, and the audit that asked for it said the excess was wasted. IT IS NOT, AND HAS NOT BEEN:
+ * `UCataclysmAilments::Application` turns a total past the cap into magnitude for every ailment (the owner's rule of
+ * 2026-08-03), and Cripple's and Weaken's shapes raise the strength by it to the rows' cap of 80 and lengthen the
+ * duration past that (`CapThenExtend`, issue #1256). So nothing was built; this measures the ruling at the figures the
+ * audit named. Attrition's 100 and the Attrition limb's chance nodes make 174% to Cripple and 166% to Weaken: 30 x 1.74
+ * is 52.2 and 20 x 1.66 is 33.2, each under the cap, so each lasts its row's own time. 400% to Cripple is 120 before
+ * the cap; it stops at 80, which is 8/3 of the 30, and the 1.5 left over lengthens the four seconds to six.
+ *
+ * THE ROLL IS PINNED HIGH, for the reason the test above gives: only a chance at the cap lands on it.
+ */
+CATACLYSM_AILMENT_TEST(FCataclysmCrippleAndWeakenPastCertaintyTest,
+	"Cataclysm.Ailments.CrippleAndWeakenChancePastCertaintyRaiseTheirStrengthThenTheirDuration")
+{
+	using namespace CataclysmAilmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	const CataclysmTestWorld::FScopedAilmentRoll AlmostNever(99.9f);
+
+	const FCataclysmAilmentKind* Cripple = KindOf(TEXT("Cripple"));
+	const FCataclysmAilmentKind* Weaken = KindOf(TEXT("Weaken"));
+	if (!TestTrue(TEXT("both are ailments"), Cripple && Weaken))
+	{
+		return false;
+	}
+
+	// ONE BLOW CARRYING BOTH, at the given chances, on a fresh defender; answers what it was left with.
+	struct FLeft
+	{
+		float CrippleStrength = -1.0f;
+		float CrippleSeconds = -1.0f;
+		float WeakenStrength = -1.0f;
+		float WeakenSeconds = -1.0f;
+	};
+	const auto Strike = [&](float CrippleChance, float WeakenChance)
+	{
+		const FScopedFighter Attacker(World);
+		Attacker.ArmFor(1'000.0f);
+		Attacker.SetChance(*Cripple, CrippleChance);
+		Attacker.SetChance(*Weaken, WeakenChance);
+		const FScopedFighter Defender(World);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+		FLeft Left;
+		Left.CrippleStrength = Defender.StatedOn(Cripple->TagName);
+		Left.CrippleSeconds = Defender.SecondsLeftOn(Cripple->TagName);
+		Left.WeakenStrength = Defender.StatedOn(Weaken->TagName);
+		Left.WeakenSeconds = Defender.SecondsLeftOn(Weaken->TagName);
+		return Left;
+	};
+
+	const FLeft AtCertainty = Strike(100.0f, 100.0f);
+	const FLeft AtAttrition = Strike(174.0f, 166.0f);
+	const FLeft PastTheCap = Strike(400.0f, 0.0f);
+	AddInfo(FString::Printf(TEXT("PAST CERTAINTY: at 100 cripple %.2f for %.2f, weaken %.2f for %.2f; at 174/166 cripple "
+								 "%.2f for %.2f, weaken %.2f for %.2f; 400 cripple %.2f for %.2f"),
+							AtCertainty.CrippleStrength, AtCertainty.CrippleSeconds, AtCertainty.WeakenStrength,
+							AtCertainty.WeakenSeconds, AtAttrition.CrippleStrength, AtAttrition.CrippleSeconds,
+							AtAttrition.WeakenStrength, AtAttrition.WeakenSeconds, PastTheCap.CrippleStrength,
+							PastTheCap.CrippleSeconds));
+
+	TestEqual(TEXT("CONTROL: at 100% Cripple is the row's 30"), AtCertainty.CrippleStrength, 30.0f, 0.01f);
+	TestEqual(TEXT("CONTROL: and Weaken the row's 20"), AtCertainty.WeakenStrength, 20.0f, 0.01f);
+	TestEqual(TEXT("**174% to Cripple slows by 52.2%**"), AtAttrition.CrippleStrength, 52.2f, 0.01f);
+	TestEqual(TEXT("for the row's four seconds"), AtAttrition.CrippleSeconds, 4.0f, 0.05f);
+	TestEqual(TEXT("**166% to Weaken cuts 33.2% of the damage**"), AtAttrition.WeakenStrength, 33.2f, 0.01f);
+	TestEqual(TEXT("for the row's five seconds"), AtAttrition.WeakenSeconds, 5.0f, 0.05f);
+	TestEqual(TEXT("**400% to Cripple stops at the cap of 80**"), PastTheCap.CrippleStrength, 80.0f, 0.01f);
+	TestEqual(TEXT("**and the rest lengthens four seconds to six**"), PastTheCap.CrippleSeconds, 6.0f, 0.05f);
 	return true;
 }
 

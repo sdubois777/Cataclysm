@@ -11721,7 +11721,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveIronhideOnARealCharacterTest,
 	"Cataclysm.Passives.IronhideKeepsARealRavagersArmourFromBeingIgnored",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Ravager_keystone_spine_001` Ironhide: "Your Armor cannot be ignored." */
+/** `Ravager_keystone_spine_001` Ironhide: "Your Armor cannot be ignored, and
+ *  Overwhelm takes only half as much from it."
+ *
+ *  TWO ROWS SINCE THE RAVAGER TREE REWORK OF 2026-11-24, one per clause, so the
+ *  penetration row is found by its stat rather than by its place. The second,
+ *  `armor_overwhelm_halved`, is asserted here as authored and measured by
+ *  `Cataclysm.IronhideOverwhelm.`. */
 bool FCataclysmPassiveIronhideOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -11750,18 +11756,34 @@ bool FCataclysmPassiveIronhideOnARealCharacterTest::RunTest(const FString&)
 	const FName Node(TEXT("Ravager_keystone_spine_001"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Ironhide grants one stat"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Ironhide grants two stats, one per clause"), Effects.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is whether armour penetration is refused"),
-			  Effects[0]->Stat,
-			  FString(UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat));
-	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+	const FCataclysmPassiveEffectRow* const* PenetrationFound = Effects.FindByPredicate(
+		[](const FCataclysmPassiveEffectRow* Row)
+		{
+			return Row->Stat == FString(UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat);
+		});
+	const FCataclysmPassiveEffectRow* const* OverwhelmFound = Effects.FindByPredicate(
+		[](const FCataclysmPassiveEffectRow* Row)
+		{
+			return Row->Stat == FString(UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat);
+		});
+	if (!TestNotNull(TEXT("one of them is whether armour penetration is refused"), PenetrationFound)
+		|| !TestNotNull(TEXT("and the other whether Overwhelm is halved on armour"), OverwhelmFound))
+	{
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Penetration = *PenetrationFound;
+	TestEqual(TEXT("stated as a flat flag"), Penetration->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
-	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+	TestEqual(TEXT("of one"), Penetration->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Penetration->Condition,
 			  FString());
+	TestEqual(TEXT("the Overwhelm row is a flat flag of one too"), (*OverwhelmFound)->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), (*OverwhelmFound)->ValuePerPoint, 1.0f);
 
 	const FGameplayAttribute Flag =
 		Combat::GetArmorPenetrationSuppressedAttribute();
@@ -11909,23 +11931,38 @@ bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString
 	const FName Node(TEXT("Ravager_keystone_a_kB"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Nothing Moves You grants two stats, one per clause"),
-				   Effects.Num(), 2))
+	// FOUR ROWS SINCE THE RAVAGER TREE REWORK OF 2026-11-24: the two clauses
+	// below, and the third sentence's two, "While you have 50 or more Fervour,
+	// no crowd control can be applied to you" -- crowd control resistance 100
+	// and the movement speed flag under `class_resource_points_at_least` 50,
+	// Unstoppable's shape. A real Ravager here holds no Fervour, so the third
+	// sentence is not in force and every figure below is the first clause's.
+	if (!TestEqual(TEXT("Nothing Moves You grants four rows, two clauses and the "
+						"third sentence's two"),
+				   Effects.Num(), 4))
 	{
 		return false;
 	}
 
-	// BY STAT NAME AND NOT BY POSITION. The table's order is not something this
-	// test may rely on, and taking Effects[0] would silently check whichever
-	// clause came back first.
+	// BY STAT NAME AND CONDITION, NOT BY POSITION. The table's order is not
+	// something this test may rely on, and two rows name crowd control
+	// resistance now: the unconditioned fifty is the halving.
 	const FCataclysmPassiveEffectRow* Halving = nullptr;
+	const FCataclysmPassiveEffectRow* Immunity = nullptr;
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
 		if (Row && Row->Stat ==
 				FString(UCataclysmSkillEffects::CrowdControlResistanceStat))
 		{
-			Halving = Row;
+			(Row->Condition.IsEmpty() ? Halving : Immunity) = Row;
 		}
+	}
+	if (TestNotNull(TEXT("the third sentence's resistance row is there"), Immunity))
+	{
+		TestEqual(TEXT("a whole hundred"), Immunity->ValuePerPoint, 100.0f);
+		TestEqual(TEXT("while 50 or more Fervour is held"), Immunity->Condition,
+				  FString(TEXT("class_resource_points_at_least")));
+		TestEqual(TEXT("fifty of it"), Immunity->ConditionValue, 50.0f);
 	}
 	if (!TestNotNull(TEXT("one of them is crowd control resistance"), Halving))
 	{
@@ -11988,8 +12025,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRelentlessOnARealCharacterTest
 	"Cataclysm.Passives.RelentlessStopsARealRavagersSpeedBeingReduced",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Ravager_keystone_d_kA` Relentless: "Your Movement Speed cannot be reduced
- *  by any effect." */
+/** `Ravager_keystone_d_kA` Relentless: "Your Movement Speed and Attack Speed
+ *  cannot be reduced by any effect, and you gain 1% increased Attack Speed for
+ *  every 2% increased Movement Speed you have."
+ *
+ *  THREE ROWS SINCE THE RAVAGER TREE REWORK OF 2026-11-24, found by stat: the
+ *  movement flag this test turns on and off, the attack speed flag, and the
+ *  attack speed scaled by `increased_movement_speed`. The last two are measured
+ *  by `Cataclysm.Relentless.`. */
 bool FCataclysmPassiveRelentlessOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -12018,18 +12061,39 @@ bool FCataclysmPassiveRelentlessOnARealCharacterTest::RunTest(const FString&)
 	const FName Node(TEXT("Ravager_keystone_d_kA"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Relentless grants one stat"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Relentless grants three rows"), Effects.Num(), 3))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is whether a speed reduction is refused"),
-			  Effects[0]->Stat,
-			  FString(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat));
-	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+	const auto RowFor = [&Effects](const TCHAR* Stat) -> const FCataclysmPassiveEffectRow*
+	{
+		const FCataclysmPassiveEffectRow* const* Found = Effects.FindByPredicate(
+			[Stat](const FCataclysmPassiveEffectRow* Row) { return Row->Stat == FString(Stat); });
+		return Found ? *Found : nullptr;
+	};
+	const FCataclysmPassiveEffectRow* Movement =
+		RowFor(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat);
+	const FCataclysmPassiveEffectRow* AttackFlag =
+		RowFor(UCataclysmBasicAttack::AttackSpeedReductionSuppressedStat);
+	const FCataclysmPassiveEffectRow* PerMovement = RowFor(TEXT("attack_speed"));
+	if (!TestNotNull(TEXT("one is whether a movement speed reduction is refused"), Movement)
+		|| !TestNotNull(TEXT("one whether an attack speed reduction is"), AttackFlag)
+		|| !TestNotNull(TEXT("and one is attack speed"), PerMovement))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as a flat flag"), Movement->ValueKind,
 			  FString(TEXT("flat")));
-	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("of one"), Movement->ValuePerPoint, 1.0f);
 	TestEqual(TEXT("and carrying no condition, unlike Unstoppable's"),
-			  Effects[0]->Condition, FString());
+			  Movement->Condition, FString());
+	TestEqual(TEXT("the attack speed flag is a flat one too"), AttackFlag->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and the attack speed row is 1% increased"), PerMovement->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of one"), PerMovement->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for every 2% increased movement speed"), PerMovement->Scale,
+			  FString(TEXT("increased_movement_speed")));
+	TestEqual(TEXT("a step of two"), PerMovement->ScaleStep, 2.0f);
 
 	const FGameplayAttribute Flag =
 		Combat::GetMovementSpeedReductionSuppressedAttribute();
@@ -12690,19 +12754,32 @@ bool FCataclysmPassiveEndOnApplierDeathFlagTest::RunTest(const FString&)
 
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, FName(Node));
-	if (!TestEqual(TEXT("Nothing Moves You grants TWO stats, one per clause"),
-				   Effects.Num(), 2))
+	// FOUR SINCE THE RAVAGER TREE REWORK OF 2026-11-24: the two clauses this
+	// test is about, unconditioned, and the third sentence's two under 50 or
+	// more Fervour. The two clauses are the unconditioned rows.
+	if (!TestEqual(TEXT("Nothing Moves You grants four rows"), Effects.Num(), 4))
 	{
 		return false;
 	}
 	TSet<FString> Stats;
+	int32 Conditioned = 0;
 	for (const FCataclysmPassiveEffectRow* Row : Effects)
 	{
-		Stats.Add(Row->Stat);
 		TestEqual(TEXT("each stated flat"), Row->ValueKind,
 				  FString(TEXT("flat")));
-		TestEqual(TEXT("and carrying no condition"), Row->Condition, FString());
+		if (Row->Condition.IsEmpty())
+		{
+			Stats.Add(Row->Stat);
+		}
+		else
+		{
+			++Conditioned;
+			TestEqual(TEXT("the third sentence's rows ask for 50 or more Fervour"), Row->Condition,
+					  FString(TEXT("class_resource_points_at_least")));
+		}
 	}
+	TestEqual(TEXT("two clauses carry no condition"), Stats.Num(), 2);
+	TestEqual(TEXT("and two rows are the third sentence's"), Conditioned, 2);
 	TestTrue(TEXT("one is the resistance that halves an effect's length"),
 			 Stats.Contains(
 				 FString(UCataclysmSkillEffects::CrowdControlResistanceStat)));
@@ -16445,13 +16522,18 @@ bool FCataclysmSetAgainstItTest::RunTest(const FString&)
 		return AbilitySystem->IncreasesForStat(FName(Stat),
 											   FGameplayTagContainer());
 	};
+	// THE DAMAGE REDUCTION ROW IS FLAT SINCE THE RAVAGER TREE REWORK OF
+	// 2026-11-24 ("+1% Damage Reduction ... per point", the owner's ruling that
+	// such nodes give flat points), so it is read as the figure the stat comes
+	// to rather than as an increase: the class line's base and the row's points.
+	const auto FigureOf = [AbilitySystem](const TCHAR* Stat)
+	{
+		return AbilitySystem->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f);
+	};
 
 	// ONE SHORT OF WHAT THE ROW ASKS FOR: neither bonus is there.
 	HoldFervour(Threshold - 1.0f);
-	TestEqual(*FString::Printf(
-				  TEXT("at %.0f Fervour there is no damage reduction bonus"),
-				  Threshold - 1.0f),
-			  IncreaseIn(TEXT("damage_reduction")), 0.0f, 0.0001f);
+	const float ReductionBelow = FigureOf(TEXT("damage_reduction"));
 	TestEqual(*FString::Printf(
 				  TEXT("and no attack damage bonus at %.0f"), Threshold - 1.0f),
 			  IncreaseIn(TEXT("attack_damage")), 0.0f, 0.0001f);
@@ -16459,10 +16541,11 @@ bool FCataclysmSetAgainstItTest::RunTest(const FString&)
 	// AT IT: both, worth the row's own figure for every point spent.
 	HoldFervour(Threshold);
 	TestEqual(*FString::Printf(
-				  TEXT("at %.0f Fervour the damage reduction bonus is there"),
+				  TEXT("at %.0f Fervour the damage reduction rises by the row's points, "
+					   "and below it did not"),
 				  Threshold),
-			  IncreaseIn(TEXT("damage_reduction")),
-			  ReductionPerPoint * Points / 100.0f, 0.0001f);
+			  FigureOf(TEXT("damage_reduction")) - ReductionBelow,
+			  ReductionPerPoint * Points, 0.0001f);
 	TestEqual(*FString::Printf(TEXT("and the attack damage bonus at %.0f"),
 							   Threshold),
 			  IncreaseIn(TEXT("attack_damage")),
@@ -16535,8 +16618,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWeightBearingRowTest,
  * `Ravager_keystone_a_kC` Weight Bearing, from its row, on a real Ravager.
  * Issue #1515.
  *
- * "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you
- * have."
+ * "Your Maximum Health also grants Armor: 1 Armor for every 4 maximum health you
+ * have." Every 10 until the Ravager tree rework of 2026-11-24; the step is read
+ * off the row, so nothing below states it.
  *
  * THE ARMOUR IS ASKED FOR THE WAY A BLOW ASKS FOR IT. A scaled row is never
  * folded into the armour attribute, so reading the attribute would read no grant
@@ -17449,29 +17533,26 @@ bool FCataclysmPassiveKeptLongerOnARealCharacterTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeeperHurtOnARealCharacterTest,
-	"Cataclysm.Passives.DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies",
+	"Cataclysm.Passives.DeeperHurtPassesTheCrippleAndWeakenARealRavagerAppliedWhenItsCarrierDies",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ravager_basic_c_stem2` Deeper Hurt, from its row, on a real Ravager.
  *
- * "+3% increased duration of Cripple and Weaken you apply per point."
+ * "When an enemy you have Crippled or Weakened dies, its Cripple and Weaken pass
+ * to the nearest enemy within 1 metre per point." The Ravager tree rework of
+ * 2026-11-24; until then the node read "+3% increased duration of Cripple and
+ * Weaken you apply per point", and this test measured that. The duration stat it
+ * granted keeps its reader and its probe and no longer has a row.
  *
- * ATTRITION IS HELD THROUGHOUT, so every melee blow over a tenth of the
- * target's maximum health Cripples and Weakens, and Deeper Hurt is the only
- * thing that changes between the readings. Both nodes are spent through the
- * player state; nothing is granted by hand, so this fails while the row is
- * missing.
+ * ATTRITION IS HELD THROUGHOUT, so a melee blow over a tenth of the target's
+ * maximum health Cripples and Weakens it. Both nodes are spent through the player
+ * state; nothing is granted by hand, so this fails while the row is missing. The
+ * blow is a real one, and the death is the game's own: the victim's health set to
+ * nought, which runs `ACataclysmEnemyCharacter::HandleDeath`.
  *
- * RATIOS, NOT SECONDS. What a debuff lasts on the target also passes through
- * the target's own `DurationOn`; the same kind of enemy is struck each time, so
- * that cancels and only the applier's figure is left.
- *
- * AND A SPREAD COPY KEEPS THE ROW'S DURATION, by a ruling of 2026-09-23 under
- * the project owner's delegation: a debuff copied to another enemy is not
- * "Cripple and Weaken you apply". With the points still spent, a Cripple and a
- * Weaken copied by `UCataclysmContagion::SpreadOne` last what the unspent
- * character's did.
+ * THE CONTROL IS THE SAME SCENE WITH NO POINT IN DEEPER HURT: the victim's
+ * neighbour catches nothing.
  */
 bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
 {
@@ -17514,18 +17595,14 @@ bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
 		return false;
 	}
 	const FCataclysmPassiveEffectRow* Row = Effects[0];
-	TestEqual(TEXT("on the duration of a Cripple and a Weaken applied"),
-			  Row->Stat, FString(UCataclysmAilments::CrippleAndWeakenDurationStat));
-	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
-			  FString(TEXT("increased")));
+	TestEqual(TEXT("on the radius a Cripple and a Weaken pass within"),
+			  Row->Stat, FString(UCataclysmDebuffs::SpreadOnDeathMetresStat));
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("a metre a point"), Row->ValuePerPoint, 1.0f);
 	TestEqual(TEXT("under no condition"), Row->Condition, FString());
-	TestEqual(TEXT("for every skill"), Row->RequiredTags, FString());
-	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
-								   Row->ValuePerPoint),
-				  Row->ValuePerPoint > 0.0f)
-		|| !TestEqual(TEXT("and Attrition still carries its two rows"),
-					  UCataclysmPassiveTree::EffectsFor(Player.EffectTable,
-													   Attrition).Num(), 2))
+	if (!TestEqual(TEXT("and Attrition still carries its two rows"),
+				   UCataclysmPassiveTree::EffectsFor(Player.EffectTable,
+													Attrition).Num(), 2))
 	{
 		return false;
 	}
@@ -17556,21 +17633,9 @@ bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
 			Combat::GetAttackDamageAttribute(), 1000.0f);
 	};
 
-	const auto SecondsLeftOn = [](const UAbilitySystemComponent* System,
-								  const FGameplayTag& Tag)
-	{
-		float Longest = 0.0f;
-		for (const float Seconds : System->GetActiveEffectsTimeRemaining(
-				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
-					 FGameplayTagContainer(Tag))))
-		{
-			Longest = FMath::Max(Longest, Seconds);
-		}
-		return Longest;
-	};
-
-	// A FRESH, UNDEFENDED ENEMY WITH A POOL A 1000 BLOW TAKES A QUARTER OF.
-	const auto FreshEnemy = [&]() -> ACataclysmEnemyCharacter*
+	// AN UNDEFENDED MONSTER WITH A POOL A 1000 BLOW TAKES A QUARTER OF, WHERE IT IS
+	// TOLD TO STAND.
+	const auto MonsterAt = [&](const FVector& Where) -> ACataclysmEnemyCharacter*
 	{
 		ACataclysmEnemyCharacter* Enemy = SpawnUndefendedEnemy(World);
 		UAbilitySystemComponent* System =
@@ -17580,90 +17645,64 @@ bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
 			AddError(TEXT("An enemy could not be spawned."));
 			return nullptr;
 		}
+		Enemy->SetActorLocation(Where);
+		Enemy->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 		System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 4000.0f);
 		System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 4000.0f);
 		return Enemy;
 	};
 
-	struct FLasting
-	{
-		float Cripple = 0.0f;
-		float Weaken = 0.0f;
-	};
+	// ATTRITION'S CHANCE IS THE WHOLE ROLL; PINNED AT NOUGHT all the same.
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
 
-	// ONE MELEE BLOW, and how long each debuff it applied lasts.
-	const auto Strike = [&]()
+	// ONE SCENE: the victim struck and killed with its neighbour two metres off;
+	// answers whether the neighbour caught each.
+	struct FCaught
 	{
-		FLasting Out;
-		ACataclysmEnemyCharacter* Enemy = FreshEnemy();
-		if (!Enemy)
+		bool bStruckCarriedBoth = false;
+		bool bCripple = false;
+		bool bWeaken = false;
+	};
+	const auto Scene = [&](float Along) -> FCaught
+	{
+		FCaught Out;
+		ACataclysmEnemyCharacter* Victim = MonsterAt(FVector(500.0f, Along, 0.0f));
+		ACataclysmEnemyCharacter* Neighbour = MonsterAt(FVector(700.0f, Along, 0.0f));
+		if (!Victim || !Neighbour)
 		{
 			return Out;
 		}
-		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy,
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim,
 										 /*DamagePercent=*/100.0f, Melee);
-		const UAbilitySystemComponent* System = Enemy->GetAbilitySystemComponent();
-		Out.Cripple = SecondsLeftOn(System, CrippleTag);
-		Out.Weaken = SecondsLeftOn(System, WeakenTag);
-		Enemy->Destroy();
+		Out.bStruckCarriedBoth = UCataclysmSkillEffects::HasTag(Victim, CrippleTag)
+			&& UCataclysmSkillEffects::HasTag(Victim, WeakenTag);
+		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			Vital::GetHealthAttribute(), 0.0f);
+		Out.bCripple = UCataclysmSkillEffects::HasTag(Neighbour, CrippleTag);
+		Out.bWeaken = UCataclysmSkillEffects::HasTag(Neighbour, WeakenTag);
+		Neighbour->Destroy();
 		return Out;
 	};
 
-	// ATTRITION'S CHANCE IS THE WHOLE ROLL; PINNED AT NOUGHT all the same, so
-	// the roll is never what this test is about.
-	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
-
-	constexpr int32 Points = 5;
-	const float Longer = 1.0f + Row->ValuePerPoint * Points / 100.0f;
-
 	Spend(0);
-	const FLasting Unspent = Strike();
-	if (!TestTrue(*FString::Printf(
-					  TEXT("with Attrition alone the blow Cripples and Weakens: "
-						   "%.2f and %.2f seconds"),
-					  Unspent.Cripple, Unspent.Weaken),
-				  Unspent.Cripple > 0.0f && Unspent.Weaken > 0.0f))
+	const FCaught Unspent = Scene(0.0f);
+	Spend(6);
+	const FCaught Spent = Scene(3000.0f);
+	AddInfo(FString::Printf(TEXT("DEEPER HURT ROW: unspent %d %d %d, six points %d %d %d"),
+							Unspent.bStruckCarriedBoth, Unspent.bCripple, Unspent.bWeaken,
+							Spent.bStruckCarriedBoth, Spent.bCripple, Spent.bWeaken));
+
+	if (!TestTrue(TEXT("set-up: with Attrition alone the blow Cripples and Weakens"),
+				  Unspent.bStruckCarriedBoth && Spent.bStruckCarriedBoth))
 	{
 		return false;
 	}
-
-	Spend(Points);
-	const FLasting Spent = Strike();
-	TestEqual(*FString::Printf(TEXT("with %d points of Deeper Hurt the Cripple "
-									"lasts %.2f times as long"),
-							   Points, Longer),
-			  Spent.Cripple / Unspent.Cripple, Longer, 0.001f);
-	TestEqual(TEXT("and so does the Weaken"),
-			  Spent.Weaken / Unspent.Weaken, Longer, 0.001f);
-
-	// A SPREAD COPY, with the points still spent: the status row's duration.
-	for (const TPair<FGameplayTag, float>& Copied :
-		 {TPair<FGameplayTag, float>(CrippleTag, Unspent.Cripple),
-		  TPair<FGameplayTag, float>(WeakenTag, Unspent.Weaken)})
-	{
-		ACataclysmEnemyCharacter* Enemy = FreshEnemy();
-		if (!Enemy)
-		{
-			return false;
-		}
-		TestTrue(*FString::Printf(TEXT("%s is copied to a fresh enemy"),
-								  *Copied.Key.ToString()),
-				 UCataclysmContagion::SpreadOne(Player.Character, Enemy,
-												Copied.Key));
-		TestEqual(*FString::Printf(TEXT("and the copy of %s lasts what an "
-										"unspent character's does"),
-								   *Copied.Key.ToString()),
-				  SecondsLeftOn(Enemy->GetAbilitySystemComponent(), Copied.Key),
-				  Copied.Value, 0.01f);
-		Enemy->Destroy();
-	}
-
-	// AND THE POINTS GIVEN BACK, the row's own duration again.
-	Spend(0);
-	const FLasting Back = Strike();
-	TestEqual(TEXT("with the points given back the Cripple lasts as it did"),
-			  Back.Cripple, Unspent.Cripple, 0.01f);
-
+	TestFalse(TEXT("CONTROL: without Deeper Hurt the neighbour catches no Cripple"),
+			  Unspent.bCripple);
+	TestFalse(TEXT("CONTROL: nor a Weaken"), Unspent.bWeaken);
+	TestTrue(TEXT("**with six points the neighbour two metres off is Crippled**"),
+			 Spent.bCripple);
+	TestTrue(TEXT("**and Weakened**"), Spent.bWeaken);
 	return true;
 }
 

@@ -11,6 +11,8 @@
 #include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
 #include "AbilitySystem/CataclysmAreaShareOnAllies.h"
+// For the one attack speed every rack is paced by, after slows. The Ravager tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
@@ -1752,8 +1754,14 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 	const float Attribute = AbilitySystem->GetNumericAttribute(
 		UCataclysmCombatAttributeSet::GetAttackSpeedAttribute());
 	const UCataclysmAbilitySystemComponent* Asking = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
+
+	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273. AND WHAT WITHER
+	// LEAVES, multiplied with it as a separate slow. Issue #1722. Both through the one helper the basic attack's swing
+	// uses, `UCataclysmBasicAttack::AttackSpeedAfterSlows`, which also honours Relentless's "Your Movement Speed and
+	// Attack Speed cannot be reduced by any effect" (the Ravager tree rework of 2026-11-24). An ability system this
+	// project did not make carries no stat line and no flag, so it gets the attribute.
 	const float PerSecond = Asking
-		? Asking->StatForSkill(FName(TEXT("attack_speed")), SkillTags, Attribute)
+		? UCataclysmBasicAttack::AttackSpeedAfterSlows(Asking, SkillTags, Attribute, Avatar())
 		: Attribute;
 	if (PerSecond <= 0.0f)
 	{
@@ -1766,14 +1774,7 @@ float UCataclysmProjectileSkill::SecondsBetweenThrows() const
 		return Stated;
 	}
 
-	// AND WHAT CRIPPLE LEAVES OF THE RATE, FOR A PLAYER CHARACTER, as a swing's is. Issue #2273.
-	const AActor* Thrower = Avatar();
-	// AND WHAT WITHER LEAVES, multiplied with it as a separate slow. Issue #1722.
-	const float Crippled = Cast<const ACataclysmPlayerCharacter>(Thrower)
-		? UCataclysmSkillEffects::CrippleMultiplierOn(Thrower) * UCataclysmSkillEffects::WitherMultiplierOn(Thrower)
-		: 1.0f;
-
-	return Stated / (PerSecond * Crippled);
+	return Stated / PerSecond;
 }
 
 AActor* UCataclysmProjectileSkill::NextThrowTarget()

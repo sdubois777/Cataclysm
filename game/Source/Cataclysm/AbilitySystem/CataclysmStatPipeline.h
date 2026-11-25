@@ -2504,6 +2504,27 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerEnemyInReachWhileOwnStackHeld
 		UMETA(DisplayName = "Per Enemy In Reach While Own Stack Held"),
+
+	/**
+	 * `Value` per whole `ScaleStep` percentage points of INCREASED movement speed
+	 * the character has. The Ravager tree rework of 2026-11-24, Relentless: "you
+	 * gain 1% increased Attack Speed for every 2% increased Movement Speed you
+	 * have", a step of 2 on `attack_speed`.
+	 *
+	 * THE INCREASES BUCKET OF THE CHARACTER'S OWN `movement_speed` LINE, AND
+	 * NOTHING ELSE. Not the speed in metres a second, which a weapon, a slow or a
+	 * "more" row moves, and not the base: "increased Movement Speed" is the
+	 * bucket by name. Judged with the character's state, so a conditioned
+	 * movement row (Never Still out of combat, Pressing at full Fervour) counts
+	 * while it holds. A sum below nought counts nothing.
+	 *
+	 * READ FROM `FCataclysmStatConditions::IncreasedMovementSpeedPercent`, which
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills only when a row
+	 * in the list being evaluated asks for this scale, and never from a
+	 * movement row scaled by it, so the reading cannot ask for itself.
+	 */
+	PerPercentOfIncreasedMovementSpeed
+		UMETA(DisplayName = "Per Percent Of Increased Movement Speed"),
 };
 
 /**
@@ -2868,6 +2889,24 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float DamageReductionPercent = -1.0f;
+
+	/**
+	 * The character's INCREASED movement speed, the sum of that bucket in
+	 * percentage points. The Ravager tree rework of 2026-11-24, Relentless; read
+	 * by `ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed`.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, which is every state but one a lookup asking for
+	 * that scale was given: `CurrentConditions` never fills it.
+	 *
+	 * ASKED, NOT READ OFF AN ATTRIBUTE, unlike the readings above, because no
+	 * attribute holds one bucket of a stat. So it is NOT filled where those are:
+	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` fills it, and only
+	 * when a row in the list it is handed asks for the scale. The pass it runs
+	 * over the `movement_speed` line leaves out any row that itself asks for the
+	 * scale, so the reading never asks for itself.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float IncreasedMovementSpeedPercent = -1.0f;
 
 	/**
 	 * How much maximum mana the character has. Issue #1515.

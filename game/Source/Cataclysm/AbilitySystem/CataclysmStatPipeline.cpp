@@ -199,6 +199,7 @@ namespace
 		{ TEXT("seconds_leeching"),    ECataclysmStatScale::PerSecondLeeching },
 		{ TEXT("share_of_range_moved"), ECataclysmStatScale::ShareOfRangeMoved },
 		{ TEXT("enemies_in_reach_while_own_stack"), ECataclysmStatScale::PerEnemyInReachWhileOwnStackHeld },
+		{ TEXT("increased_movement_speed"), ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed },
 	};
 
 	/**
@@ -1842,6 +1843,22 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return Asking && !Modifier.StackKey.IsNone() && Asking->OwnStacksHeld(Modifier.StackKey) > 0
 			? StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres))
 			: 0.0f;
+	}
+
+	// PER WHOLE STEP OF INCREASED MOVEMENT SPEED. The Ravager tree rework of 2026-11-24, Relentless: "1% increased
+	// Attack Speed for every 2% increased Movement Speed you have" is a step of 2. The same two refusals as the
+	// readings above: an unknown reading, which is every state a lookup not asking for this scale was given, and a
+	// step of nothing. WHOLE STEPS, ROUNDED DOWN, the rule every per-point scale here follows; a sum below nought
+	// counts nothing.
+	case ECataclysmStatScale::PerPercentOfIncreasedMovementSpeed:
+	{
+		if (State.IncreasedMovementSpeedPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps =
+			FMath::FloorToFloat(State.IncreasedMovementSpeedPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 	}
 
