@@ -2,22 +2,22 @@
   "version": "1.0",
   "metadata": {
     "name": "Necromancer Class Tree",
-    "description": "Single continuous web, laid out node for node like the three Demonic trees. The Path of the Dead runs up the centre and is what fills Fervour from deaths near you; its left side grows the army and leads to the Legion, its right side hardens the commander and leads to the Grave. The Charnel and the Ossuary both open from Death Knell, the first node on the spine's right side, so each limb's keystone is a character's 8th point at the earliest. The Legion (the permanent army) upper-left, the Charnel (minions raised to explode) lower-left, the Ossuary (remains as a bonus) lower-right, the Grave (the sturdy commander) upper-right. Keystones sit at the far end of each limb and need full investment in their parent, except Lit Fuse and Bone Fuse, which open the Charnel and the Ossuary: taking one is choosing that build, and the limb's ordinary nodes improve it. The four rite capstones are the 25/50/100/200 point tiers and stand apart from the web.",
+    "description": "The Necromancer's sigil: a skull over two crossed bones. Fervour is the bridge between the eye sockets, where the bones cross behind the skull. The Path of the Dead draws the face: Wider Grave's side round the left eye socket to Harvest of the Host on the brow, with Grave Cold beside the eye and Second Death on the cheekbone; Death Knell down the nose, whose two feet are Lit Fuse and Bone Fuse, and Gravekeeper's Hide's side round the right eye socket. Each limb is one end of a bone: the Legion upper left, the Grave upper right, the Charnel lower left and the Ossuary lower right, each reached along a cheekbone from its fuse. Two branches of each are the bone's edges and end in its knobs; the third runs along the skull, the Legion's and the Grave's over the dome to the crown, the Charnel's and the Ossuary's round the jaw. The four rites stand in a column on the left. Positions only: every node and edge is the revised tree's.",
     "createdAt": "2026-11-24T00:00:00.000Z",
     "updatedAt": "2026-11-24T00:00:00.000Z",
     "pointBudget": 230
   },
   "viewport": {
-    "x": 1200.0,
-    "y": 200.0,
+    "x": 810.0,
+    "y": 450.0,
     "zoom": 0.45
   },
   "nodes": [
     {
       "id": "basic_spine_000",
       "position": {
-        "x": 0,
-        "y": 780
+        "x": 0.0,
+        "y": -70.0
       },
       "type": "basic",
       "data": {
@@ -38,8 +38,8 @@
     {
       "id": "basic_spine_001",
       "position": {
-        "x": -450,
-        "y": 648
+        "x": -122.1,
+        "y": 7.7
       },
       "type": "basic",
       "data": {
@@ -60,8 +60,8 @@
     {
       "id": "basic_spine_002",
       "position": {
-        "x": 675,
-        "y": 648
+        "x": 0.0,
+        "y": 80.0
       },
       "type": "basic",
       "data": {
@@ -82,8 +82,8 @@
     {
       "id": "basic_spine_003",
       "position": {
-        "x": -300,
-        "y": 516
+        "x": -290.4,
+        "y": 72.3
       },
       "type": "basic",
       "data": {
@@ -104,8 +104,8 @@
     {
       "id": "basic_spine_004",
       "position": {
-        "x": -300,
-        "y": 384
+        "x": -408.4,
+        "y": -7.3
       },
       "type": "basic",
       "data": {
@@ -126,8 +126,8 @@
     {
       "id": "basic_spine_005",
       "position": {
-        "x": 900,
-        "y": 516
+        "x": 122.1,
+        "y": 7.7
       },
       "type": "basic",
       "data": {
@@ -148,8 +148,8 @@
     {
       "id": "basic_spine_006",
       "position": {
-        "x": -375,
-        "y": 252
+        "x": -419.9,
+        "y": -171.2
       },
       "type": "basic",
       "data": {
@@ -170,8 +170,8 @@
     {
       "id": "basic_spine_007",
       "position": {
-        "x": 900,
-        "y": 384
+        "x": 302.3,
+        "y": 69.8
       },
       "type": "basic",
       "data": {
@@ -192,8 +192,8 @@
     {
       "id": "basic_spine_008",
       "position": {
-        "x": -375,
-        "y": 120
+        "x": -302.3,
+        "y": -269.8
       },
       "type": "basic",
       "data": {
@@ -214,8 +214,8 @@
     {
       "id": "basic_spine_009",
       "position": {
-        "x": 900,
-        "y": 252
+        "x": 432.3,
+        "y": -69.6
       },
       "type": "basic",
       "data": {
@@ -236,8 +236,8 @@
     {
       "id": "basic_spine_010",
       "position": {
-        "x": -150,
-        "y": -12
+        "x": -147.5,
+        "y": -234.1
       },
       "type": "basic",
       "data": {
@@ -258,8 +258,8 @@
     {
       "id": "keystone_spine_001",
       "position": {
-        "x": 150,
-        "y": 516
+        "x": -320.0,
+        "y": 200.0
       },
       "type": "keystone",
       "data": {
@@ -280,8 +280,8 @@
     {
       "id": "keystone_spine_002",
       "position": {
-        "x": 0,
-        "y": 252
+        "x": -630.0,
+        "y": -5.0
       },
       "type": "keystone",
       "data": {
@@ -302,8 +302,8 @@
     {
       "id": "keystone_spine_003",
       "position": {
-        "x": -150,
-        "y": -144
+        "x": 0.0,
+        "y": -305.0
       },
       "type": "keystone",
       "data": {
@@ -324,8 +324,8 @@
     {
       "id": "basic_lg_stem0",
       "position": {
-        "x": -450,
-        "y": -12
+        "x": -410.0,
+        "y": -320.0
       },
       "type": "basic",
       "data": {
@@ -346,8 +346,8 @@
     {
       "id": "basic_lg_stem1",
       "position": {
-        "x": -450,
-        "y": -144
+        "x": -519.6,
+        "y": -240.0
       },
       "type": "basic",
       "data": {
@@ -368,8 +368,8 @@
     {
       "id": "basic_lg_stem2",
       "position": {
-        "x": -300,
-        "y": -276
+        "x": -491.7,
+        "y": -386.5
       },
       "type": "basic",
       "data": {
@@ -390,8 +390,8 @@
     {
       "id": "basic_lg_a0",
       "position": {
-        "x": -600,
-        "y": -276
+        "x": -596.3,
+        "y": -157.2
       },
       "type": "basic",
       "data": {
@@ -412,8 +412,8 @@
     {
       "id": "basic_lg_a1",
       "position": {
-        "x": -600,
-        "y": -408
+        "x": -804.1,
+        "y": -277.2
       },
       "type": "basic",
       "data": {
@@ -434,8 +434,8 @@
     {
       "id": "basic_lg_a2",
       "position": {
-        "x": -600,
-        "y": -540
+        "x": -1012.0,
+        "y": -397.2
       },
       "type": "basic",
       "data": {
@@ -456,8 +456,8 @@
     {
       "id": "basic_lg_b0",
       "position": {
-        "x": -450,
-        "y": -276
+        "x": -649.5,
+        "y": -315.0
       },
       "type": "basic",
       "data": {
@@ -478,8 +478,8 @@
     {
       "id": "basic_lg_b1",
       "position": {
-        "x": -450,
-        "y": -408
+        "x": -803.2,
+        "y": -403.8
       },
       "type": "basic",
       "data": {
@@ -500,8 +500,8 @@
     {
       "id": "basic_lg_b2",
       "position": {
-        "x": -450,
-        "y": -540
+        "x": -957.0,
+        "y": -492.5
       },
       "type": "basic",
       "data": {
@@ -522,8 +522,8 @@
     {
       "id": "basic_lg_c0",
       "position": {
-        "x": -300,
-        "y": -408
+        "x": -409.8,
+        "y": -517.0
       },
       "type": "basic",
       "data": {
@@ -544,8 +544,8 @@
     {
       "id": "basic_lg_c1",
       "position": {
-        "x": -300,
-        "y": -540
+        "x": -283.2,
+        "y": -617.4
       },
       "type": "basic",
       "data": {
@@ -566,8 +566,8 @@
     {
       "id": "keystone_lg_kA",
       "position": {
-        "x": -600,
-        "y": -672
+        "x": -1181.0,
+        "y": -454.4
       },
       "type": "keystone",
       "data": {
@@ -588,8 +588,8 @@
     {
       "id": "keystone_lg_kB",
       "position": {
-        "x": -450,
-        "y": -672
+        "x": -1091.0,
+        "y": -610.3
       },
       "type": "keystone",
       "data": {
@@ -610,8 +610,8 @@
     {
       "id": "keystone_lg_kC",
       "position": {
-        "x": -300,
-        "y": -672
+        "x": -125.8,
+        "y": -676.6
       },
       "type": "keystone",
       "data": {
@@ -632,8 +632,8 @@
     {
       "id": "basic_ch_stem0",
       "position": {
-        "x": -900,
-        "y": 516
+        "x": -112.0,
+        "y": 235.0
       },
       "type": "keystone",
       "data": {
@@ -654,8 +654,8 @@
     {
       "id": "basic_ch_stem1",
       "position": {
-        "x": -900,
-        "y": 384
+        "x": -467.7,
+        "y": 330.0
       },
       "type": "basic",
       "data": {
@@ -676,8 +676,8 @@
     {
       "id": "basic_ch_stem2",
       "position": {
-        "x": -750,
-        "y": 252
+        "x": -544.3,
+        "y": 247.2
       },
       "type": "basic",
       "data": {
@@ -698,8 +698,8 @@
     {
       "id": "basic_ch_a0",
       "position": {
-        "x": -1050,
-        "y": 252
+        "x": -597.6,
+        "y": 405.0
       },
       "type": "basic",
       "data": {
@@ -720,8 +720,8 @@
     {
       "id": "basic_ch_a1",
       "position": {
-        "x": -1050,
-        "y": 120
+        "x": -777.3,
+        "y": 508.7
       },
       "type": "basic",
       "data": {
@@ -742,8 +742,8 @@
     {
       "id": "basic_ch_a2",
       "position": {
-        "x": -1050,
-        "y": -12
+        "x": -957.0,
+        "y": 612.5
       },
       "type": "basic",
       "data": {
@@ -764,8 +764,8 @@
     {
       "id": "basic_ch_b0",
       "position": {
-        "x": -900,
-        "y": 252
+        "x": -410.6,
+        "y": 488.1
       },
       "type": "basic",
       "data": {
@@ -786,8 +786,8 @@
     {
       "id": "basic_ch_b1",
       "position": {
-        "x": -900,
-        "y": 120
+        "x": -275.2,
+        "y": 589.6
       },
       "type": "basic",
       "data": {
@@ -808,8 +808,8 @@
     {
       "id": "basic_ch_b2",
       "position": {
-        "x": -900,
-        "y": -12
+        "x": -109.9,
+        "y": 637.7
       },
       "type": "basic",
       "data": {
@@ -830,8 +830,8 @@
     {
       "id": "basic_ch_c0",
       "position": {
-        "x": -750,
-        "y": 120
+        "x": -778.1,
+        "y": 382.2
       },
       "type": "basic",
       "data": {
@@ -852,8 +852,8 @@
     {
       "id": "basic_ch_c1",
       "position": {
-        "x": -750,
-        "y": -12
+        "x": -1012.0,
+        "y": 517.2
       },
       "type": "basic",
       "data": {
@@ -874,8 +874,8 @@
     {
       "id": "keystone_ch_kA",
       "position": {
-        "x": -1050,
-        "y": -144
+        "x": -1091.0,
+        "y": 730.3
       },
       "type": "keystone",
       "data": {
@@ -896,8 +896,8 @@
     {
       "id": "keystone_ch_kC",
       "position": {
-        "x": -750,
-        "y": -144
+        "x": -1181.0,
+        "y": 574.4
       },
       "type": "keystone",
       "data": {
@@ -918,8 +918,8 @@
     {
       "id": "basic_os_stem0",
       "position": {
-        "x": 450,
-        "y": 516
+        "x": 112.0,
+        "y": 235.0
       },
       "type": "keystone",
       "data": {
@@ -940,8 +940,8 @@
     {
       "id": "basic_os_stem1",
       "position": {
-        "x": 450,
-        "y": 384
+        "x": 467.7,
+        "y": 330.0
       },
       "type": "basic",
       "data": {
@@ -962,8 +962,8 @@
     {
       "id": "basic_os_stem2",
       "position": {
-        "x": 600,
-        "y": 252
+        "x": 544.3,
+        "y": 247.2
       },
       "type": "basic",
       "data": {
@@ -984,8 +984,8 @@
     {
       "id": "basic_os_a0",
       "position": {
-        "x": 300,
-        "y": 252
+        "x": 410.6,
+        "y": 488.1
       },
       "type": "basic",
       "data": {
@@ -1006,8 +1006,8 @@
     {
       "id": "basic_os_a1",
       "position": {
-        "x": 300,
-        "y": 120
+        "x": 275.2,
+        "y": 589.6
       },
       "type": "basic",
       "data": {
@@ -1028,8 +1028,8 @@
     {
       "id": "basic_os_a2",
       "position": {
-        "x": 300,
-        "y": -12
+        "x": 109.9,
+        "y": 637.7
       },
       "type": "basic",
       "data": {
@@ -1050,8 +1050,8 @@
     {
       "id": "basic_os_b0",
       "position": {
-        "x": 450,
-        "y": 252
+        "x": 597.6,
+        "y": 405.0
       },
       "type": "basic",
       "data": {
@@ -1072,8 +1072,8 @@
     {
       "id": "basic_os_b1",
       "position": {
-        "x": 450,
-        "y": 120
+        "x": 777.3,
+        "y": 508.7
       },
       "type": "basic",
       "data": {
@@ -1094,8 +1094,8 @@
     {
       "id": "basic_os_b2",
       "position": {
-        "x": 450,
-        "y": -12
+        "x": 957.0,
+        "y": 612.5
       },
       "type": "basic",
       "data": {
@@ -1116,8 +1116,8 @@
     {
       "id": "basic_os_c0",
       "position": {
-        "x": 600,
-        "y": 120
+        "x": 778.1,
+        "y": 382.2
       },
       "type": "basic",
       "data": {
@@ -1138,8 +1138,8 @@
     {
       "id": "basic_os_c1",
       "position": {
-        "x": 600,
-        "y": -12
+        "x": 1012.0,
+        "y": 517.2
       },
       "type": "basic",
       "data": {
@@ -1160,8 +1160,8 @@
     {
       "id": "keystone_os_kB",
       "position": {
-        "x": 450,
-        "y": -144
+        "x": 1091.0,
+        "y": 730.3
       },
       "type": "keystone",
       "data": {
@@ -1182,8 +1182,8 @@
     {
       "id": "keystone_os_kC",
       "position": {
-        "x": 600,
-        "y": -144
+        "x": 1181.0,
+        "y": 574.4
       },
       "type": "keystone",
       "data": {
@@ -1204,8 +1204,8 @@
     {
       "id": "capstone_25",
       "position": {
-        "x": -1500,
-        "y": 780
+        "x": -1631.0,
+        "y": -70.0
       },
       "type": "capstone",
       "data": {
@@ -1243,8 +1243,8 @@
     {
       "id": "capstone_50",
       "position": {
-        "x": -1500,
-        "y": 540
+        "x": -1631.0,
+        "y": -310.0
       },
       "type": "capstone",
       "data": {
@@ -1282,8 +1282,8 @@
     {
       "id": "capstone_100",
       "position": {
-        "x": -1500,
-        "y": 300
+        "x": -1631.0,
+        "y": -550.0
       },
       "type": "capstone",
       "data": {
@@ -1321,8 +1321,8 @@
     {
       "id": "capstone_200",
       "position": {
-        "x": -1500,
-        "y": 60
+        "x": -1631.0,
+        "y": -790.0
       },
       "type": "capstone",
       "data": {
@@ -1360,8 +1360,8 @@
     {
       "id": "basic_gr_stem0",
       "position": {
-        "x": 900,
-        "y": 120
+        "x": 357.9,
+        "y": -245.1
       },
       "type": "basic",
       "data": {
@@ -1382,8 +1382,8 @@
     {
       "id": "basic_gr_stem1",
       "position": {
-        "x": 900,
-        "y": -12
+        "x": 519.6,
+        "y": -240.0
       },
       "type": "basic",
       "data": {
@@ -1404,8 +1404,8 @@
     {
       "id": "basic_gr_stem2",
       "position": {
-        "x": 975,
-        "y": -144
+        "x": 623.5,
+        "y": -300.0
       },
       "type": "basic",
       "data": {
@@ -1426,8 +1426,8 @@
     {
       "id": "basic_gr_a0",
       "position": {
-        "x": 750,
-        "y": -144
+        "x": 491.7,
+        "y": -386.5
       },
       "type": "basic",
       "data": {
@@ -1448,8 +1448,8 @@
     {
       "id": "basic_gr_a1",
       "position": {
-        "x": 750,
-        "y": -276
+        "x": 409.8,
+        "y": -517.0
       },
       "type": "basic",
       "data": {
@@ -1470,8 +1470,8 @@
     {
       "id": "basic_gr_a2",
       "position": {
-        "x": 750,
-        "y": -408
+        "x": 283.2,
+        "y": -617.4
       },
       "type": "basic",
       "data": {
@@ -1492,8 +1492,8 @@
     {
       "id": "keystone_gr_kA",
       "position": {
-        "x": 750,
-        "y": -540
+        "x": 125.8,
+        "y": -676.6
       },
       "type": "keystone",
       "data": {
@@ -1514,8 +1514,8 @@
     {
       "id": "basic_gr_b0",
       "position": {
-        "x": 900,
-        "y": -276
+        "x": 753.4,
+        "y": -375.0
       },
       "type": "basic",
       "data": {
@@ -1536,8 +1536,8 @@
     {
       "id": "basic_gr_b1",
       "position": {
-        "x": 900,
-        "y": -408
+        "x": 855.2,
+        "y": -433.7
       },
       "type": "basic",
       "data": {
@@ -1558,8 +1558,8 @@
     {
       "id": "basic_gr_b2",
       "position": {
-        "x": 900,
-        "y": -540
+        "x": 957.0,
+        "y": -492.5
       },
       "type": "basic",
       "data": {
@@ -1580,8 +1580,8 @@
     {
       "id": "keystone_gr_kB",
       "position": {
-        "x": 900,
-        "y": -672
+        "x": 1091.0,
+        "y": -610.3
       },
       "type": "keystone",
       "data": {
@@ -1602,8 +1602,8 @@
     {
       "id": "basic_gr_c0",
       "position": {
-        "x": 1050,
-        "y": -276
+        "x": 700.2,
+        "y": -217.2
       },
       "type": "basic",
       "data": {
@@ -1624,8 +1624,8 @@
     {
       "id": "basic_gr_c1",
       "position": {
-        "x": 1050,
-        "y": -408
+        "x": 1012.0,
+        "y": -397.2
       },
       "type": "basic",
       "data": {
@@ -1646,8 +1646,8 @@
     {
       "id": "keystone_gr_kC",
       "position": {
-        "x": 1050,
-        "y": -540
+        "x": 1181.0,
+        "y": -454.4
       },
       "type": "keystone",
       "data": {
@@ -1671,8 +1671,8 @@
       "id": "ui_textLabel_frame_1",
       "type": "ui_textLabel",
       "position": {
-        "x": -120.0,
-        "y": 1400.0
+        "x": -95.0,
+        "y": 820.0
       },
       "zIndex": -1,
       "dragHandle": ".ui-drag-handle",
