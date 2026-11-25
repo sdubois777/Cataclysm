@@ -19,10 +19,12 @@ Decisions made outside the Google Drive documents, newest first.
 - `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`, `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`,
   `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` and `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`: the
   account record version 8, the character record version 18.
-- `game/Tests/SaveFixtures/Account_v8.json`, new, and `game/Tests/SaveFixtures/README.md`.
+- `game/Tests/SaveFixtures/Account_v8.json` and `game/Tests/SaveFixtures/Character_v18.json`, new, and
+  `game/Tests/SaveFixtures/README.md`.
 - `game/Source/Cataclysm/Tests/CataclysmForgeGoldNodesTests.cpp`, new; `game/Source/Cataclysm/Tests/
   CataclysmSaveFixtures.h`; `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`; seven test files that read the
-  committed account file.
+  committed account file; ten that read the committed character file and nine that run an older character file
+  through the chain (fourteen files in all, listed under "On skill selection").
 - `tools/generate_datatables.py`, `game/Data/EmpireTreeNodes.csv` and `game/Data/EmpireTreeEffects.csv`.
 - `tools/tests/test_forge_gold_nodes.py`, new; `tools/tests/test_empire_tree_effects_match_their_texts.py`,
   `tools/tests/test_empire_tree_tables_match_the_tree_file.py` and `tools/tests/test_empire_tree_on_the_account_record.py`.
@@ -30,18 +32,18 @@ Decisions made outside the Google Drive documents, newest first.
 
 Issue [#47](https://github.com/sdubois777/Cataclysm/issues/47). Written on `feat/forge-gold-nodes-f6a`, on top of
 `feat/forge-w1` (#47 slice F6, the forge's two milestone options, and #2857, the capital's days, rebased onto
-development `5f302b0a7`).
+development `5f302b0a7`). **Rebuilt on 2026-11-25 as `feat/forge-f6-f6a-2857`**, the three on development `eb34af972`
+(skill selection, #837, PR #2891), one branch for one window (#47 slice F6's entry, "One window").
 
 ### SAID FIRST
 
 - **WRITTEN WITHOUT A BUILD.** Nothing here has been compiled.
-- **THE CHARACTER RECORD STEP IS WRITTEN 17 TO 18, AHEAD OF 17.** The coordinating session's direction of 2026-11-24:
-  the skill selection slice (the level-1 session's, approved by the owner that day) takes 16 to 17 and lands first, so
-  this slice writes `Migrate_17_to_18` and `SchemaVersionNow = 18`. **Until skill selection is on this branch, the
-  character record names version 18 with no step from 16**: an older character file cannot migrate, and the character
-  tests and Python checks that read the record's version fail (listed under "Registered"). The character's version 18
-  files (`Character_v18.json`, `AddTheCharactersVersion18Defaults` and the chain calls) are made when 17's are here to
-  build on. The account record has no such gap: 7 to 8, done whole.
+- **THE CHARACTER RECORD STEP IS 17 TO 18, AFTER SKILL SELECTION'S 16 TO 17.** The coordinating session's direction of
+  2026-11-24: the skill selection slice (the level-1 session's, approved by the owner that day) takes 16 to 17 and lands
+  first, so this slice wrote `Migrate_17_to_18` and `SchemaVersionNow = 18` ahead of it. Skill selection merged on
+  2026-11-25 (PR #2891, development `eb34af972`), and the character's version 18 files were then made on it ("On skill
+  selection", below). Until then the record named version 18 with no step from 16, and the commit `a1cee5016` still
+  does; the branch's head does not. The account record step is 7 to 8, unchanged.
 - **THE PRICING IS A FACTOR FOR EACH MATERIAL TIER, AND THE CRAFT CODE DRAWS FORGE UPGRADES, NOT THE PLAN.** The plan of
   2026-11-24 put the tree's bonuses, the walk-seed mask and the day in `FCataclysmForgePricing` and drew Forge Upgrades
   inside `Apply`. As written, `UCataclysmForgeCraft::PricingFor` draws it once for the craft from the item and the day
@@ -123,12 +125,15 @@ That's fine". So reading A stands: at 10 node points 30% is reached after 30 Tre
 | `AnOptionsGoldIsDiscountedAtItsOwnMaterialsTier` | the Stabilizer at tier 3's 0.8, the Shard at tier 2's 0.5; CONTROL at full |
 | `ForgeUpgradesDrawsOnceForAnItemOnADay` | same item and day, same seed; another day, another; 1 lands, 0 does not; at 0.5 some of 40 days land |
 | `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` | in a world: 4,500 at full, 3,060 with Workshop Upgrades and Apprentice Oversight, the count rising by the price paid; a refused upgrade counts and charges nothing; Forge Upgrades 4,050 when drawn, 4,500 when not |
-| `AnOlderAccountStartsTheForgeCountAtNothingAndTheCommittedOneReadsIt` | `Account_v7.json` migrates to 0 keeping its 75,000.5; `Account_v8.json` is read with 62,500.25 |
+| `AnOlderRecordStartsTheForgeCountAtNothingAndTheCommittedOnesReadTheirs` | `Account_v7.json` migrates to 0 keeping its 75,000.5, and `Character_v17.json` to 0 keeping its 50,000.25; `Account_v8.json` is read with 62,500.25 and `Character_v18.json` with 41,250.75 |
 
 Python: `tools/tests/test_forge_gold_nodes.py`, eight checks (the list at its top). The two tree checks count 124 built
 nodes and two more caps and pin the 25 points built in slice 11; `test_empire_tree_on_the_account_record.py` reads
-`Account_v8.json`. Every test that read `Account_v7.json` as the committed file reads `Account_v8.json`, and the three
-chain tests add `AddTheAccountsVersion8Defaults`.
+`Account_v8.json` and `Character_v18.json`. Every test that read `Account_v7.json` as the committed file reads
+`Account_v8.json`, and the three chain tests add `AddTheAccountsVersion8Defaults`; every test that read
+`Character_v17.json` as the committed file reads `Character_v18.json`, and the nine chain tests add
+`AddTheCharactersVersion18Defaults`. The G8 test was named `AnOlderAccountStartsTheForgeCountAtNothingAndTheCommittedOneReadsIt`
+until it read the character files too.
 
 ### Registered
 
@@ -154,10 +159,11 @@ chain tests add `AddTheAccountsVersion8Defaults`.
   `test_save_migrations_are_single_steps.py`'s `test_every_schema_version_has_a_committed_example_file` ("there is no
   Character_v17.json").
 
-**For the window.** **THIS SLICE IS NOT READY FOR A WINDOW UNTIL SKILL SELECTION'S CHARACTER STEP 16 TO 17 IS ON ITS
-BRANCH**: before that, every character save test that migrates a file fails. Then it is rebased onto it, its
-character files are made (`Character_v18.json` from `Character_v17.json`, `AddTheCharactersVersion18Defaults` after
-each version 17 call), and it rides in the forge window with #47 slice F6 and #2857 if that window has not run:
+**Those four failures were the state at `29c13a0ce`, before skill selection.** "On skill selection", below, has the
+suite on the rebuilt branch.
+
+**For the window**, as registered on 2026-11-24 and kept on the rebuilt branch (the window's registration is in #47 slice
+F6's entry, "One window"):
 - **The editor step** regenerates `DT_EmpireTreeNodes` and `DT_EmpireTreeEffects`, which F6 already needs.
 - **`Cataclysm.ForgeGoldNodes.` alone: 8.** The whole suite gains 8.
 - **Three C++ guard proofs**, each narrowed to `Cataclysm.ForgeGoldNodes.`, each anchor once on the branch:
@@ -167,6 +173,68 @@ each version 17 call), and it rides in the forge window with #47 slice F6 and #2
 | CF1 | `CataclysmEmpireTree.cpp` | `FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap)` read as `FMath::Clamp(Reduced, 0.0f, 1.0f)` | 7, 1: `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` |
 | CF2 | `CataclysmForge.cpp` | `UpgradeOf`'s `Out.Gold = Pricing.Apply(Out.Gold, Out.Stone);` removed | 6, 2: `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt`, `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
 | CF3 | `CataclysmForgeCraft.cpp` | `DoItemCraft`'s `CountTheForgeGold(WorldContext, Step.Gold);` removed | 7, 1: `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+
+### On skill selection (2026-11-25)
+
+By the coordinating session's instruction of 2026-11-25: skill selection merged (PR #2891, development `eb34af972`, the
+character record at 17), so this slice was rebuilt on it with #47 slice F6 and #2857 beneath it, as a new branch,
+`feat/forge-f6-f6a-2857`, with no force push. **It is one branch for one window**: `feat/forge-w1` (`dd214c07c`, F6 and
+#2857) and `feat/forge-gold-nodes-f6a` (`b426b7d60`, this slice on `feat/forge-w1`'s `31689adba`) are both replaced by
+it. `feat/forge-w1`'s registration commit `dd214c07c` was not carried; F6's entry has the new registration.
+
+**The rebase.** `git rebase --onto origin/development 5f302b0a7` of `b426b7d60`, eight commits. Development had moved by
+three merges since `5f302b0a7`: bug batches 1 and 2 (#2889), score-and-drops (#2890) and skill selection (#2891).
+- F6's code commit, F6's entry's second commit and #2857's four commits applied with no conflict but F6's entry's, which
+  `tools/resolve_decisions_log.py resolve --first Tinkerer` put on top.
+- **This slice's code commit conflicted in seven files**, each resolved keeping both sides:
+  `CataclysmSaveRecords.h` (the version comment: 18 above 17, and `SchemaVersionNow = 18`), `CataclysmSaveRecords.cpp`
+  (skill selection's `Migrate_16_to_17` then this slice's `Migrate_17_to_18`, both in the chain), and five readers of the
+  committed files, which skill selection had moved to `Character_v17.json` and this slice to `Account_v8.json`
+  (`CataclysmEmpireTreeCreditTests.cpp`, `CataclysmEmpireTreeNineTests.cpp`, `CataclysmEmpireTreeProwessTests.cpp`,
+  `CataclysmGoldTests.cpp`, `tools/tests/test_empire_tree_on_the_account_record.py`). This entry's commit applied with
+  no conflict. `tools/check_resolved_cpp.py --changed`: "25 files read, 0 with complaints".
+
+**The character record's version 18 files** (`8a0f71f44`):
+- `Character_v18.json` is `Character_v17.json` at version 18 with `"GoldSpentAtTheForge": 41250.75`, a figure and not the
+  default; the fixtures README says so in a paragraph and a table row.
+- `CataclysmSaveFixtures::AddTheCharactersVersion18Defaults` writes `GoldSpentAtTheForge` 0, and each of the nine tests
+  that calls `AddTheCharactersVersion17Defaults` calls it next: `CataclysmCataclysmDrawTests.cpp`,
+  `CataclysmConsumptionDoubleTests.cpp`, `CataclysmConsumptionMarkTests.cpp`, `CataclysmDismantleTests.cpp`,
+  `CataclysmEmpireTreeOwnTests.cpp`, `CataclysmGemSaveTests.cpp`, `CataclysmGoldTests.cpp`,
+  `CataclysmSaveRecordTests.cpp`, `CataclysmSkillLevelsTests.cpp`. Counted after: 9 calls each of versions 15, 16, 17 and
+  18.
+- Every test that read `Character_v17.json` as the committed file reads `Character_v18.json`, in ten files:
+  `CataclysmCataclysmDrawTests.cpp`, `CataclysmDismantleTests.cpp`, `CataclysmEmpireTreeCreditTests.cpp`,
+  `CataclysmEmpireTreeNineTests.cpp`, `CataclysmEmpireTreeProwessTests.cpp`, `CataclysmGemSaveTests.cpp`,
+  `CataclysmGoldTests.cpp`, `CataclysmSaveRecordTests.cpp`, `CataclysmSkillDefaultsTests.cpp` and
+  `tools/tests/test_empire_tree_on_the_account_record.py`. **Skill selection's own control is among them**:
+  `Cataclysm.SaveRecords.ACharacterFileFromBeforeRememberedDefaultsMigratesWithNone` checked that the committed
+  `Character_v17.json` is read, not migrated, which version 18 makes false; it reads `Character_v18.json`, which holds the
+  same remembered defaults. What still names `Character_v17.json` is a migration input or a comment saying which file
+  was committed before.
+- G8 reads the character files as it read the account files, and `test_forge_gold_nodes.py`'s
+  `test_both_records_save_the_count` checks `Character_v18.json` against `Character_v17.json`, its README row, and that
+  every test file stepping through version 7 of the account or 17 of the character steps through 8 or 18.
+
+**The sweep**, for what the three merges moved that this branch reads, and the reverse:
+- **The tests that step a character record to 17**: every `TEXT("Character_v17.json` literal and every
+  `AddTheCharactersVersion17Defaults` call, above. No C++ test pins a character version by number; the Python checks
+  that do (`test_the_keys_remember_their_defaults.py` and `test_inventory_tabs.py`) read "17 or later" and "16 or later".
+  `test_a_loaded_thrall_keeps_the_skill_that_took_it.py` already looks the run record's `Migrate_16_to_17` up inside the
+  run record's namespace (skill selection narrowed it), and no Python check looks up a `Migrate_17_to_18` outside its
+  record's namespace, the run record's included.
+- **Development changed none of the forge's or the empire tree's code**: `CataclysmForge`, `CataclysmForgeCraft`,
+  `CataclysmForgeWidget` and `CataclysmEmpireTree` are untouched since `5f302b0a7`. Score-and-drops changed the drop
+  tables (`EnemyDrops.csv`) and the gem and gear drop rolls, which these tests do not read; the crafting material table
+  and `GoldScaleFor`, which they do, are unchanged.
+- `.claude/windows/unity_name_check.py` against development: 0 findings. A script looking for a member one side added
+  hidden by a local or parameter the other side added in that class's `.cpp` (the C4458 of window inv-w1): 0 found, in
+  31 headers development added members to and 9 this branch did.
+- `docs/Play_Loop_Checklist.md`: steps 26 to 29, each number once.
+
+**Python guard proof P6, PROVED**, `tools/prove_guard.py` in an extracted copy of `8a0f71f44`: `CataclysmGoldTests.cpp`'s
+`AddTheCharactersVersion18Defaults` call removed, "PROVED: 1 failed, 7 passed in 2.47s | restored: 8 passed in 1.09s",
+the named failure `tools/tests/test_forge_gold_nodes.py::test_both_records_save_the_count`.
 
 ---
 
@@ -457,6 +525,75 @@ errors, 10 skipped. The one failure is `test_datatable_assets_are_current.py::Te
 which the editor step clears. `ruff check .`: all checks passed. An earlier run, before the commit, also failed
 `test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`: `Cataclysm.Data.EveryGeneratedTableImports`
 pinned 121 effect rows. The commit pins 123 with the reason in its comment.
+
+### One window for this slice, #2857 and slice F6a, on `feat/forge-f6-f6a-2857` (2026-11-25)
+
+By the coordinating session's instructions of 2026-11-24 and 2026-11-25: one window for the forge's milestone options
+(this slice), the capital's days (#2857, `fix/forge-days-2857`, made from this slice) and the forge's gold nodes (#47
+slice F6a), on development `eb34af972`. Prepared only: nothing compiled, no editor, no pull request. The machine order of
+2026-11-25: the empty-board surge window (#2865), then this one. **It replaces the registration of 2026-11-24 on
+`feat/forge-w1` (`dd214c07c`, F6 and #2857 on `5f302b0a7`), which was not carried onto this branch.**
+
+**The branch, in two rebases.**
+- **2026-11-24, onto development `5f302b0a7`** (`feat/forge-w1`): `git rebase --onto origin/development 52b66e016` of
+  `fix/forge-days-2857`. This slice's code commit conflicted in nine files with #2848 slice S2, which had added two
+  empire tree nodes, a play log line and checklist steps 26 and 27; each was resolved keeping both:
+  `CataclysmDataRows.h` and `tools/generate_datatables.py` (S2's two effect kinds, then this slice's two);
+  `CataclysmPlayLoopLog.h/.cpp` (S2's `ForgeDismantleLine`, then this slice's two lines); `docs/Play_Loop_Checklist.md`
+  (S2's steps 26 and 27, then **this slice's step, renumbered 28**: the text above says 26, written on a base whose
+  highest step was 25); `CataclysmDataTableTests.cpp` (the effect rows pinned at 125, 121 + S2's 2 + this slice's 2);
+  `test_empire_tree_effects_match_their_texts.py` (119 built nodes, both sets kept); and
+  `test_empire_tree_tables_match_the_tree_file.py` (the built slices `{3, 4, 5, 6, 7, 8, 9, 10, 2848}`). Two commits of
+  the window's own followed: the effect-row check's comment says 125, and **#2857's check of the forge's questions did not
+  know the dismantle**, which S2 added after #2857 was written (`test_days_spent_in_the_capital_are_reported.py` lists it
+  as exempt, because it costs no gold and no days; proof FD1, "PROVED: 1 failed, 4 passed in 1.51s | restored: 5 passed
+  in 0.71s").
+- **2026-11-25, onto development `eb34af972`** (this branch): `git rebase --onto origin/development 5f302b0a7` of slice
+  F6a's `b426b7d60`, which sat on `feat/forge-w1`'s `31689adba`. This slice's and #2857's commits applied with no
+  conflict but this entry's, put back on top by `tools/resolve_decisions_log.py`; slice F6a's code commit conflicted in
+  seven files, and its character record's version 18 files were made then (its entry, "On skill selection").
+
+**The sweep** on `eb34af972`: development changed none of the forge's or the empire tree's code since `5f302b0a7`;
+`.claude/windows/unity_name_check.py` against development, 0 findings; no member either side added is hidden by a local
+or parameter the other side added in its class's `.cpp` (by script); every guard proof anchor below is once on the
+branch.
+
+**THE REGISTRATION.** Base: window ss2-w1's whole-suite engine log, `ss2_suite_engine_56360b4d.log` in the worktree
+`sharp-meitner-246682`'s `.claude/windows/` (skill selection on `56360b4d6`: "5474 tests performed", "58 skipped part of
+what they check", "Test saves: 874 written and deleted, 0 left behind"). Its game files are development `eb34af972`'s but
+for one test file, `CataclysmSkillPoolTests.cpp`, whose control ss2-w2 and ss2-w3 corrected without changing its count
+of 11. **If another window's whole suite lands on development first, this is re-registered from its log.**
+- **The editor step**, after the build: `tools/generate_datatable_assets.py` rebuilds `DT_EmpireTreeNodes` and
+  `DT_EmpireTreeEffects` and records them in `game/Data/datatable_asset_sources.json`; those three files only are
+  committed alone, and the tested head becomes that commit. No other data file differs from development.
+- **The whole suite: 5493 performed** (5474 + 19 named, none removed: this slice's 6 in `Cataclysm.ForgeMilestones.`;
+  #2857's 5, one each in `Forge.`, `ForgeScreen.`, `EmpireTreeScreen.`, `PlayLoop.` and `EmpireRun.`; slice F6a's 8 in
+  `Cataclysm.ForgeGoldNodes.`). Counted by name, development 5392 and the branch 5411 (the name count is short of the
+  run's, as `CLAUDE.md` says; the difference is the figure). **58 skipped halves**: the branch adds no
+  `ReportSkippedHalf` call. **Test saves: 874 and whatever the 19 new tests write**; that is not settled by reading them,
+  and the run's line is recorded either way.
+- **The save records move**: the character record 17 to 18 and the account record 7 to 8 (slice F6a). The run record
+  stays at 18.
+- **Groups alone, 37, 361 tests**, each counted in the base log and checked against the name strings on development and
+  on the branch: `BossClearedWins.` 2, `CataclysmDraw.` 6, `ConsumptionDouble.` 15, `ConsumptionMark.` 6, `Data.` 7, `Dismantle.` 12, `EarnedBoss.` 4, `EmpirePoints.` 16, `EmpireRun.` 72 (+1), `EmpireTree.` 24, `EmpireTreeBailout.` 3, `EmpireTreeBribery.` 2, `EmpireTreeCredit.` 8, `EmpireTreeNineSaves.` 1, `EmpireTreeProwess.` 6, `EmpireTreeRestores.` 4, `EmpireTreeScouts.` 3, `EmpireTreeScreen.` 11 (+1), `Forge.` 9 (+1), `ForgeAffixChange.` 5, `ForgeAffixes.` 6, `ForgeCosts.` 3, `ForgeDamageTypes.` 6, `ForgeEnchantments.` 12, `ForgeGems.` 4, `ForgeGoldNodes.` 8 (new), `ForgeMilestones.` 6 (new), `ForgeResidueTools.` 5, `ForgeScreen.` 5 (+1), `ForgeSockets.` 6, `GemSave.` 2, `Gold.` 13, `InventoryTabs.` 7, `PlayLoop.` 13 (+1), `SaveRecords.` 18, `SkillDefaults.` 18, `SkillLevels.` 13. Chosen as every group a test file the branch changes registers into, and every group whose
+  tests drive the forge's crafts, whose prices slice F6a changes.
+- **C++ guard proofs, three a change** (the owner's rule of 2026-09-14), nine, each anchor once on the branch, each
+  narrowed with its trailing dot:
+
+| Proof | Change | Break | Prefix | Predicted |
+| :-- | :-- | :-- | :-- | :-- |
+| M1 | F6 | `SoulForgeLevels`' `return Stream.GetFraction() < Chance ? 2 : 1;` read with `>` | `Cataclysm.ForgeMilestones.` (6) | M1 |
+| M4 | F6 | a critical success's `Step.Days = 0;` removed from `DoEnchantmentWork` (the anchor is the three lines from `if (bCritical)`: the line alone is twice in the file) | `Cataclysm.ForgeMilestones.` | M3 and M4 |
+| M5 | F6 | The Soul Forge's effect written into `EnchantCriticalChance` (`Bonuses.UpgradeExtraLevelChance = FMath::Max(Bonuses.UpgradeExtraLevelChance, Row->PerPoint);`) | `Cataclysm.ForgeMilestones.` | M1 and M5 |
+| D1 | #2857 | `TimersRunningOutWithin`'s `if (DaysToRunOut > Days)` read as `>=` | `Cataclysm.EmpireRun.` (72) | `TheTimersForecastToRunOutAreTheOnesTheDaysRunOut` |
+| D2 | #2857 | `AwayAccount`'s `Lead, FromDay, ToDay,` read as `TEXT("while away"), FromDay, ToDay,` | `Cataclysm.PlayLoop.` (13) | `DaysSpentInTheCapitalAreToldInTheWalksWordsAfterTheirOwnLead` |
+| D3 | #2857 | the forge screen's `TimersRunningOutIn` returns `FString()` | `Cataclysm.ForgeScreen.` (5) | `TheFirstPressNamesTheTimersItsDaysRunOutAndTheSecondWhatTheyDid` |
+| CF1 | F6a | `FMath::Clamp(Reduced, 0.0f, CraftGoldReductionCap)` read as `FMath::Clamp(Reduced, 0.0f, 1.0f)` | `Cataclysm.ForgeGoldNodes.` (8) | `TheReductionsAddAndAreHeldAtThreeQuartersThenForgeUpgradesTakesATenth` |
+| CF2 | F6a | `UpgradeOf`'s `Out.Gold = Pricing.Apply(Out.Gold, Out.Stone);` removed | `Cataclysm.ForgeGoldNodes.` | `APlanChargesTheDiscountedPriceAndDoesNotRefuseAPlayerWhoCanPayIt`, `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+| CF3 | F6a | `DoItemCraft`'s `CountTheForgeGold(WorldContext, Step.Gold);` removed | `Cataclysm.ForgeGoldNodes.` | `AnUpgradeWithTheNodesPaysTheDiscountAndCountsItsTierOneGold` |
+
+This slice registered six C++ proofs (above); M2, M3 and M6 are left out under the rule of three, and the coordinating
+session may restore them.
 
 ---
 
