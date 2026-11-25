@@ -429,6 +429,18 @@ CATACLYSM_MODIFIER_TEST(FCataclysmModifierEffectsExistTest,
 		UCataclysmEnemyModifiers::BloodthirstyRow,
 		UCataclysmEnemyModifiers::ThornsOfGlassRow,
 		UCataclysmEnemyModifiers::HellfireAuraRow,
+		// AND DEATH'S ELEVEN, written 2026-11-24 ahead of their window.
+		UCataclysmEnemyModifiers::HauntingRow,
+		UCataclysmEnemyModifiers::GraveTouchRow,
+		UCataclysmEnemyModifiers::UndyingWillRow,
+		UCataclysmEnemyModifiers::SoulEaterRow,
+		UCataclysmEnemyModifiers::ShadowStepRow,
+		UCataclysmEnemyModifiers::SpectralShiftRow,
+		UCataclysmEnemyModifiers::LingeringDecayRow,
+		UCataclysmEnemyModifiers::FinalCurseRow,
+		UCataclysmEnemyModifiers::FuneralPyreRow,
+		UCataclysmEnemyModifiers::SoulTetherRow,
+		UCataclysmEnemyModifiers::MortalReminderRow,
 	};
 
 	for (const TCHAR* Key : Built)

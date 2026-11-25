@@ -248,8 +248,10 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 		{
 			NewValue = GetMaxHealth();
 		}
-		else if (Unhurt && Unhurt->bShrouded)
+		else if (Unhurt && (Unhurt->bShrouded || Unhurt->SpectralShiftSecondsLeft > 0.0f))
 		{
+			// AND ONE DEATH'S SPECTRAL SHIFT HAS OUT OF EXISTENCE, HELD THE SAME WAY, 2026-11-24: "becoming immune to
+			// damage" while it is out, keeping whatever hurt it carried in.
 			NewValue = FMath::Clamp(FMath::Max(NewValue, GetHealth()), 0.0f, GetMaxHealth());
 		}
 		else
@@ -623,6 +625,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// damage from Boss enemies". Issue #666. The same creature and the
 				// same cast, so a blow from anything but an enemy is not a boss's.
 				Hit.bFromBoss = Striker->IsBoss();
+
+				// AND DEATH'S SOUL EATER, "Completely ignores player energy shields": the blow says so, as Perfect
+				// Aim's does, because the shield is the defender's and only the blow can refuse it. Every blow whose
+				// causer carries it, its ticks included. 2026-11-24, ahead of its window.
+				Hit.bIgnoresEnergyShield = UCataclysmEnemyModifiers::IgnoresEnergyShield(Striker->ModifierRows);
+
+				// AND DEATH'S GRAVE TOUCH, "Deal more damage to players with less than 50% health": half again, on a
+				// HIT and never a tick, judged on the health this character holds as the blow arrives. The same
+				// "more" every bucket multiplies, so it is applied to the blow before the defences, as a stronger
+				// creature's figure would be. 2026-11-24, ahead of its window.
+				if (!Hit.bIsDamageOverTime)
+				{
+					Hit.Damage *= UCataclysmEnemyModifiers::GraveTouchMultiplier(
+						Striker->ModifierRows, GetHealth(), GetMaxHealth());
+				}
 			}
 
 			// AND WHETHER THE BLOW ITSELF SAYS IT CANNOT BE EVADED. Ruled 2026-10-07.
@@ -2751,7 +2768,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					UCataclysmEnemyModifiers::WitherOnHit(Striker, GetOwningActor());
 					// AND VOID'S TOUCH OF NOTHING, by the same rule: a hit that took health. Issue #1722.
 					UCataclysmEnemyModifiers::TouchOfNothingOnHit(Striker, GetOwningActor());
+
+					// AND THREE OF DEATH'S, BY THE SAME RULE, 2026-11-24, ahead of their window. Mortal Reminder's
+					// "Attacks apply a debuff", read after the health above is written, so the ceiling is the health
+					// the hit left; a Haunting copy's resistance cut; and Funeral Pyre, which is the other way round:
+					// THIS character was hit, so it is asked whether this character raises a pyre at whoever struck.
+					UCataclysmEnemyModifiers::MortalReminderOnHit(Striker, GetOwningActor());
+					UCataclysmEnemyModifiers::HauntOnHit(Striker, GetOwningActor());
+					UCataclysmEnemyModifiers::PyreWhenStruck(GetOwningActor(), Striker);
 				}
+
+				// AND DEATH'S SOUL TETHER, ON A TICK AS WELL AS A HIT: "Transfer a portion damage taken". What the
+				// write above really took from this character's health, measured across it, so an overkill, a
+				// sigil's hold and a delayed share are all left out. 2026-11-24, ahead of its window.
+				UCataclysmEnemyModifiers::TetherOnHealthLost(GetOwningActor(), Striker, TakenFromHealth);
 			}
 
 			// EVERY CHANCE TO APPLY AN AILMENT THE BLOW CARRIED IS ROLLED HERE,

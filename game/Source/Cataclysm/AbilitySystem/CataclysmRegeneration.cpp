@@ -22,6 +22,8 @@
 #include "AbilitySystemComponent.h"
 // For a Corrupted Stalker's Necrosis, which spares a potion's heal. Issue #2580.
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
+// For Death's Mortal Reminder's ceiling and Lingering Decay's zones, 2026-11-24.
+#include "Character/CataclysmEnemyModifiers.h"
 #include "GameFramework/Actor.h"
 #include "GameplayEffect.h"
 
@@ -61,6 +63,16 @@ float UCataclysmRegeneration::HealthHealingCeiling(const UAbilitySystemComponent
 			Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem))
 	{
 		Ceiling = FMath::Min(Ceiling, Cataclysm->UnreservedMaximumHealth());
+	}
+
+	// AND A MORTAL REMINDER HOLDS IT WHERE THE CREATURE'S LAST HIT LEFT IT, for four seconds. Death's Mortal Reminder,
+	// 2026-11-24: "prevents the player from being healed above their current HP for 4 seconds. It caps your 'recovery
+	// ceiling.'" HERE, beside the other ceilings, because every heal of health asks this; a character already at or
+	// above it is healed by nothing, as under any other ceiling. Negative is none.
+	const float Reminded = UCataclysmEnemyModifiers::RecoveryCeilingOn(AbilitySystem);
+	if (Reminded >= 0.0f)
+	{
+		Ceiling = FMath::Min(Ceiling, Reminded);
 	}
 	return FMath::Max(0.0f, Ceiling);
 }
@@ -176,11 +188,17 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		// Issue #1833, ruled 2026-10-06: "Diseased enemies' healing, regeneration
 		// and leech are reduced by 50%-100%" (worded "Disease effects reduce enemy
 		// healing by 50%-100%" until 2026-11-17).
+		//
+		// AND A NECROTIC ZONE THE CHARACTER STANDS IN, added and capped with them. Death's Lingering Decay, 2026-11-24:
+		// "Enemies leave behind necrotic zones that reduce healing to players standing in them." Asked of the body the
+		// heal reaches, so it holds while it stands inside; added to the rest as Starving Aura's cut is (ruled
+		// 2026-10-26), and the sum is capped at 100.
 		const float AmountReduction = FMath::Clamp(
 			AbilitySystem.GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute())
 				+ UCataclysmAbilitySystemComponent::AilmentRiderPercentOn(
-					  &AbilitySystem, ECataclysmAilmentRider::HealingReceived),
+					  &AbilitySystem, ECataclysmAilmentRider::HealingReceived)
+				+ UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(AbilitySystem.GetAvatarActor()),
 			0.0f, 100.0f);
 		Gain *= (100.0f - AmountReduction) / 100.0f;
 		if (Gain <= 0.0f)

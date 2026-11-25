@@ -8,6 +8,9 @@
 
 class UDataTable;
 struct FCataclysmEnemyModifierRow;
+class UAbilitySystemComponent;
+class ACataclysmBonePyreCharacter;
+class ACataclysmEnemyCharacter;
 
 /**
  * Which modifiers a spawned enemy carries.
@@ -157,6 +160,24 @@ public:
 	static const TCHAR* InfernoChargeRow;
 	/** Starving Aura, issue #2539: built in `AuraStep`, beside Abyssal Aura. */
 	static const TCHAR* StarvingAuraRow;
+
+	/**
+	 * The eleven Death modifiers, written ahead of their build-and-test window on 2026-11-24 by the owner's approval
+	 * ("yes, write the Death enemy modifiers ahead"). Each one's sentence is its row in `game/Data/EnemyModifiers.csv`;
+	 * where each is built is said beside its numbers below. `docs/DECISIONS.md` carries the research and every figure
+	 * the rows do not state.
+	 */
+	static const TCHAR* HauntingRow;
+	static const TCHAR* GraveTouchRow;
+	static const TCHAR* UndyingWillRow;
+	static const TCHAR* SoulEaterRow;
+	static const TCHAR* ShadowStepRow;
+	static const TCHAR* SpectralShiftRow;
+	static const TCHAR* LingeringDecayRow;
+	static const TCHAR* FinalCurseRow;
+	static const TCHAR* FuneralPyreRow;
+	static const TCHAR* SoulTetherRow;
+	static const TCHAR* MortalReminderRow;
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
@@ -440,6 +461,132 @@ public:
 	static constexpr float MedicHealPercentOfMaximumPerPulse = 5.0f;
 
 	// ----------------------------------------------------------------------
+	// The Death modifiers' numbers, 2026-11-24
+	//
+	// THE ROW'S OWN FIGURE WHERE IT GIVES ONE, and a judgement named in
+	// `docs/DECISIONS.md` with its genre source where it does not. Whole numbers
+	// wherever a player sees them.
+	// ----------------------------------------------------------------------
+
+	/**
+	 * Grave Touch: "Deal more damage to players with less than 50% health."
+	 *
+	 * THE 50% IS THE ROW'S. The 50% MORE is a judgement: Path of Exile's Executioner monster modifier gives 15% more
+	 * hit damage per 10% of life the target is missing, which is 75% at the row's line; half again is the smaller,
+	 * readable figure, and the same size as Overpowered's always-critical hit on a target that is already low.
+	 * HITS ONLY, as Executioner's stat is "hit damage": a tick of damage over time is not made larger.
+	 */
+	static constexpr float GraveTouchBelowHealthShare = 0.5f;
+	static constexpr float GraveTouchDamageMultiplier = 1.5f;
+
+	/**
+	 * Mortal Reminder: "Attacks apply a debuff that prevents the player from being healed above their current HP for 4
+	 * seconds." THE FOUR SECONDS AND THE CEILING ARE THE ROW'S. The ceiling is the health the hit left; a later hit
+	 * sets it again, lower, and restarts the four seconds. Path of Exile 2's Hinder Aura monster modifier is the shape:
+	 * "Prevents Recovery Above 50%".
+	 */
+	static constexpr float MortalReminderSeconds = 4.0f;
+
+	/**
+	 * Soul Tether: "Transfer a portion damage taken to the player as health degeneration over time."
+	 *
+	 * A TENTH OF THE HEALTH THE CREATURE LOSES, OVER FOUR SECONDS. The tenth is a judgement; the four seconds are Path
+	 * of Exile's Corrupter monster modifier's, whose Corrupted Blood "lasts for 4 seconds". OF THE HEALTH LOST, NEVER
+	 * OF THE BLOW: what reached the creature's health, cut to the health it held, so however hard the player hits, one
+	 * creature sends back at most a tenth of its own health -- the owner's Thorns of Glass ruling of 2026-11-18 is that
+	 * a creature's answer to a blow is not sized by the player's own damage.
+	 */
+	static constexpr float SoulTetherShareOfHealthLost = 0.1f;
+	static constexpr float SoulTetherSeconds = 4.0f;
+
+	/**
+	 * Spectral Shift: "Phase in and out of existence, becoming immune to damage."
+	 *
+	 * OUT OF EXISTENCE FOR FIVE SECONDS IN EVERY FIFTEEN. The five are Diablo III's Shielding elite affix's ("5 sec
+	 * duration", Maxroll); the fifteen are a judgement, so the creature can be hurt two thirds of the time. While out
+	 * it takes no damage of any kind, as a shrouded creature does, and it goes on acting, as Diablo III's shielded
+	 * elite and Diablo IV's Shielded do.
+	 */
+	static constexpr float SpectralShiftOutSeconds = 5.0f;
+	static constexpr float SpectralShiftIntervalSeconds = 15.0f;
+	static_assert(SpectralShiftOutSeconds < SpectralShiftIntervalSeconds,
+				  "Spectral Shift must leave the creature in existence for part of every interval");
+
+	/**
+	 * Shadow Step: "Become invisible when not attacking."
+	 *
+	 * SEEN FROM THE MOMENT AN ATTACK BEGINS UNTIL ONE SECOND AFTER IT ENDS: an ordinary swing ordered and its blow
+	 * waiting, an ability winding up, a charge, a channel. The second is a judgement, so the swing's end can be read
+	 * before the creature fades. Invisible is what the vision system does to a creature beyond the player's sight:
+	 * not drawn, no bar, not clickable, still struck by whatever reaches it.
+	 */
+	static constexpr float ShadowStepSeenSecondsAfterAnAttack = 1.0f;
+
+	/**
+	 * Lingering Decay: "Enemies leave behind necrotic zones that reduce healing to players standing in them."
+	 *
+	 * A ZONE EVERY FIVE SECONDS WHERE IT STANDS, LASTING TEN, CUTTING HEALING BY HALF. The 50% and the five seconds are
+	 * the game's own figures for the same thing, Necrotic Ground's (`UCataclysmDungeonModifierEffects::
+	 * NecroticGroundHealingLessPercent` and `NecroticGroundSecondsBetweenPatches`), and Starving Aura's cut is 50 too,
+	 * so a player learns one figure for "healing cut". The radius is Necrotic Ground's patch, three metres. The ten
+	 * seconds are a judgement: two zones at most from one creature at once.
+	 */
+	static constexpr float LingeringDecayHealingLessPercent = 50.0f;
+	static constexpr float LingeringDecaySecondsBetweenZones = 5.0f;
+	static constexpr float LingeringDecayZoneSeconds = 10.0f;
+	static constexpr float LingeringDecayRadiusCm = 300.0f;
+
+	/**
+	 * Final Curse: "Upon death, curse the player for 5 seconds, causing them to take damage when using abilities."
+	 *
+	 * THE FIVE SECONDS ARE THE ROW'S. Each skill used under the curse, every slot but the basic attack, costs 5% of
+	 * the user's maximum health as Death damage, met by their defences: Echo Chamber's self hit, which the
+	 * coordinating session sized from maximum health on 2026-11-18 so "a small amount" holds at every level. Diablo
+	 * II's Iron Maiden is the shape, a curse that hurts its bearer for acting.
+	 */
+	static constexpr float FinalCurseSeconds = 5.0f;
+	static constexpr float FinalCurseMaximumHealthPercentPerUse = 5.0f;
+
+	/**
+	 * Funeral Pyre: "Summon deadly bone pyres when hit that explode if not destroyed quickly."
+	 *
+	 * ONE PYRE AT THE FEET OF WHOEVER STRUCK, AT MOST ONE EVERY EIGHT SECONDS, EXPLODING THREE SECONDS LATER for three
+	 * of the creature's hits on everyone of the player's side within three metres, unless it is destroyed first. It
+	 * holds a tenth of the creature's maximum health. Path of Exile's Crystal-skinned "fires crystals under players when
+	 * they hit you"; Diablo IV's Frozen orbs explode "after 3 seconds" on an 8 second cooldown. The three metres, the
+	 * three hits and the tenth are judgements, the hits below Infernal Brand's five because a pyre can be walked away
+	 * from or broken.
+	 */
+	static constexpr float FuneralPyreCooldownSeconds = 8.0f;
+	static constexpr float FuneralPyreFuseSeconds = 3.0f;
+	static constexpr float FuneralPyreRadiusCm = 300.0f;
+	static constexpr float FuneralPyreExplosionHits = 3.0f;
+	static constexpr float FuneralPyreShareOfHealth = 0.1f;
+
+	/**
+	 * Undying Will: "Enemies resurrect after death with reduced health but increased damage output."
+	 *
+	 * ONCE, AT ONCE, WHERE IT FELL, AT ITS KIND AND RUNG, WITH HALF ITS MAXIMUM HEALTH AND 50% INCREASED DAMAGE. Built
+	 * as Dead Rising and Divine Resurgence bring a creature back (`ACataclysmDungeonGameMode::NoteDeathForUndyingWill`):
+	 * the half is Divine Resurgence's figure; the 50% is a judgement, in the increased bucket the row's word names.
+	 */
+	static constexpr float UndyingWillHealthShare = 0.5f;
+	static constexpr float UndyingWillDamageIncreasedPercent = 50.0f;
+
+	/**
+	 * Haunting: "A spectral copy of this enemy is created on death", and the `Debuff_Haunting` status row's "A debuff
+	 * applied by a spectral copy of an enemy that reduces all of a player's resistances".
+	 *
+	 * A COMMON OF ITS KIND AT HALF HEALTH, WHERE IT FELL, whose hits cut each of the target's resistances by 25 for five
+	 * seconds. Diablo IV's Splitter "splits into 2 non-Elite mobs of the same type" and Diablo III's Illusionist copies
+	 * have 5% of the original's life: so a Common, at Divine Resurgence's half. The 25 is Abyssal Aura's resistance
+	 * cut and the five seconds are Battle Cry's, the two figures the status table already gives a resistance debuff.
+	 */
+	static constexpr float HauntingCopyHealthShare = 0.5f;
+	static constexpr float HauntingResistanceCut = 25.0f;
+	static constexpr float HauntingSeconds = 5.0f;
+
+	// ----------------------------------------------------------------------
 	// What the carried modifiers do to a creature's stats
 	// ----------------------------------------------------------------------
 
@@ -651,6 +798,121 @@ public:
 	 * @return how many allies this pulse healed
 	 */
 	static int32 HealAlliesPulse(AActor* Character);
+
+	// ----------------------------------------------------------------------
+	// The Death modifiers, 2026-11-24
+	// ----------------------------------------------------------------------
+
+	/**
+	 * What Grave Touch multiplies one hit by: `GraveTouchDamageMultiplier` when the rows carry it and the target holds
+	 * less than half its maximum health, one otherwise. PURE, so the line can be checked without a world.
+	 * `UCataclysmVitalAttributeSet` asks it for a hit and never for a tick.
+	 */
+	static float GraveTouchMultiplier(const TArray<FName>& Rows, float TargetHealth, float TargetMaximumHealth);
+
+	/** Soul Eater: whether this creature's blows pass every energy shield by, to health. */
+	static bool IgnoresEnergyShield(const TArray<FName>& Rows);
+
+	/**
+	 * Mortal Reminder, on a hit that took health: the target may not be healed above the health it holds now for
+	 * `MortalReminderSeconds`. Kept on its ability system and read by `UCataclysmRegeneration::HealthHealingCeiling`,
+	 * which every heal of health asks. A dead target is given nothing, as Infernal Brand refuses one (#2874).
+	 *
+	 * @return whether a ceiling was set
+	 */
+	static bool MortalReminderOnHit(AActor* Attacker, AActor* Target);
+
+	/** The health a Mortal Reminder holds this ability system's healing to now, or negative when none is running. */
+	static float RecoveryCeilingOn(const UAbilitySystemComponent& AbilitySystem);
+
+	/**
+	 * Soul Tether, on health this creature lost to `Striker`: a tenth of it is laid on the striker as damage over time
+	 * across four seconds, ADDED to whatever of an earlier tether is still to come. Never on itself, never on its own
+	 * side, never from a medic, never on the dead.
+	 *
+	 * @param HealthLost  what the blow really took from this creature's health
+	 * @return the damage newly laid on the striker, before its defences, or zero
+	 */
+	static float TetherOnHealthLost(AActor* Tethered, AActor* Striker, float HealthLost);
+
+	/** Whether Spectral Shift has this creature out of existence now, so no damage reaches it. */
+	static bool IsPhasedOut(const AActor* Character);
+
+	/**
+	 * Shadow Step: this creature has begun an attack, so it is seen now and for `ShadowStepSeenSecondsAfterAnAttack`
+	 * after. Called by the brain where it orders a swing and where an ability begins; the timed step also sees a swing
+	 * waiting, a wind-up, a charge and a channel. Safe for anything that is not a creature carrying it.
+	 */
+	static void RevealForShadowStep(AActor* Character);
+
+	/** Whether Shadow Step has hidden this creature now. */
+	static bool IsHiddenByShadowStep(const AActor* Character);
+
+	/**
+	 * What a creature's death does through the Death modifiers that act at it: Final Curse curses the player, and a
+	 * creature Shadow Step hid is shown again, so its fall can be seen. Called by `ACataclysmEnemyCharacter::
+	 * HandleDeath` once the death is marked. Haunting and Undying Will act at a death too, from the dungeon game mode,
+	 * because only it can place a creature.
+	 *
+	 * @return whether the player was cursed
+	 */
+	static bool NoteDeathOfACarrier(AActor* Dying);
+
+	/**
+	 * Final Curse, on a skill used: a cursed user pays `FinalCurseMaximumHealthPercentPerUse` of its maximum health as
+	 * Death damage, met by its defences. Called by `UCataclysmCombatEvents::NoteSkillUsed`, the one place every skill
+	 * paid for is announced.
+	 *
+	 * @param bWasTheBasicAttack  true for the basic attack, which the curse leaves alone
+	 * @return the damage sent, before the user's defences, or zero
+	 */
+	static float FinalCurseOnSkillUse(AActor* User, bool bWasTheBasicAttack);
+
+	/**
+	 * Funeral Pyre, on a hit this creature took from `Striker`: one bone pyre at the striker's feet, at most once every
+	 * `FuneralPyreCooldownSeconds`. Never from a medic, never for a dead creature, never at its own side.
+	 *
+	 * @return the pyre placed, or null
+	 */
+	static ACataclysmBonePyreCharacter* PyreWhenStruck(AActor* Struck, AActor* Striker);
+
+	/**
+	 * One step of a bone pyre's fuse. When it runs out the pyre explodes on everyone of the player's side within
+	 * `FuneralPyreRadiusCm` and is removed; a pyre destroyed first never explodes, because a dead pyre takes no step.
+	 *
+	 * @return the number of characters the explosion struck, or zero when it did not go off this step
+	 */
+	static int32 PyreStep(ACataclysmBonePyreCharacter* Pyre, float StepSeconds);
+
+	/**
+	 * Haunting's copy, on a hit that took health: each of the target's resistances cut by `HauntingResistanceCut`,
+	 * never below nought, for `HauntingSeconds` under `Status.Debuff.Haunting`. One application at a time: a second
+	 * replaces the first.
+	 *
+	 * @return whether the cut was applied
+	 */
+	static bool HauntOnHit(AActor* Attacker, AActor* Target);
+
+	/**
+	 * Whether the dungeon should bring `Fallen` back through Undying Will, or leave a spectral copy of it through
+	 * Haunting: it carries the row and its death pays, so a creature a rule brought back never does either. What the
+	 * game mode spawns is then given its figures by the two functions after these.
+	 */
+	static bool UndyingWillRaises(const AActor* Fallen);
+	static bool HauntingLeavesACopy(const AActor* Fallen);
+
+	/** Half its maximum health and 50% increased damage: a creature Undying Will brought back. */
+	static void MakeUndyingWillRisen(ACataclysmEnemyCharacter* Risen);
+
+	/** Half its maximum health and the copy's mark, which its hits read: a Haunting copy. */
+	static void MakeSpectralCopy(ACataclysmEnemyCharacter* Copy);
+
+	/**
+	 * Lingering Decay: how much less of each heal reaches `Healed` because it stands in a necrotic zone, in percent.
+	 * The largest zone's figure, never a sum; nought for anything not of the players' side, which is the row's "players".
+	 * `UCataclysmRegeneration::TopUp` adds it to the healing received reduction for health.
+	 */
+	static float LingeringDecayHealingLessPercentAt(const AActor* Healed);
 
 	/**
 	 * Whether a row belongs to a Cataclysm a creature of this one may draw.

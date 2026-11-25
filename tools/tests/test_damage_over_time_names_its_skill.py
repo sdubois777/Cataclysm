@@ -75,6 +75,8 @@ CREDITS_NOTHING_BY_RULE: dict[tuple[str, str, str, int], str] = {
      DAMAGE_OVER_TIME_DELIVERY, 0): _OWN_EFFECT,
     ("Character/CataclysmEnemyModifiers.cpp", "UCataclysmEnemyModifiers::AuraStep", "ApplyDamageOverTime", 0):
         _CREATURE + "; a creature modifier's aura",
+    ("Character/CataclysmEnemyModifiers.cpp", "UCataclysmEnemyModifiers::TetherOnHealthLost", "ApplyDamageOverTime", 0):
+        _CREATURE + "; Death's Soul Tether, a share of the health a creature lost laid on whoever struck it",
     ("Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::NoteDeathForPlagueHarbingers",
      "UCataclysmAilments::Apply", 0): _CREATURE + "; a dungeon modifier at a creature's death",
     ("Dungeon/CataclysmDungeonGameMode.cpp", "ACataclysmDungeonGameMode::NoteDeathForSporeClouds",
