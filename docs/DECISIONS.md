@@ -2,6 +2,145 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Soul Collector's four Fervour thresholds, the vows' clauses on them, Generous Count, Long Shadow and Steady Count (Death trees, slice C3d)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `fervour_threshold_reached`
+  (`FervourThresholdReached`), the scale `fervour_thresholds_reached` (`PerFervourThresholdReached`),
+  `FCataclysmStatConditions::FervourThresholdsReached`, and the namespace `CataclysmFervourThresholds` holding the four
+  figures and the points that open them.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `FervourThresholdsReachedFor`,
+  `NoteFervourThresholdsHeld`, `FervourThresholdStep`, `StatWithNoReading`, three stat names, Long Shadow's record;
+  `CurrentConditions` fills the answer once; `ClearWhatDeathEnds` forgets the record.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.cpp`: the record kept just before a fall.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp`: the regeneration step runs `FervourThresholdStep`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: the three new stats have no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmFervourThresholdTests.cpp`, new (6); `CataclysmStatExemptionTests.cpp`
+  (three probes and two conditioned probes) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_fervour_thresholds_are_the_vows.py`, new (4); `test_passive_effects_match_the_node_text.py`,
+  `test_reapply_death_trees_workbook.py` and `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (547 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`, and run the
+  groups under "Unreal tests".
+- **NOT BUILT: the second vow's "or chain one extra time".** No skill chains today; the extra projectile is built, and
+  the coordinating session has the chain half in its backlog.
+- **THE FOURTH VOW'S "RECOVER TWICE AS FAST" IS A RATE**, as ruled: while the fourth threshold holds, each regeneration
+  step takes its own seconds off every running cooldown once more (`cooldowns_recover_faster_percent`, 100). It lands a
+  quarter second at a time, the regeneration step's length, so a cooldown ends up to a quarter second later than a
+  continuous rate would end it. It is built on `ReduceCooldowns`, the same reduction a row's `cooldown_reduce_all`
+  makes, so a cooldown kept for a skill off the keys recovers faster too.
+- **GENEROUS COUNT AND LONG SHADOW ARE READ WITH NO READING** (`StatWithNoReading`), because they are asked while the
+  conditions are being filled and asking them through the pipeline would fill the conditions again. A condition or
+  scale on either is refused by the generator already, as on any stat not on its asker lists, so a row cannot be
+  written that this reading would get wrong.
+- **LONG SHADOW'S RECORD** is the last time each threshold was seen held, stamped just before every fall of Fervour (the
+  class resource set's `PreAttributeChange`, with the amount falling from) and on every regeneration step. A threshold
+  lost without a fall (Generous Count taken off, points refunded) starts its seconds at the step before, up to a quarter
+  second early.
+- **A THRESHOLD OPENS BY PASSIVE POINTS SPENT** (`FCataclysmStatConditions::ClassPointsSpent`, every point the
+  allocation holds), as the sentences say; the vow's clause row is on its capstone, so it also needs the capstone's
+  point. Steady Count counts by points alone.
+- **NOT BUILT, AND LEFT FOR THE NEXT PIECE (C3e):** Empty Hands and Chained Souls.
+
+### What a Fervour threshold is now
+
+**The four.** `CataclysmFervourThresholds` holds them in order: 20 held, opened at 25 points spent; 40 at 50; 60 at 100;
+100 at 200. `FERVOUR_THRESHOLDS` in the generator holds the same figures, and a test holds both to the vows' sentences.
+
+**Reached.** `FervourThresholdsReachedFor(Held, PointsSpent)` gives one bit per threshold: open, and either the Fervour
+held reaches its figure less `fervour_threshold_reduction` (Generous Count), or fewer than
+`fervour_threshold_linger_seconds` (Long Shadow) have passed since it was last seen held. `CurrentConditions` asks it
+once a fill into `FervourThresholdsReached`, which the condition `fervour_threshold_reached` and the scale
+`fervour_thresholds_reached` both read, so the two cannot disagree. Unknown (no Fervour pool, or no player state) is -1
+and reaches none.
+
+**The generator** accepts `fervour_threshold_reached` only with one of the four figures, and accepts a capstone row with
+no option only where the capstone's own sentence states a clause beside its choice (`capstone_states_a_clause`): the
+coordinating session's ruling 4. `projectile_count` and `cooldowns_recover_faster_percent` join the stats a condition
+may be written on, each with a probe.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| The First Vow (capstone 25, no option) | area_of_effect, more, 20, cond=fervour_threshold_reached 20 |
+| The Second Vow (capstone 50, no option) | projectile_count, flat, 1, cond=fervour_threshold_reached 40 |
+| The Third Vow (capstone 100, no option) | mana_cost, removed, 1, cond=fervour_threshold_reached 60 |
+| The Final Vow (capstone 200, no option) | cooldowns_recover_faster_percent, flat, 100, cond=fervour_threshold_reached 100 |
+| Generous Count | fervour_threshold_reduction, flat, 1 |
+| Steady Count | attack_damage and spell_damage, increased, 1, scale=fervour_thresholds_reached, step=1 |
+| Long Shadow | fervour_threshold_linger_seconds, flat, 5 |
+
+"Cost no mana" is a removal of `mana_cost`, as the Ritualist's Ritual Focus writes it. `PassiveEffects.csv` 539 to 547;
+the Soul Collector 95 rows on 50 of its 73 nodes, and 107 of the 220 Death nodes grant something.
+
+### Rulings recorded here
+
+The coordinating session's rulings of 2026-11-25 on this slice's plan:
+1. Generous Count, Long Shadow and Steady Count reach only the four vow thresholds. Held Close, Brimming and the
+   Shadow's Fed Stride say "hold 50 or more", not "threshold", and stay as they are.
+2. A threshold opens by passive points spent (25, 50, 100, 200), as the sentences say; the clause rows also need the
+   capstone's point.
+3. The second vow's extra projectile is built now; the chain half waits for a skill that chains.
+4. The fourth vow's "recover twice as fast" is a rate: crossing 100 speeds a running cooldown and falling below slows it
+   again, built on the regeneration step and `ReduceCooldowns`.
+5. Chained Souls counts for every reading of the amount held, not for whether the bar is full and not for what
+   Phylactery spends (built in C3e).
+6. The slice is split: Empty Hands and Chained Souls are C3e, stacked on this one.
+
+### Research
+
+None new. The thresholds, their figures and their points are the owner's approved trees'; the machinery is this game's
+own (the conditions fill, the regeneration step, the cooldown reduction).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.FervourThreshold.` | new: `AThresholdOpensByPointsSpentAndIsReachedByFervourHeld`, `GenerousCountReachesEachThresholdSooner`, `LongShadowKeepsAThresholdFiveSecondsAfterAFall`, `TheConditionAndSteadyCountReadOneAnswer`, `TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow`, `TheFourVowClausesAreRowsWithNoOptionOnTheirCapstones` | 6 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs three new probes; `AConditionedRowIsJudgedWhereEachOfTheseStatsIsUsed` two | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 547 | unchanged |
+
+Each new test has a control: a threshold not yet open, and 19 held; the same holding without Generous Count; a holder
+without Long Shadow, and 5.1 seconds after the fall; nothing reached and the answer unknown; a second character that
+stays at 50; each capstone's option rows.
+
+**`TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow` relies on the regeneration step running on the test
+clock**: two real Death characters' own steps, started at begin-play, with no step called by hand. If that timer did
+not run in a test world, the test would fail at its second figure (15 left after two seconds at 100), and the probe
+`ProbeCooldownsRecoverFaster`, which calls the step by hand, would still pass.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmStatPipeline.cpp`, the condition's case: `return State.FervourThresholdsReached >= 0 && Index >= 0` and
+   its next line `&& (State.FervourThresholdsReached & (1 << Index)) != 0;` become `return State.FervourThresholdsReached
+   >= 0 && Index >= 0;`. Prefix `Cataclysm.FervourThreshold.`; must fail `TheConditionAndSteadyCountReadOneAnswer`.
+2. `CataclysmAbilitySystemComponent.cpp`, `FervourThresholdsReachedFor`: `if (bHeld || bLingering)` becomes `if
+   (bHeld)`. Prefix `Cataclysm.FervourThreshold.`; must fail `LongShadowKeepsAThresholdFiveSecondsAfterAFall`.
+3. `CataclysmAbilitySystemComponent.cpp`, `FervourThresholdStep`: `Recovery.Percent = StepSeconds * Faster / 100.0f;`
+   becomes `Recovery.Percent = 0.0f;`. Prefix `Cataclysm.FervourThreshold.`; must fail
+   `TheFinalVowSpeedsARunningCooldownAboveOneHundredAndNotBelow`.
+
+### What was run
+
+SUITE_FIGURES_C3D
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`8fc787d28`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The generator accepting a threshold figure that is none of the four | `test_fervour_thresholds_are_the_vows.py::test_a_figure_that_is_none_of_the_four_is_refused` |
+| Every capstone sentence read as stating a clause | `test_fervour_thresholds_are_the_vows.py::test_only_a_capstone_whose_sentence_states_a_clause_may_carry_a_row_with_no_option` |
+| The C++ fourth figure changed from 100 to 90 | `test_fervour_thresholds_are_the_vows.py::test_the_figures_and_their_points_are_the_four_vows` |
+| The conditions fill no longer working the thresholds out | `test_fervour_thresholds_are_the_vows.py::test_the_engine_works_the_answer_out_once_and_keeps_long_shadows_record` |
+| The First Vow's clause under 40 rather than 20 | `test_passive_effects_match_the_node_text.py::test_a_condition_matches_the_words_of_the_node_it_is_on` |
+
+---
+
 ## 2026-11-25 — A share of each spend of Fervour returned later, a lethal blow saved by spending all Fervour, and a movement skill used on cooldown for Fervour (Death trees, slice C3c)
 
 **Affects:**
