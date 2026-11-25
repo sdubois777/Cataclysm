@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Death's Quest dungeons are Abomination lairs: a fall while Death is active adds one, and each lair's Cursed Abomination, the Gatekeeper at the Boss rung, grows by a step for every city fallen when the lair appeared (#51, slice B5)
+
+**Affects:**
+- `game/Source/CataclysmEmpire/Empire/CataclysmSurge.h` and `game/Source/CataclysmEmpire/Empire/CataclysmSurge.cpp`:
+  `FCataclysmDungeon::CitiesFallenBefore`, `IsALair`, `AbominationMultiplier`, `AbominationStep`, `LairSeedFor`, the
+  count in `RollWave`.
+- `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.h` and `game/Source/CataclysmEmpire/Empire/CataclysmEmpireRun.cpp`:
+  `MakeLairOnAFall`, called from `CityFell`; `FCataclysmDayReport::LairOnAFall`.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `IsALair`, `MakeTheCursedAbomination`, the Boss rung in
+  `PopulationRungFor`, the last wave, the load.
+- `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and
+  `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`: `bIsTheCursedAbomination`, `AbominationGearMore`.
+- `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`:
+  `SpawnDropsFor`'s `GearMore`.
+- `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h`, `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp`
+  and `game/Source/Cataclysm/Interface/CataclysmEmpireMapLayout.cpp`: "Cursed Abomination", the map's lair line.
+- `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` and `game/Source/Cataclysm/Save/CataclysmSaveRecords.cpp`: run
+  record version 22, `Migrate_21_to_22`; `game/Tests/SaveFixtures/Run_v22.json`, new; `game/Tests/SaveFixtures/README.md`;
+  `game/Source/Cataclysm/Tests/CataclysmSaveFixtures.h`; the 20 test files that read the committed run file or run the
+  chain.
+- `game/Source/Cataclysm/Tests/CataclysmAbominationLairsTests.cpp`, new.
+- `sim/cataclysm_sim/config.py`, `sim/cataclysm_sim/engine.py` and `sim/cataclysm_sim/combat.py`;
+  `sim/tests/test_an_abomination_lair.py`, new.
+- `tools/tests/test_abomination_lairs_port.py`, new; `tools/tests/test_war_quest_sieges_port.py`.
+
+Issue [#51](https://github.com/sdubois777/Cataclysm/issues/51), slice B5 of the plan for the Demonic, Death and War
+Cataclysms (2026-11-24), the Death quest and surge effect, **with the simulation slice A2, which was never done**. On
+`feat/abomination-lairs`, stacked on `feat/war-quest-sieges` (slice B4), which takes the run record to 21 (L8).
+
+### SAID FIRST
+
+- **WRITTEN WITHOUT A BUILD.**
+- **THE STEP IS 1.0 UNTIL THE A2 SWEEP SETS IT**, in both halves. At 1.0 every lair's Abomination is the base Boss-rung
+  Gatekeeper, and the Unreal strength checks cannot tell a scaled boss from an unscaled one. The sweep runs only when
+  no Unreal window runs (L9), so it waits for bundle 1's window. Its figures and the step it picks are added here.
+- **WHAT A PLAYER MEETS.** Every Quest dungeon Death sends is an Abomination lair, a Horde. Its last wave holds the
+  Cursed Abomination, a Gatekeeper at the Boss rung named so under its bar, whose health, damage and gear grow by the
+  step once for every city fallen when the lair appeared. Every city that falls while Death is active adds one more
+  lair, next to it. Clearing a lair is one of Death's 5 Seeds of Undeath, as clearing a Death Quest dungeon already was.
+- **A RETAKEN CITY NO LONGER COUNTS**, in either half: the count is the cities fallen at that moment.
+- **A ONE-FLOOR LAIR HAS NO ABOMINATION**: a one-floor dungeon has no boss at its exit (`BossAtTheExit`).
+- **THE RUN RECORD GOES FROM 21 TO 22.**
+
+### The rulings
+
+- **The design**, Dead Rising: "Cursed Abominations spawn as cities fall, growing stronger with each subsequent loss.
+  Players must defeat Abominations in their quest dungeon lairs to collect 5 Seeds of Undeath and unlock the enemy
+  capital. Each fallen city adds a more powerful Abomination."
+- **The owner, 2026-11-24**, accepting Q6 to Q8: "Your recommendations work for all of those death/war questions."
+- **The coordinating session, 2026-11-25:**
+  - **L1:** the count includes the fall that made the lair.
+  - **L2:** a fall's lair is placed by `PickRefuge`, with no cap.
+  - **L3:** the boss is fixed at the Boss rung.
+  - **L4:** the stand-in is the Gatekeeper, because no Death creature exists (#29).
+  - **L5:** its on-screen name is "Cursed Abomination".
+  - **L6:** gear drops are multiplied by the same step, and gold is unchanged.
+  - **L7:** the largest step that keeps the tier 1 Death won share within 5 points of a step of 1.00, labelled a judgement.
+  - **L8:** stacked on B4's branch, run record 21 to 22.
+  - **L9:** the sweep runs only when no Unreal window does.
+- **Research**: Last Epoch's Nemesis can be empowered and each empowerment upgrades its rewards (Maxroll's Nemesis
+  overview, recorded in the plan's Q7). It shows a returning enemy that pays more as it grows; the size of the step is
+  this game's own.
+
+### What it does
+
+| Rule | Game | Simulation |
+| :-- | :-- | :-- |
+| A lair | `IsALair`: Quest, sent by Death | `is_lair` |
+| Its count | `CitiesFallenBefore`, set in `RollWave` and `MakeLairOnAFall` from `FallenCityCount` | `cities_fallen_before`, set in `_make_dungeon` |
+| A fall adds one | `MakeLairOnAFall`, after War's Siege, before the fall's surge, `PickRefuge` from a stream of its own | `_lair_on_a_fall`, the same place, `_quest_refuge` |
+| The boss | the last wave's Gatekeeper at `FirstBossRarityStep`, `MakeTheCursedAbomination`; found again on a load | the boss score in `death_chance` |
+| Its growth | health and damage times `AbominationStep ^ count`, through the starting health and the placed multiplier, which a save keeps; gear times the same (`SpawnDropsFor`'s `GearMore`) | `boss_score_multiplier`, since an enemy's health and damage are each its score times a fixed share |
+
+### Tests
+
+`Cataclysm.AbominationLairs.`, a new group of 10: what a lair is and its multiplier; a surge's lair counts the fallen
+(200 waves) with War's Quest dungeons counting nothing; a fall while Death is active makes one, counting the fall,
+CONTROL none without Death; two falls, two lairs; the last wave's Cursed Abomination at the Boss rung, named, with its
+gear's step, CONTROL War's Horde; its health and damage by the step; the map's line; the save's round trip; the
+migration from `Run_v21.json`. Python: `sim/tests/test_an_abomination_lair.py` (6) and
+`tools/tests/test_abomination_lairs_port.py` (6).
+
+### Registered
+
+Nothing has run yet.
+
+---
+
 ## 2026-11-25 — War's Quest dungeons are Sieges in the game: at most two are made a day, each bites a quarter of a Siege, grows from the day it reached its city and is re-drawn off a besieged city, and a city's fall to War makes the next one (#51, slice B4)
 
 **Affects:**
