@@ -1814,7 +1814,42 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WithinSecondsOfFervourSpent
 		UMETA(DisplayName = "Within Seconds Of Fervour Spent"),
+
+	/**
+	 * The Soul Collector's Fervour threshold whose figure is `ConditionValue` (20, 40, 60 or 100) is reached. The Death
+	 * trees' slice C3d (2026-11-25), for the four vows' clauses: "while you hold 20 or more Fervour, all your skills have
+	 * 20% more Area of Effect", and the three after it at 40, 60 and 100.
+	 *
+	 * WORKED OUT ONCE A CONDITIONS FILL, by `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`, into
+	 * `FCataclysmStatConditions::FervourThresholdsReached`: the threshold is OPEN (25, 50, 100 or 200 passive points
+	 * spent, as the vows' sentences say), and either the Fervour held reaches its figure less Generous Count's
+	 * reduction or Long Shadow's seconds have not passed since it last did. A figure that is none of the four is never
+	 * reached, and the generator refuses one. See `CataclysmFervourThresholds`.
+	 */
+	FervourThresholdReached
+		UMETA(DisplayName = "Fervour Threshold Reached"),
 };
+
+/**
+ * The Soul Collector's four Fervour thresholds, in order: the figure of Fervour held each asks for, and the passive
+ * points spent that open it. The Death trees' slice C3d (2026-11-25), from the four vows' sentences: "Reaching 25 points
+ * also opens the first Fervour threshold: while you hold 20 or more Fervour", and 50 for 40, 100 for 60, 200 for 100.
+ * `tools/generate_datatables.py` holds the figures in `FERVOUR_THRESHOLDS`, and a test holds the two equal.
+ */
+namespace CataclysmFervourThresholds
+{
+	/** How many there are: four. */
+	CATACLYSM_API int32 Count();
+
+	/** The Fervour held the threshold at `Index` asks for (20, 40, 60, 100), or -1 past the end. */
+	CATACLYSM_API float Figure(int32 Index);
+
+	/** The passive points spent that open the threshold at `Index` (25, 50, 100, 200), or -1 past the end. */
+	CATACLYSM_API int32 OpensAtPoints(int32 Index);
+
+	/** The index of the threshold whose figure is `FigureAskedFor`, or -1 when it is none of the four. */
+	CATACLYSM_API int32 IndexOf(float FigureAskedFor);
+}
 
 /**
  * What a condition's answer depends on. Issue #1821.
@@ -2626,6 +2661,15 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerEnemyInSiphon
 		UMETA(DisplayName = "Per Enemy In Siphon"),
+
+	/**
+	 * `Value` per whole `ScaleStep` of the Soul Collector's four Fervour thresholds reached now. The Death trees' slice
+	 * C3d (2026-11-25): Steady Count, "+1% increased damage per point for each Fervour threshold you are at or above".
+	 * Read from `FCataclysmStatConditions::FervourThresholdsReached`, the same answer the condition
+	 * `FervourThresholdReached` reads, so the two cannot disagree.
+	 */
+	PerFervourThresholdReached
+		UMETA(DisplayName = "Per Fervour Threshold Reached"),
 };
 
 /**
@@ -2885,6 +2929,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * `ECataclysmStatCondition::WithinSecondsOfFervourSpent`. The Death trees' slice C3a (2026-11-25).
 	 */
 	float SecondsSinceFervourSpent = -1.0f;
+
+	/**
+	 * Which of the Soul Collector's four Fervour thresholds are reached now, one bit each in the order of
+	 * `CataclysmFervourThresholds` (bit 0 the threshold at 20), or -1 for a character with no Fervour or no player
+	 * state, which reaches none. For `ECataclysmStatCondition::FervourThresholdReached` and
+	 * `ECataclysmStatScale::PerFervourThresholdReached`. The Death trees' slice C3d (2026-11-25).
+	 */
+	int32 FervourThresholdsReached = -1;
 
 	/**
 	 * Whether the character struck is in the asker's Siphon, for `ECataclysmStatCondition::TargetInYourSiphon`. Filled
@@ -5230,7 +5282,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds an eightieth, which is the drift that put the passive tree eight
+	 * adds an eighty-first, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -5239,7 +5291,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * THIRTY-SIX OF THE SEVENTY-NINE COMPARE NOTHING. They are the case labels
+	 * THIRTY-SIX OF THE EIGHTY COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

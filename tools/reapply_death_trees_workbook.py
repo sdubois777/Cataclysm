@@ -507,6 +507,25 @@ NODES: tuple[Node, ...] = (
     Node(SH + "basic_c_c0", "Borrowed Step",
          (R("movement_on_cooldown_fervour_cost", "flat", 40, min_points=1),
           R("movement_on_cooldown_fervour_cost", "flat", -2))),
+
+    # ---- SLICE C3d (2026-11-25): THE SOUL COLLECTOR'S FOUR FERVOUR THRESHOLDS.
+    # Each vow's clause is a row with no option on its capstone, accepted because
+    # the capstone's own sentence states it (the coordinating session's ruling 4),
+    # under `fervour_threshold_reached` with its figure. "Cost no mana" is a
+    # removal of `mana_cost`, as the Ritualist's keystone writes it; "recover twice
+    # as fast" is 100 on the rate the regeneration step applies. The fourth vow's
+    # clause and the second vow's chain half are recorded in docs/DECISIONS.md.
+    Node(SC + "capstone_25", "The First Vow",
+         (R("area_of_effect", "more", 20, cond="fervour_threshold_reached", cond_value=20),)),
+    Node(SC + "capstone_50", "The Second Vow",
+         (R("projectile_count", "flat", 1, cond="fervour_threshold_reached", cond_value=40),)),
+    Node(SC + "capstone_100", "The Third Vow",
+         (R("mana_cost", "removed", 1, cond="fervour_threshold_reached", cond_value=60),)),
+    Node(SC + "capstone_200", "The Final Vow",
+         (R("cooldowns_recover_faster_percent", "flat", 100, cond="fervour_threshold_reached", cond_value=100),)),
+    Node(SC + "basic_a_c0", "Generous Count", (R("fervour_threshold_reduction", "flat", 1),)),
+    Node(SC + "basic_a_c1", "Steady Count", damage("increased", 1, scale="fervour_thresholds_reached", step=1)),
+    Node(SC + "keystone_a_kC", "Long Shadow", (R("fervour_threshold_linger_seconds", "flat", 5),)),
 )
 
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).

@@ -180,7 +180,11 @@ def test_every_node_named_is_a_node_of_its_tree_and_a_capstone_row_names_an_opti
             assert kind == "capstone", f"{node.key} names option {node.option}"
             assert nodes[node.key][f"Option{node.option}Name"] == node.label, node.key
         else:
-            assert kind != "capstone", f"{node.key} is a capstone and names no option"
+            # A CAPSTONE ROW WITH NO OPTION only where the capstone's own sentence
+            # states a clause beside its choice: the coordinating session's ruling
+            # 4 of 2026-11-25, the Soul Collector vows' Fervour thresholds.
+            assert kind != "capstone" or gen.capstone_states_a_clause(nodes[node.key]["Description"]), (
+                f"{node.key} is a capstone and names no option")
             assert nodes[node.key]["NodeName"] == node.label, node.key
 
 

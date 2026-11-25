@@ -694,7 +694,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: vow's first option) and the Shadow's Borrowed Step, whose "40 Fervour, reduced
 #: by 2 per point" is two rows. The Soul Collector 87 rows on 46 nodes, the
 #: Shadow 69 rows on 42.
-AUTHORED_ROWS = 539
+#:
+#: AND TO 547 THE SAME DAY, for slice C3d: the four Soul Collector vows'
+#: threshold clauses, Generous Count, Steady Count (two) and Long Shadow. The
+#: Soul Collector 95 rows on 50 nodes.
+AUTHORED_ROWS = 547
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1131,7 +1135,11 @@ AUTHORED_ROWS = 539
 #: AND TO 329 THE SAME DAY, for slice C3c's Cinders Kept and Borrowed Step:
 #: the Soul Collector 46 of its 73 and the Shadow 42 of its 74. Phylactery is
 #: an option of a capstone already counted.
-AUTHORED_NODES = 329
+#:
+#: AND TO 333 THE SAME DAY, for slice C3d: Generous Count, Steady Count, Long
+#: Shadow and The Final Vow, whose threshold clause is its first row. The other
+#: three vows were counted for an option already. The Soul Collector 50 of its 73.
+AUTHORED_NODES = 333
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1553,6 +1561,9 @@ CONDITION_WORDS = {
     # passive row at all, so there is nothing yet to be confused with. Give it
     # one on the day a node uses that condition.
     "class_resource_points_at_least": ("or more fervour", "{value:g}"),
+    # A SOUL COLLECTOR VOW'S FERVOUR THRESHOLD, the Death trees' slice C3d
+    # (2026-11-25): "while you hold 20 or more Fervour", the same words.
+    "fervour_threshold_reached": ("or more fervour", "{value:g}"),
 
     # "IS FULL" TOO, since the Ravager's Pressing of 2026-11-24: "While your
     # Fervour is full". The same predicate, in the words the audit wrote.
@@ -2097,6 +2108,9 @@ SCALE_WORDS = {
     # each say "each enemy in your Siphon", and count single enemies, so the
     # step is 1. Their caps ("up to 10 enemies") are the rows' Scale Max Steps.
     "enemies_in_siphon": (("each enemy in your siphon",), None, None),
+    # THE FERVOUR THRESHOLDS REACHED, the Death trees' slice C3d (2026-11-25):
+    # Steady Count's "for each Fervour threshold you are at or above".
+    "fervour_thresholds_reached": (("each fervour threshold",), None, None),
     "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
@@ -2515,6 +2529,10 @@ VALUE_FORMS = {
     # "by spending 40 Fervour" and "reduced by 2 per point".
     "fervour_spent_returned_percent": ("{value:g}% per point of the Fervour you spend",),
     "fervour_lethal_save_every_seconds": ("Once every {value:g} seconds",),
+    # SLICE C3d (2026-11-25): Generous Count's "reached 1 Fervour sooner per
+    # point" and Long Shadow's "stays in effect for 5 seconds".
+    "fervour_threshold_reduction": ("reached {value:g} Fervour sooner per point",),
+    "fervour_threshold_linger_seconds": ("stays in effect for {value:g} seconds",),
     "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
     "fervour_kill_decay_grace_seconds": ("once {value:g} seconds have passed",
                                          "for {value:g} seconds rather than",
@@ -2596,6 +2614,14 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE SECOND AND FOURTH SOUL COLLECTOR VOWS' CLAUSES, the Death trees' slice
+    # C3d (2026-11-25): "fire one extra projectile" is 1, and "your skill
+    # cooldowns recover twice as fast" is 100 on the rate.
+    ("SoulCollector_capstone_50", "projectile_count"): ("fire one extra projectile", 1.0),
+    ("SoulCollector_capstone_200", "cooldowns_recover_faster_percent"): ("recover twice as fast", 100.0),
+    # AND THE THIRD VOW'S, "your skills cost no mana", a removal of one as the
+    # Ritualist's Ritual Focus writes it.
+    ("SoulCollector_capstone_100", "mana_cost"): ("cost no mana", 1.0),
     # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
     # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
     # each, paid once a second.

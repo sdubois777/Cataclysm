@@ -538,3 +538,11 @@ SoulCollector_basic_d_c1#1,SoulCollector_basic_d_c1,fervour_spent_returned_perce
 SoulCollector_capstone_100#2,SoulCollector_capstone_100,fervour_lethal_save_every_seconds,flat,60.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_c_c0#1,Shadow_basic_c_c0,movement_on_cooldown_fervour_cost,flat,40.0,,,0.0,,0.0,0,-1.0,1,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
 Shadow_basic_c_c0#2,Shadow_basic_c_c0,movement_on_cooldown_fervour_cost,flat,-2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_25#2,SoulCollector_capstone_25,area_of_effect,more,20.0,,fervour_threshold_reached,20.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_50#4,SoulCollector_capstone_50,projectile_count,flat,1.0,,fervour_threshold_reached,40.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_100#3,SoulCollector_capstone_100,mana_cost,removed,1.0,,fervour_threshold_reached,60.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_capstone_200#1,SoulCollector_capstone_200,cooldowns_recover_faster_percent,flat,100.0,,fervour_threshold_reached,100.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_a_c0#1,SoulCollector_basic_a_c0,fervour_threshold_reduction,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_a_c1#1,SoulCollector_basic_a_c1,attack_damage,increased,1.0,,,0.0,fervour_thresholds_reached,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_basic_a_c1#2,SoulCollector_basic_a_c1,spell_damage,increased,1.0,,,0.0,fervour_thresholds_reached,1.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0
+SoulCollector_keystone_a_kC#1,SoulCollector_keystone_a_kC,fervour_threshold_linger_seconds,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0

@@ -196,7 +196,10 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 42 WHEN `enemies_in_siphon` GAINED ITS ROWS, 2026-11-25, for the Soul
 #: Collector's Siphon (the Death trees' slice C2).
-EXPECTED_NAMED_BY_A_ROW = 42
+#:
+#: AND 43 WHEN `fervour_thresholds_reached` GAINED ITS TWO ROWS, 2026-11-25, for
+#: the Soul Collector's Steady Count (the Death trees' slice C3d).
+EXPECTED_NAMED_BY_A_ROW = 43
 
 
 def scales_named_by_a_row() -> set[str]:

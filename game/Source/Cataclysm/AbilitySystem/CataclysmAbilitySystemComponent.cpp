@@ -1476,6 +1476,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// strike-history fill in `WithTargetState` reads it.
 	State.AskingAbilitySystem = this;
 
+	// AND THE SOUL COLLECTOR'S FERVOUR THRESHOLDS REACHED, worked out once from the Fervour held and the points spent,
+	// both filled above. The Death trees' slice C3d (2026-11-25).
+	State.FervourThresholdsReached = FervourThresholdsReachedFor(State.ClassResourceHeld, State.ClassPointsSpent);
+
 	return State;
 }
 
@@ -3122,6 +3126,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// C3c, 2026-11-25). A share spent before a death does not arrive after the revival.
 	FervourToReturn.Reset();
 	FervourLethalSaveNextAllowedSeconds = -1.0f;
+	// AND LONG SHADOW'S RECORD, so a threshold held before a death does not linger after the revival (slice C3d).
+	FervourThresholdLastHeldAtSeconds.Reset();
 	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
@@ -3922,6 +3928,93 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat = TEXT("fervour_spent_returned_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdReductionStat = TEXT("fervour_threshold_reduction");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat =
+	TEXT("fervour_threshold_linger_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat =
+	TEXT("cooldowns_recover_faster_percent");
+
+float UCataclysmAbilitySystemComponent::StatWithNoReading(FName Stat) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	return Inputs
+		? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+										   FCataclysmStatConditions()).Final
+		: 0.0f;
+}
+
+int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(float Held, int32 PointsSpent) const
+{
+	const UWorld* World = GetWorld();
+	if (Held < 0.0f || PointsSpent < 0 || !World)
+	{
+		return -1;
+	}
+	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
+	const float Linger = StatWithNoReading(FName(FervourThresholdLingerSecondsStat));
+	const float Now = World->GetTimeSeconds();
+	int32 Reached = 0;
+	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
+	{
+		if (PointsSpent < CataclysmFervourThresholds::OpensAtPoints(Index))
+		{
+			continue;
+		}
+		const bool bHeld = Held >= CataclysmFervourThresholds::Figure(Index) - Reduction;
+		const float LastHeld = FervourThresholdLastHeldAtSeconds.IsValidIndex(Index)
+			? FervourThresholdLastHeldAtSeconds[Index]
+			: -1.0f;
+		const bool bLingering = Linger > 0.0f && LastHeld >= 0.0f && Now - LastHeld < Linger;
+		if (bHeld || bLingering)
+		{
+			Reached |= 1 << Index;
+		}
+	}
+	return Reached;
+}
+
+void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(float Held)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Held < 0.0f)
+	{
+		return;
+	}
+	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
+	if (FervourThresholdLastHeldAtSeconds.Num() < CataclysmFervourThresholds::Count())
+	{
+		FervourThresholdLastHeldAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
+	}
+	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
+	{
+		if (Held >= CataclysmFervourThresholds::Figure(Index) - Reduction)
+		{
+			FervourThresholdLastHeldAtSeconds[Index] = World->GetTimeSeconds();
+		}
+	}
+}
+
+float UCataclysmAbilitySystemComponent::FervourThresholdStep(float StepSeconds)
+{
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	if (HasAttributeSetForAttribute(Pool))
+	{
+		NoteFervourThresholdsHeld(GetNumericAttribute(Pool));
+	}
+
+	// THE FOURTH VOW'S RATE: each step, that share of the step's seconds off every running cooldown once more, through
+	// the same reduction a row's `cooldown_reduce_all` makes, so a cooldown kept off the keys recovers too.
+	const float Faster = StatForSkill(FName(CooldownsRecoverFasterPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Faster <= 0.0f || StepSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	FCataclysmPoolAction Recovery;
+	Recovery.CooldownReduce = ECataclysmCooldownReset::All;
+	Recovery.Percent = StepSeconds * Faster / 100.0f;
+	ReduceCooldowns(Recovery);
+	return Recovery.Percent;
+}
 const TCHAR* UCataclysmAbilitySystemComponent::FervourLethalSaveEverySecondsStat =
 	TEXT("fervour_lethal_save_every_seconds");
 

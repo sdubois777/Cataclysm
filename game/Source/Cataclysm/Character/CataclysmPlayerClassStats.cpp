@@ -1125,6 +1125,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_spent_returned_percent"),
 		TEXT("fervour_lethal_save_every_seconds"),
 		TEXT("movement_on_cooldown_fervour_cost"),
+		// The Death trees' slice C3d: Generous Count's reduction of every Fervour threshold and Long Shadow's seconds
+		// after one, read with no reading while the conditions are filled; and the fourth vow's faster cooldown
+		// recovery, asked on the regeneration step. No attribute and no base.
+		TEXT("fervour_threshold_reduction"),
+		TEXT("fervour_threshold_linger_seconds"),
+		TEXT("cooldowns_recover_faster_percent"),
 	};
 	return Stats;
 }

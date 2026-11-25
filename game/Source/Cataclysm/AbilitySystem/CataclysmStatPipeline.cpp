@@ -155,6 +155,7 @@ namespace
 		{ TEXT("seconds_after_kill"),           ECataclysmStatCondition::WithinSecondsOfKill },
 		{ TEXT("target_in_your_siphon"),        ECataclysmStatCondition::TargetInYourSiphon },
 		{ TEXT("seconds_after_fervour_spent"),  ECataclysmStatCondition::WithinSecondsOfFervourSpent },
+		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
 	};
 
 	struct FNamedStatScale
@@ -198,6 +199,7 @@ namespace
 		{ TEXT("deployables_active"),  ECataclysmStatScale::PerDeployableActive },
 		{ TEXT("traps_active"),        ECataclysmStatScale::PerTrapActive },
 		{ TEXT("gadgets_active"),      ECataclysmStatScale::PerGadgetActive },
+		{ TEXT("fervour_thresholds_reached"), ECataclysmStatScale::PerFervourThresholdReached },
 		{ TEXT("seconds_on_floor"),    ECataclysmStatScale::PerSecondOnThisFloor },
 		{ TEXT("floors_cleared"),      ECataclysmStatScale::PerFloorClearedThisRun },
 		{ TEXT("armor"),               ECataclysmStatScale::PerPointOfArmor },
@@ -282,6 +284,47 @@ void UCataclysmStatPipeline::AllConditionNames(TArray<FString>& OutNames)
 	{
 		OutNames.Add(Each.Name);
 	}
+}
+
+int32 CataclysmFervourThresholds::Count()
+{
+	return 4;
+}
+
+float CataclysmFervourThresholds::Figure(int32 Index)
+{
+	switch (Index)
+	{
+	case 0: return 20.0f;
+	case 1: return 40.0f;
+	case 2: return 60.0f;
+	case 3: return 100.0f;
+	default: return -1.0f;
+	}
+}
+
+int32 CataclysmFervourThresholds::OpensAtPoints(int32 Index)
+{
+	switch (Index)
+	{
+	case 0: return 25;
+	case 1: return 50;
+	case 2: return 100;
+	case 3: return 200;
+	default: return -1;
+	}
+}
+
+int32 CataclysmFervourThresholds::IndexOf(float FigureAskedFor)
+{
+	for (int32 Index = 0; Index < Count(); ++Index)
+	{
+		if (FMath::IsNearlyEqual(Figure(Index), FigureAskedFor))
+		{
+			return Index;
+		}
+	}
+	return -1;
 }
 
 bool UCataclysmStatPipeline::ConditionTakesAValue(
@@ -470,6 +513,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// out, which nothing announces.
 	case C::WithinSecondsOfKill:
 	case C::WithinSecondsOfFervourSpent:
+	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
+	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
+	// resource's conditions.
+	case C::FervourThresholdReached:
 		return EOn::Time;
 
 	// WHETHER THE CHARACTER IS CHANNELLING AT ALL. Ruled 2026-10-08. Both of its
@@ -1317,6 +1364,15 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.SecondsSinceFervourSpent >= 0.0f
 			&& State.SecondsSinceFervourSpent <= Value;
 
+	case ECataclysmStatCondition::FervourThresholdReached:
+	{
+		// THE BIT THE CONDITIONS FILL SET for this figure. Unknown (-1) and a figure that is none of the four both
+		// refuse. The Death trees' slice C3d (2026-11-25).
+		const int32 Index = CataclysmFervourThresholds::IndexOf(Value);
+		return State.FervourThresholdsReached >= 0 && Index >= 0
+			&& (State.FervourThresholdsReached & (1 << Index)) != 0;
+	}
+
 	case ECataclysmStatCondition::MovedWithinSeconds:
 		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
 		// deal 25%-40% less damage if you have moved in the last 2 seconds" is
@@ -1746,6 +1802,12 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// AND THE PASSIVE POINTS SPENT, PAST THE OFFSET. Issue #1686. Whole points,
 	// so the stack arithmetic, on what is left once the offset is taken off.
 	// Unknown (-1) and at or below the offset are both nothing.
+	// AND THE FERVOUR THRESHOLDS REACHED, the Death trees' slice C3d (2026-11-25). Unknown (-1) is nothing.
+	case ECataclysmStatScale::PerFervourThresholdReached:
+		return State.FervourThresholdsReached < 0
+			? 0.0f
+			: StackedValue(Modifier, FMath::CountBits(static_cast<uint32>(State.FervourThresholdsReached)));
+
 	case ECataclysmStatScale::PerClassPointSpent:
 		if (State.ClassPointsSpent < 0)
 		{

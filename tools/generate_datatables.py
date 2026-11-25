@@ -5438,7 +5438,22 @@ CONDITIONS = {
     # NoteFervourSpent` where a skill pays its Fervour cost; it derives the event
     # `fervour_spent`, which carries the amount.
     "seconds_after_fervour_spent": (0.0, 60.0, "a number of seconds"),
+    # "while you hold 20 or more Fervour" in a Soul Collector vow is
+    # `fervour_threshold_reached` with 20: the Death trees' slice C3d
+    # (2026-11-25). Its value is the FIGURE of one of the four Fervour thresholds,
+    # and nothing else (`FERVOUR_THRESHOLDS`, refused otherwise below), because
+    # Generous Count, Long Shadow and Steady Count reach those four and no other
+    # "N or more Fervour". Worked out once a conditions fill by
+    # `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`.
+    "fervour_threshold_reached": (20.0, 100.0, "the figure of a Fervour threshold"),
 }
+
+#: The figures of the Soul Collector's four Fervour thresholds, in order: "while
+#: you hold 20 or more Fervour" opened at 25 points spent, then 40 at 50, 60 at
+#: 100 and 100 at 200. The Death trees' slice C3d (2026-11-25).
+#: `CataclysmFervourThresholds::Figure` holds the same four, and
+#: `tools/tests/test_fervour_thresholds_are_the_vows.py` holds the two equal.
+FERVOUR_THRESHOLDS = (20.0, 40.0, 60.0, 100.0)
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
 #:
@@ -5570,6 +5585,12 @@ SCALES = {
     # to 10 enemies", and Life Siphon's and Living Harvest's "each enemy in your
     # Siphon". Read from the character's own record, as `minions_held` is.
     "enemies_in_siphon": (0.0, 10.0, "a number of enemies"),
+
+    # "for each Fervour threshold you are at or above" is
+    # `fervour_thresholds_reached` with a step of 1: the Soul Collector's Steady
+    # Count, the Death trees' slice C3d (2026-11-25). A count of the four, read
+    # from the same answer `fervour_threshold_reached` reads.
+    "fervour_thresholds_reached": (0.0, 4.0, "a number of Fervour thresholds"),
 
     # "for each enemy within 4 metres of you" is `enemies_in_reach` with a
     # step of 1. Issue #1597, and the third scale that is a count of things
@@ -6098,6 +6119,28 @@ def _passive_node_sentences() -> dict[tuple[str, int], str]:
         for option in range(1, CAPSTONE_OPTIONS + 1):
             sentences[(row["Name"], option)] = row[f"Option{option}Description"]
     return sentences
+
+
+#: The words a capstone's own sentence opens with to offer its choice, and
+#: nothing more: "Unlocks at 25 points spent. Choose one. The choice is
+#: permanent." What follows them, if anything, is a clause the capstone grants
+#: whichever option is chosen.
+CAPSTONE_CHOICE_WORDS = re.compile(
+    r"^\s*Unlocks at \d+ points spent\.\s*Choose one\.\s*The choice is permanent\.\s*")
+
+
+def capstone_states_a_clause(sentence: str) -> bool:
+    """Whether a capstone's own sentence states a clause beside its choice.
+
+    THE COORDINATING SESSION'S RULING 4 OF 2026-11-25 (the Death trees): a row
+    with no option on a capstone applies whatever is chosen, and is accepted only
+    on a capstone whose own sentence states that clause -- the Soul Collector's
+    four vows, "Reaching 25 points also opens the first Fervour threshold: while
+    you hold 20 or more Fervour, all your skills have 20% more Area of Effect".
+    A capstone whose sentence says only its choice still refuses one.
+    """
+    return bool(CAPSTONE_CHOICE_WORDS.sub("", sentence, count=1).strip()) \
+        and bool(CAPSTONE_CHOICE_WORDS.match(sentence))
 
 
 def _passive_option(raw, headers, index: int, node: str) -> int:
@@ -8622,6 +8665,14 @@ def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                 f"{sheet} row {index}: {who} has a condition value of "
                 f"{condition_value}, and {condition!r} takes {units} between "
                 f"{low:g} and {high:g}.")
+        # A FERVOUR THRESHOLD IS ONE OF FOUR FIGURES, not any number between
+        # them: the engine reaches none for another, so the row would be dead.
+        if (condition == "fervour_threshold_reached"
+                and condition_value not in FERVOUR_THRESHOLDS):
+            raise DataError(
+                f"{sheet} row {index}: {who} asks for the Fervour threshold "
+                f"{condition_value:g}, and the four are "
+                f"{', '.join(f'{t:g}' for t in FERVOUR_THRESHOLDS)}.")
 
     scale = clean(_cell(raw, headers, "Scale")).lower()
     if scale and scale not in SCALES:
@@ -10857,6 +10908,14 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "fervour_kill_decay_per_second": ASKER_PASSES_NOTHING_MORE,
     # Asked for with the wearer's own state and nothing else.
     "area_of_effect": ASKER_PASSES_NOTHING_MORE,
+    # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
+    # clause under `fervour_threshold_reached`: the extra projectile, asked by
+    # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
+    # and the faster cooldown recovery, asked on the regeneration step by
+    # `UCataclysmAbilitySystemComponent::FervourThresholdStep`. Probed by
+    # `ProbeConditionedProjectileCount` and `ProbeConditionedCooldownsRecoverFaster`.
+    "projectile_count": ASKER_PASSES_NOTHING_MORE,
+    "cooldowns_recover_faster_percent": ASKER_PASSES_NOTHING_MORE,
     "attack_speed": ASKER_PASSES_NOTHING_MORE,
     # ASKED WHERE A PLAYER'S STEP IS REFUSED, with no tags and no blow, by
     # `UCataclysmSkillEffects::CannotWalkByARow`. Ruled 2026-10-08, for "You
@@ -14749,6 +14808,10 @@ def validate_passive_effects(tables: dict[str, list[dict]],
     # against in the engine.
     capstones = {row["Name"] for row in nodes
                  if str(row.get("Kind", "")).strip().lower() == "capstone"}
+    # AND WHAT EACH CAPSTONE ITSELF SAYS, for the one row a capstone may carry
+    # with no option: a clause its own sentence states (`capstone_states_a_clause`).
+    capstone_sentences = {row["Name"]: str(row.get("Description", "")) for row in nodes
+                          if row["Name"] in capstones}
 
     stats = ({row["Stat"] for row in class_rows} if class_rows else set()) | \
             ({row["Stat"] for row in attribute_rows} if attribute_rows else set()) | \
@@ -14837,11 +14900,13 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"PassiveEffects/{row['Name']}: names capstone option {option} "
                 f"and {row['Node']} is not a capstone, so the row would be "
                 f"skipped every time and grant nothing")
-        elif is_capstone and not option:
+        elif is_capstone and not option and not capstone_states_a_clause(
+                capstone_sentences.get(row["Node"], "")):
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Node']} is a capstone and "
                 f"the row names no option, so it would apply whichever of the "
-                f"three the player picked")
+                f"three the player picked. Only a capstone whose own sentence "
+                f"states a clause beside its choice may carry such a row.")
 
     # AND A SCALE ONLY WHERE SOMETHING ASKS FOR THE STAT. Issue #1973: a
     # scaled row on a stat nothing asks for is accepted, built, imported and

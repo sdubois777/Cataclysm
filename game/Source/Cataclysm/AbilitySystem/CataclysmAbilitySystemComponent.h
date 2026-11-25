@@ -4066,6 +4066,61 @@ public:
 	static constexpr float FervourLethalSaveLeast = 50.0f;
 
 	/**
+	 * The stat holding how much sooner every Fervour threshold is reached: Generous Count, "Each Fervour threshold is
+	 * reached 1 Fervour sooner per point". The Death trees' slice C3d (2026-11-25). No gameplay attribute and no base.
+	 * READ WITH NO READING (`StatWithNoReading`), because it is asked while the conditions are filled; so the generator
+	 * refuses a condition or a scale on it, as it does for any stat not on its asker lists.
+	 */
+	static const TCHAR* FervourThresholdReductionStat;
+
+	/**
+	 * The stat holding how many seconds a Fervour threshold stays reached after the Fervour held falls below it: Long
+	 * Shadow, "Each Fervour threshold you reach stays in effect for 5 seconds after you fall below it". The Death trees'
+	 * slice C3d. Read with no reading, as the reduction above is.
+	 */
+	static const TCHAR* FervourThresholdLingerSecondsStat;
+
+	/**
+	 * The stat holding how much faster running cooldowns recover, in per cent: the fourth vow's clause, "while you hold
+	 * 100 or more Fervour ... your skill cooldowns recover twice as fast", is 100. The Death trees' slice C3d. A RATE, as
+	 * the coordinating session ruled on 2026-11-25: `FervourThresholdStep` takes that share of each regeneration step's
+	 * seconds off every running cooldown, so crossing 100 speeds a cooldown already running and falling below slows it
+	 * again. Asked through the pipeline with the character's state, so its row's condition is judged. No attribute.
+	 */
+	static const TCHAR* CooldownsRecoverFasterPercentStat;
+
+	/**
+	 * Which of the four Fervour thresholds are reached by a character holding `Held` Fervour with `PointsSpent` passive
+	 * points spent: one bit each, bit 0 the threshold at 20. A threshold is reached when it is OPEN (its points spent)
+	 * and either `Held` reaches its figure less `FervourThresholdReductionStat`, or `FervourThresholdLingerSecondsStat`
+	 * seconds have not passed since `NoteFervourThresholdsHeld` last saw it held. -1 when `Held` or `PointsSpent` is
+	 * unknown (negative). `CurrentConditions` asks it once a fill; public for tests.
+	 */
+	int32 FervourThresholdsReachedFor(float Held, int32 PointsSpent) const;
+
+	/**
+	 * Record now as the last time each threshold `Held` Fervour reaches was held, whether or not it is open, for Long
+	 * Shadow. Called JUST BEFORE THE FERVOUR HELD FALLS, by `UCataclysmClassResourceAttributeSet::PreAttributeChange`
+	 * with the amount it is falling from, and on every regeneration step with the amount held, which catches a threshold
+	 * lost without a fall. The Death trees' slice C3d.
+	 */
+	void NoteFervourThresholdsHeld(float Held);
+
+	/**
+	 * The regeneration step's work for the Fervour thresholds: record the thresholds held now (Long Shadow), and take
+	 * `CooldownsRecoverFasterPercentStat`'s share of `StepSeconds` off every running cooldown (the fourth vow). Returns
+	 * the seconds taken off, nought when none. The Death trees' slice C3d.
+	 */
+	float FervourThresholdStep(float StepSeconds);
+
+	/**
+	 * A stat evaluated from this character's recorded line with NO READING of its state: no skill tags and default
+	 * conditions, as `AttributePlusWhatWasNotFolded` evaluates what the refresh folded. For a stat asked while the
+	 * conditions themselves are being filled, which could not ask them without asking itself. Nought with no line.
+	 */
+	float StatWithNoReading(FName Stat) const;
+
+	/**
 	 * Whether a lethal blow is saved by spending Fervour now: the stat is held, its seconds have passed since the last
 	 * such save, and at least `FervourLethalSaveLeast` is held.
 	 */
@@ -5795,6 +5850,12 @@ protected:
 
 	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
 	float FervourLethalSaveNextAllowedSeconds = -1.0f;
+
+	/**
+	 * The last time each Fervour threshold was seen held, in world seconds, in the order of `CataclysmFervourThresholds`;
+	 * negative, or no entry yet, means never. Long Shadow reads it. See `NoteFervourThresholdsHeld`.
+	 */
+	TArray<float> FervourThresholdLastHeldAtSeconds;
 
 	/**
 	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a

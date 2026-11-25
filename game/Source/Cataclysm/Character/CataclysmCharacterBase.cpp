@@ -276,6 +276,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(this)))
 		{
 			Returning->ReturnFervourDue();
+
+			// AND THE FERVOUR THRESHOLDS' STEP: Long Shadow's record of what is held now, and the fourth vow's faster
+			// recovery of running cooldowns (the Death trees' slice C3d). Its return value is dropped as every call
+			// above it is.
+			Returning->FervourThresholdStep(UCataclysmRegeneration::StepSeconds);
 		}
 
 		// AND THE SOUL COLLECTOR'S SIPHON (the Death trees' slice C2, 2026-11-25): who is in it, what each member

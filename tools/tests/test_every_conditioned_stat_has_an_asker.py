@@ -98,7 +98,10 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # `fervour_lost_to_healing` under a condition (Threadbare). 28 THE SAME DAY,
     # for the Death classes' kill generator: `fervour_per_kill`,
     # `fervour_kill_decay_per_second` and `fervour_kill_decay_grace_seconds`.
-    assert sizes["ConditionedProbes"] == 28, sizes
+    # 30 ON 2026-11-25, for the Soul Collector vows' clauses under a Fervour
+    # threshold (the Death trees' slice C3d): `projectile_count` and
+    # `cooldowns_recover_faster_percent`.
+    assert sizes["ConditionedProbes"] == 30, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

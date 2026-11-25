@@ -404,6 +404,12 @@ INVENTORY = {
         "Borrowed Step's Fervour for a movement skill used on cooldown, asked "
         "with the skill's own tags; no attribute, so nought is the fallback, "
         "and no blow is in hand. The Death trees' slice C3c",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(CooldownsRecoverFasterPercentStat), FGameplayTagContainer(), 0.0f'):
+        "the fourth Soul Collector vow's faster cooldown recovery, asked on "
+        "the regeneration step with no tags because it reaches every skill's "
+        "cooldown; no attribute, so nought is the fallback, and no blow is in "
+        "hand. The Death trees' slice C3d",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

@@ -7468,6 +7468,69 @@ namespace CataclysmStatExemptionTest
 					   Skill->AreaOfEffectMultiplier(), 1.5f, 0.001f);
 	}
 
+	/**
+	 * `projectile_count`, read by `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags: the second
+	 * Soul Collector vow's extra projectile, under a Fervour threshold (the Death trees' slice C3d). Conditioned here below
+	 * half health, which any asker with the wearer's state judges.
+	 */
+	void ProbeConditionedProjectileCount(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedSwinger Holder(World, FVector::ZeroVector);
+		const UCataclysmProjectileSkill* Skill = ProjectileSkillOn(Holder);
+		if (!Test.TestNotNull(TEXT("a projectile skill"), Skill))
+		{
+			return;
+		}
+		FCataclysmStatModifier Row;
+		Row.Bucket = ECataclysmStatBucket::Flat;
+		Row.Source = ECataclysmModifierSource::Enchantment;
+		Row.Value = 1.0f;
+		Row.Condition = ECataclysmStatCondition::HealthBelowPercent;
+		Row.ConditionValue = 50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmProjectileSkill::ProjectileCountStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Row};
+		Holder.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		Holder.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 1000.0f);
+		Holder.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 1000.0f);
+		Test.TestEqual(TEXT("projectile_count at full health: none added"), Skill->ExtraProjectilesWithRows(), 0);
+		Holder.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 400.0f);
+		Test.TestEqual(TEXT("projectile_count is asked for, so below half health one is added"),
+					   Skill->ExtraProjectilesWithRows(), 1);
+	}
+
+	/**
+	 * `cooldowns_recover_faster_percent`, read by `UCataclysmAbilitySystemComponent::FervourThresholdStep`: the fourth
+	 * Soul Collector vow's clause, under a Fervour threshold (the Death trees' slice C3d). Conditioned here below half
+	 * health.
+	 */
+	void ProbeConditionedCooldownsRecoverFaster(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmGameplayAbility::ApplyCooldownEffect(
+			Fighter.AbilitySystem, UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy), 10.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat,
+							 ECataclysmStatBucket::Flat, 100.0f, 0.0f);
+		Test.TestEqual(TEXT("cooldowns_recover_faster_percent at full health: a step takes nothing off"),
+					   Fighter.AbilitySystem->FervourThresholdStep(1.0f), 0.0f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("cooldowns_recover_faster_percent is asked for, so below half health a step takes a second"),
+					   Fighter.AbilitySystem->FervourThresholdStep(1.0f), 1.0f, 0.001f);
+	}
+
 	/** `cooldown_reduction`, read by `UCataclysmGameplayAbility::CooldownAfterReduction`. */
 	void ProbeConditionedCooldownReduction(FAutomationTestBase& Test)
 	{
@@ -11872,6 +11935,83 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_threshold_reduction`, read with no reading by `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`
+	 * while the conditions are filled: Generous Count, the Death trees' slice C3d (2026-11-25). ONE FIGHTER. THE CONTROL
+	 * IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: 34 held reaches only the first threshold. Granted at a flat 6, the
+	 * second too.
+	 *
+	 * WHAT THIS DOES NOT REACH. A row under a threshold being judged: `Cataclysm.FervourThreshold.`.
+	 */
+	void ProbeFervourThresholdReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestEqual(TEXT("control: with no fervour_threshold_reduction 34 reaches only the first"),
+					   Fighter.AbilitySystem->FervourThresholdsReachedFor(34.0f, 200), 1);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::FervourThresholdReductionStat, 6.0f);
+		Test.TestEqual(TEXT("with it at 6 the second too, so FervourThresholdsReachedFor really reads it"),
+					   Fighter.AbilitySystem->FervourThresholdsReachedFor(34.0f, 200), 3);
+	}
+
+	/**
+	 * `fervour_threshold_linger_seconds`, read with no reading by `FervourThresholdsReachedFor`: Long Shadow, the Death
+	 * trees' slice C3d. ONE FIGHTER, which held 45 a moment ago. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS
+	 * GRANTED: holding 30 it reaches only the first threshold. Granted at a flat 5, the second still.
+	 *
+	 * WHAT THIS DOES NOT REACH. The record kept before a fall and the seconds running out: `Cataclysm.FervourThreshold.`.
+	 */
+	void ProbeFervourThresholdLinger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Fighter.AbilitySystem->NoteFervourThresholdsHeld(45.0f);
+		Test.TestEqual(TEXT("control: with no fervour_threshold_linger_seconds 30 held reaches only the first"),
+					   Fighter.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), 1);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat, 5.0f);
+		Test.TestEqual(TEXT("with it at 5 the second still, so FervourThresholdsReachedFor really reads it"),
+					   Fighter.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), 3);
+	}
+
+	/**
+	 * `cooldowns_recover_faster_percent`, read by `UCataclysmAbilitySystemComponent::FervourThresholdStep` on the
+	 * regeneration step: the fourth Soul Collector vow's clause, the Death trees' slice C3d. ONE FIGHTER with a cooldown
+	 * running. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a step of a second takes nothing off. Granted at
+	 * a flat 100, it takes a second off.
+	 *
+	 * WHAT THIS DOES NOT REACH. The clause's condition and a cooldown ending early: `Cataclysm.FervourThreshold.`.
+	 */
+	void ProbeCooldownsRecoverFaster(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmGameplayAbility::ApplyCooldownEffect(
+			Fighter.AbilitySystem, UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy), 10.0f);
+		Test.TestEqual(TEXT("control: with no cooldowns_recover_faster_percent a step takes nothing off"),
+					   Fighter.AbilitySystem->FervourThresholdStep(1.0f), 0.0f);
+		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat, 100.0f);
+		Test.TestEqual(TEXT("with it at 100 a step of a second takes a second off, so FervourThresholdStep reads it"),
+					   Fighter.AbilitySystem->FervourThresholdStep(1.0f), 1.0f, 0.001f);
+	}
+
+	/**
 	 * The four stats of traps layer 4, read off the player with `Type.Trap` by `ACataclysmMinion::SkillTrapRearmChanceFor`,
 	 * `SkillTrapIncreaseOnItsEnemyFor`, `SkillTrapShareOfItsEnemysHealthFor` and `SkillTrapShareAsDamageOverTimeFor`,
 	 * which a trap's trigger and `UCataclysmSkillEffects::ApplyHit` ask. Ruled 2026-10-21 (F1 to F9). ONE FIGHTER. THE
@@ -12078,6 +12218,9 @@ namespace CataclysmStatExemptionTest
 	{
 		static const TMap<FString, FProbe> Made = {
 			{TEXT("area_of_effect"),           &ProbeConditionedAreaOfEffect},
+			// THE DEATH TREES' SLICE C3d (2026-11-25): two Soul Collector vows' clauses.
+			{TEXT("projectile_count"),         &ProbeConditionedProjectileCount},
+			{TEXT("cooldowns_recover_faster_percent"), &ProbeConditionedCooldownsRecoverFaster},
 			{TEXT("cooldown_skip_chance"),     &ProbeConditionedCooldownSkipChance},
 			{TEXT("debuffs_do_not_expire"),    &ProbeConditionedDebuffsDoNotExpire},
 			{TEXT("fervour_loss_suppressed"),  &ProbeConditionedFervourLossSuppressed},
@@ -12359,6 +12502,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_spent_returned_percent"), &ProbeFervourSpentReturned},
 			{TEXT("fervour_lethal_save_every_seconds"), &ProbeFervourLethalSave},
 			{TEXT("movement_on_cooldown_fervour_cost"), &ProbeMovementOnCooldownFervourCost},
+			{TEXT("fervour_threshold_reduction"), &ProbeFervourThresholdReduction},
+			{TEXT("fervour_threshold_linger_seconds"), &ProbeFervourThresholdLinger},
+			{TEXT("cooldowns_recover_faster_percent"), &ProbeCooldownsRecoverFaster},
 		};
 		return Made;
 	}
