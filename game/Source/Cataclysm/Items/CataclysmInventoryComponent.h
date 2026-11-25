@@ -37,6 +37,13 @@
  * ItemBases table and every rolled item has one; an item without a base cannot be
  * named, valued or drawn, so it is not an item. See SlotIsEmpty.
  *
+ * SINCE ISSUE #2849 THE 48 SLOTS HOLD GEAR ONLY, and crafting materials and gems are carried in two stores of their
+ * own, one stack per material and one per gem and rarity, with no limit. The project owner, 2026-11-22: "I think we need
+ * to add tabs to the inventory. One for crafting materials and one for gems. Otherwise you wont be able to carry any
+ * loot", and then, of the shape, "One cell per kind, no limit (Recommended)". So the pressure the paragraphs above
+ * describe is now a pressure on gear: a material or a gem is never refused for want of room, and never takes a gear
+ * slot. Diablo IV's Materials and Socketables tabs work this way.
+ *
  * WHAT IS DELIBERATELY NOT HERE.
  *
  * - **The stash.** A different container with different rules -- 600 slots, six
@@ -48,14 +55,14 @@
  *   yet; adding it here alone would be one replicated system in a game with none.
  */
 /**
- * One slot of the carried inventory: a gear item, a stack of one crafting
- * material, a stack of one gem at one rarity, or nothing.
+ * One slot of the carried inventory or of the stash: a gear item, a stack of one crafting material, a stack of one gem
+ * at one rarity, or nothing.
  *
- * ONE BAG HOLDS BOTH, because the design says so: the carried inventory is 48
- * slots and a character carries whatever it has picked up in them. A second
- * store for materials would be a second bag with a second capacity, and the
- * pressure the design wants -- a full inventory being a choice about what to
- * leave behind -- only exists if everything competes for the same 48.
+ * SINCE ISSUE #2849 A CARRIED GEAR SLOT HOLDS GEAR ONLY, and a carried stack is an entry of
+ * `UCataclysmInventoryComponent`'s material or gem store, of this same type so the screen, the tool tips and the save
+ * draw and write it as before. Until #2849 one bag held all three, so that everything competed for the same 48; the
+ * owner ruled on 2026-11-22 that materials and gems are carried apart. THE STASH STILL HOLDS ALL THREE in this type
+ * (`Stash`, `PrivateStash`); issue #529.
  *
  * A MATERIAL IS A NAME AND A COUNT, NOT AN ITEM. It has no affixes, no upgrade
  * level, no sockets and no residue; two of the same material are the same thing
@@ -118,6 +125,18 @@ struct CATACLYSM_API FCataclysmCarriedSlot
 	int32 Quantity = 0;
 };
 
+/**
+ * The three tabs of the carried inventory. Issue #2849, ruled 2026-11-22: gear in the 48 slots, crafting materials and
+ * gems each in a store of their own.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmInventoryTab : uint8
+{
+	Gear,
+	Materials,
+	Gems,
+};
+
 UCLASS(ClassGroup = (Cataclysm), meta = (BlueprintSpawnableComponent))
 class CATACLYSM_API UCataclysmInventoryComponent : public UActorComponent
 {
@@ -161,15 +180,16 @@ public:
 	/** Whether a slot of the bag holds neither gear nor a material stack. */
 	static bool SlotIsEmpty(const FCataclysmCarriedSlot& Slot);
 
-	/** How many of the 48 slots hold an item. */
+	/** How many of the 48 gear slots hold an item. A material or gem stack is not counted: it has no slot (#2849). */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
 	int32 NumItems() const;
 
-	/** How many slots are free. Never negative and never above 48. */
+	/** How many gear slots are free. Never negative and never above 48. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
 	int32 NumFreeSlots() const;
 
-	/** True when every slot holds an item, so the next drop stays on the floor. */
+	/** True when every gear slot holds an item, so the next gear drop stays on the floor. Materials and gems are still
+	 *  taken (#2849). */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
 	bool IsFull() const;
 
@@ -223,54 +243,53 @@ public:
 	void RemoveEverything();
 
 	/**
-	 * Puts the 48 saved slots back exactly, each in the position it was saved in. Issue #753, the character step.
+	 * Puts the 48 saved gear slots back exactly, each in the position it was saved in. Issue #753, the character step.
 	 *
 	 * REFUSED, CHANGING NOTHING, when the saved list does not hold exactly `SlotCount` slots: the shape is checked and
 	 * the contents are not, because the save is the authority for what was carried. IT RAISES NO SAVE TRIGGER, unlike
 	 * every other change to the bag: putting back what the file holds is not a change the file needs to record.
+	 *
+	 * A STACK FOUND IN A SAVED SLOT GOES TO ITS STORE, added to any stack of that kind already there, and the slot is
+	 * left empty (#2849). A record of version 16 holds none there, because `Migrate_15_to_16` moves them out; a test
+	 * that builds a record by hand may, and nothing a player carried is lost either way.
 	 */
 	bool RestoreSlots(const TArray<FCataclysmCarriedSlot>& Saved);
 
 	/**
-	 * Adds crafting materials, stacking them onto any already carried.
+	 * Puts the saved material and gem stores back, replacing what is carried there. Issue #2849.
 	 *
-	 * @return the slot they went into, or **INDEX_NONE when there was no room**,
-	 *         in which case nothing was stored.
+	 * Each entry is a stack: a material name or a gem name and rarity, and a quantity. An entry with neither, or with a
+	 * quantity of nought or less, is dropped; two entries of one kind are added together. IT RAISES NO SAVE TRIGGER, for
+	 * the reason `RestoreSlots` gives.
 	 *
-	 * A STACK FIRST, A FREE SLOT SECOND. All crafting materials stack, decided
-	 * by the project owner on 2026-08-19, so a second Corrupted Mote joins the
-	 * first rather than taking a slot of its own. Only a material nothing is
-	 * carrying yet needs a slot, which is what stops a Cataclysm Boss's
-	 * twenty-four materials filling half the bag.
-	 *
-	 * BY NAME AND NOT BY TIER. Four materials share tier 1 and they are
-	 * different things; stacking by tier would merge them.
-	 *
-	 * AN EXISTING STACK ALWAYS HAS ROOM, because no ceiling is set. So this can
-	 * only fail for a material not already carried, and only when every slot is
-	 * full.
+	 * CALL IT BEFORE `RestoreSlots`: this empties both stores first, and `RestoreSlots` adds to them any stack it finds
+	 * in a saved gear slot.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
-	int32 AddMaterial(FName Material, int32 Quantity);
-
-	/** How many of a crafting material are carried, across every slot. */
-	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
-	int32 CountOfMaterial(FName Material) const;
+	void RestoreStacks(const TArray<FCataclysmCarriedSlot>& Materials, const TArray<FCataclysmCarriedSlot>& Gems);
 
 	/**
-	 * The slot a crafting material is stacked in, or INDEX_NONE for none.
+	 * Adds crafting materials to the material store, onto any of that material already carried.
 	 *
-	 * ONE STACK PER MATERIAL. AddMaterial always joins the stack it finds, so
-	 * there is never a second one to find.
+	 * @return whether they were added: false only for a material with no name or for none of it. **NEVER FALSE FOR WANT
+	 *         OF ROOM**: the store has one stack per material and no limit, the owner's ruling of 2026-11-22 (#2849).
+	 *         Until #2849 this returned the bag slot the stack took, and a new material was refused when every slot was
+	 *         full.
+	 *
+	 * BY NAME AND NOT BY TIER. Four materials share tier 1 and they are different things; stacking by tier would merge
+	 * them. All crafting materials stack, decided by the project owner on 2026-08-19.
 	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Inventory")
+	bool AddMaterial(FName Material, int32 Quantity);
+
+	/** How many of a crafting material are carried. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Inventory")
-	int32 SlotOfMaterial(FName Material) const;
+	int32 CountOfMaterial(FName Material) const;
 
 	/**
 	 * Takes this many of a crafting material out of its stack. Issues #1820 and #41.
 	 *
 	 * @return whether they were taken. **ALL OR NOTHING**: fewer carried than asked takes none, so a price is paid
-	 *         whole or not at all. A stack taken to zero empties its slot, as `RemoveItemAt` leaves one.
+	 *         whole or not at all. A stack taken to zero leaves the store.
 	 *
 	 * Built for Forced Tithes, whose altar takes materials as one of its prices. It is the first thing in the game that
 	 * spends a material; crafting will be the second.
@@ -279,33 +298,35 @@ public:
 	bool RemoveMaterial(FName Material, int32 Quantity);
 
 	/**
-	 * Adds gems of one kind and rarity, stacking them onto any already carried. Issue #46, slice G2.
+	 * Adds gems of one kind and rarity to the gem store, onto any of that kind and rarity already carried. Issue #46,
+	 * slice G2; a store of its own since #2849.
 	 *
-	 * @return the slot they went into, or **INDEX_NONE when there was no room**, in which case nothing was stored.
-	 *
-	 * AS `AddMaterial` DOES: a stack first, a free slot second, and no ceiling. ONE STACK PER GEM AND RARITY, ruled
-	 * 2026-11-21, so an Everyday Of The Viper does not join a Superb one. A gem with no name, or none of one, is
-	 * refused.
+	 * @return whether they were added: false only for a gem with no name or for none of one. NEVER FALSE FOR WANT OF
+	 *         ROOM, as `AddMaterial`. ONE STACK PER GEM AND RARITY, ruled 2026-11-21, so an Everyday Of The Viper does
+	 *         not join a Superb one. The store is kept sorted by gem, then rarity, which is the order the gems tab shows
+	 *         (Q7 of #2849).
 	 */
-	int32 AddGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+	bool AddGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
 
-	/** The slot gems of this kind and rarity are stacked in, or INDEX_NONE for none. */
-	int32 SlotOfGems(FName Gem, ECataclysmRarity Rarity) const;
-
-	/** How many gems of this kind and rarity are carried, across every slot. */
+	/** How many gems of this kind and rarity are carried. */
 	int32 CountOfGems(FName Gem, ECataclysmRarity Rarity) const;
 
 	/**
 	 * Takes this many gems of one kind and rarity out of their stack. Issue #46, slice G4: the forge's Socket Gem.
 	 *
-	 * ALL OR NOTHING, as `RemoveMaterial` is: fewer carried than asked takes none. A stack taken to nought empties its
-	 * slot.
+	 * ALL OR NOTHING, as `RemoveMaterial` is: fewer carried than asked takes none. A stack taken to nought leaves the
+	 * store.
 	 */
 	bool RemoveGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
 
+	/** Every carried material stack, one per material, in the order first carried. Issue #2849. */
+	const TArray<FCataclysmCarriedSlot>& GetMaterialStacks() const { return MaterialStacks; }
+
+	/** Every carried gem stack, one per gem and rarity, sorted by gem then rarity. Issue #2849. */
+	const TArray<FCataclysmCarriedSlot>& GetGemStacks() const { return GemStacks; }
+
 	/**
-	 * The item in a slot, or nullptr when the slot is empty, holds a material
-	 * or gems, or is not a slot.
+	 * The item in a gear slot, or nullptr when the slot is empty or is not a slot.
 	 *
 	 * NOT REACHABLE FROM BLUEPRINT, because a pointer to a struct is not a thing
 	 * Blueprint can hold. The screen that needs this is issue #49 and it can take
@@ -405,4 +426,28 @@ private:
 
 	UPROPERTY()
 	TArray<FCataclysmCarriedSlot> Slots;
+
+	/** The material store: one entry per material carried, its `Material` and `Quantity` set and nothing else. #2849. */
+	UPROPERTY()
+	TArray<FCataclysmCarriedSlot> MaterialStacks;
+
+	/** The gem store: one entry per gem and rarity carried, sorted by gem then rarity, its `Gem`, `GemRarity` and
+	 *  `Quantity` set and nothing else. #2849. */
+	UPROPERTY()
+	TArray<FCataclysmCarriedSlot> GemStacks;
+
+	/** Where a material's stack is in `MaterialStacks`, or INDEX_NONE. */
+	int32 StackOfMaterial(FName Material) const;
+
+	/** Where a gem's stack is in `GemStacks`, or INDEX_NONE. */
+	int32 StackOfGems(FName Gem, ECataclysmRarity Rarity) const;
+
+	/** Adds to a material's stack, or starts one. No count, no save trigger: the callers do that. */
+	void PutMaterial(FName Material, int32 Quantity);
+
+	/** Adds to a gem stack, or starts one where the order by gem then rarity puts it. No count, no save trigger. */
+	void PutGems(FName Gem, ECataclysmRarity Rarity, int32 Quantity);
+
+	/** One change to what is carried: counted, and the inventory save trigger raised. */
+	void NoteChanged();
 };

@@ -293,6 +293,13 @@ until then they waited for the next item, death or trip to be written, and stopp
 
   `PLAY LOOP: forgot the Heavy slot's skill choice: it shows its default again`
 
+- **Put a second weapon on** from the bag beside the one worn, of a type not worn yet (since issue #837 slice 2). The
+  keys stay as they were; a notice says what the weapon added: "The Fist adds 5 skills to your pool. Press K, or click
+  a skill box, to choose." **Click a skill box** on the bar: the skill screen opens with that key selected.
+- **In the log:**
+
+  `PLAY LOOP: the Fist added 5 skills to the pool on no key, and 0 not built yet`
+
 - **A reset** gives the points back, and has a line of its own. Only the console resets, with
   `Cataclysm.ResetPassivePoints` and `Cataclysm.ResetAttributePoints`; **skip them here**, so step 15 has the points
   to show:
@@ -594,6 +601,46 @@ material drop in 128), a Tainted Shard uncommon (about 1 in 27) and a Purified E
   `PLAY LOOP: cleansed Quality Helm for 6,250 gold: residue 1200 to 600; it cost 3 days, day 20 to day 23`
 
 - **A character already marked by Consumption stays marked** after a cleanse: only killing the double clears it.
+
+### 26. Dismantle a carried piece
+
+At the forge (step 16), for a CARRIED piece chosen (issue #2848, slice S2). A dismantle costs no gold, no days and no
+material, and it destroys the piece.
+
+- **A carried piece with a rarity** has a button "Dismantle this piece (it is destroyed)". A worn piece has none, and
+  the weapon made at creation has none.
+- **Click it.** The line asks first, for a Masterful helm raised from +0 to +4 with a Superb gem in its one socket:
+  "Press again to dismantle Masterful Helm of Warding: it is destroyed, and gives back 1 gem and 4 upgrade stones
+  (+1, +2, +3, +4), and about 0.06 Schematic Fragments, 0.02 Dismantling Dust and 0.03 upgrade stones drawn at random.
+  No gold, no days."
+  - The gem and the refund, one upgrade stone of each level the piece was raised through, are certain.
+  - The rest is drawn: the whole part always, and the fraction as one more with that chance.
+- **Click it again.** The piece leaves the bag. The gem, the stones and whatever was drawn join it, and the line says
+  what: "Dismantled. It gave 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb)."
+- **In the log:**
+
+  `PLAY LOOP: dismantled Masterful Helm of Warding into 4 upgrade stones (+1, +2, +3, +4), Of Life (Superb); no gold and no days, day 20`
+
+- **A piece that dropped at +4** (a Legendary) refunds nothing for those four levels: no stone was spent on them.
+- **Salvage Protocol and Disassembly Expert** (the empire tree's Artisan branch) raise the drawn yields: 2.5% a point,
+  and 20% more on Superb and above. They never raise the refund.
+
+### 27. Sell a carried piece to the merchant
+
+In the capital, between walks (issue #48, slice S1). Open the empire map (M) and click **"Merchant"**, under the
+"Forge" button.
+
+- **The screen lists every carried piece of gear** with what it sells for, and the gold held above them. Worn pieces,
+  materials and gems are not listed. The price doubles for each rarity rung and rises 10% for each upgrade level,
+  counted in the tier's gold pile: at tier 1 an Everyday +0 piece sells for 1 gold, a Masterful +0 for 5, a Masterful
+  +3 for 7.
+- **Click a piece, then "Sell" twice.** The first press asks: "Sell Masterful Handwraps of Warding for 7 gold? Press Sell again
+  to sell it." The second sells it: the piece leaves the bag, the gold held rises, and **no day passes**. Clicking
+  another piece between the two presses cancels the question.
+- **During a walk** the screen opens, and "Sell" says "The merchant trades in the capital, not during a walk."
+- **In the log:**
+
+  `PLAY LOOP: sold Masterful Handwraps of Warding, +3, for 7 gold; 107 gold held`
 
 ## If a step does not show what it should
 

@@ -103,6 +103,15 @@ public:
 	bool bInfested = false;
 
 	/**
+	 * Whether this is the one piece the Cataclysm Boss always drops beside its ordinary drops, at the next tier's best
+	 * rarity (`UCataclysmDropRoll::CataclysmBossPieceRarity`). Issue #2853, the owner's ruling of 2026-11-24. Set by
+	 * `UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor` and nothing else, so a count of a kill's ordinary drops
+	 * can set it aside by name.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	bool bTheCataclysmBossesPiece = false;
+
+	/**
 	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
 	 *
 	 * KEPT BESIDE THE MATERIAL for the reason Rarity is kept beside the item:
@@ -253,8 +262,9 @@ public:
 	 * corpse, in centimetres.
 	 *
 	 * SPREAD AROUND A CIRCLE rather than piled on one point, because a Cataclysm
-	 * Boss drops twelve items and twelve names drawn at one position would be
-	 * one unreadable stack. The radius grows with the count so a big drop does
+	 * Boss drops six gear items and three materials on average (twelve gear
+	 * before issue #2853), and nine names drawn at one position would be one
+	 * unreadable stack. The radius grows with the count so a big drop does
 	 * not crowd itself.
 	 *
 	 * FLAT, WITH NO HEIGHT. The floor decides that, and nothing here knows where
@@ -365,12 +375,33 @@ public:
 							   int32 GearCountGiven = -1, int32 MaterialCountGiven = -1,
 							   float LowTierMaterialExtraChance = 0.0f,
 							   ECataclysmRarity LowestRarity = ECataclysmRarity::Everyday,
-							   float MaterialsMore = 1.0f);
+							   float MaterialsMore = 1.0f, bool bTheCataclysmBossesPiece = false);
 
 	/** The rung named Elite, which Opportunistic Looting asks for; and the first boss rung, as
 	 *  `ACataclysmEnemyCharacter::IsBoss` reads it, which The High Roller asks for. Issue #2741 slice 5b. */
 	static constexpr int32 EliteRarityStep = 1;
 	static constexpr int32 FirstBossRarityStep = 4;
+
+	/** The Cataclysm Boss's rung, the Gatekeeper's (`ACataclysmDungeonGameMode::CataclysmBossRung`, which the death site
+	 *  holds this to). Issue #2853: the only rung `SpawnTheCataclysmBossesPieceFor` drops a piece for. */
+	static constexpr int32 CataclysmBossRarityStep = 5;
+
+	/**
+	 * The one piece the Cataclysm Boss always drops, BESIDE its ordinary drops and not instead of one: a single piece of
+	 * gear at the next tier's best rarity (`UCataclysmDropRoll::CataclysmBossPieceRarity`), tier 1 Legendary up to
+	 * Cataclysmic from tier 4. Issue #2853, the owner's ruling of 2026-11-24, chosen option verbatim: "The next tier's
+	 * best (Recommended)". Nothing for any other rung.
+	 *
+	 * ONE PIECE, WHATEVER THE LOOT QUANTITY: the owner said "always", so neither loot quantity nor the Power Score gap's
+	 * loot factor reaches it. ITS RARITY IS EXACT: rolled through `SpawnDropsFor` with that rarity as the lowest, which
+	 * above the tier's cap gives that rarity and nothing rarer (`RollRarityAtLeast`, the High Roller's path), and at tiers
+	 * 4 to 8 is Cataclysmic either way. IT ARRIVES AT ITS RARITY'S GEAR LEVEL GATE, as every drop does (`RollItem`).
+	 * Marked `bTheCataclysmBossesPiece`. Rolled after everything else the kill drops, so every other draw is as it was.
+	 *
+	 * @return how many actors were spawned: 1 at the Cataclysm Boss's rung, else 0
+	 */
+	static int32 SpawnTheCataclysmBossesPieceFor(UWorld* World, int32 EnemyRarityStep, float MagicFind, const FVector& At,
+												 FRandomStream& Stream, bool bMarked = false);
 
 	/** The highest crafting material tier Scavenger's "T3 and below" reaches, tiers counted 1 to 5, commonest first. */
 	static constexpr int32 ScavengerHighestTier = 3;
@@ -451,8 +482,9 @@ public:
 	/**
 	 * Roll the gems a kill drops and put them on the floor, one gem to a drop. Issue #46, slice G5.
 	 *
-	 * HOW MANY, from the creature's rung and the loot quantity (`UCataclysmDropRoll::ExpectedGemDrops`, the Enemy
-	 * Drops sheet's Gem Drops column, which `sim/analyse_gem_drops.py` measured); WHICH RARITY, by the gear's own roll
+	 * HOW MANY, from the creature's rung, the loot quantity and the tier being played
+	 * (`UCataclysmDropRoll::ExpectedGemDrops`, the Enemy Drops sheet's Gem Drops column, which
+	 * `sim/analyse_gem_drops.py` measured, times the tier's share since issue #2853); WHICH RARITY, by the gear's own roll
 	 * at the tier being played with the creature's magic find added to the player's, so the tier gates a gem as it
 	 * gates gear ("Gems ... have the same rarity tiers as gear"); WHICH GEM, evenly among the Gems sheet's rows
 	 * (`UCataclysmGems::RollGem`). The design's plan of 2026-11-21, section 3d, as ruled.

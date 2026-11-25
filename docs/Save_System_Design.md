@@ -312,10 +312,24 @@ design calls empire meta-progression "the primary meta-progression system".
 
 ### What a version bump means in practice
 
-Adding a field with a sensible default is not a version bump — `UPROPERTY(SaveGame)`
-already handles a missing field by leaving the default. A version bump is for
+**Since 2026-11-01, a field added to a record takes a version**, even one with a
+sensible default. `UPROPERTY(SaveGame)` does leave the default when a field is
+missing, so an older file still loads; but once the game could load a save
+(issue #753), the committed example files became files a player might have, and
+`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires each
+current one to hold every field its record writes. So a new field means a new
+schema version, a migration step that writes the default into an older file,
+and a new example file at the new version, never an edit to an old one. The
+rule and every step taken under it are in `game/Tests/SaveFixtures/README.md`,
+"The one exception, and when it stops applying". A version bump is also for
 changes that need transformation: renaming a field, changing its type, splitting
 one field into two, or changing the meaning of a value.
+
+**This paragraph said the opposite until 2026-11-24**: "Adding a field with a
+sensible default is not a version bump". That was the rule while nothing could
+load a save. Read on its own, it led issue #2848's dismantling fields to be
+added without a version, which window sd-w1 failed; the coordinating session
+corrected it that day so the two documents agree.
 
 ### Testing it
 
@@ -468,6 +482,21 @@ puts back health, mana, energy shield, the class resource and the potions, and
 leaves the character at the level's own start: the capital's player start, or the
 dungeon's entrance once its walk begins. A place saved in one level means nothing
 in another. Decided 2026-11-17 (#2733 slice 3).
+
+**A record with a floor puts the character back where it stood, and the level's start leaves it there.** Continue on
+a character saved inside a dungeon loads it inside the dungeon level's start (in `ACataclysmGameMode::StartPlay`, which
+`ACataclysmDungeonGameMode::StartPlay` calls once it has built a floor), and until 2026-11-24 the dungeon level's start then stood the
+character at the floor's entrance: in a launched game the engine spawns the player's pawn at login, before play begins,
+so that move reached the character the load had just put back. Every resume inside a dungeon came back at the floor's
+start while the log said "placed where it was saved" (#2858). The level's start now asks whether the load put the
+character in its place (`ACataclysmGameMode::PendingLoadPutTheCharacterWhereSaved`) and leaves it there. **Nor does it
+start the floor a second time**: the resumed floor's own start reaches the character before its place and health are
+put back, and the level's start no longer raises `floor_start` afterwards, so "You start every dungeon floor at 30%-50%
+of your maximum HP" does not cap the health a resume put back. Ruled a defect by the coordinating session on
+2026-11-24. **Each run
+record write logs the place it holds and the trigger that raised it, and a load logs where the character stands just
+after the put-back and again a second later**, so a playtest log can tell a save that held the wrong place from a load
+that moved the character afterwards.
 
 **Paying for a death is written too, and it is an ordinary write.**
 `ACataclysmPlayerCharacter::Revive` raises `DeathProcessed` once the dungeon is

@@ -353,9 +353,12 @@ int32 UCataclysmWeaponSlotsComponent::FillSlotsFromWeaponTypes(
 		// AND THE PLAYER'S CHOICES, since issue #837 layer 3: a chosen row in the pool on its key, every other key its
 		// default (O4), and with no choice the default fill element for element. A chosen row not in the pool is kept
 		// by the player state and fills nothing here (Q5).
+		//
+		// AND WHAT EACH OTHER KEY HELD BY DEFAULT, since issue #837 slice 1 (Q1): it keeps that row while the row is
+		// in the pool, so a weapon going on or off changes only the keys whose skills it took with it.
 		SkillPool = UCataclysmWeaponSkills::PoolFor(
 			WeaponSkillTable, WornWeaponTypes, DamageTypes);
-		AvailableSkills.Append(UCataclysmWeaponSkills::FillWithChoices(SkillPool, SkillChoices));
+		AvailableSkills.Append(UCataclysmWeaponSkills::FillWithChoices(SkillPool, SkillChoices, RememberedDefaults));
 	}
 	else
 	{

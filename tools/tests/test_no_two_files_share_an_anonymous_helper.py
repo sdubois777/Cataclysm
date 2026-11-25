@@ -28,10 +28,14 @@ WHY A PYTHON TEST RATHER THAN LEAVING IT TO THE COMPILER. Continuous integration
 never builds the C++ -- issue #20 is the self-hosted runner that would -- so the
 compiler is not consulted on a pull request at all. This runs on every one.
 
-WHAT IT DOES NOT CATCH. Anything that is not a function definition: two files
-declaring the same file-scope variable collide in exactly the same way, and this
-does not look for those. The project names its console variables after the
-creature they belong to, which is what has kept that from happening so far.
+VARIABLES AND TYPES TOO, SINCE 2026-11-22. This said it did not look for a file-scope
+variable, which collides in exactly the same way. Window lf-w1's second build then
+stopped on one: `constexpr int32 RarityCount` in an anonymous namespace in
+`CataclysmLootFilter.cpp`, `CataclysmLootFilterLayout.cpp` and `CataclysmItem.cpp`
+("error C2374: 'anonymous-namespace'::RarityCount: redefinition"). The function
+check could not see it. The last two checks read each anonymous namespace's own
+top-level declarations -- a variable with an initializer, and a struct, class or
+enum -- and refuse the same name in two files of one module.
 """
 
 from __future__ import annotations
@@ -200,3 +204,108 @@ def test_the_helper_the_incident_produced_still_has_one_home():
         "needed it and each had its own copy, which broke the build; if it has "
         "been removed, check that neither of them has taken a private copy "
         "back.")
+
+
+def top_level(block: str) -> str:
+    """The block with every nested brace pair's contents removed, keeping the braces.
+
+    So only the namespace's own declarations remain: a function body, a struct's
+    members and an initializer list's contents are gone, and a function definition
+    reads `Type Name(args) {}`.
+    """
+    out, depth = [], 0
+    for ch in block:
+        if ch == "{":
+            depth += 1
+            if depth == 1:
+                out.append("{")
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                out.append("}")
+        elif depth == 0:
+            out.append(ch)
+    return "".join(out)
+
+
+#: A file-scope variable with an initializer, after `top_level` and split at `;`:
+#: `constexpr int32 RarityCount = ...`, `const FName Tag{...}` (read as `{}`).
+VARIABLE = re.compile(
+    r"^\s*(?:static\s+|inline\s+|constexpr\s+|const\s+)*"
+    r"[A-Za-z_][\w:<>,*&\s]*?[\s*&]"
+    r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\]\s*)?(?:=|\{)")
+
+#: A struct, class or enum defined in the namespace.
+TYPE = re.compile(r"^\s*(?:struct|class|enum(?:\s+class)?)\s+([A-Za-z_]\w*)\s*(?::[^{]*)?\{")
+
+#: What a statement may begin with and be neither a variable nor a type.
+NOT_A_DECLARATION = ("using", "namespace", "typedef", "template", "friend")
+
+
+def is_a_function_definition(statement: str) -> bool:
+    """A function definition reads `Type Name(args) {}` after `top_level`; the function check reads those."""
+    return ")" in statement.split("=")[0] and "{}" in statement
+
+
+def variables_and_types_in(block: str) -> tuple[list[str], list[str]]:
+    """The names of the variables and of the types one anonymous namespace block declares at its own top level."""
+    variables, types = [], []
+    for statement in top_level(block).split(";"):
+        statement = statement.strip()
+        if not statement or statement.startswith(NOT_A_DECLARATION):
+            continue
+        kind = TYPE.match(statement)
+        if kind:
+            types.append(kind.group(1))
+            continue
+        if is_a_function_definition(statement):
+            continue
+        match = VARIABLE.match(statement)
+        if match:
+            variables.append(match.group(1))
+    return variables, types
+
+
+def declarations_by_module() -> tuple[dict[str, dict[str, list[str]]], dict[str, dict[str, list[str]]]]:
+    """Every anonymous-namespace variable and type, by module and then by name."""
+    variables: dict[str, dict[str, list[str]]] = collections.defaultdict(lambda: collections.defaultdict(list))
+    types: dict[str, dict[str, list[str]]] = collections.defaultdict(lambda: collections.defaultdict(list))
+    for path in sorted(SOURCE_ROOT.rglob("*.cpp")):
+        text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
+        for block in anonymous_namespace_blocks(text):
+            found_variables, found_types = variables_and_types_in(block)
+            for name in found_variables:
+                variables[module_of(path)][name].append(path.name)
+            for name in found_types:
+                types[module_of(path)][name].append(path.name)
+    return variables, types
+
+
+def clashes_in(table: dict[str, dict[str, list[str]]]) -> list[str]:
+    return [f"  {module}: {name} in {', '.join(sorted(set(files)))}"
+            for module, names in sorted(table.items()) for name, files in sorted(names.items())
+            if len(set(files)) > 1]
+
+
+def test_the_variable_and_type_search_reads_what_it_should():
+    """A constant and a struct are found, a function and its locals are not taken for variables, and the search of
+    game/Source is not empty."""
+    block = ("\tconstexpr int32 RarityCount = 8;\n"
+             "\tstruct FHold { int32 A = 0; };\n"
+             "\tFString PieceName(const FCataclysmItem& Item)\n\t{\n\t\tconst int32 Inner = 1;\n\t\treturn {};\n\t}\n")
+    assert variables_and_types_in(block) == (["RarityCount"], ["FHold"]), (
+        f"the search read {variables_and_types_in(block)} from a constant, a struct and a function")
+    variables, types = declarations_by_module()
+    assert sum(len(f) for m in variables.values() for f in m.values()) >= 50, "the variable search found almost nothing"
+    assert sum(len(f) for m in types.values() for f in m.values()) >= 5, "the type search found almost nothing"
+
+
+def test_no_two_files_in_one_module_define_the_same_private_variable_or_type():
+    """The same unity-blob collision as a helper's, for a file-scope variable or a struct, class or enum."""
+    variables, types = declarations_by_module()
+    found = clashes_in(variables) + clashes_in(types)
+    assert not found, (
+        "two files in one Unreal module define the same name inside an anonymous namespace, and a module's .cpp "
+        "files are merged into one translation unit, so the compiler stops on a redefinition (C2374 for a variable, "
+        "C2011 for a type) as soon as both land in the same unity blob:\n" + "\n".join(found)
+        + "\n\nGive one of them a name no other file uses. Window lf-w1's second build stopped on RarityCount this way.")

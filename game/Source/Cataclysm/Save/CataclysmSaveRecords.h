@@ -1308,6 +1308,15 @@ struct CATACLYSM_API FCataclysmPlayerBuild
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
 
+	/**
+	 * What each other key held by default, as `ACataclysmPlayerState::GetRememberedDefaults` holds them. Issue #837
+	 * slice 1, ruled by the coordinating session on 2026-11-24: a double holds the keys the player actually had, so its
+	 * fill reads these after the choices, as the player's does. In the character record from its version 17
+	 * (`Migrate_16_to_17` writes an empty list into a held build that lacks it).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
+
 	/** Every point spent in the passive trees, as the player state holds it. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	FCataclysmPassiveAllocation PassiveAllocation;
@@ -1370,7 +1379,22 @@ public:
 	static const FName TypeName;
 
 	/**
-	 * 14 SINCE 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
+	 * 17 SINCE 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
+	 * `RememberedDefaults`, so a loaded character's keys stay as they were (the owner's Q1, "Approve all three
+	 * (Recommended)"). `Migrate_16_to_17` writes an empty list, which is what a character written before it held.
+	 *
+	 * 16 FROM 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
+	 * are two lists of their own, `CarriedMaterials` and `CarriedGems`, one stack per material and one per gem and
+	 * rarity. `Migrate_15_to_16` moves each stack out of `CarriedSlots` into its list and blanks its cell, so every
+	 * piece of gear keeps its cell. The owner's ruling of that day: "One cell per kind, no limit (Recommended)".
+	 *
+	 * 15 FROM 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2), so a dismantle refunds only the upgrade
+	 * levels the player paid for. `Migrate_14_to_15` writes -1 and 0, "not known", on every item: nothing recorded it
+	 * before. A VERSION AND NOT A DEFAULT, ruled by the coordinating session on 2026-11-24, by
+	 * `game/Tests/SaveFixtures/README.md`: from issue #1472 on, a field added to a record takes a version.
+	 *
+	 * 14 FROM 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
 	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
 	 * writes 0: the count starts at this build (V5).
 	 *
@@ -1426,7 +1450,7 @@ public:
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 14;
+	static constexpr int32 SchemaVersionNow = 17;
 
 	/**
 	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
@@ -1721,6 +1745,20 @@ public:
 	TArray<FCataclysmCarriedSlot> CarriedSlots;
 
 	/**
+	 * The carried crafting materials, the materials tab: one entry per material, its `Material` and `Quantity` set.
+	 * Version 16, issue #2849. `UCataclysmInventoryComponent::GetMaterialStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedMaterials;
+
+	/**
+	 * The carried gems, the gems tab: one entry per gem and rarity, its `Gem`, `GemRarity` and `Quantity` set. Version
+	 * 15, issue #2849. `UCataclysmInventoryComponent::GetGemStacks` holds exactly this list.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmCarriedSlot> CarriedGems;
+
+	/**
 	 * What the character is wearing: one entry per occupied slot, each naming
 	 * its slot. See `FCataclysmWornItem` for why by name. Since 2026-09-24.
 	 *
@@ -1777,10 +1815,24 @@ public:
 	 *
 	 * ONE FIELD AND NO VERSION BUMP, ruled 2026-10-25 (Q6): an empty list is the default and means no choice, the
 	 * default fill, so a file written before it reads as the character it always was (section 5 of
-	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back through `AssignSkill` (#753).
+	 * `docs/Save_System_Design.md`). `FCataclysmSaveApply::CharacterInto` puts it back AS DATA, before the restore's one
+	 * fill (`ACataclysmPlayerState::RestoreSkillChoices`, issue #837 slice 1); until then it went through `AssignSkill`
+	 * after the fill, which dropped a choice whose weapon was off.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmSkillChoice> SkillAssignment;
+
+	/**
+	 * What each key held by default after the last fill: `ACataclysmPlayerState::GetRememberedDefaults`. Issue #837
+	 * slice 1, the owner's Q1 of 2026-11-24 ("the keys stay as they are"). Put back with the choices, as data, before the
+	 * restore's one fill, so a loaded character's keys are the keys it was saved with.
+	 *
+	 * VERSION 17 (`Migrate_16_to_17` writes an empty list): from issue #1472 on, a field added to a record takes a
+	 * version (`game/Tests/SaveFixtures/README.md`). Empty is what a character written before it holds: its first fill
+	 * after loading remembers the default it showed before.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmSkillChoice> RememberedDefaults;
 
 	/**
 	 * Each skill's total experience, by skill row: `ACataclysmPlayerState::GetSkillExperienceRecord`. Issue #2764,
@@ -1920,12 +1972,17 @@ public:
 	 * `WeaponSkills.csv` that takes a creature) and 1, the factor at level 1, since the level at the take was not
 	 * recorded; and None and 1 on every other creature. Ruled by the coordinating session on 2026-11-22 (Q1).
 	 *
+	 * 18 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
+	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2). `Migrate_17_to_18` writes -1 and 0,
+	 * "not known", on every ground item: nothing recorded it before. A version and not a default, ruled by the
+	 * coordinating session on 2026-11-24, as the character record's 15.
+	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
 	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 */
-	static constexpr int32 SchemaVersionNow = 17;
+	static constexpr int32 SchemaVersionNow = 18;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

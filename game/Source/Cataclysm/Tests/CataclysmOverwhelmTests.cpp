@@ -128,13 +128,18 @@ namespace CataclysmOverwhelmTest
  * FROM THE CONSTANTS THE CODE HOLDS, NOT THE DOCUMENT'S ROUNDING: 25% x (6,733 - 6,327) / 1,207 is 8.4093 points and
  * 25% x (7,336 - 6,327) / 1,207 is 20.8989. `overwhelm` in the simulation gives the same two to four places, which the
  * Python check holds. Prints "OVERWHELM WORKED".
+ *
+ * THE PLAYER IS THE TIER 8 ANCHOR, "a player at that tier's maximum Power Score" as the design's worked figures say, and
+ * as `tools/tests/test_overwhelm_is_the_simulations.py` reads it (`scoring.PLAYER_MAX_SCORES[8]`). It used to be read as
+ * `Score(ReferenceCharacter(8))`, which was the same 6,327 until the owner's plain weights of 2026-11-24 (issue #2853);
+ * that character now scores 6,528 and would lose 4.2 and 16.7 points.
  */
 CATACLYSM_OVERWHELM_TEST(FCataclysmOverwhelmWorkedFiguresTest,
 	"Cataclysm.Overwhelm.ATierEightPlayerLosesEightPointFourToACommonAndTwentyPointNineToACataclysmBoss")
 {
 	using namespace CataclysmOverwhelmTest;
 	const FCataclysmScoredFloor Floor = WorkedFloor();
-	const int32 Player = Power::Score(Power::ReferenceCharacter(8));
+	const int32 Player = Power::TierAnchors()[8];
 	const int32 Common = UCataclysmEnemyScore::ScoreFor(Floor, 0);
 	const int32 CataclysmBoss = UCataclysmEnemyScore::ScoreFor(Floor, UCataclysmEnemyScore::RarityStepCount - 1);
 	const double Width = UCataclysmEnemyScore::TierWidth(8);
@@ -143,7 +148,7 @@ CATACLYSM_OVERWHELM_TEST(FCataclysmOverwhelmWorkedFiguresTest,
 	AddInfo(FString::Printf(TEXT("OVERWHELM WORKED: player %d, Common %d, Cataclysm Boss %d, width %.0f; %.4f and %.4f"),
 							Player, Common, CataclysmBoss, Width, FromCommon, FromBoss));
 
-	TestEqual(TEXT("set-up: the tier 8 reference scores 6,327"), Player, 6327);
+	TestEqual(TEXT("set-up: the tier 8 anchor is 6,327"), Player, 6327);
 	TestEqual(TEXT("set-up: a Common on the worked floor scores 6,733"), Common, 6733);
 	TestEqual(TEXT("set-up: a Cataclysm Boss there scores 7,336"), CataclysmBoss, 7336);
 	TestEqual(TEXT("set-up: tier 8 is 1,207 wide"), Width, 1207.0, 0.001);

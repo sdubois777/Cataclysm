@@ -289,11 +289,14 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 	// penalty, DropWeightAt also divides by how far a rarity sits above the
 	// tier, and at tier 1 that is real: Superb is two rungs up, so its finished
 	// weight is a quarter of the table's on purpose.
+	//
+	// UP TO TIER 1'S CAP, MASTERFUL, since issue #2853: above it DropWeightAt is
+	// 0 by the owner's ruling of 2026-11-24, and Cataclysm.RarityCap. checks it.
 	for (int32 Rung = 0; Rung < FDrop::RarityCount; ++Rung)
 	{
 		const FCataclysmGearRarityRow* Row =
 			FDrop::RarityRow(Rarities, Ladder()[Rung]);
-		if (!Row)
+		if (!Row || Rung > static_cast<int32>(FDrop::HighestDroppableRarity(1)))
 		{
 			continue;
 		}
@@ -306,36 +309,42 @@ bool FCataclysmDropCascadeTest::RunTest(const FString& Parameters)
 								 Row->DropWeight * 1e-5f));
 	}
 
-	// A LOW TIER REACHES EVERY RUNG, AND THIS USED TO ASSERT THE OPPOSITE.
-	// Until 2026-08-23 difficulty tier 1 was five sevenths Everyday, two
-	// sevenths Quality and exactly zero of everything else. The project owner
-	// played that and said it was too strict, so a rarity above the tier's own
-	// reach is divided by RarityPenaltyAboveTheTier per rung instead of
-	// forbidden. Superb is two rungs above tier 1 and arrives about one drop in
-	// 19; Cataclysmic is six rungs above and arrives about one in 1.5 million.
+	// A LOW TIER REACHES ABOVE ITS OWN REACH, UP TO ITS CAP. Until 2026-08-23
+	// difficulty tier 1 was five sevenths Everyday, two sevenths Quality and
+	// exactly zero of everything else. The project owner played that and said it
+	// was too strict, so a rarity above the tier's own reach is divided by
+	// RarityPenaltyAboveTheTier per rung instead of forbidden. Superb is two
+	// rungs above tier 1 and arrives about one drop in 19. ABOVE MASTERFUL,
+	// NOTHING since issue #2853: until then Cataclysmic was one in 1.5 million
+	// here, and the owner found two in two days.
 	//
 	// Printed by loot.rarity_distribution(1, 0.0).
 	const float ShareAtTierOne[] = {
-		0.6679531444f, 0.2671812578f, 0.0534362516f, 0.0106872503f,
-		0.0006679531f, 0.0000667953f, 0.0000066795f, 0.0000006680f,
+		0.6684491979f, 0.2673796791f, 0.0534759358f, 0.0106951872f,
+		0.0f, 0.0f, 0.0f, 0.0f,
 	};
 
 	FDrop::RarityDistribution(Rarities, 1, 0.0f, Shares);
 	for (int32 Index = 0; Index < 8; ++Index)
 	{
+		const bool bAboveTheCap = ShareAtTierOne[Index] == 0.0f;
 		TestTrue(*FString::Printf(
 			TEXT("%s is %.10f of drops at tier 1 (%.10f)"),
 			*FDrop::RowNameFor(Ladder()[Index]).ToString(),
 			ShareAtTierOne[Index], Shares[Index]),
-			FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
-				< ShareAtTierOne[Index] * 1e-3f);
+			bAboveTheCap ? Shares[Index] == 0.0f
+						 : FMath::Abs(Shares[Index] - ShareAtTierOne[Index])
+							   < ShareAtTierOne[Index] * 1e-3f);
 
-		// AND NONE OF THEM IS ZERO, which is the whole of the change and is
-		// stated separately because a reader looking at eight literals cannot
-		// see which of them used to be forbidden.
-		TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
-			*FDrop::RowNameFor(Ladder()[Index]).ToString()),
-			Shares[Index] > 0.0f);
+		// AND NONE OF THE FOUR UP TO THE CAP IS ZERO, which is the change of
+		// 2026-08-23 and is stated separately because a reader looking at eight
+		// literals cannot see which of them used to be forbidden.
+		if (!bAboveTheCap)
+		{
+			TestTrue(*FString::Printf(TEXT("%s can drop at tier 1 at all"),
+				*FDrop::RowNameFor(Ladder()[Index]).ToString()),
+				Shares[Index] > 0.0f);
+		}
 	}
 
 	// EVERY DISTRIBUTION SUMS TO ONE, at every tier and with magic find on. It
@@ -773,19 +782,21 @@ bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
 
 	// The figures the workbook states, quoted rather than recomputed.
 	//
-	// THE MATERIAL COLUMN IS A QUARTER OF THE GEAR COLUMN SINCE 2026-11-22,
-	// issue #2829. It was twice the gear figure until 2026-08-23, when it was
-	// halved to the gear figure (issue #850). Quoting both columns rather than
-	// expressing one as a multiple of the other is what makes such a change
+	// THE GEAR COLUMN WAS HALVED ON 2026-11-24, every rarity alike, by the
+	// project owner (issue #2853), and the material column was not, so the
+	// material column is HALF the gear column since then. It was a quarter from
+	// 2026-11-22 (issue #2829), and twice the gear figure until 2026-08-23, when
+	// it was halved to the gear figure (issue #850). Quoting both columns rather
+	// than expressing one as a multiple of the other is what makes such a change
 	// visible here instead of passing silently.
 	struct FExpected { const TCHAR* Key; float Gear; float Materials; float Find; };
 	const FExpected Rows[] = {
-		{ TEXT("Common"),         0.16f,  0.04f,   0.0f },
-		{ TEXT("Elite"),          0.5f,   0.125f, 50.0f },
-		{ TEXT("Legendary"),      1.0f,   0.25f, 100.0f },
-		{ TEXT("Herald"),         2.0f,   0.5f,  150.0f },
-		{ TEXT("Boss"),           5.0f,   1.25f, 300.0f },
-		{ TEXT("Cataclysm_Boss"), 12.0f,  3.0f,  500.0f },
+		{ TEXT("Common"),         0.08f,  0.04f,   0.0f },
+		{ TEXT("Elite"),          0.25f,  0.125f, 50.0f },
+		{ TEXT("Legendary"),      0.5f,   0.25f, 100.0f },
+		{ TEXT("Herald"),         1.0f,   0.5f,  150.0f },
+		{ TEXT("Boss"),           2.5f,   1.25f, 300.0f },
+		{ TEXT("Cataclysm_Boss"), 6.0f,   3.0f,  500.0f },
 	};
 
 	for (const FExpected& Row : Rows)
@@ -808,7 +819,7 @@ bool FCataclysmKillDropRatesTest::RunTest(const FString& Parameters)
 	// it unchanged. An increase applied to a baseline of zero would be worth
 	// nothing, which is why the baseline is 100.
 	TestEqual(TEXT("400 percent loot quantity quadruples a Boss's gear"),
-		FDrop::ExpectedGearDrops(Drops, TEXT("Boss"), 400.0f), 20.0f);
+		FDrop::ExpectedGearDrops(Drops, TEXT("Boss"), 400.0f), 10.0f);
 	TestEqual(TEXT("and its materials"),
 		FDrop::ExpectedMaterialDrops(Drops, TEXT("Boss"), 400.0f), 5.0f);
 
@@ -2026,6 +2037,158 @@ bool FCataclysmDamageTypeCapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a non-weapon rolls no damage types"),
 		FDrop::MaxDamageTypesFor(Boots, 0), 0);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The drop supply at tier 1. Issue #2853, ruled by the project owner on
+// 2026-11-24.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGearDropsHalvedTest,
+	"Cataclysm.Drop.EveryCreatureDropsHalfTheGearItDidAndTheSameGemsAndGold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Halve gear drops (Recommended)", the owner, 2026-11-24 (issue #2853): the whole gear column halves, every enemy
+ * rarity alike, so a tier 1 floor of 258 creatures drops about 61 gear pieces rather than 123. The Gem Drops column
+ * does not move (tier 8 keeps its gem rate, ruled the same day), nor do the gold piles or the materials. Read from
+ * `game/Data/EnemyDrops.csv` against each rung's figure before the change, and then counted: 40,000 Common kills' gear
+ * average 0.08, within a tenth (about six standard deviations of that mean), where they averaged 0.16. Prints
+ * "GEAR HALVED".
+ */
+bool FCataclysmGearDropsHalvedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	UDataTable* Drops = LoadTable<FCataclysmEnemyDropRow>(TEXT("EnemyDrops.csv"));
+	if (!TestNotNull(TEXT("EnemyDrops.csv loads"), Drops))
+	{
+		return false;
+	}
+
+	// EACH RUNG BEFORE ISSUE #2853: its gear, its gems at tier 8, its gold piles and its materials.
+	struct FBefore { const TCHAR* Key; float Gear; float Gems; float Gold; float Materials; };
+	const FBefore Rows[] = {
+		{ TEXT("Common"),          0.16f, 0.001088f,  0.16f, 0.04f },
+		{ TEXT("Elite"),           0.5f,  0.0034f,    0.5f,  0.125f },
+		{ TEXT("Legendary"),       1.0f,  0.0068f,    1.0f,  0.25f },
+		{ TEXT("Herald"),          2.0f,  0.0136f,    2.0f,  0.5f },
+		{ TEXT("Boss"),            5.0f,  0.034f,     5.0f,  1.25f },
+		{ TEXT("Cataclysm_Boss"), 12.0f,  0.0816f,   12.0f,  3.0f },
+	};
+	TArray<FString> Said;
+	for (const FBefore& Row : Rows)
+	{
+		const FName Key(Row.Key);
+		const float Gear = FDrop::ExpectedGearDrops(Drops, Key, FDrop::BaselineLootQuantity);
+		Said.Add(FString::Printf(TEXT("%s %.2f (was %.2f)"), Row.Key, Gear, Row.Gear));
+		TestEqual(*FString::Printf(TEXT("**a %s drops half the gear it did: %.3f**"), Row.Key, Row.Gear * 0.5f),
+			Gear, Row.Gear * 0.5f, 1.0e-6f);
+		TestEqual(*FString::Printf(TEXT("and the same gems at tier 8: %.6f"), Row.Gems),
+			FDrop::ExpectedGemDrops(Drops, Key, FDrop::BaselineLootQuantity, 8), Row.Gems, 1.0e-7f);
+		TestEqual(*FString::Printf(TEXT("and the same gold piles: %.2f"), Row.Gold),
+			FDrop::ExpectedGoldDrops(Drops, Key), Row.Gold, 1.0e-6f);
+		TestEqual(*FString::Printf(TEXT("and the same materials: %.3f"), Row.Materials),
+			FDrop::ExpectedMaterialDrops(Drops, Key, FDrop::BaselineLootQuantity), Row.Materials, 1.0e-6f);
+	}
+
+	// COUNTED, as a kill counts its gear: a Poisson draw on the rung's expected figure.
+	FRandomStream Stream(/*InSeed=*/2853);
+	constexpr int32 Kills = 40000;
+	int32 Total = 0;
+	for (int32 Kill = 0; Kill < Kills; ++Kill)
+	{
+		Total += FDrop::RollDropCount(
+			FDrop::ExpectedGearDrops(Drops, TEXT("Common"), FDrop::BaselineLootQuantity), Stream);
+	}
+	const float Mean = static_cast<float>(Total) / Kills;
+	AddInfo(FString::Printf(TEXT("GEAR HALVED: %s; %d Common kills dropped %d gear, %.4f a kill"),
+							*FString::Join(Said, TEXT(", ")), Kills, Total, Mean));
+	TestTrue(*FString::Printf(TEXT("**%d Common kills average 0.08 gear a kill, within a tenth (%.4f)**"), Kills, Mean),
+		FMath::Abs(Mean - 0.08f) < 0.008f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoAllResistancesAtTierOneTest,
+	"Cataclysm.Drop.NoAllResistancesAffixRollsOnATierOneDrop",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "No all-resist at tier 1 (Recommended)", the owner, 2026-11-24 (issue #2853): the all-resistances family cannot roll
+ * on a difficulty tier 1 drop; single resistances still can. Read two ways: the rule on each of the three resistance
+ * families' rows at every tier, and 3,000 Chests rolled at tier 1 and again at tier 2 from the same seed, at 300 magic
+ * find so most carry several affixes. At tier 1 no all-resistances affix rolls and single resistances do; CONTROL: at
+ * tier 2 the family rolls, so the first count is the rule's and not an affix the Chest never offers. Every item still
+ * rolls whole, the place taken by another affix. Prints "NO ALL RESIST".
+ */
+bool FCataclysmNoAllResistancesAtTierOneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDropRollTest;
+
+	const FTables Tables = LoadEverything();
+	if (!TestTrue(TEXT("set-up: every table the roll needs loads"), Tables.AllPresent()))
+	{
+		return false;
+	}
+	const FName AllName(TEXT("Resistance_All_resistances"));
+	const FName SingleName(TEXT("Resistance_Single_resistance"));
+	const FName TwoName(TEXT("Resistance_Two_resistances"));
+	const FCataclysmAffixRow* All = Tables.Affixes->FindRow<FCataclysmAffixRow>(AllName, TEXT("test"), false);
+	const FCataclysmAffixRow* Single = Tables.Affixes->FindRow<FCataclysmAffixRow>(SingleName, TEXT("test"), false);
+	const FCataclysmAffixRow* Two = Tables.Affixes->FindRow<FCataclysmAffixRow>(TwoName, TEXT("test"), false);
+	if (!TestTrue(TEXT("set-up: the three resistance families' rows"), All && Single && Two))
+	{
+		return false;
+	}
+
+	// THE RULE ON EACH ROW, at every tier.
+	TestFalse(TEXT("**the all-resistances family may not roll on a tier 1 drop**"), FDrop::RollsOnADropAt(*All, 1));
+	for (int32 Tier = 2; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		TestTrue(*FString::Printf(TEXT("the all-resistances family may roll on a tier %d drop"), Tier),
+			FDrop::RollsOnADropAt(*All, Tier));
+	}
+	for (int32 Tier = 1; Tier <= FDrop::DifficultyTiers; ++Tier)
+	{
+		TestTrue(*FString::Printf(TEXT("a single resistance may roll on a tier %d drop"), Tier),
+			FDrop::RollsOnADropAt(*Single, Tier));
+		TestTrue(*FString::Printf(TEXT("two resistances may roll on a tier %d drop"), Tier),
+			FDrop::RollsOnADropAt(*Two, Tier));
+	}
+
+	// AND THE ROLL ITSELF.
+	constexpr int32 Drops = 3000;
+	int32 AllCount[2] = { 0, 0 };
+	int32 SingleCount[2] = { 0, 0 };
+	int32 Failed[2] = { 0, 0 };
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		const int32 Tier = Pass + 1;
+		FRandomStream Stream(/*InSeed=*/2853);
+		for (int32 Drop = 0; Drop < Drops; ++Drop)
+		{
+			FCataclysmItem Item;
+			if (!Roll(Tables, TEXT("Chest"), Tier, 300.0f, Stream, Item))
+			{
+				++Failed[Pass];
+				continue;
+			}
+			for (const FCataclysmRolledAffix& Affix : Item.Affixes)
+			{
+				AllCount[Pass] += Affix.Affix == AllName ? 1 : 0;
+				SingleCount[Pass] += Affix.Affix == SingleName ? 1 : 0;
+			}
+		}
+	}
+	AddInfo(FString::Printf(TEXT("NO ALL RESIST: %d Chests a tier; tier 1 rolled %d all-resistances and %d single "
+								 "resistances (%d failed); tier 2 rolled %d and %d (%d failed)"),
+							Drops, AllCount[0], SingleCount[0], Failed[0], AllCount[1], SingleCount[1], Failed[1]));
+	TestEqual(TEXT("**no all-resistances affix rolled on a tier 1 drop**"), AllCount[0], 0);
+	TestTrue(TEXT("**single resistances still roll at tier 1**"), SingleCount[0] > 0);
+	TestTrue(TEXT("**CONTROL: the all-resistances family rolls at tier 2**"), AllCount[1] > 0);
+	TestEqual(TEXT("every tier 1 Chest rolled whole, another affix in the family's place"), Failed[0], 0);
+	TestEqual(TEXT("every tier 2 Chest rolled whole"), Failed[1], 0);
 	return true;
 }
 

@@ -5,7 +5,6 @@
 #include "Cataclysm.h"
 // The damage types designed for each weapon type, issue #47 slice F4.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
-#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -14,6 +13,8 @@
 #include "Engine/World.h"
 #include "Interface/CataclysmItemTooltip.h"
 #include "Items/CataclysmDropRoll.h"
+// The player's magic find, which a dismantle's base stone reads (#2848, slice S2).
+#include "Items/CataclysmDroppedItem.h"
 // A gem's type, name and rarity name, issue #46 slice G4.
 #include "Items/CataclysmGems.h"
 #include "Items/CataclysmInventoryComponent.h"
@@ -21,6 +22,8 @@
 #include "Items/CataclysmWearing.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
+// Salvage Protocol and Disassembly Expert, which a dismantle reads (#2848, slice S2).
+#include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Player/CataclysmPlayLoopLog.h"
 #include "Save/CataclysmSaveGather.h"
@@ -236,15 +239,8 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 		return false;
 	}
 
-	// ROOM FOR THE MADE STONE, asked before anything moves: a stack of it to join, a free cell, or the cell the two
-	// taken empty.
-	const bool bRoom = Inventory->CountOfMaterial(Plan.Into) > 0 || Inventory->NumFreeSlots() > 0
-		|| Plan.StonesHeld == Plan.StonesNeeded;
-	if (!bRoom)
-	{
-		OutReason = FString::Printf(TEXT("The bag has no free cell for a +%d stone."), Plan.IntoLevel);
-		return false;
-	}
+	// NO ROOM IS ASKED FOR THE MADE STONE: since #2849 the materials tab holds one stack per material with no limit, so
+	// a stone always has room, whatever the gear tab holds. Until then this refused when the bag had no free cell.
 
 	// THE GOLD FIRST, given back if a later step fails (#2830).
 	bool bGoldFromTheCharacter = false;
@@ -259,7 +255,7 @@ bool UCataclysmForgeCraft::Combine(const UObject* WorldContext, int32 Level, FCa
 		OutReason = TEXT("The stones could not be taken from the bag.");
 		return false;
 	}
-	if (Inventory->AddMaterial(Plan.Into, 1) == INDEX_NONE)
+	if (!Inventory->AddMaterial(Plan.Into, 1))
 	{
 		Inventory->AddMaterial(Plan.From, Plan.StonesNeeded);
 		GiveTheGoldBack(WorldContext, Plan.Gold);
@@ -303,16 +299,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		return false;
 	}
 
-	// ROOM FOR THE MADE GEM, asked before anything moves: a stack of it to join, a free cell, or the cell the two taken
-	// empty.
-	const bool bRoom = Inventory->CountOfGems(Gem, Plan.Into) > 0 || Inventory->NumFreeSlots() > 0
-		|| Plan.GemsHeld == Plan.GemsNeeded;
-	if (!bRoom)
-	{
-		OutReason = FString::Printf(TEXT("The bag has no free cell for a %s %s."), *UCataclysmGems::RarityName(Plan.Into),
-									*UCataclysmGems::NameOf(Gem));
-		return false;
-	}
+	// NO ROOM IS ASKED FOR THE MADE GEM: since #2849 the gems tab holds one stack per gem and rarity with no limit.
 
 	// THE GOLD FIRST, given back if a later step fails (#2830).
 	bool bGoldFromTheCharacter = false;
@@ -327,7 +314,7 @@ bool UCataclysmForgeCraft::CombineGems(const UObject* WorldContext, FName Gem, E
 		OutReason = TEXT("The gems could not be taken from the bag.");
 		return false;
 	}
-	if (Inventory->AddGems(Gem, Plan.Into, 1) == INDEX_NONE)
+	if (!Inventory->AddGems(Gem, Plan.Into, 1))
 	{
 		Inventory->AddGems(Gem, Plan.From, Plan.GemsNeeded);
 		GiveTheGoldBack(WorldContext, Plan.Gold);
@@ -381,11 +368,11 @@ FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(const UObject* Wo
 	}
 	const UCataclysmInventoryComponent* Inventory = Character->GetInventory();
 	const int32 Dust = Inventory->CountOfMaterial(FName(UCataclysmForge::DismantlingDustRow));
-	// ROOM FOR THE GEM: a stack of it to join, a free cell, or the cell the last Dust taken empties.
+	// ROOM FOR THE GEM IS ALWAYS THERE since #2849: the gems tab holds one stack per gem and rarity with no limit,
+	// whatever the gear tab holds. Until then this asked for a stack to join, a free cell, or the cell the last
+	// Dismantling Dust emptied, which stopped being true once the Dust and the gem were carried apart.
 	const FCataclysmSocket* From = Item->Sockets.IsValidIndex(Socket) ? &Item->Sockets[Socket] : nullptr;
-	const bool bRoom = From != nullptr
-		&& (Inventory->SlotOfGems(From->Gem, From->GemRarity) != INDEX_NONE || Inventory->NumFreeSlots() > 0
-			|| Dust == 1);
+	const bool bRoom = From != nullptr;
 	return UCataclysmForge::UnsocketGemOf(*Item, Socket, Dust, bRoom, GoldTierOf(WorldContext), GoldHeldIn(WorldContext));
 }
 
@@ -453,7 +440,7 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoSocketing(const UObject* WorldCont
 	FCataclysmForgeCraftHooks Hooks;
 	if (Plan.bUnsocket)
 	{
-		Hooks.AfterTheChange = [Inventory, Plan]() { return Inventory->AddGems(Plan.Gem, Plan.Rarity, 1) != INDEX_NONE; };
+		Hooks.AfterTheChange = [Inventory, Plan]() { return Inventory->AddGems(Plan.Gem, Plan.Rarity, 1); };
 		Hooks.AfterRefusal = TEXT("The gem had nowhere to go in the bag; nothing changed.");
 	}
 	else
@@ -1425,6 +1412,164 @@ ECataclysmForgeResult UCataclysmForgeCraft::Cleanse(const UObject* WorldContext,
 	if (Result == ECataclysmForgeResult::Done)
 	{
 		OutDone = Plan;
+	}
+	return Result;
+}
+
+FCataclysmForgeDismantle UCataclysmForgeCraft::DismantlePlanFor(const UObject* WorldContext,
+																const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	if (Target.bWorn && Item != nullptr)
+	{
+		FCataclysmForgeDismantle Worn;
+		Worn.Refusal = TEXT("Take the piece off before dismantling it.");
+		return Worn;
+	}
+	// THE TWO NODES, read where the yield is read, as the dungeon reads the tree at every floor (#2741 slice 5a).
+	const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+	return UCataclysmForge::DismantleOf(Item != nullptr ? *Item : FCataclysmItem(), Tree.DismantleMaterialsIncreased,
+										Tree.DismantleMaterialsIncreasedSuperbAndAbove,
+										UCataclysmDropRoll::LoadGearRarityTable());
+}
+
+ECataclysmForgeResult UCataclysmForgeCraft::Dismantle(const UObject* WorldContext, const FCataclysmForgeTarget& Target,
+													  FCataclysmForgeDismantle& OutDone, FString& OutMessage)
+{
+	OutDone = FCataclysmForgeDismantle();
+	OutMessage = RefusalNow(WorldContext);
+	if (!OutMessage.IsEmpty())
+	{
+		return ECataclysmForgeResult::Refused;
+	}
+	const FCataclysmForgeDismantle Plan = DismantlePlanFor(WorldContext, Target);
+	if (!Plan.bPossible)
+	{
+		OutMessage = Plan.Refusal;
+		return ECataclysmForgeResult::Refused;
+	}
+	ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	UCataclysmInventoryComponent* Inventory = Character != nullptr ? Character->GetInventory() : nullptr;
+	if (Inventory == nullptr)
+	{
+		OutMessage = TEXT("No character is playing, so there is nothing to dismantle.");
+		return ECataclysmForgeResult::Refused;
+	}
+	// D3: THE PLAYER'S OWN MAGIC FIND AT THE DISMANTLE, a judgement; Auto-Shatter will pass the kill's.
+	float MagicFind = 0.0f;
+	float LootQuantity = 0.0f;
+	UCataclysmDropSpawner::LootStatsOf(Character, MagicFind, LootQuantity);
+
+	// INSTANT (D2): no material, no gold, no days, and the residue the piece already carries, which goes with it.
+	FCataclysmForgeCraftStep Step;
+	Step.Target = Target;
+	Step.Gold = 0;
+	Step.Days = 0;
+	if (const FCataclysmItem* Held = ItemAt(*Character, Target))
+	{
+		Step.ResidueAfter = Held->Residue;
+	}
+	Step.ThresholdWords = TEXT("Dismantling");
+	Step.NothingThereRefusal = TEXT("There is nothing there to dismantle.");
+
+	FCataclysmForgeDismantle Done = Plan;
+	FCataclysmItem Dismantled;
+	FCataclysmForgeCraftHooks Hooks;
+	Hooks.AfterRefusal = TEXT("The piece could not be dismantled; nothing changed.");
+	Hooks.AfterTheChange = [&Done, &Dismantled, Inventory, &Target]() -> bool
+	{
+		// NO ROOM IS ASKED (issue #2849): the materials and gems a dismantle gives back go to stores that never refuse.
+		// Until #2849 a full bag refused here first, "Make room in the bag first." (D4).
+
+		// THE PIECE LEAVES THE BAG, THEN WHAT IT GIVES JOINS IT. Anything that cannot be added puts back what was added
+		// and the piece itself, so nothing is half done.
+		if (!Inventory->RemoveItemAt(Target.CarriedSlot))
+		{
+			return false;
+		}
+		TArray<FName> AddedMaterials;
+		TArray<TPair<FName, ECataclysmRarity>> AddedGems;
+		const auto PutEverythingBack = [&]()
+		{
+			for (const FName& Material : AddedMaterials)
+			{
+				Inventory->RemoveMaterial(Material, 1);
+			}
+			for (const TPair<FName, ECataclysmRarity>& Gem : AddedGems)
+			{
+				Inventory->RemoveGems(Gem.Key, Gem.Value, 1);
+			}
+			Inventory->AddItem(Dismantled);
+		};
+		const auto AddOne = [&](FName Material) -> bool
+		{
+			if (!Inventory->AddMaterial(Material, 1))
+			{
+				return false;
+			}
+			AddedMaterials.Add(Material);
+			return true;
+		};
+		bool bAdded = true;
+		for (int32 Each = 0; bAdded && Each < Done.Fragments; ++Each)
+		{
+			bAdded = AddOne(FName(UCataclysmForge::SchematicFragmentsRow));
+		}
+		for (int32 Each = 0; bAdded && Each < Done.Dust; ++Each)
+		{
+			bAdded = AddOne(FName(UCataclysmForge::DismantlingDustRow));
+		}
+		for (int32 Each = 0; bAdded && Each < Done.RefundStones.Num(); ++Each)
+		{
+			bAdded = AddOne(Done.RefundStones[Each]);
+		}
+		for (int32 Each = 0; bAdded && Each < Done.BaseStones.Num(); ++Each)
+		{
+			bAdded = AddOne(Done.BaseStones[Each]);
+		}
+		for (int32 Each = 0; bAdded && Each < Done.Gems.Num(); ++Each)
+		{
+			bAdded = Inventory->AddGems(Done.Gems[Each].Key, Done.Gems[Each].Value, 1);
+			if (bAdded)
+			{
+				AddedGems.Add(Done.Gems[Each]);
+			}
+		}
+		if (!bAdded)
+		{
+			PutEverythingBack();
+			UE_LOG(LogCataclysm, Error, TEXT("A dismantle could not add what it gives after the room check passed; the piece "
+											 "and the bag are as they were."));
+			return false;
+		}
+		return true;
+	};
+
+	const ECataclysmForgeResult Result = DoItemCraft(
+		WorldContext, Step, /*bConfirmedPastThreshold=*/false,
+		[&Done, &Dismantled, MagicFind](const FCataclysmItem& Before, FCataclysmItem& Changed, const UCataclysmEmpireRun& Run,
+										 FString& OutRefusal) -> bool
+		{
+			// THE DRAW, FROM THE ITEM AS IT STOOD AND THE DAY BEFORE ANYTHING MOVES (D5), so a reload draws the same.
+			FRandomStream Stream(UCataclysmForge::AffixCraftSeed(Before, UCataclysmForge::DismantleSalt, 0,
+																 Run.WalkSeedMask, Run.Day()));
+			UCataclysmForge::DrawDismantle(Done, UCataclysmDropRoll::LoadMaterialTierTable(), MagicFind,
+										   UCataclysmForge::DismantleStoneTier(Before, Run.DifficultyTier), Stream);
+			Dismantled = Before;
+			Changed = Before;
+			return true;
+		},
+		[&Done](const FString& Name, int32 DayFrom, int32 DayTo)
+		{
+			const FString Given = UCataclysmForge::DismantleGiven(Done);
+			UE_LOG(LogCataclysm, Log, TEXT("The forge dismantled %s into %s; day %d to day %d."), *Name, *Given, DayFrom, DayTo);
+			FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeDismantleLine(Name, Given, DayFrom));
+		},
+		Hooks, OutMessage);
+	if (Result == ECataclysmForgeResult::Done)
+	{
+		OutDone = Done;
 	}
 	return Result;
 }

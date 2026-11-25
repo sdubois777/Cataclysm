@@ -205,6 +205,10 @@ public:
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);
 
+	/** The materials tab and the gems tab, exactly as the component holds them. Record version 16, issue #2849. */
+	static void CarriedStacksFrom(const UCataclysmInventoryComponent& Inventory,
+								  TArray<FCataclysmCarriedSlot>& OutMaterials, TArray<FCataclysmCarriedSlot>& OutGems);
+
 	/** One entry per occupied worn slot, each naming its slot. See
 	 *  `FCataclysmWornItem` for why by name and not by position. */
 	static void WornGearFrom(const UCataclysmEquipmentComponent& Equipment,

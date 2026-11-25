@@ -426,12 +426,15 @@ bool FCataclysmPlayerCarriesAnInventoryTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 /**
- * Every crafting material of one kind takes one slot however many are held.
+ * Every crafting material of one kind is one stack however many are held, and no
+ * stack takes a gear slot.
  *
  * WHY IT MATTERS. A Cataclysm Boss averages 24 materials against a 48-slot bag,
  * so without stacking one kill could fill half of it with dust and leave no room
  * for the gear the same kill dropped. The project owner decided on 2026-08-19
- * that all crafting materials stack. Issue #717.
+ * that all crafting materials stack (issue #717), and on 2026-11-22 that they
+ * live in a materials tab of their own, one stack per material with no limit,
+ * so the 48 slots hold gear only (issue #2849).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaterialsStackTest,
 	"Cataclysm.Inventory.CraftingMaterialsStackIntoOneSlot",
@@ -452,72 +455,75 @@ bool FCataclysmMaterialsStackTest::RunTest(const FString&)
 
 	TestEqual(TEXT("nothing is carried to begin with"),
 		Inventory->CountOfMaterial(Mote), 0);
-	TestEqual(TEXT("and no slot holds it"),
-		Inventory->SlotOfMaterial(Mote), INDEX_NONE);
+	TestEqual(TEXT("and the materials tab holds no stack"),
+		Inventory->GetMaterialStacks().Num(), 0);
 
-	TestEqual(TEXT("the first one takes the first slot"),
-		Inventory->AddMaterial(Mote, 1), 0);
+	TestTrue(TEXT("the first one is taken"), Inventory->AddMaterial(Mote, 1));
 	TestEqual(TEXT("and one is carried"), Inventory->CountOfMaterial(Mote), 1);
-	TestEqual(TEXT("and one slot is used"), Inventory->NumItems(), 1);
+	TestEqual(TEXT("in one stack"), Inventory->GetMaterialStacks().Num(), 1);
+	TestEqual(TEXT("and no gear slot is used"), Inventory->NumItems(), 0);
 
-	// TWENTY-THREE MORE, WHICH IS WHAT A CATACLYSM BOSS AVERAGES. Still one slot.
+	// TWENTY-THREE MORE, WHICH IS WHAT A CATACLYSM BOSS AVERAGES. Still one stack.
 	for (int32 More = 0; More < 23; ++More)
 	{
-		TestEqual(TEXT("every one after the first joins the stack"),
-			Inventory->AddMaterial(Mote, 1), 0);
+		TestTrue(TEXT("every one after the first joins the stack"),
+			Inventory->AddMaterial(Mote, 1));
 	}
 
 	TestEqual(TEXT("twenty-four are carried"),
 		Inventory->CountOfMaterial(Mote), 24);
-	TestEqual(TEXT("in one slot"), Inventory->NumItems(), 1);
-	TestEqual(TEXT("so forty-seven are still free"),
-		Inventory->NumFreeSlots(), 47);
+	TestEqual(TEXT("in one stack"), Inventory->GetMaterialStacks().Num(), 1);
+	TestEqual(TEXT("so all forty-eight gear slots are still free"),
+		Inventory->NumFreeSlots(), 48);
 
 	// A DIFFERENT MATERIAL IS A DIFFERENT STACK. Four materials share tier 1 and
 	// a Corrupted Mote is not a Whispering Ash; stacking by tier would merge
 	// them, which is why the stack key is the material's own name.
-	TestEqual(TEXT("another material takes its own slot"),
-		Inventory->AddMaterial(Ash, 5), 1);
+	TestTrue(TEXT("another material is taken"), Inventory->AddMaterial(Ash, 5));
 	TestEqual(TEXT("five of it are carried"),
 		Inventory->CountOfMaterial(Ash), 5);
 	TestEqual(TEXT("and the first stack is untouched"),
 		Inventory->CountOfMaterial(Mote), 24);
-	TestEqual(TEXT("two slots are used"), Inventory->NumItems(), 2);
+	TestEqual(TEXT("two stacks are held"), Inventory->GetMaterialStacks().Num(), 2);
+	TestEqual(TEXT("and still no gear slot is used"), Inventory->NumItems(), 0);
 
 	// SEVERAL AT ONCE, which is what picking up a whole stack would be.
-	TestEqual(TEXT("adding several at once joins the same stack"),
-		Inventory->AddMaterial(Mote, 10), 0);
+	TestTrue(TEXT("adding several at once joins the same stack"),
+		Inventory->AddMaterial(Mote, 10));
 	TestEqual(TEXT("thirty-four are carried"),
 		Inventory->CountOfMaterial(Mote), 34);
+	TestEqual(TEXT("still in two stacks"), Inventory->GetMaterialStacks().Num(), 2);
 
 	// NOTHING IS NOT A DROP.
-	TestEqual(TEXT("no material cannot be added"),
-		Inventory->AddMaterial(NAME_None, 5), INDEX_NONE);
-	TestEqual(TEXT("nor can none of one"),
-		Inventory->AddMaterial(Mote, 0), INDEX_NONE);
-	TestEqual(TEXT("nor a negative number"),
-		Inventory->AddMaterial(Mote, -3), INDEX_NONE);
+	TestFalse(TEXT("no material cannot be added"),
+		Inventory->AddMaterial(NAME_None, 5));
+	TestFalse(TEXT("nor can none of one"),
+		Inventory->AddMaterial(Mote, 0));
+	TestFalse(TEXT("nor a negative number"),
+		Inventory->AddMaterial(Mote, -3));
 	TestEqual(TEXT("and none of that changed the stack"),
 		Inventory->CountOfMaterial(Mote), 34);
 
-	// PUTTING THE SLOT DOWN TAKES THE WHOLE STACK.
-	TestTrue(TEXT("the stack's slot can be emptied"),
+	// A STACK IS NOT IN A GEAR SLOT, so emptying a slot cannot take it (#2849). Until then the stack sat in slot 0 and
+	// putting that slot down took the whole stack.
+	TestFalse(TEXT("gear slot 0 holds nothing to empty"),
 		Inventory->RemoveItemAt(0));
-	TestEqual(TEXT("and none of it is carried"),
-		Inventory->CountOfMaterial(Mote), 0);
-	TestEqual(TEXT("while the other material is untouched"),
+	TestEqual(TEXT("and the stack is all still carried"),
+		Inventory->CountOfMaterial(Mote), 34);
+	TestEqual(TEXT("as is the other material"),
 		Inventory->CountOfMaterial(Ash), 5);
 
 	return true;
 }
 
 /**
- * Gear does not stack, and a material slot is not a gear slot.
+ * Gear does not stack, and a material stack is not a gear slot.
  *
  * BOTH HALVES MATTER. Two items of one base carry different affixes, upgrade
  * levels, sockets and residue, so merging them would silently destroy one; and a
- * slot holding materials must not answer as though it held gear, or the
- * inventory screen would draw a stack of dust as a sword.
+ * stack of materials must not answer as though it held gear, or the inventory
+ * screen would draw a stack of dust as a sword. Since issue #2849 the stack is in
+ * the materials tab and takes no gear slot at all.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGearDoesNotStackTest,
 	"Cataclysm.Inventory.GearDoesNotStackAndAMaterialSlotHoldsNoItem",
@@ -542,20 +548,21 @@ bool FCataclysmGearDoesNotStackTest::RunTest(const FString&)
 	TestEqual(TEXT("the third into slot 2"), Inventory->AddItem(Sword), 2);
 	TestEqual(TEXT("three slots are used"), Inventory->NumItems(), 3);
 
-	// A MATERIAL SLOT HOLDS NO ITEM.
+	// A MATERIAL STACK HOLDS NO ITEM, AND TAKES NO GEAR SLOT.
 	const FName Mote(TEXT("Material_Corrupted_Mote"));
-	const int32 Stack = Inventory->AddMaterial(Mote, 7);
-	if (!TestEqual(TEXT("the material took the next slot"), Stack, 3))
+	if (!TestTrue(TEXT("the material is taken"), Inventory->AddMaterial(Mote, 7))
+		|| !TestEqual(TEXT("into one stack"), Inventory->GetMaterialStacks().Num(), 1))
 	{
 		return false;
 	}
 
-	TestNull(TEXT("reading the material's slot as gear gives nothing"),
-		Inventory->ItemAt(Stack));
-	TestEqual(TEXT("and the slot itself carries the material"),
-		Inventory->GetSlots()[Stack].Material, Mote);
-	TestEqual(TEXT("and its quantity"),
-		Inventory->GetSlots()[Stack].Quantity, 7);
+	const FCataclysmCarriedSlot& Stack = Inventory->GetMaterialStacks()[0];
+	TestTrue(TEXT("the stack holds no item"), Stack.Item.Base.IsNone());
+	TestEqual(TEXT("and carries the material"), Stack.Material, Mote);
+	TestEqual(TEXT("and its quantity"), Stack.Quantity, 7);
+	TestEqual(TEXT("still three gear slots are used"), Inventory->NumItems(), 3);
+	TestNull(TEXT("the next gear slot reads as no gear"), Inventory->ItemAt(3));
+	TestTrue(TEXT("and does not hold the material"), Inventory->GetSlots()[3].Material.IsNone());
 
 	// A GEAR SLOT HOLDS NO MATERIAL.
 	TestTrue(TEXT("no material is stacked in a gear slot"),
@@ -568,11 +575,13 @@ bool FCataclysmGearDoesNotStackTest::RunTest(const FString&)
 }
 
 /**
- * A full bag has no room for a material it is not already carrying, and always
- * has room for one it is.
+ * A full gear tab still takes more of a material it carries, and a material it
+ * does not carry as well: the materials tab has no limit and never refuses.
  *
- * THAT ASYMMETRY IS THE POINT OF STACKING. It is what stops a Cataclysm Boss's
- * materials filling the bag, and it is what a caller has to be able to rely on.
+ * UNTIL ISSUE #2849 A NEW MATERIAL WAS REFUSED HERE, because a stack took one of
+ * the 48 slots. The owner ruled on 2026-11-22 that materials and gems have a tab
+ * each, one stack per kind with no limit. Gear is still refused when the 48 are
+ * full.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFullBagAndMaterialsTest,
 	"Cataclysm.Inventory.AFullBagStillTakesMoreOfAMaterialItCarries",
@@ -591,30 +600,34 @@ bool FCataclysmFullBagAndMaterialsTest::RunTest(const FString&)
 	const FName Mote(TEXT("Material_Corrupted_Mote"));
 	const FName Ash(TEXT("Material_Whispering_Ash"));
 
-	// ONE MATERIAL AND FORTY-SEVEN PIECES OF GEAR FILLS IT.
-	TestEqual(TEXT("the material takes slot 0"),
-		Inventory->AddMaterial(Mote, 2), 0);
+	// ONE MATERIAL, AND FORTY-EIGHT PIECES OF GEAR FILL THE GEAR TAB: the material takes none of the 48.
+	TestTrue(TEXT("the material is taken"), Inventory->AddMaterial(Mote, 2));
 	for (int32 N = 0; N < 47; ++N)
 	{
 		Inventory->AddItem(ItemNumber(N));
 	}
-	if (!TestTrue(TEXT("the bag is full"), Inventory->IsFull()))
+	TestFalse(TEXT("one material and 47 pieces of gear do not fill it"), Inventory->IsFull());
+	Inventory->AddItem(ItemNumber(47));
+	if (!TestTrue(TEXT("the gear tab is full"), Inventory->IsFull())
+		|| !TestEqual(TEXT("with 48 pieces of gear"), Inventory->NumItems(), 48))
 	{
 		return false;
 	}
 
-	// MORE OF WHAT IS ALREADY CARRIED STILL FITS, because it needs no slot.
-	TestEqual(TEXT("more of the carried material joins its stack"),
-		Inventory->AddMaterial(Mote, 100), 0);
+	// MORE OF WHAT IS ALREADY CARRIED STILL FITS.
+	TestTrue(TEXT("more of the carried material joins its stack"),
+		Inventory->AddMaterial(Mote, 100));
 	TestEqual(TEXT("and the stack grew"),
 		Inventory->CountOfMaterial(Mote), 102);
-	TestTrue(TEXT("and the bag is still full"), Inventory->IsFull());
+	TestTrue(TEXT("and the gear tab is still full"), Inventory->IsFull());
 
-	// A MATERIAL IT IS NOT CARRYING NEEDS A SLOT, AND THERE IS NONE.
-	TestEqual(TEXT("a new material is refused"),
-		Inventory->AddMaterial(Ash, 1), INDEX_NONE);
-	TestEqual(TEXT("and none of it was stored"),
-		Inventory->CountOfMaterial(Ash), 0);
+	// AND SO DOES A MATERIAL IT IS NOT CARRYING, since #2849.
+	TestTrue(TEXT("a new material is taken"),
+		Inventory->AddMaterial(Ash, 1));
+	TestEqual(TEXT("and one of it is carried"),
+		Inventory->CountOfMaterial(Ash), 1);
+	TestEqual(TEXT("in a second stack"), Inventory->GetMaterialStacks().Num(), 2);
+	TestEqual(TEXT("and the gear tab still holds its 48"), Inventory->NumItems(), 48);
 
 	// AND SO IS A PIECE OF GEAR.
 	TestEqual(TEXT("gear is refused too"),
@@ -684,8 +697,9 @@ bool FCataclysmInventoryCountsItsChanges::RunTest(const FString& Parameters)
 }
 
 /**
- * Taking a material out: that many from its stack, or none when fewer are carried; a stack taken to nothing empties
- * its slot. Issues #1820 and #41, for Forced Tithes, whose altar takes materials as a price.
+ * Taking a material out: that many from its stack, or none when fewer are carried; a stack taken to nothing leaves the
+ * materials tab (issue #2849; until then it emptied its slot). Issues #1820 and #41, for Forced Tithes, whose altar
+ * takes materials as a price.
  *
  * ALL OR NOTHING IS THE POINT. A price is paid whole or not at all, so a request for more than is carried must leave
  * the stack exactly as it was.
@@ -711,7 +725,8 @@ bool FCataclysmRemoveMaterialTest::RunTest(const FString&)
 	const int32 Before = Inventory->ChangeCount();
 	TestTrue(TEXT("five of twelve can be taken"), Inventory->RemoveMaterial(Mote, 5));
 	TestEqual(TEXT("seven are left"), Inventory->CountOfMaterial(Mote), 7);
-	TestEqual(TEXT("in the same slot"), Inventory->SlotOfMaterial(Mote), 0);
+	TestTrue(TEXT("in the same stack, still the first"), Inventory->GetMaterialStacks().Num() == 2
+		&& Inventory->GetMaterialStacks()[0].Material == Mote && Inventory->GetMaterialStacks()[0].Quantity == 7);
 	TestTrue(TEXT("and it is a change"), Inventory->ChangeCount() > Before);
 
 	// FEWER CARRIED THAN ASKED: NONE IS TAKEN.
@@ -727,12 +742,12 @@ bool FCataclysmRemoveMaterialTest::RunTest(const FString&)
 	TestFalse(TEXT("nor a negative number"), Inventory->RemoveMaterial(Mote, -2));
 	TestEqual(TEXT("and none of that changed the stack"), Inventory->CountOfMaterial(Mote), 7);
 
-	// THE WHOLE STACK: ITS SLOT IS EMPTY AGAIN.
+	// THE WHOLE STACK: IT LEAVES THE MATERIALS TAB.
 	TestTrue(TEXT("all seven can be taken"), Inventory->RemoveMaterial(Mote, 7));
 	TestEqual(TEXT("none is carried"), Inventory->CountOfMaterial(Mote), 0);
-	TestEqual(TEXT("and no slot holds it"), Inventory->SlotOfMaterial(Mote), INDEX_NONE);
-	TestTrue(TEXT("its slot is empty"), UCataclysmInventoryComponent::SlotIsEmpty(Inventory->GetSlots()[0]));
-	TestEqual(TEXT("and one slot is used"), Inventory->NumItems(), 1);
+	TestTrue(TEXT("and only the other stack is left"), Inventory->GetMaterialStacks().Num() == 1
+		&& Inventory->GetMaterialStacks()[0].Material == Ash && Inventory->GetMaterialStacks()[0].Quantity == 3);
+	TestEqual(TEXT("and no gear slot was ever used"), Inventory->NumItems(), 0);
 	return true;
 }
 

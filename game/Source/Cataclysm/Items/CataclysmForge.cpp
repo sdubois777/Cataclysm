@@ -608,11 +608,17 @@ FString UCataclysmForge::ItemSeedText(const FCataclysmItem& Item)
 		Sockets.Add(FString::Printf(TEXT("%s,%s,%d"), *UCataclysmGems::SocketTypeName(Socket.Type),
 									*Socket.Gem.ToString(), static_cast<int32>(Socket.GemRarity)));
 	}
-	return FString::Printf(
+	const FString Text = FString::Printf(
 		TEXT("Base=%s;Level=%d;Types=%s;Affixes=%s;Enchantments=%d:%s;Sockets=%s;Residue=%.6f;Kills=%d;Made=%d"),
 		*Item.Base.ToString(), Item.GearLevel, *Names(Item.DamageTypes), *FString::Join(Affixes, TEXT("|")),
 		Item.EnchantmentCount, *FString::Join(Enchantments, TEXT("|")), *FString::Join(Sockets, TEXT("|")),
 		static_cast<double>(Item.Residue), Item.Kills, Item.bMadeAtCreation ? 1 : 0);
+	// WHERE IT ARRIVED (#2848, slice S2), WRITTEN ONLY WHEN KNOWN: an item holding the two fields' defaults, -1 and 0,
+	// writes the text it wrote before they existed, so no seed a test pins moves, and two dropped items that differ only
+	// in them still draw apart.
+	return Item.GearLevelAtDrop == -1 && Item.TierAtDrop == 0
+		? Text
+		: Text + FString::Printf(TEXT(";AtDrop=%d:%d"), Item.GearLevelAtDrop, Item.TierAtDrop);
 }
 
 int32 UCataclysmForge::AddedSocketSeed(const FCataclysmItem& Item, int32 WalkSeedMask, int32 Day)
@@ -1662,6 +1668,212 @@ FString UCataclysmForge::CleanseQuestion(const FCataclysmForgeCleanse& Plan)
 								"of the run."),
 						   *ACataclysmDroppedItem::GoldName(Plan.Gold), FMath::RoundToInt(Plan.ResidueBefore),
 						   FMath::RoundToInt(Plan.ResidueAfter), Plan.Days, Plan.Days == 1 ? TEXT("") : TEXT("s"));
+}
+
+float UCataclysmForge::DismantleFragmentsFor(ECataclysmRarity Rarity)
+{
+	// N4, RULED 2026-11-22: flat for the four ordinary rungs, so the fragments' share of material drops stays at about 25%
+	// at every tier, rising only from Legendary.
+	switch (Rarity)
+	{
+	case ECataclysmRarity::Legendary:	return 0.1f;
+	case ECataclysmRarity::Mythical:	return 0.2f;
+	case ECataclysmRarity::Ascendant:	return 0.4f;
+	case ECataclysmRarity::Cataclysmic:	return 0.8f;
+	default:							return 0.06f;
+	}
+}
+
+float UCataclysmForge::DismantleStonesFor(ECataclysmRarity Rarity)
+{
+	// SECTION 8 (a), RULED 2026-11-22: about +48%, +39% and +27% of stone income at tiers 1, 4 and 8 if every gear drop
+	// is dismantled, and days stay the limit on levelling at every tier.
+	switch (Rarity)
+	{
+	case ECataclysmRarity::Legendary:	return 0.05f;
+	case ECataclysmRarity::Mythical:	return 0.1f;
+	case ECataclysmRarity::Ascendant:	return 0.2f;
+	case ECataclysmRarity::Cataclysmic:	return 0.4f;
+	default:							return 0.025f;
+	}
+}
+
+float UCataclysmForge::DismantleIncreaseFor(ECataclysmRarity Rarity, float SalvageIncrease, float DisassemblyIncrease)
+{
+	const bool bSuperbOrAbove = static_cast<uint8>(Rarity) >= static_cast<uint8>(DisassemblyExpertLowestRarity);
+	return FMath::Max(0.0f, SalvageIncrease) + (bSuperbOrAbove ? FMath::Max(0.0f, DisassemblyIncrease) : 0.0f);
+}
+
+FCataclysmForgeDismantle UCataclysmForge::DismantleOf(const FCataclysmItem& Item, float SalvageIncrease,
+													  float DisassemblyIncrease, const UDataTable* GearRarityTable)
+{
+	FCataclysmForgeDismantle Out;
+	if (Item.Base.IsNone())
+	{
+		Out.Refusal = TEXT("There is nothing there to dismantle.");
+		return Out;
+	}
+	if (Item.bMadeAtCreation)
+	{
+		Out.Refusal = TEXT("The weapon made at creation is the character's own; the forge does not dismantle it.");
+		return Out;
+	}
+	if (!UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Out.Rarity))
+	{
+		Out.Refusal = TEXT("That piece has no rarity, so there is nothing to dismantle it into.");
+		return Out;
+	}
+	if (GearRarityTable == nullptr)
+	{
+		Out.Refusal = TEXT("The gear rarity table could not be read, so what the piece was raised through is not known.");
+		return Out;
+	}
+
+	// THE DRAWN YIELDS' CHANCES, each raised by the two nodes (N6, N7); the refund is not (ruled 2026-11-22).
+	Out.Increase = DismantleIncreaseFor(Out.Rarity, SalvageIncrease, DisassemblyIncrease);
+	const float Raised = 1.0f + Out.Increase;
+	Out.FragmentsExpected = DismantleFragmentsFor(Out.Rarity) * Raised;
+	Out.DustExpected = DismantleDustPerSocket * static_cast<float>(Item.Sockets.Num()) * Raised;
+	Out.StonesExpected = DismantleStonesFor(Out.Rarity) * Raised;
+
+	// THE REFUND: one stone of each level raised through, from where the piece arrived. A piece saved before
+	// `GearLevelAtDrop` existed reads the gate of its present rarity, so it never refunds more than was spent.
+	Out.RefundFromLevel = Item.GearLevelAtDrop >= 0
+		? Item.GearLevelAtDrop
+		: UCataclysmDropRoll::GearLevelGateFor(GearRarityTable, Out.Rarity);
+	for (int32 Level = Out.RefundFromLevel + 1; Level <= Item.GearLevel; ++Level)
+	{
+		const FName Stone = StoneFor(Level);
+		if (!Stone.IsNone())
+		{
+			Out.RefundStones.Add(Stone);
+		}
+	}
+
+	// THE SOCKETED GEMS, back to the bag.
+	for (const FCataclysmSocket& Socket : Item.Sockets)
+	{
+		if (!Socket.Gem.IsNone())
+		{
+			Out.Gems.Add(TPair<FName, ECataclysmRarity>(Socket.Gem, Socket.GemRarity));
+		}
+	}
+	Out.bPossible = true;
+	return Out;
+}
+
+int32 UCataclysmForge::DrawWholeAndFraction(float Expected, FRandomStream& Stream)
+{
+	const float Clamped = FMath::Max(0.0f, Expected);
+	const int32 Whole = FMath::FloorToInt(Clamped);
+	// ONE DRAW ALWAYS, so the stream moves by the same amount whatever the yield and a later draw does not depend on it.
+	const float Roll = Stream.FRand();
+	return Whole + (Roll < Clamped - static_cast<float>(Whole) ? 1 : 0);
+}
+
+int32 UCataclysmForge::DismantleStoneTier(const FCataclysmItem& Item, int32 RunTier)
+{
+	return Item.TierAtDrop > 0 ? Item.TierAtDrop : FMath::Max(1, RunTier);
+}
+
+void UCataclysmForge::DrawDismantle(FCataclysmForgeDismantle& Plan, const UDataTable* MaterialTierTable, float MagicFind,
+								   int32 StoneTier, FRandomStream& Stream)
+{
+	Plan.Fragments = DrawWholeAndFraction(Plan.FragmentsExpected, Stream);
+	Plan.Dust = DrawWholeAndFraction(Plan.DustExpected, Stream);
+	const int32 Stones = DrawWholeAndFraction(Plan.StonesExpected, Stream);
+	// EACH BASE STONE AS A MATERIAL DROP ROLLS ONE: its material tier, then one of that tier's two stones evenly, held at
+	// the best stone that can drop at the piece's tier (section 8). Tier t holds stones +(2t - 1) and +2t
+	// (`game/Data/CraftingMaterials.csv`).
+	const int32 Cap = UCataclysmDropRoll::MaxUpgradeStoneOnADrop(StoneTier);
+	Plan.BaseStones.Reset();
+	for (int32 Each = 0; Each < Stones; ++Each)
+	{
+		const int32 MaterialTier = FMath::Clamp(
+			UCataclysmDropRoll::RollMaterialTier(MaterialTierTable, MagicFind, Stream), 1, (HighestStone + 1) / 2);
+		const int32 Level = 2 * MaterialTier - 1 + Stream.RandRange(0, 1);
+		const FName Stone = StoneFor(FMath::Min(Level, Cap));
+		if (!Stone.IsNone())
+		{
+			Plan.BaseStones.Add(Stone);
+		}
+	}
+	Plan.bDrawn = true;
+}
+
+namespace
+{
+	/** A stone's level from its row key, `Material_Upgrade_Stone_<level>`; 0 for any other row. */
+	int32 DismantleStoneLevel(FName Stone)
+	{
+		FString Text = Stone.ToString();
+		return Text.RemoveFromStart(TEXT("Material_Upgrade_Stone_")) ? FCString::Atoi(*Text) : 0;
+	}
+
+	/** "4 upgrade stones (+1 to +4)", or "1 upgrade stone (+3)", for stones each of one level. */
+	FString DismantleStoneWords(const TArray<FName>& Stones)
+	{
+		TArray<int32> Levels;
+		for (const FName& Stone : Stones)
+		{
+			Levels.Add(DismantleStoneLevel(Stone));
+		}
+		Levels.Sort();
+		const FString Count = FString::Printf(TEXT("%d upgrade stone%s"), Levels.Num(), Levels.Num() == 1 ? TEXT("") : TEXT("s"));
+		if (Levels.Num() == 0)
+		{
+			return Count;
+		}
+		TArray<FString> Each;
+		for (const int32 Level : Levels)
+		{
+			Each.Add(FString::Printf(TEXT("+%d"), Level));
+		}
+		return FString::Printf(TEXT("%s (%s)"), *Count, *FString::Join(Each, TEXT(", ")));
+	}
+}
+
+FString UCataclysmForge::DismantleQuestion(const FCataclysmForgeDismantle& Plan, const FString& Named)
+{
+	TArray<FString> Certain;
+	if (Plan.Gems.Num() > 0)
+	{
+		Certain.Add(FString::Printf(TEXT("%d gem%s"), Plan.Gems.Num(), Plan.Gems.Num() == 1 ? TEXT("") : TEXT("s")));
+	}
+	if (Plan.RefundStones.Num() > 0)
+	{
+		Certain.Add(DismantleStoneWords(Plan.RefundStones));
+	}
+	const FString Back = Certain.Num() > 0
+		? FString::Printf(TEXT("gives back %s, and "), *FString::Join(Certain, TEXT(" and ")))
+		: FString(TEXT("gives "));
+	return FString::Printf(TEXT("Press again to dismantle %s: it is destroyed, and %sabout %.2f Schematic Fragments, %.2f "
+								"Dismantling Dust and %.2f upgrade stones drawn at random. No gold, no days."),
+						   *Named, *Back, Plan.FragmentsExpected, Plan.DustExpected, Plan.StonesExpected);
+}
+
+FString UCataclysmForge::DismantleGiven(const FCataclysmForgeDismantle& Done)
+{
+	TArray<FString> Parts;
+	if (Done.Fragments > 0)
+	{
+		Parts.Add(FString::Printf(TEXT("%d Schematic Fragment%s"), Done.Fragments, Done.Fragments == 1 ? TEXT("") : TEXT("s")));
+	}
+	if (Done.Dust > 0)
+	{
+		Parts.Add(FString::Printf(TEXT("%d Dismantling Dust"), Done.Dust));
+	}
+	TArray<FName> Stones = Done.RefundStones;
+	Stones.Append(Done.BaseStones);
+	if (Stones.Num() > 0)
+	{
+		Parts.Add(DismantleStoneWords(Stones));
+	}
+	for (const TPair<FName, ECataclysmRarity>& Gem : Done.Gems)
+	{
+		Parts.Add(FString::Printf(TEXT("%s (%s)"), *UCataclysmGems::NameOf(Gem.Key), *UCataclysmGems::RarityName(Gem.Value)));
+	}
+	return Parts.Num() > 0 ? FString::Join(Parts, TEXT(", ")) : FString(TEXT("nothing"));
 }
 
 FString UCataclysmForge::NameOf(const FCataclysmItem& Item, const UDataTable* BaseTable, const UDataTable* AffixTable)

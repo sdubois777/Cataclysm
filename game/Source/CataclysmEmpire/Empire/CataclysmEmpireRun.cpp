@@ -577,7 +577,14 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 
 	// EVERY TIMER MOVES, INCLUDING ONE THAT ARRIVED A MOMENT AGO. That is what
 	// the model does: a dungeon spawned today has a day taken off it today.
+	//
+	// AND THE DAY TURNS, WHICH IS WHEN ENDURING FOUNDATIONS REACHES A CITY UPGRADE HELD TEN DAYS and raises the maximum
+	// it gives: every city keeps its share of its maxima across the turn, by the owner's rule for the tree of 2026-11-23,
+	// "It should maintain the % they were at before buying the upgrades". Issue #2859. Nothing else in the turn moves a
+	// maximum, so on any other day nothing is written.
+	const FCataclysmCityShares BeforeTheDayTurns = Map->SharesNow();
 	const TArray<int32> Resolved = Clock->AdvanceDay();
+	Map->KeepShares(BeforeTheDayTurns);
 
 	Report.Resolved = Resolved;
 
@@ -2070,6 +2077,21 @@ void UCataclysmEmpireRun::SetTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonu
 		// AND THE FLOORS IT ADDS TO DUNGEONS MADE FROM NOW ON. Issue #2741 slice 4, W3.
 		Surges->FloorsTheTreeAdds = Bonuses.FloorsAddedTo(/*bTheBoss*/ false, ActiveCataclysms.Num());
 	}
+}
+
+void UCataclysmEmpireRun::ChangeTreeBonuses(const FCataclysmEmpireTreeBonuses& Bonuses)
+{
+	if (Map == nullptr)
+	{
+		SetTreeBonuses(Bonuses);
+		return;
+	}
+
+	// EVERY CITY'S SHARE UNDER THE TREE AS IT WAS, THEN THE TREE AS IT IS, THEN EVERY STANDING CITY PUT BACK AT ITS SHARE
+	// OF THE MAXIMA THE NEW TREE GIVES. Issue #2859: "It should maintain the % they were at before buying the upgrades."
+	const FCataclysmCityShares Before = Map->SharesNow();
+	SetTreeBonuses(Bonuses);
+	Map->KeepShares(Before);
 }
 
 FCataclysmTreeDamageFactors UCataclysmEmpireRun::TreeDamageFactorsFor(int32 CityId, ECataclysmType Sender) const

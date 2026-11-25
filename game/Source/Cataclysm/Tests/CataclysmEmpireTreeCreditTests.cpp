@@ -622,8 +622,8 @@ bool FCataclysmEmpireTreeCreditScreenTest::RunTest(const FString&)
  * The files from before the debt migrate owing nothing (D1), and the committed files read the debt they state:
  * `Account_v4.json` migrates to the current version (5 when this was written) with 0 owed and 0 a day, keeping its
  * 1234567 gold and 37.625 points; `Character_v10.json` to the current version (11 then) with 0 and 0, keeping its 4321
- * gold and two skills' experience. The committed files, `Account_v7.json` and `Character_v14.json` since issue #2741 slice 9
- * (`Character_v13.json` from issue #46, `Character_v12.json` from issue #2741 slice 8), are read, not migrated, with 2500 owed at 250 a day and 1500 at 150. Prints "CREDIT FILES".
+ * gold and two skills' experience. The committed files, `Account_v7.json` and `Character_v17.json` since issue #837 slice 1
+ * (`Character_v16.json` from issue #2849, `Character_v15.json` from issue #2848, `Character_v14.json` from issue #2741 slice 9, `Character_v13.json` from issue #46, `Character_v12.json` from issue #2741 slice 8), are read, not migrated, with 2500 owed at 250 a day and 1500 at 150. Prints "CREDIT FILES".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeCreditFilesTest,
 	"Cataclysm.EmpireTreeCredit.ThePreviousFilesMigrateOwingNothing",
@@ -639,7 +639,7 @@ bool FCataclysmEmpireTreeCreditFilesTest::RunTest(const FString&)
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v4.json"), OldAccountText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Character_v10.json"), OldCharacterText, Reason)
 		|| !CataclysmSaveFixtures::Read(TEXT("Account_v7.json"), AccountText, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Character_v14.json"), CharacterText, Reason))
+		|| !CataclysmSaveFixtures::Read(TEXT("Character_v17.json"), CharacterText, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -661,7 +661,7 @@ bool FCataclysmEmpireTreeCreditFilesTest::RunTest(const FString&)
 	if (!TestNotNull(TEXT("Account_v4.json loads"), OldAccount)
 		|| !TestNotNull(TEXT("Character_v10.json loads"), OldCharacter)
 		|| !TestNotNull(TEXT("Account_v7.json loads"), Account)
-		|| !TestNotNull(TEXT("Character_v14.json loads"), Character))
+		|| !TestNotNull(TEXT("Character_v17.json loads"), Character))
 	{
 		return false;
 	}
@@ -691,7 +691,7 @@ bool FCataclysmEmpireTreeCreditFilesTest::RunTest(const FString&)
 	TestEqual(TEXT("Account_v7.json is read rather than migrated"), static_cast<int32>(AccountResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestTrue(TEXT("owing 2500 at 250 a day"), Account->GoldOwed == 2500 && Account->GoldOwedEachDay == 250);
-	TestEqual(TEXT("Character_v14.json is read rather than migrated"), static_cast<int32>(CharacterResult),
+	TestEqual(TEXT("Character_v17.json is read rather than migrated"), static_cast<int32>(CharacterResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestTrue(TEXT("owing 1500 at 150 a day"), Character->GoldOwed == 1500 && Character->GoldOwedEachDay == 150);
 	return true;

@@ -196,7 +196,12 @@ public:
 	 * Draw a circle on the ground and take it away after Seconds.
 	 *
 	 * @param Caster    whose attack it warns of; becomes the actor's owner
-	 * @param Centre    the middle of the circle, at the height it is drawn at
+	 * @param Centre    the middle of the circle. Drawn on the floor under it,
+	 *   found by `CataclysmEffectPlacement::OnTheFloor`, and at its own height
+	 *   only where no floor is found; the same for a lane's middle. Issue #2863:
+	 *   this said "at the height it is drawn at" until a reading of the code
+	 *   found that a centre under raised ground, such as the exit stairs, was
+	 *   drawn inside it
 	 * @param RadiusCm  the ability's own radius
 	 * @param Seconds   the ability's wind-up
 	 * @return the marker, or null if it was refused. It is refused for a radius

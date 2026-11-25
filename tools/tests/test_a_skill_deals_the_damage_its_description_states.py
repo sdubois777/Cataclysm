@@ -39,7 +39,9 @@ SKILL_SLOTS = REPO_ROOT / "game" / "Data" / "SkillSlots.csv"
 #:
 #: `UCataclysmSkillTemplate::GetDamagePercent` answers the skill's own figure and
 #: falls back to the slot's when the skill states none. Issue #836 records why
-#: that order is right, and most rows take the fallback.
+#: that order is right, and most rows take the fallback. AN AURA TAKES NOUGHT
+#: INSTEAD, ruled 2026-11-24 (#2875); that rule has its own file,
+#: `test_an_aura_deals_damage_only_where_its_row_states_it.py`.
 #:
 #: THIS SAID "393 OF THE 403 ROWS" AND NEITHER NUMBER WAS RIGHT. Issue #1243.
 #: Measured 2026-09-12: `game/Data/WeaponSkills.csv` holds 403 rows, 12 state a

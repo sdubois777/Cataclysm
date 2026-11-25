@@ -15,8 +15,12 @@ docstring said outright "the rarity gate has nothing". This is the rarity one.
 WHAT IT IS NOW, AND IT IS NO LONGER A GATE. The project owner played the capped
 version on 2026-08-23 and said it was too strict: at difficulty tier 1 only
 Everyday and Quality could drop at all. **Every gear rarity now drops at every
-difficulty tier.** The same figure decides where a penalty starts instead --
-above it, a rarity is divided by `RARITY_PENALTY_ABOVE_THE_TIER` once per rung.
+difficulty tier up to a cap.** The same figure decides where a penalty starts
+instead -- above it, a rarity is divided by `RARITY_PENALTY_ABOVE_THE_TIER` once
+per rung -- and since the owner's ruling of 2026-11-24 (issue #2853) nothing more
+than `DROP_RARITIES_ABOVE_THE_REACH` rungs above it can drop at all. The last two
+tests here hold that cap's two other copies: the engine's constant and the design
+document's own table of it.
 
 So the three copies to keep together are:
 
@@ -197,3 +201,105 @@ def test_the_document_says_the_column_is_not_a_cap(model) -> None:
         "the design document's difficulty tier table no longer says that its "
         "gear rarity column is not a cap. Without that sentence the table "
         "reads as the hard gate it stopped being on 2026-08-23.")
+
+
+def test_the_engine_uses_the_same_cap_above_the_reach(model) -> None:
+    """`RaritiesAboveTheReachThatDrop` in the C++ is the model's cap. Issue #2853.
+
+    Read out of the header, so a change to one copy that skips the other fails.
+    """
+    if not DROP_ROLL_H.is_file():
+        pytest.skip(f"{DROP_ROLL_H.name} is not present")
+
+    found = re.search(
+        r"RaritiesAboveTheReachThatDrop\s*=\s*(\d+)\s*;",
+        DROP_ROLL_H.read_text(encoding="utf-8"))
+    assert found, (
+        f"{DROP_ROLL_H.name} no longer declares RaritiesAboveTheReachThatDrop")
+
+    assert int(found.group(1)) == model.DROP_RARITIES_ABOVE_THE_REACH, (
+        f"{DROP_ROLL_H.name} lets a drop roll {found.group(1)} rarities above "
+        "the tier's reach and loot.DROP_RARITIES_ABOVE_THE_REACH says "
+        f"{model.DROP_RARITIES_ABOVE_THE_REACH}")
+
+
+def test_the_document_states_the_cap_the_model_applies(model) -> None:
+    """The design document's table "Highest gear rarity a drop can roll at all".
+
+    Issue #2853. Its rows read like `| 1 | Masterful |` and `| 5 to 8 |
+    Cataclysmic |`. Every tier must be covered once and agree with
+    `loot.highest_droppable_rarity`.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+
+    body = GDD.read_text(encoding="utf-8")
+    heading = "| Difficulty tier | Highest gear rarity a drop can roll at all |"
+    assert heading in body, (
+        "the design document has no table headed 'Highest gear rarity a drop "
+        "can roll at all', which states the cap of issue #2853")
+
+    stated: dict[int, str] = {}
+    for line in body[body.index(heading):].splitlines()[2:]:
+        match = re.match(r"\|\s*(\d+)(?:\s+to\s+(\d+))?\s*\|\s*(\w+)\s*\|$",
+                         line.strip())
+        if not match:
+            break
+        first = int(match.group(1))
+        last = int(match.group(2) or first)
+        for tier in range(first, last + 1):
+            assert tier not in stated, f"tier {tier} is in the cap table twice"
+            stated[tier] = match.group(3)
+
+    wrong = [f"tier {tier}: document {stated.get(tier)}, model "
+             f"{model.highest_droppable_rarity(tier)}"
+             for tier in range(1, model.af.DIFFICULTY_TIERS + 1)
+             if stated.get(tier) != model.highest_droppable_rarity(tier)]
+    assert not wrong, "the cap table disagrees with the model: " + "; ".join(wrong)
+
+
+SOURCE = REPO_ROOT / "game" / "Source" / "Cataclysm"
+
+
+def _code(path: pathlib.Path) -> str:
+    """The file with its comments removed, so a comment naming a call cannot pass for one."""
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
+def test_the_document_states_the_cataclysm_bosses_piece_the_model_drops(model) -> None:
+    """The design document's table "The Cataclysm Boss's piece" agrees with `loot.cataclysm_boss_piece_rarity`.
+
+    Issue #2853, the owner's ruling of 2026-11-24, "The next tier's best (Recommended)". Every tier covered once.
+    """
+    if not GDD.is_file():
+        pytest.skip("the design document is not present")
+    body = GDD.read_text(encoding="utf-8")
+    heading = "| Difficulty tier | The Cataclysm Boss's piece |"
+    assert heading in body, "the design document has no table headed 'The Cataclysm Boss's piece' (issue #2853)"
+    stated: dict[int, str] = {}
+    for line in body[body.index(heading):].splitlines()[2:]:
+        match = re.match(r"\|\s*(\d+)(?:\s+to\s+(\d+))?\s*\|\s*(\w+)\s*\|$", line.strip())
+        if not match:
+            break
+        for tier in range(int(match.group(1)), int(match.group(2) or match.group(1)) + 1):
+            assert tier not in stated, f"tier {tier} is in the Cataclysm Boss's piece table twice"
+            stated[tier] = match.group(3)
+    wanted = {tier: model.cataclysm_boss_piece_rarity(tier) for tier in range(1, 9)}
+    assert stated == wanted, f"the document states {stated}, the model drops {wanted}"
+
+
+def test_the_engine_drops_the_cataclysm_bosses_piece_as_the_model_does() -> None:
+    """The C++ gives the piece the next tier's cap, and the death site drops it last, after the gems. Issue #2853."""
+    roll = _code(SOURCE / "Items" / "CataclysmDropRoll.cpp")
+    start = roll.index("ECataclysmRarity UCataclysmDropRoll::CataclysmBossPieceRarity(")
+    body = re.sub(r"\s+", " ", roll[start:roll.index("}", start)])
+    assert "return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));" in body, (
+        "CataclysmBossPieceRarity no longer gives the next tier's cap, which loot.cataclysm_boss_piece_rarity gives")
+    death = re.sub(r"\s+", " ", _code(SOURCE / "Character" / "CataclysmEnemyCharacter.cpp"))
+    gems = death.find("UCataclysmDropSpawner::SpawnGemsFor(")
+    piece = death.find("UCataclysmDropSpawner::SpawnTheCataclysmBossesPieceFor(")
+    assert piece != -1, "the death site no longer drops the Cataclysm Boss's piece"
+    assert gems != -1 and gems < piece, (
+        "the Cataclysm Boss's piece is dropped before the gems, so it moves every draw after it")

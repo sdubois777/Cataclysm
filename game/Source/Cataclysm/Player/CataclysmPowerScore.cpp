@@ -22,92 +22,26 @@ const TArray<int32>& UCataclysmPowerScore::TierAnchors()
 	return Anchors;
 }
 
-namespace
-{
-	/**
-	 * The five weights, derived once from the two end anchors and the four
-	 * shares. Mirrors `_derive_weights` in sim/cataclysm_sim/player_power.py.
-	 */
-	struct FDerivedWeights
-	{
-		double Level = 0.0;
-		double Gear = 0.0;
-		double UpgradeFactor = 0.0;
-		double Gem = 0.0;
-		double Resistance = 0.0;
-	};
-
-	FDerivedWeights DeriveWeights()
-	{
-		using FScore = UCataclysmPowerScore;
-
-		const double Tier1 = FScore::TierAnchors()[1];
-		const double Tier8 = FScore::TierAnchors()[8];
-
-		// The reference character's score works out to a*tier^2 + b*tier, with
-		// no constant. It is quadratic for one structural reason: gear rarity
-		// and upgrade level both rise with the tier and multiply each other,
-		// and gem rarity rises while the number of filled sockets rises too.
-		// Level and resistances are linear.
-		//
-		// Both ends are pinned rather than least-squares fitting all eight.
-		// Tier 1 is where a new character is measured and tier 8 is the end of
-		// the game, so those two have to be exact.
-		//   a + b = Tier1  and  64a + 8b = Tier8
-		const double A = (Tier8 - 8.0 * Tier1) / 56.0;
-
-		FDerivedWeights Out;
-
-		// Level, gems and resistances are pinned by their tier 8 totals alone.
-		Out.Level = FScore::ShareLevel * Tier8 / FScore::MaxLevel;
-		Out.Gem = FScore::ShareGems * Tier8
-				/ (static_cast<double>(FScore::TotalSockets) * FScore::MaxRarity);
-		Out.Resistance = FScore::ShareResistances * Tier8
-					   / (static_cast<double>(FScore::ResistanceCount)
-						  * FScore::ResistanceCap);
-
-		// Curvature comes from two places: gems, where rarity and the number of
-		// filled sockets both climb, and gear, where rarity and upgrade level
-		// both climb. Gems take whatever their share implies; gear supplies the
-		// rest.
-		const double CurvatureFromGems =
-			(static_cast<double>(FScore::TotalSockets) / FScore::MaxRarity) * Out.Gem;
-		const double CurvatureFromGear = A - CurvatureFromGems;
-
-		// CurvatureFromGear = GearPieces * GearWeight * UpgradeFactor
-		const double GearTimesFactor = CurvatureFromGear / FScore::GearPieces;
-
-		// Gear at tier 8 is 18 pieces of rarity 8 at +10:
-		//   ShareGear * Tier8 = 18 * 8 * GearWeight * (1 + 10 * UpgradeFactor)
-		const double GearAtTier8 = FScore::ShareGear * Tier8;
-		Out.Gear = (GearAtTier8
-					- static_cast<double>(FScore::GearPieces) * FScore::MaxRarity
-					  * FScore::MaxUpgrade * GearTimesFactor)
-				 / (static_cast<double>(FScore::GearPieces) * FScore::MaxRarity);
-
-		Out.UpgradeFactor = GearTimesFactor / Out.Gear;
-		return Out;
-	}
-
-	const FDerivedWeights& Weights()
-	{
-		static const FDerivedWeights Derived = DeriveWeights();
-		return Derived;
-	}
-}
-
-float UCataclysmPowerScore::LevelWeight()      { return static_cast<float>(Weights().Level); }
-float UCataclysmPowerScore::GearWeight()       { return static_cast<float>(Weights().Gear); }
-float UCataclysmPowerScore::UpgradeFactor()    { return static_cast<float>(Weights().UpgradeFactor); }
-float UCataclysmPowerScore::GemWeight()        { return static_cast<float>(Weights().Gem); }
-float UCataclysmPowerScore::ResistanceWeight() { return static_cast<float>(Weights().Resistance); }
+// THE FIVE WEIGHTS ARE WRITTEN OUT, NOT DERIVED, since the owner's ruling of 2026-11-24 (issue #2853): plain numbers a
+// player can add up. They used to be solved from the tier 1 and tier 8 anchors and four shares, as `_derive_weights` in
+// sim/cataclysm_sim/player_power.py did; both copies changed together, and tools/tests/test_power_score_port.py holds
+// the header's literals to the model's.
+float UCataclysmPowerScore::LevelWeight()      { return PointsPerLevel; }
+float UCataclysmPowerScore::GearWeight()       { return PointsPerGearRarityStep; }
+float UCataclysmPowerScore::UpgradeFactor()    { return UpgradeFactorPerGearLevel; }
+float UCataclysmPowerScore::GemWeight()        { return PointsPerGemRarityStep; }
+float UCataclysmPowerScore::ResistanceWeight() { return PointsPerResistancePercent; }
 
 FCataclysmPowerBreakdown UCataclysmPowerScore::Breakdown(
 	const FCataclysmScoredCharacter& Character)
 {
-	const FDerivedWeights& W = Weights();
+	const double LevelPoints = PointsPerLevel;
+	const double GearPoints = PointsPerGearRarityStep;
+	const double UpgradePoints = UpgradeFactorPerGearLevel;
+	const double GemPoints = PointsPerGemRarityStep;
+	const double ResistancePoints = PointsPerResistancePercent;
 
-	double FromLevel = W.Level * FMath::Clamp(Character.Level, 0, MaxLevel);
+	double FromLevel = LevelPoints * FMath::Clamp(Character.Level, 0, MaxLevel);
 
 	// Upgrade level MULTIPLIES rarity rather than adding to it, because a fully
 	// upgraded Cataclysmic item should be worth far more than a fully upgraded
@@ -118,9 +52,9 @@ FCataclysmPowerBreakdown UCataclysmPowerScore::Breakdown(
 	{
 		const int32 Rarity = FMath::Clamp(Piece.Rarity, 1, MaxRarity);
 		const int32 Upgrade = FMath::Clamp(Piece.Upgrade, 0, MaxUpgrade);
-		FromGear += Rarity * (1.0 + W.UpgradeFactor * Upgrade);
+		FromGear += Rarity * (1.0 + UpgradePoints * Upgrade);
 	}
-	FromGear *= W.Gear;
+	FromGear *= GearPoints;
 
 	// Socket count has no weight of its own: it is the number of terms in this
 	// sum, so filling a socket is what a socket contributes.
@@ -129,17 +63,17 @@ FCataclysmPowerBreakdown UCataclysmPowerScore::Breakdown(
 	{
 		FromGems += FMath::Clamp(Rarity, 1, MaxRarity);
 	}
-	FromGems *= W.Gem;
+	FromGems *= GemPoints;
 
 	double FromResistances = 0.0;
 	for (const float Resistance : Character.Resistances)
 	{
 		FromResistances += FMath::Min(Resistance, ResistanceCap);
 	}
-	FromResistances *= W.Resistance;
+	FromResistances *= ResistancePoints;
 
 	// A character with no level is not a character. Scoring one as zero is more
-	// honest than clamping it up to level 1 and reporting six points of power
+	// honest than clamping it up to level 1 and reporting ten points of power
 	// for something that does not exist; ReferenceCharacter returns one for a
 	// tier outside 1 to 8.
 	if (Character.Level <= 0)
@@ -174,7 +108,7 @@ FCataclysmScoredCharacter UCataclysmPowerScore::ReferenceCharacter(int32 Tier)
 			   TEXT("Power Score reference character asked for tier %d, which "
 					"is outside 1-8"), Tier);
 		// Level 0 rather than the struct's default of 1, so this scores nothing
-		// rather than reporting six points of power for a character that was
+		// rather than reporting ten points of power for a character that was
 		// never asked for.
 		Out.Level = 0;
 		return Out;
@@ -287,6 +221,23 @@ FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterFrom(int32 Level,
 		Out.Resistances.Add(FMath::Clamp(Resistance, 0.0f, ResistanceCap));
 	}
 	return Out;
+}
+
+float UCataclysmPowerScore::WornPieceScoreOf(const FCataclysmItem& Item, ECataclysmGearSlot Slot)
+{
+	const int32 Index = static_cast<int32>(Slot);
+	if (Index >= static_cast<int32>(ECataclysmGearSlot::Count))
+	{
+		return 0.0f;
+	}
+
+	// THE PIECE ALONE, IN ITS SLOT, AT LEVEL 0 WITH NO RESISTANCE: `Breakdown` scores level 0 as nothing, so the gear
+	// and gem terms are all there is, and they are exactly what this piece moves.
+	TArray<FCataclysmItem> Alone;
+	Alone.SetNum(static_cast<int32>(ECataclysmGearSlot::Count));
+	Alone[Index] = Item;
+	const FCataclysmPowerBreakdown Terms = Breakdown(ScoredCharacterFrom(0, Alone, TArray<float>()));
+	return Terms.FromGear + Terms.FromGems;
 }
 
 FCataclysmScoredCharacter UCataclysmPowerScore::ScoredCharacterOf(const ACataclysmPlayerCharacter* Character,

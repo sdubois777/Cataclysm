@@ -273,6 +273,20 @@ ECataclysmRarity UCataclysmDropRoll::HighestUnpenalisedRarity(
 	return RarityAt(Tier - 1 + RaritiesAboveDifficulty);
 }
 
+ECataclysmRarity UCataclysmDropRoll::HighestDroppableRarity(int32 DifficultyTier)
+{
+	// TWO RUNGS ABOVE THE TIER'S OWN REACH, STOPPING AT THE TOP. Issue #2853.
+	const int32 Reach = LadderIndex(HighestUnpenalisedRarity(DifficultyTier));
+	return RarityAt(FMath::Min(RarityCount - 1, Reach + RaritiesAboveTheReachThatDrop));
+}
+
+ECataclysmRarity UCataclysmDropRoll::CataclysmBossPieceRarity(int32 DifficultyTier)
+{
+	// THE NEXT TIER'S CAP, the owner's own words for it, and the last tier's own at the last tier. Issue #2853.
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	return HighestDroppableRarity(FMath::Min(Tier + 1, DifficultyTiers));
+}
+
 float UCataclysmDropRoll::PenaltyAboveTheTier(ECataclysmRarity Rarity,
 											  int32 DifficultyTier)
 {
@@ -373,7 +387,15 @@ float UCataclysmDropRoll::DropWeightAt(const UDataTable* GearRarityTable,
 		return 0.0f;
 	}
 
+	// ABOVE THE CAP, NOTHING (issue #2853). On the weight, so every roll that
+	// reads weights follows it: the cascade stops on a rung with chance weight
+	// over the weight at or below it, and a weight of 0 is never stopped on.
 	const int32 Rung = LadderIndex(Rarity);
+	if (Rung > LadderIndex(HighestDroppableRarity(DifficultyTier)))
+	{
+		return 0.0f;
+	}
+
 	const float Change = OrdinaryFallAt(DifficultyTier) / OrdinaryFallAtTierOne;
 	// MAGIC FIND MULTIPLIES AND THE ABOVE-THE-TIER PENALTY DIVIDES. Neither
 	// touches OrdinaryWeightTotal below, which is the shaped weight only, so
@@ -506,10 +528,22 @@ float UCataclysmDropRoll::ExpectedMaterialDrops(const UDataTable* EnemyDropTable
 	return Row ? ScaledByLootQuantity(Row->MaterialDrops, LootQuantity) : 0.0f;
 }
 
-float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity)
+float UCataclysmDropRoll::ExpectedGemDrops(const UDataTable* EnemyDropTable, FName EnemyRarity, float LootQuantity,
+											int32 DifficultyTier)
 {
 	const FCataclysmEnemyDropRow* Row = EnemyDropRow(EnemyDropTable, EnemyRarity);
-	return Row ? ScaledByLootQuantity(Row->GemDrops, LootQuantity) : 0.0f;
+	return Row ? ScaledByLootQuantity(Row->GemDrops * GemDropShareAt(DifficultyTier), LootQuantity) : 0.0f;
+}
+
+float UCataclysmDropRoll::GemDropShareAt(int32 DifficultyTier)
+{
+	const int32 Tier = FMath::Clamp(DifficultyTier, 1, DifficultyTiers);
+	float Share = 1.0f;
+	for (int32 Below = Tier; Below < DifficultyTiers; ++Below)
+	{
+		Share *= GemDropShareATierDown;
+	}
+	return Share;
 }
 
 float UCataclysmDropRoll::MagicFindFrom(const UDataTable* EnemyDropTable,
@@ -828,7 +862,8 @@ void UCataclysmDropRoll::RarityDistribution(const UDataTable* GearRarityTable,
 {
 	OutShares.Init(0.0f, RarityCount);
 
-	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
+	// THE WHOLE LADDER. A rung above HighestDroppableRarity has a step chance of
+	// 0 (issue #2853), so its share is 0 and everything passes through it.
 	float Left = 1.0f;
 	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
@@ -848,7 +883,9 @@ ECataclysmRarity UCataclysmDropRoll::RollRarity(const UDataTable* GearRarityTabl
 												float MagicFind,
 												FRandomStream& Stream)
 {
-	// THE WHOLE LADDER, since the cap became a penalty on 2026-08-23.
+	// THE WHOLE LADDER, ONE DRAW A RUNG. A rung above HighestDroppableRarity has
+	// a step chance of 0 (issue #2853): its draw is still taken and always fails,
+	// so a seed whose drop was at or below the cap rolls what it rolled before.
 	for (int32 Rung = RarityCount - 1; Rung >= 1; --Rung)
 	{
 		if (Stream.FRand() < RarityStepChance(GearRarityTable, RarityAt(Rung),
@@ -883,6 +920,12 @@ ECataclysmRarity UCataclysmDropRoll::RollRarityAtLeast(const UDataTable* GearRar
 	}
 	if (Reachable <= 0.0f)
 	{
+		// `Lowest` IS ABOVE THE TIER'S CAP: the High Roller's Legendary at tier 1,
+		// whose cap is Masterful. The node's own minimum is given, and nothing
+		// rarer: the owner's ruling of 2026-11-24 on issue #2853, "Exception:
+		// exactly Legendary (Recommended)". Drawn once all the same, so the
+		// stream moves as it does on every other path here.
+		Stream.FRand();
 		return Lowest;
 	}
 
@@ -1100,6 +1143,15 @@ void UCataclysmDropRoll::GroupsOf(const UDataTable* AffixTable,
 	}
 
 	OutGroups.Add(StatGroup(Affix.Stat, Affix.ValueKind));
+}
+
+bool UCataclysmDropRoll::RollsOnADropAt(const FCataclysmAffixRow& Row, int32 DifficultyTier)
+{
+	// THE ALL-RESISTANCES FAMILY IS THE RESISTANCE FAMILY COVERING EVERY DAMAGE TYPE, the convention `CandidatesFor`
+	// reads to give it all eight without drawing any.
+	const bool bAllResistances = IsResistanceFamily(Row)
+		&& Row.Breadth >= UCataclysmItemModifiers::DamageTypeNames().Num();
+	return !bAllResistances || DifficultyTier >= AllResistancesLowestDropTier;
 }
 
 void UCataclysmDropRoll::CandidatesFor(
@@ -2292,6 +2344,10 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 
 	OutItem.Base = Base;
 	OutItem.GearLevel = GearLevelGateFor(GearRarityTable, Rarity);
+	// WHERE IT ARRIVED, for a dismantle's refund and its base stone's cap (#2848, slice S2): no draw, so no seeded drop
+	// moves.
+	OutItem.GearLevelAtDrop = OutItem.GearLevel;
+	OutItem.TierAtDrop = FMath::Max(1, DifficultyTier);
 	OutItem.EnchantmentCount = UCataclysmItemValues::EnchantmentsFor(Rarity);
 	// HOW MANY SOCKETS FROM THE DROP'S STREAM, AS BEFORE, AND THEIR TYPES FROM A STREAM OF THEIR OWN. Issue #46, slice
 	// G3: each socket's type is rolled evenly among the three. The second stream is seeded from the first without
@@ -2325,6 +2381,17 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 
 		TArray<FCataclysmAffixCandidate> Candidates;
 		CandidatesFor(AffixTable, Slot, Each.Key, Stream, Candidates);
+
+		// THE ALL-RESISTANCES FAMILY DOES NOT ROLL ON A TIER 1 DROP, ruled by the project owner on 2026-11-24 (issue
+		// #2853); another affix takes the place, as the draw already does for one it cannot use. Taken out AFTER the
+		// candidates are built, as `loot.roll_item` takes it out, so their damage types are drawn as before.
+		Candidates.RemoveAll([AffixTable, DifficultyTier](const FCataclysmAffixCandidate& Candidate)
+		{
+			const FCataclysmAffixRow* Row = AffixTable != nullptr
+				? AffixTable->FindRow<FCataclysmAffixRow>(Candidate.Affix, TEXT("RollItem"), /*bWarnIfMissing=*/false)
+				: nullptr;
+			return Row != nullptr && !UCataclysmDropRoll::RollsOnADropAt(*Row, DifficultyTier);
+		});
 
 		TArray<FCataclysmAffixCandidate> Drawn;
 		if (!DrawWithoutRepeatingAGroup(AffixTable, Candidates, Each.Value,

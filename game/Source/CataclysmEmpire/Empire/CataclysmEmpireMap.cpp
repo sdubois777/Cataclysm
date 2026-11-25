@@ -445,8 +445,9 @@ namespace CataclysmEmpireMapEnduring
 
 float UCataclysmEmpireMap::EffectiveMaxDefence(const FCataclysmCity& City) const
 {
-	// AND ENDURING FOUNDATIONS ON A RAISED-MAXIMUM UPGRADE HELD LONG ENOUGH, read here as the tree is, so a maximum it
-	// raises leaves what the city holds where it is (S1). Issue #2741 slice 3b.
+	// AND ENDURING FOUNDATIONS ON A RAISED-MAXIMUM UPGRADE HELD LONG ENOUGH, read here as the tree is. Issue #2741 slice
+	// 3b. A read writes nothing; the day's turn that reaches the tenth day keeps the city's share of the maximum it
+	// raises (`UCataclysmEmpireRun::AdvanceDay`, issue #2859).
 	return City.MaxDefence * TreeBonuses.MaxDefenceFactorFor(City.Tier, City.Ring(), CitiesWithADefensiveUpgrade())
 		* CataclysmEmpireMapEnduring::AgedMaximumFactor(*this, City, ECataclysmCityUpgradeEffect::MaxDefence);
 }
@@ -548,6 +549,76 @@ int32 UCataclysmEmpireMap::CitiesWithADefensiveUpgrade() const
 	return Count;
 }
 
+// ---------------------------------------------------------------------------
+// A city keeps its share when a maximum moves -- issue #2859
+// ---------------------------------------------------------------------------
+
+namespace CataclysmEmpireMapShares
+{
+	/**
+	 * Whether a maximum moved: by more than a ten-thousandth of itself, so the float noise of a maximum worked out twice
+	 * is not a move. The smallest move anything makes is a hundredth -- a point of Golden Age -- and The Royal Engineer's
+	 * Blessing's step is two hundredths.
+	 */
+	bool MaximumMoved(float Now, float Before)
+	{
+		return FMath::Abs(Now - Before) > 1.0e-4f * FMath::Max(1.0f, FMath::Abs(Before));
+	}
+}
+
+FCataclysmCityShares UCataclysmEmpireMap::SharesNow() const
+{
+	FCataclysmCityShares Shares;
+	Shares.bStanding.Reserve(Cities.Num());
+	Shares.DefenceMax.Reserve(Cities.Num());
+	Shares.DefenceShare.Reserve(Cities.Num());
+	Shares.PopulationMax.Reserve(Cities.Num());
+	Shares.PopulationShare.Reserve(Cities.Num());
+
+	for (const FCataclysmCity& City : Cities)
+	{
+		// WHAT THE CITY IS READ AS HOLDING, so a figure above a lowered maximum is a whole share and not more.
+		const float DefenceMax = EffectiveMaxDefence(City);
+		const float PopulationMax = EffectiveMaxPopulation(City);
+		Shares.bStanding.Add(City.IsAlive());
+		Shares.DefenceMax.Add(DefenceMax);
+		Shares.DefenceShare.Add(DefenceMax <= 0.0f ? 0.0f : DefenceOf(City) / DefenceMax);
+		Shares.PopulationMax.Add(PopulationMax);
+		Shares.PopulationShare.Add(PopulationMax <= 0.0f ? 0.0f : PopulationOf(City) / PopulationMax);
+	}
+
+	return Shares;
+}
+
+void UCataclysmEmpireMap::KeepShares(const FCataclysmCityShares& Before)
+{
+	for (int32 Index = 0; Index < Cities.Num(); ++Index)
+	{
+		FCataclysmCity& City = Cities[Index];
+
+		// STANDING THEN AND NOW: a city that has just fallen holds nothing, and one just retaken was given its share by
+		// `Retake`. Shares taken of a map with fewer cities reach only the cities they were taken of.
+		if (!Before.bStanding.IsValidIndex(Index) || !Before.bStanding[Index] || !City.IsAlive())
+		{
+			continue;
+		}
+
+		// ONLY A MAXIMUM THAT MOVED IS WRITTEN, so a city whose maxima did not move keeps exactly what it holds. See the
+		// header.
+		const float DefenceMax = EffectiveMaxDefence(City);
+		if (CataclysmEmpireMapShares::MaximumMoved(DefenceMax, Before.DefenceMax[Index]))
+		{
+			City.Defence = Before.DefenceShare[Index] * DefenceMax;
+		}
+
+		const float PopulationMax = EffectiveMaxPopulation(City);
+		if (CataclysmEmpireMapShares::MaximumMoved(PopulationMax, Before.PopulationMax[Index]))
+		{
+			City.Population = Before.PopulationShare[Index] * PopulationMax;
+		}
+	}
+}
+
 int32 UCataclysmEmpireMap::FallenCityCount() const
 {
 	int32 Fallen = 0;
@@ -631,8 +702,9 @@ bool UCataclysmEmpireMap::Damage(int32 CityId, float DefencePoints,
 		City->bTookSurgeDamage = true;
 	}
 
-	// FROM WHAT THE CITY IS READ AS HOLDING, so a hit after a respec lowered a maximum starts from that maximum rather
-	// than from a figure above it (S1). Issue #2741 slice 3a.
+	// FROM WHAT THE CITY IS READ AS HOLDING, so a hit on a city holding more than its maximum starts from that maximum
+	// rather than from a figure above it (S1). Issue #2741 slice 3a. Since issue #2859 a respec in play puts the city at
+	// its share of the lowered maximum, so that is a run loaded under a smaller tree than it was saved under.
 	City->Defence = DefenceOf(*City);
 	City->Population = PopulationOf(*City);
 
@@ -813,13 +885,17 @@ bool UCataclysmEmpireMap::AddUpgrade(int32 CityId,
 		return false;
 	}
 
-	// THE MAXIMA WITH THE EMPIRE UPGRADE TREE BEFORE THE UPGRADE, so a raise below adds what the effective maximum rose
-	// by. Read before the upgrade is recorded: recording it can make this city one The Royal Engineer's Blessing counts.
-	// Issue #2741 slice 3a.
+	// EVERY CITY'S SHARE BEFORE THE UPGRADE IS RECORDED, AND EVERY CITY PUT BACK AT IT ONCE IT IS: recording it can make
+	// this city one The Royal Engineer's Blessing counts, which moves every city's maximum, this one's included. Issue
+	// #2859. Until then the absolute rise below read its maximum before the record, so it carried the Blessing's part.
+	const FCataclysmCityShares BeforeTheUpgrade = SharesNow();
+	City->Upgrades.Add(Upgrade);
+	KeepShares(BeforeTheUpgrade);
+
+	// THE MAXIMA WITH THE EMPIRE UPGRADE TREE BEFORE THE UPGRADE'S OWN RAISE, so a raise below adds what the effective
+	// maximum rose by. Issue #2741 slice 3a.
 	const float DefenceMaxBefore = EffectiveMaxDefence(*City);
 	const float PopulationMaxBefore = EffectiveMaxPopulation(*City);
-
-	City->Upgrades.Add(Upgrade);
 
 	switch (Upgrade.Effect)
 	{
@@ -943,6 +1019,10 @@ bool UCataclysmEmpireMap::Fall(int32 CityId)
 		return false;
 	}
 
+	// EVERY CITY'S SHARE BEFORE THE FALL: a city holding a defensive upgrade leaves The Royal Engineer's Blessing's count
+	// when it falls, which lowers every other city's maximum, and each keeps its share of it below. Issue #2859.
+	const FCataclysmCityShares BeforeTheFall = SharesNow();
+
 	City->Defence = 0.0f;
 	City->bFallen = true;
 
@@ -953,6 +1033,7 @@ bool UCataclysmEmpireMap::Fall(int32 CityId)
 		City->bErased = true;
 	}
 
+	KeepShares(BeforeTheFall);
 	return true;
 }
 
@@ -963,6 +1044,12 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	{
 		return false;
 	}
+
+	// EVERY CITY'S SHARE BEFORE THE RETAKE: a city holding a defensive upgrade is counted by The Royal Engineer's Blessing
+	// again once it stands, which raises every other city's maximum, and each keeps its share of it below. This city's
+	// own figures are the retake's; `KeepShares` leaves a city that was fallen when the shares were taken alone. Issue
+	// #2859.
+	const FCataclysmCityShares BeforeTheRetake = SharesNow();
 
 	// THE ARCHITECT'S LEGACY: "Reclaiming a fallen city restores it to 75% of its original Population/Defense." The
 	// original is read as the maximum with the tree, as the half was (issue #2741 slice 3b).
@@ -980,6 +1067,7 @@ bool UCataclysmEmpireMap::Retake(int32 CityId)
 	// than ten, or it would have been erased and refused above.
 	City->VoidStacks = 0;
 
+	KeepShares(BeforeTheRetake);
 	return true;
 }
 

@@ -91,6 +91,9 @@ public:
 	/** The screen's own refusal, for a skill clicked with no slot selected (ruled Q5). */
 	static const TCHAR* NoSlotSelectedRefusal;
 
+	/** What a pool skill that does nothing when pressed carries on its label, ", not built yet". Issue #837 slice 2. */
+	static const TCHAR* NotBuiltYetMark;
+
 	/** What the clear control says, in the owner's words. */
 	static const TCHAR* ClearLabelText;
 

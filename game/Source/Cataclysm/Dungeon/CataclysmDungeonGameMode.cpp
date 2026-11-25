@@ -44,6 +44,8 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmHarvestedSoul.h"
+// For the footprints Demonic Guide's guide leaves. Issue #2862.
+#include "Dungeon/CataclysmGuideFootprints.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -121,8 +123,15 @@ namespace
 	 * #1833 group D part 2, ruled 2026-09-30: called after the floor's rules
 	 * reach the player in `StartPlay` and `GoToFloor`, and not on leaving the
 	 * dungeon, which also applies the rules and starts no floor. A Horde wave is
-	 * not a floor start. The first floor's `GoToFloor` runs before there is a
-	 * pawn, so it reaches nobody and `StartPlay`'s call is the one that counts.
+	 * not a floor start. `StartPlay` raises it for the first floor only for a
+	 * pawn its `GoToFloor` could not reach, and never after a load has put the
+	 * character back where it was saved, so a floor's start reaches the player
+	 * once. Until issue #2858 this said `GoToFloor` runs before there is a pawn
+	 * and `StartPlay` always raised it again; in a launched game the pawn stands
+	 * by then (the engine spawns it at login, before play begins), so the first
+	 * floor's start reached the player twice, and a resume's second one capped
+	 * the health the load had put back. Ruled a defect by the coordinating
+	 * session on 2026-11-24.
 	 */
 	void DungeonGameModeRaiseFloorStart(UWorld* World)
 	{
@@ -1343,32 +1352,74 @@ void ACataclysmDungeonGameMode::StartPlay()
 	// save writer, which records the floor being stood on, and a floor that does
 	// not exist yet is one the record cannot describe.
 	//
-	// ITS LAST STEP, STANDING THE PLAYER AT THE ENTRANCE, DOES NOTHING HERE and
-	// that is expected rather than a waste: there is no pawn until the parent has
-	// run, so it is done again below.
+	// ITS LAST STEPS -- STANDING THE PLAYER AT THE ENTRANCE, THE CORRUPTED
+	// DOUBLE'S NOTE, THE FLOOR'S RULES AND ITS `floor_start` -- REACH THE PLAYER
+	// WHEN A PAWN STANDS, and in a launched game one does: the engine spawns the
+	// player's pawn at login, which `UEngine::LoadMap` and Play In Editor both
+	// run before play begins. This said there was no pawn until the parent had
+	// run, until issue #2858. WHICH PAWN STOOD is asked first, so the steps below
+	// can tell whether this floor's start has reached the player already.
+	const APlayerController* FirstAtTheStart = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	const TWeakObjectPtr<APawn> ReachedByTheFloorsStart = FirstAtTheStart ? FirstAtTheStart->GetPawn() : nullptr;
 	GoToFloor(ChooseFloorNumber());
 
 	Super::StartPlay();
 
-	// AND THE PLAYER IS MOVED AFTER, because the pawn is created during login,
-	// which the parent's `StartPlay` is downstream of. Moved rather than spawned
-	// there: the player start is wherever the map put it, and where the player
-	// arrives is decided by the generator and is different every floor.
-	if (const APlayerController* Controller =
-			GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
+	// AND THE FIRST FLOOR STARTS FOR THE PLAYER HERE -- stood at the entrance,
+	// the Corrupted Double's note (issue #2688), the floor's rules (issue #41)
+	// and `floor_start` -- ONLY FOR A PAWN NOTHING HAS STARTED A FLOOR FOR. Moved
+	// rather than spawned there: the player start is wherever the map put it, and
+	// where the player arrives is decided by the generator and is different every
+	// floor.
+	//
+	// **NOT FOR THE PAWN `GoToFloor` REACHED ABOVE.** Issue #2858, ruled a defect
+	// by the coordinating session on 2026-11-24: "the first floor's start must
+	// reach the player once, not twice". Until then these four ran here whatever
+	// `GoToFloor` had done, because this said the pawn is created during login
+	// downstream of the parent's `StartPlay`; login runs before play begins, so in
+	// a launched game the first floor's start reached the player twice.
+	//
+	// **AND NOT FOR A CHARACTER THE PARENT'S LOAD HAS JUST PUT WHERE IT WAS
+	// SAVED.** Continue on a character saved inside a dungeon loads it in the
+	// parent's `StartPlay` (`LoadThePendingCharacter`): the dungeon is entered
+	// again at the saved floor, whose `GoToFloor` starts it for the character, and
+	// the character's place and health are put back last. This stood it at the
+	// floor's entrance a moment later, while the load's own line said "placed
+	// where it was saved", and raised `floor_start` after its health was put back,
+	// so "You start every dungeon floor at 30%-50% of your maximum HP" capped it.
+	// In a launched game the pawn reached above is the one loaded, so this is the
+	// same answer asked a second way, for a pawn that came to stand inside the
+	// parent's `StartPlay`. A load that put back no place -- a record with no
+	// floor, which a trip from the capital writes -- leaves the character where
+	// `GoToFloor` stood it.
+	const APlayerController* Controller = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	APawn* Standing = Controller ? Controller->GetPawn() : nullptr;
+	const bool bTheFloorsStartReachedIt = Standing != nullptr && ReachedByTheFloorsStart.Get() == Standing;
+	const bool bLeftWhereTheLoadPutIt = PendingLoadPutTheCharacterWhereSaved();
+	const bool bStartTheFloorForThePlayerHere = !bTheFloorsStartReachedIt && !bLeftWhereTheLoadPutIt;
+	if (bStartTheFloorForThePlayerHere)
 	{
-		PlaceAtEntrance(Controller->GetPawn());
+		PlaceAtEntrance(Standing);
+		NoteTheConsumptionDoubleAsAFloorIsEntered();
+		ApplyFloorRulesKeepingHealth();
+		DungeonGameModeRaiseFloorStart(GetWorld());
 	}
-
-	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THE FIRST FLOOR, for the same reason: `GoToFloor` ran before there was a
-	// player state to read the mark from. Issue #2688.
-	NoteTheConsumptionDoubleAsAFloorIsEntered();
-
-	// AND THE FIRST FLOOR'S MODIFIERS REACH THE PLAYER, for the same reason the
-	// move above is repeated: `GoToFloor` ran before there was a pawn to reach.
-	// Issue #41.
-	ApplyFloorRulesKeepingHealth();
-	DungeonGameModeRaiseFloorStart(GetWorld());
+	else if (bLeftWhereTheLoadPutIt && Standing)
+	{
+		const FVector At = Standing->GetActorLocation();
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("The loaded character stays where its save put it, at X=%.0f Y=%.0f Z=%.0f on floor %d, "
+					"%.0f cm from the floor's entrance, rather than being stood at the entrance; the floor's start is "
+					"not raised again."),
+			   At.X, At.Y, At.Z, FloorNumber,
+			   CurrentFloor ? FVector::Dist2D(At, CurrentFloor->EntranceWorld()) : -1.0f);
+	}
+	else
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Floor %d's start reached the player as the floor was built, so the level's start does not raise "
+					"it again."), FloorNumber);
+	}
 
 	// AND A DEATH ANYWHERE ON THE FLOOR REACHES THE NIHIL'S EMBRACE'S CLEANSE.
 	// Issue #41, slice 2.
@@ -6274,8 +6325,14 @@ void ACataclysmDungeonGameMode::ForgetTheGuide()
 	{
 		Chain->Destroy();
 	}
+	// AND ITS FOOTPRINTS, WHICH LAST AS LONG AS IT DOES. Issue #2862.
+	if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+	{
+		Footprints->Destroy();
+	}
 	DemonicGuide = nullptr;
 	DemonicGuideChain = nullptr;
+	DemonicGuideFootprints = nullptr;
 	DemonicGuidePanelKey = -1;
 }
 
@@ -6309,7 +6366,14 @@ void ACataclysmDungeonGameMode::PlaceTheGuide()
 	// AT ITS SHARE OF THE PLAYER'S DEFAULT WALK UNTIL THE FIRST STEP READS THE PLAYER'S OWN. Issue #2790.
 	Guide->SetGuideWalkSpeed(ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
 							 * Effects::DemonicGuideWalkShareOfPlayer);
+	// AND ITS BODY IS THE GUIDE'S NOW THAT IT IS ONE, so the player and what the player commands pass through it and it
+	// through them; a creature still blocks it. Issue #2861. After the flag, which is what the body is read from. It is
+	// nobody's target from the flag on as well (`IsNeverATarget`, issue #2860), which needs no call.
+	Guide->RefreshPassThroughBody();
 	DemonicGuide = Guide;
+
+	// AND THE TRAIL IT LEAVES, empty until the first step prints where it stands. Issue #2862.
+	DemonicGuideFootprints = ACataclysmGuideFootprints::Begin(GetWorld(), Guide->GetActorLocation());
 	UE_LOG(LogCataclysm, Log, TEXT("Demonic Guide: %s at floor %d's entrance"), *Guide->GetName(), FloorNumber);
 	RefreshFloorModifierPanel();
 }
@@ -6805,6 +6869,15 @@ void ACataclysmDungeonGameMode::StepDemonicGuide(
 			DemonicGuideChain = ACataclysmGroundZone::SpawnForTheFloor(
 				Source, Where, Where, Effects::DemonicGuideChainCm, 0.0f, /*bAffectsEveryone=*/false,
 				/*InDrawnAsType=*/DungeonGameModeTypeOfRow(Effects::DemonicGuideKey));
+		}
+
+		// AND ITS FOOTPRINTS: printed along where it walked since the last beat, at its feet, and aged by this beat
+		// unless it waits for the player. Issue #2862.
+		if (ACataclysmGuideFootprints* Footprints = DemonicGuideFootprints.Get())
+		{
+			const UCapsuleComponent* Body = Guide->GetCapsuleComponent();
+			const FVector Feet(At.X, At.Y, At.Z - (Body ? Body->GetScaledCapsuleHalfHeight() : 0.0f));
+			Footprints->Step(Feet, Guide->GetActorRotation(), BeatSeconds, bWaits);
 		}
 	}
 
@@ -13183,7 +13256,8 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 
 	if (ChoiceKey == FName(Effects::ForcedTithesPayMaterials))
 	{
-		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN SLOT ORDER.
+		// THE MATERIAL CARRIED MOST OF, THE FIRST OF EQUALS IN THE MATERIALS TAB'S ORDER, which is the order first carried.
+		// Read from the materials tab since #2849; until then from the 48 slots, in slot order.
 		const UCataclysmInventoryComponent* Inventory = Player->GetInventory();
 		if (!Inventory)
 		{
@@ -13191,7 +13265,7 @@ bool ACataclysmDungeonGameMode::CanPayTheTithe(FName ChoiceKey, ACataclysmPlayer
 		}
 		FName Most;
 		int32 MostCount = 0;
-		for (const FCataclysmCarriedSlot& Slot : Inventory->GetSlots())
+		for (const FCataclysmCarriedSlot& Slot : Inventory->GetMaterialStacks())
 		{
 			if (!Slot.Material.IsNone() && Slot.Quantity > MostCount)
 			{
@@ -21415,6 +21489,15 @@ void ACataclysmDungeonGameMode::EpidemicEndTheChain(
 			continue;
 		}
 
+		// NOR ONE THAT CANNOT BE HURT, NOR ONE WHOSE DEATH IS ALREADY BEING MARKED. The coordinating session,
+		// 2026-11-24: the health written to nought below is held at the maximum for a creature that cannot be hurt
+		// (`UCataclysmVitalAttributeSet::PreAttributeChange`), and the `HandleDeath` after it killed it anyway, so a
+		// chain ended beside the Reaper or an echo could kill it. Divine Wrath's beam passes such a creature too.
+		if (UCataclysmSkillEffects::IsBeingMarkedDead(Creature) || Creature->bCannotBeHurt)
+		{
+			continue;
+		}
+
 		// NOR THE CORRUPTED STALKER, for the reason Divine Wrath's beam spares it: a player could end the encounter by
 		// finishing a chain beside it. Ruled by the coordinating session on 2026-10-26. Issue #2523.
 		if (Creature->IsA<ACataclysmCorruptedStalkerCharacter>())
@@ -24097,14 +24180,15 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 		return;
 	}
 
-	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL. Drawn as its row's type, so its
-	// colour is its own rather than whatever the shared source was last typed as.
+	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL AND MARKED BY A RING. Drawn as its
+	// row's type, so its colour is its own rather than whatever the shared source was
+	// last typed as. THE RING IS A MARK, NOT A REACH, since issue #2855: see below.
 	ACataclysmGroundZone* Ring = BloodAltarRing.Get();
 	if (!Ring)
 	{
 		const FVector Altar = CurrentFloor->ExitWorld();
 		Ring = ACataclysmGroundZone::SpawnForTheFloor(
-			Source, Altar, Altar, Effects::BloodAltarReachCm, 0.0f,
+			Source, Altar, Altar, Effects::BloodAltarRingRadiusCm, 0.0f,
 			/*bAffectsEveryone=*/false, FName(*Row->CataclysmType));
 		if (!Ring)
 		{
@@ -24120,23 +24204,37 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	}
 	BloodAltarSecondsSinceLastPulse = 0.0f;
 
-	// THE PLAYER, FOUND THE WAY ARTILLERY STRIKE FINDS WHO IS UNDER ITS SHELL, so
-	// "within reach" is measured to a body, as every area rule measures it. Anyone
-	// else the search finds is left alone.
-	const FVector Where = Ring->GetActorLocation();
-	const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
-		World, Source, Where, Where, Effects::BloodAltarReachCm);
-	if (!Inside.Contains(Player))
+	// THE PLAYER, WHEREVER ON THE FLOOR THEY STAND. Issue #2855: "The altar sends out
+	// damaging pulses", and the coordinating session's brief of 2026-11-24 asks for a
+	// pulse that "damages the player anywhere on the floor". Until then a pulse asked
+	// whether the player's body was inside the ring at the stairs, and in play it never
+	// was: the owner walked four Blood Altar floors on 2026-11-22, about six minutes,
+	// and no pulse found them, because a player reaches the stairs and goes down them
+	// well inside one 30 second pulse. Still the player's pawn alone: a pulse that
+	// struck creatures could kill them, and each death would feed the next pulse.
+	//
+	// A DEAD PLAYER IS NOT STRUCK AGAIN, and says no line: the beat can come between a
+	// killing blow and the walk ending.
+	if (UCataclysmSkillEffects::IsDead(Player))
 	{
 		return;
 	}
 
-	const float Damage = Effects::BloodAltarPulseDamage(
-		AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
-		BloodAltarDeaths);
+	const FGameplayAttribute HealthAttribute = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float MaximumHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Damage = Effects::BloodAltarPulseDamage(MaximumHealth, BloodAltarDeaths);
+
+	// EVERY PULSE SAYS ONE LINE, an unfed altar's included, so a play log shows the
+	// altar's clock running whether or not it has anything to send. Issue #2855: the
+	// owner's log had "no line ... mentions the altar or a pulse", and could not say
+	// whether the rule pulsed at all.
 	if (Damage <= 0.0f)
 	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sends nothing (maximum health "
+					"%.0f)."),
+			   FloorNumber, BloodAltarDeaths, MaximumHealth);
 		return;
 	}
 
@@ -24145,7 +24243,19 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
 	Delivery.DamageType = FName(*Row->CataclysmType);
+	const float HealthBefore = AbilitySystem->GetNumericAttribute(HealthAttribute);
 	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
+
+	// WHAT IT SENT AND WHAT HEALTH LOST, measured rather than assumed: the player's
+	// Demonic resistance and other defences take their share, and an energy shield
+	// may take some before health does.
+	const float HealthTaken =
+		FMath::Max(0.0f, HealthBefore - AbilitySystem->GetNumericAttribute(HealthAttribute));
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Blood Altar: pulse on floor %d after %d death(s) counted: sent %.1f, %.1f%% of maximum "
+				"health %.0f; took %.1f of health %.1f."),
+		   FloorNumber, BloodAltarDeaths, Damage, Damage / MaximumHealth * 100.0f, MaximumHealth,
+		   HealthTaken, HealthBefore);
 }
 
 void ACataclysmDungeonGameMode::StepNecroticGround(
@@ -24783,8 +24893,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 
-	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay`, whose pawn is made
-	// later by the parent's login. `StartPlay` calls this again once it exists.
+	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay` WHEN NO PAWN STANDS
+	// YET, and `StartPlay` calls this again for a pawn that stands once the
+	// parent has run. In a launched game one stands already, made at login before
+	// play begins; this said it was made later until issue #2858.
 	if (ACataclysmPlayerCharacter* Player =
 			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr)
 	{
@@ -25880,8 +25992,11 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// AND THE PLAYER IS STOOD ON IT, AFTER the floor is built and not before, or
 	// they would be placed at the previous floor's entrance.
 	//
-	// NOTHING TO MOVE DURING `StartPlay`, where the pawn does not exist yet and
-	// the caller does this again afterwards.
+	// NOTHING TO MOVE DURING `StartPlay` WHEN NO PAWN STANDS YET, and the caller
+	// starts the floor for a pawn that stands by the time it returns, and only
+	// for one this did not reach. In a launched game one stands already (the
+	// engine spawns it at login, before play begins); this said it did not exist
+	// yet until issue #2858.
 	//
 	// AND NOT AT ALL WHEN THE FLOOR IS THE SAME SPACE IT WAS. A Horde dungeon's
 	// next wave arrives around the player; teleporting them back to the mouth of
@@ -25941,8 +26056,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// too, so its rules apply per wave. Issue #41.
 	// THE STARVATION CURSE ADDS ITS STACK AS THE FLOOR BEGINS, before the floor's rules
 	// reach the player, so floor 1 counts and each floor adds exactly one. Here and not in
-	// `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
-	// Issues #1820 and #41.
+	// `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for a first floor whose
+	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	if (FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::StarvationCurseKey)))
 	{
@@ -25957,8 +26072,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	}
 
 	// ECHOES OF THE PAST HANDS THE LAST FLOOR'S DEAD TO THIS ONE, once a floor, here rather than
-	// in `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
-	// Issues #1820 and #41.
+	// in `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for a first floor whose
+	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
 

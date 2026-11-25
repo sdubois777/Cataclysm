@@ -212,6 +212,89 @@ namespace CataclysmSaveGems
 	}
 }
 
+/**
+ * WHERE EACH ITEM ARRIVED, WRITTEN OUT: issue #2848 slice S2 (dismantling), ruled by the coordinating session on
+ * 2026-11-24. An item records the gear level and the difficulty tier it arrived at (`FCataclysmItem::GearLevelAtDrop`,
+ * `TierAtDrop`), so a dismantle refunds only the upgrade levels the player paid for. A file written before the fields
+ * existed cannot say where its items arrived: -1 and 0, the fields' own defaults, which the forge reads as "not
+ * known": `UCataclysmForge::DismantleOf` refunds from the rarity's gate, and `DismantleStoneTier` caps a stone at
+ * the run's tier. Used by the character record's `Migrate_14_to_15` and the
+ * run record's `Migrate_17_to_18`.
+ *
+ * EVERY ITEM IS FOUND BY WALKING THE WHOLE RECORD for an object holding both `GearLevel` and `bMadeAtCreation`, because
+ * `FCataclysmItem` is the only saved struct with both and an item is held in several places (carried, stashed, worn, in
+ * the held build, on the ground), as `CataclysmSaveGems` walks for `Sockets`. A key already holding a number is kept,
+ * and one holding anything else is refused rather than read as the default.
+ *
+ * THE ACCOUNT RECORD DOES NOT MOVE, for `CataclysmSaveGems`'s reason: its `Stash` is a list of the same slot, but
+ * nothing fills that stash (the game has no stash yet, `UCataclysmAccountSave::Stash`), so no account file holds an
+ * item to write.
+ */
+namespace CataclysmSaveArrival
+{
+	bool WriteWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value, FString& OutError);
+
+	/** One field written out as "not known": kept when it already holds a number, refused otherwise. */
+	bool WriteUnknownArrivalField(const TSharedRef<FJsonObject>& Item, const TCHAR* Key, double NotKnown,
+								  FString& OutError)
+	{
+		const TSharedPtr<FJsonValue> Held = Item->TryGetField(Key);
+		if (Held.IsValid() && Held->Type != EJson::Number)
+		{
+			OutError = FString::Printf(TEXT("an item's %s holds something that is not a number"), Key);
+			return false;
+		}
+		if (!Held.IsValid())
+		{
+			Item->SetNumberField(Key, NotKnown); // A migration's: where an older file's item arrived is not known.
+		}
+		return true;
+	}
+
+	bool WriteWhereEachItemArrived(const TSharedRef<FJsonObject>& Object, FString& OutError)
+	{
+		if (Object->HasField(TEXT("GearLevel")) && Object->HasField(TEXT("bMadeAtCreation"))
+			&& (!WriteUnknownArrivalField(Object, TEXT("GearLevelAtDrop"), -1.0, OutError)
+				|| !WriteUnknownArrivalField(Object, TEXT("TierAtDrop"), 0.0, OutError)))
+		{
+			return false;
+		}
+		// `auto`: the map's key type is `FString` or `UE::FSharedString` by the engine's JSON storage setting.
+		for (const auto& Field : Object->Values)
+		{
+			if (!WriteWhereEachItemArrived(Field.Value, OutError))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool WriteWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value, FString& OutError)
+	{
+		if (!Value.IsValid())
+		{
+			return true;
+		}
+		if (Value->Type == EJson::Object)
+		{
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+			return !Object.IsValid() || WriteWhereEachItemArrived(Object.ToSharedRef(), OutError);
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				if (!WriteWhereEachItemArrived(Entry, OutError))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
 namespace CataclysmCharacterSaveMigration
 {
 	/**
@@ -639,6 +722,177 @@ namespace CataclysmCharacterSaveMigration
 	}
 
 	/**
+	 * A character written before an item recorded where it arrived (issue #2848 slice S2, ruled 2026-11-24): every
+	 * carried, stashed and worn item, and every item of the held build, is written as not known, -1 and 0.
+	 * `CataclysmSaveArrival` says what is written and refused.
+	 */
+	bool Migrate_14_to_15(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
+	}
+
+	/**
+	 * A record written before the inventory had tabs: its material and gem stacks lie in `CarriedSlots`. Issue #2849,
+	 * ruled 2026-11-22 (the owner: "One cell per kind, no limit (Recommended)"): the 48 slots hold gear only, and each
+	 * stack moves to `CarriedMaterials` or `CarriedGems`. Its cell is BLANKED, not removed, so `CarriedSlots` keeps its
+	 * length and every piece of gear keeps its cell. Two stacks of one kind are added together, in the order first met;
+	 * the inventory sorts the gems when it is restored. A stack of nought is dropped, as `RestoreSlots` would drop it.
+	 * Lists the record already holds are added to; one that is not a list, or an entry that is not an object, is
+	 * refused.
+	 */
+	bool Migrate_15_to_16(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		TArray<TSharedPtr<FJsonValue>> Materials;
+		TArray<TSharedPtr<FJsonValue>> Gems;
+		for (const TCHAR* Key : {TEXT("CarriedMaterials"), TEXT("CarriedGems")})
+		{
+			if (!Record->HasField(Key))
+			{
+				continue;
+			}
+			const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+			if (!Record->TryGetArrayField(Key, Held) || Held == nullptr)
+			{
+				OutError = FString::Printf(TEXT("%s holds something that is not a list"), Key);
+				return false;
+			}
+			(FCString::Strcmp(Key, TEXT("CarriedMaterials")) == 0 ? Materials : Gems) = *Held;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
+		if (Record->HasField(TEXT("CarriedSlots")))
+		{
+			if (!Record->TryGetArrayField(TEXT("CarriedSlots"), Slots) || Slots == nullptr)
+			{
+				OutError = TEXT("CarriedSlots holds something that is not a list");
+				return false;
+			}
+			for (const TSharedPtr<FJsonValue>& Entry : *Slots)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (!Entry.IsValid() || !Entry->TryGetObject(Object) || Object == nullptr || !Object->IsValid())
+				{
+					OutError = TEXT("CarriedSlots holds an entry that is not an object");
+					return false;
+				}
+				const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+
+				// GEAR STAYS. A slot whose item has a base is a piece of gear, whatever else it holds.
+				FString Base = TEXT("None");
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Slot->TryGetObjectField(TEXT("Item"), Item) && Item != nullptr && Item->IsValid())
+				{
+					(*Item)->TryGetStringField(TEXT("Base"), Base);
+				}
+				FString Material = TEXT("None");
+				FString Gem = TEXT("None");
+				FString Rarity = TEXT("Everyday");
+				double Quantity = 0.0;
+				Slot->TryGetStringField(TEXT("Material"), Material);
+				Slot->TryGetStringField(TEXT("Gem"), Gem);
+				Slot->TryGetStringField(TEXT("GemRarity"), Rarity);
+				Slot->TryGetNumberField(TEXT("Quantity"), Quantity);
+				const bool bMaterial = Material != TEXT("None") && !Material.IsEmpty();
+				const bool bGem = !bMaterial && Gem != TEXT("None") && !Gem.IsEmpty();
+				if (Base != TEXT("None") || (!bMaterial && !bGem))
+				{
+					continue;
+				}
+
+				if (Quantity > 0.0)
+				{
+					TArray<TSharedPtr<FJsonValue>>& Into = bMaterial ? Materials : Gems;
+					bool bJoined = false;
+					for (const TSharedPtr<FJsonValue>& Existing : Into)
+					{
+						const TSharedPtr<FJsonObject>* Stack = nullptr;
+						if (!Existing.IsValid() || !Existing->TryGetObject(Stack) || Stack == nullptr || !Stack->IsValid())
+						{
+							continue;
+						}
+						FString Name;
+						FString StackRarity = TEXT("Everyday");
+						(*Stack)->TryGetStringField(bMaterial ? TEXT("Material") : TEXT("Gem"), Name);
+						(*Stack)->TryGetStringField(TEXT("GemRarity"), StackRarity);
+						if (Name == (bMaterial ? Material : Gem) && (bMaterial || StackRarity == Rarity))
+						{
+							double Was = 0.0;
+							(*Stack)->TryGetNumberField(TEXT("Quantity"), Was);
+							(*Stack)->SetNumberField(TEXT("Quantity"), Was + Quantity);
+							bJoined = true;
+							break;
+						}
+					}
+					if (!bJoined)
+					{
+						// THE STACK'S OWN OBJECT, COPIED, so its entry has every field a carried slot writes.
+						const TSharedRef<FJsonObject> Copy = MakeShared<FJsonObject>();
+						Copy->Values = Slot->Values;
+						Into.Add(MakeShared<FJsonValueObject>(Copy));
+					}
+				}
+
+				// BLANKED, NOT REMOVED: the cell stays, empty.
+				Slot->SetStringField(TEXT("Material"), TEXT("None")); // A migration's: the stack moved to its tab.
+				Slot->SetStringField(TEXT("Gem"), TEXT("None"));
+				Slot->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				Slot->SetNumberField(TEXT("Quantity"), 0.0);
+			}
+		}
+		Record->SetArrayField(TEXT("CarriedMaterials"), Materials); // A migration's: the materials tab, written out.
+		Record->SetArrayField(TEXT("CarriedGems"), Gems);
+		return true;
+	}
+
+	/**
+	 * A character written before the keys remembered their defaults (issue #837 slice 1, the owner's Q1 of 2026-11-24)
+	 * remembered none: an empty `RememberedDefaults`, so its first fill after loading remembers the default it showed
+	 * before. Written out, for `Migrate_3_to_4`'s reason. A LIST ALREADY THERE IS KEPT, and anything else under the key
+	 * is refused rather than read as empty.
+	 *
+	 * AND THE SAME IN THE HELD BUILD, `ConsumptionBuild`, which copies the keys for the double (ruled by the
+	 * coordinating session on 2026-11-24). Its list may already be there: `Migrate_5_to_6` writes a whole default build,
+	 * which carries every field the build has now.
+	 */
+	bool Migrate_16_to_17(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		const auto WriteTheList = [&OutError](const TSharedRef<FJsonObject>& Into, const TCHAR* Where)
+		{
+			TArray<TSharedPtr<FJsonValue>> Held;
+			if (Into->HasField(TEXT("RememberedDefaults")))
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+				if (!Into->TryGetArrayField(TEXT("RememberedDefaults"), Listed) || Listed == nullptr)
+				{
+					OutError = FString::Printf(TEXT("%sRememberedDefaults holds something that is not a list"), Where);
+					return false;
+				}
+				Held = *Listed;
+			}
+			Into->SetArrayField(TEXT("RememberedDefaults"), Held); // A migration's: the remembered defaults, written out.
+			return true;
+		};
+		if (!WriteTheList(Record, TEXT("")))
+		{
+			return false;
+		}
+		if (Record->HasField(TEXT("ConsumptionBuild")))
+		{
+			const TSharedPtr<FJsonObject>* Build = nullptr;
+			if (!Record->TryGetObjectField(TEXT("ConsumptionBuild"), Build) || Build == nullptr || !Build->IsValid())
+			{
+				OutError = TEXT("ConsumptionBuild holds something that is not an object");
+				return false;
+			}
+			return WriteTheList(Build->ToSharedRef(), TEXT("ConsumptionBuild's "));
+		}
+		return true;
+	}
+
+	/**
 	 * The chain, newest step last.
 	 *
 	 * The order is for a reader rather than for the machinery, which looks a
@@ -659,6 +913,9 @@ namespace CataclysmCharacterSaveMigration
 		{ 11, TEXT("Migrate_11_to_12"), &Migrate_11_to_12 },
 		{ 12, TEXT("Migrate_12_to_13"), &Migrate_12_to_13 },
 		{ 13, TEXT("Migrate_13_to_14"), &Migrate_13_to_14 },
+		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
+		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
+		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
 	};
 }
 
@@ -1107,6 +1364,16 @@ namespace CataclysmRunSaveMigration
 		return true;
 	}
 
+	/**
+	 * A run written before an item recorded where it arrived (issue #2848 slice S2, ruled 2026-11-24): every item on the
+	 * floor's ground is written as not known, -1 and 0. `CataclysmSaveArrival` says what is written and refused.
+	 */
+	bool Migrate_17_to_18(const TSharedRef<FJsonObject>& Record, FString& OutError)
+	{
+		OutError.Empty();
+		return CataclysmSaveArrival::WriteWhereEachItemArrived(Record, OutError);
+	}
+
 	/** The chain, newest step last. */
 	const FCataclysmSaveMigrationStep RunSteps[] = {
 		{ 1, TEXT("Migrate_1_to_2"), &Migrate_1_to_2 },
@@ -1125,6 +1392,7 @@ namespace CataclysmRunSaveMigration
 		{ 14, TEXT("Migrate_14_to_15"), &Migrate_14_to_15 },
 		{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },
 		{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },
+		{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 },
 	};
 }
 

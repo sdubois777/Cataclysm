@@ -595,21 +595,33 @@ public:
 
 	/**
 	 * Hands the run this world plays the bonuses of the tree its character holds: `EmpireTreeBonusesFor`, through
-	 * `UCataclysmEmpireRun::SetTreeBonuses`. Nothing when there is no run. Issue #2741 slice 3a.
+	 * `UCataclysmEmpireRun::ChangeTreeBonuses`, so every standing city keeps its share of its maxima. Nothing when there
+	 * is no run. Issue #2741 slice 3a; the share since issue #2859, the owner's ruling of 2026-11-23: "It should maintain
+	 * the % they were at before buying the upgrades."
 	 *
-	 * CALLED AFTER EVERY CHANGE TO THE TREE AND AFTER A RUN LOADS, so a bought node acts at once and a respec takes it
-	 * away at once (Q10): by `BuyEmpireTreePoint`, `ChooseEmpireTreeOption` and `RespecEmpireTree` -- before a respec's
-	 * days pass, so they pass without the tree -- and by `FCataclysmSaveLoad::CharacterAndRun` once the loaded run is the
-	 * game's. A NEW run is handed them before `Begin` instead, in `BeginACharactersEmpireRun`, so it is built full.
+	 * CALLED AFTER EVERY CHANGE TO THE TREE IN PLAY, so a bought node acts at once and a respec takes it away at once
+	 * (Q10): by `BuyEmpireTreePoint`, `ChooseEmpireTreeOption`, `ChooseEmpireTreeExtraOption` and `RespecEmpireTree` --
+	 * before a respec's days pass, so they pass without the tree -- and after a city upgrade's price is counted for
+	 * Reinvestment. NOT AFTER A LOAD, which `HandEmpireTreeBonusesToALoadedRun` is for. A NEW run is handed them before
+	 * `Begin` instead, in `BeginACharactersEmpireRun`, so it is built full.
 	 */
 	static void RefreshEmpireTreeBonuses(const UObject* WorldContext);
+
+	/**
+	 * Hands a run just loaded the bonuses of the tree its character holds, through `UCataclysmEmpireRun::SetTreeBonuses`,
+	 * WRITING NOTHING INTO ITS CITIES: they were saved holding what they held under the tree, and a run rebuilt from its
+	 * record has had no tree until now, so keeping its cities' shares would scale them by the whole tree. Called by
+	 * `FCataclysmSaveLoad::CharacterAndRun` once the loaded run is the game's. Nothing when there is no run. Issue #2859;
+	 * until then a load called `RefreshEmpireTreeBonuses`, which wrote nothing either.
+	 */
+	static void HandEmpireTreeBonusesToALoadedRun(const UObject* WorldContext);
 
 	/**
 	 * Gives the run what the empire layer needs of the gold balance, which it cannot reach itself: the gold held in tier
 	 * 1 gold, which Imperial Reserve reads (`UCataclysmEmpireRun::GoldHeldAtTierOne`, B7), and the day's hook through
 	 * which Pax Imperialis and Wealth Interest pay into the balance (`OnDayPassed`, B8). Issue #2741 slice 6c. Called
-	 * where a run is given its tree: as it begins and by `RefreshEmpireTreeBonuses`, which a load calls. Nothing for no
-	 * game instance of this project's.
+	 * where a run is given its tree: as it begins, by `RefreshEmpireTreeBonuses`, and by
+	 * `HandEmpireTreeBonusesToALoadedRun`, which a load calls. Nothing for no game instance of this project's.
 	 */
 	static void WireTheRunToTheBalance(const UObject* WorldContext, UCataclysmEmpireRun* Run);
 

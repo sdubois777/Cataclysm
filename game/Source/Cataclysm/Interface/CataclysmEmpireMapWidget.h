@@ -39,6 +39,10 @@ class UTextBlock;
  * spends its upgrade slots there. This asks the player controller to open it,
  * because the controller owns every screen in this project. Issue #42.
  *
+ * A FALLEN CITY'S BOX OPENS ITS SCREEN TOO, drawn dimmed, since issue #2866:
+ * the Fallen City dungeon standing on it is walked from there, which is how a
+ * fallen city is retaken. `UCataclysmEmpireMapLayout::CityOpensItsScreen`.
+ *
  * THE CATACLYSM BOSS DUNGEON HAS A BOX OF ITS OWN, because it stands on no city
  * (the project owner, 2026-11-02, verbatim: "On no city (Recommended)"). Once
  * the run has opened it, one more choice button sits in the map panel's top
@@ -178,6 +182,12 @@ public:
 	/** How many times the "Forge" button has asked for the forge's screen, for `EmpireTreeRequestCount`'s reason. */
 	int32 ForgeRequestCount() const { return ForgeRequests; }
 
+	/** Presses the "Merchant" button, through the handler the button calls. Issue #48, slice S1. */
+	void ClickMerchantForTests();
+
+	/** How many times the "Merchant" button has asked for the merchant's screen, for the same reason. */
+	int32 MerchantRequestCount() const { return MerchantRequests; }
+
 protected:
 	/**
 	 * Where the cities are drawn: one box per city, placed by lattice
@@ -303,6 +313,16 @@ private:
 
 	/** See `ForgeRequestCount`. */
 	int32 ForgeRequests = 0;
+
+	/** The "Merchant" button under the forge's, made with the cities. Issue #48, slice S1. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCataclysmChoiceButton> MerchantButton;
+
+	/** Places and labels the "Merchant" button. */
+	void PlaceMerchantButton(float Scale, FVector2D PanelSize);
+
+	/** See `MerchantRequestCount`. */
+	int32 MerchantRequests = 0;
 
 	/** The level's dungeon game mode, or the one a test supplied, or null. */
 	ACataclysmDungeonGameMode* DungeonMode() const;

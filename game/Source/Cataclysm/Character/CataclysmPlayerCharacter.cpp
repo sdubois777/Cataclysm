@@ -41,6 +41,7 @@
 // For the slain enemy's maximum health, which the kill event carries.
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Player/CataclysmPlayLoopLog.h"
 #include "Character/CataclysmCharacterCreation.h"
 #include "Data/CataclysmCityUpgradeMapping.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
@@ -2360,6 +2361,100 @@ bool ACataclysmPlayerCharacter::IsAwaitingRespawn() const
 	return UCataclysmSkillEffects::IsDead(this);
 }
 
+bool ACataclysmPlayerCharacter::SkillPoolNoticeIsUpAt(float WorldSeconds) const
+{
+	// UP FROM THE MOMENT IT WAS POSTED UNTIL `SkillPoolNoticeSeconds` AFTER IT, both ends included, as the death cost's.
+	if (SkillPoolNoticePostedAt < 0.0f || SkillPoolNotice.IsEmpty())
+	{
+		return false;
+	}
+	const float Since = WorldSeconds - SkillPoolNoticePostedAt;
+	return Since >= 0.0f && Since <= SkillPoolNoticeSeconds;
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeAt(float WorldSeconds) const
+{
+	return SkillPoolNoticeIsUpAt(WorldSeconds) ? SkillPoolNotice : FString();
+}
+
+FString ACataclysmPlayerCharacter::SkillPoolNoticeFor(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	// THE WEAPON NAMED WHEN ONE WAS ADDED, "The Fist adds"; else "Your weapons add". The skills that do something are
+	// counted first, and the ones that are not built yet after them, so the count a player can use is the one read.
+	const FString Who =
+		Weapon.IsEmpty() ? FString(TEXT("Your weapons add")) : FString::Printf(TEXT("The %s adds"), *Weapon);
+	const auto Skills = [](int32 Count)
+	{
+		return FString::Printf(TEXT("%d skill%s"), Count, Count == 1 ? TEXT("") : TEXT("s"));
+	};
+	FString What;
+	if (Built > 0 && NotBuilt > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool, and %d not built yet"), *Skills(Built), NotBuilt);
+	}
+	else if (Built > 0)
+	{
+		What = FString::Printf(TEXT("%s to your pool"), *Skills(Built));
+	}
+	else
+	{
+		What = FString::Printf(TEXT("%s not built yet to your pool"), *Skills(NotBuilt));
+	}
+	return FString::Printf(TEXT("%s %s. Press K, or click a skill box, to choose."), *Who, *What);
+}
+
+void ACataclysmPlayerCharacter::NoteSkillsAddedToThePool(const TArray<FCataclysmWeaponSkill>& PoolBefore,
+														 const TArray<FString>& TypesBefore)
+{
+	// NEW TO THE POOL AND ON NO KEY: a skill the change put on a key needs no telling, and one already in the pool was
+	// told of before. Rows, not names, since two weapons can make skills of one name.
+	TSet<FName> Before;
+	for (const FCataclysmWeaponSkill& Skill : PoolBefore)
+	{
+		Before.Add(Skill.RowName);
+	}
+	TSet<FName> OnKeys;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetAvailableSkills())
+	{
+		OnKeys.Add(Skill.RowName);
+	}
+	int32 Built = 0;
+	int32 NotBuilt = 0;
+	for (const FCataclysmWeaponSkill& Skill : WeaponSlots->GetSkillPool())
+	{
+		if (Skill.RowName.IsNone() || Before.Contains(Skill.RowName) || OnKeys.Contains(Skill.RowName))
+		{
+			continue;
+		}
+		if (UCataclysmWeaponSkills::IsBuilt(Skill))
+		{
+			++Built;
+		}
+		else
+		{
+			++NotBuilt;
+		}
+	}
+	if (Built + NotBuilt == 0)
+	{
+		return;
+	}
+
+	// THE WEAPON NAMED ONLY WHEN THE CHANGE ADDED EXACTLY ONE WEAPON TYPE.
+	TArray<FString> Added;
+	for (const FString& Type : WeaponSlots->GetWornWeaponTypes())
+	{
+		if (!TypesBefore.Contains(Type))
+		{
+			Added.AddUnique(Type);
+		}
+	}
+	const FString Weapon = Added.Num() == 1 ? Added[0] : FString();
+	SkillPoolNotice = SkillPoolNoticeFor(Weapon, Built, NotBuilt);
+	SkillPoolNoticePostedAt = GetWorld() ? static_cast<float>(GetWorld()->GetTimeSeconds()) : 0.0f;
+	FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::SkillsAddedLine(Weapon, Built, NotBuilt));
+}
+
 bool ACataclysmPlayerCharacter::DeathCostNoticeIsUpAt(float WorldSeconds) const
 {
 	// UP FROM THE MOMENT IT WAS POSTED UNTIL `DeathCostNoticeSeconds` AFTER IT, both ends included, the form
@@ -2500,8 +2595,17 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 																	 const FCataclysmItem* AskedAbout,
 																	 ECataclysmGearSlot& OutSlot)
 {
+	return WearPastTheThreshold(CarriedSlot, AskedAbout, OutSlot, ECataclysmGearSlot::Count);
+}
+
+ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 CarriedSlot,
+																	 const FCataclysmItem* AskedAbout,
+																	 ECataclysmGearSlot& OutSlot,
+																	 ECataclysmGearSlot Into)
+{
 	ACataclysmPlayerState* State = GetPlayerState<ACataclysmPlayerState>();
-	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot).Crosses();
+	// THE SLOT THE QUESTION WAS ABOUT, issue #837's slice 3: `Count` is `Equip`'s choice, as before it.
+	const bool bCrosses = UCataclysmWearing::CrossingFor(Inventory, Equipment, CarriedSlot, 0, Into).Crosses();
 	const bool bWasMarked = State && State->IsMarkedByConsumption();
 
 	// MARKED FIRST, so the character record the equip writes already holds it. See the header.
@@ -2509,8 +2613,9 @@ ECataclysmWearResult ACataclysmPlayerCharacter::WearPastTheThreshold(int32 Carri
 
 	ECataclysmGearSlot Went = ECataclysmGearSlot::Count;
 	const ECataclysmWearResult Result = AskedAbout
-		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went)
-		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true);
+		? UCataclysmWearing::WearAfterConfirming(Inventory, Equipment, CarriedSlot, *AskedAbout, Went, 0, Into)
+		: UCataclysmWearing::WearFromCarried(Inventory, Equipment, CarriedSlot, Went, /*bConfirmedPastThreshold=*/true,
+											 0, Into);
 	const bool bWorn = Result == ECataclysmWearResult::Worn || Result == ECataclysmWearResult::Swapped;
 	if (bWorn)
 	{
@@ -2585,7 +2690,18 @@ void ACataclysmPlayerCharacter::OnEquipmentChanged()
 	// takes back everything it granted before it grants again, so calling it
 	// for a change that was not a weapon refills the same six slots with the
 	// same six abilities rather than doubling them.
+	//
+	// AND WHAT THE CHANGE ADDED TO THE POOL ON NO KEY IS SAID, since issue #837 slice 2 (the owner's Q4 of 2026-11-24):
+	// slice 1 leaves the keys as they are, so a new weapon's skills wait in the pool, and the player is told where to
+	// choose them. NOT FOR A LOAD, whose one announcement comes here too: what a loaded character carries is not news.
+	const TArray<FCataclysmWeaponSkill> PoolBefore =
+		WeaponSlots ? WeaponSlots->GetSkillPool() : TArray<FCataclysmWeaponSkill>();
+	const TArray<FString> TypesBefore = WeaponSlots ? WeaponSlots->GetWornWeaponTypes() : TArray<FString>();
 	FillAbilitySlotsFromWornWeapon();
+	if (WeaponSlots && !(Equipment && Equipment->IsAnnouncingARestore()))
+	{
+		NoteSkillsAddedToThePool(PoolBefore, TypesBefore);
+	}
 
 	// AND WHAT IS IN THE CHARACTER'S HANDS. Issue #1125. Before this a player
 	// could equip a Greataxe and see nothing change at all.
@@ -2622,7 +2738,7 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 	// (Q11), and the weapons in slot order, the first OCCUPIED slot first, so a
 	// lone weapon in the second hand is the first weapon. With nothing worn the
 	// carried list is the creation type alone, for the starting weapon below.
-	const ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
+	ACataclysmPlayerState* Chooser = GetPlayerState<ACataclysmPlayerState>();
 	const FName CreationType = Chooser ? Chooser->GetChosenDamageType()
 									   : UCataclysmCharacterCreation::DefaultDamageType;
 
@@ -2638,8 +2754,27 @@ void ACataclysmPlayerCharacter::FillAbilitySlotsFromWornWeapon(
 		Equipment ? Equipment->WornWeaponTypes() : TArray<FString>();
 	if (!WornTypes.IsEmpty())
 	{
+		// AND WHAT EACH KEY HELD BY DEFAULT, since issue #837 slice 1 (the owner's Q1 of 2026-11-24, "the keys stay as
+		// they are"): handed over before the fill and remembered again after it, so the next fill keeps every key whose
+		// skill is still in the pool. Only a fill from worn weapons is remembered.
+		WeaponSlots->UseRememberedDefaults(Chooser ? Chooser->GetRememberedDefaults() : TArray<FCataclysmSkillChoice>());
 		WeaponSlots->EquipWeaponTypes(WornTypes);
+		if (Chooser)
+		{
+			Chooser->RememberDefaults(WeaponSlots->GetAvailableSkills());
+		}
 		return;
+	}
+
+	// NO WEAPON WORN, SO NOTHING IS HANDED OVER OR REMEMBERED (slice 1's R4): the starting weapon type below is a
+	// stand-in, and keys remembered from it would hold its skills over the first real weapon's. WHAT WAS REMEMBERED IS
+	// FORGOTTEN ONLY WHEN A WEAPON WAS EXPECTED: at possession, before the weapon goes on (`NotYet`), the player state
+	// may be carrying a character's keys into a new pawn (the player state outlives a death), and the gear put back
+	// next must find them.
+	WeaponSlots->UseRememberedDefaults(TArray<FCataclysmSkillChoice>());
+	if (Chooser && Expected == ECataclysmWeaponExpected::Yes)
+	{
+		Chooser->ForgetRememberedDefaults();
 	}
 
 	// THIS IS NOW A NET UNDER A CASE THAT SHOULD NOT ARISE, AND IT SAYS SO WHEN
@@ -2773,6 +2908,9 @@ bool ACataclysmPlayerCharacter::ApplyCreationChoice()
 	// AND MARKED AS THE CREATION WEAPON, so a later change of only the damage
 	// type finds it and no other weapon (Q-L1).
 	Chosen.bMadeAtCreation = true;
+	// ARRIVED AT +0, at the tier in play (#2848, slice S2).
+	Chosen.GearLevelAtDrop = 0;
+	Chosen.TierAtDrop = ACataclysmGameMode::DifficultyTierIn(GetWorld());
 
 	int32 WeaponsWorn = 0;
 	for (const ECataclysmGearSlot WeaponSlot : UCataclysmGearSlots::WeaponSlots())
@@ -2888,6 +3026,9 @@ void ACataclysmPlayerCharacter::GiveStartingWeapon()
 									: UCataclysmCharacterCreation::DefaultDamageType};
 	// AND MARKED AS THE CREATION WEAPON (Q-L1). See `FCataclysmItem::bMadeAtCreation`.
 	Starting.bMadeAtCreation = true;
+	// ARRIVED AT +0, at the tier in play (#2848, slice S2).
+	Starting.GearLevelAtDrop = 0;
+	Starting.TierAtDrop = ACataclysmGameMode::DifficultyTierIn(GetWorld());
 
 	FCataclysmItem CameOff;
 	FCataclysmItem AlsoCameOff;
@@ -3361,14 +3502,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantGem(
 				return;
 			}
 			const ECataclysmRarity Rarity = static_cast<ECataclysmRarity>(RarityStep - 1);
-			const int32 Cell = Character->GetInventory()->AddGems(Gem, Rarity, Count);
-			if (Cell == INDEX_NONE)
+			// THE GEMS TAB NEVER REFUSES FOR ROOM (#2849): one stack per gem and rarity, no limit.
+			if (!Character->GetInventory()->AddGems(Gem, Rarity, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s (%s) in cell %d: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
-					*UCataclysmGems::RarityName(Rarity), Cell, Character->GetInventory()->CountOfGems(Gem, Rarity));
+			Ar.Logf(TEXT("%d %s (%s) in the gems tab: %d carried."), Count, *UCataclysmGems::NameOf(Gem),
+					*UCataclysmGems::RarityName(Rarity), Character->GetInventory()->CountOfGems(Gem, Rarity));
 		}));
 
 // ---------------------------------------------------------------------------
@@ -3415,14 +3556,14 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmGrantMaterial(
 				Ar.Log(TEXT("The count is at least 1."));
 				return;
 			}
-			const int32 Cell = Character->GetInventory()->AddMaterial(Material, Count);
-			if (Cell == INDEX_NONE)
+			// THE MATERIALS TAB NEVER REFUSES FOR ROOM (#2849): one stack per material, no limit.
+			if (!Character->GetInventory()->AddMaterial(Material, Count))
 			{
-				Ar.Log(TEXT("The bag has no free cell for them, so nothing was added."));
+				Ar.Log(TEXT("Nothing was added."));
 				return;
 			}
-			Ar.Logf(TEXT("%d %s in cell %d: %d carried."), Count,
-					*UCataclysmDropRoll::MaterialNameOf(Materials, Material), Cell,
+			Ar.Logf(TEXT("%d %s in the materials tab: %d carried."), Count,
+					*UCataclysmDropRoll::MaterialNameOf(Materials, Material),
 					Character->GetInventory()->CountOfMaterial(Material));
 		}));
 
@@ -3460,6 +3601,19 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCataclysmShowEquipment(
 				{
 					Ar.Logf(TEXT("  %2d  %s"), Index, *Item->Base.ToString());
 				}
+			}
+
+			// AND THE TWO STORES, which have no slot numbers (#2849).
+			Ar.Log(TEXT("--- materials ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetMaterialStacks())
+			{
+				Ar.Logf(TEXT("  %s x%d"), *Stack.Material.ToString(), Stack.Quantity);
+			}
+			Ar.Log(TEXT("--- gems ---"));
+			for (const FCataclysmCarriedSlot& Stack : Character->GetInventory()->GetGemStacks())
+			{
+				Ar.Logf(TEXT("  %s (%s) x%d"), *Stack.Gem.ToString(), *UCataclysmGems::RarityName(Stack.GemRarity),
+						Stack.Quantity);
 			}
 
 			Ar.Logf(TEXT("Weapon type in hand: %s"),

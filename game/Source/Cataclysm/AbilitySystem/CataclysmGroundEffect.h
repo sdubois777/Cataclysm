@@ -168,6 +168,28 @@ public:
 	static float LastDuration;
 
 	/**
+	 * Where the last drawing's first and last copies were put, which since issue
+	 * #2863 is not where they were asked for. Each copy is put on the floor under
+	 * it by `CataclysmEffectPlacement::OnTheFloor`: a zone placed at a character's
+	 * capsule centre had its ring drawn at waist height, and one placed under the
+	 * exit stairs, or at a creature's floor under a target standing higher, had
+	 * it drawn inside the ground.
+	 *
+	 * SEPARATE FROM `LastStart` AND `LastFarEnd` ABOVE, which keep meaning what was
+	 * ASKED for: several tests compare those with the zone's own location, and the
+	 * zone's location did not move.
+	 *
+	 * WORKED OUT BEFORE THE SYSTEM IS LOADED, AND THE SPAWNS USE THE SAME FIGURES.
+	 * Under `-nullrhi` nothing is spawned, and a worktree without Git LFS has no
+	 * asset to load, so a figure recorded after either would never be recorded in
+	 * a test. Recorded from the same array the spawns read, so the figure a test
+	 * reads is the place a copy is drawn. With one copy, both are that copy.
+	 * `Cataclysm.EffectPlacement.AGroundZoneIsDrawnOnTheFloorUnderIt` reads these.
+	 */
+	static FVector LastDrawnStart;
+	static FVector LastDrawnFarEnd;
+
+	/**
 	 * Which element's colours the last drawing was asked for. Issues #1820 and
 	 * #41.
 	 *

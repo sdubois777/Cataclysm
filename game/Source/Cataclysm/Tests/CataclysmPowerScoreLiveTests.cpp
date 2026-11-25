@@ -33,8 +33,9 @@
  * Formula": the middle floor's six rarity scores weighted by how common each rarity is), the owner's "Dungeons also
  * need their power scores as well", shown beside the player's wherever a dungeon is offered.
  *
- * THE ANCHOR IS THE CODE'S, NOT THE DOCUMENT'S: a character built to the tier 8 reference must score what
- * `UCataclysmPowerScore::Score(ReferenceCharacter(8))` gives, and that is the code's own tier 8 anchor.
+ * THE REFERENCE IS THE CODE'S, NOT THE DOCUMENT'S: a character built to the tier 8 reference must score what
+ * `UCataclysmPowerScore::Score(ReferenceCharacter(8))` gives. That was the tier 8 anchor, 6,327, until the owner's plain
+ * weights of 2026-11-24 (issue #2853); it is 6,528 now, 3.2% above the anchor.
  *
  * WRITTEN BEFORE THE CHANGE, WITHOUT A BUILD.
  */
@@ -109,29 +110,38 @@ namespace CataclysmPowerScoreLiveTest
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// PL1. Worn gear built to the tier 8 reference scores the reference, which is the code's tier 8 anchor.
+// PL1. Worn gear built to the tier 8 reference scores the reference: 6,528 under the owner's plain weights.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerScoreLiveReferenceTest,
-	"Cataclysm.PowerScoreLive.GearBuiltToTheTierEightReferenceScoresItsAnchor",
+	"Cataclysm.PowerScoreLive.GearBuiltToTheTierEightReferenceScoresTheReference",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * Level 100, eighteen Cataclysmic pieces at +10 (the hands as one), 45 Cataclysmic gems and eight resistances at 70.
- * Prints "LIVE REFERENCE".
+ * It scores what `ReferenceCharacter(8)` scores, 6,528: 1,000 from level, 3,168 from gear, 1,800 from gems and 560 from
+ * resistances. SINCE ISSUE #2853 THAT IS NOT THE TIER 8 ANCHOR, 6,327: the weights are the owner's plain numbers of
+ * 2026-11-24 and the finished character lands 3.2% above the anchor rather than on it. Prints "LIVE REFERENCE".
  */
 bool FCataclysmPowerScoreLiveReferenceTest::RunTest(const FString&)
 {
 	using namespace CataclysmPowerScoreLiveTest;
 	const FCataclysmScoredCharacter Built = Power::ScoredCharacterFrom(100, TierEightReference(), Resistances(70.0f));
-	const int32 Live = Power::Score(Built);
+	const FCataclysmPowerBreakdown Live = Power::Breakdown(Built);
 	const int32 Reference = Power::Score(Power::ReferenceCharacter(8));
-	AddInfo(FString::Printf(TEXT("LIVE REFERENCE: %d pieces, %d gems, live %d, reference %d, anchor %d"), Built.Gear.Num(),
-							Built.Gems.Num(), Live, Reference, Power::TierAnchors()[8]));
+	AddInfo(FString::Printf(TEXT("LIVE REFERENCE: %d pieces, %d gems, live %d (level %.1f, gear %.1f, gems %.1f, "
+								 "resistances %.1f), reference %d, anchor %d"),
+							Built.Gear.Num(), Built.Gems.Num(), Live.Total, Live.FromLevel, Live.FromGear, Live.FromGems,
+							Live.FromResistances, Reference, Power::TierAnchors()[8]));
 
 	TestEqual(TEXT("eighteen pieces, the hands as one"), Built.Gear.Num(), Power::GearPieces);
 	TestEqual(TEXT("45 gems"), Built.Gems.Num(), Power::TotalSockets);
-	TestEqual(TEXT("**it scores the tier 8 reference**"), Live, Reference);
-	TestEqual(TEXT("which is the code's tier 8 anchor"), Reference, Power::TierAnchors()[8]);
+	TestEqual(TEXT("**it scores the tier 8 reference**"), Live.Total, Reference);
+	TestEqual(TEXT("**which is 6,528 under the plain weights**"), Reference, 6528);
+	TestEqual(TEXT("1,000 from level"), Live.FromLevel, 1000.0f);
+	TestEqual(TEXT("3,168 from gear: eighteen pieces of 2 x 8 x 11"), Live.FromGear, 3168.0f);
+	TestEqual(TEXT("1,800 from gems: 45 of 5 x 8"), Live.FromGems, 1800.0f);
+	TestEqual(TEXT("560 from resistances: eight of 70"), Live.FromResistances, 560.0f);
+	TestEqual(TEXT("set-up: the tier 8 anchor did not move"), Power::TierAnchors()[8], 6327);
 	return true;
 }
 
@@ -329,8 +339,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerScoreLiveSheetTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Power Score 4,745" on the sheet's status line; on hover, the tier range it falls in and each term, rounded. A score of
- * 7,000 is above tier 8's range; one of 300 is in tier 1's. Prints "LIVE SHEET".
+ * "Power Score 4,745" on the sheet's status line; on hover, the tier range it falls in and each term, rounded, with its
+ * weight beside it since issue #2853. A score of 7,000 is above tier 8's range; one of 300 is in tier 1's. Prints
+ * "LIVE SHEET".
  */
 bool FCataclysmPowerScoreLiveSheetTest::RunTest(const FString&)
 {
@@ -353,9 +364,12 @@ bool FCataclysmPowerScoreLiveSheetTest::RunTest(const FString&)
 							*LowTooltip.Replace(TEXT("\n"), TEXT(" / "))));
 
 	TestEqual(TEXT("**the status line's words**"), Line, FString(TEXT("Power Score 4,745")));
-	TestEqual(TEXT("**and its tooltip, the range and each term**"), Tooltip,
+	TestEqual(TEXT("**and its tooltip, the range and each term beside its weight**"), Tooltip,
 			  FString(TEXT("Power Score 4,745, in tier 7's range of 4,058 to 5,120.\n"
-						   "From level: 633\nFrom gear: 2,950\nFrom gems: 1,000\nFrom resistances: 162")));
+						   "From level: 633 (10 a level)\n"
+						   "From gear: 2,950 (2 a rarity step of each piece, times 1 + its gear level)\n"
+						   "From gems: 1,000 (5 a rarity step of each socketed gem)\n"
+						   "From resistances: 162 (1 a resistance percent, up to 70)")));
 	TestTrue(TEXT("a score above tier 8's range says so"),
 			 AboveTooltip.StartsWith(TEXT("Power Score 7,000, above tier 8's range, which ends at 6,327.")));
 	TestTrue(TEXT("CONTROL: 300 is in tier 1's range"),
@@ -504,6 +518,97 @@ bool FCataclysmPowerScoreLiveDungeonModelTest::RunTest(const FString&)
 	}
 	AddInfo(FString::Printf(TEXT("DUNGEON MODEL: %s"), *FString::Join(Said, TEXT(" | "))));
 	TestTrue(TEXT("**modifiers raise the Dungeon Score**"), Got.Num() == 6 && Got[3] > Got[2]);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// PL9. A worn Masterful +0 piece scores 2 x its rarity, as much as the tier 1 reference's Everyday +3. Issue #2853.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerScoreLiveMasterfulPieceTest,
+	"Cataclysm.PowerScoreLive.AMasterfulPieceAtPlusNoughtScoresTwiceItsRarity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's plain weights of 2026-11-24: a piece is 2 x rarity x (1 + gear level). A level 1 character wearing one
+ * Masterful +0 helm (rarity 4, read from what fills the helm's slots, as in play) scores 8 from gear, where the derived
+ * weights gave 24.9; the same helm at Everyday +3, the tier 1 reference's piece, also scores 8, so wearing the rarer
+ * piece never lowers the score. CONTROL: the Masterful helm at +3 scores 32, so the 8 is not a flat figure per piece.
+ * Prints "LIVE MASTERFUL".
+ */
+bool FCataclysmPowerScoreLiveMasterfulPieceTest::RunTest(const FString&)
+{
+	using namespace CataclysmPowerScoreLiveTest;
+	const TArray<float> None = Resistances(0.0f);
+	TArray<FCataclysmItem> Masterful = Bare();
+	In(Masterful, ECataclysmGearSlot::Head) = Piece(ECataclysmRarity::Masterful, 0);
+	TArray<FCataclysmItem> EverydayPlusThree = Bare();
+	In(EverydayPlusThree, ECataclysmGearSlot::Head) = Piece(ECataclysmRarity::Everyday, 3);
+	TArray<FCataclysmItem> MasterfulPlusThree = Bare();
+	In(MasterfulPlusThree, ECataclysmGearSlot::Head) = Piece(ECataclysmRarity::Masterful, 3);
+
+	const FCataclysmScoredCharacter Built = Power::ScoredCharacterFrom(1, Masterful, None);
+	const FCataclysmPowerBreakdown AtNought = Power::Breakdown(Built);
+	const FCataclysmPowerBreakdown Reference = Power::Breakdown(Power::ScoredCharacterFrom(1, EverydayPlusThree, None));
+	const FCataclysmPowerBreakdown AtThree = Power::Breakdown(Power::ScoredCharacterFrom(1, MasterfulPlusThree, None));
+	AddInfo(FString::Printf(TEXT("LIVE MASTERFUL: %d piece (rarity %d, +%d) from gear %.4f; Everyday +3 %.4f; Masterful +3 "
+								 "%.4f"),
+							Built.Gear.Num(), Built.Gear.Num() > 0 ? Built.Gear[0].Rarity : -1,
+							Built.Gear.Num() > 0 ? Built.Gear[0].Upgrade : -1, AtNought.FromGear, Reference.FromGear,
+							AtThree.FromGear));
+
+	if (!TestEqual(TEXT("set-up: one piece is worn"), Built.Gear.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: it is read as Masterful, rarity 4"), Built.Gear[0].Rarity, 4);
+	TestEqual(TEXT("**a Masterful +0 piece scores 2 x its rarity, 8**"), AtNought.FromGear,
+			  2.0f * static_cast<float>(Built.Gear[0].Rarity));
+	TestEqual(TEXT("which is 8"), AtNought.FromGear, 8.0f);
+	TestEqual(TEXT("**as much as the tier 1 reference's Everyday +3**"), Reference.FromGear, AtNought.FromGear);
+	TestEqual(TEXT("CONTROL: at +3 it scores 2 x 4 x 4, 32"), AtThree.FromGear, 32.0f);
+	return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// PL10. The sheet's tooltip for a level 6 character shows each term beside its plain weight. Issue #2853.
+// --------------------------------------------------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerScoreLiveSheetWeightsTest,
+	"Cataclysm.PowerScoreLive.TheSheetShowsEachTermBesideItsPlainWeight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's screen of 2026-11-24 showed 38 from level for a level 6 character and the owner asked why. A level 6
+ * character wearing a Masterful +0 helm with one Superb gem, and 10 resistance to one damage type: 60 from level, 8 from
+ * gear, 15 from gems and 10 from resistances, 93 in all, and the tooltip says each figure beside the weight it came
+ * from. Prints "LIVE SHEET WEIGHTS".
+ */
+bool FCataclysmPowerScoreLiveSheetWeightsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPowerScoreLiveTest;
+	TArray<FCataclysmItem> Worn = Bare();
+	In(Worn, ECataclysmGearSlot::Head) = Piece(ECataclysmRarity::Masterful, 0, 1, ECataclysmRarity::Superb);
+	TArray<float> Held = Resistances(0.0f);
+	Held[0] = 10.0f;
+	const FCataclysmPowerBreakdown Breakdown = Power::Breakdown(Power::ScoredCharacterFrom(6, Worn, Held));
+	const FString Line = UCataclysmCharacterSheetLayout::PowerScoreLine(Breakdown.Total);
+	const FString Tooltip = UCataclysmCharacterSheetLayout::PowerScoreTooltip(Breakdown);
+	AddInfo(FString::Printf(TEXT("LIVE SHEET WEIGHTS: level %.1f, gear %.1f, gems %.1f, resistances %.1f, total %d; \"%s\" "
+								 "| \"%s\""),
+							Breakdown.FromLevel, Breakdown.FromGear, Breakdown.FromGems, Breakdown.FromResistances,
+							Breakdown.Total, *Line, *Tooltip.Replace(TEXT("\n"), TEXT(" / "))));
+
+	TestEqual(TEXT("**60 from level**"), Breakdown.FromLevel, 60.0f);
+	TestEqual(TEXT("8 from gear"), Breakdown.FromGear, 8.0f);
+	TestEqual(TEXT("15 from gems"), Breakdown.FromGems, 15.0f);
+	TestEqual(TEXT("10 from resistances"), Breakdown.FromResistances, 10.0f);
+	TestEqual(TEXT("93 in all"), Breakdown.Total, 93);
+	TestEqual(TEXT("the status line"), Line, FString(TEXT("Power Score 93")));
+	TestEqual(TEXT("**the tooltip says each term beside its plain weight**"), Tooltip,
+			  FString(TEXT("Power Score 93, in tier 1's range of 0 to 385.\n"
+						   "From level: 60 (10 a level)\n"
+						   "From gear: 8 (2 a rarity step of each piece, times 1 + its gear level)\n"
+						   "From gems: 15 (5 a rarity step of each socketed gem)\n"
+						   "From resistances: 10 (1 a resistance percent, up to 70)")));
 	return true;
 }
 

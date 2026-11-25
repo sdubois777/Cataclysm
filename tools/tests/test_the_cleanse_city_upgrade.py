@@ -131,9 +131,12 @@ def test_it_halves_the_counted_dungeons_and_what_each_city_holds() -> None:
 
 def test_the_run_record_step_and_field() -> None:
     records = code(SAVE / "CataclysmSaveRecords.cpp")
-    step = body(records, "bool Migrate_15_to_16(")
+    # THE RUN RECORD'S OWN STEPS: the character record has a `Migrate_15_to_16` too since issue #2849, and it comes
+    # first in the file.
+    run = body(records, "namespace CataclysmRunSaveMigration")
+    step = body(run, "bool Migrate_15_to_16(")
     assert 'Record->SetBoolField(TEXT("bCleanseBoughtThisRun"), false);' in step
-    assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },' in flat(records)
+    assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },' in run
     header = flat(code(SAVE / "CataclysmSaveRecords.h"))
     run_record = header[header.index("class CATACLYSM_API UCataclysmRunSave "):]
     # AT LEAST 16, read rather than pinned: a later step moves it on (17 for issue #2840), as every other check of the

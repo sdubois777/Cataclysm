@@ -115,6 +115,15 @@ def test_every_item_craft_hands_its_craft_to_the_one_sequence() -> None:
 
 def test_no_other_function_pays_takes_puts_back_or_passes_days() -> None:
     bodies = function_bodies(code(CRAFT_CPP))
+    # DISMANTLE MAY REMOVE A MATERIAL ONLY TO TAKE BACK WHAT IT HAS JUST ADDED, when a later add fails and it puts
+    # everything back (issue #2848, ruled 2026-11-22). Its put-back lambda is cut out before the calls are read, so a
+    # call anywhere else in Dismantle -- one that takes something the player owns -- still fails this check.
+    put_back_signature = "const auto PutEverythingBack = [&]()"
+    assert "Dismantle" in bodies and put_back_signature in bodies["Dismantle"], (
+        "Dismantle no longer has its put-back lambda; the exception below has nothing to cut out")
+    put_back = body(bodies["Dismantle"], put_back_signature)
+    assert "RemoveMaterial(" in put_back, "the put-back no longer removes what was added; the exception is stale"
+    bodies["Dismantle"] = bodies["Dismantle"].replace(put_back, "{}", 1)
     allowed = {
         "PayForTheCraft(": {"DoItemCraft", "Combine", "CombineGems"},
         "RemoveMaterial(": {"TakeMaterials", "Combine"},

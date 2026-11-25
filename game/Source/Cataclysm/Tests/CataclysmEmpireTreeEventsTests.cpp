@@ -720,7 +720,9 @@ bool FCataclysmEmpireTreeEventsLastStandKindsTest::RunTest(const FString&)
  * Enduring Foundations at 10 points, a Bulwark holding three upgrades bought on day 1: a 25% resistance, a 20% raise to
  * maximum defence and a dungeon cap. On day 10 each is as bought; on day 11, held 10 days, the resistance is 30% and a
  * hit of 100 takes 70, and the maximum is the base's x1.24 and not x1.2 while what the city holds stays where it was
- * (S1). The dungeon cap, a whole number, is not reached.
+ * (S1). The dungeon cap, a whole number, is not reached. THE CLOCK IS SET BY HAND HERE, so no day turns and a read is
+ * all that happens: a read writes nothing. A DAY TURNED BY `AdvanceDay` keeps the city's share of the raised maximum
+ * since issue #2859 (`EnduringFoundationsKeepsTheCitysShareAsTheDayTurns`).
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeEventsEnduringTest,
 	"Cataclysm.EmpireTreeEvents.EnduringFoundationsStrengthensAnUpgradeHeldTenDays",
@@ -776,6 +778,74 @@ bool FCataclysmEmpireTreeEventsEnduringTest::RunTest(const FString&)
 	TestEqual(TEXT("and what the city holds stays where it was (S1)"), HeldOnDay10, HeldOnDay9, 0.01f);
 	TestEqual(TEXT("a hit of 100 takes 70"), AfterAHit, HeldOnDay10 - 70.0f, 0.01f);
 	TestEqual(TEXT("the dungeon cap, a whole number, is as bought"), CapOnDay10, 2.0f, 0.0001f);
+	return true;
+}
+
+/**
+ * Issue #2859: the day Enduring Foundations reaches a city upgrade held ten days, the maximum that upgrade raises rises,
+ * and the city keeps its share of it, by the owner's rule for the tree of 2026-11-23, "It should maintain the % they
+ * were at before buying the upgrades". Enduring Foundations at 10 points and a Bulwark holding a 20% raise to maximum
+ * defence bought on day 1, at 2880 of 3600 on day 10, 80%: `AdvanceDay` to day 11 raises the maximum to 3720 and the
+ * Bulwark holds 80% of it, 2976. CONTROL: a run without the node turns the same day and the Bulwark still stores 2880 of
+ * 3600, nothing written. Prints "ENDURING KEPT".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeEventsEnduringKeptTest,
+	"Cataclysm.EmpireTreeEvents.EnduringFoundationsKeepsTheCitysShareAsTheDayTurns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeEventsEnduringKeptTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeEventsTest;
+
+	FCataclysmEmpireTreeBonuses Enduring;
+	Enduring.UpgradeStrengthAfterDays = 0.2f;
+
+	float Max[2] = {};
+	float Held[2] = {};
+	float MaxBefore[2] = {};
+	float HeldBefore[2] = {};
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		// THE NODE FIRST, THEN THE CONTROL WITHOUT IT.
+		UCataclysmEmpireRun* Run = QuietRun(2741, Pass == 0 ? Enduring : FCataclysmEmpireTreeBonuses());
+		FCataclysmCity* Bulwark = FirstOf(*Run, ECataclysmCityTier::Bulwark);
+		if (!TestNotNull(TEXT("set-up: a Bulwark"), Bulwark))
+		{
+			return false;
+		}
+		const int32 Id = Bulwark->CityId;
+		const int32 Bought = Run->Day();
+		if (!TestTrue(TEXT("set-up: the raise was added"),
+					  Run->Map->AddUpgrade(Id, AnUpgrade(TEXT("Test_Walls"), ECataclysmCityUpgradeEffect::MaxDefence, 0.2f,
+														 Bought))))
+		{
+			return false;
+		}
+		FCataclysmCity& City = *Run->Map->FindMutable(Id);
+		if (!TestEqual(TEXT("set-up: the raise makes the Bulwark's maximum 3600"), Run->Map->EffectiveMaxDefence(City),
+					   3600.0f, 0.5f))
+		{
+			return false;
+		}
+		City.Defence = 2880.0f;
+
+		// THE DAY BEFORE THE TENTH, set by hand; then one day turned by the run.
+		Run->Clock->Day = Bought + 9;
+		MaxBefore[Pass] = Run->Map->EffectiveMaxDefence(City);
+		HeldBefore[Pass] = Run->Map->DefenceOf(City);
+		Run->AdvanceDay();
+		Max[Pass] = Run->Map->EffectiveMaxDefence(*Run->Map->Find(Id));
+		Held[Pass] = Run->Map->Find(Id)->Defence;
+	}
+
+	AddInfo(FString::Printf(TEXT("ENDURING KEPT: with the node %.1f of %.1f, then %.1f of %.1f; without %.1f of %.1f, then "
+								 "%.1f of %.1f"),
+							HeldBefore[0], MaxBefore[0], Held[0], Max[0], HeldBefore[1], MaxBefore[1], Held[1], Max[1]));
+	TestEqual(TEXT("held nine days, the maximum is 3600"), MaxBefore[0], 3600.0f, 0.5f);
+	TestEqual(TEXT("the day that makes it ten raises it to 3600 x 1.24 / 1.2, 3720"), Max[0], 3720.0f, 0.5f);
+	TestEqual(TEXT("and the Bulwark holds 80% of it, 2976, where it held 80% of 3600"), Held[0], 2976.0f, 0.5f);
+	TestEqual(TEXT("CONTROL: without the node the maximum stays 3600"), Max[1], 3600.0f, 0.5f);
+	TestEqual(TEXT("CONTROL: and the Bulwark stores 2880, nothing written"), Held[1], 2880.0f);
 	return true;
 }
 
@@ -878,8 +948,8 @@ bool FCataclysmEmpireTreeEventsSavedTest::RunTest(const FString&)
 
 /**
  * `Run_v8.json`, written before the event counts, migrates to nothing counted -- 0, 0, false, and a `BoughtDay` of 0 on
- * both its upgrades -- with every other field kept. CONTROL: the committed run file, `Run_v17.json` since the run
- * record went to version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46), `Run_v13.json` from version 13 (issue #2825), `Run_v12.json` from version 12 (issue #2741 slice 6b), `Run_v11.json` from version 11 (issue #2741 slice 5b), `Run_v10.json` from version 10 (issue #2725) and `Run_v9.json`
+ * both its upgrades -- with every other field kept. CONTROL: the committed run file, `Run_v18.json` since the run
+ * record went to version 18 (issue #2848), `Run_v17.json` from version 17 (issue #2840), `Run_v16.json` from version 16 (issue #2838), `Run_v15.json` from version 15 (issue #2741 slice 9), `Run_v14.json` from version 14 (issue #46), `Run_v13.json` from version 13 (issue #2825), `Run_v12.json` from version 12 (issue #2741 slice 6b), `Run_v11.json` from version 11 (issue #2741 slice 5b), `Run_v10.json` from version 10 (issue #2725) and `Run_v9.json`
  * before, reads 3, 1, true, 101 and 64.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeEventsMigrationTest,
@@ -913,7 +983,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	FString ReadText;
 	const UCataclysmRunSave* Read = ReadRunFixture(*this, TEXT("Run_v8.json"), ReadText);
 	FString CurrentText;
-	const UCataclysmRunSave* Current = ReadRunFixture(*this, TEXT("Run_v17.json"), CurrentText);
+	const UCataclysmRunSave* Current = ReadRunFixture(*this, TEXT("Run_v18.json"), CurrentText);
 	if (Read == nullptr || Current == nullptr)
 	{
 		return false;
@@ -936,6 +1006,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
 	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
 	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
+	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
 	FString Rewritten;
 	FString Error;
 	FString Where;
@@ -945,7 +1016,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	const TArray<int32> Committed = BoughtDaysIn(*Current);
 
 	AddInfo(FString::Printf(TEXT("EVENTS MIGRATED: the step %d (%s); count written %s; the record at version %d with %d, "
-								 "%d, %s and bought days %s; Run_v17.json %d, %d, %s and %s; the rest %s"),
+								 "%d, %s and bought days %s; Run_v18.json %d, %d, %s and %s; the rest %s"),
 							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"),
 							Read->SchemaVersion, Read->ClearsSinceLastSurge, Read->CitiesReclaimed,
 							Read->bSanctuaryLastStandSpent ? TEXT("true") : TEXT("false"),
@@ -963,7 +1034,7 @@ bool FCataclysmEmpireTreeEventsMigrationTest::RunTest(const FString&)
 	TestFalse(TEXT("the Last Stand not spent"), Read->bSanctuaryLastStandSpent);
 	TestTrue(TEXT("both upgrades bought on day 0"), Migrated == TArray<int32>({ 0, 0 }));
 	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v17.json's clears"), Current->ClearsSinceLastSurge, 3);
+	TestEqual(TEXT("CONTROL: Run_v18.json's clears"), Current->ClearsSinceLastSurge, 3);
 	TestEqual(TEXT("CONTROL: its reclaimed"), Current->CitiesReclaimed, 1);
 	TestTrue(TEXT("CONTROL: its Last Stand spent"), Current->bSanctuaryLastStandSpent);
 	TestTrue(TEXT("CONTROL: its bought days, 101 and 64"), Committed == TArray<int32>({ 101, 64 }));

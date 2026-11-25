@@ -1696,9 +1696,10 @@ struct FCataclysmEnemyDropRow : public FTableRowBase
 	 * How many gear items this kill is EXPECTED to drop, before loot quantity.
 	 *
 	 * AN EXPECTED COUNT RATHER THAN A CHANCE, which matters at both ends. A
-	 * chance cannot exceed one and a Cataclysm Boss drops twelve; and 0.16 for a
+	 * chance cannot exceed one and a Cataclysm Boss drops six; and 0.08 for a
 	 * Common enemy rounds to nothing, so the fraction is rolled as a probability
-	 * instead. See UCataclysmDropRoll::RollDropCount.
+	 * instead. See UCataclysmDropRoll::RollDropCount. The column was halved on
+	 * 2026-11-24 (issue #2853).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Drops")
 	float GearDrops = 0.0f;
@@ -2507,6 +2508,13 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a clear discovers a bonus dungeon on the same city (Scout Parties, 10% a point, V15 to V19). */
 	BonusDungeonChance,
+
+	/** A dismantle's drawn yields increased: fragments, Dust and base stones, never the refund (Salvage Protocol, 2.5% a
+	 *  point, N6). Issue #2848, slice S2. */
+	DismantleMaterialsIncreased,
+
+	/** The same, for a piece of Superb or above (Disassembly Expert, 20%, N7 and O4). Issue #2848, slice S2. */
+	DismantleMaterialsIncreasedSuperbAndAbove,
 };
 
 /**

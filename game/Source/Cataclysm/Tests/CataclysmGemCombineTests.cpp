@@ -147,8 +147,8 @@ bool FCataclysmGemCombineCraftTest::RunTest(const FString&)
 	FGemCombineScene Scene = MakeScene();
 	ON_SCOPE_EXIT { if (Scene.World) { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); } };
 	if (!TestTrue(TEXT("set-up: a world, a player and a run"), Scene.IsUsable())
-		|| !TestEqual(TEXT("set-up: three Everyday Of Life"), Scene.Bag()->AddGems(Life, ECataclysmRarity::Everyday, 3), 0)
-		|| !TestEqual(TEXT("set-up: two Quality Of Rot"), Scene.Bag()->AddGems(Rot, ECataclysmRarity::Quality, 2), 1))
+		|| !TestTrue(TEXT("set-up: three Everyday Of Life"), Scene.Bag()->AddGems(Life, ECataclysmRarity::Everyday, 3))
+		|| !TestTrue(TEXT("set-up: two Quality Of Rot"), Scene.Bag()->AddGems(Rot, ECataclysmRarity::Quality, 2)))
 	{
 		return false;
 	}
@@ -195,9 +195,10 @@ bool FCataclysmGemCombineScreenTest::RunTest(const FString&)
 	using namespace CataclysmGemCombineTest;
 	UCataclysmInventoryComponent* Bag = NewObject<UCataclysmInventoryComponent>(GetTransientPackage());
 	if (!TestNotNull(TEXT("set-up: a bag"), Bag)
-		|| !TestEqual(TEXT("set-up: three Superb Of Life"), Bag->AddGems(Life, ECataclysmRarity::Superb, 3), 0)
-		|| !TestEqual(TEXT("set-up: two Cataclysmic Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Cataclysmic, 2), 1)
-		|| !TestEqual(TEXT("set-up: one Everyday Of Rot"), Bag->AddGems(Rot, ECataclysmRarity::Everyday, 1), 2))
+		|| !TestTrue(TEXT("set-up: three Superb Of Life"), Bag->AddGems(Life, ECataclysmRarity::Superb, 3))
+		|| !TestTrue(TEXT("set-up: two Cataclysmic Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Cataclysmic, 2))
+		|| !TestTrue(TEXT("set-up: one Everyday Of Rot"), Bag->AddGems(Rot, ECataclysmRarity::Everyday, 1))
+		|| !TestEqual(TEXT("set-up: as three gem stacks"), Bag->GetGemStacks().Num(), 3))
 	{
 		return false;
 	}

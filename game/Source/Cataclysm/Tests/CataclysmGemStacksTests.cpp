@@ -22,8 +22,9 @@
  *
  * Ruled by the coordinating session on 2026-11-21: gems stack, one stack per gem and rarity, for the reason crafting
  * materials stack. A gem stack shows its name, its count, its rarity's colour and border, and a tooltip naming its
- * rarity and type, its effect at that rarity and the socket it fits. A dropped stack is offered to the floor whole, as
- * one gem drop (slice G5; until it, G2 refused to drop gems at all).
+ * rarity and type, its effect at that rarity and the socket it fits. Since issue #2849 the stacks are the inventory's
+ * gems tab, apart from the 48 gear slots, with no limit, and a stack cannot be dropped (slice G5 had offered a dropped
+ * stack to the floor whole, as one gem drop; G2 refused to drop gems at all).
  *
  * The inventory is made bare, as `CataclysmDropPickupTests.cpp` makes one: nothing here needs a world. The names and
  * effects are read from the generated `DT_Gems`.
@@ -65,30 +66,36 @@ bool FCataclysmGemStacksStackTest::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("two Superb Of The Viper go in the first slot"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 2), 0);
-	TestEqual(TEXT("a third joins their stack"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1), 0);
+	// THE GEMS TAB, since issue #2849: one stack per gem and rarity, none of them in a gear slot.
+	TestTrue(TEXT("two Superb Of The Viper are taken"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 2));
+	TestTrue(TEXT("a third joins their stack"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1));
 	TestEqual(TEXT("so three are carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
-	TestEqual(TEXT("an Everyday Of The Viper is a different stack"), Bag->AddGems(Viper, ECataclysmRarity::Everyday, 1),
-			  1);
+	TestEqual(TEXT("in one stack"), Bag->GetGemStacks().Num(), 1);
+	TestTrue(TEXT("an Everyday Of The Viper is taken"), Bag->AddGems(Viper, ECataclysmRarity::Everyday, 1));
+	TestEqual(TEXT("as a different stack"), Bag->GetGemStacks().Num(), 2);
 	TestEqual(TEXT("and does not join the Superb one"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
-	TestEqual(TEXT("a material takes the next slot"), Bag->AddMaterial(Mote, 5), 2);
-	TestEqual(TEXT("three slots are used"), Bag->NumItems(), 3);
-	TestFalse(TEXT("a gem stack is not an empty slot"), UCataclysmInventoryComponent::SlotIsEmpty(Bag->GetSlots()[0]));
-	TestNull(TEXT("and holds no item"), Bag->ItemAt(0));
+	TestTrue(TEXT("a material is taken"), Bag->AddMaterial(Mote, 5));
+	TestEqual(TEXT("into the materials tab, not the gems tab"), Bag->GetMaterialStacks().Num(), 1);
+	TestEqual(TEXT("and the gems tab still holds two stacks"), Bag->GetGemStacks().Num(), 2);
+	TestEqual(TEXT("no gear slot is used"), Bag->NumItems(), 0);
+	const FCataclysmCarriedSlot& First = Bag->GetGemStacks()[0];
+	TestFalse(TEXT("a gem stack is not an empty slot"), UCataclysmInventoryComponent::SlotIsEmpty(First));
+	TestTrue(TEXT("and holds no item"), First.Item.Base.IsNone());
 	TestEqual(TEXT("the material is counted apart from the gems"), Bag->CountOfMaterial(Mote), 5);
 
-	TestEqual(TEXT("CONTROL: a gem with no name is refused"), Bag->AddGems(NAME_None, ECataclysmRarity::Superb, 1),
-			  INDEX_NONE);
-	TestEqual(TEXT("CONTROL: none of a gem is refused"), Bag->AddGems(Rot, ECataclysmRarity::Superb, 0), INDEX_NONE);
-	TestEqual(TEXT("and nothing more was stored"), Bag->NumItems(), 3);
+	TestFalse(TEXT("CONTROL: a gem with no name is refused"), Bag->AddGems(NAME_None, ECataclysmRarity::Superb, 1));
+	TestFalse(TEXT("CONTROL: none of a gem is refused"), Bag->AddGems(Rot, ECataclysmRarity::Superb, 0));
+	TestEqual(TEXT("and nothing more was stored"), Bag->GetGemStacks().Num(), 2);
+	TestEqual(TEXT("nor any Of Rot"), Bag->CountOfGems(Rot, ECataclysmRarity::Superb), 0);
 	return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GK2. A full bag refuses a gem nothing carries yet, and still adds to a stack it carries.
+// GK2. A full gear tab still takes a gem nothing carries yet, and still adds to a stack it carries. Until issue #2849 a
+// gem stack took one of the 48 slots, so a full bag refused a new gem; the gems tab has no limit and never refuses.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksFullBagTest,
-	"Cataclysm.GemStacks.AFullBagRefusesANewGemAndStillStacksACarriedOne",
+	"Cataclysm.GemStacks.AFullGearTabStillTakesANewGemAndStacksACarriedOne",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemStacksFullBagTest::RunTest(const FString&)
@@ -96,34 +103,38 @@ bool FCataclysmGemStacksFullBagTest::RunTest(const FString&)
 	using namespace CataclysmGemStacksTest;
 	UCataclysmInventoryComponent* Bag = NewBag();
 	if (!TestNotNull(TEXT("set-up: a bag"), Bag)
-		|| !TestEqual(TEXT("set-up: one Superb Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1), 0))
+		|| !TestTrue(TEXT("set-up: one Superb Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 1)))
 	{
 		return false;
 	}
 	FCataclysmItem Piece;
 	Piece.Base = FName(TEXT("Test_Gem_Stack_Filler"));
-	for (int32 Index = 1; Index < UCataclysmInventoryComponent::SlotCount; ++Index)
+	for (int32 Index = 0; Index < UCataclysmInventoryComponent::SlotCount; ++Index)
 	{
 		Bag->AddItem(Piece);
 	}
-	if (!TestTrue(TEXT("set-up: the bag is full"), Bag->IsFull()))
+	if (!TestTrue(TEXT("set-up: the gear tab is full"), Bag->IsFull())
+		|| !TestEqual(TEXT("set-up: with 48 pieces, the gem taking none of the slots"), Bag->NumItems(),
+					  UCataclysmInventoryComponent::SlotCount))
 	{
 		return false;
 	}
-	TestEqual(TEXT("a gem nothing carries is refused"), Bag->AddGems(Rot, ECataclysmRarity::Everyday, 1), INDEX_NONE);
-	TestEqual(TEXT("and none of it was stored"), Bag->CountOfGems(Rot, ECataclysmRarity::Everyday), 0);
-	TestEqual(TEXT("a carried stack still has room"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 4), 0);
+	TestTrue(TEXT("a gem nothing carries is taken"), Bag->AddGems(Rot, ECataclysmRarity::Everyday, 1));
+	TestEqual(TEXT("and one of it is carried"), Bag->CountOfGems(Rot, ECataclysmRarity::Everyday), 1);
+	TestTrue(TEXT("a carried stack still has room"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 4));
 	TestEqual(TEXT("so five are carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 5);
+	TestEqual(TEXT("in two stacks"), Bag->GetGemStacks().Num(), 2);
+	TestEqual(TEXT("CONTROL: and a piece of gear is still refused"), Bag->AddItem(Piece), INDEX_NONE);
 	return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// GK3. A gem stack is offered to the floor, as a material is, and stays in the bag when the floor refuses it. Slice G5
-// lifted G2's refusal; `Cataclysm.GemDrops.AGemDropIsSavedAndRestoredAndADroppedStackLiesWholeOnTheFloor` drops one
-// into a world.
+// GK3. A gem stack, and a material stack, cannot be dropped by a carried slot: since issue #2849 neither is in one, and
+// there is deliberately no way to drop a stack (ruled 2026-11-22: a dropped stack would be collected straight back
+// within 15 m). Until then a stack was offered to the floor from its slot, as slice G5 lifted G2's refusal.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksDropTest,
-	"Cataclysm.GemStacks.AGemStackIsOfferedToTheFloorAndStaysInTheBagWhenItRefuses",
+	"Cataclysm.GemStacks.AGemStackCannotBeDroppedFromACarriedSlotAndStaysCarried",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmGemStacksDropTest::RunTest(const FString&)
@@ -131,23 +142,35 @@ bool FCataclysmGemStacksDropTest::RunTest(const FString&)
 	using namespace CataclysmGemStacksTest;
 	UCataclysmInventoryComponent* Bag = NewBag();
 	if (!TestNotNull(TEXT("set-up: a bag"), Bag)
-		|| !TestEqual(TEXT("set-up: three Superb Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 3), 0)
-		|| !TestEqual(TEXT("set-up: five Corrupted Motes"), Bag->AddMaterial(Mote, 5), 1))
+		|| !TestTrue(TEXT("set-up: three Superb Of The Viper"), Bag->AddGems(Viper, ECataclysmRarity::Superb, 3))
+		|| !TestTrue(TEXT("set-up: five Corrupted Motes"), Bag->AddMaterial(Mote, 5)))
 	{
 		return false;
 	}
 
-	// NO WORLD: the gems are offered to the floor, which has nowhere to put them, so nothing leaves the bag.
-	TestTrue(TEXT("the gems are offered to the floor, which has no world to put them in"),
+	// NOTHING IN THE FIRST TWO SLOTS, where the gem and material stacks sat until #2849.
+	TestTrue(TEXT("slot 0 holds nothing to drop"),
+			 UCataclysmWearing::DropCarried(Bag, 0, nullptr, FVector::ZeroVector)
+				 == ECataclysmWearResult::NothingToDrop);
+	TestTrue(TEXT("nor does slot 1"),
+			 UCataclysmWearing::DropCarried(Bag, 1, nullptr, FVector::ZeroVector)
+				 == ECataclysmWearResult::NothingToDrop);
+	TestEqual(TEXT("all three gems are still carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
+	TestEqual(TEXT("and all five motes"), Bag->CountOfMaterial(Mote), 5);
+
+	// CONTROL: GEAR IN SLOT 0 IS OFFERED TO THE FLOOR, which has no world to put it in, so "nothing to drop" above is
+	// about what the slot holds and not about a drop that cannot be reached.
+	FCataclysmItem Piece;
+	Piece.Base = FName(TEXT("Test_Gem_Stack_Filler"));
+	if (!TestEqual(TEXT("set-up: a piece of gear goes in slot 0"), Bag->AddItem(Piece), 0))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: the piece is offered to the floor, which has no world to put it in"),
 			 UCataclysmWearing::DropCarried(Bag, 0, nullptr, FVector::ZeroVector)
 				 == ECataclysmWearResult::TheFloorRefusedIt);
-	TestEqual(TEXT("and all three are still carried"), Bag->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
-
-	// CONTROL: A MATERIAL IS OFFERED THE SAME WAY, and refused for the same reason.
-	TestTrue(TEXT("CONTROL: a material is offered to the floor, which has no world to put it in"),
-			 UCataclysmWearing::DropCarried(Bag, 1, nullptr, FVector::ZeroVector)
-				 == ECataclysmWearResult::TheFloorRefusedIt);
-	TestEqual(TEXT("and it is still carried too"), Bag->CountOfMaterial(Mote), 5);
+	TestEqual(TEXT("and the stacks are untouched"),
+			  Bag->CountOfGems(Viper, ECataclysmRarity::Superb) + Bag->CountOfMaterial(Mote), 8);
 	return true;
 }
 
@@ -260,19 +283,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGemStacksSaveTest,
 
 /**
  * Three Of The Viper at Superb and one Of Rot at Quality, beside a stack of Corrupted Motes, are gathered into a
- * character record, written out and read back, and restored into an empty bag: each stack comes back in its own slot
- * at its own rarity and count, and a Viper at another rarity is not invented. Prints "GEM STACK SAVED".
+ * character record, written out and read back, and restored into an empty bag: each stack comes back in the gems or
+ * materials tab at its own rarity and count, in the gems tab's order, and a Viper at another rarity is not invented.
+ * Since issue #2849 the stacks are saved in `CarriedGems` and `CarriedMaterials`, not in a carried slot. Prints "GEM
+ * STACK SAVED".
  */
 bool FCataclysmGemStacksSaveTest::RunTest(const FString&)
 {
 	using namespace CataclysmGemStacksTest;
 	UCataclysmInventoryComponent* Bag = NewBag();
-	const int32 ViperSlot = Bag->AddGems(Viper, ECataclysmRarity::Superb, 3);
-	const int32 RotSlot = Bag->AddGems(Rot, ECataclysmRarity::Quality, 1);
-	const int32 MoteSlot = Bag->AddMaterial(Mote, 4);
-	if (!TestTrue(TEXT("set-up: three stacks in three slots"),
-				  ViperSlot != INDEX_NONE && RotSlot != INDEX_NONE && MoteSlot != INDEX_NONE
-					  && ViperSlot != RotSlot && RotSlot != MoteSlot))
+	if (!TestTrue(TEXT("set-up: three stacks are taken"),
+				  Bag->AddGems(Viper, ECataclysmRarity::Superb, 3) && Bag->AddGems(Rot, ECataclysmRarity::Quality, 1)
+					  && Bag->AddMaterial(Mote, 4))
+		|| !TestEqual(TEXT("set-up: two of them gems"), Bag->GetGemStacks().Num(), 2))
 	{
 		return false;
 	}
@@ -280,6 +303,7 @@ bool FCataclysmGemStacksSaveTest::RunTest(const FString&)
 	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>(GetTransientPackage());
 	Record->SchemaVersion = UCataclysmCharacterSave::SchemaVersionNow;
 	FCataclysmSaveGather::CarriedSlotsFrom(*Bag, Record->CarriedSlots);
+	FCataclysmSaveGather::CarriedStacksFrom(*Bag, Record->CarriedMaterials, Record->CarriedGems);
 	FString Text;
 	FString Error;
 	if (!TestTrue(TEXT("set-up: the record is written"), FCataclysmSaveStorage::ToJson(Record, Text, Error)))
@@ -297,25 +321,32 @@ bool FCataclysmGemStacksSaveTest::RunTest(const FString&)
 		return false;
 	}
 
+	// THE STORES FIRST, THEN THE SLOTS, the order the load uses (RestoreSlots moves any stack it finds onto a store).
 	UCataclysmInventoryComponent* Loaded = NewBag();
+	Loaded->RestoreStacks(Read->CarriedMaterials, Read->CarriedGems);
 	const bool bRestored = Loaded->RestoreSlots(Read->CarriedSlots);
-	AddInfo(FString::Printf(TEXT("GEM STACK SAVED: restored %d; Viper Superb %d in slot %d, Rot Quality %d in slot %d, "
-								 "motes %d; Viper Quality %d"),
-							bRestored, Loaded->CountOfGems(Viper, ECataclysmRarity::Superb),
-							Loaded->SlotOfGems(Viper, ECataclysmRarity::Superb),
-							Loaded->CountOfGems(Rot, ECataclysmRarity::Quality),
-							Loaded->SlotOfGems(Rot, ECataclysmRarity::Quality), Loaded->CountOfMaterial(Mote),
-							Loaded->CountOfGems(Viper, ECataclysmRarity::Quality)));
+	const TArray<FCataclysmCarriedSlot>& Gems = Loaded->GetGemStacks();
+	AddInfo(FString::Printf(TEXT("GEM STACK SAVED: restored %d; %d gem stack(s) in the file, %d restored, first %s; Viper "
+								 "Superb %d, Rot Quality %d, motes %d; Viper Quality %d; %d gear slot(s) used"),
+							bRestored, Read->CarriedGems.Num(), Gems.Num(),
+							Gems.IsEmpty() ? TEXT("none") : *Gems[0].Gem.ToString(),
+							Loaded->CountOfGems(Viper, ECataclysmRarity::Superb),
+							Loaded->CountOfGems(Rot, ECataclysmRarity::Quality), Loaded->CountOfMaterial(Mote),
+							Loaded->CountOfGems(Viper, ECataclysmRarity::Quality), Loaded->NumItems()));
 
 	TestTrue(TEXT("the bag is restored"), bRestored);
 	TestTrue(TEXT("and the file names the gem"), Text.Contains(TEXT("\"Gem_Of_The_Viper\"")));
+	TestEqual(TEXT("the file holds two gem stacks"), Read->CarriedGems.Num(), 2);
+	TestEqual(TEXT("and one material stack"), Read->CarriedMaterials.Num(), 1);
 	TestEqual(TEXT("Of The Viper comes back, 3 of them at Superb"),
 			  Loaded->CountOfGems(Viper, ECataclysmRarity::Superb), 3);
-	TestEqual(TEXT("in the slot it was in"), Loaded->SlotOfGems(Viper, ECataclysmRarity::Superb), ViperSlot);
 	TestEqual(TEXT("Of Rot comes back, 1 at Quality"), Loaded->CountOfGems(Rot, ECataclysmRarity::Quality), 1);
-	TestEqual(TEXT("in its slot"), Loaded->SlotOfGems(Rot, ECataclysmRarity::Quality), RotSlot);
+	// BY GEM NAME, THEN RARITY: "Gem_Of_Rot" before "Gem_Of_The_Viper", as the gems tab draws them.
+	TestTrue(TEXT("in the gems tab's order, Of Rot first"),
+			 Gems.Num() == 2 && Gems[0].Gem == Rot && Gems[1].Gem == Viper);
 	TestEqual(TEXT("no Viper at another rarity is invented"), Loaded->CountOfGems(Viper, ECataclysmRarity::Quality), 0);
 	TestEqual(TEXT("CONTROL: the motes beside them come back too"), Loaded->CountOfMaterial(Mote), 4);
+	TestEqual(TEXT("and no gear slot holds any of it"), Loaded->NumItems(), 0);
 	return true;
 }
 

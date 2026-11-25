@@ -437,6 +437,13 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::MagicFindPerFloorCleared:
 			Bonuses.MagicFindPerFloorCleared += Total;
 			break;
+		// A DISMANTLE'S TWO NODES (#2848, slice S2), read at the forge by `UCataclysmForgeCraft::DismantlePlanFor`.
+		case ECataclysmEmpireTreeEffect::DismantleMaterialsIncreased:
+			Bonuses.DismantleMaterialsIncreased += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::DismantleMaterialsIncreasedSuperbAndAbove:
+			Bonuses.DismantleMaterialsIncreasedSuperbAndAbove += Total;
+			break;
 		case ECataclysmEmpireTreeEffect::MagicFindPerFiveClears:
 			Bonuses.MagicFindPerFiveClears += Total;
 			break;

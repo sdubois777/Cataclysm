@@ -199,8 +199,9 @@ TArray<FCataclysmForgeSocketAction> UCataclysmForgeLayout::SocketActionsFor(cons
 		{
 			continue;
 		}
-		// EACH CARRIED STACK THAT FITS THIS SOCKET, in cell order.
-		const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+		// EACH CARRIED STACK THAT FITS THIS SOCKET, in the gems tab's order (by gem, then rarity). Read from the gems tab
+		// since #2849; `Cell` is the stack's place in it, as it was a bag cell before.
+		const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetGemStacks();
 		for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
 		{
 			const FCataclysmCarriedSlot& Carried = Slots[Cell];
@@ -527,6 +528,22 @@ TArray<FCataclysmForgeOptionAction> UCataclysmForgeLayout::OptionActionsFor(cons
 	return Out;
 }
 
+FName UCataclysmForgeLayout::DismantleButtonName()
+{
+	return FName(TEXT("Dismantle"));
+}
+
+FString UCataclysmForgeLayout::DismantleLabelFor(const FCataclysmItem& Item, bool bWorn)
+{
+	ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
+	if (bWorn || Item.Base.IsNone() || Item.bMadeAtCreation
+		|| !UCataclysmItemValues::RarityOf(Item.EnchantmentCount, Item.Affixes.Num(), Rarity))
+	{
+		return FString();
+	}
+	return TEXT("Dismantle this piece (it is destroyed)");
+}
+
 FString UCataclysmForgeLayout::DamageTypesDetailFor(const FCataclysmItem& Item, int32 MaxTypes)
 {
 	if (Item.Base.IsNone() || MaxTypes <= 0)
@@ -669,7 +686,8 @@ TArray<FCataclysmForgeGemCombineAction> UCataclysmForgeLayout::GemCombineActions
 	{
 		return Out;
 	}
-	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetSlots();
+	// THE GEMS TAB, in its order (by gem, then rarity), since #2849; `Cell` is the stack's place in it.
+	const TArray<FCataclysmCarriedSlot>& Slots = Inventory->GetGemStacks();
 	for (int32 Cell = 0; Cell < Slots.Num(); ++Cell)
 	{
 		const FCataclysmCarriedSlot& Carried = Slots[Cell];

@@ -64,14 +64,14 @@
     {
       "asset": "DT_EmpireTreeEffects",
       "csv": "EmpireTreeEffects.csv",
-      "rows": 121,
-      "csv_sha256": "ac9fb2dd4581c2984b7aa724a5adefafa42d3c493225b065410b34c23b58cc14"
+      "rows": 123,
+      "csv_sha256": "1c31f40cd8519b70ee81800f3e56fd05bb703a71932b11bcdf60b7261da7392b"
     },
     {
       "asset": "DT_EmpireTreeNodes",
       "csv": "EmpireTreeNodes.csv",
       "rows": 159,
-      "csv_sha256": "8c0324bbebad0a6c8f02699f1f313d8d18af8b483e1505d64562c308ee7dc185"
+      "csv_sha256": "fdef7a84b516a8c827c58f4bdeb8f5a935e26e583942bee4557ccbccf99a837d"
     },
     {
       "asset": "DT_EnchantmentEffects",
@@ -101,7 +101,7 @@
       "asset": "DT_EnemyDrops",
       "csv": "EnemyDrops.csv",
       "rows": 6,
-      "csv_sha256": "bca9b368275f616d7e433948a29fbe9c1f50285a117fea677daea67e534c9e3c"
+      "csv_sha256": "3d0a4f8857a37d4d000ad93b836ad4961e1066d8d75078d257ec3441b28aecda"
     },
     {
       "asset": "DT_EnemyModifiers",
@@ -185,7 +185,7 @@
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
-      "csv_sha256": "402fca60e960369b248fd3102cbc3f59fe43b3944c47295db18ac6a8aa1099fb"
+      "csv_sha256": "1d5956c42a9e824b66185b2405f36d2b077adeee9786a48661af998182cbc8f5"
     },
     {
       "asset": "DT_StatusEffects",
@@ -203,7 +203,7 @@
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
       "rows": 403,
-      "csv_sha256": "03d45a87672d730ce41035b946396429e15aaa4d699aa0927a7d35b2f1c85156"
+      "csv_sha256": "ac57038b8c0bea9c7d8adc0618ef5cdf6fb3b99c9adc6694f7875c90ad898c29"
     }
   ]
 }

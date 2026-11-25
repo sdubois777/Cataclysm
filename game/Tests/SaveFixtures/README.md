@@ -688,6 +688,34 @@ followed, ruled 2026-11-01:
   through the whole chain adds what the steps write through
   `CataclysmSaveFixtures::AddTheAccountsVersion7Defaults`,
   `AddTheCharactersVersion14Defaults` and `AddTheRunsVersion15Defaults`.
+- **The character record went to version 16 on 2026-11-24**, for the inventory's
+  tabs (issue #2849; the owner: "One cell per kind, no limit (Recommended)"). The
+  48 carried slots hold gear only, and the carried crafting materials and gems are
+  two lists of their own, `CarriedMaterials` and `CarriedGems`, each entry a
+  carried slot holding one stack. `Migrate_15_to_16` moves each stack out of
+  `CarriedSlots` into its list and blanks its cell, which stays, so every piece of
+  gear keeps its cell. `Character_v16.json` is `Character_v15.json` at version 16
+  with its 12 Whispering Ash moved from its second carried slot, now blank, into
+  `CarriedMaterials`, and with 3 Superb Of The Viper in `CarriedGems`: a figure
+  and not the default, for the reason below. `Character_v15.json` is now a
+  migration input; every test that read it as the committed file reads the new
+  one, and every test that runs an older file through the chain adds what the
+  step writes through `AddTheCharactersVersion16Defaults`.
+- **The character record went to version 17 on 2026-11-24**, for the skill keys
+  (issue #837 slice 1; the owner: "Approve all three (Recommended)"). The
+  character keeps what each key held by default after the last fill,
+  `RememberedDefaults`, so its keys stay as they are when a weapon goes on or off
+  and after a load. `Migrate_16_to_17` writes an empty list, which is what a
+  character written before it held. `Character_v17.json` is `Character_v16.json`
+  at version 17 with one remembered default, War_Greatsword_Special on the
+  Special key, and one in its held build, War_Greatsword_Support on the Support
+  key (the double copies the keys, ruled the same day): figures and not the
+  default, so the round trip proves both fields are read. The step writes an
+  empty list into a held build that lacks one, and keeps one `Migrate_5_to_6`
+  already wrote. `Character_v16.json` is now a migration input; every test that read it
+  as the committed file reads the new one, and every test that runs an older
+  file through the chain adds what the step writes through
+  `AddTheCharactersVersion17Defaults`.
 - **The run record went to version 16 on 2026-11-22**, for the cleanse city
   upgrade (issue #2838): the run holds whether the cleanse has been bought in it,
   `bCleanseBoughtThisRun`, once a run. The step writes false: a run written before
@@ -893,6 +921,33 @@ followed, ruled 2026-11-01:
   `AddTheRunsVersion14Defaults`. **The account record does not move**, though
   its `Stash` is a list of the same slot: nothing fills that stash, so no
   account file can hold a socket count.
+- **The character record went to version 15 and the run record to version 18
+  on 2026-11-24**, for dismantling (issue #2848, slice S2). An item records the
+  gear level and the difficulty tier it arrived at, `GearLevelAtDrop` and
+  `TierAtDrop`, so a dismantle refunds only the upgrade levels the player paid
+  for. `Migrate_14_to_15` (character) and `Migrate_17_to_18` (run) write -1 and
+  0, the fields' defaults, which the forge reads as "not known": nothing recorded
+  where an item arrived before. Every item is found by walking the whole record
+  for an object holding both `GearLevel` and `bMadeAtCreation`
+  (`CataclysmSaveArrival`). `Character_v15.json` is `Character_v14.json` at
+  version 15 with the two fields on each of its five items: the creation
+  greatsword 0 and 2 (held build and worn), the carried Circlet 4 and 2, the
+  empty carried slot -1 and 0, and the worn ring 3 and 1. `Run_v18.json` is
+  `Run_v17.json` at version 18 with its ground Circlet 0 and 4 and its gold pile
+  -1 and 0. The Circlets' figures are not the defaults, so the tests that read
+  the files show the fields are read. `Character_v14.json` and `Run_v17.json`
+  are now migration inputs, not edited again: `Cataclysm.Dismantle.`'s two
+  migration tests run them through the steps, every test that read either as
+  the committed file reads the new one, and every test that runs an older file
+  through the whole chain adds what the step writes through
+  `CataclysmSaveFixtures::AddTheCharactersVersion15Defaults` or
+  `AddTheRunsVersion18Defaults`. **The account record does not move**, for the
+  gems step's reason: nothing fills its stash, so no account file holds an item.
+  **IT WAS FIRST WRITTEN WITHOUT A VERSION**, on the older sentence in
+  `docs/Save_System_Design.md`; window sd-w1 failed six groups on it (every test
+  comparing a migrated or committed file field by field), and the coordinating
+  session ruled the version on 2026-11-24 by the rule above. That sentence now
+  points here.
 - **A slip, recorded rather than undone, as `LastWrittenUtc` was.**
   `Run_v1.json` was edited thirteen times after saves could load
   (`78ad0fa81`, 2026-10-30), each time adding fields for #753's dungeon load
@@ -927,6 +982,9 @@ followed, ruled 2026-11-01:
 | `Character_v12.json` | The same character at version 12: version 11's contents, plus an extra option in its own empire tree, the third of Foundations of the Empire's, and none in its other two allocations |
 | `Character_v13.json` | The same character at version 13: version 12's contents, with each socket count as a list of sockets -- its carried piece's Attack holding Of The Viper at Quality and Defense, its worn greatsword's Attack, Defense and Utility, its held build's three of type Any -- and no gem in either carried slot |
 | `Character_v14.json` | The same character at version 14: version 13's contents, plus 50000.25 tier 1 gold spent on city upgrades |
+| `Character_v15.json` | The same character at version 15: version 14's contents, plus where each item arrived -- the creation greatsword +0 at tier 2, the carried Circlet +4 at tier 2, the empty slot not known, the worn ring +3 at tier 1 |
+| `Character_v16.json` | The same character at version 16: version 15's contents, with its 12 Whispering Ash in `CarriedMaterials` and its second carried slot blank, plus 3 Superb Of The Viper in `CarriedGems` |
+| `Character_v17.json` | The same character at version 17: version 16's contents, plus one remembered default, `War_Greatsword_Special` on the Special key, and one in its held build, `War_Greatsword_Support` on the Support key |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Run_v2.json` | The same run at version 2: version 1's contents, plus the corrupted double's hunt, standing |
 | `Run_v3.json` | The same run at version 3: version 2's contents, plus what the player's last death cost |
@@ -944,6 +1002,7 @@ followed, ruled 2026-11-01:
 | `Run_v15.json` | The same run at version 15: version 14's contents, plus its first city bailed out and its second not, its dungeon not a bonus one, 2 bonus dungeons cleared and the surge's bribe spent |
 | `Run_v16.json` | The same run at version 16: version 15's contents, plus the cleanse bought this run |
 | `Run_v17.json` | The same run at version 17: version 16's contents, plus its thrall's taking skill, `Demonic_Staff_Ultimate`, at a level factor of 1.5, and the other creature None and 1 |
+| `Run_v18.json` | The same run at version 18: version 17's contents, plus where each ground item arrived -- the Circlet +0 at tier 4, the gold pile not known |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
 | `Example_v3.json` | The same record at version 3, after `TotalCopper` was split into `Gold` and `Copper` |

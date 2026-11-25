@@ -512,6 +512,124 @@ namespace CataclysmSaveFixtures
 	}
 
 	/**
+	 * What the character record's `Migrate_15_to_16` writes into a character file written before version 16: each
+	 * crafting material and gem stack moved out of `CarriedSlots` into `CarriedMaterials` or `CarriedGems`, the same
+	 * kind summed into the stack first met, in the order first met (THE MIGRATION DOES NOT SORT), and the cell it left
+	 * BLANKED rather than removed -- Material "None", Gem "None", GemRarity "Everyday", Quantity 0 -- so `CarriedSlots`
+	 * keeps its length. A stack holding 0 or fewer is not moved, and its cell is blanked all the same. A slot whose item
+	 * has a base is gear and is left alone. Both lists are written, empty when nothing moved. Issue #2849. THE CHARACTER
+	 * RECORD'S 15. ONE COPY, for every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion14Defaults`, since the stacks it copies carry the gem fields version 13 added.
+	 */
+	inline void AddTheCharactersVersion16Defaults(FJsonObject& Expected)
+	{
+		TArray<TSharedPtr<FJsonValue>> Materials;
+		TArray<TSharedPtr<FJsonValue>> Gems;
+		const TArray<TSharedPtr<FJsonValue>>* Held = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedMaterials"), Held) && Held)
+		{
+			Materials = *Held;
+		}
+		Held = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedGems"), Held) && Held)
+		{
+			Gems = *Held;
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
+		if (Expected.TryGetArrayField(TEXT("CarriedSlots"), Slots) && Slots)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : *Slots)
+			{
+				const TSharedPtr<FJsonObject>* Object = nullptr;
+				if (!Entry.IsValid() || !Entry->TryGetObject(Object) || !Object || !Object->IsValid())
+				{
+					continue;
+				}
+				const TSharedRef<FJsonObject> Slot = Object->ToSharedRef();
+
+				FString Base = TEXT("None");
+				const TSharedPtr<FJsonObject>* Item = nullptr;
+				if (Slot->TryGetObjectField(TEXT("Item"), Item) && Item && Item->IsValid())
+				{
+					(*Item)->TryGetStringField(TEXT("Base"), Base);
+				}
+				FString Material = TEXT("None");
+				FString Gem = TEXT("None");
+				FString Rarity = TEXT("Everyday");
+				double Quantity = 0.0;
+				Slot->TryGetStringField(TEXT("Material"), Material);
+				Slot->TryGetStringField(TEXT("Gem"), Gem);
+				Slot->TryGetStringField(TEXT("GemRarity"), Rarity);
+				Slot->TryGetNumberField(TEXT("Quantity"), Quantity);
+				const bool bMaterial = Material != TEXT("None") && !Material.IsEmpty();
+				const bool bGem = !bMaterial && Gem != TEXT("None") && !Gem.IsEmpty();
+				if (Base != TEXT("None") || (!bMaterial && !bGem))
+				{
+					continue;
+				}
+
+				if (Quantity > 0.0)
+				{
+					TArray<TSharedPtr<FJsonValue>>& Into = bMaterial ? Materials : Gems;
+					bool bJoined = false;
+					for (const TSharedPtr<FJsonValue>& Existing : Into)
+					{
+						const TSharedPtr<FJsonObject>* Stack = nullptr;
+						if (!Existing.IsValid() || !Existing->TryGetObject(Stack) || !Stack || !Stack->IsValid())
+						{
+							continue;
+						}
+						FString Name;
+						FString StackRarity = TEXT("Everyday");
+						(*Stack)->TryGetStringField(bMaterial ? TEXT("Material") : TEXT("Gem"), Name);
+						(*Stack)->TryGetStringField(TEXT("GemRarity"), StackRarity);
+						if (Name == (bMaterial ? Material : Gem) && (bMaterial || StackRarity == Rarity))
+						{
+							double Was = 0.0;
+							(*Stack)->TryGetNumberField(TEXT("Quantity"), Was);
+							(*Stack)->SetNumberField(TEXT("Quantity"), Was + Quantity);
+							bJoined = true;
+							break;
+						}
+					}
+					if (!bJoined)
+					{
+						const TSharedRef<FJsonObject> Copy = MakeShared<FJsonObject>();
+						Copy->Values = Slot->Values;
+						Into.Add(MakeShared<FJsonValueObject>(Copy));
+					}
+				}
+
+				Slot->SetStringField(TEXT("Material"), TEXT("None"));
+				Slot->SetStringField(TEXT("Gem"), TEXT("None"));
+				Slot->SetStringField(TEXT("GemRarity"), TEXT("Everyday"));
+				Slot->SetNumberField(TEXT("Quantity"), 0.0);
+			}
+		}
+		Expected.SetArrayField(TEXT("CarriedMaterials"), Materials);
+		Expected.SetArrayField(TEXT("CarriedGems"), Gems);
+	}
+
+	/**
+	 * What the character record's `Migrate_16_to_17` writes into a character file written before version 17: no
+	 * remembered defaults, an empty `RememberedDefaults`, and the same in a held `ConsumptionBuild` that lacks one (a
+	 * build `Migrate_5_to_6` wrote already carries it, and it is kept). Issue #837 slice 1. THE CHARACTER RECORD'S 17.
+	 * ONE COPY, for every test that runs an older character file through the whole chain; call it after
+	 * `AddTheCharactersVersion16Defaults`.
+	 */
+	inline void AddTheCharactersVersion17Defaults(FJsonObject& Expected)
+	{
+		Expected.SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		const TSharedPtr<FJsonObject>* Build = nullptr;
+		if (Expected.TryGetObjectField(TEXT("ConsumptionBuild"), Build) && Build && Build->IsValid()
+			&& !(*Build)->HasField(TEXT("RememberedDefaults")))
+		{
+			(*Build)->SetArrayField(TEXT("RememberedDefaults"), TArray<TSharedPtr<FJsonValue>>());
+		}
+	}
+
+	/**
 	 * What the run record's newest step writes into a run file written before it: no city bailed out, no dungeon a bonus
 	 * one, no bonus dungeon cleared and no bribe made (`bBailedOut`, `bBonus`, `BonusDungeonsCleared`,
 	 * `bBribedThisSurge`). Issue #2741 slice 9. NAMED FOR THE VERSION IT REACHES, 15, after the gems window's
@@ -574,6 +692,74 @@ namespace CataclysmSaveFixtures
 											bThrall ? TEXT("Demonic_Staff_Ultimate") : TEXT("None"));
 				(*Creature)->SetNumberField(TEXT("TakenLevelFactorOnCreatures"), 1.0);
 			}
+		}
+	}
+
+	/**
+	 * Every item the JSON value holds, at any depth, written as arrived at a place not known: `GearLevelAtDrop` -1 and
+	 * `TierAtDrop` 0, what `CataclysmSaveArrival::WriteWhereEachItemArrived` writes. An item is an object holding both
+	 * `GearLevel` and `bMadeAtCreation`. A key already present is kept. Issue #2848 slice S2. Used by the character
+	 * record's version 15 defaults and the run record's version 18.
+	 */
+	inline void AddWhereEachItemArrived(const TSharedPtr<FJsonValue>& Value)
+	{
+		if (!Value.IsValid())
+		{
+			return;
+		}
+		if (Value->Type == EJson::Array)
+		{
+			for (const TSharedPtr<FJsonValue>& Entry : Value->AsArray())
+			{
+				AddWhereEachItemArrived(Entry);
+			}
+			return;
+		}
+		if (Value->Type != EJson::Object || !Value->AsObject().IsValid())
+		{
+			return;
+		}
+		const TSharedPtr<FJsonObject> Holder = Value->AsObject();
+		if (Holder->HasField(TEXT("GearLevel")) && Holder->HasField(TEXT("bMadeAtCreation")))
+		{
+			if (!Holder->HasField(TEXT("GearLevelAtDrop")))
+			{
+				Holder->SetNumberField(TEXT("GearLevelAtDrop"), -1.0);
+			}
+			if (!Holder->HasField(TEXT("TierAtDrop")))
+			{
+				Holder->SetNumberField(TEXT("TierAtDrop"), 0.0);
+			}
+		}
+		for (const auto& Field : Holder->Values) // `auto`: the key type follows the engine's JSON storage setting.
+		{
+			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the character record's newest step writes into a character file written before it: every item as arrived at
+	 * a place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
+	 * 15. ONE COPY, for every test that runs an older character file through the whole chain.
+	 */
+	inline void AddTheCharactersVersion15Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddWhereEachItemArrived(Field.Value);
+		}
+	}
+
+	/**
+	 * What the run record's newest step writes into a run file written before it: every ground item as arrived at a
+	 * place not known (`GearLevelAtDrop` -1, `TierAtDrop` 0). Issue #2848 slice S2. NAMED FOR THE VERSION IT REACHES,
+	 * 18. ONE COPY.
+	 */
+	inline void AddTheRunsVersion18Defaults(FJsonObject& Expected)
+	{
+		for (const auto& Field : Expected.Values)
+		{
+			AddWhereEachItemArrived(Field.Value);
 		}
 	}
 

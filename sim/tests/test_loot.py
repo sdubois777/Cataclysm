@@ -75,39 +75,86 @@ def test_the_penalty_is_one_at_or_below_the_reach_and_doubles_above_it():
             assert loot.penalty_above_the_tier(rarity, tier) == 1.0
 
 
-def test_every_rarity_drops_at_every_tier_however_much_magic_find():
-    """What the project owner asked for on 2026-08-23, checked directly.
+def test_every_rarity_up_to_the_cap_drops_however_much_magic_find():
+    """What the project owner asked for on 2026-08-23, up to the cap of 2026-11-24.
 
-    This is the exact opposite of what stood here before, which held that a
-    rarity above the tier's cap carried a share of exactly zero. Nothing is
-    forbidden now: the penalty divides and magic find multiplies, and neither
-    can reach zero.
+    Until issue #2853 this said every rarity drops at every tier. Below the cap
+    the penalty divides and magic find multiplies, and neither reaches zero.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        cap = loot.rarity_index(loot.highest_droppable_rarity(tier))
         for magic_find in (0.0, 300.0, 100_000.0):
             spread = loot.rarity_distribution(tier, magic_find)
-            for rarity in af.RARITIES:
+            for rarity in af.RARITIES[:cap]:
                 assert spread[rarity] > 0.0, (
                     f"{rarity} never drops at difficulty tier {tier} with "
                     f"{magic_find}% magic find")
+
+
+@pytest.mark.parametrize("tier, cap", [
+    (1, "Masterful"), (2, "Legendary"), (3, "Mythical"), (4, "Ascendant"),
+    (5, "Cataclysmic"), (6, "Cataclysmic"), (7, "Cataclysmic"), (8, "Cataclysmic"),
+])
+def test_the_rarest_a_tier_can_drop_is_rarity_number_tier_plus_three(tier, cap):
+    """The owner's ruling of 2026-11-24 on issue #2853: "the highest droppable
+    rarity is number tier + 3 (tier 1 Masterful, tier 2 Legendary, tier 3
+    Mythical ...)". Written out, so a change to the constant cannot pass by
+    moving the expectation with it."""
+    assert loot.highest_droppable_rarity(tier) == cap
+
+
+def test_nothing_drops_above_the_cap_however_much_magic_find():
+    """The other half of the cap: a share of exactly zero, at magic find no one
+    reaches, and a cascade that never stops there. A cap made of a steep penalty
+    would leak here; a weight of zero does not. Issue #2853."""
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        cap = loot.rarity_index(loot.highest_droppable_rarity(tier))
+        above = set(af.RARITIES[cap:])
+        for magic_find in (0.0, 300.0, 1e9):
+            spread = loot.rarity_distribution(tier, magic_find)
+            for rarity in above:
+                assert spread[rarity] == 0.0, (
+                    f"{rarity} drops at difficulty tier {tier} with "
+                    f"{magic_find}% magic find, above the cap")
+            rng = random.Random(tier * 7919)
+            rolled = {loot.roll_rarity(tier, magic_find, rng) for _ in range(2_000)}
+            assert not rolled & above, (
+                f"the cascade rolled {sorted(rolled & above)} at difficulty "
+                f"tier {tier}, above the cap")
+
+
+def test_the_cap_leaves_the_ordinary_rarities_their_weights():
+    """ "Everyday, Quality, Superb and Masterful keep their current chances; the
+    halving per rung stays below the cap" (the owner, 2026-11-24, issue #2853).
+
+    Their weights are unchanged at every tier. Their shares at tiers 1 to 4 rise
+    only by what the removed rarities held: at tier 1 with no magic find,
+    Masterful is 1.0695% against 1.0688% before the cap.
+    """
+    for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        for rarity in af.RARITIES[:loot.ORDINARY_RARITIES]:
+            assert loot.drop_weight(rarity, tier) == pytest.approx(
+                loot._shaped_weight(rarity, tier)
+                / loot.penalty_above_the_tier(rarity, tier), rel=1e-12)
+    assert loot.rarity_distribution(1)["Masterful"] == pytest.approx(0.010695, abs=5e-7)
 
 
 # --------------------------------------------------------------------------
 # The distribution
 # --------------------------------------------------------------------------
 
-def test_a_distribution_covers_every_rarity_and_none_of_them_is_zero():
-    """It used to assert the opposite for anything above the tier's cap.
+def test_a_distribution_covers_every_rarity_as_a_key():
+    """A caller gets every rarity as a key, the ones above the cap at zero.
 
-    A caller still gets every rarity as a key. What changed on 2026-08-23 is
-    that none of them is zero any more, at any difficulty tier.
+    From 2026-08-23 until issue #2853 none was zero, and this asserted a tier 1
+    Cataclysmic at more than one drop in 100,000. The owner then found two in two
+    days of tier 1 play and ruled the cap of 2026-11-24.
     """
     spread = loot.rarity_distribution(1)
     assert set(spread) == set(af.RARITIES)
-    assert spread["Cataclysmic"] > 0.0
-    assert 1 / spread["Cataclysmic"] > 100_000, (
-        "a Cataclysmic at difficulty tier 1 should be a remote chance rather "
-        f"than a real one: one drop in {1 / spread['Cataclysmic']:.0f}")
+    assert spread["Masterful"] > 0.0
+    assert spread["Legendary"] == 0.0
+    assert spread["Cataclysmic"] == 0.0
 
 
 def test_the_weights_fall_in_two_segments_split_at_the_enchantment_boundary():
@@ -204,9 +251,15 @@ def test_difficulty_tier_one_is_the_gear_rarity_sheet_untouched():
     that is real: Superb is two rungs up, so its finished weight is a quarter
     of the sheet's on purpose. The claim here is about the per-tier shape.
     """
+    # UP TO THE CAP ONLY, since issue #2853: above it `drop_weight` is zero by
+    # rule, and the sheet's weights for those rarities describe tier 5 and up.
+    cap = loot.rarity_index(loot.highest_droppable_rarity(1))
     for rarity, weight in loot.RARITY_DROP_WEIGHT.items():
         shaped = (loot.drop_weight(rarity, 1)
                   * loot.penalty_above_the_tier(rarity, 1))
+        if loot.rarity_index(rarity) > cap:
+            assert shaped == 0.0
+            continue
         assert shaped == pytest.approx(weight, rel=1e-12)
 
 
@@ -320,14 +373,16 @@ def test_no_amount_of_magic_find_stops_a_rarity_dropping():
     Masterful 97.6% of the time at tier 8 and Quality 100% of the time at tier 1,
     which is the complaint #886 was filed about, in a worse form.
 
-    Magic find now multiplies weights instead. Every weight stays above zero, so
-    a rung's share of the weight at or below it is always under one and no rarity
-    can be removed at any magic find at all.
+    Magic find now multiplies weights instead. Every weight up to the tier's cap
+    stays above zero, so a rung's share of the weight at or below it is always
+    under one and no rarity the tier can drop is removed at any magic find. Above
+    the cap (issue #2853) zero is the rule, not magic find's doing.
     """
     for tier in range(1, af.DIFFICULTY_TIERS + 1):
+        cap = loot.rarity_index(loot.highest_droppable_rarity(tier))
         for magic_find in (0.0, 80.0, 300.0, 500.0, 10_000.0, 1e9):
             spread = loot.rarity_distribution(tier, magic_find)
-            for rarity in af.RARITIES:
+            for rarity in af.RARITIES[:cap]:
                 assert spread[rarity] > 0.0, (
                     f"{rarity} never drops at difficulty tier {tier} with "
                     f"{magic_find}% magic find")
@@ -349,9 +404,10 @@ def test_a_boss_kill_drops_a_spread_of_rarities_rather_than_one():
                 f"a {enemy} kill at difficulty tier {tier} drops one rarity "
                 f"{max(reachable) * 100:.1f}% of the time, which is the fault "
                 "#890 was about")
-            assert len(reachable) == len(af.RARITIES), (
+            cap = loot.rarity_index(loot.highest_droppable_rarity(tier))
+            assert len(reachable) == cap, (
                 f"a {enemy} kill at difficulty tier {tier} cannot drop every "
-                "rarity")
+                "rarity up to the tier's cap (issue #2853)")
 
 
 def test_magic_find_cannot_run_away_however_much_is_carried():
@@ -952,10 +1008,21 @@ def test_the_ladder_is_the_six_enemy_rarities_the_power_model_has():
     assert len(ENEMY_RARITIES) == 6
 
 
-def test_a_common_kill_drops_the_genre_figure():
-    """0.16, Path of Exile's base chance for an item from a normal monster,
-    taken as the starting point because this design had none."""
-    assert loot.expected_gear_drops("Common") == pytest.approx(0.16)
+def test_a_common_kill_drops_half_the_genre_figure():
+    """0.08: half of 0.16, Path of Exile's base chance for an item from a
+    normal monster, which was the starting point because this design had none.
+    The project owner halved the whole gear column on 2026-11-24, issue #2853,
+    "Halve gear drops (Recommended)"."""
+    assert loot.expected_gear_drops("Common") == pytest.approx(0.08)
+
+
+def test_the_gear_column_is_half_what_it_was_at_every_rarity():
+    """The six figures, stated once, so the column's shape and its halving are
+    both pinned: every rarity alike, so the enemy ladder of 2026-08-18
+    stands. Issue #2853."""
+    before = {"Common": 0.16, "Elite": 0.5, "Legendary": 1.0, "Herald": 2.0,
+              "Boss": 5.0, "Cataclysm Boss": 12.0}
+    assert loot.ENEMY_GEAR_DROPS == {rarity: figure / 2 for rarity, figure in before.items()}
 
 
 def test_a_rarer_enemy_drops_more_and_better():
@@ -997,7 +1064,7 @@ def test_an_unknown_enemy_rarity_is_rejected():
 
 def test_the_rolled_count_averages_the_expected_one():
     """The fractional part is a probability, so a Common enemy drops nothing
-    most of the time and the mean still comes out at 0.16. Rounding to the
+    most of the time and the mean still comes out at 0.08. Rounding to the
     nearest whole number instead would make it drop nothing ever."""
     rng = random.Random(20260818)
     for rarity in ENEMY_RARITIES:
@@ -1008,21 +1075,22 @@ def test_the_rolled_count_averages_the_expected_one():
 
 
 def test_a_common_kill_usually_drops_nothing_at_all():
-    """0.16 is a rate, not a guarantee, and the shape matters as much as the
+    """0.08 is a rate, not a guarantee, and the shape matters as much as the
     mean: most kills give the player nothing.
 
     THE EXACT SHARE MOVED WHEN THE COUNT BECAME A POISSON DRAW, from 84% empty
-    to 85.2%, and a Common enemy can now occasionally drop two. Issue #725.
+    to 85.2% at the 0.16 of the time, and a Common enemy can now occasionally
+    drop two. Issue #725. At 0.08, since issue #2853, 92.3% are empty.
     """
     rng = random.Random(1)
     rolled = [loot.roll_gear_drop_count("Common", 100.0, rng)
               for _ in range(20000)]
 
-    assert rolled.count(0) / len(rolled) == pytest.approx(0.852, abs=0.02)
+    assert rolled.count(0) / len(rolled) == pytest.approx(0.923, abs=0.02)
 
-    # AND TWO IS POSSIBLE, at about one kill in eighty. Asserted rather than
-    # left to chance, because the old method made two impossible at any rate
-    # below one and this is the difference.
+    # AND TWO IS POSSIBLE, at about one kill in 340 at 0.08 (about 59 of these
+    # 20,000). Asserted rather than left to chance, because the old method made
+    # two impossible at any rate below one and this is the difference.
     assert max(rolled) >= 2
 
 
@@ -1100,8 +1168,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
                 seen += af.RARITIES.index(item.rarity) >= 3
         return seen
 
-    # A Herald adds 150% magic find and drops two items; a Common adds none and
-    # drops 0.16. Comparing shares rather than counts would be confounded by
+    # A Herald adds 150% magic find and drops one item; a Common adds none and
+    # drops 0.08. Comparing shares rather than counts would be confounded by
     # that, so this compares against what the distribution itself predicts.
     plain = loot.rarity_distribution(8, 0.0)
     lucky = loot.rarity_distribution(8, loot.magic_find_from("Herald"))
@@ -1111,7 +1179,8 @@ def test_the_enemys_magic_find_reaches_the_rarity_roll():
     # And the roll really uses it: a Herald's drops beat what no-magic-find
     # drops would give over the same number of items.
     heralds = share_above_superb("Herald")
-    expected_without = sum(plain[r] for r in above) * rounds * 2
+    expected_without = (sum(plain[r] for r in above) * rounds
+                        * loot.expected_gear_drops("Herald"))
     assert heralds > expected_without * 1.3, (
         f"a Herald's {rounds * 2} drops gave {heralds} above Superb, and with "
         f"no magic find at all they would give about {expected_without:.0f}")
@@ -1205,9 +1274,11 @@ def test_a_kill_can_drop_for_more_than_one_slot():
 # Crafting materials, on their own roll
 # --------------------------------------------------------------------------
 
-def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
-    """A quarter of the gear rate since 2026-11-22, issue #2829. It was twice
-    the gear rate until 2026-08-23 (issue #850) and the gear rate until #2829.
+def test_a_kill_drops_half_as_many_materials_as_gear():
+    """Half the gear rate since 2026-11-24, when the owner halved the gear
+    column and not this one (issue #2853). A quarter of the gear rate from
+    2026-11-22 (issue #2829); twice the gear rate until 2026-08-23 (issue #850)
+    and the gear rate until #2829.
 
     THE RELATIONSHIP IS ASSERTED RATHER THAN THE SIX FIGURES. What the test
     guards is that the two columns move together deliberately, so a change to
@@ -1215,7 +1286,7 @@ def test_a_kill_drops_a_quarter_as_many_materials_as_gear():
     """
     for rarity in loot.ENEMY_GEAR_DROPS:
         assert loot.expected_material_drops(rarity) == pytest.approx(
-            loot.expected_gear_drops(rarity) / 4)
+            loot.expected_gear_drops(rarity) / 2)
 
 
 def test_the_material_drop_figures_are_what_the_owner_chose():
@@ -1516,3 +1587,39 @@ def test_the_material_reach_check_refuses_a_reach_that_inverts_the_ladder():
         loot._check_no_material_tier_overtakes_the_one_below_it()
     finally:
         loot.MATERIAL_MAGIC_FIND_REACH = original
+
+
+# --------------------------------------------------------------------------
+# The Cataclysm Boss's one piece of the next tier's best (issue #2853)
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("tier, rarity", [
+    (1, "Legendary"), (2, "Mythical"), (3, "Ascendant"), (4, "Cataclysmic"),
+    (5, "Cataclysmic"), (6, "Cataclysmic"), (7, "Cataclysmic"), (8, "Cataclysmic"),
+])
+def test_the_cataclysm_bosses_piece_is_the_next_tiers_best(tier, rarity):
+    """The owner's ruling of 2026-11-24, "The next tier's best (Recommended)": rarity number tier + 4, to Cataclysmic."""
+    assert loot.cataclysm_boss_piece_rarity(tier) == rarity
+    cap = loot.highest_droppable_rarity(tier)
+    if cap != "Cataclysmic":
+        assert loot.rarity_index(rarity) == loot.rarity_index(cap) + 1, "the piece is one rung above the tier's cap"
+
+
+@pytest.mark.parametrize("tier", [1, 4, 8])
+def test_a_cataclysm_boss_drops_one_piece_at_its_rarity_and_gate(tier):
+    """One piece, of exactly the next tier's best, at that rarity's gear level gate, for any magic find."""
+    rng = random.Random(2853 + tier)
+    for magic_find in (0.0, 100000.0):
+        pieces = loot.roll_the_cataclysm_bosses_piece("Cataclysm Boss", tier, magic_find, rng)
+        assert len(pieces) == 1
+        wanted = loot.cataclysm_boss_piece_rarity(tier)
+        assert pieces[0].rarity == wanted
+        assert pieces[0].gear_level == loot.gear_level_gate(wanted)
+
+
+def test_only_a_cataclysm_boss_drops_the_piece():
+    """Every other enemy rarity, a Boss included, drops no piece; the Cataclysm Boss drops one (the control)."""
+    rng = random.Random(2853)
+    for enemy in loot.ENEMY_GEAR_DROPS:
+        expected = 1 if enemy == "Cataclysm Boss" else 0
+        assert len(loot.roll_the_cataclysm_bosses_piece(enemy, 1, 0.0, rng)) == expected, enemy

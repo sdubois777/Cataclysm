@@ -58,6 +58,12 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** Magic find for each floor cleared in the dungeon being walked: Manifest Wealth. */
 	float MagicFindPerFloorCleared = 0.0f;
 
+	/** A dismantle's drawn yields increased, on every piece: Salvage Protocol. Issue #2848, slice S2. */
+	float DismantleMaterialsIncreased = 0.0f;
+
+	/** A dismantle's drawn yields increased, on a piece of Superb or above: Disassembly Expert. Issue #2848, slice S2. */
+	float DismantleMaterialsIncreasedSuperbAndAbove = 0.0f;
+
 	/** Magic find for each whole five dungeons cleared this run: Dungeon Legend. */
 	float MagicFindPerFiveClears = 0.0f;
 

@@ -101,6 +101,9 @@ public:
 
 	/** The residue tools' buttons shown, the options asked, and a press of one. Issue #47, slice F5. */
 	const TArray<FCataclysmForgeOptionAction>& OptionActionsShown() const { return ShownOptionActions; }
+
+	/** The dismantle button shown for the piece chosen, none or one. Issue #2848, slice S2. */
+	const TArray<FCataclysmForgeOptionAction>& DismantleActionsShown() const { return ShownDismantleActions; }
 	FCataclysmForgeCraftOptions OptionsForTests() const { return Options; }
 	void ClickOptionForTests(FName ButtonName) { HandleActionClicked(ButtonName); }
 
@@ -172,6 +175,9 @@ private:
 
 	/** The residue tools' buttons, and the options the next craft on the chosen piece uses. Issue #47, slice F5. */
 	TArray<FCataclysmForgeOptionAction> ShownOptionActions;
+
+	/** The dismantle button, kept apart from the residue tools' so their count is unchanged. Issue #2848, slice S2. */
+	TArray<FCataclysmForgeOptionAction> ShownDismantleActions;
 	FCataclysmForgeCraftOptions Options;
 	int32 ShardsHeldNow = 0;
 	TArray<FCataclysmForgeGemCombineAction> ShownGemCombines;

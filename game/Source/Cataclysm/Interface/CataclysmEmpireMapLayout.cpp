@@ -130,11 +130,61 @@ FString UCataclysmEmpireMapLayout::CityLabel(const UCataclysmEmpireMap* Map,
 	// a city is at nothing would stop defending it, and a city at 0.4% is still
 	// standing and still savable.
 	//
-	// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE, so a point bought mid-run shows: a full Outpost reads 96% after one
-	// point of Foundation, the "1000 of 1050" of the coordinating session's S1. Issue #2741 slice 3a.
+	// OF THE MAXIMUM WITH THE EMPIRE UPGRADE TREE. Issue #2741 slice 3a. A point bought mid-run keeps the share, since
+	// issue #2859: an Outpost at 80% reads 80% after a point of Foundation, at 840 of 1050.
 	const int32 Percent = FMath::CeilToInt(Map->DefenceFractionOf(*City) * 100.0f);
 
 	return FString::Printf(TEXT("%s %d%%"), *Tier, FMath::Clamp(Percent, 0, 100));
+}
+
+bool UCataclysmEmpireMapLayout::CityOpensItsScreen(const UCataclysmEmpireMap* Map, int32 CityId)
+{
+	// EVERY CITY, A FALLEN ONE INCLUDED: its screen lists the Fallen City dungeon standing on it, with the Walk that
+	// retakes it, and an erased one's says it can never be retaken. Issue #2866.
+	return Map != nullptr && Map->Find(CityId) != nullptr;
+}
+
+bool UCataclysmEmpireMapLayout::IsCityDimmed(const UCataclysmEmpireMap* Map, int32 CityId)
+{
+	return MarkFor(Map, CityId) == ECataclysmCityMark::Fallen;
+}
+
+int32 UCataclysmEmpireMapLayout::FallenCityDungeonOn(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	if (Run == nullptr)
+	{
+		return INDEX_NONE;
+	}
+
+	for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
+	{
+		if (Dungeon.CityId == CityId && Dungeon.Type == ECataclysmDungeonType::FallenCity)
+		{
+			return Dungeon.DungeonId;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+FString UCataclysmEmpireMapLayout::FallenCityDetail(const UCataclysmEmpireRun* Run, int32 CityId)
+{
+	const FCataclysmCity* City = Run != nullptr && Run->Map != nullptr ? Run->Map->Find(CityId) : nullptr;
+	if (City == nullptr || !City->bFallen)
+	{
+		return FString();
+	}
+
+	// AN ERASED CITY LEAVES NO FALLEN CITY DUNGEON (`UCataclysmEmpireRun::AddFallenCityDungeon`), and `Retake` refuses it.
+	if (City->bErased)
+	{
+		return TEXT("erased by the Void, it can never be retaken");
+	}
+
+	// HOW IT COMES BACK, while the dungeon that brings it back stands on it. Issue #2866.
+	return FallenCityDungeonOn(Run, CityId) != INDEX_NONE
+		? FString(TEXT("fallen: walk its Fallen City dungeon to retake it (press the city, then Walk)"))
+		: FString(TEXT("fallen"));
 }
 
 FString UCataclysmEmpireMapLayout::StandingPart(const UCataclysmEmpireRun* Run)
@@ -737,6 +787,30 @@ FString UCataclysmEmpireMapLayout::ForgeButtonBrief()
 {
 	return TEXT("The Cataclysmic Forge: raise a piece of gear a level with two upgrade stones, or combine two stones "
 				"into one of the next level. It can be read at any time and used in the capital, not during a walk.");
+}
+
+FVector2D UCataclysmEmpireMapLayout::MerchantButtonPosition(float Scale, FVector2D PanelSize)
+{
+	// THE FORGE'S PLACE, ONE BUTTON AND ONE GAP LOWER, as the forge's is one button and one gap under the tree's.
+	const FVector2D Forge = ForgeButtonPosition(Scale, PanelSize);
+	const FVector2D Size = MerchantButtonSize(Scale);
+	return FVector2D(Forge.X, Forge.Y + ForgeButtonSize(Scale).Y * 0.5 + CataclysmDungeonWalkGapPx * Scale + Size.Y * 0.5);
+}
+
+FVector2D UCataclysmEmpireMapLayout::MerchantButtonSize(float Scale)
+{
+	return ForgeButtonSize(Scale);
+}
+
+FString UCataclysmEmpireMapLayout::MerchantButtonText()
+{
+	return TEXT("Merchant");
+}
+
+FString UCataclysmEmpireMapLayout::MerchantButtonBrief()
+{
+	return TEXT("The merchant: sell a carried piece of gear for gold, by its rarity and upgrade level. It can be read at "
+				"any time and used in the capital, not during a walk. A sale costs no day.");
 }
 
 FString UCataclysmEmpireMapLayout::LastRunWonLine(const UCataclysmEmpireRun* Run)

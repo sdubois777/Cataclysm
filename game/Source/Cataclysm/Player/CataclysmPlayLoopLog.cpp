@@ -394,6 +394,13 @@ FString FCataclysmPlayLoopLog::SkillChosenLine(const FString& Skill, const FStri
 	return FString::Printf(TEXT("put %s in the %s slot"), *Skill, *Slot);
 }
 
+FString FCataclysmPlayLoopLog::SkillsAddedLine(const FString& Weapon, int32 Built, int32 NotBuilt)
+{
+	const FString Who = Weapon.IsEmpty() ? FString(TEXT("the weapons")) : FString::Printf(TEXT("the %s"), *Weapon);
+	return FString::Printf(TEXT("%s added %d skill%s to the pool on no key, and %d not built yet"), *Who, Built,
+						   Built == 1 ? TEXT("") : TEXT("s"), NotBuilt);
+}
+
 FString FCataclysmPlayLoopLog::SkillForgottenLine(const FString& Slot)
 {
 	return FString::Printf(TEXT("forgot the %s slot's skill choice: it shows its default again"), *Slot);
@@ -538,6 +545,11 @@ FString FCataclysmPlayLoopLog::ForgeCleanseLine(const FString& ItemName, int64 G
 						   Days == 1 ? TEXT("") : TEXT("s"), DayFrom, DayTo);
 }
 
+FString FCataclysmPlayLoopLog::ForgeDismantleLine(const FString& ItemName, const FString& Given, int32 Day)
+{
+	return FString::Printf(TEXT("dismantled %s into %s; no gold and no days, day %d"), *ItemName, *Given, Day);
+}
+
 FString FCataclysmPlayLoopLog::ForgeDamageTypeLine(ECataclysmForgeDamageTypeCraft Craft, const FString& ItemName,
 												   const FString& FromType, const FString& ToType, int64 Gold,
 												   int32 ResidueBefore, int32 ResidueAfter, int32 Days, int32 DayFrom,
@@ -583,6 +595,12 @@ FString FCataclysmPlayLoopLog::ForgeEnchantmentWorkLine(bool bImprint, const FSt
 FString FCataclysmPlayLoopLog::PickedUpLine(const FString& ItemName, int32 GearLevel)
 {
 	return FString::Printf(TEXT("picked up %s, +%d"), *ItemName, GearLevel);
+}
+
+FString FCataclysmPlayLoopLog::SoldLine(const FString& ItemName, int32 GearLevel, int64 Gold, int64 Held)
+{
+	return FString::Printf(TEXT("sold %s, +%d, for %s; %s held"), *ItemName, GearLevel,
+						   *ACataclysmDroppedItem::GoldName(Gold), *ACataclysmDroppedItem::GoldName(Held));
 }
 
 FCataclysmPlayLoopLog::FHits FCataclysmPlayLoopLog::HitsOf(const UCataclysmEquipmentComponent& Worn)

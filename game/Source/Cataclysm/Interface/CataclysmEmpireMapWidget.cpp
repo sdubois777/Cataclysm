@@ -47,6 +47,12 @@ namespace
 	{
 		return FName(TEXT("CataclysmicForge"));
 	}
+
+	/** The name the "Merchant" button carries. No city's name can be it. Issue #48, slice S1. */
+	FName MerchantButtonName()
+	{
+		return FName(TEXT("CapitalMerchant"));
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +293,28 @@ void UCataclysmEmpireMapWidget::BuildCities()
 
 		ForgeButton = Button;
 	}
+
+	// AND THE MERCHANT'S, under the forge's: the owner's O5 of 2026-11-22, "Screen from the empire map". Always shown, as
+	// the forge's is: a sale during a walk is refused on the merchant's screen, which says why. Issue #48, slice S1.
+	if (UCataclysmChoiceButton* Button =
+			CreateWidget<UCataclysmChoiceButton>(this, ButtonClass))
+	{
+		Button->OnChoiceHovered.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityHovered);
+		Button->OnChoiceClicked.AddDynamic(
+			this, &UCataclysmEmpireMapWidget::HandleCityClicked);
+		Button->SetClipping(EWidgetClipping::ClipToBounds);
+
+		if (UCanvasPanelSlot* Placement =
+				Cast<UCanvasPanelSlot>(MapCanvas->AddChild(Button)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.5, 0.5));
+			Placement->SetAutoSize(false);
+		}
+
+		MerchantButton = Button;
+	}
 }
 
 void UCataclysmEmpireMapWidget::PlaceCities()
@@ -326,22 +354,46 @@ void UCataclysmEmpireMapWidget::PlaceCities()
 		const ECataclysmCityMark Mark =
 			UCataclysmEmpireMapLayout::MarkFor(Run->Map, Index);
 
-		// THREE STATES OUT OF THE CHOICE BUTTON'S OWN THREE APPEARANCES, rather
-		// than three more colour properties on this screen. A fallen city is
-		// unavailable and reads dim; an exposed one is chosen and reads bright,
-		// because it is the one the player has to decide about; a sealed one is
-		// plain.
+		// THREE STATES OUT OF THE CHOICE BUTTON'S OWN APPEARANCES, rather than
+		// three more colour properties on this screen. A fallen city reads dim;
+		// an exposed one is chosen and reads bright, because it is the one the
+		// player has to decide about; a sealed one is plain.
+		//
+		// A FALLEN CITY IS DIMMED AND STILL PRESSED, since issue #2866: its box
+		// opens its city screen, where the Fallen City dungeon standing on it is
+		// walked to retake it. Until then it was made unavailable, which reads the
+		// same and cannot be pressed, so a fallen city could not be retaken.
 		Button->SetChoice(
 			ButtonNameFor(Index),
 			FText::FromString(
 				UCataclysmEmpireMapLayout::CityLabel(Run->Map, Index)),
 			/*bChosen*/ Mark == ECataclysmCityMark::Exposed,
-			/*bAvailable*/ Mark != ECataclysmCityMark::Fallen);
+			/*bAvailable*/ UCataclysmEmpireMapLayout::CityOpensItsScreen(Run->Map, Index));
+		Button->SetDimmed(UCataclysmEmpireMapLayout::IsCityDimmed(Run->Map, Index));
 	}
 
 	PlaceCataclysmDungeon(Scale);
 	PlaceEmpireTreeButton(Scale, Size);
 	PlaceForgeButton(Scale, Size);
+	PlaceMerchantButton(Scale, Size);
+}
+
+void UCataclysmEmpireMapWidget::PlaceMerchantButton(float Scale, FVector2D PanelSize)
+{
+	if (MerchantButton == nullptr)
+	{
+		return;
+	}
+
+	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(MerchantButton->Slot))
+	{
+		Placement->SetPosition(UCataclysmEmpireMapLayout::MerchantButtonPosition(Scale, PanelSize));
+		Placement->SetSize(UCataclysmEmpireMapLayout::MerchantButtonSize(Scale));
+	}
+
+	MerchantButton->SetLabelScale(Scale);
+	MerchantButton->SetChoice(MerchantButtonName(), FText::FromString(UCataclysmEmpireMapLayout::MerchantButtonText()),
+							  /*bChosen*/ false, /*bAvailable*/ true);
 }
 
 void UCataclysmEmpireMapWidget::PlaceForgeButton(float Scale, FVector2D PanelSize)
@@ -602,6 +654,13 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 		return;
 	}
 
+	// AND THE MERCHANT'S. Issue #48, slice S1.
+	if (Value == MerchantButtonName())
+	{
+		DetailLabel->SetText(FText::FromString(UCataclysmEmpireMapLayout::MerchantButtonBrief()));
+		return;
+	}
+
 	const UCataclysmEmpireRun* Run = ShownRun();
 	const int32 CityId = CityForButton(Value);
 
@@ -624,7 +683,8 @@ void UCataclysmEmpireMapWidget::HandleCityHovered(FName Value)
 
 	if (City->bFallen)
 	{
-		Parts.Add(TEXT("fallen"));
+		// AND HOW IT COMES BACK: its Fallen City dungeon, walked from the screen its box opens. Issue #2866.
+		Parts.Add(UCataclysmEmpireMapLayout::FallenCityDetail(Run, CityId));
 	}
 	else
 	{
@@ -710,6 +770,18 @@ void UCataclysmEmpireMapWidget::HandleCityClicked(FName Value)
 		return;
 	}
 
+	// THE MERCHANT'S BUTTON OPENS THE MERCHANT'S SCREEN, counted for the same reason. Issue #48, slice S1.
+	if (Value == MerchantButtonName())
+	{
+		++MerchantRequests;
+		if (ACataclysmPlayerController* Controller =
+				Cast<ACataclysmPlayerController>(GetOwningPlayer()))
+		{
+			Controller->ToggleMerchant();
+		}
+		return;
+	}
+
 	const int32 CityId = CityForButton(Value);
 	const UCataclysmEmpireRun* Run = ShownRun();
 
@@ -791,6 +863,11 @@ void UCataclysmEmpireMapWidget::ClickEmpireTreeForTests()
 void UCataclysmEmpireMapWidget::ClickForgeForTests()
 {
 	HandleCityClicked(ForgeButtonName());
+}
+
+void UCataclysmEmpireMapWidget::ClickMerchantForTests()
+{
+	HandleCityClicked(MerchantButtonName());
 }
 
 int32 UCataclysmEmpireMapWidget::CityForButton(FName Value) const

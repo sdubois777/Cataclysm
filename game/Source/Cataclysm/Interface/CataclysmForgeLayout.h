@@ -268,6 +268,18 @@ public:
 																 const FCataclysmForgeCraftOptions& Options,
 																 int32 StabilizersHeld, int32 ShardsHeld, int32 EssenceHeld);
 
+	//~ Dismantling a carried piece. Issue #2848, slice S2.
+
+	/** The dismantle button's name. */
+	static FName DismantleButtonName();
+
+	/**
+	 * The dismantle button's label for the piece chosen, "Dismantle this piece (it is destroyed)", for a carried piece
+	 * with a rarity that is not the weapon made at creation, as `UCataclysmForge::DismantleOf` would take it; empty for any
+	 * other, worn ones included, which are offered none.
+	 */
+	static FString DismantleLabelFor(const FCataclysmItem& Item, bool bWorn);
+
 	//~ The three damage-type crafts. Issue #47, slice F4.
 
 	/**
