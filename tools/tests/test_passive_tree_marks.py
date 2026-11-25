@@ -95,7 +95,12 @@ def test_the_screen_draws_marks_thick_edges_and_one_name() -> None:
 
 
 def test_no_text_the_screen_shows_says_sigil() -> None:
+    # EVERY STRING IN THE CODE, NOT ONLY A WHOLE `TEXT("...")`: a sentence the screen shows is often two literals joined
+    # inside one `TEXT(...)`, and a pattern needing `")` after the first one read past the second (the guard proof that
+    # put "sigil" in the vow's opening line found it). `#include` lines are paths, not text.
     for path in (WIDGET_CPP, LAYOUT_CPP):
-        shown = re.findall(r'TEXT\("((?:[^"\\]|\\.)*)"\)', code(path))
+        without_includes = re.sub(r"^\s*#include[^\n]*", " ", code(path), flags=re.M)
+        shown = re.findall(r'"((?:[^"\\\n]|\\.)*)"', without_includes)
+        assert shown, f"no string read from {path.name}; the check reads the wrong thing"
         said = [text for text in shown if "sigil" in text.lower()]
         assert not said, f"{path.name} shows {said}: on screen it is the passive tree, not a sigil"
