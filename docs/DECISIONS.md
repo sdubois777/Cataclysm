@@ -132,7 +132,21 @@ Lingering Pull, and a character with only the starting node.
 
 ### What was run
 
-SUITE_FIGURES_C2
+**The whole Python suite on `b2b74d1b2`** (this entry with its figures not yet written in),
+`python -u -m pytest --junit-xml=<a path outside the repository>`: "1 failed, 8469 passed, 9 skipped in 382.06s
+(0:06:22)". The JUnit file agrees: tests 8479, failures 1, errors 0, skipped 9, so 8469 passed. The one failure is
+`tools/tests/test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+which the editor step clears when it rebuilds `DT_PassiveEffects`. The first run, on `ca9fcbb35`, failed six: that
+one and five checks that list what the code holds, each brought up to the Siphon in `fcf86b5d1` or by this entry.
+
+- `python -m ruff check .`: "All checks passed!"
+- `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs are up to date."
+- `python tools/reapply_death_trees_workbook.py --check`: "every Death row is already as this script writes it; nothing
+  written".
+- `python tools/check_resolved_cpp.py` on the 16 C++ files this slice changed: "16 files read, 0 with complaints".
+- Unity-build names: no anonymous namespace, no file-scope `static` or `FName` and no digit separator in a header added;
+  the Siphon's helpers are in `namespace CataclysmSiphonParts` and `CataclysmSiphonTest`, and each new test class and
+  helper is named in one file only.
 
 **Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
 `ca9fcbb35`, and each `proved`:
