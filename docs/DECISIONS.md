@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — The Necromancer's ranks: rows held by minions within reach, Ringed in Bone's slow immunity, and a minion's blow announced to its summoner (Death trees, slice C6d1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the conditions `minions_in_reach_at_least`
+  (`MinionsInReachAtLeast`, a count, judged against `OwnMinionDistancesMetres` within the row's `ReachMetres`) and
+  `target_carries_necrosis` (`TargetCarriesNecrosis`, no value, judged against `bTargetCarriesNecrosis`). The count
+  sentences: forty-six of the hundred compare nothing, and the hundred-and-first.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`: `WithEnemiesInReach` walks the
+  character's own followers through `UCataclysmCommand::ThingsCommandedBy` within the widest reach a
+  `MinionsInReachAtLeast` row asks; `WithTargetState` asks whether the target carries Necrosis (`bWantsNecrosis`, in
+  both the stop-early and the early-return lists).
+- `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`: any minion's blow that is not a machine's raises
+  `minion_hit` on its summoner, once. `CataclysmSkillEffects.cpp`: a thrall's landed blow raises it on its commander.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`: `IsImmuneTo` answers true for Slow when the
+  character's `immune_to_slow` stands above nought, asked with its conditions judged.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`: a follower's walk is multiplied by its commander's
+  `minion_movement_speed`. `CataclysmDamageCalculation.cpp`: a commanded defender's damage taken by its commander's
+  `minion_damage_taken`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`: `minion_movement_speed`, `minion_damage_taken` and
+  `immune_to_slow` in the list of stats with no attribute.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmMinionRanksTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (a
+  conditioned probe for `immune_to_slow`, and the table's pin, which had been left at 28); `CataclysmPassiveTreeTests.cpp`
+  (`ComparesNothing`); `CataclysmDataTableTests.cpp`; `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+  (two), `test_every_conditioned_stat_has_an_asker.py` (one, and the pin), `test_passive_effects_match_the_node_text.py`,
+  `test_the_condition_count_sentences_agree_with_the_code.py`, and the inventory in
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (649 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** The window over the whole Death line has to compile
+  it, rebuild `DT_PassiveEffects`, and run the groups under "Unreal tests".
+- **THE ENGINE'S CONDITIONED PROBE PIN WAS WRONG BEFORE THIS SLICE, AND IS FIXED HERE.** `FCataclysmEveryConditionedProbeTest`
+  stopped at `TestEqual(..., ConditionedProbes().Num(), 28)` while the table held 36: slices C3d to C4d3 each added a
+  probe and moved only the Python pin in `tools/tests/test_every_conditioned_stat_has_an_asker.py`. In the window that
+  test would have failed and run no probe. It is 37 now, with `immune_to_slow`, and
+  `test_the_engine_pins_the_conditioned_table_at_the_size_it_has` holds the two pins equal.
+- **RINGED IN BONE'S SLOW IS `immune_to_slow`, READ IN `UCataclysmSkillTemplate::IsImmuneTo`**, as ruled (a): the one
+  function every slow check goes through, bundle 1's player movement refresh included, so a slow is dropped, a War
+  aura's movement reduction is dropped, and a haste is kept. Asked with its conditions judged; nothing that lookup
+  reaches calls `IsImmuneTo`, so it cannot recurse. **A CORRECTION TO THE QUESTION THAT RULING ANSWERED:** it said no
+  stat for slow immunity existed. `movement_speed_reduction_suppressed` does, and Unstoppable's same clause uses it. It
+  drops movement reductions in `RefreshMovementSpeed` but not a War aura's share, which only `IsImmuneTo` drops, so the
+  ruled path is the wider one. Its stun and knockback are `crowd_control_resistance` flat 100, as Unstoppable's are.
+- **`minion_hit` IS RAISED ONCE FOR EACH BLOW**, as ruled (P2): a summoned minion's in `ACataclysmMinion::AttackTarget`,
+  landed only when not evaded and not refused as immune to its attacker, whatever Conduit does with `hit_dealt`; a
+  thrall's landed blow in `ApplyHit`, once for each target an ability of its strikes. It carries the enemy struck, and
+  no strike on that enemy is ruled, so it is listed in `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`.
+- **A FAULT FOUND BEFORE THE COMMIT, AND FIXED.** `bWantsNecrosis` was declared and set but in neither of
+  `WithTargetState`'s two lists, so Grave Cold's condition would have refused; `test_every_target_question_reaches_both_lists_in_with_target_state`
+  found it.
+
+### What each reads
+
+- **GRAVEKEEPER'S HIDE (basic, 10 points):** `max_health` 1% increased a point; `armor` 1% increased a point while
+  three or more minions are within 6 metres.
+- **SHIELDING RANKS (basic, 10 points):** `damage_reduction` 1% increased a point while five or more are within 6 metres.
+- **STEADFAST AMONG THEM (basic, 6 points):** `crowd_control_resistance` 2% increased a point, and 2% more a point
+  while five or more are within 6 metres ("doubled").
+- **RINGED IN BONE (keystone):** `crowd_control_resistance` flat 100 and `immune_to_slow` flat 1, both while five or
+  more are within 6 metres.
+- **COLD HANDS (basic, 10 points):** an `apply_status` of Necrosis on `minion_hit`, 4% chance a point.
+- **GRAVE COLD (keystone):** the same at 100%; `minion_damage` 15% more against a target carrying Necrosis, from anyone.
+- **HASTY DEAD (basic, 8 points):** `minion_attack_speed` and `minion_movement_speed`, each 2% increased a point.
+- **GRAVE PACT (keystone):** `minion_damage_taken` 30% less.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Gravekeeper's Hide | max_health, increased, 1; armor, increased, 1, cond=minions_in_reach_at_least 3, reach 6 |
+| Shielding Ranks | damage_reduction, increased, 1, cond=minions_in_reach_at_least 5, reach 6 |
+| Steadfast Among Them | crowd_control_resistance, increased, 2; the same under minions_in_reach_at_least 5, reach 6 |
+| Ringed in Bone | crowd_control_resistance, flat, 100; immune_to_slow, flat, 1; both under minions_in_reach_at_least 5, reach 6 |
+| Cold Hands | apply_status 4 on minion_hit, Necrosis |
+| Grave Cold | apply_status 100 on minion_hit, Necrosis; minion_damage, more, 15, cond=target_carries_necrosis |
+| Hasty Dead | minion_attack_speed, increased, 2; minion_movement_speed, increased, 2 |
+| Grave Pact | minion_damage_taken, more, -30 |
+
+`PassiveEffects.csv` 636 to 649; the Necromancer 19 to 32 rows. The pins: rows 649, nodes 386, options 55 (unchanged).
+
+### Rulings recorded here
+
+The coordinating session's, 2026-11-25, on the C6d/C6e plan: P2, `minion_hit` raised once for each landed blow; P3,
+the minion count read over the character's own followers within the row's reach. On Ringed in Bone's slow: option (a),
+`immune_to_slow` read inside `IsImmuneTo` with its conditions judged, with the tests named under "Unreal tests". P1,
+`minion_death`, moved to slice C6d2.
+
+### Research
+
+None new. Each is the node's own sentence on pieces already built: own followers (`ThingsCommandedBy`, issue #1715),
+the summoner's minion stat lines (`SummonerMultiplierFor`), `apply_status` (issue #1833 group E), and bundle 1's slow
+immunity.
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.MinionRanks.` | new: `RingedInBoneHoldsOffASlowWithFiveMinionsWithinSixMetresAndNotWithFour`, `TheMinionCountComparesAtLeastAndCountsOnlyTheCharactersOwnFollowers`, `AMinionsBlowRaisesMinionHitOnceAndGraveColdsNecrosisRaisesItsDamage`, `WithNoRowOnMinionHitAMinionsBlowAppliesNoNecrosis`, `HastyDeadRaisesAFollowersWalkByTheSummonersMinionMovementSpeed`, `GravePactMakesTheSummonersMinionsTakeThirtyPercentLess`, `TheEightNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | the conditioned probe table runs `immune_to_slow`, and its pin is 37 | unchanged |
+| `Cataclysm.DamageTypeAuras.` | `APlayerImmuneToSlowIgnoresAMovementReductionAndKeepsTheRest`, bundle 1's, unchanged and still passing | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 649 | unchanged |
+
+Each new test has a control: four minions and one beyond reach; another summoner's three; two of the character's own;
+an enemy with no Necrosis; a summoner with no row; the walk and the loss before the row.
+
+**One C++ guard proof is registered for the window**, under the bundling ruling: `CataclysmSkillTemplate.cpp`,
+`IsImmuneTo`: the `immune_to_slow` clause's `> 0.0f` made `> 1.0f`, so the flag of 1 never answers. Prefix
+`Cataclysm.MinionRanks.`; must fail `RingedInBoneHoldsOffASlowWithFiveMinionsWithinSixMetresAndNotWithFour`.
+
+### What was run
+
+FIGURES_HERE
+
+---
+
 ## 2026-11-25 — How Fervour is lost, and what fills past the bar: Miser's Grip, Soulbound, Overflow and Unbroken Chain (Death trees, slice C6c)
 
 **Affects:**
