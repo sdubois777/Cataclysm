@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-25 — Explosions at a kill: Passed On and The Ferryman (Death trees, slice C4c1)
+
+**Affects:**
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `BurstSlainForMaximumHealthAction`,
+  `OverkillExplosionRadiusMetresStat`, `TakePendingOverkillExplosionRadiusCm`, `TakePendingSlainBurstSharePercent`,
+  `SetActingOnAKillByAHit`; `ActOnEvent` records the overkill explosion's radius and The Ferryman's share;
+  `CurrentConditions` fills the new state field.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`: the condition `killing_blow_was_a_hit`
+  (`KillingBlowWasAHit`) and its state field; `FCataclysmPoolAction::bBurstSlainForMaximumHealth`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`: `SlainBurstRadiusCm`.
+- `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp`: `PassiveEnchantmentPrefix`, which
+  `EnchantmentNameFor` now builds with.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp`: `BurstTheSlain`, the one place The Ferryman's
+  burst is made; `CreditAFollowersKill` calls it for a follower's kill Death's Toll makes the character's, and now takes
+  its commander as `AActor*`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: the kill handler marks its kill's rows as made by a hit
+  or a tick, hands the explosion its radius, and calls `BurstTheSlain`.
+- `game/Source/Cataclysm/Items/CataclysmItem.cpp` and `Character/CataclysmPlayerClassStats.cpp`.
+- Tests: `game/Source/Cataclysm/Tests/CataclysmDeathBurstsTests.cpp`, new (7); `CataclysmStatExemptionTests.cpp` (a
+  probe), `CataclysmPassiveTreeTests.cpp` (`ComparesNothing`) and `CataclysmDataTableTests.cpp`;
+  `tools/tests/test_charge_and_placed_action_names_match_the_engine.py` (two), `test_kill_credit_reaches_the_soul_collector.py`,
+  `test_generate_datatables.py` (one), `test_passive_effects_match_the_node_text.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`.
+- `tools/generate_datatables.py`, `tools/reapply_death_trees_workbook.py`, `docs/All_Things_Cataclysm.xlsx`,
+  `game/Data/PassiveEffects.csv` (573 rows), `docs/README.md`.
+
+### SAID FIRST
+
+- **NONE OF THIS SLICE'S C++ HAS BEEN COMPILED OR RUN IN UNREAL.** A window has to compile, rebuild `DT_PassiveEffects`,
+  and run the groups under "Unreal tests".
+- **TWO COMMENTS WERE FALSE AND ARE CORRECTED.** `UCataclysmSkillEffects::ExplodeForOverkill` said "NOTHING CALLS THIS AT
+  A KILL YET" and `TakePendingOverkillExplosionSharePercent` said "NOT BUILT YET"; the player's kill handler has called
+  both since the overkill explosion was finished.
+- **A ROW'S RADIUS IS READ FROM ITS TRIGGER KEY.** A passive node's row has an enchantment name beginning `Passive_`, and
+  no item enchantment does (`UCataclysmPassiveTree::EnchantmentNameFor`); the same reading as Death's Toll's filter in
+  slice C4b2. No new column.
+
+### What each reads
+
+- **PASSED ON** is the existing `explode_victim_for_overkill` at 50, under the new condition, with a second row,
+  `overkill_explosion_radius_metres` flat 3. The chain already existed: a creature the explosion kills is a kill of its
+  own, announced after this death (`AfterThisDeathIsHeard`), and explodes for its own, smaller overkill.
+- **THE RADIUS, AS RULED (Q2):** each overkill row that acts gives a radius: a passive node's row, the stat when the
+  character holds it; an item's row, and a passive row without the stat, the old 5 metres
+  (`OverkillExplosionRadiusCm`). The explosion reaches the largest, kept beside the largest share. Passed On alone: 3
+  metres. The item enchantment "Enemies killed by you explode for the overkill amount" alone: 5. Both: the larger share
+  at 5, so holding Passed On never shrinks an item's explosion.
+- **"YOUR HIT", AS RULED (Q3):** the death notice already says whether the killing blow was a tick
+  (`FCataclysmDeathNotice::bByDamageOverTime`), so the new condition `killing_blow_was_a_hit` reads a mark the kill
+  handler sets around its kill's rows from it, and clears after. It holds on an own kill made by a hit and nowhere else;
+  a state nobody marked refuses. It takes no value and compares no number. A follower's kill that Death's Toll makes the
+  character's is not marked, so it explodes nothing: it was not the character's hit.
+- **THE FERRYMAN** is a new action, `burst_slain_for_share_of_maximum_health`, at 10 on `kill` under
+  `class_resource_at_maximum`. It is recorded as the two explosions are and made by the kill handler through
+  `ExplodeForOverkill`, with the slain creature's maximum health as the figure, unscaled by the killer's increases, at 4
+  metres (`SlainBurstRadiusCm`, Q5), handed to the announcer. So a creature the burst kills raises `kill`, and bursts in
+  turn while the bar is full (Q4); the bar is judged when the kill's rows act, after the kill's own payment.
+- **THE FERRYMAN AND DEATH'S TOLL.** A follower's kill Death's Toll makes the character's raises `kill` to the Soul
+  Collector's rows (slice C4b2), The Ferryman's among them, so it bursts too: `CreditAFollowersKill` takes the share its
+  rows recorded and calls the same `BurstTheSlain`, with the character as the killer, so the burst's kills are the
+  character's own and burst in turn. Found while this entry was written; until then the row recorded a share for a
+  follower's kill that nothing made. Passed On's explosion is not made for a follower's kill: its row asks for the
+  character's own hit.
+
+### The rows
+
+| Node | Rows |
+|---|---|
+| Passed On (keystone) | action explode_victim_for_overkill, 50, on kill, cond=killing_blow_was_a_hit; overkill_explosion_radius_metres, flat, 3 |
+| The Ferryman (vow 200, option 2) | action burst_slain_for_share_of_maximum_health, 10, on kill, cond=class_resource_at_maximum |
+
+`PassiveEffects.csv` 570 to 573; the Soul Collector 113 rows.
+
+### Rulings recorded here
+
+The coordinating session's answers of 2026-11-25 to the C4c plan: Q1, C4c1 (Passed On, The Ferryman) then C4c2 (Grim
+Wake, Blood Debt); Q2, the radius stat, the explosion reaching the largest radius any source gives, all three cases
+tested; Q3, a value-less kill-side condition for "your hit", the notice telling a hit from a tick; Q4, The Ferryman's
+full bar judged when the kill's rows act, each link of the chain judged again; Q5, the burst unscaled, at 4 metres. And
+for slice C4c2: Q6, Grim Wake's record, condition and rows, followers' kills under Death's Toll marking too, "from you"
+the character's own hits; Q7 (a) to (e), Blood Debt laid as a Bleed, the strongest enemy by rarity then current health
+then nearness, 10 metres, `RemainingDamageOverTime`, and no Blood Debt for a death inside another row's action.
+
+### Research
+
+Read on 2026-11-25 at `poedb.tw/us/Explode` (part of the page; `poedb.tw/us/Overkill` does not exist):
+
+| Game | What it says |
+|---|---|
+| Path of Exile | Explosions on a kill are sized by a share of the killed enemy's maximum Life, for example the Crusader's prefix "Enemies you Kill have a (11—20)% chance to Explode, dealing a tenth of their maximum Life as Physical Damage" |
+
+What it settles: The Ferryman's burst sized by the slain creature's maximum health is the genre's shape. Not settled by
+it: a radius (no line read states one) and whether an explosion's kills explode again (no line read says); both come
+from The Ferryman's own sentence. The overkill explosion's 5 metres was already a labelled judgement against the 2 metres
+a Path of Exile page gives (its comment, 2026-10-07).
+
+### Unreal tests
+
+| Group | Change | Predicted |
+|---|---|---|
+| `Cataclysm.DeathBursts.` | new: `PassedOnsRadiusIsTheLargestAnySourceGives`, `PassedOnActsOnlyOnAKillByAHit`, `TheFerrymanBurstsOnlyWhileTheBarIsFull`, `TheFerrymansBurstChainsThroughTheRealKillHandler`, `TheFerrymanBurstsForAFollowersKillUnderDeathsToll`, `PassedOnExplodesWithinThreeMetresThroughTheRealKillHandler`, `TheTwoNodesRowsAreTheirSentences` | 7 |
+| `Cataclysm.StatExemption.` | `EveryStatWithNoAttributeIsActuallyRead` runs one new probe | unchanged |
+| `Cataclysm.Passives.` | `ComparesNothing` names the new condition | unchanged |
+| `Cataclysm.Data.` | `EveryGeneratedTableImports`: PassiveEffects 573 | unchanged |
+
+The three through the real kill handler build the scene `Cataclysm.Swarm.` builds: a real player on a real player state,
+and for the follower's kill its real imp.
+Each new test has a control: Passed On's row with no radius stat; a kill by a tick and a kill unmarked; a bar at 99; a
+creature 4.5 metres from the first burst; the imp's kill without Death's Toll; a creature inside the old 5 metres and
+outside Passed On's 3.
+
+**Three C++ guard proofs are registered for the window:**
+1. `CataclysmAbilitySystemComponent.cpp`, `ActOnEvent`: `const bool bPassiveRow =` and the `StartsWith` line after it
+   become `const bool bPassiveRow = true;`. Prefix `Cataclysm.DeathBursts.`; must fail
+   `PassedOnsRadiusIsTheLargestAnySourceGives` (the item alone at 300 rather than 500).
+2. `CataclysmAbilitySystemComponent.cpp`, `CurrentConditions`: `State.bKillingBlowWasAHit = bActingOnAKillByAHit;` becomes
+   `State.bKillingBlowWasAHit = true;`. Prefix `Cataclysm.DeathBursts.`; must fail `PassedOnActsOnlyOnAKillByAHit`.
+3. `CataclysmFervour.cpp`, `BurstTheSlain`: `UCataclysmSkillEffects::SlainBurstRadiusCm);` becomes
+   `UCataclysmSkillEffects::OverkillExplosionRadiusCm);`. Prefix `Cataclysm.DeathBursts.`; must fail
+   `TheFerrymansBurstChainsThroughTheRealKillHandler` (the creature 4.5 metres off killed).
+
+### What was run
+
+SUITE_FIGURES_C4C1
+
+**Five Python guard proofs**, each with `break_and_run` from `tools/prove_guard.py` in a `git archive` copy of
+`cf4af7f21`, and each `proved`:
+
+| Break | Named failures |
+|---|---|
+| The kill handler marking every kill as made by a hit | `test_charge_and_placed_action_names_match_the_engine.py::test_passed_on_reads_the_hit_mark_and_takes_the_largest_radius_any_row_gives` |
+| Every overkill row treated as a passive node's for its radius | the same test |
+| The Ferryman's burst made at the overkill explosion's radius | `test_charge_and_placed_action_names_match_the_engine.py::test_the_ferrymans_burst_is_recorded_and_made_at_the_kill_by_the_same_explosion` |
+| Passed On's row losing its condition | `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py::test_every_condition_a_sentence_states_is_carried_by_one_of_its_rows`, the check of the slice before this one, catching a lost condition on a new row |
+| The Ferryman's burst at 20 rather than 10 | `test_passive_effects_match_the_node_text.py::test_every_value_appears_in_the_nodes_own_description` |
+
+---
+
 ## 2026-11-25 — A passive node whose sentence states a condition has a row carrying it (Death trees, the check after slice C4b)
 
 **Affects:** `tools/tests/test_a_sentence_stating_a_condition_has_a_row_carrying_it.py`, new (3). No game code and no data.
