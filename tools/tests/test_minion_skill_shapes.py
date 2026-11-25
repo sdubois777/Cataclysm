@@ -17,6 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
+import reapply_death_skills_workbook as death_rows  # noqa: E402
 
 
 def skills() -> list[dict]:
@@ -25,8 +26,36 @@ def skills() -> list[dict]:
         return list(csv.DictReader(handle))
 
 
+def waiting_on_code() -> set[str]:
+    """The Death rows entered with no shape because the code they need is not built yet. Issue #2885.
+
+    NOT PROSE, WHICH IS WHAT ISSUE #338 WAS ABOUT. Each one's whole shape is data in
+    `tools/reapply_death_skills_workbook.py`, beside the code piece it waits on, and
+    the script writes it into the workbook the moment that piece is built. Until then
+    the game grants the row as the designed placeholder that does nothing.
+    """
+    return {row.csv_name for row in death_rows.ROWS if not row.works}
+
+
 def minion_skills() -> list[dict]:
-    return [r for r in skills() if "Type.Minion" in r["Tags"]]
+    """Every row tagged `Type.Minion`, less the Death rows waiting on code."""
+    waiting = waiting_on_code()
+    return [r for r in skills() if "Type.Minion" in r["Tags"] and r["Name"] not in waiting]
+
+
+def test_a_minion_skill_waiting_on_code_states_no_half_of_a_shape():
+    """THE EXEMPTION ABOVE IS NARROW, and this is what keeps it so. A waiting row is
+    left out of every check below only while it has neither a Shape nor Shape Params,
+    which is how the re-apply script enters it; a row given half a shape by hand, or a
+    row the script now writes whole, is checked like any other."""
+    waiting = waiting_on_code()
+    tagged = [r for r in skills() if "Type.Minion" in r["Tags"] and r["Name"] in waiting]
+    assert tagged, "no Death minion row waits on code, so the exemption guards nothing and can go"
+    for row in tagged:
+        assert not row["Shape"] and not row["ShapeParams"], (
+            f"{row['Name']} ({row['SkillName']}) is listed as waiting on "
+            f"{death_rows.ROWS[[r.csv_name for r in death_rows.ROWS].index(row['Name'])].waits_on} and has "
+            f"Shape {row['Shape']!r} and Shape Params {row['ShapeParams']!r}")
 
 
 def minion_types() -> set[str]:
@@ -164,6 +193,40 @@ def _tables(skill_params, types=("Imp",)):
     return {"WeaponSkills": [{"Name": "Test", "Shape": "Summon",
                               "ShapeParams": skill_params}],
             "MinionTypes": [{"Name": n} for n in types]}
+
+
+def test_a_taunting_row_is_read_on_a_summon_and_a_deployable():
+    """THE CONTROL for the two refusals below: issue #2885's C3, `Taunts=1`, on
+    Shallow Graves' own cell and on a placed machine's, parses."""
+    assert gen.parse_shape_params(
+        "Range=10; Radius=4; Count=4; Duration=8; Minions=Husk:4; FervourReserve=3; Taunts=1",
+        "Summon", "Shallow Graves")["Taunts"] == "1"
+    assert gen.parse_shape_params(
+        "Radius=8; Count=1; Duration=5; Interval=1; Minions=BoltTurret:1; Taunts=1",
+        "Deployable", "a taunting machine")["Taunts"] == "1"
+
+
+def test_a_taunting_row_with_no_radius_is_refused():
+    """A taunt reaches the enemies within the row's Radius of each minion, so
+    without one it would taunt nobody and nothing would say so."""
+    with pytest.raises(gen.DataError, match="no Radius above nought"):
+        gen.parse_shape_params("Count=1; Duration=8; Minions=Imp:1; Taunts=1",
+                               "Summon", "a taunt with no radius")
+
+
+def test_a_taunting_row_that_possesses_is_refused():
+    """A thrall is taken, not raised, so it never passes through `SummonOne`
+    and nothing would be told to taunt."""
+    with pytest.raises(gen.DataError, match="possesses"):
+        gen.parse_shape_params("Range=15; Radius=1.5; MaxTargets=1; Possess=1; Taunts=1",
+                               "Summon", "a taunting take")
+
+
+def test_a_taunt_is_not_a_key_of_any_other_shape():
+    """Only what a row raises or places can taunt; a strike stating it is refused
+    as an unknown parameter, as every other misplaced key is."""
+    with pytest.raises(gen.DataError, match="has no parameter 'Taunts'"):
+        gen.parse_shape_params("Radius=4; Angle=90; Taunts=1", "Strike", "a taunting swing")
 
 
 def test_a_skill_producing_a_type_with_no_stat_block_is_refused():

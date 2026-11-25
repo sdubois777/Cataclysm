@@ -96,15 +96,19 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # charges have no way to differ. No enemy ability states it yet.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
                  "RearHits"),
+    # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
+    # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
+    # taunts the enemies within the row's Radius of it. No enemy ability uses it.
     "Summon": ("Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent"),
+               "HealthThresholdPercent", "Taunts"),
     # `FervourReserve` joined on 2026-09-08, when the project owner ruled that
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all
     # Deployable and all three gained the key. No enemy ability uses it.
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent", "FervourReserve"),
+                   "Interval", "Minions", "HealthPercent", "FervourReserve",
+                   "Taunts"),
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.

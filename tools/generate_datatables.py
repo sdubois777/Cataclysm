@@ -620,9 +620,16 @@ SHAPE_PARAMS = {
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
                  "RearHits"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
+    #
+    # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
+    # Crossbow draft's C3, approved by the owner that day for the Greataxe's
+    # Shallow Graves, whose husks "turn the enemies around them on themselves".
+    # Each minion the row raises taunts every enemy within the row's `Radius` of
+    # it as it rises and once a second after (`ACataclysmMinion::BeginTaunting`).
+    # A threat figure could not say it: only Behind the Veil reads one.
     "Summon": {"Range", "Radius", "Count", "MaxActive", "Duration", "Interval",
                "Minions", "MaxTargets", "Possess", "FervourReserve",
-               "HealthThresholdPercent"},
+               "HealthThresholdPercent", "Taunts"},
     # AN EIGHTH SHAPE, added with issue #338. A summon spawns things that walk to
     # the enemy; a deployable places things that stay where they are put. The
     # split is behavioural and the data already carried it as a tag -- Bolt
@@ -638,8 +645,14 @@ SHAPE_PARAMS = {
     # Deployable -- Bolt Turret, Ballista and Iron Fortress -- and the shape
     # did not allow it, so the generator refused them. Summon already allowed
     # it because Subjugate has carried it since 2026-09-01.
+    #
+    # `Taunts` JOINED ON 2026-11-24, as on Summon above: a placed machine
+    # taunts every enemy within the row's `Radius` of it each `Interval`, or
+    # each second when the row states none. The Death Crossbow's Effigy is the
+    # row it was drafted for (issue #2885); it waits on the Siphon (C4).
     "Deployable": {"Range", "Radius", "Count", "MaxActive", "Duration",
-                   "Interval", "Minions", "HealthPercent", "FervourReserve"},
+                   "Interval", "Minions", "HealthPercent", "FervourReserve",
+                   "Taunts"},
     "Aura": {"Radius", "Duration", "Interval"},
     "Debuff": {"Range", "Radius", "MaxTargets", "Duration",
                "SpreadWhen", "SpreadRadius"},
@@ -726,7 +739,32 @@ def parse_shape_params(text: str, shape: str, where: str) -> dict[str, str]:
         params[key] = value
 
     check_stalker_kit_keys(params, shape, where)
+    check_taunt_keys(params, where)
     return params
+
+
+def check_taunt_keys(params: dict[str, str], where: str) -> None:
+    """Refuse a `Taunts` that could not taunt anything. Issue #2885, C3.
+
+    TWO WAYS, EACH A ROW THAT WOULD RUN AND QUIETLY DO NOTHING. A taunt reaches
+    the enemies within the row's `Radius` of each minion, so a row stating no
+    radius taunts nobody. And a summon that possesses (Subjugate) makes no
+    minion of its own: the thrall it takes never passes through
+    `UCataclysmSummonSkill::SummonOne`, so nothing would be told to taunt.
+    A value of nought is the key switched off and passes.
+    """
+    if "Taunts" not in params or float(params["Taunts"]) == 0.0:
+        return
+    if float(params.get("Radius", "0")) <= 0.0:
+        raise DataError(
+            f"{where}: states Taunts={params['Taunts']} and no Radius above "
+            f"nought. A taunt reaches the enemies within the row's Radius of "
+            f"each minion, so this one would taunt nobody")
+    if float(params.get("Possess", "0")) != 0.0:
+        raise DataError(
+            f"{where}: states Taunts={params['Taunts']} on a summon that "
+            f"possesses. A thrall is taken, not raised, so nothing the row "
+            f"makes would be told to taunt")
 
 
 def check_stalker_kit_keys(params: dict[str, str], shape: str,

@@ -56,14 +56,27 @@ def book_with(tmp_path: pathlib.Path, rows: list[list]):
     return openpyxl.load_workbook(path, data_only=True)
 
 
-def test_subjugates_row_states_30_and_no_other_row_states_any():
+#: The other rows that state a Fervour cost of their own, and what. The Death
+#: draft the owner approved on 2026-11-24 (issue #2885) applies Subjugate's
+#: reasoning to the three permanent raises, "a permanent raise costs what one
+#: cast reserves", quoting the owner on #2801: "I assumed it cost 30 fervour
+#: because it reserves 30, which would make sense." Two guards at 10 each, one
+#: Reaper at 15 and two mages at 10 each.
+PERMANENT_RAISES = {"Death_Greatsword_Ultimate": 20.0,
+                    "Death_Greataxe_Ultimate": 15.0,
+                    "Death_Staff_Ultimate": 20.0}
+
+
+def test_subjugates_row_states_30_and_only_the_permanent_raises_state_any_other():
     by_name = {row["Name"]: row for row in rows_of("WeaponSkills.csv")}
     assert float(by_name[SUBJUGATE]["FervourCost"]) == 30.0
     assert by_name[SUBJUGATE]["SkillName"] == "Subjugate"
-    stating = sorted(name for name, row in by_name.items()
-                     if float(row["FervourCost"]) != gen.UNSTATED_SKILL_NUMBER)
-    assert stating == [SUBJUGATE], (
-        "the owner's ruling names Subjugate alone; every other row takes its "
+    stating = {name: float(row["FervourCost"]) for name, row in by_name.items()
+               if float(row["FervourCost"]) != gen.UNSTATED_SKILL_NUMBER
+               and name != SUBJUGATE}
+    assert stating == PERMANENT_RAISES, (
+        "the owner's ruling names Subjugate, and the Death draft approved on "
+        "2026-11-24 its three permanent raises; every other row takes its "
         f"slot's Fervour cost, and these state their own: {stating}")
 
 

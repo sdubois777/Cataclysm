@@ -5658,7 +5658,23 @@ bool UCataclysmSkillEffects::ApplyNamedEffectOnly(
 		// the one that matters: `UCataclysmTeams` reads the tag and makes the
 		// creature hostile to everything, so there is no number to apply and
 		// nothing is missing.
-		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds);
+		//
+		// BUT A CRIPPLE'S SIZE TRAVELS ON ITS TAG, AND UNTIL 2026-11-24 THIS DROPPED
+		// IT. Issue #2885: `CrippleMultiplierOn` reads the strength the running
+		// application stated, so a skill row's `Effect=Cripple; EffectMagnitude=20`
+		// slowed by the Cripple row's own 30 -- the Death Greatsword's Grave Muster
+		// and Fist's Nightshade state 20. Stated now, held to the row's cap, as a
+		// ground zone's slow already is (`ACataclysmGroundZone`, which found the
+		// same drop on 2026-10-06 and went round it). A magnitude of nought states
+		// nothing, which is every caller but a skill row's, and every other effect
+		// whose row moves no stat still states nothing, as before.
+		float StatedCrippleStrength = 0.0f;
+		if (Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())
+		{
+			const float CrippleCap = NumbersForEffectTag(EffectTag).StrengthCap;
+			StatedCrippleStrength = CrippleCap > 0.0f ? FMath::Min(Magnitude, CrippleCap) : Magnitude;
+		}
+		return ApplyTagForDuration(Instigator, Target, EffectTag, DurationSeconds, StatedCrippleStrength);
 	}
 
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);

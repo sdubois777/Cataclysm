@@ -91,6 +91,10 @@ AURAS: dict[str, tuple[str, float | None, str]] = {
     "Celestial_Warhammer_Support": (
         "Aegis of Dawn", None,
         "a push each second; the Support slot's nought before the ruling too"),
+    "Death_Greatsword_Support": (
+        "Grave Muster", None,
+        "a Cripple each second and an ally bonus; no damage named. Approved by "
+        "the owner on 2026-11-24 (#2885)"),
 }
 
 #: Words a sentence uses when the aura itself deals damage. A row stating none

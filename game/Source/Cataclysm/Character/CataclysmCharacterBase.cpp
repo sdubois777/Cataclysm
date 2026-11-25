@@ -380,6 +380,13 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// refuses a corpse itself. Its return value is for tests.
 	UCataclysmTauntAura::Step(this);
 
+	// AND A MINION ITS ROW TELLS TO TAUNT, `Taunts=1`, TAUNTS THE ENEMIES NEAR IT ONCE A BEAT. Issue #2885, the Death
+	// Crossbow draft's C3, approved by the owner on 2026-11-24: the Greataxe's Shallow Graves' husks. On this step for
+	// the reason the aura above is: a beat a quarter of a second late at worst, and no timer of its own. The call
+	// answers nought for every character that is not such a minion and refuses a corpse itself. Its return value is for
+	// tests.
+	ACataclysmMinion::RowTauntStep(this);
+
 	// AND A WEARER OF TYRANT'S CHAINS' TEN PIECES HAS ITS TYRANT'S MINION CAST ITS
 	// ULTIMATE ON A CLOCK. Ruled 2026-10-17 (#7) and 2026-10-18 (T6): the keyed
 	// skill gadget's clock, looked at here as `GadgetStep` looks at a gadget's, so

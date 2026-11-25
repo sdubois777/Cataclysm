@@ -916,17 +916,25 @@ class TestTheDocumentMatchesTheSkillTable:
             "the knockdown half of the anti-stun-lock rule covers nothing. "
             "Either a skill was renamed or the rule can be simplified.")
 
-    def test_every_knockdown_is_longer_than_every_skill_stun(self):
+    def test_the_longest_knockdown_is_longer_than_every_skill_stun(self):
         """The document's argument rests on this, so it is checked, not asserted.
 
-        If a knockdown were shorter than the stuns, leaving it outside the rule
-        would be arguable. It is not: the shortest knockdown is longer than the
-        longest stun a skill grants.
+        If every knockdown were shorter than the stuns, leaving it outside the
+        rule would be arguable. It is not: the longest hold in the game is a
+        knockdown, which is what "the longest hold in the game is the one
+        nothing limits" says.
+
+        THIS ASKED FOR THE SHORTEST KNOCKDOWN UNTIL 2026-11-24, when the Death
+        skills (issue #2885) brought Open Grave's 1 second and Last Toll's 1.5,
+        no longer than Shield Bash's 1.5 second stun. The rule covers them as it
+        covers a stun of the same length, and the document says so beside the
+        two Ultimates; the shortest is still held to the 0.75 second floor by
+        the test below.
         """
         knockdowns = self._durations(r"knocked down for ([\d.]+) second")
         stuns = self._durations(r"stun\w*[^.]*?for ([\d.]+) second")
         assert stuns, "no skill states a stun duration any more"
-        assert min(knockdowns.values()) > max(stuns.values()), (
+        assert max(knockdowns.values()) > max(stuns.values()), (
             f"knockdowns run {sorted(knockdowns.values())} and skill stuns run "
             f"{sorted(stuns.values())}. The design document argues a knockdown "
             "must be covered by the anti-stun-lock rule because it is the "

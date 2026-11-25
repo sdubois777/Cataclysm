@@ -3145,6 +3145,27 @@ void UCataclysmMovementSkill::HitWhatThePathCrossed(const TArray<AActor*>& Cross
 	}
 }
 
+void UCataclysmMovementSkill::LayTheRowsEffectsOn(const TArray<AActor*>& Struck)
+{
+	// A ROW THAT LEAVES GROUND OF ITS OWN LAYS ITS EFFECT THROUGH THAT GROUND, as Foul Wake has since 2026-09-02. See the
+	// header: a judgement of 2026-11-24, issue #2885.
+	if (Params.Effect.IsEmpty() || Params.LeavesGround())
+	{
+		return;
+	}
+
+	// ON WHAT THE BLOW LANDED ON, as `UCataclysmStrikeSkill::SwingOnce` lays a Strike's: an evaded blow carries nothing
+	// (#1156), and a move dealing no damage still curses, because `BlowLandedOn` answers yes for a target no blow was
+	// sent at.
+	for (AActor* Target : Struck)
+	{
+		if (IsValid(Target) && BlowLandedOn(Target))
+		{
+			ApplyNamedEffectsTo(Target);
+		}
+	}
+}
+
 void UCataclysmMovementSkill::HitScaledAsACharge(const TArray<AActor*>& Targets,
 												 const TArray<AActor*>& Consumed,
 												 float ChargedCm,
@@ -3737,6 +3758,11 @@ void UCataclysmMovementSkill::ActivateAbility(
 	}
 	IgniteAroundConsumed(Consumed);
 
+	// AND THE EFFECTS THE ROW NAMES, ON EVERY ENEMY THE ARRIVAL'S BLOW LANDED ON. Issue #2885, N22: the Sword's Pale
+	// Stride, "Crippling it so it moves and attacks 30% slower for 3 seconds", the Spear's Pale Vault and the Crossbow's
+	// Parting Shot. Until 2026-11-24 a Movement row's `Effect` was dropped here.
+	LayTheRowsEffectsOn(Targets);
+
 	// AND THE COOLDOWN COMES BACK IF THE ARRIVAL KILLED. The Axe's Emberhaul:
 	// "if the arrival kills them, the axe comes back ready to throw again."
 	//
@@ -3861,6 +3887,9 @@ void UCataclysmMovementSkill::FlickerOnce()
 		TArray<AActor*> One;
 		One.Add(Next);
 		HitScaled(One, TArray<AActor*>());
+
+		// AND THE ROW'S NAMED EFFECTS ON IT, as every arrival lays them. Issue #2885, N22.
+		LayTheRowsEffectsOn(One);
 
 		return;
 	}
@@ -4121,6 +4150,10 @@ void UCataclysmMovementSkill::AdvanceOneStep()
 	// the end with nearly all of it.
 	HitScaledAsACharge(Caught, TArray<AActor*>(), WalkedCm);
 
+	// AND THE ROW'S NAMED EFFECTS ON WHAT THIS STEP'S BLOW LANDED ON, once each, since `Caught` holds only what no
+	// earlier step struck. Issue #2885, N22: the Spear's Pale Rider Cripples "everything in your path".
+	LayTheRowsEffectsOn(Caught);
+
 	// AND THE HIT A ROW GIVES EVERYTHING ON THE PATH, once each: `Caught` holds only what no earlier step struck.
 	// Ruled 2026-10-07.
 	HitWhatThePathCrossed(Caught);
@@ -4229,6 +4262,14 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	if (Machine)
 	{
 		Deployed.Add(Machine);
+
+		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO: every enemy within the row's `Radius` of it, each
+		// `Interval`, or each second when the row states none. Issue #2885, the Death Crossbow draft's C3, written for
+		// its Effigy; nothing a War row places states it.
+		if (Params.bTaunts)
+		{
+			Machine->BeginTaunting(Params.RadiusCm, Params.Interval);
+		}
 
 		// A WAR GADGET RESERVES NOTHING IN THIS BUILD, ruled 2026-09-30: these
 		// are War skills and the owner's mandate is no War work yet, so #1934
@@ -4406,6 +4447,12 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Loca
 		Minions.Add(Minion);
 		Minion->ReservedFervour = Reserve;
 		UCataclysmCommand::ClampFervourToSpendable(Self);
+
+		// AND A REPLACEMENT OF A TAUNTING KIND TAUNTS AS THE ONE IT REPLACES DID. Issue #2885, C3; see `SummonOne`.
+		if (Params.bTaunts)
+		{
+			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
+		}
 	}
 	return Minion;
 }
@@ -4845,6 +4892,14 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// "EACH IMP RESERVES 10 FERVOUR WHILE IT IS OUT." Issue #1934.
 		Minion->ReservedFervour = Reserve;
 		UCataclysmCommand::ClampFervourToSpendable(Self);
+
+		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO, from the moment it rises and once a second after.
+		// Issue #2885, C3: Shallow Graves' husks, "every enemy within 4 meters of a husk turns on it and attacks it".
+		// The row's own radius, as the explosion radius above is.
+		if (Params.bTaunts)
+		{
+			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
+		}
 	}
 	return Minion;
 }

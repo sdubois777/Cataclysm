@@ -67,7 +67,7 @@ heading row describe their layout instead. Issue #1884.
 | Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
 | **Tags** | **145** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
-| Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
+| Weapon Skills | 408 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
 | Buffs | 17 | one description per row, no heading row |
 | Debuffs | 27 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
@@ -75,7 +75,7 @@ heading row describe their layout instead. Issue #1884.
 | Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
 | Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
-| Minion Types | 9 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
+| Minion Types | 11 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
 | Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note, Fervour Cost |

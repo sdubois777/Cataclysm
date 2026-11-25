@@ -1570,6 +1570,24 @@ private:
 	void HitWhatThePathCrossed(const TArray<AActor*>& Crossed);
 
 	/**
+	 * The row's named `Effect`, on every enemy of `Struck` the move's own blow landed on. Issue #2885, the Death
+	 * skills' N22: until 2026-11-24 only the Strike, Projectile, Aura and Debuff templates called
+	 * `ApplyNamedEffectsTo`, so a Movement row's `Effect=Cripple` was accepted by the generator and dropped here.
+	 *
+	 * CALLED AFTER EACH OF THE MOVE'S OWN BLOWS, wherever one lands: an arrival (`ActivateAbility`), a step of a walked
+	 * charge (`AdvanceOneStep`) and a flicker's arrival (`FlickerOnce`). AFTER THE BLOW, as a Strike lays its curses,
+	 * so a Shred never lowers the resistance its own blow met; and only on a blow that landed (`BlowLandedOn`, #1156).
+	 *
+	 * NOTHING FOR A ROW THAT LEAVES GROUND OF ITS OWN, a judgement of 2026-11-24: that ground carries the row's first
+	 * named effect (`LeaveZoneAlong`), which is how the Demonic Wand's Foul Wake lays its Shred, "the ground you fled
+	 * ... strips the Demonic resistance of anything that walks into it". Its sentence gives the curse to the ground and
+	 * not to the blink, so the blow does not lay it as well, and Foul Wake, the one Movement row that stated an effect
+	 * before this, is exactly as it was. A stun named as an effect is left out by `NamedEffectTags`, so the three War
+	 * rows writing `Effect=Stun` beside a `StunSeconds` are unchanged too.
+	 */
+	void LayTheRowsEffectsOn(const TArray<AActor*>& Struck);
+
+	/**
 	 * `HitScaled`, for a charge's own blow, told how far the charge has gone.
 	 * Ruled 2026-10-08, for "Charge skills deal 30%-60% bonus damage
 	 * proportional to distance traveled".

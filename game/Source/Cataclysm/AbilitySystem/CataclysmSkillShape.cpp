@@ -583,6 +583,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.HealthThresholdPercent = Number;
 		}
+		// The Death Crossbow draft's C3, issue #2885: what the row raises or places taunts the enemies near it.
+		else if (Key.Equals(TEXT("Taunts"), ESearchCase::IgnoreCase))
+		{
+			Params.bTaunts = Number != 0.0f;
+		}
 		// --- Other riders -----------------------------------------------
 		else if (Key.Equals(TEXT("RefundsCooldown"), ESearchCase::IgnoreCase))
 		{

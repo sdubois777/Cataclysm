@@ -86,10 +86,15 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
     2026-10-20, is the trap a slot converted by an enchantment places: it casts
     the player's own skill when an enemy comes within 3 m, so its base damage
     is 0, and it is a trap (`Type.Trap`) and not a gadget.
+
+    AND TWO DEATH CREATURES, issue #2885, entered on 2026-11-24 with the rows
+    that raise them: the `Shade`, Wailing Host's, and the `Husk`, Shallow
+    Graves'. `tools/reapply_death_skills_workbook.py` writes them; the other
+    kinds the Death draft names arrive with the rows that raise them.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
                                   "SpikeTrap", "SkillGadget", "TyrantsMinion",
-                                  "Warhound", "SkillTrap"}
+                                  "Warhound", "SkillTrap", "Shade", "Husk"}
 
 
 
@@ -225,10 +230,14 @@ def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
 
 def test_two_skills_making_the_same_creature_share_one_stat_block():
     """Summon Imp is the one Staff skill that makes a lesser imp. There is one Imp row,
-    so the numbers cannot exist twice and drift apart."""
+    so the numbers cannot exist twice and drift apart.
+
+    DEMONIC STAFF SKILLS, since the Death Staff's Bone Choir and Grave Mouth
+    (issue #2885, 2026-11-24) make skeletal mages and wisps, not imps."""
     staff_minion_skills = [
         r["SkillName"] for r in skill_rows()
-        if "Type.Minion" in r["Tags"] and r["WeaponType"] == "Staff"]
+        if "Type.Minion" in r["Tags"] and r["WeaponType"] == "Staff"
+        and r["DamageType"] == "Demonic"]
     assert sorted(staff_minion_skills) == ["Subjugate", "Summon Imp"]
     assert len([n for n in minion_rows() if n == "Imp"]) == 1
 

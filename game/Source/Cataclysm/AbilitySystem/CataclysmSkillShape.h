@@ -1067,6 +1067,15 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	float HealthThresholdPercent = 0.0f;
 
+	/**
+	 * True when what the row raises or places taunts the enemies near it. `Taunts=1`, on a Summon or a Deployable.
+	 * Issue #2885, the Death Crossbow draft's C3, approved by the owner on 2026-11-24 for the Greataxe's Shallow Graves.
+	 * Each minion taunts every enemy within the row's `Radius` of it when it appears and once a beat after
+	 * (`ACataclysmMinion::BeginTaunting`); a taunt is `UCataclysmTaunt`'s, which refuses a boss.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bTaunts = false;
+
 	// --- Other riders ------------------------------------------------------
 
 	/** Which cooldown the skill returns: Self or Movement. Empty returns none. */

@@ -32,6 +32,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTaunt.h"
+// For the allowance a beat may come early by, which a minion's own taunt shares. Issue #2885, C3.
+#include "AbilitySystem/CataclysmTauntAura.h"
 #include "HAL/IConsoleManager.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmEnemyController.h"
@@ -2460,6 +2462,57 @@ float ACataclysmMinion::WarhoundBlow() const
 	const float Armour = Theirs->StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
 		Combat ? Combat->GetArmor() : 0.0f);
 	return FMath::Max(0.0f, Armour) * SummonerStat(Summoner, WarhoundArmourPercentStat) / 100.0f;
+}
+
+// ==========================================================================
+// A minion its row tells to taunt: `Taunts=1`. Issue #2885, the Death Crossbow
+// draft's C3, approved by the owner on 2026-11-24; the header carries it.
+// ==========================================================================
+
+int32 ACataclysmMinion::BeginTaunting(float RadiusCm, float EverySeconds)
+{
+	if (RadiusCm <= 0.0f)
+	{
+		return 0;
+	}
+	TauntRadiusCm = RadiusCm;
+	TauntEverySeconds = EverySeconds > 0.0f ? EverySeconds : RowTauntEverySeconds;
+
+	// THE FIRST BEAT IS AS IT APPEARS: "when they rise and once a second after".
+	LastTauntBeatAtSeconds = -1.0f;
+	return RowTauntStep(this);
+}
+
+int32 ACataclysmMinion::RowTauntStep(AActor* Character)
+{
+	ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Character);
+	const UWorld* World = Minion ? Minion->GetWorld() : nullptr;
+	if (!Minion || !World || Minion->TauntRadiusCm <= 0.0f || UCataclysmSkillEffects::IsDead(Minion))
+	{
+		return 0;
+	}
+
+	// DUE: never beaten, or a whole beat since the last, less the allowance for a regeneration step that comes a hair
+	// early, which is Brute's Heart's taunt aura's own allowance.
+	const float Now = static_cast<float>(World->GetTimeSeconds());
+	if (Minion->LastTauntBeatAtSeconds >= 0.0f
+		&& Now + UCataclysmTauntAura::BeatAllowanceSeconds < Minion->LastTauntBeatAtSeconds + Minion->TauntEverySeconds)
+	{
+		return 0;
+	}
+	Minion->LastTauntBeatAtSeconds = Now;
+
+	// EVERY ENEMY OF THE MINION WITHIN THE ROW'S RADIUS OF IT, the search every nearby action makes, TAUNTED BY THE
+	// MINION. `ApplyTaunt` refuses a boss, an enemy another taunter holds, the health ceiling of the minion's commander
+	// and the rest, and notes crowd control on whoever the act belongs to for each that lands.
+	int32 Landed = 0;
+	for (AActor* Enemy :
+		 UCataclysmTargeting::FindEnemiesInSphere(World, Minion, Minion->GetActorLocation(), Minion->TauntRadiusCm))
+	{
+		Landed += UCataclysmTaunt::ApplyTaunt(Minion, Enemy, RowTauntSeconds) ? 1 : 0;
+	}
+	Minion->TauntsLanded += Landed;
+	return Landed;
 }
 
 // ==========================================================================

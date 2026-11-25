@@ -2,6 +2,209 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The Death weapon skills, slice DS1: the 45 rows entered, twelve of them working; a movement lays its row's effect, a raised minion taunts, and a skill row's Cripple slows by its stated size (#2885)
+
+**Said first:**
+
+- **NOT COMPILED, NOT RUN IN THE ENGINE.** Written on `feat/death-skills-2885`, cut from `feat/bug-batch-2`
+  (`632a43022`) with `origin/development` (`5cdd6bdc4`) merged in, as the coordinating session asked on 2026-11-24; its
+  commits are cherry-picked onto development after the bug batches squash-merge. Issue
+  [#2885](https://github.com/sdubois777/Cataclysm/issues/2885).
+- **NONE SPARED WAITS ON A RULING, NOT ON CODE.** It is data only, and its `Range=17` would out-range the Corrupted
+  Sentinel, whose 14 m reach is held to the longest range any player attack has
+  (`test_the_sentinel_reach_is_the_longest_range_any_player_attack_has`, issue
+  [#352](https://github.com/sdubois777/Cataclysm/issues/352)): "A creature that cannot move and can be out-ranged is a
+  free kill." The drafts did not see that rule. **Needed: a ruling whether the Sentinel's reach rises to 17 m (the
+  Gatekeeper's mortar is "exactly as the Sentinel's" and moves with it) or the Death ranges fall to 14.** Coffin Nail
+  (17), Soul Lance (16) and Pale Rider (16) meet the same rule when their code is built. Until then None Spared is
+  entered with its numbers, its critical strike chance of 100 among them, and no shape.
+- **THE EFFIGY WAITS** on C4 (the Siphon keystone, not in the game; not built, as instructed) and on a second piece
+  found while entering it: `UCataclysmDeployableSkill::DeployOne` reserves no Fervour (the no-War rule, issue
+  [#1934](https://github.com/sdubois777/Cataclysm/issues/1934)), so its "reserves 5 Fervour while it stands" would be
+  false. C3 is built for a placed machine as well as for a raised minion, and tested on a hand-written cell.
+- **A BUG FOUND AND FIXED: A SKILL ROW'S CRIPPLE SLOWED BY 30 WHATEVER IT STATED.**
+  `UCataclysmSkillEffects::ApplyNamedEffectOnly` lays an effect whose row moves no stat as its tag alone, and dropped
+  the size; Cripple's slow is read off the size its application stated (`CrippleMultiplierOn`, issue
+  [#1256](https://github.com/sdubois777/Cataclysm/issues/1256)). So Grave Muster's and Nightshade's 20 would have been
+  the Cripple row's 30. A ground zone found the same drop on 2026-10-06 and went round it; the fix states the size,
+  held to the row's cap of 80, for a Cripple and nothing else. No row before this one stated a Cripple's size.
+- **THE SHADE'S THREAT IS NOUGHT, WHERE THE DRAFT WROTE 20 -- a judgement.** Wailing Host's sentence says the enemies
+  "pay them little attention", and since the owner's decision of 2026-11-01 (issue
+  [#2553](https://github.com/sdubois777/Cataclysm/issues/2553)) a threat above nought draws nothing in an ordinary
+  choice, while nought is what makes the nearest-enemy search pass a minion over. Path of Exile's Raging Spirit, the
+  draft's precedent, reads "Enemies will not directly engage these spirits".
+- **TWO DESIGN-DOCUMENT ARGUMENTS MOVED WITH THE ROWS -- judgements, worth a look.** (1) The knockdown paragraph of the
+  anti-stun-lock rule said both knockdowns are longer than every stun; Open Grave (1 s) and Last Toll (1.5 s) are not
+  longer than Shield Bash's 1.5 s stun. The rule is unchanged (a knockdown is a hard stop and is covered); the sentence
+  now says the longest hold in the game is a knockdown and that shorter ones are covered too, and
+  `test_the_longest_knockdown_is_longer_than_every_skill_stun` checks that in place of the shortest. (2) "All twelve
+  displacing skills" is thirteen: Severing Rush knocks enemies aside, from the Movement slot, which the argument
+  allows.
+- **BLEED (N16) STILL NEEDS THE OWNER'S CLOSED SET WIDENED** (the Death draft's said-first item 2). Gravetouch and
+  Severing Rush wait on it with no shape, so `SKILL_ROW_AILMENTS` is untouched.
+- **THE CREATION SCREEN'S "DESIGNED, DOES NOTHING YET"** line is `fix/creation-skill-count`'s, which is not in this
+  branch's base: there, by its own wording, "Death, Sword    2 of 6 skills work; 4 more are designed and do nothing
+  yet" (Pale Stride and the Death aura work; the other four wait). Its tests read Demonic rows only, so these rows move none of them.
+- **AN EDITOR STEP:** `python tools/run_editor_python.py tools/generate_datatable_assets.py`, committing only
+  `DT_WeaponSkills.uasset`, `DT_MinionTypes.uasset` and `datatable_asset_sources.json`. Until it runs,
+  `test_every_csv_still_hashes_to_what_was_recorded` fails naming the two CSVs, and the row tests below read stale
+  tables.
+
+**Affects:** `tools/reapply_death_skills_workbook.py` (new) and the workbook it edits, `docs/All_Things_Cataclysm.xlsx`;
+`game/Data/WeaponSkills.csv` and `game/Data/MinionTypes.csv`; `tools/generate_datatables.py` and
+`sim/cataclysm_sim/enemy_abilities.py` (`Taunts`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillShape.h` and
+`.cpp` (`bTaunts`); `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`
+(`UCataclysmMovementSkill::LayTheRowsEffectsOn`; `SummonOne`, `SummonReplacementAt` and `DeployOne` begin a taunt);
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (`BeginTaunting`, `RowTauntStep`);
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step);
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (a Cripple's size);
+`game/Source/Cataclysm/AbilitySystem/CataclysmUndesignedSkill.h` (the counts);
+`game/Source/Cataclysm/Tests/CataclysmDeathSkillsTests.cpp` (new), `CataclysmDataTableTests.cpp` and
+`CataclysmAuraDamageTests.cpp`; `docs/Cataclysm_GDD_v2.md`, `docs/README.md`; and the Python checks named below.
+
+### The rulings, verbatim
+
+- The owner, on Death and crossbows: "Does Death not roll on crossbows? Seems like it should given the classes. I'll
+  accept your judgement on that." The coordinating session's judgement (comment 7149138032): "Death gains the
+  one-handed Crossbow. The two-handed Crossbow stays off Death."
+- The owner's review of the 40, 2026-11-24: "I think I'm good with most of the Death skills, provided the rework on
+  'pop minions'. With the exception of spear, it just feels like it would play really bad. Need your input". The
+  rulings: "I'm not sure what the difference is between minions and "pop minions" minion pop is a playstyle, not a
+  distinction. So stuff that references "pop minions" should be changed to just say it kills minions or minions that
+  explode or something like that." And for the Spear, the option chosen: "Use the reach kit (Recommended)".
+- The five Crossbow skills, the option chosen: "Approve with all four (Recommended)": a skill may mention a class
+  mechanic as long as it works for a character without it; None Spared's critical strikes are certain; Coffin Nail's
+  +5 is flat critical strike chance; the husks use C3's taunt.
+- Open question 8 of the 40-skill draft, ruled the same day as relayed by the coordinating session: the Barrow Guards
+  taunt with C3, like the husks.
+
+### The rows
+
+Every number is the draft's, a placeholder to tune in play. Two changes to the approved rows, both labelled: the
+`Slot.` tag is left to the generator, which adds it (`tags_with_slot`), and **Barrow Guard taunts** -- `Taunts=1` in
+its shape and a sentence, my wording, "draw the fight onto themselves: every enemy within 5 meters of a guard turns on
+it and attacks it, though Bosses are not fooled", by the ruling of open question 8. Its 5 m is the row's own `Radius`,
+as the husks' 4 m is theirs.
+
+**Twelve written whole** (data only, or needing only this slice's code): Grave Muster, Wailing Host (and the Shade),
+Shallow Graves (C3, and the Husk), Grasping Dead, Nightshade, Soul Lash, Gallows Chain, Soul Herd, Reaping Arc, Pale
+Stride (N22), Pale Vault (N22), Parting Shot (N22).
+
+**Thirty-three entered with their name, description, tags and numbers and no shape**, granted as the placeholder
+(`UCataclysmUndesignedSkill`) until what they wait on lands; `tools/reapply_death_skills_workbook.py` holds each one's
+whole shape and writes it then:
+
+| Waits on | Rows |
+| :-- | :-- |
+| N1, N2 (a permanent summon that strikes as it rises) | Barrow Guard, Exhume; Bone Choir also N11 |
+| N3 (explode your minions in the area) | Barrow Leap, Open Grave, Marrow Lance, Grave Return; Gravebell also N4 |
+| N5 (the dying rise) | Death Rattle, Soul Snare |
+| N6 (Fervour per kill) | Death Warrant, Hungering Soul, Restless Spirits, Last Toll, Pale Rider; Danse Macabre also N10; Grim Swath also N7 |
+| N7, N8 (scale by Fervour held; no decay) | Cold Blood |
+| N9 (a strike refunds its cooldown) | Mercy Stroke |
+| N12 (a rift's minions burst when it closes) | Grave Mouth |
+| N13 (spend every Fervour) | Requiem |
+| N14, N16 (burst on death; Bleed) | Gravetouch |
+| N15 (cash in ailments) | Quietus |
+| N16 (Bleed, which needs the owner's set widened) | Severing Rush |
+| N17 (every blow) | Hemlock, Death Grip; Grim Reach also N21 |
+| N18 (untargetable on a charge) | Wraithwalk |
+| N19 (Fervour per enemy hit, a cap a cast) | Soul Lance |
+| C1, C2 | Coffin Nail, Carrion Crows |
+| C4 and a Death deployable's reserve | Effigy |
+| A ruling on the Sentinel's reach | None Spared |
+
+**The workbook cells**, 228, each found by its row's Weapon Type, Damage Type and Slot or its Minion Type: on Weapon
+Skills, the 40 empty Death rows (sheet rows 6 to 323) gain Skill Name, Skill Description and Tags, and the twelve
+written whole Shape and Shape Params; Crit Chance on 2 rows, Damage Percent on 15, Cooldown on 6, Fervour Cost on 3;
+rows 405 to 409 are the five Death Crossbow rows, appended with their Weapon Type, Damage Type and Slot. On Minion
+Types, rows 11 and 12, Shade and Husk, every column. The script refuses a workbook holding formulas, charts or images
+and any Death cell holding neither its value before this edit nor its value after, and reads the file back to prove no
+other cell changed; run a second time it writes nothing.
+
+### The code
+
+- **N22, a movement lays its row's effect.** `UCataclysmMovementSkill::LayTheRowsEffectsOn`, after each of the move's
+  own blows: an arrival, a step of a walked charge, a flicker's arrival. On what the blow landed on, after it, as a
+  Strike lays its curses. **A judgement:** nothing for a row that leaves ground of its own, whose ground carries its
+  effect; that is Foul Wake, the one Movement row that stated an effect before this, so it is exactly as it was. The
+  three War rows writing `Effect=Stun` lay nothing more, since `NamedEffectTags` leaves a stun out.
+- **C3, a taunt.** `Taunts=1` on a Summon or a Deployable row (the generator refuses it with no `Radius`, or on a
+  summon that possesses). Each minion the row raises, or machine it places, taunts every enemy within the row's
+  `Radius` of it through `UCataclysmTaunt::ApplyTaunt`, as it appears and then each beat on the regeneration step:
+  once a second for a summon, the row's `Interval` (else a second) for a placed machine, as the Crossbow draft states
+  C3. How enemies choose a target today: `ACataclysmEnemyController::ChooseTarget` asks `UCataclysmTaunt::TaunterOf`
+  first, before an order, a gadget's choice and the nearest-enemy search; a threat figure is read only by Behind the
+  Veil. So C3 is a beat on the existing taunt, as Brute's Heart's six-piece aura is. Each taunt lasts **3 seconds, a
+  judgement**: the figure the aura and the Warhound taunt for, longer than the beat so a standing minion holds an enemy
+  without a gap. The radius is the row's own, not widened by area of effect (**a judgement**, as the explosion radius
+  a summon records is the row's own). Bosses are refused, another taunter holding an enemy keeps it, and the taunt ends
+  the moment the minion dies or goes, all `UCataclysmTaunt`'s rules.
+- **A skill row's Cripple slows by the size it states**, held to the row's cap, in
+  `UCataclysmSkillEffects::ApplyNamedEffectOnly`.
+- **Grave Mouth is not a spell**, by the owner's ruling on Summon Imp of 2026-09-23 (issue
+  [#2012](https://github.com/sdubois777/Cataclysm/issues/2012)), which the approved draft applies to it:
+  `NOT_SPELLS` gains it.
+
+### Research
+
+The drafts' sources, fetched by the drafting session; no formula here is new. Path of Exile's Raging Spirit (short-lived
+minions enemies will not engage: the Shade), Summon Skeletons and Raise Zombie, and Decoy Totem ("taunts nearby
+monsters to attack it": the Effigy and C3); Path of Exile 2's Unearth and Escape Shot ("Leap backwards, firing an icy
+arrow": Parting Shot); Diablo IV's Army of the Dead, Book of the Dead (Defender, Reaper, Cold Mages: the three
+permanent raises), Corpse Tendrils (Grasping Dead), Bone Spear (Marrow Lance), Reap, and Heartseeker (Coffin Nail's 5%
+for 4 seconds, up to 20%); Diablo III's Companion and, unverified, Exploding Palm; Diablo II's Strafe (None Spared).
+Last Epoch could not be read from a primary source and is not relied on. What the research does not settle is
+labelled a judgement in the drafts and above: every number, the slot placements, and the taunt's 3 seconds.
+
+### Tests, and what they move
+
+**Fourteen new Unreal tests, group `Cataclysm.DeathSkills.`** (`CataclysmDeathSkillsTests.cpp`), predicted 14
+performed, 14 succeeded:
+
+| Test | What it holds |
+| :-- | :-- |
+| `AMovementRowsEffectIsLaidOnWhatItsArrivalStrikesAndAMoveStatingNoneLaysNothing` | N22 at an arrival; control without the effect |
+| `AWalkedChargeAndAFlickerLayTheirRowsEffectOnEachEnemyTheirBlowsReach` | N22 at a walk's step and a flicker's arrival |
+| `AMovementThatLeavesItsOwnGroundLaysItsEffectThroughThatGroundAndNotWithItsBlow` | the Foul Wake judgement; control with no ground |
+| `ASkillRowsCrippleSlowsByTheMagnitudeItStatesHeldToTheCap` | 20 slows by 20, none by the row's 30, 95 by the cap's 80; Grave Muster's row by 20 |
+| `ATauntingSummonsMinionTauntsTheEnemiesWithinItsRowsRadiusAndNoneBeyond` | C3 within 4 m and not at 7; the brain chooses the minion; control without `Taunts` |
+| `ATauntingMinionLeavesABossAloneAndTauntsTheRungBelow` | a Boss refused, a Herald taunted |
+| `ATauntingMinionTauntsAgainEachSecondAndItsTauntEndsWhenItFalls` | the beat, through the replacement path; the taunt ends at the minion's death |
+| `ATauntingDeployableTauntsWithinItsRadiusEachIntervalItsRowStates` | a placed machine's 8 m and 2 s beat |
+| `EveryRowThisSliceWritesWholeIsGrantedItsTemplateWithItsDraftedNumbers` | the twelve rows' numbers through their templates |
+| `EveryDeathRowWaitingOnCodeIsGrantedAsTheDesignedPlaceholder` | the 33 have no shape; 51 named Death rows, 18 shaped |
+| `PaleStrideCripplesTheFirstEnemyItReachesAndGivesTheStrideBackOnAKill` | its row: 30 for 3 s, one enemy, the refund on a kill |
+| `PaleVaultStrikesAndCripplesWithinThreeMetresOfItsLandingAndNotAtFour` | its row: 30 for 4 s within 3 m |
+| `PartingShotCripplesTheNearestEnemyToItsLandingAndNoOther` | its row: the nearest within 10 m, one |
+| `ShallowGravesRaisesFourHusksAndTheEnemyNearThemIsTauntedByOne` | its row: four husks, one taunt landed among their four first beats |
+
+**Two Unreal tests change, counts unchanged:** `Cataclysm.Data.EveryGeneratedTableImports` pins `WeaponSkills.csv` at
+408 (from 403) and `MinionTypes.csv` at 11 (from 9); `Cataclysm.AuraDamage.EveryAuraRowDealsOnlyTheDamageItsRowStates`
+counts 13 aura rows (from 12), Grave Muster dealing nought. **The whole suite is registered as 5426**: bug batch 2's
+registered 5406, the six `Cataclysm.RarityCap.` tests development brought, and these 14; a prediction, the run is the
+figure.
+
+**Three C++ guard proofs, one per mechanism**, each with the prefix `Cataclysm.DeathSkills.`:
+
+| | File | Break | Must fail |
+| :-- | :-- | :-- | :-- |
+| G1, N22 | `CataclysmSkillTemplates.cpp` | `if (Params.Effect.IsEmpty() \|\| Params.LeavesGround())` becomes `if (true \|\| Params.Effect.IsEmpty() \|\| Params.LeavesGround())` | `AMovementRowsEffectIsLaid...`, `AWalkedChargeAndAFlicker...`, `AMovementThatLeavesItsOwnGround...` (its control), `PaleStride...`, `PaleVault...`, `PartingShot...` |
+| G2, C3 | `CataclysmMinion.cpp` | `ApplyTaunt(Minion, Enemy, RowTauntSeconds)` becomes `ApplyTaunt(Minion, Enemy, 0.0f)` | `ATauntingSummonsMinion...`, `ATauntingMinionLeavesABoss...`, `ATauntingMinionTauntsAgain...`, `ATauntingDeployable...`, `ShallowGraves...` |
+| G3, a Cripple's size | `CataclysmSkillEffects.cpp` | `if (Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())` becomes `if (false && Magnitude > 0.0f && EffectTag == UCataclysmDebuffs::CrippleTag())` | `ASkillRowsCrippleSlows...`, `PaleStride...`, `PaleVault...`, `PartingShot...` |
+
+**Python checks moved with the rows** (each change says why in its own words): `RESERVING_SKILLS` 5 to 7
+(`test_every_gadget_skill_reserves_fervour.py`); the Type.Minion count 5 to 14 and the design document's "There are
+fourteen" (`test_minion_damage.py`); Shade and Husk in the minion table, and the Staff imp check held to Demonic
+(`test_minion_stat_blocks.py`); a minion row waiting on code exempt from the shape checks only while it has no half of
+a shape (`test_minion_skill_shapes.py`, with four new checks of `Taunts`); Grave Muster in `AURAS`; Grave Mouth in
+`NOT_SPELLS`; Mercy Stroke's 10 and None Spared's 100 as the two rows stating a critical strike chance; the three
+permanent raises' Fervour costs beside Subjugate's; the undesigned count 54 of 153 to 87 of 198; the README's row
+counts; the two anti-stun-lock checks above. **New:** `tools/tests/test_reapply_death_skills_workbook.py`, ten checks
+of the script against the generated tables, and on a copy of the workbook put back to before the edit.
+
+---
+
 ## 2026-11-24 — Bug batch 2: five more fix branches, stacked on bug batch 1, with a guard proof registered for every new test (#2856, #2867, #2868, #2858, #2870, #2872, #2869, #2878)
 
 **Said first:**
