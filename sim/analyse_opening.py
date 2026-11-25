@@ -91,7 +91,20 @@ clears is lost and none ends under 10% health:
     Pillar        219   24                        0.10              50%
 
 The coordinating session ruled those four the same day. On seeds 60 to 119, never
-used to choose them, every one passes again. Section 6 is the measurement tiers 2
+used to choose them, every one passes again.
+
+RE-MEASURED 2026-11-24 FOR ISSUE #2865, with the surge rulings of 2026-11-23 and
+2026-11-24 in (more waves, so the inner rings are reached at lower levels), with
+steps of 0.01 added below the old figures. Seeds 0 to 59, 15,171 clears: the
+largest passing step is 0.05 on an Outpost, 0.10 on a Bulwark (3,188 clears), 0.13
+on a Sanctuary (4,314) and 0.07 on the Pillar (85). Seeds 60 to 119, 15,376
+clears: 0.10 on a Bulwark, 0.12 on a Sanctuary and 0.11 on the Pillar. The
+coordinating session ruled 0.10, 0.12 and 0.07, each passing both, provisionally
+until the gear drop rarity fix (issue #2853) lands. RUN AGAIN ON 2026-11-25 with #2853's
+Power Score and drop supply merged in (development `eb34af972`): every clear count and
+every row the same on both seed sets, because neither the campaigns nor the walk loads
+`player_power.py`, `loot.py` or `affixes.py`, so gear drops cannot reach this measurement.
+Section 6 is the measurement tiers 2
 to 8 were left flat by ring on: a campaign gains a median 26 levels at tier 1,
 14 at tier 2 and 11 at tier 3, and the starting class's health at the median
 Sanctuary entry over the median Outpost entry is 1.55, 1.30 and 1.14 times.
@@ -149,12 +162,14 @@ CAMPAIGN_FROM = int(os.environ.get("CATACLYSM_OPENING_CAMPAIGNS_FROM", "0"))
 TIER_GAIN_SEEDS = int(os.environ.get("CATACLYSM_OPENING_TIER_GAIN", "2"))
 #: The tier 1 damage scales section 5 walks each ring's clears at. Every ring is walked at 0.05, the scale every ring
 #: had before the ring slice, and the inner rings at 0.20, tier 1's before issue #2749; the steps of 0.01 around each
-#: ruled figure find the largest that passes.
+#: ruled figure find the largest that passes. THE STEPS FROM 0.05 UP were added for issue #2865, when the surge rulings
+#: of 2026-11-23 and 2026-11-24 brought more waves and the Bulwark's and the Pillar's figures had to be found again
+#: below where they were.
 RING_SCALES = {
     "Outpost": (0.05,),
-    "Bulwark": (0.05, 0.10, 0.11, 0.12, 0.15, 0.20),
-    "Sanctuary": (0.05, 0.10, 0.12, 0.13, 0.14, 0.15, 0.20),
-    "Pillar": (0.05, 0.08, 0.10, 0.11, 0.12, 0.13, 0.15, 0.20),
+    "Bulwark": (0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.15, 0.20),
+    "Sanctuary": (0.05, 0.10, 0.11, 0.12, 0.13, 0.14, 0.15, 0.20),
+    "Pillar": (0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.15, 0.20),
 }
 
 

@@ -167,13 +167,24 @@ def siege_daily_damage(sim, d, city) -> float:
     `_roll_subtype` runs for every `_make_dungeon` but a surge's Quest
     dungeon, and since 2026-10-16 that one takes its Cataclysm's fixed
     sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`), which for War is the
-    Siege, at most two a wave. Measured on 2026-10-18 over 10,000 campaigns
-    (seeds 0 to 9999, 756,907 dungeons, each recorded when it was made) at the
-    settings `siege_urgency` names below, with an ordinary dungeon leaving
-    after it hits its city (`dungeon_persists_after_resolve` False), the
-    64,191 Sieges that reached the map were 70% Basic, 24% Quest, 5% Fallen
-    City and 1% Cataclysm, about 6.42 a campaign. That is why the callers below
-    apply this in all three scoring branches instead of only the ordinary one.
+    Siege, at most two a wave. Measured on 2026-11-24 over 10,000 campaigns
+    (seeds 0 to 9999, 1,215,787 dungeons, each recorded when it was made) at the
+    settings `siege_urgency` names below, by the method of
+    `sim/tests/test_the_siege_prose_in_policies_is_true.py`, with an ordinary
+    dungeon leaving after it hits its city (`dungeon_persists_after_resolve`
+    False), the 96,875 Sieges that reached the map were 70% Basic, 25% Quest,
+    5% Fallen City and 0% Cataclysm, about 9.69 a campaign. That is why the
+    callers below apply this in all three scoring branches instead of only the
+    ordinary one.
+    UNTIL 2026-11-24 THIS SAID 64,191 Sieges at 70 / 24 / 5 / 1 and 6.42 a
+    campaign, measured on 2026-10-18 over 756,907 dungeons. THE RATE ROSE with
+    the surge rulings of issue #2865: an empty board brings the next surge at
+    once and 4 dungeons larger (2026-11-23 and 2026-11-24), and every city's
+    fall brings one whatever the gap (2026-11-24), so more surges come and more
+    dungeons are made. THE CATACLYSM SHARE WENT TO NOUGHT on 2026-11-02, when a
+    Cataclysm dungeon stopped being able to roll a Siege
+    (`Simulation.subtypes_allowed_on`); the shares before rounding are 70.42 /
+    24.78 / 4.80 / 0.00.
     UNTIL 2026-10-18 THIS SAID 47,102 Sieges at 95 / 0 / 4 / 2 and 4.71 a
     campaign, measured on 2026-10-16 while an interim rule barred a Quest
     dungeon from the Siege.

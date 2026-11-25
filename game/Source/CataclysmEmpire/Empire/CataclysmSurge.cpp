@@ -643,7 +643,7 @@ float UCataclysmSurgeScheduler::DungeonMultiplier() const
 	return LethalityRung == 2 ? HereticDungeonMultiplier : 1.0f;
 }
 
-int32 UCataclysmSurgeScheduler::DungeonsInNextSurge() const
+int32 UCataclysmSurgeScheduler::DungeonsInNextSurge(bool bFromEmptyBoard) const
 {
 	// THE OPENING WAVE HAS ITS OWN SIZE, since 2026-10-20 in the game and
 	// 2026-10-16 in the model: at `SurgeIndex` 0 the wave starts from
@@ -663,6 +663,13 @@ int32 UCataclysmSurgeScheduler::DungeonsInNextSurge() const
 	if (Mode == ECataclysmSurgeMode::Swelling || Mode == ECataclysmSurgeMode::Both)
 	{
 		Count += CountGrowthPerSurge * SurgeIndex;
+	}
+
+	// AN EMPTY BOARD'S WAVE IS LARGER, before the cap and the multiplier: issue #2865, the owner's "Flat +4, no
+	// stacking" of 2026-11-24 and the coordinating session's judgement the same day. See `ExtraDungeonsOnEmptyBoard`.
+	if (bFromEmptyBoard)
+	{
+		Count += static_cast<float>(ExtraDungeonsOnEmptyBoard);
 	}
 
 	Count = FMath::Min(Count, static_cast<float>(MostDungeonsPerSurge));
@@ -707,29 +714,30 @@ float UCataclysmSurgeScheduler::DaysSinceLastSurge(int32 Day) const
 }
 
 bool UCataclysmSurgeScheduler::IsDueOnEmptyBoard(int32 Day,
-												 int32 DungeonsStanding) const
+												 int32 OrdinaryDungeonsStanding) const
 {
-	// THE INTERVAL IS THE ONLY BRAKE. A board can be emptied the day after a
-	// wave lands, and without it a player who clears quickly would be sent a
-	// wave every day.
+	// NO MINIMUM GAP, since the owner's ruling of 2026-11-23 on issue #2865: "The 25-day minimum gap
+	// (LeastIntervalDays) does not apply to a surge fired by an empty board." Until then this also asked
+	// `DaysSinceLastSurge(Day) >= LeastIntervalDays`. A wave always adds at least one ordinary dungeon, so the board is
+	// not empty again the next day unless the player has cleared or lost all of them.
 	//
-	// ONE EXPRESSION AND NOT THREE EARLY RETURNS, because the flag is a constant
-	// and a block behind a constant condition is code the compiler can call
-	// unreachable.
+	// ONE EXPRESSION AND NOT EARLY RETURNS, because the flag is a constant and a block behind a constant condition is
+	// code the compiler can call unreachable.
+	(void)Day;
 	return bSurgeOnEmptyBoard
-		&& DungeonsStanding <= 0
-		&& DaysSinceLastSurge(Day) >= LeastIntervalDays;
+		&& OrdinaryDungeonsStanding <= 0;
 }
 
 bool UCataclysmSurgeScheduler::IsDueOnCityFall(int32 Day) const
 {
-	// THE SAME BRAKE THE EMPTY BOARD HAS, AND THE SAME COMPARISON. The model
-	// fires when the gap is at or above `surge_interval_min`, so `>` here
-	// would refuse the fall that comes exactly 25 days after a surge.
+	// EVERY FALL, WHATEVER THE GAP SINCE THE LAST SURGE. The owner's ruling of 2026-11-24 on issue #2865, verbatim:
+	// "surges from cities falling should happen regardless". From issue #2380 (2026-10-12) until then this also asked
+	// `DaysSinceLastSurge(Day) >= LeastIntervalDays`, the simulation's rule of issue #1432; the simulation drops it in
+	// the same change (`city_fall_surge_braked`, off).
 	//
-	// ON ONE LINE, so the port check in `tools/tests/test_surge_port.py` and
-	// a guard proof can each name the whole condition as one line of text.
-	return bSurgeOnCityFall && DaysSinceLastSurge(Day) >= LeastIntervalDays;
+	// THE DAY IS STILL TAKEN, so the callers and the port check keep their shape and a later rule can read it.
+	(void)Day;
+	return bSurgeOnCityFall;
 }
 
 void UCataclysmSurgeScheduler::RecordSurge(int32 Day, bool bFromCityFall)
@@ -1463,7 +1471,7 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	const UCataclysmEmpireMap& Map, int32 Day, int32 FirstDungeonId,
 	FRandomStream& Stream, const TArray<int32>& DungeonsPerCity,
 	const TArray<int32>& SiegesPerCityNow,
-	const TFunction<ECataclysmType()>& DrawCataclysm) const
+	const TFunction<ECataclysmType()>& DrawCataclysm, bool bFromEmptyBoard) const
 {
 	TArray<FCataclysmDungeon> Wave;
 
@@ -1472,7 +1480,7 @@ TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave(
 	TArray<ECataclysmType> Senders;
 
 	const TArray<int32> Targets =
-		PickTargets(Map, DungeonsInNextSurge(), Stream, DungeonsPerCity,
+		PickTargets(Map, DungeonsInNextSurge(bFromEmptyBoard), Stream, DungeonsPerCity,
 					DrawCataclysm, &Senders);
 
 	Wave.Reserve(Targets.Num());

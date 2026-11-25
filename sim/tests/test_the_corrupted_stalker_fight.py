@@ -83,14 +83,16 @@ def test_on_a_bulwark_sanctuary_or_the_pillar_its_damage_follows_the_rings_damag
     tier 1, so its multiplier rises by the same ratio there and nowhere else."""
     assert fight.damage_multiplier(1) == fight.DAMAGE_MULTIPLIERS[0]
     assert fight.damage_multiplier(1, "Outpost") == pytest.approx(0.06)
-    assert fight.damage_multiplier(1, "Bulwark") == pytest.approx(0.132)
-    assert fight.damage_multiplier(1, "Sanctuary") == pytest.approx(0.156)
-    assert fight.damage_multiplier(1, "Pillar") == pytest.approx(0.12)
+    # 0.06 TIMES 0.10, 0.12 AND 0.07 OVER 0.05, since issue #2865 lowered the ring figures; 0.132, 0.156 and 0.12 until.
+    assert fight.damage_multiplier(1, "Bulwark") == pytest.approx(0.12)
+    assert fight.damage_multiplier(1, "Sanctuary") == pytest.approx(0.144)
+    assert fight.damage_multiplier(1, "Pillar") == pytest.approx(0.084)
     for tier in range(2, 9):
         for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar"):
             assert fight.damage_multiplier(tier, ring) == pytest.approx(fight.DAMAGE_MULTIPLIERS[tier - 1]), (tier, ring)
-    # CONTROL: the ratio is not one, so the Bulwark's figure is not the Outpost's read twice.
-    assert fight.damage_multiplier(1, "Bulwark") > 2 * fight.damage_multiplier(1, "Outpost")
+    # CONTROL: the ratio is not one, so the Bulwark's figure is not the Outpost's read twice. 1.5 TIMES AND NOT 2 since
+    # issue #2865: the ratio is now exactly 2, 0.10 over 0.05, and a strict "more than twice" fails on equality.
+    assert fight.damage_multiplier(1, "Bulwark") > 1.5 * fight.damage_multiplier(1, "Outpost")
 
 
 def test_the_game_multiplies_the_stalkers_damage_by_the_same_ratio():

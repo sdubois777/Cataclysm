@@ -1026,8 +1026,11 @@ namespace CataclysmDeathEndsDungeonTest
 	 *
 	 * THE RUN HAS NOTHING STANDING ON IT. A day is spent, which lands the
 	 * opening wave, and both lists are then emptied, the way `MakeEmptyRun` in
-	 * the empire layer's own tests does and for its reason: the next surge is
-	 * 90 days off, further than any test here goes.
+	 * the empire layer's own tests does: the clock's next surge is 90 days off,
+	 * further than any test here goes. SINCE ISSUE #2865 AN EMPTY BOARD BRINGS A
+	 * WAVE AT THE END OF THE NEXT DAY, with no least interval, so the tests whose
+	 * watched city a Siege of it could reach hold the board with an ordinary
+	 * dungeon on the Pillar.
 	 *
 	 * THE GAME MODE HAS BEGUN PLAY, so it listens for deaths as it does in the
 	 * running game, and the run is handed to it through the test seam.
@@ -1256,6 +1259,12 @@ namespace CataclysmDeathEndsDungeonTest
 			return false;
 		}
 
+		// THE BOARD HELD BY AN ORDINARY DUNGEON ON THE PILLAR THAT NEVER RUNS OUT, put down before any pointer into the
+		// dungeons is taken. Since issue #2865 (the owner's ruling of 2026-11-23) a day that ends with no ordinary dungeon
+		// standing brings a wave of 12 at once, and a Siege in it could bite the watched city in the days the death charges.
+		// The Pillar is never a target of a wave and nothing here reads it.
+		PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, Scene.Run->Map->PillarId, 20,
+					UCataclysmSurgeScheduler::NeverResolveDays, UCataclysmSurgeScheduler::NeverResolveDays, 0.0f, 0.0f);
 		const int32 CityId = AnOutpostOf(*Scene.Run);
 		const int32 DungeonId = PlaceByHand(*Scene.Run, Type, CityId, 20,
 											FullTimerDays, DaysLeft, 100.0f, 50.0f);
@@ -1470,6 +1479,12 @@ bool FCataclysmDeathResolvesOnceTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE BOARD HELD BY AN ORDINARY DUNGEON ON THE PILLAR THAT NEVER RUNS OUT, put down before any pointer into the
+	// dungeons is taken. Since issue #2865 (the owner's ruling of 2026-11-23) a day that ends with no ordinary dungeon
+	// standing brings a wave of 12 at once, and a Siege in it could bite the watched city in the days the death charges.
+	// The Pillar is never a target of a wave and nothing here reads it.
+	PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, Scene.Run->Map->PillarId, 20,
+				UCataclysmSurgeScheduler::NeverResolveDays, UCataclysmSurgeScheduler::NeverResolveDays, 0.0f, 0.0f);
 	const int32 CityId = AnOutpostOf(*Scene.Run);
 	const int32 DungeonId = PlaceByHand(
 		*Scene.Run, ECataclysmDungeonType::Basic, CityId, 20, FullTimer, DaysLeft,
@@ -2240,6 +2255,12 @@ bool FCataclysmDeathHereticShallowTest::RunTest(const FString& Parameters)
 			return false;
 		}
 
+		// THE BOARD HELD BY AN ORDINARY DUNGEON ON THE PILLAR THAT NEVER RUNS OUT, put down before any pointer into the
+		// dungeons is taken. Since issue #2865 (the owner's ruling of 2026-11-23) a day that ends with no ordinary dungeon
+		// standing brings a wave of 12 at once, and a Siege in it could bite the watched city in the days the death charges.
+		// The Pillar is never a target of a wave and nothing here reads it.
+		PlaceByHand(*Scene.Run, ECataclysmDungeonType::Basic, Scene.Run->Map->PillarId, 20,
+					UCataclysmSurgeScheduler::NeverResolveDays, UCataclysmSurgeScheduler::NeverResolveDays, 0.0f, 0.0f);
 		const int32 CityId = AnOutpostOf(*Scene.Run);
 		const int32 DungeonId = PlaceByHand(
 			*Scene.Run, ECataclysmDungeonType::Basic, CityId, Floors, FullTimer,

@@ -549,17 +549,15 @@ bool FCataclysmEmpireRunPersistTest::RunTest(const FString& Parameters)
  * 2026-10-21: it moves, or with nowhere to go stays, and what is asserted of
  * it is that it is still on the map and on the clock and was not counted.
  *
- * NOT EVERY FALL FIRES A SURGE. Since issue #2380 a fall fires one only when
- * the last surge is at least 25 days behind, which is what
- * `UCataclysmSurgeScheduler::IsDueOnCityFall` answers. This test asks that
- * before each day and asserts the surge only on a fall day where the answer
- * was yes. Until 2026-10-13 it was named
- * `ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons` and asserted a
- * surge on every fall day.
- *
- * THE REFUSED CASE IS HELD BY ANOTHER TEST,
- * `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
- * This one asserts nothing about the surge on a day the answer was no.
+ * EVERY FALL FIRES A SURGE, ONE FOR EACH CITY LOST, since the owner's ruling
+ * of 2026-11-24 on issue #2865, verbatim "surges from cities falling should
+ * happen regardless". On every fall day this test asserts exactly that many
+ * surges, and one more when the clock's was due at the top of the day. From
+ * issue #2380 until then a fall fired one only when the last surge was at
+ * least 25 days behind, and this test, then named
+ * `ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge`, asserted a surge
+ * only on a fall day where one was due. Until 2026-10-13 it was named
+ * `ACityFallingOpensALaneFiresASurgeAndAbsorbsItsDungeons`.
  *
  * ONE FALL IS CONSTRUCTED, since issue #2749 (B9). See the comment in the test.
  *
@@ -575,7 +573,7 @@ namespace CataclysmEmpireRunTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallMaySurgeTest,
-	"Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndMayFireASurge",
+	"Cataclysm.EmpireRun.ACityFallingOpensALaneAbsorbsItsDungeonsAndFiresOneSurgeForEachCity",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
@@ -586,11 +584,6 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 
 	int32 FallsSeen = 0;
 
-	// HOW MANY OF THOSE DAYS HAD A FALL'S SURGE DUE AND DID SURGE. Counted for
-	// the closing assertion, so fall days that were all inside the least
-	// interval do not pass this test having checked no surge at all.
-	int32 FallDaysDueThatSurged = 0;
-
 	// A FALL WITH A FALL'S SURGE DUE, CONSTRUCTED, since issue #2749 (B9), as the coordinating session ruled on
 	// 2026-11-19: "Rebuild the set-up so at least one fall happens with a fall's surge due ... a constructed state is
 	// better". With an Outpost's ordinary dungeons 5 to 10 floors, their timers run out about 15 to 30 days after the
@@ -599,24 +592,21 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 	// surged". So at the start of day 2, after the opening wave of day 1, a feller is put on the first standing
 	// Outpost, carrying five times an Outpost's whole defence (`FallSurgeFellingPoints`' figure, defined further down)
 	// and a timer that runs out on day 30: 29 days after the last surge, with the clock's own next surge on day 91.
-	// EVERY ASSERTION IS UNCHANGED. Its fall is checked as every other fall is, and the closing assertion still needs a
-	// fall with a surge due that surged; an earlier fall of the run with one due, if there is one, does as well.
+	// Its fall is checked as every other fall is. SINCE ISSUE #2865 EVERY FALL HAS ITS SURGE DUE, so the constructed
+	// fall is no longer needed for that; it is kept so the run has a fall on a day written down, and the run up to it
+	// is the one this test saw before.
 	const int32 ConstructedFellerId = 9590;
 	constexpr float ConstructedFellingPoints = 5000.0f;
 	constexpr int32 ConstructedFallDay = 30;
 	int32 ConstructedCityId = INDEX_NONE;
 	int32 ConstructedCityFellOnDay = INDEX_NONE;
 
-	// WATCHED UNTIL THREE FALLS HAVE BEEN SEEN AND ONE OF THEM HAD A FALL'S
-	// SURGE DUE AND SURGED, still bounded at six hundred days. Until 2026-10-21
-	// the loop stopped at the third fall, `FallsSeen < 3`, and with the larger
-	// waves of 2026-10-20 this seed's first three falls all came within the
-	// least interval of a surge, so it printed "0 of the 3 days a city fell had
-	// a fall's surge due and surged". Ruled by the coordinating session,
-	// 2026-10-21, with every assertion unchanged; `docs/DECISIONS.md`, the
-	// entry of 2026-10-20.
+	// WATCHED UNTIL THREE FALL DAYS HAVE BEEN SEEN AND THE CONSTRUCTED FALL IS AMONG
+	// THEM, still bounded at six hundred days. From 2026-10-21 until issue #2865
+	// the loop also waited for a fall with a fall's surge due; every fall has one
+	// now.
 	for (int32 Days = 0;
-		 Days < 600 && (FallsSeen < 3 || FallDaysDueThatSurged < 1);
+		 Days < 600 && (FallsSeen < 3 || ConstructedCityFellOnDay == INDEX_NONE);
 		 ++Days)
 	{
 		// THE CONSTRUCTED FELLER, at the start of day 2: see above.
@@ -636,6 +626,12 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 								 ECataclysmDungeonSubType::None, City, static_cast<float>(ConstructedFallDay - 1));
 					GiveDamageAndDaysLeft(*Run, ConstructedFellerId, ConstructedFellingPoints, 0.0f,
 										  static_cast<float>(ConstructedFallDay - 1));
+					// AND AN ORDINARY DUNGEON ON THE PILLAR THAT NEVER RUNS OUT, so no empty-board wave lands on a day a
+					// city falls (issue #2865: no least interval holds it back since 2026-11-23). It takes no random
+					// draw and is never a target, so the run is the one this test saw before. The Pillar's own city
+					// is never among the falls; `HoldTheBoard`, further down this file, does the same.
+					PlaceDungeon(*Run, ConstructedFellerId + 1, ECataclysmDungeonType::Basic,
+								 ECataclysmDungeonSubType::None, *Run->Map->Find(Run->Map->PillarId), 10000.0f);
 					break;
 				}
 			}
@@ -662,14 +658,11 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 
 		const int32 SurgesBefore = Run->Surges->SurgesFired;
 
-		// WHETHER A CITY FALLING TODAY WOULD FIRE A SURGE, ASKED BEFORE THE DAY.
-		// `AdvanceDay` reports the clock's day plus one, and `CityFell` asks the
-		// scheduler about the day on the report, so that is the day asked about
-		// here. Asked before and not after, because the day's own surges move
-		// what the interval is measured from.
+		// WHETHER THE CLOCK'S SURGE FIRES AT THE TOP OF THE DAY, ASKED BEFORE IT.
+		// `AdvanceDay` asks `IsDue` about the clock's day plus one before anything
+		// else, so the same question asked here gets the same answer.
 		const int32 DayAboutToBegin = Run->Day() + 1;
-		const bool bAFallsSurgeIsDue =
-			Run->Surges->IsDueOnCityFall(DayAboutToBegin);
+		const bool bClockIsDue = Run->Surges->IsDue(DayAboutToBegin);
 
 		const FCataclysmDayReport Report = Run->AdvanceDay();
 
@@ -805,57 +798,22 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 			}
 		}
 
-		// A CITY FALLING FIRES A SURGE OF ITS OWN ONLY WHEN ONE IS DUE: the last
-		// surge has to be at least 25 days behind. Issue #2380. Until then this
-		// comment said every fall fired one, one per city lost, and the two
-		// assertions below ran on every fall day.
-		//
-		// ASSERTED ONLY WHEN THE SCHEDULER SAID YES BEFORE THE DAY. A labelled
-		// judgement by the coordinating session under the owner's delegation,
-		// 2026-10-13. A yes before the day stays a yes for the day's first fall
-		// unless a surge fires earlier in the same day, and the only one asked
-		// earlier is the clock's, at the top of `AdvanceDay`. In both cases the
-		// day surged and the count rose by at least one.
-		//
-		// WHEN THE ANSWER WAS NO AND THE DAY IS AFTER DAY 1, THE DAY DID NOT
-		// SURGE AT ALL. `bSurged` is one flag for every cause, so this rests on
-		// no other cause being able to fire then: every surge moves the clock's
-		// next day on by `GapAfterThisSurge`, which is never below
-		// `LeastIntervalDays`, and the empty-board surge asks for the same
-		// interval, so inside the interval neither is due. Day 1 is the one
-		// exception, where the opening wave fires with no surge behind it, and
-		// nothing is asserted there. Ruled by the coordinating session on
-		// 2026-10-13, after this test's first version asserted nothing on a no.
-		// The refused case is also held, on a fall made by hand, by
-		// `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave`.
-		//
-		// THE COUNT ASSERTS ONE AND NOT ONE PER CITY. Two cities can fall on one
-		// day. The first fall's surge is recorded as today's, so the second fall
-		// is nought days behind a surge and fires none. The question before the
-		// day is therefore about the day's first fall only, and one surge is all
-		// a day with any number of falls is certain to bring.
-		// `Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave` holds that.
-		if (bAFallsSurgeIsDue)
-		{
-			TestTrue(TEXT("the day a city fell with a fall's surge due also surged"),
-					 Report.bSurged);
-			TestTrue(FString::Printf(
-				TEXT("at least one surge fired on the day %d cities fell with a fall's surge due"),
-				Report.Fallen.Num()),
-				Run->Surges->SurgesFired >= SurgesBefore + 1);
-
-			if (Report.bSurged)
-			{
-				++FallDaysDueThatSurged;
-			}
-		}
-		else if (DayAboutToBegin > 1)
-		{
-			TestFalse(FString::Printf(
-				TEXT("day %d, a day a city fell with no fall's surge due, did not surge"),
-				DayAboutToBegin),
-				Report.bSurged);
-		}
+		// EVERY CITY THAT FELL FIRED A SURGE OF ITS OWN, since the owner's ruling of
+		// 2026-11-24 on issue #2865. So the day's surges are exactly one for each city
+		// that fell, and one more when the clock's was due at the top of the day.
+		// NOTHING ELSE CAN FIRE ONE HERE: the ordinary dungeon on the Pillar holds the
+		// board from day 2, so no empty-board wave comes. From issue #2380 until then
+		// a fall's surge waited 25 days on the last; this asserted a surge only on a
+		// fall day where one was due, and one surge however many cities fell, because
+		// a second fall the same day came nought days after the first's surge.
+		const int32 SurgesExpected = Report.Fallen.Num() + (bClockIsDue ? 1 : 0);
+		TestTrue(FString::Printf(TEXT("day %d, a day %d cities fell, surged"), Report.Day, Report.Fallen.Num()),
+				 Report.bSurged);
+		TestEqual(FString::Printf(TEXT("day %d: one surge for each city that fell, and the clock's when it was due"),
+								  Report.Day),
+				  Run->Surges->SurgesFired - SurgesBefore, SurgesExpected);
+		TestEqual(FString::Printf(TEXT("day %d: and the day's report counts the same"), Report.Day),
+				  Report.Surges, SurgesExpected);
 	}
 
 	TestTrue(FString::Printf(
@@ -866,16 +824,6 @@ bool FCataclysmEmpireRunFallMaySurgeTest::RunTest(const FString& Parameters)
 	TestEqual(FString::Printf(TEXT("the constructed feller's city, %d, fell on day %d"), ConstructedCityId,
 							  ConstructedFallDay),
 			  ConstructedCityFellOnDay, ConstructedFallDay);
-
-	// AND AT LEAST ONE OF THE DAYS WATCHED HAD A SURGE DUE AND SURGED. The loop
-	// above keeps watching past the third fall until one has, so this fails
-	// only when six hundred days bring no such fall at all. Without it, a seed
-	// whose fall days were all inside the least interval would pass with the
-	// surge never looked at.
-	TestTrue(FString::Printf(
-		TEXT("%d of the %d days a city fell had a fall's surge due and surged"),
-		FallDaysDueThatSurged, FallsSeen),
-		FallDaysDueThatSurged >= 1);
 
 	return true;
 }
@@ -1965,6 +1913,7 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* Run = MakeRun();
 
 	int32 FallsChecked = 0;
+	int32 CountsChecked = 0;
 
 	for (int32 Days = 0; Days < 600 && FallsChecked < 3; ++Days)
 	{
@@ -1974,12 +1923,14 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 		// **QUEST DUNGEONS ARE NOT COUNTED**, since 2026-10-21. A fall moves a
 		// Quest dungeon rather than absorbing it, and the Dungeon City counts
 		// only what it absorbed. Until then every dungeon standing was counted.
-		TMap<int32, int32> StandingOn;
+		//
+		// BY ID, since issue #2865, so the ones that hit and left before the fall can be taken off below.
+		TMap<int32, TArray<int32>> StandingOn;
 		for (const FCataclysmDungeon& Dungeon : Run->Dungeons)
 		{
 			if (Dungeon.Type != ECataclysmDungeonType::Quest)
 			{
-				++StandingOn.FindOrAdd(Dungeon.CityId);
+				StandingOn.FindOrAdd(Dungeon.CityId).Add(Dungeon.DungeonId);
 			}
 		}
 
@@ -1995,7 +1946,40 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 
 			++FallsChecked;
 
-			const int32 WasCarrying = StandingOn.FindRef(CityId);
+			// AND WHAT ARRIVED EARLIER THE SAME DAY AND WAS ABSORBED WITH IT: a dungeon of a wave that landed on this
+			// city before it fell -- the clock's, at the top of the day, or, since the owner's ruling of 2026-11-24 on
+			// issue #2865, another city's fall's -- is in the day's `Spawned` and its `Absorbed` both. With one city
+			// fallen that day each such dungeon is this city's. With more, which city took it cannot be read once the
+			// day is over, so the two counts below are not checked for that day, and the run says so.
+			int32 ArrivedAndAbsorbed = 0;
+			for (const int32 ArrivedId : Report.Spawned)
+			{
+				ArrivedAndAbsorbed += Report.Absorbed.Contains(ArrivedId) ? 1 : 0;
+			}
+			const bool bCountsReadable = Report.Fallen.Num() == 1 || ArrivedAndAbsorbed == 0;
+			if (!bCountsReadable)
+			{
+				AddInfo(FString::Printf(
+					TEXT("day %d: %d cities fell and %d dungeons that arrived that day were absorbed, so %s's depth and "
+						 "bosses are not checked"),
+					Report.Day, Report.Fallen.Num(), ArrivedAndAbsorbed, *City->Name));
+			}
+
+			// LESS WHAT HIT AND LEFT BEFORE THE FALL. An ordinary dungeon whose hit does not fell its city leaves the map
+			// (`ResolveDungeon`, "IT HIT ITS CITY, SO IT LEAVES THE MAP"), so when a second fells the city later the same
+			// day the first is not there to be absorbed: it resolved today and is not in the day's `Absorbed`. Window
+			// 2865-w1 failed here, expecting 2 bosses against 1: the surge rulings of issue #2865 bring more waves, and
+			// this run then reaches a day with two resolves on one city. Until then this counted every dungeon that
+			// stood on the city when the day began.
+			int32 StoodBefore = 0;
+			int32 HitAndLeft = 0;
+			for (const int32 StoodId : StandingOn.FindRef(CityId))
+			{
+				++StoodBefore;
+				HitAndLeft += (Report.Resolved.Contains(StoodId) && !Report.Absorbed.Contains(StoodId)) ? 1 : 0;
+			}
+			const int32 WasCarrying =
+				StoodBefore - HitAndLeft + (Report.Fallen.Num() == 1 ? ArrivedAndAbsorbed : 0);
 
 			// ONE DUNGEON CITY STANDS ON IT, AND NOTHING ELSE BUT A QUEST
 			// DUNGEON THAT FOUND NOWHERE TO GO. Until 2026-10-21 this asserted
@@ -2043,11 +2027,15 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 				UCataclysmSurgeScheduler::SpecFor(
 					ECataclysmDungeonType::FallenCity, City->Tier);
 
-			TestEqual(FString::Printf(
-				TEXT("%s fell carrying %d, so its dungeon is %d deep"),
-				*City->Name, WasCarrying,
-				FMath::Max(WasCarrying, Spec.LeastFloors)),
-				Left->Floors, FMath::Max(WasCarrying, Spec.LeastFloors));
+			if (bCountsReadable)
+			{
+				++CountsChecked;
+				TestEqual(FString::Printf(
+					TEXT("%s fell carrying %d, so its dungeon is %d deep"),
+					*City->Name, WasCarrying,
+					FMath::Max(WasCarrying, Spec.LeastFloors)),
+					Left->Floors, FMath::Max(WasCarrying, Spec.LeastFloors));
+			}
 
 			// ONE BOSS PER DUNGEON THAT WAS STANDING AND WAS ABSORBED. The
 			// design's one stated exception to a boss on the final floor and
@@ -2056,8 +2044,15 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 			// none and still holds one boss, ruled by the coordinating session
 			// that day. Until then this read `WasCarrying` alone, which was
 			// never nought while every dungeon on the city was absorbed.
-			TestEqual(TEXT("and one boss per dungeon that was standing and was absorbed, and at least one"),
-					  Left->Bosses, FMath::Max(1, WasCarrying));
+			if (bCountsReadable)
+			{
+				AddInfo(FString::Printf(TEXT("FALL: day %d, %s: %d stood when the day began, %d hit and left before the "
+											 "fall, %d arrived that day and were absorbed; %d bosses"),
+										Report.Day, *City->Name, StoodBefore, HitAndLeft,
+										Report.Fallen.Num() == 1 ? ArrivedAndAbsorbed : 0, Left->Bosses));
+				TestEqual(TEXT("and one boss per dungeon that was standing and was absorbed, and at least one"),
+						  Left->Bosses, FMath::Max(1, WasCarrying));
+			}
 
 			// AND IT TAKES NOTHING MORE FROM THE CITY, EVER.
 			TestEqual(TEXT("it takes no defence"), Left->DefenceDamage, 0.0f);
@@ -2080,6 +2075,8 @@ bool FCataclysmEmpireRunFallenCityTest::RunTest(const FString& Parameters)
 
 	TestTrue(FString::Printf(TEXT("%d cities fell to check"), FallsChecked),
 			 FallsChecked > 0);
+	TestTrue(FString::Printf(TEXT("and %d of them had their depth and bosses checked"), CountsChecked),
+			 CountsChecked > 0);
 
 	return true;
 }
@@ -2647,6 +2644,11 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 	// reported below beside the rest.
 	int32 OpenedByTheDaysOwnFalls = 0;
 
+	// AND A NEIGHBOUR BESIEGED BY A SIEGE THAT ARRIVED THE SAME DAY, exempt for the
+	// same reason: a wave can land it after the decision was taken. Counted and
+	// reported beside the other. Issue #2865.
+	int32 BesiegedByTheDaysOwnWaves = 0;
+
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
 		UCataclysmEmpireRun* Run = MakeRun(Seed);
@@ -2843,12 +2845,30 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 							// coin failure and hide the rule under the chance.
 							//
 							// READ AT THE END OF THE DAY, like everything else
-							// in this block, and a Siege standing now stood
-							// then: nothing in `AdvanceDay` creates one.
+							// in this block. A Siege standing now stood when the
+							// move was decided UNLESS A WAVE LANDED IT THAT DAY:
+							// the clock's at the top of the day, or, since the
+							// owner's ruling of 2026-11-24 on issue #2865, a
+							// city's fall's at the moment it falls, which can come
+							// after the decision. Until then this said nothing in
+							// `AdvanceDay` creates one. A neighbour besieged by a
+							// Siege in the day's `Spawned` is exempt and counted,
+							// as one the day's own falls opened is.
 							if (Still->SubType
 									== ECataclysmDungeonSubType::Siege
 								&& Run->IsBesieged(Neighbour))
 							{
+								for (const int32 ThereId : Run->DungeonsOn(Neighbour))
+								{
+									const FCataclysmDungeon* Besieger = Run->FindDungeon(ThereId);
+									if (Besieger != nullptr
+										&& Besieger->SubType == ECataclysmDungeonSubType::Siege
+										&& Report.Spawned.Contains(ThereId))
+									{
+										++BesiegedByTheDaysOwnWaves;
+										break;
+									}
+								}
 								continue;
 							}
 
@@ -3017,10 +3037,12 @@ bool FCataclysmEmpireRunQuestMovesTest::RunTest(const FString& Parameters)
 			 "%d of the moves crossed a tier boundary, and %d were moved by "
 			 "a city falling underneath them the same day and left out. %d "
 			 "neighbours were open by nightfall having been sealed when the "
-			 "dungeon declined to move, opened by the same day's falls"),
+			 "dungeon declined to move, opened by the same day's falls; %d "
+			 "neighbours refused a Siege-carrying dungeon for a Siege that "
+			 "arrived the same day"),
 		Campaigns, TimersFired, Moves, StayedPut, StayedHemmedIn, Declined,
 		AlongTheRim, CrossedATierBoundary, MovedByAFall,
-		OpenedByTheDaysOwnFalls));
+		OpenedByTheDaysOwnFalls, BesiegedByTheDaysOwnWaves));
 
 	// THE EVIDENCE HAS TO EXIST BEFORE IT CAN BE BELIEVED.
 	TestTrue(TEXT("quest dungeon timers actually ran out"), TimersFired > 0);
@@ -3235,10 +3257,11 @@ bool FCataclysmEmpireRunCountsProgressTest::RunTest(const FString& Parameters)
 
 			if (Target == nullptr)
 			{
-				// NOTHING TO WALK. The day passes anyway. Since issue #1414
-				// an empty board brings the next wave on the first day the
-				// last surge is 25 days behind, so this player is idle for
-				// at most that long; before it the wait was for the clock.
+				// NOTHING TO WALK. The day passes anyway. Since issue #2865
+				// a board with no ordinary dungeon brings the next wave at the
+				// end of the next day; from issue #1414 until then it waited
+				// for the last surge to be 25 days behind, and before #1414
+				// the wait was for the clock.
 				PassADay();
 				++Advanced;
 				continue;
@@ -3681,10 +3704,15 @@ namespace CataclysmEmpireRunTest
 	 * Spending the day and then emptying both lists leaves the map intact -- no
 	 * city falls in one day -- and the clock's next surge 90 days off.
 	 *
-	 * THE BOARD IT LEAVES IS EMPTY AND THE LAST SURGE WAS DAY 1, so since issue
-	 * #1414 a run left with nothing standing is sent a wave on day 26. Every
-	 * test written before that issue puts a dungeon down and stops by day 6;
-	 * the empty-board tests at the end of this file use the day 26 on purpose.
+	 * THE BOARD IT LEAVES IS EMPTY AND THE LAST SURGE WAS DAY 1, so a run left
+	 * with no ORDINARY dungeon standing is sent a wave of 12 at the end of the
+	 * next day it advances: since issue #2865 (the owner's rulings of 2026-11-23
+	 * and 2026-11-24) a Quest dungeon, a Fallen City and a Cataclysm dungeon do
+	 * not count and no least interval holds it back. From issue #1414 until then
+	 * the wave waited for day 26. A test that must stay quiet puts an ordinary
+	 * dungeon down, or calls `HoldTheBoard`, AND FELLS NO CITY THROUGH THE RUN:
+	 * since the owner's ruling of 2026-11-24 every fall brings a wave of its own,
+	 * whatever stands on the board.
 	 */
 	UCataclysmEmpireRun* MakeEmptyRun(int32 Seed)
 	{
@@ -3693,6 +3721,28 @@ namespace CataclysmEmpireRunTest
 		Run->Dungeons.Empty();
 		Run->Clock->Timers.Empty();
 		return Run;
+	}
+
+	void PlaceDungeon(UCataclysmEmpireRun& Run, int32 DungeonId, ECataclysmDungeonType Type,
+					  ECataclysmDungeonSubType SubType, const FCataclysmCity& City, float ResolveDays);
+
+	/**
+	 * Puts down one ordinary dungeon whose timer never runs out ON THE PILLAR, so the board always holds an ordinary
+	 * dungeon and no empty-board wave lands. Issue #2865: until the owner's ruling of 2026-11-23 the least interval of
+	 * 25 days kept an empty board quiet after a surge, and each test that calls this relied on that.
+	 *
+	 * THE PILLAR BECAUSE NOTHING ELSE TOUCHES IT: a wave never targets it (`UCataclysmEmpireMap::ExposedCities` leaves it
+	 * out, and `PickTargets` asks that) and it does not fall in these tests. It takes no random draw. So the one thing
+	 * that moves is a count of every dungeon on the map, by one, which each caller says.
+	 *
+	 * CALLED BEFORE ANY POINTER INTO `Run.Dungeons` IS TAKEN: it adds to that array, which can move it.
+	 *
+	 * IT DOES NOT STOP A CITY'S FALL FROM BRINGING A WAVE. Every fall does since the owner's ruling of 2026-11-24.
+	 */
+	void HoldTheBoard(UCataclysmEmpireRun& Run, int32 DungeonId)
+	{
+		PlaceDungeon(Run, DungeonId, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None,
+					 *Run.Map->Find(Run.Map->PillarId), 10000.0f);
 	}
 
 	/** Puts a dungeon on a city with a timer, exactly as a surge would. */
@@ -4212,9 +4262,12 @@ bool FCataclysmEmpireRunDeathResolvesTest::RunTest(const FString& Parameters)
 			  Run->Clock->CurrentDungeonId, static_cast<int32>(INDEX_NONE));
 
 	// AND NOTHING MORE LANDS. The caller leaves, and five days pass, as a
-	// Standard death charges. The board is empty for them; the last surge was
-	// day 1, so no empty-board wave is due before day 26.
+	// Standard death charges. An ordinary dungeon on the Pillar holds the board
+	// for them, so no empty-board wave lands: since issue #2865 one would land at
+	// the end of the next day, and a Siege in it could bite this city. Until then
+	// none was due before day 26.
 	Run->Clock->LeaveDungeon();
+	HoldTheBoard(*Run, 9003);
 	Run->AdvanceDays(5);
 
 	TestEqual(TEXT("five days later still only the one resolve has cost a city"),
@@ -4438,13 +4491,15 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 		return false;
 	}
 
-	// ASKED BEFORE THE FALL, because the fall's own surge would move the day it is measured from. Until issue
-	// #2380 this test compared the report with the bare flag `bSurgeOnCityFall`; a fall's surge now also waits
-	// for the least interval, and this death is on day 1, the day of the opening wave, so none is due. Ruled by
-	// the coordinating session on 2026-10-12. THE CASE WHERE THE ANSWER IS YES is
-	// `Cataclysm.EmpireRun.ACityFallingTwentyFiveDaysAfterTheLastSurgeBringsOneWave`.
-	const bool bAFallsSurgeWasDue = Run->Surges->IsDueOnCityFall(Run->Day());
-	TestFalse(TEXT("set-up: on the day of the opening wave a fall's surge is not due"), bAFallsSurgeWasDue);
+	// ASKED BEFORE THE FALL, because the fall's own surge moves the counts. This death is on day 1, the day of the
+	// opening wave, and since the owner's ruling of 2026-11-24 on issue #2865, verbatim "surges from cities falling should happen regardless",
+	// its fall fires a surge all the same: the run's second, eight dungeons. From issue #2380 until then a fall's
+	// surge waited 25 days on the last, none was due here, and this test asserted that none came.
+	const int32 SurgesBefore = Run->Surges->SurgesFired;
+	const int32 WaveDue = Run->Surges->DungeonsInNextSurge();
+	TestTrue(TEXT("set-up: a fall's surge is due on day 1, the day of the opening wave"),
+			 Run->Surges->IsDueOnCityFall(Run->Day()));
+	TestEqual(TEXT("set-up: and it would be the run's second wave, eight"), WaveDue, 8);
 	const FCataclysmDayReport Report = Run->ResolveDungeonOnDeath(DiedIn);
 
 	// THE CITY FELL TO THE RESOLVE.
@@ -4480,7 +4535,7 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 			 bListsAgree);
 
 	// AND WHAT A CITY FALLING DOES STILL HAPPENED: it became a Dungeon City, and
-	// its fall fired a surge exactly when the scheduler said a fall's surge was due.
+	// its fall fired a surge, as every fall does since issue #2865.
 	bool bDungeonCityStands = false;
 	for (const FCataclysmDungeon& Standing : Run->Dungeons)
 	{
@@ -4489,8 +4544,11 @@ bool FCataclysmEmpireRunDeathFellsTheCityTest::RunTest(const FString& Parameters
 				&& Standing.CityId == CityId);
 	}
 	TestTrue(TEXT("a Dungeon City stands where the city fell"), bDungeonCityStands);
-	TestTrue(TEXT("the report says a surge fired exactly when the scheduler said a fall's was due"),
-			 Report.bSurged == bAFallsSurgeWasDue);
+	TestTrue(TEXT("the fall fired a surge, though the opening wave came the same day"), Report.bSurged);
+	TestEqual(TEXT("one surge, recorded on the scheduler"), Run->Surges->SurgesFired, SurgesBefore + 1);
+	TestEqual(TEXT("and one on the report"), Report.Surges, 1);
+	TestEqual(TEXT("of the scheduled size"), Report.SurgeDungeons, WaveDue);
+	TestEqual(TEXT("the report names the wave and the Dungeon City as arrived"), Report.Spawned.Num(), WaveDue + 1);
 
 	return true;
 }
@@ -4571,57 +4629,54 @@ namespace CataclysmEmpireRunTest
 }
 
 /**
- * The scheduler's own answer, with no run and no map.
+ * The scheduler's own answer, with no run and no map. Issue #2865, the owner's rulings of 2026-11-23 and 2026-11-24.
  *
- * `IsDueOnEmptyBoard` is three conditions: the rule is on, nothing stands, and
- * the last surge is at least `LeastIntervalDays` (25) behind. Each row below
- * differs from a row beside it in exactly one of the last two, so each is the
- * control for its neighbour. The flag is a constant and cannot be turned off
- * from a test; `tools/tests/test_surge_port.py` holds it equal to the model's.
+ * `IsDueOnEmptyBoard` is two conditions since 2026-11-23: the rule is on, and no ordinary dungeon stands. The least
+ * interval of 25 days no longer applies, so day 1, the day of a surge and the day after it all answer yes with nothing
+ * standing. CONTROL: one ordinary dungeon standing answers no on the same days. Until then each of those days answered
+ * no until 25 days after the last surge.
  *
- * NO ACTOR AND NO WORLD. Every figure is a day number written by hand.
+ * AND ITS WAVE IS FOUR LARGER, the ruling of 2026-11-24, "Flat +4, no stacking": `DungeonsInNextSurge(true)` adds
+ * `ExtraDungeonsOnEmptyBoard` before the cap and the lethality multiplier (the coordinating session's judgement that
+ * day). The opening wave's 12 + 4 is held at the cap of 14; a later wave is 8 + 4 = 12; Heretic's is (8 + 4) x 1.25 =
+ * 15. CONTROL: each from the clock, 12, 8 and 10.
+ *
+ * NO ACTOR AND NO WORLD. Every figure is a day number or a count written by hand.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunEmptyBoardIsDueTest,
-	"Cataclysm.EmpireRun.TheSchedulerAnswersAnEmptyBoardOnlyOnceTheLeastIntervalHasPassed",
+	"Cataclysm.EmpireRun.TheSchedulerAnswersAnEmptyBoardWithNoLeastIntervalAndFourMoreDungeons",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunEmptyBoardIsDueTest::RunTest(const FString& Parameters)
 {
 	UCataclysmSurgeScheduler* Scheduler = NewObject<UCataclysmSurgeScheduler>();
 
-	// BEFORE ANY SURGE THE START OF THE RUN IS DAY 0, which is what
-	// `Simulation.days_since_last_surge` answers while its log is empty.
-	TestEqual(TEXT("before any surge, day 24 is 24 days since the last one"),
-			  Scheduler->DaysSinceLastSurge(24), 24.0f, 0.001f);
-	TestFalse(TEXT("day 24 with nothing standing and no surge yet is not due"),
-			  Scheduler->IsDueOnEmptyBoard(24, 0));
-	TestTrue(TEXT("day 25 with nothing standing and no surge yet is due"),
-			 Scheduler->IsDueOnEmptyBoard(25, 0));
-	TestFalse(TEXT("day 25 with one dungeon standing is not due"),
-			  Scheduler->IsDueOnEmptyBoard(25, 1));
+	TestTrue(TEXT("day 1 with no ordinary dungeon standing and no surge yet is due"),
+			 Scheduler->IsDueOnEmptyBoard(1, 0));
+	TestFalse(TEXT("CONTROL: day 1 with one ordinary dungeon standing is not"),
+			  Scheduler->IsDueOnEmptyBoard(1, 1));
+	TestEqual(TEXT("the opening wave from an empty board: 12 + 4, held at the cap of 14"),
+			  Scheduler->DungeonsInNextSurge(/* bFromEmptyBoard */ true), 14);
+	TestEqual(TEXT("CONTROL: the opening wave from the clock: 12"), Scheduler->DungeonsInNextSurge(), 12);
 
-	// A SURGE ON DAY 100 MOVES WHAT THE INTERVAL IS MEASURED FROM.
 	Scheduler->RecordSurge(100);
 
-	TestEqual(TEXT("a surge recorded on day 100 is the last surge's day"),
-			  Scheduler->LastSurgeDay, 100);
-	TestEqual(TEXT("day 124 is 24 days since it"),
-			  Scheduler->DaysSinceLastSurge(124), 24.0f, 0.001f);
-	TestFalse(TEXT("day 124 with nothing standing is not due"),
-			  Scheduler->IsDueOnEmptyBoard(124, 0));
-	TestTrue(TEXT("day 125 with nothing standing is due"),
-			 Scheduler->IsDueOnEmptyBoard(125, 0));
-	TestFalse(TEXT("day 1000 with three dungeons standing is not due"),
-			  Scheduler->IsDueOnEmptyBoard(1000, 3));
+	TestTrue(TEXT("the very day of a surge, day 100, with nothing ordinary standing is due"),
+			 Scheduler->IsDueOnEmptyBoard(100, 0));
+	TestTrue(TEXT("and day 101, one day after it"), Scheduler->IsDueOnEmptyBoard(101, 0));
+	TestFalse(TEXT("CONTROL: day 101 with one ordinary dungeon standing is not"),
+			  Scheduler->IsDueOnEmptyBoard(101, 1));
+	TestFalse(TEXT("day 1000 with three standing is not"), Scheduler->IsDueOnEmptyBoard(1000, 3));
+	TestEqual(TEXT("a later wave from an empty board: 8 + 4 = 12"),
+			  Scheduler->DungeonsInNextSurge(/* bFromEmptyBoard */ true), 12);
+	TestEqual(TEXT("CONTROL: a later wave from the clock: 8"), Scheduler->DungeonsInNextSurge(), 8);
 
-	// AND A SURGE A CITY'S FALL FIRED MOVES IT TOO. The model logs every surge
-	// in one list whatever caused it.
-	Scheduler->RecordSurge(110, /* bFromCityFall */ true);
-
-	TestFalse(TEXT("after a fall's surge on day 110, day 134 is not due"),
-			  Scheduler->IsDueOnEmptyBoard(134, 0));
-	TestTrue(TEXT("and day 135 is due"),
-			 Scheduler->IsDueOnEmptyBoard(135, 0));
+	UCataclysmSurgeScheduler* Heretic = NewObject<UCataclysmSurgeScheduler>();
+	Heretic->LethalityRung = 2;
+	Heretic->RecordSurge(100);
+	TestEqual(TEXT("at Heretic, the multiplier after the four: (8 + 4) x 1.25 = 15"),
+			  Heretic->DungeonsInNextSurge(/* bFromEmptyBoard */ true), 15);
+	TestEqual(TEXT("CONTROL: at Heretic from the clock, 8 x 1.25 = 10"), Heretic->DungeonsInNextSurge(), 10);
 
 	return true;
 }
@@ -4635,9 +4690,9 @@ bool FCataclysmEmpireRunEmptyBoardIsDueTest::RunTest(const FString& Parameters)
  * other does not. Nothing else differs, so the other run is the control.
  *
  * THE DAYS, BY HAND. The last surge was day 1 and the clock's next is day 91.
- * A clear made after day 30 is seen at the end of day 31, which is 30 days
- * after the last surge and past the least interval of 25, so the wave lands on
- * day 31 -- 60 days before the clock would have sent it.
+ * A clear made after day 30 is seen at the end of day 31, so the wave lands on
+ * day 31 -- 60 days before the clock would have sent it. Since issue #2865 no
+ * least interval applies, so day 31 would be the day whatever day the clear.
  *
  * NO ACTOR IS SPAWNED. A run is an object with no world.
  */
@@ -4695,10 +4750,10 @@ bool FCataclysmEmpireRunEmptyBoardSurgeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("day 31 surged on the emptied board"), After.bSurged);
 	TestTrue(TEXT("and the report says the empty board caused it"),
 			 After.bSurgedOnEmptyBoard);
-	// THE RUN'S SECOND WAVE, AT `SurgeIndex` 1, SO `DungeonsPerSurge`: 8 since
-	// 2026-10-20, and 5 until then. The board was empty, so all of it stands.
-	TestEqual(TEXT("the wave brought eight dungeons"), After.Spawned.Num(), 8);
-	TestEqual(TEXT("eight dungeons stand after it"), Cleared->DungeonCount(), 8);
+	// THE RUN'S SECOND WAVE, AT `SurgeIndex` 1, SO `DungeonsPerSurge` 8 AND FOUR MORE BECAUSE THE BOARD EMPTIED: the
+	// owner's "Flat +4, no stacking" of 2026-11-24, issue #2865. 8 until then. The board was empty, so all of it stands.
+	TestEqual(TEXT("the wave brought twelve dungeons, eight and four for the empty board"), After.Spawned.Num(), 12);
+	TestEqual(TEXT("twelve dungeons stand after it"), Cleared->DungeonCount(), 12);
 	TestEqual(TEXT("the run counts one surge from an empty board"),
 			  Cleared->SurgesFromEmptyBoard, 1);
 	TestEqual(TEXT("and two surges in all"), Cleared->Surges->SurgesFired, 2);
@@ -4739,18 +4794,19 @@ bool FCataclysmEmpireRunEmptyBoardSurgeTest::RunTest(const FString& Parameters)
 }
 
 /**
- * A board emptied inside the least interval waits for it, and is not forgotten.
+ * A board emptied the day after a surge brings the next wave at once. Issue #2865, the owner's ruling of 2026-11-23:
+ * "The 25-day minimum gap (LeastIntervalDays) does not apply to a surge fired by an empty board."
  *
- * THE DAYS, BY HAND. The opening wave fires on day 1 and is taken off the same
- * day, so the board is empty from day 1 and the last surge is day 1. Days 2 to
- * 25 are 1 to 24 days after it, inside the least interval of 25. Day 26 is the
- * 25th. The board emptied once, on day 1, and nothing empties it again, so a
- * rule asked only at the moment of emptying would never fire.
+ * THE DAYS, BY HAND. The opening wave fires on day 1 and is taken off the same day (`MakeEmptyRun`), so the board is
+ * empty from day 1 and the last surge is day 1. Day 2 is one day after it, and surges with the wave four larger: the
+ * run's second, so 8 + 4 = 12. Until the ruling days 2 to 25 waited, and this test was named
+ * `ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed`.
  *
- * THE CONTROL IS THE 24 DAYS THEMSELVES: the same empty board, one day short.
+ * CONTROL: a run from the same seed with one ordinary dungeon standing, with a timer that never runs out, brings
+ * nothing on day 2.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunEmptyBoardWaitsTest,
-	"Cataclysm.EmpireRun.ABoardEmptiedInsideTheLeastIntervalWaitsUntilItHasPassed",
+	"Cataclysm.EmpireRun.ABoardEmptiedTheDayAfterASurgeBringsTheNextWaveAtOnce",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunEmptyBoardWaitsTest::RunTest(const FString& Parameters)
@@ -4758,54 +4814,53 @@ bool FCataclysmEmpireRunEmptyBoardWaitsTest::RunTest(const FString& Parameters)
 	using namespace CataclysmEmpireRunTest;
 
 	UCataclysmEmpireRun* Run = MakeEmptyRun(1);
+	UCataclysmEmpireRun* Held = MakeEmptyRun(1);
+	const int32 CityId = FirstStandingOutpost(*Held);
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE))
+	{
+		return false;
+	}
+	PlaceDungeon(*Held, 9250, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, *Held->Map->Find(CityId),
+				 EmptyBoardNeverDays);
 
-	TestEqual(TEXT("set-up: the last surge was day 1"),
-			  Run->Surges->LastSurgeDay, 1);
+	TestEqual(TEXT("set-up: the last surge was day 1"), Run->Surges->LastSurgeDay, 1);
 	TestEqual(TEXT("set-up: nothing stands on day 1"), Run->DungeonCount(), 0);
 
-	TestEqual(TEXT("no surge on any of days 2 to 25, the 24 days inside the least interval"),
-			  SurgesWhileAdvancingTo(*Run, 25), 0);
-	TestEqual(TEXT("set-up: the clock reads day 25"), Run->Day(), 25);
-	TestEqual(TEXT("and the board was still empty on day 25"),
-			  Run->DungeonCount(), 0);
-	TestEqual(TEXT("and no surge is counted from an empty board yet"),
-			  Run->SurgesFromEmptyBoard, 0);
-
 	const FCataclysmDayReport Report = Run->AdvanceDay();
+	const FCataclysmDayReport Control = Held->AdvanceDay();
 
-	TestEqual(TEXT("the next day is day 26"), Report.Day, 26);
-	TestTrue(TEXT("day 26, the 25th after the last surge, surges on the empty board"),
-			 Report.bSurgedOnEmptyBoard);
-	// THE RUN'S SECOND WAVE, so 8 since 2026-10-20 and 5 until then.
-	TestEqual(TEXT("bringing eight dungeons"), Report.Spawned.Num(), 8);
-	TestEqual(TEXT("and the run counts one surge from an empty board"),
-			  Run->SurgesFromEmptyBoard, 1);
+	TestEqual(TEXT("the next day is day 2"), Report.Day, 2);
+	TestTrue(TEXT("day 2, one day after the last surge, surges on the empty board"), Report.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("bringing twelve dungeons, eight and four for the empty board"), Report.Spawned.Num(), 12);
+	TestEqual(TEXT("and the run counts one surge from an empty board"), Run->SurgesFromEmptyBoard, 1);
+	TestEqual(TEXT("the last surge is now day 2"), Run->Surges->LastSurgeDay, 2);
+
+	TestFalse(TEXT("CONTROL: with one ordinary dungeon standing day 2 does not surge"), Control.bSurged);
+	TestEqual(TEXT("CONTROL: no surge is counted from an empty board"), Held->SurgesFromEmptyBoard, 0);
 
 	return true;
 }
 
 /**
- * The clock after an empty-board surge, and a whole run against days written by
- * hand.
+ * The clock after an empty-board surge, and a run against days written by hand.
  *
- * `Simulation.trigger_surge` sets `next_surge_day` to today plus the gap for
- * every surge whatever caused it, and an empty-board surge advances the
- * escalation counter as the clock's does. So one wave replaces one wave.
+ * `Simulation.trigger_surge` sets `next_surge_day` to today plus the gap for every surge whatever caused it, and an
+ * empty-board surge advances the escalation counter as the clock's does. So one wave replaces one wave.
  *
- * THE RUN, BY HAND, static surges of 90 days and a least interval of 25:
+ * THE RUN, BY HAND, static surges of 90 days, no least interval for an empty board since issue #2865 (2026-11-23):
  *
  *   day 1    the opening wave, from the clock. Taken off at once. Clock: 91.
- *   day 26   25 days later the empty board brings a wave. Clock moves to 116.
- *            The player clears all of it the same day.
- *   day 51   25 days later again. Clock moves to 141. The player clears all of
- *            it and one Quest dungeon that never moves is put down.
- *   day 141  the clock's surge. Nothing came on days 52 to 140, though the
- *            least interval passed on day 76, because a dungeon stood. Clock
- *            moves to 231.
+ *   day 2    the empty board brings a wave of 8 + 4 = 12. Clock moves to 92. The player clears all of it.
+ *   day 3    the empty board again. Clock moves to 93. The player clears all of it and one ORDINARY dungeon that never
+ *            runs out is put down.
+ *   day 93   the clock's surge, 8 dungeons. Nothing came on days 4 to 92 because an ordinary dungeon stood. Clock moves
+ *            to 183.
  *
- * WHY THE WAVES ARE CLEARED THE DAY THEY LAND. A rolled wave left standing
- * resolves and can fell a city, and a city's fall fires a surge of its own on a
- * day no hand can write down in advance.
+ * UNTIL ISSUE #2865 the dungeon put down was a Quest dungeon, and the waves came on days 26 and 51. A Quest dungeon no
+ * longer keeps the board from being empty (`OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty`).
+ *
+ * WHY THE WAVES ARE CLEARED THE DAY THEY LAND. A rolled wave left standing resolves and can fell a city, and a city's
+ * fall fires a surge of its own on a day no hand can write down in advance.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunEmptyBoardClockTest,
 	"Cataclysm.EmpireRun.AnEmptyBoardSurgeMovesTheClockOnAndTheClockStillComes",
@@ -4819,147 +4874,118 @@ bool FCataclysmEmpireRunEmptyBoardClockTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("set-up: before any empty-board surge the clock's next is day 91"),
 			  Run->Surges->NextSurgeDay, 91.0f, 0.001f);
-	TestEqual(TEXT("set-up: one surge has advanced the escalation counter"),
-			  Run->Surges->SurgeIndex, 1);
+	TestEqual(TEXT("set-up: one surge has advanced the escalation counter"), Run->Surges->SurgeIndex, 1);
 
-	// DAY 26.
-	TestEqual(TEXT("one surge on days 2 to 26"),
-			  SurgesWhileAdvancingTo(*Run, 26), 1);
-	TestEqual(TEXT("and it was the empty board's, on day 26"),
-			  Run->Surges->LastSurgeDay, 26);
-	TestEqual(TEXT("the clock's next surge moved from day 91 to day 116"),
-			  Run->Surges->NextSurgeDay, 116.0f, 0.001f);
-	TestEqual(TEXT("the escalation counter advanced to 2"),
-			  Run->Surges->SurgeIndex, 2);
-	TestEqual(TEXT("one surge from an empty board so far"),
-			  Run->SurgesFromEmptyBoard, 1);
+	// DAY 2.
+	const FCataclysmDayReport First = Run->AdvanceDay();
+	TestEqual(TEXT("the next day is day 2"), First.Day, 2);
+	TestTrue(TEXT("day 2 surges on the empty board"), First.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("with twelve dungeons"), First.Spawned.Num(), 12);
+	TestEqual(TEXT("the clock's next surge moved from day 91 to day 92"), Run->Surges->NextSurgeDay, 92.0f, 0.001f);
+	TestEqual(TEXT("the escalation counter advanced to 2"), Run->Surges->SurgeIndex, 2);
 
 	ClearTheWholeBoard(*Run);
-	TestEqual(TEXT("set-up: the player cleared the whole wave on day 26"),
-			  Run->DungeonCount(), 0);
+	TestEqual(TEXT("set-up: the player cleared the whole wave on day 2"), Run->DungeonCount(), 0);
 
-	// DAYS 27 TO 50 ARE INSIDE THE LEAST INTERVAL AGAIN, AND DAY 51 IS NOT.
-	TestEqual(TEXT("no surge on days 27 to 50"),
-			  SurgesWhileAdvancingTo(*Run, 50), 0);
-
+	// DAY 3.
 	const FCataclysmDayReport Second = Run->AdvanceDay();
+	TestEqual(TEXT("the next day is day 3"), Second.Day, 3);
+	TestTrue(TEXT("day 3 surges on the empty board, one day after day 2"), Second.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("the clock's next surge moved to day 93"), Run->Surges->NextSurgeDay, 93.0f, 0.001f);
+	TestEqual(TEXT("two surges from an empty board"), Run->SurgesFromEmptyBoard, 2);
 
-	TestEqual(TEXT("the next day is day 51"), Second.Day, 51);
-	TestTrue(TEXT("day 51 surges on the empty board, 25 days after day 26"),
-			 Second.bSurgedOnEmptyBoard);
-	TestEqual(TEXT("the clock's next surge moved to day 141"),
-			  Run->Surges->NextSurgeDay, 141.0f, 0.001f);
-	TestEqual(TEXT("two surges from an empty board"),
-			  Run->SurgesFromEmptyBoard, 2);
-
-	// ONE QUEST DUNGEON THAT NEVER LEAVES, AND NOTHING ELSE.
+	// ONE ORDINARY DUNGEON THAT NEVER RUNS OUT, AND NOTHING ELSE.
 	ClearTheWholeBoard(*Run);
-
 	const int32 CityId = FirstStandingOutpost(*Run);
-	if (!TestTrue(TEXT("set-up: the map has an Outpost standing on day 51"),
-				  CityId != INDEX_NONE))
+	if (!TestTrue(TEXT("set-up: the map has an Outpost standing on day 3"), CityId != INDEX_NONE))
 	{
 		return false;
 	}
-
-	PlaceDungeon(*Run, 9300, ECataclysmDungeonType::Quest,
-				 ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+	PlaceDungeon(*Run, 9300, ECataclysmDungeonType::Basic, ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
 				 EmptyBoardNeverDays);
 
-	TestEqual(TEXT("no surge on days 52 to 140 while the Quest dungeon stands"),
-			  SurgesWhileAdvancingTo(*Run, 140), 0);
-	TestEqual(TEXT("set-up: the Quest dungeon is the one thing standing on day 140"),
-			  Run->DungeonCount(), 1);
+	TestEqual(TEXT("no surge on days 4 to 92 while the ordinary dungeon stands"), SurgesWhileAdvancingTo(*Run, 92), 0);
+	TestEqual(TEXT("set-up: the ordinary dungeon is the one thing standing on day 92"), Run->DungeonCount(), 1);
 
 	const FCataclysmDayReport Scheduled = Run->AdvanceDay();
 
-	TestEqual(TEXT("the next day is day 141"), Scheduled.Day, 141);
-	TestTrue(TEXT("day 141 surges, from the clock"), Scheduled.bSurged);
-	TestFalse(TEXT("and not from an empty board"),
-			  Scheduled.bSurgedOnEmptyBoard);
-	// THE RUN'S FOURTH WAVE, AT `SurgeIndex` 3 IN A STATIC RUN, so 8 since
-	// 2026-10-20 and 5 until then.
-	TestEqual(TEXT("the clock's wave brought eight dungeons"),
-			  Scheduled.Spawned.Num(), 8);
-	TestEqual(TEXT("still two surges from an empty board"),
-			  Run->SurgesFromEmptyBoard, 2);
-	TestEqual(TEXT("four surges in all: days 1, 26, 51 and 141"),
-			  Run->Surges->SurgesFired, 4);
-	TestEqual(TEXT("and the clock's next surge is day 231"),
-			  Run->Surges->NextSurgeDay, 231.0f, 0.001f);
+	TestEqual(TEXT("the next day is day 93"), Scheduled.Day, 93);
+	TestTrue(TEXT("day 93 surges, from the clock"), Scheduled.bSurged);
+	TestFalse(TEXT("and not from an empty board"), Scheduled.bSurgedOnEmptyBoard);
+	// THE RUN'S FOURTH WAVE, AT `SurgeIndex` 3 IN A STATIC RUN: the clock's 8, with nothing added.
+	TestEqual(TEXT("the clock's wave brought eight dungeons"), Scheduled.Spawned.Num(), 8);
+	TestEqual(TEXT("still two surges from an empty board"), Run->SurgesFromEmptyBoard, 2);
+	TestEqual(TEXT("four surges in all: days 1, 2, 3 and 93"), Run->Surges->SurgesFired, 4);
+	TestEqual(TEXT("and the clock's next surge is day 183"), Run->Surges->NextSurgeDay, 183.0f, 0.001f);
 
 	return true;
 }
 
 /**
- * Every kind of dungeon keeps the board from being empty.
+ * Only an ordinary dungeon keeps the board from being empty. Issue #2865, the owner's ruling of 2026-11-23, verbatim
+ * "yes, your rec": "The board counts as empty when no ordinary dungeon stands. Quest dungeons, the Cataclysm boss
+ * dungeon and Fallen City dungeons do not count." A Scout Parties bonus dungeon was already not counted (slice 9, V16).
+ * `Simulation.board_is_empty` counts `DungeonType.BASIC`, and
+ * `sim/tests/test_the_empty_board_ruling_of_2026_11_23.py` holds it.
  *
- * `Simulation.board_is_empty` is `not self.dungeons` and reads no kind, and
- * `test_every_kind_of_dungeon_counts_as_something_on_the_board` in
- * `sim/tests/test_surge_when_the_board_empties.py` holds it for all four. A
- * Quest dungeon and a Fallen City never leave the board on their own, so a
- * player who ignores one gets the clock's surges and no others.
- *
- * FIVE RUNS FROM ONE SEED TO DAY 40. Four have one dungeon of one kind on the
- * first Outpost with a timer that never runs out; the fifth has nothing and is
- * the control. The last surge was day 1, so day 26 is where an empty board
- * fires.
- *
- * DAY 40 AND NO LATER, for the control's sake. Its wave of day 26 stays
- * standing, and by day 40 it is 14 days old: the shortest timer a rolled
- * dungeon can have is over 19 days and a Siege takes 25 days to fell an
- * Outpost, so no city can have fallen and fired a surge of its own.
+ * SIX RUNS FROM ONE SEED TO DAY 2. Five have one dungeon on the first Outpost with a timer that never runs out: an
+ * ordinary one, which holds the board, and a Quest dungeon, a Fallen City, a Cataclysm dungeon and a bonus dungeon,
+ * each of which leaves it empty, so day 2 surges with the empty board's 12. The sixth has nothing and is the control.
+ * Until the ruling every kind held the board and this test was named
+ * `EveryKindOfDungeonKeepsTheBoardFromBeingEmpty`.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunEmptyBoardKindsTest,
-	"Cataclysm.EmpireRun.EveryKindOfDungeonKeepsTheBoardFromBeingEmpty",
+	"Cataclysm.EmpireRun.OnlyAnOrdinaryDungeonKeepsTheBoardFromBeingEmpty",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunEmptyBoardKindsTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEmpireRunTest;
 
-	const ECataclysmDungeonType Kinds[4] = {
-		ECataclysmDungeonType::Basic, ECataclysmDungeonType::Quest,
-		ECataclysmDungeonType::FallenCity, ECataclysmDungeonType::Cataclysm };
-	const TCHAR* const KindNames[4] = {
-		TEXT("an ordinary dungeon"), TEXT("a Quest dungeon"),
-		TEXT("a Fallen City"), TEXT("a Cataclysm dungeon") };
+	const ECataclysmDungeonType Kinds[5] = {
+		ECataclysmDungeonType::Basic, ECataclysmDungeonType::Quest, ECataclysmDungeonType::FallenCity,
+		ECataclysmDungeonType::Cataclysm, ECataclysmDungeonType::Basic };
+	const bool bBonus[5] = { false, false, false, false, true };
+	const bool bHoldsTheBoard[5] = { true, false, false, false, false };
+	const TCHAR* const KindNames[5] = {
+		TEXT("an ordinary dungeon"), TEXT("a Quest dungeon"), TEXT("a Fallen City"), TEXT("a Cataclysm dungeon"),
+		TEXT("a Scout Parties bonus dungeon") };
 
-	for (int32 Index = 0; Index < 4; ++Index)
+	for (int32 Index = 0; Index < 5; ++Index)
 	{
 		UCataclysmEmpireRun* Run = MakeEmptyRun(1);
 
 		const int32 CityId = FirstStandingOutpost(*Run);
-		if (!TestTrue(TEXT("set-up: the map has an Outpost standing"),
-					  CityId != INDEX_NONE))
+		if (!TestTrue(TEXT("set-up: the map has an Outpost standing"), CityId != INDEX_NONE))
 		{
 			return false;
 		}
 
-		PlaceDungeon(*Run, 9400, Kinds[Index], ECataclysmDungeonSubType::None,
-					 *Run->Map->Find(CityId), EmptyBoardNeverDays);
+		PlaceDungeon(*Run, 9400, Kinds[Index], ECataclysmDungeonSubType::None, *Run->Map->Find(CityId),
+					 EmptyBoardNeverDays);
+		Run->Dungeons.Last().bBonus = bBonus[Index];
 
-		TestEqual(FString::Printf(
-					  TEXT("%s standing: no surge on days 2 to 40"),
-					  KindNames[Index]),
-				  SurgesWhileAdvancingTo(*Run, 40), 0);
-		TestEqual(FString::Printf(
-					  TEXT("%s standing: no surge counted from an empty board"),
-					  KindNames[Index]),
-				  Run->SurgesFromEmptyBoard, 0);
-		TestEqual(FString::Printf(
-					  TEXT("%s standing: it is still the one thing on the board"),
-					  KindNames[Index]),
-				  Run->DungeonCount(), 1);
+		const FCataclysmDayReport Report = Run->AdvanceDay();
+
+		if (bHoldsTheBoard[Index])
+		{
+			TestFalse(FString::Printf(TEXT("%s standing: day 2 does not surge"), KindNames[Index]), Report.bSurged);
+			TestEqual(FString::Printf(TEXT("%s standing: it is still the one thing on the board"), KindNames[Index]),
+					  Run->DungeonCount(), 1);
+		}
+		else
+		{
+			TestTrue(FString::Printf(TEXT("**%s alone: the board counts as empty and day 2 surges**"), KindNames[Index]),
+					 Report.bSurgedOnEmptyBoard);
+			TestEqual(FString::Printf(TEXT("%s alone: the empty board's twelve dungeons"), KindNames[Index]),
+					  Report.Spawned.Num(), 12);
+		}
 	}
 
 	UCataclysmEmpireRun* Empty = MakeEmptyRun(1);
-
-	TestEqual(TEXT("CONTROL: with nothing standing, one surge on days 2 to 40"),
-			  SurgesWhileAdvancingTo(*Empty, 40), 1);
-	TestEqual(TEXT("CONTROL: and it was the empty board's"),
-			  Empty->SurgesFromEmptyBoard, 1);
-	TestEqual(TEXT("CONTROL: on day 26"), Empty->Surges->LastSurgeDay, 26);
+	const FCataclysmDayReport Control = Empty->AdvanceDay();
+	TestTrue(TEXT("CONTROL: with nothing standing, day 2 surges on the empty board"), Control.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("CONTROL: with twelve dungeons"), Control.Spawned.Num(), 12);
 
 	return true;
 }
@@ -4973,7 +4999,7 @@ bool FCataclysmEmpireRunEmptyBoardKindsTest::RunTest(const FString& Parameters)
  * `AdvanceDay` asks the condition directly. That is a judgement by the writing
  * session and `docs/DECISIONS.md` says so.
  *
- * TWO RUNS FROM ONE SEED TO DAY 40, both with nothing standing. In one,
+ * TWO RUNS FROM ONE SEED TO DAY 15, both with nothing standing. In one,
  * Sanctuaries are felled by hand through the map until the Pillar is exposed;
  * felling through the map and not the run leaves no Fallen City dungeon and
  * fires no surge, so the board stays empty. The other is the control.
@@ -5022,24 +5048,34 @@ bool FCataclysmEmpireRunEmptyBoardPillarTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("set-up: the control's Pillar is not exposed"),
 			  Intact->Map->IsPillarExposed());
 
-	TestEqual(TEXT("with the Pillar exposed, no surge on days 2 to 40"),
-			  SurgesWhileAdvancingTo(*Lost, 40), 0);
+	// DAY 15 AND NO LATER, since issue #2865 removed the least interval: the control's wave lands at the end of day 2,
+	// and the shortest timer a rolled dungeon can have is 15.3 days (an Outpost's 5 floors, (10 + 1.6 x 5) x 0.85,
+	// counted down from day 3), so none runs out before day 18 and no Siege's daily share fells a city by day 15. It
+	// was day 40 while that wave came on day 26.
+	TestEqual(TEXT("with the Pillar exposed, no surge on days 2 to 15"),
+			  SurgesWhileAdvancingTo(*Lost, 15), 0);
 	TestEqual(TEXT("and no surge counted from an empty board"),
 			  Lost->SurgesFromEmptyBoard, 0);
-	TestEqual(TEXT("and the board is still empty on day 40"),
+	TestEqual(TEXT("and the board is still empty on day 15"),
 			  Lost->DungeonCount(), 0);
 
-	TestEqual(TEXT("CONTROL: with the Pillar shielded, one surge on days 2 to 40"),
-			  SurgesWhileAdvancingTo(*Intact, 40), 1);
+	TestEqual(TEXT("CONTROL: with the Pillar shielded, one surge on days 2 to 15"),
+			  SurgesWhileAdvancingTo(*Intact, 15), 1);
 	TestEqual(TEXT("CONTROL: and it was the empty board's"),
 			  Intact->SurgesFromEmptyBoard, 1);
+	TestEqual(TEXT("CONTROL: on day 2"), Intact->Surges->LastSurgeDay, 2);
 
 	return true;
 }
 
 // ---------------------------------------------------------------------------
-// A city's fall and the least interval -- issue #2380
+// A city's fall and its surge -- issues #2380 and #2865
 // ---------------------------------------------------------------------------
+//
+// EVERY FALL FIRES A SURGE since the owner's ruling of 2026-11-24 on issue #2865,
+// verbatim "surges from cities falling should happen regardless". From issue #2380 (2026-10-12)
+// until then a fall inside 25 days of the last surge fired none, and these tests
+// held that.
 //
 // NO ACTOR IS SPAWNED IN ANY TEST BELOW. A run is an object with no world, so
 // nothing stands anywhere and nothing waits: every day is a call.
@@ -5207,13 +5243,14 @@ namespace CataclysmEmpireRunTest
 	 * same day, so the last surge is day 1 and the clock's next is day 91. Two
 	 * dungeons are put on the first Outpost on day 1. On days 2 to
 	 * `FallDay - 1` nothing resolves and nothing bites; the board is not empty,
-	 * so the empty-board rule fires nothing. That is asserted as set-up. The
+	 * and an ordinary dungeon on the Pillar keeps it so through the fall
+	 * (`HoldTheBoard`, issue #2865), so the empty-board rule fires nothing. That is asserted as set-up. The
 	 * feller is then given one day and the next day advanced is `FallDay`: it
 	 * resolves, and the city falls `FallDay - 1` days after the last surge.
 	 *
-	 * AND FOUR DAYS MORE, counted, for the test that a refused fall is not
-	 * tried again. In four days no city can fall: a wave that did land is at
-	 * most four days old.
+	 * AND FOUR DAYS MORE, counted, so a test can say nothing fired after the
+	 * fall's own wave. In four days no city can fall: the wave is at most four
+	 * days old, and its shortest timer is 15.3 days.
 	 *
 	 * @return false when the set-up did not hold, having said so.
 	 */
@@ -5235,6 +5272,10 @@ namespace CataclysmEmpireRunTest
 		Out.CityId = Outposts[0];
 		PlaceAFellerAndABystander(*Run, Out.CityId, Out.FellerId,
 								  Out.BystanderId);
+		// AND THE BOARD HELD, so the fall is the only thing that can bring a wave: since issue #2865 a day that ends
+		// with no ordinary dungeon brings an empty-board wave, with no least interval, and before `FallDay` this
+		// run has only the feller and the bystander. It adds one to `DungeonsStandingAfter`.
+		HoldTheBoard(*Run, FallSurgeFirstHandId + 2);
 
 		if (!Test.TestEqual(TEXT("set-up: the opening wave fired on day 1"),
 							Run->Surges->LastSurgeDay, 1)
@@ -5292,83 +5333,82 @@ namespace CataclysmEmpireRunTest
 /**
  * The scheduler's own answer about a city's fall, with no run and no map.
  *
- * `IsDueOnCityFall` is two conditions: the rule is on, and the last surge is at
- * least `LeastIntervalDays` (25) behind. Each row below differs from the row
- * beside it by one day, so each is the control for its neighbour.
+ * `IsDueOnCityFall` IS THE FLAG ALONE since the owner's ruling of 2026-11-24 on issue #2865, verbatim
+ * "surges from cities falling should happen regardless". So every row below answers yes, at 24 days, at nought days and at one day after
+ * a surge, the day of a surge included. Until then it also asked that the last surge was at least `LeastIntervalDays`
+ * (25) behind, and this test was named `TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed`.
  *
- * THE FLAG IS A CONSTANT and cannot be turned off from a test. Its control is
- * the row at 1000 days: that far past the interval the flag is the only thing
- * that can refuse, so the answer there has to be the flag's own value.
- * `tools/tests/test_surge_port.py` holds the flag equal to the model's.
+ * THE DAYS SINCE THE LAST SURGE ARE ASSERTED BESIDE EACH ROW, so each row shows how short a gap it answers yes to.
+ *
+ * THE FLAG IS A CONSTANT and cannot be turned off from a test. `tools/tests/test_surge_port.py` holds it equal to the
+ * model's and holds that the function asks nothing else in its code.
+ *
+ * CONTROL: the empty-board rule on the same day with one ordinary dungeon standing answers no, so a scheduler that
+ * answered yes to every question would fail here.
  *
  * NO ACTOR AND NO WORLD. Every figure is a day number written by hand.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallSurgeIsDueTest,
-	"Cataclysm.EmpireRun.TheSchedulerAnswersACitysFallOnlyOnceTheLeastIntervalHasPassed",
+	"Cataclysm.EmpireRun.TheSchedulerAnswersEveryCitysFallWhateverTheDaysSinceTheLastSurge",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunFallSurgeIsDueTest::RunTest(const FString& Parameters)
 {
 	UCataclysmSurgeScheduler* Scheduler = NewObject<UCataclysmSurgeScheduler>();
 
+	TestTrue(TEXT("the rule is on"), UCataclysmSurgeScheduler::bSurgeOnCityFall);
+
 	// BEFORE ANY SURGE THE START OF THE RUN IS DAY 0.
 	TestEqual(TEXT("before any surge, day 24 is 24 days since the last one"),
 			  Scheduler->DaysSinceLastSurge(24), 24.0f, 0.001f);
-	TestFalse(TEXT("a city falling on day 24 with no surge yet fires none"),
-			  Scheduler->IsDueOnCityFall(24));
-	TestTrue(TEXT("a city falling on day 25 with no surge yet fires one"),
-			 Scheduler->IsDueOnCityFall(25));
+	TestTrue(TEXT("a city falling on day 24 with no surge yet fires one"), Scheduler->IsDueOnCityFall(24));
+	TestTrue(TEXT("and on day 1"), Scheduler->IsDueOnCityFall(1));
 
-	// THE FLAG'S CONTROL. See the comment above this test.
-	TestTrue(TEXT("a city falling 1000 days after the last surge fires one exactly when the flag says a fall does"),
-			 Scheduler->IsDueOnCityFall(1000)
-				 == UCataclysmSurgeScheduler::bSurgeOnCityFall);
+	// CONTROL: A QUESTION THAT STILL ANSWERS NO.
+	TestFalse(TEXT("CONTROL: the empty-board rule on day 24 with one dungeon standing is not due"),
+			  Scheduler->IsDueOnEmptyBoard(24, 1));
 
-	// A FALL DOES NOT ASK WHAT STANDS ON THE BOARD. The empty-board rule on
-	// the same day, with one dungeon standing, is the control.
-	TestFalse(TEXT("CONTROL: the empty-board rule on day 25 with one dungeon standing is not due"),
-			  Scheduler->IsDueOnEmptyBoard(25, 1));
-
-	// A SURGE ON DAY 100 MOVES WHAT THE INTERVAL IS MEASURED FROM.
+	// A SURGE ON DAY 100.
 	Scheduler->RecordSurge(100);
 
-	TestFalse(TEXT("a second city falling on day 100, the day of a surge, fires none"),
-			  Scheduler->IsDueOnCityFall(100));
-	TestFalse(TEXT("after a surge on day 100, a fall on day 124 fires none"),
-			  Scheduler->IsDueOnCityFall(124));
-	TestTrue(TEXT("and a fall on day 125 fires one"),
-			 Scheduler->IsDueOnCityFall(125));
+	TestEqual(TEXT("day 100 is nought days after the surge of day 100"),
+			  Scheduler->DaysSinceLastSurge(100), 0.0f, 0.001f);
+	TestTrue(TEXT("a city falling on day 100, the day of a surge, fires one"), Scheduler->IsDueOnCityFall(100));
+	TestTrue(TEXT("and on day 101"), Scheduler->IsDueOnCityFall(101));
+	TestTrue(TEXT("and on day 124, 24 days after it"), Scheduler->IsDueOnCityFall(124));
 
-	// AND A SURGE A FALL FIRED MOVES IT TOO.
+	// AND A SURGE A FALL FIRED.
 	Scheduler->RecordSurge(110, /* bFromCityFall */ true);
 
-	TestFalse(TEXT("after a fall's surge on day 110, a fall on day 134 fires none"),
-			  Scheduler->IsDueOnCityFall(134));
-	TestTrue(TEXT("and a fall on day 135 fires one"),
-			 Scheduler->IsDueOnCityFall(135));
+	TestEqual(TEXT("day 110 is nought days after the fall's surge of day 110"),
+			  Scheduler->DaysSinceLastSurge(110), 0.0f, 0.001f);
+	TestTrue(TEXT("a second city falling on day 110 fires one too"), Scheduler->IsDueOnCityFall(110));
+	TestTrue(TEXT("and a city falling on day 134 fires one"), Scheduler->IsDueOnCityFall(134));
 
 	return true;
 }
 
 /**
- * A city that falls inside the least interval still falls, and brings no wave.
+ * A city that falls 24 days after the last surge brings a wave.
  *
- * TWO RUNS FROM ONE SEED, A DAY APART. In one the first Outpost falls on day
- * 25, which is 24 days after the opening wave of day 1. In the other it falls
- * on day 26, the 25th day. Nothing else differs, so the second is the control:
- * it shows the same fall does bring a wave one day later.
+ * The owner's ruling of 2026-11-24 on issue #2865, verbatim "surges from cities falling should happen regardless". The owner's case was
+ * an Outpost that fell at most 24 days after the previous surge and brought none (issue #2866). Until then this test
+ * was named `ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave` and asserted that no wave came.
  *
- * WHAT THE FALL STILL DOES. The city is down, the two dungeons it carried are
- * absorbed and off the clock, and a Dungeon City with two bosses stands on it.
- * Both runs are asserted to agree on all of that.
+ * THE RUN, BY HAND, from `FellTheFirstOutpostOn`: the last surge is day 1, an ordinary dungeon on the Pillar holds
+ * the board, and the first Outpost falls on day 25, 24 days after it. The wave is the run's second, eight dungeons. It
+ * moves the clock's next surge from day 91 to day 115 and advances the escalation counter.
  *
- * A REFUSED FALL IS NOT TRIED AGAIN. Day 26 is the 25th day after the last
- * surge and the city fell the day before. Nothing fires on days 26 to 29.
+ * CONTROL: THE SAME RUN TO THE SAME DAY WITH NO FALL. The feller is not given its last day, so nothing falls on day 25
+ * and nothing surges. So the wave is the fall's.
+ *
+ * WHAT THE FALL STILL DOES. The city is down, the two dungeons it carried are absorbed and off the clock, and a
+ * Dungeon City with two bosses stands on it.
  *
  * WHERE EVERYTHING STANDS: nowhere. See the note at the head of this section.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallSurgeInsideTest,
-	"Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStillFallsAndBringsNoWave",
+	"Cataclysm.EmpireRun.ACityFallingTwentyFourDaysAfterASurgeStillBringsAWave",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
@@ -5376,30 +5416,31 @@ bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
 	using namespace CataclysmEmpireRunTest;
 
 	FFallSurgeOutcome Inside;
-	FFallSurgeOutcome AtTheInterval;
 
-	if (!FellTheFirstOutpostOn(*this, 25, Inside)
-		|| !FellTheFirstOutpostOn(*this, 26, AtTheInterval))
+	if (!FellTheFirstOutpostOn(*this, 25, Inside))
 	{
 		return false;
 	}
 
-	// THE FALL ON DAY 25 FIRED NOTHING.
+	const int32 EscalatedBy = UCataclysmSurgeScheduler::bCityFallAdvancesEscalation ? 1 : 0;
+
+	// THE FALL ON DAY 25 FIRED ONE WAVE.
 	TestEqual(TEXT("the city fell on day 25"), Inside.Report.Day, 25);
-	TestFalse(TEXT("day 25, 24 days after the last surge, did not surge"),
-			  Inside.Report.bSurged);
-	TestEqual(TEXT("no surge was recorded for that fall"),
-			  Inside.SurgesFiredAfter, Inside.SurgesFiredBefore);
-	TestEqual(TEXT("the escalation counter did not move"),
-			  Inside.SurgeIndexAfter, Inside.SurgeIndexBefore);
-	TestEqual(TEXT("the last surge is still day 1"),
-			  Inside.LastSurgeDayAfter, 1);
-	TestEqual(TEXT("the clock's next surge is still day 91"),
-			  Inside.NextSurgeDayAfter, 91.0f, 0.001f);
-	TestEqual(TEXT("one dungeon arrived on day 25, the Dungeon City"),
-			  Inside.Report.Spawned.Num(), 1);
-	TestEqual(TEXT("and it is the one dungeon standing"),
-			  Inside.DungeonsStandingAfter, 1);
+	TestTrue(TEXT("day 25, 24 days after the last surge, surged"), Inside.Report.bSurged);
+	TestFalse(TEXT("and not as an empty board's surge"), Inside.Report.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("one surge was recorded for that fall"),
+			  Inside.SurgesFiredAfter, Inside.SurgesFiredBefore + 1);
+	TestEqual(TEXT("and one on the day's report"), Inside.Report.Surges, 1);
+	TestEqual(TEXT("the escalation counter advanced exactly as the flag says a fall's surge does"),
+			  Inside.SurgeIndexAfter, Inside.SurgeIndexBefore + EscalatedBy);
+	TestEqual(TEXT("the last surge is now day 25"), Inside.LastSurgeDayAfter, 25);
+	TestEqual(TEXT("the clock's next surge moved from day 91 to day 115"),
+			  Inside.NextSurgeDayAfter, 115.0f, 0.001f);
+	// THE RUN'S SECOND WAVE, AT `SurgeIndex` 1: eight. It lands after the fall, so none of it on the fallen city.
+	TestEqual(TEXT("the wave brought eight dungeons"), Inside.Report.SurgeDungeons, 8);
+	TestEqual(TEXT("nine arrived on day 25, the wave and the Dungeon City"), Inside.Report.Spawned.Num(), 9);
+	TestEqual(TEXT("ten stand after it, with the dungeon holding the board on the Pillar"),
+			  Inside.DungeonsStandingAfter, 10);
 
 	// AND THE CITY STILL FELL, WITH EVERYTHING A FALL DOES.
 	TestTrue(TEXT("the city has fallen"), Inside.bCityFell);
@@ -5424,29 +5465,23 @@ bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
 			  Inside.BystanderTimerAfter, -1.0f, 0.001f);
 	TestTrue(TEXT("every dungeon still has one timer and every timer a dungeon"),
 			 Inside.bListsAgree);
+	TestEqual(TEXT("and nothing more fired on days 26 to 29"), Inside.SurgesInTheFourDaysAfter, 0);
 
-	// AND IT IS NOT TRIED AGAIN ONCE THE INTERVAL HAS PASSED.
-	TestEqual(TEXT("no surge on days 26 to 29, though day 26 is the 25th after the last surge"),
-			  Inside.SurgesInTheFourDaysAfter, 0);
+	// THE CONTROL: THE SAME RUN TO DAY 25 WITH NO FALL.
+	{
+		UCataclysmEmpireRun* NoFall = MakeEmptyRun(1);
+		const TArray<int32> Outposts = StandingOutposts(*NoFall, 1);
+		if (!TestEqual(TEXT("CONTROL: set-up: the map has an Outpost standing"), Outposts.Num(), 1))
+		{
+			return false;
+		}
+		PlaceAFellerAndABystander(*NoFall, Outposts[0], Inside.FellerId, Inside.BystanderId);
+		HoldTheBoard(*NoFall, FallSurgeFirstHandId + 2);
 
-	// THE CONTROL: THE SAME FALL ONE DAY LATER.
-	TestEqual(TEXT("CONTROL: the city fell on day 26"),
-			  AtTheInterval.Report.Day, 26);
-	TestTrue(TEXT("CONTROL: day 26, 25 days after the last surge, surged"),
-			 AtTheInterval.Report.bSurged);
-	TestEqual(TEXT("CONTROL: one surge was recorded for that fall"),
-			  AtTheInterval.SurgesFiredAfter,
-			  AtTheInterval.SurgesFiredBefore + 1);
-	// THE RUN'S SECOND WAVE, so 8 since 2026-10-20 and 5 until then.
-	TestEqual(TEXT("CONTROL: nine dungeons arrived on day 26, a wave of eight and the Dungeon City"),
-			  AtTheInterval.Report.Spawned.Num(), 9);
-	TestTrue(TEXT("CONTROL: the city has fallen there too"),
-			 AtTheInterval.bCityFell);
-	TestEqual(TEXT("CONTROL: and its Dungeon City has the same two bosses"),
-			  AtTheInterval.DungeonCityBosses, Inside.DungeonCityBosses);
-	TestEqual(TEXT("CONTROL: and it absorbed the same two dungeons"),
-			  AtTheInterval.Report.Absorbed.Num(),
-			  Inside.Report.Absorbed.Num());
+		TestEqual(TEXT("CONTROL: with no fall, no surge on days 2 to 25"), SurgesWhileAdvancingTo(*NoFall, 25), 0);
+		TestEqual(TEXT("CONTROL: the last surge is still day 1"), NoFall->Surges->LastSurgeDay, 1);
+		TestFalse(TEXT("CONTROL: and the Outpost stands"), NoFall->Map->Find(Outposts[0])->bFallen);
+	}
 
 	return true;
 }
@@ -5454,9 +5489,11 @@ bool FCataclysmEmpireRunFallSurgeInsideTest::RunTest(const FString& Parameters)
 /**
  * A city that falls 25 days after the last surge brings one wave.
  *
- * THE SAME TWO RUNS AS THE TEST ABOVE, READ FROM THE OTHER SIDE. The fall on
- * day 26 is the 25th day after the opening wave and fires; the fall on day 25
- * is the control.
+ * TWO RUNS FROM ONE SEED, A DAY APART. The fall on day 26 is the 25th day after
+ * the opening wave; the fall on day 25 is the 24th. Since the owner's ruling of
+ * 2026-11-24 on issue #2865 each brings the same one wave, and the day-25 run is
+ * asserted to agree. Until then the day-25 fall was the control that brought
+ * none.
  *
  * ONE WAVE, AS A FALL'S SURGE. It moves the clock's next surge on from the day
  * it fired, and it advances the escalation counter exactly when
@@ -5509,55 +5546,57 @@ bool FCataclysmEmpireRunFallSurgeAtIntervalTest::RunTest(const FString& Paramete
 	// fallen city and all of it stands beside the Dungeon City.
 	TestEqual(TEXT("nine dungeons arrived on day 26, a wave of eight and the Dungeon City"),
 			  AtTheInterval.Report.Spawned.Num(), 9);
-	TestEqual(TEXT("and nine stand after it"),
-			  AtTheInterval.DungeonsStandingAfter, 9);
+	TestEqual(TEXT("and ten stand after it, with the dungeon holding the board on the Pillar"),
+			  AtTheInterval.DungeonsStandingAfter, 10);
 	TestEqual(TEXT("the Dungeon City has one boss for each of the two dungeons the city carried"),
 			  AtTheInterval.DungeonCityBosses, 2);
 	TestEqual(TEXT("no further surge on days 27 to 30"),
 			  AtTheInterval.SurgesInTheFourDaysAfter, 0);
 
-	// THE CONTROL: THE SAME FALL ONE DAY SOONER.
-	TestEqual(TEXT("CONTROL: the city fell on day 25"), Inside.Report.Day, 25);
-	TestFalse(TEXT("CONTROL: day 25, 24 days after the last surge, did not surge"),
-			  Inside.Report.bSurged);
-	TestEqual(TEXT("CONTROL: no surge was recorded for that fall"),
-			  Inside.SurgesFiredAfter - Inside.SurgesFiredBefore, 0);
-	TestEqual(TEXT("CONTROL: the escalation counter did not move"),
-			  Inside.SurgeIndexAfter - Inside.SurgeIndexBefore, 0);
-	TestEqual(TEXT("CONTROL: the clock's next surge stayed at day 91"),
-			  Inside.NextSurgeDayAfter, 91.0f, 0.001f);
-	TestEqual(TEXT("CONTROL: one dungeon arrived on day 25, the Dungeon City"),
-			  Inside.Report.Spawned.Num(), 1);
+	// THE SAME FALL ONE DAY SOONER BRINGS THE SAME ONE WAVE, since issue #2865.
+	TestEqual(TEXT("the same fall on day 25"), Inside.Report.Day, 25);
+	TestTrue(TEXT("day 25, 24 days after the last surge, surged as well"),
+			 Inside.Report.bSurged);
+	TestEqual(TEXT("one surge was recorded for that fall too"),
+			  Inside.SurgesFiredAfter - Inside.SurgesFiredBefore, 1);
+	TestEqual(TEXT("the escalation counter moved by the same"),
+			  Inside.SurgeIndexAfter - Inside.SurgeIndexBefore, EscalatedBy);
+	TestEqual(TEXT("the clock's next surge moved to day 115, 90 days after it"),
+			  Inside.NextSurgeDayAfter, 115.0f, 0.001f);
+	TestEqual(TEXT("and as many dungeons arrived"),
+			  Inside.Report.Spawned.Num(), AtTheInterval.Report.Spawned.Num());
 
 	return true;
 }
 
 /**
- * Two cities falling on one day bring one wave, not two.
+ * Two cities falling on one day bring two waves.
+ *
+ * The owner's ruling of 2026-11-24 on issue #2865, verbatim "surges from cities falling should happen regardless".
+ * Until then the second fall came nought days after the first fall's surge and
+ * brought none, and this test was named `TwoCitiesFallingOnOneDayBringOneWave`.
  *
  * TWO RUNS FROM ONE SEED, ALIKE UNTIL DAY 25. Each has the opening wave taken
  * off and a feller and a bystander on each of the first two Outposts.
  *
- *   SameDay    both fellers resolve on day 26. The first city falls 25 days
- *              after the last surge and its fall fires a wave, which is
- *              recorded as day 26. The second falls nought days after that
- *              and fires nothing.
+ *   SameDay    both fellers resolve on day 26. Each city's fall fires a wave:
+ *              the run's second and third, eight dungeons each.
  *   DaysApart  the control. The first city falls on day 26 and fires a wave,
- *              which the player clears that day. The second falls on day 51,
- *              25 days after it, and fires a second.
+ *              which the player clears that day. The second falls on day 51
+ *              and fires a second.
  *
- * So the same two falls bring one wave on one day and two waves 25 days apart.
+ * So the same two falls bring two waves, on one day or 25 days apart.
  *
  * WHICH CITY FALLS FIRST ON DAY 26 is the order the timers were added in: the
  * first Outpost's feller, then the second's. The assertions do not depend on
- * it; either order gives one wave.
+ * it.
  *
  * A DUNGEON OF THE WAVE MAY LAND ON THE SECOND CITY before it falls, and is
  * then absorbed with it. So the wave is counted from the report's `Spawned`,
  * which lists what arrived, and not from what is left standing.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunFallSurgeTwoCitiesTest,
-	"Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringOneWave",
+	"Cataclysm.EmpireRun.TwoCitiesFallingOnOneDayBringTwoWaves",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameters)
@@ -5626,13 +5665,15 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 	TestNotNull(TEXT("and one on the second"),
 				DungeonCityOn(*SameDay, SecondCity));
 	TestTrue(TEXT("day 26 surged"), Both.bSurged);
-	TestEqual(TEXT("two cities falling on day 26 fired one surge and not two"),
-			  SameDay->Surges->SurgesFired, 2);
-	TestEqual(TEXT("the escalation counter advanced for one fall's surge and not two"),
-			  SameDay->Surges->SurgeIndex - IndexOnDay25, EscalatedBy);
-	// THE RUN'S SECOND WAVE, so 8 since 2026-10-20 and 5 until then.
-	TestEqual(TEXT("ten dungeons arrived on day 26: one wave of eight and the two Dungeon Cities"),
-			  Both.Spawned.Num(), 10);
+	TestEqual(TEXT("two cities falling on day 26 fired two surges, three in the run"),
+			  SameDay->Surges->SurgesFired, 3);
+	TestEqual(TEXT("and the day's report counts two"), Both.Surges, 2);
+	TestEqual(TEXT("the escalation counter advanced for each fall's surge"),
+			  SameDay->Surges->SurgeIndex - IndexOnDay25, 2 * EscalatedBy);
+	// THE RUN'S SECOND AND THIRD WAVES, at `SurgeIndex` 1 and 2 in a static run: eight each.
+	TestEqual(TEXT("the two waves brought sixteen dungeons"), Both.SurgeDungeons, 16);
+	TestEqual(TEXT("eighteen arrived on day 26: two waves of eight and the two Dungeon Cities"),
+			  Both.Spawned.Num(), 18);
 	TestEqual(TEXT("the last surge is day 26"),
 			  SameDay->Surges->LastSurgeDay, 26);
 	TestEqual(TEXT("and the clock's next surge is day 116"),
@@ -5673,6 +5714,8 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 	// 2026-10-20 and 5 until then.
 	TestEqual(TEXT("CONTROL: nine dungeons arrived on day 51, a wave of eight and the Dungeon City"),
 			  SecondFall.Spawned.Num(), 9);
+	TestEqual(TEXT("so the same two falls fired as many surges on one day as 25 days apart"),
+			  SameDay->Surges->SurgesFired, DaysApart->Surges->SurgesFired);
 
 	return true;
 }
@@ -5690,9 +5733,15 @@ bool FCataclysmEmpireRunFallSurgeTwoCitiesTest::RunTest(const FString& Parameter
 // EVERY TEST BELOW IS HEADLESS: a run, a map and a clock. No world and no
 // actor, so nothing stands anywhere.
 //
-// EVERY ONE STARTS FROM `MakeEmptyRun`, so the last surge was day 1, the day
-// advanced is day 2 and no city's fall or empty board can bring a wave: the
-// least interval of 25 days has not passed.
+// EVERY ONE STARTS FROM `MakeEmptyRun`, so the last surge was day 1 and the day
+// advanced is day 2. Since issue #2865 two things can bring a wave on that day.
+// A CITY'S FALL brings one of 8 the moment it falls, after the fall's own
+// absorbing, Quest moves and Dungeon City (the owner's ruling of 2026-11-24);
+// until then the least interval of 25 days stopped it. AN EMPTY BOARD brings
+// one of 12 at the end of the day when no ordinary dungeon stands. A wave's
+// dungeons do nothing on the day they land. Nothing these tests read is changed
+// by either wave; the one that counts the dungeons on the map and then passes
+// more days holds the board instead (`HoldTheBoard`). Swept on 2026-11-24.
 
 namespace CataclysmEmpireRunTest
 {
@@ -5774,6 +5823,10 @@ bool FCataclysmEmpireRunHitsOnceAndLeavesTest::RunTest(const FString& Parameters
 				 FullTimer);
 	GiveDamageAndDaysLeft(*Run, DungeonCityId, 100.0f, 40.0f, 1.0f);
 
+	// THE BOARD HELD: the ordinary dungeon hits and leaves on day 2, which since issue #2865 would leave only the Quest
+	// and the Dungeon City standing and bring a wave of 12 that day. Before any pointer into the dungeons is taken.
+	HoldTheBoard(*Run, 9704);
+
 	const FCataclysmDungeon* Placed = Run->FindDungeon(OrdinaryId);
 	const FCataclysmCity* HitCity = Run->Map->Find(Outposts[0]);
 	const FCataclysmCity* DungeonCityHost = Run->Map->Find(Outposts[2]);
@@ -5841,8 +5894,8 @@ bool FCataclysmEmpireRunHitsOnceAndLeavesTest::RunTest(const FString& Parameters
 			  Run->Clock->DaysUntilResolveFor(DungeonCityId), FullTimer, 0.001f);
 	TestEqual(TEXT("CONTROL: the Dungeon City took nothing from the city it was put on"),
 			  DungeonCityHost->Defence, ThirdDefenceBefore, 0.001f);
-	TestEqual(TEXT("CONTROL: two dungeons stand where three did"),
-			  Run->DungeonCount(), 2);
+	TestEqual(TEXT("CONTROL: three dungeons stand where four did, the one on the Pillar among them"),
+			  Run->DungeonCount(), 3);
 
 	// AND NOTHING MORE LANDS ON THAT CITY. Five more days; the two timers that
 	// were refilled have thirty days and cannot run out in them.
@@ -7097,8 +7150,14 @@ bool FCataclysmEmpireRunWalkedQuestMovesTest::RunTest(const FString& Parameters)
 // day: the stacks go by the third of the row's depth, a Void Siege's daily bite
 // stays damage, and a city that falls with fewer than ten can be retaken.
 //
-// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS BY DAY 2, so no wave
-// lands while they run. Each has a control: the same dungeon sent by nobody.
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS BY DAY 2. Since issue
+// #2865 a day that ends with no ordinary dungeon standing brings a wave of 12 at
+// its end, after the day's hits and stacks, which nothing these tests read is
+// changed by. AN ERASURE IS A FALL, and since the owner's ruling of 2026-11-24
+// every fall brings a wave of 8 at the moment it falls; the erasure test counts
+// that wave in the map's dungeons and holds the board as well
+// (`HoldTheBoard`). Swept on 2026-11-24. Each has a control: the same dungeon
+// sent by nobody.
 
 namespace CataclysmEmpireRunTest
 {
@@ -7316,6 +7375,10 @@ bool FCataclysmEmpireRunVoidErasesTest::RunTest(const FString& Parameters)
 		PlaceDungeon(*Each, BystanderId, ECataclysmDungeonType::Basic,
 					 ECataclysmDungeonSubType::None, Host, EmptyBoardNeverDays);
 		GiveDamageAndDaysLeft(*Each, BystanderId, 100.0f, 40.0f, EmptyBoardNeverDays);
+		// THE BOARD HELD: the erasure absorbs both dungeons and leaves no Dungeon City. The erasure is a fall, so it
+		// brings its own wave of 8 (the owner's ruling of 2026-11-24), which holds the board too; the dungeon on the
+		// Pillar keeps an empty-board wave out even if that wave were all Quest dungeons.
+		HoldTheBoard(*Each, 9923);
 	}
 
 	Erased->Map->FindMutable(CityId)->VoidStacks = 7;
@@ -7351,7 +7414,15 @@ bool FCataclysmEmpireRunVoidErasesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("its hit is still counted as one ordinary dungeon hitting a city"),
 			  Erased->DungeonsDetonated, 1);
 	TestNull(TEXT("no Dungeon City stands on an erased city"), DungeonCityOn(*Erased, CityId));
-	TestEqual(TEXT("so nothing is left on the map"), Erased->DungeonCount(), 0);
+	TestEqual(TEXT("so nothing is left on the erased city"), Erased->DungeonsOn(CityId).Num(), 0);
+	// AND THE ERASURE IS A FALL, SO IT BRINGS ITS WAVE: since the owner's ruling of 2026-11-24 on issue #2865 every
+	// fall through `CityFell` fires one, 8 at the escalation after the opening wave. None of it lands on the erased
+	// city (asserted above), and no empty-board wave follows it.
+	TestTrue(TEXT("the erasure brought a wave, as every fall does"), Report.bSurged);
+	TestEqual(TEXT("of eight"), Report.SurgeDungeons, 8);
+	TestFalse(TEXT("and no empty-board wave followed it"), Report.bSurgedOnEmptyBoard);
+	TestEqual(TEXT("so the map holds the dungeon holding the board on the Pillar and that wave"),
+			  Erased->DungeonCount(), 1 + Report.SurgeDungeons);
 
 	// THE CONTROL: NINE STACKS, AND THE CITY STANDS.
 	TestEqual(TEXT("CONTROL: no city fell"), StoodReport.Fallen.Num(), 0);
@@ -7442,8 +7513,14 @@ bool FCataclysmEmpireRunVoidSiegeBitesTest::RunTest(const FString& Parameters)
 // player is inside, its timer does not move, and its hit adds 1 to 3 stacks
 // and no damage, never erasing a city below eight.
 //
-// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS WELL BEFORE DAY 26, so
-// no wave lands while they run. Each has a control.
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND STOPS WELL BEFORE DAY 26. Since
+// issue #2865 a day that ends with only Quest dungeons standing brings a wave of
+// 12 at its end, and a Hollow's erasing hit, which is a fall, brings a wave of 8
+// at the moment it falls (the owner's ruling of 2026-11-24). Either wave lands
+// after the hit and the Hollow's move, no timer of it runs out before day 18,
+// and no Siege of it can fell a city in these days, so nothing these tests read
+// is changed by it. The one whose watched city a Siege could reach holds the
+// board instead (`HoldTheBoard`). Swept on 2026-11-24. Each has a control.
 
 namespace CataclysmEmpireRunTest
 {
@@ -7968,6 +8045,10 @@ bool FCataclysmEmpireRunNotAHollowTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE BOARD HELD, before the Horde is arranged through a pointer: with only the Horde standing, since issue #2865
+	// a wave would land on day 2, and a Siege in it on this Outpost would bite before the Horde's hit on day 6.
+	HoldTheBoard(*Run, 9965);
+
 	// A HORDE DEATH SENT, 20 FLOORS DEEP, CARRYING THE SAME `HollowFrom` A
 	// HOLLOW WOULD, so it is the sub-type that decides and not the field. Its
 	// timer runs out on the sixth day.
@@ -8022,8 +8103,11 @@ bool FCataclysmEmpireRunNotAHollowTest::RunTest(const FString& Parameters)
 // the coordinating session on 2026-10-22: one of those it would hold from
 // floor 4, drawn as a walk draws them, and it adds to the modifier score.
 //
-// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND KEEPS SOMETHING STANDING, so
-// no wave lands on an empty board while it runs.
+// EVERY TEST BELOW STARTS FROM `MakeEmptyRun` AND KEEPS SOMETHING STANDING. Since
+// issue #2865 only an ordinary dungeon keeps the board from being empty, so the
+// test that keeps only an Ascendant (a Quest dungeon) standing gets a wave of 12
+// at the end of day 2, after the day's hit; nothing it reads is changed by it.
+// Swept on 2026-11-24.
 
 namespace CataclysmEmpireRunTest
 {
@@ -9524,6 +9608,7 @@ bool FCataclysmEmpireRunDaysAwayTest::RunTest(const FString& Parameters)
 	Second.Hits = {AHit(12, 50.0f, 75.0f, true), AHit(4, 25.0f, 30.0f, false)};
 	Second.Fallen = {12};
 	Second.bSurged = true;
+	Second.Surges = 1; // A day a surge fired on, as `FireSurge` writes it: the days away count this since issue #2865.
 	Second.SurgeDungeons = 6;
 	FCataclysmDayReport& Third = Reports.AddDefaulted_GetRef();
 	Third.Fallen = {12};

@@ -858,11 +858,16 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #      after it moves. Each figure is the largest step of 0.01 at which every
 #      dungeon of that ring the tier 1 campaigns clear, walked again from the
 #      level the character held when it entered, is won with at least 10% of its
-#      health left: x0.11 on a Bulwark, x0.13 on a Sanctuary, and x0.10 on the
+#      health left: x0.10 on a Bulwark, x0.12 on a Sanctuary, and x0.07 on the
 #      Pillar, where only the Cataclysm boss dungeon stands -- the one exception
 #      to "rises by ring", because it is reached soonest by the characters that
 #      win soonest. Tiers 2 to 8 do not rise by ring, ruled the same day.
-#      `sim/analyse_opening.py` section 5 is the measurement.
+#      `sim/analyse_opening.py` section 5 is the measurement. THE THREE WERE
+#      x0.11, x0.13 AND x0.10 UNTIL ISSUE #2865 (2026-11-24): the surge rulings
+#      of 2026-11-23 and 2026-11-24 brought more waves, the campaigns reached
+#      the inner rings at lower levels, and the same rule found these, fitted on
+#      seeds 0 to 59 and checked on 60 to 119. PROVISIONAL until the gear drop
+#      rarity fix (issue #2853) lands; sweep them again then.
 #
 # `stats_on_floor` ABOVE IS LEFT THE DESIGN'S FIGURE, deliberately. `affixes.py`
 # anchors every offensive number on a Common enemy's health from it, and the
@@ -874,7 +879,7 @@ def stats_on_floor(rarity: str, tier: int, dungeon_type: str = "Basic",
 #: Damage is multiplied by these at difficulty tier 1, by the ring the dungeon was rolled on (`CityTier`'s values). The
 #: game's copies are `UCataclysmEnemyScore::DamageScaleAtFirstTier` and the three `DamageScaleAtFirstTierOn...`
 #: constants; `tools/tests/test_content_relief_port.py` holds them equal. Issue #2749.
-DAMAGE_SCALE_AT_FIRST_TIER_BY_RING = {"Outpost": 0.05, "Bulwark": 0.11, "Sanctuary": 0.13, "Pillar": 0.10}
+DAMAGE_SCALE_AT_FIRST_TIER_BY_RING = {"Outpost": 0.05, "Bulwark": 0.10, "Sanctuary": 0.12, "Pillar": 0.07}
 #: An Outpost's: what every tier 1 floor had before the ring slice, and what a floor with no empire dungeon behind it
 #: still has. 0.20 until issue #2749.
 DAMAGE_SCALE_AT_FIRST_TIER = DAMAGE_SCALE_AT_FIRST_TIER_BY_RING["Outpost"]
@@ -904,7 +909,7 @@ def hellfire_aura_burn_per_tick(carrier_damage_per_hit: float) -> float:
 
 def damage_scale(tier: int, ring=DEFAULT_RING) -> float:
     """What a creature's damage is multiplied by at this difficulty tier on a dungeon rolled on this ring: at tier 1,
-    0.05 on an Outpost, 0.11 on a Bulwark, 0.13 on a Sanctuary and 0.10 on the Pillar; then 0.314 at tier 2 rising
+    0.05 on an Outpost, 0.10 on a Bulwark, 0.12 on a Sanctuary and 0.07 on the Pillar; then 0.314 at tier 2 rising
     evenly to 1.00 at tier 8 on every ring. Tier 1 is its own figure since issue #2749; the others are on the line
     from 0.20. `ring` is a `CityTier` or its value; an unknown one raises rather than reading as an Outpost."""
     ring = getattr(ring, "value", ring)

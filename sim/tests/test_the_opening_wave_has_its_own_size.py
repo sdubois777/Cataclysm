@@ -62,8 +62,10 @@ def test_the_run_actually_opens_with_twelve() -> None:
     asked = []
     original = sim.surge_count
 
-    def recording():
-        asked.append(original())
+    # WHATEVER THE DAY LOOP PASSES IS PASSED ON: since issue #2865 it says
+    # whether an empty board fired the wave.
+    def recording(*args, **kwargs):
+        asked.append(original(*args, **kwargs))
         return asked[-1]
 
     sim.surge_count = recording

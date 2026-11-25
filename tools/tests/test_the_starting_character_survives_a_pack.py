@@ -774,7 +774,10 @@ def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_sev
 # gone; the clears these campaigns give were compared, seeds 0 to 14, and are the same list.
 
 #: The seeds of each policy's tier 1 campaigns the guard walks. The fit used 0 to 59 and was checked on 60 to 119.
-RING_GUARD_SEEDS = range(15)
+#: 0 TO 16 SINCE ISSUE #2865, FROM 0 TO 14: with the surge rulings of 2026-11-23 and 2026-11-24 campaigns end sooner and
+#: seeds 0 to 14 gave the Pillar 19 clears, under the 20 the fixture below asks for; 0 to 16 gives 23, the fewest seeds
+#: that give more than 20. The coordinating session's ruling of 2026-11-24.
+RING_GUARD_SEEDS = range(17)
 
 #: The simulation's dungeon type -> the name `scoring` and `enemy_stats` take.
 SCORING_TYPE = {"Basic": "Basic", "Quest": "Quest", "FallenCity": "Fallen City", "Cataclysm": "Cataclysm"}
@@ -837,7 +840,9 @@ def walk_clear(clear, *, model, lines, constants, slots, weapon, first_tier_scal
 def clears(model) -> list:
     found = campaign_clears(model)
     by_ring = {ring: sum(1 for c in found if c.ring == ring) for ring in ("Outpost", "Bulwark", "Sanctuary", "Pillar")}
-    # Measured 2026-11-19 on seeds 0 to 14: 3,884 Outpost, 493 Bulwark, 217 Sanctuary and 60 Pillar clears.
+    # Measured 2026-11-19 on seeds 0 to 14: 3,884 Outpost, 493 Bulwark, 217 Sanctuary and 60 Pillar clears. Measured
+    # 2026-11-24 on seeds 0 to 16, with the surge rulings of issue #2865: 2,320 Outpost, 1,032 Bulwark, 1,180 Sanctuary
+    # and 23 Pillar.
     assert by_ring["Bulwark"] > 200 and by_ring["Sanctuary"] > 100 and by_ring["Pillar"] > 20, by_ring
     return found
 

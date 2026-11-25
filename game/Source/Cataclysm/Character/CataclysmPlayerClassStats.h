@@ -62,8 +62,9 @@ enum class ECataclysmPoolFill : uint8
  * score on that floor, with its damage scaled by the difficulty tier: at tier
  * 1, a Common Imp on a 12-floor Basic dungeon rolled on an Outpost hits for
  * 0.35 on floor 1 and 5.3 on floor 12 (`UCataclysmEnemyScore::DamageScale`, 0.05
- * at tier 1 on an Outpost since issue #2749; 0.11 on a Bulwark, 0.13 on a
- * Sanctuary and 0.10 on the Pillar since its ring slice).
+ * at tier 1 on an Outpost since issue #2749; 0.10 on a Bulwark, 0.12 on a
+ * Sanctuary and 0.07 on the Pillar since issue #2865, the ring since #2749's ring
+ * slice).
  *
  * THE ENEMY NUMBERS WERE NEVER TUNED AGAINST THAT CHARACTER, and the simulation
  * says so in its own words. `sim/cataclysm_sim/enemy_stats.py` explains the two

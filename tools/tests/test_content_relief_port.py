@@ -174,7 +174,8 @@ class TestTheDamageScaleMatches:
         for ring, name in self.RING_CONSTANTS.items():
             assert constant(header, name) == pytest.approx(enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING[ring]), ring
         assert enemy_stats.DAMAGE_SCALE_AT_FIRST_TIER_BY_RING == pytest.approx(
-            {"Outpost": 0.05, "Bulwark": 0.11, "Sanctuary": 0.13, "Pillar": 0.10}), "ruled 2026-11-19, issue #2749"
+            {"Outpost": 0.05, "Bulwark": 0.10, "Sanctuary": 0.12, "Pillar": 0.07}), (
+            "ruled 2026-11-19 on issue #2749, and lowered by the same rule on 2026-11-24 on issue #2865")
 
     def test_the_line_tiers_two_to_eight_are_on_matches(self, header):
         from cataclysm_sim import enemy_stats

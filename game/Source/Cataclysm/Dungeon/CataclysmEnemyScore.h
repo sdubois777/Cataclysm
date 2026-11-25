@@ -324,11 +324,16 @@ public:
 	 * entered, is won with at least 10% of its health left on the last floor, against 10 Common Imps. Checked on seeds
 	 * 60 to 119. A judgement; `sim/analyse_opening.py` section 5 is the measurement and
 	 * `tools/tests/test_the_starting_character_survives_a_pack.py` the guard.
+	 *
+	 * 0.10, FROM 0.11, SINCE ISSUE #2865 (2026-11-24): the surge rulings of 2026-11-23 and 2026-11-24 brought more waves,
+	 * the campaigns reached the inner rings at lower levels, and the same rule, fitted on seeds 0 to 59 and checked on 60
+	 * to 119, found 0.10. Ruled by the coordinating session as a consequence of the surge rulings, PROVISIONAL until the
+	 * gear drop rarity fix (issue #2853) lands, when the sweep is run again.
 	 */
-	static constexpr double DamageScaleAtFirstTierOnABulwark = 0.11;
+	static constexpr double DamageScaleAtFirstTierOnABulwark = 0.10;
 
-	/** A Sanctuary's, by the same rule. See `DamageScaleAtFirstTierOnABulwark`. */
-	static constexpr double DamageScaleAtFirstTierOnASanctuary = 0.13;
+	/** A Sanctuary's, by the same rule. See `DamageScaleAtFirstTierOnABulwark`. 0.12, from 0.13, since issue #2865. */
+	static constexpr double DamageScaleAtFirstTierOnASanctuary = 0.12;
 
 	/**
 	 * The Pillar's, by the same rule: BELOW THE BULWARK'S, THE ONE EXCEPTION TO "RISES BY RING", ruled by the
@@ -336,8 +341,11 @@ public:
 	 * Pillar, and `UCataclysmSurgeScheduler::MakeCataclysmDungeon` labels the boss dungeon Pillar though it stands on
 	 * no city -- and it is reached soonest, at the lowest levels, by the characters that win soonest, 100 to 197 floors
 	 * deep. At 0.11 two of the 219 measured clears ended under 10% health.
+	 *
+	 * 0.07, FROM 0.10, SINCE ISSUE #2865, by the same rule: on seeds 0 to 59 0.10 lost 3 of the 85 clears and 0.08 left
+	 * one under 10% health. See `DamageScaleAtFirstTierOnABulwark`.
 	 */
-	static constexpr double DamageScaleAtFirstTierOnThePillar = 0.10;
+	static constexpr double DamageScaleAtFirstTierOnThePillar = 0.07;
 
 	/**
 	 * TIERS 2 TO 8 LIE ON A LINE RISING EVENLY FROM THIS AT TIER 1 TO ONE AT THE

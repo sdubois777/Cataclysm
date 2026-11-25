@@ -387,7 +387,7 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 	}
 
 	// AND ON ITS FLOOR'S RING, as its hits are since the ring slice: a Stalker worn on a Bulwark keeps the Bulwark's
-	// multiplier, 0.132 at tier 1, for its damage over time. The ring's parameter defaults to an Outpost, so a call
+	// multiplier, 0.12 at tier 1 (0.132 until issue #2865), for its damage over time. The ring's parameter defaults to an Outpost, so a call
 	// that leaves it out still compiles; the rebase onto the ring slice produced exactly that, and this fails on it.
 	ACataclysmCorruptedStalkerCharacter* OnABulwark = World->SpawnActor<ACataclysmCorruptedStalkerCharacter>(
 		ACataclysmCorruptedStalkerCharacter::StaticClass(), FVector(0.0f, -30.0f * BurnMetre, 0.0f), FRotator::ZeroRotator,
@@ -399,7 +399,7 @@ CATACLYSM_ENEMY_BURN_TEST(FCataclysmEnemyBurnStalkerTest,
 	{
 		const float OnTheBulwark =
 			UCataclysmDungeonModifierEffects::CorruptedStalkerDamageMultiplier(1, ECataclysmCityTier::Bulwark);
-		TestEqual(TEXT("a Bulwark Stalker's damage over time multiplier is its hits', 0.132"),
+		TestEqual(TEXT("a Bulwark Stalker's damage over time multiplier is its hits', 0.12"),
 				  OnABulwark->DamageOverTimeMultiplier(), OnTheBulwark, 0.0001f);
 		TestTrue(TEXT("CONTROL: and not an Outpost's 0.06"),
 				 FMath::Abs(OnABulwark->DamageOverTimeMultiplier() - Multiplier) > 0.05f);

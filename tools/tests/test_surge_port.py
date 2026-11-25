@@ -199,7 +199,7 @@ class TestTheCadence:
 
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
-        body = body_of(source, "int32 UCataclysmSurgeScheduler::DungeonsInNextSurge()")
+        body = body_of(source, "int32 UCataclysmSurgeScheduler::DungeonsInNextSurge(")
         assert re.search(
             r"SurgeIndex\s*==\s*0\s*\?\s*OpeningDungeonsPerSurge\s*:\s*"
             r"DungeonsPerSurge\b", body), (
@@ -217,31 +217,25 @@ class TestWhatACityFallingDoes:
         assert (flag(surge_header, "bCityFallAdvancesEscalation")
                 == model.city_fall_advances_escalation)
 
-    def test_a_fall_asks_the_flag_and_the_least_interval_in_both(
-            self, surge_header, model):
-        """The flag AND the least interval, in both halves. Issue #2380.
+    def test_every_fall_fires_a_surge_in_both(self, surge_header, model):
+        """Every fall fires a surge, in both halves, whatever the gap since the
+        last one. The owner's ruling of 2026-11-24 on issue #2865, verbatim:
+        "surges from cities falling should happen regardless".
 
-        THE TWO TESTS ABOVE HOLD THE FLAGS EQUAL AND SAY NOTHING ABOUT WHEN A
-        FALL'S SURGE FIRES. The model has refused one inside
-        `surge_interval_min` since issue #1432; the game asked only its flag
-        until issue #2380, and nothing here noticed.
+        UNTIL THEN BOTH ASKED THE LEAST INTERVAL TOO: the model from issue
+        #1432 (2026-09-14) and the game from issue #2380 (2026-10-12), and this
+        test was `test_a_fall_asks_the_flag_and_the_least_interval_in_both`.
 
-        THE MODEL'S HALF IS ITS TWO LINES, quoted from `Simulation._fall` with
-        its comment lines taken out, because the comment above them names
-        `surge_interval_min` too.
+        THE MODEL'S HALF: `Simulation._fall`, its comment lines taken out, asks
+        the flag and then `city_fall_surge_braked`, which keeps the earlier rule
+        to measure and must ship off. Its one `trigger_surge` call is the fall's.
 
         THE GAME'S HALF IS READ AS CODE ONLY, in two places. The scheduler's
-        `IsDueOnCityFall` must hold the flag and the interval in one
-        expression, and `CityFell` must ask that function and nothing else
-        before it fires. A helper nobody calls would pass the first half.
+        `IsDueOnCityFall` returns the flag and asks nothing about days, and
+        `CityFell` asks that function and nothing else before it fires.
 
-        THE COMPARISON'S DIRECTION IS PART OF IT, as it is for the empty
-        board: both fire AT the interval, so `>` in the game would refuse the
-        fall that comes exactly 25 days after a surge.
-
-        WHAT THIS CANNOT SAY. That a fall inside the interval really brings no
-        wave is `Cataclysm.EmpireRun.ACityFallingInsideTheLeastIntervalStill
-        FallsAndBringsNoWave` and the three Unreal tests beside it.
+        WHAT THIS CANNOT SAY. That a fall inside 25 days of a surge really brings
+        a wave in the game is `Cataclysm.EmpireRun.` tests' to hold.
         """
         import inspect
 
@@ -251,35 +245,37 @@ class TestWhatACityFallingDoes:
             line for line in inspect.getsource(Simulation._fall).splitlines()
             if not line.lstrip().startswith("#"))
 
-        for line in ("if (cfg.surge_on_city_fall",
-                     "and self.days_since_last_surge() >= cfg.surge_interval_min):",
+        for line in ("if cfg.surge_on_city_fall:",
+                     "if (cfg.city_fall_surge_braked",
                      "self.trigger_surge(from_city_fall=True)"):
             assert line in fall, (
                 f"Simulation._fall no longer has `{line}`. If the model's "
                 "rule for a fall's surge changed, the game's "
                 "UCataclysmSurgeScheduler::IsDueOnCityFall has to change "
-                "with it and this test with both. Issues #1432 and #2380")
+                "with it and this test with both. Issue #2865")
 
         assert fall.count("self.trigger_surge(") == 1, (
             "Simulation._fall fires a surge from more than one place, so the "
-            "two lines quoted above are no longer its whole condition")
+            "lines quoted above are no longer its whole condition")
 
-        assert (number(surge_header, "LeastIntervalDays")
-                == pytest.approx(model.surge_interval_min)), (
-            "LeastIntervalDays and surge_interval_min differ, so a fall's "
-            "surge is refused for a different number of days in each half")
+        assert model.city_fall_surge_braked is False, (
+            "TuningConfig.city_fall_surge_braked is on. The owner ruled on "
+            "2026-11-24 that surges from cities falling should happen "
+            "regardless, and the game asks no interval. Issue #2865")
 
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
         due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnCityFall(")
 
-        asked = ("return bSurgeOnCityFall "
-                 "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;")
-        assert asked in due, (
-            "UCataclysmSurgeScheduler::IsDueOnCityFall no longer holds "
-            f"`{asked}`. It must ask the flag and that the last surge is at "
-            "least LeastIntervalDays behind, which are the two things "
-            "Simulation._fall asks. Issue #2380")
+        assert "return bSurgeOnCityFall;" in due, (
+            "UCataclysmSurgeScheduler::IsDueOnCityFall no longer returns the "
+            "flag alone. Every fall fires a surge since the owner's ruling of "
+            "2026-11-24. Code read: " + due[:300])
+        for asked in ("LeastIntervalDays", "DaysSinceLastSurge"):
+            assert asked not in due, (
+                f"UCataclysmSurgeScheduler::IsDueOnCityFall asks {asked} in "
+                "its code, so a fall inside some gap fires no surge, which the "
+                "owner ruled out on 2026-11-24. Issue #2865")
 
         run = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                    / "Empire" / "CataclysmEmpireRun.cpp")
@@ -298,9 +294,7 @@ class TestWhatACityFallingDoes:
 
         assert "bSurgeOnCityFall" not in fell, (
             "CityFell reads bSurgeOnCityFall itself. The flag is asked inside "
-            "IsDueOnCityFall, with the least interval beside it; asking the "
-            "bare flag here is the rule the game had before issue #2380")
-
+            "IsDueOnCityFall; keeping it there keeps one place to change")
 
 class TestWhatAnEmptyBoardDoes:
     """The game fires a surge on an empty board, as the model does.
@@ -319,6 +313,13 @@ class TestWhatAnEmptyBoardDoes:
     asked where the model asks. That the rule BEHAVES is the Unreal tests'
     job -- `Cataclysm.EmpireRun.ClearingTheLastDungeonBringsTheNextSurgeTheNextDay`
     and the four beside it.
+
+    **THE RULE CHANGED ON 2026-11-23 AND 2026-11-24, issue #2865.** The owner
+    ruled that only ordinary dungeons keep the board from being empty, that no
+    minimum gap brakes it ("yes, your rec"), and that its wave is the scheduled
+    count plus 4 ("Flat +4, no stacking"). The model carries each part as a
+    switch on `TuningConfig` and the checks below hold the switches on and the
+    game's code asking the same.
     """
 
     def test_the_model_fires_a_surge_on_an_empty_board(self, model):
@@ -328,18 +329,70 @@ class TestWhatAnEmptyBoardDoes:
             "rule on 2026-09-07 and issue #1406 built it; turning it off is a "
             "design change and needs their ruling, not a default")
 
-    def test_the_brake_is_the_gap_the_game_already_carries(self, surge_header,
-                                                           model):
-        """`surge_interval_min` is the ONLY brake on the trigger and the game
-        holds the same number as `LeastIntervalDays`. Issue #1414 used that
-        constant and did not add a second one;
-        `test_the_games_rule_asks_what_the_models_asks` is what says so.
+    def test_neither_half_brakes_an_empty_board_surge(self, model):
+        """No minimum gap, the owner's ruling of 2026-11-23: the model's switch is off
+        and the game's `IsDueOnEmptyBoard` no longer reads `LeastIntervalDays`.
+        Until then `surge_interval_min` was the only brake on the trigger and this
+        test held it equal to `LeastIntervalDays`; `TestTheCadence` still does."""
+        assert model.empty_board_surge_braked is False, (
+            "TuningConfig.empty_board_surge_braked is on. The owner ruled on "
+            "2026-11-23 that the 25-day minimum gap does not apply to a surge "
+            "fired by an empty board; issue #2865")
 
-        `TestTheCadence` already compares the two; this says which rule now
-        depends on them being equal.
-        """
-        assert (number(surge_header, "LeastIntervalDays")
-                == pytest.approx(model.surge_interval_min))
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnEmptyBoard(")
+        assert "LeastIntervalDays" not in due and "DaysSinceLastSurge" not in due, (
+            "UCataclysmSurgeScheduler::IsDueOnEmptyBoard reads the least interval "
+            "again. The owner ruled on 2026-11-23 that it does not apply; issue "
+            "#2865")
+
+    def test_both_count_only_ordinary_dungeons(self, model):
+        """The owner's ruling of 2026-11-23: "The board counts as empty when no
+        ordinary dungeon stands. Quest dungeons, the Cataclysm boss dungeon and
+        Fallen City dungeons do not count." The model counts `DungeonType.BASIC`;
+        the game counts `ECataclysmDungeonType::Basic` that is not a Scout Parties
+        bonus dungeon, which the model does not have."""
+        assert model.empty_board_counts_ordinary_only is True
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        empty = inspect.getsource(Simulation.board_is_empty)
+        assert "d.dtype is DungeonType.BASIC" in empty, empty
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmEmpireRun.cpp")
+        ordinary = body_of(source, "int32 UCataclysmEmpireRun::OrdinaryDungeonCount(")
+        assert ("Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus"
+                in ordinary), ordinary
+
+    def test_both_bring_the_scheduled_count_plus_four(self, surge_header, model):
+        """The owner's ruling of 2026-11-24, "Flat +4, no stacking": the model adds
+        `empty_board_surge_extra` and the game `ExtraDungeonsOnEmptyBoard`, the same
+        number, BEFORE the cap and the lethality multiplier in both (the
+        coordinating session's judgement of the same day)."""
+        assert model.empty_board_surge_larger is True
+        assert number(surge_header, "ExtraDungeonsOnEmptyBoard") == model.empty_board_surge_extra == 4
+
+        import inspect
+
+        from cataclysm_sim.engine import Simulation
+
+        counted = inspect.getsource(Simulation.surge_count)
+        added = counted.index("n += cfg.empty_board_surge_extra")
+        assert added < counted.index("n = min(n, float(cfg.surge_count_max))"), (
+            "the model adds the empty board's dungeons after the cap")
+
+        source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
+                      / "Empire" / "CataclysmSurge.cpp")
+        body = body_of(source, "int32 UCataclysmSurgeScheduler::DungeonsInNextSurge(")
+        added = body.index("Count += static_cast<float>(ExtraDungeonsOnEmptyBoard);")
+        assert added < body.index("Count = FMath::Min(Count, static_cast<float>(MostDungeonsPerSurge));"), (
+            "the game adds the empty board's dungeons after the cap")
+        assert "DungeonsInNextSurge(bFromEmptyBoard)" in body_of(
+            source, "TArray<FCataclysmDungeon> UCataclysmSurgeScheduler::RollWave("), (
+            "RollWave no longer sizes its wave with the empty board's flag")
 
     def test_an_empty_board_fires_a_surge_in_both(self, surge_header, model):
         """The flag, the way `test_a_fall_fires_a_surge_in_both` holds its own.
@@ -371,9 +424,12 @@ class TestWhatAnEmptyBoardDoes:
 
         asked = inspect.getsource(Simulation._maybe_surge_on_empty_board)
 
+        # THE BRAKE IS ASKED ONLY WITH `empty_board_surge_braked` ON, and it ships
+        # off since the owner's ruling of 2026-11-23 (issue #2865); the game has
+        # none (`test_neither_half_brakes_an_empty_board_surge`).
         for line in ("if not cfg.surge_on_empty_board:",
                      "if not self.board_is_empty():",
-                     "if self.days_since_last_surge() < cfg.surge_interval_min:"):
+                     "if cfg.empty_board_surge_braked:"):
             assert line in asked, (
                 f"Simulation._maybe_surge_on_empty_board no longer has "
                 f"`{line}`. If the model's rule changed, the game's "
@@ -381,17 +437,17 @@ class TestWhatAnEmptyBoardDoes:
                 "with it and this test with both")
 
         empty = inspect.getsource(Simulation.board_is_empty)
-        assert "return not self.dungeons" in empty, (
-            "Simulation.board_is_empty no longer counts every dungeon of every "
-            "kind. The game passes `Dungeons.Num()`, which does")
+        assert "return not any(d.dtype is DungeonType.BASIC" in empty, (
+            "Simulation.board_is_empty no longer counts only ordinary dungeons "
+            "with the switch on. The game passes `OrdinaryDungeonCount()`; issue "
+            "#2865")
 
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmSurge.cpp")
         due = body_of(source, "UCataclysmSurgeScheduler::IsDueOnEmptyBoard(")
 
         for part in ("return bSurgeOnEmptyBoard",
-                     "&& DungeonsStanding <= 0",
-                     "&& DaysSinceLastSurge(Day) >= LeastIntervalDays;"):
+                     "&& OrdinaryDungeonsStanding <= 0;"):
             assert part in due, (
                 "UCataclysmSurgeScheduler::IsDueOnEmptyBoard no longer holds "
                 f"`{part}`. It must ask the flag, that nothing stands, and "
@@ -484,9 +540,9 @@ class TestWhatAnEmptyBoardDoes:
             "the player chooses")
 
         fired = inspect.getsource(Simulation._maybe_surge_on_empty_board)
-        assert "self.trigger_surge()" in fired, (
-            "the model no longer fires its empty-board surge as an ordinary "
-            "one, with no city-fall flag")
+        assert "self.trigger_surge(from_empty_board=True)" in fired, (
+            "the model no longer fires its empty-board surge with no city-fall "
+            "flag and the empty board's, which makes it 4 larger (issue #2865)")
 
         source = read(REPO_ROOT / "game" / "Source" / "CataclysmEmpire"
                       / "Empire" / "CataclysmEmpireRun.cpp")
@@ -494,11 +550,11 @@ class TestWhatAnEmptyBoardDoes:
                       "FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay(")
 
         rule = ("if (!Report.bPillarExposed && "
-                # EVERY DUNGEON BUT A SCOUT PARTIES BONUS ONE, which threatens
-                # nothing, since issue #2741 slice 9 (V16); the model has none,
-                # so the two still count the same board.
-                "Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())) "
-                "{ FireSurge(Today, false, Report);")
+                # ORDINARY DUNGEONS ONLY since issue #2865, and not a Scout
+                # Parties bonus one, which threatens nothing (V16); the model has
+                # no bonus dungeon, so the two still count the same board.
+                "Surges->IsDueOnEmptyBoard(Today, OrdinaryDungeonCount())) "
+                "{ FireSurge(Today, false, Report, true);")
         assert rule in day, (
             "UCataclysmEmpireRun::AdvanceDay no longer asks "
             "IsDueOnEmptyBoard for today with every dungeon standing, behind "

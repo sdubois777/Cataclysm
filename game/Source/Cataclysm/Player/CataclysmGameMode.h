@@ -354,8 +354,8 @@ public:
 
 	/**
 	 * The ring the dungeon being walked was rolled on, which moves a creature's damage at difficulty tier 1: 0.05 on an
-	 * Outpost, 0.11 on a Bulwark, 0.13 on a Sanctuary, 0.10 on the Pillar (`UCataclysmEnemyScore::DamageScale`). Issue
-	 * #2749's ring slice.
+	 * Outpost, 0.10 on a Bulwark, 0.12 on a Sanctuary, 0.07 on the Pillar (`UCataclysmEnemyScore::DamageScale`). Issue
+	 * #2749's ring slice, and issue #2865 for the figures.
 	 *
 	 * AN OUTPOST IN THE SANDBOX, which is what every floor read before the ring existed. The dungeon game mode answers
 	 * with the bound empire dungeon's `FCataclysmDungeon::CityTier`.

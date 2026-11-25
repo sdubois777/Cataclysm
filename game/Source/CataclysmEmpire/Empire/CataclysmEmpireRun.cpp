@@ -647,13 +647,18 @@ FCataclysmDayReport UCataclysmEmpireRun::AdvanceDay()
 	// here -- issue #43 -- so the condition it would have supplied is asked
 	// directly.
 	//
-	// THROUGH `FireSurge` WITH NO FLAG, exactly as the clock's surge goes. It
-	// moves `NextSurgeDay` on from today and advances the escalation counter:
-	// it is the scheduled wave arriving early, not an extra one.
+	// THROUGH `FireSurge` WITH NO CITY-FALL FLAG, as the clock's surge goes. It moves `NextSurgeDay` on from today and
+	// advances the escalation counter: it is the scheduled wave arriving early, not an extra one.
+	//
+	// ONLY ORDINARY DUNGEONS COUNT, AND THE WAVE IS LARGER, since the owner's rulings on issue #2865: of 2026-11-23,
+	// "The board counts as empty when no ordinary dungeon stands. Quest dungeons, the Cataclysm boss dungeon and Fallen
+	// City dungeons do not count", with no minimum gap (`IsDueOnEmptyBoard`); and of 2026-11-24, chosen option
+	// verbatim "Flat +4, no stacking" (`ExtraDungeonsOnEmptyBoard`). A Scout Parties bonus dungeon is still not
+	// counted (slice 9, V16).
 	if (!Report.bPillarExposed
-		&& Surges->IsDueOnEmptyBoard(Today, ThreateningDungeonCount())) // Not a bonus dungeon: slice 9, V16.
+		&& Surges->IsDueOnEmptyBoard(Today, OrdinaryDungeonCount()))
 	{
-		FireSurge(Today, /* bFromCityFall */ false, Report);
+		FireSurge(Today, /* bFromCityFall */ false, Report, /* bFromEmptyBoard */ true);
 
 		Report.bSurgedOnEmptyBoard = true;
 		++SurgesFromEmptyBoard;
@@ -735,7 +740,7 @@ bool UCataclysmEmpireRun::IsAWalkUnderWay() const
 // ---------------------------------------------------------------------------
 
 void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
-									FCataclysmDayReport& OutReport)
+									FCataclysmDayReport& OutReport, bool bFromEmptyBoard)
 {
 	// HOW MANY DUNGEONS EACH CITY ALREADY HOLDS, because the surge scheduler
 	// needs it for the dungeon cap upgrade and does not own the dungeons. Passed
@@ -801,7 +806,7 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	TArray<FCataclysmDungeon> Wave =
 		Surges->RollWave(*Map, Today, NextDungeonId, Stream, DungeonsPerCity,
 						 SiegesStanding,
-						 [this]() { return RollCataclysm(); });
+						 [this]() { return RollCataclysm(); }, bFromEmptyBoard);
 
 	for (FCataclysmDungeon& Dungeon : Wave)
 	{
@@ -858,6 +863,9 @@ void UCataclysmEmpireRun::FireSurge(int32 Today, bool bFromCityFall,
 	bBribedThisSurge = false;
 
 	OutReport.bSurged = true;
+
+	// AND COUNTED, because one day can hold several since issue #2865: one for each city that falls, and the clock's.
+	++OutReport.Surges;
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,23 +1650,20 @@ void UCataclysmEmpireRun::CityFell(int32 CityId, FCataclysmDayReport& OutReport)
 	// AFTER THE MOVES ABOVE, SO THEIR DRAWS COME FIRST, as in `Simulation._fall`.
 	AddFallenCityDungeon(CityId, DungeonsAbsorbed, OutReport);
 
-	// AND THE FALL FIRES A SURGE OF ITS OWN, WHEN ONE IS DUE. The design
-	// document says a city falling triggers one;
-	// `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation` is what makes it
-	// also speed the rest of the run up.
+	// AND THE FALL FIRES A SURGE OF ITS OWN. The design document says a city
+	// falling triggers one; `UCataclysmSurgeScheduler::bCityFallAdvancesEscalation`
+	// is what makes it also speed the rest of the run up.
 	//
-	// NOT INSIDE THE LEAST INTERVAL. `IsDueOnCityFall` asks the flag and that
-	// the last surge is at least `LeastIntervalDays` (25) behind, which is
-	// what `Simulation._fall` has asked since issue #1432. Issue #2380. So a
-	// fall the day after a wave brings none, and of two cities falling on one
-	// day only the first brings one: its `RecordSurge` writes today as the
-	// last surge's day, and the second is then nought days behind it.
+	// EVERY FALL, WHATEVER THE GAP SINCE THE LAST SURGE: the owner's ruling of
+	// 2026-11-24 on issue #2865, verbatim "surges from cities falling should
+	// happen regardless". So a fall the day after a wave brings another, and
+	// two cities falling on one day bring two. From issue #2380 until then
+	// `IsDueOnCityFall` refused a fall inside `LeastIntervalDays` (25) of the
+	// last surge, as `Simulation._fall` did from issue #1432.
 	//
-	// A REFUSED FALL IS NOT TRIED AGAIN. The fall is a moment and not a
-	// standing state like an empty board, and the clock's wave still comes.
-	// Everything above this line has already happened either way: the city is
-	// down, its ordinary dungeons are absorbed, its Quest dungeons have moved
-	// and its Dungeon City stands.
+	// AFTER EVERYTHING ABOVE: the city is down, its ordinary dungeons are
+	// absorbed, its Quest dungeons have moved and its Dungeon City stands
+	// before the wave is rolled, so the wave never targets the fallen city.
 	//
 	// THE DAY ON THE REPORT, which is today in `AdvanceDay` and the day it
 	// already is in `ResolveDungeonOnDeath`.
@@ -2169,6 +2174,17 @@ int32 UCataclysmEmpireRun::ThreateningDungeonCount() const
 	for (const FCataclysmDungeon& Dungeon : Dungeons)
 	{
 		Count += Dungeon.bBonus ? 0 : 1;
+	}
+	return Count;
+}
+
+int32 UCataclysmEmpireRun::OrdinaryDungeonCount() const
+{
+	// A BASIC DUNGEON THAT IS NOT A BONUS ONE, and nothing else: issue #2865, the owner's ruling of 2026-11-23.
+	int32 Count = 0;
+	for (const FCataclysmDungeon& Dungeon : Dungeons)
+	{
+		Count += (Dungeon.Type == ECataclysmDungeonType::Basic && !Dungeon.bBonus) ? 1 : 0;
 	}
 	return Count;
 }
@@ -2706,7 +2722,7 @@ void UCataclysmEmpireRun::NoteDaysAway(int32 FromDay, int32 ToDay, const TArray<
 		{
 			Away.Fallen.AddUnique(CityId);
 		}
-		Away.Surges += Day.bSurged ? 1 : 0;
+		Away.Surges += Day.Surges;
 		Away.SurgeDungeons += Day.SurgeDungeons;
 	}
 	LastDaysAway = Away;
