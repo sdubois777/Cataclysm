@@ -1313,6 +1313,9 @@ passed restored:
 - **PG4**, `docs/` must be what the tree script writes: Stubborn's sentence changed to "+6%" in the script. Failed
   five tests of `test_apply_demonic_tree_rework_2026_11_24.py`, among them
   `test_the_unreworked_tree_is_turned_into_the_file_in_docs[Ravager]` (5 failed, 16 passed; restored 21 passed).
+
+---
+
 ## 2026-11-24 — A held item pressed onto a gear slot is worn in that slot, and a press that does not do what was asked says why on the inventory screen (#837, slice 3)
 
 **RUN AND PASSED IN THREE WINDOWS, ss2-w1 TO ss2-w3 (2026-11-25), RECORDED AT THE END OF THIS ENTRY.** On
