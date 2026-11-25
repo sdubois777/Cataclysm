@@ -1282,6 +1282,8 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 **But it is still not itself a hit.** It cannot critically strike, cannot apply an ailment, does not carry the weapon's sub-type, and cannot itself be retaliated against. That last part is load-bearing rather than tidy: without it, two characters who both retaliate would reflect at one another without end.
 
+**Its own payment rolls no ailment; a row that acts on the retaliation event may apply one**, as the enchantment "Your retaliation damage also applies a bleed stack to the attacker" does (built 2026-10-01, `apply_status` Bleed on `retaliation_dealt`). The project owner accepted this reading on 2026-11-24 with the War trees' rulings pass (R7), which `docs/DECISIONS.md` records.
+
 
 
 **A minion's blow provokes it, and the minion takes it.** Retaliation is paid back to whoever dealt the blow, and a minion deals its own blow rather than dealing it in its summoner's name, so the creature that swung takes what comes back and a summoner standing well away from the fight takes nothing. That a minion takes neither its summoner's critical strikes, penetration, weapon sub-type nor leech is the same rule read the other way: those four do not reach a minion's blow, and what a minion's blow provokes does not reach the summoner.

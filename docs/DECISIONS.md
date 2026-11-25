@@ -2,6 +2,86 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-24 — The War trees' rulings pass (Q20): 29 sentences the owner accepted, for Bulwark, Berserker and Saboteur nodes that broke an existing rule or stated figures on an old scale
+
+**Affects:** this entry, and `docs/Cataclysm_GDD_v2.md` (Retaliation, one sentence, R7). The node sentences in
+`docs/Bulwark_Class_Tree_Final.json`, `docs/Berserker_Class_Tree_Final.json` and `docs/Saboteur_Class_Tree_Final.json`
+are NOT changed here: the slice that writes each node's rows rewrites its sentence by node name, with the rows.
+
+### SAID FIRST
+
+- **RECORDED, NOT BUILT.** No row, sentence in a tree file or code changes here; each sentence below becomes the
+  node's words when its rows are written.
+- **EVERY NUMBER IN THE SENTENCES IS A JUDGEMENT** of the War trees session, sized against the simulation's reference
+  character (`sim/cataclysm_sim/fight.py`, `reference_player`): at tier 8, level 100, 11,023 maximum health, 7,299
+  armour, 3% life leech, a 258% critical strike multiplier, 25.4 health regeneration a second and a 1,853 hit; flat
+  damage 16.5 to 22 and flat maximum health 90 to 120 per affix at affix tier 7. Maximum health by tier: 1,283 (tier 1,
+  level 12), 2,064, 3,067, 4,259 (tier 4, level 50), 5,766, 7,791, 9,401, 11,023.
+- **FLURRY (R11) KEEPS ITS OLD SIZE**, 50% more per point on every 5th attack: at 8 points the 5th attack deals 5 times
+  its damage, an average of 80% more over five. The coordinating session, 2026-11-24: build it as written and mark it
+  as a play-test point, not a measured figure.
+
+### THE RULING
+
+The project owner, 2026-11-24, verbatim: "I'll go with your recommendations on the war rulings." That accepts every
+sentence below (R1 to R29 of `war_rulings_q20_draft.md`, the War trees session's draft of that day), the rule R28
+and the rename R29. It answers `plan_death_and_war.md` Q20 ("one rulings pass on the 31 War entries before their
+slice"), which the owner had accepted the same day: "Your recommendations work for all of those death/war questions."
+
+**10 of the 31 were already settled and are not repeated:** Serrated Edge ("+10% duration of bleeds you apply, per
+point.") and five Saboteur count caps (Bag of Tricks, Minefield, Overwhelming Presence, Precision Placement,
+Calculated Chaos) by `tools/apply_passive_order_fixes_2026_11_24.py`; the four Saboteur oaths by the twelve options
+of `saboteur_vows_draft.md`, approved 2026-11-24.
+
+**A rule settled on the way (R7):** "retaliation cannot apply an ailment" (Retaliation, in the design document) is
+about what the retaliation payment itself rolls. A row acting on the retaliation event may apply one: the enchantment
+"Your retaliation damage also applies a bleed stack to the attacker" has been built so since 2026-10-01
+(`apply_status` Bleed on `retaliation_dealt`). The design document now says so.
+
+### THE SENTENCES
+
+| # | Node | Ruled sentence | The rule it broke |
+|---|---|---|---|
+| R1 | Crushing Presence (`Bulwark_basic_jg_stem_003`) | "+1 flat damage per point for every 1,000 Maximum HP." | an absolute health total on the old scale |
+| R2 | Weight of the World (`Bulwark_basic_jg_t2_002`) | "+1% damage per point for every 5,000 Maximum HP (multiplicative)." | an absolute health total on the old scale |
+| R3 | Colossus (`Bulwark_basic_jg_stem_004`) | "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources." | reads its own result, and an old-scale figure |
+| R4 | Immovable Object (`Bulwark_keystone_jg_t1`) | "While above 50% health, you are immune to crowd control. Each crowd control effect you are immune to this way deals damage equal to 3% of your Maximum HP to the enemy that applied it." | an absolute health total on the old scale |
+| R5 | Mountain's Wrath (`Bulwark_keystone_jg_t2`) | "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP." | an absolute health total on the old scale |
+| R6 | Titanfall (`Bulwark_keystone_jg_final`) | "When a single hit takes more than 20% of your Maximum HP, you cannot be killed for 2 seconds and your next attack deals bonus damage equal to that hit. Can only happen once every 30 seconds." | an absolute health total on the old scale |
+| R7 | Vengeful Discharge (`Bulwark_basic_tw_resolve_001`) | "Passively drains 10 Fervour per second to increase your retaliation damage by +3% per point. When this drain reduces you to 0 Fervour, you retaliate against every enemy within 4 metres for 100% of your retaliation damage. At 5 points: this also applies Bleed to every enemy it strikes." | "a bleed stack"; no radius |
+| R8 | Hemorrhage (`Bulwark_keystone_tw_t1`) | "Your retaliation also applies Bleed to the attacker, at twice its normal strength." | a conversion lost under one bleed per enemy |
+| R9 | Blood Price (`Bulwark_basic_tw_t1_002`) | "+5% bleed damage per point." | counts bleed stacks; an enemy carries one |
+| R10 | Open Wounds (`Bulwark_basic_tw_t1_003`) | "+3% retaliation damage per point for each bleeding enemy within 4 metres, up to 5 enemies. At 5 points: your hits deal 20% increased damage to bleeding enemies." | counts bleed stacks; a mark (#964) |
+| R11 | Flurry (`Berserker_dw_002`) | "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point." | an offhand strike; one attack deals both weapons |
+| R12 | Weaving (`Berserker_dw_003`) | "Dual wield only. Using a different melee skill from the one you used last increases your damage by 2% per point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled." | alternating hands; one attack deals both weapons |
+| R13 | Vital Strike (`Berserker_leech_003`) | "+1% life leech per point on critical melee strikes. While your health is full, your critical melee strikes generate 1 additional Fervour per point." | a leech cap the design does not have |
+| R14 | Eternal Hunger (Berserker Final Oath, option 3) | "Life leech can heal you up to 100% above your Maximum HP. Health above your maximum decays at 1% of your Maximum HP per second while you are not leeching, and damage you take removes it first. Your life leech is increased by 50%." | a leech cap the design does not have |
+| R15 | Crimson Pact (Berserker Third Oath, option 3) | "Your critical strike multiplier is increased by 10% for every 1% of life leech you have." | each half reads the other |
+| R16 | Flesh Fortress (`Bulwark_keystone_tw_t2`) | "While you do not hold a shield: your Armor is 0, you gain 1% increased Maximum HP for every 50 Armor you would have had, and you gain 50% increased Fervour from all sources." | "1% Armor" has no meaning; no system refuses an item |
+| R17 | Colossus Eternal (Bulwark Final Oath, option 2) | "Your health regeneration and the healing you receive are doubled, and your increases to Maximum HP count twice. While above 50% health, a hit that would kill you leaves you at 1 HP instead. While above 75% health, your attacks deal bonus damage equal to 2% of your current HP." | no instant-kill effect exists; "HP bonuses" unclear |
+| R18 | Wrath Incarnate (Bulwark Final Oath, option 3) | "Your retaliation damage is increased by 1% for every 100 Armor you have. When a single hit takes more than 10% of your Maximum HP, you retaliate against every enemy within 4 metres for 200% of your retaliation damage." | each half reads the other; no radius |
+| R19 | Siege Mode (`Saboteur_keystone_gadget_sus`) | "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus." | who stands still; a reset that contradicts it |
+| R20 | Concealed (`Saboteur_basic_trap_mid_003`) | "The first enemy to trigger each of your traps is stunned for 1 second." | no mechanic for "position"; no root status; a decimal per point on one point |
+| R21 | Saturation (`Saboteur_basic_trap_qty_003`) | "+5% evasion chance for each of your active traps, up to 5 traps." | raises a cap the engine does not enforce |
+| R22 | Meat Shield (`Bulwark_basic_jg_stem_001`) | "+4% Maximum HP per point. Each 1,000 Maximum HP increases your maximum Fervour by 3." | figures on the old scale |
+| R23 | Dense Muscle (`Bulwark_basic_jg_t2_001`) | "+1% damage reduction per point for every 5,000 Maximum HP (multiplicative)." | figures on the old scale |
+| R24 | Unstoppable Force (`Bulwark_basic_jg_stem_005`) | "+1% damage per point for every 1,000 Maximum HP." | figures on the old scale |
+| R25 | Walking Fortress (`Bulwark_basic_jg_final_001`) | "+40 flat Maximum HP per point. At 6 points: +1% damage reduction for every 5,000 Maximum HP (multiplicative)." | figures on the old scale |
+| R26 | Ironblood (`Bulwark_basic_jg_stem_002`) | "+2 flat HP Regen per second per point." | figures on the old scale |
+| R27 | Dead Weight (`Bulwark_basic_jg_t1_003`) | "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each crowd control effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it." | figures on the old scale |
+| R28 | the Juggernaut limb | No node asks for an absolute health total; a requirement is a step per 1,000 (or 5,000) Maximum HP, or a share of maximum health. | the five thresholds of 5,000 to 25,000 |
+| R29 | `Bulwark_basic_tw_stem_004` | The basic node "Wrath Incarnate" is renamed "Outnumbered"; the Final Oath's option keeps the name. | two entries in one tree with one name |
+
+### EVIDENCE
+
+The sentences in the table were extracted by script from the draft the owner accepted
+(`.claude/windows/war_rulings_q20_draft.md`, untracked, in the War trees session's worktree), so they are its words.
+The draft also held each node's current sentence, the reasoning behind each size and what building it needs; it is not
+kept in the repository, so each War tree slice that writes a node's rows states the sizing it used in its own entry.
+No row or code depends on this entry yet.
+
+---
+
 ## 2026-11-24 — The three Demonic passive trees reworked as their audits proposed: the Masochist, the Ravager and the Ritualist, in words, rows and code
 
 **Affects:**
