@@ -91,7 +91,14 @@ Each description still says "reserves 5 Fervour while it stands", and Iron Fortr
 
 ### THE PYTHON SUITE
 
-To be recorded in the commit after this one, with the head it ran on.
+Run on `3ae3f543252ee784d14b6f3e4bddb97308061fcb`, with nothing in the worktree changing during the run:
+`python -u -m pytest --junit-xml=<outside the repository>`. The count line read **1 failed, 8563 passed, 9 skipped in
+476.31s**, and the JUnit file `tests="8573" failures="1" errors="0" skipped="9"`, which is 8,563 passed: the two
+agree. The one failure is
+`test_datatable_assets_are_current.py::TestEveryCsvIsUnchangedSinceItsAssetWasBuilt::test_every_csv_still_hashes_to_what_was_recorded`,
+naming `MinionTypes.csv`, `PassiveEffects.csv`, `PassiveNodes.csv` and `WeaponSkills.csv`, which this stack carries
+until the editor step. `python -m ruff check .`: all checks passed. `python tools/check_resolved_cpp.py --changed`: 3
+files read, 0 with complaints. The include audit over the two changed .cpp files: 0 names unreachable.
 
 ### PYTHON GUARD PROOF
 
