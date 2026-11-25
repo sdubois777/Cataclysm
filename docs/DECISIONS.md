@@ -829,6 +829,79 @@ Python in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`).
 
 Four builds a proof, twelve for the three. Slice B1's entry carries the altars' proofs.
 
+### The rebuild's sweep, 2026-11-25
+
+Development's Unreal test files changed since this slice's base (`4d33f5994`, 84 files, which covers the altar slice's
+later base `5cdd6bdc4`) were searched for a run begun or a wave rolled (`Begin(`, `MakeRun(`, `QuietRun(`,
+`MakeWalkRun`, `EmpireRunFor`, `RollWave`, `FireSurge`, `MakeDungeon(`) and for a Demonic or Quest dungeon made by
+hand (`ECataclysmType::Demonic`, `ECataclysmDungeonType::Quest`, `.Cataclysm = `). Each run's seed was checked with
+`order_for` in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`; a run at tier N faces the first N of its
+draw.
+
+- **Seeds 2848, 2741, 3 and 4242** face Demonic from tier 7, 4, 7 and 8, and these runs are at tier 1: no Rift.
+  `MakeRun`'s default seed 1 faces it from tier 4.
+- **Seed 2849 (`Cataclysm.InventoryTabs.`) and seed 48 (`Cataclysm.Merchant.`) face Demonic at tier 1**, so their
+  opening waves hold Rifts. NOT AFFECTED, by reading: the first uses its run for its tier and gold only; the second
+  asserts that no day passes and that a walk is under way, and reads no dungeon. Both groups run alone.
+- **No new test builds a Demonic Quest dungeon by hand or walks one**, so none meets an altar (slice B1). The map's
+  city button now ends with `RiftMark`; the new tests that read the map (`Cataclysm.WalkFromTheScreen.` and the
+  merchant's map button) run seeds 4242 and 3, with no Rift.
+
+### Registered for the shared window, 2026-11-25: slices B1 and B2 on `feat/rift-altars-51-2`
+
+**Nothing here has run.** The coordinating session's plan of 2026-11-24: after #2865, ONE window for the altar slice
+(B1) and this slice, on `feat/rift-altars-51-2`, which is B1 rebuilt on development `0d9259653` with this slice's
+`feat/demonic-rifts-51-2` merged in. It replaces this entry's registration above and B1's proof list, which were
+written before either was rebuilt. Base: the newest whole-suite log, window 2865-w1's
+`2865_suite_engine_62612be6.log` (5474 performed on `62612be63`, whose tree differs from development `0d9259653` only
+in `docs/DECISIONS.md` and in two test files' assertions, which add no test). If another whole suite runs on development first, its log is the
+base and every count below is taken again from it.
+
+- **The build.** Both modules change (`CataclysmSurge.h`, `CataclysmEmpireRun.h`, `CataclysmDungeonModifier.h`,
+  `CataclysmDungeonGameMode.h`, `CataclysmFloorBrief.h`, `CataclysmSaveRecords.h`), so most of both rebuild. Predicted:
+  succeeds; read the "files compiled" line.
+- **The groups alone**, each with a trailing dot, counted with `grep -F` on that log's `Test Completed.` lines, plus the
+  names the diff adds (27 registrations, none removed). Predicted for each: every test succeeds, 0 failed, 0 saves left
+  behind.
+
+| Group | Count | Why it runs alone |
+| :-- | --: | :-- |
+| `Cataclysm.Rifts.` | 12 | new (B2) |
+| `Cataclysm.RiftMap.` | 2 | new (B2) |
+| `Cataclysm.RiftAltars.` | 9 | new (B1) |
+| `Cataclysm.DeathCost.` | 11 | 9 + 2 (B2: a death in a Rift, and its control) |
+| `Cataclysm.SaveLoad.` | 84 | 83 + 1 (B1: a fallen altar after a load) |
+| `Cataclysm.Surge.`, `Cataclysm.DungeonModifiers.`, `Cataclysm.FirstSurge.`, `Cataclysm.EmpireRun.`, `Cataclysm.Roster.`, `Cataclysm.EmpireScreen.` | 54, 31, 3, 71, 11, 16 | B2's sweep: tests that roll or keep a Demonic Quest dungeon |
+| `Cataclysm.DungeonMode.`, `Cataclysm.WalkFromTheScreen.` | 46, 6 | the dungeon game mode both slices change; the map layout merged by hand |
+| `Cataclysm.CityCleanseSave.`, `CityUpgradeBuildSave.`, `ConsumptionDouble.`, `Dismantle.`, `EarnedBossSave.`, `EmpireTreeClearGold.`, `EmpireTreeDrops.`, `EmpireTreeEvents.`, `EmpireTreeNineSaves.`, `GemSave.`, `Gold.`, `SaveRecords.`, `Seeding.`, `ThrallSave.`, `Travel.`, `WalkSeed.`, `WinningTheRun.` | 1, 2, 15, 12, 3, 9, 13, 15, 1, 2, 13, 18, 3, 3, 10, 5, 11 | B1's run record step: each reads `Run_v19.json` or adds the step's write |
+| `Cataclysm.InventoryTabs.`, `Cataclysm.Merchant.` | 7, 7 | the rebuild's sweep: development's new tests whose runs face Demonic at tier 1 (seeds 2849 and 48) |
+| `Cataclysm.DungeonModifierEffects.` | 786 | 785 + 1 (B1: no chasm on an altar floor); the largest group, so last |
+
+- **The whole suite:** 5501 performed (5474 + 27), 5501 succeeded, 0 failed; 0 saves left behind. Saves written,
+  predicted 881: 874 + 3 for B1's `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` (its twin,
+  `AHeavenlyCoreDestroyedStaysDestroyedAfterALoad`, wrote 3 in w1) + 2 for each of B2's two death-cost tests (each dies
+  once, as `ADeathThatFellsItsCityKeepsWhatEndingTheWalkComputed` does, which wrote 2). The count is printed against
+  this and does not stop the window; a save left behind does. Skipped halves 58, as in w1; none of the three new test
+  files reports one. The Python suite runs alongside.
+- **C++ guard proofs, six, three a slice** (the coordinating session's limit of three a change), each with
+  `prove_cpp_guard`, alone, after the suite and Python have ended:
+
+| # | Slice | Break | `test_prefix` | Predicted to fail |
+| :-- | :-- | :-- | :-- | :-- |
+| P1 | B2 | `MakeDungeon`'s `Spec.LeastFloors = RiftFloors;` and `Spec.MostFloors = RiftFloors;` become `RiftFloors + 1` | `Cataclysm.Rifts.` | `ARiftIsFourFloorsWithTheTimerOfFourFloorsWhateverTheTreeAdds`, `ARiftOpensOnAnyStandingCityButThePillarByTierWeight` |
+| P2 | B2 | `RiftSendsOn` returns `false && Age > 0 && Age % RiftSendEveryDays == 0` | `Cataclysm.Rifts.` | `ARiftSendsABasicDemonicDungeonOnItsFifthDayAndItsTenth`, `ARiftThatMovesKeepsItsCountAndSendsFromWhereItStands`, `ARiftWithNoNeighbourASurgeCouldTargetSendsNothingUntilALaneOpens` |
+| P3 | B2 | `WhatTheRiftBrought = Run->SurgeForADeathInARift();` becomes `WhatTheRiftBrought = FCataclysmDayReport();` | `Cataclysm.DeathCost.` | `ADeathInARiftBringsASurgeOnTheDayOfTheDeath` |
+| RA1 | B1 | `const int32 Spread = FMath::Min(RiftAltars, TotalFloors);` becomes `const int32 Spread = RiftAltars;` | `Cataclysm.RiftAltars.` | `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen` |
+| RA2 | B1 | `if (RiftAltarsSealTheStairs())` becomes `if (false && RiftAltarsSealTheStairs())` | `Cataclysm.RiftAltars.` and `Cataclysm.SaveLoad.` | `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`, `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARiftsFallenAltarStaysFallenAfterALoad` |
+| RA3 | B1 | `if (RiftAltarsHere.IsValidIndex(Index))` becomes `if (false && RiftAltarsHere.IsValidIndex(Index))` | `Cataclysm.RiftAltars.` and `Cataclysm.SaveLoad.` | `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `ARiftsFallenAltarStaysFallenAfterALoad` |
+
+P2's break keeps `Age` read, so the build cannot stop on an unreferenced variable. Four builds a proof, twenty-four
+for the six.
+- **Python, run on `70d646565`**, the merge of the two slices, which this head differs from only in
+  `docs/DECISIONS.md`, with `python -u -m pytest --junit-xml=<a file outside the repository>`: `8562 passed, 10
+  skipped in 465.65s`; the JUnit file agrees, 8,572 tests, 0 failures, 0 errors, 10 skipped. `python -m ruff check .`:
+  `All checks passed!`. The test files that read this log were run again on the head that carries this line.
+
 ---
 
 ## 2026-11-24 — The skill keys stay as they are when a weapon goes on or off, a skill that does something takes a key before one that is not built, and the keys are saved (#837, slice 1)
@@ -1376,6 +1449,10 @@ Registered, not run. **Eleven new automation tests:**
 | RA1 | `const int32 Spread = FMath::Min(RiftAltars, TotalFloors);` to `const int32 Spread = RiftAltars;` (`CataclysmFloorBrief.cpp`, `RiftAltarFloor`) | `AFourFloorRiftHoldsOneAltarAFloorAndAnyOtherDepthSpreadsItsFour`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen` |
 | RA2 | `if (RiftAltarsSealTheStairs())` to `if (false && RiftAltarsSealTheStairs())` (`CataclysmDungeonGameMode.cpp`, `StairsSealedBy`) | `AnAltarHasTheFloorBossHealthNeverAttacksAndSealsItsFloorsStairsUntilItFalls`, `AFourFloorRiftIsNotSealedUntilItsLastAltarAndItsBossHaveFallen`, `ARiftOfFewerThanFourFloorsPutsTheRestOfItsAltarsOnItsLastFloor`, `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
 | RA3 | `if (RiftAltarsHere.IsValidIndex(Index))` to `if (false && RiftAltarsHere.IsValidIndex(Index))` (`CataclysmDungeonGameMode.cpp`, `RestoreFloorRuleState`) | `AFloorsFallenAltarsAreSavedByPlaceAndPutBackFallen`, `SaveLoad.ARiftsFallenAltarStaysFallenAfterALoad` |
+
+**SUPERSEDED ON 2026-11-25** by the shared window's registration in slice B2's entry ("Registered for the shared
+window"), which runs RA1 to RA3 with these breaks, after this slice was rebuilt on development and slice B2 merged
+into it; it adds `Cataclysm.SaveLoad.` to RA2's and RA3's prefix, since each names a test in that group.
 
 **Not proved**: the boss's seal (its tests assert it, both orders), the chasm rule and the fall cap, and the boss found
 again on a load.
