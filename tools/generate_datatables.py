@@ -3889,6 +3889,10 @@ EMPIRE_TREE_BUILT = {
     # and 2026-11-24 (A, B). Numbered 11, the slice after F6's 10.
     "Workshop Upgrades": 11, "Apprentice Oversight": 11,
     "Architectural Synergy": 11, "Treasury Synergy": 11, "Forge Upgrades": 11,
+    # #47 slice F6b: the three forge material nodes, ruled by the coordinating
+    # session on 2026-11-22 (Q11 to Q17) and 2026-11-25 (N1 to N5). Numbered 12,
+    # the slice after F6a's 11.
+    "Material Conservation": 12, "Resource Management": 12, "Tempting Fate": 12,
     # Slice 8: the project owner, 2026-11-21, "Imperial prowess lets you pick an
     # additional keystone from a previous tier"; J1 to J5 the same day.
     "Imperial Prowess": 8,
@@ -3993,7 +3997,7 @@ EMPIRE_TREE_REFUSED = {
     "Merchant Guild": "market", "Thrifty": "market",
     "Surplus Storage": "gold cap", "War Chest": "gold cap and death loss",
     # Artisan.
-    "Apprentice Smith": "crafting", "Material Conservation": "crafting",
+    "Apprentice Smith": "crafting",
     "Rough Draft": "crafting", "Tool Maintenance": "crafting",
     "Limited Knowledge": "crafting",
     "Industrial Speed": "crafting",
@@ -4001,7 +4005,7 @@ EMPIRE_TREE_REFUSED = {
     "Quality Materials": "crafting",
     "Stable Compounds": "crafting", "Explorer Synergy": "crafting",
     "Master Craftsman": "crafting",
-    "Resource Management": "crafting", "Expanded Station (Jeweler)": "crafting",
+    "Expanded Station (Jeweler)": "crafting",
     "Expanded Station (Smith)": "crafting",
     "Expanded Station (Enchantress)": "crafting",
     "Precision Crafting": "crafting",
@@ -4012,7 +4016,6 @@ EMPIRE_TREE_REFUSED = {
     "Residue Mastery": "crafting", "The Hidden Stash": "crafting",
     "Assembly Line": "crafting",
     "The Alchemist's Transmutation": "crafting", "Steady Hands": "crafting",
-    "Tempting Fate": "crafting",
 }
 
 
@@ -4259,6 +4262,8 @@ EMPIRE_TREE_EFFECT_KINDS = (
     # #47 slice F6a: the five forge gold nodes, read by CraftGoldFactorFor.
     "CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
     "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance",
+    # #47 slice F6b: the three forge material nodes, drawn by UCataclysmForge::KeepingOn.
+    "LowTierMaterialKeptChance", "RareMaterialKeptChance", "HighResidueMaterialsReturnedChance",
 )
 
 #: WHAT EACH BUILT NODE OR OPTION OF THE EMPIRE TREE DOES, by name. Issue
@@ -4376,6 +4381,15 @@ EMPIRE_TREE_EFFECTS = {
     "Architectural Synergy": [("CraftGoldReducedPerBranchStep", 0.01, 10, "Treasury", 0.30)],
     "Treasury Synergy": [("CraftGoldReducedPerSpendingStep", 0.01, 0, "", 0.30)],
     "Forge Upgrades": [("CraftGoldTenthOffChance", 0.01)],
+    # #47 slice F6b: the forge's materials. "2% chance per point to not consume
+    # T2 and below crafting materials"; "+1% chance per point to not consume
+    # Rare materials when crafting" ("Rare" is tier 3 and above, Q14); "While
+    # your item's CR is above 500, all crafting actions on that item have a 15%
+    # chance to return all crafting materials used" (the 500 is
+    # UCataclysmForge::TemptingFateResidueAbove, read before the craft, Q15, N5).
+    "Material Conservation": [("LowTierMaterialKeptChance", 0.02)],
+    "Resource Management": [("RareMaterialKeptChance", 0.01)],
+    "Tempting Fate": [("HighResidueMaterialsReturnedChance", 0.15)],
     "Veteran's Edge": [("EmpirePointsFromClears", 0.03)],
     # Slice 5a: the player inside a dungeon, each reading a judgement of the
     # coordinating session's D1 to D4 of 2026-11-19 (`docs/DECISIONS.md`).

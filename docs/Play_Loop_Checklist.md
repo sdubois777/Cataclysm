@@ -705,6 +705,24 @@ upgrade at the forge (step 16), say 4,500 for a +2 helm carrying 250 residue.
   Upgrades' tenth is in it." The same piece on the same day always draws the same, so a reload does not change it.
 - **The price named is the price paid**, and a character holding the discounted price is not refused.
 
+### 30. Take the forge's material nodes in the empire tree, and see a craft keep its materials
+
+The three material nodes of the empire tree's Artisan branch (issue #47, slice F6b).
+
+- **Buy Material Conservation to 10 points.** About one item craft in five then keeps its tier 1 and 2 materials:
+  upgrade stones up to +4, the Corrupted Mote, the Jeweler's Setting Agent, a Tainted Shard spent as an option. When it
+  will, the craft's question ends, for a +2 to +3 upgrade: "The empire tree keeps 2 Upgrade Stone +3 (Material
+  Conservation)." After the craft its stones are still in the bag, and after the craft's own line:
+
+  `PLAY LOOP: the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm`
+
+- **Resource Management** (1% a point, 20% at 20) keeps the tier 3 to 5 materials the same way: stones from +5, the
+  Chaos Stabilizer, the Primal Spark, the Purified Essence of a cleanse.
+- **Tempting Fate**: on a piece carrying more than 500 residue, about one craft in seven returns every material it used,
+  and the words name Tempting Fate alone.
+- **The combines never keep a stone**, and a gem socketed is not kept. The same piece on the same day always draws the
+  same, so a reload does not change it.
+
 ## If a step does not show what it should
 
 Note the step, and copy its PLAY LOOP lines. A line that is missing means that step did not run. A line whose figures

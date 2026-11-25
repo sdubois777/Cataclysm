@@ -367,6 +367,19 @@ public:
 	 */
 	static FCataclysmForgePricing CombinePricingFor(const UObject* WorldContext, int32 Rung);
 
+	/**
+	 * The empire tree's three material draws for a craft on the item at a target, today (#47 slice F6b, Q13): what
+	 * `DoItemCraft` keeps of the craft's materials once it can no longer fail (N1). None with no item or no run.
+	 */
+	static FCataclysmForgeKeeping KeepingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
+
+	/**
+	 * The forge screen's words for what the tree will keep of a craft whose own material is `Count` of `Material` and
+	 * whose options take `OptionMaterials` (N4), as `UCataclysmForge::KeptText`: "" when nothing is kept.
+	 */
+	static FString KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
+							   int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials);
+
 	/** What cleansing the item at a target would take now. */
 	static FCataclysmForgeCleanse CleansePlanFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target);
 

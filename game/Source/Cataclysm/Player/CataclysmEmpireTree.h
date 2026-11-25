@@ -239,6 +239,14 @@ struct CATACLYSM_API FCataclysmEmpireTreePlayerBonuses
 	/** Forge Upgrades' chance a craft costs a tenth less, 1% a point (Q8 to Q10): times `ForgeUpgradesFactor` after
 	 *  the capped reductions, rolled once a craft from the item and the day (`UCataclysmForge::ForgeUpgradesTenthOff`). */
 	float CraftGoldTenthOffChance = 0.0f;
+
+	/** #47 slice F6b, the forge's materials (the coordinating session's Q11 to Q17 of 2026-11-22, N1 to N5 of 2026-11-25).
+	 *  Each a chance drawn once a forge item craft from the item and the day (`UCataclysmForge::KeepingOn`): Material
+	 *  Conservation's, 2% a point, keeps the craft's tier 1 and 2 materials; Resource Management's, 1% a point, its tier
+	 *  3 to 5 ones; Tempting Fate's, 15%, every material, on an item whose residue before the craft is above 500. */
+	float LowTierMaterialKeptChance = 0.0f;
+	float RareMaterialKeptChance = 0.0f;
+	float HighResidueMaterialsReturnedChance = 0.0f;
 };
 
 /**

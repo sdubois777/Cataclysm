@@ -168,6 +168,83 @@ bool UCataclysmForge::ForgeUpgradesTenthOff(float Chance, int32 Seed)
 	return Stream.GetFraction() < Chance;
 }
 
+FString FCataclysmForgeKeeping::NodeFor(FName Material) const
+{
+	if (Material.IsNone())
+	{
+		return FString();
+	}
+	if (bAllReturned)
+	{
+		return TEXT("Tempting Fate"); // Every material, whatever its tier (N4: it names itself alone).
+	}
+	const int32 Tier = MaterialTable != nullptr ? UCataclysmDropRoll::MaterialTierOf(MaterialTable, Material) : 0;
+	if (Tier <= 0)
+	{
+		return FString(); // Not a crafting material (N2) or not in the table.
+	}
+	if (Tier <= UCataclysmForge::MaterialConservationHighestTier)
+	{
+		return bLowTierKept ? TEXT("Material Conservation") : FString();
+	}
+	return bRareKept ? TEXT("Resource Management") : FString();
+}
+
+TArray<FCataclysmForgeMaterialTake> FCataclysmForgeKeeping::KeptOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const
+{
+	TArray<FCataclysmForgeMaterialTake> Kept;
+	for (const FCataclysmForgeMaterialTake& Take : Materials)
+	{
+		if (Take.Count > 0 && !NodeFor(Take.Material).IsEmpty())
+		{
+			Kept.Add(Take); // WHOLE (Q12): a node keeps all of its materials or none.
+		}
+	}
+	return Kept;
+}
+
+FString FCataclysmForgeKeeping::KeptPartsOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const
+{
+	TArray<FString> Parts;
+	for (const FCataclysmForgeMaterialTake& Take : KeptOf(Materials))
+	{
+		const FString Name = UCataclysmDropRoll::MaterialNameOf(MaterialTable, Take.Material);
+		Parts.Add(FString::Printf(TEXT("%d %s (%s)"), Take.Count, Name.IsEmpty() ? *Take.Material.ToString() : *Name,
+								  *NodeFor(Take.Material)));
+	}
+	return FString::Join(Parts, TEXT(", "));
+}
+
+FCataclysmForgeKeeping UCataclysmForge::KeepingOn(const FCataclysmItem& Item, float LowTierChance, float RareChance,
+												  float ReturnAllChance, int32 WalkSeedMask, int32 Day,
+												  const UDataTable* MaterialTable)
+{
+	// EACH ON ITS OWN SEED (Q16), and a chance of nought draws nothing, so a player holding none of the three draws as
+	// before this slice.
+	const auto Lands = [&Item, WalkSeedMask, Day](float Chance, int32 Salt)
+	{
+		if (Chance <= 0.0f)
+		{
+			return false;
+		}
+		FRandomStream Stream(AffixCraftSeed(Item, Salt, 0, WalkSeedMask, Day));
+		return Stream.GetFraction() < Chance;
+	};
+	FCataclysmForgeKeeping Out;
+	Out.MaterialTable = MaterialTable;
+	Out.bLowTierKept = Lands(LowTierChance, MaterialConservationSalt);
+	Out.bRareKept = Lands(RareChance, ResourceManagementSalt);
+	// THE RESIDUE BEFORE THE CRAFT (Q15), MORE THAN 500 (N5).
+	Out.bAllReturned = Item.Residue > TemptingFateResidueAbove && Lands(ReturnAllChance, TemptingFateSalt);
+	return Out;
+}
+
+FString UCataclysmForge::KeptText(const FCataclysmForgeKeeping& Keeping, const TArray<FCataclysmForgeMaterialTake>& Materials)
+{
+	const FString Parts = Keeping.KeptPartsOf(Materials);
+	return Parts.IsEmpty() ? FString() : FString::Printf(TEXT(" The empire tree keeps %s."), *Parts);
+}
+
 FString UCataclysmForge::DiscountText(const FCataclysmForgePricing& Pricing, FName Material)
 {
 	const int32 Off = Pricing.PercentOffFor(Material);

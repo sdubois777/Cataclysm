@@ -446,6 +446,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::SocketingQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
@@ -518,6 +519,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::SocketWorkQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
@@ -591,6 +593,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::AffixWorkQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
@@ -699,6 +702,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::AffixChangeQuestion(Plan, AffixTable)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
@@ -823,6 +827,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::CleanseQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, {})
 				+ TimersRunningOutIn(Plan.Days);
 			RefreshDisplay();
 			return;
@@ -874,6 +879,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			PendingSocketAction = ButtonName;
 			Message = UCataclysmForge::DamageTypeQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ TimersRunningOutIn(Effect.Days);
 			RefreshDisplay();
@@ -949,6 +955,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 			// AND THE MASTER TINKERER'S CHANCE WHEN IT IS HELD, never the outcome (#47 slice F6, R8).
 			Message = UCataclysmForge::EnchantmentWorkQuestion(Plan, EnchantmentWork.Named)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Material)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Material, 1, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).EnchantCriticalChance, /*bUpgrade=*/false)
@@ -1040,6 +1047,7 @@ void UCataclysmForgeWidget::HandleActionClicked(FName ButtonName)
 		// AND THE DUNGEONS WHOSE TIMERS RUN OUT WITHIN ITS DAYS, last, issue #2857.
 		Message = UCataclysmForge::UpgradeQuestion(Plan)
 				+ UCataclysmForge::DiscountText(UCataclysmForgeCraft::PricingFor(Context(), ChosenTarget), Plan.Stone)
+				+ UCataclysmForgeCraft::KeptTextFor(Context(), ChosenTarget, Plan.Stone, Plan.StonesNeeded, Effect.Materials)
 				+ UCataclysmForge::OptionsQuestion(Effect, Plan.ResidueBefore, Plan.ResidueAfter, Plan.Days)
 				+ UCataclysmForge::MilestoneChanceText(
 					UCataclysmGameInstance::EmpireTreePlayerBonusesFor(this).UpgradeExtraLevelChance, /*bUpgrade=*/true)

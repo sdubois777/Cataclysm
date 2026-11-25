@@ -594,6 +594,16 @@ FCataclysmEmpireTreePlayerBonuses UCataclysmEmpireTree::PlayerBonusesFor(const U
 		case ECataclysmEmpireTreeEffect::CraftGoldTenthOffChance:
 			Bonuses.CraftGoldTenthOffChance += Total;
 			break;
+		// #47 SLICE F6b: the forge's materials, three chances drawn once a craft (`UCataclysmForge::KeepingOn`).
+		case ECataclysmEmpireTreeEffect::LowTierMaterialKeptChance:
+			Bonuses.LowTierMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::RareMaterialKeptChance:
+			Bonuses.RareMaterialKeptChance += Total;
+			break;
+		case ECataclysmEmpireTreeEffect::HighResidueMaterialsReturnedChance:
+			Bonuses.HighResidueMaterialsReturnedChance += Total;
+			break;
 
 		// THE THREE BUILD NODES, issue #2832.
 		case ECataclysmEmpireTreeEffect::UpgradePriceLess:

@@ -83,9 +83,12 @@ def test_the_five_nodes_are_built_with_their_rows_and_caps() -> None:
         assert gen.EMPIRE_TREE_BUILT.get(name) == 11, f"{name} is not built in slice 11"
         assert name not in gen.EMPIRE_TREE_REFUSED, f"{name} is still refused"
         assert gen.EMPIRE_TREE_EFFECTS.get(name) == effects, f"{name}'s row is {gen.EMPIRE_TREE_EFFECTS.get(name)}"
+    # THE FIVE KINDS TOGETHER, IN THIS ORDER, wherever they stand: they were the last five until #47 slice F6b added three
+    # after them.
     kinds = gen.EMPIRE_TREE_EFFECT_KINDS
-    assert kinds[-5:] == ("CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
-                          "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance")
+    start = kinds.index("CraftGoldReduced")
+    assert kinds[start:start + 5] == ("CraftGoldReduced", "LowTierCraftGoldReduced", "CraftGoldReducedPerBranchStep",
+                                      "CraftGoldReducedPerSpendingStep", "CraftGoldTenthOffChance")
 
 
 def test_the_factor_holds_the_reductions_at_three_quarters_and_takes_the_tenth_after() -> None:

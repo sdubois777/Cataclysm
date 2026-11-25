@@ -161,6 +161,9 @@ SLICE_F6 = {"The Soul Forge", "The Master Tinkerer"}
 #: #47 slice F6a, the forge's gold: the five forge gold nodes (2026-11-22, Q1 to Q10, the owner's 30% for Architectural
 #: Synergy; 2026-11-24, A and B), numbered 11.
 SLICE_F6A = {"Workshop Upgrades", "Apprentice Oversight", "Architectural Synergy", "Treasury Synergy", "Forge Upgrades"}
+#: #47 slice F6b, the forge's materials: the three forge material nodes (2026-11-22, Q11 to Q17; 2026-11-25, N1 to N5),
+#: numbered 12.
+SLICE_F6B = {"Material Conservation", "Resource Management", "Tempting Fate"}
 
 DAY_EFFECTS = {"ResolveDaysAll", "ResolveDaysOutposts", "ResolveDaysPerBranchStep",
                "ResolveDaysBelowTenPercent", "SurgeGapDays", "WalkDaysFewerWhenAlone",
@@ -239,7 +242,7 @@ def test_the_effect_names_agree_with_the_cpp_enum() -> None:
         f"{list(gen.EMPIRE_TREE_EFFECT_KINDS)}; they must be the same names in the same order")
 
 
-def test_exactly_the_124_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismantle_nodes_f6_and_f6a_act() -> None:
+def test_exactly_the_127_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismantle_nodes_f6_f6a_and_f6b_act() -> None:
     named = set(gen.EMPIRE_TREE_EFFECTS)
     assert len(SLICE_3A) == 31 and len(SLICE_3B) == 7 and len(SLICE_4) == 19 and len(SLICE_5A) == 15
     assert len(SLICE_5B) == 5 and len(SLICE_6A) == 11 and len(SLICE_6B) == 5 and len(SLICE_6C) == 5
@@ -248,6 +251,7 @@ def test_exactly_the_124_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismant
     assert len(SLICE_9) == 5 and len(DISMANTLE_NODES) == 2
     assert len(SLICE_F6) == 2
     assert len(SLICE_F6A) == 5
+    assert len(SLICE_F6B) == 3
     assert not SLICE_3A & SLICE_3B and not (SLICE_3A | SLICE_3B) & SLICE_4
     assert not (SLICE_3A | SLICE_3B | SLICE_4) & SLICE_5A
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A) & SLICE_5B
@@ -270,9 +274,13 @@ def test_exactly_the_124_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismant
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES) & SLICE_F6
     assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
                 | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6) & SLICE_F6A
+    assert not (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
+                | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6
+                | SLICE_F6A) & SLICE_F6B
     built = (SLICE_3A | SLICE_3B | SLICE_4 | SLICE_5A | SLICE_5B | SLICE_6A | SLICE_6B | SLICE_6C | SLICE_6D
-             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6 | SLICE_F6A)
-    assert len(built) == 124
+             | SLICE_6E | SLICE_7 | SLICE_8 | SLICE_BUILD_DAYS | SLICE_9 | DISMANTLE_NODES | SLICE_F6 | SLICE_F6A
+             | SLICE_F6B)
+    assert len(built) == 127
     assert named == built, (
         f"EMPIRE_TREE_EFFECTS names {sorted(named - built)} beyond slice 3 and "
         f"leaves out {sorted(built - named)}")
@@ -298,6 +306,8 @@ def test_exactly_the_124_nodes_of_slices_3a_to_9_the_build_nodes_the_two_dismant
         "every #47 slice F6 option with an effect is one EMPIRE_TREE_BUILT gives to slice 10")
     assert all(gen.EMPIRE_TREE_BUILT.get(name) == 11 for name in SLICE_F6A), (
         "every #47 slice F6a forge gold node is one EMPIRE_TREE_BUILT gives to slice 11")
+    assert all(gen.EMPIRE_TREE_BUILT.get(name) == 12 for name in SLICE_F6B), (
+        "every #47 slice F6b forge material node is one EMPIRE_TREE_BUILT gives to slice 12")
 
 
 def test_every_value_is_in_its_own_words(texts) -> None:

@@ -339,6 +339,14 @@ struct CATACLYSM_API FCataclysmPlayLoopLog
 	static FString ForgeSoulForgeLine(const FString& ItemName, int32 FromLevel, int32 ToLevel);
 
 	/**
+	 * What the empire tree's material nodes kept of a forge craft, said after the craft's own line and its options' (N4):
+	 * "the empire tree kept 2 Upgrade Stone +3 (Material Conservation) at the forge on Quality Helm". Issue #47, slice
+	 * F6b. Said by `UCataclysmForgeCraft::DoItemCraft`, only when it kept anything; `Kept` is
+	 * `FCataclysmForgeKeeping::KeptPartsOf`.
+	 */
+	static FString ForgeMaterialsKeptLine(const FString& ItemName, const FString& Kept);
+
+	/**
 	 * The Master Tinkerer's critical success, said after the enchantment craft's own line: "a critical success on
 	 * Quality Helm: the rolls were drawn twice with the better kept, and the craft took no days". Issue #47, slice F6.
 	 * Said by `UCataclysmForgeCraft::DoEnchantmentWork`, only on a critical success.

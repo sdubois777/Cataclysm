@@ -2541,6 +2541,18 @@ enum class ECataclysmEmpireTreeEffect : uint8
 
 	/** The chance a forge craft costs a tenth less, 1% a point (Forge Upgrades, Q8 to Q10). #47 slice F6a. */
 	CraftGoldTenthOffChance,
+
+	/** The chance a forge item craft keeps its tier 1 and 2 crafting materials, 2% a point (Material Conservation).
+	 *  #47 slice F6b, drawn by `UCataclysmForge::KeepingOn`. */
+	LowTierMaterialKeptChance,
+
+	/** The chance a forge item craft keeps its tier 3 to 5 crafting materials, 1% a point (Resource Management: "Rare"
+	 *  is tier 3 and above, Q14). #47 slice F6b. */
+	RareMaterialKeptChance,
+
+	/** The chance a forge item craft returns every crafting material it used, on an item whose residue before the craft
+	 *  is above `UCataclysmForge::TemptingFateResidueAbove` (Tempting Fate, Q15, N5). #47 slice F6b. */
+	HighResidueMaterialsReturnedChance,
 };
 
 /**

@@ -276,11 +276,11 @@ def test_every_system_named_is_one_some_node_waits_on() -> None:
     assert set(gen.EMPIRE_TREE_REFUSED.values()) == set(gen.EMPIRE_TREE_SYSTEMS)
 
 
-def test_a_built_node_names_one_of_the_nine_slices_or_the_dismantling_issue_that_make_it_act() -> None:
+def test_a_built_node_names_one_of_the_ten_slices_or_the_dismantling_issue_that_make_it_act() -> None:
     # 10 IS #47 SLICE F6's: The Soul Forge and The Master Tinkerer, the forge's two options (2026-11-22). 11 IS #47 SLICE
-    # F6a's: the five forge gold nodes (2026-11-24). AND ISSUE #2848, whose slice S2 built the two dismantle nodes outside
-    # #2741's slices (2026-11-22).
-    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 11, 2848}
+    # F6a's: the five forge gold nodes (2026-11-24). 12 IS #47 SLICE F6b's: the three forge material nodes (2026-11-25). AND
+    # ISSUE #2848, whose slice S2 built the two dismantle nodes outside #2741's slices (2026-11-22).
+    assert set(gen.EMPIRE_TREE_BUILT.values()) == {3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 2848}
 
 
 def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> None:
@@ -304,7 +304,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
     and Disassembly Expert's 1, which waited on dismantling. #47 slice F6a
     (2026-11-24) built 25 more of crafting's, the forge's gold: Workshop
     Upgrades' 8, Apprentice Oversight's 1, Forge Upgrades' 5, Architectural
-    Synergy's 10 and Treasury Synergy's 1."""
+    Synergy's 10 and Treasury Synergy's 1. #47 slice F6b (2026-11-25) built 31
+    more, the forge's materials: Material Conservation's 10, Resource
+    Management's 20 and Tempting Fate's 1."""
     points = collections.Counter()
     options = collections.Counter()
     for row in node_rows.values():
@@ -320,9 +322,9 @@ def test_the_points_that_can_be_bought_and_the_points_that_wait(node_rows) -> No
 
     assert dict(points) == {
         "slice 3": 315, "slice 4": 162, "slice 5": 152, "slice 6": 214,
-        "slice 7": 17, "slice 9": 21, "slice 2848": 11, "slice 11": 25,
+        "slice 7": 17, "slice 9": 21, "slice 2848": 11, "slice 11": 25, "slice 12": 31,
         "market": 44, "gold cap": 5, "gold cap and death loss": 20,
-        "crafting": 242, "loot chest": 8,
+        "crafting": 211, "loot chest": 8,
         "stash": 3, "modifier reroll": 3, "loot filter": 1,
         "destroy upgrade": 1,
     }

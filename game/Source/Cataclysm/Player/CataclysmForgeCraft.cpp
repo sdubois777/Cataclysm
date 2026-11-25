@@ -121,6 +121,16 @@ namespace
 		Out.MaterialTable = UCataclysmDropRoll::LoadCraftingMaterialTable();
 		return Out;
 	}
+
+	/** The tree's three material draws for an item craft on `Item` today (#47 slice F6b, Q13). */
+	FCataclysmForgeKeeping ForgeMaterialKeepingOf(const UObject* WorldContext, const FCataclysmItem& Item,
+												  const UCataclysmEmpireRun& Run)
+	{
+		const FCataclysmEmpireTreePlayerBonuses Tree = UCataclysmGameInstance::EmpireTreePlayerBonusesFor(WorldContext);
+		return UCataclysmForge::KeepingOn(Item, Tree.LowTierMaterialKeptChance, Tree.RareMaterialKeptChance,
+										  Tree.HighResidueMaterialsReturnedChance, Run.WalkSeedMask, Run.Day(),
+										  UCataclysmDropRoll::LoadCraftingMaterialTable());
+	}
 }
 
 namespace
@@ -1411,6 +1421,14 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		return ECataclysmForgeResult::Refused;
 	}
 
+	// THE EMPIRE TREE'S MATERIAL NODES (#47 slice F6b): what they keep goes back in the bag ONCE THE CRAFT CAN NO LONGER
+	// FAIL, before its days pass (N1). Every failure above gave back all it took, so nothing is given back twice; and the
+	// craft's own line, said after, counts what is left with the kept ones in. Drawn from the item as it stood and the day
+	// before the craft's days, as the question said it (Q13).
+	const FCataclysmForgeKeeping Keeping = ForgeMaterialKeepingOf(WorldContext, Before, *Run);
+	const TArray<FCataclysmForgeMaterialTake> Kept = Keeping.KeptOf(Taken);
+	GiveMaterialsBack(Inventory, Kept);
+
 	// THE DAYS, through the run's own day loop, so a surge or a resolve inside them happens on its own day; AND THEIR
 	// REPORTS KEPT, with the dungeons standing named before them, since a dungeon the days resolve is gone from the run
 	// after. Until issue #2857 the reports were thrown away here, and the owner saw dungeons gone with nothing saying why.
@@ -1431,6 +1449,11 @@ ECataclysmForgeResult UCataclysmForgeCraft::DoItemCraft(
 		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeOptionsLine(
 			Name, Step.Options.bStabilizerUsed, Step.Options.ShardsUsed, Step.Options.ResidueSaved, Step.Options.DaysSaved,
 			Step.Options.Gold));
+	}
+	// AND WHAT THE EMPIRE TREE KEPT, only when it kept anything (N4).
+	if (!Kept.IsEmpty())
+	{
+		FCataclysmPlayLoopLog::Say(FCataclysmPlayLoopLog::ForgeMaterialsKeptLine(Name, Keeping.KeptPartsOf(Kept)));
 	}
 
 	// AND WHAT THE DAYS DID, in the walk's words after the forge's lead (`FCataclysmPlayLoopLog::AwayAccount`), said
@@ -1475,6 +1498,24 @@ FCataclysmForgePricing UCataclysmForgeCraft::PricingFor(const UObject* WorldCont
 		? UCataclysmForge::ForgeUpgradesSeed(*Item, Run->WalkSeedMask, Run->Day())
 		: 0;
 	return ForgePricingOnSeed(WorldContext, Seed);
+}
+
+FCataclysmForgeKeeping UCataclysmForgeCraft::KeepingFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target)
+{
+	const ACataclysmPlayerCharacter* Character = CharacterIn(WorldContext);
+	const FCataclysmItem* Item = Character != nullptr ? ItemAt(*Character, Target) : nullptr;
+	const UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(WorldContext, /*bStartIfNone*/ false);
+	return Item != nullptr && Run != nullptr ? ForgeMaterialKeepingOf(WorldContext, *Item, *Run) : FCataclysmForgeKeeping();
+}
+
+FString UCataclysmForgeCraft::KeptTextFor(const UObject* WorldContext, const FCataclysmForgeTarget& Target, FName Material,
+										  int32 Count, const TArray<FCataclysmForgeMaterialTake>& OptionMaterials)
+{
+	// THE MATERIALS AS THE CRAFT TAKES THEM: its own, then the options' (`ForgeStepOf`).
+	TArray<FCataclysmForgeMaterialTake> Materials;
+	Materials.Add({Material, Count});
+	Materials.Append(OptionMaterials);
+	return UCataclysmForge::KeptText(KeepingFor(WorldContext, Target), Materials);
 }
 
 FCataclysmForgePricing UCataclysmForgeCraft::CombinePricingFor(const UObject* WorldContext, int32 Rung)

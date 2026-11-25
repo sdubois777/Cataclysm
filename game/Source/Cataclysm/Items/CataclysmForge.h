@@ -511,6 +511,45 @@ struct FCataclysmForgePricing
 };
 
 /**
+ * What the empire tree's three forge material nodes keep of one item craft's crafting materials. #47 slice F6b, ruled by
+ * the coordinating session on 2026-11-22 (Q11 to Q17) and 2026-11-25 (N1 to N5):
+ *   - Material Conservation's draw keeps the tier 1 and 2 materials, Resource Management's the tier 3 to 5 ones ("Rare"
+ *     is tier 3 and above, Q14), and Tempting Fate's, on an item whose residue before the craft is above
+ *     `UCataclysmForge::TemptingFateResidueAbove` (Q15, N5), every material;
+ *   - each drawn once for the craft from the item and the day (Q12, Q13), independently (Q16), so a material is kept
+ *     when any node covering it lands; a node keeps all of its materials or none (Q12);
+ *   - the option materials count by their tier (Q17); a gem is not a crafting material (N2), and the combines never
+ *     reach it (Q11).
+ * Drawn by `UCataclysmForge::KeepingOn`; the craft takes every material as before and puts the kept ones back once it
+ * can no longer fail, before its days pass (N1, `UCataclysmForgeCraft::DoItemCraft`).
+ */
+struct FCataclysmForgeKeeping
+{
+	/** Material Conservation's draw landed: the craft's tier 1 and 2 materials are kept. */
+	bool bLowTierKept = false;
+
+	/** Resource Management's draw landed: the craft's tier 3 to 5 materials are kept. */
+	bool bRareKept = false;
+
+	/** Tempting Fate's draw landed, on an item above the residue: every material the craft used is returned. */
+	bool bAllReturned = false;
+
+	/** The crafting material table, for a material's tier and name. None keeps nothing but what Tempting Fate returns. */
+	const UDataTable* MaterialTable = nullptr;
+
+	/** The node that keeps `Material` in this craft: "Tempting Fate" when its draw landed, else the tier's node when its
+	 *  draw landed; empty when none keeps it. */
+	FString NodeFor(FName Material) const;
+
+	/** The takes of `Materials` that are kept, each whole (Q12), in their order. */
+	TArray<FCataclysmForgeMaterialTake> KeptOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const;
+
+	/** "2 Upgrade Stone +3 (Material Conservation), 1 Chaos Stabilizer (Resource Management)" for the kept takes of
+	 *  `Materials`, each with its node; empty when none is kept. */
+	FString KeptPartsOf(const TArray<FCataclysmForgeMaterialTake>& Materials) const;
+};
+
+/**
  * The Cataclysmic Forge's upgrade: raising an item one gear level with upgrade stones, and combining two stones of a
  * level into one of the next. The owner's ruling of 2026-11-19 ("build it next"), planned and ruled by the coordinating
  * session the same day. `docs/Cataclysm_GDD_v2.md`, "Gear Leveling" and section VII's operations table, whose row
@@ -1200,6 +1239,37 @@ public:
 
 	/** Whether Forge Upgrades' tenth lands: `Chance` above nought and a draw on `Seed` below it. */
 	static bool ForgeUpgradesTenthOff(float Chance, int32 Seed);
+
+	// ---- #47 slice F6b: the three material nodes (`FCataclysmForgeKeeping`). Drawn as Forge Upgrades is, from the item
+	// and the day (Q13), each on a salt of its own (Q16), so the question can say what will be kept and a reload cannot
+	// draw again.
+
+	/** The salts of the three draws: "FMCN" (Material Conservation), "FRMG" (Resource Management), "FTMF" (Tempting
+	 *  Fate). */
+	static constexpr int32 MaterialConservationSalt = 0x464D434E;
+	static constexpr int32 ResourceManagementSalt = 0x46524D47;
+	static constexpr int32 TemptingFateSalt = 0x46544D46;
+
+	/** Tempting Fate's "While your item's CR is above 500": an item's residue before the craft must be MORE than this (N5). */
+	static constexpr float TemptingFateResidueAbove = 500.0f;
+
+	/** The highest tier Material Conservation keeps ("T2 and below"); Resource Management keeps every tier above it (Q14). */
+	static constexpr int32 MaterialConservationHighestTier = 2;
+
+	/**
+	 * The three draws for an item craft on `Item` on `Day`: each chance above nought and a draw on its own seed
+	 * (`AffixCraftSeed` with its salt, as `ForgeUpgradesSeed`) below it; Tempting Fate's only when `Item.Residue` is above
+	 * `TemptingFateResidueAbove`.
+	 */
+	static FCataclysmForgeKeeping KeepingOn(const FCataclysmItem& Item, float LowTierChance, float RareChance,
+											float ReturnAllChance, int32 WalkSeedMask, int32 Day,
+											const UDataTable* MaterialTable);
+
+	/**
+	 * The forge screen's words for what the empire tree will keep of a craft's materials, said after the craft's question
+	 * (N4): "" when nothing is kept; otherwise " The empire tree keeps 2 Upgrade Stone +3 (Material Conservation)."
+	 */
+	static FString KeptText(const FCataclysmForgeKeeping& Keeping, const TArray<FCataclysmForgeMaterialTake>& Materials);
 
 	/**
 	 * The forge screen's words for a price the empire tree discounts, said after the craft's question: "" with no
